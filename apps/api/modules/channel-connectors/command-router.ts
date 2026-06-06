@@ -222,6 +222,11 @@ function resolveWorkDirTarget(input: string, currentWorkDir: string): string | n
   const target = normalizeString(input);
   if (!target) return null;
   if (["default", "reset", "profile"].includes(target.toLowerCase())) return "";
+  const index = Number(target);
+  if (Number.isInteger(index) && index >= 1) {
+    const child = listChildDirectories(currentWorkDir)[index - 1];
+    if (child) return path.resolve(currentWorkDir, child);
+  }
   let next = target;
   if (next === "~" || next.startsWith("~/")) {
     next = path.join(os.homedir(), next.slice(2));

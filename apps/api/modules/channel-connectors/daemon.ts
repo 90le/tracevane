@@ -39,6 +39,9 @@ import {
   getChannelConnectorSessionControl,
 } from "./session-control-store.js";
 import {
+  resolveChannelConnectorGatewayClientKey,
+} from "./gateway-secret.js";
+import {
   getOctoCachedCredentials,
   saveOctoCachedCredentials,
   type OctoCredentialCacheEntry,
@@ -300,15 +303,7 @@ function shortMessage(value: unknown, maxLength = 260): string {
 }
 
 function gatewayClientKey(config: ChannelConnectorsDaemonRuntimeConfig): string | null {
-  const secretsPath = path.resolve(config.paths.root, "..", "..", "model-gateway", "secrets.json");
-  try {
-    const raw = JSON.parse(fs.readFileSync(secretsPath, "utf8")) as {
-      secrets?: Record<string, { value?: unknown }>;
-    };
-    return normalizeString(raw.secrets?.["gateway:client-api-key"]?.value) || null;
-  } catch {
-    return null;
-  }
+  return resolveChannelConnectorGatewayClientKey(config);
 }
 
 function nativeProfileFromRuntime(project: ChannelConnectorRuntimeProject): ChannelConnectorAgentProfile {

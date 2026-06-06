@@ -162,7 +162,7 @@ function tomlString(value: string): string {
 
 function createCodexGatewayHome(input: {
   gatewayEndpoint: string;
-  gatewayClientKey: string;
+  gatewayClientKey: string | null;
   model: string | null;
   agentRuntimeDir?: string | null;
 }): { codexHome: string; cleanupRoot: string } {
@@ -187,7 +187,7 @@ function createCodexGatewayHome(input: {
     "wire_api = \"responses\"",
     "supports_websockets = false",
     "requires_openai_auth = true",
-    `experimental_bearer_token = ${tomlString(input.gatewayClientKey)}`,
+    input.gatewayClientKey ? `experimental_bearer_token = ${tomlString(input.gatewayClientKey)}` : "",
     "responses_websockets_v2 = false",
     "",
   ].filter((line) => line !== "").join("\n");
@@ -254,14 +254,12 @@ export function buildChannelConnectorAgentProcessRequest(
 
   if (project.agent === "codex") {
     const codexThreadId = normalizeString(request.session?.codexThreadId);
-    const codexHome = request.gatewayClientKey
-      ? createCodexGatewayHome({
-        gatewayEndpoint: request.gatewayEndpoint,
-        gatewayClientKey: request.gatewayClientKey,
-        model: model || null,
-        agentRuntimeDir: request.agentRuntimeDir,
-      })
-      : null;
+    const codexHome = createCodexGatewayHome({
+      gatewayEndpoint: request.gatewayEndpoint,
+      gatewayClientKey: request.gatewayClientKey,
+      model: model || null,
+      agentRuntimeDir: request.agentRuntimeDir,
+    });
     const codexConfigArgs = [
       "-c",
       "model_provider=\"studio_gateway\"",
@@ -300,11 +298,11 @@ export function buildChannelConnectorAgentProcessRequest(
       stdin: content,
       env: {
         ...baseEnv,
-        ...(codexHome ? { CODEX_HOME: codexHome.codexHome } : {}),
+        CODEX_HOME: codexHome.codexHome,
         OPENAI_BASE_URL: request.gatewayEndpoint,
       },
       timeoutMs,
-      cleanupPaths: codexHome?.cleanupRoot ? [codexHome.cleanupRoot] : [],
+      cleanupPaths: codexHome.cleanupRoot ? [codexHome.cleanupRoot] : [],
       sessionMode: codexThreadId ? "resume" : "new",
       codexThreadId: codexThreadId || null,
       agent: project.agent,
@@ -630,6 +628,33 @@ export async function runChannelConnectorAgentTurn(
       exitCode: null,
       durationMs: 0,
       error: "Octo message content is empty.",
+      progress: {
+        eventCount: 0,
+        latest: null,
+        summary: null,
+      },
+      session: {
+        resumed: false,
+        codexThreadId: request.session?.codexThreadId || null,
+      },
+    };
+  }
+  if (request.project.agent === "codex" && !normalizeString(request.gatewayClientKey)) {
+    return {
+      attempted: false,
+      ok: false,
+      status: "failed",
+      agent: request.project.agent,
+      model: request.project.model,
+      command: null,
+      args: [],
+      cwd: null,
+      replyText: null,
+      stdout: "",
+      stderr: "",
+      exitCode: null,
+      durationMs: 0,
+      error: "Studio Gateway client key is missing; Channel Connectors cannot start Codex through studio_gateway.",
       progress: {
         eventCount: 0,
         latest: null,

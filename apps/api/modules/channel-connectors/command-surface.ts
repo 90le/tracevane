@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import type {
   ChannelConnectorCommandSurface,
   ChannelConnectorCommandSurfaceAction,
@@ -53,8 +55,10 @@ type FeishuMenuSectionId = typeof FEISHU_MENU_SECTIONS[number];
 
 const FEISHU_MENU_VIEWS = [
   "help",
+  "agent",
   "model",
   "mode",
+  "workdir",
 ] as const;
 
 type FeishuMenuViewId = typeof FEISHU_MENU_VIEWS[number];
@@ -101,6 +105,10 @@ const FEISHU_MENU_VIEW_ALIASES: Record<string, FeishuMenuViewId> = {
   command: "help",
   cmd: "help",
   start: "help",
+  agent: "agent",
+  agents: "agent",
+  project: "agent",
+  profile: "agent",
   model: "model",
   models: "model",
   "model-picker": "model",
@@ -108,6 +116,12 @@ const FEISHU_MENU_VIEW_ALIASES: Record<string, FeishuMenuViewId> = {
   permission: "mode",
   permissions: "mode",
   "mode-picker": "mode",
+  workdir: "workdir",
+  dir: "workdir",
+  pwd: "workdir",
+  cd: "workdir",
+  chdir: "workdir",
+  "workdir-picker": "workdir",
 };
 
 export interface ChannelConnectorCommandSurfaceInput {
@@ -171,8 +185,10 @@ export function channelConnectorCommandSurfaceViewFromCommand(
   if (!parts.length) return null;
   const name = parts[0]?.toLowerCase() || "";
   if (["help", "menu", "commands", "command", "cmd", "start"].includes(name)) return "help";
+  if (name === "agent" || name === "agents") return "agent";
   if (name === "model" || name === "models") return "model";
   if (["mode", "permission", "permissions", "yolo"].includes(name)) return "mode";
+  if (["workdir", "dir", "pwd", "cd", "chdir"].includes(name)) return "workdir";
   return null;
 }
 
@@ -390,6 +406,18 @@ function compactPath(value: string): string {
   return truncateMiddle(normalized, 42);
 }
 
+function listChildDirectoryNames(workDir: string): string[] {
+  try {
+    return fs.readdirSync(workDir, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+      .map((entry) => entry.name)
+      .sort((a, b) => a.localeCompare(b))
+      .slice(0, 20);
+  } catch {
+    return [];
+  }
+}
+
 function stripListPrefix(value: string): string {
   return normalizeString(value).replace(/^\d+\.\s*/, "");
 }
@@ -604,6 +632,17 @@ function helpSectionActions(
   section: ChannelConnectorCommandSurfaceSection,
   surface: ChannelConnectorCommandSurface,
 ): ChannelConnectorCommandSurfaceAction[] {
+  if (section.id === "agent") {
+    const profileCount = section.actions.filter((item) => item.id.startsWith("agent-")).length;
+    return [
+      action("agent-picker", "Agent Profile", "/agent", {
+        actionKind: "nav",
+        tone: "primary",
+        description: `${profileCount} 个可选 Profile · 当前 ${surface.current.projectId}`,
+        requiresAdmin: true,
+      }),
+    ];
+  }
   if (section.id === "model") {
     const modelCount = section.actions.filter((item) => item.id.startsWith("model-") && item.id !== "model-default").length;
     const currentModel = surface.current.model || "default";
@@ -625,6 +664,17 @@ function helpSectionActions(
         actionKind: "nav",
         tone: "primary",
         description: `${PERMISSION_MODE_LABELS[currentMode]} · ${PERMISSION_MODE_DESCRIPTIONS[currentMode]}`,
+        requiresAdmin: true,
+      }),
+    ];
+  }
+  if (section.id === "workdir") {
+    const childCount = listChildDirectoryNames(surface.current.workDir).length;
+    return [
+      action("workdir-picker", "目录选择器", "/dir", {
+        actionKind: "nav",
+        tone: "primary",
+        description: `${compactPath(surface.current.workDir)} · ${childCount} 个子目录`,
         requiresAdmin: true,
       }),
     ];
@@ -762,6 +812,113 @@ function renderModePickerCard(surface: ChannelConnectorCommandSurface): ChannelC
   };
 }
 
+function renderAgentPickerCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
+  const section = sectionById(surface, "agent");
+  const agentActions = section?.actions.filter((item) => item.id.startsWith("agent-")) || [];
+  const options = agentActions.map((item) => ({
+    label: stripListPrefix(item.label),
+    value: actionCommandValue(item),
+  }));
+  const currentAgentAction = agentActions.find((item) => item.command === `/agent ${surface.current.projectId}`);
+  const initialValue = currentAgentAction ? actionCommandValue(currentAgentAction) : null;
+  const lines = agentActions.map((item) => {
+    const active = item.command === `/agent ${surface.current.projectId}`;
+    return `${active ? "▶" : "◻"} **${stripListPrefix(item.label)}**${item.description ? ` — ${item.description}` : ""}`;
+  });
+  const elements: Array<Record<string, unknown>> = [
+    {
+      tag: "markdown",
+      content: [
+        `**当前 Agent**\n${surface.current.projectId} · ${surface.current.agent}`,
+        "",
+        lines.join("\n") || "没有可切换的 Agent Profile。",
+      ].join("\n"),
+    },
+  ];
+  if (options.length) {
+    elements.push(selectStaticElement({
+      placeholder: "选择 Agent Profile",
+      options,
+      initialValue,
+      surface,
+      sectionId: "agent",
+      viewId: "agent",
+    }));
+  }
+  pushActionRows(elements, [backToHelpAction("agent")], surface, 1);
+  elements.push({
+    tag: "note",
+    elements: [plainText("切换只作用于当前 IM session；模型和权限会恢复目标 Profile 默认值。")],
+  });
+  return {
+    config: {
+      wide_screen_mode: true,
+    },
+    header: {
+      title: plainText("Studio Agent"),
+      template: "turquoise",
+    },
+    elements,
+  };
+}
+
+function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
+  const workDir = surface.current.workDir;
+  const children = listChildDirectoryNames(workDir);
+  const defaultAction = action("workdir-default", "Profile 默认目录", "/cd default", {
+    requiresAdmin: true,
+  });
+  const parent = path.dirname(workDir);
+  const options = [
+    { label: "Profile 默认目录", value: actionCommandValue(defaultAction) },
+    ...(parent && parent !== workDir ? [{
+      label: `上级目录 · ${compactPath(parent)}`,
+      value: actionCommandValue(action("workdir-parent", "上级目录", `/cd ${parent}`, { requiresAdmin: true })),
+    }] : []),
+    ...children.map((name, index) => {
+      const target = path.resolve(workDir, name);
+      return {
+        label: `${index + 1}. ${name}`,
+        value: actionCommandValue(action(`workdir-child-${index + 1}`, name, `/cd ${target}`, { requiresAdmin: true })),
+      };
+    }),
+  ];
+  const elements: Array<Record<string, unknown>> = [
+    {
+      tag: "markdown",
+      content: [
+        "**当前目录**",
+        `\`${workDir}\``,
+        "",
+        children.length ? `**子目录**\n${children.map((name, index) => `${index + 1}. ${name}`).join("\n")}` : "**子目录**\n无可见子目录",
+      ].join("\n"),
+    },
+    selectStaticElement({
+      placeholder: "切换工作目录",
+      options,
+      initialValue: null,
+      surface,
+      sectionId: "workdir",
+      viewId: "workdir",
+    }),
+  ];
+  pushActionRows(elements, [backToHelpAction("workdir")], surface, 1);
+  elements.push({
+    tag: "note",
+    elements: [plainText("切换目录会断开旧 Agent 续接，避免上下文指向错误目录。")],
+  });
+  return {
+    config: {
+      wide_screen_mode: true,
+    },
+    header: {
+      title: plainText("Studio WorkDir"),
+      template: "green",
+    },
+    elements,
+  };
+}
+
 function renderHelpMenuCard(
   surface: ChannelConnectorCommandSurface,
 ): ChannelConnectorFeishuInteractiveCard {
@@ -802,8 +959,10 @@ export function renderChannelConnectorCommandSurfaceFeishu(
   surface: ChannelConnectorCommandSurface,
 ): ChannelConnectorFeishuInteractiveCard {
   const selectedViewId = normalizeChannelConnectorCommandSurfaceView(surface.selectedViewId) || "help";
+  if (selectedViewId === "agent") return renderAgentPickerCard(surface);
   if (selectedViewId === "model") return renderModelPickerCard(surface);
   if (selectedViewId === "mode") return renderModePickerCard(surface);
+  if (selectedViewId === "workdir") return renderWorkdirPickerCard(surface);
   return renderHelpMenuCard(surface);
 }
 

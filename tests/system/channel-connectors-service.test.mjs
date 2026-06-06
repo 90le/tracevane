@@ -35,6 +35,10 @@ import {
   parseChannelConnectorFeishuWebhook,
 } from "../../dist/apps/api/modules/channel-connectors/feishu-adapter.js";
 import {
+  channelConnectorGatewaySecretCandidates,
+  resolveChannelConnectorGatewayClientKey,
+} from "../../dist/apps/api/modules/channel-connectors/gateway-secret.js";
+import {
   handleChannelConnectorCommand,
   resolveChannelConnectorEffectiveProject,
 } from "../../dist/apps/api/modules/channel-connectors/command-router.js";
@@ -317,6 +321,39 @@ test("native Channel Connectors config preview targets Studio Gateway without cc
   assert.equal(preview.config.projects[0].platformBindings.length, 0);
   assert.match(preview.preview, /"implementation"|"gateway"|"projects"/);
   assert.doesNotMatch(preview.preview, /cc-connect|codex-stack|CPA|\[\[projects\.platforms\]\]/);
+});
+
+test("native Channel Connectors resolves Studio Gateway client key from OpenClaw studio secrets", () => {
+  const root = makeTempRoot();
+  const oldHome = process.env.HOME;
+  const oldStudioGatewayKey = process.env.STUDIO_GATEWAY_API_KEY;
+  const oldOpenClawGatewayKey = process.env.OPENCLAW_STUDIO_GATEWAY_API_KEY;
+  try {
+    process.env.HOME = root;
+    delete process.env.STUDIO_GATEWAY_API_KEY;
+    delete process.env.OPENCLAW_STUDIO_GATEWAY_API_KEY;
+    const runtimeConfig = {
+      paths: {
+        root: path.join(root, ".config", "openclaw-studio", "channel-connectors", "daemon"),
+      },
+    };
+    const secretPath = path.join(root, ".openclaw", "studio", "model-gateway", "secrets.json");
+    fs.mkdirSync(path.dirname(secretPath), { recursive: true });
+    fs.writeFileSync(secretPath, JSON.stringify({
+      secrets: {
+        "gateway:client-api-key": { value: "sk-channel-gateway-test" },
+      },
+    }));
+    assert.ok(channelConnectorGatewaySecretCandidates(runtimeConfig).includes(secretPath));
+    assert.equal(resolveChannelConnectorGatewayClientKey(runtimeConfig), "sk-channel-gateway-test");
+  } finally {
+    if (oldHome === undefined) delete process.env.HOME;
+    else process.env.HOME = oldHome;
+    if (oldStudioGatewayKey === undefined) delete process.env.STUDIO_GATEWAY_API_KEY;
+    else process.env.STUDIO_GATEWAY_API_KEY = oldStudioGatewayKey;
+    if (oldOpenClawGatewayKey === undefined) delete process.env.OPENCLAW_STUDIO_GATEWAY_API_KEY;
+    else process.env.OPENCLAW_STUDIO_GATEWAY_API_KEY = oldOpenClawGatewayKey;
+  }
 });
 
 test("native Channel Connectors store persists agent profiles and derives daemon runtime", () => {
@@ -809,6 +846,34 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(fs.statSync(codexConfigPath).mode & 0o777, 0o600);
   for (const cleanupPath of processRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
+  const missingKeyRequest = buildChannelConnectorAgentProcessRequest({
+    project,
+    binding,
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: null,
+  });
+  assert.ok(missingKeyRequest);
+  assert.ok(missingKeyRequest.env.CODEX_HOME);
+  const missingKeyConfig = fs.readFileSync(path.join(missingKeyRequest.env.CODEX_HOME, "config.toml"), "utf8");
+  assert.match(missingKeyConfig, /\[model_providers\.studio_gateway\]/);
+  assert.doesNotMatch(missingKeyConfig, /experimental_bearer_token/);
+  for (const cleanupPath of missingKeyRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
+  const missingKeyResult = await runChannelConnectorAgentTurn({
+    project,
+    binding,
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: null,
+  });
+  assert.equal(missingKeyResult.status, "failed");
+  assert.equal(missingKeyResult.attempted, false);
+  assert.match(missingKeyResult.error, /Gateway client key is missing/);
+  assert.doesNotMatch(missingKeyResult.error, /provider/i);
+
   const agentRuntimeDir = path.join(root, "state", "agent-runtime", "codex-main");
   const resumeRequest = buildChannelConnectorAgentProcessRequest({
     project,
@@ -1134,6 +1199,20 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(cd.ok, true);
   assert.equal(cd.control.workDir, path.join(claudeProject.workDir, "src"));
 
+  const cdDefault = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/cd default"),
+  });
+  assert.equal(cdDefault.ok, true);
+  assert.equal(cdDefault.control.workDir, null);
+
+  const cdByIndex = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/cd 1"),
+  });
+  assert.equal(cdByIndex.ok, true);
+  assert.equal(cdByIndex.control.workDir, path.join(claudeProject.workDir, "src"));
+
   const dir = await handleChannelConnectorCommand({
     ...baseContext,
     message: message("/dir"),
@@ -1238,6 +1317,9 @@ test("native Channel Connectors command surface renders text and Feishu card act
     appProfileRef: "claude",
     platformBindings: [],
   };
+  fs.mkdirSync(path.join(codexProject.workDir, "src"), { recursive: true });
+  fs.mkdirSync(path.join(codexProject.workDir, "packages"), { recursive: true });
+  fs.mkdirSync(path.join(claudeProject.workDir, "src"), { recursive: true });
   const binding = {
     id: "octo-codex",
     platform: "octo",
@@ -1299,6 +1381,35 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(raw, /New Session/);
   assert.doesNotMatch(raw, /\/mode yolo/);
   assert.ok(feishu.elements.some((element) => element.tag === "column_set" && element.flex_mode === "bisect"));
+
+  const agentPickerSurface = buildChannelConnectorCommandSurface({
+    config: runtimeConfig,
+    project: codexProject,
+    binding,
+    sessionKey: "dmwork:dm:admin-1",
+    selectedSectionId: "agent",
+    selectedViewId: "agent",
+  });
+  const agentCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(agentPickerSurface));
+  assert.match(agentCardRaw, /Studio Agent/);
+  assert.match(agentCardRaw, /select_static/);
+  assert.match(agentCardRaw, /act:\/agent claude-main/);
+  assert.match(agentCardRaw, /nav:\/help agent/);
+
+  const workdirPickerSurface = buildChannelConnectorCommandSurface({
+    config: runtimeConfig,
+    project: codexProject,
+    binding,
+    sessionKey: "dmwork:dm:admin-1",
+    selectedSectionId: "workdir",
+    selectedViewId: "workdir",
+  });
+  const workdirCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(workdirPickerSurface));
+  assert.match(workdirCardRaw, /Studio WorkDir/);
+  assert.match(workdirCardRaw, /select_static/);
+  assert.ok(workdirCardRaw.includes(`act:/cd ${path.join(codexProject.workDir, "src")}`));
+  assert.match(workdirCardRaw, /act:\/cd default/);
+  assert.match(workdirCardRaw, /nav:\/help workdir/);
 
   const modelSurface = buildChannelConnectorCommandSurface({
     config: runtimeConfig,
@@ -1409,6 +1520,8 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
+  fs.mkdirSync(path.join(root, "codex-work", "src"), { recursive: true });
+  fs.mkdirSync(path.join(root, "claude-work", "src"), { recursive: true });
   const initial = service.getNativeConfig().config;
   service.saveNativeConfig({
     config: {
@@ -1419,11 +1532,22 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
           name: "Feishu Codex",
           agent: "codex",
           model: "gpt-5",
-          workDir: root,
+          workDir: path.join(root, "codex-work"),
           permissionMode: "suggest",
           gatewayEndpoint: "http://127.0.0.1:18796/v1",
           gatewayKeyRef: "studio-gateway-client-key",
           appProfileRef: "codex",
+        },
+        {
+          id: "feishu-claude",
+          name: "Feishu Claude",
+          agent: "claude-code",
+          model: "claude-sonnet",
+          workDir: path.join(root, "claude-work"),
+          permissionMode: "plan",
+          gatewayEndpoint: "http://127.0.0.1:18796/v1",
+          gatewayKeyRef: "studio-gateway-client-key",
+          appProfileRef: "claude",
         },
       ],
       defaultAgentProfileId: "feishu-codex",
@@ -1680,12 +1804,67 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.match(JSON.stringify(modeSelectCardAction.feishuResponse.card.data), /Studio Permission/);
   assert.match(JSON.stringify(modeSelectCardAction.feishuResponse.card.data), /select_static/);
 
-  const backToSessionCardAction = await service.dispatchFeishuWebhook({
+  const agentSelectCardAction = await service.dispatchFeishuWebhook({
     schema: "2.0",
     header: {
       event_type: "card.action.trigger",
       app_id: "cli_test",
       event_id: "evt_card_6",
+      token: "verify-token",
+    },
+    event: {
+      operator: { open_id: "ou_admin" },
+      context: { open_chat_id: "oc_chat", open_message_id: "om_card_3" },
+      action: {
+        option: "act:/agent feishu-claude",
+        value: {
+          binding_id: "feishu-main",
+          surface_view_id: "agent",
+        },
+      },
+    },
+  });
+  assert.equal(agentSelectCardAction.accepted, true);
+  assert.equal(agentSelectCardAction.commandAction.command, "/agent feishu-claude");
+  assert.equal(agentSelectCardAction.commandAction.surface.current.projectId, "feishu-claude");
+  assert.equal(agentSelectCardAction.commandAction.surface.current.agent, "claude-code");
+  assert.match(JSON.stringify(agentSelectCardAction.feishuResponse.card.data), /Studio Agent/);
+  assert.match(JSON.stringify(agentSelectCardAction.feishuResponse.card.data), /select_static/);
+
+  const workdirSelectCardAction = await service.dispatchFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "card.action.trigger",
+      app_id: "cli_test",
+      event_id: "evt_card_7",
+      token: "verify-token",
+    },
+    event: {
+      operator: { open_id: "ou_admin" },
+      context: { open_chat_id: "oc_chat", open_message_id: "om_card_3" },
+      action: {
+        option: `act:/cd ${path.join(root, "claude-work", "src")}`,
+        value: {
+          binding_id: "feishu-main",
+          surface_view_id: "workdir",
+        },
+      },
+    },
+  });
+  assert.equal(workdirSelectCardAction.accepted, true);
+  assert.equal(workdirSelectCardAction.commandAction.command, `/cd ${path.join(root, "claude-work", "src")}`);
+  assert.equal(workdirSelectCardAction.commandAction.commandResult.ok, true);
+  assert.match(workdirSelectCardAction.commandAction.commandResult.replyText, /claude-work\/src/);
+  assert.equal(workdirSelectCardAction.commandAction.surface.current.workDir, path.join(root, "claude-work", "src"));
+  assert.match(JSON.stringify(workdirSelectCardAction.feishuResponse.card.data), /Studio WorkDir/);
+  assert.match(JSON.stringify(workdirSelectCardAction.feishuResponse.card.data), /select_static/);
+
+  const backToSessionCardAction = await service.dispatchFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "card.action.trigger",
+      app_id: "cli_test",
+      event_id: "evt_card_8",
       token: "verify-token",
     },
     event: {
