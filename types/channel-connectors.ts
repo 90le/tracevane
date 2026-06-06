@@ -318,13 +318,14 @@ export interface ChannelConnectorFeishuTransportConfig {
 export interface ChannelConnectorFeishuTransportResult {
   attempted: boolean;
   ok: boolean | null;
-  action: "none" | "tenant-token" | "send-message" | "send-card" | "patch-card";
+  action: "none" | "tenant-token" | "send-message" | "send-card" | "patch-card" | "add-reaction" | "remove-reaction";
   apiUrl: string | null;
   statusCode: number | null;
   error: string | null;
   requestCount: number;
   tokenCache: "disabled" | "hit" | "miss" | "refresh" | null;
   messageId?: string | null;
+  reactionId?: string | null;
 }
 
 export interface ChannelConnectorFeishuTransportSmokeRequest {

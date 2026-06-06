@@ -992,6 +992,19 @@ function parseSurfaceAction(raw: string): {
   };
 }
 
+function bestSurfaceActionRaw(record: Record<string, unknown>): string | null {
+  const candidates = [
+    normalizeString(record.action),
+    normalizeString(record.command),
+    normalizeString(record.value),
+    normalizeString(record.option),
+  ].filter(Boolean);
+  return candidates.find((candidate) => /^(nav|act|cmd):/i.test(candidate))
+    || candidates.find((candidate) => candidate.startsWith("/"))
+    || candidates[0]
+    || null;
+}
+
 export function extractChannelConnectorSurfaceActionPayload(value: unknown): ChannelConnectorSurfaceActionPayload {
   if (typeof value === "string") {
     const parsed = parseSurfaceAction(value);
@@ -1019,9 +1032,11 @@ export function extractChannelConnectorSurfaceActionPayload(value: unknown): Cha
     };
   }
   const record = value as Record<string, unknown>;
-  const rawAction = normalizeString(record.action) || normalizeString(record.command) || null;
+  const rawAction = bestSurfaceActionRaw(record);
   const parsed = parseSurfaceAction(rawAction || "");
-  const command = parsed.command || normalizeString(record.command);
+  const recordCommand = normalizeString(record.command);
+  const parsedRecordCommand = parseSurfaceAction(recordCommand);
+  const command = parsed.command || parsedRecordCommand.command || recordCommand;
   const explicitActionKind = normalizeString(record.surface_action_kind).toLowerCase();
   const sectionId = normalizeChannelConnectorCommandSurfaceSection(record.surface_section_id)
     || channelConnectorCommandSurfaceSectionFromCommand(command);

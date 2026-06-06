@@ -1,6 +1,6 @@
 # Studio Gateway 进度
 
-> 状态：Studio Gateway core completed; Provider Center/App Connections completed; CLI/Gateway/live smoke harness completed; Channel Connectors F3f Feishu long-connection live loop completed; OpenAI Platform vendor proof optional
+> 状态：Studio Gateway core completed; Provider Center/App Connections completed; CLI/Gateway/live smoke harness completed; Channel Connectors F3f Feishu long-connection/menu/reaction loop completed; OpenAI Platform vendor proof optional
 > 更新：2026-06-06
 > 文档规则：只保留当前状态、最近完成、验证和下一步；旧流水已压缩。
 
@@ -39,6 +39,9 @@
 - Channel daemon 已修复 Gateway client key 查找：同时支持当前 `.config/openclaw-studio` runtime 布局和实际 `.openclaw/studio/model-gateway/secrets.json` 布局；缺 key 时 Codex runner 会提前返回明确错误，不再出现 `Model provider studio_gateway not found`。
 - `/cd` 已支持 `/dir` 展示的子目录序号；WorkDir 子卡片下拉会真实写入当前 IM session 的目录 override，并清理旧 Agent 续接。
 - Channel daemon config API 只返回脱敏 preview；完整 appSecret / verificationToken 仅保留在本地 daemon config 文件用于运行时。
+- Feishu Agent 运行链路已补齐 CC 风格 processing reaction：普通消息进入 Agent 前给原消息加 `OnIt` reaction，结束后删除；reaction API 失败只写事件日志，不阻断 Agent。
+- Agent 失败回执已优先使用 Codex/Agent JSONL 里的 `error` / `turn.failed` 文本，不再把网关 503、模型未启用等真实原因退化成 `Agent process exited with 1`。
+- Feishu card action 解析已对飞书下拉/按钮混合 payload 做防御，只要 `action` / `command` / `value` / `option` 任一字段带 `nav:` / `act:` / `cmd:` 前缀，就按真实 Studio 命令处理，避免菜单动作误透传给 Agent。
 
 ## 验证
 
@@ -54,6 +57,8 @@
 - 通过：Feishu interactive card proof（secret redacted）：`send-card` transport-smoke HTTP 200 / messageId present；真实 `/help` 事件日志记录 `replyTransportAction=send-card`。
 - 通过：Feishu command/menu card contract：`npm run build:api` + `node --test tests/system/channel-connectors-service.test.mjs` 覆盖 nav/act payload、WS normalized card-action、`select_static` option 回调、Agent/模型/权限/目录子卡片、HTTP card-action raw card response、daemon card-action 去重策略、Gateway key resolver 和 Codex 缺 key 失败提示。
 - 通过：重启 dev backend/frontend 与 `openclaw-studio-channel-connectors.service`；daemon `/status` Feishu `connected`；本地 card-action replay 同一 messageId 可在会话页/模型页往返；`/api/channel-connectors/daemon/config` 返回 `[redacted]` 且未匹配本地 secret 值。
+- 通过：真实 Feishu reaction proof（secret redacted）：对近期入站消息执行 `add-reaction OnIt` 与 `remove-reaction` 均 HTTP 200。
+- 通过：本机 Codex/Studio Gateway live proof：Channel Connector 当前 Profile 切到 Gateway 已启用 `glm-5`，清理旧 Codex thread 后，隔离 Codex runner 经 `http://127.0.0.1:18796/v1` 返回 `studio-ok`。
 
 ## 已知边界
 
@@ -62,6 +67,6 @@
 
 ## 下一步
 
-1. 继续 F3f/F3g：用真实 Feishu 客户端回归 `/help` tab/button/dropdown 和普通消息 Agent 回复；重点确认 Codex 不再报 `studio_gateway` provider 缺失。
+1. 让用户在真实 Feishu 客户端再发普通消息和点击菜单，确认 reaction 可见、卡片能来回切换、失败时显示真实 provider/model 原因。
 2. 进入 F4：补图片/文件、群聊成员/history context、长回复 group buffer 和治理策略。
 3. 继续按 CC/OpenClaw 映射扩展 Feishu bot menu 配置、thread isolation 和多平台 adapter。

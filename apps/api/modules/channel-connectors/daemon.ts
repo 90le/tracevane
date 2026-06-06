@@ -58,8 +58,10 @@ import {
   type ChannelConnectorFeishuParsedWebhook,
 } from "./feishu-adapter.js";
 import {
+  addFeishuMessageReaction,
   feishuTransportFromMetadata,
   patchFeishuCardMessage,
+  removeFeishuMessageReaction,
   sendFeishuCardMessage,
   sendFeishuTextMessage,
 } from "./feishu-transport.js";
@@ -434,6 +436,64 @@ function startOctoTypingPulse(
   }, 8000);
   timer.unref();
   return () => clearInterval(timer);
+}
+
+function feishuReactionEmoji(binding: ChannelConnectorRuntimeBinding): string | null {
+  const metadata = metadataRecord(binding);
+  const configured = normalizeString(metadata.reactionEmoji)
+    || normalizeString(metadata.reaction_emoji)
+    || "OnIt";
+  if (!configured || configured.toLowerCase() === "none") return null;
+  return configured;
+}
+
+async function startFeishuTypingReaction(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  transport: ChannelConnectorFeishuTransportConfig;
+  binding: ChannelConnectorRuntimeBinding;
+  sessionKey: string;
+  messageId: string;
+}): Promise<() => Promise<void>> {
+  const emojiType = feishuReactionEmoji(input.binding);
+  if (!emojiType || !input.messageId) return async () => {};
+  const cachePath = feishuTokenCachePath(input.config);
+  const started = await addFeishuMessageReaction(input.transport, {
+    messageId: input.messageId,
+    emojiType,
+  }, cachePath);
+  writeJsonLine(input.config.paths.feishuEvents, {
+    checkedAt: new Date().toISOString(),
+    eventKind: "agent.reaction.started",
+    adapter: "feishu",
+    bindingId: input.binding.id,
+    sessionKey: input.sessionKey,
+    messageId: input.messageId,
+    reactionEmoji: emojiType,
+    reactionId: started.reactionId || null,
+    reactionOk: started.ok,
+    reactionError: started.error,
+    requestCount: started.requestCount,
+  });
+  const reactionId = normalizeString(started.reactionId);
+  if (started.ok !== true || !reactionId) return async () => {};
+  return async () => {
+    const stopped = await removeFeishuMessageReaction(input.transport, {
+      messageId: input.messageId,
+      reactionId,
+    }, cachePath);
+    writeJsonLine(input.config.paths.feishuEvents, {
+      checkedAt: new Date().toISOString(),
+      eventKind: "agent.reaction.stopped",
+      adapter: "feishu",
+      bindingId: input.binding.id,
+      sessionKey: input.sessionKey,
+      messageId: input.messageId,
+      reactionId,
+      reactionOk: stopped.ok,
+      reactionError: stopped.error,
+      requestCount: stopped.requestCount,
+    });
+  };
 }
 
 function connectionState(
@@ -1268,6 +1328,13 @@ async function dispatchFeishuParsedEvent(input: {
     codexThreadId: currentSession?.codexThreadId || null,
   });
 
+  const stopTypingReaction = await startFeishuTypingReaction({
+    config,
+    transport,
+    binding,
+    sessionKey,
+    messageId,
+  });
   let agent: ChannelConnectorAgentTurnResult;
   try {
     agent = await runChannelConnectorAgentTurn({
@@ -1334,6 +1401,7 @@ async function dispatchFeishuParsedEvent(input: {
       },
     };
   } finally {
+    await stopTypingReaction();
     state.activeRuns = state.activeRuns.filter((run) => run.id !== activeRunId);
     writeRuntime(config, state);
   }

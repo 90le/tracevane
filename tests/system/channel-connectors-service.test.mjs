@@ -35,6 +35,10 @@ import {
   parseChannelConnectorFeishuWebhook,
 } from "../../dist/apps/api/modules/channel-connectors/feishu-adapter.js";
 import {
+  addFeishuMessageReaction,
+  removeFeishuMessageReaction,
+} from "../../dist/apps/api/modules/channel-connectors/feishu-transport.js";
+import {
   channelConnectorGatewaySecretCandidates,
   resolveChannelConnectorGatewayClientKey,
 } from "../../dist/apps/api/modules/channel-connectors/gateway-secret.js";
@@ -248,6 +252,22 @@ async function withMockFeishuServer(task) {
           code: 0,
           msg: "success",
           data: { message_id: req.url.split("/").pop() },
+        }));
+        return;
+      }
+      if (/^\/open-apis\/im\/v1\/messages\/[^/]+\/reactions$/.test(req.url || "") && req.method === "POST") {
+        res.end(JSON.stringify({
+          code: 0,
+          msg: "success",
+          data: { reaction_id: "reaction-1" },
+        }));
+        return;
+      }
+      if (/^\/open-apis\/im\/v1\/messages\/[^/]+\/reactions\/[^/]+$/.test(req.url || "") && req.method === "DELETE") {
+        res.end(JSON.stringify({
+          code: 0,
+          msg: "success",
+          data: {},
         }));
         return;
       }
@@ -996,6 +1016,31 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(failed.progress.latest?.type, "failed");
   assert.equal(failed.progress.latest?.text, "tool denied");
   assert.equal(failed.progress.summary, "tool denied");
+
+  const failedWithoutStderr = await runChannelConnectorAgentTurn({
+    project,
+    binding,
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    processRunner: async () => ({
+      exitCode: 1,
+      signal: null,
+      stdout: [
+        '{"type":"error","message":"unexpected status 503 Service Unavailable: No enabled Model Gateway provider offers model gpt-5.5"}',
+        '{"type":"turn.failed","error":{"message":"No enabled Model Gateway provider offers model gpt-5.5"}}',
+        "",
+      ].join("\n"),
+      stderr: "",
+      durationMs: 22,
+      timedOut: false,
+      error: null,
+    }),
+  });
+  assert.equal(failedWithoutStderr.ok, false);
+  assert.match(failedWithoutStderr.error, /No enabled Model Gateway provider offers model gpt-5\.5/);
+  assert.doesNotMatch(failedWithoutStderr.error, /Agent process exited/);
 });
 
 test("native Channel Connectors session store persists Codex thread ids by IM session", () => {
@@ -1512,6 +1557,14 @@ test("native Channel Connectors command surface renders text and Feishu card act
     action: "act:/mode yolo",
     command: "act:/mode yolo",
   });
+  const noisyActionPayload = extractChannelConnectorSurfaceActionPayload({
+    action: "select_static",
+    command: "act:/mode yolo",
+    binding_id: "octo-codex",
+  });
+  assert.equal(noisyActionPayload.command, "/mode yolo");
+  assert.equal(noisyActionPayload.actionKind, "act");
+  assert.equal(noisyActionPayload.targetViewId, "mode");
 });
 
 test("native Channel Connectors Feishu webhook parses live envelopes and reuses command router", async () => {
@@ -2013,6 +2066,45 @@ test("native Channel Connectors Feishu transport sends replies and reuses tenant
     assert.equal(requests.length, 5);
     assert.equal(requests[4].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
     assert.match(JSON.parse(requests[4].body.content).text, /Studio Channel Status/);
+  });
+});
+
+test("native Channel Connectors Feishu transport manages processing reactions", async () => {
+  await withMockFeishuServer(async (apiUrl, requests) => {
+    const root = makeTempRoot();
+    const cachePath = path.join(root, "feishu-token-cache.json");
+    const transport = {
+      apiUrl,
+      appId: "cli_react",
+      appSecret: "test-secret",
+    };
+    const added = await addFeishuMessageReaction(transport, {
+      messageId: "om_processing",
+      emojiType: "OnIt",
+    }, cachePath);
+    assert.equal(added.ok, true);
+    assert.equal(added.action, "add-reaction");
+    assert.equal(added.reactionId, "reaction-1");
+    assert.equal(added.requestCount, 2);
+    assert.equal(added.tokenCache, "miss");
+    assert.equal(requests[0].path, "/open-apis/auth/v3/tenant_access_token/internal");
+    assert.equal(requests[1].path, "/open-apis/im/v1/messages/om_processing/reactions");
+    assert.equal(requests[1].method, "POST");
+    assert.equal(requests[1].authorization, "Bearer tenant-token-1");
+    assert.deepEqual(requests[1].body.reaction_type, { emoji_type: "OnIt" });
+
+    const removed = await removeFeishuMessageReaction(transport, {
+      messageId: "om_processing",
+      reactionId: "reaction-1",
+    }, cachePath);
+    assert.equal(removed.ok, true);
+    assert.equal(removed.action, "remove-reaction");
+    assert.equal(removed.requestCount, 1);
+    assert.equal(removed.tokenCache, "hit");
+    assert.equal(requests.length, 3);
+    assert.equal(requests[2].path, "/open-apis/im/v1/messages/om_processing/reactions/reaction-1");
+    assert.equal(requests[2].method, "DELETE");
+    assert.equal(requests[2].authorization, "Bearer tenant-token-1");
   });
 });
 

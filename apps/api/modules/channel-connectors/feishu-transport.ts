@@ -77,6 +77,7 @@ function transportResult(
     requestCount: input.requestCount ?? 0,
     tokenCache: input.tokenCache ?? null,
     messageId: input.messageId ?? null,
+    reactionId: input.reactionId ?? null,
   };
 }
 
@@ -121,7 +122,7 @@ function cachedToken(cachePath: string | null | undefined, config: ChannelConnec
 async function feishuJsonRequest(
   config: ChannelConnectorFeishuTransportConfig,
   input: {
-    method: "POST" | "PATCH";
+    method: "POST" | "PATCH" | "DELETE";
     path: string;
     payload: unknown;
     token?: string | null;
@@ -399,6 +400,114 @@ export async function patchFeishuCardMessage(
       error: errorMessage(error),
       requestCount: Math.max(requestCount, 1),
       tokenCache,
+    });
+  }
+}
+
+export async function addFeishuMessageReaction(
+  config: ChannelConnectorFeishuTransportConfig,
+  input: {
+    messageId: string;
+    emojiType: string;
+  },
+  cachePath?: string | null,
+): Promise<ChannelConnectorFeishuTransportResult> {
+  let requestCount = 0;
+  let tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"] = cachePath ? "miss" : "disabled";
+  const messageId = normalizeString(input.messageId);
+  try {
+    const emojiType = normalizeString(input.emojiType);
+    if (!messageId) throw new Error("Feishu messageId is required.");
+    if (!emojiType) throw new Error("Feishu reaction emojiType is required.");
+    const token = await getFeishuTenantToken(config, cachePath);
+    requestCount += token.requestCount;
+    tokenCache = token.tokenCache;
+    const response = await feishuJsonRequest(config, {
+      method: "POST",
+      path: `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/reactions`,
+      token: token.token,
+      payload: {
+        reaction_type: {
+          emoji_type: emojiType,
+        },
+      },
+    });
+    requestCount += 1;
+    const data = recordFrom(response.body.data);
+    return transportResult({
+      attempted: true,
+      ok: true,
+      action: "add-reaction",
+      apiUrl: config.apiUrl,
+      statusCode: response.statusCode,
+      requestCount,
+      tokenCache,
+      messageId,
+      reactionId: normalizeString(data.reaction_id) || null,
+    });
+  } catch (error) {
+    return transportResult({
+      attempted: true,
+      ok: false,
+      action: "add-reaction",
+      apiUrl: config.apiUrl,
+      statusCode: errorStatusCode(error),
+      error: errorMessage(error),
+      requestCount: Math.max(requestCount, 1),
+      tokenCache,
+      messageId: messageId || null,
+    });
+  }
+}
+
+export async function removeFeishuMessageReaction(
+  config: ChannelConnectorFeishuTransportConfig,
+  input: {
+    messageId: string;
+    reactionId: string;
+  },
+  cachePath?: string | null,
+): Promise<ChannelConnectorFeishuTransportResult> {
+  let requestCount = 0;
+  let tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"] = cachePath ? "miss" : "disabled";
+  const messageId = normalizeString(input.messageId);
+  const reactionId = normalizeString(input.reactionId);
+  try {
+    if (!messageId) throw new Error("Feishu messageId is required.");
+    if (!reactionId) throw new Error("Feishu reactionId is required.");
+    const token = await getFeishuTenantToken(config, cachePath);
+    requestCount += token.requestCount;
+    tokenCache = token.tokenCache;
+    const response = await feishuJsonRequest(config, {
+      method: "DELETE",
+      path: `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/reactions/${encodeURIComponent(reactionId)}`,
+      token: token.token,
+      payload: {},
+    });
+    requestCount += 1;
+    return transportResult({
+      attempted: true,
+      ok: true,
+      action: "remove-reaction",
+      apiUrl: config.apiUrl,
+      statusCode: response.statusCode,
+      requestCount,
+      tokenCache,
+      messageId,
+      reactionId,
+    });
+  } catch (error) {
+    return transportResult({
+      attempted: true,
+      ok: false,
+      action: "remove-reaction",
+      apiUrl: config.apiUrl,
+      statusCode: errorStatusCode(error),
+      error: errorMessage(error),
+      requestCount: Math.max(requestCount, 1),
+      tokenCache,
+      messageId: messageId || null,
+      reactionId: reactionId || null,
     });
   }
 }

@@ -608,6 +608,23 @@ function progressSummary(events: ChannelConnectorAgentProgressEvent[]): string |
   return latestText ? truncateText(latestText, 180) : null;
 }
 
+function failureSummary(events: ChannelConnectorAgentProgressEvent[]): string | null {
+  const latestFailure = [...events].reverse().find((event) => {
+    return (event.type === "failed" || event.type === "error") && event.text;
+  });
+  return latestFailure?.text ? truncateText(latestFailure.text, 240) : null;
+}
+
+function agentFailureMessage(
+  result: ChannelConnectorAgentProcessResult,
+  progressEvents: ChannelConnectorAgentProgressEvent[],
+): string | null {
+  if (result.error) return result.error;
+  const stderr = result.stderr.trim();
+  if (stderr) return truncateText(stderr, 400);
+  return failureSummary(progressEvents) || `Agent process exited with ${result.exitCode}`;
+}
+
 export async function runChannelConnectorAgentTurn(
   request: ChannelConnectorAgentTurnRequest,
 ): Promise<ChannelConnectorAgentTurnResult> {
@@ -726,7 +743,7 @@ export async function runChannelConnectorAgentTurn(
     stderr: result.stderr,
     exitCode: result.exitCode,
     durationMs: result.durationMs,
-    error: result.error || (ok ? null : result.stderr.trim() || `Agent process exited with ${result.exitCode}`),
+    error: ok ? null : agentFailureMessage(result, progressEvents),
     progress: {
       eventCount: progressEvents.length,
       latest: latestProgress,
