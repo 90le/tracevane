@@ -71,6 +71,9 @@ export interface ChannelConnectorInboundAttachment {
   size?: number | null;
   durationMs?: number | null;
   url?: string | null;
+  localPath?: string | null;
+  stagedAt?: string | null;
+  stagingError?: string | null;
 }
 
 export interface ChannelConnectorOctoMessagePayload {

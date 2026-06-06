@@ -14,6 +14,7 @@ import type {
   ChannelConnectorFeishuTransportConfig,
   ChannelConnectorFeishuTransportResult,
   ChannelConnectorAgentProfile,
+  ChannelConnectorInboundAttachment,
   ChannelConnectorOctoTransportConfig,
   ChannelConnectorOctoInboundMessage,
   ChannelConnectorOctoInboundRequest,
@@ -64,12 +65,18 @@ import {
 } from "./feishu-adapter.js";
 import {
   addFeishuMessageReaction,
+  downloadFeishuMessageResource,
   feishuTransportFromMetadata,
   patchFeishuCardMessage,
   removeFeishuMessageReaction,
   sendFeishuCardMessage,
   sendFeishuTextMessage,
 } from "./feishu-transport.js";
+import {
+  DEFAULT_CHANNEL_CONNECTOR_ATTACHMENT_MAX_BYTES,
+  parseChannelConnectorByteSize,
+  stageChannelConnectorAttachmentData,
+} from "./attachment-staging.js";
 import {
   buildChannelConnectorCommandSurface,
   channelConnectorCommandSurfaceSectionFromCommand,
@@ -510,6 +517,22 @@ function metadataBoolean(binding: ChannelConnectorRuntimeBinding, keys: string[]
   return fallback;
 }
 
+function metadataByteSize(binding: ChannelConnectorRuntimeBinding, keys: string[], fallback: number): number {
+  const metadata = metadataRecord(binding);
+  for (const key of keys) {
+    if (!(key in metadata)) continue;
+    const value = metadata[key];
+    if (value === null || typeof value === "undefined") continue;
+    if (typeof value === "string" && !value.trim()) continue;
+    return parseChannelConnectorByteSize(value, fallback);
+  }
+  return fallback;
+}
+
+function describeByteSizeLimit(value: number): number | "unlimited" {
+  return Number.isFinite(value) ? value : "unlimited";
+}
+
 function agentSessionsPath(config: ChannelConnectorsDaemonRuntimeConfig): string {
   return path.join(config.paths.state, "channel-sessions.json");
 }
@@ -751,6 +774,113 @@ function feishuMessageFromParsed(
     },
     attachments: parsed.attachments,
     members: [],
+  };
+}
+
+function feishuAttachmentResource(input: ChannelConnectorInboundAttachment): {
+  fileKey: string;
+  resourceType: "image" | "file";
+} | null {
+  if (input.kind === "image" || input.kind === "sticker") {
+    const fileKey = normalizeString(input.imageKey) || normalizeString(input.fileKey) || normalizeString(input.key);
+    return fileKey ? { fileKey, resourceType: "image" } : null;
+  }
+  if (input.kind === "file" || input.kind === "audio" || input.kind === "video") {
+    const fileKey = normalizeString(input.fileKey) || normalizeString(input.key);
+    return fileKey ? { fileKey, resourceType: "file" } : null;
+  }
+  return null;
+}
+
+async function stageFeishuMessageAttachments(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  transport: ChannelConnectorFeishuTransportConfig | null;
+  message: ChannelConnectorOctoInboundMessage;
+  rootDir: string;
+  maxBytes: number;
+}): Promise<{
+  message: ChannelConnectorOctoInboundMessage;
+  stagedCount: number;
+  failedCount: number;
+  localPaths: string[];
+}> {
+  const attachments = input.message.attachments || [];
+  if (!attachments.length) {
+    return {
+      message: input.message,
+      stagedCount: 0,
+      failedCount: 0,
+      localPaths: [],
+    };
+  }
+
+  const stagedAttachments: ChannelConnectorInboundAttachment[] = [];
+  const localPaths: string[] = [];
+  let stagedCount = 0;
+  let failedCount = 0;
+  for (let index = 0; index < attachments.length; index += 1) {
+    const attachment = attachments[index];
+    const resource = feishuAttachmentResource(attachment);
+    if (!input.transport) {
+      failedCount += 1;
+      stagedAttachments.push({
+        ...attachment,
+        stagingError: "feishu_transport_config_missing",
+      });
+      continue;
+    }
+    if (!resource) {
+      failedCount += 1;
+      stagedAttachments.push({
+        ...attachment,
+        stagingError: "feishu_resource_key_missing",
+      });
+      continue;
+    }
+    const download = await downloadFeishuMessageResource(input.transport, {
+      messageId: input.message.messageId,
+      fileKey: resource.fileKey,
+      resourceType: resource.resourceType,
+      maxBytes: input.maxBytes,
+    }, feishuTokenCachePath(input.config));
+    if (!download.ok || !download.data) {
+      failedCount += 1;
+      stagedAttachments.push({
+        ...attachment,
+        stagingError: download.error || "feishu_resource_download_failed",
+      });
+      continue;
+    }
+    try {
+      const staged = stageChannelConnectorAttachmentData({
+        attachment,
+        data: download.data,
+        rootDir: input.rootDir,
+        messageId: input.message.messageId,
+        index,
+        mimeType: download.mimeType,
+        maxBytes: input.maxBytes,
+      });
+      stagedCount += 1;
+      if (staged.localPath) localPaths.push(staged.localPath);
+      stagedAttachments.push(staged);
+    } catch (error) {
+      failedCount += 1;
+      stagedAttachments.push({
+        ...attachment,
+        stagingError: shortMessage(error),
+      });
+    }
+  }
+
+  return {
+    message: {
+      ...input.message,
+      attachments: stagedAttachments,
+    },
+    stagedCount,
+    failedCount,
+    localPaths,
   };
 }
 
@@ -1701,7 +1831,7 @@ async function dispatchFeishuParsedEvent(input: {
     return feishuResponse;
   }
 
-  const agentMessage = command.passthroughText
+  let agentMessage = command.passthroughText
     ? {
       ...message,
       payload: {
@@ -1840,6 +1970,38 @@ async function dispatchFeishuParsedEvent(input: {
     sessionKey,
     messageId,
   });
+  const runtimeDir = agentRuntimeDir(config, effectiveProject, binding);
+  if ((agentMessage.attachments || []).length > 0) {
+    const attachmentMaxBytes = metadataByteSize(binding, [
+      "attachmentMaxBytes",
+      "attachment_max_bytes",
+      "maxAttachmentBytes",
+      "max_attachment_bytes",
+      "feishuAttachmentMaxBytes",
+      "feishu_attachment_max_bytes",
+    ], DEFAULT_CHANNEL_CONNECTOR_ATTACHMENT_MAX_BYTES);
+    const staged = await stageFeishuMessageAttachments({
+      config,
+      transport,
+      message: agentMessage,
+      rootDir: runtimeDir,
+      maxBytes: attachmentMaxBytes,
+    });
+    agentMessage = staged.message;
+    writeJsonLine(config.paths.feishuEvents, {
+      checkedAt: new Date().toISOString(),
+      eventKind: "agent.attachments.staged",
+      adapter: "feishu",
+      bindingId: binding.id,
+      sessionKey,
+      messageId,
+      ...feishuThreadLogFields(parsed),
+      attachmentMaxBytes: describeByteSizeLimit(attachmentMaxBytes),
+      stagedCount: staged.stagedCount,
+      failedCount: staged.failedCount,
+      localPaths: staged.localPaths,
+    });
+  }
   let agent: ChannelConnectorAgentTurnResult;
   try {
     agent = await runChannelConnectorAgentTurn({
@@ -1849,7 +2011,7 @@ async function dispatchFeishuParsedEvent(input: {
       sessionKey,
       gatewayEndpoint: effectiveProject.gatewayEndpoint || config.gateway.endpoint,
       gatewayClientKey: key,
-      agentRuntimeDir: agentRuntimeDir(config, effectiveProject, binding),
+      agentRuntimeDir: runtimeDir,
       session: {
         codexThreadId: currentSession?.codexThreadId || null,
       },

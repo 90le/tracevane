@@ -12,6 +12,7 @@ const DEFAULT_FEISHU_API_URL = "https://open.feishu.cn";
 const DEFAULT_TIMEOUT_MS = 30_000;
 const FEISHU_TEXT_CHUNK_RUNES = 3800;
 const TOKEN_EXPIRY_SKEW_MS = 5 * 60 * 1000;
+const DEFAULT_FEISHU_RESOURCE_MAX_BYTES = 128 * 1024 * 1024;
 
 interface FeishuTokenCacheRecord {
   tenantAccessToken: string;
@@ -23,6 +24,21 @@ interface FeishuTenantTokenResult {
   statusCode: number | null;
   requestCount: number;
   tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"];
+}
+
+export interface ChannelConnectorFeishuResourceDownloadResult {
+  attempted: boolean;
+  ok: boolean;
+  apiUrl: string;
+  statusCode: number | null;
+  requestCount: number;
+  tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"];
+  messageId: string | null;
+  fileKey: string | null;
+  resourceType: "image" | "file";
+  data: Buffer | null;
+  mimeType: string | null;
+  error: string | null;
 }
 
 function normalizeString(value: unknown): string {
@@ -171,6 +187,60 @@ async function feishuJsonRequest(
   }
 }
 
+async function feishuBinaryRequest(
+  config: ChannelConnectorFeishuTransportConfig,
+  input: {
+    path: string;
+    token: string;
+    maxBytes?: number;
+  },
+): Promise<{ statusCode: number; data: Buffer; mimeType: string | null }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${config.apiUrl.replace(/\/+$/, "")}${input.path}`, {
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${input.token}`,
+      },
+      signal: controller.signal,
+    });
+    const contentLength = Number(response.headers.get("content-length"));
+    const maxBytes = input.maxBytes ?? DEFAULT_FEISHU_RESOURCE_MAX_BYTES;
+    if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+      throw Object.assign(new Error(`Feishu resource exceeds size limit: ${contentLength} > ${maxBytes}`), {
+        statusCode: response.status,
+      });
+    }
+    if (!response.ok) {
+      const raw = await response.text().catch(() => "");
+      let message = raw || `Feishu API ${input.path} failed`;
+      try {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        message = normalizeString(parsed.msg) || normalizeString(parsed.message) || message;
+      } catch {
+        // Keep raw response as the diagnostic when Feishu returns non-JSON.
+      }
+      throw Object.assign(new Error(message), {
+        statusCode: response.status,
+      });
+    }
+    const data = Buffer.from(await response.arrayBuffer());
+    if (data.length > maxBytes) {
+      throw Object.assign(new Error(`Feishu resource exceeds size limit: ${data.length} > ${maxBytes}`), {
+        statusCode: response.status,
+      });
+    }
+    return {
+      statusCode: response.status,
+      data,
+      mimeType: normalizeString(response.headers.get("content-type")) || null,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function errorMessage(error: unknown): string {
   if (error instanceof Error) return error.message;
   return "Feishu transport request failed.";
@@ -253,6 +323,64 @@ export async function smokeFeishuTenantToken(
       requestCount: 1,
       tokenCache: cachePath ? "miss" : "disabled",
     });
+  }
+}
+
+export async function downloadFeishuMessageResource(
+  config: ChannelConnectorFeishuTransportConfig,
+  input: {
+    messageId: string;
+    fileKey: string;
+    resourceType: "image" | "file";
+    maxBytes?: number;
+  },
+  cachePath?: string | null,
+): Promise<ChannelConnectorFeishuResourceDownloadResult> {
+  let requestCount = 0;
+  let tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"] = cachePath ? "miss" : "disabled";
+  const messageId = normalizeString(input.messageId);
+  const fileKey = normalizeString(input.fileKey);
+  try {
+    if (!messageId) throw new Error("Feishu messageId is required.");
+    if (!fileKey) throw new Error("Feishu fileKey is required.");
+    const token = await getFeishuTenantToken(config, cachePath);
+    requestCount += token.requestCount;
+    tokenCache = token.tokenCache;
+    const response = await feishuBinaryRequest(config, {
+      token: token.token,
+      path: `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/resources/${encodeURIComponent(fileKey)}?type=${encodeURIComponent(input.resourceType)}`,
+      maxBytes: input.maxBytes,
+    });
+    requestCount += 1;
+    return {
+      attempted: true,
+      ok: true,
+      apiUrl: config.apiUrl,
+      statusCode: response.statusCode,
+      requestCount,
+      tokenCache,
+      messageId,
+      fileKey,
+      resourceType: input.resourceType,
+      data: response.data,
+      mimeType: response.mimeType,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      attempted: true,
+      ok: false,
+      apiUrl: config.apiUrl,
+      statusCode: errorStatusCode(error),
+      requestCount: Math.max(requestCount, 1),
+      tokenCache,
+      messageId: messageId || null,
+      fileKey: fileKey || null,
+      resourceType: input.resourceType,
+      data: null,
+      mimeType: null,
+      error: errorMessage(error),
+    };
   }
 }
 

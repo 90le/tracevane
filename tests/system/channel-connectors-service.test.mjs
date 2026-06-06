@@ -37,9 +37,14 @@ import {
 } from "../../dist/apps/api/modules/channel-connectors/feishu-adapter.js";
 import {
   addFeishuMessageReaction,
+  downloadFeishuMessageResource,
   removeFeishuMessageReaction,
   sendFeishuTextMessage,
 } from "../../dist/apps/api/modules/channel-connectors/feishu-transport.js";
+import {
+  parseChannelConnectorByteSize,
+  stageChannelConnectorAttachmentData,
+} from "../../dist/apps/api/modules/channel-connectors/attachment-staging.js";
 import {
   splitChannelConnectorTextChunks,
 } from "../../dist/apps/api/modules/channel-connectors/text-chunks.js";
@@ -294,6 +299,11 @@ async function withMockFeishuServer(task) {
         }));
         return;
       }
+      if (/^\/open-apis\/im\/v1\/messages\/[^/]+\/resources\/[^?]+/.test(req.url || "") && req.method === "GET") {
+        res.setHeader("content-type", req.url?.includes("type=image") ? "image/png" : "application/octet-stream");
+        res.end(Buffer.from(req.url?.includes("type=image") ? "mock-image-bytes" : "mock-file-bytes"));
+        return;
+      }
       if (req.url?.startsWith("/open-apis/im/v1/messages/") && req.method === "PATCH") {
         res.end(JSON.stringify({
           code: 0,
@@ -374,6 +384,52 @@ test("native Channel Connectors text chunking follows CC UTF-8 safe boundaries",
   assert.deepEqual(splitChannelConnectorTextChunks("😀😁😂🤣😄😅", 3), ["😀😁😂", "🤣😄😅"]);
   assert.deepEqual(splitChannelConnectorTextChunks("abcde\nfghij", 8), ["abcde\n", "fghij"]);
   assert.deepEqual(splitChannelConnectorTextChunks("你好\n世界测试一二三四", 5)[0], "你好\n");
+});
+
+test("native Channel Connectors stages attachments under sanitized local paths", () => {
+  assert.equal(parseChannelConnectorByteSize("512mb", 1), 512 * 1024 * 1024);
+  assert.equal(parseChannelConnectorByteSize("2gb", 1), 2 * 1024 * 1024 * 1024);
+  assert.equal(parseChannelConnectorByteSize("0", 1), Number.POSITIVE_INFINITY);
+  assert.equal(parseChannelConnectorByteSize("unlimited", 1), Number.POSITIVE_INFINITY);
+  assert.equal(parseChannelConnectorByteSize("bad-size", 123), 123);
+
+  const root = makeTempRoot();
+  const staged = stageChannelConnectorAttachmentData({
+    attachment: {
+      kind: "file",
+      platform: "feishu",
+      fileName: "../../report final?.txt",
+      fileKey: "private-file-key",
+    },
+    data: Buffer.from("hello attachment", "utf8"),
+    rootDir: root,
+    messageId: "om/../../message",
+    index: 0,
+    mimeType: "text/plain",
+    maxBytes: 1024,
+    now: new Date("2026-06-06T08:00:00.000Z"),
+  });
+  assert.ok(staged.localPath);
+  assert.equal(staged.mimeType, "text/plain");
+  assert.equal(staged.size, Buffer.byteLength("hello attachment"));
+  assert.equal(staged.stagedAt, "2026-06-06T08:00:00.000Z");
+  assert.equal(staged.stagingError, null);
+  assert.equal(staged.localPath.startsWith(path.join(root, "attachments")), true);
+  assert.doesNotMatch(staged.localPath, /\.\./);
+  assert.equal(fs.readFileSync(staged.localPath, "utf8"), "hello attachment");
+  assert.throws(() => stageChannelConnectorAttachmentData({
+    attachment: {
+      kind: "image",
+      platform: "feishu",
+      imageKey: "img-key",
+    },
+    data: Buffer.alloc(3),
+    rootDir: root,
+    messageId: "om-size",
+    index: 0,
+    mimeType: "image/png",
+    maxBytes: 2,
+  }), /Attachment exceeds size limit/);
 });
 
 test("native Channel Connectors config preview targets Studio Gateway without cc-connect TOML", () => {
@@ -1073,6 +1129,34 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.match(attachmentRequest.stdin, /image: diagram\.png/);
   assert.doesNotMatch(attachmentRequest.stdin, /feishu-private-image-key/);
   for (const cleanupPath of attachmentRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
+  const stagedLocalPath = path.join(workDir, ".studio-agent-attachments", "report.txt");
+  const stagedAttachmentRequest = buildChannelConnectorAgentProcessRequest({
+    project,
+    binding,
+    message: {
+      ...message,
+      messageId: "m-runner-staged-file",
+      payload: { type: 8, content: "", name: "report.txt" },
+      attachments: [{
+        kind: "file",
+        platform: "feishu",
+        fileName: "report.txt",
+        size: 123,
+        localPath: stagedLocalPath,
+        stagedAt: "2026-06-06T08:00:00.000Z",
+      }],
+    },
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+  });
+  assert.ok(stagedAttachmentRequest);
+  assert.match(stagedAttachmentRequest.stdin, /\[file: report\.txt\]/);
+  assert.match(stagedAttachmentRequest.stdin, new RegExp(stagedLocalPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(stagedAttachmentRequest.stdin, /Staged files are available locally/);
+  assert.doesNotMatch(stagedAttachmentRequest.stdin, /Binary download\/staging is not enabled/);
+  for (const cleanupPath of stagedAttachmentRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const failed = await runChannelConnectorAgentTurn({
     project,
@@ -2621,6 +2705,46 @@ test("native Channel Connectors Feishu transport sends replies and reuses tenant
     const webhookCard = JSON.parse(requests[4].body.content);
     assert.match(webhookCard.header.title.content, /Studio Session/);
     assert.match(JSON.stringify(webhookCard), /Studio Channel Status/);
+  });
+});
+
+test("native Channel Connectors Feishu transport downloads message resources", async () => {
+  await withMockFeishuServer(async (apiUrl, requests) => {
+    const root = makeTempRoot();
+    const cachePath = path.join(root, "feishu-token-cache.json");
+    const transport = {
+      apiUrl,
+      appId: "cli_resource",
+      appSecret: "test-secret",
+    };
+
+    const image = await downloadFeishuMessageResource(transport, {
+      messageId: "om_resource",
+      fileKey: "img key/1",
+      resourceType: "image",
+      maxBytes: 1024,
+    }, cachePath);
+    assert.equal(image.ok, true);
+    assert.equal(image.requestCount, 2);
+    assert.equal(image.tokenCache, "miss");
+    assert.equal(image.mimeType, "image/png");
+    assert.equal(image.data.toString("utf8"), "mock-image-bytes");
+    assert.equal(requests[0].path, "/open-apis/auth/v3/tenant_access_token/internal");
+    assert.equal(requests[1].path, "/open-apis/im/v1/messages/om_resource/resources/img%20key%2F1?type=image");
+    assert.equal(requests[1].authorization, "Bearer tenant-token-1");
+
+    const file = await downloadFeishuMessageResource(transport, {
+      messageId: "om_resource",
+      fileKey: "file-key",
+      resourceType: "file",
+      maxBytes: 1024,
+    }, cachePath);
+    assert.equal(file.ok, true);
+    assert.equal(file.requestCount, 1);
+    assert.equal(file.tokenCache, "hit");
+    assert.equal(file.mimeType, "application/octet-stream");
+    assert.equal(file.data.toString("utf8"), "mock-file-bytes");
+    assert.equal(requests[2].path, "/open-apis/im/v1/messages/om_resource/resources/file-key?type=file");
   });
 });
 

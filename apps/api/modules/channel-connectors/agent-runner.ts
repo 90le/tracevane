@@ -108,13 +108,17 @@ function truncateText(value: string, maxLength = 400): string {
 
 function attachmentSummaryLabel(attachment: ChannelConnectorInboundAttachment): string {
   const name = normalizeString(attachment.fileName);
+  const localPath = normalizeString(attachment.localPath);
+  const stagingError = normalizeString(attachment.stagingError);
   const duration = typeof attachment.durationMs === "number" && attachment.durationMs > 0
     ? `${Math.round(attachment.durationMs / 1000)}s`
     : "";
   const size = typeof attachment.size === "number" && attachment.size > 0
     ? `${attachment.size} bytes`
     : "";
-  const detail = [name, duration, size].filter(Boolean).join(", ");
+  const staged = localPath ? `local: ${localPath}` : "";
+  const error = stagingError ? `staging failed: ${stagingError}` : "";
+  const detail = [name, duration, size, staged, error].filter(Boolean).join(", ");
   return detail ? `${attachment.kind}: ${detail}` : attachment.kind;
 }
 
@@ -125,10 +129,13 @@ function buildAgentInputContent(message: ChannelConnectorOctoInboundMessage): st
   const summary = attachments
     .map((attachment) => `- ${attachmentSummaryLabel(attachment)}`)
     .join("\n");
+  const hasLocalPath = attachments.some((attachment) => normalizeString(attachment.localPath));
   const attachmentText = [
     "[Studio attachment summary]",
     summary,
-    "Binary download/staging is not enabled yet; use the metadata above only.",
+    hasLocalPath
+      ? "Staged files are available locally; use the local paths above when the task needs file contents."
+      : "Binary download/staging is not enabled yet; use the metadata above only.",
   ].join("\n");
   return [content, attachmentText].filter(Boolean).join("\n\n");
 }
