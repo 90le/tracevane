@@ -4,6 +4,7 @@ const DashboardView = () => import("../../views/DashboardView.vue");
 const AgentsView = () => import("../../views/AgentsView.vue");
 const ChatView = () => import("../../views/ChatView.vue");
 const ChannelsView = () => import("../../views/ChannelsView.vue");
+const ChannelConnectorsView = () => import("../../views/ChannelConnectorsView.vue");
 const SkillsView = () => import("../../views/SkillsView.vue");
 const FilesView = () => import("../../views/FilesView.vue");
 const PluginsView = () => import("../../views/PluginsView.vue");
@@ -50,6 +51,7 @@ export type ShellNavItem = {
     | "dreaming"
     | "chat"
     | "channels"
+    | "channel-connectors"
     | "gateway"
     | "cron"
     | "skills"
@@ -163,6 +165,13 @@ export const shellNavGroups: ShellNavGroup[] = [
         labelEn: "Channels",
       },
       {
+        key: "channel-connectors",
+        to: "/channel-connectors",
+        icon: "channel-connectors",
+        labelZh: "渠道连接",
+        labelEn: "Channel Connectors",
+      },
+      {
         key: "model-gateway",
         to: "/model-gateway",
         icon: "gateway",
@@ -218,6 +227,7 @@ const coreRouteChunkLoaders: RouteChunkLoader[] = [
   AgentSessionsPage,
   ChannelsView,
   ChannelsControlPage,
+  ChannelConnectorsView,
   ModelGatewayView,
   ChannelProviderSettingsPage,
   ChannelAccountDetailPage,
@@ -333,6 +343,10 @@ export const shellRoutes: RouteRecordRaw[] = [
       },
       { path: ":type/bindings", component: ChannelBindingsPage },
     ],
+  },
+  {
+    path: "/channel-connectors",
+    component: ChannelConnectorsView,
   },
   {
     path: "/model-gateway",

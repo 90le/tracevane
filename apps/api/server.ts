@@ -16,6 +16,7 @@ import { StudioRouter } from './core/router.js';
 import { buildStudioClientRuntimeConfig } from './runtime-config.js';
 import { registerAgentsRoutes } from './modules/agents/routes.js';
 import { registerChatRoutes } from './modules/chat/routes.js';
+import { registerChannelConnectorsRoutes } from './modules/channel-connectors/routes.js';
 import { registerChannelsRoutes } from './modules/channels/routes.js';
 import { registerConfigRoutes } from './modules/config/routes.js';
 import { registerCronRoutes } from './modules/cron/routes.js';
@@ -44,6 +45,7 @@ export function createStudioRouter(ctx: StudioApiContext): StudioRouter {
   registerGitRoutes(router, ctx);
   registerAgentsRoutes(router, ctx);
   registerChatRoutes(router, ctx);
+  registerChannelConnectorsRoutes(router);
   registerChannelsRoutes(router, ctx);
   registerModelGatewayRoutes(router);
   registerOpenClawRecoveryRoutes(router);

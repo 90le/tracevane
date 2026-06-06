@@ -21,6 +21,7 @@ import {
   MessageSquareText,
   MoonStar,
   PlugZap,
+  RadioTower,
   SlidersHorizontal,
   TerminalSquare,
   Users,
@@ -32,6 +33,7 @@ const props = defineProps<{
     | "agents"
     | "chat"
     | "channels"
+    | "channel-connectors"
     | "gateway"
     | "cron"
     | "dreaming"
@@ -48,6 +50,7 @@ const iconByName = {
   agents: Users,
   chat: MessageSquareText,
   channels: Bot,
+  "channel-connectors": RadioTower,
   gateway: PlugZap,
   cron: CalendarClock,
   dreaming: MoonStar,

@@ -2,6 +2,7 @@ import type http from 'node:http';
 import type { LoggerLike, StudioServerConfig } from '../../../types/api.js';
 import type { AgentsService } from '../modules/agents/service.js';
 import type { ChatService } from '../modules/chat/service.js';
+import type { ChannelConnectorsService } from '../modules/channel-connectors/service.js';
 import type { ChannelsService } from '../modules/channels/service.js';
 import type { ConfigService } from '../modules/config/service.js';
 import type { CronService } from '../modules/cron/service.js';
@@ -18,6 +19,7 @@ import type { TerminalService } from '../modules/terminal/service.js';
 export interface StudioServices {
   agents: AgentsService;
   chat: ChatService;
+  channelConnectors: ChannelConnectorsService;
   channels: ChannelsService;
   config: ConfigService;
   cron: CronService;

@@ -9,6 +9,7 @@ import {
 } from './server.js';
 import { createAgentsService } from './modules/agents/service.js';
 import { createChatService } from './modules/chat/service.js';
+import { createChannelConnectorsService, type ChannelConnectorsServiceOptions } from './modules/channel-connectors/service.js';
 import { createChannelsService } from './modules/channels/service.js';
 import { createConfigService } from './modules/config/service.js';
 import { createCronService } from './modules/cron/service.js';
@@ -27,6 +28,7 @@ import type { StudioApiContext, StudioServices } from './core/context.js';
 export interface CreateStudioContextOptions {
   config: StudioServerConfig;
   logger: LoggerLike;
+  channelConnectorsOptions?: ChannelConnectorsServiceOptions;
   modelGatewayOptions?: ModelGatewayServiceOptions;
 }
 
@@ -35,6 +37,7 @@ export function createStudioContext(options: CreateStudioContextOptions): Studio
   const getSseConnections = () => sseClients.size;
 
   const agents = createAgentsService(options.config);
+  const channelConnectors = createChannelConnectorsService(options.config, options.channelConnectorsOptions);
   const channels = createChannelsService(options.config);
   const config = createConfigService(options.config);
   const cron = createCronService(options.config);
@@ -66,6 +69,7 @@ export function createStudioContext(options: CreateStudioContextOptions): Studio
   const services: StudioServices = {
     agents,
     chat,
+    channelConnectors,
     channels,
     config,
     cron,

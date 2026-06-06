@@ -1,5 +1,6 @@
 export * from './api.js';
 export * from './agents.js';
+export * from './channel-connectors.js';
 export * from './channels.js';
 export * from './chat.js';
 export * from './config.js';

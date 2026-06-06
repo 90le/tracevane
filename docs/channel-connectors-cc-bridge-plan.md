@@ -1,6 +1,6 @@
 # Channel Connectors / CC Bridge 方案确认稿
 
-> 状态：F0 已确认，下一步进入 F1
+> 状态：F1 service/control-plane skeleton completed，下一步进入 F2
 > 更新：2026-06-06
 > 参考源：`release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`
 
@@ -147,7 +147,7 @@ CC Bridge -> Studio API -> Studio Gateway
 | 阶段 | 目标 |
 | --- | --- |
 | F0 | 方案确认：守护边界、源码策略、首批平台、首批 Agent、多 bot 绑定规则和 UI 范围已确认 |
-| F1 | 引入 Studio-managed CC Bridge service/config/status/logs，不接真实平台 |
+| F1 | 已完成：Studio-managed CC Bridge service/config/status/logs、独立 Channel Connectors 页面和守护边界测试；真实平台未接入 |
 | F2 | 生成最小 cc-connect config：单项目 + Codex/Claude/OpenCode agent + Studio Gateway provider |
 | F3 | 接入 Octo(dmwork) 配置、bot->Agent 绑定和连接测试，完成文本往返 smoke |
 | F4 | 补图片/文件、mention、群聊 session key、allowlist、rate limit |
@@ -186,4 +186,14 @@ CC Bridge -> Studio API -> Studio Gateway
 5. UI 范围：先做 Runtime / Projects / Platforms / Sessions 四块，Advanced 后置折叠。
 6. 多渠道 / 多 bot 绑定：不同渠道和不同 bot 可绑定不同 Agent；微信个人号单账号只能绑定一个 Agent。
 
-下一步进入 F1 实现。
+## 12. F1 结果与下一步
+
+已完成：
+
+- 新增独立 Channel Connectors 页面，不放入 Studio Gateway / Model Gateway 页面。
+- 新增 `/api/channel-connectors/*` 后端模块，覆盖 CC Bridge status、config preview、service preview/status/action、logs。
+- service 名称固定为 `openclaw-studio-cc-bridge.service`，避免占用用户自己的 `cc-connect.service`。
+- Linux systemd-user 与 macOS launchd 模板基于 cc-connect 原生启动方式：`cc-connect -config <config.toml>`。
+- F1 尚未生成真实平台配置；启动/安装类操作会在缺少 cc-connect binary 或缺少 `[[projects.platforms]]` 时受控阻断。
+
+下一步进入 F2：生成最小可运行 cc-connect config，并接入 Studio Gateway key / App profile / 单项目 Agent 选择。
