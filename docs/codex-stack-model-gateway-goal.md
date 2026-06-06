@@ -1,6 +1,6 @@
 # Studio Gateway 目标方案
 
-> 状态：Phase C deletion completed; Phase B core matrix completed; Phase D provider routing/model catalog/active-route smoke MVP added; Phase E app connection profile/rollback/isolated apply acceptance completed; Phase B2 CLI/Gateway/live smoke harness added; Claude tool/summary and OpenClaw agent CLI smoke passed; Responses->Chat streaming usage、provider-declared reasoning/thinking、parallel tool-call 和 SSE failed behavior aligned; BigModel Chat/Anthropic live maturity passed; GMN Responses-native substitute live proof passed; OpenAI Platform vendor proof optional
+> 状态：Phase C deletion completed; Phase B core matrix completed; Phase D provider routing/model catalog/active-route smoke MVP added; Phase E app connection profile/rollback/isolated apply acceptance completed; Phase B2 CLI/Gateway/live smoke harness added; Claude tool/summary and OpenClaw agent CLI smoke passed; Responses->Chat streaming usage、provider-declared reasoning/thinking、parallel tool-call、SSE failed 和 started-stream error envelope behavior aligned; BigModel Chat/Anthropic live maturity passed; GMN Responses-native substitute live proof passed; OpenAI Platform vendor proof optional
 > 更新：2026-06-06
 > 文档规则：本文件只保留目标、边界、验收和阶段计划；进度写到 `codex-stack-model-gateway-progress.md`。文件名暂时保留为迁移入口，正文不再把 Codex Stack 当新产品名。
 
@@ -135,7 +135,7 @@ Provider / model routing 目标：
 | --- | --- |
 | Phase A | 固定 Studio Gateway 命名、API contract、迁移删除清单 |
 | Phase B | 补齐核心协议矩阵 adapter 与测试，确保 Studio Gateway daemon routes 全部通过（核心已完成） |
-| Phase B2 | 按 cc-switch 成熟度补齐真实 SSE / tool / history / usage / reasoning 行为；strict smoke 已覆盖真实 CLI 启动、Claude tool/summary、OpenClaw agent local provider/model/usage、Gateway HTTP compact/tool-history/error-envelope probes、Responses->Chat streaming `include_usage`、provider-declared reasoning/thinking 参数映射、parallel tool-call index grouping、Chat SSE error -> Responses `response.failed`、BigModel Chat/Anthropic live provider matrix、GMN Responses-native substitute `/v1/responses` + `/v1/responses/compact` live proof |
+| Phase B2 | 按 cc-switch 成熟度补齐真实 SSE / tool / history / usage / reasoning 行为；strict smoke 已覆盖真实 CLI 启动、Claude tool/summary、OpenClaw agent local provider/model/usage、Gateway HTTP compact/tool-history/error-envelope probes、Responses->Chat streaming `include_usage`、provider-declared reasoning/thinking 参数映射、parallel tool-call index grouping、Chat SSE error -> Responses `response.failed`、started Responses/Anthropic upstream stream failure -> target protocol error event、BigModel Chat/Anthropic live provider matrix、GMN Responses-native substitute `/v1/responses` + `/v1/responses/compact` live proof |
 | Phase C | 删除 Codex Stack 前后端、资源和旧测试入口（已完成） |
 | Phase D | 先新建 Studio Gateway 服务与配置面：daemon 状态/启停、provider 配置、provider 启停、active routing、resolved route 状态、聚合 `/v1/models`、模型池/别名/优先级、可编辑统一 Gateway key、协议/模型自动识别、secret、模型列表/默认模型、provider-native smoke、client-protocol active-route smoke；UI 借鉴旧 CPA 的运维入口和 cc-switch 的 Provider 管理体验，检测入口贴近 Base URL / API Key，daemon Runtime 只暴露主操作并把低频运维动作收进更多菜单，启停动作以 HTTP readiness 为最终成功条件 |
 | Phase E | Codex、Claude Code、OpenCode、OpenClaw 配置 preview/apply/profile/rollback 与隔离 HOME HTTP 验收已完成；继续做真实 CLI 启动 smoke 和细节兼容 |

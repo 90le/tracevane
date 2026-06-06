@@ -5009,6 +5009,211 @@ test("model gateway returns adapter error when upstream responses stream fails",
   }
 });
 
+test("model gateway maps started responses stream failures to chat and anthropic error events", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "responses-started-failed-stream-adapter",
+      name: "Responses Started Failed Stream Adapter",
+      appScopes: ["openclaw", "claude-code"],
+      baseUrl: "https://responses-started-failed-stream.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-responses-started-failed-stream-secret",
+    },
+    setActiveScopes: ["openclaw", "claude-code"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: String(init.body || ""),
+    });
+    const upstreamSse = [
+      "event: response.created",
+      "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_started_failed\",\"object\":\"response\",\"status\":\"in_progress\",\"model\":\"gpt-responses\",\"output\":[],\"usage\":null}}",
+      "",
+      "event: response.output_text.delta",
+      "data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}",
+      "",
+      "event: response.failed",
+      "data: {\"type\":\"response.failed\",\"response\":{\"id\":\"resp_started_failed\",\"error\":{\"message\":\"quota exceeded\",\"type\":\"rate_limit_error\",\"code\":\"rate_limit\"}}}",
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n");
+    return new Response(upstreamSse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestRaw(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-responses",
+          stream: true,
+          messages: [{ role: "user", content: "fail after start" }],
+        },
+      });
+      assert.equal(chat.status, 200);
+      const chatEvents = parseSseEvents(chat.body);
+      assert.equal(chatEvents[0].data.choices[0].delta.role, "assistant");
+      assert.equal(chatEvents[1].data.choices[0].delta.content, "partial");
+      const chatError = chatEvents.find((item) => item.event === "error");
+      assert.ok(chatError);
+      assert.deepEqual(chatError.data.error, {
+        message: "quota exceeded",
+        type: "rate_limit_error",
+        code: "rate_limit",
+      });
+      assert.equal(chatEvents.at(-1).data, "[DONE]");
+      assert.ok(!chatEvents.some((item) => item.data?.choices?.[0]?.finish_reason === "stop"));
+
+      const anthropic = await requestRaw(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "gpt-responses",
+          max_tokens: 64,
+          stream: true,
+          messages: [{ role: "user", content: "fail after start" }],
+        },
+      });
+      assert.equal(anthropic.status, 200);
+      const anthropicEvents = parseSseEvents(anthropic.body);
+      assert.equal(anthropicEvents[0].event, "message_start");
+      assert.equal(anthropicEvents[2].data.delta.text, "partial");
+      const anthropicError = anthropicEvents.find((item) => item.event === "error");
+      assert.ok(anthropicError);
+      assert.deepEqual(anthropicError.data.error, {
+        type: "rate_limit_error",
+        message: "quota exceeded",
+        code: "rate_limit",
+      });
+      assert.ok(!anthropicEvents.some((item) => item.event === "message_stop"));
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://responses-started-failed-stream.example.test/v1/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-responses-started-failed-stream-secret");
+  assert.equal(upstreamCalls[1].url, "https://responses-started-failed-stream.example.test/v1/responses");
+});
+
+test("model gateway maps started anthropic stream errors to chat and responses error events", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "anthropic-started-error-stream-adapter",
+      name: "Anthropic Started Error Stream Adapter",
+      appScopes: ["openclaw", "codex"],
+      baseUrl: "https://anthropic-started-error-stream.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: {
+      apiKey: "sk-anthropic-started-error-stream-secret",
+    },
+    setActiveScopes: ["openclaw", "codex"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      xApiKey: init.headers instanceof Headers ? init.headers.get("x-api-key") : null,
+      body: String(init.body || ""),
+    });
+    const upstreamSse = [
+      "event: message_start",
+      "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_started_error\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-native\",\"content\":[],\"usage\":{\"input_tokens\":5,\"output_tokens\":0}}}",
+      "",
+      "event: content_block_start",
+      "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}",
+      "",
+      "event: content_block_delta",
+      "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"partial\"}}",
+      "",
+      "event: error",
+      "data: {\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"anthropic quota exceeded\"}}",
+      "",
+    ].join("\n");
+    return new Response(upstreamSse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestRaw(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          stream: true,
+          messages: [{ role: "user", content: "fail after start" }],
+        },
+      });
+      assert.equal(chat.status, 200);
+      const chatEvents = parseSseEvents(chat.body);
+      assert.equal(chatEvents[0].data.choices[0].delta.role, "assistant");
+      assert.equal(chatEvents[1].data.choices[0].delta.content, "partial");
+      const chatError = chatEvents.find((item) => item.event === "error");
+      assert.ok(chatError);
+      assert.deepEqual(chatError.data.error, {
+        message: "anthropic quota exceeded",
+        type: "rate_limit_error",
+      });
+      assert.equal(chatEvents.at(-1).data, "[DONE]");
+
+      const responses = await requestRaw(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          input: "fail after start",
+          stream: true,
+        },
+      });
+      assert.equal(responses.status, 200);
+      const responseEvents = parseSseEvents(responses.body);
+      assert.ok(responseEvents.some((item) => item.event === "response.created"));
+      assert.equal(responseEvents.find((item) => item.event === "response.output_text.delta").data.delta, "partial");
+      const failed = responseEvents.find((item) => item.event === "response.failed").data.response;
+      assert.equal(failed.status, "failed");
+      assert.equal(failed.error.message, "anthropic quota exceeded");
+      assert.equal(failed.error.type, "rate_limit_error");
+      assert.equal(responseEvents.at(-1).data, "[DONE]");
+      assert.ok(!responseEvents.some((item) => item.event === "response.completed"));
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://anthropic-started-error-stream.example.test/v1/messages");
+  assert.equal(upstreamCalls[0].xApiKey, "sk-anthropic-started-error-stream-secret");
+  assert.equal(upstreamCalls[1].url, "https://anthropic-started-error-stream.example.test/v1/messages");
+});
+
 test("model gateway adapts codex compact requests through openai chat providers", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

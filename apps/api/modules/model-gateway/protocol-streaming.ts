@@ -16,6 +16,12 @@ interface StreamResult {
   output?: JsonRecord[];
 }
 
+interface StreamErrorEnvelope {
+  message: string;
+  type: string | null;
+  code: string | null;
+}
+
 interface ToolStreamBlock {
   id: string;
   index: number;
@@ -47,30 +53,47 @@ export async function writeAnthropicMessagesSseFromChatSse(
     usage: { input_tokens: 0, output_tokens: 0 } as JsonRecord,
   };
 
-  await readSseEvents(upstreamBody, (event) => {
-    if (event.done) {
-      finalizeAnthropicFromChat(state, res);
-      return;
-    }
-    if (!event.json) return;
-    const id = stringOrNull(event.json.id);
-    if (id && !state.started) state.messageId = id.startsWith("msg_") ? id : `msg_${id}`;
-    const model = stringOrNull(event.json.model);
-    if (model) state.model = model;
-    if (isRecord(event.json.usage)) state.usage = mapChatUsageToAnthropic(event.json.usage);
-    ensureAnthropicMessageStart(state, res);
+  try {
+    await readSseEvents(upstreamBody, (event) => {
+      if (state.completed) return;
+      if (isStreamErrorEvent(event)) {
+        const error = extractStreamError(event.json || {});
+        if (state.started) {
+          failAnthropicStream(state, res, error);
+          return;
+        }
+        throw new Error(error.message);
+      }
+      if (event.done) {
+        finalizeAnthropicFromChat(state, res);
+        return;
+      }
+      if (!event.json) return;
+      const id = stringOrNull(event.json.id);
+      if (id && !state.started) state.messageId = id.startsWith("msg_") ? id : `msg_${id}`;
+      const model = stringOrNull(event.json.model);
+      if (model) state.model = model;
+      if (isRecord(event.json.usage)) state.usage = mapChatUsageToAnthropic(event.json.usage);
+      ensureAnthropicMessageStart(state, res);
 
-    const choice = firstChoice(event.json);
-    if (!choice) return;
-    const delta = isRecord(choice.delta) ? choice.delta : {};
-    const content = stringOrNull(delta.content);
-    if (content) pushAnthropicTextDeltaFromChat(state, res, content);
-    if (Array.isArray(delta.tool_calls)) {
-      for (const toolDelta of delta.tool_calls) pushAnthropicToolDeltaFromChat(state, res, toolDelta);
+      const choice = firstChoice(event.json);
+      if (!choice) return;
+      const delta = isRecord(choice.delta) ? choice.delta : {};
+      const content = stringOrNull(delta.content);
+      if (content) pushAnthropicTextDeltaFromChat(state, res, content);
+      if (Array.isArray(delta.tool_calls)) {
+        for (const toolDelta of delta.tool_calls) pushAnthropicToolDeltaFromChat(state, res, toolDelta);
+      }
+      const finishReason = stringOrNull(choice.finish_reason);
+      if (finishReason) state.stopReason = mapChatFinishReasonToAnthropic(finishReason, state.tools.size > 0);
+    });
+  } catch (error) {
+    if (state.started) {
+      failAnthropicStream(state, res, errorFromThrown(error));
+    } else {
+      throw error;
     }
-    const finishReason = stringOrNull(choice.finish_reason);
-    if (finishReason) state.stopReason = mapChatFinishReasonToAnthropic(finishReason, state.tools.size > 0);
-  });
+  }
 
   finalizeAnthropicFromChat(state, res);
   return { id: state.messageId, model: state.model, outputText: state.text };
@@ -84,64 +107,81 @@ export async function writeChatCompletionsSseFromAnthropicMessagesSse(
   const state = createChatStreamState(fallbackModel);
   const toolBlocks = new Map<number, ToolStreamBlock>();
 
-  await readSseEvents(upstreamBody, (event) => {
-    if (!event.json) return;
-    if (event.event === "message_start" && isRecord(event.json.message)) {
-      const message = event.json.message;
-      const id = stringOrNull(message.id);
-      if (id) state.id = id;
-      const model = stringOrNull(message.model);
-      if (model) state.model = model;
-      if (isRecord(message.usage)) state.usage = mapAnthropicUsageToChat(message.usage);
-      ensureChatStreamStart(state, res);
-      return;
-    }
-    if (event.event === "content_block_start" && isRecord(event.json.content_block)) {
-      ensureChatStreamStart(state, res);
-      const sourceIndex = numberOrNull(event.json.index) ?? toolBlocks.size;
-      const block = event.json.content_block;
-      if (block.type === "tool_use") {
-        const tool = ensureToolBlock(toolBlocks, sourceIndex, {
-          id: stringOrNull(block.id) || undefined,
-          name: stringOrNull(block.name) || undefined,
-        });
-        writeChatToolCallStart(state, res, tool);
+  try {
+    await readSseEvents(upstreamBody, (event) => {
+      if (state.completed) return;
+      if (isStreamErrorEvent(event)) {
+        const error = extractStreamError(event.json || {});
+        if (state.started) {
+          failChatStream(state, res, error);
+          return;
+        }
+        throw new Error(error.message);
       }
-      return;
-    }
-    if (event.event === "content_block_delta" && isRecord(event.json.delta)) {
-      ensureChatStreamStart(state, res);
-      const delta = event.json.delta;
-      if (delta.type === "text_delta") {
-        const text = stringOrNull(delta.text);
-        if (text) writeChatTextDelta(state, res, text);
+      if (!event.json) return;
+      if (event.event === "message_start" && isRecord(event.json.message)) {
+        const message = event.json.message;
+        const id = stringOrNull(message.id);
+        if (id) state.id = id;
+        const model = stringOrNull(message.model);
+        if (model) state.model = model;
+        if (isRecord(message.usage)) state.usage = mapAnthropicUsageToChat(message.usage);
+        ensureChatStreamStart(state, res);
         return;
       }
-      if (delta.type === "input_json_delta") {
+      if (event.event === "content_block_start" && isRecord(event.json.content_block)) {
+        ensureChatStreamStart(state, res);
         const sourceIndex = numberOrNull(event.json.index) ?? toolBlocks.size;
-        const tool = ensureToolBlock(toolBlocks, sourceIndex, {});
-        const partialJson = stringOrNull(delta.partial_json) || "";
-        tool.inputJson += partialJson;
-        writeChatToolCallArguments(state, res, tool, partialJson);
+        const block = event.json.content_block;
+        if (block.type === "tool_use") {
+          const tool = ensureToolBlock(toolBlocks, sourceIndex, {
+            id: stringOrNull(block.id) || undefined,
+            name: stringOrNull(block.name) || undefined,
+          });
+          writeChatToolCallStart(state, res, tool);
+        }
+        return;
       }
-      return;
+      if (event.event === "content_block_delta" && isRecord(event.json.delta)) {
+        ensureChatStreamStart(state, res);
+        const delta = event.json.delta;
+        if (delta.type === "text_delta") {
+          const text = stringOrNull(delta.text);
+          if (text) writeChatTextDelta(state, res, text);
+          return;
+        }
+        if (delta.type === "input_json_delta") {
+          const sourceIndex = numberOrNull(event.json.index) ?? toolBlocks.size;
+          const tool = ensureToolBlock(toolBlocks, sourceIndex, {});
+          const partialJson = stringOrNull(delta.partial_json) || "";
+          tool.inputJson += partialJson;
+          writeChatToolCallArguments(state, res, tool, partialJson);
+        }
+        return;
+      }
+      if (event.event === "message_delta") {
+        if (isRecord(event.json.delta)) {
+          state.finishReason = mapAnthropicStopReasonToChat(event.json.delta.stop_reason, toolBlocks.size > 0);
+        }
+        if (isRecord(event.json.usage)) {
+          state.usage = {
+            ...state.usage,
+            completion_tokens: numberOrNull(event.json.usage.output_tokens) ?? numberOrNull(state.usage.completion_tokens) ?? 0,
+          };
+          state.usage.total_tokens = (numberOrNull(state.usage.prompt_tokens) ?? 0)
+            + (numberOrNull(state.usage.completion_tokens) ?? 0);
+        }
+        return;
+      }
+      if (event.event === "message_stop") finalizeChatStream(state, res);
+    });
+  } catch (error) {
+    if (state.started) {
+      failChatStream(state, res, errorFromThrown(error));
+    } else {
+      throw error;
     }
-    if (event.event === "message_delta") {
-      if (isRecord(event.json.delta)) {
-        state.finishReason = mapAnthropicStopReasonToChat(event.json.delta.stop_reason, toolBlocks.size > 0);
-      }
-      if (isRecord(event.json.usage)) {
-        state.usage = {
-          ...state.usage,
-          completion_tokens: numberOrNull(event.json.usage.output_tokens) ?? numberOrNull(state.usage.completion_tokens) ?? 0,
-        };
-        state.usage.total_tokens = (numberOrNull(state.usage.prompt_tokens) ?? 0)
-          + (numberOrNull(state.usage.completion_tokens) ?? 0);
-      }
-      return;
-    }
-    if (event.event === "message_stop") finalizeChatStream(state, res);
-  });
+  }
 
   finalizeChatStream(state, res);
   return { id: state.id, model: state.model, outputText: state.outputText };
@@ -156,81 +196,95 @@ export async function writeChatCompletionsSseFromResponsesSse(
   const toolBlocks = new Map<number, ToolStreamBlock>();
   const toolIndexByItemId = new Map<string, number>();
 
-  await readSseEvents(upstreamBody, (event) => {
-    if (event.done) {
-      finalizeChatStream(state, res);
-      return;
-    }
-    if (!event.json) return;
-    if (event.event === "response.failed") {
-      throw new Error(extractResponsesFailedMessage(event.json));
-    }
-    const response = isRecord(event.json.response) ? event.json.response : event.json;
-    const id = stringOrNull(response.id);
-    if (id) state.id = id;
-    const model = stringOrNull(response.model);
-    if (model) state.model = model;
-    if (event.event === "response.output_text.delta") {
-      const delta = stringOrNull(event.json.delta);
-      if (delta) {
-        ensureChatStreamStart(state, res);
-        writeChatTextDelta(state, res, delta);
+  try {
+    await readSseEvents(upstreamBody, (event) => {
+      if (state.completed) return;
+      if (event.done) {
+        finalizeChatStream(state, res);
+        return;
       }
-      return;
-    }
-    if (event.event === "response.output_item.added" && isRecord(event.json.item)) {
-      if (event.json.item.type === "function_call") {
-        const tool = ensureResponsesToolBlock(event.json, event.json.item, toolBlocks, toolIndexByItemId);
-        ensureChatStreamStart(state, res);
-        writeChatToolCallStart(state, res, tool);
+      if (!event.json) return;
+      if (event.event === "response.failed") {
+        const error = extractResponsesFailedError(event.json);
+        if (state.started) {
+          failChatStream(state, res, error);
+          return;
+        }
+        throw new Error(error.message);
+      }
+      const response = isRecord(event.json.response) ? event.json.response : event.json;
+      const id = stringOrNull(response.id);
+      if (id) state.id = id;
+      const model = stringOrNull(response.model);
+      if (model) state.model = model;
+      if (event.event === "response.output_text.delta") {
+        const delta = stringOrNull(event.json.delta);
+        if (delta) {
+          ensureChatStreamStart(state, res);
+          writeChatTextDelta(state, res, delta);
+        }
+        return;
+      }
+      if (event.event === "response.output_item.added" && isRecord(event.json.item)) {
+        if (event.json.item.type === "function_call") {
+          const tool = ensureResponsesToolBlock(event.json, event.json.item, toolBlocks, toolIndexByItemId);
+          ensureChatStreamStart(state, res);
+          writeChatToolCallStart(state, res, tool);
+          state.finishReason = "tool_calls";
+        }
+        return;
+      }
+      if (event.event === "response.function_call_arguments.delta") {
+        const tool = ensureResponsesToolBlock(event.json, null, toolBlocks, toolIndexByItemId);
+        const delta = stringOrNull(event.json.delta) || "";
+        if (delta) {
+          tool.inputJson += delta;
+          ensureChatStreamStart(state, res);
+          writeChatToolCallArguments(state, res, tool, delta);
+        }
         state.finishReason = "tool_calls";
+        return;
       }
-      return;
-    }
-    if (event.event === "response.function_call_arguments.delta") {
-      const tool = ensureResponsesToolBlock(event.json, null, toolBlocks, toolIndexByItemId);
-      const delta = stringOrNull(event.json.delta) || "";
-      if (delta) {
-        tool.inputJson += delta;
-        ensureChatStreamStart(state, res);
-        writeChatToolCallArguments(state, res, tool, delta);
-      }
-      state.finishReason = "tool_calls";
-      return;
-    }
-    if (event.event === "response.function_call_arguments.done") {
-      const tool = ensureResponsesToolBlock(event.json, null, toolBlocks, toolIndexByItemId);
-      const remaining = remainingToolArgumentsDelta(tool, event.json.arguments);
-      if (remaining) {
-        tool.inputJson += remaining;
-        ensureChatStreamStart(state, res);
-        writeChatToolCallArguments(state, res, tool, remaining);
-      }
-      state.finishReason = "tool_calls";
-      return;
-    }
-    if (event.event === "response.output_item.done" && isRecord(event.json.item)) {
-      if (event.json.item.type === "function_call") {
-        const tool = ensureResponsesToolBlock(event.json, event.json.item, toolBlocks, toolIndexByItemId);
-        const remaining = remainingToolArgumentsDelta(tool, event.json.item.arguments);
-        ensureChatStreamStart(state, res);
-        writeChatToolCallStart(state, res, tool);
+      if (event.event === "response.function_call_arguments.done") {
+        const tool = ensureResponsesToolBlock(event.json, null, toolBlocks, toolIndexByItemId);
+        const remaining = remainingToolArgumentsDelta(tool, event.json.arguments);
         if (remaining) {
           tool.inputJson += remaining;
+          ensureChatStreamStart(state, res);
           writeChatToolCallArguments(state, res, tool, remaining);
         }
         state.finishReason = "tool_calls";
+        return;
       }
-      return;
+      if (event.event === "response.output_item.done" && isRecord(event.json.item)) {
+        if (event.json.item.type === "function_call") {
+          const tool = ensureResponsesToolBlock(event.json, event.json.item, toolBlocks, toolIndexByItemId);
+          const remaining = remainingToolArgumentsDelta(tool, event.json.item.arguments);
+          ensureChatStreamStart(state, res);
+          writeChatToolCallStart(state, res, tool);
+          if (remaining) {
+            tool.inputJson += remaining;
+            writeChatToolCallArguments(state, res, tool, remaining);
+          }
+          state.finishReason = "tool_calls";
+        }
+        return;
+      }
+      if (event.event === "response.completed") {
+        if (isRecord(response.usage)) state.usage = mapResponsesUsageToChat(response.usage);
+        emitMissingChatToolCallsFromResponsesOutput(state, res, response.output, toolBlocks, toolIndexByItemId);
+        state.finishReason = response.status === "incomplete" ? "length" : "stop";
+        if (toolBlocks.size > 0 && state.finishReason === "stop") state.finishReason = "tool_calls";
+        finalizeChatStream(state, res);
+      }
+    });
+  } catch (error) {
+    if (state.started) {
+      failChatStream(state, res, errorFromThrown(error));
+    } else {
+      throw error;
     }
-    if (event.event === "response.completed") {
-      if (isRecord(response.usage)) state.usage = mapResponsesUsageToChat(response.usage);
-      emitMissingChatToolCallsFromResponsesOutput(state, res, response.output, toolBlocks, toolIndexByItemId);
-      state.finishReason = response.status === "incomplete" ? "length" : "stop";
-      if (toolBlocks.size > 0 && state.finishReason === "stop") state.finishReason = "tool_calls";
-      finalizeChatStream(state, res);
-    }
-  });
+  }
 
   finalizeChatStream(state, res);
   return { id: state.id, model: state.model, outputText: state.outputText };
@@ -256,81 +310,95 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
     usage: { input_tokens: 0, output_tokens: 0 } as JsonRecord,
   };
 
-  await readSseEvents(upstreamBody, (event) => {
-    if (event.done) {
-      finalizeAnthropicTextStream(state, res);
-      return;
-    }
-    if (!event.json) return;
-    if (event.event === "response.failed") {
-      throw new Error(extractResponsesFailedMessage(event.json));
-    }
-    const response = isRecord(event.json.response) ? event.json.response : event.json;
-    const id = stringOrNull(response.id);
-    if (id && !state.started) state.messageId = id.startsWith("msg_") ? id : `msg_${id}`;
-    const model = stringOrNull(response.model);
-    if (model) state.model = model;
-    if (event.event === "response.output_text.delta") {
-      const delta = stringOrNull(event.json.delta);
-      if (delta) {
-        ensureAnthropicTextMessageStart(state, res);
-        pushAnthropicTextDelta(state, res, delta);
+  try {
+    await readSseEvents(upstreamBody, (event) => {
+      if (state.completed) return;
+      if (event.done) {
+        finalizeAnthropicTextStream(state, res);
+        return;
       }
-      return;
-    }
-    if (event.event === "response.output_item.added" && isRecord(event.json.item)) {
-      if (event.json.item.type === "function_call") {
-        closeAnthropicTextBlock(state, res);
-        ensureAnthropicTextMessageStart(state, res);
-        const tool = ensureResponsesToolBlock(event.json, event.json.item, state.tools, state.toolIndexByItemId);
-        pushAnthropicToolDeltaFromResponses(state, res, tool, "");
+      if (!event.json) return;
+      if (event.event === "response.failed") {
+        const error = extractResponsesFailedError(event.json);
+        if (state.started) {
+          failAnthropicStream(state, res, error);
+          return;
+        }
+        throw new Error(error.message);
+      }
+      const response = isRecord(event.json.response) ? event.json.response : event.json;
+      const id = stringOrNull(response.id);
+      if (id && !state.started) state.messageId = id.startsWith("msg_") ? id : `msg_${id}`;
+      const model = stringOrNull(response.model);
+      if (model) state.model = model;
+      if (event.event === "response.output_text.delta") {
+        const delta = stringOrNull(event.json.delta);
+        if (delta) {
+          ensureAnthropicTextMessageStart(state, res);
+          pushAnthropicTextDelta(state, res, delta);
+        }
+        return;
+      }
+      if (event.event === "response.output_item.added" && isRecord(event.json.item)) {
+        if (event.json.item.type === "function_call") {
+          closeAnthropicTextBlock(state, res);
+          ensureAnthropicTextMessageStart(state, res);
+          const tool = ensureResponsesToolBlock(event.json, event.json.item, state.tools, state.toolIndexByItemId);
+          pushAnthropicToolDeltaFromResponses(state, res, tool, "");
+          state.stopReason = "tool_use";
+        }
+        return;
+      }
+      if (event.event === "response.function_call_arguments.delta") {
+        const tool = ensureResponsesToolBlock(event.json, null, state.tools, state.toolIndexByItemId);
+        const delta = stringOrNull(event.json.delta) || "";
+        if (delta) {
+          closeAnthropicTextBlock(state, res);
+          ensureAnthropicTextMessageStart(state, res);
+          pushAnthropicToolDeltaFromResponses(state, res, tool, delta);
+        }
         state.stopReason = "tool_use";
+        return;
       }
-      return;
-    }
-    if (event.event === "response.function_call_arguments.delta") {
-      const tool = ensureResponsesToolBlock(event.json, null, state.tools, state.toolIndexByItemId);
-      const delta = stringOrNull(event.json.delta) || "";
-      if (delta) {
-        closeAnthropicTextBlock(state, res);
-        ensureAnthropicTextMessageStart(state, res);
-        pushAnthropicToolDeltaFromResponses(state, res, tool, delta);
-      }
-      state.stopReason = "tool_use";
-      return;
-    }
-    if (event.event === "response.function_call_arguments.done") {
-      const tool = ensureResponsesToolBlock(event.json, null, state.tools, state.toolIndexByItemId);
-      const remaining = remainingToolArgumentsDelta(tool, event.json.arguments);
-      if (remaining) {
-        closeAnthropicTextBlock(state, res);
-        ensureAnthropicTextMessageStart(state, res);
-        pushAnthropicToolDeltaFromResponses(state, res, tool, remaining);
-      }
-      stopAnthropicToolBlock(res, tool);
-      state.stopReason = "tool_use";
-      return;
-    }
-    if (event.event === "response.output_item.done" && isRecord(event.json.item)) {
-      if (event.json.item.type === "function_call") {
-        closeAnthropicTextBlock(state, res);
-        ensureAnthropicTextMessageStart(state, res);
-        const tool = ensureResponsesToolBlock(event.json, event.json.item, state.tools, state.toolIndexByItemId);
-        const remaining = remainingToolArgumentsDelta(tool, event.json.item.arguments);
-        pushAnthropicToolDeltaFromResponses(state, res, tool, remaining);
+      if (event.event === "response.function_call_arguments.done") {
+        const tool = ensureResponsesToolBlock(event.json, null, state.tools, state.toolIndexByItemId);
+        const remaining = remainingToolArgumentsDelta(tool, event.json.arguments);
+        if (remaining) {
+          closeAnthropicTextBlock(state, res);
+          ensureAnthropicTextMessageStart(state, res);
+          pushAnthropicToolDeltaFromResponses(state, res, tool, remaining);
+        }
         stopAnthropicToolBlock(res, tool);
         state.stopReason = "tool_use";
+        return;
       }
-      return;
+      if (event.event === "response.output_item.done" && isRecord(event.json.item)) {
+        if (event.json.item.type === "function_call") {
+          closeAnthropicTextBlock(state, res);
+          ensureAnthropicTextMessageStart(state, res);
+          const tool = ensureResponsesToolBlock(event.json, event.json.item, state.tools, state.toolIndexByItemId);
+          const remaining = remainingToolArgumentsDelta(tool, event.json.item.arguments);
+          pushAnthropicToolDeltaFromResponses(state, res, tool, remaining);
+          stopAnthropicToolBlock(res, tool);
+          state.stopReason = "tool_use";
+        }
+        return;
+      }
+      if (event.event === "response.completed") {
+        if (isRecord(response.usage)) state.usage = mapResponsesUsageToAnthropic(response.usage);
+        emitMissingAnthropicToolUsesFromResponsesOutput(state, res, response.output);
+        state.stopReason = response.status === "incomplete" ? "max_tokens" : "end_turn";
+        if (state.tools.size > 0 && state.stopReason === "end_turn") state.stopReason = "tool_use";
+        finalizeAnthropicTextStream(state, res);
+      }
+    });
+  } catch (error) {
+    if (state.started) {
+      failAnthropicStream(state, res, errorFromThrown(error));
+    } else {
+      throw error;
     }
-    if (event.event === "response.completed") {
-      if (isRecord(response.usage)) state.usage = mapResponsesUsageToAnthropic(response.usage);
-      emitMissingAnthropicToolUsesFromResponsesOutput(state, res, response.output);
-      state.stopReason = response.status === "incomplete" ? "max_tokens" : "end_turn";
-      if (state.tools.size > 0 && state.stopReason === "end_turn") state.stopReason = "tool_use";
-      finalizeAnthropicTextStream(state, res);
-    }
-  });
+  }
 
   finalizeAnthropicTextStream(state, res);
   return { id: state.messageId, model: state.model, outputText: state.text };
@@ -360,69 +428,86 @@ export async function writeCodexResponsesSseFromAnthropicMessagesSse(
   };
   state.textItemId = `${state.responseId}_msg`;
 
-  await readSseEvents(upstreamBody, (event) => {
-    if (!event.json) return;
-    if (event.event === "message_start" && isRecord(event.json.message)) {
-      const message = event.json.message;
-      const id = stringOrNull(message.id);
-      if (id) {
-        state.responseId = id;
-        if (!state.textAdded) state.textItemId = `${id}_msg`;
+  try {
+    await readSseEvents(upstreamBody, (event) => {
+      if (state.completed) return;
+      if (isStreamErrorEvent(event)) {
+        const error = extractStreamError(event.json || {});
+        if (state.responseStarted) {
+          failResponsesStream(state, res, error);
+          return;
+        }
+        throw new Error(error.message);
       }
-      const model = stringOrNull(message.model);
-      if (model) state.model = model;
-      if (isRecord(message.usage)) state.usage = mapAnthropicUsageToResponses(message.usage);
-      ensureResponsesStreamStart(state, res);
-      return;
-    }
-    if (event.event === "content_block_start" && isRecord(event.json.content_block)) {
-      ensureResponsesStreamStart(state, res);
-      const block = event.json.content_block;
-      if (block.type === "tool_use") {
-        const sourceIndex = numberOrNull(event.json.index) ?? state.tools.size;
-        const tool = ensureToolBlock(state.tools, sourceIndex, {
-          id: stringOrNull(block.id) || undefined,
-          name: stringOrNull(block.name) || undefined,
-        });
-        ensureResponsesToolAdded(state, res, tool);
-        const inputJson = serializeToolInput(block.input);
-        if (inputJson) pushResponsesToolArgumentsDelta(res, tool, inputJson);
-      }
-      return;
-    }
-    if (event.event === "content_block_delta" && isRecord(event.json.delta)) {
-      const delta = event.json.delta;
-      if (delta.type === "text_delta") {
-        const text = stringOrNull(delta.text);
-        if (text) pushResponsesTextDelta(state, res, text);
+      if (!event.json) return;
+      if (event.event === "message_start" && isRecord(event.json.message)) {
+        const message = event.json.message;
+        const id = stringOrNull(message.id);
+        if (id) {
+          state.responseId = id;
+          if (!state.textAdded) state.textItemId = `${id}_msg`;
+        }
+        const model = stringOrNull(message.model);
+        if (model) state.model = model;
+        if (isRecord(message.usage)) state.usage = mapAnthropicUsageToResponses(message.usage);
+        ensureResponsesStreamStart(state, res);
         return;
       }
-      if (delta.type === "input_json_delta") {
-        const sourceIndex = numberOrNull(event.json.index) ?? state.tools.size;
-        const tool = ensureToolBlock(state.tools, sourceIndex, {});
-        ensureResponsesToolAdded(state, res, tool);
-        pushResponsesToolArgumentsDelta(res, tool, stringOrNull(delta.partial_json) || "");
+      if (event.event === "content_block_start" && isRecord(event.json.content_block)) {
+        ensureResponsesStreamStart(state, res);
+        const block = event.json.content_block;
+        if (block.type === "tool_use") {
+          const sourceIndex = numberOrNull(event.json.index) ?? state.tools.size;
+          const tool = ensureToolBlock(state.tools, sourceIndex, {
+            id: stringOrNull(block.id) || undefined,
+            name: stringOrNull(block.name) || undefined,
+          });
+          ensureResponsesToolAdded(state, res, tool);
+          const inputJson = serializeToolInput(block.input);
+          if (inputJson) pushResponsesToolArgumentsDelta(res, tool, inputJson);
+        }
+        return;
       }
-      return;
-    }
-    if (event.event === "content_block_stop") {
-      const sourceIndex = numberOrNull(event.json.index);
-      const tool = sourceIndex === null ? null : state.tools.get(sourceIndex);
-      if (tool) stopResponsesToolBlock(state, res, tool);
-      return;
-    }
-    if (event.event === "message_delta") {
-      if (isRecord(event.json.delta) && event.json.delta.stop_reason === "max_tokens") state.status = "incomplete";
-      if (isRecord(event.json.usage)) {
-        state.usage = {
-          ...(state.usage || {}),
-          output_tokens: numberOrNull(event.json.usage.output_tokens) ?? 0,
-        };
+      if (event.event === "content_block_delta" && isRecord(event.json.delta)) {
+        const delta = event.json.delta;
+        if (delta.type === "text_delta") {
+          const text = stringOrNull(delta.text);
+          if (text) pushResponsesTextDelta(state, res, text);
+          return;
+        }
+        if (delta.type === "input_json_delta") {
+          const sourceIndex = numberOrNull(event.json.index) ?? state.tools.size;
+          const tool = ensureToolBlock(state.tools, sourceIndex, {});
+          ensureResponsesToolAdded(state, res, tool);
+          pushResponsesToolArgumentsDelta(res, tool, stringOrNull(delta.partial_json) || "");
+        }
+        return;
       }
-      return;
+      if (event.event === "content_block_stop") {
+        const sourceIndex = numberOrNull(event.json.index);
+        const tool = sourceIndex === null ? null : state.tools.get(sourceIndex);
+        if (tool) stopResponsesToolBlock(state, res, tool);
+        return;
+      }
+      if (event.event === "message_delta") {
+        if (isRecord(event.json.delta) && event.json.delta.stop_reason === "max_tokens") state.status = "incomplete";
+        if (isRecord(event.json.usage)) {
+          state.usage = {
+            ...(state.usage || {}),
+            output_tokens: numberOrNull(event.json.usage.output_tokens) ?? 0,
+          };
+        }
+        return;
+      }
+      if (event.event === "message_stop") finalizeResponsesStream(state, res);
+    });
+  } catch (error) {
+    if (state.responseStarted) {
+      failResponsesStream(state, res, errorFromThrown(error));
+    } else {
+      throw error;
     }
-    if (event.event === "message_stop") finalizeResponsesStream(state, res);
-  });
+  }
 
   finalizeResponsesStream(state, res);
   return {
@@ -489,13 +574,55 @@ function parseSseBlock(block: string): ParsedSseEvent | null {
   }
 }
 
-function extractResponsesFailedMessage(payload: JsonRecord): string {
+function isStreamErrorEvent(event: ParsedSseEvent): boolean {
+  return event.event === "error" || event.json?.error !== undefined;
+}
+
+function extractResponsesFailedError(payload: JsonRecord): StreamErrorEnvelope {
   const response = isRecord(payload.response) ? payload.response : payload;
   const error = isRecord(response.error) ? response.error : isRecord(payload.error) ? payload.error : null;
-  return stringOrNull(error?.message)
+  const message = stringOrNull(error?.message)
     || stringOrNull(response.error)
     || stringOrNull(payload.message)
     || "response.failed event received";
+  const type = stringOrNull(error?.type) || stringOrNull(payload.type) || null;
+  const code = stringOrNull(error?.code) || null;
+  return { message, type, code };
+}
+
+function extractResponsesFailedMessage(payload: JsonRecord): string {
+  return extractResponsesFailedError(payload).message;
+}
+
+function extractStreamError(payload: JsonRecord): StreamErrorEnvelope {
+  const response = isRecord(payload.response) ? payload.response : null;
+  const source = response || payload;
+  const rawError = isRecord(source.error)
+    ? source.error
+    : isRecord(payload.error)
+      ? payload.error
+      : null;
+  const message = stringOrNull(rawError?.message)
+    || stringOrNull(rawError?.detail)
+    || stringOrNull(source.message)
+    || stringOrNull(payload.message)
+    || (typeof source.error === "string" ? source.error : null)
+    || JSON.stringify(rawError || source);
+  const type = stringOrNull(rawError?.type)
+    || stringOrNull(source.type)
+    || stringOrNull(payload.type)
+    || stringOrNull(rawError?.code)
+    || null;
+  const code = stringOrNull(rawError?.code) || stringOrNull(source.code) || null;
+  return { message, type, code };
+}
+
+function errorFromThrown(error: unknown): StreamErrorEnvelope {
+  return {
+    message: error instanceof Error ? error.message : String(error),
+    type: "stream_error",
+    code: null,
+  };
 }
 
 function ensureAnthropicMessageStart(
@@ -667,6 +794,23 @@ function finalizeAnthropicFromChat(
   state.completed = true;
 }
 
+function failAnthropicStream(
+  state: { completed: boolean },
+  res: http.ServerResponse,
+  error: StreamErrorEnvelope,
+): void {
+  if (state.completed) return;
+  writeSseEvent(res, "error", {
+    type: "error",
+    error: {
+      type: error.type || error.code || "upstream_error",
+      message: error.message,
+      ...(error.code ? { code: error.code } : {}),
+    },
+  });
+  state.completed = true;
+}
+
 function finalizeAnthropicTextStream(
   state: {
     started: boolean;
@@ -787,6 +931,24 @@ function finalizeChatStream(state: ReturnType<typeof createChatStreamState>, res
   if (state.completed) return;
   ensureChatStreamStart(state, res);
   writeChatChunk(state, res, {}, state.finishReason, state.usage);
+  res.write("data: [DONE]\n\n");
+  state.completed = true;
+}
+
+function failChatStream(
+  state: ReturnType<typeof createChatStreamState>,
+  res: http.ServerResponse,
+  error: StreamErrorEnvelope,
+): void {
+  if (state.completed) return;
+  res.write("event: error\n");
+  res.write(`data: ${JSON.stringify({
+    error: {
+      message: error.message,
+      ...(error.type ? { type: error.type } : {}),
+      ...(error.code ? { code: error.code } : {}),
+    },
+  })}\n\n`);
   res.write("data: [DONE]\n\n");
   state.completed = true;
 }
@@ -1040,6 +1202,69 @@ function finalizeResponsesStream(
   });
   res.write("data: [DONE]\n\n");
   state.completed = true;
+}
+
+function failResponsesStream(
+  state: {
+    responseStarted: boolean;
+    completed: boolean;
+    responseId: string;
+    model: string | null;
+    createdAt: number;
+    outputText: string;
+    textItemId: string;
+    textAdded: boolean;
+    textDone: boolean;
+    textOutputIndex: number | null;
+    tools: Map<number, ToolStreamBlock>;
+    completedOutput: JsonRecord[];
+  },
+  res: http.ServerResponse,
+  error: StreamErrorEnvelope,
+): void {
+  if (state.completed) return;
+  ensureResponsesStreamStart(state, res);
+  const output = currentResponsesOutput(state);
+  writeSseEvent(res, "response.failed", {
+    type: "response.failed",
+    response: {
+      ...baseResponse(state, "failed", output),
+      error: {
+        message: error.message,
+        ...(error.type ? { type: error.type } : {}),
+        ...(error.code ? { code: error.code } : {}),
+      },
+    },
+  });
+  res.write("data: [DONE]\n\n");
+  state.completed = true;
+}
+
+function currentResponsesOutput(
+  state: {
+    outputText: string;
+    textItemId: string;
+    textAdded: boolean;
+    textDone: boolean;
+    textOutputIndex: number | null;
+    tools: Map<number, ToolStreamBlock>;
+    completedOutput: JsonRecord[];
+  },
+): JsonRecord[] {
+  const output = [...state.completedOutput];
+  if (state.textAdded) {
+    output.push({
+      id: state.textItemId,
+      type: "message",
+      status: state.textDone ? "completed" : "in_progress",
+      role: "assistant",
+      content: [{ type: "output_text", text: state.outputText, annotations: [] }],
+    });
+  }
+  for (const tool of [...state.tools.values()].sort((a, b) => (a.outputIndex ?? 0) - (b.outputIndex ?? 0))) {
+    if (!tool.stopped) output.push(responsesFunctionCallItem(tool, tool.started ? "in_progress" : "completed"));
+  }
+  return output.sort((a, b) => responsesOutputIndex(a, state) - responsesOutputIndex(b, state));
 }
 
 function responsesOutputIndex(
