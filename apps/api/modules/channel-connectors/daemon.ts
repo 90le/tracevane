@@ -434,6 +434,13 @@ async function startOctoConnection(input: {
       writeRuntime(config, state);
     },
     onMessage: (message) => {
+      state.octoConnections[binding.id] = connectionState(binding, {
+        ...socket.status(),
+        apiUrl: transport.apiUrl,
+        robotId: resolved.entry.robotId,
+        credentialSource: resolved.source,
+      });
+      writeRuntime(config, state);
       void dispatchOctoMessage({
         config,
         state,

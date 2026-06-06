@@ -703,7 +703,17 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(processRequest.stdin, "hi codex");
   assert.equal(processRequest.env.OPENAI_API_KEY, "sk-local");
   assert.equal(processRequest.env.OPENAI_BASE_URL, project.gatewayEndpoint);
+  assert.ok(processRequest.env.CODEX_HOME);
+  assert.ok(!processRequest.args.join("\n").includes("sk-local"));
+  const codexConfigPath = path.join(processRequest.env.CODEX_HOME, "config.toml");
+  assert.equal(fs.existsSync(codexConfigPath), true);
+  const codexConfig = fs.readFileSync(codexConfigPath, "utf8");
+  assert.match(codexConfig, /model_provider = "studio_gateway"/);
+  assert.match(codexConfig, /experimental_bearer_token = "sk-local"/);
+  assert.equal(fs.statSync(codexConfigPath).mode & 0o777, 0o600);
+  for (const cleanupPath of processRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
+  let turnCleanupPath = null;
   const result = await runChannelConnectorAgentTurn({
     project,
     binding,
@@ -714,10 +724,13 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     processRunner: async (request) => {
       assert.equal(request.command, "codex");
       assert.equal(request.stdin, "hi codex");
+      assert.ok(request.env.CODEX_HOME);
+      turnCleanupPath = request.cleanupPaths?.[0] || null;
+      assert.equal(fs.existsSync(path.join(request.env.CODEX_HOME, "config.toml")), true);
       return {
         exitCode: 0,
         signal: null,
-        stdout: '{"message":{"content":"hello from codex"}}\n',
+        stdout: '{"type":"item.completed","item":{"type":"agent_message","text":"hello from codex"}}\n',
         stderr: "",
         durationMs: 12,
         timedOut: false,
@@ -729,6 +742,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(result.ok, true);
   assert.equal(result.status, "completed");
   assert.equal(result.replyText, "hello from codex");
+  assert.ok(turnCleanupPath);
+  assert.equal(fs.existsSync(turnCleanupPath), false);
 
   const claudeRequest = buildChannelConnectorAgentProcessRequest({
     project: { ...project, agent: "claude-code", permissionMode: "plan" },
@@ -766,7 +781,9 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
 test("native Channel Connectors service management is guarded before daemon entry is built", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
+  const homeDir = path.join(root, "home");
   const service = createChannelConnectorsService(config, {
+    homeDir,
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
 
@@ -780,7 +797,7 @@ test("native Channel Connectors service management is guarded before daemon entr
   assert.equal(install.commandsRun.length, 0);
   assert.equal(install.installed, false);
 
-  const paths = resolveChannelConnectorsPaths(config);
+  const paths = resolveChannelConnectorsPaths(config, homeDir);
   assert.equal(fs.existsSync(paths.configPath), false);
 });
 

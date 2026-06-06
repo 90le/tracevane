@@ -80,7 +80,7 @@ Studio 增强点：
 | --- | --- |
 | F1 | 已完成：native daemon skeleton、service/config/status/logs、独立页面、守护边界测试 |
 | F2 | 已完成：CC/OpenClaw 能力映射、typed config store、Agent Profile、工作目录、模型、权限、Gateway key ref、platform/bot binding |
-| F3 | 已完成核心合同：Octo(dmwork) adapter、REST transport、daemon register/cache/WuKongIM WebSocket、一次性 CLI Agent runner；真实 Octo register/ws 已通过 |
+| F3 | 已完成核心合同：Octo(dmwork) adapter、REST transport、daemon register/cache/WuKongIM WebSocket、一次性 CLI Agent runner；真实 Octo DM 文本往返已通过 |
 | F4 | 补齐核心消息能力：图片/文件、语音、群聊 mention、thread/reply、流式预览、长回复拆分 |
 | F5 | 治理与自动化：allowlist、admin、rate limit、banned words、slash command、cron、hooks、relay、management API |
 | F6 | 飞书、微信/企业微信；继续迁移钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等 CC 平台 |
@@ -101,6 +101,6 @@ Studio 增强点：
 
 ## 6. 下一步
 
-1. F3d：用户在真实 Octo bot 发一条消息，完成 WebSocket 入站 -> CLI Agent -> sendMessage 文本往返。
-2. F3d：补 session resume、流式进度、权限审批回传、错误状态和进程清理。
-3. F4：补图片/文件、群聊成员/history context、长回复 group buffer 和治理策略。
+1. F3d：补 session resume、流式进度、权限审批回传、错误状态和进程清理。
+2. F4：补图片/文件、群聊成员/history context、长回复 group buffer 和治理策略。
+3. F6：按 CC 源码继续迁移飞书、微信/企业微信和其它平台。

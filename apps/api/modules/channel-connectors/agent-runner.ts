@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import type {
   ChannelConnectorAgentId,
   ChannelConnectorOctoInboundMessage,
@@ -18,6 +20,7 @@ export interface ChannelConnectorAgentProcessRequest {
   stdin: string;
   env: Record<string, string>;
   timeoutMs: number;
+  cleanupPaths?: string[];
 }
 
 export interface ChannelConnectorAgentProcessResult {
@@ -79,6 +82,49 @@ function mergeProcessEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
   };
 }
 
+function tomlString(value: string): string {
+  return JSON.stringify(value);
+}
+
+function createCodexGatewayHome(input: {
+  gatewayEndpoint: string;
+  gatewayClientKey: string;
+  model: string | null;
+}): { codexHome: string; cleanupRoot: string } {
+  const cleanupRoot = fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-codex-"));
+  const codexHome = path.join(cleanupRoot, "codex-home");
+  fs.mkdirSync(codexHome, { recursive: true });
+  const config = [
+    "model_provider = \"studio_gateway\"",
+    input.model ? `model = ${tomlString(input.model)}` : "",
+    "responses_websockets = false",
+    "responses_websockets_v2 = false",
+    "",
+    "[model_providers.studio_gateway]",
+    "name = \"OpenClaw Studio Gateway\"",
+    `base_url = ${tomlString(input.gatewayEndpoint)}`,
+    "wire_api = \"responses\"",
+    "supports_websockets = false",
+    "requires_openai_auth = true",
+    `experimental_bearer_token = ${tomlString(input.gatewayClientKey)}`,
+    "responses_websockets_v2 = false",
+    "",
+  ].filter((line) => line !== "").join("\n");
+  const configPath = path.join(codexHome, "config.toml");
+  fs.writeFileSync(configPath, config, { encoding: "utf8", mode: 0o600 });
+  return { codexHome, cleanupRoot };
+}
+
+function cleanupProcessRequest(request: ChannelConnectorAgentProcessRequest): void {
+  for (const cleanupPath of request.cleanupPaths || []) {
+    try {
+      fs.rmSync(cleanupPath, { recursive: true, force: true });
+    } catch {
+      // Cleanup is best effort; process output still carries the failure signal.
+    }
+  }
+}
+
 function codexPermissionArgs(mode: ChannelConnectorPermissionMode): string[] {
   if (mode === "auto-edit" || mode === "full-auto") return ["--full-auto"];
   if (mode === "yolo") return ["--dangerously-bypass-approvals-and-sandbox"];
@@ -125,13 +171,24 @@ export function buildChannelConnectorAgentProcessRequest(
   const baseEnv = gatewayEnv(request.gatewayEndpoint, request.gatewayClientKey);
 
   if (project.agent === "codex") {
+    const codexHome = request.gatewayClientKey
+      ? createCodexGatewayHome({
+        gatewayEndpoint: request.gatewayEndpoint,
+        gatewayClientKey: request.gatewayClientKey,
+        model: model || null,
+      })
+      : null;
     const args = [
       "exec",
       "--skip-git-repo-check",
       ...codexPermissionArgs(project.permissionMode),
       ...(model ? ["--model", model] : []),
       "-c",
-      `openai_base_url=${JSON.stringify(request.gatewayEndpoint)}`,
+      "model_provider=\"studio_gateway\"",
+      "-c",
+      "responses_websockets=false",
+      "-c",
+      "responses_websockets_v2=false",
       "--json",
       "--cd",
       cwd,
@@ -144,9 +201,11 @@ export function buildChannelConnectorAgentProcessRequest(
       stdin: content,
       env: {
         ...baseEnv,
+        ...(codexHome ? { CODEX_HOME: codexHome.codexHome } : {}),
         OPENAI_BASE_URL: request.gatewayEndpoint,
       },
       timeoutMs,
+      cleanupPaths: codexHome ? [codexHome.cleanupRoot] : [],
     };
   }
 
@@ -240,6 +299,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      cleanupProcessRequest(request);
       resolve({
         exitCode: null,
         signal: null,
@@ -254,6 +314,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      cleanupProcessRequest(request);
       resolve({
         exitCode,
         signal,
@@ -284,6 +345,9 @@ function collectJsonLineText(stdout: string): string[] {
       const item = raw.item;
       if (typeof item === "object" && item !== null) {
         const itemRecord = item as Record<string, unknown>;
+        if (itemRecord.type === "agent_message" && typeof itemRecord.text === "string") {
+          output.push(itemRecord.text);
+        }
         const content = itemRecord.content;
         if (typeof content === "string") output.push(content);
         if (Array.isArray(content)) {
@@ -356,7 +420,12 @@ export async function runChannelConnectorAgentTurn(
   }
 
   const runner = request.processRunner || defaultChannelConnectorAgentProcessRunner;
-  const result = await runner(processRequest);
+  let result: ChannelConnectorAgentProcessResult;
+  try {
+    result = await runner(processRequest);
+  } finally {
+    cleanupProcessRequest(processRequest);
+  }
   const ok = result.exitCode === 0 && !result.error;
   return {
     attempted: true,
