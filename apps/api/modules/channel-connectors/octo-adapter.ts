@@ -13,10 +13,15 @@ import { splitChannelConnectorTextChunks } from "./text-chunks.js";
 
 const OCTO_MESSAGE_TYPE_TEXT = 1;
 const OCTO_MESSAGE_TYPE_IMAGE = 2;
+const OCTO_MESSAGE_TYPE_GIF = 3;
 const OCTO_MESSAGE_TYPE_VOICE = 4;
 const OCTO_MESSAGE_TYPE_VIDEO = 5;
 const OCTO_MESSAGE_TYPE_LOCATION = 6;
 const OCTO_MESSAGE_TYPE_FILE = 8;
+const OCTO_MESSAGE_TYPE_RICH_TEXT = 14;
+const OCTO_RICH_TEXT_BLOCK_IMAGE = "image";
+const OCTO_RICH_TEXT_BLOCK_TEXT = "text";
+const OCTO_RICH_TEXT_IMAGE_PLACEHOLDER = "[图片]";
 const OCTO_CHANNEL_TYPE_DM = 1;
 const OCTO_CHANNEL_TYPE_GROUP = 2;
 const OCTO_CHANNEL_TYPE_COMMUNITY_TOPIC = 5;
@@ -64,6 +69,32 @@ function extractOctoUrlFromRecord(value: unknown): string {
   }
   const content = normalizeString(record.content);
   return looksLikeHttpUrl(content) ? content : "";
+}
+
+function extractOctoUrlsFromValue(value: unknown): string[] {
+  if (typeof value === "string") return looksLikeHttpUrl(value) ? [value] : [];
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => extractOctoUrlsFromValue(item));
+  }
+  const record = recordFrom(value);
+  const urls = [
+    normalizeString(record.url),
+    normalizeString(record.file_url),
+    normalizeString(record.fileUrl),
+    normalizeString(record.media_url),
+    normalizeString(record.mediaUrl),
+    normalizeString(record.download_url),
+    normalizeString(record.downloadUrl),
+    normalizeString(record.cdn_url),
+    normalizeString(record.cdnUrl),
+    normalizeString(record.origin_url),
+    normalizeString(record.originUrl),
+    normalizeString(record.src),
+    normalizeString(record.href),
+  ].filter(Boolean);
+  const content = normalizeString(record.content);
+  if (looksLikeHttpUrl(content)) urls.push(content);
+  return uniqueStrings(urls);
 }
 
 function uniqueStrings(values: string[]): string[] {
@@ -127,6 +158,9 @@ export function extractOctoContent(message: ChannelConnectorOctoInboundMessage):
     case OCTO_MESSAGE_TYPE_IMAGE:
       content = "[image]";
       break;
+    case OCTO_MESSAGE_TYPE_GIF:
+      content = "[gif]";
+      break;
     case OCTO_MESSAGE_TYPE_FILE:
       content = `[file: ${normalizeString(payload.name) || "file"}]`;
       break;
@@ -139,11 +173,70 @@ export function extractOctoContent(message: ChannelConnectorOctoInboundMessage):
     case OCTO_MESSAGE_TYPE_LOCATION:
       content = normalizeString(payload.content);
       break;
+    case OCTO_MESSAGE_TYPE_RICH_TEXT:
+      content = extractOctoRichTextPlain(payload) || "[rich text]";
+      break;
     default:
       content = normalizeString(payload.content) || `[message type: ${payload.type ?? "unknown"}]`;
       break;
   }
   return isOctoGroupChannel(message.channelType) ? stripLeadingMention(content) : content;
+}
+
+function extractOctoRichTextBlocks(payload: ChannelConnectorOctoInboundMessage["payload"]): Record<string, unknown>[] {
+  const content = payload.content;
+  if (Array.isArray(content)) return content.map(recordFrom).filter((block) => Object.keys(block).length > 0);
+  if (typeof content === "string" && content) {
+    return [{ type: OCTO_RICH_TEXT_BLOCK_TEXT, text: content }];
+  }
+  return [];
+}
+
+function extractOctoRichTextPlain(payload: ChannelConnectorOctoInboundMessage["payload"]): string {
+  const plain = normalizeString(payload.plain);
+  if (plain) return plain;
+  return extractOctoRichTextBlocks(payload)
+    .map((block) => {
+      const type = normalizeString(block.type).toLowerCase();
+      if (type === OCTO_RICH_TEXT_BLOCK_IMAGE) return OCTO_RICH_TEXT_IMAGE_PLACEHOLDER;
+      return normalizeString(block.text);
+    })
+    .filter(Boolean)
+    .join("");
+}
+
+function extractOctoRichTextAttachments(payload: ChannelConnectorOctoInboundMessage["payload"]): ChannelConnectorInboundAttachment[] {
+  const blocks = extractOctoRichTextBlocks(payload);
+  const attachments: ChannelConnectorInboundAttachment[] = [];
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index];
+    if (normalizeString(block.type).toLowerCase() !== OCTO_RICH_TEXT_BLOCK_IMAGE) continue;
+    const url = extractOctoUrlFromRecord(block);
+    attachments.push({
+      kind: "image",
+      platform: "octo",
+      key: url || normalizeString(block.name) || `rich-text-image-${index + 1}`,
+      url: url || null,
+      fileName: normalizeString(block.name) || null,
+      size: typeof block.size === "number" ? block.size : null,
+    });
+  }
+  const sidecarUrls = uniqueStrings([
+    ...extractOctoUrlsFromValue(payload.media_urls),
+    ...extractOctoUrlsFromValue(payload.mediaUrls),
+  ]);
+  for (const url of sidecarUrls) {
+    if (attachments.some((attachment) => attachment.url === url)) continue;
+    attachments.push({
+      kind: "image",
+      platform: "octo",
+      key: url,
+      url,
+      fileName: null,
+      size: null,
+    });
+  }
+  return attachments;
 }
 
 export function extractOctoAttachments(message: ChannelConnectorOctoInboundMessage): ChannelConnectorInboundAttachment[] {
@@ -158,6 +251,15 @@ export function extractOctoAttachments(message: ChannelConnectorOctoInboundMessa
   const key = url || normalizeString(payload.name) || null;
   switch (payload.type) {
     case OCTO_MESSAGE_TYPE_IMAGE:
+      return [{
+        kind: "image",
+        platform: "octo",
+        key,
+        url: url || null,
+        fileName: normalizeString(payload.name) || null,
+        size: typeof payload.size === "number" ? payload.size : null,
+      }];
+    case OCTO_MESSAGE_TYPE_GIF:
       return [{
         kind: "image",
         platform: "octo",
@@ -193,9 +295,22 @@ export function extractOctoAttachments(message: ChannelConnectorOctoInboundMessa
         fileName: normalizeString(payload.name) || null,
         size: typeof payload.size === "number" ? payload.size : null,
       }];
+    case OCTO_MESSAGE_TYPE_RICH_TEXT:
+      return extractOctoRichTextAttachments(payload);
     default:
       return [];
   }
+}
+
+export function attachExtractedOctoAttachments(
+  message: ChannelConnectorOctoInboundMessage,
+): ChannelConnectorOctoInboundMessage {
+  const attachments = extractOctoAttachments(message);
+  if (attachments.length === 0) return message;
+  return {
+    ...message,
+    attachments,
+  };
 }
 
 export function stripOctoReplyFooter(content: string): string {

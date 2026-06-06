@@ -2,7 +2,7 @@
 
 > 状态：已切换为 Studio 原生实现路线；platform config UI completed
 > 更新：2026-06-06
-> 参考源：CC 二开全量源码 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`；OpenClaw 频道与运行时实现；压缩映射见 `channel-connectors-native-feature-map.md`
+> 参考源：CC 二开全量源码 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`；OpenClaw 频道与运行时实现；OpenClaw Octo 插件 `~/.openclaw/extensions/octo`；压缩映射见 `channel-connectors-native-feature-map.md`
 
 ## 1. 新结论
 
@@ -22,6 +22,7 @@ CC 和 OpenClaw 只作为参考：
 
 - 参考 CC 的平台协议、session key、mention、文件/图片、allowlist、rate limit、CLI Agent 调用方式、slash command、菜单和 Feishu card。
 - 参考 OpenClaw 的频道配置、账号/机器人绑定、运行态管理和事件抽象。
+- Octo 专属问题优先参考已安装的 OpenClaw Octo 插件（当前 1.0.14）：它覆盖 WuKongIM、Bot API、RichText=14、COS STS、群/thread/mention、persona 和多账号能力；当 CC Go 源码没有 Octo 方案时，以该插件为主要协议依据。
 - 生产实现不依赖 cc-connect binary，也不恢复旧 `resources/codex-stack` 生产路径。
 
 ## 2. 守护与边界
@@ -120,6 +121,7 @@ Studio 增强点：
 - F4 长回复拆分已落地：按 CC `splitMessage` 规则做 Unicode 安全切分，Feishu text 自动分多条发送，Octo 回复拆分复用同一 helper。
 - F4 Octo URL attachment staging 已落地：Octo URL 型图片/文件/语音/视频进入 Agent 前 streaming 下载到本地 attachment 目录，默认拒绝私网 URL，大小上限可由 binding metadata 覆盖；失败只写 `stagingError` 不阻断对话。
 - F4 Octo 入站 URL 字段兼容已落地：除 `url` 外，支持常见 snake/camel URL 变体；若 live payload 仍无 URL，需要继续补 Octo/COS 媒体下载接口。
+- F4 Octo payload-only 附件补回已落地：daemon 运行前把 payload 推断出的附件写回 `attachments`，避免 live image/file 只显示 `[image]` 却不进入 staging；同时按 OpenClaw Octo 插件补 GIF=3、RichText=14 图文混排和多图 `mediaUrls` 入站归一化。
 - F4 Octo 出站媒体基础合同已落地：参考 CC dmwork 小文件 multipart 上传路径，transport smoke 支持 `upload-file` 和 `upload-and-send-media`；图片使用 Octo image payload，普通文件使用 file payload；本机 `studio-cc` 小文本文件真实 smoke 已通过；大文件 COS STS 直传仍待迁移。
 - Channel Connectors 平台配置 UI 已落地：Octo/Feishu binding 可编辑平台凭证 metadata 并直接执行连接测试；本机 Octo `studio-cc` 与 Feishu live binding 已完成 smoke，daemon 长连接 connected。
 - F4 Feishu thread/reply 会话隔离已落地：daemon/service 共用 CC 风格 session key，群线程默认按 root 隔离，私聊保持每用户 session，事件日志保留 root/parent/thread 便于排查。

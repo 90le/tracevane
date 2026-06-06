@@ -90,7 +90,34 @@ export interface ChannelConnectorInboundAttachment {
 
 export interface ChannelConnectorOctoMessagePayload {
   type?: number;
-  content?: string;
+  content?: string | ChannelConnectorOctoRichTextBlock[];
+  plain?: string;
+  url?: string;
+  file_url?: string;
+  fileUrl?: string;
+  media_url?: string;
+  mediaUrl?: string;
+  media_urls?: string[];
+  mediaUrls?: string[];
+  download_url?: string;
+  downloadUrl?: string;
+  cdn_url?: string;
+  cdnUrl?: string;
+  origin_url?: string;
+  originUrl?: string;
+  src?: string;
+  href?: string;
+  name?: string;
+  size?: number;
+  width?: number;
+  height?: number;
+  mention?: ChannelConnectorOctoMentionPayload | null;
+  reply?: ChannelConnectorOctoReplyPayload | null;
+}
+
+export interface ChannelConnectorOctoRichTextBlock {
+  type?: string;
+  text?: string;
   url?: string;
   file_url?: string;
   fileUrl?: string;
@@ -108,8 +135,6 @@ export interface ChannelConnectorOctoMessagePayload {
   size?: number;
   width?: number;
   height?: number;
-  mention?: ChannelConnectorOctoMentionPayload | null;
-  reply?: ChannelConnectorOctoReplyPayload | null;
 }
 
 export interface ChannelConnectorOctoGroupMember {

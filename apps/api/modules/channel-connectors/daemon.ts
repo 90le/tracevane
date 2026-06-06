@@ -59,6 +59,7 @@ import {
   type OctoCredentialCacheEntry,
 } from "./octo-credential-cache.js";
 import {
+  attachExtractedOctoAttachments,
   buildOctoSessionKey,
   extractOctoAttachments,
   extractOctoContent,
@@ -1603,6 +1604,7 @@ async function dispatchOctoMessage(input: {
       },
     }
     : message;
+  agentMessage = attachExtractedOctoAttachments(agentMessage);
   if (command.passthroughText) {
     writeJsonLine(config.paths.octoEvents, {
       checkedAt,

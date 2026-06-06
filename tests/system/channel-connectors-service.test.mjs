@@ -36,6 +36,9 @@ import {
   parseChannelConnectorFeishuWebhook,
 } from "../../dist/apps/api/modules/channel-connectors/feishu-adapter.js";
 import {
+  attachExtractedOctoAttachments,
+} from "../../dist/apps/api/modules/channel-connectors/octo-adapter.js";
+import {
   addFeishuMessageReaction,
   downloadFeishuMessageResource,
   downloadFeishuMessageResourceToFile,
@@ -961,6 +964,77 @@ test("Octo adapter dry-run dispatch resolves binding, session key, and reply pla
   assert.equal(mediaUrlMessage.incoming.attachments[0].kind, "image");
   assert.equal(mediaUrlMessage.incoming.attachments[0].url, "https://cdn.example.test/inbound-image.png");
   assert.equal(mediaUrlMessage.incoming.attachments[0].fileName, "inbound-image.png");
+
+  const richTextMessage = await service.dispatchOctoIncoming({
+    bindingId: "octo-default",
+    dryRun: true,
+    message: {
+      messageId: "m-rich-text",
+      fromUid: "user-1",
+      channelId: "user-1",
+      channelType: 1,
+      payload: {
+        type: 14,
+        content: [
+          { type: "text", text: "上图：" },
+          { type: "image", url: "https://cdn.example.test/rich-a.png", name: "rich-a.png", size: 456 },
+          { type: "text", text: "下图" },
+        ],
+        mediaUrls: ["https://cdn.example.test/rich-b.png"],
+      },
+    },
+  });
+  assert.equal(richTextMessage.accepted, true);
+  assert.equal(richTextMessage.incoming.content, "上图：[图片]下图");
+  assert.equal(richTextMessage.incoming.attachments.length, 2);
+  assert.equal(richTextMessage.incoming.attachments[0].kind, "image");
+  assert.equal(richTextMessage.incoming.attachments[0].url, "https://cdn.example.test/rich-a.png");
+  assert.equal(richTextMessage.incoming.attachments[0].fileName, "rich-a.png");
+  assert.equal(richTextMessage.incoming.attachments[1].url, "https://cdn.example.test/rich-b.png");
+
+  const gifMessage = attachExtractedOctoAttachments({
+    messageId: "m-gif-daemon-ready",
+    fromUid: "user-1",
+    channelId: "user-1",
+    channelType: 1,
+    payload: {
+      type: 3,
+      url: "https://cdn.example.test/loop.gif",
+      name: "loop.gif",
+    },
+  });
+  assert.equal(gifMessage.attachments.length, 1);
+  assert.equal(gifMessage.attachments[0].kind, "image");
+  assert.equal(gifMessage.attachments[0].url, "https://cdn.example.test/loop.gif");
+
+  const daemonReadyImage = attachExtractedOctoAttachments({
+    messageId: "m-image-daemon-ready",
+    fromUid: "user-1",
+    channelId: "user-1",
+    channelType: 1,
+    payload: {
+      type: 2,
+      mediaUrl: "https://cdn.example.test/daemon-image.png",
+      name: "daemon-image.png",
+    },
+  });
+  assert.equal(daemonReadyImage.attachments.length, 1);
+  assert.equal(daemonReadyImage.attachments[0].kind, "image");
+  assert.equal(daemonReadyImage.attachments[0].url, "https://cdn.example.test/daemon-image.png");
+
+  const daemonReadyImageWithoutUrl = attachExtractedOctoAttachments({
+    messageId: "m-image-daemon-no-url",
+    fromUid: "user-1",
+    channelId: "user-1",
+    channelType: 1,
+    payload: {
+      type: 2,
+      name: "no-url.png",
+    },
+  });
+  assert.equal(daemonReadyImageWithoutUrl.attachments.length, 1);
+  assert.equal(daemonReadyImageWithoutUrl.attachments[0].kind, "image");
+  assert.equal(daemonReadyImageWithoutUrl.attachments[0].url, null);
 
   const rawAttachmentMessage = await service.dispatchOctoIncoming({
     bindingId: "octo-default",
