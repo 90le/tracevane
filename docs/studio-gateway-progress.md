@@ -1,6 +1,6 @@
 # Studio Gateway 进度
 
-> 状态：Studio Gateway core completed; Provider Center/App Connections completed; CLI/Gateway/live smoke harness completed; Channel Connectors F3f Feishu transport live credential proof completed; OpenAI Platform vendor proof optional
+> 状态：Studio Gateway core completed; Provider Center/App Connections completed; CLI/Gateway/live smoke harness completed; Channel Connectors F3f Feishu callback verification ready; OpenAI Platform vendor proof optional
 > 更新：2026-06-06
 > 文档规则：只保留当前状态、最近完成、验证和下一步；旧流水已压缩。
 
@@ -32,7 +32,8 @@
 - 新增 `/api/channel-connectors/commands/surface`：输出平台无关 command surface、text fallback 和 Feishu interactive card 结构；普通 IM、Feishu 卡片、未来自研 IM 客户端都复用同一 command contract。
 - 新增 `/api/channel-connectors/commands/action` 与 Feishu `card-action` / `bot-menu` aliases：从 action value / event key 解析命令并回到 command-router；Agent 原生命令仍只标记 passthrough，不在 Studio API 内直接启动 CLI。
 - 新增 Feishu live webhook ingress：`/api/channel-connectors/adapters/feishu/webhook` 支持 URL verification、`card.action.trigger`、bot menu、`im.message.receive_v1`，按 binding metadata `verificationToken` 校验后复用 command-router，并返回 Feishu 兼容 `challenge` / toast / card 响应。
-- 新增 Feishu outbound transport：binding metadata `apiUrl/appSecret/verificationToken`、tenant access token file cache、send text message、patch card message、`/api/channel-connectors/adapters/feishu/transport-smoke`；message webhook `sendReply:true` 可把 command-router 回复通过 Feishu API 发回。
+- 新增 Feishu outbound transport：binding metadata `apiUrl/appSecret/verificationToken`、tenant access token file cache、send text message、patch card message、`/api/channel-connectors/adapters/feishu/transport-smoke`；message webhook 默认可把 command-router 回复通过 Feishu API 发回。
+- Feishu live callback 准备完成：本地用户配置已写入 Feishu binding，tenant token cache 验证通过，临时公网 callback URL verification 通过；凭据、token 和临时 URL 只保存在本机或运行态，不写入仓库。
 
 ## 验证
 
@@ -42,14 +43,15 @@
 - 通过：`node --test tests/system/studio-web-channel-connectors-page.test.mjs tests/system/studio-web-shell-route-manifest.test.mjs`。
 - 通过：`npm run build:web`。
 - 通过：Feishu live credential proof（secret redacted）：tenant access token HTTP 200、token cache hit、bot info HTTP 200 / code 0。
+- 通过：Feishu live callback verification proof（secret redacted）：本地 binding 保存、tenant token miss/hit、公网 callback URL verification HTTP 200 / challenge matched。
 
 ## 已知边界
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
-- Channel Connectors 已用真实 Octo 凭据验证 register、WuKongIM WebSocket、用户消息入站、Codex CLI Agent、Studio Gateway、Octo sendMessage 和同一 IM session 的 Codex thread 续接。Feishu app 凭据已完成 tenant-token / bot-info live proof；尚未用真实 verification token、callback URL、chat message 联调 webhook/回复闭环、审批回传、图片/文件/历史上下文；高风险全局配置/系统服务命令暂不通过 IM 直接开放。
+- Channel Connectors 已用真实 Octo 凭据验证 register、WuKongIM WebSocket、用户消息入站、Codex CLI Agent、Studio Gateway、Octo sendMessage 和同一 IM session 的 Codex thread 续接。Feishu app 凭据已完成 tenant-token / bot-info live proof 和 callback verification proof；尚未完成真实用户 chat message 入站/回复闭环、真实 verification token 严格校验、审批回传、图片/文件/历史上下文；高风险全局配置/系统服务命令暂不通过 IM 直接开放。
 
 ## 下一步
 
-1. 完成 F3f 真实 Feishu webhook/message 联调：还需要 verification token、公开 callback URL 或隧道；如需主动发消息 smoke，还需要 chat_id 或先让机器人收到一条真实消息。
+1. 完成 F3f 真实 Feishu webhook/message 联调：等飞书控制台保存 callback 后，收一条真实 `/status` 消息并验证 Feishu sendMessage 回复；如控制台提供 verification token，则写入本机配置做严格校验。
 2. 进入 F3g：补 CLI Agent 权限审批回传。
 3. 进入 F4：补图片/文件、群聊成员/history context、长回复 group buffer 和治理策略。

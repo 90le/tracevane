@@ -1,6 +1,6 @@
 # Channel Connectors / CLI Agent Bot 原生方案
 
-> 状态：已切换为 Studio 原生实现路线；F3f command surface contract 已完成
+> 状态：已切换为 Studio 原生实现路线；F3f Feishu live callback verification ready
 > 更新：2026-06-06
 > 参考源：CC 二开全量源码 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`；OpenClaw 频道与运行时实现；压缩映射见 `channel-connectors-native-feature-map.md`
 
@@ -111,10 +111,11 @@ Studio 增强点：
 - Channel Connectors 已支持 command surface preview：text fallback、平台无关 action sections、Feishu card JSON、action payload -> command 解析。
 - Channel Connectors 已支持 command action callback：通用 `/commands/action` 和 Feishu `card-action` / `bot-menu` aliases 可把 action value / event key 转回 command-router。
 - Channel Connectors 已支持 Feishu webhook ingress：URL verification、card action、bot menu、message receive 进入同一 command-router；`verificationToken` 放在 binding metadata，不写入文档或源码。
-- Channel Connectors 已支持 Feishu outbound contract：tenant access token file cache、send text message、patch card message、transport-smoke；message webhook `sendReply:true` 可真实出站。
+- Channel Connectors 已支持 Feishu outbound contract：tenant access token file cache、send text message、patch card message、transport-smoke；message webhook 默认可把 command-router 回复真实出站。
+- 已完成脱敏 live 准备：本地用户配置写入 Feishu binding、tenant token cache 验证通过、临时公网 callback URL verification 通过；凭据、token 和临时 URL 不进入仓库。
 
 ## 6. 下一步
 
-1. F3f：做真实 Feishu callback/app 凭据联调。
+1. F3f：等用户在飞书控制台保存 callback 后，完成真实 `im.message.receive_v1` 入站、`/status` 回复和可选 `verificationToken` 严格校验。
 2. F3g：补 CLI Agent 权限审批回传。
 3. F4：补图片/文件、群聊成员/history context、长回复 group buffer 和治理策略。
