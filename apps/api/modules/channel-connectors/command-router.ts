@@ -20,6 +20,11 @@ import {
 import {
   clearChannelConnectorConversationHistory,
 } from "./conversation-history-store.js";
+import {
+  findChannelConnectorReplyBufferForSession,
+  listChannelConnectorReplyBuffersForSession,
+  type ChannelConnectorReplyBufferRecord,
+} from "./reply-buffer-store.js";
 import type {
   ChannelConnectorRuntimeBinding,
   ChannelConnectorRuntimeProject,
@@ -43,6 +48,7 @@ export interface ChannelConnectorCommandContext {
   controlsPath: string;
   agentSessionsPath: string;
   conversationHistoryPath?: string | null;
+  replyBuffersPath?: string | null;
   gatewayClientKey: string | null;
   listModels?: (endpoint: string, clientKey: string | null) => Promise<string[]>;
 }
@@ -50,7 +56,7 @@ export interface ChannelConnectorCommandContext {
 export interface ChannelConnectorCommandResult {
   handled: boolean;
   command: string | null;
-  action: "help" | "status" | "list" | "set" | "reset" | "new" | "passthrough" | null;
+  action: "help" | "status" | "list" | "show" | "set" | "reset" | "new" | "passthrough" | null;
   ok: boolean | null;
   replyText: string | null;
   control: ChannelConnectorSessionControlRecord | null;
@@ -178,6 +184,10 @@ function isStudioCommand(name: string): boolean {
     "progress",
     "tools",
     "tool",
+    "buffer",
+    "buffers",
+    "reply-buffer",
+    "reply-buffers",
     "new",
     "reset",
     "native",
@@ -201,6 +211,8 @@ function commandHelpText(): string {
     "/display - 查看流式/工具消息开关",
     "/stream <on|off|default> - 开关本会话 IM 进度/流式消息",
     "/tools <on|off|default> - 开关本会话工具/思考消息",
+    "/buffer - 查看本会话最近 reply buffer",
+    "/buffer <id|前缀|latest> - 读取本会话缓存的完整长回复",
     "/new - 开启新 Agent 会话，保留本会话配置",
     "/reset - 清空本 IM 会话 override 和 Agent 续接状态",
     "/native <原生命令> - 强制透传给当前 Agent，例如 /native /help",
@@ -302,6 +314,133 @@ function toggleLabel(value: boolean | null): string {
   if (value === true) return "开启";
   if (value === false) return "关闭";
   return "默认开启";
+}
+
+function bufferPreviewText(value: string, maxRunes = 120): string {
+  const runes = Array.from(value);
+  const preview = runes.slice(0, maxRunes).join("");
+  return runes.length > maxRunes ? `${preview}...` : preview;
+}
+
+function replyBufferListText(records: ChannelConnectorReplyBufferRecord[]): string {
+  if (!records.length) {
+    return [
+      "当前 IM 会话没有缓存的长回复。",
+      "群聊中超长 Agent 回复会自动保存到 reply buffer，并在群内发送 buffer id。",
+    ].join("\n");
+  }
+  const lines = ["本会话最近 reply buffer："];
+  records.forEach((record, index) => {
+    lines.push(`${index + 1}. ${record.id} · ${record.replyRunes} 字符 · ${record.createdAt}`);
+    lines.push(`   ${bufferPreviewText(record.previewText || record.replyText)}`);
+  });
+  lines.push("用法：/buffer <id|前缀|latest>");
+  return lines.join("\n");
+}
+
+function replyBufferRecordText(record: ChannelConnectorReplyBufferRecord): string {
+  return [
+    "Studio Reply Buffer",
+    `ID: ${record.id}`,
+    `Platform: ${record.platform}`,
+    `Created: ${record.createdAt}`,
+    `Message: ${record.messageId || "-"}`,
+    `Length: ${record.replyRunes} 字符`,
+    "",
+    record.replyText,
+  ].join("\n");
+}
+
+function handleReplyBufferCommand(
+  context: ChannelConnectorCommandContext,
+  args: string[],
+  currentControl: ChannelConnectorSessionControlRecord | null,
+  commandName: string,
+): ChannelConnectorCommandResult {
+  const filePath = normalizeString(context.replyBuffersPath);
+  if (!filePath) {
+    return {
+      handled: true,
+      command: commandName,
+      action: "list",
+      ok: false,
+      control: currentControl,
+      replyText: "Reply buffer 尚未启用。",
+      passthroughText: null,
+    };
+  }
+  const target = normalizeString(args.join(" "));
+  if (!target) {
+    const records = listChannelConnectorReplyBuffersForSession(filePath, {
+      ...controlsLookup(context),
+      limit: 10,
+    });
+    return {
+      handled: true,
+      command: commandName,
+      action: "list",
+      ok: true,
+      control: currentControl,
+      replyText: replyBufferListText(records),
+      passthroughText: null,
+    };
+  }
+
+  const records = listChannelConnectorReplyBuffersForSession(filePath, {
+    ...controlsLookup(context),
+    limit: 10,
+  });
+  if (["latest", "last", "newest"].includes(target.toLowerCase())) {
+    const latest = records[0] || null;
+    return {
+      handled: true,
+      command: commandName,
+      action: "show",
+      ok: Boolean(latest),
+      control: currentControl,
+      replyText: latest ? replyBufferRecordText(latest) : replyBufferListText([]),
+      passthroughText: null,
+    };
+  }
+
+  const lookup = findChannelConnectorReplyBufferForSession(filePath, {
+    ...controlsLookup(context),
+    bufferId: target,
+  });
+  if (lookup.record) {
+    return {
+      handled: true,
+      command: commandName,
+      action: "show",
+      ok: true,
+      control: currentControl,
+      replyText: replyBufferRecordText(lookup.record),
+      passthroughText: null,
+    };
+  }
+  if (lookup.matches.length > 1) {
+    return {
+      handled: true,
+      command: commandName,
+      action: "list",
+      ok: false,
+      control: currentControl,
+      replyText: [
+        `前缀匹配到 ${lookup.matches.length} 个 reply buffer，请输入更长 id：`,
+        replyBufferListText(lookup.matches.slice(0, 10)),
+      ].join("\n"),
+      passthroughText: null,
+    };
+  }
+  return {
+    handled: true,
+    command: commandName,
+    action: "list",
+    ok: false,
+    control: currentControl,
+    replyText: `未找到本会话 reply buffer：${target}\n\n${replyBufferListText(records)}`,
+    passthroughText: null,
+  };
 }
 
 export async function listChannelConnectorGatewayModels(endpoint: string, clientKey: string | null): Promise<string[]> {
@@ -718,6 +857,10 @@ export async function handleChannelConnectorCommand(
       replyText: `已更新本 IM 会话显示设置：${changed}。`,
       passthroughText: null,
     };
+  }
+
+  if (name === "buffer" || name === "buffers" || name === "reply-buffer" || name === "reply-buffers") {
+    return handleReplyBufferCommand(context, args, currentControl, name);
   }
 
   if (name === "new") {

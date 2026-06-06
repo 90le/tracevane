@@ -48,4 +48,5 @@
 - 已完成：F4 IM history context：按 session 保存最近 user/assistant 脱敏摘要，Agent prompt 注入短上下文，`/new` / `/reset` 清理 history。
 - 已完成：F4 群聊 context：Agent prompt 注入 channel/sender/bot/reply/mention/成员摘要，飞书完整群成员列表后续再接平台 API。
 - 已完成：F4 长回复 group buffer：群聊长回复保存到本地 buffer，只发送短预览和 buffer id；私聊保持原拆分。
-- 下一步：F4/F5 治理策略、reply buffer 查看命令/UI、飞书完整群成员拉取；Feishu card/menu UI 继续复刻 CC 后再 Studio 化。
+- 已完成：F4 reply buffer 查看：`/buffer` / `/buffer <id|前缀|latest>` 和 Feishu Reply Buffer 子卡片，按当前 binding + session 隔离读取。
+- 下一步：F4/F5 治理策略、飞书完整群成员拉取；Feishu card/menu UI 继续复刻 CC 后再 Studio 化。

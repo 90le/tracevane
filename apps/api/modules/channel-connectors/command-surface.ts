@@ -48,6 +48,7 @@ const FEISHU_MENU_SECTIONS = [
   "model",
   "mode",
   "display",
+  "buffer",
   "workdir",
   "native",
 ] as const;
@@ -61,6 +62,7 @@ const FEISHU_MENU_VIEWS = [
   "model",
   "mode",
   "display",
+  "buffer",
   "workdir",
 ] as const;
 
@@ -72,6 +74,7 @@ const FEISHU_MENU_SECTION_LABELS: Record<FeishuMenuSectionId, string> = {
   model: "模型",
   mode: "权限",
   display: "显示",
+  buffer: "缓存",
   workdir: "目录",
   native: "原生",
 };
@@ -98,6 +101,10 @@ const FEISHU_MENU_SECTION_ALIASES: Record<string, FeishuMenuSectionId> = {
   progress: "display",
   tools: "display",
   tool: "display",
+  buffer: "buffer",
+  buffers: "buffer",
+  "reply-buffer": "buffer",
+  "reply-buffers": "buffer",
   workdir: "workdir",
   dir: "workdir",
   pwd: "workdir",
@@ -138,6 +145,11 @@ const FEISHU_MENU_VIEW_ALIASES: Record<string, FeishuMenuViewId> = {
   tools: "display",
   tool: "display",
   "display-picker": "display",
+  buffer: "buffer",
+  buffers: "buffer",
+  "reply-buffer": "buffer",
+  "reply-buffers": "buffer",
+  "buffer-picker": "buffer",
   workdir: "workdir",
   dir: "workdir",
   pwd: "workdir",
@@ -212,6 +224,7 @@ export function channelConnectorCommandSurfaceViewFromCommand(
   if (name === "model" || name === "models") return "model";
   if (["mode", "permission", "permissions", "yolo"].includes(name)) return "mode";
   if (["display", "stream", "streams", "progress", "tools", "tool"].includes(name)) return "display";
+  if (["buffer", "buffers", "reply-buffer", "reply-buffers"].includes(name)) return "buffer";
   if (["workdir", "dir", "pwd", "cd", "chdir"].includes(name)) return "workdir";
   return null;
 }
@@ -360,6 +373,19 @@ export function buildChannelConnectorCommandSurface(
       actions: [
         action("dir", "Current Dir", "/dir"),
         action("cd-default", "Default Dir", "/cd default", { requiresAdmin: true }),
+      ],
+    },
+    {
+      id: "buffer",
+      title: "Reply Buffer",
+      summary: "群聊长回复的本地缓存；只读取当前 IM session。",
+      actions: [
+        action("buffer-list", "Buffer List", "/buffer", {
+          description: "列出本会话最近缓存的长回复",
+        }),
+        action("buffer-latest", "Latest Buffer", "/buffer latest", {
+          description: "读取本会话最新缓存的完整回复",
+        }),
       ],
     },
     {
@@ -647,6 +673,10 @@ function commandSurfaceItemDescription(item: ChannelConnectorCommandSurfaceActio
       return "恢复 Agent Profile 默认模型";
     case "display-status":
       return "查看流式/工具消息开关";
+    case "buffer-list":
+      return "列出当前 IM session 最近的 reply buffer";
+    case "buffer-latest":
+      return "读取当前 IM session 最新的完整缓存回复";
     case "stream-on":
     case "stream-off":
     case "tools-on":
@@ -1044,6 +1074,43 @@ function renderDisplayCard(surface: ChannelConnectorCommandSurface): ChannelConn
   };
 }
 
+function renderBufferCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
+  const section = sectionById(surface, "buffer");
+  const actions = section?.actions || [];
+  const list = actions.find((item) => item.id === "buffer-list")
+    || action("buffer-list", "Buffer List", "/buffer");
+  const latest = actions.find((item) => item.id === "buffer-latest")
+    || action("buffer-latest", "Latest Buffer", "/buffer latest");
+  const elements: Array<Record<string, unknown>> = [
+    {
+      tag: "markdown",
+      content: [
+        "**Reply Buffer**",
+        "群聊长回复会保存在 Studio 本地，只在群里发送预览和 buffer id。",
+        "",
+        "**读取范围**",
+        "只读取当前 binding 和当前 IM session 的缓存。",
+      ].join("\n"),
+    },
+  ];
+  pushActionRows(elements, [list, latest], surface, 2, true);
+  pushActionRows(elements, [backToHelpAction("buffer")], surface, 1);
+  elements.push({
+    tag: "note",
+    elements: [plainText("也可以直接发送 /buffer <id|前缀|latest>。")],
+  });
+  return {
+    config: {
+      wide_screen_mode: true,
+    },
+    header: {
+      title: plainText("Studio Reply Buffer"),
+      template: "purple",
+    },
+    elements,
+  };
+}
+
 function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
   const section = sectionById(surface, "session");
   const actions = section?.actions || [];
@@ -1131,9 +1198,11 @@ export function renderChannelConnectorCommandSurfaceFeishu(
           ? renderModePickerCard(surface)
           : selectedViewId === "display"
             ? renderDisplayCard(surface)
-            : selectedViewId === "workdir"
-              ? renderWorkdirPickerCard(surface)
-              : renderHelpMenuCard(surface);
+            : selectedViewId === "buffer"
+              ? renderBufferCard(surface)
+              : selectedViewId === "workdir"
+                ? renderWorkdirPickerCard(surface)
+                : renderHelpMenuCard(surface);
   return notice?.text ? withCommandNotice(card, notice) : card;
 }
 

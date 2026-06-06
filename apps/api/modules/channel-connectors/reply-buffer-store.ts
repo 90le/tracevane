@@ -29,6 +29,11 @@ export interface ChannelConnectorBufferedReplyResult {
   previewRunes: number;
 }
 
+export interface ChannelConnectorReplyBufferLookupResult {
+  record: ChannelConnectorReplyBufferRecord | null;
+  matches: ChannelConnectorReplyBufferRecord[];
+}
+
 const DEFAULT_GROUP_REPLY_BUFFER_THRESHOLD_RUNES = 1800;
 const DEFAULT_GROUP_REPLY_PREVIEW_RUNES = 900;
 const MAX_REPLY_BUFFER_RECORDS = 500;
@@ -126,6 +131,20 @@ function bufferId(input: {
   return `rb_${Date.parse(input.createdAt).toString(36)}_${digest}`;
 }
 
+function recordsForSession(
+  records: ChannelConnectorReplyBufferRecord[],
+  input: {
+    bindingId: string;
+    sessionKey: string;
+  },
+): ChannelConnectorReplyBufferRecord[] {
+  const bindingId = normalizeString(input.bindingId);
+  const sessionKey = normalizeString(input.sessionKey);
+  return records
+    .filter((record) => record.bindingId === bindingId && record.sessionKey === sessionKey)
+    .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt));
+}
+
 export function prepareChannelConnectorGroupBufferedReply(input: {
   filePath: string;
   bindingId: string;
@@ -187,4 +206,30 @@ export function prepareChannelConnectorGroupBufferedReply(input: {
 
 export function readChannelConnectorReplyBuffers(filePath: string): ChannelConnectorReplyBufferState {
   return readState(filePath);
+}
+
+export function listChannelConnectorReplyBuffersForSession(filePath: string, input: {
+  bindingId: string;
+  sessionKey: string;
+  limit?: number;
+}): ChannelConnectorReplyBufferRecord[] {
+  const limit = Math.max(1, Math.min(50, Number(input.limit || 10)));
+  return recordsForSession(readState(filePath).records, input).slice(0, limit);
+}
+
+export function findChannelConnectorReplyBufferForSession(filePath: string, input: {
+  bindingId: string;
+  sessionKey: string;
+  bufferId: string;
+}): ChannelConnectorReplyBufferLookupResult {
+  const target = normalizeString(input.bufferId);
+  const records = recordsForSession(readState(filePath).records, input);
+  if (!target) return { record: null, matches: records };
+  const exact = records.find((record) => record.id === target);
+  if (exact) return { record: exact, matches: [exact] };
+  const matches = records.filter((record) => record.id.startsWith(target));
+  return {
+    record: matches.length === 1 ? matches[0] || null : null,
+    matches,
+  };
 }

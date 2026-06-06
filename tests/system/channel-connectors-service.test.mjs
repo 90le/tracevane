@@ -1436,6 +1436,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   const controlsPath = path.join(stateDir, "channel-session-controls.json");
   const agentSessionsPath = path.join(stateDir, "channel-sessions.json");
   const conversationHistoryPath = path.join(stateDir, "channel-history.json");
+  const replyBuffersPath = path.join(stateDir, "channel-reply-buffers.json");
   const codexProject = {
     id: "codex-main",
     name: "Codex main",
@@ -1498,6 +1499,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     controlsPath,
     agentSessionsPath,
     conversationHistoryPath,
+    replyBuffersPath,
     gatewayClientKey: "sk-local",
     listModels: async () => ["gpt-5", "gpt-5.5", "claude-sonnet"],
   };
@@ -1518,6 +1520,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(help.replyText, /\/mode/);
   assert.match(help.replyText, /\/stream/);
   assert.match(help.replyText, /\/tools/);
+  assert.match(help.replyText, /\/buffer/);
 
   for (const alias of ["/command", "/cmd"]) {
     const aliasHelp = await handleChannelConnectorCommand({
@@ -1538,6 +1541,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     ["/display", "list"],
     ["/stream", "list"],
     ["/tools", "list"],
+    ["/buffer", "list"],
   ];
   for (const [command, action] of listSlashCommands) {
     const result = await handleChannelConnectorCommand({
@@ -1595,6 +1599,63 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(displayDefault.ok, true);
   assert.equal(displayDefault.control.streamMessages, null);
   assert.equal(displayDefault.control.toolMessages, null);
+
+  const sameSessionReply = `完整群聊回复 ${"buffer内容".repeat(80)}`;
+  const sameSessionBuffer = prepareChannelConnectorGroupBufferedReply({
+    filePath: replyBuffersPath,
+    bindingId: binding.id,
+    sessionKey: baseContext.sessionKey,
+    messageId: "m-buffer-same-session",
+    platform: "octo",
+    replyText: sameSessionReply,
+    isGroup: true,
+    thresholdRunes: 20,
+    previewRunes: 40,
+    now: new Date("2026-06-06T09:00:00.000Z"),
+  });
+  const otherSessionBuffer = prepareChannelConnectorGroupBufferedReply({
+    filePath: replyBuffersPath,
+    bindingId: binding.id,
+    sessionKey: "dmwork:dm:other-user",
+    messageId: "m-buffer-other-session",
+    platform: "octo",
+    replyText: `其它会话回复 ${"secret".repeat(80)}`,
+    isGroup: true,
+    thresholdRunes: 20,
+    previewRunes: 40,
+    now: new Date("2026-06-06T09:01:00.000Z"),
+  });
+  assert.ok(sameSessionBuffer.bufferId);
+  assert.ok(otherSessionBuffer.bufferId);
+  const bufferList = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/buffer"),
+  });
+  assert.equal(bufferList.ok, true);
+  assert.match(bufferList.replyText, new RegExp(sameSessionBuffer.bufferId));
+  assert.doesNotMatch(bufferList.replyText, new RegExp(otherSessionBuffer.bufferId));
+  const bufferLatest = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/buffer latest"),
+  });
+  assert.equal(bufferLatest.ok, true);
+  assert.equal(bufferLatest.action, "show");
+  assert.match(bufferLatest.replyText, /Studio Reply Buffer/);
+  assert.match(bufferLatest.replyText, new RegExp(sameSessionBuffer.bufferId));
+  assert.match(bufferLatest.replyText, /完整群聊回复/);
+  const bufferByPrefix = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message(`/buffer ${sameSessionBuffer.bufferId.slice(0, 18)}`),
+  });
+  assert.equal(bufferByPrefix.ok, true);
+  assert.equal(bufferByPrefix.action, "show");
+  assert.equal(bufferByPrefix.replyText, bufferLatest.replyText);
+  const otherSessionDenied = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message(`/buffer ${otherSessionBuffer.bufferId}`),
+  });
+  assert.equal(otherSessionDenied.ok, false);
+  assert.doesNotMatch(otherSessionDenied.replyText, /其它会话回复/);
 
   const passthrough = await handleChannelConnectorCommand({
     ...baseContext,
@@ -1906,6 +1967,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(raw, /当前 Agent/);
   assert.match(raw, /\/help model/);
   assert.match(raw, /\/help display/);
+  assert.match(raw, /\/help buffer/);
   assert.match(raw, /New Session/);
   assert.doesNotMatch(raw, /\/mode yolo/);
   assert.ok(feishu.elements.some((element) => element.tag === "column_set" && element.flex_mode === "bisect"));
@@ -2019,6 +2081,20 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(displayCardRaw, /act:\/display default/);
   assert.match(displayCardRaw, /nav:\/help display/);
 
+  const bufferSurface = buildChannelConnectorCommandSurface({
+    config: runtimeConfig,
+    project: codexProject,
+    binding,
+    sessionKey: "dmwork:dm:admin-1",
+    selectedSectionId: "buffer",
+    selectedViewId: "buffer",
+  });
+  const bufferCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(bufferSurface));
+  assert.match(bufferCardRaw, /Studio Reply Buffer/);
+  assert.match(bufferCardRaw, /act:\/buffer/);
+  assert.match(bufferCardRaw, /act:\/buffer latest/);
+  assert.match(bufferCardRaw, /nav:\/help buffer/);
+
   const parsed = extractChannelConnectorCommandFromActionValue({
     action: "act:/agent claude-main",
     command: "/agent claude-main",
@@ -2081,6 +2157,13 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.equal(noisyActionPayload.command, "/mode yolo");
   assert.equal(noisyActionPayload.actionKind, "act");
   assert.equal(noisyActionPayload.targetViewId, "mode");
+  const bufferNavPayload = extractChannelConnectorSurfaceActionPayload("nav:/help buffer");
+  assert.equal(bufferNavPayload.targetSectionId, "buffer");
+  assert.equal(bufferNavPayload.targetViewId, "help");
+  const bufferActionPayload = extractChannelConnectorSurfaceActionPayload("act:/buffer latest");
+  assert.equal(bufferActionPayload.command, "/buffer latest");
+  assert.equal(bufferActionPayload.targetSectionId, "buffer");
+  assert.equal(bufferActionPayload.targetViewId, "buffer");
 });
 
 test("native Channel Connectors Feishu webhook parses live envelopes and reuses command router", async () => {

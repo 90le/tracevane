@@ -922,6 +922,7 @@ function shouldRenderFeishuCommandCard(command: ReturnType<typeof handleChannelC
     "help",
     "status",
     "list",
+    "show",
     "set",
     "new",
     "reset",
@@ -1131,12 +1132,13 @@ function feishuCommandNotice(input: {
   if (!text) return null;
   const action = input.command.action;
   const title = action === "status" ? "当前状态"
-    : action === "set" ? "设置已应用"
-      : action === "new" ? "新会话已开启"
-        : action === "reset" ? "会话已重置"
-          : action === "list" ? "可选项"
-            : action === "passthrough" ? "已发送给 Agent"
-              : "执行结果";
+    : action === "show" ? "缓存内容"
+      : action === "set" ? "设置已应用"
+        : action === "new" ? "新会话已开启"
+          : action === "reset" ? "会话已重置"
+            : action === "list" ? "可选项"
+              : action === "passthrough" ? "已发送给 Agent"
+                : "执行结果";
   return {
     title,
     text,
@@ -1386,6 +1388,7 @@ async function dispatchOctoMessage(input: {
     controlsPath: sessionControlsPath(config),
     agentSessionsPath: agentSessionsPath(config),
     conversationHistoryPath: conversationHistoryPath(config),
+    replyBuffersPath: replyBufferPath(config),
     gatewayClientKey: key,
   });
   if (command.handled) {
@@ -1824,6 +1827,7 @@ async function dispatchFeishuParsedEvent(input: {
     controlsPath: sessionControlsPath(config),
     agentSessionsPath: agentSessionsPath(config),
     conversationHistoryPath: conversationHistoryPath(config),
+    replyBuffersPath: replyBufferPath(config),
     gatewayClientKey: key,
   });
 
@@ -1838,6 +1842,7 @@ async function dispatchFeishuParsedEvent(input: {
       actionKind: actionPayload.actionKind,
     });
     const shouldSendCard = feishuCardsEnabled(binding)
+      && command.action !== "show"
       && (parsed.kind === "card-action" || parsed.kind === "bot-menu" || shouldRenderFeishuCommandCard(command));
     if (shouldSendCard) {
       const result = await sendOrPatchFeishuCommandCard({

@@ -994,12 +994,13 @@ function commandActionNotice(
   const text = normalizeString(commandResult.replyText || commandResult.passthroughText);
   if (!text) return null;
   const title = commandResult.action === "status" ? "当前状态"
-    : commandResult.action === "set" ? "设置已应用"
-      : commandResult.action === "new" ? "新会话已开启"
-        : commandResult.action === "reset" ? "会话已重置"
-          : commandResult.action === "list" ? "可选项"
-            : commandResult.action === "passthrough" ? "已发送给 Agent"
-              : "执行结果";
+    : commandResult.action === "show" ? "缓存内容"
+      : commandResult.action === "set" ? "设置已应用"
+        : commandResult.action === "new" ? "新会话已开启"
+          : commandResult.action === "reset" ? "会话已重置"
+            : commandResult.action === "list" ? "可选项"
+              : commandResult.action === "passthrough" ? "已发送给 Agent"
+                : "执行结果";
   return {
     title,
     text,
@@ -1163,6 +1164,10 @@ function verifyFeishuWebhookToken(
 
 function commandSurfaceControlsPath(runtimeConfig: ChannelConnectorsDaemonRuntimeConfig): string {
   return path.join(runtimeConfig.paths.state, "channel-session-controls.json");
+}
+
+function commandSurfaceReplyBuffersPath(runtimeConfig: ChannelConnectorsDaemonRuntimeConfig): string {
+  return path.join(runtimeConfig.paths.state, "channel-reply-buffers.json");
 }
 
 function bindingPolicy(): ChannelConnectorsBindingPolicy {
@@ -1365,6 +1370,7 @@ export function createChannelConnectorsService(
       controlsPath,
       agentSessionsPath: path.join(runtimeConfig.paths.state, "channel-sessions.json"),
       conversationHistoryPath: path.join(runtimeConfig.paths.state, "channel-history.json"),
+      replyBuffersPath: commandSurfaceReplyBuffersPath(runtimeConfig),
       gatewayClientKey: null,
       listModels: async () => commandModels,
       message: {
