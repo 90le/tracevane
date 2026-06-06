@@ -22,6 +22,8 @@ import {
   type ChannelConnectorsLogsResponse,
   type ChannelConnectorsNativeConfig,
   type ChannelConnectorsNativeConfigResponse,
+  type ChannelConnectorCommandSurfaceRequest,
+  type ChannelConnectorCommandSurfaceResponse,
   type ChannelConnectorsSaveNativeConfigRequest,
   type ChannelConnectorsStatusResponse,
   type ChannelConnectorOctoDispatchResponse,
@@ -49,6 +51,11 @@ import {
   sendOctoTextReply,
   sendOctoTyping,
 } from "./octo-transport.js";
+import {
+  buildChannelConnectorCommandSurface,
+  renderChannelConnectorCommandSurfaceFeishu,
+} from "./command-surface.js";
+import { getChannelConnectorSessionControl } from "./session-control-store.js";
 
 const execFileAsync = promisify(execFile);
 const DAEMON_ACTIONS: readonly ChannelConnectorsDaemonAction[] = [
@@ -84,6 +91,7 @@ export interface ChannelConnectorsService {
   getStatus(): Promise<ChannelConnectorsStatusResponse>;
   getNativeConfig(): ChannelConnectorsNativeConfigResponse;
   saveNativeConfig(payload?: ChannelConnectorsSaveNativeConfigRequest): ChannelConnectorsNativeConfigResponse;
+  getCommandSurface(payload?: ChannelConnectorCommandSurfaceRequest): ChannelConnectorCommandSurfaceResponse;
   dispatchOctoIncoming(payload?: ChannelConnectorOctoInboundRequest): Promise<ChannelConnectorOctoDispatchResponse>;
   runOctoTransportSmoke(payload?: ChannelConnectorOctoTransportSmokeRequest): Promise<ChannelConnectorOctoTransportSmokeResponse>;
   getDaemonConfig(): ChannelConnectorsDaemonConfigResponse;
@@ -823,6 +831,19 @@ function normalizeOctoTransportSmokeRequest(payload: ChannelConnectorOctoTranspo
   };
 }
 
+function normalizeCommandSurfaceRequest(payload: ChannelConnectorCommandSurfaceRequest | undefined): ChannelConnectorCommandSurfaceRequest {
+  if (!payload || !isRecord(payload)) return { renderer: "all" };
+  const renderer = payload.renderer === "text" || payload.renderer === "feishu" || payload.renderer === "all"
+    ? payload.renderer
+    : "all";
+  return {
+    bindingId: normalizeString(payload.bindingId) || null,
+    sessionKey: normalizeString(payload.sessionKey) || null,
+    renderer,
+    models: stringList(payload.models),
+  };
+}
+
 function resolveOctoBindingById(
   nativeConfig: ChannelConnectorsNativeConfig,
   bindingId: string | null | undefined,
@@ -836,6 +857,34 @@ function resolveOctoBindingById(
   if (!binding) return null;
   const agentProfile = nativeConfig.agentProfiles.find((profile) => profile.id === binding.agentProfileId);
   return agentProfile ? { binding, agentProfile } : null;
+}
+
+function resolveRuntimeBindingById(
+  nativeConfig: ChannelConnectorsNativeConfig,
+  runtimeConfig: ChannelConnectorsDaemonRuntimeConfig,
+  bindingId: string | null | undefined,
+): {
+  binding: ChannelConnectorsNativeConfig["platformBindings"][number];
+  agentProfile: ChannelConnectorsNativeConfig["agentProfiles"][number];
+  project: ChannelConnectorsDaemonRuntimeConfig["projects"][number];
+  runtimeBinding: ChannelConnectorsDaemonRuntimeConfig["projects"][number]["platformBindings"][number];
+} | null {
+  const enabledBindings = nativeConfig.platformBindings.filter((binding) => binding.enabled);
+  const binding = bindingId
+    ? enabledBindings.find((candidate) => candidate.id === bindingId)
+    : enabledBindings.length === 1
+      ? enabledBindings[0]
+      : null;
+  if (!binding) return null;
+  const agentProfile = nativeConfig.agentProfiles.find((profile) => profile.id === binding.agentProfileId);
+  const project = runtimeConfig.projects.find((candidate) => candidate.id === binding.agentProfileId);
+  const runtimeBinding = project?.platformBindings.find((candidate) => candidate.id === binding.id);
+  if (!agentProfile || !project || !runtimeBinding) return null;
+  return { binding, agentProfile, project, runtimeBinding };
+}
+
+function commandSurfaceControlsPath(runtimeConfig: ChannelConnectorsDaemonRuntimeConfig): string {
+  return path.join(runtimeConfig.paths.state, "channel-session-controls.json");
 }
 
 function bindingPolicy(): ChannelConnectorsBindingPolicy {
@@ -898,6 +947,52 @@ export function createChannelConnectorsService(
       supportedAgents: [...CHANNEL_CONNECTOR_AGENT_IDS],
       supportedPlatforms: [...CHANNEL_CONNECTOR_PLATFORM_IDS],
       permissionModes: [...PERMISSION_MODES],
+    };
+  }
+
+  function getCommandSurface(payload: ChannelConnectorCommandSurfaceRequest = {}): ChannelConnectorCommandSurfaceResponse {
+    const request = normalizeCommandSurfaceRequest(payload);
+    const resolvedPaths = paths();
+    const checkedAt = now().toISOString();
+    const nativeConfig = readNativeConfig(config, resolvedPaths, now());
+    const runtimeConfig = buildRuntimeConfig(nativeConfig, resolvedPaths);
+    const resolved = resolveRuntimeBindingById(nativeConfig, runtimeConfig, request.bindingId);
+    if (!resolved) {
+      return {
+        ok: true,
+        checkedAt,
+        renderer: request.renderer || "all",
+        binding: null,
+        agentProfile: null,
+        surface: null,
+        textFallback: null,
+        feishuCard: null,
+      };
+    }
+
+    const control = request.sessionKey
+      ? getChannelConnectorSessionControl(commandSurfaceControlsPath(runtimeConfig), {
+        bindingId: resolved.binding.id,
+        sessionKey: request.sessionKey,
+      })
+      : null;
+    const surface = buildChannelConnectorCommandSurface({
+      config: runtimeConfig,
+      project: resolved.project,
+      binding: resolved.runtimeBinding,
+      control,
+      sessionKey: request.sessionKey,
+      models: request.models,
+    });
+    return {
+      ok: true,
+      checkedAt,
+      renderer: request.renderer || "all",
+      binding: resolved.binding,
+      agentProfile: resolved.agentProfile,
+      surface,
+      textFallback: surface.textFallback,
+      feishuCard: request.renderer === "text" ? null : renderChannelConnectorCommandSurfaceFeishu(surface),
     };
   }
 
@@ -1224,6 +1319,7 @@ export function createChannelConnectorsService(
     getStatus,
     getNativeConfig: currentNativeConfig,
     saveNativeConfig,
+    getCommandSurface,
     dispatchOctoIncoming,
     runOctoTransportSmoke,
     getDaemonConfig: currentConfig,

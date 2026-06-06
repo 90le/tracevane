@@ -26,6 +26,11 @@ import {
   upsertChannelConnectorAgentSession,
 } from "../../dist/apps/api/modules/channel-connectors/agent-session-store.js";
 import {
+  buildChannelConnectorCommandSurface,
+  extractChannelConnectorCommandFromActionValue,
+  renderChannelConnectorCommandSurfaceFeishu,
+} from "../../dist/apps/api/modules/channel-connectors/command-surface.js";
+import {
   handleChannelConnectorCommand,
   resolveChannelConnectorEffectiveProject,
 } from "../../dist/apps/api/modules/channel-connectors/command-router.js";
@@ -1131,6 +1136,96 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   }), null);
 });
 
+test("native Channel Connectors command surface renders text and Feishu card actions", () => {
+  const root = makeTempRoot();
+  const stateDir = path.join(root, "state");
+  const codexProject = {
+    id: "codex-main",
+    name: "Codex main",
+    workDir: path.join(root, "codex-work"),
+    agent: "codex",
+    model: "gpt-5",
+    permissionMode: "suggest",
+    gatewayEndpoint: "http://127.0.0.1:18796/v1",
+    gatewayKeyRef: "studio-gateway-client-key",
+    appProfileRef: "codex",
+    platformBindings: [],
+  };
+  const claudeProject = {
+    id: "claude-main",
+    name: "Claude main",
+    workDir: path.join(root, "claude-work"),
+    agent: "claude-code",
+    model: "claude-sonnet",
+    permissionMode: "plan",
+    gatewayEndpoint: "http://127.0.0.1:18796/v1",
+    gatewayKeyRef: "studio-gateway-client-key",
+    appProfileRef: "claude",
+    platformBindings: [],
+  };
+  const binding = {
+    id: "octo-codex",
+    platform: "octo",
+    accountId: "octo-account",
+    botId: "robot-1",
+    displayName: "Octo Codex",
+    agent: "codex",
+    enabled: true,
+    allowlist: [],
+    adminUsers: ["admin-1"],
+    metadata: {},
+  };
+  codexProject.platformBindings = [binding];
+  const runtimeConfig = {
+    version: 1,
+    management: { host: "127.0.0.1", port: 18797 },
+    paths: {
+      root,
+      state: stateDir,
+      log: path.join(root, "logs", "channel.log"),
+      runtime: path.join(root, "runtime.json"),
+      octoEvents: path.join(stateDir, "octo-events.jsonl"),
+    },
+    gateway: {
+      endpoint: "http://127.0.0.1:18796/v1",
+      clientKeyRef: "studio-gateway-client-key",
+    },
+    projects: [codexProject, claudeProject],
+  };
+
+  const surface = buildChannelConnectorCommandSurface({
+    config: runtimeConfig,
+    project: codexProject,
+    binding,
+    sessionKey: "dmwork:dm:admin-1",
+    models: ["gpt-5", "gpt-5.5"],
+  });
+
+  assert.equal(surface.current.bindingId, "octo-codex");
+  assert.equal(surface.current.projectId, "codex-main");
+  assert.match(surface.textFallback, /skills\/native/);
+  assert.match(surface.textFallback, /\/agent claude-main/);
+  const nativeSection = surface.sections.find((section) => section.id === "native");
+  assert.ok(nativeSection);
+  assert.equal(nativeSection.actions[0].nativePassthrough, true);
+  assert.equal(nativeSection.actions[0].command, "/native /help");
+
+  const feishu = renderChannelConnectorCommandSurfaceFeishu(surface);
+  assert.equal(feishu.config.wide_screen_mode, true);
+  assert.equal(feishu.header.title.content, "Studio Channel Menu");
+  const raw = JSON.stringify(feishu);
+  assert.match(raw, /column_set/);
+  assert.match(raw, /surface_action_id/);
+  assert.match(raw, /session_key/);
+  assert.match(raw, /\/mode yolo/);
+
+  const parsed = extractChannelConnectorCommandFromActionValue({
+    action: "/agent claude-main",
+    session_key: "dmwork:dm:admin-1",
+  });
+  assert.equal(parsed, "/agent claude-main");
+});
+
 test("native Channel Connectors process runner streams progress events from agent JSONL", async () => {
   const root = makeTempRoot();
   const progress = [];
@@ -1240,6 +1335,22 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     });
     assert.equal(savedConfig.status, 200);
     assert.equal(savedConfig.body.config.agentProfiles[0].agent, "opencode");
+
+    const commandSurface = await requestJson(`${baseUrl}/api/channel-connectors/commands/surface`, {
+      method: "POST",
+      body: {
+        bindingId: "octo-route",
+        sessionKey: "dmwork:dm:route-user",
+        renderer: "all",
+        models: ["gpt-5", "gpt-5.5"],
+      },
+    });
+    assert.equal(commandSurface.status, 200);
+    assert.equal(commandSurface.body.binding.id, "octo-route");
+    assert.equal(commandSurface.body.agentProfile.agent, "opencode");
+    assert.equal(commandSurface.body.surface.current.projectId, "opencode-main");
+    assert.match(commandSurface.body.textFallback, /\/native \/help/);
+    assert.match(JSON.stringify(commandSurface.body.feishuCard), /\/model gpt-5\.5/);
 
     const octoSmoke = await requestJson(`${baseUrl}/api/channel-connectors/adapters/octo/incoming`, {
       method: "POST",

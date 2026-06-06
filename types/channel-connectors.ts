@@ -177,6 +177,74 @@ export interface ChannelConnectorOctoDispatchResponse {
   };
 }
 
+export type ChannelConnectorCommandSurfaceRenderer = "text" | "feishu" | "all";
+export type ChannelConnectorCommandSurfaceTone = "default" | "primary" | "danger";
+
+export interface ChannelConnectorCommandSurfaceAction {
+  id: string;
+  label: string;
+  command: string;
+  tone: ChannelConnectorCommandSurfaceTone;
+  description: string | null;
+  requiresAdmin: boolean;
+  nativePassthrough: boolean;
+}
+
+export interface ChannelConnectorCommandSurfaceSection {
+  id: string;
+  title: string;
+  summary: string | null;
+  actions: ChannelConnectorCommandSurfaceAction[];
+}
+
+export interface ChannelConnectorCommandSurface {
+  version: 1;
+  title: string;
+  current: {
+    bindingId: string;
+    sessionKey: string | null;
+    projectId: string;
+    agent: ChannelConnectorAgentId;
+    model: string | null;
+    permissionMode: ChannelConnectorPermissionMode;
+    workDir: string;
+  };
+  sections: ChannelConnectorCommandSurfaceSection[];
+  textFallback: string;
+}
+
+export interface ChannelConnectorFeishuInteractiveCard {
+  config: {
+    wide_screen_mode: true;
+  };
+  header?: {
+    title: {
+      tag: "plain_text";
+      content: string;
+    };
+    template: string;
+  };
+  elements: Array<Record<string, unknown>>;
+}
+
+export interface ChannelConnectorCommandSurfaceRequest {
+  bindingId?: string | null;
+  sessionKey?: string | null;
+  renderer?: ChannelConnectorCommandSurfaceRenderer;
+  models?: string[];
+}
+
+export interface ChannelConnectorCommandSurfaceResponse {
+  ok: true;
+  checkedAt: string;
+  renderer: ChannelConnectorCommandSurfaceRenderer;
+  binding: ChannelConnectorPlatformBinding | null;
+  agentProfile: ChannelConnectorAgentProfile | null;
+  surface: ChannelConnectorCommandSurface | null;
+  textFallback: string | null;
+  feishuCard: ChannelConnectorFeishuInteractiveCard | null;
+}
+
 export type ChannelConnectorsSupervisorKind =
   | "systemd-user"
   | "launchd-user"

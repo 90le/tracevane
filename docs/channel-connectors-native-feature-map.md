@@ -23,7 +23,7 @@
 | Messages | text、image、file、voice、reply、thread、mention、stream preview、long split | incoming/reply/attachment/voice/thread contract + renderer | F4 |
 | Sessions | session key、续接、重置、workdir 切换、cron reply target、跨 channel context、IM 内切 Agent/model/mode | Studio session store、bot/account -> Agent context、session override、观测和审计 | F3-F7 |
 | Governance | allow_from、admin、rate limit、outgoing limit、banned words、run_as_user | allowlist/admin/rate/banned/permission/run-as/audit policy | F5 |
-| Automation | slash command、Agent 原生命令透传、菜单、Feishu card、cron、hook、relay、management API | Studio native command contract；普通平台文本命令，未知 slash 透传，Feishu 等 rich 平台渲染卡片/菜单 | F3-F5 |
+| Automation | slash command、Agent 原生命令透传、菜单、Feishu card、cron、hook、relay、management API | Studio native command contract；普通平台文本命令，未知 slash 透传，rich 平台消费 command surface | F3-F5 |
 
 ## 当前落点
 
@@ -35,4 +35,5 @@
 - 已完成：F3c daemon slice：Octo register credential cache、WuKongIM WebSocket CONNECT/CONNACK/heartbeat/RECVACK/AES 解密、runtime status、Codex/Claude Code/OpenCode 一次性 CLI runner 合同。
 - 已完成：F3d 真实 Octo DM 文本往返、Codex session resume、runner progress/failure observability：用户消息入站 -> Codex CLI Agent -> Studio Gateway -> Octo sendMessage；同一 IM session 续接同一 Codex thread；daemon `/status` 暴露 `activeRuns`，事件日志记录 start/progress/finish，失败会发短回执。
 - 已完成：F3e IM command control + native passthrough：`/help`、`/status`、`/agent`、`/model`、`/mode`、`/dir`、`/cd`、`/new`、`/reset`；session override 独立存储，`/mode yolo` 等只作用于当前 IM session；未知 `/xxx` 默认透传给当前 Agent，冲突命令用 `/native <命令>`；`/model` 后继续复用同一 Codex thread，`/cd` 和 `/new` 会断开旧续接。
-- 下一步：F3f Feishu card/menu renderer；F3g 权限审批回传。
+- 已完成：F3f command surface contract：`/api/channel-connectors/commands/surface` 输出 text fallback、平台无关 sections/actions、Feishu card JSON 和 action payload 解析；Agent skills/native slash 不在 Studio 内重建，默认透传到当前 Agent CLI。
+- 下一步：F3f adapter callback wiring；F3g 权限审批回传。

@@ -1,4 +1,6 @@
 import type {
+  ChannelConnectorCommandSurfaceRequest,
+  ChannelConnectorCommandSurfaceResponse,
   ChannelConnectorsDaemonAction,
   ChannelConnectorsDaemonConfigResponse,
   ChannelConnectorsDaemonRequest,
@@ -32,6 +34,15 @@ export function saveChannelConnectorsNativeConfig(
   return requestJson<ChannelConnectorsNativeConfigResponse>(
     '/api/channel-connectors/config',
     jsonBody(payload, 'PUT'),
+  );
+}
+
+export function previewChannelConnectorCommandSurface(
+  payload: ChannelConnectorCommandSurfaceRequest = {},
+): Promise<ChannelConnectorCommandSurfaceResponse> {
+  return requestJson<ChannelConnectorCommandSurfaceResponse>(
+    '/api/channel-connectors/commands/surface',
+    jsonBody(payload),
   );
 }
 

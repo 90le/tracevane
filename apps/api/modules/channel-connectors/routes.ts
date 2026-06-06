@@ -2,6 +2,7 @@ import { parseJsonBody, sendJson } from "../../core/http.js";
 import type { StudioRouter } from "../../core/router.js";
 import type {
   ChannelConnectorsDaemonRequest,
+  ChannelConnectorCommandSurfaceRequest,
   ChannelConnectorsSaveNativeConfigRequest,
   ChannelConnectorOctoInboundRequest,
   ChannelConnectorOctoTransportSmokeRequest,
@@ -36,6 +37,15 @@ export function registerChannelConnectorsRoutes(router: StudioRouter): void {
     try {
       const payload = await parseJsonBody<ChannelConnectorsSaveNativeConfigRequest>(req);
       sendJson(res, 200, routeCtx.services.channelConnectors.saveNativeConfig(payload));
+    } catch (error) {
+      sendChannelConnectorsError(res, error);
+    }
+  });
+
+  router.post("/api/channel-connectors/commands/surface", async (req, res, routeCtx) => {
+    try {
+      const payload = await parseJsonBody<ChannelConnectorCommandSurfaceRequest>(req);
+      sendJson(res, 200, routeCtx.services.channelConnectors.getCommandSurface(payload));
     } catch (error) {
       sendChannelConnectorsError(res, error);
     }

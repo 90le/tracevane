@@ -1,6 +1,6 @@
 # Channel Connectors / CLI Agent Bot 原生方案
 
-> 状态：已切换为 Studio 原生实现路线；F3e IM command control + native passthrough 已完成
+> 状态：已切换为 Studio 原生实现路线；F3f command surface contract 已完成
 > 更新：2026-06-06
 > 参考源：CC 二开全量源码 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`；OpenClaw 频道与运行时实现；压缩映射见 `channel-connectors-native-feature-map.md`
 
@@ -69,6 +69,7 @@ Studio 增强点：
 - 使用 OpenClaw channel/account/bot 经验做账号绑定和状态显示，但运行期不依赖 OpenClaw。
 - IM 内命令和 Studio UI 共用同一个 typed 状态：普通平台走文本命令，Feishu 等 rich 平台走卡片/菜单，最终都落到 session override 或受控全局配置。
 - 用户应能通过 IM 使用当前 Agent 的大部分原生 slash 功能：Studio 只拦截少量跨 Agent 控制命令，未知 `/xxx` 默认透传；与 Studio 命令冲突时用 `/native <命令>`。
+- Agent skills/native slash 不在 Studio 里重复实现；Studio 只提供透传入口和少量会话控制，避免把 IM 控制面做臃肿。
 - 暂不通过 IM 直接开放高风险全局配置、系统服务启停、Provider secret 修改；这些留在 Studio UI 或后续受审批的 admin 命令。
 
 核心绑定规则：
@@ -85,7 +86,7 @@ Studio 增强点：
 | --- | --- |
 | F1 | 已完成：native daemon skeleton、service/config/status/logs、独立页面、守护边界测试 |
 | F2 | 已完成：CC/OpenClaw 能力映射、typed config store、Agent Profile、工作目录、模型、权限、Gateway key ref、platform/bot binding |
-| F3 | 已完成核心合同：Octo(dmwork) adapter、REST transport、daemon register/cache/WuKongIM WebSocket、Codex CLI Agent runner、真实 Octo DM 文本往返、Codex session resume、运行中/失败可观测、IM command control + native passthrough |
+| F3 | 已完成核心合同：Octo(dmwork) adapter、REST transport、daemon register/cache/WuKongIM WebSocket、Codex CLI Agent runner、真实 Octo DM 文本往返、Codex session resume、运行中/失败可观测、IM command control、native passthrough、command surface |
 | F4 | 补齐核心消息能力：图片/文件、语音、群聊 mention、thread/reply、流式预览、长回复拆分 |
 | F5 | 治理与自动化：allowlist、admin、rate limit、banned words、slash command、cron、hooks、relay、management API |
 | F6 | 飞书、微信/企业微信；继续迁移钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等 CC 平台 |
@@ -106,9 +107,10 @@ Studio 增强点：
 - Channel daemon 已支持 runner JSONL progress、`activeRuns` status、Octo event start/progress/finish、typing pulse 和失败短回执。
 - Channel daemon 已支持 `/help`、`/status`、`/agent`、`/model`、`/mode`、`/dir`、`/cd`、`/new`、`/reset`；override 按 IM session 存储，模型切换不切断 Codex thread，workdir/new session 会断开旧续接。
 - Channel daemon 已支持 Agent 原生命令透传：未知 `/xxx` 直接转给当前 Agent，`/native <命令>` 用于透传与 Studio 命令同名的原生命令。
+- Channel Connectors 已支持 command surface preview：text fallback、平台无关 action sections、Feishu card JSON、action payload -> command 解析。
 
 ## 6. 下一步
 
-1. F3f：补 Feishu card/menu renderer 与 bot menu 事件。
+1. F3f：接 Feishu bot menu/card callback，把 action value 转回 command-router。
 2. F3g：补 CLI Agent 权限审批回传。
 3. F4：补图片/文件、群聊成员/history context、长回复 group buffer 和治理策略。
