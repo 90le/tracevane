@@ -5,6 +5,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { WebSocketServer } from "ws";
 
 import {
   createStudioContext,
@@ -14,6 +15,15 @@ import {
   createChannelConnectorsService,
   resolveChannelConnectorsPaths,
 } from "../../dist/apps/api/modules/channel-connectors/service.js";
+import {
+  buildChannelConnectorAgentProcessRequest,
+  runChannelConnectorAgentTurn,
+} from "../../dist/apps/api/modules/channel-connectors/agent-runner.js";
+import {
+  createOctoX25519KeyPair,
+  decodeOctoConnectPacket,
+  encodeOctoConnackPacket,
+} from "../../dist/apps/api/modules/channel-connectors/octo-wukong.js";
 
 function makeTempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-connectors-"));
@@ -635,6 +645,119 @@ test("Octo incoming can send rendered reply through REST transport when opted in
   });
 });
 
+test("native Channel Connectors agent runner builds gateway-backed Codex turns", async () => {
+  const root = makeTempRoot();
+  const workDir = path.join(root, "work");
+  const project = {
+    id: "codex-main",
+    name: "Codex main",
+    workDir,
+    agent: "codex",
+    model: "gpt-5",
+    permissionMode: "auto-edit",
+    gatewayEndpoint: "http://127.0.0.1:18796/v1",
+    gatewayKeyRef: "studio-gateway-client-key",
+    appProfileRef: "codex",
+    platformBindings: [],
+  };
+  const binding = {
+    id: "octo-codex",
+    platform: "octo",
+    accountId: "octo-account",
+    botId: "robot-1",
+    displayName: "Octo Codex",
+    agent: "codex",
+    enabled: true,
+    allowlist: [],
+    adminUsers: [],
+    metadata: {},
+  };
+  const message = {
+    messageId: "m-runner-1",
+    fromUid: "user-1",
+    channelId: "user-1",
+    channelType: 1,
+    payload: { type: 1, content: "hi codex" },
+  };
+
+  const processRequest = buildChannelConnectorAgentProcessRequest({
+    project,
+    binding,
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+  });
+  assert.ok(processRequest);
+  assert.equal(processRequest.command, "codex");
+  assert.deepEqual(processRequest.args.slice(0, 4), ["exec", "--skip-git-repo-check", "--full-auto", "--model"]);
+  assert.equal(processRequest.args.includes("--json"), true);
+  assert.equal(processRequest.args.includes("--cd"), true);
+  assert.equal(processRequest.args.at(-1), "-");
+  assert.equal(processRequest.cwd, workDir);
+  assert.equal(processRequest.stdin, "hi codex");
+  assert.equal(processRequest.env.OPENAI_API_KEY, "sk-local");
+  assert.equal(processRequest.env.OPENAI_BASE_URL, project.gatewayEndpoint);
+
+  const result = await runChannelConnectorAgentTurn({
+    project,
+    binding,
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    processRunner: async (request) => {
+      assert.equal(request.command, "codex");
+      assert.equal(request.stdin, "hi codex");
+      return {
+        exitCode: 0,
+        signal: null,
+        stdout: '{"message":{"content":"hello from codex"}}\n',
+        stderr: "",
+        durationMs: 12,
+        timedOut: false,
+        error: null,
+      };
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.status, "completed");
+  assert.equal(result.replyText, "hello from codex");
+
+  const claudeRequest = buildChannelConnectorAgentProcessRequest({
+    project: { ...project, agent: "claude-code", permissionMode: "plan" },
+    binding: { ...binding, agent: "claude-code" },
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+  });
+  assert.ok(claudeRequest);
+  assert.equal(claudeRequest.command, "claude");
+  assert.equal(claudeRequest.args.includes("--input-format"), true);
+  assert.equal(claudeRequest.args.includes("stream-json"), true);
+  assert.equal(claudeRequest.args.includes("--permission-mode"), true);
+  assert.equal(claudeRequest.args.includes("plan"), true);
+  assert.match(claudeRequest.stdin, /"content":"hi codex"/);
+  assert.equal(claudeRequest.env.ANTHROPIC_API_KEY, "sk-local");
+  assert.equal(claudeRequest.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:18796");
+
+  const opencodeRequest = buildChannelConnectorAgentProcessRequest({
+    project: { ...project, agent: "opencode", permissionMode: "yolo" },
+    binding: { ...binding, agent: "opencode" },
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+  });
+  assert.ok(opencodeRequest);
+  assert.equal(opencodeRequest.command, "opencode");
+  assert.deepEqual(opencodeRequest.args.slice(0, 3), ["run", "--format", "json"]);
+  assert.equal(opencodeRequest.args.includes("--thinking"), true);
+  assert.equal(opencodeRequest.args.at(-1), "hi codex");
+});
+
 test("native Channel Connectors service management is guarded before daemon entry is built", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -800,4 +923,140 @@ test("native Channel Connectors daemon entry exposes health and writes runtime",
   }
 
   assert.equal(stderr.trim(), "");
+});
+
+test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSocket", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+  });
+
+  const wsConnects = [];
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  await new Promise((resolve, reject) => {
+    wss.once("listening", resolve);
+    wss.once("error", reject);
+  });
+  const wsAddress = wss.address();
+  assert.ok(wsAddress && typeof wsAddress === "object");
+  const wsUrl = `ws://127.0.0.1:${wsAddress.port}/ws`;
+  wss.on("connection", (socket) => {
+    socket.on("message", (data) => {
+      const packet = decodeOctoConnectPacket(Buffer.isBuffer(data) ? data : Buffer.from(data));
+      wsConnects.push(packet);
+      const serverKey = createOctoX25519KeyPair();
+      socket.send(encodeOctoConnackPacket({
+        serverPublicKeyBase64: serverKey.publicKeyBase64,
+        salt: "1234567890abcdef",
+      }));
+    });
+  });
+
+  try {
+    const requests = [];
+    await withServer(async (req, res) => {
+      const chunks = [];
+      req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
+      await new Promise((resolve) => req.on("end", resolve));
+      const bodyRaw = Buffer.concat(chunks).toString("utf8");
+      requests.push({
+        method: req.method,
+        path: req.url,
+        authorization: req.headers.authorization,
+        body: bodyRaw ? JSON.parse(bodyRaw) : {},
+      });
+      res.setHeader("content-type", "application/json");
+      if (req.url?.startsWith("/v1/bot/register")) {
+        res.end(JSON.stringify({ robot_id: "robot-1", im_token: "im-token-1", ws_url: wsUrl }));
+        return true;
+      }
+      return false;
+    }, async (apiUrl) => {
+      const initial = service.getNativeConfig().config;
+      service.saveNativeConfig({
+        config: {
+          ...initial,
+          agentProfiles: [
+            {
+              id: "codex-ws",
+              name: "Codex WS",
+              agent: "codex",
+              model: "gpt-5",
+              workDir: config.projectRoot,
+              permissionMode: "suggest",
+              gatewayEndpoint: "http://127.0.0.1:18796/v1",
+              gatewayKeyRef: "studio-gateway-client-key",
+              appProfileRef: "codex",
+            },
+          ],
+          defaultAgentProfileId: "codex-ws",
+          platformBindings: [
+            {
+              id: "octo-ws",
+              platform: "octo",
+              accountId: "octo-account",
+              botId: null,
+              displayName: "Octo WS",
+              agentProfileId: "codex-ws",
+              enabled: true,
+              allowlist: [],
+              adminUsers: [],
+              metadata: {
+                apiUrl,
+                botToken: "test-token",
+                wsUrl,
+              },
+            },
+          ],
+        },
+      });
+
+      const runtimeConfig = service.getDaemonConfig().config;
+      runtimeConfig.management.port = await findFreePort();
+      const configPath = path.join(root, "daemon-ws-config.json");
+      fs.mkdirSync(path.dirname(runtimeConfig.paths.log), { recursive: true });
+      fs.writeFileSync(configPath, JSON.stringify(runtimeConfig, null, 2), "utf8");
+
+      const daemonEntry = path.resolve("dist/apps/api/modules/channel-connectors/daemon.js");
+      const child = spawn(process.execPath, [daemonEntry, "--config", configPath], {
+        cwd: path.resolve("."),
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stderr = "";
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk.toString("utf8");
+      });
+
+      try {
+        const status = await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const connected = response.body?.octoConnections?.find?.((item) => item.bindingId === "octo-ws" && item.connected);
+          return connected ? response.body : null;
+        }, 5000);
+        assert.equal(status.ok, true);
+        assert.equal(wsConnects.length, 1);
+        assert.equal(wsConnects[0].uid, "robot-1");
+        assert.equal(wsConnects[0].token, "im-token-1");
+        const cachePath = path.join(runtimeConfig.paths.state, "octo-credentials.json");
+        const cache = JSON.parse(fs.readFileSync(cachePath, "utf8"));
+        assert.equal(cache.bindings["octo-ws"].robotId, "robot-1");
+        assert.equal(cache.bindings["octo-ws"].imToken, "im-token-1");
+        assert.equal(cache.bindings["octo-ws"].wsUrl, wsUrl);
+        assert.equal(requests[0].path, "/v1/bot/register");
+      } finally {
+        child.kill("SIGTERM");
+        await new Promise((resolve) => {
+          child.once("exit", resolve);
+          setTimeout(resolve, 1000);
+        });
+      }
+
+      assert.equal(stderr.trim(), "");
+    });
+  } finally {
+    await new Promise((resolve, reject) => {
+      wss.close((error) => error ? reject(error) : resolve());
+    });
+  }
 });

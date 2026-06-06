@@ -417,6 +417,8 @@ function buildRuntimeConfig(
         agent: profile.agent,
         model: profile.model,
         permissionMode: profile.permissionMode,
+        gatewayEndpoint: profile.gatewayEndpoint,
+        gatewayKeyRef: profile.gatewayKeyRef,
         appProfileRef: profile.appProfileRef,
         platformBindings: nativeConfig.platformBindings
           .filter((binding) => binding.agentProfileId === profile.id)

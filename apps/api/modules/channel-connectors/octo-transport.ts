@@ -18,8 +18,8 @@ function recordFrom(value: unknown): Record<string, unknown> {
     : {};
 }
 
-export function octoTransportFromBinding(binding: ChannelConnectorPlatformBinding): ChannelConnectorOctoTransportConfig | null {
-  const metadata = recordFrom(binding.metadata);
+export function octoTransportFromMetadata(metadataValue: unknown): ChannelConnectorOctoTransportConfig | null {
+  const metadata = recordFrom(metadataValue);
   const apiUrl = normalizeString(metadata.apiUrl || metadata.api_url);
   const botToken = normalizeString(metadata.botToken || metadata.bot_token || metadata.token);
   if (!apiUrl || !botToken) return null;
@@ -29,6 +29,10 @@ export function octoTransportFromBinding(binding: ChannelConnectorPlatformBindin
     botToken,
     wsUrl: wsUrl || null,
   };
+}
+
+export function octoTransportFromBinding(binding: ChannelConnectorPlatformBinding): ChannelConnectorOctoTransportConfig | null {
+  return octoTransportFromMetadata(binding.metadata);
 }
 
 function transportResult(

@@ -240,6 +240,8 @@ export interface ChannelConnectorsDaemonRuntimeConfig {
     agent: ChannelConnectorAgentId;
     model: string | null;
     permissionMode: ChannelConnectorPermissionMode;
+    gatewayEndpoint: string;
+    gatewayKeyRef: "studio-gateway-client-key";
     appProfileRef: string;
     platformBindings: Array<{
       id: string;

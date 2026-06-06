@@ -79,7 +79,7 @@ Studio 增强点：
 | --- | --- |
 | F1 | 已完成：native daemon skeleton、service/config/status/logs、独立页面、守护边界测试 |
 | F2 | 已完成：CC/OpenClaw 能力映射、typed config store、Agent Profile、工作目录、模型、权限、Gateway key ref、platform/bot binding |
-| F3 | 进行中：已完成 Octo(dmwork) adapter contract 和 REST transport；继续接 WebSocket 长连接和 CLI Agent runner |
+| F3 | 已完成核心合同：Octo(dmwork) adapter、REST transport、daemon register/cache/WuKongIM WebSocket、一次性 CLI Agent runner |
 | F4 | 补齐核心消息能力：图片/文件、语音、群聊 mention、thread/reply、流式预览、长回复拆分 |
 | F5 | 治理与自动化：allowlist、admin、rate limit、banned words、slash command、cron、hooks、relay、management API |
 | F6 | 飞书、微信/企业微信；继续迁移钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等 CC 平台 |
@@ -96,9 +96,10 @@ Studio 增强点：
 - daemon runtime config 已从原生 config 派生；同一微信个人账号不能绑定不同 Agent Profile。
 - Octo(dmwork) adapter contract 已支持 DM/群聊 session key、群聊 directed 规则、bot->Agent 绑定解析、文本 inbound dry-run、reply payload 分片和 mention 渲染。
 - Octo REST transport 已支持 binding metadata `apiUrl/botToken/wsUrl`、register、typing、sendMessage、transport-smoke API；incoming `sendReply:true` 可按 replyPlan 真实发送文本。
+- Channel daemon 已支持 Octo register 后凭证缓存、WuKongIM WebSocket CONNECT/CONNACK/heartbeat/RECVACK/AES 解密、runtime status、Codex/Claude Code/OpenCode 一次性 CLI runner 合同。
 
 ## 6. 下一步
 
-1. F3c：接 Octo(dmwork) WebSocket 长连接和 register 后凭证缓存，复用已落地 REST transport。
-2. F3c：实现本地 CLI Agent runner，使用 Agent Profile 的 workDir/model/permission/Gateway endpoint/key。
-3. F3c：跑真实 Octo 文本往返和 bot->Agent dispatch smoke。
+1. F3d：用真实 Octo(dmwork) 凭据跑 WebSocket 入站 -> CLI Agent -> sendMessage 文本往返。
+2. F3d：补 session resume、流式进度、权限审批回传、错误状态和进程清理。
+3. F4：补图片/文件、群聊成员/history context、长回复 group buffer 和治理策略。
