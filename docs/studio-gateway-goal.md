@@ -1,12 +1,12 @@
 # Studio Gateway 目标方案
 
-> 状态：Phase C deletion completed; Phase B core matrix completed; Phase D provider routing/model catalog/active-route smoke MVP added; Phase E app connection profile/rollback/isolated apply acceptance completed; Phase B2 CLI/Gateway/live smoke harness added; Claude tool/summary and OpenClaw agent CLI smoke passed; Responses->Chat streaming usage、provider-declared reasoning/thinking、parallel tool-call、SSE failed 和 started-stream error envelope behavior aligned; BigModel Chat/Anthropic live maturity passed; GMN Responses-native substitute live proof passed; OpenAI Platform vendor proof optional
+> 状态：Phase C deletion completed; Phase B core matrix completed; Phase D provider routing/model catalog/active-route smoke MVP added; Phase E app connection profile/rollback/isolated apply acceptance completed; Phase B2 CLI/Gateway/live smoke harness added; Phase G docs renamed; Claude tool/summary and OpenClaw agent CLI smoke passed; Responses->Chat streaming usage、provider-declared reasoning/thinking、parallel tool-call、SSE failed 和 started-stream error envelope behavior aligned; BigModel Chat/Anthropic live maturity passed; GMN Responses-native substitute live proof passed; OpenAI Platform vendor proof optional
 > 更新：2026-06-06
-> 文档规则：本文件只保留目标、边界、验收和阶段计划；进度写到 `codex-stack-model-gateway-progress.md`。文件名暂时保留为迁移入口，正文不再把 Codex Stack 当新产品名。
+> 文档规则：本文件只保留目标、边界、验收和阶段计划；进度写到 `studio-gateway-progress.md`。旧 `codex-stack-model-gateway-*` 文档名已停止使用。
 
 ## 1. 最终目标
 
-`Codex Stack` 作为旧功能面终止演进。后续新建 **Studio Gateway** 管理页和后端逻辑，用通用模型网关接入 Codex、Claude / Claude Code、OpenCode、OpenClaw 以及其他 CLI / AI 工具。
+`Codex Stack` 作为旧功能面终止演进。当前正式目标是 **Studio Gateway** 管理页和后端逻辑，用通用模型网关接入 Codex、Claude / Claude Code、OpenCode、OpenClaw 以及其他 CLI / AI 工具。
 
 ```text
 旧目标：Codex Stack -> CPA / Compact / cc-connect 混合链路
@@ -109,7 +109,7 @@ Provider / model routing 目标：
 - 后端：`apps/api/modules/codex-stack/**`、`/api/codex-stack/*` routes、Codex Stack summary/profile/job/service schema。
 - 资源：`resources/codex-stack/**` 中旧 installer、CPA/Compact 模板、health/smoke 脚本。
 - 测试：旧 `codex-stack-*` 测试改为 Studio Gateway / App Connections 测试；不得再用 CPA/Compact 成功路径验收。
-- 文档：当前两份 `codex-stack-model-gateway-*` 文件仅作为迁移记录，后续新建正式 `studio-gateway-*` 文档。
+- 文档：正式入口为 `studio-gateway-goal.md` 与 `studio-gateway-progress.md`；旧 `codex-stack-model-gateway-*` 文档名不再使用。
 
 ## 7. 新功能验收
 
@@ -140,4 +140,4 @@ Provider / model routing 目标：
 | Phase D | 先新建 Studio Gateway 服务与配置面：daemon 状态/启停、provider 配置、provider 启停、active routing、resolved route 状态、聚合 `/v1/models`、模型池/别名/优先级、可编辑统一 Gateway key、协议/模型自动识别、secret、模型列表/默认模型、provider-native smoke、client-protocol active-route smoke；UI 借鉴旧 CPA 的运维入口和 cc-switch 的 Provider 管理体验，检测入口贴近 Base URL / API Key，daemon Runtime 只暴露主操作并把低频运维动作收进更多菜单，启停动作以 HTTP readiness 为最终成功条件 |
 | Phase E | Codex、Claude Code、OpenCode、OpenClaw 配置 preview/apply/profile/rollback 与隔离 HOME HTTP 验收已完成；继续做真实 CLI 启动 smoke 和细节兼容 |
 | Phase F | 后置 Channel Connectors：CC Bridge、Octo(dmwork)、飞书、微信的 contract 与管理面 |
-| Phase G | 删除迁移文档旧名，切到正式 Studio Gateway / Channel Connectors 文档 |
+| Phase G | Studio Gateway 文档已切到正式文件名；Channel Connectors / CC Bridge 文档需在方案确认后新建 |

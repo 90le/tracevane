@@ -1,6 +1,6 @@
-# Studio Gateway 迁移进度
+# Studio Gateway 进度
 
-> 状态：Phase C completed; Phase B core matrix completed; Phase D provider routing/model catalog/active-route smoke MVP completed; Phase E App Connections profile/rollback/isolated apply acceptance completed; Phase B2 CLI/Gateway/live smoke harness completed; Claude tool/summary and OpenClaw agent CLI smoke passed; Responses->Chat streaming usage、provider-declared reasoning/thinking、parallel tool-call、SSE failed 和 started-stream error envelope behavior aligned; BigModel Chat/Anthropic live maturity passed; GMN Responses-native substitute live proof passed; OpenAI Platform vendor proof optional
+> 状态：Phase C completed; Phase B core matrix completed; Phase D provider routing/model catalog/active-route smoke MVP completed; Phase E App Connections profile/rollback/isolated apply acceptance completed; Phase B2 CLI/Gateway/live smoke harness completed; Phase G docs renamed; Claude tool/summary and OpenClaw agent CLI smoke passed; Responses->Chat streaming usage、provider-declared reasoning/thinking、parallel tool-call、SSE failed 和 started-stream error envelope behavior aligned; BigModel Chat/Anthropic live maturity passed; GMN Responses-native substitute live proof passed; OpenAI Platform vendor proof optional
 > 更新：2026-06-06
 > 文档规则：只保留当前状态、最近完成、验证和下一步；旧流水已压缩。
 
@@ -19,9 +19,9 @@
 
 ## 本轮完成
 
-- Streaming adapter 已补齐 started-stream error envelope：Responses upstream 在已输出内容后失败时，Chat clients 收到 `event:error` + `[DONE]`，Anthropic clients 收到 `event:error`；Anthropic upstream 在已输出内容后 `event:error` / `data.error` 时，Chat clients 收到 `event:error` + `[DONE]`，Responses clients 收到 `response.failed` + `[DONE]`。
-- 未开始下游 stream 前的 upstream `response.failed` 仍保持 adapter error HTTP 路径，避免把前置失败伪装成成功 SSE。
-- 失败 stream 不再追加正常 success terminal event，例如 `response.completed`、`message_stop` 或 Chat `finish_reason: "stop"`。
+- Gateway 目标和进度文档已从迁移名 `codex-stack-model-gateway-*` 改为正式入口 `studio-gateway-*`。
+- README / PRD / 架构 / 当前进展 / 设计守则中旧 `Codex Stack` 管理域描述已改为 Studio Gateway，避免继续把 Gateway 归到旧功能面。
+- CC / Channel Connectors 明确后置；进入实现前必须先确认方案。
 
 ## 验证
 
@@ -36,10 +36,8 @@
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
 - Channel Connectors / CC Bridge / Octo(dmwork) 还未开始实现。
-- 工作树中存在并行任务的 system/recovery 改动；本轮未触碰。
 
 ## 下一步
 
-1. 做 Gateway 文档正式改名与入口清理：从迁移用 `codex-stack-*` 文档切到 `studio-gateway-*`。
-2. Gateway 稳定后再启动 Channel Connectors / CC Bridge / Octo(dmwork)。
-3. 如仍需要官方品牌证明，再单独跑 OpenAI Platform official smoke。
+1. 进入 CC / Channel Connectors 前，先确认方案、边界、进程守护、复用 cc-connect 的范围和验收点；确认前不实现 CC。
+2. 如仍需要官方品牌证明，再单独跑 OpenAI Platform official smoke。
