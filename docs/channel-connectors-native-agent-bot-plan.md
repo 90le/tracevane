@@ -1,6 +1,6 @@
 # Channel Connectors / CLI Agent Bot 原生方案
 
-> 状态：已切换为 Studio 原生实现路线；F3d Octo/Codex roundtrip、session resume、progress/failure observability 已完成
+> 状态：已切换为 Studio 原生实现路线；F3e IM command control core 已完成
 > 更新：2026-06-06
 > 参考源：CC 二开全量源码 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`；OpenClaw 频道与运行时实现；压缩映射见 `channel-connectors-native-feature-map.md`
 
@@ -20,7 +20,7 @@ Octo(dmwork) / 飞书 / 微信 / IM
 
 CC 和 OpenClaw 只作为参考：
 
-- 参考 CC 的平台协议、session key、mention、文件/图片、allowlist、rate limit、CLI Agent 调用方式。
+- 参考 CC 的平台协议、session key、mention、文件/图片、allowlist、rate limit、CLI Agent 调用方式、slash command、菜单和 Feishu card。
 - 参考 OpenClaw 的频道配置、账号/机器人绑定、运行态管理和事件抽象。
 - 生产实现不依赖 cc-connect binary，也不恢复旧 `resources/codex-stack` 生产路径。
 
@@ -59,7 +59,7 @@ CC 和 OpenClaw 只作为参考：
 - 消息：文本、图片、文件、语音/STT/TTS、群聊 mention、thread/reply、流式预览、长回复拆分。
 - 会话：session key、session 续接/切换/重置、历史恢复、不同 bot/account 独立上下文、跨平台会话观测。
 - 治理：allowlist、admin、rate limit、banned words、权限模式、run-as/user isolation、审计日志。
-- 自动化：slash command、cron、hooks、relay、management API、health/status/logs。
+- 自动化：slash command、平台菜单、Feishu card、cron、hooks、relay、management API、health/status/logs。
 
 Studio 增强点：
 
@@ -67,6 +67,7 @@ Studio 增强点：
 - 复用 App Connections 的模型、上下文窗口、reasoning、权限和工作目录 profile。
 - 使用 Studio 自己的 typed config、preview/apply、backup/rollback、运行态日志和页面，不让用户手写大段 TOML。
 - 使用 OpenClaw channel/account/bot 经验做账号绑定和状态显示，但运行期不依赖 OpenClaw。
+- IM 内命令和 Studio UI 共用同一个 typed 状态：普通平台走文本命令，Feishu 等 rich 平台走卡片/菜单，最终都落到 session override 或受控全局配置。
 
 核心绑定规则：
 
@@ -82,7 +83,7 @@ Studio 增强点：
 | --- | --- |
 | F1 | 已完成：native daemon skeleton、service/config/status/logs、独立页面、守护边界测试 |
 | F2 | 已完成：CC/OpenClaw 能力映射、typed config store、Agent Profile、工作目录、模型、权限、Gateway key ref、platform/bot binding |
-| F3 | 已完成核心合同：Octo(dmwork) adapter、REST transport、daemon register/cache/WuKongIM WebSocket、Codex CLI Agent runner、真实 Octo DM 文本往返、Codex session resume、运行中/失败可观测 |
+| F3 | 已完成核心合同：Octo(dmwork) adapter、REST transport、daemon register/cache/WuKongIM WebSocket、Codex CLI Agent runner、真实 Octo DM 文本往返、Codex session resume、运行中/失败可观测、IM command control core |
 | F4 | 补齐核心消息能力：图片/文件、语音、群聊 mention、thread/reply、流式预览、长回复拆分 |
 | F5 | 治理与自动化：allowlist、admin、rate limit、banned words、slash command、cron、hooks、relay、management API |
 | F6 | 飞书、微信/企业微信；继续迁移钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等 CC 平台 |
@@ -101,9 +102,10 @@ Studio 增强点：
 - Octo REST transport 已支持 binding metadata `apiUrl/botToken/wsUrl`、register、typing、sendMessage、transport-smoke API；incoming `sendReply:true` 可按 replyPlan 真实发送文本。
 - Channel daemon 已支持 Octo register 后凭证缓存、WuKongIM WebSocket CONNECT/CONNACK/heartbeat/RECVACK/AES 解密、runtime status、Codex/Claude Code/OpenCode 一次性 CLI runner 合同。
 - Channel daemon 已支持 runner JSONL progress、`activeRuns` status、Octo event start/progress/finish、typing pulse 和失败短回执。
+- Channel daemon 已支持 `/help`、`/status`、`/agent`、`/model`、`/mode`、`/reset` 的 IM command control core；override 按 IM session 存储，模型切换不切断 Codex thread。
 
 ## 6. 下一步
 
-1. F3e：补 CLI Agent 权限审批回传。
-2. F4：补图片/文件、群聊成员/history context、长回复 group buffer 和治理策略。
-3. F6：按 CC 源码继续迁移飞书、微信/企业微信和其它平台。
+1. F3f：补 Feishu card/menu renderer 与 bot menu 事件。
+2. F3g：补 CLI Agent 权限审批回传。
+3. F4：补图片/文件、群聊成员/history context、长回复 group buffer 和治理策略。

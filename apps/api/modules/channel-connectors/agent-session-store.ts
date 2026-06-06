@@ -58,7 +58,6 @@ export function channelConnectorAgentSessionId(input: ChannelConnectorAgentSessi
     input.projectId,
     input.sessionKey,
     input.agent,
-    input.model || "",
     input.workDir,
   ].map((part) => encodeKeyPart(part)).join("|");
 }
@@ -165,4 +164,20 @@ export function upsertChannelConnectorAgentSession(
   state.sessions[id] = next;
   writeChannelConnectorAgentSessions(filePath, state);
   return next;
+}
+
+export function clearChannelConnectorAgentSessionsForConversation(
+  filePath: string,
+  lookup: Pick<ChannelConnectorAgentSessionLookup, "bindingId" | "sessionKey">,
+): number {
+  const state = readChannelConnectorAgentSessions(filePath);
+  let deleted = 0;
+  for (const [id, record] of Object.entries(state.sessions)) {
+    if (record.bindingId === lookup.bindingId && record.sessionKey === lookup.sessionKey) {
+      delete state.sessions[id];
+      deleted += 1;
+    }
+  }
+  if (deleted > 0) writeChannelConnectorAgentSessions(filePath, state);
+  return deleted;
 }

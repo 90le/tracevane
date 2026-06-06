@@ -21,9 +21,17 @@ import {
   runChannelConnectorAgentTurn,
 } from "../../dist/apps/api/modules/channel-connectors/agent-runner.js";
 import {
+  clearChannelConnectorAgentSessionsForConversation,
   getChannelConnectorAgentSession,
   upsertChannelConnectorAgentSession,
 } from "../../dist/apps/api/modules/channel-connectors/agent-session-store.js";
+import {
+  handleChannelConnectorCommand,
+  resolveChannelConnectorEffectiveProject,
+} from "../../dist/apps/api/modules/channel-connectors/command-router.js";
+import {
+  getChannelConnectorSessionControl,
+} from "../../dist/apps/api/modules/channel-connectors/session-control-store.js";
 import {
   createOctoX25519KeyPair,
   decodeOctoConnectPacket,
@@ -884,6 +892,174 @@ test("native Channel Connectors session store persists Codex thread ids by IM se
   const loaded = getChannelConnectorAgentSession(storePath, lookup);
   assert.equal(loaded?.codexThreadId, "thread-a");
   assert.equal(loaded?.turnCount, 2);
+
+  const switchedModel = getChannelConnectorAgentSession(storePath, {
+    ...lookup,
+    model: "gpt-5.5",
+  });
+  assert.equal(switchedModel?.codexThreadId, "thread-a");
+  assert.equal(switchedModel?.turnCount, 2);
+
+  const deleted = clearChannelConnectorAgentSessionsForConversation(storePath, {
+    bindingId: lookup.bindingId,
+    sessionKey: lookup.sessionKey,
+  });
+  assert.equal(deleted, 1);
+  assert.equal(getChannelConnectorAgentSession(storePath, lookup), null);
+});
+
+test("native Channel Connectors IM commands switch agent, model, and permission per session", async () => {
+  const root = makeTempRoot();
+  const stateDir = path.join(root, "state");
+  const controlsPath = path.join(stateDir, "channel-session-controls.json");
+  const agentSessionsPath = path.join(stateDir, "channel-sessions.json");
+  const codexProject = {
+    id: "codex-main",
+    name: "Codex main",
+    workDir: path.join(root, "codex-work"),
+    agent: "codex",
+    model: "gpt-5",
+    permissionMode: "suggest",
+    gatewayEndpoint: "http://127.0.0.1:18796/v1",
+    gatewayKeyRef: "studio-gateway-client-key",
+    appProfileRef: "codex",
+    platformBindings: [],
+  };
+  const claudeProject = {
+    id: "claude-main",
+    name: "Claude main",
+    workDir: path.join(root, "claude-work"),
+    agent: "claude-code",
+    model: "claude-sonnet",
+    permissionMode: "plan",
+    gatewayEndpoint: "http://127.0.0.1:18796/v1",
+    gatewayKeyRef: "studio-gateway-client-key",
+    appProfileRef: "claude",
+    platformBindings: [],
+  };
+  const binding = {
+    id: "octo-codex",
+    platform: "octo",
+    accountId: "octo-account",
+    botId: "robot-1",
+    displayName: "Octo Codex",
+    agent: "codex",
+    enabled: true,
+    allowlist: [],
+    adminUsers: ["admin-1"],
+    metadata: {},
+  };
+  const runtimeConfig = {
+    version: 1,
+    management: { host: "127.0.0.1", port: 18797 },
+    paths: {
+      root,
+      state: stateDir,
+      log: path.join(root, "logs", "channel.log"),
+      runtime: path.join(root, "runtime.json"),
+      octoEvents: path.join(stateDir, "octo-events.jsonl"),
+    },
+    gateway: {
+      endpoint: "http://127.0.0.1:18796/v1",
+      clientKeyRef: "studio-gateway-client-key",
+    },
+    projects: [codexProject, claudeProject],
+  };
+  const baseContext = {
+    config: runtimeConfig,
+    project: codexProject,
+    binding,
+    sessionKey: "dmwork:dm:admin-1",
+    controlsPath,
+    agentSessionsPath,
+    gatewayClientKey: "sk-local",
+    listModels: async () => ["gpt-5", "gpt-5.5", "claude-sonnet"],
+  };
+  const message = (content, fromUid = "admin-1") => ({
+    messageId: `m-${content.replace(/[^a-z0-9]+/gi, "-")}-${fromUid}`,
+    fromUid,
+    channelId: fromUid,
+    channelType: 1,
+    payload: { type: 1, content },
+  });
+
+  const help = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/help"),
+  });
+  assert.equal(help.handled, true);
+  assert.equal(help.ok, true);
+  assert.match(help.replyText, /\/mode/);
+
+  const denied = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/mode yolo", "user-2"),
+  });
+  assert.equal(denied.handled, true);
+  assert.equal(denied.ok, false);
+  assert.match(denied.replyText, /没有管理/);
+
+  const mode = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/mode yolo"),
+  });
+  assert.equal(mode.ok, true);
+  assert.equal(mode.control.permissionMode, "yolo");
+
+  const model = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/model 2"),
+  });
+  assert.equal(model.ok, true);
+  assert.equal(model.control.model, "gpt-5.5");
+
+  const agent = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/agent claude-code"),
+  });
+  assert.equal(agent.ok, true);
+  assert.equal(agent.control.activeProjectId, "claude-main");
+  assert.equal(agent.control.model, null);
+  assert.equal(agent.control.permissionMode, null);
+
+  const control = getChannelConnectorSessionControl(controlsPath, {
+    bindingId: binding.id,
+    sessionKey: baseContext.sessionKey,
+  });
+  const effective = resolveChannelConnectorEffectiveProject(runtimeConfig, codexProject, control);
+  assert.equal(effective.id, "claude-main");
+  assert.equal(effective.agent, "claude-code");
+  assert.equal(effective.model, "claude-sonnet");
+  assert.equal(effective.permissionMode, "plan");
+
+  upsertChannelConnectorAgentSession(agentSessionsPath, {
+    bindingId: binding.id,
+    projectId: effective.id,
+    sessionKey: baseContext.sessionKey,
+    agent: effective.agent,
+    model: effective.model,
+    workDir: effective.workDir,
+    codexThreadId: "thread-before-reset",
+    messageId: "m-before-reset",
+    status: "completed",
+  });
+  const reset = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/reset"),
+  });
+  assert.equal(reset.ok, true);
+  assert.equal(getChannelConnectorSessionControl(controlsPath, {
+    bindingId: binding.id,
+    sessionKey: baseContext.sessionKey,
+  }), null);
+  assert.equal(getChannelConnectorAgentSession(agentSessionsPath, {
+    bindingId: binding.id,
+    projectId: effective.id,
+    sessionKey: baseContext.sessionKey,
+    agent: effective.agent,
+    model: effective.model,
+    workDir: effective.workDir,
+  }), null);
 });
 
 test("native Channel Connectors process runner streams progress events from agent JSONL", async () => {

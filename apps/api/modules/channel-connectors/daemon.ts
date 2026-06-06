@@ -23,6 +23,13 @@ import {
   type ChannelConnectorAgentSessionRecord,
 } from "./agent-session-store.js";
 import {
+  handleChannelConnectorCommand,
+  resolveChannelConnectorEffectiveProject,
+} from "./command-router.js";
+import {
+  getChannelConnectorSessionControl,
+} from "./session-control-store.js";
+import {
   getOctoCachedCredentials,
   saveOctoCachedCredentials,
   type OctoCredentialCacheEntry,
@@ -256,6 +263,10 @@ function agentSessionsPath(config: ChannelConnectorsDaemonRuntimeConfig): string
   return path.join(config.paths.state, "channel-sessions.json");
 }
 
+function sessionControlsPath(config: ChannelConnectorsDaemonRuntimeConfig): string {
+  return path.join(config.paths.state, "channel-session-controls.json");
+}
+
 function safePathSegment(value: string): string {
   return encodeURIComponent(value || "default").replace(/[!'()*]/g, (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
 }
@@ -380,14 +391,6 @@ async function dispatchOctoMessage(input: {
   const sessionKey = buildOctoSessionKey(message);
   const content = extractOctoContent(message);
   const checkedAt = new Date().toISOString();
-  const sessionLookup = {
-    bindingId: binding.id,
-    projectId: project.id,
-    sessionKey,
-    agent: project.agent,
-    model: project.model,
-    workDir: project.workDir,
-  };
   if (skippedReason) {
     writeJsonLine(config.paths.octoEvents, {
       checkedAt,
@@ -401,6 +404,58 @@ async function dispatchOctoMessage(input: {
   }
 
   const transport = octoTransportFromMetadata(binding.metadata);
+  const key = gatewayClientKey(config);
+  const command = await handleChannelConnectorCommand({
+    config,
+    project,
+    binding,
+    message,
+    sessionKey,
+    controlsPath: sessionControlsPath(config),
+    agentSessionsPath: agentSessionsPath(config),
+    gatewayClientKey: key,
+  });
+  if (command.handled) {
+    let replySent = false;
+    if (transport && command.replyText) {
+      const replyPlan = renderOctoTextReply(message, command.replyText);
+      if (replyPlan) {
+        const result = await sendOctoTextReply(transport, replyPlan);
+        replySent = result.ok === true;
+      }
+    }
+    writeJsonLine(config.paths.octoEvents, {
+      checkedAt,
+      eventKind: "channel.command",
+      adapter: "octo",
+      bindingId: binding.id,
+      sessionKey,
+      messageId: message.messageId,
+      channelId: message.channelId,
+      channelType: message.channelType,
+      fromUid: message.fromUid,
+      command: command.command,
+      commandAction: command.action,
+      commandOk: command.ok,
+      replySent,
+    });
+    writeRuntime(config, state);
+    return;
+  }
+
+  const control = getChannelConnectorSessionControl(sessionControlsPath(config), {
+    bindingId: binding.id,
+    sessionKey,
+  });
+  const effectiveProject = resolveChannelConnectorEffectiveProject(config, project, control);
+  const effectiveSessionLookup = {
+    bindingId: binding.id,
+    projectId: effectiveProject.id,
+    sessionKey,
+    agent: effectiveProject.agent,
+    model: effectiveProject.model,
+    workDir: effectiveProject.workDir,
+  };
   if (transport) {
     await sendOctoTyping(
       transport,
@@ -409,7 +464,7 @@ async function dispatchOctoMessage(input: {
     );
   }
   const activeRunId = `${binding.id}:${message.messageId}`;
-  const currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), sessionLookup);
+  const currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
   let progressEventCount = 0;
   let latestProgress: ChannelConnectorAgentProgressEvent | null = null;
   state.activeRuns.unshift({
@@ -419,8 +474,8 @@ async function dispatchOctoMessage(input: {
     bindingId: binding.id,
     sessionKey,
     messageId: message.messageId,
-    agent: project.agent,
-    model: project.model,
+    agent: effectiveProject.agent,
+    model: effectiveProject.model,
     status: "running",
     sessionResumed: Boolean(currentSession?.codexThreadId),
     codexThreadId: currentSession?.codexThreadId || null,
@@ -436,8 +491,8 @@ async function dispatchOctoMessage(input: {
     bindingId: binding.id,
     sessionKey,
     messageId: message.messageId,
-    agent: project.agent,
-    model: project.model,
+    agent: effectiveProject.agent,
+    model: effectiveProject.model,
     sessionResumed: Boolean(currentSession?.codexThreadId),
     codexThreadId: currentSession?.codexThreadId || null,
   });
@@ -446,13 +501,13 @@ async function dispatchOctoMessage(input: {
   let agent: ChannelConnectorAgentTurnResult;
   try {
     agent = await runChannelConnectorAgentTurn({
-      project,
+      project: effectiveProject,
       binding,
       message,
       sessionKey,
-      gatewayEndpoint: project.gatewayEndpoint || config.gateway.endpoint,
-      gatewayClientKey: gatewayClientKey(config),
-      agentRuntimeDir: agentRuntimeDir(config, project, binding),
+      gatewayEndpoint: effectiveProject.gatewayEndpoint || config.gateway.endpoint,
+      gatewayClientKey: key,
+      agentRuntimeDir: agentRuntimeDir(config, effectiveProject, binding),
       session: {
         codexThreadId: currentSession?.codexThreadId || null,
       },
@@ -472,7 +527,7 @@ async function dispatchOctoMessage(input: {
           bindingId: binding.id,
           sessionKey,
           messageId: message.messageId,
-          agent: project.agent,
+          agent: effectiveProject.agent,
           progressType: event.type,
           rawType: event.rawType,
           itemType: event.itemType,
@@ -487,11 +542,11 @@ async function dispatchOctoMessage(input: {
       attempted: true,
       ok: false,
       status: "failed",
-      agent: project.agent,
-      model: project.model,
+      agent: effectiveProject.agent,
+      model: effectiveProject.model,
       command: null,
       args: [],
-      cwd: project.workDir,
+      cwd: effectiveProject.workDir,
       replyText: null,
       stdout: "",
       stderr: "",
@@ -520,7 +575,7 @@ async function dispatchOctoMessage(input: {
   let nextSession: ChannelConnectorAgentSessionRecord | null = null;
   if (agent.session.codexThreadId || currentSession?.codexThreadId) {
     nextSession = upsertChannelConnectorAgentSession(agentSessionsPath(config), {
-      ...sessionLookup,
+      ...effectiveSessionLookup,
       codexThreadId: agent.session.codexThreadId || currentSession?.codexThreadId || null,
       messageId: message.messageId,
       status: agent.status,
@@ -531,7 +586,7 @@ async function dispatchOctoMessage(input: {
     bindingId: binding.id,
     sessionKey,
     messageId: message.messageId,
-    agent: project.agent,
+    agent: effectiveProject.agent,
     status: agent.status,
     ok: agent.ok,
     durationMs: agent.durationMs,
