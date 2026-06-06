@@ -9,6 +9,8 @@ const LOCAL_GATEWAY_KEY = "sk-local-live-smoke";
 const DEFAULT_BIGMODEL_CHAT_BASE_URL = "https://open.bigmodel.cn/api/coding/paas/v4";
 const DEFAULT_BIGMODEL_ANTHROPIC_BASE_URL = "https://open.bigmodel.cn/api/anthropic";
 const DEFAULT_BIGMODEL_MODEL = "glm-4.6";
+const DEFAULT_GMN_RESPONSES_BASE_URL = "https://gmn.chuangzuoli.com/v1";
+const DEFAULT_GMN_RESPONSES_MODEL = "gpt-5.4";
 const DEFAULT_TIMEOUT_MS = 240_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 75_000;
 const INVALID_MODEL = "studio-gateway-live-invalid-model";
@@ -58,9 +60,12 @@ Environment:
   STUDIO_GATEWAY_LIVE_BIGMODEL_CHAT_BASE_URL             default: ${DEFAULT_BIGMODEL_CHAT_BASE_URL}
   STUDIO_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_BASE_URL        default: ${DEFAULT_BIGMODEL_ANTHROPIC_BASE_URL}
   STUDIO_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_MESSAGES_PATH   default: /v1/messages
+  STUDIO_GATEWAY_LIVE_GMN_API_KEY or GMN_API_KEY
+  STUDIO_GATEWAY_LIVE_GMN_RESPONSES_BASE_URL              default: ${DEFAULT_GMN_RESPONSES_BASE_URL}
+  STUDIO_GATEWAY_LIVE_GMN_RESPONSES_MODEL                 default: ${DEFAULT_GMN_RESPONSES_MODEL}
 
 Options:
-  --providers <ids>  Comma-separated ids: bigmodel-chat,bigmodel-anthropic
+  --providers <ids>  Comma-separated ids: bigmodel-chat,bigmodel-anthropic,gmn-responses
   --strict           Exit non-zero when any requested provider fails or is skipped
   --timeout-ms <n>   Per-process deadline
   --request-timeout-ms <n>
@@ -164,6 +169,29 @@ async function createLiveContext(root, liveConfig) {
     });
   }
 
+  if (liveConfig.gmn.apiKey) {
+    service.upsertProvider(undefined, {
+      provider: {
+        id: "live-gmn-responses",
+        name: "Live GMN Responses",
+        enabled: true,
+        appScopes: ["codex", "openclaw", "claude-code"],
+        baseUrl: liveConfig.gmn.responsesBaseUrl,
+        apiFormat: "openai_responses",
+        authStrategy: "bearer",
+        models: {
+          defaultModel: liveConfig.gmn.responsesModel,
+          models: [{
+            id: liveConfig.gmn.responsesModel,
+            features: { streaming: true, responses: true },
+          }],
+        },
+      },
+      secret: { apiKey: liveConfig.gmn.apiKey },
+      setActiveScopes: ["codex", "openclaw", "claude-code"],
+    });
+  }
+
   return { config, context };
 }
 
@@ -177,6 +205,11 @@ function readLiveConfig() {
       anthropicMessagesPath: normalizePath(envValue("STUDIO_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_MESSAGES_PATH") || "/v1/messages"),
       chatModel: envValue("STUDIO_GATEWAY_LIVE_BIGMODEL_CHAT_MODEL") || model,
       anthropicModel: envValue("STUDIO_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_MODEL") || model,
+    },
+    gmn: {
+      apiKey: envValue("STUDIO_GATEWAY_LIVE_GMN_API_KEY", "GMN_API_KEY", "OPENAI_API_KEY"),
+      responsesBaseUrl: trimTrailingSlash(envValue("STUDIO_GATEWAY_LIVE_GMN_RESPONSES_BASE_URL") || DEFAULT_GMN_RESPONSES_BASE_URL),
+      responsesModel: envValue("STUDIO_GATEWAY_LIVE_GMN_RESPONSES_MODEL") || DEFAULT_GMN_RESPONSES_MODEL,
     },
   };
 }
@@ -484,6 +517,92 @@ async function runBigModelAnthropic(server, config) {
   }
 }
 
+async function runGmnResponses(server, config) {
+  if (!config.apiKey) return skipped("gmn-responses", "Missing STUDIO_GATEWAY_LIVE_GMN_API_KEY, GMN_API_KEY, or OPENAI_API_KEY.");
+  const startedAt = Date.now();
+  const probes = [];
+  const failures = [];
+
+  await runProbe(failures, "responses-basic", async () => {
+    const basic = await requestJson(`${server.baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: gatewayHeaders("codex"),
+      body: {
+        model: config.responsesModel,
+        input: "Reply exactly GATEWAY_OK.",
+        stream: false,
+        max_output_tokens: 64,
+      },
+    });
+    assertHttpOk(basic, "gmn-responses responses basic");
+    assertIncludes(collectResponsesOutputText(basic.body), "GATEWAY_OK", "gmn-responses responses basic");
+    probes.push("responses-basic");
+  });
+
+  await runProbe(failures, "responses-stream", async () => {
+    const stream = await requestRaw(`${server.baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: gatewayHeaders("codex"),
+      body: {
+        model: config.responsesModel,
+        input: "Reply exactly STREAM_OK.",
+        stream: true,
+        max_output_tokens: 64,
+      },
+    });
+    assertHttpOk(stream, "gmn-responses responses stream");
+    assertIncludes(collectSseText(stream.raw), "STREAM_OK", "gmn-responses responses stream");
+    probes.push("responses-stream");
+  });
+
+  await runProbe(failures, "responses-compact", async () => {
+    const compact = await requestJson(`${server.baseUrl}/v1/responses/compact`, {
+      method: "POST",
+      headers: gatewayHeaders("codex"),
+      body: {
+        model: config.responsesModel,
+        input: "Summarize this compact handoff and include GATEWAY_OK.",
+        stream: false,
+        max_output_tokens: 128,
+      },
+    });
+    assertHttpOk(compact, "gmn-responses responses compact");
+    assertIncludes(collectResponsesOutputText(compact.body), "GATEWAY_OK", "gmn-responses responses compact");
+    probes.push("responses-compact");
+  });
+
+  await runProbe(failures, "error-envelope", async () => {
+    const errorProbe = await requestJson(`${server.baseUrl}/v1/responses`, {
+      method: "POST",
+      headers: gatewayHeaders("codex"),
+      body: {
+        model: INVALID_MODEL,
+        input: "Trigger an upstream model error.",
+        stream: false,
+      },
+    });
+    if (errorProbe.status < 400) throw new Error("gmn-responses invalid-model probe unexpectedly succeeded.");
+    if (!errorProbe.body?.error?.message && !errorProbe.body?.error) {
+      throw new Error(`gmn-responses invalid-model probe returned malformed error: ${errorProbe.raw}`);
+    }
+    probes.push("error-envelope");
+  });
+
+  if (failures.length) {
+    return failed("gmn-responses", startedAt, new Error(`${failures.length} live probe(s) failed.`), {
+      model: config.responsesModel,
+      baseUrl: config.responsesBaseUrl,
+      probes,
+      failures,
+    });
+  }
+  return passed("gmn-responses", startedAt, {
+    model: config.responsesModel,
+    baseUrl: config.responsesBaseUrl,
+    probes,
+  });
+}
+
 function gatewayHeaders(appScope, extra = {}) {
   return {
     authorization: `Bearer ${LOCAL_GATEWAY_KEY}`,
@@ -663,6 +782,9 @@ async function main() {
     }
     if (options.providers.includes("bigmodel-anthropic")) {
       results.push(await runBigModelAnthropic(server, liveConfig.bigmodel));
+    }
+    if (options.providers.includes("gmn-responses")) {
+      results.push(await runGmnResponses(server, liveConfig.gmn));
     }
     const ok = results.every((result) => result.status === "passed" || (!options.strict && result.status === "skipped"));
     console.log(JSON.stringify({
