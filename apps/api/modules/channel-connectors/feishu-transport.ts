@@ -6,6 +6,7 @@ import type {
   ChannelConnectorFeishuInteractiveCard,
   ChannelConnectorFeishuTransportConfig,
   ChannelConnectorFeishuTransportResult,
+  ChannelConnectorOctoGroupMember,
   ChannelConnectorPlatformBinding,
 } from "../../../../types/channel-connectors.js";
 import { splitChannelConnectorTextChunks } from "./text-chunks.js";
@@ -56,6 +57,20 @@ export interface ChannelConnectorFeishuResourceFileDownloadResult {
   localPath: string | null;
   size: number | null;
   mimeType: string | null;
+  error: string | null;
+}
+
+export interface ChannelConnectorFeishuChatMembersResult {
+  attempted: boolean;
+  ok: boolean;
+  apiUrl: string;
+  statusCode: number | null;
+  requestCount: number;
+  tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"];
+  chatId: string | null;
+  members: ChannelConnectorOctoGroupMember[];
+  pageCount: number;
+  hasMore: boolean;
   error: string | null;
 }
 
@@ -160,9 +175,9 @@ function cachedToken(cachePath: string | null | undefined, config: ChannelConnec
 async function feishuJsonRequest(
   config: ChannelConnectorFeishuTransportConfig,
   input: {
-    method: "POST" | "PATCH" | "DELETE";
+    method: "GET" | "POST" | "PATCH" | "DELETE";
     path: string;
-    payload: unknown;
+    payload?: unknown;
     token?: string | null;
   },
 ): Promise<{ statusCode: number; body: Record<string, unknown> }> {
@@ -176,7 +191,7 @@ async function feishuJsonRequest(
     const response = await fetch(`${config.apiUrl.replace(/\/+$/, "")}${input.path}`, {
       method: input.method,
       headers,
-      body: JSON.stringify(input.payload),
+      body: input.method === "GET" ? undefined : JSON.stringify(input.payload ?? {}),
       signal: controller.signal,
     });
     const raw = await response.text();
@@ -482,6 +497,102 @@ export async function downloadFeishuMessageResource(
       resourceType: input.resourceType,
       data: null,
       mimeType: null,
+      error: errorMessage(error),
+    };
+  }
+}
+
+function feishuMemberFromValue(value: unknown): ChannelConnectorOctoGroupMember | null {
+  const record = recordFrom(value);
+  const uid = normalizeString(record.member_id)
+    || normalizeString(record.open_id)
+    || normalizeString(record.user_id)
+    || normalizeString(record.union_id)
+    || normalizeString(record.id);
+  if (!uid) return null;
+  const name = normalizeString(record.name)
+    || normalizeString(record.en_name)
+    || normalizeString(record.nickname)
+    || uid;
+  return { uid, name };
+}
+
+export async function listFeishuChatMembers(
+  config: ChannelConnectorFeishuTransportConfig,
+  input: {
+    chatId: string;
+    pageSize?: number;
+    maxPages?: number;
+    memberIdType?: "open_id" | "user_id" | "union_id";
+  },
+  cachePath?: string | null,
+): Promise<ChannelConnectorFeishuChatMembersResult> {
+  let requestCount = 0;
+  let tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"] = cachePath ? "miss" : "disabled";
+  const chatId = normalizeString(input.chatId);
+  const pageSize = Math.max(1, Math.min(100, Math.floor(Number(input.pageSize || 100))));
+  const maxPages = Math.max(1, Math.min(100, Math.floor(Number(input.maxPages || 10))));
+  const memberIdType = input.memberIdType || "open_id";
+  const members: ChannelConnectorOctoGroupMember[] = [];
+  let statusCode: number | null = null;
+  let pageToken = "";
+  let pageCount = 0;
+  let hasMore = false;
+  try {
+    if (!chatId) throw new Error("Feishu chatId is required.");
+    const token = await getFeishuTenantToken(config, cachePath);
+    requestCount += token.requestCount;
+    tokenCache = token.tokenCache;
+
+    do {
+      const search = new URLSearchParams({
+        member_id_type: memberIdType,
+        page_size: String(pageSize),
+      });
+      if (pageToken) search.set("page_token", pageToken);
+      const response = await feishuJsonRequest(config, {
+        method: "GET",
+        token: token.token,
+        path: `/open-apis/im/v1/chats/${encodeURIComponent(chatId)}/members?${search.toString()}`,
+      });
+      requestCount += 1;
+      statusCode = response.statusCode;
+      pageCount += 1;
+      const data = recordFrom(response.body.data);
+      const items = Array.isArray(data.items) ? data.items : [];
+      for (const item of items) {
+        const member = feishuMemberFromValue(item);
+        if (member && !members.some((candidate) => candidate.uid === member.uid)) members.push(member);
+      }
+      hasMore = data.has_more === true;
+      pageToken = normalizeString(data.page_token);
+    } while (hasMore && pageToken && pageCount < maxPages);
+
+    return {
+      attempted: true,
+      ok: true,
+      apiUrl: config.apiUrl,
+      statusCode,
+      requestCount,
+      tokenCache,
+      chatId,
+      members,
+      pageCount,
+      hasMore,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      attempted: true,
+      ok: false,
+      apiUrl: config.apiUrl,
+      statusCode: errorStatusCode(error),
+      requestCount: Math.max(1, requestCount),
+      tokenCache,
+      chatId: chatId || null,
+      members: [],
+      pageCount,
+      hasMore,
       error: errorMessage(error),
     };
   }

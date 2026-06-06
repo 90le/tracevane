@@ -79,6 +79,7 @@ import {
   addFeishuMessageReaction,
   downloadFeishuMessageResourceToFile,
   feishuTransportFromMetadata,
+  listFeishuChatMembers,
   patchFeishuCardMessage,
   removeFeishuMessageReaction,
   sendFeishuCardMessage,
@@ -530,6 +531,15 @@ function metadataBoolean(binding: ChannelConnectorRuntimeBinding, keys: string[]
   return fallback;
 }
 
+function metadataNumber(binding: ChannelConnectorRuntimeBinding, keys: string[], fallback: number): number {
+  const metadata = metadataRecord(binding);
+  for (const key of keys) {
+    const value = Number(metadata[key]);
+    if (Number.isFinite(value)) return value;
+  }
+  return fallback;
+}
+
 function metadataByteSize(binding: ChannelConnectorRuntimeBinding, keys: string[], fallback: number): number {
   const metadata = metadataRecord(binding);
   for (const key of keys) {
@@ -780,6 +790,7 @@ function feishuThreadLogFields(parsed: ChannelConnectorFeishuParsedWebhook): {
 function feishuMessageFromParsed(
   parsed: ChannelConnectorFeishuParsedWebhook,
   content: string,
+  members: ChannelConnectorOctoInboundMessage["members"] = [],
 ): ChannelConnectorOctoInboundMessage {
   const isGroup = normalizeString(parsed.chatType).toLowerCase() === "group";
   return {
@@ -798,7 +809,7 @@ function feishuMessageFromParsed(
         : undefined,
     },
     attachments: parsed.attachments,
-    members: [],
+    members,
   };
 }
 
@@ -815,6 +826,62 @@ function feishuAttachmentResource(input: ChannelConnectorInboundAttachment): {
     return fileKey ? { fileKey, resourceType: "file" } : null;
   }
   return null;
+}
+
+async function loadFeishuGroupMembers(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  binding: ChannelConnectorRuntimeBinding;
+  transport: ChannelConnectorFeishuTransportConfig | null;
+  parsed: ChannelConnectorFeishuParsedWebhook;
+}): Promise<{
+  members: NonNullable<ChannelConnectorOctoInboundMessage["members"]>;
+  error: string | null;
+  attempted: boolean;
+  pageCount: number;
+  hasMore: boolean;
+}> {
+  if (input.parsed.kind !== "message") {
+    return { members: [], error: null, attempted: false, pageCount: 0, hasMore: false };
+  }
+  if (normalizeString(input.parsed.chatType).toLowerCase() !== "group") {
+    return { members: [], error: null, attempted: false, pageCount: 0, hasMore: false };
+  }
+  if (!metadataBoolean(input.binding, [
+    "enableFeishuMemberPull",
+    "enable_feishu_member_pull",
+    "pullFeishuMembers",
+    "pull_feishu_members",
+  ], true)) {
+    return { members: [], error: null, attempted: false, pageCount: 0, hasMore: false };
+  }
+  if (!input.transport) {
+    return {
+      members: [],
+      error: "feishu_transport_config_missing",
+      attempted: true,
+      pageCount: 0,
+      hasMore: false,
+    };
+  }
+  const maxPages = Math.max(1, Math.min(100, Math.floor(metadataNumber(input.binding, [
+    "feishuMemberMaxPages",
+    "feishu_member_max_pages",
+    "memberMaxPages",
+    "member_max_pages",
+  ], 10))));
+  const result = await listFeishuChatMembers(input.transport, {
+    chatId: normalizeString(input.parsed.channelId),
+    pageSize: 100,
+    maxPages,
+    memberIdType: "open_id",
+  }, feishuTokenCachePath(input.config));
+  return {
+    members: result.members,
+    error: result.ok ? null : result.error || "feishu_member_pull_failed",
+    attempted: result.attempted,
+    pageCount: result.pageCount,
+    hasMore: result.hasMore,
+  };
 }
 
 async function stageFeishuMessageAttachments(input: {
@@ -1993,6 +2060,18 @@ async function dispatchFeishuParsedEvent(input: {
       passthroughText: command.passthroughText,
     });
   }
+  const groupMembers = await loadFeishuGroupMembers({
+    config,
+    binding,
+    transport,
+    parsed,
+  });
+  if (groupMembers.members.length) {
+    agentMessage = {
+      ...agentMessage,
+      members: groupMembers.members,
+    };
+  }
 
   const control = getChannelConnectorSessionControl(sessionControlsPath(config), {
     bindingId: binding.id,
@@ -2346,6 +2425,11 @@ async function dispatchFeishuParsedEvent(input: {
     replyPreviewRunes,
     replySent,
     replyError,
+    groupMemberPullAttempted: groupMembers.attempted,
+    groupMemberCount: groupMembers.members.length,
+    groupMemberPullPages: groupMembers.pageCount,
+    groupMemberPullHasMore: groupMembers.hasMore,
+    groupMemberPullError: groupMembers.error,
     rawEventShape: isRecord(rawEvent) ? Object.keys(rawEvent).slice(0, 12) : [],
   });
   writeRuntime(config, state);

@@ -39,6 +39,7 @@ import {
   addFeishuMessageReaction,
   downloadFeishuMessageResource,
   downloadFeishuMessageResourceToFile,
+  listFeishuChatMembers,
   removeFeishuMessageReaction,
   sendFeishuTextMessage,
 } from "../../dist/apps/api/modules/channel-connectors/feishu-transport.js";
@@ -319,6 +320,38 @@ async function withMockFeishuServer(task) {
         res.setHeader("content-type", req.url?.includes("type=image") ? "image/png" : "application/octet-stream");
         res.setHeader("content-length", String(body.length));
         res.end(body);
+        return;
+      }
+      if (req.url?.startsWith("/open-apis/im/v1/chats/oc_chat/members") && req.method === "GET") {
+        const url = new URL(req.url, "http://127.0.0.1");
+        const pageToken = url.searchParams.get("page_token");
+        if (!pageToken) {
+          res.end(JSON.stringify({
+            code: 0,
+            msg: "success",
+            data: {
+              has_more: true,
+              page_token: "page-2",
+              items: [
+                { member_id: "ou_admin", name: "Admin" },
+                { member_id: "ou_user_1", name: "Alice" },
+              ],
+            },
+          }));
+          return;
+        }
+        res.end(JSON.stringify({
+          code: 0,
+          msg: "success",
+          data: {
+            has_more: false,
+            page_token: "",
+            items: [
+              { member_id: "ou_user_2", name: "Bob" },
+              { member_id: "ou_user_1", name: "Alice Duplicate" },
+            ],
+          },
+        }));
         return;
       }
       if (req.url?.startsWith("/open-apis/im/v1/messages/") && req.method === "PATCH") {
@@ -3180,6 +3213,48 @@ test("native Channel Connectors Feishu transport downloads message resources", a
   });
 });
 
+test("native Channel Connectors Feishu transport lists chat members with pagination", async () => {
+  await withMockFeishuServer(async (apiUrl, requests) => {
+    const root = makeTempRoot();
+    const cachePath = path.join(root, "feishu-token-cache.json");
+    const transport = {
+      apiUrl,
+      appId: "cli_members",
+      appSecret: "test-secret",
+    };
+    const result = await listFeishuChatMembers(transport, {
+      chatId: "oc_chat",
+      pageSize: 2,
+      maxPages: 5,
+    }, cachePath);
+    assert.equal(result.ok, true);
+    assert.equal(result.requestCount, 3);
+    assert.equal(result.tokenCache, "miss");
+    assert.equal(result.pageCount, 2);
+    assert.equal(result.hasMore, false);
+    assert.deepEqual(result.members, [
+      { uid: "ou_admin", name: "Admin" },
+      { uid: "ou_user_1", name: "Alice" },
+      { uid: "ou_user_2", name: "Bob" },
+    ]);
+    assert.equal(requests[0].path, "/open-apis/auth/v3/tenant_access_token/internal");
+    assert.equal(requests[1].path, "/open-apis/im/v1/chats/oc_chat/members?member_id_type=open_id&page_size=2");
+    assert.equal(requests[1].authorization, "Bearer tenant-token-1");
+    assert.equal(requests[2].path, "/open-apis/im/v1/chats/oc_chat/members?member_id_type=open_id&page_size=2&page_token=page-2");
+
+    const cached = await listFeishuChatMembers(transport, {
+      chatId: "oc_chat",
+      pageSize: 2,
+      maxPages: 1,
+    }, cachePath);
+    assert.equal(cached.ok, true);
+    assert.equal(cached.tokenCache, "hit");
+    assert.equal(cached.requestCount, 1);
+    assert.equal(cached.pageCount, 1);
+    assert.equal(cached.hasMore, true);
+  });
+});
+
 test("native Channel Connectors Feishu transport splits long text replies", async () => {
   await withMockFeishuServer(async (apiUrl, requests) => {
     const root = makeTempRoot();
@@ -3368,6 +3443,9 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /sendFeishuTextMessage/);
   assert.match(daemonSource, /sendFeishuCardMessage/);
   assert.match(daemonSource, /patchFeishuCardMessage/);
+  assert.match(daemonSource, /listFeishuChatMembers/);
+  assert.match(daemonSource, /loadFeishuGroupMembers/);
+  assert.match(daemonSource, /groupMemberCount/);
   assert.match(daemonSource, /shouldSendFeishuProgressEvent/);
   assert.match(daemonSource, /renderFeishuProgressCard/);
   assert.match(daemonSource, /sendOrPatchFeishuProgressCard/);

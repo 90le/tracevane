@@ -50,4 +50,5 @@
 - 已完成：F4 长回复 group buffer：群聊长回复保存到本地 buffer，只发送短预览和 buffer id；私聊保持原拆分。
 - 已完成：F4 reply buffer 查看：`/buffer` / `/buffer <id|前缀|latest>` 和 Feishu Reply Buffer 子卡片，按当前 binding + session 隔离读取。
 - 已完成：F5 基础治理：allowlist/admin、banned words、rate limit 覆盖 Octo/Feishu daemon 与 HTTP dispatch/action。
-- 下一步：F4 飞书完整群成员拉取；Feishu card/menu UI 继续复刻 CC 后再 Studio 化。
+- 已完成：F4 飞书群成员拉取：群聊 Agent 分支分页拉取 chat members 并注入 group context，失败只记日志不阻断。
+- 下一步：继续迁移 CC/OpenClaw 文件/图片和多平台 adapter；Feishu card/menu UI 继续复刻 CC 后再 Studio 化。
