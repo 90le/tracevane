@@ -1,6 +1,6 @@
 # Studio Gateway 进度
 
-> 状态：Studio Gateway core completed; Provider Center/App Connections completed; CLI/Gateway/live smoke harness completed; Channel Connectors F3f Feishu long-connection/menu/reaction loop completed; OpenAI Platform vendor proof optional
+> 状态：Studio Gateway core completed; Provider Center/App Connections completed; CLI/Gateway/live smoke harness completed; Channel Connectors F3g Feishu session/model menu loop completed; OpenAI Platform vendor proof optional
 > 更新：2026-06-06
 > 文档规则：只保留当前状态、最近完成、验证和下一步；旧流水已压缩。
 
@@ -14,7 +14,7 @@
 - App Connections 已覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview、apply、备份、rollback、profile 切换、隔离 HOME HTTP 验收和真实 CLI 启动 smoke harness。
 - App Connections profile 是两层模型选择：全局默认模型 + 每个 App 单独模型覆盖；模型输入从 Gateway 可用模型列表提供 datalist，仍允许手动输入 alias。
 - Codex 低频兼容参数（WebSocket、WebSocket v2、请求压缩）已收进 `Codex advanced` 折叠，避免普通用户误触。
-- Channel Connectors 已切换为 Studio 原生 CLI Agent Bot 路线；CC/OpenClaw 只作为参考，不再走短期托管 cc-connect；F3f 已完成文本命令、原生 Agent slash 透传、平台无关 command surface、Feishu webhook/long-connection ingress、action callback、CC 风格 command/menu card/子卡片/dropdown 和 outbound transport contract；Codex 通过 Studio Gateway client key 启动，不再依赖用户全局 Codex provider。
+- Channel Connectors 已切换为 Studio 原生 CLI Agent Bot 路线；CC/OpenClaw 只作为参考，不再走短期托管 cc-connect；F3g 已完成文本命令、原生 Agent slash 透传、平台无关 command surface、Feishu webhook/long-connection ingress、action callback、CC 风格 command/menu card/子卡片/dropdown、session 操作结果卡和 Gateway 模型下拉；Codex 通过 Studio Gateway client key 启动，不再依赖用户全局 Codex provider。
 - Phase B2 已按 `/tmp/cc-switch-src` 覆盖核心协议成熟度：CLI 启动、Claude tool/summary、OpenClaw agent provider/model/usage、Gateway HTTP compact/tool-history/error envelope、Responses->Chat streaming `include_usage`、provider-declared reasoning/thinking 映射、parallel tool-call index grouping、Chat SSE error -> Responses `response.failed`、started upstream stream failure -> target protocol error event、BigModel Chat/Anthropic live provider matrix，以及 GMN Responses-native substitute `/v1/responses` + `/v1/responses/compact` live proof。
 
 ## 本轮完成
@@ -43,6 +43,7 @@
 - Agent 失败回执已优先使用 Codex/Agent JSONL 里的 `error` / `turn.failed` 文本，不再把网关 503、模型未启用等真实原因退化成 `Agent process exited with 1`。
 - Feishu card action 解析已对飞书下拉/按钮混合 payload 做防御，只要 `action` / `command` / `value` / `option` 任一字段带 `nav:` / `act:` / `cmd:` 前缀，就按真实 Studio 命令处理，避免菜单动作误透传给 Agent。
 - Feishu 菜单交互已区分 `nav:` 和 `act:`：导航动作只更新菜单；执行动作会把命令结果渲染到卡片顶部，并保留更新后的当前状态/子页面。`/status`、`/new`、`/reset`、`/agent`、`/model`、`/mode`、`/cd` 不再只 toast “菜单已更新”。
+- Feishu Session 子卡片已补齐：`Status`、`New Session`、`Reset` 三个按钮都返回 `Studio Session` 结果卡，显示具体状态/新会话/重置结果；模型子卡片在未显式传入 `models` 时会从当前 Agent Profile 的 Studio Gateway `/models` 读取可用模型列表，并保留 Profile 模型作为 fallback。
 
 ## 验证
 
@@ -61,6 +62,8 @@
 - 通过：真实 Feishu reaction proof（secret redacted）：对近期入站消息执行 `add-reaction OnIt` 与 `remove-reaction` 均 HTTP 200。
 - 通过：本机 Codex/Studio Gateway live proof：Channel Connector 当前 Profile 切到 Gateway 已启用 `glm-5`，清理旧 Codex thread 后，隔离 Codex runner 经 `http://127.0.0.1:18796/v1` 返回 `studio-ok`。
 - 通过：Feishu command result card contract：`node --test tests/system/channel-connectors-service.test.mjs` 覆盖 `act:/status` 卡片顶部展示 `Studio Channel Status`，且不再返回“菜单已更新”作为唯一反馈。
+- 通过：Feishu session/model menu contract：`node --test tests/system/channel-connectors-service.test.mjs` 覆盖 Gateway `/models` 读取、`/commands/surface` 自动填充模型下拉，以及 `act:/status`、`act:/new`、`act:/reset` 返回带 notice 的 `Studio Session` 子卡片。
+- 通过：本地运行态 callback smoke：重启 dev backend/frontend 与 `openclaw-studio-channel-connectors.service` 后，`nav:/model` 返回 Gateway 模型下拉（`glm-4.5` 到 `glm-5.1`），`act:/status`、`act:/new`、`act:/reset` 均返回 `Studio Session` 卡片和具体 replyText。
 
 ## 已知边界
 

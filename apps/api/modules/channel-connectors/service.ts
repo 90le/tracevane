@@ -79,7 +79,13 @@ import {
   sendFeishuTextMessage,
   smokeFeishuTenantToken,
 } from "./feishu-transport.js";
-import { handleChannelConnectorCommand } from "./command-router.js";
+import {
+  handleChannelConnectorCommand,
+  listChannelConnectorGatewayModels,
+} from "./command-router.js";
+import {
+  resolveChannelConnectorGatewayClientKey,
+} from "./gateway-secret.js";
 import { getChannelConnectorSessionControl } from "./session-control-store.js";
 
 const execFileAsync = promisify(execFile);
@@ -116,7 +122,7 @@ export interface ChannelConnectorsService {
   getStatus(): Promise<ChannelConnectorsStatusResponse>;
   getNativeConfig(): ChannelConnectorsNativeConfigResponse;
   saveNativeConfig(payload?: ChannelConnectorsSaveNativeConfigRequest): ChannelConnectorsNativeConfigResponse;
-  getCommandSurface(payload?: ChannelConnectorCommandSurfaceRequest): ChannelConnectorCommandSurfaceResponse;
+  getCommandSurface(payload?: ChannelConnectorCommandSurfaceRequest): Promise<ChannelConnectorCommandSurfaceResponse>;
   handleCommandAction(payload?: ChannelConnectorCommandActionRequest): Promise<ChannelConnectorCommandActionResponse>;
   dispatchFeishuWebhook(payload?: ChannelConnectorFeishuWebhookRequest): Promise<ChannelConnectorFeishuWebhookResponse>;
   runFeishuTransportSmoke(payload?: ChannelConnectorFeishuTransportSmokeRequest): Promise<ChannelConnectorFeishuTransportSmokeResponse>;
@@ -998,6 +1004,23 @@ function commandActionNotice(
   };
 }
 
+async function modelsForCommandSurface(input: {
+  runtimeConfig: ChannelConnectorsDaemonRuntimeConfig;
+  project: ChannelConnectorsDaemonRuntimeConfig["projects"][number];
+  requestedModels?: string[];
+}): Promise<string[]> {
+  const requested = stringList(input.requestedModels);
+  if (requested.length) return requested;
+  try {
+    return await listChannelConnectorGatewayModels(
+      input.project.gatewayEndpoint || input.runtimeConfig.gateway.endpoint,
+      resolveChannelConnectorGatewayClientKey(input.runtimeConfig),
+    );
+  } catch {
+    return [];
+  }
+}
+
 function derivedCommandActionSessionKey(input: {
   sessionKey?: string | null;
   platform: string;
@@ -1185,7 +1208,7 @@ export function createChannelConnectorsService(
     };
   }
 
-  function getCommandSurface(payload: ChannelConnectorCommandSurfaceRequest = {}): ChannelConnectorCommandSurfaceResponse {
+  async function getCommandSurface(payload: ChannelConnectorCommandSurfaceRequest = {}): Promise<ChannelConnectorCommandSurfaceResponse> {
     const request = normalizeCommandSurfaceRequest(payload);
     const resolvedPaths = paths();
     const checkedAt = now().toISOString();
@@ -1211,13 +1234,18 @@ export function createChannelConnectorsService(
         sessionKey: request.sessionKey,
       })
       : null;
+    const models = await modelsForCommandSurface({
+      runtimeConfig,
+      project: resolved.project,
+      requestedModels: request.models,
+    });
     const surface = buildChannelConnectorCommandSurface({
       config: runtimeConfig,
       project: resolved.project,
       binding: resolved.runtimeBinding,
       control,
       sessionKey: request.sessionKey,
-      models: request.models,
+      models,
       selectedSectionId: request.section,
       selectedViewId: request.view,
     });
@@ -1300,6 +1328,11 @@ export function createChannelConnectorsService(
     }
 
     const controlsPath = commandSurfaceControlsPath(runtimeConfig);
+    const commandModels = await modelsForCommandSurface({
+      runtimeConfig,
+      project: resolved.project,
+      requestedModels: request.models,
+    });
     const commandResult = await handleChannelConnectorCommand({
       config: runtimeConfig,
       project: resolved.project,
@@ -1308,7 +1341,7 @@ export function createChannelConnectorsService(
       controlsPath,
       agentSessionsPath: path.join(runtimeConfig.paths.state, "channel-sessions.json"),
       gatewayClientKey: null,
-      listModels: async () => stringList(request.models),
+      listModels: async () => commandModels,
       message: {
         messageId: request.messageId || `feishu-action-${Date.now()}`,
         fromUid: request.fromUid || "",
@@ -1341,7 +1374,7 @@ export function createChannelConnectorsService(
       binding: resolved.runtimeBinding,
       control,
       sessionKey,
-      models: request.models,
+      models: commandModels,
       selectedSectionId,
       selectedViewId,
     });

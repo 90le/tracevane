@@ -55,6 +55,7 @@ type FeishuMenuSectionId = typeof FEISHU_MENU_SECTIONS[number];
 
 const FEISHU_MENU_VIEWS = [
   "help",
+  "session",
   "agent",
   "model",
   "mode",
@@ -105,6 +106,11 @@ const FEISHU_MENU_VIEW_ALIASES: Record<string, FeishuMenuViewId> = {
   command: "help",
   cmd: "help",
   start: "help",
+  session: "session",
+  status: "session",
+  current: "session",
+  new: "session",
+  reset: "session",
   agent: "agent",
   agents: "agent",
   project: "agent",
@@ -185,6 +191,7 @@ export function channelConnectorCommandSurfaceViewFromCommand(
   if (!parts.length) return null;
   const name = parts[0]?.toLowerCase() || "";
   if (["help", "menu", "commands", "command", "cmd", "start"].includes(name)) return "help";
+  if (["status", "current", "new", "reset"].includes(name)) return "session";
   if (name === "agent" || name === "agents") return "agent";
   if (name === "model" || name === "models") return "model";
   if (["mode", "permission", "permissions", "yolo"].includes(name)) return "mode";
@@ -919,6 +926,38 @@ function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): Chann
   };
 }
 
+function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
+  const section = sectionById(surface, "session");
+  const actions = section?.actions || [];
+  const status = actions.find((item) => item.id === "status") || action("status", "Status", "/status");
+  const fresh = actions.find((item) => item.id === "new") || action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true });
+  const reset = actions.find((item) => item.id === "reset") || action("reset", "Reset", "/reset", { tone: "danger", requiresAdmin: true });
+  const elements: Array<Record<string, unknown>> = [
+    statusBlock(surface),
+    {
+      tag: "markdown",
+      content: [
+        "**会话操作**",
+        "Status 查看当前 IM session 的 Agent、模型、权限和续接状态。",
+        "New Session 只断开 Agent 续接，保留当前模型/权限/目录选择。",
+        "Reset 清空本 IM session 的 override 和 Agent 续接。",
+      ].join("\n"),
+    },
+  ];
+  pushActionRows(elements, [status, fresh, reset], surface, 1);
+  pushActionRows(elements, [backToHelpAction("session")], surface, 1);
+  return {
+    config: {
+      wide_screen_mode: true,
+    },
+    header: {
+      title: plainText("Studio Session"),
+      template: "blue",
+    },
+    elements,
+  };
+}
+
 function renderHelpMenuCard(
   surface: ChannelConnectorCommandSurface,
 ): ChannelConnectorFeishuInteractiveCard {
@@ -966,13 +1005,15 @@ export function renderChannelConnectorCommandSurfaceFeishu(
   const selectedViewId = normalizeChannelConnectorCommandSurfaceView(surface.selectedViewId) || "help";
   const card = selectedViewId === "agent"
     ? renderAgentPickerCard(surface)
-    : selectedViewId === "model"
-      ? renderModelPickerCard(surface)
-      : selectedViewId === "mode"
-        ? renderModePickerCard(surface)
-        : selectedViewId === "workdir"
-          ? renderWorkdirPickerCard(surface)
-          : renderHelpMenuCard(surface);
+    : selectedViewId === "session"
+      ? renderSessionCard(surface)
+      : selectedViewId === "model"
+        ? renderModelPickerCard(surface)
+        : selectedViewId === "mode"
+          ? renderModePickerCard(surface)
+          : selectedViewId === "workdir"
+            ? renderWorkdirPickerCard(surface)
+            : renderHelpMenuCard(surface);
   return notice?.text ? withCommandNotice(card, notice) : card;
 }
 

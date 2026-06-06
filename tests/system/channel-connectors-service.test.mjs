@@ -44,6 +44,7 @@ import {
 } from "../../dist/apps/api/modules/channel-connectors/gateway-secret.js";
 import {
   handleChannelConnectorCommand,
+  listChannelConnectorGatewayModels,
   resolveChannelConnectorEffectiveProject,
 } from "../../dist/apps/api/modules/channel-connectors/command-router.js";
 import {
@@ -166,6 +167,47 @@ async function withServer(handler, task) {
   assert.ok(address && typeof address === "object");
   try {
     await task(`http://127.0.0.1:${address.port}`);
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+}
+
+async function withMockGatewayModelsServer(task) {
+  const requests = [];
+  const server = http.createServer((req, res) => {
+    requests.push({
+      method: req.method,
+      path: req.url,
+      authorization: req.headers.authorization || null,
+    });
+    res.setHeader("content-type", "application/json");
+    if (req.url === "/v1/models") {
+      res.end(JSON.stringify({
+        object: "list",
+        data: [
+          { id: "gateway-gpt-5", object: "model" },
+          { id: "gateway-glm-5", object: "model" },
+          { id: "gateway-gpt-5", object: "model" },
+        ],
+      }));
+      return;
+    }
+    res.statusCode = 404;
+    res.end(JSON.stringify({ error: "not_found" }));
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  try {
+    await task({
+      baseUrl: `http://127.0.0.1:${address.port}`,
+      requests,
+    });
   } finally {
     await new Promise((resolve, reject) => {
       server.close((error) => error ? reject(error) : resolve());
@@ -1335,6 +1377,73 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   }), null);
 });
 
+test("native Channel Connectors model menus can read live Gateway model lists", async () => {
+  await withMockGatewayModelsServer(async ({ baseUrl, requests }) => {
+    const models = await listChannelConnectorGatewayModels(`${baseUrl}/v1`, "studio-client-key");
+    assert.deepEqual(models, ["gateway-gpt-5", "gateway-glm-5"]);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].method, "GET");
+    assert.equal(requests[0].path, "/v1/models");
+    assert.equal(requests[0].authorization, "Bearer studio-client-key");
+  });
+});
+
+test("native Channel Connectors command surface loads Gateway models when request omits models", async () => {
+  await withMockGatewayModelsServer(async ({ baseUrl, requests }) => {
+    const root = makeTempRoot();
+    const config = createStudioConfig(root);
+    const service = createChannelConnectorsService(config, {
+      now: () => new Date("2026-06-06T08:00:00.000Z"),
+    });
+    const native = service.getNativeConfig().config;
+    service.saveNativeConfig({
+      config: {
+        ...native,
+        agentProfiles: [
+          {
+            ...native.agentProfiles[0],
+            id: "codex-gateway",
+            name: "Codex Gateway",
+            model: "profile-fallback-model",
+            gatewayEndpoint: `${baseUrl}/v1`,
+          },
+        ],
+        defaultAgentProfileId: "codex-gateway",
+        platformBindings: [
+          {
+            id: "feishu-gateway",
+            platform: "feishu",
+            accountId: "cli_gateway",
+            botId: "feishu-gateway-bot",
+            displayName: "Feishu Gateway Bot",
+            agentProfileId: "codex-gateway",
+            enabled: true,
+            allowlist: [],
+            adminUsers: [],
+            metadata: {
+              verificationToken: "gateway-token",
+            },
+          },
+        ],
+      },
+    });
+
+    const surface = await service.getCommandSurface({
+      bindingId: "feishu-gateway",
+      sessionKey: "feishu:chat:user",
+      view: "model",
+      renderer: "all",
+    });
+    assert.equal(surface.binding.id, "feishu-gateway");
+    assert.equal(surface.surface.current.model, "profile-fallback-model");
+    assert.equal(requests.some((request) => request.path === "/v1/models"), true);
+    const cardRaw = JSON.stringify(surface.feishuCard);
+    assert.match(cardRaw, /Studio Model/);
+    assert.match(cardRaw, /act:\/model gateway-gpt-5/);
+    assert.match(cardRaw, /act:\/model gateway-glm-5/);
+  });
+});
+
 test("native Channel Connectors command surface renders text and Feishu card actions", () => {
   const root = makeTempRoot();
   const stateDir = path.join(root, "state");
@@ -1426,6 +1535,22 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(raw, /New Session/);
   assert.doesNotMatch(raw, /\/mode yolo/);
   assert.ok(feishu.elements.some((element) => element.tag === "column_set" && element.flex_mode === "bisect"));
+
+  const sessionSurface = buildChannelConnectorCommandSurface({
+    config: runtimeConfig,
+    project: codexProject,
+    binding,
+    sessionKey: "dmwork:dm:admin-1",
+    selectedSectionId: "session",
+    selectedViewId: "session",
+  });
+  const sessionCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(sessionSurface));
+  assert.match(sessionCardRaw, /Studio Session/);
+  assert.match(sessionCardRaw, /act:\/status/);
+  assert.match(sessionCardRaw, /act:\/new/);
+  assert.match(sessionCardRaw, /act:\/reset/);
+  assert.match(sessionCardRaw, /New Session 只断开 Agent 续接/);
+  assert.match(sessionCardRaw, /nav:\/help session/);
 
   const agentPickerSurface = buildChannelConnectorCommandSurface({
     config: runtimeConfig,
@@ -1782,6 +1907,68 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.match(statusCardRaw, /Studio Channel Status/);
   assert.match(statusCardRaw, /Agent:/);
   assert.doesNotMatch(statusCardAction.feishuResponse.toast.content, /菜单已更新/);
+
+  const newSessionCardAction = await service.dispatchFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "card.action.trigger",
+      app_id: "cli_test",
+      event_id: "evt_card_new_session",
+      token: "verify-token",
+    },
+    event: {
+      operator: { open_id: "ou_admin" },
+      context: { open_chat_id: "oc_chat", open_message_id: "om_card_new_session" },
+      action: {
+        value: {
+          action: "act:/new",
+          command: "/new",
+          binding_id: "feishu-main",
+        },
+      },
+    },
+  });
+  assert.equal(newSessionCardAction.accepted, true);
+  assert.equal(newSessionCardAction.commandAction.command, "/new");
+  assert.equal(newSessionCardAction.commandAction.commandResult.ok, true);
+  assert.match(newSessionCardAction.commandAction.commandResult.replyText, /已开启新的 Agent 会话/);
+  assert.match(newSessionCardAction.feishuResponse.toast.content, /已开启新的 Agent 会话/);
+  const newSessionCardRaw = JSON.stringify(newSessionCardAction.feishuResponse.card.data);
+  assert.match(newSessionCardRaw, /Studio Session/);
+  assert.match(newSessionCardRaw, /新会话已开启/);
+  assert.match(newSessionCardRaw, /已开启新的 Agent 会话/);
+  assert.match(newSessionCardRaw, /act:\/reset/);
+
+  const resetSessionCardAction = await service.dispatchFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "card.action.trigger",
+      app_id: "cli_test",
+      event_id: "evt_card_reset_session",
+      token: "verify-token",
+    },
+    event: {
+      operator: { open_id: "ou_admin" },
+      context: { open_chat_id: "oc_chat", open_message_id: "om_card_reset_session" },
+      action: {
+        value: {
+          action: "act:/reset",
+          command: "/reset",
+          binding_id: "feishu-main",
+        },
+      },
+    },
+  });
+  assert.equal(resetSessionCardAction.accepted, true);
+  assert.equal(resetSessionCardAction.commandAction.command, "/reset");
+  assert.equal(resetSessionCardAction.commandAction.commandResult.ok, true);
+  assert.match(resetSessionCardAction.commandAction.commandResult.replyText, /已重置本 IM 会话/);
+  assert.match(resetSessionCardAction.feishuResponse.toast.content, /已重置本 IM 会话/);
+  const resetSessionCardRaw = JSON.stringify(resetSessionCardAction.feishuResponse.card.data);
+  assert.match(resetSessionCardRaw, /Studio Session/);
+  assert.match(resetSessionCardRaw, /会话已重置/);
+  assert.match(resetSessionCardRaw, /已重置本 IM 会话/);
+  assert.match(resetSessionCardRaw, /act:\/new/);
 
   const cardAction = await service.dispatchFeishuWebhook({
     schema: "2.0",

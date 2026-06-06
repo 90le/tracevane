@@ -259,7 +259,7 @@ function directoryInfoText(project: ChannelConnectorRuntimeProject): string {
   return lines.join("\n");
 }
 
-async function defaultListGatewayModels(endpoint: string, clientKey: string | null): Promise<string[]> {
+export async function listChannelConnectorGatewayModels(endpoint: string, clientKey: string | null): Promise<string[]> {
   const url = `${endpoint.replace(/\/+$/, "")}/models`;
   const headers: Record<string, string> = {};
   if (clientKey) headers.authorization = `Bearer ${clientKey}`;
@@ -273,7 +273,7 @@ async function listModelsForCommand(context: ChannelConnectorCommandContext): Pr
   const effectiveControl = getChannelConnectorSessionControl(context.controlsPath, controlsLookup(context));
   const currentProject = resolveChannelConnectorEffectiveProject(context.config, context.project, effectiveControl);
   try {
-    const models = await (context.listModels || defaultListGatewayModels)(
+    const models = await (context.listModels || listChannelConnectorGatewayModels)(
       currentProject.gatewayEndpoint || context.config.gateway.endpoint,
       context.gatewayClientKey,
     );

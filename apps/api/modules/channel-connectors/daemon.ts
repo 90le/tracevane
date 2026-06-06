@@ -33,6 +33,7 @@ import {
 } from "./agent-session-store.js";
 import {
   handleChannelConnectorCommand,
+  listChannelConnectorGatewayModels,
   resolveChannelConnectorEffectiveProject,
 } from "./command-router.js";
 import {
@@ -703,6 +704,7 @@ function buildFeishuCommandCard(input: {
   sessionKey: string;
   selectedSectionId?: string | null;
   selectedViewId?: string | null;
+  models?: string[];
   notice?: {
     title: string;
     text: string;
@@ -719,10 +721,32 @@ function buildFeishuCommandCard(input: {
     binding: input.binding,
     control,
     sessionKey: input.sessionKey,
+    models: input.models,
     selectedSectionId: input.selectedSectionId,
     selectedViewId: input.selectedViewId,
   });
   return renderChannelConnectorCommandSurfaceFeishu(surface, input.notice || null);
+}
+
+async function gatewayModelsForFeishuCard(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  project: ChannelConnectorRuntimeProject;
+  binding: ChannelConnectorRuntimeBinding;
+  sessionKey: string;
+}): Promise<string[]> {
+  const control = getChannelConnectorSessionControl(sessionControlsPath(input.config), {
+    bindingId: input.binding.id,
+    sessionKey: input.sessionKey,
+  });
+  const current = resolveChannelConnectorEffectiveProject(input.config, input.project, control);
+  try {
+    return await listChannelConnectorGatewayModels(
+      current.gatewayEndpoint || input.config.gateway.endpoint,
+      gatewayClientKey(input.config),
+    );
+  } catch {
+    return [];
+  }
 }
 
 function feishuMenuSelectionFromParsed(parsed: ChannelConnectorFeishuParsedWebhook): {
@@ -757,9 +781,11 @@ async function sendOrPatchFeishuCommandCard(input: {
   } | null;
 }): Promise<ChannelConnectorFeishuTransportResult & { card: ReturnType<typeof buildFeishuCommandCard> }> {
   const selection = feishuMenuSelectionFromParsed(input.parsed);
+  const models = await gatewayModelsForFeishuCard(input);
   const card = buildFeishuCommandCard({
     ...input,
     ...selection,
+    models,
     notice: input.notice || null,
   });
   const cachePath = feishuTokenCachePath(input.config);

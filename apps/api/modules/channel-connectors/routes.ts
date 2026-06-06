@@ -48,7 +48,7 @@ export function registerChannelConnectorsRoutes(router: StudioRouter): void {
   router.post("/api/channel-connectors/commands/surface", async (req, res, routeCtx) => {
     try {
       const payload = await parseJsonBody<ChannelConnectorCommandSurfaceRequest>(req);
-      sendJson(res, 200, routeCtx.services.channelConnectors.getCommandSurface(payload));
+      sendJson(res, 200, await routeCtx.services.channelConnectors.getCommandSurface(payload));
     } catch (error) {
       sendChannelConnectorsError(res, error);
     }
