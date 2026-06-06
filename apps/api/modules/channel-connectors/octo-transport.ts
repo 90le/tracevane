@@ -6,6 +6,8 @@ import type {
 } from "../../../../types/channel-connectors.js";
 
 const OCTO_TEXT_MESSAGE_TYPE = 1;
+const OCTO_IMAGE_MESSAGE_TYPE = 2;
+const OCTO_FILE_MESSAGE_TYPE = 8;
 const DEFAULT_TIMEOUT_MS = 30_000;
 
 function normalizeString(value: unknown): string {
@@ -49,6 +51,10 @@ function transportResult(
     robotId: input.robotId ?? null,
     imToken: input.imToken ?? null,
     wsUrl: input.wsUrl ?? null,
+    mediaUrl: input.mediaUrl ?? null,
+    fileName: input.fileName ?? null,
+    mimeType: input.mimeType ?? null,
+    size: input.size ?? null,
   };
 }
 
@@ -108,6 +114,97 @@ function errorStatusCode(error: unknown): number | null {
     return Number.isFinite(value) ? value : null;
   }
   return null;
+}
+
+function mediaUrlFromResponse(body: Record<string, unknown>): string {
+  const data = recordFrom(body.data);
+  return normalizeString(body.url)
+    || normalizeString(body.file_url)
+    || normalizeString(body.fileUrl)
+    || normalizeString(body.download_url)
+    || normalizeString(data.url)
+    || normalizeString(data.file_url)
+    || normalizeString(data.fileUrl)
+    || normalizeString(data.download_url);
+}
+
+function inferOctoMimeType(fileName: string, fallback?: string | null): string {
+  const explicit = normalizeString(fallback);
+  if (explicit) return explicit;
+  const lower = normalizeString(fileName).toLowerCase();
+  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".gif")) return "image/gif";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".pdf")) return "application/pdf";
+  if (lower.endsWith(".txt") || lower.endsWith(".md") || lower.endsWith(".log")) return "text/plain";
+  if (lower.endsWith(".json")) return "application/json";
+  if (lower.endsWith(".zip")) return "application/zip";
+  return "application/octet-stream";
+}
+
+function safeOctoUploadFileName(value: unknown, fallback: string): string {
+  const normalized = normalizeString(value)
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter(Boolean)
+    .pop()
+    || fallback;
+  const safe = normalized
+    .replace(/^\.+/, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "_")
+    .replace(/_+/g, "_")
+    .slice(0, 160);
+  return safe || fallback;
+}
+
+async function postOctoMultipart(
+  config: ChannelConnectorOctoTransportConfig,
+  path: string,
+  input: {
+    fieldName: string;
+    fileName: string;
+    data: Uint8Array;
+    mimeType: string;
+  },
+): Promise<{ statusCode: number; body: Record<string, unknown> }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  try {
+    const form = new FormData();
+    const arrayBuffer = new ArrayBuffer(input.data.byteLength);
+    new Uint8Array(arrayBuffer).set(input.data);
+    form.append(input.fieldName, new Blob([arrayBuffer], { type: input.mimeType }), input.fileName);
+    const response = await fetch(`${config.apiUrl.replace(/\/+$/, "")}${path}`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${config.botToken}`,
+      },
+      body: form,
+      signal: controller.signal,
+    });
+    const raw = await response.text();
+    let body: Record<string, unknown> = {};
+    if (raw) {
+      try {
+        body = JSON.parse(raw) as Record<string, unknown>;
+      } catch {
+        body = { raw };
+      }
+    }
+    if (!response.ok) {
+      throw Object.assign(new Error(`Octo API ${path} failed with HTTP ${response.status}`), {
+        statusCode: response.status,
+        body,
+      });
+    }
+    return {
+      statusCode: response.status,
+      body,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function registerOctoBot(
@@ -211,4 +308,152 @@ export async function sendOctoTextReply(
       requestCount,
     });
   }
+}
+
+export async function uploadOctoFile(
+  config: ChannelConnectorOctoTransportConfig,
+  input: {
+    data: Uint8Array;
+    fileName: string;
+    mimeType?: string | null;
+  },
+): Promise<ChannelConnectorOctoTransportResult> {
+  const fileName = safeOctoUploadFileName(input.fileName, "studio-upload.bin");
+  const mimeType = inferOctoMimeType(fileName, input.mimeType);
+  try {
+    const response = await postOctoMultipart(config, "/v1/bot/file/upload", {
+      fieldName: "file",
+      fileName,
+      data: input.data,
+      mimeType,
+    });
+    const mediaUrl = mediaUrlFromResponse(response.body);
+    if (!mediaUrl) {
+      throw Object.assign(new Error("Octo upload response did not include a file URL."), {
+        statusCode: response.statusCode,
+        body: response.body,
+      });
+    }
+    return transportResult({
+      attempted: true,
+      ok: true,
+      action: "upload-file",
+      apiUrl: config.apiUrl,
+      statusCode: response.statusCode,
+      requestCount: 1,
+      mediaUrl,
+      fileName,
+      mimeType,
+      size: input.data.length,
+    });
+  } catch (error) {
+    return transportResult({
+      attempted: true,
+      ok: false,
+      action: "upload-file",
+      apiUrl: config.apiUrl,
+      statusCode: errorStatusCode(error),
+      error: errorMessage(error),
+      requestCount: 1,
+      fileName,
+      mimeType,
+      size: input.data.length,
+    });
+  }
+}
+
+export async function sendOctoMediaMessage(
+  config: ChannelConnectorOctoTransportConfig,
+  input: {
+    channelId: string;
+    channelType: number;
+    mediaUrl: string;
+    fileName?: string | null;
+    mimeType?: string | null;
+    size?: number | null;
+    width?: number | null;
+    height?: number | null;
+  },
+): Promise<ChannelConnectorOctoTransportResult> {
+  const fileName = safeOctoUploadFileName(input.fileName, "studio-upload.bin");
+  const mimeType = inferOctoMimeType(fileName, input.mimeType);
+  const mediaType = mimeType.startsWith("image/") ? OCTO_IMAGE_MESSAGE_TYPE : OCTO_FILE_MESSAGE_TYPE;
+  const payload: Record<string, unknown> = {
+    type: mediaType,
+    url: input.mediaUrl,
+    name: fileName,
+  };
+  if (typeof input.size === "number" && Number.isFinite(input.size) && input.size > 0) payload.size = input.size;
+  if (mediaType === OCTO_IMAGE_MESSAGE_TYPE) {
+    if (typeof input.width === "number" && Number.isFinite(input.width) && input.width > 0) payload.width = input.width;
+    if (typeof input.height === "number" && Number.isFinite(input.height) && input.height > 0) payload.height = input.height;
+  }
+  try {
+    const response = await postOctoJson(config, "/v1/bot/sendMessage", {
+      channel_id: input.channelId,
+      channel_type: input.channelType,
+      payload,
+    });
+    return transportResult({
+      attempted: true,
+      ok: true,
+      action: "send-media",
+      apiUrl: config.apiUrl,
+      statusCode: response.statusCode,
+      requestCount: 1,
+      mediaUrl: input.mediaUrl,
+      fileName,
+      mimeType,
+      size: typeof input.size === "number" && Number.isFinite(input.size) ? input.size : null,
+    });
+  } catch (error) {
+    return transportResult({
+      attempted: true,
+      ok: false,
+      action: "send-media",
+      apiUrl: config.apiUrl,
+      statusCode: errorStatusCode(error),
+      error: errorMessage(error),
+      requestCount: 1,
+      mediaUrl: input.mediaUrl,
+      fileName,
+      mimeType,
+      size: typeof input.size === "number" && Number.isFinite(input.size) ? input.size : null,
+    });
+  }
+}
+
+export async function uploadAndSendOctoMedia(
+  config: ChannelConnectorOctoTransportConfig,
+  input: {
+    channelId: string;
+    channelType: number;
+    data: Uint8Array;
+    fileName: string;
+    mimeType?: string | null;
+  },
+): Promise<ChannelConnectorOctoTransportResult> {
+  const upload = await uploadOctoFile(config, input);
+  if (upload.ok !== true || !upload.mediaUrl) return upload;
+  const sent = await sendOctoMediaMessage(config, {
+    channelId: input.channelId,
+    channelType: input.channelType,
+    mediaUrl: upload.mediaUrl,
+    fileName: upload.fileName,
+    mimeType: upload.mimeType,
+    size: upload.size,
+  });
+  return transportResult({
+    attempted: true,
+    ok: sent.ok,
+    action: "upload-and-send-media",
+    apiUrl: config.apiUrl,
+    statusCode: sent.statusCode,
+    error: sent.error,
+    requestCount: upload.requestCount + sent.requestCount,
+    mediaUrl: upload.mediaUrl,
+    fileName: upload.fileName,
+    mimeType: upload.mimeType,
+    size: upload.size,
+  });
 }

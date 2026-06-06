@@ -59,6 +59,8 @@ import {
   registerOctoBot,
   sendOctoTextReply,
   sendOctoTyping,
+  uploadAndSendOctoMedia,
+  uploadOctoFile,
 } from "./octo-transport.js";
 import {
   buildChannelConnectorCommandSurface,
@@ -917,7 +919,11 @@ function validateOctoInboundRequest(payload: ChannelConnectorOctoInboundRequest 
 
 function normalizeOctoTransportSmokeRequest(payload: ChannelConnectorOctoTransportSmokeRequest | undefined): ChannelConnectorOctoTransportSmokeRequest {
   if (!payload || !isRecord(payload)) return { action: "register" };
-  const action = payload.action === "typing" || payload.action === "send-message" || payload.action === "register"
+  const action = payload.action === "typing"
+    || payload.action === "send-message"
+    || payload.action === "upload-file"
+    || payload.action === "upload-and-send-media"
+    || payload.action === "register"
     ? payload.action
     : "register";
   const channelType = Number(payload.channelType || 1);
@@ -927,6 +933,8 @@ function normalizeOctoTransportSmokeRequest(payload: ChannelConnectorOctoTranspo
     channelId: normalizeString(payload.channelId) || null,
     channelType: channelType === 1 || channelType === 2 || channelType === 5 ? channelType : 1,
     content: normalizeString(payload.content) || "Studio Octo transport smoke",
+    fileName: normalizeString(payload.fileName) || null,
+    mimeType: normalizeString(payload.mimeType) || null,
   };
 }
 
@@ -1963,7 +1971,7 @@ export function createChannelConnectorsService(
         adapter: "octo",
         binding: null,
         transport: {
-          ...emptyOctoTransportResult(request.action === "send-message" ? "send-message" : request.action || "register"),
+          ...emptyOctoTransportResult(request.action || "register"),
           error: "octo_binding_not_found",
         },
       };
@@ -1976,7 +1984,7 @@ export function createChannelConnectorsService(
         adapter: "octo",
         binding: resolved.binding,
         transport: {
-          ...emptyOctoTransportResult(request.action === "send-message" ? "send-message" : request.action || "register"),
+          ...emptyOctoTransportResult(request.action || "register"),
           error: "octo_transport_config_missing",
         },
       };
@@ -2004,6 +2012,23 @@ export function createChannelConnectorsService(
         ],
       };
       transport = await sendOctoTextReply(transportConfig, replyPlan);
+    } else if (request.action === "upload-file") {
+      const content = request.content || "Studio Octo upload smoke\n";
+      transport = await uploadOctoFile(transportConfig, {
+        data: new TextEncoder().encode(content),
+        fileName: request.fileName || "studio-octo-smoke.txt",
+        mimeType: request.mimeType || "text/plain",
+      });
+    } else if (request.action === "upload-and-send-media") {
+      if (!request.channelId) throw new Error("channelId is required for Octo upload-and-send-media smoke.");
+      const content = request.content || "Studio Octo upload and send smoke\n";
+      transport = await uploadAndSendOctoMedia(transportConfig, {
+        channelId: request.channelId,
+        channelType: request.channelType || 1,
+        data: new TextEncoder().encode(content),
+        fileName: request.fileName || "studio-octo-smoke.txt",
+        mimeType: request.mimeType || "text/plain",
+      });
     } else {
       transport = await registerOctoBot(transportConfig, false);
     }

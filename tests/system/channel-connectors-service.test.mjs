@@ -249,16 +249,26 @@ async function withMockOctoServer(task) {
     req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
     req.on("end", () => {
       const bodyRaw = Buffer.concat(chunks).toString("utf8");
-      const body = bodyRaw ? JSON.parse(bodyRaw) : {};
+      const contentType = String(req.headers["content-type"] || "");
+      const body = contentType.includes("multipart/form-data")
+        ? { raw: bodyRaw }
+        : bodyRaw
+          ? JSON.parse(bodyRaw)
+          : {};
       requests.push({
         method: req.method,
         path: req.url,
         authorization: req.headers.authorization,
+        contentType,
         body,
       });
       res.setHeader("content-type", "application/json");
       if (req.url?.startsWith("/v1/bot/register")) {
         res.end(JSON.stringify({ robot_id: "robot-1", im_token: "im-token-1", ws_url: "wss://octo.example/ws" }));
+        return;
+      }
+      if (req.url === "/v1/bot/file/upload") {
+        res.end(JSON.stringify({ url: "https://cdn.example.test/studio-octo-upload" }));
         return;
       }
       if (req.url === "/v1/bot/typing" || req.url === "/v1/bot/sendMessage") {
@@ -1079,6 +1089,74 @@ test("Octo transport smoke registers bot through binding metadata", async () => 
     assert.equal(requests.length, 1);
     assert.equal(requests[0].path, "/v1/bot/register");
     assert.equal(requests[0].authorization, "Bearer test-token");
+  });
+});
+
+test("Octo transport smoke uploads and sends media through binding metadata", async () => {
+  await withMockOctoServer(async (apiUrl, requests) => {
+    const root = makeTempRoot();
+    const config = createStudioConfig(root);
+    const service = createChannelConnectorsService(config, {
+      now: () => new Date("2026-06-06T08:00:00.000Z"),
+    });
+    const initial = service.getNativeConfig().config;
+    service.saveNativeConfig({
+      config: {
+        ...initial,
+        platformBindings: [
+          {
+            id: "octo-media",
+            platform: "octo",
+            accountId: "octo-account",
+            botId: "robot-1",
+            displayName: "Octo Media",
+            agentProfileId: initial.defaultAgentProfileId,
+            enabled: true,
+            allowlist: [],
+            adminUsers: [],
+            metadata: {
+              apiUrl,
+              botToken: "test-token",
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await service.runOctoTransportSmoke({
+      bindingId: "octo-media",
+      action: "upload-and-send-media",
+      channelId: "user-2",
+      channelType: 1,
+      content: "mock image bytes",
+      fileName: "diagram.png",
+      mimeType: "image/png",
+    });
+
+    assert.equal(result.transport.ok, true);
+    assert.equal(result.transport.action, "upload-and-send-media");
+    assert.equal(result.transport.requestCount, 2);
+    assert.equal(result.transport.mediaUrl, "https://cdn.example.test/studio-octo-upload");
+    assert.equal(result.transport.fileName, "diagram.png");
+    assert.equal(result.transport.mimeType, "image/png");
+    assert.equal(result.transport.size, Buffer.byteLength("mock image bytes"));
+    assert.equal(requests.length, 2);
+    assert.equal(requests[0].path, "/v1/bot/file/upload");
+    assert.equal(requests[0].authorization, "Bearer test-token");
+    assert.match(requests[0].contentType, /multipart\/form-data/);
+    assert.match(requests[0].body.raw, /name="file"; filename="diagram\.png"/);
+    assert.match(requests[0].body.raw, /mock image bytes/);
+    assert.equal(requests[1].path, "/v1/bot/sendMessage");
+    assert.deepEqual(requests[1].body, {
+      channel_id: "user-2",
+      channel_type: 1,
+      payload: {
+        type: 2,
+        url: "https://cdn.example.test/studio-octo-upload",
+        name: "diagram.png",
+        size: Buffer.byteLength("mock image bytes"),
+      },
+    });
   });
 });
 

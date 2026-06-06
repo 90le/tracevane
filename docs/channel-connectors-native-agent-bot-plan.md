@@ -119,6 +119,7 @@ Studio 增强点：
 - 真实飞书客户端已复测三次工具调用：长连接入站、reaction、Progress card send/patch、工具步骤和最终 `ok` 均成功；Gateway 对应 `/v1/responses` 最新请求为 200。
 - F4 长回复拆分已落地：按 CC `splitMessage` 规则做 Unicode 安全切分，Feishu text 自动分多条发送，Octo 回复拆分复用同一 helper。
 - F4 Octo URL attachment staging 已落地：Octo URL 型图片/文件/语音/视频进入 Agent 前 streaming 下载到本地 attachment 目录，默认拒绝私网 URL，大小上限可由 binding metadata 覆盖；失败只写 `stagingError` 不阻断对话。
+- F4 Octo 出站媒体基础合同已落地：参考 CC dmwork 小文件 multipart 上传路径，transport smoke 支持 `upload-file` 和 `upload-and-send-media`；图片使用 Octo image payload，普通文件使用 file payload；本机 `studio-cc` 小文本文件真实 smoke 已通过；大文件 COS STS 直传仍待迁移。
 - Channel Connectors 平台配置 UI 已落地：Octo/Feishu binding 可编辑平台凭证 metadata 并直接执行连接测试；本机 Octo `studio-cc` 与 Feishu live binding 已完成 smoke，daemon 长连接 connected。
 - F4 Feishu thread/reply 会话隔离已落地：daemon/service 共用 CC 风格 session key，群线程默认按 root 隔离，私聊保持每用户 session，事件日志保留 root/parent/thread 便于排查。
 - F4 附件 metadata 已落地：Feishu `image/file/audio/media/sticker` 和 Octo 图片/文件/语音/视频进入统一 attachment contract；Agent prompt 只收到脱敏摘要，平台 key 留在本地 API/日志用于后续下载/staging。

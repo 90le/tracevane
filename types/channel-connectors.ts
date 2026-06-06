@@ -123,7 +123,14 @@ export interface ChannelConnectorOctoTransportConfig {
 export interface ChannelConnectorOctoTransportResult {
   attempted: boolean;
   ok: boolean | null;
-  action: "none" | "register" | "typing" | "send-message";
+  action:
+    | "none"
+    | "register"
+    | "typing"
+    | "send-message"
+    | "upload-file"
+    | "send-media"
+    | "upload-and-send-media";
   apiUrl: string | null;
   statusCode: number | null;
   error: string | null;
@@ -131,14 +138,20 @@ export interface ChannelConnectorOctoTransportResult {
   robotId?: string | null;
   imToken?: string | null;
   wsUrl?: string | null;
+  mediaUrl?: string | null;
+  fileName?: string | null;
+  mimeType?: string | null;
+  size?: number | null;
 }
 
 export interface ChannelConnectorOctoTransportSmokeRequest {
   bindingId?: string | null;
-  action?: "register" | "typing" | "send-message";
+  action?: "register" | "typing" | "send-message" | "upload-file" | "upload-and-send-media";
   channelId?: string | null;
   channelType?: ChannelConnectorOctoChannelType;
   content?: string | null;
+  fileName?: string | null;
+  mimeType?: string | null;
 }
 
 export interface ChannelConnectorOctoTransportSmokeResponse {
