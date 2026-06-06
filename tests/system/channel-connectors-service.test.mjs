@@ -59,6 +59,9 @@ import {
   resolveChannelConnectorGatewayClientKey,
 } from "../../dist/apps/api/modules/channel-connectors/gateway-secret.js";
 import {
+  evaluateChannelConnectorGovernance,
+} from "../../dist/apps/api/modules/channel-connectors/governance-policy.js";
+import {
   handleChannelConnectorCommand,
   listChannelConnectorGatewayModels,
   resolveChannelConnectorEffectiveProject,
@@ -443,6 +446,80 @@ test("native Channel Connectors buffers long group replies without truncating st
   assert.equal(readChannelConnectorReplyBuffers(bufferPath).records.length, 1);
 });
 
+test("native Channel Connectors governance policy enforces allowlist, banned words, and rate limits", () => {
+  const root = makeTempRoot();
+  const statePath = path.join(root, "state", "channel-governance.json");
+  const binding = {
+    id: "feishu-live",
+    platform: "feishu",
+    accountId: "cli_test",
+    botId: "bot_test",
+    displayName: "Feishu Live",
+    agent: "codex",
+    enabled: true,
+    allowlist: ["ou_allowed"],
+    adminUsers: ["ou_admin"],
+    metadata: {
+      bannedWords: ["blocked phrase"],
+      rateLimitPerMinute: 2,
+      rateLimitWindowSeconds: 60,
+    },
+  };
+  const blockedUser = evaluateChannelConnectorGovernance({
+    binding,
+    platform: "feishu",
+    fromUid: "ou_guest",
+    content: "hello",
+    statePath,
+    now: new Date("2026-06-06T08:00:00.000Z"),
+  });
+  assert.equal(blockedUser.allowed, false);
+  assert.equal(blockedUser.skippedReason, "channel_user_not_allowed");
+
+  const blockedWord = evaluateChannelConnectorGovernance({
+    binding,
+    platform: "feishu",
+    fromUid: "ou_admin",
+    content: "contains BLOCKED PHRASE",
+    statePath,
+    now: new Date("2026-06-06T08:00:01.000Z"),
+  });
+  assert.equal(blockedWord.allowed, false);
+  assert.equal(blockedWord.skippedReason, "channel_banned_word");
+
+  const first = evaluateChannelConnectorGovernance({
+    binding,
+    platform: "feishu",
+    fromUid: "ou_allowed",
+    content: "one",
+    statePath,
+    now: new Date("2026-06-06T08:00:02.000Z"),
+  });
+  const second = evaluateChannelConnectorGovernance({
+    binding,
+    platform: "feishu",
+    fromUid: "ou_allowed",
+    content: "two",
+    statePath,
+    now: new Date("2026-06-06T08:00:03.000Z"),
+  });
+  const third = evaluateChannelConnectorGovernance({
+    binding,
+    platform: "feishu",
+    fromUid: "ou_allowed",
+    content: "three",
+    statePath,
+    now: new Date("2026-06-06T08:00:04.000Z"),
+  });
+  assert.equal(first.allowed, true);
+  assert.equal(first.rateLimit.remaining, 1);
+  assert.equal(second.allowed, true);
+  assert.equal(second.rateLimit.remaining, 0);
+  assert.equal(third.allowed, false);
+  assert.equal(third.skippedReason, "channel_rate_limited");
+  assert.equal(fs.statSync(statePath).mode & 0o777, 0o600);
+});
+
 test("native Channel Connectors stages attachments under sanitized local paths", () => {
   assert.equal(parseChannelConnectorByteSize("512mb", 1), 512 * 1024 * 1024);
   assert.equal(parseChannelConnectorByteSize("2gb", 1), 2 * 1024 * 1024 * 1024);
@@ -741,6 +818,24 @@ test("Octo adapter dry-run dispatch resolves binding, session key, and reply pla
   assert.equal(result.eventStored.written, true);
   assert.equal(fs.existsSync(result.eventStored.path), true);
   assert.match(fs.readFileSync(result.eventStored.path, "utf8"), /"sessionKey":"dmwork:dm:user-1"/);
+
+  const denied = await service.dispatchOctoIncoming({
+    bindingId: "octo-default",
+    dryRun: true,
+    message: {
+      messageId: "m-denied",
+      fromUid: "user-2",
+      channelId: "user-2",
+      channelType: 1,
+      payload: {
+        type: 1,
+        content: "hi",
+      },
+    },
+  });
+  assert.equal(denied.accepted, false);
+  assert.equal(denied.skippedReason, "channel_user_not_allowed");
+  assert.equal(denied.agentDispatch.status, "skipped");
 });
 
 test("Octo adapter follows group direction and mention rendering rules", async () => {
@@ -2212,7 +2307,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
           displayName: "Feishu Main",
           agentProfileId: "feishu-codex",
           enabled: true,
-          allowlist: [],
+          allowlist: ["ou_admin"],
           adminUsers: ["ou_admin"],
           metadata: {
             verificationToken: "verify-token",
@@ -2294,6 +2389,30 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(badToken.accepted, false);
   assert.equal(badToken.skippedReason, "feishu_verification_token_mismatch");
   assert.equal(badToken.feishuResponse, null);
+
+  const deniedUser = await service.dispatchFeishuWebhook({
+    dryRun: true,
+    schema: "2.0",
+    header: {
+      event_type: "im.message.receive_v1",
+      app_id: "cli_test",
+      event_id: "evt_msg_denied",
+      token: "verify-token",
+    },
+    event: {
+      sender: { sender_id: { open_id: "ou_guest" } },
+      message: {
+        message_id: "om_msg_denied",
+        chat_id: "oc_chat",
+        chat_type: "p2p",
+        message_type: "text",
+        content: JSON.stringify({ text: "hello" }),
+      },
+    },
+  });
+  assert.equal(deniedUser.accepted, false);
+  assert.equal(deniedUser.skippedReason, "channel_user_not_allowed");
+  assert.equal(deniedUser.agentDispatch.status, "skipped");
 
   const parsedMessage = parseChannelConnectorFeishuWebhook({
     schema: "2.0",

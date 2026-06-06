@@ -89,7 +89,7 @@ Studio 增强点：
 | F2 | 已完成：CC/OpenClaw 能力映射、typed config store、Agent Profile、工作目录、模型、权限、Gateway key ref、platform/bot binding |
 | F3 | 已完成核心合同：Octo(dmwork) adapter、REST transport、daemon register/cache/WuKongIM WebSocket、Codex CLI Agent runner、真实 Octo DM 文本往返、Codex session resume、IM command control、native passthrough、command surface、Feishu webhook/outbound/long-connection、Feishu card/menu/session/model/display/progress loop |
 | F4 | 进行中：长回复拆分、Feishu thread/reply session、附件 metadata/staging、轻量 history context、群聊 context、长回复 group buffer、reply buffer 查看命令/菜单已完成；继续补语音 STT/TTS、长回复预览冻结、流式预览 |
-| F5 | 治理与自动化：allowlist、admin、rate limit、banned words、slash command、cron、hooks、relay、management API |
+| F5 | 治理与自动化：allowlist/admin/rate limit/banned words 已完成；继续补 cron、hooks、relay、management API |
 | F6 | 飞书、微信/企业微信；继续迁移钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等 CC 平台 |
 | F7 | 补齐剩余 CC Agent、跨平台会话观测、消息审计、迁移工具和发布验收 |
 
@@ -125,9 +125,10 @@ Studio 增强点：
 - F4 群聊 context 已落地：Agent prompt 注入当前群聊 channel/sender/bot/reply/mention/成员摘要；飞书完整群成员列表后续再接平台 API。
 - F4 长回复 group buffer 已落地：群聊长回复保存完整内容到本地 buffer，群内只发送短预览和 buffer id，避免刷屏；私聊不变。
 - F4 reply buffer 查看已落地：`/buffer` 列表和 `/buffer <id|前缀|latest>` 读取完整内容；Feishu 菜单提供 Reply Buffer 子卡片；读取范围限制在当前 binding + IM session。
+- F5 基础治理已落地：入站执行前统一检查 allowlist/admin、`metadata.bannedWords`、`metadata.rateLimitPerMinute` / `rateLimitWindowSeconds`；命中只写审计事件，不触发 CLI Agent。
 
 ## 6. 下一步
 
-1. F4/F5：补治理策略和飞书完整群成员拉取。
+1. F4：补飞书完整群成员拉取和群上下文增强。
 2. 继续迁移 CC/OpenClaw 的文件/图片和多平台 adapter。
 3. Feishu card/menu 后续 UI 精修继续复刻 CC 成熟结构，再做 Studio 化整理。

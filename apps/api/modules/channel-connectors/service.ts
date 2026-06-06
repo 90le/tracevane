@@ -89,6 +89,9 @@ import {
 import {
   resolveChannelConnectorGatewayClientKey,
 } from "./gateway-secret.js";
+import {
+  evaluateChannelConnectorGovernance,
+} from "./governance-policy.js";
 import { getChannelConnectorSessionControl } from "./session-control-store.js";
 
 const execFileAsync = promisify(execFile);
@@ -1170,6 +1173,10 @@ function commandSurfaceReplyBuffersPath(runtimeConfig: ChannelConnectorsDaemonRu
   return path.join(runtimeConfig.paths.state, "channel-reply-buffers.json");
 }
 
+function commandSurfaceGovernancePath(runtimeConfig: ChannelConnectorsDaemonRuntimeConfig): string {
+  return path.join(runtimeConfig.paths.state, "channel-governance.json");
+}
+
 function bindingPolicy(): ChannelConnectorsBindingPolicy {
   return {
     model: "platform-account-or-bot-to-agent",
@@ -1348,6 +1355,30 @@ export function createChannelConnectorsService(
         binding: resolved.binding,
         agentProfile: resolved.agentProfile,
         sessionKey: null,
+        command,
+        commandResult: null,
+        surface: null,
+        textFallback: null,
+        feishuCard: null,
+      };
+    }
+    const governance = evaluateChannelConnectorGovernance({
+      binding: resolved.binding,
+      platform: "feishu",
+      fromUid: request.fromUid || "",
+      content: command,
+      statePath: commandSurfaceGovernancePath(runtimeConfig),
+      now: now(),
+    });
+    if (!governance.allowed) {
+      return {
+        ok: true,
+        checkedAt,
+        accepted: false,
+        skippedReason: governance.skippedReason || "channel_governance_blocked",
+        binding: resolved.binding,
+        agentProfile: resolved.agentProfile,
+        sessionKey,
         command,
         commandResult: null,
         surface: null,
@@ -1605,6 +1636,15 @@ export function createChannelConnectorsService(
 
     const sessionKey = feishuSessionKeyForWebhook(resolved.binding, parsed);
     if (!sessionKey) return skipped("session_key_missing");
+    const governance = evaluateChannelConnectorGovernance({
+      binding: resolved.binding,
+      platform: "feishu",
+      fromUid: parsed.fromUid,
+      content: parsed.text,
+      statePath: request.dryRun === true ? null : commandSurfaceGovernancePath(runtimeConfig),
+      now: now(),
+    });
+    if (!governance.allowed) return skipped(governance.skippedReason || "channel_governance_blocked");
 
     let commandAction: ChannelConnectorCommandActionResponse | null = null;
     let accepted = request.dryRun === true;
@@ -1803,6 +1843,7 @@ export function createChannelConnectorsService(
     const resolvedPaths = paths();
     const checkedAt = now().toISOString();
     const nativeConfig = readNativeConfig(config, resolvedPaths, now());
+    const runtimeConfig = buildRuntimeConfig(nativeConfig, resolvedPaths);
     const resolved = resolveOctoBinding(request, nativeConfig.platformBindings, nativeConfig.agentProfiles);
     const skippedReason = shouldSkipOctoMessage(request, resolved);
     if (skippedReason) {
@@ -1817,6 +1858,17 @@ export function createChannelConnectorsService(
     const content = extractOctoContent(message);
     const attachments = extractOctoAttachments(message);
     const directed = isOctoMessageDirectedAtBot(message, binding.botId);
+    const governance = evaluateChannelConnectorGovernance({
+      binding,
+      platform: "octo",
+      fromUid: message.fromUid,
+      content,
+      statePath: request.dryRun === true ? null : commandSurfaceGovernancePath(runtimeConfig),
+      now: now(),
+    });
+    if (!governance.allowed) {
+      return buildSkippedOctoResponse(checkedAt, request, governance.skippedReason || "channel_governance_blocked", resolvedPaths.octoEventLogFile, resolved);
+    }
     const replyPlan = request.replyText ? renderOctoTextReply(message, request.replyText) : null;
     const dryRun = request.dryRun === true;
     let transport = emptyOctoTransportResult();

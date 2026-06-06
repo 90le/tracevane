@@ -51,6 +51,9 @@ import {
   resolveChannelConnectorGatewayClientKey,
 } from "./gateway-secret.js";
 import {
+  evaluateChannelConnectorGovernance,
+} from "./governance-policy.js";
+import {
   getOctoCachedCredentials,
   saveOctoCachedCredentials,
   type OctoCredentialCacheEntry,
@@ -557,6 +560,10 @@ function conversationHistoryPath(config: ChannelConnectorsDaemonRuntimeConfig): 
 
 function replyBufferPath(config: ChannelConnectorsDaemonRuntimeConfig): string {
   return path.join(config.paths.state, "channel-reply-buffers.json");
+}
+
+function governanceStatePath(config: ChannelConnectorsDaemonRuntimeConfig): string {
+  return path.join(config.paths.state, "channel-governance.json");
 }
 
 function safePathSegment(value: string): string {
@@ -1376,6 +1383,33 @@ async function dispatchOctoMessage(input: {
     });
     return;
   }
+  const governance = evaluateChannelConnectorGovernance({
+    binding,
+    platform: "octo",
+    fromUid: message.fromUid,
+    content,
+    statePath: governanceStatePath(config),
+  });
+  if (!governance.allowed) {
+    writeJsonLine(config.paths.octoEvents, {
+      checkedAt,
+      adapter: "octo",
+      eventKind: "channel.governance.skipped",
+      bindingId: binding.id,
+      sessionKey,
+      messageId: message.messageId,
+      channelId: message.channelId,
+      channelType: message.channelType,
+      fromUid: message.fromUid,
+      messageType: typeof message.payload?.type === "number" ? message.payload.type : null,
+      attachmentCount: attachments.length,
+      attachmentKinds: attachments.map((attachment) => attachment.kind),
+      skippedReason: governance.skippedReason,
+      governanceDetail: governance.detail,
+      rateLimit: governance.rateLimit,
+    });
+    return;
+  }
 
   const transport = octoTransportFromMetadata(binding.metadata);
   const key = gatewayClientKey(config);
@@ -1810,6 +1844,35 @@ async function dispatchFeishuParsedEvent(input: {
       sessionKey,
       messageId,
       channelId: parsed.channelId,
+      fromUid: parsed.fromUid,
+      ...feishuThreadLogFields(parsed),
+    });
+    return null;
+  }
+
+  const governance = evaluateChannelConnectorGovernance({
+    binding,
+    platform: "feishu",
+    fromUid: parsed.fromUid,
+    content,
+    statePath: governanceStatePath(config),
+  });
+  if (!governance.allowed) {
+    writeJsonLine(config.paths.feishuEvents, {
+      checkedAt,
+      adapter: "feishu",
+      eventKind: "channel.governance.skipped",
+      eventType: parsed.eventType,
+      eventId: parsed.eventId,
+      accepted: false,
+      skippedReason: governance.skippedReason,
+      governanceDetail: governance.detail,
+      rateLimit: governance.rateLimit,
+      bindingId: binding.id,
+      sessionKey,
+      messageId,
+      channelId: parsed.channelId,
+      chatType: parsed.chatType,
       fromUid: parsed.fromUid,
       ...feishuThreadLogFields(parsed),
     });
