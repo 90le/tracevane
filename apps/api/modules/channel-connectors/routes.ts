@@ -88,6 +88,13 @@ export function registerChannelConnectorsRoutes(router: StudioRouter): void {
         ...payload,
         sendReply: payload.sendReply !== false,
       });
+      if (response.eventKind === "url-verification" && !response.feishuResponse) {
+        sendJson(res, response.skippedReason === "feishu_verification_token_mismatch" ? 403 : 400, {
+          error: "feishu_webhook_verification_failed",
+          skippedReason: response.skippedReason,
+        });
+        return;
+      }
       sendJson(res, 200, response.feishuResponse || response);
     } catch (error) {
       sendChannelConnectorsError(res, error);

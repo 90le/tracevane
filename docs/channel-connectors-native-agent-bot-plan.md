@@ -112,7 +112,7 @@ Studio 增强点：
 - Channel Connectors 已支持 command action callback：通用 `/commands/action` 和 Feishu `card-action` / `bot-menu` aliases 可把 action value / event key 转回 command-router。
 - Channel Connectors 已支持 Feishu webhook ingress：URL verification、card action、bot menu、message receive 进入同一 command-router；`verificationToken` 放在 binding metadata，不写入文档或源码。
 - Channel Connectors 已支持 Feishu outbound contract：tenant access token file cache、send text message、patch card message、transport-smoke；message webhook 默认可把 command-router 回复真实出站。
-- 已完成脱敏 live 准备：本地用户配置写入 Feishu binding、tenant token cache 验证通过、临时公网 callback URL verification 通过；凭据、token 和临时 URL 不进入仓库。
+- 已完成脱敏 live 准备：本地用户配置写入 Feishu binding、tenant token cache 验证通过、临时公网 callback URL verification 通过；错误 verification token 不再回显 challenge；凭据、token 和临时 URL 不进入仓库。
 
 ## 6. 下一步
 

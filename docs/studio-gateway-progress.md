@@ -33,7 +33,7 @@
 - 新增 `/api/channel-connectors/commands/action` 与 Feishu `card-action` / `bot-menu` aliases：从 action value / event key 解析命令并回到 command-router；Agent 原生命令仍只标记 passthrough，不在 Studio API 内直接启动 CLI。
 - 新增 Feishu live webhook ingress：`/api/channel-connectors/adapters/feishu/webhook` 支持 URL verification、`card.action.trigger`、bot menu、`im.message.receive_v1`，按 binding metadata `verificationToken` 校验后复用 command-router，并返回 Feishu 兼容 `challenge` / toast / card 响应。
 - 新增 Feishu outbound transport：binding metadata `apiUrl/appSecret/verificationToken`、tenant access token file cache、send text message、patch card message、`/api/channel-connectors/adapters/feishu/transport-smoke`；message webhook 默认可把 command-router 回复通过 Feishu API 发回。
-- Feishu live callback 准备完成：本地用户配置已写入 Feishu binding，tenant token cache 验证通过，临时公网 callback URL verification 通过；凭据、token 和临时 URL 只保存在本机或运行态，不写入仓库。
+- Feishu live callback 准备完成：本地用户配置已写入 Feishu binding，tenant token cache 验证通过，临时公网 callback URL verification 通过；错误 verification token 不再回显 challenge；凭据、token 和临时 URL 只保存在本机或运行态，不写入仓库。
 
 ## 验证
 
@@ -43,7 +43,7 @@
 - 通过：`node --test tests/system/studio-web-channel-connectors-page.test.mjs tests/system/studio-web-shell-route-manifest.test.mjs`。
 - 通过：`npm run build:web`。
 - 通过：Feishu live credential proof（secret redacted）：tenant access token HTTP 200、token cache hit、bot info HTTP 200 / code 0。
-- 通过：Feishu live callback verification proof（secret redacted）：本地 binding 保存、tenant token miss/hit、公网 callback URL verification HTTP 200 / challenge matched。
+- 通过：Feishu live callback verification proof（secret redacted）：本地 binding 保存、tenant token miss/hit、公网 callback URL verification HTTP 200 / challenge matched；错误 token HTTP 403 且不返回 challenge。
 
 ## 已知边界
 

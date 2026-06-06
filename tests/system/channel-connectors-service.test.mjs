@@ -1763,6 +1763,20 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     assert.equal(feishuWebhook.status, 200);
     assert.deepEqual(feishuWebhook.body, { challenge: "route-challenge" });
 
+    const badFeishuWebhook = await requestJson(`${baseUrl}/api/channel-connectors/adapters/feishu/webhook`, {
+      method: "POST",
+      body: {
+        type: "url_verification",
+        app_id: "cli_route",
+        token: "wrong-token",
+        challenge: "route-challenge",
+      },
+    });
+    assert.equal(badFeishuWebhook.status, 403);
+    assert.equal(badFeishuWebhook.body.error, "feishu_webhook_verification_failed");
+    assert.equal(badFeishuWebhook.body.skippedReason, "feishu_verification_token_mismatch");
+    assert.equal(badFeishuWebhook.body.challenge, undefined);
+
     const feishuTransportSmoke = await requestJson(`${baseUrl}/api/channel-connectors/adapters/feishu/transport-smoke`, {
       method: "POST",
       body: {
