@@ -117,9 +117,41 @@ function ensureWorkDir(workDir: string): string {
   return normalized;
 }
 
+function uniquePathEntries(values: string[]): string {
+  const seen = new Set<string>();
+  const output: string[] = [];
+  for (const value of values) {
+    const normalized = normalizeString(value);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    output.push(normalized);
+  }
+  return output.join(":");
+}
+
+function cliPathEnv(): string {
+  const home = normalizeString(process.env.HOME) || os.homedir();
+  return uniquePathEntries([
+    ...(process.env.PATH || "").split(":"),
+    path.join(home, ".local", "bin"),
+    path.join(home, "bin"),
+    path.join(home, ".npm-global", "bin"),
+    path.join(home, ".bun", "bin"),
+    path.join(home, ".deno", "bin"),
+    path.join(home, ".cargo", "bin"),
+    "/usr/local/sbin",
+    "/usr/local/bin",
+    "/usr/sbin",
+    "/usr/bin",
+    "/sbin",
+    "/bin",
+  ]);
+}
+
 function mergeProcessEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
   return {
     ...process.env,
+    PATH: cliPathEnv(),
     ...Object.fromEntries(Object.entries(extra).filter(([, value]) => value !== "")),
   };
 }
@@ -198,6 +230,7 @@ function gatewayEnv(gatewayEndpoint: string, gatewayClientKey: string | null): R
   const env: Record<string, string> = {
     STUDIO_GATEWAY_ENDPOINT: gatewayEndpoint,
     NO_PROXY: "127.0.0.1,localhost",
+    PATH: cliPathEnv(),
   };
   if (gatewayClientKey) {
     env.STUDIO_GATEWAY_API_KEY = gatewayClientKey;

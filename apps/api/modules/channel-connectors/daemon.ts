@@ -2,7 +2,15 @@ import fs from "node:fs";
 import http from "node:http";
 import path from "node:path";
 import process from "node:process";
+import {
+  EventDispatcher,
+  LoggerLevel,
+  WSClient,
+  type Logger,
+  type WSConnectionStatus,
+} from "@larksuiteoapi/node-sdk";
 import type {
+  ChannelConnectorFeishuTransportConfig,
   ChannelConnectorAgentProfile,
   ChannelConnectorOctoTransportConfig,
   ChannelConnectorOctoInboundMessage,
@@ -42,6 +50,17 @@ import {
   shouldSkipOctoMessage,
 } from "./octo-adapter.js";
 import {
+  parseChannelConnectorFeishuWebhook,
+  type ChannelConnectorFeishuParsedWebhook,
+} from "./feishu-adapter.js";
+import {
+  feishuTransportFromMetadata,
+  sendFeishuTextMessage,
+} from "./feishu-transport.js";
+import {
+  extractChannelConnectorCommandFromActionValue,
+} from "./command-surface.js";
+import {
   octoTransportFromMetadata,
   registerOctoBot,
   sendOctoTextReply,
@@ -62,6 +81,41 @@ interface ChannelDaemonOctoConnectionState extends OctoWukongSocketStatus {
   credentialSource: "register" | "cache" | null;
 }
 
+interface ChannelDaemonFeishuConnectionState {
+  key: string;
+  appId: string;
+  accountId: string;
+  apiUrl: string | null;
+  bindingIds: string[];
+  connected: boolean;
+  state: WSConnectionStatus["state"] | "closed";
+  lastError: string | null;
+  lastConnectedAt: string | null;
+  lastDisconnectedAt: string | null;
+  reconnects: number;
+  receivedMessages: number;
+}
+
+interface ChannelDaemonFeishuBindingRef {
+  project: ChannelConnectorRuntimeProject;
+  binding: ChannelConnectorRuntimeBinding;
+  transport: ChannelConnectorFeishuTransportConfig;
+}
+
+interface ChannelDaemonFeishuGroup {
+  key: string;
+  appId: string;
+  accountId: string;
+  apiUrl: string | null;
+  refs: ChannelDaemonFeishuBindingRef[];
+  client: WSClient | null;
+  reconnects: number;
+  receivedMessages: number;
+  lastConnectedAt: string | null;
+  lastDisconnectedAt: string | null;
+  lastError: string | null;
+}
+
 interface ChannelDaemonState {
   version: 1;
   pid: number;
@@ -74,6 +128,7 @@ interface ChannelDaemonState {
     platformBindings: number;
   }>;
   octoConnections: Record<string, ChannelDaemonOctoConnectionState>;
+  feishuConnections: Record<string, ChannelDaemonFeishuConnectionState>;
   activeRuns: Array<{
     id: string;
     startedAt: string;
@@ -154,6 +209,7 @@ function createDaemonState(config: ChannelConnectorsDaemonRuntimeConfig): Channe
       platformBindings: project.platformBindings.length,
     })),
     octoConnections: {},
+    feishuConnections: {},
     activeRuns: [],
     agentRuns: [],
   };
@@ -175,6 +231,7 @@ function startHttp(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelD
         projects: config.projects.length,
         platformBindings: config.projects.reduce((sum, project) => sum + project.platformBindings.length, 0),
         octoConnections: Object.values(state.octoConnections),
+        feishuConnections: Object.values(state.feishuConnections),
         activeRuns: state.activeRuns,
         agentRuns: state.agentRuns,
       }));
@@ -196,8 +253,29 @@ function logger(config: ChannelConnectorsDaemonRuntimeConfig): OctoWukongLogger 
   };
 }
 
+function feishuLogger(config: ChannelConnectorsDaemonRuntimeConfig): Logger {
+  return {
+    trace: (...args: unknown[]) => appendLog(config.paths.log, "Feishu SDK trace", { args: redactLogArgs(args) }),
+    debug: (...args: unknown[]) => appendLog(config.paths.log, "Feishu SDK debug", { args: redactLogArgs(args) }),
+    info: (...args: unknown[]) => appendLog(config.paths.log, "Feishu SDK info", { args: redactLogArgs(args) }),
+    warn: (...args: unknown[]) => appendLog(config.paths.log, "Feishu SDK warn", { args: redactLogArgs(args) }),
+    error: (...args: unknown[]) => appendLog(config.paths.log, "Feishu SDK error", { args: redactLogArgs(args) }),
+  };
+}
+
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function redactLogArgs(args: unknown[]): string[] {
+  return args.map((item) => shortMessage(
+    typeof item === "string" ? item : JSON.stringify(item),
+    220,
+  ));
 }
 
 function shortMessage(value: unknown, maxLength = 260): string {
@@ -205,6 +283,7 @@ function shortMessage(value: unknown, maxLength = 260): string {
   const redacted = raw
     .replace(/sk-[A-Za-z0-9_-]{12,}/g, "sk-***")
     .replace(/bf_[A-Za-z0-9_-]{12,}/g, "bf_***")
+    .replace(/(app_secret|appSecret|tenant_access_token|token)[^,\n}]*/gi, "$1=***")
     .trim();
   if (!redacted) return "unknown error";
   return redacted.length > maxLength ? `${redacted.slice(0, maxLength - 1)}...` : redacted;
@@ -257,6 +336,54 @@ function nativeBindingFromRuntime(
 
 function octoCredentialsPath(config: ChannelConnectorsDaemonRuntimeConfig): string {
   return path.join(config.paths.state, "octo-credentials.json");
+}
+
+function feishuTokenCachePath(config: ChannelConnectorsDaemonRuntimeConfig): string {
+  return path.join(config.paths.state, "feishu-token-cache.json");
+}
+
+function metadataRecord(binding: ChannelConnectorRuntimeBinding): Record<string, unknown> {
+  return isRecord(binding.metadata) ? binding.metadata : {};
+}
+
+function metadataString(binding: ChannelConnectorRuntimeBinding, keys: string[]): string {
+  const metadata = metadataRecord(binding);
+  for (const key of keys) {
+    const value = normalizeString(metadata[key]);
+    if (value) return value;
+  }
+  return "";
+}
+
+function metadataStringList(binding: ChannelConnectorRuntimeBinding, keys: string[]): string[] {
+  const metadata = metadataRecord(binding);
+  const values: string[] = [];
+  for (const key of keys) {
+    const value = metadata[key];
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const normalized = normalizeString(item);
+        if (normalized) values.push(normalized);
+      }
+      continue;
+    }
+    const normalized = normalizeString(value);
+    if (!normalized) continue;
+    values.push(...normalized.split(/[,\s]+/).map((item) => item.trim()).filter(Boolean));
+  }
+  return [...new Set(values)];
+}
+
+function metadataBoolean(binding: ChannelConnectorRuntimeBinding, keys: string[], fallback = false): boolean {
+  const metadata = metadataRecord(binding);
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === "boolean") return value;
+    const normalized = normalizeString(value).toLowerCase();
+    if (["1", "true", "yes", "on"].includes(normalized)) return true;
+    if (["0", "false", "no", "off"].includes(normalized)) return false;
+  }
+  return fallback;
 }
 
 function agentSessionsPath(config: ChannelConnectorsDaemonRuntimeConfig): string {
@@ -323,6 +450,115 @@ function connectionState(
     robotId: status.robotId || null,
     apiUrl: status.apiUrl || null,
     credentialSource: status.credentialSource || null,
+  };
+}
+
+function feishuConnectionState(group: ChannelDaemonFeishuGroup): ChannelDaemonFeishuConnectionState {
+  const status = group.client?.getConnectionStatus();
+  return {
+    key: group.key,
+    appId: group.appId,
+    accountId: group.accountId,
+    apiUrl: group.apiUrl,
+    bindingIds: group.refs.map((ref) => ref.binding.id),
+    connected: status?.state === "connected",
+    state: status?.state || "closed",
+    lastError: group.lastError,
+    lastConnectedAt: group.lastConnectedAt,
+    lastDisconnectedAt: group.lastDisconnectedAt,
+    reconnects: group.reconnects,
+    receivedMessages: group.receivedMessages,
+  };
+}
+
+function updateFeishuRuntime(
+  config: ChannelConnectorsDaemonRuntimeConfig,
+  state: ChannelDaemonState,
+  group: ChannelDaemonFeishuGroup,
+): void {
+  state.feishuConnections[group.key] = feishuConnectionState(group);
+  writeRuntime(config, state);
+}
+
+function feishuGroupKey(transport: ChannelConnectorFeishuTransportConfig): string {
+  return `${transport.apiUrl}|${transport.appId}`.replace(/[^a-zA-Z0-9._-]+/g, "_");
+}
+
+function feishuChatFilters(binding: ChannelConnectorRuntimeBinding): string[] {
+  return metadataStringList(binding, [
+    "chatId",
+    "chatIds",
+    "chat_id",
+    "chat_ids",
+    "openChatId",
+    "openChatIds",
+    "open_chat_id",
+    "open_chat_ids",
+    "allowChat",
+    "allowChats",
+    "allow_chat",
+    "allow_chats",
+    "allowChatIds",
+    "allow_chat_ids",
+  ]);
+}
+
+function selectFeishuBindingRefs(
+  group: ChannelDaemonFeishuGroup,
+  parsed: ChannelConnectorFeishuParsedWebhook,
+): ChannelDaemonFeishuBindingRef[] {
+  const requestedBindingId = normalizeString(parsed.bindingId);
+  if (requestedBindingId) return group.refs.filter((ref) => ref.binding.id === requestedBindingId);
+  const chatId = normalizeString(parsed.channelId);
+  const chatSpecific = chatId
+    ? group.refs.filter((ref) => feishuChatFilters(ref.binding).includes(chatId))
+    : [];
+  if (chatSpecific.length) return chatSpecific;
+  const defaults = group.refs.filter((ref) => feishuChatFilters(ref.binding).length === 0);
+  return defaults.length ? [defaults[0]] : group.refs.slice(0, 1);
+}
+
+function feishuSessionKey(
+  binding: ChannelConnectorRuntimeBinding,
+  parsed: ChannelConnectorFeishuParsedWebhook,
+): string | null {
+  const channelId = normalizeString(parsed.channelId);
+  const fromUid = normalizeString(parsed.fromUid);
+  if (!channelId && !fromUid) return null;
+  const threadIsolation = metadataBoolean(binding, ["threadIsolation", "thread_isolation"], false);
+  const isGroup = normalizeString(parsed.chatType).toLowerCase() === "group";
+  if (threadIsolation && isGroup) {
+    const threadId = normalizeString(parsed.threadId)
+      || normalizeString(parsed.rootId)
+      || normalizeString(parsed.parentId)
+      || normalizeString(parsed.messageId)
+      || channelId;
+    return `feishu:${channelId || "unknown"}:thread:${threadId}`;
+  }
+  return `feishu:${channelId || fromUid}:${fromUid || channelId}`;
+}
+
+function feishuMessageFromParsed(
+  parsed: ChannelConnectorFeishuParsedWebhook,
+  content: string,
+): ChannelConnectorOctoInboundMessage {
+  const isGroup = normalizeString(parsed.chatType).toLowerCase() === "group";
+  return {
+    messageId: normalizeString(parsed.messageId) || `${parsed.kind}-${Date.now()}`,
+    fromUid: normalizeString(parsed.fromUid),
+    channelId: normalizeString(parsed.channelId) || normalizeString(parsed.fromUid),
+    channelType: isGroup ? 2 : 1,
+    timestamp: Date.now(),
+    payload: {
+      type: 1,
+      content,
+      reply: parsed.parentId || parsed.rootId || parsed.threadId
+        ? {
+          messageId: parsed.parentId || parsed.rootId || parsed.threadId || undefined,
+        }
+        : undefined,
+    },
+    members: [],
   };
 }
 
@@ -663,6 +899,383 @@ async function dispatchOctoMessage(input: {
   writeRuntime(config, state);
 }
 
+function feishuContentFromParsed(parsed: ChannelConnectorFeishuParsedWebhook): string {
+  if (parsed.kind === "card-action") {
+    return extractChannelConnectorCommandFromActionValue(parsed.actionValue) || "";
+  }
+  if (parsed.kind === "bot-menu") {
+    const eventKey = normalizeString(parsed.eventKey);
+    if (!eventKey) return "";
+    return eventKey.startsWith("/") ? eventKey : `/${eventKey}`;
+  }
+  return normalizeString(parsed.text);
+}
+
+async function dispatchFeishuParsedEvent(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  state: ChannelDaemonState;
+  group: ChannelDaemonFeishuGroup;
+  parsed: ChannelConnectorFeishuParsedWebhook;
+  rawEvent: unknown;
+  seenMessages: Map<string, number>;
+}): Promise<void> {
+  const { config, state, group, parsed, rawEvent, seenMessages } = input;
+  const checkedAt = new Date().toISOString();
+  const content = feishuContentFromParsed(parsed);
+  const refs = selectFeishuBindingRefs(group, parsed);
+  if (!refs.length) {
+    writeJsonLine(config.paths.feishuEvents, {
+      checkedAt,
+      adapter: "feishu",
+      eventKind: parsed.kind,
+      eventType: parsed.eventType,
+      eventId: parsed.eventId,
+      accepted: false,
+      skippedReason: "feishu_binding_not_found",
+      appId: parsed.appId || group.appId,
+      channelId: parsed.channelId,
+      fromUid: parsed.fromUid,
+      messageId: parsed.messageId,
+    });
+    return;
+  }
+
+  const ref = refs[0];
+  const { project, binding, transport } = ref;
+  const sessionKey = feishuSessionKey(binding, parsed);
+  const messageId = normalizeString(parsed.messageId) || `${parsed.kind}:${parsed.eventId || Date.now()}`;
+  const dedupeKey = `feishu:${group.key}:${messageId}:${binding.id}`;
+  if (shouldSkipSeenMessage(seenMessages, dedupeKey)) return;
+
+  if (parsed.kind !== "message" && parsed.kind !== "card-action" && parsed.kind !== "bot-menu") {
+    writeJsonLine(config.paths.feishuEvents, {
+      checkedAt,
+      adapter: "feishu",
+      eventKind: parsed.kind,
+      eventType: parsed.eventType,
+      eventId: parsed.eventId,
+      accepted: false,
+      skippedReason: "feishu_event_unsupported",
+      bindingId: binding.id,
+      sessionKey,
+      messageId,
+    });
+    return;
+  }
+
+  if (!sessionKey || !parsed.fromUid || !parsed.channelId) {
+    writeJsonLine(config.paths.feishuEvents, {
+      checkedAt,
+      adapter: "feishu",
+      eventKind: parsed.kind,
+      eventType: parsed.eventType,
+      eventId: parsed.eventId,
+      accepted: false,
+      skippedReason: "feishu_message_identity_missing",
+      bindingId: binding.id,
+      sessionKey,
+      messageId,
+      channelId: parsed.channelId,
+      fromUid: parsed.fromUid,
+    });
+    return;
+  }
+
+  if (!content) {
+    writeJsonLine(config.paths.feishuEvents, {
+      checkedAt,
+      adapter: "feishu",
+      eventKind: parsed.kind,
+      eventType: parsed.eventType,
+      eventId: parsed.eventId,
+      accepted: false,
+      skippedReason: "feishu_message_text_missing",
+      bindingId: binding.id,
+      sessionKey,
+      messageId,
+      channelId: parsed.channelId,
+      fromUid: parsed.fromUid,
+    });
+    return;
+  }
+
+  if (parsed.kind === "message" && !parsed.directed) {
+    writeJsonLine(config.paths.feishuEvents, {
+      checkedAt,
+      adapter: "feishu",
+      eventKind: parsed.kind,
+      eventType: parsed.eventType,
+      eventId: parsed.eventId,
+      accepted: false,
+      skippedReason: "feishu_group_message_not_directed",
+      bindingId: binding.id,
+      sessionKey,
+      messageId,
+      channelId: parsed.channelId,
+      fromUid: parsed.fromUid,
+    });
+    return;
+  }
+
+  const message = feishuMessageFromParsed(parsed, content);
+  const key = gatewayClientKey(config);
+  const command = await handleChannelConnectorCommand({
+    config,
+    project,
+    binding,
+    message,
+    sessionKey,
+    controlsPath: sessionControlsPath(config),
+    agentSessionsPath: agentSessionsPath(config),
+    gatewayClientKey: key,
+  });
+
+  if (command.handled) {
+    let replySent = false;
+    let replyError: string | null = null;
+    if (command.replyText) {
+      const result = await sendFeishuTextMessage(transport, {
+        chatId: parsed.channelId,
+        content: command.replyText,
+      }, feishuTokenCachePath(config));
+      replySent = result.ok === true;
+      replyError = result.error;
+    }
+    writeJsonLine(config.paths.feishuEvents, {
+      checkedAt,
+      eventKind: "channel.command",
+      adapter: "feishu",
+      bindingId: binding.id,
+      sessionKey,
+      messageId,
+      eventType: parsed.eventType,
+      channelId: parsed.channelId,
+      chatType: parsed.chatType,
+      fromUid: parsed.fromUid,
+      command: command.command,
+      commandAction: command.action,
+      commandOk: command.ok,
+      replySent,
+      replyError,
+    });
+    writeRuntime(config, state);
+    return;
+  }
+
+  const agentMessage = command.passthroughText
+    ? {
+      ...message,
+      payload: {
+        ...message.payload,
+        content: command.passthroughText,
+      },
+    }
+    : message;
+  if (command.passthroughText) {
+    writeJsonLine(config.paths.feishuEvents, {
+      checkedAt,
+      eventKind: "channel.command.passthrough",
+      adapter: "feishu",
+      bindingId: binding.id,
+      sessionKey,
+      messageId,
+      channelId: parsed.channelId,
+      chatType: parsed.chatType,
+      fromUid: parsed.fromUid,
+      command: command.command,
+      passthroughText: command.passthroughText,
+    });
+  }
+
+  const control = getChannelConnectorSessionControl(sessionControlsPath(config), {
+    bindingId: binding.id,
+    sessionKey,
+  });
+  const effectiveProject = resolveChannelConnectorEffectiveProject(config, project, control);
+  const effectiveSessionLookup = {
+    bindingId: binding.id,
+    projectId: effectiveProject.id,
+    sessionKey,
+    agent: effectiveProject.agent,
+    model: effectiveProject.model,
+    workDir: effectiveProject.workDir,
+  };
+  const activeRunId = `${binding.id}:${messageId}`;
+  const currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
+  let progressEventCount = 0;
+  let latestProgress: ChannelConnectorAgentProgressEvent | null = null;
+  state.activeRuns.unshift({
+    id: activeRunId,
+    startedAt: checkedAt,
+    updatedAt: checkedAt,
+    bindingId: binding.id,
+    sessionKey,
+    messageId,
+    agent: effectiveProject.agent,
+    model: effectiveProject.model,
+    status: "running",
+    sessionResumed: Boolean(currentSession?.codexThreadId),
+    codexThreadId: currentSession?.codexThreadId || null,
+    progressEventCount,
+    latestProgress,
+  });
+  state.activeRuns = state.activeRuns.slice(0, 20);
+  writeRuntime(config, state);
+  writeJsonLine(config.paths.feishuEvents, {
+    checkedAt,
+    eventKind: "agent.run.started",
+    adapter: "feishu",
+    bindingId: binding.id,
+    sessionKey,
+    messageId,
+    agent: effectiveProject.agent,
+    model: effectiveProject.model,
+    sessionResumed: Boolean(currentSession?.codexThreadId),
+    codexThreadId: currentSession?.codexThreadId || null,
+  });
+
+  let agent: ChannelConnectorAgentTurnResult;
+  try {
+    agent = await runChannelConnectorAgentTurn({
+      project: effectiveProject,
+      binding,
+      message: agentMessage,
+      sessionKey,
+      gatewayEndpoint: effectiveProject.gatewayEndpoint || config.gateway.endpoint,
+      gatewayClientKey: key,
+      agentRuntimeDir: agentRuntimeDir(config, effectiveProject, binding),
+      session: {
+        codexThreadId: currentSession?.codexThreadId || null,
+      },
+      onProgress: (event) => {
+        progressEventCount += 1;
+        latestProgress = event;
+        const activeRun = state.activeRuns.find((run) => run.id === activeRunId);
+        if (activeRun) {
+          activeRun.updatedAt = event.checkedAt;
+          activeRun.progressEventCount = progressEventCount;
+          activeRun.latestProgress = latestProgress;
+        }
+        writeJsonLine(config.paths.feishuEvents, {
+          checkedAt: event.checkedAt,
+          eventKind: "agent.progress",
+          adapter: "feishu",
+          bindingId: binding.id,
+          sessionKey,
+          messageId,
+          agent: effectiveProject.agent,
+          progressType: event.type,
+          rawType: event.rawType,
+          itemType: event.itemType,
+          text: event.text,
+        });
+        writeRuntime(config, state);
+      },
+    });
+  } catch (error) {
+    const caughtLatestProgress = latestProgress as ChannelConnectorAgentProgressEvent | null;
+    agent = {
+      attempted: true,
+      ok: false,
+      status: "failed",
+      agent: effectiveProject.agent,
+      model: effectiveProject.model,
+      command: null,
+      args: [],
+      cwd: effectiveProject.workDir,
+      replyText: null,
+      stdout: "",
+      stderr: "",
+      exitCode: null,
+      durationMs: Date.now() - new Date(checkedAt).getTime(),
+      error: shortMessage(error),
+      progress: {
+        eventCount: progressEventCount,
+        latest: caughtLatestProgress,
+        summary: caughtLatestProgress?.text || null,
+      },
+      session: {
+        resumed: Boolean(currentSession?.codexThreadId),
+        codexThreadId: currentSession?.codexThreadId || null,
+      },
+    };
+  } finally {
+    state.activeRuns = state.activeRuns.filter((run) => run.id !== activeRunId);
+    writeRuntime(config, state);
+  }
+  if (agent.progress.eventCount > progressEventCount) {
+    progressEventCount = agent.progress.eventCount;
+    latestProgress = agent.progress.latest;
+  }
+  let nextSession: ChannelConnectorAgentSessionRecord | null = null;
+  if (agent.session.codexThreadId || currentSession?.codexThreadId) {
+    nextSession = upsertChannelConnectorAgentSession(agentSessionsPath(config), {
+      ...effectiveSessionLookup,
+      codexThreadId: agent.session.codexThreadId || currentSession?.codexThreadId || null,
+      messageId,
+      status: agent.status,
+    });
+  }
+  state.agentRuns.unshift({
+    checkedAt,
+    bindingId: binding.id,
+    sessionKey,
+    messageId,
+    agent: effectiveProject.agent,
+    status: agent.status,
+    ok: agent.ok,
+    durationMs: agent.durationMs,
+    error: agent.error,
+    sessionResumed: agent.session.resumed,
+    codexThreadId: agent.session.codexThreadId,
+    progressEventCount,
+    latestProgress,
+  });
+  state.agentRuns = state.agentRuns.slice(0, 20);
+
+  let replySent = false;
+  let replyError: string | null = null;
+  const replyContent = agent.ok === true && agent.replyText
+    ? agent.replyText
+    : agent.ok === false
+      ? `Agent 运行失败：${shortMessage(agent.error)}`
+      : null;
+  if (replyContent) {
+    const result = await sendFeishuTextMessage(transport, {
+      chatId: parsed.channelId,
+      content: replyContent,
+    }, feishuTokenCachePath(config));
+    replySent = result.ok === true;
+    replyError = result.error;
+  }
+
+  writeJsonLine(config.paths.feishuEvents, {
+    checkedAt,
+    eventKind: "agent.run.finished",
+    adapter: "feishu",
+    bindingId: binding.id,
+    sessionKey,
+    messageId,
+    channelId: parsed.channelId,
+    chatType: parsed.chatType,
+    fromUid: parsed.fromUid,
+    content,
+    rawEventKind: parsed.kind,
+    agentStatus: agent.status,
+    agentOk: agent.ok,
+    agentError: agent.error,
+    progressEventCount,
+    latestProgress,
+    sessionResumed: agent.session.resumed,
+    codexThreadId: agent.session.codexThreadId,
+    sessionTurnCount: nextSession?.turnCount || null,
+    replySent,
+    replyError,
+    rawEventShape: isRecord(rawEvent) ? Object.keys(rawEvent).slice(0, 12) : [],
+  });
+  writeRuntime(config, state);
+}
+
 async function startOctoConnection(input: {
   config: ChannelConnectorsDaemonRuntimeConfig;
   state: ChannelDaemonState;
@@ -782,6 +1395,225 @@ async function startOctoConnections(
   }
 }
 
+function feishuEnvelope(
+  appId: string,
+  eventType: string,
+  raw: unknown,
+): Record<string, unknown> {
+  const event = isRecord(raw) ? raw : {};
+  return {
+    schema: "2.0",
+    header: {
+      event_type: eventType,
+      app_id: normalizeString(event.app_id) || appId,
+      event_id: normalizeString(event.event_id) || normalizeString(event.uuid) || null,
+      token: normalizeString(event.token) || null,
+    },
+    event,
+  };
+}
+
+function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): ChannelDaemonFeishuGroup[] {
+  const groups = new Map<string, ChannelDaemonFeishuGroup>();
+  for (const project of config.projects) {
+    for (const binding of project.platformBindings) {
+      if (binding.platform !== "feishu" || binding.enabled === false) continue;
+      const transport = feishuTransportFromMetadata(binding.metadata, binding.accountId);
+      if (!transport) {
+        const key = `missing_${binding.id}`;
+        groups.set(key, {
+          key,
+          appId: normalizeString(binding.accountId) || binding.id,
+          accountId: binding.accountId,
+          apiUrl: null,
+          refs: [],
+          client: null,
+          reconnects: 0,
+          receivedMessages: 0,
+          lastConnectedAt: null,
+          lastDisconnectedAt: null,
+          lastError: "feishu_transport_config_missing",
+        });
+        continue;
+      }
+      const key = feishuGroupKey(transport);
+      const group = groups.get(key) || {
+        key,
+        appId: transport.appId,
+        accountId: binding.accountId || transport.appId,
+        apiUrl: transport.apiUrl,
+        refs: [],
+        client: null,
+        reconnects: 0,
+        receivedMessages: 0,
+        lastConnectedAt: null,
+        lastDisconnectedAt: null,
+        lastError: null,
+      };
+      group.refs.push({ project, binding, transport });
+      groups.set(key, group);
+    }
+  }
+  return [...groups.values()];
+}
+
+function createFeishuDispatcher(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  state: ChannelDaemonState;
+  group: ChannelDaemonFeishuGroup;
+  seenMessages: Map<string, number>;
+}): EventDispatcher {
+  const { config, state, group, seenMessages } = input;
+  const dispatcher = new EventDispatcher({
+    logger: feishuLogger(config),
+    loggerLevel: LoggerLevel.info,
+  });
+  dispatcher.register({
+    "im.message.receive_v1": async (data: unknown) => {
+      group.receivedMessages += 1;
+      const parsed = parseChannelConnectorFeishuWebhook(feishuEnvelope(group.appId, "im.message.receive_v1", data));
+      writeJsonLine(config.paths.feishuEvents, {
+        checkedAt: new Date().toISOString(),
+        adapter: "feishu",
+        eventKind: parsed.kind,
+        eventType: parsed.eventType,
+        eventId: parsed.eventId,
+        appId: parsed.appId || group.appId,
+        channelId: parsed.channelId,
+        fromUid: parsed.fromUid,
+        messageId: parsed.messageId,
+        longConnection: true,
+      });
+      updateFeishuRuntime(config, state, group);
+      await dispatchFeishuParsedEvent({
+        config,
+        state,
+        group,
+        parsed,
+        rawEvent: data,
+        seenMessages,
+      });
+    },
+    "card.action.trigger": async (data: unknown) => {
+      group.receivedMessages += 1;
+      const parsed = parseChannelConnectorFeishuWebhook(feishuEnvelope(group.appId, "card.action.trigger", data));
+      updateFeishuRuntime(config, state, group);
+      await dispatchFeishuParsedEvent({
+        config,
+        state,
+        group,
+        parsed,
+        rawEvent: data,
+        seenMessages,
+      });
+      return {};
+    },
+    "application.bot.menu_v6": async (data: unknown) => {
+      group.receivedMessages += 1;
+      const parsed = parseChannelConnectorFeishuWebhook(feishuEnvelope(group.appId, "application.bot.menu_v6", data));
+      updateFeishuRuntime(config, state, group);
+      await dispatchFeishuParsedEvent({
+        config,
+        state,
+        group,
+        parsed,
+        rawEvent: data,
+        seenMessages,
+      });
+    },
+    "im.message.recalled_v1": async (data: unknown) => {
+      writeJsonLine(config.paths.feishuEvents, {
+        checkedAt: new Date().toISOString(),
+        adapter: "feishu",
+        eventKind: "message-recalled",
+        eventType: "im.message.recalled_v1",
+        longConnection: true,
+        rawEventShape: isRecord(data) ? Object.keys(data).slice(0, 12) : [],
+      });
+    },
+    "im.message.read_v1": async () => {},
+    "im.message.reaction.created_v1": async () => {},
+    "im.message.reaction.deleted_v1": async () => {},
+  });
+  return dispatcher;
+}
+
+async function startFeishuConnections(
+  config: ChannelConnectorsDaemonRuntimeConfig,
+  state: ChannelDaemonState,
+  clients: WSClient[],
+  seenMessages: Map<string, number>,
+): Promise<void> {
+  const groups = createFeishuGroups(config);
+  for (const group of groups) {
+    if (!group.refs.length) {
+      state.feishuConnections[group.key] = feishuConnectionState(group);
+      writeRuntime(config, state);
+      continue;
+    }
+    const dispatcher = createFeishuDispatcher({
+      config,
+      state,
+      group,
+      seenMessages,
+    });
+    const client = new WSClient({
+      appId: group.appId,
+      appSecret: group.refs[0].transport.appSecret,
+      domain: metadataString(group.refs[0].binding, ["domain", "apiUrl", "api_url", "baseUrl", "base_url"]) || undefined,
+      logger: feishuLogger(config),
+      loggerLevel: LoggerLevel.info,
+      autoReconnect: true,
+      handshakeTimeoutMs: 20_000,
+      wsConfig: {
+        pingTimeout: 15,
+      },
+      source: "openclaw-studio-channel-daemon",
+      onReady: () => {
+        group.lastConnectedAt = new Date().toISOString();
+        group.lastError = null;
+        appendLog(config.paths.log, "Feishu WebSocket connected", {
+          key: group.key,
+          bindingIds: group.refs.map((ref) => ref.binding.id),
+        });
+        updateFeishuRuntime(config, state, group);
+      },
+      onError: (error) => {
+        group.lastError = shortMessage(error);
+        group.lastDisconnectedAt = new Date().toISOString();
+        appendLog(config.paths.log, "Feishu WebSocket error", {
+          key: group.key,
+          error: group.lastError,
+        });
+        updateFeishuRuntime(config, state, group);
+      },
+      onReconnecting: () => {
+        group.reconnects += 1;
+        group.lastDisconnectedAt = new Date().toISOString();
+        updateFeishuRuntime(config, state, group);
+      },
+      onReconnected: () => {
+        group.lastConnectedAt = new Date().toISOString();
+        group.lastError = null;
+        updateFeishuRuntime(config, state, group);
+      },
+    });
+    group.client = client;
+    clients.push(client);
+    state.feishuConnections[group.key] = feishuConnectionState(group);
+    writeRuntime(config, state);
+    void client.start({ eventDispatcher: dispatcher }).catch((error) => {
+      group.lastError = shortMessage(error);
+      group.lastDisconnectedAt = new Date().toISOString();
+      appendLog(config.paths.log, "Feishu WebSocket startup failed", {
+        key: group.key,
+        error: group.lastError,
+      });
+      updateFeishuRuntime(config, state, group);
+    });
+  }
+}
+
 async function main(): Promise<void> {
   const configPath = configPathFromArgv(process.argv.slice(2));
   const config = readConfig(configPath);
@@ -792,6 +1624,7 @@ async function main(): Promise<void> {
   appendLog(config.paths.log, "Studio native Channel Connectors daemon started");
   const server = startHttp(config, state);
   const sockets: OctoWukongSocket[] = [];
+  const feishuClients: WSClient[] = [];
   const seenMessages = new Map<string, number>();
 
   void startOctoConnections(config, state, sockets, seenMessages).catch((error) => {
@@ -799,10 +1632,16 @@ async function main(): Promise<void> {
       error: error instanceof Error ? error.message : String(error),
     });
   });
+  void startFeishuConnections(config, state, feishuClients, seenMessages).catch((error) => {
+    appendLog(config.paths.log, "Feishu connection startup failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
 
   const stop = () => {
     appendLog(config.paths.log, "Studio native Channel Connectors daemon stopping");
     for (const socket of sockets) socket.disconnect();
+    for (const client of feishuClients) client.close({ force: true });
     server.close(() => process.exit(0));
   };
   process.on("SIGINT", stop);

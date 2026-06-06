@@ -91,6 +91,7 @@
   },
   "dependencies": {
     "@homebridge/node-pty-prebuilt-multiarch": "^0.13.1",
+    "@larksuiteoapi/node-sdk": "^1.66.1",
     "bcryptjs": "^2.4.3",
     "ws": "^8.18.3"
   },

@@ -17,6 +17,9 @@ export interface ChannelConnectorFeishuParsedWebhook {
   fromUid: string | null;
   channelId: string | null;
   messageId: string | null;
+  rootId: string | null;
+  parentId: string | null;
+  threadId: string | null;
   chatType: string | null;
   text: string | null;
   directed: boolean;
@@ -134,6 +137,9 @@ function extractMessageId(event: Record<string, unknown>): string {
 
 function extractFeishuMessage(event: Record<string, unknown>): {
   messageId: string | null;
+  rootId: string | null;
+  parentId: string | null;
+  threadId: string | null;
   chatType: string | null;
   text: string | null;
 } {
@@ -141,12 +147,18 @@ function extractFeishuMessage(event: Record<string, unknown>): {
   if (!Object.keys(message).length) {
     return {
       messageId: extractMessageId(event) || null,
+      rootId: normalizeString(event.root_id) || null,
+      parentId: normalizeString(event.parent_id) || null,
+      threadId: normalizeString(event.thread_id) || null,
       chatType: normalizeString(event.chat_type) || null,
       text: extractFeishuTextContent(event.content) || null,
     };
   }
   return {
     messageId: normalizeString(message.message_id) || null,
+    rootId: normalizeString(message.root_id) || null,
+    parentId: normalizeString(message.parent_id) || null,
+    threadId: normalizeString(message.thread_id) || null,
     chatType: normalizeString(message.chat_type) || null,
     text: extractFeishuTextContent(message.content) || null,
   };
@@ -187,6 +199,9 @@ export function parseChannelConnectorFeishuWebhook(
       fromUid: null,
       channelId: null,
       messageId: null,
+      rootId: null,
+      parentId: null,
+      threadId: null,
       chatType: null,
       text: null,
       directed: false,
@@ -207,6 +222,9 @@ export function parseChannelConnectorFeishuWebhook(
       fromUid: extractSenderOpenId(event) || null,
       channelId: extractChatId(event) || null,
       messageId: extractMessageId(event) || null,
+      rootId: null,
+      parentId: null,
+      threadId: null,
       chatType: null,
       text: null,
       directed: true,
@@ -227,6 +245,9 @@ export function parseChannelConnectorFeishuWebhook(
       fromUid: extractSenderOpenId(event) || null,
       channelId: extractChatId(event) || null,
       messageId: extractMessageId(event) || null,
+      rootId: null,
+      parentId: null,
+      threadId: null,
       chatType: null,
       text: null,
       directed: true,
@@ -251,6 +272,9 @@ export function parseChannelConnectorFeishuWebhook(
       fromUid: extractSenderOpenId(event) || null,
       channelId: extractChatId(event) || null,
       messageId: message.messageId || extractMessageId(event) || null,
+      rootId: message.rootId,
+      parentId: message.parentId,
+      threadId: message.threadId,
       chatType: chatType || null,
       text: text || null,
       directed,
@@ -270,6 +294,9 @@ export function parseChannelConnectorFeishuWebhook(
     fromUid: extractSenderOpenId(event) || null,
     channelId: extractChatId(event) || null,
     messageId: extractMessageId(event) || null,
+    rootId: null,
+    parentId: null,
+    threadId: null,
     chatType: null,
     text: null,
     directed: false,

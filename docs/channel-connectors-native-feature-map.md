@@ -36,5 +36,6 @@
 - 已完成：F3d 真实 Octo DM 文本往返、Codex session resume、runner progress/failure observability：用户消息入站 -> Codex CLI Agent -> Studio Gateway -> Octo sendMessage；同一 IM session 续接同一 Codex thread；daemon `/status` 暴露 `activeRuns`，事件日志记录 start/progress/finish，失败会发短回执。
 - 已完成：F3e IM command control + native passthrough：`/help`、`/status`、`/agent`、`/model`、`/mode`、`/dir`、`/cd`、`/new`、`/reset`；session override 独立存储，`/mode yolo` 等只作用于当前 IM session；未知 `/xxx` 默认透传给当前 Agent，冲突命令用 `/native <命令>`；`/model` 后继续复用同一 Codex thread，`/cd` 和 `/new` 会断开旧续接。
 - 已完成：F3f Feishu ingress + outbound contract：`/api/channel-connectors/adapters/feishu/webhook` 支持 URL verification、card action、bot menu、message receive，`transport-smoke` 支持 tenant token cache、send message、patch card；message webhook 默认可把 command-router 回复发回 Feishu。
-- 已完成：F3f live callback 准备：本地用户配置写入 Feishu binding、tenant token cache 验证通过、临时公网 callback URL verification 通过；错误 verification token 不再回显 challenge；仓库只记录脱敏状态。
-- 下一步：F3f 真实 Feishu `im.message.receive_v1` 入站与 `/status` 回复闭环；F3g 权限审批回传。
+- 已完成：F3f Feishu daemon 长连接：使用官方 SDK `WSClient` / `EventDispatcher` 接 `im.message.receive_v1`、`card.action.trigger`、`application.bot.menu_v6`；按 CC 约束同一 Feishu App 多 binding 共享单条 WS；支持 chatId 过滤、thread/root 字段保留、command-router 回复和 Agent runner 回包。
+- 已完成：F3f live 闭环：本地用户配置写入 Feishu binding、tenant token cache 验证通过、callback verification 通过、错误 verification token 不回显 challenge、systemd `WorkingDirectory` 模板修复、daemon active/enabled、真实 `/status`/`/help` 入站并 `replySent=true`；CLI runner 补用户级 PATH fallback，覆盖 systemd 下找不到 `codex`；仓库只记录脱敏状态。
+- 下一步：F3g 权限审批回传；F4 图片/文件、history context、长回复 buffer、治理策略。

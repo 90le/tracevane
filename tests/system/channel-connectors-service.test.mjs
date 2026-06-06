@@ -292,6 +292,8 @@ test("native Channel Connectors status keeps daemon and binding policy separate 
   assert.equal(status.paths.root.startsWith(config.openclawRoot), false);
   assert.match(status.paths.nativeConfig, /channel-connectors\/config\.json/);
   assert.equal(status.paths.nativeConfig.startsWith(config.openclawRoot), false);
+  assert.match(status.service.plan.selectedTemplate.template, /^WorkingDirectory=\/.+channel-connectors\/daemon$/m);
+  assert.doesNotMatch(status.service.plan.selectedTemplate.template, /^WorkingDirectory="/m);
   assert.match(status.referenceSources.join("\n"), /CC archived reference implementation/);
 });
 
@@ -786,6 +788,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(processRequest.env.OPENAI_API_KEY, "sk-local");
   assert.equal(processRequest.env.OPENAI_BASE_URL, project.gatewayEndpoint);
   assert.ok(processRequest.env.CODEX_HOME);
+  assert.match(processRequest.env.PATH, /\.npm-global\/bin/);
+  assert.match(processRequest.env.PATH, /\.local\/bin/);
   assert.equal(processRequest.sessionMode, "new");
   assert.equal(processRequest.codexThreadId, null);
   assert.ok(!processRequest.args.join("\n").includes("sk-local"));
@@ -1390,6 +1394,32 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(badToken.skippedReason, "feishu_verification_token_mismatch");
   assert.equal(badToken.feishuResponse, null);
 
+  const parsedMessage = parseChannelConnectorFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "im.message.receive_v1",
+      app_id: "cli_test",
+      event_id: "evt_msg_parse",
+      token: "verify-token",
+    },
+    event: {
+      sender: { sender_id: { open_id: "ou_admin" } },
+      message: {
+        message_id: "om_msg_parse",
+        chat_id: "oc_chat",
+        chat_type: "group",
+        root_id: "om_root",
+        parent_id: "om_parent",
+        thread_id: "om_thread",
+        message_type: "text",
+        content: JSON.stringify({ text: "/status" }),
+      },
+    },
+  });
+  assert.equal(parsedMessage.rootId, "om_root");
+  assert.equal(parsedMessage.parentId, "om_parent");
+  assert.equal(parsedMessage.threadId, "om_thread");
+
   const slashMessage = await service.dispatchFeishuWebhook({
     schema: "2.0",
     header: {
@@ -1404,6 +1434,9 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
         message_id: "om_msg",
         chat_id: "oc_chat",
         chat_type: "p2p",
+        root_id: "om_root",
+        parent_id: "om_parent",
+        thread_id: "om_thread",
         message_type: "text",
         content: JSON.stringify({ text: "/mode yolo" }),
       },
@@ -1609,6 +1642,22 @@ test("native Channel Connectors service management is guarded before daemon entr
 
   const paths = resolveChannelConnectorsPaths(config, homeDir);
   assert.equal(fs.existsSync(paths.configPath), false);
+});
+
+test("native Channel Connectors daemon owns Feishu long-connection ingress", () => {
+  const daemonSource = fs.readFileSync(
+    path.resolve("dist/apps/api/modules/channel-connectors/daemon.js"),
+    "utf8",
+  );
+  assert.match(daemonSource, /WSClient/);
+  assert.match(daemonSource, /EventDispatcher/);
+  assert.match(daemonSource, /im\.message\.receive_v1/);
+  assert.match(daemonSource, /card\.action\.trigger/);
+  assert.match(daemonSource, /application\.bot\.menu_v6/);
+  assert.match(daemonSource, /createFeishuGroups/);
+  assert.match(daemonSource, /feishuGroupKey/);
+  assert.match(daemonSource, /feishuConnections/);
+  assert.match(daemonSource, /sendFeishuTextMessage/);
 });
 
 test("Channel Connectors routes are registered under /api/channel-connectors", async () => {

@@ -221,6 +221,10 @@ function quoteSystemdArg(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
 }
 
+function escapeSystemdPath(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/\s/g, "\\x20");
+}
+
 function quoteLaunchdString(value: string): string {
   return value
     .replace(/&/g, "&amp;")
@@ -530,7 +534,7 @@ function buildSystemdTemplate(serviceName: string, paths: ChannelConnectorsPaths
     "",
     "[Service]",
     "Type=simple",
-    `WorkingDirectory=${quoteSystemdArg(paths.rootDir)}`,
+    `WorkingDirectory=${escapeSystemdPath(paths.rootDir)}`,
     `ExecStart=${quoteSystemdArg(nodePath)} ${quoteSystemdArg(daemonEntry)} --config ${quoteSystemdArg(paths.configPath)}`,
     "Restart=on-failure",
     "RestartSec=10",
