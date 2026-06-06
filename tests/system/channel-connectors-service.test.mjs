@@ -300,6 +300,163 @@ test("native Channel Connectors store rejects duplicate personal WeChat agent bi
   }), /Personal WeChat account wx-account can bind only one agent profile/);
 });
 
+test("Octo adapter dry-run dispatch resolves binding, session key, and reply plan", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+  });
+  const initial = service.getNativeConfig().config;
+  service.saveNativeConfig({
+    config: {
+      ...initial,
+      agentProfiles: [
+        {
+          id: "codex-main",
+          name: "Codex main",
+          agent: "codex",
+          model: "gpt-5",
+          workDir: config.projectRoot,
+          permissionMode: "suggest",
+          gatewayEndpoint: "http://127.0.0.1:18796/v1",
+          gatewayKeyRef: "studio-gateway-client-key",
+          appProfileRef: "codex",
+        },
+      ],
+      defaultAgentProfileId: "codex-main",
+      platformBindings: [
+        {
+          id: "octo-default",
+          platform: "octo",
+          accountId: "octo-account",
+          botId: "octo-bot",
+          displayName: "Octo Bot",
+          agentProfileId: "codex-main",
+          enabled: true,
+          allowlist: ["user-1"],
+          adminUsers: ["admin-1"],
+        },
+      ],
+    },
+  });
+
+  const result = service.dispatchOctoIncoming({
+    bindingId: "octo-default",
+    dryRun: true,
+    replyText: "收到\n\nmodel · effort · 剩余 80%",
+    message: {
+      messageId: "m-1",
+      fromUid: "user-1",
+      channelId: "user-1",
+      channelType: 1,
+      payload: {
+        type: 1,
+        content: "hi",
+      },
+    },
+  });
+
+  assert.equal(result.accepted, true);
+  assert.equal(result.skippedReason, null);
+  assert.equal(result.sessionKey, "dmwork:dm:user-1");
+  assert.equal(result.incoming.content, "hi");
+  assert.equal(result.agentDispatch.status, "dry-run");
+  assert.equal(result.agentDispatch.agent, "codex");
+  assert.equal(result.agentDispatch.model, "gpt-5");
+  assert.equal(result.replyPlan.channelId, "user-1");
+  assert.deepEqual(result.replyPlan.chunks, ["收到"]);
+  assert.equal(result.eventStored.written, true);
+  assert.equal(fs.existsSync(result.eventStored.path), true);
+  assert.match(fs.readFileSync(result.eventStored.path, "utf8"), /"sessionKey":"dmwork:dm:user-1"/);
+});
+
+test("Octo adapter follows group direction and mention rendering rules", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+  });
+  const initial = service.getNativeConfig().config;
+  service.saveNativeConfig({
+    config: {
+      ...initial,
+      agentProfiles: [
+        {
+          id: "claude-main",
+          name: "Claude main",
+          agent: "claude-code",
+          model: "gpt-5",
+          workDir: config.projectRoot,
+          permissionMode: "auto-edit",
+          gatewayEndpoint: "http://127.0.0.1:18796/v1",
+          gatewayKeyRef: "studio-gateway-client-key",
+          appProfileRef: "claude",
+        },
+      ],
+      defaultAgentProfileId: "claude-main",
+      platformBindings: [
+        {
+          id: "octo-group",
+          platform: "octo",
+          accountId: "octo-account",
+          botId: "robot-1",
+          displayName: "Octo Group Bot",
+          agentProfileId: "claude-main",
+          enabled: true,
+          allowlist: [],
+          adminUsers: [],
+        },
+      ],
+    },
+  });
+
+  const ignored = service.dispatchOctoIncoming({
+    bindingId: "octo-group",
+    dryRun: true,
+    message: {
+      messageId: "g-ignored",
+      fromUid: "user-2",
+      channelId: "group-a",
+      channelType: 2,
+      payload: {
+        type: 1,
+        content: "not for the bot",
+      },
+    },
+  });
+  assert.equal(ignored.accepted, false);
+  assert.equal(ignored.skippedReason, "octo_group_message_not_directed");
+  assert.equal(ignored.sessionKey, "dmwork:group:group-a");
+
+  const directed = service.dispatchOctoIncoming({
+    bindingId: "octo-group",
+    dryRun: true,
+    replyText: "@Alice 已处理",
+    message: {
+      messageId: "g-1",
+      fromUid: "user-2",
+      channelId: "group-a",
+      channelType: 2,
+      payload: {
+        type: 1,
+        content: "@OctoBot status",
+        mention: { uids: ["robot-1"] },
+      },
+      members: [
+        { uid: "user-3", name: "Alice" },
+        { uid: "robot-1", name: "OctoBot" },
+      ],
+    },
+  });
+
+  assert.equal(directed.accepted, true);
+  assert.equal(directed.sessionKey, "dmwork:group:group-a");
+  assert.equal(directed.incoming.content, "status");
+  assert.deepEqual(directed.replyPlan.mentionUids, ["user-3"]);
+  assert.deepEqual(directed.replyPlan.chunks, ["已处理"]);
+  assert.deepEqual(directed.replyPlan.payloads[0].payload.mention.uids, ["user-3"]);
+});
+
 test("native Channel Connectors service management is guarded before daemon entry is built", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -358,11 +515,47 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
             },
           ],
           defaultAgentProfileId: "opencode-main",
+          platformBindings: [
+            {
+              id: "octo-route",
+              platform: "octo",
+              accountId: "octo-route-account",
+              botId: "octo-route-bot",
+              displayName: "Octo Route Bot",
+              agentProfileId: "opencode-main",
+              enabled: true,
+              allowlist: [],
+              adminUsers: [],
+            },
+          ],
         },
       },
     });
     assert.equal(savedConfig.status, 200);
     assert.equal(savedConfig.body.config.agentProfiles[0].agent, "opencode");
+
+    const octoSmoke = await requestJson(`${baseUrl}/api/channel-connectors/adapters/octo/incoming`, {
+      method: "POST",
+      body: {
+        bindingId: "octo-route",
+        dryRun: true,
+        message: {
+          messageId: "route-m-1",
+          fromUid: "route-user",
+          channelId: "route-user",
+          channelType: 1,
+          payload: {
+            type: 1,
+            content: "hello from route",
+          },
+        },
+      },
+    });
+    assert.equal(octoSmoke.status, 200);
+    assert.equal(octoSmoke.body.adapter, "octo");
+    assert.equal(octoSmoke.body.accepted, true);
+    assert.equal(octoSmoke.body.sessionKey, "dmwork:dm:route-user");
+    assert.equal(octoSmoke.body.agentDispatch.agent, "opencode");
 
     const service = await requestJson(`${baseUrl}/api/channel-connectors/daemon/service`);
     assert.equal(service.status, 200);

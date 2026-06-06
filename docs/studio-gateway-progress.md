@@ -1,6 +1,6 @@
 # Studio Gateway 进度
 
-> 状态：Studio Gateway core completed; Provider Center/App Connections completed; CLI/Gateway/live smoke harness completed; Channel Connectors native config F2 completed; OpenAI Platform vendor proof optional
+> 状态：Studio Gateway core completed; Provider Center/App Connections completed; CLI/Gateway/live smoke harness completed; Channel Connectors F3a Octo contract completed; OpenAI Platform vendor proof optional
 > 更新：2026-06-06
 > 文档规则：只保留当前状态、最近完成、验证和下一步；旧流水已压缩。
 
@@ -14,7 +14,7 @@
 - App Connections 已覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview、apply、备份、rollback、profile 切换、隔离 HOME HTTP 验收和真实 CLI 启动 smoke harness。
 - App Connections profile 是两层模型选择：全局默认模型 + 每个 App 单独模型覆盖；模型输入从 Gateway 可用模型列表提供 datalist，仍允许手动输入 alias。
 - Codex 低频兼容参数（WebSocket、WebSocket v2、请求压缩）已收进 `Codex advanced` 折叠，避免普通用户误触。
-- Channel Connectors 已切换为 Studio 原生 CLI Agent Bot 路线；CC/OpenClaw 只作为参考，不再走短期托管 cc-connect；F2 typed config store 已落地。
+- Channel Connectors 已切换为 Studio 原生 CLI Agent Bot 路线；CC/OpenClaw 只作为参考，不再走短期托管 cc-connect；F3a Octo adapter contract 已落地。
 - Phase B2 已按 `/tmp/cc-switch-src` 覆盖核心协议成熟度：CLI 启动、Claude tool/summary、OpenClaw agent provider/model/usage、Gateway HTTP compact/tool-history/error envelope、Responses->Chat streaming `include_usage`、provider-declared reasoning/thinking 映射、parallel tool-call index grouping、Chat SSE error -> Responses `response.failed`、started upstream stream failure -> target protocol error event、BigModel Chat/Anthropic live provider matrix，以及 GMN Responses-native substitute `/v1/responses` + `/v1/responses/compact` live proof。
 
 ## 本轮完成
@@ -23,6 +23,7 @@
 - daemon runtime config 改为从 native config 派生；个人微信账号不能绑定不同 Agent Profile。
 - 前端 `/channel-connectors` 的 Projects / Platforms tab 已从只读 skeleton 改为真实编辑保存。
 - 新增 `docs/channel-connectors-native-feature-map.md`，压缩记录 CC/OpenClaw -> Studio 原生能力映射。
+- 新增 Octo(dmwork) adapter contract 与 `/api/channel-connectors/adapters/octo/incoming`：支持 DM/群聊 session key、群聊 directed 规则、bot->Agent 绑定解析、文本 inbound dry-run、reply payload 分片和 mention 渲染。
 
 ## 验证
 
@@ -35,10 +36,10 @@
 ## 已知边界
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
-- Channel Connectors 尚未实现 Octo(dmwork) adapter、真实 CLI Agent 调度和文本往返。
+- Channel Connectors 尚未接入 Octo(dmwork) register/WebSocket/REST send、真实 CLI Agent 调度和真实文本往返。
 
 ## 下一步
 
-1. 进入 F3：按 CC `platform/dmwork` 和 OpenClaw channel 模型实现 Octo(dmwork) adapter。
-2. 进入 F3：实现 incoming text、reply text、session key、bot->Agent dispatch smoke。
-3. 进入 F3：把 CLI Agent runner 接到 Studio Gateway endpoint/key/model。
+1. 进入 F3b：接 Octo(dmwork) register/WebSocket/REST send，复用已落地的 adapter contract。
+2. 进入 F3b：实现本地 CLI Agent runner，使用 Agent Profile 的 workDir/model/permission/Gateway endpoint/key。
+3. 进入 F3b：跑真实 Octo 文本往返和 bot->Agent dispatch smoke。

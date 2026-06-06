@@ -3,6 +3,7 @@ import type { StudioRouter } from "../../core/router.js";
 import type {
   ChannelConnectorsDaemonRequest,
   ChannelConnectorsSaveNativeConfigRequest,
+  ChannelConnectorOctoInboundRequest,
 } from "../../../../types/channel-connectors.js";
 
 function sendChannelConnectorsError(res: Parameters<typeof sendJson>[0], error: unknown): void {
@@ -34,6 +35,15 @@ export function registerChannelConnectorsRoutes(router: StudioRouter): void {
     try {
       const payload = await parseJsonBody<ChannelConnectorsSaveNativeConfigRequest>(req);
       sendJson(res, 200, routeCtx.services.channelConnectors.saveNativeConfig(payload));
+    } catch (error) {
+      sendChannelConnectorsError(res, error);
+    }
+  });
+
+  router.post("/api/channel-connectors/adapters/octo/incoming", async (req, res, routeCtx) => {
+    try {
+      const payload = await parseJsonBody<ChannelConnectorOctoInboundRequest>(req);
+      sendJson(res, 200, routeCtx.services.channelConnectors.dispatchOctoIncoming(payload));
     } catch (error) {
       sendChannelConnectorsError(res, error);
     }

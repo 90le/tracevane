@@ -24,10 +24,21 @@ import {
   type ChannelConnectorsNativeConfigResponse,
   type ChannelConnectorsSaveNativeConfigRequest,
   type ChannelConnectorsStatusResponse,
+  type ChannelConnectorOctoDispatchResponse,
+  type ChannelConnectorOctoInboundRequest,
   type ChannelConnectorAgentId,
   type ChannelConnectorPermissionMode,
   type ChannelConnectorPlatformId,
 } from "../../../../types/channel-connectors.js";
+import {
+  buildOctoSessionKey,
+  buildSkippedOctoResponse,
+  extractOctoContent,
+  isOctoMessageDirectedAtBot,
+  renderOctoTextReply,
+  resolveOctoBinding,
+  shouldSkipOctoMessage,
+} from "./octo-adapter.js";
 
 const execFileAsync = promisify(execFile);
 const DAEMON_ACTIONS: readonly ChannelConnectorsDaemonAction[] = [
@@ -63,6 +74,7 @@ export interface ChannelConnectorsService {
   getStatus(): Promise<ChannelConnectorsStatusResponse>;
   getNativeConfig(): ChannelConnectorsNativeConfigResponse;
   saveNativeConfig(payload?: ChannelConnectorsSaveNativeConfigRequest): ChannelConnectorsNativeConfigResponse;
+  dispatchOctoIncoming(payload?: ChannelConnectorOctoInboundRequest): ChannelConnectorOctoDispatchResponse;
   getDaemonConfig(): ChannelConnectorsDaemonConfigResponse;
   getDaemonService(): Promise<ChannelConnectorsDaemonResponse>;
   manageDaemonService(payload?: ChannelConnectorsDaemonRequest): Promise<ChannelConnectorsDaemonResponse>;
@@ -78,6 +90,7 @@ interface ChannelConnectorsPaths {
   logDir: string;
   logFile: string;
   runtimeFile: string;
+  octoEventLogFile: string;
 }
 
 function normalizeHomeDir(value: string | undefined): string {
@@ -100,6 +113,7 @@ export function resolveChannelConnectorsPaths(
     logDir,
     logFile: path.join(logDir, "channel-connectors.log"),
     runtimeFile: path.join(rootDir, "runtime.json"),
+    octoEventLogFile: path.join(rootDir, "state", "octo-events.jsonl"),
   };
 }
 
@@ -378,6 +392,7 @@ function buildRuntimeConfig(
       state: paths.stateDir,
       log: paths.logFile,
       runtime: paths.runtimeFile,
+      octoEvents: paths.octoEventLogFile,
     },
     gateway: {
       endpoint: gatewayEndpoint(),
@@ -707,6 +722,49 @@ function tailLines(filePath: string, limit: number): { exists: boolean; lines: s
   };
 }
 
+function writeJsonLine(filePath: string, value: unknown): void {
+  ensureParentDir(filePath);
+  fs.appendFileSync(filePath, `${JSON.stringify(value)}\n`, "utf8");
+}
+
+function validateOctoInboundRequest(payload: ChannelConnectorOctoInboundRequest | undefined): ChannelConnectorOctoInboundRequest {
+  if (!payload || !isRecord(payload)) throw new Error("Octo inbound payload is required.");
+  if (!isRecord(payload.message)) throw new Error("Octo inbound message is required.");
+  const message = payload.message;
+  const messageId = normalizeString(message.messageId);
+  const fromUid = normalizeString(message.fromUid);
+  const channelId = normalizeString(message.channelId);
+  const channelType = Number(message.channelType);
+  if (!messageId) throw new Error("Octo messageId is required.");
+  if (!fromUid) throw new Error("Octo fromUid is required.");
+  if (!channelId) throw new Error("Octo channelId is required.");
+  if (channelType !== 1 && channelType !== 2 && channelType !== 5) throw new Error("Octo channelType must be 1, 2, or 5.");
+  return {
+    bindingId: normalizeString(payload.bindingId) || null,
+    accountId: normalizeString(payload.accountId) || null,
+    botId: normalizeString(payload.botId) || null,
+    dryRun: payload.dryRun === true,
+    replyText: normalizeString(payload.replyText) || null,
+    message: {
+      messageId,
+      fromUid,
+      channelId,
+      channelType,
+      timestamp: typeof message.timestamp === "number" && Number.isFinite(message.timestamp) ? message.timestamp : null,
+      payload: isRecord(message.payload) ? message.payload : {},
+      members: Array.isArray(message.members)
+        ? message.members
+          .filter((member) => isRecord(member))
+          .map((member) => ({
+            uid: normalizeString(member.uid),
+            name: normalizeString(member.name),
+          }))
+          .filter((member) => member.uid && member.name)
+        : [],
+    },
+  };
+}
+
 function bindingPolicy(): ChannelConnectorsBindingPolicy {
   return {
     model: "platform-account-or-bot-to-agent",
@@ -767,6 +825,81 @@ export function createChannelConnectorsService(
       supportedPlatforms: [...CHANNEL_CONNECTOR_PLATFORM_IDS],
       permissionModes: [...PERMISSION_MODES],
     };
+  }
+
+  function dispatchOctoIncoming(payload?: ChannelConnectorOctoInboundRequest): ChannelConnectorOctoDispatchResponse {
+    const request = validateOctoInboundRequest(payload);
+    const paths = resolveChannelConnectorsPaths(config);
+    const checkedAt = now().toISOString();
+    const nativeConfig = readNativeConfig(config, paths, now());
+    const resolved = resolveOctoBinding(request, nativeConfig.platformBindings, nativeConfig.agentProfiles);
+    const skippedReason = shouldSkipOctoMessage(request, resolved);
+    if (skippedReason) {
+      return buildSkippedOctoResponse(checkedAt, request, skippedReason, paths.octoEventLogFile, resolved);
+    }
+    if (!resolved) throw new Error("Octo binding resolution invariant failed.");
+
+    const message = request.message;
+    const binding = resolved.binding;
+    const agentProfile = resolved.agentProfile;
+    const sessionKey = buildOctoSessionKey(message);
+    const content = extractOctoContent(message);
+    const directed = isOctoMessageDirectedAtBot(message, binding.botId);
+    const replyPlan = request.replyText ? renderOctoTextReply(message, request.replyText) : null;
+    const dryRun = request.dryRun === true;
+    const dispatchStatus = dryRun ? "dry-run" : "not-ready";
+    const effectiveSkippedReason = dryRun ? null : "agent_dispatch_not_ready";
+    const response: ChannelConnectorOctoDispatchResponse = {
+      ok: true,
+      checkedAt,
+      adapter: "octo",
+      accepted: dryRun,
+      skippedReason: effectiveSkippedReason,
+      dryRun,
+      sessionKey,
+      binding,
+      agentProfile,
+      incoming: {
+        messageId: message.messageId,
+        platform: "octo",
+        channelId: message.channelId,
+        channelType: message.channelType,
+        fromUid: message.fromUid,
+        content,
+        directed,
+      },
+      agentDispatch: {
+        status: dispatchStatus,
+        agent: agentProfile.agent,
+        model: agentProfile.model,
+        workDir: agentProfile.workDir,
+        gatewayEndpoint: agentProfile.gatewayEndpoint,
+        gatewayKeyRef: agentProfile.gatewayKeyRef,
+      },
+      replyPlan,
+      eventStored: {
+        path: paths.octoEventLogFile,
+        written: false,
+      },
+    };
+
+    writeJsonLine(paths.octoEventLogFile, {
+      checkedAt,
+      adapter: "octo",
+      bindingId: binding.id,
+      agentProfileId: agentProfile.id,
+      sessionKey,
+      messageId: message.messageId,
+      channelId: message.channelId,
+      channelType: message.channelType,
+      fromUid: message.fromUid,
+      content,
+      dryRun,
+      dispatchStatus,
+      replyChunks: replyPlan?.chunks.length || 0,
+    });
+    response.eventStored.written = true;
+    return response;
   }
 
   async function response(
@@ -932,6 +1065,7 @@ export function createChannelConnectorsService(
     getStatus,
     getNativeConfig: currentNativeConfig,
     saveNativeConfig,
+    dispatchOctoIncoming,
     getDaemonConfig: currentConfig,
     getDaemonService,
     manageDaemonService,

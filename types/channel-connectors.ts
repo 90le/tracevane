@@ -40,6 +40,106 @@ export type ChannelConnectorPermissionMode =
   | "plan"
   | "yolo";
 
+export type ChannelConnectorOctoChannelType = 1 | 2 | 5;
+
+export interface ChannelConnectorOctoMentionPayload {
+  uids?: string[];
+  all?: number;
+}
+
+export interface ChannelConnectorOctoReplyPayload {
+  messageId?: string;
+  message_id?: string;
+}
+
+export interface ChannelConnectorOctoMessagePayload {
+  type?: number;
+  content?: string;
+  url?: string;
+  name?: string;
+  size?: number;
+  width?: number;
+  height?: number;
+  mention?: ChannelConnectorOctoMentionPayload | null;
+  reply?: ChannelConnectorOctoReplyPayload | null;
+}
+
+export interface ChannelConnectorOctoGroupMember {
+  uid: string;
+  name: string;
+}
+
+export interface ChannelConnectorOctoInboundMessage {
+  messageId: string;
+  fromUid: string;
+  channelId: string;
+  channelType: ChannelConnectorOctoChannelType;
+  timestamp?: number | null;
+  payload: ChannelConnectorOctoMessagePayload;
+  members?: ChannelConnectorOctoGroupMember[];
+}
+
+export interface ChannelConnectorOctoInboundRequest {
+  bindingId?: string | null;
+  accountId?: string | null;
+  botId?: string | null;
+  dryRun?: boolean;
+  replyText?: string | null;
+  message: ChannelConnectorOctoInboundMessage;
+}
+
+export interface ChannelConnectorOctoReplyPlan {
+  channelId: string;
+  channelType: ChannelConnectorOctoChannelType;
+  chunks: string[];
+  mentionUids: string[];
+  payloads: Array<{
+    channel_id: string;
+    channel_type: ChannelConnectorOctoChannelType;
+    payload: {
+      type: 1;
+      content: string;
+      mention?: {
+        uids: string[];
+      };
+    };
+  }>;
+}
+
+export interface ChannelConnectorOctoDispatchResponse {
+  ok: true;
+  checkedAt: string;
+  adapter: "octo";
+  accepted: boolean;
+  skippedReason: string | null;
+  dryRun: boolean;
+  sessionKey: string | null;
+  binding: ChannelConnectorPlatformBinding | null;
+  agentProfile: ChannelConnectorAgentProfile | null;
+  incoming: {
+    messageId: string;
+    platform: "octo";
+    channelId: string;
+    channelType: ChannelConnectorOctoChannelType;
+    fromUid: string;
+    content: string;
+    directed: boolean;
+  } | null;
+  agentDispatch: {
+    status: "dry-run" | "queued" | "not-ready" | "skipped";
+    agent: ChannelConnectorAgentId | null;
+    model: string | null;
+    workDir: string | null;
+    gatewayEndpoint: string | null;
+    gatewayKeyRef: "studio-gateway-client-key" | null;
+  };
+  replyPlan: ChannelConnectorOctoReplyPlan | null;
+  eventStored: {
+    path: string;
+    written: boolean;
+  };
+}
+
 export type ChannelConnectorsSupervisorKind =
   | "systemd-user"
   | "launchd-user"
@@ -90,6 +190,7 @@ export interface ChannelConnectorsDaemonRuntimeConfig {
     state: string;
     log: string;
     runtime: string;
+    octoEvents: string;
   };
   gateway: {
     endpoint: string;
