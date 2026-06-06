@@ -34,11 +34,12 @@ CC 和 OpenClaw 只作为参考：
 默认路径：
 
 - service: `openclaw-studio-channel-connectors.service`
-- native config: `~/.openclaw/studio/channel-connectors/config.json`
-- daemon config: `~/.openclaw/studio/channel-connectors/daemon/config.json`
-- state: `~/.openclaw/studio/channel-connectors/daemon/state`
-- logs: `~/.openclaw/studio/channel-connectors/daemon/logs/channel-connectors.log`
-- runtime: `~/.openclaw/studio/channel-connectors/daemon/runtime.json`
+- native config: `~/.config/openclaw-studio/channel-connectors/config.json`
+- daemon config: `~/.config/openclaw-studio/channel-connectors/daemon/config.json`
+- state: `~/.config/openclaw-studio/channel-connectors/daemon/state`
+- logs: `~/.config/openclaw-studio/channel-connectors/daemon/logs/channel-connectors.log`
+- runtime: `~/.config/openclaw-studio/channel-connectors/daemon/runtime.json`
+- override: `OPENCLAW_STUDIO_CHANNEL_CONNECTORS_DIR` or `OPENCLAW_STUDIO_DATA_DIR`
 
 ## 3. 产品范围
 
@@ -79,7 +80,7 @@ Studio 增强点：
 | --- | --- |
 | F1 | 已完成：native daemon skeleton、service/config/status/logs、独立页面、守护边界测试 |
 | F2 | 已完成：CC/OpenClaw 能力映射、typed config store、Agent Profile、工作目录、模型、权限、Gateway key ref、platform/bot binding |
-| F3 | 已完成核心合同：Octo(dmwork) adapter、REST transport、daemon register/cache/WuKongIM WebSocket、一次性 CLI Agent runner |
+| F3 | 已完成核心合同：Octo(dmwork) adapter、REST transport、daemon register/cache/WuKongIM WebSocket、一次性 CLI Agent runner；真实 Octo register/ws 已通过 |
 | F4 | 补齐核心消息能力：图片/文件、语音、群聊 mention、thread/reply、流式预览、长回复拆分 |
 | F5 | 治理与自动化：allowlist、admin、rate limit、banned words、slash command、cron、hooks、relay、management API |
 | F6 | 飞书、微信/企业微信；继续迁移钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等 CC 平台 |
@@ -100,6 +101,6 @@ Studio 增强点：
 
 ## 6. 下一步
 
-1. F3d：用真实 Octo(dmwork) 凭据跑 WebSocket 入站 -> CLI Agent -> sendMessage 文本往返。
+1. F3d：用户在真实 Octo bot 发一条消息，完成 WebSocket 入站 -> CLI Agent -> sendMessage 文本往返。
 2. F3d：补 session resume、流式进度、权限审批回传、错误状态和进程清理。
 3. F4：补图片/文件、群聊成员/history context、长回复 group buffer 和治理策略。

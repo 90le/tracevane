@@ -109,10 +109,38 @@ function normalizeHomeDir(value: string | undefined): string {
   return trimmed || os.homedir();
 }
 
+function normalizePathLike(value: string): string {
+  return path.resolve(value.trim().replace(/^~(?=$|\/|\\)/, os.homedir()));
+}
+
+function normalizeEnvDir(value: string | undefined): string | null {
+  const trimmed = String(value || "").trim();
+  return trimmed ? normalizePathLike(trimmed) : null;
+}
+
+function defaultStudioHomeDir(config: StudioServerConfig, homeDir?: string): string {
+  const explicit = String(homeDir || "").trim();
+  if (explicit) return normalizePathLike(explicit);
+  const openclawRoot = path.resolve(config.openclawRoot);
+  return path.basename(openclawRoot) === ".openclaw" ? path.dirname(openclawRoot) : os.homedir();
+}
+
+function resolveChannelConnectorsWorkspaceDir(
+  config: StudioServerConfig,
+  homeDir?: string,
+): string {
+  const explicitWorkspace = normalizeEnvDir(process.env.OPENCLAW_STUDIO_CHANNEL_CONNECTORS_DIR);
+  if (explicitWorkspace) return explicitWorkspace;
+  const explicitDataRoot = normalizeEnvDir(process.env.OPENCLAW_STUDIO_DATA_DIR);
+  if (explicitDataRoot) return path.join(explicitDataRoot, "channel-connectors");
+  return path.join(defaultStudioHomeDir(config, homeDir), ".config", "openclaw-studio", "channel-connectors");
+}
+
 export function resolveChannelConnectorsPaths(
   config: StudioServerConfig,
+  homeDir?: string,
 ): ChannelConnectorsPaths {
-  const workspaceDir = path.join(config.openclawRoot, "studio", "channel-connectors");
+  const workspaceDir = resolveChannelConnectorsWorkspaceDir(config, homeDir);
   const rootDir = path.join(workspaceDir, "daemon");
   const logDir = path.join(rootDir, "logs");
   return {
@@ -509,7 +537,7 @@ export function createChannelConnectorsDaemonPlan(
   config: StudioServerConfig,
   options: ChannelConnectorsServiceOptions = {},
 ): ChannelConnectorsDaemonPlan {
-  const paths = resolveChannelConnectorsPaths(config);
+  const paths = resolveChannelConnectorsPaths(config, options.homeDir);
   const homeDir = normalizeHomeDir(options.homeDir);
   const serviceName = CHANNEL_CONNECTORS_DAEMON_SERVICE_NAME;
   const nodePath = process.execPath;
@@ -846,25 +874,26 @@ export function createChannelConnectorsService(
   options: ChannelConnectorsServiceOptions = {},
 ): ChannelConnectorsService {
   const now = () => (options.now ? options.now() : new Date());
+  const paths = () => resolveChannelConnectorsPaths(config, options.homeDir);
   const runCommand = (command: ChannelConnectorsDaemonCommand) =>
     options.commandRunner ? options.commandRunner(command) : runDefaultCommand(command);
 
   function currentConfig(): ChannelConnectorsDaemonConfigResponse {
-    return buildConfigResponse(config, resolveChannelConnectorsPaths(config), now());
+    return buildConfigResponse(config, paths(), now());
   }
 
   function currentNativeConfig(): ChannelConnectorsNativeConfigResponse {
-    return buildNativeConfigResponse(config, resolveChannelConnectorsPaths(config), now());
+    return buildNativeConfigResponse(config, paths(), now());
   }
 
   function saveNativeConfig(payload: ChannelConnectorsSaveNativeConfigRequest = {}): ChannelConnectorsNativeConfigResponse {
     if (!payload.config) throw new Error("Channel Connectors config payload is required.");
-    const paths = resolveChannelConnectorsPaths(config);
-    const saved = writeNativeConfig(config, paths, payload.config, now());
+    const resolvedPaths = paths();
+    const saved = writeNativeConfig(config, resolvedPaths, payload.config, now());
     return {
       ok: true,
       checkedAt: now().toISOString(),
-      configPath: paths.nativeConfigPath,
+      configPath: resolvedPaths.nativeConfigPath,
       config: saved,
       supportedAgents: [...CHANNEL_CONNECTOR_AGENT_IDS],
       supportedPlatforms: [...CHANNEL_CONNECTOR_PLATFORM_IDS],
@@ -874,13 +903,13 @@ export function createChannelConnectorsService(
 
   async function dispatchOctoIncoming(payload?: ChannelConnectorOctoInboundRequest): Promise<ChannelConnectorOctoDispatchResponse> {
     const request = validateOctoInboundRequest(payload);
-    const paths = resolveChannelConnectorsPaths(config);
+    const resolvedPaths = paths();
     const checkedAt = now().toISOString();
-    const nativeConfig = readNativeConfig(config, paths, now());
+    const nativeConfig = readNativeConfig(config, resolvedPaths, now());
     const resolved = resolveOctoBinding(request, nativeConfig.platformBindings, nativeConfig.agentProfiles);
     const skippedReason = shouldSkipOctoMessage(request, resolved);
     if (skippedReason) {
-      return buildSkippedOctoResponse(checkedAt, request, skippedReason, paths.octoEventLogFile, resolved);
+      return buildSkippedOctoResponse(checkedAt, request, skippedReason, resolvedPaths.octoEventLogFile, resolved);
     }
     if (!resolved) throw new Error("Octo binding resolution invariant failed.");
 
@@ -940,12 +969,12 @@ export function createChannelConnectorsService(
       transport,
       replyPlan,
       eventStored: {
-        path: paths.octoEventLogFile,
+        path: resolvedPaths.octoEventLogFile,
         written: false,
       },
     };
 
-    writeJsonLine(paths.octoEventLogFile, {
+    writeJsonLine(resolvedPaths.octoEventLogFile, {
       checkedAt,
       adapter: "octo",
       bindingId: binding.id,
@@ -969,8 +998,7 @@ export function createChannelConnectorsService(
 
   async function runOctoTransportSmoke(payload?: ChannelConnectorOctoTransportSmokeRequest): Promise<ChannelConnectorOctoTransportSmokeResponse> {
     const request = normalizeOctoTransportSmokeRequest(payload);
-    const paths = resolveChannelConnectorsPaths(config);
-    const nativeConfig = readNativeConfig(config, paths, now());
+    const nativeConfig = readNativeConfig(config, paths(), now());
     const resolved = resolveOctoBindingById(nativeConfig, request.bindingId);
     const checkedAt = now().toISOString();
     if (!resolved) {
@@ -1164,7 +1192,7 @@ export function createChannelConnectorsService(
       bindingPolicy: bindingPolicy(),
       paths: {
         root: service.plan.rootDir,
-        nativeConfig: resolveChannelConnectorsPaths(config).nativeConfigPath,
+        nativeConfig: paths().nativeConfigPath,
         config: service.plan.configPath,
         state: service.plan.stateDir,
         log: service.plan.logFile,
@@ -1181,12 +1209,12 @@ export function createChannelConnectorsService(
   }
 
   function getDaemonLogs(limit = 120): ChannelConnectorsLogsResponse {
-    const paths = resolveChannelConnectorsPaths(config);
-    const log = tailLines(paths.logFile, limit);
+    const resolvedPaths = paths();
+    const log = tailLines(resolvedPaths.logFile, limit);
     return {
       ok: true,
       checkedAt: now().toISOString(),
-      logFile: paths.logFile,
+      logFile: resolvedPaths.logFile,
       exists: log.exists,
       lines: log.lines,
     };

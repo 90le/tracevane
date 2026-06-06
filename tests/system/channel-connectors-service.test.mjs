@@ -207,7 +207,10 @@ test("native Channel Connectors status keeps daemon and binding policy separate 
   assert.ok(status.bindingPolicy.supportedPlatforms.includes("octo"));
   assert.ok(status.bindingPolicy.supportedPlatforms.includes("discord"));
   assert.match(status.paths.root, /channel-connectors\/daemon/);
+  assert.match(status.paths.root, /\.config\/openclaw-studio\/channel-connectors\/daemon/);
+  assert.equal(status.paths.root.startsWith(config.openclawRoot), false);
   assert.match(status.paths.nativeConfig, /channel-connectors\/config\.json/);
+  assert.equal(status.paths.nativeConfig.startsWith(config.openclawRoot), false);
   assert.match(status.referenceSources.join("\n"), /CC archived reference implementation/);
 });
 
@@ -223,6 +226,8 @@ test("native Channel Connectors config preview targets Studio Gateway without cc
   assert.deepEqual(preview.missing, []);
   assert.equal(preview.gatewayEndpoint, "http://127.0.0.1:18796/v1");
   assert.match(preview.nativeConfigPath, /channel-connectors\/config\.json/);
+  assert.match(preview.nativeConfigPath, /\.config\/openclaw-studio\/channel-connectors\/config\.json/);
+  assert.equal(preview.nativeConfigPath.startsWith(config.openclawRoot), false);
   assert.equal(preview.config.gateway.clientKeyRef, "studio-gateway-client-key");
   assert.equal(preview.config.projects[0].agent, "codex");
   assert.equal(preview.config.projects[0].permissionMode, "suggest");

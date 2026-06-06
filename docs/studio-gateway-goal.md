@@ -85,6 +85,7 @@ Provider / model routing 目标：
 ```
 
 - Channel Connectors 改为 Studio 原生实现，不上线短期托管 cc-connect 方案；CC 二开源码已有功能都必须纳入 Studio 原生目标，首批平台只是实施顺序。
+- Channel Connectors 使用独立 Studio 配置/secret/state，不写入 `openclaw.json`、OpenClaw channels 或 OpenClaw bindings。
 - Channel daemon 必须常驻守护；Studio / OpenClaw 崩溃时仍保持渠道服务和 Codex/Gateway 对话链路，不内置额外修复流程。
 - 原生 contract 统一 incoming、reply、attachment、voice、thread、ack/retry、allowlist、admin、rate limit、banned words、slash command、cron、hooks、relay、session key 和 bot->Agent binding。
 - 优先 Octo(dmwork)，再飞书、微信/企业微信；后续覆盖 CC 已有平台，包括钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等。

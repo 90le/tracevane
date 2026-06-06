@@ -33,4 +33,5 @@
 - 已完成：F3a Octo(dmwork) adapter contract：DM/群聊 session key、群聊 directed 规则、bot->Agent 绑定解析、文本 inbound dry-run、reply payload 分片和 mention 渲染。
 - 已完成：F3b transport slice：Octo binding metadata `apiUrl/botToken/wsUrl`、register、typing、sendMessage REST client、transport-smoke API、incoming `sendReply` opt-in 真实发送。
 - 已完成：F3c daemon slice：Octo register credential cache、WuKongIM WebSocket CONNECT/CONNACK/heartbeat/RECVACK/AES 解密、runtime status、Codex/Claude Code/OpenCode 一次性 CLI runner 合同。
-- 下一步：F3d 真实 Octo 文本往返、session resume、流式进度和权限审批回传。
+- 已完成：F3d 前置真实 smoke：Octo register + WuKongIM ws 握手通过；Channel Connectors 配置独立于 `openclaw.json` 和 OpenClaw runtime。
+- 下一步：F3d 真实用户消息入站 -> CLI Agent -> sendMessage 文本往返、session resume、流式进度和权限审批回传。
