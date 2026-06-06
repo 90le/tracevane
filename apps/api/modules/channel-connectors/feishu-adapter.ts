@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import type {
+  ChannelConnectorInboundAttachment,
   ChannelConnectorFeishuWebhookEventKind,
   ChannelConnectorFeishuWebhookRequest,
 } from "../../../../types/channel-connectors.js";
@@ -21,7 +22,9 @@ export interface ChannelConnectorFeishuParsedWebhook {
   parentId: string | null;
   threadId: string | null;
   chatType: string | null;
+  messageType: string | null;
   text: string | null;
+  attachments: ChannelConnectorInboundAttachment[];
   directed: boolean;
 }
 
@@ -36,6 +39,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
 }
 
 export function buildFeishuSessionKey(
@@ -100,6 +112,12 @@ function parseJsonRecord(value: string): Record<string, unknown> {
   }
 }
 
+function contentRecord(value: unknown): Record<string, unknown> {
+  if (isRecord(value)) return value;
+  const raw = normalizeString(value);
+  return raw.startsWith("{") ? parseJsonRecord(raw) : {};
+}
+
 function extractFeishuTextContent(content: unknown): string {
   if (isRecord(content)) {
     return normalizeString(content.text || content.content);
@@ -112,6 +130,85 @@ function extractFeishuTextContent(content: unknown): string {
     .replace(/<at\b[^>]*>.*?<\/at>/g, "")
     .replace(/<[^>]+>/g, "")
     .trim();
+}
+
+function feishuAttachment(
+  kind: ChannelConnectorInboundAttachment["kind"],
+  fields: Partial<ChannelConnectorInboundAttachment>,
+): ChannelConnectorInboundAttachment {
+  const key = normalizeString(fields.key) || normalizeString(fields.imageKey) || normalizeString(fields.fileKey) || null;
+  return {
+    kind,
+    platform: "feishu",
+    key,
+    imageKey: normalizeString(fields.imageKey) || null,
+    fileKey: normalizeString(fields.fileKey) || null,
+    fileName: normalizeString(fields.fileName) || null,
+    mimeType: normalizeString(fields.mimeType) || null,
+    size: typeof fields.size === "number" && Number.isFinite(fields.size) ? fields.size : null,
+    durationMs: typeof fields.durationMs === "number" && Number.isFinite(fields.durationMs) ? fields.durationMs : null,
+    url: normalizeString(fields.url) || null,
+  };
+}
+
+function durationLabel(durationMs: number | null): string {
+  if (!durationMs || durationMs <= 0) return "";
+  return `${Math.round(durationMs / 1000)}s`;
+}
+
+function extractFeishuMessageContent(messageType: string | null, content: unknown): {
+  text: string | null;
+  attachments: ChannelConnectorInboundAttachment[];
+} {
+  const normalizedType = normalizeString(messageType).toLowerCase();
+  const record = contentRecord(content);
+  if (normalizedType === "image") {
+    const imageKey = normalizeString(record.image_key) || normalizeString(record.imageKey) || normalizeString(record.file_key);
+    return {
+      text: "[image]",
+      attachments: [feishuAttachment("image", { imageKey })],
+    };
+  }
+  if (normalizedType === "file") {
+    const fileKey = normalizeString(record.file_key) || normalizeString(record.fileKey);
+    const fileName = normalizeString(record.file_name) || normalizeString(record.fileName) || normalizeString(record.name);
+    return {
+      text: `[file: ${fileName || "file"}]`,
+      attachments: [feishuAttachment("file", { fileKey, fileName })],
+    };
+  }
+  if (normalizedType === "audio") {
+    const fileKey = normalizeString(record.file_key) || normalizeString(record.fileKey);
+    const durationMs = normalizeNumber(record.duration);
+    const label = durationLabel(durationMs);
+    return {
+      text: label ? `[voice: ${label}]` : "[voice]",
+      attachments: [feishuAttachment("audio", { fileKey, durationMs })],
+    };
+  }
+  if (normalizedType === "media") {
+    const fileKey = normalizeString(record.file_key) || normalizeString(record.fileKey);
+    const imageKey = normalizeString(record.image_key) || normalizeString(record.imageKey);
+    const fileName = normalizeString(record.file_name) || normalizeString(record.fileName) || normalizeString(record.name);
+    const durationMs = normalizeNumber(record.duration);
+    const detail = [fileName, durationLabel(durationMs)].filter(Boolean).join(", ");
+    return {
+      text: detail ? `[video: ${detail}]` : "[video]",
+      attachments: [feishuAttachment("video", { fileKey, imageKey, fileName, durationMs })],
+    };
+  }
+  if (normalizedType === "sticker") {
+    const fileKey = normalizeString(record.file_key) || normalizeString(record.fileKey);
+    return {
+      text: "[sticker]",
+      attachments: [feishuAttachment("sticker", { fileKey })],
+    };
+  }
+  const text = extractFeishuTextContent(content);
+  return {
+    text: text || null,
+    attachments: [],
+  };
 }
 
 function normalizeFeishuEventType(payload: Record<string, unknown>, header: Record<string, unknown>): string {
@@ -195,26 +292,36 @@ function extractFeishuMessage(event: Record<string, unknown>): {
   parentId: string | null;
   threadId: string | null;
   chatType: string | null;
+  messageType: string | null;
   text: string | null;
+  attachments: ChannelConnectorInboundAttachment[];
 } {
   const message = nestedRecord(event, ["message"]);
   if (!Object.keys(message).length) {
+    const messageType = normalizeString(event.message_type) || null;
+    const extracted = extractFeishuMessageContent(messageType, event.content);
     return {
       messageId: extractMessageId(event) || null,
       rootId: normalizeString(event.root_id) || null,
       parentId: normalizeString(event.parent_id) || null,
       threadId: normalizeString(event.thread_id) || null,
       chatType: normalizeString(event.chat_type) || null,
-      text: extractFeishuTextContent(event.content) || null,
+      messageType,
+      text: extracted.text,
+      attachments: extracted.attachments,
     };
   }
+  const messageType = normalizeString(message.message_type) || null;
+  const extracted = extractFeishuMessageContent(messageType, message.content);
   return {
     messageId: normalizeString(message.message_id) || null,
     rootId: normalizeString(message.root_id) || null,
     parentId: normalizeString(message.parent_id) || null,
     threadId: normalizeString(message.thread_id) || null,
     chatType: normalizeString(message.chat_type) || null,
-    text: extractFeishuTextContent(message.content) || null,
+    messageType,
+    text: extracted.text,
+    attachments: extracted.attachments,
   };
 }
 
@@ -257,7 +364,9 @@ export function parseChannelConnectorFeishuWebhook(
       parentId: null,
       threadId: null,
       chatType: null,
+      messageType: null,
       text: null,
+      attachments: [],
       directed: false,
     };
   }
@@ -280,7 +389,9 @@ export function parseChannelConnectorFeishuWebhook(
       parentId: null,
       threadId: null,
       chatType: null,
+      messageType: null,
       text: null,
+      attachments: [],
       directed: true,
     };
   }
@@ -303,7 +414,9 @@ export function parseChannelConnectorFeishuWebhook(
       parentId: null,
       threadId: null,
       chatType: null,
+      messageType: null,
       text: null,
+      attachments: [],
       directed: true,
     };
   }
@@ -330,7 +443,9 @@ export function parseChannelConnectorFeishuWebhook(
       parentId: message.parentId,
       threadId: message.threadId,
       chatType: chatType || null,
+      messageType: message.messageType,
       text: text || null,
+      attachments: message.attachments,
       directed,
     };
   }
@@ -352,7 +467,9 @@ export function parseChannelConnectorFeishuWebhook(
     parentId: null,
     threadId: null,
     chatType: null,
+    messageType: null,
     text: null,
+    attachments: [],
     directed: false,
   };
 }

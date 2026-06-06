@@ -1048,6 +1048,32 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(opencodeRequest.args.includes("--thinking"), true);
   assert.equal(opencodeRequest.args.at(-1), "hi codex");
 
+  const attachmentRequest = buildChannelConnectorAgentProcessRequest({
+    project,
+    binding,
+    message: {
+      ...message,
+      messageId: "m-runner-image",
+      payload: { type: 2, content: "", name: "diagram.png", url: "https://example.invalid/diagram.png" },
+      attachments: [{
+        kind: "image",
+        platform: "feishu",
+        key: "feishu-private-image-key",
+        imageKey: "feishu-private-image-key",
+        fileName: "diagram.png",
+      }],
+    },
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+  });
+  assert.ok(attachmentRequest);
+  assert.match(attachmentRequest.stdin, /\[image\]/);
+  assert.match(attachmentRequest.stdin, /Studio attachment summary/);
+  assert.match(attachmentRequest.stdin, /image: diagram\.png/);
+  assert.doesNotMatch(attachmentRequest.stdin, /feishu-private-image-key/);
+  for (const cleanupPath of attachmentRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
   const failed = await runChannelConnectorAgentTurn({
     project,
     binding,
@@ -1941,6 +1967,79 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(buildFeishuSessionKey({ ...parsedMessage, rootId: null }), "feishu:oc_chat:root:om_msg_parse");
   assert.equal(buildFeishuSessionKey(parsedMessage, { threadIsolation: false }), "feishu:oc_chat:ou_admin");
 
+  const parsedImage = parseChannelConnectorFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "im.message.receive_v1",
+      app_id: "cli_test",
+      event_id: "evt_img_parse",
+      token: "verify-token",
+    },
+    event: {
+      sender: { sender_id: { open_id: "ou_admin" } },
+      message: {
+        message_id: "om_img_parse",
+        chat_id: "oc_chat",
+        chat_type: "p2p",
+        message_type: "image",
+        content: JSON.stringify({ image_key: "img-key-1" }),
+      },
+    },
+  });
+  assert.equal(parsedImage.messageType, "image");
+  assert.equal(parsedImage.text, "[image]");
+  assert.equal(parsedImage.attachments.length, 1);
+  assert.equal(parsedImage.attachments[0].kind, "image");
+  assert.equal(parsedImage.attachments[0].imageKey, "img-key-1");
+  assert.equal(parsedImage.directed, true);
+
+  const parsedFile = parseChannelConnectorFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "im.message.receive_v1",
+      app_id: "cli_test",
+      event_id: "evt_file_parse",
+      token: "verify-token",
+    },
+    event: {
+      sender: { sender_id: { open_id: "ou_admin" } },
+      message: {
+        message_id: "om_file_parse",
+        chat_id: "oc_chat",
+        chat_type: "p2p",
+        message_type: "file",
+        content: JSON.stringify({ file_key: "file-key-1", file_name: "report.pdf" }),
+      },
+    },
+  });
+  assert.equal(parsedFile.text, "[file: report.pdf]");
+  assert.equal(parsedFile.attachments[0].kind, "file");
+  assert.equal(parsedFile.attachments[0].fileKey, "file-key-1");
+  assert.equal(parsedFile.attachments[0].fileName, "report.pdf");
+
+  const parsedAudio = parseChannelConnectorFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "im.message.receive_v1",
+      app_id: "cli_test",
+      event_id: "evt_audio_parse",
+      token: "verify-token",
+    },
+    event: {
+      sender: { sender_id: { open_id: "ou_admin" } },
+      message: {
+        message_id: "om_audio_parse",
+        chat_id: "oc_chat",
+        chat_type: "p2p",
+        message_type: "audio",
+        content: JSON.stringify({ file_key: "audio-key-1", duration: 3200 }),
+      },
+    },
+  });
+  assert.equal(parsedAudio.text, "[voice: 3s]");
+  assert.equal(parsedAudio.attachments[0].kind, "audio");
+  assert.equal(parsedAudio.attachments[0].durationMs, 3200);
+
   const slashMessage = await service.dispatchFeishuWebhook({
     schema: "2.0",
     header: {
@@ -2008,6 +2107,36 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   const feishuLog = fs.readFileSync(slashThreadMessage.eventStored.path, "utf8");
   assert.match(feishuLog, /"rootId":"om_thread_root"/);
   assert.match(feishuLog, /"threadId":"om_thread_id"/);
+
+  const imageDryRunMessage = await service.dispatchFeishuWebhook({
+    dryRun: true,
+    schema: "2.0",
+    header: {
+      event_type: "im.message.receive_v1",
+      app_id: "cli_test",
+      event_id: "evt_img_dry_run",
+      token: "verify-token",
+    },
+    event: {
+      sender: { sender_id: { open_id: "ou_admin" } },
+      message: {
+        message_id: "om_img_dry_run",
+        chat_id: "oc_chat",
+        chat_type: "p2p",
+        message_type: "image",
+        content: JSON.stringify({ image_key: "img-key-dry-run" }),
+      },
+    },
+  });
+  assert.equal(imageDryRunMessage.accepted, true);
+  assert.equal(imageDryRunMessage.agentDispatch.status, "dry-run");
+  assert.equal(imageDryRunMessage.incoming.content, "[image]");
+  assert.equal(imageDryRunMessage.incoming.messageType, "image");
+  assert.equal(imageDryRunMessage.incoming.attachments.length, 1);
+  assert.equal(imageDryRunMessage.incoming.attachments[0].imageKey, "img-key-dry-run");
+  const imageLog = fs.readFileSync(imageDryRunMessage.eventStored.path, "utf8");
+  assert.match(imageLog, /"messageType":"image"/);
+  assert.match(imageLog, /"attachmentKinds":\["image"\]/);
 
   const slashModelMessage = await service.dispatchFeishuWebhook({
     schema: "2.0",

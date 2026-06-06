@@ -52,6 +52,27 @@ export interface ChannelConnectorOctoReplyPayload {
   message_id?: string;
 }
 
+export type ChannelConnectorInboundAttachmentKind =
+  | "image"
+  | "file"
+  | "audio"
+  | "video"
+  | "sticker"
+  | "unknown";
+
+export interface ChannelConnectorInboundAttachment {
+  kind: ChannelConnectorInboundAttachmentKind;
+  platform: ChannelConnectorPlatformId;
+  key?: string | null;
+  imageKey?: string | null;
+  fileKey?: string | null;
+  fileName?: string | null;
+  mimeType?: string | null;
+  size?: number | null;
+  durationMs?: number | null;
+  url?: string | null;
+}
+
 export interface ChannelConnectorOctoMessagePayload {
   type?: number;
   content?: string;
@@ -76,6 +97,7 @@ export interface ChannelConnectorOctoInboundMessage {
   channelType: ChannelConnectorOctoChannelType;
   timestamp?: number | null;
   payload: ChannelConnectorOctoMessagePayload;
+  attachments?: ChannelConnectorInboundAttachment[];
   members?: ChannelConnectorOctoGroupMember[];
 }
 
@@ -159,6 +181,8 @@ export interface ChannelConnectorOctoDispatchResponse {
     channelType: ChannelConnectorOctoChannelType;
     fromUid: string;
     content: string;
+    messageType: number | null;
+    attachments: ChannelConnectorInboundAttachment[];
     directed: boolean;
   } | null;
   agentDispatch: {
@@ -375,6 +399,8 @@ export interface ChannelConnectorFeishuWebhookResponse {
     rootId: string | null;
     parentId: string | null;
     threadId: string | null;
+    messageType: string | null;
+    attachments: ChannelConnectorInboundAttachment[];
     content: string;
     directed: boolean;
   } | null;

@@ -51,6 +51,7 @@ import {
 } from "./octo-credential-cache.js";
 import {
   buildOctoSessionKey,
+  extractOctoAttachments,
   extractOctoContent,
   isOctoMessageDirectedAtBot,
   renderOctoTextReply,
@@ -714,11 +715,17 @@ function feishuThreadLogFields(parsed: ChannelConnectorFeishuParsedWebhook): {
   rootId: string | null;
   parentId: string | null;
   threadId: string | null;
+  messageType: string | null;
+  attachmentCount: number;
+  attachmentKinds: string[];
 } {
   return {
     rootId: parsed.rootId,
     parentId: parsed.parentId,
     threadId: parsed.threadId,
+    messageType: parsed.messageType,
+    attachmentCount: parsed.attachments.length,
+    attachmentKinds: parsed.attachments.map((attachment) => attachment.kind),
   };
 }
 
@@ -742,6 +749,7 @@ function feishuMessageFromParsed(
         }
         : undefined,
     },
+    attachments: parsed.attachments,
     members: [],
   };
 }
@@ -1198,6 +1206,7 @@ async function dispatchOctoMessage(input: {
   const skippedReason = shouldSkipOctoMessage(request, resolved);
   const sessionKey = buildOctoSessionKey(message);
   const content = extractOctoContent(message);
+  const attachments = extractOctoAttachments(message);
   const checkedAt = new Date().toISOString();
   if (skippedReason) {
     writeJsonLine(config.paths.octoEvents, {
@@ -1206,6 +1215,9 @@ async function dispatchOctoMessage(input: {
       bindingId: binding.id,
       sessionKey,
       messageId: message.messageId,
+      messageType: typeof message.payload?.type === "number" ? message.payload.type : null,
+      attachmentCount: attachments.length,
+      attachmentKinds: attachments.map((attachment) => attachment.kind),
       skippedReason,
     });
     return;
@@ -1242,6 +1254,9 @@ async function dispatchOctoMessage(input: {
       channelId: message.channelId,
       channelType: message.channelType,
       fromUid: message.fromUid,
+      messageType: typeof message.payload?.type === "number" ? message.payload.type : null,
+      attachmentCount: attachments.length,
+      attachmentKinds: attachments.map((attachment) => attachment.kind),
       command: command.command,
       commandAction: command.action,
       commandOk: command.ok,
@@ -1270,6 +1285,9 @@ async function dispatchOctoMessage(input: {
       channelId: message.channelId,
       channelType: message.channelType,
       fromUid: message.fromUid,
+      messageType: typeof message.payload?.type === "number" ? message.payload.type : null,
+      attachmentCount: attachments.length,
+      attachmentKinds: attachments.map((attachment) => attachment.kind),
       command: command.command,
       passthroughText: command.passthroughText,
     });
@@ -1457,6 +1475,9 @@ async function dispatchOctoMessage(input: {
     channelType: message.channelType,
     fromUid: message.fromUid,
     content,
+    messageType: typeof message.payload?.type === "number" ? message.payload.type : null,
+    attachmentCount: attachments.length,
+    attachmentKinds: attachments.map((attachment) => attachment.kind),
     directed: isOctoMessageDirectedAtBot(message, nativeBinding.botId),
     agentStatus: agent.status,
     agentOk: agent.ok,

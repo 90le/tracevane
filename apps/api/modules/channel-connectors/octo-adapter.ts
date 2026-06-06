@@ -1,5 +1,6 @@
 import type {
   ChannelConnectorAgentProfile,
+  ChannelConnectorInboundAttachment,
   ChannelConnectorOctoDispatchResponse,
   ChannelConnectorOctoGroupMember,
   ChannelConnectorOctoInboundMessage,
@@ -108,6 +109,52 @@ export function extractOctoContent(message: ChannelConnectorOctoInboundMessage):
       break;
   }
   return isOctoGroupChannel(message.channelType) ? stripLeadingMention(content) : content;
+}
+
+export function extractOctoAttachments(message: ChannelConnectorOctoInboundMessage): ChannelConnectorInboundAttachment[] {
+  if (Array.isArray(message.attachments) && message.attachments.length > 0) return message.attachments;
+  const payload = message.payload || {};
+  const key = normalizeString(payload.url) || normalizeString(payload.name) || null;
+  switch (payload.type) {
+    case OCTO_MESSAGE_TYPE_IMAGE:
+      return [{
+        kind: "image",
+        platform: "octo",
+        key,
+        url: normalizeString(payload.url) || null,
+        fileName: normalizeString(payload.name) || null,
+        size: typeof payload.size === "number" ? payload.size : null,
+      }];
+    case OCTO_MESSAGE_TYPE_FILE:
+      return [{
+        kind: "file",
+        platform: "octo",
+        key,
+        url: normalizeString(payload.url) || null,
+        fileName: normalizeString(payload.name) || null,
+        size: typeof payload.size === "number" ? payload.size : null,
+      }];
+    case OCTO_MESSAGE_TYPE_VOICE:
+      return [{
+        kind: "audio",
+        platform: "octo",
+        key,
+        url: normalizeString(payload.url) || null,
+        fileName: normalizeString(payload.name) || null,
+        size: typeof payload.size === "number" ? payload.size : null,
+      }];
+    case OCTO_MESSAGE_TYPE_VIDEO:
+      return [{
+        kind: "video",
+        platform: "octo",
+        key,
+        url: normalizeString(payload.url) || null,
+        fileName: normalizeString(payload.name) || null,
+        size: typeof payload.size === "number" ? payload.size : null,
+      }];
+    default:
+      return [];
+  }
 }
 
 export function stripOctoReplyFooter(content: string): string {
@@ -245,6 +292,7 @@ export function buildSkippedOctoResponse(
 ): ChannelConnectorOctoDispatchResponse {
   const message = request.message;
   const content = message ? extractOctoContent(message) : "";
+  const attachments = message ? extractOctoAttachments(message) : [];
   return {
     ok: true,
     checkedAt,
@@ -263,6 +311,8 @@ export function buildSkippedOctoResponse(
           channelType: message.channelType,
           fromUid: message.fromUid,
           content,
+          messageType: typeof message.payload?.type === "number" ? message.payload.type : null,
+          attachments,
           directed: false,
         }
       : null,

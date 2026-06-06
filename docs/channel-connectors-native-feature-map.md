@@ -43,4 +43,5 @@
 - 已完成：真实 Feishu 客户端三工具调用复测：长连接入站、reaction、Progress card send/patch、工具步骤和最终回复成功；Gateway 最新 `/v1/responses` 请求无 1213。
 - 已完成：F4 长回复拆分基础能力：共享 Unicode-safe text chunk helper，Feishu text 自动多条发送并记录 `chunkCount/messageIds`，Octo 回复复用同一拆分规则。
 - 已完成：F4 Feishu thread/reply session：daemon/service 共用 CC 风格 session key，群线程默认 root 隔离、私聊仍按用户隔离，日志和 webhook 返回保留 root/parent/thread。
-- 下一步：F4 图片/文件、history context、长回复 group buffer、治理策略；Feishu card/menu UI 继续复刻 CC 后再 Studio 化。
+- 已完成：F4 attachment metadata：Feishu `image/file/audio/media/sticker` 与 Octo 图片/文件/语音/视频映射到统一 attachment contract；Agent 只收到脱敏摘要，平台 key 留在本地结构化数据中。
+- 下一步：F4 附件下载/staging、history context、长回复 group buffer、治理策略；Feishu card/menu UI 继续复刻 CC 后再 Studio 化。

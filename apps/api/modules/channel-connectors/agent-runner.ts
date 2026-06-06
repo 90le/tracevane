@@ -4,11 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import type {
   ChannelConnectorAgentId,
+  ChannelConnectorInboundAttachment,
   ChannelConnectorOctoInboundMessage,
   ChannelConnectorPermissionMode,
   ChannelConnectorsDaemonRuntimeConfig,
 } from "../../../../types/channel-connectors.js";
-import { extractOctoContent } from "./octo-adapter.js";
+import { extractOctoAttachments, extractOctoContent } from "./octo-adapter.js";
 
 export type ChannelConnectorRuntimeProject = ChannelConnectorsDaemonRuntimeConfig["projects"][number];
 export type ChannelConnectorRuntimeBinding = ChannelConnectorRuntimeProject["platformBindings"][number];
@@ -103,6 +104,33 @@ function nowIso(): string {
 function truncateText(value: string, maxLength = 400): string {
   const normalized = value.trim();
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}...` : normalized;
+}
+
+function attachmentSummaryLabel(attachment: ChannelConnectorInboundAttachment): string {
+  const name = normalizeString(attachment.fileName);
+  const duration = typeof attachment.durationMs === "number" && attachment.durationMs > 0
+    ? `${Math.round(attachment.durationMs / 1000)}s`
+    : "";
+  const size = typeof attachment.size === "number" && attachment.size > 0
+    ? `${attachment.size} bytes`
+    : "";
+  const detail = [name, duration, size].filter(Boolean).join(", ");
+  return detail ? `${attachment.kind}: ${detail}` : attachment.kind;
+}
+
+function buildAgentInputContent(message: ChannelConnectorOctoInboundMessage): string {
+  const content = extractOctoContent(message);
+  const attachments = extractOctoAttachments(message);
+  if (!attachments.length) return content;
+  const summary = attachments
+    .map((attachment) => `- ${attachmentSummaryLabel(attachment)}`)
+    .join("\n");
+  const attachmentText = [
+    "[Studio attachment summary]",
+    summary,
+    "Binary download/staging is not enabled yet; use the metadata above only.",
+  ].join("\n");
+  return [content, attachmentText].filter(Boolean).join("\n\n");
 }
 
 function recordValue(value: unknown): Record<string, unknown> | null {
@@ -321,7 +349,7 @@ function gatewayEnv(gatewayEndpoint: string, gatewayClientKey: string | null): R
 export function buildChannelConnectorAgentProcessRequest(
   request: ChannelConnectorAgentTurnRequest,
 ): ChannelConnectorAgentProcessRequest | null {
-  const content = extractOctoContent(request.message);
+  const content = buildAgentInputContent(request.message);
   if (!content) return null;
   const project = request.project;
   const cwd = ensureWorkDir(project.workDir);

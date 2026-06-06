@@ -46,6 +46,7 @@ import {
 import {
   buildOctoSessionKey,
   buildSkippedOctoResponse,
+  extractOctoAttachments,
   extractOctoContent,
   isOctoMessageDirectedAtBot,
   renderOctoTextReply,
@@ -1477,6 +1478,9 @@ export function createChannelConnectorsService(
         rootId: response.incoming?.rootId || parsed.rootId || null,
         parentId: response.incoming?.parentId || parsed.parentId || null,
         threadId: response.incoming?.threadId || parsed.threadId || null,
+        messageType: response.incoming?.messageType || parsed.messageType || null,
+        attachmentCount: response.incoming?.attachments.length || parsed.attachments.length,
+        attachmentKinds: (response.incoming?.attachments || parsed.attachments).map((attachment) => attachment.kind),
         command: response.commandAction?.command || null,
       });
       response.eventStored.written = true;
@@ -1679,6 +1683,8 @@ export function createChannelConnectorsService(
         rootId: parsed.rootId,
         parentId: parsed.parentId,
         threadId: parsed.threadId,
+        messageType: parsed.messageType,
+        attachments: parsed.attachments,
         content: parsed.text,
         directed: parsed.directed,
       },
@@ -1802,6 +1808,7 @@ export function createChannelConnectorsService(
     const agentProfile = resolved.agentProfile;
     const sessionKey = buildOctoSessionKey(message);
     const content = extractOctoContent(message);
+    const attachments = extractOctoAttachments(message);
     const directed = isOctoMessageDirectedAtBot(message, binding.botId);
     const replyPlan = request.replyText ? renderOctoTextReply(message, request.replyText) : null;
     const dryRun = request.dryRun === true;
@@ -1840,6 +1847,8 @@ export function createChannelConnectorsService(
         channelType: message.channelType,
         fromUid: message.fromUid,
         content,
+        messageType: typeof message.payload?.type === "number" ? message.payload.type : null,
+        attachments,
         directed,
       },
       agentDispatch: {
@@ -1869,6 +1878,9 @@ export function createChannelConnectorsService(
       channelType: message.channelType,
       fromUid: message.fromUid,
       content,
+      messageType: typeof message.payload?.type === "number" ? message.payload.type : null,
+      attachmentCount: attachments.length,
+      attachmentKinds: attachments.map((attachment) => attachment.kind),
       dryRun,
       dispatchStatus,
       replyChunks: replyPlan?.chunks.length || 0,

@@ -1,6 +1,6 @@
 # Studio Gateway 进度
 
-> 状态：Studio Gateway core completed；Provider Center/App Connections completed；Channel Connectors native F4 thread/reply slice completed；OpenAI Platform vendor proof optional
+> 状态：Studio Gateway core completed；Provider Center/App Connections completed；Channel Connectors native F4 attachment metadata slice completed；OpenAI Platform vendor proof optional
 > 更新：2026-06-06
 > 文档规则：本文件只保留当前状态、最近完成、验证、边界和下一步；流水细节不继续追加。
 
@@ -25,6 +25,7 @@
 - Codex resume 参数顺序已按 CC Go runner 对齐为 `codex exec resume <thread_id> --json -`，避免 resume 模式下 CLI 参数被误读。
 - F4 长回复拆分已落地：共享文本 chunk helper 按 CC `splitMessage` 规则实现 Unicode 安全切分，优先换行边界；Feishu text 发送会自动拆成多条消息并返回 `chunkCount/messageIds`；Octo 回复拆分也复用同一规则。
 - F4 Feishu thread/reply 会话隔离已对齐 CC：群线程默认按 `root_id/message_id` 生成独立 session，metadata 可关闭；私聊保持每用户 session；daemon/service 共用同一 session helper，事件日志和 webhook 返回保留 `rootId/parentId/threadId`。
+- F4 附件基础合同已落地：Feishu `image/file/audio/media/sticker` 解析为统一 attachment metadata，Octo 也补齐同一结构；Agent prompt 只接收无平台 key 的附件摘要，API/日志记录 `messageType/attachmentCount/attachmentKinds`。
 
 ## 验证
 
@@ -33,6 +34,7 @@
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "Feishu webhook parses|Feishu transport sends replies|Feishu transport splits long text|Feishu transport manages processing reactions|command surface"`。
 - 通过：`node --test tests/system/model-gateway-service.test.mjs --test-name-pattern "streamed codex tool-call history|inline codex tool-result|restores codex tool-call history"`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "agent runner builds gateway-backed Codex turns|process runner maps Codex command execution progress"`。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "agent runner builds gateway-backed Codex turns|Feishu webhook parses|Octo adapter dry-run|Feishu transport sends replies"`。
 - 通过：隔离 `CODEX_HOME` 真实 Codex CLI smoke，`glm-5` 经 Studio Gateway 调用 shell 读取 `probe.txt` 后返回 `ok`；Gateway requestLog 显示两次 `/v1/responses` 均为 200，修复前同路径曾返回 400/1213。
 - 通过：隔离 `CODEX_HOME` 三工具调用 smoke，`glm-5` 连续 3 次 `command_execution` 后返回 `ok`，退出码 0。
 - 通过：真实飞书客户端复测 `调用三次阅读工具回复我ok`；长连接入站、processing reaction、Progress card send/patch、3 次工具步骤、最终 `agentStatus=completed` / `agentError=null`。Gateway 最新 4 次 `/v1/responses` 均为 200，无 1213。
@@ -41,9 +43,9 @@
 ## 已知边界
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
-- Feishu progress card 已替代文本进度；长回复预览冻结、图片/文件、语音、群聊成员/history context、长回复 buffer 和治理策略仍属于 F4/F5。
+- Feishu progress card 已替代文本进度；附件目前是 metadata/prompt fallback，真实下载/staging、长回复预览冻结、群聊成员/history context、长回复 buffer 和治理策略仍属于 F4/F5。
 
 ## 下一步
 
-1. 继续 F4：图片/文件、群聊成员/history context、长回复 group buffer 和治理策略。
+1. 继续 F4：附件下载/staging、群聊成员/history context、长回复 group buffer 和治理策略。
 2. 后续 UI 精修 Feishu card/menu 样式时继续参考 CC 原卡片结构，避免重新发明交互。
