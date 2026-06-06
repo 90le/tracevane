@@ -10,6 +10,8 @@ export interface ChannelConnectorSessionControlRecord {
   model: string | null;
   permissionMode: ChannelConnectorPermissionMode | null;
   workDir: string | null;
+  streamMessages: boolean | null;
+  toolMessages: boolean | null;
   createdAt: string;
   updatedAt: string;
   lastCommand: string | null;
@@ -31,6 +33,8 @@ export interface ChannelConnectorSessionControlUpdate extends ChannelConnectorSe
   model?: string | null;
   permissionMode?: ChannelConnectorPermissionMode | null;
   workDir?: string | null;
+  streamMessages?: boolean | null;
+  toolMessages?: boolean | null;
   lastCommand?: string | null;
   now?: Date;
 }
@@ -82,6 +86,8 @@ export function readChannelConnectorSessionControls(filePath: string): ChannelCo
         model: normalizeString(value.model) || null,
         permissionMode: normalizeString(value.permissionMode) as ChannelConnectorPermissionMode || null,
         workDir: normalizeString(value.workDir) || null,
+        streamMessages: typeof value.streamMessages === "boolean" ? value.streamMessages : null,
+        toolMessages: typeof value.toolMessages === "boolean" ? value.toolMessages : null,
         createdAt: normalizeString(value.createdAt) || nowIso(),
         updatedAt: normalizeString(value.updatedAt) || nowIso(),
         lastCommand: normalizeString(value.lastCommand) || null,
@@ -141,6 +147,12 @@ export function upsertChannelConnectorSessionControl(
       ? current?.permissionMode || null
       : update.permissionMode || null,
     workDir: update.workDir === undefined ? current?.workDir || null : normalizeString(update.workDir) || null,
+    streamMessages: update.streamMessages === undefined
+      ? current?.streamMessages ?? null
+      : typeof update.streamMessages === "boolean" ? update.streamMessages : null,
+    toolMessages: update.toolMessages === undefined
+      ? current?.toolMessages ?? null
+      : typeof update.toolMessages === "boolean" ? update.toolMessages : null,
     createdAt: current?.createdAt || now,
     updatedAt: now,
     lastCommand: normalizeString(update.lastCommand) || current?.lastCommand || null,

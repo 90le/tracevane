@@ -47,6 +47,7 @@ const FEISHU_MENU_SECTIONS = [
   "agent",
   "model",
   "mode",
+  "display",
   "workdir",
   "native",
 ] as const;
@@ -59,6 +60,7 @@ const FEISHU_MENU_VIEWS = [
   "agent",
   "model",
   "mode",
+  "display",
   "workdir",
 ] as const;
 
@@ -69,6 +71,7 @@ const FEISHU_MENU_SECTION_LABELS: Record<FeishuMenuSectionId, string> = {
   agent: "Agent",
   model: "模型",
   mode: "权限",
+  display: "显示",
   workdir: "目录",
   native: "原生",
 };
@@ -89,6 +92,12 @@ const FEISHU_MENU_SECTION_ALIASES: Record<string, FeishuMenuSectionId> = {
   permission: "mode",
   permissions: "mode",
   yolo: "mode",
+  display: "display",
+  stream: "display",
+  streams: "display",
+  progress: "display",
+  tools: "display",
+  tool: "display",
   workdir: "workdir",
   dir: "workdir",
   pwd: "workdir",
@@ -122,6 +131,13 @@ const FEISHU_MENU_VIEW_ALIASES: Record<string, FeishuMenuViewId> = {
   permission: "mode",
   permissions: "mode",
   "mode-picker": "mode",
+  display: "display",
+  stream: "display",
+  streams: "display",
+  progress: "display",
+  tools: "display",
+  tool: "display",
+  "display-picker": "display",
   workdir: "workdir",
   dir: "workdir",
   pwd: "workdir",
@@ -195,6 +211,7 @@ export function channelConnectorCommandSurfaceViewFromCommand(
   if (name === "agent" || name === "agents") return "agent";
   if (name === "model" || name === "models") return "model";
   if (["mode", "permission", "permissions", "yolo"].includes(name)) return "mode";
+  if (["display", "stream", "streams", "progress", "tools", "tool"].includes(name)) return "display";
   if (["workdir", "dir", "pwd", "cd", "chdir"].includes(name)) return "workdir";
   return null;
 }
@@ -305,6 +322,38 @@ export function buildChannelConnectorCommandSurface(
       )),
     },
     {
+      id: "display",
+      title: "Display",
+      summary: "控制 IM 中间态消息；最终回复不受影响。",
+      actions: [
+        action("display-status", "Status", "/display"),
+        action("stream-on", "Stream On", "/stream on", {
+          tone: input.control?.streamMessages === false ? "default" : "primary",
+          requiresAdmin: true,
+          description: "显示 Agent 运行、失败、完成等进度消息",
+        }),
+        action("stream-off", "Stream Off", "/stream off", {
+          tone: input.control?.streamMessages === false ? "danger" : "default",
+          requiresAdmin: true,
+          description: "关闭本 IM session 中间态消息",
+        }),
+        action("tools-on", "Tools On", "/tools on", {
+          tone: input.control?.toolMessages === false ? "default" : "primary",
+          requiresAdmin: true,
+          description: "显示工具调用和思考进度",
+        }),
+        action("tools-off", "Tools Off", "/tools off", {
+          tone: input.control?.toolMessages === false ? "danger" : "default",
+          requiresAdmin: true,
+          description: "隐藏工具调用和思考进度",
+        }),
+        action("display-default", "Default", "/display default", {
+          requiresAdmin: true,
+          description: "恢复默认：流式/工具消息开启",
+        }),
+      ],
+    },
+    {
       id: "workdir",
       title: "WorkDir",
       summary: "工作目录切换会断开旧 Agent 续接，避免上下文指向错误目录。",
@@ -339,6 +388,8 @@ export function buildChannelConnectorCommandSurface(
       model: current.model,
       permissionMode: current.permissionMode,
       workDir: current.workDir,
+      streamMessages: input.control?.streamMessages !== false,
+      toolMessages: input.control?.toolMessages !== false,
     },
     sections,
   };
@@ -475,6 +526,9 @@ function statusBlock(surface: ChannelConnectorCommandSurface): Record<string, un
               "",
               "**目录**",
               `\`${workDir}\``,
+              "",
+              "**显示**",
+              `stream=${surface.current.streamMessages ? "on" : "off"} · tools=${surface.current.toolMessages ? "on" : "off"}`,
             ].join("\n"),
           },
         ],
@@ -591,6 +645,14 @@ function commandSurfaceItemDescription(item: ChannelConnectorCommandSurfaceActio
       return "打开当前 CLI Agent 的原生帮助或 skills 命令";
     case "model-default":
       return "恢复 Agent Profile 默认模型";
+    case "display-status":
+      return "查看流式/工具消息开关";
+    case "stream-on":
+    case "stream-off":
+    case "tools-on":
+    case "tools-off":
+    case "display-default":
+      return item.description;
     default:
       return null;
   }
@@ -682,6 +744,18 @@ function helpSectionActions(
         actionKind: "nav",
         tone: "primary",
         description: `${compactPath(surface.current.workDir)} · ${childCount} 个子目录`,
+        requiresAdmin: true,
+      }),
+    ];
+  }
+  if (section.id === "display") {
+    const stream = surface.current.streamMessages ? "stream on" : "stream off";
+    const tools = surface.current.toolMessages ? "tools on" : "tools off";
+    return [
+      action("display-picker", "显示设置", "/display", {
+        actionKind: "nav",
+        tone: "primary",
+        description: `${stream} · ${tools}`,
         requiresAdmin: true,
       }),
     ];
@@ -926,6 +1000,50 @@ function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): Chann
   };
 }
 
+function renderDisplayCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
+  const section = sectionById(surface, "display");
+  const actions = section?.actions || [];
+  const displayStatus = actions.find((item) => item.id === "display-status")
+    || action("display-status", "Status", "/display");
+  const streamOn = actions.find((item) => item.id === "stream-on")
+    || action("stream-on", "Stream On", "/stream on", { requiresAdmin: true });
+  const streamOff = actions.find((item) => item.id === "stream-off")
+    || action("stream-off", "Stream Off", "/stream off", { requiresAdmin: true });
+  const toolsOn = actions.find((item) => item.id === "tools-on")
+    || action("tools-on", "Tools On", "/tools on", { requiresAdmin: true });
+  const toolsOff = actions.find((item) => item.id === "tools-off")
+    || action("tools-off", "Tools Off", "/tools off", { requiresAdmin: true });
+  const defaults = actions.find((item) => item.id === "display-default")
+    || action("display-default", "Default", "/display default", { requiresAdmin: true });
+  const elements: Array<Record<string, unknown>> = [
+    {
+      tag: "markdown",
+      content: [
+        "**当前显示设置**",
+        `流式/进度消息：${surface.current.streamMessages ? "开启" : "关闭"}`,
+        `工具/思考消息：${surface.current.toolMessages ? "开启" : "关闭"}`,
+        "",
+        "**作用范围**",
+        "只作用于当前 IM session；最终回复仍会正常发送。",
+      ].join("\n"),
+    },
+  ];
+  pushActionRows(elements, [displayStatus, defaults], surface, 2, true);
+  pushActionRows(elements, [streamOn, streamOff], surface, 2, true);
+  pushActionRows(elements, [toolsOn, toolsOff], surface, 2, true);
+  pushActionRows(elements, [backToHelpAction("display")], surface, 1);
+  return {
+    config: {
+      wide_screen_mode: true,
+    },
+    header: {
+      title: plainText("Studio Display"),
+      template: "wathet",
+    },
+    elements,
+  };
+}
+
 function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
   const section = sectionById(surface, "session");
   const actions = section?.actions || [];
@@ -1011,9 +1129,11 @@ export function renderChannelConnectorCommandSurfaceFeishu(
         ? renderModelPickerCard(surface)
         : selectedViewId === "mode"
           ? renderModePickerCard(surface)
-          : selectedViewId === "workdir"
-            ? renderWorkdirPickerCard(surface)
-            : renderHelpMenuCard(surface);
+          : selectedViewId === "display"
+            ? renderDisplayCard(surface)
+            : selectedViewId === "workdir"
+              ? renderWorkdirPickerCard(surface)
+              : renderHelpMenuCard(surface);
   return notice?.text ? withCommandNotice(card, notice) : card;
 }
 

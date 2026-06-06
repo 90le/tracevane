@@ -38,6 +38,7 @@ import {
 } from "./command-router.js";
 import {
   getChannelConnectorSessionControl,
+  type ChannelConnectorSessionControlRecord,
 } from "./session-control-store.js";
 import {
   resolveChannelConnectorGatewayClientKey,
@@ -296,13 +297,101 @@ function redactLogArgs(args: unknown[]): string[] {
 
 function shortMessage(value: unknown, maxLength = 260): string {
   const raw = value instanceof Error ? value.message : String(value || "");
-  const redacted = raw
+  const shaped = jsonErrorEnvelopeMessage(raw) || raw;
+  const redacted = shaped
     .replace(/sk-[A-Za-z0-9_-]{12,}/g, "sk-***")
     .replace(/bf_[A-Za-z0-9_-]{12,}/g, "bf_***")
     .replace(/(app_secret|appSecret|tenant_access_token|token)[^,\n}]*/gi, "$1=***")
     .trim();
   if (!redacted) return "unknown error";
   return redacted.length > maxLength ? `${redacted.slice(0, maxLength - 1)}...` : redacted;
+}
+
+function firstJsonObjectText(raw: string): string | null {
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < raw.length; index += 1) {
+    const char = raw[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === "\"") {
+      inString = true;
+      continue;
+    }
+    if (char === "{") {
+      if (depth === 0) start = index;
+      depth += 1;
+      continue;
+    }
+    if (char === "}" && depth > 0) {
+      depth -= 1;
+      if (depth === 0 && start >= 0) return raw.slice(start, index + 1);
+    }
+  }
+  return null;
+}
+
+function jsonStringField(raw: string, key: string): string | null {
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = raw.match(new RegExp(`"${escapedKey}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`, "i"));
+  if (!match) return null;
+  try {
+    return JSON.parse(`"${match[1]}"`) as string;
+  } catch {
+    return match[1] || null;
+  }
+}
+
+function errorEnvelopeFromRecord(record: Record<string, unknown>): string | null {
+  const error = isRecord(record.error) ? record.error : record;
+  const message = normalizeString(error.message)
+    || normalizeString(record.message)
+    || normalizeString(error.error)
+    || normalizeString(record.error);
+  const type = normalizeString(error.type) || normalizeString(record.type);
+  const code = normalizeString(error.code) || normalizeString(record.code);
+  if (!message && !type && !code) return null;
+  const detail = [
+    type ? `type=${type}` : "",
+    code ? `code=${code}` : "",
+  ].filter(Boolean).join(", ");
+  if (message && detail) return `${message} (${detail})`;
+  return message || detail || "upstream error";
+}
+
+function jsonErrorEnvelopeMessage(raw: string): string | null {
+  const objectText = firstJsonObjectText(raw);
+  if (objectText) {
+    try {
+      const parsed = JSON.parse(objectText) as unknown;
+      if (isRecord(parsed)) {
+        const shaped = errorEnvelopeFromRecord(parsed);
+        if (shaped) return shaped;
+      }
+    } catch {
+      // Fall through to field extraction for malformed or duplicated envelopes.
+    }
+  }
+  const type = jsonStringField(raw, "type");
+  const code = jsonStringField(raw, "code");
+  const message = jsonStringField(raw, "message");
+  if (!type && !code && !message) return null;
+  const detail = [
+    type ? `type=${type}` : "",
+    code ? `code=${code}` : "",
+  ].filter(Boolean).join(", ");
+  if (message && detail) return `${message} (${detail})`;
+  return message || detail || "upstream error";
 }
 
 function gatewayClientKey(config: ChannelConnectorsDaemonRuntimeConfig): string | null {
@@ -639,9 +728,37 @@ function feishuCardsEnabled(binding: ChannelConnectorRuntimeBinding): boolean {
   ], true);
 }
 
-function isFeishuMenuCommand(command: ReturnType<typeof handleChannelConnectorCommand> extends Promise<infer Result> ? Result : never): boolean {
-  return command.action === "help"
-    || ["start", "help", "menu", "commands", "command", "cmd"].includes(normalizeString(command.command).toLowerCase());
+function shouldRenderFeishuCommandCard(command: ReturnType<typeof handleChannelConnectorCommand> extends Promise<infer Result> ? Result : never): boolean {
+  return command.handled && [
+    "help",
+    "status",
+    "list",
+    "set",
+    "new",
+    "reset",
+  ].includes(normalizeString(command.action).toLowerCase());
+}
+
+function shouldSendFeishuProgressEvent(
+  control: ChannelConnectorSessionControlRecord | null,
+  event: ChannelConnectorAgentProgressEvent,
+): boolean {
+  if (control?.streamMessages === false) return false;
+  if (event.type === "assistant") return false;
+  if ((event.type === "tool" || event.type === "reasoning") && control?.toolMessages === false) return false;
+  return ["running", "reasoning", "tool", "failed", "error", "completed", "event"].includes(event.type);
+}
+
+function formatFeishuProgressEvent(event: ChannelConnectorAgentProgressEvent): string | null {
+  const text = event.text ? shortMessage(event.text, 180) : null;
+  if (event.type === "running") return text ? `运行中：${text}` : "运行中";
+  if (event.type === "reasoning") return text ? `思考：${text}` : "思考中";
+  if (event.type === "tool") return text ? `工具：${text}` : "工具调用中";
+  if (event.type === "completed") return text ? `已完成：${text}` : "已完成";
+  if (event.type === "failed") return text ? `失败：${text}` : "运行失败";
+  if (event.type === "error") return text ? `错误：${text}` : "运行错误";
+  if (event.type === "event" && text) return `进度：${text}`;
+  return null;
 }
 
 function feishuCommandNotice(input: {
@@ -1295,7 +1412,7 @@ async function dispatchFeishuParsedEvent(input: {
       actionKind: actionPayload.actionKind,
     });
     const shouldSendCard = feishuCardsEnabled(binding)
-      && (parsed.kind === "card-action" || parsed.kind === "bot-menu" || isFeishuMenuCommand(command));
+      && (parsed.kind === "card-action" || parsed.kind === "bot-menu" || shouldRenderFeishuCommandCard(command));
     if (shouldSendCard) {
       const result = await sendOrPatchFeishuCommandCard({
         config,
@@ -1398,6 +1515,8 @@ async function dispatchFeishuParsedEvent(input: {
   const currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
   let progressEventCount = 0;
   let latestProgress: ChannelConnectorAgentProgressEvent | null = null;
+  let lastFeishuProgressSentAt = 0;
+  let feishuProgressSendCount = 0;
   state.activeRuns.unshift({
     id: activeRunId,
     startedAt: checkedAt,
@@ -1470,6 +1589,46 @@ async function dispatchFeishuParsedEvent(input: {
           itemType: event.itemType,
           text: event.text,
         });
+        const progressText = formatFeishuProgressEvent(event);
+        const highPriority = event.type === "failed" || event.type === "error" || event.type === "completed";
+        const nowMs = Date.now();
+        if (
+          progressText
+          && shouldSendFeishuProgressEvent(control, event)
+          && feishuProgressSendCount < 20
+          && (highPriority || nowMs - lastFeishuProgressSentAt >= 1500)
+        ) {
+          lastFeishuProgressSentAt = nowMs;
+          feishuProgressSendCount += 1;
+          void sendFeishuTextMessage(transport, {
+            chatId: parsed.channelId || "",
+            content: progressText,
+          }, feishuTokenCachePath(config)).then((result) => {
+            writeJsonLine(config.paths.feishuEvents, {
+              checkedAt: new Date().toISOString(),
+              eventKind: "agent.progress.reply",
+              adapter: "feishu",
+              bindingId: binding.id,
+              sessionKey,
+              messageId,
+              progressType: event.type,
+              replySent: result.ok === true,
+              replyError: result.error,
+            });
+          }).catch((error) => {
+            writeJsonLine(config.paths.feishuEvents, {
+              checkedAt: new Date().toISOString(),
+              eventKind: "agent.progress.reply",
+              adapter: "feishu",
+              bindingId: binding.id,
+              sessionKey,
+              messageId,
+              progressType: event.type,
+              replySent: false,
+              replyError: shortMessage(error),
+            });
+          });
+        }
         writeRuntime(config, state);
       },
     });

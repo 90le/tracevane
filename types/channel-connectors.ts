@@ -212,6 +212,8 @@ export interface ChannelConnectorCommandSurface {
     model: string | null;
     permissionMode: ChannelConnectorPermissionMode;
     workDir: string;
+    streamMessages: boolean;
+    toolMessages: boolean;
   };
   sections: ChannelConnectorCommandSurfaceSection[];
   textFallback: string;

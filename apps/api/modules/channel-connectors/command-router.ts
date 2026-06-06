@@ -168,6 +168,12 @@ function isStudioCommand(name: string): boolean {
     "chdir",
     "workdir",
     "pwd",
+    "display",
+    "stream",
+    "streams",
+    "progress",
+    "tools",
+    "tool",
     "new",
     "reset",
     "native",
@@ -188,6 +194,9 @@ function commandHelpText(): string {
     "/mode <suggest|read-only|auto-edit|full-auto|plan|yolo|default> - 切换本会话权限",
     "/dir - 查看当前工作目录和子目录",
     "/cd <路径|default> - 切换本会话工作目录",
+    "/display - 查看流式/工具消息开关",
+    "/stream <on|off|default> - 开关本会话 IM 进度/流式消息",
+    "/tools <on|off|default> - 开关本会话工具/思考消息",
     "/new - 开启新 Agent 会话，保留本会话配置",
     "/reset - 清空本 IM 会话 override 和 Agent 续接状态",
     "/native <原生命令> - 强制透传给当前 Agent，例如 /native /help",
@@ -259,6 +268,38 @@ function directoryInfoText(project: ChannelConnectorRuntimeProject): string {
   return lines.join("\n");
 }
 
+function effectiveToggle(value: boolean | null | undefined): boolean {
+  return value !== false;
+}
+
+function toggleStatusText(
+  control: ChannelConnectorSessionControlRecord | null,
+): string {
+  const stream = effectiveToggle(control?.streamMessages);
+  const tools = effectiveToggle(control?.toolMessages);
+  return [
+    "显示设置：",
+    `流式/进度消息：${stream ? "开启" : "关闭"}${control?.streamMessages === null || control?.streamMessages === undefined ? " (默认)" : ""}`,
+    `工具/思考消息：${tools ? "开启" : "关闭"}${control?.toolMessages === null || control?.toolMessages === undefined ? " (默认)" : ""}`,
+    "用法：/stream <on|off|default>；/tools <on|off|default>；/display default 恢复默认。",
+  ].join("\n");
+}
+
+function parseToggleTarget(input: string): boolean | null | "status" | "invalid" {
+  const value = normalizeString(input).toLowerCase();
+  if (!value || ["status", "current", "list"].includes(value)) return "status";
+  if (["on", "enable", "enabled", "true", "1", "start", "open", "开启"].includes(value)) return true;
+  if (["off", "disable", "disabled", "false", "0", "stop", "close", "关闭"].includes(value)) return false;
+  if (["default", "reset", "profile", "inherit"].includes(value)) return null;
+  return "invalid";
+}
+
+function toggleLabel(value: boolean | null): string {
+  if (value === true) return "开启";
+  if (value === false) return "关闭";
+  return "默认开启";
+}
+
 export async function listChannelConnectorGatewayModels(endpoint: string, clientKey: string | null): Promise<string[]> {
   const url = `${endpoint.replace(/\/+$/, "")}/models`;
   const headers: Record<string, string> = {};
@@ -316,6 +357,8 @@ async function handleStatus(context: ChannelConnectorCommandContext): Promise<Ch
       `Model: ${currentProject.model || "default"}`,
       `Mode: ${currentProject.permissionMode}`,
       `WorkDir: ${currentProject.workDir}`,
+      `Stream: ${effectiveToggle(control?.streamMessages) ? "on" : "off"}`,
+      `Tools: ${effectiveToggle(control?.toolMessages) ? "on" : "off"}`,
       `Session: ${session ? `${session.turnCount} turns` : "new"}`,
       `Codex thread: ${session?.codexThreadId || "-"}`,
     ].join("\n"),
@@ -344,8 +387,27 @@ export async function handleChannelConnectorCommand(
   const name = parsed.name;
   const args = parsed.args;
   const mutating = (
-    ["agent", "model", "mode", "permission", "permissions", "reset", "new", "yolo", "dir", "cd", "chdir", "workdir"].includes(name)
-    && !(["agent", "model", "mode", "permission", "permissions", "dir"].includes(name) && args.length === 0)
+    [
+      "agent",
+      "model",
+      "mode",
+      "permission",
+      "permissions",
+      "reset",
+      "new",
+      "yolo",
+      "dir",
+      "cd",
+      "chdir",
+      "workdir",
+      "display",
+      "stream",
+      "streams",
+      "progress",
+      "tools",
+      "tool",
+    ].includes(name)
+    && !(["agent", "model", "mode", "permission", "permissions", "dir", "display", "stream", "streams", "progress", "tools", "tool"].includes(name) && args.length === 0)
   );
 
   if (mutating && !canManageSession(context.binding, context.message)) {
@@ -396,7 +458,7 @@ export async function handleChannelConnectorCommand(
     };
   }
 
-  if (name === "start" || name === "help" || name === "menu" || name === "commands") {
+  if (name === "start" || name === "help" || name === "menu" || name === "commands" || name === "command" || name === "cmd") {
     return {
       handled: true,
       command: name,
@@ -600,6 +662,56 @@ export async function handleChannelConnectorCommand(
       replyText: target
         ? `已切换本会话工作目录：${target}\n已断开旧 Agent 续接：${sessionsCleared}`
         : `已恢复本会话默认工作目录。\n已断开旧 Agent 续接：${sessionsCleared}`,
+      passthroughText: null,
+    };
+  }
+
+  if (name === "display" || name === "stream" || name === "streams" || name === "progress" || name === "tools" || name === "tool") {
+    const target = parseToggleTarget(args.join(" "));
+    if (target === "status") {
+      return {
+        handled: true,
+        command: name,
+        action: "list",
+        ok: true,
+        control: currentControl,
+        replyText: toggleStatusText(currentControl),
+        passthroughText: null,
+      };
+    }
+    if (target === "invalid") {
+      return {
+        handled: true,
+        command: name,
+        action: "set",
+        ok: false,
+        control: currentControl,
+        replyText: "不支持的显示开关参数。用 /display 查看用法。",
+        passthroughText: null,
+      };
+    }
+    const update = name === "display"
+      ? { streamMessages: target, toolMessages: target }
+      : name === "tools" || name === "tool"
+        ? { toolMessages: target }
+        : { streamMessages: target };
+    const control = upsertChannelConnectorSessionControl(context.controlsPath, {
+      ...lookup,
+      ...update,
+      lastCommand: parsed.raw,
+    });
+    const changed = name === "display"
+      ? `流式/进度消息和工具/思考消息：${toggleLabel(target)}`
+      : name === "tools" || name === "tool"
+        ? `工具/思考消息：${toggleLabel(target)}`
+        : `流式/进度消息：${toggleLabel(target)}`;
+    return {
+      handled: true,
+      command: name,
+      action: "set",
+      ok: true,
+      control,
+      replyText: `已更新本 IM 会话显示设置：${changed}。`,
       passthroughText: null,
     };
   }

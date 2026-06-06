@@ -1224,6 +1224,39 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(help.handled, true);
   assert.equal(help.ok, true);
   assert.match(help.replyText, /\/mode/);
+  assert.match(help.replyText, /\/stream/);
+  assert.match(help.replyText, /\/tools/);
+
+  for (const alias of ["/command", "/cmd"]) {
+    const aliasHelp = await handleChannelConnectorCommand({
+      ...baseContext,
+      message: message(alias),
+    });
+    assert.equal(aliasHelp.handled, true);
+    assert.equal(aliasHelp.action, "help");
+    assert.match(aliasHelp.replyText, /Studio Channel Commands/);
+  }
+
+  const listSlashCommands = [
+    ["/status", "status"],
+    ["/agent", "list"],
+    ["/model", "list"],
+    ["/mode", "list"],
+    ["/dir", "list"],
+    ["/display", "list"],
+    ["/stream", "list"],
+    ["/tools", "list"],
+  ];
+  for (const [command, action] of listSlashCommands) {
+    const result = await handleChannelConnectorCommand({
+      ...baseContext,
+      message: message(command),
+    });
+    assert.equal(result.handled, true);
+    assert.equal(result.action, action);
+    assert.equal(result.ok, true);
+    assert.match(result.replyText, /\S/);
+  }
 
   const denied = await handleChannelConnectorCommand({
     ...baseContext,
@@ -1246,6 +1279,30 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(model.ok, true);
   assert.equal(model.control.model, "gpt-5.5");
+
+  const streamOff = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/stream off"),
+  });
+  assert.equal(streamOff.ok, true);
+  assert.equal(streamOff.control.streamMessages, false);
+  assert.match(streamOff.replyText, /流式\/进度消息：关闭/);
+
+  const toolsOff = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/tools off"),
+  });
+  assert.equal(toolsOff.ok, true);
+  assert.equal(toolsOff.control.toolMessages, false);
+  assert.match(toolsOff.replyText, /工具\/思考消息：关闭/);
+
+  const displayDefault = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/display default"),
+  });
+  assert.equal(displayDefault.ok, true);
+  assert.equal(displayDefault.control.streamMessages, null);
+  assert.equal(displayDefault.control.toolMessages, null);
 
   const passthrough = await handleChannelConnectorCommand({
     ...baseContext,
@@ -1514,6 +1571,8 @@ test("native Channel Connectors command surface renders text and Feishu card act
 
   assert.equal(surface.current.bindingId, "octo-codex");
   assert.equal(surface.current.projectId, "codex-main");
+  assert.equal(surface.current.streamMessages, true);
+  assert.equal(surface.current.toolMessages, true);
   assert.match(surface.textFallback, /skills\/native/);
   assert.match(surface.textFallback, /\/agent claude-main/);
   const nativeSection = surface.sections.find((section) => section.id === "native");
@@ -1532,6 +1591,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(raw, /session_key/);
   assert.match(raw, /当前 Agent/);
   assert.match(raw, /\/help model/);
+  assert.match(raw, /\/help display/);
   assert.match(raw, /New Session/);
   assert.doesNotMatch(raw, /\/mode yolo/);
   assert.ok(feishu.elements.some((element) => element.tag === "column_set" && element.flex_mode === "bisect"));
@@ -1627,6 +1687,23 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(modeCardRaw, /select_static/);
   assert.match(modeCardRaw, /act:\/mode yolo/);
   assert.match(modeCardRaw, /nav:\/help mode/);
+
+  const displaySurface = buildChannelConnectorCommandSurface({
+    config: runtimeConfig,
+    project: codexProject,
+    binding,
+    sessionKey: "dmwork:dm:admin-1",
+    selectedSectionId: "display",
+    selectedViewId: "display",
+  });
+  const displayCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(displaySurface));
+  assert.match(displayCardRaw, /Studio Display/);
+  assert.match(displayCardRaw, /act:\/stream on/);
+  assert.match(displayCardRaw, /act:\/stream off/);
+  assert.match(displayCardRaw, /act:\/tools on/);
+  assert.match(displayCardRaw, /act:\/tools off/);
+  assert.match(displayCardRaw, /act:\/display default/);
+  assert.match(displayCardRaw, /nav:\/help display/);
 
   const parsed = extractChannelConnectorCommandFromActionValue({
     action: "act:/agent claude-main",
@@ -1877,6 +1954,82 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(slashMessage.commandAction.commandResult.ok, true);
   assert.equal(slashMessage.commandAction.surface.current.permissionMode, "yolo");
   assert.match(slashMessage.feishuResponse.toast.content, /已切换本会话权限模式/);
+  assert.match(JSON.stringify(slashMessage.feishuResponse.card.data), /Studio Permission/);
+
+  const slashModelMessage = await service.dispatchFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "im.message.receive_v1",
+      app_id: "cli_test",
+      event_id: "evt_msg_model",
+      token: "verify-token",
+    },
+    event: {
+      sender: { sender_id: { open_id: "ou_admin" } },
+      message: {
+        message_id: "om_msg_model",
+        chat_id: "oc_chat",
+        chat_type: "p2p",
+        message_type: "text",
+        content: JSON.stringify({ text: "/model" }),
+      },
+    },
+  });
+  assert.equal(slashModelMessage.accepted, true);
+  assert.equal(slashModelMessage.commandAction.command, "/model");
+  assert.equal(slashModelMessage.commandAction.commandResult.action, "list");
+  assert.match(JSON.stringify(slashModelMessage.feishuResponse.card.data), /Studio Model/);
+  assert.match(JSON.stringify(slashModelMessage.feishuResponse.card.data), /select_static/);
+
+  const slashNewMessage = await service.dispatchFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "im.message.receive_v1",
+      app_id: "cli_test",
+      event_id: "evt_msg_new",
+      token: "verify-token",
+    },
+    event: {
+      sender: { sender_id: { open_id: "ou_admin" } },
+      message: {
+        message_id: "om_msg_new",
+        chat_id: "oc_chat",
+        chat_type: "p2p",
+        message_type: "text",
+        content: JSON.stringify({ text: "/new" }),
+      },
+    },
+  });
+  assert.equal(slashNewMessage.accepted, true);
+  assert.equal(slashNewMessage.commandAction.command, "/new");
+  assert.equal(slashNewMessage.commandAction.commandResult.ok, true);
+  assert.match(slashNewMessage.commandAction.commandResult.replyText, /已开启新的 Agent 会话/);
+  assert.match(JSON.stringify(slashNewMessage.feishuResponse.card.data), /Studio Session/);
+
+  const slashResetMessage = await service.dispatchFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "im.message.receive_v1",
+      app_id: "cli_test",
+      event_id: "evt_msg_reset",
+      token: "verify-token",
+    },
+    event: {
+      sender: { sender_id: { open_id: "ou_admin" } },
+      message: {
+        message_id: "om_msg_reset",
+        chat_id: "oc_chat",
+        chat_type: "p2p",
+        message_type: "text",
+        content: JSON.stringify({ text: "/reset" }),
+      },
+    },
+  });
+  assert.equal(slashResetMessage.accepted, true);
+  assert.equal(slashResetMessage.commandAction.command, "/reset");
+  assert.equal(slashResetMessage.commandAction.commandResult.ok, true);
+  assert.match(slashResetMessage.commandAction.commandResult.replyText, /已重置本 IM 会话/);
+  assert.match(JSON.stringify(slashResetMessage.feishuResponse.card.data), /Studio Session/);
 
   const statusCardAction = await service.dispatchFeishuWebhook({
     schema: "2.0",
@@ -2277,12 +2430,15 @@ test("native Channel Connectors Feishu transport sends replies and reuses tenant
     });
     assert.equal(webhook.accepted, true);
     assert.equal(webhook.transport.ok, true);
-    assert.equal(webhook.transport.action, "send-message");
+    assert.equal(webhook.transport.action, "send-card");
     assert.equal(webhook.transport.tokenCache, "hit");
     assert.equal(webhook.transport.requestCount, 1);
     assert.equal(requests.length, 5);
     assert.equal(requests[4].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
-    assert.match(JSON.parse(requests[4].body.content).text, /Studio Channel Status/);
+    assert.equal(requests[4].body.msg_type, "interactive");
+    const webhookCard = JSON.parse(requests[4].body.content);
+    assert.match(webhookCard.header.title.content, /Studio Session/);
+    assert.match(JSON.stringify(webhookCard), /Studio Channel Status/);
   });
 });
 
@@ -2395,6 +2551,10 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /sendFeishuTextMessage/);
   assert.match(daemonSource, /sendFeishuCardMessage/);
   assert.match(daemonSource, /patchFeishuCardMessage/);
+  assert.match(daemonSource, /shouldSendFeishuProgressEvent/);
+  assert.match(daemonSource, /formatFeishuProgressEvent/);
+  assert.match(daemonSource, /agent\.progress\.reply/);
+  assert.match(daemonSource, /jsonErrorEnvelopeMessage/);
   assert.match(daemonSource, /renderChannelConnectorCommandSurfaceFeishu/);
   assert.match(daemonSource, /function feishuDedupeKey/);
   assert.match(daemonSource, /parsed\.kind === "message"/);
@@ -2514,6 +2674,30 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     assert.match(JSON.stringify(action.body.feishuCard), /Studio Permission/);
     assert.match(JSON.stringify(action.body.feishuCard), /act:\/mode yolo/);
 
+    const displayAction = await requestJson(`${baseUrl}/api/channel-connectors/commands/action`, {
+      method: "POST",
+      body: {
+        actionValue: {
+          action: "act:/stream off",
+          binding_id: "octo-route",
+          session_key: "dmwork:dm:route-user",
+          surface_action_id: "stream-off",
+          surface_section_id: "display",
+          surface_view_id: "display",
+        },
+        fromUid: "route-user",
+        channelId: "route-user",
+        renderer: "all",
+        models: ["gpt-5", "gpt-5.5"],
+      },
+    });
+    assert.equal(displayAction.status, 200);
+    assert.equal(displayAction.body.accepted, true);
+    assert.equal(displayAction.body.commandResult.ok, true);
+    assert.equal(displayAction.body.surface.current.streamMessages, false);
+    assert.match(JSON.stringify(displayAction.body.feishuCard), /Studio Display/);
+    assert.match(JSON.stringify(displayAction.body.feishuCard), /流式\/进度消息：关闭/);
+
     const cardAction = await requestJson(`${baseUrl}/api/channel-connectors/adapters/feishu/card-action`, {
       method: "POST",
       body: {
@@ -2545,6 +2729,37 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     assert.equal(botMenu.body.accepted, true);
     assert.equal(botMenu.body.command, "/status");
     assert.match(botMenu.body.commandResult.replyText, /Studio Channel Status/);
+    assert.match(JSON.stringify(botMenu.body.feishuCard), /Studio Session/);
+
+    const botMenuNew = await requestJson(`${baseUrl}/api/channel-connectors/adapters/feishu/bot-menu`, {
+      method: "POST",
+      body: {
+        bindingId: "octo-route",
+        eventKey: "new",
+        fromUid: "route-user",
+        channelId: "route-user",
+      },
+    });
+    assert.equal(botMenuNew.status, 200);
+    assert.equal(botMenuNew.body.accepted, true);
+    assert.equal(botMenuNew.body.command, "/new");
+    assert.match(botMenuNew.body.commandResult.replyText, /已开启新的 Agent 会话/);
+    assert.match(JSON.stringify(botMenuNew.body.feishuCard), /Studio Session/);
+
+    const botMenuReset = await requestJson(`${baseUrl}/api/channel-connectors/adapters/feishu/bot-menu`, {
+      method: "POST",
+      body: {
+        bindingId: "octo-route",
+        eventKey: "reset",
+        fromUid: "route-user",
+        channelId: "route-user",
+      },
+    });
+    assert.equal(botMenuReset.status, 200);
+    assert.equal(botMenuReset.body.accepted, true);
+    assert.equal(botMenuReset.body.command, "/reset");
+    assert.match(botMenuReset.body.commandResult.replyText, /已重置本 IM 会话/);
+    assert.match(JSON.stringify(botMenuReset.body.feishuCard), /Studio Session/);
 
     const feishuWebhook = await requestJson(`${baseUrl}/api/channel-connectors/adapters/feishu/webhook`, {
       method: "POST",

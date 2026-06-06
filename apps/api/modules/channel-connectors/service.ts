@@ -1602,6 +1602,13 @@ export function createChannelConnectorsService(
             ...emptyFeishuTransportResult("send-message"),
             error: "feishu_transport_config_missing",
           };
+        } else if (commandAction.feishuCard && renderer !== "text") {
+          transport = await sendFeishuCardMessage(transportConfig, {
+            chatId: parsed.channelId,
+            card: commandAction.feishuCard,
+          }, resolvedPaths.feishuTokenCacheFile);
+          accepted = transport.ok === true;
+          skippedReason = transport.ok === true ? null : "feishu_transport_send_failed";
         } else {
           transport = await sendFeishuTextMessage(transportConfig, {
             chatId: parsed.channelId,
@@ -1618,6 +1625,12 @@ export function createChannelConnectorsService(
             content,
           },
         };
+        if (commandAction.feishuCard && renderer !== "text") {
+          feishuResponse.card = {
+            type: "raw",
+            data: commandAction.feishuCard,
+          };
+        }
       }
     }
 
