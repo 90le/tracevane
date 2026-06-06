@@ -606,6 +606,87 @@
   resize: vertical;
 }
 
+.mgw-model-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.mgw-button-icon {
+  width: 15px;
+  height: 15px;
+}
+
+.mgw-model-table {
+  display: grid;
+  gap: 0;
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--control-bg);
+}
+
+.mgw-model-table__head,
+.mgw-model-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(120px, 0.8fr) minmax(150px, 0.9fr) minmax(260px, 1.6fr) 38px;
+  gap: 8px;
+  align-items: center;
+}
+
+.mgw-model-table__head {
+  background: color-mix(in srgb, var(--surface-soft) 78%, var(--surface-base));
+  color: var(--mono-ink-2);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  padding: 9px 10px;
+  text-transform: uppercase;
+}
+
+.mgw-model-row {
+  border-top: 1px solid var(--mono-line);
+  padding: 10px;
+}
+
+.mgw-model-empty {
+  color: var(--mono-ink-2);
+  padding: 14px;
+}
+
+.mgw-model-capabilities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mgw-model-capability {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-base) 88%, var(--surface-soft));
+  color: var(--mono-ink-2);
+  padding: 5px 8px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.mgw-model-capability input {
+  margin: 0;
+}
+
+.mgw-model-remove {
+  justify-self: end;
+}
+
 .mgw-detect-card {
   display: grid;
   grid-column: 1 / -1;
@@ -962,8 +1043,22 @@
 
   .mgw-detect-card,
   .mgw-detect-target,
-  .mgw-detect-protocol {
+  .mgw-detect-protocol,
+  .mgw-model-table__head,
+  .mgw-model-row {
     grid-template-columns: 1fr;
+  }
+
+  .mgw-model-table__head {
+    display: none;
+  }
+
+  .mgw-model-row {
+    gap: 10px;
+  }
+
+  .mgw-model-remove {
+    justify-self: start;
   }
 
   .mgw-detect-card__actions,

@@ -106,6 +106,7 @@ export interface ModelGatewayProviderModel {
   maxOutputTokens?: number | null;
   aliases?: string[];
   features?: {
+    text?: boolean;
     streaming?: boolean;
     tools?: boolean;
     vision?: boolean;

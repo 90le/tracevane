@@ -38,6 +38,7 @@ CC 和 OpenClaw 只作为参考：
 - native config: `~/.config/openclaw-studio/channel-connectors/config.json`
 - daemon config: `~/.config/openclaw-studio/channel-connectors/daemon/config.json`
 - state: `~/.config/openclaw-studio/channel-connectors/daemon/state`
+- inbound attachments: `~/.config/openclaw-studio/channel-connectors/daemon/state/agent-runtime/<agent>/<project>/<binding>/attachments/<messageId>/...`
 - logs: `~/.config/openclaw-studio/channel-connectors/daemon/logs/channel-connectors.log`
 - runtime: `~/.config/openclaw-studio/channel-connectors/daemon/runtime.json`
 - override: `OPENCLAW_STUDIO_CHANNEL_CONNECTORS_DIR` or `OPENCLAW_STUDIO_DATA_DIR`
@@ -57,7 +58,7 @@ CC 和 OpenClaw 只作为参考：
 
 - 平台：Octo(dmwork)、飞书、微信个人号、企业微信、钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等 CC 已有平台能力。
 - Agent：Codex、Claude Code、OpenCode 为首批；后续覆盖 CC 已有 CLI/ACP Agent，包括 Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP 等。
-- 消息：文本、图片、文件、语音/STT/TTS、群聊 mention、thread/reply、流式预览、长回复拆分。
+- 消息：文本、图片、文件、语音/STT/TTS、群聊 mention、thread/reply、流式预览、长回复拆分；IM 原始文件先留在平台侧，Studio daemon 下载到本地受控 staging 目录后交给 Agent，默认 128MB 上限可按 binding 调整或关闭。
 - 会话：session key、session 续接/切换/重置、workdir 切换、历史恢复、不同 bot/account 独立上下文、跨平台会话观测。
 - 治理：allowlist、admin、rate limit、banned words、权限模式、run-as/user isolation、审计日志。
 - 自动化：slash command、平台菜单、Feishu card、cron、hooks、relay、management API、health/status/logs。
@@ -134,6 +135,7 @@ Studio 增强点：
 - F4 reply buffer 查看已落地：`/buffer` 列表和 `/buffer <id|前缀|latest>` 读取完整内容；Feishu 菜单提供 Reply Buffer 子卡片；读取范围限制在当前 binding + IM session。
 - F5 基础治理已落地：入站执行前统一检查 allowlist/admin、`metadata.bannedWords`、`metadata.rateLimitPerMinute` / `rateLimitWindowSeconds`；命中只写审计事件，不触发 CLI Agent。
 - F4 飞书群成员拉取已落地：飞书群聊 Agent 分支分页拉取 chat members，注入 Agent group context；失败降级为日志，不阻断对话。
+- F4 附件默认存储策略已确认：Studio 与 CC 旧版不同，当前 Studio 优先本地 staging 到 Channel daemon state；CC 旧版主要在 `core.Message` 中以 bytes 传递，必要时用 `workDir/.cc-connect/attachments` 给 CLI 引用。
 
 ## 6. 下一步
 

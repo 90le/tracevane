@@ -288,6 +288,7 @@ function normalizeModelCatalog(value: unknown, fallback?: ModelGatewayProviderMo
         maxOutputTokens: typeof model.maxOutputTokens === "number" ? model.maxOutputTokens : null,
         aliases: normalizeStringArray(model.aliases),
         features: isRecord(model.features) ? {
+          text: typeof model.features.text === "boolean" ? model.features.text : undefined,
           streaming: typeof model.features.streaming === "boolean" ? model.features.streaming : undefined,
           tools: typeof model.features.tools === "boolean" ? model.features.tools : undefined,
           vision: typeof model.features.vision === "boolean" ? model.features.vision : undefined,

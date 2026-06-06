@@ -226,7 +226,7 @@ test("model gateway registry stores provider secrets separately and masks views"
       authStrategy: "bearer",
       models: {
         defaultModel: "gpt-test",
-        models: [{ id: "gpt-test", features: { tools: true, streaming: true } }],
+        models: [{ id: "gpt-test", features: { text: true, tools: true, vision: true, reasoning: true, responses: true, streaming: true } }],
       },
     },
     secret: {
@@ -236,6 +236,14 @@ test("model gateway registry stores provider secrets separately and masks views"
   });
 
   assert.equal(provider.apiKeyRef, "provider:openai-main:api-key");
+  assert.deepEqual(provider.models.models[0].features, {
+    text: true,
+    streaming: true,
+    tools: true,
+    vision: true,
+    reasoning: true,
+    responses: true,
+  });
   assert.equal(provider.secret?.hasSecret, true);
   assert.equal(provider.secret?.masked, "sk-t...3456");
   assert.equal(provider.secret?.length, "sk-test-secret-123456".length);

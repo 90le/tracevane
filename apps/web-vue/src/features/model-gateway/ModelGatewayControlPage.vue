@@ -510,15 +510,48 @@
                   </select>
                   <input v-else v-model.trim="draft.defaultModel" class="form-input" placeholder="model-id" />
                 </label>
-                <label class="form-field form-field-full">
-                  <span class="form-label">{{ text('模型列表', 'Model list') }}</span>
-                  <textarea
-                    v-model="draft.modelListText"
-                    class="form-textarea mgw-model-list-input"
-                    :placeholder="modelListPlaceholder"
-                  ></textarea>
-                  <span class="field-hint">{{ text('格式：模型ID | 显示名称 | 别名1,别名2。显示名称和别名可省略；同一 Provider 内模型名/别名不能重复。', 'Format: model id | display name | alias1,alias2. Display name and aliases are optional; model names and aliases must be unique inside one provider.') }}</span>
-                </label>
+                <div class="form-field form-field-full">
+                  <div class="mgw-model-list-head">
+                    <span class="form-label">{{ text('模型列表', 'Model list') }}</span>
+                    <button type="button" class="secondary-button compact-button" @click="addDraftModelRow">
+                      <Plus class="mgw-button-icon" />
+                      <span>{{ text('添加模型', 'Add model') }}</span>
+                    </button>
+                  </div>
+                  <div class="mgw-model-table" data-testid="gateway-model-capability-list">
+                    <div class="mgw-model-table__head">
+                      <span>{{ text('模型 ID', 'Model ID') }}</span>
+                      <span>{{ text('显示名', 'Display name') }}</span>
+                      <span>{{ text('别名', 'Aliases') }}</span>
+                      <span>{{ text('能力', 'Capabilities') }}</span>
+                      <span></span>
+                    </div>
+                    <div v-if="draft.modelRows.length === 0" class="mgw-model-empty">
+                      {{ text('添加模型，或先填写 Base URL / Key 后点击识别配置。', 'Add a model, or enter Base URL / key and detect the config first.') }}
+                    </div>
+                    <div v-for="(model, index) in draft.modelRows" :key="model.key" class="mgw-model-row">
+                      <input v-model.trim="model.id" class="form-input" placeholder="gpt-5.5" @blur="syncDefaultModelWithList" />
+                      <input v-model.trim="model.label" class="form-input" :placeholder="text('可选', 'Optional')" />
+                      <input v-model.trim="model.aliases" class="form-input" placeholder="alias1, alias2" />
+                      <div class="mgw-model-capabilities" :aria-label="text('模型能力', 'Model capabilities')">
+                        <label v-for="capability in modelCapabilityOptions" :key="capability.id" class="mgw-model-capability">
+                          <input v-model="model[capability.id]" type="checkbox" />
+                          <span>{{ text(capability.zh, capability.en) }}</span>
+                        </label>
+                      </div>
+                      <button
+                        type="button"
+                        class="mgw-icon-button mgw-model-remove"
+                        :aria-label="text('删除模型', 'Remove model')"
+                        :title="text('删除模型', 'Remove model')"
+                        @click="removeDraftModelRow(index)"
+                      >
+                        <Trash2 class="mgw-icon-button__icon" />
+                      </button>
+                    </div>
+                  </div>
+                  <span class="field-hint">{{ text('同一 Provider 内模型 ID 和别名不能重复；不同 Provider 允许同名模型，用于优先级和负载切换。', 'Model IDs and aliases must be unique inside one provider; different providers may share model names for priority and failover routing.') }}</span>
+                </div>
                 <label class="form-field">
                   <span class="form-label">{{ text('Anthropic endpoint override', 'Anthropic endpoint override') }}</span>
                   <input v-model.trim="draft.anthropicEndpoint" class="form-input" placeholder="/messages" />
@@ -705,7 +738,7 @@
 
 <script setup lang="ts">
 import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue';
-import { X } from '@lucide/vue';
+import { Plus, Trash2, X } from '@lucide/vue';
 import { MODEL_GATEWAY_APP_CONNECTION_IDS } from '../../../../../types/model-gateway';
 import type {
   ModelGatewayApiFormat,
@@ -770,12 +803,28 @@ type ProviderDraft = {
   baseUrl: string;
   defaultModel: string;
   modelListText: string;
+  modelRows: ProviderModelRow[];
   apiKey: string;
   anthropicEndpoint: string;
   compactEndpoint: string;
   proxyUrl: string;
   noProxy: string;
   appScopes: Record<ModelGatewayAppScope, boolean>;
+};
+
+type ModelCapabilityId = 'text' | 'vision' | 'tools' | 'reasoning' | 'responses' | 'streaming';
+
+type ProviderModelRow = {
+  key: string;
+  id: string;
+  label: string;
+  aliases: string;
+  text: boolean;
+  vision: boolean;
+  tools: boolean;
+  reasoning: boolean;
+  responses: boolean;
+  streaming: boolean;
 };
 
 type ProtocolTemplate = {
@@ -841,6 +890,15 @@ const workspaceTabs: Array<{ id: WorkspaceTabId; zh: string; en: string }> = [
   { id: 'connections', zh: '客户端接入', en: 'Client connections' },
   { id: 'providers', zh: 'Provider 配置', en: 'Provider configuration' },
   { id: 'smoke', zh: 'Smoke / 日志', en: 'Smoke / Logs' },
+];
+
+const modelCapabilityOptions: Array<{ id: ModelCapabilityId; zh: string; en: string }> = [
+  { id: 'text', zh: '文字', en: 'Text' },
+  { id: 'vision', zh: '图片', en: 'Vision' },
+  { id: 'tools', zh: '工具', en: 'Tools' },
+  { id: 'reasoning', zh: '推理', en: 'Reasoning' },
+  { id: 'responses', zh: 'Responses', en: 'Responses' },
+  { id: 'streaming', zh: '流式', en: 'Streaming' },
 ];
 
 const protocolTemplates: ProtocolTemplate[] = [
@@ -937,7 +995,7 @@ const selectedSmokeProvider = computed(() =>
   providers.value.find((provider) => provider.id === smokeProviderId.value) || null,
 );
 
-const draftModelIds = computed(() => parseModelList(draft.modelListText));
+const draftModelIds = computed(() => modelRowsToModels(draft.modelRows).map((model) => model.id));
 const draftDefaultModelOptions = computed(() => uniqueStrings([
   draft.defaultModel,
   ...draftModelIds.value,
@@ -1110,11 +1168,6 @@ const clientKeyPlaceholder = computed(() =>
     ? text('留空保留现有本地 key', 'Leave empty to keep current local key')
     : text('输入本地 Gateway key', 'Enter local Gateway key'),
 );
-
-const modelListPlaceholder = computed(() => text(
-  '每行一个模型，例如：\nmodel-a | 模型 A | a-fast,a-main\nmodel-b',
-  'One model per line, for example:\nmodel-a | Model A | a-fast,a-main\nmodel-b',
-));
 
 const daemonActionTitle = computed(() => {
   if (!daemonActionResult.value) return '';
@@ -1319,6 +1372,7 @@ function createEmptyDraft(): ProviderDraft {
     baseUrl: '',
     defaultModel: '',
     modelListText: '',
+    modelRows: [],
     apiKey: '',
     anthropicEndpoint: '',
     compactEndpoint: '',
@@ -1362,6 +1416,11 @@ function editProvider(provider: ModelGatewayProviderView): void {
     modelListText: provider.models.models.length
       ? provider.models.models.map(formatModelLine).join('\n')
       : provider.models.defaultModel || '',
+    modelRows: provider.models.models.length
+      ? provider.models.models.map(createProviderModelRow)
+      : provider.models.defaultModel
+        ? [createProviderModelRow({ id: provider.models.defaultModel })]
+        : [],
     apiKey: '',
     anthropicEndpoint: provider.endpoints.anthropic_messages || '',
     compactEndpoint: provider.endpoints.openai_responses_compact || '',
@@ -1408,6 +1467,22 @@ function uniqueStrings(values: string[]): string[] {
     .filter((value, index, list) => list.indexOf(value) === index);
 }
 
+function createProviderModelRow(model?: ModelGatewayProviderModel): ProviderModelRow {
+  const id = model?.id || '';
+  return {
+    key: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    id,
+    label: model?.label || '',
+    aliases: model?.aliases?.join(', ') || '',
+    text: model?.features?.text ?? true,
+    vision: model?.features?.vision ?? false,
+    tools: model?.features?.tools ?? false,
+    reasoning: model?.features?.reasoning ?? false,
+    responses: model?.features?.responses ?? true,
+    streaming: model?.features?.streaming ?? true,
+  };
+}
+
 function parseModelLines(value: string): ModelGatewayProviderModel[] {
   const models: ModelGatewayProviderModel[] = [];
   for (const line of value.split(/\n+/)) {
@@ -1429,6 +1504,51 @@ function parseModelLines(value: string): ModelGatewayProviderModel[] {
   return models;
 }
 
+function modelRowsFromText(value: string): ProviderModelRow[] {
+  return parseModelLines(value).map(createProviderModelRow);
+}
+
+function modelRowsToModels(rows: ProviderModelRow[]): ModelGatewayProviderModel[] {
+  return rows
+    .map((row) => {
+      const id = row.id.trim();
+      if (!id) return null;
+      const aliases = parseNoProxy(row.aliases);
+      return {
+        id,
+        ...(row.label.trim() ? { label: row.label.trim() } : {}),
+        ...(aliases.length ? { aliases } : {}),
+        features: {
+          text: row.text,
+          vision: row.vision,
+          tools: row.tools,
+          reasoning: row.reasoning,
+          responses: row.responses,
+          streaming: row.streaming,
+        },
+      } satisfies ModelGatewayProviderModel;
+    })
+    .filter((model): model is ModelGatewayProviderModel => model !== null);
+}
+
+function syncModelTextFromRows(): void {
+  draft.modelListText = modelRowsToModels(draft.modelRows).map(formatModelLine).join('\n');
+}
+
+function addDraftModelRow(model?: ModelGatewayProviderModel): void {
+  draft.modelRows.push(createProviderModelRow(model));
+  syncDefaultModelWithList();
+  syncModelTextFromRows();
+}
+
+function removeDraftModelRow(index: number): void {
+  draft.modelRows.splice(index, 1);
+  if (draft.defaultModel.trim() && !draft.modelRows.some((row) => row.id.trim() === draft.defaultModel.trim())) {
+    draft.defaultModel = draft.modelRows[0]?.id.trim() || '';
+  }
+  syncModelTextFromRows();
+}
+
 function parseModelList(value: string): string[] {
   return parseModelLines(value).map((model) => model.id);
 }
@@ -1441,12 +1561,27 @@ function formatModelLine(model: ModelGatewayProviderModel): string {
 }
 
 function normalizedDraftModels(): { defaultModel: string | null; models: ModelGatewayProviderModel[] } {
-  const listed = parseModelLines(draft.modelListText);
+  let listed = modelRowsToModels(draft.modelRows);
+  if (!listed.length && draft.modelListText.trim()) {
+    draft.modelRows = modelRowsFromText(draft.modelListText);
+    listed = modelRowsToModels(draft.modelRows);
+  }
   const fallbackDefault = draft.defaultModel.trim() || listed[0]?.id || '';
   const models = [...listed];
   if (fallbackDefault && !models.some((model) => model.id === fallbackDefault)) {
-    models.unshift({ id: fallbackDefault });
+    models.unshift({
+      id: fallbackDefault,
+      features: {
+        text: true,
+        vision: false,
+        tools: false,
+        reasoning: false,
+        responses: true,
+        streaming: true,
+      },
+    });
   }
+  draft.modelListText = models.map(formatModelLine).join('\n');
   return {
     defaultModel: fallbackDefault || null,
     models,
@@ -1454,7 +1589,7 @@ function normalizedDraftModels(): { defaultModel: string | null; models: ModelGa
 }
 
 function syncDefaultModelWithList(): void {
-  const models = parseModelList(draft.modelListText);
+  const models = modelRowsToModels(draft.modelRows).map((model) => model.id);
   if (!draft.defaultModel.trim() && models[0]) {
     draft.defaultModel = models[0];
   }
@@ -1462,6 +1597,7 @@ function syncDefaultModelWithList(): void {
 
 function applyDetectedModels(models: ModelGatewayProviderModel[]): void {
   if (!models.length) return;
+  draft.modelRows = models.map(createProviderModelRow);
   draft.modelListText = models.map(formatModelLine).join('\n');
   if (!draft.defaultModel.trim()) {
     draft.defaultModel = models[0]?.id || '';

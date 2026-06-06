@@ -143,11 +143,24 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "mgw-detect-popover",
     "mgw-detect-card",
     "applyDetectedProtocol",
-    "model-a | Model A | a-fast,a-main",
+    "gateway-model-capability-list",
+    "modelCapabilityOptions",
+    "modelRowsToModels",
+    "addDraftModelRow",
+    "removeDraftModelRow",
+    "createProviderModelRow",
+    "模型 ID",
+    "显示名",
+    "别名",
+    "文字",
+    "图片",
+    "推理",
+    "同一 Provider 内模型 ID 和别名不能重复",
     "Provider status",
     "Routing priority",
     "Lower numbers win",
     "modelListText",
+    "modelRows",
     "normalizedDraftModels",
     "formatModelLine",
     "daemonActionResult",
@@ -182,4 +195,7 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
   assert.match(css, /\.mgw-workspace-tab\s*\{[^}]*overflow-wrap:\s*anywhere/s);
   assert.match(css, /\.mgw-app-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
   assert.match(css, /\.mgw-app-preview pre\s*\{[^}]*overflow-wrap:\s*anywhere/s);
+  assert.match(css, /\.mgw-model-table__head,\s*\.mgw-model-row\s*\{[^}]*grid-template-columns:\s*minmax\(150px,\s*1fr\)/s);
+  assert.match(css, /\.mgw-model-capabilities\s*\{[^}]*flex-wrap:\s*wrap/s);
+  assert.match(css, /\.mgw-model-capability\s*\{[^}]*white-space:\s*nowrap/s);
 });
