@@ -296,9 +296,39 @@ export function renderChannelConnectorCommandSurfaceFeishu(
   };
 }
 
-export function extractChannelConnectorCommandFromActionValue(value: unknown): string | null {
-  if (typeof value === "string") return normalizeString(value) || null;
-  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+export interface ChannelConnectorSurfaceActionPayload {
+  command: string | null;
+  bindingId: string | null;
+  sessionKey: string | null;
+  actionId: string | null;
+}
+
+export function extractChannelConnectorSurfaceActionPayload(value: unknown): ChannelConnectorSurfaceActionPayload {
+  if (typeof value === "string") {
+    return {
+      command: normalizeString(value) || null,
+      bindingId: null,
+      sessionKey: null,
+      actionId: null,
+    };
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {
+      command: null,
+      bindingId: null,
+      sessionKey: null,
+      actionId: null,
+    };
+  }
   const record = value as Record<string, unknown>;
-  return normalizeString(record.action) || normalizeString(record.command) || null;
+  return {
+    command: normalizeString(record.action) || normalizeString(record.command) || null,
+    bindingId: normalizeString(record.binding_id) || normalizeString(record.bindingId) || null,
+    sessionKey: normalizeString(record.session_key) || normalizeString(record.sessionKey) || null,
+    actionId: normalizeString(record.surface_action_id) || normalizeString(record.surfaceActionId) || null,
+  };
+}
+
+export function extractChannelConnectorCommandFromActionValue(value: unknown): string | null {
+  return extractChannelConnectorSurfaceActionPayload(value).command;
 }

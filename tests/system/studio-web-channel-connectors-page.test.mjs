@@ -47,6 +47,7 @@ test("Channel Connectors page calls only channel connector APIs", () => {
     "/api/channel-connectors/status",
     "/api/channel-connectors/config",
     "/api/channel-connectors/commands/surface",
+    "/api/channel-connectors/commands/action",
     "/api/channel-connectors/daemon/config",
     "/api/channel-connectors/daemon/service",
     "/api/channel-connectors/daemon/logs",

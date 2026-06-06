@@ -70,6 +70,7 @@ Studio 增强点：
 - IM 内命令和 Studio UI 共用同一个 typed 状态：普通平台走文本命令，Feishu 等 rich 平台走卡片/菜单，最终都落到 session override 或受控全局配置。
 - 用户应能通过 IM 使用当前 Agent 的大部分原生 slash 功能：Studio 只拦截少量跨 Agent 控制命令，未知 `/xxx` 默认透传；与 Studio 命令冲突时用 `/native <命令>`。
 - Agent skills/native slash 不在 Studio 里重复实现；Studio 只提供透传入口和少量会话控制，避免把 IM 控制面做臃肿。
+- Agent Profile 后续借鉴 OpenClaw 的角色配置，但保持 CLI Agent Bot 定位：增加可选 Persona/Context/Tool Policy，注入到 Codex/Claude/OpenCode 的原生配置或首轮上下文，不复制 OpenClaw runtime。
 - 暂不通过 IM 直接开放高风险全局配置、系统服务启停、Provider secret 修改；这些留在 Studio UI 或后续受审批的 admin 命令。
 
 核心绑定规则：
@@ -108,9 +109,10 @@ Studio 增强点：
 - Channel daemon 已支持 `/help`、`/status`、`/agent`、`/model`、`/mode`、`/dir`、`/cd`、`/new`、`/reset`；override 按 IM session 存储，模型切换不切断 Codex thread，workdir/new session 会断开旧续接。
 - Channel daemon 已支持 Agent 原生命令透传：未知 `/xxx` 直接转给当前 Agent，`/native <命令>` 用于透传与 Studio 命令同名的原生命令。
 - Channel Connectors 已支持 command surface preview：text fallback、平台无关 action sections、Feishu card JSON、action payload -> command 解析。
+- Channel Connectors 已支持 command action callback：通用 `/commands/action` 和 Feishu `card-action` / `bot-menu` aliases 可把 action value / event key 转回 command-router。
 
 ## 6. 下一步
 
-1. F3f：接 Feishu bot menu/card callback，把 action value 转回 command-router。
+1. F3f：接真实 Feishu webhook/tenant token，把 callback result 写回 Feishu card 或 toast。
 2. F3g：补 CLI Agent 权限审批回传。
 3. F4：补图片/文件、群聊成员/history context、长回复 group buffer 和治理策略。

@@ -22,6 +22,8 @@ import {
   type ChannelConnectorsLogsResponse,
   type ChannelConnectorsNativeConfig,
   type ChannelConnectorsNativeConfigResponse,
+  type ChannelConnectorCommandActionRequest,
+  type ChannelConnectorCommandActionResponse,
   type ChannelConnectorCommandSurfaceRequest,
   type ChannelConnectorCommandSurfaceResponse,
   type ChannelConnectorsSaveNativeConfigRequest,
@@ -53,8 +55,10 @@ import {
 } from "./octo-transport.js";
 import {
   buildChannelConnectorCommandSurface,
+  extractChannelConnectorSurfaceActionPayload,
   renderChannelConnectorCommandSurfaceFeishu,
 } from "./command-surface.js";
+import { handleChannelConnectorCommand } from "./command-router.js";
 import { getChannelConnectorSessionControl } from "./session-control-store.js";
 
 const execFileAsync = promisify(execFile);
@@ -92,6 +96,7 @@ export interface ChannelConnectorsService {
   getNativeConfig(): ChannelConnectorsNativeConfigResponse;
   saveNativeConfig(payload?: ChannelConnectorsSaveNativeConfigRequest): ChannelConnectorsNativeConfigResponse;
   getCommandSurface(payload?: ChannelConnectorCommandSurfaceRequest): ChannelConnectorCommandSurfaceResponse;
+  handleCommandAction(payload?: ChannelConnectorCommandActionRequest): Promise<ChannelConnectorCommandActionResponse>;
   dispatchOctoIncoming(payload?: ChannelConnectorOctoInboundRequest): Promise<ChannelConnectorOctoDispatchResponse>;
   runOctoTransportSmoke(payload?: ChannelConnectorOctoTransportSmokeRequest): Promise<ChannelConnectorOctoTransportSmokeResponse>;
   getDaemonConfig(): ChannelConnectorsDaemonConfigResponse;
@@ -844,6 +849,49 @@ function normalizeCommandSurfaceRequest(payload: ChannelConnectorCommandSurfaceR
   };
 }
 
+function normalizeCommandActionRequest(payload: ChannelConnectorCommandActionRequest | undefined): ChannelConnectorCommandActionRequest {
+  if (!payload || !isRecord(payload)) return { renderer: "all" };
+  const renderer = payload.renderer === "text" || payload.renderer === "feishu" || payload.renderer === "all"
+    ? payload.renderer
+    : "all";
+  return {
+    bindingId: normalizeString(payload.bindingId) || null,
+    sessionKey: normalizeString(payload.sessionKey) || null,
+    fromUid: normalizeString(payload.fromUid) || null,
+    channelId: normalizeString(payload.channelId) || null,
+    messageId: normalizeString(payload.messageId) || null,
+    actionValue: payload.actionValue,
+    eventKey: normalizeString(payload.eventKey) || null,
+    renderer,
+    models: stringList(payload.models),
+  };
+}
+
+function normalizeCommandActionText(value: string | null | undefined): string | null {
+  const normalized = normalizeString(value);
+  if (!normalized) return null;
+  if (normalized.startsWith("cmd:")) return normalizeString(normalized.slice("cmd:".length)) || null;
+  if (normalized.startsWith("nav:") || normalized.startsWith("act:")) {
+    const next = normalizeString(normalized.slice(4));
+    return next.startsWith("/") ? next : null;
+  }
+  return normalized.startsWith("/") ? normalized : `/${normalized}`;
+}
+
+function derivedCommandActionSessionKey(input: {
+  sessionKey?: string | null;
+  platform: string;
+  channelId?: string | null;
+  fromUid?: string | null;
+}): string | null {
+  const explicit = normalizeString(input.sessionKey);
+  if (explicit) return explicit;
+  const fromUid = normalizeString(input.fromUid);
+  const channelId = normalizeString(input.channelId) || fromUid;
+  if (!fromUid && !channelId) return null;
+  return `${input.platform}:${channelId || fromUid}:${fromUid || channelId}`;
+}
+
 function resolveOctoBindingById(
   nativeConfig: ChannelConnectorsNativeConfig,
   bindingId: string | null | undefined,
@@ -990,6 +1038,131 @@ export function createChannelConnectorsService(
       renderer: request.renderer || "all",
       binding: resolved.binding,
       agentProfile: resolved.agentProfile,
+      surface,
+      textFallback: surface.textFallback,
+      feishuCard: request.renderer === "text" ? null : renderChannelConnectorCommandSurfaceFeishu(surface),
+    };
+  }
+
+  async function handleCommandAction(payload: ChannelConnectorCommandActionRequest = {}): Promise<ChannelConnectorCommandActionResponse> {
+    const request = normalizeCommandActionRequest(payload);
+    const parsedAction = extractChannelConnectorSurfaceActionPayload(request.actionValue);
+    const command = normalizeCommandActionText(parsedAction.command || request.eventKey);
+    const bindingId = parsedAction.bindingId || request.bindingId || null;
+    const sessionKey = derivedCommandActionSessionKey({
+      sessionKey: parsedAction.sessionKey || request.sessionKey || null,
+      platform: "feishu",
+      channelId: request.channelId || null,
+      fromUid: request.fromUid || null,
+    });
+    const checkedAt = now().toISOString();
+    const resolvedPaths = paths();
+    const nativeConfig = readNativeConfig(config, resolvedPaths, now());
+    const runtimeConfig = buildRuntimeConfig(nativeConfig, resolvedPaths);
+    const resolved = resolveRuntimeBindingById(nativeConfig, runtimeConfig, bindingId);
+
+    if (!command) {
+      return {
+        ok: true,
+        checkedAt,
+        accepted: false,
+        skippedReason: "command_action_missing",
+        binding: resolved?.binding || null,
+        agentProfile: resolved?.agentProfile || null,
+        sessionKey,
+        command: null,
+        commandResult: null,
+        surface: null,
+        textFallback: null,
+        feishuCard: null,
+      };
+    }
+    if (!resolved) {
+      return {
+        ok: true,
+        checkedAt,
+        accepted: false,
+        skippedReason: "binding_not_found",
+        binding: null,
+        agentProfile: null,
+        sessionKey,
+        command,
+        commandResult: null,
+        surface: null,
+        textFallback: null,
+        feishuCard: null,
+      };
+    }
+    if (!sessionKey) {
+      return {
+        ok: true,
+        checkedAt,
+        accepted: false,
+        skippedReason: "session_key_missing",
+        binding: resolved.binding,
+        agentProfile: resolved.agentProfile,
+        sessionKey: null,
+        command,
+        commandResult: null,
+        surface: null,
+        textFallback: null,
+        feishuCard: null,
+      };
+    }
+
+    const controlsPath = commandSurfaceControlsPath(runtimeConfig);
+    const commandResult = await handleChannelConnectorCommand({
+      config: runtimeConfig,
+      project: resolved.project,
+      binding: resolved.runtimeBinding,
+      sessionKey,
+      controlsPath,
+      agentSessionsPath: path.join(runtimeConfig.paths.state, "channel-sessions.json"),
+      gatewayClientKey: null,
+      listModels: async () => stringList(request.models),
+      message: {
+        messageId: request.messageId || `feishu-action-${Date.now()}`,
+        fromUid: request.fromUid || "",
+        channelId: request.channelId || request.fromUid || sessionKey,
+        channelType: 1,
+        timestamp: Date.now(),
+        payload: {
+          type: 1,
+          content: command,
+        },
+        members: [],
+      },
+    });
+    const control = getChannelConnectorSessionControl(controlsPath, {
+      bindingId: resolved.binding.id,
+      sessionKey,
+    });
+    const surface = buildChannelConnectorCommandSurface({
+      config: runtimeConfig,
+      project: resolved.project,
+      binding: resolved.runtimeBinding,
+      control,
+      sessionKey,
+      models: request.models,
+    });
+
+    return {
+      ok: true,
+      checkedAt,
+      accepted: true,
+      skippedReason: null,
+      binding: resolved.binding,
+      agentProfile: resolved.agentProfile,
+      sessionKey,
+      command,
+      commandResult: {
+        handled: commandResult.handled,
+        command: commandResult.command,
+        action: commandResult.action,
+        ok: commandResult.ok,
+        replyText: commandResult.replyText,
+        passthroughText: commandResult.passthroughText || null,
+      },
       surface,
       textFallback: surface.textFallback,
       feishuCard: request.renderer === "text" ? null : renderChannelConnectorCommandSurfaceFeishu(surface),
@@ -1320,6 +1493,7 @@ export function createChannelConnectorsService(
     getNativeConfig: currentNativeConfig,
     saveNativeConfig,
     getCommandSurface,
+    handleCommandAction,
     dispatchOctoIncoming,
     runOctoTransportSmoke,
     getDaemonConfig: currentConfig,

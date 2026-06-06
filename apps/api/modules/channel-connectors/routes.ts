@@ -2,6 +2,7 @@ import { parseJsonBody, sendJson } from "../../core/http.js";
 import type { StudioRouter } from "../../core/router.js";
 import type {
   ChannelConnectorsDaemonRequest,
+  ChannelConnectorCommandActionRequest,
   ChannelConnectorCommandSurfaceRequest,
   ChannelConnectorsSaveNativeConfigRequest,
   ChannelConnectorOctoInboundRequest,
@@ -46,6 +47,33 @@ export function registerChannelConnectorsRoutes(router: StudioRouter): void {
     try {
       const payload = await parseJsonBody<ChannelConnectorCommandSurfaceRequest>(req);
       sendJson(res, 200, routeCtx.services.channelConnectors.getCommandSurface(payload));
+    } catch (error) {
+      sendChannelConnectorsError(res, error);
+    }
+  });
+
+  router.post("/api/channel-connectors/commands/action", async (req, res, routeCtx) => {
+    try {
+      const payload = await parseJsonBody<ChannelConnectorCommandActionRequest>(req);
+      sendJson(res, 200, await routeCtx.services.channelConnectors.handleCommandAction(payload));
+    } catch (error) {
+      sendChannelConnectorsError(res, error);
+    }
+  });
+
+  router.post("/api/channel-connectors/adapters/feishu/card-action", async (req, res, routeCtx) => {
+    try {
+      const payload = await parseJsonBody<ChannelConnectorCommandActionRequest>(req);
+      sendJson(res, 200, await routeCtx.services.channelConnectors.handleCommandAction(payload));
+    } catch (error) {
+      sendChannelConnectorsError(res, error);
+    }
+  });
+
+  router.post("/api/channel-connectors/adapters/feishu/bot-menu", async (req, res, routeCtx) => {
+    try {
+      const payload = await parseJsonBody<ChannelConnectorCommandActionRequest>(req);
+      sendJson(res, 200, await routeCtx.services.channelConnectors.handleCommandAction(payload));
     } catch (error) {
       sendChannelConnectorsError(res, error);
     }

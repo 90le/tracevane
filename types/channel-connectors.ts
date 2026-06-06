@@ -245,6 +245,40 @@ export interface ChannelConnectorCommandSurfaceResponse {
   feishuCard: ChannelConnectorFeishuInteractiveCard | null;
 }
 
+export interface ChannelConnectorCommandActionRequest {
+  bindingId?: string | null;
+  sessionKey?: string | null;
+  fromUid?: string | null;
+  channelId?: string | null;
+  messageId?: string | null;
+  actionValue?: unknown;
+  eventKey?: string | null;
+  renderer?: ChannelConnectorCommandSurfaceRenderer;
+  models?: string[];
+}
+
+export interface ChannelConnectorCommandActionResponse {
+  ok: true;
+  checkedAt: string;
+  accepted: boolean;
+  skippedReason: string | null;
+  binding: ChannelConnectorPlatformBinding | null;
+  agentProfile: ChannelConnectorAgentProfile | null;
+  sessionKey: string | null;
+  command: string | null;
+  commandResult: {
+    handled: boolean;
+    command: string | null;
+    action: string | null;
+    ok: boolean | null;
+    replyText: string | null;
+    passthroughText: string | null;
+  } | null;
+  surface: ChannelConnectorCommandSurface | null;
+  textFallback: string | null;
+  feishuCard: ChannelConnectorFeishuInteractiveCard | null;
+}
+
 export type ChannelConnectorsSupervisorKind =
   | "systemd-user"
   | "launchd-user"

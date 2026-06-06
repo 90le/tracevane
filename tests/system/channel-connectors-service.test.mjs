@@ -28,6 +28,7 @@ import {
 import {
   buildChannelConnectorCommandSurface,
   extractChannelConnectorCommandFromActionValue,
+  extractChannelConnectorSurfaceActionPayload,
   renderChannelConnectorCommandSurfaceFeishu,
 } from "../../dist/apps/api/modules/channel-connectors/command-surface.js";
 import {
@@ -1224,6 +1225,18 @@ test("native Channel Connectors command surface renders text and Feishu card act
     session_key: "dmwork:dm:admin-1",
   });
   assert.equal(parsed, "/agent claude-main");
+  const payload = extractChannelConnectorSurfaceActionPayload({
+    action: "/model gpt-5.5",
+    binding_id: "octo-codex",
+    session_key: "dmwork:dm:admin-1",
+    surface_action_id: "model-gpt-5.5",
+  });
+  assert.deepEqual(payload, {
+    command: "/model gpt-5.5",
+    bindingId: "octo-codex",
+    sessionKey: "dmwork:dm:admin-1",
+    actionId: "model-gpt-5.5",
+  });
 });
 
 test("native Channel Connectors process runner streams progress events from agent JSONL", async () => {
@@ -1351,6 +1364,60 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     assert.equal(commandSurface.body.surface.current.projectId, "opencode-main");
     assert.match(commandSurface.body.textFallback, /\/native \/help/);
     assert.match(JSON.stringify(commandSurface.body.feishuCard), /\/model gpt-5\.5/);
+
+    const action = await requestJson(`${baseUrl}/api/channel-connectors/commands/action`, {
+      method: "POST",
+      body: {
+        actionValue: {
+          action: "/mode yolo",
+          binding_id: "octo-route",
+          session_key: "dmwork:dm:route-user",
+          surface_action_id: "mode-yolo",
+        },
+        fromUid: "route-user",
+        channelId: "route-user",
+        renderer: "all",
+        models: ["gpt-5", "gpt-5.5"],
+      },
+    });
+    assert.equal(action.status, 200);
+    assert.equal(action.body.accepted, true);
+    assert.equal(action.body.command, "/mode yolo");
+    assert.equal(action.body.commandResult.ok, true);
+    assert.equal(action.body.surface.current.permissionMode, "yolo");
+    assert.match(JSON.stringify(action.body.feishuCard), /mode-yolo/);
+
+    const cardAction = await requestJson(`${baseUrl}/api/channel-connectors/adapters/feishu/card-action`, {
+      method: "POST",
+      body: {
+        actionValue: {
+          action: "cmd:/native /help",
+          binding_id: "octo-route",
+          session_key: "dmwork:dm:route-user",
+        },
+        fromUid: "route-user",
+        channelId: "route-user",
+      },
+    });
+    assert.equal(cardAction.status, 200);
+    assert.equal(cardAction.body.accepted, true);
+    assert.equal(cardAction.body.command, "/native /help");
+    assert.equal(cardAction.body.commandResult.handled, false);
+    assert.equal(cardAction.body.commandResult.passthroughText, "/help");
+
+    const botMenu = await requestJson(`${baseUrl}/api/channel-connectors/adapters/feishu/bot-menu`, {
+      method: "POST",
+      body: {
+        bindingId: "octo-route",
+        eventKey: "/status",
+        fromUid: "route-user",
+        channelId: "route-user",
+      },
+    });
+    assert.equal(botMenu.status, 200);
+    assert.equal(botMenu.body.accepted, true);
+    assert.equal(botMenu.body.command, "/status");
+    assert.match(botMenu.body.commandResult.replyText, /Studio Channel Status/);
 
     const octoSmoke = await requestJson(`${baseUrl}/api/channel-connectors/adapters/octo/incoming`, {
       method: "POST",

@@ -1,4 +1,6 @@
 import type {
+  ChannelConnectorCommandActionRequest,
+  ChannelConnectorCommandActionResponse,
   ChannelConnectorCommandSurfaceRequest,
   ChannelConnectorCommandSurfaceResponse,
   ChannelConnectorsDaemonAction,
@@ -42,6 +44,15 @@ export function previewChannelConnectorCommandSurface(
 ): Promise<ChannelConnectorCommandSurfaceResponse> {
   return requestJson<ChannelConnectorCommandSurfaceResponse>(
     '/api/channel-connectors/commands/surface',
+    jsonBody(payload),
+  );
+}
+
+export function runChannelConnectorCommandAction(
+  payload: ChannelConnectorCommandActionRequest = {},
+): Promise<ChannelConnectorCommandActionResponse> {
+  return requestJson<ChannelConnectorCommandActionResponse>(
+    '/api/channel-connectors/commands/action',
     jsonBody(payload),
   );
 }
