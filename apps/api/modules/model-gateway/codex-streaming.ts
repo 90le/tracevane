@@ -62,16 +62,20 @@ export async function writeCodexResponsesSseFromChatSse(
   const state = createStreamingState(fallbackModel);
   let buffer = "";
 
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (value) {
-      buffer += decoder.decode(value, { stream: !done });
-      buffer = consumeSseBlocks(buffer, state, res);
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (value) {
+        buffer += decoder.decode(value, { stream: !done });
+        buffer = consumeSseBlocks(buffer, state, res);
+      }
+      if (done) break;
     }
-    if (done) break;
+  } catch (error) {
+    failResponse(state, res, `Stream error: ${error instanceof Error ? error.message : String(error)}`, "stream_error");
   }
 
-  if (buffer.trim()) {
+  if (buffer.trim() && !state.completed) {
     consumeSseBlock(buffer, state, res);
   }
   finalizeResponse(state, res);
@@ -118,6 +122,7 @@ function createStreamingState(fallbackModel: string | null): StreamingState {
 function consumeSseBlocks(buffer: string, state: StreamingState, res: http.ServerResponse): string {
   let rest = buffer;
   for (;;) {
+    if (state.completed) return "";
     const normalized = rest.replace(/\r\n/g, "\n");
     const index = normalized.indexOf("\n\n");
     if (index < 0) return rest;
@@ -128,12 +133,14 @@ function consumeSseBlocks(buffer: string, state: StreamingState, res: http.Serve
 }
 
 function consumeSseBlock(block: string, state: StreamingState, res: http.ServerResponse): void {
-  const data = block
-    .split("\n")
-    .filter((line) => line.startsWith("data:"))
-    .map((line) => line.slice("data:".length).trimStart())
-    .join("\n")
-    .trim();
+  if (state.completed) return;
+  let eventName: string | null = null;
+  const dataParts: string[] = [];
+  for (const line of block.split("\n")) {
+    if (line.startsWith("event:")) eventName = line.slice("event:".length).trim();
+    if (line.startsWith("data:")) dataParts.push(line.slice("data:".length).trimStart());
+  }
+  const data = dataParts.join("\n").trim();
   if (!data) return;
   if (data === "[DONE]") {
     finalizeResponse(state, res);
@@ -146,6 +153,12 @@ function consumeSseBlock(block: string, state: StreamingState, res: http.ServerR
     if (!isRecord(parsed)) return;
     chunk = parsed;
   } catch {
+    return;
+  }
+
+  if (eventName === "error" || chunk.error !== undefined) {
+    const { message, type } = extractChatSseError(chunk);
+    failResponse(state, res, message, type);
     return;
   }
 
@@ -443,6 +456,49 @@ function finalizeResponse(state: StreamingState, res: http.ServerResponse): void
   state.completed = true;
 }
 
+function failResponse(
+  state: StreamingState,
+  res: http.ServerResponse,
+  message: string,
+  type: string | null,
+): void {
+  if (state.completed) return;
+  ensureResponseStarted(state, res);
+  const response = baseResponse(state, "failed", currentOutputItems(state));
+  response.error = {
+    message,
+    ...(type ? { type } : {}),
+  };
+  writeSseEvent(res, "response.failed", {
+    type: "response.failed",
+    response,
+  });
+  res.write("data: [DONE]\n\n");
+  state.completed = true;
+}
+
+function currentOutputItems(state: StreamingState): JsonRecord[] {
+  const output: JsonRecord[] = [];
+  if (state.reasoning.added) output.push(reasoningItem(state, state.reasoning.done ? "completed" : "in_progress"));
+  if (state.text.added) {
+    output.push({
+      id: state.text.itemId,
+      type: "message",
+      status: state.text.done ? "completed" : "in_progress",
+      role: "assistant",
+      content: [{
+        type: "output_text",
+        text: state.text.text,
+        annotations: [],
+      }],
+    });
+  }
+  for (const tool of [...state.functionCalls.values()].sort((a, b) => a.outputIndex - b.outputIndex)) {
+    output.push(functionCallItem(tool, tool.done ? "completed" : "in_progress"));
+  }
+  return output;
+}
+
 function functionCallItem(tool: FunctionCallState, status: string): JsonRecord {
   const item: JsonRecord = {
     id: tool.itemId,
@@ -532,6 +588,16 @@ function extractReasoningDetailsText(value: unknown): string | null {
     if (text) return text;
   }
   return extractReasoningDetailsText(value.parts);
+}
+
+function extractChatSseError(value: JsonRecord): { message: string; type: string | null } {
+  const error = isRecord(value.error) ? value.error : value;
+  const message = stringOrNull(error.message)
+    || stringOrNull(error.detail)
+    || (typeof value.error === "string" && value.error ? value.error : null)
+    || JSON.stringify(error);
+  const type = stringOrNull(error.type) || stringOrNull(error.code);
+  return { message, type };
 }
 
 function splitContentAndInlineReasoning(
