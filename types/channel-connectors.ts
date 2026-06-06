@@ -302,6 +302,40 @@ export interface ChannelConnectorFeishuWebhookRequest {
   eventKey?: string | null;
 }
 
+export interface ChannelConnectorFeishuTransportConfig {
+  apiUrl: string;
+  appId: string;
+  appSecret: string;
+}
+
+export interface ChannelConnectorFeishuTransportResult {
+  attempted: boolean;
+  ok: boolean | null;
+  action: "none" | "tenant-token" | "send-message" | "patch-card";
+  apiUrl: string | null;
+  statusCode: number | null;
+  error: string | null;
+  requestCount: number;
+  tokenCache: "disabled" | "hit" | "miss" | "refresh" | null;
+  messageId?: string | null;
+}
+
+export interface ChannelConnectorFeishuTransportSmokeRequest {
+  bindingId?: string | null;
+  action?: "tenant-token" | "send-message" | "patch-card";
+  channelId?: string | null;
+  messageId?: string | null;
+  content?: string | null;
+}
+
+export interface ChannelConnectorFeishuTransportSmokeResponse {
+  ok: true;
+  checkedAt: string;
+  adapter: "feishu";
+  binding: ChannelConnectorPlatformBinding | null;
+  transport: ChannelConnectorFeishuTransportResult;
+}
+
 export interface ChannelConnectorFeishuWebhookResponse {
   ok: true;
   checkedAt: string;
@@ -338,6 +372,7 @@ export interface ChannelConnectorFeishuWebhookResponse {
     gatewayEndpoint: string | null;
     gatewayKeyRef: "studio-gateway-client-key" | null;
   };
+  transport: ChannelConnectorFeishuTransportResult;
   feishuResponse: Record<string, unknown> | null;
   eventStored: {
     path: string;

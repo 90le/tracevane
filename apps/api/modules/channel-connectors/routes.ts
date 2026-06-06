@@ -4,6 +4,7 @@ import type {
   ChannelConnectorsDaemonRequest,
   ChannelConnectorCommandActionRequest,
   ChannelConnectorFeishuWebhookRequest,
+  ChannelConnectorFeishuTransportSmokeRequest,
   ChannelConnectorCommandSurfaceRequest,
   ChannelConnectorsSaveNativeConfigRequest,
   ChannelConnectorOctoInboundRequest,
@@ -85,6 +86,15 @@ export function registerChannelConnectorsRoutes(router: StudioRouter): void {
       const payload = await parseJsonBody<ChannelConnectorFeishuWebhookRequest>(req);
       const response = await routeCtx.services.channelConnectors.dispatchFeishuWebhook(payload);
       sendJson(res, 200, response.feishuResponse || response);
+    } catch (error) {
+      sendChannelConnectorsError(res, error);
+    }
+  });
+
+  router.post("/api/channel-connectors/adapters/feishu/transport-smoke", async (req, res, routeCtx) => {
+    try {
+      const payload = await parseJsonBody<ChannelConnectorFeishuTransportSmokeRequest>(req);
+      sendJson(res, 200, await routeCtx.services.channelConnectors.runFeishuTransportSmoke(payload));
     } catch (error) {
       sendChannelConnectorsError(res, error);
     }

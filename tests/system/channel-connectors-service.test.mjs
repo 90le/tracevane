@@ -207,6 +207,65 @@ async function withMockOctoServer(task) {
   }
 }
 
+async function withMockFeishuServer(task) {
+  const requests = [];
+  const server = http.createServer(async (req, res) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
+    req.on("end", () => {
+      const bodyRaw = Buffer.concat(chunks).toString("utf8");
+      const body = bodyRaw ? JSON.parse(bodyRaw) : {};
+      requests.push({
+        method: req.method,
+        path: req.url,
+        authorization: req.headers.authorization,
+        body,
+      });
+      res.setHeader("content-type", "application/json");
+      if (req.url === "/open-apis/auth/v3/tenant_access_token/internal") {
+        res.end(JSON.stringify({
+          code: 0,
+          msg: "success",
+          tenant_access_token: "tenant-token-1",
+          expire: 7200,
+        }));
+        return;
+      }
+      if (req.url === "/open-apis/im/v1/messages?receive_id_type=chat_id" && req.method === "POST") {
+        res.end(JSON.stringify({
+          code: 0,
+          msg: "success",
+          data: { message_id: "om_sent_1" },
+        }));
+        return;
+      }
+      if (req.url?.startsWith("/open-apis/im/v1/messages/") && req.method === "PATCH") {
+        res.end(JSON.stringify({
+          code: 0,
+          msg: "success",
+          data: { message_id: req.url.split("/").pop() },
+        }));
+        return;
+      }
+      res.statusCode = 404;
+      res.end(JSON.stringify({ code: 404, msg: "not_found" }));
+    });
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  try {
+    await task(`http://127.0.0.1:${address.port}`, requests);
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+}
+
 test("native Channel Connectors status keeps daemon and binding policy separate from Model Gateway", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -1385,6 +1444,119 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.match(cardAction.feishuResponse.toast.content, /\/help/);
 });
 
+test("native Channel Connectors Feishu transport sends replies and reuses tenant token cache", async () => {
+  await withMockFeishuServer(async (apiUrl, requests) => {
+    const root = makeTempRoot();
+    const config = createStudioConfig(root);
+    const service = createChannelConnectorsService(config, {
+      now: () => new Date("2026-06-06T08:00:00.000Z"),
+    });
+    const initial = service.getNativeConfig().config;
+    service.saveNativeConfig({
+      config: {
+        ...initial,
+        agentProfiles: [
+          {
+            id: "feishu-codex",
+            name: "Feishu Codex",
+            agent: "codex",
+            model: "gpt-5",
+            workDir: root,
+            permissionMode: "suggest",
+            gatewayEndpoint: "http://127.0.0.1:18796/v1",
+            gatewayKeyRef: "studio-gateway-client-key",
+            appProfileRef: "codex",
+          },
+        ],
+        defaultAgentProfileId: "feishu-codex",
+        platformBindings: [
+          {
+            id: "feishu-send",
+            platform: "feishu",
+            accountId: "cli_send",
+            botId: "bot_send",
+            displayName: "Feishu Send",
+            agentProfileId: "feishu-codex",
+            enabled: true,
+            allowlist: [],
+            adminUsers: [],
+            metadata: {
+              apiUrl,
+              appSecret: "test-secret",
+              verificationToken: "verify-send",
+            },
+          },
+        ],
+      },
+    });
+
+    const send = await service.runFeishuTransportSmoke({
+      bindingId: "feishu-send",
+      action: "send-message",
+      channelId: "oc_chat",
+      content: "hello feishu",
+    });
+    assert.equal(send.transport.ok, true);
+    assert.equal(send.transport.action, "send-message");
+    assert.equal(send.transport.requestCount, 2);
+    assert.equal(send.transport.tokenCache, "miss");
+    assert.equal(send.transport.messageId, "om_sent_1");
+    assert.equal(requests[0].path, "/open-apis/auth/v3/tenant_access_token/internal");
+    assert.equal(requests[0].body.app_id, "cli_send");
+    assert.equal(requests[0].body.app_secret, "test-secret");
+    assert.equal(requests[1].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
+    assert.equal(requests[1].authorization, "Bearer tenant-token-1");
+    assert.equal(requests[1].body.receive_id, "oc_chat");
+    assert.equal(requests[1].body.msg_type, "text");
+    assert.equal(JSON.parse(requests[1].body.content).text, "hello feishu");
+
+    const patch = await service.runFeishuTransportSmoke({
+      bindingId: "feishu-send",
+      action: "patch-card",
+      messageId: "om_card",
+      content: "patched card",
+    });
+    assert.equal(patch.transport.ok, true);
+    assert.equal(patch.transport.action, "patch-card");
+    assert.equal(patch.transport.requestCount, 1);
+    assert.equal(patch.transport.tokenCache, "hit");
+    assert.equal(requests.length, 3);
+    assert.equal(requests[2].path, "/open-apis/im/v1/messages/om_card");
+    assert.equal(requests[2].method, "PATCH");
+    assert.equal(requests[2].authorization, "Bearer tenant-token-1");
+    assert.match(JSON.parse(requests[2].body.content).elements[0].content, /patched card/);
+
+    const webhook = await service.dispatchFeishuWebhook({
+      sendReply: true,
+      schema: "2.0",
+      header: {
+        event_type: "im.message.receive_v1",
+        app_id: "cli_send",
+        event_id: "evt_send",
+        token: "verify-send",
+      },
+      event: {
+        sender: { sender_id: { open_id: "ou_user" } },
+        message: {
+          message_id: "om_msg",
+          chat_id: "oc_chat",
+          chat_type: "p2p",
+          message_type: "text",
+          content: JSON.stringify({ text: "/status" }),
+        },
+      },
+    });
+    assert.equal(webhook.accepted, true);
+    assert.equal(webhook.transport.ok, true);
+    assert.equal(webhook.transport.action, "send-message");
+    assert.equal(webhook.transport.tokenCache, "hit");
+    assert.equal(webhook.transport.requestCount, 1);
+    assert.equal(requests.length, 4);
+    assert.equal(requests[3].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
+    assert.match(JSON.parse(requests[3].body.content).text, /Studio Channel Status/);
+  });
+});
+
 test("native Channel Connectors process runner streams progress events from agent JSONL", async () => {
   const root = makeTempRoot();
   const progress = [];
@@ -1590,6 +1762,17 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     });
     assert.equal(feishuWebhook.status, 200);
     assert.deepEqual(feishuWebhook.body, { challenge: "route-challenge" });
+
+    const feishuTransportSmoke = await requestJson(`${baseUrl}/api/channel-connectors/adapters/feishu/transport-smoke`, {
+      method: "POST",
+      body: {
+        bindingId: "feishu-route",
+        action: "tenant-token",
+      },
+    });
+    assert.equal(feishuTransportSmoke.status, 200);
+    assert.equal(feishuTransportSmoke.body.adapter, "feishu");
+    assert.equal(feishuTransportSmoke.body.transport.error, "feishu_transport_config_missing");
 
     const octoSmoke = await requestJson(`${baseUrl}/api/channel-connectors/adapters/octo/incoming`, {
       method: "POST",

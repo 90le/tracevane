@@ -28,6 +28,9 @@ import {
   type ChannelConnectorCommandSurfaceResponse,
   type ChannelConnectorFeishuWebhookRequest,
   type ChannelConnectorFeishuWebhookResponse,
+  type ChannelConnectorFeishuTransportResult,
+  type ChannelConnectorFeishuTransportSmokeRequest,
+  type ChannelConnectorFeishuTransportSmokeResponse,
   type ChannelConnectorsSaveNativeConfigRequest,
   type ChannelConnectorsStatusResponse,
   type ChannelConnectorOctoDispatchResponse,
@@ -64,6 +67,13 @@ import {
   parseChannelConnectorFeishuWebhook,
   safeEqualFeishuWebhookToken,
 } from "./feishu-adapter.js";
+import {
+  emptyFeishuTransportResult,
+  feishuTransportFromBinding,
+  patchFeishuCardMessage,
+  sendFeishuTextMessage,
+  smokeFeishuTenantToken,
+} from "./feishu-transport.js";
 import { handleChannelConnectorCommand } from "./command-router.js";
 import { getChannelConnectorSessionControl } from "./session-control-store.js";
 
@@ -104,6 +114,7 @@ export interface ChannelConnectorsService {
   getCommandSurface(payload?: ChannelConnectorCommandSurfaceRequest): ChannelConnectorCommandSurfaceResponse;
   handleCommandAction(payload?: ChannelConnectorCommandActionRequest): Promise<ChannelConnectorCommandActionResponse>;
   dispatchFeishuWebhook(payload?: ChannelConnectorFeishuWebhookRequest): Promise<ChannelConnectorFeishuWebhookResponse>;
+  runFeishuTransportSmoke(payload?: ChannelConnectorFeishuTransportSmokeRequest): Promise<ChannelConnectorFeishuTransportSmokeResponse>;
   dispatchOctoIncoming(payload?: ChannelConnectorOctoInboundRequest): Promise<ChannelConnectorOctoDispatchResponse>;
   runOctoTransportSmoke(payload?: ChannelConnectorOctoTransportSmokeRequest): Promise<ChannelConnectorOctoTransportSmokeResponse>;
   getDaemonConfig(): ChannelConnectorsDaemonConfigResponse;
@@ -123,6 +134,7 @@ interface ChannelConnectorsPaths {
   runtimeFile: string;
   octoEventLogFile: string;
   feishuEventLogFile: string;
+  feishuTokenCacheFile: string;
 }
 
 function normalizeHomeDir(value: string | undefined): string {
@@ -175,6 +187,7 @@ export function resolveChannelConnectorsPaths(
     runtimeFile: path.join(rootDir, "runtime.json"),
     octoEventLogFile: path.join(rootDir, "state", "octo-events.jsonl"),
     feishuEventLogFile: path.join(rootDir, "state", "feishu-events.jsonl"),
+    feishuTokenCacheFile: path.join(rootDir, "state", "feishu-token-cache.json"),
   };
 }
 
@@ -846,6 +859,20 @@ function normalizeOctoTransportSmokeRequest(payload: ChannelConnectorOctoTranspo
   };
 }
 
+function normalizeFeishuTransportSmokeRequest(payload: ChannelConnectorFeishuTransportSmokeRequest | undefined): ChannelConnectorFeishuTransportSmokeRequest {
+  if (!payload || !isRecord(payload)) return { action: "tenant-token" };
+  const action = payload.action === "send-message" || payload.action === "patch-card" || payload.action === "tenant-token"
+    ? payload.action
+    : "tenant-token";
+  return {
+    bindingId: normalizeString(payload.bindingId) || null,
+    action,
+    channelId: normalizeString(payload.channelId) || null,
+    messageId: normalizeString(payload.messageId) || null,
+    content: normalizeString(payload.content) || "Studio Feishu transport smoke",
+  };
+}
+
 function normalizeCommandSurfaceRequest(payload: ChannelConnectorCommandSurfaceRequest | undefined): ChannelConnectorCommandSurfaceRequest {
   if (!payload || !isRecord(payload)) return { renderer: "all" };
   const renderer = payload.renderer === "text" || payload.renderer === "feishu" || payload.renderer === "all"
@@ -1263,6 +1290,7 @@ export function createChannelConnectorsService(
       ? request.renderer
       : "all";
     const models = stringList(request.models);
+    let transport = emptyFeishuTransportResult();
 
     const baseAgentDispatch = {
       status: "skipped" as const,
@@ -1309,6 +1337,7 @@ export function createChannelConnectorsService(
       incoming: null,
       commandAction: null,
       agentDispatch: baseAgentDispatch,
+      transport,
       feishuResponse: null,
       eventStored: {
         path: eventPath,
@@ -1338,6 +1367,7 @@ export function createChannelConnectorsService(
         incoming: null,
         commandAction: null,
         agentDispatch: baseAgentDispatch,
+        transport,
         feishuResponse: { challenge: parsed.challenge },
         eventStored: {
           path: eventPath,
@@ -1386,6 +1416,7 @@ export function createChannelConnectorsService(
         incoming: null,
         commandAction: action,
         agentDispatch: baseAgentDispatch,
+        transport,
         feishuResponse,
         eventStored: {
           path: eventPath,
@@ -1427,6 +1458,24 @@ export function createChannelConnectorsService(
       skippedReason = commandAction.skippedReason;
       agentStatus = "skipped";
       const content = commandAction.commandResult?.replyText || commandAction.commandResult?.passthroughText || skippedReason || "";
+      if (request.sendReply === true && content) {
+        const transportConfig = feishuTransportFromBinding(resolved.binding);
+        if (!transportConfig) {
+          accepted = false;
+          skippedReason = "feishu_transport_config_missing";
+          transport = {
+            ...emptyFeishuTransportResult("send-message"),
+            error: "feishu_transport_config_missing",
+          };
+        } else {
+          transport = await sendFeishuTextMessage(transportConfig, {
+            chatId: parsed.channelId,
+            content,
+          }, resolvedPaths.feishuTokenCacheFile);
+          accepted = transport.ok === true;
+          skippedReason = transport.ok === true ? null : "feishu_transport_send_failed";
+        }
+      }
       if (content) {
         feishuResponse = {
           toast: {
@@ -1465,12 +1514,84 @@ export function createChannelConnectorsService(
         ...baseAgentDispatch,
         status: agentStatus,
       },
+      transport,
       feishuResponse,
       eventStored: {
         path: eventPath,
         written: false,
       },
     });
+  }
+
+  async function runFeishuTransportSmoke(payload?: ChannelConnectorFeishuTransportSmokeRequest): Promise<ChannelConnectorFeishuTransportSmokeResponse> {
+    const request = normalizeFeishuTransportSmokeRequest(payload);
+    const resolvedPaths = paths();
+    const nativeConfig = readNativeConfig(config, resolvedPaths, now());
+    const runtimeConfig = buildRuntimeConfig(nativeConfig, resolvedPaths);
+    const resolved = resolveRuntimeBindingForPlatform(nativeConfig, runtimeConfig, "feishu", request.bindingId, null);
+    const checkedAt = now().toISOString();
+    if (!resolved) {
+      return {
+        ok: true,
+        checkedAt,
+        adapter: "feishu",
+        binding: null,
+        transport: {
+          ...emptyFeishuTransportResult(request.action === "patch-card" ? "patch-card" : request.action || "tenant-token"),
+          error: "feishu_binding_not_found",
+        },
+      };
+    }
+    const transportConfig = feishuTransportFromBinding(resolved.binding);
+    if (!transportConfig) {
+      return {
+        ok: true,
+        checkedAt,
+        adapter: "feishu",
+        binding: resolved.binding,
+        transport: {
+          ...emptyFeishuTransportResult(request.action === "patch-card" ? "patch-card" : request.action || "tenant-token"),
+          error: "feishu_transport_config_missing",
+        },
+      };
+    }
+
+    let transport: ChannelConnectorFeishuTransportResult;
+    if (request.action === "send-message") {
+      if (!request.channelId) throw new Error("channelId is required for Feishu send-message smoke.");
+      transport = await sendFeishuTextMessage(transportConfig, {
+        chatId: request.channelId,
+        content: request.content || "Studio Feishu transport smoke",
+      }, resolvedPaths.feishuTokenCacheFile);
+    } else if (request.action === "patch-card") {
+      if (!request.messageId) throw new Error("messageId is required for Feishu patch-card smoke.");
+      transport = await patchFeishuCardMessage(transportConfig, {
+        messageId: request.messageId,
+        card: {
+          config: { wide_screen_mode: true },
+          header: {
+            title: { tag: "plain_text", content: "Studio Feishu transport smoke" },
+            template: "blue",
+          },
+          elements: [
+            {
+              tag: "markdown",
+              content: request.content || "Studio Feishu transport smoke",
+            },
+          ],
+        },
+      }, resolvedPaths.feishuTokenCacheFile);
+    } else {
+      transport = await smokeFeishuTenantToken(transportConfig, resolvedPaths.feishuTokenCacheFile);
+    }
+
+    return {
+      ok: true,
+      checkedAt,
+      adapter: "feishu",
+      binding: resolved.binding,
+      transport,
+    };
   }
 
   async function dispatchOctoIncoming(payload?: ChannelConnectorOctoInboundRequest): Promise<ChannelConnectorOctoDispatchResponse> {
@@ -1799,6 +1920,7 @@ export function createChannelConnectorsService(
     getCommandSurface,
     handleCommandAction,
     dispatchFeishuWebhook,
+    runFeishuTransportSmoke,
     dispatchOctoIncoming,
     runOctoTransportSmoke,
     getDaemonConfig: currentConfig,
