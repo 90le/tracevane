@@ -950,7 +950,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.ok(resumeRequest);
   assert.deepEqual(resumeRequest.args.slice(0, 2), ["exec", "resume"]);
   assert.equal(resumeRequest.args.includes("--cd"), false);
-  assert.equal(resumeRequest.args.at(-2), "019e9b49-0b62-7132-845a-f19aba1484b7");
+  assert.equal(resumeRequest.args.at(-3), "019e9b49-0b62-7132-845a-f19aba1484b7");
+  assert.equal(resumeRequest.args.at(-2), "--json");
   assert.equal(resumeRequest.args.at(-1), "-");
   assert.equal(resumeRequest.sessionMode, "resume");
   assert.equal(resumeRequest.codexThreadId, "019e9b49-0b62-7132-845a-f19aba1484b7");

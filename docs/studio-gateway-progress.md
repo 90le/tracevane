@@ -1,6 +1,6 @@
 # Studio Gateway 进度
 
-> 状态：Studio Gateway core completed；Provider Center/App Connections completed；Channel Connectors native F3 Feishu progress card completed；OpenAI Platform vendor proof optional
+> 状态：Studio Gateway core completed；Provider Center/App Connections completed；Channel Connectors native F3 Feishu tool/progress loop completed；OpenAI Platform vendor proof optional
 > 更新：2026-06-06
 > 文档规则：本文件只保留当前状态、最近完成、验证、边界和下一步；流水细节不继续追加。
 
@@ -21,12 +21,16 @@
 - Codex JSONL progress 已识别 `item.started` / `item.completed` 的 `command_execution` 为工具调用/工具结果，卡片会展示命令、退出码和输出摘要；`/stream` 控制整体进度卡片，`/tools` 控制工具/思考项。
 - Agent/upstream 错误在 runner 和 daemon 双层清洗，优先抽取 `message/type/code`；进度卡已发送时失败不再额外发送重复失败文本，只在卡片发送失败时兜底文本。
 - 本轮参考的 CC 源码重点：`core/progress_compact.go`、`core/streaming.go`、`platform/feishu/feishu.go` 的 compact progress、tool step 和 card patch 思路。
+- Gateway Responses -> Chat 工具历史转换已按 `cc-switch` 对齐：system/developer 合并到 head、function_call/function_call_output 顺序映射、tool args/output JSON canonical、tool-call reasoning placeholder、reasoning_content 保留。
+- Codex resume 参数顺序已按 CC Go runner 对齐为 `codex exec resume <thread_id> --json -`，避免 resume 模式下 CLI 参数被误读。
 
 ## 验证
 
 - 通过：`npm run build:api`。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs`。
-- 待本轮重启后验证：`openclaw-studio-channel-connectors.service` 载入最新 dist，真实 Feishu 消息应显示单张进度卡片。
+- 通过：`node --test tests/system/model-gateway-service.test.mjs --test-name-pattern "streamed codex tool-call history|inline codex tool-result|restores codex tool-call history"`。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "agent runner builds gateway-backed Codex turns|process runner maps Codex command execution progress"`。
+- 通过：隔离 `CODEX_HOME` 真实 Codex CLI smoke，`glm-5` 经 Studio Gateway 调用 shell 读取 `probe.txt` 后返回 `ok`；Gateway requestLog 显示两次 `/v1/responses` 均为 200，修复前同路径曾返回 400/1213。
+- 已重启：`openclaw-studio-model-gateway.service`、`openclaw-studio-channel-connectors.service`、dev backend/frontend。
 
 ## 已知边界
 
@@ -35,6 +39,5 @@
 
 ## 下一步
 
-1. 重启 daemon 后用真实 Feishu 客户端发起一次工具调用任务，确认单张 Progress card 原地刷新、processing reaction 和失败去重。
-2. 若仍出现 `未正常接收到prompt参数`，下一步查 Codex CLI -> Studio Gateway 的 prompt/body 转发，而不是 IM 展示层。
-3. 进入 F4：图片/文件、群聊成员/history context、长回复 buffer 和治理策略。
+1. 用真实 Feishu 客户端复测同一个工具调用任务，确认 Progress card 原地刷新、processing reaction、工具步骤和失败去重。
+2. 进入 F4：图片/文件、群聊成员/history context、长回复 buffer 和治理策略。

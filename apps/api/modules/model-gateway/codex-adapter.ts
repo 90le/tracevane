@@ -65,9 +65,10 @@ export function adaptCodexResponsesRequestToChat(
   if (!messages.length) {
     messages.push({ role: "user", content: "" });
   }
+  const collapsedMessages = collapseSystemMessagesToHead(messages);
 
   const chatRequest: JsonRecord = {
-    messages,
+    messages: collapsedMessages,
     stream,
   };
 
@@ -195,17 +196,49 @@ function appendResponsesInputMessages(input: unknown, messages: JsonRecord[]): v
   if (!items.length) return;
 
   const pendingToolCalls: JsonRecord[] = [];
+  let pendingReasoning: string | null = null;
+  let lastAssistantIndex: number | null = null;
   for (const item of items) {
     if (isRecord(item) && item.type === "function_call") {
+      pendingReasoning = appendReasoningText(pendingReasoning, extractResponsesReasoningText(item), true);
       const toolCall = mapResponsesFunctionCallToChatToolCall(item);
       if (toolCall) pendingToolCalls.push(toolCall);
       continue;
     }
-    flushPendingToolCalls(messages, pendingToolCalls);
+    if (isRecord(item) && item.type === "reasoning") {
+      const reasoning = extractResponsesReasoningText(item);
+      if (pendingToolCalls.length) {
+        pendingReasoning = appendReasoningText(pendingReasoning, reasoning);
+      } else if (!attachReasoningToAssistant(messages, lastAssistantIndex, reasoning)) {
+        pendingReasoning = appendReasoningText(pendingReasoning, reasoning);
+      }
+      continue;
+    }
+    flushPendingToolCalls(messages, pendingToolCalls, () => {
+      const reasoning = pendingReasoning;
+      pendingReasoning = null;
+      return reasoning;
+    });
     const message = mapResponsesInputItemToChatMessage(item);
-    if (message) messages.push(message);
+    if (message) {
+      if (message.role === "assistant") {
+        pendingReasoning = appendReasoningText(pendingReasoning, isRecord(item) ? extractResponsesReasoningText(item) : null);
+        attachReasoningToMessage(message, pendingReasoning);
+        pendingReasoning = null;
+        lastAssistantIndex = messages.length;
+      } else if (message.role !== "tool") {
+        pendingReasoning = null;
+        lastAssistantIndex = null;
+      }
+      messages.push(message);
+    }
   }
-  flushPendingToolCalls(messages, pendingToolCalls);
+  flushPendingToolCalls(messages, pendingToolCalls, () => {
+    const reasoning = pendingReasoning;
+    pendingReasoning = null;
+    return reasoning;
+  });
+  backfillToolCallReasoning(messages);
 }
 
 function mapResponsesInputItemToChatMessage(item: unknown): JsonRecord | null {
@@ -213,7 +246,7 @@ function mapResponsesInputItemToChatMessage(item: unknown): JsonRecord | null {
   if (!isRecord(item)) return null;
 
   if (item.type === "function_call_output") {
-    const output = contentToText(item.output);
+    const output = canonicalizeJsonStringIfParseable(contentToText(item.output));
     return {
       role: "tool",
       content: output,
@@ -251,18 +284,136 @@ function mapResponsesFunctionCallToChatToolCall(item: JsonRecord): JsonRecord | 
     type: "function",
     function: {
       name,
-      arguments: typeof item.arguments === "string" ? item.arguments : JSON.stringify(item.arguments ?? {}),
+      arguments: canonicalizeToolArguments(item.arguments),
     },
   };
 }
 
-function flushPendingToolCalls(messages: JsonRecord[], pendingToolCalls: JsonRecord[]): void {
+function flushPendingToolCalls(
+  messages: JsonRecord[],
+  pendingToolCalls: JsonRecord[],
+  takeReasoning: () => string | null,
+): void {
   if (!pendingToolCalls.length) return;
-  messages.push({
+  const message: JsonRecord = {
     role: "assistant",
     content: null,
     tool_calls: pendingToolCalls.splice(0),
-  });
+  };
+  attachReasoningToMessage(message, takeReasoning() || "tool call");
+  messages.push(message);
+}
+
+function collapseSystemMessagesToHead(messages: JsonRecord[]): JsonRecord[] {
+  const systemChunks: string[] = [];
+  const rest: JsonRecord[] = [];
+  for (const message of messages) {
+    if (message.role === "system") {
+      const content = contentToText(message.content).trim();
+      if (content) systemChunks.push(content);
+      continue;
+    }
+    rest.push(message);
+  }
+  return systemChunks.length
+    ? [{ role: "system", content: systemChunks.join("\n\n") }, ...rest]
+    : rest;
+}
+
+function backfillToolCallReasoning(messages: JsonRecord[]): void {
+  for (const message of messages) {
+    if (message.role !== "assistant" || !Array.isArray(message.tool_calls) || message.tool_calls.length === 0) continue;
+    if (!stringOrNull(message.reasoning_content)) {
+      attachReasoningToMessage(message, "tool call");
+    }
+  }
+}
+
+function attachReasoningToAssistant(messages: JsonRecord[], index: number | null, reasoning: string | null): boolean {
+  if (!reasoning) return true;
+  if (index === null) return false;
+  const message = messages[index];
+  if (!message || message.role !== "assistant") return false;
+  attachReasoningToMessage(message, reasoning);
+  return true;
+}
+
+function attachReasoningToMessage(message: JsonRecord, reasoning: string | null): void {
+  const text = reasoning?.trim();
+  if (!text) return;
+  const existing = stringOrNull(message.reasoning_content);
+  if (!existing) {
+    message.reasoning_content = text;
+  } else if (!existing.includes(text)) {
+    message.reasoning_content = `${existing}\n\n${text}`;
+  }
+}
+
+function appendReasoningText(existing: string | null, next: string | null, unique = false): string | null {
+  const text = next?.trim();
+  if (!text) return existing;
+  if (!existing) return text;
+  if (unique && existing.includes(text)) return existing;
+  return `${existing}\n\n${text}`;
+}
+
+function extractResponsesReasoningText(item: JsonRecord): string | null {
+  for (const key of ["reasoning_content", "reasoning"] as const) {
+    const direct = stringOrNull(item[key]);
+    if (direct) return direct;
+  }
+  return extractReasoningSummaryText(item.summary)
+    || extractReasoningSummaryText(item.reasoning_details)
+    || null;
+}
+
+function extractReasoningSummaryText(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value;
+  if (Array.isArray(value)) {
+    const text = value
+      .map(extractReasoningSummaryText)
+      .filter((item): item is string => Boolean(item))
+      .join("\n\n");
+    return text || null;
+  }
+  if (!isRecord(value)) return null;
+  for (const key of ["text", "content", "summary"] as const) {
+    const direct = stringOrNull(value[key]);
+    if (direct) return direct;
+  }
+  return extractReasoningSummaryText(value.parts);
+}
+
+function canonicalizeToolArguments(value: unknown): string {
+  if (typeof value === "string") {
+    return value.trim() ? canonicalizeJsonStringIfParseable(value) : "{}";
+  }
+  if (value === undefined || value === null) return "{}";
+  return canonicalJsonString(value);
+}
+
+function canonicalizeJsonStringIfParseable(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return value;
+  try {
+    return canonicalJsonString(JSON.parse(trimmed) as unknown);
+  } catch {
+    return value;
+  }
+}
+
+function canonicalJsonString(value: unknown): string {
+  if (value === null) return "null";
+  if (typeof value === "string") return JSON.stringify(value);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJsonString).join(",")}]`;
+  if (isRecord(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJsonString(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value ?? {});
 }
 
 function contentToText(content: unknown): string {

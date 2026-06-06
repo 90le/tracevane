@@ -4614,6 +4614,7 @@ test("model gateway records streamed codex tool-call history for follow-up chat 
     {
       role: "assistant",
       content: null,
+      reasoning_content: "Need lookup.",
       tool_calls: [{
         id: "call_lookup",
         type: "function",
@@ -4631,6 +4632,140 @@ test("model gateway records streamed codex tool-call history for follow-up chat 
     {
       role: "user",
       content: "Summarize.",
+    },
+  ]);
+});
+
+test("model gateway adapts inline codex tool-result history with cc-switch-compatible chat shape", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-inline-tool-history-adapter",
+      name: "Codex Inline Tool History Adapter",
+      appScopes: ["codex"],
+      baseUrl: "https://codex-inline-tool-history.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-codex-inline-tool-history-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      body: String(init.body || ""),
+    });
+    return new Response(JSON.stringify({
+      id: "chatcmpl_inline_tool_history",
+      created: 1_710_000_026,
+      model: "glm-5",
+      choices: [{
+        index: 0,
+        message: {
+          role: "assistant",
+          content: "ok",
+        },
+        finish_reason: "stop",
+      }],
+      usage: {
+        prompt_tokens: 10,
+        completion_tokens: 1,
+        total_tokens: 11,
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "glm-5",
+          input: [
+            {
+              type: "message",
+              role: "developer",
+              content: [{ type: "input_text", text: "dev instructions" }],
+            },
+            {
+              role: "user",
+              content: [{ type: "input_text", text: "use a tool" }],
+            },
+            {
+              type: "function_call",
+              call_id: "call_inline",
+              name: "exec_command",
+              arguments: "{ \"cmd\": \"cat probe.txt\", \"cwd\": \"/tmp\" }",
+            },
+            {
+              type: "function_call_output",
+              call_id: "call_inline",
+              output: "{ \"ok\": true, \"value\": 1 }",
+            },
+          ],
+          tools: [{
+            type: "function",
+            name: "exec_command",
+            parameters: {
+              type: "object",
+              properties: {
+                cmd: { type: "string" },
+                cwd: { type: "string" },
+              },
+              required: ["cmd"],
+            },
+          }],
+          tool_choice: "auto",
+          parallel_tool_calls: false,
+          stream: false,
+        },
+      });
+      assert.equal(response.status, 200);
+      assert.equal(response.body.output[0].content[0].text, "ok");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  const chatBody = JSON.parse(upstreamCalls[0].body);
+  assert.deepEqual(chatBody.messages, [
+    {
+      role: "system",
+      content: "dev instructions",
+    },
+    {
+      role: "user",
+      content: "use a tool",
+    },
+    {
+      role: "assistant",
+      content: null,
+      reasoning_content: "tool call",
+      tool_calls: [{
+        id: "call_inline",
+        type: "function",
+        function: {
+          name: "exec_command",
+          arguments: "{\"cmd\":\"cat probe.txt\",\"cwd\":\"/tmp\"}",
+        },
+      }],
+    },
+    {
+      role: "tool",
+      content: "{\"ok\":true,\"value\":1}",
+      tool_call_id: "call_inline",
     },
   ]);
 });
@@ -5537,6 +5672,7 @@ test("model gateway restores codex tool-call history for follow-up chat adapter 
     {
       role: "assistant",
       content: null,
+      reasoning_content: "tool call",
       tool_calls: [{
         id: "call_lookup",
         type: "function",

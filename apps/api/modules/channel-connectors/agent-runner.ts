@@ -353,8 +353,8 @@ export function buildChannelConnectorAgentProcessRequest(
         ...codexPermissionArgs(project.permissionMode),
         ...(model ? ["--model", model] : []),
         ...codexConfigArgs,
-        "--json",
         codexThreadId,
+        "--json",
         "-",
       ]
       : [
