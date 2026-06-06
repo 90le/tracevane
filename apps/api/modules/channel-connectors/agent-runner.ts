@@ -176,11 +176,11 @@ function unsupportedVisualAttachmentReply(model: string | null, attachments: Cha
   const visualCount = attachments.filter(isVisualAttachment).length;
   if (!visualCount) return null;
   const modelLabel = normalizeString(model) || "当前模型";
-  const visualLabel = visualCount === 1 ? "图片/视觉附件" : `${visualCount} 个图片/视觉附件`;
+  const visualLabel = visualCount === 1 ? "图片/视频附件" : `${visualCount} 个图片/视频附件`;
   return [
-    `已接收${visualLabel}，但当前会话模型 ${modelLabel} 未标记为支持图片/视觉理解。`,
-    "为避免误判，本次不会让 Agent 根据文件名或本地路径描述图片内容。",
-    "请切换到支持视觉的模型后重发，或把图片里的关键信息用文字发给我。",
+    `已接收并保存${visualLabel}，但当前会话模型 ${modelLabel} 未标记为支持图片/视频内容理解。`,
+    "这不影响普通文件接收；为避免误判，本次不会让 Agent 根据文件名或本地路径描述视觉内容。",
+    "请切换到支持视觉的模型后重发，或把图片/视频里的关键信息用文字发给我。",
   ].join("\n");
 }
 

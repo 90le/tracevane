@@ -122,7 +122,7 @@ Studio 增强点：
 - F4 Octo URL attachment staging 已落地：Octo URL 型图片/文件/语音/视频进入 Agent 前 streaming 下载到本地 attachment 目录，默认拒绝私网 URL，大小上限可由 binding metadata 覆盖；失败只写 `stagingError` 不阻断对话。
 - F4 Octo 入站 URL 字段兼容已落地：除 `url` 外，支持常见 snake/camel URL 变体；若 live payload 仍无 URL，需要继续补 Octo/COS 媒体下载接口。
 - F4 Octo payload-only 附件补回已落地：daemon 运行前把 payload 推断出的附件写回 `attachments`，避免 live image/file 只显示 `[image]` 却不进入 staging；同时按 OpenClaw Octo 插件补 GIF=3、RichText=14 图文混排和多图 `mediaUrls` 入站归一化。
-- F4 图片能力门控已落地：Feishu/Octo 图片会先 staging；若当前模型未标记为 vision（例如 `glm-5`），Channel runner 直接回复已接收但不支持视觉理解，不启动 Agent，避免文本模型根据本地路径猜图。
+- F4 图片能力门控已落地：Feishu/Octo 图片会先 staging；若当前模型未标记为 vision（例如 `glm-5`），Channel runner 直接回复已接收并保存但不支持视觉理解，不启动视觉解读型 Agent turn；普通文件仍照常进入 Agent，避免把“不能看图”误判成“不能收文件”。
 - F4 Octo 出站媒体基础合同已落地：参考 CC dmwork 小文件 multipart 上传路径，transport smoke 支持 `upload-file` 和 `upload-and-send-media`；图片使用 Octo image payload，普通文件使用 file payload；本机 `studio-cc` 小文本文件真实 smoke 已通过；大文件 COS STS 直传仍待迁移。
 - Channel Connectors 平台配置 UI 已落地：Octo/Feishu binding 可编辑平台凭证 metadata 并直接执行连接测试；本机 Octo `studio-cc` 与 Feishu live binding 已完成 smoke，daemon 长连接 connected。
 - F4 Feishu thread/reply 会话隔离已落地：daemon/service 共用 CC 风格 session key，群线程默认按 root 隔离，私聊保持每用户 session，事件日志保留 root/parent/thread 便于排查。

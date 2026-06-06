@@ -20,7 +20,7 @@
 - Octo 出站媒体基础合同已迁移并真实验证：参考 CC dmwork 小文件 multipart 上传路径，新增 `upload-file` / `upload-and-send-media` transport smoke；图片会发送 Octo image payload，普通文件发送 file payload。
 - Octo 入站附件 URL 兼容已扩展：除 `url` 外，也识别 `file_url/fileUrl/media_url/mediaUrl/download_url/downloadUrl/cdn_url/cdnUrl/origin_url/originUrl/src/href`，payload-only 附件会先补回 `attachments` 再进入 staging。
 - Octo 入站协议参考已补齐：已安装 OpenClaw Octo 插件 `~/.openclaw/extensions/octo`（1.0.14）作为 Octo 专属参考源；本次按插件协议补 GIF=3 与 RichText=14 图文混排、多图 `mediaUrls` 入站归一化。
-- Feishu/Octo 图片入站已确认可接收并 staging；新增非视觉模型保护，`glm-5` 等未标记 vision 的模型会直接回复“已接收但当前模型不支持视觉理解”，不启动 Agent，避免根据文件名或本地路径猜图。
+- Feishu/Octo 图片入站已确认可接收并 staging；新增非视觉模型保护，`glm-5` 等未标记 vision 的模型会回复“已接收并保存但不支持视觉理解”，不启动视觉解读型 Agent turn；普通文件仍照常进入 Agent。
 - Channel daemon status API 已确认 Octo 与 Feishu connected，`platformBindings=2`；运行中任务可通过 `activeRuns` 观测。
 
 ## 最近验证
@@ -40,7 +40,7 @@
 ## 已知边界
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
-- Feishu 与 Octo 文本 live 已通过，图片入站/staging 已通过；非视觉模型会拒绝看图。真正视觉理解仍需后续接入可验证的视觉模型输入链路或 OCR/解析工具，不能只把本地路径交给文本模型。
+- Feishu 与 Octo 文本 live 已通过，图片/视频入站接收和 staging 不受模型能力影响；非视觉模型只拒绝内容理解。真正视觉理解仍需后续接入可验证的视觉模型输入链路或 OCR/解析工具，不能只把本地路径交给文本模型。
 - Octo 出站媒体当前覆盖小文件 multipart upload；CC 的大文件 COS STS 直传尚未迁移，避免引入新依赖前先保持显式边界。
 - Feishu card/menu 已可用，但后续视觉和交互仍需继续参考 CC 成熟卡片结构做 Studio 化精修。
 

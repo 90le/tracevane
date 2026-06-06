@@ -49,7 +49,7 @@
 - 已完成：F4 Octo URL attachment staging：Octo URL 型图片/文件/语音/视频在进入 Agent 前 streaming 落盘，默认拒绝私网 URL，大小上限复用 attachment metadata；失败只写 `stagingError`。
 - 已完成：F4 Octo 入站 URL 字段兼容：除 `url` 外，识别 `file_url/fileUrl/media_url/mediaUrl/download_url/downloadUrl/cdn_url/cdnUrl/origin_url/originUrl/src/href`，减少平台字段差异导致的 `[image]` 无本地路径。
 - 已完成：F4 Octo payload-only 附件补回与插件协议对齐：daemon 进入 Agent 前把 payload 推断附件写回 `attachments`；支持 GIF=3、RichText=14 图文混排、有序 image blocks 和多图 `mediaUrls`。
-- 已完成：F4 图片非视觉模型保护：Feishu/Octo 图片附件可 staging；`glm-5` 等未标记 vision 的模型直接回复能力限制，不启动 Agent 进程，避免路径诱导的看图幻觉。
+- 已完成：F4 图片非视觉模型保护：Feishu/Octo 图片附件可 staging；`glm-5` 等未标记 vision 的模型直接回复能力限制，不启动视觉解读型 Agent turn，普通文件仍进入 Agent，避免路径诱导的看图幻觉。
 - 已完成：F4 Octo 出站媒体基础合同：参考 CC dmwork `upload -> send media`，支持小文件 `/v1/bot/file/upload` multipart 上传与 `/v1/bot/sendMessage` image/file payload；本机 `studio-cc` 小文本文件真实 smoke 已通过；大文件 COS STS 仍留后续。
 - 已完成：F4 IM history context：按 session 保存最近 user/assistant 脱敏摘要，Agent prompt 注入短上下文，`/new` / `/reset` 清理 history。
 - 已完成：F4 群聊 context：Agent prompt 注入 channel/sender/bot/reply/mention/成员摘要，飞书完整群成员列表后续再接平台 API。

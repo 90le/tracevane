@@ -1700,11 +1700,52 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(nonVisionImageResult.attempted, false);
   assert.equal(nonVisionImageResult.ok, true);
   assert.equal(nonVisionImageResult.status, "completed");
-  assert.match(nonVisionImageResult.replyText, /已接收图片\/视觉附件/);
+  assert.match(nonVisionImageResult.replyText, /已接收并保存图片\/视频附件/);
   assert.match(nonVisionImageResult.replyText, /glm-5/);
-  assert.match(nonVisionImageResult.replyText, /不会让 Agent 根据文件名或本地路径描述图片内容/);
+  assert.match(nonVisionImageResult.replyText, /不影响普通文件接收/);
+  assert.match(nonVisionImageResult.replyText, /不会让 Agent 根据文件名或本地路径描述视觉内容/);
   assert.equal(nonVisionImageResult.command, null);
   assert.equal(nonVisionImageResult.progress.summary, nonVisionImageResult.replyText);
+
+  let nonVisionFileRunnerCalled = false;
+  const nonVisionFileResult = await runChannelConnectorAgentTurn({
+    project: { ...project, model: "glm-5" },
+    binding,
+    message: {
+      ...message,
+      messageId: "m-runner-non-vision-file",
+      payload: { type: 8, content: "", name: "report.txt" },
+      attachments: [{
+        kind: "file",
+        platform: "octo",
+        fileName: "report.txt",
+        mimeType: "text/plain",
+        localPath: stagedLocalPath,
+        stagedAt: "2026-06-06T08:00:00.000Z",
+      }],
+    },
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    processRunner: async (request) => {
+      nonVisionFileRunnerCalled = true;
+      assert.match(request.stdin, /\[file: report\.txt\]/);
+      assert.match(request.stdin, new RegExp(stagedLocalPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+      return {
+        exitCode: 0,
+        signal: null,
+        stdout: '{"type":"item.completed","item":{"type":"agent_message","text":"file received"}}\n',
+        stderr: "",
+        durationMs: 8,
+        timedOut: false,
+        error: null,
+      };
+    },
+  });
+  assert.equal(nonVisionFileRunnerCalled, true);
+  assert.equal(nonVisionFileResult.attempted, true);
+  assert.equal(nonVisionFileResult.ok, true);
+  assert.equal(nonVisionFileResult.replyText, "file received");
 
   const failed = await runChannelConnectorAgentTurn({
     project,
