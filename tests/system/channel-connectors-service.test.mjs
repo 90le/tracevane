@@ -1006,6 +1006,39 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.match(historyRequest.stdin, /\n\nhi codex$/);
   for (const cleanupPath of historyRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
+  const groupRequest = buildChannelConnectorAgentProcessRequest({
+    project,
+    binding,
+    message: {
+      messageId: "m-group-1",
+      fromUid: "user-2",
+      channelId: "group-a",
+      channelType: 2,
+      payload: {
+        type: 1,
+        content: "@Studio hi group",
+        mention: { uids: ["robot-1"] },
+        reply: { messageId: "m-parent-1" },
+      },
+      members: [
+        { uid: "user-2", name: "Alice" },
+        { uid: "robot-1", name: "Studio" },
+      ],
+    },
+    sessionKey: "dmwork:group:group-a",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+  });
+  assert.ok(groupRequest);
+  assert.match(groupRequest.stdin, /\[Studio group context\]/);
+  assert.match(groupRequest.stdin, /Channel: group-a \(type 2\)/);
+  assert.match(groupRequest.stdin, /Sender: user-2/);
+  assert.match(groupRequest.stdin, /Mentioned users: robot-1/);
+  assert.match(groupRequest.stdin, /Reply to message: m-parent-1/);
+  assert.match(groupRequest.stdin, /Known members: Alice\(user-2\), Studio\(robot-1\)/);
+  assert.match(groupRequest.stdin, /\n\nhi group$/);
+  for (const cleanupPath of groupRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
   const missingKeyRequest = buildChannelConnectorAgentProcessRequest({
     project,
     binding,

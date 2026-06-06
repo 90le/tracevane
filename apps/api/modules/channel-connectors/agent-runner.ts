@@ -6,10 +6,11 @@ import type {
   ChannelConnectorAgentId,
   ChannelConnectorInboundAttachment,
   ChannelConnectorOctoInboundMessage,
+  ChannelConnectorOctoGroupMember,
   ChannelConnectorPermissionMode,
   ChannelConnectorsDaemonRuntimeConfig,
 } from "../../../../types/channel-connectors.js";
-import { extractOctoAttachments, extractOctoContent } from "./octo-adapter.js";
+import { extractOctoAttachments, extractOctoContent, isOctoGroupChannel } from "./octo-adapter.js";
 
 export type ChannelConnectorRuntimeProject = ChannelConnectorsDaemonRuntimeConfig["projects"][number];
 export type ChannelConnectorRuntimeBinding = ChannelConnectorRuntimeProject["platformBindings"][number];
@@ -123,11 +124,58 @@ function attachmentSummaryLabel(attachment: ChannelConnectorInboundAttachment): 
   return detail ? `${attachment.kind}: ${detail}` : attachment.kind;
 }
 
-function buildAgentInputContent(message: ChannelConnectorOctoInboundMessage, historyContext?: string | null): string {
+function memberSummaryLabel(member: ChannelConnectorOctoGroupMember): string {
+  const uid = normalizeString(member.uid);
+  const name = normalizeString(member.name);
+  if (uid && name) return `${name}(${uid})`;
+  return name || uid;
+}
+
+function buildGroupContext(
+  message: ChannelConnectorOctoInboundMessage,
+  binding: ChannelConnectorRuntimeBinding,
+): string | null {
+  if (!isOctoGroupChannel(message.channelType)) return null;
+  const mention = message.payload?.mention || null;
+  const mentionUids = Array.isArray(mention?.uids)
+    ? (mention?.uids || []).map(normalizeString).filter(Boolean)
+    : [];
+  const replyMessageId = normalizeString(message.payload?.reply?.messageId)
+    || normalizeString(message.payload?.reply?.message_id);
+  const members = (message.members || []).map(memberSummaryLabel).filter(Boolean);
+  const memberLimit = 20;
+  const visibleMembers = members.slice(0, memberLimit);
+  const hiddenMemberCount = Math.max(0, members.length - visibleMembers.length);
+  const lines = [
+    "[Studio group context]",
+    `Channel: ${normalizeString(message.channelId) || "unknown"} (type ${message.channelType})`,
+    `Sender: ${normalizeString(message.fromUid) || "unknown"}`,
+  ];
+  const botId = normalizeString(binding.botId);
+  if (botId) lines.push(`Bot: ${botId}`);
+  if (mention?.all && mention.all > 0) {
+    lines.push("Mention: @all");
+  } else if (mentionUids.length) {
+    lines.push(`Mentioned users: ${mentionUids.join(", ")}`);
+  }
+  if (replyMessageId) lines.push(`Reply to message: ${replyMessageId}`);
+  if (visibleMembers.length) {
+    lines.push(`Known members: ${visibleMembers.join(", ")}${hiddenMemberCount ? `, +${hiddenMemberCount} more` : ""}`);
+  }
+  lines.push("Use this only to understand the current IM group context.");
+  return lines.join("\n");
+}
+
+function buildAgentInputContent(
+  message: ChannelConnectorOctoInboundMessage,
+  binding: ChannelConnectorRuntimeBinding,
+  historyContext?: string | null,
+): string {
   const content = extractOctoContent(message);
   const attachments = extractOctoAttachments(message);
   const history = normalizeString(historyContext);
-  if (!attachments.length) return [history, content].filter(Boolean).join("\n\n");
+  const groupContext = buildGroupContext(message, binding);
+  if (!attachments.length) return [history, groupContext, content].filter(Boolean).join("\n\n");
   const summary = attachments
     .map((attachment) => `- ${attachmentSummaryLabel(attachment)}`)
     .join("\n");
@@ -139,7 +187,7 @@ function buildAgentInputContent(message: ChannelConnectorOctoInboundMessage, his
       ? "Staged files are available locally; use the local paths above when the task needs file contents."
       : "Binary download/staging is not enabled yet; use the metadata above only.",
   ].join("\n");
-  return [history, content, attachmentText].filter(Boolean).join("\n\n");
+  return [history, groupContext, content, attachmentText].filter(Boolean).join("\n\n");
 }
 
 function recordValue(value: unknown): Record<string, unknown> | null {
@@ -358,7 +406,7 @@ function gatewayEnv(gatewayEndpoint: string, gatewayClientKey: string | null): R
 export function buildChannelConnectorAgentProcessRequest(
   request: ChannelConnectorAgentTurnRequest,
 ): ChannelConnectorAgentProcessRequest | null {
-  const content = buildAgentInputContent(request.message, request.historyContext);
+  const content = buildAgentInputContent(request.message, request.binding, request.historyContext);
   if (!content) return null;
   const project = request.project;
   const cwd = ensureWorkDir(project.workDir);

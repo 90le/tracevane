@@ -46,4 +46,5 @@
 - 已完成：F4 attachment metadata：Feishu `image/file/audio/media/sticker` 与 Octo 图片/文件/语音/视频映射到统一 attachment contract；Agent 只收到脱敏摘要，平台 key 留在本地结构化数据中。
 - 已完成：F4 Feishu attachment staging：Feishu resource streaming 下载到 `agent-runtime/attachments`，路径清洗；daemon 默认 128MB 安全阀，binding metadata 可覆盖或关闭上限；失败降级为 `stagingError`，Agent prompt 使用本地路径。
 - 已完成：F4 IM history context：按 session 保存最近 user/assistant 脱敏摘要，Agent prompt 注入短上下文，`/new` / `/reset` 清理 history。
-- 下一步：F4 群聊成员、长回复 group buffer、治理策略；Feishu card/menu UI 继续复刻 CC 后再 Studio 化。
+- 已完成：F4 群聊 context：Agent prompt 注入 channel/sender/bot/reply/mention/成员摘要，飞书完整群成员列表后续再接平台 API。
+- 下一步：F4 长回复 group buffer、治理策略、飞书完整群成员拉取；Feishu card/menu UI 继续复刻 CC 后再 Studio 化。
