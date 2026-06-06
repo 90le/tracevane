@@ -19,6 +19,7 @@
 
 ## 本轮完成
 
+- 新增 `channel-connectors-cc-bridge-plan.md` 作为 CC / Channel Connectors 方案确认稿；确认前不实现。
 - Gateway 目标和进度文档已从迁移名 `codex-stack-model-gateway-*` 改为正式入口 `studio-gateway-*`。
 - README / PRD / 架构 / 当前进展 / 设计守则中旧 `Codex Stack` 管理域描述已改为 Studio Gateway，避免继续把 Gateway 归到旧功能面。
 - CC / Channel Connectors 明确后置；进入实现前必须先确认方案。
@@ -39,5 +40,5 @@
 
 ## 下一步
 
-1. 进入 CC / Channel Connectors 前，先确认方案、边界、进程守护、复用 cc-connect 的范围和验收点；确认前不实现 CC。
+1. 请确认 `docs/channel-connectors-cc-bridge-plan.md` 里的待确认点；确认后进入 F1：Studio-managed CC Bridge service/config/status/logs。
 2. 如仍需要官方品牌证明，再单独跑 OpenAI Platform official smoke。
