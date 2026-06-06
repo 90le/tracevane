@@ -5,6 +5,7 @@ import type {
   ChannelConnectorOctoInboundMessage,
   ChannelConnectorOctoInboundRequest,
   ChannelConnectorOctoReplyPlan,
+  ChannelConnectorOctoTransportResult,
   ChannelConnectorPlatformBinding,
 } from "../../../../types/channel-connectors.js";
 
@@ -202,6 +203,21 @@ export function renderOctoTextReply(
   };
 }
 
+function emptyTransportResult(): ChannelConnectorOctoTransportResult {
+  return {
+    attempted: false,
+    ok: null,
+    action: "none",
+    apiUrl: null,
+    statusCode: null,
+    error: null,
+    requestCount: 0,
+    robotId: null,
+    imToken: null,
+    wsUrl: null,
+  };
+}
+
 export function resolveOctoBinding(
   request: ChannelConnectorOctoInboundRequest,
   bindings: ChannelConnectorPlatformBinding[],
@@ -263,6 +279,7 @@ export function buildSkippedOctoResponse(
       gatewayEndpoint: null,
       gatewayKeyRef: null,
     },
+    transport: emptyTransportResult(),
     replyPlan: null,
     eventStored: {
       path: eventLogPath,

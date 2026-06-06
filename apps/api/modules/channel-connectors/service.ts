@@ -26,6 +26,9 @@ import {
   type ChannelConnectorsStatusResponse,
   type ChannelConnectorOctoDispatchResponse,
   type ChannelConnectorOctoInboundRequest,
+  type ChannelConnectorOctoTransportResult,
+  type ChannelConnectorOctoTransportSmokeRequest,
+  type ChannelConnectorOctoTransportSmokeResponse,
   type ChannelConnectorAgentId,
   type ChannelConnectorPermissionMode,
   type ChannelConnectorPlatformId,
@@ -39,6 +42,13 @@ import {
   resolveOctoBinding,
   shouldSkipOctoMessage,
 } from "./octo-adapter.js";
+import {
+  emptyOctoTransportResult,
+  octoTransportFromBinding,
+  registerOctoBot,
+  sendOctoTextReply,
+  sendOctoTyping,
+} from "./octo-transport.js";
 
 const execFileAsync = promisify(execFile);
 const DAEMON_ACTIONS: readonly ChannelConnectorsDaemonAction[] = [
@@ -74,7 +84,8 @@ export interface ChannelConnectorsService {
   getStatus(): Promise<ChannelConnectorsStatusResponse>;
   getNativeConfig(): ChannelConnectorsNativeConfigResponse;
   saveNativeConfig(payload?: ChannelConnectorsSaveNativeConfigRequest): ChannelConnectorsNativeConfigResponse;
-  dispatchOctoIncoming(payload?: ChannelConnectorOctoInboundRequest): ChannelConnectorOctoDispatchResponse;
+  dispatchOctoIncoming(payload?: ChannelConnectorOctoInboundRequest): Promise<ChannelConnectorOctoDispatchResponse>;
+  runOctoTransportSmoke(payload?: ChannelConnectorOctoTransportSmokeRequest): Promise<ChannelConnectorOctoTransportSmokeResponse>;
   getDaemonConfig(): ChannelConnectorsDaemonConfigResponse;
   getDaemonService(): Promise<ChannelConnectorsDaemonResponse>;
   manageDaemonService(payload?: ChannelConnectorsDaemonRequest): Promise<ChannelConnectorsDaemonResponse>;
@@ -419,6 +430,7 @@ function buildRuntimeConfig(
             enabled: binding.enabled,
             allowlist: binding.allowlist,
             adminUsers: binding.adminUsers,
+            metadata: binding.metadata,
           })),
       })),
     ],
@@ -744,6 +756,7 @@ function validateOctoInboundRequest(payload: ChannelConnectorOctoInboundRequest 
     accountId: normalizeString(payload.accountId) || null,
     botId: normalizeString(payload.botId) || null,
     dryRun: payload.dryRun === true,
+    sendReply: payload.sendReply === true,
     replyText: normalizeString(payload.replyText) || null,
     message: {
       messageId,
@@ -763,6 +776,36 @@ function validateOctoInboundRequest(payload: ChannelConnectorOctoInboundRequest 
         : [],
     },
   };
+}
+
+function normalizeOctoTransportSmokeRequest(payload: ChannelConnectorOctoTransportSmokeRequest | undefined): ChannelConnectorOctoTransportSmokeRequest {
+  if (!payload || !isRecord(payload)) return { action: "register" };
+  const action = payload.action === "typing" || payload.action === "send-message" || payload.action === "register"
+    ? payload.action
+    : "register";
+  const channelType = Number(payload.channelType || 1);
+  return {
+    bindingId: normalizeString(payload.bindingId) || null,
+    action,
+    channelId: normalizeString(payload.channelId) || null,
+    channelType: channelType === 1 || channelType === 2 || channelType === 5 ? channelType : 1,
+    content: normalizeString(payload.content) || "Studio Octo transport smoke",
+  };
+}
+
+function resolveOctoBindingById(
+  nativeConfig: ChannelConnectorsNativeConfig,
+  bindingId: string | null | undefined,
+): { binding: ChannelConnectorsNativeConfig["platformBindings"][number]; agentProfile: ChannelConnectorsNativeConfig["agentProfiles"][number] } | null {
+  const octoBindings = nativeConfig.platformBindings.filter((binding) => binding.platform === "octo" && binding.enabled);
+  const binding = bindingId
+    ? octoBindings.find((candidate) => candidate.id === bindingId)
+    : octoBindings.length === 1
+      ? octoBindings[0]
+      : null;
+  if (!binding) return null;
+  const agentProfile = nativeConfig.agentProfiles.find((profile) => profile.id === binding.agentProfileId);
+  return agentProfile ? { binding, agentProfile } : null;
 }
 
 function bindingPolicy(): ChannelConnectorsBindingPolicy {
@@ -827,7 +870,7 @@ export function createChannelConnectorsService(
     };
   }
 
-  function dispatchOctoIncoming(payload?: ChannelConnectorOctoInboundRequest): ChannelConnectorOctoDispatchResponse {
+  async function dispatchOctoIncoming(payload?: ChannelConnectorOctoInboundRequest): Promise<ChannelConnectorOctoDispatchResponse> {
     const request = validateOctoInboundRequest(payload);
     const paths = resolveChannelConnectorsPaths(config);
     const checkedAt = now().toISOString();
@@ -847,13 +890,29 @@ export function createChannelConnectorsService(
     const directed = isOctoMessageDirectedAtBot(message, binding.botId);
     const replyPlan = request.replyText ? renderOctoTextReply(message, request.replyText) : null;
     const dryRun = request.dryRun === true;
+    let transport = emptyOctoTransportResult();
+    let accepted = dryRun;
+    let effectiveSkippedReason: string | null = dryRun ? null : "agent_dispatch_not_ready";
+    if (!dryRun && request.sendReply === true) {
+      if (!replyPlan) {
+        effectiveSkippedReason = "octo_reply_text_required";
+      } else {
+        const transportConfig = octoTransportFromBinding(binding);
+        if (!transportConfig) {
+          effectiveSkippedReason = "octo_transport_config_missing";
+        } else {
+          transport = await sendOctoTextReply(transportConfig, replyPlan);
+          accepted = transport.ok === true;
+          effectiveSkippedReason = transport.ok === true ? null : "octo_transport_send_failed";
+        }
+      }
+    }
     const dispatchStatus = dryRun ? "dry-run" : "not-ready";
-    const effectiveSkippedReason = dryRun ? null : "agent_dispatch_not_ready";
     const response: ChannelConnectorOctoDispatchResponse = {
       ok: true,
       checkedAt,
       adapter: "octo",
-      accepted: dryRun,
+      accepted,
       skippedReason: effectiveSkippedReason,
       dryRun,
       sessionKey,
@@ -876,6 +935,7 @@ export function createChannelConnectorsService(
         gatewayEndpoint: agentProfile.gatewayEndpoint,
         gatewayKeyRef: agentProfile.gatewayKeyRef,
       },
+      transport,
       replyPlan,
       eventStored: {
         path: paths.octoEventLogFile,
@@ -897,9 +957,78 @@ export function createChannelConnectorsService(
       dryRun,
       dispatchStatus,
       replyChunks: replyPlan?.chunks.length || 0,
+      transportAction: transport.action,
+      transportOk: transport.ok,
+      transportRequests: transport.requestCount,
     });
     response.eventStored.written = true;
     return response;
+  }
+
+  async function runOctoTransportSmoke(payload?: ChannelConnectorOctoTransportSmokeRequest): Promise<ChannelConnectorOctoTransportSmokeResponse> {
+    const request = normalizeOctoTransportSmokeRequest(payload);
+    const paths = resolveChannelConnectorsPaths(config);
+    const nativeConfig = readNativeConfig(config, paths, now());
+    const resolved = resolveOctoBindingById(nativeConfig, request.bindingId);
+    const checkedAt = now().toISOString();
+    if (!resolved) {
+      return {
+        ok: true,
+        checkedAt,
+        adapter: "octo",
+        binding: null,
+        transport: {
+          ...emptyOctoTransportResult(request.action === "send-message" ? "send-message" : request.action || "register"),
+          error: "octo_binding_not_found",
+        },
+      };
+    }
+    const transportConfig = octoTransportFromBinding(resolved.binding);
+    if (!transportConfig) {
+      return {
+        ok: true,
+        checkedAt,
+        adapter: "octo",
+        binding: resolved.binding,
+        transport: {
+          ...emptyOctoTransportResult(request.action === "send-message" ? "send-message" : request.action || "register"),
+          error: "octo_transport_config_missing",
+        },
+      };
+    }
+    let transport: ChannelConnectorOctoTransportResult;
+    if (request.action === "typing") {
+      if (!request.channelId) throw new Error("channelId is required for Octo typing smoke.");
+      transport = await sendOctoTyping(transportConfig, request.channelId, request.channelType || 1);
+    } else if (request.action === "send-message") {
+      if (!request.channelId) throw new Error("channelId is required for Octo send-message smoke.");
+      const replyPlan = {
+        channelId: request.channelId,
+        channelType: request.channelType || 1,
+        chunks: [request.content || "Studio Octo transport smoke"],
+        mentionUids: [],
+        payloads: [
+          {
+            channel_id: request.channelId,
+            channel_type: request.channelType || 1,
+            payload: {
+              type: 1 as const,
+              content: request.content || "Studio Octo transport smoke",
+            },
+          },
+        ],
+      };
+      transport = await sendOctoTextReply(transportConfig, replyPlan);
+    } else {
+      transport = await registerOctoBot(transportConfig, false);
+    }
+    return {
+      ok: true,
+      checkedAt,
+      adapter: "octo",
+      binding: resolved.binding,
+      transport,
+    };
   }
 
   async function response(
@@ -1066,6 +1195,7 @@ export function createChannelConnectorsService(
     getNativeConfig: currentNativeConfig,
     saveNativeConfig,
     dispatchOctoIncoming,
+    runOctoTransportSmoke,
     getDaemonConfig: currentConfig,
     getDaemonService,
     manageDaemonService,

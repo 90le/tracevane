@@ -133,6 +133,48 @@ async function withServer(handler, task) {
   }
 }
 
+async function withMockOctoServer(task) {
+  const requests = [];
+  const server = http.createServer(async (req, res) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
+    req.on("end", () => {
+      const bodyRaw = Buffer.concat(chunks).toString("utf8");
+      const body = bodyRaw ? JSON.parse(bodyRaw) : {};
+      requests.push({
+        method: req.method,
+        path: req.url,
+        authorization: req.headers.authorization,
+        body,
+      });
+      res.setHeader("content-type", "application/json");
+      if (req.url?.startsWith("/v1/bot/register")) {
+        res.end(JSON.stringify({ robot_id: "robot-1", im_token: "im-token-1", ws_url: "wss://octo.example/ws" }));
+        return;
+      }
+      if (req.url === "/v1/bot/typing" || req.url === "/v1/bot/sendMessage") {
+        res.end(JSON.stringify({ ok: true, message_id: 123 }));
+        return;
+      }
+      res.statusCode = 404;
+      res.end(JSON.stringify({ error: "not_found" }));
+    });
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  try {
+    await task(`http://127.0.0.1:${address.port}`, requests);
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+}
+
 test("native Channel Connectors status keeps daemon and binding policy separate from Model Gateway", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -300,7 +342,7 @@ test("native Channel Connectors store rejects duplicate personal WeChat agent bi
   }), /Personal WeChat account wx-account can bind only one agent profile/);
 });
 
-test("Octo adapter dry-run dispatch resolves binding, session key, and reply plan", () => {
+test("Octo adapter dry-run dispatch resolves binding, session key, and reply plan", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   const service = createChannelConnectorsService(config, {
@@ -340,7 +382,7 @@ test("Octo adapter dry-run dispatch resolves binding, session key, and reply pla
     },
   });
 
-  const result = service.dispatchOctoIncoming({
+  const result = await service.dispatchOctoIncoming({
     bindingId: "octo-default",
     dryRun: true,
     replyText: "收到\n\nmodel · effort · 剩余 80%",
@@ -370,7 +412,7 @@ test("Octo adapter dry-run dispatch resolves binding, session key, and reply pla
   assert.match(fs.readFileSync(result.eventStored.path, "utf8"), /"sessionKey":"dmwork:dm:user-1"/);
 });
 
-test("Octo adapter follows group direction and mention rendering rules", () => {
+test("Octo adapter follows group direction and mention rendering rules", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   const service = createChannelConnectorsService(config, {
@@ -410,7 +452,7 @@ test("Octo adapter follows group direction and mention rendering rules", () => {
     },
   });
 
-  const ignored = service.dispatchOctoIncoming({
+  const ignored = await service.dispatchOctoIncoming({
     bindingId: "octo-group",
     dryRun: true,
     message: {
@@ -428,7 +470,7 @@ test("Octo adapter follows group direction and mention rendering rules", () => {
   assert.equal(ignored.skippedReason, "octo_group_message_not_directed");
   assert.equal(ignored.sessionKey, "dmwork:group:group-a");
 
-  const directed = service.dispatchOctoIncoming({
+  const directed = await service.dispatchOctoIncoming({
     bindingId: "octo-group",
     dryRun: true,
     replyText: "@Alice 已处理",
@@ -455,6 +497,142 @@ test("Octo adapter follows group direction and mention rendering rules", () => {
   assert.deepEqual(directed.replyPlan.mentionUids, ["user-3"]);
   assert.deepEqual(directed.replyPlan.chunks, ["已处理"]);
   assert.deepEqual(directed.replyPlan.payloads[0].payload.mention.uids, ["user-3"]);
+});
+
+test("Octo transport smoke registers bot through binding metadata", async () => {
+  await withMockOctoServer(async (apiUrl, requests) => {
+    const root = makeTempRoot();
+    const config = createStudioConfig(root);
+    const service = createChannelConnectorsService(config, {
+      now: () => new Date("2026-06-06T08:00:00.000Z"),
+    });
+    const initial = service.getNativeConfig().config;
+    service.saveNativeConfig({
+      config: {
+        ...initial,
+        platformBindings: [
+          {
+            id: "octo-transport",
+            platform: "octo",
+            accountId: "octo-account",
+            botId: "robot-1",
+            displayName: "Octo Transport",
+            agentProfileId: initial.defaultAgentProfileId,
+            enabled: true,
+            allowlist: [],
+            adminUsers: [],
+            metadata: {
+              apiUrl,
+              botToken: "test-token",
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await service.runOctoTransportSmoke({
+      bindingId: "octo-transport",
+      action: "register",
+    });
+
+    assert.equal(result.transport.ok, true);
+    assert.equal(result.transport.action, "register");
+    assert.equal(result.transport.robotId, "robot-1");
+    assert.equal(result.transport.imToken, "im-token-1");
+    assert.equal(result.transport.wsUrl, "wss://octo.example/ws");
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].path, "/v1/bot/register");
+    assert.equal(requests[0].authorization, "Bearer test-token");
+  });
+});
+
+test("Octo incoming can send rendered reply through REST transport when opted in", async () => {
+  await withMockOctoServer(async (apiUrl, requests) => {
+    const root = makeTempRoot();
+    const config = createStudioConfig(root);
+    const service = createChannelConnectorsService(config, {
+      now: () => new Date("2026-06-06T08:00:00.000Z"),
+    });
+    const initial = service.getNativeConfig().config;
+    service.saveNativeConfig({
+      config: {
+        ...initial,
+        agentProfiles: [
+          {
+            id: "codex-main",
+            name: "Codex main",
+            agent: "codex",
+            model: "gpt-5",
+            workDir: config.projectRoot,
+            permissionMode: "suggest",
+            gatewayEndpoint: "http://127.0.0.1:18796/v1",
+            gatewayKeyRef: "studio-gateway-client-key",
+            appProfileRef: "codex",
+          },
+        ],
+        defaultAgentProfileId: "codex-main",
+        platformBindings: [
+          {
+            id: "octo-send",
+            platform: "octo",
+            accountId: "octo-account",
+            botId: "robot-1",
+            displayName: "Octo Send",
+            agentProfileId: "codex-main",
+            enabled: true,
+            allowlist: [],
+            adminUsers: [],
+            metadata: {
+              apiUrl,
+              botToken: "test-token",
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await service.dispatchOctoIncoming({
+      bindingId: "octo-send",
+      sendReply: true,
+      replyText: "@Alice 完成",
+      message: {
+        messageId: "m-send-1",
+        fromUid: "user-2",
+        channelId: "group-a",
+        channelType: 2,
+        payload: {
+          type: 1,
+          content: "@OctoBot run",
+          mention: { uids: ["robot-1"] },
+        },
+        members: [
+          { uid: "user-3", name: "Alice" },
+          { uid: "robot-1", name: "OctoBot" },
+        ],
+      },
+    });
+
+    assert.equal(result.accepted, true);
+    assert.equal(result.skippedReason, null);
+    assert.equal(result.agentDispatch.status, "not-ready");
+    assert.equal(result.transport.ok, true);
+    assert.equal(result.transport.action, "send-message");
+    assert.equal(result.transport.requestCount, 1);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].path, "/v1/bot/sendMessage");
+    assert.equal(requests[0].authorization, "Bearer test-token");
+    assert.deepEqual(requests[0].body, {
+      channel_id: "group-a",
+      channel_type: 2,
+      payload: {
+        type: 1,
+        content: "完成",
+        mention: {
+          uids: ["user-3"],
+        },
+      },
+    });
+  });
 });
 
 test("native Channel Connectors service management is guarded before daemon entry is built", async () => {
@@ -556,6 +734,17 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     assert.equal(octoSmoke.body.accepted, true);
     assert.equal(octoSmoke.body.sessionKey, "dmwork:dm:route-user");
     assert.equal(octoSmoke.body.agentDispatch.agent, "opencode");
+
+    const transportSmoke = await requestJson(`${baseUrl}/api/channel-connectors/adapters/octo/transport-smoke`, {
+      method: "POST",
+      body: {
+        bindingId: "octo-route",
+        action: "register",
+      },
+    });
+    assert.equal(transportSmoke.status, 200);
+    assert.equal(transportSmoke.body.adapter, "octo");
+    assert.equal(transportSmoke.body.transport.error, "octo_transport_config_missing");
 
     const service = await requestJson(`${baseUrl}/api/channel-connectors/daemon/service`);
     assert.equal(service.status, 200);

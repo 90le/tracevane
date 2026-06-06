@@ -4,6 +4,7 @@ import type {
   ChannelConnectorsDaemonRequest,
   ChannelConnectorsSaveNativeConfigRequest,
   ChannelConnectorOctoInboundRequest,
+  ChannelConnectorOctoTransportSmokeRequest,
 } from "../../../../types/channel-connectors.js";
 
 function sendChannelConnectorsError(res: Parameters<typeof sendJson>[0], error: unknown): void {
@@ -43,7 +44,16 @@ export function registerChannelConnectorsRoutes(router: StudioRouter): void {
   router.post("/api/channel-connectors/adapters/octo/incoming", async (req, res, routeCtx) => {
     try {
       const payload = await parseJsonBody<ChannelConnectorOctoInboundRequest>(req);
-      sendJson(res, 200, routeCtx.services.channelConnectors.dispatchOctoIncoming(payload));
+      sendJson(res, 200, await routeCtx.services.channelConnectors.dispatchOctoIncoming(payload));
+    } catch (error) {
+      sendChannelConnectorsError(res, error);
+    }
+  });
+
+  router.post("/api/channel-connectors/adapters/octo/transport-smoke", async (req, res, routeCtx) => {
+    try {
+      const payload = await parseJsonBody<ChannelConnectorOctoTransportSmokeRequest>(req);
+      sendJson(res, 200, await routeCtx.services.channelConnectors.runOctoTransportSmoke(payload));
     } catch (error) {
       sendChannelConnectorsError(res, error);
     }

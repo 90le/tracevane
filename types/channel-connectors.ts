@@ -84,8 +84,44 @@ export interface ChannelConnectorOctoInboundRequest {
   accountId?: string | null;
   botId?: string | null;
   dryRun?: boolean;
+  sendReply?: boolean;
   replyText?: string | null;
   message: ChannelConnectorOctoInboundMessage;
+}
+
+export interface ChannelConnectorOctoTransportConfig {
+  apiUrl: string;
+  botToken: string;
+  wsUrl?: string | null;
+}
+
+export interface ChannelConnectorOctoTransportResult {
+  attempted: boolean;
+  ok: boolean | null;
+  action: "none" | "register" | "typing" | "send-message";
+  apiUrl: string | null;
+  statusCode: number | null;
+  error: string | null;
+  requestCount: number;
+  robotId?: string | null;
+  imToken?: string | null;
+  wsUrl?: string | null;
+}
+
+export interface ChannelConnectorOctoTransportSmokeRequest {
+  bindingId?: string | null;
+  action?: "register" | "typing" | "send-message";
+  channelId?: string | null;
+  channelType?: ChannelConnectorOctoChannelType;
+  content?: string | null;
+}
+
+export interface ChannelConnectorOctoTransportSmokeResponse {
+  ok: true;
+  checkedAt: string;
+  adapter: "octo";
+  binding: ChannelConnectorPlatformBinding | null;
+  transport: ChannelConnectorOctoTransportResult;
 }
 
 export interface ChannelConnectorOctoReplyPlan {
@@ -133,6 +169,7 @@ export interface ChannelConnectorOctoDispatchResponse {
     gatewayEndpoint: string | null;
     gatewayKeyRef: "studio-gateway-client-key" | null;
   };
+  transport: ChannelConnectorOctoTransportResult;
   replyPlan: ChannelConnectorOctoReplyPlan | null;
   eventStored: {
     path: string;
@@ -214,6 +251,7 @@ export interface ChannelConnectorsDaemonRuntimeConfig {
       enabled: boolean;
       allowlist: string[];
       adminUsers: string[];
+      metadata?: Record<string, unknown>;
     }>;
   }>;
 }
