@@ -17,6 +17,7 @@ import {
 } from "../../dist/apps/api/modules/channel-connectors/service.js";
 import {
   buildChannelConnectorAgentProcessRequest,
+  defaultChannelConnectorAgentProcessRunner,
   runChannelConnectorAgentTurn,
 } from "../../dist/apps/api/modules/channel-connectors/agent-runner.js";
 import {
@@ -699,6 +700,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   });
   assert.ok(processRequest);
   assert.equal(processRequest.command, "codex");
+  assert.equal(processRequest.agent, "codex");
   assert.deepEqual(processRequest.args.slice(0, 4), ["exec", "--skip-git-repo-check", "--full-auto", "--model"]);
   assert.equal(processRequest.args.includes("--json"), true);
   assert.equal(processRequest.args.includes("--cd"), true);
@@ -774,6 +776,10 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(result.ok, true);
   assert.equal(result.status, "completed");
   assert.equal(result.replyText, "hello from codex");
+  assert.equal(result.progress.eventCount, 2);
+  assert.equal(result.progress.latest?.type, "assistant");
+  assert.equal(result.progress.latest?.text, "hello from codex");
+  assert.equal(result.progress.summary, "hello from codex");
   assert.equal(result.session.resumed, false);
   assert.equal(result.session.codexThreadId, "019e9b45-8ab3-7f41-99a0-a9e7d0f2abf5");
   assert.ok(turnCleanupPath);
@@ -789,6 +795,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   });
   assert.ok(claudeRequest);
   assert.equal(claudeRequest.command, "claude");
+  assert.equal(claudeRequest.agent, "claude-code");
   assert.equal(claudeRequest.args.includes("--input-format"), true);
   assert.equal(claudeRequest.args.includes("stream-json"), true);
   assert.equal(claudeRequest.args.includes("--permission-mode"), true);
@@ -807,9 +814,35 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   });
   assert.ok(opencodeRequest);
   assert.equal(opencodeRequest.command, "opencode");
+  assert.equal(opencodeRequest.agent, "opencode");
   assert.deepEqual(opencodeRequest.args.slice(0, 3), ["run", "--format", "json"]);
   assert.equal(opencodeRequest.args.includes("--thinking"), true);
   assert.equal(opencodeRequest.args.at(-1), "hi codex");
+
+  const failed = await runChannelConnectorAgentTurn({
+    project,
+    binding,
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    processRunner: async () => ({
+      exitCode: 1,
+      signal: null,
+      stdout: '{"type":"turn.failed","error":{"message":"tool denied"}}\n',
+      stderr: "permission denied",
+      durationMs: 22,
+      timedOut: false,
+      error: null,
+    }),
+  });
+  assert.equal(failed.ok, false);
+  assert.equal(failed.status, "failed");
+  assert.equal(failed.replyText, null);
+  assert.equal(failed.progress.eventCount, 1);
+  assert.equal(failed.progress.latest?.type, "failed");
+  assert.equal(failed.progress.latest?.text, "tool denied");
+  assert.equal(failed.progress.summary, "tool denied");
 });
 
 test("native Channel Connectors session store persists Codex thread ids by IM session", () => {
@@ -851,6 +884,37 @@ test("native Channel Connectors session store persists Codex thread ids by IM se
   const loaded = getChannelConnectorAgentSession(storePath, lookup);
   assert.equal(loaded?.codexThreadId, "thread-a");
   assert.equal(loaded?.turnCount, 2);
+});
+
+test("native Channel Connectors process runner streams progress events from agent JSONL", async () => {
+  const root = makeTempRoot();
+  const progress = [];
+  const childScript = [
+    "process.stdout.write(JSON.stringify({type:'thread.started',thread_id:'thread-progress'})+'\\n');",
+    "setTimeout(()=>{",
+    "process.stdout.write(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'progress reply'}})+'\\n');",
+    "}, 25);",
+  ].join("");
+
+  const result = await defaultChannelConnectorAgentProcessRunner({
+    command: process.execPath,
+    args: ["-e", childScript],
+    cwd: root,
+    stdin: "",
+    env: {},
+    timeoutMs: 1000,
+    agent: "codex",
+    onProgress: (event) => progress.push(event),
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.error, null);
+  assert.equal(progress.length, 2);
+  assert.equal(progress[0].type, "session");
+  assert.equal(progress[0].text, "thread-progress");
+  assert.equal(progress[1].type, "assistant");
+  assert.equal(progress[1].text, "progress reply");
+  assert.equal(result.progressEvents?.length, 2);
 });
 
 test("native Channel Connectors service management is guarded before daemon entry is built", async () => {
@@ -1132,6 +1196,8 @@ test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSock
           return connected ? response.body : null;
         }, 5000);
         assert.equal(status.ok, true);
+        assert.deepEqual(status.activeRuns, []);
+        assert.deepEqual(status.agentRuns, []);
         assert.equal(wsConnects.length, 1);
         assert.equal(wsConnects[0].uid, "robot-1");
         assert.equal(wsConnects[0].token, "im-token-1");

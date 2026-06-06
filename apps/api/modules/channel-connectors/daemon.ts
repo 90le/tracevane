@@ -4,6 +4,7 @@ import path from "node:path";
 import process from "node:process";
 import type {
   ChannelConnectorAgentProfile,
+  ChannelConnectorOctoTransportConfig,
   ChannelConnectorOctoInboundMessage,
   ChannelConnectorOctoInboundRequest,
   ChannelConnectorPlatformBinding,
@@ -11,6 +12,7 @@ import type {
 } from "../../../../types/channel-connectors.js";
 import {
   runChannelConnectorAgentTurn,
+  type ChannelConnectorAgentProgressEvent,
   type ChannelConnectorAgentTurnResult,
   type ChannelConnectorRuntimeBinding,
   type ChannelConnectorRuntimeProject,
@@ -65,6 +67,21 @@ interface ChannelDaemonState {
     platformBindings: number;
   }>;
   octoConnections: Record<string, ChannelDaemonOctoConnectionState>;
+  activeRuns: Array<{
+    id: string;
+    startedAt: string;
+    updatedAt: string;
+    bindingId: string;
+    sessionKey: string;
+    messageId: string;
+    agent: string;
+    model: string | null;
+    status: "running";
+    sessionResumed: boolean;
+    codexThreadId: string | null;
+    progressEventCount: number;
+    latestProgress: ChannelConnectorAgentProgressEvent | null;
+  }>;
   agentRuns: Array<{
     checkedAt: string;
     bindingId: string;
@@ -77,6 +94,8 @@ interface ChannelDaemonState {
     error: string | null;
     sessionResumed: boolean;
     codexThreadId: string | null;
+    progressEventCount: number;
+    latestProgress: ChannelConnectorAgentProgressEvent | null;
   }>;
 }
 
@@ -128,6 +147,7 @@ function createDaemonState(config: ChannelConnectorsDaemonRuntimeConfig): Channe
       platformBindings: project.platformBindings.length,
     })),
     octoConnections: {},
+    activeRuns: [],
     agentRuns: [],
   };
 }
@@ -148,6 +168,7 @@ function startHttp(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelD
         projects: config.projects.length,
         platformBindings: config.projects.reduce((sum, project) => sum + project.platformBindings.length, 0),
         octoConnections: Object.values(state.octoConnections),
+        activeRuns: state.activeRuns,
         agentRuns: state.agentRuns,
       }));
       return;
@@ -170,6 +191,16 @@ function logger(config: ChannelConnectorsDaemonRuntimeConfig): OctoWukongLogger 
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function shortMessage(value: unknown, maxLength = 260): string {
+  const raw = value instanceof Error ? value.message : String(value || "");
+  const redacted = raw
+    .replace(/sk-[A-Za-z0-9_-]{12,}/g, "sk-***")
+    .replace(/bf_[A-Za-z0-9_-]{12,}/g, "bf_***")
+    .trim();
+  if (!redacted) return "unknown error";
+  return redacted.length > maxLength ? `${redacted.slice(0, maxLength - 1)}...` : redacted;
 }
 
 function gatewayClientKey(config: ChannelConnectorsDaemonRuntimeConfig): string | null {
@@ -241,6 +272,25 @@ function agentRuntimeDir(
     safePathSegment(project.id),
     safePathSegment(binding.id),
   );
+}
+
+function startOctoTypingPulse(
+  transport: ChannelConnectorOctoTransportConfig | null,
+  message: ChannelConnectorOctoInboundMessage,
+): () => void {
+  if (!transport) return () => {};
+  const channelId = message.channelType === 1 ? message.fromUid : message.channelId;
+  let inFlight = false;
+  const timer = setInterval(() => {
+    if (inFlight) return;
+    inFlight = true;
+    void sendOctoTyping(transport, channelId, message.channelType)
+      .finally(() => {
+        inFlight = false;
+      });
+  }, 8000);
+  timer.unref();
+  return () => clearInterval(timer);
 }
 
 function connectionState(
@@ -358,19 +408,115 @@ async function dispatchOctoMessage(input: {
       message.channelType,
     );
   }
+  const activeRunId = `${binding.id}:${message.messageId}`;
   const currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), sessionLookup);
-  const agent = await runChannelConnectorAgentTurn({
-    project,
-    binding,
-    message,
+  let progressEventCount = 0;
+  let latestProgress: ChannelConnectorAgentProgressEvent | null = null;
+  state.activeRuns.unshift({
+    id: activeRunId,
+    startedAt: checkedAt,
+    updatedAt: checkedAt,
+    bindingId: binding.id,
     sessionKey,
-    gatewayEndpoint: project.gatewayEndpoint || config.gateway.endpoint,
-    gatewayClientKey: gatewayClientKey(config),
-    agentRuntimeDir: agentRuntimeDir(config, project, binding),
-    session: {
-      codexThreadId: currentSession?.codexThreadId || null,
-    },
+    messageId: message.messageId,
+    agent: project.agent,
+    model: project.model,
+    status: "running",
+    sessionResumed: Boolean(currentSession?.codexThreadId),
+    codexThreadId: currentSession?.codexThreadId || null,
+    progressEventCount,
+    latestProgress,
   });
+  state.activeRuns = state.activeRuns.slice(0, 20);
+  writeRuntime(config, state);
+  writeJsonLine(config.paths.octoEvents, {
+    checkedAt,
+    eventKind: "agent.run.started",
+    adapter: "octo",
+    bindingId: binding.id,
+    sessionKey,
+    messageId: message.messageId,
+    agent: project.agent,
+    model: project.model,
+    sessionResumed: Boolean(currentSession?.codexThreadId),
+    codexThreadId: currentSession?.codexThreadId || null,
+  });
+
+  const stopTypingPulse = startOctoTypingPulse(transport, message);
+  let agent: ChannelConnectorAgentTurnResult;
+  try {
+    agent = await runChannelConnectorAgentTurn({
+      project,
+      binding,
+      message,
+      sessionKey,
+      gatewayEndpoint: project.gatewayEndpoint || config.gateway.endpoint,
+      gatewayClientKey: gatewayClientKey(config),
+      agentRuntimeDir: agentRuntimeDir(config, project, binding),
+      session: {
+        codexThreadId: currentSession?.codexThreadId || null,
+      },
+      onProgress: (event) => {
+        progressEventCount += 1;
+        latestProgress = event;
+        const activeRun = state.activeRuns.find((run) => run.id === activeRunId);
+        if (activeRun) {
+          activeRun.updatedAt = event.checkedAt;
+          activeRun.progressEventCount = progressEventCount;
+          activeRun.latestProgress = latestProgress;
+        }
+        writeJsonLine(config.paths.octoEvents, {
+          checkedAt: event.checkedAt,
+          eventKind: "agent.progress",
+          adapter: "octo",
+          bindingId: binding.id,
+          sessionKey,
+          messageId: message.messageId,
+          agent: project.agent,
+          progressType: event.type,
+          rawType: event.rawType,
+          itemType: event.itemType,
+          text: event.text,
+        });
+        writeRuntime(config, state);
+      },
+    });
+  } catch (error) {
+    const caughtLatestProgress = latestProgress as ChannelConnectorAgentProgressEvent | null;
+    agent = {
+      attempted: true,
+      ok: false,
+      status: "failed",
+      agent: project.agent,
+      model: project.model,
+      command: null,
+      args: [],
+      cwd: project.workDir,
+      replyText: null,
+      stdout: "",
+      stderr: "",
+      exitCode: null,
+      durationMs: Date.now() - new Date(checkedAt).getTime(),
+      error: shortMessage(error),
+      progress: {
+        eventCount: progressEventCount,
+        latest: caughtLatestProgress,
+        summary: caughtLatestProgress?.text || null,
+      },
+      session: {
+        resumed: Boolean(currentSession?.codexThreadId),
+        codexThreadId: currentSession?.codexThreadId || null,
+      },
+    };
+  } finally {
+    stopTypingPulse();
+    state.activeRuns = state.activeRuns.filter((run) => run.id !== activeRunId);
+    writeRuntime(config, state);
+  }
+  if (agent.progress.eventCount > progressEventCount) {
+    progressEventCount = agent.progress.eventCount;
+    latestProgress = agent.progress.latest;
+  }
   let nextSession: ChannelConnectorAgentSessionRecord | null = null;
   if (agent.session.codexThreadId || currentSession?.codexThreadId) {
     nextSession = upsertChannelConnectorAgentSession(agentSessionsPath(config), {
@@ -392,6 +538,8 @@ async function dispatchOctoMessage(input: {
     error: agent.error,
     sessionResumed: agent.session.resumed,
     codexThreadId: agent.session.codexThreadId,
+    progressEventCount,
+    latestProgress,
   });
   state.agentRuns = state.agentRuns.slice(0, 20);
 
@@ -403,9 +551,17 @@ async function dispatchOctoMessage(input: {
       replySent = result.ok === true;
     }
   }
+  if (transport && agent.ok === false) {
+    const replyPlan = renderOctoTextReply(message, `Agent 运行失败：${shortMessage(agent.error)}`);
+    if (replyPlan) {
+      const result = await sendOctoTextReply(transport, replyPlan);
+      replySent = result.ok === true;
+    }
+  }
 
   writeJsonLine(config.paths.octoEvents, {
     checkedAt,
+    eventKind: "agent.run.finished",
     adapter: "octo",
     bindingId: binding.id,
     sessionKey,
@@ -418,6 +574,8 @@ async function dispatchOctoMessage(input: {
     agentStatus: agent.status,
     agentOk: agent.ok,
     agentError: agent.error,
+    progressEventCount,
+    latestProgress,
     sessionResumed: agent.session.resumed,
     codexThreadId: agent.session.codexThreadId,
     sessionTurnCount: nextSession?.turnCount || null,

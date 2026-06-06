@@ -1,6 +1,6 @@
 # Channel Connectors / CLI Agent Bot 原生方案
 
-> 状态：已切换为 Studio 原生实现路线；F2 native config store 已完成
+> 状态：已切换为 Studio 原生实现路线；F3d Octo/Codex roundtrip、session resume、progress/failure observability 已完成
 > 更新：2026-06-06
 > 参考源：CC 二开全量源码 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`；OpenClaw 频道与运行时实现；压缩映射见 `channel-connectors-native-feature-map.md`
 
@@ -82,7 +82,7 @@ Studio 增强点：
 | --- | --- |
 | F1 | 已完成：native daemon skeleton、service/config/status/logs、独立页面、守护边界测试 |
 | F2 | 已完成：CC/OpenClaw 能力映射、typed config store、Agent Profile、工作目录、模型、权限、Gateway key ref、platform/bot binding |
-| F3 | 已完成核心合同：Octo(dmwork) adapter、REST transport、daemon register/cache/WuKongIM WebSocket、Codex CLI Agent runner、真实 Octo DM 文本往返、Codex session resume |
+| F3 | 已完成核心合同：Octo(dmwork) adapter、REST transport、daemon register/cache/WuKongIM WebSocket、Codex CLI Agent runner、真实 Octo DM 文本往返、Codex session resume、运行中/失败可观测 |
 | F4 | 补齐核心消息能力：图片/文件、语音、群聊 mention、thread/reply、流式预览、长回复拆分 |
 | F5 | 治理与自动化：allowlist、admin、rate limit、banned words、slash command、cron、hooks、relay、management API |
 | F6 | 飞书、微信/企业微信；继续迁移钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等 CC 平台 |
@@ -100,9 +100,10 @@ Studio 增强点：
 - Octo(dmwork) adapter contract 已支持 DM/群聊 session key、群聊 directed 规则、bot->Agent 绑定解析、文本 inbound dry-run、reply payload 分片和 mention 渲染。
 - Octo REST transport 已支持 binding metadata `apiUrl/botToken/wsUrl`、register、typing、sendMessage、transport-smoke API；incoming `sendReply:true` 可按 replyPlan 真实发送文本。
 - Channel daemon 已支持 Octo register 后凭证缓存、WuKongIM WebSocket CONNECT/CONNACK/heartbeat/RECVACK/AES 解密、runtime status、Codex/Claude Code/OpenCode 一次性 CLI runner 合同。
+- Channel daemon 已支持 runner JSONL progress、`activeRuns` status、Octo event start/progress/finish、typing pulse 和失败短回执。
 
 ## 6. 下一步
 
-1. F3d：补流式进度、权限审批回传、错误状态和进程清理。
+1. F3e：补 CLI Agent 权限审批回传。
 2. F4：补图片/文件、群聊成员/history context、长回复 group buffer 和治理策略。
 3. F6：按 CC 源码继续迁移飞书、微信/企业微信和其它平台。

@@ -23,6 +23,16 @@ export interface ChannelConnectorAgentProcessRequest {
   cleanupPaths?: string[];
   sessionMode?: "new" | "resume";
   codexThreadId?: string | null;
+  agent: ChannelConnectorAgentId;
+  onProgress?: (event: ChannelConnectorAgentProgressEvent) => void;
+}
+
+export interface ChannelConnectorAgentProgressEvent {
+  checkedAt: string;
+  type: "session" | "running" | "reasoning" | "assistant" | "tool" | "completed" | "failed" | "error" | "event";
+  rawType: string | null;
+  itemType: string | null;
+  text: string | null;
 }
 
 export interface ChannelConnectorAgentProcessResult {
@@ -33,6 +43,7 @@ export interface ChannelConnectorAgentProcessResult {
   durationMs: number;
   timedOut: boolean;
   error: string | null;
+  progressEvents?: ChannelConnectorAgentProgressEvent[];
 }
 
 export type ChannelConnectorAgentProcessRunner = (
@@ -50,6 +61,7 @@ export interface ChannelConnectorAgentTurnRequest {
   session?: {
     codexThreadId?: string | null;
   } | null;
+  onProgress?: (event: ChannelConnectorAgentProgressEvent) => void;
   timeoutMs?: number;
   processRunner?: ChannelConnectorAgentProcessRunner;
 }
@@ -69,6 +81,11 @@ export interface ChannelConnectorAgentTurnResult {
   exitCode: number | null;
   durationMs: number;
   error: string | null;
+  progress: {
+    eventCount: number;
+    latest: ChannelConnectorAgentProgressEvent | null;
+    summary: string | null;
+  };
   session: {
     resumed: boolean;
     codexThreadId: string | null;
@@ -77,6 +94,21 @@ export interface ChannelConnectorAgentTurnResult {
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function truncateText(value: string, maxLength = 400): string {
+  const normalized = value.trim();
+  return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}...` : normalized;
+}
+
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
 }
 
 function ensureWorkDir(workDir: string): string {
@@ -242,6 +274,7 @@ export function buildChannelConnectorAgentProcessRequest(
       cleanupPaths: codexHome?.cleanupRoot ? [codexHome.cleanupRoot] : [],
       sessionMode: codexThreadId ? "resume" : "new",
       codexThreadId: codexThreadId || null,
+      agent: project.agent,
     };
   }
 
@@ -273,6 +306,7 @@ export function buildChannelConnectorAgentProcessRequest(
         ANTHROPIC_BASE_URL: request.gatewayEndpoint.replace(/\/v1\/?$/, ""),
       },
       timeoutMs,
+      agent: project.agent,
     };
   }
 
@@ -295,10 +329,102 @@ export function buildChannelConnectorAgentProcessRequest(
       stdin: "",
       env: baseEnv,
       timeoutMs,
+      agent: project.agent,
     };
   }
 
   return null;
+}
+
+function progressEvent(input: {
+  type: ChannelConnectorAgentProgressEvent["type"];
+  rawType?: string | null;
+  itemType?: string | null;
+  text?: string | null;
+}): ChannelConnectorAgentProgressEvent {
+  return {
+    checkedAt: nowIso(),
+    type: input.type,
+    rawType: input.rawType || null,
+    itemType: input.itemType || null,
+    text: input.text ? truncateText(input.text) : null,
+  };
+}
+
+function parseCodexProgressLine(line: string): ChannelConnectorAgentProgressEvent | null {
+  const raw = recordValue(JSON.parse(line));
+  if (!raw) return null;
+  const rawType = normalizeString(raw.type) || null;
+  if (rawType === "thread.started") {
+    return progressEvent({ type: "session", rawType, text: normalizeString(raw.thread_id) || null });
+  }
+  if (rawType === "turn.started") {
+    return progressEvent({ type: "running", rawType, text: "Codex turn started" });
+  }
+  if (rawType === "turn.completed") {
+    return progressEvent({ type: "completed", rawType, text: "Codex turn completed" });
+  }
+  if (rawType === "turn.failed") {
+    const error = recordValue(raw.error);
+    return progressEvent({ type: "failed", rawType, text: normalizeString(error?.message) || "Codex turn failed" });
+  }
+  if (rawType === "error") {
+    return progressEvent({ type: "error", rawType, text: normalizeString(raw.message) || "Codex error" });
+  }
+  if (rawType === "item.completed") {
+    const item = recordValue(raw.item);
+    const itemType = normalizeString(item?.type) || null;
+    if (itemType === "reasoning") return progressEvent({ type: "reasoning", rawType, itemType, text: normalizeString(item?.text) || null });
+    if (itemType === "agent_message") return progressEvent({ type: "assistant", rawType, itemType, text: normalizeString(item?.text) || null });
+    if (itemType?.includes("tool") || itemType?.includes("function")) {
+      return progressEvent({ type: "tool", rawType, itemType, text: normalizeString(item?.name) || itemType });
+    }
+    return progressEvent({ type: "event", rawType, itemType, text: itemType });
+  }
+  return rawType ? progressEvent({ type: "event", rawType, text: rawType }) : null;
+}
+
+function parseGenericProgressLine(line: string): ChannelConnectorAgentProgressEvent | null {
+  const raw = recordValue(JSON.parse(line));
+  if (!raw) return null;
+  const rawType = normalizeString(raw.type) || normalizeString(raw.event) || null;
+  const message = recordValue(raw.message);
+  const item = recordValue(raw.item);
+  const text = normalizeString(raw.text)
+    || normalizeString(raw.content)
+    || normalizeString(message?.content)
+    || normalizeString(item?.text)
+    || normalizeString(item?.content)
+    || rawType;
+  if (!rawType && !text) return null;
+  const lowered = `${rawType || ""} ${text || ""}`.toLowerCase();
+  const type: ChannelConnectorAgentProgressEvent["type"] =
+    lowered.includes("error") ? "error"
+      : lowered.includes("fail") ? "failed"
+        : lowered.includes("complete") || lowered.includes("done") ? "completed"
+          : lowered.includes("tool") ? "tool"
+            : lowered.includes("reason") || lowered.includes("thinking") ? "reasoning"
+              : "event";
+  return progressEvent({ type, rawType, itemType: normalizeString(item?.type) || null, text });
+}
+
+function parseProgressLine(agent: ChannelConnectorAgentId, line: string): ChannelConnectorAgentProgressEvent | null {
+  const trimmed = line.trim();
+  if (!trimmed || !trimmed.startsWith("{")) return null;
+  try {
+    return agent === "codex" ? parseCodexProgressLine(trimmed) : parseGenericProgressLine(trimmed);
+  } catch {
+    return null;
+  }
+}
+
+function collectProgressEvents(stdout: string, agent: ChannelConnectorAgentId): ChannelConnectorAgentProgressEvent[] {
+  const events: ChannelConnectorAgentProgressEvent[] = [];
+  for (const line of stdout.split(/\r?\n/)) {
+    const event = parseProgressLine(agent, line);
+    if (event) events.push(event);
+  }
+  return events;
 }
 
 export async function defaultChannelConnectorAgentProcessRunner(
@@ -313,6 +439,8 @@ export async function defaultChannelConnectorAgentProcessRunner(
     });
     let stdout = "";
     let stderr = "";
+    let stdoutLineBuffer = "";
+    const progressEvents: ChannelConnectorAgentProgressEvent[] = [];
     let settled = false;
     let timedOut = false;
     const timeout = setTimeout(() => {
@@ -327,6 +455,15 @@ export async function defaultChannelConnectorAgentProcessRunner(
     child.stderr.setEncoding("utf8");
     child.stdout.on("data", (chunk) => {
       stdout += chunk;
+      stdoutLineBuffer += chunk;
+      const lines = stdoutLineBuffer.split(/\r?\n/);
+      stdoutLineBuffer = lines.pop() || "";
+      for (const line of lines) {
+        const event = parseProgressLine(request.agent, line);
+        if (!event) continue;
+        progressEvents.push(event);
+        request.onProgress?.(event);
+      }
     });
     child.stderr.on("data", (chunk) => {
       stderr += chunk;
@@ -344,12 +481,18 @@ export async function defaultChannelConnectorAgentProcessRunner(
         durationMs: Date.now() - startedAt,
         timedOut,
         error: error.message,
+        progressEvents,
       });
     });
     child.on("close", (exitCode, signal) => {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
+      const trailingEvent = parseProgressLine(request.agent, stdoutLineBuffer);
+      if (trailingEvent) {
+        progressEvents.push(trailingEvent);
+        request.onProgress?.(trailingEvent);
+      }
       cleanupProcessRequest(request);
       resolve({
         exitCode,
@@ -359,6 +502,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
         durationMs: Date.now() - startedAt,
         timedOut,
         error: timedOut ? "Agent process timed out." : null,
+        progressEvents,
       });
     });
     if (request.stdin) child.stdin.write(request.stdin);
@@ -428,6 +572,11 @@ function extractCodexThreadId(stdout: string): string | null {
   return null;
 }
 
+function progressSummary(events: ChannelConnectorAgentProgressEvent[]): string | null {
+  const latestText = [...events].reverse().find((event) => event.text)?.text || null;
+  return latestText ? truncateText(latestText, 180) : null;
+}
+
 export async function runChannelConnectorAgentTurn(
   request: ChannelConnectorAgentTurnRequest,
 ): Promise<ChannelConnectorAgentTurnResult> {
@@ -448,6 +597,11 @@ export async function runChannelConnectorAgentTurn(
       exitCode: null,
       durationMs: 0,
       error: "Octo message content is empty.",
+      progress: {
+        eventCount: 0,
+        latest: null,
+        summary: null,
+      },
       session: {
         resumed: false,
         codexThreadId: request.session?.codexThreadId || null,
@@ -472,6 +626,11 @@ export async function runChannelConnectorAgentTurn(
       exitCode: null,
       durationMs: 0,
       error: `Agent ${request.project.agent} is not wired to the native Channel runner yet.`,
+      progress: {
+        eventCount: 0,
+        latest: null,
+        summary: null,
+      },
       session: {
         resumed: false,
         codexThreadId: request.session?.codexThreadId || null,
@@ -480,6 +639,7 @@ export async function runChannelConnectorAgentTurn(
   }
 
   const runner = request.processRunner || defaultChannelConnectorAgentProcessRunner;
+  processRequest.onProgress = request.onProgress;
   let result: ChannelConnectorAgentProcessResult;
   try {
     result = await runner(processRequest);
@@ -490,6 +650,10 @@ export async function runChannelConnectorAgentTurn(
   const codexThreadId = request.project.agent === "codex"
     ? extractCodexThreadId(result.stdout) || processRequest.codexThreadId || null
     : request.session?.codexThreadId || null;
+  const progressEvents = result.progressEvents?.length
+    ? result.progressEvents
+    : collectProgressEvents(result.stdout, request.project.agent);
+  const latestProgress = progressEvents.length ? progressEvents[progressEvents.length - 1] : null;
   return {
     attempted: true,
     ok,
@@ -505,6 +669,11 @@ export async function runChannelConnectorAgentTurn(
     exitCode: result.exitCode,
     durationMs: result.durationMs,
     error: result.error || (ok ? null : result.stderr.trim() || `Agent process exited with ${result.exitCode}`),
+    progress: {
+      eventCount: progressEvents.length,
+      latest: latestProgress,
+      summary: progressSummary(progressEvents),
+    },
     session: {
       resumed: processRequest.sessionMode === "resume",
       codexThreadId,
