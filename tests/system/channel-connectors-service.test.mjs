@@ -51,6 +51,10 @@ import {
   splitChannelConnectorTextChunks,
 } from "../../dist/apps/api/modules/channel-connectors/text-chunks.js";
 import {
+  prepareChannelConnectorGroupBufferedReply,
+  readChannelConnectorReplyBuffers,
+} from "../../dist/apps/api/modules/channel-connectors/reply-buffer-store.js";
+import {
   channelConnectorGatewaySecretCandidates,
   resolveChannelConnectorGatewayClientKey,
 } from "../../dist/apps/api/modules/channel-connectors/gateway-secret.js";
@@ -394,6 +398,49 @@ test("native Channel Connectors text chunking follows CC UTF-8 safe boundaries",
   assert.deepEqual(splitChannelConnectorTextChunks("😀😁😂🤣😄😅", 3), ["😀😁😂", "🤣😄😅"]);
   assert.deepEqual(splitChannelConnectorTextChunks("abcde\nfghij", 8), ["abcde\n", "fghij"]);
   assert.deepEqual(splitChannelConnectorTextChunks("你好\n世界测试一二三四", 5)[0], "你好\n");
+});
+
+test("native Channel Connectors buffers long group replies without truncating stored content", () => {
+  const root = makeTempRoot();
+  const bufferPath = path.join(root, "state", "channel-reply-buffers.json");
+  const longReply = `${"群聊长回复".repeat(260)}\nfinal line`;
+  const buffered = prepareChannelConnectorGroupBufferedReply({
+    filePath: bufferPath,
+    bindingId: "octo-codex",
+    sessionKey: "dmwork:group:group-a",
+    messageId: "m-long-reply",
+    platform: "octo",
+    replyText: longReply,
+    isGroup: true,
+    thresholdRunes: 200,
+    previewRunes: 80,
+    now: new Date("2026-06-06T08:00:00.000Z"),
+  });
+  assert.equal(buffered.buffered, true);
+  assert.ok(buffered.bufferId);
+  assert.equal(buffered.originalRunes, Array.from(longReply).length);
+  assert.ok(buffered.previewRunes <= 80);
+  assert.match(buffered.replyText, /Studio 已缓存完整回复/);
+  assert.doesNotMatch(buffered.replyText, /final line$/);
+  assert.equal(fs.statSync(bufferPath).mode & 0o777, 0o600);
+  const stored = readChannelConnectorReplyBuffers(bufferPath);
+  assert.equal(stored.records.length, 1);
+  assert.equal(stored.records[0].id, buffered.bufferId);
+  assert.equal(stored.records[0].replyText, longReply);
+
+  const direct = prepareChannelConnectorGroupBufferedReply({
+    filePath: bufferPath,
+    bindingId: "octo-codex",
+    sessionKey: "dmwork:dm:user-a",
+    messageId: "m-dm-long-reply",
+    platform: "octo",
+    replyText: longReply,
+    isGroup: false,
+    thresholdRunes: 200,
+  });
+  assert.equal(direct.buffered, false);
+  assert.equal(direct.replyText, longReply);
+  assert.equal(readChannelConnectorReplyBuffers(bufferPath).records.length, 1);
 });
 
 test("native Channel Connectors stages attachments under sanitized local paths", () => {

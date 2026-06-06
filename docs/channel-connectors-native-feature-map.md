@@ -47,4 +47,5 @@
 - 已完成：F4 Feishu attachment staging：Feishu resource streaming 下载到 `agent-runtime/attachments`，路径清洗；daemon 默认 128MB 安全阀，binding metadata 可覆盖或关闭上限；失败降级为 `stagingError`，Agent prompt 使用本地路径。
 - 已完成：F4 IM history context：按 session 保存最近 user/assistant 脱敏摘要，Agent prompt 注入短上下文，`/new` / `/reset` 清理 history。
 - 已完成：F4 群聊 context：Agent prompt 注入 channel/sender/bot/reply/mention/成员摘要，飞书完整群成员列表后续再接平台 API。
-- 下一步：F4 长回复 group buffer、治理策略、飞书完整群成员拉取；Feishu card/menu UI 继续复刻 CC 后再 Studio 化。
+- 已完成：F4 长回复 group buffer：群聊长回复保存到本地 buffer，只发送短预览和 buffer id；私聊保持原拆分。
+- 下一步：F4/F5 治理策略、reply buffer 查看命令/UI、飞书完整群成员拉取；Feishu card/menu UI 继续复刻 CC 后再 Studio 化。

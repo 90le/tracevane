@@ -1,6 +1,6 @@
 # Studio Gateway 进度
 
-> 状态：Studio Gateway core completed；Provider Center/App Connections completed；Channel Connectors native F4 group context slice completed；OpenAI Platform vendor proof optional
+> 状态：Studio Gateway core completed；Provider Center/App Connections completed；Channel Connectors native F4 group reply buffer slice completed；OpenAI Platform vendor proof optional
 > 更新：2026-06-06
 > 文档规则：本文件只保留当前状态、最近完成、验证、边界和下一步；流水细节不继续追加。
 
@@ -29,6 +29,7 @@
 - F4 Feishu 附件下载/staging 已落地：长连接进入 Agent 前以 streaming 方式下载 Feishu resource 到 `agent-runtime/attachments/<messageId>`，文件名和 messageId 做路径清洗；daemon 仅设置可配置安全阀，默认 128MB，binding metadata 可用 `attachmentMaxBytes` / `attachment_max_bytes` 覆盖，`0` / `unlimited` 可关闭 daemon 侧上限；失败只写 `stagingError` 不阻断会话；Agent prompt 引用本地路径，不泄露平台 key。
 - F4 IM history context 已落地：按 `bindingId + sessionKey` 保存最近 user/assistant 脱敏摘要，Agent 调用前注入同一 IM session 的短上下文；`/new` 与 `/reset` 会同步清理 history。
 - F4 群聊 context 已落地：Agent prompt 会注入当前群聊 channel、sender、bot id、reply message、mention 和入站可用成员列表；Feishu 当前先注入已解析 chat/root/thread/from 信息，不拉取完整群成员。
+- F4 长回复 group buffer 已落地：群聊成功回复超过阈值时保存完整内容到本地 `channel-reply-buffers.json`，群里只发送短预览和 buffer id；私聊、错误回执仍按原逻辑发送。
 
 ## 验证
 
@@ -41,6 +42,7 @@
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "stages attachments|Feishu transport downloads message resources|agent runner builds gateway-backed Codex turns|Feishu webhook parses|Feishu transport sends replies"`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "conversation history|agent runner builds gateway-backed Codex turns|IM commands switch agent|Feishu webhook parses|Feishu transport sends replies|stages attachments"`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "agent runner builds gateway-backed Codex turns|conversation history|IM commands switch agent|Octo adapter follows group|Feishu webhook parses|Feishu transport sends replies|stages attachments"`。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "buffers long group replies|text chunking|agent runner builds gateway-backed Codex turns|Octo adapter follows group|Feishu transport splits long text|Feishu webhook parses|Feishu transport sends replies"`。
 - 通过：隔离 `CODEX_HOME` 真实 Codex CLI smoke，`glm-5` 经 Studio Gateway 调用 shell 读取 `probe.txt` 后返回 `ok`；Gateway requestLog 显示两次 `/v1/responses` 均为 200，修复前同路径曾返回 400/1213。
 - 通过：隔离 `CODEX_HOME` 三工具调用 smoke，`glm-5` 连续 3 次 `command_execution` 后返回 `ok`，退出码 0。
 - 通过：真实飞书客户端复测 `调用三次阅读工具回复我ok`；长连接入站、processing reaction、Progress card send/patch、3 次工具步骤、最终 `agentStatus=completed` / `agentError=null`。Gateway 最新 4 次 `/v1/responses` 均为 200，无 1213。
@@ -49,9 +51,9 @@
 ## 已知边界
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
-- Feishu progress card 已替代文本进度；附件 staging 已具备 streaming 落盘、安全本地路径和可配置大小安全阀；真实 Feishu 大文件/压缩包客户端 smoke 尚未执行；飞书完整群成员拉取、长回复预览冻结、长回复 buffer 和治理策略仍属于 F4/F5。
+- Feishu progress card 已替代文本进度；附件 staging 已具备 streaming 落盘、安全本地路径和可配置大小安全阀；真实 Feishu 大文件/压缩包客户端 smoke 尚未执行；reply buffer 查看命令/UI、飞书完整群成员拉取和治理策略仍属于 F4/F5。
 
 ## 下一步
 
-1. 继续 F4：长回复 group buffer、治理策略和飞书完整群成员拉取。
+1. 继续 F4/F5：治理策略、reply buffer 查看命令/UI、飞书完整群成员拉取。
 2. 后续 UI 精修 Feishu card/menu 样式时继续参考 CC 原卡片结构，避免重新发明交互。

@@ -59,10 +59,14 @@ import {
   buildOctoSessionKey,
   extractOctoAttachments,
   extractOctoContent,
+  isOctoGroupChannel,
   isOctoMessageDirectedAtBot,
   renderOctoTextReply,
   shouldSkipOctoMessage,
 } from "./octo-adapter.js";
+import {
+  prepareChannelConnectorGroupBufferedReply,
+} from "./reply-buffer-store.js";
 import {
   buildFeishuSessionKey,
   parseChannelConnectorFeishuWebhook,
@@ -549,6 +553,10 @@ function sessionControlsPath(config: ChannelConnectorsDaemonRuntimeConfig): stri
 
 function conversationHistoryPath(config: ChannelConnectorsDaemonRuntimeConfig): string {
   return path.join(config.paths.state, "channel-history.json");
+}
+
+function replyBufferPath(config: ChannelConnectorsDaemonRuntimeConfig): string {
+  return path.join(config.paths.state, "channel-reply-buffers.json");
 }
 
 function safePathSegment(value: string): string {
@@ -1618,8 +1626,25 @@ async function dispatchOctoMessage(input: {
   state.agentRuns = state.agentRuns.slice(0, 20);
 
   let replySent = false;
+  let replyBuffered = false;
+  let replyBufferId: string | null = null;
+  let replyOriginalRunes: number | null = null;
+  let replyPreviewRunes: number | null = null;
   if (transport && agent.ok === true && agent.replyText) {
-    const replyPlan = renderOctoTextReply(message, agent.replyText);
+    const preparedReply = prepareChannelConnectorGroupBufferedReply({
+      filePath: replyBufferPath(config),
+      bindingId: binding.id,
+      sessionKey,
+      messageId: message.messageId,
+      platform: "octo",
+      replyText: agent.replyText,
+      isGroup: isOctoGroupChannel(message.channelType),
+    });
+    replyBuffered = preparedReply.buffered;
+    replyBufferId = preparedReply.bufferId;
+    replyOriginalRunes = preparedReply.originalRunes;
+    replyPreviewRunes = preparedReply.previewRunes;
+    const replyPlan = renderOctoTextReply(message, preparedReply.replyText);
     if (replyPlan) {
       const result = await sendOctoTextReply(transport, replyPlan);
       replySent = result.ok === true;
@@ -1656,6 +1681,10 @@ async function dispatchOctoMessage(input: {
     sessionResumed: agent.session.resumed,
     codexThreadId: agent.session.codexThreadId,
     sessionTurnCount: nextSession?.turnCount || null,
+    replyBuffered,
+    replyBufferId,
+    replyOriginalRunes,
+    replyPreviewRunes,
     replySent,
   });
   writeRuntime(config, state);
@@ -2183,15 +2212,40 @@ async function dispatchFeishuParsedEvent(input: {
 
   let replySent = false;
   let replyError: string | null = null;
+  let replyBuffered = false;
+  let replyBufferId: string | null = null;
+  let replyOriginalRunes: number | null = null;
+  let replyPreviewRunes: number | null = null;
   const replyContent = agent.ok === true && agent.replyText
     ? agent.replyText
     : agent.ok === false && !progressCardState.messageId
       ? `Agent 运行失败：${shortMessage(agent.error)}`
       : null;
   if (replyContent) {
+    const preparedReply = agent.ok === true
+      ? prepareChannelConnectorGroupBufferedReply({
+        filePath: replyBufferPath(config),
+        bindingId: binding.id,
+        sessionKey,
+        messageId,
+        platform: "feishu",
+        replyText: replyContent,
+        isGroup: normalizeString(parsed.chatType).toLowerCase() === "group",
+      })
+      : {
+        replyText: replyContent,
+        buffered: false,
+        bufferId: null,
+        originalRunes: Array.from(replyContent).length,
+        previewRunes: Array.from(replyContent).length,
+      };
+    replyBuffered = preparedReply.buffered;
+    replyBufferId = preparedReply.bufferId;
+    replyOriginalRunes = preparedReply.originalRunes;
+    replyPreviewRunes = preparedReply.previewRunes;
     const result = await sendFeishuTextMessage(transport, {
       chatId: parsed.channelId,
-      content: replyContent,
+      content: preparedReply.replyText,
     }, feishuTokenCachePath(config));
     replySent = result.ok === true;
     replyError = result.error;
@@ -2218,6 +2272,10 @@ async function dispatchFeishuParsedEvent(input: {
     sessionResumed: agent.session.resumed,
     codexThreadId: agent.session.codexThreadId,
     sessionTurnCount: nextSession?.turnCount || null,
+    replyBuffered,
+    replyBufferId,
+    replyOriginalRunes,
+    replyPreviewRunes,
     replySent,
     replyError,
     rawEventShape: isRecord(rawEvent) ? Object.keys(rawEvent).slice(0, 12) : [],
