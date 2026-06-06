@@ -40,6 +40,13 @@
   letter-spacing: 0;
 }
 
+.ccx-platform-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .ccx-facts {
   display: grid;
   gap: 10px;
@@ -249,8 +256,28 @@
 }
 
 .ccx-wide-field,
-.ccx-form-actions {
+.ccx-form-actions,
+.ccx-credential-box,
+.ccx-platform-smoke {
   grid-column: 1 / -1;
+}
+
+.ccx-credential-box {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-base) 80%, var(--surface-soft));
+  padding: 12px;
+}
+
+.ccx-credential-box legend {
+  padding: 0 6px;
+  color: var(--mono-ink-2);
+  font-size: 0.78rem;
 }
 
 .ccx-check-field {
@@ -328,7 +355,12 @@
   }
 
   .ccx-split,
-  .ccx-form {
+  .ccx-form,
+  .ccx-credential-box {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ccx-platform-actions {
+    justify-content: flex-start;
   }
 }

@@ -48,6 +48,8 @@ test("Channel Connectors page calls only channel connector APIs", () => {
     "/api/channel-connectors/config",
     "/api/channel-connectors/commands/surface",
     "/api/channel-connectors/commands/action",
+    "/api/channel-connectors/adapters/feishu/transport-smoke",
+    "/api/channel-connectors/adapters/octo/transport-smoke",
     "/api/channel-connectors/daemon/config",
     "/api/channel-connectors/daemon/service",
     "/api/channel-connectors/daemon/logs",
@@ -62,6 +64,14 @@ test("Channel Connectors page calls only channel connector APIs", () => {
   assert.match(page, /Channel daemon/);
   assert.match(page, /Work directory|工作目录/);
   assert.match(page, /Agent Profile/);
+  assert.match(page, /metadataFromBindingDraft/);
+  assert.match(page, /metadataBotToken/);
+  assert.match(page, /metadataAppSecret/);
+  assert.match(page, /metadataVerificationToken/);
+  assert.match(page, /metadataChatIdsText/);
+  assert.match(page, /runOctoTransportSmoke/);
+  assert.match(page, /runFeishuTransportSmoke/);
+  assert.match(page, /Test|测试连接/);
   assert.match(page, /Save profile|保存 Profile/);
   assert.match(page, /Save binding|保存绑定/);
   assert.match(page, /wechat/);

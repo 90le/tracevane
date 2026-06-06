@@ -1,6 +1,6 @@
 # Channel Connectors / CLI Agent Bot 原生方案
 
-> 状态：已切换为 Studio 原生实现路线；F4 Octo URL attachment staging completed
+> 状态：已切换为 Studio 原生实现路线；platform config UI completed
 > 更新：2026-06-06
 > 参考源：CC 二开全量源码 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`；OpenClaw 频道与运行时实现；压缩映射见 `channel-connectors-native-feature-map.md`
 
@@ -119,6 +119,7 @@ Studio 增强点：
 - 真实飞书客户端已复测三次工具调用：长连接入站、reaction、Progress card send/patch、工具步骤和最终 `ok` 均成功；Gateway 对应 `/v1/responses` 最新请求为 200。
 - F4 长回复拆分已落地：按 CC `splitMessage` 规则做 Unicode 安全切分，Feishu text 自动分多条发送，Octo 回复拆分复用同一 helper。
 - F4 Octo URL attachment staging 已落地：Octo URL 型图片/文件/语音/视频进入 Agent 前 streaming 下载到本地 attachment 目录，默认拒绝私网 URL，大小上限可由 binding metadata 覆盖；失败只写 `stagingError` 不阻断对话。
+- Channel Connectors 平台配置 UI 已落地：Octo/Feishu binding 可编辑平台凭证 metadata 并直接执行连接测试；本机 Octo `studio-cc` 与 Feishu live binding 已完成 smoke，daemon 长连接 connected。
 - F4 Feishu thread/reply 会话隔离已落地：daemon/service 共用 CC 风格 session key，群线程默认按 root 隔离，私聊保持每用户 session，事件日志保留 root/parent/thread 便于排查。
 - F4 附件 metadata 已落地：Feishu `image/file/audio/media/sticker` 和 Octo 图片/文件/语音/视频进入统一 attachment contract；Agent prompt 只收到脱敏摘要，平台 key 留在本地 API/日志用于后续下载/staging。
 - F4 Feishu 附件下载/staging 已落地：长连接入站进入 Agent 前以 streaming 方式下载资源到受控本地目录，路径和文件名清洗；daemon 默认 128MB 安全阀，binding metadata 可用 `attachmentMaxBytes` / `attachment_max_bytes` 覆盖，`0` / `unlimited` 可关闭 daemon 侧上限；失败不阻断会话，Agent 使用本地路径读取文件。

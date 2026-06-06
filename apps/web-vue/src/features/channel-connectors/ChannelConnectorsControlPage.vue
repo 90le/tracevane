@@ -245,10 +245,16 @@
               <p class="eyebrow">Platforms</p>
               <h3>{{ text('平台绑定', 'Platform bindings') }}</h3>
             </div>
-            <button type="button" class="secondary-button compact-button ccx-icon-button" @click="newBindingDraft">
-              <Plus :size="16" />
-              {{ text('新建', 'New') }}
-            </button>
+            <div class="ccx-platform-actions">
+              <button type="button" class="secondary-button compact-button ccx-icon-button" @click="newBindingDraft('octo')">
+                <Plus :size="16" />
+                Octo
+              </button>
+              <button type="button" class="secondary-button compact-button ccx-icon-button" @click="newBindingDraft('feishu')">
+                <Plus :size="16" />
+                {{ text('飞书', 'Feishu') }}
+              </button>
+            </div>
           </div>
           <div class="ccx-split">
             <form class="ccx-form" @submit.prevent="saveBindingDraft">
@@ -286,6 +292,52 @@
                 <input v-model="bindingDraft.enabled" type="checkbox" />
                 <span>{{ text('启用', 'Enabled') }}</span>
               </label>
+              <fieldset v-if="bindingDraft.platform === 'octo'" class="ccx-credential-box">
+                <legend>Octo(dmwork)</legend>
+                <label>
+                  <span>API Server</span>
+                  <input v-model.trim="bindingDraft.metadataApiUrl" placeholder="https://im.deepminer.com.cn/api" autocomplete="off" />
+                </label>
+                <label>
+                  <span>Bot Token</span>
+                  <input v-model.trim="bindingDraft.metadataBotToken" type="password" autocomplete="off" />
+                </label>
+                <label class="ccx-wide-field">
+                  <span>WS URL</span>
+                  <input v-model.trim="bindingDraft.metadataWsUrl" autocomplete="off" />
+                </label>
+                <label>
+                  <span>{{ text('附件上限', 'Attachment max') }}</span>
+                  <input v-model.trim="bindingDraft.metadataAttachmentMaxBytes" placeholder="128mb" autocomplete="off" />
+                </label>
+                <label class="ccx-check-field">
+                  <input v-model="bindingDraft.metadataStageOctoUrlAttachments" type="checkbox" />
+                  <span>Stage URL attachments</span>
+                </label>
+                <label class="ccx-check-field">
+                  <input v-model="bindingDraft.metadataAllowPrivateAttachmentUrls" type="checkbox" />
+                  <span>Private attachment URLs</span>
+                </label>
+              </fieldset>
+              <fieldset v-else-if="bindingDraft.platform === 'feishu'" class="ccx-credential-box">
+                <legend>{{ text('飞书', 'Feishu') }}</legend>
+                <label>
+                  <span>API URL</span>
+                  <input v-model.trim="bindingDraft.metadataApiUrl" placeholder="https://open.feishu.cn" autocomplete="off" />
+                </label>
+                <label>
+                  <span>App Secret</span>
+                  <input v-model.trim="bindingDraft.metadataAppSecret" type="password" autocomplete="off" />
+                </label>
+                <label class="ccx-wide-field">
+                  <span>Verification Token</span>
+                  <input v-model.trim="bindingDraft.metadataVerificationToken" type="password" autocomplete="off" />
+                </label>
+                <label class="ccx-wide-field">
+                  <span>Chat IDs</span>
+                  <textarea v-model="bindingDraft.metadataChatIdsText" rows="2" placeholder="oc_xxx&#10;oc_yyy" />
+                </label>
+              </fieldset>
               <label class="ccx-wide-field">
                 <span>{{ text('白名单', 'Allowlist') }}</span>
                 <textarea v-model="bindingDraft.allowlistText" rows="3" placeholder="user-a&#10;user-b" />
@@ -300,6 +352,16 @@
                   {{ savingConfig ? text('保存中...', 'Saving...') : text('保存绑定', 'Save binding') }}
                 </button>
                 <button
+                  v-if="bindingDraft.platform === 'octo' || bindingDraft.platform === 'feishu'"
+                  type="button"
+                  class="secondary-button compact-button ccx-icon-button"
+                  :disabled="savingConfig || platformSmokeBusy"
+                  @click="testBindingDraft"
+                >
+                  <Activity :size="16" />
+                  {{ platformSmokeBusy ? text('测试中...', 'Testing...') : text('测试连接', 'Test') }}
+                </button>
+                <button
                   type="button"
                   class="secondary-button compact-button ccx-icon-button"
                   :disabled="savingConfig || !bindingExists"
@@ -308,6 +370,13 @@
                   <Trash2 :size="16" />
                   {{ text('删除', 'Delete') }}
                 </button>
+              </div>
+              <div v-if="platformSmoke" class="ccx-output ccx-platform-smoke" :class="{ failure: platformSmoke.transport.ok !== true }">
+                <div class="ccx-output__head">
+                  <strong>{{ platformSmoke.adapter }} {{ platformSmoke.transport.action }}</strong>
+                  <span>{{ formatTimestamp(platformSmoke.checkedAt) }}</span>
+                </div>
+                <pre>{{ platformSmokeOutput }}</pre>
               </div>
             </form>
 
@@ -378,6 +447,8 @@ import {
 import type {
   ChannelConnectorAgentId,
   ChannelConnectorAgentProfile,
+  ChannelConnectorFeishuTransportSmokeResponse,
+  ChannelConnectorOctoTransportSmokeResponse,
   ChannelConnectorPermissionMode,
   ChannelConnectorPlatformBinding,
   ChannelConnectorPlatformId,
@@ -398,6 +469,8 @@ import {
   fetchChannelConnectorsNativeConfig,
   fetchChannelConnectorsStatus,
   manageChannelConnectorsDaemonService,
+  runFeishuTransportSmoke,
+  runOctoTransportSmoke,
   saveChannelConnectorsNativeConfig,
 } from './api';
 import './channel-connectors-workspace.css';
@@ -408,6 +481,16 @@ type WorkspaceTab = 'runtime' | 'projects' | 'platforms' | 'sessions';
 type BindingDraft = Omit<ChannelConnectorPlatformBinding, 'allowlist' | 'adminUsers' | 'metadata'> & {
   allowlistText: string;
   adminUsersText: string;
+  metadata: Record<string, unknown>;
+  metadataApiUrl: string;
+  metadataBotToken: string;
+  metadataWsUrl: string;
+  metadataAppSecret: string;
+  metadataVerificationToken: string;
+  metadataChatIdsText: string;
+  metadataAttachmentMaxBytes: string;
+  metadataAllowPrivateAttachmentUrls: boolean;
+  metadataStageOctoUrlAttachments: boolean;
 };
 
 const { text } = useLocalePreference();
@@ -429,6 +512,8 @@ const nativeConfig = ref<ChannelConnectorsNativeConfigResponse | null>(null);
 const configPreview = ref<ChannelConnectorsDaemonConfigResponse | null>(null);
 const logs = ref<ChannelConnectorsLogsResponse | null>(null);
 const actionResult = ref<ChannelConnectorsDaemonResponse | null>(null);
+const platformSmoke = ref<ChannelConnectorOctoTransportSmokeResponse | ChannelConnectorFeishuTransportSmokeResponse | null>(null);
+const platformSmokeBusy = ref(false);
 const notice = ref<{ kind: 'success' | 'error'; message: string } | null>(null);
 
 const profileDraft = ref<ChannelConnectorAgentProfile>(emptyProfileDraft());
@@ -506,6 +591,24 @@ const actionOutput = computed(() => {
   return lines.join('\n');
 });
 
+const platformSmokeOutput = computed(() => {
+  const result = platformSmoke.value;
+  if (!result) return '';
+  const transport = result.transport;
+  return [
+    `Binding: ${result.binding?.id || '-'}`,
+    `Action: ${transport.action}`,
+    `OK: ${String(transport.ok)}`,
+    `HTTP: ${transport.statusCode ?? '-'}`,
+    `Requests: ${transport.requestCount}`,
+    transport.error ? `Error: ${transport.error}` : '',
+    'tokenCache' in transport && transport.tokenCache ? `Token cache: ${transport.tokenCache}` : '',
+    'robotId' in transport && transport.robotId ? `Robot ID: ${transport.robotId}` : '',
+    'wsUrl' in transport && transport.wsUrl ? `WS URL: ${transport.wsUrl}` : '',
+    'messageId' in transport && transport.messageId ? `Message ID: ${transport.messageId}` : '',
+  ].filter(Boolean).join('\n');
+});
+
 const logText = computed(() => (logs.value?.lines || []).join('\n'));
 
 function emptyProfileDraft(): ChannelConnectorAgentProfile {
@@ -533,7 +636,23 @@ function emptyBindingDraft(): BindingDraft {
     enabled: true,
     allowlistText: '',
     adminUsersText: '',
+    metadata: {},
+    metadataApiUrl: '',
+    metadataBotToken: '',
+    metadataWsUrl: '',
+    metadataAppSecret: '',
+    metadataVerificationToken: '',
+    metadataChatIdsText: '',
+    metadataAttachmentMaxBytes: '',
+    metadataAllowPrivateAttachmentUrls: false,
+    metadataStageOctoUrlAttachments: true,
   };
+}
+
+function defaultApiUrl(platform: ChannelConnectorPlatformId): string {
+  if (platform === 'feishu') return 'https://open.feishu.cn';
+  if (platform === 'octo') return 'https://im.deepminer.com.cn/api';
+  return '';
 }
 
 function textToList(value: string): string[] {
@@ -547,6 +666,46 @@ function listToText(value: string[]): string {
   return value.join('\n');
 }
 
+function cloneMetadata(value: unknown): Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {};
+  const output: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    output[key] = Array.isArray(item) ? [...item] : item;
+  }
+  return output;
+}
+
+function metadataString(metadata: Record<string, unknown>, keys: string[], fallback = ''): string {
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === 'string' && value.trim()) return value.trim();
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  }
+  return fallback;
+}
+
+function metadataBoolean(metadata: Record<string, unknown>, keys: string[], fallback = false): boolean {
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === 'boolean') return value;
+    if (typeof value === 'string') {
+      const normalized = value.trim().toLowerCase();
+      if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+      if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+    }
+  }
+  return fallback;
+}
+
+function metadataListText(metadata: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = metadata[key];
+    if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean).join('\n');
+    if (typeof value === 'string' && value.trim()) return value.split(/[\n,]/g).map((item) => item.trim()).filter(Boolean).join('\n');
+  }
+  return '';
+}
+
 function cloneNativeConfig(): ChannelConnectorsNativeConfig | null {
   if (!nativeConfig.value) return null;
   return {
@@ -558,7 +717,7 @@ function cloneNativeConfig(): ChannelConnectorsNativeConfig | null {
         allowlist: [...binding.allowlist],
         adminUsers: [...binding.adminUsers],
       };
-      if (binding.metadata) next.metadata = { ...binding.metadata };
+      if (binding.metadata) next.metadata = cloneMetadata(binding.metadata);
       return next;
     }),
   };
@@ -572,6 +731,7 @@ function selectProfile(profile: ChannelConnectorAgentProfile): void {
 }
 
 function selectBinding(binding: ChannelConnectorPlatformBinding): void {
+  const metadata = cloneMetadata(binding.metadata);
   bindingDraft.value = {
     id: binding.id,
     platform: binding.platform,
@@ -582,7 +742,18 @@ function selectBinding(binding: ChannelConnectorPlatformBinding): void {
     enabled: binding.enabled,
     allowlistText: listToText(binding.allowlist),
     adminUsersText: listToText(binding.adminUsers),
+    metadata,
+    metadataApiUrl: metadataString(metadata, ['apiUrl', 'api_url', 'baseUrl', 'base_url', 'domain'], defaultApiUrl(binding.platform)),
+    metadataBotToken: metadataString(metadata, ['botToken', 'bot_token', 'token']),
+    metadataWsUrl: metadataString(metadata, ['wsUrl', 'ws_url']),
+    metadataAppSecret: metadataString(metadata, ['appSecret', 'app_secret', 'feishuAppSecret', 'feishu_app_secret']),
+    metadataVerificationToken: metadataString(metadata, ['verificationToken', 'verification_token', 'feishuVerificationToken', 'feishu_verification_token']),
+    metadataChatIdsText: metadataListText(metadata, ['chatIds', 'chat_ids', 'chatId', 'chat_id', 'openChatIds', 'open_chat_ids']),
+    metadataAttachmentMaxBytes: metadataString(metadata, ['attachmentMaxBytes', 'attachment_max_bytes', 'maxAttachmentBytes', 'max_attachment_bytes']),
+    metadataAllowPrivateAttachmentUrls: metadataBoolean(metadata, ['allowPrivateAttachmentUrls', 'allow_private_attachment_urls', 'allowOctoPrivateAttachmentUrls', 'allow_octo_private_attachment_urls'], false),
+    metadataStageOctoUrlAttachments: metadataBoolean(metadata, ['stageOctoUrlAttachments', 'stage_octo_url_attachments', 'stageUrlAttachments', 'stage_url_attachments'], true),
   };
+  platformSmoke.value = null;
 }
 
 function newProfileDraft(): void {
@@ -597,12 +768,18 @@ function newProfileDraft(): void {
   };
 }
 
-function newBindingDraft(): void {
+function newBindingDraft(platform: ChannelConnectorPlatformId = 'octo'): void {
   const firstProfile = nativeConfig.value?.config.agentProfiles[0];
+  const displayName = platform === 'feishu' ? 'Feishu Bot' : platform === 'octo' ? 'Octo Bot' : 'Platform Bot';
   bindingDraft.value = {
     ...emptyBindingDraft(),
+    id: `${platform}-${Date.now().toString(36)}`,
+    platform,
+    displayName,
     agentProfileId: firstProfile?.id || '',
+    metadataApiUrl: defaultApiUrl(platform),
   };
+  platformSmoke.value = null;
 }
 
 function hydrateConfigDrafts(): void {
@@ -682,6 +859,7 @@ async function setDefaultProfile(): Promise<void> {
 function bindingFromDraft(): ChannelConnectorPlatformBinding {
   const id = bindingDraft.value.id.trim()
     || `${bindingDraft.value.platform}-${bindingDraft.value.accountId.trim()}-${bindingDraft.value.botId.trim() || 'default'}`;
+  const metadata = metadataFromBindingDraft();
   return {
     id,
     platform: bindingDraft.value.platform,
@@ -692,21 +870,66 @@ function bindingFromDraft(): ChannelConnectorPlatformBinding {
     enabled: bindingDraft.value.enabled,
     allowlist: textToList(bindingDraft.value.allowlistText),
     adminUsers: textToList(bindingDraft.value.adminUsersText),
+    ...(Object.keys(metadata).length ? { metadata } : {}),
   };
 }
 
-async function saveBindingDraft(): Promise<void> {
+function setMetadataString(metadata: Record<string, unknown>, key: string, value: string): void {
+  const normalized = value.trim();
+  if (normalized) metadata[key] = normalized;
+  else delete metadata[key];
+}
+
+function setMetadataList(metadata: Record<string, unknown>, key: string, value: string): void {
+  const items = textToList(value);
+  if (items.length) metadata[key] = items;
+  else delete metadata[key];
+}
+
+function metadataFromBindingDraft(): Record<string, unknown> {
+  const metadata = cloneMetadata(bindingDraft.value.metadata);
+  setMetadataString(metadata, 'apiUrl', bindingDraft.value.metadataApiUrl || defaultApiUrl(bindingDraft.value.platform));
+  if (bindingDraft.value.platform === 'octo') {
+    setMetadataString(metadata, 'botToken', bindingDraft.value.metadataBotToken);
+    setMetadataString(metadata, 'wsUrl', bindingDraft.value.metadataWsUrl);
+    setMetadataString(metadata, 'attachmentMaxBytes', bindingDraft.value.metadataAttachmentMaxBytes);
+    metadata.stageOctoUrlAttachments = bindingDraft.value.metadataStageOctoUrlAttachments;
+    metadata.allowPrivateAttachmentUrls = bindingDraft.value.metadataAllowPrivateAttachmentUrls;
+    delete metadata.appSecret;
+    delete metadata.verificationToken;
+    delete metadata.chatIds;
+  } else if (bindingDraft.value.platform === 'feishu') {
+    setMetadataString(metadata, 'appSecret', bindingDraft.value.metadataAppSecret);
+    setMetadataString(metadata, 'verificationToken', bindingDraft.value.metadataVerificationToken);
+    setMetadataList(metadata, 'chatIds', bindingDraft.value.metadataChatIdsText);
+    delete metadata.botToken;
+    delete metadata.wsUrl;
+    delete metadata.stageOctoUrlAttachments;
+    delete metadata.allowPrivateAttachmentUrls;
+  }
+  for (const [key, value] of Object.entries(metadata)) {
+    if (value === '' || value === null || typeof value === 'undefined') delete metadata[key];
+  }
+  return metadata;
+}
+
+async function persistBindingDraft(message: string): Promise<ChannelConnectorPlatformBinding | null> {
   const config = cloneNativeConfig();
-  if (!config) return;
+  if (!config) return null;
   const binding = bindingFromDraft();
   if (!binding.accountId || !binding.agentProfileId) {
     notice.value = { kind: 'error', message: text('账号和 Agent Profile 必填', 'Account and Agent Profile are required') };
-    return;
+    return null;
   }
   const index = config.platformBindings.findIndex((item) => item.id === binding.id);
   if (index >= 0) config.platformBindings.splice(index, 1, binding);
   else config.platformBindings.push(binding);
-  await persistNativeConfig(config, text('平台绑定已保存', 'Platform binding saved'));
+  await persistNativeConfig(config, message);
+  return binding;
+}
+
+async function saveBindingDraft(): Promise<void> {
+  await persistBindingDraft(text('平台绑定已保存', 'Platform binding saved'));
 }
 
 async function deleteBindingDraft(): Promise<void> {
@@ -714,6 +937,40 @@ async function deleteBindingDraft(): Promise<void> {
   if (!config) return;
   config.platformBindings = config.platformBindings.filter((binding) => binding.id !== bindingDraft.value.id);
   await persistNativeConfig(config, text('平台绑定已删除', 'Platform binding deleted'));
+  platformSmoke.value = null;
+}
+
+async function testBindingDraft(): Promise<void> {
+  platformSmokeBusy.value = true;
+  platformSmoke.value = null;
+  notice.value = null;
+  try {
+    const binding = await persistBindingDraft(text('平台绑定已保存，开始测试', 'Binding saved, testing'));
+    if (!binding) return;
+    if (binding.platform === 'octo') {
+      platformSmoke.value = await runOctoTransportSmoke({
+        bindingId: binding.id,
+        action: 'register',
+      });
+    } else if (binding.platform === 'feishu') {
+      platformSmoke.value = await runFeishuTransportSmoke({
+        bindingId: binding.id,
+        action: 'tenant-token',
+      });
+    }
+    if (platformSmoke.value) {
+      notice.value = {
+        kind: platformSmoke.value.transport.ok === true ? 'success' : 'error',
+        message: platformSmoke.value.transport.ok === true
+          ? text('连接测试通过', 'Connection test passed')
+          : platformSmoke.value.transport.error || text('连接测试失败', 'Connection test failed'),
+      };
+    }
+  } catch (error) {
+    reportError(error, text('连接测试失败', 'Connection test failed'));
+  } finally {
+    platformSmokeBusy.value = false;
+  }
 }
 
 function formatTimestamp(value: string): string {

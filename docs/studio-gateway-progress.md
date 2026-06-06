@@ -1,6 +1,6 @@
 # Studio Gateway 进度
 
-> 状态：Studio Gateway core completed；Provider Center/App Connections completed；Channel Connectors native F4 Feishu group members slice completed；OpenAI Platform vendor proof optional
+> 状态：Studio Gateway core completed；Provider Center/App Connections completed；Channel Connectors platform config slice completed；OpenAI Platform vendor proof optional
 > 更新：2026-06-06
 > 文档规则：本文件只保留当前状态、最近完成、验证、边界和下一步；流水细节不继续追加。
 
@@ -34,6 +34,8 @@
 - F4 reply buffer 查看已落地：`/buffer` / `/buffers` / `/reply-buffer` 列出当前 IM session 最近缓存；`/buffer <id|前缀|latest>` 读取完整内容；Feishu 菜单新增 Reply Buffer 子卡片，命令只读取当前 binding + session，避免跨会话泄露。
 - F5 基础治理已落地：Octo/Feishu daemon 与 HTTP dispatch/action 共用 allowlist/admin、`metadata.bannedWords`、`metadata.rateLimitPerMinute` / `rateLimitWindowSeconds` 检查；命中策略只写审计事件，不触发本地 CLI Agent。
 - F4 飞书群成员拉取已落地：daemon 对飞书群聊 Agent 分支调用 `/open-apis/im/v1/chats/:chat_id/members` 分页拉取成员，注入现有 `[Studio group context]`；失败只记录 `groupMemberPullError`，不阻断对话。可用 `enableFeishuMemberPull: false` 关闭，`feishuMemberMaxPages` 控制分页上限。
+- Channel Connectors 前端已支持 Octo/Feishu binding 凭证配置和连接测试：Octo 走 register smoke，Feishu 走 tenant-token smoke；保存时保留平台 metadata，不再只写通用 binding 字段。
+- 本机已写入 Octo `studio-cc` binding；Octo register smoke 通过，daemon config 落盘后 Octo 与 Feishu 长连接均为 connected。
 
 ## 验证
 
@@ -52,11 +54,17 @@
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "Feishu transport lists chat members|agent runner builds gateway-backed Codex turns|Feishu webhook parses|Feishu transport sends replies|daemon owns Feishu long-connection ingress|Feishu transport downloads message resources"`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "stages attachments|Octo adapter dry-run|agent runner builds gateway-backed Codex turns|Feishu transport downloads message resources|daemon owns Feishu long-connection ingress"`。
 - 通过：`npm run typecheck:api`。
+- 通过：`npm run typecheck:web`。
+- 通过：`npm run build:web`。
+- 通过：`node --test tests/system/studio-web-channel-connectors-page.test.mjs`。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "Octo transport smoke registers bot|Feishu transport sends replies|Channel Connectors routes|daemon registers Octo|stages attachments"`。
+- 通过：本机 Octo `register` transport smoke；本机 Feishu `tenant-token` transport smoke。
+- 通过：Playwright 打开 `/channel-connectors`，检查 Feishu/Octo 平台配置表单无 console error、无横向溢出。
 - 通过：隔离 `CODEX_HOME` 真实 Codex CLI smoke，`glm-5` 经 Studio Gateway 调用 shell 读取 `probe.txt` 后返回 `ok`；Gateway requestLog 显示两次 `/v1/responses` 均为 200，修复前同路径曾返回 400/1213。
 - 通过：隔离 `CODEX_HOME` 三工具调用 smoke，`glm-5` 连续 3 次 `command_execution` 后返回 `ok`，退出码 0。
 - 通过：真实飞书客户端复测 `调用三次阅读工具回复我ok`；长连接入站、processing reaction、Progress card send/patch、3 次工具步骤、最终 `agentStatus=completed` / `agentError=null`。Gateway 最新 4 次 `/v1/responses` 均为 200，无 1213。
 - 已重启：`openclaw-studio-model-gateway.service`、`openclaw-studio-channel-connectors.service`、dev backend/frontend。
-- 本轮已重启并确认：`openclaw-studio-channel-connectors.service` active，daemon `http://127.0.0.1:18797/status` 正常，dev backend `:3762` 与 frontend `:5176` 正常监听。
+- 本轮已重启并确认：`openclaw-studio-channel-connectors.service` active，daemon `http://127.0.0.1:18797/status` 正常，Octo/Feishu connected，dev backend `:3762` 与 frontend `:5176` 正常监听。
 
 ## 已知边界
 

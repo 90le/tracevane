@@ -52,4 +52,5 @@
 - 已完成：F4 reply buffer 查看：`/buffer` / `/buffer <id|前缀|latest>` 和 Feishu Reply Buffer 子卡片，按当前 binding + session 隔离读取。
 - 已完成：F5 基础治理：allowlist/admin、banned words、rate limit 覆盖 Octo/Feishu daemon 与 HTTP dispatch/action。
 - 已完成：F4 飞书群成员拉取：群聊 Agent 分支分页拉取 chat members 并注入 group context，失败只记日志不阻断。
+- 已完成：平台配置 UI：Octo/Feishu binding 凭证 metadata 可在 Channel Connectors 页面编辑并直接执行连接测试。
 - 下一步：继续迁移 CC/OpenClaw 语音/STT/TTS、文件出站和多平台 adapter；Feishu card/menu UI 继续复刻 CC 后再 Studio 化。

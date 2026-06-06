@@ -3,6 +3,10 @@ import type {
   ChannelConnectorCommandActionResponse,
   ChannelConnectorCommandSurfaceRequest,
   ChannelConnectorCommandSurfaceResponse,
+  ChannelConnectorFeishuTransportSmokeRequest,
+  ChannelConnectorFeishuTransportSmokeResponse,
+  ChannelConnectorOctoTransportSmokeRequest,
+  ChannelConnectorOctoTransportSmokeResponse,
   ChannelConnectorsDaemonAction,
   ChannelConnectorsDaemonConfigResponse,
   ChannelConnectorsDaemonRequest,
@@ -53,6 +57,24 @@ export function runChannelConnectorCommandAction(
 ): Promise<ChannelConnectorCommandActionResponse> {
   return requestJson<ChannelConnectorCommandActionResponse>(
     '/api/channel-connectors/commands/action',
+    jsonBody(payload),
+  );
+}
+
+export function runFeishuTransportSmoke(
+  payload: ChannelConnectorFeishuTransportSmokeRequest = {},
+): Promise<ChannelConnectorFeishuTransportSmokeResponse> {
+  return requestJson<ChannelConnectorFeishuTransportSmokeResponse>(
+    '/api/channel-connectors/adapters/feishu/transport-smoke',
+    jsonBody(payload),
+  );
+}
+
+export function runOctoTransportSmoke(
+  payload: ChannelConnectorOctoTransportSmokeRequest = {},
+): Promise<ChannelConnectorOctoTransportSmokeResponse> {
+  return requestJson<ChannelConnectorOctoTransportSmokeResponse>(
+    '/api/channel-connectors/adapters/octo/transport-smoke',
     jsonBody(payload),
   );
 }
