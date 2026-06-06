@@ -6,9 +6,11 @@ import type {
   ChannelConnectorFeishuTransportResult,
   ChannelConnectorPlatformBinding,
 } from "../../../../types/channel-connectors.js";
+import { splitChannelConnectorTextChunks } from "./text-chunks.js";
 
 const DEFAULT_FEISHU_API_URL = "https://open.feishu.cn";
 const DEFAULT_TIMEOUT_MS = 30_000;
+const FEISHU_TEXT_CHUNK_RUNES = 3800;
 const TOKEN_EXPIRY_SKEW_MS = 5 * 60 * 1000;
 
 interface FeishuTokenCacheRecord {
@@ -77,6 +79,8 @@ function transportResult(
     requestCount: input.requestCount ?? 0,
     tokenCache: input.tokenCache ?? null,
     messageId: input.messageId ?? null,
+    messageIds: input.messageIds ?? null,
+    chunkCount: input.chunkCount ?? null,
     reactionId: input.reactionId ?? null,
   };
 }
@@ -265,30 +269,42 @@ export async function sendFeishuTextMessage(
   try {
     if (!normalizeString(input.chatId)) throw new Error("Feishu chatId is required.");
     if (!normalizeString(input.content)) throw new Error("Feishu message content is required.");
+    const chunks = splitChannelConnectorTextChunks(input.content, FEISHU_TEXT_CHUNK_RUNES)
+      .filter((chunk) => normalizeString(chunk));
+    if (!chunks.length) throw new Error("Feishu message content is required.");
     const token = await getFeishuTenantToken(config, cachePath);
     requestCount += token.requestCount;
     tokenCache = token.tokenCache;
-    const response = await feishuJsonRequest(config, {
-      method: "POST",
-      path: "/open-apis/im/v1/messages?receive_id_type=chat_id",
-      token: token.token,
-      payload: {
-        receive_id: input.chatId,
-        msg_type: "text",
-        content: JSON.stringify({ text: input.content }),
-      },
-    });
-    requestCount += 1;
-    const data = recordFrom(response.body.data);
+    const messageIds: string[] = [];
+    let statusCode: number | null = null;
+    for (const chunk of chunks) {
+      const response = await feishuJsonRequest(config, {
+        method: "POST",
+        path: "/open-apis/im/v1/messages?receive_id_type=chat_id",
+        token: token.token,
+        payload: {
+          receive_id: input.chatId,
+          msg_type: "text",
+          content: JSON.stringify({ text: chunk }),
+        },
+      });
+      requestCount += 1;
+      statusCode = response.statusCode;
+      const data = recordFrom(response.body.data);
+      const messageId = normalizeString(data.message_id);
+      if (messageId) messageIds.push(messageId);
+    }
     return transportResult({
       attempted: true,
       ok: true,
       action: "send-message",
       apiUrl: config.apiUrl,
-      statusCode: response.statusCode,
+      statusCode,
       requestCount,
       tokenCache,
-      messageId: normalizeString(data.message_id) || null,
+      messageId: messageIds[0] || null,
+      messageIds,
+      chunkCount: chunks.length,
     });
   } catch (error) {
     return transportResult({

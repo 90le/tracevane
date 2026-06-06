@@ -41,4 +41,5 @@
 - 已完成：Feishu card/menu/progress loop：Session、Agent、Model、Permission、WorkDir、Display 子卡片，文本 slash 与卡片点击共用 command-router；普通 slash 可直接返回 interactive card；Agent 运行保留 processing reaction，支持单张 Progress card send/patch、Codex `command_execution` 工具过程展示、`/stream` 与 `/tools` 控制，以及 upstream JSON error envelope 清洗和失败去重。
 - 已完成：Codex 工具调用链路按 CC/cc-switch 对齐：resume 参数顺序、Responses -> Chat 工具历史、reasoning/tool placeholder、JSON canonical；隔离 `CODEX_HOME` 真实 smoke 验证 `glm-5` 工具调用返回 200，不再触发 BigModel 1213。
 - 已完成：真实 Feishu 客户端三工具调用复测：长连接入站、reaction、Progress card send/patch、工具步骤和最终回复成功；Gateway 最新 `/v1/responses` 请求无 1213。
-- 下一步：F4 图片/文件、history context、长回复 buffer、治理策略；Feishu card/menu UI 继续复刻 CC 后再 Studio 化。
+- 已完成：F4 长回复拆分基础能力：共享 Unicode-safe text chunk helper，Feishu text 自动多条发送并记录 `chunkCount/messageIds`，Octo 回复复用同一拆分规则。
+- 下一步：F4 图片/文件、history context、长回复 group buffer、治理策略；Feishu card/menu UI 继续复刻 CC 后再 Studio 化。

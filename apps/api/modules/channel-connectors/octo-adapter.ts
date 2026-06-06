@@ -8,6 +8,7 @@ import type {
   ChannelConnectorOctoTransportResult,
   ChannelConnectorPlatformBinding,
 } from "../../../../types/channel-connectors.js";
+import { splitChannelConnectorTextChunks } from "./text-chunks.js";
 
 const OCTO_MESSAGE_TYPE_TEXT = 1;
 const OCTO_MESSAGE_TYPE_IMAGE = 2;
@@ -123,13 +124,7 @@ export function stripOctoReplyFooter(content: string): string {
 }
 
 export function splitOctoTextChunks(content: string, maxRunes = OCTO_MAX_TEXT_CHUNK_RUNES): string[] {
-  const runes = Array.from(content);
-  if (runes.length <= maxRunes) return [content];
-  const chunks: string[] = [];
-  for (let index = 0; index < runes.length; index += maxRunes) {
-    chunks.push(runes.slice(index, index + maxRunes).join(""));
-  }
-  return chunks;
+  return splitChannelConnectorTextChunks(content, maxRunes);
 }
 
 function isMentionNameDelimiter(value: string): boolean {

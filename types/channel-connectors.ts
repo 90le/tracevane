@@ -327,6 +327,8 @@ export interface ChannelConnectorFeishuTransportResult {
   requestCount: number;
   tokenCache: "disabled" | "hit" | "miss" | "refresh" | null;
   messageId?: string | null;
+  messageIds?: string[] | null;
+  chunkCount?: number | null;
   reactionId?: string | null;
 }
 

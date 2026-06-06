@@ -37,7 +37,11 @@ import {
 import {
   addFeishuMessageReaction,
   removeFeishuMessageReaction,
+  sendFeishuTextMessage,
 } from "../../dist/apps/api/modules/channel-connectors/feishu-transport.js";
+import {
+  splitChannelConnectorTextChunks,
+} from "../../dist/apps/api/modules/channel-connectors/text-chunks.js";
 import {
   channelConnectorGatewaySecretCandidates,
   resolveChannelConnectorGatewayClientKey,
@@ -361,6 +365,14 @@ test("native Channel Connectors status keeps daemon and binding policy separate 
   assert.match(status.service.plan.selectedTemplate.template, /^WorkingDirectory=\/.+channel-connectors\/daemon$/m);
   assert.doesNotMatch(status.service.plan.selectedTemplate.template, /^WorkingDirectory="/m);
   assert.match(status.referenceSources.join("\n"), /CC archived reference implementation/);
+});
+
+test("native Channel Connectors text chunking follows CC UTF-8 safe boundaries", () => {
+  assert.deepEqual(splitChannelConnectorTextChunks("hello", 10), ["hello"]);
+  assert.deepEqual(splitChannelConnectorTextChunks("你好世界测试一二三四", 5), ["你好世界测", "试一二三四"]);
+  assert.deepEqual(splitChannelConnectorTextChunks("😀😁😂🤣😄😅", 3), ["😀😁😂", "🤣😄😅"]);
+  assert.deepEqual(splitChannelConnectorTextChunks("abcde\nfghij", 8), ["abcde\n", "fghij"]);
+  assert.deepEqual(splitChannelConnectorTextChunks("你好\n世界测试一二三四", 5)[0], "你好\n");
 });
 
 test("native Channel Connectors config preview targets Studio Gateway without cc-connect TOML", () => {
@@ -2440,6 +2452,46 @@ test("native Channel Connectors Feishu transport sends replies and reuses tenant
     const webhookCard = JSON.parse(requests[4].body.content);
     assert.match(webhookCard.header.title.content, /Studio Session/);
     assert.match(JSON.stringify(webhookCard), /Studio Channel Status/);
+  });
+});
+
+test("native Channel Connectors Feishu transport splits long text replies", async () => {
+  await withMockFeishuServer(async (apiUrl, requests) => {
+    const root = makeTempRoot();
+    const cachePath = path.join(root, "feishu-token-cache.json");
+    const transport = {
+      apiUrl,
+      appId: "cli_long_text",
+      appSecret: "test-secret",
+    };
+    const content = `${"你".repeat(3800)}${"好".repeat(6)}`;
+    const result = await sendFeishuTextMessage(transport, {
+      chatId: "oc_chat",
+      content,
+    }, cachePath);
+
+    assert.equal(result.ok, true);
+    assert.equal(result.action, "send-message");
+    assert.equal(result.requestCount, 3);
+    assert.equal(result.tokenCache, "miss");
+    assert.equal(result.chunkCount, 2);
+    assert.deepEqual(result.messageIds, ["om_sent_1", "om_sent_1"]);
+    assert.equal(result.messageId, "om_sent_1");
+    assert.equal(requests.length, 3);
+    assert.equal(requests[0].path, "/open-apis/auth/v3/tenant_access_token/internal");
+    assert.equal(requests[1].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
+    assert.equal(requests[2].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
+    assert.equal(Array.from(JSON.parse(requests[1].body.content).text).length, 3800);
+    assert.equal(JSON.parse(requests[2].body.content).text, "好".repeat(6));
+
+    const cached = await sendFeishuTextMessage(transport, {
+      chatId: "oc_chat",
+      content: "short",
+    }, cachePath);
+    assert.equal(cached.ok, true);
+    assert.equal(cached.requestCount, 1);
+    assert.equal(cached.tokenCache, "hit");
+    assert.equal(cached.chunkCount, 1);
   });
 });
 

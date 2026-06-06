@@ -1,6 +1,6 @@
 # Studio Gateway 进度
 
-> 状态：Studio Gateway core completed；Provider Center/App Connections completed；Channel Connectors native F3 Feishu tool/progress loop completed；OpenAI Platform vendor proof optional
+> 状态：Studio Gateway core completed；Provider Center/App Connections completed；Channel Connectors native F4 long-reply split started；OpenAI Platform vendor proof optional
 > 更新：2026-06-06
 > 文档规则：本文件只保留当前状态、最近完成、验证、边界和下一步；流水细节不继续追加。
 
@@ -23,10 +23,12 @@
 - 本轮参考的 CC 源码重点：`core/progress_compact.go`、`core/streaming.go`、`platform/feishu/feishu.go` 的 compact progress、tool step 和 card patch 思路。
 - Gateway Responses -> Chat 工具历史转换已按 `cc-switch` 对齐：system/developer 合并到 head、function_call/function_call_output 顺序映射、tool args/output JSON canonical、tool-call reasoning placeholder、reasoning_content 保留。
 - Codex resume 参数顺序已按 CC Go runner 对齐为 `codex exec resume <thread_id> --json -`，避免 resume 模式下 CLI 参数被误读。
+- F4 长回复拆分已落地：共享文本 chunk helper 按 CC `splitMessage` 规则实现 Unicode 安全切分，优先换行边界；Feishu text 发送会自动拆成多条消息并返回 `chunkCount/messageIds`；Octo 回复拆分也复用同一规则。
 
 ## 验证
 
 - 通过：`npm run build:api`。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "text chunking|Feishu transport sends replies|Feishu transport splits long text|Feishu transport manages processing reactions|Octo adapter dry-run"`。
 - 通过：`node --test tests/system/model-gateway-service.test.mjs --test-name-pattern "streamed codex tool-call history|inline codex tool-result|restores codex tool-call history"`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "agent runner builds gateway-backed Codex turns|process runner maps Codex command execution progress"`。
 - 通过：隔离 `CODEX_HOME` 真实 Codex CLI smoke，`glm-5` 经 Studio Gateway 调用 shell 读取 `probe.txt` 后返回 `ok`；Gateway requestLog 显示两次 `/v1/responses` 均为 200，修复前同路径曾返回 400/1213。
@@ -41,5 +43,5 @@
 
 ## 下一步
 
-1. 进入 F4：图片/文件、群聊成员/history context、长回复 buffer 和治理策略。
+1. 继续 F4：图片/文件、群聊成员/history context、长回复 group buffer 和治理策略。
 2. 后续 UI 精修 Feishu card/menu 样式时继续参考 CC 原卡片结构，避免重新发明交互。
