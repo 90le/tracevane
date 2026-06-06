@@ -1,0 +1,100 @@
+# Channel Connectors / CLI Agent Bot 原生方案
+
+> 状态：已切换为 Studio 原生实现路线；F1 native daemon skeleton 已完成
+> 更新：2026-06-06
+> 参考源：CC 二开全量源码 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`；OpenClaw 频道与运行时实现
+
+## 1. 新结论
+
+管理层要求完善后再上线，因此不再走“短期托管 cc-connect / 后续 native 化”的路线。Studio 直接实现原生 **Channel Connectors / CLI Agent Bot**：
+
+```text
+Octo(dmwork) / 飞书 / 微信 / IM
+  -> Studio native Channel daemon
+  -> local CLI Agent bot (Codex / Claude Code / OpenCode)
+  -> Studio Gateway daemon
+  -> upstream provider
+```
+
+全量目标不是“接几个渠道”，而是把 CC 二开源码里的能力全部原生纳入 Studio，并结合 Studio Gateway / App Connections / Studio UI 做得更完整。
+
+CC 和 OpenClaw 只作为参考：
+
+- 参考 CC 的平台协议、session key、mention、文件/图片、allowlist、rate limit、CLI Agent 调用方式。
+- 参考 OpenClaw 的频道配置、账号/机器人绑定、运行态管理和事件抽象。
+- 生产实现不依赖 cc-connect binary，也不恢复旧 `resources/codex-stack` 生产路径。
+
+## 2. 守护与边界
+
+- Channel daemon 是 Studio 原生独立进程，由 OS/user supervisor 守护。
+- Studio / OpenClaw 崩溃时，Channel daemon 仍保持在线。
+- Channel daemon 运行期不依赖 Studio API；它直接调用本地 CLI Agent，CLI Agent 再走 Studio Gateway daemon。
+- Studio 负责配置、安装、启停、日志、会话可视化和平台账号管理。
+
+默认路径：
+
+- service: `openclaw-studio-channel-connectors.service`
+- config: `~/.openclaw/studio/channel-connectors/daemon/config.json`
+- state: `~/.openclaw/studio/channel-connectors/daemon/state`
+- logs: `~/.openclaw/studio/channel-connectors/daemon/logs/channel-connectors.log`
+- runtime: `~/.openclaw/studio/channel-connectors/daemon/runtime.json`
+
+## 3. 产品范围
+
+独立 Channel Connectors 页面，不放进 Studio Gateway / Model Gateway：
+
+- Runtime：native daemon 安装、启停、重启、状态、日志。
+- Projects：工作目录、默认 Agent、默认模型、权限模式、上下文配置。
+- Platforms：Octo(dmwork)、飞书、微信/企业微信账号和 bot 配置。
+- Sessions：IM 会话、session key、绑定 Agent、最近消息、手动测试。
+
+必须原生化的 CC 能力范围：
+
+- 平台：Octo(dmwork)、飞书、微信个人号、企业微信、钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等 CC 已有平台能力。
+- Agent：Codex、Claude Code、OpenCode 为首批；后续覆盖 CC 已有 CLI/ACP Agent，包括 Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP 等。
+- 消息：文本、图片、文件、语音/STT/TTS、群聊 mention、thread/reply、流式预览、长回复拆分。
+- 会话：session key、session 续接/切换/重置、历史恢复、不同 bot/account 独立上下文、跨平台会话观测。
+- 治理：allowlist、admin、rate limit、banned words、权限模式、run-as/user isolation、审计日志。
+- 自动化：slash command、cron、hooks、relay、management API、health/status/logs。
+
+Studio 增强点：
+
+- 所有 Agent 默认走 Studio Gateway daemon，统一 provider、模型池、Gateway key、secret store 和协议转换。
+- 复用 App Connections 的模型、上下文窗口、reasoning、权限和工作目录 profile。
+- 使用 Studio 自己的 typed config、preview/apply、backup/rollback、运行态日志和页面，不让用户手写大段 TOML。
+- 使用 OpenClaw channel/account/bot 经验做账号绑定和状态显示，但运行期不依赖 OpenClaw。
+
+核心绑定规则：
+
+- 一个项目可有多个平台账号 / bot。
+- 每个平台账号 / bot 绑定一个 Agent profile，例如 Codex、Claude Code、OpenCode。
+- 同平台多个 bot 可绑定不同 Agent。
+- 微信个人号按账号粒度绑定，单账号只能绑定一个 Agent。
+- Agent profile 复用 Studio Gateway App Connections 的模型、上下文、reasoning、权限和工作目录配置。
+
+## 4. 分阶段计划
+
+| 阶段 | 目标 |
+| --- | --- |
+| F1 | 已完成：native daemon skeleton、service/config/status/logs、独立页面、守护边界测试 |
+| F2 | CC/OpenClaw 能力盘点 -> Studio 原生 contract；实现 project/Agent/bot binding store、工作目录、模型、权限、Gateway key ref |
+| F3 | 原生 Octo(dmwork) adapter：登录/连接、收发文本、session key、bot->Agent 绑定 smoke |
+| F4 | 补齐核心消息能力：图片/文件、语音、群聊 mention、thread/reply、流式预览、长回复拆分 |
+| F5 | 治理与自动化：allowlist、admin、rate limit、banned words、slash command、cron、hooks、relay、management API |
+| F6 | 飞书、微信/企业微信；继续迁移钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等 CC 平台 |
+| F7 | 补齐剩余 CC Agent、跨平台会话观测、消息审计、迁移工具和发布验收 |
+
+## 5. 当前 F1 结果
+
+- 新增 `/channel-connectors` 独立页面。
+- 新增 `/api/channel-connectors/status` 与 `/api/channel-connectors/daemon/*` 后端 API。
+- 新增 Studio 原生 daemon entry：`apps/api/modules/channel-connectors/daemon.ts`。
+- service template 启动的是 Studio 构建产物：`node dist/apps/api/modules/channel-connectors/daemon.js --config config.json`。
+- daemon skeleton 可写 runtime/log，并暴露本地 health/status；平台 adapter 和 CLI Agent 调度在 F2/F3 接入。
+
+## 6. 下一步
+
+1. F2：先做 CC/OpenClaw 功能映射表，把所有平台、Agent、消息能力、治理能力、自动化能力映射到 Studio 原生模块。
+2. F2：实现原生配置 store，包括 project、workDir、Agent profile、模型、权限、Gateway key ref、platform/bot binding。
+3. F2：前端 Projects / Platforms 形成真实编辑与保存，而不是只读 skeleton。
+4. F3：按 CC `platform/dmwork` 和 OpenClaw channel 模型实现 Octo(dmwork) adapter。

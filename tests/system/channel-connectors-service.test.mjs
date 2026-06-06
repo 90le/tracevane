@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
@@ -80,6 +81,35 @@ function requestJson(url, options = {}) {
   });
 }
 
+function findFreePort() {
+  return new Promise((resolve, reject) => {
+    const server = http.createServer();
+    server.listen(0, "127.0.0.1", () => {
+      const address = server.address();
+      assert.ok(address && typeof address === "object");
+      const port = address.port;
+      server.close((error) => error ? reject(error) : resolve(port));
+    });
+    server.once("error", reject);
+  });
+}
+
+async function waitFor(predicate, timeoutMs = 3000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = null;
+  while (Date.now() < deadline) {
+    try {
+      const result = await predicate();
+      if (result) return result;
+    } catch (error) {
+      lastError = error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 80));
+  }
+  if (lastError) throw lastError;
+  throw new Error("Timed out waiting for condition");
+}
+
 async function withServer(handler, task) {
   const server = http.createServer(async (req, res) => {
     const handled = await handler(req, res);
@@ -103,60 +133,60 @@ async function withServer(handler, task) {
   }
 }
 
-test("CC Bridge status keeps daemon and binding policy separate from Model Gateway", async () => {
+test("native Channel Connectors status keeps daemon and binding policy separate from Model Gateway", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   const service = createChannelConnectorsService(config, {
-    binaryResolver: () => null,
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
 
   const status = await service.getStatus();
   assert.equal(status.ok, true);
-  assert.equal(status.phase, "f1-service-control");
+  assert.equal(status.phase, "native-daemon-f1");
+  assert.equal(status.implementation, "studio-native");
   assert.equal(status.lifecycle.studioRuntimeDependency, false);
   assert.equal(status.lifecycle.openclawRuntimeDependency, false);
   assert.equal(status.lifecycle.modelRelayOwner, "studio-gateway-daemon");
-  assert.equal(status.lifecycle.ccBridgeOwner, "cc-bridge-daemon");
+  assert.equal(status.lifecycle.channelDaemonOwner, "studio-native-channel-daemon");
   assert.equal(status.bindingPolicy.model, "platform-account-or-bot-to-agent");
   assert.equal(status.bindingPolicy.wechatPersonal.maxAgentsPerAccount, 1);
   assert.deepEqual(status.bindingPolicy.supportedAgents, ["codex", "claude-code", "opencode"]);
-  assert.match(status.paths.root, /channel-connectors\/cc-bridge/);
+  assert.match(status.paths.root, /channel-connectors\/daemon/);
+  assert.match(status.referenceSources.join("\n"), /cc-connect-source/);
 });
 
-test("CC Bridge config preview targets Studio Gateway and stays incomplete until platforms exist", () => {
+test("native Channel Connectors config preview targets Studio Gateway without cc-connect TOML", () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   const service = createChannelConnectorsService(config, {
-    binaryResolver: () => "/usr/local/bin/cc-connect",
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
 
-  const preview = service.getCcBridgeConfig();
-  assert.equal(preview.ready, false);
-  assert.deepEqual(preview.missing, ["projects.platforms"]);
-  assert.match(preview.preview, /base_url = "http:\/\/127\.0\.0\.1:18796\/v1"/);
-  assert.match(preview.preview, /agent_types = \["codex", "claudecode", "opencode"\]/);
-  assert.match(preview.preview, /provider_refs = \["studio-gateway"\]/);
-  assert.match(preview.preview, /F2\/F3 will add one or more \[\[projects\.platforms\]\]/);
-  assert.doesNotMatch(preview.preview, /codex-stack|CPA/);
+  const preview = service.getDaemonConfig();
+  assert.equal(preview.ready, true);
+  assert.deepEqual(preview.missing, []);
+  assert.equal(preview.gatewayEndpoint, "http://127.0.0.1:18796/v1");
+  assert.equal(preview.config.gateway.clientKeyRef, "studio-gateway-client-key");
+  assert.equal(preview.config.projects[0].agent, "codex");
+  assert.equal(preview.config.projects[0].platformBindings.length, 0);
+  assert.match(preview.preview, /"implementation"|"gateway"|"projects"/);
+  assert.doesNotMatch(preview.preview, /cc-connect|codex-stack|CPA|\[\[projects\.platforms\]\]/);
 });
 
-test("CC Bridge service management is guarded before binary and platform config are ready", async () => {
+test("native Channel Connectors service management is guarded before daemon entry is built", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   const service = createChannelConnectorsService(config, {
-    binaryResolver: () => null,
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
 
-  const install = await service.manageCcBridgeService({
+  const install = await service.manageDaemonService({
     action: "install",
     apply: true,
     runCommands: true,
   });
   assert.equal(install.ok, false);
-  assert.equal(install.skippedReason, "cc_connect_binary_missing");
+  assert.equal(install.skippedReason, "native_daemon_entry_missing");
   assert.equal(install.commandsRun.length, 0);
   assert.equal(install.installed, false);
 
@@ -171,7 +201,6 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     config,
     logger: createLogger(),
     channelConnectorsOptions: {
-      binaryResolver: () => null,
       now: () => new Date("2026-06-06T08:00:00.000Z"),
     },
   });
@@ -180,18 +209,61 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
   await withServer(handler, async (baseUrl) => {
     const status = await requestJson(`${baseUrl}/api/channel-connectors/status`);
     assert.equal(status.status, 200);
-    assert.equal(status.body.phase, "f1-service-control");
+    assert.equal(status.body.phase, "native-daemon-f1");
+    assert.equal(status.body.implementation, "studio-native");
 
-    const service = await requestJson(`${baseUrl}/api/channel-connectors/cc-bridge/service`);
+    const service = await requestJson(`${baseUrl}/api/channel-connectors/daemon/service`);
     assert.equal(service.status, 200);
-    assert.equal(service.body.plan.serviceName, "openclaw-studio-cc-bridge.service");
+    assert.equal(service.body.plan.serviceName, "openclaw-studio-channel-connectors.service");
 
-    const preview = await requestJson(`${baseUrl}/api/channel-connectors/cc-bridge/service`, {
+    const preview = await requestJson(`${baseUrl}/api/channel-connectors/daemon/service`, {
       method: "POST",
       body: { action: "preview" },
     });
     assert.equal(preview.status, 200);
     assert.equal(preview.body.action, "preview");
-    assert.match(preview.body.config.preview, /studio-gateway/);
+    assert.match(preview.body.config.preview, /studio-gateway-client-key/);
   });
+});
+
+test("native Channel Connectors daemon entry exposes health and writes runtime", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+  });
+  const runtimeConfig = service.getDaemonConfig().config;
+  runtimeConfig.management.port = await findFreePort();
+  const configPath = path.join(root, "daemon-config.json");
+  fs.mkdirSync(path.dirname(runtimeConfig.paths.log), { recursive: true });
+  fs.writeFileSync(configPath, JSON.stringify(runtimeConfig, null, 2), "utf8");
+
+  const daemonEntry = path.resolve("dist/apps/api/modules/channel-connectors/daemon.js");
+  const child = spawn(process.execPath, [daemonEntry, "--config", configPath], {
+    cwd: path.resolve("."),
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let stderr = "";
+  child.stderr.on("data", (chunk) => {
+    stderr += chunk.toString("utf8");
+  });
+
+  try {
+    const health = await waitFor(async () => {
+      const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/health`);
+      return response.status === 200 ? response.body : null;
+    });
+    assert.equal(health.ok, true);
+    assert.equal(fs.existsSync(runtimeConfig.paths.runtime), true);
+    assert.equal(fs.existsSync(runtimeConfig.paths.log), true);
+    assert.match(fs.readFileSync(runtimeConfig.paths.log, "utf8"), /Studio native Channel Connectors daemon started/);
+  } finally {
+    child.kill("SIGTERM");
+    await new Promise((resolve) => {
+      child.once("exit", resolve);
+      setTimeout(resolve, 1000);
+    });
+  }
+
+  assert.equal(stderr.trim(), "");
 });

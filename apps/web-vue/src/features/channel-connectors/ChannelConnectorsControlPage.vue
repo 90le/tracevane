@@ -26,7 +26,7 @@
           <div class="ccx-panel-head">
             <div>
               <p class="eyebrow">Runtime</p>
-              <h3>CC Bridge daemon</h3>
+              <h3>Channel daemon</h3>
             </div>
             <StatusPill :label="daemonStateLabel" :tone="daemonStateTone" />
           </div>
@@ -226,7 +226,7 @@
           </div>
           <pre v-if="logText" class="ccx-log">{{ logText }}</pre>
           <div v-else class="ccx-empty">
-            {{ text('暂无 CC Bridge 日志', 'No CC Bridge logs yet') }}
+            {{ text('暂无 Channel daemon 日志', 'No Channel daemon logs yet') }}
           </div>
         </article>
       </main>
@@ -248,20 +248,20 @@ import {
   Square,
 } from '@lucide/vue';
 import type {
-  CcBridgeConfigPreviewResponse,
-  CcBridgeLogsResponse,
-  CcBridgeServiceAction,
-  CcBridgeServiceResponse,
+  ChannelConnectorsDaemonAction,
+  ChannelConnectorsDaemonConfigResponse,
+  ChannelConnectorsDaemonResponse,
+  ChannelConnectorsLogsResponse,
   ChannelConnectorsStatusResponse,
 } from '../../../../../types/channel-connectors';
 import StatusPill from '../../components/StatusPill.vue';
 import { useLocalePreference } from '../../shared/locale';
 import {
-  fetchCcBridgeConfig,
-  fetchCcBridgeLogs,
-  fetchCcBridgeService,
+  fetchChannelConnectorsDaemonConfig,
+  fetchChannelConnectorsDaemonLogs,
+  fetchChannelConnectorsDaemonService,
   fetchChannelConnectorsStatus,
-  manageCcBridgeService,
+  manageChannelConnectorsDaemonService,
 } from './api';
 import './channel-connectors-workspace.css';
 
@@ -282,16 +282,16 @@ const busy = ref(false);
 const loaded = ref(false);
 const activeTab = ref<WorkspaceTab>('runtime');
 const status = ref<ChannelConnectorsStatusResponse | null>(null);
-const service = ref<CcBridgeServiceResponse | null>(null);
-const configPreview = ref<CcBridgeConfigPreviewResponse | null>(null);
-const logs = ref<CcBridgeLogsResponse | null>(null);
-const actionResult = ref<CcBridgeServiceResponse | null>(null);
+const service = ref<ChannelConnectorsDaemonResponse | null>(null);
+const configPreview = ref<ChannelConnectorsDaemonConfigResponse | null>(null);
+const logs = ref<ChannelConnectorsLogsResponse | null>(null);
+const actionResult = ref<ChannelConnectorsDaemonResponse | null>(null);
 const notice = ref<{ kind: 'success' | 'error'; message: string } | null>(null);
 
 const runtimeChain = computed(() => status.value?.runtimeChain || [
   'IM channel',
-  'CC Bridge daemon',
-  'local Agent CLI',
+  'Studio native Channel daemon',
+  'local CLI Agent bot',
   'Studio Gateway daemon',
   'upstream provider',
 ]);
@@ -308,7 +308,7 @@ const supportedPlatformsLabel = computed(() =>
 
 const daemonStateLabel = computed(() => {
   if (!service.value) return text('未知', 'Unknown');
-  if (!service.value.plan.binary.available) return text('缺少 binary', 'Missing binary');
+  if (service.value.skippedReason === 'native_daemon_entry_missing') return text('需构建', 'Build needed');
   if (service.value.serviceManager.active === true) return text('运行中', 'Running');
   if (service.value.installed) return text('已安装', 'Installed');
   return text('未安装', 'Not installed');
@@ -316,7 +316,7 @@ const daemonStateLabel = computed(() => {
 
 const daemonStateTone = computed<'neutral' | 'accent' | 'sage' | 'danger'>(() => {
   if (!service.value) return 'neutral';
-  if (!service.value.plan.binary.available || service.value.skippedReason) return 'danger';
+  if (service.value.skippedReason) return 'danger';
   if (service.value.serviceManager.active === true) return 'sage';
   if (service.value.installed) return 'accent';
   return 'neutral';
@@ -333,7 +333,8 @@ const actionOutput = computed(() => {
   const lines = [
     `Service: ${result.plan.serviceName}`,
     `Supervisor: ${result.plan.supervisor}`,
-    `Binary: ${result.plan.binary.path || result.plan.binary.command}`,
+    `Node: ${result.plan.nodePath}`,
+    `Entry: ${result.plan.daemonEntry}`,
     `Config: ${result.plan.configPath}`,
     `Installed: ${String(result.installed)}`,
     `Template current: ${String(result.templateCurrent)}`,
@@ -369,7 +370,7 @@ function reportError(error: unknown, fallback: string): void {
 }
 
 async function refreshLogs(): Promise<void> {
-  logs.value = await fetchCcBridgeLogs();
+  logs.value = await fetchChannelConnectorsDaemonLogs();
 }
 
 async function loadAll(): Promise<void> {
@@ -378,9 +379,9 @@ async function loadAll(): Promise<void> {
   try {
     const [nextStatus, nextService, nextConfig, nextLogs] = await Promise.all([
       fetchChannelConnectorsStatus(),
-      fetchCcBridgeService(),
-      fetchCcBridgeConfig(),
-      fetchCcBridgeLogs(),
+      fetchChannelConnectorsDaemonService(),
+      fetchChannelConnectorsDaemonConfig(),
+      fetchChannelConnectorsDaemonLogs(),
     ]);
     status.value = nextStatus;
     service.value = nextService;
@@ -398,7 +399,7 @@ async function previewService(): Promise<void> {
   busy.value = true;
   notice.value = null;
   try {
-    const result = await manageCcBridgeService('preview');
+    const result = await manageChannelConnectorsDaemonService('preview');
     actionResult.value = result;
     service.value = result;
     configPreview.value = result.config;
@@ -409,11 +410,11 @@ async function previewService(): Promise<void> {
   }
 }
 
-async function runServiceAction(action: CcBridgeServiceAction): Promise<void> {
+async function runServiceAction(action: ChannelConnectorsDaemonAction): Promise<void> {
   busy.value = true;
   notice.value = null;
   try {
-    const result = await manageCcBridgeService(action, {
+    const result = await manageChannelConnectorsDaemonService(action, {
       apply: action !== 'preview' && action !== 'status',
       runCommands: action !== 'preview',
     });

@@ -36,7 +36,7 @@ test("Channel Connectors page is not mounted through Model Gateway", () => {
   assert.doesNotMatch(page, /model-gateway|ModelGateway/i);
   assert.doesNotMatch(api, /model-gateway|ModelGateway/i);
   assert.doesNotMatch(gatewayView, /ChannelConnectors/);
-  assert.doesNotMatch(gatewayPage, /ChannelConnectors|CC Bridge daemon/);
+  assert.doesNotMatch(gatewayPage, /ChannelConnectors|Channel daemon/);
 });
 
 test("Channel Connectors page calls only channel connector APIs", () => {
@@ -45,9 +45,9 @@ test("Channel Connectors page calls only channel connector APIs", () => {
 
   for (const endpoint of [
     "/api/channel-connectors/status",
-    "/api/channel-connectors/cc-bridge/config",
-    "/api/channel-connectors/cc-bridge/service",
-    "/api/channel-connectors/cc-bridge/logs",
+    "/api/channel-connectors/daemon/config",
+    "/api/channel-connectors/daemon/service",
+    "/api/channel-connectors/daemon/logs",
   ]) {
     assert.match(api, new RegExp(endpoint.replace(/\//g, "\\/")));
   }
@@ -56,6 +56,8 @@ test("Channel Connectors page calls only channel connector APIs", () => {
   assert.match(page, /Projects/);
   assert.match(page, /Platforms/);
   assert.match(page, /Sessions/);
+  assert.match(page, /Channel daemon/);
   assert.match(page, /wechatPersonal|Personal WeChat/);
   assert.doesNotMatch(page, /\/api\/model-gateway/);
+  assert.doesNotMatch(page, /cc-connect|CC Bridge/);
 });

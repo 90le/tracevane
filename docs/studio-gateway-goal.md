@@ -72,7 +72,7 @@ Provider / model routing 目标：
 - 非单口模式：CLI 直接访问 daemon loopback，例如 `http://127.0.0.1:18796/v1`。
 - 单口模式：OpenClaw 只挂载 Studio UI / control API；模型请求默认仍写 daemon loopback，单口 endpoint 只作为可选 ingress/proxy。
 - OpenClaw Gateway、Studio API 或 Studio UI 崩溃时，daemon 继续服务已接管客户端。
-- Gateway daemon 与 Channel daemon / CC Bridge 都由 OS/user supervisor 托管：Linux `systemd --user`、macOS launchd、Windows scheduled task/service。
+- Gateway daemon 与 Channel daemon 都由 OS/user supervisor 托管：Linux `systemd --user`、macOS launchd、Windows scheduled task/service。
 - 新设备首次安装必须能通过 Studio 写入 user service、启用系统自启动、启动 daemon，并支持后续 status、start、stop、restart、ensure-running；已安装时“安装/启用”按重装/重新启用处理。
 - `start`、`restart`、`ensure-running` 不能只看 supervisor active；必须等 daemon HTTP status endpoint ready 后才算真正 started。
 
@@ -81,14 +81,14 @@ Provider / model routing 目标：
 渠道接入是独立产品域，不复用 Codex Stack，也不塞进 Studio Gateway。
 
 ```text
-飞书 / 微信 / Octo(dmwork) / IM -> Channel daemon / CC Bridge -> Studio Chat / Agent -> Studio Gateway
+飞书 / 微信 / Octo(dmwork) / IM -> Studio native Channel daemon -> local CLI Agent bot -> Studio Gateway
 ```
 
-- 短期：用 **CC Bridge** 托管 cc-connect，Studio 管理配置、进程、事件接入、日志和会话路由。
-- CC Bridge 也必须常驻守护；Studio / OpenClaw 崩溃时仍保持渠道服务和 Codex/Gateway 对话链路，不内置额外修复流程。
-- 中期：定义 Studio Channel Connector contract，统一 incoming、reply、attachment、thread、ack/retry、allowlist、rate limit。
-- 长期：按平台逐步 native 化，优先 Octo(dmwork)，再飞书、微信/企业微信和其它渠道。
-- 参考源：release 副本 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`，其中 `platform/dmwork` 即 Octo；不得恢复到旧 `resources/codex-stack` 生产路径。
+- Channel Connectors 改为 Studio 原生实现，不上线短期托管 cc-connect 方案；CC 二开源码已有功能都必须纳入 Studio 原生目标，首批平台只是实施顺序。
+- Channel daemon 必须常驻守护；Studio / OpenClaw 崩溃时仍保持渠道服务和 Codex/Gateway 对话链路，不内置额外修复流程。
+- 原生 contract 统一 incoming、reply、attachment、voice、thread、ack/retry、allowlist、admin、rate limit、banned words、slash command、cron、hooks、relay、session key 和 bot->Agent binding。
+- 优先 Octo(dmwork)，再飞书、微信/企业微信；后续覆盖 CC 已有平台，包括钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等。
+- 参考源：CC 二开全量源码 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`，其中 `platform/dmwork` 即 Octo；OpenClaw 频道实现作为账号/绑定/运行态参考；生产实现不依赖 cc-connect binary，也不得恢复旧 `resources/codex-stack` 生产路径。
 
 ## 5. 新架构边界
 
@@ -98,7 +98,7 @@ Provider / model routing 目标：
 | Studio Gateway daemon | loopback HTTP listener、协议 adapter、provider router、runtime metadata、supervisor contract |
 | Gateway Service & Config | daemon 安装/启用自启动/启动/停止/重启/状态、用户自定义 provider 配置、provider 启停、协议/模型自动识别弹层、secret 写入、聚合模型目录、模型别名、默认模型、active provider、resolved route 状态、provider-native smoke、client-protocol active-route smoke |
 | App Connections | Codex、Claude Code、OpenCode、OpenClaw 的配置检测、脱敏 preview、确认后 apply、备份/rollback、默认模型与 App 级模型覆盖、上下文/compact/max output/reasoning profile；Codex 低频兼容参数收进高级折叠 |
-| Channel Connectors | CC Bridge、Octo(dmwork)、飞书、微信等 IM 渠道配置、事件接入、会话映射和消息路由 |
+| Channel Connectors | Studio 原生 Channel daemon、CLI Agent bot、CC 全功能原生化、Octo(dmwork)、飞书、微信等 IM 渠道配置、bot->Agent 绑定、事件接入、会话映射、治理、自动化和消息路由 |
 | Gateway UI | Runtime/Gateway key/Active routing 左侧常驻，右侧用 tabs 分开 App Connections、Provider Center、Smoke；参考旧 CPA 管理页的运行态布局和 cc-switch 的 provider 表单，但不内置具体 vendor 预设，也不复用旧 Codex Stack / CPA / Compact 文案、诊断矩阵、安装修复复杂度；Provider 原生协议只展示三类常见协议 |
 
 ## 6. 删除范围
@@ -124,7 +124,8 @@ Provider / model routing 目标：
 - Active routing 可把 provider 应用到 Codex、Claude Code、OpenCode、OpenClaw；停用 provider 不可被选中，已被选中的 provider 停用后必须回退或提示；每个 active route 必须显示 resolved provider/model，并能验证实际 Gateway 客户端协议入口。
 - Codex、Claude Code、OpenCode、OpenClaw 可通过 App Connections 生成脱敏配置 preview，并在用户确认后 apply；apply 前必须有本地 Gateway key 和可用 provider 模型，写入前备份原文件，且支持 rollback。
 - App Connections 支持一键切换 app profile：默认模型、每个 App 单独模型覆盖、上下文窗口、compact 阈值、max output、reasoning/effort、必要兼容参数；模型选择必须来自 Gateway 可用模型列表并允许手动输入兼容 alias。
-- CC Bridge / Octo(dmwork) 通过 Channel Connectors 独立配置；其消息进入 Studio Chat / Agent，再由 Studio Gateway 调模型。
+- Channel Connectors 原生配置 Octo(dmwork) / 飞书 / 微信等 IM 渠道；消息进入本地 CLI Agent bot，再由 Studio Gateway 调模型。
+- Channel Connectors 发布前必须覆盖 CC 二开源码的核心能力：多平台、多 Agent、文本/图片/文件/语音、群聊 mention、会话续接/切换、allowlist/admin/rate limit、slash command、cron、hooks、relay、management/status/logs。
 - 客户端配置只保存 placeholder 或 local endpoint；真实 upstream key 留在 Studio secret store。
 - OpenClaw/Studio 崩溃隔离测试通过：daemon direct endpoint 继续可用。
 - 生产前后端无 `codex-stack` 命名入口，无 CPA/Compact 用户可见链路。
@@ -139,5 +140,5 @@ Provider / model routing 目标：
 | Phase C | 删除 Codex Stack 前后端、资源和旧测试入口（已完成） |
 | Phase D | 先新建 Studio Gateway 服务与配置面：daemon 状态/启停、provider 配置、provider 启停、active routing、resolved route 状态、聚合 `/v1/models`、模型池/别名/优先级、可编辑统一 Gateway key、协议/模型自动识别、secret、模型列表/默认模型、provider-native smoke、client-protocol active-route smoke；UI 借鉴旧 CPA 的运维入口和 cc-switch 的 Provider 管理体验，检测入口贴近 Base URL / API Key，daemon Runtime 只暴露主操作并把低频运维动作收进更多菜单，启停动作以 HTTP readiness 为最终成功条件 |
 | Phase E | Codex、Claude Code、OpenCode、OpenClaw 配置 preview/apply/profile/rollback 与隔离 HOME HTTP 验收已完成；继续做真实 CLI 启动 smoke 和细节兼容 |
-| Phase F | 后置 Channel Connectors：CC Bridge、Octo(dmwork)、飞书、微信的 contract 与管理面 |
-| Phase G | Studio Gateway 文档已切到正式文件名；Channel Connectors / CC Bridge 文档需在方案确认后新建 |
+| Phase F | Channel Connectors 原生 daemon 与 CLI Agent Bot：CC 全功能映射、Octo(dmwork)、飞书、微信、多 Agent、消息/治理/自动化 contract 与管理面 |
+| Phase G | Studio Gateway 文档已切到正式文件名；Channel Connectors 原生方案文档已建立 |

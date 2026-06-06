@@ -1,11 +1,11 @@
-export const CHANNEL_CONNECTORS_CC_BRIDGE_SERVICE_NAME = "openclaw-studio-cc-bridge.service";
+export const CHANNEL_CONNECTORS_DAEMON_SERVICE_NAME = "openclaw-studio-channel-connectors.service";
 
-export type ChannelConnectorsPhase = "f1-service-control";
+export type ChannelConnectorsPhase = "native-daemon-f1";
 
 export type ChannelConnectorAgentId = "codex" | "claude-code" | "opencode";
 export type ChannelConnectorPlatformId = "octo" | "feishu" | "wechat" | "wecom";
 
-export type CcBridgeSupervisorKind =
+export type ChannelConnectorsSupervisorKind =
   | "systemd-user"
   | "launchd-user"
   | "windows-service"
@@ -13,7 +13,7 @@ export type CcBridgeSupervisorKind =
   | "none"
   | "unknown";
 
-export type CcBridgeServiceAction =
+export type ChannelConnectorsDaemonAction =
   | "preview"
   | "install"
   | "ensure-running"
@@ -22,13 +22,13 @@ export type CcBridgeServiceAction =
   | "restart"
   | "status";
 
-export interface CcBridgeServiceCommand {
+export interface ChannelConnectorsDaemonCommand {
   label: string;
   command: string;
   args: string[];
 }
 
-export interface CcBridgeServiceCommandResult extends CcBridgeServiceCommand {
+export interface ChannelConnectorsDaemonCommandResult extends ChannelConnectorsDaemonCommand {
   ok: boolean;
   exitCode: number | null;
   stdout: string;
@@ -36,7 +36,7 @@ export interface CcBridgeServiceCommandResult extends CcBridgeServiceCommand {
   error: string | null;
 }
 
-export interface CcBridgeServiceManagerStatus {
+export interface ChannelConnectorsDaemonManagerStatus {
   checked: boolean;
   reachable: boolean | null;
   active: boolean | null;
@@ -44,58 +44,86 @@ export interface CcBridgeServiceManagerStatus {
   lastError: string | null;
 }
 
-export interface CcBridgeBinaryStatus {
-  command: string;
-  path: string | null;
-  available: boolean;
-  source: "env" | "path" | "missing";
+export interface ChannelConnectorsDaemonRuntimeConfig {
+  version: 1;
+  management: {
+    host: string;
+    port: number;
+  };
+  paths: {
+    root: string;
+    state: string;
+    log: string;
+    runtime: string;
+  };
+  gateway: {
+    endpoint: string;
+    clientKeyRef: "studio-gateway-client-key";
+  };
+  projects: Array<{
+    id: string;
+    name: string;
+    workDir: string;
+    agent: ChannelConnectorAgentId;
+    model: string | null;
+    platformBindings: Array<{
+      platform: ChannelConnectorPlatformId;
+      accountId: string;
+      botId: string | null;
+      agent: ChannelConnectorAgentId;
+    }>;
+  }>;
 }
 
-export interface CcBridgeServiceTemplate {
-  supervisor: CcBridgeSupervisorKind;
+export interface ChannelConnectorsDaemonTemplate {
+  supervisor: ChannelConnectorsSupervisorKind;
   platform: "linux" | "macos" | "windows" | "unknown";
   serviceName: string;
   servicePath: string;
   template: string;
-  commands: Partial<Record<CcBridgeServiceAction, CcBridgeServiceCommand[]>>;
+  commands: Partial<Record<ChannelConnectorsDaemonAction, ChannelConnectorsDaemonCommand[]>>;
 }
 
-export interface CcBridgeServicePlan {
+export interface ChannelConnectorsDaemonPlan {
   platform: string;
   supported: boolean;
-  supervisor: CcBridgeSupervisorKind;
+  supervisor: ChannelConnectorsSupervisorKind;
   serviceName: string;
-  binary: CcBridgeBinaryStatus;
+  nodePath: string;
+  daemonEntry: string;
   rootDir: string;
   configPath: string;
   stateDir: string;
   logFile: string;
   runtimeFile: string;
-  selectedTemplate: CcBridgeServiceTemplate;
-  templates: CcBridgeServiceTemplate[];
+  managementEndpoint: string;
+  selectedTemplate: ChannelConnectorsDaemonTemplate;
+  templates: ChannelConnectorsDaemonTemplate[];
   notes: string[];
 }
 
-export interface CcBridgeConfigPreviewResponse {
+export interface ChannelConnectorsDaemonConfigResponse {
   ok: true;
   checkedAt: string;
   ready: boolean;
   configPath: string;
   gatewayEndpoint: string;
+  managementEndpoint: string;
+  config: ChannelConnectorsDaemonRuntimeConfig;
   preview: string;
   missing: string[];
 }
 
-export interface CcBridgeServiceRequest {
-  action?: CcBridgeServiceAction;
+export interface ChannelConnectorsDaemonRequest {
+  action?: ChannelConnectorsDaemonAction;
   apply?: boolean;
   runCommands?: boolean;
 }
 
-export interface CcBridgeServiceResponse {
+export interface ChannelConnectorsDaemonResponse {
   ok: boolean;
   checkedAt: string;
-  action: CcBridgeServiceAction;
+  action: ChannelConnectorsDaemonAction;
   applied: boolean;
   templateWritten: boolean;
   configWritten: boolean;
@@ -103,14 +131,14 @@ export interface CcBridgeServiceResponse {
   configCurrent: boolean;
   installed: boolean;
   skippedReason: string | null;
-  plan: CcBridgeServicePlan;
-  config: CcBridgeConfigPreviewResponse;
-  commandsRun: CcBridgeServiceCommandResult[];
-  serviceManager: CcBridgeServiceManagerStatus;
+  plan: ChannelConnectorsDaemonPlan;
+  config: ChannelConnectorsDaemonConfigResponse;
+  commandsRun: ChannelConnectorsDaemonCommandResult[];
+  serviceManager: ChannelConnectorsDaemonManagerStatus;
   diagnostics: string[];
 }
 
-export interface CcBridgeLogsResponse {
+export interface ChannelConnectorsLogsResponse {
   ok: true;
   checkedAt: string;
   logFile: string;
@@ -135,6 +163,8 @@ export interface ChannelConnectorsStatusResponse {
   ok: true;
   checkedAt: string;
   phase: ChannelConnectorsPhase;
+  implementation: "studio-native";
+  referenceSources: string[];
   runtimeChain: string[];
   bindingPolicy: ChannelConnectorsBindingPolicy;
   paths: {
@@ -148,7 +178,7 @@ export interface ChannelConnectorsStatusResponse {
     studioRuntimeDependency: false;
     openclawRuntimeDependency: false;
     modelRelayOwner: "studio-gateway-daemon";
-    ccBridgeOwner: "cc-bridge-daemon";
+    channelDaemonOwner: "studio-native-channel-daemon";
   };
-  service: CcBridgeServiceResponse;
+  service: ChannelConnectorsDaemonResponse;
 }

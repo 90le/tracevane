@@ -1,9 +1,9 @@
 import type {
-  CcBridgeConfigPreviewResponse,
-  CcBridgeLogsResponse,
-  CcBridgeServiceAction,
-  CcBridgeServiceRequest,
-  CcBridgeServiceResponse,
+  ChannelConnectorsDaemonAction,
+  ChannelConnectorsDaemonConfigResponse,
+  ChannelConnectorsDaemonRequest,
+  ChannelConnectorsDaemonResponse,
+  ChannelConnectorsLogsResponse,
   ChannelConnectorsStatusResponse,
 } from '../../../../../types/channel-connectors';
 import { requestJson } from '../../shared/api';
@@ -20,24 +20,24 @@ export function fetchChannelConnectorsStatus(): Promise<ChannelConnectorsStatusR
   return requestJson<ChannelConnectorsStatusResponse>('/api/channel-connectors/status');
 }
 
-export function fetchCcBridgeConfig(): Promise<CcBridgeConfigPreviewResponse> {
-  return requestJson<CcBridgeConfigPreviewResponse>('/api/channel-connectors/cc-bridge/config');
+export function fetchChannelConnectorsDaemonConfig(): Promise<ChannelConnectorsDaemonConfigResponse> {
+  return requestJson<ChannelConnectorsDaemonConfigResponse>('/api/channel-connectors/daemon/config');
 }
 
-export function fetchCcBridgeService(): Promise<CcBridgeServiceResponse> {
-  return requestJson<CcBridgeServiceResponse>('/api/channel-connectors/cc-bridge/service');
+export function fetchChannelConnectorsDaemonService(): Promise<ChannelConnectorsDaemonResponse> {
+  return requestJson<ChannelConnectorsDaemonResponse>('/api/channel-connectors/daemon/service');
 }
 
-export function manageCcBridgeService(
-  action: CcBridgeServiceAction,
-  request: Omit<CcBridgeServiceRequest, 'action'> = {},
-): Promise<CcBridgeServiceResponse> {
-  return requestJson<CcBridgeServiceResponse>(
-    '/api/channel-connectors/cc-bridge/service',
+export function manageChannelConnectorsDaemonService(
+  action: ChannelConnectorsDaemonAction,
+  request: Omit<ChannelConnectorsDaemonRequest, 'action'> = {},
+): Promise<ChannelConnectorsDaemonResponse> {
+  return requestJson<ChannelConnectorsDaemonResponse>(
+    '/api/channel-connectors/daemon/service',
     jsonBody({ ...request, action }),
   );
 }
 
-export function fetchCcBridgeLogs(): Promise<CcBridgeLogsResponse> {
-  return requestJson<CcBridgeLogsResponse>('/api/channel-connectors/cc-bridge/logs');
+export function fetchChannelConnectorsDaemonLogs(): Promise<ChannelConnectorsLogsResponse> {
+  return requestJson<ChannelConnectorsLogsResponse>('/api/channel-connectors/daemon/logs');
 }
