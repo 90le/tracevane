@@ -111,6 +111,83 @@ function recordValue(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function stringifyProgressValue(value: unknown, maxLength = 240): string {
+  if (typeof value === "string") return truncateText(value, maxLength);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (value === null || value === undefined) return "";
+  try {
+    return truncateText(JSON.stringify(value), maxLength);
+  } catch {
+    return "";
+  }
+}
+
+function errorMessageFromValue(value: unknown): string {
+  const record = recordValue(value);
+  const error = recordValue(record?.error) || record;
+  const message = normalizeString(error?.message)
+    || normalizeString(record?.message)
+    || normalizeString(error?.error)
+    || normalizeString(record?.error);
+  const type = normalizeString(error?.type) || normalizeString(record?.type);
+  const code = normalizeString(error?.code) || normalizeString(record?.code);
+  const detail = [
+    type ? `type=${type}` : "",
+    code ? `code=${code}` : "",
+  ].filter(Boolean).join(", ");
+  if (message && detail) return `${message} (${detail})`;
+  if (message) return message;
+  if (detail) return detail;
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value) as unknown;
+      if (parsed !== value) return errorMessageFromValue(parsed);
+    } catch {
+      return value;
+    }
+  }
+  return "";
+}
+
+function toolLikeItemType(itemType: string | null): boolean {
+  const lowered = (itemType || "").toLowerCase();
+  return [
+    "tool",
+    "function",
+    "command_execution",
+    "command",
+    "web_search",
+    "mcp",
+  ].some((needle) => lowered.includes(needle));
+}
+
+function codexToolProgressText(item: Record<string, unknown> | null, itemType: string | null, rawType: string): string {
+  if (!item) return itemType || "tool";
+  const name = normalizeString(item.name)
+    || normalizeString(item.tool_name)
+    || normalizeString(item.call_id)
+    || itemType
+    || "tool";
+  const command = normalizeString(item.command)
+    || normalizeString(item.cmd)
+    || stringifyProgressValue(item.arguments)
+    || stringifyProgressValue(item.input);
+  const status = normalizeString(item.status);
+  const exitCode = Number(item.exit_code ?? item.exitCode);
+  const output = normalizeString(item.output)
+    || normalizeString(item.aggregated_output)
+    || normalizeString(item.result)
+    || normalizeString(item.stderr)
+    || normalizeString(item.stdout);
+  const parts = [
+    rawType.endsWith(".started") ? `${name} started` : `${name} completed`,
+    command,
+    Number.isFinite(exitCode) ? `exit=${exitCode}` : status,
+    output,
+  ].filter(Boolean);
+  return parts.join("\n");
+}
+
 function ensureWorkDir(workDir: string): string {
   const normalized = normalizeString(workDir) || process.cwd();
   fs.mkdirSync(normalized, { recursive: true });
@@ -396,19 +473,19 @@ function parseCodexProgressLine(line: string): ChannelConnectorAgentProgressEven
     return progressEvent({ type: "completed", rawType, text: "Codex turn completed" });
   }
   if (rawType === "turn.failed") {
-    const error = recordValue(raw.error);
-    return progressEvent({ type: "failed", rawType, text: normalizeString(error?.message) || "Codex turn failed" });
+    const text = errorMessageFromValue(raw.error) || errorMessageFromValue(raw) || "Codex turn failed";
+    return progressEvent({ type: "failed", rawType, text });
   }
   if (rawType === "error") {
-    return progressEvent({ type: "error", rawType, text: normalizeString(raw.message) || "Codex error" });
+    return progressEvent({ type: "error", rawType, text: errorMessageFromValue(raw) || "Codex error" });
   }
-  if (rawType === "item.completed") {
+  if (rawType === "item.started" || rawType === "item.completed") {
     const item = recordValue(raw.item);
     const itemType = normalizeString(item?.type) || null;
     if (itemType === "reasoning") return progressEvent({ type: "reasoning", rawType, itemType, text: normalizeString(item?.text) || null });
     if (itemType === "agent_message") return progressEvent({ type: "assistant", rawType, itemType, text: normalizeString(item?.text) || null });
-    if (itemType?.includes("tool") || itemType?.includes("function")) {
-      return progressEvent({ type: "tool", rawType, itemType, text: normalizeString(item?.name) || itemType });
+    if (toolLikeItemType(itemType)) {
+      return progressEvent({ type: "tool", rawType, itemType, text: codexToolProgressText(item, itemType, rawType) });
     }
     return progressEvent({ type: "event", rawType, itemType, text: itemType });
   }

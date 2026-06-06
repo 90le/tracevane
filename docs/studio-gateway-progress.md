@@ -1,6 +1,6 @@
 # Studio Gateway 进度
 
-> 状态：Studio Gateway core completed；Provider Center/App Connections completed；Channel Connectors native F3 Feishu command/display loop completed；OpenAI Platform vendor proof optional
+> 状态：Studio Gateway core completed；Provider Center/App Connections completed；Channel Connectors native F3 Feishu progress card completed；OpenAI Platform vendor proof optional
 > 更新：2026-06-06
 > 文档规则：本文件只保留当前状态、最近完成、验证、边界和下一步；流水细节不继续追加。
 
@@ -13,34 +13,28 @@
 - 本地 Gateway client key 可编辑/生成；启用后保护 `/v1/models`、Chat Completions、Responses、Responses compact、Anthropic Messages，且不会透传 upstream key。
 - App Connections 已覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview、apply、备份、rollback、profile 切换、隔离 HOME HTTP 验收和真实 CLI 启动 smoke harness。
 - Channel Connectors 已切换为 Studio 原生 CLI Agent Bot 路线；CC/OpenClaw 只作为参考，不再走短期托管 cc-connect。
-- Channel daemon 已支持 Octo(dmwork) 与 Feishu 的 native ingress/outbound、Codex/Claude Code/OpenCode runner、Studio Gateway client key、IM session override、slash command、Feishu card action、bot menu、长连接和基础运行可观测。
+- Channel daemon 已支持 Octo(dmwork) 与 Feishu 的 native ingress/outbound、Codex/Claude Code/OpenCode runner、Studio Gateway client key、IM session override、slash command、Feishu card action、bot menu、长连接、processing reaction 和 Feishu progress card。
 
 ## 本轮完成
 
-- Feishu slash command 与菜单入口统一到同一个 command-router：`/command`、`/cmd`、`/status`、`/agent`、`/model`、`/mode`、`/dir`、`/cd`、`/new`、`/reset`、`/native`、`/display`、`/stream`、`/tools` 均可通过文本或卡片触发。
-- 新增当前 IM session 的显示开关：`/stream on|off|default` 控制中间态/进度消息，`/tools on|off|default` 控制工具/思考消息，`/display default` 恢复默认开启。
-- Feishu command surface 新增 `Display` 分组和 `Studio Display` 子卡片；`Status / New Session / Reset / Model / Permission / WorkDir / Display` 都返回可操作结果卡，不再只 toast “已执行”。
-- Feishu 普通 slash 消息在启用卡片时会发送 interactive card；`/status`、`/new`、`/reset` 等与菜单点击保持同一结果形态。
-- Feishu Agent 运行链路按 CC 思路保留 processing reaction，并新增节流后的中间态文本回发；工具/思考事件受 `/tools` 控制，整体中间态受 `/stream` 控制。
-- Agent/upstream 失败回执新增 JSON error envelope 清洗：优先抽取 `message/type/code`，避免把重复或半截 JSON 原样发给 IM 用户。
-- 修复 Feishu 长连接卡在 `reconnecting` 时客户端提示“目标回调服务当前未在线”的运行态问题：daemon 现在会暴露 `lastUnhealthyAt`，并由 watchdog 在非 `connected` 持续超过 20 秒时重建 WSClient。
-- 本轮参考的 CC 源码重点：`platform/feishu/card.go`、`platform/feishu/feishu.go`、`core/streaming.go`、`core/progress_compact.go`、`core/engine.go` 的 `DisplayCfg` / `thinking_messages` / `tool_messages` / command handling。
+- Feishu Agent 运行进度从多条文本回发改为单张 `Studio Agent Progress` 卡片：首条 send，后续 patch，完成/失败时强制落最终状态，避免“运行中 / 错误 / 失败 / Agent 失败”重复刷屏。
+- Codex JSONL progress 已识别 `item.started` / `item.completed` 的 `command_execution` 为工具调用/工具结果，卡片会展示命令、退出码和输出摘要；`/stream` 控制整体进度卡片，`/tools` 控制工具/思考项。
+- Agent/upstream 错误在 runner 和 daemon 双层清洗，优先抽取 `message/type/code`；进度卡已发送时失败不再额外发送重复失败文本，只在卡片发送失败时兜底文本。
+- 本轮参考的 CC 源码重点：`core/progress_compact.go`、`core/streaming.go`、`platform/feishu/feishu.go` 的 compact progress、tool step 和 card patch 思路。
 
 ## 验证
 
 - 通过：`npm run build:api`。
-- 通过：`npm run typecheck:web`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs`。
-- 通过：重启 `openclaw-studio-channel-connectors.service` 后 Feishu `/status` 回到 `connected`；watchdog 合同已进入系统测试静态断言。
+- 待本轮重启后验证：`openclaw-studio-channel-connectors.service` 载入最新 dist，真实 Feishu 消息应显示单张进度卡片。
 
 ## 已知边界
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
-- Feishu 当前进度回发是节流文本消息，尚未完全复刻 CC 的 compact/card 原地刷新和长回复预览冻结。
-- F4 消息能力尚未完成：图片/文件、语音、群聊成员/history context、长回复 buffer、治理策略。
+- Feishu progress card 已替代文本进度；长回复预览冻结、图片/文件、语音、群聊成员/history context、长回复 buffer 和治理策略仍属于 F4/F5。
 
 ## 下一步
 
-1. 用真实 Feishu 客户端再次点击菜单，确认“目标回调服务当前未在线”消失；若飞书侧仍提示离线，优先查看 daemon `/status` 的 `feishuConnections[].state` 与 `lastUnhealthyAt`。
-2. 进入 Feishu compact progress card：用 `patch card` 替换当前文本进度，复刻 CC 的 progress compact/card 体验。
+1. 重启 daemon 后用真实 Feishu 客户端发起一次工具调用任务，确认单张 Progress card 原地刷新、processing reaction 和失败去重。
+2. 若仍出现 `未正常接收到prompt参数`，下一步查 Codex CLI -> Studio Gateway 的 prompt/body 转发，而不是 IM 展示层。
 3. 进入 F4：图片/文件、群聊成员/history context、长回复 buffer 和治理策略。

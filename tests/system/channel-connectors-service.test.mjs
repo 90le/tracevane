@@ -2512,6 +2512,42 @@ test("native Channel Connectors process runner streams progress events from agen
   assert.equal(result.progressEvents?.length, 2);
 });
 
+test("native Channel Connectors process runner maps Codex command execution progress", async () => {
+  const root = makeTempRoot();
+  const progress = [];
+  const childScript = [
+    "process.stdout.write(JSON.stringify({type:'item.started',item:{type:'command_execution',command:'pwd'}})+'\\n');",
+    "process.stdout.write(JSON.stringify({type:'item.completed',item:{type:'command_execution',command:'pwd',exit_code:0,output:'/tmp/project'}})+'\\n');",
+    "process.stdout.write(JSON.stringify({type:'turn.failed',error:{message:'未正常接收到prompt参数。',type:'upstream_error',code:'1213'}})+'\\n');",
+  ].join("");
+
+  const result = await defaultChannelConnectorAgentProcessRunner({
+    command: process.execPath,
+    args: ["-e", childScript],
+    cwd: root,
+    stdin: "",
+    env: {},
+    timeoutMs: 1000,
+    agent: "codex",
+    onProgress: (event) => progress.push(event),
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(progress.length, 3);
+  assert.equal(progress[0].type, "tool");
+  assert.equal(progress[0].rawType, "item.started");
+  assert.equal(progress[0].itemType, "command_execution");
+  assert.match(progress[0].text, /command_execution started/);
+  assert.match(progress[0].text, /pwd/);
+  assert.equal(progress[1].type, "tool");
+  assert.equal(progress[1].rawType, "item.completed");
+  assert.match(progress[1].text, /exit=0/);
+  assert.match(progress[1].text, /\/tmp\/project/);
+  assert.equal(progress[2].type, "failed");
+  assert.equal(progress[2].text, "未正常接收到prompt参数。 (type=upstream_error, code=1213)");
+  assert.equal(result.progressEvents?.length, 3);
+});
+
 test("native Channel Connectors service management is guarded before daemon entry is built", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -2555,8 +2591,9 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /sendFeishuCardMessage/);
   assert.match(daemonSource, /patchFeishuCardMessage/);
   assert.match(daemonSource, /shouldSendFeishuProgressEvent/);
-  assert.match(daemonSource, /formatFeishuProgressEvent/);
-  assert.match(daemonSource, /agent\.progress\.reply/);
+  assert.match(daemonSource, /renderFeishuProgressCard/);
+  assert.match(daemonSource, /sendOrPatchFeishuProgressCard/);
+  assert.match(daemonSource, /agent\.progress\.card/);
   assert.match(daemonSource, /jsonErrorEnvelopeMessage/);
   assert.match(daemonSource, /renderChannelConnectorCommandSurfaceFeishu/);
   assert.match(daemonSource, /function feishuDedupeKey/);

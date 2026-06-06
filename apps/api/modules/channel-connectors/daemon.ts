@@ -10,6 +10,7 @@ import {
   type WSConnectionStatus,
 } from "@larksuiteoapi/node-sdk";
 import type {
+  ChannelConnectorFeishuInteractiveCard,
   ChannelConnectorFeishuTransportConfig,
   ChannelConnectorFeishuTransportResult,
   ChannelConnectorAgentProfile,
@@ -179,6 +180,27 @@ interface ChannelDaemonState {
     progressEventCount: number;
     latestProgress: ChannelConnectorAgentProgressEvent | null;
   }>;
+}
+
+type FeishuProgressCardEntryKind = "info" | "thinking" | "tool_use" | "tool_result" | "error";
+
+interface FeishuProgressCardEntry {
+  kind: FeishuProgressCardEntryKind;
+  title: string;
+  text: string;
+  checkedAt: string;
+  fingerprint: string;
+}
+
+interface FeishuProgressCardState {
+  messageId: string | null;
+  status: "running" | "completed" | "failed";
+  startedAtMs: number;
+  updatedAtMs: number;
+  dirty: boolean;
+  entries: FeishuProgressCardEntry[];
+  seenFingerprints: Set<string>;
+  latestError: string | null;
 }
 
 function configPathFromArgv(argv: string[]): string {
@@ -753,16 +775,188 @@ function shouldSendFeishuProgressEvent(
   return ["running", "reasoning", "tool", "failed", "error", "completed", "event"].includes(event.type);
 }
 
-function formatFeishuProgressEvent(event: ChannelConnectorAgentProgressEvent): string | null {
-  const text = event.text ? shortMessage(event.text, 180) : null;
-  if (event.type === "running") return text ? `运行中：${text}` : "运行中";
-  if (event.type === "reasoning") return text ? `思考：${text}` : "思考中";
-  if (event.type === "tool") return text ? `工具：${text}` : "工具调用中";
-  if (event.type === "completed") return text ? `已完成：${text}` : "已完成";
-  if (event.type === "failed") return text ? `失败：${text}` : "运行失败";
-  if (event.type === "error") return text ? `错误：${text}` : "运行错误";
-  if (event.type === "event" && text) return `进度：${text}`;
-  return null;
+function createFeishuProgressCardState(): FeishuProgressCardState {
+  const startedAtMs = Date.now();
+  return {
+    messageId: null,
+    status: "running",
+    startedAtMs,
+    updatedAtMs: startedAtMs,
+    dirty: false,
+    entries: [],
+    seenFingerprints: new Set<string>(),
+    latestError: null,
+  };
+}
+
+function feishuProgressEntryKind(event: ChannelConnectorAgentProgressEvent): FeishuProgressCardEntryKind {
+  if (event.type === "reasoning") return "thinking";
+  if (event.type === "tool") {
+    return event.rawType?.endsWith(".started") ? "tool_use" : "tool_result";
+  }
+  if (event.type === "failed" || event.type === "error") return "error";
+  return "info";
+}
+
+function feishuProgressEntryTitle(event: ChannelConnectorAgentProgressEvent, kind: FeishuProgressCardEntryKind): string {
+  if (kind === "thinking") return "思考";
+  if (kind === "tool_use") return event.itemType ? `工具调用：${event.itemType}` : "工具调用";
+  if (kind === "tool_result") return event.itemType ? `工具结果：${event.itemType}` : "工具结果";
+  if (kind === "error") return event.type === "failed" ? "失败" : "错误";
+  if (event.type === "running") return "运行中";
+  if (event.type === "completed") return "完成";
+  return event.rawType || "进度";
+}
+
+function pushFeishuProgressCardEvent(
+  cardState: FeishuProgressCardState,
+  event: ChannelConnectorAgentProgressEvent,
+): boolean {
+  const text = shortMessage(event.text || event.rawType || event.type, 520);
+  if (!text) return false;
+  const kind = feishuProgressEntryKind(event);
+  const fingerprint = `${kind}:${event.rawType || ""}:${event.itemType || ""}:${text}`;
+  if (cardState.seenFingerprints.has(fingerprint)) return false;
+  if (kind === "error" && cardState.latestError === text) return false;
+  cardState.seenFingerprints.add(fingerprint);
+  if (kind === "error") {
+    cardState.status = "failed";
+    cardState.latestError = text;
+  } else if (event.type === "completed" && cardState.status !== "failed") {
+    cardState.status = "completed";
+  }
+  cardState.entries.push({
+    kind,
+    title: feishuProgressEntryTitle(event, kind),
+    text,
+    checkedAt: event.checkedAt,
+    fingerprint,
+  });
+  cardState.entries = cardState.entries.slice(-10);
+  cardState.updatedAtMs = Date.now();
+  cardState.dirty = true;
+  return true;
+}
+
+function ensureFeishuProgressCardFailure(
+  cardState: FeishuProgressCardState,
+  error: string | null,
+): void {
+  cardState.status = "failed";
+  const text = shortMessage(error || "Agent 运行失败", 520);
+  if (!text || cardState.latestError === text) return;
+  const fingerprint = `error:final:${text}`;
+  if (cardState.seenFingerprints.has(fingerprint)) return;
+  cardState.latestError = text;
+  cardState.seenFingerprints.add(fingerprint);
+  cardState.entries.push({
+    kind: "error",
+    title: "失败",
+    text,
+    checkedAt: new Date().toISOString(),
+    fingerprint,
+  });
+  cardState.entries = cardState.entries.slice(-10);
+  cardState.updatedAtMs = Date.now();
+  cardState.dirty = true;
+}
+
+function completeFeishuProgressCard(cardState: FeishuProgressCardState): void {
+  if (cardState.status === "failed") return;
+  cardState.status = "completed";
+  cardState.updatedAtMs = Date.now();
+  cardState.dirty = true;
+}
+
+function feishuProgressCardStatusText(status: FeishuProgressCardState["status"]): string {
+  if (status === "completed") return "已完成";
+  if (status === "failed") return "失败";
+  return "运行中";
+}
+
+function feishuProgressCardTemplate(status: FeishuProgressCardState["status"]): string {
+  if (status === "completed") return "green";
+  if (status === "failed") return "red";
+  return "blue";
+}
+
+function renderFeishuProgressCard(input: {
+  state: FeishuProgressCardState;
+  project: ChannelConnectorRuntimeProject;
+  sessionKey: string;
+}): ChannelConnectorFeishuInteractiveCard {
+  const elapsedSeconds = Math.max(0, Math.round((input.state.updatedAtMs - input.state.startedAtMs) / 1000));
+  const model = input.project.model || "default";
+  const headerLines = [
+    `**状态**：${feishuProgressCardStatusText(input.state.status)}`,
+    `**Agent**：${input.project.agent}`,
+    `**模型**：${model}`,
+    `**耗时**：${elapsedSeconds}s`,
+  ];
+  const eventLines = input.state.entries.length
+    ? input.state.entries.map((entry, index) => {
+      const indexText = String(index + 1).padStart(2, "0");
+      return `**${indexText}. ${entry.title}**\n${entry.text}`;
+    }).join("\n\n")
+    : "等待 Agent 返回进度。";
+  return {
+    config: {
+      wide_screen_mode: true,
+    },
+    header: {
+      title: {
+        tag: "plain_text",
+        content: "Studio Agent Progress",
+      },
+      template: feishuProgressCardTemplate(input.state.status),
+    },
+    elements: [
+      {
+        tag: "markdown",
+        content: headerLines.join("\n"),
+      },
+      { tag: "hr" },
+      {
+        tag: "markdown",
+        content: eventLines,
+      },
+      {
+        tag: "note",
+        elements: [
+          {
+            tag: "plain_text",
+            content: `session ${shortMessage(input.sessionKey, 80)}`,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+async function sendOrPatchFeishuProgressCard(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  transport: ChannelConnectorFeishuTransportConfig;
+  chatId: string;
+  state: FeishuProgressCardState;
+  project: ChannelConnectorRuntimeProject;
+  sessionKey: string;
+}): Promise<ChannelConnectorFeishuTransportResult> {
+  const cachePath = feishuTokenCachePath(input.config);
+  const card = renderFeishuProgressCard({
+    state: input.state,
+    project: input.project,
+    sessionKey: input.sessionKey,
+  });
+  if (input.state.messageId) {
+    return patchFeishuCardMessage(input.transport, {
+      messageId: input.state.messageId,
+      card,
+    }, cachePath);
+  }
+  return sendFeishuCardMessage(input.transport, {
+    chatId: input.chatId,
+    card,
+  }, cachePath);
 }
 
 function feishuCommandNotice(input: {
@@ -1519,8 +1713,62 @@ async function dispatchFeishuParsedEvent(input: {
   const currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
   let progressEventCount = 0;
   let latestProgress: ChannelConnectorAgentProgressEvent | null = null;
+  const progressCardState = createFeishuProgressCardState();
   let lastFeishuProgressSentAt = 0;
   let feishuProgressSendCount = 0;
+  let feishuProgressFlush: Promise<void> = Promise.resolve();
+  const queueFeishuProgressFlush = (force: boolean, reason: string): void => {
+    if (!progressCardState.dirty) return;
+    const chatId = parsed.channelId;
+    if (!chatId) return;
+    const nowMs = Date.now();
+    if (!force && progressCardState.messageId && nowMs - lastFeishuProgressSentAt < 1500) return;
+    if (!force && feishuProgressSendCount >= 60) return;
+    progressCardState.dirty = false;
+    lastFeishuProgressSentAt = nowMs;
+    feishuProgressSendCount += 1;
+    feishuProgressFlush = feishuProgressFlush.catch(() => undefined).then(async () => {
+      const result = await sendOrPatchFeishuProgressCard({
+        config,
+        transport,
+        chatId,
+        state: progressCardState,
+        project: effectiveProject,
+        sessionKey,
+      });
+      if (result.ok === true && result.messageId && !progressCardState.messageId) {
+        progressCardState.messageId = result.messageId;
+      }
+      writeJsonLine(config.paths.feishuEvents, {
+        checkedAt: new Date().toISOString(),
+        eventKind: "agent.progress.card",
+        adapter: "feishu",
+        bindingId: binding.id,
+        sessionKey,
+        messageId,
+        progressCardMessageId: progressCardState.messageId,
+        progressStatus: progressCardState.status,
+        reason,
+        transportAction: result.action,
+        replySent: result.ok === true,
+        replyError: result.error,
+      });
+    }).catch((error) => {
+      writeJsonLine(config.paths.feishuEvents, {
+        checkedAt: new Date().toISOString(),
+        eventKind: "agent.progress.card",
+        adapter: "feishu",
+        bindingId: binding.id,
+        sessionKey,
+        messageId,
+        progressCardMessageId: progressCardState.messageId,
+        progressStatus: progressCardState.status,
+        reason,
+        replySent: false,
+        replyError: shortMessage(error),
+      });
+    });
+  };
   state.activeRuns.unshift({
     id: activeRunId,
     startedAt: checkedAt,
@@ -1593,45 +1841,10 @@ async function dispatchFeishuParsedEvent(input: {
           itemType: event.itemType,
           text: event.text,
         });
-        const progressText = formatFeishuProgressEvent(event);
         const highPriority = event.type === "failed" || event.type === "error" || event.type === "completed";
-        const nowMs = Date.now();
-        if (
-          progressText
-          && shouldSendFeishuProgressEvent(control, event)
-          && feishuProgressSendCount < 20
-          && (highPriority || nowMs - lastFeishuProgressSentAt >= 1500)
-        ) {
-          lastFeishuProgressSentAt = nowMs;
-          feishuProgressSendCount += 1;
-          void sendFeishuTextMessage(transport, {
-            chatId: parsed.channelId || "",
-            content: progressText,
-          }, feishuTokenCachePath(config)).then((result) => {
-            writeJsonLine(config.paths.feishuEvents, {
-              checkedAt: new Date().toISOString(),
-              eventKind: "agent.progress.reply",
-              adapter: "feishu",
-              bindingId: binding.id,
-              sessionKey,
-              messageId,
-              progressType: event.type,
-              replySent: result.ok === true,
-              replyError: result.error,
-            });
-          }).catch((error) => {
-            writeJsonLine(config.paths.feishuEvents, {
-              checkedAt: new Date().toISOString(),
-              eventKind: "agent.progress.reply",
-              adapter: "feishu",
-              bindingId: binding.id,
-              sessionKey,
-              messageId,
-              progressType: event.type,
-              replySent: false,
-              replyError: shortMessage(error),
-            });
-          });
+        if (shouldSendFeishuProgressEvent(control, event)) {
+          const changed = pushFeishuProgressCardEvent(progressCardState, event);
+          if (changed) queueFeishuProgressFlush(highPriority, event.type);
         }
         writeRuntime(config, state);
       },
@@ -1672,6 +1885,15 @@ async function dispatchFeishuParsedEvent(input: {
     progressEventCount = agent.progress.eventCount;
     latestProgress = agent.progress.latest;
   }
+  if (control?.streamMessages !== false && (progressCardState.messageId || progressCardState.entries.length > 0)) {
+    if (agent.ok === false) {
+      ensureFeishuProgressCardFailure(progressCardState, agent.error);
+    } else if (agent.ok === true) {
+      completeFeishuProgressCard(progressCardState);
+    }
+    queueFeishuProgressFlush(true, "final");
+    await feishuProgressFlush;
+  }
   let nextSession: ChannelConnectorAgentSessionRecord | null = null;
   if (agent.session.codexThreadId || currentSession?.codexThreadId) {
     nextSession = upsertChannelConnectorAgentSession(agentSessionsPath(config), {
@@ -1702,7 +1924,7 @@ async function dispatchFeishuParsedEvent(input: {
   let replyError: string | null = null;
   const replyContent = agent.ok === true && agent.replyText
     ? agent.replyText
-    : agent.ok === false
+    : agent.ok === false && !progressCardState.messageId
       ? `Agent 运行失败：${shortMessage(agent.error)}`
       : null;
   if (replyContent) {
