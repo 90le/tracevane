@@ -116,9 +116,10 @@ Studio 增强点：
 - 已完成脱敏 live 闭环：本地用户配置写入 Feishu binding、tenant token cache 验证通过、callback URL verification 通过；错误 verification token 不再回显 challenge；daemon active/enabled，真实飞书 `/status`/`/help` 入站并回复成功；CLI runner 已补用户级 PATH fallback，避免 systemd 下找不到 Codex/Claude/OpenCode；凭据和 token 不进入仓库。
 - Feishu card/menu 已具备 Session、Agent、Model、Permission、WorkDir、Display 子卡片；普通 slash 与卡片点击共用同一 command-router。Agent 运行已支持 processing reaction、单张 Progress card send/patch、`command_execution` 工具过程展示、`/stream` 与 `/tools` 开关，以及 upstream JSON error envelope 清洗和失败去重。
 - Codex 工具调用链路已按 CC/cc-switch 对齐：resume 参数顺序、Responses -> Chat 工具历史、reasoning/tool placeholder、JSON canonical 均有回归覆盖；隔离 `CODEX_HOME` 真实 smoke 已验证 `glm-5` 工具调用不再触发 BigModel 1213。
+- 真实飞书客户端已复测三次工具调用：长连接入站、reaction、Progress card send/patch、工具步骤和最终 `ok` 均成功；Gateway 对应 `/v1/responses` 最新请求为 200。
 
 ## 6. 下一步
 
-1. 用真实 Feishu 客户端复测同一个工具调用任务：确认 Progress card 原地刷新、processing reaction、工具步骤和失败去重。
-2. F4：补图片/文件、群聊成员/history context、长回复 group buffer 和治理策略。
-3. 继续迁移 CC/OpenClaw 的 thread isolation、文件/图片和多平台 adapter。
+1. F4：补图片/文件、群聊成员/history context、长回复 group buffer 和治理策略。
+2. 继续迁移 CC/OpenClaw 的 thread isolation、文件/图片和多平台 adapter。
+3. Feishu card/menu 后续 UI 精修继续复刻 CC 成熟结构，再做 Studio 化整理。

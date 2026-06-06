@@ -30,6 +30,8 @@
 - 通过：`node --test tests/system/model-gateway-service.test.mjs --test-name-pattern "streamed codex tool-call history|inline codex tool-result|restores codex tool-call history"`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "agent runner builds gateway-backed Codex turns|process runner maps Codex command execution progress"`。
 - 通过：隔离 `CODEX_HOME` 真实 Codex CLI smoke，`glm-5` 经 Studio Gateway 调用 shell 读取 `probe.txt` 后返回 `ok`；Gateway requestLog 显示两次 `/v1/responses` 均为 200，修复前同路径曾返回 400/1213。
+- 通过：隔离 `CODEX_HOME` 三工具调用 smoke，`glm-5` 连续 3 次 `command_execution` 后返回 `ok`，退出码 0。
+- 通过：真实飞书客户端复测 `调用三次阅读工具回复我ok`；长连接入站、processing reaction、Progress card send/patch、3 次工具步骤、最终 `agentStatus=completed` / `agentError=null`。Gateway 最新 4 次 `/v1/responses` 均为 200，无 1213。
 - 已重启：`openclaw-studio-model-gateway.service`、`openclaw-studio-channel-connectors.service`、dev backend/frontend。
 
 ## 已知边界
@@ -39,5 +41,5 @@
 
 ## 下一步
 
-1. 用真实 Feishu 客户端复测同一个工具调用任务，确认 Progress card 原地刷新、processing reaction、工具步骤和失败去重。
-2. 进入 F4：图片/文件、群聊成员/history context、长回复 buffer 和治理策略。
+1. 进入 F4：图片/文件、群聊成员/history context、长回复 buffer 和治理策略。
+2. 后续 UI 精修 Feishu card/menu 样式时继续参考 CC 原卡片结构，避免重新发明交互。
