@@ -303,6 +303,57 @@ export async function sendFeishuTextMessage(
   }
 }
 
+export async function sendFeishuCardMessage(
+  config: ChannelConnectorFeishuTransportConfig,
+  input: {
+    chatId: string;
+    card: ChannelConnectorFeishuInteractiveCard | Record<string, unknown>;
+  },
+  cachePath?: string | null,
+): Promise<ChannelConnectorFeishuTransportResult> {
+  let requestCount = 0;
+  let tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"] = cachePath ? "miss" : "disabled";
+  try {
+    if (!normalizeString(input.chatId)) throw new Error("Feishu chatId is required.");
+    const token = await getFeishuTenantToken(config, cachePath);
+    requestCount += token.requestCount;
+    tokenCache = token.tokenCache;
+    const response = await feishuJsonRequest(config, {
+      method: "POST",
+      path: "/open-apis/im/v1/messages?receive_id_type=chat_id",
+      token: token.token,
+      payload: {
+        receive_id: input.chatId,
+        msg_type: "interactive",
+        content: JSON.stringify(input.card),
+      },
+    });
+    requestCount += 1;
+    const data = recordFrom(response.body.data);
+    return transportResult({
+      attempted: true,
+      ok: true,
+      action: "send-card",
+      apiUrl: config.apiUrl,
+      statusCode: response.statusCode,
+      requestCount,
+      tokenCache,
+      messageId: normalizeString(data.message_id) || null,
+    });
+  } catch (error) {
+    return transportResult({
+      attempted: true,
+      ok: false,
+      action: "send-card",
+      apiUrl: config.apiUrl,
+      statusCode: errorStatusCode(error),
+      error: errorMessage(error),
+      requestCount: Math.max(requestCount, 1),
+      tokenCache,
+    });
+  }
+}
+
 export async function patchFeishuCardMessage(
   config: ChannelConnectorFeishuTransportConfig,
   input: {

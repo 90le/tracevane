@@ -55,10 +55,14 @@ import {
 } from "./feishu-adapter.js";
 import {
   feishuTransportFromMetadata,
+  patchFeishuCardMessage,
+  sendFeishuCardMessage,
   sendFeishuTextMessage,
 } from "./feishu-transport.js";
 import {
+  buildChannelConnectorCommandSurface,
   extractChannelConnectorCommandFromActionValue,
+  renderChannelConnectorCommandSurfaceFeishu,
 } from "./command-surface.js";
 import {
   octoTransportFromMetadata,
@@ -562,6 +566,65 @@ function feishuMessageFromParsed(
   };
 }
 
+function feishuCardsEnabled(binding: ChannelConnectorRuntimeBinding): boolean {
+  return metadataBoolean(binding, [
+    "enableFeishuCard",
+    "enable_feishu_card",
+    "useInteractiveCard",
+    "use_interactive_card",
+    "interactiveCard",
+    "interactive_card",
+  ], true);
+}
+
+function isFeishuMenuCommand(command: ReturnType<typeof handleChannelConnectorCommand> extends Promise<infer Result> ? Result : never): boolean {
+  return command.action === "help"
+    || ["start", "help", "menu", "commands", "command", "cmd"].includes(normalizeString(command.command).toLowerCase());
+}
+
+function buildFeishuCommandCard(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  project: ChannelConnectorRuntimeProject;
+  binding: ChannelConnectorRuntimeBinding;
+  sessionKey: string;
+}) {
+  const control = getChannelConnectorSessionControl(sessionControlsPath(input.config), {
+    bindingId: input.binding.id,
+    sessionKey: input.sessionKey,
+  });
+  return renderChannelConnectorCommandSurfaceFeishu(buildChannelConnectorCommandSurface({
+    config: input.config,
+    project: input.project,
+    binding: input.binding,
+    control,
+    sessionKey: input.sessionKey,
+  }));
+}
+
+async function sendOrPatchFeishuCommandCard(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  project: ChannelConnectorRuntimeProject;
+  binding: ChannelConnectorRuntimeBinding;
+  transport: ChannelConnectorFeishuTransportConfig;
+  parsed: ChannelConnectorFeishuParsedWebhook;
+  sessionKey: string;
+}) {
+  const card = buildFeishuCommandCard(input);
+  const cachePath = feishuTokenCachePath(input.config);
+  const cardMessageId = normalizeString(input.parsed.messageId);
+  if (input.parsed.kind === "card-action" && cardMessageId) {
+    const patched = await patchFeishuCardMessage(input.transport, {
+      messageId: cardMessageId,
+      card,
+    }, cachePath);
+    if (patched.ok === true) return patched;
+  }
+  return sendFeishuCardMessage(input.transport, {
+    chatId: normalizeString(input.parsed.channelId),
+    card,
+  }, cachePath);
+}
+
 async function resolveOctoCredentials(
   config: ChannelConnectorsDaemonRuntimeConfig,
   binding: ChannelConnectorRuntimeBinding,
@@ -1033,13 +1096,30 @@ async function dispatchFeishuParsedEvent(input: {
   if (command.handled) {
     let replySent = false;
     let replyError: string | null = null;
-    if (command.replyText) {
+    let replyTransportAction: string | null = null;
+    const shouldSendCard = feishuCardsEnabled(binding)
+      && (parsed.kind === "card-action" || parsed.kind === "bot-menu" || isFeishuMenuCommand(command));
+    if (shouldSendCard) {
+      const result = await sendOrPatchFeishuCommandCard({
+        config,
+        project,
+        binding,
+        transport,
+        parsed,
+        sessionKey,
+      });
+      replySent = result.ok === true;
+      replyError = result.error;
+      replyTransportAction = result.action;
+    }
+    if (!replySent && command.replyText) {
       const result = await sendFeishuTextMessage(transport, {
         chatId: parsed.channelId,
         content: command.replyText,
       }, feishuTokenCachePath(config));
       replySent = result.ok === true;
       replyError = result.error;
+      replyTransportAction = result.action;
     }
     writeJsonLine(config.paths.feishuEvents, {
       checkedAt,
@@ -1056,6 +1136,7 @@ async function dispatchFeishuParsedEvent(input: {
       commandAction: command.action,
       commandOk: command.ok,
       replySent,
+      replyTransportAction,
       replyError,
     });
     writeRuntime(config, state);

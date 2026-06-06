@@ -228,55 +228,219 @@ function buttonElement(
   };
 }
 
+function truncateMiddle(value: string, maxLength: number): string {
+  const normalized = normalizeString(value);
+  if (normalized.length <= maxLength) return normalized;
+  if (maxLength <= 3) return normalized.slice(0, maxLength);
+  const head = Math.ceil((maxLength - 1) / 2);
+  const tail = Math.floor((maxLength - 1) / 2);
+  return `${normalized.slice(0, head)}…${normalized.slice(normalized.length - tail)}`;
+}
+
+function compactPath(value: string): string {
+  const normalized = normalizeString(value);
+  if (normalized.length <= 42) return normalized;
+  const parts = normalized.split("/").filter(Boolean);
+  if (parts.length >= 2) {
+    return `…/${parts.slice(-2).join("/")}`;
+  }
+  return truncateMiddle(normalized, 42);
+}
+
+function stripListPrefix(value: string): string {
+  return normalizeString(value).replace(/^\d+\.\s*/, "");
+}
+
+function sectionById(
+  surface: ChannelConnectorCommandSurface,
+  id: string,
+): ChannelConnectorCommandSurfaceSection | null {
+  return surface.sections.find((section) => section.id === id) || null;
+}
+
+function statusBlock(surface: ChannelConnectorCommandSurface): Record<string, unknown> {
+  const model = surface.current.model || "default";
+  const workDir = compactPath(surface.current.workDir);
+  return {
+    tag: "column_set",
+    flex_mode: "bisect",
+    columns: [
+      {
+        tag: "column",
+        width: "weighted",
+        weight: 1,
+        vertical_align: "top",
+        elements: [
+          {
+            tag: "markdown",
+            content: [
+              "**当前 Agent**",
+              `${surface.current.projectId} · ${surface.current.agent}`,
+              "",
+              "**模型**",
+              model,
+            ].join("\n"),
+          },
+        ],
+      },
+      {
+        tag: "column",
+        width: "weighted",
+        weight: 1,
+        vertical_align: "top",
+        elements: [
+          {
+            tag: "markdown",
+            content: [
+              "**权限**",
+              surface.current.permissionMode,
+              "",
+              "**目录**",
+              `\`${workDir}\``,
+            ].join("\n"),
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function actionRowElement(
+  actions: ChannelConnectorCommandSurfaceAction[],
+  surface: ChannelConnectorCommandSurface,
+  equalColumns = false,
+): Record<string, unknown> | null {
+  if (actions.length === 0) return null;
+  if (!equalColumns) {
+    return {
+      tag: "action",
+      actions: actions.map((item) => buttonElement(item, surface)),
+    };
+  }
+  const columns = actions.map((item) => ({
+    tag: "column",
+    width: "weighted",
+    weight: 1,
+    vertical_align: "center",
+    horizontal_align: "center",
+    elements: [
+      {
+        ...buttonElement(item, surface),
+        width: "fill",
+      },
+    ],
+  }));
+  return {
+    tag: "column_set",
+    flex_mode: columns.length === 2 ? "bisect" : "none",
+    columns,
+  };
+}
+
+function pushActionRows(
+  elements: Array<Record<string, unknown>>,
+  actions: ChannelConnectorCommandSurfaceAction[],
+  surface: ChannelConnectorCommandSurface,
+  rowSize: number,
+  equalColumns = false,
+): void {
+  for (let index = 0; index < actions.length; index += rowSize) {
+    const row = actions.slice(index, index + rowSize);
+    const element = actionRowElement(row, surface, equalColumns);
+    if (element) elements.push(element);
+  }
+}
+
+function listItemElement(
+  item: ChannelConnectorCommandSurfaceAction,
+  surface: ChannelConnectorCommandSurface,
+  options: { actionLabel?: string; primaryLabel?: string } = {},
+): Record<string, unknown> {
+  const active = item.tone === "primary";
+  const actionLabel = active
+    ? options.primaryLabel || "当前"
+    : options.actionLabel || "选择";
+  const label = stripListPrefix(item.label);
+  const detail = item.description ? `\n${item.description}` : "";
+  return {
+    tag: "column_set",
+    flex_mode: "none",
+    columns: [
+      {
+        tag: "column",
+        width: "weighted",
+        weight: 5,
+        vertical_align: "center",
+        elements: [
+          {
+            tag: "markdown",
+            content: `${active ? "▶" : "◻"} **${label}**${detail}`,
+          },
+        ],
+      },
+      {
+        tag: "column",
+        width: "auto",
+        vertical_align: "center",
+        elements: [
+          {
+            ...buttonElement({
+              ...item,
+              label: actionLabel,
+              tone: active ? "primary" : item.tone,
+            }, surface),
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function pushSectionHeading(
+  elements: Array<Record<string, unknown>>,
+  section: ChannelConnectorCommandSurfaceSection,
+): void {
+  elements.push({
+    tag: "markdown",
+    content: section.summary ? `**${section.title}**\n${section.summary}` : `**${section.title}**`,
+  });
+}
+
 export function renderChannelConnectorCommandSurfaceFeishu(
   surface: ChannelConnectorCommandSurface,
 ): ChannelConnectorFeishuInteractiveCard {
-  const elements: Array<Record<string, unknown>> = [
-    {
-      tag: "markdown",
-      content: [
-        `**Agent**: ${surface.current.projectId} (${surface.current.agent})`,
-        `**Model**: ${surface.current.model || "default"}`,
-        `**Mode**: ${surface.current.permissionMode}`,
-        `**WorkDir**: ${surface.current.workDir}`,
-      ].join("\n"),
-    },
-  ];
+  const elements: Array<Record<string, unknown>> = [statusBlock(surface)];
 
-  for (const section of surface.sections) {
+  const session = sectionById(surface, "session");
+  if (session) {
     elements.push({ tag: "hr" });
-    elements.push({
-      tag: "markdown",
-      content: section.summary ? `**${section.title}**\n${section.summary}` : `**${section.title}**`,
-    });
+    pushSectionHeading(elements, session);
+    pushActionRows(elements, session.actions, surface, 3, true);
+  }
 
-    for (let index = 0; index < section.actions.length; index += 3) {
-      const row = section.actions.slice(index, index + 3);
-      if (row.length === 1) {
-        elements.push({
-          tag: "action",
-          actions: [buttonElement(row[0], surface)],
-        });
-        continue;
-      }
-      elements.push({
-        tag: "column_set",
-        flex_mode: row.length === 2 ? "bisect" : "none",
-        columns: row.map((item) => ({
-          tag: "column",
-          width: "weighted",
-          weight: 1,
-          vertical_align: "center",
-          horizontal_align: "center",
-          elements: [
-            {
-              ...buttonElement(item, surface),
-              width: "fill",
-            },
-          ],
-        })),
-      });
+  for (const id of ["agent", "model"]) {
+    const section = sectionById(surface, id);
+    if (!section) continue;
+    elements.push({ tag: "hr" });
+    pushSectionHeading(elements, section);
+    for (const item of section.actions) {
+      elements.push(listItemElement(item, surface));
     }
+  }
+
+  const mode = sectionById(surface, "mode");
+  if (mode) {
+    elements.push({ tag: "hr" });
+    pushSectionHeading(elements, mode);
+    pushActionRows(elements, mode.actions, surface, 3, true);
+  }
+
+  for (const id of ["workdir", "native"]) {
+    const section = sectionById(surface, id);
+    if (!section) continue;
+    elements.push({ tag: "hr" });
+    pushSectionHeading(elements, section);
+    pushActionRows(elements, section.actions, surface, 2, true);
   }
 
   elements.push({

@@ -1285,6 +1285,10 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(raw, /surface_action_id/);
   assert.match(raw, /session_key/);
   assert.match(raw, /\/mode yolo/);
+  assert.match(raw, /当前 Agent/);
+  assert.match(raw, /\"content\":\"当前\"/);
+  assert.match(raw, /\"content\":\"选择\"/);
+  assert.ok(feishu.elements.some((element) => element.tag === "column_set" && element.flex_mode === "bisect"));
 
   const parsed = extractChannelConnectorCommandFromActionValue({
     action: "/agent claude-main",
@@ -1543,6 +1547,23 @@ test("native Channel Connectors Feishu transport sends replies and reuses tenant
     assert.equal(requests[1].body.msg_type, "text");
     assert.equal(JSON.parse(requests[1].body.content).text, "hello feishu");
 
+    const card = await service.runFeishuTransportSmoke({
+      bindingId: "feishu-send",
+      action: "send-card",
+      channelId: "oc_chat",
+      content: "card menu",
+    });
+    assert.equal(card.transport.ok, true);
+    assert.equal(card.transport.action, "send-card");
+    assert.equal(card.transport.requestCount, 1);
+    assert.equal(card.transport.tokenCache, "hit");
+    assert.equal(card.transport.messageId, "om_sent_1");
+    assert.equal(requests[2].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
+    assert.equal(requests[2].authorization, "Bearer tenant-token-1");
+    assert.equal(requests[2].body.receive_id, "oc_chat");
+    assert.equal(requests[2].body.msg_type, "interactive");
+    assert.match(JSON.parse(requests[2].body.content).elements[0].content, /card menu/);
+
     const patch = await service.runFeishuTransportSmoke({
       bindingId: "feishu-send",
       action: "patch-card",
@@ -1553,11 +1574,11 @@ test("native Channel Connectors Feishu transport sends replies and reuses tenant
     assert.equal(patch.transport.action, "patch-card");
     assert.equal(patch.transport.requestCount, 1);
     assert.equal(patch.transport.tokenCache, "hit");
-    assert.equal(requests.length, 3);
-    assert.equal(requests[2].path, "/open-apis/im/v1/messages/om_card");
-    assert.equal(requests[2].method, "PATCH");
-    assert.equal(requests[2].authorization, "Bearer tenant-token-1");
-    assert.match(JSON.parse(requests[2].body.content).elements[0].content, /patched card/);
+    assert.equal(requests.length, 4);
+    assert.equal(requests[3].path, "/open-apis/im/v1/messages/om_card");
+    assert.equal(requests[3].method, "PATCH");
+    assert.equal(requests[3].authorization, "Bearer tenant-token-1");
+    assert.match(JSON.parse(requests[3].body.content).elements[0].content, /patched card/);
 
     const webhook = await service.dispatchFeishuWebhook({
       sendReply: true,
@@ -1584,9 +1605,9 @@ test("native Channel Connectors Feishu transport sends replies and reuses tenant
     assert.equal(webhook.transport.action, "send-message");
     assert.equal(webhook.transport.tokenCache, "hit");
     assert.equal(webhook.transport.requestCount, 1);
-    assert.equal(requests.length, 4);
-    assert.equal(requests[3].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
-    assert.match(JSON.parse(requests[3].body.content).text, /Studio Channel Status/);
+    assert.equal(requests.length, 5);
+    assert.equal(requests[4].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
+    assert.match(JSON.parse(requests[4].body.content).text, /Studio Channel Status/);
   });
 });
 
@@ -1658,6 +1679,9 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /feishuGroupKey/);
   assert.match(daemonSource, /feishuConnections/);
   assert.match(daemonSource, /sendFeishuTextMessage/);
+  assert.match(daemonSource, /sendFeishuCardMessage/);
+  assert.match(daemonSource, /patchFeishuCardMessage/);
+  assert.match(daemonSource, /renderChannelConnectorCommandSurfaceFeishu/);
 });
 
 test("Channel Connectors routes are registered under /api/channel-connectors", async () => {

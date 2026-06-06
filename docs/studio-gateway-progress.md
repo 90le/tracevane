@@ -14,7 +14,7 @@
 - App Connections 已覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview、apply、备份、rollback、profile 切换、隔离 HOME HTTP 验收和真实 CLI 启动 smoke harness。
 - App Connections profile 是两层模型选择：全局默认模型 + 每个 App 单独模型覆盖；模型输入从 Gateway 可用模型列表提供 datalist，仍允许手动输入 alias。
 - Codex 低频兼容参数（WebSocket、WebSocket v2、请求压缩）已收进 `Codex advanced` 折叠，避免普通用户误触。
-- Channel Connectors 已切换为 Studio 原生 CLI Agent Bot 路线；CC/OpenClaw 只作为参考，不再走短期托管 cc-connect；F3f 已完成文本命令、原生 Agent slash 透传、平台无关 command surface、Feishu webhook/long-connection ingress、action callback 和 outbound transport contract。
+- Channel Connectors 已切换为 Studio 原生 CLI Agent Bot 路线；CC/OpenClaw 只作为参考，不再走短期托管 cc-connect；F3f 已完成文本命令、原生 Agent slash 透传、平台无关 command surface、Feishu webhook/long-connection ingress、action callback、CC 风格 command/menu card 和 outbound transport contract。
 - Phase B2 已按 `/tmp/cc-switch-src` 覆盖核心协议成熟度：CLI 启动、Claude tool/summary、OpenClaw agent provider/model/usage、Gateway HTTP compact/tool-history/error envelope、Responses->Chat streaming `include_usage`、provider-declared reasoning/thinking 映射、parallel tool-call index grouping、Chat SSE error -> Responses `response.failed`、started upstream stream failure -> target protocol error event、BigModel Chat/Anthropic live provider matrix，以及 GMN Responses-native substitute `/v1/responses` + `/v1/responses/compact` live proof。
 
 ## 本轮完成
@@ -32,8 +32,9 @@
 - 新增 `/api/channel-connectors/commands/surface`：输出平台无关 command surface、text fallback 和 Feishu interactive card 结构；普通 IM、Feishu 卡片、未来自研 IM 客户端都复用同一 command contract。
 - 新增 `/api/channel-connectors/commands/action` 与 Feishu `card-action` / `bot-menu` aliases：从 action value / event key 解析命令并回到 command-router；Agent 原生命令仍只标记 passthrough，不在 Studio API 内直接启动 CLI。
 - 新增 Feishu live ingress：HTTP webhook 支持 URL verification、`card.action.trigger`、bot menu、`im.message.receive_v1`；Channel daemon 也支持官方 WebSocket 长连接 `im.message.receive_v1` / `card.action.trigger` / `application.bot.menu_v6`，同一 Feishu App 多 binding 共享一条 WS，避免飞书侧负载均衡丢事件。
-- 新增 Feishu outbound transport：binding metadata `apiUrl/appSecret/verificationToken`、tenant access token file cache、send text message、patch card message、`/api/channel-connectors/adapters/feishu/transport-smoke`；message webhook 默认可把 command-router 回复通过 Feishu API 发回。
-- Feishu live 长连接闭环完成：本地用户配置已写入 Feishu binding，tenant token cache 验证通过，daemon systemd 模板修复并 active/enabled，真实飞书 `/status`/`/help` 入站到 `im.message.receive_v1`，command-router 回复 `replySent=true`；systemd-like 最小环境下 CLI PATH fallback 可找到 `codex`；错误 verification token 不再回显 challenge；凭据和 token 只保存在本机或运行态，不写入仓库。
+- 新增 Feishu outbound transport：binding metadata `apiUrl/appSecret/verificationToken`、tenant access token file cache、send text message、send interactive card、patch card message、`/api/channel-connectors/adapters/feishu/transport-smoke`；message webhook 默认可把 command-router 回复通过 Feishu API 发回。
+- Feishu live 长连接闭环完成：本地用户配置已写入 Feishu binding，tenant token cache 验证通过，daemon systemd 模板修复并 active/enabled，真实飞书 `/status` 入站到 `im.message.receive_v1` 并文本回复，真实 `/help` 入站后走 command surface interactive card `send-card`；systemd-like 最小环境下 CLI PATH fallback 可找到 `codex`；错误 verification token 不再回显 challenge；凭据和 token 只保存在本机或运行态，不写入仓库。
+- Feishu command/menu card 已按 CC 结构重排：顶部双列展示当前 Agent / model / permission / workDir，Session 用等宽动作行，Agent/Model 用“当前/选择”列表行，Mode/WorkDir/Native 分组显示；长目录压缩，避免飞书窄窗口出现按钮堆叠和横向撑开。
 
 ## 验证
 
@@ -46,6 +47,8 @@
 - 通过：Feishu live callback verification proof（secret redacted）：本地 binding 保存、tenant token miss/hit、公网 callback URL verification HTTP 200 / challenge matched；错误 token HTTP 403 且不返回 challenge。
 - 通过：Feishu live long-connection proof（secret redacted）：Channel daemon `/status` 显示 Feishu WS `connected`，真实用户 `/status` 消息进入 `im.message.receive_v1`，事件日志记录 `channel.command` 且 `replySent=true`。
 - 通过：CLI PATH fallback proof：最小环境 `PATH=/usr/local/bin:/usr/bin:/bin` 下追加用户级 bin 后 `codex --version` 成功，覆盖 systemd 下 `spawn codex ENOENT` 根因。
+- 通过：Feishu interactive card proof（secret redacted）：`send-card` transport-smoke HTTP 200 / messageId present；真实 `/help` 事件日志记录 `replyTransportAction=send-card`。
+- 通过：Feishu command/menu card layout contract：`npm run build:api` + `node --test tests/system/channel-connectors-service.test.mjs` 覆盖状态摘要 `column_set flex_mode=bisect`、`当前/选择` 列表动作和 action payload；dev 前后端已重启到 `5176/3762`，Channel daemon 已重启并显示 Feishu WS `connected`。
 
 ## 已知边界
 
@@ -54,6 +57,6 @@
 
 ## 下一步
 
-1. 进入 F3g：补 CLI Agent 权限审批回传，把 Feishu card action / 文本审批接到同一 command surface。
+1. 继续 F3f/F3g：做真实 Feishu 卡片按钮点击验证，完成按钮 action 后原卡片 patch，并接 CLI Agent 权限审批卡。
 2. 进入 F4：补图片/文件、群聊成员/history context、长回复 group buffer 和治理策略。
-3. 继续按 CC/OpenClaw 映射扩展 Feishu 菜单、卡片更新、thread isolation 和多平台 adapter。
+3. 继续按 CC/OpenClaw 映射扩展 Feishu bot menu 配置、thread isolation 和多平台 adapter。
