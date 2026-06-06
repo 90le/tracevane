@@ -20,6 +20,10 @@ import {
   runChannelConnectorAgentTurn,
 } from "../../dist/apps/api/modules/channel-connectors/agent-runner.js";
 import {
+  getChannelConnectorAgentSession,
+  upsertChannelConnectorAgentSession,
+} from "../../dist/apps/api/modules/channel-connectors/agent-session-store.js";
+import {
   createOctoX25519KeyPair,
   decodeOctoConnectPacket,
   encodeOctoConnackPacket,
@@ -704,6 +708,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(processRequest.env.OPENAI_API_KEY, "sk-local");
   assert.equal(processRequest.env.OPENAI_BASE_URL, project.gatewayEndpoint);
   assert.ok(processRequest.env.CODEX_HOME);
+  assert.equal(processRequest.sessionMode, "new");
+  assert.equal(processRequest.codexThreadId, null);
   assert.ok(!processRequest.args.join("\n").includes("sk-local"));
   const codexConfigPath = path.join(processRequest.env.CODEX_HOME, "config.toml");
   assert.equal(fs.existsSync(codexConfigPath), true);
@@ -712,6 +718,28 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.match(codexConfig, /experimental_bearer_token = "sk-local"/);
   assert.equal(fs.statSync(codexConfigPath).mode & 0o777, 0o600);
   for (const cleanupPath of processRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
+  const agentRuntimeDir = path.join(root, "state", "agent-runtime", "codex-main");
+  const resumeRequest = buildChannelConnectorAgentProcessRequest({
+    project,
+    binding,
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    agentRuntimeDir,
+    session: { codexThreadId: "019e9b49-0b62-7132-845a-f19aba1484b7" },
+  });
+  assert.ok(resumeRequest);
+  assert.deepEqual(resumeRequest.args.slice(0, 2), ["exec", "resume"]);
+  assert.equal(resumeRequest.args.includes("--cd"), false);
+  assert.equal(resumeRequest.args.at(-2), "019e9b49-0b62-7132-845a-f19aba1484b7");
+  assert.equal(resumeRequest.args.at(-1), "-");
+  assert.equal(resumeRequest.sessionMode, "resume");
+  assert.equal(resumeRequest.codexThreadId, "019e9b49-0b62-7132-845a-f19aba1484b7");
+  assert.equal(resumeRequest.cleanupPaths?.length || 0, 0);
+  assert.equal(resumeRequest.env.CODEX_HOME, path.join(agentRuntimeDir, "codex-home"));
+  assert.equal(fs.existsSync(path.join(resumeRequest.env.CODEX_HOME, "config.toml")), true);
 
   let turnCleanupPath = null;
   const result = await runChannelConnectorAgentTurn({
@@ -730,7 +758,11 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
       return {
         exitCode: 0,
         signal: null,
-        stdout: '{"type":"item.completed","item":{"type":"agent_message","text":"hello from codex"}}\n',
+        stdout: [
+          '{"type":"thread.started","thread_id":"019e9b45-8ab3-7f41-99a0-a9e7d0f2abf5"}',
+          '{"type":"item.completed","item":{"type":"agent_message","text":"hello from codex"}}',
+          "",
+        ].join("\n"),
         stderr: "",
         durationMs: 12,
         timedOut: false,
@@ -742,6 +774,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(result.ok, true);
   assert.equal(result.status, "completed");
   assert.equal(result.replyText, "hello from codex");
+  assert.equal(result.session.resumed, false);
+  assert.equal(result.session.codexThreadId, "019e9b45-8ab3-7f41-99a0-a9e7d0f2abf5");
   assert.ok(turnCleanupPath);
   assert.equal(fs.existsSync(turnCleanupPath), false);
 
@@ -776,6 +810,47 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.deepEqual(opencodeRequest.args.slice(0, 3), ["run", "--format", "json"]);
   assert.equal(opencodeRequest.args.includes("--thinking"), true);
   assert.equal(opencodeRequest.args.at(-1), "hi codex");
+});
+
+test("native Channel Connectors session store persists Codex thread ids by IM session", () => {
+  const root = makeTempRoot();
+  const storePath = path.join(root, "state", "channel-sessions.json");
+  const lookup = {
+    bindingId: "octo-codex",
+    projectId: "codex-main",
+    sessionKey: "dmwork:dm:user-1",
+    agent: "codex",
+    model: "gpt-5",
+    workDir: path.join(root, "work"),
+  };
+
+  assert.equal(getChannelConnectorAgentSession(storePath, lookup), null);
+  const first = upsertChannelConnectorAgentSession(storePath, {
+    ...lookup,
+    codexThreadId: "thread-a",
+    messageId: "message-1",
+    status: "completed",
+    now: new Date("2026-06-06T08:00:00.000Z"),
+  });
+  assert.equal(first.codexThreadId, "thread-a");
+  assert.equal(first.turnCount, 1);
+  assert.equal(first.lastMessageId, "message-1");
+  assert.equal(fs.statSync(storePath).mode & 0o777, 0o600);
+
+  const second = upsertChannelConnectorAgentSession(storePath, {
+    ...lookup,
+    messageId: "message-2",
+    status: "failed",
+    now: new Date("2026-06-06T08:01:00.000Z"),
+  });
+  assert.equal(second.codexThreadId, "thread-a");
+  assert.equal(second.turnCount, 2);
+  assert.equal(second.lastMessageId, "message-2");
+  assert.equal(second.lastStatus, "failed");
+
+  const loaded = getChannelConnectorAgentSession(storePath, lookup);
+  assert.equal(loaded?.codexThreadId, "thread-a");
+  assert.equal(loaded?.turnCount, 2);
 });
 
 test("native Channel Connectors service management is guarded before daemon entry is built", async () => {

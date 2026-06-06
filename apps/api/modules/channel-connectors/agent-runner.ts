@@ -21,6 +21,8 @@ export interface ChannelConnectorAgentProcessRequest {
   env: Record<string, string>;
   timeoutMs: number;
   cleanupPaths?: string[];
+  sessionMode?: "new" | "resume";
+  codexThreadId?: string | null;
 }
 
 export interface ChannelConnectorAgentProcessResult {
@@ -44,6 +46,10 @@ export interface ChannelConnectorAgentTurnRequest {
   sessionKey: string;
   gatewayEndpoint: string;
   gatewayClientKey: string | null;
+  agentRuntimeDir?: string | null;
+  session?: {
+    codexThreadId?: string | null;
+  } | null;
   timeoutMs?: number;
   processRunner?: ChannelConnectorAgentProcessRunner;
 }
@@ -63,6 +69,10 @@ export interface ChannelConnectorAgentTurnResult {
   exitCode: number | null;
   durationMs: number;
   error: string | null;
+  session: {
+    resumed: boolean;
+    codexThreadId: string | null;
+  };
 }
 
 function normalizeString(value: unknown): string {
@@ -90,10 +100,17 @@ function createCodexGatewayHome(input: {
   gatewayEndpoint: string;
   gatewayClientKey: string;
   model: string | null;
+  agentRuntimeDir?: string | null;
 }): { codexHome: string; cleanupRoot: string } {
-  const cleanupRoot = fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-codex-"));
+  const runtimeDir = normalizeString(input.agentRuntimeDir);
+  const cleanupRoot = runtimeDir || fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-codex-"));
   const codexHome = path.join(cleanupRoot, "codex-home");
-  fs.mkdirSync(codexHome, { recursive: true });
+  fs.mkdirSync(codexHome, { recursive: true, mode: 0o700 });
+  try {
+    fs.chmodSync(codexHome, 0o700);
+  } catch {
+    // Best-effort hardening; config.toml itself is still written 0600.
+  }
   const config = [
     "model_provider = \"studio_gateway\"",
     input.model ? `model = ${tomlString(input.model)}` : "",
@@ -112,7 +129,7 @@ function createCodexGatewayHome(input: {
   ].filter((line) => line !== "").join("\n");
   const configPath = path.join(codexHome, "config.toml");
   fs.writeFileSync(configPath, config, { encoding: "utf8", mode: 0o600 });
-  return { codexHome, cleanupRoot };
+  return { codexHome, cleanupRoot: runtimeDir ? "" : cleanupRoot };
 }
 
 function cleanupProcessRequest(request: ChannelConnectorAgentProcessRequest): void {
@@ -171,29 +188,46 @@ export function buildChannelConnectorAgentProcessRequest(
   const baseEnv = gatewayEnv(request.gatewayEndpoint, request.gatewayClientKey);
 
   if (project.agent === "codex") {
+    const codexThreadId = normalizeString(request.session?.codexThreadId);
     const codexHome = request.gatewayClientKey
       ? createCodexGatewayHome({
         gatewayEndpoint: request.gatewayEndpoint,
         gatewayClientKey: request.gatewayClientKey,
         model: model || null,
+        agentRuntimeDir: request.agentRuntimeDir,
       })
       : null;
-    const args = [
-      "exec",
-      "--skip-git-repo-check",
-      ...codexPermissionArgs(project.permissionMode),
-      ...(model ? ["--model", model] : []),
+    const codexConfigArgs = [
       "-c",
       "model_provider=\"studio_gateway\"",
       "-c",
       "responses_websockets=false",
       "-c",
       "responses_websockets_v2=false",
-      "--json",
-      "--cd",
-      cwd,
-      "-",
     ];
+    const args = codexThreadId
+      ? [
+        "exec",
+        "resume",
+        "--skip-git-repo-check",
+        ...codexPermissionArgs(project.permissionMode),
+        ...(model ? ["--model", model] : []),
+        ...codexConfigArgs,
+        "--json",
+        codexThreadId,
+        "-",
+      ]
+      : [
+        "exec",
+        "--skip-git-repo-check",
+        ...codexPermissionArgs(project.permissionMode),
+        ...(model ? ["--model", model] : []),
+        ...codexConfigArgs,
+        "--json",
+        "--cd",
+        cwd,
+        "-",
+      ];
     return {
       command: "codex",
       args,
@@ -205,7 +239,9 @@ export function buildChannelConnectorAgentProcessRequest(
         OPENAI_BASE_URL: request.gatewayEndpoint,
       },
       timeoutMs,
-      cleanupPaths: codexHome ? [codexHome.cleanupRoot] : [],
+      cleanupPaths: codexHome?.cleanupRoot ? [codexHome.cleanupRoot] : [],
+      sessionMode: codexThreadId ? "resume" : "new",
+      codexThreadId: codexThreadId || null,
     };
   }
 
@@ -376,6 +412,22 @@ function extractReplyText(stdout: string): string | null {
   return plain || null;
 }
 
+function extractCodexThreadId(stdout: string): string | null {
+  for (const line of stdout.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || !trimmed.startsWith("{")) continue;
+    try {
+      const raw = JSON.parse(trimmed) as Record<string, unknown>;
+      if (raw.type === "thread.started" && typeof raw.thread_id === "string") {
+        return raw.thread_id.trim() || null;
+      }
+    } catch {
+      // Non-event lines are intentionally ignored.
+    }
+  }
+  return null;
+}
+
 export async function runChannelConnectorAgentTurn(
   request: ChannelConnectorAgentTurnRequest,
 ): Promise<ChannelConnectorAgentTurnResult> {
@@ -396,6 +448,10 @@ export async function runChannelConnectorAgentTurn(
       exitCode: null,
       durationMs: 0,
       error: "Octo message content is empty.",
+      session: {
+        resumed: false,
+        codexThreadId: request.session?.codexThreadId || null,
+      },
     };
   }
 
@@ -416,6 +472,10 @@ export async function runChannelConnectorAgentTurn(
       exitCode: null,
       durationMs: 0,
       error: `Agent ${request.project.agent} is not wired to the native Channel runner yet.`,
+      session: {
+        resumed: false,
+        codexThreadId: request.session?.codexThreadId || null,
+      },
     };
   }
 
@@ -427,6 +487,9 @@ export async function runChannelConnectorAgentTurn(
     cleanupProcessRequest(processRequest);
   }
   const ok = result.exitCode === 0 && !result.error;
+  const codexThreadId = request.project.agent === "codex"
+    ? extractCodexThreadId(result.stdout) || processRequest.codexThreadId || null
+    : request.session?.codexThreadId || null;
   return {
     attempted: true,
     ok,
@@ -442,5 +505,9 @@ export async function runChannelConnectorAgentTurn(
     exitCode: result.exitCode,
     durationMs: result.durationMs,
     error: result.error || (ok ? null : result.stderr.trim() || `Agent process exited with ${result.exitCode}`),
+    session: {
+      resumed: processRequest.sessionMode === "resume",
+      codexThreadId,
+    },
   };
 }

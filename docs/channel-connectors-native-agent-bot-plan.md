@@ -41,6 +41,8 @@ CC 和 OpenClaw 只作为参考：
 - runtime: `~/.config/openclaw-studio/channel-connectors/daemon/runtime.json`
 - override: `OPENCLAW_STUDIO_CHANNEL_CONNECTORS_DIR` or `OPENCLAW_STUDIO_DATA_DIR`
 
+测试策略：Codex 真实 smoke 使用隔离 `CODEX_HOME`，不改用户正式配置；Claude Code / OpenCode 后续真实 smoke 可按用户许可直接修改本地配置。
+
 ## 3. 产品范围
 
 独立 Channel Connectors 页面，不放进 Studio Gateway / Model Gateway：
@@ -80,7 +82,7 @@ Studio 增强点：
 | --- | --- |
 | F1 | 已完成：native daemon skeleton、service/config/status/logs、独立页面、守护边界测试 |
 | F2 | 已完成：CC/OpenClaw 能力映射、typed config store、Agent Profile、工作目录、模型、权限、Gateway key ref、platform/bot binding |
-| F3 | 已完成核心合同：Octo(dmwork) adapter、REST transport、daemon register/cache/WuKongIM WebSocket、一次性 CLI Agent runner；真实 Octo DM 文本往返已通过 |
+| F3 | 已完成核心合同：Octo(dmwork) adapter、REST transport、daemon register/cache/WuKongIM WebSocket、Codex CLI Agent runner、真实 Octo DM 文本往返、Codex session resume |
 | F4 | 补齐核心消息能力：图片/文件、语音、群聊 mention、thread/reply、流式预览、长回复拆分 |
 | F5 | 治理与自动化：allowlist、admin、rate limit、banned words、slash command、cron、hooks、relay、management API |
 | F6 | 飞书、微信/企业微信；继续迁移钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等 CC 平台 |
@@ -101,6 +103,6 @@ Studio 增强点：
 
 ## 6. 下一步
 
-1. F3d：补 session resume、流式进度、权限审批回传、错误状态和进程清理。
+1. F3d：补流式进度、权限审批回传、错误状态和进程清理。
 2. F4：补图片/文件、群聊成员/history context、长回复 group buffer 和治理策略。
 3. F6：按 CC 源码继续迁移飞书、微信/企业微信和其它平台。
