@@ -2548,6 +2548,9 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /createFeishuGroups/);
   assert.match(daemonSource, /feishuGroupKey/);
   assert.match(daemonSource, /feishuConnections/);
+  assert.match(daemonSource, /startFeishuWatchdog/);
+  assert.match(daemonSource, /restartFeishuGroupClient/);
+  assert.match(daemonSource, /watchdog_non_connected_/);
   assert.match(daemonSource, /sendFeishuTextMessage/);
   assert.match(daemonSource, /sendFeishuCardMessage/);
   assert.match(daemonSource, /patchFeishuCardMessage/);

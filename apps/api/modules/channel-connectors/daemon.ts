@@ -109,6 +109,7 @@ interface ChannelDaemonFeishuConnectionState {
   lastError: string | null;
   lastConnectedAt: string | null;
   lastDisconnectedAt: string | null;
+  lastUnhealthyAt: string | null;
   reconnects: number;
   receivedMessages: number;
 }
@@ -130,7 +131,9 @@ interface ChannelDaemonFeishuGroup {
   receivedMessages: number;
   lastConnectedAt: string | null;
   lastDisconnectedAt: string | null;
+  lastUnhealthyAt: string | null;
   lastError: string | null;
+  watchdogRestarting: boolean;
 }
 
 interface ChannelDaemonState {
@@ -621,6 +624,7 @@ function feishuConnectionState(group: ChannelDaemonFeishuGroup): ChannelDaemonFe
     lastError: group.lastError,
     lastConnectedAt: group.lastConnectedAt,
     lastDisconnectedAt: group.lastDisconnectedAt,
+    lastUnhealthyAt: group.lastUnhealthyAt,
     reconnects: group.reconnects,
     receivedMessages: group.receivedMessages,
   };
@@ -1894,7 +1898,9 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
           receivedMessages: 0,
           lastConnectedAt: null,
           lastDisconnectedAt: null,
+          lastUnhealthyAt: null,
           lastError: "feishu_transport_config_missing",
+          watchdogRestarting: false,
         });
         continue;
       }
@@ -1910,7 +1916,9 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
         receivedMessages: 0,
         lastConnectedAt: null,
         lastDisconnectedAt: null,
+        lastUnhealthyAt: null,
         lastError: null,
+        watchdogRestarting: false,
       };
       group.refs.push({ project, binding, transport });
       groups.set(key, group);
@@ -2005,12 +2013,166 @@ function createFeishuDispatcher(input: {
   return dispatcher;
 }
 
+function startFeishuClientForGroup(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  state: ChannelDaemonState;
+  group: ChannelDaemonFeishuGroup;
+  clients: WSClient[];
+  seenMessages: Map<string, number>;
+}): WSClient {
+  const { config, state, group, clients, seenMessages } = input;
+  const dispatcher = createFeishuDispatcher({
+    config,
+    state,
+    group,
+    seenMessages,
+  });
+  const client = new WSClient({
+    appId: group.appId,
+    appSecret: group.refs[0].transport.appSecret,
+    domain: metadataString(group.refs[0].binding, ["domain", "apiUrl", "api_url", "baseUrl", "base_url"]) || undefined,
+    logger: feishuLogger(config),
+    loggerLevel: LoggerLevel.info,
+    autoReconnect: true,
+    handshakeTimeoutMs: 20_000,
+    wsConfig: {
+      pingTimeout: 15,
+    },
+    source: "openclaw-studio-channel-daemon",
+    onReady: () => {
+      group.lastConnectedAt = new Date().toISOString();
+      group.lastDisconnectedAt = null;
+      group.lastUnhealthyAt = null;
+      group.lastError = null;
+      group.watchdogRestarting = false;
+      appendLog(config.paths.log, "Feishu WebSocket connected", {
+        key: group.key,
+        bindingIds: group.refs.map((ref) => ref.binding.id),
+      });
+      updateFeishuRuntime(config, state, group);
+    },
+    onError: (error) => {
+      group.lastError = shortMessage(error);
+      group.lastDisconnectedAt = new Date().toISOString();
+      group.lastUnhealthyAt ||= group.lastDisconnectedAt;
+      appendLog(config.paths.log, "Feishu WebSocket error", {
+        key: group.key,
+        error: group.lastError,
+      });
+      updateFeishuRuntime(config, state, group);
+    },
+    onReconnecting: () => {
+      group.reconnects += 1;
+      group.lastDisconnectedAt = new Date().toISOString();
+      group.lastUnhealthyAt ||= group.lastDisconnectedAt;
+      updateFeishuRuntime(config, state, group);
+    },
+    onReconnected: () => {
+      group.lastConnectedAt = new Date().toISOString();
+      group.lastDisconnectedAt = null;
+      group.lastUnhealthyAt = null;
+      group.lastError = null;
+      group.watchdogRestarting = false;
+      updateFeishuRuntime(config, state, group);
+    },
+  });
+  group.client = client;
+  clients.push(client);
+  state.feishuConnections[group.key] = feishuConnectionState(group);
+  writeRuntime(config, state);
+  void client.start({ eventDispatcher: dispatcher }).catch((error) => {
+    group.lastError = shortMessage(error);
+    group.lastDisconnectedAt = new Date().toISOString();
+    group.lastUnhealthyAt ||= group.lastDisconnectedAt;
+    group.watchdogRestarting = false;
+    appendLog(config.paths.log, "Feishu WebSocket startup failed", {
+      key: group.key,
+      error: group.lastError,
+    });
+    updateFeishuRuntime(config, state, group);
+  });
+  return client;
+}
+
+function restartFeishuGroupClient(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  state: ChannelDaemonState;
+  group: ChannelDaemonFeishuGroup;
+  clients: WSClient[];
+  seenMessages: Map<string, number>;
+  reason: string;
+}): void {
+  const { config, state, group, clients, seenMessages, reason } = input;
+  if (!group.refs.length || group.watchdogRestarting) return;
+  group.watchdogRestarting = true;
+  group.lastError = reason;
+  appendLog(config.paths.log, "Feishu WebSocket watchdog restarting client", {
+    key: group.key,
+    reason,
+  });
+  try {
+    group.client?.close({ force: true });
+  } catch (error) {
+    appendLog(config.paths.log, "Feishu WebSocket watchdog close failed", {
+      key: group.key,
+      error: shortMessage(error),
+    });
+  }
+  startFeishuClientForGroup({
+    config,
+    state,
+    group,
+    clients,
+    seenMessages,
+  });
+}
+
+function startFeishuWatchdog(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  state: ChannelDaemonState;
+  groups: ChannelDaemonFeishuGroup[];
+  clients: WSClient[];
+  seenMessages: Map<string, number>;
+}): NodeJS.Timeout {
+  const { config, state, groups, clients, seenMessages } = input;
+  const timer = setInterval(() => {
+    const nowMs = Date.now();
+    for (const group of groups) {
+      if (!group.refs.length || !group.client) continue;
+      const status = group.client.getConnectionStatus();
+      if (status?.state === "connected") {
+        group.lastUnhealthyAt = null;
+        group.watchdogRestarting = false;
+        state.feishuConnections[group.key] = feishuConnectionState(group);
+        continue;
+      }
+      const unhealthyAt = group.lastUnhealthyAt || new Date().toISOString();
+      group.lastUnhealthyAt = unhealthyAt;
+      state.feishuConnections[group.key] = feishuConnectionState(group);
+      const unhealthyForMs = nowMs - new Date(unhealthyAt).getTime();
+      if (unhealthyForMs >= 20_000) {
+        restartFeishuGroupClient({
+          config,
+          state,
+          group,
+          clients,
+          seenMessages,
+          reason: `watchdog_non_connected_${status?.state || "unknown"}`,
+        });
+      }
+    }
+    writeRuntime(config, state);
+  }, 5_000);
+  timer.unref();
+  return timer;
+}
+
 async function startFeishuConnections(
   config: ChannelConnectorsDaemonRuntimeConfig,
   state: ChannelDaemonState,
   clients: WSClient[],
   seenMessages: Map<string, number>,
-): Promise<void> {
+): Promise<NodeJS.Timeout | null> {
   const groups = createFeishuGroups(config);
   for (const group of groups) {
     if (!group.refs.length) {
@@ -2018,67 +2180,17 @@ async function startFeishuConnections(
       writeRuntime(config, state);
       continue;
     }
-    const dispatcher = createFeishuDispatcher({
+    startFeishuClientForGroup({
       config,
       state,
       group,
+      clients,
       seenMessages,
     });
-    const client = new WSClient({
-      appId: group.appId,
-      appSecret: group.refs[0].transport.appSecret,
-      domain: metadataString(group.refs[0].binding, ["domain", "apiUrl", "api_url", "baseUrl", "base_url"]) || undefined,
-      logger: feishuLogger(config),
-      loggerLevel: LoggerLevel.info,
-      autoReconnect: true,
-      handshakeTimeoutMs: 20_000,
-      wsConfig: {
-        pingTimeout: 15,
-      },
-      source: "openclaw-studio-channel-daemon",
-      onReady: () => {
-        group.lastConnectedAt = new Date().toISOString();
-        group.lastError = null;
-        appendLog(config.paths.log, "Feishu WebSocket connected", {
-          key: group.key,
-          bindingIds: group.refs.map((ref) => ref.binding.id),
-        });
-        updateFeishuRuntime(config, state, group);
-      },
-      onError: (error) => {
-        group.lastError = shortMessage(error);
-        group.lastDisconnectedAt = new Date().toISOString();
-        appendLog(config.paths.log, "Feishu WebSocket error", {
-          key: group.key,
-          error: group.lastError,
-        });
-        updateFeishuRuntime(config, state, group);
-      },
-      onReconnecting: () => {
-        group.reconnects += 1;
-        group.lastDisconnectedAt = new Date().toISOString();
-        updateFeishuRuntime(config, state, group);
-      },
-      onReconnected: () => {
-        group.lastConnectedAt = new Date().toISOString();
-        group.lastError = null;
-        updateFeishuRuntime(config, state, group);
-      },
-    });
-    group.client = client;
-    clients.push(client);
-    state.feishuConnections[group.key] = feishuConnectionState(group);
-    writeRuntime(config, state);
-    void client.start({ eventDispatcher: dispatcher }).catch((error) => {
-      group.lastError = shortMessage(error);
-      group.lastDisconnectedAt = new Date().toISOString();
-      appendLog(config.paths.log, "Feishu WebSocket startup failed", {
-        key: group.key,
-        error: group.lastError,
-      });
-      updateFeishuRuntime(config, state, group);
-    });
   }
+  return groups.some((group) => group.refs.length)
+    ? startFeishuWatchdog({ config, state, groups, clients, seenMessages })
+    : null;
 }
 
 async function main(): Promise<void> {
@@ -2093,20 +2205,26 @@ async function main(): Promise<void> {
   const sockets: OctoWukongSocket[] = [];
   const feishuClients: WSClient[] = [];
   const seenMessages = new Map<string, number>();
+  let feishuWatchdog: NodeJS.Timeout | null = null;
 
   void startOctoConnections(config, state, sockets, seenMessages).catch((error) => {
     appendLog(config.paths.log, "Octo connection startup failed", {
       error: error instanceof Error ? error.message : String(error),
     });
   });
-  void startFeishuConnections(config, state, feishuClients, seenMessages).catch((error) => {
-    appendLog(config.paths.log, "Feishu connection startup failed", {
-      error: error instanceof Error ? error.message : String(error),
+  void startFeishuConnections(config, state, feishuClients, seenMessages)
+    .then((timer) => {
+      feishuWatchdog = timer;
+    })
+    .catch((error) => {
+      appendLog(config.paths.log, "Feishu connection startup failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     });
-  });
 
   const stop = () => {
     appendLog(config.paths.log, "Studio native Channel Connectors daemon stopping");
+    if (feishuWatchdog) clearInterval(feishuWatchdog);
     for (const socket of sockets) socket.disconnect();
     for (const client of feishuClients) client.close({ force: true });
     server.close(() => process.exit(0));

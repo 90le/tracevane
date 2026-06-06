@@ -23,6 +23,7 @@
 - Feishu 普通 slash 消息在启用卡片时会发送 interactive card；`/status`、`/new`、`/reset` 等与菜单点击保持同一结果形态。
 - Feishu Agent 运行链路按 CC 思路保留 processing reaction，并新增节流后的中间态文本回发；工具/思考事件受 `/tools` 控制，整体中间态受 `/stream` 控制。
 - Agent/upstream 失败回执新增 JSON error envelope 清洗：优先抽取 `message/type/code`，避免把重复或半截 JSON 原样发给 IM 用户。
+- 修复 Feishu 长连接卡在 `reconnecting` 时客户端提示“目标回调服务当前未在线”的运行态问题：daemon 现在会暴露 `lastUnhealthyAt`，并由 watchdog 在非 `connected` 持续超过 20 秒时重建 WSClient。
 - 本轮参考的 CC 源码重点：`platform/feishu/card.go`、`platform/feishu/feishu.go`、`core/streaming.go`、`core/progress_compact.go`、`core/engine.go` 的 `DisplayCfg` / `thinking_messages` / `tool_messages` / command handling。
 
 ## 验证
@@ -30,6 +31,7 @@
 - 通过：`npm run build:api`。
 - 通过：`npm run typecheck:web`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs`。
+- 通过：重启 `openclaw-studio-channel-connectors.service` 后 Feishu `/status` 回到 `connected`；watchdog 合同已进入系统测试静态断言。
 
 ## 已知边界
 
@@ -39,6 +41,6 @@
 
 ## 下一步
 
-1. 用真实 Feishu 客户端验证普通消息、菜单点击、`/stream`、`/tools`、失败回执和 processing reaction 的可见效果。
+1. 用真实 Feishu 客户端再次点击菜单，确认“目标回调服务当前未在线”消失；若飞书侧仍提示离线，优先查看 daemon `/status` 的 `feishuConnections[].state` 与 `lastUnhealthyAt`。
 2. 进入 Feishu compact progress card：用 `patch card` 替换当前文本进度，复刻 CC 的 progress compact/card 体验。
 3. 进入 F4：图片/文件、群聊成员/history context、长回复 buffer 和治理策略。
