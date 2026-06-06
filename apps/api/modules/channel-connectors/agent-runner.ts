@@ -172,47 +172,21 @@ function channelConnectorModelSupportsVision(
   ].some((pattern) => pattern.test(normalized));
 }
 
-function unsupportedVisualAttachmentReply(model: string | null, attachments: ChannelConnectorInboundAttachment[]): string | null {
+function buildNonVisionVisualAttachmentPolicy(
+  model: string | null,
+  attachments: ChannelConnectorInboundAttachment[],
+): string | null {
   const visualCount = attachments.filter(isVisualAttachment).length;
   if (!visualCount) return null;
   const modelLabel = normalizeString(model) || "当前模型";
   const visualLabel = visualCount === 1 ? "图片/视频附件" : `${visualCount} 个图片/视频附件`;
   return [
-    `已接收并保存${visualLabel}，但当前会话模型 ${modelLabel} 未标记为支持图片/视频内容理解。`,
-    "这不影响普通文件接收；为避免误判，本次不会让 Agent 根据文件名或本地路径描述视觉内容。",
-    "请切换到支持视觉的模型后重发，或把图片/视频里的关键信息用文字发给我。",
+    "[Studio visual attachment policy]",
+    `The user sent ${visualLabel}; the file has been received and staged, but the current model ${modelLabel} is not marked as vision-capable.`,
+    "You must not describe, classify, OCR, or infer visual contents from attachment metadata, file names, or local paths.",
+    "You may still help with non-visual file tasks such as saving, renaming, forwarding, format conversion, metadata-oriented handling, or asking the user to switch to a vision-capable model / provide a text description.",
+    "If the user only sent a visual attachment without a clear non-visual task, reply in Chinese that the file was received and ask what they want to do next.",
   ].join("\n");
-}
-
-function buildUnsupportedVisualTurnResult(
-  request: ChannelConnectorAgentTurnRequest,
-  replyText: string,
-): ChannelConnectorAgentTurnResult {
-  return {
-    attempted: false,
-    ok: true,
-    status: "completed",
-    agent: request.project.agent,
-    model: request.project.model,
-    command: null,
-    args: [],
-    cwd: null,
-    replyText,
-    stdout: "",
-    stderr: "",
-    exitCode: null,
-    durationMs: 0,
-    error: null,
-    progress: {
-      eventCount: 0,
-      latest: null,
-      summary: replyText,
-    },
-    session: {
-      resumed: Boolean(request.session?.codexThreadId),
-      codexThreadId: request.session?.codexThreadId || null,
-    },
-  };
 }
 
 function memberSummaryLabel(member: ChannelConnectorOctoGroupMember): string {
@@ -260,6 +234,7 @@ function buildGroupContext(
 function buildAgentInputContent(
   message: ChannelConnectorOctoInboundMessage,
   binding: ChannelConnectorRuntimeBinding,
+  model?: string | null,
   historyContext?: string | null,
 ): string {
   const content = extractOctoContent(message);
@@ -272,6 +247,9 @@ function buildAgentInputContent(
     .join("\n");
   const hasLocalPath = attachments.some((attachment) => normalizeString(attachment.localPath));
   const hasVisualAttachment = attachments.some(isVisualAttachment);
+  const visualPolicy = hasVisualAttachment && !channelConnectorModelSupportsVision(model || null, binding)
+    ? buildNonVisionVisualAttachmentPolicy(model || null, attachments)
+    : null;
   const attachmentText = [
     "[Studio attachment summary]",
     summary,
@@ -282,7 +260,7 @@ function buildAgentInputContent(
       ? "Do not infer visual contents from attachment metadata, file names, or local paths; only describe images/videos if the active Agent runtime can actually inspect the file."
       : "",
   ].filter(Boolean).join("\n");
-  return [history, groupContext, content, attachmentText].filter(Boolean).join("\n\n");
+  return [history, groupContext, visualPolicy, content, attachmentText].filter(Boolean).join("\n\n");
 }
 
 function recordValue(value: unknown): Record<string, unknown> | null {
@@ -501,7 +479,12 @@ function gatewayEnv(gatewayEndpoint: string, gatewayClientKey: string | null): R
 export function buildChannelConnectorAgentProcessRequest(
   request: ChannelConnectorAgentTurnRequest,
 ): ChannelConnectorAgentProcessRequest | null {
-  const content = buildAgentInputContent(request.message, request.binding, request.historyContext);
+  const content = buildAgentInputContent(
+    request.message,
+    request.binding,
+    request.project.model,
+    request.historyContext,
+  );
   if (!content) return null;
   const project = request.project;
   const cwd = ensureWorkDir(project.workDir);
@@ -939,12 +922,6 @@ export async function runChannelConnectorAgentTurn(
         codexThreadId: request.session?.codexThreadId || null,
       },
     };
-  }
-
-  const attachments = extractOctoAttachments(request.message);
-  if (attachments.some(isVisualAttachment) && !channelConnectorModelSupportsVision(request.project.model, request.binding)) {
-    const replyText = unsupportedVisualAttachmentReply(request.project.model, attachments);
-    if (replyText) return buildUnsupportedVisualTurnResult(request, replyText);
   }
 
   const processRequest = buildChannelConnectorAgentProcessRequest(request);

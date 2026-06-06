@@ -1691,21 +1691,33 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     sessionKey: "dmwork:dm:user-1",
     gatewayEndpoint: project.gatewayEndpoint,
     gatewayClientKey: "sk-local",
-    processRunner: async () => {
+    processRunner: async (request) => {
       nonVisionRunnerCalled = true;
-      throw new Error("non-vision image turns should not start an Agent process");
+      assert.match(request.stdin, /Studio visual attachment policy/);
+      assert.match(request.stdin, /current model glm-5 is not marked as vision-capable/);
+      assert.match(request.stdin, /must not describe, classify, OCR, or infer visual contents/);
+      assert.match(request.stdin, /ask what they want to do next/);
+      assert.match(request.stdin, /\[image\]/);
+      assert.match(request.stdin, /photo\.jpg/);
+      return {
+        exitCode: 0,
+        signal: null,
+        stdout: '{"type":"item.completed","item":{"type":"agent_message","text":"已收到并保存图片，但当前模型不支持视觉理解。你希望我接下来做什么？"}}\n',
+        stderr: "",
+        durationMs: 9,
+        timedOut: false,
+        error: null,
+      };
     },
   });
-  assert.equal(nonVisionRunnerCalled, false);
-  assert.equal(nonVisionImageResult.attempted, false);
+  assert.equal(nonVisionRunnerCalled, true);
+  assert.equal(nonVisionImageResult.attempted, true);
   assert.equal(nonVisionImageResult.ok, true);
   assert.equal(nonVisionImageResult.status, "completed");
-  assert.match(nonVisionImageResult.replyText, /已接收并保存图片\/视频附件/);
-  assert.match(nonVisionImageResult.replyText, /glm-5/);
-  assert.match(nonVisionImageResult.replyText, /不影响普通文件接收/);
-  assert.match(nonVisionImageResult.replyText, /不会让 Agent 根据文件名或本地路径描述视觉内容/);
-  assert.equal(nonVisionImageResult.command, null);
-  assert.equal(nonVisionImageResult.progress.summary, nonVisionImageResult.replyText);
+  assert.match(nonVisionImageResult.replyText, /已收到并保存图片/);
+  assert.match(nonVisionImageResult.replyText, /当前模型不支持视觉理解/);
+  assert.match(nonVisionImageResult.replyText, /接下来做什么/);
+  assert.equal(nonVisionImageResult.command, "codex");
 
   let nonVisionFileRunnerCalled = false;
   const nonVisionFileResult = await runChannelConnectorAgentTurn({
