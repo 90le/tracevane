@@ -1,9 +1,44 @@
 export const CHANNEL_CONNECTORS_DAEMON_SERVICE_NAME = "openclaw-studio-channel-connectors.service";
 
-export type ChannelConnectorsPhase = "native-daemon-f1";
+export type ChannelConnectorsPhase = "native-daemon-f1" | "native-config-f2";
 
-export type ChannelConnectorAgentId = "codex" | "claude-code" | "opencode";
-export type ChannelConnectorPlatformId = "octo" | "feishu" | "wechat" | "wecom";
+export const CHANNEL_CONNECTOR_AGENT_IDS = [
+  "codex",
+  "claude-code",
+  "opencode",
+  "gemini",
+  "kimi",
+  "cursor",
+  "qoder",
+  "iflow",
+  "devin",
+  "acp",
+] as const;
+
+export const CHANNEL_CONNECTOR_PLATFORM_IDS = [
+  "octo",
+  "feishu",
+  "wechat",
+  "wecom",
+  "dingtalk",
+  "telegram",
+  "slack",
+  "discord",
+  "qq",
+  "qqbot",
+  "line",
+] as const;
+
+export type ChannelConnectorAgentId = typeof CHANNEL_CONNECTOR_AGENT_IDS[number];
+export type ChannelConnectorPlatformId = typeof CHANNEL_CONNECTOR_PLATFORM_IDS[number];
+
+export type ChannelConnectorPermissionMode =
+  | "suggest"
+  | "read-only"
+  | "auto-edit"
+  | "full-auto"
+  | "plan"
+  | "yolo";
 
 export type ChannelConnectorsSupervisorKind =
   | "systemd-user"
@@ -66,13 +101,67 @@ export interface ChannelConnectorsDaemonRuntimeConfig {
     workDir: string;
     agent: ChannelConnectorAgentId;
     model: string | null;
+    permissionMode: ChannelConnectorPermissionMode;
+    appProfileRef: string;
     platformBindings: Array<{
+      id: string;
       platform: ChannelConnectorPlatformId;
       accountId: string;
       botId: string | null;
+      displayName: string;
       agent: ChannelConnectorAgentId;
+      enabled: boolean;
+      allowlist: string[];
+      adminUsers: string[];
     }>;
   }>;
+}
+
+export interface ChannelConnectorAgentProfile {
+  id: string;
+  name: string;
+  agent: ChannelConnectorAgentId;
+  model: string | null;
+  workDir: string;
+  permissionMode: ChannelConnectorPermissionMode;
+  gatewayEndpoint: string;
+  gatewayKeyRef: "studio-gateway-client-key";
+  appProfileRef: string;
+}
+
+export interface ChannelConnectorPlatformBinding {
+  id: string;
+  platform: ChannelConnectorPlatformId;
+  accountId: string;
+  botId: string | null;
+  displayName: string;
+  agentProfileId: string;
+  enabled: boolean;
+  allowlist: string[];
+  adminUsers: string[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface ChannelConnectorsNativeConfig {
+  version: 1;
+  updatedAt: string;
+  defaultAgentProfileId: string;
+  agentProfiles: ChannelConnectorAgentProfile[];
+  platformBindings: ChannelConnectorPlatformBinding[];
+}
+
+export interface ChannelConnectorsNativeConfigResponse {
+  ok: true;
+  checkedAt: string;
+  configPath: string;
+  config: ChannelConnectorsNativeConfig;
+  supportedAgents: ChannelConnectorAgentId[];
+  supportedPlatforms: ChannelConnectorPlatformId[];
+  permissionModes: ChannelConnectorPermissionMode[];
+}
+
+export interface ChannelConnectorsSaveNativeConfigRequest {
+  config?: ChannelConnectorsNativeConfig;
 }
 
 export interface ChannelConnectorsDaemonTemplate {
@@ -106,6 +195,7 @@ export interface ChannelConnectorsDaemonConfigResponse {
   ok: true;
   checkedAt: string;
   ready: boolean;
+  nativeConfigPath: string;
   configPath: string;
   gatewayEndpoint: string;
   managementEndpoint: string;
@@ -169,6 +259,7 @@ export interface ChannelConnectorsStatusResponse {
   bindingPolicy: ChannelConnectorsBindingPolicy;
   paths: {
     root: string;
+    nativeConfig: string;
     config: string;
     state: string;
     log: string;

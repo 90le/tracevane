@@ -193,13 +193,110 @@
 }
 
 .ccx-chain-row strong,
-.ccx-list-row strong {
+.ccx-list-row strong,
+.ccx-select-row strong,
+.ccx-select-row span,
+.ccx-form input,
+.ccx-form textarea,
+.ccx-form select {
   overflow-wrap: anywhere;
 }
 
 .ccx-list {
   display: grid;
   gap: 8px;
+}
+
+.ccx-split {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.1fr) minmax(240px, 0.9fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.ccx-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ccx-form label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ccx-form label > span {
+  color: var(--mono-ink-2);
+  font-size: 0.82rem;
+}
+
+.ccx-form input,
+.ccx-form select,
+.ccx-form textarea {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: var(--control-bg);
+  color: var(--mono-ink);
+  padding: 9px 10px;
+  font: inherit;
+}
+
+.ccx-form textarea {
+  resize: vertical;
+}
+
+.ccx-wide-field,
+.ccx-form-actions {
+  grid-column: 1 / -1;
+}
+
+.ccx-check-field {
+  display: flex !important;
+  align-items: center;
+  gap: 8px !important;
+  min-height: 40px;
+}
+
+.ccx-check-field input {
+  width: auto;
+}
+
+.ccx-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ccx-select-row {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-base) 84%, var(--surface-soft));
+  color: var(--mono-ink);
+  padding: 10px 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ccx-select-row:hover,
+.ccx-select-row.active {
+  border-color: color-mix(in srgb, var(--accent) 44%, var(--mono-line));
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-base));
+}
+
+.ccx-select-row small,
+.ccx-select-row span {
+  color: var(--mono-ink-2);
+}
+
+.ccx-empty.compact {
+  min-height: 96px;
 }
 
 .ccx-log {
@@ -228,5 +325,10 @@
   .ccx-action-menu {
     left: 0;
     right: auto;
+  }
+
+  .ccx-split,
+  .ccx-form {
+    grid-template-columns: minmax(0, 1fr);
   }
 }

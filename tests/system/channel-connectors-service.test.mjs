@@ -142,7 +142,7 @@ test("native Channel Connectors status keeps daemon and binding policy separate 
 
   const status = await service.getStatus();
   assert.equal(status.ok, true);
-  assert.equal(status.phase, "native-daemon-f1");
+  assert.equal(status.phase, "native-config-f2");
   assert.equal(status.implementation, "studio-native");
   assert.equal(status.lifecycle.studioRuntimeDependency, false);
   assert.equal(status.lifecycle.openclawRuntimeDependency, false);
@@ -150,9 +150,13 @@ test("native Channel Connectors status keeps daemon and binding policy separate 
   assert.equal(status.lifecycle.channelDaemonOwner, "studio-native-channel-daemon");
   assert.equal(status.bindingPolicy.model, "platform-account-or-bot-to-agent");
   assert.equal(status.bindingPolicy.wechatPersonal.maxAgentsPerAccount, 1);
-  assert.deepEqual(status.bindingPolicy.supportedAgents, ["codex", "claude-code", "opencode"]);
+  assert.deepEqual(status.bindingPolicy.supportedAgents.slice(0, 3), ["codex", "claude-code", "opencode"]);
+  assert.ok(status.bindingPolicy.supportedAgents.includes("gemini"));
+  assert.ok(status.bindingPolicy.supportedPlatforms.includes("octo"));
+  assert.ok(status.bindingPolicy.supportedPlatforms.includes("discord"));
   assert.match(status.paths.root, /channel-connectors\/daemon/);
-  assert.match(status.referenceSources.join("\n"), /cc-connect-source/);
+  assert.match(status.paths.nativeConfig, /channel-connectors\/config\.json/);
+  assert.match(status.referenceSources.join("\n"), /CC archived reference implementation/);
 });
 
 test("native Channel Connectors config preview targets Studio Gateway without cc-connect TOML", () => {
@@ -166,11 +170,134 @@ test("native Channel Connectors config preview targets Studio Gateway without cc
   assert.equal(preview.ready, true);
   assert.deepEqual(preview.missing, []);
   assert.equal(preview.gatewayEndpoint, "http://127.0.0.1:18796/v1");
+  assert.match(preview.nativeConfigPath, /channel-connectors\/config\.json/);
   assert.equal(preview.config.gateway.clientKeyRef, "studio-gateway-client-key");
   assert.equal(preview.config.projects[0].agent, "codex");
+  assert.equal(preview.config.projects[0].permissionMode, "suggest");
   assert.equal(preview.config.projects[0].platformBindings.length, 0);
   assert.match(preview.preview, /"implementation"|"gateway"|"projects"/);
   assert.doesNotMatch(preview.preview, /cc-connect|codex-stack|CPA|\[\[projects\.platforms\]\]/);
+});
+
+test("native Channel Connectors store persists agent profiles and derives daemon runtime", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+  });
+
+  const initial = service.getNativeConfig();
+  assert.equal(initial.config.agentProfiles[0].id, "default-codex");
+  assert.ok(initial.supportedAgents.includes("claude-code"));
+  assert.ok(initial.permissionModes.includes("full-auto"));
+
+  const saved = service.saveNativeConfig({
+    config: {
+      ...initial.config,
+      defaultAgentProfileId: "claude-main",
+      agentProfiles: [
+        {
+          id: "claude-main",
+          name: "Claude main",
+          agent: "claude-code",
+          model: "gpt-5",
+          workDir: path.join(root, "workspace"),
+          permissionMode: "auto-edit",
+          gatewayEndpoint: "http://127.0.0.1:18796/v1",
+          gatewayKeyRef: "studio-gateway-client-key",
+          appProfileRef: "claude",
+        },
+      ],
+      platformBindings: [
+        {
+          id: "octo-bot-a",
+          platform: "octo",
+          accountId: "octo-account",
+          botId: "bot-a",
+          displayName: "Octo Bot A",
+          agentProfileId: "claude-main",
+          enabled: true,
+          allowlist: ["user-a", "user-b"],
+          adminUsers: ["admin-a"],
+        },
+      ],
+    },
+  });
+
+  assert.equal(saved.config.agentProfiles[0].agent, "claude-code");
+  assert.equal(fs.existsSync(saved.configPath), true);
+
+  const preview = service.getDaemonConfig();
+  assert.equal(preview.config.projects[0].id, "claude-main");
+  assert.equal(preview.config.projects[0].agent, "claude-code");
+  assert.equal(preview.config.projects[0].model, "gpt-5");
+  assert.equal(preview.config.projects[0].permissionMode, "auto-edit");
+  assert.equal(preview.config.projects[0].platformBindings[0].platform, "octo");
+  assert.equal(preview.config.projects[0].platformBindings[0].agent, "claude-code");
+  assert.deepEqual(preview.config.projects[0].platformBindings[0].allowlist, ["user-a", "user-b"]);
+});
+
+test("native Channel Connectors store rejects duplicate personal WeChat agent bindings", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+  });
+  const initial = service.getNativeConfig().config;
+
+  assert.throws(() => service.saveNativeConfig({
+    config: {
+      ...initial,
+      agentProfiles: [
+        {
+          id: "codex-main",
+          name: "Codex main",
+          agent: "codex",
+          model: null,
+          workDir: config.projectRoot,
+          permissionMode: "suggest",
+          gatewayEndpoint: "http://127.0.0.1:18796/v1",
+          gatewayKeyRef: "studio-gateway-client-key",
+          appProfileRef: "codex",
+        },
+        {
+          id: "claude-main",
+          name: "Claude main",
+          agent: "claude-code",
+          model: null,
+          workDir: config.projectRoot,
+          permissionMode: "suggest",
+          gatewayEndpoint: "http://127.0.0.1:18796/v1",
+          gatewayKeyRef: "studio-gateway-client-key",
+          appProfileRef: "claude",
+        },
+      ],
+      platformBindings: [
+        {
+          id: "wechat-a",
+          platform: "wechat",
+          accountId: "wx-account",
+          botId: null,
+          displayName: "WeChat A",
+          agentProfileId: "codex-main",
+          enabled: true,
+          allowlist: [],
+          adminUsers: [],
+        },
+        {
+          id: "wechat-b",
+          platform: "wechat",
+          accountId: "wx-account",
+          botId: null,
+          displayName: "WeChat B",
+          agentProfileId: "claude-main",
+          enabled: true,
+          allowlist: [],
+          adminUsers: [],
+        },
+      ],
+    },
+  }), /Personal WeChat account wx-account can bind only one agent profile/);
 });
 
 test("native Channel Connectors service management is guarded before daemon entry is built", async () => {
@@ -209,8 +336,33 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
   await withServer(handler, async (baseUrl) => {
     const status = await requestJson(`${baseUrl}/api/channel-connectors/status`);
     assert.equal(status.status, 200);
-    assert.equal(status.body.phase, "native-daemon-f1");
+    assert.equal(status.body.phase, "native-config-f2");
     assert.equal(status.body.implementation, "studio-native");
+
+    const configStore = await requestJson(`${baseUrl}/api/channel-connectors/config`);
+    assert.equal(configStore.status, 200);
+    assert.equal(configStore.body.config.defaultAgentProfileId, "default-codex");
+
+    const savedConfig = await requestJson(`${baseUrl}/api/channel-connectors/config`, {
+      method: "PUT",
+      body: {
+        config: {
+          ...configStore.body.config,
+          agentProfiles: [
+            {
+              ...configStore.body.config.agentProfiles[0],
+              id: "opencode-main",
+              name: "OpenCode main",
+              agent: "opencode",
+              model: "gpt-5",
+            },
+          ],
+          defaultAgentProfileId: "opencode-main",
+        },
+      },
+    });
+    assert.equal(savedConfig.status, 200);
+    assert.equal(savedConfig.body.config.agentProfiles[0].agent, "opencode");
 
     const service = await requestJson(`${baseUrl}/api/channel-connectors/daemon/service`);
     assert.equal(service.status, 200);

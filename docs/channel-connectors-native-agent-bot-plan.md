@@ -1,8 +1,8 @@
 # Channel Connectors / CLI Agent Bot 原生方案
 
-> 状态：已切换为 Studio 原生实现路线；F1 native daemon skeleton 已完成
+> 状态：已切换为 Studio 原生实现路线；F2 native config store 已完成
 > 更新：2026-06-06
-> 参考源：CC 二开全量源码 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`；OpenClaw 频道与运行时实现
+> 参考源：CC 二开全量源码 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`；OpenClaw 频道与运行时实现；压缩映射见 `channel-connectors-native-feature-map.md`
 
 ## 1. 新结论
 
@@ -34,7 +34,8 @@ CC 和 OpenClaw 只作为参考：
 默认路径：
 
 - service: `openclaw-studio-channel-connectors.service`
-- config: `~/.openclaw/studio/channel-connectors/daemon/config.json`
+- native config: `~/.openclaw/studio/channel-connectors/config.json`
+- daemon config: `~/.openclaw/studio/channel-connectors/daemon/config.json`
 - state: `~/.openclaw/studio/channel-connectors/daemon/state`
 - logs: `~/.openclaw/studio/channel-connectors/daemon/logs/channel-connectors.log`
 - runtime: `~/.openclaw/studio/channel-connectors/daemon/runtime.json`
@@ -77,24 +78,25 @@ Studio 增强点：
 | 阶段 | 目标 |
 | --- | --- |
 | F1 | 已完成：native daemon skeleton、service/config/status/logs、独立页面、守护边界测试 |
-| F2 | CC/OpenClaw 能力盘点 -> Studio 原生 contract；实现 project/Agent/bot binding store、工作目录、模型、权限、Gateway key ref |
+| F2 | 已完成：CC/OpenClaw 能力映射、typed config store、Agent Profile、工作目录、模型、权限、Gateway key ref、platform/bot binding |
 | F3 | 原生 Octo(dmwork) adapter：登录/连接、收发文本、session key、bot->Agent 绑定 smoke |
 | F4 | 补齐核心消息能力：图片/文件、语音、群聊 mention、thread/reply、流式预览、长回复拆分 |
 | F5 | 治理与自动化：allowlist、admin、rate limit、banned words、slash command、cron、hooks、relay、management API |
 | F6 | 飞书、微信/企业微信；继续迁移钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等 CC 平台 |
 | F7 | 补齐剩余 CC Agent、跨平台会话观测、消息审计、迁移工具和发布验收 |
 
-## 5. 当前 F1 结果
+## 5. 当前结果
 
 - 新增 `/channel-connectors` 独立页面。
-- 新增 `/api/channel-connectors/status` 与 `/api/channel-connectors/daemon/*` 后端 API。
+- 新增 `/api/channel-connectors/status`、`/api/channel-connectors/config` 与 `/api/channel-connectors/daemon/*` 后端 API。
 - 新增 Studio 原生 daemon entry：`apps/api/modules/channel-connectors/daemon.ts`。
 - service template 启动的是 Studio 构建产物：`node dist/apps/api/modules/channel-connectors/daemon.js --config config.json`。
-- daemon skeleton 可写 runtime/log，并暴露本地 health/status；平台 adapter 和 CLI Agent 调度在 F2/F3 接入。
+- daemon skeleton 可写 runtime/log，并暴露本地 health/status。
+- 原生 config store 已支持 Agent Profile、workDir、Agent、model、permission、App profile ref、Gateway endpoint/key ref、platform/bot binding、allowlist/admin。
+- daemon runtime config 已从原生 config 派生；同一微信个人账号不能绑定不同 Agent Profile。
 
 ## 6. 下一步
 
-1. F2：先做 CC/OpenClaw 功能映射表，把所有平台、Agent、消息能力、治理能力、自动化能力映射到 Studio 原生模块。
-2. F2：实现原生配置 store，包括 project、workDir、Agent profile、模型、权限、Gateway key ref、platform/bot binding。
-3. F2：前端 Projects / Platforms 形成真实编辑与保存，而不是只读 skeleton。
-4. F3：按 CC `platform/dmwork` 和 OpenClaw channel 模型实现 Octo(dmwork) adapter。
+1. F3：按 CC `platform/dmwork` 和 OpenClaw channel 模型实现 Octo(dmwork) adapter。
+2. F3：实现 incoming text、reply text、session key、bot->Agent dispatch smoke。
+3. F3：把 CLI Agent runner 接到 Studio Gateway endpoint/key/model。

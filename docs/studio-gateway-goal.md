@@ -98,7 +98,7 @@ Provider / model routing 目标：
 | Studio Gateway daemon | loopback HTTP listener、协议 adapter、provider router、runtime metadata、supervisor contract |
 | Gateway Service & Config | daemon 安装/启用自启动/启动/停止/重启/状态、用户自定义 provider 配置、provider 启停、协议/模型自动识别弹层、secret 写入、聚合模型目录、模型别名、默认模型、active provider、resolved route 状态、provider-native smoke、client-protocol active-route smoke |
 | App Connections | Codex、Claude Code、OpenCode、OpenClaw 的配置检测、脱敏 preview、确认后 apply、备份/rollback、默认模型与 App 级模型覆盖、上下文/compact/max output/reasoning profile；Codex 低频兼容参数收进高级折叠 |
-| Channel Connectors | Studio 原生 Channel daemon、CLI Agent bot、CC 全功能原生化、Octo(dmwork)、飞书、微信等 IM 渠道配置、bot->Agent 绑定、事件接入、会话映射、治理、自动化和消息路由 |
+| Channel Connectors | Studio 原生 Channel daemon、typed config store、Agent Profile、workDir/model/permission/Gateway key ref、platform/bot->Agent 绑定、CC 全功能原生化、Octo(dmwork)、飞书、微信等 IM 渠道事件接入、会话映射、治理、自动化和消息路由 |
 | Gateway UI | Runtime/Gateway key/Active routing 左侧常驻，右侧用 tabs 分开 App Connections、Provider Center、Smoke；参考旧 CPA 管理页的运行态布局和 cc-switch 的 provider 表单，但不内置具体 vendor 预设，也不复用旧 Codex Stack / CPA / Compact 文案、诊断矩阵、安装修复复杂度；Provider 原生协议只展示三类常见协议 |
 
 ## 6. 删除范围

@@ -161,19 +161,74 @@
               <p class="eyebrow">Projects</p>
               <h3>{{ text('项目与 Agent', 'Projects and agents') }}</h3>
             </div>
+            <button type="button" class="secondary-button compact-button ccx-icon-button" @click="newProfileDraft">
+              <Plus :size="16" />
+              {{ text('新建', 'New') }}
+            </button>
           </div>
-          <div class="ccx-list">
-            <div class="ccx-list-row">
-              <small>{{ text('默认项目', 'Default project') }}</small>
-              <strong>default</strong>
-            </div>
-            <div class="ccx-list-row">
-              <small>{{ text('首批 Agent', 'Initial agents') }}</small>
-              <strong>{{ supportedAgentsLabel }}</strong>
-            </div>
-            <div class="ccx-list-row">
-              <small>{{ text('模型中转', 'Model relay') }}</small>
-              <strong>{{ status?.lifecycle.modelRelayOwner || 'studio-gateway-daemon' }}</strong>
+          <div class="ccx-split">
+            <form class="ccx-form" @submit.prevent="saveProfileDraft">
+              <label>
+                <span>Profile ID</span>
+                <input v-model.trim="profileDraft.id" autocomplete="off" />
+              </label>
+              <label>
+                <span>{{ text('名称', 'Name') }}</span>
+                <input v-model.trim="profileDraft.name" autocomplete="off" />
+              </label>
+              <label>
+                <span>Agent</span>
+                <select v-model="profileDraft.agent">
+                  <option v-for="agent in supportedAgents" :key="agent" :value="agent">{{ agent }}</option>
+                </select>
+              </label>
+              <label>
+                <span>{{ text('模型', 'Model') }}</span>
+                <input v-model.trim="profileDraft.model" placeholder="gpt-5" autocomplete="off" />
+              </label>
+              <label class="ccx-wide-field">
+                <span>{{ text('工作目录', 'Work directory') }}</span>
+                <input v-model.trim="profileDraft.workDir" autocomplete="off" />
+              </label>
+              <label>
+                <span>{{ text('权限', 'Permission') }}</span>
+                <select v-model="profileDraft.permissionMode">
+                  <option v-for="mode in permissionModes" :key="mode" :value="mode">{{ mode }}</option>
+                </select>
+              </label>
+              <label>
+                <span>App Profile</span>
+                <input v-model.trim="profileDraft.appProfileRef" autocomplete="off" />
+              </label>
+              <label class="ccx-wide-field">
+                <span>Gateway</span>
+                <input v-model.trim="profileDraft.gatewayEndpoint" autocomplete="off" />
+              </label>
+              <div class="ccx-form-actions">
+                <button type="submit" class="primary-button compact-button ccx-icon-button" :disabled="savingConfig">
+                  <Save :size="16" />
+                  {{ savingConfig ? text('保存中...', 'Saving...') : text('保存 Profile', 'Save profile') }}
+                </button>
+                <button type="button" class="secondary-button compact-button ccx-icon-button" :disabled="savingConfig" @click="setDefaultProfile">
+                  <Star :size="16" />
+                  {{ text('设为默认', 'Set default') }}
+                </button>
+              </div>
+            </form>
+
+            <div class="ccx-list">
+              <button
+                v-for="profile in nativeConfig?.config.agentProfiles || []"
+                :key="profile.id"
+                type="button"
+                class="ccx-select-row"
+                :class="{ active: profileDraft.id === profile.id }"
+                @click="selectProfile(profile)"
+              >
+                <small>{{ profile.agent }} · {{ profile.permissionMode }}</small>
+                <strong>{{ profile.name }}</strong>
+                <span>{{ profile.model || 'default model' }} · {{ profile.workDir }}</span>
+              </button>
             </div>
           </div>
         </article>
@@ -190,19 +245,88 @@
               <p class="eyebrow">Platforms</p>
               <h3>{{ text('平台绑定', 'Platform bindings') }}</h3>
             </div>
+            <button type="button" class="secondary-button compact-button ccx-icon-button" @click="newBindingDraft">
+              <Plus :size="16" />
+              {{ text('新建', 'New') }}
+            </button>
           </div>
-          <div class="ccx-list">
-            <div class="ccx-list-row">
-              <small>{{ text('首批平台', 'Initial platforms') }}</small>
-              <strong>{{ supportedPlatformsLabel }}</strong>
-            </div>
-            <div class="ccx-list-row">
-              <small>{{ text('绑定粒度', 'Binding unit') }}</small>
-              <strong>{{ status?.bindingPolicy.model || '-' }}</strong>
-            </div>
-            <div class="ccx-list-row">
-              <small>{{ text('微信个人号', 'Personal WeChat') }}</small>
-              <strong>{{ text('单账号单 Agent', 'One agent per account') }}</strong>
+          <div class="ccx-split">
+            <form class="ccx-form" @submit.prevent="saveBindingDraft">
+              <label>
+                <span>Binding ID</span>
+                <input v-model.trim="bindingDraft.id" autocomplete="off" />
+              </label>
+              <label>
+                <span>{{ text('平台', 'Platform') }}</span>
+                <select v-model="bindingDraft.platform">
+                  <option v-for="platform in supportedPlatforms" :key="platform" :value="platform">{{ platform }}</option>
+                </select>
+              </label>
+              <label>
+                <span>{{ text('账号', 'Account') }}</span>
+                <input v-model.trim="bindingDraft.accountId" autocomplete="off" />
+              </label>
+              <label>
+                <span>Bot ID</span>
+                <input v-model.trim="bindingDraft.botId" autocomplete="off" />
+              </label>
+              <label>
+                <span>{{ text('显示名', 'Display name') }}</span>
+                <input v-model.trim="bindingDraft.displayName" autocomplete="off" />
+              </label>
+              <label>
+                <span>Agent Profile</span>
+                <select v-model="bindingDraft.agentProfileId">
+                  <option v-for="profile in nativeConfig?.config.agentProfiles || []" :key="profile.id" :value="profile.id">
+                    {{ profile.name }}
+                  </option>
+                </select>
+              </label>
+              <label class="ccx-check-field">
+                <input v-model="bindingDraft.enabled" type="checkbox" />
+                <span>{{ text('启用', 'Enabled') }}</span>
+              </label>
+              <label class="ccx-wide-field">
+                <span>{{ text('白名单', 'Allowlist') }}</span>
+                <textarea v-model="bindingDraft.allowlistText" rows="3" placeholder="user-a&#10;user-b" />
+              </label>
+              <label class="ccx-wide-field">
+                <span>{{ text('管理员', 'Admins') }}</span>
+                <textarea v-model="bindingDraft.adminUsersText" rows="3" placeholder="admin-a&#10;admin-b" />
+              </label>
+              <div class="ccx-form-actions">
+                <button type="submit" class="primary-button compact-button ccx-icon-button" :disabled="savingConfig">
+                  <Save :size="16" />
+                  {{ savingConfig ? text('保存中...', 'Saving...') : text('保存绑定', 'Save binding') }}
+                </button>
+                <button
+                  type="button"
+                  class="secondary-button compact-button ccx-icon-button"
+                  :disabled="savingConfig || !bindingExists"
+                  @click="deleteBindingDraft"
+                >
+                  <Trash2 :size="16" />
+                  {{ text('删除', 'Delete') }}
+                </button>
+              </div>
+            </form>
+
+            <div class="ccx-list">
+              <button
+                v-for="binding in nativeConfig?.config.platformBindings || []"
+                :key="binding.id"
+                type="button"
+                class="ccx-select-row"
+                :class="{ active: bindingDraft.id === binding.id }"
+                @click="selectBinding(binding)"
+              >
+                <small>{{ binding.platform }} · {{ binding.enabled ? text('启用', 'Enabled') : text('停用', 'Disabled') }}</small>
+                <strong>{{ binding.displayName }}</strong>
+                <span>{{ binding.accountId }}{{ binding.botId ? ` / ${binding.botId}` : '' }} -> {{ binding.agentProfileId }}</span>
+              </button>
+              <div v-if="!(nativeConfig?.config.platformBindings || []).length" class="ccx-empty compact">
+                {{ text('暂无平台绑定', 'No platform bindings') }}
+              </div>
             </div>
           </div>
         </article>
@@ -242,16 +366,27 @@ import {
   FileText,
   MoreHorizontal,
   Play,
+  Plus,
   Power,
   RefreshCw,
   RotateCw,
+  Save,
   Square,
+  Star,
+  Trash2,
 } from '@lucide/vue';
 import type {
+  ChannelConnectorAgentId,
+  ChannelConnectorAgentProfile,
+  ChannelConnectorPermissionMode,
+  ChannelConnectorPlatformBinding,
+  ChannelConnectorPlatformId,
   ChannelConnectorsDaemonAction,
   ChannelConnectorsDaemonConfigResponse,
   ChannelConnectorsDaemonResponse,
   ChannelConnectorsLogsResponse,
+  ChannelConnectorsNativeConfig,
+  ChannelConnectorsNativeConfigResponse,
   ChannelConnectorsStatusResponse,
 } from '../../../../../types/channel-connectors';
 import StatusPill from '../../components/StatusPill.vue';
@@ -260,14 +395,20 @@ import {
   fetchChannelConnectorsDaemonConfig,
   fetchChannelConnectorsDaemonLogs,
   fetchChannelConnectorsDaemonService,
+  fetchChannelConnectorsNativeConfig,
   fetchChannelConnectorsStatus,
   manageChannelConnectorsDaemonService,
+  saveChannelConnectorsNativeConfig,
 } from './api';
 import './channel-connectors-workspace.css';
 
 defineOptions({ name: 'ChannelConnectorsControlPage' });
 
 type WorkspaceTab = 'runtime' | 'projects' | 'platforms' | 'sessions';
+type BindingDraft = Omit<ChannelConnectorPlatformBinding, 'allowlist' | 'adminUsers' | 'metadata'> & {
+  allowlistText: string;
+  adminUsersText: string;
+};
 
 const { text } = useLocalePreference();
 const tabs: Array<{ id: WorkspaceTab; zh: string; en: string }> = [
@@ -279,14 +420,19 @@ const tabs: Array<{ id: WorkspaceTab; zh: string; en: string }> = [
 
 const loading = ref(false);
 const busy = ref(false);
+const savingConfig = ref(false);
 const loaded = ref(false);
 const activeTab = ref<WorkspaceTab>('runtime');
 const status = ref<ChannelConnectorsStatusResponse | null>(null);
 const service = ref<ChannelConnectorsDaemonResponse | null>(null);
+const nativeConfig = ref<ChannelConnectorsNativeConfigResponse | null>(null);
 const configPreview = ref<ChannelConnectorsDaemonConfigResponse | null>(null);
 const logs = ref<ChannelConnectorsLogsResponse | null>(null);
 const actionResult = ref<ChannelConnectorsDaemonResponse | null>(null);
 const notice = ref<{ kind: 'success' | 'error'; message: string } | null>(null);
+
+const profileDraft = ref<ChannelConnectorAgentProfile>(emptyProfileDraft());
+const bindingDraft = ref<BindingDraft>(emptyBindingDraft());
 
 const runtimeChain = computed(() => status.value?.runtimeChain || [
   'IM channel',
@@ -296,14 +442,20 @@ const runtimeChain = computed(() => status.value?.runtimeChain || [
   'upstream provider',
 ]);
 
-const supportedAgentsLabel = computed(() =>
-  (status.value?.bindingPolicy.supportedAgents || ['codex', 'claude-code'])
-    .join(' / '),
+const supportedAgents = computed<ChannelConnectorAgentId[]>(() =>
+  nativeConfig.value?.supportedAgents || status.value?.bindingPolicy.supportedAgents || ['codex', 'claude-code', 'opencode'] as ChannelConnectorAgentId[],
 );
 
-const supportedPlatformsLabel = computed(() =>
-  (status.value?.bindingPolicy.supportedPlatforms || ['octo', 'feishu', 'wechat', 'wecom'])
-    .join(' / '),
+const supportedPlatforms = computed<ChannelConnectorPlatformId[]>(() =>
+  nativeConfig.value?.supportedPlatforms || status.value?.bindingPolicy.supportedPlatforms || ['octo', 'feishu', 'wechat', 'wecom'] as ChannelConnectorPlatformId[],
+);
+
+const permissionModes = computed<ChannelConnectorPermissionMode[]>(() =>
+  nativeConfig.value?.permissionModes || ['suggest', 'read-only', 'auto-edit', 'full-auto', 'plan', 'yolo'] as ChannelConnectorPermissionMode[],
+);
+
+const bindingExists = computed(() =>
+  (nativeConfig.value?.config.platformBindings || []).some((binding) => binding.id === bindingDraft.value.id),
 );
 
 const daemonStateLabel = computed(() => {
@@ -356,6 +508,214 @@ const actionOutput = computed(() => {
 
 const logText = computed(() => (logs.value?.lines || []).join('\n'));
 
+function emptyProfileDraft(): ChannelConnectorAgentProfile {
+  return {
+    id: 'default-codex',
+    name: 'Default Codex',
+    agent: 'codex',
+    model: '',
+    workDir: '',
+    permissionMode: 'suggest',
+    gatewayEndpoint: 'http://127.0.0.1:18796/v1',
+    gatewayKeyRef: 'studio-gateway-client-key',
+    appProfileRef: 'default',
+  };
+}
+
+function emptyBindingDraft(): BindingDraft {
+  return {
+    id: '',
+    platform: 'octo',
+    accountId: '',
+    botId: '',
+    displayName: '',
+    agentProfileId: '',
+    enabled: true,
+    allowlistText: '',
+    adminUsersText: '',
+  };
+}
+
+function textToList(value: string): string[] {
+  return value
+    .split(/[\n,]/g)
+    .map((item) => item.trim())
+    .filter((item, index, all) => item.length > 0 && all.indexOf(item) === index);
+}
+
+function listToText(value: string[]): string {
+  return value.join('\n');
+}
+
+function cloneNativeConfig(): ChannelConnectorsNativeConfig | null {
+  if (!nativeConfig.value) return null;
+  return {
+    ...nativeConfig.value.config,
+    agentProfiles: nativeConfig.value.config.agentProfiles.map((profile) => ({ ...profile })),
+    platformBindings: nativeConfig.value.config.platformBindings.map((binding) => {
+      const next: ChannelConnectorPlatformBinding = {
+        ...binding,
+        allowlist: [...binding.allowlist],
+        adminUsers: [...binding.adminUsers],
+      };
+      if (binding.metadata) next.metadata = { ...binding.metadata };
+      return next;
+    }),
+  };
+}
+
+function selectProfile(profile: ChannelConnectorAgentProfile): void {
+  profileDraft.value = {
+    ...profile,
+    model: profile.model || '',
+  };
+}
+
+function selectBinding(binding: ChannelConnectorPlatformBinding): void {
+  bindingDraft.value = {
+    id: binding.id,
+    platform: binding.platform,
+    accountId: binding.accountId,
+    botId: binding.botId || '',
+    displayName: binding.displayName,
+    agentProfileId: binding.agentProfileId,
+    enabled: binding.enabled,
+    allowlistText: listToText(binding.allowlist),
+    adminUsersText: listToText(binding.adminUsers),
+  };
+}
+
+function newProfileDraft(): void {
+  const profiles = nativeConfig.value?.config.agentProfiles || [];
+  const base = profiles[0] || emptyProfileDraft();
+  const nextNumber = profiles.length + 1;
+  profileDraft.value = {
+    ...base,
+    id: `profile-${nextNumber}`,
+    name: `Agent Profile ${nextNumber}`,
+    model: '',
+  };
+}
+
+function newBindingDraft(): void {
+  const firstProfile = nativeConfig.value?.config.agentProfiles[0];
+  bindingDraft.value = {
+    ...emptyBindingDraft(),
+    agentProfileId: firstProfile?.id || '',
+  };
+}
+
+function hydrateConfigDrafts(): void {
+  const config = nativeConfig.value?.config;
+  if (!config) return;
+  const selectedProfile = config.agentProfiles.find((profile) => profile.id === profileDraft.value.id)
+    || config.agentProfiles.find((profile) => profile.id === config.defaultAgentProfileId)
+    || config.agentProfiles[0];
+  if (selectedProfile) selectProfile(selectedProfile);
+
+  const selectedBinding = config.platformBindings.find((binding) => binding.id === bindingDraft.value.id)
+    || config.platformBindings[0];
+  if (selectedBinding) {
+    selectBinding(selectedBinding);
+  } else {
+    newBindingDraft();
+  }
+}
+
+async function persistNativeConfig(config: ChannelConnectorsNativeConfig, message: string): Promise<void> {
+  savingConfig.value = true;
+  notice.value = null;
+  try {
+    const saved = await saveChannelConnectorsNativeConfig({ config });
+    nativeConfig.value = saved;
+    configPreview.value = await fetchChannelConnectorsDaemonConfig();
+    hydrateConfigDrafts();
+    notice.value = { kind: 'success', message };
+  } catch (error) {
+    reportError(error, text('保存 Channel Connectors 配置失败', 'Failed to save Channel Connectors config'));
+  } finally {
+    savingConfig.value = false;
+  }
+}
+
+function profileFromDraft(): ChannelConnectorAgentProfile {
+  return {
+    ...profileDraft.value,
+    id: profileDraft.value.id.trim(),
+    name: profileDraft.value.name.trim() || profileDraft.value.id.trim(),
+    model: profileDraft.value.model ? profileDraft.value.model.trim() : null,
+    workDir: profileDraft.value.workDir.trim(),
+    gatewayEndpoint: profileDraft.value.gatewayEndpoint.trim() || 'http://127.0.0.1:18796/v1',
+    gatewayKeyRef: 'studio-gateway-client-key',
+    appProfileRef: profileDraft.value.appProfileRef.trim() || 'default',
+  };
+}
+
+async function saveProfileDraft(): Promise<void> {
+  const config = cloneNativeConfig();
+  if (!config) return;
+  const profile = profileFromDraft();
+  if (!profile.id || !profile.workDir) {
+    notice.value = { kind: 'error', message: text('Profile ID 和工作目录必填', 'Profile ID and work directory are required') };
+    return;
+  }
+  const index = config.agentProfiles.findIndex((item) => item.id === profile.id);
+  if (index >= 0) config.agentProfiles.splice(index, 1, profile);
+  else config.agentProfiles.push(profile);
+  if (!config.agentProfiles.some((item) => item.id === config.defaultAgentProfileId)) {
+    config.defaultAgentProfileId = profile.id;
+  }
+  await persistNativeConfig(config, text('Profile 已保存', 'Profile saved'));
+}
+
+async function setDefaultProfile(): Promise<void> {
+  const config = cloneNativeConfig();
+  if (!config) return;
+  const profile = profileFromDraft();
+  const index = config.agentProfiles.findIndex((item) => item.id === profile.id);
+  if (index >= 0) config.agentProfiles.splice(index, 1, profile);
+  else config.agentProfiles.push(profile);
+  config.defaultAgentProfileId = profile.id;
+  await persistNativeConfig(config, text('默认 Profile 已更新', 'Default profile updated'));
+}
+
+function bindingFromDraft(): ChannelConnectorPlatformBinding {
+  const id = bindingDraft.value.id.trim()
+    || `${bindingDraft.value.platform}-${bindingDraft.value.accountId.trim()}-${bindingDraft.value.botId.trim() || 'default'}`;
+  return {
+    id,
+    platform: bindingDraft.value.platform,
+    accountId: bindingDraft.value.accountId.trim(),
+    botId: bindingDraft.value.botId.trim() || null,
+    displayName: bindingDraft.value.displayName.trim() || id,
+    agentProfileId: bindingDraft.value.agentProfileId,
+    enabled: bindingDraft.value.enabled,
+    allowlist: textToList(bindingDraft.value.allowlistText),
+    adminUsers: textToList(bindingDraft.value.adminUsersText),
+  };
+}
+
+async function saveBindingDraft(): Promise<void> {
+  const config = cloneNativeConfig();
+  if (!config) return;
+  const binding = bindingFromDraft();
+  if (!binding.accountId || !binding.agentProfileId) {
+    notice.value = { kind: 'error', message: text('账号和 Agent Profile 必填', 'Account and Agent Profile are required') };
+    return;
+  }
+  const index = config.platformBindings.findIndex((item) => item.id === binding.id);
+  if (index >= 0) config.platformBindings.splice(index, 1, binding);
+  else config.platformBindings.push(binding);
+  await persistNativeConfig(config, text('平台绑定已保存', 'Platform binding saved'));
+}
+
+async function deleteBindingDraft(): Promise<void> {
+  const config = cloneNativeConfig();
+  if (!config) return;
+  config.platformBindings = config.platformBindings.filter((binding) => binding.id !== bindingDraft.value.id);
+  await persistNativeConfig(config, text('平台绑定已删除', 'Platform binding deleted'));
+}
+
 function formatTimestamp(value: string): string {
   try {
     return new Date(value).toLocaleString();
@@ -377,16 +737,19 @@ async function loadAll(): Promise<void> {
   loading.value = true;
   notice.value = null;
   try {
-    const [nextStatus, nextService, nextConfig, nextLogs] = await Promise.all([
+    const [nextStatus, nextNativeConfig, nextService, nextConfig, nextLogs] = await Promise.all([
       fetchChannelConnectorsStatus(),
+      fetchChannelConnectorsNativeConfig(),
       fetchChannelConnectorsDaemonService(),
       fetchChannelConnectorsDaemonConfig(),
       fetchChannelConnectorsDaemonLogs(),
     ]);
     status.value = nextStatus;
+    nativeConfig.value = nextNativeConfig;
     service.value = nextService;
     configPreview.value = nextConfig;
     logs.value = nextLogs;
+    hydrateConfigDrafts();
     loaded.value = true;
   } catch (error) {
     reportError(error, text('加载 Channel Connectors 失败', 'Failed to load Channel Connectors'));

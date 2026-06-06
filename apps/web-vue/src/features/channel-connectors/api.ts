@@ -4,13 +4,15 @@ import type {
   ChannelConnectorsDaemonRequest,
   ChannelConnectorsDaemonResponse,
   ChannelConnectorsLogsResponse,
+  ChannelConnectorsNativeConfigResponse,
+  ChannelConnectorsSaveNativeConfigRequest,
   ChannelConnectorsStatusResponse,
 } from '../../../../../types/channel-connectors';
 import { requestJson } from '../../shared/api';
 
-function jsonBody(payload: unknown): RequestInit {
+function jsonBody(payload: unknown, method = 'POST'): RequestInit {
   return {
-    method: 'POST',
+    method,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   };
@@ -18,6 +20,19 @@ function jsonBody(payload: unknown): RequestInit {
 
 export function fetchChannelConnectorsStatus(): Promise<ChannelConnectorsStatusResponse> {
   return requestJson<ChannelConnectorsStatusResponse>('/api/channel-connectors/status');
+}
+
+export function fetchChannelConnectorsNativeConfig(): Promise<ChannelConnectorsNativeConfigResponse> {
+  return requestJson<ChannelConnectorsNativeConfigResponse>('/api/channel-connectors/config');
+}
+
+export function saveChannelConnectorsNativeConfig(
+  payload: ChannelConnectorsSaveNativeConfigRequest,
+): Promise<ChannelConnectorsNativeConfigResponse> {
+  return requestJson<ChannelConnectorsNativeConfigResponse>(
+    '/api/channel-connectors/config',
+    jsonBody(payload, 'PUT'),
+  );
 }
 
 export function fetchChannelConnectorsDaemonConfig(): Promise<ChannelConnectorsDaemonConfigResponse> {

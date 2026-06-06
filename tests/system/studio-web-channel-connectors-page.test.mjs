@@ -45,6 +45,7 @@ test("Channel Connectors page calls only channel connector APIs", () => {
 
   for (const endpoint of [
     "/api/channel-connectors/status",
+    "/api/channel-connectors/config",
     "/api/channel-connectors/daemon/config",
     "/api/channel-connectors/daemon/service",
     "/api/channel-connectors/daemon/logs",
@@ -57,7 +58,11 @@ test("Channel Connectors page calls only channel connector APIs", () => {
   assert.match(page, /Platforms/);
   assert.match(page, /Sessions/);
   assert.match(page, /Channel daemon/);
-  assert.match(page, /wechatPersonal|Personal WeChat/);
+  assert.match(page, /Work directory|工作目录/);
+  assert.match(page, /Agent Profile/);
+  assert.match(page, /Save profile|保存 Profile/);
+  assert.match(page, /Save binding|保存绑定/);
+  assert.match(page, /wechat/);
   assert.doesNotMatch(page, /\/api\/model-gateway/);
   assert.doesNotMatch(page, /cc-connect|CC Bridge/);
 });

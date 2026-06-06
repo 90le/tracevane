@@ -6,6 +6,8 @@ import { promisify } from "node:util";
 import type { StudioServerConfig } from "../../../../types/api.js";
 import {
   CHANNEL_CONNECTORS_DAEMON_SERVICE_NAME,
+  CHANNEL_CONNECTOR_AGENT_IDS,
+  CHANNEL_CONNECTOR_PLATFORM_IDS,
   type ChannelConnectorsBindingPolicy,
   type ChannelConnectorsDaemonAction,
   type ChannelConnectorsDaemonCommand,
@@ -18,7 +20,13 @@ import {
   type ChannelConnectorsDaemonRuntimeConfig,
   type ChannelConnectorsDaemonTemplate,
   type ChannelConnectorsLogsResponse,
+  type ChannelConnectorsNativeConfig,
+  type ChannelConnectorsNativeConfigResponse,
+  type ChannelConnectorsSaveNativeConfigRequest,
   type ChannelConnectorsStatusResponse,
+  type ChannelConnectorAgentId,
+  type ChannelConnectorPermissionMode,
+  type ChannelConnectorPlatformId,
 } from "../../../../types/channel-connectors.js";
 
 const execFileAsync = promisify(execFile);
@@ -32,6 +40,14 @@ const DAEMON_ACTIONS: readonly ChannelConnectorsDaemonAction[] = [
   "status",
 ];
 const MANAGEMENT_PORT = 18797;
+const PERMISSION_MODES: readonly ChannelConnectorPermissionMode[] = [
+  "suggest",
+  "read-only",
+  "auto-edit",
+  "full-auto",
+  "plan",
+  "yolo",
+];
 
 export type ChannelConnectorsDaemonCommandRunner = (
   command: ChannelConnectorsDaemonCommand,
@@ -45,6 +61,8 @@ export interface ChannelConnectorsServiceOptions {
 
 export interface ChannelConnectorsService {
   getStatus(): Promise<ChannelConnectorsStatusResponse>;
+  getNativeConfig(): ChannelConnectorsNativeConfigResponse;
+  saveNativeConfig(payload?: ChannelConnectorsSaveNativeConfigRequest): ChannelConnectorsNativeConfigResponse;
   getDaemonConfig(): ChannelConnectorsDaemonConfigResponse;
   getDaemonService(): Promise<ChannelConnectorsDaemonResponse>;
   manageDaemonService(payload?: ChannelConnectorsDaemonRequest): Promise<ChannelConnectorsDaemonResponse>;
@@ -52,6 +70,8 @@ export interface ChannelConnectorsService {
 }
 
 interface ChannelConnectorsPaths {
+  workspaceDir: string;
+  nativeConfigPath: string;
   rootDir: string;
   configPath: string;
   stateDir: string;
@@ -68,9 +88,12 @@ function normalizeHomeDir(value: string | undefined): string {
 export function resolveChannelConnectorsPaths(
   config: StudioServerConfig,
 ): ChannelConnectorsPaths {
-  const rootDir = path.join(config.openclawRoot, "studio", "channel-connectors", "daemon");
+  const workspaceDir = path.join(config.openclawRoot, "studio", "channel-connectors");
+  const rootDir = path.join(workspaceDir, "daemon");
   const logDir = path.join(rootDir, "logs");
   return {
+    workspaceDir,
+    nativeConfigPath: path.join(workspaceDir, "config.json"),
     rootDir,
     configPath: path.join(rootDir, "config.json"),
     stateDir: path.join(rootDir, "state"),
@@ -122,6 +145,216 @@ function gatewayEndpoint(): string {
   return "http://127.0.0.1:18796/v1";
 }
 
+function normalizeString(value: unknown, fallback = ""): string {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  return trimmed || fallback;
+}
+
+function slugify(value: string, fallback: string): string {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || fallback;
+}
+
+function stringList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const output: string[] = [];
+  for (const item of value) {
+    const normalized = normalizeString(item);
+    if (normalized && !seen.has(normalized)) {
+      seen.add(normalized);
+      output.push(normalized);
+    }
+  }
+  return output;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isAgentId(value: unknown): value is ChannelConnectorAgentId {
+  return (CHANNEL_CONNECTOR_AGENT_IDS as readonly string[]).includes(String(value));
+}
+
+function isPlatformId(value: unknown): value is ChannelConnectorPlatformId {
+  return (CHANNEL_CONNECTOR_PLATFORM_IDS as readonly string[]).includes(String(value));
+}
+
+function isPermissionMode(value: unknown): value is ChannelConnectorPermissionMode {
+  return (PERMISSION_MODES as readonly string[]).includes(String(value));
+}
+
+function defaultNativeConfig(
+  config: StudioServerConfig,
+  paths: ChannelConnectorsPaths,
+  now: Date,
+): ChannelConnectorsNativeConfig {
+  return {
+    version: 1,
+    updatedAt: now.toISOString(),
+    defaultAgentProfileId: "default-codex",
+    agentProfiles: [
+      {
+        id: "default-codex",
+        name: "Default Codex",
+        agent: "codex",
+        model: null,
+        workDir: config.projectRoot || process.cwd(),
+        permissionMode: "suggest",
+        gatewayEndpoint: gatewayEndpoint(),
+        gatewayKeyRef: "studio-gateway-client-key",
+        appProfileRef: "default",
+      },
+    ],
+    platformBindings: [],
+  };
+}
+
+function normalizeNativeConfig(
+  input: unknown,
+  config: StudioServerConfig,
+  paths: ChannelConnectorsPaths,
+  now: Date,
+  strict = false,
+): ChannelConnectorsNativeConfig {
+  const fallback = defaultNativeConfig(config, paths, now);
+  if (!isRecord(input)) {
+    if (strict) throw new Error("Channel Connectors config must be an object.");
+    return fallback;
+  }
+
+  const rawProfiles = Array.isArray(input.agentProfiles) ? input.agentProfiles : [];
+  if (strict && rawProfiles.length === 0) throw new Error("At least one agent profile is required.");
+
+  const profileIds = new Set<string>();
+  const agentProfiles: ChannelConnectorsNativeConfig["agentProfiles"] = [];
+  for (let index = 0; index < rawProfiles.length; index += 1) {
+    const raw = rawProfiles[index];
+    if (!isRecord(raw)) continue;
+    const id = slugify(normalizeString(raw.id, normalizeString(raw.name)), `profile-${index + 1}`);
+    if (profileIds.has(id)) {
+      if (strict) throw new Error(`Duplicate agent profile id: ${id}`);
+      continue;
+    }
+    const agent = raw.agent;
+    if (strict && !isAgentId(agent)) throw new Error(`Unsupported agent id for profile ${id}.`);
+    const permissionMode = raw.permissionMode;
+    if (strict && !isPermissionMode(permissionMode)) throw new Error(`Unsupported permission mode for profile ${id}.`);
+    const workDir = normalizeString(raw.workDir, fallback.agentProfiles[0].workDir);
+    if (strict && !workDir) throw new Error(`workDir is required for profile ${id}.`);
+    profileIds.add(id);
+    agentProfiles.push({
+      id,
+      name: normalizeString(raw.name, id),
+      agent: isAgentId(agent) ? agent : "codex",
+      model: normalizeString(raw.model) || null,
+      workDir,
+      permissionMode: isPermissionMode(permissionMode) ? permissionMode : "suggest",
+      gatewayEndpoint: normalizeString(raw.gatewayEndpoint, gatewayEndpoint()),
+      gatewayKeyRef: "studio-gateway-client-key",
+      appProfileRef: normalizeString(raw.appProfileRef, "default"),
+    });
+  }
+
+  if (agentProfiles.length === 0) agentProfiles.push(...fallback.agentProfiles);
+  const validProfileIds = new Set(agentProfiles.map((profile) => profile.id));
+  const defaultAgentProfileId = validProfileIds.has(normalizeString(input.defaultAgentProfileId))
+    ? normalizeString(input.defaultAgentProfileId)
+    : agentProfiles[0].id;
+
+  const rawBindings = Array.isArray(input.platformBindings) ? input.platformBindings : [];
+  const bindingIds = new Set<string>();
+  const wechatAccountAgents = new Map<string, string>();
+  const platformBindings: ChannelConnectorsNativeConfig["platformBindings"] = [];
+  for (let index = 0; index < rawBindings.length; index += 1) {
+    const raw = rawBindings[index];
+    if (!isRecord(raw)) continue;
+    const id = slugify(normalizeString(raw.id, normalizeString(raw.displayName)), `binding-${index + 1}`);
+    if (bindingIds.has(id)) {
+      if (strict) throw new Error(`Duplicate platform binding id: ${id}`);
+      continue;
+    }
+    const platform = raw.platform;
+    if (strict && !isPlatformId(platform)) throw new Error(`Unsupported platform id for binding ${id}.`);
+    const agentProfileId = normalizeString(raw.agentProfileId, defaultAgentProfileId);
+    if (strict && !validProfileIds.has(agentProfileId)) {
+      throw new Error(`Binding ${id} references unknown agent profile: ${agentProfileId}`);
+    }
+    const effectiveProfileId = validProfileIds.has(agentProfileId) ? agentProfileId : defaultAgentProfileId;
+    const accountId = normalizeString(raw.accountId);
+    if (strict && !accountId) throw new Error(`accountId is required for binding ${id}.`);
+    const platformId = isPlatformId(platform) ? platform : "octo";
+    if (platformId === "wechat") {
+      const existingAgent = wechatAccountAgents.get(accountId);
+      if (existingAgent && existingAgent !== effectiveProfileId) {
+        throw new Error(`Personal WeChat account ${accountId} can bind only one agent profile.`);
+      }
+      if (accountId) wechatAccountAgents.set(accountId, effectiveProfileId);
+    }
+
+    bindingIds.add(id);
+    platformBindings.push({
+      id,
+      platform: platformId,
+      accountId,
+      botId: normalizeString(raw.botId) || null,
+      displayName: normalizeString(raw.displayName, id),
+      agentProfileId: effectiveProfileId,
+      enabled: raw.enabled !== false,
+      allowlist: stringList(raw.allowlist),
+      adminUsers: stringList(raw.adminUsers),
+      metadata: isRecord(raw.metadata) ? raw.metadata : undefined,
+    });
+  }
+
+  return {
+    version: 1,
+    updatedAt: normalizeString(input.updatedAt, now.toISOString()),
+    defaultAgentProfileId,
+    agentProfiles,
+    platformBindings,
+  };
+}
+
+function readNativeConfig(
+  config: StudioServerConfig,
+  paths: ChannelConnectorsPaths,
+  now: Date,
+): ChannelConnectorsNativeConfig {
+  const raw = readTextIfExists(paths.nativeConfigPath);
+  if (!raw) return defaultNativeConfig(config, paths, now);
+  try {
+    return normalizeNativeConfig(JSON.parse(raw), config, paths, now, false);
+  } catch {
+    return defaultNativeConfig(config, paths, now);
+  }
+}
+
+function writeNativeConfig(
+  config: StudioServerConfig,
+  paths: ChannelConnectorsPaths,
+  value: ChannelConnectorsNativeConfig,
+  now: Date,
+): ChannelConnectorsNativeConfig {
+  const normalized = normalizeNativeConfig(
+    {
+      ...value,
+      updatedAt: now.toISOString(),
+    },
+    config,
+    paths,
+    now,
+    true,
+  );
+  writeTextAtomic(paths.nativeConfigPath, `${JSON.stringify(normalized, null, 2)}\n`);
+  return normalized;
+}
+
 function daemonEntryPath(config: StudioServerConfig): string {
   return path.join(config.projectRoot, "dist", "apps", "api", "modules", "channel-connectors", "daemon.js");
 }
@@ -130,7 +363,10 @@ function managementEndpoint(): string {
   return `http://127.0.0.1:${MANAGEMENT_PORT}`;
 }
 
-function buildRuntimeConfig(config: StudioServerConfig, paths: ChannelConnectorsPaths): ChannelConnectorsDaemonRuntimeConfig {
+function buildRuntimeConfig(
+  nativeConfig: ChannelConnectorsNativeConfig,
+  paths: ChannelConnectorsPaths,
+): ChannelConnectorsDaemonRuntimeConfig {
   return {
     version: 1,
     management: {
@@ -148,25 +384,41 @@ function buildRuntimeConfig(config: StudioServerConfig, paths: ChannelConnectors
       clientKeyRef: "studio-gateway-client-key",
     },
     projects: [
-      {
-        id: "default",
-        name: "default",
-        workDir: config.projectRoot || process.cwd(),
-        agent: "codex",
-        model: null,
-        platformBindings: [],
-      },
+      ...nativeConfig.agentProfiles.map((profile) => ({
+        id: profile.id,
+        name: profile.name,
+        workDir: profile.workDir,
+        agent: profile.agent,
+        model: profile.model,
+        permissionMode: profile.permissionMode,
+        appProfileRef: profile.appProfileRef,
+        platformBindings: nativeConfig.platformBindings
+          .filter((binding) => binding.agentProfileId === profile.id)
+          .map((binding) => ({
+            id: binding.id,
+            platform: binding.platform,
+            accountId: binding.accountId,
+            botId: binding.botId,
+            displayName: binding.displayName,
+            agent: profile.agent,
+            enabled: binding.enabled,
+            allowlist: binding.allowlist,
+            adminUsers: binding.adminUsers,
+          })),
+      })),
     ],
   };
 }
 
 function buildConfigResponse(config: StudioServerConfig, paths: ChannelConnectorsPaths, now: Date): ChannelConnectorsDaemonConfigResponse {
-  const runtimeConfig = buildRuntimeConfig(config, paths);
+  const nativeConfig = readNativeConfig(config, paths, now);
+  const runtimeConfig = buildRuntimeConfig(nativeConfig, paths);
   const preview = `${JSON.stringify(runtimeConfig, null, 2)}\n`;
   return {
     ok: true,
     checkedAt: now.toISOString(),
     ready: true,
+    nativeConfigPath: paths.nativeConfigPath,
     configPath: paths.configPath,
     gatewayEndpoint: gatewayEndpoint(),
     managementEndpoint: managementEndpoint(),
@@ -458,8 +710,8 @@ function tailLines(filePath: string, limit: number): { exists: boolean; lines: s
 function bindingPolicy(): ChannelConnectorsBindingPolicy {
   return {
     model: "platform-account-or-bot-to-agent",
-    supportedAgents: ["codex", "claude-code", "opencode"],
-    supportedPlatforms: ["octo", "feishu", "wechat", "wecom"],
+    supportedAgents: [...CHANNEL_CONNECTOR_AGENT_IDS],
+    supportedPlatforms: [...CHANNEL_CONNECTOR_PLATFORM_IDS],
     multiBot: {
       allowed: true,
       unit: "platform-account-or-bot",
@@ -467,6 +719,22 @@ function bindingPolicy(): ChannelConnectorsBindingPolicy {
     wechatPersonal: {
       maxAgentsPerAccount: 1,
     },
+  };
+}
+
+function buildNativeConfigResponse(
+  config: StudioServerConfig,
+  paths: ChannelConnectorsPaths,
+  now: Date,
+): ChannelConnectorsNativeConfigResponse {
+  return {
+    ok: true,
+    checkedAt: now.toISOString(),
+    configPath: paths.nativeConfigPath,
+    config: readNativeConfig(config, paths, now),
+    supportedAgents: [...CHANNEL_CONNECTOR_AGENT_IDS],
+    supportedPlatforms: [...CHANNEL_CONNECTOR_PLATFORM_IDS],
+    permissionModes: [...PERMISSION_MODES],
   };
 }
 
@@ -480,6 +748,25 @@ export function createChannelConnectorsService(
 
   function currentConfig(): ChannelConnectorsDaemonConfigResponse {
     return buildConfigResponse(config, resolveChannelConnectorsPaths(config), now());
+  }
+
+  function currentNativeConfig(): ChannelConnectorsNativeConfigResponse {
+    return buildNativeConfigResponse(config, resolveChannelConnectorsPaths(config), now());
+  }
+
+  function saveNativeConfig(payload: ChannelConnectorsSaveNativeConfigRequest = {}): ChannelConnectorsNativeConfigResponse {
+    if (!payload.config) throw new Error("Channel Connectors config payload is required.");
+    const paths = resolveChannelConnectorsPaths(config);
+    const saved = writeNativeConfig(config, paths, payload.config, now());
+    return {
+      ok: true,
+      checkedAt: now().toISOString(),
+      configPath: paths.nativeConfigPath,
+      config: saved,
+      supportedAgents: [...CHANNEL_CONNECTOR_AGENT_IDS],
+      supportedPlatforms: [...CHANNEL_CONNECTOR_PLATFORM_IDS],
+      permissionModes: [...PERMISSION_MODES],
+    };
   }
 
   async function response(
@@ -596,12 +883,12 @@ export function createChannelConnectorsService(
     return {
       ok: true,
       checkedAt: now().toISOString(),
-      phase: "native-daemon-f1",
+      phase: "native-config-f2",
       implementation: "studio-native",
       referenceSources: [
-        "release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source",
-        "apps/api/modules/channels",
-        "OpenClaw native channel/runtime behavior",
+        "CC archived reference implementation",
+        "OpenClaw channel/runtime behavior",
+        "Studio Gateway daemon contract",
       ],
       runtimeChain: [
         "IM channel",
@@ -613,6 +900,7 @@ export function createChannelConnectorsService(
       bindingPolicy: bindingPolicy(),
       paths: {
         root: service.plan.rootDir,
+        nativeConfig: resolveChannelConnectorsPaths(config).nativeConfigPath,
         config: service.plan.configPath,
         state: service.plan.stateDir,
         log: service.plan.logFile,
@@ -642,6 +930,8 @@ export function createChannelConnectorsService(
 
   return {
     getStatus,
+    getNativeConfig: currentNativeConfig,
+    saveNativeConfig,
     getDaemonConfig: currentConfig,
     getDaemonService,
     manageDaemonService,
