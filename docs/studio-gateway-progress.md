@@ -1,6 +1,6 @@
 # Studio Gateway 进度
 
-> 状态：Studio Gateway core completed; Provider Center/App Connections completed; CLI/Gateway/live smoke harness completed; Channel Connectors F3f Feishu webhook + outbound transport contract completed; OpenAI Platform vendor proof optional
+> 状态：Studio Gateway core completed; Provider Center/App Connections completed; CLI/Gateway/live smoke harness completed; Channel Connectors F3f Feishu transport live credential proof completed; OpenAI Platform vendor proof optional
 > 更新：2026-06-06
 > 文档规则：只保留当前状态、最近完成、验证和下一步；旧流水已压缩。
 
@@ -41,14 +41,15 @@
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test tests/system/studio-web-channel-connectors-page.test.mjs tests/system/studio-web-shell-route-manifest.test.mjs`。
 - 通过：`npm run build:web`。
+- 通过：Feishu live credential proof（secret redacted）：tenant access token HTTP 200、token cache hit、bot info HTTP 200 / code 0。
 
 ## 已知边界
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
-- Channel Connectors 已用真实 Octo 凭据验证 register、WuKongIM WebSocket、用户消息入站、Codex CLI Agent、Studio Gateway、Octo sendMessage 和同一 IM session 的 Codex thread 续接。Feishu webhook / transport 已有 mock contract 测试；尚未用真实飞书 app 凭据和 callback URL 联调、审批回传、图片/文件/历史上下文；高风险全局配置/系统服务命令暂不通过 IM 直接开放。
+- Channel Connectors 已用真实 Octo 凭据验证 register、WuKongIM WebSocket、用户消息入站、Codex CLI Agent、Studio Gateway、Octo sendMessage 和同一 IM session 的 Codex thread 续接。Feishu app 凭据已完成 tenant-token / bot-info live proof；尚未用真实 verification token、callback URL、chat message 联调 webhook/回复闭环、审批回传、图片/文件/历史上下文；高风险全局配置/系统服务命令暂不通过 IM 直接开放。
 
 ## 下一步
 
-1. 完成 F3f 真实 Feishu 联调：需要 app_id、app_secret、verification token、公开 callback URL 或隧道；验证 URL verification、消息 slash 回复、card action。
+1. 完成 F3f 真实 Feishu webhook/message 联调：还需要 verification token、公开 callback URL 或隧道；如需主动发消息 smoke，还需要 chat_id 或先让机器人收到一条真实消息。
 2. 进入 F3g：补 CLI Agent 权限审批回传。
 3. 进入 F4：补图片/文件、群聊成员/history context、长回复 group buffer 和治理策略。
