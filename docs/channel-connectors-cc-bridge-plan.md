@@ -1,6 +1,6 @@
 # Channel Connectors / CC Bridge 方案确认稿
 
-> 状态：待用户确认，确认前不实现
+> 状态：F0 已确认，下一步进入 F1
 > 更新：2026-06-06
 > 参考源：`release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`
 
@@ -22,6 +22,8 @@ Octo(dmwork) / 飞书 / 微信 / IM
 - Studio / OpenClaw 崩溃时，CC Bridge 仍继续运行。
 - CC Bridge 运行期不依赖 Studio API；Studio 只负责配置、安装、启停、日志和可视化管理。
 - Agent CLI 使用 Studio Gateway daemon endpoint 和本地 Gateway key；真实 upstream key 仍留在 Studio Gateway secret store。
+- 支持多渠道、多机器人绑定不同 Agent：不同平台或同平台不同 bot 可以分别绑定 Codex、Claude Code、OpenCode 等 Agent。
+- 微信个人号作为特殊限制：一个微信账号只绑定一个 Agent。
 
 ## 2. 为什么先托管 cc-connect
 
@@ -103,7 +105,22 @@ Studio 生成 cc-connect config，而不是让用户手写完整 TOML。
 
 用户仍可进入高级配置查看原生 TOML preview，但默认不直接编辑。
 
-## 7. 与 Studio Gateway 的关系
+## 7. 绑定模型
+
+Channel Connectors 的核心绑定对象不是“平台”本身，而是 **platform account / bot -> Agent profile**。
+
+规则：
+
+- 一个 Studio project 可以配置多个 platform account / bot。
+- 每个 platform account / bot 必须选择一个 Agent profile，例如 Codex、Claude Code、OpenCode。
+- 同一平台可存在多个 bot，每个 bot 可绑定不同 Agent。
+- Octo(dmwork)、飞书、企业微信等多 bot 场景按 bot 粒度绑定 Agent。
+- 微信个人号按账号粒度绑定 Agent，单账号只允许一个 Agent。
+- Agent profile 复用 Studio Gateway App Connections 的模型、上下文、reasoning、权限和工作目录配置。
+- 绑定变更只影响新会话；已有会话按 session key 保留原 Agent，除非用户显式迁移或重置。
+- UI 需要在 Sessions 中显示 resolved binding：platform、bot/account、session key、Agent、model。
+
+## 8. 与 Studio Gateway 的关系
 
 两者是并列 daemon：
 
@@ -125,19 +142,19 @@ CC Bridge -> Studio API -> Studio Gateway
 
 后续 native Channel Connectors 可以在 Studio 在线时进入 Studio Chat / Agent，但必须保留 daemon 直连 fallback。
 
-## 8. 分阶段计划
+## 9. 分阶段计划
 
 | 阶段 | 目标 |
 | --- | --- |
-| F0 | 方案确认：确定守护边界、源码策略、首批平台和 UI 范围 |
+| F0 | 方案确认：守护边界、源码策略、首批平台、首批 Agent、多 bot 绑定规则和 UI 范围已确认 |
 | F1 | 引入 Studio-managed CC Bridge service/config/status/logs，不接真实平台 |
 | F2 | 生成最小 cc-connect config：单项目 + Codex/Claude/OpenCode agent + Studio Gateway provider |
-| F3 | 接入 Octo(dmwork) 配置和连接测试，完成文本往返 smoke |
+| F3 | 接入 Octo(dmwork) 配置、bot->Agent 绑定和连接测试，完成文本往返 smoke |
 | F4 | 补图片/文件、mention、群聊 session key、allowlist、rate limit |
 | F5 | 加飞书、微信/企业微信等平台；开始抽象 Studio Channel Connector contract |
 | F6 | 逐步 native 化优先平台，减少对 cc-connect fork 的依赖 |
 
-## 9. 验收标准
+## 10. 验收标准
 
 最低验收：
 
@@ -147,6 +164,8 @@ CC Bridge -> Studio API -> Studio Gateway
 - OpenClaw 停止或单口 gateway 不可用时，CC Bridge 仍能调用 local agent CLI。
 - local agent CLI 通过 Studio Gateway daemon 完成一次 Codex 或 Claude 对话。
 - Octo(dmwork) 文本消息可进入 agent，并将回复发回原会话。
+- Octo(dmwork) 不同 bot 可以分别绑定 Codex 和 Claude Code，并分别命中对应 Agent profile。
+- 微信个人号配置尝试绑定多个 Agent 时必须被拒绝或提示只能选择一个。
 - 日志可从 Studio 查看，敏感 token 脱敏。
 - 停止 CC Bridge 不影响 Studio Gateway daemon。
 
@@ -158,14 +177,13 @@ CC Bridge -> Studio API -> Studio Gateway
 - CC Bridge service 重启后能恢复会话和 reply context。
 - 崩溃后由 OS/user supervisor 自动拉起。
 
-## 10. 待确认点
-
-建议默认选择：
+## 11. 已确认点
 
 1. 首批平台：先 Octo(dmwork)，再飞书，微信/企业微信后置。
 2. 首批 Agent：Codex + Claude Code；OpenCode 跟随 App Connections 已有配置。
 3. Runtime 链路：CC Bridge 运行期直接调用本地 Agent CLI，Agent CLI 走 Studio Gateway daemon；不依赖 Studio API。
 4. 源码策略：把 release 副本迁移到新的 `channel-connectors` 资源路径，作为托管 fork，小补丁层维护。
 5. UI 范围：先做 Runtime / Projects / Platforms / Sessions 四块，Advanced 后置折叠。
+6. 多渠道 / 多 bot 绑定：不同渠道和不同 bot 可绑定不同 Agent；微信个人号单账号只能绑定一个 Agent。
 
-确认后才能开始 F1 实现。
+下一步进入 F1 实现。
