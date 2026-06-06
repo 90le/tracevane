@@ -84,7 +84,10 @@ export function registerChannelConnectorsRoutes(router: StudioRouter): void {
   router.post("/api/channel-connectors/adapters/feishu/webhook", async (req, res, routeCtx) => {
     try {
       const payload = await parseJsonBody<ChannelConnectorFeishuWebhookRequest>(req);
-      const response = await routeCtx.services.channelConnectors.dispatchFeishuWebhook(payload);
+      const response = await routeCtx.services.channelConnectors.dispatchFeishuWebhook({
+        ...payload,
+        sendReply: payload.sendReply !== false,
+      });
       sendJson(res, 200, response.feishuResponse || response);
     } catch (error) {
       sendChannelConnectorsError(res, error);
