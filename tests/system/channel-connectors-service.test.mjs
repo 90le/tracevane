@@ -5957,17 +5957,17 @@ test("native Channel Connectors daemon entry exposes health and writes runtime",
     const status = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
     assert.equal(status.status, 200);
     assert.equal(status.body.agentSessionDriver.defaultMode, "one-shot");
-    assert.equal(status.body.agentSessionDriver.implementation, "contract-only");
-    assert.equal(status.body.agentSessionDriver.persistentDriverReady, false);
+    assert.equal(status.body.agentSessionDriver.implementation, "codex-app-server-experimental");
+    assert.equal(status.body.agentSessionDriver.persistentDriverReady, true);
     assert.equal(status.body.agentSessionDriver.activeSessions.length, 0);
     assert.equal(status.body.agentSessionDriver.requestedPersistentBindings.length, 1);
     assert.equal(status.body.agentSessionDriver.requestedPersistentBindings[0].requestedMode, "persistent");
-    assert.equal(status.body.agentSessionDriver.requestedPersistentBindings[0].effectiveMode, "one-shot");
-    assert.equal(status.body.agentSessionDriver.requestedPersistentBindings[0].reason, "persistent-driver-contract-only");
+    assert.equal(status.body.agentSessionDriver.requestedPersistentBindings[0].effectiveMode, "persistent");
+    assert.equal(status.body.agentSessionDriver.requestedPersistentBindings[0].reason, "codex-app-server-experimental");
     assert.equal(fs.existsSync(runtimeConfig.paths.runtime), true);
     const runtime = JSON.parse(fs.readFileSync(runtimeConfig.paths.runtime, "utf8"));
     assert.equal(runtime.agentSessionDriver.requestedPersistentBindings.length, 1);
-    assert.equal(runtime.agentSessionDriver.requestedPersistentBindings[0].effectiveMode, "one-shot");
+    assert.equal(runtime.agentSessionDriver.requestedPersistentBindings[0].effectiveMode, "persistent");
     assert.equal(fs.existsSync(runtimeConfig.paths.log), true);
     assert.match(fs.readFileSync(runtimeConfig.paths.log, "utf8"), /Studio native Channel Connectors daemon started/);
   } finally {
@@ -6022,6 +6022,12 @@ test("native Channel Connectors daemon queues same-session messages while an Age
 
   assert.match(daemonSource, /function latestActiveRunForSession/);
   assert.match(daemonSource, /function acquireChannelSessionAgentRun/);
+  assert.match(daemonSource, /createChannelConnectorAgentSessionDriverPool/);
+  assert.match(daemonSource, /createCodexAppServerSessionDriverFactory/);
+  assert.match(daemonSource, /function runChannelConnectorAgentTurnWithSessionDriver/);
+  assert.match(daemonSource, /effectiveAgentSessionDriverMode/);
+  assert.match(daemonSource, /runChannelConnectorAgentTurnWithSessionDriver\(\{/);
+  assert.match(daemonSource, /permissionMode:\s*input\.project\.permissionMode/);
   assert.match(daemonSource, /channelSessionAgentRunQueues/);
   assert.match(daemonSource, /function queuedAgentRunReply/);
   assert.match(daemonSource, /本条已加入队列/);
@@ -6267,6 +6273,244 @@ test("native Channel Connectors daemon serializes same-session Octo Agent turns"
             && event.messageId === "2002"
             && event.sessionKey === "dmwork:dm:queue-user";
         }));
+      } finally {
+        child.kill("SIGTERM");
+        await new Promise((resolve) => {
+          child.once("exit", resolve);
+          setTimeout(resolve, 1000);
+        });
+      }
+
+      assert.equal(stderr.trim(), "");
+    });
+  } finally {
+    await new Promise((resolve, reject) => {
+      wss.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
+test("native Channel Connectors daemon runs Codex app-server when persistent session metadata is enabled", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+  });
+  const fakeBin = path.join(root, "fake-bin");
+  const capturePath = path.join(root, "codex-appserver-capture.jsonl");
+  fs.mkdirSync(fakeBin, { recursive: true });
+  const fakeCodexPath = path.join(fakeBin, "codex");
+  fs.writeFileSync(fakeCodexPath, [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    "const lines = [];",
+    "let nextTurn = 1;",
+    "function emit(value) { process.stdout.write(`${JSON.stringify(value)}\\n`); }",
+    "function record(value) { fs.appendFileSync(process.env.STUDIO_TEST_CODEX_CAPTURE, `${JSON.stringify(value)}\\n`); }",
+    "if (process.argv[2] !== 'app-server') {",
+    "  record({ mode: 'fallback-exec', argv: process.argv.slice(2) });",
+    "  process.exit(23);",
+    "}",
+    "process.stdin.setEncoding('utf8');",
+    "process.stdin.on('data', (chunk) => {",
+    "  for (const raw of chunk.split(/\\r?\\n/)) {",
+    "    if (!raw.trim()) continue;",
+    "    const message = JSON.parse(raw);",
+    "    record({ mode: 'app-server', method: message.method, id: message.id || null, params: message.params || null, codexHome: process.env.CODEX_HOME, openaiBaseUrl: process.env.OPENAI_BASE_URL });",
+    "    if (message.method === 'initialize') {",
+    "      emit({ id: message.id, result: { userAgent: 'fake-codex-app-server', codexHome: process.env.CODEX_HOME || '', platformFamily: 'unix', platformOs: 'linux' } });",
+    "    } else if (message.method === 'initialized') {",
+    "      // notification",
+    "    } else if (message.method === 'thread/start') {",
+    "      emit({ id: message.id, result: { thread: { id: 'thread-persistent-1', sessionId: 'thread-persistent-1', turns: [], cwd: message.params.cwd }, model: message.params.model, modelProvider: 'studio_gateway', cwd: message.params.cwd, approvalPolicy: message.params.approvalPolicy, sandbox: { type: 'readOnly', networkAccess: false } } });",
+    "      emit({ method: 'thread/started', params: { thread: { id: 'thread-persistent-1' } } });",
+    "    } else if (message.method === 'turn/start') {",
+    "      const turnId = `turn-${nextTurn++}`;",
+    "      emit({ id: message.id, result: { turn: { id: turnId, status: 'running', items: [] } } });",
+    "      setTimeout(() => {",
+    "        emit({ method: 'turn/started', params: { threadId: message.params.threadId, turn: { id: turnId, status: 'running' } } });",
+    "        emit({ method: 'item/agentMessage/delta', params: { threadId: message.params.threadId, turnId, itemId: 'agent-1', delta: 'persistent ok' } });",
+    "        emit({ method: 'item/completed', params: { threadId: message.params.threadId, turnId, item: { type: 'agentMessage', id: 'agent-1', text: 'persistent ok' } } });",
+    "        emit({ method: 'turn/completed', params: { threadId: message.params.threadId, turn: { id: turnId, status: 'completed', items: [] } } });",
+    "      }, 10);",
+    "    } else {",
+    "      emit({ id: message.id, error: { code: -32601, message: `unexpected ${message.method}` } });",
+    "    }",
+    "  }",
+    "});",
+    "setInterval(() => {}, 1000);",
+    "",
+  ].join("\n"), { mode: 0o755 });
+
+  const wsConnects = [];
+  let inboundSent = false;
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  await new Promise((resolve, reject) => {
+    wss.once("listening", resolve);
+    wss.once("error", reject);
+  });
+  const wsAddress = wss.address();
+  assert.ok(wsAddress && typeof wsAddress === "object");
+  const wsUrl = `ws://127.0.0.1:${wsAddress.port}/ws`;
+  wss.on("connection", (socket) => {
+    let connected = false;
+    socket.on("message", (data) => {
+      if (connected) return;
+      const packet = decodeOctoConnectPacket(Buffer.isBuffer(data) ? data : Buffer.from(data));
+      connected = true;
+      wsConnects.push(packet);
+      const serverKey = createOctoX25519KeyPair();
+      const salt = "fedcba0987654321";
+      socket.send(encodeOctoConnackPacket({
+        serverPublicKeyBase64: serverKey.publicKeyBase64,
+        salt,
+      }));
+      if (!inboundSent) {
+        inboundSent = true;
+        setTimeout(() => {
+          if (socket.readyState !== 1) return;
+          socket.send(encodeOctoRecvPacket({
+            serverPrivateKey: serverKey.privateKey,
+            clientPublicKeyBase64: packet.clientPublicKeyBase64,
+            salt,
+            messageId: 3001,
+            messageSeq: 1,
+            fromUid: "persistent-user",
+            channelId: "persistent-user",
+            channelType: 1,
+            payload: {
+              type: 1,
+              content: "hello persistent session",
+            },
+          }));
+        }, 50);
+      }
+    });
+  });
+
+  try {
+    const requests = [];
+    await withServer(async (req, res) => {
+      const chunks = [];
+      req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
+      await new Promise((resolve) => req.on("end", resolve));
+      const bodyRaw = Buffer.concat(chunks).toString("utf8");
+      requests.push({
+        method: req.method,
+        path: req.url,
+        authorization: req.headers.authorization,
+        body: bodyRaw ? JSON.parse(bodyRaw) : {},
+      });
+      res.setHeader("content-type", "application/json");
+      if (req.url === "/v1/models") {
+        res.end(JSON.stringify({ object: "list", data: [{ id: "gpt-5", object: "model" }] }));
+        return true;
+      }
+      if (req.url?.startsWith("/v1/bot/register")) {
+        res.end(JSON.stringify({ robot_id: "robot-persistent", im_token: "im-token-persistent", ws_url: wsUrl }));
+        return true;
+      }
+      if (req.url === "/v1/bot/typing" || req.url === "/v1/bot/sendMessage" || req.url === "/v1/bot/heartbeat") {
+        res.end(JSON.stringify({ ok: true, message_id: `octo-${requests.length}` }));
+        return true;
+      }
+      return false;
+    }, async (apiUrl) => {
+      const initial = service.getNativeConfig().config;
+      service.saveNativeConfig({
+        config: {
+          ...initial,
+          agentProfiles: [
+            {
+              id: "codex-persistent",
+              name: "Codex Persistent",
+              agent: "codex",
+              model: "gpt-5",
+              workDir: config.projectRoot,
+              permissionMode: "read-only",
+              gatewayEndpoint: `${apiUrl}/v1`,
+              gatewayKeyRef: "studio-gateway-client-key",
+              appProfileRef: "codex",
+            },
+          ],
+          defaultAgentProfileId: "codex-persistent",
+          platformBindings: [
+            {
+              id: "octo-persistent",
+              platform: "octo",
+              accountId: "octo-account",
+              botId: null,
+              displayName: "Octo Persistent",
+              agentProfileId: "codex-persistent",
+              enabled: true,
+              allowlist: [],
+              adminUsers: [],
+              metadata: {
+                apiUrl,
+                botToken: "test-token",
+                wsUrl,
+                agentSessionDriver: "persistent",
+                octoReconnectJitterMs: 0,
+              },
+            },
+          ],
+        },
+      });
+
+      const runtimeConfig = service.getDaemonConfig().config;
+      runtimeConfig.management.port = await findFreePort();
+      const configPath = path.join(root, "daemon-persistent-config.json");
+      fs.mkdirSync(path.dirname(runtimeConfig.paths.log), { recursive: true });
+      fs.writeFileSync(configPath, JSON.stringify(runtimeConfig, null, 2), "utf8");
+
+      const daemonEntry = path.resolve("dist/apps/api/modules/channel-connectors/daemon.js");
+      const child = spawn(process.execPath, [daemonEntry, "--config", configPath], {
+        cwd: path.resolve("."),
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:${process.env.PATH || ""}`,
+          STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+          STUDIO_TEST_CODEX_CAPTURE: capturePath,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stderr = "";
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk.toString("utf8");
+      });
+
+      try {
+        await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const connected = response.body?.octoConnections?.find?.((item) => item.bindingId === "octo-persistent" && item.connected);
+          return connected ? response.body : null;
+        }, 5000);
+
+        const status = await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const run = response.body?.agentRuns?.find?.((item) => item.messageId === "3001" && item.ok);
+          const session = response.body?.agentSessionDriver?.activeSessions?.find?.((item) => item.bindingId === "octo-persistent");
+          return run && session ? response.body : null;
+        }, 10_000);
+        assert.equal(status.agentSessionDriver.requestedPersistentBindings[0].effectiveMode, "persistent");
+        assert.equal(status.agentSessionDriver.activeSessions[0].sessionId.includes("codex-app-server:"), true);
+        assert.equal(status.agentSessionDriver.activeSessions[0].turnCount, 1);
+
+        const capture = fs.readFileSync(capturePath, "utf8")
+          .trim()
+          .split(/\r?\n/)
+          .filter(Boolean)
+          .map((line) => JSON.parse(line));
+        assert.equal(capture.some((item) => item.mode === "fallback-exec"), false);
+        assert.ok(capture.some((item) => item.method === "initialize"));
+        assert.ok(capture.some((item) => item.method === "thread/start" && item.params.sandbox === "read-only"));
+        assert.ok(capture.some((item) => item.method === "turn/start" && item.params.sandboxPolicy?.type === "readOnly"));
+        assert.ok(capture.some((item) => item.codexHome && String(item.codexHome).includes("codex-home")));
+        const replyContents = requests
+          .filter((request) => request.path === "/v1/bot/sendMessage")
+          .map((request) => request.body?.payload?.content || "")
+          .join("\n");
+        assert.match(replyContents, /persistent ok/);
       } finally {
         child.kill("SIGTERM");
         await new Promise((resolve) => {

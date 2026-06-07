@@ -1,4 +1,4 @@
-import type { ChannelConnectorAgentId } from "../../../../types/channel-connectors.js";
+import type { ChannelConnectorAgentId, ChannelConnectorPermissionMode } from "../../../../types/channel-connectors.js";
 import type {
   ChannelConnectorAgentProgressEvent,
   ChannelConnectorAgentTurnRequest,
@@ -14,6 +14,7 @@ export interface ChannelConnectorAgentSessionDriverKeyInput {
   agent: ChannelConnectorAgentId;
   model: string | null;
   workDir: string;
+  permissionMode?: ChannelConnectorPermissionMode | null;
 }
 
 export interface ChannelConnectorAgentSessionDriverTurnInput {
@@ -40,6 +41,7 @@ export interface ChannelConnectorAgentSessionDriverFactory {
 export interface ChannelConnectorAgentSessionDriverCreateInput {
   key: ChannelConnectorAgentSessionDriverKeyInput;
   poolKey: string;
+  turnInput?: ChannelConnectorAgentSessionDriverTurnInput | null;
 }
 
 export type ChannelConnectorAgentSessionDriverEventType =
@@ -136,6 +138,7 @@ export function channelConnectorAgentSessionDriverPoolKey(
     input.agent,
     input.model || "",
     input.workDir,
+    input.permissionMode || "",
   ].map((part) => encodeKeyPart(part)).join("|");
 }
 
@@ -196,7 +199,7 @@ export class ChannelConnectorAgentSessionDriverPool {
     if (!entry) {
       await this.reapIdle();
       await this.trimToCapacity();
-      const session = await this.factory.create({ key: input.key, poolKey });
+      const session = await this.factory.create({ key: input.key, poolKey, turnInput: input });
       const now = this.nowMs();
       entry = {
         poolKey,

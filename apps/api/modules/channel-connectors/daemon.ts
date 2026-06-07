@@ -23,6 +23,7 @@ import type {
   ChannelConnectorsDaemonRuntimeConfig,
 } from "../../../../types/channel-connectors.js";
 import {
+  buildChannelConnectorAgentProcessRequest,
   runChannelConnectorAgentTurn,
   type ChannelConnectorAgentProgressEvent,
   type ChannelConnectorAgentTurnResult,
@@ -30,9 +31,15 @@ import {
   type ChannelConnectorRuntimeProject,
 } from "./agent-runner.js";
 import {
+  createChannelConnectorAgentSessionDriverPool,
   resolveChannelConnectorAgentSessionDriverMode,
+  type ChannelConnectorAgentSessionDriverMode,
   type ChannelConnectorAgentSessionDriverStatus,
 } from "./agent-session-driver.js";
+import {
+  createCodexAppServerSessionDriverFactory,
+  JsonLineCodexAppServerTransport,
+} from "./codex-app-server-driver.js";
 import {
   clearChannelConnectorAgentSessionsForConversation,
   getChannelConnectorAgentSession,
@@ -178,6 +185,20 @@ const CHANNEL_COMPACT_HISTORY_LIMIT = 40;
 const CHANNEL_COMPACT_PROMPT_MAX_RUNES = 24_000;
 const CHANNEL_COMPACT_TIMEOUT_MS = 45_000;
 
+const channelAgentSessionDriverPool = createChannelConnectorAgentSessionDriverPool({
+  factory: createCodexAppServerSessionDriverFactory({
+    transportFactory: ({ key, agentTurnRequest }) => {
+      const processRequest = agentTurnRequest
+        ? buildChannelConnectorAgentProcessRequest(agentTurnRequest)
+        : null;
+      return new JsonLineCodexAppServerTransport({
+        cwd: key.workDir,
+        env: processRequest?.env || {},
+      });
+    },
+  }),
+});
+
 interface ChannelDaemonOctoConnectionState extends OctoWukongSocketStatus {
   accountId: string;
   botId: string | null;
@@ -313,14 +334,14 @@ interface ChannelDaemonAgentSessionDriverBindingState {
   agent: string;
   model: string | null;
   requestedMode: "one-shot" | "persistent";
-  effectiveMode: "one-shot";
-  reason: "default" | "persistent-driver-contract-only";
+  effectiveMode: "one-shot" | "persistent";
+  reason: "default" | "codex-app-server-experimental" | "unsupported-agent";
 }
 
 interface ChannelDaemonAgentSessionDriverState {
   defaultMode: "one-shot";
-  implementation: "contract-only";
-  persistentDriverReady: false;
+  implementation: "codex-app-server-experimental";
+  persistentDriverReady: true;
   requestedPersistentBindings: ChannelDaemonAgentSessionDriverBindingState[];
   bindings: ChannelDaemonAgentSessionDriverBindingState[];
   activeSessions: ChannelConnectorAgentSessionDriverStatus[];
@@ -431,6 +452,7 @@ function writeJsonFileAtomic(filePath: string, value: unknown): void {
 
 function writeRuntime(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelDaemonState): void {
   ensureDir(path.dirname(config.paths.runtime));
+  state.agentSessionDriver = buildAgentSessionDriverState(config);
   state.updatedAt = new Date().toISOString();
   fs.writeFileSync(config.paths.runtime, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
@@ -456,10 +478,39 @@ function createDaemonState(config: ChannelConnectorsDaemonRuntimeConfig): Channe
   };
 }
 
-function buildAgentSessionDriverState(config: ChannelConnectorsDaemonRuntimeConfig): ChannelDaemonAgentSessionDriverState {
+function effectiveAgentSessionDriverMode(input: {
+  binding: ChannelConnectorRuntimeBinding;
+  project: ChannelConnectorRuntimeProject;
+}): { requestedMode: ChannelConnectorAgentSessionDriverMode; effectiveMode: ChannelConnectorAgentSessionDriverMode; reason: ChannelDaemonAgentSessionDriverBindingState["reason"] } {
+  const requestedMode = resolveChannelConnectorAgentSessionDriverMode(input.binding.metadata);
+  if (requestedMode !== "persistent") {
+    return {
+      requestedMode,
+      effectiveMode: "one-shot",
+      reason: "default",
+    };
+  }
+  if (input.project.agent !== "codex") {
+    return {
+      requestedMode,
+      effectiveMode: "one-shot",
+      reason: "unsupported-agent",
+    };
+  }
+  return {
+    requestedMode,
+    effectiveMode: "persistent",
+    reason: "codex-app-server-experimental",
+  };
+}
+
+function buildAgentSessionDriverState(
+  config: ChannelConnectorsDaemonRuntimeConfig,
+  activeSessions: ChannelConnectorAgentSessionDriverStatus[] = channelAgentSessionDriverPool.status(),
+): ChannelDaemonAgentSessionDriverState {
   const bindings = config.projects.flatMap((project) => {
     return project.platformBindings.map((binding) => {
-      const requestedMode = resolveChannelConnectorAgentSessionDriverMode(binding.metadata);
+      const mode = effectiveAgentSessionDriverMode({ binding, project });
       return {
         projectId: project.id,
         bindingId: binding.id,
@@ -468,21 +519,19 @@ function buildAgentSessionDriverState(config: ChannelConnectorsDaemonRuntimeConf
         botId: binding.botId,
         agent: project.agent,
         model: project.model,
-        requestedMode,
-        effectiveMode: "one-shot" as const,
-        reason: requestedMode === "persistent"
-          ? "persistent-driver-contract-only" as const
-          : "default" as const,
+        requestedMode: mode.requestedMode,
+        effectiveMode: mode.effectiveMode,
+        reason: mode.reason,
       };
     });
   });
   return {
     defaultMode: "one-shot",
-    implementation: "contract-only",
-    persistentDriverReady: false,
+    implementation: "codex-app-server-experimental",
+    persistentDriverReady: true,
     requestedPersistentBindings: bindings.filter((binding) => binding.requestedMode === "persistent"),
     bindings,
-    activeSessions: [],
+    activeSessions,
   };
 }
 
@@ -596,6 +645,7 @@ function startHttp(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelD
       return;
     }
     if (req.url === "/status") {
+      state.agentSessionDriver = buildAgentSessionDriverState(config);
       res.setHeader("content-type", "application/json; charset=utf-8");
       res.end(JSON.stringify({
         ok: true,
@@ -1108,6 +1158,36 @@ function queuedAgentRunReply(input: {
     target ? `当前任务：${target}` : "",
     entry ? `当前消息：${shortMessage(entry.messageId, 80)}` : "",
   ].filter(Boolean).join("\n");
+}
+
+async function runChannelConnectorAgentTurnWithSessionDriver(input: {
+  binding: ChannelConnectorRuntimeBinding;
+  project: ChannelConnectorRuntimeProject;
+  sessionKey: string;
+  messageId: string;
+  request: Parameters<typeof runChannelConnectorAgentTurn>[0];
+}): Promise<ChannelConnectorAgentTurnResult> {
+  const mode = effectiveAgentSessionDriverMode({
+    binding: input.binding,
+    project: input.project,
+  }).effectiveMode;
+  return channelAgentSessionDriverPool.runTurn({
+    mode,
+    key: {
+      bindingId: input.binding.id,
+      projectId: input.project.id,
+      sessionKey: input.sessionKey,
+      agent: input.project.agent,
+      model: input.project.model,
+      workDir: input.project.workDir,
+      permissionMode: input.project.permissionMode,
+    },
+    messageId: input.messageId,
+    agentTurnRequest: input.request,
+    signal: input.request.signal || null,
+    onProgress: input.request.onProgress,
+    runOneShot: () => runChannelConnectorAgentTurn(input.request),
+  });
 }
 
 async function sendOctoOutboundFiles(input: {
@@ -3662,61 +3742,67 @@ async function dispatchOctoMessage(input: {
   const stopTypingPulse = startOctoTypingPulse(transport, message);
   let agent: ChannelConnectorAgentTurnResult;
   try {
-    agent = await runChannelConnectorAgentTurn({
-      project: turnProject,
+    agent = await runChannelConnectorAgentTurnWithSessionDriver({
       binding,
-      message: agentMessage,
+      project: turnProject,
       sessionKey,
-      gatewayEndpoint: turnProject.gatewayEndpoint || config.gateway.endpoint,
-      gatewayClientKey: key,
-      agentRuntimeDir: runtimeDir,
-      historyContext: nativeCommand ? null : historyContext,
-      modelCapabilities: modelResolution.modelCapabilities,
-      nativeCommand: nativeCommand || null,
-      signal: abortController.signal,
-      session: {
-        codexThreadId: currentSession?.codexThreadId || null,
-      },
-      onProgress: (event) => {
-        progressEventCount += 1;
-        latestProgress = event;
-        const progressAtMs = isoTimestampMs(event.checkedAt) ?? Date.now();
-        const sincePreviousProgressMs = elapsedMsSince(previousProgressAtMs, progressAtMs);
-        if (firstProgressAtMs === null) firstProgressAtMs = progressAtMs;
-        previousProgressAtMs = progressAtMs;
-        const activeRun = state.activeRuns.find((run) => run.id === activeRunId);
-        if (activeRun) {
-          activeRun.updatedAt = event.checkedAt;
-          activeRun.progressEventCount = progressEventCount;
-          activeRun.latestProgress = latestProgress;
-          activeRun.agentElapsedMs = elapsedMsSince(runStartedAtMs, progressAtMs);
-          activeRun.firstProgressLatencyMs = firstProgressAtMs === null
-            ? null
-            : elapsedMsSince(runStartedAtMs, firstProgressAtMs);
-        }
-        writeJsonLine(config.paths.octoEvents, {
-          checkedAt: event.checkedAt,
-          eventKind: "agent.progress",
-          adapter: "octo",
-          bindingId: binding.id,
-          sessionKey,
-          messageId: message.messageId,
-          agent: turnProject.agent,
-          progressType: event.type,
-          rawType: event.rawType,
-          itemType: event.itemType,
-          text: event.text,
-          progressDefaultGroup: progressDefaults.isGroup,
-          progressStreamEnabled: channelConnectorStreamMessagesEnabled(control, progressDefaults),
-          progressToolsEnabled: channelConnectorToolMessagesEnabled(control, progressDefaults),
-          agentElapsedMs: elapsedMsSince(runStartedAtMs, progressAtMs),
-          sincePreviousProgressMs,
-          firstProgressLatencyMs: firstProgressAtMs === null
-            ? null
-            : elapsedMsSince(runStartedAtMs, firstProgressAtMs),
-        });
-        queueOctoProgressReply(event);
-        writeRuntime(config, state);
+      messageId: message.messageId,
+      request: {
+        project: turnProject,
+        binding,
+        message: agentMessage,
+        sessionKey,
+        gatewayEndpoint: turnProject.gatewayEndpoint || config.gateway.endpoint,
+        gatewayClientKey: key,
+        agentRuntimeDir: runtimeDir,
+        historyContext: nativeCommand ? null : historyContext,
+        modelCapabilities: modelResolution.modelCapabilities,
+        nativeCommand: nativeCommand || null,
+        signal: abortController.signal,
+        session: {
+          codexThreadId: currentSession?.codexThreadId || null,
+        },
+        onProgress: (event) => {
+          progressEventCount += 1;
+          latestProgress = event;
+          const progressAtMs = isoTimestampMs(event.checkedAt) ?? Date.now();
+          const sincePreviousProgressMs = elapsedMsSince(previousProgressAtMs, progressAtMs);
+          if (firstProgressAtMs === null) firstProgressAtMs = progressAtMs;
+          previousProgressAtMs = progressAtMs;
+          const activeRun = state.activeRuns.find((run) => run.id === activeRunId);
+          if (activeRun) {
+            activeRun.updatedAt = event.checkedAt;
+            activeRun.progressEventCount = progressEventCount;
+            activeRun.latestProgress = latestProgress;
+            activeRun.agentElapsedMs = elapsedMsSince(runStartedAtMs, progressAtMs);
+            activeRun.firstProgressLatencyMs = firstProgressAtMs === null
+              ? null
+              : elapsedMsSince(runStartedAtMs, firstProgressAtMs);
+          }
+          writeJsonLine(config.paths.octoEvents, {
+            checkedAt: event.checkedAt,
+            eventKind: "agent.progress",
+            adapter: "octo",
+            bindingId: binding.id,
+            sessionKey,
+            messageId: message.messageId,
+            agent: turnProject.agent,
+            progressType: event.type,
+            rawType: event.rawType,
+            itemType: event.itemType,
+            text: event.text,
+            progressDefaultGroup: progressDefaults.isGroup,
+            progressStreamEnabled: channelConnectorStreamMessagesEnabled(control, progressDefaults),
+            progressToolsEnabled: channelConnectorToolMessagesEnabled(control, progressDefaults),
+            agentElapsedMs: elapsedMsSince(runStartedAtMs, progressAtMs),
+            sincePreviousProgressMs,
+            firstProgressLatencyMs: firstProgressAtMs === null
+              ? null
+              : elapsedMsSince(runStartedAtMs, firstProgressAtMs),
+          });
+          queueOctoProgressReply(event);
+          writeRuntime(config, state);
+        },
       },
     });
   } catch (error) {
@@ -4569,66 +4655,72 @@ async function dispatchFeishuParsedEvent(input: {
   }
   let agent: ChannelConnectorAgentTurnResult;
   try {
-    agent = await runChannelConnectorAgentTurn({
-      project: turnProject,
+    agent = await runChannelConnectorAgentTurnWithSessionDriver({
       binding,
-      message: agentMessage,
+      project: turnProject,
       sessionKey,
-      gatewayEndpoint: turnProject.gatewayEndpoint || config.gateway.endpoint,
-      gatewayClientKey: key,
-      agentRuntimeDir: runtimeDir,
-      historyContext: nativeCommand ? null : historyContext,
-      modelCapabilities: modelResolution.modelCapabilities,
-      nativeCommand: nativeCommand || null,
-      signal: abortController.signal,
-      session: {
-        codexThreadId: currentSession?.codexThreadId || null,
-      },
-      onProgress: (event) => {
-        progressEventCount += 1;
-        latestProgress = event;
-        const progressAtMs = isoTimestampMs(event.checkedAt) ?? Date.now();
-        const sincePreviousProgressMs = elapsedMsSince(previousProgressAtMs, progressAtMs);
-        if (firstProgressAtMs === null) firstProgressAtMs = progressAtMs;
-        previousProgressAtMs = progressAtMs;
-        const activeRun = state.activeRuns.find((run) => run.id === activeRunId);
-        if (activeRun) {
-          activeRun.updatedAt = event.checkedAt;
-          activeRun.progressEventCount = progressEventCount;
-          activeRun.latestProgress = latestProgress;
-          activeRun.agentElapsedMs = elapsedMsSince(runStartedAtMs, progressAtMs);
-          activeRun.firstProgressLatencyMs = firstProgressAtMs === null
-            ? null
-            : elapsedMsSince(runStartedAtMs, firstProgressAtMs);
-        }
-        writeJsonLine(config.paths.feishuEvents, {
-          checkedAt: event.checkedAt,
-          eventKind: "agent.progress",
-          adapter: "feishu",
-          bindingId: binding.id,
-          sessionKey,
-          messageId,
-          ...feishuThreadLogFields(parsed),
-          agent: turnProject.agent,
-          progressType: event.type,
-          rawType: event.rawType,
-          itemType: event.itemType,
-          text: event.text,
-          progressDefaultGroup: progressDefaults.isGroup,
-          progressStreamEnabled: channelConnectorStreamMessagesEnabled(control, progressDefaults),
-          progressToolsEnabled: channelConnectorToolMessagesEnabled(control, progressDefaults),
-          agentElapsedMs: elapsedMsSince(runStartedAtMs, progressAtMs),
-          sincePreviousProgressMs,
-          firstProgressLatencyMs: firstProgressAtMs === null
-            ? null
-            : elapsedMsSince(runStartedAtMs, firstProgressAtMs),
-        });
-        const highPriority = event.type === "failed" || event.type === "error" || event.type === "completed";
-        if (shouldSendFeishuProgressEvent(control, event, progressDefaults)) {
-          const changed = pushFeishuProgressCardEvent(progressCardState, event);
-          if (changed) queueFeishuProgressFlush(highPriority, event.type);
-        }
-        writeRuntime(config, state);
+      messageId,
+      request: {
+        project: turnProject,
+        binding,
+        message: agentMessage,
+        sessionKey,
+        gatewayEndpoint: turnProject.gatewayEndpoint || config.gateway.endpoint,
+        gatewayClientKey: key,
+        agentRuntimeDir: runtimeDir,
+        historyContext: nativeCommand ? null : historyContext,
+        modelCapabilities: modelResolution.modelCapabilities,
+        nativeCommand: nativeCommand || null,
+        signal: abortController.signal,
+        session: {
+          codexThreadId: currentSession?.codexThreadId || null,
+        },
+        onProgress: (event) => {
+          progressEventCount += 1;
+          latestProgress = event;
+          const progressAtMs = isoTimestampMs(event.checkedAt) ?? Date.now();
+          const sincePreviousProgressMs = elapsedMsSince(previousProgressAtMs, progressAtMs);
+          if (firstProgressAtMs === null) firstProgressAtMs = progressAtMs;
+          previousProgressAtMs = progressAtMs;
+          const activeRun = state.activeRuns.find((run) => run.id === activeRunId);
+          if (activeRun) {
+            activeRun.updatedAt = event.checkedAt;
+            activeRun.progressEventCount = progressEventCount;
+            activeRun.latestProgress = latestProgress;
+            activeRun.agentElapsedMs = elapsedMsSince(runStartedAtMs, progressAtMs);
+            activeRun.firstProgressLatencyMs = firstProgressAtMs === null
+              ? null
+              : elapsedMsSince(runStartedAtMs, firstProgressAtMs);
+          }
+          writeJsonLine(config.paths.feishuEvents, {
+            checkedAt: event.checkedAt,
+            eventKind: "agent.progress",
+            adapter: "feishu",
+            bindingId: binding.id,
+            sessionKey,
+            messageId,
+            ...feishuThreadLogFields(parsed),
+            agent: turnProject.agent,
+            progressType: event.type,
+            rawType: event.rawType,
+            itemType: event.itemType,
+            text: event.text,
+            progressDefaultGroup: progressDefaults.isGroup,
+            progressStreamEnabled: channelConnectorStreamMessagesEnabled(control, progressDefaults),
+            progressToolsEnabled: channelConnectorToolMessagesEnabled(control, progressDefaults),
+            agentElapsedMs: elapsedMsSince(runStartedAtMs, progressAtMs),
+            sincePreviousProgressMs,
+            firstProgressLatencyMs: firstProgressAtMs === null
+              ? null
+              : elapsedMsSince(runStartedAtMs, firstProgressAtMs),
+          });
+          const highPriority = event.type === "failed" || event.type === "error" || event.type === "completed";
+          if (shouldSendFeishuProgressEvent(control, event, progressDefaults)) {
+            const changed = pushFeishuProgressCardEvent(progressCardState, event);
+            if (changed) queueFeishuProgressFlush(highPriority, event.type);
+          }
+          writeRuntime(config, state);
+        },
       },
     });
   } catch (error) {

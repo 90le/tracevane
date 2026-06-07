@@ -6,6 +6,7 @@ import {
   type ChannelConnectorAgentTurnResult,
 } from "./agent-runner.js";
 import type {
+  ChannelConnectorAgentSessionDriverKeyInput,
   ChannelConnectorAgentSessionDriverFactory,
   ChannelConnectorAgentSessionDriverSession,
   ChannelConnectorAgentSessionDriverTurnInput,
@@ -28,7 +29,11 @@ export interface CodexAppServerSessionOptions {
 }
 
 export interface CodexAppServerSessionFactoryOptions {
-  transportFactory: (input: { sessionId: string }) => CodexAppServerTransport;
+  transportFactory: (input: {
+    sessionId: string;
+    key: ChannelConnectorAgentSessionDriverKeyInput;
+    agentTurnRequest?: ChannelConnectorAgentSessionDriverTurnInput["agentTurnRequest"];
+  }) => CodexAppServerTransport;
   permissionMode?: ChannelConnectorPermissionMode;
   requestTimeoutMs?: number;
 }
@@ -245,6 +250,9 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
     const startedAt = Date.now();
     if (!input.agentTurnRequest) return input.runOneShot();
     if (input.agentTurnRequest.project.agent !== "codex") return input.runOneShot();
+    if (normalizeString(input.agentTurnRequest.nativeCommand) && !compactCommand(input.agentTurnRequest.nativeCommand)) {
+      return input.runOneShot();
+    }
     await this.initialize();
     await this.ensureThread();
 
@@ -465,12 +473,16 @@ export function createCodexAppServerSessionDriverFactory(
   options: CodexAppServerSessionFactoryOptions,
 ): ChannelConnectorAgentSessionDriverFactory {
   return {
-    create: ({ key, poolKey }) => new CodexAppServerSession({
+    create: ({ key, poolKey, turnInput }) => new CodexAppServerSession({
       sessionId: `codex-app-server:${poolKey}`,
-      transport: options.transportFactory({ sessionId: poolKey }),
+      transport: options.transportFactory({
+        sessionId: poolKey,
+        key,
+        agentTurnRequest: turnInput?.agentTurnRequest || null,
+      }),
       model: key.model,
       cwd: key.workDir,
-      permissionMode: options.permissionMode || "suggest",
+      permissionMode: key.permissionMode || options.permissionMode || "suggest",
       requestTimeoutMs: options.requestTimeoutMs,
     }),
   };
