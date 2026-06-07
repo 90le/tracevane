@@ -276,6 +276,12 @@ interface FeishuProgressCardState {
   latestError: string | null;
 }
 
+interface ChannelConnectorProgressDefaults {
+  isGroup: boolean;
+  streamMessages: boolean;
+  toolMessages: boolean;
+}
+
 function configPathFromArgv(argv: string[]): string {
   const index = argv.findIndex((item) => item === "--config");
   if (index >= 0 && argv[index + 1]) return argv[index + 1];
@@ -819,6 +825,23 @@ function startOctoTypingPulse(
   return () => clearInterval(timer);
 }
 
+function octoProgressTitle(event: ChannelConnectorAgentProgressEvent): string {
+  if (event.type === "running") return "运行中";
+  if (event.type === "reasoning") return "思考";
+  if (event.type === "tool") return event.rawType?.endsWith(".started") ? "工具调用" : "工具结果";
+  if (event.type === "failed") return "失败";
+  if (event.type === "error") return "错误";
+  if (event.type === "completed") return "完成";
+  return "进度";
+}
+
+function renderOctoProgressText(event: ChannelConnectorAgentProgressEvent): string {
+  const title = octoProgressTitle(event);
+  const subject = event.type === "tool" && event.itemType ? `：${event.itemType}` : "";
+  const text = shortMessage(event.text, 900);
+  return text ? `${title}${subject}\n${text}` : `${title}${subject}`;
+}
+
 function feishuReactionEmoji(binding: ChannelConnectorRuntimeBinding): string | null {
   const metadata = metadataRecord(binding);
   const configured = normalizeString(metadata.reactionEmoji)
@@ -1314,11 +1337,50 @@ function shouldSendFeishuCommandCard(input: {
 function shouldSendFeishuProgressEvent(
   control: ChannelConnectorSessionControlRecord | null,
   event: ChannelConnectorAgentProgressEvent,
+  defaults: ChannelConnectorProgressDefaults,
 ): boolean {
-  if (control?.streamMessages === false) return false;
+  if (!channelConnectorStreamMessagesEnabled(control, defaults)) return false;
   if (event.type === "assistant") return false;
-  if ((event.type === "tool" || event.type === "reasoning") && control?.toolMessages === false) return false;
+  if ((event.type === "tool" || event.type === "reasoning") && !channelConnectorToolMessagesEnabled(control, defaults)) return false;
   return ["running", "reasoning", "tool", "failed", "error", "completed", "event"].includes(event.type);
+}
+
+function channelConnectorProgressDefaults(isGroup: boolean): ChannelConnectorProgressDefaults {
+  return {
+    isGroup,
+    streamMessages: !isGroup,
+    toolMessages: !isGroup,
+  };
+}
+
+function feishuProgressDefaults(parsed: ChannelConnectorFeishuParsedWebhook): ChannelConnectorProgressDefaults {
+  return channelConnectorProgressDefaults(normalizeString(parsed.chatType).toLowerCase() === "group");
+}
+
+function octoProgressDefaults(message: ChannelConnectorOctoInboundMessage): ChannelConnectorProgressDefaults {
+  return channelConnectorProgressDefaults(isOctoGroupChannel(message.channelType));
+}
+
+function channelConnectorStreamMessagesEnabled(
+  control: ChannelConnectorSessionControlRecord | null,
+  defaults: ChannelConnectorProgressDefaults,
+): boolean {
+  return control?.streamMessages ?? defaults.streamMessages;
+}
+
+function channelConnectorToolMessagesEnabled(
+  control: ChannelConnectorSessionControlRecord | null,
+  defaults: ChannelConnectorProgressDefaults,
+): boolean {
+  return control?.toolMessages ?? defaults.toolMessages;
+}
+
+function shouldSendChannelProgressEvent(
+  control: ChannelConnectorSessionControlRecord | null,
+  event: ChannelConnectorAgentProgressEvent,
+  defaults: ChannelConnectorProgressDefaults,
+): boolean {
+  return shouldSendFeishuProgressEvent(control, event, defaults);
 }
 
 function createFeishuProgressCardState(): FeishuProgressCardState {
@@ -1564,6 +1626,7 @@ function buildFeishuCommandCard(input: {
   project: ChannelConnectorRuntimeProject;
   binding: ChannelConnectorRuntimeBinding;
   sessionKey: string;
+  displayDefaults?: ChannelConnectorProgressDefaults | null;
   selectedSectionId?: string | null;
   selectedViewId?: string | null;
   models?: string[];
@@ -1620,6 +1683,7 @@ function buildFeishuCommandCard(input: {
     project: input.project,
     binding: input.binding,
     control,
+    displayDefaults: input.displayDefaults || null,
     sessionKey: input.sessionKey,
     models: input.models,
     agentSession: session ? {
@@ -1702,6 +1766,7 @@ async function sendOrPatchFeishuCommandCard(input: {
   const card = buildFeishuCommandCard({
     ...input,
     ...selection,
+    displayDefaults: feishuProgressDefaults(input.parsed),
     models,
     notice: input.notice || null,
   });
@@ -2062,6 +2127,7 @@ async function dispatchOctoMessage(input: {
     bindingId: binding.id,
     sessionKey,
   });
+  const progressDefaults = octoProgressDefaults(message);
   const effectiveProject = resolveChannelConnectorEffectiveProject(config, project, control);
   const gatewayEndpoint = effectiveProject.gatewayEndpoint || config.gateway.endpoint;
   const modelResolution = await resolveChannelConnectorVisualTurnProject({
@@ -2121,6 +2187,56 @@ async function dispatchOctoMessage(input: {
   );
   let progressEventCount = 0;
   let latestProgress: ChannelConnectorAgentProgressEvent | null = null;
+  let lastOctoProgressSentAt = 0;
+  let octoProgressSendCount = 0;
+  let octoProgressFlush: Promise<void> = Promise.resolve();
+  const queueOctoProgressReply = (event: ChannelConnectorAgentProgressEvent): void => {
+    if (!transport) return;
+    if (!shouldSendChannelProgressEvent(control, event, progressDefaults)) return;
+    const replyText = renderOctoProgressText(event);
+    const replyPlan = renderOctoTextReply(message, replyText);
+    if (!replyPlan) return;
+    const highPriority = event.type === "failed" || event.type === "error" || event.type === "completed";
+    const nowMs = Date.now();
+    if (!highPriority && nowMs - lastOctoProgressSentAt < 1500) return;
+    if (!highPriority && octoProgressSendCount >= 40) return;
+    lastOctoProgressSentAt = nowMs;
+    octoProgressSendCount += 1;
+    octoProgressFlush = octoProgressFlush.catch(() => undefined).then(async () => {
+      const result = await sendOctoTextReply(transport, replyPlan);
+      writeJsonLine(config.paths.octoEvents, {
+        checkedAt: new Date().toISOString(),
+        eventKind: "agent.progress.reply",
+        adapter: "octo",
+        bindingId: binding.id,
+        sessionKey,
+        messageId: message.messageId,
+        channelId: message.channelId,
+        channelType: message.channelType,
+        progressType: event.type,
+        rawType: event.rawType,
+        itemType: event.itemType,
+        replySent: result.ok === true,
+        replyError: result.error,
+      });
+    }).catch((error) => {
+      writeJsonLine(config.paths.octoEvents, {
+        checkedAt: new Date().toISOString(),
+        eventKind: "agent.progress.reply",
+        adapter: "octo",
+        bindingId: binding.id,
+        sessionKey,
+        messageId: message.messageId,
+        channelId: message.channelId,
+        channelType: message.channelType,
+        progressType: event.type,
+        rawType: event.rawType,
+        itemType: event.itemType,
+        replySent: false,
+        replyError: shortMessage(error),
+      });
+    });
+  };
   state.activeRuns.unshift({
     id: activeRunId,
     startedAt: checkedAt,
@@ -2149,6 +2265,9 @@ async function dispatchOctoMessage(input: {
     model: turnProject.model,
     sessionResumed: Boolean(currentSession?.codexThreadId),
     codexThreadId: currentSession?.codexThreadId || null,
+    progressDefaults,
+    progressStreamEnabled: channelConnectorStreamMessagesEnabled(control, progressDefaults),
+    progressToolsEnabled: channelConnectorToolMessagesEnabled(control, progressDefaults),
   });
 
   const runtimeDir = agentRuntimeDir(config, turnProject, binding);
@@ -2229,7 +2348,11 @@ async function dispatchOctoMessage(input: {
           rawType: event.rawType,
           itemType: event.itemType,
           text: event.text,
+          progressDefaultGroup: progressDefaults.isGroup,
+          progressStreamEnabled: channelConnectorStreamMessagesEnabled(control, progressDefaults),
+          progressToolsEnabled: channelConnectorToolMessagesEnabled(control, progressDefaults),
         });
+        queueOctoProgressReply(event);
         writeRuntime(config, state);
       },
     });
@@ -2269,6 +2392,7 @@ async function dispatchOctoMessage(input: {
     progressEventCount = agent.progress.eventCount;
     latestProgress = agent.progress.latest;
   }
+  await octoProgressFlush;
   const codexImagePaths = codexNativeImageArgPaths(agent.args);
   if (codexImagePaths.length > 0) {
     writeJsonLine(config.paths.octoEvents, {
@@ -2715,6 +2839,7 @@ async function dispatchFeishuParsedEvent(input: {
     bindingId: binding.id,
     sessionKey,
   });
+  const progressDefaults = feishuProgressDefaults(parsed);
   const effectiveProject = resolveChannelConnectorEffectiveProject(config, project, control);
   const gatewayEndpoint = effectiveProject.gatewayEndpoint || config.gateway.endpoint;
   const modelResolution = await resolveChannelConnectorVisualTurnProject({
@@ -2855,6 +2980,9 @@ async function dispatchFeishuParsedEvent(input: {
     model: turnProject.model,
     sessionResumed: Boolean(currentSession?.codexThreadId),
     codexThreadId: currentSession?.codexThreadId || null,
+    progressDefaults,
+    progressStreamEnabled: channelConnectorStreamMessagesEnabled(control, progressDefaults),
+    progressToolsEnabled: channelConnectorToolMessagesEnabled(control, progressDefaults),
   });
 
   const stopTypingReaction = await startFeishuTypingReaction({
@@ -2933,9 +3061,12 @@ async function dispatchFeishuParsedEvent(input: {
           rawType: event.rawType,
           itemType: event.itemType,
           text: event.text,
+          progressDefaultGroup: progressDefaults.isGroup,
+          progressStreamEnabled: channelConnectorStreamMessagesEnabled(control, progressDefaults),
+          progressToolsEnabled: channelConnectorToolMessagesEnabled(control, progressDefaults),
         });
         const highPriority = event.type === "failed" || event.type === "error" || event.type === "completed";
-        if (shouldSendFeishuProgressEvent(control, event)) {
+        if (shouldSendFeishuProgressEvent(control, event, progressDefaults)) {
           const changed = pushFeishuProgressCardEvent(progressCardState, event);
           if (changed) queueFeishuProgressFlush(highPriority, event.type);
         }
@@ -2978,7 +3109,7 @@ async function dispatchFeishuParsedEvent(input: {
     progressEventCount = agent.progress.eventCount;
     latestProgress = agent.progress.latest;
   }
-  if (control?.streamMessages !== false && (progressCardState.messageId || progressCardState.entries.length > 0)) {
+  if (channelConnectorStreamMessagesEnabled(control, progressDefaults) && (progressCardState.messageId || progressCardState.entries.length > 0)) {
     if (agent.ok === false) {
       ensureFeishuProgressCardFailure(progressCardState, agent.error);
     } else if (agent.ok === true) {

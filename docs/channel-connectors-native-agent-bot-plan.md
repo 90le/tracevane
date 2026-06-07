@@ -35,6 +35,7 @@ CC 和 OpenClaw 只作为参考：
 - Feishu 长连接按 CC Go 保守策略：同 App 共享 WS 并快速 ACK/扇出，默认不启用 SDK `pingTimeout` 额外 liveness watchdog；只在 metadata 显式设置时启用。Studio daemon 维护真实 `lastReceivedAt`，启动后 connected 但 90s 无入站会快速轮换，正常连接只走 15 分钟 connected-idle renewal，避免假 connected 僵尸连接。
 - Feishu `im.message.receive_v1` / bot menu 入口必须像 CC Go 一样只在同步段完成解析、去重和 runtime 记录，随后后台执行附件下载、Agent runner、进度卡片和回复；去重状态需落盘，避免 daemon 重启后平台重投旧事件再次触发 Agent。
 - Feishu card/menu 按 CC 语义区分导航和执行：导航显示/更新卡片，`/new`、`/reset` 等无卡片执行动作快速 ACK 回调并异步发送普通文本结果，不弹悬浮 toast，也不自动弹完整菜单。
+- 进度/工具过程按 CC 群聊语义处理：私聊默认显示运行、思考和工具过程；Feishu 群聊、Octo 群聊默认只发最终回复，除非当前 IM session 显式开启 `/stream` / `/tools`。
 - Octo(dmwork) WuKongIM 长连接以 CC Go 为基线：30s heartbeat、10s PONG timeout、RECV 后立即 ACK、5 分钟 messageId 去重、断线后 `3s + 0..3s` 抖动重连、5 分钟 REST heartbeat 备用保活；Studio 实现允许 binding metadata 覆盖心跳、超时、重连、抖动窗口和 REST heartbeat，并在 runtime 暴露 REST heartbeat 成功/失败状态。
 
 默认路径：
@@ -95,7 +96,7 @@ Studio 增强点：
 | F1 | 已完成：native daemon skeleton、service/config/status/logs、独立页面、守护边界测试 |
 | F2 | 已完成：CC/OpenClaw 能力映射、typed config store、Agent Profile、工作目录、模型、权限、Gateway key ref、platform/bot binding |
 | F3 | 已完成核心合同：Octo(dmwork) adapter、REST transport、daemon register/cache/WuKongIM WebSocket、Codex CLI Agent runner、真实 Octo DM 文本往返、Codex session resume、IM command control、native passthrough、command surface、Feishu webhook/outbound/long-connection、Feishu card/menu/session/model/display/progress loop |
-| F4 | 进行中：长回复拆分、Feishu thread/reply session、附件 metadata/staging、Octo URL staging、Octo CC Go 长连接基线、图片非视觉模型保护、Gateway vision 模型自动选择、Codex 原生图片输入、轻量 history context、群聊 context、长回复 group buffer、reply buffer 查看命令/菜单、飞书群成员拉取、Feishu 会话列表/切换子卡已完成；继续补 Claude/OpenCode 视觉输入、OCR、语音 STT/TTS、长回复预览冻结、流式预览 |
+| F4 | 进行中：长回复拆分、Feishu thread/reply session、附件 metadata/staging、Octo URL staging、Octo CC Go 长连接基线、图片非视觉模型保护、Gateway vision 模型自动选择、Codex 原生图片输入、轻量 history context、群聊 context、长回复 group buffer、reply buffer 查看命令/菜单、飞书群成员拉取、Feishu 会话列表/切换子卡、Feishu/Octo 私聊进度与群聊静默默认已完成；继续补 Claude/OpenCode 视觉输入、OCR、语音 STT/TTS、长回复预览冻结、更多设置型卡片 |
 | F5 | 治理与自动化：allowlist/admin/rate limit/banned words 已完成；继续补 cron、hooks、relay、management API |
 | F6 | 飞书、微信/企业微信；继续迁移钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等 CC 平台 |
 | F7 | 补齐剩余 CC Agent、跨平台会话观测、消息审计、迁移工具和发布验收 |
@@ -125,6 +126,7 @@ Studio 增强点：
 - Channel Connectors 已支持 Feishu outbound contract：tenant access token file cache、send text message、patch card message、transport-smoke；message webhook 默认可把 command-router 回复真实出站；JSON 出站 API 已按 CC 补 transient retry，短暂 503/网络错误会指数退避重试。
 - 已完成脱敏 live 闭环：本地用户配置写入 Feishu binding、tenant token cache 验证通过、callback URL verification 通过；错误 verification token 不再回显 challenge；daemon active/enabled，真实飞书 `/status`/`/help` 入站并回复成功；CLI runner 已补用户级 PATH fallback，避免 systemd 下找不到 Codex/Claude/OpenCode；凭据和 token 不进入仓库。
 - Feishu card/menu 已按 CC 卡片结构拆成主菜单 Dashboard、分组菜单和可操作子卡；Current Session / History / Agent Sessions 子卡读取真实 Agent session 与 IM history store，`/list` 和 `/switch <序号|sessionId前缀>` 可在当前 IM session 内切换已知续接。普通 slash 与卡片点击共用 command-router；Agent 运行支持 processing reaction、单张 Progress card send/patch、`command_execution` 工具过程展示、`/stream` 与 `/tools` 开关，以及 upstream JSON error envelope 清洗和失败去重。
+- Feishu/Octo 进度显示已按 CC group buffer 语义统一：私聊默认显示运行/思考/工具过程；群聊默认不发送中间过程，只发送最终回复或最终错误；显式 `/stream` / `/tools` 可覆盖当前 IM session。
 - Codex 工具调用链路已按 CC/cc-switch 对齐：resume 参数顺序、Responses -> Chat 工具历史、reasoning/tool placeholder、JSON canonical 均有回归覆盖；隔离 `CODEX_HOME` 真实 smoke 已验证 `glm-5` 工具调用不再触发 BigModel 1213。
 - 真实飞书客户端已复测三次工具调用：长连接入站、reaction、Progress card send/patch、工具步骤和最终 `ok` 均成功；Gateway 对应 `/v1/responses` 最新请求为 200。
 - F4 长回复拆分已落地：按 CC `splitMessage` 规则做 Unicode 安全切分，Feishu text 自动分多条发送，Octo 回复拆分复用同一 helper。
@@ -151,5 +153,6 @@ Studio 增强点：
 
 ## 6. 下一步
 
-1. 继续迁移 CC/OpenClaw 的 Claude/OpenCode 视觉 image input、OCR、语音/STT/TTS、大文件和多平台 adapter。
-2. Feishu card/menu 下一步继续补 CC 的更多设置型卡片、命令细节和 Studio 化精修。
+1. Feishu/Octo 私聊与群聊各做 live 复验，确认私聊有过程、群聊默认静默。
+2. 继续补 CC 的更多设置型卡片、下拉/按钮动作、命令细节和 Studio 化精修。
+3. 继续迁移 CC/OpenClaw 的 Claude/OpenCode 视觉 image input、OCR、语音/STT/TTS、大文件和多平台 adapter。

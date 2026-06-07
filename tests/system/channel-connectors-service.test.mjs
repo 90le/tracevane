@@ -3066,6 +3066,24 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(displayCardRaw, /act:\/display default/);
   assert.match(displayCardRaw, /nav:\/help display/);
 
+  const groupDisplaySurface = buildChannelConnectorCommandSurface({
+    config: runtimeConfig,
+    project: codexProject,
+    binding,
+    sessionKey: "dmwork:group:chat-1",
+    displayDefaults: {
+      streamMessages: false,
+      toolMessages: false,
+    },
+    selectedSectionId: "display",
+    selectedViewId: "display",
+  });
+  assert.equal(groupDisplaySurface.current.streamMessages, false);
+  assert.equal(groupDisplaySurface.current.toolMessages, false);
+  const groupDisplayCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(groupDisplaySurface));
+  assert.match(groupDisplayCardRaw, /流式\/进度消息：关闭/);
+  assert.match(groupDisplayCardRaw, /工具\/思考消息：关闭/);
+
   const bufferSurface = buildChannelConnectorCommandSurface({
     config: runtimeConfig,
     project: codexProject,
@@ -4564,10 +4582,21 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /listFeishuChatMembers/);
   assert.match(daemonSource, /loadFeishuGroupMembers/);
   assert.match(daemonSource, /groupMemberCount/);
+  assert.match(daemonSource, /function channelConnectorProgressDefaults/);
+  assert.match(daemonSource, /function feishuProgressDefaults/);
+  assert.match(daemonSource, /function octoProgressDefaults/);
+  assert.match(daemonSource, /function channelConnectorStreamMessagesEnabled/);
+  assert.match(daemonSource, /function shouldSendChannelProgressEvent/);
   assert.match(daemonSource, /shouldSendFeishuProgressEvent/);
   assert.match(daemonSource, /renderFeishuProgressCard/);
   assert.match(daemonSource, /sendOrPatchFeishuProgressCard/);
   assert.match(daemonSource, /agent\.progress\.card/);
+  assert.match(daemonSource, /renderOctoProgressText/);
+  assert.match(daemonSource, /agent\.progress\.reply/);
+  assert.match(daemonSource, /isOctoGroupChannel\(message\.channelType\)/);
+  assert.match(daemonSource, /shouldSendChannelProgressEvent\(control,\s*event,\s*progressDefaults\)/);
+  assert.match(daemonSource, /shouldSendFeishuProgressEvent\(control,\s*event,\s*progressDefaults\)/);
+  assert.match(daemonSource, /channelConnectorStreamMessagesEnabled\(control,\s*progressDefaults\)/);
   assert.match(daemonSource, /jsonErrorEnvelopeMessage/);
   assert.match(daemonSource, /renderChannelConnectorCommandSurfaceFeishu/);
   assert.match(daemonSource, /shouldSendFeishuCommandCard/);

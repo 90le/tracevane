@@ -174,6 +174,10 @@ export interface ChannelConnectorCommandSurfaceInput {
   project: ChannelConnectorRuntimeProject;
   binding: ChannelConnectorRuntimeBinding;
   control?: ChannelConnectorSessionControlRecord | null;
+  displayDefaults?: {
+    streamMessages?: boolean | null;
+    toolMessages?: boolean | null;
+  } | null;
   sessionKey?: string | null;
   models?: string[];
   agentSession?: ChannelConnectorCommandSurface["session"];
@@ -287,6 +291,12 @@ export function buildChannelConnectorCommandSurface(
   input: ChannelConnectorCommandSurfaceInput,
 ): ChannelConnectorCommandSurface {
   const current = resolveChannelConnectorEffectiveProject(input.config, input.project, input.control || null);
+  const streamMessages = input.control?.streamMessages
+    ?? input.displayDefaults?.streamMessages
+    ?? true;
+  const toolMessages = input.control?.toolMessages
+    ?? input.displayDefaults?.toolMessages
+    ?? true;
   const models = uniqueStrings([
     ...(input.models || []),
     current.model || "",
@@ -434,8 +444,8 @@ export function buildChannelConnectorCommandSurface(
       model: current.model,
       permissionMode: current.permissionMode,
       workDir: current.workDir,
-      streamMessages: input.control?.streamMessages !== false,
-      toolMessages: input.control?.toolMessages !== false,
+      streamMessages,
+      toolMessages,
     },
     session: input.agentSession || null,
     sessionList: (input.sessionList || []).slice(0, 20),
