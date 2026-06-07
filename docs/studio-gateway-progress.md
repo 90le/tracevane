@@ -14,7 +14,7 @@
 - Channel Connectors 已切换为 Studio 原生 CLI Agent Bot 路线；本地 Octo(dmwork) 与 Feishu 已接入 Codex/Claude Code/OpenCode runner、Studio Gateway key、IM session override、slash command、Feishu card/menu/progress、附件 staging、history、group context、reply buffer 和基础治理。
 - IM 文件收发边界已固定为 Studio native transport：Agent 只读入站 staging 文件，出站只声明工作目录内文件 manifest，由 daemon 按平台上传发送。
 - IM Agent run 默认按 binding + sessionKey 串行排队：上一条 Agent 消息未结束时，新普通消息会收到“已加入队列”引导，并在前序任务完成后自动处理；`/stop`、`/status` 等 Studio 命令仍可执行，binding metadata 可显式打开 parallel。
-- IM Agent runner 策略固定为混合架构：默认 one-shot `exec/resume` 保稳定；Codex 持久 session driver 已接入 metadata 实验路径，显式开启时使用 `codex app-server`，真实 `turn/start`、原生 `/compact`、`turn/interrupt` 和用户 IM `/stop` 已通过，失败回退 one-shot。
+- IM Agent runner 策略固定为混合架构：真实 Feishu/Octo live binding 当前使用 one-shot `exec/resume` 保稳定；Codex 持久 session driver 保留为 metadata 实验路径，显式开启时使用 `codex app-server`，已覆盖 `turn/start`、原生 `/compact`、`turn/interrupt`、`/stop`、超时中断和失败回退。
 
 ## 本次完成
 
@@ -41,20 +41,22 @@
 - Channel Connectors 会话页已接入 persistent driver `recentEvents`，Sessions tab 可查看最近 fallback/failed/disposed/reaped 等事件，并在会话操作结果中显示事件数，方便 UI 侧确认 kill/reap/fallback 真实发生。
 - IM 工具进度解析已补齐结构化输出兼容：runner 能读取 `content/output_text/result/stdout/stderr` 等工具结果字段，daemon 解析 `output:` 后保留原始换行、缩进和空行，避免工具结果为空或布局被压扁。
 - Codex persistent app-server 输出链路已补齐保真：delta 不再 trim，最终回复优先使用完整 `item/completed agentMessage`，工具事件复用结构化输出解析，`studio-channel-files` fenced block 不会被压成一行导致文件无法发送。
+- Codex persistent app-server 已过滤内部 `userMessage` / history prompt 回显，Feishu/Octo 进度不再展示 `Recent messages in this IM session...` 等内部上下文；one-shot runner 也过滤 `user_message` 事件，避免同类噪音。
+- Codex persistent app-server 普通 turn 新增独立完成超时：若 app-server 已有 assistant 输出但迟迟没有 `turn/completed`，driver 会发 `turn/interrupt`、释放 active run，并交给外层 pool 按策略回退 one-shot，避免 IM 发送文件等场景永久卡住。
 
 ## 最近验证
 
 - 通过：`npm run build:api`。
 - 通过：`node --test tests/system/model-gateway-service.test.mjs`，51 个 Model Gateway 子测试通过。
-- 通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，7 个 Codex app-server driver 原型子测试通过；覆盖 persistent markdown/文件 manifest 保真和工具输出保真。
+- 通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，9 个 Codex app-server driver 原型子测试通过；覆盖 persistent markdown/文件 manifest 保真、工具输出保真、内部 userMessage 回显过滤、unfinished turn 超时中断。
 - 通过：`node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，默认跳过真实 Codex smoke。
 - 通过：`STUDIO_CODEX_APP_SERVER_LIVE_TURN=1 STUDIO_CODEX_APP_SERVER_LIVE_COMPACT=1 STUDIO_CODEX_APP_SERVER_LIVE_MODEL=gpt-5.4-mini node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，隔离 HOME 下真实 `codex app-server --stdio` 经本机 Studio Gateway 完成 `turn/start` 精确回复与原生 compact 完成信号。
 - 通过：`STUDIO_CODEX_APP_SERVER_LIVE_INTERRUPT=1 STUDIO_CODEX_APP_SERVER_LIVE_MODEL=gpt-5.4-mini node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，隔离 HOME 下真实 app-server turn 被 `turn/interrupt` 取消并返回 `cancelled`。
 - 通过：`node --test tests/system/channel-connectors-agent-session-driver.test.mjs`，6 个持久 session driver 合同子测试通过；覆盖复用、crash fallback、多用户/模型/权限隔离、禁止 fallback、stop/kill/reap、mode 解析。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，52 个 Channel Connectors 子测试通过；fake Octo + fake Codex app-server 已覆盖 persistent run、daemon `/status` active session、自动 idle reap、app-server crash -> one-shot fallback、IM `/stop` -> `turn/interrupt`、双 IM session 隔离、targeted kill、Codex `function_call_output` 结构化工具结果和多行输出保真。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，52 个 Channel Connectors 子测试通过；fake Octo + fake Codex app-server 已覆盖 persistent run、daemon `/status` active session、自动 idle reap、app-server crash -> one-shot fallback、IM `/stop` -> `turn/interrupt`、双 IM session 隔离、targeted kill、Codex `function_call_output` 结构化工具结果和多行输出保真；one-shot runner 已覆盖 `user_message` progress 过滤。
 - 通过：`node --test tests/system/channel-connectors-persistent-live-script.test.mjs`，验证 live smoke 脚本 dry-run、不泄露 secret、备份、写入 persistent metadata 和 restore-latest。
 - 通过：`node --test tests/system/channel-connectors-agent-sessions-live-script.test.mjs`，验证 session live 管理脚本 status 不泄漏 workDir、dry-run kill 不 POST、`--apply` reap/kill 请求正确。
-- 通过：`node scripts/smoke-channel-connectors-persistent-live.mjs --bindings octo-studio-cc,feishu-live --apply --json`，真实 Octo/Feishu binding 已写入 persistent metadata，daemon runtime 显示两个 binding `effectiveMode=persistent`；随后轮询 `/status` 确认 Octo 与 Feishu 均 connected，用户已在真实 IM 验证 `/stop` 可用。
+- 通过：`node scripts/smoke-channel-connectors-persistent-live.mjs --bindings octo-studio-cc,feishu-live --apply --json`，真实 Octo/Feishu binding 曾写入 persistent metadata 并验证 `effectiveMode=persistent`、Octo/Feishu connected、用户真实 IM `/stop` 可用；当前 live 配置已恢复 `agentSessionDriver=one-shot`，用于保持文件发送和流式进度稳定。
 - 通过：`node scripts/smoke-channel-connectors-agent-sessions.mjs --json`，真实 Channel daemon 返回两个 persistent binding，`reaped=null`，证明只读 status 不触发 idle cleanup；无 idle session 时 dry-run `--kill-first-idle` 不产生副作用。
 - 通过：`node --test tests/system/studio-web-channel-connectors-page.test.mjs`，Channel Connectors 页面 contract 覆盖 session 管理 API、persistent driver recent events 和 UI 操作。
 - 通过：`npm run typecheck:web`。
@@ -69,6 +71,7 @@
 - 通过：`npm run dev:restart`，前端 `http://127.0.0.1:5176`，后端 `http://127.0.0.1:3762`。
 - 通过：Gateway status 显示 local daemon `state=running`、preferred CLI endpoint `http://127.0.0.1:18796/v1`；无正确 Gateway key 访问 `/v1/models` 返回 401，鉴权仍生效。
 - 通过：Channel daemon `/health` 返回 `ok=true`。
+- 通过：Channel daemon `/agent-sessions` 返回 `requestedPersistentBindings=[]`、Feishu/Octo live binding `effectiveMode=one-shot`、`activeSessions=[]`。
 
 ## 已知边界
 
@@ -78,11 +81,11 @@
 - Codex Agent 图片已走原生 `--image`；Studio `/compact` 已覆盖 IM history 压缩，但 Codex 原生交互式 `/compact`、`/clear` 仍需要持久 Codex session，不能通过一次性 `codex exec` 伪实现；Claude Code / OpenCode 视觉输入、视频理解、OCR、语音/STT/TTS 仍待迁移。
 - 出站文件基础链路已覆盖小/中型本地文件，Octo 已具备 multipart/direct upload 自动分流；高级 `yolo` 权限仅放宽本地路径根限制，不绕过平台上传限制。后续仍需做真实大文件限额和更多平台文件收发实测。
 - 同 session FIFO queue 当前是 daemon 内存队列；Studio/OpenClaw 崩溃不影响 daemon 内排队，但 Channel daemon 自身重启会丢失未开始的排队消息。持久 session driver 合同已覆盖 session 级 crash fallback，但尚未实现 durable queue。
-- 持久 session driver 当前只对 Codex metadata 实验路径开放；真实 Codex app-server 已验证 `initialize/thread-start`、Studio Gateway `turn/start` 模型调用、原生 `/compact`、`turn/interrupt` 和 daemon idle reaper；daemon fake app-server 已覆盖 crash fallback，真实 IM `/stop` 已由用户手测通过，仍需更长时间的多用户隔离和崩溃恢复实测。
+- 持久 session driver 当前只对 Codex metadata 实验路径开放，不作为 live 默认路径；真实 Codex app-server 已验证 `initialize/thread-start`、Studio Gateway `turn/start` 模型调用、原生 `/compact`、`turn/interrupt`、daemon idle reaper、超时中断和内部 prompt 过滤。文件发送/工具流式的正式 live 路径仍优先 one-shot，persistent 继续做受控 beta。
 - Feishu 历史未 ACK 事件可能仍会被平台重投一次；持久化去重会记录并跳过，最终仍需用户发送全新消息复验 live 回复。
 
 ## 下一步
 
-1. 继续做 Codex persistent driver 受控 beta：补同用户多 session、多用户/群隔离和 UI kill/reap live 验收。
-2. 继续梳理 Channel Connectors 会话页与命令卡片，把 persistent/one-shot、队列、当前模型、权限和最近运行状态做成更清晰的管理面。
-3. 再评估是否给 Claude Code / OpenCode 增加独立 persistent driver；默认 one-shot 不变。
+1. 用当前 one-shot live binding 复验 Feishu/Octo 发文件、工具流式、最终 Markdown 排版，确认旧成熟能力恢复。
+2. 继续做 Codex persistent driver 受控 beta：补权限等待处理、审批事件解析、同用户多 session、多用户/群隔离和 UI kill/reap live 验收。
+3. 继续梳理 Channel Connectors 会话页与命令卡片，把 persistent/one-shot、队列、当前模型、权限和最近运行状态做成更清晰的管理面。

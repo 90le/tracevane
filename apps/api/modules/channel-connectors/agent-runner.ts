@@ -847,6 +847,7 @@ function parseCodexProgressLine(line: string): ChannelConnectorAgentProgressEven
   if (rawType === "item.started" || rawType === "item.completed") {
     const item = recordValue(raw.item);
     const itemType = normalizeString(item?.type) || null;
+    if (itemType === "user_message" || itemType === "userMessage") return null;
     if (itemType === "reasoning") return progressEvent({ type: "reasoning", rawType, itemType, text: normalizeString(item?.text) || null });
     if (itemType === "agent_message") return progressEvent({ type: "assistant", rawType, itemType, text: normalizeString(item?.text) || null });
     if (toolLikeItemType(itemType)) {

@@ -29,6 +29,7 @@ export interface CodexAppServerSessionOptions {
   cwd: string;
   permissionMode: ChannelConnectorPermissionMode;
   requestTimeoutMs?: number;
+  turnTimeoutMs?: number;
 }
 
 export interface CodexAppServerSessionFactoryOptions {
@@ -39,6 +40,7 @@ export interface CodexAppServerSessionFactoryOptions {
   }) => CodexAppServerTransport;
   permissionMode?: ChannelConnectorPermissionMode;
   requestTimeoutMs?: number;
+  turnTimeoutMs?: number;
 }
 
 interface PendingRequest {
@@ -123,6 +125,11 @@ function compactCommand(command: string | null | undefined): boolean {
 
 function compactWaitTimeoutMs(requestTimeoutMs: number): number {
   return Math.max(requestTimeoutMs, 60_000);
+}
+
+function turnWaitTimeoutMs(requestTimeoutMs: number, turnTimeoutMs: number | null): number {
+  if (turnTimeoutMs !== null) return Math.max(1, turnTimeoutMs);
+  return Math.max(requestTimeoutMs, 120_000);
 }
 
 function agentResult(input: {
@@ -231,6 +238,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
   private readonly cwd: string;
   private readonly permissionMode: ChannelConnectorPermissionMode;
   private readonly requestTimeoutMs: number;
+  private readonly turnTimeoutMs: number | null;
   private pending = new Map<number, PendingRequest>();
   private nextRequestId = 1;
   private initialized = false;
@@ -247,6 +255,9 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
     this.requestTimeoutMs = Number.isFinite(Number(options.requestTimeoutMs))
       ? Math.max(1, Number(options.requestTimeoutMs))
       : 10_000;
+    this.turnTimeoutMs = Number.isFinite(Number(options.turnTimeoutMs))
+      ? Math.max(1, Number(options.turnTimeoutMs))
+      : null;
     this.transport.onMessage((message) => this.handleMessage(message));
     this.transport.onClose((error) => {
       if (!error) return;
@@ -416,6 +427,27 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
     input.signal?.addEventListener("abort", abortListener, { once: true });
     try {
       await new Promise<void>((resolve, reject) => {
+        let settled = false;
+        let timeout: NodeJS.Timeout | null = null;
+        const done = (error?: Error): void => {
+          if (settled) return;
+          settled = true;
+          if (timeout) clearTimeout(timeout);
+          this.activeTurnCompleted = null;
+          if (error) reject(error);
+          else resolve();
+        };
+        timeout = setTimeout(() => {
+          terminalStatus = "failed";
+          terminalError = completedAgentMessageText || replyText
+            ? "Codex app-server turn timed out waiting for completion after assistant output. The app-server may be waiting for tool approval or a missing completion event."
+            : "Codex app-server turn timed out waiting for completion.";
+          const event = progressEvent({ type: "failed", rawType: "turn/timeout", text: terminalError });
+          progressEvents.push(event);
+          input.onProgress?.(event);
+          void this.stop("turn-timeout");
+          done(new Error(terminalError));
+        }, turnWaitTimeoutMs(this.requestTimeoutMs, this.turnTimeoutMs));
         this.activeTurnCompleted = (message) => {
           const method = normalizeString(message.method);
           const params = isRecord(message.params) ? message.params : {};
@@ -434,6 +466,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
           if (method === "item/completed") {
             const item = isRecord(params.item) ? params.item : {};
             const itemType = normalizeString(item.type);
+            if (itemType === "userMessage" || itemType === "user_message") return;
             const toolLike = itemType === "commandExecution" || itemType.endsWith("ToolCall");
             const text = itemType === "agentMessage"
               ? firstProgressTextValue(item.text, item.content, item.message)
@@ -476,14 +509,14 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
           if (status === "failed") {
             terminalStatus = "failed";
             terminalError = "Codex app-server turn failed.";
-            reject(new Error(terminalError));
+            done(new Error(terminalError));
             return;
           }
           if (cancelled) {
             terminalStatus = "cancelled";
             terminalError = `Codex app-server turn ${status}.`;
           }
-          resolve();
+          done();
         };
       });
       return agentResult({
@@ -611,6 +644,7 @@ export function createCodexAppServerSessionDriverFactory(
       cwd: key.workDir,
       permissionMode: key.permissionMode || options.permissionMode || "suggest",
       requestTimeoutMs: options.requestTimeoutMs,
+      turnTimeoutMs: options.turnTimeoutMs,
     }),
   };
 }

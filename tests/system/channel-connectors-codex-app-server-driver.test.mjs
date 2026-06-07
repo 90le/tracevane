@@ -13,9 +13,11 @@ class FakeCodexAppServerTransport {
   nextThreadId = "thread-app-server-1";
   nextTurnId = 1;
   completeTurns = true;
+  emitTurnCompleted = true;
   responseDelayMs = 0;
   deltaChunks = null;
   completedText = null;
+  userMessageEchoText = null;
   toolItems = [];
 
   send(message) {
@@ -78,6 +80,21 @@ class FakeCodexAppServerTransport {
               turn: { id: turnId, status: "running" },
             },
           });
+          if (typeof this.userMessageEchoText === "string") {
+            this.emit({
+              method: "item/completed",
+              params: {
+                threadId: this.nextThreadId,
+                turnId,
+                completedAtMs: Date.now(),
+                item: {
+                  type: "userMessage",
+                  id: "user-1",
+                  text: this.userMessageEchoText,
+                },
+              },
+            });
+          }
           for (const delta of deltaChunks) {
             this.emit({
               method: "item/agentMessage/delta",
@@ -113,19 +130,21 @@ class FakeCodexAppServerTransport {
               },
             },
           });
-          this.emit({
-            method: "turn/completed",
-            params: {
-              threadId: this.nextThreadId,
-              turn: {
-                id: turnId,
-                status: "completed",
-                items: [],
-                error: null,
-                durationMs: 5,
+          if (this.emitTurnCompleted) {
+            this.emit({
+              method: "turn/completed",
+              params: {
+                threadId: this.nextThreadId,
+                turn: {
+                  id: turnId,
+                  status: "completed",
+                  items: [],
+                  error: null,
+                  durationMs: 5,
+                },
               },
-            },
-          });
+            });
+          }
         }, 0);
       }
       return;
@@ -410,6 +429,46 @@ test("Codex app-server driver preserves tool command output", async () => {
   assert.match(tool.text, /output:\nalpha\n  beta\n\ngamma/);
 });
 
+test("Codex app-server driver hides internal user prompt echoes from progress", async () => {
+  const transport = new FakeCodexAppServerTransport();
+  transport.userMessageEchoText = [
+    "Recent messages in this IM session before this turn:",
+    "user: secret local prompt context",
+  ].join("\n");
+  transport.completedText = "public assistant reply";
+  const session = new CodexAppServerSession({
+    sessionId: "session-user-echo",
+    transport,
+    model: "gpt-5",
+    cwd: "/tmp/project",
+    permissionMode: "suggest",
+  });
+  const progress = [];
+
+  const result = await session.runTurn({
+    mode: "persistent",
+    key: {
+      bindingId: "octo-codex",
+      projectId: "codex-app-server",
+      sessionKey: "dmwork:dm:user-1",
+      agent: "codex",
+      model: "gpt-5",
+      workDir: "/tmp/project",
+    },
+    messageId: "m-user-echo",
+    agentTurnRequest: agentTurnRequest({ messageId: "m-user-echo" }),
+    onProgress: (event) => progress.push(event),
+    runOneShot: async () => {
+      throw new Error("one-shot should not run for app-server driver");
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.replyText, "public assistant reply");
+  assert.equal(progress.some((event) => /Recent messages in this IM session/.test(event.text || "")), false);
+  assert.equal(progress.some((event) => event.itemType === "userMessage"), false);
+});
+
 test("Codex app-server driver maps /compact to native compact request", async () => {
   const transport = new FakeCodexAppServerTransport();
   const session = new CodexAppServerSession({
@@ -548,6 +607,47 @@ test("Codex app-server driver stop sends turn interrupt for active turn", async 
   assert.match(result.error, /cancelled/);
   assert.equal(transport.messages.filter((message) => message.method === "turn/interrupt").length, 1);
   assert.equal(transport.messages.find((message) => message.method === "turn/interrupt").params.turnId, "turn-1");
+});
+
+test("Codex app-server driver times out unfinished turns and sends interrupt", async () => {
+  const transport = new FakeCodexAppServerTransport();
+  transport.emitTurnCompleted = false;
+  transport.completedText = "assistant output before stall";
+  const session = new CodexAppServerSession({
+    sessionId: "session-turn-timeout",
+    transport,
+    model: "gpt-5",
+    cwd: "/tmp/project",
+    permissionMode: "suggest",
+    turnTimeoutMs: 5,
+  });
+  const progress = [];
+
+  await assert.rejects(
+    session.runTurn({
+      mode: "persistent",
+      key: {
+        bindingId: "octo-codex",
+        projectId: "codex-app-server",
+        sessionKey: "dmwork:dm:user-1",
+        agent: "codex",
+        model: "gpt-5",
+        workDir: "/tmp/project",
+      },
+      messageId: "m-turn-timeout",
+      agentTurnRequest: agentTurnRequest({ messageId: "m-turn-timeout" }),
+      onProgress: (event) => progress.push(event),
+      runOneShot: async () => {
+        throw new Error("one-shot fallback is owned by the outer session pool");
+      },
+    }),
+    /timed out waiting for completion/,
+  );
+
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(transport.messages.filter((message) => message.method === "turn/interrupt").length, 1);
+  assert.equal(transport.messages.find((message) => message.method === "turn/interrupt").params.reason, "turn-timeout");
+  assert.ok(progress.some((event) => event.rawType === "turn/timeout" && event.type === "failed"));
 });
 
 test("Codex app-server driver times out unanswered requests", async () => {

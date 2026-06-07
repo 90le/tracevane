@@ -5409,6 +5409,7 @@ test("native Channel Connectors process runner maps Codex command execution prog
   const root = makeTempRoot();
   const progress = [];
   const childScript = [
+    "process.stdout.write(JSON.stringify({type:'item.completed',item:{type:'user_message',text:'Recent messages in this IM session before this turn:\\nsecret'}})+'\\n');",
     "process.stdout.write(JSON.stringify({type:'item.started',item:{type:'command_execution',command:'pwd'}})+'\\n');",
     "process.stdout.write(JSON.stringify({type:'item.completed',item:{type:'command_execution',command:'pwd',exit_code:0,output:'/tmp/project'}})+'\\n');",
     "process.stdout.write(JSON.stringify({type:'item.completed',item:{type:'function_call_output',call_id:'read-file-1',content:[{type:'output_text',text:'  alpha\\n  beta\\n\\ngamma'}]}})+'\\n');",
