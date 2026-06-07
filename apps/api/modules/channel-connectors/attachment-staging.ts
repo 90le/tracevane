@@ -72,6 +72,22 @@ function safeSegment(value: string, fallback: string): string {
   return safe || fallback;
 }
 
+function safeAttachmentFileNameSegment(value: string, fallback: string): string {
+  const normalized = normalizeString(value)
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter(Boolean)
+    .pop()
+    || fallback;
+  const safe = normalized
+    .replace(/^\.+/, "")
+    .replace(/[\u0000-\u001f\u007f]+/g, "")
+    .replace(/[<>:"|?*\\/]+/g, "_")
+    .slice(0, 180)
+    .trim();
+  return safe || fallback;
+}
+
 function extensionFor(input: {
   fileName: string;
   mimeType: string | null;
@@ -149,7 +165,10 @@ export function prepareChannelConnectorAttachmentStagingTarget(input: {
 }): ChannelConnectorAttachmentStagingTarget {
   const mimeType = normalizeString(input.mimeType) || normalizeString(input.attachment.mimeType) || null;
   const safeMessageId = safeSegment(input.messageId, "message");
-  const baseName = safeSegment(defaultAttachmentFileName(input.attachment, input.index), `${input.attachment.kind}-${input.index + 1}`);
+  const baseName = safeAttachmentFileNameSegment(
+    defaultAttachmentFileName(input.attachment, input.index),
+    `${input.attachment.kind}-${input.index + 1}`,
+  );
   const fileName = `${input.index + 1}-${baseName}${extensionFor({
     fileName: baseName,
     mimeType,

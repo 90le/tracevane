@@ -48,7 +48,7 @@
 - 已完成：真实 Feishu 客户端三工具调用复测：长连接入站、reaction、Progress card send/patch、工具步骤和最终回复成功；Gateway 最新 `/v1/responses` 请求无 1213。
 - 已完成：F4 长回复拆分基础能力：共享 Unicode-safe text chunk helper，Feishu text 自动多条发送并记录 `chunkCount/messageIds`，Octo 回复复用同一拆分规则。
 - 已完成：F4 Feishu thread/reply session：daemon/service 共用 CC 风格 session key，群线程默认 root 隔离、私聊仍按用户隔离，日志和 webhook 返回保留 root/parent/thread。
-- 已完成：F4 attachment metadata：Feishu `image/file/audio/media/sticker` 与 Octo 图片/文件/语音/视频映射到统一 attachment contract；Agent 只收到脱敏摘要，平台 key 留在本地结构化数据中。
+- 已完成：F4 attachment metadata：Feishu `image/file/audio/media/sticker` 与 Octo 图片/文件/语音/视频映射到统一 attachment contract；Agent 只收到脱敏摘要，平台 key 留在本地结构化数据中；入站 staging 落盘路径保留中文、空格、括号等可读文件名，同时继续剥离路径穿越和非法字符。
 - 已完成：F4 Feishu attachment staging：Feishu resource streaming 下载到 `agent-runtime/attachments`，路径清洗；daemon 默认 128MB 安全阀，binding metadata 可覆盖或关闭上限；失败降级为 `stagingError`，Agent prompt 使用本地路径。
 - 已完成：F4 Octo URL attachment staging：Octo URL 型图片/文件/语音/视频在进入 Agent 前 streaming 落盘，默认拒绝私网 URL，大小上限复用 attachment metadata；失败只写 `stagingError`。
 - 已完成：F4 Octo 入站 URL 字段兼容：除 `url` 外，识别 `file_url/fileUrl/media_url/mediaUrl/download_url/downloadUrl/cdn_url/cdnUrl/origin_url/originUrl/src/href`，减少平台字段差异导致的 `[image]` 无本地路径。

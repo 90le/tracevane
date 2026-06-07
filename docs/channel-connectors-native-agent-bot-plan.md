@@ -147,7 +147,7 @@ Studio 增强点：
 - F4 Studio 原生出站文件合同已落地：Agent prompt 只说明 `studio-channel-files` manifest 并要求保留原始文件名；daemon 剥离 manifest、校验出站文件根目录或 `yolo` 权限、记录 outbound 文件事件，并通过 Octo upload+send 或 Feishu image/file upload+send 发送；不再让 Agent 调用外部桥接发送命令。Octo 出站已保留中文/空格/括号文件名；Feishu 消息去重改为 messageId 优先，避免重连后平台重投导致重复回复。
 - Channel Connectors 平台配置 UI 已落地：Octo/Feishu binding 可编辑平台凭证 metadata 并直接执行连接测试；本机 Octo `studio-cc` 与 Feishu live binding 已完成 smoke，daemon 长连接 connected。
 - F4 Feishu thread/reply 会话隔离已落地：daemon/service 共用 CC 风格 session key，群线程默认按 root 隔离，私聊保持每用户 session，事件日志保留 root/parent/thread 便于排查。
-- F4 附件 metadata 已落地：Feishu `image/file/audio/media/sticker` 和 Octo 图片/文件/语音/视频进入统一 attachment contract；Agent prompt 只收到脱敏摘要，平台 key 留在本地 API/日志用于后续下载/staging。
+- F4 附件 metadata 已落地：Feishu `image/file/audio/media/sticker` 和 Octo 图片/文件/语音/视频进入统一 attachment contract；Agent prompt 只收到脱敏摘要，平台 key 留在本地 API/日志用于后续下载/staging；入站 staging 文件名保留中文、空格、括号等可读信息，同时继续防路径穿越。
 - F4 Feishu 附件下载/staging 已落地：长连接入站进入 Agent 前以 streaming 方式下载资源到受控本地目录，路径和文件名清洗；daemon 默认 128MB 安全阀，binding metadata 可用 `attachmentMaxBytes` / `attachment_max_bytes` 覆盖，`0` / `unlimited` 可关闭 daemon 侧上限；失败不阻断会话，Agent 使用本地路径读取文件。
 - F4 IM history context 已落地：按 IM session 保存最近 user/assistant 摘要，注入 Agent prompt；`/new` / `/reset` 同步清理 history。
 - F4 群聊 context 已落地：Agent prompt 注入当前群聊 channel/sender/bot/reply/mention/成员摘要；飞书完整群成员列表后续再接平台 API。

@@ -724,6 +724,7 @@ test("native Channel Connectors stages attachments under sanitized local paths",
   assert.equal(staged.stagingError, null);
   assert.equal(staged.localPath.startsWith(path.join(root, "attachments")), true);
   assert.doesNotMatch(staged.localPath, /\.\./);
+  assert.equal(path.basename(staged.localPath), "1-report final_.txt");
   assert.equal(fs.readFileSync(staged.localPath, "utf8"), "hello attachment");
   assert.throws(() => stageChannelConnectorAttachmentData({
     attachment: {
@@ -777,7 +778,7 @@ test("native Channel Connectors stages attachments under sanitized local paths",
         kind: "file",
         platform: "octo",
         url: `${baseUrl}/artifact.bin`,
-        fileName: "../../artifact final?.bin",
+        fileName: "../../龙虾 计划(最终版)?.bin",
       },
       url: `${baseUrl}/artifact.bin`,
       rootDir: root,
@@ -793,6 +794,7 @@ test("native Channel Connectors stages attachments under sanitized local paths",
     assert.equal(urlStaged.attachment.stagedAt, "2026-06-06T08:01:00.000Z");
     assert.ok(urlStaged.attachment.localPath);
     assert.doesNotMatch(urlStaged.attachment.localPath, /\.\./);
+    assert.equal(path.basename(urlStaged.attachment.localPath), "2-龙虾 计划(最终版)_.bin");
     assert.equal(fs.readFileSync(urlStaged.attachment.localPath, "utf8"), "downloaded octo attachment");
 
     const tooLarge = await stageChannelConnectorAttachmentUrl({
