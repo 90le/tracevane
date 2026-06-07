@@ -170,6 +170,8 @@ export interface ChannelConnectorOctoTransportConfig {
   botToken: string;
   wsUrl?: string | null;
   cosUploadBaseUrl?: string | null;
+  uploadStrategy?: "auto" | "direct" | "multipart" | null;
+  directUploadMinBytes?: number | null;
 }
 
 export interface ChannelConnectorOctoTransportResult {

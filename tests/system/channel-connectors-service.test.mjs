@@ -42,6 +42,7 @@ import {
 } from "../../dist/apps/api/modules/channel-connectors/octo-adapter.js";
 import {
   uploadAndSendOctoMedia,
+  shouldDirectUploadOctoMedia,
   sendOctoHeartbeat,
 } from "../../dist/apps/api/modules/channel-connectors/octo-transport.js";
 import {
@@ -1446,6 +1447,18 @@ test("Octo transport sends CC-compatible REST heartbeat", async () => {
   });
 });
 
+test("Octo transport upload strategy switches direct upload by size", () => {
+  assert.equal(shouldDirectUploadOctoMedia({ apiUrl: "https://octo.test", botToken: "token" }, 1024), false);
+  assert.equal(shouldDirectUploadOctoMedia({ apiUrl: "https://octo.test", botToken: "token" }, 9 * 1024 * 1024), true);
+  assert.equal(shouldDirectUploadOctoMedia({ apiUrl: "https://octo.test", botToken: "token", uploadStrategy: "direct" }, 1), true);
+  assert.equal(shouldDirectUploadOctoMedia({ apiUrl: "https://octo.test", botToken: "token", uploadStrategy: "multipart" }, 99 * 1024 * 1024), false);
+  assert.equal(shouldDirectUploadOctoMedia({
+    apiUrl: "https://octo.test",
+    botToken: "token",
+    directUploadMinBytes: 1,
+  }, 1), true);
+});
+
 test("Octo transport smoke probes STS upload credentials without exposing secrets", async () => {
   await withMockOctoServer(async (apiUrl, requests) => {
     const root = makeTempRoot();
@@ -1581,6 +1594,58 @@ test("Octo transport direct uploads through COS STS and sends media", async () =
         size: Buffer.byteLength("direct body"),
       },
     });
+  });
+});
+
+test("Octo upload-and-send media auto routes large files to direct upload", async () => {
+  await withMockOctoServer(async (apiUrl, requests) => {
+    const root = makeTempRoot();
+    const config = createStudioConfig(root);
+    const service = createChannelConnectorsService(config, {
+      now: () => new Date("2026-06-06T08:00:00.000Z"),
+    });
+    const initial = service.getNativeConfig().config;
+    service.saveNativeConfig({
+      config: {
+        ...initial,
+        platformBindings: [
+          {
+            id: "octo-auto-upload",
+            platform: "octo",
+            accountId: "octo-account",
+            botId: "robot-1",
+            displayName: "Octo Auto Upload",
+            agentProfileId: initial.defaultAgentProfileId,
+            enabled: true,
+            allowlist: [],
+            adminUsers: [],
+            metadata: {
+              apiUrl,
+              botToken: "test-token",
+              cosUploadBaseUrl: apiUrl,
+              octoDirectUploadMinBytes: 1,
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await service.runOctoTransportSmoke({
+      bindingId: "octo-auto-upload",
+      action: "upload-and-send-media",
+      channelId: "user-2",
+      channelType: 1,
+      content: "auto direct body",
+      fileName: "auto-direct.pdf",
+      mimeType: "application/pdf",
+    });
+
+    assert.equal(result.transport.ok, true);
+    assert.equal(result.transport.action, "direct-upload-and-send-media");
+    assert.equal(result.transport.requestCount, 3);
+    assert.equal(requests[0].path, `/v1/bot/upload/credentials?filename=${encodeURIComponent("auto-direct.pdf")}`);
+    assert.equal(requests[1].method, "PUT");
+    assert.equal(requests[2].path, "/v1/bot/sendMessage");
   });
 });
 

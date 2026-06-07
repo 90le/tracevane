@@ -5,12 +5,14 @@ import type {
   ChannelConnectorOctoTransportResult,
   ChannelConnectorPlatformBinding,
 } from "../../../../types/channel-connectors.js";
+import { parseChannelConnectorByteSize } from "./attachment-staging.js";
 import { inferChannelConnectorMimeType, safeChannelConnectorFileName } from "./outbound-files.js";
 
 const OCTO_TEXT_MESSAGE_TYPE = 1;
 const OCTO_IMAGE_MESSAGE_TYPE = 2;
 const OCTO_FILE_MESSAGE_TYPE = 8;
 const DEFAULT_TIMEOUT_MS = 30_000;
+const DEFAULT_OCTO_DIRECT_UPLOAD_MIN_BYTES = 8 * 1024 * 1024;
 
 interface OctoUploadCredentials {
   bucket: string;
@@ -34,6 +36,15 @@ function recordFrom(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function parseOctoDirectUploadMinBytes(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value)) return Math.max(0, Math.floor(value));
+  const raw = normalizeString(value).toLowerCase();
+  if (!raw) return DEFAULT_OCTO_DIRECT_UPLOAD_MIN_BYTES;
+  if (raw === "0") return 0;
+  if (["off", "false", "none", "never", "unlimited"].includes(raw)) return Number.POSITIVE_INFINITY;
+  return parseChannelConnectorByteSize(value, DEFAULT_OCTO_DIRECT_UPLOAD_MIN_BYTES);
+}
+
 export function octoTransportFromMetadata(metadataValue: unknown): ChannelConnectorOctoTransportConfig | null {
   const metadata = recordFrom(metadataValue);
   const apiUrl = normalizeString(metadata.apiUrl || metadata.api_url);
@@ -41,11 +52,26 @@ export function octoTransportFromMetadata(metadataValue: unknown): ChannelConnec
   if (!apiUrl || !botToken) return null;
   const wsUrl = normalizeString(metadata.wsUrl || metadata.ws_url);
   const cosUploadBaseUrl = normalizeString(metadata.cosUploadBaseUrl || metadata.cos_upload_base_url);
+  const rawStrategy = normalizeString(
+    metadata.octoUploadStrategy
+      || metadata.octo_upload_strategy
+      || metadata.uploadStrategy
+      || metadata.upload_strategy,
+  ).toLowerCase();
+  const uploadStrategy = rawStrategy === "direct" || rawStrategy === "multipart" ? rawStrategy : "auto";
+  const directUploadMinBytes = parseOctoDirectUploadMinBytes(
+    metadata.octoDirectUploadMinBytes
+      ?? metadata.octo_direct_upload_min_bytes
+      ?? metadata.directUploadMinBytes
+      ?? metadata.direct_upload_min_bytes,
+  );
   return {
     apiUrl,
     botToken,
     wsUrl: wsUrl || null,
     cosUploadBaseUrl: cosUploadBaseUrl || null,
+    uploadStrategy,
+    directUploadMinBytes,
   };
 }
 
@@ -226,6 +252,15 @@ function sha1Hex(value: string): string {
 
 function hmacSha1Hex(key: string, value: string): string {
   return createHmac("sha1", key).update(value).digest("hex");
+}
+
+export function shouldDirectUploadOctoMedia(config: ChannelConnectorOctoTransportConfig, size: number): boolean {
+  if (config.uploadStrategy === "direct") return true;
+  if (config.uploadStrategy === "multipart") return false;
+  const minBytes = typeof config.directUploadMinBytes === "number" && Number.isFinite(config.directUploadMinBytes)
+    ? config.directUploadMinBytes
+    : DEFAULT_OCTO_DIRECT_UPLOAD_MIN_BYTES;
+  return size >= minBytes;
 }
 
 function canonicalCosValues(values: Record<string, string>): { list: string; text: string } {
@@ -793,6 +828,9 @@ export async function uploadAndSendOctoMedia(
     mimeType?: string | null;
   },
 ): Promise<ChannelConnectorOctoTransportResult> {
+  if (shouldDirectUploadOctoMedia(config, input.data.length)) {
+    return directUploadAndSendOctoMedia(config, input);
+  }
   const upload = await uploadOctoFile(config, input);
   if (upload.ok !== true || !upload.mediaUrl) return upload;
   const sent = await sendOctoMediaMessage(config, {
