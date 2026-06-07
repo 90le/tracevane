@@ -1,6 +1,7 @@
 import type { ChannelConnectorAgentId } from "../../../../types/channel-connectors.js";
 import type {
   ChannelConnectorAgentProgressEvent,
+  ChannelConnectorAgentTurnRequest,
   ChannelConnectorAgentTurnResult,
 } from "./agent-runner.js";
 
@@ -19,6 +20,7 @@ export interface ChannelConnectorAgentSessionDriverTurnInput {
   mode: ChannelConnectorAgentSessionDriverMode;
   key: ChannelConnectorAgentSessionDriverKeyInput;
   messageId: string;
+  agentTurnRequest?: ChannelConnectorAgentTurnRequest | null;
   signal?: AbortSignal | null;
   onProgress?: (event: ChannelConnectorAgentProgressEvent) => void;
   runOneShot: () => Promise<ChannelConnectorAgentTurnResult>;
