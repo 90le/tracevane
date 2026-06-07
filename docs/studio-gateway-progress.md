@@ -16,9 +16,10 @@
 ## 本次完成
 
 - Feishu 过程展示保持“一张 Progress card 持续 patch 追加/更新进度”，卡片内部改为分段 element + `hr`，状态、思考、工具调用、工具结果、错误使用统一符号和 `text_tag`。
-- Feishu 最终回复参考 CC 的 Markdown card 路线：启用卡片且内容在安全长度内时发送独立“最终回复”卡片；平台因卡片限制拒绝时记录 card error 并走文本兼容发送，保证答复送达。
-- Octo/非富卡片渠道进度和最终回复改为统一纯文本块：`Studio Progress` / `Studio Reply` 标题、状态符号、分隔线、缩进正文；工具输入/结果、exit/status、TodoWrite 和失败回执复用同一套格式化。
-- 已参考 OpenClaw Octo 插件：Octo `markdownCapable:false`，RichText=14 主要用于图文混排，不把纯文本最终回复强行改成 RichText。
+- Feishu 最终回复参考 CC 的 Markdown card 路线，但不添加 header/note/“最终回复”等包装标题；卡片只承载模型正文，平台因卡片限制拒绝时记录 card error 并走文本兼容发送。
+- Octo 已确认支持 Markdown 文本渲染；最终回复保持模型原始 Markdown 文本，不添加 `Studio Reply` 包装。
+- Octo/非富卡片渠道过程消息去掉 `Studio Progress` 大标题，仅保留紧凑状态行、分隔线和缩进正文；工具输入/结果、exit/status、TodoWrite 和失败回执复用同一套格式化。
+- OpenClaw Octo 插件 RichText=14 仍作为后续图文混排参考，不用于纯文本 Markdown 回复包装。
 - 完成态不再给 Octo 私聊单独刷一条 `completed` 过程消息；最终回复本身承担完成态，群聊仍默认隐藏中间过程。
 - Channel daemon 事件日志补齐 `replyRequestCount`、卡片/文本发送次数、ingress->agent start、首个进度延迟、进度间隔和 agent elapsed，便于区分平台 API、Agent 和模型耗时。
 
@@ -30,7 +31,7 @@
 - 通过：`systemctl --user restart openclaw-studio-channel-connectors.service`，随后 `is-active/is-enabled` 为 `active/enabled`。
 - 通过：`npm run dev:restart`，前端 `http://127.0.0.1:5176`，后端 `http://127.0.0.1:3762`。
 - 通过：`curl http://127.0.0.1:18797/status`，Octo `octo-studio-cc` connected，Feishu shared WS connected，`activeRuns=[]`。
-- 通过：`curl http://127.0.0.1:3762/api/channel-connectors/status`，service reachable/active/enabled，diagnostics 为空。
+- 通过：`curl http://127.0.0.1:3762/api/channel-connectors/status`，`service.ok=true`，template/config current，systemd service installed。
 
 ## 已知边界
 
@@ -42,6 +43,6 @@
 
 ## 下一步
 
-1. 用 Feishu/Octo 私聊各发一条带工具调用的问题，确认 Feishu 单卡 patch、Feishu 最终回复卡片、Octo 纯文本进度块和失败回执样式；群聊各发一条，确认默认只出最终回复。
+1. 用 Feishu/Octo 私聊各发一条带工具调用的问题，确认 Feishu 单卡 patch、Feishu 无标题最终 Markdown 卡片、Octo 原始 Markdown 最终回复、过程块和失败回执样式；群聊各发一条，确认默认只出最终回复。
 2. 继续按 CC Go 补 Feishu 更多设置型子卡、下拉/按钮动作和 command-router 细节，并同步到 Octo 文本命令体验。
 3. 继续迁移 Claude Code / OpenCode 视觉输入、OCR、语音/STT/TTS、大文件 COS STS 和更多平台 adapter。

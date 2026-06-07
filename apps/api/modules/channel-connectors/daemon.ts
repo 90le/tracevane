@@ -874,7 +874,7 @@ function renderPlainProgressMessage(input: {
   meta?: string;
 }): string {
   const lines = [
-    `${input.icon} Studio Progress · ${input.title}`,
+    `${input.icon} ${input.title}`,
     input.meta ? `状态: ${input.meta}` : "",
     input.body ? "---" : "",
     input.body ? indentPlainProgressBody(input.body) : "",
@@ -910,19 +910,6 @@ function renderAgentFailureReply(error: string | null): string {
     title: "Agent 运行失败",
     body: shortMessage(error),
   });
-}
-
-function renderOctoFinalReplyText(input: {
-  agent: string;
-  model: string | null;
-  replyText: string;
-}): string {
-  const model = normalizeString(input.model) || "default";
-  return [
-    `${progressKindIcon("completed")} Studio Reply · ${input.agent} / ${model}`,
-    "---",
-    String(input.replyText || "").trim(),
-  ].filter(Boolean).join("\n");
 }
 
 function feishuReactionEmoji(binding: ChannelConnectorRuntimeBinding): string | null {
@@ -1892,33 +1879,18 @@ function renderFeishuFinalReplyCard(input: {
   sessionKey: string;
   status: "ok" | "failed";
 }): ChannelConnectorFeishuInteractiveCard {
-  const ok = input.status === "ok";
-  const model = input.project.model || "default";
+  void input.project;
+  void input.sessionKey;
+  void input.status;
   const content = sanitizeFeishuCardMarkdown(input.replyText);
   return {
     config: {
       wide_screen_mode: true,
     },
-    header: {
-      title: {
-        tag: "plain_text",
-        content: `${ok ? progressKindIcon("completed") : progressKindIcon("failed")} Studio ${input.project.agent} · 最终回复`,
-      },
-      template: ok ? "green" : "red",
-    },
     elements: [
       {
         tag: "markdown",
         content,
-      },
-      {
-        tag: "note",
-        elements: [
-          {
-            tag: "plain_text",
-            content: `model ${model} · session ${shortMessage(input.sessionKey, 80)}`,
-          },
-        ],
       },
     ],
   };
@@ -2990,11 +2962,7 @@ async function dispatchOctoMessage(input: {
     replyBufferId = preparedReply.bufferId;
     replyOriginalRunes = preparedReply.originalRunes;
     replyPreviewRunes = preparedReply.previewRunes;
-    const replyPlan = renderOctoTextReply(message, renderOctoFinalReplyText({
-      agent: agent.agent,
-      model: agent.model,
-      replyText: preparedReply.replyText,
-    }));
+    const replyPlan = renderOctoTextReply(message, preparedReply.replyText);
     if (replyPlan) {
       const result = await sendOctoTextReply(transport, replyPlan);
       replySent = result.ok === true;

@@ -4625,14 +4625,14 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /function progressKindIcon/);
   assert.match(daemonSource, /function progressResultIcon/);
   assert.match(daemonSource, /function renderAgentFailureReply/);
-  assert.match(daemonSource, /function renderOctoFinalReplyText/);
   assert.match(daemonSource, /function renderFeishuFinalReplyCard/);
   assert.match(daemonSource, /function sendFeishuFinalReply/);
   assert.match(daemonSource, /FEISHU_FINAL_REPLY_CARD_MAX_RUNES\s*=\s*12_000/);
   assert.match(daemonSource, /function renderFeishuProgressCardEventElements/);
   assert.match(daemonSource, /function feishuProgressCardStatusTag/);
-  assert.match(daemonSource, /Studio Progress/);
-  assert.match(daemonSource, /Studio Reply/);
+  assert.doesNotMatch(daemonSource, /Studio Progress/);
+  assert.doesNotMatch(daemonSource, /Studio Reply/);
+  assert.doesNotMatch(daemonSource, /最终回复/);
   assert.match(daemonSource, /send-final-card/);
   assert.match(daemonSource, /send-final-text-after-card/);
   assert.match(daemonSource, /replyCardAttempted/);

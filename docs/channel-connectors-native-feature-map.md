@@ -41,7 +41,7 @@
 - 已完成：F3f live 闭环：本地用户配置写入 Feishu binding、tenant token cache 验证通过、callback verification 通过、错误 verification token 不回显 challenge、systemd `WorkingDirectory` 模板修复、daemon active/enabled、真实 `/status`/`/help` 入站并 `replySent=true`；CLI runner 补用户级 PATH fallback，覆盖 systemd 下找不到 `codex`；仓库只记录脱敏状态。
 - 已完成：Feishu card/menu/progress loop：参考 CC `renderHelpGroupCard` / `renderCurrentCard` / `renderHistoryCard` / `renderListCard` / `ListItem` / `ButtonsEqual` 结构，`/help` 为主菜单 Dashboard，`/help <section>` 为分组菜单，`/current`/`/history`/`/list` 为真实信息子卡，`/switch <序号|sessionId前缀>` 可切换当前 IM session 已知 Agent session，`/model`/`/agent`/`/mode` 等为可操作子卡；文本 slash、`%help` 兼容命令与卡片点击共用 command-router，导航动作刷新卡片，help 菜单不再附带长文本 notice。
 - 已完成：Feishu/Octo 过程显示策略：参考 CC `platform/dmwork` group buffer 和 Feishu rich card 流程，私聊默认显示运行/思考/工具过程；群聊默认隐藏中间过程，只保留最终回复；`/stream` / `/tools` 仍可按当前 IM session 覆盖；工具输入/结果格式化已覆盖命令代码块、exit/status、长输出和 TodoWrite 列表。
-- 已完成：Feishu/Octo 回复展示精修：Feishu 保持单张 Progress card patch 更新，并新增最终回复 Markdown card；Octo 参考 OpenClaw Octo 插件能力，纯文本最终回复使用结构化文本块，RichText=14 仅作为后续图文混排方向，不用于纯文本 markdown。
+- 已完成：Feishu/Octo 回复展示精修：Feishu 保持单张 Progress card patch 更新，最终回复使用无标题 Markdown card；Octo 最终回复保留原始 Markdown 文本，过程消息只保留紧凑状态行；RichText=14 仅作为后续图文混排方向。
 - 已完成：Feishu outbound 稳定性：文本、卡片、patch、reaction、成员列表等 JSON API 对短暂 503/网络错误执行 CC 风格 transient retry，并把实际 requestCount 写入诊断。
 - 已完成：Codex 工具调用链路按 CC/cc-switch 对齐：resume 参数顺序、Responses -> Chat 工具历史、reasoning/tool placeholder、JSON canonical；隔离 `CODEX_HOME` 真实 smoke 验证 `glm-5` 工具调用返回 200，不再触发 BigModel 1213。
 - 已完成：真实 Feishu 客户端三工具调用复测：长连接入站、reaction、Progress card send/patch、工具步骤和最终回复成功；Gateway 最新 `/v1/responses` 请求无 1213。
