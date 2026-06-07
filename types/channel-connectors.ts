@@ -305,6 +305,22 @@ export interface ChannelConnectorCommandSurface {
     streamMessages: boolean;
     toolMessages: boolean;
   };
+  session: {
+    started: boolean;
+    turnCount: number;
+    codexThreadId: string | null;
+    lastStatus: string | null;
+    lastMessageId: string | null;
+    updatedAt: string | null;
+  } | null;
+  history: Array<{
+    role: "user" | "assistant";
+    text: string | null;
+    attachmentSummaries: string[];
+    status: string | null;
+    createdAt: string;
+    messageId: string | null;
+  }>;
   sections: ChannelConnectorCommandSurfaceSection[];
   textFallback: string;
 }

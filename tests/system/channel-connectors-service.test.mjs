@@ -2805,6 +2805,32 @@ test("native Channel Connectors command surface renders text and Feishu card act
     binding,
     sessionKey: "dmwork:dm:admin-1",
     models: ["gpt-5", "gpt-5.5"],
+    agentSession: {
+      started: true,
+      turnCount: 3,
+      codexThreadId: "thread-codex-1",
+      lastStatus: "ok",
+      lastMessageId: "msg-3",
+      updatedAt: "2026-06-06T08:01:00.000Z",
+    },
+    history: [
+      {
+        role: "user",
+        text: "上一轮问题",
+        attachmentSummaries: [],
+        status: null,
+        createdAt: "2026-06-06T08:00:00.000Z",
+        messageId: "msg-1",
+      },
+      {
+        role: "assistant",
+        text: "上一轮回答",
+        attachmentSummaries: ["file, note.txt"],
+        status: "ok",
+        createdAt: "2026-06-06T08:00:10.000Z",
+        messageId: "msg-2",
+      },
+    ],
   });
 
   assert.equal(surface.current.bindingId, "octo-codex");
@@ -2851,10 +2877,45 @@ test("native Channel Connectors command surface renders text and Feishu card act
   const sessionCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(sessionSurface));
   assert.match(sessionCardRaw, /Studio Session/);
   assert.match(sessionCardRaw, /act:\/status/);
+  assert.match(sessionCardRaw, /nav:\/current/);
+  assert.match(sessionCardRaw, /nav:\/history/);
   assert.match(sessionCardRaw, /act:\/new/);
   assert.match(sessionCardRaw, /act:\/reset/);
   assert.match(sessionCardRaw, /New Session 只断开 Agent 续接/);
   assert.match(sessionCardRaw, /nav:\/help session/);
+
+  const currentSurface = buildChannelConnectorCommandSurface({
+    config: runtimeConfig,
+    project: codexProject,
+    binding,
+    sessionKey: "dmwork:dm:admin-1",
+    selectedSectionId: "session",
+    selectedViewId: "current",
+    agentSession: surface.session,
+    history: surface.history,
+  });
+  const currentCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(currentSurface));
+  assert.match(currentCardRaw, /Studio Current Session/);
+  assert.match(currentCardRaw, /thread-codex-1/);
+  assert.match(currentCardRaw, /nav:\/history/);
+  assert.match(currentCardRaw, /"action":"nav:\/help"/);
+
+  const historySurface = buildChannelConnectorCommandSurface({
+    config: runtimeConfig,
+    project: codexProject,
+    binding,
+    sessionKey: "dmwork:dm:admin-1",
+    selectedSectionId: "session",
+    selectedViewId: "history",
+    agentSession: surface.session,
+    history: surface.history,
+  });
+  const historyCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(historySurface));
+  assert.match(historyCardRaw, /Studio Session History/);
+  assert.match(historyCardRaw, /上一轮问题/);
+  assert.match(historyCardRaw, /file, note\.txt/);
+  assert.match(historyCardRaw, /nav:\/current/);
+  assert.match(historyCardRaw, /"action":"nav:\/help"/);
 
   const agentPickerSurface = buildChannelConnectorCommandSurface({
     config: runtimeConfig,
@@ -3034,6 +3095,10 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.equal(bufferActionPayload.command, "/buffer latest");
   assert.equal(bufferActionPayload.targetSectionId, "buffer");
   assert.equal(bufferActionPayload.targetViewId, "buffer");
+  const historyNavPayload = extractChannelConnectorSurfaceActionPayload("nav:/history");
+  assert.equal(historyNavPayload.command, "/history");
+  assert.equal(historyNavPayload.targetSectionId, "session");
+  assert.equal(historyNavPayload.targetViewId, "history");
 });
 
 test("native Channel Connectors Feishu webhook parses live envelopes and reuses command router", async () => {
@@ -3599,6 +3664,51 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(menuCardAction.feishuResponse.card.type, "raw");
   assert.match(JSON.stringify(menuCardAction.feishuResponse.card.data), /\/model default/);
   assert.doesNotMatch(JSON.stringify(menuCardAction.feishuResponse.card.data), /\/mode yolo/);
+
+  const historyPath = path.join(resolveChannelConnectorsPaths(config).stateDir, "channel-history.json");
+  appendChannelConnectorConversationHistory(historyPath, {
+    bindingId: "feishu-main",
+    sessionKey: "feishu:oc_chat:ou_admin",
+    messageId: "om_history_user",
+    role: "user",
+    text: "历史里的真实用户消息",
+    status: null,
+    now: new Date("2026-06-06T08:00:05.000Z"),
+  });
+  appendChannelConnectorConversationHistory(historyPath, {
+    bindingId: "feishu-main",
+    sessionKey: "feishu:oc_chat:ou_admin",
+    messageId: "om_history_assistant",
+    role: "assistant",
+    text: "历史里的真实助手回复",
+    status: "ok",
+    now: new Date("2026-06-06T08:00:10.000Z"),
+  });
+  const historyCardAction = await service.dispatchFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "card.action.trigger",
+      app_id: "cli_test",
+      event_id: "evt_card_history",
+      token: "verify-token",
+    },
+    event: {
+      operator: { open_id: "ou_admin" },
+      context: { open_chat_id: "oc_chat", open_message_id: "om_card_history" },
+      action: {
+        value: {
+          action: "nav:/history",
+          command: "/history",
+          binding_id: "feishu-main",
+        },
+      },
+    },
+  });
+  assert.equal(historyCardAction.accepted, true);
+  assert.equal(historyCardAction.commandAction.command, "/history");
+  assert.match(JSON.stringify(historyCardAction.feishuResponse.card.data), /Studio Session History/);
+  assert.match(JSON.stringify(historyCardAction.feishuResponse.card.data), /历史里的真实用户消息/);
+  assert.match(JSON.stringify(historyCardAction.feishuResponse.card.data), /历史里的真实助手回复/);
 
   const modelPickerCardAction = await service.dispatchFeishuWebhook({
     schema: "2.0",

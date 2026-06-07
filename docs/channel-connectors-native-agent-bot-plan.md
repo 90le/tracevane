@@ -124,7 +124,7 @@ Studio 增强点：
 - Feishu `/new`、`/reset` 已改为执行后只返回普通文本结果，不再自动生成 `Studio Session` 菜单卡片；卡片执行动作异步发文本并返回空 callback，导航类 action 仍返回卡片。
 - Channel Connectors 已支持 Feishu outbound contract：tenant access token file cache、send text message、patch card message、transport-smoke；message webhook 默认可把 command-router 回复真实出站；JSON 出站 API 已按 CC 补 transient retry，短暂 503/网络错误会指数退避重试。
 - 已完成脱敏 live 闭环：本地用户配置写入 Feishu binding、tenant token cache 验证通过、callback URL verification 通过；错误 verification token 不再回显 challenge；daemon active/enabled，真实飞书 `/status`/`/help` 入站并回复成功；CLI runner 已补用户级 PATH fallback，避免 systemd 下找不到 Codex/Claude/OpenCode；凭据和 token 不进入仓库。
-- Feishu card/menu 已按 CC 卡片结构拆成主菜单 Dashboard、分组菜单和可操作子卡；子卡支持返回分组与主菜单。普通 slash 与卡片点击共用 command-router；Agent 运行支持 processing reaction、单张 Progress card send/patch、`command_execution` 工具过程展示、`/stream` 与 `/tools` 开关，以及 upstream JSON error envelope 清洗和失败去重。
+- Feishu card/menu 已按 CC 卡片结构拆成主菜单 Dashboard、分组菜单和可操作子卡；Current Session / History 信息子卡读取真实 Agent session 与 IM history store。普通 slash 与卡片点击共用 command-router；Agent 运行支持 processing reaction、单张 Progress card send/patch、`command_execution` 工具过程展示、`/stream` 与 `/tools` 开关，以及 upstream JSON error envelope 清洗和失败去重。
 - Codex 工具调用链路已按 CC/cc-switch 对齐：resume 参数顺序、Responses -> Chat 工具历史、reasoning/tool placeholder、JSON canonical 均有回归覆盖；隔离 `CODEX_HOME` 真实 smoke 已验证 `glm-5` 工具调用不再触发 BigModel 1213。
 - 真实飞书客户端已复测三次工具调用：长连接入站、reaction、Progress card send/patch、工具步骤和最终 `ok` 均成功；Gateway 对应 `/v1/responses` 最新请求为 200。
 - F4 长回复拆分已落地：按 CC `splitMessage` 规则做 Unicode 安全切分，Feishu text 自动分多条发送，Octo 回复拆分复用同一 helper。
@@ -152,4 +152,4 @@ Studio 增强点：
 ## 6. 下一步
 
 1. 继续迁移 CC/OpenClaw 的 Claude/OpenCode 视觉 image input、OCR、语音/STT/TTS、大文件和多平台 adapter。
-2. Feishu card/menu 下一步继续补 CC 的会话列表/历史/更多设置型卡片，并结合 Studio typed state 做更少文本、更强可操作的卡片。
+2. Feishu card/menu 下一步继续补 CC 的会话列表、更多设置型卡片和 Studio 化精修。

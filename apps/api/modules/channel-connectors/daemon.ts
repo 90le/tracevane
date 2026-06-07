@@ -1292,8 +1292,8 @@ function shouldSendFeishuCommandCard(input: {
 }): boolean {
   if (!input.command.handled) return false;
   const action = normalizeString(input.command.action).toLowerCase();
-  if (["new", "reset", "show", "passthrough"].includes(action)) return false;
   if (input.actionKind === "nav") return true;
+  if (["new", "reset", "show", "passthrough"].includes(action)) return false;
   if (input.parsedKind === "card-action" || input.parsedKind === "bot-menu") return true;
   return shouldRenderFeishuCommandCard(input.command);
 }
@@ -1564,6 +1564,26 @@ function buildFeishuCommandCard(input: {
     bindingId: input.binding.id,
     sessionKey: input.sessionKey,
   });
+  const current = resolveChannelConnectorEffectiveProject(input.config, input.project, control);
+  const session = getChannelConnectorAgentSession(agentSessionsPath(input.config), {
+    bindingId: input.binding.id,
+    projectId: current.id,
+    sessionKey: input.sessionKey,
+    agent: current.agent,
+    model: current.model,
+    workDir: current.workDir,
+  });
+  const history = getChannelConnectorConversationHistory(conversationHistoryPath(input.config), {
+    bindingId: input.binding.id,
+    sessionKey: input.sessionKey,
+  }, 10).map((entry) => ({
+    role: entry.role,
+    text: entry.text,
+    attachmentSummaries: entry.attachmentSummaries,
+    status: entry.status,
+    createdAt: entry.createdAt,
+    messageId: entry.messageId,
+  }));
   const surface = buildChannelConnectorCommandSurface({
     config: input.config,
     project: input.project,
@@ -1571,6 +1591,22 @@ function buildFeishuCommandCard(input: {
     control,
     sessionKey: input.sessionKey,
     models: input.models,
+    agentSession: session ? {
+      started: true,
+      turnCount: session.turnCount,
+      codexThreadId: session.codexThreadId,
+      lastStatus: session.lastStatus,
+      lastMessageId: session.lastMessageId,
+      updatedAt: session.updatedAt,
+    } : {
+      started: false,
+      turnCount: 0,
+      codexThreadId: null,
+      lastStatus: null,
+      lastMessageId: null,
+      updatedAt: null,
+    },
+    history,
     selectedSectionId: input.selectedSectionId,
     selectedViewId: input.selectedViewId,
   });

@@ -58,6 +58,8 @@ type FeishuMenuSectionId = typeof FEISHU_MENU_SECTIONS[number];
 const FEISHU_MENU_VIEWS = [
   "help",
   "session",
+  "current",
+  "history",
   "agent",
   "model",
   "mode",
@@ -83,6 +85,7 @@ const FEISHU_MENU_SECTION_ALIASES: Record<string, FeishuMenuSectionId> = {
   session: "session",
   status: "session",
   current: "session",
+  history: "session",
   new: "session",
   reset: "session",
   agent: "agent",
@@ -124,7 +127,8 @@ const FEISHU_MENU_VIEW_ALIASES: Record<string, FeishuMenuViewId> = {
   start: "help",
   session: "session",
   status: "session",
-  current: "session",
+  current: "current",
+  history: "history",
   new: "session",
   reset: "session",
   agent: "agent",
@@ -165,6 +169,8 @@ export interface ChannelConnectorCommandSurfaceInput {
   control?: ChannelConnectorSessionControlRecord | null;
   sessionKey?: string | null;
   models?: string[];
+  agentSession?: ChannelConnectorCommandSurface["session"];
+  history?: ChannelConnectorCommandSurface["history"];
   selectedSectionId?: string | null;
   selectedViewId?: string | null;
 }
@@ -219,7 +225,9 @@ export function channelConnectorCommandSurfaceViewFromCommand(
   if (!parts.length) return null;
   const name = parts[0]?.toLowerCase() || "";
   if (["help", "menu", "commands", "command", "cmd", "start"].includes(name)) return "help";
-  if (["status", "current", "new", "reset"].includes(name)) return "session";
+  if (name === "current") return "current";
+  if (name === "history") return "history";
+  if (["status", "new", "reset"].includes(name)) return "session";
   if (name === "agent" || name === "agents") return "agent";
   if (name === "model" || name === "models") return "model";
   if (["mode", "permission", "permissions", "yolo"].includes(name)) return "mode";
@@ -283,6 +291,8 @@ export function buildChannelConnectorCommandSurface(
       summary: "当前 IM 会话级控制，不修改全局 Provider/App 配置。",
       actions: [
         action("status", "Status", "/status"),
+        action("current", "Current Session", "/current", { actionKind: "nav" }),
+        action("history", "History", "/history", { actionKind: "nav" }),
         action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true }),
         action("reset", "Reset", "/reset", { tone: "danger", requiresAdmin: true }),
       ],
@@ -417,6 +427,8 @@ export function buildChannelConnectorCommandSurface(
       streamMessages: input.control?.streamMessages !== false,
       toolMessages: input.control?.toolMessages !== false,
     },
+    session: input.agentSession || null,
+    history: (input.history || []).slice(-10),
     sections,
   };
   return {
@@ -659,6 +671,10 @@ function commandSurfaceItemDescription(item: ChannelConnectorCommandSurfaceActio
   switch (item.id) {
     case "status":
       return "查看当前 Agent、模型、权限和 session 状态";
+    case "current":
+      return "查看当前 IM session、Agent 续接和最近状态";
+    case "history":
+      return "查看当前 IM session 最近上下文";
     case "new":
       return "开启新的 Agent 会话，保留本 IM 会话配置";
     case "reset":
@@ -1177,6 +1193,8 @@ function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConn
   const section = sectionById(surface, "session");
   const actions = section?.actions || [];
   const status = actions.find((item) => item.id === "status") || action("status", "Status", "/status");
+  const current = actions.find((item) => item.id === "current") || action("current", "Current Session", "/current", { actionKind: "nav" });
+  const history = actions.find((item) => item.id === "history") || action("history", "History", "/history", { actionKind: "nav" });
   const fresh = actions.find((item) => item.id === "new") || action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true });
   const reset = actions.find((item) => item.id === "reset") || action("reset", "Reset", "/reset", { tone: "danger", requiresAdmin: true });
   const elements: Array<Record<string, unknown>> = [
@@ -1191,7 +1209,8 @@ function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConn
       ].join("\n"),
     },
   ];
-  pushActionRows(elements, [status, fresh, reset], surface, 1);
+  pushActionRows(elements, [status, current, history], surface, 1);
+  pushActionRows(elements, [fresh, reset], surface, 2, true);
   pushSubcardNavRows(elements, surface, "session");
   return {
     config: {
@@ -1200,6 +1219,85 @@ function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConn
     header: {
       title: plainText("Studio Session"),
       template: "blue",
+    },
+    elements,
+  };
+}
+
+function renderCurrentSessionCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
+  const session = surface.session;
+  const rows = [
+    ["Binding", surface.current.bindingId],
+    ["Session key", surface.current.sessionKey || "-"],
+    ["Agent", `${surface.current.projectId} · ${surface.current.agent}`],
+    ["Model", surface.current.model || "default"],
+    ["Permission", surface.current.permissionMode],
+    ["WorkDir", surface.current.workDir],
+    ["Stream / Tools", `${surface.current.streamMessages ? "on" : "off"} / ${surface.current.toolMessages ? "on" : "off"}`],
+    ["Agent session", session?.started ? `${session.turnCount} turns` : "not started"],
+    ["Last status", session?.lastStatus || "-"],
+    ["Last message", session?.lastMessageId || "-"],
+    ["Codex thread", session?.codexThreadId || "-"],
+    ["Updated", session?.updatedAt || "-"],
+  ];
+  const elements: Array<Record<string, unknown>> = [
+    {
+      tag: "markdown",
+      content: rows.map(([label, value]) => `**${label}**\n${value}`).join("\n\n"),
+    },
+  ];
+  pushActionRows(elements, [
+    action("status", "刷新状态", "/status"),
+    action("history", "查看历史", "/history", { actionKind: "nav" }),
+  ], surface, 2, true);
+  pushSubcardNavRows(elements, surface, "session");
+  return {
+    config: {
+      wide_screen_mode: true,
+    },
+    header: {
+      title: plainText("Studio Current Session"),
+      template: "turquoise",
+    },
+    elements,
+  };
+}
+
+function renderHistoryCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
+  const lines = surface.history.length
+    ? surface.history.map((entry, index) => {
+      const role = entry.role === "assistant" ? "Assistant" : "User";
+      const status = entry.status ? ` (${entry.status})` : "";
+      const text = normalizeString(entry.text) || "(no text)";
+      const truncated = text.length > 260 ? `${text.slice(0, 259)}...` : text;
+      const attachments = entry.attachmentSummaries.length
+        ? `\nAttachments: ${entry.attachmentSummaries.join("; ")}`
+        : "";
+      return `**${index + 1}. ${role}${status}** · ${entry.createdAt}\n${truncated}${attachments}`;
+    }).join("\n\n")
+    : "当前 IM session 还没有 history。";
+  const elements: Array<Record<string, unknown>> = [
+    {
+      tag: "markdown",
+      content: lines,
+    },
+  ];
+  pushActionRows(elements, [
+    action("current", "当前会话", "/current", { actionKind: "nav" }),
+    action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true }),
+  ], surface, 2, true);
+  pushSubcardNavRows(elements, surface, "session");
+  elements.push({
+    tag: "note",
+    elements: [plainText("History 来自 Studio 本地 IM session store；/new 和 /reset 会清理当前会话 history。")],
+  });
+  return {
+    config: {
+      wide_screen_mode: true,
+    },
+    header: {
+      title: plainText("Studio Session History"),
+      template: "turquoise",
     },
     elements,
   };
@@ -1290,17 +1388,21 @@ export function renderChannelConnectorCommandSurfaceFeishu(
     ? renderAgentPickerCard(surface)
     : selectedViewId === "session"
       ? renderSessionCard(surface)
-      : selectedViewId === "model"
-        ? renderModelPickerCard(surface)
-        : selectedViewId === "mode"
-          ? renderModePickerCard(surface)
-          : selectedViewId === "display"
-            ? renderDisplayCard(surface)
-            : selectedViewId === "buffer"
-              ? renderBufferCard(surface)
-              : selectedViewId === "workdir"
-                ? renderWorkdirPickerCard(surface)
-                : renderHelpMenuCard(surface);
+      : selectedViewId === "current"
+        ? renderCurrentSessionCard(surface)
+        : selectedViewId === "history"
+          ? renderHistoryCard(surface)
+          : selectedViewId === "model"
+            ? renderModelPickerCard(surface)
+            : selectedViewId === "mode"
+              ? renderModePickerCard(surface)
+              : selectedViewId === "display"
+                ? renderDisplayCard(surface)
+                : selectedViewId === "buffer"
+                  ? renderBufferCard(surface)
+                  : selectedViewId === "workdir"
+                    ? renderWorkdirPickerCard(surface)
+                    : renderHelpMenuCard(surface);
   return notice?.text ? withCommandNotice(card, notice) : card;
 }
 

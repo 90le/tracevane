@@ -30,6 +30,7 @@
 - Feishu connected-idle 默认阈值从 5 分钟放宽到 15 分钟，减少空闲状态下频繁重连；需要激进自愈的环境仍可用 metadata 设回 300000。
 - Feishu `/new`、`/reset` 已按 CC 语义改为执行类动作：slash、bot-menu、card-action 都只返回结果 text/toast，不再自动弹 `Studio Session` 菜单卡片。
 - Feishu card/menu 已继续对齐 CC Go：`/help` 改为主菜单 Dashboard，按会话/配置/显示分组入口；`/help <section>` 保留分组菜单，`/model`/`/agent`/`/mode` 等可操作子卡提供“返回分组”和“主菜单”，根菜单不再直接暴露 reset。
+- Feishu `/current` 和 `/history` 已按 CC 信息子卡落地：command surface 注入真实 Agent session 摘要与 IM history store，导航类 `show` 动作优先返回卡片，执行类 `show` 仍按文本结果处理。
 - Octo 已补 CC dmwork 同款 REST heartbeat 备用保活：默认 5 分钟调用 `/v1/bot/heartbeat`，支持 metadata 覆盖，失败只记日志不影响 WS。
 - 本机仍有旧 `cc-connect.service` 在运行，但其 Feishu App ID 与 Studio 当前 App 不同；当前修复不依赖停止旧 CC。
 
@@ -46,7 +47,7 @@
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "visual turns|Feishu long-connection|Octo long connection|registers Octo"`，36 个 Channel Connectors 子测试通过。
 - 通过：同一测试集新增锁定 Feishu 消息/menu 快速 ACK 后台派发、24h 持久化去重、connected-idle 使用最近活动时间，36 个子测试通过。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "Octo transport|Feishu webhook|Feishu long-connection|Octo long connection|routes are registered"`，37 个子测试通过，覆盖 `/new`/`/reset` 无卡片和 Octo REST heartbeat。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "command surface|Feishu webhook|Channel Connectors routes"`，38 个子测试通过，覆盖 Feishu 主菜单/分组/子卡回退、card action 和 route callback。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "command surface|Feishu webhook|Channel Connectors routes"`，38 个子测试通过，覆盖 Feishu 主菜单/分组/current/history 子卡、card action、真实 history store 和 route callback。
 - 通过：`curl http://127.0.0.1:18797/status`，Octo `octo-studio-cc` connected，Feishu shared WS connected，`activeRuns=[]`。
 - 通过：重启 Channel daemon 后 `feishu-seen-messages.json` 从持久化恢复 107 条，Feishu shared WS connected，未再出现 connected-idle 立即循环重启。
 - 通过：前端 `http://127.0.0.1:5176` 与后端 `http://127.0.0.1:3762/api/channel-connectors/status` 可访问。
@@ -63,4 +64,4 @@
 
 1. 用户在 Feishu 再发一条全新文本或图片后，复验 live 事件不是旧 `eventId/messageId`，并确认快速 ACK 后后台 Agent 回复。
 2. 继续按 CC Go 迁移 Claude Code / OpenCode 视觉输入、OCR、语音/STT/TTS、大文件 COS STS 和更多平台 adapter。
-3. 继续按 CC Go 补 Feishu 会话列表、历史/状态、更多设置型卡片，再做 Studio 化精修；保持 IM 命令和 Studio UI 共用同一 typed 状态。
+3. 继续按 CC Go 补 Feishu 会话列表、更多设置型卡片，再做 Studio 化精修；保持 IM 命令和 Studio UI 共用同一 typed 状态。

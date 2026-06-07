@@ -24,6 +24,7 @@ import {
   type ChannelConnectorsNativeConfigResponse,
   type ChannelConnectorCommandActionRequest,
   type ChannelConnectorCommandActionResponse,
+  type ChannelConnectorCommandSurface,
   type ChannelConnectorCommandSurfaceRequest,
   type ChannelConnectorCommandSurfaceResponse,
   type ChannelConnectorFeishuWebhookRequest,
@@ -88,6 +89,7 @@ import {
 import {
   handleChannelConnectorCommand,
   listChannelConnectorGatewayModels,
+  resolveChannelConnectorEffectiveProject,
 } from "./command-router.js";
 import {
   resolveChannelConnectorGatewayClientKey,
@@ -96,6 +98,8 @@ import {
   evaluateChannelConnectorGovernance,
 } from "./governance-policy.js";
 import { getChannelConnectorSessionControl } from "./session-control-store.js";
+import { getChannelConnectorAgentSession } from "./agent-session-store.js";
+import { getChannelConnectorConversationHistory } from "./conversation-history-store.js";
 
 const execFileAsync = promisify(execFile);
 const DAEMON_ACTIONS: readonly ChannelConnectorsDaemonAction[] = [
@@ -1073,8 +1077,8 @@ function shouldReturnCommandActionCard(
 ): boolean {
   if (!commandResult.handled) return false;
   const action = normalizeString(commandResult.action).toLowerCase();
-  if (["new", "reset", "show", "passthrough"].includes(action)) return false;
   if (actionKind === "nav") return true;
+  if (["new", "reset", "show", "passthrough"].includes(action)) return false;
   return ["help", "status", "list", "set"].includes(action);
 }
 
@@ -1236,12 +1240,72 @@ function commandSurfaceControlsPath(runtimeConfig: ChannelConnectorsDaemonRuntim
   return path.join(runtimeConfig.paths.state, "channel-session-controls.json");
 }
 
+function commandSurfaceAgentSessionsPath(runtimeConfig: ChannelConnectorsDaemonRuntimeConfig): string {
+  return path.join(runtimeConfig.paths.state, "channel-sessions.json");
+}
+
+function commandSurfaceHistoryPath(runtimeConfig: ChannelConnectorsDaemonRuntimeConfig): string {
+  return path.join(runtimeConfig.paths.state, "channel-history.json");
+}
+
 function commandSurfaceReplyBuffersPath(runtimeConfig: ChannelConnectorsDaemonRuntimeConfig): string {
   return path.join(runtimeConfig.paths.state, "channel-reply-buffers.json");
 }
 
 function commandSurfaceGovernancePath(runtimeConfig: ChannelConnectorsDaemonRuntimeConfig): string {
   return path.join(runtimeConfig.paths.state, "channel-governance.json");
+}
+
+function commandSurfaceReadOnlyState(input: {
+  runtimeConfig: ChannelConnectorsDaemonRuntimeConfig;
+  project: ChannelConnectorsDaemonRuntimeConfig["projects"][number];
+  binding: ChannelConnectorsDaemonRuntimeConfig["projects"][number]["platformBindings"][number];
+  control: ReturnType<typeof getChannelConnectorSessionControl>;
+  sessionKey: string | null | undefined;
+}): {
+  agentSession: ChannelConnectorCommandSurface["session"];
+  history: ChannelConnectorCommandSurface["history"];
+} {
+  const sessionKey = normalizeString(input.sessionKey);
+  if (!sessionKey) return { agentSession: null, history: [] };
+  const current = resolveChannelConnectorEffectiveProject(input.runtimeConfig, input.project, input.control);
+  const session = getChannelConnectorAgentSession(commandSurfaceAgentSessionsPath(input.runtimeConfig), {
+    bindingId: input.binding.id,
+    projectId: current.id,
+    sessionKey,
+    agent: current.agent,
+    model: current.model,
+    workDir: current.workDir,
+  });
+  const history = getChannelConnectorConversationHistory(commandSurfaceHistoryPath(input.runtimeConfig), {
+    bindingId: input.binding.id,
+    sessionKey,
+  }, 10).map((entry) => ({
+    role: entry.role,
+    text: entry.text,
+    attachmentSummaries: entry.attachmentSummaries,
+    status: entry.status,
+    createdAt: entry.createdAt,
+    messageId: entry.messageId,
+  }));
+  return {
+    agentSession: session ? {
+      started: true,
+      turnCount: session.turnCount,
+      codexThreadId: session.codexThreadId,
+      lastStatus: session.lastStatus,
+      lastMessageId: session.lastMessageId,
+      updatedAt: session.updatedAt,
+    } : {
+      started: false,
+      turnCount: 0,
+      codexThreadId: null,
+      lastStatus: null,
+      lastMessageId: null,
+      updatedAt: null,
+    },
+    history,
+  };
 }
 
 function bindingPolicy(): ChannelConnectorsBindingPolicy {
@@ -1342,6 +1406,13 @@ export function createChannelConnectorsService(
       project: resolved.project,
       requestedModels: request.models,
     });
+    const readOnlyState = commandSurfaceReadOnlyState({
+      runtimeConfig,
+      project: resolved.project,
+      binding: resolved.runtimeBinding,
+      control,
+      sessionKey: request.sessionKey,
+    });
     const surface = buildChannelConnectorCommandSurface({
       config: runtimeConfig,
       project: resolved.project,
@@ -1349,6 +1420,8 @@ export function createChannelConnectorsService(
       control,
       sessionKey: request.sessionKey,
       models,
+      agentSession: readOnlyState.agentSession,
+      history: readOnlyState.history,
       selectedSectionId: request.section,
       selectedViewId: request.view,
     });
@@ -1466,8 +1539,8 @@ export function createChannelConnectorsService(
       binding: resolved.runtimeBinding,
       sessionKey,
       controlsPath,
-      agentSessionsPath: path.join(runtimeConfig.paths.state, "channel-sessions.json"),
-      conversationHistoryPath: path.join(runtimeConfig.paths.state, "channel-history.json"),
+      agentSessionsPath: commandSurfaceAgentSessionsPath(runtimeConfig),
+      conversationHistoryPath: commandSurfaceHistoryPath(runtimeConfig),
       replyBuffersPath: commandSurfaceReplyBuffersPath(runtimeConfig),
       gatewayClientKey: null,
       listModels: async () => commandModels,
@@ -1497,6 +1570,13 @@ export function createChannelConnectorsService(
       bindingId: resolved.binding.id,
       sessionKey,
     });
+    const readOnlyState = commandSurfaceReadOnlyState({
+      runtimeConfig,
+      project: resolved.project,
+      binding: resolved.runtimeBinding,
+      control,
+      sessionKey,
+    });
     const surface = buildChannelConnectorCommandSurface({
       config: runtimeConfig,
       project: resolved.project,
@@ -1504,6 +1584,8 @@ export function createChannelConnectorsService(
       control,
       sessionKey,
       models: commandModels,
+      agentSession: readOnlyState.agentSession,
+      history: readOnlyState.history,
       selectedSectionId,
       selectedViewId,
     });

@@ -19,6 +19,7 @@ import {
 } from "./session-control-store.js";
 import {
   clearChannelConnectorConversationHistory,
+  getChannelConnectorConversationHistory,
 } from "./conversation-history-store.js";
 import {
   findChannelConnectorReplyBufferForSession,
@@ -181,6 +182,7 @@ function isStudioCommand(name: string): boolean {
     "cmd",
     "status",
     "current",
+    "history",
     "agent",
     "agents",
     "model",
@@ -216,6 +218,8 @@ function commandHelpText(): string {
   return [
     "Studio Channel Commands",
     "/status - 查看当前 Agent、模型和权限",
+    "/current - 查看当前 IM 会话、Agent session 和续接状态",
+    "/history - 查看当前 IM 会话最近上下文",
     "/agent - 列出可切换 Agent",
     "/agent <序号|id|codex|claude-code|opencode> - 切换本会话 Agent",
     "/model - 列出 Gateway 可用模型",
@@ -565,6 +569,59 @@ async function handleStatus(context: ChannelConnectorCommandContext): Promise<Ch
   };
 }
 
+async function handleCurrent(context: ChannelConnectorCommandContext): Promise<ChannelConnectorCommandResult> {
+  const control = getChannelConnectorSessionControl(context.controlsPath, controlsLookup(context));
+  const currentProject = resolveChannelConnectorEffectiveProject(context.config, context.project, control);
+  const session = getChannelConnectorAgentSession(context.agentSessionsPath, {
+    bindingId: context.binding.id,
+    projectId: currentProject.id,
+    sessionKey: context.sessionKey,
+    agent: currentProject.agent,
+    model: currentProject.model,
+    workDir: currentProject.workDir,
+  });
+  return {
+    handled: true,
+    command: "current",
+    action: "status",
+    ok: true,
+    control,
+    replyText: [
+      "Studio Current Session",
+      `Binding: ${context.binding.id}`,
+      `Session key: ${context.sessionKey}`,
+      `Agent: ${currentProject.id} (${currentProject.agent})`,
+      `Model: ${currentProject.model || "default"}`,
+      `Mode: ${currentProject.permissionMode}`,
+      `WorkDir: ${currentProject.workDir}`,
+      `Stream: ${effectiveToggle(control?.streamMessages) ? "on" : "off"}`,
+      `Tools: ${effectiveToggle(control?.toolMessages) ? "on" : "off"}`,
+      `Agent session: ${session ? `${session.turnCount} turns` : "not started"}`,
+      `Last status: ${session?.lastStatus || "-"}`,
+      `Last message: ${session?.lastMessageId || "-"}`,
+      `Codex thread: ${session?.codexThreadId || "-"}`,
+    ].join("\n"),
+  };
+}
+
+function historyCommandText(context: ChannelConnectorCommandContext): string {
+  const filePath = normalizeString(context.conversationHistoryPath);
+  if (!filePath) return "当前 Channel daemon 未启用 history store。";
+  const entries = getChannelConnectorConversationHistory(filePath, controlsLookup(context), 10);
+  if (!entries.length) return "当前 IM 会话还没有可显示的 history。";
+  const lines = ["Studio Session History"];
+  for (const [index, entry] of entries.entries()) {
+    const role = entry.role === "assistant" ? "assistant" : "user";
+    const status = entry.status ? ` (${entry.status})` : "";
+    const text = normalizeString(entry.text) || "(no text)";
+    const attachments = entry.attachmentSummaries.length
+      ? `\nattachments: ${entry.attachmentSummaries.join("; ")}`
+      : "";
+    lines.push(`${index + 1}. ${role}${status} · ${entry.createdAt}\n${bufferPreviewText(text, 220)}${attachments}`);
+  }
+  return lines.join("\n\n");
+}
+
 export async function handleChannelConnectorCommand(
   context: ChannelConnectorCommandContext,
 ): Promise<ChannelConnectorCommandResult> {
@@ -670,7 +727,19 @@ export async function handleChannelConnectorCommand(
     };
   }
 
-  if (name === "status" || name === "current") return handleStatus(context);
+  if (name === "status") return handleStatus(context);
+  if (name === "current") return handleCurrent(context);
+  if (name === "history") {
+    return {
+      handled: true,
+      command: name,
+      action: "show",
+      ok: true,
+      control: currentControl,
+      replyText: historyCommandText(context),
+      passthroughText: null,
+    };
+  }
 
   if (name === "agent" || name === "agents") {
     if (args.length === 0) {
