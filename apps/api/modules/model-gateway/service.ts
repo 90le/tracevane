@@ -126,6 +126,7 @@ import { createModelGatewayDaemonServicePlan } from "./supervisor.js";
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_STREAMING_FIRST_BYTE_TIMEOUT_MS = 30_000;
 const DEFAULT_STREAMING_IDLE_TIMEOUT_MS = 120_000;
+const MODEL_GATEWAY_CIRCUIT_OPEN_RETRY_MS = 60_000;
 const MAX_RUNTIME_REQUEST_LOG_ENTRIES = 200;
 const REQUEST_LOG_PREVIEW_CHARS = 1_000;
 const CLIENT_AUTH_SECRET_REF = "gateway:client-api-key";
@@ -1828,6 +1829,13 @@ function isProviderHealthSuccess(statusCode: number | null, errorCode: string | 
   return statusCode < 500 && statusCode !== 429;
 }
 
+function providerCircuitRetryReady(provider: ModelGatewayProvider, nowMs = Date.now()): boolean {
+  if (provider.health.circuitState !== "open") return false;
+  const lastFailureMs = Date.parse(provider.health.lastFailureAt || "");
+  if (!Number.isFinite(lastFailureMs)) return true;
+  return nowMs - lastFailureMs >= MODEL_GATEWAY_CIRCUIT_OPEN_RETRY_MS;
+}
+
 function isProviderTestSuccess(statusCode: number | null, errorCode: string | null): boolean {
   if (errorCode) return false;
   if (statusCode === null) return false;
@@ -2590,6 +2598,13 @@ export function createModelGatewayService(
       };
     }
 
+    const healthyCandidate = (item: { provider: ModelGatewayProvider }) => item.provider.health.circuitState !== "open";
+    const retryCandidate = (item: { provider: ModelGatewayProvider }) => providerCircuitRetryReady(item.provider);
+    const retryReason = (provider: ModelGatewayProvider) => {
+      const modelHint = effectiveRequestedModel ? ` for model '${effectiveRequestedModel}'` : "";
+      return `Provider '${provider.id}' circuit is open but the retry window elapsed; probing it${modelHint}.`;
+    };
+
     if (activeId) {
       const activeCandidate = candidates.find((item) => item.provider.id === activeId);
       if (activeCandidate && activeCandidate.provider.health.circuitState !== "open") {
@@ -2601,22 +2616,48 @@ export function createModelGatewayService(
       }
       if (activeCandidate && activeCandidate.provider.health.circuitState === "open") {
         const fallback = candidates
-          .find((item) => item.provider.id !== activeCandidate.provider.id && item.provider.health.circuitState !== "open") || null;
+          .find((item) => item.provider.id !== activeCandidate.provider.id && healthyCandidate(item)) || null;
+        if (fallback) {
+          return {
+            provider: fallback.provider,
+            failoverReason: `Active provider '${activeCandidate.provider.id}' circuit is open; selected fallback '${fallback.provider.id}'.`,
+            resolvedModel: fallback.resolvedModel || effectiveRequestedModel,
+          };
+        }
+        if (retryCandidate(activeCandidate)) {
+          return {
+            provider: activeCandidate.provider,
+            failoverReason: retryReason(activeCandidate.provider),
+            resolvedModel: activeCandidate.resolvedModel || effectiveRequestedModel,
+          };
+        }
+        const retryFallback = candidates
+          .find((item) => item.provider.id !== activeCandidate.provider.id && retryCandidate(item)) || null;
         return {
-          provider: fallback?.provider || null,
-          failoverReason: fallback
-            ? `Active provider '${activeCandidate.provider.id}' circuit is open; selected fallback '${fallback.provider.id}'.`
-            : `Active provider '${activeCandidate.provider.id}' circuit is open and no fallback provider is available.`,
-          resolvedModel: fallback?.resolvedModel || effectiveRequestedModel,
+          provider: retryFallback?.provider || null,
+          failoverReason: retryFallback
+            ? retryReason(retryFallback.provider)
+            : `Active provider '${activeCandidate.provider.id}' circuit is open and no fallback provider is available yet.`,
+          resolvedModel: retryFallback?.resolvedModel || effectiveRequestedModel,
         };
       }
     }
 
-    const fallback = candidates.find((candidate) => candidate.provider.health.circuitState !== "open") || null;
+    const fallback = candidates.find(healthyCandidate) || null;
+    if (fallback) {
+      return {
+        provider: fallback.provider,
+        failoverReason: null,
+        resolvedModel: fallback.resolvedModel || effectiveRequestedModel,
+      };
+    }
+    const retryFallback = candidates.find(retryCandidate) || null;
     return {
-      provider: fallback?.provider || null,
-      failoverReason: null,
-      resolvedModel: fallback?.resolvedModel || effectiveRequestedModel,
+      provider: retryFallback?.provider || null,
+      failoverReason: retryFallback
+        ? retryReason(retryFallback.provider)
+        : `All enabled Model Gateway providers${effectiveRequestedModel ? ` for model '${effectiveRequestedModel}'` : ""} have open circuits; wait for the retry window or run a provider smoke test.`,
+      resolvedModel: retryFallback?.resolvedModel || candidates[0]?.resolvedModel || effectiveRequestedModel,
     };
   }
 

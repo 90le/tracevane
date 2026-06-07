@@ -31,6 +31,7 @@ CC 和 OpenClaw 只作为参考：
 - Studio / OpenClaw 崩溃时，Channel daemon 仍保持在线。
 - Channel daemon 运行期不依赖 Studio API；它直接调用本地 CLI Agent，CLI Agent 再走 Studio Gateway daemon。
 - Studio 负责配置、安装、启停、日志、会话可视化和平台账号管理。
+- Feishu 长连接由官方 SDK 自动重连，Studio daemon 只在连接长时间未恢复时重启客户端；默认 pong timeout 60s、watchdog restart 180s，可用 binding metadata 覆盖。
 
 默认路径：
 
@@ -114,6 +115,7 @@ Studio 增强点：
 - Channel Connectors 已支持 command action callback：通用 `/commands/action` 和 Feishu `card-action` / `bot-menu` aliases 可把 action value / event key 转回 command-router。
 - Channel Connectors 已支持 Feishu webhook ingress：URL verification、card action、bot menu、message receive 进入同一 command-router；`verificationToken` 放在 binding metadata，不写入文档或源码。
 - Channel daemon 已支持 Feishu 官方 WebSocket 长连接：`im.message.receive_v1`、`card.action.trigger`、`application.bot.menu_v6` 进入同一 command-router/Agent runner；同一 Feishu App 多 binding 共享单条 WS，支持 chatId 过滤并保留 thread/root 字段。
+- Feishu 长连接稳定性已按 live 日志调参：SDK `pingTimeout` 默认 60s，daemon watchdog 默认 180s 后才强制重启，避免 15s pong timeout 与 20s watchdog 叠加造成频繁掉线重连。
 - Channel Connectors 已支持 Feishu outbound contract：tenant access token file cache、send text message、patch card message、transport-smoke；message webhook 默认可把 command-router 回复真实出站。
 - 已完成脱敏 live 闭环：本地用户配置写入 Feishu binding、tenant token cache 验证通过、callback URL verification 通过；错误 verification token 不再回显 challenge；daemon active/enabled，真实飞书 `/status`/`/help` 入站并回复成功；CLI runner 已补用户级 PATH fallback，避免 systemd 下找不到 Codex/Claude/OpenCode；凭据和 token 不进入仓库。
 - Feishu card/menu 已具备 Session、Agent、Model、Permission、WorkDir、Display 子卡片；普通 slash 与卡片点击共用同一 command-router。Agent 运行已支持 processing reaction、单张 Progress card send/patch、`command_execution` 工具过程展示、`/stream` 与 `/tools` 开关，以及 upstream JSON error envelope 清洗和失败去重。

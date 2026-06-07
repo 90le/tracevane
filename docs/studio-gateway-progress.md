@@ -27,6 +27,8 @@
 - Codex Agent 视觉图片输入已打通：当视觉附件已 staging、当前 turn 使用 vision-capable 模型且 Agent 为 Codex 时，runner 会把本地 image/sticker 文件通过 Codex CLI 原生 `--image` 传入；纯附件消息也会启动 Agent。
 - Channel daemon 入站视觉链路已用 daemon 级系统测试锁定：Octo WuKongIM 入站图片 URL -> staging -> Gateway `/v1/models` 自动选择 vision 模型 -> Codex `--image`。真实外部 Feishu/Octo live 仍需用户再发一张图复验。
 - Channel Connectors 附件默认落点已确认：IM 平台先保存原始文件，Studio Channel daemon 下载后 staging 到 `~/.config/openclaw-studio/channel-connectors/daemon/state/agent-runtime/<agent>/<project>/<binding>/attachments/<messageId>/...`，默认上限 128MB，可由 binding metadata 覆盖。
+- Gateway 503 根因已修正：当匹配模型的 provider circuit open 时，错误不再退化为 “No active provider”；冷却窗口到期后会允许一次探测请求，成功后 provider health 自动恢复 closed。
+- Feishu 长连接稳定性已调整：SDK pong timeout 默认从 15s 放宽到 60s，并可由 binding metadata 覆盖；daemon watchdog 默认 180s 后才强制重启长时间未恢复的连接，避免与 SDK 自动重连互相放大。
 - Channel daemon status API 已确认 Octo 与 Feishu connected，`platformBindings=2`；运行中任务可通过 `activeRuns` 观测。
 
 ## 最近验证
@@ -46,6 +48,10 @@
 - 通过：`node --test tests/system/model-gateway-service.test.mjs`，50 个模型网关测试通过，覆盖模型能力保存、`/v1/models` 跨 provider 同名模型池能力合并和 HTTP 回显。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "native Channel Connectors agent runner|native Channel Connectors visual turns"`，实际执行 35 个 Channel Connectors 系统测试，覆盖视觉附件按 Gateway catalog 自动选择 vision 模型、Codex `--image` 参数、纯附件启动、alias 保留、禁用开关和 catalog 失败降级。
 - 通过：隔离 Codex CLI + Studio Gateway + GMN `gmn-vision` 真实图片 smoke；1x1 红色 PNG 通过 `--image` 进入 Codex，返回“红色”，run completed，13 个 progress events。
+- 通过：真实 Gateway smoke，`GET /v1/models` 返回 14 个模型；`/v1/responses` `glm-5` -> provider `glm` 200，`gmn-vision` -> provider `gmn` 200，并把 GMN health 从 open 恢复为 closed。
+- 通过：`node --test tests/system/model-gateway-service.test.mjs --test-name-pattern "model gateway (model pools|probes open circuit|provider list reports active route fallback|active route smoke|protocol matrix|adapts|routes expose)"`，51 个 Gateway 相关子测试通过。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "native Channel Connectors daemon owns Feishu long-connection ingress"`，35 个 Channel Connectors 子测试通过。
+- 通过：`systemctl --user restart openclaw-studio-model-gateway.service`、`systemctl --user restart openclaw-studio-channel-connectors.service`、`./scripts/restart-dev.sh`；前端 `5176`、后端 `3762`、两个 daemon 均 active。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "daemon registers Octo|agent runner|visual turns"`，实际执行 35 个 Channel Connectors 系统测试，覆盖 daemon 子进程、假 Octo WS 入站图片、假 CDN staging、Gateway vision catalog、auto model selection 和 Codex `--image` 捕获。
 - 通过：`node --test tests/system/studio-web-model-gateway-page.test.mjs`，覆盖 Provider 模型能力列表 UI 契约。
 - 通过：Playwright 打开 `/model-gateway` 并切换 Provider tab，验证新增模型行能力勾选可见，桌面和 390px 窄屏无横向溢出、无 console error。
@@ -55,6 +61,7 @@
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
 - GMN provider 已配置为后续视觉测试源，但未设为任何 App scope 的 active provider；当前 active provider 仍是 `glm`。测试时需显式选择 `gpt-5.5`、`gmn-vision` 或 `gmn/gpt-5.5`。
+- Feishu 官方 SDK 仍可能在网络抖动或平台 pong 延迟时自行 reconnect；当前修复降低误判和 daemon 强制重启频率，不承诺消除平台级重连日志。
 - Feishu 与 Octo 文本 live 已通过，图片/视频入站接收和 staging 不受模型能力影响；非视觉模型可以继续对话和处理非视觉文件任务，但必须拒绝内容理解。当前 Codex Agent 图片可走原生 `--image`；Claude Code / OpenCode 视觉输入、视频理解、OCR/解析工具仍待补齐。
 - Octo 出站媒体当前覆盖小文件 multipart upload；CC 的大文件 COS STS 直传尚未迁移，避免引入新依赖前先保持显式边界。
 - Feishu card/menu 已可用，但后续视觉和交互仍需继续参考 CC 成熟卡片结构做 Studio 化精修。

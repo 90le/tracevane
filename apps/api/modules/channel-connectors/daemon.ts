@@ -120,6 +120,13 @@ import {
   type OctoWukongSocketStatus,
 } from "./octo-wukong.js";
 
+const DEFAULT_FEISHU_PING_TIMEOUT_SECONDS = 60;
+const MIN_FEISHU_PING_TIMEOUT_SECONDS = 15;
+const MAX_FEISHU_PING_TIMEOUT_SECONDS = 300;
+const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 180_000;
+const MIN_FEISHU_WATCHDOG_RESTART_MS = 60_000;
+const MAX_FEISHU_WATCHDOG_RESTART_MS = 600_000;
+
 interface ChannelDaemonOctoConnectionState extends OctoWukongSocketStatus {
   accountId: string;
   botId: string | null;
@@ -544,6 +551,40 @@ function metadataNumber(binding: ChannelConnectorRuntimeBinding, keys: string[],
     if (Number.isFinite(value)) return value;
   }
   return fallback;
+}
+
+function clampNumber(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function firstFeishuBinding(group: ChannelDaemonFeishuGroup): ChannelConnectorRuntimeBinding | null {
+  return group.refs[0]?.binding || null;
+}
+
+function feishuPingTimeoutSeconds(group: ChannelDaemonFeishuGroup): number {
+  const binding = firstFeishuBinding(group);
+  const value = binding
+    ? metadataNumber(binding, [
+      "feishuPingTimeoutSeconds",
+      "feishu_ping_timeout_seconds",
+      "pingTimeoutSeconds",
+      "ping_timeout_seconds",
+    ], DEFAULT_FEISHU_PING_TIMEOUT_SECONDS)
+    : DEFAULT_FEISHU_PING_TIMEOUT_SECONDS;
+  return clampNumber(Math.floor(value), MIN_FEISHU_PING_TIMEOUT_SECONDS, MAX_FEISHU_PING_TIMEOUT_SECONDS);
+}
+
+function feishuWatchdogRestartMs(group: ChannelDaemonFeishuGroup): number {
+  const binding = firstFeishuBinding(group);
+  const value = binding
+    ? metadataNumber(binding, [
+      "feishuWatchdogRestartMs",
+      "feishu_watchdog_restart_ms",
+      "watchdogRestartMs",
+      "watchdog_restart_ms",
+    ], DEFAULT_FEISHU_WATCHDOG_RESTART_MS)
+    : DEFAULT_FEISHU_WATCHDOG_RESTART_MS;
+  return clampNumber(Math.floor(value), MIN_FEISHU_WATCHDOG_RESTART_MS, MAX_FEISHU_WATCHDOG_RESTART_MS);
 }
 
 function metadataByteSize(binding: ChannelConnectorRuntimeBinding, keys: string[], fallback: number): number {
@@ -2918,7 +2959,7 @@ function startFeishuClientForGroup(input: {
     autoReconnect: true,
     handshakeTimeoutMs: 20_000,
     wsConfig: {
-      pingTimeout: 15,
+      pingTimeout: feishuPingTimeoutSeconds(group),
     },
     source: "openclaw-studio-channel-daemon",
     onReady: () => {
@@ -3032,7 +3073,8 @@ function startFeishuWatchdog(input: {
       group.lastUnhealthyAt = unhealthyAt;
       state.feishuConnections[group.key] = feishuConnectionState(group);
       const unhealthyForMs = nowMs - new Date(unhealthyAt).getTime();
-      if (unhealthyForMs >= 20_000) {
+      const restartAfterMs = feishuWatchdogRestartMs(group);
+      if (unhealthyForMs >= restartAfterMs) {
         restartFeishuGroupClient({
           config,
           state,
@@ -3040,6 +3082,12 @@ function startFeishuWatchdog(input: {
           clients,
           seenMessages,
           reason: `watchdog_non_connected_${status?.state || "unknown"}`,
+        });
+        appendLog(config.paths.log, "Feishu WebSocket watchdog threshold elapsed", {
+          key: group.key,
+          state: status?.state || "unknown",
+          unhealthyForMs,
+          restartAfterMs,
         });
       }
     }

@@ -619,6 +619,84 @@ test("model gateway model pools allow cross-provider duplicates but reject provi
   assert.match(decision.reason || "", /missing-model/);
 });
 
+test("model gateway probes open circuit provider after retry window for requested model", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createModelGatewayService(config);
+
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "chat-active",
+      name: "Chat Active",
+      appScopes: ["codex"],
+      baseUrl: "https://active.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "active-model",
+        models: [{ id: "active-model" }],
+      },
+      failover: { priority: 1 },
+    },
+    setActiveScopes: ["codex"],
+  });
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "vision-provider",
+      name: "Vision Provider",
+      appScopes: ["codex"],
+      baseUrl: "https://vision.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "vision-model",
+        models: [{ id: "vision-model", aliases: ["vision-alias"] }],
+      },
+      health: {
+        circuitState: "open",
+        lastFailureAt: new Date().toISOString(),
+        lastError: "upstream 503",
+        consecutiveFailures: 3,
+      },
+      failover: { priority: 2 },
+    },
+  });
+
+  let decision = service.resolveRouteDecision("POST", "/v1/responses", {}, "vision-alias");
+  assert.equal(decision.mode, "missing-provider");
+  assert.equal(decision.provider, null);
+  assert.equal(decision.model?.resolved, "vision-model");
+  assert.match(decision.reason || "", /open circuits/);
+  assert.doesNotMatch(decision.reason || "", /No active Model Gateway provider/);
+
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "vision-provider",
+      name: "Vision Provider",
+      appScopes: ["codex"],
+      baseUrl: "https://vision.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "vision-model",
+        models: [{ id: "vision-model", aliases: ["vision-alias"] }],
+      },
+      health: {
+        circuitState: "open",
+        lastFailureAt: "2000-01-01T00:00:00.000Z",
+        lastError: "upstream 503",
+        consecutiveFailures: 3,
+      },
+      failover: { priority: 2 },
+    },
+  });
+
+  decision = service.resolveRouteDecision("POST", "/v1/responses", {}, "vision-alias");
+  assert.equal(decision.provider?.id, "vision-provider");
+  assert.equal(decision.model?.resolved, "vision-model");
+  assert.match(decision.failoverReason || "", /retry window elapsed/);
+});
+
 test("model gateway exposes enabled provider model pool through OpenAI models endpoint", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -1319,9 +1397,9 @@ test("model gateway provider list reports active route fallback and disabled act
   listed = service.listProviders();
   codexRoute = listed.activeRoutes.find((route) => route.scope === "codex");
   assert.equal(listed.activeProviders.codex, undefined);
-  assert.equal(codexRoute?.state, "missing");
-  assert.equal(codexRoute?.resolvedProviderId, null);
-  assert.match(listed.activeRouteAlerts.join("\n"), /No available Model Gateway provider.*codex/);
+  assert.equal(codexRoute?.state, "fallback");
+  assert.equal(codexRoute?.resolvedProviderId, "route-primary");
+  assert.match(listed.activeRouteAlerts.join("\n"), /retry window elapsed/);
 });
 
 test("model gateway active route smoke uses the client protocol endpoint", async () => {

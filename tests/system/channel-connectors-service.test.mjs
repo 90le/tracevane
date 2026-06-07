@@ -4140,6 +4140,12 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /startFeishuWatchdog/);
   assert.match(daemonSource, /restartFeishuGroupClient/);
   assert.match(daemonSource, /watchdog_non_connected_/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_PING_TIMEOUT_SECONDS\s*=\s*60/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_WATCHDOG_RESTART_MS\s*=\s*180_?000/);
+  assert.match(daemonSource, /feishuPingTimeoutSeconds/);
+  assert.match(daemonSource, /feishuWatchdogRestartMs/);
+  assert.match(daemonSource, /feishu_ping_timeout_seconds/);
+  assert.match(daemonSource, /feishu_watchdog_restart_ms/);
   assert.match(daemonSource, /sendFeishuTextMessage/);
   assert.match(daemonSource, /sendFeishuCardMessage/);
   assert.match(daemonSource, /patchFeishuCardMessage/);
