@@ -189,13 +189,24 @@ const CHANNEL_COMPACT_TIMEOUT_MS = 45_000;
 
 const channelAgentSessionDriverPool = createChannelConnectorAgentSessionDriverPool({
   factory: createCodexAppServerSessionDriverFactory({
-    transportFactory: ({ key, agentTurnRequest }) => {
+    transportFactory: ({ sessionId, key, agentTurnRequest }) => {
       const processRequest = agentTurnRequest
         ? buildChannelConnectorAgentProcessRequest(agentTurnRequest)
         : null;
+      const env = processRequest?.env ? { ...processRequest.env } : {};
+      const codexHome = normalizeString(env.CODEX_HOME);
+      if (codexHome) {
+        const sessionCodexHome = path.join(path.dirname(codexHome), "persistent-sessions", safePathSegment(sessionId), "codex-home");
+        fs.mkdirSync(sessionCodexHome, { recursive: true, mode: 0o700 });
+        const sourceConfigPath = path.join(codexHome, "config.toml");
+        if (fs.existsSync(sourceConfigPath)) {
+          fs.copyFileSync(sourceConfigPath, path.join(sessionCodexHome, "config.toml"));
+        }
+        env.CODEX_HOME = sessionCodexHome;
+      }
       return new JsonLineCodexAppServerTransport({
         cwd: key.workDir,
-        env: processRequest?.env || {},
+        env,
       });
     },
   }),
