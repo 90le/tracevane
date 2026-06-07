@@ -2825,6 +2825,51 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     agent: effective.agent,
     model: effective.model,
     workDir: effective.workDir,
+    codexThreadId: "thread-current-session",
+    messageId: "m-current-session",
+    status: "completed",
+    name: "Claude review thread",
+  });
+  appendChannelConnectorConversationHistory(conversationHistoryPath, {
+    bindingId: binding.id,
+    sessionKey: baseContext.sessionKey,
+    messageId: "m-history-current-1",
+    role: "user",
+    text: "first current history entry",
+  });
+  appendChannelConnectorConversationHistory(conversationHistoryPath, {
+    bindingId: binding.id,
+    sessionKey: baseContext.sessionKey,
+    messageId: "m-history-current-2",
+    role: "assistant",
+    text: "second current history entry",
+    status: "completed",
+  });
+  const current = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/current"),
+  });
+  assert.equal(current.ok, true);
+  assert.match(current.replyText, /Session name: Claude review thread/);
+  assert.match(current.replyText, /History entries: 2/);
+  assert.match(current.replyText, /Agent session id:/);
+  assert.match(current.replyText, /Actions: \/list/);
+  const historyOne = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/history 1"),
+  });
+  assert.equal(historyOne.ok, true);
+  assert.match(historyOne.replyText, /Studio Session History \(last 1\/1\)/);
+  assert.doesNotMatch(historyOne.replyText, /first current history entry/);
+  assert.match(historyOne.replyText, /second current history entry/);
+
+  upsertChannelConnectorAgentSession(agentSessionsPath, {
+    bindingId: binding.id,
+    projectId: effective.id,
+    sessionKey: baseContext.sessionKey,
+    agent: effective.agent,
+    model: effective.model,
+    workDir: effective.workDir,
     codexThreadId: "thread-before-reset",
     messageId: "m-before-reset",
     status: "completed",
@@ -3165,10 +3210,13 @@ test("native Channel Connectors command surface renders text and Feishu card act
     models: ["gpt-5", "gpt-5.5"],
     agentSession: {
       started: true,
+      id: "codex-session-1",
+      name: "Frontend Fix",
       turnCount: 3,
       codexThreadId: "thread-codex-1",
       lastStatus: "ok",
       lastMessageId: "msg-3",
+      createdAt: "2026-06-06T08:00:00.000Z",
       updatedAt: "2026-06-06T08:01:00.000Z",
     },
     sessionList: [
@@ -3294,9 +3342,14 @@ test("native Channel Connectors command surface renders text and Feishu card act
   });
   const currentCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(currentSurface));
   assert.match(currentCardRaw, /Studio Current Session/);
+  assert.match(currentCardRaw, /Session name/);
+  assert.match(currentCardRaw, /Frontend Fix/);
+  assert.match(currentCardRaw, /Session id/);
+  assert.match(currentCardRaw, /History/);
   assert.match(currentCardRaw, /thread-codex-1/);
   assert.match(currentCardRaw, /nav:\/list/);
   assert.match(currentCardRaw, /nav:\/history/);
+  assert.match(currentCardRaw, /act:\/usage/);
   assert.match(currentCardRaw, /"action":"nav:\/help"/);
 
   const sessionListSurface = buildChannelConnectorCommandSurface({
@@ -3314,6 +3367,8 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(sessionListCardRaw, /Studio Agent Sessions/);
   assert.match(sessionListCardRaw, /Frontend Fix/);
   assert.match(sessionListCardRaw, /codex-main/);
+  assert.match(sessionListCardRaw, /session codex-session-1/);
+  assert.match(sessionListCardRaw, /thread thread-codex-1/);
   assert.match(sessionListCardRaw, /claude-main/);
   assert.match(sessionListCardRaw, /act:\/switch 1/);
   assert.match(sessionListCardRaw, /nav:\/current/);
@@ -3332,6 +3387,9 @@ test("native Channel Connectors command surface renders text and Feishu card act
   });
   const historyCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(historySurface));
   assert.match(historyCardRaw, /Studio Session History/);
+  assert.match(historyCardRaw, /最近 2 条 IM history/);
+  assert.match(historyCardRaw, /\[U\] User/);
+  assert.match(historyCardRaw, /\[A\] Assistant/);
   assert.match(historyCardRaw, /上一轮问题/);
   assert.match(historyCardRaw, /file, note\.txt/);
   assert.match(historyCardRaw, /nav:\/current/);

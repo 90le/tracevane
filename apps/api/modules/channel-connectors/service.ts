@@ -1316,17 +1316,23 @@ function commandSurfaceReadOnlyState(input: {
   return {
     agentSession: session ? {
       started: true,
+      id: session.id,
+      name: session.name,
       turnCount: session.turnCount,
       codexThreadId: session.codexThreadId,
       lastStatus: session.lastStatus,
       lastMessageId: session.lastMessageId,
+      createdAt: session.createdAt,
       updatedAt: session.updatedAt,
     } : {
       started: false,
+      id: null,
+      name: input.control?.sessionName || null,
       turnCount: 0,
       codexThreadId: null,
       lastStatus: null,
       lastMessageId: null,
+      createdAt: null,
       updatedAt: null,
     },
     sessionList,

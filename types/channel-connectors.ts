@@ -311,10 +311,13 @@ export interface ChannelConnectorCommandSurface {
   };
   session: {
     started: boolean;
+    id?: string | null;
+    name?: string | null;
     turnCount: number;
     codexThreadId: string | null;
     lastStatus: string | null;
     lastMessageId: string | null;
+    createdAt?: string | null;
     updatedAt: string | null;
   } | null;
   sessionList: Array<{

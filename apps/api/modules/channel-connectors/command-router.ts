@@ -312,7 +312,7 @@ function commandHelpText(): string {
     "- `/switch <序号|sessionId前缀>` 切换到已知 Agent session",
     "- `/search <关键字>` 按名称或 sessionId 搜索本 IM 会话 sessions",
     "- `/name <名称>` 命名当前 Agent session；`/name <序号> <名称>` 命名列表中的 session",
-    "- `/history` 查看当前 IM 会话最近上下文",
+    "- `/history [条数]` 查看当前 IM 会话最近上下文",
     "- `/usage` 查看本 IM 会话最近 Agent run 的 Gateway token usage",
     "- `/compact` 压缩当前 IM 会话上下文并开启新续接",
     "- `/stop` 停止当前 IM 会话正在运行的 Agent",
@@ -490,6 +490,18 @@ function bufferPreviewText(value: string, maxRunes = 120): string {
   const runes = Array.from(value);
   const preview = runes.slice(0, maxRunes).join("");
   return runes.length > maxRunes ? `${preview}...` : preview;
+}
+
+function shortIdentifier(value: string | null | undefined, maxRunes = 12): string {
+  const normalized = normalizeString(value);
+  if (!normalized) return "-";
+  return bufferPreviewText(normalized, maxRunes);
+}
+
+function parsePositiveLimit(value: string | null | undefined, fallback: number, max = 50): number {
+  const parsed = Number(normalizeString(value));
+  if (!Number.isInteger(parsed) || parsed <= 0) return fallback;
+  return Math.max(1, Math.min(max, parsed));
 }
 
 function replyBufferListText(records: ChannelConnectorReplyBufferRecord[]): string {
@@ -721,7 +733,8 @@ async function handleStatus(context: ChannelConnectorCommandContext): Promise<Ch
 }
 
 async function handleCurrent(context: ChannelConnectorCommandContext): Promise<ChannelConnectorCommandResult> {
-  const control = getChannelConnectorSessionControl(context.controlsPath, controlsLookup(context));
+  const lookup = controlsLookup(context);
+  const control = getChannelConnectorSessionControl(context.controlsPath, lookup);
   const currentProject = resolveChannelConnectorEffectiveProject(context.config, context.project, control);
   const session = getChannelConnectorAgentSession(context.agentSessionsPath, {
     bindingId: context.binding.id,
@@ -731,6 +744,10 @@ async function handleCurrent(context: ChannelConnectorCommandContext): Promise<C
     model: currentProject.model,
     workDir: currentProject.workDir,
   });
+  const historyCount = context.conversationHistoryPath
+    ? getChannelConnectorConversationHistory(context.conversationHistoryPath, lookup, 50).length
+    : 0;
+  const sessionName = session?.name || control?.sessionName || "-";
   return {
     handled: true,
     command: "current",
@@ -741,6 +758,7 @@ async function handleCurrent(context: ChannelConnectorCommandContext): Promise<C
       "Studio Current Session",
       `Binding: ${context.binding.id}`,
       `Session key: ${context.sessionKey}`,
+      `Session name: ${sessionName}`,
       `Agent: ${currentProject.id} (${currentProject.agent})`,
       `Model: ${currentProject.model || "default"}`,
       `Reasoning: ${currentProject.reasoningEffort || "default"}`,
@@ -749,28 +767,36 @@ async function handleCurrent(context: ChannelConnectorCommandContext): Promise<C
       `Stream: ${effectiveToggle(control?.streamMessages) ? "on" : "off"}`,
       `Tools: ${effectiveToggle(control?.toolMessages) ? "on" : "off"}`,
       `Agent session: ${session ? `${session.turnCount} turns` : "not started"}`,
+      `Agent session id: ${shortIdentifier(session?.id, 18)}`,
       `Last status: ${session?.lastStatus || "-"}`,
       `Last message: ${session?.lastMessageId || "-"}`,
       `Codex thread: ${session?.codexThreadId || "-"}`,
+      `Created: ${session?.createdAt || "-"}`,
+      `Updated: ${session?.updatedAt || "-"}`,
+      `History entries: ${historyCount}`,
+      "Actions: /list · /history 20 · /name <名称> · /search <关键字>",
     ].join("\n"),
   };
 }
 
-function historyCommandText(context: ChannelConnectorCommandContext): string {
+function historyCommandText(context: ChannelConnectorCommandContext, args: string[] = []): string {
   const filePath = normalizeString(context.conversationHistoryPath);
   if (!filePath) return "当前 Channel daemon 未启用 history store。";
-  const entries = getChannelConnectorConversationHistory(filePath, controlsLookup(context), 10);
+  const limit = parsePositiveLimit(args[0], 10, 50);
+  const entries = getChannelConnectorConversationHistory(filePath, controlsLookup(context), limit);
   if (!entries.length) return "当前 IM 会话还没有可显示的 history。";
-  const lines = ["Studio Session History"];
+  const lines = [`Studio Session History (last ${entries.length}/${limit})`];
   for (const [index, entry] of entries.entries()) {
-    const role = entry.role === "assistant" ? "assistant" : "user";
+    const role = entry.role === "assistant" ? "Assistant" : "User";
+    const icon = entry.role === "assistant" ? "A" : "U";
     const status = entry.status ? ` (${entry.status})` : "";
     const text = normalizeString(entry.text) || "(no text)";
     const attachments = entry.attachmentSummaries.length
       ? `\nattachments: ${entry.attachmentSummaries.join("; ")}`
       : "";
-    lines.push(`${index + 1}. ${role}${status} · ${entry.createdAt}\n${bufferPreviewText(text, 220)}${attachments}`);
+    lines.push(`${index + 1}. [${icon}] ${role}${status} · ${entry.createdAt} · msg=${shortIdentifier(entry.messageId, 14)}\n${bufferPreviewText(text, 240)}${attachments}`);
   }
+  lines.push("用法：/history [条数]，例如 /history 20；/compact 可压缩当前 IM history。");
   return lines.join("\n\n");
 }
 
@@ -815,6 +841,7 @@ function sessionListText(
       `${marker} ${index + 1}. ${title} (${record.agent})`,
       `   model=${record.model || "default"} turns=${record.turnCount} status=${record.lastStatus || "-"}`,
       record.name ? `   profile=${record.projectId}` : "",
+      `   sessionId=${shortIdentifier(record.id, 18)} thread=${shortIdentifier(record.codexThreadId, 18)}`,
       `   updated=${record.updatedAt}`,
       `   workDir=${record.workDir}`,
     ].filter(Boolean).join("\n"));
@@ -1189,7 +1216,7 @@ export async function handleChannelConnectorCommand(
       action: "show",
       ok: true,
       control: currentControl,
-      replyText: historyCommandText(context),
+      replyText: historyCommandText(context, args),
       passthroughText: null,
     };
   }

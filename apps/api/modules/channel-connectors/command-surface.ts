@@ -579,6 +579,11 @@ function truncateMiddle(value: string, maxLength: number): string {
   return `${normalized.slice(0, head)}…${normalized.slice(normalized.length - tail)}`;
 }
 
+function shortSurfaceId(value: string | null | undefined, maxLength = 18): string {
+  const normalized = normalizeString(value);
+  return normalized ? truncateMiddle(normalized, maxLength) : "-";
+}
+
 function compactPath(value: string): string {
   const normalized = normalizeString(value);
   if (normalized.length <= 42) return normalized;
@@ -1393,9 +1398,11 @@ function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConn
 
 function renderCurrentSessionCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
   const session = surface.session;
+  const historyCount = surface.history.length;
   const rows = [
     ["Binding", surface.current.bindingId],
     ["Session key", surface.current.sessionKey || "-"],
+    ["Session name", session?.name || "-"],
     ["Agent", `${surface.current.projectId} · ${surface.current.agent}`],
     ["Model", surface.current.model || "default"],
     ["Reasoning", surface.current.reasoningEffort || "default"],
@@ -1403,10 +1410,13 @@ function renderCurrentSessionCard(surface: ChannelConnectorCommandSurface): Chan
     ["WorkDir", surface.current.workDir],
     ["Stream / Tools", `${surface.current.streamMessages ? "on" : "off"} / ${surface.current.toolMessages ? "on" : "off"}`],
     ["Agent session", session?.started ? `${session.turnCount} turns` : "not started"],
+    ["Session id", shortSurfaceId(session?.id)],
     ["Last status", session?.lastStatus || "-"],
     ["Last message", session?.lastMessageId || "-"],
-    ["Codex thread", session?.codexThreadId || "-"],
+    ["Codex thread", shortSurfaceId(session?.codexThreadId)],
+    ["Created", session?.createdAt || "-"],
     ["Updated", session?.updatedAt || "-"],
+    ["History", `${historyCount} recent entries loaded`],
   ];
   const elements: Array<Record<string, unknown>> = [
     {
@@ -1418,6 +1428,7 @@ function renderCurrentSessionCard(surface: ChannelConnectorCommandSurface): Chan
     action("status", "刷新状态", "/status"),
     action("sessions", "续接列表", "/list", { actionKind: "nav" }),
     action("history", "查看历史", "/history", { actionKind: "nav" }),
+    action("usage", "Usage", "/usage"),
   ], surface, 1);
   pushSubcardNavRows(elements, surface, "session");
   return {
@@ -1456,6 +1467,7 @@ function renderSessionListCard(surface: ChannelConnectorCommandSurface): Channel
       const description = [
         `${record.projectId} · ${record.agent} · ${model}`,
         `${record.turnCount} turns · ${record.lastStatus || "unknown"} · ${record.updatedAt}`,
+        `session ${shortSurfaceId(record.id)} · thread ${shortSurfaceId(record.codexThreadId)}`,
         compactPath(record.workDir),
       ].join("\n");
       elements.push(listItemElement(action(
@@ -1476,6 +1488,7 @@ function renderSessionListCard(surface: ChannelConnectorCommandSurface): Channel
   pushActionRows(elements, [
     action("current", "当前会话", "/current", { actionKind: "nav" }),
     action("history", "历史", "/history", { actionKind: "nav" }),
+    action("usage", "Usage", "/usage"),
   ], surface, 2, true);
   pushSubcardNavRows(elements, surface, "session");
   elements.push({
@@ -1498,19 +1511,22 @@ function renderHistoryCard(surface: ChannelConnectorCommandSurface): ChannelConn
   const lines = surface.history.length
     ? surface.history.map((entry, index) => {
       const role = entry.role === "assistant" ? "Assistant" : "User";
+      const icon = entry.role === "assistant" ? "A" : "U";
       const status = entry.status ? ` (${entry.status})` : "";
       const text = normalizeString(entry.text) || "(no text)";
       const truncated = text.length > 260 ? `${text.slice(0, 259)}...` : text;
       const attachments = entry.attachmentSummaries.length
         ? `\nAttachments: ${entry.attachmentSummaries.join("; ")}`
         : "";
-      return `**${index + 1}. ${role}${status}** · ${entry.createdAt}\n${truncated}${attachments}`;
+      return `**${index + 1}. [${icon}] ${role}${status}** · ${entry.createdAt} · msg=${shortSurfaceId(entry.messageId, 14)}\n${truncated}${attachments}`;
     }).join("\n\n")
     : "当前 IM session 还没有 history。";
   const elements: Array<Record<string, unknown>> = [
     {
       tag: "markdown",
-      content: lines,
+      content: surface.history.length
+        ? `**最近 ${surface.history.length} 条 IM history**\n${lines}`
+        : lines,
     },
   ];
   pushActionRows(elements, [

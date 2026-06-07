@@ -96,7 +96,7 @@ Studio 增强点：
 | F1 | 已完成：native daemon skeleton、service/config/status/logs、独立页面、守护边界测试 |
 | F2 | 已完成：CC/OpenClaw 能力映射、typed config store、Agent Profile、工作目录、模型、权限、Gateway key ref、platform/bot binding |
 | F3 | 已完成核心合同：Octo(dmwork) adapter、REST transport、daemon register/cache/WuKongIM WebSocket、Codex CLI Agent runner、真实 Octo DM 文本往返、Codex session resume、IM command control、native passthrough、command surface、Feishu webhook/outbound/long-connection、Feishu card/menu/session/model/display/progress loop |
-| F4 | 进行中：长回复拆分、Feishu thread/reply session、附件 metadata/staging、Octo URL staging、Octo CC Go 长连接基线、图片非视觉模型保护、Gateway vision 模型自动选择、Codex 原生图片输入、轻量 history context、群聊 context、长回复 group buffer、reply buffer 查看命令/菜单、飞书群成员拉取、Feishu 会话列表/切换子卡、Feishu/Octo 私聊进度与群聊静默默认已完成；继续补 Claude/OpenCode 视觉输入、OCR、语音 STT/TTS、长回复预览冻结、更多设置型卡片 |
+| F4 | 进行中：长回复拆分、Feishu thread/reply session、附件 metadata/staging、Octo URL staging、Octo CC Go 长连接基线、图片非视觉模型保护、Gateway vision 模型自动选择、Codex 原生图片输入、轻量 history context、群聊 context、长回复 group buffer、reply buffer 查看命令/菜单、飞书群成员拉取、Feishu 会话列表/切换子卡、`/current`/`/list`/`/history [n]` 信息增强、Feishu/Octo 私聊进度与群聊静默默认已完成；继续补 Claude/OpenCode 视觉输入、OCR、语音 STT/TTS、长回复预览冻结、更多设置型卡片 |
 | F5 | 治理与自动化：allowlist/admin/rate limit/banned words 已完成；继续补 cron、hooks、relay、management API |
 | F6 | 飞书、微信/企业微信；继续迁移钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等 CC 平台 |
 | F7 | 补齐剩余 CC Agent、跨平台会话观测、消息审计、迁移工具和发布验收 |
@@ -117,6 +117,7 @@ Studio 增强点：
 - Channel daemon 已支持 `/help`、`/command`、`/cmd`、`/status`、`/usage`、`/tokens`、`/agent`、`/model`、`/mode`、`/reasoning`、`/effort`、`/name`、`/rename`、`/search`、`/find`、`/dir`、`/cd`、`/new`、`/reset`、`/display`、`/stream`、`/tools`；override 按 IM session 存储，模型切换不切断 Codex thread，reasoning/workdir/new session 会断开旧续接，流式/工具消息开关只作用于当前 IM session。
 - Channel daemon 已支持 `/usage` / `/tokens`：从 Studio Gateway runtime usage ledger 汇总当前 binding + IM session 最近 Agent run 的真实 token usage；无上游 usage 时明确提示无统计。
 - Channel daemon 已按 CC Go 补齐 `/reasoning`、`/name`、`/search`：推理强度支持序号与 `low|medium|high|xhigh|default`，Codex/Claude Code/OpenCode runner 分别映射到 `model_reasoning_effort`、`--effort`、`--variant`；session 命名会显示在 `/list`、`/search`、Feishu Agent Sessions 子卡和文本 fallback。
+- Channel daemon 已按 CC Go 增强 `/current`、`/list`、`/history [n]`：文本和 Feishu card 都显示 session name、短 sessionId/threadId、history 数量、最近消息和 usage 入口。
 - Channel daemon 已支持 Agent 原生命令透传：未知 `/xxx` 直接转给当前 Agent，`/native <命令>` 用于透传与 Studio 命令同名的原生命令。
 - Channel Connectors 已支持 command surface preview：text fallback、平台无关 action sections、Feishu card JSON、action payload -> command 解析。
 - Channel Connectors 已支持 command action callback：通用 `/commands/action` 和 Feishu `card-action` / `bot-menu` aliases 可把 action value / event key 转回 command-router。
@@ -157,5 +158,5 @@ Studio 增强点：
 ## 6. 下一步
 
 1. Feishu/Octo 私聊与群聊各做 live 复验，确认私聊有过程、群聊默认静默。
-2. 继续补 CC 的更多设置型卡片、下拉/按钮动作、`/list`/`/history`/`/current` 细节和 Studio 化精修。
+2. 继续补 CC 的更多设置型卡片、下拉/按钮动作、批量切换和 Studio 化精修。
 3. 继续迁移 CC/OpenClaw 的 Claude/OpenCode 视觉 image input、OCR、语音/STT/TTS、大文件和多平台 adapter。
