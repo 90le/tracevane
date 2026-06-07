@@ -2284,8 +2284,10 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   const resumeImageArgIndex = resumeVisionAttachmentRequest.args.indexOf("--image");
   const resumeThreadArgIndex = resumeVisionAttachmentRequest.args.indexOf("thread-vision");
   assert.notEqual(resumeImageArgIndex, -1);
-  assert.ok(resumeImageArgIndex < resumeThreadArgIndex);
+  assert.ok(resumeThreadArgIndex < resumeImageArgIndex);
   assert.equal(resumeVisionAttachmentRequest.args[resumeImageArgIndex + 1], visionImagePath);
+  assert.equal(resumeVisionAttachmentRequest.args.at(-2), "--json");
+  assert.equal(resumeVisionAttachmentRequest.args.at(-1), "-");
   for (const cleanupPath of resumeVisionAttachmentRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const stagedLocalPath = path.join(workDir, ".studio-agent-attachments", "report.txt");

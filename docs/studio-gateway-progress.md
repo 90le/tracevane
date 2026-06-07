@@ -23,6 +23,7 @@
 - 新增根目录 `AGENTS.md`，把 CC-first 迁移门禁写成仓库级约束，明确禁止在 CC 已有成熟方案时重新造轮子。
 - 新增 `docs/channel-connectors-cc-migration-checklist.md`，按 P0-P3 拆出 Codex runner、Feishu/Octo、文件/流式/菜单、Claude/OpenCode、更多平台和更多 Agent 的迁移任务。
 - 更新 Channel Connectors 方案和 Studio Gateway 目标，要求任何偏离 CC 的方案必须记录原因、验收证据和回退方式。
+- Codex one-shot `exec/resume` 参数顺序已按 CC Go `agent/codex/session.go` 对齐：resume 时先传 `thread_id`，再传 `--image ...`，最后 `--json -`，避免 IM 图片续接场景偏离 CC 合同。
 - 新增 Studio 出站文件 manifest contract：Agent prompt 只说明 `studio-channel-files`，不出现旧桥接命令；daemon 剥离 manifest 后发送文本和文件。
 - 新增出站文件校验：普通权限只允许 Agent workDir 或当前 runtime/staging 根；`yolo` 权限允许任意可读普通文件出站，但仍保留平台/daemon 文件大小限制。
 - Feishu transport 补 image/file upload + message send；Octo daemon 接入已有 upload+send media，事件日志记录 declared/resolved/sent/errors。
@@ -54,6 +55,7 @@
 
 - 通过：`npm run build:api`。
 - 通过：`node --test tests/system/model-gateway-service.test.mjs`，51 个 Model Gateway 子测试通过。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，52 个 Channel Connectors 子测试通过；覆盖 Codex resume 参数顺序、Feishu/Octo 文件收发、进度/工具事件和 daemon 合同。
 - 通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，9 个 Codex app-server driver 原型子测试通过；覆盖 persistent markdown/文件 manifest 保真、工具输出保真、内部 userMessage 回显过滤、unfinished turn 超时中断。
 - 通过：`node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，默认跳过真实 Codex smoke。
 - 通过：`STUDIO_CODEX_APP_SERVER_LIVE_TURN=1 STUDIO_CODEX_APP_SERVER_LIVE_COMPACT=1 STUDIO_CODEX_APP_SERVER_LIVE_MODEL=gpt-5.4-mini node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，隔离 HOME 下真实 `codex app-server --stdio` 经本机 Studio Gateway 完成 `turn/start` 精确回复与原生 compact 完成信号。

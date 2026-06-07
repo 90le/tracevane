@@ -710,9 +710,9 @@ export function buildChannelConnectorAgentProcessRequest(
         "--skip-git-repo-check",
         ...codexPermissionArgs(project.permissionMode),
         ...(model ? ["--model", model] : []),
-        ...codexImageArgs,
         ...codexConfigArgs,
         codexThreadId,
+        ...codexImageArgs,
         "--json",
         "-",
       ]
