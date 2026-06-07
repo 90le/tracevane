@@ -302,6 +302,7 @@ export interface ChannelConnectorCommandSurface {
     model: string | null;
     permissionMode: ChannelConnectorPermissionMode;
     workDir: string;
+    workDirHistory: string[];
     streamMessages: boolean;
     toolMessages: boolean;
   };

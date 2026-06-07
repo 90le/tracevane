@@ -10,6 +10,7 @@ export interface ChannelConnectorSessionControlRecord {
   model: string | null;
   permissionMode: ChannelConnectorPermissionMode | null;
   workDir: string | null;
+  workDirHistory: string[];
   streamMessages: boolean | null;
   toolMessages: boolean | null;
   createdAt: string;
@@ -33,6 +34,7 @@ export interface ChannelConnectorSessionControlUpdate extends ChannelConnectorSe
   model?: string | null;
   permissionMode?: ChannelConnectorPermissionMode | null;
   workDir?: string | null;
+  workDirHistory?: string[] | null;
   streamMessages?: boolean | null;
   toolMessages?: boolean | null;
   lastCommand?: string | null;
@@ -45,6 +47,20 @@ function nowIso(): string {
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeStringArray(value: unknown, limit = 10): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const output: string[] = [];
+  for (const item of value) {
+    const normalized = normalizeString(item);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    output.push(normalized);
+    if (output.length >= limit) break;
+  }
+  return output;
 }
 
 function encodeKeyPart(value: string): string {
@@ -86,6 +102,7 @@ export function readChannelConnectorSessionControls(filePath: string): ChannelCo
         model: normalizeString(value.model) || null,
         permissionMode: normalizeString(value.permissionMode) as ChannelConnectorPermissionMode || null,
         workDir: normalizeString(value.workDir) || null,
+        workDirHistory: normalizeStringArray(value.workDirHistory),
         streamMessages: typeof value.streamMessages === "boolean" ? value.streamMessages : null,
         toolMessages: typeof value.toolMessages === "boolean" ? value.toolMessages : null,
         createdAt: normalizeString(value.createdAt) || nowIso(),
@@ -147,6 +164,9 @@ export function upsertChannelConnectorSessionControl(
       ? current?.permissionMode || null
       : update.permissionMode || null,
     workDir: update.workDir === undefined ? current?.workDir || null : normalizeString(update.workDir) || null,
+    workDirHistory: update.workDirHistory === undefined
+      ? current?.workDirHistory || []
+      : normalizeStringArray(update.workDirHistory),
     streamMessages: update.streamMessages === undefined
       ? current?.streamMessages ?? null
       : typeof update.streamMessages === "boolean" ? update.streamMessages : null,

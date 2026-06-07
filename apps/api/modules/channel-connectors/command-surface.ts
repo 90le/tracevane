@@ -275,6 +275,7 @@ function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFa
     `Model: ${surface.current.model || "default"}`,
     `Mode: ${surface.current.permissionMode}`,
     `WorkDir: ${surface.current.workDir}`,
+    ...(surface.current.workDirHistory.length ? [`Previous WorkDir: ${surface.current.workDirHistory[0]}`] : []),
   ];
   for (const section of surface.sections) {
     lines.push("", section.title);
@@ -444,6 +445,10 @@ export function buildChannelConnectorCommandSurface(
       model: current.model,
       permissionMode: current.permissionMode,
       workDir: current.workDir,
+      workDirHistory: uniqueStrings(input.control?.workDirHistory || [])
+        .map((item) => path.resolve(item))
+        .filter((item) => item !== path.resolve(current.workDir))
+        .slice(0, 10),
       streamMessages,
       toolMessages,
     },
@@ -803,7 +808,7 @@ function sectionSummary(sectionId: FeishuMenuSectionId): string {
     case "buffer":
       return "查看群聊长回复的完整缓存";
     case "workdir":
-      return "查看或切换 Agent 工作目录";
+      return "查看或切换 Agent 工作目录，支持最近目录和返回上一目录";
     case "native":
       return "进入 Agent 原生 slash/skills 命令";
   }
@@ -862,11 +867,12 @@ function helpSectionActions(
   }
   if (section.id === "workdir") {
     const childCount = listChildDirectoryNames(surface.current.workDir).length;
+    const historyCount = surface.current.workDirHistory.length;
     return [
       action("workdir-picker", "目录选择器", "/dir", {
         actionKind: "nav",
         tone: "primary",
-        description: `${compactPath(surface.current.workDir)} · ${childCount} 个子目录`,
+        description: `${compactPath(surface.current.workDir)} · ${historyCount} 个最近目录 · ${childCount} 个子目录`,
         requiresAdmin: true,
       }),
     ];
@@ -1077,12 +1083,26 @@ function renderAgentPickerCard(surface: ChannelConnectorCommandSurface): Channel
 function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
   const workDir = surface.current.workDir;
   const children = listChildDirectoryNames(workDir);
+  const history = surface.current.workDirHistory
+    .filter((item) => path.resolve(item) !== path.resolve(workDir))
+    .slice(0, 10);
   const defaultAction = action("workdir-default", "Profile 默认目录", "/cd default", {
     requiresAdmin: true,
   });
+  const previousAction = history[0]
+    ? action("workdir-previous", "上一目录", "/dir -", { requiresAdmin: true })
+    : null;
   const parent = path.dirname(workDir);
   const options = [
     { label: "Profile 默认目录", value: actionCommandValue(defaultAction) },
+    ...(previousAction ? [{
+      label: `上一目录 · ${compactPath(history[0] || "")}`,
+      value: actionCommandValue(previousAction),
+    }] : []),
+    ...history.map((dir, index) => ({
+      label: `最近 ${index + 1}. ${compactPath(dir)}`,
+      value: actionCommandValue(action(`workdir-history-${index + 1}`, dir, `/dir ${index + 1}`, { requiresAdmin: true })),
+    })),
     ...(parent && parent !== workDir ? [{
       label: `上级目录 · ${compactPath(parent)}`,
       value: actionCommandValue(action("workdir-parent", "上级目录", `/cd ${parent}`, { requiresAdmin: true })),
@@ -1102,6 +1122,8 @@ function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): Chann
         "**当前目录**",
         `\`${workDir}\``,
         "",
+        history.length ? `**最近目录**\n${history.map((dir, index) => `${index + 1}. \`${compactPath(dir)}\``).join("\n")}` : "**最近目录**\n无",
+        "",
         children.length ? `**子目录**\n${children.map((name, index) => `${index + 1}. ${name}`).join("\n")}` : "**子目录**\n无可见子目录",
       ].join("\n"),
     },
@@ -1117,7 +1139,7 @@ function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): Chann
   pushSubcardNavRows(elements, surface, "workdir");
   elements.push({
     tag: "note",
-    elements: [plainText("切换目录会断开旧 Agent 续接，避免上下文指向错误目录。")],
+    elements: [plainText("切换目录会断开旧 Agent 续接；/dir - 返回上一目录，/dir <序号> 优先选择最近目录。")],
   });
   return {
     config: {

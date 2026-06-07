@@ -2432,6 +2432,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(cd.ok, true);
   assert.equal(cd.control.workDir, path.join(claudeProject.workDir, "src"));
+  assert.deepEqual(cd.control.workDirHistory, [claudeProject.workDir]);
 
   const cdDefault = await handleChannelConnectorCommand({
     ...baseContext,
@@ -2439,6 +2440,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(cdDefault.ok, true);
   assert.equal(cdDefault.control.workDir, null);
+  assert.deepEqual(cdDefault.control.workDirHistory, [path.join(claudeProject.workDir, "src")]);
 
   const cdByIndex = await handleChannelConnectorCommand({
     ...baseContext,
@@ -2446,6 +2448,23 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(cdByIndex.ok, true);
   assert.equal(cdByIndex.control.workDir, path.join(claudeProject.workDir, "src"));
+  assert.deepEqual(cdByIndex.control.workDirHistory, [claudeProject.workDir]);
+
+  const cdPrevious = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/dir -"),
+  });
+  assert.equal(cdPrevious.ok, true);
+  assert.equal(cdPrevious.control.workDir, null);
+  assert.deepEqual(cdPrevious.control.workDirHistory, [path.join(claudeProject.workDir, "src")]);
+
+  const cdHistory = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/dir 1"),
+  });
+  assert.equal(cdHistory.ok, true);
+  assert.equal(cdHistory.control.workDir, path.join(claudeProject.workDir, "src"));
+  assert.deepEqual(cdHistory.control.workDirHistory, [claudeProject.workDir]);
 
   const dir = await handleChannelConnectorCommand({
     ...baseContext,
@@ -2453,6 +2472,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(dir.ok, true);
   assert.match(dir.replyText, /当前工作目录/);
+  assert.match(dir.replyText, /最近目录/);
+  assert.match(dir.replyText, /\/dir <路径\|序号\|->/);
 
   const control = getChannelConnectorSessionControl(controlsPath, {
     bindingId: binding.id,
@@ -2772,6 +2793,8 @@ test("native Channel Connectors command surface renders text and Feishu card act
   fs.mkdirSync(path.join(codexProject.workDir, "src"), { recursive: true });
   fs.mkdirSync(path.join(codexProject.workDir, "packages"), { recursive: true });
   fs.mkdirSync(path.join(claudeProject.workDir, "src"), { recursive: true });
+  const recentWorkDir = path.join(root, "recent-work");
+  fs.mkdirSync(recentWorkDir, { recursive: true });
   const binding = {
     id: "octo-codex",
     platform: "octo",
@@ -2993,12 +3016,31 @@ test("native Channel Connectors command surface renders text and Feishu card act
     project: codexProject,
     binding,
     sessionKey: "dmwork:dm:admin-1",
+    control: {
+      id: "octo-codex|dmwork%3Adm%3Aadmin-1",
+      bindingId: "octo-codex",
+      sessionKey: "dmwork:dm:admin-1",
+      activeProjectId: null,
+      model: null,
+      permissionMode: null,
+      workDir: null,
+      workDirHistory: [recentWorkDir],
+      streamMessages: null,
+      toolMessages: null,
+      createdAt: "2026-06-06T08:00:00.000Z",
+      updatedAt: "2026-06-06T08:00:00.000Z",
+      lastCommand: "/dir",
+    },
     selectedSectionId: "workdir",
     selectedViewId: "workdir",
   });
+  assert.deepEqual(workdirPickerSurface.current.workDirHistory, [recentWorkDir]);
   const workdirCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(workdirPickerSurface));
   assert.match(workdirCardRaw, /Studio WorkDir/);
   assert.match(workdirCardRaw, /select_static/);
+  assert.match(workdirCardRaw, /最近目录/);
+  assert.match(workdirCardRaw, /act:\/dir -/);
+  assert.match(workdirCardRaw, /act:\/dir 1/);
   assert.ok(workdirCardRaw.includes(`act:/cd ${path.join(codexProject.workDir, "src")}`));
   assert.match(workdirCardRaw, /act:\/cd default/);
   assert.match(workdirCardRaw, /nav:\/help workdir/);

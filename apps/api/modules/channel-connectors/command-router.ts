@@ -239,8 +239,9 @@ function commandHelpText(): string {
     "/model <序号|模型ID|default> - 切换本会话模型",
     "/mode - 列出权限模式",
     "/mode <suggest|read-only|auto-edit|full-auto|plan|yolo|default> - 切换本会话权限",
-    "/dir - 查看当前工作目录和子目录",
-    "/cd <路径|default> - 切换本会话工作目录",
+    "/dir - 查看当前工作目录、最近目录和子目录",
+    "/dir <路径|序号|-> - 切换本会话工作目录，序号优先选择最近目录",
+    "/cd <路径|default> - /dir 的兼容别名",
     "/display - 查看流式/工具消息开关",
     "/stream <on|off|default> - 开关本会话 IM 进度/流式消息",
     "/tools <on|off|default> - 开关本会话工具/思考消息",
@@ -294,6 +295,39 @@ function resolveWorkDirTarget(input: string, currentWorkDir: string): string | n
   return path.resolve(next);
 }
 
+function normalizeWorkDirHistory(control: ChannelConnectorSessionControlRecord | null): string[] {
+  return uniqueStrings(control?.workDirHistory || [])
+    .map((item) => path.resolve(item))
+    .slice(0, 10);
+}
+
+function nextWorkDirHistory(input: {
+  control: ChannelConnectorSessionControlRecord | null;
+  previousWorkDir: string;
+  nextWorkDir: string;
+}): string[] {
+  const previous = path.resolve(input.previousWorkDir);
+  const next = path.resolve(input.nextWorkDir);
+  return uniqueStrings([previous, ...normalizeWorkDirHistory(input.control)])
+    .filter((item) => path.resolve(item) !== next)
+    .slice(0, 10);
+}
+
+function resolveWorkDirTargetWithHistory(
+  input: string,
+  currentWorkDir: string,
+  history: string[],
+): string | null {
+  const target = normalizeString(input);
+  if (!target) return null;
+  if (target === "-") return history[0] || null;
+  const index = Number(target);
+  if (Number.isInteger(index) && index >= 1 && index <= history.length) {
+    return history[index - 1] || null;
+  }
+  return resolveWorkDirTarget(target, currentWorkDir);
+}
+
 function listChildDirectories(workDir: string): string[] {
   try {
     return fs.readdirSync(workDir, { withFileTypes: true })
@@ -306,14 +340,24 @@ function listChildDirectories(workDir: string): string[] {
   }
 }
 
-function directoryInfoText(project: ChannelConnectorRuntimeProject): string {
+function directoryInfoText(
+  project: ChannelConnectorRuntimeProject,
+  control: ChannelConnectorSessionControlRecord | null,
+): string {
   const children = listChildDirectories(project.workDir);
+  const history = normalizeWorkDirHistory(control)
+    .filter((item) => path.resolve(item) !== path.resolve(project.workDir))
+    .slice(0, 10);
   const lines = [`当前工作目录：${project.workDir}`];
+  if (history.length) {
+    lines.push("", "最近目录：");
+    history.forEach((name, index) => lines.push(`${index + 1}. ${name}`));
+  }
   if (children.length) {
     lines.push("", "子目录：");
     children.forEach((name, index) => lines.push(`${index + 1}. ${name}`));
   }
-  lines.push("", "用法：/cd <路径>；/cd default 恢复 Agent Profile 默认目录。");
+  lines.push("", "用法：/dir <路径|序号|->；/cd <路径|default>。序号优先选择最近目录，历史为空时选择子目录。");
   return lines.join("\n");
 }
 
@@ -843,6 +887,7 @@ export async function handleChannelConnectorCommand(
       activeProjectId: targetProject.id,
       model: target.record.model,
       workDir: target.record.workDir,
+      workDirHistory: [],
       lastCommand: parsed.raw,
     });
     return {
@@ -897,6 +942,7 @@ export async function handleChannelConnectorCommand(
       model: null,
       permissionMode: null,
       workDir: null,
+      workDirHistory: [],
       lastCommand: parsed.raw,
     });
     return {
@@ -1003,18 +1049,26 @@ export async function handleChannelConnectorCommand(
   }
 
   if (name === "dir" || name === "pwd" || name === "cd" || name === "chdir" || name === "workdir") {
-    if ((name === "dir" || name === "pwd") && args.length === 0) {
+    const requestedDir = args.join(" ");
+    if (
+      ((name === "dir" || name === "pwd") && args.length === 0)
+      || ["help", "usage", "?"].includes(normalizeString(requestedDir).toLowerCase())
+    ) {
       return {
         handled: true,
         command: name,
         action: "list",
         ok: true,
         control: currentControl,
-        replyText: directoryInfoText(currentProject),
+        replyText: directoryInfoText(currentProject, currentControl),
         passthroughText: null,
       };
     }
-    const target = resolveWorkDirTarget(args.join(" "), currentProject.workDir);
+    const activeProject = currentControl?.activeProjectId
+      ? context.config.projects.find((project) => project.id === currentControl.activeProjectId) || context.project
+      : context.project;
+    const history = normalizeWorkDirHistory(currentControl);
+    const target = resolveWorkDirTargetWithHistory(requestedDir, currentProject.workDir, history);
     if (target === null) {
       return {
         handled: true,
@@ -1022,7 +1076,9 @@ export async function handleChannelConnectorCommand(
         action: "set",
         ok: false,
         control: currentControl,
-        replyText: "目录参数为空。用 /dir 查看当前目录和用法。",
+        replyText: args.join(" ").trim() === "-"
+          ? "没有可返回的上一工作目录。用 /dir 查看当前目录和用法。"
+          : "目录参数为空。用 /dir 查看当前目录和用法。",
         passthroughText: null,
       };
     }
@@ -1042,10 +1098,19 @@ export async function handleChannelConnectorCommand(
         };
       }
     }
+    const finalWorkDir = target || activeProject.workDir;
+    const storedWorkDir = path.resolve(finalWorkDir) === path.resolve(activeProject.workDir)
+      ? null
+      : finalWorkDir;
     const sessionsCleared = clearChannelConnectorAgentSessionsForConversation(context.agentSessionsPath, lookup);
     const control = upsertChannelConnectorSessionControl(context.controlsPath, {
       ...lookup,
-      workDir: target || null,
+      workDir: storedWorkDir,
+      workDirHistory: nextWorkDirHistory({
+        control: currentControl,
+        previousWorkDir: currentProject.workDir,
+        nextWorkDir: finalWorkDir,
+      }),
       lastCommand: parsed.raw,
     });
     return {
