@@ -57,7 +57,7 @@
 - 已完成：F4 图片非视觉模型保护：Feishu/Octo 图片附件可 staging；`glm-5` 等未标记 vision 的模型仍启动受控 Agent turn，但 prompt 禁止视觉推断并要求询问下一步，普通文件仍进入 Agent，避免路径诱导的看图幻觉。
 - 已完成：F4 Studio 原生出站文件合同：Agent 只声明 `studio-channel-files` manifest，daemon 校验文件位于 Agent workDir 或当前 runtime/staging 根，`yolo` 权限可发送任意可读普通文件但仍保留大小/平台限制；Octo 走 `/v1/bot/file/upload` 或 STS + COS PUT 直传后 image/file send，并可按 metadata 自动分流；Feishu 走 image/file upload + message send；runtime 记录 declared/resolved/sent/errors；Octo 出站保留原始文件名，且 `transport-smoke` 已支持 STS 探测、direct upload、direct upload + send media；Feishu 去重改为 messageId 优先以跳过重连重投；本机 Octo 小文本文件、STS 凭证和 COS 直传真实 smoke 已通过，Feishu/Octo daemon 出站文件已加回归。
 - 已完成：F4 IM history context：按 session 保存最近 user/assistant 脱敏摘要，Agent prompt 注入短上下文，`/compact` 将 history 替换为 `compact-summary`，`/new` / `/reset` 清理 history。
-- 已完成：持久 TUI/session driver 最小 pool contract：默认不替代 one-shot `exec/resume`；显式开启后按 binding/project/session/Agent/model/workDir 隔离，具备事件流、stop、kill、idle 回收和 driver crash 后 one-shot fallback；下一步逐个 Agent 支持 Codex/Claude Code/OpenCode 原生 slash、连续流和 Agent-side compact。
+- 已完成：持久 TUI/session driver 最小 pool contract 与 daemon 状态面：默认不替代 one-shot `exec/resume`；metadata 请求 persistent 的 binding 会在 `/status` / runtime 中显示，但 effective mode 仍明确为 one-shot；下一步逐个 Agent 支持 Codex/Claude Code/OpenCode 原生 slash、连续流和 Agent-side compact。
 - 已完成：F4 群聊 context：Agent prompt 注入 channel/sender/bot/reply/mention/成员摘要，飞书完整群成员列表后续再接平台 API。
 - 已完成：F4 长回复 group buffer：群聊长回复保存到本地 buffer，只发送短预览和 buffer id；私聊保持原拆分。
 - 已完成：F4 reply buffer 查看：`/buffer` / `/buffer <id|前缀|latest>` 和 Feishu Reply Buffer 子卡片，按当前 binding + session 隔离读取。

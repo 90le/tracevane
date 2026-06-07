@@ -5919,6 +5919,21 @@ test("native Channel Connectors daemon entry exposes health and writes runtime",
   });
   const runtimeConfig = service.getDaemonConfig().config;
   runtimeConfig.management.port = await findFreePort();
+  assert.ok(runtimeConfig.projects[0]);
+  runtimeConfig.projects[0].platformBindings.push({
+    id: "octo-persistent-status",
+    platform: "octo",
+    accountId: "octo-account",
+    botId: null,
+    displayName: "Octo Persistent Status",
+    agent: runtimeConfig.projects[0].agent,
+    enabled: true,
+    allowlist: [],
+    adminUsers: [],
+    metadata: {
+      agentSessionDriver: "persistent",
+    },
+  });
   const configPath = path.join(root, "daemon-config.json");
   fs.mkdirSync(path.dirname(runtimeConfig.paths.log), { recursive: true });
   fs.writeFileSync(configPath, JSON.stringify(runtimeConfig, null, 2), "utf8");
@@ -5939,7 +5954,20 @@ test("native Channel Connectors daemon entry exposes health and writes runtime",
       return response.status === 200 ? response.body : null;
     });
     assert.equal(health.ok, true);
+    const status = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+    assert.equal(status.status, 200);
+    assert.equal(status.body.agentSessionDriver.defaultMode, "one-shot");
+    assert.equal(status.body.agentSessionDriver.implementation, "contract-only");
+    assert.equal(status.body.agentSessionDriver.persistentDriverReady, false);
+    assert.equal(status.body.agentSessionDriver.activeSessions.length, 0);
+    assert.equal(status.body.agentSessionDriver.requestedPersistentBindings.length, 1);
+    assert.equal(status.body.agentSessionDriver.requestedPersistentBindings[0].requestedMode, "persistent");
+    assert.equal(status.body.agentSessionDriver.requestedPersistentBindings[0].effectiveMode, "one-shot");
+    assert.equal(status.body.agentSessionDriver.requestedPersistentBindings[0].reason, "persistent-driver-contract-only");
     assert.equal(fs.existsSync(runtimeConfig.paths.runtime), true);
+    const runtime = JSON.parse(fs.readFileSync(runtimeConfig.paths.runtime, "utf8"));
+    assert.equal(runtime.agentSessionDriver.requestedPersistentBindings.length, 1);
+    assert.equal(runtime.agentSessionDriver.requestedPersistentBindings[0].effectiveMode, "one-shot");
     assert.equal(fs.existsSync(runtimeConfig.paths.log), true);
     assert.match(fs.readFileSync(runtimeConfig.paths.log, "utf8"), /Studio native Channel Connectors daemon started/);
   } finally {

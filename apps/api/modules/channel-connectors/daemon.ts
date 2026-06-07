@@ -30,6 +30,10 @@ import {
   type ChannelConnectorRuntimeProject,
 } from "./agent-runner.js";
 import {
+  resolveChannelConnectorAgentSessionDriverMode,
+  type ChannelConnectorAgentSessionDriverStatus,
+} from "./agent-session-driver.js";
+import {
   clearChannelConnectorAgentSessionsForConversation,
   getChannelConnectorAgentSession,
   listChannelConnectorAgentSessionsForConversation,
@@ -255,6 +259,7 @@ interface ChannelDaemonState {
   }>;
   octoConnections: Record<string, ChannelDaemonOctoConnectionState>;
   feishuConnections: Record<string, ChannelDaemonFeishuConnectionState>;
+  agentSessionDriver: ChannelDaemonAgentSessionDriverState;
   activeRuns: Array<{
     id: string;
     startedAt: string;
@@ -297,6 +302,28 @@ interface ChannelDaemonState {
     finalProgressLagMs?: number | null;
     usage?: ChannelConnectorUsageSummary | null;
   }>;
+}
+
+interface ChannelDaemonAgentSessionDriverBindingState {
+  projectId: string;
+  bindingId: string;
+  platform: string;
+  accountId: string;
+  botId: string | null;
+  agent: string;
+  model: string | null;
+  requestedMode: "one-shot" | "persistent";
+  effectiveMode: "one-shot";
+  reason: "default" | "persistent-driver-contract-only";
+}
+
+interface ChannelDaemonAgentSessionDriverState {
+  defaultMode: "one-shot";
+  implementation: "contract-only";
+  persistentDriverReady: false;
+  requestedPersistentBindings: ChannelDaemonAgentSessionDriverBindingState[];
+  bindings: ChannelDaemonAgentSessionDriverBindingState[];
+  activeSessions: ChannelConnectorAgentSessionDriverStatus[];
 }
 
 interface ChannelDaemonActiveRunCancelEntry {
@@ -423,8 +450,39 @@ function createDaemonState(config: ChannelConnectorsDaemonRuntimeConfig): Channe
     })),
     octoConnections: {},
     feishuConnections: {},
+    agentSessionDriver: buildAgentSessionDriverState(config),
     activeRuns: [],
     agentRuns: [],
+  };
+}
+
+function buildAgentSessionDriverState(config: ChannelConnectorsDaemonRuntimeConfig): ChannelDaemonAgentSessionDriverState {
+  const bindings = config.projects.flatMap((project) => {
+    return project.platformBindings.map((binding) => {
+      const requestedMode = resolveChannelConnectorAgentSessionDriverMode(binding.metadata);
+      return {
+        projectId: project.id,
+        bindingId: binding.id,
+        platform: binding.platform,
+        accountId: binding.accountId,
+        botId: binding.botId,
+        agent: project.agent,
+        model: project.model,
+        requestedMode,
+        effectiveMode: "one-shot" as const,
+        reason: requestedMode === "persistent"
+          ? "persistent-driver-contract-only" as const
+          : "default" as const,
+      };
+    });
+  });
+  return {
+    defaultMode: "one-shot",
+    implementation: "contract-only",
+    persistentDriverReady: false,
+    requestedPersistentBindings: bindings.filter((binding) => binding.requestedMode === "persistent"),
+    bindings,
+    activeSessions: [],
   };
 }
 
@@ -547,6 +605,7 @@ function startHttp(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelD
         platformBindings: config.projects.reduce((sum, project) => sum + project.platformBindings.length, 0),
         octoConnections: Object.values(state.octoConnections),
         feishuConnections: Object.values(state.feishuConnections),
+        agentSessionDriver: state.agentSessionDriver,
         activeRuns: state.activeRuns,
         agentRuns: state.agentRuns,
       }));

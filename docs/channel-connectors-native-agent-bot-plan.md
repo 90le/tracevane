@@ -98,7 +98,7 @@ Studio 增强点：
 | F1 | 已完成：native daemon skeleton、service/config/status/logs、独立页面、守护边界测试 |
 | F2 | 已完成：CC/OpenClaw 能力映射、typed config store、Agent Profile、工作目录、模型、权限、Gateway key ref、platform/bot binding |
 | F3 | 已完成核心合同：Octo(dmwork) adapter、REST transport、daemon register/cache/WuKongIM WebSocket、Codex CLI Agent runner、真实 Octo DM 文本往返、Codex session resume、IM command control、native passthrough、command surface、Feishu webhook/outbound/long-connection、Feishu card/menu/session/model/display/progress loop |
-| F4 | 进行中：长回复拆分、Feishu thread/reply session、附件 metadata/staging、Octo URL staging、Feishu/Octo 出站文件、Octo COS 直传与自动分流、Octo CC Go 长连接基线、图片非视觉模型保护、Gateway vision 模型自动选择、Codex 原生图片输入、轻量 history context、群聊 context、长回复 group buffer、reply buffer 查看命令/菜单、飞书群成员拉取、Feishu 会话列表/切换子卡、`/current`/`/list`/`/history [n]` 信息增强、Feishu/Octo 私聊进度与群聊静默默认、持久 session driver pool 合同已完成；继续补 Codex 持久 driver 原型、Claude/OpenCode 视觉输入、OCR、语音 STT/TTS、长回复预览冻结、真实大文件限额验证、更多设置型卡片 |
+| F4 | 进行中：长回复拆分、Feishu thread/reply session、附件 metadata/staging、Octo URL staging、Feishu/Octo 出站文件、Octo COS 直传与自动分流、Octo CC Go 长连接基线、图片非视觉模型保护、Gateway vision 模型自动选择、Codex 原生图片输入、轻量 history context、群聊 context、长回复 group buffer、reply buffer 查看命令/菜单、飞书群成员拉取、Feishu 会话列表/切换子卡、`/current`/`/list`/`/history [n]` 信息增强、Feishu/Octo 私聊进度与群聊静默默认、持久 session driver pool 合同和状态面已完成；继续补 Codex 持久 driver 原型、Claude/OpenCode 视觉输入、OCR、语音 STT/TTS、长回复预览冻结、真实大文件限额验证、更多设置型卡片 |
 | F5 | 治理与自动化：allowlist/admin/rate limit/banned words 已完成；继续补 cron、hooks、relay、management API |
 | F6 | 飞书、微信/企业微信；继续迁移钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等 CC 平台 |
 | F7 | 补齐剩余 CC Agent、跨平台会话观测、消息审计、迁移工具和发布验收 |
@@ -118,7 +118,7 @@ Studio 增强点：
 - Channel daemon 已支持 runner JSONL progress、`activeRuns` status、Octo event start/progress/finish、typing pulse 和失败短回执；2026-06-06 本机 Octo `studio-cc` 真实 DM live smoke 复验通过，最近 4 条 inbound run 均完成并回复。
 - Channel daemon 已支持 `/help`、`/command`、`/cmd`、`/status`、`/usage`、`/tokens`、`/agent`、`/model`、`/mode`、`/reasoning`、`/effort`、`/name`、`/rename`、`/search`、`/find`、`/dir`、`/cd`、`/new`、`/reset`、`/display`、`/stream`、`/tools`；override 按 IM session 存储，模型切换不切断 Codex thread，reasoning/workdir/new session 会断开旧续接，流式/工具消息开关只作用于当前 IM session。
 - Channel daemon 已支持同 session FIFO Agent run queue：普通消息不再并行启动第二个 CLI Agent turn，排队消息会收到引导并在前序任务释放后自动继续；命令仍绕过队列即时执行，metadata 可显式打开并行。
-- Channel daemon 后续持久 session driver 已先锁 pool 合同：按 binding/project/session/Agent/model/workDir 隔离，事件流、stop、kill、idle 回收和 driver crash 后 one-shot fallback 均有回归；当前尚未接入默认 daemon 路径。
+- Channel daemon 后续持久 session driver 已先锁 pool 合同并接入状态面：按 binding/project/session/Agent/model/workDir 隔离，事件流、stop、kill、idle 回收和 driver crash 后 one-shot fallback 均有回归；metadata 请求 persistent 会在 `/status` / runtime 中显示，但当前 effective mode 仍是 one-shot，尚未接入默认 daemon 路径。
 - Channel daemon 已支持 `/usage` / `/tokens`：从 Studio Gateway runtime usage ledger 汇总当前 binding + IM session 最近 Agent run 的真实 token usage；无上游 usage 时明确提示无统计。
 - Channel daemon 已按 CC Go 补齐 `/reasoning`、`/name`、`/search`：推理强度支持序号与 `low|medium|high|xhigh|default`，Codex/Claude Code/OpenCode runner 分别映射到 `model_reasoning_effort`、`--effort`、`--variant`；session 命名会显示在 `/list`、`/search`、Feishu Agent Sessions 子卡和文本 fallback。
 - Channel daemon 已按 CC Go 增强 `/current`、`/list`、`/history [n]`：文本和 Feishu card 都显示 session name、短 sessionId/threadId、history 数量、最近消息和 usage 入口。
