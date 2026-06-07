@@ -5607,6 +5607,8 @@ function restartFeishuGroupClient(input: {
   group.lastWatchdogRestartReason = reason;
   if (reason.startsWith("watchdog_connected_idle_")) {
     group.suppressZeroInboundRenewal = true;
+    group.lifecycleReceivedMessages = 0;
+    group.lifecycleLastReceivedAt = null;
   }
   const currentClient = group.client;
   if (currentClient) {

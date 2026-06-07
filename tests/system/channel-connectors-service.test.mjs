@@ -5509,6 +5509,11 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /group\.lifecycleReceivedMessages === 0/);
   assert.match(daemonSource, /group\.lifecycleReceivedMessages > 0/);
   assert.match(daemonSource, /reason\.startsWith\("watchdog_connected_idle_"\)/);
+  const feishuWatchdogRestartBlock = daemonSource.slice(
+    daemonSource.indexOf("function restartFeishuGroupClient"),
+    daemonSource.indexOf("function startFeishuWatchdog"),
+  );
+  assert.match(feishuWatchdogRestartBlock, /reason\.startsWith\("watchdog_connected_idle_"\)[\s\S]*group\.lifecycleReceivedMessages\s*=\s*0;[\s\S]*group\.lifecycleLastReceivedAt\s*=\s*null;/);
   assert.match(daemonSource, /!\s*group\.suppressZeroInboundRenewal/);
   assert.match(daemonSource, /feishu_ping_timeout_seconds/);
   assert.match(daemonSource, /feishu_connected_idle_renew_ms/);
