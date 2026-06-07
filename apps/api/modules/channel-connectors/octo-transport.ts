@@ -56,6 +56,12 @@ function transportResult(
     fileName: input.fileName ?? null,
     mimeType: input.mimeType ?? null,
     size: input.size ?? null,
+    uploadBucket: input.uploadBucket ?? null,
+    uploadRegion: input.uploadRegion ?? null,
+    uploadKey: input.uploadKey ?? null,
+    uploadCdnBaseUrl: input.uploadCdnBaseUrl ?? null,
+    uploadExpiredTime: input.uploadExpiredTime ?? null,
+    uploadCredentialKeys: input.uploadCredentialKeys ?? null,
   };
 }
 
@@ -78,6 +84,44 @@ async function postOctoJson(
         authorization: `Bearer ${config.botToken}`,
       },
       body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    const raw = await response.text();
+    let body: Record<string, unknown> = {};
+    if (raw) {
+      try {
+        body = JSON.parse(raw) as Record<string, unknown>;
+      } catch {
+        body = { raw };
+      }
+    }
+    if (!response.ok) {
+      throw Object.assign(new Error(`Octo API ${path} failed with HTTP ${response.status}`), {
+        statusCode: response.status,
+        body,
+      });
+    }
+    return {
+      statusCode: response.status,
+      body,
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function getOctoJson(
+  config: ChannelConnectorOctoTransportConfig,
+  path: string,
+): Promise<{ statusCode: number; body: Record<string, unknown> }> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  try {
+    const response = await fetch(`${config.apiUrl.replace(/\/+$/, "")}${path}`, {
+      method: "GET",
+      headers: {
+        authorization: `Bearer ${config.botToken}`,
+      },
       signal: controller.signal,
     });
     const raw = await response.text();
@@ -262,6 +306,66 @@ export async function sendOctoHeartbeat(
       statusCode: errorStatusCode(error),
       error: errorMessage(error),
       requestCount: 1,
+    });
+  }
+}
+
+export async function getOctoUploadCredentials(
+  config: ChannelConnectorOctoTransportConfig,
+  input: {
+    fileName: string;
+  },
+): Promise<ChannelConnectorOctoTransportResult> {
+  const fileName = safeChannelConnectorFileName(input.fileName, "studio-upload.bin");
+  try {
+    const response = await getOctoJson(
+      config,
+      `/v1/bot/upload/credentials?filename=${encodeURIComponent(fileName)}`,
+    );
+    const credentials = recordFrom(response.body.credentials);
+    const credentialKeys = [
+      normalizeString(credentials.tmpSecretId) ? "tmpSecretId" : "",
+      normalizeString(credentials.tmpSecretKey) ? "tmpSecretKey" : "",
+      normalizeString(credentials.sessionToken) ? "sessionToken" : "",
+    ].filter(Boolean);
+    if (!normalizeString(response.body.bucket) || !normalizeString(response.body.region) || !normalizeString(response.body.key)) {
+      throw Object.assign(new Error("Octo upload credentials response did not include bucket, region, or key."), {
+        statusCode: response.statusCode,
+        body: response.body,
+      });
+    }
+    if (credentialKeys.length !== 3) {
+      throw Object.assign(new Error("Octo upload credentials response did not include complete temporary credentials."), {
+        statusCode: response.statusCode,
+        body: response.body,
+      });
+    }
+    const expiredTime = Number(response.body.expiredTime);
+    return transportResult({
+      attempted: true,
+      ok: true,
+      action: "upload-credentials",
+      apiUrl: config.apiUrl,
+      statusCode: response.statusCode,
+      requestCount: 1,
+      fileName,
+      uploadBucket: normalizeString(response.body.bucket),
+      uploadRegion: normalizeString(response.body.region),
+      uploadKey: normalizeString(response.body.key),
+      uploadCdnBaseUrl: normalizeString(response.body.cdnBaseUrl) || null,
+      uploadExpiredTime: Number.isFinite(expiredTime) ? expiredTime : null,
+      uploadCredentialKeys: credentialKeys,
+    });
+  } catch (error) {
+    return transportResult({
+      attempted: true,
+      ok: false,
+      action: "upload-credentials",
+      apiUrl: config.apiUrl,
+      statusCode: errorStatusCode(error),
+      error: errorMessage(error),
+      requestCount: 1,
+      fileName,
     });
   }
 }

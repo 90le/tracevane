@@ -180,6 +180,7 @@ export interface ChannelConnectorOctoTransportResult {
     | "heartbeat"
     | "typing"
     | "send-message"
+    | "upload-credentials"
     | "upload-file"
     | "send-media"
     | "upload-and-send-media";
@@ -194,11 +195,17 @@ export interface ChannelConnectorOctoTransportResult {
   fileName?: string | null;
   mimeType?: string | null;
   size?: number | null;
+  uploadBucket?: string | null;
+  uploadRegion?: string | null;
+  uploadKey?: string | null;
+  uploadCdnBaseUrl?: string | null;
+  uploadExpiredTime?: number | null;
+  uploadCredentialKeys?: string[] | null;
 }
 
 export interface ChannelConnectorOctoTransportSmokeRequest {
   bindingId?: string | null;
-  action?: "register" | "typing" | "send-message" | "upload-file" | "upload-and-send-media";
+  action?: "register" | "typing" | "send-message" | "upload-credentials" | "upload-file" | "upload-and-send-media";
   channelId?: string | null;
   channelType?: ChannelConnectorOctoChannelType;
   content?: string | null;

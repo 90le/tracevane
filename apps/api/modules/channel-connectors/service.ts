@@ -57,6 +57,7 @@ import {
 } from "./octo-adapter.js";
 import {
   emptyOctoTransportResult,
+  getOctoUploadCredentials,
   octoTransportFromBinding,
   registerOctoBot,
   sendOctoTextReply,
@@ -977,6 +978,7 @@ function normalizeOctoTransportSmokeRequest(payload: ChannelConnectorOctoTranspo
   if (!payload || !isRecord(payload)) return { action: "register" };
   const action = payload.action === "typing"
     || payload.action === "send-message"
+    || payload.action === "upload-credentials"
     || payload.action === "upload-file"
     || payload.action === "upload-and-send-media"
     || payload.action === "register"
@@ -2272,6 +2274,10 @@ export function createChannelConnectorsService(
         data: new TextEncoder().encode(content),
         fileName: request.fileName || "studio-octo-smoke.txt",
         mimeType: request.mimeType || "text/plain",
+      });
+    } else if (request.action === "upload-credentials") {
+      transport = await getOctoUploadCredentials(transportConfig, {
+        fileName: request.fileName || "studio-octo-smoke.txt",
       });
     } else if (request.action === "upload-and-send-media") {
       if (!request.channelId) throw new Error("channelId is required for Octo upload-and-send-media smoke.");

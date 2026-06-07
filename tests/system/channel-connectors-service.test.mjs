@@ -375,6 +375,22 @@ async function withMockOctoServer(task) {
         res.end(JSON.stringify({ robot_id: "robot-1", im_token: "im-token-1", ws_url: "wss://octo.example/ws" }));
         return;
       }
+      if (req.url?.startsWith("/v1/bot/upload/credentials")) {
+        res.end(JSON.stringify({
+          bucket: "studio-bucket-123",
+          region: "ap-beijing",
+          key: "im-test/chat/1742547600/uuid_report.pdf",
+          credentials: {
+            tmpSecretId: "tmp-id",
+            tmpSecretKey: "tmp-key",
+            sessionToken: "session-token",
+          },
+          startTime: 1742547600,
+          expiredTime: 1742549400,
+          cdnBaseUrl: "https://cdn.example.test",
+        }));
+        return;
+      }
       if (req.url === "/v1/bot/file/upload") {
         res.end(JSON.stringify({ url: "https://cdn.example.test/studio-octo-upload" }));
         return;
@@ -1417,6 +1433,63 @@ test("Octo transport sends CC-compatible REST heartbeat", async () => {
     assert.ok(request);
     assert.equal(request.method, "POST");
     assert.equal(request.authorization, "Bearer octo-token");
+  });
+});
+
+test("Octo transport smoke probes STS upload credentials without exposing secrets", async () => {
+  await withMockOctoServer(async (apiUrl, requests) => {
+    const root = makeTempRoot();
+    const config = createStudioConfig(root);
+    const service = createChannelConnectorsService(config, {
+      now: () => new Date("2026-06-06T08:00:00.000Z"),
+    });
+    const initial = service.getNativeConfig().config;
+    service.saveNativeConfig({
+      config: {
+        ...initial,
+        platformBindings: [
+          {
+            id: "octo-sts",
+            platform: "octo",
+            accountId: "octo-account",
+            botId: "robot-1",
+            displayName: "Octo STS",
+            agentProfileId: initial.defaultAgentProfileId,
+            enabled: true,
+            allowlist: [],
+            adminUsers: [],
+            metadata: {
+              apiUrl,
+              botToken: "test-token",
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await service.runOctoTransportSmoke({
+      bindingId: "octo-sts",
+      action: "upload-credentials",
+      fileName: "龙虾 计划(最终版).pdf",
+    });
+
+    assert.equal(result.transport.ok, true);
+    assert.equal(result.transport.action, "upload-credentials");
+    assert.equal(result.transport.fileName, "龙虾 计划(最终版).pdf");
+    assert.equal(result.transport.uploadBucket, "studio-bucket-123");
+    assert.equal(result.transport.uploadRegion, "ap-beijing");
+    assert.equal(result.transport.uploadKey, "im-test/chat/1742547600/uuid_report.pdf");
+    assert.equal(result.transport.uploadCdnBaseUrl, "https://cdn.example.test");
+    assert.equal(result.transport.uploadExpiredTime, 1742549400);
+    assert.deepEqual(result.transport.uploadCredentialKeys, ["tmpSecretId", "tmpSecretKey", "sessionToken"]);
+    assert.equal(JSON.stringify(result.transport).includes("tmp-key"), false);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].method, "GET");
+    assert.equal(requests[0].authorization, "Bearer test-token");
+    assert.equal(
+      requests[0].path,
+      `/v1/bot/upload/credentials?filename=${encodeURIComponent("龙虾 计划(最终版).pdf")}`,
+    );
   });
 });
 

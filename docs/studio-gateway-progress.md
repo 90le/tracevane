@@ -24,16 +24,18 @@
 - Feishu connected-idle refresh 默认从 30 秒调为 5 分钟，保留启动 no-inbound 自检和 metadata 覆盖，减少正常在线时的频繁重连。
 - Octo 出站上传改用共享文件名清洗，保留原始文件名中的中文、空格和括号；Agent prompt 明确要求除非用户指定改名，否则 manifest `name` 保持原文件名。
 - 入站附件 staging 改为可读文件名策略：仍剥离路径穿越和非法字符，但保留中文、空格、括号等原始文件名信息，方便 Agent 和用户核对文件。
+- Octo 大文件直传前置能力已接入：`transport-smoke` 支持 `/v1/bot/upload/credentials` STS 探测，返回脱敏 bucket/region/key/cdn/credential fields，不暴露临时密钥；真实 `studio-cc` binding 探测通过。
 
 ## 最近验证
 
 - 通过：`npm run build:api`。
 - 通过：`node --test tests/system/model-gateway-service.test.mjs`，51 个 Model Gateway 子测试通过。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，42 个 Channel Connectors 子测试通过。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，43 个 Channel Connectors 子测试通过。
 - 通过：`node --test tests/system/studio-web-channel-connectors-page.test.mjs tests/system/studio-web-model-gateway-page.test.mjs`，6 个前端 contract 子测试通过。
 - 通过：`git diff --check`。
 - 通过：Feishu live file smoke，`Studio 文件名 保留测试.md` 通过 Feishu file upload + message send 成功，HTTP 200，保留原始文件名。
 - 通过：Octo live file smoke，`Studio 文件名 保留测试.md` 通过 Octo upload + send media 成功，HTTP 200，保留原始文件名。
+- 通过：Octo live STS smoke，`/v1/bot/upload/credentials` 返回 HTTP 200，region/key/cdn 和三项临时凭证字段存在，响应已脱敏。
 - 通过：`systemctl --user restart openclaw-studio-model-gateway.service openclaw-studio-channel-connectors.service`，两个 user services 均为 `active/enabled`。
 - 通过：`npm run dev:restart`，前端 `http://127.0.0.1:5176`，后端 `http://127.0.0.1:3762`。
 - 通过：Gateway status 显示 local daemon `state=running`、preferred CLI endpoint `http://127.0.0.1:18796/v1`；无正确 Gateway key 访问 `/v1/models` 返回 401，鉴权仍生效。
@@ -45,7 +47,7 @@
 - GMN provider 可作为视觉测试源，但未设为所有 App scope 默认 active provider；测试时需显式选择 `gpt-5.5`、`gmn-vision` 或 `gmn/gpt-5.5`。
 - Feishu 官方 SDK 仍可能因网络或平台关闭连接而 reconnect；当前策略用 SDK `pingTimeout=10s` 终止无 inbound/pong 的死 socket，消息 ACK 不等待 Agent/附件 IO。长连接 cluster 模式下，安静期无法证明“无用户消息”还是“平台未投递”，因此启动 no-inbound 只自检一次，connected-idle 默认 5 分钟低频刷新且可由 metadata 关闭或调整。SDK `createLarkChannel` 是后续更大重构参考，但当前不直接替换，避免丢失 Studio session/Gateway/进度卡片控制面。
 - Codex Agent 图片已走原生 `--image`；Studio `/compact` 已覆盖 IM history 压缩，但 Codex 原生交互式 `/compact`、`/clear` 仍需要持久 Codex session，不能通过一次性 `codex exec` 伪实现；Claude Code / OpenCode 视觉输入、视频理解、OCR、语音/STT/TTS 和 Octo 大文件 COS STS 直传仍待迁移。
-- 出站文件基础链路已覆盖小/中型本地文件；高级 `yolo` 权限仅放宽本地路径根限制，不绕过平台上传限制。Octo 大文件 COS STS、Feishu 真实大文件平台限额和更多平台文件收发仍需继续迁移/实测。
+- 出站文件基础链路已覆盖小/中型本地文件；高级 `yolo` 权限仅放宽本地路径根限制，不绕过平台上传限制。Octo STS 凭证探测已完成，但 COS 直传仍需在不破坏“无新增依赖”约束下设计；Feishu 真实大文件平台限额和更多平台文件收发仍需继续迁移/实测。
 - Feishu 历史未 ACK 事件可能仍会被平台重投一次；持久化去重会记录并跳过，最终仍需用户发送全新消息复验 live 回复。
 
 ## 下一步
