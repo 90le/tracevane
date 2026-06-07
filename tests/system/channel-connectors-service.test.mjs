@@ -5411,6 +5411,7 @@ test("native Channel Connectors process runner maps Codex command execution prog
   const childScript = [
     "process.stdout.write(JSON.stringify({type:'item.started',item:{type:'command_execution',command:'pwd'}})+'\\n');",
     "process.stdout.write(JSON.stringify({type:'item.completed',item:{type:'command_execution',command:'pwd',exit_code:0,output:'/tmp/project'}})+'\\n');",
+    "process.stdout.write(JSON.stringify({type:'item.completed',item:{type:'function_call_output',call_id:'read-file-1',content:[{type:'output_text',text:'  alpha\\n  beta\\n\\ngamma'}]}})+'\\n');",
     "process.stdout.write(JSON.stringify({type:'turn.failed',error:{message:'未正常接收到prompt参数。',type:'upstream_error',code:'1213'}})+'\\n');",
   ].join("");
 
@@ -5426,7 +5427,7 @@ test("native Channel Connectors process runner maps Codex command execution prog
   });
 
   assert.equal(result.exitCode, 0);
-  assert.equal(progress.length, 3);
+  assert.equal(progress.length, 4);
   assert.equal(progress[0].type, "tool");
   assert.equal(progress[0].rawType, "item.started");
   assert.equal(progress[0].itemType, "command_execution");
@@ -5436,9 +5437,13 @@ test("native Channel Connectors process runner maps Codex command execution prog
   assert.equal(progress[1].rawType, "item.completed");
   assert.match(progress[1].text, /exit=0/);
   assert.match(progress[1].text, /\/tmp\/project/);
-  assert.equal(progress[2].type, "failed");
-  assert.equal(progress[2].text, "未正常接收到prompt参数。 (type=upstream_error, code=1213)");
-  assert.equal(result.progressEvents?.length, 3);
+  assert.equal(progress[2].type, "tool");
+  assert.equal(progress[2].itemType, "function_call_output");
+  assert.match(progress[2].text, /read-file-1 completed/);
+  assert.match(progress[2].text, /output:\n  alpha\n  beta\n\ngamma/);
+  assert.equal(progress[3].type, "failed");
+  assert.equal(progress[3].text, "未正常接收到prompt参数。 (type=upstream_error, code=1213)");
+  assert.equal(result.progressEvents?.length, 4);
 });
 
 test("native Channel Connectors service management is guarded before daemon entry is built", async () => {

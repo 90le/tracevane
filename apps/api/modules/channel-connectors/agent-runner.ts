@@ -119,6 +119,10 @@ function truncateText(value: string, maxLength = 400): string {
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}...` : normalized;
 }
 
+function truncateProgressText(value: string, maxLength = 1200): string {
+  return value.length > maxLength ? `${value.slice(0, maxLength - 1)}...` : value;
+}
+
 function attachmentSummaryLabel(attachment: ChannelConnectorInboundAttachment): string {
   const name = normalizeString(attachment.fileName);
   const localPath = normalizeString(attachment.localPath);
@@ -340,6 +344,48 @@ function stringifyProgressValue(value: unknown, maxLength = 240): string {
   }
 }
 
+function progressTextValue(value: unknown, maxLength = 1200): string {
+  if (typeof value === "string") return truncateProgressText(value, maxLength);
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (value === null || typeof value === "undefined") return "";
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((item) => progressTextValue(item, maxLength))
+      .filter((item) => item.trim());
+    return parts.join("\n");
+  }
+  const record = recordValue(value);
+  if (record) {
+    const direct = progressTextValue(record.text, maxLength)
+      || progressTextValue(record.content, maxLength)
+      || progressTextValue(record.output_text, maxLength)
+      || progressTextValue(record.output, maxLength)
+      || progressTextValue(record.result, maxLength)
+      || progressTextValue(record.stdout, maxLength)
+      || progressTextValue(record.stderr, maxLength)
+      || progressTextValue(record.message, maxLength);
+    if (direct) return truncateProgressText(direct, maxLength);
+    const message = recordValue(record.message);
+    const nestedMessage = progressTextValue(message?.content, maxLength);
+    if (nestedMessage) return nestedMessage;
+    const nestedContent = progressTextValue(record.content, maxLength);
+    if (nestedContent) return nestedContent;
+  }
+  try {
+    return truncateProgressText(JSON.stringify(value, null, 2), maxLength);
+  } catch {
+    return "";
+  }
+}
+
+function firstProgressTextValue(...values: unknown[]): string {
+  for (const value of values) {
+    const text = progressTextValue(value);
+    if (text) return text;
+  }
+  return "";
+}
+
 function errorMessageFromValue(value: unknown): string {
   const record = recordValue(value);
   const error = recordValue(record?.error) || record;
@@ -392,16 +438,24 @@ function codexToolProgressText(item: Record<string, unknown> | null, itemType: s
     || stringifyProgressValue(item.input);
   const status = normalizeString(item.status);
   const exitCode = Number(item.exit_code ?? item.exitCode);
-  const output = normalizeString(item.output)
-    || normalizeString(item.aggregated_output)
-    || normalizeString(item.result)
-    || normalizeString(item.stderr)
-    || normalizeString(item.stdout);
+  const output = firstProgressTextValue(
+    item.output,
+    item.aggregated_output,
+    item.formatted_output,
+    item.display_output,
+    item.result,
+    item.outputs,
+    item.content,
+    item.text,
+    item.stdout,
+    item.stderr,
+    item.error,
+  );
   const parts = [
     rawType.endsWith(".started") ? `${name} started` : `${name} completed`,
-    command,
+    command ? `command=${command}` : "",
     Number.isFinite(exitCode) ? `exit=${exitCode}` : status,
-    output,
+    output ? `output:\n${output}` : "",
   ].filter(Boolean);
   return parts.join("\n");
 }
@@ -760,7 +814,7 @@ function progressEvent(input: {
     type: input.type,
     rawType: input.rawType || null,
     itemType: input.itemType || null,
-    text: input.text ? truncateText(input.text) : null,
+    text: input.text ? truncateProgressText(input.text) : null,
   };
 }
 

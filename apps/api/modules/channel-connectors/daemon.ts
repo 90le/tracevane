@@ -2646,27 +2646,55 @@ function parseProgressToolText(entry: FeishuProgressCardEntry): {
   const toolName = normalizeString(entry.itemType)
     || normalizeString(entry.title.split("：")[1])
     || "tool";
-  const lines = entry.text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const lines = String(entry.text || "").split(/\r?\n/);
   const bodyLines = lines.slice(1);
   let command = "";
   let exitCode: string | null = null;
   let status: string | null = null;
   const outputLines: string[] = [];
-  for (const line of bodyLines) {
+  let inOutput = false;
+  for (let index = 0; index < bodyLines.length; index += 1) {
+    const rawLine = bodyLines[index] || "";
+    const line = rawLine.trim();
+    if (inOutput) {
+      outputLines.push(rawLine);
+      continue;
+    }
+    if (!line) continue;
+    const outputMatch = line.match(/^output\s*:\s*(.*)$/i);
+    if (outputMatch) {
+      inOutput = true;
+      if (outputMatch[1]) outputLines.push(outputMatch[1]);
+      continue;
+    }
+    const commandMatch = line.match(/^command=(.*)$/i);
+    if (commandMatch) {
+      command = normalizeString(commandMatch[1]);
+      continue;
+    }
     const exitMatch = line.match(/^exit=(.+)$/i);
     if (exitMatch) {
       exitCode = normalizeString(exitMatch[1]);
-      continue;
-    }
-    if (!command) {
-      command = line;
       continue;
     }
     if (!status && /^(in_progress|running|started|pending|completed|failed|success|succeeded|ok|error)$/i.test(line)) {
       status = line;
       continue;
     }
-    outputLines.push(line);
+    if (!command && entry.kind === "tool_use") {
+      command = line;
+      continue;
+    }
+    if (!command && entry.kind === "tool_result") {
+      const next = normalizeString(bodyLines[index + 1]);
+      const nextLooksMeta = /^exit=.+$/i.test(next)
+        || /^(in_progress|running|started|pending|completed|failed|success|succeeded|ok|error)$/i.test(next);
+      if (nextLooksMeta) {
+        command = line;
+        continue;
+      }
+    }
+    outputLines.push(rawLine);
   }
   return {
     toolName,
