@@ -25,6 +25,7 @@
 - Provider 模型配置已从多行文本改为结构化列表：每行可维护模型 ID、显示名、别名和能力勾选；后端 registry 与 `/v1/models` 已保留 `text/vision/tools/reasoning/responses/streaming` 六类模型能力。
 - Channel Connectors 已开始使用 Gateway 模型目录能力：图片/视频/贴纸 turn 会优先选择当前模型；若当前模型非 vision 且模型池存在 vision 模型，则仅本轮自动切到 vision 模型，binding metadata 可用 `autoVisionModel:false` 关闭。
 - Codex Agent 视觉图片输入已打通：当视觉附件已 staging、当前 turn 使用 vision-capable 模型且 Agent 为 Codex 时，runner 会把本地 image/sticker 文件通过 Codex CLI 原生 `--image` 传入；纯附件消息也会启动 Agent。
+- Channel daemon 入站视觉链路已用 daemon 级系统测试锁定：Octo WuKongIM 入站图片 URL -> staging -> Gateway `/v1/models` 自动选择 vision 模型 -> Codex `--image`。真实外部 Feishu/Octo live 仍需用户再发一张图复验。
 - Channel Connectors 附件默认落点已确认：IM 平台先保存原始文件，Studio Channel daemon 下载后 staging 到 `~/.config/openclaw-studio/channel-connectors/daemon/state/agent-runtime/<agent>/<project>/<binding>/attachments/<messageId>/...`，默认上限 128MB，可由 binding metadata 覆盖。
 - Channel daemon status API 已确认 Octo 与 Feishu connected，`platformBindings=2`；运行中任务可通过 `activeRuns` 观测。
 
@@ -45,6 +46,7 @@
 - 通过：`node --test tests/system/model-gateway-service.test.mjs`，50 个模型网关测试通过，覆盖模型能力保存、`/v1/models` 跨 provider 同名模型池能力合并和 HTTP 回显。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "native Channel Connectors agent runner|native Channel Connectors visual turns"`，实际执行 35 个 Channel Connectors 系统测试，覆盖视觉附件按 Gateway catalog 自动选择 vision 模型、Codex `--image` 参数、纯附件启动、alias 保留、禁用开关和 catalog 失败降级。
 - 通过：隔离 Codex CLI + Studio Gateway + GMN `gmn-vision` 真实图片 smoke；1x1 红色 PNG 通过 `--image` 进入 Codex，返回“红色”，run completed，13 个 progress events。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "daemon registers Octo|agent runner|visual turns"`，实际执行 35 个 Channel Connectors 系统测试，覆盖 daemon 子进程、假 Octo WS 入站图片、假 CDN staging、Gateway vision catalog、auto model selection 和 Codex `--image` 捕获。
 - 通过：`node --test tests/system/studio-web-model-gateway-page.test.mjs`，覆盖 Provider 模型能力列表 UI 契约。
 - 通过：Playwright 打开 `/model-gateway` 并切换 Provider tab，验证新增模型行能力勾选可见，桌面和 390px 窄屏无横向溢出、无 console error。
 - 通过：Playwright 打开 `/channel-connectors`，检查 Feishu/Octo 平台配置表单无 console error、无横向溢出。
@@ -59,6 +61,6 @@
 
 ## 下一步
 
-1. 用真实 Feishu/Octo 入站图片复验同一 Codex `--image` 路径，确认平台下载/staging 后也能返回视觉结果。
+1. 等用户在 Feishu/Octo 再发一张图片后，复验真实外部平台入站图片是否走同一 Codex `--image` 路径并返回视觉结果。
 2. 补 Claude Code / OpenCode 的视觉输入策略，继续迁移 CC/OpenClaw 的 OCR、语音/STT/TTS、大文件 COS 直传和多平台 adapter。
 3. 精修 Feishu card/menu 与 Octo 弱富交互，保持 IM 命令和 Studio UI 同一 typed 状态。

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
@@ -167,6 +168,94 @@ function findFreePort() {
     });
     server.once("error", reject);
   });
+}
+
+function encodeVariableLength(length) {
+  const output = [];
+  let remaining = Math.max(0, Math.floor(length));
+  do {
+    let digit = remaining % 0x80;
+    remaining = Math.floor(remaining / 0x80);
+    if (remaining > 0) digit |= 0x80;
+    output.push(digit);
+  } while (remaining > 0);
+  return Buffer.from(output);
+}
+
+function octoPacket(packetType, flags, body = Buffer.alloc(0)) {
+  return Buffer.concat([
+    Buffer.from([(packetType << 4) | (flags & 0x0f)]),
+    encodeVariableLength(body.length),
+    body,
+  ]);
+}
+
+function octoString(value) {
+  const raw = Buffer.from(String(value || ""), "utf8");
+  const length = Buffer.alloc(2);
+  length.writeInt16BE(raw.length, 0);
+  return Buffer.concat([length, raw]);
+}
+
+function octoInt32(value) {
+  const buffer = Buffer.alloc(4);
+  buffer.writeInt32BE(value, 0);
+  return buffer;
+}
+
+function octoInt64(value) {
+  const buffer = Buffer.alloc(8);
+  buffer.writeBigInt64BE(BigInt(value), 0);
+  return buffer;
+}
+
+function publicKeyFromOctoRaw(rawBase64) {
+  return crypto.createPublicKey({
+    format: "der",
+    type: "spki",
+    key: Buffer.concat([
+      Buffer.from("302a300506032b656e032100", "hex"),
+      Buffer.from(rawBase64, "base64"),
+    ]),
+  });
+}
+
+function encryptOctoPayload(serverPrivateKey, clientPublicKeyBase64, salt, payload) {
+  const sharedSecret = crypto.diffieHellman({
+    privateKey: serverPrivateKey,
+    publicKey: publicKeyFromOctoRaw(clientPublicKeyBase64),
+  });
+  const keyHex = crypto.createHash("md5").update(sharedSecret.toString("base64")).digest("hex").slice(0, 16);
+  const key = Buffer.from(keyHex, "utf8");
+  const iv = Buffer.from(salt.slice(0, 16), "utf8");
+  const cipher = crypto.createCipheriv("aes-128-cbc", key, iv);
+  return Buffer.concat([
+    cipher.update(Buffer.from(JSON.stringify(payload), "utf8")),
+    cipher.final(),
+  ]).toString("base64");
+}
+
+function encodeOctoRecvPacket(input) {
+  const encrypted = Buffer.from(encryptOctoPayload(
+    input.serverPrivateKey,
+    input.clientPublicKeyBase64,
+    input.salt,
+    input.payload,
+  ), "utf8");
+  const body = Buffer.concat([
+    Buffer.from([0]),
+    octoString(""),
+    octoString(input.fromUid || "route-user"),
+    octoString(input.channelId || input.fromUid || "route-user"),
+    Buffer.from([input.channelType || 1]),
+    octoInt32(0),
+    octoString(""),
+    octoInt64(input.messageId || 1001),
+    octoInt32(input.messageSeq || 1),
+    octoInt32(input.timestamp || Math.floor(Date.now() / 1000)),
+    encrypted,
+  ]);
+  return octoPacket(5, 0, body);
 }
 
 async function waitFor(predicate, timeoutMs = 3000) {
@@ -4401,8 +4490,27 @@ test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSock
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
+  const fakeBin = path.join(root, "fake-bin");
+  const capturePath = path.join(root, "codex-capture.jsonl");
+  fs.mkdirSync(fakeBin, { recursive: true });
+  const fakeCodexPath = path.join(fakeBin, "codex");
+  fs.writeFileSync(fakeCodexPath, [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    "let stdin = '';",
+    "process.stdin.on('data', (chunk) => { stdin += chunk.toString('utf8'); });",
+    "process.stdin.on('end', () => {",
+    "  fs.appendFileSync(process.env.STUDIO_TEST_CODEX_CAPTURE, `${JSON.stringify({ argv: process.argv.slice(2), stdin, cwd: process.cwd(), openaiBaseUrl: process.env.OPENAI_BASE_URL, hasCodexHome: Boolean(process.env.CODEX_HOME) })}\\n`);",
+    "  process.stdout.write('{\"type\":\"thread.started\",\"thread_id\":\"thread-octo-vision\"}\\n');",
+    "  process.stdout.write('{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"图片已查看\"}}\\n');",
+    "  process.stdout.write('{\"type\":\"turn.completed\"}\\n');",
+    "});",
+    "",
+  ].join("\n"), { mode: 0o755 });
 
   const wsConnects = [];
+  let inboundImageUrl = "";
+  let inboundSent = false;
   const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await new Promise((resolve, reject) => {
     wss.once("listening", resolve);
@@ -4412,14 +4520,41 @@ test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSock
   assert.ok(wsAddress && typeof wsAddress === "object");
   const wsUrl = `ws://127.0.0.1:${wsAddress.port}/ws`;
   wss.on("connection", (socket) => {
+    let connected = false;
     socket.on("message", (data) => {
+      if (connected) return;
       const packet = decodeOctoConnectPacket(Buffer.isBuffer(data) ? data : Buffer.from(data));
+      connected = true;
       wsConnects.push(packet);
       const serverKey = createOctoX25519KeyPair();
+      const salt = "1234567890abcdef";
       socket.send(encodeOctoConnackPacket({
         serverPublicKeyBase64: serverKey.publicKeyBase64,
-        salt: "1234567890abcdef",
+        salt,
       }));
+      if (!inboundSent) {
+        inboundSent = true;
+        setTimeout(() => {
+          if (socket.readyState !== 1 || !inboundImageUrl) return;
+          socket.send(encodeOctoRecvPacket({
+            serverPrivateKey: serverKey.privateKey,
+            clientPublicKeyBase64: packet.clientPublicKeyBase64,
+            salt,
+            messageId: 1001,
+            messageSeq: 1,
+            fromUid: "route-user",
+            channelId: "route-user",
+            channelType: 1,
+            payload: {
+              type: 2,
+              content: "",
+              name: "red.png",
+              url: inboundImageUrl,
+              size: 68,
+            },
+          }));
+        }, 50);
+      }
     });
   });
 
@@ -4437,12 +4572,32 @@ test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSock
         body: bodyRaw ? JSON.parse(bodyRaw) : {},
       });
       res.setHeader("content-type", "application/json");
+      if (req.url === "/v1/models") {
+        res.end(JSON.stringify({
+          object: "list",
+          data: [
+            { id: "glm-5", object: "model", features: { text: true, vision: false } },
+            { id: "gpt-5.5", object: "model", aliases: ["gmn-vision"], features: { text: true, vision: true, responses: true } },
+          ],
+        }));
+        return true;
+      }
+      if (req.url === "/media/red.png") {
+        res.setHeader("content-type", "image/png");
+        res.end(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR42mP8z8BQDwAFgwJ/lpJr1QAAAABJRU5ErkJggg==", "base64"));
+        return true;
+      }
       if (req.url?.startsWith("/v1/bot/register")) {
         res.end(JSON.stringify({ robot_id: "robot-1", im_token: "im-token-1", ws_url: wsUrl }));
         return true;
       }
+      if (req.url === "/v1/bot/typing" || req.url === "/v1/bot/sendMessage") {
+        res.end(JSON.stringify({ ok: true, message_id: "octo-sent-1" }));
+        return true;
+      }
       return false;
     }, async (apiUrl) => {
+      inboundImageUrl = `${apiUrl}/media/red.png`;
       const initial = service.getNativeConfig().config;
       service.saveNativeConfig({
         config: {
@@ -4452,10 +4607,10 @@ test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSock
               id: "codex-ws",
               name: "Codex WS",
               agent: "codex",
-              model: "gpt-5",
+              model: "glm-5",
               workDir: config.projectRoot,
               permissionMode: "suggest",
-              gatewayEndpoint: "http://127.0.0.1:18796/v1",
+              gatewayEndpoint: `${apiUrl}/v1`,
               gatewayKeyRef: "studio-gateway-client-key",
               appProfileRef: "codex",
             },
@@ -4476,6 +4631,8 @@ test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSock
                 apiUrl,
                 botToken: "test-token",
                 wsUrl,
+                allowPrivateAttachmentUrls: true,
+                attachmentMaxBytes: 1024,
               },
             },
           ],
@@ -4491,6 +4648,12 @@ test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSock
       const daemonEntry = path.resolve("dist/apps/api/modules/channel-connectors/daemon.js");
       const child = spawn(process.execPath, [daemonEntry, "--config", configPath], {
         cwd: path.resolve("."),
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:${process.env.PATH || ""}`,
+          STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+          STUDIO_TEST_CODEX_CAPTURE: capturePath,
+        },
         stdio: ["ignore", "pipe", "pipe"],
       });
       let stderr = "";
@@ -4505,7 +4668,6 @@ test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSock
           return connected ? response.body : null;
         }, 5000);
         assert.equal(status.ok, true);
-        assert.deepEqual(status.activeRuns, []);
         assert.deepEqual(status.agentRuns, []);
         assert.equal(wsConnects.length, 1);
         assert.equal(wsConnects[0].uid, "robot-1");
@@ -4516,6 +4678,47 @@ test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSock
         assert.equal(cache.bindings["octo-ws"].imToken, "im-token-1");
         assert.equal(cache.bindings["octo-ws"].wsUrl, wsUrl);
         assert.equal(requests[0].path, "/v1/bot/register");
+        const capture = await waitFor(() => {
+          if (!fs.existsSync(capturePath)) return null;
+          const lines = fs.readFileSync(capturePath, "utf8").trim().split(/\r?\n/).filter(Boolean);
+          return lines.length ? lines.map((line) => JSON.parse(line)) : null;
+        }, 8000);
+        assert.equal(capture.length, 1);
+        assert.equal(capture[0].argv.includes("--image"), true);
+        const imageArgIndex = capture[0].argv.indexOf("--image");
+        const imageArgPath = capture[0].argv[imageArgIndex + 1];
+        assert.match(imageArgPath, new RegExp(`${path.sep}attachments${path.sep}1001${path.sep}`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+        assert.equal(path.basename(imageArgPath).endsWith("red.png"), true);
+        assert.equal(capture[0].argv.includes("--model"), true);
+        assert.equal(capture[0].argv[capture[0].argv.indexOf("--model") + 1], "gpt-5.5");
+        assert.equal(capture[0].openaiBaseUrl, `${apiUrl}/v1`);
+        assert.match(capture[0].stdin, /native --image arguments/);
+        assert.doesNotMatch(capture[0].stdin, /Studio visual attachment policy/);
+        const finalStatus = await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const run = response.body?.agentRuns?.find?.((item) => item.messageId === "1001");
+          return run ? response.body : null;
+        }, 8000);
+        const run = finalStatus.agentRuns.find((item) => item.messageId === "1001");
+        assert.equal(run.ok, true);
+        const octoEvents = fs.readFileSync(runtimeConfig.paths.octoEvents, "utf8")
+          .trim()
+          .split(/\r?\n/)
+          .filter(Boolean)
+          .map((line) => JSON.parse(line));
+        assert.ok(octoEvents.some((event) => {
+          return event.eventKind === "agent.model.selected"
+            && event.messageId === "1001"
+            && event.originalModel === "glm-5"
+            && event.selectedModel === "gpt-5.5";
+        }));
+        assert.ok(octoEvents.some((event) => {
+          return event.eventKind === "agent.attachments.staged"
+            && event.messageId === "1001"
+            && event.stagedCount === 1;
+        }));
+        assert.equal(requests.some((request) => request.path === "/v1/models"), true);
+        assert.equal(requests.some((request) => request.path === "/media/red.png"), true);
       } finally {
         child.kill("SIGTERM");
         await new Promise((resolve) => {
