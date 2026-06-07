@@ -14,6 +14,9 @@ class FakeCodexAppServerTransport {
   nextTurnId = 1;
   completeTurns = true;
   responseDelayMs = 0;
+  deltaChunks = null;
+  completedText = null;
+  toolItems = [];
 
   send(message) {
     this.messages.push(message);
@@ -62,6 +65,12 @@ class FakeCodexAppServerTransport {
       });
       if (this.completeTurns) {
         setTimeout(() => {
+          const finalText = typeof this.completedText === "string"
+            ? this.completedText
+            : `reply for ${message.params.clientUserMessageId}`;
+          const deltaChunks = Array.isArray(this.deltaChunks) && this.deltaChunks.length
+            ? this.deltaChunks
+            : [finalText];
           this.emit({
             method: "turn/started",
             params: {
@@ -69,15 +78,28 @@ class FakeCodexAppServerTransport {
               turn: { id: turnId, status: "running" },
             },
           });
-          this.emit({
-            method: "item/agentMessage/delta",
-            params: {
-              threadId: this.nextThreadId,
-              turnId,
-              itemId: "agent-1",
-              delta: `reply for ${message.params.clientUserMessageId}`,
-            },
-          });
+          for (const delta of deltaChunks) {
+            this.emit({
+              method: "item/agentMessage/delta",
+              params: {
+                threadId: this.nextThreadId,
+                turnId,
+                itemId: "agent-1",
+                delta,
+              },
+            });
+          }
+          for (const item of this.toolItems) {
+            this.emit({
+              method: "item/completed",
+              params: {
+                threadId: this.nextThreadId,
+                turnId,
+                completedAtMs: Date.now(),
+                item,
+              },
+            });
+          }
           this.emit({
             method: "item/completed",
             params: {
@@ -87,7 +109,7 @@ class FakeCodexAppServerTransport {
               item: {
                 type: "agentMessage",
                 id: "agent-1",
-                text: `reply for ${message.params.clientUserMessageId}`,
+                text: finalText,
               },
             },
           });
@@ -296,6 +318,96 @@ test("Codex app-server driver starts one thread and reuses it across turns", asy
   assert.equal(transport.messages.find((message) => message.method === "turn/start").params.model, "gpt-5");
   assert.match(transport.messages.find((message) => message.method === "turn/start").params.input[0].text, /hello codex app server/);
   assert.ok(progress.some((event) => event.type === "assistant" && event.text === "reply for m-1"));
+});
+
+test("Codex app-server driver preserves completed markdown and outbound file manifests", async () => {
+  const transport = new FakeCodexAppServerTransport();
+  transport.deltaChunks = [
+    "给你发一个TOOLS.md文件，里面是小丘的角色分工图和工具使用规范：",
+    "```studio-channel-files",
+    "[{\"path\":\"workspace/TOOLS.md\",\"name\":\"TOOLS.md\",\"caption\":\"小丘角色分工与工具规范\"}]",
+    "```",
+  ];
+  transport.completedText = [
+    "给你发一个 TOOLS.md 文件，里面是小丘的角色分工图和工具使用规范：",
+    "",
+    "```studio-channel-files",
+    "[{\"path\":\"workspace/TOOLS.md\",\"name\":\"TOOLS.md\",\"caption\":\"小丘角色分工与工具规范\"}]",
+    "```",
+  ].join("\n");
+  const session = new CodexAppServerSession({
+    sessionId: "session-manifest",
+    transport,
+    model: "gpt-5",
+    cwd: "/tmp/project",
+    permissionMode: "suggest",
+  });
+
+  const result = await session.runTurn({
+    mode: "persistent",
+    key: {
+      bindingId: "octo-codex",
+      projectId: "codex-app-server",
+      sessionKey: "dmwork:dm:user-1",
+      agent: "codex",
+      model: "gpt-5",
+      workDir: "/tmp/project",
+    },
+    messageId: "m-file",
+    agentTurnRequest: agentTurnRequest({ messageId: "m-file", content: "发个文件给我" }),
+    runOneShot: async () => {
+      throw new Error("one-shot should not run for app-server driver");
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.replyText, transport.completedText);
+  assert.match(result.replyText, /：\n\n```studio-channel-files\n\[/);
+});
+
+test("Codex app-server driver preserves tool command output", async () => {
+  const transport = new FakeCodexAppServerTransport();
+  transport.toolItems = [
+    {
+      type: "commandExecution",
+      command: "cat TOOLS.md",
+      exitCode: 0,
+      aggregatedOutput: "alpha\n  beta\n\ngamma",
+    },
+  ];
+  const session = new CodexAppServerSession({
+    sessionId: "session-tool-output",
+    transport,
+    model: "gpt-5",
+    cwd: "/tmp/project",
+    permissionMode: "suggest",
+  });
+  const progress = [];
+
+  const result = await session.runTurn({
+    mode: "persistent",
+    key: {
+      bindingId: "octo-codex",
+      projectId: "codex-app-server",
+      sessionKey: "dmwork:dm:user-1",
+      agent: "codex",
+      model: "gpt-5",
+      workDir: "/tmp/project",
+    },
+    messageId: "m-tool",
+    agentTurnRequest: agentTurnRequest({ messageId: "m-tool", content: "调用工具" }),
+    onProgress: (event) => progress.push(event),
+    runOneShot: async () => {
+      throw new Error("one-shot should not run for app-server driver");
+    },
+  });
+
+  const tool = progress.find((event) => event.type === "tool" && event.itemType === "commandExecution");
+  assert.equal(result.ok, true);
+  assert.ok(tool);
+  assert.match(tool.text, /command=cat TOOLS\.md/);
+  assert.match(tool.text, /exit=0/);
+  assert.match(tool.text, /output:\nalpha\n  beta\n\ngamma/);
 });
 
 test("Codex app-server driver maps /compact to native compact request", async () => {

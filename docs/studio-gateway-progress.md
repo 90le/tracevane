@@ -40,12 +40,13 @@
 - persistent driver 最近事件已进入 daemon `/status` 与 `/agent-sessions`，可观察 `turn.failed`、`session.disposed`、`turn.fallback` 等状态；daemon 回归已证明 Codex app-server 崩溃后会清理坏 session 并回退 one-shot 回复同一条 IM 消息。
 - Channel Connectors 会话页已接入 persistent driver `recentEvents`，Sessions tab 可查看最近 fallback/failed/disposed/reaped 等事件，并在会话操作结果中显示事件数，方便 UI 侧确认 kill/reap/fallback 真实发生。
 - IM 工具进度解析已补齐结构化输出兼容：runner 能读取 `content/output_text/result/stdout/stderr` 等工具结果字段，daemon 解析 `output:` 后保留原始换行、缩进和空行，避免工具结果为空或布局被压扁。
+- Codex persistent app-server 输出链路已补齐保真：delta 不再 trim，最终回复优先使用完整 `item/completed agentMessage`，工具事件复用结构化输出解析，`studio-channel-files` fenced block 不会被压成一行导致文件无法发送。
 
 ## 最近验证
 
 - 通过：`npm run build:api`。
 - 通过：`node --test tests/system/model-gateway-service.test.mjs`，51 个 Model Gateway 子测试通过。
-- 通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，5 个 Codex app-server driver 原型子测试通过。
+- 通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，7 个 Codex app-server driver 原型子测试通过；覆盖 persistent markdown/文件 manifest 保真和工具输出保真。
 - 通过：`node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，默认跳过真实 Codex smoke。
 - 通过：`STUDIO_CODEX_APP_SERVER_LIVE_TURN=1 STUDIO_CODEX_APP_SERVER_LIVE_COMPACT=1 STUDIO_CODEX_APP_SERVER_LIVE_MODEL=gpt-5.4-mini node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，隔离 HOME 下真实 `codex app-server --stdio` 经本机 Studio Gateway 完成 `turn/start` 精确回复与原生 compact 完成信号。
 - 通过：`STUDIO_CODEX_APP_SERVER_LIVE_INTERRUPT=1 STUDIO_CODEX_APP_SERVER_LIVE_MODEL=gpt-5.4-mini node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，隔离 HOME 下真实 app-server turn 被 `turn/interrupt` 取消并返回 `cancelled`。

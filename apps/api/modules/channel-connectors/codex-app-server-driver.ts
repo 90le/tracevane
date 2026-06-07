@@ -2,6 +2,9 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import type { ChannelConnectorPermissionMode } from "../../../../types/channel-connectors.js";
 import {
   buildChannelConnectorAgentProcessRequest,
+  codexToolProgressText,
+  firstProgressTextValue,
+  truncateProgressText,
   type ChannelConnectorAgentProgressEvent,
   type ChannelConnectorAgentTurnResult,
 } from "./agent-runner.js";
@@ -48,6 +51,10 @@ function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function stringValue(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -67,7 +74,7 @@ function progressEvent(input: {
     type: input.type,
     rawType: input.rawType,
     itemType: input.itemType || null,
-    text: input.text ? input.text.slice(0, 400) : null,
+    text: input.text ? truncateProgressText(input.text) : null,
   };
 }
 
@@ -382,6 +389,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
     }));
     const progressEvents: ChannelConnectorAgentProgressEvent[] = [];
     let replyText = "";
+    let completedAgentMessageText = "";
     let terminalStatus: ChannelConnectorAgentTurnResult["status"] = "completed";
     let terminalError: string | null = null;
     const turnResponse = await this.request("turn/start", {
@@ -412,28 +420,37 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
           const method = normalizeString(message.method);
           const params = isRecord(message.params) ? message.params : {};
           if (method === "item/agentMessage/delta") {
-            const delta = normalizeString(params.delta);
+            const delta = stringValue(params.delta);
             if (delta) {
               replyText += delta;
-              const event = progressEvent({ type: "assistant", rawType: method, itemType: "agentMessage", text: delta });
-              progressEvents.push(event);
-              input.onProgress?.(event);
+              if (delta.trim()) {
+                const event = progressEvent({ type: "assistant", rawType: method, itemType: "agentMessage", text: delta });
+                progressEvents.push(event);
+                input.onProgress?.(event);
+              }
             }
             return;
           }
           if (method === "item/completed") {
             const item = isRecord(params.item) ? params.item : {};
             const itemType = normalizeString(item.type);
-            const text = normalizeString(item.text)
-              || normalizeString(item.command)
-              || normalizeString(item.aggregatedOutput)
-              || itemType;
+            const toolLike = itemType === "commandExecution" || itemType.endsWith("ToolCall");
+            const text = itemType === "agentMessage"
+              ? firstProgressTextValue(item.text, item.content, item.message)
+              : toolLike
+                ? codexToolProgressText(item, itemType, method)
+                : firstProgressTextValue(item.text, item.content, item.message, item.summary)
+                  || normalizeString(item.command)
+                  || itemType;
             const type: ChannelConnectorAgentProgressEvent["type"] =
               itemType === "agentMessage" ? "assistant"
                 : itemType === "reasoning" ? "reasoning"
-                  : itemType === "commandExecution" || itemType.endsWith("ToolCall") ? "tool"
+                  : toolLike ? "tool"
                     : "event";
-            if (itemType === "agentMessage" && !replyText) replyText = normalizeString(item.text);
+            if (itemType === "agentMessage" && text) {
+              completedAgentMessageText = text;
+              if (!replyText.trim()) replyText = text;
+            }
             const event = progressEvent({ type, rawType: method, itemType, text });
             progressEvents.push(event);
             input.onProgress?.(event);
@@ -473,7 +490,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
         messageId: input.messageId,
         model: this.model,
         cwd: this.cwd,
-        replyText: terminalStatus === "completed" ? replyText : null,
+        replyText: terminalStatus === "completed" ? completedAgentMessageText || replyText : null,
         durationMs: Date.now() - startedAt,
         ok: terminalStatus === "completed",
         status: terminalStatus,

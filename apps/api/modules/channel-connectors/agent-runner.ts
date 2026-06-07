@@ -119,7 +119,7 @@ function truncateText(value: string, maxLength = 400): string {
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}...` : normalized;
 }
 
-function truncateProgressText(value: string, maxLength = 1200): string {
+export function truncateProgressText(value: string, maxLength = 1200): string {
   return value.length > maxLength ? `${value.slice(0, maxLength - 1)}...` : value;
 }
 
@@ -236,7 +236,8 @@ function buildStudioOutboundFilePolicy(): string {
   return [
     "[Studio outbound file policy]",
     "Do not call channel-specific CLIs, webhooks, curl commands, or external bridge tools to send files back to the IM user.",
-    "When the user asks you to send or return files, create them under the current working directory and append one fenced JSON block named studio-channel-files.",
+    "When the user asks you to send or return files, create them under the current working directory or declare the exact readable path you just used; do not invent relative paths from memory.",
+    "If an existing file is outside the current working directory and the current permission mode may block direct sending, copy or generate the requested file under the current working directory before declaring it.",
     "Preserve the original file name in the name field unless the user explicitly asks for a new name.",
     "Example:",
     "```studio-channel-files",
@@ -344,7 +345,7 @@ function stringifyProgressValue(value: unknown, maxLength = 240): string {
   }
 }
 
-function progressTextValue(value: unknown, maxLength = 1200): string {
+export function progressTextValue(value: unknown, maxLength = 1200): string {
   if (typeof value === "string") return truncateProgressText(value, maxLength);
   if (typeof value === "number" || typeof value === "boolean") return String(value);
   if (value === null || typeof value === "undefined") return "";
@@ -378,7 +379,7 @@ function progressTextValue(value: unknown, maxLength = 1200): string {
   }
 }
 
-function firstProgressTextValue(...values: unknown[]): string {
+export function firstProgressTextValue(...values: unknown[]): string {
   for (const value of values) {
     const text = progressTextValue(value);
     if (text) return text;
@@ -425,11 +426,13 @@ function toolLikeItemType(itemType: string | null): boolean {
   ].some((needle) => lowered.includes(needle));
 }
 
-function codexToolProgressText(item: Record<string, unknown> | null, itemType: string | null, rawType: string): string {
+export function codexToolProgressText(item: Record<string, unknown> | null, itemType: string | null, rawType: string): string {
   if (!item) return itemType || "tool";
   const name = normalizeString(item.name)
     || normalizeString(item.tool_name)
+    || normalizeString(item.toolName)
     || normalizeString(item.call_id)
+    || normalizeString(item.callId)
     || itemType
     || "tool";
   const command = normalizeString(item.command)
@@ -441,8 +444,11 @@ function codexToolProgressText(item: Record<string, unknown> | null, itemType: s
   const output = firstProgressTextValue(
     item.output,
     item.aggregated_output,
+    item.aggregatedOutput,
     item.formatted_output,
+    item.formattedOutput,
     item.display_output,
+    item.displayOutput,
     item.result,
     item.outputs,
     item.content,
