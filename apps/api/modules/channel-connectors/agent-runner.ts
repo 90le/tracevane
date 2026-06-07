@@ -22,6 +22,7 @@ export interface ChannelConnectorAgentProcessRequest {
   stdin: string;
   env: Record<string, string>;
   timeoutMs: number;
+  signal?: AbortSignal | null;
   cleanupPaths?: string[];
   sessionMode?: "new" | "resume";
   codexThreadId?: string | null;
@@ -44,6 +45,7 @@ export interface ChannelConnectorAgentProcessResult {
   stderr: string;
   durationMs: number;
   timedOut: boolean;
+  cancelled: boolean;
   error: string | null;
   progressEvents?: ChannelConnectorAgentProgressEvent[];
 }
@@ -68,6 +70,7 @@ export interface ChannelConnectorAgentTurnRequest {
     vision?: boolean | null;
   } | null;
   onProgress?: (event: ChannelConnectorAgentProgressEvent) => void;
+  signal?: AbortSignal | null;
   timeoutMs?: number;
   processRunner?: ChannelConnectorAgentProcessRunner;
 }
@@ -75,7 +78,7 @@ export interface ChannelConnectorAgentTurnRequest {
 export interface ChannelConnectorAgentTurnResult {
   attempted: boolean;
   ok: boolean | null;
-  status: "completed" | "failed" | "unsupported-agent" | "empty-message";
+  status: "completed" | "failed" | "cancelled" | "unsupported-agent" | "empty-message";
   agent: ChannelConnectorAgentId;
   model: string | null;
   command: string | null;
@@ -752,6 +755,21 @@ export async function defaultChannelConnectorAgentProcessRunner(
 ): Promise<ChannelConnectorAgentProcessResult> {
   const startedAt = Date.now();
   return new Promise((resolve) => {
+    if (request.signal?.aborted) {
+      cleanupProcessRequest(request);
+      resolve({
+        exitCode: null,
+        signal: null,
+        stdout: "",
+        stderr: "",
+        durationMs: Date.now() - startedAt,
+        timedOut: false,
+        cancelled: true,
+        error: "Agent process cancelled.",
+        progressEvents: [],
+      });
+      return;
+    }
     const child = spawn(request.command, request.args, {
       cwd: request.cwd,
       env: mergeProcessEnv(request.env),
@@ -763,13 +781,28 @@ export async function defaultChannelConnectorAgentProcessRunner(
     const progressEvents: ChannelConnectorAgentProgressEvent[] = [];
     let settled = false;
     let timedOut = false;
-    const timeout = setTimeout(() => {
-      timedOut = true;
+    let cancelled = false;
+    const terminateChild = (): void => {
       child.kill("SIGTERM");
       setTimeout(() => {
         if (!settled) child.kill("SIGKILL");
       }, 2000).unref();
+    };
+    const abortListener = (): void => {
+      if (settled) return;
+      cancelled = true;
+      terminateChild();
+    };
+    request.signal?.addEventListener("abort", abortListener, { once: true });
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      terminateChild();
     }, request.timeoutMs);
+    const settle = (): void => {
+      settled = true;
+      clearTimeout(timeout);
+      request.signal?.removeEventListener("abort", abortListener);
+    };
 
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
@@ -790,8 +823,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
     });
     child.on("error", (error) => {
       if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
+      settle();
       cleanupProcessRequest(request);
       resolve({
         exitCode: null,
@@ -800,14 +832,14 @@ export async function defaultChannelConnectorAgentProcessRunner(
         stderr,
         durationMs: Date.now() - startedAt,
         timedOut,
+        cancelled,
         error: error.message,
         progressEvents,
       });
     });
     child.on("close", (exitCode, signal) => {
       if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
+      settle();
       const trailingEvent = parseProgressLine(request.agent, stdoutLineBuffer);
       if (trailingEvent) {
         progressEvents.push(trailingEvent);
@@ -821,7 +853,10 @@ export async function defaultChannelConnectorAgentProcessRunner(
         stderr,
         durationMs: Date.now() - startedAt,
         timedOut,
-        error: timedOut ? "Agent process timed out." : null,
+        cancelled,
+        error: cancelled
+          ? "Agent process cancelled."
+          : timedOut ? "Agent process timed out." : null,
         progressEvents,
       });
     });
@@ -1005,13 +1040,15 @@ export async function runChannelConnectorAgentTurn(
 
   const runner = request.processRunner || defaultChannelConnectorAgentProcessRunner;
   processRequest.onProgress = request.onProgress;
+  processRequest.signal = request.signal || null;
   let result: ChannelConnectorAgentProcessResult;
   try {
     result = await runner(processRequest);
   } finally {
     cleanupProcessRequest(processRequest);
   }
-  const ok = result.exitCode === 0 && !result.error;
+  const cancelled = result.cancelled === true;
+  const ok = result.exitCode === 0 && !result.error && !cancelled;
   const codexThreadId = request.project.agent === "codex"
     ? extractCodexThreadId(result.stdout) || processRequest.codexThreadId || null
     : request.session?.codexThreadId || null;
@@ -1022,7 +1059,7 @@ export async function runChannelConnectorAgentTurn(
   return {
     attempted: true,
     ok,
-    status: ok ? "completed" : "failed",
+    status: cancelled ? "cancelled" : ok ? "completed" : "failed",
     agent: request.project.agent,
     model: request.project.model,
     command: processRequest.command,

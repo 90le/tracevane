@@ -2259,6 +2259,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(help.replyText, /\/stream/);
   assert.match(help.replyText, /\/tools/);
   assert.match(help.replyText, /\/buffer/);
+  assert.match(help.replyText, /`\/stop`/);
   assert.match(help.replyText, /`\/native \/help`/);
   assert.equal(parseChannelConnectorCommand("%help")?.name, "help");
   assert.equal(parseChannelConnectorCommand("/%help")?.name, "help");
@@ -2294,6 +2295,40 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     assert.equal(result.ok, true);
     assert.match(result.replyText, /\S/);
   }
+
+  let stopCalled = false;
+  const stopped = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/stop"),
+    stopActiveRun: (scope) => {
+      stopCalled = true;
+      assert.equal(scope.bindingId, "octo-codex");
+      assert.equal(scope.sessionKey, "dmwork:dm:admin-1");
+      return {
+        stopped: true,
+        runId: "run-1",
+        messageId: "msg-active",
+        agent: "codex",
+        model: "gpt-5",
+        error: null,
+      };
+    },
+  });
+  assert.equal(stopCalled, true);
+  assert.equal(stopped.handled, true);
+  assert.equal(stopped.action, "stop");
+  assert.equal(stopped.ok, true);
+  assert.match(stopped.replyText, /已请求停止当前 Agent 运行/);
+  assert.match(stopped.replyText, /Agent=codex/);
+
+  const noActiveRun = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/stop"),
+  });
+  assert.equal(noActiveRun.handled, true);
+  assert.equal(noActiveRun.action, "stop");
+  assert.equal(noActiveRun.ok, false);
+  assert.match(noActiveRun.replyText, /没有正在运行的 Agent/);
 
   const denied = await handleChannelConnectorCommand({
     ...baseContext,
@@ -2944,8 +2979,10 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(sessionCardRaw, /nav:\/current/);
   assert.match(sessionCardRaw, /nav:\/list/);
   assert.match(sessionCardRaw, /nav:\/history/);
+  assert.match(sessionCardRaw, /act:\/stop/);
   assert.match(sessionCardRaw, /act:\/new/);
   assert.match(sessionCardRaw, /act:\/reset/);
+  assert.match(sessionCardRaw, /Stop Run 会停止/);
   assert.match(sessionCardRaw, /New Session 只断开 Agent 续接/);
   assert.match(sessionCardRaw, /nav:\/help session/);
 
@@ -4573,6 +4610,32 @@ test("native Channel Connectors process runner streams progress events from agen
   assert.equal(result.progressEvents?.length, 2);
 });
 
+test("native Channel Connectors process runner cancels active child processes", async () => {
+  const root = makeTempRoot();
+  const controller = new AbortController();
+  const childScript = [
+    "process.stdout.write(JSON.stringify({type:'turn.started'})+'\\n');",
+    "setInterval(()=>{}, 1000);",
+  ].join("");
+  const resultPromise = defaultChannelConnectorAgentProcessRunner({
+    command: process.execPath,
+    args: ["-e", childScript],
+    cwd: root,
+    stdin: "",
+    env: {},
+    timeoutMs: 5000,
+    signal: controller.signal,
+    agent: "codex",
+  });
+  setTimeout(() => controller.abort(), 50);
+  const result = await resultPromise;
+
+  assert.equal(result.cancelled, true);
+  assert.equal(result.timedOut, false);
+  assert.equal(result.error, "Agent process cancelled.");
+  assert.equal(result.progressEvents?.[0]?.type, "running");
+});
+
 test("native Channel Connectors process runner maps Codex command execution progress", async () => {
   const root = makeTempRoot();
   const progress = [];
@@ -4752,7 +4815,13 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /jsonErrorEnvelopeMessage/);
   assert.match(daemonSource, /renderChannelConnectorCommandSurfaceFeishu/);
   assert.match(daemonSource, /shouldSendFeishuCommandCard/);
-  assert.match(daemonSource, /\["new",\s*"reset",\s*"show",\s*"passthrough"\]\.includes\(action\)/);
+  assert.match(daemonSource, /\["new",\s*"reset",\s*"show",\s*"stop",\s*"passthrough"\]\.includes\(action\)/);
+  assert.match(daemonSource, /stopLatestActiveRunForSession/);
+  assert.match(daemonSource, /const activeRunCancels = new Map\(\)/);
+  assert.match(daemonSource, /for \(const entry of activeRunCancels\.values\(\)\)\s*entry\.controller\.abort\(\)/);
+  assert.match(daemonSource, /activeRunCancels\.set\(activeRunId/);
+  assert.match(daemonSource, /activeRunCancels\.delete\(activeRunId\)/);
+  assert.match(daemonSource, /signal:\s*abortController\.signal/);
   assert.match(daemonSource, /sendFeishuCommandTextReplyInBackground/);
   assert.match(daemonSource, /replyTransportAction\s*=\s*"send-message-async"/);
   assert.match(daemonSource, /eventKind:\s*"channel\.command\.reply"/);

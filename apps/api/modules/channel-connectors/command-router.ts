@@ -54,6 +54,17 @@ export interface ChannelConnectorCommandContext {
   replyBuffersPath?: string | null;
   gatewayClientKey: string | null;
   listModels?: (endpoint: string, clientKey: string | null) => Promise<string[]>;
+  stopActiveRun?: (input: {
+    bindingId: string;
+    sessionKey: string;
+  }) => {
+    stopped: boolean;
+    runId: string | null;
+    messageId: string | null;
+    agent: string | null;
+    model: string | null;
+    error: string | null;
+  };
 }
 
 export interface ChannelConnectorGatewayModel {
@@ -75,7 +86,7 @@ export interface ChannelConnectorGatewayModel {
 export interface ChannelConnectorCommandResult {
   handled: boolean;
   command: string | null;
-  action: "help" | "status" | "list" | "show" | "set" | "reset" | "new" | "passthrough" | null;
+  action: "help" | "status" | "list" | "show" | "set" | "reset" | "new" | "stop" | "passthrough" | null;
   ok: boolean | null;
   replyText: string | null;
   control: ChannelConnectorSessionControlRecord | null;
@@ -217,6 +228,8 @@ function isStudioCommand(name: string): boolean {
     "buffers",
     "reply-buffer",
     "reply-buffers",
+    "stop",
+    "cancel",
     "new",
     "reset",
     "native",
@@ -237,6 +250,7 @@ function commandHelpText(): string {
     "- `/list` 列出当前 IM 会话已知 Agent sessions",
     "- `/switch <序号|sessionId前缀>` 切换到已知 Agent session",
     "- `/history` 查看当前 IM 会话最近上下文",
+    "- `/stop` 停止当前 IM 会话正在运行的 Agent",
     "- `/new` 开启新 Agent 会话，保留本会话配置",
     "- `/reset` 清空本 IM 会话 override 和 Agent 续接状态",
     "",
@@ -780,6 +794,8 @@ export async function handleChannelConnectorCommand(
       "progress",
       "tools",
       "tool",
+      "stop",
+      "cancel",
     ].includes(name)
     && !(["agent", "model", "mode", "permission", "permissions", "dir", "display", "stream", "streams", "progress", "tools", "tool"].includes(name) && args.length === 0)
   );
@@ -1190,6 +1206,36 @@ export async function handleChannelConnectorCommand(
 
   if (name === "buffer" || name === "buffers" || name === "reply-buffer" || name === "reply-buffers") {
     return handleReplyBufferCommand(context, args, currentControl, name);
+  }
+
+  if (name === "stop" || name === "cancel") {
+    const stopped = context.stopActiveRun?.({
+      bindingId: context.binding.id,
+      sessionKey: context.sessionKey,
+    }) || {
+      stopped: false,
+      runId: null,
+      messageId: null,
+      agent: null,
+      model: null,
+      error: null,
+    };
+    const detail = [
+      stopped.agent ? `Agent=${stopped.agent}` : "",
+      stopped.model ? `Model=${stopped.model}` : "",
+      stopped.messageId ? `Message=${stopped.messageId}` : "",
+    ].filter(Boolean).join("\n");
+    return {
+      handled: true,
+      command: name,
+      action: "stop",
+      ok: stopped.stopped,
+      control: currentControl,
+      replyText: stopped.stopped
+        ? ["已请求停止当前 Agent 运行。", detail].filter(Boolean).join("\n")
+        : stopped.error || "当前 IM 会话没有正在运行的 Agent。",
+      passthroughText: null,
+    };
   }
 
   if (name === "new") {

@@ -15,33 +15,19 @@
 
 ## 本次完成
 
-- Feishu 过程展示保持“一张 Progress card 持续 patch 追加/更新进度”，卡片内部改为分段 element + `hr`，状态、思考、工具调用、工具结果、错误使用统一符号和 `text_tag`。
-- Feishu 最终回复参考 CC 的 Markdown card 路线，改用 schema 2.0 `body.markdown` 承载模型正文，不添加 header/note/“最终回复”等包装标题；远程图片 Markdown 会降级成普通链接，避免 Feishu card `image_key` 错误。
-- Feishu final fallback 从 card -> text 改为 card -> post(md) -> text；interactive card 因平台限制失败时，优先用 `msg_type=post` 继续保留 Markdown 富文本渲染。
-- Feishu 长连接对照 CC Go/OpenClaw 与官方 SDK 后收敛为共享 WS + 快速 ACK + 自适应恢复：SDK `pingTimeout=10s` 捕获真实死 socket；非 connected fallback watchdog 为 45s；启动后 30s 完全无入站只做一次 no-inbound sanity reconnect；当前生命周期收过事件后若静默超过 30s 才做 idle refresh，且 idle refresh 产生的新连接会跳过下一次 zero-inbound，避免一条消息后连续重启。
-- `/dir` / `/cd` 按 CC Go 补齐最近目录历史：支持 `/dir -` 返回上一目录、`/dir <序号>` 优先切换历史目录，历史为空时保留子目录序号兼容；Feishu WorkDir 子卡同步显示上一目录、最近目录和子目录。
-- Octo 已确认支持 Markdown 文本渲染；最终回复保持模型原始 Markdown 文本，不添加 `Studio Reply` 包装。
-- Octo 不能 patch 气泡消息，过程流不再发送 start/running/completed/event 这类低信息气泡；私聊只显示思考、工具调用、工具结果和错误，工具事件不再被普通 1.5s 进度节流吞掉。
-- Octo/非富卡片渠道过程消息去掉 `Studio Progress` 大标题，仅保留短状态行和正文；工具名、exit/status 使用 Markdown inline code，工具输入/结果、TodoWrite 和失败回执复用同一套代码块格式化。
-- Octo/非富卡片渠道 `/help` 改为 Markdown 友好的分组菜单：当前会话、快捷操作、会话、Agent/模型/权限、目录、显示/工具/长回复、原生 Agent；普通纯文本渠道也能按同一结构阅读。
-- OpenClaw Octo 插件 RichText=14 仍作为后续图文混排参考，不用于纯文本 Markdown 回复包装。
-- 完成态不再给 Octo 私聊单独刷一条 `completed` 过程消息；最终回复本身承担完成态，群聊仍默认隐藏中间过程。
-- Channel daemon 事件日志补齐 `replyRequestCount`、卡片/文本发送次数、ingress->agent start、首个进度延迟、进度间隔和 agent elapsed，便于区分平台 API、Agent 和模型耗时。
+- `/stop` / `/cancel` 已从占位命令升级为真实取消链路：Octo/Feishu 按当前 binding + IM session 找到最新 active run，通过 `AbortController` 终止对应 CLI Agent 子进程。
+- Agent runner 支持 `AbortSignal`，取消时先 `SIGTERM`、2 秒后兜底 `SIGKILL`，并返回 `status=cancelled` / `error=Agent process cancelled.`，不会伪装成普通失败或超时。
+- Feishu Session 卡片新增 `Stop Run` 动作；执行动作返回简短文本结果，不弹完整菜单，符合 CC Go 执行动作不刷新主菜单的交互约束。
+- Octo/纯文本 `/help` 已包含 `/stop`，当前无 active run 时返回明确提示；daemon 停止时会 abort 所有 active run，避免子进程遗留。
 
 ## 最近验证
 
 - 通过：`npm run build:api`。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "Feishu long-connection|Octo long connection|process runner maps Codex command execution progress|daemon entry|routes are registered"`，38 个 Channel Connectors 子测试通过。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "IM commands switch agent|command surface renders text and Feishu card actions|Octo long connection|Feishu long-connection"`，38 个 Channel Connectors 子测试通过。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "IM commands switch agent|command surface renders text and Feishu card actions|process runner cancels active child processes|Feishu long-connection|Octo long connection"`，39 个 Channel Connectors 子测试通过。
 - 通过：`git diff --check`。
 - 通过：`systemctl --user restart openclaw-studio-channel-connectors.service`，随后 `is-active/is-enabled` 为 `active/enabled`。
-- 通过：本轮重启后观察两个 watcher 窗口，Feishu 启动无入站只触发一次 `watchdog_zero_inbound`，随后保持 connected 且未连续重启；Octo 同时保持 connected。
-- 通过：重启 Channel daemon 后静默观察超过 70 秒，Feishu `connected=true`，Octo `connected=true`；飞书启动无入站只触发一次 30s no-inbound sanity reconnect，之后未在无消息状态继续 connected-idle 循环。
-- 通过：本轮重启后真实 Feishu live message 于 `2026-06-07T05:58:42Z` 入站，Agent run completed，`receivedMessages=1`，未触发 no-inbound reconnect；上一轮 13:50 后的问题定位为 WS ready 但无事件入站的假在线状态。
-- 通过：生命周期版 Feishu watcher 本轮 live 观察到 `2026-06-07T06:24:07Z` 真实入站并完成 Agent run；日志显示 SDK `pingTimeout` 曾在 `06:23:06Z` 触发 reconnect 并恢复，说明死 socket 由 SDK 层处理，Studio watchdog 只负责 ready 但不投递事件的兜底。
-- 通过：`npm run dev:restart`，前端 `http://127.0.0.1:5176`，后端 `http://127.0.0.1:3762`。
 - 通过：`curl http://127.0.0.1:18797/status`，Octo `octo-studio-cc` connected，Feishu shared WS connected，`activeRuns=[]`。
-- 通过：`curl http://127.0.0.1:3762/api/channel-connectors/status`，`service.ok=true`，template/config current，systemd service installed。
+- 通过：`npm run dev:restart`，前端 `http://127.0.0.1:5176`，后端 `http://127.0.0.1:3762`。
 
 ## 已知边界
 
@@ -53,6 +39,6 @@
 
 ## 下一步
 
-1. 用 Feishu/Octo 实测 `/dir`、`/dir -`、`/dir 1` 和 WorkDir 卡片选择器，确认文字命令与卡片动作一致。
-2. 继续按 CC Go 补 `/reasoning`、`/usage`、`/stop` 等设置型命令和对应 Feishu 子卡，并同步到 Octo 文本命令体验；`/stop` 需先补 runner cancel contract，不能只做占位提示。
+1. 继续按 CC Go 补 `/usage`：需要先接真实 token/usage 账本，不能只显示占位。
+2. 继续按 CC Go 补 `/reasoning`：需要和 Agent Profile / Gateway model reasoning capability 打通，再做 Feishu 子卡和 Octo 文本体验。
 3. 继续迁移 Claude Code / OpenCode 视觉输入、OCR、语音/STT/TTS、大文件 COS STS 和更多平台 adapter。

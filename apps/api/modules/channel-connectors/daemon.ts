@@ -283,6 +283,27 @@ interface ChannelDaemonState {
   }>;
 }
 
+interface ChannelDaemonActiveRunCancelEntry {
+  controller: AbortController;
+  startedAt: string;
+  bindingId: string;
+  sessionKey: string;
+  messageId: string;
+  agent: string;
+  model: string | null;
+}
+
+type ChannelDaemonActiveRunCancelRegistry = Map<string, ChannelDaemonActiveRunCancelEntry>;
+
+interface ChannelDaemonStopActiveRunResult {
+  stopped: boolean;
+  runId: string | null;
+  messageId: string | null;
+  agent: string | null;
+  model: string | null;
+  error: string | null;
+}
+
 type FeishuProgressCardEntryKind = "info" | "thinking" | "tool_use" | "tool_result" | "error";
 
 interface FeishuProgressCardEntry {
@@ -370,6 +391,45 @@ function createDaemonState(config: ChannelConnectorsDaemonRuntimeConfig): Channe
     feishuConnections: {},
     activeRuns: [],
     agentRuns: [],
+  };
+}
+
+function stopLatestActiveRunForSession(
+  registry: ChannelDaemonActiveRunCancelRegistry,
+  input: { bindingId: string; sessionKey: string },
+): ChannelDaemonStopActiveRunResult {
+  const candidates = [...registry.entries()]
+    .filter(([, entry]) => entry.bindingId === input.bindingId && entry.sessionKey === input.sessionKey)
+    .sort((left, right) => right[1].startedAt.localeCompare(left[1].startedAt));
+  const [runId, entry] = candidates[0] || [];
+  if (!runId || !entry) {
+    return {
+      stopped: false,
+      runId: null,
+      messageId: null,
+      agent: null,
+      model: null,
+      error: null,
+    };
+  }
+  if (entry.controller.signal.aborted) {
+    return {
+      stopped: false,
+      runId,
+      messageId: entry.messageId,
+      agent: entry.agent,
+      model: entry.model,
+      error: "当前 Agent 运行已经在停止中。",
+    };
+  }
+  entry.controller.abort();
+  return {
+    stopped: true,
+    runId,
+    messageId: entry.messageId,
+    agent: entry.agent,
+    model: entry.model,
+    error: null,
   };
 }
 
@@ -1422,7 +1482,7 @@ function shouldSendFeishuCommandCard(input: {
   if (!input.command.handled) return false;
   const action = normalizeString(input.command.action).toLowerCase();
   if (input.actionKind === "nav") return true;
-  if (["new", "reset", "show", "passthrough"].includes(action)) return false;
+  if (["new", "reset", "show", "stop", "passthrough"].includes(action)) return false;
   if (input.parsedKind === "card-action" || input.parsedKind === "bot-menu") return true;
   return shouldRenderFeishuCommandCard(input.command);
 }
@@ -2488,13 +2548,14 @@ function feishuDedupeKey(
 async function dispatchOctoMessage(input: {
   config: ChannelConnectorsDaemonRuntimeConfig;
   state: ChannelDaemonState;
+  activeRunCancels: ChannelDaemonActiveRunCancelRegistry;
   project: ChannelConnectorRuntimeProject;
   binding: ChannelConnectorRuntimeBinding;
   robotId: string | null;
   message: ChannelConnectorOctoInboundMessage;
   seenMessages: Map<string, number>;
 }): Promise<void> {
-  const { config, state, project, binding, robotId, message, seenMessages } = input;
+  const { config, state, activeRunCancels, project, binding, robotId, message, seenMessages } = input;
   if (shouldSkipSeenMessage(seenMessages, message.messageId)) return;
   const nativeProfile = nativeProfileFromRuntime(project);
   const nativeBinding = nativeBindingFromRuntime(project, binding, robotId);
@@ -2567,6 +2628,7 @@ async function dispatchOctoMessage(input: {
     conversationHistoryPath: conversationHistoryPath(config),
     replyBuffersPath: replyBufferPath(config),
     gatewayClientKey: key,
+    stopActiveRun: (scope) => stopLatestActiveRunForSession(activeRunCancels, scope),
   });
   if (command.handled) {
     let replySent = false;
@@ -2696,6 +2758,7 @@ async function dispatchOctoMessage(input: {
   );
   const runStartedAt = new Date().toISOString();
   const runStartedAtMs = isoTimestampMs(runStartedAt) ?? Date.now();
+  const abortController = new AbortController();
   let progressEventCount = 0;
   let latestProgress: ChannelConnectorAgentProgressEvent | null = null;
   let firstProgressAtMs: number | null = null;
@@ -2775,6 +2838,15 @@ async function dispatchOctoMessage(input: {
     agentElapsedMs: 0,
     firstProgressLatencyMs: null,
   });
+  activeRunCancels.set(activeRunId, {
+    controller: abortController,
+    startedAt: runStartedAt,
+    bindingId: binding.id,
+    sessionKey,
+    messageId: message.messageId,
+    agent: turnProject.agent,
+    model: turnProject.model,
+  });
   state.activeRuns = state.activeRuns.slice(0, 20);
   writeRuntime(config, state);
   writeJsonLine(config.paths.octoEvents, {
@@ -2849,6 +2921,7 @@ async function dispatchOctoMessage(input: {
       agentRuntimeDir: runtimeDir,
       historyContext,
       modelCapabilities: modelResolution.modelCapabilities,
+      signal: abortController.signal,
       session: {
         codexThreadId: currentSession?.codexThreadId || null,
       },
@@ -2923,6 +2996,7 @@ async function dispatchOctoMessage(input: {
     };
   } finally {
     stopTypingPulse();
+    activeRunCancels.delete(activeRunId);
     state.activeRuns = state.activeRuns.filter((run) => run.id !== activeRunId);
     writeRuntime(config, state);
   }
@@ -3109,12 +3183,13 @@ function normalizeFeishuCommandContent(value: unknown): string {
 async function dispatchFeishuParsedEvent(input: {
   config: ChannelConnectorsDaemonRuntimeConfig;
   state: ChannelDaemonState;
+  activeRunCancels: ChannelDaemonActiveRunCancelRegistry;
   group: ChannelDaemonFeishuGroup;
   parsed: ChannelConnectorFeishuParsedWebhook;
   rawEvent: unknown;
   seenMessages: Map<string, number>;
 }): Promise<Record<string, unknown> | null> {
-  const { config, state, group, parsed, rawEvent, seenMessages } = input;
+  const { config, state, activeRunCancels, group, parsed, rawEvent, seenMessages } = input;
   const checkedAt = new Date().toISOString();
   const ingressAt = checkedAt;
   const ingressAtMs = isoTimestampMs(ingressAt) ?? Date.now();
@@ -3280,6 +3355,7 @@ async function dispatchFeishuParsedEvent(input: {
     conversationHistoryPath: conversationHistoryPath(config),
     replyBuffersPath: replyBufferPath(config),
     gatewayClientKey: key,
+    stopActiveRun: (scope) => stopLatestActiveRunForSession(activeRunCancels, scope),
   });
 
   if (command.handled) {
@@ -3478,6 +3554,7 @@ async function dispatchFeishuParsedEvent(input: {
   );
   const runStartedAt = new Date().toISOString();
   const runStartedAtMs = isoTimestampMs(runStartedAt) ?? Date.now();
+  const abortController = new AbortController();
   let progressEventCount = 0;
   let latestProgress: ChannelConnectorAgentProgressEvent | null = null;
   let firstProgressAtMs: number | null = null;
@@ -3565,6 +3642,15 @@ async function dispatchFeishuParsedEvent(input: {
     agentElapsedMs: 0,
     firstProgressLatencyMs: null,
   });
+  activeRunCancels.set(activeRunId, {
+    controller: abortController,
+    startedAt: runStartedAt,
+    bindingId: binding.id,
+    sessionKey,
+    messageId,
+    agent: turnProject.agent,
+    model: turnProject.model,
+  });
   state.activeRuns = state.activeRuns.slice(0, 20);
   writeRuntime(config, state);
   writeJsonLine(config.paths.feishuEvents, {
@@ -3636,6 +3722,7 @@ async function dispatchFeishuParsedEvent(input: {
       agentRuntimeDir: runtimeDir,
       historyContext,
       modelCapabilities: modelResolution.modelCapabilities,
+      signal: abortController.signal,
       session: {
         codexThreadId: currentSession?.codexThreadId || null,
       },
@@ -3715,6 +3802,7 @@ async function dispatchFeishuParsedEvent(input: {
     };
   } finally {
     await stopTypingReaction();
+    activeRunCancels.delete(activeRunId);
     state.activeRuns = state.activeRuns.filter((run) => run.id !== activeRunId);
     writeRuntime(config, state);
   }
@@ -3919,13 +4007,14 @@ async function dispatchFeishuParsedEvent(input: {
 async function startOctoConnection(input: {
   config: ChannelConnectorsDaemonRuntimeConfig;
   state: ChannelDaemonState;
+  activeRunCancels: ChannelDaemonActiveRunCancelRegistry;
   project: ChannelConnectorRuntimeProject;
   binding: ChannelConnectorRuntimeBinding;
   sockets: OctoWukongSocket[];
   restHeartbeatTimers: NodeJS.Timeout[];
   seenMessages: Map<string, number>;
 }): Promise<void> {
-  const { config, state, project, binding, sockets, restHeartbeatTimers, seenMessages } = input;
+  const { config, state, activeRunCancels, project, binding, sockets, restHeartbeatTimers, seenMessages } = input;
   const transport = octoTransportFromMetadata(binding.metadata);
   if (!transport) {
     state.octoConnections[binding.id] = connectionState(binding, {
@@ -4002,6 +4091,7 @@ async function startOctoConnection(input: {
       void dispatchOctoMessage({
         config,
         state,
+        activeRunCancels,
         project,
         binding,
         robotId: resolved.entry.robotId,
@@ -4079,6 +4169,7 @@ async function startOctoConnection(input: {
 async function startOctoConnections(
   config: ChannelConnectorsDaemonRuntimeConfig,
   state: ChannelDaemonState,
+  activeRunCancels: ChannelDaemonActiveRunCancelRegistry,
   sockets: OctoWukongSocket[],
   restHeartbeatTimers: NodeJS.Timeout[],
   seenMessages: Map<string, number>,
@@ -4089,6 +4180,7 @@ async function startOctoConnections(
       await startOctoConnection({
         config,
         state,
+        activeRunCancels,
         project,
         binding,
         sockets,
@@ -4182,6 +4274,7 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
 function dispatchFeishuParsedEventInBackground(input: {
   config: ChannelConnectorsDaemonRuntimeConfig;
   state: ChannelDaemonState;
+  activeRunCancels: ChannelDaemonActiveRunCancelRegistry;
   group: ChannelDaemonFeishuGroup;
   parsed: ChannelConnectorFeishuParsedWebhook;
   rawEvent: unknown;
@@ -4277,10 +4370,11 @@ function sendFeishuCommandTextReplyInBackground(input: {
 function createFeishuDispatcher(input: {
   config: ChannelConnectorsDaemonRuntimeConfig;
   state: ChannelDaemonState;
+  activeRunCancels: ChannelDaemonActiveRunCancelRegistry;
   group: ChannelDaemonFeishuGroup;
   seenMessages: Map<string, number>;
 }): EventDispatcher {
-  const { config, state, group, seenMessages } = input;
+  const { config, state, activeRunCancels, group, seenMessages } = input;
   const dispatcher = new EventDispatcher({
     logger: feishuLogger(config),
     loggerLevel: LoggerLevel.info,
@@ -4311,6 +4405,7 @@ function createFeishuDispatcher(input: {
       dispatchFeishuParsedEventInBackground({
         config,
         state,
+        activeRunCancels,
         group,
         parsed,
         rawEvent: data,
@@ -4330,6 +4425,7 @@ function createFeishuDispatcher(input: {
       const response = await dispatchFeishuParsedEvent({
         config,
         state,
+        activeRunCancels,
         group,
         parsed,
         rawEvent: data,
@@ -4350,6 +4446,7 @@ function createFeishuDispatcher(input: {
       dispatchFeishuParsedEventInBackground({
         config,
         state,
+        activeRunCancels,
         group,
         parsed,
         rawEvent: data,
@@ -4376,14 +4473,16 @@ function createFeishuDispatcher(input: {
 function startFeishuClientForGroup(input: {
   config: ChannelConnectorsDaemonRuntimeConfig;
   state: ChannelDaemonState;
+  activeRunCancels: ChannelDaemonActiveRunCancelRegistry;
   group: ChannelDaemonFeishuGroup;
   clients: WSClient[];
   seenMessages: Map<string, number>;
 }): WSClient {
-  const { config, state, group, clients, seenMessages } = input;
+  const { config, state, activeRunCancels, group, clients, seenMessages } = input;
   const dispatcher = createFeishuDispatcher({
     config,
     state,
+    activeRunCancels,
     group,
     seenMessages,
   });
@@ -4473,12 +4572,13 @@ function startFeishuClientForGroup(input: {
 function restartFeishuGroupClient(input: {
   config: ChannelConnectorsDaemonRuntimeConfig;
   state: ChannelDaemonState;
+  activeRunCancels: ChannelDaemonActiveRunCancelRegistry;
   group: ChannelDaemonFeishuGroup;
   clients: WSClient[];
   seenMessages: Map<string, number>;
   reason: string;
 }): void {
-  const { config, state, group, clients, seenMessages, reason } = input;
+  const { config, state, activeRunCancels, group, clients, seenMessages, reason } = input;
   if (!group.refs.length || group.watchdogRestarting) return;
   group.watchdogRestarting = true;
   group.reconnects += 1;
@@ -4508,6 +4608,7 @@ function restartFeishuGroupClient(input: {
   startFeishuClientForGroup({
     config,
     state,
+    activeRunCancels,
     group,
     clients,
     seenMessages,
@@ -4517,11 +4618,12 @@ function restartFeishuGroupClient(input: {
 function startFeishuWatchdog(input: {
   config: ChannelConnectorsDaemonRuntimeConfig;
   state: ChannelDaemonState;
+  activeRunCancels: ChannelDaemonActiveRunCancelRegistry;
   groups: ChannelDaemonFeishuGroup[];
   clients: WSClient[];
   seenMessages: Map<string, number>;
 }): NodeJS.Timeout {
-  const { config, state, groups, clients, seenMessages } = input;
+  const { config, state, activeRunCancels, groups, clients, seenMessages } = input;
   const timer = setInterval(() => {
     const nowMs = Date.now();
     for (const group of groups) {
@@ -4546,6 +4648,7 @@ function startFeishuWatchdog(input: {
           restartFeishuGroupClient({
             config,
             state,
+            activeRunCancels,
             group,
             clients,
             seenMessages,
@@ -4573,6 +4676,7 @@ function startFeishuWatchdog(input: {
           restartFeishuGroupClient({
             config,
             state,
+            activeRunCancels,
             group,
             clients,
             seenMessages,
@@ -4603,6 +4707,7 @@ function startFeishuWatchdog(input: {
         restartFeishuGroupClient({
           config,
           state,
+          activeRunCancels,
           group,
           clients,
           seenMessages,
@@ -4625,6 +4730,7 @@ function startFeishuWatchdog(input: {
 async function startFeishuConnections(
   config: ChannelConnectorsDaemonRuntimeConfig,
   state: ChannelDaemonState,
+  activeRunCancels: ChannelDaemonActiveRunCancelRegistry,
   clients: WSClient[],
   seenMessages: Map<string, number>,
 ): Promise<NodeJS.Timeout | null> {
@@ -4638,13 +4744,14 @@ async function startFeishuConnections(
     startFeishuClientForGroup({
       config,
       state,
+      activeRunCancels,
       group,
       clients,
       seenMessages,
     });
   }
   return groups.some((group) => group.refs.length)
-    ? startFeishuWatchdog({ config, state, groups, clients, seenMessages })
+    ? startFeishuWatchdog({ config, state, activeRunCancels, groups, clients, seenMessages })
     : null;
 }
 
@@ -4660,15 +4767,16 @@ async function main(): Promise<void> {
   const sockets: OctoWukongSocket[] = [];
   const octoRestHeartbeatTimers: NodeJS.Timeout[] = [];
   const feishuClients: WSClient[] = [];
+  const activeRunCancels: ChannelDaemonActiveRunCancelRegistry = new Map();
   const seenMessages = loadFeishuSeenMessages(config);
   let feishuWatchdog: NodeJS.Timeout | null = null;
 
-  void startOctoConnections(config, state, sockets, octoRestHeartbeatTimers, seenMessages).catch((error) => {
+  void startOctoConnections(config, state, activeRunCancels, sockets, octoRestHeartbeatTimers, seenMessages).catch((error) => {
     appendLog(config.paths.log, "Octo connection startup failed", {
       error: error instanceof Error ? error.message : String(error),
     });
   });
-  void startFeishuConnections(config, state, feishuClients, seenMessages)
+  void startFeishuConnections(config, state, activeRunCancels, feishuClients, seenMessages)
     .then((timer) => {
       feishuWatchdog = timer;
     })
@@ -4681,6 +4789,7 @@ async function main(): Promise<void> {
   const stop = () => {
     appendLog(config.paths.log, "Studio native Channel Connectors daemon stopping");
     if (feishuWatchdog) clearInterval(feishuWatchdog);
+    for (const entry of activeRunCancels.values()) entry.controller.abort();
     for (const timer of octoRestHeartbeatTimers) clearInterval(timer);
     for (const socket of sockets) socket.disconnect();
     for (const client of feishuClients) client.close({ force: true });

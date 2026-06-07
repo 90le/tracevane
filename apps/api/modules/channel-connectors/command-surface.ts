@@ -343,6 +343,7 @@ export function buildChannelConnectorCommandSurface(
         action("current", "Current Session", "/current", { actionKind: "nav" }),
         action("sessions", "Agent Sessions", "/list", { actionKind: "nav" }),
         action("history", "History", "/history", { actionKind: "nav" }),
+        action("stop", "Stop Run", "/stop", { tone: "danger", requiresAdmin: true }),
         action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true }),
         action("reset", "Reset", "/reset", { tone: "danger", requiresAdmin: true }),
       ],
@@ -732,6 +733,8 @@ function commandSurfaceItemDescription(item: ChannelConnectorCommandSurfaceActio
       return "列出当前 IM session 已知 Agent sessions 并切换续接";
     case "history":
       return "查看当前 IM session 最近上下文";
+    case "stop":
+      return "停止当前 IM session 正在运行的 Agent";
     case "new":
       return "开启新的 Agent 会话，保留本 IM 会话配置";
     case "reset":
@@ -1270,6 +1273,7 @@ function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConn
   const current = actions.find((item) => item.id === "current") || action("current", "Current Session", "/current", { actionKind: "nav" });
   const sessions = actions.find((item) => item.id === "sessions") || action("sessions", "Agent Sessions", "/list", { actionKind: "nav" });
   const history = actions.find((item) => item.id === "history") || action("history", "History", "/history", { actionKind: "nav" });
+  const stop = actions.find((item) => item.id === "stop") || action("stop", "Stop Run", "/stop", { tone: "danger", requiresAdmin: true });
   const fresh = actions.find((item) => item.id === "new") || action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true });
   const reset = actions.find((item) => item.id === "reset") || action("reset", "Reset", "/reset", { tone: "danger", requiresAdmin: true });
   const elements: Array<Record<string, unknown>> = [
@@ -1280,13 +1284,14 @@ function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConn
         "**会话操作**",
         "Status 查看当前 IM session 的 Agent、模型、权限和续接状态。",
         "Agent Sessions 查看当前 IM session 已知续接记录，并可切换回旧续接。",
+        "Stop Run 会停止当前 IM session 正在运行的 Agent。",
         "New Session 只断开 Agent 续接，保留当前模型/权限/目录选择。",
         "Reset 清空本 IM session 的 override 和 Agent 续接。",
       ].join("\n"),
     },
   ];
   pushActionRows(elements, [status, current, sessions, history], surface, 1);
-  pushActionRows(elements, [fresh, reset], surface, 2, true);
+  pushActionRows(elements, [stop, fresh, reset], surface, 1);
   pushSubcardNavRows(elements, surface, "session");
   return {
     config: {
