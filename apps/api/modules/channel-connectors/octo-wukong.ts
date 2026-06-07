@@ -11,6 +11,10 @@ const PACKET_PING = 7;
 const PACKET_PONG = 8;
 const PACKET_DISCONNECT = 9;
 const X25519_SPKI_PREFIX = Buffer.from("302a300506032b656e032100", "hex");
+const DEFAULT_OCTO_HEARTBEAT_MS = 30_000;
+const DEFAULT_OCTO_PONG_TIMEOUT_MS = 10_000;
+const DEFAULT_OCTO_RECONNECT_MS = 3_000;
+const DEFAULT_OCTO_RECONNECT_JITTER_MS = 3_000;
 
 export interface OctoWukongLogger {
   debug(message: string, meta?: Record<string, unknown>): void;
@@ -28,6 +32,7 @@ export interface OctoWukongSocketOptions {
   heartbeatMs?: number;
   pongTimeoutMs?: number;
   reconnectMs?: number;
+  reconnectJitterMs?: number;
   WebSocketCtor?: typeof WebSocket;
   logger?: OctoWukongLogger;
   onConnected?: () => void;
@@ -194,6 +199,11 @@ function rawDataToBuffer(data: RawData): Buffer {
   if (Array.isArray(data)) return Buffer.concat(data);
   if (data instanceof ArrayBuffer) return Buffer.from(data);
   return Buffer.from(data as unknown as ArrayBuffer);
+}
+
+function durationMs(value: number | undefined, fallback: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(0, Math.floor(value));
 }
 
 function rawPublicKey(publicKey: KeyObject): Buffer {
@@ -556,10 +566,21 @@ export class OctoWukongSocket {
 
   private scheduleReconnect(): void {
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    const delayMs = this.reconnectDelayMs();
+    this.logger.info("Octo WebSocket reconnect scheduled", {
+      bindingId: this.options.bindingId,
+      delayMs,
+    });
     this.reconnectTimer = setTimeout(() => {
       this.reconnects += 1;
       this.open();
-    }, this.options.reconnectMs ?? 3000);
+    }, delayMs);
+  }
+
+  private reconnectDelayMs(): number {
+    const baseMs = durationMs(this.options.reconnectMs, DEFAULT_OCTO_RECONNECT_MS);
+    const jitterMs = durationMs(this.options.reconnectJitterMs, DEFAULT_OCTO_RECONNECT_JITTER_MS);
+    return baseMs + (jitterMs > 0 ? crypto.randomInt(0, jitterMs + 1) : 0);
   }
 
   private resetHeartbeat(): void {
@@ -569,8 +590,8 @@ export class OctoWukongSocket {
       this.pongTimer = setTimeout(() => {
         this.onError(new Error("Octo WebSocket PONG timeout"));
         this.ws?.terminate();
-      }, this.options.pongTimeoutMs ?? 10_000);
-    }, this.options.heartbeatMs ?? 30_000);
+      }, durationMs(this.options.pongTimeoutMs, DEFAULT_OCTO_PONG_TIMEOUT_MS));
+    }, durationMs(this.options.heartbeatMs, DEFAULT_OCTO_HEARTBEAT_MS));
   }
 
   private clearHeartbeat(): void {

@@ -4490,6 +4490,29 @@ test("native Channel Connectors daemon entry exposes health and writes runtime",
   assert.equal(stderr.trim(), "");
 });
 
+test("native Channel Connectors Octo long connection follows CC Go heartbeat and jitter contract", () => {
+  const socketSource = fs.readFileSync(
+    path.resolve("apps/api/modules/channel-connectors/octo-wukong.ts"),
+    "utf8",
+  );
+  const daemonSource = fs.readFileSync(
+    path.resolve("apps/api/modules/channel-connectors/daemon.ts"),
+    "utf8",
+  );
+
+  assert.match(socketSource, /DEFAULT_OCTO_HEARTBEAT_MS\s*=\s*30_000/);
+  assert.match(socketSource, /DEFAULT_OCTO_PONG_TIMEOUT_MS\s*=\s*10_000/);
+  assert.match(socketSource, /DEFAULT_OCTO_RECONNECT_MS\s*=\s*3_000/);
+  assert.match(socketSource, /DEFAULT_OCTO_RECONNECT_JITTER_MS\s*=\s*3_000/);
+  assert.match(socketSource, /crypto\.randomInt\(0,\s*jitterMs\s*\+\s*1\)/);
+  assert.match(daemonSource, /heartbeatMs:\s*octoHeartbeatMs\(binding\)/);
+  assert.match(daemonSource, /pongTimeoutMs:\s*octoPongTimeoutMs\(binding\)/);
+  assert.match(daemonSource, /reconnectMs:\s*octoReconnectMs\(binding\)/);
+  assert.match(daemonSource, /reconnectJitterMs:\s*octoReconnectJitterMs\(binding\)/);
+  assert.match(daemonSource, /"octo_heartbeat_ms"/);
+  assert.match(daemonSource, /"octo_reconnect_jitter_ms"/);
+});
+
 test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSocket", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -4639,6 +4662,10 @@ test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSock
                 wsUrl,
                 allowPrivateAttachmentUrls: true,
                 attachmentMaxBytes: 1024,
+                octoHeartbeatMs: 30_000,
+                octoPongTimeoutMs: 10_000,
+                octoReconnectMs: 3_000,
+                octoReconnectJitterMs: 0,
               },
             },
           ],
@@ -4722,6 +4749,15 @@ test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSock
           return event.eventKind === "agent.attachments.staged"
             && event.messageId === "1001"
             && event.stagedCount === 1;
+        }));
+        assert.ok(octoEvents.some((event) => {
+          return event.eventKind === "agent.visual.input"
+            && event.messageId === "1001"
+            && event.model === "gpt-5.5"
+            && event.visualInputMode === "codex-native-image"
+            && event.imageCount === 1
+            && Array.isArray(event.localPaths)
+            && event.localPaths[0] === imageArgPath;
         }));
         assert.equal(requests.some((request) => request.path === "/v1/models"), true);
         assert.equal(requests.some((request) => request.path === "/media/red.png"), true);

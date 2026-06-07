@@ -126,6 +126,18 @@ const MAX_FEISHU_PING_TIMEOUT_SECONDS = 300;
 const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 180_000;
 const MIN_FEISHU_WATCHDOG_RESTART_MS = 60_000;
 const MAX_FEISHU_WATCHDOG_RESTART_MS = 600_000;
+const DEFAULT_OCTO_HEARTBEAT_MS = 30_000;
+const MIN_OCTO_HEARTBEAT_MS = 5_000;
+const MAX_OCTO_HEARTBEAT_MS = 300_000;
+const DEFAULT_OCTO_PONG_TIMEOUT_MS = 10_000;
+const MIN_OCTO_PONG_TIMEOUT_MS = 5_000;
+const MAX_OCTO_PONG_TIMEOUT_MS = 120_000;
+const DEFAULT_OCTO_RECONNECT_MS = 3_000;
+const MIN_OCTO_RECONNECT_MS = 500;
+const MAX_OCTO_RECONNECT_MS = 60_000;
+const DEFAULT_OCTO_RECONNECT_JITTER_MS = 3_000;
+const MIN_OCTO_RECONNECT_JITTER_MS = 0;
+const MAX_OCTO_RECONNECT_JITTER_MS = 60_000;
 
 interface ChannelDaemonOctoConnectionState extends OctoWukongSocketStatus {
   accountId: string;
@@ -572,6 +584,62 @@ function feishuPingTimeoutSeconds(group: ChannelDaemonFeishuGroup): number {
     ], DEFAULT_FEISHU_PING_TIMEOUT_SECONDS)
     : DEFAULT_FEISHU_PING_TIMEOUT_SECONDS;
   return clampNumber(Math.floor(value), MIN_FEISHU_PING_TIMEOUT_SECONDS, MAX_FEISHU_PING_TIMEOUT_SECONDS);
+}
+
+function octoHeartbeatMs(binding: ChannelConnectorRuntimeBinding): number {
+  return clampNumber(metadataNumber(binding, [
+    "octoHeartbeatMs",
+    "octo_heartbeat_ms",
+    "heartbeatMs",
+    "heartbeat_ms",
+    "heartbeatIntervalMs",
+    "heartbeat_interval_ms",
+  ], DEFAULT_OCTO_HEARTBEAT_MS), MIN_OCTO_HEARTBEAT_MS, MAX_OCTO_HEARTBEAT_MS);
+}
+
+function octoPongTimeoutMs(binding: ChannelConnectorRuntimeBinding): number {
+  return clampNumber(metadataNumber(binding, [
+    "octoPongTimeoutMs",
+    "octo_pong_timeout_ms",
+    "pongTimeoutMs",
+    "pong_timeout_ms",
+  ], DEFAULT_OCTO_PONG_TIMEOUT_MS), MIN_OCTO_PONG_TIMEOUT_MS, MAX_OCTO_PONG_TIMEOUT_MS);
+}
+
+function octoReconnectMs(binding: ChannelConnectorRuntimeBinding): number {
+  return clampNumber(metadataNumber(binding, [
+    "octoReconnectMs",
+    "octo_reconnect_ms",
+    "reconnectMs",
+    "reconnect_ms",
+  ], DEFAULT_OCTO_RECONNECT_MS), MIN_OCTO_RECONNECT_MS, MAX_OCTO_RECONNECT_MS);
+}
+
+function octoReconnectJitterMs(binding: ChannelConnectorRuntimeBinding): number {
+  return clampNumber(metadataNumber(binding, [
+    "octoReconnectJitterMs",
+    "octo_reconnect_jitter_ms",
+    "reconnectJitterMs",
+    "reconnect_jitter_ms",
+  ], DEFAULT_OCTO_RECONNECT_JITTER_MS), MIN_OCTO_RECONNECT_JITTER_MS, MAX_OCTO_RECONNECT_JITTER_MS);
+}
+
+function codexNativeImageArgPaths(args: string[]): string[] {
+  const paths: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    const value = args[index];
+    if (value === "--image") {
+      const next = normalizeString(args[index + 1]);
+      if (next) paths.push(next);
+      index += 1;
+      continue;
+    }
+    if (value.startsWith("--image=")) {
+      const inline = normalizeString(value.slice("--image=".length));
+      if (inline) paths.push(inline);
+    }
+  }
+  return paths;
 }
 
 function feishuWatchdogRestartMs(group: ChannelDaemonFeishuGroup): number {
@@ -1880,6 +1948,22 @@ async function dispatchOctoMessage(input: {
     progressEventCount = agent.progress.eventCount;
     latestProgress = agent.progress.latest;
   }
+  const codexImagePaths = codexNativeImageArgPaths(agent.args);
+  if (codexImagePaths.length > 0) {
+    writeJsonLine(config.paths.octoEvents, {
+      checkedAt: new Date().toISOString(),
+      eventKind: "agent.visual.input",
+      adapter: "octo",
+      bindingId: binding.id,
+      sessionKey,
+      messageId: message.messageId,
+      agent: agent.agent,
+      model: agent.model,
+      visualInputMode: "codex-native-image",
+      imageCount: codexImagePaths.length,
+      localPaths: codexImagePaths,
+    });
+  }
   appendChannelConnectorConversationHistory(conversationHistoryPath(config), {
     bindingId: binding.id,
     sessionKey,
@@ -2543,6 +2627,23 @@ async function dispatchFeishuParsedEvent(input: {
     queueFeishuProgressFlush(true, "final");
     await feishuProgressFlush;
   }
+  const codexImagePaths = codexNativeImageArgPaths(agent.args);
+  if (codexImagePaths.length > 0) {
+    writeJsonLine(config.paths.feishuEvents, {
+      checkedAt: new Date().toISOString(),
+      eventKind: "agent.visual.input",
+      adapter: "feishu",
+      bindingId: binding.id,
+      sessionKey,
+      messageId,
+      ...feishuThreadLogFields(parsed),
+      agent: agent.agent,
+      model: agent.model,
+      visualInputMode: "codex-native-image",
+      imageCount: codexImagePaths.length,
+      localPaths: codexImagePaths,
+    });
+  }
   appendChannelConnectorConversationHistory(conversationHistoryPath(config), {
     bindingId: binding.id,
     sessionKey,
@@ -2699,6 +2800,10 @@ async function startOctoConnection(input: {
     uid: resolved.entry.robotId,
     token: resolved.entry.imToken,
     reconnect: true,
+    heartbeatMs: octoHeartbeatMs(binding),
+    pongTimeoutMs: octoPongTimeoutMs(binding),
+    reconnectMs: octoReconnectMs(binding),
+    reconnectJitterMs: octoReconnectJitterMs(binding),
     logger: logger(config),
     onConnected: () => {
       state.octoConnections[binding.id] = connectionState(binding, {
