@@ -5986,6 +5986,23 @@ test("native Channel Connectors Octo long connection follows CC Go heartbeat and
   assert.match(daemonSource, /"octo_reconnect_jitter_ms"/);
 });
 
+test("native Channel Connectors daemon queues same-session messages while an Agent run is active", () => {
+  const daemonSource = fs.readFileSync(
+    path.resolve("apps/api/modules/channel-connectors/daemon.ts"),
+    "utf8",
+  );
+
+  assert.match(daemonSource, /function latestActiveRunForSession/);
+  assert.match(daemonSource, /function acquireChannelSessionAgentRun/);
+  assert.match(daemonSource, /channelSessionAgentRunQueues/);
+  assert.match(daemonSource, /function queuedAgentRunReply/);
+  assert.match(daemonSource, /本条已加入队列/);
+  assert.match(daemonSource, /eventKind:\s*"channel\.agent\.queued"/);
+  assert.match(daemonSource, /需要中断当前任务可以发送 `\/stop`/);
+  assert.match(daemonSource, /channelSessionParallelAgentRunsEnabled/);
+  assert.match(daemonSource, /"allow_session_parallel_runs"/);
+});
+
 test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSocket", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

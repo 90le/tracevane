@@ -34,6 +34,7 @@ CC 和 OpenClaw 只作为参考：
 - Studio 负责配置、安装、启停、日志、会话可视化和平台账号管理。
 - Feishu 长连接按 CC Go/OpenClaw 与官方 SDK 约束：同 App 共享 WS 并快速 ACK/扇出；SDK `pingTimeout=10s` 负责死 socket，Studio 维护真实 `lastReceivedAt` 和当前连接生命周期计数；启动 30s 无入站只做一次 no-inbound sanity reconnect，当前生命周期已收过事件后默认静默超过 5 分钟才做低频 idle refresh，避免频繁重连和平台重投。
 - Feishu `im.message.receive_v1` / bot menu 入口必须像 CC Go 一样只在同步段完成解析、去重和 runtime 记录，随后后台执行附件下载、Agent runner、进度卡片和回复；去重状态需落盘，避免 daemon 重启后平台重投旧事件再次触发 Agent。
+- 同一 binding + IM session 的 Agent run 默认 FIFO 排队：上一条未完成时，新普通消息先回复“已加入队列”，前序任务完成后自动处理；`/stop`、`/status` 等命令不进队列并即时执行；确需并行时由 binding metadata 显式开启。
 - Feishu card/menu 按 CC 语义区分导航和执行：导航显示/更新卡片，`/new`、`/reset` 等无卡片执行动作快速 ACK 回调并异步发送普通文本结果，不弹悬浮 toast，也不自动弹完整菜单。
 - 进度/工具过程按 CC 群聊语义处理：私聊默认显示运行、思考和工具过程；Feishu 群聊、Octo 群聊默认只发最终回复，除非当前 IM session 显式开启 `/stream` / `/tools`。
 - 文件收发边界：入站附件由 daemon 下载/staging 后交给 Agent；出站文件由 Agent 声明 `studio-channel-files` manifest，daemon 默认只允许发送 Agent workDir 或当前 runtime/staging 根内文件，`yolo` 权限可发送任意可读普通文件但仍受大小/平台限制；平台 transport 负责上传发送并尽量保留原始文件名，Octo 已支持 STS + COS PUT 直传；Agent prompt 不暴露旧桥接命令或平台 CLI。
@@ -116,6 +117,7 @@ Studio 增强点：
 - Channel daemon 已支持 Octo register 后凭证缓存、WuKongIM WebSocket CONNECT/CONNACK/heartbeat/RECVACK/AES 解密、runtime status、Codex/Claude Code/OpenCode 一次性 CLI runner 合同。
 - Channel daemon 已支持 runner JSONL progress、`activeRuns` status、Octo event start/progress/finish、typing pulse 和失败短回执；2026-06-06 本机 Octo `studio-cc` 真实 DM live smoke 复验通过，最近 4 条 inbound run 均完成并回复。
 - Channel daemon 已支持 `/help`、`/command`、`/cmd`、`/status`、`/usage`、`/tokens`、`/agent`、`/model`、`/mode`、`/reasoning`、`/effort`、`/name`、`/rename`、`/search`、`/find`、`/dir`、`/cd`、`/new`、`/reset`、`/display`、`/stream`、`/tools`；override 按 IM session 存储，模型切换不切断 Codex thread，reasoning/workdir/new session 会断开旧续接，流式/工具消息开关只作用于当前 IM session。
+- Channel daemon 已支持同 session FIFO Agent run queue：普通消息不再并行启动第二个 CLI Agent turn，排队消息会收到引导并在前序任务释放后自动继续；命令仍绕过队列即时执行，metadata 可显式打开并行。
 - Channel daemon 已支持 `/usage` / `/tokens`：从 Studio Gateway runtime usage ledger 汇总当前 binding + IM session 最近 Agent run 的真实 token usage；无上游 usage 时明确提示无统计。
 - Channel daemon 已按 CC Go 补齐 `/reasoning`、`/name`、`/search`：推理强度支持序号与 `low|medium|high|xhigh|default`，Codex/Claude Code/OpenCode runner 分别映射到 `model_reasoning_effort`、`--effort`、`--variant`；session 命名会显示在 `/list`、`/search`、Feishu Agent Sessions 子卡和文本 fallback。
 - Channel daemon 已按 CC Go 增强 `/current`、`/list`、`/history [n]`：文本和 Feishu card 都显示 session name、短 sessionId/threadId、history 数量、最近消息和 usage 入口。

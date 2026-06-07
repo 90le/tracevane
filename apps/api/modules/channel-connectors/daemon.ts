@@ -311,6 +311,22 @@ interface ChannelDaemonActiveRunCancelEntry {
 
 type ChannelDaemonActiveRunCancelRegistry = Map<string, ChannelDaemonActiveRunCancelEntry>;
 
+interface ChannelDaemonActiveRunLookupResult {
+  runId: string;
+  entry: ChannelDaemonActiveRunCancelEntry;
+}
+
+type ChannelDaemonSessionRunQueueRegistry = Map<string, {
+  tail: Promise<void>;
+  pending: number;
+}>;
+
+interface ChannelDaemonSessionRunLease {
+  queued: boolean;
+  queuePosition: number;
+  release: () => void;
+}
+
 interface ChannelDaemonStopActiveRunResult {
   stopped: boolean;
   runId: string | null;
@@ -321,6 +337,8 @@ interface ChannelDaemonStopActiveRunResult {
 }
 
 type FeishuProgressCardEntryKind = "info" | "thinking" | "tool_use" | "tool_result" | "error";
+
+const channelSessionAgentRunQueues: ChannelDaemonSessionRunQueueRegistry = new Map();
 
 interface FeishuProgressCardEntry {
   kind: FeishuProgressCardEntryKind;
@@ -410,15 +428,23 @@ function createDaemonState(config: ChannelConnectorsDaemonRuntimeConfig): Channe
   };
 }
 
-function stopLatestActiveRunForSession(
+function latestActiveRunForSession(
   registry: ChannelDaemonActiveRunCancelRegistry,
   input: { bindingId: string; sessionKey: string },
-): ChannelDaemonStopActiveRunResult {
+): ChannelDaemonActiveRunLookupResult | null {
   const candidates = [...registry.entries()]
     .filter(([, entry]) => entry.bindingId === input.bindingId && entry.sessionKey === input.sessionKey)
     .sort((left, right) => right[1].startedAt.localeCompare(left[1].startedAt));
   const [runId, entry] = candidates[0] || [];
-  if (!runId || !entry) {
+  return runId && entry ? { runId, entry } : null;
+}
+
+function stopLatestActiveRunForSession(
+  registry: ChannelDaemonActiveRunCancelRegistry,
+  input: { bindingId: string; sessionKey: string },
+): ChannelDaemonStopActiveRunResult {
+  const activeRun = latestActiveRunForSession(registry, input);
+  if (!activeRun) {
     return {
       stopped: false,
       runId: null,
@@ -428,6 +454,7 @@ function stopLatestActiveRunForSession(
       error: null,
     };
   }
+  const { runId, entry } = activeRun;
   if (entry.controller.signal.aborted) {
     return {
       stopped: false,
@@ -446,6 +473,60 @@ function stopLatestActiveRunForSession(
     agent: entry.agent,
     model: entry.model,
     error: null,
+  };
+}
+
+function sessionRunQueueKey(input: { bindingId: string; sessionKey: string }): string {
+  return [input.bindingId, input.sessionKey].map((part) => encodeURIComponent(part)).join("|");
+}
+
+async function acquireChannelSessionAgentRun(
+  registry: ChannelDaemonSessionRunQueueRegistry,
+  input: {
+    bindingId: string;
+    sessionKey: string;
+    parallel: boolean;
+    onQueued?: (queuePosition: number) => Promise<void> | void;
+  },
+): Promise<ChannelDaemonSessionRunLease> {
+  if (input.parallel) {
+    return {
+      queued: false,
+      queuePosition: 0,
+      release: () => undefined,
+    };
+  }
+  const key = sessionRunQueueKey(input);
+  const existing = registry.get(key);
+  let releaseCurrent: () => void = () => undefined;
+  const current = new Promise<void>((resolve) => {
+    releaseCurrent = resolve;
+  });
+  const previous = existing?.tail || Promise.resolve();
+  const queuePosition = existing ? existing.pending + 1 : 0;
+  const nextTail = previous.catch(() => undefined).then(() => current);
+  registry.set(key, {
+    tail: nextTail,
+    pending: (existing?.pending || 0) + 1,
+  });
+  if (existing) {
+    await input.onQueued?.(queuePosition);
+    await previous.catch(() => undefined);
+  }
+  const state = registry.get(key);
+  if (state) state.pending = Math.max(0, state.pending - 1);
+  let released = false;
+  return {
+    queued: Boolean(existing),
+    queuePosition,
+    release: () => {
+      if (released) return;
+      released = true;
+      releaseCurrent();
+      void nextTail.finally(() => {
+        if (registry.get(key)?.tail === nextTail) registry.delete(key);
+      });
+    },
   };
 }
 
@@ -712,6 +793,17 @@ function metadataBoolean(binding: ChannelConnectorRuntimeBinding, keys: string[]
   return fallback;
 }
 
+function channelSessionParallelAgentRunsEnabled(binding: ChannelConnectorRuntimeBinding): boolean {
+  return metadataBoolean(binding, [
+    "parallelAgentRuns",
+    "parallel_agent_runs",
+    "allowParallelAgentRuns",
+    "allow_parallel_agent_runs",
+    "allowSessionParallelRuns",
+    "allow_session_parallel_runs",
+  ], false);
+}
+
 function metadataNumber(binding: ChannelConnectorRuntimeBinding, keys: string[], fallback: number): number {
   const metadata = metadataRecord(binding);
   for (const key of keys) {
@@ -942,6 +1034,21 @@ function appendOutboundFileErrors(replyText: string, errors: string[]): string {
   if (!errors.length) return replyText;
   const message = `文件发送准备失败：${errors.join("; ")}`;
   return [replyText, message].filter(Boolean).join("\n\n");
+}
+
+function queuedAgentRunReply(input: {
+  activeRun: ChannelDaemonActiveRunCancelEntry | null;
+  queuePosition: number;
+}): string {
+  const entry = input.activeRun;
+  const target = entry ? [entry.agent, entry.model].filter(Boolean).join(" / ") : "";
+  return [
+    "上一条消息仍在处理中，本条已加入队列，将在前面的任务完成后自动处理。",
+    input.queuePosition > 1 ? `队列位置：${input.queuePosition}` : "",
+    "需要中断当前任务可以发送 `/stop`。",
+    target ? `当前任务：${target}` : "",
+    entry ? `当前消息：${shortMessage(entry.messageId, 80)}` : "",
+  ].filter(Boolean).join("\n");
 }
 
 async function sendOctoOutboundFiles(input: {
@@ -3284,6 +3391,48 @@ async function dispatchOctoMessage(input: {
     model: turnProject.model,
     workDir: turnProject.workDir,
   };
+  const sessionRunLease = await acquireChannelSessionAgentRun(channelSessionAgentRunQueues, {
+    bindingId: binding.id,
+    sessionKey,
+    parallel: channelSessionParallelAgentRunsEnabled(binding),
+    onQueued: async (queuePosition) => {
+      const activeSessionRun = latestActiveRunForSession(activeRunCancels, { bindingId: binding.id, sessionKey });
+      let replySent = false;
+      let replyRequestCount: number | null = null;
+      if (transport) {
+        const replyPlan = renderOctoTextReply(message, queuedAgentRunReply({
+          activeRun: activeSessionRun?.entry || null,
+          queuePosition,
+        }));
+        if (replyPlan) {
+          const result = await sendOctoTextReply(transport, replyPlan);
+          replySent = result.ok === true;
+          replyRequestCount = result.requestCount;
+        }
+      }
+      writeJsonLine(config.paths.octoEvents, {
+        checkedAt: new Date().toISOString(),
+        eventKind: "channel.agent.queued",
+        adapter: "octo",
+        bindingId: binding.id,
+        sessionKey,
+        messageId: message.messageId,
+        channelId: message.channelId,
+        channelType: message.channelType,
+        fromUid: message.fromUid,
+        queuePosition,
+        activeRunId: activeSessionRun?.runId || null,
+        activeMessageId: activeSessionRun?.entry.messageId || null,
+        activeAgent: activeSessionRun?.entry.agent || null,
+        activeModel: activeSessionRun?.entry.model || null,
+        replySent,
+        replyRequestCount,
+        ingressAt,
+        elapsedMs: elapsedMsSince(ingressAtMs),
+      });
+      writeRuntime(config, state);
+    },
+  });
   if (transport) {
     await sendOctoTyping(
       transport,
@@ -3542,6 +3691,7 @@ async function dispatchOctoMessage(input: {
     stopTypingPulse();
     activeRunCancels.delete(activeRunId);
     state.activeRuns = state.activeRuns.filter((run) => run.id !== activeRunId);
+    sessionRunLease.release();
     writeRuntime(config, state);
   }
   if (agent.progress.eventCount > progressEventCount) {
@@ -4154,6 +4304,44 @@ async function dispatchFeishuParsedEvent(input: {
     model: turnProject.model,
     workDir: turnProject.workDir,
   };
+  const sessionRunLease = await acquireChannelSessionAgentRun(channelSessionAgentRunQueues, {
+    bindingId: binding.id,
+    sessionKey,
+    parallel: channelSessionParallelAgentRunsEnabled(binding),
+    onQueued: async (queuePosition) => {
+      const activeSessionRun = latestActiveRunForSession(activeRunCancels, { bindingId: binding.id, sessionKey });
+      const result = await sendFeishuTextMessage(transport, {
+        chatId: parsed.channelId || sessionKey,
+        content: queuedAgentRunReply({
+          activeRun: activeSessionRun?.entry || null,
+          queuePosition,
+        }),
+      }, feishuTokenCachePath(config));
+      writeJsonLine(config.paths.feishuEvents, {
+        checkedAt: new Date().toISOString(),
+        eventKind: "channel.agent.queued",
+        adapter: "feishu",
+        bindingId: binding.id,
+        sessionKey,
+        messageId,
+        channelId: parsed.channelId,
+        chatType: parsed.chatType,
+        fromUid: parsed.fromUid,
+        ...feishuThreadLogFields(parsed),
+        queuePosition,
+        activeRunId: activeSessionRun?.runId || null,
+        activeMessageId: activeSessionRun?.entry.messageId || null,
+        activeAgent: activeSessionRun?.entry.agent || null,
+        activeModel: activeSessionRun?.entry.model || null,
+        replySent: result.ok === true,
+        replyError: result.error,
+        replyRequestCount: result.requestCount,
+        ingressAt,
+        elapsedMs: elapsedMsSince(ingressAtMs),
+      });
+      writeRuntime(config, state);
+    },
+  });
   const activeRunId = `${binding.id}:${messageId}`;
   const currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
   const historyContext = renderChannelConnectorConversationHistoryContext(
@@ -4415,6 +4603,7 @@ async function dispatchFeishuParsedEvent(input: {
     await stopTypingReaction();
     activeRunCancels.delete(activeRunId);
     state.activeRuns = state.activeRuns.filter((run) => run.id !== activeRunId);
+    sessionRunLease.release();
     writeRuntime(config, state);
   }
   if (agent.progress.eventCount > progressEventCount) {
