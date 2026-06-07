@@ -12,6 +12,7 @@
 - Provider Center 已支持自定义 provider、启停、模型列表/别名/默认模型、能力勾选、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
 - App Connections 已覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收。
 - Channel Connectors 已切换为 Studio 原生 CLI Agent Bot 路线；本地 Octo(dmwork) 与 Feishu 已接入 Codex/Claude Code/OpenCode runner、Studio Gateway key、IM session override、slash command、Feishu card/menu/progress、附件 staging、history、group context、reply buffer 和基础治理。
+- IM Agent runner 策略固定为混合架构：默认 one-shot `exec/resume` 保稳定；后续持久 TUI/session driver 只作为可观测、可回收、可降级的高级能力接入。
 
 ## 本次完成
 
@@ -19,6 +20,7 @@
 - compact 成功后，当前 binding + IM session 的 history 会被替换为一条 `compact-summary`，旧 Agent session / Codex thread 续接会被清理，下一轮用 summary 作为上下文重新开始。
 - compact 失败会返回明确错误，不做本地伪摘要；这避免把“压缩成功”伪装成真实 Gateway compact。
 - Feishu Session/History 菜单补了 Compact Context 操作；Octo/纯文本可直接用 `/compact`。
+- 已固化持久 session 方向：不替换当前稳定链路；后续按 binding + IM session + Agent Profile 建 session pool，支持多 Agent 隔离、idle TTL、健康检查、stop/kill 和 one-shot fallback。
 
 ## 最近验证
 
@@ -41,6 +43,6 @@
 
 ## 下一步
 
-1. 继续评估 Codex 持久 session 通道，用于后续承接 Codex 原生交互式 slash（如 `/clear` 和真正的 Codex-side compact）。
+1. 设计并测试持久 session driver 最小合同：session pool、事件流、stop/kill、idle 回收、crash recovery、one-shot fallback。
 2. 继续按 CC Go 补 `/usage`：需要先接真实 token/usage 账本，不能只显示占位。
-3. 继续按 CC Go 补 `/reasoning`，并迁移 Claude Code / OpenCode 视觉输入、OCR、语音/STT/TTS、大文件 COS STS 和更多平台 adapter。
+3. 继续按 CC Go 补 `/reasoning`、`/name`、`/search`、session list 细节，并迁移 Claude Code / OpenCode 视觉输入、OCR、语音/STT/TTS、大文件 COS STS 和更多平台 adapter。

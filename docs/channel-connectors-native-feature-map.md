@@ -22,7 +22,7 @@
 | Platforms | dmwork/feishu/weixin/wecom/dingtalk/telegram/slack/discord/qq/qqbot/line | Studio native adapter registry；Octo(dmwork) 先落地，其余按 adapter 迁移 | F3-F6 |
 | Agents | Codex、Claude Code、OpenCode、Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP | local CLI Agent runner；统一走 Studio Gateway endpoint/key/model | F3-F7 |
 | Messages | text、image、file、voice、reply、thread、mention、stream preview、long split | incoming/reply/attachment/voice/thread contract + renderer | F4 |
-| Sessions | session key、续接、重置、workdir 切换、cron reply target、跨 channel context、IM 内切 Agent/model/mode | Studio session store、bot/account -> Agent context、session override、观测和审计 | F3-F7 |
+| Sessions | session key、续接、重置、workdir 切换、cron reply target、跨 channel context、IM 内切 Agent/model/mode、可选持久 Agent session | Studio session store、bot/account -> Agent context、session override、观测和审计；默认 one-shot runner，高阶持久 session pool 按 binding/session/profile 隔离 | F3-F7 |
 | Governance | allow_from、admin、rate limit、outgoing limit、banned words、run_as_user | allowlist/admin/rate/banned/permission/run-as/audit policy | F5 |
 | Automation | slash command、Agent 原生命令透传、菜单、Feishu card、cron、hook、relay、management API | Studio native command contract；普通平台文本命令，未知 slash 透传，rich 平台消费 command surface | F3-F5 |
 
@@ -56,6 +56,7 @@
 - 已完成：F4 图片非视觉模型保护：Feishu/Octo 图片附件可 staging；`glm-5` 等未标记 vision 的模型仍启动受控 Agent turn，但 prompt 禁止视觉推断并要求询问下一步，普通文件仍进入 Agent，避免路径诱导的看图幻觉。
 - 已完成：F4 Octo 出站媒体基础合同：参考 CC dmwork `upload -> send media`，支持小文件 `/v1/bot/file/upload` multipart 上传与 `/v1/bot/sendMessage` image/file payload；runtime 暴露 REST heartbeat 成功/失败指标，便于识别“WS 在线但 REST 通讯异常”；本机 `studio-cc` 小文本文件真实 smoke 已通过；大文件 COS STS 仍留后续。
 - 已完成：F4 IM history context：按 session 保存最近 user/assistant 脱敏摘要，Agent prompt 注入短上下文，`/compact` 将 history 替换为 `compact-summary`，`/new` / `/reset` 清理 history。
+- 已定策略：持久 TUI/session driver 后续作为高级增强接入，不替代 one-shot `exec/resume` 默认链路；先做 session pool contract，再逐个 Agent 支持 Codex/Claude Code/OpenCode 原生 slash、连续流和 Agent-side compact。
 - 已完成：F4 群聊 context：Agent prompt 注入 channel/sender/bot/reply/mention/成员摘要，飞书完整群成员列表后续再接平台 API。
 - 已完成：F4 长回复 group buffer：群聊长回复保存到本地 buffer，只发送短预览和 buffer id；私聊保持原拆分。
 - 已完成：F4 reply buffer 查看：`/buffer` / `/buffer <id|前缀|latest>` 和 Feishu Reply Buffer 子卡片，按当前 binding + session 隔离读取。
