@@ -33,6 +33,7 @@
 - `/stop` 已打通 persistent driver：IM 命令 abort 当前 active run，session pool 调用 `turn/interrupt`，driver 将 app-server `cancelled/interrupted` 映射为 `status=cancelled`，Octo/Feishu 终态回执显示“Agent 已停止”而不是失败。
 - 新增 Codex persistent IM live smoke 脚本：可备份真实 Channel 配置、为指定 binding 临时写入 `agentSessionDriver=persistent`、重启 daemon、验证 runtime effective mode，并在用户发真实 Octo/Feishu 消息后等待 active session/idle cleanup；默认 dry-run 且输出脱敏。
 - 新增持久 Agent session 管理入口：Channel daemon 暴露 `/agent-sessions` status/reap-idle/kill，Studio API 转发 `/api/channel-connectors/agent-sessions`，Channel Connectors 会话页可刷新、清理空闲会话和停止指定 persistent session。
+- 新增持久 session live 管理 smoke 脚本：`scripts/smoke-channel-connectors-agent-sessions.mjs` 可只读查看、等待 active/idle、dry-run kill、显式 `--apply` 后 reap/kill；同时修正 `GET /agent-sessions` 为纯 status，避免只读探针误清理 idle session。
 
 ## 最近验证
 
@@ -45,7 +46,9 @@
 - 通过：`node --test tests/system/channel-connectors-agent-session-driver.test.mjs`，4 个持久 session driver 合同子测试通过。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs`，50 个 Channel Connectors 子测试通过；fake Octo + fake Codex app-server 已覆盖 persistent run、daemon `/status` active session、IM `/stop` -> `turn/interrupt` 和 stopped 回执。
 - 通过：`node --test tests/system/channel-connectors-persistent-live-script.test.mjs`，验证 live smoke 脚本 dry-run、不泄露 secret、备份、写入 persistent metadata 和 restore-latest。
+- 通过：`node --test tests/system/channel-connectors-agent-sessions-live-script.test.mjs`，验证 session live 管理脚本 status 不泄漏 workDir、dry-run kill 不 POST、`--apply` reap/kill 请求正确。
 - 通过：`node scripts/smoke-channel-connectors-persistent-live.mjs --bindings octo-studio-cc,feishu-live --apply --json`，真实 Octo/Feishu binding 已写入 persistent metadata，daemon runtime 显示两个 binding `effectiveMode=persistent`；随后轮询 `/status` 确认 Octo 与 Feishu 均 connected，用户已在真实 IM 验证 `/stop` 可用。
+- 通过：`node scripts/smoke-channel-connectors-agent-sessions.mjs --json`，真实 Channel daemon 返回两个 persistent binding，`reaped=null`，证明只读 status 不触发 idle cleanup；无 idle session 时 dry-run `--kill-first-idle` 不产生副作用。
 - 通过：`node --test tests/system/studio-web-channel-connectors-page.test.mjs`，Channel Connectors 页面 contract 覆盖 session 管理 API 和 UI 操作。
 - 通过：`npm run typecheck:web`。
 - 通过：`node --test tests/system/studio-web-channel-connectors-page.test.mjs tests/system/studio-web-model-gateway-page.test.mjs`，6 个前端 contract 子测试通过。

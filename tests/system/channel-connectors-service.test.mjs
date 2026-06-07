@@ -6519,6 +6519,7 @@ test("native Channel Connectors daemon runs Codex app-server when persistent ses
         const sessionStatus = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/agent-sessions`);
         assert.equal(sessionStatus.status, 200);
         assert.equal(sessionStatus.body.policy.idleTimeoutMs, 600000);
+        assert.equal(sessionStatus.body.reaped, undefined);
         assert.equal(sessionStatus.body.activeSessions.some((item) => item.poolKey === poolKey), true);
 
         const killStatus = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/agent-sessions`, {

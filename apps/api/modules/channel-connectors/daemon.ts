@@ -595,8 +595,7 @@ async function handleAgentSessionManagement(
   config: ChannelConnectorsDaemonRuntimeConfig,
 ): Promise<void> {
   if (req.method === "GET") {
-    const reaped = await channelAgentSessionDriverPool.reapIdle();
-    sendDaemonJson(res, 200, agentSessionDriverStatusResponse(config, { reaped }));
+    sendDaemonJson(res, 200, agentSessionDriverStatusResponse(config));
     return;
   }
   if (req.method !== "POST") {
