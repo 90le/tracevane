@@ -53,6 +53,20 @@ export interface ChannelConnectorCommandContext {
   listModels?: (endpoint: string, clientKey: string | null) => Promise<string[]>;
 }
 
+export interface ChannelConnectorGatewayModel {
+  id: string;
+  aliases: string[];
+  providerIds: string[];
+  features: {
+    text?: boolean;
+    streaming?: boolean;
+    tools?: boolean;
+    vision?: boolean;
+    reasoning?: boolean;
+    responses?: boolean;
+  };
+}
+
 export interface ChannelConnectorCommandResult {
   handled: boolean;
   command: string | null;
@@ -443,14 +457,53 @@ function handleReplyBufferCommand(
   };
 }
 
-export async function listChannelConnectorGatewayModels(endpoint: string, clientKey: string | null): Promise<string[]> {
+function normalizeGatewayModelFeatures(value: unknown): ChannelConnectorGatewayModel["features"] {
+  const record = typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+  const features: ChannelConnectorGatewayModel["features"] = {};
+  for (const key of ["text", "streaming", "tools", "vision", "reasoning", "responses"] as const) {
+    if (typeof record[key] === "boolean") features[key] = record[key];
+  }
+  return features;
+}
+
+function normalizeGatewayStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? uniqueStrings(value.map((item) => normalizeString(item)))
+    : [];
+}
+
+export async function listChannelConnectorGatewayModelCatalog(
+  endpoint: string,
+  clientKey: string | null,
+): Promise<ChannelConnectorGatewayModel[]> {
   const url = `${endpoint.replace(/\/+$/, "")}/models`;
   const headers: Record<string, string> = {};
   if (clientKey) headers.authorization = `Bearer ${clientKey}`;
   const response = await fetch(url, { headers });
   if (!response.ok) throw new Error(`Gateway models failed with HTTP ${response.status}`);
-  const raw = await response.json() as { data?: Array<{ id?: unknown }> };
-  return uniqueStrings((raw.data || []).map((item) => normalizeString(item.id)));
+  const raw = await response.json() as { data?: Array<Record<string, unknown>> };
+  const seen = new Set<string>();
+  const models: ChannelConnectorGatewayModel[] = [];
+  for (const item of raw.data || []) {
+    const id = normalizeString(item.id);
+    const key = id.toLowerCase();
+    if (!id || seen.has(key)) continue;
+    seen.add(key);
+    models.push({
+      id,
+      aliases: normalizeGatewayStringArray(item.aliases),
+      providerIds: normalizeGatewayStringArray(item.providerIds),
+      features: normalizeGatewayModelFeatures(item.features),
+    });
+  }
+  return models;
+}
+
+export async function listChannelConnectorGatewayModels(endpoint: string, clientKey: string | null): Promise<string[]> {
+  const catalog = await listChannelConnectorGatewayModelCatalog(endpoint, clientKey);
+  return uniqueStrings(catalog.map((item) => item.id));
 }
 
 async function listModelsForCommand(context: ChannelConnectorCommandContext): Promise<string[]> {

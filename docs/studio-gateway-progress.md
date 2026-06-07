@@ -9,7 +9,7 @@
 - Studio Gateway 是唯一正式模型中转目标；旧 Codex Stack / CPA / Compact 生产前后端已删除，不再演进。
 - Gateway daemon 与 Channel daemon 都使用独立 OS/user supervisor 守护；Studio / OpenClaw 崩溃后，CLI 与 IM bot 应继续直连本地 daemon。
 - Provider Center 已支持自定义 provider、启用/停用、模型列表/别名/默认模型、文字/图片/工具/推理/Responses/流式能力标记、priority、App scope、active routing、自动协议/模型识别、secret、provider-native smoke 和 active-route smoke。
-- Gateway 对外提供 Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions；`GET /v1/models` 聚合所有启用 provider，同名模型可跨 provider 组成模型池。
+- Gateway 对外提供 Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions；`GET /v1/models` 聚合所有启用 provider，同名模型可跨 provider 组成模型池，并回传合并后的模型能力给 App/IM 路由使用。
 - App Connections 已覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview、apply、备份、rollback、profile 切换、隔离 HOME HTTP 验收和真实 CLI smoke harness。
 - Channel Connectors 已切换为 Studio 原生 CLI Agent Bot 路线；本地已接入 Octo(dmwork) 与 Feishu，支持 Codex/Claude Code/OpenCode runner、Studio Gateway client key、IM session override、slash command、Feishu card/menu/progress card、附件 staging、history、group context、reply buffer 和基础治理。
 
@@ -22,7 +22,8 @@
 - Octo 入站协议参考已补齐：已安装 OpenClaw Octo 插件 `~/.openclaw/extensions/octo`（1.0.14）作为 Octo 专属参考源；本次按插件协议补 GIF=3 与 RichText=14 图文混排、多图 `mediaUrls` 入站归一化。
 - Feishu/Octo 图片入站已确认可接收并 staging；新增非视觉模型保护，`glm-5` 等未标记 vision 的模型仍执行受控 Agent turn，但 prompt 会禁止视觉推断并要求询问用户下一步；普通文件仍照常进入 Agent。
 - 本机 Studio Gateway 已配置 GMN 视觉测试 provider：`gmn`，base `https://gmn.chuangzuoli.com/v1`，默认模型 `gpt-5.5`，alias `gmn-vision` / `vision-gpt-5.5`，key 仅保存在本机 secret store。
-- Provider 模型配置已从多行文本改为结构化列表：每行可维护模型 ID、显示名、别名和能力勾选；后端 registry 已保留 `text/vision/tools/reasoning/responses/streaming` 六类模型能力。
+- Provider 模型配置已从多行文本改为结构化列表：每行可维护模型 ID、显示名、别名和能力勾选；后端 registry 与 `/v1/models` 已保留 `text/vision/tools/reasoning/responses/streaming` 六类模型能力。
+- Channel Connectors 已开始使用 Gateway 模型目录能力：图片/视频/贴纸 turn 会优先选择当前模型；若当前模型非 vision 且模型池存在 vision 模型，则仅本轮自动切到 vision 模型，binding metadata 可用 `autoVisionModel:false` 关闭。
 - Channel Connectors 附件默认落点已确认：IM 平台先保存原始文件，Studio Channel daemon 下载后 staging 到 `~/.config/openclaw-studio/channel-connectors/daemon/state/agent-runtime/<agent>/<project>/<binding>/attachments/<messageId>/...`，默认上限 128MB，可由 binding metadata 覆盖。
 - Channel daemon status API 已确认 Octo 与 Feishu connected，`platformBindings=2`；运行中任务可通过 `activeRuns` 观测。
 
@@ -40,7 +41,8 @@
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "native Channel Connectors agent runner"`，覆盖 `glm-5` 图片附件仍启动 Agent、但带非视觉理解约束 prompt。
 - 通过：GMN `gpt-5.5` provider smoke：OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 三个上游入口均返回 200；Studio Gateway `/v1/models` 暴露 GMN 模型池。
 - 通过：GMN 视觉 smoke：32x32 红色 PNG 经 Studio Gateway `/v1/responses` 和 `/v1/chat/completions` 均路由到 `gmn`，返回 `Red/red`；alias `gmn-vision` 文本 smoke 返回 200。
-- 通过：`node --test tests/system/model-gateway-service.test.mjs`，50 个模型网关测试通过，覆盖模型能力保存回显。
+- 通过：`node --test tests/system/model-gateway-service.test.mjs`，50 个模型网关测试通过，覆盖模型能力保存、`/v1/models` 跨 provider 同名模型池能力合并和 HTTP 回显。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "model gateway exposes enabled provider model pool|native Channel Connectors agent runner|native Channel Connectors model menus|native Channel Connectors visual turns"`，实际执行 35 个 Channel Connectors 系统测试，覆盖视觉附件按 Gateway catalog 自动选择 vision 模型、alias 保留、禁用开关和 catalog 失败降级。
 - 通过：`node --test tests/system/studio-web-model-gateway-page.test.mjs`，覆盖 Provider 模型能力列表 UI 契约。
 - 通过：Playwright 打开 `/model-gateway` 并切换 Provider tab，验证新增模型行能力勾选可见，桌面和 390px 窄屏无横向溢出、无 console error。
 - 通过：Playwright 打开 `/channel-connectors`，检查 Feishu/Octo 平台配置表单无 console error、无横向溢出。
@@ -49,12 +51,12 @@
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
 - GMN provider 已配置为后续视觉测试源，但未设为任何 App scope 的 active provider；当前 active provider 仍是 `glm`。测试时需显式选择 `gpt-5.5`、`gmn-vision` 或 `gmn/gpt-5.5`。
-- Feishu 与 Octo 文本 live 已通过，图片/视频入站接收和 staging 不受模型能力影响；非视觉模型可以继续对话和处理非视觉文件任务，但必须拒绝内容理解。真正视觉理解仍需后续接入可验证的视觉模型输入链路或 OCR/解析工具，不能只把本地路径交给文本模型。
+- Feishu 与 Octo 文本 live 已通过，图片/视频入站接收和 staging 不受模型能力影响；非视觉模型可以继续对话和处理非视觉文件任务，但必须拒绝内容理解。当前已能按 Gateway catalog 为视觉附件自动选择 vision 模型；真正视觉理解仍需把 staged 图片转成 Gateway/Agent 可消费的 image input 或接 OCR/解析工具。
 - Octo 出站媒体当前覆盖小文件 multipart upload；CC 的大文件 COS STS 直传尚未迁移，避免引入新依赖前先保持显式边界。
 - Feishu card/menu 已可用，但后续视觉和交互仍需继续参考 CC 成熟卡片结构做 Studio 化精修。
 
 ## 下一步
 
-1. 把 IM 图片附件接入视觉模型路径：当 session 模型为 `gmn-vision` / `gpt-5.5` 时，将 staged 图片作为 image input 传给 Agent 或 Gateway，而不是只传本地路径。
+1. 把 IM 图片附件接入视觉输入链路：已完成视觉模型自动选择，下一步将 staged 图片作为 image input 传给 Agent 或 Gateway，而不是只传本地路径。
 2. 继续迁移 CC/OpenClaw 的语音/STT/TTS、大文件 COS 直传和多平台 adapter。
 3. 精修 Feishu card/menu 与 Octo 弱富交互，保持 IM 命令和 Studio UI 同一 typed 状态。

@@ -64,6 +64,9 @@ export interface ChannelConnectorAgentTurnRequest {
     codexThreadId?: string | null;
   } | null;
   historyContext?: string | null;
+  modelCapabilities?: {
+    vision?: boolean | null;
+  } | null;
   onProgress?: (event: ChannelConnectorAgentProgressEvent) => void;
   timeoutMs?: number;
   processRunner?: ChannelConnectorAgentProcessRunner;
@@ -142,6 +145,7 @@ function metadataBooleanOverride(metadata: Record<string, unknown> | undefined, 
 function channelConnectorModelSupportsVision(
   model: string | null,
   binding: ChannelConnectorRuntimeBinding,
+  modelCapabilities?: { vision?: boolean | null } | null,
 ): boolean {
   const explicit = metadataBooleanOverride(binding.metadata, [
     "modelVision",
@@ -153,6 +157,7 @@ function channelConnectorModelSupportsVision(
     "vision_enabled",
   ]);
   if (explicit !== null) return explicit;
+  if (typeof modelCapabilities?.vision === "boolean") return modelCapabilities.vision;
 
   const normalized = normalizeString(model).toLowerCase();
   if (!normalized) return false;
@@ -236,6 +241,7 @@ function buildAgentInputContent(
   binding: ChannelConnectorRuntimeBinding,
   model?: string | null,
   historyContext?: string | null,
+  modelCapabilities?: { vision?: boolean | null } | null,
 ): string {
   const content = extractOctoContent(message);
   const attachments = extractOctoAttachments(message);
@@ -247,7 +253,7 @@ function buildAgentInputContent(
     .join("\n");
   const hasLocalPath = attachments.some((attachment) => normalizeString(attachment.localPath));
   const hasVisualAttachment = attachments.some(isVisualAttachment);
-  const visualPolicy = hasVisualAttachment && !channelConnectorModelSupportsVision(model || null, binding)
+  const visualPolicy = hasVisualAttachment && !channelConnectorModelSupportsVision(model || null, binding, modelCapabilities)
     ? buildNonVisionVisualAttachmentPolicy(model || null, attachments)
     : null;
   const attachmentText = [
@@ -484,6 +490,7 @@ export function buildChannelConnectorAgentProcessRequest(
     request.binding,
     request.project.model,
     request.historyContext,
+    request.modelCapabilities,
   );
   if (!content) return null;
   const project = request.project;

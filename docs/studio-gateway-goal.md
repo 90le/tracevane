@@ -1,7 +1,7 @@
 # Studio Gateway 目标方案
 
 > 状态：Phase C deletion completed; Phase B core matrix completed; Phase D provider routing/model catalog/active-route smoke MVP added; Phase E app connection profile/rollback/isolated apply acceptance completed; Phase B2 CLI/Gateway/live smoke harness added; Phase G docs renamed; Claude tool/summary and OpenClaw agent CLI smoke passed; Responses->Chat streaming usage、provider-declared reasoning/thinking、parallel tool-call、SSE failed 和 started-stream error envelope behavior aligned; BigModel Chat/Anthropic live maturity passed; GMN Responses-native substitute live proof passed; OpenAI Platform vendor proof optional
-> 更新：2026-06-06
+> 更新：2026-06-07
 > 文档规则：本文件只保留目标、边界、验收和阶段计划；进度写到 `studio-gateway-progress.md`。旧 `codex-stack-model-gateway-*` 文档名已停止使用。
 
 ## 1. 最终目标
@@ -44,7 +44,7 @@ Provider / model routing 目标：
 
 - Provider 可新增多个，并支持启用、停用、删除；停用 provider 不参与 active routing、模型目录和自动 failover。
 - Active routing 按 App scope 选择 provider：Codex、Claude Code、OpenCode、OpenClaw 可各自固定 provider，也可保持 Auto 按启用 provider 和健康状态选择。
-- Studio Gateway 对外提供统一模型目录，例如 `GET /v1/models`，聚合所有已启用 provider 的模型；模型 ID 必须能映射回 provider，可支持显示名、别名和能力标记（文字、图片、工具、推理、Responses、流式）。
+- Studio Gateway 对外提供统一模型目录，例如 `GET /v1/models`，聚合所有已启用 provider 的模型；模型 ID 必须能映射回 provider，可支持显示名、别名和能力标记（文字、图片、工具、推理、Responses、流式），并允许 App Connections / Channel Connectors 依据能力选择模型。
 - 客户端只配置 daemon endpoint 和一个本地 Gateway key；真实 upstream key 留在 Studio secret store。Gateway key 必须可由用户编辑或生成；设置并启用后，`/v1/models` 和三类客户端协议端点都必须校验该 key，且不会把本地 key 透传上游。
 - 不同 provider 暴露同名 model ID 是合法模型池：优先 active routing 所属 provider；Auto 按 provider priority 和健康状态选择；open circuit 自动切换到下一个同名模型 provider；也支持 `provider/model` 或 alias 显式选择。
 - 同一个 provider 内不允许重复 model ID 或重复 alias，重复判定大小写不敏感，保存时必须拒绝。
@@ -126,6 +126,7 @@ Provider / model routing 目标：
 - Codex、Claude Code、OpenCode、OpenClaw 可通过 App Connections 生成脱敏配置 preview，并在用户确认后 apply；apply 前必须有本地 Gateway key 和可用 provider 模型，写入前备份原文件，且支持 rollback。
 - App Connections 支持一键切换 app profile：默认模型、每个 App 单独模型覆盖、上下文窗口、compact 阈值、max output、reasoning/effort、必要兼容参数；模型选择必须来自 Gateway 可用模型列表并允许手动输入兼容 alias。
 - Channel Connectors 原生配置 Octo(dmwork) / 飞书 / 微信等 IM 渠道；消息进入本地 CLI Agent bot，再由 Studio Gateway 调模型。
+- Channel Connectors 遇到图片/视频/贴纸等视觉附件时，必须优先使用 Gateway 模型能力：当前模型支持 vision 则保持不变；当前模型不支持且模型池存在 vision 模型时，仅本轮切换到 vision 模型；没有 vision 模型时继续受控对话并禁止视觉推断。
 - Channel Connectors 发布前必须覆盖 CC 二开源码的核心能力：多平台、多 Agent、文本/图片/文件/语音、群聊 mention、会话续接/切换、allowlist/admin/rate limit、slash command、cron、hooks、relay、management/status/logs。
 - 客户端配置只保存 placeholder 或 local endpoint；真实 upstream key 留在 Studio secret store。
 - OpenClaw/Studio 崩溃隔离测试通过：daemon direct endpoint 继续可用。
@@ -141,5 +142,5 @@ Provider / model routing 目标：
 | Phase C | 删除 Codex Stack 前后端、资源和旧测试入口（已完成） |
 | Phase D | 先新建 Studio Gateway 服务与配置面：daemon 状态/启停、provider 配置、provider 启停、active routing、resolved route 状态、聚合 `/v1/models`、模型池/别名/优先级、模型能力勾选、可编辑统一 Gateway key、协议/模型自动识别、secret、模型列表/默认模型、provider-native smoke、client-protocol active-route smoke；UI 借鉴旧 CPA 的运维入口和 cc-switch 的 Provider 管理体验，检测入口贴近 Base URL / API Key，daemon Runtime 只暴露主操作并把低频运维动作收进更多菜单，启停动作以 HTTP readiness 为最终成功条件 |
 | Phase E | Codex、Claude Code、OpenCode、OpenClaw 配置 preview/apply/profile/rollback 与隔离 HOME HTTP 验收已完成；继续做真实 CLI 启动 smoke 和细节兼容 |
-| Phase F | Channel Connectors 原生 daemon 与 CLI Agent Bot：CC 全功能映射、Octo(dmwork)、飞书、微信、多 Agent、消息/治理/自动化 contract 与管理面 |
+| Phase F | Channel Connectors 原生 daemon 与 CLI Agent Bot：CC 全功能映射、Octo(dmwork)、飞书、微信、多 Agent、消息/治理/自动化 contract、Gateway 模型能力路由与管理面 |
 | Phase G | Studio Gateway 文档已切到正式文件名；Channel Connectors 原生方案文档已建立 |

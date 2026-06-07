@@ -105,14 +105,16 @@ export interface ModelGatewayProviderModel {
   contextWindow?: number | null;
   maxOutputTokens?: number | null;
   aliases?: string[];
-  features?: {
-    text?: boolean;
-    streaming?: boolean;
-    tools?: boolean;
-    vision?: boolean;
-    reasoning?: boolean;
-    responses?: boolean;
-  };
+  features?: ModelGatewayModelFeatures;
+}
+
+export interface ModelGatewayModelFeatures {
+  text?: boolean;
+  streaming?: boolean;
+  tools?: boolean;
+  vision?: boolean;
+  reasoning?: boolean;
+  responses?: boolean;
 }
 
 export interface ModelGatewayProviderModelCatalog {
@@ -216,6 +218,7 @@ export interface ModelGatewayModelListItem {
   label: string | null;
   aliases: string[];
   providerIds: string[];
+  features: ModelGatewayModelFeatures;
 }
 
 export interface ModelGatewayModelListResponse {

@@ -57,6 +57,7 @@ import {
   type ModelGatewayModelListResponse,
   type ModelGatewayProviderModel,
   type ModelGatewayProviderModelCatalog,
+  type ModelGatewayModelFeatures,
   type ModelGatewayProviderNetwork,
   type ModelGatewayProviderReasoning,
   type ModelGatewayProviderTestRequest,
@@ -340,6 +341,35 @@ function providerModelLookupEntries(provider: ModelGatewayProvider): Map<string,
     entries.set(normalizeModelLookupKey(defaultModel), defaultModel);
   }
   return entries;
+}
+
+const MODEL_GATEWAY_MODEL_FEATURE_KEYS = [
+  "text",
+  "streaming",
+  "tools",
+  "vision",
+  "reasoning",
+  "responses",
+] as const;
+
+function mergeModelFeatures(target: ModelGatewayModelFeatures, source?: ModelGatewayModelFeatures): void {
+  if (!source) return;
+  for (const key of MODEL_GATEWAY_MODEL_FEATURE_KEYS) {
+    const value = source[key];
+    if (value === true) {
+      target[key] = true;
+    } else if (value === false && target[key] !== true) {
+      target[key] = false;
+    }
+  }
+}
+
+function compactModelFeatures(features: ModelGatewayModelFeatures): ModelGatewayModelFeatures {
+  return Object.fromEntries(
+    MODEL_GATEWAY_MODEL_FEATURE_KEYS
+      .filter((key) => typeof features[key] === "boolean")
+      .map((key) => [key, features[key]]),
+  ) as ModelGatewayModelFeatures;
 }
 
 function validateProviderModelCatalog(providerId: string, catalog: ModelGatewayProviderModelCatalog): void {
@@ -3321,6 +3351,7 @@ export function createModelGatewayService(
       aliases: Set<string>;
       providerIds: Set<string>;
       priority: number;
+      features: ModelGatewayModelFeatures;
     }>();
 
     for (const provider of registry.providers.filter((item) => item.enabled)) {
@@ -3341,11 +3372,13 @@ export function createModelGatewayService(
             aliases: new Set(model.aliases || []),
             providerIds: new Set([provider.id]),
             priority: provider.failover.priority,
+            features: compactModelFeatures({ ...(model.features || {}) }),
           });
           continue;
         }
         current.providerIds.add(provider.id);
         for (const alias of model.aliases || []) current.aliases.add(alias);
+        mergeModelFeatures(current.features, model.features);
         if (provider.failover.priority < current.priority) {
           current.id = id;
           current.label = model.label || current.label;
@@ -3366,6 +3399,7 @@ export function createModelGatewayService(
           label: item.label,
           aliases: [...item.aliases].sort(),
           providerIds: [...item.providerIds].sort(),
+          features: compactModelFeatures(item.features),
         })),
     };
   }

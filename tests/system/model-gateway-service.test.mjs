@@ -633,7 +633,10 @@ test("model gateway exposes enabled provider model pool through OpenAI models en
       authStrategy: "bearer",
       models: {
         defaultModel: "shared-model",
-        models: [{ id: "shared-model", label: "Shared", aliases: ["shared-a"] }, { id: "a-only" }],
+        models: [
+          { id: "shared-model", label: "Shared", aliases: ["shared-a"], features: { text: true, vision: false, tools: true } },
+          { id: "a-only", features: { text: true, responses: true } },
+        ],
       },
       failover: { priority: 10 },
     },
@@ -648,7 +651,10 @@ test("model gateway exposes enabled provider model pool through OpenAI models en
       authStrategy: "bearer",
       models: {
         defaultModel: "shared-model",
-        models: [{ id: "shared-model" }, { id: "b-only" }],
+        models: [
+          { id: "shared-model", features: { vision: true, reasoning: true } },
+          { id: "b-only", features: { vision: true, streaming: true } },
+        ],
       },
       failover: { priority: 5 },
     },
@@ -673,6 +679,20 @@ test("model gateway exposes enabled provider model pool through OpenAI models en
   assert.deepEqual(direct.data.map((model) => model.id).sort(), ["a-only", "b-only", "shared-model"]);
   const shared = direct.data.find((model) => model.id === "shared-model");
   assert.deepEqual(shared?.providerIds, ["models-a", "models-b"]);
+  assert.deepEqual(shared?.features, {
+    text: true,
+    tools: true,
+    vision: true,
+    reasoning: true,
+  });
+  assert.deepEqual(direct.data.find((model) => model.id === "a-only")?.features, {
+    text: true,
+    responses: true,
+  });
+  assert.deepEqual(direct.data.find((model) => model.id === "b-only")?.features, {
+    vision: true,
+    streaming: true,
+  });
   assert.equal(direct.data.some((model) => model.id === "disabled-only"), false);
 
   const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
@@ -681,6 +701,7 @@ test("model gateway exposes enabled provider model pool through OpenAI models en
     assert.equal(response.status, 200);
     assert.equal(response.body.object, "list");
     assert.deepEqual(response.body.data.map((model) => model.id).sort(), ["a-only", "b-only", "shared-model"]);
+    assert.equal(response.body.data.find((model) => model.id === "shared-model")?.features.vision, true);
   });
 });
 

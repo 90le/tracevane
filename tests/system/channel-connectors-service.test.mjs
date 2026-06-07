@@ -85,6 +85,10 @@ import {
   decodeOctoConnectPacket,
   encodeOctoConnackPacket,
 } from "../../dist/apps/api/modules/channel-connectors/octo-wukong.js";
+import {
+  countChannelConnectorVisualAttachments,
+  resolveChannelConnectorVisualTurnProject,
+} from "../../dist/apps/api/modules/channel-connectors/visual-model-routing.js";
 
 function makeTempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-connectors-"));
@@ -217,9 +221,9 @@ async function withMockGatewayModelsServer(task) {
       res.end(JSON.stringify({
         object: "list",
         data: [
-          { id: "gateway-gpt-5", object: "model" },
-          { id: "gateway-glm-5", object: "model" },
-          { id: "gateway-gpt-5", object: "model" },
+          { id: "gateway-gpt-5", object: "model", aliases: ["vision-main"], features: { text: true, vision: true, tools: true } },
+          { id: "gateway-glm-5", object: "model", features: { text: true, vision: false } },
+          { id: "gateway-gpt-5", object: "model", features: { vision: true } },
         ],
       }));
       return;
@@ -1719,6 +1723,31 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.match(nonVisionImageResult.replyText, /接下来做什么/);
   assert.equal(nonVisionImageResult.command, "codex");
 
+  const catalogNonVisionRequest = buildChannelConnectorAgentProcessRequest({
+    project: { ...project, model: "gpt-5.3-codex-spark" },
+    binding,
+    message: {
+      ...message,
+      messageId: "m-runner-catalog-non-vision-image",
+      payload: { type: 2, content: "", name: "spark-photo.jpg", url: "https://example.invalid/spark-photo.jpg" },
+      attachments: [{
+        kind: "image",
+        platform: "octo",
+        fileName: "spark-photo.jpg",
+        localPath: path.join(workDir, ".studio-agent-attachments", "spark-photo.jpg"),
+        stagedAt: "2026-06-06T08:00:00.000Z",
+      }],
+    },
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    modelCapabilities: { vision: false },
+  });
+  assert.ok(catalogNonVisionRequest);
+  assert.match(catalogNonVisionRequest.stdin, /Studio visual attachment policy/);
+  assert.match(catalogNonVisionRequest.stdin, /current model gpt-5\.3-codex-spark is not marked as vision-capable/);
+  for (const cleanupPath of catalogNonVisionRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
   let nonVisionFileRunnerCalled = false;
   const nonVisionFileResult = await runChannelConnectorAgentTurn({
     project: { ...project, model: "glm-5" },
@@ -2310,6 +2339,119 @@ test("native Channel Connectors model menus can read live Gateway model lists", 
     assert.equal(requests[0].path, "/v1/models");
     assert.equal(requests[0].authorization, "Bearer studio-client-key");
   });
+});
+
+test("native Channel Connectors visual turns select Gateway vision models from catalog", async () => {
+  const root = makeTempRoot();
+  const project = {
+    id: "codex-main",
+    name: "Codex main",
+    workDir: path.join(root, "work"),
+    agent: "codex",
+    model: "gateway-glm-5",
+    permissionMode: "auto-edit",
+    gatewayEndpoint: "http://127.0.0.1:18796/v1",
+    gatewayKeyRef: "studio-gateway-client-key",
+    appProfileRef: "codex",
+    platformBindings: [],
+  };
+  const binding = {
+    id: "octo-codex",
+    platform: "octo",
+    accountId: "octo-account",
+    botId: "robot-1",
+    displayName: "Octo Codex",
+    agent: "codex",
+    enabled: true,
+    allowlist: [],
+    adminUsers: [],
+    metadata: {},
+  };
+  const imageMessage = {
+    messageId: "m-visual-route",
+    fromUid: "user-1",
+    channelId: "user-1",
+    channelType: 1,
+    payload: { type: 2, content: "", name: "photo.jpg" },
+    attachments: [{
+      kind: "image",
+      platform: "octo",
+      fileName: "photo.jpg",
+    }],
+  };
+  const catalog = [
+    { id: "gateway-glm-5", aliases: [], providerIds: ["glm"], features: { text: true, vision: false } },
+    { id: "gmn-vision", aliases: ["vision-gpt-5.5"], providerIds: ["gmn"], features: { text: true, vision: true, responses: true } },
+  ];
+  const selected = await resolveChannelConnectorVisualTurnProject({
+    project,
+    binding,
+    message: imageMessage,
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    listCatalog: async () => catalog,
+  });
+  assert.equal(countChannelConnectorVisualAttachments(imageMessage), 1);
+  assert.equal(selected.switched, true);
+  assert.equal(selected.originalModel, "gateway-glm-5");
+  assert.equal(selected.project.model, "gmn-vision");
+  assert.deepEqual(selected.modelCapabilities, { vision: true });
+  assert.equal(selected.reason, "current-model-non-vision");
+
+  const currentVision = await resolveChannelConnectorVisualTurnProject({
+    project: { ...project, model: "vision-gpt-5.5" },
+    binding,
+    message: imageMessage,
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    listCatalog: async () => catalog,
+  });
+  assert.equal(currentVision.switched, false);
+  assert.equal(currentVision.project.model, "vision-gpt-5.5");
+  assert.deepEqual(currentVision.modelCapabilities, { vision: true });
+
+  const disabled = await resolveChannelConnectorVisualTurnProject({
+    project,
+    binding: { ...binding, metadata: { autoVisionModel: false } },
+    message: imageMessage,
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    listCatalog: async () => catalog,
+  });
+  assert.equal(disabled.switched, false);
+  assert.equal(disabled.reason, "disabled-by-binding");
+  assert.equal(disabled.project.model, "gateway-glm-5");
+
+  const catalogUnavailable = await resolveChannelConnectorVisualTurnProject({
+    project,
+    binding,
+    message: imageMessage,
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    listCatalog: async () => {
+      throw new Error("offline");
+    },
+  });
+  assert.equal(catalogUnavailable.switched, false);
+  assert.equal(catalogUnavailable.reason, "catalog-unavailable");
+  assert.equal(catalogUnavailable.catalogError, "offline");
+
+  const textOnly = await resolveChannelConnectorVisualTurnProject({
+    project,
+    binding,
+    message: {
+      ...imageMessage,
+      payload: { type: 1, content: "hello" },
+      attachments: [],
+    },
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    listCatalog: async () => {
+      throw new Error("should not be called");
+    },
+  });
+  assert.equal(textOnly.switched, false);
+  assert.equal(textOnly.reason, null);
 });
 
 test("native Channel Connectors command surface loads Gateway models when request omits models", async () => {

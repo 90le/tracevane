@@ -39,6 +39,10 @@ import {
   resolveChannelConnectorEffectiveProject,
 } from "./command-router.js";
 import {
+  countChannelConnectorVisualAttachments,
+  resolveChannelConnectorVisualTurnProject,
+} from "./visual-model-routing.js";
+import {
   getChannelConnectorSessionControl,
   type ChannelConnectorSessionControlRecord,
 } from "./session-control-store.js";
@@ -1629,13 +1633,46 @@ async function dispatchOctoMessage(input: {
     sessionKey,
   });
   const effectiveProject = resolveChannelConnectorEffectiveProject(config, project, control);
+  const gatewayEndpoint = effectiveProject.gatewayEndpoint || config.gateway.endpoint;
+  const modelResolution = await resolveChannelConnectorVisualTurnProject({
+    project: effectiveProject,
+    binding,
+    message: agentMessage,
+    gatewayEndpoint,
+    gatewayClientKey: key,
+  });
+  if (modelResolution.catalogError) {
+    appendLog(config.paths.log, "Gateway model catalog lookup failed for visual routing", {
+      adapter: "octo",
+      bindingId: binding.id,
+      projectId: effectiveProject.id,
+      model: modelResolution.originalModel,
+      error: modelResolution.catalogError,
+    });
+  }
+  const turnProject = modelResolution.project;
+  if (modelResolution.switched) {
+    writeJsonLine(config.paths.octoEvents, {
+      checkedAt,
+      eventKind: "agent.model.selected",
+      adapter: "octo",
+      bindingId: binding.id,
+      sessionKey,
+      messageId: message.messageId,
+      agent: turnProject.agent,
+      originalModel: modelResolution.originalModel,
+      selectedModel: modelResolution.selectedModel,
+      reason: modelResolution.reason,
+      visualAttachmentCount: countChannelConnectorVisualAttachments(agentMessage),
+    });
+  }
   const effectiveSessionLookup = {
     bindingId: binding.id,
-    projectId: effectiveProject.id,
+    projectId: turnProject.id,
     sessionKey,
-    agent: effectiveProject.agent,
-    model: effectiveProject.model,
-    workDir: effectiveProject.workDir,
+    agent: turnProject.agent,
+    model: turnProject.model,
+    workDir: turnProject.workDir,
   };
   if (transport) {
     await sendOctoTyping(
@@ -1661,8 +1698,8 @@ async function dispatchOctoMessage(input: {
     bindingId: binding.id,
     sessionKey,
     messageId: message.messageId,
-    agent: effectiveProject.agent,
-    model: effectiveProject.model,
+    agent: turnProject.agent,
+    model: turnProject.model,
     status: "running",
     sessionResumed: Boolean(currentSession?.codexThreadId),
     codexThreadId: currentSession?.codexThreadId || null,
@@ -1678,13 +1715,13 @@ async function dispatchOctoMessage(input: {
     bindingId: binding.id,
     sessionKey,
     messageId: message.messageId,
-    agent: effectiveProject.agent,
-    model: effectiveProject.model,
+    agent: turnProject.agent,
+    model: turnProject.model,
     sessionResumed: Boolean(currentSession?.codexThreadId),
     codexThreadId: currentSession?.codexThreadId || null,
   });
 
-  const runtimeDir = agentRuntimeDir(config, effectiveProject, binding);
+  const runtimeDir = agentRuntimeDir(config, turnProject, binding);
   if ((agentMessage.attachments || []).length > 0 && metadataBoolean(binding, [
     "stageOctoUrlAttachments",
     "stage_octo_url_attachments",
@@ -1729,14 +1766,15 @@ async function dispatchOctoMessage(input: {
   let agent: ChannelConnectorAgentTurnResult;
   try {
     agent = await runChannelConnectorAgentTurn({
-      project: effectiveProject,
+      project: turnProject,
       binding,
       message: agentMessage,
       sessionKey,
-      gatewayEndpoint: effectiveProject.gatewayEndpoint || config.gateway.endpoint,
+      gatewayEndpoint: turnProject.gatewayEndpoint || config.gateway.endpoint,
       gatewayClientKey: key,
       agentRuntimeDir: runtimeDir,
       historyContext,
+      modelCapabilities: modelResolution.modelCapabilities,
       session: {
         codexThreadId: currentSession?.codexThreadId || null,
       },
@@ -1756,7 +1794,7 @@ async function dispatchOctoMessage(input: {
           bindingId: binding.id,
           sessionKey,
           messageId: message.messageId,
-          agent: effectiveProject.agent,
+          agent: turnProject.agent,
           progressType: event.type,
           rawType: event.rawType,
           itemType: event.itemType,
@@ -1771,11 +1809,11 @@ async function dispatchOctoMessage(input: {
       attempted: true,
       ok: false,
       status: "failed",
-      agent: effectiveProject.agent,
-      model: effectiveProject.model,
+      agent: turnProject.agent,
+      model: turnProject.model,
       command: null,
       args: [],
-      cwd: effectiveProject.workDir,
+      cwd: turnProject.workDir,
       replyText: null,
       stdout: "",
       stderr: "",
@@ -1832,7 +1870,7 @@ async function dispatchOctoMessage(input: {
     bindingId: binding.id,
     sessionKey,
     messageId: message.messageId,
-    agent: effectiveProject.agent,
+    agent: turnProject.agent,
     status: agent.status,
     ok: agent.ok,
     durationMs: agent.durationMs,
@@ -2193,13 +2231,47 @@ async function dispatchFeishuParsedEvent(input: {
     sessionKey,
   });
   const effectiveProject = resolveChannelConnectorEffectiveProject(config, project, control);
+  const gatewayEndpoint = effectiveProject.gatewayEndpoint || config.gateway.endpoint;
+  const modelResolution = await resolveChannelConnectorVisualTurnProject({
+    project: effectiveProject,
+    binding,
+    message: agentMessage,
+    gatewayEndpoint,
+    gatewayClientKey: key,
+  });
+  if (modelResolution.catalogError) {
+    appendLog(config.paths.log, "Gateway model catalog lookup failed for visual routing", {
+      adapter: "feishu",
+      bindingId: binding.id,
+      projectId: effectiveProject.id,
+      model: modelResolution.originalModel,
+      error: modelResolution.catalogError,
+    });
+  }
+  const turnProject = modelResolution.project;
+  if (modelResolution.switched) {
+    writeJsonLine(config.paths.feishuEvents, {
+      checkedAt,
+      eventKind: "agent.model.selected",
+      adapter: "feishu",
+      bindingId: binding.id,
+      sessionKey,
+      messageId,
+      ...feishuThreadLogFields(parsed),
+      agent: turnProject.agent,
+      originalModel: modelResolution.originalModel,
+      selectedModel: modelResolution.selectedModel,
+      reason: modelResolution.reason,
+      visualAttachmentCount: countChannelConnectorVisualAttachments(agentMessage),
+    });
+  }
   const effectiveSessionLookup = {
     bindingId: binding.id,
-    projectId: effectiveProject.id,
+    projectId: turnProject.id,
     sessionKey,
-    agent: effectiveProject.agent,
-    model: effectiveProject.model,
-    workDir: effectiveProject.workDir,
+    agent: turnProject.agent,
+    model: turnProject.model,
+    workDir: turnProject.workDir,
   };
   const activeRunId = `${binding.id}:${messageId}`;
   const currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
@@ -2231,7 +2303,7 @@ async function dispatchFeishuParsedEvent(input: {
         transport,
         chatId,
         state: progressCardState,
-        project: effectiveProject,
+        project: turnProject,
         sessionKey,
       });
       if (result.ok === true && result.messageId && !progressCardState.messageId) {
@@ -2277,8 +2349,8 @@ async function dispatchFeishuParsedEvent(input: {
     sessionKey,
     messageId,
     ...feishuThreadLogFields(parsed),
-    agent: effectiveProject.agent,
-    model: effectiveProject.model,
+    agent: turnProject.agent,
+    model: turnProject.model,
     status: "running",
     sessionResumed: Boolean(currentSession?.codexThreadId),
     codexThreadId: currentSession?.codexThreadId || null,
@@ -2294,8 +2366,8 @@ async function dispatchFeishuParsedEvent(input: {
     bindingId: binding.id,
     sessionKey,
     messageId,
-    agent: effectiveProject.agent,
-    model: effectiveProject.model,
+    agent: turnProject.agent,
+    model: turnProject.model,
     sessionResumed: Boolean(currentSession?.codexThreadId),
     codexThreadId: currentSession?.codexThreadId || null,
   });
@@ -2307,7 +2379,7 @@ async function dispatchFeishuParsedEvent(input: {
     sessionKey,
     messageId,
   });
-  const runtimeDir = agentRuntimeDir(config, effectiveProject, binding);
+  const runtimeDir = agentRuntimeDir(config, turnProject, binding);
   if ((agentMessage.attachments || []).length > 0) {
     const attachmentMaxBytes = metadataByteSize(binding, [
       "attachmentMaxBytes",
@@ -2342,14 +2414,15 @@ async function dispatchFeishuParsedEvent(input: {
   let agent: ChannelConnectorAgentTurnResult;
   try {
     agent = await runChannelConnectorAgentTurn({
-      project: effectiveProject,
+      project: turnProject,
       binding,
       message: agentMessage,
       sessionKey,
-      gatewayEndpoint: effectiveProject.gatewayEndpoint || config.gateway.endpoint,
+      gatewayEndpoint: turnProject.gatewayEndpoint || config.gateway.endpoint,
       gatewayClientKey: key,
       agentRuntimeDir: runtimeDir,
       historyContext,
+      modelCapabilities: modelResolution.modelCapabilities,
       session: {
         codexThreadId: currentSession?.codexThreadId || null,
       },
@@ -2370,7 +2443,7 @@ async function dispatchFeishuParsedEvent(input: {
           sessionKey,
           messageId,
           ...feishuThreadLogFields(parsed),
-          agent: effectiveProject.agent,
+          agent: turnProject.agent,
           progressType: event.type,
           rawType: event.rawType,
           itemType: event.itemType,
@@ -2390,11 +2463,11 @@ async function dispatchFeishuParsedEvent(input: {
       attempted: true,
       ok: false,
       status: "failed",
-      agent: effectiveProject.agent,
-      model: effectiveProject.model,
+      agent: turnProject.agent,
+      model: turnProject.model,
       command: null,
       args: [],
-      cwd: effectiveProject.workDir,
+      cwd: turnProject.workDir,
       replyText: null,
       stdout: "",
       stderr: "",
@@ -2460,7 +2533,7 @@ async function dispatchFeishuParsedEvent(input: {
     bindingId: binding.id,
     sessionKey,
     messageId,
-    agent: effectiveProject.agent,
+    agent: turnProject.agent,
     status: agent.status,
     ok: agent.ok,
     durationMs: agent.durationMs,
