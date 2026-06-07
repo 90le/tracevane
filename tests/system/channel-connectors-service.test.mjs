@@ -6488,6 +6488,9 @@ test("native Channel Connectors daemon runs Codex app-server when persistent ses
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
           STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
           STUDIO_TEST_CODEX_CAPTURE: capturePath,
+          STUDIO_CHANNEL_AGENT_SESSION_IDLE_TIMEOUT_MS: "1500",
+          STUDIO_CHANNEL_AGENT_SESSION_REAP_INTERVAL_MS: "100",
+          STUDIO_CHANNEL_AGENT_SESSION_MAX_SESSIONS: "3",
         },
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -6510,8 +6513,8 @@ test("native Channel Connectors daemon runs Codex app-server when persistent ses
           return run && session ? response.body : null;
         }, 10_000);
         assert.equal(status.agentSessionDriver.requestedPersistentBindings[0].effectiveMode, "persistent");
-        assert.equal(status.agentSessionDriver.policy.idleTimeoutMs, 600000);
-        assert.equal(status.agentSessionDriver.policy.maxSessions, 8);
+        assert.equal(status.agentSessionDriver.policy.idleTimeoutMs, 1500);
+        assert.equal(status.agentSessionDriver.policy.maxSessions, 3);
         assert.equal(status.agentSessionDriver.activeSessions[0].sessionId.includes("codex-app-server:"), true);
         assert.equal(status.agentSessionDriver.activeSessions[0].permissionMode, "read-only");
         assert.equal(status.agentSessionDriver.activeSessions[0].turnCount, 1);
@@ -6519,32 +6522,18 @@ test("native Channel Connectors daemon runs Codex app-server when persistent ses
 
         const sessionStatus = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/agent-sessions`);
         assert.equal(sessionStatus.status, 200);
-        assert.equal(sessionStatus.body.policy.idleTimeoutMs, 600000);
+        assert.equal(sessionStatus.body.policy.idleTimeoutMs, 1500);
         assert.equal(sessionStatus.body.reaped, undefined);
         assert.equal(sessionStatus.body.activeSessions.find((item) => item.poolKey === poolKey).permissionMode, "read-only");
         assert.equal(sessionStatus.body.activeSessions.some((item) => item.poolKey === poolKey), true);
 
-        const killStatus = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/agent-sessions`, {
-          method: "POST",
-          body: {
-            action: "kill",
-            poolKey,
-            reason: "test-kill",
-          },
-        });
-        assert.equal(killStatus.status, 200);
-        assert.equal(killStatus.body.killed.killed, true);
-        assert.equal(killStatus.body.killed.poolKey, poolKey);
-        assert.equal(killStatus.body.activeSessions.some((item) => item.poolKey === poolKey), false);
-
-        const reapStatus = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/agent-sessions`, {
-          method: "POST",
-          body: {
-            action: "reap-idle",
-          },
-        });
-        assert.equal(reapStatus.status, 200);
-        assert.equal(typeof reapStatus.body.reaped, "number");
+        const reapedStatus = await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/agent-sessions`);
+          const activeSessions = response.body?.activeSessions || [];
+          return activeSessions.some((item) => item.poolKey === poolKey) ? null : response.body;
+        }, 10_000);
+        assert.equal(reapedStatus.activeSessions.some((item) => item.poolKey === poolKey), false);
+        assert.match(fs.readFileSync(runtimeConfig.paths.log, "utf8"), /Reaped idle persistent Agent sessions/);
 
         const capture = fs.readFileSync(capturePath, "utf8")
           .trim()

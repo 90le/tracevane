@@ -186,8 +186,11 @@ const FEISHU_FINAL_REPLY_CARD_MAX_RUNES = 12_000;
 const CHANNEL_COMPACT_HISTORY_LIMIT = 40;
 const CHANNEL_COMPACT_PROMPT_MAX_RUNES = 24_000;
 const CHANNEL_COMPACT_TIMEOUT_MS = 45_000;
+const DEFAULT_CHANNEL_AGENT_SESSION_REAP_INTERVAL_MS = 60_000;
 
 const channelAgentSessionDriverPool = createChannelConnectorAgentSessionDriverPool({
+  idleTimeoutMs: optionalPositiveIntegerEnv("STUDIO_CHANNEL_AGENT_SESSION_IDLE_TIMEOUT_MS"),
+  maxSessions: optionalPositiveIntegerEnv("STUDIO_CHANNEL_AGENT_SESSION_MAX_SESSIONS"),
   factory: createCodexAppServerSessionDriverFactory({
     transportFactory: ({ sessionId, key, agentTurnRequest }) => {
       const processRequest = agentTurnRequest
@@ -790,6 +793,48 @@ function startHttp(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelD
   return server;
 }
 
+function channelAgentSessionReapIntervalMs(): number {
+  const configured = optionalNonNegativeIntegerEnv("STUDIO_CHANNEL_AGENT_SESSION_REAP_INTERVAL_MS");
+  return configured == null ? DEFAULT_CHANNEL_AGENT_SESSION_REAP_INTERVAL_MS : configured;
+}
+
+function startAgentSessionDriverReaper(
+  config: ChannelConnectorsDaemonRuntimeConfig,
+  state: ChannelDaemonState,
+): NodeJS.Timeout | null {
+  const intervalMs = channelAgentSessionReapIntervalMs();
+  if (intervalMs <= 0) {
+    appendLog(config.paths.log, "Persistent Agent session idle reaper disabled");
+    return null;
+  }
+  let inFlight = false;
+  const timer = setInterval(() => {
+    if (inFlight) return;
+    inFlight = true;
+    void channelAgentSessionDriverPool.reapIdle()
+      .then((reaped) => {
+        if (reaped <= 0) return;
+        state.agentSessionDriver = buildAgentSessionDriverState(config);
+        appendLog(config.paths.log, "Reaped idle persistent Agent sessions", {
+          reaped,
+          intervalMs,
+          activeSessions: state.agentSessionDriver.activeSessions.length,
+        });
+        writeRuntime(config, state);
+      })
+      .catch((error) => {
+        appendLog(config.paths.log, "Persistent Agent session idle reaper failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      })
+      .finally(() => {
+        inFlight = false;
+      });
+  }, intervalMs);
+  timer.unref();
+  return timer;
+}
+
 function logger(config: ChannelConnectorsDaemonRuntimeConfig): OctoWukongLogger {
   return {
     debug: (message, meta) => appendLog(config.paths.log, message, meta),
@@ -811,6 +856,22 @@ function feishuLogger(config: ChannelConnectorsDaemonRuntimeConfig): Logger {
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function optionalPositiveIntegerEnv(name: string): number | undefined {
+  const value = normalizeString(process.env[name]);
+  if (!value) return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+  return Math.floor(parsed);
+}
+
+function optionalNonNegativeIntegerEnv(name: string): number | undefined {
+  const value = normalizeString(process.env[name]);
+  if (!value) return undefined;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return undefined;
+  return Math.floor(parsed);
 }
 
 function uniqueStrings(values: string[]): string[] {
@@ -5913,6 +5974,7 @@ async function main(): Promise<void> {
   const feishuClients: WSClient[] = [];
   const activeRunCancels: ChannelDaemonActiveRunCancelRegistry = new Map();
   const seenMessages = loadFeishuSeenMessages(config);
+  const agentSessionReaper = startAgentSessionDriverReaper(config, state);
   let feishuWatchdog: NodeJS.Timeout | null = null;
 
   void startOctoConnections(config, state, activeRunCancels, sockets, octoRestHeartbeatTimers, seenMessages).catch((error) => {
@@ -5933,6 +5995,7 @@ async function main(): Promise<void> {
   const stop = () => {
     appendLog(config.paths.log, "Studio native Channel Connectors daemon stopping");
     if (feishuWatchdog) clearInterval(feishuWatchdog);
+    if (agentSessionReaper) clearInterval(agentSessionReaper);
     for (const entry of activeRunCancels.values()) entry.controller.abort();
     for (const timer of octoRestHeartbeatTimers) clearInterval(timer);
     for (const socket of sockets) socket.disconnect();
