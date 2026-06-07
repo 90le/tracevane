@@ -32,7 +32,7 @@ CC 和 OpenClaw 只作为参考：
 - Studio / OpenClaw 崩溃时，Channel daemon 仍保持在线。
 - Channel daemon 运行期不依赖 Studio API；它直接调用本地 CLI Agent，CLI Agent 再走 Studio Gateway daemon。
 - Studio 负责配置、安装、启停、日志、会话可视化和平台账号管理。
-- Feishu 长连接按 CC Go 保守策略：同 App 共享 WS 并快速 ACK/扇出，默认不启用 SDK `pingTimeout` 额外 liveness watchdog，也不对 connected 状态做 zero-inbound / idle 主动轮换；只在 metadata 显式设置时启用诊断型主动续连。Studio daemon 维护真实 `lastReceivedAt`，仅在长期非 connected 时由 watchdog 重建。
+- Feishu 长连接按 CC Go/OpenClaw 保守策略：同 App 共享 WS 并快速 ACK/扇出，默认不启用 SDK `pingTimeout` 额外 liveness watchdog，也不对 connected 状态做 zero-inbound / idle 主动轮换；只在 metadata 显式设置时启用诊断型主动续连。Studio daemon 维护真实 `lastReceivedAt`，仅在非 connected 超过 45s 时由 watchdog 兜底重建。
 - Feishu `im.message.receive_v1` / bot menu 入口必须像 CC Go 一样只在同步段完成解析、去重和 runtime 记录，随后后台执行附件下载、Agent runner、进度卡片和回复；去重状态需落盘，避免 daemon 重启后平台重投旧事件再次触发 Agent。
 - Feishu card/menu 按 CC 语义区分导航和执行：导航显示/更新卡片，`/new`、`/reset` 等无卡片执行动作快速 ACK 回调并异步发送普通文本结果，不弹悬浮 toast，也不自动弹完整菜单。
 - 进度/工具过程按 CC 群聊语义处理：私聊默认显示运行、思考和工具过程；Feishu 群聊、Octo 群聊默认只发最终回复，除非当前 IM session 显式开启 `/stream` / `/tools`。
@@ -120,14 +120,14 @@ Studio 增强点：
 - Channel Connectors 已支持 command action callback：通用 `/commands/action` 和 Feishu `card-action` / `bot-menu` aliases 可把 action value / event key 转回 command-router。
 - Channel Connectors 已支持 Feishu webhook ingress：URL verification、card action、bot menu、message receive 进入同一 command-router；`verificationToken` 放在 binding metadata，不写入文档或源码。
 - Channel daemon 已支持 Feishu 官方 WebSocket 长连接：`im.message.receive_v1`、`card.action.trigger`、`application.bot.menu_v6` 进入同一 command-router/Agent runner；同一 Feishu App 多 binding 共享单条 WS，支持 chatId 过滤并保留 thread/root 字段。
-- Feishu 长连接稳定性已改回 CC 风格默认：SDK `pingTimeout` 默认 0（禁用额外 liveness terminate），zero-inbound renewal 和 connected-idle renewal 默认 0（禁用），daemon watchdog 默认 180s 后才强制重启长时间非 connected 连接；connected 但暂时无消息被视为正常长连接静默期。
+- Feishu 长连接稳定性已改回 CC/OpenClaw 风格默认：SDK `pingTimeout` 默认 0（禁用额外 liveness terminate），zero-inbound renewal 和 connected-idle renewal 默认 0（禁用），connected 静默期视为正常；SDK reconnecting/reconnected 写日志，daemon watchdog 在非 connected 超过 45s 后兜底重建。
 - Feishu 消息/菜单长连接入口已改为快速 ACK + 后台派发；事件去重提升为 24 小时持久化缓存，并从 `feishu-events.jsonl` 启动回填，平台重投会记录 `feishu_event_duplicate` 而不再重复跑 Agent。
 - Feishu `/new`、`/reset` 已改为执行后只返回普通文本结果，不再自动生成 `Studio Session` 菜单卡片；卡片执行动作异步发文本并返回空 callback，导航类 action 仍返回卡片。
 - `/dir` / `/cd` 已按 CC Go 补齐最近目录历史、`/dir -` 和历史序号切换；Feishu WorkDir 子卡同步提供上一目录、最近目录和子目录选择。
 - Channel Connectors 已支持 Feishu outbound contract：tenant access token file cache、send text message、patch card message、transport-smoke；message webhook 默认可把 command-router 回复真实出站；JSON 出站 API 已按 CC 补 transient retry，短暂 503/网络错误会指数退避重试。
 - 已完成脱敏 live 闭环：本地用户配置写入 Feishu binding、tenant token cache 验证通过、callback URL verification 通过；错误 verification token 不再回显 challenge；daemon active/enabled，真实飞书 `/status`/`/help` 入站并回复成功；CLI runner 已补用户级 PATH fallback，避免 systemd 下找不到 Codex/Claude/OpenCode；凭据和 token 不进入仓库。
 - Feishu card/menu 已按 CC 卡片结构拆成主菜单 Dashboard、分组菜单和可操作子卡；Current Session / History / Agent Sessions 子卡读取真实 Agent session 与 IM history store，`/list` 和 `/switch <序号|sessionId前缀>` 可在当前 IM session 内切换已知续接。普通 slash、`%help` 兼容命令与卡片点击共用 command-router；Agent 运行支持 processing reaction、单张 Progress card send/patch、`command_execution` 工具过程展示、`/stream` 与 `/tools` 开关，以及 upstream JSON error envelope 清洗和失败去重。
-- Feishu/Octo 进度显示已按 CC group buffer 语义统一：私聊默认显示运行/思考/工具过程；群聊默认不发送中间过程，只发送最终回复或最终错误；显式 `/stream` / `/tools` 可覆盖当前 IM session；Feishu 卡片和 Octo 私聊文本已按 CC progress renderer 优化工具输入、工具结果、exit/status 和 TodoWrite 展示。
+- Feishu/Octo 进度显示已按 CC group buffer 语义统一：私聊默认显示运行/思考/工具过程；群聊默认不发送中间过程，只发送最终回复或最终错误；显式 `/stream` / `/tools` 可覆盖当前 IM session；Feishu 卡片和 Octo 私聊文本已按 CC progress renderer 优化工具输入、工具结果、exit/status 和 TodoWrite 展示，Octo 工具事件优先发送避免被思考进度节流吞掉。
 - Codex 工具调用链路已按 CC/cc-switch 对齐：resume 参数顺序、Responses -> Chat 工具历史、reasoning/tool placeholder、JSON canonical 均有回归覆盖；隔离 `CODEX_HOME` 真实 smoke 已验证 `glm-5` 工具调用不再触发 BigModel 1213。
 - 真实飞书客户端已复测三次工具调用：长连接入站、reaction、Progress card send/patch、工具步骤和最终 `ok` 均成功；Gateway 对应 `/v1/responses` 最新请求为 200。
 - F4 长回复拆分已落地：按 CC `splitMessage` 规则做 Unicode 安全切分，Feishu text 自动分多条发送，Octo 回复拆分复用同一 helper。

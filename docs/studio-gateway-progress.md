@@ -18,10 +18,10 @@
 - Feishu 过程展示保持“一张 Progress card 持续 patch 追加/更新进度”，卡片内部改为分段 element + `hr`，状态、思考、工具调用、工具结果、错误使用统一符号和 `text_tag`。
 - Feishu 最终回复参考 CC 的 Markdown card 路线，改用 schema 2.0 `body.markdown` 承载模型正文，不添加 header/note/“最终回复”等包装标题；远程图片 Markdown 会降级成普通链接，避免 Feishu card `image_key` 错误。
 - Feishu final fallback 从 card -> text 改为 card -> post(md) -> text；interactive card 因平台限制失败时，优先用 `msg_type=post` 继续保留 Markdown 富文本渲染。
-- Feishu 长连接对照 CC Go 后确认根因：此前 Studio watchdog 会在 connected 但 90s 无入站时主动 `close(force)` 并重建，导致静默期反复断连；现已把 zero-inbound renewal 和 connected-idle renewal 默认改为 0，仅保留长期非 connected watchdog。
+- Feishu 长连接对照 CC Go/OpenClaw 后收敛为保守模式：connected 静默期不主动断开；SDK reconnecting/reconnected 写结构化日志；长期非 connected fallback watchdog 从 180s 调整为 45s。
 - `/dir` / `/cd` 按 CC Go 补齐最近目录历史：支持 `/dir -` 返回上一目录、`/dir <序号>` 优先切换历史目录，历史为空时保留子目录序号兼容；Feishu WorkDir 子卡同步显示上一目录、最近目录和子目录。
 - Octo 已确认支持 Markdown 文本渲染；最终回复保持模型原始 Markdown 文本，不添加 `Studio Reply` 包装。
-- Octo 不能 patch 气泡消息，过程流不再发送 start/running/completed/event 这类低信息气泡；私聊只显示思考、工具调用、工具结果和错误，完成态由最终回复承担。
+- Octo 不能 patch 气泡消息，过程流不再发送 start/running/completed/event 这类低信息气泡；私聊只显示思考、工具调用、工具结果和错误，工具事件不再被普通 1.5s 进度节流吞掉。
 - Octo/非富卡片渠道过程消息去掉 `Studio Progress` 大标题，仅保留短状态行和正文；工具名、exit/status 使用 Markdown inline code，工具输入/结果、TodoWrite 和失败回执复用同一套代码块格式化。
 - OpenClaw Octo 插件 RichText=14 仍作为后续图文混排参考，不用于纯文本 Markdown 回复包装。
 - 完成态不再给 Octo 私聊单独刷一条 `completed` 过程消息；最终回复本身承担完成态，群聊仍默认隐藏中间过程。
@@ -30,10 +30,10 @@
 ## 最近验证
 
 - 通过：`npm run build:api`。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "IM commands|command surface|Feishu webhook|daemon entry|routes are registered"`，38 个 Channel Connectors 子测试通过。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "Feishu long-connection|Octo long connection|process runner maps Codex command execution progress|daemon entry|routes are registered"`，38 个 Channel Connectors 子测试通过。
 - 通过：`git diff --check`。
 - 通过：`systemctl --user restart openclaw-studio-channel-connectors.service`，随后 `is-active/is-enabled` 为 `active/enabled`。
-- 通过：重启 Channel daemon 后静默观察 105 秒，Feishu `connected=true`、`reconnects=0`、`zeroInboundRenewAfterMs=0`、`connectedIdleRenewAfterMs=0`，`lastConnectedAt=2026-06-07T05:25:47.041Z` 保持不变；日志无新的 `watchdog_zero_inbound` / `watchdog_connected_idle` 主动断连。
+- 通过：重启 Channel daemon 后静默观察超过 45 秒，Feishu `connected=true`、`reconnects=0`、`zeroInboundRenewAfterMs=0`、`connectedIdleRenewAfterMs=0`，Octo `connected=true`；Feishu `lastConnectedAt` 未变化。
 - 通过：`npm run dev:restart`，前端 `http://127.0.0.1:5176`，后端 `http://127.0.0.1:3762`。
 - 通过：`curl http://127.0.0.1:18797/status`，Octo `octo-studio-cc` connected，Feishu shared WS connected，`activeRuns=[]`。
 - 通过：`curl http://127.0.0.1:3762/api/channel-connectors/status`，`service.ok=true`，template/config current，systemd service installed。

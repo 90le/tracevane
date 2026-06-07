@@ -126,8 +126,8 @@ import {
 const DEFAULT_FEISHU_PING_TIMEOUT_SECONDS = 0;
 const MIN_FEISHU_PING_TIMEOUT_SECONDS = 0;
 const MAX_FEISHU_PING_TIMEOUT_SECONDS = 300;
-const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 180_000;
-const MIN_FEISHU_WATCHDOG_RESTART_MS = 60_000;
+const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 45_000;
+const MIN_FEISHU_WATCHDOG_RESTART_MS = 10_000;
 const MAX_FEISHU_WATCHDOG_RESTART_MS = 600_000;
 // CC Go keeps Feishu's SDK WebSocket alive and only lets the SDK reconnect on
 // real disconnects. A quiet connected socket is normal, so active renewal stays
@@ -2693,7 +2693,7 @@ async function dispatchOctoMessage(input: {
     const replyText = renderOctoProgressText(event);
     const replyPlan = renderOctoTextReply(message, replyText);
     if (!replyPlan) return;
-    const highPriority = event.type === "failed" || event.type === "error";
+    const highPriority = event.type === "failed" || event.type === "error" || event.type === "tool";
     const nowMs = Date.now();
     if (!highPriority && nowMs - lastOctoProgressSentAt < 1500) return;
     if (!highPriority && octoProgressSendCount >= 40) return;
@@ -4387,6 +4387,11 @@ function startFeishuClientForGroup(input: {
       group.reconnects += 1;
       group.lastDisconnectedAt = new Date().toISOString();
       group.lastUnhealthyAt ||= group.lastDisconnectedAt;
+      appendLog(config.paths.log, "Feishu WebSocket reconnecting", {
+        key: group.key,
+        reconnects: group.reconnects,
+        state: group.client?.getConnectionStatus()?.state || "unknown",
+      });
       updateFeishuRuntime(config, state, group);
     },
     onReconnected: () => {
@@ -4395,6 +4400,10 @@ function startFeishuClientForGroup(input: {
       group.lastUnhealthyAt = null;
       group.lastError = null;
       group.watchdogRestarting = false;
+      appendLog(config.paths.log, "Feishu WebSocket reconnected", {
+        key: group.key,
+        reconnects: group.reconnects,
+      });
       updateFeishuRuntime(config, state, group);
     },
   });
