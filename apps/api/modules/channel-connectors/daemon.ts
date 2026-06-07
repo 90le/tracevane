@@ -144,10 +144,10 @@ const MAX_FEISHU_WATCHDOG_RESTART_MS = 600_000;
 // CC Go keeps Feishu's SDK WebSocket alive and lets the SDK reconnect on real
 // disconnects. This daemon has also observed Feishu "ready/connected" sockets
 // that stop delivering events after a successful inbound turn. Keep refreshes
-// low-frequency and scoped to the current connection lifecycle instead of
-// looping on stale process-wide counters.
-const DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS = 30_000;
-const MIN_FEISHU_CONNECTED_IDLE_RENEW_MS = 15_000;
+// low-frequency and scoped to the current connection lifecycle; aggressive
+// reconnects make Feishu look unstable and can trigger platform redelivery.
+const DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS = 5 * 60_000;
+const MIN_FEISHU_CONNECTED_IDLE_RENEW_MS = 60_000;
 const MAX_FEISHU_CONNECTED_IDLE_RENEW_MS = 3_600_000;
 const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS = 30_000;
 const MIN_FEISHU_ZERO_INBOUND_RENEW_MS = 30_000;
@@ -915,6 +915,7 @@ function prepareAgentOutboundReply(input: {
     files: extracted.files,
     workDir: input.project.workDir,
     allowedRootDirs: input.agentRuntimeDir ? [input.agentRuntimeDir] : [],
+    allowAnyPath: input.project.permissionMode === "yolo",
     maxBytes: Number.isFinite(maxBytes) ? maxBytes : null,
   });
   return {
@@ -3069,8 +3070,8 @@ function feishuDedupeKey(
 ): string | null {
   const eventId = normalizeString(parsed.eventId);
   void group;
+  if (parsed.kind === "message" && messageId) return `feishu:message:${messageId}:${binding.id}`;
   if (eventId) return `feishu:event:${eventId}:${binding.id}`;
-  if (parsed.kind === "message") return `feishu:message:${messageId}:${binding.id}`;
   return null;
 }
 

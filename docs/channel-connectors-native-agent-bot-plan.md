@@ -32,11 +32,11 @@ CC 和 OpenClaw 只作为参考：
 - Studio / OpenClaw 崩溃时，Channel daemon 仍保持在线。
 - Channel daemon 运行期不依赖 Studio API；它直接调用本地 CLI Agent，CLI Agent 再走 Studio Gateway daemon。
 - Studio 负责配置、安装、启停、日志、会话可视化和平台账号管理。
-- Feishu 长连接按 CC Go/OpenClaw 与官方 SDK 约束：同 App 共享 WS 并快速 ACK/扇出；SDK `pingTimeout=10s` 负责死 socket，Studio 维护真实 `lastReceivedAt` 和当前连接生命周期计数；启动 30s 无入站只做一次 no-inbound sanity reconnect，当前生命周期已收过事件后静默超过 30s 才做 idle refresh，且 idle refresh 后抑制下一次 zero-inbound，避免连续重启。
+- Feishu 长连接按 CC Go/OpenClaw 与官方 SDK 约束：同 App 共享 WS 并快速 ACK/扇出；SDK `pingTimeout=10s` 负责死 socket，Studio 维护真实 `lastReceivedAt` 和当前连接生命周期计数；启动 30s 无入站只做一次 no-inbound sanity reconnect，当前生命周期已收过事件后默认静默超过 5 分钟才做低频 idle refresh，避免频繁重连和平台重投。
 - Feishu `im.message.receive_v1` / bot menu 入口必须像 CC Go 一样只在同步段完成解析、去重和 runtime 记录，随后后台执行附件下载、Agent runner、进度卡片和回复；去重状态需落盘，避免 daemon 重启后平台重投旧事件再次触发 Agent。
 - Feishu card/menu 按 CC 语义区分导航和执行：导航显示/更新卡片，`/new`、`/reset` 等无卡片执行动作快速 ACK 回调并异步发送普通文本结果，不弹悬浮 toast，也不自动弹完整菜单。
 - 进度/工具过程按 CC 群聊语义处理：私聊默认显示运行、思考和工具过程；Feishu 群聊、Octo 群聊默认只发最终回复，除非当前 IM session 显式开启 `/stream` / `/tools`。
-- 文件收发边界：入站附件由 daemon 下载/staging 后交给 Agent；出站文件由 Agent 声明 `studio-channel-files` manifest，daemon 只允许发送 Agent workDir 或当前 runtime/staging 根内文件，并通过平台 transport 上传发送；Agent prompt 不暴露旧桥接命令或平台 CLI。
+- 文件收发边界：入站附件由 daemon 下载/staging 后交给 Agent；出站文件由 Agent 声明 `studio-channel-files` manifest，daemon 默认只允许发送 Agent workDir 或当前 runtime/staging 根内文件，`yolo` 权限可发送任意可读普通文件但仍受大小/平台限制；平台 transport 负责上传发送并尽量保留原始文件名；Agent prompt 不暴露旧桥接命令或平台 CLI。
 - Octo(dmwork) WuKongIM 长连接以 CC Go 为基线：30s heartbeat、10s PONG timeout、RECV 后立即 ACK、5 分钟 messageId 去重、断线后 `3s + 0..3s` 抖动重连、5 分钟 REST heartbeat 备用保活；Studio 实现允许 binding metadata 覆盖心跳、超时、重连、抖动窗口和 REST heartbeat，并在 runtime 暴露 REST heartbeat 成功/失败状态。
 
 默认路径：
@@ -124,7 +124,7 @@ Studio 增强点：
 - Channel Connectors 已支持 command action callback：通用 `/commands/action` 和 Feishu `card-action` / `bot-menu` aliases 可把 action value / event key 转回 command-router。
 - Channel Connectors 已支持 Feishu webhook ingress：URL verification、card action、bot menu、message receive 进入同一 command-router；`verificationToken` 放在 binding metadata，不写入文档或源码。
 - Channel daemon 已支持 Feishu 官方 WebSocket 长连接：`im.message.receive_v1`、`card.action.trigger`、`application.bot.menu_v6` 进入同一 command-router/Agent runner；同一 Feishu App 多 binding 共享单条 WS，支持 chatId 过滤并保留 thread/root 字段。
-- Feishu 长连接稳定性已按 CC/OpenClaw 与 SDK 收敛：同 App 共享 WS、消息快速 ACK 后后台派发；SDK `pingTimeout` 默认 10s 用于死 socket liveness，SDK reconnecting/reconnected 写日志，daemon watchdog 在非 connected 超过 45s 后兜底重建；zero-inbound 只作为启动自检，connected-idle 只在当前生命周期已收过事件后做 30s 刷新并抑制下一轮 zero-inbound。
+- Feishu 长连接稳定性已按 CC/OpenClaw 与 SDK 收敛：同 App 共享 WS、消息快速 ACK 后后台派发；SDK `pingTimeout` 默认 10s 用于死 socket liveness，SDK reconnecting/reconnected 写日志，daemon watchdog 在非 connected 超过 45s 后兜底重建；zero-inbound 只作为启动自检，connected-idle 只在当前生命周期已收过事件后做低频 5 分钟刷新。
 - Feishu 消息/菜单长连接入口已改为快速 ACK + 后台派发；事件去重提升为 24 小时持久化缓存，并从 `feishu-events.jsonl` 启动回填，平台重投会记录 `feishu_event_duplicate` 而不再重复跑 Agent。
 - Feishu `/new`、`/reset` 已改为执行后只返回普通文本结果，不再自动生成 `Studio Session` 菜单卡片；卡片执行动作异步发文本并返回空 callback，导航类 action 仍返回卡片。
 - `/dir` / `/cd` 已按 CC Go 补齐最近目录历史、`/dir -` 和历史序号切换；Feishu WorkDir 子卡同步提供上一目录、最近目录和子目录选择。
@@ -144,7 +144,7 @@ Studio 增强点：
 - F4 daemon 入站图片合同已加回归：Octo WuKongIM 入站图片 URL 经 daemon staging、Gateway model catalog 自动 vision 选择后，fake Codex 捕获到 `--image` 和切换后的 vision 模型；真实外部平台 live 仍需用户发图复验。
 - F4 Octo 长连接已对齐 CC Go 基线：默认 30s heartbeat、10s PONG timeout、`3s + 0..3s` jitter reconnect、5 分钟 REST heartbeat，daemon 从 binding metadata 传递可调参数；runtime 已暴露 REST heartbeat interval、成功/失败计数、最近成功/失败时间和最近错误；新增 `agent.visual.input` 事件记录 Codex `--image` 真实输入路径。
 - F4 Octo 出站媒体基础合同已落地：参考 CC dmwork 小文件 multipart 上传路径，transport smoke 支持 `upload-file` 和 `upload-and-send-media`；图片使用 Octo image payload，普通文件使用 file payload；本机 `studio-cc` 小文本文件真实 smoke 已通过；大文件 COS STS 直传仍待迁移。
-- F4 Studio 原生出站文件合同已落地：Agent prompt 只说明 `studio-channel-files` manifest；daemon 剥离 manifest、校验文件位于 Agent workDir 或当前 runtime/staging 根内、记录 outbound 文件事件，并通过 Octo upload+send 或 Feishu image/file upload+send 发送；不再让 Agent 调用外部桥接发送命令。
+- F4 Studio 原生出站文件合同已落地：Agent prompt 只说明 `studio-channel-files` manifest 并要求保留原始文件名；daemon 剥离 manifest、校验出站文件根目录或 `yolo` 权限、记录 outbound 文件事件，并通过 Octo upload+send 或 Feishu image/file upload+send 发送；不再让 Agent 调用外部桥接发送命令。Octo 出站已保留中文/空格/括号文件名；Feishu 消息去重改为 messageId 优先，避免重连后平台重投导致重复回复。
 - Channel Connectors 平台配置 UI 已落地：Octo/Feishu binding 可编辑平台凭证 metadata 并直接执行连接测试；本机 Octo `studio-cc` 与 Feishu live binding 已完成 smoke，daemon 长连接 connected。
 - F4 Feishu thread/reply 会话隔离已落地：daemon/service 共用 CC 风格 session key，群线程默认按 root 隔离，私聊保持每用户 session，事件日志保留 root/parent/thread 便于排查。
 - F4 附件 metadata 已落地：Feishu `image/file/audio/media/sticker` 和 Octo 图片/文件/语音/视频进入统一 attachment contract；Agent prompt 只收到脱敏摘要，平台 key 留在本地 API/日志用于后续下载/staging。

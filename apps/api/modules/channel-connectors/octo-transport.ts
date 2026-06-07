@@ -4,6 +4,7 @@ import type {
   ChannelConnectorOctoTransportResult,
   ChannelConnectorPlatformBinding,
 } from "../../../../types/channel-connectors.js";
+import { inferChannelConnectorMimeType, safeChannelConnectorFileName } from "./outbound-files.js";
 
 const OCTO_TEXT_MESSAGE_TYPE = 1;
 const OCTO_IMAGE_MESSAGE_TYPE = 2;
@@ -126,36 +127,6 @@ function mediaUrlFromResponse(body: Record<string, unknown>): string {
     || normalizeString(data.file_url)
     || normalizeString(data.fileUrl)
     || normalizeString(data.download_url);
-}
-
-function inferOctoMimeType(fileName: string, fallback?: string | null): string {
-  const explicit = normalizeString(fallback);
-  if (explicit) return explicit;
-  const lower = normalizeString(fileName).toLowerCase();
-  if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) return "image/jpeg";
-  if (lower.endsWith(".png")) return "image/png";
-  if (lower.endsWith(".gif")) return "image/gif";
-  if (lower.endsWith(".webp")) return "image/webp";
-  if (lower.endsWith(".pdf")) return "application/pdf";
-  if (lower.endsWith(".txt") || lower.endsWith(".md") || lower.endsWith(".log")) return "text/plain";
-  if (lower.endsWith(".json")) return "application/json";
-  if (lower.endsWith(".zip")) return "application/zip";
-  return "application/octet-stream";
-}
-
-function safeOctoUploadFileName(value: unknown, fallback: string): string {
-  const normalized = normalizeString(value)
-    .replace(/\\/g, "/")
-    .split("/")
-    .filter(Boolean)
-    .pop()
-    || fallback;
-  const safe = normalized
-    .replace(/^\.+/, "")
-    .replace(/[^a-zA-Z0-9._-]+/g, "_")
-    .replace(/_+/g, "_")
-    .slice(0, 160);
-  return safe || fallback;
 }
 
 async function postOctoMultipart(
@@ -344,8 +315,8 @@ export async function uploadOctoFile(
     mimeType?: string | null;
   },
 ): Promise<ChannelConnectorOctoTransportResult> {
-  const fileName = safeOctoUploadFileName(input.fileName, "studio-upload.bin");
-  const mimeType = inferOctoMimeType(fileName, input.mimeType);
+  const fileName = safeChannelConnectorFileName(input.fileName, "studio-upload.bin");
+  const mimeType = inferChannelConnectorMimeType(fileName, input.mimeType);
   try {
     const response = await postOctoMultipart(config, "/v1/bot/file/upload", {
       fieldName: "file",
@@ -401,8 +372,8 @@ export async function sendOctoMediaMessage(
     height?: number | null;
   },
 ): Promise<ChannelConnectorOctoTransportResult> {
-  const fileName = safeOctoUploadFileName(input.fileName, "studio-upload.bin");
-  const mimeType = inferOctoMimeType(fileName, input.mimeType);
+  const fileName = safeChannelConnectorFileName(input.fileName, "studio-upload.bin");
+  const mimeType = inferChannelConnectorMimeType(fileName, input.mimeType);
   const mediaType = mimeType.startsWith("image/") ? OCTO_IMAGE_MESSAGE_TYPE : OCTO_FILE_MESSAGE_TYPE;
   const payload: Record<string, unknown> = {
     type: mediaType,

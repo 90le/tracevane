@@ -41,6 +41,7 @@ import {
   attachExtractedOctoAttachments,
 } from "../../dist/apps/api/modules/channel-connectors/octo-adapter.js";
 import {
+  uploadAndSendOctoMedia,
   sendOctoHeartbeat,
 } from "../../dist/apps/api/modules/channel-connectors/octo-transport.js";
 import {
@@ -855,6 +856,17 @@ test("native Channel Connectors resolves outbound file manifests under the Agent
   assert.equal(resolved.files[1].mimeType, "application/octet-stream");
   assert.match(resolved.errors.join("\n"), /outside the allowed Agent file roots/);
 
+  const yoloResolved = resolveChannelConnectorOutboundFiles({
+    files: [{ path: path.join(root, "outside.txt"), name: "outside original.txt" }],
+    workDir,
+    allowedRootDirs: [runtimeDir],
+    allowAnyPath: true,
+    maxBytes: 1024,
+  });
+  assert.equal(yoloResolved.files.length, 1);
+  assert.equal(yoloResolved.files[0].fileName, "outside original.txt");
+  assert.deepEqual(yoloResolved.errors, []);
+
   const invalid = extractChannelConnectorOutboundFiles([
     "bad",
     "```studio-channel-files",
@@ -1403,6 +1415,29 @@ test("Octo transport sends CC-compatible REST heartbeat", async () => {
     assert.ok(request);
     assert.equal(request.method, "POST");
     assert.equal(request.authorization, "Bearer octo-token");
+  });
+});
+
+test("Octo transport preserves outbound upload file names", async () => {
+  await withMockOctoServer(async (apiUrl, requests) => {
+    const result = await uploadAndSendOctoMedia({
+      apiUrl,
+      botToken: "octo-token",
+    }, {
+      channelId: "user-2",
+      channelType: 1,
+      data: Buffer.from("named file"),
+      fileName: "龙虾 计划(最终版).md",
+      mimeType: "text/markdown",
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.action, "upload-and-send-media");
+    assert.equal(result.fileName, "龙虾 计划(最终版).md");
+    assert.equal(requests[0].path, "/v1/bot/file/upload");
+    assert.match(requests[0].body.raw, /filename="龙虾 计划\(最终版\)\.md"/);
+    assert.equal(requests[1].path, "/v1/bot/sendMessage");
+    assert.equal(requests[1].body.payload.name, "龙虾 计划(最终版).md");
   });
 });
 
@@ -5219,8 +5254,8 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /watchdog_connected_idle_/);
   assert.match(daemonSource, /watchdog_zero_inbound_/);
   assert.match(daemonSource, /DEFAULT_FEISHU_PING_TIMEOUT_SECONDS\s*=\s*10/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS\s*=\s*30_?000/);
-  assert.match(daemonSource, /MIN_FEISHU_CONNECTED_IDLE_RENEW_MS\s*=\s*15_?000/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS\s*=\s*5\s*\*\s*60_?000/);
+  assert.match(daemonSource, /MIN_FEISHU_CONNECTED_IDLE_RENEW_MS\s*=\s*60_?000/);
   assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS\s*=\s*30_?000/);
   assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX\s*=\s*1/);
   assert.match(daemonSource, /DEFAULT_FEISHU_WATCHDOG_RESTART_MS\s*=\s*45_?000/);
@@ -5339,6 +5374,11 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /feishu_event_duplicate/);
   assert.match(daemonSource, /function feishuDedupeKey/);
   assert.match(daemonSource, /parsed\.kind === "message"/);
+  const dedupeFunction = daemonSource.slice(
+    daemonSource.indexOf("function feishuDedupeKey"),
+    daemonSource.indexOf("async function dispatchOctoMessage"),
+  );
+  assert.ok(dedupeFunction.indexOf("feishu:message") < dedupeFunction.indexOf("feishu:event"));
   assert.doesNotMatch(daemonSource, /`feishu:\$\{group\.key\}:\$\{messageId\}:\$\{binding\.id\}`/);
   assert.doesNotMatch(daemonSource, /const lastActivityAt = group\.lastReceivedAt \|\| group\.lastConnectedAt/);
   const messageHandler = daemonSource.slice(

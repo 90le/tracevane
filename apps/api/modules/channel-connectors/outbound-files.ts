@@ -140,6 +140,7 @@ export function resolveChannelConnectorOutboundFiles(input: {
   files: ChannelConnectorOutboundFileRequest[];
   workDir: string;
   allowedRootDirs?: string[];
+  allowAnyPath?: boolean;
   maxBytes?: number | null;
 }): ChannelConnectorResolvedOutboundFiles {
   const files: ChannelConnectorResolvedOutboundFile[] = [];
@@ -175,7 +176,7 @@ export function resolveChannelConnectorOutboundFiles(input: {
       errors.push(`Outbound file does not exist: ${requestedPath}`);
       continue;
     }
-    if (!allowedRootRealPaths.some((allowedRoot) => isPathInside(allowedRoot, realPath))) {
+    if (!input.allowAnyPath && !allowedRootRealPaths.some((allowedRoot) => isPathInside(allowedRoot, realPath))) {
       errors.push(`Outbound file is outside the allowed Agent file roots: ${requestedPath}`);
       continue;
     }

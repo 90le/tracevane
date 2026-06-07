@@ -233,6 +233,7 @@ function buildStudioOutboundFilePolicy(): string {
     "[Studio outbound file policy]",
     "Do not call channel-specific CLIs, webhooks, curl commands, or external bridge tools to send files back to the IM user.",
     "When the user asks you to send or return files, create them under the current working directory and append one fenced JSON block named studio-channel-files.",
+    "Preserve the original file name in the name field unless the user explicitly asks for a new name.",
     "Example:",
     "```studio-channel-files",
     "[{\"path\":\"relative/path/to/file.ext\",\"name\":\"optional-display-name.ext\",\"caption\":\"optional short caption\"}]",
