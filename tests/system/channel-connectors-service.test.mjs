@@ -4603,9 +4603,9 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /watchdog_connected_idle_/);
   assert.match(daemonSource, /watchdog_zero_inbound_/);
   assert.match(daemonSource, /DEFAULT_FEISHU_PING_TIMEOUT_SECONDS\s*=\s*0/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS\s*=\s*15\s*\*\s*60_?000/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS\s*=\s*90_?000/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX\s*=\s*3/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS\s*=\s*0/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS\s*=\s*0/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX\s*=\s*0/);
   assert.match(daemonSource, /DEFAULT_FEISHU_WATCHDOG_RESTART_MS\s*=\s*180_?000/);
   assert.match(daemonSource, /feishuPingTimeoutSeconds/);
   assert.match(daemonSource, /feishuConnectedIdleRenewMs/);
@@ -4666,6 +4666,8 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /agent\.progress\.card/);
   assert.match(daemonSource, /renderOctoProgressText/);
   assert.match(daemonSource, /agent\.progress\.reply/);
+  assert.match(daemonSource, /工具调用[^\n]+inlineProgressCode\(parsed\.toolName\)/);
+  assert.match(daemonSource, /exit[^\n]+inlineProgressCode\(parsed\.exitCode\)/);
   assert.match(daemonSource, /event\.type === "running"/);
   assert.match(daemonSource, /\["reasoning",\s*"tool",\s*"failed",\s*"error"\]\.includes\(event\.type\)/);
   assert.match(daemonSource, /event\.type === "completed"[\s\S]{0,40}return;/);

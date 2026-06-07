@@ -32,7 +32,7 @@ CC 和 OpenClaw 只作为参考：
 - Studio / OpenClaw 崩溃时，Channel daemon 仍保持在线。
 - Channel daemon 运行期不依赖 Studio API；它直接调用本地 CLI Agent，CLI Agent 再走 Studio Gateway daemon。
 - Studio 负责配置、安装、启停、日志、会话可视化和平台账号管理。
-- Feishu 长连接按 CC Go 保守策略：同 App 共享 WS 并快速 ACK/扇出，默认不启用 SDK `pingTimeout` 额外 liveness watchdog；只在 metadata 显式设置时启用。Studio daemon 维护真实 `lastReceivedAt`，启动后 connected 但 90s 无入站会快速轮换，正常连接只走 15 分钟 connected-idle renewal，避免假 connected 僵尸连接。
+- Feishu 长连接按 CC Go 保守策略：同 App 共享 WS 并快速 ACK/扇出，默认不启用 SDK `pingTimeout` 额外 liveness watchdog，也不对 connected 状态做 zero-inbound / idle 主动轮换；只在 metadata 显式设置时启用诊断型主动续连。Studio daemon 维护真实 `lastReceivedAt`，仅在长期非 connected 时由 watchdog 重建。
 - Feishu `im.message.receive_v1` / bot menu 入口必须像 CC Go 一样只在同步段完成解析、去重和 runtime 记录，随后后台执行附件下载、Agent runner、进度卡片和回复；去重状态需落盘，避免 daemon 重启后平台重投旧事件再次触发 Agent。
 - Feishu card/menu 按 CC 语义区分导航和执行：导航显示/更新卡片，`/new`、`/reset` 等无卡片执行动作快速 ACK 回调并异步发送普通文本结果，不弹悬浮 toast，也不自动弹完整菜单。
 - 进度/工具过程按 CC 群聊语义处理：私聊默认显示运行、思考和工具过程；Feishu 群聊、Octo 群聊默认只发最终回复，除非当前 IM session 显式开启 `/stream` / `/tools`。
@@ -120,7 +120,7 @@ Studio 增强点：
 - Channel Connectors 已支持 command action callback：通用 `/commands/action` 和 Feishu `card-action` / `bot-menu` aliases 可把 action value / event key 转回 command-router。
 - Channel Connectors 已支持 Feishu webhook ingress：URL verification、card action、bot menu、message receive 进入同一 command-router；`verificationToken` 放在 binding metadata，不写入文档或源码。
 - Channel daemon 已支持 Feishu 官方 WebSocket 长连接：`im.message.receive_v1`、`card.action.trigger`、`application.bot.menu_v6` 进入同一 command-router/Agent runner；同一 Feishu App 多 binding 共享单条 WS，支持 chatId 过滤并保留 thread/root 字段。
-- Feishu 长连接稳定性已改回 CC 风格默认：SDK `pingTimeout` 默认 0（禁用额外 liveness terminate），daemon watchdog 默认 180s 后才强制重启长时间非 connected 连接；新增启动后 0 入站快速续连和 15 分钟 connected-idle renewal，分别覆盖“重启后假 ready”和“长期假 connected”。
+- Feishu 长连接稳定性已改回 CC 风格默认：SDK `pingTimeout` 默认 0（禁用额外 liveness terminate），zero-inbound renewal 和 connected-idle renewal 默认 0（禁用），daemon watchdog 默认 180s 后才强制重启长时间非 connected 连接；connected 但暂时无消息被视为正常长连接静默期。
 - Feishu 消息/菜单长连接入口已改为快速 ACK + 后台派发；事件去重提升为 24 小时持久化缓存，并从 `feishu-events.jsonl` 启动回填，平台重投会记录 `feishu_event_duplicate` 而不再重复跑 Agent。
 - Feishu `/new`、`/reset` 已改为执行后只返回普通文本结果，不再自动生成 `Studio Session` 菜单卡片；卡片执行动作异步发文本并返回空 callback，导航类 action 仍返回卡片。
 - Channel Connectors 已支持 Feishu outbound contract：tenant access token file cache、send text message、patch card message、transport-smoke；message webhook 默认可把 command-router 回复真实出站；JSON 出站 API 已按 CC 补 transient retry，短暂 503/网络错误会指数退避重试。

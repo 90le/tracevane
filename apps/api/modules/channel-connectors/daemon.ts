@@ -129,13 +129,16 @@ const MAX_FEISHU_PING_TIMEOUT_SECONDS = 300;
 const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 180_000;
 const MIN_FEISHU_WATCHDOG_RESTART_MS = 60_000;
 const MAX_FEISHU_WATCHDOG_RESTART_MS = 600_000;
-const DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS = 15 * 60_000;
+// CC Go keeps Feishu's SDK WebSocket alive and only lets the SDK reconnect on
+// real disconnects. A quiet connected socket is normal, so active renewal stays
+// opt-in for diagnostics instead of running by default.
+const DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS = 0;
 const MIN_FEISHU_CONNECTED_IDLE_RENEW_MS = 60_000;
 const MAX_FEISHU_CONNECTED_IDLE_RENEW_MS = 3_600_000;
-const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS = 90_000;
+const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS = 0;
 const MIN_FEISHU_ZERO_INBOUND_RENEW_MS = 30_000;
 const MAX_FEISHU_ZERO_INBOUND_RENEW_MS = 15 * 60_000;
-const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX = 3;
+const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX = 0;
 const MAX_FEISHU_ZERO_INBOUND_RENEW_MAX = 10;
 const DEFAULT_OCTO_HEARTBEAT_MS = 30_000;
 const MIN_OCTO_HEARTBEAT_MS = 5_000;
@@ -1770,7 +1773,7 @@ function renderPlainProgressEntry(entry: FeishuProgressCardEntry): string {
     const status = progressStatusLabel(parsed.status);
     return renderPlainProgressMessage({
       icon: progressKindIcon(entry.kind),
-      title: `工具调用 ${parsed.toolName}`,
+      title: `工具调用 \`${inlineProgressCode(parsed.toolName)}\``,
       meta: status || undefined,
       body: formatProgressToolInput(parsed.toolName, parsed.command || entry.text),
     });
@@ -1780,12 +1783,12 @@ function renderPlainProgressEntry(entry: FeishuProgressCardEntry): string {
     const failed = progressStatusFailed(parsed.status) || (parsed.exitCode !== null && parsed.exitCode !== "0");
     const meta = [
       failed ? "失败" : progressStatusLabel(parsed.status) || "完成",
-      parsed.exitCode !== null ? `exit ${parsed.exitCode}` : "",
-      parsed.status ? `status ${parsed.status}` : "",
+      parsed.exitCode !== null ? `exit \`${inlineProgressCode(parsed.exitCode)}\`` : "",
+      parsed.status ? `status \`${inlineProgressCode(parsed.status)}\`` : "",
     ].filter(Boolean).join(" · ");
     return renderPlainProgressMessage({
       icon: progressResultIcon({ status: parsed.status, exitCode: parsed.exitCode }),
-      title: `工具结果 ${parsed.toolName}`,
+      title: `工具结果 \`${inlineProgressCode(parsed.toolName)}\``,
       meta,
       body: formatProgressToolResult(parsed.output),
     });
