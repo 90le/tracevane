@@ -39,8 +39,22 @@ export interface ChannelConnectorConversationHistoryAppendInput extends ChannelC
   maxEntriesPerConversation?: number;
 }
 
+export interface ChannelConnectorConversationHistoryCompactInput extends ChannelConnectorConversationHistoryLookup {
+  messageId?: string | null;
+  summaryText: string;
+  now?: Date;
+}
+
+export interface ChannelConnectorConversationHistoryCompactResult {
+  beforeEntries: number;
+  afterEntries: number;
+  summaryEntry: ChannelConnectorConversationHistoryEntry;
+}
+
 const DEFAULT_HISTORY_ENTRIES_PER_CONVERSATION = 12;
 const DEFAULT_HISTORY_CONTEXT_LIMIT = 8;
+const MAX_HISTORY_TEXT_LENGTH = 2000;
+const MAX_COMPACT_SUMMARY_LENGTH = 4000;
 const MAX_GLOBAL_HISTORY_ENTRIES = 1000;
 
 function nowIso(): string {
@@ -82,7 +96,7 @@ function emptyState(): ChannelConnectorConversationHistoryState {
   };
 }
 
-function truncateText(value: string, maxLength = 500): string {
+function truncateText(value: string, maxLength = MAX_HISTORY_TEXT_LENGTH): string {
   const normalized = normalizeString(value).replace(/\s+/g, " ");
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}...` : normalized;
 }
@@ -214,6 +228,46 @@ export function clearChannelConnectorConversationHistory(
   return deleted;
 }
 
+export function compactChannelConnectorConversationHistory(
+  filePath: string,
+  input: ChannelConnectorConversationHistoryCompactInput,
+): ChannelConnectorConversationHistoryCompactResult {
+  const state = readChannelConnectorConversationHistory(filePath);
+  const createdAt = (input.now || new Date()).toISOString();
+  const messageId = normalizeString(input.messageId) || `compact:${createdAt}`;
+  const sameConversation = (entry: ChannelConnectorConversationHistoryEntry) => (
+    entry.bindingId === input.bindingId && entry.sessionKey === input.sessionKey
+  );
+  const beforeEntries = state.entries.filter(sameConversation).length;
+  const summaryEntry: ChannelConnectorConversationHistoryEntry = {
+    id: historyEntryId({
+      bindingId: input.bindingId,
+      sessionKey: input.sessionKey,
+      messageId,
+      role: "assistant",
+      createdAt,
+    }),
+    bindingId: input.bindingId,
+    sessionKey: input.sessionKey,
+    messageId,
+    role: "assistant",
+    text: truncateText(input.summaryText, MAX_COMPACT_SUMMARY_LENGTH) || null,
+    attachmentSummaries: [],
+    status: "compact-summary",
+    createdAt,
+  };
+  state.entries = state.entries
+    .filter((entry) => !sameConversation(entry))
+    .concat(summaryEntry)
+    .slice(-MAX_GLOBAL_HISTORY_ENTRIES);
+  writeChannelConnectorConversationHistory(filePath, state);
+  return {
+    beforeEntries,
+    afterEntries: 1,
+    summaryEntry,
+  };
+}
+
 export function renderChannelConnectorConversationHistoryContext(
   entries: ChannelConnectorConversationHistoryEntry[],
 ): string | null {
@@ -221,10 +275,14 @@ export function renderChannelConnectorConversationHistoryContext(
   if (!visible.length) return null;
   const lines = [
     "[Studio IM history context]",
-    "Recent messages in this IM session before the current turn:",
+    visible.some((entry) => entry.status === "compact-summary")
+      ? "Compact summaries and recent messages in this IM session before the current turn:"
+      : "Recent messages in this IM session before the current turn:",
   ];
   for (const [index, entry] of visible.entries()) {
-    const role = entry.role === "assistant" ? "assistant" : "user";
+    const role = entry.status === "compact-summary"
+      ? "compact summary"
+      : entry.role === "assistant" ? "assistant" : "user";
     const status = entry.status ? ` (${entry.status})` : "";
     const text = truncateText(entry.text || "", 320) || "(no text)";
     const attachments = entry.attachmentSummaries.length

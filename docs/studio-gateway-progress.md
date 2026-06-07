@@ -15,31 +15,32 @@
 
 ## 本次完成
 
-- `/native` / `/raw` / `/pass` 不再只是把文本改成普通 prompt；command-router 会标记 `nativeCommand`，Octo/Feishu daemon 会把该字段传入 runner，并跳过 history 注入。
-- Claude Code / OpenCode 原生命令现在按当前 Agent runner 输入执行，`/native /help` 等只作为原生命令内容进入对应 CLI，不混入 IM history、群上下文或附件 policy。
-- Codex 原生命令按 CC Go 的限制处理：`/help`、`/help exec`、`/version` 映射到真实 Codex CLI 参数；`/compact`、`/clear` 等非交互 `exec` 不可靠命令会返回明确不支持，禁止再送给模型当普通文本。
-- 未被 Studio 占用的未知 `/xxx` 仍保持 CC 风格兜底透传；只有显式 `/native <命令>` 进入严格原生命令模式。
+- `/compact` / `/compress` 已成为 Studio-managed IM compact contract：不再透传给 Codex `exec`，而是调用当前 Agent Profile 的 Studio Gateway `/responses/compact` 生成 summary。
+- compact 成功后，当前 binding + IM session 的 history 会被替换为一条 `compact-summary`，旧 Agent session / Codex thread 续接会被清理，下一轮用 summary 作为上下文重新开始。
+- compact 失败会返回明确错误，不做本地伪摘要；这避免把“压缩成功”伪装成真实 Gateway compact。
+- Feishu Session/History 菜单补了 Compact Context 操作；Octo/纯文本可直接用 `/compact`。
 
 ## 最近验证
 
 - 通过：`npm run build:api`。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "agent runner builds gateway-backed Codex turns|IM commands switch agent|Feishu long-connection|Octo long connection"`，39 个 Channel Connectors 子测试通过。
-- 通过：`codex --help`，确认本机 Codex CLI help 可执行，供 `/native /help` 映射使用。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "conversation history|IM commands switch agent|model menus can read|command surface"`，39 个 Channel Connectors 子测试通过。
 - 通过：`git diff --check`。
+- 通过：本地 Gateway key 调 `GET http://127.0.0.1:18796/v1/models`，返回 13 个模型。
 - 通过：`systemctl --user restart openclaw-studio-channel-connectors.service`，随后 `is-active/is-enabled` 为 `active/enabled`。
 - 通过：`curl http://127.0.0.1:18797/status`，Octo `octo-studio-cc` connected，Feishu shared WS connected，`activeRuns=[]`。
 - 通过：`npm run dev:restart`，前端 `http://127.0.0.1:5176`，后端 `http://127.0.0.1:3762`。
+- 未计入通过：本地 Gateway `/v1/responses/compact` 已路由到 GMN provider，但上游返回 `502 model_gateway_upstream_failed: fetch failed`；这是 live provider 可达性问题，不影响本次 command/store contract 测试结论。
 
 ## 已知边界
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
 - GMN provider 可作为视觉测试源，但未设为所有 App scope 默认 active provider；测试时需显式选择 `gpt-5.5`、`gmn-vision` 或 `gmn/gpt-5.5`。
 - Feishu 官方 SDK 仍可能因网络或平台关闭连接而 reconnect；当前策略只用 SDK `pingTimeout=10s` 终止无 inbound/pong 的死 socket，消息 ACK 不等待 Agent/附件 IO。长连接 cluster 模式下，安静期无法证明“无用户消息”还是“平台未投递”，因此 idle refresh 后不做无限 no-inbound 轮换；真实入站会解除抑制。SDK `createLarkChannel` 是后续更大重构参考，但当前不直接替换，避免丢失 Studio session/Gateway/进度卡片控制面。
-- Codex Agent 图片已走原生 `--image`；Codex `/compact`、`/clear` 这类交互式 slash 仍需要持久 Codex session 或 Studio compact contract，不能通过一次性 `codex exec` 伪实现；Claude Code / OpenCode 视觉输入、视频理解、OCR、语音/STT/TTS 和 Octo 大文件 COS STS 直传仍待迁移。
+- Codex Agent 图片已走原生 `--image`；Studio `/compact` 已覆盖 IM history 压缩，但 Codex 原生交互式 `/compact`、`/clear` 仍需要持久 Codex session，不能通过一次性 `codex exec` 伪实现；Claude Code / OpenCode 视觉输入、视频理解、OCR、语音/STT/TTS 和 Octo 大文件 COS STS 直传仍待迁移。
 - Feishu 历史未 ACK 事件可能仍会被平台重投一次；持久化去重会记录并跳过，最终仍需用户发送全新消息复验 live 回复。
 
 ## 下一步
 
-1. 继续按 CC Go 补 Codex 持久 session / compact contract，让 `/compact` 不依赖不可靠的 `codex exec` slash。
+1. 继续评估 Codex 持久 session 通道，用于后续承接 Codex 原生交互式 slash（如 `/clear` 和真正的 Codex-side compact）。
 2. 继续按 CC Go 补 `/usage`：需要先接真实 token/usage 账本，不能只显示占位。
 3. 继续按 CC Go 补 `/reasoning`，并迁移 Claude Code / OpenCode 视觉输入、OCR、语音/STT/TTS、大文件 COS STS 和更多平台 adapter。

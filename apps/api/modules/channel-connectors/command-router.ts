@@ -65,6 +65,19 @@ export interface ChannelConnectorCommandContext {
     model: string | null;
     error: string | null;
   };
+  compactConversation?: (input: {
+    bindingId: string;
+    sessionKey: string;
+    project: ChannelConnectorRuntimeProject;
+    command: string;
+  }) => Promise<{
+    ok: boolean;
+    beforeEntries: number;
+    afterEntries: number;
+    sessionsCleared: number;
+    summaryText: string | null;
+    error: string | null;
+  }>;
 }
 
 export interface ChannelConnectorGatewayModel {
@@ -86,7 +99,7 @@ export interface ChannelConnectorGatewayModel {
 export interface ChannelConnectorCommandResult {
   handled: boolean;
   command: string | null;
-  action: "help" | "status" | "list" | "show" | "set" | "reset" | "new" | "stop" | "passthrough" | null;
+  action: "help" | "status" | "list" | "show" | "set" | "reset" | "new" | "stop" | "compact" | "passthrough" | null;
   ok: boolean | null;
   replyText: string | null;
   control: ChannelConnectorSessionControlRecord | null;
@@ -231,6 +244,8 @@ function isStudioCommand(name: string): boolean {
     "reply-buffers",
     "stop",
     "cancel",
+    "compact",
+    "compress",
     "new",
     "reset",
     "native",
@@ -251,6 +266,7 @@ function commandHelpText(): string {
     "- `/list` 列出当前 IM 会话已知 Agent sessions",
     "- `/switch <序号|sessionId前缀>` 切换到已知 Agent session",
     "- `/history` 查看当前 IM 会话最近上下文",
+    "- `/compact` 压缩当前 IM 会话上下文并开启新续接",
     "- `/stop` 停止当前 IM 会话正在运行的 Agent",
     "- `/new` 开启新 Agent 会话，保留本会话配置",
     "- `/reset` 清空本 IM 会话 override 和 Agent 续接状态",
@@ -798,6 +814,8 @@ export async function handleChannelConnectorCommand(
       "tool",
       "stop",
       "cancel",
+      "compact",
+      "compress",
     ].includes(name)
     && !(["agent", "model", "mode", "permission", "permissions", "dir", "display", "stream", "streams", "progress", "tools", "tool"].includes(name) && args.length === 0)
   );
@@ -1239,6 +1257,42 @@ export async function handleChannelConnectorCommand(
       replyText: stopped.stopped
         ? ["已请求停止当前 Agent 运行。", detail].filter(Boolean).join("\n")
         : stopped.error || "当前 IM 会话没有正在运行的 Agent。",
+      passthroughText: null,
+    };
+  }
+
+  if (name === "compact" || name === "compress") {
+    if (!context.compactConversation) {
+      return {
+        handled: true,
+        command: name,
+        action: "compact",
+        ok: false,
+        control: currentControl,
+        replyText: "当前 Channel runtime 未启用 Studio compact contract。",
+        passthroughText: null,
+      };
+    }
+    const result = await context.compactConversation({
+      bindingId: context.binding.id,
+      sessionKey: context.sessionKey,
+      project: currentProject,
+      command: parsed.raw,
+    });
+    return {
+      handled: true,
+      command: name,
+      action: "compact",
+      ok: result.ok,
+      control: currentControl,
+      replyText: result.ok
+        ? [
+          "已压缩当前 IM 会话上下文。",
+          `history: ${result.beforeEntries} -> ${result.afterEntries}`,
+          `Agent sessions: cleared ${result.sessionsCleared}`,
+          result.summaryText ? `summary: ${bufferPreviewText(result.summaryText, 160)}` : "",
+        ].filter(Boolean).join("\n")
+        : result.error || "当前 IM 会话上下文压缩失败。",
       passthroughText: null,
     };
   }

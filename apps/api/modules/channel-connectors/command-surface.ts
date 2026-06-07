@@ -90,6 +90,8 @@ const FEISHU_MENU_SECTION_ALIASES: Record<string, FeishuMenuSectionId> = {
   sessions: "session",
   switch: "session",
   history: "session",
+  compact: "session",
+  compress: "session",
   new: "session",
   reset: "session",
   agent: "agent",
@@ -136,6 +138,8 @@ const FEISHU_MENU_VIEW_ALIASES: Record<string, FeishuMenuViewId> = {
   sessions: "sessions",
   switch: "sessions",
   history: "history",
+  compact: "session",
+  compress: "session",
   new: "session",
   reset: "session",
   agent: "agent",
@@ -240,7 +244,7 @@ export function channelConnectorCommandSurfaceViewFromCommand(
   if (name === "current") return "current";
   if (name === "list" || name === "sessions" || name === "switch") return "sessions";
   if (name === "history") return "history";
-  if (["status", "new", "reset"].includes(name)) return "session";
+  if (["status", "compact", "compress", "new", "reset"].includes(name)) return "session";
   if (name === "agent" || name === "agents") return "agent";
   if (name === "model" || name === "models") return "model";
   if (["mode", "permission", "permissions", "yolo"].includes(name)) return "mode";
@@ -343,6 +347,7 @@ export function buildChannelConnectorCommandSurface(
         action("current", "Current Session", "/current", { actionKind: "nav" }),
         action("sessions", "Agent Sessions", "/list", { actionKind: "nav" }),
         action("history", "History", "/history", { actionKind: "nav" }),
+        action("compact", "Compact Context", "/compact", { tone: "primary", requiresAdmin: true }),
         action("stop", "Stop Run", "/stop", { tone: "danger", requiresAdmin: true }),
         action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true }),
         action("reset", "Reset", "/reset", { tone: "danger", requiresAdmin: true }),
@@ -733,6 +738,8 @@ function commandSurfaceItemDescription(item: ChannelConnectorCommandSurfaceActio
       return "列出当前 IM session 已知 Agent sessions 并切换续接";
     case "history":
       return "查看当前 IM session 最近上下文";
+    case "compact":
+      return "压缩当前 IM session history，并断开旧 Agent 续接";
     case "stop":
       return "停止当前 IM session 正在运行的 Agent";
     case "new":
@@ -1273,6 +1280,7 @@ function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConn
   const current = actions.find((item) => item.id === "current") || action("current", "Current Session", "/current", { actionKind: "nav" });
   const sessions = actions.find((item) => item.id === "sessions") || action("sessions", "Agent Sessions", "/list", { actionKind: "nav" });
   const history = actions.find((item) => item.id === "history") || action("history", "History", "/history", { actionKind: "nav" });
+  const compact = actions.find((item) => item.id === "compact") || action("compact", "Compact Context", "/compact", { tone: "primary", requiresAdmin: true });
   const stop = actions.find((item) => item.id === "stop") || action("stop", "Stop Run", "/stop", { tone: "danger", requiresAdmin: true });
   const fresh = actions.find((item) => item.id === "new") || action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true });
   const reset = actions.find((item) => item.id === "reset") || action("reset", "Reset", "/reset", { tone: "danger", requiresAdmin: true });
@@ -1284,6 +1292,7 @@ function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConn
         "**会话操作**",
         "Status 查看当前 IM session 的 Agent、模型、权限和续接状态。",
         "Agent Sessions 查看当前 IM session 已知续接记录，并可切换回旧续接。",
+        "Compact Context 会用 Studio Gateway 压缩当前 IM history，并开启新的 Agent 续接。",
         "Stop Run 会停止当前 IM session 正在运行的 Agent。",
         "New Session 只断开 Agent 续接，保留当前模型/权限/目录选择。",
         "Reset 清空本 IM session 的 override 和 Agent 续接。",
@@ -1291,7 +1300,7 @@ function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConn
     },
   ];
   pushActionRows(elements, [status, current, sessions, history], surface, 1);
-  pushActionRows(elements, [stop, fresh, reset], surface, 1);
+  pushActionRows(elements, [compact, stop, fresh, reset], surface, 1);
   pushSubcardNavRows(elements, surface, "session");
   return {
     config: {
@@ -1428,6 +1437,7 @@ function renderHistoryCard(surface: ChannelConnectorCommandSurface): ChannelConn
   pushActionRows(elements, [
     action("current", "当前会话", "/current", { actionKind: "nav" }),
     action("sessions", "续接列表", "/list", { actionKind: "nav" }),
+    action("compact", "压缩上下文", "/compact", { tone: "primary", requiresAdmin: true }),
     action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true }),
   ], surface, 1);
   pushSubcardNavRows(elements, surface, "session");

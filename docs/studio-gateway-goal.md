@@ -92,6 +92,7 @@ Provider / model routing 目标：
 - Feishu 入站消息必须先完成轻量解析/去重/准入并快速 ACK；文件下载、Agent 调用、进度卡片和最终回复必须后台异步执行，避免 SDK dispatcher 被 IO 阻塞后触发平台重投。
 - Feishu card/menu 的导航动作才返回卡片；`/new`、`/reset` 等执行动作必须直接执行并返回结果，不得自动弹出完整菜单。
 - IM 原生命令穿透必须区分未知 slash 兜底和显式 `/native`：未知 `/xxx` 可按 CC Go 提示后进入 Agent，显式 `/native <命令>` 必须作为 runner `nativeCommand` 处理，不得混入 history/group/attachment prompt；不支持的 CLI 原生命令必须明确拒绝，不能送给模型当普通文本。
+- IM `/compact` / `/compress` 必须优先走 Studio-managed compact contract：调用 Studio Gateway `/responses/compact` 压缩当前 IM history，替换为 summary，并清理当前 IM session 的旧 Agent 续接；不得把 Codex `/compact` 硬塞进非交互 `codex exec`。
 - `/stop`、取消、重置等 IM 执行动作必须走真实 runner/session contract；其中 `/stop` 必须终止当前 binding + IM session 的 active CLI Agent 进程，不能只返回占位提示。
 - Feishu 长连接不得只相信 SDK `connected` 状态；Studio 必须记录真实 `lastReceivedAt`，让 SDK `pingTimeout` 处理死 socket，并对 connected 但长期无事件入站的假连接执行有抑制/冷却的自动轮换。
 - Rich 平台优先使用卡片/Markdown；普通文本平台也必须有清晰命令分组、当前会话状态、原生 Agent 透传说明和长回复读取入口，不能只给一串无结构命令列表。
@@ -135,6 +136,7 @@ Provider / model routing 目标：
 - App Connections 支持一键切换 app profile：默认模型、每个 App 单独模型覆盖、上下文窗口、compact 阈值、max output、reasoning/effort、必要兼容参数；模型选择必须来自 Gateway 可用模型列表并允许手动输入兼容 alias。
 - Channel Connectors 原生配置 Octo(dmwork) / 飞书 / 微信等 IM 渠道；消息进入本地 CLI Agent bot，再由 Studio Gateway 调模型。
 - Channel Connectors 遇到图片/视频/贴纸等视觉附件时，必须优先使用 Gateway 模型能力：当前模型支持 vision 则保持不变；当前模型不支持且模型池存在 vision 模型时，仅本轮切换到 vision 模型；没有 vision 模型时继续受控对话并禁止视觉推断。
+- Channel Connectors `/compact` 验收必须证明：命令不会作为普通 prompt 发送给 Agent；Gateway compact 成功后 history 只保留 compact summary；旧 Agent/Codex thread 续接被清理；Gateway compact 失败时返回明确错误。
 - Channel Connectors 发布前必须覆盖 CC 二开源码的核心能力：多平台、多 Agent、文本/图片/文件/语音、群聊 mention、会话续接/切换、allowlist/admin/rate limit、slash command、cron、hooks、relay、management/status/logs。
 - 客户端配置只保存 placeholder 或 local endpoint；真实 upstream key 留在 Studio secret store。
 - OpenClaw/Studio 崩溃隔离测试通过：daemon direct endpoint 继续可用。

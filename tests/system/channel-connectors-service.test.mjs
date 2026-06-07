@@ -82,6 +82,7 @@ import {
 import {
   appendChannelConnectorConversationHistory,
   clearChannelConnectorConversationHistory,
+  compactChannelConnectorConversationHistory,
   getChannelConnectorConversationHistory,
   renderChannelConnectorConversationHistoryContext,
 } from "../../dist/apps/api/modules/channel-connectors/conversation-history-store.js";
@@ -2251,8 +2252,24 @@ test("native Channel Connectors conversation history stores sanitized session co
   assert.doesNotMatch(context, /private-file-key/);
   assert.equal(fs.statSync(historyPath).mode & 0o777, 0o600);
 
+  const compacted = compactChannelConnectorConversationHistory(historyPath, {
+    ...lookup,
+    messageId: "compact-1",
+    summaryText: "用户要求记住编号 A-123，并上传过 payload.zip；下一轮继续围绕新问题处理。",
+    now: new Date("2026-06-06T08:00:03.000Z"),
+  });
+  assert.equal(compacted.beforeEntries, 3);
+  assert.equal(compacted.afterEntries, 1);
+  assert.equal(compacted.summaryEntry.status, "compact-summary");
+  const compactEntries = getChannelConnectorConversationHistory(historyPath, lookup, 10);
+  assert.equal(compactEntries.length, 1);
+  const compactContext = renderChannelConnectorConversationHistoryContext(compactEntries);
+  assert.match(compactContext, /Compact summaries/);
+  assert.match(compactContext, /compact summary/);
+  assert.match(compactContext, /A-123/);
+
   const cleared = clearChannelConnectorConversationHistory(historyPath, lookup);
-  assert.equal(cleared, 3);
+  assert.equal(cleared, 1);
   assert.deepEqual(getChannelConnectorConversationHistory(historyPath, lookup), []);
 });
 
@@ -2350,6 +2367,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(help.replyText, /\/stream/);
   assert.match(help.replyText, /\/tools/);
   assert.match(help.replyText, /\/buffer/);
+  assert.match(help.replyText, /`\/compact`/);
   assert.match(help.replyText, /`\/stop`/);
   assert.match(help.replyText, /`\/native \/help`/);
   assert.equal(parseChannelConnectorCommand("%help")?.name, "help");
@@ -2524,13 +2542,49 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(otherSessionDenied.ok, false);
   assert.doesNotMatch(otherSessionDenied.replyText, /其它会话回复/);
 
-  const passthrough = await handleChannelConnectorCommand({
+  const compactWithoutRuntime = await handleChannelConnectorCommand({
     ...baseContext,
     message: message("/compact"),
   });
+  assert.equal(compactWithoutRuntime.handled, true);
+  assert.equal(compactWithoutRuntime.action, "compact");
+  assert.equal(compactWithoutRuntime.ok, false);
+  assert.match(compactWithoutRuntime.replyText, /未启用 Studio compact/);
+
+  let compactCalled = false;
+  const compact = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/compact"),
+    compactConversation: async (scope) => {
+      compactCalled = true;
+      assert.equal(scope.bindingId, "octo-codex");
+      assert.equal(scope.sessionKey, "dmwork:dm:admin-1");
+      assert.equal(scope.project.id, "codex-main");
+      assert.equal(scope.command, "/compact");
+      return {
+        ok: true,
+        beforeEntries: 6,
+        afterEntries: 1,
+        sessionsCleared: 2,
+        summaryText: "compact summary from gateway",
+        error: null,
+      };
+    },
+  });
+  assert.equal(compactCalled, true);
+  assert.equal(compact.handled, true);
+  assert.equal(compact.action, "compact");
+  assert.equal(compact.ok, true);
+  assert.match(compact.replyText, /history: 6 -> 1/);
+  assert.match(compact.replyText, /cleared 2/);
+
+  const passthrough = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/agent-native-command"),
+  });
   assert.equal(passthrough.handled, false);
   assert.equal(passthrough.action, "passthrough");
-  assert.equal(passthrough.passthroughText, "/compact");
+  assert.equal(passthrough.passthroughText, "/agent-native-command");
 
   const nativePassthrough = await handleChannelConnectorCommand({
     ...baseContext,
