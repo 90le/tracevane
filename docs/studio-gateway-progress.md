@@ -16,11 +16,10 @@
 
 ## 本次完成
 
-- Studio Gateway runtime request log 已加入真实 usage ledger：普通 passthrough、非流式 adapter、流式 SSE adapter 会提取 Anthropic / Responses / Chat 常见 usage 字段，并保留 cache read/write tokens。
-- Codex streaming adapter 返回值补出 `usage`，避免 SSE adapter 内部已收到 token usage 但外层日志无法记录。
-- Channel daemon 会在每次 IM Agent run 完成后，按 run 时间窗、App scope 和模型从 Gateway runtime 关联 usage，并写入当前 `agentRuns`。
-- IM 命令新增 `/usage` / `/tokens`：按当前 binding + IM session 汇总最近 Agent run 的真实 Gateway usage；无上游 usage 时明确提示不可统计，不返回占位数字。
-- Feishu Session 卡片新增 Usage 按钮，文本/Octo 可直接使用 `/usage`。
+- 按 CC Go 语义补齐 IM session 管理命令：`/name` / `/rename` 支持命名当前或列表序号 session，`/search` / `/find` 支持按名称、sessionId、profile、模型和目录搜索当前 IM session。
+- 按 CC Go 语义补齐 `/reasoning` / `/effort`：支持序号和 `low|medium|high|xhigh|default`，切换后清理旧 Agent 续接，避免旧 CLI session 沿用旧 reasoning。
+- Channel runner 已把 reasoning 传入真实 CLI：Codex 写入 `model_reasoning_effort` 并加 `-c` 覆盖，Claude Code 使用 `--effort`，OpenCode 使用 `--variant`，`xhigh` 对 Claude/OpenCode 映射为 `max`。
+- Feishu/Octo command surface 已显示 reasoning 和 session name；Feishu Permission 子卡新增独立 reasoning 下拉，Agent Sessions 子卡显示用户命名。
 
 ## 最近验证
 
@@ -30,8 +29,9 @@
 - 通过：`node --test tests/system/studio-web-channel-connectors-page.test.mjs tests/system/studio-web-model-gateway-page.test.mjs`，6 个前端 contract 子测试通过。
 - 通过：`git diff --check`。
 - 通过：`systemctl --user restart openclaw-studio-model-gateway.service openclaw-studio-channel-connectors.service`，两个 user services 均为 `active/enabled`。
-- 通过：Gateway daemon `GET /api/model-gateway/status` 返回 `ok=true`、`localDaemon=running`；Channel daemon `GET /status` 返回 `ok=true`、`activeRuns=0`。
-- 通过：`npm run dev:restart`，前端 `http://127.0.0.1:5176`，后端 `http://127.0.0.1:3762`；后端 `/api/model-gateway/status` 返回 preferred endpoint `http://127.0.0.1:18796/v1`。
+- 通过：`npm run dev:restart`，前端 `http://127.0.0.1:5176`，后端 `http://127.0.0.1:3762`。
+- 通过：Gateway status 显示 local daemon `state=running`、preferred CLI endpoint `http://127.0.0.1:18796/v1`；无正确 Gateway key 访问 `/v1/models` 返回 401，鉴权仍生效。
+- 通过：Channel daemon `/health` 返回 `ok=true`。
 
 ## 已知边界
 
@@ -44,5 +44,5 @@
 ## 下一步
 
 1. 设计并测试持久 session driver 最小合同：session pool、事件流、stop/kill、idle 回收、crash recovery、one-shot fallback。
-2. 继续按 CC Go 补 `/reasoning`、`/name`、`/search`、session list 细节。
+2. 继续按 CC Go 补更多设置型卡片和命令细节，优先做 `/list`/`/history`/`/current` 的信息密度与操作一致性。
 3. 继续迁移 Claude Code / OpenCode 视觉输入、OCR、语音/STT/TTS、大文件 COS STS 和更多平台 adapter。

@@ -6,6 +6,7 @@ import type {
   ChannelConnectorCommandSurfaceSection,
   ChannelConnectorFeishuInteractiveCard,
   ChannelConnectorPermissionMode,
+  ChannelConnectorReasoningEffort,
   ChannelConnectorsDaemonRuntimeConfig,
 } from "../../../../types/channel-connectors.js";
 import type {
@@ -24,6 +25,8 @@ const PERMISSION_MODES: readonly ChannelConnectorPermissionMode[] = [
   "yolo",
 ];
 
+const REASONING_EFFORTS: readonly ChannelConnectorReasoningEffort[] = ["low", "medium", "high", "xhigh"];
+
 const PERMISSION_MODE_LABELS: Record<ChannelConnectorPermissionMode, string> = {
   suggest: "建议确认",
   "read-only": "只读",
@@ -31,6 +34,13 @@ const PERMISSION_MODE_LABELS: Record<ChannelConnectorPermissionMode, string> = {
   "full-auto": "全自动",
   plan: "规划",
   yolo: "YOLO",
+};
+
+const REASONING_EFFORT_LABELS: Record<ChannelConnectorReasoningEffort, string> = {
+  low: "Low",
+  medium: "Medium",
+  high: "High",
+  xhigh: "XHigh",
 };
 
 const PERMISSION_MODE_DESCRIPTIONS: Record<ChannelConnectorPermissionMode, string> = {
@@ -89,6 +99,10 @@ const FEISHU_MENU_SECTION_ALIASES: Record<string, FeishuMenuSectionId> = {
   list: "session",
   sessions: "session",
   switch: "session",
+  search: "session",
+  find: "session",
+  name: "session",
+  rename: "session",
   history: "session",
   compact: "session",
   compress: "session",
@@ -104,6 +118,8 @@ const FEISHU_MENU_SECTION_ALIASES: Record<string, FeishuMenuSectionId> = {
   permission: "mode",
   permissions: "mode",
   yolo: "mode",
+  reasoning: "mode",
+  effort: "mode",
   display: "display",
   stream: "display",
   streams: "display",
@@ -137,6 +153,10 @@ const FEISHU_MENU_VIEW_ALIASES: Record<string, FeishuMenuViewId> = {
   list: "sessions",
   sessions: "sessions",
   switch: "sessions",
+  search: "sessions",
+  find: "sessions",
+  name: "sessions",
+  rename: "sessions",
   history: "history",
   compact: "session",
   compress: "session",
@@ -152,6 +172,9 @@ const FEISHU_MENU_VIEW_ALIASES: Record<string, FeishuMenuViewId> = {
   mode: "mode",
   permission: "mode",
   permissions: "mode",
+  yolo: "mode",
+  reasoning: "mode",
+  effort: "mode",
   "mode-picker": "mode",
   display: "display",
   stream: "display",
@@ -242,12 +265,12 @@ export function channelConnectorCommandSurfaceViewFromCommand(
   const name = parts[0]?.toLowerCase() || "";
   if (["help", "menu", "commands", "command", "cmd", "start"].includes(name)) return "help";
   if (name === "current") return "current";
-  if (name === "list" || name === "sessions" || name === "switch") return "sessions";
+  if (name === "list" || name === "sessions" || name === "switch" || name === "search" || name === "find" || name === "name" || name === "rename") return "sessions";
   if (name === "history") return "history";
   if (["status", "compact", "compress", "new", "reset"].includes(name)) return "session";
   if (name === "agent" || name === "agents") return "agent";
   if (name === "model" || name === "models") return "model";
-  if (["mode", "permission", "permissions", "yolo"].includes(name)) return "mode";
+  if (["mode", "permission", "permissions", "yolo", "reasoning", "effort"].includes(name)) return "mode";
   if (["display", "stream", "streams", "progress", "tools", "tool"].includes(name)) return "display";
   if (["buffer", "buffers", "reply-buffer", "reply-buffers"].includes(name)) return "buffer";
   if (["workdir", "dir", "pwd", "cd", "chdir"].includes(name)) return "workdir";
@@ -294,6 +317,7 @@ function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFa
     "**当前会话**",
     `- Agent: ${surface.current.projectId} (${surface.current.agent})`,
     `- Model: ${surface.current.model || "default"}`,
+    `- Reasoning: ${surface.current.reasoningEffort || "default"}`,
     `- Mode: ${surface.current.permissionMode}`,
     `- WorkDir: ${surface.current.workDir}`,
     `- Display: stream=${surface.current.streamMessages ? "on" : "off"} / tools=${surface.current.toolMessages ? "on" : "off"}`,
@@ -389,7 +413,7 @@ export function buildChannelConnectorCommandSurface(
     {
       id: "mode",
       title: "Permission",
-      summary: "权限只作用于当前 IM session；yolo 始终保持显式动作。",
+      summary: "权限和推理强度只作用于当前 IM session；yolo 始终保持显式动作。",
       actions: PERMISSION_MODES.map((mode) => action(
         `mode-${mode}`,
         PERMISSION_MODE_LABELS[mode],
@@ -479,6 +503,7 @@ export function buildChannelConnectorCommandSurface(
       projectId: current.id,
       agent: current.agent,
       model: current.model,
+      reasoningEffort: current.reasoningEffort || null,
       permissionMode: current.permissionMode,
       workDir: current.workDir,
       workDirHistory: uniqueStrings(input.control?.workDirHistory || [])
@@ -608,6 +633,9 @@ function statusBlock(surface: ChannelConnectorCommandSurface): Record<string, un
               "",
               "**模型**",
               model,
+              "",
+              "**推理**",
+              surface.current.reasoningEffort || "default",
             ].join("\n"),
           },
         ],
@@ -737,6 +765,8 @@ function commandSurfaceItemDescription(item: ChannelConnectorCommandSurfaceActio
       return "查看当前 IM session、Agent 续接和最近状态";
     case "sessions":
       return "列出当前 IM session 已知 Agent sessions 并切换续接";
+    case "usage":
+      return "查看当前 IM session 最近 Agent run 的 Gateway usage";
     case "history":
       return "查看当前 IM session 最近上下文";
     case "compact":
@@ -842,7 +872,7 @@ function sectionSummary(sectionId: FeishuMenuSectionId): string {
     case "model":
       return "从 Studio Gateway 可用模型中选择";
     case "mode":
-      return "切换当前会话权限模式";
+      return "切换当前会话权限模式和推理强度";
     case "display":
       return "流式进度和工具过程显示开关";
     case "buffer":
@@ -896,11 +926,12 @@ function helpSectionActions(
   }
   if (section.id === "mode") {
     const currentMode = surface.current.permissionMode;
+    const currentReasoning = surface.current.reasoningEffort || "default";
     return [
-      action("mode-picker", "权限模式", "/mode", {
+      action("mode-picker", "权限 / 推理", "/mode", {
         actionKind: "nav",
         tone: "primary",
-        description: `${PERMISSION_MODE_LABELS[currentMode]} · ${PERMISSION_MODE_DESCRIPTIONS[currentMode]}`,
+        description: `${PERMISSION_MODE_LABELS[currentMode]} · reasoning ${currentReasoning}`,
         requiresAdmin: true,
       }),
     ];
@@ -1029,20 +1060,54 @@ function renderModePickerCard(surface: ChannelConnectorCommandSurface): ChannelC
   const section = sectionById(surface, "mode");
   const modeActions = section?.actions || [];
   const current = surface.current.permissionMode;
+  const currentReasoning = surface.current.reasoningEffort || null;
   const options = modeActions.map((item) => ({
+    label: stripListPrefix(item.label),
+    value: actionCommandValue(item),
+  }));
+  const reasoningActions = [
+    action("reasoning-default", "Profile 默认推理强度", "/reasoning default", { requiresAdmin: true }),
+    ...REASONING_EFFORTS.map((effort) => action(
+      `reasoning-${effort}`,
+      REASONING_EFFORT_LABELS[effort],
+      `/reasoning ${effort}`,
+      {
+        tone: effort === currentReasoning ? "primary" : "default",
+        requiresAdmin: true,
+      },
+    )),
+  ];
+  const reasoningOptions = reasoningActions.map((item) => ({
     label: stripListPrefix(item.label),
     value: actionCommandValue(item),
   }));
   const currentModeAction = modeActions.find((item) => item.command === `/mode ${current}`);
   const initialValue = currentModeAction ? actionCommandValue(currentModeAction) : null;
+  const currentReasoningAction = currentReasoning
+    ? reasoningActions.find((item) => item.command === `/reasoning ${currentReasoning}`)
+    : reasoningActions[0];
+  const initialReasoningValue = currentReasoningAction ? actionCommandValue(currentReasoningAction) : null;
   const modeLines = modeActions.map((item) => {
     const active = item.command === `/mode ${current}`;
     return `${active ? "▶" : "◻"} **${stripListPrefix(item.label)}** — ${item.description || ""}`;
   });
+  const reasoningLines = [
+    `当前推理强度：${currentReasoning || "default"}`,
+    ...REASONING_EFFORTS.map((effort, index) => {
+      const active = effort === currentReasoning;
+      return `${active ? "▶" : "◻"} ${index + 1}. ${effort}`;
+    }),
+  ];
   const elements: Array<Record<string, unknown>> = [
     {
       tag: "markdown",
-      content: modeLines.join("\n"),
+      content: [
+        "**权限模式**",
+        modeLines.join("\n"),
+        "",
+        "**推理强度**",
+        reasoningLines.join("\n"),
+      ].join("\n"),
     },
     selectStaticElement({
       placeholder: "选择权限模式",
@@ -1052,11 +1117,19 @@ function renderModePickerCard(surface: ChannelConnectorCommandSurface): ChannelC
       sectionId: "mode",
       viewId: "mode",
     }),
+    selectStaticElement({
+      placeholder: "选择推理强度",
+      options: reasoningOptions,
+      initialValue: initialReasoningValue,
+      surface,
+      sectionId: "mode",
+      viewId: "mode",
+    }),
   ];
   pushSubcardNavRows(elements, surface, "mode");
   elements.push({
     tag: "note",
-    elements: [plainText("权限只作用于当前 IM session；YOLO 代表高权限直通。")],
+    elements: [plainText("权限和推理强度只作用于当前 IM session；切换推理强度会断开旧 Agent 续接。")],
   });
   return {
     config: {
@@ -1325,6 +1398,7 @@ function renderCurrentSessionCard(surface: ChannelConnectorCommandSurface): Chan
     ["Session key", surface.current.sessionKey || "-"],
     ["Agent", `${surface.current.projectId} · ${surface.current.agent}`],
     ["Model", surface.current.model || "default"],
+    ["Reasoning", surface.current.reasoningEffort || "default"],
     ["Permission", surface.current.permissionMode],
     ["WorkDir", surface.current.workDir],
     ["Stream / Tools", `${surface.current.streamMessages ? "on" : "off"} / ${surface.current.toolMessages ? "on" : "off"}`],
@@ -1378,6 +1452,7 @@ function renderSessionListCard(surface: ChannelConnectorCommandSurface): Channel
     });
     records.forEach((record, index) => {
       const model = record.model || "default";
+      const title = record.name || record.projectId;
       const description = [
         `${record.projectId} · ${record.agent} · ${model}`,
         `${record.turnCount} turns · ${record.lastStatus || "unknown"} · ${record.updatedAt}`,
@@ -1385,7 +1460,7 @@ function renderSessionListCard(surface: ChannelConnectorCommandSurface): Channel
       ].join("\n");
       elements.push(listItemElement(action(
         `session-${index + 1}`,
-        `${index + 1}. ${record.projectId}`,
+        `${index + 1}. ${title}`,
         `/switch ${index + 1}`,
         {
           tone: record.active ? "primary" : "default",

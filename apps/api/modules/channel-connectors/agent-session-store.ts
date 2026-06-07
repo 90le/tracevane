@@ -4,6 +4,7 @@ import type { ChannelConnectorAgentId } from "../../../../types/channel-connecto
 
 export interface ChannelConnectorAgentSessionRecord {
   id: string;
+  name: string | null;
   bindingId: string;
   projectId: string;
   sessionKey: string;
@@ -37,6 +38,7 @@ export interface ChannelConnectorAgentSessionUpdate extends ChannelConnectorAgen
   codexThreadId?: string | null;
   messageId?: string | null;
   status?: string | null;
+  name?: string | null;
   now?: Date;
 }
 
@@ -90,6 +92,7 @@ export function readChannelConnectorAgentSessions(filePath: string): ChannelConn
       if (!recordId || !bindingId || !projectId || !sessionKey || !agent || !workDir) continue;
       sessions[recordId] = {
         id: recordId,
+        name: normalizeString(value.name) || null,
         bindingId,
         projectId,
         sessionKey,
@@ -165,6 +168,7 @@ export function upsertChannelConnectorAgentSession(
   const current = state.sessions[id];
   const next: ChannelConnectorAgentSessionRecord = {
     id,
+    name: update.name === undefined ? current?.name || null : normalizeString(update.name) || null,
     bindingId: update.bindingId,
     projectId: update.projectId,
     sessionKey: update.sessionKey,
@@ -179,6 +183,27 @@ export function upsertChannelConnectorAgentSession(
     lastStatus: normalizeString(update.status) || null,
   };
   state.sessions[id] = next;
+  writeChannelConnectorAgentSessions(filePath, state);
+  return next;
+}
+
+export function renameChannelConnectorAgentSession(
+  filePath: string,
+  input: Pick<ChannelConnectorAgentSessionLookup, "bindingId" | "sessionKey"> & {
+    sessionId: string;
+    name: string | null;
+  },
+): ChannelConnectorAgentSessionRecord | null {
+  const state = readChannelConnectorAgentSessions(filePath);
+  const record = state.sessions[input.sessionId];
+  if (!record || record.bindingId !== input.bindingId || record.sessionKey !== input.sessionKey) return null;
+  const now = nowIso();
+  const next: ChannelConnectorAgentSessionRecord = {
+    ...record,
+    name: normalizeString(input.name) || null,
+    updatedAt: now,
+  };
+  state.sessions[input.sessionId] = next;
   writeChannelConnectorAgentSessions(filePath, state);
   return next;
 }

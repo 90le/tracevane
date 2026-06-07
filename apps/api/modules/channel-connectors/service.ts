@@ -1289,6 +1289,7 @@ function commandSurfaceReadOnlyState(input: {
     limit: 20,
   }).map((record) => ({
     id: record.id,
+    name: record.name,
     projectId: record.projectId,
     agent: record.agent,
     model: record.model,

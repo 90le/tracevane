@@ -40,6 +40,8 @@ export type ChannelConnectorPermissionMode =
   | "plan"
   | "yolo";
 
+export type ChannelConnectorReasoningEffort = "low" | "medium" | "high" | "xhigh";
+
 export type ChannelConnectorOctoChannelType = 1 | 2 | 5;
 
 export interface ChannelConnectorOctoMentionPayload {
@@ -300,6 +302,7 @@ export interface ChannelConnectorCommandSurface {
     projectId: string;
     agent: ChannelConnectorAgentId;
     model: string | null;
+    reasoningEffort?: ChannelConnectorReasoningEffort | null;
     permissionMode: ChannelConnectorPermissionMode;
     workDir: string;
     workDirHistory: string[];
@@ -316,6 +319,7 @@ export interface ChannelConnectorCommandSurface {
   } | null;
   sessionList: Array<{
     id: string;
+    name?: string | null;
     projectId: string;
     agent: ChannelConnectorAgentId;
     model: string | null;
@@ -581,6 +585,7 @@ export interface ChannelConnectorsDaemonRuntimeConfig {
     workDir: string;
     agent: ChannelConnectorAgentId;
     model: string | null;
+    reasoningEffort?: ChannelConnectorReasoningEffort | null;
     permissionMode: ChannelConnectorPermissionMode;
     gatewayEndpoint: string;
     gatewayKeyRef: "studio-gateway-client-key";
@@ -605,6 +610,7 @@ export interface ChannelConnectorAgentProfile {
   name: string;
   agent: ChannelConnectorAgentId;
   model: string | null;
+  reasoningEffort?: ChannelConnectorReasoningEffort | null;
   workDir: string;
   permissionMode: ChannelConnectorPermissionMode;
   gatewayEndpoint: string;

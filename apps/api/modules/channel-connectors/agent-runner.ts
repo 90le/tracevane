@@ -8,6 +8,7 @@ import type {
   ChannelConnectorOctoInboundMessage,
   ChannelConnectorOctoGroupMember,
   ChannelConnectorPermissionMode,
+  ChannelConnectorReasoningEffort,
   ChannelConnectorsDaemonRuntimeConfig,
 } from "../../../../types/channel-connectors.js";
 import { extractOctoAttachments, extractOctoContent, isOctoGroupChannel } from "./octo-adapter.js";
@@ -443,6 +444,7 @@ function createCodexGatewayHome(input: {
   gatewayEndpoint: string;
   gatewayClientKey: string | null;
   model: string | null;
+  reasoningEffort?: string | null;
   agentRuntimeDir?: string | null;
 }): { codexHome: string; cleanupRoot: string } {
   const runtimeDir = normalizeString(input.agentRuntimeDir);
@@ -457,6 +459,7 @@ function createCodexGatewayHome(input: {
   const config = [
     "model_provider = \"studio_gateway\"",
     input.model ? `model = ${tomlString(input.model)}` : "",
+    input.reasoningEffort ? `model_reasoning_effort = ${tomlString(input.reasoningEffort)}` : "",
     "responses_websockets = false",
     "responses_websockets_v2 = false",
     "",
@@ -503,6 +506,21 @@ function claudePermissionMode(mode: ChannelConnectorPermissionMode): string | nu
     default:
       return null;
   }
+}
+
+function normalizeReasoningEffort(value: unknown): ChannelConnectorReasoningEffort | null {
+  const normalized = normalizeString(value).toLowerCase();
+  if (normalized === "low" || normalized === "medium" || normalized === "high" || normalized === "xhigh") {
+    return normalized;
+  }
+  return null;
+}
+
+function cliReasoningEffort(value: unknown, agent: ChannelConnectorAgentId): string | null {
+  const effort = normalizeReasoningEffort(value);
+  if (!effort) return null;
+  if ((agent === "claude-code" || agent === "opencode") && effort === "xhigh") return "max";
+  return effort;
 }
 
 function codexNativeCommandArgs(command: string): string[] | null {
@@ -573,6 +591,7 @@ export function buildChannelConnectorAgentProcessRequest(
   const cwd = ensureWorkDir(project.workDir);
   const timeoutMs = request.timeoutMs || 10 * 60_000;
   const baseEnv = gatewayEnv(request.gatewayEndpoint, request.gatewayClientKey);
+  const reasoningEffort = cliReasoningEffort(project.reasoningEffort, project.agent);
 
   if (project.agent === "codex") {
     const nativeArgs = nativeCommand ? codexNativeCommandArgs(nativeCommand) : null;
@@ -597,6 +616,7 @@ export function buildChannelConnectorAgentProcessRequest(
       gatewayClientKey: request.gatewayClientKey,
       model: model || null,
       agentRuntimeDir: request.agentRuntimeDir,
+      reasoningEffort,
     });
     const codexConfigArgs = [
       "-c",
@@ -605,6 +625,7 @@ export function buildChannelConnectorAgentProcessRequest(
       "responses_websockets=false",
       "-c",
       "responses_websockets_v2=false",
+      ...(reasoningEffort ? ["-c", `model_reasoning_effort=${tomlString(reasoningEffort)}`] : []),
     ];
     const codexImageArgs = codexNativeImagePaths.flatMap((imagePath) => ["--image", imagePath]);
     const args = codexThreadId
@@ -661,6 +682,7 @@ export function buildChannelConnectorAgentProcessRequest(
       "--permission-prompt-tool",
       "stdio",
       ...(permissionMode ? ["--permission-mode", permissionMode] : []),
+      ...(reasoningEffort ? ["--effort", reasoningEffort] : []),
       ...(model ? ["--model", model] : []),
     ];
     return {
@@ -690,6 +712,7 @@ export function buildChannelConnectorAgentProcessRequest(
       "--format",
       "json",
       ...(model ? ["--model", model] : []),
+      ...(reasoningEffort ? ["--variant", reasoningEffort] : []),
       "--dir",
       cwd,
       "--thinking",

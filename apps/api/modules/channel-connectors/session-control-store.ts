@@ -1,13 +1,18 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { ChannelConnectorPermissionMode } from "../../../../types/channel-connectors.js";
+import type {
+  ChannelConnectorPermissionMode,
+  ChannelConnectorReasoningEffort,
+} from "../../../../types/channel-connectors.js";
 
 export interface ChannelConnectorSessionControlRecord {
   id: string;
   bindingId: string;
   sessionKey: string;
   activeProjectId: string | null;
+  sessionName: string | null;
   model: string | null;
+  reasoningEffort: ChannelConnectorReasoningEffort | null;
   permissionMode: ChannelConnectorPermissionMode | null;
   workDir: string | null;
   workDirHistory: string[];
@@ -31,7 +36,9 @@ export interface ChannelConnectorSessionControlLookup {
 
 export interface ChannelConnectorSessionControlUpdate extends ChannelConnectorSessionControlLookup {
   activeProjectId?: string | null;
+  sessionName?: string | null;
   model?: string | null;
+  reasoningEffort?: ChannelConnectorReasoningEffort | null;
   permissionMode?: ChannelConnectorPermissionMode | null;
   workDir?: string | null;
   workDirHistory?: string[] | null;
@@ -99,7 +106,9 @@ export function readChannelConnectorSessionControls(filePath: string): ChannelCo
         bindingId,
         sessionKey,
         activeProjectId: normalizeString(value.activeProjectId) || null,
+        sessionName: normalizeString(value.sessionName) || null,
         model: normalizeString(value.model) || null,
+        reasoningEffort: normalizeString(value.reasoningEffort) as ChannelConnectorReasoningEffort || null,
         permissionMode: normalizeString(value.permissionMode) as ChannelConnectorPermissionMode || null,
         workDir: normalizeString(value.workDir) || null,
         workDirHistory: normalizeStringArray(value.workDirHistory),
@@ -159,7 +168,13 @@ export function upsertChannelConnectorSessionControl(
     activeProjectId: update.activeProjectId === undefined
       ? current?.activeProjectId || null
       : normalizeString(update.activeProjectId) || null,
+    sessionName: update.sessionName === undefined
+      ? current?.sessionName || null
+      : normalizeString(update.sessionName) || null,
     model: update.model === undefined ? current?.model || null : normalizeString(update.model) || null,
+    reasoningEffort: update.reasoningEffort === undefined
+      ? current?.reasoningEffort || null
+      : update.reasoningEffort || null,
     permissionMode: update.permissionMode === undefined
       ? current?.permissionMode || null
       : update.permissionMode || null,

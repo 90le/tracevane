@@ -4,6 +4,7 @@ import path from "node:path";
 import type {
   ChannelConnectorOctoInboundMessage,
   ChannelConnectorPermissionMode,
+  ChannelConnectorReasoningEffort,
   ChannelConnectorsDaemonRuntimeConfig,
 } from "../../../../types/channel-connectors.js";
 import { extractOctoContent } from "./octo-adapter.js";
@@ -11,6 +12,7 @@ import {
   clearChannelConnectorAgentSessionsForConversation,
   getChannelConnectorAgentSession,
   listChannelConnectorAgentSessionsForConversation,
+  renameChannelConnectorAgentSession,
   type ChannelConnectorAgentSessionRecord,
 } from "./agent-session-store.js";
 import {
@@ -41,6 +43,8 @@ const PERMISSION_MODES: readonly ChannelConnectorPermissionMode[] = [
   "plan",
   "yolo",
 ];
+
+const REASONING_EFFORTS: readonly ChannelConnectorReasoningEffort[] = ["low", "medium", "high", "xhigh"];
 
 export interface ChannelConnectorCommandContext {
   config: ChannelConnectorsDaemonRuntimeConfig;
@@ -189,6 +193,7 @@ export function resolveChannelConnectorEffectiveProject(
   return {
     ...base,
     model: control?.model || base.model,
+    reasoningEffort: control?.reasoningEffort || base.reasoningEffort || null,
     permissionMode: control?.permissionMode || base.permissionMode,
     workDir: control?.workDir || base.workDir,
   };
@@ -222,6 +227,16 @@ function permissionModeAlias(value: string): ChannelConnectorPermissionMode | nu
     : null;
 }
 
+function reasoningEffortAlias(value: string, efforts: readonly ChannelConnectorReasoningEffort[] = REASONING_EFFORTS): ChannelConnectorReasoningEffort | null {
+  const target = normalizeString(value).toLowerCase();
+  if (!target) return null;
+  const index = Number(target);
+  if (Number.isInteger(index) && index >= 1 && index <= efforts.length) return efforts[index - 1] || null;
+  if (target === "max" || target === "extra-high" || target === "extra_high") return "xhigh";
+  if ((efforts as readonly string[]).includes(target)) return target as ChannelConnectorReasoningEffort;
+  return null;
+}
+
 function canManageSession(binding: ChannelConnectorRuntimeBinding, message: ChannelConnectorOctoInboundMessage): boolean {
   if (!binding.adminUsers.length) return true;
   return binding.adminUsers.includes(message.fromUid);
@@ -242,6 +257,10 @@ function isStudioCommand(name: string): boolean {
     "list",
     "sessions",
     "switch",
+    "search",
+    "find",
+    "name",
+    "rename",
     "history",
     "agent",
     "agents",
@@ -251,6 +270,8 @@ function isStudioCommand(name: string): boolean {
     "permission",
     "permissions",
     "yolo",
+    "reasoning",
+    "effort",
     "dir",
     "cd",
     "chdir",
@@ -289,6 +310,8 @@ function commandHelpText(): string {
     "- `/current` 查看当前 IM 会话详情",
     "- `/list` 列出当前 IM 会话已知 Agent sessions",
     "- `/switch <序号|sessionId前缀>` 切换到已知 Agent session",
+    "- `/search <关键字>` 按名称或 sessionId 搜索本 IM 会话 sessions",
+    "- `/name <名称>` 命名当前 Agent session；`/name <序号> <名称>` 命名列表中的 session",
     "- `/history` 查看当前 IM 会话最近上下文",
     "- `/usage` 查看本 IM 会话最近 Agent run 的 Gateway token usage",
     "- `/compact` 压缩当前 IM 会话上下文并开启新续接",
@@ -303,6 +326,8 @@ function commandHelpText(): string {
     "- `/model <序号|模型ID|default>` 切换本会话模型",
     "- `/mode` 列出权限模式",
     "- `/mode <suggest|read-only|auto-edit|full-auto|plan|yolo|default>` 切换本会话权限",
+    "- `/reasoning` 查看推理强度",
+    "- `/reasoning <序号|low|medium|high|xhigh|default>` 切换本会话推理强度并断开旧续接",
     "",
     "**目录**",
     "- `/dir` 查看当前工作目录、最近目录和子目录",
@@ -684,6 +709,7 @@ async function handleStatus(context: ChannelConnectorCommandContext): Promise<Ch
       "Studio Channel Status",
       `Agent: ${currentProject.id} (${currentProject.agent})`,
       `Model: ${currentProject.model || "default"}`,
+      `Reasoning: ${currentProject.reasoningEffort || "default"}`,
       `Mode: ${currentProject.permissionMode}`,
       `WorkDir: ${currentProject.workDir}`,
       `Stream: ${effectiveToggle(control?.streamMessages) ? "on" : "off"}`,
@@ -717,6 +743,7 @@ async function handleCurrent(context: ChannelConnectorCommandContext): Promise<C
       `Session key: ${context.sessionKey}`,
       `Agent: ${currentProject.id} (${currentProject.agent})`,
       `Model: ${currentProject.model || "default"}`,
+      `Reasoning: ${currentProject.reasoningEffort || "default"}`,
       `Mode: ${currentProject.permissionMode}`,
       `WorkDir: ${currentProject.workDir}`,
       `Stream: ${effectiveToggle(control?.streamMessages) ? "on" : "off"}`,
@@ -783,14 +810,69 @@ function sessionListText(
   const lines = ["Studio Agent Sessions"];
   records.forEach((record, index) => {
     const marker = record.id === activeSessionId ? ">" : " ";
+    const title = record.name || record.projectId;
     lines.push([
-      `${marker} ${index + 1}. ${record.projectId} (${record.agent})`,
+      `${marker} ${index + 1}. ${title} (${record.agent})`,
       `   model=${record.model || "default"} turns=${record.turnCount} status=${record.lastStatus || "-"}`,
+      record.name ? `   profile=${record.projectId}` : "",
       `   updated=${record.updatedAt}`,
       `   workDir=${record.workDir}`,
-    ].join("\n"));
+    ].filter(Boolean).join("\n"));
   });
-  lines.push("用法：/switch <序号|sessionId前缀>");
+  lines.push("用法：/switch <序号|sessionId前缀>；/name <序号> <名称>；/search <关键字>");
+  return lines.join("\n");
+}
+
+function sessionSearchText(
+  records: ChannelConnectorAgentSessionRecord[],
+  query: string,
+  activeSessionId: string | null,
+): string {
+  const needle = normalizeString(query).toLowerCase();
+  if (!needle) return "用法：/search <关键字>；按 session 名称或 sessionId 搜索当前 IM 会话。";
+  const matches = records.filter((record) => {
+    const candidates = [
+      record.name || "",
+      record.id,
+      record.projectId,
+      record.agent,
+      record.model || "",
+      record.workDir,
+    ].map((item) => item.toLowerCase());
+    return candidates.some((item) => item.includes(needle));
+  }).slice(0, 10);
+  if (!matches.length) return `未找到匹配的 Agent session：${query}`;
+  return [
+    `Studio Session Search: ${query}`,
+    sessionListText(matches, activeSessionId),
+  ].join("\n\n");
+}
+
+function parseSessionNameArgs(args: string[]): {
+  targetIndex: number | null;
+  name: string;
+} {
+  if (!args.length) return { targetIndex: null, name: "" };
+  const index = Number(args[0]);
+  if (Number.isInteger(index)) {
+    return {
+      targetIndex: index,
+      name: normalizeString(args.slice(1).join(" ")),
+    };
+  }
+  return {
+    targetIndex: null,
+    name: normalizeString(args.join(" ")),
+  };
+}
+
+function reasoningListText(current: ChannelConnectorReasoningEffort | null): string {
+  const lines = [`当前推理强度：${current || "default"}`, "可选推理强度："];
+  REASONING_EFFORTS.forEach((effort, index) => {
+    const marker = effort === current ? ">" : " ";
+    lines.push(`${marker} ${index + 1}. ${effort}`);
+  });
+  lines.push("用法：/reasoning <序号|low|medium|high|xhigh|default>");
   return lines.join("\n");
 }
 
@@ -843,9 +925,13 @@ export async function handleChannelConnectorCommand(
     [
       "agent",
       "model",
+      "name",
+      "rename",
       "mode",
       "permission",
       "permissions",
+      "reasoning",
+      "effort",
       "switch",
       "reset",
       "new",
@@ -865,7 +951,7 @@ export async function handleChannelConnectorCommand(
       "compact",
       "compress",
     ].includes(name)
-    && !(["agent", "model", "mode", "permission", "permissions", "dir", "display", "stream", "streams", "progress", "tools", "tool"].includes(name) && args.length === 0)
+    && !(["agent", "model", "mode", "permission", "permissions", "reasoning", "effort", "dir", "display", "stream", "streams", "progress", "tools", "tool"].includes(name) && args.length === 0)
   );
 
   if (mutating && !canManageSession(context.binding, context.message)) {
@@ -951,7 +1037,7 @@ export async function handleChannelConnectorCommand(
     };
   }
   if (name === "current") return handleCurrent(context);
-  if (name === "list" || name === "sessions" || name === "switch") {
+  if (name === "list" || name === "sessions" || name === "switch" || name === "search" || name === "find" || name === "name" || name === "rename") {
     const activeSession = getChannelConnectorAgentSession(context.agentSessionsPath, {
       bindingId: context.binding.id,
       projectId: currentProject.id,
@@ -972,6 +1058,84 @@ export async function handleChannelConnectorCommand(
         ok: true,
         control: currentControl,
         replyText: sessionListText(records, activeSession?.id || null),
+        passthroughText: null,
+      };
+    }
+    if (name === "search" || name === "find") {
+      return {
+        handled: true,
+        command: name,
+        action: "list",
+        ok: true,
+        control: currentControl,
+        replyText: sessionSearchText(records, args.join(" "), activeSession?.id || null),
+        passthroughText: null,
+      };
+    }
+    if (name === "name" || name === "rename") {
+      const parsedName = parseSessionNameArgs(args);
+      if (!parsedName.name) {
+        return {
+          handled: true,
+          command: name,
+          action: "set",
+          ok: false,
+          control: currentControl,
+          replyText: "用法：/name <名称>；/name <序号> <名称>。名称用于 /list、/search 和菜单展示。",
+          passthroughText: null,
+        };
+      }
+      if (parsedName.targetIndex !== null) {
+        const targetRecord = records[parsedName.targetIndex - 1] || null;
+        if (!targetRecord) {
+          return {
+            handled: true,
+            command: name,
+            action: "set",
+            ok: false,
+            control: currentControl,
+            replyText: `没有第 ${parsedName.targetIndex} 个 Agent session。\n\n${sessionListText(records, activeSession?.id || null)}`,
+            passthroughText: null,
+          };
+        }
+        const renamed = renameChannelConnectorAgentSession(context.agentSessionsPath, {
+          ...lookup,
+          sessionId: targetRecord.id,
+          name: parsedName.name,
+        });
+        return {
+          handled: true,
+          command: name,
+          action: "set",
+          ok: Boolean(renamed),
+          control: currentControl,
+          replyText: renamed
+            ? `已命名 Agent session：${parsedName.targetIndex}. ${parsedName.name}`
+            : "命名失败：未找到对应 Agent session。",
+          passthroughText: null,
+        };
+      }
+      const renamed = activeSession
+        ? renameChannelConnectorAgentSession(context.agentSessionsPath, {
+          ...lookup,
+          sessionId: activeSession.id,
+          name: parsedName.name,
+        })
+        : null;
+      const control = upsertChannelConnectorSessionControl(context.controlsPath, {
+        ...lookup,
+        sessionName: parsedName.name,
+        lastCommand: parsed.raw,
+      });
+      return {
+        handled: true,
+        command: name,
+        action: "set",
+        ok: true,
+        control,
+        replyText: renamed
+          ? `已命名当前 Agent session：${parsedName.name}`
+          : `已设置当前 IM 会话名称：${parsedName.name}。下一次 Agent session 会使用该名称。`,
         passthroughText: null,
       };
     }
@@ -1002,6 +1166,7 @@ export async function handleChannelConnectorCommand(
     const control = upsertChannelConnectorSessionControl(context.controlsPath, {
       ...lookup,
       activeProjectId: targetProject.id,
+      sessionName: target.record.name,
       model: target.record.model,
       workDir: target.record.workDir,
       workDirHistory: [],
@@ -1057,6 +1222,7 @@ export async function handleChannelConnectorCommand(
       ...lookup,
       activeProjectId: target.id,
       model: null,
+      reasoningEffort: null,
       permissionMode: null,
       workDir: null,
       workDirHistory: [],
@@ -1161,6 +1327,51 @@ export async function handleChannelConnectorCommand(
       ok: true,
       control,
       replyText: shouldReset ? "已恢复本会话默认权限模式。" : `已切换本会话权限模式：${target}`,
+      passthroughText: null,
+    };
+  }
+
+  if (name === "reasoning" || name === "effort") {
+    if (args.length === 0) {
+      return {
+        handled: true,
+        command: name,
+        action: "list",
+        ok: true,
+        control: currentControl,
+        replyText: reasoningListText(currentProject.reasoningEffort || null),
+        passthroughText: null,
+      };
+    }
+    const requested = args[0] || "";
+    const shouldReset = ["default", "reset", "profile"].includes(requested.toLowerCase());
+    const target = shouldReset ? null : reasoningEffortAlias(requested);
+    if (!shouldReset && !target) {
+      return {
+        handled: true,
+        command: name,
+        action: "set",
+        ok: false,
+        control: currentControl,
+        replyText: "用法：/reasoning <序号|low|medium|high|xhigh|default>",
+        passthroughText: null,
+      };
+    }
+    const sessionsCleared = clearChannelConnectorAgentSessionsForConversation(context.agentSessionsPath, lookup);
+    const control = upsertChannelConnectorSessionControl(context.controlsPath, {
+      ...lookup,
+      reasoningEffort: target,
+      lastCommand: parsed.raw,
+    });
+    return {
+      handled: true,
+      command: name,
+      action: "set",
+      ok: true,
+      control,
+      replyText: shouldReset
+        ? `已恢复本会话默认推理强度。\n已断开旧 Agent 续接：${sessionsCleared}`
+        : `已切换本会话推理强度：${target}\n已断开旧 Agent 续接：${sessionsCleared}`,
       passthroughText: null,
     };
   }

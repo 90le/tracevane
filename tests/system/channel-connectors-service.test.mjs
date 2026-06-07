@@ -24,6 +24,7 @@ import {
 import {
   clearChannelConnectorAgentSessionsForConversation,
   getChannelConnectorAgentSession,
+  renameChannelConnectorAgentSession,
   upsertChannelConnectorAgentSession,
 } from "../../dist/apps/api/modules/channel-connectors/agent-session-store.js";
 import {
@@ -1552,6 +1553,20 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(fs.statSync(codexConfigPath).mode & 0o777, 0o600);
   for (const cleanupPath of processRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
+  const codexReasoningRequest = buildChannelConnectorAgentProcessRequest({
+    project: { ...project, reasoningEffort: "high" },
+    binding,
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+  });
+  assert.ok(codexReasoningRequest);
+  assert.equal(codexReasoningRequest.args.includes('model_reasoning_effort="high"'), true);
+  const codexReasoningConfig = fs.readFileSync(path.join(codexReasoningRequest.env.CODEX_HOME, "config.toml"), "utf8");
+  assert.match(codexReasoningConfig, /model_reasoning_effort = "high"/);
+  for (const cleanupPath of codexReasoningRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
   const historyRequest = buildChannelConnectorAgentProcessRequest({
     project,
     binding,
@@ -1698,7 +1713,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(fs.existsSync(turnCleanupPath), false);
 
   const claudeRequest = buildChannelConnectorAgentProcessRequest({
-    project: { ...project, agent: "claude-code", permissionMode: "plan" },
+    project: { ...project, agent: "claude-code", permissionMode: "plan", reasoningEffort: "xhigh" },
     binding: { ...binding, agent: "claude-code" },
     message,
     sessionKey: "dmwork:dm:user-1",
@@ -1712,12 +1727,14 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(claudeRequest.args.includes("stream-json"), true);
   assert.equal(claudeRequest.args.includes("--permission-mode"), true);
   assert.equal(claudeRequest.args.includes("plan"), true);
+  assert.equal(claudeRequest.args.includes("--effort"), true);
+  assert.equal(claudeRequest.args.includes("max"), true);
   assert.match(claudeRequest.stdin, /"content":"hi codex"/);
   assert.equal(claudeRequest.env.ANTHROPIC_API_KEY, "sk-local");
   assert.equal(claudeRequest.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:18796");
 
   const opencodeRequest = buildChannelConnectorAgentProcessRequest({
-    project: { ...project, agent: "opencode", permissionMode: "yolo" },
+    project: { ...project, agent: "opencode", permissionMode: "yolo", reasoningEffort: "high" },
     binding: { ...binding, agent: "opencode" },
     message,
     sessionKey: "dmwork:dm:user-1",
@@ -1729,6 +1746,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(opencodeRequest.agent, "opencode");
   assert.deepEqual(opencodeRequest.args.slice(0, 3), ["run", "--format", "json"]);
   assert.equal(opencodeRequest.args.includes("--thinking"), true);
+  assert.equal(opencodeRequest.args.includes("--variant"), true);
+  assert.equal(opencodeRequest.args.includes("high"), true);
   assert.equal(opencodeRequest.args.at(-1), "hi codex");
 
   const codexNativeHelpRequest = buildChannelConnectorAgentProcessRequest({
@@ -2364,8 +2383,11 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(help.replyText, /普通消息会交给当前 Agent/);
   assert.match(help.replyText, /`\/status`/);
   assert.match(help.replyText, /\/mode/);
+  assert.match(help.replyText, /\/reasoning/);
   assert.match(help.replyText, /\/stream/);
   assert.match(help.replyText, /\/tools/);
+  assert.match(help.replyText, /\/name/);
+  assert.match(help.replyText, /\/search/);
   assert.match(help.replyText, /\/buffer/);
   assert.match(help.replyText, /`\/usage`/);
   assert.match(help.replyText, /`\/compact`/);
@@ -2389,6 +2411,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     ["/agent", "list"],
     ["/model", "list"],
     ["/mode", "list"],
+    ["/reasoning", "list"],
     ["/dir", "list"],
     ["/display", "list"],
     ["/stream", "list"],
@@ -2506,6 +2529,83 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(model.ok, true);
   assert.equal(model.control.model, "gpt-5.5");
+
+  const currentSessionRecord = upsertChannelConnectorAgentSession(agentSessionsPath, {
+    bindingId: binding.id,
+    projectId: "codex-main",
+    sessionKey: baseContext.sessionKey,
+    agent: "codex",
+    model: "gpt-5.5",
+    workDir: codexProject.workDir,
+    codexThreadId: "thread-named-session",
+    messageId: "m-named-session",
+    status: "completed",
+  });
+  const named = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/name Sprint Alpha"),
+  });
+  assert.equal(named.ok, true);
+  assert.equal(named.control.sessionName, "Sprint Alpha");
+  assert.equal(getChannelConnectorAgentSession(agentSessionsPath, {
+    bindingId: binding.id,
+    projectId: "codex-main",
+    sessionKey: baseContext.sessionKey,
+    agent: "codex",
+    model: "gpt-5.5",
+    workDir: codexProject.workDir,
+  }).name, "Sprint Alpha");
+  const missingIndexedName = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/name 1"),
+  });
+  assert.equal(missingIndexedName.ok, false);
+  assert.match(missingIndexedName.replyText, /\/name <名称>/);
+  const renamedByHelper = renameChannelConnectorAgentSession(agentSessionsPath, {
+    bindingId: binding.id,
+    sessionKey: baseContext.sessionKey,
+    sessionId: currentSessionRecord.id,
+    name: "Sprint Beta",
+  });
+  assert.equal(renamedByHelper.name, "Sprint Beta");
+  const listNamed = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/list"),
+  });
+  assert.match(listNamed.replyText, /Sprint Beta/);
+  const searchNamed = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/search beta"),
+  });
+  assert.equal(searchNamed.ok, true);
+  assert.match(searchNamed.replyText, /Sprint Beta/);
+  const reasoningList = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/reasoning"),
+  });
+  assert.equal(reasoningList.ok, true);
+  assert.match(reasoningList.replyText, /xhigh/);
+  const badReasoning = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/reasoning minimal"),
+  });
+  assert.equal(badReasoning.ok, false);
+  assert.doesNotMatch(badReasoning.replyText, /minimal/);
+  const reasoning = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/reasoning 4"),
+  });
+  assert.equal(reasoning.ok, true);
+  assert.equal(reasoning.control.reasoningEffort, "xhigh");
+  assert.match(reasoning.replyText, /已断开旧 Agent 续接：1/);
+  assert.equal(getChannelConnectorAgentSession(agentSessionsPath, {
+    bindingId: binding.id,
+    projectId: "codex-main",
+    sessionKey: baseContext.sessionKey,
+    agent: "codex",
+    model: "gpt-5.5",
+    workDir: codexProject.workDir,
+  }), null);
 
   const streamOff = await handleChannelConnectorCommand({
     ...baseContext,
@@ -2655,6 +2755,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(agent.ok, true);
   assert.equal(agent.control.activeProjectId, "claude-main");
   assert.equal(agent.control.model, null);
+  assert.equal(agent.control.reasoningEffort, null);
   assert.equal(agent.control.permissionMode, null);
 
   const cd = await handleChannelConnectorCommand({
@@ -3073,6 +3174,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
     sessionList: [
       {
         id: "codex-session-1",
+        name: "Frontend Fix",
         projectId: "codex-main",
         agent: "codex",
         model: "gpt-5",
@@ -3126,6 +3228,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.equal(surface.current.toolMessages, true);
   assert.match(surface.textFallback, /skills 命令/);
   assert.match(surface.textFallback, /\*\*当前会话\*\*/);
+  assert.match(surface.textFallback, /Reasoning: default/);
   assert.match(surface.textFallback, /\*\*快捷操作\*\*/);
   assert.match(surface.textFallback, /`\/status`/);
   assert.match(surface.textFallback, /`\/native \/help`/);
@@ -3209,6 +3312,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   });
   const sessionListCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(sessionListSurface));
   assert.match(sessionListCardRaw, /Studio Agent Sessions/);
+  assert.match(sessionListCardRaw, /Frontend Fix/);
   assert.match(sessionListCardRaw, /codex-main/);
   assert.match(sessionListCardRaw, /claude-main/);
   assert.match(sessionListCardRaw, /act:\/switch 1/);
@@ -3329,6 +3433,8 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(modeCardRaw, /Studio Permission/);
   assert.match(modeCardRaw, /select_static/);
   assert.match(modeCardRaw, /act:\/mode yolo/);
+  assert.match(modeCardRaw, /act:\/reasoning xhigh/);
+  assert.match(modeCardRaw, /选择推理强度/);
   assert.match(modeCardRaw, /nav:\/help mode/);
 
   const displaySurface = buildChannelConnectorCommandSurface({

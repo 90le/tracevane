@@ -140,6 +140,8 @@ Provider / model routing 目标：
 - Channel Connectors 遇到图片/视频/贴纸等视觉附件时，必须优先使用 Gateway 模型能力：当前模型支持 vision 则保持不变；当前模型不支持且模型池存在 vision 模型时，仅本轮切换到 vision 模型；没有 vision 模型时继续受控对话并禁止视觉推断。
 - Channel Connectors `/compact` 验收必须证明：命令不会作为普通 prompt 发送给 Agent；Gateway compact 成功后 history 只保留 compact summary；旧 Agent/Codex thread 续接被清理；Gateway compact 失败时返回明确错误。
 - Channel Connectors `/usage` 验收必须证明：命令读取 Studio Gateway runtime 的真实 usage/token 账本，并按当前 binding + IM session 的 Agent run 时间窗汇总；没有上游 usage 时必须明确提示无统计，不能返回占位数字。
+- Channel Connectors `/reasoning` 验收必须证明：IM session 可用序号或 `low|medium|high|xhigh|default` 切换推理强度，切换后旧 Agent 续接被清理，Codex/Claude Code/OpenCode runner 都收到对应原生 CLI 参数。
+- Channel Connectors session 管理验收必须证明：`/name` 可命名当前或指定序号 Agent session，`/search` 可按名称/sessionId 等字段搜索，Feishu 卡片和纯文本菜单都显示命名结果。
 - 持久 session driver 验收必须证明：进程可观测、可停止、可 idle 回收；crash 后 session store 不损坏；同一用户可切换多个 Agent；不同用户/群/线程不会串上下文；driver 不支持某能力时能回退 one-shot runner。
 - Channel Connectors 发布前必须覆盖 CC 二开源码的核心能力：多平台、多 Agent、文本/图片/文件/语音、群聊 mention、会话续接/切换、allowlist/admin/rate limit、slash command、cron、hooks、relay、management/status/logs。
 - 客户端配置只保存 placeholder 或 local endpoint；真实 upstream key 留在 Studio secret store。

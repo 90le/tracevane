@@ -3425,6 +3425,7 @@ async function dispatchOctoMessage(input: {
       codexThreadId: agent.session.codexThreadId || currentSession?.codexThreadId || null,
       messageId: message.messageId,
       status: agent.status,
+      name: control?.sessionName || currentSession?.name || null,
     });
   }
   const agentFinishedAt = new Date().toISOString();
@@ -4261,6 +4262,7 @@ async function dispatchFeishuParsedEvent(input: {
       codexThreadId: agent.session.codexThreadId || currentSession?.codexThreadId || null,
       messageId,
       status: agent.status,
+      name: control?.sessionName || currentSession?.name || null,
     });
   }
   const agentFinishedAt = new Date().toISOString();
