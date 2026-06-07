@@ -218,6 +218,8 @@ export interface ModelGatewayModelListItem {
   label: string | null;
   aliases: string[];
   providerIds: string[];
+  healthyProviderIds?: string[];
+  openCircuitProviderIds?: string[];
   features: ModelGatewayModelFeatures;
 }
 

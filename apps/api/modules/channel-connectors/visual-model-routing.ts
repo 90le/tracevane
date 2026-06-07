@@ -64,8 +64,14 @@ function gatewayModelVisionCapability(
   return typeof matched?.features.vision === "boolean" ? matched.features.vision : null;
 }
 
+function gatewayModelHasHealthyProvider(model: ChannelConnectorGatewayModel): boolean {
+  if ((model.healthyProviderIds || []).length > 0) return true;
+  if ((model.openCircuitProviderIds || []).length > 0) return false;
+  return true;
+}
+
 function firstVisionGatewayModel(catalog: ChannelConnectorGatewayModel[]): ChannelConnectorGatewayModel | null {
-  return catalog.find((item) => item.features.vision === true) || null;
+  return catalog.find((item) => item.features.vision === true && gatewayModelHasHealthyProvider(item)) || null;
 }
 
 export async function resolveChannelConnectorVisualTurnProject(input: {

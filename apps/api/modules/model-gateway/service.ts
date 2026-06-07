@@ -3391,6 +3391,8 @@ export function createModelGatewayService(
       label: string | null;
       aliases: Set<string>;
       providerIds: Set<string>;
+      healthyProviderIds: Set<string>;
+      openCircuitProviderIds: Set<string>;
       priority: number;
       features: ModelGatewayModelFeatures;
     }>();
@@ -3412,12 +3414,16 @@ export function createModelGatewayService(
             label: model.label || null,
             aliases: new Set(model.aliases || []),
             providerIds: new Set([provider.id]),
+            healthyProviderIds: new Set(provider.health.circuitState !== "open" ? [provider.id] : []),
+            openCircuitProviderIds: new Set(provider.health.circuitState === "open" ? [provider.id] : []),
             priority: provider.failover.priority,
             features: compactModelFeatures({ ...(model.features || {}) }),
           });
           continue;
         }
         current.providerIds.add(provider.id);
+        if (provider.health.circuitState === "open") current.openCircuitProviderIds.add(provider.id);
+        else current.healthyProviderIds.add(provider.id);
         for (const alias of model.aliases || []) current.aliases.add(alias);
         mergeModelFeatures(current.features, model.features);
         if (provider.failover.priority < current.priority) {
@@ -3440,6 +3446,8 @@ export function createModelGatewayService(
           label: item.label,
           aliases: [...item.aliases].sort(),
           providerIds: [...item.providerIds].sort(),
+          healthyProviderIds: [...item.healthyProviderIds].sort(),
+          openCircuitProviderIds: [...item.openCircuitProviderIds].sort(),
           features: compactModelFeatures(item.features),
         })),
     };

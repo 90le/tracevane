@@ -734,6 +734,9 @@ test("model gateway exposes enabled provider model pool through OpenAI models en
           { id: "b-only", features: { vision: true, streaming: true } },
         ],
       },
+      health: {
+        circuitState: "open",
+      },
       failover: { priority: 5 },
     },
   });
@@ -757,6 +760,8 @@ test("model gateway exposes enabled provider model pool through OpenAI models en
   assert.deepEqual(direct.data.map((model) => model.id).sort(), ["a-only", "b-only", "shared-model"]);
   const shared = direct.data.find((model) => model.id === "shared-model");
   assert.deepEqual(shared?.providerIds, ["models-a", "models-b"]);
+  assert.deepEqual(shared?.healthyProviderIds, ["models-a"]);
+  assert.deepEqual(shared?.openCircuitProviderIds, ["models-b"]);
   assert.deepEqual(shared?.features, {
     text: true,
     tools: true,
@@ -771,6 +776,8 @@ test("model gateway exposes enabled provider model pool through OpenAI models en
     vision: true,
     streaming: true,
   });
+  assert.deepEqual(direct.data.find((model) => model.id === "b-only")?.healthyProviderIds, []);
+  assert.deepEqual(direct.data.find((model) => model.id === "b-only")?.openCircuitProviderIds, ["models-b"]);
   assert.equal(direct.data.some((model) => model.id === "disabled-only"), false);
 
   const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });

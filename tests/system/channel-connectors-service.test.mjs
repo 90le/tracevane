@@ -2575,7 +2575,8 @@ test("native Channel Connectors visual turns select Gateway vision models from c
   };
   const catalog = [
     { id: "gateway-glm-5", aliases: [], providerIds: ["glm"], features: { text: true, vision: false } },
-    { id: "gmn-vision", aliases: ["vision-gpt-5.5"], providerIds: ["gmn"], features: { text: true, vision: true, responses: true } },
+    { id: "gpt-5.2", aliases: [], providerIds: ["gmn"], healthyProviderIds: [], openCircuitProviderIds: ["gmn"], features: { text: true, vision: true, responses: true } },
+    { id: "gmn-vision", aliases: ["vision-gpt-5.5"], providerIds: ["gmn"], healthyProviderIds: ["gmn"], openCircuitProviderIds: [], features: { text: true, vision: true, responses: true } },
   ];
   const selected = await resolveChannelConnectorVisualTurnProject({
     project,
@@ -2591,6 +2592,21 @@ test("native Channel Connectors visual turns select Gateway vision models from c
   assert.equal(selected.project.model, "gmn-vision");
   assert.deepEqual(selected.modelCapabilities, { vision: true });
   assert.equal(selected.reason, "current-model-non-vision");
+
+  const noHealthyVision = await resolveChannelConnectorVisualTurnProject({
+    project,
+    binding,
+    message: imageMessage,
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    listCatalog: async () => [
+      { id: "gateway-glm-5", aliases: [], providerIds: ["glm"], healthyProviderIds: ["glm"], openCircuitProviderIds: [], features: { text: true, vision: false } },
+      { id: "gpt-5.2", aliases: [], providerIds: ["gmn"], healthyProviderIds: [], openCircuitProviderIds: ["gmn"], features: { text: true, vision: true, responses: true } },
+    ],
+  });
+  assert.equal(noHealthyVision.switched, false);
+  assert.equal(noHealthyVision.project.model, "gateway-glm-5");
+  assert.equal(noHealthyVision.reason, "current-model-non-vision");
 
   const currentVision = await resolveChannelConnectorVisualTurnProject({
     project: { ...project, model: "vision-gpt-5.5" },
@@ -4140,7 +4156,7 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /startFeishuWatchdog/);
   assert.match(daemonSource, /restartFeishuGroupClient/);
   assert.match(daemonSource, /watchdog_non_connected_/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_PING_TIMEOUT_SECONDS\s*=\s*60/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_PING_TIMEOUT_SECONDS\s*=\s*0/);
   assert.match(daemonSource, /DEFAULT_FEISHU_WATCHDOG_RESTART_MS\s*=\s*180_?000/);
   assert.match(daemonSource, /feishuPingTimeoutSeconds/);
   assert.match(daemonSource, /feishuWatchdogRestartMs/);

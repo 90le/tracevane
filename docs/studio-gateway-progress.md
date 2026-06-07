@@ -17,16 +17,22 @@
 
 - 对照 CC Go 源码确认长连接基线：Octo(dmwork) WuKongIM 使用 30s 心跳、10s PONG 超时、RECV 后立即 ACK、5 分钟消息去重、断线后 `3s + 0..3s` 抖动重连；Feishu 多 binding 共享同一 App 长连接再扇出事件。
 - Studio Octo WebSocket 已补齐 CC Go 同款默认重连抖动，并支持 binding metadata 覆盖 `heartbeat/pongTimeout/reconnect/reconnectJitter`；默认行为无需用户配置。
-- Feishu 共享长连接保持现有实现，继续使用 60s SDK ping timeout 和 180s watchdog，避免平台抖动时频繁重启。
+- 核心约束已更新：任何渠道/Agent 功能必须先参考 CC Go 现成实现，按 contract 1:1 迁移，再做 Studio 化精修，禁止已有成熟设计时重新造轮子。
+- Feishu 共享长连接改回 CC 风格默认：禁用 SDK `pingTimeout` 额外 liveness terminate，仅保留官方 SDK 自动重连和 daemon 180s 非 connected watchdog；metadata 仍可显式开启 ping timeout。
 - Channel daemon 新增 `agent.visual.input` 事件：当 Codex turn 真实收到本地 `--image` 参数时，事件日志记录模型、输入模式、图片数量和本地 staged 路径，后续排查图片链路不再靠推断。
-- Octo daemon 级图片入站回归已锁定：WuKongIM 图片 URL -> 本地 staging -> Gateway `/v1/models` 自动选择 vision 模型 -> Codex CLI `--image`。
+- 用户新发 Octo 图片已确认进入 `agent.visual.input`；失败根因不是附件链路，而是自动视觉路由选到过期 `gpt-5.2` 且 provider open circuit。
+- Gateway `/v1/models` 新增非标准健康元数据 `healthyProviderIds/openCircuitProviderIds`；Channel 自动视觉路由会跳过只有 open-circuit provider 的 vision 模型。
+- 本机 GMN provider 已删除过期 `gpt-5.2`，`gpt-5.4-mini` 真实 Gateway smoke 200，并把 GMN health 恢复为 closed。
 
 ## 最近验证
 
 - 通过：`npm run build:api`。
+- 通过：`gpt-5.4-mini` 经 Studio Gateway `/v1/responses` 真实 smoke 返回 200。
+- 通过：`node --test tests/system/model-gateway-service.test.mjs --test-name-pattern "model gateway exposes enabled provider model pool"`，实际执行 51 个 Model Gateway 子测试。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "Octo long connection|registers Octo"`，实际执行 36 个 Channel Connectors 子测试，覆盖 Octo/Feishu 长连接入口、命令、附件 staging、视觉模型选择、Codex `--image` 和进度事件。
-- 通过：`systemctl --user restart openclaw-studio-channel-connectors.service` 与 `./scripts/restart-dev.sh`。
-- 通过：`systemctl --user is-active/is-enabled openclaw-studio-channel-connectors.service` -> `active/enabled`。
+- 通过：`systemctl --user restart openclaw-studio-model-gateway.service openclaw-studio-channel-connectors.service` 与 `./scripts/restart-dev.sh`。
+- 通过：`systemctl --user is-active/is-enabled openclaw-studio-model-gateway.service openclaw-studio-channel-connectors.service` -> `active/enabled`。
+- 通过：重启后超过 4 分钟观察，Feishu/Octo 仍为 `connected` 且 `reconnects: 0`，未再出现旧的 `no pong/inbound within 60s` 主动 terminate。
 - 通过：`curl http://127.0.0.1:18797/status`，Octo `octo-studio-cc` connected，Feishu shared WS connected，`activeRuns=[]`。
 - 通过：前端 `http://127.0.0.1:5176` 与后端 `http://127.0.0.1:3762/api/channel-connectors/status` 可访问。
 
@@ -34,12 +40,12 @@
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
 - GMN provider 可作为视觉测试源，但未设为所有 App scope 默认 active provider；测试时需显式选择 `gpt-5.5`、`gmn-vision` 或 `gmn/gpt-5.5`。
-- Feishu 官方 SDK 仍可能因网络或平台 pong 延迟自行 reconnect；当前策略降低误判和 daemon 强制重启频率，不承诺消除平台级重连日志。
+- Feishu 官方 SDK 仍可能因网络或平台关闭连接而 reconnect；当前策略不再由 Studio 默认 ping timeout 主动 terminate。
 - Codex Agent 图片已走原生 `--image`；Claude Code / OpenCode 视觉输入、视频理解、OCR、语音/STT/TTS 和 Octo 大文件 COS STS 直传仍待迁移。
-- 本次真实外部 Feishu/Octo 图片是在补 `agent.visual.input` 前发送的；需要用户再发一张图，用新事件复验 live 链路。
+- Feishu 新图片未在本轮日志里看到最新入站；当前可确认的是 Octo 新图已入站并记录 `agent.visual.input`，Feishu 长连接已过旧 timeout 窗口且未再主动掉线。
 
 ## 下一步
 
-1. 用户在 Feishu/Octo 再发一张图片后，复验 live 事件中是否出现 `agent.visual.input`，并确认视觉模型回复。
+1. 用户在 Feishu 再发一张图片后，复验 live 事件中是否出现 `agent.visual.input`，并确认视觉模型回复。
 2. 继续按 CC Go 迁移 Claude Code / OpenCode 视觉输入、OCR、语音/STT/TTS、大文件 COS STS 和更多平台 adapter。
 3. 继续精修 Feishu card/menu 与 Octo 弱富交互，保持 IM 命令和 Studio UI 共用同一 typed 状态。

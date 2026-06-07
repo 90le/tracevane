@@ -57,6 +57,8 @@ export interface ChannelConnectorGatewayModel {
   id: string;
   aliases: string[];
   providerIds: string[];
+  healthyProviderIds?: string[];
+  openCircuitProviderIds?: string[];
   features: {
     text?: boolean;
     streaming?: boolean;
@@ -495,6 +497,8 @@ export async function listChannelConnectorGatewayModelCatalog(
       id,
       aliases: normalizeGatewayStringArray(item.aliases),
       providerIds: normalizeGatewayStringArray(item.providerIds),
+      healthyProviderIds: normalizeGatewayStringArray(item.healthyProviderIds),
+      openCircuitProviderIds: normalizeGatewayStringArray(item.openCircuitProviderIds),
       features: normalizeGatewayModelFeatures(item.features),
     });
   }
