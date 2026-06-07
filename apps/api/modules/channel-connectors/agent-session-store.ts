@@ -138,6 +138,23 @@ export function getChannelConnectorAgentSession(
   return state.sessions[channelConnectorAgentSessionId(lookup)] || null;
 }
 
+export function listChannelConnectorAgentSessionsForConversation(
+  filePath: string,
+  lookup: Pick<ChannelConnectorAgentSessionLookup, "bindingId" | "sessionKey"> & { limit?: number | null },
+): ChannelConnectorAgentSessionRecord[] {
+  const state = readChannelConnectorAgentSessions(filePath);
+  const limit = Number.isFinite(Number(lookup.limit))
+    ? Math.max(1, Math.min(50, Number(lookup.limit)))
+    : 20;
+  return Object.values(state.sessions)
+    .filter((record) => record.bindingId === lookup.bindingId && record.sessionKey === lookup.sessionKey)
+    .sort((left, right) => {
+      const byUpdatedAt = Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
+      return byUpdatedAt || left.id.localeCompare(right.id);
+    })
+    .slice(0, limit);
+}
+
 export function upsertChannelConnectorAgentSession(
   filePath: string,
   update: ChannelConnectorAgentSessionUpdate,

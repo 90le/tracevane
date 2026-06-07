@@ -30,6 +30,7 @@ import {
 } from "./agent-runner.js";
 import {
   getChannelConnectorAgentSession,
+  listChannelConnectorAgentSessionsForConversation,
   upsertChannelConnectorAgentSession,
   type ChannelConnectorAgentSessionRecord,
 } from "./agent-session-store.js";
@@ -1573,6 +1574,24 @@ function buildFeishuCommandCard(input: {
     model: current.model,
     workDir: current.workDir,
   });
+  const sessionList = listChannelConnectorAgentSessionsForConversation(agentSessionsPath(input.config), {
+    bindingId: input.binding.id,
+    sessionKey: input.sessionKey,
+    limit: 20,
+  }).map((record) => ({
+    id: record.id,
+    projectId: record.projectId,
+    agent: record.agent,
+    model: record.model,
+    workDir: record.workDir,
+    codexThreadId: record.codexThreadId,
+    turnCount: record.turnCount,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    lastMessageId: record.lastMessageId,
+    lastStatus: record.lastStatus,
+    active: session ? record.id === session.id : false,
+  }));
   const history = getChannelConnectorConversationHistory(conversationHistoryPath(input.config), {
     bindingId: input.binding.id,
     sessionKey: input.sessionKey,
@@ -1606,6 +1625,7 @@ function buildFeishuCommandCard(input: {
       lastMessageId: null,
       updatedAt: null,
     },
+    sessionList,
     history,
     selectedSectionId: input.selectedSectionId,
     selectedViewId: input.selectedViewId,

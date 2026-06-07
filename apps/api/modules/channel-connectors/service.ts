@@ -98,7 +98,10 @@ import {
   evaluateChannelConnectorGovernance,
 } from "./governance-policy.js";
 import { getChannelConnectorSessionControl } from "./session-control-store.js";
-import { getChannelConnectorAgentSession } from "./agent-session-store.js";
+import {
+  getChannelConnectorAgentSession,
+  listChannelConnectorAgentSessionsForConversation,
+} from "./agent-session-store.js";
 import { getChannelConnectorConversationHistory } from "./conversation-history-store.js";
 
 const execFileAsync = promisify(execFile);
@@ -1264,10 +1267,11 @@ function commandSurfaceReadOnlyState(input: {
   sessionKey: string | null | undefined;
 }): {
   agentSession: ChannelConnectorCommandSurface["session"];
+  sessionList: ChannelConnectorCommandSurface["sessionList"];
   history: ChannelConnectorCommandSurface["history"];
 } {
   const sessionKey = normalizeString(input.sessionKey);
-  if (!sessionKey) return { agentSession: null, history: [] };
+  if (!sessionKey) return { agentSession: null, sessionList: [], history: [] };
   const current = resolveChannelConnectorEffectiveProject(input.runtimeConfig, input.project, input.control);
   const session = getChannelConnectorAgentSession(commandSurfaceAgentSessionsPath(input.runtimeConfig), {
     bindingId: input.binding.id,
@@ -1277,6 +1281,24 @@ function commandSurfaceReadOnlyState(input: {
     model: current.model,
     workDir: current.workDir,
   });
+  const sessionList = listChannelConnectorAgentSessionsForConversation(commandSurfaceAgentSessionsPath(input.runtimeConfig), {
+    bindingId: input.binding.id,
+    sessionKey,
+    limit: 20,
+  }).map((record) => ({
+    id: record.id,
+    projectId: record.projectId,
+    agent: record.agent,
+    model: record.model,
+    workDir: record.workDir,
+    codexThreadId: record.codexThreadId,
+    turnCount: record.turnCount,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    lastMessageId: record.lastMessageId,
+    lastStatus: record.lastStatus,
+    active: session ? record.id === session.id : false,
+  }));
   const history = getChannelConnectorConversationHistory(commandSurfaceHistoryPath(input.runtimeConfig), {
     bindingId: input.binding.id,
     sessionKey,
@@ -1304,6 +1326,7 @@ function commandSurfaceReadOnlyState(input: {
       lastMessageId: null,
       updatedAt: null,
     },
+    sessionList,
     history,
   };
 }
@@ -1421,6 +1444,7 @@ export function createChannelConnectorsService(
       sessionKey: request.sessionKey,
       models,
       agentSession: readOnlyState.agentSession,
+      sessionList: readOnlyState.sessionList,
       history: readOnlyState.history,
       selectedSectionId: request.section,
       selectedViewId: request.view,
@@ -1585,6 +1609,7 @@ export function createChannelConnectorsService(
       sessionKey,
       models: commandModels,
       agentSession: readOnlyState.agentSession,
+      sessionList: readOnlyState.sessionList,
       history: readOnlyState.history,
       selectedSectionId,
       selectedViewId,

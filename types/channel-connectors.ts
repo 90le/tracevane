@@ -313,6 +313,20 @@ export interface ChannelConnectorCommandSurface {
     lastMessageId: string | null;
     updatedAt: string | null;
   } | null;
+  sessionList: Array<{
+    id: string;
+    projectId: string;
+    agent: ChannelConnectorAgentId;
+    model: string | null;
+    workDir: string;
+    codexThreadId: string | null;
+    turnCount: number;
+    createdAt: string;
+    updatedAt: string;
+    lastMessageId: string | null;
+    lastStatus: string | null;
+    active: boolean;
+  }>;
   history: Array<{
     role: "user" | "assistant";
     text: string | null;

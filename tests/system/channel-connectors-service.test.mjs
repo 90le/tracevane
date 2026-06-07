@@ -2813,6 +2813,36 @@ test("native Channel Connectors command surface renders text and Feishu card act
       lastMessageId: "msg-3",
       updatedAt: "2026-06-06T08:01:00.000Z",
     },
+    sessionList: [
+      {
+        id: "codex-session-1",
+        projectId: "codex-main",
+        agent: "codex",
+        model: "gpt-5",
+        workDir: codexProject.workDir,
+        codexThreadId: "thread-codex-1",
+        turnCount: 3,
+        createdAt: "2026-06-06T08:00:00.000Z",
+        updatedAt: "2026-06-06T08:01:00.000Z",
+        lastMessageId: "msg-3",
+        lastStatus: "ok",
+        active: true,
+      },
+      {
+        id: "claude-session-1",
+        projectId: "claude-main",
+        agent: "claude-code",
+        model: "claude-sonnet",
+        workDir: claudeProject.workDir,
+        codexThreadId: null,
+        turnCount: 1,
+        createdAt: "2026-06-06T07:58:00.000Z",
+        updatedAt: "2026-06-06T07:59:00.000Z",
+        lastMessageId: "msg-claude-1",
+        lastStatus: "ok",
+        active: false,
+      },
+    ],
     history: [
       {
         role: "user",
@@ -2878,6 +2908,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(sessionCardRaw, /Studio Session/);
   assert.match(sessionCardRaw, /act:\/status/);
   assert.match(sessionCardRaw, /nav:\/current/);
+  assert.match(sessionCardRaw, /nav:\/list/);
   assert.match(sessionCardRaw, /nav:\/history/);
   assert.match(sessionCardRaw, /act:\/new/);
   assert.match(sessionCardRaw, /act:\/reset/);
@@ -2892,13 +2923,34 @@ test("native Channel Connectors command surface renders text and Feishu card act
     selectedSectionId: "session",
     selectedViewId: "current",
     agentSession: surface.session,
+    sessionList: surface.sessionList,
     history: surface.history,
   });
   const currentCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(currentSurface));
   assert.match(currentCardRaw, /Studio Current Session/);
   assert.match(currentCardRaw, /thread-codex-1/);
+  assert.match(currentCardRaw, /nav:\/list/);
   assert.match(currentCardRaw, /nav:\/history/);
   assert.match(currentCardRaw, /"action":"nav:\/help"/);
+
+  const sessionListSurface = buildChannelConnectorCommandSurface({
+    config: runtimeConfig,
+    project: codexProject,
+    binding,
+    sessionKey: "dmwork:dm:admin-1",
+    selectedSectionId: "session",
+    selectedViewId: "sessions",
+    agentSession: surface.session,
+    sessionList: surface.sessionList,
+    history: surface.history,
+  });
+  const sessionListCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(sessionListSurface));
+  assert.match(sessionListCardRaw, /Studio Agent Sessions/);
+  assert.match(sessionListCardRaw, /codex-main/);
+  assert.match(sessionListCardRaw, /claude-main/);
+  assert.match(sessionListCardRaw, /act:\/switch 1/);
+  assert.match(sessionListCardRaw, /nav:\/current/);
+  assert.match(sessionListCardRaw, /nav:\/history/);
 
   const historySurface = buildChannelConnectorCommandSurface({
     config: runtimeConfig,
@@ -2908,6 +2960,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
     selectedSectionId: "session",
     selectedViewId: "history",
     agentSession: surface.session,
+    sessionList: surface.sessionList,
     history: surface.history,
   });
   const historyCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(historySurface));
@@ -2915,6 +2968,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(historyCardRaw, /上一轮问题/);
   assert.match(historyCardRaw, /file, note\.txt/);
   assert.match(historyCardRaw, /nav:\/current/);
+  assert.match(historyCardRaw, /nav:\/list/);
   assert.match(historyCardRaw, /"action":"nav:\/help"/);
 
   const agentPickerSurface = buildChannelConnectorCommandSurface({
@@ -3099,6 +3153,14 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.equal(historyNavPayload.command, "/history");
   assert.equal(historyNavPayload.targetSectionId, "session");
   assert.equal(historyNavPayload.targetViewId, "history");
+  const sessionListNavPayload = extractChannelConnectorSurfaceActionPayload("nav:/list");
+  assert.equal(sessionListNavPayload.command, "/list");
+  assert.equal(sessionListNavPayload.targetSectionId, "session");
+  assert.equal(sessionListNavPayload.targetViewId, "sessions");
+  const sessionSwitchPayload = extractChannelConnectorSurfaceActionPayload("act:/switch 1");
+  assert.equal(sessionSwitchPayload.command, "/switch 1");
+  assert.equal(sessionSwitchPayload.targetSectionId, "session");
+  assert.equal(sessionSwitchPayload.targetViewId, "sessions");
 });
 
 test("native Channel Connectors Feishu webhook parses live envelopes and reuses command router", async () => {
@@ -3709,6 +3771,87 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.match(JSON.stringify(historyCardAction.feishuResponse.card.data), /Studio Session History/);
   assert.match(JSON.stringify(historyCardAction.feishuResponse.card.data), /历史里的真实用户消息/);
   assert.match(JSON.stringify(historyCardAction.feishuResponse.card.data), /历史里的真实助手回复/);
+
+  const feishuAgentSessionsPath = path.join(resolveChannelConnectorsPaths(config).stateDir, "channel-sessions.json");
+  upsertChannelConnectorAgentSession(feishuAgentSessionsPath, {
+    bindingId: "feishu-main",
+    projectId: "feishu-codex",
+    sessionKey: "feishu:oc_chat:ou_admin",
+    agent: "codex",
+    model: "gpt-5",
+    workDir: path.join(root, "codex-work"),
+    codexThreadId: "codex-thread-1",
+    messageId: "om_session_codex",
+    status: "ok",
+    now: new Date("2026-06-06T08:00:15.000Z"),
+  });
+  upsertChannelConnectorAgentSession(feishuAgentSessionsPath, {
+    bindingId: "feishu-main",
+    projectId: "feishu-claude",
+    sessionKey: "feishu:oc_chat:ou_admin",
+    agent: "claude-code",
+    model: "claude-sonnet",
+    workDir: path.join(root, "claude-work"),
+    codexThreadId: null,
+    messageId: "om_session_claude",
+    status: "ok",
+    now: new Date("2026-06-06T08:00:20.000Z"),
+  });
+  const sessionListCardAction = await service.dispatchFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "card.action.trigger",
+      app_id: "cli_test",
+      event_id: "evt_card_sessions",
+      token: "verify-token",
+    },
+    event: {
+      operator: { open_id: "ou_admin" },
+      context: { open_chat_id: "oc_chat", open_message_id: "om_card_sessions" },
+      action: {
+        value: {
+          action: "nav:/list",
+          command: "/list",
+          binding_id: "feishu-main",
+        },
+      },
+    },
+  });
+  assert.equal(sessionListCardAction.accepted, true);
+  assert.equal(sessionListCardAction.commandAction.command, "/list");
+  assert.equal(sessionListCardAction.commandAction.commandResult.action, "list");
+  assert.match(JSON.stringify(sessionListCardAction.feishuResponse.card.data), /Studio Agent Sessions/);
+  assert.match(JSON.stringify(sessionListCardAction.feishuResponse.card.data), /feishu-claude/);
+  assert.match(JSON.stringify(sessionListCardAction.feishuResponse.card.data), /act:\/switch 1/);
+
+  const sessionSwitchCardAction = await service.dispatchFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "card.action.trigger",
+      app_id: "cli_test",
+      event_id: "evt_card_switch_session",
+      token: "verify-token",
+    },
+    event: {
+      operator: { open_id: "ou_admin" },
+      context: { open_chat_id: "oc_chat", open_message_id: "om_card_sessions" },
+      action: {
+        value: {
+          action: "act:/switch 1",
+          command: "/switch 1",
+          binding_id: "feishu-main",
+        },
+      },
+    },
+  });
+  assert.equal(sessionSwitchCardAction.accepted, true);
+  assert.equal(sessionSwitchCardAction.commandAction.command, "/switch 1");
+  assert.equal(sessionSwitchCardAction.commandAction.commandResult.ok, true);
+  assert.equal(sessionSwitchCardAction.commandAction.surface.current.projectId, "feishu-claude");
+  assert.equal(sessionSwitchCardAction.commandAction.surface.current.model, "claude-sonnet");
+  assert.match(sessionSwitchCardAction.commandAction.commandResult.replyText, /已切换本 IM 会话 Agent session/);
+  assert.match(JSON.stringify(sessionSwitchCardAction.feishuResponse.card.data), /Studio Agent Sessions/);
+  assert.match(JSON.stringify(sessionSwitchCardAction.feishuResponse.card.data), /"type":"primary"/);
 
   const modelPickerCardAction = await service.dispatchFeishuWebhook({
     schema: "2.0",

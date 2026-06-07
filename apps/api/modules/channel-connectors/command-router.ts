@@ -10,6 +10,8 @@ import { extractOctoContent } from "./octo-adapter.js";
 import {
   clearChannelConnectorAgentSessionsForConversation,
   getChannelConnectorAgentSession,
+  listChannelConnectorAgentSessionsForConversation,
+  type ChannelConnectorAgentSessionRecord,
 } from "./agent-session-store.js";
 import {
   clearChannelConnectorSessionControl,
@@ -182,6 +184,9 @@ function isStudioCommand(name: string): boolean {
     "cmd",
     "status",
     "current",
+    "list",
+    "sessions",
+    "switch",
     "history",
     "agent",
     "agents",
@@ -219,6 +224,8 @@ function commandHelpText(): string {
     "Studio Channel Commands",
     "/status - 查看当前 Agent、模型和权限",
     "/current - 查看当前 IM 会话、Agent session 和续接状态",
+    "/list - 列出当前 IM 会话已知 Agent sessions",
+    "/switch <序号|sessionId前缀> - 切换到本 IM 会话已知 Agent session",
     "/history - 查看当前 IM 会话最近上下文",
     "/agent - 列出可切换 Agent",
     "/agent <序号|id|codex|claude-code|opencode> - 切换本会话 Agent",
@@ -622,6 +629,53 @@ function historyCommandText(context: ChannelConnectorCommandContext): string {
   return lines.join("\n\n");
 }
 
+function sessionListText(
+  records: ChannelConnectorAgentSessionRecord[],
+  activeSessionId: string | null,
+): string {
+  if (!records.length) {
+    return [
+      "当前 IM 会话还没有本地 Agent session。",
+      "发送普通消息后，Studio 会保存可续接记录；用法：/switch <序号|sessionId前缀>。",
+    ].join("\n");
+  }
+  const lines = ["Studio Agent Sessions"];
+  records.forEach((record, index) => {
+    const marker = record.id === activeSessionId ? ">" : " ";
+    lines.push([
+      `${marker} ${index + 1}. ${record.projectId} (${record.agent})`,
+      `   model=${record.model || "default"} turns=${record.turnCount} status=${record.lastStatus || "-"}`,
+      `   updated=${record.updatedAt}`,
+      `   workDir=${record.workDir}`,
+    ].join("\n"));
+  });
+  lines.push("用法：/switch <序号|sessionId前缀>");
+  return lines.join("\n");
+}
+
+function resolveSessionSwitchTarget(
+  records: ChannelConnectorAgentSessionRecord[],
+  input: string,
+): {
+  record: ChannelConnectorAgentSessionRecord | null;
+  error: string | null;
+} {
+  const target = normalizeString(input);
+  if (!target) return { record: null, error: "用法：/switch <序号|sessionId前缀>" };
+  const index = Number(target);
+  if (Number.isInteger(index)) {
+    if (index >= 1 && index <= records.length) return { record: records[index - 1] || null, error: null };
+    return { record: null, error: `没有第 ${index} 个 Agent session。` };
+  }
+  const lower = target.toLowerCase();
+  const exact = records.find((record) => record.id.toLowerCase() === lower);
+  if (exact) return { record: exact, error: null };
+  const matches = records.filter((record) => record.id.toLowerCase().startsWith(lower));
+  if (matches.length === 1) return { record: matches[0] || null, error: null };
+  if (matches.length > 1) return { record: null, error: `sessionId 前缀匹配到 ${matches.length} 个记录，请输入更长前缀。` };
+  return { record: null, error: `未找到 Agent session：${target}` };
+}
+
 export async function handleChannelConnectorCommand(
   context: ChannelConnectorCommandContext,
 ): Promise<ChannelConnectorCommandResult> {
@@ -650,6 +704,7 @@ export async function handleChannelConnectorCommand(
       "mode",
       "permission",
       "permissions",
+      "switch",
       "reset",
       "new",
       "yolo",
@@ -729,6 +784,71 @@ export async function handleChannelConnectorCommand(
 
   if (name === "status") return handleStatus(context);
   if (name === "current") return handleCurrent(context);
+  if (name === "list" || name === "sessions" || name === "switch") {
+    const activeSession = getChannelConnectorAgentSession(context.agentSessionsPath, {
+      bindingId: context.binding.id,
+      projectId: currentProject.id,
+      sessionKey: context.sessionKey,
+      agent: currentProject.agent,
+      model: currentProject.model,
+      workDir: currentProject.workDir,
+    });
+    const records = listChannelConnectorAgentSessionsForConversation(context.agentSessionsPath, {
+      ...lookup,
+      limit: 20,
+    });
+    if (name === "list" || name === "sessions") {
+      return {
+        handled: true,
+        command: name,
+        action: "list",
+        ok: true,
+        control: currentControl,
+        replyText: sessionListText(records, activeSession?.id || null),
+        passthroughText: null,
+      };
+    }
+    const target = resolveSessionSwitchTarget(records, args.join(" "));
+    if (!target.record) {
+      return {
+        handled: true,
+        command: name,
+        action: "list",
+        ok: false,
+        control: currentControl,
+        replyText: `${target.error || "未找到 Agent session。"}\n\n${sessionListText(records, activeSession?.id || null)}`,
+        passthroughText: null,
+      };
+    }
+    const targetProject = context.config.projects.find((project) => project.id === target.record?.projectId) || null;
+    if (!targetProject) {
+      return {
+        handled: true,
+        command: name,
+        action: "set",
+        ok: false,
+        control: currentControl,
+        replyText: `Agent session 对应的 Profile 已不存在：${target.record.projectId}`,
+        passthroughText: null,
+      };
+    }
+    const control = upsertChannelConnectorSessionControl(context.controlsPath, {
+      ...lookup,
+      activeProjectId: targetProject.id,
+      model: target.record.model,
+      workDir: target.record.workDir,
+      lastCommand: parsed.raw,
+    });
+    return {
+      handled: true,
+      command: name,
+      action: "set",
+      ok: true,
+      control,
+      replyText: `已切换本 IM 会话 Agent session：${target.record.projectId} · ${target.record.turnCount} turns。`,
+      passthroughText: null,
+    };
+  }
   if (name === "history") {
     return {
       handled: true,

@@ -39,7 +39,7 @@
 - 已完成：F3f Feishu ingress + outbound contract：`/api/channel-connectors/adapters/feishu/webhook` 支持 URL verification、card action、bot menu、message receive，`transport-smoke` 支持 tenant token cache、send message、patch card；message webhook 默认可把 command-router 回复发回 Feishu。
 - 已完成：F3f Feishu daemon 长连接：使用官方 SDK `WSClient` / `EventDispatcher` 接 `im.message.receive_v1`、`card.action.trigger`、`application.bot.menu_v6`；按 CC 约束同一 Feishu App 多 binding 共享单条 WS；支持 chatId 过滤、thread/root 字段保留、command-router 回复和 Agent runner 回包；启动后 0 入站快速续连覆盖假 ready。
 - 已完成：F3f live 闭环：本地用户配置写入 Feishu binding、tenant token cache 验证通过、callback verification 通过、错误 verification token 不回显 challenge、systemd `WorkingDirectory` 模板修复、daemon active/enabled、真实 `/status`/`/help` 入站并 `replySent=true`；CLI runner 补用户级 PATH fallback，覆盖 systemd 下找不到 `codex`；仓库只记录脱敏状态。
-- 已完成：Feishu card/menu/progress loop：参考 CC `renderHelpGroupCard` / `renderCurrentCard` / `renderHistoryCard` / `ListItem` / `ButtonsEqual` 结构，`/help` 为主菜单 Dashboard，`/help <section>` 为分组菜单，`/current`/`/history` 为真实信息子卡，`/model`/`/agent`/`/mode` 等为可操作子卡；文本 slash 与卡片点击共用 command-router，导航动作刷新卡片。
+- 已完成：Feishu card/menu/progress loop：参考 CC `renderHelpGroupCard` / `renderCurrentCard` / `renderHistoryCard` / `renderListCard` / `ListItem` / `ButtonsEqual` 结构，`/help` 为主菜单 Dashboard，`/help <section>` 为分组菜单，`/current`/`/history`/`/list` 为真实信息子卡，`/switch <序号|sessionId前缀>` 可切换当前 IM session 已知 Agent session，`/model`/`/agent`/`/mode` 等为可操作子卡；文本 slash 与卡片点击共用 command-router，导航动作刷新卡片。
 - 已完成：Feishu outbound 稳定性：文本、卡片、patch、reaction、成员列表等 JSON API 对短暂 503/网络错误执行 CC 风格 transient retry，并把实际 requestCount 写入诊断。
 - 已完成：Codex 工具调用链路按 CC/cc-switch 对齐：resume 参数顺序、Responses -> Chat 工具历史、reasoning/tool placeholder、JSON canonical；隔离 `CODEX_HOME` 真实 smoke 验证 `glm-5` 工具调用返回 200，不再触发 BigModel 1213。
 - 已完成：真实 Feishu 客户端三工具调用复测：长连接入站、reaction、Progress card send/patch、工具步骤和最终回复成功；Gateway 最新 `/v1/responses` 请求无 1213。
@@ -59,4 +59,4 @@
 - 已完成：F5 基础治理：allowlist/admin、banned words、rate limit 覆盖 Octo/Feishu daemon 与 HTTP dispatch/action。
 - 已完成：F4 飞书群成员拉取：群聊 Agent 分支分页拉取 chat members 并注入 group context，失败只记日志不阻断。
 - 已完成：平台配置 UI：Octo/Feishu binding 凭证 metadata 可在 Channel Connectors 页面编辑并直接执行连接测试。
-- 下一步：继续迁移 CC/OpenClaw 视觉输入/OCR、语音/STT/TTS、文件出站和多平台 adapter；Feishu 菜单继续补会话列表、更多设置型子卡后再 Studio 化精修。
+- 下一步：继续迁移 CC/OpenClaw 视觉输入/OCR、语音/STT/TTS、文件出站和多平台 adapter；Feishu 菜单继续补更多设置型子卡和 Studio 化精修。
