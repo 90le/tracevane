@@ -125,6 +125,7 @@ function agentResult(input: {
   replyText: string | null;
   durationMs: number;
   ok: boolean;
+  status?: ChannelConnectorAgentTurnResult["status"];
   error?: string | null;
   progressEvents: ChannelConnectorAgentProgressEvent[];
   threadId: string | null;
@@ -133,7 +134,7 @@ function agentResult(input: {
   return {
     attempted: true,
     ok: input.ok,
-    status: input.ok ? "completed" : "failed",
+    status: input.status || (input.ok ? "completed" : "failed"),
     agent: "codex",
     model: input.model,
     command: "codex app-server",
@@ -381,6 +382,8 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
     }));
     const progressEvents: ChannelConnectorAgentProgressEvent[] = [];
     let replyText = "";
+    let terminalStatus: ChannelConnectorAgentTurnResult["status"] = "completed";
+    let terminalError: string | null = null;
     const turnResponse = await this.request("turn/start", {
       threadId: this.threadId,
       clientUserMessageId: input.messageId,
@@ -445,24 +448,36 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
           if (method !== "turn/completed") return;
           const completedTurn = isRecord(params.turn) ? params.turn : {};
           const status = normalizeString(completedTurn.status);
+          const cancelled = status === "cancelled" || status === "interrupted";
           const event = progressEvent({
-            type: status === "failed" ? "failed" : "completed",
+            type: status === "failed" || cancelled ? "failed" : "completed",
             rawType: method,
             text: `Codex app-server turn ${status || "completed"}`,
           });
           progressEvents.push(event);
           input.onProgress?.(event);
-          if (status === "failed") reject(new Error("Codex app-server turn failed."));
-          else resolve();
+          if (status === "failed") {
+            terminalStatus = "failed";
+            terminalError = "Codex app-server turn failed.";
+            reject(new Error(terminalError));
+            return;
+          }
+          if (cancelled) {
+            terminalStatus = "cancelled";
+            terminalError = `Codex app-server turn ${status}.`;
+          }
+          resolve();
         };
       });
       return agentResult({
         messageId: input.messageId,
         model: this.model,
         cwd: this.cwd,
-        replyText,
+        replyText: terminalStatus === "completed" ? replyText : null,
         durationMs: Date.now() - startedAt,
-        ok: true,
+        ok: terminalStatus === "completed",
+        status: terminalStatus,
+        error: terminalError,
         progressEvents,
         threadId: this.threadId,
         resumed: true,

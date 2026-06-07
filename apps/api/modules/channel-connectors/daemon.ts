@@ -1727,6 +1727,19 @@ function renderAgentFailureReply(error: string | null): string {
   });
 }
 
+function renderAgentStoppedReply(error: string | null): string {
+  return renderPlainProgressMessage({
+    icon: progressKindIcon("completed"),
+    title: "Agent 已停止",
+    body: shortMessage(error || "用户已请求停止当前运行。"),
+  });
+}
+
+function renderAgentTerminalFailureReply(agent: ChannelConnectorAgentTurnResult): string {
+  if (agent.status === "cancelled") return renderAgentStoppedReply(agent.error);
+  return renderAgentFailureReply(agent.error);
+}
+
 function feishuReactionEmoji(binding: ChannelConnectorRuntimeBinding): string | null {
   const metadata = metadataRecord(binding);
   const configured = normalizeString(metadata.reactionEmoji)
@@ -2351,9 +2364,11 @@ function pushFeishuProgressCardEvent(
 function ensureFeishuProgressCardFailure(
   cardState: FeishuProgressCardState,
   error: string | null,
+  status: ChannelConnectorAgentTurnResult["status"] = "failed",
 ): void {
   cardState.status = "failed";
-  const text = shortMessage(error || "Agent 运行失败", 520);
+  const stopped = status === "cancelled";
+  const text = shortMessage(error || (stopped ? "用户已请求停止当前运行。" : "Agent 运行失败"), 520);
   if (!text || cardState.latestError === text) return;
   const fingerprint = `error:final:${text}`;
   if (cardState.seenFingerprints.has(fingerprint)) return;
@@ -2361,7 +2376,7 @@ function ensureFeishuProgressCardFailure(
   cardState.seenFingerprints.add(fingerprint);
   cardState.entries.push({
     kind: "error",
-    title: "失败",
+    title: stopped ? "已停止" : "失败",
     text,
     checkedAt: new Date().toISOString(),
     fingerprint,
@@ -3992,7 +4007,7 @@ async function dispatchOctoMessage(input: {
     }
   }
   if (transport && agent.ok === false) {
-    const replyPlan = renderOctoTextReply(message, renderAgentFailureReply(agent.error));
+    const replyPlan = renderOctoTextReply(message, renderAgentTerminalFailureReply(agent));
     if (replyPlan) {
       const result = await sendOctoTextReply(transport, replyPlan);
       replySent = result.ok === true;
@@ -4763,7 +4778,7 @@ async function dispatchFeishuParsedEvent(input: {
   }
   if (channelConnectorStreamMessagesEnabled(control, progressDefaults) && (progressCardState.messageId || progressCardState.entries.length > 0)) {
     if (agent.ok === false) {
-      ensureFeishuProgressCardFailure(progressCardState, agent.error);
+      ensureFeishuProgressCardFailure(progressCardState, agent.error, agent.status);
     } else if (agent.ok === true) {
       completeFeishuProgressCard(progressCardState);
     }
@@ -4885,7 +4900,7 @@ async function dispatchFeishuParsedEvent(input: {
   const replyContent = agent.ok === true && outboundReplyText
     ? outboundReplyText
     : agent.ok === false && !progressCardState.messageId
-      ? renderAgentFailureReply(agent.error)
+      ? renderAgentTerminalFailureReply(agent)
       : null;
   if (replyContent) {
     const preparedReply = agent.ok === true

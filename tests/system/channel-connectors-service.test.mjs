@@ -6528,6 +6528,251 @@ test("native Channel Connectors daemon runs Codex app-server when persistent ses
   }
 });
 
+test("native Channel Connectors daemon stops Codex app-server persistent turns via /stop", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+  });
+  const fakeBin = path.join(root, "fake-bin");
+  const capturePath = path.join(root, "codex-appserver-stop-capture.jsonl");
+  fs.mkdirSync(fakeBin, { recursive: true });
+  const fakeCodexPath = path.join(fakeBin, "codex");
+  fs.writeFileSync(fakeCodexPath, [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    "let nextTurn = 1;",
+    "function emit(value) { process.stdout.write(`${JSON.stringify(value)}\\n`); }",
+    "function record(value) { fs.appendFileSync(process.env.STUDIO_TEST_CODEX_CAPTURE, `${JSON.stringify(value)}\\n`); }",
+    "if (process.argv[2] !== 'app-server') {",
+    "  record({ mode: 'fallback-exec', argv: process.argv.slice(2) });",
+    "  process.exit(23);",
+    "}",
+    "process.stdin.setEncoding('utf8');",
+    "process.stdin.on('data', (chunk) => {",
+    "  for (const raw of chunk.split(/\\r?\\n/)) {",
+    "    if (!raw.trim()) continue;",
+    "    const message = JSON.parse(raw);",
+    "    record({ mode: 'app-server', method: message.method, id: message.id || null, params: message.params || null, codexHome: process.env.CODEX_HOME });",
+    "    if (message.method === 'initialize') {",
+    "      emit({ id: message.id, result: { userAgent: 'fake-codex-app-server', codexHome: process.env.CODEX_HOME || '', platformFamily: 'unix', platformOs: 'linux' } });",
+    "    } else if (message.method === 'initialized') {",
+    "      // notification",
+    "    } else if (message.method === 'thread/start') {",
+    "      emit({ id: message.id, result: { thread: { id: 'thread-stop-1', sessionId: 'thread-stop-1', turns: [], cwd: message.params.cwd }, model: message.params.model, modelProvider: 'studio_gateway', cwd: message.params.cwd, approvalPolicy: message.params.approvalPolicy, sandbox: { type: 'readOnly', networkAccess: false } } });",
+    "      emit({ method: 'thread/started', params: { thread: { id: 'thread-stop-1' } } });",
+    "    } else if (message.method === 'turn/start') {",
+    "      const turnId = `turn-${nextTurn++}`;",
+    "      emit({ id: message.id, result: { turn: { id: turnId, status: 'running', items: [] } } });",
+    "      setTimeout(() => emit({ method: 'turn/started', params: { threadId: message.params.threadId, turn: { id: turnId, status: 'running' } } }), 10);",
+    "    } else if (message.method === 'turn/interrupt') {",
+    "      emit({ id: message.id, result: {} });",
+    "      setTimeout(() => emit({ method: 'turn/completed', params: { threadId: message.params.threadId, turn: { id: message.params.turnId, status: 'cancelled', items: [], error: null } } }), 10);",
+    "    } else {",
+    "      emit({ id: message.id, error: { code: -32601, message: `unexpected ${message.method}` } });",
+    "    }",
+    "  }",
+    "});",
+    "setInterval(() => {}, 1000);",
+    "",
+  ].join("\n"), { mode: 0o755 });
+
+  let sendInbound = null;
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  await new Promise((resolve, reject) => {
+    wss.once("listening", resolve);
+    wss.once("error", reject);
+  });
+  const wsAddress = wss.address();
+  assert.ok(wsAddress && typeof wsAddress === "object");
+  const wsUrl = `ws://127.0.0.1:${wsAddress.port}/ws`;
+  wss.on("connection", (socket) => {
+    let connected = false;
+    socket.on("message", (data) => {
+      if (connected) return;
+      const packet = decodeOctoConnectPacket(Buffer.isBuffer(data) ? data : Buffer.from(data));
+      connected = true;
+      const serverKey = createOctoX25519KeyPair();
+      const salt = "fedcba0987654321";
+      socket.send(encodeOctoConnackPacket({
+        serverPublicKeyBase64: serverKey.publicKeyBase64,
+        salt,
+      }));
+      sendInbound = (messageId, content) => {
+        if (socket.readyState !== 1) throw new Error("Octo fake socket is not open");
+        socket.send(encodeOctoRecvPacket({
+          serverPrivateKey: serverKey.privateKey,
+          clientPublicKeyBase64: packet.clientPublicKeyBase64,
+          salt,
+          messageId,
+          messageSeq: messageId - 4100,
+          fromUid: "persistent-stop-user",
+          channelId: "persistent-stop-user",
+          channelType: 1,
+          payload: {
+            type: 1,
+            content,
+          },
+        }));
+      };
+    });
+  });
+
+  try {
+    const requests = [];
+    await withServer(async (req, res) => {
+      const chunks = [];
+      req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
+      await new Promise((resolve) => req.on("end", resolve));
+      const bodyRaw = Buffer.concat(chunks).toString("utf8");
+      requests.push({
+        method: req.method,
+        path: req.url,
+        authorization: req.headers.authorization,
+        body: bodyRaw ? JSON.parse(bodyRaw) : {},
+      });
+      res.setHeader("content-type", "application/json");
+      if (req.url === "/v1/models") {
+        res.end(JSON.stringify({ object: "list", data: [{ id: "gpt-5", object: "model" }] }));
+        return true;
+      }
+      if (req.url?.startsWith("/v1/bot/register")) {
+        res.end(JSON.stringify({ robot_id: "robot-stop", im_token: "im-token-stop", ws_url: wsUrl }));
+        return true;
+      }
+      if (req.url === "/v1/bot/typing" || req.url === "/v1/bot/sendMessage" || req.url === "/v1/bot/heartbeat") {
+        res.end(JSON.stringify({ ok: true, message_id: `octo-${requests.length}` }));
+        return true;
+      }
+      return false;
+    }, async (apiUrl) => {
+      const initial = service.getNativeConfig().config;
+      service.saveNativeConfig({
+        config: {
+          ...initial,
+          agentProfiles: [
+            {
+              id: "codex-persistent-stop",
+              name: "Codex Persistent Stop",
+              agent: "codex",
+              model: "gpt-5",
+              workDir: config.projectRoot,
+              permissionMode: "read-only",
+              gatewayEndpoint: `${apiUrl}/v1`,
+              gatewayKeyRef: "studio-gateway-client-key",
+              appProfileRef: "codex",
+            },
+          ],
+          defaultAgentProfileId: "codex-persistent-stop",
+          platformBindings: [
+            {
+              id: "octo-persistent-stop",
+              platform: "octo",
+              accountId: "octo-account",
+              botId: null,
+              displayName: "Octo Persistent Stop",
+              agentProfileId: "codex-persistent-stop",
+              enabled: true,
+              allowlist: [],
+              adminUsers: [],
+              metadata: {
+                apiUrl,
+                botToken: "test-token",
+                wsUrl,
+                agentSessionDriver: "persistent",
+                octoReconnectJitterMs: 0,
+              },
+            },
+          ],
+        },
+      });
+
+      const runtimeConfig = service.getDaemonConfig().config;
+      runtimeConfig.management.port = await findFreePort();
+      const configPath = path.join(root, "daemon-persistent-stop-config.json");
+      fs.mkdirSync(path.dirname(runtimeConfig.paths.log), { recursive: true });
+      fs.writeFileSync(configPath, JSON.stringify(runtimeConfig, null, 2), "utf8");
+
+      const daemonEntry = path.resolve("dist/apps/api/modules/channel-connectors/daemon.js");
+      const child = spawn(process.execPath, [daemonEntry, "--config", configPath], {
+        cwd: path.resolve("."),
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:${process.env.PATH || ""}`,
+          STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+          STUDIO_TEST_CODEX_CAPTURE: capturePath,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stderr = "";
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk.toString("utf8");
+      });
+
+      try {
+        await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const connected = response.body?.octoConnections?.find?.((item) => item.bindingId === "octo-persistent-stop" && item.connected);
+          return connected && sendInbound ? response.body : null;
+        }, 5000);
+
+        sendInbound(4101, "start a long persistent codex turn");
+        await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const activeRun = response.body?.activeRuns?.find?.((item) => item.messageId === "4101" && item.status === "running");
+          return activeRun ? response.body : null;
+        }, 5000);
+
+        sendInbound(4102, "/stop");
+        await waitFor(() => {
+          const capture = fs.existsSync(capturePath)
+            ? fs.readFileSync(capturePath, "utf8").trim().split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line))
+            : [];
+          return capture.some((item) => item.method === "turn/interrupt") ? capture : null;
+        }, 5000);
+
+        const status = await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const run = response.body?.agentRuns?.find?.((item) => item.messageId === "4101" && item.status === "cancelled");
+          const stillActive = response.body?.activeRuns?.some?.((item) => item.messageId === "4101");
+          return run && !stillActive ? response.body : null;
+        }, 5000);
+        assert.equal(status.agentSessionDriver.requestedPersistentBindings[0].effectiveMode, "persistent");
+
+        const capture = fs.readFileSync(capturePath, "utf8")
+          .trim()
+          .split(/\r?\n/)
+          .filter(Boolean)
+          .map((line) => JSON.parse(line));
+        assert.equal(capture.some((item) => item.mode === "fallback-exec"), false);
+        assert.ok(capture.some((item) => item.method === "turn/start"));
+        const interrupt = capture.find((item) => item.method === "turn/interrupt");
+        assert.ok(interrupt);
+        assert.equal(interrupt.params.threadId, "thread-stop-1");
+        assert.equal(interrupt.params.turnId, "turn-1");
+        const replyContents = requests
+          .filter((request) => request.path === "/v1/bot/sendMessage")
+          .map((request) => request.body?.payload?.content || "")
+          .join("\n");
+        assert.match(replyContents, /已请求停止当前 Agent 运行/);
+        assert.match(replyContents, /Agent 已停止/);
+      } finally {
+        child.kill("SIGTERM");
+        await new Promise((resolve) => {
+          child.once("exit", resolve);
+          setTimeout(resolve, 1000);
+        });
+      }
+
+      assert.equal(stderr.trim(), "");
+    });
+  } finally {
+    await new Promise((resolve, reject) => {
+      wss.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
 test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSocket", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

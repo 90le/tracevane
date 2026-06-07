@@ -431,7 +431,9 @@ test("Codex app-server driver stop sends turn interrupt for active turn", async 
   await new Promise((resolve) => setTimeout(resolve, 0));
   await session.stop("manual-stop");
   const result = await run;
-  assert.equal(result.ok, true);
+  assert.equal(result.ok, false);
+  assert.equal(result.status, "cancelled");
+  assert.match(result.error, /cancelled/);
   assert.equal(transport.messages.filter((message) => message.method === "turn/interrupt").length, 1);
   assert.equal(transport.messages.find((message) => message.method === "turn/interrupt").params.turnId, "turn-1");
 });

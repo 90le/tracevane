@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 
 import {
+  CodexAppServerSession,
   JsonLineCodexAppServerTransport,
 } from "../../dist/apps/api/modules/channel-connectors/codex-app-server-driver.js";
 
@@ -125,6 +126,16 @@ function createCollector(transport) {
   };
 }
 
+function captureSentMessages(transport) {
+  const sent = [];
+  const send = transport.send.bind(transport);
+  transport.send = (message) => {
+    sent.push(message);
+    send(message);
+  };
+  return sent;
+}
+
 function request(transport, method, params, timeoutMs = 10_000) {
   const id = request.nextId;
   request.nextId += 1;
@@ -146,6 +157,51 @@ function request(transport, method, params, timeoutMs = 10_000) {
   });
 }
 request.nextId = 1;
+
+function liveAgentTurnRequest(input) {
+  const project = {
+    id: "codex-live-app-server",
+    name: "Codex Live App Server",
+    agent: "codex",
+    model: input.model,
+    workDir: input.cwd,
+    permissionMode: input.permissionMode || "read-only",
+    gatewayEndpoint: input.endpoint,
+    gatewayKeyRef: "studio-gateway-client-key",
+    appProfileRef: "codex",
+    platformBindings: [],
+  };
+  const binding = {
+    id: "live-codex-app-server",
+    platform: "octo",
+    accountId: "live",
+    botId: "live",
+    displayName: "Live Codex App Server",
+    agent: "codex",
+    enabled: true,
+    allowlist: [],
+    adminUsers: [],
+    metadata: {},
+  };
+  return {
+    project,
+    binding,
+    message: {
+      messageId: input.messageId,
+      fromUid: "live-user",
+      channelId: "live-user",
+      channelType: 1,
+      payload: {
+        type: 1,
+        content: input.content,
+      },
+    },
+    sessionKey: "live:dm:codex-app-server",
+    gatewayEndpoint: input.endpoint,
+    gatewayClientKey: input.key,
+    nativeCommand: null,
+  };
+}
 
 async function initializeThread(input) {
   const initialize = await request(input.transport, "initialize", {
@@ -339,5 +395,72 @@ test("live Codex app-server completes native compact through Studio Gateway", {
     }
   } finally {
     transport.close("dispose");
+  }
+});
+
+test("live Codex app-server interrupts an active Studio Gateway turn", {
+  skip: liveSkip("STUDIO_CODEX_APP_SERVER_LIVE_INTERRUPT"),
+}, async () => {
+  const config = liveGatewayConfig();
+  const codexHome = envValue("STUDIO_CODEX_APP_SERVER_LIVE_INTERRUPT_HOME")
+    || "/tmp/openclaw-studio-codex-appserver-live-interrupt-test-home";
+  prepareCodexHome({ codexHome, ...config });
+  const transport = new JsonLineCodexAppServerTransport({
+    cwd: config.cwd,
+    env: {
+      CODEX_HOME: codexHome,
+    },
+  });
+  const collector = createCollector(transport);
+  const sent = captureSentMessages(transport);
+  const session = new CodexAppServerSession({
+    sessionId: "live-interrupt-session",
+    transport,
+    model: config.model,
+    cwd: config.cwd,
+    permissionMode: "yolo",
+    requestTimeoutMs: 20_000,
+  });
+  const abortController = new AbortController();
+
+  try {
+    const run = session.runTurn({
+      mode: "persistent",
+      key: {
+        bindingId: "live-codex-app-server",
+        projectId: "codex-live-app-server",
+        sessionKey: "live:dm:codex-app-server",
+        agent: "codex",
+        model: config.model,
+        workDir: config.cwd,
+        permissionMode: "yolo",
+      },
+      messageId: "studio-live-interrupt",
+      agentTurnRequest: liveAgentTurnRequest({
+        ...config,
+        messageId: "studio-live-interrupt",
+        permissionMode: "yolo",
+        content: "Run this exact shell command now and do not reply until it exits: sleep 60",
+      }),
+      signal: abortController.signal,
+      runOneShot: async () => {
+        throw new Error("live interrupt smoke must not fall back to one-shot");
+      },
+    });
+
+    await collector.waitFor((message) => message.method === "turn/started", 60_000, "live interrupt turn start");
+    abortController.abort();
+    const result = await run;
+    assert.equal(result.status, "cancelled");
+    assert.equal(result.ok, false);
+    assert.match(result.error, /cancelled|interrupted/);
+    assert.ok(sent.some((message) => message.method === "turn/interrupt"));
+    assert.ok(collector.messages.some((message) => {
+      if (message.method !== "turn/completed") return false;
+      const status = normalizeString(message.params?.turn?.status);
+      return status === "cancelled" || status === "interrupted";
+    }));
+  } finally {
+    session.dispose("dispose");
   }
 });
