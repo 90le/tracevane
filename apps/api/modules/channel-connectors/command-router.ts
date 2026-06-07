@@ -159,6 +159,12 @@ interface AgentCommandFile {
 
 type ResolvedCustomCommand = ChannelConnectorCustomCommandRecord | AgentCommandFile;
 
+export interface ChannelConnectorCommandSummary {
+  name: string;
+  description: string;
+  source: "config" | "agent";
+}
+
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -348,6 +354,20 @@ function customCommandsListText(
   lines.push("用法：/<命令名> [参数]。支持 {{1}}、{{2*}}、{{args}} 和默认值占位。");
   lines.push("管理：/commands add <名称> <prompt 模板>；/commands del <名称>。");
   return lines.join("\n");
+}
+
+export function listChannelConnectorCommandSummaries(
+  context: Pick<ChannelConnectorCommandContext, "customCommandsPath">,
+  project: ChannelConnectorRuntimeProject,
+): ChannelConnectorCommandSummary[] {
+  const configuredCommands = listConfiguredCommands(context, project);
+  const seen = new Set(configuredCommands.map((command) => normalizeCustomCommandName(command.name)));
+  const agentCommands = listAgentCommandFiles(project, seen);
+  return [...configuredCommands, ...agentCommands].map((command) => ({
+    name: command.name,
+    description: command.description || firstLine(command.prompt) || "Custom prompt command",
+    source: command.source,
+  }));
 }
 
 function commandsUsageText(): string {

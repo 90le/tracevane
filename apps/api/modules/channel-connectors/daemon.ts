@@ -52,6 +52,7 @@ import {
 } from "./agent-session-store.js";
 import {
   handleChannelConnectorCommand,
+  listChannelConnectorCommandSummaries,
   listChannelConnectorGatewayModels,
   resolveChannelConnectorEffectiveProject,
   type ChannelConnectorUsageSummary,
@@ -3225,6 +3226,9 @@ function buildFeishuCommandCard(input: {
     sessionKey: input.sessionKey,
   });
   const current = resolveChannelConnectorEffectiveProject(input.config, input.project, control);
+  const customCommands = listChannelConnectorCommandSummaries({
+    customCommandsPath: customCommandsPath(input.config),
+  }, current);
   const session = getChannelConnectorAgentSession(agentSessionsPath(input.config), {
     bindingId: input.binding.id,
     projectId: current.id,
@@ -3287,6 +3291,7 @@ function buildFeishuCommandCard(input: {
     },
     sessionList,
     history,
+    customCommands,
     selectedSectionId: input.selectedSectionId,
     selectedViewId: input.selectedViewId,
   });

@@ -77,6 +77,7 @@ import {
   normalizeChannelConnectorCommandSurfaceSection,
   normalizeChannelConnectorCommandSurfaceView,
   renderChannelConnectorCommandSurfaceFeishu,
+  type ChannelConnectorCommandSurfaceInput,
 } from "./command-surface.js";
 import {
   buildFeishuSessionKey,
@@ -95,6 +96,7 @@ import {
 } from "./feishu-transport.js";
 import {
   handleChannelConnectorCommand,
+  listChannelConnectorCommandSummaries,
   listChannelConnectorGatewayModels,
   resolveChannelConnectorEffectiveProject,
 } from "./command-router.js";
@@ -1167,6 +1169,7 @@ function commandActionPageLabel(command: string): string | null {
   if (["display", "stream", "tools", "tool"].includes(section)) return "显示设置";
   if (["buffer", "buffers", "reply-buffer", "reply-buffers"].includes(section)) return "Reply Buffer";
   if (["workdir", "dir", "pwd", "cd", "chdir"].includes(section)) return "工作目录";
+  if (["commands", "command", "cmd"].includes(section)) return "自定义命令";
   if (["native", "raw", "pass"].includes(section)) return "原生 Agent";
   return null;
 }
@@ -1370,10 +1373,14 @@ function commandSurfaceReadOnlyState(input: {
   agentSession: ChannelConnectorCommandSurface["session"];
   sessionList: ChannelConnectorCommandSurface["sessionList"];
   history: ChannelConnectorCommandSurface["history"];
+  customCommands: NonNullable<ChannelConnectorCommandSurfaceInput["customCommands"]>;
 } {
   const sessionKey = normalizeString(input.sessionKey);
-  if (!sessionKey) return { agentSession: null, sessionList: [], history: [] };
   const current = resolveChannelConnectorEffectiveProject(input.runtimeConfig, input.project, input.control);
+  const customCommands = listChannelConnectorCommandSummaries({
+    customCommandsPath: commandSurfaceCustomCommandsPath(input.runtimeConfig),
+  }, current);
+  if (!sessionKey) return { agentSession: null, sessionList: [], history: [], customCommands };
   const session = getChannelConnectorAgentSession(commandSurfaceAgentSessionsPath(input.runtimeConfig), {
     bindingId: input.binding.id,
     projectId: current.id,
@@ -1436,6 +1443,7 @@ function commandSurfaceReadOnlyState(input: {
     },
     sessionList,
     history,
+    customCommands,
   };
 }
 
@@ -1554,6 +1562,7 @@ export function createChannelConnectorsService(
       agentSession: readOnlyState.agentSession,
       sessionList: readOnlyState.sessionList,
       history: readOnlyState.history,
+      customCommands: readOnlyState.customCommands,
       selectedSectionId: request.section,
       selectedViewId: request.view,
     });
@@ -1720,6 +1729,7 @@ export function createChannelConnectorsService(
       agentSession: readOnlyState.agentSession,
       sessionList: readOnlyState.sessionList,
       history: readOnlyState.history,
+      customCommands: readOnlyState.customCommands,
       selectedSectionId,
       selectedViewId,
     });

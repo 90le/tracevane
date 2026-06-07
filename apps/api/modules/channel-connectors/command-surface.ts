@@ -60,6 +60,7 @@ const FEISHU_MENU_SECTIONS = [
   "display",
   "buffer",
   "workdir",
+  "commands",
   "native",
 ] as const;
 
@@ -77,6 +78,7 @@ const FEISHU_MENU_VIEWS = [
   "display",
   "buffer",
   "workdir",
+  "commands",
 ] as const;
 
 type FeishuMenuViewId = typeof FEISHU_MENU_VIEWS[number];
@@ -89,6 +91,7 @@ const FEISHU_MENU_SECTION_LABELS: Record<FeishuMenuSectionId, string> = {
   display: "显示",
   buffer: "缓存",
   workdir: "目录",
+  commands: "命令",
   native: "原生",
 };
 
@@ -135,6 +138,9 @@ const FEISHU_MENU_SECTION_ALIASES: Record<string, FeishuMenuSectionId> = {
   pwd: "workdir",
   cd: "workdir",
   chdir: "workdir",
+  commands: "commands",
+  command: "commands",
+  cmd: "commands",
   native: "native",
   raw: "native",
   pass: "native",
@@ -143,9 +149,9 @@ const FEISHU_MENU_SECTION_ALIASES: Record<string, FeishuMenuSectionId> = {
 const FEISHU_MENU_VIEW_ALIASES: Record<string, FeishuMenuViewId> = {
   help: "help",
   menu: "help",
-  commands: "help",
-  command: "help",
-  cmd: "help",
+  commands: "commands",
+  command: "commands",
+  cmd: "commands",
   start: "help",
   session: "session",
   status: "session",
@@ -194,6 +200,7 @@ const FEISHU_MENU_VIEW_ALIASES: Record<string, FeishuMenuViewId> = {
   cd: "workdir",
   chdir: "workdir",
   "workdir-picker": "workdir",
+  "commands-picker": "commands",
 };
 
 export interface ChannelConnectorCommandSurfaceInput {
@@ -210,6 +217,11 @@ export interface ChannelConnectorCommandSurfaceInput {
   agentSession?: ChannelConnectorCommandSurface["session"];
   sessionList?: ChannelConnectorCommandSurface["sessionList"];
   history?: ChannelConnectorCommandSurface["history"];
+  customCommands?: Array<{
+    name: string;
+    description: string;
+    source: "config" | "agent";
+  }>;
   selectedSectionId?: string | null;
   selectedViewId?: string | null;
 }
@@ -248,7 +260,8 @@ export function channelConnectorCommandSurfaceSectionFromCommand(command: string
   const parts = normalized.replace(/^[/%]+/, "").split(/\s+/).filter(Boolean);
   if (!parts.length) return null;
   const name = parts[0] || "";
-  if (["help", "menu", "commands", "command", "cmd", "start"].includes(name.toLowerCase())) {
+  if (["commands", "command", "cmd"].includes(name.toLowerCase())) return "commands";
+  if (["help", "menu", "start"].includes(name.toLowerCase())) {
     return normalizeChannelConnectorCommandSurfaceSection(parts[1]) || "session";
   }
   return normalizeChannelConnectorCommandSurfaceSection(name);
@@ -263,7 +276,8 @@ export function channelConnectorCommandSurfaceViewFromCommand(
   const parts = normalized.replace(/^[/%]+/, "").split(/\s+/).filter(Boolean);
   if (!parts.length) return null;
   const name = parts[0]?.toLowerCase() || "";
-  if (["help", "menu", "commands", "command", "cmd", "start"].includes(name)) return "help";
+  if (["commands", "command", "cmd"].includes(name)) return "commands";
+  if (["help", "menu", "start"].includes(name)) return "help";
   if (name === "current") return "current";
   if (name === "list" || name === "sessions" || name === "switch" || name === "search" || name === "find" || name === "name" || name === "rename") return "sessions";
   if (name === "history") return "history";
@@ -477,6 +491,25 @@ export function buildChannelConnectorCommandSurface(
         action("buffer-latest", "Latest Buffer", "/buffer latest", {
           description: "读取本会话最新缓存的完整回复",
         }),
+      ],
+    },
+    {
+      id: "commands",
+      title: "Commands",
+      summary: "当前 Agent 可用的 config prompt commands 与 Agent command files。",
+      actions: [
+        action("commands-list", "List Commands", "/commands", {
+          actionKind: "nav",
+          description: "查看当前 Agent 自定义命令列表和 add/del 用法",
+        }),
+        ...(input.customCommands || []).slice(0, 12).map((command, index) => action(
+          `custom-command-${command.source}-${command.name}`,
+          `${index + 1}. /${command.name}`,
+          `/${command.name}`,
+          {
+            description: `${command.source === "agent" ? "agent" : "config"} · ${command.description || "Custom prompt command"}`,
+          },
+        )),
       ],
     },
     {
@@ -884,6 +917,8 @@ function sectionSummary(sectionId: FeishuMenuSectionId): string {
       return "查看群聊长回复的完整缓存";
     case "workdir":
       return "查看或切换 Agent 工作目录，支持最近目录和返回上一目录";
+    case "commands":
+      return "列出和执行当前 Agent 的 config/Agent 自定义命令";
     case "native":
       return "进入 Agent 原生 slash/skills 命令";
   }
@@ -896,7 +931,7 @@ function homeMenuSections(): Array<{
   return [
     { title: "会话", sectionIds: ["session", "buffer"] },
     { title: "配置", sectionIds: ["agent", "model", "mode", "workdir"] },
-    { title: "显示与原生", sectionIds: ["display", "native"] },
+    { title: "显示与扩展", sectionIds: ["display", "commands", "native"] },
   ];
 }
 
@@ -966,6 +1001,16 @@ function helpSectionActions(
         tone: "primary",
         description: `${stream} · ${tools}`,
         requiresAdmin: true,
+      }),
+    ];
+  }
+  if (section.id === "commands") {
+    const commandCount = section.actions.filter((item) => item.id.startsWith("custom-command-")).length;
+    return [
+      action("commands-picker", "自定义命令", "/commands", {
+        actionKind: "nav",
+        tone: "primary",
+        description: `${commandCount} 个可用命令 · 支持 /commands add/del`,
       }),
     ];
   }
@@ -1356,6 +1401,51 @@ function renderBufferCard(surface: ChannelConnectorCommandSurface): ChannelConne
   };
 }
 
+function renderCommandsCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
+  const section = sectionById(surface, "commands");
+  const actions = section?.actions || [];
+  const list = actions.find((item) => item.id === "commands-list")
+    || action("commands-list", "List Commands", "/commands", { actionKind: "nav" });
+  const commandActions = actions.filter((item) => item.id.startsWith("custom-command-"));
+  const elements: Array<Record<string, unknown>> = [
+    {
+      tag: "markdown",
+      content: [
+        "**自定义命令**",
+        commandActions.length
+          ? `当前 Agent 可用 ${commandActions.length} 个自定义命令。点击按钮会把对应 /命令 交给 Agent。`
+          : "当前 Agent 还没有可用的自定义命令。",
+        "",
+        "**管理**",
+        "`/commands add <名称> <prompt 模板>`",
+        "`/commands del <名称>`",
+      ].join("\n"),
+    },
+  ];
+  pushActionRows(elements, [list], surface, 1, true);
+  if (commandActions.length) {
+    elements.push({ tag: "hr" });
+    for (const item of commandActions) {
+      elements.push(commandSurfaceListItemElement(item, surface, { showCurrent: false }));
+    }
+  }
+  pushSubcardNavRows(elements, surface, "commands");
+  elements.push({
+    tag: "note",
+    elements: [plainText("config 命令优先于 Agent command file；与 Studio 内置命令冲突时内置命令优先。")],
+  });
+  return {
+    config: {
+      wide_screen_mode: true,
+    },
+    header: {
+      title: plainText("Studio Commands"),
+      template: "turquoise",
+    },
+    elements,
+  };
+}
+
 function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
   const section = sectionById(surface, "session");
   const actions = section?.actions || [];
@@ -1648,9 +1738,11 @@ export function renderChannelConnectorCommandSurfaceFeishu(
                   ? renderDisplayCard(surface)
                   : selectedViewId === "buffer"
                     ? renderBufferCard(surface)
-                    : selectedViewId === "workdir"
-                      ? renderWorkdirPickerCard(surface)
-                      : renderHelpMenuCard(surface);
+                    : selectedViewId === "commands"
+                      ? renderCommandsCard(surface)
+                      : selectedViewId === "workdir"
+                        ? renderWorkdirPickerCard(surface)
+                        : renderHelpMenuCard(surface);
   return notice?.text ? withCommandNotice(card, notice) : card;
 }
 

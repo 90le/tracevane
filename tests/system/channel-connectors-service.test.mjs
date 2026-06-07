@@ -3752,6 +3752,18 @@ test("native Channel Connectors command surface renders text and Feishu card act
         messageId: "msg-2",
       },
     ],
+    customCommands: [
+      {
+        name: "daily",
+        description: "Summarize release status",
+        source: "config",
+      },
+      {
+        name: "review-code",
+        description: "Review code changes",
+        source: "agent",
+      },
+    ],
   });
 
   assert.equal(surface.current.bindingId, "octo-codex");
@@ -3783,9 +3795,12 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(raw, /会话/);
   assert.match(raw, /配置/);
   assert.match(raw, /显示/);
+  assert.match(raw, /命令/);
   assert.match(raw, /nav:\/help session/);
+  assert.match(raw, /nav:\/help commands/);
   assert.match(raw, /\/help model/);
   assert.match(raw, /\/help display/);
+  assert.match(raw, /\/help commands/);
   assert.match(raw, /\/help buffer/);
   assert.match(raw, /New Session/);
   assert.doesNotMatch(raw, /act:\/reset/);
@@ -3927,6 +3942,28 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.ok(workdirCardRaw.includes(`act:/cd ${path.join(codexProject.workDir, "src")}`));
   assert.match(workdirCardRaw, /act:\/cd default/);
   assert.match(workdirCardRaw, /nav:\/help workdir/);
+
+  const commandsSurface = buildChannelConnectorCommandSurface({
+    config: runtimeConfig,
+    project: codexProject,
+    binding,
+    sessionKey: "dmwork:dm:admin-1",
+    customCommands: surface.sections.find((section) => section.id === "commands").actions
+      .filter((item) => item.id.startsWith("custom-command-"))
+      .map((item) => ({
+        name: item.command.replace(/^\//, ""),
+        description: item.description || "",
+        source: item.id.includes("-agent-") ? "agent" : "config",
+      })),
+    selectedSectionId: "commands",
+    selectedViewId: "commands",
+  });
+  const commandsCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(commandsSurface));
+  assert.match(commandsCardRaw, /Studio Commands/);
+  assert.match(commandsCardRaw, /act:\/daily/);
+  assert.match(commandsCardRaw, /act:\/review-code/);
+  assert.match(commandsCardRaw, /\/commands add <名称> <prompt 模板>/);
+  assert.match(commandsCardRaw, /nav:\/help commands/);
 
   const modelSurface = buildChannelConnectorCommandSurface({
     config: runtimeConfig,
