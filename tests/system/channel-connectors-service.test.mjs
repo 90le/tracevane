@@ -6513,6 +6513,7 @@ test("native Channel Connectors daemon runs Codex app-server when persistent ses
         assert.equal(status.agentSessionDriver.policy.idleTimeoutMs, 600000);
         assert.equal(status.agentSessionDriver.policy.maxSessions, 8);
         assert.equal(status.agentSessionDriver.activeSessions[0].sessionId.includes("codex-app-server:"), true);
+        assert.equal(status.agentSessionDriver.activeSessions[0].permissionMode, "read-only");
         assert.equal(status.agentSessionDriver.activeSessions[0].turnCount, 1);
         const poolKey = status.agentSessionDriver.activeSessions[0].poolKey;
 
@@ -6520,6 +6521,7 @@ test("native Channel Connectors daemon runs Codex app-server when persistent ses
         assert.equal(sessionStatus.status, 200);
         assert.equal(sessionStatus.body.policy.idleTimeoutMs, 600000);
         assert.equal(sessionStatus.body.reaped, undefined);
+        assert.equal(sessionStatus.body.activeSessions.find((item) => item.poolKey === poolKey).permissionMode, "read-only");
         assert.equal(sessionStatus.body.activeSessions.some((item) => item.poolKey === poolKey), true);
 
         const killStatus = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/agent-sessions`, {

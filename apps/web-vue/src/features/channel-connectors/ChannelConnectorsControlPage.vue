@@ -467,7 +467,7 @@
           <div v-if="activeAgentSessions.length" class="ccx-session-list">
             <div v-for="session in activeAgentSessions" :key="session.poolKey" class="ccx-list-row ccx-session-row">
               <div>
-                <small>{{ session.agent }} · {{ session.bindingId }} · {{ text('运行中', 'running') }} {{ session.running }}</small>
+                <small>{{ session.agent }} · {{ session.bindingId }} · {{ session.permissionMode || 'default permission' }} · {{ text('运行中', 'running') }} {{ session.running }}</small>
                 <strong>{{ session.model || 'default model' }}</strong>
                 <span>{{ session.workDir }}</span>
                 <span>{{ text('最近使用', 'Last used') }} {{ formatTimestamp(session.lastUsedAt) }} · {{ text('空闲', 'Idle') }} {{ formatDuration(session.idleMs) }}</span>

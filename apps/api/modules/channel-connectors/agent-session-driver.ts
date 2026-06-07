@@ -79,6 +79,7 @@ export interface ChannelConnectorAgentSessionDriverStatus {
   sessionKey: string;
   agent: ChannelConnectorAgentId;
   model: string | null;
+  permissionMode: ChannelConnectorPermissionMode | null;
   workDir: string;
   createdAt: string;
   lastUsedAt: string;
@@ -319,6 +320,7 @@ export class ChannelConnectorAgentSessionDriverPool {
         sessionKey: entry.key.sessionKey,
         agent: entry.key.agent,
         model: entry.key.model,
+        permissionMode: entry.key.permissionMode || null,
         workDir: entry.key.workDir,
         createdAt: dateFromMs(entry.createdAtMs),
         lastUsedAt: dateFromMs(entry.lastUsedAtMs),

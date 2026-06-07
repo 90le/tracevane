@@ -47,6 +47,7 @@ function sessionPayload(overrides = {}) {
         sessionKey: "im-session-a",
         agent: "codex",
         model: "gpt-5.4-mini",
+        permissionMode: "suggest",
         workDir: "/secret/workdir/that/should/not/print",
         createdAt: "2026-06-07T00:00:00.000Z",
         lastUsedAt: "2026-06-07T00:00:01.000Z",
@@ -140,6 +141,7 @@ test("agent session live smoke script summarizes status without leaking workdir"
     assert.doesNotMatch(output, /secret\/workdir/);
     const parsed = JSON.parse(output);
     assert.equal(parsed.status.activeSessions.length, 1);
+    assert.equal(parsed.status.activeSessions[0].permissionMode, "suggest");
     assert.equal(parsed.status.policy.idleTimeoutMs, 600000);
     assert.equal(fake.posts.length, 0);
   } finally {

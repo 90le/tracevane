@@ -157,6 +157,146 @@ test("Channel Connectors persistent session driver falls back to one-shot after 
   assert.deepEqual(pool.status(), []);
 });
 
+test("Channel Connectors persistent session driver isolates users, sessions, models, and permissions", async () => {
+  let now = Date.parse("2026-06-07T10:01:30.000Z");
+  const created = [];
+  const pool = createChannelConnectorAgentSessionDriverPool({
+    nowMs: () => now,
+    factory: {
+      create: ({ key, poolKey }) => {
+        created.push({ key, poolKey });
+        return {
+          id: `session-${created.length}`,
+          runTurn: async (input) => completedResult(`${input.key.sessionKey}:${input.key.model}:${input.messageId}`),
+        };
+      },
+    },
+  });
+
+  const alice = {
+    ...baseKey,
+    sessionKey: "octo:dm:alice",
+    permissionMode: "suggest",
+  };
+  const bob = {
+    ...baseKey,
+    sessionKey: "octo:dm:bob",
+    permissionMode: "suggest",
+  };
+  const aliceHigh = {
+    ...baseKey,
+    sessionKey: "octo:dm:alice",
+    model: "gpt-5-high",
+    permissionMode: "suggest",
+  };
+  const aliceYolo = {
+    ...baseKey,
+    sessionKey: "octo:dm:alice",
+    model: "gpt-5",
+    permissionMode: "yolo",
+  };
+
+  const run = async (key, messageId) => {
+    now += 10;
+    return pool.runTurn({
+      mode: "persistent",
+      key,
+      messageId,
+      runOneShot: async () => {
+        throw new Error("one-shot fallback should not run for healthy isolated sessions");
+      },
+    });
+  };
+
+  await run(alice, "a-1");
+  await run(alice, "a-2");
+  await run(bob, "b-1");
+  await run(aliceHigh, "ah-1");
+  await run(aliceYolo, "ay-1");
+
+  assert.equal(created.length, 4);
+  assert.equal(pool.status().length, 4);
+  assert.deepEqual(
+    pool.status().map((session) => ({
+      sessionKey: session.sessionKey,
+      model: session.model,
+      permissionMode: session.permissionMode,
+      turnCount: session.turnCount,
+    })).sort((left, right) => (
+      left.sessionKey.localeCompare(right.sessionKey)
+      || String(left.model).localeCompare(String(right.model))
+      || String(left.permissionMode).localeCompare(String(right.permissionMode))
+    )),
+    [
+      { sessionKey: "octo:dm:alice", model: "gpt-5", permissionMode: "suggest", turnCount: 2 },
+      { sessionKey: "octo:dm:alice", model: "gpt-5", permissionMode: "yolo", turnCount: 1 },
+      { sessionKey: "octo:dm:alice", model: "gpt-5-high", permissionMode: "suggest", turnCount: 1 },
+      { sessionKey: "octo:dm:bob", model: "gpt-5", permissionMode: "suggest", turnCount: 1 },
+    ],
+  );
+  assert.notEqual(
+    channelConnectorAgentSessionDriverPoolKey(alice),
+    channelConnectorAgentSessionDriverPoolKey(aliceYolo),
+  );
+});
+
+test("Channel Connectors persistent session driver does not fallback when disabled or aborted", async () => {
+  const disabledPool = createChannelConnectorAgentSessionDriverPool({
+    fallbackOnCrash: false,
+    factory: {
+      create: () => ({
+        id: "no-fallback-session",
+        runTurn: async () => {
+          throw new Error("fatal persistent crash");
+        },
+      }),
+    },
+  });
+  let fallbackCount = 0;
+  await assert.rejects(
+    disabledPool.runTurn({
+      mode: "persistent",
+      key: baseKey,
+      messageId: "m-disabled",
+      runOneShot: async () => {
+        fallbackCount += 1;
+        return completedResult("must not fallback");
+      },
+    }),
+    /fatal persistent crash/,
+  );
+  assert.equal(fallbackCount, 0);
+  assert.deepEqual(disabledPool.status(), []);
+
+  const controller = new AbortController();
+  const abortedPool = createChannelConnectorAgentSessionDriverPool({
+    factory: {
+      create: () => ({
+        id: "aborted-session",
+        runTurn: async () => {
+          controller.abort();
+          throw new Error("turn interrupted by user");
+        },
+      }),
+    },
+  });
+  await assert.rejects(
+    abortedPool.runTurn({
+      mode: "persistent",
+      key: baseKey,
+      messageId: "m-aborted",
+      signal: controller.signal,
+      runOneShot: async () => {
+        fallbackCount += 1;
+        return completedResult("must not fallback after abort");
+      },
+    }),
+    /turn interrupted by user/,
+  );
+  assert.equal(fallbackCount, 0);
+  assert.deepEqual(abortedPool.status(), []);
+});
+
 test("Channel Connectors persistent session driver supports stop, kill, and idle reap", async () => {
   let now = Date.parse("2026-06-07T10:02:00.000Z");
   const stopped = [];

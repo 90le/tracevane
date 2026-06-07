@@ -236,6 +236,7 @@ function summarizeStatus(status, bindings = []) {
       sessionKey: session.sessionKey,
       agent: session.agent,
       model: session.model,
+      permissionMode: session.permissionMode || null,
       running: session.running,
       turnCount: session.turnCount,
       idleMs: session.idleMs,

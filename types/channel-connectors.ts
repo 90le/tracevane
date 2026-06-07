@@ -779,6 +779,7 @@ export interface ChannelConnectorAgentSessionRuntimeStatus {
   sessionKey: string;
   agent: ChannelConnectorAgentId;
   model: string | null;
+  permissionMode: ChannelConnectorPermissionMode | null;
   workDir: string;
   createdAt: string;
   lastUsedAt: string;
