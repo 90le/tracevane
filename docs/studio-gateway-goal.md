@@ -91,6 +91,7 @@ Provider / model routing 目标：
 - Channel daemon 的平台长连接必须以 CC Go 成熟实现为基线迁移；Octo(dmwork) 默认 30s heartbeat、10s PONG timeout、RECVACK、5 分钟 messageId 去重、`3s + 0..3s` 抖动重连和 5 分钟 REST heartbeat 备用保活，Feishu 采用同 App 共享长连接后扇出事件。
 - Feishu 入站消息必须先完成轻量解析/去重/准入并快速 ACK；文件下载、Agent 调用、进度卡片和最终回复必须后台异步执行，避免 SDK dispatcher 被 IO 阻塞后触发平台重投。
 - Feishu card/menu 的导航动作才返回卡片；`/new`、`/reset` 等执行动作必须直接执行并返回结果，不得自动弹出完整菜单。
+- IM 原生命令穿透必须区分未知 slash 兜底和显式 `/native`：未知 `/xxx` 可按 CC Go 提示后进入 Agent，显式 `/native <命令>` 必须作为 runner `nativeCommand` 处理，不得混入 history/group/attachment prompt；不支持的 CLI 原生命令必须明确拒绝，不能送给模型当普通文本。
 - `/stop`、取消、重置等 IM 执行动作必须走真实 runner/session contract；其中 `/stop` 必须终止当前 binding + IM session 的 active CLI Agent 进程，不能只返回占位提示。
 - Feishu 长连接不得只相信 SDK `connected` 状态；Studio 必须记录真实 `lastReceivedAt`，让 SDK `pingTimeout` 处理死 socket，并对 connected 但长期无事件入站的假连接执行有抑制/冷却的自动轮换。
 - Rich 平台优先使用卡片/Markdown；普通文本平台也必须有清晰命令分组、当前会话状态、原生 Agent 透传说明和长回复读取入口，不能只给一串无结构命令列表。

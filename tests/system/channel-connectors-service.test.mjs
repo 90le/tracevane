@@ -1730,6 +1730,97 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(opencodeRequest.args.includes("--thinking"), true);
   assert.equal(opencodeRequest.args.at(-1), "hi codex");
 
+  const codexNativeHelpRequest = buildChannelConnectorAgentProcessRequest({
+    project,
+    binding,
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: null,
+    historyContext: "[Studio IM history context]\n1. user: should not leak",
+    nativeCommand: "/help exec",
+  });
+  assert.ok(codexNativeHelpRequest);
+  assert.equal(codexNativeHelpRequest.command, "codex");
+  assert.deepEqual(codexNativeHelpRequest.args, ["exec", "--help"]);
+  assert.equal(codexNativeHelpRequest.stdin, "");
+  assert.equal(codexNativeHelpRequest.nativeCommand, "/help exec");
+  assert.equal(codexNativeHelpRequest.env.OPENAI_API_KEY, undefined);
+
+  const codexNativeResult = await runChannelConnectorAgentTurn({
+    project,
+    binding,
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: null,
+    nativeCommand: "/help",
+    historyContext: "[Studio IM history context]\n1. user: should not leak",
+    processRunner: async (request) => {
+      assert.equal(request.command, "codex");
+      assert.deepEqual(request.args, ["--help"]);
+      assert.equal(request.stdin, "");
+      assert.equal(request.nativeCommand, "/help");
+      assert.equal(request.env.OPENAI_API_KEY, undefined);
+      return {
+        exitCode: 0,
+        signal: null,
+        stdout: "Codex CLI help\n",
+        stderr: "",
+        durationMs: 8,
+        timedOut: false,
+        cancelled: false,
+        error: null,
+      };
+    },
+  });
+  assert.equal(codexNativeResult.ok, true);
+  assert.equal(codexNativeResult.replyText, "Codex CLI help");
+
+  const codexUnsupportedNative = await runChannelConnectorAgentTurn({
+    project,
+    binding,
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    nativeCommand: "/compact",
+  });
+  assert.equal(codexUnsupportedNative.attempted, false);
+  assert.equal(codexUnsupportedNative.status, "failed");
+  assert.match(codexUnsupportedNative.error, /not supported through the non-interactive exec runner/);
+  assert.match(codexUnsupportedNative.error, /must not be sent as ordinary model text/);
+
+  const claudeNativeRequest = buildChannelConnectorAgentProcessRequest({
+    project: { ...project, agent: "claude-code", permissionMode: "plan" },
+    binding: { ...binding, agent: "claude-code" },
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    historyContext: "[Studio IM history context]\n1. user: should not leak",
+    nativeCommand: "/help",
+  });
+  assert.ok(claudeNativeRequest);
+  assert.equal(claudeNativeRequest.nativeCommand, "/help");
+  assert.match(claudeNativeRequest.stdin, /"content":"\/help"/);
+  assert.doesNotMatch(claudeNativeRequest.stdin, /should not leak/);
+
+  const opencodeNativeRequest = buildChannelConnectorAgentProcessRequest({
+    project: { ...project, agent: "opencode", permissionMode: "yolo" },
+    binding: { ...binding, agent: "opencode" },
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    historyContext: "[Studio IM history context]\n1. user: should not leak",
+    nativeCommand: "/help",
+  });
+  assert.ok(opencodeNativeRequest);
+  assert.equal(opencodeNativeRequest.nativeCommand, "/help");
+  assert.equal(opencodeNativeRequest.args.at(-1), "/help");
+  assert.doesNotMatch(opencodeNativeRequest.args.join(" "), /should not leak/);
+
   const attachmentRequest = buildChannelConnectorAgentProcessRequest({
     project,
     binding,
@@ -2447,6 +2538,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(nativePassthrough.handled, false);
   assert.equal(nativePassthrough.passthroughText, "/help");
+  assert.equal(nativePassthrough.nativeCommand, "/help");
 
   const badNative = await handleChannelConnectorCommand({
     ...baseContext,

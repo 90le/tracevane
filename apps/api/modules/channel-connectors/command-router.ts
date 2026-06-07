@@ -91,6 +91,7 @@ export interface ChannelConnectorCommandResult {
   replyText: string | null;
   control: ChannelConnectorSessionControlRecord | null;
   passthroughText?: string | null;
+  nativeCommand?: string | null;
 }
 
 interface ParsedCommand {
@@ -765,6 +766,7 @@ export async function handleChannelConnectorCommand(
       replyText: null,
       control: getChannelConnectorSessionControl(context.controlsPath, controlsLookup(context)),
       passthroughText: null,
+      nativeCommand: null,
     };
   }
 
@@ -821,6 +823,7 @@ export async function handleChannelConnectorCommand(
       control: currentControl,
       replyText: null,
       passthroughText: parsed.raw,
+      nativeCommand: null,
     };
   }
 
@@ -835,6 +838,7 @@ export async function handleChannelConnectorCommand(
         control: currentControl,
         replyText: "用法：/native <要发送给 Agent 的原生命令>",
         passthroughText: null,
+        nativeCommand: null,
       };
     }
     return {
@@ -845,6 +849,7 @@ export async function handleChannelConnectorCommand(
       control: currentControl,
       replyText: null,
       passthroughText: target,
+      nativeCommand: target,
     };
   }
 
@@ -1279,5 +1284,6 @@ export async function handleChannelConnectorCommand(
     control: currentControl,
     replyText: null,
     passthroughText: parsed.raw,
+    nativeCommand: null,
   };
 }

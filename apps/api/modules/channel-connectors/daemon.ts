@@ -2665,6 +2665,7 @@ async function dispatchOctoMessage(input: {
     writeRuntime(config, state);
     return;
   }
+  const nativeCommand = normalizeString(command.nativeCommand);
   let agentMessage = command.passthroughText
     ? {
       ...message,
@@ -2691,6 +2692,7 @@ async function dispatchOctoMessage(input: {
       attachmentKinds: attachments.map((attachment) => attachment.kind),
       command: command.command,
       passthroughText: command.passthroughText,
+      nativeCommand: nativeCommand || null,
     });
   }
 
@@ -2919,8 +2921,9 @@ async function dispatchOctoMessage(input: {
       gatewayEndpoint: turnProject.gatewayEndpoint || config.gateway.endpoint,
       gatewayClientKey: key,
       agentRuntimeDir: runtimeDir,
-      historyContext,
+      historyContext: nativeCommand ? null : historyContext,
       modelCapabilities: modelResolution.modelCapabilities,
+      nativeCommand: nativeCommand || null,
       signal: abortController.signal,
       session: {
         codexThreadId: currentSession?.codexThreadId || null,
@@ -3458,6 +3461,7 @@ async function dispatchFeishuParsedEvent(input: {
     return feishuResponse;
   }
 
+  const nativeCommand = normalizeString(command.nativeCommand);
   let agentMessage = command.passthroughText
     ? {
       ...message,
@@ -3481,6 +3485,7 @@ async function dispatchFeishuParsedEvent(input: {
       ...feishuThreadLogFields(parsed),
       command: command.command,
       passthroughText: command.passthroughText,
+      nativeCommand: nativeCommand || null,
     });
   }
   const groupMembers = await loadFeishuGroupMembers({
@@ -3720,8 +3725,9 @@ async function dispatchFeishuParsedEvent(input: {
       gatewayEndpoint: turnProject.gatewayEndpoint || config.gateway.endpoint,
       gatewayClientKey: key,
       agentRuntimeDir: runtimeDir,
-      historyContext,
+      historyContext: nativeCommand ? null : historyContext,
       modelCapabilities: modelResolution.modelCapabilities,
+      nativeCommand: nativeCommand || null,
       signal: abortController.signal,
       session: {
         codexThreadId: currentSession?.codexThreadId || null,

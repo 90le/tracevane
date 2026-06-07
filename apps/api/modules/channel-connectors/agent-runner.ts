@@ -22,6 +22,7 @@ export interface ChannelConnectorAgentProcessRequest {
   stdin: string;
   env: Record<string, string>;
   timeoutMs: number;
+  nativeCommand?: string | null;
   signal?: AbortSignal | null;
   cleanupPaths?: string[];
   sessionMode?: "new" | "resume";
@@ -69,6 +70,7 @@ export interface ChannelConnectorAgentTurnRequest {
   modelCapabilities?: {
     vision?: boolean | null;
   } | null;
+  nativeCommand?: string | null;
   onProgress?: (event: ChannelConnectorAgentProgressEvent) => void;
   signal?: AbortSignal | null;
   timeoutMs?: number;
@@ -503,6 +505,36 @@ function claudePermissionMode(mode: ChannelConnectorPermissionMode): string | nu
   }
 }
 
+function codexNativeCommandArgs(command: string): string[] | null {
+  const normalized = normalizeString(command);
+  if (!normalized) return null;
+  const parts = normalized.split(/\s+/).filter(Boolean);
+  const head = normalizeString(parts[0]).replace(/^\/+/, "").toLowerCase();
+  const rest = parts.slice(1);
+  if (head === "help" || head === "h" || head === "--help" || head === "-h") {
+    const topic = normalizeString(rest[0]).replace(/^\/+/, "").toLowerCase();
+    if (topic === "exec") return ["exec", "--help"];
+    if (topic === "resume") return ["exec", "resume", "--help"];
+    return ["--help"];
+  }
+  if (head === "version" || head === "v" || head === "--version" || head === "-v" || head === "-V") {
+    return ["--version"];
+  }
+  return null;
+}
+
+function unsupportedNativeCommandMessage(agent: ChannelConnectorAgentId, command: string): string | null {
+  const normalized = normalizeString(command);
+  if (!normalized) return null;
+  if (agent !== "codex") return null;
+  if (codexNativeCommandArgs(normalized)) return null;
+  return [
+    `Codex native command ${normalized} is not supported through the non-interactive exec runner.`,
+    "Supported Codex native commands for now: /help, /help exec, /version.",
+    "Codex interactive slash commands such as /compact or /clear require a persistent Codex session/compact contract and must not be sent as ordinary model text.",
+  ].join(" ");
+}
+
 function gatewayEnv(gatewayEndpoint: string, gatewayClientKey: string | null): Record<string, string> {
   const env: Record<string, string> = {
     STUDIO_GATEWAY_ENDPOINT: gatewayEndpoint,
@@ -523,12 +555,13 @@ export function buildChannelConnectorAgentProcessRequest(
 ): ChannelConnectorAgentProcessRequest | null {
   const project = request.project;
   const model = normalizeString(project.model);
-  const attachments = extractOctoAttachments(request.message);
+  const nativeCommand = normalizeString(request.nativeCommand);
+  const attachments = nativeCommand ? [] : extractOctoAttachments(request.message);
   const codexNativeImagePaths = project.agent === "codex"
     && channelConnectorModelSupportsVision(model || null, request.binding, request.modelCapabilities)
     ? collectCodexNativeImagePaths(attachments)
     : [];
-  const content = buildAgentInputContent(
+  const content = nativeCommand || buildAgentInputContent(
     request.message,
     request.binding,
     project.model,
@@ -542,6 +575,22 @@ export function buildChannelConnectorAgentProcessRequest(
   const baseEnv = gatewayEnv(request.gatewayEndpoint, request.gatewayClientKey);
 
   if (project.agent === "codex") {
+    const nativeArgs = nativeCommand ? codexNativeCommandArgs(nativeCommand) : null;
+    if (nativeCommand && nativeArgs) {
+      return {
+        command: "codex",
+        args: nativeArgs,
+        cwd,
+        stdin: "",
+        env: baseEnv,
+        timeoutMs,
+        nativeCommand,
+        sessionMode: "new",
+        codexThreadId: request.session?.codexThreadId || null,
+        agent: project.agent,
+      };
+    }
+
     const codexThreadId = normalizeString(request.session?.codexThreadId);
     const codexHome = createCodexGatewayHome({
       gatewayEndpoint: request.gatewayEndpoint,
@@ -594,6 +643,7 @@ export function buildChannelConnectorAgentProcessRequest(
         OPENAI_BASE_URL: request.gatewayEndpoint,
       },
       timeoutMs,
+      nativeCommand: nativeCommand || null,
       cleanupPaths: codexHome.cleanupRoot ? [codexHome.cleanupRoot] : [],
       sessionMode: codexThreadId ? "resume" : "new",
       codexThreadId: codexThreadId || null,
@@ -629,6 +679,7 @@ export function buildChannelConnectorAgentProcessRequest(
         ANTHROPIC_BASE_URL: request.gatewayEndpoint.replace(/\/v1\/?$/, ""),
       },
       timeoutMs,
+      nativeCommand: nativeCommand || null,
       agent: project.agent,
     };
   }
@@ -652,6 +703,7 @@ export function buildChannelConnectorAgentProcessRequest(
       stdin: "",
       env: baseEnv,
       timeoutMs,
+      nativeCommand: nativeCommand || null,
       agent: project.agent,
     };
   }
@@ -952,8 +1004,9 @@ function agentFailureMessage(
 export async function runChannelConnectorAgentTurn(
   request: ChannelConnectorAgentTurnRequest,
 ): Promise<ChannelConnectorAgentTurnResult> {
-  const content = extractOctoContent(request.message);
-  const attachments = extractOctoAttachments(request.message);
+  const nativeCommand = normalizeString(request.nativeCommand);
+  const content = nativeCommand || extractOctoContent(request.message);
+  const attachments = nativeCommand ? [] : extractOctoAttachments(request.message);
   if (!content && !attachments.length) {
     return {
       attempted: false,
@@ -981,7 +1034,35 @@ export async function runChannelConnectorAgentTurn(
       },
     };
   }
-  if (request.project.agent === "codex" && !normalizeString(request.gatewayClientKey)) {
+  const unsupportedNativeCommand = unsupportedNativeCommandMessage(request.project.agent, nativeCommand);
+  if (unsupportedNativeCommand) {
+    return {
+      attempted: false,
+      ok: false,
+      status: "failed",
+      agent: request.project.agent,
+      model: request.project.model,
+      command: null,
+      args: [],
+      cwd: null,
+      replyText: null,
+      stdout: "",
+      stderr: "",
+      exitCode: null,
+      durationMs: 0,
+      error: unsupportedNativeCommand,
+      progress: {
+        eventCount: 0,
+        latest: null,
+        summary: null,
+      },
+      session: {
+        resumed: false,
+        codexThreadId: request.session?.codexThreadId || null,
+      },
+    };
+  }
+  if (request.project.agent === "codex" && !nativeCommand && !normalizeString(request.gatewayClientKey)) {
     return {
       attempted: false,
       ok: false,
