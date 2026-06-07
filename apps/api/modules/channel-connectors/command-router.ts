@@ -139,6 +139,14 @@ interface ParsedCommand {
   args: string[];
 }
 
+interface AgentCommandFile {
+  name: string;
+  description: string;
+  prompt: string;
+  source: "agent";
+  filePath: string;
+}
+
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -153,6 +161,141 @@ function uniqueStrings(values: string[]): string[] {
     output.push(normalized);
   }
   return output;
+}
+
+function normalizeAgentCommandName(value: string): string {
+  return normalizeString(value).toLowerCase().replaceAll("-", "_");
+}
+
+function agentCommandDirs(project: ChannelConnectorRuntimeProject): string[] {
+  const workDir = normalizeString(project.workDir) || process.cwd();
+  const homeDir = os.homedir();
+  if (project.agent === "claude-code") {
+    return uniqueStrings([
+      path.join(path.resolve(workDir), ".claude", "commands"),
+      path.join(homeDir, ".claude", "commands"),
+    ]);
+  }
+  if (project.agent === "gemini") {
+    return uniqueStrings([
+      path.join(path.resolve(workDir), ".gemini", "commands"),
+      path.join(homeDir, ".gemini", "commands"),
+    ]);
+  }
+  return [];
+}
+
+function firstLine(value: string, maxRunes = 60): string {
+  const line = normalizeString(value).split(/\r?\n/, 1)[0] || "";
+  const runes = Array.from(line);
+  return runes.length > maxRunes ? `${runes.slice(0, maxRunes).join("")}...` : line;
+}
+
+function readAgentCommandFile(dir: string, name: string): AgentCommandFile | null {
+  const absDir = path.resolve(dir);
+  const candidates = uniqueStrings([
+    name,
+    name.replaceAll("_", "-"),
+  ]);
+  for (const candidate of candidates) {
+    const filePath = path.resolve(absDir, `${candidate}.md`);
+    if (!filePath.startsWith(`${absDir}${path.sep}`)) continue;
+    let content = "";
+    try {
+      content = fs.readFileSync(filePath, "utf8").trim();
+    } catch {
+      continue;
+    }
+    if (!content) continue;
+    return {
+      name: candidate,
+      description: firstLine(content),
+      prompt: content,
+      source: "agent",
+      filePath,
+    };
+  }
+  return null;
+}
+
+function resolveAgentCommandFile(project: ChannelConnectorRuntimeProject, name: string): AgentCommandFile | null {
+  const normalizedName = normalizeString(name);
+  if (!normalizedName) return null;
+  for (const dir of agentCommandDirs(project)) {
+    const command = readAgentCommandFile(dir, normalizedName);
+    if (command) return command;
+  }
+  return null;
+}
+
+function listAgentCommandFiles(project: ChannelConnectorRuntimeProject): AgentCommandFile[] {
+  const seen = new Set<string>();
+  const commands: AgentCommandFile[] = [];
+  for (const dir of agentCommandDirs(project)) {
+    const absDir = path.resolve(dir);
+    let entries: fs.Dirent[] = [];
+    try {
+      entries = fs.readdirSync(absDir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+      const name = entry.name.slice(0, -".md".length);
+      const key = normalizeAgentCommandName(name);
+      if (!name || seen.has(key)) continue;
+      const command = readAgentCommandFile(absDir, name);
+      if (!command) continue;
+      seen.add(key);
+      commands.push(command);
+    }
+  }
+  return commands;
+}
+
+const promptPlaceholderRe = /\{\{(\d+\*?|args)(:[^}]*)?\}\}/g;
+
+function expandAgentCommandPrompt(template: string, args: string[]): string {
+  const normalizedTemplate = normalizeString(template);
+  promptPlaceholderRe.lastIndex = 0;
+  if (!promptPlaceholderRe.test(normalizedTemplate)) {
+    return args.length ? `${normalizedTemplate}\n\n${args.join(" ")}` : normalizedTemplate;
+  }
+  promptPlaceholderRe.lastIndex = 0;
+  return normalizedTemplate.replace(promptPlaceholderRe, (_match, rawKey: string, rawDefault: string | undefined) => {
+    const key = rawKey || "";
+    const defaultValue = rawDefault ? rawDefault.slice(1) : "";
+    const hasDefault = Boolean(rawDefault);
+    if (key === "args") return args.length ? args.join(" ") : hasDefault ? defaultValue : "";
+    if (key.endsWith("*")) {
+      const index = Number(key.slice(0, -1));
+      if (Number.isInteger(index) && index >= 1 && index - 1 < args.length) return args.slice(index - 1).join(" ");
+      return hasDefault ? defaultValue : "";
+    }
+    const index = Number(key);
+    if (Number.isInteger(index) && index >= 1 && index - 1 < args.length) return args[index - 1] || "";
+    return hasDefault ? defaultValue : "";
+  });
+}
+
+function agentCommandsListText(project: ChannelConnectorRuntimeProject): string {
+  const commands = listAgentCommandFiles(project);
+  if (!commands.length) {
+    const dirs = agentCommandDirs(project);
+    return [
+      "当前 Agent 没有可用的命令文件。",
+      dirs.length
+        ? `Studio 会按 CC CommandProvider 合同扫描：${dirs.join("；")}`
+        : `当前 Agent (${project.agent}) 尚未在 Studio 中声明命令目录。`,
+    ].join("\n");
+  }
+  const lines = [`Agent Commands (${commands.length})`];
+  for (const command of commands) {
+    lines.push(`/${command.name} [agent]`);
+    lines.push(`  ${command.description || "Agent command file"}`);
+  }
+  lines.push("用法：/<命令名> [参数]。支持 {{1}}、{{2*}}、{{args}} 和默认值占位。");
+  return lines.join("\n");
 }
 
 export function parseChannelConnectorCommand(content: string): ParsedCommand | null {
@@ -994,6 +1137,19 @@ export async function handleChannelConnectorCommand(
   }
 
   if (!isStudioCommand(name)) {
+    const agentCommand = resolveAgentCommandFile(currentProject, name);
+    if (agentCommand) {
+      return {
+        handled: false,
+        command: agentCommand.name,
+        action: "passthrough",
+        ok: null,
+        control: currentControl,
+        replyText: null,
+        passthroughText: expandAgentCommandPrompt(agentCommand.prompt, args),
+        nativeCommand: null,
+      };
+    }
     return {
       handled: false,
       command: name,
@@ -1032,7 +1188,19 @@ export async function handleChannelConnectorCommand(
     };
   }
 
-  if (name === "start" || name === "help" || name === "menu" || name === "commands" || name === "command" || name === "cmd") {
+  if (name === "commands" || name === "command" || name === "cmd") {
+    return {
+      handled: true,
+      command: name,
+      action: "list",
+      ok: true,
+      control: currentControl,
+      replyText: agentCommandsListText(currentProject),
+      passthroughText: null,
+    };
+  }
+
+  if (name === "start" || name === "help" || name === "menu") {
     return {
       handled: true,
       command: name,

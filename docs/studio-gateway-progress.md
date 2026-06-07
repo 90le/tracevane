@@ -51,12 +51,13 @@
 - Codex persistent app-server 普通 turn 新增独立完成超时：若 app-server 已有 assistant 输出但迟迟没有 `turn/completed`，driver 会发 `turn/interrupt`、释放 active run，并交给外层 pool 按策略回退 one-shot，避免 IM 发送文件等场景永久卡住。
 - Feishu/Octo 可见进度新增生命周期噪音过滤：底层仍保留 `turn.started` / `turn/started` 到日志和 runtime，但 IM 卡片/文本不再展示 `Codex turn started` 或 `Codex app-server turn started` 这类无业务价值的“运行中”条目。
 - Feishu `transport-smoke` 补齐 `upload-and-send-media`：复用已有 `uploadAndSendFeishuMedia`，只增加 service/API 验证入口，不改 Studio 已定义的工具流、`studio-channel-files` 出站合同或底层文件发送实现。
+- 按 CC CommandProvider 合同补 Agent 命令文件扫描：Claude Code 扫描 `.claude/commands`，Gemini 扫描 `.gemini/commands`；`/commands` 列出当前 Agent 命令文件，未知 `/xxx` 命中命令文件时按 `{{1}}`、`{{2*}}`、`{{args}}` 等占位规则展开 prompt 后交给当前 Agent，未命中仍原生透传。
 
 ## 最近验证
 
 - 通过：`npm run build:api`。
 - 通过：`node --test tests/system/model-gateway-service.test.mjs`，51 个 Model Gateway 子测试通过。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，53 个 Channel Connectors 子测试通过；覆盖 Codex resume 参数顺序、Feishu/Octo 文件收发、Feishu transport-smoke 文件发送入口、进度/工具事件和 daemon 合同。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，53 个 Channel Connectors 子测试通过；覆盖 Codex resume 参数顺序、Feishu/Octo 文件收发、Feishu transport-smoke 文件发送入口、Agent 命令文件扫描/展开、进度/工具事件和 daemon 合同。
 - 通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，9 个 Codex app-server driver 原型子测试通过；覆盖 persistent markdown/文件 manifest 保真、工具输出保真、内部 userMessage 回显过滤、unfinished turn 超时中断。
 - 通过：`node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，默认跳过真实 Codex smoke。
 - 通过：`STUDIO_CODEX_APP_SERVER_LIVE_TURN=1 STUDIO_CODEX_APP_SERVER_LIVE_COMPACT=1 STUDIO_CODEX_APP_SERVER_LIVE_MODEL=gpt-5.4-mini node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，隔离 HOME 下真实 `codex app-server --stdio` 经本机 Studio Gateway 完成 `turn/start` 精确回复与原生 compact 完成信号。

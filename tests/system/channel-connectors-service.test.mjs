@@ -2684,6 +2684,12 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   };
   fs.mkdirSync(path.join(codexProject.workDir, "src"), { recursive: true });
   fs.mkdirSync(path.join(claudeProject.workDir, "src"), { recursive: true });
+  fs.mkdirSync(path.join(claudeProject.workDir, ".claude", "commands"), { recursive: true });
+  fs.writeFileSync(
+    path.join(claudeProject.workDir, ".claude", "commands", "review-code.md"),
+    "Review target {{1}} with notes {{2*:no extra notes}}",
+    "utf8",
+  );
   const binding = {
     id: "octo-codex",
     platform: "octo",
@@ -2755,7 +2761,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(parseChannelConnectorCommand("%help")?.name, "help");
   assert.equal(parseChannelConnectorCommand("/%help")?.name, "help");
 
-  for (const alias of ["/command", "/cmd"]) {
+  for (const alias of ["/menu", "/start"]) {
     const aliasHelp = await handleChannelConnectorCommand({
       ...baseContext,
       message: message(alias),
@@ -2764,6 +2770,51 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     assert.equal(aliasHelp.action, "help");
     assert.match(aliasHelp.replyText, /Studio Channel Commands/);
   }
+
+  const codexCommands = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/commands"),
+  });
+  assert.equal(codexCommands.handled, true);
+  assert.equal(codexCommands.action, "list");
+  assert.match(codexCommands.replyText, /当前 Agent 没有可用的命令文件/);
+  assert.match(codexCommands.replyText, /codex/);
+
+  const claudeCommands = await handleChannelConnectorCommand({
+    ...baseContext,
+    project: claudeProject,
+    message: message("/commands"),
+  });
+  assert.equal(claudeCommands.handled, true);
+  assert.equal(claudeCommands.action, "list");
+  assert.match(claudeCommands.replyText, /\/review-code \[agent\]/);
+  assert.match(claudeCommands.replyText, /Review target/);
+
+  const claudeAgentCommand = await handleChannelConnectorCommand({
+    ...baseContext,
+    project: claudeProject,
+    message: message("/review_code src auth module"),
+  });
+  assert.equal(claudeAgentCommand.handled, false);
+  assert.equal(claudeAgentCommand.action, "passthrough");
+  assert.equal(claudeAgentCommand.command, "review-code");
+  assert.equal(claudeAgentCommand.passthroughText, "Review target src with notes auth module");
+  assert.equal(claudeAgentCommand.nativeCommand, null);
+
+  const missingCodexAgentCommand = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/review-code src"),
+  });
+  assert.equal(missingCodexAgentCommand.handled, false);
+  assert.equal(missingCodexAgentCommand.passthroughText, "/review-code src");
+
+  const traversalAgentCommand = await handleChannelConnectorCommand({
+    ...baseContext,
+    project: claudeProject,
+    message: message("/../secret"),
+  });
+  assert.equal(traversalAgentCommand.handled, false);
+  assert.equal(traversalAgentCommand.passthroughText, "/../secret");
 
   const listSlashCommands = [
     ["/status", "status"],
