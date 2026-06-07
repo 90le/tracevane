@@ -2440,6 +2440,7 @@ function shouldSendFeishuProgressEvent(
   event: ChannelConnectorAgentProgressEvent,
   defaults: ChannelConnectorProgressDefaults,
 ): boolean {
+  if (!isVisibleChannelProgressEvent(event)) return false;
   if (!channelConnectorStreamMessagesEnabled(control, defaults)) return false;
   if (event.type === "assistant") return false;
   if ((event.type === "tool" || event.type === "reasoning") && !channelConnectorToolMessagesEnabled(control, defaults)) return false;
@@ -2481,10 +2482,20 @@ function shouldSendChannelProgressEvent(
   event: ChannelConnectorAgentProgressEvent,
   defaults: ChannelConnectorProgressDefaults,
 ): boolean {
+  if (!isVisibleChannelProgressEvent(event)) return false;
   if (!channelConnectorStreamMessagesEnabled(control, defaults)) return false;
   if (event.type === "assistant" || event.type === "running" || event.type === "completed" || event.type === "event") return false;
   if ((event.type === "tool" || event.type === "reasoning") && !channelConnectorToolMessagesEnabled(control, defaults)) return false;
   return ["reasoning", "tool", "failed", "error"].includes(event.type);
+}
+
+function isVisibleChannelProgressEvent(event: ChannelConnectorAgentProgressEvent): boolean {
+  if (event.type !== "running") return true;
+  const rawType = normalizeString(event.rawType).toLowerCase();
+  const text = normalizeString(event.text).toLowerCase();
+  if (rawType === "turn.started" || rawType === "turn/started") return false;
+  if (text === "codex turn started" || text === "codex app-server turn started") return false;
+  return true;
 }
 
 function createFeishuProgressCardState(): FeishuProgressCardState {

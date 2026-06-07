@@ -1,7 +1,7 @@
 # Studio Gateway / Channel Connectors 进度
 
 > 状态：Studio Gateway core、Provider Center、App Connections、Channel Connectors Octo/Feishu 基础闭环已完成；当前推进 CC Go 成熟能力迁移
-> 更新：2026-06-07
+> 更新：2026-06-08
 > 文档规则：只保留当前状态、最新完成、验证、边界和下一步；不追加流水日志。
 
 ## 当前状态
@@ -15,6 +15,7 @@
 - IM 文件收发边界已固定为 Studio native transport：Agent 只读入站 staging 文件，出站只声明工作目录内文件 manifest，由 daemon 按平台上传发送。
 - IM Agent run 默认按 binding + sessionKey 串行排队：上一条 Agent 消息未结束时，新普通消息会收到“已加入队列”引导，并在前序任务完成后自动处理；`/stop`、`/status` 等 Studio 命令仍可执行，binding metadata 可显式打开 parallel。
 - IM Agent runner 策略固定为混合架构：真实 Feishu/Octo live binding 当前使用 one-shot `exec/resume` 保稳定；Codex 持久 session driver 保留为 metadata 实验路径，显式开启时使用 `codex app-server`，已覆盖 `turn/start`、原生 `/compact`、`turn/interrupt`、`/stop`、超时中断和失败回退。
+- CC Go 旧源码对照结论已固定：Codex 正式稳定路径优先复刻 CC 的 `codex exec/resume` 子进程模型；Claude Code / ACP 等再按其原生长驻流式会话单独迁移。Codex app-server 不作为默认 live 路线，只保留为受控 beta。
 
 ## 本次完成
 
@@ -43,6 +44,7 @@
 - Codex persistent app-server 输出链路已补齐保真：delta 不再 trim，最终回复优先使用完整 `item/completed agentMessage`，工具事件复用结构化输出解析，`studio-channel-files` fenced block 不会被压成一行导致文件无法发送。
 - Codex persistent app-server 已过滤内部 `userMessage` / history prompt 回显，Feishu/Octo 进度不再展示 `Recent messages in this IM session...` 等内部上下文；one-shot runner 也过滤 `user_message` 事件，避免同类噪音。
 - Codex persistent app-server 普通 turn 新增独立完成超时：若 app-server 已有 assistant 输出但迟迟没有 `turn/completed`，driver 会发 `turn/interrupt`、释放 active run，并交给外层 pool 按策略回退 one-shot，避免 IM 发送文件等场景永久卡住。
+- Feishu/Octo 可见进度新增生命周期噪音过滤：底层仍保留 `turn.started` / `turn/started` 到日志和 runtime，但 IM 卡片/文本不再展示 `Codex turn started` 或 `Codex app-server turn started` 这类无业务价值的“运行中”条目。
 
 ## 最近验证
 
@@ -53,7 +55,7 @@
 - 通过：`STUDIO_CODEX_APP_SERVER_LIVE_TURN=1 STUDIO_CODEX_APP_SERVER_LIVE_COMPACT=1 STUDIO_CODEX_APP_SERVER_LIVE_MODEL=gpt-5.4-mini node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，隔离 HOME 下真实 `codex app-server --stdio` 经本机 Studio Gateway 完成 `turn/start` 精确回复与原生 compact 完成信号。
 - 通过：`STUDIO_CODEX_APP_SERVER_LIVE_INTERRUPT=1 STUDIO_CODEX_APP_SERVER_LIVE_MODEL=gpt-5.4-mini node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，隔离 HOME 下真实 app-server turn 被 `turn/interrupt` 取消并返回 `cancelled`。
 - 通过：`node --test tests/system/channel-connectors-agent-session-driver.test.mjs`，6 个持久 session driver 合同子测试通过；覆盖复用、crash fallback、多用户/模型/权限隔离、禁止 fallback、stop/kill/reap、mode 解析。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，52 个 Channel Connectors 子测试通过；fake Octo + fake Codex app-server 已覆盖 persistent run、daemon `/status` active session、自动 idle reap、app-server crash -> one-shot fallback、IM `/stop` -> `turn/interrupt`、双 IM session 隔离、targeted kill、Codex `function_call_output` 结构化工具结果和多行输出保真；one-shot runner 已覆盖 `user_message` progress 过滤。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，52 个 Channel Connectors 子测试通过；fake Octo + fake Codex app-server 已覆盖 persistent run、daemon `/status` active session、自动 idle reap、app-server crash -> one-shot fallback、IM `/stop` -> `turn/interrupt`、双 IM session 隔离、targeted kill、Codex `function_call_output` 结构化工具结果和多行输出保真；one-shot runner 已覆盖 `user_message` progress 过滤，daemon source contract 已覆盖 `turn.started` 可见进度过滤。
 - 通过：`node --test tests/system/channel-connectors-persistent-live-script.test.mjs`，验证 live smoke 脚本 dry-run、不泄露 secret、备份、写入 persistent metadata 和 restore-latest。
 - 通过：`node --test tests/system/channel-connectors-agent-sessions-live-script.test.mjs`，验证 session live 管理脚本 status 不泄漏 workDir、dry-run kill 不 POST、`--apply` reap/kill 请求正确。
 - 通过：`node scripts/smoke-channel-connectors-persistent-live.mjs --bindings octo-studio-cc,feishu-live --apply --json`，真实 Octo/Feishu binding 曾写入 persistent metadata 并验证 `effectiveMode=persistent`、Octo/Feishu connected、用户真实 IM `/stop` 可用；当前 live 配置已恢复 `agentSessionDriver=one-shot`，用于保持文件发送和流式进度稳定。
@@ -87,5 +89,5 @@
 ## 下一步
 
 1. 用当前 one-shot live binding 复验 Feishu/Octo 发文件、工具流式、最终 Markdown 排版，确认旧成熟能力恢复。
-2. 继续做 Codex persistent driver 受控 beta：补权限等待处理、审批事件解析、同用户多 session、多用户/群隔离和 UI kill/reap live 验收。
-3. 继续梳理 Channel Connectors 会话页与命令卡片，把 persistent/one-shot、队列、当前模型、权限和最近运行状态做成更清晰的管理面。
+2. 按 CC Go 顺序迁移成熟 Agent runner：先对齐 Codex `exec/resume` 细节，再补 Claude Code 长驻 stream-json/permission-prompt-tool，后续迁移 OpenCode/ACP。
+3. 继续做 Codex persistent driver 受控 beta：补权限等待处理、审批事件解析、同用户多 session、多用户/群隔离和 UI kill/reap live 验收，但不阻塞稳定 live 路线。

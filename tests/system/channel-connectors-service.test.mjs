@@ -5542,6 +5542,10 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /function channelConnectorStreamMessagesEnabled/);
   assert.match(daemonSource, /function shouldSendChannelProgressEvent/);
   assert.match(daemonSource, /shouldSendFeishuProgressEvent/);
+  assert.match(daemonSource, /function isVisibleChannelProgressEvent/);
+  assert.match(daemonSource, /rawType === "turn\.started" \|\| rawType === "turn\/started"/);
+  assert.match(daemonSource, /text === "codex turn started" \|\| text === "codex app-server turn started"/);
+  assert.match(daemonSource, /if \(!isVisibleChannelProgressEvent\(event\)\)\s*return false;/);
   assert.match(daemonSource, /function normalizeFeishuCommandContent/);
   assert.match(daemonSource, /normalizeString\(input\.command\.action\)\.toLowerCase\(\) === "help"/);
   assert.match(daemonSource, /renderFeishuProgressCard/);
