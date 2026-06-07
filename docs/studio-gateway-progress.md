@@ -38,6 +38,7 @@
 - Codex persistent app-server 现在按 pool/session 派生独立 `CODEX_HOME`，避免不同 IM session 共享同一个 Codex 配置/状态目录；daemon 回归覆盖同一 Octo binding 下两个用户生成两个 app-server process、两个 session、两个 `CODEX_HOME`，并验证 kill 一个 session 不影响另一个。
 - Channel daemon 新增 persistent session idle reaper：生产默认 10 分钟 idle TTL / 60 秒巡检；测试可用环境变量缩短 TTL，系统回归已证明无需手动 `reap-idle` 也会自动清理空闲 Codex app-server session。
 - persistent driver 最近事件已进入 daemon `/status` 与 `/agent-sessions`，可观察 `turn.failed`、`session.disposed`、`turn.fallback` 等状态；daemon 回归已证明 Codex app-server 崩溃后会清理坏 session 并回退 one-shot 回复同一条 IM 消息。
+- Channel Connectors 会话页已接入 persistent driver `recentEvents`，Sessions tab 可查看最近 fallback/failed/disposed/reaped 等事件，并在会话操作结果中显示事件数，方便 UI 侧确认 kill/reap/fallback 真实发生。
 
 ## 最近验证
 
@@ -53,7 +54,7 @@
 - 通过：`node --test tests/system/channel-connectors-agent-sessions-live-script.test.mjs`，验证 session live 管理脚本 status 不泄漏 workDir、dry-run kill 不 POST、`--apply` reap/kill 请求正确。
 - 通过：`node scripts/smoke-channel-connectors-persistent-live.mjs --bindings octo-studio-cc,feishu-live --apply --json`，真实 Octo/Feishu binding 已写入 persistent metadata，daemon runtime 显示两个 binding `effectiveMode=persistent`；随后轮询 `/status` 确认 Octo 与 Feishu 均 connected，用户已在真实 IM 验证 `/stop` 可用。
 - 通过：`node scripts/smoke-channel-connectors-agent-sessions.mjs --json`，真实 Channel daemon 返回两个 persistent binding，`reaped=null`，证明只读 status 不触发 idle cleanup；无 idle session 时 dry-run `--kill-first-idle` 不产生副作用。
-- 通过：`node --test tests/system/studio-web-channel-connectors-page.test.mjs`，Channel Connectors 页面 contract 覆盖 session 管理 API 和 UI 操作。
+- 通过：`node --test tests/system/studio-web-channel-connectors-page.test.mjs`，Channel Connectors 页面 contract 覆盖 session 管理 API、persistent driver recent events 和 UI 操作。
 - 通过：`npm run typecheck:web`。
 - 通过：`node --test tests/system/studio-web-channel-connectors-page.test.mjs tests/system/studio-web-model-gateway-page.test.mjs`，6 个前端 contract 子测试通过。
 - 通过：`git diff --check`。
@@ -81,5 +82,5 @@
 ## 下一步
 
 1. 继续做 Codex persistent driver 受控 beta：补同用户多 session、多用户/群隔离和 UI kill/reap live 验收。
-2. 梳理 Channel Connectors 会话页与命令卡片，把 persistent/one-shot、队列、当前模型、权限和最近运行状态做成更清晰的管理面。
+2. 继续梳理 Channel Connectors 会话页与命令卡片，把 persistent/one-shot、队列、当前模型、权限和最近运行状态做成更清晰的管理面。
 3. 再评估是否给 Claude Code / OpenCode 增加独立 persistent driver；默认 one-shot 不变。

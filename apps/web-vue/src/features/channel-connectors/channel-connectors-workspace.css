@@ -227,9 +227,20 @@
   margin-bottom: 12px;
 }
 
+.ccx-event-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
 .ccx-session-row {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
+}
+
+.ccx-event-row.danger {
+  border-color: color-mix(in srgb, var(--danger) 36%, var(--mono-line));
+  background: color-mix(in srgb, var(--danger) 5%, var(--surface-base));
 }
 
 .ccx-danger-text {

@@ -446,6 +446,10 @@
                 <span>{{ text('会话上限', 'Session limit') }}</span>
                 <strong>{{ agentSessions?.policy.maxSessions ?? '-' }}</strong>
               </div>
+              <div>
+                <span>{{ text('最近事件', 'Recent events') }}</span>
+                <strong>{{ agentSessions?.recentEvents.length ?? '-' }}</strong>
+              </div>
             </div>
 
             <div class="ccx-list">
@@ -486,6 +490,25 @@
           </div>
           <div v-else class="ccx-empty compact">
             {{ text('暂无活动持久会话', 'No active persistent sessions') }}
+          </div>
+
+          <div v-if="recentAgentSessionEvents.length" class="ccx-event-list">
+            <div
+              v-for="event in recentAgentSessionEvents"
+              :key="`${event.checkedAt}:${event.type}:${event.poolKey}:${event.messageId || ''}`"
+              class="ccx-list-row ccx-event-row"
+              :class="{ danger: isAgentSessionEventFailure(event.type) }"
+            >
+              <small>{{ formatTimestamp(event.checkedAt) }} · {{ event.bindingId }} · {{ event.agent }}</small>
+              <strong>{{ agentSessionEventLabel(event.type) }}</strong>
+              <span>{{ event.sessionKey }}{{ event.messageId ? ` · ${event.messageId}` : '' }}</span>
+              <span v-if="event.reason || event.error" :class="{ 'ccx-danger-text': Boolean(event.error) }">
+                {{ [event.reason, event.error].filter(Boolean).join(' · ') }}
+              </span>
+            </div>
+          </div>
+          <div v-else-if="agentSessions" class="ccx-empty compact">
+            {{ text('暂无持久会话事件', 'No persistent session events') }}
           </div>
 
           <div v-if="agentSessionResult" class="ccx-output" :class="{ failure: Boolean(agentSessionResult.killed?.requested && !agentSessionResult.killed.killed) }">
@@ -677,6 +700,7 @@ const actionOutput = computed(() => {
 });
 
 const activeAgentSessions = computed(() => agentSessions.value?.activeSessions || []);
+const recentAgentSessionEvents = computed(() => (agentSessions.value?.recentEvents || []).slice(0, 8));
 
 const agentSessionResultTitle = computed(() => {
   const result = agentSessionResult.value;
@@ -695,6 +719,7 @@ const agentSessionResultOutput = computed(() => {
     `Implementation: ${result.implementation}`,
     `Persistent bindings: ${result.requestedPersistentBindings.length}`,
     `Active sessions: ${result.activeSessions.length}`,
+    `Recent events: ${result.recentEvents.length}`,
     `Idle timeout: ${formatDuration(result.policy.idleTimeoutMs)}`,
     `Session limit: ${result.policy.maxSessions}`,
   ];
@@ -706,6 +731,25 @@ const agentSessionResultOutput = computed(() => {
   }
   return lines.join('\n');
 });
+
+function agentSessionEventLabel(type: string): string {
+  const labels: Record<string, string> = {
+    'session.created': text('会话创建', 'Session created'),
+    'session.stopped': text('会话停止', 'Session stopped'),
+    'session.killed': text('会话终止', 'Session killed'),
+    'session.disposed': text('会话释放', 'Session disposed'),
+    'session.reaped': text('空闲回收', 'Idle reaped'),
+    'turn.started': text('任务开始', 'Turn started'),
+    'turn.finished': text('任务完成', 'Turn finished'),
+    'turn.failed': text('任务失败', 'Turn failed'),
+    'turn.fallback': text('已回退', 'Fallback used'),
+  };
+  return labels[type] || type;
+}
+
+function isAgentSessionEventFailure(type: string): boolean {
+  return type === 'turn.failed' || type === 'turn.fallback';
+}
 
 const platformSmokeOutput = computed(() => {
   const result = platformSmoke.value;
