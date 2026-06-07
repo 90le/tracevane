@@ -1,3 +1,4 @@
+import { createHash, createHmac } from "node:crypto";
 import type {
   ChannelConnectorOctoReplyPlan,
   ChannelConnectorOctoTransportConfig,
@@ -10,6 +11,18 @@ const OCTO_TEXT_MESSAGE_TYPE = 1;
 const OCTO_IMAGE_MESSAGE_TYPE = 2;
 const OCTO_FILE_MESSAGE_TYPE = 8;
 const DEFAULT_TIMEOUT_MS = 30_000;
+
+interface OctoUploadCredentials {
+  bucket: string;
+  region: string;
+  key: string;
+  tmpSecretId: string;
+  tmpSecretKey: string;
+  sessionToken: string;
+  startTime: number | null;
+  expiredTime: number;
+  cdnBaseUrl: string | null;
+}
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -27,10 +40,12 @@ export function octoTransportFromMetadata(metadataValue: unknown): ChannelConnec
   const botToken = normalizeString(metadata.botToken || metadata.bot_token || metadata.token);
   if (!apiUrl || !botToken) return null;
   const wsUrl = normalizeString(metadata.wsUrl || metadata.ws_url);
+  const cosUploadBaseUrl = normalizeString(metadata.cosUploadBaseUrl || metadata.cos_upload_base_url);
   return {
     apiUrl,
     botToken,
     wsUrl: wsUrl || null,
+    cosUploadBaseUrl: cosUploadBaseUrl || null,
   };
 }
 
@@ -171,6 +186,179 @@ function mediaUrlFromResponse(body: Record<string, unknown>): string {
     || normalizeString(data.file_url)
     || normalizeString(data.fileUrl)
     || normalizeString(data.download_url);
+}
+
+function normalizeNumber(value: unknown): number | null {
+  const numberValue = Number(value);
+  return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function normalizeUploadCredentialString(source: Record<string, unknown>, ...keys: string[]): string {
+  for (const key of keys) {
+    const value = normalizeString(source[key]);
+    if (value) return value;
+  }
+  return "";
+}
+
+function cosUrlEncode(value: string): string {
+  return encodeURIComponent(value).replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
+}
+
+function cosObjectPath(key: string): string {
+  return `/${key.split("/").filter(Boolean).map(cosUrlEncode).join("/")}`;
+}
+
+function cosEndpoint(config: ChannelConnectorOctoTransportConfig, credentials: OctoUploadCredentials): string {
+  const baseUrl = normalizeString(config.cosUploadBaseUrl)
+    || `https://${credentials.bucket}.cos.${credentials.region}.myqcloud.com`;
+  return baseUrl.replace(/\/+$/, "");
+}
+
+function cosObjectUrl(config: ChannelConnectorOctoTransportConfig, credentials: OctoUploadCredentials): string {
+  const baseUrl = credentials.cdnBaseUrl || cosEndpoint(config, credentials);
+  return `${baseUrl.replace(/\/+$/, "")}${cosObjectPath(credentials.key)}`;
+}
+
+function sha1Hex(value: string): string {
+  return createHash("sha1").update(value).digest("hex");
+}
+
+function hmacSha1Hex(key: string, value: string): string {
+  return createHmac("sha1", key).update(value).digest("hex");
+}
+
+function canonicalCosValues(values: Record<string, string>): { list: string; text: string } {
+  const entries = Object.entries(values)
+    .map(([key, value]) => [cosUrlEncode(key.toLowerCase()), cosUrlEncode(value)] as const)
+    .sort(([left], [right]) => left.localeCompare(right));
+  return {
+    list: entries.map(([key]) => key).join(";"),
+    text: entries.map(([key, value]) => `${key}=${value}`).join("&"),
+  };
+}
+
+function cosAuthorizationHeader(input: {
+  method: string;
+  path: string;
+  headers: Record<string, string>;
+  credentials: OctoUploadCredentials;
+}): string {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+  const startTime = input.credentials.startTime !== null
+    ? Math.max(input.credentials.startTime, Math.min(nowSeconds, input.credentials.expiredTime - 1))
+    : Math.min(nowSeconds, input.credentials.expiredTime - 1);
+  const keyTime = `${startTime};${input.credentials.expiredTime}`;
+  const headerValues = canonicalCosValues(input.headers);
+  const urlValues = canonicalCosValues({});
+  const signKey = hmacSha1Hex(input.credentials.tmpSecretKey, keyTime);
+  const httpString = `${input.method.toLowerCase()}\n${input.path}\n${urlValues.text}\n${headerValues.text}\n`;
+  const stringToSign = `sha1\n${keyTime}\n${sha1Hex(httpString)}\n`;
+  const signature = hmacSha1Hex(signKey, stringToSign);
+  return [
+    "q-sign-algorithm=sha1",
+    `q-ak=${input.credentials.tmpSecretId}`,
+    `q-sign-time=${keyTime}`,
+    `q-key-time=${keyTime}`,
+    `q-header-list=${headerValues.list}`,
+    `q-url-param-list=${urlValues.list}`,
+    `q-signature=${signature}`,
+  ].join("&");
+}
+
+async function fetchOctoUploadCredentials(
+  config: ChannelConnectorOctoTransportConfig,
+  fileName: string,
+): Promise<{ statusCode: number; credentials: OctoUploadCredentials; credentialKeys: string[] }> {
+  const response = await getOctoJson(
+    config,
+    `/v1/bot/upload/credentials?filename=${encodeURIComponent(fileName)}`,
+  );
+  const credentialBody = recordFrom(response.body.credentials);
+  const credentials: OctoUploadCredentials = {
+    bucket: normalizeString(response.body.bucket),
+    region: normalizeString(response.body.region),
+    key: normalizeString(response.body.key),
+    tmpSecretId: normalizeUploadCredentialString(credentialBody, "tmpSecretId", "tmp_secret_id", "TmpSecretId"),
+    tmpSecretKey: normalizeUploadCredentialString(credentialBody, "tmpSecretKey", "tmp_secret_key", "TmpSecretKey"),
+    sessionToken: normalizeUploadCredentialString(credentialBody, "sessionToken", "session_token", "Token"),
+    startTime: normalizeNumber(response.body.startTime),
+    expiredTime: normalizeNumber(response.body.expiredTime) || 0,
+    cdnBaseUrl: normalizeString(response.body.cdnBaseUrl || response.body.cdn_base_url) || null,
+  };
+  const credentialKeys = [
+    credentials.tmpSecretId ? "tmpSecretId" : "",
+    credentials.tmpSecretKey ? "tmpSecretKey" : "",
+    credentials.sessionToken ? "sessionToken" : "",
+  ].filter(Boolean);
+  if (!credentials.bucket || !credentials.region || !credentials.key) {
+    throw Object.assign(new Error("Octo upload credentials response did not include bucket, region, or key."), {
+      statusCode: response.statusCode,
+      body: response.body,
+    });
+  }
+  if (credentialKeys.length !== 3 || !credentials.expiredTime) {
+    throw Object.assign(new Error("Octo upload credentials response did not include complete temporary credentials."), {
+      statusCode: response.statusCode,
+      body: response.body,
+    });
+  }
+  return {
+    statusCode: response.statusCode,
+    credentials,
+    credentialKeys,
+  };
+}
+
+async function putOctoCosObject(
+  config: ChannelConnectorOctoTransportConfig,
+  credentials: OctoUploadCredentials,
+  input: {
+    data: Uint8Array;
+    mimeType: string;
+  },
+): Promise<{ statusCode: number; mediaUrl: string }> {
+  const endpoint = cosEndpoint(config, credentials);
+  const path = cosObjectPath(credentials.key);
+  const url = new URL(`${endpoint}${path}`);
+  const headersForSigning = {
+    host: url.host,
+    "content-type": input.mimeType,
+    "x-cos-security-token": credentials.sessionToken,
+  };
+  const authorization = cosAuthorizationHeader({
+    method: "PUT",
+    path,
+    headers: headersForSigning,
+    credentials,
+  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  try {
+    const arrayBuffer = new ArrayBuffer(input.data.byteLength);
+    new Uint8Array(arrayBuffer).set(input.data);
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: {
+        authorization,
+        ...headersForSigning,
+      },
+      body: new Blob([arrayBuffer], { type: input.mimeType }),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      const raw = await response.text().catch(() => "");
+      throw Object.assign(new Error(`Octo COS upload failed with HTTP ${response.status}${raw ? `: ${raw}` : ""}`), {
+        statusCode: response.status,
+      });
+    }
+    return {
+      statusCode: response.status,
+      mediaUrl: cosObjectUrl(config, credentials),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function postOctoMultipart(
@@ -318,29 +506,7 @@ export async function getOctoUploadCredentials(
 ): Promise<ChannelConnectorOctoTransportResult> {
   const fileName = safeChannelConnectorFileName(input.fileName, "studio-upload.bin");
   try {
-    const response = await getOctoJson(
-      config,
-      `/v1/bot/upload/credentials?filename=${encodeURIComponent(fileName)}`,
-    );
-    const credentials = recordFrom(response.body.credentials);
-    const credentialKeys = [
-      normalizeString(credentials.tmpSecretId) ? "tmpSecretId" : "",
-      normalizeString(credentials.tmpSecretKey) ? "tmpSecretKey" : "",
-      normalizeString(credentials.sessionToken) ? "sessionToken" : "",
-    ].filter(Boolean);
-    if (!normalizeString(response.body.bucket) || !normalizeString(response.body.region) || !normalizeString(response.body.key)) {
-      throw Object.assign(new Error("Octo upload credentials response did not include bucket, region, or key."), {
-        statusCode: response.statusCode,
-        body: response.body,
-      });
-    }
-    if (credentialKeys.length !== 3) {
-      throw Object.assign(new Error("Octo upload credentials response did not include complete temporary credentials."), {
-        statusCode: response.statusCode,
-        body: response.body,
-      });
-    }
-    const expiredTime = Number(response.body.expiredTime);
+    const response = await fetchOctoUploadCredentials(config, fileName);
     return transportResult({
       attempted: true,
       ok: true,
@@ -349,12 +515,12 @@ export async function getOctoUploadCredentials(
       statusCode: response.statusCode,
       requestCount: 1,
       fileName,
-      uploadBucket: normalizeString(response.body.bucket),
-      uploadRegion: normalizeString(response.body.region),
-      uploadKey: normalizeString(response.body.key),
-      uploadCdnBaseUrl: normalizeString(response.body.cdnBaseUrl) || null,
-      uploadExpiredTime: Number.isFinite(expiredTime) ? expiredTime : null,
-      uploadCredentialKeys: credentialKeys,
+      uploadBucket: response.credentials.bucket,
+      uploadRegion: response.credentials.region,
+      uploadKey: response.credentials.key,
+      uploadCdnBaseUrl: response.credentials.cdnBaseUrl,
+      uploadExpiredTime: response.credentials.expiredTime,
+      uploadCredentialKeys: response.credentialKeys,
     });
   } catch (error) {
     return transportResult({
@@ -463,6 +629,58 @@ export async function uploadOctoFile(
   }
 }
 
+export async function directUploadOctoFile(
+  config: ChannelConnectorOctoTransportConfig,
+  input: {
+    data: Uint8Array;
+    fileName: string;
+    mimeType?: string | null;
+  },
+): Promise<ChannelConnectorOctoTransportResult> {
+  const fileName = safeChannelConnectorFileName(input.fileName, "studio-upload.bin");
+  const mimeType = inferChannelConnectorMimeType(fileName, input.mimeType);
+  let requestCount = 1;
+  try {
+    const upload = await fetchOctoUploadCredentials(config, fileName);
+    requestCount = 2;
+    const response = await putOctoCosObject(config, upload.credentials, {
+      data: input.data,
+      mimeType,
+    });
+    return transportResult({
+      attempted: true,
+      ok: true,
+      action: "direct-upload-file",
+      apiUrl: config.apiUrl,
+      statusCode: response.statusCode,
+      requestCount,
+      mediaUrl: response.mediaUrl,
+      fileName,
+      mimeType,
+      size: input.data.length,
+      uploadBucket: upload.credentials.bucket,
+      uploadRegion: upload.credentials.region,
+      uploadKey: upload.credentials.key,
+      uploadCdnBaseUrl: upload.credentials.cdnBaseUrl,
+      uploadExpiredTime: upload.credentials.expiredTime,
+      uploadCredentialKeys: upload.credentialKeys,
+    });
+  } catch (error) {
+    return transportResult({
+      attempted: true,
+      ok: false,
+      action: "direct-upload-file",
+      apiUrl: config.apiUrl,
+      statusCode: errorStatusCode(error),
+      error: errorMessage(error),
+      requestCount,
+      fileName,
+      mimeType,
+      size: input.data.length,
+    });
+  }
+}
+
 export async function sendOctoMediaMessage(
   config: ChannelConnectorOctoTransportConfig,
   input: {
@@ -522,6 +740,47 @@ export async function sendOctoMediaMessage(
       size: typeof input.size === "number" && Number.isFinite(input.size) ? input.size : null,
     });
   }
+}
+
+export async function directUploadAndSendOctoMedia(
+  config: ChannelConnectorOctoTransportConfig,
+  input: {
+    channelId: string;
+    channelType: number;
+    data: Uint8Array;
+    fileName: string;
+    mimeType?: string | null;
+  },
+): Promise<ChannelConnectorOctoTransportResult> {
+  const upload = await directUploadOctoFile(config, input);
+  if (upload.ok !== true || !upload.mediaUrl) return upload;
+  const sent = await sendOctoMediaMessage(config, {
+    channelId: input.channelId,
+    channelType: input.channelType,
+    mediaUrl: upload.mediaUrl,
+    fileName: upload.fileName,
+    mimeType: upload.mimeType,
+    size: upload.size,
+  });
+  return transportResult({
+    attempted: true,
+    ok: sent.ok,
+    action: "direct-upload-and-send-media",
+    apiUrl: config.apiUrl,
+    statusCode: sent.statusCode,
+    error: sent.error,
+    requestCount: upload.requestCount + sent.requestCount,
+    mediaUrl: upload.mediaUrl,
+    fileName: upload.fileName,
+    mimeType: upload.mimeType,
+    size: upload.size,
+    uploadBucket: upload.uploadBucket,
+    uploadRegion: upload.uploadRegion,
+    uploadKey: upload.uploadKey,
+    uploadCdnBaseUrl: upload.uploadCdnBaseUrl,
+    uploadExpiredTime: upload.uploadExpiredTime,
+    uploadCredentialKeys: upload.uploadCredentialKeys,
+  });
 }
 
 export async function uploadAndSendOctoMedia(

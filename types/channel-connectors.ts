@@ -169,6 +169,7 @@ export interface ChannelConnectorOctoTransportConfig {
   apiUrl: string;
   botToken: string;
   wsUrl?: string | null;
+  cosUploadBaseUrl?: string | null;
 }
 
 export interface ChannelConnectorOctoTransportResult {
@@ -181,8 +182,10 @@ export interface ChannelConnectorOctoTransportResult {
     | "typing"
     | "send-message"
     | "upload-credentials"
+    | "direct-upload-file"
     | "upload-file"
     | "send-media"
+    | "direct-upload-and-send-media"
     | "upload-and-send-media";
   apiUrl: string | null;
   statusCode: number | null;
@@ -205,7 +208,15 @@ export interface ChannelConnectorOctoTransportResult {
 
 export interface ChannelConnectorOctoTransportSmokeRequest {
   bindingId?: string | null;
-  action?: "register" | "typing" | "send-message" | "upload-credentials" | "upload-file" | "upload-and-send-media";
+  action?:
+    | "register"
+    | "typing"
+    | "send-message"
+    | "upload-credentials"
+    | "direct-upload-file"
+    | "upload-file"
+    | "direct-upload-and-send-media"
+    | "upload-and-send-media";
   channelId?: string | null;
   channelType?: ChannelConnectorOctoChannelType;
   content?: string | null;

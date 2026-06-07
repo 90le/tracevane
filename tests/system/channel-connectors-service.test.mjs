@@ -360,13 +360,18 @@ async function withMockOctoServer(task) {
       const contentType = String(req.headers["content-type"] || "");
       const body = contentType.includes("multipart/form-data")
         ? { raw: bodyRaw }
-        : bodyRaw
-          ? JSON.parse(bodyRaw)
-          : {};
+        : req.method === "PUT"
+          ? { raw: bodyRaw }
+          : bodyRaw
+            ? JSON.parse(bodyRaw)
+            : {};
       requests.push({
         method: req.method,
         path: req.url,
         authorization: req.headers.authorization,
+        xCosSecurityToken: req.headers["x-cos-security-token"],
+        host: req.headers.host,
+        contentLength: req.headers["content-length"],
         contentType,
         body,
       });
@@ -389,6 +394,11 @@ async function withMockOctoServer(task) {
           expiredTime: 1742549400,
           cdnBaseUrl: "https://cdn.example.test",
         }));
+        return;
+      }
+      if (req.method === "PUT" && req.url?.startsWith("/im-test/chat/")) {
+        res.statusCode = 200;
+        res.end(JSON.stringify({ ok: true }));
         return;
       }
       if (req.url === "/v1/bot/file/upload") {
@@ -1490,6 +1500,87 @@ test("Octo transport smoke probes STS upload credentials without exposing secret
       requests[0].path,
       `/v1/bot/upload/credentials?filename=${encodeURIComponent("龙虾 计划(最终版).pdf")}`,
     );
+  });
+});
+
+test("Octo transport direct uploads through COS STS and sends media", async () => {
+  await withMockOctoServer(async (apiUrl, requests) => {
+    const root = makeTempRoot();
+    const config = createStudioConfig(root);
+    const service = createChannelConnectorsService(config, {
+      now: () => new Date("2026-06-06T08:00:00.000Z"),
+    });
+    const initial = service.getNativeConfig().config;
+    service.saveNativeConfig({
+      config: {
+        ...initial,
+        platformBindings: [
+          {
+            id: "octo-direct-upload",
+            platform: "octo",
+            accountId: "octo-account",
+            botId: "robot-1",
+            displayName: "Octo Direct Upload",
+            agentProfileId: initial.defaultAgentProfileId,
+            enabled: true,
+            allowlist: [],
+            adminUsers: [],
+            metadata: {
+              apiUrl,
+              botToken: "test-token",
+              cosUploadBaseUrl: apiUrl,
+            },
+          },
+        ],
+      },
+    });
+
+    const result = await service.runOctoTransportSmoke({
+      bindingId: "octo-direct-upload",
+      action: "direct-upload-and-send-media",
+      channelId: "user-2",
+      channelType: 1,
+      content: "direct body",
+      fileName: "龙虾 大文件.pdf",
+      mimeType: "application/pdf",
+    });
+
+    assert.equal(result.transport.ok, true);
+    assert.equal(result.transport.action, "direct-upload-and-send-media");
+    assert.equal(result.transport.requestCount, 3);
+    assert.equal(result.transport.mediaUrl, "https://cdn.example.test/im-test/chat/1742547600/uuid_report.pdf");
+    assert.equal(result.transport.fileName, "龙虾 大文件.pdf");
+    assert.equal(result.transport.mimeType, "application/pdf");
+    assert.equal(result.transport.size, Buffer.byteLength("direct body"));
+    assert.equal(result.transport.uploadBucket, "studio-bucket-123");
+    assert.equal(result.transport.uploadRegion, "ap-beijing");
+    assert.equal(result.transport.uploadKey, "im-test/chat/1742547600/uuid_report.pdf");
+    assert.deepEqual(result.transport.uploadCredentialKeys, ["tmpSecretId", "tmpSecretKey", "sessionToken"]);
+    assert.equal(JSON.stringify(result.transport).includes("tmp-key"), false);
+    assert.equal(JSON.stringify(result.transport).includes("session-token"), false);
+
+    assert.equal(requests.length, 3);
+    assert.equal(requests[0].method, "GET");
+    assert.equal(requests[0].path, `/v1/bot/upload/credentials?filename=${encodeURIComponent("龙虾 大文件.pdf")}`);
+    assert.equal(requests[1].method, "PUT");
+    assert.equal(requests[1].path, "/im-test/chat/1742547600/uuid_report.pdf");
+    assert.match(requests[1].authorization, /q-sign-algorithm=sha1/);
+    assert.match(requests[1].authorization, /q-ak=tmp-id/);
+    assert.match(requests[1].authorization, /q-signature=/);
+    assert.equal(requests[1].xCosSecurityToken, "session-token");
+    assert.equal(requests[1].contentType, "application/pdf");
+    assert.equal(requests[1].body.raw, "direct body");
+    assert.equal(requests[2].path, "/v1/bot/sendMessage");
+    assert.deepEqual(requests[2].body, {
+      channel_id: "user-2",
+      channel_type: 1,
+      payload: {
+        type: 8,
+        url: "https://cdn.example.test/im-test/chat/1742547600/uuid_report.pdf",
+        name: "龙虾 大文件.pdf",
+        size: Buffer.byteLength("direct body"),
+      },
+    });
   });
 });
 

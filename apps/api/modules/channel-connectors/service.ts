@@ -56,6 +56,8 @@ import {
   shouldSkipOctoMessage,
 } from "./octo-adapter.js";
 import {
+  directUploadAndSendOctoMedia,
+  directUploadOctoFile,
   emptyOctoTransportResult,
   getOctoUploadCredentials,
   octoTransportFromBinding,
@@ -979,7 +981,9 @@ function normalizeOctoTransportSmokeRequest(payload: ChannelConnectorOctoTranspo
   const action = payload.action === "typing"
     || payload.action === "send-message"
     || payload.action === "upload-credentials"
+    || payload.action === "direct-upload-file"
     || payload.action === "upload-file"
+    || payload.action === "direct-upload-and-send-media"
     || payload.action === "upload-and-send-media"
     || payload.action === "register"
     ? payload.action
@@ -2275,9 +2279,26 @@ export function createChannelConnectorsService(
         fileName: request.fileName || "studio-octo-smoke.txt",
         mimeType: request.mimeType || "text/plain",
       });
+    } else if (request.action === "direct-upload-file") {
+      const content = request.content || "Studio Octo direct upload smoke\n";
+      transport = await directUploadOctoFile(transportConfig, {
+        data: new TextEncoder().encode(content),
+        fileName: request.fileName || "studio-octo-smoke.txt",
+        mimeType: request.mimeType || "text/plain",
+      });
     } else if (request.action === "upload-credentials") {
       transport = await getOctoUploadCredentials(transportConfig, {
         fileName: request.fileName || "studio-octo-smoke.txt",
+      });
+    } else if (request.action === "direct-upload-and-send-media") {
+      if (!request.channelId) throw new Error("channelId is required for Octo direct-upload-and-send-media smoke.");
+      const content = request.content || "Studio Octo direct upload and send smoke\n";
+      transport = await directUploadAndSendOctoMedia(transportConfig, {
+        channelId: request.channelId,
+        channelType: request.channelType || 1,
+        data: new TextEncoder().encode(content),
+        fileName: request.fileName || "studio-octo-smoke.txt",
+        mimeType: request.mimeType || "text/plain",
       });
     } else if (request.action === "upload-and-send-media") {
       if (!request.channelId) throw new Error("channelId is required for Octo upload-and-send-media smoke.");

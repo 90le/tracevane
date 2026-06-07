@@ -21,7 +21,7 @@
 | Config | TOML project/platform/agent options | typed JSON store：Agent Profile、workDir、model、permission、Gateway key ref、platform binding | F2 |
 | Platforms | dmwork/feishu/weixin/wecom/dingtalk/telegram/slack/discord/qq/qqbot/line | Studio native adapter registry；Octo(dmwork) 先落地，其余按 adapter 迁移 | F3-F6 |
 | Agents | Codex、Claude Code、OpenCode、Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP | local CLI Agent runner；统一走 Studio Gateway endpoint/key/model | F3-F7 |
-| Messages | text、image、file、voice、reply、thread、mention、stream preview、long split | incoming/reply/attachment/voice/thread contract + renderer | F4 |
+| Messages | text、image、file、voice、reply、thread、mention、stream preview、long split、大文件直传 | incoming/reply/attachment/voice/thread/file transfer contract + renderer | F4 |
 | Sessions | session key、续接、重置、workdir 切换、cron reply target、跨 channel context、IM 内切 Agent/model/mode、可选持久 Agent session | Studio session store、bot/account -> Agent context、session override、观测和审计；默认 one-shot runner，高阶持久 session pool 按 binding/session/profile 隔离 | F3-F7 |
 | Governance | allow_from、admin、rate limit、outgoing limit、banned words、run_as_user | allowlist/admin/rate/banned/permission/run-as/audit policy | F5 |
 | Automation | slash command、Agent 原生命令透传、菜单、Feishu card、cron、hook、relay、management API | Studio native command contract；普通平台文本命令，未知 slash 透传，rich 平台消费 command surface | F3-F5 |
@@ -54,7 +54,7 @@
 - 已完成：F4 Octo 入站 URL 字段兼容：除 `url` 外，识别 `file_url/fileUrl/media_url/mediaUrl/download_url/downloadUrl/cdn_url/cdnUrl/origin_url/originUrl/src/href`，减少平台字段差异导致的 `[image]` 无本地路径。
 - 已完成：F4 Octo payload-only 附件补回与插件协议对齐：daemon 进入 Agent 前把 payload 推断附件写回 `attachments`；支持 GIF=3、RichText=14 图文混排、有序 image blocks 和多图 `mediaUrls`。
 - 已完成：F4 图片非视觉模型保护：Feishu/Octo 图片附件可 staging；`glm-5` 等未标记 vision 的模型仍启动受控 Agent turn，但 prompt 禁止视觉推断并要求询问下一步，普通文件仍进入 Agent，避免路径诱导的看图幻觉。
-- 已完成：F4 Studio 原生出站文件合同：Agent 只声明 `studio-channel-files` manifest，daemon 校验文件位于 Agent workDir 或当前 runtime/staging 根，`yolo` 权限可发送任意可读普通文件但仍保留大小/平台限制；Octo 走 `/v1/bot/file/upload` + image/file send，Feishu 走 image/file upload + message send；runtime 记录 declared/resolved/sent/errors；Octo 出站保留原始文件名，且 `transport-smoke` 已可探测 `/v1/bot/upload/credentials` STS 能力；Feishu 去重改为 messageId 优先以跳过重连重投；本机 Octo 小文本文件和 STS 凭证真实 smoke 已通过，Feishu/Octo daemon 出站文件已加回归；Octo COS 直传仍留后续。
+- 已完成：F4 Studio 原生出站文件合同：Agent 只声明 `studio-channel-files` manifest，daemon 校验文件位于 Agent workDir 或当前 runtime/staging 根，`yolo` 权限可发送任意可读普通文件但仍保留大小/平台限制；Octo 走 `/v1/bot/file/upload` 或 STS + COS PUT 直传后 image/file send，Feishu 走 image/file upload + message send；runtime 记录 declared/resolved/sent/errors；Octo 出站保留原始文件名，且 `transport-smoke` 已支持 STS 探测、direct upload、direct upload + send media；Feishu 去重改为 messageId 优先以跳过重连重投；本机 Octo 小文本文件、STS 凭证和 COS 直传真实 smoke 已通过，Feishu/Octo daemon 出站文件已加回归。
 - 已完成：F4 IM history context：按 session 保存最近 user/assistant 脱敏摘要，Agent prompt 注入短上下文，`/compact` 将 history 替换为 `compact-summary`，`/new` / `/reset` 清理 history。
 - 已定策略：持久 TUI/session driver 后续作为高级增强接入，不替代 one-shot `exec/resume` 默认链路；先做 session pool contract，再逐个 Agent 支持 Codex/Claude Code/OpenCode 原生 slash、连续流和 Agent-side compact。
 - 已完成：F4 群聊 context：Agent prompt 注入 channel/sender/bot/reply/mention/成员摘要，飞书完整群成员列表后续再接平台 API。
@@ -63,4 +63,4 @@
 - 已完成：F5 基础治理：allowlist/admin、banned words、rate limit 覆盖 Octo/Feishu daemon 与 HTTP dispatch/action。
 - 已完成：F4 飞书群成员拉取：群聊 Agent 分支分页拉取 chat members 并注入 group context，失败只记日志不阻断。
 - 已完成：平台配置 UI：Octo/Feishu binding 凭证 metadata 可在 Channel Connectors 页面编辑并直接执行连接测试。
-- 下一步：先做 Feishu/Octo 私聊与群聊 live 复验；继续迁移 CC/OpenClaw 视觉输入/OCR、语音/STT/TTS、Octo 大文件 COS STS 和多平台 adapter；Feishu 菜单继续补更多设置型子卡、切换结果卡片、分页和 Studio 化精修。
+- 下一步：先做 Feishu/Octo 私聊与群聊 live 复验；继续迁移 CC/OpenClaw 视觉输入/OCR、语音/STT/TTS、文件上传自动策略和多平台 adapter；Feishu 菜单继续补更多设置型子卡、切换结果卡片、分页和 Studio 化精修。
