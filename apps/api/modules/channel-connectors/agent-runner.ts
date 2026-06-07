@@ -98,6 +98,8 @@ export interface ChannelConnectorAgentTurnResult {
   };
 }
 
+type ChannelConnectorVisualInputMode = "none" | "codex-native-image";
+
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -129,6 +131,32 @@ function attachmentSummaryLabel(attachment: ChannelConnectorInboundAttachment): 
 
 function isVisualAttachment(attachment: ChannelConnectorInboundAttachment): boolean {
   return attachment.kind === "image" || attachment.kind === "video" || attachment.kind === "sticker";
+}
+
+function isCodexNativeImageAttachment(attachment: ChannelConnectorInboundAttachment): boolean {
+  if (attachment.kind !== "image" && attachment.kind !== "sticker") return false;
+  const mimeType = normalizeString(attachment.mimeType).toLowerCase();
+  if (mimeType) return mimeType.startsWith("image/");
+  const fileName = normalizeString(attachment.fileName) || normalizeString(attachment.localPath);
+  return /\.(png|jpe?g|gif|webp|bmp|tiff?|heic|heif)$/i.test(fileName);
+}
+
+function collectCodexNativeImagePaths(attachments: ChannelConnectorInboundAttachment[]): string[] {
+  const paths: string[] = [];
+  const seen = new Set<string>();
+  for (const attachment of attachments) {
+    if (!isCodexNativeImageAttachment(attachment)) continue;
+    const localPath = normalizeString(attachment.localPath);
+    if (!localPath || seen.has(localPath)) continue;
+    try {
+      if (!fs.statSync(localPath).isFile()) continue;
+    } catch {
+      continue;
+    }
+    seen.add(localPath);
+    paths.push(localPath);
+  }
+  return paths;
 }
 
 function metadataBooleanOverride(metadata: Record<string, unknown> | undefined, keys: string[]): boolean | null {
@@ -242,6 +270,7 @@ function buildAgentInputContent(
   model?: string | null,
   historyContext?: string | null,
   modelCapabilities?: { vision?: boolean | null } | null,
+  visualInputMode: ChannelConnectorVisualInputMode = "none",
 ): string {
   const content = extractOctoContent(message);
   const attachments = extractOctoAttachments(message);
@@ -256,6 +285,9 @@ function buildAgentInputContent(
   const visualPolicy = hasVisualAttachment && !channelConnectorModelSupportsVision(model || null, binding, modelCapabilities)
     ? buildNonVisionVisualAttachmentPolicy(model || null, attachments)
     : null;
+  const visualInputText = hasVisualAttachment && visualInputMode === "codex-native-image"
+    ? "Vision-capable Codex runtime received staged image attachments through native --image arguments; inspect those attached images for visual tasks."
+    : "";
   const attachmentText = [
     "[Studio attachment summary]",
     summary,
@@ -265,6 +297,7 @@ function buildAgentInputContent(
     hasVisualAttachment
       ? "Do not infer visual contents from attachment metadata, file names, or local paths; only describe images/videos if the active Agent runtime can actually inspect the file."
       : "",
+    visualInputText,
   ].filter(Boolean).join("\n");
   return [history, groupContext, visualPolicy, content, attachmentText].filter(Boolean).join("\n\n");
 }
@@ -485,17 +518,23 @@ function gatewayEnv(gatewayEndpoint: string, gatewayClientKey: string | null): R
 export function buildChannelConnectorAgentProcessRequest(
   request: ChannelConnectorAgentTurnRequest,
 ): ChannelConnectorAgentProcessRequest | null {
+  const project = request.project;
+  const model = normalizeString(project.model);
+  const attachments = extractOctoAttachments(request.message);
+  const codexNativeImagePaths = project.agent === "codex"
+    && channelConnectorModelSupportsVision(model || null, request.binding, request.modelCapabilities)
+    ? collectCodexNativeImagePaths(attachments)
+    : [];
   const content = buildAgentInputContent(
     request.message,
     request.binding,
-    request.project.model,
+    project.model,
     request.historyContext,
     request.modelCapabilities,
+    codexNativeImagePaths.length ? "codex-native-image" : "none",
   );
   if (!content) return null;
-  const project = request.project;
   const cwd = ensureWorkDir(project.workDir);
-  const model = normalizeString(project.model);
   const timeoutMs = request.timeoutMs || 10 * 60_000;
   const baseEnv = gatewayEnv(request.gatewayEndpoint, request.gatewayClientKey);
 
@@ -515,6 +554,7 @@ export function buildChannelConnectorAgentProcessRequest(
       "-c",
       "responses_websockets_v2=false",
     ];
+    const codexImageArgs = codexNativeImagePaths.flatMap((imagePath) => ["--image", imagePath]);
     const args = codexThreadId
       ? [
         "exec",
@@ -522,6 +562,7 @@ export function buildChannelConnectorAgentProcessRequest(
         "--skip-git-repo-check",
         ...codexPermissionArgs(project.permissionMode),
         ...(model ? ["--model", model] : []),
+        ...codexImageArgs,
         ...codexConfigArgs,
         codexThreadId,
         "--json",
@@ -532,6 +573,7 @@ export function buildChannelConnectorAgentProcessRequest(
         "--skip-git-repo-check",
         ...codexPermissionArgs(project.permissionMode),
         ...(model ? ["--model", model] : []),
+        ...codexImageArgs,
         ...codexConfigArgs,
         "--json",
         "--cd",
@@ -876,7 +918,8 @@ export async function runChannelConnectorAgentTurn(
   request: ChannelConnectorAgentTurnRequest,
 ): Promise<ChannelConnectorAgentTurnResult> {
   const content = extractOctoContent(request.message);
-  if (!content) {
+  const attachments = extractOctoAttachments(request.message);
+  if (!content && !attachments.length) {
     return {
       attempted: false,
       ok: null,

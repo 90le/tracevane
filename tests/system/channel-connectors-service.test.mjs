@@ -1648,6 +1648,69 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.doesNotMatch(attachmentRequest.stdin, /feishu-private-image-key/);
   for (const cleanupPath of attachmentRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
+  const visionImagePath = path.join(workDir, ".studio-agent-attachments", "vision.png");
+  fs.mkdirSync(path.dirname(visionImagePath), { recursive: true });
+  fs.writeFileSync(visionImagePath, Buffer.from("fake-png"));
+  const visionAttachmentRequest = buildChannelConnectorAgentProcessRequest({
+    project: { ...project, model: "gmn-vision" },
+    binding,
+    message: {
+      ...message,
+      messageId: "m-runner-vision-image",
+      payload: { type: 2, content: "", name: "vision.png" },
+      attachments: [{
+        kind: "image",
+        platform: "feishu",
+        fileName: "vision.png",
+        mimeType: "image/png",
+        localPath: visionImagePath,
+        stagedAt: "2026-06-06T08:00:00.000Z",
+      }],
+    },
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    modelCapabilities: { vision: true },
+  });
+  assert.ok(visionAttachmentRequest);
+  const visionImageArgIndex = visionAttachmentRequest.args.indexOf("--image");
+  assert.notEqual(visionImageArgIndex, -1);
+  assert.equal(visionAttachmentRequest.args[visionImageArgIndex + 1], visionImagePath);
+  assert.match(visionAttachmentRequest.stdin, /native --image arguments/);
+  assert.doesNotMatch(visionAttachmentRequest.stdin, /Studio visual attachment policy/);
+  for (const cleanupPath of visionAttachmentRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
+  const resumeVisionAttachmentRequest = buildChannelConnectorAgentProcessRequest({
+    project: { ...project, model: "gmn-vision" },
+    binding,
+    message: {
+      ...message,
+      messageId: "m-runner-resume-vision-image",
+      payload: { type: 2, content: "", name: "vision.png" },
+      attachments: [{
+        kind: "image",
+        platform: "feishu",
+        fileName: "vision.png",
+        mimeType: "image/png",
+        localPath: visionImagePath,
+        stagedAt: "2026-06-06T08:00:00.000Z",
+      }],
+    },
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    session: { codexThreadId: "thread-vision" },
+    modelCapabilities: { vision: true },
+  });
+  assert.ok(resumeVisionAttachmentRequest);
+  assert.equal(resumeVisionAttachmentRequest.sessionMode, "resume");
+  const resumeImageArgIndex = resumeVisionAttachmentRequest.args.indexOf("--image");
+  const resumeThreadArgIndex = resumeVisionAttachmentRequest.args.indexOf("thread-vision");
+  assert.notEqual(resumeImageArgIndex, -1);
+  assert.ok(resumeImageArgIndex < resumeThreadArgIndex);
+  assert.equal(resumeVisionAttachmentRequest.args[resumeImageArgIndex + 1], visionImagePath);
+  for (const cleanupPath of resumeVisionAttachmentRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
   const stagedLocalPath = path.join(workDir, ".studio-agent-attachments", "report.txt");
   const stagedAttachmentRequest = buildChannelConnectorAgentProcessRequest({
     project,
@@ -1746,7 +1809,49 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.ok(catalogNonVisionRequest);
   assert.match(catalogNonVisionRequest.stdin, /Studio visual attachment policy/);
   assert.match(catalogNonVisionRequest.stdin, /current model gpt-5\.3-codex-spark is not marked as vision-capable/);
+  assert.equal(catalogNonVisionRequest.args.includes("--image"), false);
   for (const cleanupPath of catalogNonVisionRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
+  let attachmentOnlyRunnerCalled = false;
+  const attachmentOnlyResult = await runChannelConnectorAgentTurn({
+    project: { ...project, model: "gmn-vision" },
+    binding,
+    message: {
+      ...message,
+      messageId: "m-runner-attachment-only",
+      payload: { type: 1, content: "" },
+      attachments: [{
+        kind: "image",
+        platform: "octo",
+        fileName: "vision.png",
+        mimeType: "image/png",
+        localPath: visionImagePath,
+        stagedAt: "2026-06-06T08:00:00.000Z",
+      }],
+    },
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    modelCapabilities: { vision: true },
+    processRunner: async (request) => {
+      attachmentOnlyRunnerCalled = true;
+      assert.equal(request.args.includes("--image"), true);
+      assert.match(request.stdin, /native --image arguments/);
+      return {
+        exitCode: 0,
+        signal: null,
+        stdout: '{"type":"item.completed","item":{"type":"agent_message","text":"图片已查看"}}\n',
+        stderr: "",
+        durationMs: 6,
+        timedOut: false,
+        error: null,
+      };
+    },
+  });
+  assert.equal(attachmentOnlyRunnerCalled, true);
+  assert.equal(attachmentOnlyResult.attempted, true);
+  assert.equal(attachmentOnlyResult.ok, true);
+  assert.equal(attachmentOnlyResult.replyText, "图片已查看");
 
   let nonVisionFileRunnerCalled = false;
   const nonVisionFileResult = await runChannelConnectorAgentTurn({

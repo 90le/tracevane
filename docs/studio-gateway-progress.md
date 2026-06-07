@@ -24,6 +24,7 @@
 - 本机 Studio Gateway 已配置 GMN 视觉测试 provider：`gmn`，base `https://gmn.chuangzuoli.com/v1`，默认模型 `gpt-5.5`，alias `gmn-vision` / `vision-gpt-5.5`，key 仅保存在本机 secret store。
 - Provider 模型配置已从多行文本改为结构化列表：每行可维护模型 ID、显示名、别名和能力勾选；后端 registry 与 `/v1/models` 已保留 `text/vision/tools/reasoning/responses/streaming` 六类模型能力。
 - Channel Connectors 已开始使用 Gateway 模型目录能力：图片/视频/贴纸 turn 会优先选择当前模型；若当前模型非 vision 且模型池存在 vision 模型，则仅本轮自动切到 vision 模型，binding metadata 可用 `autoVisionModel:false` 关闭。
+- Codex Agent 视觉图片输入已打通：当视觉附件已 staging、当前 turn 使用 vision-capable 模型且 Agent 为 Codex 时，runner 会把本地 image/sticker 文件通过 Codex CLI 原生 `--image` 传入；纯附件消息也会启动 Agent。
 - Channel Connectors 附件默认落点已确认：IM 平台先保存原始文件，Studio Channel daemon 下载后 staging 到 `~/.config/openclaw-studio/channel-connectors/daemon/state/agent-runtime/<agent>/<project>/<binding>/attachments/<messageId>/...`，默认上限 128MB，可由 binding metadata 覆盖。
 - Channel daemon status API 已确认 Octo 与 Feishu connected，`platformBindings=2`；运行中任务可通过 `activeRuns` 观测。
 
@@ -42,7 +43,8 @@
 - 通过：GMN `gpt-5.5` provider smoke：OpenAI Chat Completions、OpenAI Responses、Anthropic Messages 三个上游入口均返回 200；Studio Gateway `/v1/models` 暴露 GMN 模型池。
 - 通过：GMN 视觉 smoke：32x32 红色 PNG 经 Studio Gateway `/v1/responses` 和 `/v1/chat/completions` 均路由到 `gmn`，返回 `Red/red`；alias `gmn-vision` 文本 smoke 返回 200。
 - 通过：`node --test tests/system/model-gateway-service.test.mjs`，50 个模型网关测试通过，覆盖模型能力保存、`/v1/models` 跨 provider 同名模型池能力合并和 HTTP 回显。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "model gateway exposes enabled provider model pool|native Channel Connectors agent runner|native Channel Connectors model menus|native Channel Connectors visual turns"`，实际执行 35 个 Channel Connectors 系统测试，覆盖视觉附件按 Gateway catalog 自动选择 vision 模型、alias 保留、禁用开关和 catalog 失败降级。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "native Channel Connectors agent runner|native Channel Connectors visual turns"`，实际执行 35 个 Channel Connectors 系统测试，覆盖视觉附件按 Gateway catalog 自动选择 vision 模型、Codex `--image` 参数、纯附件启动、alias 保留、禁用开关和 catalog 失败降级。
+- 通过：隔离 Codex CLI + Studio Gateway + GMN `gmn-vision` 真实图片 smoke；1x1 红色 PNG 通过 `--image` 进入 Codex，返回“红色”，run completed，13 个 progress events。
 - 通过：`node --test tests/system/studio-web-model-gateway-page.test.mjs`，覆盖 Provider 模型能力列表 UI 契约。
 - 通过：Playwright 打开 `/model-gateway` 并切换 Provider tab，验证新增模型行能力勾选可见，桌面和 390px 窄屏无横向溢出、无 console error。
 - 通过：Playwright 打开 `/channel-connectors`，检查 Feishu/Octo 平台配置表单无 console error、无横向溢出。
@@ -51,12 +53,12 @@
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
 - GMN provider 已配置为后续视觉测试源，但未设为任何 App scope 的 active provider；当前 active provider 仍是 `glm`。测试时需显式选择 `gpt-5.5`、`gmn-vision` 或 `gmn/gpt-5.5`。
-- Feishu 与 Octo 文本 live 已通过，图片/视频入站接收和 staging 不受模型能力影响；非视觉模型可以继续对话和处理非视觉文件任务，但必须拒绝内容理解。当前已能按 Gateway catalog 为视觉附件自动选择 vision 模型；真正视觉理解仍需把 staged 图片转成 Gateway/Agent 可消费的 image input 或接 OCR/解析工具。
+- Feishu 与 Octo 文本 live 已通过，图片/视频入站接收和 staging 不受模型能力影响；非视觉模型可以继续对话和处理非视觉文件任务，但必须拒绝内容理解。当前 Codex Agent 图片可走原生 `--image`；Claude Code / OpenCode 视觉输入、视频理解、OCR/解析工具仍待补齐。
 - Octo 出站媒体当前覆盖小文件 multipart upload；CC 的大文件 COS STS 直传尚未迁移，避免引入新依赖前先保持显式边界。
 - Feishu card/menu 已可用，但后续视觉和交互仍需继续参考 CC 成熟卡片结构做 Studio 化精修。
 
 ## 下一步
 
-1. 把 IM 图片附件接入视觉输入链路：已完成视觉模型自动选择，下一步将 staged 图片作为 image input 传给 Agent 或 Gateway，而不是只传本地路径。
-2. 继续迁移 CC/OpenClaw 的语音/STT/TTS、大文件 COS 直传和多平台 adapter。
+1. 用真实 Feishu/Octo 入站图片复验同一 Codex `--image` 路径，确认平台下载/staging 后也能返回视觉结果。
+2. 补 Claude Code / OpenCode 的视觉输入策略，继续迁移 CC/OpenClaw 的 OCR、语音/STT/TTS、大文件 COS 直传和多平台 adapter。
 3. 精修 Feishu card/menu 与 Octo 弱富交互，保持 IM 命令和 Studio UI 同一 typed 状态。
