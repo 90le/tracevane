@@ -4163,6 +4163,7 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /feishuPingTimeoutSeconds/);
   assert.match(daemonSource, /feishuConnectedIdleRenewMs/);
   assert.match(daemonSource, /feishuWatchdogRestartMs/);
+  assert.match(daemonSource, /latestFeishuActivityAt/);
   assert.match(daemonSource, /feishu_ping_timeout_seconds/);
   assert.match(daemonSource, /feishu_connected_idle_renew_ms/);
   assert.match(daemonSource, /feishu_watchdog_restart_ms/);
@@ -4179,9 +4180,27 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /agent\.progress\.card/);
   assert.match(daemonSource, /jsonErrorEnvelopeMessage/);
   assert.match(daemonSource, /renderChannelConnectorCommandSurfaceFeishu/);
+  assert.match(daemonSource, /loadFeishuSeenMessages/);
+  assert.match(daemonSource, /seedFeishuSeenMessagesFromEventLog/);
+  assert.match(daemonSource, /FEISHU_SEEN_MESSAGE_TTL_MS\s*=\s*24\s*\*\s*60\s*\*\s*60_?000/);
+  assert.match(daemonSource, /dispatchFeishuParsedEventInBackground/);
+  assert.match(daemonSource, /feishu_event_duplicate/);
   assert.match(daemonSource, /function feishuDedupeKey/);
   assert.match(daemonSource, /parsed\.kind === "message"/);
   assert.doesNotMatch(daemonSource, /`feishu:\$\{group\.key\}:\$\{messageId\}:\$\{binding\.id\}`/);
+  assert.doesNotMatch(daemonSource, /const lastActivityAt = group\.lastReceivedAt \|\| group\.lastConnectedAt/);
+  const messageHandler = daemonSource.slice(
+    daemonSource.indexOf('"im.message.receive_v1"'),
+    daemonSource.indexOf('"card.action.trigger"'),
+  );
+  assert.match(messageHandler, /dispatchFeishuParsedEventInBackground/);
+  assert.doesNotMatch(messageHandler, /await dispatchFeishuParsedEvent/);
+  const botMenuHandler = daemonSource.slice(
+    daemonSource.indexOf('"application.bot.menu_v6"'),
+    daemonSource.indexOf('"im.message.recalled_v1"'),
+  );
+  assert.match(botMenuHandler, /dispatchFeishuParsedEventInBackground/);
+  assert.doesNotMatch(botMenuHandler, /await dispatchFeishuParsedEvent/);
 });
 
 test("Channel Connectors routes are registered under /api/channel-connectors", async () => {

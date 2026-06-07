@@ -285,6 +285,13 @@ function writeJsonLine(filePath: string, value: Record<string, unknown>): void {
   fs.appendFileSync(filePath, `${JSON.stringify(value)}\n`, "utf8");
 }
 
+function writeJsonFileAtomic(filePath: string, value: unknown): void {
+  ensureDir(path.dirname(filePath));
+  const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
+  fs.writeFileSync(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
+  fs.renameSync(tempPath, filePath);
+}
+
 function writeRuntime(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelDaemonState): void {
   ensureDir(path.dirname(config.paths.runtime));
   state.updatedAt = new Date().toISOString();
@@ -858,6 +865,17 @@ function updateFeishuRuntime(
 ): void {
   state.feishuConnections[group.key] = feishuConnectionState(group);
   writeRuntime(config, state);
+}
+
+function latestFeishuActivityAt(group: ChannelDaemonFeishuGroup): string | null {
+  const candidates = [group.lastReceivedAt, group.lastConnectedAt]
+    .map((value) => {
+      const timestamp = value ? Date.parse(value) : NaN;
+      return Number.isFinite(timestamp) ? { value, timestamp } : null;
+    })
+    .filter((value): value is { value: string; timestamp: number } => Boolean(value));
+  candidates.sort((a, b) => b.timestamp - a.timestamp);
+  return candidates[0]?.value || null;
 }
 
 function feishuGroupKey(transport: ChannelConnectorFeishuTransportConfig): string {
@@ -1595,18 +1613,161 @@ async function resolveOctoCredentials(
   return cached ? { entry: cached, source: "cache" } : null;
 }
 
-function pruneSeenMessages(seenMessages: Map<string, number>): void {
-  const cutoff = Date.now() - 5 * 60_000;
+const DEFAULT_SEEN_MESSAGE_TTL_MS = 5 * 60_000;
+const FEISHU_SEEN_MESSAGE_TTL_MS = 24 * 60 * 60_000;
+const FEISHU_SEEN_MESSAGE_MAX_ENTRIES = 5000;
+
+function pruneSeenMessages(
+  seenMessages: Map<string, number>,
+  ttlMs = DEFAULT_SEEN_MESSAGE_TTL_MS,
+  scopePrefix: string | null = null,
+): void {
+  const cutoff = Date.now() - ttlMs;
   for (const [key, timestamp] of seenMessages.entries()) {
+    if (scopePrefix) {
+      if (!key.startsWith(scopePrefix)) continue;
+    } else if (key.startsWith("feishu:")) {
+      continue;
+    }
     if (timestamp < cutoff) seenMessages.delete(key);
   }
 }
 
-function shouldSkipSeenMessage(seenMessages: Map<string, number>, messageId: string): boolean {
-  pruneSeenMessages(seenMessages);
+function shouldSkipSeenMessage(
+  seenMessages: Map<string, number>,
+  messageId: string,
+  options: {
+    ttlMs?: number;
+    scopePrefix?: string | null;
+  } = {},
+): boolean {
+  pruneSeenMessages(
+    seenMessages,
+    options.ttlMs || DEFAULT_SEEN_MESSAGE_TTL_MS,
+    options.scopePrefix ?? null,
+  );
   if (seenMessages.has(messageId)) return true;
   seenMessages.set(messageId, Date.now());
   return false;
+}
+
+function feishuSeenMessagesPath(config: ChannelConnectorsDaemonRuntimeConfig): string {
+  return path.join(config.paths.state, "feishu-seen-messages.json");
+}
+
+function saveFeishuSeenMessages(
+  config: ChannelConnectorsDaemonRuntimeConfig,
+  seenMessages: Map<string, number>,
+): void {
+  try {
+    pruneSeenMessages(seenMessages, FEISHU_SEEN_MESSAGE_TTL_MS, "feishu:");
+    const entries = [...seenMessages.entries()]
+      .filter(([key]) => key.startsWith("feishu:"))
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, FEISHU_SEEN_MESSAGE_MAX_ENTRIES);
+    writeJsonFileAtomic(feishuSeenMessagesPath(config), {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      entries: Object.fromEntries(entries),
+    });
+  } catch (error) {
+    appendLog(config.paths.log, "Feishu seen-message store write failed", { error: shortMessage(error) });
+  }
+}
+
+function restoreFeishuSeenMessagesFromStore(
+  config: ChannelConnectorsDaemonRuntimeConfig,
+  seenMessages: Map<string, number>,
+): number {
+  const filePath = feishuSeenMessagesPath(config);
+  if (!fs.existsSync(filePath)) return 0;
+  try {
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    const entries = isRecord(raw) && isRecord(raw.entries) ? raw.entries : {};
+    let restored = 0;
+    for (const [key, value] of Object.entries(entries)) {
+      const timestamp = typeof value === "number" ? value : Number(value);
+      if (!key.startsWith("feishu:") || !Number.isFinite(timestamp)) continue;
+      seenMessages.set(key, timestamp);
+      restored += 1;
+    }
+    return restored;
+  } catch (error) {
+    appendLog(config.paths.log, "Feishu seen-message store read failed", { error: shortMessage(error) });
+    return 0;
+  }
+}
+
+function feishuSeenKeysFromEventRecord(record: Record<string, unknown>): string[] {
+  const bindingId = normalizeString(record.bindingId);
+  if (!bindingId) return [];
+  const keys: string[] = [];
+  const eventId = normalizeString(record.eventId);
+  const messageId = normalizeString(record.messageId);
+  if (eventId) keys.push(`feishu:event:${eventId}:${bindingId}`);
+  if (messageId) keys.push(`feishu:message:${messageId}:${bindingId}`);
+  return keys;
+}
+
+function seedFeishuSeenMessagesFromEventLog(
+  config: ChannelConnectorsDaemonRuntimeConfig,
+  seenMessages: Map<string, number>,
+): number {
+  const filePath = config.paths.feishuEvents;
+  if (!fs.existsSync(filePath)) return 0;
+  try {
+    const cutoff = Date.now() - FEISHU_SEEN_MESSAGE_TTL_MS;
+    let seeded = 0;
+    const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      let record: unknown;
+      try {
+        record = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (!isRecord(record) || record.adapter !== "feishu") continue;
+      const timestamp = Date.parse(normalizeString(record.checkedAt));
+      const seenAt = Number.isFinite(timestamp) ? timestamp : Date.now();
+      if (seenAt < cutoff) continue;
+      for (const key of feishuSeenKeysFromEventRecord(record)) {
+        if (!seenMessages.has(key)) seeded += 1;
+        seenMessages.set(key, seenAt);
+      }
+    }
+    return seeded;
+  } catch (error) {
+    appendLog(config.paths.log, "Feishu event log seen-message seed failed", { error: shortMessage(error) });
+    return 0;
+  }
+}
+
+function loadFeishuSeenMessages(config: ChannelConnectorsDaemonRuntimeConfig): Map<string, number> {
+  const seenMessages = new Map<string, number>();
+  const restored = restoreFeishuSeenMessagesFromStore(config, seenMessages);
+  const seeded = seedFeishuSeenMessagesFromEventLog(config, seenMessages);
+  pruneSeenMessages(seenMessages, FEISHU_SEEN_MESSAGE_TTL_MS, "feishu:");
+  if (restored || seeded) saveFeishuSeenMessages(config, seenMessages);
+  appendLog(config.paths.log, "Feishu seen-message cache loaded", {
+    restored,
+    seeded,
+    active: [...seenMessages.keys()].filter((key) => key.startsWith("feishu:")).length,
+  });
+  return seenMessages;
+}
+
+function shouldSkipFeishuSeenMessage(
+  config: ChannelConnectorsDaemonRuntimeConfig,
+  seenMessages: Map<string, number>,
+  messageId: string,
+): boolean {
+  const skipped = shouldSkipSeenMessage(seenMessages, messageId, {
+    ttlMs: FEISHU_SEEN_MESSAGE_TTL_MS,
+    scopePrefix: "feishu:",
+  });
+  if (!skipped) saveFeishuSeenMessages(config, seenMessages);
+  return skipped;
 }
 
 function feishuDedupeKey(
@@ -1616,8 +1777,9 @@ function feishuDedupeKey(
   messageId: string,
 ): string | null {
   const eventId = normalizeString(parsed.eventId);
-  if (eventId) return `feishu:${group.key}:event:${eventId}:${binding.id}`;
-  if (parsed.kind === "message") return `feishu:${group.key}:message:${messageId}:${binding.id}`;
+  void group;
+  if (eventId) return `feishu:event:${eventId}:${binding.id}`;
+  if (parsed.kind === "message") return `feishu:message:${messageId}:${binding.id}`;
   return null;
 }
 
@@ -2143,7 +2305,26 @@ async function dispatchFeishuParsedEvent(input: {
   const sessionKey = feishuSessionKey(binding, parsed);
   const messageId = normalizeString(parsed.messageId) || `${parsed.kind}:${parsed.eventId || Date.now()}`;
   const dedupeKey = feishuDedupeKey(group, parsed, binding, messageId);
-  if (dedupeKey && shouldSkipSeenMessage(seenMessages, dedupeKey)) return null;
+  if (dedupeKey && shouldSkipFeishuSeenMessage(config, seenMessages, dedupeKey)) {
+    writeJsonLine(config.paths.feishuEvents, {
+      checkedAt,
+      adapter: "feishu",
+      eventKind: "message-duplicate",
+      eventType: parsed.eventType,
+      eventId: parsed.eventId,
+      accepted: false,
+      skippedReason: "feishu_event_duplicate",
+      bindingId: binding.id,
+      dedupeKey,
+      sessionKey,
+      messageId,
+      channelId: parsed.channelId,
+      chatType: parsed.chatType,
+      fromUid: parsed.fromUid,
+      ...feishuThreadLogFields(parsed),
+    });
+    return null;
+  }
 
   if (parsed.kind !== "message" && parsed.kind !== "card-action" && parsed.kind !== "bot-menu") {
     writeJsonLine(config.paths.feishuEvents, {
@@ -2981,6 +3162,41 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
   return [...groups.values()];
 }
 
+function dispatchFeishuParsedEventInBackground(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  state: ChannelDaemonState;
+  group: ChannelDaemonFeishuGroup;
+  parsed: ChannelConnectorFeishuParsedWebhook;
+  rawEvent: unknown;
+  seenMessages: Map<string, number>;
+}): void {
+  void dispatchFeishuParsedEvent(input).catch((error) => {
+    appendLog(input.config.paths.log, "Feishu async event dispatch failed", {
+      groupKey: input.group.key,
+      eventKind: input.parsed.kind,
+      eventType: input.parsed.eventType,
+      eventId: input.parsed.eventId,
+      messageId: input.parsed.messageId,
+      error: shortMessage(error),
+    });
+    writeJsonLine(input.config.paths.feishuEvents, {
+      checkedAt: new Date().toISOString(),
+      adapter: "feishu",
+      eventKind: "dispatch.failed",
+      eventType: input.parsed.eventType,
+      eventId: input.parsed.eventId,
+      accepted: false,
+      skippedReason: "feishu_async_dispatch_failed",
+      appId: input.parsed.appId || input.group.appId,
+      channelId: input.parsed.channelId,
+      fromUid: input.parsed.fromUid,
+      messageId: input.parsed.messageId,
+      error: shortMessage(error),
+      ...feishuThreadLogFields(input.parsed),
+    });
+  });
+}
+
 function createFeishuDispatcher(input: {
   config: ChannelConnectorsDaemonRuntimeConfig;
   state: ChannelDaemonState;
@@ -3011,7 +3227,7 @@ function createFeishuDispatcher(input: {
         longConnection: true,
       });
       updateFeishuRuntime(config, state, group);
-      await dispatchFeishuParsedEvent({
+      dispatchFeishuParsedEventInBackground({
         config,
         state,
         group,
@@ -3045,7 +3261,7 @@ function createFeishuDispatcher(input: {
       group.receivedMessages += 1;
       const parsed = parseChannelConnectorFeishuWebhook(feishuEnvelope(group.appId, "application.bot.menu_v6", data));
       updateFeishuRuntime(config, state, group);
-      await dispatchFeishuParsedEvent({
+      dispatchFeishuParsedEventInBackground({
         config,
         state,
         group,
@@ -3201,7 +3417,7 @@ function startFeishuWatchdog(input: {
       const status = group.client.getConnectionStatus();
       if (status?.state === "connected") {
         const renewAfterMs = feishuConnectedIdleRenewMs(group);
-        const lastActivityAt = group.lastReceivedAt || group.lastConnectedAt;
+        const lastActivityAt = latestFeishuActivityAt(group);
         const idleForMs = lastActivityAt ? nowMs - new Date(lastActivityAt).getTime() : 0;
         if (renewAfterMs > 0 && lastActivityAt && idleForMs >= renewAfterMs) {
           restartFeishuGroupClient({
@@ -3217,6 +3433,8 @@ function startFeishuWatchdog(input: {
             idleForMs,
             renewAfterMs,
             lastActivityAt,
+            lastConnectedAt: group.lastConnectedAt,
+            lastReceivedAt: group.lastReceivedAt,
             receivedMessages: group.receivedMessages,
           });
           continue;
@@ -3291,7 +3509,7 @@ async function main(): Promise<void> {
   const server = startHttp(config, state);
   const sockets: OctoWukongSocket[] = [];
   const feishuClients: WSClient[] = [];
-  const seenMessages = new Map<string, number>();
+  const seenMessages = loadFeishuSeenMessages(config);
   let feishuWatchdog: NodeJS.Timeout | null = null;
 
   void startOctoConnections(config, state, sockets, seenMessages).catch((error) => {

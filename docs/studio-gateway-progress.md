@@ -23,8 +23,10 @@
 - 用户新发 Octo 图片已确认进入 `agent.visual.input`；失败根因不是附件链路，而是自动视觉路由选到过期 `gpt-5.2` 且 provider open circuit。
 - Gateway `/v1/models` 新增非标准健康元数据 `healthyProviderIds/openCircuitProviderIds`；Channel 自动视觉路由会跳过只有 open-circuit provider 的 vision 模型。
 - 本机 GMN provider 已删除过期 `gpt-5.2`，`gpt-5.4-mini` 真实 Gateway smoke 200，并把 GMN health 恢复为 closed。
-- Feishu 新消息未回复的最新根因已定位：SDK 状态仍显示 `connected`，但重启后 `receivedMessages: 0` 且新消息未进入 `feishu-events.jsonl`，属于 connected 假阳性/僵尸连接而非 Agent 回复失败。
 - Studio Feishu watchdog 已补 `lastReceivedAt` 和默认 300s connected-idle renewal；超过阈值无真实事件入站会主动重建 WS，metadata 可用 `feishuConnectedIdleRenewMs` / `feishu_connected_idle_renew_ms` 覆盖，`0` 可关闭。
+- Feishu 重新发送后“不回复”的最新链路已定位为平台重投旧事件：新日志出现与 1 小时前相同的 `eventId/messageId`，说明同步等待 Agent 会阻塞 SDK ACK 并触发重投风险。
+- Feishu `im.message.receive_v1` / bot menu 已按 CC Go 改为快速 ACK + 后台派发；24 小时持久化事件去重会从 `feishu-events.jsonl` 启动回填，重复事件写 `feishu_event_duplicate`，不再重复跑 Agent。
+- Feishu connected-idle watchdog 已改为按 `lastConnectedAt` 与 `lastReceivedAt` 的较新时间计算，避免重连后继续使用旧入站时间导致循环重启。
 - 本机仍有旧 `cc-connect.service` 在运行，但其 Feishu App ID 与 Studio 当前 App 不同；当前修复不依赖停止旧 CC。
 
 ## 最近验证
@@ -38,19 +40,21 @@
 - 通过：重启后超过 4 分钟观察，Feishu/Octo 仍为 `connected` 且 `reconnects: 0`，未再出现旧的 `no pong/inbound within 60s` 主动 terminate。
 - 通过：live 观察到 Feishu connected 假阳性自愈触发，日志出现 `watchdog_connected_idle_300933`，随后重新 `Feishu WebSocket connected`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "visual turns|Feishu long-connection|Octo long connection|registers Octo"`，36 个 Channel Connectors 子测试通过。
+- 通过：同一测试集新增锁定 Feishu 消息/menu 快速 ACK 后台派发、24h 持久化去重、connected-idle 使用最近活动时间，36 个子测试通过。
 - 通过：`curl http://127.0.0.1:18797/status`，Octo `octo-studio-cc` connected，Feishu shared WS connected，`activeRuns=[]`。
+- 通过：重启 Channel daemon 后 `feishu-seen-messages.json` 从持久化恢复 107 条，Feishu shared WS connected，未再出现 connected-idle 立即循环重启。
 - 通过：前端 `http://127.0.0.1:5176` 与后端 `http://127.0.0.1:3762/api/channel-connectors/status` 可访问。
 
 ## 已知边界
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
 - GMN provider 可作为视觉测试源，但未设为所有 App scope 默认 active provider；测试时需显式选择 `gpt-5.5`、`gmn-vision` 或 `gmn/gpt-5.5`。
-- Feishu 官方 SDK 仍可能因网络或平台关闭连接而 reconnect；当前策略不再由 Studio 默认 ping timeout 主动 terminate。
+- Feishu 官方 SDK 仍可能因网络或平台关闭连接而 reconnect；当前策略不再由 Studio 默认 ping timeout 主动 terminate，且消息 ACK 不再等待 Agent/附件 IO。
 - Codex Agent 图片已走原生 `--image`；Claude Code / OpenCode 视觉输入、视频理解、OCR、语音/STT/TTS 和 Octo 大文件 COS STS 直传仍待迁移。
-- Feishu 新图片在 connected 假阳性期间未进入 daemon；需要重启后等待 connected-idle renewal 生效并让用户再发消息复验。
+- Feishu 历史未 ACK 事件可能仍会被平台重投一次；持久化去重会记录并跳过，最终仍需用户发送全新消息复验 live 回复。
 
 ## 下一步
 
-1. 用户在 Feishu 再发一张图片后，复验 live 事件中是否出现 `agent.visual.input`，并确认视觉模型回复。
+1. 用户在 Feishu 再发一条全新文本或图片后，复验 live 事件不是旧 `eventId/messageId`，并确认快速 ACK 后后台 Agent 回复。
 2. 继续按 CC Go 迁移 Claude Code / OpenCode 视觉输入、OCR、语音/STT/TTS、大文件 COS STS 和更多平台 adapter。
 3. 继续精修 Feishu card/menu 与 Octo 弱富交互，保持 IM 命令和 Studio UI 共用同一 typed 状态。
