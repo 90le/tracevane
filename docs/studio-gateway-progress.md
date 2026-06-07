@@ -16,22 +16,22 @@
 
 ## 本次完成
 
-- `/compact` / `/compress` 已成为 Studio-managed IM compact contract：不再透传给 Codex `exec`，而是调用当前 Agent Profile 的 Studio Gateway `/responses/compact` 生成 summary。
-- compact 成功后，当前 binding + IM session 的 history 会被替换为一条 `compact-summary`，旧 Agent session / Codex thread 续接会被清理，下一轮用 summary 作为上下文重新开始。
-- compact 失败会返回明确错误，不做本地伪摘要；这避免把“压缩成功”伪装成真实 Gateway compact。
-- Feishu Session/History 菜单补了 Compact Context 操作；Octo/纯文本可直接用 `/compact`。
-- 已固化持久 session 方向：不替换当前稳定链路；后续按 binding + IM session + Agent Profile 建 session pool，支持多 Agent 隔离、idle TTL、健康检查、stop/kill 和 one-shot fallback。
+- Studio Gateway runtime request log 已加入真实 usage ledger：普通 passthrough、非流式 adapter、流式 SSE adapter 会提取 Anthropic / Responses / Chat 常见 usage 字段，并保留 cache read/write tokens。
+- Codex streaming adapter 返回值补出 `usage`，避免 SSE adapter 内部已收到 token usage 但外层日志无法记录。
+- Channel daemon 会在每次 IM Agent run 完成后，按 run 时间窗、App scope 和模型从 Gateway runtime 关联 usage，并写入当前 `agentRuns`。
+- IM 命令新增 `/usage` / `/tokens`：按当前 binding + IM session 汇总最近 Agent run 的真实 Gateway usage；无上游 usage 时明确提示不可统计，不返回占位数字。
+- Feishu Session 卡片新增 Usage 按钮，文本/Octo 可直接使用 `/usage`。
 
 ## 最近验证
 
 - 通过：`npm run build:api`。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "conversation history|IM commands switch agent|model menus can read|command surface"`，39 个 Channel Connectors 子测试通过。
+- 通过：`node --test tests/system/model-gateway-service.test.mjs`，51 个 Model Gateway 子测试通过。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，39 个 Channel Connectors 子测试通过。
+- 通过：`node --test tests/system/studio-web-channel-connectors-page.test.mjs tests/system/studio-web-model-gateway-page.test.mjs`，6 个前端 contract 子测试通过。
 - 通过：`git diff --check`。
-- 通过：本地 Gateway key 调 `GET http://127.0.0.1:18796/v1/models`，返回 13 个模型。
-- 通过：`systemctl --user restart openclaw-studio-channel-connectors.service`，随后 `is-active/is-enabled` 为 `active/enabled`。
-- 通过：`curl http://127.0.0.1:18797/status`，Octo `octo-studio-cc` connected，Feishu shared WS connected，`activeRuns=[]`。
-- 通过：`npm run dev:restart`，前端 `http://127.0.0.1:5176`，后端 `http://127.0.0.1:3762`。
-- 未计入通过：本地 Gateway `/v1/responses/compact` 已路由到 GMN provider，但上游返回 `502 model_gateway_upstream_failed: fetch failed`；这是 live provider 可达性问题，不影响本次 command/store contract 测试结论。
+- 通过：`systemctl --user restart openclaw-studio-model-gateway.service openclaw-studio-channel-connectors.service`，两个 user services 均为 `active/enabled`。
+- 通过：Gateway daemon `GET /api/model-gateway/status` 返回 `ok=true`、`localDaemon=running`；Channel daemon `GET /status` 返回 `ok=true`、`activeRuns=0`。
+- 通过：`npm run dev:restart`，前端 `http://127.0.0.1:5176`，后端 `http://127.0.0.1:3762`；后端 `/api/model-gateway/status` 返回 preferred endpoint `http://127.0.0.1:18796/v1`。
 
 ## 已知边界
 
@@ -44,5 +44,5 @@
 ## 下一步
 
 1. 设计并测试持久 session driver 最小合同：session pool、事件流、stop/kill、idle 回收、crash recovery、one-shot fallback。
-2. 继续按 CC Go 补 `/usage`：需要先接真实 token/usage 账本，不能只显示占位。
-3. 继续按 CC Go 补 `/reasoning`、`/name`、`/search`、session list 细节，并迁移 Claude Code / OpenCode 视觉输入、OCR、语音/STT/TTS、大文件 COS STS 和更多平台 adapter。
+2. 继续按 CC Go 补 `/reasoning`、`/name`、`/search`、session list 细节。
+3. 继续迁移 Claude Code / OpenCode 视觉输入、OCR、语音/STT/TTS、大文件 COS STS 和更多平台 adapter。

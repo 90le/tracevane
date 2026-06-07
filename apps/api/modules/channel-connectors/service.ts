@@ -1061,13 +1061,14 @@ function commandActionNotice(
   const text = normalizeString(commandResult.replyText || commandResult.passthroughText);
   if (!text) return null;
   const title = commandResult.action === "status" ? "当前状态"
-    : commandResult.action === "show" ? "缓存内容"
-      : commandResult.action === "set" ? "设置已应用"
-        : commandResult.action === "new" ? "新会话已开启"
-          : commandResult.action === "reset" ? "会话已重置"
-            : commandResult.action === "list" ? "可选项"
-              : commandResult.action === "passthrough" ? "已发送给 Agent"
-                : "执行结果";
+    : commandResult.action === "usage" ? "用量统计"
+      : commandResult.action === "show" ? "缓存内容"
+        : commandResult.action === "set" ? "设置已应用"
+          : commandResult.action === "new" ? "新会话已开启"
+            : commandResult.action === "reset" ? "会话已重置"
+              : commandResult.action === "list" ? "可选项"
+                : commandResult.action === "passthrough" ? "已发送给 Agent"
+                  : "执行结果";
   return {
     title,
     text,
@@ -1083,7 +1084,7 @@ function shouldReturnCommandActionCard(
   const action = normalizeString(commandResult.action).toLowerCase();
   if (actionKind === "nav") return true;
   if (["new", "reset", "show", "passthrough"].includes(action)) return false;
-  return ["help", "status", "list", "set"].includes(action);
+  return ["help", "status", "usage", "list", "set"].includes(action);
 }
 
 async function modelsForCommandSurface(input: {

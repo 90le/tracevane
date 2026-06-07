@@ -250,6 +250,14 @@ export interface ModelGatewaySecretState {
 export type ModelGatewayRuntimeRequestKind = "gateway-request" | "provider-test";
 export type ModelGatewayRuntimeRequestOutcome = "success" | "failure" | "adapter-required" | "missing-provider";
 
+export interface ModelGatewayRuntimeUsage {
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+}
+
 export interface ModelGatewayRuntimeRequestLogEntry {
   id: string;
   kind: ModelGatewayRuntimeRequestKind;
@@ -268,6 +276,7 @@ export interface ModelGatewayRuntimeRequestLogEntry {
   outcome: ModelGatewayRuntimeRequestOutcome;
   errorCode: string | null;
   errorMessage: string | null;
+  usage: ModelGatewayRuntimeUsage | null;
 }
 
 export interface ModelGatewayRuntimeState {

@@ -71,6 +71,7 @@ import {
   type ModelGatewayRuntimeRequestOutcome,
   type ModelGatewayRuntimeResponse,
   type ModelGatewayRuntimeState,
+  type ModelGatewayRuntimeUsage,
   type ModelGatewayRouteDecision,
   type ModelGatewayRouteId,
   type ModelGatewayRouteMode,
@@ -234,6 +235,86 @@ function normalizeStringArray(value: unknown): string[] {
     .map((item) => normalizeString(item))
     .filter(Boolean)
     .filter((item, index, list) => list.indexOf(item) === index);
+}
+
+function numberOrNull(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return Math.max(0, Math.floor(value));
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return Math.max(0, Math.floor(parsed));
+  }
+  return null;
+}
+
+function firstNumber(...values: unknown[]): number | null {
+  for (const value of values) {
+    const normalized = numberOrNull(value);
+    if (normalized !== null) return normalized;
+  }
+  return null;
+}
+
+function nestedRecord(value: unknown, key: string): Record<string, unknown> {
+  return isRecord(value) && isRecord(value[key]) ? value[key] as Record<string, unknown> : {};
+}
+
+function normalizeRuntimeUsage(value: unknown): ModelGatewayRuntimeUsage | null {
+  if (!isRecord(value)) return null;
+  const inputDetails = nestedRecord(value, "input_tokens_details");
+  const outputDetails = nestedRecord(value, "output_tokens_details");
+  const promptDetails = nestedRecord(value, "prompt_tokens_details");
+  const completionDetails = nestedRecord(value, "completion_tokens_details");
+  const inputTokens = firstNumber(value.input_tokens, value.prompt_tokens, value.inputTokens, value.promptTokens);
+  const outputTokens = firstNumber(value.output_tokens, value.completion_tokens, value.outputTokens, value.completionTokens);
+  const cacheReadTokens = firstNumber(
+    value.cache_read_input_tokens,
+    value.cache_read_tokens,
+    value.cacheReadTokens,
+    value.cached_tokens,
+    inputDetails.cached_tokens,
+    inputDetails.cache_read_tokens,
+    promptDetails.cached_tokens,
+    promptDetails.cache_read_tokens,
+  );
+  const cacheCreationTokens = firstNumber(
+    value.cache_creation_input_tokens,
+    value.cache_creation_tokens,
+    value.cacheCreationTokens,
+    inputDetails.cache_creation_tokens,
+    promptDetails.cache_creation_tokens,
+    outputDetails.cache_creation_tokens,
+    completionDetails.cache_creation_tokens,
+  );
+  const explicitTotalTokens = firstNumber(value.total_tokens, value.totalTokens);
+  const totalTokens = explicitTotalTokens ?? ((inputTokens ?? 0) + (outputTokens ?? 0));
+  const hasUsageSignal = [
+    inputTokens,
+    outputTokens,
+    explicitTotalTokens,
+    cacheReadTokens,
+    cacheCreationTokens,
+  ].some((item) => item !== null);
+  if (!hasUsageSignal) return null;
+  return {
+    inputTokens: inputTokens ?? 0,
+    outputTokens: outputTokens ?? 0,
+    totalTokens,
+    cacheReadTokens: cacheReadTokens ?? 0,
+    cacheCreationTokens: cacheCreationTokens ?? 0,
+  };
+}
+
+function extractRuntimeUsage(value: unknown): ModelGatewayRuntimeUsage | null {
+  let raw = value;
+  if (typeof raw === "string") {
+    try {
+      raw = JSON.parse(raw) as unknown;
+    } catch {
+      return null;
+    }
+  }
+  if (!isRecord(raw)) return null;
+  return normalizeRuntimeUsage(raw.usage) || normalizeRuntimeUsage(raw);
 }
 
 function normalizeId(value: unknown, fallback: string): string {
@@ -1073,6 +1154,7 @@ function normalizeRuntimeLogEntry(value: unknown): ModelGatewayRuntimeRequestLog
     outcome,
     errorCode: normalizeString(value.errorCode) || null,
     errorMessage: normalizeString(value.errorMessage) || null,
+    usage: normalizeRuntimeUsage(value.usage),
   };
 }
 
@@ -1862,6 +1944,7 @@ function requestLogEntry(options: {
   outcome: ModelGatewayRuntimeRequestOutcome;
   errorCode?: string | null;
   errorMessage?: string | null;
+  usage?: ModelGatewayRuntimeUsage | null;
 }): ModelGatewayRuntimeRequestLogEntry {
   const finishedAt = nowIso();
   const durationMs = Math.max(0, Date.parse(finishedAt) - Date.parse(options.startedAt));
@@ -1883,6 +1966,7 @@ function requestLogEntry(options: {
     outcome: options.outcome,
     errorCode: options.errorCode || null,
     errorMessage: options.errorMessage || null,
+    usage: options.usage || null,
   };
 }
 
@@ -4293,6 +4377,7 @@ export function createModelGatewayService(
         outcome: requestOutcomeFromStatus(response.status, null, success),
         errorCode: success ? null : "model_gateway_provider_test_failed",
         errorMessage,
+        usage: success ? extractRuntimeUsage(responseText) : null,
       }));
       return {
         ok: success,
@@ -4914,6 +4999,7 @@ export function createModelGatewayService(
             outcome: "success",
             errorCode: null,
             errorMessage: null,
+            usage: extractRuntimeUsage(streamingResult),
           }));
         } catch (error) {
           const message = error instanceof Error ? error.message : streamingAdapter.adapterFailedMessage;
@@ -5010,6 +5096,7 @@ export function createModelGatewayService(
           outcome: "success",
           errorCode: null,
           errorMessage: null,
+          usage: extractRuntimeUsage(adaptedResponse),
         }));
         res.setHeader("X-OpenClaw-Model-Gateway-Provider", provider.id);
         sendJson(res, upstream.status, adaptedResponse);
@@ -5065,6 +5152,7 @@ export function createModelGatewayService(
           outcome: "success",
           errorCode: null,
           errorMessage: null,
+          usage: extractRuntimeUsage(adaptedResponse),
         }));
         res.setHeader("X-OpenClaw-Model-Gateway-Provider", provider.id);
         sendJson(res, upstream.status, adaptedResponse);
@@ -5124,6 +5212,7 @@ export function createModelGatewayService(
           outcome: "success",
           errorCode: null,
           errorMessage: null,
+          usage: extractRuntimeUsage(adaptedResponse),
         }));
         res.setHeader("X-OpenClaw-Model-Gateway-Provider", provider.id);
         sendJson(res, upstream.status, adaptedResponse);
@@ -5174,6 +5263,7 @@ export function createModelGatewayService(
           outcome: "success",
           errorCode: null,
           errorMessage: null,
+          usage: extractRuntimeUsage(adaptedResponse),
         }));
         res.setHeader("X-OpenClaw-Model-Gateway-Provider", provider.id);
         sendJson(res, upstream.status, adaptedResponse);
@@ -5190,6 +5280,7 @@ export function createModelGatewayService(
         outcome: requestOutcomeFromStatus(upstream.status, null, healthSuccess),
         errorCode: healthSuccess ? null : "model_gateway_upstream_status",
         errorMessage,
+        usage: healthSuccess ? extractRuntimeUsage(responseText) : null,
       }));
       setCorsHeaders(res);
       res.statusCode = upstream.status;

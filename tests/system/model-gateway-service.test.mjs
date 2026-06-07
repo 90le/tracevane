@@ -2254,6 +2254,12 @@ test("model gateway daemon writes runtime metadata and serves cli routes", async
       id: "chatcmpl_daemon",
       object: "chat.completion",
       choices: [{ index: 0, message: { role: "assistant", content: "daemon ok" }, finish_reason: "stop" }],
+      usage: {
+        prompt_tokens: 3,
+        completion_tokens: 2,
+        total_tokens: 5,
+        prompt_tokens_details: { cached_tokens: 1 },
+      },
     }), {
       status: 200,
       headers: { "content-type": "application/json" },
@@ -2302,6 +2308,13 @@ test("model gateway daemon writes runtime metadata and serves cli routes", async
     assert.equal(runtime.body.runtime.requestLog.length, 1);
     assert.equal(runtime.body.runtime.requestLog[0].routeId, "openai_chat_completions");
     assert.equal(runtime.body.runtime.requestLog[0].outcome, "success");
+    assert.deepEqual(runtime.body.runtime.requestLog[0].usage, {
+      inputTokens: 3,
+      outputTokens: 2,
+      totalTokens: 5,
+      cacheReadTokens: 1,
+      cacheCreationTokens: 0,
+    });
     assert.ok(!JSON.stringify(runtime.body).includes("sk-daemon-secret-123456"));
   } finally {
     globalThis.fetch = originalFetch;
@@ -3868,6 +3881,13 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
       assert.equal(runtime.body.runtime.requestLog[0].upstreamUrl, "https://codex-chat.example.test/v1/chat/completions");
       assert.equal(runtime.body.runtime.requestLog[0].model, "gpt-test");
       assert.equal(runtime.body.runtime.requestLog[0].outcome, "success");
+      assert.deepEqual(runtime.body.runtime.requestLog[0].usage, {
+        inputTokens: 10,
+        outputTokens: 4,
+        totalTokens: 14,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+      });
       assert.ok(!JSON.stringify(runtime.body).includes("sk-codex-adapter-secret"));
     });
   } finally {
@@ -4229,6 +4249,13 @@ test("model gateway adapts streaming chat sse to codex responses sse", async () 
       assert.equal(runtime.body.runtime.requestLog[0].routeId, "openai_responses");
       assert.equal(runtime.body.runtime.requestLog[0].model, "gpt-test");
       assert.equal(runtime.body.runtime.requestLog[0].outcome, "success");
+      assert.deepEqual(runtime.body.runtime.requestLog[0].usage, {
+        inputTokens: 7,
+        outputTokens: 2,
+        totalTokens: 9,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+      });
       assert.ok(!JSON.stringify(runtime.body).includes("sk-codex-stream-secret"));
     });
   } finally {

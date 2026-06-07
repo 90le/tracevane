@@ -344,6 +344,7 @@ export function buildChannelConnectorCommandSurface(
       summary: "当前 IM 会话级控制，不修改全局 Provider/App 配置。",
       actions: [
         action("status", "Status", "/status"),
+        action("usage", "Usage", "/usage"),
         action("current", "Current Session", "/current", { actionKind: "nav" }),
         action("sessions", "Agent Sessions", "/list", { actionKind: "nav" }),
         action("history", "History", "/history", { actionKind: "nav" }),
@@ -1277,6 +1278,7 @@ function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConn
   const section = sectionById(surface, "session");
   const actions = section?.actions || [];
   const status = actions.find((item) => item.id === "status") || action("status", "Status", "/status");
+  const usage = actions.find((item) => item.id === "usage") || action("usage", "Usage", "/usage");
   const current = actions.find((item) => item.id === "current") || action("current", "Current Session", "/current", { actionKind: "nav" });
   const sessions = actions.find((item) => item.id === "sessions") || action("sessions", "Agent Sessions", "/list", { actionKind: "nav" });
   const history = actions.find((item) => item.id === "history") || action("history", "History", "/history", { actionKind: "nav" });
@@ -1291,6 +1293,7 @@ function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConn
       content: [
         "**会话操作**",
         "Status 查看当前 IM session 的 Agent、模型、权限和续接状态。",
+        "Usage 汇总当前 IM session 最近 Agent run 的 Gateway token usage。",
         "Agent Sessions 查看当前 IM session 已知续接记录，并可切换回旧续接。",
         "Compact Context 会用 Studio Gateway 压缩当前 IM history，并开启新的 Agent 续接。",
         "Stop Run 会停止当前 IM session 正在运行的 Agent。",
@@ -1299,7 +1302,8 @@ function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConn
       ].join("\n"),
     },
   ];
-  pushActionRows(elements, [status, current, sessions, history], surface, 1);
+  pushActionRows(elements, [status, usage, current, sessions], surface, 1);
+  pushActionRows(elements, [history], surface, 1);
   pushActionRows(elements, [compact, stop, fresh, reset], surface, 1);
   pushSubcardNavRows(elements, surface, "session");
   return {

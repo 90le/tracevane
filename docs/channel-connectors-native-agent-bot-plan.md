@@ -115,6 +115,7 @@ Studio 增强点：
 - Channel daemon 已支持 Octo register 后凭证缓存、WuKongIM WebSocket CONNECT/CONNACK/heartbeat/RECVACK/AES 解密、runtime status、Codex/Claude Code/OpenCode 一次性 CLI runner 合同。
 - Channel daemon 已支持 runner JSONL progress、`activeRuns` status、Octo event start/progress/finish、typing pulse 和失败短回执；2026-06-06 本机 Octo `studio-cc` 真实 DM live smoke 复验通过，最近 4 条 inbound run 均完成并回复。
 - Channel daemon 已支持 `/help`、`/command`、`/cmd`、`/status`、`/agent`、`/model`、`/mode`、`/dir`、`/cd`、`/new`、`/reset`、`/display`、`/stream`、`/tools`；override 按 IM session 存储，模型切换不切断 Codex thread，workdir/new session 会断开旧续接，流式/工具消息开关只作用于当前 IM session。
+- Channel daemon 已支持 `/usage` / `/tokens`：从 Studio Gateway runtime usage ledger 汇总当前 binding + IM session 最近 Agent run 的真实 token usage；无上游 usage 时明确提示无统计。
 - Channel daemon 已支持 Agent 原生命令透传：未知 `/xxx` 直接转给当前 Agent，`/native <命令>` 用于透传与 Studio 命令同名的原生命令。
 - Channel Connectors 已支持 command surface preview：text fallback、平台无关 action sections、Feishu card JSON、action payload -> command 解析。
 - Channel Connectors 已支持 command action callback：通用 `/commands/action` 和 Feishu `card-action` / `bot-menu` aliases 可把 action value / event key 转回 command-router。

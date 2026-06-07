@@ -7,6 +7,7 @@ export interface CodexStreamingAdapterResult {
   model: string | null;
   outputText: string;
   output: JsonRecord[];
+  usage: JsonRecord | null;
 }
 
 interface TextState {
@@ -85,6 +86,7 @@ export async function writeCodexResponsesSseFromChatSse(
     model: state.model,
     outputText: state.text.text,
     output: state.completedOutput,
+    usage: state.usage,
   };
 }
 

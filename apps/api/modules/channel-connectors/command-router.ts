@@ -78,6 +78,12 @@ export interface ChannelConnectorCommandContext {
     summaryText: string | null;
     error: string | null;
   }>;
+  summarizeUsage?: (input: {
+    bindingId: string;
+    sessionKey: string;
+    project: ChannelConnectorRuntimeProject;
+    command: string;
+  }) => Promise<ChannelConnectorUsageSummary | null>;
 }
 
 export interface ChannelConnectorGatewayModel {
@@ -96,10 +102,26 @@ export interface ChannelConnectorGatewayModel {
   };
 }
 
+export interface ChannelConnectorUsageSummary {
+  source: "gateway-runtime-window";
+  requests: number;
+  successfulRequests: number;
+  failedRequests: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+  lastRequestAt: string | null;
+  providers: string[];
+  models: string[];
+  requestIds: string[];
+}
+
 export interface ChannelConnectorCommandResult {
   handled: boolean;
   command: string | null;
-  action: "help" | "status" | "list" | "show" | "set" | "reset" | "new" | "stop" | "compact" | "passthrough" | null;
+  action: "help" | "status" | "list" | "show" | "set" | "reset" | "new" | "stop" | "compact" | "usage" | "passthrough" | null;
   ok: boolean | null;
   replyText: string | null;
   control: ChannelConnectorSessionControlRecord | null;
@@ -214,6 +236,8 @@ function isStudioCommand(name: string): boolean {
     "command",
     "cmd",
     "status",
+    "usage",
+    "tokens",
     "current",
     "list",
     "sessions",
@@ -266,6 +290,7 @@ function commandHelpText(): string {
     "- `/list` 列出当前 IM 会话已知 Agent sessions",
     "- `/switch <序号|sessionId前缀>` 切换到已知 Agent session",
     "- `/history` 查看当前 IM 会话最近上下文",
+    "- `/usage` 查看本 IM 会话最近 Agent run 的 Gateway token usage",
     "- `/compact` 压缩当前 IM 会话上下文并开启新续接",
     "- `/stop` 停止当前 IM 会话正在运行的 Agent",
     "- `/new` 开启新 Agent 会话，保留本会话配置",
@@ -722,6 +747,29 @@ function historyCommandText(context: ChannelConnectorCommandContext): string {
   return lines.join("\n\n");
 }
 
+function formatUsageSummary(summary: ChannelConnectorUsageSummary | null): string {
+  if (!summary || summary.requests <= 0) {
+    return [
+      "Studio Usage",
+      "当前 IM 会话还没有可统计的 Gateway usage。",
+      "只有通过 Studio Gateway 且上游返回 usage/token 字段的 Agent 请求会计入。",
+    ].join("\n");
+  }
+  const lines = [
+    "Studio Usage",
+    `Requests: ${summary.requests} (${summary.successfulRequests} success / ${summary.failedRequests} failed)`,
+    `Tokens: input ${summary.inputTokens} · output ${summary.outputTokens} · total ${summary.totalTokens}`,
+  ];
+  if (summary.cacheReadTokens || summary.cacheCreationTokens) {
+    lines.push(`Cache: read ${summary.cacheReadTokens} · write ${summary.cacheCreationTokens}`);
+  }
+  if (summary.models.length) lines.push(`Models: ${summary.models.join(", ")}`);
+  if (summary.providers.length) lines.push(`Providers: ${summary.providers.join(", ")}`);
+  lines.push(`Last request: ${summary.lastRequestAt || "-"}`);
+  lines.push("Source: Studio Gateway runtime log, correlated by Agent run time window.");
+  return lines.join("\n");
+}
+
 function sessionListText(
   records: ChannelConnectorAgentSessionRecord[],
   activeSessionId: string | null,
@@ -884,6 +932,24 @@ export async function handleChannelConnectorCommand(
   }
 
   if (name === "status") return handleStatus(context);
+  if (name === "usage" || name === "tokens") {
+    const summary = context.summarizeUsage
+      ? await context.summarizeUsage({
+        ...lookup,
+        project: currentProject,
+        command: parsed.raw,
+      })
+      : null;
+    return {
+      handled: true,
+      command: name,
+      action: "usage",
+      ok: Boolean(summary && summary.requests > 0),
+      control: currentControl,
+      replyText: formatUsageSummary(summary),
+      passthroughText: null,
+    };
+  }
   if (name === "current") return handleCurrent(context);
   if (name === "list" || name === "sessions" || name === "switch") {
     const activeSession = getChannelConnectorAgentSession(context.agentSessionsPath, {

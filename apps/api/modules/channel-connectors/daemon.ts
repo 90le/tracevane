@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import {
@@ -39,6 +40,7 @@ import {
   handleChannelConnectorCommand,
   listChannelConnectorGatewayModels,
   resolveChannelConnectorEffectiveProject,
+  type ChannelConnectorUsageSummary,
 } from "./command-router.js";
 import {
   countChannelConnectorVisualAttachments,
@@ -285,6 +287,7 @@ interface ChannelDaemonState {
     agentElapsedMs?: number;
     firstProgressLatencyMs?: number | null;
     finalProgressLagMs?: number | null;
+    usage?: ChannelConnectorUsageSummary | null;
   }>;
 }
 
@@ -488,6 +491,18 @@ function feishuLogger(config: ChannelConnectorsDaemonRuntimeConfig): Logger {
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function uniqueStrings(values: string[]): string[] {
+  const seen = new Set<string>();
+  const output: string[] = [];
+  for (const value of values) {
+    const normalized = normalizeString(value);
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    output.push(normalized);
+  }
+  return output;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1052,6 +1067,179 @@ async function compactChannelConnectorConversation(input: {
       error: `Studio compact 失败：${shortMessage(error)}`,
     };
   }
+}
+
+interface GatewayRuntimeLogEntryForUsage {
+  id: string;
+  finishedAt: string;
+  outcome: string;
+  appScope: string | null;
+  providerId: string | null;
+  model: string | null;
+  usage: {
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
+    cacheReadTokens: number;
+    cacheCreationTokens: number;
+  } | null;
+}
+
+function numberOrNull(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return Math.max(0, Math.floor(value));
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) return Math.max(0, Math.floor(parsed));
+  }
+  return null;
+}
+
+function gatewayUsageNumber(value: unknown): number {
+  return numberOrNull(value) ?? 0;
+}
+
+function normalizeGatewayRuntimeUsage(value: unknown): GatewayRuntimeLogEntryForUsage["usage"] {
+  if (!isRecord(value)) return null;
+  const inputTokens = gatewayUsageNumber(value.inputTokens);
+  const outputTokens = gatewayUsageNumber(value.outputTokens);
+  const totalTokens = gatewayUsageNumber(value.totalTokens) || inputTokens + outputTokens;
+  const cacheReadTokens = gatewayUsageNumber(value.cacheReadTokens);
+  const cacheCreationTokens = gatewayUsageNumber(value.cacheCreationTokens);
+  if (!inputTokens && !outputTokens && !totalTokens && !cacheReadTokens && !cacheCreationTokens) return null;
+  return {
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    cacheReadTokens,
+    cacheCreationTokens,
+  };
+}
+
+function modelGatewayRuntimePathCandidates(config: ChannelConnectorsDaemonRuntimeConfig): string[] {
+  return uniqueStrings([
+    path.resolve(config.paths.root, "..", "..", "model-gateway", "runtime.json"),
+    path.join(os.homedir(), ".openclaw", "studio", "model-gateway", "runtime.json"),
+    path.join(os.homedir(), ".config", "openclaw-studio", "model-gateway", "runtime.json"),
+  ]);
+}
+
+function readModelGatewayRuntimeLog(config: ChannelConnectorsDaemonRuntimeConfig): GatewayRuntimeLogEntryForUsage[] {
+  for (const filePath of modelGatewayRuntimePathCandidates(config)) {
+    try {
+      if (!fs.existsSync(filePath)) continue;
+      const raw = JSON.parse(fs.readFileSync(filePath, "utf8")) as unknown;
+      if (!isRecord(raw) || !Array.isArray(raw.requestLog)) continue;
+      return raw.requestLog
+        .filter(isRecord)
+        .map((entry): GatewayRuntimeLogEntryForUsage | null => {
+          const id = normalizeString(entry.id);
+          const finishedAt = normalizeString(entry.finishedAt);
+          if (!id || !finishedAt) return null;
+          return {
+            id,
+            finishedAt,
+            outcome: normalizeString(entry.outcome) || "failure",
+            appScope: normalizeString(entry.appScope) || null,
+            providerId: normalizeString(entry.providerId) || null,
+            model: normalizeString(entry.model) || null,
+            usage: normalizeGatewayRuntimeUsage(entry.usage),
+          };
+        })
+        .filter((entry): entry is GatewayRuntimeLogEntryForUsage => Boolean(entry));
+    } catch {
+      continue;
+    }
+  }
+  return [];
+}
+
+function gatewayAppScopeForAgent(agent: string): string | null {
+  const normalized = normalizeString(agent).toLowerCase();
+  if (normalized === "codex") return "codex";
+  if (normalized === "claude-code" || normalized === "claude") return "claude-code";
+  if (normalized === "opencode" || normalized === "openclaw") return "openclaw";
+  return null;
+}
+
+function summarizeGatewayEntries(entries: GatewayRuntimeLogEntryForUsage[]): ChannelConnectorUsageSummary | null {
+  const withUsage = entries.filter((entry) => entry.usage);
+  if (!withUsage.length) return null;
+  const providers = uniqueStrings(withUsage.map((entry) => entry.providerId || "").filter(Boolean));
+  const models = uniqueStrings(withUsage.map((entry) => entry.model || "").filter(Boolean));
+  return {
+    source: "gateway-runtime-window",
+    requests: withUsage.length,
+    successfulRequests: withUsage.filter((entry) => entry.outcome === "success").length,
+    failedRequests: withUsage.filter((entry) => entry.outcome !== "success").length,
+    inputTokens: withUsage.reduce((sum, entry) => sum + (entry.usage?.inputTokens || 0), 0),
+    outputTokens: withUsage.reduce((sum, entry) => sum + (entry.usage?.outputTokens || 0), 0),
+    totalTokens: withUsage.reduce((sum, entry) => sum + (entry.usage?.totalTokens || 0), 0),
+    cacheReadTokens: withUsage.reduce((sum, entry) => sum + (entry.usage?.cacheReadTokens || 0), 0),
+    cacheCreationTokens: withUsage.reduce((sum, entry) => sum + (entry.usage?.cacheCreationTokens || 0), 0),
+    lastRequestAt: withUsage
+      .map((entry) => entry.finishedAt)
+      .sort((left, right) => right.localeCompare(left))[0] || null,
+    providers,
+    models,
+    requestIds: withUsage.map((entry) => entry.id),
+  };
+}
+
+function summarizeModelGatewayUsageForAgentRun(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  project: ChannelConnectorRuntimeProject;
+  startedAt: string;
+  finishedAt: string;
+}): ChannelConnectorUsageSummary | null {
+  const startedAtMs = isoTimestampMs(input.startedAt);
+  const finishedAtMs = isoTimestampMs(input.finishedAt);
+  if (startedAtMs === null || finishedAtMs === null) return null;
+  const windowStartMs = startedAtMs - 1_000;
+  const windowEndMs = finishedAtMs + 5_000;
+  const model = normalizeString(input.project.model).toLowerCase();
+  const appScope = gatewayAppScopeForAgent(input.project.agent);
+  const entries = readModelGatewayRuntimeLog(input.config).filter((entry) => {
+    const finishedAtMs = isoTimestampMs(entry.finishedAt);
+    if (finishedAtMs === null || finishedAtMs < windowStartMs || finishedAtMs > windowEndMs) return false;
+    if (appScope && entry.appScope && entry.appScope !== appScope) return false;
+    if (model && entry.model && entry.model.toLowerCase() !== model) return false;
+    return true;
+  });
+  return summarizeGatewayEntries(entries);
+}
+
+function summarizeChannelConnectorUsageFromState(
+  state: ChannelDaemonState,
+  input: {
+    bindingId: string;
+    sessionKey: string;
+  },
+): ChannelConnectorUsageSummary | null {
+  const runs = state.agentRuns
+    .filter((run) => run.bindingId === input.bindingId && run.sessionKey === input.sessionKey && run.usage)
+    .slice(0, 20);
+  const summaries = runs
+    .map((run) => run.usage)
+    .filter((usage): usage is ChannelConnectorUsageSummary => Boolean(usage));
+  if (!summaries.length) return null;
+  return {
+    source: "gateway-runtime-window",
+    requests: summaries.reduce((sum, item) => sum + item.requests, 0),
+    successfulRequests: summaries.reduce((sum, item) => sum + item.successfulRequests, 0),
+    failedRequests: summaries.reduce((sum, item) => sum + item.failedRequests, 0),
+    inputTokens: summaries.reduce((sum, item) => sum + item.inputTokens, 0),
+    outputTokens: summaries.reduce((sum, item) => sum + item.outputTokens, 0),
+    totalTokens: summaries.reduce((sum, item) => sum + item.totalTokens, 0),
+    cacheReadTokens: summaries.reduce((sum, item) => sum + item.cacheReadTokens, 0),
+    cacheCreationTokens: summaries.reduce((sum, item) => sum + item.cacheCreationTokens, 0),
+    lastRequestAt: summaries
+      .map((item) => item.lastRequestAt || "")
+      .filter(Boolean)
+      .sort((left, right) => right.localeCompare(left))[0] || null,
+    providers: uniqueStrings(summaries.flatMap((item) => item.providers)),
+    models: uniqueStrings(summaries.flatMap((item) => item.models)),
+    requestIds: uniqueStrings(summaries.flatMap((item) => item.requestIds)).slice(0, 50),
+  };
 }
 
 function safePathSegment(value: string): string {
@@ -1645,6 +1833,7 @@ function shouldRenderFeishuCommandCard(command: ReturnType<typeof handleChannelC
   return command.handled && [
     "help",
     "status",
+    "usage",
     "list",
     "set",
   ].includes(normalizeString(command.action).toLowerCase());
@@ -2305,6 +2494,7 @@ function feishuCommandNotice(input: {
   if (!text) return null;
   const action = input.command.action;
   const title = action === "status" ? "当前状态"
+    : action === "usage" ? "用量统计"
     : action === "show" ? "缓存内容"
       : action === "set" ? "设置已应用"
         : action === "new" ? "新会话已开启"
@@ -2812,6 +3002,10 @@ async function dispatchOctoMessage(input: {
       project: scope.project,
       gatewayClientKey: key,
     }),
+    summarizeUsage: async (scope) => summarizeChannelConnectorUsageFromState(state, {
+      bindingId: scope.bindingId,
+      sessionKey: scope.sessionKey,
+    }),
   });
   if (command.handled) {
     let replySent = false;
@@ -3236,6 +3430,12 @@ async function dispatchOctoMessage(input: {
   const agentFinishedAt = new Date().toISOString();
   const agentFinishedAtMs = isoTimestampMs(agentFinishedAt) ?? Date.now();
   const agentLatestProgressAtMs = latestProgress ? isoTimestampMs(latestProgress.checkedAt) : null;
+  const usage = summarizeModelGatewayUsageForAgentRun({
+    config,
+    project: turnProject,
+    startedAt: runStartedAt,
+    finishedAt: agentFinishedAt,
+  });
   state.agentRuns.unshift({
     checkedAt: agentFinishedAt,
     bindingId: binding.id,
@@ -3261,6 +3461,7 @@ async function dispatchOctoMessage(input: {
     finalProgressLagMs: agentLatestProgressAtMs === null
       ? null
       : elapsedMsSince(agentLatestProgressAtMs, agentFinishedAtMs),
+    usage,
   });
   state.agentRuns = state.agentRuns.slice(0, 20);
 
@@ -3548,6 +3749,10 @@ async function dispatchFeishuParsedEvent(input: {
       sessionKey: scope.sessionKey,
       project: scope.project,
       gatewayClientKey: key,
+    }),
+    summarizeUsage: async (scope) => summarizeChannelConnectorUsageFromState(state, {
+      bindingId: scope.bindingId,
+      sessionKey: scope.sessionKey,
     }),
   });
 
@@ -4061,6 +4266,12 @@ async function dispatchFeishuParsedEvent(input: {
   const agentFinishedAt = new Date().toISOString();
   const agentFinishedAtMs = isoTimestampMs(agentFinishedAt) ?? Date.now();
   const agentLatestProgressAtMs = latestProgress ? isoTimestampMs(latestProgress.checkedAt) : null;
+  const usage = summarizeModelGatewayUsageForAgentRun({
+    config,
+    project: turnProject,
+    startedAt: runStartedAt,
+    finishedAt: agentFinishedAt,
+  });
   state.agentRuns.unshift({
     checkedAt: agentFinishedAt,
     bindingId: binding.id,
@@ -4086,6 +4297,7 @@ async function dispatchFeishuParsedEvent(input: {
     finalProgressLagMs: agentLatestProgressAtMs === null
       ? null
       : elapsedMsSince(agentLatestProgressAtMs, agentFinishedAtMs),
+    usage,
   });
   state.agentRuns = state.agentRuns.slice(0, 20);
 

@@ -2367,6 +2367,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(help.replyText, /\/stream/);
   assert.match(help.replyText, /\/tools/);
   assert.match(help.replyText, /\/buffer/);
+  assert.match(help.replyText, /`\/usage`/);
   assert.match(help.replyText, /`\/compact`/);
   assert.match(help.replyText, /`\/stop`/);
   assert.match(help.replyText, /`\/native \/help`/);
@@ -2404,6 +2405,51 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     assert.equal(result.ok, true);
     assert.match(result.replyText, /\S/);
   }
+
+  const usageWithoutRuntime = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/usage"),
+  });
+  assert.equal(usageWithoutRuntime.handled, true);
+  assert.equal(usageWithoutRuntime.action, "usage");
+  assert.equal(usageWithoutRuntime.ok, false);
+  assert.match(usageWithoutRuntime.replyText, /还没有可统计/);
+
+  let usageCalled = false;
+  const usage = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/usage"),
+    summarizeUsage: async (scope) => {
+      usageCalled = true;
+      assert.equal(scope.bindingId, "octo-codex");
+      assert.equal(scope.sessionKey, "dmwork:dm:admin-1");
+      assert.equal(scope.project.id, "codex-main");
+      assert.equal(scope.command, "/usage");
+      return {
+        source: "gateway-runtime-window",
+        requests: 2,
+        successfulRequests: 2,
+        failedRequests: 0,
+        inputTokens: 11,
+        outputTokens: 7,
+        totalTokens: 18,
+        cacheReadTokens: 3,
+        cacheCreationTokens: 1,
+        lastRequestAt: "2026-06-06T08:03:00.000Z",
+        providers: ["gmn"],
+        models: ["gpt-5.4-mini"],
+        requestIds: ["req-1", "req-2"],
+      };
+    },
+  });
+  assert.equal(usageCalled, true);
+  assert.equal(usage.handled, true);
+  assert.equal(usage.action, "usage");
+  assert.equal(usage.ok, true);
+  assert.match(usage.replyText, /Tokens: input 11 · output 7 · total 18/);
+  assert.match(usage.replyText, /Cache: read 3 · write 1/);
+  assert.match(usage.replyText, /gpt-5\.4-mini/);
+  assert.match(usage.replyText, /Studio Gateway runtime log/);
 
   let stopCalled = false;
   const stopped = await handleChannelConnectorCommand({

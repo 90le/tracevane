@@ -106,7 +106,7 @@ Provider / model routing 目标：
 
 | 模块 | 职责 |
 | --- | --- |
-| Studio Gateway Core | provider registry、secret store、active route、health、request log、adapter registry |
+| Studio Gateway Core | provider registry、secret store、active route、health、request log、usage ledger、adapter registry |
 | Studio Gateway daemon | loopback HTTP listener、协议 adapter、provider router、runtime metadata、supervisor contract |
 | Gateway Service & Config | daemon 安装/启用自启动/启动/停止/重启/状态、用户自定义 provider 配置、provider 启停、协议/模型自动识别弹层、secret 写入、聚合模型目录、模型别名、默认模型、模型能力标记、active provider、resolved route 状态、provider-native smoke、client-protocol active-route smoke |
 | App Connections | Codex、Claude Code、OpenCode、OpenClaw 的配置检测、脱敏 preview、确认后 apply、备份/rollback、默认模型与 App 级模型覆盖、上下文/compact/max output/reasoning profile；Codex 低频兼容参数收进高级折叠 |
@@ -139,6 +139,7 @@ Provider / model routing 目标：
 - Channel Connectors 原生配置 Octo(dmwork) / 飞书 / 微信等 IM 渠道；消息进入本地 CLI Agent bot，再由 Studio Gateway 调模型。
 - Channel Connectors 遇到图片/视频/贴纸等视觉附件时，必须优先使用 Gateway 模型能力：当前模型支持 vision 则保持不变；当前模型不支持且模型池存在 vision 模型时，仅本轮切换到 vision 模型；没有 vision 模型时继续受控对话并禁止视觉推断。
 - Channel Connectors `/compact` 验收必须证明：命令不会作为普通 prompt 发送给 Agent；Gateway compact 成功后 history 只保留 compact summary；旧 Agent/Codex thread 续接被清理；Gateway compact 失败时返回明确错误。
+- Channel Connectors `/usage` 验收必须证明：命令读取 Studio Gateway runtime 的真实 usage/token 账本，并按当前 binding + IM session 的 Agent run 时间窗汇总；没有上游 usage 时必须明确提示无统计，不能返回占位数字。
 - 持久 session driver 验收必须证明：进程可观测、可停止、可 idle 回收；crash 后 session store 不损坏；同一用户可切换多个 Agent；不同用户/群/线程不会串上下文；driver 不支持某能力时能回退 one-shot runner。
 - Channel Connectors 发布前必须覆盖 CC 二开源码的核心能力：多平台、多 Agent、文本/图片/文件/语音、群聊 mention、会话续接/切换、allowlist/admin/rate limit、slash command、cron、hooks、relay、management/status/logs。
 - 客户端配置只保存 placeholder 或 local endpoint；真实 upstream key 留在 Studio secret store。
