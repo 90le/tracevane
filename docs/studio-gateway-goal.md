@@ -89,6 +89,7 @@ Provider / model routing 目标：
 - Channel daemon 必须常驻守护；Studio / OpenClaw 崩溃时仍保持渠道服务和 Codex/Gateway 对话链路，不内置额外修复流程。
 - Channel / Agent 任意新功能实现前必须先定位 CC Go 对应实现，按平台协议、消息语义、交互菜单、错误处理、长连接和状态流做 1:1 contract 迁移，再做 Studio 化精修；禁止在已有成熟设计时重新盲目设计。
 - Channel daemon 的平台长连接必须以 CC Go 成熟实现为基线迁移；Octo(dmwork) 默认 30s heartbeat、10s PONG timeout、RECVACK、5 分钟 messageId 去重和 `3s + 0..3s` 抖动重连，Feishu 采用同 App 共享长连接后扇出事件。
+- Feishu 长连接不得只相信 SDK `connected` 状态；Studio 必须记录真实 `lastReceivedAt`，并对 connected 但长期无事件入站的假连接执行自动轮换。
 - 原生 contract 统一 incoming、reply、attachment、voice、thread、ack/retry、allowlist、admin、rate limit、banned words、slash command、cron、hooks、relay、session key 和 bot->Agent binding。
 - 优先 Octo(dmwork)，再飞书、微信/企业微信；后续覆盖 CC 已有平台，包括钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等。
 - 参考源：CC 二开全量源码 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`，其中 `platform/dmwork` 即 Octo；OpenClaw 频道实现作为账号/绑定/运行态参考；生产实现不依赖 cc-connect binary，也不得恢复旧 `resources/codex-stack` 生产路径。

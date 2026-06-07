@@ -126,6 +126,9 @@ const MAX_FEISHU_PING_TIMEOUT_SECONDS = 300;
 const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 180_000;
 const MIN_FEISHU_WATCHDOG_RESTART_MS = 60_000;
 const MAX_FEISHU_WATCHDOG_RESTART_MS = 600_000;
+const DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS = 300_000;
+const MIN_FEISHU_CONNECTED_IDLE_RENEW_MS = 60_000;
+const MAX_FEISHU_CONNECTED_IDLE_RENEW_MS = 3_600_000;
 const DEFAULT_OCTO_HEARTBEAT_MS = 30_000;
 const MIN_OCTO_HEARTBEAT_MS = 5_000;
 const MAX_OCTO_HEARTBEAT_MS = 300_000;
@@ -158,7 +161,9 @@ interface ChannelDaemonFeishuConnectionState {
   lastError: string | null;
   lastConnectedAt: string | null;
   lastDisconnectedAt: string | null;
+  lastReceivedAt: string | null;
   lastUnhealthyAt: string | null;
+  connectedIdleRenewAfterMs: number;
   reconnects: number;
   receivedMessages: number;
 }
@@ -180,6 +185,7 @@ interface ChannelDaemonFeishuGroup {
   receivedMessages: number;
   lastConnectedAt: string | null;
   lastDisconnectedAt: string | null;
+  lastReceivedAt: string | null;
   lastUnhealthyAt: string | null;
   lastError: string | null;
   watchdogRestarting: boolean;
@@ -586,6 +592,22 @@ function feishuPingTimeoutSeconds(group: ChannelDaemonFeishuGroup): number {
   return clampNumber(Math.floor(value), MIN_FEISHU_PING_TIMEOUT_SECONDS, MAX_FEISHU_PING_TIMEOUT_SECONDS);
 }
 
+function feishuConnectedIdleRenewMs(group: ChannelDaemonFeishuGroup): number {
+  const binding = firstFeishuBinding(group);
+  const value = binding
+    ? metadataNumber(binding, [
+      "feishuConnectedIdleRenewMs",
+      "feishu_connected_idle_renew_ms",
+      "connectedIdleRenewMs",
+      "connected_idle_renew_ms",
+      "idleRenewMs",
+      "idle_renew_ms",
+    ], DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS)
+    : DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS;
+  if (value <= 0) return 0;
+  return clampNumber(Math.floor(value), MIN_FEISHU_CONNECTED_IDLE_RENEW_MS, MAX_FEISHU_CONNECTED_IDLE_RENEW_MS);
+}
+
 function octoHeartbeatMs(binding: ChannelConnectorRuntimeBinding): number {
   return clampNumber(metadataNumber(binding, [
     "octoHeartbeatMs",
@@ -821,7 +843,9 @@ function feishuConnectionState(group: ChannelDaemonFeishuGroup): ChannelDaemonFe
     lastError: group.lastError,
     lastConnectedAt: group.lastConnectedAt,
     lastDisconnectedAt: group.lastDisconnectedAt,
+    lastReceivedAt: group.lastReceivedAt,
     lastUnhealthyAt: group.lastUnhealthyAt,
+    connectedIdleRenewAfterMs: feishuConnectedIdleRenewMs(group),
     reconnects: group.reconnects,
     receivedMessages: group.receivedMessages,
   };
@@ -2926,6 +2950,7 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
           receivedMessages: 0,
           lastConnectedAt: null,
           lastDisconnectedAt: null,
+          lastReceivedAt: null,
           lastUnhealthyAt: null,
           lastError: "feishu_transport_config_missing",
           watchdogRestarting: false,
@@ -2944,6 +2969,7 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
         receivedMessages: 0,
         lastConnectedAt: null,
         lastDisconnectedAt: null,
+        lastReceivedAt: null,
         lastUnhealthyAt: null,
         lastError: null,
         watchdogRestarting: false,
@@ -2968,10 +2994,12 @@ function createFeishuDispatcher(input: {
   });
   dispatcher.register({
     "im.message.receive_v1": async (data: unknown) => {
+      const receivedAt = new Date().toISOString();
       group.receivedMessages += 1;
+      group.lastReceivedAt = receivedAt;
       const parsed = parseChannelConnectorFeishuWebhook(feishuEnvelope(group.appId, "im.message.receive_v1", data));
       writeJsonLine(config.paths.feishuEvents, {
-        checkedAt: new Date().toISOString(),
+        checkedAt: receivedAt,
         adapter: "feishu",
         eventKind: parsed.kind,
         eventType: parsed.eventType,
@@ -2993,6 +3021,7 @@ function createFeishuDispatcher(input: {
       });
     },
     "card.action.trigger": async (data: unknown) => {
+      group.lastReceivedAt = new Date().toISOString();
       group.receivedMessages += 1;
       const parsed = parseChannelConnectorFeishuWebhook(feishuEnvelope(group.appId, "card.action.trigger", data));
       updateFeishuRuntime(config, state, group);
@@ -3012,6 +3041,7 @@ function createFeishuDispatcher(input: {
       };
     },
     "application.bot.menu_v6": async (data: unknown) => {
+      group.lastReceivedAt = new Date().toISOString();
       group.receivedMessages += 1;
       const parsed = parseChannelConnectorFeishuWebhook(feishuEnvelope(group.appId, "application.bot.menu_v6", data));
       updateFeishuRuntime(config, state, group);
@@ -3133,6 +3163,7 @@ function restartFeishuGroupClient(input: {
   const { config, state, group, clients, seenMessages, reason } = input;
   if (!group.refs.length || group.watchdogRestarting) return;
   group.watchdogRestarting = true;
+  group.reconnects += 1;
   group.lastError = reason;
   appendLog(config.paths.log, "Feishu WebSocket watchdog restarting client", {
     key: group.key,
@@ -3169,6 +3200,27 @@ function startFeishuWatchdog(input: {
       if (!group.refs.length || !group.client) continue;
       const status = group.client.getConnectionStatus();
       if (status?.state === "connected") {
+        const renewAfterMs = feishuConnectedIdleRenewMs(group);
+        const lastActivityAt = group.lastReceivedAt || group.lastConnectedAt;
+        const idleForMs = lastActivityAt ? nowMs - new Date(lastActivityAt).getTime() : 0;
+        if (renewAfterMs > 0 && lastActivityAt && idleForMs >= renewAfterMs) {
+          restartFeishuGroupClient({
+            config,
+            state,
+            group,
+            clients,
+            seenMessages,
+            reason: `watchdog_connected_idle_${idleForMs}`,
+          });
+          appendLog(config.paths.log, "Feishu WebSocket connected-idle renewal threshold elapsed", {
+            key: group.key,
+            idleForMs,
+            renewAfterMs,
+            lastActivityAt,
+            receivedMessages: group.receivedMessages,
+          });
+          continue;
+        }
         group.lastUnhealthyAt = null;
         group.watchdogRestarting = false;
         state.feishuConnections[group.key] = feishuConnectionState(group);
