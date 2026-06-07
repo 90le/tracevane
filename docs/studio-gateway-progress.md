@@ -23,10 +23,13 @@
 - 用户新发 Octo 图片已确认进入 `agent.visual.input`；失败根因不是附件链路，而是自动视觉路由选到过期 `gpt-5.2` 且 provider open circuit。
 - Gateway `/v1/models` 新增非标准健康元数据 `healthyProviderIds/openCircuitProviderIds`；Channel 自动视觉路由会跳过只有 open-circuit provider 的 vision 模型。
 - 本机 GMN provider 已删除过期 `gpt-5.2`，`gpt-5.4-mini` 真实 Gateway smoke 200，并把 GMN health 恢复为 closed。
-- Studio Feishu watchdog 已补 `lastReceivedAt` 和默认 300s connected-idle renewal；超过阈值无真实事件入站会主动重建 WS，metadata 可用 `feishuConnectedIdleRenewMs` / `feishu_connected_idle_renew_ms` 覆盖，`0` 可关闭。
+- Studio Feishu watchdog 已补 `lastReceivedAt` 和默认 15 分钟 connected-idle renewal；超过阈值无真实事件入站会主动重建 WS，metadata 可用 `feishuConnectedIdleRenewMs` / `feishu_connected_idle_renew_ms` 覆盖，`0` 可关闭。
 - Feishu 重新发送后“不回复”的最新链路已定位为平台重投旧事件：新日志出现与 1 小时前相同的 `eventId/messageId`，说明同步等待 Agent 会阻塞 SDK ACK 并触发重投风险。
 - Feishu `im.message.receive_v1` / bot menu 已按 CC Go 改为快速 ACK + 后台派发；24 小时持久化事件去重会从 `feishu-events.jsonl` 启动回填，重复事件写 `feishu_event_duplicate`，不再重复跑 Agent。
 - Feishu connected-idle watchdog 已改为按 `lastConnectedAt` 与 `lastReceivedAt` 的较新时间计算，避免重连后继续使用旧入站时间导致循环重启。
+- Feishu connected-idle 默认阈值从 5 分钟放宽到 15 分钟，减少空闲状态下频繁重连；需要激进自愈的环境仍可用 metadata 设回 300000。
+- Feishu `/new`、`/reset` 已按 CC 语义改为执行类动作：slash、bot-menu、card-action 都只返回结果 text/toast，不再自动弹 `Studio Session` 菜单卡片。
+- Octo 已补 CC dmwork 同款 REST heartbeat 备用保活：默认 5 分钟调用 `/v1/bot/heartbeat`，支持 metadata 覆盖，失败只记日志不影响 WS。
 - 本机仍有旧 `cc-connect.service` 在运行，但其 Feishu App ID 与 Studio 当前 App 不同；当前修复不依赖停止旧 CC。
 
 ## 最近验证
@@ -38,9 +41,10 @@
 - 通过：`systemctl --user restart openclaw-studio-model-gateway.service openclaw-studio-channel-connectors.service` 与 `./scripts/restart-dev.sh`。
 - 通过：`systemctl --user is-active/is-enabled openclaw-studio-model-gateway.service openclaw-studio-channel-connectors.service` -> `active/enabled`。
 - 通过：重启后超过 4 分钟观察，Feishu/Octo 仍为 `connected` 且 `reconnects: 0`，未再出现旧的 `no pong/inbound within 60s` 主动 terminate。
-- 通过：live 观察到 Feishu connected 假阳性自愈触发，日志出现 `watchdog_connected_idle_300933`，随后重新 `Feishu WebSocket connected`。
+- 通过：live 观察到 Feishu connected 假阳性自愈触发，随后重新 `Feishu WebSocket connected`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "visual turns|Feishu long-connection|Octo long connection|registers Octo"`，36 个 Channel Connectors 子测试通过。
 - 通过：同一测试集新增锁定 Feishu 消息/menu 快速 ACK 后台派发、24h 持久化去重、connected-idle 使用最近活动时间，36 个子测试通过。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "Octo transport|Feishu webhook|Feishu long-connection|Octo long connection|routes are registered"`，37 个子测试通过，覆盖 `/new`/`/reset` 无卡片和 Octo REST heartbeat。
 - 通过：`curl http://127.0.0.1:18797/status`，Octo `octo-studio-cc` connected，Feishu shared WS connected，`activeRuns=[]`。
 - 通过：重启 Channel daemon 后 `feishu-seen-messages.json` 从持久化恢复 107 条，Feishu shared WS connected，未再出现 connected-idle 立即循环重启。
 - 通过：前端 `http://127.0.0.1:5176` 与后端 `http://127.0.0.1:3762/api/channel-connectors/status` 可访问。

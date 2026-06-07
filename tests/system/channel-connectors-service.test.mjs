@@ -40,6 +40,9 @@ import {
   attachExtractedOctoAttachments,
 } from "../../dist/apps/api/modules/channel-connectors/octo-adapter.js";
 import {
+  sendOctoHeartbeat,
+} from "../../dist/apps/api/modules/channel-connectors/octo-transport.js";
+import {
   addFeishuMessageReaction,
   downloadFeishuMessageResource,
   downloadFeishuMessageResourceToFile,
@@ -367,7 +370,7 @@ async function withMockOctoServer(task) {
         res.end(JSON.stringify({ url: "https://cdn.example.test/studio-octo-upload" }));
         return;
       }
-      if (req.url === "/v1/bot/typing" || req.url === "/v1/bot/sendMessage") {
+      if (req.url === "/v1/bot/typing" || req.url === "/v1/bot/sendMessage" || req.url === "/v1/bot/heartbeat") {
         res.end(JSON.stringify({ ok: true, message_id: 123 }));
         return;
       }
@@ -1303,6 +1306,22 @@ test("Octo transport smoke registers bot through binding metadata", async () => 
     assert.equal(requests.length, 1);
     assert.equal(requests[0].path, "/v1/bot/register");
     assert.equal(requests[0].authorization, "Bearer test-token");
+  });
+});
+
+test("Octo transport sends CC-compatible REST heartbeat", async () => {
+  await withMockOctoServer(async (apiUrl, requests) => {
+    const result = await sendOctoHeartbeat({
+      apiUrl,
+      botToken: "octo-token",
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.action, "heartbeat");
+    assert.equal(result.requestCount, 1);
+    const request = requests.find((item) => item.path === "/v1/bot/heartbeat");
+    assert.ok(request);
+    assert.equal(request.method, "POST");
+    assert.equal(request.authorization, "Bearer octo-token");
   });
 });
 
@@ -3411,7 +3430,8 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(slashNewMessage.commandAction.command, "/new");
   assert.equal(slashNewMessage.commandAction.commandResult.ok, true);
   assert.match(slashNewMessage.commandAction.commandResult.replyText, /已开启新的 Agent 会话/);
-  assert.match(JSON.stringify(slashNewMessage.feishuResponse.card.data), /Studio Session/);
+  assert.match(slashNewMessage.feishuResponse.toast.content, /已开启新的 Agent 会话/);
+  assert.equal(slashNewMessage.feishuResponse.card, undefined);
 
   const slashResetMessage = await service.dispatchFeishuWebhook({
     schema: "2.0",
@@ -3436,7 +3456,8 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(slashResetMessage.commandAction.command, "/reset");
   assert.equal(slashResetMessage.commandAction.commandResult.ok, true);
   assert.match(slashResetMessage.commandAction.commandResult.replyText, /已重置本 IM 会话/);
-  assert.match(JSON.stringify(slashResetMessage.feishuResponse.card.data), /Studio Session/);
+  assert.match(slashResetMessage.feishuResponse.toast.content, /已重置本 IM 会话/);
+  assert.equal(slashResetMessage.feishuResponse.card, undefined);
 
   const statusCardAction = await service.dispatchFeishuWebhook({
     schema: "2.0",
@@ -3493,11 +3514,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(newSessionCardAction.commandAction.commandResult.ok, true);
   assert.match(newSessionCardAction.commandAction.commandResult.replyText, /已开启新的 Agent 会话/);
   assert.match(newSessionCardAction.feishuResponse.toast.content, /已开启新的 Agent 会话/);
-  const newSessionCardRaw = JSON.stringify(newSessionCardAction.feishuResponse.card.data);
-  assert.match(newSessionCardRaw, /Studio Session/);
-  assert.match(newSessionCardRaw, /新会话已开启/);
-  assert.match(newSessionCardRaw, /已开启新的 Agent 会话/);
-  assert.match(newSessionCardRaw, /act:\/reset/);
+  assert.equal(newSessionCardAction.feishuResponse.card, undefined);
 
   const resetSessionCardAction = await service.dispatchFeishuWebhook({
     schema: "2.0",
@@ -3524,11 +3541,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(resetSessionCardAction.commandAction.commandResult.ok, true);
   assert.match(resetSessionCardAction.commandAction.commandResult.replyText, /已重置本 IM 会话/);
   assert.match(resetSessionCardAction.feishuResponse.toast.content, /已重置本 IM 会话/);
-  const resetSessionCardRaw = JSON.stringify(resetSessionCardAction.feishuResponse.card.data);
-  assert.match(resetSessionCardRaw, /Studio Session/);
-  assert.match(resetSessionCardRaw, /会话已重置/);
-  assert.match(resetSessionCardRaw, /已重置本 IM 会话/);
-  assert.match(resetSessionCardRaw, /act:\/new/);
+  assert.equal(resetSessionCardAction.feishuResponse.card, undefined);
 
   const cardAction = await service.dispatchFeishuWebhook({
     schema: "2.0",
@@ -4158,7 +4171,7 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /watchdog_non_connected_/);
   assert.match(daemonSource, /watchdog_connected_idle_/);
   assert.match(daemonSource, /DEFAULT_FEISHU_PING_TIMEOUT_SECONDS\s*=\s*0/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS\s*=\s*300_?000/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS\s*=\s*15\s*\*\s*60_?000/);
   assert.match(daemonSource, /DEFAULT_FEISHU_WATCHDOG_RESTART_MS\s*=\s*180_?000/);
   assert.match(daemonSource, /feishuPingTimeoutSeconds/);
   assert.match(daemonSource, /feishuConnectedIdleRenewMs/);
@@ -4180,6 +4193,8 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /agent\.progress\.card/);
   assert.match(daemonSource, /jsonErrorEnvelopeMessage/);
   assert.match(daemonSource, /renderChannelConnectorCommandSurfaceFeishu/);
+  assert.match(daemonSource, /shouldSendFeishuCommandCard/);
+  assert.match(daemonSource, /\["new",\s*"reset",\s*"show",\s*"passthrough"\]\.includes\(action\)/);
   assert.match(daemonSource, /loadFeishuSeenMessages/);
   assert.match(daemonSource, /seedFeishuSeenMessagesFromEventLog/);
   assert.match(daemonSource, /FEISHU_SEEN_MESSAGE_TTL_MS\s*=\s*24\s*\*\s*60\s*\*\s*60_?000/);
@@ -4386,7 +4401,7 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     assert.equal(botMenuNew.body.accepted, true);
     assert.equal(botMenuNew.body.command, "/new");
     assert.match(botMenuNew.body.commandResult.replyText, /已开启新的 Agent 会话/);
-    assert.match(JSON.stringify(botMenuNew.body.feishuCard), /Studio Session/);
+    assert.equal(botMenuNew.body.feishuCard, null);
 
     const botMenuReset = await requestJson(`${baseUrl}/api/channel-connectors/adapters/feishu/bot-menu`, {
       method: "POST",
@@ -4401,7 +4416,7 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     assert.equal(botMenuReset.body.accepted, true);
     assert.equal(botMenuReset.body.command, "/reset");
     assert.match(botMenuReset.body.commandResult.replyText, /已重置本 IM 会话/);
-    assert.match(JSON.stringify(botMenuReset.body.feishuCard), /Studio Session/);
+    assert.equal(botMenuReset.body.feishuCard, null);
 
     const feishuWebhook = await requestJson(`${baseUrl}/api/channel-connectors/adapters/feishu/webhook`, {
       method: "POST",
@@ -4549,6 +4564,10 @@ test("native Channel Connectors Octo long connection follows CC Go heartbeat and
   assert.match(daemonSource, /pongTimeoutMs:\s*octoPongTimeoutMs\(binding\)/);
   assert.match(daemonSource, /reconnectMs:\s*octoReconnectMs\(binding\)/);
   assert.match(daemonSource, /reconnectJitterMs:\s*octoReconnectJitterMs\(binding\)/);
+  assert.match(daemonSource, /DEFAULT_OCTO_REST_HEARTBEAT_MS\s*=\s*5\s*\*\s*60_?000/);
+  assert.match(daemonSource, /sendOctoHeartbeat\(transport\)/);
+  assert.match(daemonSource, /octoRestHeartbeatMs\(binding\)/);
+  assert.match(daemonSource, /"octo_rest_heartbeat_ms"/);
   assert.match(daemonSource, /"octo_heartbeat_ms"/);
   assert.match(daemonSource, /"octo_reconnect_jitter_ms"/);
 });

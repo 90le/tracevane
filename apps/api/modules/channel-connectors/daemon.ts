@@ -110,6 +110,7 @@ import {
 import {
   octoTransportFromMetadata,
   registerOctoBot,
+  sendOctoHeartbeat,
   sendOctoTextReply,
   sendOctoTyping,
 } from "./octo-transport.js";
@@ -126,7 +127,7 @@ const MAX_FEISHU_PING_TIMEOUT_SECONDS = 300;
 const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 180_000;
 const MIN_FEISHU_WATCHDOG_RESTART_MS = 60_000;
 const MAX_FEISHU_WATCHDOG_RESTART_MS = 600_000;
-const DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS = 300_000;
+const DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS = 15 * 60_000;
 const MIN_FEISHU_CONNECTED_IDLE_RENEW_MS = 60_000;
 const MAX_FEISHU_CONNECTED_IDLE_RENEW_MS = 3_600_000;
 const DEFAULT_OCTO_HEARTBEAT_MS = 30_000;
@@ -141,6 +142,9 @@ const MAX_OCTO_RECONNECT_MS = 60_000;
 const DEFAULT_OCTO_RECONNECT_JITTER_MS = 3_000;
 const MIN_OCTO_RECONNECT_JITTER_MS = 0;
 const MAX_OCTO_RECONNECT_JITTER_MS = 60_000;
+const DEFAULT_OCTO_REST_HEARTBEAT_MS = 5 * 60_000;
+const MIN_OCTO_REST_HEARTBEAT_MS = 30_000;
+const MAX_OCTO_REST_HEARTBEAT_MS = 30 * 60_000;
 
 interface ChannelDaemonOctoConnectionState extends OctoWukongSocketStatus {
   accountId: string;
@@ -651,6 +655,17 @@ function octoReconnectJitterMs(binding: ChannelConnectorRuntimeBinding): number 
     "reconnectJitterMs",
     "reconnect_jitter_ms",
   ], DEFAULT_OCTO_RECONNECT_JITTER_MS), MIN_OCTO_RECONNECT_JITTER_MS, MAX_OCTO_RECONNECT_JITTER_MS);
+}
+
+function octoRestHeartbeatMs(binding: ChannelConnectorRuntimeBinding): number {
+  const value = metadataNumber(binding, [
+    "octoRestHeartbeatMs",
+    "octo_rest_heartbeat_ms",
+    "restHeartbeatMs",
+    "rest_heartbeat_ms",
+  ], DEFAULT_OCTO_REST_HEARTBEAT_MS);
+  if (value <= 0) return 0;
+  return clampNumber(value, MIN_OCTO_REST_HEARTBEAT_MS, MAX_OCTO_REST_HEARTBEAT_MS);
 }
 
 function codexNativeImageArgPaths(args: string[]): string[] {
@@ -1224,11 +1239,21 @@ function shouldRenderFeishuCommandCard(command: ReturnType<typeof handleChannelC
     "help",
     "status",
     "list",
-    "show",
     "set",
-    "new",
-    "reset",
   ].includes(normalizeString(command.action).toLowerCase());
+}
+
+function shouldSendFeishuCommandCard(input: {
+  command: ReturnType<typeof handleChannelConnectorCommand> extends Promise<infer Result> ? Result : never;
+  parsedKind: ChannelConnectorFeishuParsedWebhook["kind"];
+  actionKind: "nav" | "act" | "cmd" | null;
+}): boolean {
+  if (!input.command.handled) return false;
+  const action = normalizeString(input.command.action).toLowerCase();
+  if (["new", "reset", "show", "passthrough"].includes(action)) return false;
+  if (input.actionKind === "nav") return true;
+  if (input.parsedKind === "card-action" || input.parsedKind === "bot-menu") return true;
+  return shouldRenderFeishuCommandCard(input.command);
 }
 
 function shouldSendFeishuProgressEvent(
@@ -2455,8 +2480,11 @@ async function dispatchFeishuParsedEvent(input: {
       actionKind: actionPayload.actionKind,
     });
     const shouldSendCard = feishuCardsEnabled(binding)
-      && command.action !== "show"
-      && (parsed.kind === "card-action" || parsed.kind === "bot-menu" || shouldRenderFeishuCommandCard(command));
+      && shouldSendFeishuCommandCard({
+        command,
+        parsedKind: parsed.kind,
+        actionKind: actionPayload.actionKind,
+      });
     if (shouldSendCard) {
       const result = await sendOrPatchFeishuCommandCard({
         config,
@@ -2977,9 +3005,10 @@ async function startOctoConnection(input: {
   project: ChannelConnectorRuntimeProject;
   binding: ChannelConnectorRuntimeBinding;
   sockets: OctoWukongSocket[];
+  restHeartbeatTimers: NodeJS.Timeout[];
   seenMessages: Map<string, number>;
 }): Promise<void> {
-  const { config, state, project, binding, sockets, seenMessages } = input;
+  const { config, state, project, binding, sockets, restHeartbeatTimers, seenMessages } = input;
   const transport = octoTransportFromMetadata(binding.metadata);
   if (!transport) {
     state.octoConnections[binding.id] = connectionState(binding, {
@@ -3063,6 +3092,22 @@ async function startOctoConnection(input: {
     },
   });
   sockets.push(socket);
+  const restHeartbeatMs = octoRestHeartbeatMs(binding);
+  if (restHeartbeatMs > 0) {
+    const timer = setInterval(() => {
+      void sendOctoHeartbeat(transport).then((result) => {
+        if (result.ok !== true) {
+          appendLog(config.paths.log, "Octo REST heartbeat failed", {
+            bindingId: binding.id,
+            statusCode: result.statusCode,
+            error: result.error,
+          });
+        }
+      });
+    }, restHeartbeatMs);
+    timer.unref();
+    restHeartbeatTimers.push(timer);
+  }
   state.octoConnections[binding.id] = connectionState(binding, {
     ...socket.status(),
     apiUrl: transport.apiUrl,
@@ -3077,6 +3122,7 @@ async function startOctoConnections(
   config: ChannelConnectorsDaemonRuntimeConfig,
   state: ChannelDaemonState,
   sockets: OctoWukongSocket[],
+  restHeartbeatTimers: NodeJS.Timeout[],
   seenMessages: Map<string, number>,
 ): Promise<void> {
   for (const project of config.projects) {
@@ -3088,6 +3134,7 @@ async function startOctoConnections(
         project,
         binding,
         sockets,
+        restHeartbeatTimers,
         seenMessages,
       });
     }
@@ -3508,11 +3555,12 @@ async function main(): Promise<void> {
   appendLog(config.paths.log, "Studio native Channel Connectors daemon started");
   const server = startHttp(config, state);
   const sockets: OctoWukongSocket[] = [];
+  const octoRestHeartbeatTimers: NodeJS.Timeout[] = [];
   const feishuClients: WSClient[] = [];
   const seenMessages = loadFeishuSeenMessages(config);
   let feishuWatchdog: NodeJS.Timeout | null = null;
 
-  void startOctoConnections(config, state, sockets, seenMessages).catch((error) => {
+  void startOctoConnections(config, state, sockets, octoRestHeartbeatTimers, seenMessages).catch((error) => {
     appendLog(config.paths.log, "Octo connection startup failed", {
       error: error instanceof Error ? error.message : String(error),
     });
@@ -3530,6 +3578,7 @@ async function main(): Promise<void> {
   const stop = () => {
     appendLog(config.paths.log, "Studio native Channel Connectors daemon stopping");
     if (feishuWatchdog) clearInterval(feishuWatchdog);
+    for (const timer of octoRestHeartbeatTimers) clearInterval(timer);
     for (const socket of sockets) socket.disconnect();
     for (const client of feishuClients) client.close({ force: true });
     server.close(() => process.exit(0));

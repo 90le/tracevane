@@ -269,6 +269,32 @@ export async function sendOctoTyping(
   }
 }
 
+export async function sendOctoHeartbeat(
+  config: ChannelConnectorOctoTransportConfig,
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await postOctoJson(config, "/v1/bot/heartbeat", {});
+    return transportResult({
+      attempted: true,
+      ok: true,
+      action: "heartbeat",
+      apiUrl: config.apiUrl,
+      statusCode: response.statusCode,
+      requestCount: 1,
+    });
+  } catch (error) {
+    return transportResult({
+      attempted: true,
+      ok: false,
+      action: "heartbeat",
+      apiUrl: config.apiUrl,
+      statusCode: errorStatusCode(error),
+      error: errorMessage(error),
+      requestCount: 1,
+    });
+  }
+}
+
 export async function sendOctoTextReply(
   config: ChannelConnectorOctoTransportConfig,
   replyPlan: ChannelConnectorOctoReplyPlan,

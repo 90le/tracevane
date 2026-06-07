@@ -175,6 +175,7 @@ export interface ChannelConnectorOctoTransportResult {
   action:
     | "none"
     | "register"
+    | "heartbeat"
     | "typing"
     | "send-message"
     | "upload-file"

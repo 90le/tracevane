@@ -1067,6 +1067,17 @@ function commandActionNotice(
   };
 }
 
+function shouldReturnCommandActionCard(
+  commandResult: Awaited<ReturnType<typeof handleChannelConnectorCommand>>,
+  actionKind: "nav" | "act" | "cmd" | null,
+): boolean {
+  if (!commandResult.handled) return false;
+  const action = normalizeString(commandResult.action).toLowerCase();
+  if (["new", "reset", "show", "passthrough"].includes(action)) return false;
+  if (actionKind === "nav") return true;
+  return ["help", "status", "list", "set"].includes(action);
+}
+
 async function modelsForCommandSurface(input: {
   runtimeConfig: ChannelConnectorsDaemonRuntimeConfig;
   project: ChannelConnectorsDaemonRuntimeConfig["projects"][number];
@@ -1516,7 +1527,7 @@ export function createChannelConnectorsService(
       },
       surface,
       textFallback: surface.textFallback,
-      feishuCard: request.renderer === "text"
+      feishuCard: request.renderer === "text" || !shouldReturnCommandActionCard(commandResult, parsedAction.actionKind)
         ? null
         : renderChannelConnectorCommandSurfaceFeishu(surface, commandActionNotice(commandResult, parsedAction.actionKind)),
     };

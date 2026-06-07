@@ -34,7 +34,8 @@ CC 和 OpenClaw 只作为参考：
 - Studio 负责配置、安装、启停、日志、会话可视化和平台账号管理。
 - Feishu 长连接按 CC Go 保守策略：同 App 共享 WS 并快速 ACK/扇出，默认不启用 SDK `pingTimeout` 额外 liveness watchdog；只在 metadata 显式设置时启用。Studio daemon 还必须维护真实 `lastReceivedAt`，当 SDK 显示 connected 但超过阈值无任何事件入站时主动轮换 WS，避免假 connected 僵尸连接。
 - Feishu `im.message.receive_v1` / bot menu 入口必须像 CC Go 一样只在同步段完成解析、去重和 runtime 记录，随后后台执行附件下载、Agent runner、进度卡片和回复；去重状态需落盘，避免 daemon 重启后平台重投旧事件再次触发 Agent。
-- Octo(dmwork) WuKongIM 长连接以 CC Go 为基线：30s heartbeat、10s PONG timeout、RECV 后立即 ACK、5 分钟 messageId 去重、断线后 `3s + 0..3s` 抖动重连；Studio 实现允许 binding metadata 覆盖心跳、超时、重连和抖动窗口。
+- Feishu card/menu 按 CC 语义区分导航和执行：导航显示/更新卡片，`/new`、`/reset` 等执行动作只返回执行结果，不自动弹完整菜单。
+- Octo(dmwork) WuKongIM 长连接以 CC Go 为基线：30s heartbeat、10s PONG timeout、RECV 后立即 ACK、5 分钟 messageId 去重、断线后 `3s + 0..3s` 抖动重连、5 分钟 REST heartbeat 备用保活；Studio 实现允许 binding metadata 覆盖心跳、超时、重连、抖动窗口和 REST heartbeat。
 
 默认路径：
 
@@ -118,8 +119,9 @@ Studio 增强点：
 - Channel Connectors 已支持 command action callback：通用 `/commands/action` 和 Feishu `card-action` / `bot-menu` aliases 可把 action value / event key 转回 command-router。
 - Channel Connectors 已支持 Feishu webhook ingress：URL verification、card action、bot menu、message receive 进入同一 command-router；`verificationToken` 放在 binding metadata，不写入文档或源码。
 - Channel daemon 已支持 Feishu 官方 WebSocket 长连接：`im.message.receive_v1`、`card.action.trigger`、`application.bot.menu_v6` 进入同一 command-router/Agent runner；同一 Feishu App 多 binding 共享单条 WS，支持 chatId 过滤并保留 thread/root 字段。
-- Feishu 长连接稳定性已改回 CC 风格默认：SDK `pingTimeout` 默认 0（禁用额外 liveness terminate），daemon watchdog 默认 180s 后才强制重启长时间非 connected 连接，并默认 300s connected-idle renewal 修复 SDK connected 假阳性。
+- Feishu 长连接稳定性已改回 CC 风格默认：SDK `pingTimeout` 默认 0（禁用额外 liveness terminate），daemon watchdog 默认 180s 后才强制重启长时间非 connected 连接，并默认 15 分钟 connected-idle renewal 修复 SDK connected 假阳性且避免频繁空闲重连。
 - Feishu 消息/菜单长连接入口已改为快速 ACK + 后台派发；事件去重提升为 24 小时持久化缓存，并从 `feishu-events.jsonl` 启动回填，平台重投会记录 `feishu_event_duplicate` 而不再重复跑 Agent。
+- Feishu `/new`、`/reset` 已改为执行后只返回结果 text/toast，不再自动生成 `Studio Session` 菜单卡片；导航类 action 仍返回卡片。
 - Channel Connectors 已支持 Feishu outbound contract：tenant access token file cache、send text message、patch card message、transport-smoke；message webhook 默认可把 command-router 回复真实出站。
 - 已完成脱敏 live 闭环：本地用户配置写入 Feishu binding、tenant token cache 验证通过、callback URL verification 通过；错误 verification token 不再回显 challenge；daemon active/enabled，真实飞书 `/status`/`/help` 入站并回复成功；CLI runner 已补用户级 PATH fallback，避免 systemd 下找不到 Codex/Claude/OpenCode；凭据和 token 不进入仓库。
 - Feishu card/menu 已具备 Session、Agent、Model、Permission、WorkDir、Display 子卡片；普通 slash 与卡片点击共用同一 command-router。Agent 运行已支持 processing reaction、单张 Progress card send/patch、`command_execution` 工具过程展示、`/stream` 与 `/tools` 开关，以及 upstream JSON error envelope 清洗和失败去重。
@@ -133,7 +135,7 @@ Studio 增强点：
 - F4 Gateway vision 模型自动选择已落地：Channel daemon 会读取 Studio Gateway `/v1/models` 的模型能力；视觉附件 turn 如果当前模型不支持 vision 且模型池存在 vision 模型，会仅本轮切到 vision 模型，未找到或 catalog 不可用时回到非视觉保护；binding metadata 可用 `autoVisionModel:false` 关闭。
 - F4 Codex 原生图片输入已落地：当 image/sticker 已 staging 且当前 turn 为 vision-capable Codex 模型，runner 会把本地文件通过 Codex CLI `--image` 传入；纯附件消息不再因文本为空被丢弃。视频、Claude Code/OpenCode 视觉输入和 OCR 仍是后续项。
 - F4 daemon 入站图片合同已加回归：Octo WuKongIM 入站图片 URL 经 daemon staging、Gateway model catalog 自动 vision 选择后，fake Codex 捕获到 `--image` 和切换后的 vision 模型；真实外部平台 live 仍需用户发图复验。
-- F4 Octo 长连接已对齐 CC Go 基线：默认 30s heartbeat、10s PONG timeout、`3s + 0..3s` jitter reconnect，daemon 从 binding metadata 传递可调参数；新增 `agent.visual.input` 事件记录 Codex `--image` 真实输入路径。
+- F4 Octo 长连接已对齐 CC Go 基线：默认 30s heartbeat、10s PONG timeout、`3s + 0..3s` jitter reconnect、5 分钟 REST heartbeat，daemon 从 binding metadata 传递可调参数；新增 `agent.visual.input` 事件记录 Codex `--image` 真实输入路径。
 - F4 Octo 出站媒体基础合同已落地：参考 CC dmwork 小文件 multipart 上传路径，transport smoke 支持 `upload-file` 和 `upload-and-send-media`；图片使用 Octo image payload，普通文件使用 file payload；本机 `studio-cc` 小文本文件真实 smoke 已通过；大文件 COS STS 直传仍待迁移。
 - Channel Connectors 平台配置 UI 已落地：Octo/Feishu binding 可编辑平台凭证 metadata 并直接执行连接测试；本机 Octo `studio-cc` 与 Feishu live binding 已完成 smoke，daemon 长连接 connected。
 - F4 Feishu thread/reply 会话隔离已落地：daemon/service 共用 CC 风格 session key，群线程默认按 root 隔离，私聊保持每用户 session，事件日志保留 root/parent/thread 便于排查。
