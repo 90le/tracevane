@@ -13,6 +13,9 @@ import { splitChannelConnectorTextChunks } from "./text-chunks.js";
 
 const DEFAULT_FEISHU_API_URL = "https://open.feishu.cn";
 const DEFAULT_TIMEOUT_MS = 30_000;
+const MAX_FEISHU_TRANSIENT_RETRIES = 3;
+const FEISHU_TRANSIENT_RETRY_INITIAL_MS = 500;
+const FEISHU_TRANSIENT_RETRY_MAX_MS = 5_000;
 const FEISHU_TEXT_CHUNK_RUNES = 3800;
 const TOKEN_EXPIRY_SKEW_MS = 5 * 60 * 1000;
 const DEFAULT_FEISHU_RESOURCE_MAX_BYTES = 128 * 1024 * 1024;
@@ -180,44 +183,63 @@ async function feishuJsonRequest(
     payload?: unknown;
     token?: string | null;
   },
-): Promise<{ statusCode: number; body: Record<string, unknown> }> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
-  try {
-    const headers: Record<string, string> = {
-      "content-type": "application/json",
-    };
-    if (input.token) headers.authorization = `Bearer ${input.token}`;
-    const response = await fetch(`${config.apiUrl.replace(/\/+$/, "")}${input.path}`, {
-      method: input.method,
-      headers,
-      body: input.method === "GET" ? undefined : JSON.stringify(input.payload ?? {}),
-      signal: controller.signal,
-    });
-    const raw = await response.text();
-    let body: Record<string, unknown> = {};
-    if (raw) {
-      try {
-        body = JSON.parse(raw) as Record<string, unknown>;
-      } catch {
-        body = { raw };
+): Promise<{ statusCode: number; body: Record<string, unknown>; requestCount: number }> {
+  let requestCount = 0;
+  let delayMs = FEISHU_TRANSIENT_RETRY_INITIAL_MS;
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt <= MAX_FEISHU_TRANSIENT_RETRIES; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+    try {
+      requestCount += 1;
+      const headers: Record<string, string> = {
+        "content-type": "application/json",
+      };
+      if (input.token) headers.authorization = `Bearer ${input.token}`;
+      const response = await fetch(`${config.apiUrl.replace(/\/+$/, "")}${input.path}`, {
+        method: input.method,
+        headers,
+        body: input.method === "GET" ? undefined : JSON.stringify(input.payload ?? {}),
+        signal: controller.signal,
+      });
+      const raw = await response.text();
+      let body: Record<string, unknown> = {};
+      if (raw) {
+        try {
+          body = JSON.parse(raw) as Record<string, unknown>;
+        } catch {
+          body = { raw };
+        }
       }
-    }
-    const code = Number(body.code);
-    if (!response.ok || (Number.isFinite(code) && code !== 0)) {
-      const message = normalizeString(body.msg) || normalizeString(body.message) || `Feishu API ${input.path} failed`;
-      throw Object.assign(new Error(message), {
+      const code = Number(body.code);
+      if (!response.ok || (Number.isFinite(code) && code !== 0)) {
+        const message = normalizeString(body.msg) || normalizeString(body.message) || `Feishu API ${input.path} failed`;
+        throw Object.assign(new Error(message), {
+          statusCode: response.status,
+          body,
+        });
+      }
+      return {
         statusCode: response.status,
         body,
-      });
+        requestCount,
+      };
+    } catch (error) {
+      lastError = error;
+      if (attempt >= MAX_FEISHU_TRANSIENT_RETRIES || !isFeishuTransientError(error)) {
+        attachFeishuRequestCount(error, requestCount);
+        throw error;
+      }
+      const jitterMs = Math.floor(Math.random() * Math.max(1, Math.floor(delayMs / 4)));
+      await sleep(delayMs + jitterMs);
+      delayMs = Math.min(delayMs * 2, FEISHU_TRANSIENT_RETRY_MAX_MS);
+    } finally {
+      clearTimeout(timeout);
     }
-    return {
-      statusCode: response.status,
-      body,
-    };
-  } finally {
-    clearTimeout(timeout);
   }
+  const error = lastError instanceof Error ? lastError : new Error("Feishu transport request failed.");
+  attachFeishuRequestCount(error, requestCount);
+  throw error;
 }
 
 async function feishuBinaryRequest(
@@ -372,6 +394,53 @@ function errorStatusCode(error: unknown): number | null {
   return null;
 }
 
+function errorRequestCount(error: unknown): number {
+  if (typeof error === "object" && error !== null && "requestCount" in error) {
+    const value = Number((error as { requestCount?: unknown }).requestCount);
+    return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+  }
+  return 0;
+}
+
+function attachFeishuRequestCount(error: unknown, requestCount: number): void {
+  if (typeof error === "object" && error !== null) {
+    Object.assign(error, { requestCount });
+  }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+function isFeishuTransientError(error: unknown): boolean {
+  const statusCode = errorStatusCode(error);
+  if (statusCode !== null && (
+    statusCode === 408
+    || statusCode === 425
+    || statusCode === 429
+    || (statusCode >= 500 && statusCode <= 504)
+  )) {
+    return true;
+  }
+  if (error instanceof Error && error.name === "AbortError") return true;
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  return [
+    "connection reset",
+    "broken pipe",
+    "i/o timeout",
+    "tls handshake timeout",
+    "connection refused",
+    "econnreset",
+    "econnrefused",
+    "socket hang up",
+    "fetch failed",
+    "networkerror",
+    "unexpected eof",
+  ].some((part) => message.includes(part));
+}
+
 async function getFeishuTenantToken(
   config: ChannelConnectorFeishuTransportConfig,
   cachePath?: string | null,
@@ -410,7 +479,7 @@ async function getFeishuTenantToken(
   return {
     token,
     statusCode: response.statusCode,
-    requestCount: 1,
+    requestCount: response.requestCount,
     tokenCache: forceRefresh ? "refresh" : cachePath ? "miss" : "disabled",
   };
 }
@@ -438,7 +507,7 @@ export async function smokeFeishuTenantToken(
       apiUrl: config.apiUrl,
       statusCode: errorStatusCode(error),
       error: errorMessage(error),
-      requestCount: 1,
+      requestCount: Math.max(errorRequestCount(error), 1),
       tokenCache: cachePath ? "miss" : "disabled",
     });
   }
@@ -555,7 +624,7 @@ export async function listFeishuChatMembers(
         token: token.token,
         path: `/open-apis/im/v1/chats/${encodeURIComponent(chatId)}/members?${search.toString()}`,
       });
-      requestCount += 1;
+      requestCount += response.requestCount;
       statusCode = response.statusCode;
       pageCount += 1;
       const data = recordFrom(response.body.data);
@@ -587,7 +656,7 @@ export async function listFeishuChatMembers(
       ok: false,
       apiUrl: config.apiUrl,
       statusCode: errorStatusCode(error),
-      requestCount: Math.max(1, requestCount),
+      requestCount: Math.max(1, requestCount + errorRequestCount(error)),
       tokenCache,
       chatId: chatId || null,
       members: [],
@@ -692,7 +761,7 @@ export async function sendFeishuTextMessage(
           content: JSON.stringify({ text: chunk }),
         },
       });
-      requestCount += 1;
+      requestCount += response.requestCount;
       statusCode = response.statusCode;
       const data = recordFrom(response.body.data);
       const messageId = normalizeString(data.message_id);
@@ -718,7 +787,7 @@ export async function sendFeishuTextMessage(
       apiUrl: config.apiUrl,
       statusCode: errorStatusCode(error),
       error: errorMessage(error),
-      requestCount: Math.max(requestCount, 1),
+      requestCount: Math.max(requestCount + errorRequestCount(error), 1),
       tokenCache,
     });
   }
@@ -749,7 +818,7 @@ export async function sendFeishuCardMessage(
         content: JSON.stringify(input.card),
       },
     });
-    requestCount += 1;
+    requestCount += response.requestCount;
     const data = recordFrom(response.body.data);
     return transportResult({
       attempted: true,
@@ -769,7 +838,7 @@ export async function sendFeishuCardMessage(
       apiUrl: config.apiUrl,
       statusCode: errorStatusCode(error),
       error: errorMessage(error),
-      requestCount: Math.max(requestCount, 1),
+      requestCount: Math.max(requestCount + errorRequestCount(error), 1),
       tokenCache,
     });
   }
@@ -799,7 +868,7 @@ export async function patchFeishuCardMessage(
         content: JSON.stringify(input.card),
       },
     });
-    requestCount += 1;
+    requestCount += response.requestCount;
     return transportResult({
       attempted: true,
       ok: true,
@@ -818,7 +887,7 @@ export async function patchFeishuCardMessage(
       apiUrl: config.apiUrl,
       statusCode: errorStatusCode(error),
       error: errorMessage(error),
-      requestCount: Math.max(requestCount, 1),
+      requestCount: Math.max(requestCount + errorRequestCount(error), 1),
       tokenCache,
     });
   }
@@ -852,7 +921,7 @@ export async function addFeishuMessageReaction(
         },
       },
     });
-    requestCount += 1;
+    requestCount += response.requestCount;
     const data = recordFrom(response.body.data);
     return transportResult({
       attempted: true,
@@ -873,7 +942,7 @@ export async function addFeishuMessageReaction(
       apiUrl: config.apiUrl,
       statusCode: errorStatusCode(error),
       error: errorMessage(error),
-      requestCount: Math.max(requestCount, 1),
+      requestCount: Math.max(requestCount + errorRequestCount(error), 1),
       tokenCache,
       messageId: messageId || null,
     });
@@ -904,7 +973,7 @@ export async function removeFeishuMessageReaction(
       token: token.token,
       payload: {},
     });
-    requestCount += 1;
+    requestCount += response.requestCount;
     return transportResult({
       attempted: true,
       ok: true,
@@ -924,7 +993,7 @@ export async function removeFeishuMessageReaction(
       apiUrl: config.apiUrl,
       statusCode: errorStatusCode(error),
       error: errorMessage(error),
-      requestCount: Math.max(requestCount, 1),
+      requestCount: Math.max(requestCount + errorRequestCount(error), 1),
       tokenCache,
       messageId: messageId || null,
       reactionId: reactionId || null,

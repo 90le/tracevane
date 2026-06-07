@@ -4024,6 +4024,82 @@ test("native Channel Connectors Feishu transport splits long text replies", asyn
   });
 });
 
+test("native Channel Connectors Feishu transport retries transient JSON failures", async () => {
+  const requests = [];
+  let sendAttempts = 0;
+  const server = http.createServer(async (req, res) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
+    req.on("end", () => {
+      const bodyRaw = Buffer.concat(chunks).toString("utf8");
+      const body = bodyRaw ? JSON.parse(bodyRaw) : {};
+      requests.push({
+        method: req.method,
+        path: req.url,
+        authorization: req.headers.authorization,
+        body,
+      });
+      res.setHeader("content-type", "application/json");
+      if (req.url === "/open-apis/auth/v3/tenant_access_token/internal") {
+        res.end(JSON.stringify({
+          code: 0,
+          msg: "success",
+          tenant_access_token: "tenant-token-1",
+          expire: 7200,
+        }));
+        return;
+      }
+      if (req.url === "/open-apis/im/v1/messages?receive_id_type=chat_id" && req.method === "POST") {
+        sendAttempts += 1;
+        if (sendAttempts === 1) {
+          res.statusCode = 503;
+          res.end(JSON.stringify({ code: 503, msg: "temporary unavailable" }));
+          return;
+        }
+        res.end(JSON.stringify({
+          code: 0,
+          msg: "success",
+          data: { message_id: "om_sent_after_retry" },
+        }));
+        return;
+      }
+      res.statusCode = 404;
+      res.end(JSON.stringify({ code: 404, msg: "not_found" }));
+    });
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  try {
+    const root = makeTempRoot();
+    const cachePath = path.join(root, "feishu-token-cache.json");
+    const result = await sendFeishuTextMessage({
+      apiUrl: `http://127.0.0.1:${address.port}`,
+      appId: "cli_retry",
+      appSecret: "test-secret",
+    }, {
+      chatId: "oc_chat",
+      content: "retry me",
+    }, cachePath);
+
+    assert.equal(result.ok, true);
+    assert.equal(result.action, "send-message");
+    assert.equal(result.requestCount, 3);
+    assert.equal(result.messageId, "om_sent_after_retry");
+    assert.equal(sendAttempts, 2);
+    assert.equal(requests.length, 3);
+    assert.equal(requests[1].authorization, "Bearer tenant-token-1");
+    assert.equal(requests[2].authorization, "Bearer tenant-token-1");
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
 test("native Channel Connectors Feishu transport manages processing reactions", async () => {
   await withMockFeishuServer(async (apiUrl, requests) => {
     const root = makeTempRoot();
@@ -4170,17 +4246,25 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /restartFeishuGroupClient/);
   assert.match(daemonSource, /watchdog_non_connected_/);
   assert.match(daemonSource, /watchdog_connected_idle_/);
+  assert.match(daemonSource, /watchdog_zero_inbound_/);
   assert.match(daemonSource, /DEFAULT_FEISHU_PING_TIMEOUT_SECONDS\s*=\s*0/);
   assert.match(daemonSource, /DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS\s*=\s*15\s*\*\s*60_?000/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS\s*=\s*90_?000/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX\s*=\s*3/);
   assert.match(daemonSource, /DEFAULT_FEISHU_WATCHDOG_RESTART_MS\s*=\s*180_?000/);
   assert.match(daemonSource, /feishuPingTimeoutSeconds/);
   assert.match(daemonSource, /feishuConnectedIdleRenewMs/);
+  assert.match(daemonSource, /feishuZeroInboundRenewMs/);
+  assert.match(daemonSource, /feishuZeroInboundRenewMax/);
   assert.match(daemonSource, /feishuWatchdogRestartMs/);
   assert.match(daemonSource, /latestFeishuActivityAt/);
   assert.match(daemonSource, /feishu_ping_timeout_seconds/);
   assert.match(daemonSource, /feishu_connected_idle_renew_ms/);
+  assert.match(daemonSource, /feishu_zero_inbound_renew_ms/);
+  assert.match(daemonSource, /zeroInboundRenewals/);
   assert.match(daemonSource, /feishu_watchdog_restart_ms/);
   assert.match(daemonSource, /lastReceivedAt/);
+  assert.match(daemonSource, /Feishu WebSocket zero-inbound startup renewal threshold elapsed/);
   assert.match(daemonSource, /sendFeishuTextMessage/);
   assert.match(daemonSource, /sendFeishuCardMessage/);
   assert.match(daemonSource, /patchFeishuCardMessage/);
@@ -4195,6 +4279,9 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /renderChannelConnectorCommandSurfaceFeishu/);
   assert.match(daemonSource, /shouldSendFeishuCommandCard/);
   assert.match(daemonSource, /\["new",\s*"reset",\s*"show",\s*"passthrough"\]\.includes\(action\)/);
+  assert.match(daemonSource, /feishuCommandCallbackToast/);
+  assert.match(daemonSource, /replyTransportAction\s*=\s*"callback-toast"/);
+  assert.match(daemonSource, /!shouldSendCard && parsed\.kind === "card-action"/);
   assert.match(daemonSource, /loadFeishuSeenMessages/);
   assert.match(daemonSource, /seedFeishuSeenMessagesFromEventLog/);
   assert.match(daemonSource, /FEISHU_SEEN_MESSAGE_TTL_MS\s*=\s*24\s*\*\s*60\s*\*\s*60_?000/);
