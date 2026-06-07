@@ -3513,8 +3513,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(newSessionCardAction.commandAction.command, "/new");
   assert.equal(newSessionCardAction.commandAction.commandResult.ok, true);
   assert.match(newSessionCardAction.commandAction.commandResult.replyText, /已开启新的 Agent 会话/);
-  assert.match(newSessionCardAction.feishuResponse.toast.content, /已开启新的 Agent 会话/);
-  assert.equal(newSessionCardAction.feishuResponse.card, undefined);
+  assert.equal(newSessionCardAction.feishuResponse, null);
 
   const resetSessionCardAction = await service.dispatchFeishuWebhook({
     schema: "2.0",
@@ -3540,8 +3539,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(resetSessionCardAction.commandAction.command, "/reset");
   assert.equal(resetSessionCardAction.commandAction.commandResult.ok, true);
   assert.match(resetSessionCardAction.commandAction.commandResult.replyText, /已重置本 IM 会话/);
-  assert.match(resetSessionCardAction.feishuResponse.toast.content, /已重置本 IM 会话/);
-  assert.equal(resetSessionCardAction.feishuResponse.card, undefined);
+  assert.equal(resetSessionCardAction.feishuResponse, null);
 
   const cardAction = await service.dispatchFeishuWebhook({
     schema: "2.0",
@@ -3567,7 +3565,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(cardAction.commandAction.command, "/native /help");
   assert.equal(cardAction.commandAction.commandResult.handled, false);
   assert.equal(cardAction.commandAction.commandResult.passthroughText, "/help");
-  assert.match(cardAction.feishuResponse.toast.content, /\/help/);
+  assert.equal(cardAction.feishuResponse, null);
 
   const menuCardAction = await service.dispatchFeishuWebhook({
     schema: "2.0",
@@ -3859,6 +3857,39 @@ test("native Channel Connectors Feishu transport sends replies and reuses tenant
     const webhookCard = JSON.parse(requests[4].body.content);
     assert.match(webhookCard.header.title.content, /Studio Session/);
     assert.match(JSON.stringify(webhookCard), /Studio Channel Status/);
+
+    const cardNew = await service.dispatchFeishuWebhook({
+      sendReply: true,
+      schema: "2.0",
+      header: {
+        event_type: "card.action.trigger",
+        app_id: "cli_send",
+        event_id: "evt_card_new",
+        token: "verify-send",
+      },
+      event: {
+        operator: { open_id: "ou_user" },
+        context: { open_chat_id: "oc_chat", open_message_id: "om_card_new" },
+        action: {
+          value: {
+            action: "act:/new",
+            command: "/new",
+            binding_id: "feishu-send",
+          },
+        },
+      },
+    });
+    assert.equal(cardNew.accepted, true);
+    assert.equal(cardNew.commandAction.command, "/new");
+    assert.equal(cardNew.transport.ok, true);
+    assert.equal(cardNew.transport.action, "send-message");
+    assert.equal(cardNew.transport.tokenCache, "hit");
+    assert.equal(cardNew.transport.requestCount, 1);
+    assert.equal(cardNew.feishuResponse, null);
+    assert.equal(requests.length, 6);
+    assert.equal(requests[5].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
+    assert.equal(requests[5].body.msg_type, "text");
+    assert.match(JSON.parse(requests[5].body.content).text, /已开启新的 Agent 会话/);
   });
 });
 
@@ -4279,9 +4310,13 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /renderChannelConnectorCommandSurfaceFeishu/);
   assert.match(daemonSource, /shouldSendFeishuCommandCard/);
   assert.match(daemonSource, /\["new",\s*"reset",\s*"show",\s*"passthrough"\]\.includes\(action\)/);
-  assert.match(daemonSource, /feishuCommandCallbackToast/);
-  assert.match(daemonSource, /replyTransportAction\s*=\s*"callback-toast"/);
+  assert.match(daemonSource, /sendFeishuCommandTextReplyInBackground/);
+  assert.match(daemonSource, /replyTransportAction\s*=\s*"send-message-async"/);
+  assert.match(daemonSource, /eventKind:\s*"channel\.command\.reply"/);
+  assert.match(daemonSource, /replyQueued/);
   assert.match(daemonSource, /!shouldSendCard && parsed\.kind === "card-action"/);
+  assert.match(daemonSource, /return response \|\| undefined/);
+  assert.doesNotMatch(daemonSource, /Studio 已收到操作/);
   assert.match(daemonSource, /loadFeishuSeenMessages/);
   assert.match(daemonSource, /seedFeishuSeenMessagesFromEventLog/);
   assert.match(daemonSource, /FEISHU_SEEN_MESSAGE_TTL_MS\s*=\s*24\s*\*\s*60\s*\*\s*60_?000/);

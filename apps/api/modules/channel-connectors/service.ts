@@ -1663,13 +1663,36 @@ export function createChannelConnectorsService(
         || action.commandResult?.passthroughText
         || action.skippedReason
         || "Studio command accepted.";
-      const feishuResponse: Record<string, unknown> = {
-        toast: {
-          type: action.commandResult?.ok === false || !action.accepted ? "warning" : "info",
-          content: toastContent,
-        },
-      };
-      if (action.feishuCard) feishuResponse.card = { type: "raw", data: action.feishuCard };
+      let accepted = action.accepted;
+      let skippedReason = action.skippedReason;
+      let feishuResponse: Record<string, unknown> | null = null;
+      const shouldReturnCard = Boolean(action.feishuCard && renderer !== "text");
+      if (shouldReturnCard && action.feishuCard) {
+        feishuResponse = {
+          toast: {
+            type: action.commandResult?.ok === false || !action.accepted ? "warning" : "info",
+            content: toastContent,
+          },
+          card: { type: "raw", data: action.feishuCard },
+        };
+      } else if (request.sendReply === true && toastContent) {
+        const transportConfig = feishuTransportFromBinding(resolved.binding);
+        if (!transportConfig) {
+          accepted = false;
+          skippedReason = "feishu_transport_config_missing";
+          transport = {
+            ...emptyFeishuTransportResult("send-message"),
+            error: "feishu_transport_config_missing",
+          };
+        } else {
+          transport = await sendFeishuTextMessage(transportConfig, {
+            chatId: parsed.channelId || "",
+            content: toastContent,
+          }, resolvedPaths.feishuTokenCacheFile);
+          accepted = transport.ok === true;
+          skippedReason = transport.ok === true ? null : "feishu_transport_send_failed";
+        }
+      }
       return finish({
         ok: true,
         checkedAt,
@@ -1677,8 +1700,8 @@ export function createChannelConnectorsService(
         eventKind: parsed.kind,
         eventType: parsed.eventType,
         eventId: parsed.eventId,
-        accepted: action.accepted,
-        skippedReason: action.skippedReason,
+        accepted,
+        skippedReason,
         verification,
         challenge: null,
         binding: resolved.binding,

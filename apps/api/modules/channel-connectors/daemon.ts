@@ -1546,16 +1546,6 @@ function feishuCommandToast(input: {
   };
 }
 
-function feishuCommandCallbackToast(
-  command: ReturnType<typeof handleChannelConnectorCommand> extends Promise<infer Result> ? Result : never,
-): { type: "info" | "warning"; content: string } {
-  const text = normalizeString(command.replyText || command.passthroughText || command.command);
-  return {
-    type: command.ok === false ? "warning" : "info",
-    content: shortMessage(text || "命令已执行", 200),
-  };
-}
-
 function buildFeishuCommandCard(input: {
   config: ChannelConnectorsDaemonRuntimeConfig;
   project: ChannelConnectorRuntimeProject;
@@ -2523,6 +2513,7 @@ async function dispatchFeishuParsedEvent(input: {
 
   if (command.handled) {
     let replySent = false;
+    let replyQueued = false;
     let replyError: string | null = null;
     let replyTransportAction: string | null = null;
     let feishuResponse: Record<string, unknown> | null = null;
@@ -2567,13 +2558,21 @@ async function dispatchFeishuParsedEvent(input: {
       }
     }
     if (!replySent && !shouldSendCard && parsed.kind === "card-action" && command.replyText) {
-      feishuResponse = {
-        toast: feishuCommandCallbackToast(command),
-      };
-      replySent = true;
-      replyTransportAction = "callback-toast";
+      sendFeishuCommandTextReplyInBackground({
+        config,
+        transport,
+        bindingId: binding.id,
+        parsed,
+        sessionKey,
+        messageId,
+        command: command.command,
+        commandAction: command.action,
+        content: command.replyText,
+      });
+      replyQueued = true;
+      replyTransportAction = "send-message-async";
     }
-    if (!replySent && command.replyText) {
+    if (!replySent && !replyQueued && command.replyText) {
       const result = await sendFeishuTextMessage(transport, {
         chatId: parsed.channelId,
         content: command.replyText,
@@ -2598,6 +2597,7 @@ async function dispatchFeishuParsedEvent(input: {
       commandAction: command.action,
       commandOk: command.ok,
       replySent,
+      replyQueued,
       replyTransportAction,
       replyError,
     });
@@ -3305,6 +3305,66 @@ function dispatchFeishuParsedEventInBackground(input: {
   });
 }
 
+function sendFeishuCommandTextReplyInBackground(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  transport: ChannelConnectorFeishuTransportConfig;
+  bindingId: string;
+  parsed: ChannelConnectorFeishuParsedWebhook;
+  sessionKey: string;
+  messageId: string;
+  command: string | null;
+  commandAction: string | null;
+  content: string;
+}): void {
+  void sendFeishuTextMessage(input.transport, {
+    chatId: input.parsed.channelId || "",
+    content: input.content,
+  }, feishuTokenCachePath(input.config)).then((result) => {
+    writeJsonLine(input.config.paths.feishuEvents, {
+      checkedAt: new Date().toISOString(),
+      eventKind: "channel.command.reply",
+      adapter: "feishu",
+      bindingId: input.bindingId,
+      sessionKey: input.sessionKey,
+      messageId: input.messageId,
+      eventType: input.parsed.eventType,
+      channelId: input.parsed.channelId,
+      chatType: input.parsed.chatType,
+      fromUid: input.parsed.fromUid,
+      ...feishuThreadLogFields(input.parsed),
+      command: input.command,
+      commandAction: input.commandAction,
+      replyAsync: true,
+      replySent: result.ok === true,
+      replyTransportAction: result.action,
+      replyError: result.error,
+      replyRequestCount: result.requestCount,
+      replyMessageId: result.messageId || null,
+      replyChunkCount: result.chunkCount || null,
+    });
+  }).catch((error) => {
+    writeJsonLine(input.config.paths.feishuEvents, {
+      checkedAt: new Date().toISOString(),
+      eventKind: "channel.command.reply",
+      adapter: "feishu",
+      bindingId: input.bindingId,
+      sessionKey: input.sessionKey,
+      messageId: input.messageId,
+      eventType: input.parsed.eventType,
+      channelId: input.parsed.channelId,
+      chatType: input.parsed.chatType,
+      fromUid: input.parsed.fromUid,
+      ...feishuThreadLogFields(input.parsed),
+      command: input.command,
+      commandAction: input.commandAction,
+      replyAsync: true,
+      replySent: false,
+      replyTransportAction: "send-message",
+      replyError: shortMessage(error),
+    });
+  });
+}
+
 function createFeishuDispatcher(input: {
   config: ChannelConnectorsDaemonRuntimeConfig;
   state: ChannelDaemonState;
@@ -3359,12 +3419,7 @@ function createFeishuDispatcher(input: {
         rawEvent: data,
         seenMessages,
       });
-      return response || {
-        toast: {
-          type: "info",
-          content: "Studio 已收到操作",
-        },
-      };
+      return response || undefined;
     },
     "application.bot.menu_v6": async (data: unknown) => {
       group.lastReceivedAt = new Date().toISOString();
