@@ -789,6 +789,33 @@ export interface ChannelConnectorAgentSessionRuntimeStatus {
   lastError: string | null;
 }
 
+export type ChannelConnectorAgentSessionDriverRuntimeEventType =
+  | "session.created"
+  | "session.stopped"
+  | "session.killed"
+  | "session.disposed"
+  | "session.reaped"
+  | "turn.started"
+  | "turn.finished"
+  | "turn.failed"
+  | "turn.fallback";
+
+export interface ChannelConnectorAgentSessionDriverRuntimeEvent {
+  checkedAt: string;
+  type: ChannelConnectorAgentSessionDriverRuntimeEventType;
+  poolKey: string;
+  sessionId: string | null;
+  bindingId: string;
+  projectId: string;
+  sessionKey: string;
+  agent: ChannelConnectorAgentId;
+  model: string | null;
+  workDir: string;
+  messageId: string | null;
+  reason: string | null;
+  error: string | null;
+}
+
 export interface ChannelConnectorAgentSessionDriverStatusResponse {
   ok: true;
   checkedAt: string;
@@ -803,6 +830,7 @@ export interface ChannelConnectorAgentSessionDriverStatusResponse {
   requestedPersistentBindings: ChannelConnectorAgentSessionDriverBindingStatus[];
   bindings: ChannelConnectorAgentSessionDriverBindingStatus[];
   activeSessions: ChannelConnectorAgentSessionRuntimeStatus[];
+  recentEvents: ChannelConnectorAgentSessionDriverRuntimeEvent[];
   reaped?: number;
   killed?: {
     requested: boolean;

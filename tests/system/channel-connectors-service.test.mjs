@@ -6823,6 +6823,236 @@ test("native Channel Connectors daemon isolates Codex app-server persistent sess
   }
 });
 
+test("native Channel Connectors daemon falls back to one-shot when Codex app-server crashes", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+  });
+  const fakeBin = path.join(root, "fake-bin");
+  const capturePath = path.join(root, "codex-appserver-crash-capture.jsonl");
+  fs.mkdirSync(fakeBin, { recursive: true });
+  const fakeCodexPath = path.join(fakeBin, "codex");
+  fs.writeFileSync(fakeCodexPath, [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    "function emit(value) { process.stdout.write(`${JSON.stringify(value)}\\n`); }",
+    "function record(value) { fs.appendFileSync(process.env.STUDIO_TEST_CODEX_CAPTURE, `${JSON.stringify({ pid: process.pid, ...value })}\\n`); }",
+    "if (process.argv[2] !== 'app-server') {",
+    "  record({ mode: 'fallback-exec', argv: process.argv.slice(2), codexHome: process.env.CODEX_HOME });",
+    "  emit({ type: 'thread.started', thread_id: 'thread-fallback-after-crash' });",
+    "  emit({ type: 'item.completed', item: { type: 'agent_message', text: 'fallback one-shot ok' } });",
+    "  process.exit(0);",
+    "}",
+    "process.stdin.setEncoding('utf8');",
+    "process.stdin.on('data', (chunk) => {",
+    "  for (const raw of chunk.split(/\\r?\\n/)) {",
+    "    if (!raw.trim()) continue;",
+    "    const message = JSON.parse(raw);",
+    "    record({ mode: 'app-server', method: message.method, id: message.id || null, params: message.params || null, codexHome: process.env.CODEX_HOME });",
+    "    if (message.method === 'initialize') {",
+    "      emit({ id: message.id, result: { userAgent: 'fake-crashing-codex-app-server', codexHome: process.env.CODEX_HOME || '', platformFamily: 'unix', platformOs: 'linux' } });",
+    "    } else if (message.method === 'initialized') {",
+    "      // notification",
+    "    } else if (message.method === 'thread/start') {",
+    "      emit({ id: message.id, result: { thread: { id: 'thread-crash-1', sessionId: 'thread-crash-1', turns: [], cwd: message.params.cwd }, model: message.params.model, modelProvider: 'studio_gateway', cwd: message.params.cwd, approvalPolicy: message.params.approvalPolicy, sandbox: { type: 'readOnly', networkAccess: false } } });",
+    "      emit({ method: 'thread/started', params: { thread: { id: 'thread-crash-1' } } });",
+    "    } else if (message.method === 'turn/start') {",
+    "      setTimeout(() => process.exit(42), 10);",
+    "    } else {",
+    "      emit({ id: message.id, error: { code: -32601, message: `unexpected ${message.method}` } });",
+    "    }",
+    "  }",
+    "});",
+    "setInterval(() => {}, 1000);",
+    "",
+  ].join("\n"), { mode: 0o755 });
+
+  let sendInbound = null;
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  await new Promise((resolve, reject) => {
+    wss.once("listening", resolve);
+    wss.once("error", reject);
+  });
+  const wsAddress = wss.address();
+  assert.ok(wsAddress && typeof wsAddress === "object");
+  const wsUrl = `ws://127.0.0.1:${wsAddress.port}/ws`;
+  wss.on("connection", (socket) => {
+    let connected = false;
+    socket.on("message", (data) => {
+      if (connected) return;
+      const packet = decodeOctoConnectPacket(Buffer.isBuffer(data) ? data : Buffer.from(data));
+      connected = true;
+      const serverKey = createOctoX25519KeyPair();
+      const salt = "fedcba0987654321";
+      socket.send(encodeOctoConnackPacket({
+        serverPublicKeyBase64: serverKey.publicKeyBase64,
+        salt,
+      }));
+      sendInbound = (messageId, fromUid, content) => {
+        if (socket.readyState !== 1) throw new Error("Octo fake socket is not open");
+        socket.send(encodeOctoRecvPacket({
+          serverPrivateKey: serverKey.privateKey,
+          clientPublicKeyBase64: packet.clientPublicKeyBase64,
+          salt,
+          messageId,
+          messageSeq: messageId - 5200,
+          fromUid,
+          channelId: fromUid,
+          channelType: 1,
+          payload: {
+            type: 1,
+            content,
+          },
+        }));
+      };
+    });
+  });
+
+  try {
+    const requests = [];
+    await withServer(async (req, res) => {
+      const chunks = [];
+      req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
+      await new Promise((resolve) => req.on("end", resolve));
+      const bodyRaw = Buffer.concat(chunks).toString("utf8");
+      requests.push({
+        method: req.method,
+        path: req.url,
+        authorization: req.headers.authorization,
+        body: bodyRaw ? JSON.parse(bodyRaw) : {},
+      });
+      res.setHeader("content-type", "application/json");
+      if (req.url === "/v1/models") {
+        res.end(JSON.stringify({ object: "list", data: [{ id: "gpt-5", object: "model" }] }));
+        return true;
+      }
+      if (req.url?.startsWith("/v1/bot/register")) {
+        res.end(JSON.stringify({ robot_id: "robot-crash", im_token: "im-token-crash", ws_url: wsUrl }));
+        return true;
+      }
+      if (req.url === "/v1/bot/typing" || req.url === "/v1/bot/sendMessage" || req.url === "/v1/bot/heartbeat") {
+        res.end(JSON.stringify({ ok: true, message_id: `octo-${requests.length}` }));
+        return true;
+      }
+      return false;
+    }, async (apiUrl) => {
+      const initial = service.getNativeConfig().config;
+      service.saveNativeConfig({
+        config: {
+          ...initial,
+          agentProfiles: [
+            {
+              id: "codex-persistent-crash",
+              name: "Codex Persistent Crash",
+              agent: "codex",
+              model: "gpt-5",
+              workDir: config.projectRoot,
+              permissionMode: "read-only",
+              gatewayEndpoint: `${apiUrl}/v1`,
+              gatewayKeyRef: "studio-gateway-client-key",
+              appProfileRef: "codex",
+            },
+          ],
+          defaultAgentProfileId: "codex-persistent-crash",
+          platformBindings: [
+            {
+              id: "octo-persistent-crash",
+              platform: "octo",
+              accountId: "octo-account",
+              botId: null,
+              displayName: "Octo Persistent Crash",
+              agentProfileId: "codex-persistent-crash",
+              enabled: true,
+              allowlist: [],
+              adminUsers: [],
+              metadata: {
+                apiUrl,
+                botToken: "test-token",
+                wsUrl,
+                agentSessionDriver: "persistent",
+                octoReconnectJitterMs: 0,
+              },
+            },
+          ],
+        },
+      });
+
+      const runtimeConfig = service.getDaemonConfig().config;
+      runtimeConfig.management.port = await findFreePort();
+      const configPath = path.join(root, "daemon-persistent-crash-config.json");
+      fs.mkdirSync(path.dirname(runtimeConfig.paths.log), { recursive: true });
+      fs.writeFileSync(configPath, JSON.stringify(runtimeConfig, null, 2), "utf8");
+
+      const daemonEntry = path.resolve("dist/apps/api/modules/channel-connectors/daemon.js");
+      const child = spawn(process.execPath, [daemonEntry, "--config", configPath], {
+        cwd: path.resolve("."),
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:${process.env.PATH || ""}`,
+          STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+          STUDIO_TEST_CODEX_CAPTURE: capturePath,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stderr = "";
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk.toString("utf8");
+      });
+
+      try {
+        await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const connected = response.body?.octoConnections?.find?.((item) => item.bindingId === "octo-persistent-crash" && item.connected);
+          return connected && sendInbound ? response.body : null;
+        }, 5000);
+
+        sendInbound(5201, "persistent-crash-user", "trigger persistent app-server crash");
+
+        const status = await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const run = response.body?.agentRuns?.find?.((item) => item.messageId === "5201" && item.ok);
+          const eventTypes = response.body?.agentSessionDriver?.recentEvents?.map?.((event) => event.type) || [];
+          return run && eventTypes.includes("turn.fallback") ? response.body : null;
+        }, 10_000);
+        assert.equal(status.agentSessionDriver.requestedPersistentBindings[0].effectiveMode, "persistent");
+        assert.equal(status.agentSessionDriver.activeSessions.some((item) => item.bindingId === "octo-persistent-crash"), false);
+        const eventTypes = status.agentSessionDriver.recentEvents.map((event) => event.type);
+        assert.ok(eventTypes.includes("turn.failed"));
+        assert.ok(eventTypes.includes("session.disposed"));
+        assert.ok(eventTypes.includes("turn.fallback"));
+
+        const capture = fs.readFileSync(capturePath, "utf8")
+          .trim()
+          .split(/\r?\n/)
+          .filter(Boolean)
+          .map((line) => JSON.parse(line));
+        assert.ok(capture.some((item) => item.mode === "app-server" && item.method === "turn/start"));
+        assert.ok(capture.some((item) => item.mode === "fallback-exec"));
+        const fallbackExec = capture.find((item) => item.mode === "fallback-exec");
+        assert.match(fallbackExec.argv.join(" "), /exec/);
+        const replyContents = requests
+          .filter((request) => request.path === "/v1/bot/sendMessage")
+          .map((request) => request.body?.payload?.content || "")
+          .join("\n");
+        assert.match(replyContents, /fallback one-shot ok/);
+      } finally {
+        child.kill("SIGTERM");
+        await new Promise((resolve) => {
+          child.once("exit", resolve);
+          setTimeout(resolve, 1000);
+        });
+      }
+
+      assert.equal(stderr.trim(), "");
+    });
+  } finally {
+    await new Promise((resolve, reject) => {
+      wss.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
 test("native Channel Connectors daemon stops Codex app-server persistent turns via /stop", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

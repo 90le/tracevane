@@ -37,6 +37,7 @@
 - 持久 session runtime 现在显式暴露 `permissionMode`，会话页和 live smoke 输出都能区分同一用户/模型下不同权限的独立 session；driver 测试补齐用户/session/model/permission 隔离，以及 fallback disabled / user abort 不自动降级的契约。
 - Codex persistent app-server 现在按 pool/session 派生独立 `CODEX_HOME`，避免不同 IM session 共享同一个 Codex 配置/状态目录；daemon 回归覆盖同一 Octo binding 下两个用户生成两个 app-server process、两个 session、两个 `CODEX_HOME`，并验证 kill 一个 session 不影响另一个。
 - Channel daemon 新增 persistent session idle reaper：生产默认 10 分钟 idle TTL / 60 秒巡检；测试可用环境变量缩短 TTL，系统回归已证明无需手动 `reap-idle` 也会自动清理空闲 Codex app-server session。
+- persistent driver 最近事件已进入 daemon `/status` 与 `/agent-sessions`，可观察 `turn.failed`、`session.disposed`、`turn.fallback` 等状态；daemon 回归已证明 Codex app-server 崩溃后会清理坏 session 并回退 one-shot 回复同一条 IM 消息。
 
 ## 最近验证
 
@@ -47,7 +48,7 @@
 - 通过：`STUDIO_CODEX_APP_SERVER_LIVE_TURN=1 STUDIO_CODEX_APP_SERVER_LIVE_COMPACT=1 STUDIO_CODEX_APP_SERVER_LIVE_MODEL=gpt-5.4-mini node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，隔离 HOME 下真实 `codex app-server --stdio` 经本机 Studio Gateway 完成 `turn/start` 精确回复与原生 compact 完成信号。
 - 通过：`STUDIO_CODEX_APP_SERVER_LIVE_INTERRUPT=1 STUDIO_CODEX_APP_SERVER_LIVE_MODEL=gpt-5.4-mini node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，隔离 HOME 下真实 app-server turn 被 `turn/interrupt` 取消并返回 `cancelled`。
 - 通过：`node --test tests/system/channel-connectors-agent-session-driver.test.mjs`，6 个持久 session driver 合同子测试通过；覆盖复用、crash fallback、多用户/模型/权限隔离、禁止 fallback、stop/kill/reap、mode 解析。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，51 个 Channel Connectors 子测试通过；fake Octo + fake Codex app-server 已覆盖 persistent run、daemon `/status` active session、自动 idle reap、IM `/stop` -> `turn/interrupt`、stopped 回执、双 IM session 隔离和 targeted kill。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，52 个 Channel Connectors 子测试通过；fake Octo + fake Codex app-server 已覆盖 persistent run、daemon `/status` active session、自动 idle reap、app-server crash -> one-shot fallback、IM `/stop` -> `turn/interrupt`、stopped 回执、双 IM session 隔离和 targeted kill。
 - 通过：`node --test tests/system/channel-connectors-persistent-live-script.test.mjs`，验证 live smoke 脚本 dry-run、不泄露 secret、备份、写入 persistent metadata 和 restore-latest。
 - 通过：`node --test tests/system/channel-connectors-agent-sessions-live-script.test.mjs`，验证 session live 管理脚本 status 不泄漏 workDir、dry-run kill 不 POST、`--apply` reap/kill 请求正确。
 - 通过：`node scripts/smoke-channel-connectors-persistent-live.mjs --bindings octo-studio-cc,feishu-live --apply --json`，真实 Octo/Feishu binding 已写入 persistent metadata，daemon runtime 显示两个 binding `effectiveMode=persistent`；随后轮询 `/status` 确认 Octo 与 Feishu 均 connected，用户已在真实 IM 验证 `/stop` 可用。
@@ -74,11 +75,11 @@
 - Codex Agent 图片已走原生 `--image`；Studio `/compact` 已覆盖 IM history 压缩，但 Codex 原生交互式 `/compact`、`/clear` 仍需要持久 Codex session，不能通过一次性 `codex exec` 伪实现；Claude Code / OpenCode 视觉输入、视频理解、OCR、语音/STT/TTS 仍待迁移。
 - 出站文件基础链路已覆盖小/中型本地文件，Octo 已具备 multipart/direct upload 自动分流；高级 `yolo` 权限仅放宽本地路径根限制，不绕过平台上传限制。后续仍需做真实大文件限额和更多平台文件收发实测。
 - 同 session FIFO queue 当前是 daemon 内存队列；Studio/OpenClaw 崩溃不影响 daemon 内排队，但 Channel daemon 自身重启会丢失未开始的排队消息。持久 session driver 合同已覆盖 session 级 crash fallback，但尚未实现 durable queue。
-- 持久 session driver 当前只对 Codex metadata 实验路径开放；真实 Codex app-server 已验证 `initialize/thread-start`、Studio Gateway `turn/start` 模型调用、原生 `/compact`、`turn/interrupt` 和 daemon idle reaper；真实 IM `/stop` 已由用户手测通过，仍需更长时间的 crash fallback 和多用户隔离实测。
+- 持久 session driver 当前只对 Codex metadata 实验路径开放；真实 Codex app-server 已验证 `initialize/thread-start`、Studio Gateway `turn/start` 模型调用、原生 `/compact`、`turn/interrupt` 和 daemon idle reaper；daemon fake app-server 已覆盖 crash fallback，真实 IM `/stop` 已由用户手测通过，仍需更长时间的多用户隔离和崩溃恢复实测。
 - Feishu 历史未 ACK 事件可能仍会被平台重投一次；持久化去重会记录并跳过，最终仍需用户发送全新消息复验 live 回复。
 
 ## 下一步
 
-1. 继续做 Codex persistent driver 受控 beta：补真实 crash fallback、同用户多 session、多用户/群隔离和 UI kill/reap live 验收。
+1. 继续做 Codex persistent driver 受控 beta：补同用户多 session、多用户/群隔离和 UI kill/reap live 验收。
 2. 梳理 Channel Connectors 会话页与命令卡片，把 persistent/one-shot、队列、当前模型、权限和最近运行状态做成更清晰的管理面。
 3. 再评估是否给 Claude Code / OpenCode 增加独立 persistent driver；默认 one-shot 不变。

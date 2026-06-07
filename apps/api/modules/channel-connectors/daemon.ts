@@ -35,6 +35,7 @@ import {
 import {
   createChannelConnectorAgentSessionDriverPool,
   resolveChannelConnectorAgentSessionDriverMode,
+  type ChannelConnectorAgentSessionDriverEvent,
   type ChannelConnectorAgentSessionDriverMode,
   type ChannelConnectorAgentSessionDriverStatus,
 } from "./agent-session-driver.js";
@@ -187,10 +188,14 @@ const CHANNEL_COMPACT_HISTORY_LIMIT = 40;
 const CHANNEL_COMPACT_PROMPT_MAX_RUNES = 24_000;
 const CHANNEL_COMPACT_TIMEOUT_MS = 45_000;
 const DEFAULT_CHANNEL_AGENT_SESSION_REAP_INTERVAL_MS = 60_000;
+const MAX_CHANNEL_AGENT_SESSION_DRIVER_EVENTS = 80;
+
+const channelAgentSessionDriverEvents: ChannelConnectorAgentSessionDriverEvent[] = [];
 
 const channelAgentSessionDriverPool = createChannelConnectorAgentSessionDriverPool({
   idleTimeoutMs: optionalPositiveIntegerEnv("STUDIO_CHANNEL_AGENT_SESSION_IDLE_TIMEOUT_MS"),
   maxSessions: optionalPositiveIntegerEnv("STUDIO_CHANNEL_AGENT_SESSION_MAX_SESSIONS"),
+  onEvent: recordChannelAgentSessionDriverEvent,
   factory: createCodexAppServerSessionDriverFactory({
     transportFactory: ({ sessionId, key, agentTurnRequest }) => {
       const processRequest = agentTurnRequest
@@ -366,6 +371,7 @@ interface ChannelDaemonAgentSessionDriverState {
   requestedPersistentBindings: ChannelDaemonAgentSessionDriverBindingState[];
   bindings: ChannelDaemonAgentSessionDriverBindingState[];
   activeSessions: ChannelConnectorAgentSessionDriverStatus[];
+  recentEvents: ChannelConnectorAgentSessionDriverEvent[];
 }
 
 interface ChannelDaemonActiveRunCancelEntry {
@@ -525,6 +531,13 @@ function effectiveAgentSessionDriverMode(input: {
   };
 }
 
+function recordChannelAgentSessionDriverEvent(event: ChannelConnectorAgentSessionDriverEvent): void {
+  channelAgentSessionDriverEvents.push(event);
+  if (channelAgentSessionDriverEvents.length > MAX_CHANNEL_AGENT_SESSION_DRIVER_EVENTS) {
+    channelAgentSessionDriverEvents.splice(0, channelAgentSessionDriverEvents.length - MAX_CHANNEL_AGENT_SESSION_DRIVER_EVENTS);
+  }
+}
+
 function buildAgentSessionDriverState(
   config: ChannelConnectorsDaemonRuntimeConfig,
   activeSessions: ChannelConnectorAgentSessionDriverStatus[] = channelAgentSessionDriverPool.status(),
@@ -554,6 +567,7 @@ function buildAgentSessionDriverState(
     requestedPersistentBindings: bindings.filter((binding) => binding.requestedMode === "persistent"),
     bindings,
     activeSessions,
+    recentEvents: [...channelAgentSessionDriverEvents].reverse(),
   };
 }
 
