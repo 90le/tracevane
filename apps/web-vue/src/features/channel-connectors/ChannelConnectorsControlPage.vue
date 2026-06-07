@@ -412,11 +412,90 @@
               <p class="eyebrow">Sessions</p>
               <h3>{{ text('会话与日志', 'Sessions and logs') }}</h3>
             </div>
-            <button type="button" class="secondary-button compact-button ccx-icon-button" :disabled="loading" @click="refreshLogs">
-              <RefreshCw :size="16" />
-              {{ text('刷新日志', 'Refresh logs') }}
-            </button>
+            <div class="ccx-platform-actions">
+              <button type="button" class="secondary-button compact-button ccx-icon-button" :disabled="agentSessionBusy" @click="refreshAgentSessions">
+                <RefreshCw :size="16" />
+                {{ text('刷新会话', 'Refresh sessions') }}
+              </button>
+              <button type="button" class="secondary-button compact-button ccx-icon-button" :disabled="agentSessionBusy" @click="reapAgentSessions">
+                <Trash2 :size="16" />
+                {{ text('清理空闲', 'Reap idle') }}
+              </button>
+              <button type="button" class="secondary-button compact-button ccx-icon-button" :disabled="loading" @click="refreshLogs">
+                <FileText :size="16" />
+                {{ text('刷新日志', 'Refresh logs') }}
+              </button>
+            </div>
           </div>
+
+          <section class="ccx-session-grid" aria-label="Agent session driver status">
+            <div class="ccx-facts">
+              <div>
+                <span>{{ text('持久绑定', 'Persistent bindings') }}</span>
+                <strong>{{ agentSessions?.requestedPersistentBindings.length ?? '-' }}</strong>
+              </div>
+              <div>
+                <span>{{ text('活动会话', 'Active sessions') }}</span>
+                <strong>{{ activeAgentSessions.length }}</strong>
+              </div>
+              <div>
+                <span>{{ text('空闲超时', 'Idle timeout') }}</span>
+                <strong>{{ agentSessions ? formatDuration(agentSessions.policy.idleTimeoutMs) : '-' }}</strong>
+              </div>
+              <div>
+                <span>{{ text('会话上限', 'Session limit') }}</span>
+                <strong>{{ agentSessions?.policy.maxSessions ?? '-' }}</strong>
+              </div>
+            </div>
+
+            <div class="ccx-list">
+              <div
+                v-for="binding in agentSessions?.requestedPersistentBindings || []"
+                :key="`${binding.bindingId}:${binding.projectId}`"
+                class="ccx-list-row"
+              >
+                <small>{{ binding.platform }} · {{ binding.agent }} · {{ binding.effectiveMode }}</small>
+                <strong>{{ binding.bindingId }}</strong>
+                <span>{{ binding.model || 'default model' }} · {{ binding.reason }}</span>
+              </div>
+              <div v-if="agentSessions && !agentSessions.requestedPersistentBindings.length" class="ccx-empty compact">
+                {{ text('暂无持久会话绑定', 'No persistent session bindings') }}
+              </div>
+            </div>
+          </section>
+
+          <div v-if="activeAgentSessions.length" class="ccx-session-list">
+            <div v-for="session in activeAgentSessions" :key="session.poolKey" class="ccx-list-row ccx-session-row">
+              <div>
+                <small>{{ session.agent }} · {{ session.bindingId }} · {{ text('运行中', 'running') }} {{ session.running }}</small>
+                <strong>{{ session.model || 'default model' }}</strong>
+                <span>{{ session.workDir }}</span>
+                <span>{{ text('最近使用', 'Last used') }} {{ formatTimestamp(session.lastUsedAt) }} · {{ text('空闲', 'Idle') }} {{ formatDuration(session.idleMs) }}</span>
+                <span v-if="session.lastError" class="ccx-danger-text">{{ session.lastError }}</span>
+              </div>
+              <button
+                type="button"
+                class="secondary-button compact-button ccx-icon-button ccx-danger-button"
+                :disabled="agentSessionBusy"
+                @click="killAgentSession(session.poolKey)"
+              >
+                <Square :size="16" />
+                {{ text('停止', 'Stop') }}
+              </button>
+            </div>
+          </div>
+          <div v-else class="ccx-empty compact">
+            {{ text('暂无活动持久会话', 'No active persistent sessions') }}
+          </div>
+
+          <div v-if="agentSessionResult" class="ccx-output" :class="{ failure: Boolean(agentSessionResult.killed?.requested && !agentSessionResult.killed.killed) }">
+            <div class="ccx-output__head">
+              <strong>{{ agentSessionResultTitle }}</strong>
+              <span>{{ formatTimestamp(agentSessionResult.checkedAt) }}</span>
+            </div>
+            <pre>{{ agentSessionResultOutput }}</pre>
+          </div>
+
           <pre v-if="logText" class="ccx-log">{{ logText }}</pre>
           <div v-else class="ccx-empty">
             {{ text('暂无 Channel daemon 日志', 'No Channel daemon logs yet') }}
@@ -447,6 +526,7 @@ import {
 import type {
   ChannelConnectorAgentId,
   ChannelConnectorAgentProfile,
+  ChannelConnectorAgentSessionDriverStatusResponse,
   ChannelConnectorFeishuTransportSmokeResponse,
   ChannelConnectorOctoTransportSmokeResponse,
   ChannelConnectorPermissionMode,
@@ -463,11 +543,13 @@ import type {
 import StatusPill from '../../components/StatusPill.vue';
 import { useLocalePreference } from '../../shared/locale';
 import {
+  fetchChannelConnectorAgentSessions,
   fetchChannelConnectorsDaemonConfig,
   fetchChannelConnectorsDaemonLogs,
   fetchChannelConnectorsDaemonService,
   fetchChannelConnectorsNativeConfig,
   fetchChannelConnectorsStatus,
+  manageChannelConnectorAgentSessions,
   manageChannelConnectorsDaemonService,
   runFeishuTransportSmoke,
   runOctoTransportSmoke,
@@ -512,6 +594,9 @@ const nativeConfig = ref<ChannelConnectorsNativeConfigResponse | null>(null);
 const configPreview = ref<ChannelConnectorsDaemonConfigResponse | null>(null);
 const logs = ref<ChannelConnectorsLogsResponse | null>(null);
 const actionResult = ref<ChannelConnectorsDaemonResponse | null>(null);
+const agentSessions = ref<ChannelConnectorAgentSessionDriverStatusResponse | null>(null);
+const agentSessionResult = ref<ChannelConnectorAgentSessionDriverStatusResponse | null>(null);
+const agentSessionBusy = ref(false);
 const platformSmoke = ref<ChannelConnectorOctoTransportSmokeResponse | ChannelConnectorFeishuTransportSmokeResponse | null>(null);
 const platformSmokeBusy = ref(false);
 const notice = ref<{ kind: 'success' | 'error'; message: string } | null>(null);
@@ -588,6 +673,37 @@ const actionOutput = computed(() => {
     if (command.error && !stderr) lines.push(command.error);
   }
   if (result.action === 'preview') lines.push('', result.config.preview);
+  return lines.join('\n');
+});
+
+const activeAgentSessions = computed(() => agentSessions.value?.activeSessions || []);
+
+const agentSessionResultTitle = computed(() => {
+  const result = agentSessionResult.value;
+  if (!result) return '';
+  if (result.killed?.requested) {
+    return result.killed.killed ? text('会话已停止', 'Session stopped') : text('会话未找到', 'Session not found');
+  }
+  if (typeof result.reaped === 'number') return text('空闲会话已清理', 'Idle sessions reaped');
+  return text('会话状态已刷新', 'Session status refreshed');
+});
+
+const agentSessionResultOutput = computed(() => {
+  const result = agentSessionResult.value;
+  if (!result) return '';
+  const lines = [
+    `Implementation: ${result.implementation}`,
+    `Persistent bindings: ${result.requestedPersistentBindings.length}`,
+    `Active sessions: ${result.activeSessions.length}`,
+    `Idle timeout: ${formatDuration(result.policy.idleTimeoutMs)}`,
+    `Session limit: ${result.policy.maxSessions}`,
+  ];
+  if (typeof result.reaped === 'number') lines.push(`Reaped: ${result.reaped}`);
+  if (result.killed?.requested) {
+    lines.push(`Killed: ${String(result.killed.killed)}`);
+    lines.push(`Pool key: ${result.killed.poolKey || '-'}`);
+    lines.push(`Session: ${result.killed.sessionId || '-'}`);
+  }
   return lines.join('\n');
 });
 
@@ -981,6 +1097,18 @@ function formatTimestamp(value: string): string {
   }
 }
 
+function formatDuration(valueMs: number): string {
+  if (!Number.isFinite(valueMs) || valueMs < 0) return '-';
+  if (valueMs < 1000) return `${Math.round(valueMs)} ms`;
+  const seconds = Math.round(valueMs / 1000);
+  if (seconds < 60) return `${seconds} s`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 48) return `${hours} h`;
+  return `${Math.round(hours / 24)} d`;
+}
+
 function reportError(error: unknown, fallback: string): void {
   const message = error instanceof Error ? error.message : fallback;
   notice.value = { kind: 'error', message };
@@ -988,6 +1116,58 @@ function reportError(error: unknown, fallback: string): void {
 
 async function refreshLogs(): Promise<void> {
   logs.value = await fetchChannelConnectorsDaemonLogs();
+}
+
+async function refreshAgentSessions(options: { silent?: boolean } = {}): Promise<void> {
+  agentSessionBusy.value = true;
+  if (!options.silent) notice.value = null;
+  try {
+    const result = await fetchChannelConnectorAgentSessions();
+    agentSessions.value = result;
+    if (!options.silent) agentSessionResult.value = result;
+  } catch (error) {
+    agentSessions.value = null;
+    if (!options.silent) reportError(error, text('刷新 Agent 会话失败', 'Failed to refresh agent sessions'));
+  } finally {
+    agentSessionBusy.value = false;
+  }
+}
+
+async function reapAgentSessions(): Promise<void> {
+  agentSessionBusy.value = true;
+  notice.value = null;
+  try {
+    const result = await manageChannelConnectorAgentSessions({ action: 'reap-idle' });
+    agentSessions.value = result;
+    agentSessionResult.value = result;
+    notice.value = { kind: 'success', message: text('空闲会话已清理', 'Idle sessions reaped') };
+  } catch (error) {
+    reportError(error, text('清理空闲会话失败', 'Failed to reap idle sessions'));
+  } finally {
+    agentSessionBusy.value = false;
+  }
+}
+
+async function killAgentSession(poolKey: string): Promise<void> {
+  agentSessionBusy.value = true;
+  notice.value = null;
+  try {
+    const result = await manageChannelConnectorAgentSessions({
+      action: 'kill',
+      poolKey,
+      reason: 'studio-ui-stop',
+    });
+    agentSessions.value = result;
+    agentSessionResult.value = result;
+    notice.value = {
+      kind: result.killed?.killed ? 'success' : 'error',
+      message: result.killed?.killed ? text('会话已停止', 'Session stopped') : text('会话未找到', 'Session not found'),
+    };
+  } catch (error) {
+    reportError(error, text('停止 Agent 会话失败', 'Failed to stop agent session'));
+  } finally {
+    agentSessionBusy.value = false;
+  }
 }
 
 async function loadAll(): Promise<void> {
@@ -1008,6 +1188,7 @@ async function loadAll(): Promise<void> {
     logs.value = nextLogs;
     hydrateConfigDrafts();
     loaded.value = true;
+    void refreshAgentSessions({ silent: true });
   } catch (error) {
     reportError(error, text('加载 Channel Connectors 失败', 'Failed to load Channel Connectors'));
   } finally {
@@ -1048,6 +1229,7 @@ async function runServiceAction(action: ChannelConnectorsDaemonAction): Promise<
         : result.skippedReason || text('操作被阻断', 'Action blocked'),
     };
     await refreshLogs();
+    await refreshAgentSessions({ silent: true });
   } catch (error) {
     reportError(error, text('操作失败', 'Action failed'));
   } finally {

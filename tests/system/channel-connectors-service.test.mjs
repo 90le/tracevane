@@ -5913,6 +5913,14 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     assert.equal(preview.status, 200);
     assert.equal(preview.body.action, "preview");
     assert.match(preview.body.config.preview, /studio-gateway-client-key/);
+
+    const routesSource = fs.readFileSync(path.resolve("apps/api/modules/channel-connectors/routes.ts"), "utf8");
+    assert.match(routesSource, /\/api\/channel-connectors\/agent-sessions/);
+    assert.match(routesSource, /getAgentSessions/);
+    assert.match(routesSource, /manageAgentSessions/);
+    const webApiSource = fs.readFileSync(path.resolve("apps/web-vue/src/features/channel-connectors/api.ts"), "utf8");
+    assert.match(webApiSource, /fetchChannelConnectorAgentSessions/);
+    assert.match(webApiSource, /manageChannelConnectorAgentSessions/);
   });
 });
 
@@ -5964,6 +5972,9 @@ test("native Channel Connectors daemon entry exposes health and writes runtime",
     assert.equal(status.body.agentSessionDriver.defaultMode, "one-shot");
     assert.equal(status.body.agentSessionDriver.implementation, "codex-app-server-experimental");
     assert.equal(status.body.agentSessionDriver.persistentDriverReady, true);
+    assert.equal(status.body.agentSessionDriver.policy.idleTimeoutMs, 600000);
+    assert.equal(status.body.agentSessionDriver.policy.maxSessions, 8);
+    assert.equal(status.body.agentSessionDriver.policy.fallbackOnCrash, true);
     assert.equal(status.body.agentSessionDriver.activeSessions.length, 0);
     assert.equal(status.body.agentSessionDriver.requestedPersistentBindings.length, 1);
     assert.equal(status.body.agentSessionDriver.requestedPersistentBindings[0].requestedMode, "persistent");
@@ -5973,6 +5984,7 @@ test("native Channel Connectors daemon entry exposes health and writes runtime",
     const runtime = JSON.parse(fs.readFileSync(runtimeConfig.paths.runtime, "utf8"));
     assert.equal(runtime.agentSessionDriver.requestedPersistentBindings.length, 1);
     assert.equal(runtime.agentSessionDriver.requestedPersistentBindings[0].effectiveMode, "persistent");
+    assert.equal(runtime.agentSessionDriver.policy.idleTimeoutMs, 600000);
     assert.equal(fs.existsSync(runtimeConfig.paths.log), true);
     assert.match(fs.readFileSync(runtimeConfig.paths.log, "utf8"), /Studio native Channel Connectors daemon started/);
   } finally {
@@ -6498,8 +6510,38 @@ test("native Channel Connectors daemon runs Codex app-server when persistent ses
           return run && session ? response.body : null;
         }, 10_000);
         assert.equal(status.agentSessionDriver.requestedPersistentBindings[0].effectiveMode, "persistent");
+        assert.equal(status.agentSessionDriver.policy.idleTimeoutMs, 600000);
+        assert.equal(status.agentSessionDriver.policy.maxSessions, 8);
         assert.equal(status.agentSessionDriver.activeSessions[0].sessionId.includes("codex-app-server:"), true);
         assert.equal(status.agentSessionDriver.activeSessions[0].turnCount, 1);
+        const poolKey = status.agentSessionDriver.activeSessions[0].poolKey;
+
+        const sessionStatus = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/agent-sessions`);
+        assert.equal(sessionStatus.status, 200);
+        assert.equal(sessionStatus.body.policy.idleTimeoutMs, 600000);
+        assert.equal(sessionStatus.body.activeSessions.some((item) => item.poolKey === poolKey), true);
+
+        const killStatus = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/agent-sessions`, {
+          method: "POST",
+          body: {
+            action: "kill",
+            poolKey,
+            reason: "test-kill",
+          },
+        });
+        assert.equal(killStatus.status, 200);
+        assert.equal(killStatus.body.killed.killed, true);
+        assert.equal(killStatus.body.killed.poolKey, poolKey);
+        assert.equal(killStatus.body.activeSessions.some((item) => item.poolKey === poolKey), false);
+
+        const reapStatus = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/agent-sessions`, {
+          method: "POST",
+          body: {
+            action: "reap-idle",
+          },
+        });
+        assert.equal(reapStatus.status, 200);
+        assert.equal(typeof reapStatus.body.reaped, "number");
 
         const capture = fs.readFileSync(capturePath, "utf8")
           .trim()

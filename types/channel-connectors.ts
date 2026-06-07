@@ -758,6 +758,65 @@ export interface ChannelConnectorsDaemonResponse {
   diagnostics: string[];
 }
 
+export interface ChannelConnectorAgentSessionDriverBindingStatus {
+  projectId: string;
+  bindingId: string;
+  platform: string;
+  accountId: string;
+  botId: string | null;
+  agent: ChannelConnectorAgentId | string;
+  model: string | null;
+  requestedMode: "one-shot" | "persistent";
+  effectiveMode: "one-shot" | "persistent";
+  reason: "default" | "codex-app-server-experimental" | "unsupported-agent";
+}
+
+export interface ChannelConnectorAgentSessionRuntimeStatus {
+  poolKey: string;
+  sessionId: string;
+  bindingId: string;
+  projectId: string;
+  sessionKey: string;
+  agent: ChannelConnectorAgentId;
+  model: string | null;
+  workDir: string;
+  createdAt: string;
+  lastUsedAt: string;
+  running: number;
+  turnCount: number;
+  idleMs: number;
+  lastError: string | null;
+}
+
+export interface ChannelConnectorAgentSessionDriverStatusResponse {
+  ok: true;
+  checkedAt: string;
+  defaultMode: "one-shot";
+  implementation: "codex-app-server-experimental";
+  persistentDriverReady: true;
+  policy: {
+    idleTimeoutMs: number;
+    maxSessions: number;
+    fallbackOnCrash: boolean;
+  };
+  requestedPersistentBindings: ChannelConnectorAgentSessionDriverBindingStatus[];
+  bindings: ChannelConnectorAgentSessionDriverBindingStatus[];
+  activeSessions: ChannelConnectorAgentSessionRuntimeStatus[];
+  reaped?: number;
+  killed?: {
+    requested: boolean;
+    killed: boolean;
+    sessionId: string | null;
+    poolKey: string | null;
+  } | null;
+}
+
+export interface ChannelConnectorAgentSessionActionRequest {
+  action?: "status" | "reap-idle" | "kill";
+  poolKey?: string | null;
+  reason?: string | null;
+}
+
 export interface ChannelConnectorsLogsResponse {
   ok: true;
   checkedAt: string;

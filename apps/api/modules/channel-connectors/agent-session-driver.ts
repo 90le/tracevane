@@ -286,6 +286,10 @@ export class ChannelConnectorAgentSessionDriverPool {
 
   async killSession(key: ChannelConnectorAgentSessionDriverKeyInput, reason = "manual-kill"): Promise<{ killed: boolean; sessionId: string | null }> {
     const poolKey = channelConnectorAgentSessionDriverPoolKey(key);
+    return this.killSessionByPoolKey(poolKey, reason);
+  }
+
+  async killSessionByPoolKey(poolKey: string, reason = "manual-kill"): Promise<{ killed: boolean; sessionId: string | null }> {
     const entry = this.sessions.get(poolKey);
     if (!entry) return { killed: false, sessionId: null };
     await entry.session.stop?.(reason);
@@ -323,6 +327,14 @@ export class ChannelConnectorAgentSessionDriverPool {
         idleMs: Math.max(0, nowMs - entry.lastUsedAtMs),
         lastError: entry.lastError,
       }));
+  }
+
+  policy(): { idleTimeoutMs: number; maxSessions: number; fallbackOnCrash: boolean } {
+    return {
+      idleTimeoutMs: this.idleTimeoutMs,
+      maxSessions: this.maxSessions,
+      fallbackOnCrash: this.fallbackOnCrash,
+    };
   }
 
   private async trimToCapacity(): Promise<void> {

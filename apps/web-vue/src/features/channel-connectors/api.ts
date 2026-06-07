@@ -3,6 +3,8 @@ import type {
   ChannelConnectorCommandActionResponse,
   ChannelConnectorCommandSurfaceRequest,
   ChannelConnectorCommandSurfaceResponse,
+  ChannelConnectorAgentSessionActionRequest,
+  ChannelConnectorAgentSessionDriverStatusResponse,
   ChannelConnectorFeishuTransportSmokeRequest,
   ChannelConnectorFeishuTransportSmokeResponse,
   ChannelConnectorOctoTransportSmokeRequest,
@@ -99,4 +101,17 @@ export function manageChannelConnectorsDaemonService(
 
 export function fetchChannelConnectorsDaemonLogs(): Promise<ChannelConnectorsLogsResponse> {
   return requestJson<ChannelConnectorsLogsResponse>('/api/channel-connectors/daemon/logs');
+}
+
+export function fetchChannelConnectorAgentSessions(): Promise<ChannelConnectorAgentSessionDriverStatusResponse> {
+  return requestJson<ChannelConnectorAgentSessionDriverStatusResponse>('/api/channel-connectors/agent-sessions');
+}
+
+export function manageChannelConnectorAgentSessions(
+  payload: ChannelConnectorAgentSessionActionRequest = {},
+): Promise<ChannelConnectorAgentSessionDriverStatusResponse> {
+  return requestJson<ChannelConnectorAgentSessionDriverStatusResponse>(
+    '/api/channel-connectors/agent-sessions',
+    jsonBody(payload),
+  );
 }

@@ -53,6 +53,7 @@ test("Channel Connectors page calls only channel connector APIs", () => {
     "/api/channel-connectors/daemon/config",
     "/api/channel-connectors/daemon/service",
     "/api/channel-connectors/daemon/logs",
+    "/api/channel-connectors/agent-sessions",
   ]) {
     assert.match(api, new RegExp(endpoint.replace(/\//g, "\\/")));
   }
@@ -71,7 +72,12 @@ test("Channel Connectors page calls only channel connector APIs", () => {
   assert.match(page, /metadataChatIdsText/);
   assert.match(page, /runOctoTransportSmoke/);
   assert.match(page, /runFeishuTransportSmoke/);
+  assert.match(page, /fetchChannelConnectorAgentSessions/);
+  assert.match(page, /manageChannelConnectorAgentSessions/);
+  assert.match(page, /killAgentSession/);
+  assert.match(page, /reapAgentSessions/);
   assert.match(page, /Test|测试连接/);
+  assert.match(page, /Reap idle|清理空闲/);
   assert.match(page, /Save profile|保存 Profile/);
   assert.match(page, /Save binding|保存绑定/);
   assert.match(page, /wechat/);

@@ -2,6 +2,7 @@ import { parseJsonBody, sendJson } from "../../core/http.js";
 import type { StudioRouter } from "../../core/router.js";
 import type {
   ChannelConnectorsDaemonRequest,
+  ChannelConnectorAgentSessionActionRequest,
   ChannelConnectorCommandActionRequest,
   ChannelConnectorFeishuWebhookRequest,
   ChannelConnectorFeishuTransportSmokeRequest,
@@ -156,6 +157,23 @@ export function registerChannelConnectorsRoutes(router: StudioRouter): void {
   router.get("/api/channel-connectors/daemon/logs", (_req, res, routeCtx) => {
     try {
       sendJson(res, 200, routeCtx.services.channelConnectors.getDaemonLogs());
+    } catch (error) {
+      sendChannelConnectorsError(res, error);
+    }
+  });
+
+  router.get("/api/channel-connectors/agent-sessions", async (_req, res, routeCtx) => {
+    try {
+      sendJson(res, 200, await routeCtx.services.channelConnectors.getAgentSessions());
+    } catch (error) {
+      sendChannelConnectorsError(res, error);
+    }
+  });
+
+  router.post("/api/channel-connectors/agent-sessions", async (req, res, routeCtx) => {
+    try {
+      const payload = await parseJsonBody<ChannelConnectorAgentSessionActionRequest>(req);
+      sendJson(res, 200, await routeCtx.services.channelConnectors.manageAgentSessions(payload));
     } catch (error) {
       sendChannelConnectorsError(res, error);
     }

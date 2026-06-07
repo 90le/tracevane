@@ -41,6 +41,8 @@ import {
   type ChannelConnectorOctoTransportSmokeRequest,
   type ChannelConnectorOctoTransportSmokeResponse,
   type ChannelConnectorAgentId,
+  type ChannelConnectorAgentSessionActionRequest,
+  type ChannelConnectorAgentSessionDriverStatusResponse,
   type ChannelConnectorPermissionMode,
   type ChannelConnectorPlatformBinding,
   type ChannelConnectorPlatformId,
@@ -151,6 +153,8 @@ export interface ChannelConnectorsService {
   getDaemonConfig(): ChannelConnectorsDaemonConfigResponse;
   getDaemonService(): Promise<ChannelConnectorsDaemonResponse>;
   manageDaemonService(payload?: ChannelConnectorsDaemonRequest): Promise<ChannelConnectorsDaemonResponse>;
+  getAgentSessions(): Promise<ChannelConnectorAgentSessionDriverStatusResponse>;
+  manageAgentSessions(payload?: ChannelConnectorAgentSessionActionRequest): Promise<ChannelConnectorAgentSessionDriverStatusResponse>;
   getDaemonLogs(limit?: number): ChannelConnectorsLogsResponse;
 }
 
@@ -484,6 +488,34 @@ function daemonEntryPath(config: StudioServerConfig): string {
 
 function managementEndpoint(): string {
   return `http://127.0.0.1:${MANAGEMENT_PORT}`;
+}
+
+async function requestDaemonAgentSessions(
+  payload?: ChannelConnectorAgentSessionActionRequest | null,
+): Promise<ChannelConnectorAgentSessionDriverStatusResponse> {
+  const method = payload ? "POST" : "GET";
+  const response = await fetch(`${managementEndpoint()}/agent-sessions`, {
+    method,
+    headers: payload ? { "content-type": "application/json" } : {},
+    body: payload ? JSON.stringify(payload) : undefined,
+  });
+  const text = await response.text();
+  let body: unknown = null;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = text;
+  }
+  if (!response.ok) {
+    const message = typeof body === "object" && body && "message" in body
+      ? String((body as { message?: unknown }).message || "")
+      : "";
+    const error = typeof body === "object" && body && "error" in body
+      ? String((body as { error?: unknown }).error || "")
+      : "";
+    throw new Error(message || error || `Channel daemon agent session request failed with HTTP ${response.status}`);
+  }
+  return body as ChannelConnectorAgentSessionDriverStatusResponse;
 }
 
 function buildRuntimeConfig(
@@ -2431,6 +2463,16 @@ export function createChannelConnectorsService(
     });
   }
 
+  async function getAgentSessions(): Promise<ChannelConnectorAgentSessionDriverStatusResponse> {
+    return requestDaemonAgentSessions(null);
+  }
+
+  async function manageAgentSessions(
+    payload: ChannelConnectorAgentSessionActionRequest = {},
+  ): Promise<ChannelConnectorAgentSessionDriverStatusResponse> {
+    return requestDaemonAgentSessions(payload);
+  }
+
   async function getStatus(): Promise<ChannelConnectorsStatusResponse> {
     const service = await getDaemonService();
     return {
@@ -2494,6 +2536,8 @@ export function createChannelConnectorsService(
     getDaemonConfig: currentConfig,
     getDaemonService,
     manageDaemonService,
+    getAgentSessions,
+    manageAgentSessions,
     getDaemonLogs,
   };
 }

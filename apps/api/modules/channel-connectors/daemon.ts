@@ -16,6 +16,8 @@ import type {
   ChannelConnectorFeishuTransportResult,
   ChannelConnectorAgentProfile,
   ChannelConnectorInboundAttachment,
+  ChannelConnectorAgentSessionActionRequest,
+  ChannelConnectorAgentSessionDriverStatusResponse,
   ChannelConnectorOctoTransportConfig,
   ChannelConnectorOctoInboundMessage,
   ChannelConnectorOctoInboundRequest,
@@ -342,6 +344,11 @@ interface ChannelDaemonAgentSessionDriverState {
   defaultMode: "one-shot";
   implementation: "codex-app-server-experimental";
   persistentDriverReady: true;
+  policy: {
+    idleTimeoutMs: number;
+    maxSessions: number;
+    fallbackOnCrash: boolean;
+  };
   requestedPersistentBindings: ChannelDaemonAgentSessionDriverBindingState[];
   bindings: ChannelDaemonAgentSessionDriverBindingState[];
   activeSessions: ChannelConnectorAgentSessionDriverStatus[];
@@ -529,10 +536,105 @@ function buildAgentSessionDriverState(
     defaultMode: "one-shot",
     implementation: "codex-app-server-experimental",
     persistentDriverReady: true,
+    policy: channelAgentSessionDriverPool.policy(),
     requestedPersistentBindings: bindings.filter((binding) => binding.requestedMode === "persistent"),
     bindings,
     activeSessions,
   };
+}
+
+function agentSessionDriverStatusResponse(
+  config: ChannelConnectorsDaemonRuntimeConfig,
+  input: {
+    reaped?: number;
+    killed?: ChannelConnectorAgentSessionDriverStatusResponse["killed"];
+  } = {},
+): ChannelConnectorAgentSessionDriverStatusResponse {
+  const state = buildAgentSessionDriverState(config);
+  return {
+    ok: true,
+    checkedAt: new Date().toISOString(),
+    ...state,
+    policy: channelAgentSessionDriverPool.policy(),
+    ...(input.reaped == null ? {} : { reaped: input.reaped }),
+    killed: input.killed ?? null,
+  };
+}
+
+function parseRequestJson<T>(req: http.IncomingMessage): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)));
+    });
+    req.on("end", () => {
+      const raw = Buffer.concat(chunks).toString("utf8").trim();
+      if (!raw) {
+        resolve({} as T);
+        return;
+      }
+      try {
+        resolve(JSON.parse(raw) as T);
+      } catch (error) {
+        reject(error);
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+function sendDaemonJson(res: http.ServerResponse, statusCode: number, body: unknown): void {
+  res.statusCode = statusCode;
+  res.setHeader("content-type", "application/json; charset=utf-8");
+  res.end(JSON.stringify(body));
+}
+
+async function handleAgentSessionManagement(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  config: ChannelConnectorsDaemonRuntimeConfig,
+): Promise<void> {
+  if (req.method === "GET") {
+    const reaped = await channelAgentSessionDriverPool.reapIdle();
+    sendDaemonJson(res, 200, agentSessionDriverStatusResponse(config, { reaped }));
+    return;
+  }
+  if (req.method !== "POST") {
+    sendDaemonJson(res, 405, { ok: false, error: "method_not_allowed" });
+    return;
+  }
+  const payload = await parseRequestJson<ChannelConnectorAgentSessionActionRequest>(req);
+  const action = payload.action || "status";
+  if (action === "status") {
+    sendDaemonJson(res, 200, agentSessionDriverStatusResponse(config));
+    return;
+  }
+  if (action === "reap-idle") {
+    const reaped = await channelAgentSessionDriverPool.reapIdle();
+    sendDaemonJson(res, 200, agentSessionDriverStatusResponse(config, { reaped }));
+    return;
+  }
+  if (action === "kill") {
+    const poolKey = normalizeString(payload.poolKey);
+    if (!poolKey) {
+      sendDaemonJson(res, 400, { ok: false, error: "pool_key_required" });
+      return;
+    }
+    const killed = await channelAgentSessionDriverPool.killSessionByPoolKey(
+      poolKey,
+      normalizeString(payload.reason) || "manual-kill",
+    );
+    sendDaemonJson(res, 200, agentSessionDriverStatusResponse(config, {
+      killed: {
+        requested: true,
+        killed: killed.killed,
+        sessionId: killed.sessionId,
+        poolKey,
+      },
+    }));
+    return;
+  }
+  sendDaemonJson(res, 400, { ok: false, error: "unsupported_agent_session_action" });
 }
 
 function latestActiveRunForSession(
@@ -659,6 +761,16 @@ function startHttp(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelD
         activeRuns: state.activeRuns,
         agentRuns: state.agentRuns,
       }));
+      return;
+    }
+    if ((req.url || "").split("?")[0] === "/agent-sessions") {
+      handleAgentSessionManagement(req, res, config).catch((error) => {
+        sendDaemonJson(res, 500, {
+          ok: false,
+          error: "agent_session_management_failed",
+          message: error instanceof Error ? error.message : "Agent session management failed.",
+        });
+      });
       return;
     }
     res.statusCode = 404;

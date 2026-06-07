@@ -214,6 +214,33 @@
   gap: 8px;
 }
 
+.ccx-session-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(260px, 1.2fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.ccx-session-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.ccx-session-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.ccx-danger-text {
+  color: var(--danger) !important;
+}
+
+.ccx-danger-button {
+  border-color: color-mix(in srgb, var(--danger) 34%, var(--mono-line));
+  color: var(--danger);
+}
+
 .ccx-split {
   display: grid;
   grid-template-columns: minmax(320px, 1.1fr) minmax(240px, 0.9fr);
@@ -355,6 +382,7 @@
   }
 
   .ccx-split,
+  .ccx-session-grid,
   .ccx-form,
   .ccx-credential-box {
     grid-template-columns: minmax(0, 1fr);
