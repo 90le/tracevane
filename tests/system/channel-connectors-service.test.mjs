@@ -3325,8 +3325,8 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(sessionCardRaw, /act:\/stop/);
   assert.match(sessionCardRaw, /act:\/new/);
   assert.match(sessionCardRaw, /act:\/reset/);
-  assert.match(sessionCardRaw, /Stop Run 会停止/);
-  assert.match(sessionCardRaw, /New Session 只断开 Agent 续接/);
+  assert.match(sessionCardRaw, /查看当前状态、续接列表、history 和 usage/);
+  assert.doesNotMatch(sessionCardRaw, /Status 查看当前 IM session/);
   assert.match(sessionCardRaw, /nav:\/help session/);
 
   const currentSurface = buildChannelConnectorCommandSurface({
@@ -4103,11 +4103,11 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(statusCardAction.accepted, true);
   assert.equal(statusCardAction.commandAction.command, "/status");
   assert.equal(statusCardAction.commandAction.commandResult.ok, true);
-  assert.match(statusCardAction.feishuResponse.toast.content, /Studio Channel Status/);
+  assert.match(statusCardAction.feishuResponse.toast.content, /状态已刷新/);
   const statusCardRaw = JSON.stringify(statusCardAction.feishuResponse.card.data);
   assert.match(statusCardRaw, /当前状态/);
-  assert.match(statusCardRaw, /Studio Channel Status/);
-  assert.match(statusCardRaw, /Agent:/);
+  assert.match(statusCardRaw, /已刷新当前会话状态/);
+  assert.doesNotMatch(statusCardRaw, /Studio Channel Status/);
   assert.doesNotMatch(statusCardAction.feishuResponse.toast.content, /菜单已更新/);
 
   const newSessionCardAction = await service.dispatchFeishuWebhook({
@@ -4621,7 +4621,8 @@ test("native Channel Connectors Feishu transport sends replies and reuses tenant
     assert.equal(requests[5].body.msg_type, "interactive");
     const webhookCard = JSON.parse(requests[5].body.content);
     assert.match(webhookCard.header.title.content, /Studio Session/);
-    assert.match(JSON.stringify(webhookCard), /Studio Channel Status/);
+    assert.match(JSON.stringify(webhookCard), /已刷新当前会话状态/);
+    assert.doesNotMatch(JSON.stringify(webhookCard), /Studio Channel Status/);
 
     const cardNew = await service.dispatchFeishuWebhook({
       sendReply: true,

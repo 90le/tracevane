@@ -16,9 +16,9 @@
 
 ## 本次完成
 
-- 按 CC Go 语义增强 `/current`、`/list`、`/history [条数]`：显示 session name、短 sessionId/threadId、创建/更新时间和 IM history 数量，`/history` 支持按条数读取最近消息。
-- Feishu card surface 同步增强 Current Session、Agent Sessions、History 子卡：卡片展示 session/thread 标识、history 摘要和 usage 入口，避免只有“已执行”提示。
-- 文本 fallback 与 rich card 共用同一 session/history store，Octo 等非 Feishu 渠道也能看到同等信息密度。
+- 按 CC Go `nav:` / `act:` / `cmd:` 语义精简 Feishu 菜单：主菜单改为入口按钮网格，Session 页拆成查看区和执行区，去掉长解释列表。
+- Feishu callback toast 改为页面/动作级短回显；`/status` 不再把完整状态文本塞进卡片顶部，只显示短 notice 并保留当前 Session 卡片。
+- `/new`、`/reset` 等执行类动作仍走普通文本结果，不自动弹完整菜单，避免执行动作和导航动作混淆。
 
 ## 最近验证
 
@@ -43,5 +43,5 @@
 ## 下一步
 
 1. 设计并测试持久 session driver 最小合同：session pool、事件流、stop/kill、idle 回收、crash recovery、one-shot fallback。
-2. 继续按 CC Go 补更多设置型卡片和命令细节，优先做模型/Agent/权限/目录下拉卡片的批量操作和回显一致性。
+2. 继续按 CC Go 补更多设置型卡片和命令细节，优先做模型/Agent/权限/目录下拉卡片的批量切换、切换结果卡片和分页。
 3. 继续迁移 Claude Code / OpenCode 视觉输入、OCR、语音/STT/TTS、大文件 COS STS 和更多平台 adapter。

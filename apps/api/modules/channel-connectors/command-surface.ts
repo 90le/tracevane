@@ -894,10 +894,14 @@ function homeMenuSections(): Array<{
   sectionIds: FeishuMenuSectionId[];
 }> {
   return [
-    { title: "会话", sectionIds: ["session", "buffer", "native"] },
+    { title: "会话", sectionIds: ["session", "buffer"] },
     { title: "配置", sectionIds: ["agent", "model", "mode", "workdir"] },
-    { title: "显示", sectionIds: ["display"] },
+    { title: "显示与原生", sectionIds: ["display", "native"] },
   ];
+}
+
+function homeMenuActions(): ChannelConnectorCommandSurfaceAction[] {
+  return homeMenuSections().flatMap((group) => group.sectionIds.map((sectionId) => sectionMenuAction(sectionId)));
 }
 
 function helpSectionActions(
@@ -1370,19 +1374,16 @@ function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConn
       tag: "markdown",
       content: [
         "**会话操作**",
-        "Status 查看当前 IM session 的 Agent、模型、权限和续接状态。",
-        "Usage 汇总当前 IM session 最近 Agent run 的 Gateway token usage。",
-        "Agent Sessions 查看当前 IM session 已知续接记录，并可切换回旧续接。",
-        "Compact Context 会用 Studio Gateway 压缩当前 IM history，并开启新的 Agent 续接。",
-        "Stop Run 会停止当前 IM session 正在运行的 Agent。",
-        "New Session 只断开 Agent 续接，保留当前模型/权限/目录选择。",
-        "Reset 清空本 IM session 的 override 和 Agent 续接。",
+        "查看当前状态、续接列表、history 和 usage；执行类按钮会在当前会话生效。",
       ].join("\n"),
     },
   ];
-  pushActionRows(elements, [status, usage, current, sessions], surface, 1);
-  pushActionRows(elements, [history], surface, 1);
-  pushActionRows(elements, [compact, stop, fresh, reset], surface, 1);
+  pushActionRows(elements, [current, sessions], surface, 2, true);
+  pushActionRows(elements, [history, usage], surface, 2, true);
+  pushActionRows(elements, [status], surface, 1, true);
+  elements.push({ tag: "hr" });
+  pushActionRows(elements, [compact, stop], surface, 2, true);
+  pushActionRows(elements, [fresh, reset], surface, 2, true);
   pushSubcardNavRows(elements, surface, "session");
   return {
     config: {
@@ -1562,21 +1563,17 @@ function renderHelpMenuCard(
     const sessionSection = sectionById(surface, "session");
     const status = sessionSection?.actions.find((item) => item.id === "status") || action("status", "Status", "/status");
     const fresh = sessionSection?.actions.find((item) => item.id === "new") || action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true });
-    pushActionRows(elements, [status, fresh], surface, 2, true);
+    elements.push({
+      tag: "markdown",
+      content: [
+        "**菜单入口**",
+        "会话 / 配置 / 显示与原生",
+        "选择一个区域进入设置页；切换类动作会停留在对应页面并回显结果。",
+      ].join("\n"),
+    });
+    pushActionRows(elements, homeMenuActions(), surface, 2, true);
     elements.push({ tag: "hr" });
-    for (const group of homeMenuSections()) {
-      elements.push({
-        tag: "markdown",
-        content: `**${group.title}**`,
-      });
-      for (const sectionId of group.sectionIds) {
-        const section = sectionById(surface, sectionId);
-        if (!section) continue;
-        elements.push(commandSurfaceListItemElement(sectionMenuAction(sectionId), surface, {
-          showCurrent: false,
-        }));
-      }
-    }
+    pushActionRows(elements, [status, fresh], surface, 2, true);
     elements.push({
       tag: "note",
       elements: [plainText("未列出的 /xxx 默认透传给 Agent；与 Studio 命令冲突时用 /native。")],

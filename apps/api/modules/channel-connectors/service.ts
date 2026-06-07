@@ -1060,7 +1060,9 @@ function commandActionNotice(
   if (actionKind === "nav") return null;
   const text = normalizeString(commandResult.replyText || commandResult.passthroughText);
   if (!text) return null;
-  const title = commandResult.action === "status" ? "当前状态"
+  const action = normalizeString(commandResult.action).toLowerCase();
+  if (action === "list") return null;
+  const title = action === "status" ? "当前状态"
     : commandResult.action === "usage" ? "用量统计"
       : commandResult.action === "show" ? "缓存内容"
         : commandResult.action === "set" ? "设置已应用"
@@ -1068,12 +1070,59 @@ function commandActionNotice(
             : commandResult.action === "reset" ? "会话已重置"
               : commandResult.action === "list" ? "可选项"
                 : commandResult.action === "passthrough" ? "已发送给 Agent"
-                  : "执行结果";
+                : "执行结果";
   return {
     title,
-    text,
+    text: action === "status" ? "已刷新当前会话状态。" : text,
     ok: commandResult.ok,
   };
+}
+
+function commandActionToastContent(
+  commandResult: {
+    handled?: boolean | null;
+    command?: string | null;
+    action?: string | null;
+    ok?: boolean | null;
+  } | null | undefined,
+  actionKind: "nav" | "act" | "cmd" | null,
+): string {
+  const command = normalizeString(commandResult?.command);
+  const action = normalizeString(commandResult?.action).toLowerCase();
+  if (actionKind === "nav") {
+    const label = commandActionPageLabel(command);
+    return label ? `已打开${label}` : "菜单已打开";
+  }
+  if (!commandResult?.handled) return command ? `已发送 ${command}` : "已发送给 Agent";
+  if (commandResult.ok === false) return "命令执行失败，详情见卡片或回复";
+  if (action === "status") return "状态已刷新";
+  if (action === "usage") return "用量已刷新";
+  if (action === "set") return "设置已应用";
+  if (action === "list") return "列表已刷新";
+  if (action === "new") return "新会话已开启";
+  if (action === "reset") return "会话已重置";
+  return command ? `已执行 ${command}` : "命令已执行";
+}
+
+function commandActionPageLabel(command: string): string | null {
+  const parts = normalizeString(command).replace(/^[/%]+/, "").split(/\s+/).filter(Boolean);
+  const name = (parts[0] || "").toLowerCase();
+  const sub = (parts[1] || "").toLowerCase();
+  if (!name) return null;
+  const section = name === "help" ? sub || "home" : name;
+  if (section === "home" || section === "menu" || section === "help") return "主菜单";
+  if (["session", "status"].includes(section)) return "会话菜单";
+  if (["current"].includes(section)) return "当前会话";
+  if (["list", "sessions", "switch"].includes(section)) return "续接列表";
+  if (["history"].includes(section)) return "会话历史";
+  if (["agent", "agents", "project", "profile"].includes(section)) return "Agent 设置";
+  if (["model", "models"].includes(section)) return "模型设置";
+  if (["mode", "permission", "permissions", "reasoning", "effort"].includes(section)) return "权限与推理";
+  if (["display", "stream", "tools", "tool"].includes(section)) return "显示设置";
+  if (["buffer", "buffers", "reply-buffer", "reply-buffers"].includes(section)) return "Reply Buffer";
+  if (["workdir", "dir", "pwd", "cd", "chdir"].includes(section)) return "工作目录";
+  if (["native", "raw", "pass"].includes(section)) return "原生 Agent";
+  return null;
 }
 
 function shouldReturnCommandActionCard(
@@ -1775,7 +1824,8 @@ export function createChannelConnectorsService(
         renderer,
         models,
       });
-      const toastContent = action.commandResult?.replyText
+      const toastContent = commandActionToastContent(action.commandResult, extractChannelConnectorSurfaceActionPayload(parsed.actionValue).actionKind);
+      const textReplyContent = action.commandResult?.replyText
         || action.commandResult?.passthroughText
         || action.skippedReason
         || "Studio command accepted.";
@@ -1791,7 +1841,7 @@ export function createChannelConnectorsService(
           },
           card: { type: "raw", data: action.feishuCard },
         };
-      } else if (request.sendReply === true && toastContent) {
+      } else if (request.sendReply === true && textReplyContent) {
         const transportConfig = feishuTransportFromBinding(resolved.binding);
         if (!transportConfig) {
           accepted = false;
@@ -1803,7 +1853,7 @@ export function createChannelConnectorsService(
         } else {
           transport = await sendFeishuTextMessage(transportConfig, {
             chatId: parsed.channelId || "",
-            content: toastContent,
+            content: textReplyContent,
           }, resolvedPaths.feishuTokenCacheFile);
           accepted = transport.ok === true;
           skippedReason = transport.ok === true ? null : "feishu_transport_send_failed";

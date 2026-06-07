@@ -2492,7 +2492,8 @@ function feishuCommandNotice(input: {
   if (normalizeString(input.command.action).toLowerCase() === "help") return null;
   const text = normalizeString(input.command.replyText || input.command.passthroughText);
   if (!text) return null;
-  const action = input.command.action;
+  const action = normalizeString(input.command.action).toLowerCase();
+  if (action === "list") return null;
   const title = action === "status" ? "当前状态"
     : action === "usage" ? "用量统计"
     : action === "show" ? "缓存内容"
@@ -2504,7 +2505,7 @@ function feishuCommandNotice(input: {
                 : "执行结果";
   return {
     title,
-    text,
+    text: action === "status" ? "已刷新当前会话状态。" : text,
     ok: input.command.ok,
   };
 }
@@ -2522,9 +2523,11 @@ function feishuCommandToast(input: {
     };
   }
   if (input.actionKind === "nav") {
+    const command = normalizeString(input.command.command);
+    const label = feishuCommandPageLabel(command);
     return {
       type: "info",
-      content: "菜单已更新",
+      content: label ? `已打开${label}` : "菜单已打开",
     };
   }
   const command = normalizeString(input.command.command);
@@ -2534,10 +2537,44 @@ function feishuCommandToast(input: {
       content: "命令执行失败，结果已显示在卡片中",
     };
   }
+  const action = normalizeString(input.command.action).toLowerCase();
+  if (action === "status") {
+    return { type: "info", content: "状态已刷新" };
+  }
+  if (action === "usage") {
+    return { type: "info", content: "用量已刷新" };
+  }
+  if (action === "set") {
+    return { type: "info", content: "设置已应用" };
+  }
+  if (action === "list") {
+    return { type: "info", content: "列表已刷新" };
+  }
   return {
     type: "info",
     content: command ? `已执行 ${command}` : "命令已执行",
   };
+}
+
+function feishuCommandPageLabel(command: string): string | null {
+  const parts = normalizeString(command).replace(/^[/%]+/, "").split(/\s+/).filter(Boolean);
+  const name = (parts[0] || "").toLowerCase();
+  const sub = (parts[1] || "").toLowerCase();
+  if (!name) return null;
+  const section = name === "help" ? sub || "home" : name;
+  if (section === "home" || section === "menu" || section === "help") return "主菜单";
+  if (["session", "status"].includes(section)) return "会话菜单";
+  if (["current"].includes(section)) return "当前会话";
+  if (["list", "sessions", "switch"].includes(section)) return "续接列表";
+  if (section === "history") return "会话历史";
+  if (["agent", "agents", "project", "profile"].includes(section)) return "Agent 设置";
+  if (["model", "models"].includes(section)) return "模型设置";
+  if (["mode", "permission", "permissions", "reasoning", "effort"].includes(section)) return "权限与推理";
+  if (["display", "stream", "tools", "tool"].includes(section)) return "显示设置";
+  if (["buffer", "buffers", "reply-buffer", "reply-buffers"].includes(section)) return "Reply Buffer";
+  if (["workdir", "dir", "pwd", "cd", "chdir"].includes(section)) return "工作目录";
+  if (["native", "raw", "pass"].includes(section)) return "原生 Agent";
+  return null;
 }
 
 function buildFeishuCommandCard(input: {
