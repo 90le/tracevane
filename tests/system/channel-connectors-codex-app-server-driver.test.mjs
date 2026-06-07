@@ -109,7 +109,49 @@ class FakeCodexAppServerTransport {
       return;
     }
     if (message.method === "thread/compact/start") {
+      const turnId = `turn-${this.nextTurnId}`;
+      this.nextTurnId += 1;
       respond({});
+      setTimeout(() => {
+        this.emit({
+          method: "turn/started",
+          params: {
+            threadId: this.nextThreadId,
+            turn: { id: turnId, status: "running" },
+          },
+        });
+        this.emit({
+          method: "item/completed",
+          params: {
+            threadId: this.nextThreadId,
+            turnId,
+            completedAtMs: Date.now(),
+            item: {
+              type: "contextCompaction",
+              id: "compact-1",
+            },
+          },
+        });
+        this.emit({
+          method: "warning",
+          params: {
+            message: "Long threads and multiple compactions can cause the model to be less accurate.",
+          },
+        });
+        this.emit({
+          method: "turn/completed",
+          params: {
+            threadId: this.nextThreadId,
+            turn: {
+              id: turnId,
+              status: "completed",
+              items: [],
+              error: null,
+              durationMs: 5,
+            },
+          },
+        });
+      }, 0);
       return;
     }
     if (message.method === "turn/interrupt") {
@@ -266,6 +308,7 @@ test("Codex app-server driver maps /compact to native compact request", async ()
     permissionMode: "suggest",
   });
 
+  const progress = [];
   const result = await session.runTurn({
     mode: "persistent",
     key: {
@@ -278,16 +321,19 @@ test("Codex app-server driver maps /compact to native compact request", async ()
     },
     messageId: "m-compact",
     agentTurnRequest: agentTurnRequest({ messageId: "m-compact", nativeCommand: "/compact" }),
+    onProgress: (event) => progress.push(event),
     runOneShot: async () => {
       throw new Error("compact should not fall back to one-shot");
     },
   });
 
   assert.equal(result.ok, true);
-  assert.match(result.replyText, /compact/);
+  assert.equal(result.replyText, "Codex compact 已完成。");
   assert.equal(transport.messages.filter((message) => message.method === "thread/start").length, 1);
   assert.equal(transport.messages.filter((message) => message.method === "thread/compact/start").length, 1);
   assert.equal(transport.messages.find((message) => message.method === "thread/compact/start").params.threadId, "thread-app-server-1");
+  assert.ok(progress.some((event) => event.rawType === "item/completed" && event.itemType === "contextCompaction"));
+  assert.ok(progress.some((event) => event.rawType === "turn/completed" && event.type === "completed"));
 });
 
 test("Codex app-server driver uses real thread sandbox mode and turn sandbox policy shapes", async () => {

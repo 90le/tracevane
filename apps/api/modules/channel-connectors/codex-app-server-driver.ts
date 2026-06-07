@@ -114,6 +114,10 @@ function compactCommand(command: string | null | undefined): boolean {
   return normalizeString(command).toLowerCase() === "/compact";
 }
 
+function compactWaitTimeoutMs(requestTimeoutMs: number): number {
+  return Math.max(requestTimeoutMs, 60_000);
+}
+
 function agentResult(input: {
   messageId: string;
   model: string | null;
@@ -257,22 +261,113 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
     await this.ensureThread();
 
     if (compactCommand(input.agentTurnRequest.nativeCommand)) {
-      await this.request("thread/compact/start", { threadId: this.threadId });
-      const event = progressEvent({
-        type: "completed",
-        rawType: "thread/compact/start",
-        itemType: "contextCompaction",
-        text: "Codex compact started",
+      const progressEvents: ChannelConnectorAgentProgressEvent[] = [];
+      let compactTurnId: string | null = null;
+      let sawContextCompaction = false;
+      let settled = false;
+      let timeout: NodeJS.Timeout | null = null;
+      let completeCompact: (error?: Error) => void = () => undefined;
+      const pushEvent = (event: ChannelConnectorAgentProgressEvent): void => {
+        progressEvents.push(event);
+        input.onProgress?.(event);
+      };
+      const compactCompletion = new Promise<void>((resolve, reject) => {
+        const done = (error?: Error): void => {
+          if (settled) return;
+          settled = true;
+          if (timeout) clearTimeout(timeout);
+          this.activeTurnCompleted = null;
+          if (error) reject(error);
+          else resolve();
+        };
+        completeCompact = done;
+        timeout = setTimeout(() => {
+          done(new Error("Codex app-server compact timed out."));
+        }, compactWaitTimeoutMs(this.requestTimeoutMs));
+        this.activeTurnCompleted = (message) => {
+          const method = normalizeString(message.method);
+          const params = isRecord(message.params) ? message.params : {};
+          if (method === "warning") {
+            const event = progressEvent({
+              type: "event",
+              rawType: method,
+              text: normalizeString(params.message) || normalizeString(params.warning) || "Codex compact warning",
+            });
+            pushEvent(event);
+            return;
+          }
+          if (method === "turn/started") {
+            const turn = isRecord(params.turn) ? params.turn : {};
+            compactTurnId = normalizeString(turn.id) || compactTurnId;
+            const event = progressEvent({ type: "running", rawType: method, text: "Codex app-server compact started" });
+            pushEvent(event);
+            return;
+          }
+          if (method === "item/completed") {
+            const item = isRecord(params.item) ? params.item : {};
+            const itemType = normalizeString(item.type);
+            if (itemType !== "contextCompaction") return;
+            compactTurnId = normalizeString(params.turnId) || compactTurnId;
+            sawContextCompaction = true;
+            const event = progressEvent({
+              type: "completed",
+              rawType: method,
+              itemType,
+              text: "Codex compact context completed",
+            });
+            pushEvent(event);
+            if (!compactTurnId) done();
+            return;
+          }
+          if (method === "thread/compacted") {
+            const event = progressEvent({
+              type: "completed",
+              rawType: method,
+              itemType: "contextCompaction",
+              text: "Codex compact completed",
+            });
+            pushEvent(event);
+            done();
+            return;
+          }
+          if (method !== "turn/completed") return;
+          const turn = isRecord(params.turn) ? params.turn : {};
+          const completedTurnId = normalizeString(turn.id) || normalizeString(params.turnId);
+          if (compactTurnId && completedTurnId && completedTurnId !== compactTurnId) return;
+          if (!compactTurnId && !sawContextCompaction) return;
+          const status = normalizeString(turn.status) || "completed";
+          const failed = status === "failed" || status === "cancelled" || status === "interrupted";
+          const error = isRecord(turn.error) ? normalizeString(turn.error.message) : normalizeString(turn.error);
+          const event = progressEvent({
+            type: failed ? "failed" : "completed",
+            rawType: method,
+            itemType: "contextCompaction",
+            text: `Codex app-server compact ${status}`,
+          });
+          pushEvent(event);
+          if (failed) done(new Error(error || `Codex app-server compact ${status}.`));
+          else done();
+        };
       });
-      input.onProgress?.(event);
+      try {
+        await this.request("thread/compact/start", { threadId: this.threadId });
+        await compactCompletion;
+      } catch (error) {
+        completeCompact(error instanceof Error ? error : new Error(String(error)));
+        await compactCompletion.catch(() => undefined);
+        throw error;
+      } finally {
+        if (!settled) completeCompact(new Error("Codex app-server compact cancelled."));
+        this.activeTurnCompleted = null;
+      }
       return agentResult({
         messageId: input.messageId,
         model: this.model,
         cwd: this.cwd,
-        replyText: "Codex compact 已提交到持久 session。",
+        replyText: "Codex compact 已完成。",
         durationMs: Date.now() - startedAt,
         ok: true,
-        progressEvents: [event],
+        progressEvents,
         threadId: this.threadId,
         resumed: true,
       });
