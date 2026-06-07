@@ -727,6 +727,60 @@ function menuTabActions(
   ));
 }
 
+function homeMenuAction(): ChannelConnectorCommandSurfaceAction {
+  return action("home-menu", "主菜单", "/help", {
+    actionKind: "nav",
+  });
+}
+
+function sectionMenuAction(
+  sectionId: FeishuMenuSectionId,
+  options: Partial<Omit<ChannelConnectorCommandSurfaceAction, "id" | "label" | "command">> = {},
+): ChannelConnectorCommandSurfaceAction {
+  return action(
+    `section-${sectionId}`,
+    FEISHU_MENU_SECTION_LABELS[sectionId],
+    `/help ${sectionId}`,
+    {
+      actionKind: "nav",
+      description: sectionSummary(sectionId),
+      ...options,
+    },
+  );
+}
+
+function sectionSummary(sectionId: FeishuMenuSectionId): string {
+  switch (sectionId) {
+    case "session":
+      return "状态、新会话、重置当前 IM 会话";
+    case "agent":
+      return "切换当前会话绑定的 CLI Agent Profile";
+    case "model":
+      return "从 Studio Gateway 可用模型中选择";
+    case "mode":
+      return "切换当前会话权限模式";
+    case "display":
+      return "流式进度和工具过程显示开关";
+    case "buffer":
+      return "查看群聊长回复的完整缓存";
+    case "workdir":
+      return "查看或切换 Agent 工作目录";
+    case "native":
+      return "进入 Agent 原生 slash/skills 命令";
+  }
+}
+
+function homeMenuSections(): Array<{
+  title: string;
+  sectionIds: FeishuMenuSectionId[];
+}> {
+  return [
+    { title: "会话", sectionIds: ["session", "buffer", "native"] },
+    { title: "配置", sectionIds: ["agent", "model", "mode", "workdir"] },
+    { title: "显示", sectionIds: ["display"] },
+  ];
+}
+
 function helpSectionActions(
   section: ChannelConnectorCommandSurfaceSection,
   surface: ChannelConnectorCommandSurface,
@@ -824,9 +878,17 @@ function selectStaticElement(input: {
 }
 
 function backToHelpAction(sectionId: FeishuMenuSectionId): ChannelConnectorCommandSurfaceAction {
-  return action(`back-help-${sectionId}`, "返回菜单", `/help ${sectionId}`, {
+  return action(`back-help-${sectionId}`, "返回分组", `/help ${sectionId}`, {
     actionKind: "nav",
   });
+}
+
+function pushSubcardNavRows(
+  elements: Array<Record<string, unknown>>,
+  surface: ChannelConnectorCommandSurface,
+  sectionId: FeishuMenuSectionId,
+): void {
+  pushActionRows(elements, [backToHelpAction(sectionId), homeMenuAction()], surface, 2, true);
 }
 
 function renderModelPickerCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
@@ -861,7 +923,7 @@ function renderModelPickerCard(surface: ChannelConnectorCommandSurface): Channel
       viewId: "model",
     }),
   ];
-  pushActionRows(elements, [backToHelpAction("model")], surface, 1);
+  pushSubcardNavRows(elements, surface, "model");
   elements.push({
     tag: "note",
     elements: [plainText("选择只作用于当前 IM session；Profile 默认值不会被改写。")],
@@ -906,7 +968,7 @@ function renderModePickerCard(surface: ChannelConnectorCommandSurface): ChannelC
       viewId: "mode",
     }),
   ];
-  pushActionRows(elements, [backToHelpAction("mode")], surface, 1);
+  pushSubcardNavRows(elements, surface, "mode");
   elements.push({
     tag: "note",
     elements: [plainText("权限只作用于当前 IM session；YOLO 代表高权限直通。")],
@@ -956,7 +1018,7 @@ function renderAgentPickerCard(surface: ChannelConnectorCommandSurface): Channel
       viewId: "agent",
     }));
   }
-  pushActionRows(elements, [backToHelpAction("agent")], surface, 1);
+  pushSubcardNavRows(elements, surface, "agent");
   elements.push({
     tag: "note",
     elements: [plainText("切换只作用于当前 IM session；模型和权限会恢复目标 Profile 默认值。")],
@@ -1013,7 +1075,7 @@ function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): Chann
       viewId: "workdir",
     }),
   ];
-  pushActionRows(elements, [backToHelpAction("workdir")], surface, 1);
+  pushSubcardNavRows(elements, surface, "workdir");
   elements.push({
     tag: "note",
     elements: [plainText("切换目录会断开旧 Agent 续接，避免上下文指向错误目录。")],
@@ -1061,7 +1123,7 @@ function renderDisplayCard(surface: ChannelConnectorCommandSurface): ChannelConn
   pushActionRows(elements, [displayStatus, defaults], surface, 2, true);
   pushActionRows(elements, [streamOn, streamOff], surface, 2, true);
   pushActionRows(elements, [toolsOn, toolsOff], surface, 2, true);
-  pushActionRows(elements, [backToHelpAction("display")], surface, 1);
+  pushSubcardNavRows(elements, surface, "display");
   return {
     config: {
       wide_screen_mode: true,
@@ -1094,7 +1156,7 @@ function renderBufferCard(surface: ChannelConnectorCommandSurface): ChannelConne
     },
   ];
   pushActionRows(elements, [list, latest], surface, 2, true);
-  pushActionRows(elements, [backToHelpAction("buffer")], surface, 1);
+  pushSubcardNavRows(elements, surface, "buffer");
   elements.push({
     tag: "note",
     elements: [plainText("也可以直接发送 /buffer <id|前缀|latest>。")],
@@ -1130,7 +1192,7 @@ function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConn
     },
   ];
   pushActionRows(elements, [status, fresh, reset], surface, 1);
-  pushActionRows(elements, [backToHelpAction("session")], surface, 1);
+  pushSubcardNavRows(elements, surface, "session");
   return {
     config: {
       wide_screen_mode: true,
@@ -1146,8 +1208,43 @@ function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConn
 function renderHelpMenuCard(
   surface: ChannelConnectorCommandSurface,
 ): ChannelConnectorFeishuInteractiveCard {
-  const selectedSectionId = normalizeChannelConnectorCommandSurfaceSection(surface.selectedSectionId) || "session";
+  const selectedSectionId = normalizeChannelConnectorCommandSurfaceSection(surface.selectedSectionId);
   const elements: Array<Record<string, unknown>> = [statusBlock(surface)];
+
+  if (!selectedSectionId) {
+    const sessionSection = sectionById(surface, "session");
+    const status = sessionSection?.actions.find((item) => item.id === "status") || action("status", "Status", "/status");
+    const fresh = sessionSection?.actions.find((item) => item.id === "new") || action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true });
+    pushActionRows(elements, [status, fresh], surface, 2, true);
+    elements.push({ tag: "hr" });
+    for (const group of homeMenuSections()) {
+      elements.push({
+        tag: "markdown",
+        content: `**${group.title}**`,
+      });
+      for (const sectionId of group.sectionIds) {
+        const section = sectionById(surface, sectionId);
+        if (!section) continue;
+        elements.push(commandSurfaceListItemElement(sectionMenuAction(sectionId), surface, {
+          showCurrent: false,
+        }));
+      }
+    }
+    elements.push({
+      tag: "note",
+      elements: [plainText("未列出的 /xxx 默认透传给 Agent；与 Studio 命令冲突时用 /native。")],
+    });
+    return {
+      config: {
+        wide_screen_mode: true,
+      },
+      header: {
+        title: plainText(surface.title),
+        template: "blue",
+      },
+      elements,
+    };
+  }
 
   pushActionRows(elements, menuTabActions(selectedSectionId), surface, 2, true);
 
@@ -1162,6 +1259,7 @@ function renderHelpMenuCard(
     }
   }
 
+  pushActionRows(elements, [homeMenuAction()], surface, 1);
   elements.push({
     tag: "note",
     elements: [plainText("未列出的 /xxx 默认透传给 Agent；需要原生冲突命令时用 /native。")],

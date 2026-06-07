@@ -2828,10 +2828,15 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(raw, /nav:\/help model/);
   assert.match(raw, /session_key/);
   assert.match(raw, /当前 Agent/);
+  assert.match(raw, /会话/);
+  assert.match(raw, /配置/);
+  assert.match(raw, /显示/);
+  assert.match(raw, /nav:\/help session/);
   assert.match(raw, /\/help model/);
   assert.match(raw, /\/help display/);
   assert.match(raw, /\/help buffer/);
   assert.match(raw, /New Session/);
+  assert.doesNotMatch(raw, /act:\/reset/);
   assert.doesNotMatch(raw, /\/mode yolo/);
   assert.ok(feishu.elements.some((element) => element.tag === "column_set" && element.flex_mode === "bisect"));
 
@@ -2891,6 +2896,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   const modelHelpRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(modelSurface));
   assert.match(modelHelpRaw, /nav:\/model/);
   assert.match(modelHelpRaw, /模型选择器/);
+  assert.match(modelHelpRaw, /"action":"nav:\/help"/);
   assert.doesNotMatch(modelHelpRaw, /act:\/model gpt-5\.5/);
   assert.match(modelHelpRaw, /act:\/model default/);
   assert.doesNotMatch(modelHelpRaw, /\/mode yolo/);
@@ -2910,6 +2916,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(modelCardRaw, /act:\/model gpt-5\.5/);
   assert.match(modelCardRaw, /Profile 默认模型/);
   assert.match(modelCardRaw, /nav:\/help model/);
+  assert.match(modelCardRaw, /"action":"nav:\/help"/);
   assert.match(modelCardRaw, /initial_option/);
   assert.doesNotMatch(modelCardRaw, /\/mode yolo/);
 
