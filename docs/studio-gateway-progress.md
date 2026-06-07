@@ -33,6 +33,7 @@
 - Feishu `/current` 和 `/history` 已按 CC 信息子卡落地：command surface 注入真实 Agent session 摘要与 IM history store，导航类 `show` 动作优先返回卡片，执行类 `show` 仍按文本结果处理。
 - Feishu `/list` 和 `/switch <序号|sessionId前缀>` 已按 CC list card 语义落地：从本地 Agent session store 读取当前 IM session 的已知续接记录，卡片可直接切回目标 Agent/Profile/model/workDir 组合。
 - Octo 已补 CC dmwork 同款 REST heartbeat 备用保活：默认 5 分钟调用 `/v1/bot/heartbeat`，支持 metadata 覆盖，失败只记日志不影响 WS。
+- 对照 CC Go `platform/dmwork/socket.go`、`platform/feishu/ws_shared.go`、`platform/wecom/websocket.go` 复核长连接稳定合同：共享连接、快速 ACK、心跳/PONG、断线重连、消息去重和可观测状态是核心；Studio 已补 Octo REST heartbeat runtime 指标，Feishu watchdog 重建会清理旧 client 引用，避免长期运行反复重建后堆积旧 WS client。
 - 本机仍有旧 `cc-connect.service` 在运行，但其 Feishu App ID 与 Studio 当前 App 不同；当前修复不依赖停止旧 CC。
 
 ## 最近验证
@@ -50,6 +51,7 @@
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "Octo transport|Feishu webhook|Feishu long-connection|Octo long connection|routes are registered"`，37 个子测试通过，覆盖 `/new`/`/reset` 无卡片和 Octo REST heartbeat。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "command surface|Feishu webhook|Channel Connectors routes"`，38 个子测试通过，覆盖 Feishu 主菜单/分组/current/history 子卡、card action、真实 history store 和 route callback。
 - 通过：同一 `command surface|Feishu webhook|Channel Connectors routes` 测试集新增覆盖 `/list` session list card、`/switch 1` card action、真实 `channel-sessions.json` 读取与当前 IM session 切换。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "Feishu long-connection|Octo long connection|registers Octo|routes are registered"`，38 个子测试通过，覆盖 Feishu watchdog/client 清理断言和 Octo REST heartbeat runtime 指标。
 - 通过：`curl http://127.0.0.1:18797/status`，Octo `octo-studio-cc` connected，Feishu shared WS connected，`activeRuns=[]`。
 - 通过：重启 Channel daemon 后 `feishu-seen-messages.json` 从持久化恢复 107 条，Feishu shared WS connected，未再出现 connected-idle 立即循环重启。
 - 通过：前端 `http://127.0.0.1:5176` 与后端 `http://127.0.0.1:3762/api/channel-connectors/status` 可访问。

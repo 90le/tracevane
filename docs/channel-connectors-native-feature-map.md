@@ -37,7 +37,7 @@
 - 已完成：F3d 真实 Octo DM 文本往返、Codex session resume、runner progress/failure observability：用户消息入站 -> Codex CLI Agent -> Studio Gateway -> Octo sendMessage；同一 IM session 续接同一 Codex thread；daemon `/status` 暴露 `activeRuns`，事件日志记录 start/progress/finish，失败会发短回执。2026-06-06 本机 `studio-cc` live smoke 复验通过，最近 4 条 Octo inbound run 均 `agentOk=true` / `replySent=true`。
 - 已完成：F3e IM command control + native passthrough：`/help`、`/command`、`/cmd`、`/status`、`/agent`、`/model`、`/mode`、`/dir`、`/cd`、`/new`、`/reset`、`/display`、`/stream`、`/tools`；session override 独立存储，`/mode yolo` 等只作用于当前 IM session；未知 `/xxx` 默认透传给当前 Agent，冲突命令用 `/native <命令>`；`/model` 后继续复用同一 Codex thread，`/cd` 和 `/new` 会断开旧续接；`/stream` 与 `/tools` 分别控制 IM 中间态和工具/思考消息。
 - 已完成：F3f Feishu ingress + outbound contract：`/api/channel-connectors/adapters/feishu/webhook` 支持 URL verification、card action、bot menu、message receive，`transport-smoke` 支持 tenant token cache、send message、patch card；message webhook 默认可把 command-router 回复发回 Feishu。
-- 已完成：F3f Feishu daemon 长连接：使用官方 SDK `WSClient` / `EventDispatcher` 接 `im.message.receive_v1`、`card.action.trigger`、`application.bot.menu_v6`；按 CC 约束同一 Feishu App 多 binding 共享单条 WS；支持 chatId 过滤、thread/root 字段保留、command-router 回复和 Agent runner 回包；启动后 0 入站快速续连覆盖假 ready。
+- 已完成：F3f Feishu daemon 长连接：使用官方 SDK `WSClient` / `EventDispatcher` 接 `im.message.receive_v1`、`card.action.trigger`、`application.bot.menu_v6`；按 CC 约束同一 Feishu App 多 binding 共享单条 WS；支持 chatId 过滤、thread/root 字段保留、command-router 回复和 Agent runner 回包；启动后 0 入站快速续连覆盖假 ready，watchdog 重建会清理旧 client 引用。
 - 已完成：F3f live 闭环：本地用户配置写入 Feishu binding、tenant token cache 验证通过、callback verification 通过、错误 verification token 不回显 challenge、systemd `WorkingDirectory` 模板修复、daemon active/enabled、真实 `/status`/`/help` 入站并 `replySent=true`；CLI runner 补用户级 PATH fallback，覆盖 systemd 下找不到 `codex`；仓库只记录脱敏状态。
 - 已完成：Feishu card/menu/progress loop：参考 CC `renderHelpGroupCard` / `renderCurrentCard` / `renderHistoryCard` / `renderListCard` / `ListItem` / `ButtonsEqual` 结构，`/help` 为主菜单 Dashboard，`/help <section>` 为分组菜单，`/current`/`/history`/`/list` 为真实信息子卡，`/switch <序号|sessionId前缀>` 可切换当前 IM session 已知 Agent session，`/model`/`/agent`/`/mode` 等为可操作子卡；文本 slash 与卡片点击共用 command-router，导航动作刷新卡片。
 - 已完成：Feishu outbound 稳定性：文本、卡片、patch、reaction、成员列表等 JSON API 对短暂 503/网络错误执行 CC 风格 transient retry，并把实际 requestCount 写入诊断。
@@ -51,7 +51,7 @@
 - 已完成：F4 Octo 入站 URL 字段兼容：除 `url` 外，识别 `file_url/fileUrl/media_url/mediaUrl/download_url/downloadUrl/cdn_url/cdnUrl/origin_url/originUrl/src/href`，减少平台字段差异导致的 `[image]` 无本地路径。
 - 已完成：F4 Octo payload-only 附件补回与插件协议对齐：daemon 进入 Agent 前把 payload 推断附件写回 `attachments`；支持 GIF=3、RichText=14 图文混排、有序 image blocks 和多图 `mediaUrls`。
 - 已完成：F4 图片非视觉模型保护：Feishu/Octo 图片附件可 staging；`glm-5` 等未标记 vision 的模型仍启动受控 Agent turn，但 prompt 禁止视觉推断并要求询问下一步，普通文件仍进入 Agent，避免路径诱导的看图幻觉。
-- 已完成：F4 Octo 出站媒体基础合同：参考 CC dmwork `upload -> send media`，支持小文件 `/v1/bot/file/upload` multipart 上传与 `/v1/bot/sendMessage` image/file payload；本机 `studio-cc` 小文本文件真实 smoke 已通过；大文件 COS STS 仍留后续。
+- 已完成：F4 Octo 出站媒体基础合同：参考 CC dmwork `upload -> send media`，支持小文件 `/v1/bot/file/upload` multipart 上传与 `/v1/bot/sendMessage` image/file payload；runtime 暴露 REST heartbeat 成功/失败指标，便于识别“WS 在线但 REST 通讯异常”；本机 `studio-cc` 小文本文件真实 smoke 已通过；大文件 COS STS 仍留后续。
 - 已完成：F4 IM history context：按 session 保存最近 user/assistant 脱敏摘要，Agent prompt 注入短上下文，`/new` / `/reset` 清理 history。
 - 已完成：F4 群聊 context：Agent prompt 注入 channel/sender/bot/reply/mention/成员摘要，飞书完整群成员列表后续再接平台 API。
 - 已完成：F4 长回复 group buffer：群聊长回复保存到本地 buffer，只发送短预览和 buffer id；私聊保持原拆分。

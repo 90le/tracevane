@@ -4535,6 +4535,8 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /feishuConnections/);
   assert.match(daemonSource, /startFeishuWatchdog/);
   assert.match(daemonSource, /restartFeishuGroupClient/);
+  assert.match(daemonSource, /clients\.indexOf\(currentClient\)/);
+  assert.match(daemonSource, /clients\.splice\(index,\s*1\)/);
   assert.match(daemonSource, /watchdog_non_connected_/);
   assert.match(daemonSource, /watchdog_connected_idle_/);
   assert.match(daemonSource, /watchdog_zero_inbound_/);
@@ -4949,6 +4951,12 @@ test("native Channel Connectors Octo long connection follows CC Go heartbeat and
   assert.match(daemonSource, /DEFAULT_OCTO_REST_HEARTBEAT_MS\s*=\s*5\s*\*\s*60_?000/);
   assert.match(daemonSource, /sendOctoHeartbeat\(transport\)/);
   assert.match(daemonSource, /octoRestHeartbeatMs\(binding\)/);
+  assert.match(daemonSource, /restHeartbeatIntervalMs/);
+  assert.match(daemonSource, /restHeartbeatSuccesses/);
+  assert.match(daemonSource, /restHeartbeatFailures/);
+  assert.match(daemonSource, /restHeartbeatLastOkAt/);
+  assert.match(daemonSource, /restHeartbeatLastErrorAt/);
+  assert.match(daemonSource, /restHeartbeatLastError/);
   assert.match(daemonSource, /"octo_rest_heartbeat_ms"/);
   assert.match(daemonSource, /"octo_heartbeat_ms"/);
   assert.match(daemonSource, /"octo_reconnect_jitter_ms"/);

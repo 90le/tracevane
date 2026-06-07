@@ -158,6 +158,12 @@ interface ChannelDaemonOctoConnectionState extends OctoWukongSocketStatus {
   robotId: string | null;
   apiUrl: string | null;
   credentialSource: "register" | "cache" | null;
+  restHeartbeatIntervalMs: number;
+  restHeartbeatSuccesses: number;
+  restHeartbeatFailures: number;
+  restHeartbeatLastOkAt: string | null;
+  restHeartbeatLastErrorAt: string | null;
+  restHeartbeatLastError: string | null;
 }
 
 interface ChannelDaemonFeishuConnectionState {
@@ -890,6 +896,12 @@ function connectionState(
     robotId: status.robotId || null,
     apiUrl: status.apiUrl || null,
     credentialSource: status.credentialSource || null,
+    restHeartbeatIntervalMs: status.restHeartbeatIntervalMs || 0,
+    restHeartbeatSuccesses: status.restHeartbeatSuccesses || 0,
+    restHeartbeatFailures: status.restHeartbeatFailures || 0,
+    restHeartbeatLastOkAt: status.restHeartbeatLastOkAt || null,
+    restHeartbeatLastErrorAt: status.restHeartbeatLastErrorAt || null,
+    restHeartbeatLastError: status.restHeartbeatLastError || null,
   };
 }
 
@@ -3143,6 +3155,13 @@ async function startOctoConnection(input: {
     writeRuntime(config, state);
     return;
   }
+  const octoStatus = (status: Partial<ChannelDaemonOctoConnectionState>): ChannelDaemonOctoConnectionState => connectionState(
+    binding,
+    {
+      ...(state.octoConnections[binding.id] || {}),
+      ...status,
+    },
+  );
   const socket = new OctoWukongSocket({
     bindingId: binding.id,
     wsUrl: resolved.entry.wsUrl,
@@ -3155,7 +3174,7 @@ async function startOctoConnection(input: {
     reconnectJitterMs: octoReconnectJitterMs(binding),
     logger: logger(config),
     onConnected: () => {
-      state.octoConnections[binding.id] = connectionState(binding, {
+      state.octoConnections[binding.id] = octoStatus({
         ...socket.status(),
         apiUrl: transport.apiUrl,
         robotId: resolved.entry.robotId,
@@ -3165,7 +3184,7 @@ async function startOctoConnection(input: {
       writeRuntime(config, state);
     },
     onDisconnected: () => {
-      state.octoConnections[binding.id] = connectionState(binding, {
+      state.octoConnections[binding.id] = octoStatus({
         ...socket.status(),
         apiUrl: transport.apiUrl,
         robotId: resolved.entry.robotId,
@@ -3174,7 +3193,7 @@ async function startOctoConnection(input: {
       writeRuntime(config, state);
     },
     onError: () => {
-      state.octoConnections[binding.id] = connectionState(binding, {
+      state.octoConnections[binding.id] = octoStatus({
         ...socket.status(),
         apiUrl: transport.apiUrl,
         robotId: resolved.entry.robotId,
@@ -3183,7 +3202,7 @@ async function startOctoConnection(input: {
       writeRuntime(config, state);
     },
     onMessage: (message) => {
-      state.octoConnections[binding.id] = connectionState(binding, {
+      state.octoConnections[binding.id] = octoStatus({
         ...socket.status(),
         apiUrl: transport.apiUrl,
         robotId: resolved.entry.robotId,
@@ -3211,23 +3230,57 @@ async function startOctoConnection(input: {
   if (restHeartbeatMs > 0) {
     const timer = setInterval(() => {
       void sendOctoHeartbeat(transport).then((result) => {
+        const current = state.octoConnections[binding.id] || octoStatus({
+          ...socket.status(),
+          apiUrl: transport.apiUrl,
+          robotId: resolved.entry.robotId,
+          credentialSource: resolved.source,
+        });
+        const checkedAt = new Date().toISOString();
         if (result.ok !== true) {
+          state.octoConnections[binding.id] = octoStatus({
+            ...socket.status(),
+            apiUrl: transport.apiUrl,
+            robotId: resolved.entry.robotId,
+            credentialSource: resolved.source,
+            restHeartbeatIntervalMs: restHeartbeatMs,
+            restHeartbeatFailures: current.restHeartbeatFailures + 1,
+            restHeartbeatSuccesses: current.restHeartbeatSuccesses,
+            restHeartbeatLastOkAt: current.restHeartbeatLastOkAt,
+            restHeartbeatLastErrorAt: checkedAt,
+            restHeartbeatLastError: result.error || `HTTP ${result.statusCode || "unknown"}`,
+          });
           appendLog(config.paths.log, "Octo REST heartbeat failed", {
             bindingId: binding.id,
             statusCode: result.statusCode,
             error: result.error,
           });
+        } else {
+          state.octoConnections[binding.id] = octoStatus({
+            ...socket.status(),
+            apiUrl: transport.apiUrl,
+            robotId: resolved.entry.robotId,
+            credentialSource: resolved.source,
+            restHeartbeatIntervalMs: restHeartbeatMs,
+            restHeartbeatFailures: current.restHeartbeatFailures,
+            restHeartbeatSuccesses: current.restHeartbeatSuccesses + 1,
+            restHeartbeatLastOkAt: checkedAt,
+            restHeartbeatLastErrorAt: current.restHeartbeatLastErrorAt,
+            restHeartbeatLastError: null,
+          });
         }
+        writeRuntime(config, state);
       });
     }, restHeartbeatMs);
     timer.unref();
     restHeartbeatTimers.push(timer);
   }
-  state.octoConnections[binding.id] = connectionState(binding, {
+  state.octoConnections[binding.id] = octoStatus({
     ...socket.status(),
     apiUrl: transport.apiUrl,
     robotId: resolved.entry.robotId,
     credentialSource: resolved.source,
+    restHeartbeatIntervalMs: restHeartbeatMs,
   });
   writeRuntime(config, state);
   socket.connect();
@@ -3603,6 +3656,11 @@ function restartFeishuGroupClient(input: {
   group.watchdogRestarting = true;
   group.reconnects += 1;
   group.lastError = reason;
+  const currentClient = group.client;
+  if (currentClient) {
+    const index = clients.indexOf(currentClient);
+    if (index >= 0) clients.splice(index, 1);
+  }
   appendLog(config.paths.log, "Feishu WebSocket watchdog restarting client", {
     key: group.key,
     reason,
