@@ -129,16 +129,17 @@ const MAX_FEISHU_PING_TIMEOUT_SECONDS = 300;
 const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 45_000;
 const MIN_FEISHU_WATCHDOG_RESTART_MS = 10_000;
 const MAX_FEISHU_WATCHDOG_RESTART_MS = 600_000;
-// CC Go keeps Feishu's SDK WebSocket alive and only lets the SDK reconnect on
-// real disconnects. A quiet connected socket is normal, so active renewal stays
-// opt-in for diagnostics instead of running by default.
+// CC Go keeps Feishu's SDK WebSocket alive and lets the SDK reconnect on real
+// disconnects. A quiet connected socket is normal, so connected-idle renewal
+// stays opt-in. Feishu can still report "ready" without delivering startup
+// events, so keep a single startup no-inbound sanity reconnect by default.
 const DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS = 0;
 const MIN_FEISHU_CONNECTED_IDLE_RENEW_MS = 60_000;
 const MAX_FEISHU_CONNECTED_IDLE_RENEW_MS = 3_600_000;
-const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS = 0;
+const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS = 30_000;
 const MIN_FEISHU_ZERO_INBOUND_RENEW_MS = 30_000;
 const MAX_FEISHU_ZERO_INBOUND_RENEW_MS = 15 * 60_000;
-const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX = 0;
+const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX = 1;
 const MAX_FEISHU_ZERO_INBOUND_RENEW_MAX = 10;
 const DEFAULT_OCTO_HEARTBEAT_MS = 30_000;
 const MIN_OCTO_HEARTBEAT_MS = 5_000;
@@ -4349,6 +4350,8 @@ function startFeishuClientForGroup(input: {
     group,
     seenMessages,
   });
+  const pingTimeout = feishuPingTimeoutSeconds(group);
+  const feishuWsConfig = pingTimeout > 0 ? { pingTimeout } : undefined;
   const client = new WSClient({
     appId: group.appId,
     appSecret: group.refs[0].transport.appSecret,
@@ -4357,9 +4360,7 @@ function startFeishuClientForGroup(input: {
     loggerLevel: LoggerLevel.info,
     autoReconnect: true,
     handshakeTimeoutMs: 20_000,
-    wsConfig: {
-      pingTimeout: feishuPingTimeoutSeconds(group),
-    },
+    ...(feishuWsConfig ? { wsConfig: feishuWsConfig } : {}),
     source: "openclaw-studio-channel-daemon",
     onReady: () => {
       group.lastConnectedAt = new Date().toISOString();

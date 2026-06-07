@@ -4646,11 +4646,14 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /watchdog_zero_inbound_/);
   assert.match(daemonSource, /DEFAULT_FEISHU_PING_TIMEOUT_SECONDS\s*=\s*0/);
   assert.match(daemonSource, /DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS\s*=\s*0/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS\s*=\s*0/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX\s*=\s*0/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS\s*=\s*30_?000/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX\s*=\s*1/);
   assert.match(daemonSource, /DEFAULT_FEISHU_WATCHDOG_RESTART_MS\s*=\s*45_?000/);
   assert.match(daemonSource, /MIN_FEISHU_WATCHDOG_RESTART_MS\s*=\s*10_?000/);
   assert.match(daemonSource, /feishuPingTimeoutSeconds/);
+  assert.match(daemonSource, /const pingTimeout = feishuPingTimeoutSeconds\(group\)/);
+  assert.match(daemonSource, /const feishuWsConfig = pingTimeout > 0 \? \{ pingTimeout \} : undefined/);
+  assert.match(daemonSource, /\.\.\.\(feishuWsConfig \? \{ wsConfig: feishuWsConfig \} : \{\}\)/);
   assert.match(daemonSource, /feishuConnectedIdleRenewMs/);
   assert.match(daemonSource, /feishuZeroInboundRenewMs/);
   assert.match(daemonSource, /feishuZeroInboundRenewMax/);
