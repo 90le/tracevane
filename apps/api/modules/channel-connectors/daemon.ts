@@ -123,7 +123,7 @@ import {
   type OctoWukongSocketStatus,
 } from "./octo-wukong.js";
 
-const DEFAULT_FEISHU_PING_TIMEOUT_SECONDS = 0;
+const DEFAULT_FEISHU_PING_TIMEOUT_SECONDS = 10;
 const MIN_FEISHU_PING_TIMEOUT_SECONDS = 0;
 const MAX_FEISHU_PING_TIMEOUT_SECONDS = 300;
 const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 45_000;
@@ -134,8 +134,8 @@ const MAX_FEISHU_WATCHDOG_RESTART_MS = 600_000;
 // that stop delivering events after a successful inbound turn. Keep refreshes
 // low-frequency and scoped to the current connection lifecycle instead of
 // looping on stale process-wide counters.
-const DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS = 60_000;
-const MIN_FEISHU_CONNECTED_IDLE_RENEW_MS = 60_000;
+const DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS = 30_000;
+const MIN_FEISHU_CONNECTED_IDLE_RENEW_MS = 15_000;
 const MAX_FEISHU_CONNECTED_IDLE_RENEW_MS = 3_600_000;
 const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS = 30_000;
 const MIN_FEISHU_ZERO_INBOUND_RENEW_MS = 30_000;
@@ -1045,7 +1045,7 @@ function updateFeishuRuntime(
 }
 
 function latestFeishuLifecycleActivityAt(group: ChannelDaemonFeishuGroup): string | null {
-  const candidates = [group.lifecycleLastReceivedAt, group.lastConnectedAt]
+  const candidates = [group.lifecycleLastReceivedAt]
     .map((value) => {
       const timestamp = value ? Date.parse(value) : NaN;
       return Number.isFinite(timestamp) ? { value, timestamp } : null;
@@ -4392,6 +4392,9 @@ function startFeishuClientForGroup(input: {
       appendLog(config.paths.log, "Feishu WebSocket connected", {
         key: group.key,
         bindingIds: group.refs.map((ref) => ref.binding.id),
+        pingTimeoutSeconds: feishuPingTimeoutSeconds(group),
+        connectedIdleRenewAfterMs: feishuConnectedIdleRenewMs(group),
+        zeroInboundRenewAfterMs: feishuZeroInboundRenewMs(group),
       });
       updateFeishuRuntime(config, state, group);
     },
@@ -4535,7 +4538,12 @@ function startFeishuWatchdog(input: {
         const renewAfterMs = feishuConnectedIdleRenewMs(group);
         const lastActivityAt = latestFeishuLifecycleActivityAt(group);
         const idleForMs = lastActivityAt ? nowMs - new Date(lastActivityAt).getTime() : 0;
-        if (renewAfterMs > 0 && lastActivityAt && idleForMs >= renewAfterMs) {
+        if (
+          renewAfterMs > 0
+          && group.lifecycleReceivedMessages > 0
+          && lastActivityAt
+          && idleForMs >= renewAfterMs
+        ) {
           restartFeishuGroupClient({
             config,
             state,
