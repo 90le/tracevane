@@ -16,9 +16,11 @@
 ## 本次完成
 
 - Feishu 过程展示保持“一张 Progress card 持续 patch 追加/更新进度”，卡片内部改为分段 element + `hr`，状态、思考、工具调用、工具结果、错误使用统一符号和 `text_tag`。
-- Feishu 最终回复参考 CC 的 Markdown card 路线，但不添加 header/note/“最终回复”等包装标题；卡片只承载模型正文，平台因卡片限制拒绝时记录 card error 并走文本兼容发送。
+- Feishu 最终回复参考 CC 的 Markdown card 路线，改用 schema 2.0 `body.markdown` 承载模型正文，不添加 header/note/“最终回复”等包装标题；远程图片 Markdown 会降级成普通链接，避免 Feishu card `image_key` 错误。
+- Feishu final fallback 从 card -> text 改为 card -> post(md) -> text；interactive card 因平台限制失败时，优先用 `msg_type=post` 继续保留 Markdown 富文本渲染。
 - Octo 已确认支持 Markdown 文本渲染；最终回复保持模型原始 Markdown 文本，不添加 `Studio Reply` 包装。
-- Octo/非富卡片渠道过程消息去掉 `Studio Progress` 大标题，仅保留紧凑状态行、分隔线和缩进正文；工具输入/结果、exit/status、TodoWrite 和失败回执复用同一套格式化。
+- Octo 不能 patch 气泡消息，过程流不再发送 start/running/completed/event 这类低信息气泡；私聊只显示思考、工具调用、工具结果和错误，完成态由最终回复承担。
+- Octo/非富卡片渠道过程消息去掉 `Studio Progress` 大标题，仅保留短状态行和正文；工具输入/结果、exit/status、TodoWrite 和失败回执复用同一套代码块格式化。
 - OpenClaw Octo 插件 RichText=14 仍作为后续图文混排参考，不用于纯文本 Markdown 回复包装。
 - 完成态不再给 Octo 私聊单独刷一条 `completed` 过程消息；最终回复本身承担完成态，群聊仍默认隐藏中间过程。
 - Channel daemon 事件日志补齐 `replyRequestCount`、卡片/文本发送次数、ingress->agent start、首个进度延迟、进度间隔和 agent elapsed，便于区分平台 API、Agent 和模型耗时。
@@ -26,7 +28,7 @@
 ## 最近验证
 
 - 通过：`npm run build:api`。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "IM commands|Feishu webhook|command surface|Feishu long-connection|Octo long connection|routes are registered"`，38 个 Channel Connectors 子测试通过。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "Feishu transport|Feishu webhook|Feishu long-connection|Octo long connection|IM commands|command surface|routes are registered"`，38 个 Channel Connectors 子测试通过。
 - 通过：`git diff --check`。
 - 通过：`systemctl --user restart openclaw-studio-channel-connectors.service`，随后 `is-active/is-enabled` 为 `active/enabled`。
 - 通过：`npm run dev:restart`，前端 `http://127.0.0.1:5176`，后端 `http://127.0.0.1:3762`。
@@ -43,6 +45,6 @@
 
 ## 下一步
 
-1. 用 Feishu/Octo 私聊各发一条带工具调用的问题，确认 Feishu 单卡 patch、Feishu 无标题最终 Markdown 卡片、Octo 原始 Markdown 最终回复、过程块和失败回执样式；群聊各发一条，确认默认只出最终回复。
+1. 用 Feishu/Octo 私聊各发一条带工具调用的问题，确认 Feishu 单卡 patch、Feishu 无标题最终 Markdown 富文本、Octo 只显示思考/工具/错误气泡和原始 Markdown 最终回复；群聊各发一条，确认默认只出最终回复。
 2. 继续按 CC Go 补 Feishu 更多设置型子卡、下拉/按钮动作和 command-router 细节，并同步到 Octo 文本命令体验。
 3. 继续迁移 Claude Code / OpenCode 视觉输入、OCR、语音/STT/TTS、大文件 COS STS 和更多平台 adapter。

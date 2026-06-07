@@ -793,6 +793,74 @@ export async function sendFeishuTextMessage(
   }
 }
 
+export async function sendFeishuPostMessage(
+  config: ChannelConnectorFeishuTransportConfig,
+  input: {
+    chatId: string;
+    content: string;
+  },
+  cachePath?: string | null,
+): Promise<ChannelConnectorFeishuTransportResult> {
+  let requestCount = 0;
+  let tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"] = cachePath ? "miss" : "disabled";
+  try {
+    if (!normalizeString(input.chatId)) throw new Error("Feishu chatId is required.");
+    if (!normalizeString(input.content)) throw new Error("Feishu post content is required.");
+    const chunks = splitChannelConnectorTextChunks(input.content, FEISHU_TEXT_CHUNK_RUNES)
+      .filter((chunk) => normalizeString(chunk));
+    if (!chunks.length) throw new Error("Feishu post content is required.");
+    const token = await getFeishuTenantToken(config, cachePath);
+    requestCount += token.requestCount;
+    tokenCache = token.tokenCache;
+    const messageIds: string[] = [];
+    let statusCode: number | null = null;
+    for (const chunk of chunks) {
+      const response = await feishuJsonRequest(config, {
+        method: "POST",
+        path: "/open-apis/im/v1/messages?receive_id_type=chat_id",
+        token: token.token,
+        payload: {
+          receive_id: input.chatId,
+          msg_type: "post",
+          content: JSON.stringify({
+            zh_cn: {
+              content: [[{ tag: "md", text: chunk }]],
+            },
+          }),
+        },
+      });
+      requestCount += response.requestCount;
+      statusCode = response.statusCode;
+      const data = recordFrom(response.body.data);
+      const messageId = normalizeString(data.message_id);
+      if (messageId) messageIds.push(messageId);
+    }
+    return transportResult({
+      attempted: true,
+      ok: true,
+      action: "send-post",
+      apiUrl: config.apiUrl,
+      statusCode,
+      requestCount,
+      tokenCache,
+      messageId: messageIds[0] || null,
+      messageIds,
+      chunkCount: chunks.length,
+    });
+  } catch (error) {
+    return transportResult({
+      attempted: true,
+      ok: false,
+      action: "send-post",
+      apiUrl: config.apiUrl,
+      statusCode: errorStatusCode(error),
+      error: errorMessage(error),
+      requestCount: Math.max(requestCount + errorRequestCount(error), 1),
+      tokenCache,
+    });
+  }
+}
+
 export async function sendFeishuCardMessage(
   config: ChannelConnectorFeishuTransportConfig,
   input: {

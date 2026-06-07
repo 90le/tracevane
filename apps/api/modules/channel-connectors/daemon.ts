@@ -89,6 +89,7 @@ import {
   patchFeishuCardMessage,
   removeFeishuMessageReaction,
   sendFeishuCardMessage,
+  sendFeishuPostMessage,
   sendFeishuTextMessage,
 } from "./feishu-transport.js";
 import {
@@ -873,10 +874,12 @@ function renderPlainProgressMessage(input: {
   body: string;
   meta?: string;
 }): string {
+  const heading = [
+    `${input.icon} **${input.title}**`,
+    input.meta || "",
+  ].filter(Boolean).join(" · ");
   const lines = [
-    `${input.icon} ${input.title}`,
-    input.meta ? `状态: ${input.meta}` : "",
-    input.body ? "---" : "",
+    heading,
     input.body ? indentPlainProgressBody(input.body) : "",
   ].filter(Boolean);
   return lines.join("\n");
@@ -1450,7 +1453,10 @@ function shouldSendChannelProgressEvent(
   event: ChannelConnectorAgentProgressEvent,
   defaults: ChannelConnectorProgressDefaults,
 ): boolean {
-  return shouldSendFeishuProgressEvent(control, event, defaults);
+  if (!channelConnectorStreamMessagesEnabled(control, defaults)) return false;
+  if (event.type === "assistant" || event.type === "running" || event.type === "completed" || event.type === "event") return false;
+  if ((event.type === "tool" || event.type === "reasoning") && !channelConnectorToolMessagesEnabled(control, defaults)) return false;
+  return ["reasoning", "tool", "failed", "error"].includes(event.type);
 }
 
 function createFeishuProgressCardState(): FeishuProgressCardState {
@@ -1865,12 +1871,30 @@ function renderFeishuProgressCard(input: {
 }
 
 function sanitizeFeishuCardMarkdown(value: string): string {
-  const text = String(value || "").trim();
-  return text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, label: string, url: string) => {
-    const target = normalizeString(url);
-    if (/^(https?:\/\/|mailto:|#|\/)/i.test(target)) return match;
-    return `${label} (${target})`;
-  });
+  const text = preprocessFeishuCardMarkdown(String(value || "").trim());
+  return text
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (_match, label: string, url: string) => {
+      const target = normalizeString(url);
+      const title = normalizeString(label) || "图片";
+      return /^(https?:\/\/)/i.test(target) ? `[${title}](${target})` : `${title} (${target})`;
+    })
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, label: string, url: string) => {
+      const target = normalizeString(url);
+      if (/^(https?:\/\/)/i.test(target)) return match;
+      return `${label} (${target})`;
+    });
+}
+
+function preprocessFeishuCardMarkdown(value: string): string {
+  let output = "";
+  const chars = Array.from(value);
+  for (let index = 0; index < chars.length; index += 1) {
+    if (index > 0 && chars[index] === "`" && chars[index + 1] === "`" && chars[index + 2] === "`" && chars[index - 1] !== "\n") {
+      output += "\n";
+    }
+    output += chars[index];
+  }
+  return output;
 }
 
 function renderFeishuFinalReplyCard(input: {
@@ -1878,21 +1902,24 @@ function renderFeishuFinalReplyCard(input: {
   replyText: string;
   sessionKey: string;
   status: "ok" | "failed";
-}): ChannelConnectorFeishuInteractiveCard {
+}): Record<string, unknown> {
   void input.project;
   void input.sessionKey;
   void input.status;
   const content = sanitizeFeishuCardMarkdown(input.replyText);
   return {
+    schema: "2.0",
     config: {
       wide_screen_mode: true,
     },
-    elements: [
-      {
-        tag: "markdown",
-        content,
-      },
-    ],
+    body: {
+      elements: [
+        {
+          tag: "markdown",
+          content,
+        },
+      ],
+    },
   };
 }
 
@@ -1972,6 +1999,21 @@ async function sendFeishuFinalReply(input: {
         cardError: null,
       };
     }
+    const postResult = await sendFeishuPostMessage(input.transport, {
+      chatId: input.chatId,
+      content: sanitizeFeishuCardMarkdown(input.replyText),
+    }, cachePath);
+    if (postResult.ok === true) {
+      return {
+        result: {
+          ...postResult,
+          requestCount: cardResult.requestCount + postResult.requestCount,
+        },
+        transportAction: "send-final-post-after-card",
+        cardAttempted: true,
+        cardError: cardResult.error,
+      };
+    }
     // Feishu cards can be rejected for platform limits or markdown edge cases;
     // text send preserves delivery while keeping the card error observable.
     const textResult = await sendFeishuTextMessage(input.transport, {
@@ -1982,7 +2024,7 @@ async function sendFeishuFinalReply(input: {
       result: textResult,
       transportAction: "send-final-text-after-card",
       cardAttempted: true,
-      cardError: cardResult.error,
+      cardError: [cardResult.error, postResult.error ? `post fallback failed: ${postResult.error}` : ""].filter(Boolean).join("; "),
     };
   }
   const textResult = await sendFeishuTextMessage(input.transport, {

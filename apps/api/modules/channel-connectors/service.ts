@@ -83,6 +83,7 @@ import {
   feishuTransportFromBinding,
   patchFeishuCardMessage,
   sendFeishuCardMessage,
+  sendFeishuPostMessage,
   sendFeishuTextMessage,
   smokeFeishuTenantToken,
 } from "./feishu-transport.js";
@@ -995,7 +996,7 @@ function normalizeOctoTransportSmokeRequest(payload: ChannelConnectorOctoTranspo
 
 function normalizeFeishuTransportSmokeRequest(payload: ChannelConnectorFeishuTransportSmokeRequest | undefined): ChannelConnectorFeishuTransportSmokeRequest {
   if (!payload || !isRecord(payload)) return { action: "tenant-token" };
-  const action = payload.action === "send-message" || payload.action === "send-card" || payload.action === "patch-card" || payload.action === "tenant-token"
+  const action = payload.action === "send-message" || payload.action === "send-post" || payload.action === "send-card" || payload.action === "patch-card" || payload.action === "tenant-token"
     ? payload.action
     : "tenant-token";
   return {
@@ -1960,7 +1961,7 @@ export function createChannelConnectorsService(
         adapter: "feishu",
         binding: null,
         transport: {
-          ...emptyFeishuTransportResult(request.action === "patch-card" || request.action === "send-card" ? request.action : request.action || "tenant-token"),
+          ...emptyFeishuTransportResult(request.action === "patch-card" || request.action === "send-card" || request.action === "send-post" ? request.action : request.action || "tenant-token"),
           error: "feishu_binding_not_found",
         },
       };
@@ -1973,7 +1974,7 @@ export function createChannelConnectorsService(
         adapter: "feishu",
         binding: resolved.binding,
         transport: {
-          ...emptyFeishuTransportResult(request.action === "patch-card" || request.action === "send-card" ? request.action : request.action || "tenant-token"),
+          ...emptyFeishuTransportResult(request.action === "patch-card" || request.action === "send-card" || request.action === "send-post" ? request.action : request.action || "tenant-token"),
           error: "feishu_transport_config_missing",
         },
       };
@@ -1985,6 +1986,12 @@ export function createChannelConnectorsService(
       transport = await sendFeishuTextMessage(transportConfig, {
         chatId: request.channelId,
         content: request.content || "Studio Feishu transport smoke",
+      }, resolvedPaths.feishuTokenCacheFile);
+    } else if (request.action === "send-post") {
+      if (!request.channelId) throw new Error("channelId is required for Feishu send-post smoke.");
+      transport = await sendFeishuPostMessage(transportConfig, {
+        chatId: request.channelId,
+        content: request.content || "**Studio Feishu post smoke**\n\n```text\nmarkdown\n```",
       }, resolvedPaths.feishuTokenCacheFile);
     } else if (request.action === "send-card") {
       if (!request.channelId) throw new Error("channelId is required for Feishu send-card smoke.");

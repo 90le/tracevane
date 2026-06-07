@@ -440,7 +440,7 @@ export interface ChannelConnectorFeishuTransportConfig {
 export interface ChannelConnectorFeishuTransportResult {
   attempted: boolean;
   ok: boolean | null;
-  action: "none" | "tenant-token" | "send-message" | "send-card" | "patch-card" | "add-reaction" | "remove-reaction";
+  action: "none" | "tenant-token" | "send-message" | "send-post" | "send-card" | "patch-card" | "add-reaction" | "remove-reaction";
   apiUrl: string | null;
   statusCode: number | null;
   error: string | null;
@@ -454,7 +454,7 @@ export interface ChannelConnectorFeishuTransportResult {
 
 export interface ChannelConnectorFeishuTransportSmokeRequest {
   bindingId?: string | null;
-  action?: "tenant-token" | "send-message" | "send-card" | "patch-card";
+  action?: "tenant-token" | "send-message" | "send-post" | "send-card" | "patch-card";
   channelId?: string | null;
   messageId?: string | null;
   content?: string | null;

@@ -4097,6 +4097,24 @@ test("native Channel Connectors Feishu transport sends replies and reuses tenant
     assert.equal(requests[1].body.msg_type, "text");
     assert.equal(JSON.parse(requests[1].body.content).text, "hello feishu");
 
+    const post = await service.runFeishuTransportSmoke({
+      bindingId: "feishu-send",
+      action: "send-post",
+      channelId: "oc_chat",
+      content: "**hello**\n\n```text\nfeishu markdown\n```",
+    });
+    assert.equal(post.transport.ok, true);
+    assert.equal(post.transport.action, "send-post");
+    assert.equal(post.transport.requestCount, 1);
+    assert.equal(post.transport.tokenCache, "hit");
+    assert.equal(post.transport.messageId, "om_sent_1");
+    assert.equal(requests[2].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
+    assert.equal(requests[2].authorization, "Bearer tenant-token-1");
+    assert.equal(requests[2].body.receive_id, "oc_chat");
+    assert.equal(requests[2].body.msg_type, "post");
+    assert.equal(JSON.parse(requests[2].body.content).zh_cn.content[0][0].tag, "md");
+    assert.match(JSON.parse(requests[2].body.content).zh_cn.content[0][0].text, /feishu markdown/);
+
     const card = await service.runFeishuTransportSmoke({
       bindingId: "feishu-send",
       action: "send-card",
@@ -4108,11 +4126,11 @@ test("native Channel Connectors Feishu transport sends replies and reuses tenant
     assert.equal(card.transport.requestCount, 1);
     assert.equal(card.transport.tokenCache, "hit");
     assert.equal(card.transport.messageId, "om_sent_1");
-    assert.equal(requests[2].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
-    assert.equal(requests[2].authorization, "Bearer tenant-token-1");
-    assert.equal(requests[2].body.receive_id, "oc_chat");
-    assert.equal(requests[2].body.msg_type, "interactive");
-    assert.match(JSON.parse(requests[2].body.content).elements[0].content, /card menu/);
+    assert.equal(requests[3].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
+    assert.equal(requests[3].authorization, "Bearer tenant-token-1");
+    assert.equal(requests[3].body.receive_id, "oc_chat");
+    assert.equal(requests[3].body.msg_type, "interactive");
+    assert.match(JSON.parse(requests[3].body.content).elements[0].content, /card menu/);
 
     const patch = await service.runFeishuTransportSmoke({
       bindingId: "feishu-send",
@@ -4124,11 +4142,11 @@ test("native Channel Connectors Feishu transport sends replies and reuses tenant
     assert.equal(patch.transport.action, "patch-card");
     assert.equal(patch.transport.requestCount, 1);
     assert.equal(patch.transport.tokenCache, "hit");
-    assert.equal(requests.length, 4);
-    assert.equal(requests[3].path, "/open-apis/im/v1/messages/om_card");
-    assert.equal(requests[3].method, "PATCH");
-    assert.equal(requests[3].authorization, "Bearer tenant-token-1");
-    assert.match(JSON.parse(requests[3].body.content).elements[0].content, /patched card/);
+    assert.equal(requests.length, 5);
+    assert.equal(requests[4].path, "/open-apis/im/v1/messages/om_card");
+    assert.equal(requests[4].method, "PATCH");
+    assert.equal(requests[4].authorization, "Bearer tenant-token-1");
+    assert.match(JSON.parse(requests[4].body.content).elements[0].content, /patched card/);
 
     const webhook = await service.dispatchFeishuWebhook({
       sendReply: true,
@@ -4155,10 +4173,10 @@ test("native Channel Connectors Feishu transport sends replies and reuses tenant
     assert.equal(webhook.transport.action, "send-card");
     assert.equal(webhook.transport.tokenCache, "hit");
     assert.equal(webhook.transport.requestCount, 1);
-    assert.equal(requests.length, 5);
-    assert.equal(requests[4].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
-    assert.equal(requests[4].body.msg_type, "interactive");
-    const webhookCard = JSON.parse(requests[4].body.content);
+    assert.equal(requests.length, 6);
+    assert.equal(requests[5].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
+    assert.equal(requests[5].body.msg_type, "interactive");
+    const webhookCard = JSON.parse(requests[5].body.content);
     assert.match(webhookCard.header.title.content, /Studio Session/);
     assert.match(JSON.stringify(webhookCard), /Studio Channel Status/);
 
@@ -4190,10 +4208,10 @@ test("native Channel Connectors Feishu transport sends replies and reuses tenant
     assert.equal(cardNew.transport.tokenCache, "hit");
     assert.equal(cardNew.transport.requestCount, 1);
     assert.equal(cardNew.feishuResponse, null);
-    assert.equal(requests.length, 6);
-    assert.equal(requests[5].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
-    assert.equal(requests[5].body.msg_type, "text");
-    assert.match(JSON.parse(requests[5].body.content).text, /已开启新的 Agent 会话/);
+    assert.equal(requests.length, 7);
+    assert.equal(requests[6].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
+    assert.equal(requests[6].body.msg_type, "text");
+    assert.match(JSON.parse(requests[6].body.content).text, /已开启新的 Agent 会话/);
   });
 });
 
@@ -4628,6 +4646,11 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /function renderFeishuFinalReplyCard/);
   assert.match(daemonSource, /function sendFeishuFinalReply/);
   assert.match(daemonSource, /FEISHU_FINAL_REPLY_CARD_MAX_RUNES\s*=\s*12_000/);
+  assert.match(daemonSource, /schema:\s*"2\.0"/);
+  assert.match(daemonSource, /body:\s*\{\s*elements:/);
+  assert.match(daemonSource, /replace\(\/!\\\[/);
+  assert.match(daemonSource, /sendFeishuPostMessage/);
+  assert.match(daemonSource, /send-final-post-after-card/);
   assert.match(daemonSource, /function renderFeishuProgressCardEventElements/);
   assert.match(daemonSource, /function feishuProgressCardStatusTag/);
   assert.doesNotMatch(daemonSource, /Studio Progress/);
@@ -4643,6 +4666,8 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /agent\.progress\.card/);
   assert.match(daemonSource, /renderOctoProgressText/);
   assert.match(daemonSource, /agent\.progress\.reply/);
+  assert.match(daemonSource, /event\.type === "running"/);
+  assert.match(daemonSource, /\["reasoning",\s*"tool",\s*"failed",\s*"error"\]\.includes\(event\.type\)/);
   assert.match(daemonSource, /event\.type === "completed"[\s\S]{0,40}return;/);
   assert.match(daemonSource, /replyRequestCount/);
   assert.match(daemonSource, /progressCardSendCount/);
