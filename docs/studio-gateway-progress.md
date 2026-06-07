@@ -15,10 +15,12 @@
 
 ## 本次完成
 
-- 参考 CC Go Feishu progress renderer，优化 Studio Feishu 过程卡：工具调用用代码块展示命令/输入，工具结果显示完成/失败、exit/status 和输出，TodoWrite JSON 尽量转为可读任务列表，完成态不再展示噪声 `turn.completed` 条目。
-- Octo 私聊进度文本复用同一套工具格式化：`command_execution` 等工具会显示命令、exit/status 和输出；群聊仍默认隐藏过程，只保留最终回复。
-- 修复 Feishu `%help` / `/%help` 兼容：平台菜单或文本中使用 `%help` 会规范为 `/help`，群聊 `%help` 会被视为 directed 命令。
-- 修复 Feishu help 菜单“文本+菜单聚合”的尴尬：help/action 以菜单卡作为主响应，不再把长 help 文本塞进 notice。
+- Feishu 过程展示保持“一张 Progress card 持续 patch 追加/更新进度”，卡片内部改为分段 element + `hr`，状态、思考、工具调用、工具结果、错误使用统一符号和 `text_tag`。
+- Feishu 最终回复参考 CC 的 Markdown card 路线：启用卡片且内容在安全长度内时发送独立“最终回复”卡片；平台因卡片限制拒绝时记录 card error 并走文本兼容发送，保证答复送达。
+- Octo/非富卡片渠道进度和最终回复改为统一纯文本块：`Studio Progress` / `Studio Reply` 标题、状态符号、分隔线、缩进正文；工具输入/结果、exit/status、TodoWrite 和失败回执复用同一套格式化。
+- 已参考 OpenClaw Octo 插件：Octo `markdownCapable:false`，RichText=14 主要用于图文混排，不把纯文本最终回复强行改成 RichText。
+- 完成态不再给 Octo 私聊单独刷一条 `completed` 过程消息；最终回复本身承担完成态，群聊仍默认隐藏中间过程。
+- Channel daemon 事件日志补齐 `replyRequestCount`、卡片/文本发送次数、ingress->agent start、首个进度延迟、进度间隔和 agent elapsed，便于区分平台 API、Agent 和模型耗时。
 
 ## 最近验证
 
@@ -40,6 +42,6 @@
 
 ## 下一步
 
-1. 重启 Channel daemon 和 dev 服务后，用 Feishu/Octo 私聊各发一条带工具调用的问题，确认过程样式；群聊各发一条，确认默认只出最终回复。
+1. 用 Feishu/Octo 私聊各发一条带工具调用的问题，确认 Feishu 单卡 patch、Feishu 最终回复卡片、Octo 纯文本进度块和失败回执样式；群聊各发一条，确认默认只出最终回复。
 2. 继续按 CC Go 补 Feishu 更多设置型子卡、下拉/按钮动作和 command-router 细节，并同步到 Octo 文本命令体验。
 3. 继续迁移 Claude Code / OpenCode 视觉输入、OCR、语音/STT/TTS、大文件 COS STS 和更多平台 adapter。

@@ -151,6 +151,7 @@ const MAX_OCTO_RECONNECT_JITTER_MS = 60_000;
 const DEFAULT_OCTO_REST_HEARTBEAT_MS = 5 * 60_000;
 const MIN_OCTO_REST_HEARTBEAT_MS = 30_000;
 const MAX_OCTO_REST_HEARTBEAT_MS = 30 * 60_000;
+const FEISHU_FINAL_REPLY_CARD_MAX_RUNES = 12_000;
 
 interface ChannelDaemonOctoConnectionState extends OctoWukongSocketStatus {
   accountId: string;
@@ -237,6 +238,10 @@ interface ChannelDaemonState {
     codexThreadId: string | null;
     progressEventCount: number;
     latestProgress: ChannelConnectorAgentProgressEvent | null;
+    ingressAt?: string;
+    ingressToAgentStartMs?: number;
+    agentElapsedMs?: number;
+    firstProgressLatencyMs?: number | null;
   }>;
   agentRuns: Array<{
     checkedAt: string;
@@ -252,6 +257,13 @@ interface ChannelDaemonState {
     codexThreadId: string | null;
     progressEventCount: number;
     latestProgress: ChannelConnectorAgentProgressEvent | null;
+    ingressAt?: string;
+    startedAt?: string;
+    finishedAt?: string;
+    totalElapsedMs?: number;
+    agentElapsedMs?: number;
+    firstProgressLatencyMs?: number | null;
+    finalProgressLagMs?: number | null;
   }>;
 }
 
@@ -837,6 +849,39 @@ function octoProgressTitle(event: ChannelConnectorAgentProgressEvent): string {
   return "进度";
 }
 
+function progressKindIcon(kind: FeishuProgressCardEntryKind | ChannelConnectorAgentProgressEvent["type"]): string {
+  if (kind === "thinking" || kind === "reasoning") return "💭";
+  if (kind === "tool_use" || kind === "tool") return "🔧";
+  if (kind === "tool_result") return "🟢";
+  if (kind === "error" || kind === "failed") return "🔴";
+  if (kind === "completed") return "✅";
+  if (kind === "running") return "⏳";
+  return "•";
+}
+
+function progressResultIcon(input: { status: string | null; exitCode: string | null }): string {
+  if (progressStatusFailed(input.status) || (input.exitCode !== null && input.exitCode !== "0")) return "🔴";
+  const label = progressStatusLabel(input.status);
+  if (label === "完成" || input.exitCode === "0") return "🟢";
+  if (label === "执行中") return "⏳";
+  return "⚪";
+}
+
+function renderPlainProgressMessage(input: {
+  icon: string;
+  title: string;
+  body: string;
+  meta?: string;
+}): string {
+  const lines = [
+    `${input.icon} Studio Progress · ${input.title}`,
+    input.meta ? `状态: ${input.meta}` : "",
+    input.body ? "---" : "",
+    input.body ? indentPlainProgressBody(input.body) : "",
+  ].filter(Boolean);
+  return lines.join("\n");
+}
+
 function renderOctoProgressText(event: ChannelConnectorAgentProgressEvent): string {
   if (event.type === "tool") {
     const entry: FeishuProgressCardEntry = {
@@ -852,7 +897,32 @@ function renderOctoProgressText(event: ChannelConnectorAgentProgressEvent): stri
   }
   const title = octoProgressTitle(event);
   const text = shortMessage(event.text, 900);
-  return text ? `${title}\n${text}` : title;
+  return renderPlainProgressMessage({
+    icon: progressKindIcon(event.type),
+    title,
+    body: text,
+  });
+}
+
+function renderAgentFailureReply(error: string | null): string {
+  return renderPlainProgressMessage({
+    icon: progressKindIcon("failed"),
+    title: "Agent 运行失败",
+    body: shortMessage(error),
+  });
+}
+
+function renderOctoFinalReplyText(input: {
+  agent: string;
+  model: string | null;
+  replyText: string;
+}): string {
+  const model = normalizeString(input.model) || "default";
+  return [
+    `${progressKindIcon("completed")} Studio Reply · ${input.agent} / ${model}`,
+    "---",
+    String(input.replyText || "").trim(),
+  ].filter(Boolean).join("\n");
 }
 
 function feishuReactionEmoji(binding: ChannelConnectorRuntimeBinding): string | null {
@@ -1505,6 +1575,21 @@ function feishuProgressCardStatusText(status: FeishuProgressCardState["status"])
   return "运行中";
 }
 
+function feishuProgressCardStatusColor(status: FeishuProgressCardState["status"]): "blue" | "green" | "red" {
+  if (status === "completed") return "green";
+  if (status === "failed") return "red";
+  return "blue";
+}
+
+function feishuProgressCardStatusTag(status: FeishuProgressCardState["status"]): string {
+  const icon = status === "completed"
+    ? progressKindIcon("completed")
+    : status === "failed"
+      ? progressKindIcon("failed")
+      : progressKindIcon("running");
+  return `${icon} <text_tag color='${feishuProgressCardStatusColor(status)}'>${feishuProgressCardStatusText(status)}</text_tag>`;
+}
+
 function feishuProgressCardTemplate(status: FeishuProgressCardState["status"]): string {
   if (status === "completed") return "green";
   if (status === "failed") return "red";
@@ -1554,7 +1639,7 @@ function parseProgressToolText(entry: FeishuProgressCardEntry): {
       command = line;
       continue;
     }
-    if (!status && /^(completed|failed|success|succeeded|ok|error)$/i.test(line)) {
+    if (!status && /^(in_progress|running|started|pending|completed|failed|success|succeeded|ok|error)$/i.test(line)) {
       status = line;
       continue;
     }
@@ -1567,6 +1652,33 @@ function parseProgressToolText(entry: FeishuProgressCardEntry): {
     status,
     output: outputLines.join("\n"),
   };
+}
+
+function progressStatusLabel(value: string | null): string | null {
+  const status = normalizeString(value).toLowerCase();
+  if (!status) return null;
+  if (["in_progress", "running", "started", "pending"].includes(status)) return "执行中";
+  if (["completed", "success", "succeeded", "ok"].includes(status)) return "完成";
+  if (["failed", "error"].includes(status)) return "失败";
+  return status;
+}
+
+function progressStatusColor(value: string | null): "blue" | "green" | "red" | "grey" {
+  const status = normalizeString(value).toLowerCase();
+  if (["in_progress", "running", "started", "pending"].includes(status)) return "blue";
+  if (["completed", "success", "succeeded", "ok"].includes(status)) return "green";
+  if (["failed", "error"].includes(status)) return "red";
+  return "grey";
+}
+
+function progressStatusFailed(value: string | null): boolean {
+  return ["failed", "error"].includes(normalizeString(value).toLowerCase());
+}
+
+function progressStatusTag(value: string | null): string {
+  const label = progressStatusLabel(value);
+  if (!label) return "";
+  return `<text_tag color='${progressStatusColor(value)}'>${inlineProgressCode(label)}</text_tag>`;
 }
 
 function formatTodoWriteProgressInput(value: string): string {
@@ -1619,47 +1731,96 @@ function formatProgressToolResult(value: string): string {
   return text;
 }
 
+function indentPlainProgressBody(value: string): string {
+  const text = normalizeString(value);
+  if (!text) return "";
+  if (text.includes("```")) return text;
+  return text.split(/\r?\n/).map((line) => `  ${line}`).join("\n");
+}
+
 function renderFeishuProgressEntry(entry: FeishuProgressCardEntry): string {
-  if (entry.kind === "thinking") return `<text_tag color='grey'>思考</text_tag>\n${inlineProgressCode(entry.text)}`;
+  if (entry.kind === "thinking") return `${progressKindIcon(entry.kind)} <text_tag color='grey'>思考</text_tag>\n${inlineProgressCode(entry.text)}`;
   if (entry.kind === "tool_use") {
     const parsed = parseProgressToolText(entry);
-    const title = `<text_tag color='blue'>工具调用</text_tag> \`${inlineProgressCode(parsed.toolName)}\``;
+    const title = `${progressKindIcon(entry.kind)} <text_tag color='blue'>工具调用</text_tag> \`${inlineProgressCode(parsed.toolName)}\``;
+    const status = progressStatusTag(parsed.status);
     const body = formatProgressToolInput(parsed.toolName, parsed.command || entry.text);
-    return body ? `${title}\n${body}` : title;
+    return [title, status, body].filter(Boolean).join("\n");
   }
   if (entry.kind === "tool_result") {
     const parsed = parseProgressToolText(entry);
-    const failed = parsed.exitCode !== null && parsed.exitCode !== "0";
-    const status = failed ? "<text_tag color='red'>失败</text_tag>" : "<text_tag color='green'>完成</text_tag>";
+    const failed = progressStatusFailed(parsed.status) || (parsed.exitCode !== null && parsed.exitCode !== "0");
+    const status = failed ? "<text_tag color='red'>失败</text_tag>" : progressStatusTag(parsed.status) || "<text_tag color='green'>完成</text_tag>";
+    const icon = progressResultIcon({ status: parsed.status, exitCode: parsed.exitCode });
     const meta = [
       status,
       parsed.exitCode !== null ? `exit \`${inlineProgressCode(parsed.exitCode)}\`` : "",
       parsed.status ? `status \`${inlineProgressCode(parsed.status)}\`` : "",
     ].filter(Boolean).join(" ");
     const output = formatProgressToolResult(parsed.output);
-    return `<text_tag color='turquoise'>工具结果</text_tag> \`${inlineProgressCode(parsed.toolName)}\`\n${meta}\n${output}`;
+    return `${icon} <text_tag color='turquoise'>工具结果</text_tag> \`${inlineProgressCode(parsed.toolName)}\`\n${meta}\n${output}`;
   }
-  if (entry.kind === "error") return `<text_tag color='red'>${inlineProgressCode(entry.title)}</text_tag>\n${entry.text}`;
-  return `<text_tag color='grey'>${inlineProgressCode(entry.title)}</text_tag>\n${entry.text}`;
+  if (entry.kind === "error") return `${progressKindIcon(entry.kind)} <text_tag color='red'>${inlineProgressCode(entry.title)}</text_tag>\n${entry.text}`;
+  return `${progressKindIcon(entry.kind)} <text_tag color='grey'>${inlineProgressCode(entry.title)}</text_tag>\n${entry.text}`;
 }
 
 function renderPlainProgressEntry(entry: FeishuProgressCardEntry): string {
+  if (entry.kind === "thinking") {
+    return renderPlainProgressMessage({
+      icon: progressKindIcon(entry.kind),
+      title: "思考",
+      body: entry.text,
+    });
+  }
   if (entry.kind === "tool_use") {
     const parsed = parseProgressToolText(entry);
-    const body = formatProgressToolInput(parsed.toolName, parsed.command || entry.text);
-    return [`工具调用 ${parsed.toolName}`, body].filter(Boolean).join("\n");
+    const status = progressStatusLabel(parsed.status);
+    return renderPlainProgressMessage({
+      icon: progressKindIcon(entry.kind),
+      title: `工具调用 ${parsed.toolName}`,
+      meta: status || undefined,
+      body: formatProgressToolInput(parsed.toolName, parsed.command || entry.text),
+    });
   }
   if (entry.kind === "tool_result") {
     const parsed = parseProgressToolText(entry);
-    const failed = parsed.exitCode !== null && parsed.exitCode !== "0";
+    const failed = progressStatusFailed(parsed.status) || (parsed.exitCode !== null && parsed.exitCode !== "0");
     const meta = [
-      failed ? "失败" : "完成",
+      failed ? "失败" : progressStatusLabel(parsed.status) || "完成",
       parsed.exitCode !== null ? `exit ${parsed.exitCode}` : "",
       parsed.status ? `status ${parsed.status}` : "",
-    ].filter(Boolean).join(" ");
-    return [`工具结果 ${parsed.toolName}`, meta, formatProgressToolResult(parsed.output)].filter(Boolean).join("\n");
+    ].filter(Boolean).join(" · ");
+    return renderPlainProgressMessage({
+      icon: progressResultIcon({ status: parsed.status, exitCode: parsed.exitCode }),
+      title: `工具结果 ${parsed.toolName}`,
+      meta,
+      body: formatProgressToolResult(parsed.output),
+    });
   }
-  return [entry.title, entry.text].filter(Boolean).join("\n");
+  return renderPlainProgressMessage({
+    icon: progressKindIcon(entry.kind),
+    title: entry.title,
+    body: entry.text,
+  });
+}
+
+function renderFeishuProgressCardEventElements(entries: FeishuProgressCardEntry[]): Array<Record<string, unknown>> {
+  if (!entries.length) {
+    return [{
+      tag: "markdown",
+      content: "<text_tag color='grey'>等待进度</text_tag>\nAgent 正在启动。",
+    }];
+  }
+  const elements: Array<Record<string, unknown>> = [];
+  entries.forEach((entry, index) => {
+    if (index > 0) elements.push({ tag: "hr" });
+    const indexText = String(index + 1).padStart(2, "0");
+    elements.push({
+      tag: "markdown",
+      content: `**${indexText}** ${renderFeishuProgressEntry(entry)}`,
+    });
+  });
+  return elements;
 }
 
 function renderFeishuProgressCard(input: {
@@ -1669,23 +1830,22 @@ function renderFeishuProgressCard(input: {
 }): ChannelConnectorFeishuInteractiveCard {
   const elapsedSeconds = Math.max(0, Math.round((input.state.updatedAtMs - input.state.startedAtMs) / 1000));
   const model = input.project.model || "default";
+  const statusIcon = input.state.status === "completed"
+    ? progressKindIcon("completed")
+    : input.state.status === "failed"
+      ? progressKindIcon("failed")
+      : progressKindIcon("running");
   const footer = input.state.status === "completed"
     ? "本过程卡片已停止更新，完整答复见下一条消息。"
     : input.state.status === "failed"
       ? "本过程卡片已停止更新，错误说明见下一条消息。"
       : "过程卡片会随工具调用继续更新。";
   const headerLines = [
-    `**状态**：${feishuProgressCardStatusText(input.state.status)}`,
+    `**状态**：${feishuProgressCardStatusTag(input.state.status)}`,
     `**Agent**：${input.project.agent}`,
     `**模型**：${model}`,
     `**耗时**：${elapsedSeconds}s`,
   ];
-  const eventLines = input.state.entries.length
-    ? input.state.entries.map((entry, index) => {
-      const indexText = String(index + 1).padStart(2, "0");
-      return `**${indexText}.** ${renderFeishuProgressEntry(entry)}`;
-    }).join("\n\n")
-    : "等待 Agent 返回进度。";
   return {
     config: {
       wide_screen_mode: true,
@@ -1693,7 +1853,7 @@ function renderFeishuProgressCard(input: {
     header: {
       title: {
         tag: "plain_text",
-        content: `Studio ${input.project.agent} · ${feishuProgressCardStatusText(input.state.status)}`,
+        content: `${statusIcon} Studio ${input.project.agent} · ${feishuProgressCardStatusText(input.state.status)}`,
       },
       template: feishuProgressCardTemplate(input.state.status),
     },
@@ -1703,10 +1863,7 @@ function renderFeishuProgressCard(input: {
         content: headerLines.join("\n"),
       },
       { tag: "hr" },
-      {
-        tag: "markdown",
-        content: eventLines,
-      },
+      ...renderFeishuProgressCardEventElements(input.state.entries),
       {
         tag: "note",
         elements: [
@@ -1718,6 +1875,64 @@ function renderFeishuProgressCard(input: {
       },
     ],
   };
+}
+
+function sanitizeFeishuCardMarkdown(value: string): string {
+  const text = String(value || "").trim();
+  return text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (match, label: string, url: string) => {
+    const target = normalizeString(url);
+    if (/^(https?:\/\/|mailto:|#|\/)/i.test(target)) return match;
+    return `${label} (${target})`;
+  });
+}
+
+function renderFeishuFinalReplyCard(input: {
+  project: ChannelConnectorRuntimeProject;
+  replyText: string;
+  sessionKey: string;
+  status: "ok" | "failed";
+}): ChannelConnectorFeishuInteractiveCard {
+  const ok = input.status === "ok";
+  const model = input.project.model || "default";
+  const content = sanitizeFeishuCardMarkdown(input.replyText);
+  return {
+    config: {
+      wide_screen_mode: true,
+    },
+    header: {
+      title: {
+        tag: "plain_text",
+        content: `${ok ? progressKindIcon("completed") : progressKindIcon("failed")} Studio ${input.project.agent} · 最终回复`,
+      },
+      template: ok ? "green" : "red",
+    },
+    elements: [
+      {
+        tag: "markdown",
+        content,
+      },
+      {
+        tag: "note",
+        elements: [
+          {
+            tag: "plain_text",
+            content: `model ${model} · session ${shortMessage(input.sessionKey, 80)}`,
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function shouldSendFeishuFinalReplyCard(input: {
+  binding: ChannelConnectorRuntimeBinding;
+  replyText: string;
+  status: "ok" | "failed";
+}): boolean {
+  if (!feishuCardsEnabled(input.binding)) return false;
+  const runes = Array.from(String(input.replyText || "")).length;
+  if (runes === 0 || runes > FEISHU_FINAL_REPLY_CARD_MAX_RUNES) return false;
+  return true;
 }
 
 async function sendOrPatchFeishuProgressCard(input: {
@@ -1744,6 +1959,70 @@ async function sendOrPatchFeishuProgressCard(input: {
     chatId: input.chatId,
     card,
   }, cachePath);
+}
+
+async function sendFeishuFinalReply(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  transport: ChannelConnectorFeishuTransportConfig;
+  binding: ChannelConnectorRuntimeBinding;
+  project: ChannelConnectorRuntimeProject;
+  chatId: string;
+  sessionKey: string;
+  replyText: string;
+  status: "ok" | "failed";
+}): Promise<{
+  result: ChannelConnectorFeishuTransportResult;
+  transportAction: string;
+  cardAttempted: boolean;
+  cardError: string | null;
+}> {
+  const cachePath = feishuTokenCachePath(input.config);
+  const cardAttempted = shouldSendFeishuFinalReplyCard({
+    binding: input.binding,
+    replyText: input.replyText,
+    status: input.status,
+  });
+  if (cardAttempted) {
+    const cardResult = await sendFeishuCardMessage(input.transport, {
+      chatId: input.chatId,
+      card: renderFeishuFinalReplyCard({
+        project: input.project,
+        replyText: input.replyText,
+        sessionKey: input.sessionKey,
+        status: input.status,
+      }),
+    }, cachePath);
+    if (cardResult.ok === true) {
+      return {
+        result: cardResult,
+        transportAction: "send-final-card",
+        cardAttempted: true,
+        cardError: null,
+      };
+    }
+    // Feishu cards can be rejected for platform limits or markdown edge cases;
+    // text send preserves delivery while keeping the card error observable.
+    const textResult = await sendFeishuTextMessage(input.transport, {
+      chatId: input.chatId,
+      content: input.replyText,
+    }, cachePath);
+    return {
+      result: textResult,
+      transportAction: "send-final-text-after-card",
+      cardAttempted: true,
+      cardError: cardResult.error,
+    };
+  }
+  const textResult = await sendFeishuTextMessage(input.transport, {
+    chatId: input.chatId,
+    content: input.replyText,
+  }, cachePath);
+  return {
+    result: textResult,
+    transportAction: "send-final-text",
+    cardAttempted: false,
+    cardError: null,
+  };
 }
 
 function feishuCommandNotice(input: {
@@ -1997,6 +2276,15 @@ const DEFAULT_SEEN_MESSAGE_TTL_MS = 5 * 60_000;
 const FEISHU_SEEN_MESSAGE_TTL_MS = 24 * 60 * 60_000;
 const FEISHU_SEEN_MESSAGE_MAX_ENTRIES = 5000;
 
+function isoTimestampMs(value: string | null): number | null {
+  const timestamp = Date.parse(normalizeString(value));
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function elapsedMsSince(startMs: number, endMs = Date.now()): number {
+  return Math.max(0, endMs - startMs);
+}
+
 function pruneSeenMessages(
   seenMessages: Map<string, number>,
   ttlMs = DEFAULT_SEEN_MESSAGE_TTL_MS,
@@ -2188,6 +2476,8 @@ async function dispatchOctoMessage(input: {
   const content = extractOctoContent(message);
   const attachments = extractOctoAttachments(message);
   const checkedAt = new Date().toISOString();
+  const ingressAt = checkedAt;
+  const ingressAtMs = isoTimestampMs(ingressAt) ?? Date.now();
   if (skippedReason) {
     writeJsonLine(config.paths.octoEvents, {
       checkedAt,
@@ -2246,15 +2536,18 @@ async function dispatchOctoMessage(input: {
   });
   if (command.handled) {
     let replySent = false;
+    let replyRequestCount: number | null = null;
     if (transport && command.replyText) {
       const replyPlan = renderOctoTextReply(message, command.replyText);
       if (replyPlan) {
         const result = await sendOctoTextReply(transport, replyPlan);
         replySent = result.ok === true;
+        replyRequestCount = result.requestCount;
       }
     }
+    const commandFinishedAt = new Date().toISOString();
     writeJsonLine(config.paths.octoEvents, {
-      checkedAt,
+      checkedAt: commandFinishedAt,
       eventKind: "channel.command",
       adapter: "octo",
       bindingId: binding.id,
@@ -2270,6 +2563,8 @@ async function dispatchOctoMessage(input: {
       commandAction: command.action,
       commandOk: command.ok,
       replySent,
+      replyRequestCount,
+      commandElapsedMs: elapsedMsSince(ingressAtMs, isoTimestampMs(commandFinishedAt) ?? Date.now()),
     });
     writeRuntime(config, state);
     return;
@@ -2365,18 +2660,23 @@ async function dispatchOctoMessage(input: {
       sessionKey,
     }),
   );
+  const runStartedAt = new Date().toISOString();
+  const runStartedAtMs = isoTimestampMs(runStartedAt) ?? Date.now();
   let progressEventCount = 0;
   let latestProgress: ChannelConnectorAgentProgressEvent | null = null;
+  let firstProgressAtMs: number | null = null;
+  let previousProgressAtMs = runStartedAtMs;
   let lastOctoProgressSentAt = 0;
   let octoProgressSendCount = 0;
   let octoProgressFlush: Promise<void> = Promise.resolve();
   const queueOctoProgressReply = (event: ChannelConnectorAgentProgressEvent): void => {
     if (!transport) return;
+    if (event.type === "completed") return;
     if (!shouldSendChannelProgressEvent(control, event, progressDefaults)) return;
     const replyText = renderOctoProgressText(event);
     const replyPlan = renderOctoTextReply(message, replyText);
     if (!replyPlan) return;
-    const highPriority = event.type === "failed" || event.type === "error" || event.type === "completed";
+    const highPriority = event.type === "failed" || event.type === "error";
     const nowMs = Date.now();
     if (!highPriority && nowMs - lastOctoProgressSentAt < 1500) return;
     if (!highPriority && octoProgressSendCount >= 40) return;
@@ -2398,6 +2698,9 @@ async function dispatchOctoMessage(input: {
         itemType: event.itemType,
         replySent: result.ok === true,
         replyError: result.error,
+        replyRequestCount: result.requestCount,
+        progressReplySendCount: octoProgressSendCount,
+        agentElapsedMs: elapsedMsSince(runStartedAtMs),
       });
     }).catch((error) => {
       writeJsonLine(config.paths.octoEvents, {
@@ -2414,13 +2717,15 @@ async function dispatchOctoMessage(input: {
         itemType: event.itemType,
         replySent: false,
         replyError: shortMessage(error),
+        progressReplySendCount: octoProgressSendCount,
+        agentElapsedMs: elapsedMsSince(runStartedAtMs),
       });
     });
   };
   state.activeRuns.unshift({
     id: activeRunId,
-    startedAt: checkedAt,
-    updatedAt: checkedAt,
+    startedAt: runStartedAt,
+    updatedAt: runStartedAt,
     bindingId: binding.id,
     sessionKey,
     messageId: message.messageId,
@@ -2431,11 +2736,15 @@ async function dispatchOctoMessage(input: {
     codexThreadId: currentSession?.codexThreadId || null,
     progressEventCount,
     latestProgress,
+    ingressAt,
+    ingressToAgentStartMs: elapsedMsSince(ingressAtMs, runStartedAtMs),
+    agentElapsedMs: 0,
+    firstProgressLatencyMs: null,
   });
   state.activeRuns = state.activeRuns.slice(0, 20);
   writeRuntime(config, state);
   writeJsonLine(config.paths.octoEvents, {
-    checkedAt,
+    checkedAt: runStartedAt,
     eventKind: "agent.run.started",
     adapter: "octo",
     bindingId: binding.id,
@@ -2448,6 +2757,8 @@ async function dispatchOctoMessage(input: {
     progressDefaults,
     progressStreamEnabled: channelConnectorStreamMessagesEnabled(control, progressDefaults),
     progressToolsEnabled: channelConnectorToolMessagesEnabled(control, progressDefaults),
+    ingressAt,
+    ingressToAgentStartMs: elapsedMsSince(ingressAtMs, runStartedAtMs),
   });
 
   const runtimeDir = agentRuntimeDir(config, turnProject, binding);
@@ -2510,11 +2821,19 @@ async function dispatchOctoMessage(input: {
       onProgress: (event) => {
         progressEventCount += 1;
         latestProgress = event;
+        const progressAtMs = isoTimestampMs(event.checkedAt) ?? Date.now();
+        const sincePreviousProgressMs = elapsedMsSince(previousProgressAtMs, progressAtMs);
+        if (firstProgressAtMs === null) firstProgressAtMs = progressAtMs;
+        previousProgressAtMs = progressAtMs;
         const activeRun = state.activeRuns.find((run) => run.id === activeRunId);
         if (activeRun) {
           activeRun.updatedAt = event.checkedAt;
           activeRun.progressEventCount = progressEventCount;
           activeRun.latestProgress = latestProgress;
+          activeRun.agentElapsedMs = elapsedMsSince(runStartedAtMs, progressAtMs);
+          activeRun.firstProgressLatencyMs = firstProgressAtMs === null
+            ? null
+            : elapsedMsSince(runStartedAtMs, firstProgressAtMs);
         }
         writeJsonLine(config.paths.octoEvents, {
           checkedAt: event.checkedAt,
@@ -2531,6 +2850,11 @@ async function dispatchOctoMessage(input: {
           progressDefaultGroup: progressDefaults.isGroup,
           progressStreamEnabled: channelConnectorStreamMessagesEnabled(control, progressDefaults),
           progressToolsEnabled: channelConnectorToolMessagesEnabled(control, progressDefaults),
+          agentElapsedMs: elapsedMsSince(runStartedAtMs, progressAtMs),
+          sincePreviousProgressMs,
+          firstProgressLatencyMs: firstProgressAtMs === null
+            ? null
+            : elapsedMsSince(runStartedAtMs, firstProgressAtMs),
         });
         queueOctoProgressReply(event);
         writeRuntime(config, state);
@@ -2551,7 +2875,7 @@ async function dispatchOctoMessage(input: {
       stdout: "",
       stderr: "",
       exitCode: null,
-      durationMs: Date.now() - new Date(checkedAt).getTime(),
+      durationMs: elapsedMsSince(runStartedAtMs),
       error: shortMessage(error),
       progress: {
         eventCount: progressEventCount,
@@ -2615,8 +2939,11 @@ async function dispatchOctoMessage(input: {
       status: agent.status,
     });
   }
+  const agentFinishedAt = new Date().toISOString();
+  const agentFinishedAtMs = isoTimestampMs(agentFinishedAt) ?? Date.now();
+  const agentLatestProgressAtMs = latestProgress ? isoTimestampMs(latestProgress.checkedAt) : null;
   state.agentRuns.unshift({
-    checkedAt,
+    checkedAt: agentFinishedAt,
     bindingId: binding.id,
     sessionKey,
     messageId: message.messageId,
@@ -2629,6 +2956,17 @@ async function dispatchOctoMessage(input: {
     codexThreadId: agent.session.codexThreadId,
     progressEventCount,
     latestProgress,
+    ingressAt,
+    startedAt: runStartedAt,
+    finishedAt: agentFinishedAt,
+    totalElapsedMs: elapsedMsSince(ingressAtMs, agentFinishedAtMs),
+    agentElapsedMs: elapsedMsSince(runStartedAtMs, agentFinishedAtMs),
+    firstProgressLatencyMs: firstProgressAtMs === null
+      ? null
+      : elapsedMsSince(runStartedAtMs, firstProgressAtMs),
+    finalProgressLagMs: agentLatestProgressAtMs === null
+      ? null
+      : elapsedMsSince(agentLatestProgressAtMs, agentFinishedAtMs),
   });
   state.agentRuns = state.agentRuns.slice(0, 20);
 
@@ -2637,6 +2975,7 @@ async function dispatchOctoMessage(input: {
   let replyBufferId: string | null = null;
   let replyOriginalRunes: number | null = null;
   let replyPreviewRunes: number | null = null;
+  let replyRequestCount: number | null = null;
   if (transport && agent.ok === true && agent.replyText) {
     const preparedReply = prepareChannelConnectorGroupBufferedReply({
       filePath: replyBufferPath(config),
@@ -2651,22 +2990,31 @@ async function dispatchOctoMessage(input: {
     replyBufferId = preparedReply.bufferId;
     replyOriginalRunes = preparedReply.originalRunes;
     replyPreviewRunes = preparedReply.previewRunes;
-    const replyPlan = renderOctoTextReply(message, preparedReply.replyText);
+    const replyPlan = renderOctoTextReply(message, renderOctoFinalReplyText({
+      agent: agent.agent,
+      model: agent.model,
+      replyText: preparedReply.replyText,
+    }));
     if (replyPlan) {
       const result = await sendOctoTextReply(transport, replyPlan);
       replySent = result.ok === true;
+      replyRequestCount = result.requestCount;
     }
   }
   if (transport && agent.ok === false) {
-    const replyPlan = renderOctoTextReply(message, `Agent 运行失败：${shortMessage(agent.error)}`);
+    const replyPlan = renderOctoTextReply(message, renderAgentFailureReply(agent.error));
     if (replyPlan) {
       const result = await sendOctoTextReply(transport, replyPlan);
       replySent = result.ok === true;
+      replyRequestCount = result.requestCount;
     }
   }
 
+  const finishedAt = new Date().toISOString();
+  const finishedAtMs = isoTimestampMs(finishedAt) ?? Date.now();
+  const latestProgressAtMs = latestProgress ? isoTimestampMs(latestProgress.checkedAt) : null;
   writeJsonLine(config.paths.octoEvents, {
-    checkedAt,
+    checkedAt: finishedAt,
     eventKind: "agent.run.finished",
     adapter: "octo",
     bindingId: binding.id,
@@ -2693,6 +3041,18 @@ async function dispatchOctoMessage(input: {
     replyOriginalRunes,
     replyPreviewRunes,
     replySent,
+    replyRequestCount,
+    ingressAt,
+    startedAt: runStartedAt,
+    finishedAt,
+    totalElapsedMs: elapsedMsSince(ingressAtMs, finishedAtMs),
+    agentElapsedMs: elapsedMsSince(runStartedAtMs, finishedAtMs),
+    firstProgressLatencyMs: firstProgressAtMs === null
+      ? null
+      : elapsedMsSince(runStartedAtMs, firstProgressAtMs),
+    finalProgressLagMs: latestProgressAtMs === null
+      ? null
+      : elapsedMsSince(latestProgressAtMs, finishedAtMs),
   });
   writeRuntime(config, state);
 }
@@ -2726,6 +3086,8 @@ async function dispatchFeishuParsedEvent(input: {
 }): Promise<Record<string, unknown> | null> {
   const { config, state, group, parsed, rawEvent, seenMessages } = input;
   const checkedAt = new Date().toISOString();
+  const ingressAt = checkedAt;
+  const ingressAtMs = isoTimestampMs(ingressAt) ?? Date.now();
   const content = feishuContentFromParsed(parsed);
   const refs = selectFeishuBindingRefs(group, parsed);
   if (!refs.length) {
@@ -2895,6 +3257,7 @@ async function dispatchFeishuParsedEvent(input: {
     let replyQueued = false;
     let replyError: string | null = null;
     let replyTransportAction: string | null = null;
+    let replyRequestCount: number | null = null;
     let feishuResponse: Record<string, unknown> | null = null;
     const actionPayload = extractChannelConnectorSurfaceActionPayload(parsed.actionValue);
     const notice = feishuCommandNotice({
@@ -2920,6 +3283,7 @@ async function dispatchFeishuParsedEvent(input: {
       replySent = result.ok === true;
       replyError = result.error;
       replyTransportAction = result.action;
+      replyRequestCount = result.requestCount;
       if (parsed.kind === "card-action") {
         const toast = feishuCommandToast({
           command,
@@ -2959,9 +3323,11 @@ async function dispatchFeishuParsedEvent(input: {
       replySent = result.ok === true;
       replyError = result.error;
       replyTransportAction = result.action;
+      replyRequestCount = result.requestCount;
     }
+    const commandFinishedAt = new Date().toISOString();
     writeJsonLine(config.paths.feishuEvents, {
-      checkedAt,
+      checkedAt: commandFinishedAt,
       eventKind: "channel.command",
       adapter: "feishu",
       bindingId: binding.id,
@@ -2979,6 +3345,8 @@ async function dispatchFeishuParsedEvent(input: {
       replyQueued,
       replyTransportAction,
       replyError,
+      replyRequestCount,
+      commandElapsedMs: elapsedMsSince(ingressAtMs, isoTimestampMs(commandFinishedAt) ?? Date.now()),
     });
     writeRuntime(config, state);
     return feishuResponse;
@@ -3078,8 +3446,12 @@ async function dispatchFeishuParsedEvent(input: {
       sessionKey,
     }),
   );
+  const runStartedAt = new Date().toISOString();
+  const runStartedAtMs = isoTimestampMs(runStartedAt) ?? Date.now();
   let progressEventCount = 0;
   let latestProgress: ChannelConnectorAgentProgressEvent | null = null;
+  let firstProgressAtMs: number | null = null;
+  let previousProgressAtMs = runStartedAtMs;
   const progressCardState = createFeishuProgressCardState();
   let lastFeishuProgressSentAt = 0;
   let feishuProgressSendCount = 0;
@@ -3120,6 +3492,9 @@ async function dispatchFeishuParsedEvent(input: {
         transportAction: result.action,
         replySent: result.ok === true,
         replyError: result.error,
+        replyRequestCount: result.requestCount,
+        progressCardSendCount: feishuProgressSendCount,
+        agentElapsedMs: elapsedMsSince(runStartedAtMs),
       });
     }).catch((error) => {
       writeJsonLine(config.paths.feishuEvents, {
@@ -3135,13 +3510,15 @@ async function dispatchFeishuParsedEvent(input: {
         reason,
         replySent: false,
         replyError: shortMessage(error),
+        progressCardSendCount: feishuProgressSendCount,
+        agentElapsedMs: elapsedMsSince(runStartedAtMs),
       });
     });
   };
   state.activeRuns.unshift({
     id: activeRunId,
-    startedAt: checkedAt,
-    updatedAt: checkedAt,
+    startedAt: runStartedAt,
+    updatedAt: runStartedAt,
     bindingId: binding.id,
     sessionKey,
     messageId,
@@ -3153,11 +3530,15 @@ async function dispatchFeishuParsedEvent(input: {
     codexThreadId: currentSession?.codexThreadId || null,
     progressEventCount,
     latestProgress,
+    ingressAt,
+    ingressToAgentStartMs: elapsedMsSince(ingressAtMs, runStartedAtMs),
+    agentElapsedMs: 0,
+    firstProgressLatencyMs: null,
   });
   state.activeRuns = state.activeRuns.slice(0, 20);
   writeRuntime(config, state);
   writeJsonLine(config.paths.feishuEvents, {
-    checkedAt,
+    checkedAt: runStartedAt,
     eventKind: "agent.run.started",
     adapter: "feishu",
     bindingId: binding.id,
@@ -3170,6 +3551,8 @@ async function dispatchFeishuParsedEvent(input: {
     progressDefaults,
     progressStreamEnabled: channelConnectorStreamMessagesEnabled(control, progressDefaults),
     progressToolsEnabled: channelConnectorToolMessagesEnabled(control, progressDefaults),
+    ingressAt,
+    ingressToAgentStartMs: elapsedMsSince(ingressAtMs, runStartedAtMs),
   });
 
   const stopTypingReaction = await startFeishuTypingReaction({
@@ -3229,11 +3612,19 @@ async function dispatchFeishuParsedEvent(input: {
       onProgress: (event) => {
         progressEventCount += 1;
         latestProgress = event;
+        const progressAtMs = isoTimestampMs(event.checkedAt) ?? Date.now();
+        const sincePreviousProgressMs = elapsedMsSince(previousProgressAtMs, progressAtMs);
+        if (firstProgressAtMs === null) firstProgressAtMs = progressAtMs;
+        previousProgressAtMs = progressAtMs;
         const activeRun = state.activeRuns.find((run) => run.id === activeRunId);
         if (activeRun) {
           activeRun.updatedAt = event.checkedAt;
           activeRun.progressEventCount = progressEventCount;
           activeRun.latestProgress = latestProgress;
+          activeRun.agentElapsedMs = elapsedMsSince(runStartedAtMs, progressAtMs);
+          activeRun.firstProgressLatencyMs = firstProgressAtMs === null
+            ? null
+            : elapsedMsSince(runStartedAtMs, firstProgressAtMs);
         }
         writeJsonLine(config.paths.feishuEvents, {
           checkedAt: event.checkedAt,
@@ -3251,6 +3642,11 @@ async function dispatchFeishuParsedEvent(input: {
           progressDefaultGroup: progressDefaults.isGroup,
           progressStreamEnabled: channelConnectorStreamMessagesEnabled(control, progressDefaults),
           progressToolsEnabled: channelConnectorToolMessagesEnabled(control, progressDefaults),
+          agentElapsedMs: elapsedMsSince(runStartedAtMs, progressAtMs),
+          sincePreviousProgressMs,
+          firstProgressLatencyMs: firstProgressAtMs === null
+            ? null
+            : elapsedMsSince(runStartedAtMs, firstProgressAtMs),
         });
         const highPriority = event.type === "failed" || event.type === "error" || event.type === "completed";
         if (shouldSendFeishuProgressEvent(control, event, progressDefaults)) {
@@ -3275,7 +3671,7 @@ async function dispatchFeishuParsedEvent(input: {
       stdout: "",
       stderr: "",
       exitCode: null,
-      durationMs: Date.now() - new Date(checkedAt).getTime(),
+      durationMs: elapsedMsSince(runStartedAtMs),
       error: shortMessage(error),
       progress: {
         eventCount: progressEventCount,
@@ -3348,8 +3744,11 @@ async function dispatchFeishuParsedEvent(input: {
       status: agent.status,
     });
   }
+  const agentFinishedAt = new Date().toISOString();
+  const agentFinishedAtMs = isoTimestampMs(agentFinishedAt) ?? Date.now();
+  const agentLatestProgressAtMs = latestProgress ? isoTimestampMs(latestProgress.checkedAt) : null;
   state.agentRuns.unshift({
-    checkedAt,
+    checkedAt: agentFinishedAt,
     bindingId: binding.id,
     sessionKey,
     messageId,
@@ -3362,11 +3761,26 @@ async function dispatchFeishuParsedEvent(input: {
     codexThreadId: agent.session.codexThreadId,
     progressEventCount,
     latestProgress,
+    ingressAt,
+    startedAt: runStartedAt,
+    finishedAt: agentFinishedAt,
+    totalElapsedMs: elapsedMsSince(ingressAtMs, agentFinishedAtMs),
+    agentElapsedMs: elapsedMsSince(runStartedAtMs, agentFinishedAtMs),
+    firstProgressLatencyMs: firstProgressAtMs === null
+      ? null
+      : elapsedMsSince(runStartedAtMs, firstProgressAtMs),
+    finalProgressLagMs: agentLatestProgressAtMs === null
+      ? null
+      : elapsedMsSince(agentLatestProgressAtMs, agentFinishedAtMs),
   });
   state.agentRuns = state.agentRuns.slice(0, 20);
 
   let replySent = false;
   let replyError: string | null = null;
+  let replyTransportAction: string | null = null;
+  let replyRequestCount: number | null = null;
+  let replyCardAttempted = false;
+  let replyCardError: string | null = null;
   let replyBuffered = false;
   let replyBufferId: string | null = null;
   let replyOriginalRunes: number | null = null;
@@ -3374,7 +3788,7 @@ async function dispatchFeishuParsedEvent(input: {
   const replyContent = agent.ok === true && agent.replyText
     ? agent.replyText
     : agent.ok === false && !progressCardState.messageId
-      ? `Agent 运行失败：${shortMessage(agent.error)}`
+      ? renderAgentFailureReply(agent.error)
       : null;
   if (replyContent) {
     const preparedReply = agent.ok === true
@@ -3398,16 +3812,29 @@ async function dispatchFeishuParsedEvent(input: {
     replyBufferId = preparedReply.bufferId;
     replyOriginalRunes = preparedReply.originalRunes;
     replyPreviewRunes = preparedReply.previewRunes;
-    const result = await sendFeishuTextMessage(transport, {
+    const sent = await sendFeishuFinalReply({
+      config,
+      transport,
+      binding,
+      project: turnProject,
       chatId: parsed.channelId,
-      content: preparedReply.replyText,
-    }, feishuTokenCachePath(config));
-    replySent = result.ok === true;
-    replyError = result.error;
+      sessionKey,
+      replyText: preparedReply.replyText,
+      status: agent.ok === true ? "ok" : "failed",
+    });
+    replySent = sent.result.ok === true;
+    replyError = sent.result.error;
+    replyTransportAction = sent.transportAction;
+    replyRequestCount = sent.result.requestCount;
+    replyCardAttempted = sent.cardAttempted;
+    replyCardError = sent.cardError;
   }
 
+  const finishedAt = new Date().toISOString();
+  const finishedAtMs = isoTimestampMs(finishedAt) ?? Date.now();
+  const latestProgressAtMs = latestProgress ? isoTimestampMs(latestProgress.checkedAt) : null;
   writeJsonLine(config.paths.feishuEvents, {
-    checkedAt,
+    checkedAt: finishedAt,
     eventKind: "agent.run.finished",
     adapter: "feishu",
     bindingId: binding.id,
@@ -3433,11 +3860,26 @@ async function dispatchFeishuParsedEvent(input: {
     replyPreviewRunes,
     replySent,
     replyError,
+    replyTransportAction,
+    replyRequestCount,
+    replyCardAttempted,
+    replyCardError,
     groupMemberPullAttempted: groupMembers.attempted,
     groupMemberCount: groupMembers.members.length,
     groupMemberPullPages: groupMembers.pageCount,
     groupMemberPullHasMore: groupMembers.hasMore,
     groupMemberPullError: groupMembers.error,
+    ingressAt,
+    startedAt: runStartedAt,
+    finishedAt,
+    totalElapsedMs: elapsedMsSince(ingressAtMs, finishedAtMs),
+    agentElapsedMs: elapsedMsSince(runStartedAtMs, finishedAtMs),
+    firstProgressLatencyMs: firstProgressAtMs === null
+      ? null
+      : elapsedMsSince(runStartedAtMs, firstProgressAtMs),
+    finalProgressLagMs: latestProgressAtMs === null
+      ? null
+      : elapsedMsSince(latestProgressAtMs, finishedAtMs),
     rawEventShape: isRecord(rawEvent) ? Object.keys(rawEvent).slice(0, 12) : [],
   });
   writeRuntime(config, state);
