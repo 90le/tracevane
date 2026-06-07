@@ -1456,6 +1456,10 @@ function sessionControlsPath(config: ChannelConnectorsDaemonRuntimeConfig): stri
   return path.join(config.paths.state, "channel-session-controls.json");
 }
 
+function customCommandsPath(config: ChannelConnectorsDaemonRuntimeConfig): string {
+  return path.join(config.paths.state, "channel-custom-commands.json");
+}
+
 function conversationHistoryPath(config: ChannelConnectorsDaemonRuntimeConfig): string {
   return path.join(config.paths.state, "channel-history.json");
 }
@@ -3651,6 +3655,7 @@ async function dispatchOctoMessage(input: {
     message,
     sessionKey,
     controlsPath: sessionControlsPath(config),
+    customCommandsPath: customCommandsPath(config),
     agentSessionsPath: agentSessionsPath(config),
     conversationHistoryPath: conversationHistoryPath(config),
     replyBuffersPath: replyBufferPath(config),
@@ -4494,6 +4499,7 @@ async function dispatchFeishuParsedEvent(input: {
     message,
     sessionKey,
     controlsPath: sessionControlsPath(config),
+    customCommandsPath: customCommandsPath(config),
     agentSessionsPath: agentSessionsPath(config),
     conversationHistoryPath: conversationHistoryPath(config),
     replyBuffersPath: replyBufferPath(config),

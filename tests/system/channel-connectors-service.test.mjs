@@ -2655,6 +2655,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   const root = makeTempRoot();
   const stateDir = path.join(root, "state");
   const controlsPath = path.join(stateDir, "channel-session-controls.json");
+  const customCommandsPath = path.join(stateDir, "channel-custom-commands.json");
   const agentSessionsPath = path.join(stateDir, "channel-sessions.json");
   const conversationHistoryPath = path.join(stateDir, "channel-history.json");
   const replyBuffersPath = path.join(stateDir, "channel-reply-buffers.json");
@@ -2724,6 +2725,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     binding,
     sessionKey: "dmwork:dm:admin-1",
     controlsPath,
+    customCommandsPath,
     agentSessionsPath,
     conversationHistoryPath,
     replyBuffersPath,
@@ -2777,8 +2779,34 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(codexCommands.handled, true);
   assert.equal(codexCommands.action, "list");
-  assert.match(codexCommands.replyText, /当前 Agent 没有可用的命令文件/);
+  assert.match(codexCommands.replyText, /当前 Agent 没有可用的自定义命令/);
   assert.match(codexCommands.replyText, /codex/);
+
+  const addCommand = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/commands add daily Summarize {{1}} with {{2*:no notes}}"),
+  });
+  assert.equal(addCommand.handled, true);
+  assert.equal(addCommand.action, "set");
+  assert.equal(addCommand.ok, true);
+  assert.match(addCommand.replyText, /已添加自定义命令 \/daily/);
+
+  const addedCommand = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/daily release blockers"),
+  });
+  assert.equal(addedCommand.handled, false);
+  assert.equal(addedCommand.command, "daily");
+  assert.equal(addedCommand.passthroughText, "Summarize release with blockers");
+
+  const listConfigCommands = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/commands list"),
+  });
+  assert.equal(listConfigCommands.handled, true);
+  assert.equal(listConfigCommands.action, "list");
+  assert.match(listConfigCommands.replyText, /\/daily/);
+  assert.doesNotMatch(listConfigCommands.replyText, /\[agent\].*daily/);
 
   const claudeCommands = await handleChannelConnectorCommand({
     ...baseContext,
@@ -2790,6 +2818,14 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(claudeCommands.replyText, /\/review-code \[agent\]/);
   assert.match(claudeCommands.replyText, /Review target/);
 
+  const addClaudeOverride = await handleChannelConnectorCommand({
+    ...baseContext,
+    project: claudeProject,
+    message: message("/commands add review-code Config review {{args}}"),
+  });
+  assert.equal(addClaudeOverride.ok, false);
+  assert.match(addClaudeOverride.replyText, /已存在/);
+
   const claudeAgentCommand = await handleChannelConnectorCommand({
     ...baseContext,
     project: claudeProject,
@@ -2800,6 +2836,44 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(claudeAgentCommand.command, "review-code");
   assert.equal(claudeAgentCommand.passthroughText, "Review target src with notes auth module");
   assert.equal(claudeAgentCommand.nativeCommand, null);
+
+  const addExec = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/commands addexec status git status"),
+  });
+  assert.equal(addExec.handled, true);
+  assert.equal(addExec.ok, false);
+  assert.match(addExec.replyText, /暂不开放/);
+
+  const duplicateBuiltin = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/commands add status should not override builtin"),
+  });
+  assert.equal(duplicateBuiltin.ok, false);
+  assert.match(duplicateBuiltin.replyText, /已存在/);
+
+  const deniedCustomCommandMutation = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/commands add denied nope", "user-2"),
+  });
+  assert.equal(deniedCustomCommandMutation.handled, true);
+  assert.equal(deniedCustomCommandMutation.ok, false);
+  assert.match(deniedCustomCommandMutation.replyText, /没有管理/);
+
+  const delCommand = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/commands del daily"),
+  });
+  assert.equal(delCommand.handled, true);
+  assert.equal(delCommand.ok, true);
+  assert.match(delCommand.replyText, /已删除自定义命令 \/daily/);
+
+  const removedCommand = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/daily release blockers"),
+  });
+  assert.equal(removedCommand.handled, false);
+  assert.equal(removedCommand.passthroughText, "/daily release blockers");
 
   const missingCodexAgentCommand = await handleChannelConnectorCommand({
     ...baseContext,

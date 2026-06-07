@@ -26,6 +26,15 @@ import {
   getChannelConnectorConversationHistory,
 } from "./conversation-history-store.js";
 import {
+  deleteChannelConnectorCustomCommand,
+  getChannelConnectorCustomCommand,
+  isValidCustomCommandName,
+  listChannelConnectorCustomCommands,
+  normalizeCustomCommandName,
+  type ChannelConnectorCustomCommandRecord,
+  upsertChannelConnectorCustomCommand,
+} from "./custom-command-store.js";
+import {
   findChannelConnectorReplyBufferForSession,
   listChannelConnectorReplyBuffersForSession,
   type ChannelConnectorReplyBufferRecord,
@@ -53,6 +62,7 @@ export interface ChannelConnectorCommandContext {
   message: ChannelConnectorOctoInboundMessage;
   sessionKey: string;
   controlsPath: string;
+  customCommandsPath?: string | null;
   agentSessionsPath: string;
   conversationHistoryPath?: string | null;
   replyBuffersPath?: string | null;
@@ -147,6 +157,8 @@ interface AgentCommandFile {
   filePath: string;
 }
 
+type ResolvedCustomCommand = ChannelConnectorCustomCommandRecord | AgentCommandFile;
+
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -165,6 +177,10 @@ function uniqueStrings(values: string[]): string[] {
 
 function normalizeAgentCommandName(value: string): string {
   return normalizeString(value).toLowerCase().replaceAll("-", "_");
+}
+
+function commandStorePath(context: Pick<ChannelConnectorCommandContext, "customCommandsPath">): string | null {
+  return normalizeString(context.customCommandsPath || null) || null;
 }
 
 function agentCommandDirs(project: ChannelConnectorRuntimeProject): string[] {
@@ -228,7 +244,7 @@ function resolveAgentCommandFile(project: ChannelConnectorRuntimeProject, name: 
   return null;
 }
 
-function listAgentCommandFiles(project: ChannelConnectorRuntimeProject): AgentCommandFile[] {
+function listAgentCommandFiles(project: ChannelConnectorRuntimeProject, seenNames = new Set<string>()): AgentCommandFile[] {
   const seen = new Set<string>();
   const commands: AgentCommandFile[] = [];
   for (const dir of agentCommandDirs(project)) {
@@ -243,7 +259,7 @@ function listAgentCommandFiles(project: ChannelConnectorRuntimeProject): AgentCo
       if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
       const name = entry.name.slice(0, -".md".length);
       const key = normalizeAgentCommandName(name);
-      if (!name || seen.has(key)) continue;
+      if (!name || seen.has(key) || seenNames.has(key)) continue;
       const command = readAgentCommandFile(absDir, name);
       if (!command) continue;
       seen.add(key);
@@ -251,6 +267,33 @@ function listAgentCommandFiles(project: ChannelConnectorRuntimeProject): AgentCo
     }
   }
   return commands;
+}
+
+function listConfiguredCommands(
+  context: Pick<ChannelConnectorCommandContext, "customCommandsPath">,
+  project: ChannelConnectorRuntimeProject,
+): ChannelConnectorCustomCommandRecord[] {
+  const filePath = commandStorePath(context);
+  if (!filePath) return [];
+  return listChannelConnectorCustomCommands(filePath, project.id);
+}
+
+function resolveConfiguredCommand(
+  context: Pick<ChannelConnectorCommandContext, "customCommandsPath">,
+  project: ChannelConnectorRuntimeProject,
+  name: string,
+): ChannelConnectorCustomCommandRecord | null {
+  const filePath = commandStorePath(context);
+  if (!filePath) return null;
+  return getChannelConnectorCustomCommand(filePath, project.id, name);
+}
+
+function resolveCustomCommand(
+  context: Pick<ChannelConnectorCommandContext, "customCommandsPath">,
+  project: ChannelConnectorRuntimeProject,
+  name: string,
+): ResolvedCustomCommand | null {
+  return resolveConfiguredCommand(context, project, name) || resolveAgentCommandFile(project, name);
 }
 
 const promptPlaceholderRe = /\{\{(\d+\*?|args)(:[^}]*)?\}\}/g;
@@ -278,24 +321,43 @@ function expandAgentCommandPrompt(template: string, args: string[]): string {
   });
 }
 
-function agentCommandsListText(project: ChannelConnectorRuntimeProject): string {
-  const commands = listAgentCommandFiles(project);
+function customCommandsListText(
+  context: Pick<ChannelConnectorCommandContext, "customCommandsPath">,
+  project: ChannelConnectorRuntimeProject,
+): string {
+  const configuredCommands = listConfiguredCommands(context, project);
+  const seen = new Set(configuredCommands.map((command) => normalizeCustomCommandName(command.name)));
+  const agentCommands = listAgentCommandFiles(project, seen);
+  const commands: ResolvedCustomCommand[] = [...configuredCommands, ...agentCommands];
   if (!commands.length) {
     const dirs = agentCommandDirs(project);
     return [
-      "当前 Agent 没有可用的命令文件。",
+      "当前 Agent 没有可用的自定义命令。",
       dirs.length
         ? `Studio 会按 CC CommandProvider 合同扫描：${dirs.join("；")}`
         : `当前 Agent (${project.agent}) 尚未在 Studio 中声明命令目录。`,
+      "用法：/commands add <名称> <prompt 模板>；/commands del <名称>。",
     ].join("\n");
   }
-  const lines = [`Agent Commands (${commands.length})`];
+  const lines = [`Studio Custom Commands (${commands.length})`];
   for (const command of commands) {
-    lines.push(`/${command.name} [agent]`);
-    lines.push(`  ${command.description || "Agent command file"}`);
+    const tag = command.source === "agent" ? " [agent]" : "";
+    lines.push(`/${command.name}${tag}`);
+    lines.push(`  ${command.description || firstLine(command.prompt) || "Custom prompt command"}`);
   }
   lines.push("用法：/<命令名> [参数]。支持 {{1}}、{{2*}}、{{args}} 和默认值占位。");
+  lines.push("管理：/commands add <名称> <prompt 模板>；/commands del <名称>。");
   return lines.join("\n");
+}
+
+function commandsUsageText(): string {
+  return [
+    "用法：",
+    "/commands - 列出自定义命令",
+    "/commands add <名称> <prompt 模板> - 添加 prompt 命令",
+    "/commands del <名称> - 删除 prompt 命令",
+    "暂不开放 /commands addexec；shell 执行面后续需单独按 admin/yolo/审计合同验收。",
+  ].join("\n");
 }
 
 export function parseChannelConnectorCommand(content: string): ParsedCommand | null {
@@ -1091,8 +1153,10 @@ export async function handleChannelConnectorCommand(
   const currentProject = resolveChannelConnectorEffectiveProject(context.config, context.project, currentControl);
   const name = parsed.name;
   const args = parsed.args;
-  const mutating = (
-    [
+  const commandsMutation = ["commands", "command", "cmd"].includes(name)
+    && args.length > 0
+    && !["list", "ls"].includes(normalizeString(args[0]).toLowerCase());
+  const mutableCommandName = [
       "agent",
       "model",
       "name",
@@ -1120,9 +1184,10 @@ export async function handleChannelConnectorCommand(
       "cancel",
       "compact",
       "compress",
-    ].includes(name)
-    && !(["agent", "model", "mode", "permission", "permissions", "reasoning", "effort", "dir", "display", "stream", "streams", "progress", "tools", "tool"].includes(name) && args.length === 0)
-  );
+    ].includes(name);
+  const listOnlyCommand = ["agent", "model", "mode", "permission", "permissions", "reasoning", "effort", "dir", "display", "stream", "streams", "progress", "tools", "tool"].includes(name)
+    && args.length === 0;
+  const mutating = (mutableCommandName || commandsMutation) && !listOnlyCommand;
 
   if (mutating && !canManageSession(context.binding, context.message)) {
     return {
@@ -1137,16 +1202,16 @@ export async function handleChannelConnectorCommand(
   }
 
   if (!isStudioCommand(name)) {
-    const agentCommand = resolveAgentCommandFile(currentProject, name);
-    if (agentCommand) {
+    const customCommand = resolveCustomCommand(context, currentProject, name);
+    if (customCommand) {
       return {
         handled: false,
-        command: agentCommand.name,
+        command: customCommand.name,
         action: "passthrough",
         ok: null,
         control: currentControl,
         replyText: null,
-        passthroughText: expandAgentCommandPrompt(agentCommand.prompt, args),
+        passthroughText: expandAgentCommandPrompt(customCommand.prompt, args),
         nativeCommand: null,
       };
     }
@@ -1189,13 +1254,135 @@ export async function handleChannelConnectorCommand(
   }
 
   if (name === "commands" || name === "command" || name === "cmd") {
+    const subcommand = normalizeString(args[0]).toLowerCase();
+    if (subcommand === "add") {
+      const commandName = normalizeString(args[1]).toLowerCase();
+      const prompt = normalizeString(args.slice(2).join(" "));
+      const filePath = commandStorePath(context);
+      if (!filePath) {
+        return {
+          handled: true,
+          command: name,
+          action: "set",
+          ok: false,
+          control: currentControl,
+          replyText: "当前 runtime 未启用自定义命令 store，不能添加命令。",
+          passthroughText: null,
+        };
+      }
+      if (!commandName || !prompt) {
+        return {
+          handled: true,
+          command: name,
+          action: "set",
+          ok: false,
+          control: currentControl,
+          replyText: "用法：/commands add <名称> <prompt 模板>\n示例：/commands add review Review {{args}}",
+          passthroughText: null,
+        };
+      }
+      if (!isValidCustomCommandName(commandName)) {
+        return {
+          handled: true,
+          command: name,
+          action: "set",
+          ok: false,
+          control: currentControl,
+          replyText: "命令名称只支持小写字母、数字、-、_，且必须以字母或数字开头。",
+          passthroughText: null,
+        };
+      }
+      if (isStudioCommand(commandName) || resolveCustomCommand(context, currentProject, commandName)) {
+        return {
+          handled: true,
+          command: name,
+          action: "set",
+          ok: false,
+          control: currentControl,
+          replyText: `命令 /${commandName} 已存在。请先用 /commands del ${commandName} 删除自定义命令，或换一个名称。`,
+          passthroughText: null,
+        };
+      }
+      const record = upsertChannelConnectorCustomCommand(filePath, currentProject.id, commandName, prompt);
+      return {
+        handled: true,
+        command: name,
+        action: "set",
+        ok: true,
+        control: currentControl,
+        replyText: `已添加自定义命令 /${record.name}\n${firstLine(record.prompt, 80)}`,
+        passthroughText: null,
+      };
+    }
+
+    if (["del", "delete", "rm", "remove"].includes(subcommand)) {
+      const commandName = normalizeString(args[1]).toLowerCase();
+      const filePath = commandStorePath(context);
+      if (!filePath) {
+        return {
+          handled: true,
+          command: name,
+          action: "set",
+          ok: false,
+          control: currentControl,
+          replyText: "当前 runtime 未启用自定义命令 store，不能删除命令。",
+          passthroughText: null,
+        };
+      }
+      if (!commandName) {
+        return {
+          handled: true,
+          command: name,
+          action: "set",
+          ok: false,
+          control: currentControl,
+          replyText: "用法：/commands del <名称>",
+          passthroughText: null,
+        };
+      }
+      const deleted = deleteChannelConnectorCustomCommand(filePath, currentProject.id, commandName);
+      return {
+        handled: true,
+        command: name,
+        action: "set",
+        ok: deleted,
+        control: currentControl,
+        replyText: deleted ? `已删除自定义命令 /${commandName}` : `未找到自定义命令 /${commandName}。`,
+        passthroughText: null,
+      };
+    }
+
+    if (subcommand === "addexec") {
+      return {
+        handled: true,
+        command: name,
+        action: "set",
+        ok: false,
+        control: currentControl,
+        replyText: "暂不开放 /commands addexec。shell 执行面需要单独按 admin/yolo/审计合同验收后再启用。",
+        passthroughText: null,
+      };
+    }
+
+    if (subcommand && !["list", "ls"].includes(subcommand)) {
+      return {
+        handled: true,
+        command: name,
+        action: "list",
+        ok: false,
+        control: currentControl,
+        replyText: commandsUsageText(),
+        passthroughText: null,
+      };
+    }
+
     return {
       handled: true,
       command: name,
       action: "list",
       ok: true,
       control: currentControl,
-      replyText: agentCommandsListText(currentProject),
+      replyText: customCommandsListText(context, currentProject),
       passthroughText: null,
     };
   }

@@ -1340,6 +1340,10 @@ function commandSurfaceControlsPath(runtimeConfig: ChannelConnectorsDaemonRuntim
   return path.join(runtimeConfig.paths.state, "channel-session-controls.json");
 }
 
+function commandSurfaceCustomCommandsPath(runtimeConfig: ChannelConnectorsDaemonRuntimeConfig): string {
+  return path.join(runtimeConfig.paths.state, "channel-custom-commands.json");
+}
+
 function commandSurfaceAgentSessionsPath(runtimeConfig: ChannelConnectorsDaemonRuntimeConfig): string {
   return path.join(runtimeConfig.paths.state, "channel-sessions.json");
 }
@@ -1667,6 +1671,7 @@ export function createChannelConnectorsService(
       binding: resolved.runtimeBinding,
       sessionKey,
       controlsPath,
+      customCommandsPath: commandSurfaceCustomCommandsPath(runtimeConfig),
       agentSessionsPath: commandSurfaceAgentSessionsPath(runtimeConfig),
       conversationHistoryPath: commandSurfaceHistoryPath(runtimeConfig),
       replyBuffersPath: commandSurfaceReplyBuffersPath(runtimeConfig),
