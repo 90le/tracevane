@@ -228,6 +228,19 @@ function buildNonVisionVisualAttachmentPolicy(
   ].join("\n");
 }
 
+function buildStudioOutboundFilePolicy(): string {
+  return [
+    "[Studio outbound file policy]",
+    "Do not call channel-specific CLIs, webhooks, curl commands, or external bridge tools to send files back to the IM user.",
+    "When the user asks you to send or return files, create them under the current working directory and append one fenced JSON block named studio-channel-files.",
+    "Example:",
+    "```studio-channel-files",
+    "[{\"path\":\"relative/path/to/file.ext\",\"name\":\"optional-display-name.ext\",\"caption\":\"optional short caption\"}]",
+    "```",
+    "Keep the human-readable reply outside that block; Studio daemon will upload and send the declared files through the active IM channel.",
+  ].join("\n");
+}
+
 function memberSummaryLabel(member: ChannelConnectorOctoGroupMember): string {
   const uid = normalizeString(member.uid);
   const name = normalizeString(member.name);
@@ -282,7 +295,8 @@ function buildAgentInputContent(
   const attachments = extractOctoAttachments(message);
   const history = normalizeString(historyContext);
   const groupContext = buildGroupContext(message, binding);
-  if (!attachments.length) return [history, groupContext, content].filter(Boolean).join("\n\n");
+  const outboundFilePolicy = buildStudioOutboundFilePolicy();
+  if (!attachments.length) return [history, groupContext, content, outboundFilePolicy].filter(Boolean).join("\n\n");
   const summary = attachments
     .map((attachment) => `- ${attachmentSummaryLabel(attachment)}`)
     .join("\n");
@@ -305,7 +319,7 @@ function buildAgentInputContent(
       : "",
     visualInputText,
   ].filter(Boolean).join("\n");
-  return [history, groupContext, visualPolicy, content, attachmentText].filter(Boolean).join("\n\n");
+  return [history, groupContext, visualPolicy, content, attachmentText, outboundFilePolicy].filter(Boolean).join("\n\n");
 }
 
 function recordValue(value: unknown): Record<string, unknown> | null {

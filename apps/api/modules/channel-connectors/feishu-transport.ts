@@ -9,6 +9,7 @@ import type {
   ChannelConnectorOctoGroupMember,
   ChannelConnectorPlatformBinding,
 } from "../../../../types/channel-connectors.js";
+import { inferChannelConnectorMimeType, safeChannelConnectorFileName } from "./outbound-files.js";
 import { splitChannelConnectorTextChunks } from "./text-chunks.js";
 
 const DEFAULT_FEISHU_API_URL = "https://open.feishu.cn";
@@ -19,6 +20,7 @@ const FEISHU_TRANSIENT_RETRY_MAX_MS = 5_000;
 const FEISHU_TEXT_CHUNK_RUNES = 3800;
 const TOKEN_EXPIRY_SKEW_MS = 5 * 60 * 1000;
 const DEFAULT_FEISHU_RESOURCE_MAX_BYTES = 128 * 1024 * 1024;
+const FEISHU_IMAGE_MESSAGE_MAX_BYTES = 10 * 1024 * 1024;
 
 interface FeishuTokenCacheRecord {
   tenantAccessToken: string;
@@ -134,6 +136,11 @@ function transportResult(
     messageIds: input.messageIds ?? null,
     chunkCount: input.chunkCount ?? null,
     reactionId: input.reactionId ?? null,
+    imageKey: input.imageKey ?? null,
+    fileKey: input.fileKey ?? null,
+    fileName: input.fileName ?? null,
+    mimeType: input.mimeType ?? null,
+    size: input.size ?? null,
   };
 }
 
@@ -379,6 +386,81 @@ async function feishuBinaryToFileRequest(
   } finally {
     clearTimeout(timeout);
   }
+}
+
+async function feishuMultipartRequest(
+  config: ChannelConnectorFeishuTransportConfig,
+  input: {
+    path: string;
+    token: string;
+    fieldName: string;
+    fileName: string;
+    data: Uint8Array;
+    mimeType: string;
+    fields?: Record<string, string>;
+  },
+): Promise<{ statusCode: number; body: Record<string, unknown>; requestCount: number }> {
+  let requestCount = 0;
+  let delayMs = FEISHU_TRANSIENT_RETRY_INITIAL_MS;
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt <= MAX_FEISHU_TRANSIENT_RETRIES; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+    try {
+      requestCount += 1;
+      const form = new FormData();
+      for (const [key, value] of Object.entries(input.fields || {})) {
+        form.append(key, value);
+      }
+      const arrayBuffer = new ArrayBuffer(input.data.byteLength);
+      new Uint8Array(arrayBuffer).set(input.data);
+      form.append(input.fieldName, new Blob([arrayBuffer], { type: input.mimeType }), input.fileName);
+      const response = await fetch(`${config.apiUrl.replace(/\/+$/, "")}${input.path}`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${input.token}`,
+        },
+        body: form,
+        signal: controller.signal,
+      });
+      const raw = await response.text();
+      let body: Record<string, unknown> = {};
+      if (raw) {
+        try {
+          body = JSON.parse(raw) as Record<string, unknown>;
+        } catch {
+          body = { raw };
+        }
+      }
+      const code = Number(body.code);
+      if (!response.ok || (Number.isFinite(code) && code !== 0)) {
+        const message = normalizeString(body.msg) || normalizeString(body.message) || `Feishu API ${input.path} failed`;
+        throw Object.assign(new Error(message), {
+          statusCode: response.status,
+          body,
+        });
+      }
+      return {
+        statusCode: response.status,
+        body,
+        requestCount,
+      };
+    } catch (error) {
+      lastError = error;
+      if (attempt >= MAX_FEISHU_TRANSIENT_RETRIES || !isFeishuTransientError(error)) {
+        attachFeishuRequestCount(error, requestCount);
+        throw error;
+      }
+      const jitterMs = Math.floor(Math.random() * Math.max(1, Math.floor(delayMs / 4)));
+      await sleep(delayMs + jitterMs);
+      delayMs = Math.min(delayMs * 2, FEISHU_TRANSIENT_RETRY_MAX_MS);
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  const error = lastError instanceof Error ? lastError : new Error("Feishu multipart request failed.");
+  attachFeishuRequestCount(error, requestCount);
+  throw error;
 }
 
 function errorMessage(error: unknown): string {
@@ -727,6 +809,297 @@ export async function downloadFeishuMessageResourceToFile(
       error: errorMessage(error),
     };
   }
+}
+
+function dataSize(input: Uint8Array): number {
+  return input.byteLength;
+}
+
+function shouldSendAsFeishuImage(fileName: string, mimeType: string, size: number): boolean {
+  if (size > FEISHU_IMAGE_MESSAGE_MAX_BYTES) return false;
+  if (mimeType.startsWith("image/")) return true;
+  return /\.(png|jpe?g|gif|webp|bmp)$/i.test(fileName);
+}
+
+export async function uploadFeishuImage(
+  config: ChannelConnectorFeishuTransportConfig,
+  input: {
+    data: Uint8Array;
+    fileName: string;
+    mimeType?: string | null;
+  },
+  cachePath?: string | null,
+): Promise<ChannelConnectorFeishuTransportResult> {
+  let requestCount = 0;
+  let tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"] = cachePath ? "miss" : "disabled";
+  const fileName = safeChannelConnectorFileName(input.fileName, "studio-image.png");
+  const mimeType = inferChannelConnectorMimeType(fileName, input.mimeType);
+  const size = dataSize(input.data);
+  try {
+    const token = await getFeishuTenantToken(config, cachePath);
+    requestCount += token.requestCount;
+    tokenCache = token.tokenCache;
+    const response = await feishuMultipartRequest(config, {
+      path: "/open-apis/im/v1/images",
+      token: token.token,
+      fieldName: "image",
+      fileName,
+      data: input.data,
+      mimeType,
+      fields: {
+        image_type: "message",
+      },
+    });
+    requestCount += response.requestCount ?? 1;
+    const data = recordFrom(response.body.data);
+    const imageKey = normalizeString(data.image_key);
+    if (!imageKey) throw new Error("Feishu image upload response did not include image_key.");
+    return transportResult({
+      attempted: true,
+      ok: true,
+      action: "upload-image",
+      apiUrl: config.apiUrl,
+      statusCode: response.statusCode,
+      requestCount,
+      tokenCache,
+      imageKey,
+      fileName,
+      mimeType,
+      size,
+    });
+  } catch (error) {
+    return transportResult({
+      attempted: true,
+      ok: false,
+      action: "upload-image",
+      apiUrl: config.apiUrl,
+      statusCode: errorStatusCode(error),
+      error: errorMessage(error),
+      requestCount: Math.max(requestCount + errorRequestCount(error), 1),
+      tokenCache,
+      fileName,
+      mimeType,
+      size,
+    });
+  }
+}
+
+export async function uploadFeishuFile(
+  config: ChannelConnectorFeishuTransportConfig,
+  input: {
+    data: Uint8Array;
+    fileName: string;
+    mimeType?: string | null;
+  },
+  cachePath?: string | null,
+): Promise<ChannelConnectorFeishuTransportResult> {
+  let requestCount = 0;
+  let tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"] = cachePath ? "miss" : "disabled";
+  const fileName = safeChannelConnectorFileName(input.fileName, "studio-file.bin");
+  const mimeType = inferChannelConnectorMimeType(fileName, input.mimeType);
+  const size = dataSize(input.data);
+  try {
+    const token = await getFeishuTenantToken(config, cachePath);
+    requestCount += token.requestCount;
+    tokenCache = token.tokenCache;
+    const response = await feishuMultipartRequest(config, {
+      path: "/open-apis/im/v1/files",
+      token: token.token,
+      fieldName: "file",
+      fileName,
+      data: input.data,
+      mimeType,
+      fields: {
+        file_type: "stream",
+        file_name: fileName,
+      },
+    });
+    requestCount += response.requestCount ?? 1;
+    const data = recordFrom(response.body.data);
+    const fileKey = normalizeString(data.file_key);
+    if (!fileKey) throw new Error("Feishu file upload response did not include file_key.");
+    return transportResult({
+      attempted: true,
+      ok: true,
+      action: "upload-file",
+      apiUrl: config.apiUrl,
+      statusCode: response.statusCode,
+      requestCount,
+      tokenCache,
+      fileKey,
+      fileName,
+      mimeType,
+      size,
+    });
+  } catch (error) {
+    return transportResult({
+      attempted: true,
+      ok: false,
+      action: "upload-file",
+      apiUrl: config.apiUrl,
+      statusCode: errorStatusCode(error),
+      error: errorMessage(error),
+      requestCount: Math.max(requestCount + errorRequestCount(error), 1),
+      tokenCache,
+      fileName,
+      mimeType,
+      size,
+    });
+  }
+}
+
+export async function sendFeishuImageMessage(
+  config: ChannelConnectorFeishuTransportConfig,
+  input: {
+    chatId: string;
+    imageKey: string;
+  },
+  cachePath?: string | null,
+): Promise<ChannelConnectorFeishuTransportResult> {
+  let requestCount = 0;
+  let tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"] = cachePath ? "miss" : "disabled";
+  const imageKey = normalizeString(input.imageKey);
+  try {
+    if (!normalizeString(input.chatId)) throw new Error("Feishu chatId is required.");
+    if (!imageKey) throw new Error("Feishu imageKey is required.");
+    const token = await getFeishuTenantToken(config, cachePath);
+    requestCount += token.requestCount;
+    tokenCache = token.tokenCache;
+    const response = await feishuJsonRequest(config, {
+      method: "POST",
+      path: "/open-apis/im/v1/messages?receive_id_type=chat_id",
+      token: token.token,
+      payload: {
+        receive_id: input.chatId,
+        msg_type: "image",
+        content: JSON.stringify({ image_key: imageKey }),
+      },
+    });
+    requestCount += response.requestCount;
+    const data = recordFrom(response.body.data);
+    return transportResult({
+      attempted: true,
+      ok: true,
+      action: "send-image",
+      apiUrl: config.apiUrl,
+      statusCode: response.statusCode,
+      requestCount,
+      tokenCache,
+      messageId: normalizeString(data.message_id) || null,
+      imageKey,
+    });
+  } catch (error) {
+    return transportResult({
+      attempted: true,
+      ok: false,
+      action: "send-image",
+      apiUrl: config.apiUrl,
+      statusCode: errorStatusCode(error),
+      error: errorMessage(error),
+      requestCount: Math.max(requestCount + errorRequestCount(error), 1),
+      tokenCache,
+      imageKey,
+    });
+  }
+}
+
+export async function sendFeishuFileMessage(
+  config: ChannelConnectorFeishuTransportConfig,
+  input: {
+    chatId: string;
+    fileKey: string;
+  },
+  cachePath?: string | null,
+): Promise<ChannelConnectorFeishuTransportResult> {
+  let requestCount = 0;
+  let tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"] = cachePath ? "miss" : "disabled";
+  const fileKey = normalizeString(input.fileKey);
+  try {
+    if (!normalizeString(input.chatId)) throw new Error("Feishu chatId is required.");
+    if (!fileKey) throw new Error("Feishu fileKey is required.");
+    const token = await getFeishuTenantToken(config, cachePath);
+    requestCount += token.requestCount;
+    tokenCache = token.tokenCache;
+    const response = await feishuJsonRequest(config, {
+      method: "POST",
+      path: "/open-apis/im/v1/messages?receive_id_type=chat_id",
+      token: token.token,
+      payload: {
+        receive_id: input.chatId,
+        msg_type: "file",
+        content: JSON.stringify({ file_key: fileKey }),
+      },
+    });
+    requestCount += response.requestCount;
+    const data = recordFrom(response.body.data);
+    return transportResult({
+      attempted: true,
+      ok: true,
+      action: "send-file",
+      apiUrl: config.apiUrl,
+      statusCode: response.statusCode,
+      requestCount,
+      tokenCache,
+      messageId: normalizeString(data.message_id) || null,
+      fileKey,
+    });
+  } catch (error) {
+    return transportResult({
+      attempted: true,
+      ok: false,
+      action: "send-file",
+      apiUrl: config.apiUrl,
+      statusCode: errorStatusCode(error),
+      error: errorMessage(error),
+      requestCount: Math.max(requestCount + errorRequestCount(error), 1),
+      tokenCache,
+      fileKey,
+    });
+  }
+}
+
+export async function uploadAndSendFeishuMedia(
+  config: ChannelConnectorFeishuTransportConfig,
+  input: {
+    chatId: string;
+    data: Uint8Array;
+    fileName: string;
+    mimeType?: string | null;
+  },
+  cachePath?: string | null,
+): Promise<ChannelConnectorFeishuTransportResult> {
+  const fileName = safeChannelConnectorFileName(input.fileName, "studio-file.bin");
+  const mimeType = inferChannelConnectorMimeType(fileName, input.mimeType);
+  const size = dataSize(input.data);
+  const upload = shouldSendAsFeishuImage(fileName, mimeType, size)
+    ? await uploadFeishuImage(config, { data: input.data, fileName, mimeType }, cachePath)
+    : await uploadFeishuFile(config, { data: input.data, fileName, mimeType }, cachePath);
+  if (upload.ok !== true) return upload;
+  const sent = upload.imageKey
+    ? await sendFeishuImageMessage(config, {
+      chatId: input.chatId,
+      imageKey: upload.imageKey,
+    }, cachePath)
+    : await sendFeishuFileMessage(config, {
+      chatId: input.chatId,
+      fileKey: upload.fileKey || "",
+    }, cachePath);
+  return transportResult({
+    attempted: true,
+    ok: sent.ok,
+    action: "upload-and-send-media",
+    apiUrl: config.apiUrl,
+    statusCode: sent.statusCode,
+    error: sent.error,
+    requestCount: upload.requestCount + sent.requestCount,
+    tokenCache: sent.tokenCache || upload.tokenCache,
+    messageId: sent.messageId || null,
+    imageKey: upload.imageKey || sent.imageKey || null,
+    fileKey: upload.fileKey || sent.fileKey || null,
+    fileName,
+    mimeType,
+    size,
+  });
 }
 
 export async function sendFeishuTextMessage(

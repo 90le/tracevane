@@ -92,6 +92,7 @@ Provider / model routing 目标：
 - Feishu 入站消息必须先完成轻量解析/去重/准入并快速 ACK；文件下载、Agent 调用、进度卡片和最终回复必须后台异步执行，避免 SDK dispatcher 被 IO 阻塞后触发平台重投。
 - Feishu card/menu 的导航动作才返回卡片；`/new`、`/reset` 等执行动作必须直接执行并返回结果，不得自动弹出完整菜单。
 - IM 原生命令穿透必须区分未知 slash 兜底和显式 `/native`：未知 `/xxx` 可按 CC Go 提示后进入 Agent，显式 `/native <命令>` 必须作为 runner `nativeCommand` 处理，不得混入 history/group/attachment prompt；不支持的 CLI 原生命令必须明确拒绝，不能送给模型当普通文本。
+- IM 文件收发必须由 Studio native Channel transport 完成：入站附件 staging 后交给 Agent，出站文件由 Agent 声明本地文件 manifest，daemon 再按 Feishu/Octo/后续平台上传和发送；不得把外部桥接命令或平台 CLI 暴露为生产发送路径。
 - IM `/compact` / `/compress` 必须优先走 Studio-managed compact contract：调用 Studio Gateway `/responses/compact` 压缩当前 IM history，替换为 summary，并清理当前 IM session 的旧 Agent 续接；不得把 Codex `/compact` 硬塞进非交互 `codex exec`。
 - Agent runner 采用混合策略：默认 one-shot `exec/resume` 保持守护稳定、易恢复、易隔离；持久 TUI/session driver 作为高级能力逐 Agent 接入，用于原生 slash、低延迟连续流和真正 Agent-side compact。持久 driver 必须按 binding + IM session + Agent Profile 隔离，有 idle TTL、max sessions、健康检查、强制 kill、日志和降级到 one-shot 的策略。
 - 多 Agent 必须基于 session pool 而不是单全局 TUI：每个 IM 会话可绑定不同 Agent/Profile/模型/工作目录；群聊中多 bot 或多 Agent relay 不共享进程上下文，跨 Agent 协作通过显式 relay/session key 记录。

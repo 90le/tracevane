@@ -50,6 +50,7 @@ import {
   listFeishuChatMembers,
   removeFeishuMessageReaction,
   sendFeishuTextMessage,
+  uploadAndSendFeishuMedia,
 } from "../../dist/apps/api/modules/channel-connectors/feishu-transport.js";
 import {
   parseChannelConnectorByteSize,
@@ -96,6 +97,10 @@ import {
   countChannelConnectorVisualAttachments,
   resolveChannelConnectorVisualTurnProject,
 } from "../../dist/apps/api/modules/channel-connectors/visual-model-routing.js";
+import {
+  extractChannelConnectorOutboundFiles,
+  resolveChannelConnectorOutboundFiles,
+} from "../../dist/apps/api/modules/channel-connectors/outbound-files.js";
 
 function makeTempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-connectors-"));
@@ -403,11 +408,17 @@ async function withMockFeishuServer(task) {
     req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
     req.on("end", () => {
       const bodyRaw = Buffer.concat(chunks).toString("utf8");
-      const body = bodyRaw ? JSON.parse(bodyRaw) : {};
+      const contentType = String(req.headers["content-type"] || "");
+      const body = bodyRaw
+        ? contentType.includes("multipart/form-data")
+          ? { raw: bodyRaw }
+          : JSON.parse(bodyRaw)
+        : {};
       requests.push({
         method: req.method,
         path: req.url,
         authorization: req.headers.authorization,
+        contentType,
         body,
       });
       res.setHeader("content-type", "application/json");
@@ -417,6 +428,22 @@ async function withMockFeishuServer(task) {
           msg: "success",
           tenant_access_token: "tenant-token-1",
           expire: 7200,
+        }));
+        return;
+      }
+      if (req.url === "/open-apis/im/v1/images" && req.method === "POST") {
+        res.end(JSON.stringify({
+          code: 0,
+          msg: "success",
+          data: { image_key: "img_uploaded_1" },
+        }));
+        return;
+      }
+      if (req.url === "/open-apis/im/v1/files" && req.method === "POST") {
+        res.end(JSON.stringify({
+          code: 0,
+          msg: "success",
+          data: { file_key: "file_uploaded_1" },
         }));
         return;
       }
@@ -786,6 +813,57 @@ test("native Channel Connectors stages attachments under sanitized local paths",
     assert.equal(tooLarge.localPath, null);
     assert.equal(tooLarge.attachment.localPath, undefined);
   });
+});
+
+test("native Channel Connectors resolves outbound file manifests under the Agent workdir", () => {
+  const root = makeTempRoot();
+  const workDir = path.join(root, "workspace");
+  const runtimeDir = path.join(root, "runtime");
+  fs.mkdirSync(path.join(workDir, "exports"), { recursive: true });
+  fs.mkdirSync(path.join(runtimeDir, "attachments", "m1"), { recursive: true });
+  fs.writeFileSync(path.join(workDir, "exports", "report.txt"), "report body", "utf8");
+  fs.writeFileSync(path.join(runtimeDir, "attachments", "m1", "received.bin"), "received body", "utf8");
+  fs.writeFileSync(path.join(root, "outside.txt"), "outside", "utf8");
+
+  const extracted = extractChannelConnectorOutboundFiles([
+    "报告已生成。",
+    "```studio-channel-files",
+    JSON.stringify([
+      { path: "exports/report.txt", name: "final-report.txt", caption: "报告文件" },
+      { path: path.join(runtimeDir, "attachments", "m1", "received.bin"), name: "received.bin" },
+      { path: path.join(root, "outside.txt"), name: "outside.txt" },
+    ]),
+    "```",
+  ].join("\n"));
+
+  assert.equal(extracted.replyText, "报告已生成。");
+  assert.equal(extracted.files.length, 3);
+  assert.deepEqual(extracted.errors, []);
+
+  const resolved = resolveChannelConnectorOutboundFiles({
+    files: extracted.files,
+    workDir,
+    allowedRootDirs: [runtimeDir],
+    maxBytes: 1024,
+  });
+  assert.equal(resolved.files.length, 2);
+  assert.equal(resolved.files[0].fileName, "final-report.txt");
+  assert.equal(resolved.files[0].mimeType, "text/plain");
+  assert.equal(resolved.files[0].size, Buffer.byteLength("report body"));
+  assert.equal(resolved.files[0].caption, "报告文件");
+  assert.equal(resolved.files[1].fileName, "received.bin");
+  assert.equal(resolved.files[1].mimeType, "application/octet-stream");
+  assert.match(resolved.errors.join("\n"), /outside the allowed Agent file roots/);
+
+  const invalid = extractChannelConnectorOutboundFiles([
+    "bad",
+    "```studio-channel-files",
+    "{nope",
+    "```",
+  ].join("\n"));
+  assert.equal(invalid.replyText, "bad");
+  assert.equal(invalid.files.length, 0);
+  assert.match(invalid.errors.join("\n"), /JSON/);
 });
 
 test("native Channel Connectors config preview targets Studio Gateway without cc-connect TOML", () => {
@@ -1536,7 +1614,9 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(processRequest.args.includes("--cd"), true);
   assert.equal(processRequest.args.at(-1), "-");
   assert.equal(processRequest.cwd, workDir);
-  assert.equal(processRequest.stdin, "hi codex");
+  assert.match(processRequest.stdin, /^hi codex/);
+  assert.match(processRequest.stdin, /studio-channel-files/);
+  assert.doesNotMatch(processRequest.stdin, /cc-connect/);
   assert.equal(processRequest.env.OPENAI_API_KEY, "sk-local");
   assert.equal(processRequest.env.OPENAI_BASE_URL, project.gatewayEndpoint);
   assert.ok(processRequest.env.CODEX_HOME);
@@ -1583,7 +1663,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.ok(historyRequest);
   assert.match(historyRequest.stdin, /^\[Studio IM history context\]/);
   assert.match(historyRequest.stdin, /earlier question/);
-  assert.match(historyRequest.stdin, /\n\nhi codex$/);
+  assert.match(historyRequest.stdin, /\n\nhi codex\n\n\[Studio outbound file policy\]/);
+  assert.doesNotMatch(historyRequest.stdin, /cc-connect/);
   for (const cleanupPath of historyRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const groupRequest = buildChannelConnectorAgentProcessRequest({
@@ -1616,7 +1697,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.match(groupRequest.stdin, /Mentioned users: robot-1/);
   assert.match(groupRequest.stdin, /Reply to message: m-parent-1/);
   assert.match(groupRequest.stdin, /Known members: Alice\(user-2\), Studio\(robot-1\)/);
-  assert.match(groupRequest.stdin, /\n\nhi group$/);
+  assert.match(groupRequest.stdin, /\n\nhi group\n\n\[Studio outbound file policy\]/);
+  assert.doesNotMatch(groupRequest.stdin, /cc-connect/);
   for (const cleanupPath of groupRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const missingKeyRequest = buildChannelConnectorAgentProcessRequest({
@@ -1680,7 +1762,9 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     gatewayClientKey: "sk-local",
     processRunner: async (request) => {
       assert.equal(request.command, "codex");
-      assert.equal(request.stdin, "hi codex");
+      assert.match(request.stdin, /^hi codex/);
+      assert.match(request.stdin, /studio-channel-files/);
+      assert.doesNotMatch(request.stdin, /cc-connect/);
       assert.ok(request.env.CODEX_HOME);
       turnCleanupPath = request.cleanupPaths?.[0] || null;
       assert.equal(fs.existsSync(path.join(request.env.CODEX_HOME, "config.toml")), true);
@@ -1729,7 +1813,10 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(claudeRequest.args.includes("plan"), true);
   assert.equal(claudeRequest.args.includes("--effort"), true);
   assert.equal(claudeRequest.args.includes("max"), true);
-  assert.match(claudeRequest.stdin, /"content":"hi codex"/);
+  const claudeInput = JSON.parse(claudeRequest.stdin);
+  assert.match(claudeInput.message.content, /^hi codex/);
+  assert.match(claudeInput.message.content, /studio-channel-files/);
+  assert.doesNotMatch(claudeRequest.stdin, /cc-connect/);
   assert.equal(claudeRequest.env.ANTHROPIC_API_KEY, "sk-local");
   assert.equal(claudeRequest.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:18796");
 
@@ -1748,7 +1835,9 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(opencodeRequest.args.includes("--thinking"), true);
   assert.equal(opencodeRequest.args.includes("--variant"), true);
   assert.equal(opencodeRequest.args.includes("high"), true);
-  assert.equal(opencodeRequest.args.at(-1), "hi codex");
+  assert.match(opencodeRequest.args.at(-1), /^hi codex/);
+  assert.match(opencodeRequest.args.at(-1), /studio-channel-files/);
+  assert.doesNotMatch(opencodeRequest.args.at(-1), /cc-connect/);
 
   const codexNativeHelpRequest = buildChannelConnectorAgentProcessRequest({
     project,
@@ -1863,9 +1952,11 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.ok(attachmentRequest);
   assert.match(attachmentRequest.stdin, /\[image\]/);
   assert.match(attachmentRequest.stdin, /Studio attachment summary/);
+  assert.match(attachmentRequest.stdin, /studio-channel-files/);
   assert.match(attachmentRequest.stdin, /image: diagram\.png/);
   assert.match(attachmentRequest.stdin, /Do not infer visual contents/);
   assert.doesNotMatch(attachmentRequest.stdin, /feishu-private-image-key/);
+  assert.doesNotMatch(attachmentRequest.stdin, /cc-connect/);
   for (const cleanupPath of attachmentRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const visionImagePath = path.join(workDir, ".studio-agent-attachments", "vision.png");
@@ -4818,6 +4909,61 @@ test("native Channel Connectors Feishu transport splits long text replies", asyn
     assert.equal(cached.requestCount, 1);
     assert.equal(cached.tokenCache, "hit");
     assert.equal(cached.chunkCount, 1);
+  });
+});
+
+test("native Channel Connectors Feishu transport uploads and sends images or files", async () => {
+  await withMockFeishuServer(async (apiUrl, requests) => {
+    const root = makeTempRoot();
+    const cachePath = path.join(root, "feishu-token-cache.json");
+    const transport = {
+      apiUrl,
+      appId: "cli_media",
+      appSecret: "test-secret",
+    };
+
+    const image = await uploadAndSendFeishuMedia(transport, {
+      chatId: "oc_chat",
+      data: Buffer.from("fake-png-bytes"),
+      fileName: "diagram.png",
+      mimeType: "image/png",
+    }, cachePath);
+
+    assert.equal(image.ok, true);
+    assert.equal(image.action, "upload-and-send-media");
+    assert.equal(image.requestCount, 3);
+    assert.equal(image.imageKey, "img_uploaded_1");
+    assert.equal(image.fileName, "diagram.png");
+    assert.equal(image.mimeType, "image/png");
+    assert.equal(requests[0].path, "/open-apis/auth/v3/tenant_access_token/internal");
+    assert.equal(requests[1].path, "/open-apis/im/v1/images");
+    assert.match(requests[1].contentType, /multipart\/form-data/);
+    assert.match(requests[1].body.raw, /name="image_type"/);
+    assert.match(requests[1].body.raw, /name="image"; filename="diagram\.png"/);
+    assert.equal(requests[2].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
+    assert.equal(requests[2].body.msg_type, "image");
+    assert.deepEqual(JSON.parse(requests[2].body.content), { image_key: "img_uploaded_1" });
+
+    const file = await uploadAndSendFeishuMedia(transport, {
+      chatId: "oc_chat",
+      data: Buffer.from("zip-bytes"),
+      fileName: "archive.zip",
+      mimeType: "application/zip",
+    }, cachePath);
+
+    assert.equal(file.ok, true);
+    assert.equal(file.action, "upload-and-send-media");
+    assert.equal(file.requestCount, 2);
+    assert.equal(file.fileKey, "file_uploaded_1");
+    assert.equal(file.fileName, "archive.zip");
+    assert.equal(file.mimeType, "application/zip");
+    assert.equal(requests[3].path, "/open-apis/im/v1/files");
+    assert.match(requests[3].contentType, /multipart\/form-data/);
+    assert.match(requests[3].body.raw, /name="file_type"/);
+    assert.match(requests[3].body.raw, /name="file"; filename="archive\.zip"/);
+    assert.equal(requests[4].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
+    assert.equal(requests[4].body.msg_type, "file");
+    assert.deepEqual(JSON.parse(requests[4].body.content), { file_key: "file_uploaded_1" });
   });
 });
 

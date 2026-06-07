@@ -54,7 +54,7 @@
 - 已完成：F4 Octo 入站 URL 字段兼容：除 `url` 外，识别 `file_url/fileUrl/media_url/mediaUrl/download_url/downloadUrl/cdn_url/cdnUrl/origin_url/originUrl/src/href`，减少平台字段差异导致的 `[image]` 无本地路径。
 - 已完成：F4 Octo payload-only 附件补回与插件协议对齐：daemon 进入 Agent 前把 payload 推断附件写回 `attachments`；支持 GIF=3、RichText=14 图文混排、有序 image blocks 和多图 `mediaUrls`。
 - 已完成：F4 图片非视觉模型保护：Feishu/Octo 图片附件可 staging；`glm-5` 等未标记 vision 的模型仍启动受控 Agent turn，但 prompt 禁止视觉推断并要求询问下一步，普通文件仍进入 Agent，避免路径诱导的看图幻觉。
-- 已完成：F4 Octo 出站媒体基础合同：参考 CC dmwork `upload -> send media`，支持小文件 `/v1/bot/file/upload` multipart 上传与 `/v1/bot/sendMessage` image/file payload；runtime 暴露 REST heartbeat 成功/失败指标，便于识别“WS 在线但 REST 通讯异常”；本机 `studio-cc` 小文本文件真实 smoke 已通过；大文件 COS STS 仍留后续。
+- 已完成：F4 Studio 原生出站文件合同：Agent 只声明 `studio-channel-files` manifest，daemon 校验文件位于 Agent workDir 或当前 runtime/staging 根并剥离协议块；Octo 走 `/v1/bot/file/upload` + image/file send，Feishu 走 image/file upload + message send；runtime 记录 declared/resolved/sent/errors；本机 Octo 小文本文件真实 smoke 已通过，Feishu/Octo daemon 出站文件已加回归；Octo 大文件 COS STS 仍留后续。
 - 已完成：F4 IM history context：按 session 保存最近 user/assistant 脱敏摘要，Agent prompt 注入短上下文，`/compact` 将 history 替换为 `compact-summary`，`/new` / `/reset` 清理 history。
 - 已定策略：持久 TUI/session driver 后续作为高级增强接入，不替代 one-shot `exec/resume` 默认链路；先做 session pool contract，再逐个 Agent 支持 Codex/Claude Code/OpenCode 原生 slash、连续流和 Agent-side compact。
 - 已完成：F4 群聊 context：Agent prompt 注入 channel/sender/bot/reply/mention/成员摘要，飞书完整群成员列表后续再接平台 API。
@@ -63,4 +63,4 @@
 - 已完成：F5 基础治理：allowlist/admin、banned words、rate limit 覆盖 Octo/Feishu daemon 与 HTTP dispatch/action。
 - 已完成：F4 飞书群成员拉取：群聊 Agent 分支分页拉取 chat members 并注入 group context，失败只记日志不阻断。
 - 已完成：平台配置 UI：Octo/Feishu binding 凭证 metadata 可在 Channel Connectors 页面编辑并直接执行连接测试。
-- 下一步：先做 Feishu/Octo 私聊与群聊 live 复验；继续迁移 CC/OpenClaw 视觉输入/OCR、语音/STT/TTS、文件出站和多平台 adapter；Feishu 菜单继续补更多设置型子卡、切换结果卡片、分页和 Studio 化精修。
+- 下一步：先做 Feishu/Octo 私聊与群聊 live 复验；继续迁移 CC/OpenClaw 视觉输入/OCR、语音/STT/TTS、Octo 大文件 COS STS 和多平台 adapter；Feishu 菜单继续补更多设置型子卡、切换结果卡片、分页和 Studio 化精修。

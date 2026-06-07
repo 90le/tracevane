@@ -448,7 +448,20 @@ export interface ChannelConnectorFeishuTransportConfig {
 export interface ChannelConnectorFeishuTransportResult {
   attempted: boolean;
   ok: boolean | null;
-  action: "none" | "tenant-token" | "send-message" | "send-post" | "send-card" | "patch-card" | "add-reaction" | "remove-reaction";
+  action:
+    | "none"
+    | "tenant-token"
+    | "send-message"
+    | "send-post"
+    | "send-card"
+    | "patch-card"
+    | "add-reaction"
+    | "remove-reaction"
+    | "upload-image"
+    | "upload-file"
+    | "send-image"
+    | "send-file"
+    | "upload-and-send-media";
   apiUrl: string | null;
   statusCode: number | null;
   error: string | null;
@@ -458,6 +471,11 @@ export interface ChannelConnectorFeishuTransportResult {
   messageIds?: string[] | null;
   chunkCount?: number | null;
   reactionId?: string | null;
+  imageKey?: string | null;
+  fileKey?: string | null;
+  fileName?: string | null;
+  mimeType?: string | null;
+  size?: number | null;
 }
 
 export interface ChannelConnectorFeishuTransportSmokeRequest {
