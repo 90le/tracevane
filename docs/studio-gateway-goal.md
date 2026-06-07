@@ -1,7 +1,7 @@
 # Studio Gateway 目标方案
 
 > 状态：Phase C deletion completed; Phase B core matrix completed; Phase D provider routing/model catalog/active-route smoke MVP added; Phase E app connection profile/rollback/isolated apply acceptance completed; Phase B2 CLI/Gateway/live smoke harness added; Phase G docs renamed; Claude tool/summary and OpenClaw agent CLI smoke passed; Responses->Chat streaming usage、provider-declared reasoning/thinking、parallel tool-call、SSE failed 和 started-stream error envelope behavior aligned; BigModel Chat/Anthropic live maturity passed; GMN Responses-native substitute live proof passed; OpenAI Platform vendor proof optional
-> 更新：2026-06-07
+> 更新：2026-06-08
 > 文档规则：本文件只保留目标、边界、验收和阶段计划；进度写到 `studio-gateway-progress.md`。旧 `codex-stack-model-gateway-*` 文档名已停止使用。
 
 ## 1. 最终目标
@@ -88,6 +88,7 @@ Provider / model routing 目标：
 - Channel Connectors 使用独立 Studio 配置/secret/state，不写入 `openclaw.json`、OpenClaw channels 或 OpenClaw bindings。
 - Channel daemon 必须常驻守护；Studio / OpenClaw 崩溃时仍保持渠道服务和 Codex/Gateway 对话链路，不内置额外修复流程。
 - Channel / Agent 任意新功能实现前必须先定位 CC Go 对应实现，按平台协议、消息语义、交互菜单、错误处理、长连接和状态流做 1:1 contract 迁移，再做 Studio 化精修；禁止在已有成熟设计时重新盲目设计。
+- Channel Connectors 进度跟踪以 `docs/channel-connectors-cc-migration-checklist.md` 为准；任何偏离 CC 的实现都必须写明原因、验收证据和回退方式。
 - Channel daemon 的平台长连接必须以 CC Go 成熟实现为基线迁移；Octo(dmwork) 默认 30s heartbeat、10s PONG timeout、RECVACK、5 分钟 messageId 去重、`3s + 0..3s` 抖动重连和 5 分钟 REST heartbeat 备用保活，Feishu 采用同 App 共享长连接后扇出事件。
 - Feishu 入站消息必须先完成轻量解析/去重/准入并快速 ACK；文件下载、Agent 调用、进度卡片和最终回复必须后台异步执行，避免 SDK dispatcher 被 IO 阻塞后触发平台重投。
 - Feishu card/menu 的导航动作才返回卡片；`/new`、`/reset` 等执行动作必须直接执行并返回结果，不得自动弹出完整菜单。

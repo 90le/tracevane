@@ -16,9 +16,13 @@
 - IM Agent run 默认按 binding + sessionKey 串行排队：上一条 Agent 消息未结束时，新普通消息会收到“已加入队列”引导，并在前序任务完成后自动处理；`/stop`、`/status` 等 Studio 命令仍可执行，binding metadata 可显式打开 parallel。
 - IM Agent runner 策略固定为混合架构：真实 Feishu/Octo live binding 当前使用 one-shot `exec/resume` 保稳定；Codex 持久 session driver 保留为 metadata 实验路径，显式开启时使用 `codex app-server`，已覆盖 `turn/start`、原生 `/compact`、`turn/interrupt`、`/stop`、超时中断和失败回退。
 - CC Go 旧源码对照结论已固定：Codex 正式稳定路径优先复刻 CC 的 `codex exec/resume` 子进程模型；Claude Code / ACP 等再按其原生长驻流式会话单独迁移。Codex app-server 不作为默认 live 路线，只保留为受控 beta。
+- 仓库级约束已固定：Channel Connectors 任意新功能必须先按 CC Go 1:1 迁移，再做 Studio 精修；迁移跟踪见 `channel-connectors-cc-migration-checklist.md`。
 
 ## 本次完成
 
+- 新增根目录 `AGENTS.md`，把 CC-first 迁移门禁写成仓库级约束，明确禁止在 CC 已有成熟方案时重新造轮子。
+- 新增 `docs/channel-connectors-cc-migration-checklist.md`，按 P0-P3 拆出 Codex runner、Feishu/Octo、文件/流式/菜单、Claude/OpenCode、更多平台和更多 Agent 的迁移任务。
+- 更新 Channel Connectors 方案和 Studio Gateway 目标，要求任何偏离 CC 的方案必须记录原因、验收证据和回退方式。
 - 新增 Studio 出站文件 manifest contract：Agent prompt 只说明 `studio-channel-files`，不出现旧桥接命令；daemon 剥离 manifest 后发送文本和文件。
 - 新增出站文件校验：普通权限只允许 Agent workDir 或当前 runtime/staging 根；`yolo` 权限允许任意可读普通文件出站，但仍保留平台/daemon 文件大小限制。
 - Feishu transport 补 image/file upload + message send；Octo daemon 接入已有 upload+send media，事件日志记录 declared/resolved/sent/errors。
@@ -88,6 +92,6 @@
 
 ## 下一步
 
-1. 用当前 one-shot live binding 复验 Feishu/Octo 发文件、工具流式、最终 Markdown 排版，确认旧成熟能力恢复。
-2. 按 CC Go 顺序迁移成熟 Agent runner：先对齐 Codex `exec/resume` 细节，再补 Claude Code 长驻 stream-json/permission-prompt-tool，后续迁移 OpenCode/ACP。
-3. 继续做 Codex persistent driver 受控 beta：补权限等待处理、审批事件解析、同用户多 session、多用户/群隔离和 UI kill/reap live 验收，但不阻塞稳定 live 路线。
+1. 先按迁移清单 P1 复验 Codex `exec/resume` live 路径：Feishu/Octo 发文件、工具流式、最终 Markdown 排版。
+2. 继续复刻 CC Go 的 Feishu/Octo 菜单、设置卡片、长连接和媒体收发细节。
+3. 再迁移 Claude Code stream-json/permission-prompt-tool 与 OpenCode runner；Codex app-server 继续保持 beta，不阻塞稳定 live 路线。

@@ -1,8 +1,8 @@
 # Channel Connectors / CLI Agent Bot 原生方案
 
 > 状态：Studio 原生 Channel daemon 路线；Octo/Feishu 基础闭环与 Feishu CC-style 菜单/会话子卡已完成
-> 更新：2026-06-07
-> 参考源：CC 二开全量源码 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`；OpenClaw 频道与运行时实现；OpenClaw Octo 插件 `~/.openclaw/extensions/octo`；压缩映射见 `channel-connectors-native-feature-map.md`
+> 更新：2026-06-08
+> 参考源：CC 二开全量源码 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`；OpenClaw 频道与运行时实现；OpenClaw Octo 插件 `~/.openclaw/extensions/octo`；迁移清单见 `channel-connectors-cc-migration-checklist.md`
 
 ## 1. 新结论
 
@@ -18,11 +18,13 @@ Octo(dmwork) / 飞书 / 微信 / IM
 
 全量目标不是“接几个渠道”，而是把 CC 二开源码里的能力全部原生纳入 Studio，并结合 Studio Gateway / App Connections / Studio UI 做得更完整。
 
-CC 和 OpenClaw 只作为参考：
+迁移门禁：
 
-- 参考 CC 的平台协议、session key、mention、文件/图片收发、allowlist、rate limit、CLI Agent 调用方式、slash command、菜单和 Feishu card。
-- 任何渠道或 Agent 功能开工前，先找到 CC Go 对应实现并迁移同等 contract；消息结构、长连接、菜单/卡片、状态流、错误处理、重试和权限语义先 1:1 复刻，再做 Studio 化精修。
-- 参考 OpenClaw 的频道配置、账号/机器人绑定、运行态管理和事件抽象。
+- CC Go 是 Channel Connectors 的成熟行为基线，不是普通参考。任何渠道、Agent、菜单、卡片、进度、文件、会话、权限或 runner 功能开工前，必须先定位 CC Go 对应实现。
+- 已有 CC 能力必须先按同等 contract 1:1 迁移：平台协议、session key、mention、文件/图片收发、allowlist、rate limit、CLI Agent 调用方式、slash command、菜单、Feishu card、状态流、错误处理、重试和权限语义。
+- Studio 化精修只能发生在 parity 之后；若不用 CC 方案，必须证明 CC 没有该能力、Studio runtime 无法采用，或新方案更好，并在 `channel-connectors-cc-migration-checklist.md` 和 commit trailer 写明原因。
+- Codex app-server / persistent session 保持 beta，未通过 CC `exec/resume` 路径同等文件、工具、流式、stop、compact、恢复能力验收前，不得成为 live 默认。
+- OpenClaw 用作频道配置、账号/机器人绑定、运行态管理和事件抽象参考。
 - Octo 专属问题优先参考已安装的 OpenClaw Octo 插件（当前 1.0.14）：它覆盖 WuKongIM、Bot API、RichText=14、COS STS、群/thread/mention、persona 和多账号能力；当 CC Go 源码没有 Octo 方案时，以该插件为主要协议依据。
 - 生产实现不依赖 cc-connect binary，也不恢复旧 `resources/codex-stack` 生产路径。
 
@@ -162,6 +164,6 @@ Studio 增强点：
 
 ## 6. 下一步
 
-1. Feishu/Octo 私聊与群聊各做 live 复验，确认私聊有过程、群聊默认静默。
-2. 继续补 CC 的更多设置型卡片、下拉/按钮动作、切换结果卡片、分页和 Studio 化精修。
-3. 继续迁移 CC/OpenClaw 的 Claude/OpenCode 视觉 image input、OCR、语音/STT/TTS、真实大文件限额验证和多平台 adapter。
+1. 按 `channel-connectors-cc-migration-checklist.md` 的 P1 顺序推进，不再绕开 CC Go 重做。
+2. 先复验 Codex `exec/resume` 稳定 live 路径：Feishu/Octo 发文件、工具流、Markdown 最终回复。
+3. 再复刻 Feishu/Octo 菜单、设置卡片、长连接与媒体收发细节，随后迁移 Claude Code / OpenCode runner。
