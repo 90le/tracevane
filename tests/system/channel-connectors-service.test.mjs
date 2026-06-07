@@ -2252,10 +2252,14 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(help.handled, true);
   assert.equal(help.ok, true);
+  assert.match(help.replyText, /\*\*会话\*\*/);
+  assert.match(help.replyText, /普通消息会交给当前 Agent/);
+  assert.match(help.replyText, /`\/status`/);
   assert.match(help.replyText, /\/mode/);
   assert.match(help.replyText, /\/stream/);
   assert.match(help.replyText, /\/tools/);
   assert.match(help.replyText, /\/buffer/);
+  assert.match(help.replyText, /`\/native \/help`/);
   assert.equal(parseChannelConnectorCommand("%help")?.name, "help");
   assert.equal(parseChannelConnectorCommand("/%help")?.name, "help");
 
@@ -2893,7 +2897,11 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.equal(surface.current.projectId, "codex-main");
   assert.equal(surface.current.streamMessages, true);
   assert.equal(surface.current.toolMessages, true);
-  assert.match(surface.textFallback, /skills\/native/);
+  assert.match(surface.textFallback, /skills 命令/);
+  assert.match(surface.textFallback, /\*\*当前会话\*\*/);
+  assert.match(surface.textFallback, /\*\*快捷操作\*\*/);
+  assert.match(surface.textFallback, /`\/status`/);
+  assert.match(surface.textFallback, /`\/native \/help`/);
   assert.match(surface.textFallback, /\/agent claude-main/);
   const nativeSection = surface.sections.find((section) => section.id === "native");
   assert.ok(nativeSection);

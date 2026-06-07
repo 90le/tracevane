@@ -23,6 +23,7 @@
 - Octo 已确认支持 Markdown 文本渲染；最终回复保持模型原始 Markdown 文本，不添加 `Studio Reply` 包装。
 - Octo 不能 patch 气泡消息，过程流不再发送 start/running/completed/event 这类低信息气泡；私聊只显示思考、工具调用、工具结果和错误，工具事件不再被普通 1.5s 进度节流吞掉。
 - Octo/非富卡片渠道过程消息去掉 `Studio Progress` 大标题，仅保留短状态行和正文；工具名、exit/status 使用 Markdown inline code，工具输入/结果、TodoWrite 和失败回执复用同一套代码块格式化。
+- Octo/非富卡片渠道 `/help` 改为 Markdown 友好的分组菜单：当前会话、快捷操作、会话、Agent/模型/权限、目录、显示/工具/长回复、原生 Agent；普通纯文本渠道也能按同一结构阅读。
 - OpenClaw Octo 插件 RichText=14 仍作为后续图文混排参考，不用于纯文本 Markdown 回复包装。
 - 完成态不再给 Octo 私聊单独刷一条 `completed` 过程消息；最终回复本身承担完成态，群聊仍默认隐藏中间过程。
 - Channel daemon 事件日志补齐 `replyRequestCount`、卡片/文本发送次数、ingress->agent start、首个进度延迟、进度间隔和 agent elapsed，便于区分平台 API、Agent 和模型耗时。
@@ -31,8 +32,10 @@
 
 - 通过：`npm run build:api`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "Feishu long-connection|Octo long connection|process runner maps Codex command execution progress|daemon entry|routes are registered"`，38 个 Channel Connectors 子测试通过。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "IM commands switch agent|command surface renders text and Feishu card actions|Octo long connection|Feishu long-connection"`，38 个 Channel Connectors 子测试通过。
 - 通过：`git diff --check`。
 - 通过：`systemctl --user restart openclaw-studio-channel-connectors.service`，随后 `is-active/is-enabled` 为 `active/enabled`。
+- 通过：本轮重启后观察两个 watcher 窗口，Feishu 启动无入站只触发一次 `watchdog_zero_inbound`，随后保持 connected 且未连续重启；Octo 同时保持 connected。
 - 通过：重启 Channel daemon 后静默观察超过 70 秒，Feishu `connected=true`，Octo `connected=true`；飞书启动无入站只触发一次 30s no-inbound sanity reconnect，之后未在无消息状态继续 connected-idle 循环。
 - 通过：本轮重启后真实 Feishu live message 于 `2026-06-07T05:58:42Z` 入站，Agent run completed，`receivedMessages=1`，未触发 no-inbound reconnect；上一轮 13:50 后的问题定位为 WS ready 但无事件入站的假在线状态。
 - 通过：生命周期版 Feishu watcher 本轮 live 观察到 `2026-06-07T06:24:07Z` 真实入站并完成 Agent run；日志显示 SDK `pingTimeout` 曾在 `06:23:06Z` 触发 reconnect 并恢复，说明死 socket 由 SDK 层处理，Studio watchdog 只负责 ready 但不投递事件的兜底。
@@ -51,5 +54,5 @@
 ## 下一步
 
 1. 用 Feishu/Octo 实测 `/dir`、`/dir -`、`/dir 1` 和 WorkDir 卡片选择器，确认文字命令与卡片动作一致。
-2. 继续按 CC Go 补 `/reasoning`、`/usage`、`/stop` 等设置型命令和对应 Feishu 子卡，并同步到 Octo 文本命令体验。
+2. 继续按 CC Go 补 `/reasoning`、`/usage`、`/stop` 等设置型命令和对应 Feishu 子卡，并同步到 Octo 文本命令体验；`/stop` 需先补 runner cancel contract，不能只做占位提示。
 3. 继续迁移 Claude Code / OpenCode 视觉输入、OCR、语音/STT/TTS、大文件 COS STS 和更多平台 adapter。

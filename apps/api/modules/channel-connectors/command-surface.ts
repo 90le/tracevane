@@ -268,23 +268,52 @@ function action(
   };
 }
 
+function fallbackActionPrefix(item: ChannelConnectorCommandSurfaceAction): string {
+  if (item.tone === "danger") return "!";
+  if (item.tone === "primary") return ">";
+  if (item.actionKind === "nav") return "-";
+  return "-";
+}
+
+function fallbackActionLine(item: ChannelConnectorCommandSurfaceAction): string {
+  const description = commandSurfaceItemDescription(item);
+  const suffix = description ? ` - ${description}` : "";
+  return `${fallbackActionPrefix(item)} \`${item.command}\` ${item.label}${suffix}`;
+}
+
 function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFallback">): string {
-  const lines = [
-    surface.title,
-    `Agent: ${surface.current.projectId} (${surface.current.agent})`,
-    `Model: ${surface.current.model || "default"}`,
-    `Mode: ${surface.current.permissionMode}`,
-    `WorkDir: ${surface.current.workDir}`,
-    ...(surface.current.workDirHistory.length ? [`Previous WorkDir: ${surface.current.workDirHistory[0]}`] : []),
+  const quickActions = sectionById(surface as ChannelConnectorCommandSurface, "session")?.actions
+    .filter((item) => ["status", "new"].includes(item.id)) || [];
+  const lines: string[] = [
+    `**${surface.title}**`,
+    "",
+    "**当前会话**",
+    `- Agent: ${surface.current.projectId} (${surface.current.agent})`,
+    `- Model: ${surface.current.model || "default"}`,
+    `- Mode: ${surface.current.permissionMode}`,
+    `- WorkDir: ${surface.current.workDir}`,
+    `- Display: stream=${surface.current.streamMessages ? "on" : "off"} / tools=${surface.current.toolMessages ? "on" : "off"}`,
   ];
+  if (surface.current.workDirHistory.length) {
+    lines.push(`- Previous WorkDir: ${surface.current.workDirHistory[0]}`);
+  }
+  if (quickActions.length) {
+    lines.push("", "**快捷操作**");
+    quickActions.forEach((item) => lines.push(fallbackActionLine(item)));
+  }
   for (const section of surface.sections) {
-    lines.push("", section.title);
+    lines.push("", `**${section.title}**`);
     if (section.summary) lines.push(section.summary);
     for (const item of section.actions) {
-      lines.push(`- ${item.label}: ${item.command}`);
+      lines.push(fallbackActionLine(item));
     }
   }
-  lines.push("", "未被 Studio 拥有的 /xxx 会直接透传给当前 Agent；skills/native 命令优先留给 Agent CLI 处理。");
+  lines.push(
+    "",
+    "**原生 Agent**",
+    "未被 Studio 拥有的 `/xxx` 会直接透传给当前 Agent；与 Studio 命令冲突时用 `/native <命令>`。",
+    "示例：`/native /help` 查看当前 Agent 的原生帮助或 skills 命令。",
+  );
   return lines.join("\n");
 }
 

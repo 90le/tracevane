@@ -92,6 +92,7 @@ Provider / model routing 目标：
 - Feishu 入站消息必须先完成轻量解析/去重/准入并快速 ACK；文件下载、Agent 调用、进度卡片和最终回复必须后台异步执行，避免 SDK dispatcher 被 IO 阻塞后触发平台重投。
 - Feishu card/menu 的导航动作才返回卡片；`/new`、`/reset` 等执行动作必须直接执行并返回结果，不得自动弹出完整菜单。
 - Feishu 长连接不得只相信 SDK `connected` 状态；Studio 必须记录真实 `lastReceivedAt`，让 SDK `pingTimeout` 处理死 socket，并对 connected 但长期无事件入站的假连接执行有抑制/冷却的自动轮换。
+- Rich 平台优先使用卡片/Markdown；普通文本平台也必须有清晰命令分组、当前会话状态、原生 Agent 透传说明和长回复读取入口，不能只给一串无结构命令列表。
 - 原生 contract 统一 incoming、reply、attachment、voice、thread、ack/retry、allowlist、admin、rate limit、banned words、slash command、cron、hooks、relay、session key 和 bot->Agent binding。
 - 优先 Octo(dmwork)，再飞书、微信/企业微信；后续覆盖 CC 已有平台，包括钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等。
 - 参考源：CC 二开全量源码 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`，其中 `platform/dmwork` 即 Octo；OpenClaw 频道实现作为账号/绑定/运行态参考；生产实现不依赖 cc-connect binary，也不得恢复旧 `resources/codex-stack` 生产路径。
