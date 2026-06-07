@@ -91,6 +91,7 @@ import {
   sendFeishuPostMessage,
   sendFeishuTextMessage,
   smokeFeishuTenantToken,
+  uploadAndSendFeishuMedia,
 } from "./feishu-transport.js";
 import {
   handleChannelConnectorCommand,
@@ -1034,7 +1035,12 @@ function normalizeOctoTransportSmokeRequest(payload: ChannelConnectorOctoTranspo
 
 function normalizeFeishuTransportSmokeRequest(payload: ChannelConnectorFeishuTransportSmokeRequest | undefined): ChannelConnectorFeishuTransportSmokeRequest {
   if (!payload || !isRecord(payload)) return { action: "tenant-token" };
-  const action = payload.action === "send-message" || payload.action === "send-post" || payload.action === "send-card" || payload.action === "patch-card" || payload.action === "tenant-token"
+  const action = payload.action === "send-message"
+    || payload.action === "send-post"
+    || payload.action === "send-card"
+    || payload.action === "patch-card"
+    || payload.action === "upload-and-send-media"
+    || payload.action === "tenant-token"
     ? payload.action
     : "tenant-token";
   return {
@@ -1043,6 +1049,8 @@ function normalizeFeishuTransportSmokeRequest(payload: ChannelConnectorFeishuTra
     channelId: normalizeString(payload.channelId) || null,
     messageId: normalizeString(payload.messageId) || null,
     content: normalizeString(payload.content) || "Studio Feishu transport smoke",
+    fileName: normalizeString(payload.fileName) || null,
+    mimeType: normalizeString(payload.mimeType) || null,
   };
 }
 
@@ -2057,7 +2065,7 @@ export function createChannelConnectorsService(
         adapter: "feishu",
         binding: null,
         transport: {
-          ...emptyFeishuTransportResult(request.action === "patch-card" || request.action === "send-card" || request.action === "send-post" ? request.action : request.action || "tenant-token"),
+          ...emptyFeishuTransportResult(request.action || "tenant-token"),
           error: "feishu_binding_not_found",
         },
       };
@@ -2070,7 +2078,7 @@ export function createChannelConnectorsService(
         adapter: "feishu",
         binding: resolved.binding,
         transport: {
-          ...emptyFeishuTransportResult(request.action === "patch-card" || request.action === "send-card" || request.action === "send-post" ? request.action : request.action || "tenant-token"),
+          ...emptyFeishuTransportResult(request.action || "tenant-token"),
           error: "feishu_transport_config_missing",
         },
       };
@@ -2124,6 +2132,15 @@ export function createChannelConnectorsService(
             },
           ],
         },
+      }, resolvedPaths.feishuTokenCacheFile);
+    } else if (request.action === "upload-and-send-media") {
+      if (!request.channelId) throw new Error("channelId is required for Feishu upload-and-send-media smoke.");
+      const content = request.content || "Studio Feishu upload and send smoke\n";
+      transport = await uploadAndSendFeishuMedia(transportConfig, {
+        chatId: request.channelId,
+        data: Buffer.from(content, "utf8"),
+        fileName: request.fileName || "studio-feishu-smoke.md",
+        mimeType: request.mimeType || "text/markdown",
       }, resolvedPaths.feishuTokenCacheFile);
     } else {
       transport = await smokeFeishuTenantToken(transportConfig, resolvedPaths.feishuTokenCacheFile);

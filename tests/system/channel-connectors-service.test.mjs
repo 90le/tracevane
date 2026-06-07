@@ -5018,6 +5018,85 @@ test("native Channel Connectors Feishu transport sends replies and reuses tenant
   });
 });
 
+test("native Channel Connectors Feishu transport-smoke uploads and sends files through service", async () => {
+  await withMockFeishuServer(async (apiUrl, requests) => {
+    const root = makeTempRoot();
+    const config = createStudioConfig(root);
+    const service = createChannelConnectorsService(config, {
+      now: () => new Date("2026-06-06T08:05:00.000Z"),
+    });
+    const initial = service.getNativeConfig().config;
+    service.saveNativeConfig({
+      config: {
+        ...initial,
+        agentProfiles: [
+          {
+            id: "feishu-codex",
+            name: "Feishu Codex",
+            agent: "codex",
+            model: "gpt-5",
+            workDir: root,
+            permissionMode: "suggest",
+            gatewayEndpoint: "http://127.0.0.1:18796/v1",
+            gatewayKeyRef: "studio-gateway-client-key",
+            appProfileRef: "codex",
+          },
+        ],
+        defaultAgentProfileId: "feishu-codex",
+        platformBindings: [
+          {
+            id: "feishu-media",
+            platform: "feishu",
+            accountId: "cli_media",
+            botId: "bot_media",
+            displayName: "Feishu Media",
+            agentProfileId: "feishu-codex",
+            enabled: true,
+            allowlist: [],
+            adminUsers: [],
+            metadata: {
+              apiUrl,
+              appSecret: "test-secret",
+              verificationToken: "verify-media",
+            },
+          },
+        ],
+      },
+    });
+
+    const smokeContent = "Studio Feishu media smoke";
+    const result = await service.runFeishuTransportSmoke({
+      bindingId: "feishu-media",
+      action: "upload-and-send-media",
+      channelId: "oc_chat",
+      content: smokeContent,
+      fileName: "Studio 文件名 保留测试.md",
+      mimeType: "text/markdown",
+    });
+
+    assert.equal(result.transport.ok, true);
+    assert.equal(result.transport.action, "upload-and-send-media");
+    assert.equal(result.transport.requestCount, 3);
+    assert.equal(result.transport.tokenCache, "hit");
+    assert.equal(result.transport.fileKey, "file_uploaded_1");
+    assert.equal(result.transport.fileName, "Studio 文件名 保留测试.md");
+    assert.equal(result.transport.mimeType, "text/markdown");
+    assert.equal(result.transport.size, Buffer.byteLength(smokeContent));
+    assert.equal(result.transport.messageId, "om_sent_1");
+    assert.equal(requests.length, 3);
+    assert.equal(requests[0].path, "/open-apis/auth/v3/tenant_access_token/internal");
+    assert.equal(requests[0].body.app_id, "cli_media");
+    assert.equal(requests[1].path, "/open-apis/im/v1/files");
+    assert.match(requests[1].contentType, /multipart\/form-data/);
+    assert.match(requests[1].body.raw, /name="file"; filename="Studio 文件名 保留测试\.md"/);
+    assert.equal(requests[2].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
+    assert.equal(requests[2].authorization, "Bearer tenant-token-1");
+    assert.equal(requests[2].body.receive_id, "oc_chat");
+    assert.equal(requests[2].body.msg_type, "file");
+    assert.deepEqual(JSON.parse(requests[2].body.content), { file_key: "file_uploaded_1" });
+  });
+});
+
 test("native Channel Connectors Feishu transport downloads message resources", async () => {
   await withMockFeishuServer(async (apiUrl, requests) => {
     const root = makeTempRoot();

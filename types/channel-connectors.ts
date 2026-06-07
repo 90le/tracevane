@@ -500,10 +500,12 @@ export interface ChannelConnectorFeishuTransportResult {
 
 export interface ChannelConnectorFeishuTransportSmokeRequest {
   bindingId?: string | null;
-  action?: "tenant-token" | "send-message" | "send-post" | "send-card" | "patch-card";
+  action?: "tenant-token" | "send-message" | "send-post" | "send-card" | "patch-card" | "upload-and-send-media";
   channelId?: string | null;
   messageId?: string | null;
   content?: string | null;
+  fileName?: string | null;
+  mimeType?: string | null;
 }
 
 export interface ChannelConnectorFeishuTransportSmokeResponse {
