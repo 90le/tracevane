@@ -105,7 +105,7 @@ function uniqueStrings(values: string[]): string[] {
 }
 
 export function parseChannelConnectorCommand(content: string): ParsedCommand | null {
-  const trimmed = normalizeString(content);
+  const trimmed = normalizeCommandPrefix(normalizeString(content));
   if (!trimmed.startsWith("/")) return null;
   const parts = trimmed.split(/\s+/).filter(Boolean);
   const rawName = normalizeString(parts[0]).replace(/^\/+/, "").toLowerCase();
@@ -115,6 +115,12 @@ export function parseChannelConnectorCommand(content: string): ParsedCommand | n
     name: rawName,
     args: parts.slice(1),
   };
+}
+
+function normalizeCommandPrefix(value: string): string {
+  if (value.startsWith("/%")) return `/${value.slice(2)}`;
+  if (value.startsWith("%")) return `/${value.slice(1)}`;
+  return value;
 }
 
 function controlsLookup(context: Pick<ChannelConnectorCommandContext, "binding" | "sessionKey">) {

@@ -73,6 +73,7 @@ import {
 import {
   handleChannelConnectorCommand,
   listChannelConnectorGatewayModels,
+  parseChannelConnectorCommand,
   resolveChannelConnectorEffectiveProject,
 } from "../../dist/apps/api/modules/channel-connectors/command-router.js";
 import {
@@ -2255,6 +2256,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(help.replyText, /\/stream/);
   assert.match(help.replyText, /\/tools/);
   assert.match(help.replyText, /\/buffer/);
+  assert.equal(parseChannelConnectorCommand("%help")?.name, "help");
+  assert.equal(parseChannelConnectorCommand("/%help")?.name, "help");
 
   for (const alias of ["/command", "/cmd"]) {
     const aliasHelp = await handleChannelConnectorCommand({
@@ -3288,6 +3291,29 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(parsedNormalizedWsCard.channelId, "oc_chat");
   assert.equal(parsedNormalizedWsCard.messageId, "om_card_ws");
   assert.equal(extractChannelConnectorCommandFromActionValue(parsedNormalizedWsCard.actionValue), "/help model");
+
+  const parsedPercentHelp = parseChannelConnectorFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "im.message.receive_v1",
+      app_id: "cli_test",
+      event_id: "evt_percent_help",
+      token: "verify-token",
+    },
+    event: {
+      sender: { sender_id: { open_id: "ou_admin" } },
+      message: {
+        message_id: "om_percent_help",
+        chat_id: "oc_group",
+        chat_type: "group",
+        message_type: "text",
+        content: JSON.stringify({ text: "%help" }),
+      },
+    },
+  });
+  assert.equal(parsedPercentHelp.kind, "message");
+  assert.equal(parsedPercentHelp.chatType, "group");
+  assert.equal(parsedPercentHelp.directed, true);
 
   const challenge = await service.dispatchFeishuWebhook({
     type: "url_verification",
@@ -4588,7 +4614,15 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /function channelConnectorStreamMessagesEnabled/);
   assert.match(daemonSource, /function shouldSendChannelProgressEvent/);
   assert.match(daemonSource, /shouldSendFeishuProgressEvent/);
+  assert.match(daemonSource, /function normalizeFeishuCommandContent/);
+  assert.match(daemonSource, /normalizeString\(input\.command\.action\)\.toLowerCase\(\) === "help"/);
   assert.match(daemonSource, /renderFeishuProgressCard/);
+  assert.match(daemonSource, /function formatProgressToolInput/);
+  assert.match(daemonSource, /function formatTodoWriteProgressInput/);
+  assert.match(daemonSource, /function renderFeishuProgressEntry/);
+  assert.match(daemonSource, /function renderPlainProgressEntry/);
+  assert.match(daemonSource, /text_tag color='blue'/);
+  assert.match(daemonSource, /text_tag color='turquoise'/);
   assert.match(daemonSource, /sendOrPatchFeishuProgressCard/);
   assert.match(daemonSource, /agent\.progress\.card/);
   assert.match(daemonSource, /renderOctoProgressText/);

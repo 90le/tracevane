@@ -425,7 +425,7 @@ export function parseChannelConnectorFeishuWebhook(
     const message = extractFeishuMessage(event);
     const chatType = message.chatType;
     const text = message.text;
-    const directed = chatType !== "group" || Boolean(text && text.startsWith("/"));
+    const directed = chatType !== "group" || Boolean(text && (text.startsWith("/") || text.startsWith("%")));
     return {
       kind: "message",
       eventType,

@@ -15,19 +15,20 @@
 
 ## 本次完成
 
-- 参考 CC Go `platform/dmwork` 的 group buffer 语义，Channel daemon 统一了 Feishu/Octo 进度显示默认值：私聊默认显示运行/思考/工具过程，群聊默认只显示最终回复；用户仍可在当前 IM session 里用 `/stream` / `/tools` 显式覆盖。
-- Feishu 进度卡接入共享策略：群聊默认不再自动创建/patch Progress card；菜单 `Display` 子卡也会按群聊默认显示关闭，避免 UI 状态和运行行为不一致。
-- Octo 私聊新增 CC-style 进度文本：运行中、思考、工具调用、工具结果、完成/失败会按节流策略发送；Octo 群聊默认保持安静，只保留最终回复或最终错误。
-- 事件日志补充 `progressDefaultGroup`、`progressStreamEnabled`、`progressToolsEnabled` 和 Octo `agent.progress.reply`，后续排查可以区分“被默认策略隐藏”和“发送失败”。
+- 参考 CC Go Feishu progress renderer，优化 Studio Feishu 过程卡：工具调用用代码块展示命令/输入，工具结果显示完成/失败、exit/status 和输出，TodoWrite JSON 尽量转为可读任务列表，完成态不再展示噪声 `turn.completed` 条目。
+- Octo 私聊进度文本复用同一套工具格式化：`command_execution` 等工具会显示命令、exit/status 和输出；群聊仍默认隐藏过程，只保留最终回复。
+- 修复 Feishu `%help` / `/%help` 兼容：平台菜单或文本中使用 `%help` 会规范为 `/help`，群聊 `%help` 会被视为 directed 命令。
+- 修复 Feishu help 菜单“文本+菜单聚合”的尴尬：help/action 以菜单卡作为主响应，不再把长 help 文本塞进 notice。
 
 ## 最近验证
 
 - 通过：`npm run build:api`。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "command surface|Feishu long-connection|Octo long connection|Octo heartbeat|routes are registered"`，38 个 Channel Connectors 子测试通过。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs --test-name-pattern "IM commands|Feishu webhook|command surface|Feishu long-connection|Octo long connection|routes are registered"`，38 个 Channel Connectors 子测试通过。
 - 通过：`git diff --check`。
 - 通过：`systemctl --user restart openclaw-studio-channel-connectors.service`，随后 `is-active/is-enabled` 为 `active/enabled`。
 - 通过：`npm run dev:restart`，前端 `http://127.0.0.1:5176`，后端 `http://127.0.0.1:3762`。
 - 通过：`curl http://127.0.0.1:18797/status`，Octo `octo-studio-cc` connected，Feishu shared WS connected，`activeRuns=[]`。
+- 通过：`curl http://127.0.0.1:3762/api/channel-connectors/status`，service reachable/active/enabled，diagnostics 为空。
 
 ## 已知边界
 
@@ -39,6 +40,6 @@
 
 ## 下一步
 
-1. 重启 Channel daemon 和 dev 服务后，用 Feishu/Octo 私聊各发一条带工具调用的问题，确认私聊进度展示；群聊各发一条，确认默认只出最终回复。
+1. 重启 Channel daemon 和 dev 服务后，用 Feishu/Octo 私聊各发一条带工具调用的问题，确认过程样式；群聊各发一条，确认默认只出最终回复。
 2. 继续按 CC Go 补 Feishu 更多设置型子卡、下拉/按钮动作和 command-router 细节，并同步到 Octo 文本命令体验。
 3. 继续迁移 Claude Code / OpenCode 视觉输入、OCR、语音/STT/TTS、大文件 COS STS 和更多平台 adapter。

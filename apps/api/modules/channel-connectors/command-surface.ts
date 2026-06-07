@@ -218,7 +218,7 @@ export function normalizeChannelConnectorCommandSurfaceView(value: unknown): Fei
 export function channelConnectorCommandSurfaceSectionFromCommand(command: string | null | undefined): FeishuMenuSectionId | null {
   const normalized = normalizeString(command);
   if (!normalized) return null;
-  const parts = normalized.replace(/^\/+/, "").split(/\s+/).filter(Boolean);
+  const parts = normalized.replace(/^[/%]+/, "").split(/\s+/).filter(Boolean);
   if (!parts.length) return null;
   const name = parts[0] || "";
   if (["help", "menu", "commands", "command", "cmd", "start"].includes(name.toLowerCase())) {
@@ -233,7 +233,7 @@ export function channelConnectorCommandSurfaceViewFromCommand(
 ): FeishuMenuViewId | null {
   const normalized = normalizeString(command);
   if (!normalized) return null;
-  const parts = normalized.replace(/^\/+/, "").split(/\s+/).filter(Boolean);
+  const parts = normalized.replace(/^[/%]+/, "").split(/\s+/).filter(Boolean);
   if (!parts.length) return null;
   const name = parts[0]?.toLowerCase() || "";
   if (["help", "menu", "commands", "command", "cmd", "start"].includes(name)) return "help";
