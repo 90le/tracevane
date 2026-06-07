@@ -191,6 +191,9 @@ interface ChannelDaemonFeishuConnectionState {
   zeroInboundRenewals: number;
   lifecycleReceivedMessages: number;
   lifecycleLastReceivedAt: string | null;
+  suppressZeroInboundRenewal: boolean;
+  lastWatchdogRestartAt: string | null;
+  lastWatchdogRestartReason: string | null;
   reconnects: number;
   receivedMessages: number;
 }
@@ -215,6 +218,9 @@ interface ChannelDaemonFeishuGroup {
   lastReceivedAt: string | null;
   lifecycleReceivedMessages: number;
   lifecycleLastReceivedAt: string | null;
+  suppressZeroInboundRenewal: boolean;
+  lastWatchdogRestartAt: string | null;
+  lastWatchdogRestartReason: string | null;
   lastUnhealthyAt: string | null;
   lastError: string | null;
   watchdogRestarting: boolean;
@@ -1030,6 +1036,9 @@ function feishuConnectionState(group: ChannelDaemonFeishuGroup): ChannelDaemonFe
     zeroInboundRenewals: group.zeroInboundRenewals,
     lifecycleReceivedMessages: group.lifecycleReceivedMessages,
     lifecycleLastReceivedAt: group.lifecycleLastReceivedAt,
+    suppressZeroInboundRenewal: group.suppressZeroInboundRenewal,
+    lastWatchdogRestartAt: group.lastWatchdogRestartAt,
+    lastWatchdogRestartReason: group.lastWatchdogRestartReason,
     reconnects: group.reconnects,
     receivedMessages: group.receivedMessages,
   };
@@ -4130,6 +4139,9 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
           lastReceivedAt: null,
           lifecycleReceivedMessages: 0,
           lifecycleLastReceivedAt: null,
+          suppressZeroInboundRenewal: false,
+          lastWatchdogRestartAt: null,
+          lastWatchdogRestartReason: null,
           lastUnhealthyAt: null,
           lastError: "feishu_transport_config_missing",
           watchdogRestarting: false,
@@ -4152,6 +4164,9 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
         lastReceivedAt: null,
         lifecycleReceivedMessages: 0,
         lifecycleLastReceivedAt: null,
+        suppressZeroInboundRenewal: false,
+        lastWatchdogRestartAt: null,
+        lastWatchdogRestartReason: null,
         lastUnhealthyAt: null,
         lastError: null,
         watchdogRestarting: false,
@@ -4278,6 +4293,7 @@ function createFeishuDispatcher(input: {
       group.lastReceivedAt = receivedAt;
       group.lifecycleLastReceivedAt = receivedAt;
       group.zeroInboundRenewals = 0;
+      group.suppressZeroInboundRenewal = false;
       const parsed = parseChannelConnectorFeishuWebhook(feishuEnvelope(group.appId, "im.message.receive_v1", data));
       writeJsonLine(config.paths.feishuEvents, {
         checkedAt: receivedAt,
@@ -4308,6 +4324,7 @@ function createFeishuDispatcher(input: {
       group.receivedMessages += 1;
       group.lifecycleReceivedMessages += 1;
       group.zeroInboundRenewals = 0;
+      group.suppressZeroInboundRenewal = false;
       const parsed = parseChannelConnectorFeishuWebhook(feishuEnvelope(group.appId, "card.action.trigger", data));
       updateFeishuRuntime(config, state, group);
       const response = await dispatchFeishuParsedEvent({
@@ -4327,6 +4344,7 @@ function createFeishuDispatcher(input: {
       group.receivedMessages += 1;
       group.lifecycleReceivedMessages += 1;
       group.zeroInboundRenewals = 0;
+      group.suppressZeroInboundRenewal = false;
       const parsed = parseChannelConnectorFeishuWebhook(feishuEnvelope(group.appId, "application.bot.menu_v6", data));
       updateFeishuRuntime(config, state, group);
       dispatchFeishuParsedEventInBackground({
@@ -4422,6 +4440,8 @@ function startFeishuClientForGroup(input: {
     onReconnected: () => {
       group.lastConnectedAt = new Date().toISOString();
       group.lastDisconnectedAt = null;
+      group.lifecycleReceivedMessages = 0;
+      group.lifecycleLastReceivedAt = null;
       group.lastUnhealthyAt = null;
       group.lastError = null;
       group.watchdogRestarting = false;
@@ -4463,6 +4483,11 @@ function restartFeishuGroupClient(input: {
   group.watchdogRestarting = true;
   group.reconnects += 1;
   group.lastError = reason;
+  group.lastWatchdogRestartAt = new Date().toISOString();
+  group.lastWatchdogRestartReason = reason;
+  if (reason.startsWith("watchdog_connected_idle_")) {
+    group.suppressZeroInboundRenewal = true;
+  }
   const currentClient = group.client;
   if (currentClient) {
     const index = clients.indexOf(currentClient);
@@ -4510,6 +4535,7 @@ function startFeishuWatchdog(input: {
         if (
           zeroInboundRenewAfterMs > 0
           && zeroInboundRenewMax > 0
+          && !group.suppressZeroInboundRenewal
           && group.lifecycleReceivedMessages === 0
           && !group.lifecycleLastReceivedAt
           && group.zeroInboundRenewals < zeroInboundRenewMax
