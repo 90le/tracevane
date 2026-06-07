@@ -29,13 +29,15 @@
 - Feishu/Octo Agent 入站补 FIFO queue 并完成运行级回归：fake Octo WebSocket 连续投两条同 session 消息，第二条收到排队引导，且 fake Codex 捕获到第二个 Agent turn 在第一个结束后才启动。
 - 新增持久 session driver 最小合同：按 binding/project/session/Agent/model/workDir 隔离 session pool，覆盖事件流、stop、kill、idle 回收、driver crash 后 one-shot fallback；默认仍为 one-shot，需 metadata 显式开启。
 - Channel daemon `/status` 和 runtime 已接入 `agentSessionDriver` 状态面：metadata 请求 persistent 的 binding 会被列出，但当前 effective mode 明确保持 one-shot，标记为 `persistent-driver-contract-only`。
-- 新增 Codex app-server driver 原型：封装 `initialize`、`thread/start`、`turn/start`、`turn/interrupt`、`thread/compact/start`，支持 thread 复用、assistant/tool/reasoning progress 映射、`/compact` 原生请求和 request timeout；当前用 fake transport 回归，不默认接入 live daemon。
+- Codex app-server driver 已对齐真实握手协议：`thread/start.sandbox` 使用 Codex `SandboxMode` 字符串，`turn/start.sandboxPolicy` 使用 turn 级 policy object；fake transport 覆盖 thread 复用、progress、`/compact`、interrupt、timeout，live smoke 已验证真实 `initialize` + `thread/start`。
 
 ## 最近验证
 
 - 通过：`npm run build:api`。
 - 通过：`node --test tests/system/model-gateway-service.test.mjs`，51 个 Model Gateway 子测试通过。
-- 通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，4 个 Codex app-server driver 原型子测试通过。
+- 通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，5 个 Codex app-server driver 原型子测试通过。
+- 通过：`node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，默认跳过真实 Codex smoke。
+- 通过：`STUDIO_CODEX_APP_SERVER_LIVE=1 STUDIO_CODEX_APP_SERVER_LIVE_HOME=/tmp/openclaw-studio-codex-appserver-live-home node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，隔离 HOME 下真实 `codex app-server --stdio` 完成 `initialize` 与 `thread/start`。
 - 通过：`node --test tests/system/channel-connectors-agent-session-driver.test.mjs`，4 个持久 session driver 合同子测试通过。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs`，48 个 Channel Connectors 子测试通过。
 - 通过：`node --test tests/system/studio-web-channel-connectors-page.test.mjs tests/system/studio-web-model-gateway-page.test.mjs`，6 个前端 contract 子测试通过。
@@ -58,11 +60,11 @@
 - Codex Agent 图片已走原生 `--image`；Studio `/compact` 已覆盖 IM history 压缩，但 Codex 原生交互式 `/compact`、`/clear` 仍需要持久 Codex session，不能通过一次性 `codex exec` 伪实现；Claude Code / OpenCode 视觉输入、视频理解、OCR、语音/STT/TTS 仍待迁移。
 - 出站文件基础链路已覆盖小/中型本地文件，Octo 已具备 multipart/direct upload 自动分流；高级 `yolo` 权限仅放宽本地路径根限制，不绕过平台上传限制。后续仍需做真实大文件限额和更多平台文件收发实测。
 - 同 session FIFO queue 当前是 daemon 内存队列；Studio/OpenClaw 崩溃不影响 daemon 内排队，但 Channel daemon 自身重启会丢失未开始的排队消息。持久 session driver 合同已覆盖 session 级 crash fallback，但尚未实现 durable queue。
-- 持久 session driver 目前是可测试合同、pool 基础设施、daemon 状态面和 Codex app-server fake-transport 原型；尚未接入 daemon 默认运行路径，也没有真实 Codex app-server + Studio Gateway 端到端 smoke。
+- 持久 session driver 目前是可测试合同、pool 基础设施、daemon 状态面和 Codex app-server driver 原型；真实 Codex app-server 已验证 `initialize/thread-start`，但尚未接入 daemon 默认运行路径，也没有真实 `turn/start` + Studio Gateway、`/compact`、`turn/interrupt` 端到端 smoke。
 - Feishu 历史未 ACK 事件可能仍会被平台重投一次；持久化去重会记录并跳过，最终仍需用户发送全新消息复验 live 回复。
 
 ## 下一步
 
 1. 把 Codex app-server driver 接入 persistent pool 的实验路径，metadata 显式开启时运行，失败回退 one-shot。
-2. 做真实 Codex app-server + Studio Gateway 隔离 HOME smoke，验证 `thread/start`、`turn/start`、`/compact` 和 `turn/interrupt`。
+2. 做真实 Codex app-server + Studio Gateway 隔离 HOME turn smoke，验证 `turn/start`、`/compact` 和 `turn/interrupt`。
 3. 把真实 persistent pool session 显示到 daemon `/status`，并增加 stop/kill/status runtime 回归。

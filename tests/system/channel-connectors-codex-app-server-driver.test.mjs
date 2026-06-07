@@ -290,6 +290,71 @@ test("Codex app-server driver maps /compact to native compact request", async ()
   assert.equal(transport.messages.find((message) => message.method === "thread/compact/start").params.threadId, "thread-app-server-1");
 });
 
+test("Codex app-server driver uses real thread sandbox mode and turn sandbox policy shapes", async () => {
+  const cases = [
+    {
+      permissionMode: "read-only",
+      threadSandbox: "read-only",
+      turnSandboxPolicy: { type: "readOnly", networkAccess: true },
+      approvalPolicy: "on-request",
+    },
+    {
+      permissionMode: "auto-edit",
+      threadSandbox: "workspace-write",
+      turnSandboxPolicy: {
+        type: "workspaceWrite",
+        writableRoots: [],
+        networkAccess: true,
+        excludeTmpdirEnvVar: false,
+        excludeSlashTmp: false,
+      },
+      approvalPolicy: "never",
+    },
+    {
+      permissionMode: "yolo",
+      threadSandbox: "danger-full-access",
+      turnSandboxPolicy: { type: "dangerFullAccess" },
+      approvalPolicy: "never",
+    },
+  ];
+
+  for (const item of cases) {
+    const transport = new FakeCodexAppServerTransport();
+    const session = new CodexAppServerSession({
+      sessionId: `session-${item.permissionMode}`,
+      transport,
+      model: "gpt-5",
+      cwd: "/tmp/project",
+      permissionMode: item.permissionMode,
+    });
+
+    const result = await session.runTurn({
+      mode: "persistent",
+      key: {
+        bindingId: "octo-codex",
+        projectId: "codex-app-server",
+        sessionKey: `dmwork:dm:${item.permissionMode}`,
+        agent: "codex",
+        model: "gpt-5",
+        workDir: "/tmp/project",
+      },
+      messageId: `m-${item.permissionMode}`,
+      agentTurnRequest: agentTurnRequest({ messageId: `m-${item.permissionMode}` }),
+      runOneShot: async () => {
+        throw new Error("one-shot should not run for app-server driver");
+      },
+    });
+
+    assert.equal(result.ok, true);
+    const threadStart = transport.messages.find((message) => message.method === "thread/start");
+    const turnStart = transport.messages.find((message) => message.method === "turn/start");
+    assert.equal(threadStart.params.sandbox, item.threadSandbox);
+    assert.equal(threadStart.params.approvalPolicy, item.approvalPolicy);
+    assert.deepEqual(turnStart.params.sandboxPolicy, item.turnSandboxPolicy);
+    assert.equal(turnStart.params.approvalPolicy, item.approvalPolicy);
+  }
+});
+
 test("Codex app-server driver stop sends turn interrupt for active turn", async () => {
   const transport = new FakeCodexAppServerTransport();
   transport.completeTurns = false;

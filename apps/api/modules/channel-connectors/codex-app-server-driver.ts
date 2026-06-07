@@ -85,6 +85,13 @@ function sandboxPolicy(permissionMode: ChannelConnectorPermissionMode): Record<s
   return null;
 }
 
+function sandboxMode(permissionMode: ChannelConnectorPermissionMode): string | null {
+  if (permissionMode === "read-only" || permissionMode === "plan") return "read-only";
+  if (permissionMode === "auto-edit") return "workspace-write";
+  if (permissionMode === "yolo" || permissionMode === "full-auto") return "danger-full-access";
+  return null;
+}
+
 function approvalPolicy(permissionMode: ChannelConnectorPermissionMode): string {
   if (permissionMode === "yolo" || permissionMode === "full-auto" || permissionMode === "auto-edit") return "never";
   return "on-request";
@@ -406,7 +413,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
       model: this.model,
       cwd: this.cwd,
       approvalPolicy: approvalPolicy(this.permissionMode),
-      sandbox: sandboxPolicy(this.permissionMode),
+      sandbox: sandboxMode(this.permissionMode),
       serviceName: "openclaw-studio-channel-connectors",
       ephemeral: false,
       threadSource: "user",
