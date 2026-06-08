@@ -76,6 +76,28 @@ function writeFixture(root) {
         status: null,
         createdAt: "2026-06-08T00:00:00.000Z",
       },
+      {
+        id: "h-octo-2",
+        bindingId: "octo-live",
+        sessionKey: "dmwork:dm:user-2",
+        messageId: "m-octo-2",
+        role: "user",
+        text: "newer octo history",
+        attachmentSummaries: [],
+        status: null,
+        createdAt: "2026-06-08T00:10:00.000Z",
+      },
+      {
+        id: "h-feishu-1",
+        bindingId: "feishu-live",
+        sessionKey: "feishu:oc_real:ou_real",
+        messageId: "m-feishu-1",
+        role: "user",
+        text: "feishu history",
+        attachmentSummaries: [],
+        status: null,
+        createdAt: "2026-06-08T00:20:00.000Z",
+      },
     ],
   });
   writeJson(path.join(stateDir, "channel-sessions.json"), {
@@ -91,6 +113,17 @@ function writeFixture(root) {
         model: "gpt-5",
         workDir: path.join(root, "work"),
         codexThreadId: "thread-octo",
+      },
+      "feishu-session": {
+        id: "feishu-session",
+        bindingId: "feishu-live",
+        projectId: "codex-main",
+        sessionKey: "feishu:oc_real:ou_real",
+        agent: "codex",
+        model: "gpt-5",
+        workDir: path.join(root, "work"),
+        codexThreadId: "thread-feishu",
+        updatedAt: "2026-06-08T00:20:00.000Z",
       },
     },
   });
@@ -168,6 +201,38 @@ test("command live smoke script plans commands without backend side effects by d
   assert.equal(parsed.plans[0].result, null);
 });
 
+test("command live smoke script can target recent state sessions per binding", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-command-live-smoke-"));
+  const { configPath, stateDir } = writeFixture(root);
+  const output = await runScript([
+    "--config", configPath,
+    "--state-dir", stateDir,
+    "--bindings", "octo-live,feishu-live",
+    "--commands", "/compact",
+    "--recent-sessions",
+    "--json",
+  ], root);
+  const parsed = JSON.parse(output.stdout);
+  assert.equal(parsed.mode, "dry-run");
+  assert.equal(parsed.plans.length, 2);
+  const octo = parsed.plans.find((plan) => plan.bindingId === "octo-live");
+  const feishu = parsed.plans.find((plan) => plan.bindingId === "feishu-live");
+  assert.equal(octo.sessionKey, "dmwork:dm:user-2");
+  assert.equal(octo.target.source, "history");
+  assert.equal(octo.target.fromUid, "user-2");
+  assert.equal(octo.request.body.message.fromUid, "user-2");
+  assert.equal(octo.state.historyEntries, 1);
+  assert.equal(feishu.sessionKey, "feishu:oc_real:ou_real");
+  assert.match(feishu.target.source, /^(history|agent-session)$/);
+  assert.equal(feishu.target.fromUid, "ou_real");
+  assert.equal(feishu.target.channelId, "oc_real");
+  assert.equal(feishu.request.body.event.sender.sender_id.open_id, "ou_real");
+  assert.equal(feishu.request.body.event.message.chat_id, "oc_real");
+  assert.equal(feishu.request.body.header.token, "<redacted>");
+  assert.equal(feishu.state.historyEntries, 1);
+  assert.equal(feishu.state.agentSessions, 1);
+});
+
 test("command live smoke script probes adapter dry-run requests", async () => {
   const fake = await startFakeBackend();
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-command-live-smoke-"));
@@ -217,6 +282,34 @@ test("command live smoke script requires explicit address before apply", async (
     assert.fail("script should reject without explicit apply address");
   } catch (error) {
     assert.match(error.stdout, /--apply requires --from-uid/);
+  }
+});
+
+test("command live smoke script can apply against recent sessions without copying ids", async () => {
+  const fake = await startFakeBackend();
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-command-live-smoke-"));
+  const { configPath, stateDir } = writeFixture(root);
+  try {
+    const output = await runScript([
+      "--config", configPath,
+      "--state-dir", stateDir,
+      "--base-url", fake.baseUrl,
+      "--bindings", "octo-live",
+      "--commands", "/reset",
+      "--recent-sessions",
+      "--apply",
+      "--json",
+    ], root);
+    const parsed = JSON.parse(output.stdout);
+    assert.equal(parsed.mode, "apply");
+    assert.equal(fake.posts.length, 1);
+    assert.equal(fake.posts[0].body.dryRun, false);
+    assert.equal(fake.posts[0].body.sendReply, true);
+    assert.equal(fake.posts[0].body.message.fromUid, "user-2");
+    assert.equal(fake.posts[0].body.message.channelId, "user-2");
+    assert.equal(parsed.plans[0].sessionKey, "dmwork:dm:user-2");
+  } finally {
+    await new Promise((resolve) => fake.server.close(resolve));
   }
 });
 

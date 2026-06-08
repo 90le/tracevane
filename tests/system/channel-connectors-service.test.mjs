@@ -3045,7 +3045,8 @@ test("native Channel Connectors service slash compact works for Feishu and Octo 
 
     const octoCompact = await service.dispatchOctoIncoming({
       bindingId: "octo-main",
-      dryRun: true,
+      dryRun: false,
+      sendReply: false,
       message: {
         messageId: "m-octo-compact",
         fromUid: "user-1",
@@ -3067,6 +3068,28 @@ test("native Channel Connectors service slash compact works for Feishu and Octo 
       "Bearer sk-service-compact-key",
     ]);
     assert.deepEqual(compactRequests.map((request) => request.body.metadata.agent), ["codex", "codex"]);
+
+    const compactRequestsBeforeDryRun = requests.filter((request) => request.path === "/v1/responses/compact").length;
+    const dryRunCompact = await service.dispatchOctoIncoming({
+      bindingId: "octo-main",
+      dryRun: true,
+      sendReply: false,
+      message: {
+        messageId: "m-octo-compact-dry-run",
+        fromUid: "user-1",
+        channelId: "user-1",
+        channelType: 1,
+        payload: { type: 1, content: "/compact" },
+      },
+    });
+    assert.equal(dryRunCompact.accepted, true);
+    assert.equal(dryRunCompact.agentDispatch.status, "dry-run");
+    assert.equal(dryRunCompact.commandAction.commandResult.action, "show");
+    assert.match(dryRunCompact.replyPlan.chunks.join("\n"), /未执行状态修改/);
+    assert.equal(
+      requests.filter((request) => request.path === "/v1/responses/compact").length,
+      compactRequestsBeforeDryRun,
+    );
 
     for (const lookup of [feishuLookup, octoLookup]) {
       const entries = getChannelConnectorConversationHistory(historyPath, lookup, 10);
@@ -3100,7 +3123,8 @@ test("native Channel Connectors service slash compact works for Feishu and Octo 
     });
     const octoNew = await service.dispatchOctoIncoming({
       bindingId: "octo-main",
-      dryRun: true,
+      dryRun: false,
+      sendReply: false,
       message: {
         messageId: "m-octo-new",
         fromUid: "user-1",
@@ -3132,7 +3156,8 @@ test("native Channel Connectors service slash compact works for Feishu and Octo 
     });
     const octoReset = await service.dispatchOctoIncoming({
       bindingId: "octo-main",
-      dryRun: true,
+      dryRun: false,
+      sendReply: false,
       message: {
         messageId: "m-octo-reset",
         fromUid: "user-1",

@@ -415,6 +415,7 @@ export interface ChannelConnectorCommandActionRequest {
   view?: string | null;
   renderer?: ChannelConnectorCommandSurfaceRenderer;
   models?: string[];
+  dryRun?: boolean;
 }
 
 export interface ChannelConnectorCommandActionResponse {

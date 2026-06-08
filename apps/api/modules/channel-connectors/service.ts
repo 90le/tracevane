@@ -100,6 +100,7 @@ import {
   listChannelConnectorGatewayModels,
   listChannelConnectorSkillSummaries,
   resolveChannelConnectorEffectiveProject,
+  type ChannelConnectorCommandResult,
 } from "./command-router.js";
 import {
   resolveChannelConnectorGatewayClientKey,
@@ -1091,6 +1092,7 @@ function normalizeCommandActionRequest(payload: ChannelConnectorCommandActionReq
     view: normalizeChannelConnectorCommandSurfaceView(payload.view) || null,
     renderer,
     models: stringList(payload.models),
+    dryRun: payload.dryRun === true,
   };
 }
 
@@ -1103,6 +1105,11 @@ function normalizeCommandActionText(value: string | null | undefined): string | 
     return next.startsWith("/") ? next : null;
   }
   return normalized.startsWith("/") ? normalized : `/${normalized}`;
+}
+
+function dryRunCommandName(command: string): string | null {
+  const normalized = command.trim().replace(/^\/+/, "");
+  return normalized.split(/\s+/)[0] || null;
 }
 
 function commandActionNotice(
@@ -1659,7 +1666,7 @@ export function createChannelConnectorsService(
       platform: resolved.binding.platform,
       fromUid: request.fromUid || "",
       content: command,
-      statePath: commandSurfaceGovernancePath(runtimeConfig),
+      statePath: request.dryRun === true ? null : commandSurfaceGovernancePath(runtimeConfig),
       now: now(),
     });
     if (!governance.allowed) {
@@ -1688,40 +1695,50 @@ export function createChannelConnectorsService(
       requestedModels: request.models,
     });
     const gatewayClientKey = resolveChannelConnectorGatewayClientKey(runtimeConfig);
-    const commandResult = await handleChannelConnectorCommand({
-      config: runtimeConfig,
-      project: resolved.project,
-      binding: resolved.runtimeBinding,
-      sessionKey,
-      controlsPath,
-      customCommandsPath: commandSurfaceCustomCommandsPath(runtimeConfig),
-      agentSessionsPath,
-      conversationHistoryPath: historyPath,
-      replyBuffersPath: commandSurfaceReplyBuffersPath(runtimeConfig),
-      gatewayClientKey,
-      listModels: async () => commandModels,
-      compactConversation: (scope) => compactChannelConnectorConversation({
-        historyPath,
+    const commandResult: ChannelConnectorCommandResult = request.dryRun === true
+      ? {
+        handled: true,
+        command: dryRunCommandName(command),
+        action: "show",
+        ok: true,
+        control: null,
+        replyText: `Dry-run：已解析命令 ${command}，未执行状态修改、Gateway compact 或平台发送。`,
+        passthroughText: null,
+      }
+      : await handleChannelConnectorCommand({
+        config: runtimeConfig,
+        project: resolved.project,
+        binding: resolved.runtimeBinding,
+        sessionKey,
+        controlsPath,
+        customCommandsPath: commandSurfaceCustomCommandsPath(runtimeConfig),
         agentSessionsPath,
-        gatewayEndpoint: runtimeConfig.gateway.endpoint,
+        conversationHistoryPath: historyPath,
+        replyBuffersPath: commandSurfaceReplyBuffersPath(runtimeConfig),
         gatewayClientKey,
-        bindingId: scope.bindingId,
-        sessionKey: scope.sessionKey,
-        project: scope.project,
-      }),
-      message: {
-        messageId: request.messageId || `feishu-action-${Date.now()}`,
-        fromUid: request.fromUid || "",
-        channelId: request.channelId || request.fromUid || sessionKey,
-        channelType: 1,
-        timestamp: Date.now(),
-        payload: {
-          type: 1,
-          content: command,
+        listModels: async () => commandModels,
+        compactConversation: (scope) => compactChannelConnectorConversation({
+          historyPath,
+          agentSessionsPath,
+          gatewayEndpoint: runtimeConfig.gateway.endpoint,
+          gatewayClientKey,
+          bindingId: scope.bindingId,
+          sessionKey: scope.sessionKey,
+          project: scope.project,
+        }),
+        message: {
+          messageId: request.messageId || `feishu-action-${Date.now()}`,
+          fromUid: request.fromUid || "",
+          channelId: request.channelId || request.fromUid || sessionKey,
+          channelType: 1,
+          timestamp: Date.now(),
+          payload: {
+            type: 1,
+            content: command,
+          },
+          members: [],
         },
-        members: [],
-      },
-    });
+      });
     const selectedSectionId = parsedAction.targetSectionId
       || channelConnectorCommandSurfaceSectionFromCommand(command)
       || normalizeChannelConnectorCommandSurfaceSection(request.eventKey)
@@ -2002,10 +2019,11 @@ export function createChannelConnectorsService(
         eventKey: parsed.text,
         renderer,
         models,
+        dryRun: request.dryRun === true,
       });
       accepted = commandAction.accepted;
       skippedReason = commandAction.skippedReason;
-      agentStatus = "skipped";
+      agentStatus = request.dryRun === true ? "dry-run" : "skipped";
       const content = commandAction.commandResult?.replyText || commandAction.commandResult?.passthroughText || skippedReason || "";
       if (request.sendReply === true && content) {
         const transportConfig = feishuTransportFromBinding(resolved.binding);
@@ -2242,10 +2260,11 @@ export function createChannelConnectorsService(
         messageId: message.messageId,
         eventKey: content,
         renderer: "text",
+        dryRun,
       });
       accepted = commandAction.accepted;
       effectiveSkippedReason = commandAction.skippedReason;
-      dispatchStatus = "skipped";
+      dispatchStatus = dryRun ? "dry-run" : "skipped";
       const commandReplyText = commandAction.commandResult?.replyText
         || commandAction.commandResult?.passthroughText
         || commandAction.skippedReason

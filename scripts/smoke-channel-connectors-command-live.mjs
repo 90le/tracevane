@@ -23,6 +23,7 @@ function parseArgs(argv) {
     channelType: 1,
     feishuChatType: "p2p",
     feishuToken: "",
+    useRecentSessions: false,
     apply: false,
     probe: false,
     sendReply: true,
@@ -58,6 +59,7 @@ function parseArgs(argv) {
     else if (arg.startsWith("--feishu-chat-type=")) options.feishuChatType = arg.slice("--feishu-chat-type=".length);
     else if (arg === "--feishu-token") options.feishuToken = requireValue(argv, ++index, arg);
     else if (arg.startsWith("--feishu-token=")) options.feishuToken = arg.slice("--feishu-token=".length);
+    else if (arg === "--recent-sessions" || arg === "--use-recent-sessions") options.useRecentSessions = true;
     else if (arg === "--help" || arg === "-h") {
       printHelp();
       process.exit(0);
@@ -71,8 +73,8 @@ function parseArgs(argv) {
   options.stateDir = path.resolve(options.stateDir);
   options.commands = options.commands.filter(Boolean);
   if (!options.commands.length) options.commands = [...DEFAULT_COMMANDS];
-  if (options.apply && !options.fromUid) throw new Error("--apply requires --from-uid");
-  if (options.apply && !options.channelId) throw new Error("--apply requires --channel-id");
+  if (options.apply && !options.useRecentSessions && !options.fromUid) throw new Error("--apply requires --from-uid");
+  if (options.apply && !options.useRecentSessions && !options.channelId) throw new Error("--apply requires --channel-id");
   return options;
 }
 
@@ -92,6 +94,7 @@ Options:
   --channel-type <n>      Octo channel type. Default: 1.
   --feishu-chat-type <t>  Feishu chat_type. Default: p2p.
   --feishu-token <token>  Feishu verification token override.
+  --recent-sessions      Use the newest known state session per binding when ids are omitted.
   --base-url <url>        Studio API base. Default: ${DEFAULT_BASE_URL}
   --config <path>         Native Channel config. Default: ${DEFAULT_CONFIG_PATH}
   --state-dir <path>      Daemon state dir. Default: ${DEFAULT_STATE_DIR}
@@ -103,6 +106,7 @@ Options:
 
 Examples:
   node scripts/smoke-channel-connectors-command-live.mjs --json
+  node scripts/smoke-channel-connectors-command-live.mjs --recent-sessions --probe --json
   node scripts/smoke-channel-connectors-command-live.mjs --bindings octo-studio-cc --from-uid user --channel-id user --probe --json
   node scripts/smoke-channel-connectors-command-live.mjs --bindings feishu-live --from-uid ou_x --channel-id oc_x --commands /new,/reset --apply
 `);
@@ -169,13 +173,19 @@ function sessionKeyFor(binding, options) {
   return `feishu:${channelId}`;
 }
 
-function stateCounts(options, binding, sessionKey) {
-  const history = readJsonIfExists(path.join(options.stateDir, "channel-history.json"), { entries: [] });
-  const sessions = readJsonIfExists(path.join(options.stateDir, "channel-sessions.json"), { sessions: {} });
-  const historyEntries = (history.entries || []).filter((entry) => (
+function readState(options) {
+  return {
+    history: readJsonIfExists(path.join(options.stateDir, "channel-history.json"), { entries: [] }),
+    sessions: readJsonIfExists(path.join(options.stateDir, "channel-sessions.json"), { sessions: {} }),
+    controls: readJsonIfExists(path.join(options.stateDir, "channel-session-controls.json"), { controls: {} }),
+  };
+}
+
+function stateCounts(state, binding, sessionKey) {
+  const historyEntries = (state.history.entries || []).filter((entry) => (
     entry.bindingId === binding.id && entry.sessionKey === sessionKey
   ));
-  const agentSessions = Object.values(sessions.sessions || {}).filter((entry) => (
+  const agentSessions = Object.values(state.sessions.sessions || {}).filter((entry) => (
     entry.bindingId === binding.id && entry.sessionKey === sessionKey
   ));
   return {
@@ -185,9 +195,112 @@ function stateCounts(options, binding, sessionKey) {
   };
 }
 
-function plannedRequest(binding, command, options) {
+function resolveTarget(binding, options, state) {
+  if (options.useRecentSessions && !options.fromUid && !options.channelId) {
+    const recent = latestTargetFromState(binding, options, state);
+    if (!recent) {
+      throw new Error(`No recent state session found for binding ${binding.id}; pass --from-uid and --channel-id.`);
+    }
+    return recent;
+  }
   const fromUid = options.fromUid || binding.adminUsers?.[0] || binding.allowlist?.[0] || "studio-smoke-user";
   const channelId = options.channelId || fromUid;
+  return {
+    source: options.fromUid || options.channelId ? "explicit" : "default",
+    fromUid,
+    channelId,
+    channelType: options.channelType,
+    feishuChatType: options.feishuChatType,
+    sessionKey: sessionKeyFor(binding, options),
+    updatedAt: null,
+  };
+}
+
+function latestTargetFromState(binding, options, state) {
+  const sessions = candidateSessions(binding, state)
+    .map((candidate) => ({ ...candidate, target: targetFromSessionKey(binding, candidate.sessionKey, options) }))
+    .filter((candidate) => candidate.target)
+    .sort((a, b) => b.updatedAtMs - a.updatedAtMs);
+  const latest = sessions[0];
+  if (!latest) return null;
+  return {
+    ...latest.target,
+    source: latest.source,
+    updatedAt: latest.updatedAt,
+  };
+}
+
+function candidateSessions(binding, state) {
+  const candidates = new Map();
+  const add = (sessionKey, updatedAt, source) => {
+    if (!sessionKey) return;
+    const updatedAtMs = toTime(updatedAt);
+    const existing = candidates.get(sessionKey);
+    if (!existing || updatedAtMs >= existing.updatedAtMs) {
+      candidates.set(sessionKey, { sessionKey, updatedAt, updatedAtMs, source });
+    }
+  };
+  for (const entry of state.history.entries || []) {
+    if (entry.bindingId === binding.id) add(entry.sessionKey, entry.createdAt, "history");
+  }
+  for (const entry of Object.values(state.sessions.sessions || {})) {
+    if (entry.bindingId === binding.id) add(entry.sessionKey, entry.updatedAt || entry.createdAt, "agent-session");
+  }
+  for (const entry of Object.values(state.controls.controls || {})) {
+    if (entry.bindingId === binding.id) add(entry.sessionKey, entry.updatedAt || entry.createdAt, "session-control");
+  }
+  return [...candidates.values()];
+}
+
+function toTime(value) {
+  const parsed = Date.parse(value || "");
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function targetFromSessionKey(binding, sessionKey, options) {
+  if (binding.platform === "octo") {
+    if (sessionKey.startsWith("dmwork:dm:")) {
+      const fromUid = sessionKey.slice("dmwork:dm:".length);
+      return {
+        fromUid,
+        channelId: fromUid,
+        channelType: 1,
+        feishuChatType: options.feishuChatType,
+        sessionKey,
+      };
+    }
+    if (sessionKey.startsWith("dmwork:group:")) {
+      return {
+        fromUid: binding.adminUsers?.[0] || binding.allowlist?.[0] || "studio-smoke-user",
+        channelId: sessionKey.slice("dmwork:group:".length),
+        channelType: 2,
+        feishuChatType: options.feishuChatType,
+        sessionKey,
+      };
+    }
+    return null;
+  }
+  if (!sessionKey.startsWith("feishu:")) return null;
+  const parts = sessionKey.split(":");
+  if (parts.length >= 3) {
+    return {
+      fromUid: parts.slice(2).join(":"),
+      channelId: parts[1],
+      channelType: options.channelType,
+      feishuChatType: "p2p",
+      sessionKey,
+    };
+  }
+  return {
+    fromUid: binding.adminUsers?.[0] || binding.allowlist?.[0] || "studio-smoke-user",
+    channelId: parts[1],
+    channelType: options.channelType,
+    feishuChatType: "group",
+    sessionKey,
+  };
+}
+
+function plannedRequest(binding, command, options, target) {
   const idSuffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   if (binding.platform === "octo") {
     return {
@@ -198,9 +311,9 @@ function plannedRequest(binding, command, options) {
         sendReply: options.apply && options.sendReply,
         message: {
           messageId: `studio-command-smoke-${idSuffix}`,
-          fromUid,
-          channelId,
-          channelType: options.channelType,
+          fromUid: target.fromUid,
+          channelId: target.channelId,
+          channelType: target.channelType,
           payload: { type: 1, content: command },
         },
       },
@@ -220,11 +333,11 @@ function plannedRequest(binding, command, options) {
         token: verificationToken(binding, options.feishuToken),
       },
       event: {
-        sender: { sender_id: { open_id: fromUid } },
+        sender: { sender_id: { open_id: target.fromUid } },
         message: {
           message_id: `om_studio_command_smoke_${idSuffix.replace(/[^a-z0-9]/gi, "_")}`,
-          chat_id: channelId,
-          chat_type: options.feishuChatType,
+          chat_id: target.channelId,
+          chat_type: target.feishuChatType,
           message_type: "text",
           content: JSON.stringify({ text: command }),
         },
@@ -316,21 +429,30 @@ async function main() {
   const selected = selectBindings(config, options);
   if (!selected.length) throw new Error("No enabled Octo/Feishu bindings matched the requested filters.");
 
+  const stateFiles = readState(options);
   const plans = [];
   const rawRequests = [];
   for (const binding of selected) {
     const profile = profileForBinding(config, binding);
-    const sessionKey = sessionKeyFor(binding, options);
-    const state = stateCounts(options, binding, sessionKey);
+    const target = resolveTarget(binding, options, stateFiles);
+    const state = stateCounts(stateFiles, binding, target.sessionKey);
     for (const command of options.commands) {
-      const request = plannedRequest(binding, command, options);
+      const request = plannedRequest(binding, command, options, target);
       rawRequests.push(request);
       plans.push({
         bindingId: binding.id,
         platform: binding.platform,
         agent: profile?.agent || null,
         model: profile?.model || null,
-        sessionKey,
+        sessionKey: target.sessionKey,
+        target: {
+          source: target.source,
+          updatedAt: target.updatedAt,
+          fromUid: target.fromUid,
+          channelId: target.channelId,
+          channelType: target.channelType,
+          feishuChatType: target.feishuChatType,
+        },
         command,
         state,
         request: options.json ? redactRequest(request) : { path: request.path },
