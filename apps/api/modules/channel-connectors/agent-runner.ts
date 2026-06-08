@@ -756,6 +756,7 @@ export function buildChannelConnectorAgentProcessRequest(
       "stream-json",
       "--permission-prompt-tool",
       "stdio",
+      "--verbose",
       ...(permissionMode ? ["--permission-mode", permissionMode] : []),
       ...(reasoningEffort ? ["--effort", reasoningEffort] : []),
       ...(model ? ["--model", model] : []),
@@ -882,21 +883,121 @@ function parseGenericProgressLine(line: string): ChannelConnectorAgentProgressEv
   return progressEvent({ type, rawType, itemType: normalizeString(item?.type) || null, text });
 }
 
-function parseProgressLine(agent: ChannelConnectorAgentId, line: string): ChannelConnectorAgentProgressEvent | null {
+function claudeContentItems(raw: Record<string, unknown>): Record<string, unknown>[] {
+  const message = recordValue(raw.message);
+  const content = message?.content;
+  if (!Array.isArray(content)) return [];
+  return content.map(recordValue).filter((item): item is Record<string, unknown> => Boolean(item));
+}
+
+function claudeToolProgressText(item: Record<string, unknown>, label = "tool"): string {
+  const name = normalizeString(item.name)
+    || normalizeString(item.tool_name)
+    || normalizeString(item.toolName)
+    || label;
+  const input = firstProgressTextValue(item.input, item.content, item.text, item.result);
+  return [name, input ? `input:\n${input}` : ""].filter(Boolean).join("\n");
+}
+
+function parseClaudeProgressLineEvents(line: string): ChannelConnectorAgentProgressEvent[] {
+  const raw = recordValue(JSON.parse(line));
+  if (!raw) return [];
+  const rawType = normalizeString(raw.type) || null;
+  if (!rawType) return [];
+
+  if (rawType === "system") {
+    const sessionId = normalizeString(raw.session_id);
+    return sessionId ? [progressEvent({ type: "session", rawType, text: sessionId })] : [];
+  }
+
+  if (rawType === "assistant") {
+    const events: ChannelConnectorAgentProgressEvent[] = [];
+    for (const item of claudeContentItems(raw)) {
+      const itemType = normalizeString(item.type) || null;
+      if (itemType === "tool_use") {
+        const toolName = normalizeString(item.name);
+        if (toolName === "AskUserQuestion") continue;
+        events.push(progressEvent({
+          type: "tool",
+          rawType,
+          itemType,
+          text: claudeToolProgressText(item),
+        }));
+      } else if (itemType === "thinking") {
+        const thinking = normalizeString(item.thinking) || progressTextValue(item);
+        if (thinking) events.push(progressEvent({ type: "reasoning", rawType, itemType, text: thinking }));
+      } else if (itemType === "text") {
+        const text = normalizeString(item.text);
+        if (text) events.push(progressEvent({ type: "assistant", rawType, itemType, text }));
+      }
+    }
+    const message = recordValue(raw.message);
+    const content = normalizeString(message?.content);
+    if (!events.length && content) {
+      events.push(progressEvent({ type: "assistant", rawType, itemType: null, text: content }));
+    }
+    return events;
+  }
+
+  if (rawType === "user") {
+    const events: ChannelConnectorAgentProgressEvent[] = [];
+    for (const item of claudeContentItems(raw)) {
+      const itemType = normalizeString(item.type) || null;
+      if (itemType !== "tool_result") continue;
+      const isError = item.is_error === true;
+      const text = firstProgressTextValue(item.content, item.text, item.result);
+      if (!text && !isError) continue;
+      events.push(progressEvent({
+        type: isError ? "error" : "tool",
+        rawType,
+        itemType,
+        text: text || "Claude tool result reported an error.",
+      }));
+    }
+    return events;
+  }
+
+  if (rawType === "result") {
+    const isError = raw.is_error === true || normalizeString(raw.subtype).toLowerCase() === "error";
+    const text = firstProgressTextValue(raw.result, raw.error, raw.message);
+    return [progressEvent({
+      type: isError ? "failed" : "completed",
+      rawType,
+      text: text || (isError ? "Claude Code turn failed" : "Claude Code turn completed"),
+    })];
+  }
+
+  if (rawType === "control_request") {
+    const request = recordValue(raw.request);
+    const subtype = normalizeString(request?.subtype);
+    const toolName = normalizeString(request?.tool_name);
+    const text = [subtype || "control_request", toolName].filter(Boolean).join(": ");
+    return [progressEvent({ type: "tool", rawType, text })];
+  }
+
+  return [parseGenericProgressLine(line)].filter((event): event is ChannelConnectorAgentProgressEvent => Boolean(event));
+}
+
+function parseProgressLineEvents(agent: ChannelConnectorAgentId, line: string): ChannelConnectorAgentProgressEvent[] {
   const trimmed = line.trim();
-  if (!trimmed || !trimmed.startsWith("{")) return null;
+  if (!trimmed || !trimmed.startsWith("{")) return [];
   try {
-    return agent === "codex" ? parseCodexProgressLine(trimmed) : parseGenericProgressLine(trimmed);
+    if (agent === "codex") {
+      const event = parseCodexProgressLine(trimmed);
+      return event ? [event] : [];
+    }
+    if (agent === "claude-code") return parseClaudeProgressLineEvents(trimmed);
+    const event = parseGenericProgressLine(trimmed);
+    return event ? [event] : [];
   } catch {
-    return null;
+    return [];
   }
 }
 
 function collectProgressEvents(stdout: string, agent: ChannelConnectorAgentId): ChannelConnectorAgentProgressEvent[] {
   const events: ChannelConnectorAgentProgressEvent[] = [];
   for (const line of stdout.split(/\r?\n/)) {
-    const event = parseProgressLine(agent, line);
-    if (event) events.push(event);
+    events.push(...parseProgressLineEvents(agent, line));
   }
   return events;
 }
@@ -963,10 +1064,10 @@ export async function defaultChannelConnectorAgentProcessRunner(
       const lines = stdoutLineBuffer.split(/\r?\n/);
       stdoutLineBuffer = lines.pop() || "";
       for (const line of lines) {
-        const event = parseProgressLine(request.agent, line);
-        if (!event) continue;
-        progressEvents.push(event);
-        request.onProgress?.(event);
+        for (const event of parseProgressLineEvents(request.agent, line)) {
+          progressEvents.push(event);
+          request.onProgress?.(event);
+        }
       }
     });
     child.stderr.on("data", (chunk) => {
@@ -991,8 +1092,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
     child.on("close", (exitCode, signal) => {
       if (settled) return;
       settle();
-      const trailingEvent = parseProgressLine(request.agent, stdoutLineBuffer);
-      if (trailingEvent) {
+      for (const trailingEvent of parseProgressLineEvents(request.agent, stdoutLineBuffer)) {
         progressEvents.push(trailingEvent);
         request.onProgress?.(trailingEvent);
       }
@@ -1046,6 +1146,7 @@ function collectJsonLineText(stdout: string): string[] {
       }
       if (typeof raw.content === "string") output.push(raw.content);
       if (typeof raw.text === "string") output.push(raw.text);
+      if (typeof raw.result === "string") output.push(raw.result);
     } catch {
       // Non-event lines are intentionally ignored; the raw stdout is still retained in the result.
     }

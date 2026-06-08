@@ -2075,6 +2075,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(claudeRequest.agent, "claude-code");
   assert.equal(claudeRequest.args.includes("--input-format"), true);
   assert.equal(claudeRequest.args.includes("stream-json"), true);
+  assert.equal(claudeRequest.args.includes("--verbose"), true);
   assert.equal(claudeRequest.args.includes("--permission-mode"), true);
   assert.equal(claudeRequest.args.includes("plan"), true);
   assert.equal(claudeRequest.args.includes("--effort"), true);
@@ -5755,6 +5756,66 @@ test("native Channel Connectors process runner maps Codex command execution prog
   assert.equal(progress[3].type, "failed");
   assert.equal(progress[3].text, "未正常接收到prompt参数。 (type=upstream_error, code=1213)");
   assert.equal(result.progressEvents?.length, 4);
+});
+
+test("native Channel Connectors process runner maps Claude Code stream-json progress", async () => {
+  const root = makeTempRoot();
+  const progress = [];
+  const stdout = [
+    JSON.stringify({ type: "system", session_id: "claude-session-1" }),
+    JSON.stringify({
+      type: "assistant",
+      message: {
+        content: [
+          { type: "thinking", thinking: "I should inspect the file." },
+          { type: "tool_use", name: "Read", input: { file_path: "TOOLS.md" } },
+          { type: "text", text: "我会读取文件。" },
+        ],
+      },
+    }),
+    JSON.stringify({
+      type: "user",
+      message: {
+        content: [
+          { type: "tool_result", content: "line 1\nline 2" },
+        ],
+      },
+    }),
+    JSON.stringify({ type: "result", result: "完成\n\n下一步可以发送文件。", session_id: "claude-session-1" }),
+    "",
+  ].join("\n");
+  const childScript = `process.stdout.write(${JSON.stringify(stdout)});`;
+
+  const result = await defaultChannelConnectorAgentProcessRunner({
+    command: process.execPath,
+    args: ["-e", childScript],
+    cwd: root,
+    stdin: "",
+    env: {},
+    timeoutMs: 1000,
+    agent: "claude-code",
+    onProgress: (event) => progress.push(event),
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.error, null);
+  assert.equal(progress.length, 6);
+  assert.equal(progress[0].type, "session");
+  assert.equal(progress[0].text, "claude-session-1");
+  assert.equal(progress[1].type, "reasoning");
+  assert.equal(progress[1].text, "I should inspect the file.");
+  assert.equal(progress[2].type, "tool");
+  assert.equal(progress[2].itemType, "tool_use");
+  assert.match(progress[2].text, /Read/);
+  assert.match(progress[2].text, /TOOLS\.md/);
+  assert.equal(progress[3].type, "assistant");
+  assert.equal(progress[3].text, "我会读取文件。");
+  assert.equal(progress[4].type, "tool");
+  assert.equal(progress[4].itemType, "tool_result");
+  assert.equal(progress[4].text, "line 1\nline 2");
+  assert.equal(progress[5].type, "completed");
+  assert.equal(progress[5].text, "完成\n\n下一步可以发送文件。");
+  assert.equal(result.progressEvents?.length, 6);
 });
 
 test("native Channel Connectors service management is guarded before daemon entry is built", async () => {
