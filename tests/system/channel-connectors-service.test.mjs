@@ -4369,6 +4369,15 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.equal(sessionSwitchPayload.command, "/switch 1");
   assert.equal(sessionSwitchPayload.targetSectionId, "session");
   assert.equal(sessionSwitchPayload.targetViewId, "sessions");
+  const permissionPayload = extractChannelConnectorSurfaceActionPayload({
+    action: "act:/approve",
+    command: "/approve",
+    surface_action_kind: "act",
+    surface_action_id: "permission-approve",
+  });
+  assert.equal(permissionPayload.command, "/approve");
+  assert.equal(permissionPayload.actionKind, "act");
+  assert.equal(permissionPayload.actionId, "permission-approve");
 });
 
 test("native Channel Connectors Feishu webhook parses live envelopes and reuses command router", async () => {
@@ -6191,6 +6200,13 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /sendFeishuTextMessage/);
   assert.match(daemonSource, /sendFeishuCardMessage/);
   assert.match(daemonSource, /patchFeishuCardMessage/);
+  assert.match(daemonSource, /function renderFeishuPermissionCard/);
+  assert.match(daemonSource, /function sendFeishuPermissionPrompt/);
+  assert.match(daemonSource, /action:\s*`act:\$\{input\.command\}`/);
+  assert.match(daemonSource, /permission-approve/);
+  assert.match(daemonSource, /permission-deny/);
+  assert.match(daemonSource, /permission-allow-all/);
+  assert.match(daemonSource, /\["new", "reset", "show", "stop", "permission", "passthrough"\]/);
   assert.match(daemonSource, /listFeishuChatMembers/);
   assert.match(daemonSource, /loadFeishuGroupMembers/);
   assert.match(daemonSource, /groupMemberCount/);
@@ -6257,7 +6273,7 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /jsonErrorEnvelopeMessage/);
   assert.match(daemonSource, /renderChannelConnectorCommandSurfaceFeishu/);
   assert.match(daemonSource, /shouldSendFeishuCommandCard/);
-  assert.match(daemonSource, /\["new",\s*"reset",\s*"show",\s*"stop",\s*"passthrough"\]\.includes\(action\)/);
+  assert.match(daemonSource, /\["new",\s*"reset",\s*"show",\s*"stop",\s*"permission",\s*"passthrough"\]\.includes\(action\)/);
   assert.match(daemonSource, /stopLatestActiveRunForSession/);
   assert.match(daemonSource, /const activeRunCancels = new Map\(\)/);
   assert.match(daemonSource, /for \(const entry of activeRunCancels\.values\(\)\)\s*entry\.controller\.abort\(\)/);

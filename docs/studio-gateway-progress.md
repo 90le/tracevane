@@ -46,7 +46,7 @@
 - persistent driver 最近事件已进入 daemon `/status` 与 `/agent-sessions`，可观察 `turn.failed`、`session.disposed`、`turn.fallback` 等状态；daemon 回归已证明 Codex app-server 崩溃后会清理坏 session 并回退 one-shot 回复同一条 IM 消息。
 - Channel Connectors 会话页已接入 persistent driver `recentEvents`，Sessions tab 可查看最近 fallback/failed/disposed/reaped 等事件，并在会话操作结果中显示事件数，方便 UI 侧确认 kill/reap/fallback 真实发生。
 - IM 工具进度解析已补齐结构化输出兼容：runner 能读取 `content/output_text/result/stdout/stderr` 等工具结果字段，daemon 解析 `output:` 后保留原始换行、缩进和空行，避免工具结果为空或布局被压扁。
-- Claude Code runner 开始按 CC Go `agent/claudecode` 对齐：CLI 参数补 `--verbose`，stream-json 解析已能拆出 `system` session、assistant `thinking/tool_use/text`、user `tool_result` 和最终 `result`；视觉模型收到本地 staged 图片时，stdin 改用 Claude 原生 base64 image content block；`system/result.session_id` 已写入通用 `agentNativeSessionId`，下一轮按 CC 合同追加 `--resume <session_id>`；`control_request` 已按权限模式写回 CC 兼容 `control_response`，`suggest/plan` 下可经 IM `/approve`、`/deny`、`/allow-all` 或 pending 时纯文本 `allow/deny` 批准。
+- Claude Code runner 开始按 CC Go `agent/claudecode` 对齐：CLI 参数补 `--verbose`，stream-json 解析已能拆出 `system` session、assistant `thinking/tool_use/text`、user `tool_result` 和最终 `result`；视觉模型收到本地 staged 图片时，stdin 改用 Claude 原生 base64 image content block；`system/result.session_id` 已写入通用 `agentNativeSessionId`，下一轮按 CC 合同追加 `--resume <session_id>`；`control_request` 已按权限模式写回 CC 兼容 `control_response`，`suggest/plan` 下可经 IM `/approve`、`/deny`、`/allow-all` 或 pending 时纯文本 `allow/deny` 批准，Feishu 已补权限确认卡片按钮并保留文本 fallback。
 - Codex persistent app-server 输出链路已补齐保真：delta 不再 trim，最终回复优先使用完整 `item/completed agentMessage`，工具事件复用结构化输出解析，`studio-channel-files` fenced block 不会被压成一行导致文件无法发送。
 - Codex persistent app-server 已过滤内部 `userMessage` / history prompt 回显，Feishu/Octo 进度不再展示 `Recent messages in this IM session...` 等内部上下文；one-shot runner 也过滤 `user_message` 事件，避免同类噪音。
 - Codex persistent app-server 普通 turn 新增独立完成超时：若 app-server 已有 assistant 输出但迟迟没有 `turn/completed`，driver 会发 `turn/interrupt`、释放 active run，并交给外层 pool 按策略回退 one-shot，避免 IM 发送文件等场景永久卡住。
@@ -62,7 +62,7 @@
 
 - 通过：`npm run build:api`。
 - 通过：`node --test tests/system/model-gateway-service.test.mjs`，51 个 Model Gateway 子测试通过。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，57 个 Channel Connectors 子测试通过；覆盖 Codex resume 参数顺序、Feishu/Octo 文件收发、Feishu transport-smoke 文件发送入口、Agent/config 自定义命令扫描/展开/添加/删除、Skill 扫描/调用、Commands 菜单卡片、Claude Code stream-json 进度、图片输入、`--resume` 续接、权限 `control_response`、IM 文本批准、进度/工具事件和 daemon 合同。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，57 个 Channel Connectors 子测试通过；覆盖 Codex resume 参数顺序、Feishu/Octo 文件收发、Feishu transport-smoke 文件发送入口、Agent/config 自定义命令扫描/展开/添加/删除、Skill 扫描/调用、Commands 菜单卡片、Claude Code stream-json 进度、图片输入、`--resume` 续接、权限 `control_response`、IM 文本批准、Feishu 权限卡片按钮、进度/工具事件和 daemon 合同。
 - 通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，9 个 Codex app-server driver 原型子测试通过；覆盖 persistent markdown/文件 manifest 保真、工具输出保真、内部 userMessage 回显过滤、unfinished turn 超时中断。
 - 通过：`node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，默认跳过真实 Codex smoke。
 - 通过：`STUDIO_CODEX_APP_SERVER_LIVE_TURN=1 STUDIO_CODEX_APP_SERVER_LIVE_COMPACT=1 STUDIO_CODEX_APP_SERVER_LIVE_MODEL=gpt-5.4-mini node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，隔离 HOME 下真实 `codex app-server --stdio` 经本机 Studio Gateway 完成 `turn/start` 精确回复与原生 compact 完成信号。
@@ -103,4 +103,4 @@
 
 1. 先按迁移清单 P1 复验 Codex `exec/resume` live 路径：Feishu/Octo 发文件、工具流式、最终 Markdown 排版。
 2. 继续复刻 CC Go 的 Feishu/Octo 菜单、设置卡片、长连接和媒体收发细节。
-3. 继续迁移 Claude Code Feishu 按钮 permission、AskUserQuestion/file 能力与 OpenCode runner；Codex app-server 继续保持 beta，不阻塞稳定 live 路线。
+3. 继续迁移 Claude Code AskUserQuestion/file 能力与 OpenCode runner；Codex app-server 继续保持 beta，不阻塞稳定 live 路线。

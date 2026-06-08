@@ -2578,6 +2578,115 @@ function feishuCardsEnabled(binding: ChannelConnectorRuntimeBinding): boolean {
   ], true);
 }
 
+function feishuPermissionButton(input: {
+  label: string;
+  type: "primary" | "danger" | "default";
+  command: "/approve" | "/deny" | "/allow-all";
+  actionId: string;
+}): Record<string, unknown> {
+  return {
+    tag: "button",
+    text: {
+      tag: "plain_text",
+      content: input.label,
+    },
+    type: input.type,
+    value: {
+      action: `act:${input.command}`,
+      command: input.command,
+      surface_action_kind: "act",
+      surface_action_id: input.actionId,
+      surface_section_id: "mode",
+      surface_view_id: "mode",
+    },
+  };
+}
+
+function renderFeishuPermissionCard(request: ChannelConnectorAgentPermissionRequest): ChannelConnectorFeishuInteractiveCard {
+  const toolName = normalizeString(request.toolName) || "tool";
+  const requestId = normalizeString(request.requestId) || "permission";
+  const inputJson = JSON.stringify(request.input || {}, null, 2);
+  const inputBlock = inputJson && inputJson !== "{}"
+    ? `\n**参数**\n\`\`\`json\n${shortMessage(inputJson, 6_000)}\n\`\`\``
+    : "";
+  return {
+    config: {
+      wide_screen_mode: true,
+    },
+    header: {
+      title: {
+        tag: "plain_text",
+        content: "Studio Agent 工具权限确认",
+      },
+      template: "orange",
+    },
+    elements: [
+      {
+        tag: "markdown",
+        content: [
+          "**Agent 请求执行工具，需要确认。**",
+          `**工具**：\`${toolName}\``,
+          `**请求**：\`${requestId}\`${inputBlock}`,
+        ].join("\n"),
+      },
+      {
+        tag: "action",
+        actions: [
+          feishuPermissionButton({
+            label: "允许",
+            type: "primary",
+            command: "/approve",
+            actionId: "permission-approve",
+          }),
+          feishuPermissionButton({
+            label: "拒绝",
+            type: "danger",
+            command: "/deny",
+            actionId: "permission-deny",
+          }),
+          feishuPermissionButton({
+            label: "本次运行全部允许",
+            type: "default",
+            command: "/allow-all",
+            actionId: "permission-allow-all",
+          }),
+        ],
+      },
+      {
+        tag: "note",
+        elements: [
+          {
+            tag: "plain_text",
+            content: "也可以直接回复 /approve、/deny 或 /allow-all。",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+async function sendFeishuPermissionPrompt(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  transport: ChannelConnectorFeishuTransportConfig;
+  binding: ChannelConnectorRuntimeBinding;
+  chatId: string;
+  request: ChannelConnectorAgentPermissionRequest;
+  fallbackText: string;
+}): Promise<ChannelConnectorFeishuTransportResult> {
+  const cachePath = feishuTokenCachePath(input.config);
+  if (feishuCardsEnabled(input.binding)) {
+    const cardResult = await sendFeishuCardMessage(input.transport, {
+      chatId: input.chatId,
+      card: renderFeishuPermissionCard(input.request),
+    }, cachePath);
+    if (cardResult.ok === true) return cardResult;
+  }
+  return sendFeishuTextMessage(input.transport, {
+    chatId: input.chatId,
+    content: input.fallbackText,
+  }, cachePath);
+}
+
 function shouldRenderFeishuCommandCard(command: ReturnType<typeof handleChannelConnectorCommand> extends Promise<infer Result> ? Result : never): boolean {
   return command.handled && [
     "help",
@@ -2596,7 +2705,7 @@ function shouldSendFeishuCommandCard(input: {
   if (!input.command.handled) return false;
   const action = normalizeString(input.command.action).toLowerCase();
   if (input.actionKind === "nav") return true;
-  if (["new", "reset", "show", "stop", "passthrough"].includes(action)) return false;
+  if (["new", "reset", "show", "stop", "permission", "passthrough"].includes(action)) return false;
   if (input.parsedKind === "card-action" || input.parsedKind === "bot-menu") return true;
   return shouldRenderFeishuCommandCard(input.command);
 }
@@ -5136,11 +5245,15 @@ async function dispatchFeishuParsedEvent(input: {
           messageId,
           agent: turnProject.agent,
           model: turnProject.model,
-          onPrompt: async (prompt) => {
-            await sendFeishuTextMessage(transport, {
+          onPrompt: async (prompt, request) => {
+            await sendFeishuPermissionPrompt({
+              config,
+              transport,
+              binding,
               chatId: parsed.channelId || sessionKey,
-              content: prompt,
-            }, feishuTokenCachePath(config));
+              request,
+              fallbackText: prompt,
+            });
           },
         }),
         session: {
