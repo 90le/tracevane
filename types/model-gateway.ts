@@ -153,6 +153,8 @@ export interface ModelGatewayProviderMetadata {
   icon?: string;
   tags?: string[];
   importedFrom?: string;
+  openaiChatMetadataPassthrough?: boolean;
+  openai_chat_metadata_passthrough?: boolean;
 }
 
 export interface ModelGatewayProviderReasoning {

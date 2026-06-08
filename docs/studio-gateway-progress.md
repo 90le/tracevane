@@ -61,17 +61,18 @@
 - Studio `/compact` 合同已从 Channel daemon 抽成可测 helper：自动验证会向 Gateway `/responses/compact` 发送摘要请求，成功后 IM history 只保留 compact summary，并清理当前 binding + sessionKey 的旧 Codex/Claude Agent 续接；daemon 仍只负责把 runtime config 映射为路径和 Gateway endpoint。
 - Service 层命令 smoke 已补齐 Feishu/Octo `/compact`：Feishu slash webhook 和 Octo incoming slash 都复用 Studio compact helper，返回用户可见文本结果，不进入 Agent；Octo service slash `/new`、`/reset` 也已覆盖清 history/session 和文本 replyPlan。
 - 新增 Channel Connectors 命令 live smoke 脚本：默认只做 dry-run 计划，`--recent-sessions` 可从 daemon state 自动定位每个 binding 最近真实会话；`--probe` 只打后端 adapter dry-run，不触发平台发送、Gateway compact 或 session/history 清理；显式 `--apply --from-uid --channel-id` 或 `--apply --recent-sessions` 才发送真实 Feishu/Octo 命令请求；JSON 输出会脱敏 token/key/secret。
-- Studio Gateway compact 修复 BigModel Chat 兼容性：对 Codex Responses/compact -> OpenAI Chat 上游不再转发 Responses `metadata`；直接字段矩阵确认 BigModel Chat 会因 `metadata` 返回 `400/1210`，去掉后 `/v1/responses/compact` 与 Feishu/Octo `/compact` apply 均成功。cc-switch 默认允许 `metadata` passthrough，本项目在该点偏离的原因是常见 Chat-compatible provider 兼容性。
+- Studio Gateway 新增 OpenAI Chat-compatible upstream 统一兼容层：所有进入 `apiFormat=openai_chat` provider 的 direct Chat、Anthropic->Chat、Responses/compact->Chat 请求默认剥离顶层 `metadata`，避免 BigModel 等严格 Chat 网关返回 `400/1210`；高级 provider 可用 metadata `openaiChatMetadataPassthrough=true` 显式保留。cc-switch 默认允许 `metadata` passthrough，本项目在该点偏离的原因是常见 Chat-compatible provider 兼容性。
 
 ## 最近验证
 
 - 通过：`npm run build:api`。
-- 通过：`node --test tests/system/model-gateway-service.test.mjs`，51 个 Model Gateway 子测试通过。
+- 通过：`node --test tests/system/model-gateway-service.test.mjs`，52 个 Model Gateway 子测试通过。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs`，60 个 Channel Connectors 子测试通过；覆盖 Codex resume 参数顺序、Feishu/Octo 文件收发、Feishu transport-smoke 文件发送入口、Agent/config 自定义命令扫描/展开/添加/删除、Skill 扫描/调用、Commands 菜单卡片、Studio `/compact` Gateway 请求与 session 清理、Feishu/Octo service slash compact、Octo service `/new`/`/reset`、adapter dry-run 不触发 Gateway compact 或清理状态、Claude Code stream-json 进度、图片输入、`--resume` 续接、权限 `control_response`、IM 文本批准、Feishu 权限卡片按钮、AskUserQuestion IM 回答、进度/工具事件和 daemon 合同。
 - 通过：`node --test tests/system/channel-connectors-command-live-script.test.mjs`，6 个命令 live smoke 脚本子测试通过；覆盖 dry-run 不触发后端、recent session 自动定位、probe adapter dry-run、apply 前强制显式会话地址或 recent session、apply 请求带真实发送开关。
 - 通过：`node scripts/smoke-channel-connectors-command-live.mjs --json` 的真实本机配置 dry-run 探针，规划 Feishu/Octo 共 6 个命令请求，输出中的 Feishu token 已脱敏。
 - 通过：重启后 `node scripts/smoke-channel-connectors-command-live.mjs --recent-sessions --commands /compact --probe --json`，真实 Feishu/Octo 最近会话均返回 dry-run 提示，未再触发 Gateway compact。
 - 通过：直接 BigModel Chat 字段矩阵，`metadata` 单独触发 `400/1210`，最小 Chat、`max_tokens` 和无 metadata compact shape 均成功。
+- 通过：重启后直接请求本机 Gateway `/v1/chat/completions`，model=`glm-5`、带顶层 `metadata`，经统一兼容层返回 HTTP 200，runtime 记录 `openai_chat_completions` 成功。
 - 通过：重启后直接请求本机 Gateway `/v1/responses/compact`，model=`glm-5`、带 internal metadata、`max_output_tokens=1000` 返回 HTTP 200 和 markdown summary；runtime 记录 `/v1/responses/compact` 后续请求均为 200。
 - 通过：`node scripts/smoke-channel-connectors-command-live.mjs --recent-sessions --commands /compact --apply --no-send-reply --json`，真实 Feishu/Octo 最近会话均完成 compact，history `6 -> 1`，Agent sessions cleared `1`，未向 IM 发送可见回复。
 - 通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，9 个 Codex app-server driver 原型子测试通过；覆盖 persistent markdown/文件 manifest 保真、工具输出保真、内部 userMessage 回显过滤、unfinished turn 超时中断。

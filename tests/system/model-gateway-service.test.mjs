@@ -5909,6 +5909,7 @@ test("model gateway routes expose status/providers and forward chat passthrough"
         body: {
           model: "route-test-model",
           messages: [{ role: "user", content: "hello" }],
+          metadata: { trace: "strict-chat-provider" },
         },
       });
       assert.equal(chat.status, 200);
@@ -5961,5 +5962,67 @@ test("model gateway routes expose status/providers and forward chat passthrough"
   assert.deepEqual(JSON.parse(upstreamCalls[1].body), {
     model: "route-test-model",
     messages: [{ role: "user", content: "hello" }],
+  });
+  assert.equal("metadata" in JSON.parse(upstreamCalls[1].body), false);
+});
+
+test("model gateway can opt into openai chat metadata passthrough for compatible providers", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "route-chat-metadata",
+      name: "Route Chat Metadata Provider",
+      appScopes: ["openclaw"],
+      baseUrl: "https://metadata.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      metadata: {
+        openaiChatMetadataPassthrough: true,
+      },
+    },
+    secret: {
+      apiKey: "sk-route-metadata-secret",
+    },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      body: String(init.body || ""),
+    });
+    return new Response(JSON.stringify({ id: "chatcmpl_metadata_test" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "route-test-model",
+          messages: [{ role: "user", content: "hello" }],
+          metadata: { trace: "trusted-provider" },
+        },
+      });
+      assert.equal(chat.status, 200);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://metadata.example.test/v1/chat/completions");
+  assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
+    model: "route-test-model",
+    messages: [{ role: "user", content: "hello" }],
+    metadata: { trace: "trusted-provider" },
   });
 });

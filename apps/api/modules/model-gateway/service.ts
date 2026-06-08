@@ -122,6 +122,7 @@ import {
   adaptResponsesToChatCompletion,
   isChatToOpenAIResponsesAdapterTarget,
 } from "./responses-chat-adapter.js";
+import { sanitizeOpenAIChatUpstreamBody } from "./openai-chat-compatibility.js";
 import { createModelGatewayDaemonServicePlan } from "./supervisor.js";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
@@ -227,6 +228,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function normalizeString(value: unknown, fallback = ""): string {
   return typeof value === "string" && value.trim() ? value.trim() : fallback;
+}
+
+function metadataBoolean(metadata: unknown, keys: string[], fallback = false): boolean {
+  if (!isRecord(metadata)) return fallback;
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      if (["1", "true", "yes", "on"].includes(normalized)) return true;
+      if (["0", "false", "no", "off"].includes(normalized)) return false;
+    }
+  }
+  return fallback;
 }
 
 function normalizeStringArray(value: unknown): string[] {
@@ -4889,6 +4904,16 @@ export function createModelGatewayService(
         });
         return;
       }
+    }
+
+    const sanitizedOpenAIChat = provider.apiFormat === "openai_chat"
+      ? sanitizeOpenAIChatUpstreamBody(upstreamBodyText, {
+        allowMetadata: metadataBoolean(provider.metadata, ["openaiChatMetadataPassthrough", "openai_chat_metadata_passthrough"], false),
+      })
+      : { bodyText: upstreamBodyText, removedFields: [] };
+    upstreamBodyText = sanitizedOpenAIChat.bodyText ?? upstreamBodyText;
+    if (sanitizedOpenAIChat.removedFields.length) {
+      headers.set("content-type", "application/json");
     }
 
     try {
