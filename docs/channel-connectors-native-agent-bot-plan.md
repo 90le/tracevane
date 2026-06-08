@@ -34,7 +34,7 @@ Octo(dmwork) / 飞书 / 微信 / IM
 - Studio / OpenClaw 崩溃时，Channel daemon 仍保持在线。
 - Channel daemon 运行期不依赖 Studio API；它直接调用本地 CLI Agent，CLI Agent 再走 Studio Gateway daemon。
 - Studio 负责配置、安装、启停、日志、会话可视化和平台账号管理。
-- Feishu 长连接按 CC Go/OpenClaw 与官方 SDK 约束：同 App 共享 WS 并快速 ACK/扇出；SDK `pingTimeout=10s` 负责死 socket，Studio 维护真实 `lastReceivedAt` 和当前连接生命周期计数；启动 30s 无入站只做一次 no-inbound sanity reconnect，当前生命周期已收过事件后默认静默超过 5 分钟才做低频 idle refresh，避免频繁重连和平台重投。
+- Feishu 长连接按 CC Go/OpenClaw 与官方 SDK 约束：同 App 共享 WS 并快速 ACK/扇出；默认让 SDK 自管心跳/重连，Studio 维护真实 `lastReceivedAt` 和当前连接生命周期计数；启动 90s 内无任何入站时只做一次 delivery-silence renewal，当前生命周期已收过事件后不做 connected-idle 主动刷新，避免频繁重连和平台重投。
 - Feishu `im.message.receive_v1` / bot menu 入口必须像 CC Go 一样只在同步段完成解析、去重和 runtime 记录，随后后台执行附件下载、Agent runner、进度卡片和回复；去重状态需落盘，避免 daemon 重启后平台重投旧事件再次触发 Agent。
 - 同一 binding + IM session 的 Agent run 默认 FIFO 排队：上一条未完成时，新普通消息先回复“已加入队列”，前序任务完成后自动处理；`/stop`、`/status` 等命令不进队列并即时执行；确需并行时由 binding metadata 显式开启。
 - Feishu card/menu 按 CC 语义区分导航和执行：导航显示/更新卡片，`/new`、`/reset` 等无卡片执行动作快速 ACK 回调并异步发送普通文本结果，不弹悬浮 toast，也不自动弹完整菜单。
@@ -129,7 +129,7 @@ Studio 增强点：
 - Channel Connectors 已支持 command action callback：通用 `/commands/action` 和 Feishu `card-action` / `bot-menu` aliases 可把 action value / event key 转回 command-router。
 - Channel Connectors 已支持 Feishu webhook ingress：URL verification、card action、bot menu、message receive 进入同一 command-router；`verificationToken` 放在 binding metadata，不写入文档或源码。
 - Channel daemon 已支持 Feishu 官方 WebSocket 长连接：`im.message.receive_v1`、`card.action.trigger`、`application.bot.menu_v6` 进入同一 command-router/Agent runner；同一 Feishu App 多 binding 共享单条 WS，支持 chatId 过滤并保留 thread/root 字段。
-- Feishu 长连接稳定性已按 CC/OpenClaw 与 SDK 收敛：同 App 共享 WS、消息快速 ACK 后后台派发；SDK `pingTimeout` 默认 10s 用于死 socket liveness，SDK reconnecting/reconnected 写日志，daemon watchdog 在非 connected 超过 45s 后兜底重建；zero-inbound 只作为启动自检，connected-idle 只在当前生命周期已收过事件后做低频 5 分钟刷新。
+- Feishu 长连接稳定性已按 CC/OpenClaw 与 SDK 收敛：同 App 共享 WS、消息快速 ACK 后后台派发；默认不注入 SDK `pingTimeout`，SDK reconnecting/reconnected 写日志，daemon watchdog 在非 connected 超过 180s 后兜底重建；zero-inbound 只作为启动 90s 单次入站静默自愈，connected-idle 默认关闭。
 - Feishu 消息/菜单长连接入口已改为快速 ACK + 后台派发；事件去重提升为 24 小时持久化缓存，并从 `feishu-events.jsonl` 启动回填，平台重投会记录 `feishu_event_duplicate` 而不再重复跑 Agent。
 - Feishu `/new`、`/reset` 已改为执行后只返回普通文本结果，不再自动生成 `Studio Session` 菜单卡片；卡片执行动作异步发文本并返回空 callback，导航类 action 仍返回卡片。
 - `/dir` / `/cd` 已按 CC Go 补齐最近目录历史、`/dir -` 和历史序号切换；Feishu WorkDir 子卡同步提供上一目录、最近目录和子目录选择。

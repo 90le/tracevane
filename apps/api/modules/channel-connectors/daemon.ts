@@ -164,17 +164,15 @@ const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 180_000;
 const MIN_FEISHU_WATCHDOG_RESTART_MS = 60_000;
 const MAX_FEISHU_WATCHDOG_RESTART_MS = 600_000;
 // CC Go keeps Feishu's SDK WebSocket alive and lets the SDK own ping/pong and
-// reconnect behavior. Studio keeps SDK liveness probes opt-in because the Node
-// SDK's pingTimeout watchdog and startup zero-inbound renewal can force
-// reconnects on otherwise usable long connections. The daemon watchdog is only
-// a slow circuit-breaker for sockets that remain non-connected after the SDK has
-// had enough time to reconnect; all proactive connected-state rebuilds are
-// metadata opt-in.
+// reconnect behavior. Studio keeps SDK pingTimeout and connected-idle rebuilds
+// opt-in, but still does one delayed startup delivery-silence renewal: the Node
+// SDK can report ready/connected after a daemon restart while no Feishu events
+// are delivered. Once any event is received, this startup probe is suppressed.
 const DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS = 0;
 const MIN_FEISHU_CONNECTED_IDLE_RENEW_MS = 60_000;
 const MAX_FEISHU_CONNECTED_IDLE_RENEW_MS = 3_600_000;
-const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS = 0;
-const MIN_FEISHU_ZERO_INBOUND_RENEW_MS = 30_000;
+const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS = 90_000;
+const MIN_FEISHU_ZERO_INBOUND_RENEW_MS = 60_000;
 const MAX_FEISHU_ZERO_INBOUND_RENEW_MS = 15 * 60_000;
 const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX = 1;
 const MAX_FEISHU_ZERO_INBOUND_RENEW_MAX = 10;
@@ -257,6 +255,7 @@ interface ChannelDaemonFeishuConnectionState {
   pingTimeoutSeconds: number;
   connectedIdleRenewAfterMs: number;
   zeroInboundRenewAfterMs: number;
+  zeroInboundRenewMax: number;
   zeroInboundRenewals: number;
   watchdogRestartAfterMs: number;
   lifecycleReceivedMessages: number;
@@ -2285,6 +2284,7 @@ function feishuConnectionState(group: ChannelDaemonFeishuGroup): ChannelDaemonFe
     pingTimeoutSeconds: feishuPingTimeoutSeconds(group),
     connectedIdleRenewAfterMs: feishuConnectedIdleRenewMs(group),
     zeroInboundRenewAfterMs: feishuZeroInboundRenewMs(group),
+    zeroInboundRenewMax: feishuZeroInboundRenewMax(group),
     zeroInboundRenewals: group.zeroInboundRenewals,
     watchdogRestartAfterMs: feishuWatchdogRestartMs(group),
     lifecycleReceivedMessages: group.lifecycleReceivedMessages,
@@ -6233,6 +6233,7 @@ function startFeishuClientForGroup(input: {
         pingTimeoutSeconds: feishuPingTimeoutSeconds(group),
         connectedIdleRenewAfterMs: feishuConnectedIdleRenewMs(group),
         zeroInboundRenewAfterMs: feishuZeroInboundRenewMs(group),
+        zeroInboundRenewMax: feishuZeroInboundRenewMax(group),
       });
       updateFeishuRuntime(config, state, group);
     },

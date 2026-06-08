@@ -7003,7 +7003,8 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /DEFAULT_FEISHU_PING_TIMEOUT_SECONDS\s*=\s*0/);
   assert.match(daemonSource, /DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS\s*=\s*0/);
   assert.match(daemonSource, /MIN_FEISHU_CONNECTED_IDLE_RENEW_MS\s*=\s*60_?000/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS\s*=\s*0/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS\s*=\s*90_?000/);
+  assert.match(daemonSource, /MIN_FEISHU_ZERO_INBOUND_RENEW_MS\s*=\s*60_?000/);
   assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX\s*=\s*1/);
   assert.match(daemonSource, /DEFAULT_FEISHU_WATCHDOG_RESTART_MS\s*=\s*180_?000/);
   assert.match(daemonSource, /MIN_FEISHU_WATCHDOG_RESTART_MS\s*=\s*60_?000/);
@@ -7039,6 +7040,7 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   );
   assert.match(feishuConnectionStateBlock, /pingTimeoutSeconds:\s*feishuPingTimeoutSeconds\(group\)/);
   assert.match(feishuConnectionStateBlock, /watchdogRestartAfterMs:\s*feishuWatchdogRestartMs\(group\)/);
+  assert.match(feishuConnectionStateBlock, /zeroInboundRenewMax:\s*feishuZeroInboundRenewMax\(group\)/);
   assert.match(feishuWatchdogRestartBlock, /reason\.startsWith\("watchdog_connected_idle_"\)[\s\S]*group\.lifecycleReceivedMessages\s*=\s*0;[\s\S]*group\.lifecycleLastReceivedAt\s*=\s*null;/);
   assert.match(daemonSource, /!\s*group\.suppressZeroInboundRenewal/);
   assert.match(daemonSource, /feishu_ping_timeout_seconds/);

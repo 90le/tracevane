@@ -9,6 +9,8 @@ const DEFAULT_LOG_PATH = path.join(os.homedir(), ".config/openclaw-studio/channe
 const DEFAULT_DURATION_MS = 70_000;
 const DEFAULT_POLL_MS = 1_000;
 const MIN_SAFE_WATCHDOG_MS = 60_000;
+const MIN_SAFE_ZERO_INBOUND_RENEW_MS = 60_000;
+const MAX_SAFE_ZERO_INBOUND_RENEW_MAX = 1;
 
 function parseArgs(argv) {
   const options = {
@@ -70,7 +72,9 @@ function printHelp() {
 Read-only Feishu long-connection soak for the native Channel Connectors daemon.
 The script does not send IM messages. By default it watches the live runtime for
 70 seconds, crossing the old 30s zero-inbound failure window, and fails on the
-Studio-side rebuild patterns that previously made Feishu unstable.
+Studio-side rebuild patterns that previously made Feishu unstable. A single
+delayed startup delivery-silence renewal is allowed when it is not faster than
+${MIN_SAFE_ZERO_INBOUND_RENEW_MS}ms and renewMax <= ${MAX_SAFE_ZERO_INBOUND_RENEW_MAX}.
 
 Options:
   --duration-ms <n>                 Watch duration. Default: ${DEFAULT_DURATION_MS}.
@@ -83,7 +87,7 @@ Options:
   --require-always-connected        Fail if a selected connection is ever sampled non-connected.
   --allow-disconnected              Do not fail when the final runtime state is non-connected.
   --allow-ping-timeout              Allow SDK pingTimeout to be enabled or logged.
-  --allow-zero-inbound-renewal      Allow zero-inbound proactive rebuilds.
+  --allow-zero-inbound-renewal      Allow all zero-inbound proactive rebuilds.
   --allow-connected-idle-renewal    Allow connected-idle proactive rebuilds.
   --allow-watchdog-restart          Allow daemon watchdog restart log entries.
   --json                            Emit JSON only.
@@ -144,6 +148,7 @@ function connectionSnapshot(connection) {
     pingTimeoutSeconds: Number(connection.pingTimeoutSeconds || 0),
     connectedIdleRenewAfterMs: Number(connection.connectedIdleRenewAfterMs || 0),
     zeroInboundRenewAfterMs: Number(connection.zeroInboundRenewAfterMs || 0),
+    zeroInboundRenewMax: Number(connection.zeroInboundRenewMax ?? 1),
     watchdogRestartAfterMs: Number(connection.watchdogRestartAfterMs || 0),
     lastConnectedAt: connection.lastConnectedAt || null,
     lastDisconnectedAt: connection.lastDisconnectedAt || null,
@@ -182,11 +187,15 @@ function runtimeViolations(connections, options, startedAtMs, samples) {
       });
     }
     if (!options.allowZeroInboundRenewal && connection.zeroInboundRenewAfterMs > 0) {
-      violations.push({
-        type: "zero_inbound_renewal_enabled",
-        key,
-        message: `Feishu connection ${key} has zeroInboundRenewAfterMs=${connection.zeroInboundRenewAfterMs}.`,
-      });
+      const safeStartupRenewal = connection.zeroInboundRenewAfterMs >= MIN_SAFE_ZERO_INBOUND_RENEW_MS
+        && connection.zeroInboundRenewMax <= MAX_SAFE_ZERO_INBOUND_RENEW_MAX;
+      if (!safeStartupRenewal) {
+        violations.push({
+          type: "zero_inbound_renewal_unsafe",
+          key,
+          message: `Feishu connection ${key} has unsafe zeroInboundRenewAfterMs=${connection.zeroInboundRenewAfterMs}, zeroInboundRenewMax=${connection.zeroInboundRenewMax}.`,
+        });
+      }
     }
     if (!options.allowConnectedIdleRenewal && connection.connectedIdleRenewAfterMs > 0) {
       violations.push({
@@ -208,11 +217,17 @@ function runtimeViolations(connections, options, startedAtMs, samples) {
       && Number.isFinite(lastWatchdogMs)
       && lastWatchdogMs >= startedAtMs
     ) {
-      violations.push({
-        type: "watchdog_restart_runtime",
-        key,
-        message: `Feishu connection ${key} was watchdog-restarted during this smoke: ${connection.lastWatchdogRestartReason || "unknown"}.`,
-      });
+      const reason = String(connection.lastWatchdogRestartReason || "");
+      const safeStartupRenewal = reason.startsWith("watchdog_zero_inbound_")
+        && connection.zeroInboundRenewAfterMs >= MIN_SAFE_ZERO_INBOUND_RENEW_MS
+        && connection.zeroInboundRenewMax <= MAX_SAFE_ZERO_INBOUND_RENEW_MAX;
+      if (!safeStartupRenewal) {
+        violations.push({
+          type: "watchdog_restart_runtime",
+          key,
+          message: `Feishu connection ${key} was watchdog-restarted during this smoke: ${reason || "unknown"}.`,
+        });
+      }
     }
   }
 
@@ -300,6 +315,12 @@ function logViolations(events, options) {
       });
     }
     if (event.type === "watchdog_zero_inbound" && !options.allowZeroInboundRenewal) {
+      const threshold = jsonNumberInLine(event.line, "zeroInboundRenewAfterMs");
+      const max = jsonNumberInLine(event.line, "zeroInboundRenewMax");
+      const safeStartupRenewal = threshold !== null
+        && threshold >= MIN_SAFE_ZERO_INBOUND_RENEW_MS
+        && (max === null || max <= MAX_SAFE_ZERO_INBOUND_RENEW_MAX);
+      if (safeStartupRenewal || threshold === null) continue;
       violations.push({
         type: event.type,
         key: event.key,
@@ -328,6 +349,17 @@ function logViolations(events, options) {
     }
   }
   return violations;
+}
+
+function jsonNumberInLine(line, key) {
+  const match = line.match(new RegExp(`"${escapeRegExp(key)}":(\\d+)`));
+  if (!match) return null;
+  const value = Number(match[1]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function countByType(items) {
@@ -412,7 +444,7 @@ function printResult(result) {
       `connected=${connection.connected}`,
       `state=${connection.state}`,
       `pingTimeout=${connection.pingTimeoutSeconds}s`,
-      `zeroInbound=${connection.zeroInboundRenewAfterMs}ms`,
+      `zeroInbound=${connection.zeroInboundRenewAfterMs}ms/${connection.zeroInboundRenewMax}`,
       `connectedIdle=${connection.connectedIdleRenewAfterMs}ms`,
       `watchdog=${connection.watchdogRestartAfterMs}ms`,
     ].join(" "));

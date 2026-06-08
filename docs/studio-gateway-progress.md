@@ -28,7 +28,7 @@
 - 新增出站文件校验：普通权限只允许 Agent workDir 或当前 runtime/staging 根；`yolo` 权限允许任意可读普通文件出站，但仍保留平台/daemon 文件大小限制。
 - Feishu transport 补 image/file upload + message send；Octo daemon 接入已有 upload+send media，事件日志记录 declared/resolved/sent/errors。
 - Feishu 长连接重投去重改为 messageId 优先，避免同一消息在 reconnect/redelivery 后因 eventId 变化再次触发 Agent 回复。
-- Feishu 长连接主动重建策略按 CC Go/官方 SDK 思路收紧：默认关闭 `pingTimeout`、zero-inbound renewal 和 connected-idle renewal；SDK 自己负责心跳与重连，Studio 外层 watchdog 只作为慢速 circuit-breaker，默认非 connected 180 秒后才重建，并可由 metadata 设为 0 关闭。
+- Feishu 长连接主动重建策略按 CC Go/官方 SDK 思路收紧：默认关闭 `pingTimeout` 和 connected-idle renewal；SDK 自己负责心跳与重连，Studio 外层 watchdog 只作为慢速 circuit-breaker，默认非 connected 180 秒后才重建；启动后若 90 秒内从未收到任何 Feishu 事件，做最多 1 次 delivery-silence renewal，避免 SDK `connected=true` 但入站不投递。
 - 新增 Feishu 长连接只读 soak 脚本：`scripts/smoke-channel-connectors-feishu-long-connection.mjs`，可按 binding/key 轮询 runtime 和日志，失败识别旧的 `pingTimeout`、zero-inbound、connected-idle 与过快 watchdog 重建路径。
 - Octo 出站上传改用共享文件名清洗，保留原始文件名中的中文、空格和括号；Agent prompt 明确要求除非用户指定改名，否则 manifest `name` 保持原文件名。
 - 入站附件 staging 改为可读文件名策略：仍剥离路径穿越和非法字符，但保留中文、空格、括号等原始文件名信息，方便 Agent 和用户核对文件。
@@ -81,10 +81,10 @@
 - 通过：`npm run build:api`。
 - 通过：`git diff --check`。
 - 通过：`node --test tests/system/model-gateway-service.test.mjs`，52 个 Model Gateway 子测试通过。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，60 个 Channel Connectors 子测试通过；覆盖 Codex resume 参数顺序、one-shot 多段 `agent_message` 合并、工具输出不污染最终回复、`studio-channel-files` manifest 换行保真、Feishu/Octo 文件收发、Feishu transport-smoke 文件发送入口、Agent/config 自定义命令扫描/展开/添加/删除、CC 风格唯一前缀命令、binding metadata 命令别名与 `/commands` 子命令缩写、`/help` 表格化分组帮助和多表格空行兼容、`/quiet` 显示控制、`/delete` session 删除和 Feishu delete action、`/whoami`/`/version` 只读诊断回执和 Feishu action、CC Card 文本降级、Feishu SDK pingTimeout/zero-inbound/connected-idle opt-in 与慢速非 connected watchdog、Skill 扫描/调用、Commands 菜单卡片、Studio `/compact` Gateway 请求与 session 清理、Feishu/Octo service slash compact、Octo service `/new`/`/reset`、adapter dry-run 不触发 Gateway compact 或清理状态、Claude Code stream-json 进度、图片输入、`--resume` 续接、权限 `control_response`、IM 文本批准、Feishu 权限卡片按钮、AskUserQuestion IM 回答、进度/工具事件和 daemon 合同。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，60 个 Channel Connectors 子测试通过；覆盖 Codex resume 参数顺序、one-shot 多段 `agent_message` 合并、工具输出不污染最终回复、`studio-channel-files` manifest 换行保真、Feishu/Octo 文件收发、Feishu transport-smoke 文件发送入口、Agent/config 自定义命令扫描/展开/添加/删除、CC 风格唯一前缀命令、binding metadata 命令别名与 `/commands` 子命令缩写、`/help` 表格化分组帮助和多表格空行兼容、`/quiet` 显示控制、`/delete` session 删除和 Feishu delete action、`/whoami`/`/version` 只读诊断回执和 Feishu action、CC Card 文本降级、Feishu SDK pingTimeout opt-in、90 秒单次 startup delivery-silence renewal 与慢速非 connected watchdog、Skill 扫描/调用、Commands 菜单卡片、Studio `/compact` Gateway 请求与 session 清理、Feishu/Octo service slash compact、Octo service `/new`/`/reset`、adapter dry-run 不触发 Gateway compact 或清理状态、Claude Code stream-json 进度、图片输入、`--resume` 续接、权限 `control_response`、IM 文本批准、Feishu 权限卡片按钮、AskUserQuestion IM 回答、进度/工具事件和 daemon 合同。
 - 通过：`node --test tests/system/channel-connectors-command-live-script.test.mjs`，9 个命令 live smoke 脚本子测试通过；覆盖 dry-run 不触发后端、recent session 自动定位、probe adapter dry-run、Feishu smoke debug response 可观测 action/ok、apply 前强制显式会话地址或 recent session、apply 请求带真实发送开关。
 - 通过：`node --test tests/system/channel-connectors-agent-run-live-script.test.mjs`，3 个 Agent run live 观测脚本子测试通过；覆盖 Octo 工具、入站文件、出站文件、视觉附件、自动切视觉模型、Markdown 信号证据、Feishu 最终卡片+Markdown 信号证据和缺少必需证据时失败。
-- 通过：`node --test tests/system/channel-connectors-feishu-long-connection-script.test.mjs`，3 个 Feishu 长连接 smoke 脚本子测试通过；覆盖安全 runtime 通过、旧主动重建默认值失败、旧日志模式失败。
+- 通过：`node --test tests/system/channel-connectors-feishu-long-connection-script.test.mjs`，5 个 Feishu 长连接 smoke 脚本子测试通过；覆盖安全 runtime 通过、旧 30 秒 zero-inbound 策略失败、安全 90 秒单次启动静默自愈通过、旧日志模式失败。
 - 通过：`node scripts/smoke-channel-connectors-command-live.mjs --json` 的真实本机配置 dry-run 探针，规划 Feishu/Octo 共 6 个命令请求，输出中的 Feishu token 已脱敏。
 - 通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --require-ok --require-inbound-file --json`，真实本机 daemon 日志中 Feishu/Octo 各 1 条入站文件 run 匹配，staging 无失败。
 - 通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --require-ok --require-visual --require-auto-vision --json`，真实本机 daemon 日志中 5 条图片 run 匹配，覆盖 Feishu/Octo，`glm-5` 自动切到视觉模型。
@@ -120,8 +120,8 @@
 - 通过：`npm run dev:restart`，前端 `http://127.0.0.1:5176`，后端 `http://127.0.0.1:3761`。
 - 通过：Gateway status 显示 local daemon `state=running`、preferred CLI endpoint `http://127.0.0.1:18796/v1`；无正确 Gateway key 访问 `/v1/models` 返回 401，鉴权仍生效。
 - 通过：Channel daemon `/health` 返回 `ok=true`。
-- 通过：重启 Channel daemon 后 Feishu runtime 显示 `connected=true`、`connectedIdleRenewAfterMs=0`、`zeroInboundRenewAfterMs=0`、`watchdogRestartAfterMs=180000`，并在旧 30 秒 zero-inbound 窗口后仍未触发 watchdog 重建。
-- 通过：`node scripts/smoke-channel-connectors-feishu-long-connection.mjs --duration-ms 75000 --require-always-connected --json`，真实 Feishu binding 75 秒内 81 次采样均保持 connected；`pingTimeoutSeconds=0`、`connectedIdleRenewAfterMs=0`、`zeroInboundRenewAfterMs=0`、`watchdogRestartAfterMs=180000`，窗口内无 SDK reconnect 或 watchdog 日志事件。
+- 通过：重启 Channel daemon 后 Feishu runtime 显示 `connected=true`、`connectedIdleRenewAfterMs=0`、`zeroInboundRenewAfterMs=90000`、`zeroInboundRenewMax=1`、`watchdogRestartAfterMs=180000`；旧 30 秒 zero-inbound 策略仍会被 smoke 判为 unsafe。
+- 通过：真实 Feishu binding 在 2026-06-08T11:19:21Z 因启动后 92.177 秒无入站触发一次 `watchdog_zero_inbound_92177`，2026-06-08T11:19:22Z 重新 connected；`node scripts/smoke-channel-connectors-feishu-long-connection.mjs --duration-ms 0 --since 2026-06-08T11:17:40.000Z --json` 返回 `ok=true`、0 violations。
 - 通过：构建产物 `/help` 命令探针显示 `分组帮助\n\n| 命令 | 作用 |`，第二个 Markdown 表格前空行已保留。
 - 通过：本次重启后 Channel daemon `/agent-sessions` 返回 Feishu/Octo live binding 当前 metadata 请求 `effectiveMode=persistent`，`activeSessions=[]`；未修改真实 Channel 配置。
 
@@ -129,7 +129,7 @@
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
 - GMN provider 可作为视觉测试源，但未设为所有 App scope 默认 active provider；测试时需显式选择 `gpt-5.5`、`gmn-vision` 或 `gmn/gpt-5.5`。
-- Feishu 官方 SDK 仍可能因网络或平台关闭连接而 reconnect；当前策略不再默认注入 `pingTimeout`，也不再默认做 zero-inbound 或 connected-idle 主动重建，避免与 SDK 原生心跳/重连抢控制权。Studio 只保留可关闭的慢速非 connected circuit-breaker、快速 ACK、messageId 去重和 runtime 观测；如果后续仍出现 SDK 层长期卡死，再评估官方更高层 channel API 或替换 SDK 版本。
+- Feishu 官方 SDK 仍可能因网络或平台关闭连接而 reconnect；当前策略不默认注入 `pingTimeout`，也不默认做 connected-idle 主动重建，避免与 SDK 原生心跳/重连抢控制权。Studio 保留慢速非 connected circuit-breaker、启动 90 秒单次入站静默自愈、快速 ACK、messageId 去重和 runtime 观测；如果后续仍出现 SDK 层长期卡死，再评估官方更高层 channel API 或替换 SDK 版本。
 - Codex Agent 图片已走原生 `--image`；Studio `/compact` 已覆盖 IM history 压缩，但 Codex 原生交互式 `/compact`、`/clear` 仍需要持久 Codex session，不能通过一次性 `codex exec` 伪实现；Claude Code 已支持图片输入、权限自动回包和 IM 文本批准，但 Feishu 权限按钮卡片、AskUserQuestion、视频理解、OCR、语音/STT/TTS 仍待迁移；OpenCode 视觉输入仍待迁移。
 - 出站文件基础链路已覆盖小/中型本地文件，Octo 已具备 multipart/direct upload 自动分流；高级 `yolo` 权限仅放宽本地路径根限制，不绕过平台上传限制。后续仍需做真实大文件限额和更多平台文件收发实测。
 - 同 session FIFO queue 当前是 daemon 内存队列；Studio/OpenClaw 崩溃不影响 daemon 内排队，但 Channel daemon 自身重启会丢失未开始的排队消息。持久 session driver 合同已覆盖 session 级 crash fallback，但尚未实现 durable queue。
