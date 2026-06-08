@@ -2900,6 +2900,254 @@ test("native Channel Connectors compact posts to Gateway and clears stale Agent 
   })?.codexThreadId, "thread-other-session");
 });
 
+test("native Channel Connectors service slash compact works for Feishu and Octo command smoke", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+  });
+  const connectorPaths = resolveChannelConnectorsPaths(config);
+  const historyPath = path.join(connectorPaths.stateDir, "channel-history.json");
+  const agentSessionsPath = path.join(connectorPaths.stateDir, "channel-sessions.json");
+  const secretPath = path.join(root, ".config", "openclaw-studio", "model-gateway", "secrets.json");
+  fs.mkdirSync(path.dirname(secretPath), { recursive: true });
+  fs.writeFileSync(secretPath, JSON.stringify({
+    secrets: {
+      "gateway:client-api-key": { value: "sk-service-compact-key" },
+    },
+  }));
+  fs.mkdirSync(path.join(root, "codex-work"), { recursive: true });
+
+  const requests = [];
+  await withServer(async (req, res) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
+    await new Promise((resolve) => req.on("end", resolve));
+    const raw = Buffer.concat(chunks).toString("utf8");
+    requests.push({
+      method: req.method,
+      path: req.url,
+      authorization: req.headers.authorization || null,
+      body: raw ? JSON.parse(raw) : {},
+    });
+    res.setHeader("content-type", "application/json");
+    if (req.method === "POST" && req.url === "/v1/responses/compact") {
+      res.end(JSON.stringify({ output_text: "service compact summary from gateway" }));
+      return true;
+    }
+    return false;
+  }, async (baseUrl) => {
+    const initial = service.getNativeConfig().config;
+    service.saveNativeConfig({
+      config: {
+        ...initial,
+        gateway: {
+          ...initial.gateway,
+          endpoint: `${baseUrl}/v1`,
+        },
+        agentProfiles: [
+          {
+            id: "codex-main",
+            name: "Codex main",
+            agent: "codex",
+            model: "gpt-5",
+            workDir: path.join(root, "codex-work"),
+            permissionMode: "suggest",
+            gatewayEndpoint: `${baseUrl}/v1`,
+            gatewayKeyRef: "studio-gateway-client-key",
+            appProfileRef: "codex",
+          },
+        ],
+        defaultAgentProfileId: "codex-main",
+        platformBindings: [
+          {
+            id: "feishu-main",
+            platform: "feishu",
+            accountId: "cli_test",
+            botId: "bot_test",
+            displayName: "Feishu Main",
+            agentProfileId: "codex-main",
+            enabled: true,
+            allowlist: ["ou_admin"],
+            adminUsers: ["ou_admin"],
+            metadata: { verificationToken: "verify-token" },
+          },
+          {
+            id: "octo-main",
+            platform: "octo",
+            accountId: "octo-account",
+            botId: "octo-bot",
+            displayName: "Octo Main",
+            agentProfileId: "codex-main",
+            enabled: true,
+            allowlist: ["user-1"],
+            adminUsers: ["user-1"],
+          },
+        ],
+      },
+    });
+
+    const workDir = path.join(root, "codex-work");
+    const feishuLookup = { bindingId: "feishu-main", sessionKey: "feishu:oc_chat:ou_admin" };
+    const octoLookup = { bindingId: "octo-main", sessionKey: "dmwork:dm:user-1" };
+    for (const [lookup, prefix] of [[feishuLookup, "feishu"], [octoLookup, "octo"]]) {
+      appendChannelConnectorConversationHistory(historyPath, {
+        ...lookup,
+        messageId: `${prefix}-history-user`,
+        role: "user",
+        text: `${prefix} context before compact`,
+      });
+      appendChannelConnectorConversationHistory(historyPath, {
+        ...lookup,
+        messageId: `${prefix}-history-assistant`,
+        role: "assistant",
+        text: `${prefix} assistant context before compact`,
+        status: "completed",
+      });
+      upsertChannelConnectorAgentSession(agentSessionsPath, {
+        ...lookup,
+        projectId: "codex-main",
+        agent: "codex",
+        model: "gpt-5",
+        workDir,
+        agentNativeSessionId: `${prefix}-thread-before-compact`,
+        codexThreadId: `${prefix}-thread-before-compact`,
+        messageId: `${prefix}-message-before-compact`,
+        status: "completed",
+      });
+    }
+
+    const feishuCompact = await service.dispatchFeishuWebhook({
+      schema: "2.0",
+      header: {
+        event_type: "im.message.receive_v1",
+        app_id: "cli_test",
+        event_id: "evt_feishu_compact",
+        token: "verify-token",
+      },
+      event: {
+        sender: { sender_id: { open_id: "ou_admin" } },
+        message: {
+          message_id: "om_feishu_compact",
+          chat_id: "oc_chat",
+          chat_type: "p2p",
+          message_type: "text",
+          content: JSON.stringify({ text: "/compact" }),
+        },
+      },
+    });
+    assert.equal(feishuCompact.accepted, true);
+    assert.equal(feishuCompact.commandAction.commandResult.ok, true);
+    assert.equal(feishuCompact.commandAction.commandResult.action, "compact");
+    assert.match(feishuCompact.commandAction.commandResult.replyText, /已压缩当前 IM 会话上下文/);
+    assert.match(feishuCompact.feishuResponse.toast.content, /已压缩当前 IM 会话上下文/);
+    assert.equal(feishuCompact.feishuResponse.card, undefined);
+
+    const octoCompact = await service.dispatchOctoIncoming({
+      bindingId: "octo-main",
+      dryRun: true,
+      message: {
+        messageId: "m-octo-compact",
+        fromUid: "user-1",
+        channelId: "user-1",
+        channelType: 1,
+        payload: { type: 1, content: "/compact" },
+      },
+    });
+    assert.equal(octoCompact.accepted, true);
+    assert.equal(octoCompact.agentDispatch.status, "skipped");
+    assert.equal(octoCompact.commandAction.commandResult.ok, true);
+    assert.equal(octoCompact.commandAction.commandResult.action, "compact");
+    assert.match(octoCompact.replyPlan.chunks.join("\n"), /已压缩当前 IM 会话上下文/);
+
+    const compactRequests = requests.filter((request) => request.path === "/v1/responses/compact");
+    assert.equal(compactRequests.length, 2);
+    assert.deepEqual(compactRequests.map((request) => request.authorization), [
+      "Bearer sk-service-compact-key",
+      "Bearer sk-service-compact-key",
+    ]);
+    assert.deepEqual(compactRequests.map((request) => request.body.metadata.agent), ["codex", "codex"]);
+
+    for (const lookup of [feishuLookup, octoLookup]) {
+      const entries = getChannelConnectorConversationHistory(historyPath, lookup, 10);
+      assert.equal(entries.length, 1);
+      assert.equal(entries[0].status, "compact-summary");
+      assert.match(entries[0].text, /service compact summary/);
+      assert.equal(getChannelConnectorAgentSession(agentSessionsPath, {
+        ...lookup,
+        projectId: "codex-main",
+        agent: "codex",
+        model: "gpt-5",
+        workDir,
+      }), null);
+    }
+
+    appendChannelConnectorConversationHistory(historyPath, {
+      ...octoLookup,
+      messageId: "octo-history-before-new",
+      role: "user",
+      text: "context before /new",
+    });
+    upsertChannelConnectorAgentSession(agentSessionsPath, {
+      ...octoLookup,
+      projectId: "codex-main",
+      agent: "codex",
+      model: "gpt-5",
+      workDir,
+      codexThreadId: "octo-thread-before-new",
+      messageId: "m-before-new",
+      status: "completed",
+    });
+    const octoNew = await service.dispatchOctoIncoming({
+      bindingId: "octo-main",
+      dryRun: true,
+      message: {
+        messageId: "m-octo-new",
+        fromUid: "user-1",
+        channelId: "user-1",
+        channelType: 1,
+        payload: { type: 1, content: "/new" },
+      },
+    });
+    assert.equal(octoNew.commandAction.commandResult.ok, true);
+    assert.equal(octoNew.commandAction.commandResult.action, "new");
+    assert.match(octoNew.replyPlan.chunks.join("\n"), /已开启新的 Agent 会话/);
+    assert.deepEqual(getChannelConnectorConversationHistory(historyPath, octoLookup, 10), []);
+
+    appendChannelConnectorConversationHistory(historyPath, {
+      ...octoLookup,
+      messageId: "octo-history-before-reset",
+      role: "assistant",
+      text: "context before /reset",
+    });
+    upsertChannelConnectorAgentSession(agentSessionsPath, {
+      ...octoLookup,
+      projectId: "codex-main",
+      agent: "codex",
+      model: "gpt-5",
+      workDir,
+      codexThreadId: "octo-thread-before-reset",
+      messageId: "m-before-reset",
+      status: "completed",
+    });
+    const octoReset = await service.dispatchOctoIncoming({
+      bindingId: "octo-main",
+      dryRun: true,
+      message: {
+        messageId: "m-octo-reset",
+        fromUid: "user-1",
+        channelId: "user-1",
+        channelType: 1,
+        payload: { type: 1, content: "/reset" },
+      },
+    });
+    assert.equal(octoReset.commandAction.commandResult.ok, true);
+    assert.equal(octoReset.commandAction.commandResult.action, "reset");
+    assert.match(octoReset.replyPlan.chunks.join("\n"), /已重置本 IM 会话/);
+    assert.deepEqual(getChannelConnectorConversationHistory(historyPath, octoLookup, 10), []);
+  });
+});
+
 test("native Channel Connectors IM commands switch agent, model, and permission per session", async () => {
   const root = makeTempRoot();
   const stateDir = path.join(root, "state");

@@ -113,6 +113,9 @@ import {
   listChannelConnectorAgentSessionsForConversation,
 } from "./agent-session-store.js";
 import { getChannelConnectorConversationHistory } from "./conversation-history-store.js";
+import {
+  compactChannelConnectorConversation,
+} from "./conversation-compact.js";
 
 const execFileAsync = promisify(execFile);
 const DAEMON_ACTIONS: readonly ChannelConnectorsDaemonAction[] = [
@@ -1653,7 +1656,7 @@ export function createChannelConnectorsService(
     }
     const governance = evaluateChannelConnectorGovernance({
       binding: resolved.binding,
-      platform: "feishu",
+      platform: resolved.binding.platform,
       fromUid: request.fromUid || "",
       content: command,
       statePath: commandSurfaceGovernancePath(runtimeConfig),
@@ -1677,11 +1680,14 @@ export function createChannelConnectorsService(
     }
 
     const controlsPath = commandSurfaceControlsPath(runtimeConfig);
+    const agentSessionsPath = commandSurfaceAgentSessionsPath(runtimeConfig);
+    const historyPath = commandSurfaceHistoryPath(runtimeConfig);
     const commandModels = await modelsForCommandSurface({
       runtimeConfig,
       project: resolved.project,
       requestedModels: request.models,
     });
+    const gatewayClientKey = resolveChannelConnectorGatewayClientKey(runtimeConfig);
     const commandResult = await handleChannelConnectorCommand({
       config: runtimeConfig,
       project: resolved.project,
@@ -1689,11 +1695,20 @@ export function createChannelConnectorsService(
       sessionKey,
       controlsPath,
       customCommandsPath: commandSurfaceCustomCommandsPath(runtimeConfig),
-      agentSessionsPath: commandSurfaceAgentSessionsPath(runtimeConfig),
-      conversationHistoryPath: commandSurfaceHistoryPath(runtimeConfig),
+      agentSessionsPath,
+      conversationHistoryPath: historyPath,
       replyBuffersPath: commandSurfaceReplyBuffersPath(runtimeConfig),
-      gatewayClientKey: null,
+      gatewayClientKey,
       listModels: async () => commandModels,
+      compactConversation: (scope) => compactChannelConnectorConversation({
+        historyPath,
+        agentSessionsPath,
+        gatewayEndpoint: runtimeConfig.gateway.endpoint,
+        gatewayClientKey,
+        bindingId: scope.bindingId,
+        sessionKey: scope.sessionKey,
+        project: scope.project,
+      }),
       message: {
         messageId: request.messageId || `feishu-action-${Date.now()}`,
         fromUid: request.fromUid || "",
@@ -2215,21 +2230,42 @@ export function createChannelConnectorsService(
     let transport = emptyOctoTransportResult();
     let accepted = dryRun;
     let effectiveSkippedReason: string | null = dryRun ? null : "agent_dispatch_not_ready";
+    let commandAction: ChannelConnectorCommandActionResponse | null = null;
+    let effectiveReplyPlan = replyPlan;
+    let dispatchStatus: ChannelConnectorOctoDispatchResponse["agentDispatch"]["status"] = dryRun ? "dry-run" : "not-ready";
+    if (content.startsWith("/")) {
+      commandAction = await handleCommandAction({
+        bindingId: binding.id,
+        sessionKey,
+        fromUid: message.fromUid,
+        channelId: message.channelId,
+        messageId: message.messageId,
+        eventKey: content,
+        renderer: "text",
+      });
+      accepted = commandAction.accepted;
+      effectiveSkippedReason = commandAction.skippedReason;
+      dispatchStatus = "skipped";
+      const commandReplyText = commandAction.commandResult?.replyText
+        || commandAction.commandResult?.passthroughText
+        || commandAction.skippedReason
+        || "";
+      effectiveReplyPlan = commandReplyText ? renderOctoTextReply(message, commandReplyText) : null;
+    }
     if (!dryRun && request.sendReply === true) {
-      if (!replyPlan) {
+      if (!effectiveReplyPlan) {
         effectiveSkippedReason = "octo_reply_text_required";
       } else {
         const transportConfig = octoTransportFromBinding(binding);
         if (!transportConfig) {
           effectiveSkippedReason = "octo_transport_config_missing";
         } else {
-          transport = await sendOctoTextReply(transportConfig, replyPlan);
+          transport = await sendOctoTextReply(transportConfig, effectiveReplyPlan);
           accepted = transport.ok === true;
           effectiveSkippedReason = transport.ok === true ? null : "octo_transport_send_failed";
         }
       }
     }
-    const dispatchStatus = dryRun ? "dry-run" : "not-ready";
     const response: ChannelConnectorOctoDispatchResponse = {
       ok: true,
       checkedAt,
@@ -2259,8 +2295,9 @@ export function createChannelConnectorsService(
         gatewayEndpoint: agentProfile.gatewayEndpoint,
         gatewayKeyRef: agentProfile.gatewayKeyRef,
       },
+      commandAction,
       transport,
-      replyPlan,
+      replyPlan: effectiveReplyPlan,
       eventStored: {
         path: resolvedPaths.octoEventLogFile,
         written: false,
@@ -2281,9 +2318,12 @@ export function createChannelConnectorsService(
       messageType: typeof message.payload?.type === "number" ? message.payload.type : null,
       attachmentCount: attachments.length,
       attachmentKinds: attachments.map((attachment) => attachment.kind),
+      command: commandAction?.command || null,
+      commandAction: commandAction?.commandResult?.action || null,
+      commandOk: commandAction?.commandResult?.ok ?? null,
       dryRun,
       dispatchStatus,
-      replyChunks: replyPlan?.chunks.length || 0,
+      replyChunks: effectiveReplyPlan?.chunks.length || 0,
       transportAction: transport.action,
       transportOk: transport.ok,
       transportRequests: transport.requestCount,

@@ -281,6 +281,7 @@ export interface ChannelConnectorOctoDispatchResponse {
     gatewayEndpoint: string | null;
     gatewayKeyRef: "studio-gateway-client-key" | null;
   };
+  commandAction?: ChannelConnectorCommandActionResponse | null;
   transport: ChannelConnectorOctoTransportResult;
   replyPlan: ChannelConnectorOctoReplyPlan | null;
   eventStored: {
