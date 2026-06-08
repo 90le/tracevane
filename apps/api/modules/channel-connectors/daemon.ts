@@ -157,21 +157,22 @@ import {
   type OctoWukongSocketStatus,
 } from "./octo-wukong.js";
 
-const DEFAULT_FEISHU_PING_TIMEOUT_SECONDS = 10;
+const DEFAULT_FEISHU_PING_TIMEOUT_SECONDS = 0;
 const MIN_FEISHU_PING_TIMEOUT_SECONDS = 0;
 const MAX_FEISHU_PING_TIMEOUT_SECONDS = 300;
-const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 45_000;
-const MIN_FEISHU_WATCHDOG_RESTART_MS = 10_000;
+const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 20_000;
+const MIN_FEISHU_WATCHDOG_RESTART_MS = 5_000;
 const MAX_FEISHU_WATCHDOG_RESTART_MS = 600_000;
-// CC Go keeps Feishu's SDK WebSocket alive and lets the SDK reconnect on real
-// disconnects. This daemon has also observed Feishu "ready/connected" sockets
-// that stop delivering events after a successful inbound turn. Keep refreshes
-// low-frequency and scoped to the current connection lifecycle; aggressive
-// reconnects make Feishu look unstable and can trigger platform redelivery.
+// CC Go keeps Feishu's SDK WebSocket alive and lets the SDK own ping/pong and
+// reconnect behavior. Studio keeps SDK liveness probes opt-in because the Node
+// SDK's pingTimeout watchdog and startup zero-inbound renewal can force
+// reconnects on otherwise usable long connections. The daemon watchdog only
+// rebuilds sockets that remain non-connected past the threshold below; both
+// pingTimeout and zero-inbound renewal remain metadata opt-in.
 const DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS = 5 * 60_000;
 const MIN_FEISHU_CONNECTED_IDLE_RENEW_MS = 60_000;
 const MAX_FEISHU_CONNECTED_IDLE_RENEW_MS = 3_600_000;
-const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS = 30_000;
+const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS = 0;
 const MIN_FEISHU_ZERO_INBOUND_RENEW_MS = 30_000;
 const MAX_FEISHU_ZERO_INBOUND_RENEW_MS = 15 * 60_000;
 const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX = 1;
@@ -6354,6 +6355,7 @@ function startFeishuWatchdog(input: {
           zeroInboundRenewAfterMs > 0
           && zeroInboundRenewMax > 0
           && !group.suppressZeroInboundRenewal
+          && group.receivedMessages === 0
           && group.lifecycleReceivedMessages === 0
           && !group.lifecycleLastReceivedAt
           && group.zeroInboundRenewals < zeroInboundRenewMax

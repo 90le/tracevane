@@ -3350,11 +3350,12 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(sessionHelp.handled, true);
   assert.equal(sessionHelp.ok, true);
   assert.match(sessionHelp.replyText, /Studio Channel \/ session/);
+  assert.match(sessionHelp.replyText, /\| 命令 \| 作用 \|/);
   assert.match(sessionHelp.replyText, /`\/whoami`/);
   assert.match(sessionHelp.replyText, /`\/version`/);
   assert.match(sessionHelp.replyText, /`\/name <名称>`/);
   assert.match(sessionHelp.replyText, /`\/search <关键字>`/);
-  assert.match(sessionHelp.replyText, /`\/delete <序号\|sessionId前缀\|1,3-5>`/);
+  assert.ok(sessionHelp.replyText.includes("`/delete <序号\\|sessionId前缀\\|1,3-5>`"));
   assert.match(sessionHelp.replyText, /`\/usage`/);
   assert.match(sessionHelp.replyText, /`\/approve`/);
   assert.match(sessionHelp.replyText, /返回：`\/help`/);
@@ -3365,8 +3366,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(displayHelp.handled, true);
   assert.equal(displayHelp.ok, true);
   assert.match(displayHelp.replyText, /Studio Channel \/ display/);
-  assert.match(displayHelp.replyText, /`\/quiet \[quiet\|compact\|full\]`/);
-  assert.match(displayHelp.replyText, /`\/buffer <id\|前缀\|latest>`/);
+  assert.ok(displayHelp.replyText.includes("`/quiet [quiet\\|compact\\|full]`"));
+  assert.ok(displayHelp.replyText.includes("`/buffer <id\\|前缀\\|latest>`"));
   const nativeHelp = await handleChannelConnectorCommand({
     ...baseContext,
     message: message("/help native"),
@@ -4760,7 +4761,9 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(surface.textFallback, /skills 命令/);
   assert.match(surface.textFallback, /^Studio Channel/);
   assert.match(surface.textFallback, /当前/);
-  assert.match(surface.textFallback, /Reasoning: default/);
+  assert.match(surface.textFallback, /\| 项目 \| 内容 \|/);
+  assert.match(surface.textFallback, /\| Reasoning \| default \|/);
+  assert.match(surface.textFallback, /\| 命令 \| 操作 \| 说明 \|/);
   assert.match(surface.textFallback, /快捷操作/);
   assert.match(surface.textFallback, /`\/status`/);
   assert.match(surface.textFallback, /`\/native \/help`/);
@@ -6992,13 +6995,13 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /watchdog_non_connected_/);
   assert.match(daemonSource, /watchdog_connected_idle_/);
   assert.match(daemonSource, /watchdog_zero_inbound_/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_PING_TIMEOUT_SECONDS\s*=\s*10/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_PING_TIMEOUT_SECONDS\s*=\s*0/);
   assert.match(daemonSource, /DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS\s*=\s*5\s*\*\s*60_?000/);
   assert.match(daemonSource, /MIN_FEISHU_CONNECTED_IDLE_RENEW_MS\s*=\s*60_?000/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS\s*=\s*30_?000/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS\s*=\s*0/);
   assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX\s*=\s*1/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_WATCHDOG_RESTART_MS\s*=\s*45_?000/);
-  assert.match(daemonSource, /MIN_FEISHU_WATCHDOG_RESTART_MS\s*=\s*10_?000/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_WATCHDOG_RESTART_MS\s*=\s*20_?000/);
+  assert.match(daemonSource, /MIN_FEISHU_WATCHDOG_RESTART_MS\s*=\s*5_?000/);
   assert.match(daemonSource, /feishuPingTimeoutSeconds/);
   assert.match(daemonSource, /const pingTimeout = feishuPingTimeoutSeconds\(group\)/);
   assert.match(daemonSource, /const feishuWsConfig = pingTimeout > 0 \? \{ pingTimeout \} : undefined/);
@@ -7014,6 +7017,7 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /lastWatchdogRestartAt/);
   assert.match(daemonSource, /lastWatchdogRestartReason/);
   assert.match(daemonSource, /latestFeishuLifecycleActivityAt/);
+  assert.match(daemonSource, /group\.receivedMessages === 0/);
   assert.match(daemonSource, /group\.lifecycleReceivedMessages === 0/);
   assert.match(daemonSource, /group\.lifecycleReceivedMessages > 0/);
   assert.match(daemonSource, /reason\.startsWith\("watchdog_connected_idle_"\)/);

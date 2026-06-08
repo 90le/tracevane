@@ -61,6 +61,8 @@
 - Studio IM 命令路由已补 CC Go 风格前缀匹配：exact alias 优先，唯一前缀可展开，歧义前缀原样透传；`/commands` 子命令同步支持唯一缩写，避免短命令误触发。
 - Studio IM 入口已补 CC Go `AliasConfig/resolveAlias` 行为：Feishu/Octo binding metadata 可配置命令别名，支持完整命中和首词命中后拼接剩余参数；service dry-run 与 daemon live 路径共用同一解析。
 - CC Card `RenderText()` 式文本降级已落到 Studio command surface：无卡片渠道不再一次性展开全部菜单，`/help` 返回紧凑主菜单，`/help session|agent|display|workdir|native` 返回分组帮助；Feishu 富卡片和 callback 逻辑保持不变。
+- `/help` 与 command surface 文本 fallback 已改为 Markdown 表格布局：Feishu/Octo 可渲染为更清晰的表格，纯文本渠道仍可读，命令说明不再是松散长列表。
+- Feishu 长连接策略按 CC Go/SDK 原生行为收紧：默认不再注入 Node SDK `pingTimeout` liveness watchdog，也不再默认启用启动期 zero-inbound renewal；daemon watchdog 仅在 SDK 长时间非 connected 时重建，`pingTimeout` 和 zero-inbound 均改为 metadata opt-in。
 - Studio `/quiet` 已按 CC Go 显示控制习惯接入：文本命令和 Feishu Display 子卡均可隐藏/恢复本 IM session 的流式/工具中间态；当前 `compact` 映射为同样的隐藏中间态，独立 compact display schema 留到后续。
 - Studio `/delete` 已按 CC Go session 管理习惯接入文本命令：支持序号、sessionId、逗号和范围删除非当前 Agent session 续接记录；Feishu Session list 子卡为非当前 session 提供删除按钮。当前删除范围是 Studio 本地 resume/session store，不强杀 daemon persistent process。
 - Studio `/whoami` / `/myid` 已按 CC Go 身份排查习惯接入：返回当前 IM User ID、Channel ID、Channel type、Platform、Binding、Session key 和管理权限状态，并在 Feishu Session 子卡提供按钮。
@@ -77,7 +79,7 @@
 
 - 通过：`npm run build:api`。
 - 通过：`node --test tests/system/model-gateway-service.test.mjs`，52 个 Model Gateway 子测试通过。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，60 个 Channel Connectors 子测试通过；覆盖 Codex resume 参数顺序、one-shot 多段 `agent_message` 合并、工具输出不污染最终回复、`studio-channel-files` manifest 换行保真、Feishu/Octo 文件收发、Feishu transport-smoke 文件发送入口、Agent/config 自定义命令扫描/展开/添加/删除、CC 风格唯一前缀命令、binding metadata 命令别名与 `/commands` 子命令缩写、`/help` 分组帮助、`/quiet` 显示控制、`/delete` session 删除和 Feishu delete action、`/whoami`/`/version` 只读诊断回执和 Feishu action、CC Card 文本降级、Skill 扫描/调用、Commands 菜单卡片、Studio `/compact` Gateway 请求与 session 清理、Feishu/Octo service slash compact、Octo service `/new`/`/reset`、adapter dry-run 不触发 Gateway compact 或清理状态、Claude Code stream-json 进度、图片输入、`--resume` 续接、权限 `control_response`、IM 文本批准、Feishu 权限卡片按钮、AskUserQuestion IM 回答、进度/工具事件和 daemon 合同。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，60 个 Channel Connectors 子测试通过；覆盖 Codex resume 参数顺序、one-shot 多段 `agent_message` 合并、工具输出不污染最终回复、`studio-channel-files` manifest 换行保真、Feishu/Octo 文件收发、Feishu transport-smoke 文件发送入口、Agent/config 自定义命令扫描/展开/添加/删除、CC 风格唯一前缀命令、binding metadata 命令别名与 `/commands` 子命令缩写、`/help` 表格化分组帮助、`/quiet` 显示控制、`/delete` session 删除和 Feishu delete action、`/whoami`/`/version` 只读诊断回执和 Feishu action、CC Card 文本降级、Feishu SDK pingTimeout/zero-inbound opt-in 与非 connected watchdog、Skill 扫描/调用、Commands 菜单卡片、Studio `/compact` Gateway 请求与 session 清理、Feishu/Octo service slash compact、Octo service `/new`/`/reset`、adapter dry-run 不触发 Gateway compact 或清理状态、Claude Code stream-json 进度、图片输入、`--resume` 续接、权限 `control_response`、IM 文本批准、Feishu 权限卡片按钮、AskUserQuestion IM 回答、进度/工具事件和 daemon 合同。
 - 通过：`node --test tests/system/channel-connectors-command-live-script.test.mjs`，9 个命令 live smoke 脚本子测试通过；覆盖 dry-run 不触发后端、recent session 自动定位、probe adapter dry-run、Feishu smoke debug response 可观测 action/ok、apply 前强制显式会话地址或 recent session、apply 请求带真实发送开关。
 - 通过：`node --test tests/system/channel-connectors-agent-run-live-script.test.mjs`，3 个 Agent run live 观测脚本子测试通过；覆盖 Octo 工具、入站文件、出站文件、视觉附件、自动切视觉模型、Markdown 信号证据、Feishu 最终卡片+Markdown 信号证据和缺少必需证据时失败。
 - 通过：`node scripts/smoke-channel-connectors-command-live.mjs --json` 的真实本机配置 dry-run 探针，规划 Feishu/Octo 共 6 个命令请求，输出中的 Feishu token 已脱敏。

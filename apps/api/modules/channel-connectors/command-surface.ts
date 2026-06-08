@@ -343,17 +343,29 @@ function action(
   };
 }
 
-function fallbackActionPrefix(item: ChannelConnectorCommandSurfaceAction): string {
-  if (item.tone === "danger") return "!";
-  if (item.tone === "primary") return ">";
-  if (item.actionKind === "nav") return "-";
-  return "-";
+function markdownTable(rows: Array<[string, string, string?]>): string {
+  const escapeCell = (value: string): string => value.replace(/\|/g, "\\|").replace(/\n/g, " ");
+  const hasThirdColumn = rows.some((row) => normalizeString(row[2]).length > 0);
+  if (!hasThirdColumn) {
+    return [
+      "| 项目 | 内容 |",
+      "| --- | --- |",
+      ...rows.map(([label, value]) => `| ${escapeCell(label)} | ${escapeCell(value)} |`),
+    ].join("\n");
+  }
+  return [
+    "| 命令 | 操作 | 说明 |",
+    "| --- | --- | --- |",
+    ...rows.map(([command, label, description]) => `| ${escapeCell(command)} | ${escapeCell(label)} | ${escapeCell(description || "")} |`),
+  ].join("\n");
 }
 
-function fallbackActionLine(item: ChannelConnectorCommandSurfaceAction): string {
-  const description = commandSurfaceItemDescription(item);
-  const suffix = description ? ` - ${description}` : "";
-  return `${fallbackActionPrefix(item)} \`${item.command}\` ${item.label}${suffix}`;
+function fallbackActionTable(items: readonly ChannelConnectorCommandSurfaceAction[]): string {
+  return markdownTable(items.map((item) => [
+    `\`${item.command}\``,
+    item.label,
+    commandSurfaceItemDescription(item) || "",
+  ]));
 }
 
 function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFallback">): string {
@@ -366,10 +378,14 @@ function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFa
     "Studio Channel",
     "",
     "当前",
-    `Agent: ${surface.current.projectId} (${surface.current.agent})`,
-    `Model: ${surface.current.model || "default"} · Reasoning: ${surface.current.reasoningEffort || "default"} · Mode: ${surface.current.permissionMode}`,
-    `WorkDir: ${compactPath(surface.current.workDir)}`,
-    `Display: stream=${surface.current.streamMessages ? "on" : "off"} / tools=${surface.current.toolMessages ? "on" : "off"}`,
+    markdownTable([
+      ["Agent", `${surface.current.projectId} (${surface.current.agent})`],
+      ["Model", surface.current.model || "default"],
+      ["Reasoning", surface.current.reasoningEffort || "default"],
+      ["Mode", surface.current.permissionMode],
+      ["WorkDir", compactPath(surface.current.workDir)],
+      ["Display", `stream=${surface.current.streamMessages ? "on" : "off"} / tools=${surface.current.toolMessages ? "on" : "off"}`],
+    ]),
   ];
   if (surface.current.workDirHistory.length) {
     lines.push(`Previous WorkDir: ${compactPath(surface.current.workDirHistory[0] || "")}`);
@@ -377,30 +393,28 @@ function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFa
 
   if (quickActions.length) {
     lines.push("", "快捷操作");
-    quickActions.forEach((item) => lines.push(fallbackActionLine(item)));
+    lines.push(fallbackActionTable(quickActions));
   }
 
   if (selectedSection) {
     lines.push("", selectedSection.title);
     if (selectedSection.summary) lines.push(selectedSection.summary);
-    for (const item of helpSectionActions(selectedSection, normalizedSurface)) {
-      lines.push(fallbackActionLine(item));
-    }
+    lines.push(fallbackActionTable(helpSectionActions(selectedSection, normalizedSurface)));
     lines.push("", "返回：`/help` 主菜单。");
   } else {
     lines.push("", "菜单分组");
-    for (const group of homeMenuSections()) {
-      const sectionCommands = group.sectionIds
-        .map((sectionId) => `\`/help ${sectionId}\``)
-        .join("  ");
-      lines.push(`- ${group.title}: ${sectionCommands}`);
-    }
+    lines.push(markdownTable(homeMenuSections().map((group) => [
+      group.title,
+      group.sectionIds.map((sectionId) => `\`/help ${sectionId}\``).join("  "),
+    ])));
     lines.push(
       "",
       "常用命令",
-      "- `/agent` `/model` `/mode` `/reasoning` 切换当前 IM session 配置",
-      "- `/display` `/stream on|off` `/tools on|off` 控制进度和工具显示",
-      "- `/commands` `/skills` 查看可执行命令和 Skill",
+      markdownTable([
+        ["`/agent` `/model` `/mode` `/reasoning`", "切换当前 IM session 配置"],
+        ["`/display` `/stream on|off` `/tools on|off`", "控制进度和工具显示"],
+        ["`/commands` `/skills`", "查看可执行命令和 Skill"],
+      ]),
     );
   }
 
