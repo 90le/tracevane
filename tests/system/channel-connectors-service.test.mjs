@@ -3343,13 +3343,14 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(help.replyText, /`\/stop`/);
   assert.match(help.replyText, /`\/native \/help`/);
   assert.match(help.replyText, /`\/skills`/);
+  assert.match(help.replyText, /分组帮助\n\n\| 命令 \| 作用 \|/);
   const sessionHelp = await handleChannelConnectorCommand({
     ...baseContext,
     message: message("/help session"),
   });
   assert.equal(sessionHelp.handled, true);
   assert.equal(sessionHelp.ok, true);
-  assert.match(sessionHelp.replyText, /Studio Channel \/ session/);
+  assert.match(sessionHelp.replyText, /Studio Channel \/ session\n\n\| 命令 \| 作用 \|/);
   assert.match(sessionHelp.replyText, /\| 命令 \| 作用 \|/);
   assert.match(sessionHelp.replyText, /`\/whoami`/);
   assert.match(sessionHelp.replyText, /`\/version`/);
@@ -3365,7 +3366,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(displayHelp.handled, true);
   assert.equal(displayHelp.ok, true);
-  assert.match(displayHelp.replyText, /Studio Channel \/ display/);
+  assert.match(displayHelp.replyText, /Studio Channel \/ display\n\n\| 命令 \| 作用 \|/);
   assert.ok(displayHelp.replyText.includes("`/quiet [quiet\\|compact\\|full]`"));
   assert.ok(displayHelp.replyText.includes("`/buffer <id\\|前缀\\|latest>`"));
   const nativeHelp = await handleChannelConnectorCommand({
@@ -4761,10 +4762,14 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(surface.textFallback, /skills 命令/);
   assert.match(surface.textFallback, /^Studio Channel/);
   assert.match(surface.textFallback, /当前/);
+  assert.match(surface.textFallback, /当前\n\n\| 项目 \| 内容 \|/);
   assert.match(surface.textFallback, /\| 项目 \| 内容 \|/);
   assert.match(surface.textFallback, /\| Reasoning \| default \|/);
   assert.match(surface.textFallback, /\| 命令 \| 操作 \| 说明 \|/);
   assert.match(surface.textFallback, /快捷操作/);
+  assert.match(surface.textFallback, /快捷操作\n\n\| 命令 \| 操作 \| 说明 \|/);
+  assert.match(surface.textFallback, /菜单分组\n\n\| 项目 \| 内容 \|/);
+  assert.match(surface.textFallback, /常用命令\n\n\| 项目 \| 内容 \|/);
   assert.match(surface.textFallback, /`\/status`/);
   assert.match(surface.textFallback, /`\/native \/help`/);
   assert.match(surface.textFallback, /`\/help agent`/);
@@ -6996,12 +7001,12 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /watchdog_connected_idle_/);
   assert.match(daemonSource, /watchdog_zero_inbound_/);
   assert.match(daemonSource, /DEFAULT_FEISHU_PING_TIMEOUT_SECONDS\s*=\s*0/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS\s*=\s*5\s*\*\s*60_?000/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS\s*=\s*0/);
   assert.match(daemonSource, /MIN_FEISHU_CONNECTED_IDLE_RENEW_MS\s*=\s*60_?000/);
   assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS\s*=\s*0/);
   assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX\s*=\s*1/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_WATCHDOG_RESTART_MS\s*=\s*20_?000/);
-  assert.match(daemonSource, /MIN_FEISHU_WATCHDOG_RESTART_MS\s*=\s*5_?000/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_WATCHDOG_RESTART_MS\s*=\s*180_?000/);
+  assert.match(daemonSource, /MIN_FEISHU_WATCHDOG_RESTART_MS\s*=\s*60_?000/);
   assert.match(daemonSource, /feishuPingTimeoutSeconds/);
   assert.match(daemonSource, /const pingTimeout = feishuPingTimeoutSeconds\(group\)/);
   assert.match(daemonSource, /const feishuWsConfig = pingTimeout > 0 \? \{ pingTimeout \} : undefined/);
@@ -7011,6 +7016,9 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /feishuZeroInboundRenewMs/);
   assert.match(daemonSource, /feishuZeroInboundRenewMax/);
   assert.match(daemonSource, /feishuWatchdogRestartMs/);
+  assert.match(daemonSource, /watchdogRestartAfterMs:\s*feishuWatchdogRestartMs\(group\)/);
+  assert.match(daemonSource, /if \(value <= 0\)\s*return 0;/);
+  assert.match(daemonSource, /restartAfterMs > 0 && unhealthyForMs >= restartAfterMs/);
   assert.match(daemonSource, /lifecycleReceivedMessages/);
   assert.match(daemonSource, /lifecycleLastReceivedAt/);
   assert.match(daemonSource, /suppressZeroInboundRenewal/);

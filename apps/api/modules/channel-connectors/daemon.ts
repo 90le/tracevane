@@ -160,16 +160,17 @@ import {
 const DEFAULT_FEISHU_PING_TIMEOUT_SECONDS = 0;
 const MIN_FEISHU_PING_TIMEOUT_SECONDS = 0;
 const MAX_FEISHU_PING_TIMEOUT_SECONDS = 300;
-const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 20_000;
-const MIN_FEISHU_WATCHDOG_RESTART_MS = 5_000;
+const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 180_000;
+const MIN_FEISHU_WATCHDOG_RESTART_MS = 60_000;
 const MAX_FEISHU_WATCHDOG_RESTART_MS = 600_000;
 // CC Go keeps Feishu's SDK WebSocket alive and lets the SDK own ping/pong and
 // reconnect behavior. Studio keeps SDK liveness probes opt-in because the Node
 // SDK's pingTimeout watchdog and startup zero-inbound renewal can force
-// reconnects on otherwise usable long connections. The daemon watchdog only
-// rebuilds sockets that remain non-connected past the threshold below; both
-// pingTimeout and zero-inbound renewal remain metadata opt-in.
-const DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS = 5 * 60_000;
+// reconnects on otherwise usable long connections. The daemon watchdog is only
+// a slow circuit-breaker for sockets that remain non-connected after the SDK has
+// had enough time to reconnect; all proactive connected-state rebuilds are
+// metadata opt-in.
+const DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS = 0;
 const MIN_FEISHU_CONNECTED_IDLE_RENEW_MS = 60_000;
 const MAX_FEISHU_CONNECTED_IDLE_RENEW_MS = 3_600_000;
 const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS = 0;
@@ -256,6 +257,7 @@ interface ChannelDaemonFeishuConnectionState {
   connectedIdleRenewAfterMs: number;
   zeroInboundRenewAfterMs: number;
   zeroInboundRenewals: number;
+  watchdogRestartAfterMs: number;
   lifecycleReceivedMessages: number;
   lifecycleLastReceivedAt: string | null;
   suppressZeroInboundRenewal: boolean;
@@ -1647,6 +1649,7 @@ function feishuWatchdogRestartMs(group: ChannelDaemonFeishuGroup): number {
       "watchdog_restart_ms",
     ], DEFAULT_FEISHU_WATCHDOG_RESTART_MS)
     : DEFAULT_FEISHU_WATCHDOG_RESTART_MS;
+  if (value <= 0) return 0;
   return clampNumber(Math.floor(value), MIN_FEISHU_WATCHDOG_RESTART_MS, MAX_FEISHU_WATCHDOG_RESTART_MS);
 }
 
@@ -2281,6 +2284,7 @@ function feishuConnectionState(group: ChannelDaemonFeishuGroup): ChannelDaemonFe
     connectedIdleRenewAfterMs: feishuConnectedIdleRenewMs(group),
     zeroInboundRenewAfterMs: feishuZeroInboundRenewMs(group),
     zeroInboundRenewals: group.zeroInboundRenewals,
+    watchdogRestartAfterMs: feishuWatchdogRestartMs(group),
     lifecycleReceivedMessages: group.lifecycleReceivedMessages,
     lifecycleLastReceivedAt: group.lifecycleLastReceivedAt,
     suppressZeroInboundRenewal: group.suppressZeroInboundRenewal,
@@ -6421,7 +6425,7 @@ function startFeishuWatchdog(input: {
       state.feishuConnections[group.key] = feishuConnectionState(group);
       const unhealthyForMs = nowMs - new Date(unhealthyAt).getTime();
       const restartAfterMs = feishuWatchdogRestartMs(group);
-      if (unhealthyForMs >= restartAfterMs) {
+      if (restartAfterMs > 0 && unhealthyForMs >= restartAfterMs) {
         restartFeishuGroupClient({
           config,
           state,

@@ -378,6 +378,7 @@ function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFa
     "Studio Channel",
     "",
     "当前",
+    "",
     markdownTable([
       ["Agent", `${surface.current.projectId} (${surface.current.agent})`],
       ["Model", surface.current.model || "default"],
@@ -392,17 +393,18 @@ function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFa
   }
 
   if (quickActions.length) {
-    lines.push("", "快捷操作");
+    lines.push("", "快捷操作", "");
     lines.push(fallbackActionTable(quickActions));
   }
 
   if (selectedSection) {
     lines.push("", selectedSection.title);
     if (selectedSection.summary) lines.push(selectedSection.summary);
+    lines.push("");
     lines.push(fallbackActionTable(helpSectionActions(selectedSection, normalizedSurface)));
     lines.push("", "返回：`/help` 主菜单。");
   } else {
-    lines.push("", "菜单分组");
+    lines.push("", "菜单分组", "");
     lines.push(markdownTable(homeMenuSections().map((group) => [
       group.title,
       group.sectionIds.map((sectionId) => `\`/help ${sectionId}\``).join("  "),
@@ -410,6 +412,7 @@ function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFa
     lines.push(
       "",
       "常用命令",
+      "",
       markdownTable([
         ["`/agent` `/model` `/mode` `/reasoning`", "切换当前 IM session 配置"],
         ["`/display` `/stream on|off` `/tools on|off`", "控制进度和工具显示"],

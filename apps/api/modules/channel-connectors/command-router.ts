@@ -836,6 +836,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
   if (section === "session") {
     return [
       "Studio Channel / session",
+      "",
       markdownTable([
         ["`/whoami`", "查看当前 IM 用户、频道和 session id"],
         ["`/version`", "查看 Studio Channel runtime 版本"],
@@ -860,6 +861,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
   if (section === "agent") {
     return [
       "Studio Channel / agent",
+      "",
       markdownTable([
         ["`/agent`", "列出可切换 Agent Profile"],
         ["`/agent <序号|id|codex|claude-code|opencode>`", "切换本会话 Agent"],
@@ -877,6 +879,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
   if (section === "display") {
     return [
       "Studio Channel / display",
+      "",
       markdownTable([
         ["`/display`", "查看流式和工具消息开关"],
         ["`/quiet [quiet|compact|full]`", "按 CC 习惯隐藏或恢复中间态消息"],
@@ -892,6 +895,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
   if (section === "workdir") {
     return [
       "Studio Channel / workdir",
+      "",
       markdownTable([
         ["`/dir`", "查看当前工作目录、最近目录和子目录"],
         ["`/dir <路径|序号|->`", "切换目录；序号优先选最近目录，`-` 返回上一目录"],
@@ -903,6 +907,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
   }
   return [
     "Studio Channel / native",
+    "",
     markdownTable([
       ["`/commands`", "列出当前 Agent 自定义 prompt 命令"],
       ["`/commands add <名称> <prompt 模板>`", "添加 prompt 命令"],
@@ -933,6 +938,7 @@ function commandHelpText(section?: string | null): string {
     ]),
     "",
     "分组帮助",
+    "",
     markdownTable([
       ["`/help session`", "会话、history、usage、权限批准"],
       ["`/help agent`", "Agent、模型、权限、推理"],
