@@ -60,12 +60,15 @@
 - Claude Code AskUserQuestion 基础闭环已按 CC Go 语义接入：`AskUserQuestion` 不再被 yolo/full-auto 自动 allow；pending question 时 IM 下一条普通回复会作为答案写入 `updatedInput.answers`，`allow/deny` 也按答案处理，`/stop` 等硬控制命令仍可执行。
 - Studio `/compact` 合同已从 Channel daemon 抽成可测 helper：自动验证会向 Gateway `/responses/compact` 发送摘要请求，成功后 IM history 只保留 compact summary，并清理当前 binding + sessionKey 的旧 Codex/Claude Agent 续接；daemon 仍只负责把 runtime config 映射为路径和 Gateway endpoint。
 - Service 层命令 smoke 已补齐 Feishu/Octo `/compact`：Feishu slash webhook 和 Octo incoming slash 都复用 Studio compact helper，返回用户可见文本结果，不进入 Agent；Octo service slash `/new`、`/reset` 也已覆盖清 history/session 和文本 replyPlan。
+- 新增 Channel Connectors 命令 live smoke 脚本：默认只做 dry-run 计划，`--probe` 只打后端 adapter dry-run，不触发平台发送；显式 `--apply --from-uid --channel-id` 才发送真实 Feishu/Octo 命令请求；脚本会预检 binding、sessionKey、history/session 条目和 `/compact` Gateway 准备状态，JSON 输出会脱敏 token/key/secret。
 
 ## 最近验证
 
 - 通过：`npm run build:api`。
 - 通过：`node --test tests/system/model-gateway-service.test.mjs`，51 个 Model Gateway 子测试通过。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs`，60 个 Channel Connectors 子测试通过；覆盖 Codex resume 参数顺序、Feishu/Octo 文件收发、Feishu transport-smoke 文件发送入口、Agent/config 自定义命令扫描/展开/添加/删除、Skill 扫描/调用、Commands 菜单卡片、Studio `/compact` Gateway 请求与 session 清理、Feishu/Octo service slash compact、Octo service `/new`/`/reset`、Claude Code stream-json 进度、图片输入、`--resume` 续接、权限 `control_response`、IM 文本批准、Feishu 权限卡片按钮、AskUserQuestion IM 回答、进度/工具事件和 daemon 合同。
+- 通过：`node --test tests/system/channel-connectors-command-live-script.test.mjs`，4 个命令 live smoke 脚本子测试通过；覆盖 dry-run 不触发后端、probe adapter dry-run、apply 前强制显式会话地址、apply 请求带真实发送开关。
+- 通过：`node scripts/smoke-channel-connectors-command-live.mjs --json` 的真实本机配置 dry-run 探针，规划 Feishu/Octo 共 6 个命令请求，输出中的 Feishu token 已脱敏。
 - 通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，9 个 Codex app-server driver 原型子测试通过；覆盖 persistent markdown/文件 manifest 保真、工具输出保真、内部 userMessage 回显过滤、unfinished turn 超时中断。
 - 通过：`node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，默认跳过真实 Codex smoke。
 - 通过：`STUDIO_CODEX_APP_SERVER_LIVE_TURN=1 STUDIO_CODEX_APP_SERVER_LIVE_COMPACT=1 STUDIO_CODEX_APP_SERVER_LIVE_MODEL=gpt-5.4-mini node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，隔离 HOME 下真实 `codex app-server --stdio` 经本机 Studio Gateway 完成 `turn/start` 精确回复与原生 compact 完成信号。
@@ -104,6 +107,6 @@
 
 ## 下一步
 
-1. 先按迁移清单 P1 复验 Codex `exec/resume` 真实 live 路径：Feishu/Octo 发文件、工具流式、最终 Markdown 排版、new/reset/compact 用户可见行为。
+1. 先用 `scripts/smoke-channel-connectors-command-live.mjs` 复验真实 Feishu/Octo `/new`、`/reset`、`/compact` 用户可见行为，再继续 Codex `exec/resume` live 文件、工具流式和最终 Markdown 排版。
 2. 继续复刻 CC Go 的 Feishu/Octo 菜单、设置卡片、长连接和媒体收发细节。
 3. 继续迁移 Claude Code AskUserQuestion 卡片精修/file 能力与 OpenCode runner；Codex app-server 继续保持 beta，不阻塞稳定 live 路线。
