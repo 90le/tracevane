@@ -5556,6 +5556,10 @@ test("model gateway adapts codex compact requests through openai chat providers"
           ],
           stream: false,
           max_output_tokens: 2048,
+          metadata: {
+            studio_channel_compact: true,
+            project_id: "codex-main",
+          },
         },
       });
 
@@ -5600,6 +5604,7 @@ test("model gateway adapts codex compact requests through openai chat providers"
     stream: false,
     max_tokens: 2048,
   });
+  assert.equal("metadata" in JSON.parse(upstreamCalls[0].body), false);
 });
 
 test("model gateway normalizes upstream chat errors for codex responses clients", async () => {

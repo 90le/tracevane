@@ -75,10 +75,11 @@ export function adaptCodexResponsesRequestToChat(
   const model = stringOrNull(request.model);
   if (model) chatRequest.model = model;
 
+  // Do not forward Responses metadata to Chat-compatible upstreams. Some common
+  // providers, including BigModel Chat, reject the extra field with 400/1210.
   copyScalarFields(request, chatRequest, [
     "frequency_penalty",
     "logit_bias",
-    "metadata",
     "parallel_tool_calls",
     "presence_penalty",
     "response_format",
