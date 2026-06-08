@@ -212,6 +212,11 @@ export interface ChannelConnectorSkillSummary {
   source: string;
 }
 
+export interface ChannelConnectorCommandAlias {
+  name: string;
+  command: string;
+}
+
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -230,6 +235,97 @@ function uniqueStrings(values: string[]): string[] {
 
 function normalizeAgentCommandName(value: string): string {
   return normalizeString(value).toLowerCase().replaceAll("-", "_");
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function addCommandAlias(
+  output: ChannelConnectorCommandAlias[],
+  seen: Set<string>,
+  name: unknown,
+  command: unknown,
+): void {
+  const normalizedName = normalizeString(name);
+  const normalizedCommand = normalizeString(command);
+  if (!normalizedName || !normalizedCommand) return;
+  const key = normalizedName.toLowerCase();
+  if (seen.has(key)) return;
+  seen.add(key);
+  output.push({ name: normalizedName, command: normalizedCommand });
+}
+
+function collectCommandAliasesFromValue(
+  value: unknown,
+  output: ChannelConnectorCommandAlias[],
+  seen: Set<string>,
+): void {
+  if (Array.isArray(value)) {
+    for (const item of value) collectCommandAliasesFromValue(item, output, seen);
+    return;
+  }
+  if (isRecord(value)) {
+    const explicitCommand = value.command ?? value.cmd ?? value.target;
+    const explicitName = value.name ?? value.trigger ?? value.alias ?? value.text;
+    if (explicitName !== undefined || explicitCommand !== undefined) {
+      addCommandAlias(output, seen, explicitName, explicitCommand);
+      return;
+    }
+    for (const [name, command] of Object.entries(value)) addCommandAlias(output, seen, name, command);
+    return;
+  }
+  const line = normalizeString(value);
+  if (!line) return;
+  const match = line.match(/^(.+?)(?:=>|->|=)(.+)$/);
+  if (match) addCommandAlias(output, seen, match[1], match[2]);
+}
+
+export function channelConnectorCommandAliasesFromMetadata(metadataValue: unknown): ChannelConnectorCommandAlias[] {
+  const metadata = isRecord(metadataValue) ? metadataValue : {};
+  const output: ChannelConnectorCommandAlias[] = [];
+  const seen = new Set<string>();
+  for (const key of ["aliases", "commandAliases", "command_aliases", "studioCommandAliases", "studio_command_aliases"]) {
+    collectCommandAliasesFromValue(metadata[key], output, seen);
+  }
+  return output;
+}
+
+export function resolveChannelConnectorCommandAlias(
+  content: string,
+  aliases: readonly ChannelConnectorCommandAlias[],
+): {
+  content: string;
+  matchedAlias: ChannelConnectorCommandAlias | null;
+} {
+  const normalized = normalizeString(content);
+  if (!normalized || !aliases.length) return { content, matchedAlias: null };
+
+  const exact = aliases.find((alias) => alias.name === normalized);
+  if (exact) return { content: exact.command, matchedAlias: exact };
+
+  const parts = normalized.split(/\s+/, 2);
+  const first = parts[0] || "";
+  const prefix = aliases.find((alias) => alias.name === first);
+  if (!prefix) return { content, matchedAlias: null };
+  const rest = normalized.slice(first.length).trimStart();
+  return {
+    content: rest ? `${prefix.command} ${rest}` : prefix.command,
+    matchedAlias: prefix,
+  };
+}
+
+export function resolveChannelConnectorBindingCommandAlias(
+  binding: Pick<ChannelConnectorRuntimeBinding, "metadata">,
+  content: string,
+): {
+  content: string;
+  matchedAlias: ChannelConnectorCommandAlias | null;
+} {
+  return resolveChannelConnectorCommandAlias(
+    content,
+    channelConnectorCommandAliasesFromMetadata(binding.metadata),
+  );
 }
 
 const STUDIO_COMMAND_MATCH_CANDIDATES: readonly CommandMatchCandidate[] = [

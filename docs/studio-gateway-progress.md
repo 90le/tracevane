@@ -14,8 +14,8 @@
 - Channel Connectors 已切换为 Studio 原生 CLI Agent Bot 路线；本地 Octo(dmwork) 与 Feishu 已接入 Codex/Claude Code/OpenCode runner、Studio Gateway key、IM session override、slash command、Feishu card/menu/progress、附件 staging、history、group context、reply buffer 和基础治理。
 - IM 文件收发边界已固定为 Studio native transport：Agent 只读入站 staging 文件，出站只声明工作目录内文件 manifest，由 daemon 按平台上传发送。
 - IM Agent run 默认按 binding + sessionKey 串行排队：上一条 Agent 消息未结束时，新普通消息会收到“已加入队列”引导，并在前序任务完成后自动处理；`/stop`、`/status` 等 Studio 命令仍可执行，binding metadata 可显式打开 parallel。
-- IM Agent runner 策略固定为混合架构：真实 Feishu/Octo live binding 当前使用 one-shot `exec/resume` 保稳定；Codex 持久 session driver 保留为 metadata 实验路径，显式开启时使用 `codex app-server`，已覆盖 `turn/start`、原生 `/compact`、`turn/interrupt`、`/stop`、超时中断和失败回退。
-- CC Go 旧源码对照结论已固定：Codex 正式稳定路径优先复刻 CC 的 `codex exec/resume` 子进程模型；当前 Codex 未全部完成，one-shot 主链路可用，`/new`/`/reset`/Studio `/compact` 自动合同、service smoke、真实 Feishu/Octo no-send apply、工具流与 Markdown 用户可见 live、one-shot 最终回复/manifest 保真测试均已覆盖，但仍需真实 Feishu/Octo 文件发送用户可见 smoke 收口。Codex app-server 不作为默认 live 路线，只保留为受控 beta。
+- IM Agent runner 策略固定为混合架构：系统默认 one-shot `exec/resume` 保稳定；Codex 持久 session driver 保留为 metadata 实验路径，binding 显式开启时使用 `codex app-server`，已覆盖 `turn/start`、原生 `/compact`、`turn/interrupt`、`/stop`、超时中断和失败回退。
+- CC Go 旧源码对照结论已固定：Codex 正式稳定路径优先复刻 CC 的 `codex exec/resume` 子进程模型；当前 Codex 未全部完成，one-shot 主链路可用，`/new`/`/reset`/Studio `/compact` 自动合同、service smoke、真实 Feishu/Octo no-send apply、工具流与 Markdown 用户可见 live、图片/文件用户反馈、one-shot 最终回复/manifest 保真测试均已覆盖，但仍需把图片/文件 live 结果固定为脚本化证据。Codex app-server 不作为默认 live 路线，只保留为受控 beta。
 - 仓库级约束已固定：Channel Connectors 任意新功能必须先按 CC Go 1:1 迁移，再做 Studio 精修；迁移跟踪见 `channel-connectors-cc-migration-checklist.md`。
 
 ## 本次完成
@@ -59,6 +59,7 @@
 - 按 CC SkillRegistry 合同接入 `/skills` 与 Skill invocation：递归发现 `SKILL.md`，解析 frontmatter，Codex/Claude Code/Gemini/Kimi/Cursor/Qoder 使用各自 CC `SkillDirs()` 路径；未知 `/skill-name` 命中后构造成 CC 风格 Skill 执行 prompt 交给当前 Agent。
 - Commands tab 已同时展示 Skills：可从 Feishu 卡片查看 `/skills`，并按钮执行当前 Agent 可用 Skill；优先级固定为 Studio 内置命令 > config command > Agent command file > Skill > 原生透传。
 - Studio IM 命令路由已补 CC Go 风格前缀匹配：exact alias 优先，唯一前缀可展开，歧义前缀原样透传；`/commands` 子命令同步支持唯一缩写，避免短命令误触发。
+- Studio IM 入口已补 CC Go `AliasConfig/resolveAlias` 行为：Feishu/Octo binding metadata 可配置命令别名，支持完整命中和首词命中后拼接剩余参数；service dry-run 与 daemon live 路径共用同一解析。
 - Claude Code AskUserQuestion 基础闭环已按 CC Go 语义接入：`AskUserQuestion` 不再被 yolo/full-auto 自动 allow；pending question 时 IM 下一条普通回复会作为答案写入 `updatedInput.answers`，`allow/deny` 也按答案处理，`/stop` 等硬控制命令仍可执行。
 - Studio `/compact` 合同已从 Channel daemon 抽成可测 helper：自动验证会向 Gateway `/responses/compact` 发送摘要请求，成功后 IM history 只保留 compact summary，并清理当前 binding + sessionKey 的旧 Codex/Claude Agent 续接；daemon 仍只负责把 runtime config 映射为路径和 Gateway endpoint。
 - Service 层命令 smoke 已补齐 Feishu/Octo `/compact`：Feishu slash webhook 和 Octo incoming slash 都复用 Studio compact helper，返回用户可见文本结果，不进入 Agent；Octo service slash `/new`、`/reset` 也已覆盖清 history/session 和文本 replyPlan。
@@ -71,12 +72,13 @@
 
 - 通过：`npm run build:api`。
 - 通过：`node --test tests/system/model-gateway-service.test.mjs`，52 个 Model Gateway 子测试通过。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，60 个 Channel Connectors 子测试通过；覆盖 Codex resume 参数顺序、one-shot 多段 `agent_message` 合并、工具输出不污染最终回复、`studio-channel-files` manifest 换行保真、Feishu/Octo 文件收发、Feishu transport-smoke 文件发送入口、Agent/config 自定义命令扫描/展开/添加/删除、CC 风格唯一前缀命令与 `/commands` 子命令缩写、Skill 扫描/调用、Commands 菜单卡片、Studio `/compact` Gateway 请求与 session 清理、Feishu/Octo service slash compact、Octo service `/new`/`/reset`、adapter dry-run 不触发 Gateway compact 或清理状态、Claude Code stream-json 进度、图片输入、`--resume` 续接、权限 `control_response`、IM 文本批准、Feishu 权限卡片按钮、AskUserQuestion IM 回答、进度/工具事件和 daemon 合同。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，60 个 Channel Connectors 子测试通过；覆盖 Codex resume 参数顺序、one-shot 多段 `agent_message` 合并、工具输出不污染最终回复、`studio-channel-files` manifest 换行保真、Feishu/Octo 文件收发、Feishu transport-smoke 文件发送入口、Agent/config 自定义命令扫描/展开/添加/删除、CC 风格唯一前缀命令、binding metadata 命令别名与 `/commands` 子命令缩写、Skill 扫描/调用、Commands 菜单卡片、Studio `/compact` Gateway 请求与 session 清理、Feishu/Octo service slash compact、Octo service `/new`/`/reset`、adapter dry-run 不触发 Gateway compact 或清理状态、Claude Code stream-json 进度、图片输入、`--resume` 续接、权限 `control_response`、IM 文本批准、Feishu 权限卡片按钮、AskUserQuestion IM 回答、进度/工具事件和 daemon 合同。
 - 通过：`node --test tests/system/channel-connectors-command-live-script.test.mjs`，9 个命令 live smoke 脚本子测试通过；覆盖 dry-run 不触发后端、recent session 自动定位、probe adapter dry-run、Feishu smoke debug response 可观测 action/ok、apply 前强制显式会话地址或 recent session、apply 请求带真实发送开关。
 - 通过：`node --test tests/system/channel-connectors-agent-run-live-script.test.mjs`，3 个 Agent run live 观测脚本子测试通过；覆盖 Octo 工具+出站文件+Markdown 信号证据、Feishu 最终卡片+Markdown 信号证据和缺少必需证据时失败。
 - 通过：`node scripts/smoke-channel-connectors-command-live.mjs --json` 的真实本机配置 dry-run 探针，规划 Feishu/Octo 共 6 个命令请求，输出中的 Feishu token 已脱敏。
 - 通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --limit-runs 3 --json`，真实本机 daemon 日志可读，最近 24 小时统计到 finished runs；定向探针已确认 Octo 出站文件、Octo 工具进度、Octo/Feishu Markdown-like reply 信号和 Feishu 最终卡片证据均可被脚本识别。
 - 通过：用户反馈 IM 渠道工具流和 Markdown 渲染正常；随后 `--require-markdown` + `--require-tool` / `--require-feishu-card` 真实日志探针均通过。
+- 通过：用户反馈 Feishu/Octo IM 图片与文件发送当前正常；非视觉模型收到图片时，Studio 已能自动选择视觉模型执行。
 - 通过：重启后 `node scripts/smoke-channel-connectors-command-live.mjs --recent-sessions --commands /compact --probe --json`，真实 Feishu/Octo 最近会话均返回 dry-run 提示，未再触发 Gateway compact。
 - 通过：直接 BigModel Chat 字段矩阵，`metadata` 单独触发 `400/1210`，最小 Chat、`max_tokens` 和无 metadata compact shape 均成功。
 - 通过：重启后直接请求本机 Gateway `/v1/chat/completions`，model=`glm-5`、带顶层 `metadata`，经统一兼容层返回 HTTP 200，runtime 记录 `openai_chat_completions` 成功。
@@ -91,7 +93,7 @@
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs`，57 个 Channel Connectors 子测试通过；fake Octo + fake Codex app-server 已覆盖 persistent run、daemon `/status` active session、自动 idle reap、app-server crash -> one-shot fallback、IM `/stop` -> `turn/interrupt`、双 IM session 隔离、targeted kill、Codex `function_call_output` 结构化工具结果、Claude Code `thinking/tool_use/tool_result/result` 进度、Claude 原生 image content block、Claude native session store/resume、权限自动 allow/deny、IM resolver allow 和多行输出保真；one-shot runner 已覆盖 `user_message` progress 过滤，daemon source contract 已覆盖 `turn.started` 可见进度过滤。
 - 通过：`node --test tests/system/channel-connectors-persistent-live-script.test.mjs`，验证 live smoke 脚本 dry-run、不泄露 secret、备份、写入 persistent metadata 和 restore-latest。
 - 通过：`node --test tests/system/channel-connectors-agent-sessions-live-script.test.mjs`，验证 session live 管理脚本 status 不泄漏 workDir、dry-run kill 不 POST、`--apply` reap/kill 请求正确。
-- 通过：`node scripts/smoke-channel-connectors-persistent-live.mjs --bindings octo-studio-cc,feishu-live --apply --json`，真实 Octo/Feishu binding 曾写入 persistent metadata 并验证 `effectiveMode=persistent`、Octo/Feishu connected、用户真实 IM `/stop` 可用；当前 live 配置已恢复 `agentSessionDriver=one-shot`，用于保持文件发送和流式进度稳定。
+- 通过：`node scripts/smoke-channel-connectors-persistent-live.mjs --bindings octo-studio-cc,feishu-live --apply --json`，真实 Octo/Feishu binding 曾写入 persistent metadata 并验证 `effectiveMode=persistent`、Octo/Feishu connected、用户真实 IM `/stop` 可用；live 模式由 binding metadata 决定，稳定默认仍是 one-shot。
 - 通过：`node scripts/smoke-channel-connectors-agent-sessions.mjs --json`，真实 Channel daemon 返回两个 persistent binding，`reaped=null`，证明只读 status 不触发 idle cleanup；无 idle session 时 dry-run `--kill-first-idle` 不产生副作用。
 - 通过：`node --test tests/system/studio-web-channel-connectors-page.test.mjs`，Channel Connectors 页面 contract 覆盖 session 管理 API、persistent driver recent events 和 UI 操作。
 - 通过：`npm run typecheck:web`。
@@ -106,7 +108,7 @@
 - 通过：`npm run dev:restart`，前端 `http://127.0.0.1:5176`，后端 `http://127.0.0.1:3761`。
 - 通过：Gateway status 显示 local daemon `state=running`、preferred CLI endpoint `http://127.0.0.1:18796/v1`；无正确 Gateway key 访问 `/v1/models` 返回 401，鉴权仍生效。
 - 通过：Channel daemon `/health` 返回 `ok=true`。
-- 通过：Channel daemon `/agent-sessions` 返回 `requestedPersistentBindings=[]`、Feishu/Octo live binding `effectiveMode=one-shot`、`activeSessions=[]`。
+- 通过：本次重启后 Channel daemon `/agent-sessions` 返回 Feishu/Octo live binding 当前 metadata 请求 `effectiveMode=persistent`，`activeSessions=[]`；未修改真实 Channel 配置。
 
 ## 已知边界
 
@@ -121,6 +123,6 @@
 
 ## 下一步
 
-1. 继续 Codex `exec/resume` 真实 IM 用户可见 smoke：用 Agent run live 观测脚本等待新消息，收口发文件；工具流、最终 Markdown 排版、`/new`、`/reset`、`/compact` 已完成真实验收。
+1. 把 Feishu/Octo 图片、文件和非视觉模型自动切视觉模型的用户可见结果固定为脚本化/日志证据，避免只依赖人工反馈。
 2. 继续复刻 CC Go 的 Feishu/Octo 菜单、设置卡片、长连接和媒体收发细节。
 3. 继续迁移 Claude Code AskUserQuestion 卡片精修/file 能力与 OpenCode runner；Codex app-server 继续保持 beta，不阻塞稳定 live 路线。

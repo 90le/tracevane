@@ -56,6 +56,7 @@ import {
   listChannelConnectorCommandSummaries,
   listChannelConnectorGatewayModels,
   listChannelConnectorSkillSummaries,
+  resolveChannelConnectorBindingCommandAlias,
   resolveChannelConnectorEffectiveProject,
   type ChannelConnectorPermissionResponseAction,
   type ChannelConnectorPermissionResponseResult,
@@ -3938,8 +3939,20 @@ async function dispatchOctoMessage(input: {
   message: ChannelConnectorOctoInboundMessage;
   seenMessages: Map<string, number>;
 }): Promise<void> {
-  const { config, state, activeRunCancels, project, binding, robotId, message, seenMessages } = input;
+  const { config, state, activeRunCancels, project, binding, robotId, seenMessages } = input;
+  let message = input.message;
   if (shouldSkipSeenMessage(seenMessages, message.messageId)) return;
+  const originalContent = extractOctoContent(message);
+  const aliasResolution = resolveChannelConnectorBindingCommandAlias(binding, originalContent);
+  if (aliasResolution.matchedAlias) {
+    message = {
+      ...message,
+      payload: {
+        ...message.payload,
+        content: aliasResolution.content,
+      },
+    };
+  }
   const nativeProfile = nativeProfileFromRuntime(project);
   const nativeBinding = nativeBindingFromRuntime(project, binding, robotId);
   const request: ChannelConnectorOctoInboundRequest = {
@@ -3966,6 +3979,8 @@ async function dispatchOctoMessage(input: {
       messageType: typeof message.payload?.type === "number" ? message.payload.type : null,
       attachmentCount: attachments.length,
       attachmentKinds: attachments.map((attachment) => attachment.kind),
+      aliasName: aliasResolution.matchedAlias?.name || null,
+      aliasCommand: aliasResolution.matchedAlias?.command || null,
       skippedReason,
     });
     return;
@@ -3991,6 +4006,8 @@ async function dispatchOctoMessage(input: {
       messageType: typeof message.payload?.type === "number" ? message.payload.type : null,
       attachmentCount: attachments.length,
       attachmentKinds: attachments.map((attachment) => attachment.kind),
+      aliasName: aliasResolution.matchedAlias?.name || null,
+      aliasCommand: aliasResolution.matchedAlias?.command || null,
       skippedReason: governance.skippedReason,
       governanceDetail: governance.detail,
       rateLimit: governance.rateLimit,
@@ -4054,6 +4071,8 @@ async function dispatchOctoMessage(input: {
       messageType: typeof message.payload?.type === "number" ? message.payload.type : null,
       attachmentCount: attachments.length,
       attachmentKinds: attachments.map((attachment) => attachment.kind),
+      aliasName: aliasResolution.matchedAlias?.name || null,
+      aliasCommand: aliasResolution.matchedAlias?.command || null,
       command: command.command,
       commandAction: command.action,
       commandOk: command.ok,
@@ -4089,6 +4108,8 @@ async function dispatchOctoMessage(input: {
       messageType: typeof message.payload?.type === "number" ? message.payload.type : null,
       attachmentCount: attachments.length,
       attachmentKinds: attachments.map((attachment) => attachment.kind),
+      aliasName: aliasResolution.matchedAlias?.name || null,
+      aliasCommand: aliasResolution.matchedAlias?.command || null,
       command: command.command,
       passthroughText: command.passthroughText,
       nativeCommand: nativeCommand || null,
@@ -4132,6 +4153,8 @@ async function dispatchOctoMessage(input: {
       selectedModel: modelResolution.selectedModel,
       reason: modelResolution.reason,
       visualAttachmentCount: countChannelConnectorVisualAttachments(agentMessage),
+      aliasName: aliasResolution.matchedAlias?.name || null,
+      aliasCommand: aliasResolution.matchedAlias?.command || null,
     });
   }
   const effectiveSessionLookup = {
@@ -4308,6 +4331,8 @@ async function dispatchOctoMessage(input: {
     progressDefaults,
     progressStreamEnabled: channelConnectorStreamMessagesEnabled(control, progressDefaults),
     progressToolsEnabled: channelConnectorToolMessagesEnabled(control, progressDefaults),
+    aliasName: aliasResolution.matchedAlias?.name || null,
+    aliasCommand: aliasResolution.matchedAlias?.command || null,
     ingressAt,
     ingressToAgentStartMs: elapsedMsSince(ingressAtMs, runStartedAtMs),
   });
@@ -4719,7 +4744,7 @@ async function dispatchFeishuParsedEvent(input: {
   const checkedAt = new Date().toISOString();
   const ingressAt = checkedAt;
   const ingressAtMs = isoTimestampMs(ingressAt) ?? Date.now();
-  const content = feishuContentFromParsed(parsed);
+  let content = feishuContentFromParsed(parsed);
   const refs = selectFeishuBindingRefs(group, parsed);
   if (!refs.length) {
     writeJsonLine(config.paths.feishuEvents, {
@@ -4741,6 +4766,10 @@ async function dispatchFeishuParsedEvent(input: {
 
   const ref = refs[0];
   const { project, binding, transport } = ref;
+  const aliasResolution = parsed.kind === "message"
+    ? resolveChannelConnectorBindingCommandAlias(binding, content)
+    : { content, matchedAlias: null };
+  content = aliasResolution.content;
   const sessionKey = feishuSessionKey(binding, parsed);
   const messageId = normalizeString(parsed.messageId) || `${parsed.kind}:${parsed.eventId || Date.now()}`;
   const dedupeKey = feishuDedupeKey(group, parsed, binding, messageId);
@@ -4760,6 +4789,8 @@ async function dispatchFeishuParsedEvent(input: {
       channelId: parsed.channelId,
       chatType: parsed.chatType,
       fromUid: parsed.fromUid,
+      aliasName: aliasResolution.matchedAlias?.name || null,
+      aliasCommand: aliasResolution.matchedAlias?.command || null,
       ...feishuThreadLogFields(parsed),
     });
     return null;
@@ -4863,6 +4894,8 @@ async function dispatchFeishuParsedEvent(input: {
       channelId: parsed.channelId,
       chatType: parsed.chatType,
       fromUid: parsed.fromUid,
+      aliasName: aliasResolution.matchedAlias?.name || null,
+      aliasCommand: aliasResolution.matchedAlias?.command || null,
       ...feishuThreadLogFields(parsed),
     });
     return null;
@@ -4985,6 +5018,8 @@ async function dispatchFeishuParsedEvent(input: {
       channelId: parsed.channelId,
       chatType: parsed.chatType,
       fromUid: parsed.fromUid,
+      aliasName: aliasResolution.matchedAlias?.name || null,
+      aliasCommand: aliasResolution.matchedAlias?.command || null,
       ...feishuThreadLogFields(parsed),
       command: command.command,
       commandAction: command.action,
@@ -5021,6 +5056,8 @@ async function dispatchFeishuParsedEvent(input: {
       channelId: parsed.channelId,
       chatType: parsed.chatType,
       fromUid: parsed.fromUid,
+      aliasName: aliasResolution.matchedAlias?.name || null,
+      aliasCommand: aliasResolution.matchedAlias?.command || null,
       ...feishuThreadLogFields(parsed),
       command: command.command,
       passthroughText: command.passthroughText,

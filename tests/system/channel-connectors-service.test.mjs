@@ -75,11 +75,13 @@ import {
   evaluateChannelConnectorGovernance,
 } from "../../dist/apps/api/modules/channel-connectors/governance-policy.js";
 import {
+  channelConnectorCommandAliasesFromMetadata,
   handleChannelConnectorCommand,
   listChannelConnectorGatewayModels,
   matchChannelConnectorCommandPrefix,
   matchChannelConnectorSubCommand,
   parseChannelConnectorCommand,
+  resolveChannelConnectorCommandAlias,
   resolveChannelConnectorEffectiveProject,
 } from "../../dist/apps/api/modules/channel-connectors/command-router.js";
 import {
@@ -3349,6 +3351,34 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(matchChannelConnectorCommandPrefix("s"), null);
   assert.equal(matchChannelConnectorSubCommand("l", ["list", "add", "del", "delete"]), "list");
   assert.equal(matchChannelConnectorSubCommand("d", ["list", "add", "del", "delete"]), "d");
+  const aliases = channelConnectorCommandAliasesFromMetadata({
+    aliases: {
+      帮助: "/help",
+      新建: "/new",
+    },
+    commandAliases: [
+      { name: "状态", command: "/status" },
+      "模型=>/model",
+    ],
+  });
+  assert.deepEqual(aliases.map((alias) => [alias.name, alias.command]), [
+    ["帮助", "/help"],
+    ["新建", "/new"],
+    ["状态", "/status"],
+    ["模型", "/model"],
+  ]);
+  assert.deepEqual(resolveChannelConnectorCommandAlias("帮助", aliases), {
+    content: "/help",
+    matchedAlias: { name: "帮助", command: "/help" },
+  });
+  assert.deepEqual(resolveChannelConnectorCommandAlias("新建 sprint", aliases), {
+    content: "/new sprint",
+    matchedAlias: { name: "新建", command: "/new" },
+  });
+  assert.deepEqual(resolveChannelConnectorCommandAlias("普通消息", aliases), {
+    content: "普通消息",
+    matchedAlias: null,
+  });
 
   for (const alias of ["/menu", "/start"]) {
     const aliasHelp = await handleChannelConnectorCommand({
@@ -6990,6 +7020,12 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
               enabled: true,
               allowlist: [],
               adminUsers: [],
+              metadata: {
+                aliases: {
+                  帮助: "/help",
+                  状态: "/status",
+                },
+              },
             },
             {
               id: "feishu-route",
@@ -7003,6 +7039,10 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
               adminUsers: [],
               metadata: {
                 verificationToken: "route-token",
+                aliases: {
+                  帮助: "/help",
+                  状态: "/status",
+                },
               },
             },
           ],
@@ -7141,6 +7181,68 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     assert.equal(botMenuReset.body.command, "/reset");
     assert.match(botMenuReset.body.commandResult.replyText, /已重置本 IM 会话/);
     assert.equal(botMenuReset.body.feishuCard, null);
+
+    const feishuAliasWebhook = await requestJson(`${baseUrl}/api/channel-connectors/adapters/feishu/webhook`, {
+      method: "POST",
+      body: {
+        bindingId: "feishu-route",
+        dryRun: true,
+        studioDebugResponse: true,
+        schema: "2.0",
+        header: {
+          event_type: "im.message.receive_v1",
+          app_id: "cli_route",
+          event_id: "evt_alias_status",
+          token: "route-token",
+        },
+        event: {
+          sender: {
+            sender_id: {
+              open_id: "route-user",
+            },
+          },
+          message: {
+            message_id: "om_alias_status",
+            chat_id: "route-user",
+            chat_type: "p2p",
+            message_type: "text",
+            content: JSON.stringify({ text: "状态" }),
+          },
+        },
+      },
+    });
+    assert.equal(feishuAliasWebhook.status, 200);
+    assert.equal(feishuAliasWebhook.body.accepted, false);
+    assert.equal(feishuAliasWebhook.body.skippedReason, "feishu_transport_config_missing");
+    assert.equal(feishuAliasWebhook.body.commandAction.accepted, true);
+    assert.equal(feishuAliasWebhook.body.commandAction.command, "/status");
+    assert.equal(feishuAliasWebhook.body.commandAction.commandResult.action, "show");
+    assert.match(feishuAliasWebhook.body.commandAction.commandResult.replyText, /Dry-run/);
+    assert.equal(feishuAliasWebhook.body.incoming.content, "/status");
+
+    const octoAliasIncoming = await requestJson(`${baseUrl}/api/channel-connectors/adapters/octo/incoming`, {
+      method: "POST",
+      body: {
+        bindingId: "octo-route",
+        dryRun: true,
+        message: {
+          messageId: "octo-alias-status",
+          fromUid: "route-user",
+          channelId: "route-user",
+          channelType: 1,
+          payload: {
+            type: 1,
+            content: "状态",
+          },
+        },
+      },
+    });
+    assert.equal(octoAliasIncoming.status, 200);
+    assert.equal(octoAliasIncoming.body.accepted, true);
+    assert.equal(octoAliasIncoming.body.commandAction.command, "/status");
+    assert.equal(octoAliasIncoming.body.commandAction.commandResult.action, "show");
+    assert.match(octoAliasIncoming.body.commandAction.commandResult.replyText, /Dry-run/);
+    assert.equal(octoAliasIncoming.body.incoming.content, "/status");
 
     const feishuWebhook = await requestJson(`${baseUrl}/api/channel-connectors/adapters/feishu/webhook`, {
       method: "POST",

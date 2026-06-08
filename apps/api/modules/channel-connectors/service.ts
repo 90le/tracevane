@@ -99,6 +99,7 @@ import {
   listChannelConnectorCommandSummaries,
   listChannelConnectorGatewayModels,
   listChannelConnectorSkillSummaries,
+  resolveChannelConnectorBindingCommandAlias,
   resolveChannelConnectorEffectiveProject,
   type ChannelConnectorCommandResult,
 } from "./command-router.js";
@@ -1989,7 +1990,10 @@ export function createChannelConnectorsService(
 
     if (parsed.kind !== "message") return skipped("feishu_event_unsupported");
     if (!parsed.messageId || !parsed.fromUid || !parsed.channelId) return skipped("feishu_message_identity_missing");
-    if (!parsed.text) return skipped("feishu_message_text_missing");
+    let effectiveText = normalizeString(parsed.text);
+    const aliasResolution = resolveChannelConnectorBindingCommandAlias(resolved.runtimeBinding, effectiveText);
+    effectiveText = aliasResolution.content;
+    if (!effectiveText) return skipped("feishu_message_text_missing");
     if (!parsed.directed) return skipped("feishu_group_message_not_directed");
 
     const sessionKey = feishuSessionKeyForWebhook(resolved.binding, parsed);
@@ -1998,7 +2002,7 @@ export function createChannelConnectorsService(
       binding: resolved.binding,
       platform: "feishu",
       fromUid: parsed.fromUid,
-      content: parsed.text,
+      content: effectiveText,
       statePath: request.dryRun === true ? null : commandSurfaceGovernancePath(runtimeConfig),
       now: now(),
     });
@@ -2009,14 +2013,14 @@ export function createChannelConnectorsService(
     let skippedReason: string | null = request.dryRun === true ? null : "agent_dispatch_not_ready";
     let agentStatus: "dry-run" | "not-ready" | "skipped" = request.dryRun === true ? "dry-run" : "not-ready";
     let feishuResponse: Record<string, unknown> | null = null;
-    if (parsed.text.startsWith("/")) {
+    if (effectiveText.startsWith("/")) {
       commandAction = await handleCommandAction({
         bindingId: resolved.binding.id,
         sessionKey,
         fromUid: parsed.fromUid,
         channelId: parsed.channelId,
         messageId: parsed.messageId,
-        eventKey: parsed.text,
+        eventKey: effectiveText,
         renderer,
         models,
         dryRun: request.dryRun === true,
@@ -2091,7 +2095,7 @@ export function createChannelConnectorsService(
         threadId: parsed.threadId,
         messageType: parsed.messageType,
         attachments: parsed.attachments,
-        content: parsed.text,
+        content: effectiveText,
         directed: parsed.directed,
       },
       commandAction,
@@ -2225,9 +2229,19 @@ export function createChannelConnectorsService(
     }
     if (!resolved) throw new Error("Octo binding resolution invariant failed.");
 
-    const message = request.message;
+    let message = request.message;
     const binding = resolved.binding;
     const agentProfile = resolved.agentProfile;
+    const aliasResolution = resolveChannelConnectorBindingCommandAlias(binding, extractOctoContent(message));
+    if (aliasResolution.matchedAlias) {
+      message = {
+        ...message,
+        payload: {
+          ...message.payload,
+          content: aliasResolution.content,
+        },
+      };
+    }
     const sessionKey = buildOctoSessionKey(message);
     const content = extractOctoContent(message);
     const attachments = extractOctoAttachments(message);
