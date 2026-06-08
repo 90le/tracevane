@@ -752,54 +752,109 @@ function isStudioCommand(name: string): boolean {
   return Boolean(matchChannelConnectorCommandPrefix(name));
 }
 
-function commandHelpText(): string {
+type CommandHelpSection = "session" | "agent" | "display" | "workdir" | "native";
+
+function commandHelpSectionAlias(value: string | null | undefined): CommandHelpSection | null {
+  const target = normalizeString(value).toLowerCase();
+  if (!target) return null;
+  if (["session", "sessions", "status", "current", "history", "compact", "stop"].includes(target)) return "session";
+  if (["agent", "profile", "model", "mode", "reasoning", "permission"].includes(target)) return "agent";
+  if (["display", "stream", "tools", "tool", "buffer", "quiet"].includes(target)) return "display";
+  if (["workdir", "dir", "cd", "directory"].includes(target)) return "workdir";
+  if (["native", "commands", "command", "skills", "skill", "slash"].includes(target)) return "native";
+  return null;
+}
+
+function commandHelpSectionText(section: CommandHelpSection): string {
+  if (section === "session") {
+    return [
+      "Studio Channel / session",
+      "`/status` 查看当前 Agent、模型、权限和续接状态",
+      "`/current` 查看当前 IM 会话详情",
+      "`/list` 列出当前 IM 会话已知 Agent sessions",
+      "`/switch <序号|sessionId前缀>` 切换到已知 Agent session",
+      "`/search <关键字>` 按名称或 sessionId 搜索 sessions",
+      "`/name <名称>` 或 `/name <序号> <名称>` 命名 session",
+      "`/history [条数]` 查看最近上下文",
+      "`/usage` 查看最近 Gateway token usage",
+      "`/compact` 压缩当前 IM history 并开启新续接",
+      "`/stop` 停止当前 run",
+      "`/approve` `/deny` `/allow-all` 回复工具权限请求",
+      "`/new` 开启新 Agent 会话；`/reset` 清空 override 和续接状态",
+      "",
+      "返回：`/help`",
+    ].join("\n");
+  }
+  if (section === "agent") {
+    return [
+      "Studio Channel / agent",
+      "`/agent` 列出可切换 Agent Profile",
+      "`/agent <序号|id|codex|claude-code|opencode>` 切换本会话 Agent",
+      "`/model` 列出 Studio Gateway 可用模型",
+      "`/model <序号|模型ID|default>` 切换本会话模型",
+      "`/mode` 列出权限模式",
+      "`/mode <suggest|read-only|auto-edit|full-auto|plan|yolo|default>` 切换权限",
+      "`/reasoning` 查看推理强度",
+      "`/reasoning <序号|low|medium|high|xhigh|default>` 切换推理强度并断开旧续接",
+      "",
+      "返回：`/help`",
+    ].join("\n");
+  }
+  if (section === "display") {
+    return [
+      "Studio Channel / display",
+      "`/display` 查看流式和工具消息开关",
+      "`/stream <on|off|default>` 开关本会话进度/流式消息",
+      "`/tools <on|off|default>` 开关本会话工具/思考消息",
+      "`/buffer` 查看本会话最近 reply buffer",
+      "`/buffer <id|前缀|latest>` 读取缓存的完整长回复",
+      "",
+      "返回：`/help`",
+    ].join("\n");
+  }
+  if (section === "workdir") {
+    return [
+      "Studio Channel / workdir",
+      "`/dir` 查看当前工作目录、最近目录和子目录",
+      "`/dir <路径|序号|->` 切换目录；序号优先选最近目录，`-` 返回上一目录",
+      "`/cd <路径|default>` 是 `/dir` 的兼容别名",
+      "",
+      "返回：`/help`",
+    ].join("\n");
+  }
   return [
-    "**Studio Channel Commands**",
+    "Studio Channel / native",
+    "`/commands` 列出当前 Agent 自定义 prompt 命令",
+    "`/commands add <名称> <prompt 模板>` 添加 prompt 命令",
+    "`/commands del <名称>` 删除 prompt 命令",
+    "`/skills` 列出当前 Agent Skills",
+    "`/<skill名称> [参数...]` 调用 Skill",
+    "`/native /help` 查看当前 Agent 原生帮助或 skills 命令",
+    "`/native <原生命令>` 强制透传给当前 Agent",
     "",
+    "返回：`/help`",
+  ].join("\n");
+}
+
+function commandHelpText(section?: string | null): string {
+  const selected = commandHelpSectionAlias(section);
+  if (selected) return commandHelpSectionText(selected);
+  return [
+    "Studio Channel",
     "普通消息会交给当前 Agent。未被 Studio 占用的 `/xxx` 会自动透传；冲突命令用 `/native <命令>`。",
     "",
-    "**会话**",
-    "- `/status` 查看当前 Agent、模型、权限和续接状态",
-    "- `/current` 查看当前 IM 会话详情",
-    "- `/list` 列出当前 IM 会话已知 Agent sessions",
-    "- `/switch <序号|sessionId前缀>` 切换到已知 Agent session",
-    "- `/search <关键字>` 按名称或 sessionId 搜索本 IM 会话 sessions",
-    "- `/name <名称>` 命名当前 Agent session；`/name <序号> <名称>` 命名列表中的 session",
-    "- `/history [条数]` 查看当前 IM 会话最近上下文",
-    "- `/usage` 查看本 IM 会话最近 Agent run 的 Gateway token usage",
-    "- `/compact` 压缩当前 IM 会话上下文并开启新续接",
-    "- `/stop` 停止当前 IM 会话正在运行的 Agent",
-    "- `/approve` `/deny` 回复 Agent 工具权限请求；`/allow-all` 允许本次 run 后续工具请求",
-    "- `/new` 开启新 Agent 会话，保留本会话配置",
-    "- `/reset` 清空本 IM 会话 override 和 Agent 续接状态",
+    "常用",
+    "`/status` `/new` `/reset` `/stop` `/compact`",
+    "`/agent` `/model` `/mode` `/reasoning`",
+    "`/display` `/stream on|off` `/tools on|off`",
+    "`/commands` `/skills` `/native /help`",
     "",
-    "**Agent / 模型 / 权限**",
-    "- `/agent` 列出可切换 Agent Profile",
-    "- `/agent <序号|id|codex|claude-code|opencode>` 切换本会话 Agent",
-    "- `/model` 列出 Studio Gateway 可用模型",
-    "- `/model <序号|模型ID|default>` 切换本会话模型",
-    "- `/mode` 列出权限模式",
-    "- `/mode <suggest|read-only|auto-edit|full-auto|plan|yolo|default>` 切换本会话权限",
-    "- `/reasoning` 查看推理强度",
-    "- `/reasoning <序号|low|medium|high|xhigh|default>` 切换本会话推理强度并断开旧续接",
-    "",
-    "**目录**",
-    "- `/dir` 查看当前工作目录、最近目录和子目录",
-    "- `/dir <路径|序号|->` 切换目录；序号优先选择最近目录，`-` 返回上一目录",
-    "- `/cd <路径|default>` `/dir` 的兼容别名",
-    "",
-    "**显示 / 工具 / 长回复**",
-    "- `/display` 查看流式和工具消息开关",
-    "- `/stream <on|off|default>` 开关本会话进度/流式消息",
-    "- `/tools <on|off|default>` 开关本会话工具/思考消息",
-    "- `/buffer` 查看本会话最近 reply buffer",
-    "- `/buffer <id|前缀|latest>` 读取本会话缓存的完整长回复",
-    "",
-    "**原生 Agent**",
-    "- `/commands` 列出当前 Agent 自定义 prompt 命令",
-    "- `/skills` 列出当前 Agent Skills",
-    "- `/native /help` 查看当前 Agent 原生帮助或 skills 命令",
-    "- `/native <原生命令>` 强制透传给当前 Agent",
+    "分组帮助",
+    "`/help session` 会话、history、usage、权限批准",
+    "`/help agent` Agent、模型、权限、推理",
+    "`/help display` 流式、工具消息、reply buffer",
+    "`/help workdir` 工作目录切换",
+    "`/help native` 自定义命令、Skills、原生命令透传",
   ].join("\n");
 }
 
@@ -1739,7 +1794,7 @@ export async function handleChannelConnectorCommand(
       action: "help",
       ok: true,
       control: currentControl,
-      replyText: commandHelpText(),
+      replyText: commandHelpText(args[0]),
       passthroughText: null,
     };
   }

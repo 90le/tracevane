@@ -329,38 +329,58 @@ function fallbackActionLine(item: ChannelConnectorCommandSurfaceAction): string 
 }
 
 function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFallback">): string {
+  const normalizedSurface = surface as ChannelConnectorCommandSurface;
+  const selectedSectionId = normalizeChannelConnectorCommandSurfaceSection(surface.selectedSectionId);
+  const selectedSection = selectedSectionId ? sectionById(normalizedSurface, selectedSectionId) : null;
   const quickActions = sectionById(surface as ChannelConnectorCommandSurface, "session")?.actions
-    .filter((item) => ["status", "new"].includes(item.id)) || [];
+    .filter((item) => ["status", "new", "stop", "compact"].includes(item.id)) || [];
   const lines: string[] = [
-    `**${surface.title}**`,
+    "Studio Channel",
     "",
-    "**当前会话**",
-    `- Agent: ${surface.current.projectId} (${surface.current.agent})`,
-    `- Model: ${surface.current.model || "default"}`,
-    `- Reasoning: ${surface.current.reasoningEffort || "default"}`,
-    `- Mode: ${surface.current.permissionMode}`,
-    `- WorkDir: ${surface.current.workDir}`,
-    `- Display: stream=${surface.current.streamMessages ? "on" : "off"} / tools=${surface.current.toolMessages ? "on" : "off"}`,
+    "当前",
+    `Agent: ${surface.current.projectId} (${surface.current.agent})`,
+    `Model: ${surface.current.model || "default"} · Reasoning: ${surface.current.reasoningEffort || "default"} · Mode: ${surface.current.permissionMode}`,
+    `WorkDir: ${compactPath(surface.current.workDir)}`,
+    `Display: stream=${surface.current.streamMessages ? "on" : "off"} / tools=${surface.current.toolMessages ? "on" : "off"}`,
   ];
   if (surface.current.workDirHistory.length) {
-    lines.push(`- Previous WorkDir: ${surface.current.workDirHistory[0]}`);
+    lines.push(`Previous WorkDir: ${compactPath(surface.current.workDirHistory[0] || "")}`);
   }
+
   if (quickActions.length) {
-    lines.push("", "**快捷操作**");
+    lines.push("", "快捷操作");
     quickActions.forEach((item) => lines.push(fallbackActionLine(item)));
   }
-  for (const section of surface.sections) {
-    lines.push("", `**${section.title}**`);
-    if (section.summary) lines.push(section.summary);
-    for (const item of section.actions) {
+
+  if (selectedSection) {
+    lines.push("", selectedSection.title);
+    if (selectedSection.summary) lines.push(selectedSection.summary);
+    for (const item of helpSectionActions(selectedSection, normalizedSurface)) {
       lines.push(fallbackActionLine(item));
     }
+    lines.push("", "返回：`/help` 主菜单。");
+  } else {
+    lines.push("", "菜单分组");
+    for (const group of homeMenuSections()) {
+      const sectionCommands = group.sectionIds
+        .map((sectionId) => `\`/help ${sectionId}\``)
+        .join("  ");
+      lines.push(`- ${group.title}: ${sectionCommands}`);
+    }
+    lines.push(
+      "",
+      "常用命令",
+      "- `/agent` `/model` `/mode` `/reasoning` 切换当前 IM session 配置",
+      "- `/display` `/stream on|off` `/tools on|off` 控制进度和工具显示",
+      "- `/commands` `/skills` 查看可执行命令和 Skill",
+    );
   }
+
   lines.push(
     "",
-    "**原生 Agent**",
-    "未被 Studio 拥有的 `/xxx` 会直接透传给当前 Agent；与 Studio 命令冲突时用 `/native <命令>`。",
-    "示例：`/native /help` 查看当前 Agent 的原生帮助或 skills 命令。",
+    "原生 Agent",
+    "未被 Studio 占用的 `/xxx` 会透传给当前 Agent；冲突命令用 `/native <命令>`。",
+    "示例：`/native /help` 查看当前 Agent 原生帮助或 skills 命令。",
   );
   return lines.join("\n");
 }

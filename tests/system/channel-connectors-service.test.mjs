@@ -3326,22 +3326,40 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(help.handled, true);
   assert.equal(help.ok, true);
-  assert.match(help.replyText, /\*\*会话\*\*/);
+  assert.match(help.replyText, /^Studio Channel/);
   assert.match(help.replyText, /普通消息会交给当前 Agent/);
   assert.match(help.replyText, /`\/status`/);
   assert.match(help.replyText, /\/mode/);
   assert.match(help.replyText, /\/reasoning/);
   assert.match(help.replyText, /\/stream/);
   assert.match(help.replyText, /\/tools/);
-  assert.match(help.replyText, /\/name/);
-  assert.match(help.replyText, /\/search/);
-  assert.match(help.replyText, /\/buffer/);
-  assert.match(help.replyText, /`\/usage`/);
+  assert.match(help.replyText, /`\/help session`/);
+  assert.match(help.replyText, /`\/help native`/);
   assert.match(help.replyText, /`\/compact`/);
   assert.match(help.replyText, /`\/stop`/);
-  assert.match(help.replyText, /`\/approve`/);
   assert.match(help.replyText, /`\/native \/help`/);
   assert.match(help.replyText, /`\/skills`/);
+  const sessionHelp = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/help session"),
+  });
+  assert.equal(sessionHelp.handled, true);
+  assert.equal(sessionHelp.ok, true);
+  assert.match(sessionHelp.replyText, /Studio Channel \/ session/);
+  assert.match(sessionHelp.replyText, /`\/name <名称>`/);
+  assert.match(sessionHelp.replyText, /`\/search <关键字>`/);
+  assert.match(sessionHelp.replyText, /`\/usage`/);
+  assert.match(sessionHelp.replyText, /`\/approve`/);
+  assert.match(sessionHelp.replyText, /返回：`\/help`/);
+  const nativeHelp = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/help native"),
+  });
+  assert.equal(nativeHelp.handled, true);
+  assert.equal(nativeHelp.ok, true);
+  assert.match(nativeHelp.replyText, /Studio Channel \/ native/);
+  assert.match(nativeHelp.replyText, /`\/commands add <名称> <prompt 模板>`/);
+  assert.match(nativeHelp.replyText, /`\/skills`/);
   assert.equal(parseChannelConnectorCommand("%help")?.name, "help");
   assert.equal(parseChannelConnectorCommand("/%help")?.name, "help");
   assert.equal(matchChannelConnectorCommandPrefix("stat"), "status");
@@ -3387,7 +3405,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     });
     assert.equal(aliasHelp.handled, true);
     assert.equal(aliasHelp.action, "help");
-    assert.match(aliasHelp.replyText, /Studio Channel Commands/);
+    assert.match(aliasHelp.replyText, /^Studio Channel/);
   }
 
   const abbreviatedStatus = await handleChannelConnectorCommand({
@@ -4587,12 +4605,14 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.equal(surface.current.streamMessages, true);
   assert.equal(surface.current.toolMessages, true);
   assert.match(surface.textFallback, /skills 命令/);
-  assert.match(surface.textFallback, /\*\*当前会话\*\*/);
+  assert.match(surface.textFallback, /^Studio Channel/);
+  assert.match(surface.textFallback, /当前/);
   assert.match(surface.textFallback, /Reasoning: default/);
-  assert.match(surface.textFallback, /\*\*快捷操作\*\*/);
+  assert.match(surface.textFallback, /快捷操作/);
   assert.match(surface.textFallback, /`\/status`/);
   assert.match(surface.textFallback, /`\/native \/help`/);
-  assert.match(surface.textFallback, /\/agent claude-main/);
+  assert.match(surface.textFallback, /`\/help agent`/);
+  assert.match(surface.textFallback, /`\/help native`/);
   const nativeSection = surface.sections.find((section) => section.id === "native");
   assert.ok(nativeSection);
   assert.equal(nativeSection.actions[0].nativePassthrough, true);
