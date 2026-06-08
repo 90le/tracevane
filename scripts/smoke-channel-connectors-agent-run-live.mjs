@@ -26,6 +26,9 @@ function parseArgs(argv) {
     requireProgress: false,
     requireTool: false,
     requireFile: false,
+    requireInboundFile: false,
+    requireVisual: false,
+    requireAutoVision: false,
     requireMarkdown: false,
     requireFeishuCard: false,
     json: false,
@@ -40,6 +43,9 @@ function parseArgs(argv) {
     else if (arg === "--require-progress") options.requireProgress = true;
     else if (arg === "--require-tool") options.requireTool = true;
     else if (arg === "--require-file") options.requireFile = true;
+    else if (arg === "--require-inbound-file" || arg === "--require-uploaded-file") options.requireInboundFile = true;
+    else if (arg === "--require-visual" || arg === "--require-visual-input") options.requireVisual = true;
+    else if (arg === "--require-auto-vision" || arg === "--require-vision-switch") options.requireAutoVision = true;
     else if (arg === "--require-markdown" || arg === "--require-markdown-reply") options.requireMarkdown = true;
     else if (arg === "--require-feishu-card" || arg === "--require-markdown-card") options.requireFeishuCard = true;
     else if (arg === "--config") options.configPath = requireValue(argv, ++index, arg);
@@ -92,6 +98,9 @@ Options:
   --require-progress        Require any progress event.
   --require-tool            Require tool progress.
   --require-file            Require outboundFilesDeclared>0 and outboundFilesSent>0.
+  --require-inbound-file    Require a user-uploaded file attachment was received/staged.
+  --require-visual          Require inbound visual attachment evidence.
+  --require-auto-vision     Require a non-vision model auto-switched to a vision model.
   --require-markdown        Require assistant progress with Markdown-like reply signals.
   --require-feishu-card     Require Feishu final card/post path for Markdown rendering.
   --config <path>           Daemon config path. Default: ${DEFAULT_CONFIG_PATH}
@@ -202,7 +211,7 @@ function runKey(event) {
   ].join("\u0000");
 }
 
-function summarizeRun(event, relatedProgress) {
+function summarizeRun(event, relatedProgress, relatedEvidence) {
   const progressTypes = uniqueStrings(relatedProgress.map((item) => String(item.progressType || item.latestProgress?.type || "")).filter(Boolean));
   const rawProgress = relatedProgress.filter((item) => item.eventKind === "agent.progress");
   const transportProgress = relatedProgress.filter((item) => item.eventKind === "agent.progress.reply" || item.eventKind === "agent.progress.card");
@@ -212,6 +221,24 @@ function summarizeRun(event, relatedProgress) {
   const assistantProgress = rawProgress.filter((item) => item.progressType === "assistant" || item.latestProgress?.type === "assistant");
   const markdownSignals = uniqueStrings(assistantProgress.flatMap((item) => detectMarkdownSignals(String(item.text || item.latestProgress?.text || ""))));
   const toolProgressCount = rawToolProgress.length > 0 ? rawToolProgress.length : transportToolProgress.length;
+  const modelSelectionEvents = relatedEvidence.filter((item) => item.eventKind === "agent.model.selected");
+  const stagedAttachmentEvents = relatedEvidence.filter((item) => item.eventKind === "agent.attachments.staged");
+  const visualInputEvents = relatedEvidence.filter((item) => item.eventKind === "agent.visual.input");
+  const attachmentKinds = uniqueStrings([
+    ...arrayStrings(event.attachmentKinds),
+    ...relatedEvidence.flatMap((item) => arrayStrings(item.attachmentKinds)),
+  ]);
+  const visualAttachmentKinds = attachmentKinds.filter(isVisualAttachmentKind);
+  const fileAttachmentCount = attachmentKinds.filter((kind) => kind === "file").length;
+  const modelSelection = latestEvent(modelSelectionEvents);
+  const autoVisionSwitched = modelSelectionEvents.some((item) => {
+    const originalModel = String(item.originalModel || "");
+    const selectedModel = String(item.selectedModel || "");
+    return numberValue(item.visualAttachmentCount) > 0
+      && Boolean(originalModel)
+      && Boolean(selectedModel)
+      && originalModel !== selectedModel;
+  });
   return {
     checkedAt: event.checkedAt || null,
     adapter: event.adapter || null,
@@ -226,6 +253,7 @@ function summarizeRun(event, relatedProgress) {
     progressLogCount: relatedProgress.length,
     rawProgressLogCount: rawProgress.length,
     transportProgressLogCount: transportProgress.length,
+    evidenceLogCount: relatedEvidence.length,
     progressTypes,
     toolProgressCount,
     transportToolProgressCount: transportToolProgress.length,
@@ -241,6 +269,24 @@ function summarizeRun(event, relatedProgress) {
     replyCardAttempted: event.replyCardAttempted ?? null,
     replyCardError: event.replyCardError || null,
     replyRequestCount: numberValue(event.replyRequestCount),
+    attachmentCount: numberValue(event.attachmentCount),
+    attachmentKinds,
+    visualAttachmentKinds,
+    fileAttachmentCount,
+    visualAttachmentCount: Math.max(
+      visualAttachmentKinds.length > 0 ? numberValue(event.attachmentCount) : 0,
+      ...modelSelectionEvents.map((item) => numberValue(item.visualAttachmentCount)),
+      ...stagedAttachmentEvents.map((item) => numberValue(item.visualAttachmentCount)),
+      ...visualInputEvents.map((item) => numberValue(item.imageCount)),
+    ),
+    attachmentsStagedCount: sumNumbers(stagedAttachmentEvents.map((item) => item.stagedCount)),
+    attachmentStagingFailedCount: sumNumbers(stagedAttachmentEvents.map((item) => item.failedCount)),
+    visualInputCount: sumNumbers(visualInputEvents.map((item) => item.imageCount)),
+    visualInputModes: uniqueStrings(visualInputEvents.map((item) => String(item.visualInputMode || "")).filter(Boolean)),
+    autoVisionSwitched,
+    autoVisionOriginalModel: modelSelection?.originalModel || null,
+    autoVisionSelectedModel: modelSelection?.selectedModel || null,
+    autoVisionReason: modelSelection?.reason || null,
     outboundFilesDeclared: numberValue(event.outboundFilesDeclared),
     outboundFilesResolved: numberValue(event.outboundFilesResolved),
     outboundFilesSent: numberValue(event.outboundFilesSent),
@@ -257,8 +303,26 @@ function numberValue(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
+function sumNumbers(values) {
+  return values.reduce((total, value) => total + numberValue(value), 0);
+}
+
 function uniqueStrings(values) {
   return [...new Set(values)];
+}
+
+function arrayStrings(value) {
+  return Array.isArray(value) ? value.map((item) => String(item || "")).filter(Boolean) : [];
+}
+
+function isVisualAttachmentKind(value) {
+  return value === "image" || value === "video" || value === "sticker";
+}
+
+function latestEvent(events) {
+  return events
+    .slice()
+    .sort((left, right) => checkedAtMs(right) - checkedAtMs(left))[0] || null;
 }
 
 function detectMarkdownSignals(text) {
@@ -285,6 +349,11 @@ function loadSummary(options, since) {
   ].filter((event) => eventMatches(event, options, sinceMs));
   const progressEvents = allEvents.filter((event) => event.eventKind === "agent.progress");
   const transportProgressEvents = allEvents.filter((event) => event.eventKind === "agent.progress.reply" || event.eventKind === "agent.progress.card");
+  const evidenceEvents = allEvents.filter((event) => {
+    return event.eventKind === "agent.model.selected"
+      || event.eventKind === "agent.attachments.staged"
+      || event.eventKind === "agent.visual.input";
+  });
   const progressByRun = new Map();
   for (const event of [...progressEvents, ...transportProgressEvents]) {
     const key = runKey(event);
@@ -292,10 +361,21 @@ function loadSummary(options, since) {
     bucket.push(event);
     progressByRun.set(key, bucket);
   }
+  const evidenceByRun = new Map();
+  for (const event of evidenceEvents) {
+    const key = runKey(event);
+    const bucket = evidenceByRun.get(key) || [];
+    bucket.push(event);
+    evidenceByRun.set(key, bucket);
+  }
   const runs = allEvents
     .filter((event) => event.eventKind === "agent.run.finished")
     .sort((left, right) => checkedAtMs(right) - checkedAtMs(left))
-    .map((event) => summarizeRun(event, progressByRun.get(runKey(event)) || []));
+    .map((event) => summarizeRun(
+      event,
+      progressByRun.get(runKey(event)) || [],
+      evidenceByRun.get(runKey(event)) || [],
+    ));
   const matchingRuns = runs.filter((run) => runSatisfies(run, options));
   const displayedRuns = options.limitRuns === 0 ? [] : runs.slice(0, options.limitRuns);
   const displayedMatchingRuns = options.limitRuns === 0 ? [] : matchingRuns.slice(0, options.limitRuns);
@@ -312,6 +392,9 @@ function loadSummary(options, since) {
       requireProgress: options.requireProgress,
       requireTool: options.requireTool,
       requireFile: options.requireFile,
+      requireInboundFile: options.requireInboundFile,
+      requireVisual: options.requireVisual,
+      requireAutoVision: options.requireAutoVision,
       requireMarkdown: options.requireMarkdown,
       requireFeishuCard: options.requireFeishuCard,
     },
@@ -323,6 +406,7 @@ function loadSummary(options, since) {
       events: allEvents.length,
       progressEvents: progressEvents.length,
       transportProgressEvents: transportProgressEvents.length,
+      evidenceEvents: evidenceEvents.length,
       finishedRuns: runs.length,
       matchingRuns: matchingRuns.length,
       displayedRuns: displayedRuns.length,
@@ -339,6 +423,9 @@ function runSatisfies(run, options) {
   if (options.requireProgress && !(run.progressEventCount > 0 || run.progressLogCount > 0)) return false;
   if (options.requireTool && !(run.toolProgressCount > 0 || run.latestProgressType === "tool")) return false;
   if (options.requireFile && !(run.outboundFilesDeclared > 0 && run.outboundFilesSent > 0 && run.outboundFileErrors.length === 0)) return false;
+  if (options.requireInboundFile && !(run.fileAttachmentCount > 0 && run.attachmentStagingFailedCount === 0)) return false;
+  if (options.requireVisual && !(run.visualAttachmentCount > 0 || run.visualInputCount > 0)) return false;
+  if (options.requireAutoVision && run.autoVisionSwitched !== true) return false;
   if (options.requireMarkdown && run.replyMarkdownLikely !== true) return false;
   if (options.requireFeishuCard) {
     if (run.adapter !== "feishu") return false;
@@ -366,6 +453,9 @@ function printHuman(summary, wait) {
       run.agentOk === true ? "ok" : run.agentOk === false ? "failed" : "unknown",
       run.replySent === true ? "reply" : "",
       run.outboundFilesSent > 0 ? `files=${run.outboundFilesSent}` : "",
+      run.fileAttachmentCount > 0 ? `inbound-files=${run.fileAttachmentCount}` : "",
+      run.visualAttachmentCount > 0 ? `visual=${run.visualAttachmentCount}` : "",
+      run.autoVisionSwitched === true ? `auto-vision=${run.autoVisionOriginalModel}->${run.autoVisionSelectedModel}` : "",
       run.toolProgressCount > 0 ? `tools=${run.toolProgressCount}` : "",
       run.replyMarkdownLikely === true ? `markdown=${run.markdownSignals.join(",")}` : "",
       run.replyCardAttempted === true ? "feishu-card" : "",

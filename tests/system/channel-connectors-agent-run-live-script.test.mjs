@@ -57,6 +57,43 @@ function writeFixture(root) {
     transportAction: "send-progress-markdown",
   });
   appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:00:01.200Z",
+    eventKind: "agent.model.selected",
+    adapter: "octo",
+    bindingId: "octo-live",
+    sessionKey: "dmwork:dm:user-1",
+    messageId: "octo-message-1",
+    originalModel: "glm-5",
+    selectedModel: "gpt-5.5",
+    reason: "current-model-non-vision",
+    visualAttachmentCount: 1,
+  });
+  appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:00:01.400Z",
+    eventKind: "agent.attachments.staged",
+    adapter: "octo",
+    bindingId: "octo-live",
+    sessionKey: "dmwork:dm:user-1",
+    messageId: "octo-message-1",
+    attachmentCount: 2,
+    attachmentKinds: ["image", "file"],
+    visualAttachmentCount: 1,
+    stagedCount: 2,
+    failedCount: 0,
+    localPaths: ["/tmp/studio/attachments/red.png", "/tmp/studio/attachments/report.zip"],
+  });
+  appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:00:01.600Z",
+    eventKind: "agent.visual.input",
+    adapter: "octo",
+    bindingId: "octo-live",
+    sessionKey: "dmwork:dm:user-1",
+    messageId: "octo-message-1",
+    visualInputMode: "codex-native-image",
+    imageCount: 1,
+    localPaths: ["/tmp/studio/attachments/red.png"],
+  });
+  appendJsonLine(octoEvents, {
     checkedAt: "2026-06-08T01:00:03.000Z",
     eventKind: "agent.run.finished",
     adapter: "octo",
@@ -132,6 +169,9 @@ test("agent run live smoke script verifies Octo tool, reply, and outbound file e
     "--require-reply",
     "--require-tool",
     "--require-file",
+    "--require-inbound-file",
+    "--require-visual",
+    "--require-auto-vision",
     "--require-markdown",
     "--json",
   ], root);
@@ -140,6 +180,15 @@ test("agent run live smoke script verifies Octo tool, reply, and outbound file e
   assert.equal(parsed.matchingRuns.length, 1);
   assert.equal(parsed.matchingRuns[0].adapter, "octo");
   assert.equal(parsed.matchingRuns[0].outboundFilesSent, 1);
+  assert.equal(parsed.matchingRuns[0].fileAttachmentCount, 1);
+  assert.equal(parsed.matchingRuns[0].attachmentsStagedCount, 2);
+  assert.equal(parsed.matchingRuns[0].visualAttachmentCount, 1);
+  assert.equal(parsed.matchingRuns[0].visualInputCount, 1);
+  assert.deepEqual(parsed.matchingRuns[0].visualInputModes, ["codex-native-image"]);
+  assert.equal(parsed.matchingRuns[0].autoVisionSwitched, true);
+  assert.equal(parsed.matchingRuns[0].autoVisionOriginalModel, "glm-5");
+  assert.equal(parsed.matchingRuns[0].autoVisionSelectedModel, "gpt-5.5");
+  assert.equal(parsed.matchingRuns[0].autoVisionReason, "current-model-non-vision");
   assert.equal(parsed.matchingRuns[0].toolProgressCount, 1);
   assert.equal(parsed.matchingRuns[0].replyMarkdownLikely, true);
   assert.deepEqual(parsed.matchingRuns[0].markdownSignals.sort(), ["bold", "inline_code", "list"].sort());
