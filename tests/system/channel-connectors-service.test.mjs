@@ -2073,6 +2073,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.ok(claudeRequest);
   assert.equal(claudeRequest.command, "claude");
   assert.equal(claudeRequest.agent, "claude-code");
+  assert.equal(claudeRequest.permissionMode, "plan");
   assert.equal(claudeRequest.args.includes("--input-format"), true);
   assert.equal(claudeRequest.args.includes("stream-json"), true);
   assert.equal(claudeRequest.args.includes("--verbose"), true);
@@ -5916,6 +5917,92 @@ test("native Channel Connectors process runner maps Claude Code stream-json prog
   assert.equal(progress[5].type, "completed");
   assert.equal(progress[5].text, "完成\n\n下一步可以发送文件。");
   assert.equal(result.progressEvents?.length, 6);
+});
+
+test("native Channel Connectors process runner answers Claude Code permission requests", async () => {
+  const root = makeTempRoot();
+  const progress = [];
+  const childScript = [
+    "const readline = require('node:readline');",
+    "const rl = readline.createInterface({ input: process.stdin });",
+    "let asked = false;",
+    "function write(value) { process.stdout.write(JSON.stringify(value) + '\\n'); }",
+    "rl.on('line', (line) => {",
+    "  const message = JSON.parse(line);",
+    "  if (!asked && message.type === 'user') {",
+    "    asked = true;",
+    "    write({ type: 'control_request', request_id: 'perm-allow-1', request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'pwd' } } });",
+    "    return;",
+    "  }",
+    "  if (message.type === 'control_response') {",
+    "    write({ type: 'result', result: JSON.stringify(message.response.response), session_id: 'claude-permission-session' });",
+    "    process.exit(0);",
+    "  }",
+    "});",
+  ].join("");
+
+  const result = await defaultChannelConnectorAgentProcessRunner({
+    command: process.execPath,
+    args: ["-e", childScript],
+    cwd: root,
+    stdin: `${JSON.stringify({ type: "user", message: { role: "user", content: "run pwd" } })}\n`,
+    env: {},
+    timeoutMs: 1000,
+    agent: "claude-code",
+    permissionMode: "yolo",
+    onProgress: (event) => progress.push(event),
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.error, null);
+  assert.equal(progress.length, 2);
+  assert.equal(progress[0].type, "tool");
+  assert.equal(progress[0].rawType, "control_request");
+  assert.match(progress[0].text, /can_use_tool: Bash/);
+  assert.equal(progress[1].type, "completed");
+  assert.match(progress[1].text, /"behavior":"allow"/);
+  assert.match(progress[1].text, /"updatedInput":\{"command":"pwd"\}/);
+});
+
+test("native Channel Connectors process runner denies Claude Code tools in read-only mode", async () => {
+  const root = makeTempRoot();
+  const progress = [];
+  const childScript = [
+    "const readline = require('node:readline');",
+    "const rl = readline.createInterface({ input: process.stdin });",
+    "let asked = false;",
+    "function write(value) { process.stdout.write(JSON.stringify(value) + '\\n'); }",
+    "rl.on('line', (line) => {",
+    "  const message = JSON.parse(line);",
+    "  if (!asked && message.type === 'user') {",
+    "    asked = true;",
+    "    write({ type: 'control_request', request_id: 'perm-deny-1', request: { subtype: 'can_use_tool', tool_name: 'Write', input: { file_path: 'TOOLS.md', content: 'unsafe' } } });",
+    "    return;",
+    "  }",
+    "  if (message.type === 'control_response') {",
+    "    write({ type: 'result', result: JSON.stringify(message.response.response), session_id: 'claude-permission-session' });",
+    "    process.exit(0);",
+    "  }",
+    "});",
+  ].join("");
+
+  const result = await defaultChannelConnectorAgentProcessRunner({
+    command: process.execPath,
+    args: ["-e", childScript],
+    cwd: root,
+    stdin: `${JSON.stringify({ type: "user", message: { role: "user", content: "write file" } })}\n`,
+    env: {},
+    timeoutMs: 1000,
+    agent: "claude-code",
+    permissionMode: "read-only",
+    onProgress: (event) => progress.push(event),
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.error, null);
+  assert.equal(progress.at(-1)?.type, "completed");
+  assert.match(progress.at(-1)?.text || "", /"behavior":"deny"/);
+  assert.match(progress.at(-1)?.text || "", /read-only/);
 });
 
 test("native Channel Connectors service management is guarded before daemon entry is built", async () => {

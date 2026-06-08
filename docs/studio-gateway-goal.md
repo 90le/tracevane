@@ -143,6 +143,7 @@ Provider / model routing 目标：
 - Channel Connectors `/compact` 验收必须证明：命令不会作为普通 prompt 发送给 Agent；Gateway compact 成功后 history 只保留 compact summary；旧 Agent/Codex thread 续接被清理；Gateway compact 失败时返回明确错误。
 - Channel Connectors `/usage` 验收必须证明：命令读取 Studio Gateway runtime 的真实 usage/token 账本，并按当前 binding + IM session 的 Agent run 时间窗汇总；没有上游 usage 时必须明确提示无统计，不能返回占位数字。
 - Channel Connectors `/reasoning` 验收必须证明：IM session 可用序号或 `low|medium|high|xhigh|default` 切换推理强度，切换后旧 Agent 续接被清理，Codex/Claude Code/OpenCode runner 都收到对应原生 CLI 参数。
+- Claude Code 权限验收必须证明：`control_request` 不能只作为进度展示，必须按 CC Go 合同回写 `control_response`；自动模式可 allow，保守模式必须 fail-safe deny，后续再迁移 IM 交互式批准。
 - Channel Connectors session 管理验收必须证明：`/name` 可命名当前或指定序号 Agent session，`/search` 可按名称/sessionId 等字段搜索，Feishu 卡片和纯文本菜单都显示命名结果。
 - 持久 session driver 验收必须证明：进程可观测、可停止、可 idle 回收，并在 Studio API/UI 暴露 status、reap-idle、kill 管理入口；crash 后 session store 不损坏；同一用户可切换多个 Agent；不同用户/群/线程不会串上下文；driver 不支持某能力时能回退 one-shot runner。
 - Channel Connectors 发布前必须覆盖 CC 二开源码的核心能力：多平台、多 Agent、文本/图片/文件/语音、群聊 mention、会话续接/切换、allowlist/admin/rate limit、slash command、cron、hooks、relay、management/status/logs。

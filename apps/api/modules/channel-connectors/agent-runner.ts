@@ -30,6 +30,7 @@ export interface ChannelConnectorAgentProcessRequest {
   agentNativeSessionId?: string | null;
   codexThreadId?: string | null;
   agent: ChannelConnectorAgentId;
+  permissionMode?: ChannelConnectorPermissionMode | null;
   onProgress?: (event: ChannelConnectorAgentProgressEvent) => void;
 }
 
@@ -759,6 +760,7 @@ export function buildChannelConnectorAgentProcessRequest(
         agentNativeSessionId: request.session?.agentNativeSessionId || request.session?.codexThreadId || null,
         codexThreadId: request.session?.codexThreadId || null,
         agent: project.agent,
+        permissionMode: project.permissionMode,
       };
     }
 
@@ -822,6 +824,7 @@ export function buildChannelConnectorAgentProcessRequest(
       agentNativeSessionId: codexThreadId || null,
       codexThreadId: codexThreadId || null,
       agent: project.agent,
+      permissionMode: project.permissionMode,
     };
   }
 
@@ -855,6 +858,7 @@ export function buildChannelConnectorAgentProcessRequest(
       sessionMode: claudeSessionId ? "resume" : "new",
       agentNativeSessionId: claudeSessionId || null,
       agent: project.agent,
+      permissionMode: project.permissionMode,
     };
   }
 
@@ -880,6 +884,7 @@ export function buildChannelConnectorAgentProcessRequest(
       timeoutMs,
       nativeCommand: nativeCommand || null,
       agent: project.agent,
+      permissionMode: project.permissionMode,
     };
   }
 
@@ -973,6 +978,81 @@ function claudeToolProgressText(item: Record<string, unknown>, label = "tool"): 
     || label;
   const input = firstProgressTextValue(item.input, item.content, item.text, item.result);
   return [name, input ? `input:\n${input}` : ""].filter(Boolean).join("\n");
+}
+
+interface ClaudeCodeControlToolRequest {
+  requestId: string;
+  subtype: string;
+  toolName: string;
+  input: Record<string, unknown>;
+}
+
+type ClaudeCodePermissionDecision =
+  | { behavior: "allow"; updatedInput: Record<string, unknown> }
+  | { behavior: "deny"; message: string };
+
+function isClaudeEditTool(toolName: string): boolean {
+  return ["Edit", "Write", "NotebookEdit", "MultiEdit"].includes(toolName);
+}
+
+function parseClaudeControlToolRequest(line: string): ClaudeCodeControlToolRequest | null {
+  const raw = recordValue(JSON.parse(line));
+  if (!raw || normalizeString(raw.type) !== "control_request") return null;
+  const request = recordValue(raw.request);
+  const requestId = normalizeString(raw.request_id) || normalizeString(request?.request_id);
+  const subtype = normalizeString(request?.subtype);
+  if (!requestId || subtype !== "can_use_tool") return null;
+  return {
+    requestId,
+    subtype,
+    toolName: normalizeString(request?.tool_name),
+    input: recordValue(request?.input) || {},
+  };
+}
+
+function claudePermissionDecision(
+  mode: ChannelConnectorPermissionMode | null | undefined,
+  request: ClaudeCodeControlToolRequest,
+): ClaudeCodePermissionDecision {
+  if (mode === "yolo" || mode === "full-auto") {
+    return { behavior: "allow", updatedInput: request.input };
+  }
+  if (mode === "auto-edit" && isClaudeEditTool(request.toolName)) {
+    return { behavior: "allow", updatedInput: request.input };
+  }
+  if (mode === "read-only") {
+    return { behavior: "deny", message: "Permission mode is read-only; Studio denied this Claude tool use." };
+  }
+  if (mode === "auto-edit") {
+    return { behavior: "deny", message: "Permission mode is auto-edit; Studio only auto-allows Claude edit tools." };
+  }
+  return {
+    behavior: "deny",
+    message: "Interactive Claude tool approval is not available in this Studio runner yet. Switch to yolo/full-auto or retry with an edit-only tool.",
+  };
+}
+
+function claudeControlResponseLine(requestId: string, decision: ClaudeCodePermissionDecision): string {
+  const response = decision.behavior === "allow"
+    ? { behavior: "allow", updatedInput: decision.updatedInput }
+    : { behavior: "deny", message: decision.message };
+  return `${JSON.stringify({
+    type: "control_response",
+    response: {
+      subtype: "success",
+      request_id: requestId,
+      response,
+    },
+  })}\n`;
+}
+
+function isClaudeResultLine(line: string): boolean {
+  try {
+    const raw = recordValue(JSON.parse(line));
+    return normalizeString(raw?.type) === "result";
+  } catch {
+    return false;
+  }
 }
 
 function parseClaudeProgressLineEvents(line: string): ChannelConnectorAgentProgressEvent[] {
@@ -1103,6 +1183,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
       env: mergeProcessEnv(request.env),
       stdio: ["pipe", "pipe", "pipe"],
     });
+    const isClaudeCode = request.agent === "claude-code";
     let stdout = "";
     let stderr = "";
     let stdoutLineBuffer = "";
@@ -1110,6 +1191,32 @@ export async function defaultChannelConnectorAgentProcessRunner(
     let settled = false;
     let timedOut = false;
     let cancelled = false;
+    let stdinClosed = false;
+    const closeStdin = (): void => {
+      if (stdinClosed || child.stdin.destroyed) return;
+      stdinClosed = true;
+      child.stdin.end();
+    };
+    const writeStdinLine = (line: string): void => {
+      if (stdinClosed || child.stdin.destroyed) return;
+      try {
+        child.stdin.write(line);
+      } catch (error) {
+        stderr += `\nstdin write failed: ${error instanceof Error ? error.message : String(error)}`;
+      }
+    };
+    const handleClaudeCodeLine = (line: string): void => {
+      try {
+        const controlRequest = parseClaudeControlToolRequest(line);
+        if (controlRequest) {
+          const decision = claudePermissionDecision(request.permissionMode, controlRequest);
+          writeStdinLine(claudeControlResponseLine(controlRequest.requestId, decision));
+        }
+      } catch (error) {
+        stderr += `\nClaude control request handling failed: ${error instanceof Error ? error.message : String(error)}`;
+      }
+      if (isClaudeResultLine(line)) closeStdin();
+    };
     const terminateChild = (): void => {
       child.kill("SIGTERM");
       setTimeout(() => {
@@ -1134,6 +1241,9 @@ export async function defaultChannelConnectorAgentProcessRunner(
 
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
+    child.stdin.on("error", (error) => {
+      stderr += `\nstdin error: ${error.message}`;
+    });
     child.stdout.on("data", (chunk) => {
       stdout += chunk;
       stdoutLineBuffer += chunk;
@@ -1144,6 +1254,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
           progressEvents.push(event);
           request.onProgress?.(event);
         }
+        if (isClaudeCode) handleClaudeCodeLine(line);
       }
     });
     child.stderr.on("data", (chunk) => {
@@ -1172,6 +1283,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
         progressEvents.push(trailingEvent);
         request.onProgress?.(trailingEvent);
       }
+      if (isClaudeCode && stdoutLineBuffer) handleClaudeCodeLine(stdoutLineBuffer);
       cleanupProcessRequest(request);
       resolve({
         exitCode,
@@ -1187,8 +1299,8 @@ export async function defaultChannelConnectorAgentProcessRunner(
         progressEvents,
       });
     });
-    if (request.stdin) child.stdin.write(request.stdin);
-    child.stdin.end();
+    if (request.stdin) writeStdinLine(request.stdin);
+    if (!isClaudeCode || !request.stdin) closeStdin();
   });
 }
 
