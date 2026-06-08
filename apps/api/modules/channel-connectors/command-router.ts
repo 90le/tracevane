@@ -184,6 +184,11 @@ interface ParsedCommand {
   args: string[];
 }
 
+export interface CommandMatchCandidate {
+  id: string;
+  names: readonly string[];
+}
+
 interface AgentCommandFile {
   name: string;
   description: string;
@@ -225,6 +230,73 @@ function uniqueStrings(values: string[]): string[] {
 
 function normalizeAgentCommandName(value: string): string {
   return normalizeString(value).toLowerCase().replaceAll("-", "_");
+}
+
+const STUDIO_COMMAND_MATCH_CANDIDATES: readonly CommandMatchCandidate[] = [
+  { id: "start", names: ["start"] },
+  { id: "help", names: ["help"] },
+  { id: "menu", names: ["menu"] },
+  { id: "commands", names: ["commands", "command", "cmd"] },
+  { id: "skills", names: ["skills", "skill"] },
+  { id: "status", names: ["status"] },
+  { id: "usage", names: ["usage", "tokens", "quota"] },
+  { id: "current", names: ["current"] },
+  { id: "list", names: ["list", "sessions"] },
+  { id: "switch", names: ["switch"] },
+  { id: "search", names: ["search", "find"] },
+  { id: "name", names: ["name", "rename"] },
+  { id: "history", names: ["history"] },
+  { id: "agent", names: ["agent", "agents"] },
+  { id: "model", names: ["model", "models"] },
+  { id: "mode", names: ["mode", "permission", "permissions", "yolo"] },
+  { id: "approve", names: ["approve", "allow", "yes", "ok"] },
+  { id: "deny", names: ["deny", "reject", "no"] },
+  { id: "approve-all", names: ["approve-all", "allow-all"] },
+  { id: "reasoning", names: ["reasoning", "effort"] },
+  { id: "dir", names: ["dir", "cd", "chdir", "workdir", "pwd"] },
+  { id: "display", names: ["display"] },
+  { id: "stream", names: ["stream", "streams", "progress"] },
+  { id: "tools", names: ["tools", "tool"] },
+  { id: "buffer", names: ["buffer", "buffers", "reply-buffer", "reply-buffers"] },
+  { id: "stop", names: ["stop", "cancel"] },
+  { id: "compact", names: ["compact", "compress"] },
+  { id: "new", names: ["new"] },
+  { id: "reset", names: ["reset"] },
+  { id: "native", names: ["native", "raw", "pass"] },
+];
+
+export function matchChannelConnectorCommandPrefix(
+  input: string,
+  candidates: readonly CommandMatchCandidate[] = STUDIO_COMMAND_MATCH_CANDIDATES,
+): string | null {
+  const prefix = normalizeString(input).toLowerCase();
+  if (!prefix) return null;
+
+  for (const candidate of candidates) {
+    if (candidate.names.some((name) => name === prefix)) return candidate.id;
+  }
+
+  let matchedId: string | null = null;
+  for (const candidate of candidates) {
+    if (!candidate.names.some((name) => name.startsWith(prefix))) continue;
+    if (matchedId && matchedId !== candidate.id) return null;
+    matchedId = candidate.id;
+  }
+  return matchedId;
+}
+
+export function matchChannelConnectorSubCommand(input: string, candidates: readonly string[]): string {
+  const prefix = normalizeString(input).toLowerCase();
+  if (!prefix) return "";
+  if (candidates.includes(prefix)) return prefix;
+
+  let matched: string | null = null;
+  for (const candidate of candidates) {
+    if (!candidate.startsWith(prefix)) continue;
+    if (matched && matched !== candidate) return prefix;
+    matched = candidate;
+  }
+  return matched || prefix;
 }
 
 function commandStorePath(context: Pick<ChannelConnectorCommandContext, "customCommandsPath">): string | null {
@@ -581,70 +653,7 @@ function handlePermissionResponseCommand(
 }
 
 function isStudioCommand(name: string): boolean {
-  return [
-    "start",
-    "help",
-    "menu",
-    "commands",
-    "command",
-    "cmd",
-    "skills",
-    "skill",
-    "status",
-    "usage",
-    "tokens",
-    "current",
-    "list",
-    "sessions",
-    "switch",
-    "search",
-    "find",
-    "name",
-    "rename",
-    "history",
-    "agent",
-    "agents",
-    "model",
-    "models",
-    "mode",
-    "permission",
-    "permissions",
-    "approve",
-    "allow",
-    "yes",
-    "deny",
-    "reject",
-    "no",
-    "approve-all",
-    "allow-all",
-    "yolo",
-    "reasoning",
-    "effort",
-    "dir",
-    "cd",
-    "chdir",
-    "workdir",
-    "pwd",
-    "display",
-    "stream",
-    "streams",
-    "progress",
-    "tools",
-    "tool",
-    "buffer",
-    "buffers",
-    "reply-buffer",
-    "reply-buffers",
-    "stop",
-    "cancel",
-    "compact",
-    "compress",
-    "new",
-    "reset",
-    "native",
-    "raw",
-    "pass",
-  ].includes(name);
+  return Boolean(matchChannelConnectorCommandPrefix(name));
 }
 
 function commandHelpText(): string {
@@ -1285,7 +1294,9 @@ export async function handleChannelConnectorCommand(
   const content = extractOctoContent(context.message);
   const parsed = parseChannelConnectorCommand(content);
   const lookup = controlsLookup(context);
-  if (context.hasPendingQuestionRequest?.(lookup) && !["stop", "cancel", "reset", "new"].includes(parsed?.name || "")) {
+  const parsedStudioName = parsed ? matchChannelConnectorCommandPrefix(parsed.name) : null;
+  const parsedNameForControl = parsedStudioName || parsed?.name || "";
+  if (context.hasPendingQuestionRequest?.(lookup) && !["stop", "reset", "new"].includes(parsedNameForControl)) {
     const currentControl = getChannelConnectorSessionControl(context.controlsPath, lookup);
     if (!canManageSession(context.binding, context.message)) {
       return {
@@ -1359,49 +1370,32 @@ export async function handleChannelConnectorCommand(
 
   const currentControl = getChannelConnectorSessionControl(context.controlsPath, lookup);
   const currentProject = resolveChannelConnectorEffectiveProject(context.config, context.project, currentControl);
-  const name = parsed.name;
+  const name = parsedStudioName || parsed.name;
   const args = parsed.args;
-  const commandsMutation = ["commands", "command", "cmd"].includes(name)
+  const rawCommandsSubcommand = normalizeString(args[0]).toLowerCase();
+  const commandsMutation = name === "commands"
     && args.length > 0
-    && !["list", "ls"].includes(normalizeString(args[0]).toLowerCase());
+    && !(rawCommandsSubcommand === "ls" || matchChannelConnectorSubCommand(rawCommandsSubcommand, ["list"]) === "list");
   const mutableCommandName = [
       "agent",
       "model",
       "name",
-      "rename",
       "mode",
-      "permission",
-      "permissions",
       "approve",
-      "allow",
-      "yes",
       "deny",
-      "reject",
-      "no",
       "approve-all",
-      "allow-all",
       "reasoning",
-      "effort",
       "switch",
       "reset",
       "new",
-      "yolo",
       "dir",
-      "cd",
-      "chdir",
-      "workdir",
       "display",
       "stream",
-      "streams",
-      "progress",
       "tools",
-      "tool",
       "stop",
-      "cancel",
       "compact",
-      "compress",
     ].includes(name);
-  const listOnlyCommand = ["agent", "model", "mode", "permission", "permissions", "reasoning", "effort", "dir", "display", "stream", "streams", "progress", "tools", "tool"].includes(name)
+  const listOnlyCommand = ["agent", "model", "mode", "reasoning", "dir", "display", "stream", "tools"].includes(name)
     && args.length === 0;
   const mutating = (mutableCommandName || commandsMutation) && !listOnlyCommand;
 
@@ -1461,7 +1455,7 @@ export async function handleChannelConnectorCommand(
     };
   }
 
-  if (name === "native" || name === "raw" || name === "pass") {
+  if (name === "native") {
     const target = normalizeString(args.join(" "));
     if (!target) {
       return {
@@ -1487,7 +1481,7 @@ export async function handleChannelConnectorCommand(
     };
   }
 
-  if (name === "skills" || name === "skill") {
+  if (name === "skills") {
     return {
       handled: true,
       command: name,
@@ -1499,8 +1493,17 @@ export async function handleChannelConnectorCommand(
     };
   }
 
-  if (name === "commands" || name === "command" || name === "cmd") {
-    const subcommand = normalizeString(args[0]).toLowerCase();
+  if (name === "commands") {
+    const rawSubcommand = normalizeString(args[0]).toLowerCase();
+    const subcommand = rawSubcommand === "ls" ? "list" : matchChannelConnectorSubCommand(rawSubcommand, [
+      "list",
+      "add",
+      "del",
+      "delete",
+      "rm",
+      "remove",
+      "addexec",
+    ]);
     if (subcommand === "add") {
       const commandName = normalizeString(args[1]).toLowerCase();
       const prompt = normalizeString(args.slice(2).join(" "));
@@ -1646,7 +1649,7 @@ export async function handleChannelConnectorCommand(
   }
 
   if (name === "status") return handleStatus(context);
-  if (name === "usage" || name === "tokens") {
+  if (name === "usage") {
     const summary = context.summarizeUsage
       ? await context.summarizeUsage({
         ...lookup,
@@ -1665,7 +1668,7 @@ export async function handleChannelConnectorCommand(
     };
   }
   if (name === "current") return handleCurrent(context);
-  if (name === "list" || name === "sessions" || name === "switch" || name === "search" || name === "find" || name === "name" || name === "rename") {
+  if (name === "list" || name === "switch" || name === "search" || name === "name") {
     const activeSession = getChannelConnectorAgentSession(context.agentSessionsPath, {
       bindingId: context.binding.id,
       projectId: currentProject.id,
@@ -1678,7 +1681,7 @@ export async function handleChannelConnectorCommand(
       ...lookup,
       limit: 20,
     });
-    if (name === "list" || name === "sessions") {
+    if (name === "list") {
       return {
         handled: true,
         command: name,
@@ -1689,7 +1692,7 @@ export async function handleChannelConnectorCommand(
         passthroughText: null,
       };
     }
-    if (name === "search" || name === "find") {
+    if (name === "search") {
       return {
         handled: true,
         command: name,
@@ -1700,7 +1703,7 @@ export async function handleChannelConnectorCommand(
         passthroughText: null,
       };
     }
-    if (name === "name" || name === "rename") {
+    if (name === "name") {
       const parsedName = parseSessionNameArgs(args);
       if (!parsedName.name) {
         return {
@@ -1822,7 +1825,7 @@ export async function handleChannelConnectorCommand(
     };
   }
 
-  if (name === "agent" || name === "agents") {
+  if (name === "agent") {
     if (args.length === 0) {
       return {
         handled: true,
@@ -1867,7 +1870,7 @@ export async function handleChannelConnectorCommand(
     };
   }
 
-  if (name === "model" || name === "models") {
+  if (name === "model") {
     const models = await listModelsForCommand(context);
     if (args.length === 0) {
       const lines = [`当前模型：${currentProject.model || "default"}`, "可用模型："];
@@ -1916,8 +1919,8 @@ export async function handleChannelConnectorCommand(
     };
   }
 
-  if (name === "mode" || name === "permission" || name === "permissions" || name === "yolo") {
-    if (name === "yolo" && args.length === 0) args.push("yolo");
+  if (name === "mode") {
+    if (parsed.name === "yolo" && args.length === 0) args.push("yolo");
     if (args.length === 0) {
       return {
         handled: true,
@@ -1959,7 +1962,7 @@ export async function handleChannelConnectorCommand(
     };
   }
 
-  if (name === "reasoning" || name === "effort") {
+  if (name === "reasoning") {
     if (args.length === 0) {
       return {
         handled: true,
@@ -2004,10 +2007,10 @@ export async function handleChannelConnectorCommand(
     };
   }
 
-  if (name === "dir" || name === "pwd" || name === "cd" || name === "chdir" || name === "workdir") {
+  if (name === "dir") {
     const requestedDir = args.join(" ");
     if (
-      ((name === "dir" || name === "pwd") && args.length === 0)
+      (args.length === 0)
       || ["help", "usage", "?"].includes(normalizeString(requestedDir).toLowerCase())
     ) {
       return {
@@ -2082,7 +2085,7 @@ export async function handleChannelConnectorCommand(
     };
   }
 
-  if (name === "display" || name === "stream" || name === "streams" || name === "progress" || name === "tools" || name === "tool") {
+  if (name === "display" || name === "stream" || name === "tools") {
     const target = parseToggleTarget(args.join(" "));
     if (target === "status") {
       return {
@@ -2108,7 +2111,7 @@ export async function handleChannelConnectorCommand(
     }
     const update = name === "display"
       ? { streamMessages: target, toolMessages: target }
-      : name === "tools" || name === "tool"
+      : name === "tools"
         ? { toolMessages: target }
         : { streamMessages: target };
     const control = upsertChannelConnectorSessionControl(context.controlsPath, {
@@ -2118,7 +2121,7 @@ export async function handleChannelConnectorCommand(
     });
     const changed = name === "display"
       ? `流式/进度消息和工具/思考消息：${toggleLabel(target)}`
-      : name === "tools" || name === "tool"
+      : name === "tools"
         ? `工具/思考消息：${toggleLabel(target)}`
         : `流式/进度消息：${toggleLabel(target)}`;
     return {
@@ -2132,11 +2135,11 @@ export async function handleChannelConnectorCommand(
     };
   }
 
-  if (name === "buffer" || name === "buffers" || name === "reply-buffer" || name === "reply-buffers") {
+  if (name === "buffer") {
     return handleReplyBufferCommand(context, args, currentControl, name);
   }
 
-  if (name === "stop" || name === "cancel") {
+  if (name === "stop") {
     const stopped = context.stopActiveRun?.({
       bindingId: context.binding.id,
       sessionKey: context.sessionKey,
@@ -2166,7 +2169,7 @@ export async function handleChannelConnectorCommand(
     };
   }
 
-  if (name === "compact" || name === "compress") {
+  if (name === "compact") {
     if (!context.compactConversation) {
       return {
         handled: true,

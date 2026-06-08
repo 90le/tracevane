@@ -77,6 +77,8 @@ import {
 import {
   handleChannelConnectorCommand,
   listChannelConnectorGatewayModels,
+  matchChannelConnectorCommandPrefix,
+  matchChannelConnectorSubCommand,
   parseChannelConnectorCommand,
   resolveChannelConnectorEffectiveProject,
 } from "../../dist/apps/api/modules/channel-connectors/command-router.js";
@@ -3340,6 +3342,13 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(help.replyText, /`\/skills`/);
   assert.equal(parseChannelConnectorCommand("%help")?.name, "help");
   assert.equal(parseChannelConnectorCommand("/%help")?.name, "help");
+  assert.equal(matchChannelConnectorCommandPrefix("stat"), "status");
+  assert.equal(matchChannelConnectorCommandPrefix("hist"), "history");
+  assert.equal(matchChannelConnectorCommandPrefix("quo"), "usage");
+  assert.equal(matchChannelConnectorCommandPrefix("n"), null);
+  assert.equal(matchChannelConnectorCommandPrefix("s"), null);
+  assert.equal(matchChannelConnectorSubCommand("l", ["list", "add", "del", "delete"]), "list");
+  assert.equal(matchChannelConnectorSubCommand("d", ["list", "add", "del", "delete"]), "d");
 
   for (const alias of ["/menu", "/start"]) {
     const aliasHelp = await handleChannelConnectorCommand({
@@ -3350,6 +3359,29 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     assert.equal(aliasHelp.action, "help");
     assert.match(aliasHelp.replyText, /Studio Channel Commands/);
   }
+
+  const abbreviatedStatus = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/stat"),
+  });
+  assert.equal(abbreviatedStatus.handled, true);
+  assert.equal(abbreviatedStatus.action, "status");
+  assert.equal(abbreviatedStatus.ok, true);
+
+  const abbreviatedHistory = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/hist"),
+  });
+  assert.equal(abbreviatedHistory.handled, true);
+  assert.equal(abbreviatedHistory.action, "show");
+  assert.equal(abbreviatedHistory.ok, true);
+
+  const ambiguousCommandPrefix = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/s"),
+  });
+  assert.equal(ambiguousCommandPrefix.handled, false);
+  assert.equal(ambiguousCommandPrefix.passthroughText, "/s");
 
   const codexCommands = await handleChannelConnectorCommand({
     ...baseContext,
@@ -3385,6 +3417,22 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(listConfigCommands.action, "list");
   assert.match(listConfigCommands.replyText, /\/daily/);
   assert.doesNotMatch(listConfigCommands.replyText, /\[agent\].*daily/);
+
+  const abbreviatedConfigCommands = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/commands l"),
+  });
+  assert.equal(abbreviatedConfigCommands.handled, true);
+  assert.equal(abbreviatedConfigCommands.action, "list");
+  assert.match(abbreviatedConfigCommands.replyText, /\/daily/);
+
+  const ambiguousCommandsSubcommand = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/commands d daily"),
+  });
+  assert.equal(ambiguousCommandsSubcommand.handled, true);
+  assert.equal(ambiguousCommandsSubcommand.ok, false);
+  assert.match(ambiguousCommandsSubcommand.replyText, /\/commands del/);
 
   const claudeCommands = await handleChannelConnectorCommand({
     ...baseContext,
@@ -3529,6 +3577,14 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(usageWithoutRuntime.action, "usage");
   assert.equal(usageWithoutRuntime.ok, false);
   assert.match(usageWithoutRuntime.replyText, /还没有可统计/);
+
+  const quotaAlias = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/quo"),
+  });
+  assert.equal(quotaAlias.handled, true);
+  assert.equal(quotaAlias.action, "usage");
+  assert.equal(quotaAlias.ok, false);
 
   let usageCalled = false;
   const usage = await handleChannelConnectorCommand({
