@@ -1,7 +1,7 @@
 # Feishu Long Connection Issue Tracker
 
 > Status: active validation
-> Updated: 2026-06-08
+> Updated: 2026-06-09
 > Scope: Feishu long-connection ingress for Studio native Channel Connectors.
 
 This document is the single tracker for Feishu "connected but no reply"
@@ -114,6 +114,15 @@ Runtime proof fields:
   `lifecycleReceivedMessages=3`, `lockOwnerPid=2097069`, and all old watchdog /
   delivery-renewal fields stayed `0`.
 
+2026-06-09 idle evidence:
+
+- Ten-minute idle smoke after the post-patch user message:
+  `node scripts/smoke-channel-connectors-feishu-long-connection.mjs --since 2026-06-08T16:44:41.168Z --duration-ms 600000 --require-ingress-verified --json`
+  passed with `violations=0`, `samples=648`, `logEvents=0`. Runtime stayed on
+  daemon PID `2097069` with `connected=true`, `ingressVerified=true`,
+  `ingressState=receiving`, `dispatcherCallbacks=14`, `receivedMessages=5`,
+  `reconnects=0`, and all old watchdog / delivery-renewal fields stayed `0`.
+
 Automated verification:
 
 - `npm run build:api`
@@ -122,8 +131,9 @@ Automated verification:
 
 ## Open Items
 
-- Keep this tracker open until repeated user-driven Feishu messages continue to
-  arrive quickly after a longer idle period and after a real SDK reconnect.
+- Keep this tracker open until a fresh Feishu message arrives quickly after a
+  real SDK reconnect. The post-patch user message and ten-minute idle window are
+  now proven.
 - If a future message stalls, capture runtime, log tail, `systemctl --user status`,
   owner lock file, and process list before restarting anything.
 - Continue porting CC Go / OpenClaw Feishu card, callback, webhook, and menu
