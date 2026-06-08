@@ -529,7 +529,7 @@ function printResult(result) {
       `- ${connection.key}`,
       `connected=${connection.connected}`,
       `state=${connection.state}`,
-      `pingTimeout=${connection.pingTimeoutSeconds}s`,
+      `pingTimeout=${connection.pingTimeoutSeconds > 0 ? `${connection.pingTimeoutSeconds}s` : "sdk"}`,
       `ingressUnverified=${connection.ingressUnverifiedAfterMs}ms/${connection.ingressUnverifiedRenewMax}`,
       `zeroInbound=${connection.zeroInboundRenewAfterMs}ms/${connection.zeroInboundRenewMax}`,
       `connectedIdle=${connection.connectedIdleRenewAfterMs}ms`,

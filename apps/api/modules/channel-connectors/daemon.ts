@@ -157,7 +157,7 @@ import {
   type OctoWukongSocketStatus,
 } from "./octo-wukong.js";
 
-const DEFAULT_FEISHU_PING_TIMEOUT_SECONDS = 60;
+const DEFAULT_FEISHU_PING_TIMEOUT_SECONDS = 0;
 const MIN_FEISHU_PING_TIMEOUT_SECONDS = 30;
 const MAX_FEISHU_PING_TIMEOUT_SECONDS = 300;
 const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 180_000;
@@ -165,9 +165,12 @@ const MIN_FEISHU_WATCHDOG_RESTART_MS = 60_000;
 const MAX_FEISHU_WATCHDOG_RESTART_MS = 600_000;
 // Feishu long connection delivery is cluster-mode rather than broadcast. CC Go
 // avoids random delivery loss by using one app_id owner and fan-out; Studio also
-// keeps one local owner. Until the CC Go + OpenClaw parity investigation is
-// closed, Studio treats the first real inbound event as ingress verification and
-// keeps startup ingress renewal disabled unless explicitly enabled per binding.
+// keeps one OS-user owner. OpenClaw's Node implementation lets the official SDK
+// own heartbeat/reconnect, so Studio does not inject wsConfig.pingTimeout unless
+// a binding explicitly opts into that diagnostic. Until the CC Go + OpenClaw
+// parity investigation is closed, Studio treats the first real inbound event as
+// ingress verification and keeps startup ingress renewal disabled unless
+// explicitly enabled per binding.
 const DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS = 0;
 const MIN_FEISHU_CONNECTED_IDLE_RENEW_MS = 60_000;
 const MAX_FEISHU_CONNECTED_IDLE_RENEW_MS = 3_600_000;
@@ -2433,8 +2436,12 @@ function feishuGroupKey(transport: ChannelConnectorFeishuTransportConfig): strin
   return `${transport.apiUrl}|${transport.appId}`.replace(/[^a-zA-Z0-9._-]+/g, "_");
 }
 
-function feishuGroupLockPath(config: ChannelConnectorsDaemonRuntimeConfig, group: ChannelDaemonFeishuGroup): string {
-  return path.join(config.paths.state, "feishu-ws-locks", `${group.key}.lock`);
+function feishuGroupLockRoot(): string {
+  return path.join(os.homedir(), ".config", "openclaw-studio", "channel-connectors", "feishu-ws-global-locks");
+}
+
+function feishuGroupLockPath(_config: ChannelConnectorsDaemonRuntimeConfig, group: ChannelDaemonFeishuGroup): string {
+  return path.join(feishuGroupLockRoot(), `${group.key}.lock`);
 }
 
 function processIsAlive(pid: number): boolean {
@@ -2479,6 +2486,8 @@ function acquireFeishuGroupLock(
         groupKey: group.key,
         appId: group.appId,
         bindingIds: group.refs.map((ref) => ref.binding.id),
+        runtimePath: config.paths.runtime,
+        statePath: config.paths.state,
         startedAt: new Date().toISOString(),
       });
       group.lockAcquired = true;
@@ -6467,10 +6476,7 @@ function startFeishuClientForGroup(input: {
     domain: metadataString(group.refs[0].binding, ["domain", "apiUrl", "api_url", "baseUrl", "base_url"]) || undefined,
     logger: feishuLogger(config),
     loggerLevel: LoggerLevel.info,
-    autoReconnect: true,
-    handshakeTimeoutMs: 20_000,
     ...(feishuWsConfig ? { wsConfig: feishuWsConfig } : {}),
-    source: "openclaw-studio-channel-daemon",
     onReady: () => {
       group.lastConnectedAt = new Date().toISOString();
       group.lastDisconnectedAt = null;

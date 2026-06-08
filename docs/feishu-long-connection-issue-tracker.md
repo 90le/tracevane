@@ -67,6 +67,15 @@ Official Feishu constraints:
   client to be online when saving the subscription mode.
 - Official doc: `https://open.feishu.cn/document/server-docs/event-subscription-guide/event-subscription-configure-/request-url-configuration-case`
 
+## Parity Matrix
+
+| Contract | CC Go | OpenClaw Node/TS | Studio delta / decision |
+| --- | --- | --- | --- |
+| Same app delivery | `ws_shared.go` uses one `app_id|domain` owner and fans out events because Feishu load-balances duplicate WS clients. | One monitor owns one SDK WS client; cleanup closes it on abort. | Studio keeps in-process grouping and upgrades the owner lock to an OS-user global lock so systemd/dev daemons cannot both own the same app. |
+| SDK connection loop | `startWebSocketMode` lets the official Go SDK own the long-connection loop. | `createFeishuWSClient` passes only `appId`, `appSecret`, `domain`, `loggerLevel`, optional proxy `agent`; no custom `wsConfig`, `autoReconnect`, or handshake timeout. | Studio must default to SDK-owned heartbeat/reconnect. `pingTimeoutSeconds=0`; `wsConfig.pingTimeout` is explicit diagnostic opt-in only. |
+| Fast ingress ACK | Message/menu handlers snapshot and filter quickly, then dispatch Agent work asynchronously. | `fireAndForget` handlers claim/dedup, enqueue, and return without blocking SDK dispatch. | Studio already backgrounds normal message/menu dispatch; card execution remains separated from navigation and must avoid slow visible callback work. |
+| Duplicate/replay | CC has message cache and shared WS fan-out. | Persistent dedup warmup plus in-flight claims and sequential queue. | Studio keeps messageId-first persistent dedup, in-flight run queue, and runtime event evidence. |
+
 ## Current Evidence
 
 2026-06-08:
@@ -83,6 +92,17 @@ Official Feishu constraints:
     and `receivedMessages=3`.
 - This proves the link can work, but not that the false-online root cause is
   closed.
+- Runtime logs also showed repeated Studio-origin reconnects:
+  `no pong/inbound within 60s of last ping, terminating to trigger reconnect`.
+  CC Go and OpenClaw do not inject this default heartbeat override, so Studio
+  removed the default `wsConfig.pingTimeout` and now leaves heartbeat/reconnect
+  to the official SDK unless explicitly configured for diagnostics.
+- After rebuild/restart at `2026-06-08T12:33:30Z`, runtime reported
+  `pingTimeoutSeconds=0`, `reconnects=0`, and owner lock path under
+  `~/.config/openclaw-studio/channel-connectors/feishu-ws-global-locks`.
+  A 75s read-only soak produced 81 samples, 0 violations, and no new
+  ping-timeout reconnect log events. No user message was sent during this soak,
+  so ingress remains pending live validation.
 
 ## CC Go Contract To Port
 
@@ -151,7 +171,11 @@ Current implementation after the latest investigation:
 - Official Node SDK `WSClient` + `EventDispatcher`.
 - Fast background dispatch for normal message/menu events.
 - Runtime distinguishes `connected` from `ingressVerified` / `ingressState`.
-- `pingTimeoutSeconds` default is 60.
+- `pingTimeoutSeconds` default is 0, meaning SDK-owned heartbeat/reconnect.
+- `wsConfig.pingTimeout` is passed only when a binding explicitly sets
+  `feishuPingTimeoutSeconds` / `pingTimeoutSeconds` above 0.
+- Owner lock path is user-global:
+  `~/.config/openclaw-studio/channel-connectors/feishu-ws-global-locks`.
 - `connectedIdleRenewAfterMs=0`.
 - `zeroInboundRenewAfterMs=0`.
 - Startup ingress renewal is disabled by default. It may exist only as explicit
@@ -212,3 +236,7 @@ Not yet proven:
 - 2026-06-08: User reported Feishu did not reply while Octo remained normal.
   Runtime showed false online before later messages arrived. Action: created this
   tracker and set rule that restart-based recovery is not the primary solution.
+- 2026-06-08: Removed Studio's default Feishu Node SDK `wsConfig.pingTimeout`
+  injection and moved the same-app owner lock to a user-global path. Evidence:
+  build passed, Channel Connectors system tests passed, daemon restarted with
+  `pingTimeoutSeconds=0`, and 75s read-only soak had no reconnect violations.

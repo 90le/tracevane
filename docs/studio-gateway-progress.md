@@ -121,7 +121,8 @@
 - 通过：`npm run dev:restart`，前端 `http://127.0.0.1:5176`，后端 `http://127.0.0.1:3761`。
 - 通过：Gateway status 显示 local daemon `state=running`、preferred CLI endpoint `http://127.0.0.1:18796/v1`；无正确 Gateway key 访问 `/v1/models` 返回 401，鉴权仍生效。
 - 通过：Channel daemon `/health` 返回 `ok=true`。
-- 通过：Feishu 长连接稳定性基础合同为本机同 App owner lock、默认 60s SDK half-open timeout、`zeroInboundRenewAfterMs=0`、`connectedIdleRenewAfterMs=0`、非 connected watchdog 180s；runtime 新增 `ingressState` / `lockOwnerPid` / 入站验证字段，smoke 可用 `--require-ingress-verified` 判断真实入站。假在线根因继续按专项文档复刻 CC Go + OpenClaw。
+- 通过：Feishu 长连接稳定性基础合同改为 CC Go / OpenClaw parity：本机同 App 用户级全局 owner lock、默认 SDK-owned heartbeat/reconnect（`pingTimeoutSeconds=0`，不传 `wsConfig.pingTimeout`）、`zeroInboundRenewAfterMs=0`、`connectedIdleRenewAfterMs=0`、非 connected watchdog 180s；runtime 新增 `ingressState` / `lockOwnerPid` / 入站验证字段，smoke 可用 `--require-ingress-verified` 判断真实入站。假在线根因继续按专项文档复刻 CC Go + OpenClaw。
+- 通过：重启 Channel daemon 后，真实 runtime 显示 Feishu `pingTimeoutSeconds=0`、`reconnects=0`、lockPath 位于 `~/.config/openclaw-studio/channel-connectors/feishu-ws-global-locks/...`；`node scripts/smoke-channel-connectors-feishu-long-connection.mjs --duration-ms 75000 --json` 采样 81 次、0 violations、无旧 `no pong/inbound within 60s` 重连日志。
 - 通过：用户在 2026-06-08T11:37:58Z 的 Feishu 消息 `把docs文档总结发我` 已进入 long-connection 入站并在 2026-06-08T11:39:02Z 完成回复；该现场证明问题属于 Feishu 入站连接延迟/假在线，不是 Agent 或模型链路失败。
 - 通过：构建产物 `/help` 命令探针显示 `分组帮助\n\n| 命令 | 作用 |`，第二个 Markdown 表格前空行已保留。
 - 通过：本次重启后 Channel daemon `/agent-sessions` 返回 Feishu/Octo live binding 当前 metadata 请求 `effectiveMode=persistent`，`activeSessions=[]`；未修改真实 Channel 配置。
@@ -130,7 +131,7 @@
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
 - GMN provider 可作为视觉测试源，但未设为所有 App scope 默认 active provider；测试时需显式选择 `gpt-5.5`、`gmn-vision` 或 `gmn/gpt-5.5`。
-- Feishu 官方 SDK 仍可能因网络或平台关闭连接而 reconnect；当前策略不再做 startup-silence / connected-idle 业务层强制重建，避免与 Feishu 集群投递随机性叠加。Studio 保留单 owner lock、60s SDK half-open timeout、慢速非 connected circuit-breaker、快速 ACK、messageId 去重和 runtime 入站观测；如果后续仍出现 SDK 层长期卡死，再评估官方更高层 channel API、SDK 版本替换或 webhook fallback。
+- Feishu 官方 SDK 仍可能因网络或平台关闭连接而 reconnect；当前策略不再做 startup-silence / connected-idle 业务层强制重建，也不默认注入 SDK `pingTimeout`，避免与 Feishu 集群投递随机性叠加。Studio 保留用户级全局单 owner lock、慢速非 connected circuit-breaker、快速 ACK、messageId 去重和 runtime 入站观测；如果后续仍出现 SDK 层长期卡死，再评估官方更高层 channel API、SDK 版本替换或 webhook fallback。
 - Codex Agent 图片已走原生 `--image`；Studio `/compact` 已覆盖 IM history 压缩，但 Codex 原生交互式 `/compact`、`/clear` 仍需要持久 Codex session，不能通过一次性 `codex exec` 伪实现；Claude Code 已支持图片输入、权限自动回包和 IM 文本批准，但 Feishu 权限按钮卡片、AskUserQuestion、视频理解、OCR、语音/STT/TTS 仍待迁移；OpenCode 视觉输入仍待迁移。
 - 出站文件基础链路已覆盖小/中型本地文件，Octo 已具备 multipart/direct upload 自动分流；高级 `yolo` 权限仅放宽本地路径根限制，不绕过平台上传限制。后续仍需做真实大文件限额和更多平台文件收发实测。
 - 同 session FIFO queue 当前是 daemon 内存队列；Studio/OpenClaw 崩溃不影响 daemon 内排队，但 Channel daemon 自身重启会丢失未开始的排队消息。持久 session driver 合同已覆盖 session 级 crash fallback，但尚未实现 durable queue。

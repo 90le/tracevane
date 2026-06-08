@@ -27,7 +27,7 @@ function feishuRuntime(overrides = {}) {
         lastDisconnectedAt: null,
         lastReceivedAt: null,
         lastUnhealthyAt: null,
-        pingTimeoutSeconds: 60,
+        pingTimeoutSeconds: 0,
         connectedIdleRenewAfterMs: 0,
         zeroInboundRenewAfterMs: 0,
         zeroInboundRenewMax: 0,
@@ -104,7 +104,7 @@ test("Feishu long-connection smoke passes clean SDK-owned runtime", async () => 
   assert.equal(parsed.ok, true);
   assert.equal(parsed.summary.connections, 1);
   assert.equal(parsed.summary.violations, 0);
-  assert.equal(parsed.connections[0].pingTimeoutSeconds, 60);
+  assert.equal(parsed.connections[0].pingTimeoutSeconds, 0);
   assert.equal(parsed.connections[0].connectedIdleRenewAfterMs, 0);
   assert.equal(parsed.connections[0].zeroInboundRenewAfterMs, 0);
   assert.equal(parsed.connections[0].zeroInboundRenewMax, 0);
