@@ -165,21 +165,23 @@ const MIN_FEISHU_WATCHDOG_RESTART_MS = 60_000;
 const MAX_FEISHU_WATCHDOG_RESTART_MS = 600_000;
 // Feishu long connection delivery is cluster-mode rather than broadcast. CC Go
 // avoids random delivery loss by using one app_id owner and fan-out; Studio also
-// keeps one OS-user owner. OpenClaw's Node implementation lets the official SDK
-// own heartbeat/reconnect, so Studio does not inject wsConfig.pingTimeout unless
-// a binding explicitly opts into that diagnostic. Until the CC Go + OpenClaw
-// parity investigation is closed, Studio treats the first real inbound event as
-// ingress verification and keeps startup ingress renewal disabled unless
-// explicitly enabled per binding.
+// keeps one OS-user owner. OpenClaw's TypeScript connector and CC Go both let
+// the official SDK own the WebSocket keepalive/reconnect loop. Studio therefore
+// keeps custom SDK ping-timeout and business-ingress renewals disabled by
+// default. They remain metadata opt-ins for diagnostics only; default health is
+// proven by dispatcher/business ingress counters, not by rebuilding sockets.
 const DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS = 0;
 const MIN_FEISHU_CONNECTED_IDLE_RENEW_MS = 60_000;
 const MAX_FEISHU_CONNECTED_IDLE_RENEW_MS = 3_600_000;
+const DEFAULT_FEISHU_VERIFIED_INGRESS_SILENT_RENEW_MS = 0;
+const MIN_FEISHU_VERIFIED_INGRESS_SILENT_RENEW_MS = 120_000;
+const MAX_FEISHU_VERIFIED_INGRESS_SILENT_RENEW_MS = 3_600_000;
 const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS = 0;
 const MIN_FEISHU_ZERO_INBOUND_RENEW_MS = 60_000;
 const MAX_FEISHU_ZERO_INBOUND_RENEW_MS = 15 * 60_000;
 const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX = 0;
 const MAX_FEISHU_ZERO_INBOUND_RENEW_MAX = 10;
-const DEFAULT_FEISHU_INGRESS_UNVERIFIED_AFTER_MS = 60_000;
+const DEFAULT_FEISHU_INGRESS_UNVERIFIED_AFTER_MS = 0;
 const MIN_FEISHU_INGRESS_UNVERIFIED_AFTER_MS = 30_000;
 const MAX_FEISHU_INGRESS_UNVERIFIED_AFTER_MS = 3_600_000;
 const DEFAULT_FEISHU_INGRESS_UNVERIFIED_RENEW_MAX = 0;
@@ -264,13 +266,21 @@ interface ChannelDaemonFeishuConnectionState {
   lastReceivedAt: string | null;
   lastUnhealthyAt: string | null;
   ingressVerified: boolean;
-  ingressState: "receiving" | "warming" | "silent" | "disconnected" | "lock-held" | "closed";
+  ingressState: "receiving" | "warming" | "silent" | "stale" | "disconnected" | "lock-held" | "closed";
   ingressSilentForMs: number;
   ingressUnverifiedAfterMs: number;
   ingressUnverifiedRenewMax: number;
   ingressUnverifiedRenewals: number;
   ingressUnverifiedRenewDelayMs: number;
   lastIngressUnverifiedRenewAt: string | null;
+  verifiedIngressSilentRenewAfterMs: number;
+  verifiedIngressSilentRenewals: number;
+  lastVerifiedIngressSilentRenewAt: string | null;
+  dispatcherVerificationConfigured: boolean;
+  dispatcherEncryptConfigured: boolean;
+  dispatcherCallbacks: number;
+  lastDispatcherCallbackAt: string | null;
+  lastDispatcherEventType: string | null;
   lockAcquired: boolean;
   lockOwnerPid: number | null;
   lockPath: string | null;
@@ -318,6 +328,11 @@ interface ChannelDaemonFeishuGroup {
   zeroInboundRenewals: number;
   ingressUnverifiedRenewals: number;
   lastIngressUnverifiedRenewAt: string | null;
+  verifiedIngressSilentRenewals: number;
+  lastVerifiedIngressSilentRenewAt: string | null;
+  dispatcherCallbacks: number;
+  lastDispatcherCallbackAt: string | null;
+  lastDispatcherEventType: string | null;
   lockAcquired: boolean;
   lockOwnerPid: number | null;
   lockPath: string | null;
@@ -1605,6 +1620,30 @@ function feishuLockRetryMs(group: ChannelDaemonFeishuGroup): number {
   return clampNumber(Math.floor(value), MIN_FEISHU_LOCK_RETRY_MS, MAX_FEISHU_LOCK_RETRY_MS);
 }
 
+function feishuDispatcherVerificationToken(group: ChannelDaemonFeishuGroup): string {
+  const binding = firstFeishuBinding(group);
+  return binding
+    ? metadataString(binding, [
+      "verificationToken",
+      "verification_token",
+      "feishuVerificationToken",
+      "feishu_verification_token",
+    ])
+    : "";
+}
+
+function feishuDispatcherEncryptKey(group: ChannelDaemonFeishuGroup): string {
+  const binding = firstFeishuBinding(group);
+  return binding
+    ? metadataString(binding, [
+      "encryptKey",
+      "encrypt_key",
+      "feishuEncryptKey",
+      "feishu_encrypt_key",
+    ])
+    : "";
+}
+
 function feishuConnectedIdleRenewMs(group: ChannelDaemonFeishuGroup): number {
   const binding = firstFeishuBinding(group);
   const value = binding
@@ -1619,6 +1658,26 @@ function feishuConnectedIdleRenewMs(group: ChannelDaemonFeishuGroup): number {
     : DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS;
   if (value <= 0) return 0;
   return clampNumber(Math.floor(value), MIN_FEISHU_CONNECTED_IDLE_RENEW_MS, MAX_FEISHU_CONNECTED_IDLE_RENEW_MS);
+}
+
+function feishuVerifiedIngressSilentRenewMs(group: ChannelDaemonFeishuGroup): number {
+  const binding = firstFeishuBinding(group);
+  const value = binding
+    ? metadataNumber(binding, [
+      "feishuVerifiedIngressSilentRenewMs",
+      "feishu_verified_ingress_silent_renew_ms",
+      "verifiedIngressSilentRenewMs",
+      "verified_ingress_silent_renew_ms",
+      "ingressLeaseRenewMs",
+      "ingress_lease_renew_ms",
+    ], DEFAULT_FEISHU_VERIFIED_INGRESS_SILENT_RENEW_MS)
+    : DEFAULT_FEISHU_VERIFIED_INGRESS_SILENT_RENEW_MS;
+  if (value <= 0) return 0;
+  return clampNumber(
+    Math.floor(value),
+    MIN_FEISHU_VERIFIED_INGRESS_SILENT_RENEW_MS,
+    MAX_FEISHU_VERIFIED_INGRESS_SILENT_RENEW_MS,
+  );
 }
 
 function feishuZeroInboundRenewMs(group: ChannelDaemonFeishuGroup): number {
@@ -2352,7 +2411,8 @@ function feishuConnectionState(group: ChannelDaemonFeishuGroup): ChannelDaemonFe
   const connected = status?.state === "connected";
   const lockHeld = !group.lockAcquired && !group.client && Boolean(group.lockOwnerPid);
   const ingressUnverifiedAfterMs = feishuIngressUnverifiedAfterMs(group);
-  const lastIngressActivityAt = group.lastReceivedAt || group.lastConnectedAt;
+  const verifiedIngressSilentRenewAfterMs = feishuVerifiedIngressSilentRenewMs(group);
+  const lastIngressActivityAt = latestFeishuVerifiedIngressLeaseAt(group);
   const lastIngressActivityMs = lastIngressActivityAt ? Date.parse(lastIngressActivityAt) : NaN;
   const ingressSilentForMs = connected && Number.isFinite(lastIngressActivityMs)
     ? Math.max(0, Date.now() - lastIngressActivityMs)
@@ -2365,6 +2425,8 @@ function feishuConnectionState(group: ChannelDaemonFeishuGroup): ChannelDaemonFe
     ingressState = "closed";
   } else if (!connected) {
     ingressState = "disconnected";
+  } else if (ingressVerified && verifiedIngressSilentRenewAfterMs > 0 && ingressSilentForMs >= verifiedIngressSilentRenewAfterMs) {
+    ingressState = "stale";
   } else if (ingressVerified) {
     ingressState = "receiving";
   } else if (ingressUnverifiedAfterMs > 0 && ingressSilentForMs >= ingressUnverifiedAfterMs) {
@@ -2393,6 +2455,14 @@ function feishuConnectionState(group: ChannelDaemonFeishuGroup): ChannelDaemonFe
     ingressUnverifiedRenewals: group.ingressUnverifiedRenewals,
     ingressUnverifiedRenewDelayMs: feishuIngressUnverifiedRenewDelayMs(group),
     lastIngressUnverifiedRenewAt: group.lastIngressUnverifiedRenewAt,
+    verifiedIngressSilentRenewAfterMs,
+    verifiedIngressSilentRenewals: group.verifiedIngressSilentRenewals,
+    lastVerifiedIngressSilentRenewAt: group.lastVerifiedIngressSilentRenewAt,
+    dispatcherVerificationConfigured: Boolean(feishuDispatcherVerificationToken(group)),
+    dispatcherEncryptConfigured: Boolean(feishuDispatcherEncryptKey(group)),
+    dispatcherCallbacks: group.dispatcherCallbacks,
+    lastDispatcherCallbackAt: group.lastDispatcherCallbackAt,
+    lastDispatcherEventType: group.lastDispatcherEventType,
     lockAcquired: group.lockAcquired,
     lockOwnerPid: group.lockOwnerPid,
     lockPath: group.lockPath,
@@ -2423,6 +2493,21 @@ function updateFeishuRuntime(
 
 function latestFeishuLifecycleActivityAt(group: ChannelDaemonFeishuGroup): string | null {
   const candidates = [group.lifecycleLastReceivedAt]
+    .map((value) => {
+      const timestamp = value ? Date.parse(value) : NaN;
+      return Number.isFinite(timestamp) ? { value, timestamp } : null;
+    })
+    .filter((value): value is { value: string; timestamp: number } => Boolean(value));
+  candidates.sort((a, b) => b.timestamp - a.timestamp);
+  return candidates[0]?.value || null;
+}
+
+function latestFeishuVerifiedIngressLeaseAt(group: ChannelDaemonFeishuGroup): string | null {
+  const candidates = [
+    group.lifecycleLastReceivedAt,
+    group.lastVerifiedIngressSilentRenewAt,
+    group.lastConnectedAt,
+  ]
     .map((value) => {
       const timestamp = value ? Date.parse(value) : NaN;
       return Number.isFinite(timestamp) ? { value, timestamp } : null;
@@ -6192,6 +6277,11 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
           zeroInboundRenewals: 0,
           ingressUnverifiedRenewals: 0,
           lastIngressUnverifiedRenewAt: null,
+          verifiedIngressSilentRenewals: 0,
+          lastVerifiedIngressSilentRenewAt: null,
+          dispatcherCallbacks: 0,
+          lastDispatcherCallbackAt: null,
+          lastDispatcherEventType: null,
           lockAcquired: false,
           lockOwnerPid: null,
           lockPath: null,
@@ -6223,6 +6313,11 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
         zeroInboundRenewals: 0,
         ingressUnverifiedRenewals: 0,
         lastIngressUnverifiedRenewAt: null,
+        verifiedIngressSilentRenewals: 0,
+        lastVerifiedIngressSilentRenewAt: null,
+        dispatcherCallbacks: 0,
+        lastDispatcherCallbackAt: null,
+        lastDispatcherEventType: null,
         lockAcquired: false,
         lockOwnerPid: null,
         lockPath: null,
@@ -6331,6 +6426,36 @@ function sendFeishuCommandTextReplyInBackground(input: {
   });
 }
 
+function markFeishuDispatcherCallback(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  state: ChannelDaemonState;
+  group: ChannelDaemonFeishuGroup;
+  eventType: string;
+  persist?: boolean;
+}): string {
+  const receivedAt = new Date().toISOString();
+  input.group.dispatcherCallbacks += 1;
+  input.group.lastDispatcherCallbackAt = receivedAt;
+  input.group.lastDispatcherEventType = input.eventType;
+  if (input.persist) {
+    updateFeishuRuntime(input.config, input.state, input.group);
+  }
+  return receivedAt;
+}
+
+function markFeishuBusinessIngress(group: ChannelDaemonFeishuGroup, receivedAt: string): void {
+  group.receivedMessages += 1;
+  group.lifecycleReceivedMessages += 1;
+  group.lastReceivedAt = receivedAt;
+  group.lifecycleLastReceivedAt = receivedAt;
+  group.zeroInboundRenewals = 0;
+  group.ingressUnverifiedRenewals = 0;
+  group.lastIngressUnverifiedRenewAt = null;
+  group.verifiedIngressSilentRenewals = 0;
+  group.lastVerifiedIngressSilentRenewAt = null;
+  group.suppressZeroInboundRenewal = false;
+}
+
 function createFeishuDispatcher(input: {
   config: ChannelConnectorsDaemonRuntimeConfig;
   state: ChannelDaemonState;
@@ -6339,21 +6464,23 @@ function createFeishuDispatcher(input: {
   seenMessages: Map<string, number>;
 }): EventDispatcher {
   const { config, state, activeRunCancels, group, seenMessages } = input;
+  const verificationToken = feishuDispatcherVerificationToken(group);
+  const encryptKey = feishuDispatcherEncryptKey(group);
   const dispatcher = new EventDispatcher({
+    verificationToken: verificationToken || undefined,
+    encryptKey: encryptKey || undefined,
     logger: feishuLogger(config),
     loggerLevel: LoggerLevel.info,
   });
   dispatcher.register({
     "im.message.receive_v1": async (data: unknown) => {
-      const receivedAt = new Date().toISOString();
-      group.receivedMessages += 1;
-      group.lifecycleReceivedMessages += 1;
-      group.lastReceivedAt = receivedAt;
-      group.lifecycleLastReceivedAt = receivedAt;
-      group.zeroInboundRenewals = 0;
-      group.ingressUnverifiedRenewals = 0;
-      group.lastIngressUnverifiedRenewAt = null;
-      group.suppressZeroInboundRenewal = false;
+      const receivedAt = markFeishuDispatcherCallback({
+        config,
+        state,
+        group,
+        eventType: "im.message.receive_v1",
+      });
+      markFeishuBusinessIngress(group, receivedAt);
       const parsed = parseChannelConnectorFeishuWebhook(feishuEnvelope(group.appId, "im.message.receive_v1", data));
       writeJsonLine(config.paths.feishuEvents, {
         checkedAt: receivedAt,
@@ -6366,6 +6493,7 @@ function createFeishuDispatcher(input: {
         fromUid: parsed.fromUid,
         messageId: parsed.messageId,
         longConnection: true,
+        rawEventShape: isRecord(data) ? Object.keys(data).slice(0, 12) : [],
       });
       updateFeishuRuntime(config, state, group);
       dispatchFeishuParsedEventInBackground({
@@ -6379,16 +6507,27 @@ function createFeishuDispatcher(input: {
       });
     },
     "card.action.trigger": async (data: unknown) => {
-      const receivedAt = new Date().toISOString();
-      group.lastReceivedAt = receivedAt;
-      group.lifecycleLastReceivedAt = receivedAt;
-      group.receivedMessages += 1;
-      group.lifecycleReceivedMessages += 1;
-      group.zeroInboundRenewals = 0;
-      group.ingressUnverifiedRenewals = 0;
-      group.lastIngressUnverifiedRenewAt = null;
-      group.suppressZeroInboundRenewal = false;
+      const receivedAt = markFeishuDispatcherCallback({
+        config,
+        state,
+        group,
+        eventType: "card.action.trigger",
+      });
+      markFeishuBusinessIngress(group, receivedAt);
       const parsed = parseChannelConnectorFeishuWebhook(feishuEnvelope(group.appId, "card.action.trigger", data));
+      writeJsonLine(config.paths.feishuEvents, {
+        checkedAt: receivedAt,
+        adapter: "feishu",
+        eventKind: parsed.kind,
+        eventType: parsed.eventType,
+        eventId: parsed.eventId,
+        appId: parsed.appId || group.appId,
+        channelId: parsed.channelId,
+        fromUid: parsed.fromUid,
+        messageId: parsed.messageId,
+        longConnection: true,
+        rawEventShape: isRecord(data) ? Object.keys(data).slice(0, 12) : [],
+      });
       updateFeishuRuntime(config, state, group);
       const response = await dispatchFeishuParsedEvent({
         config,
@@ -6402,16 +6541,27 @@ function createFeishuDispatcher(input: {
       return response || undefined;
     },
     "application.bot.menu_v6": async (data: unknown) => {
-      const receivedAt = new Date().toISOString();
-      group.lastReceivedAt = receivedAt;
-      group.lifecycleLastReceivedAt = receivedAt;
-      group.receivedMessages += 1;
-      group.lifecycleReceivedMessages += 1;
-      group.zeroInboundRenewals = 0;
-      group.ingressUnverifiedRenewals = 0;
-      group.lastIngressUnverifiedRenewAt = null;
-      group.suppressZeroInboundRenewal = false;
+      const receivedAt = markFeishuDispatcherCallback({
+        config,
+        state,
+        group,
+        eventType: "application.bot.menu_v6",
+      });
+      markFeishuBusinessIngress(group, receivedAt);
       const parsed = parseChannelConnectorFeishuWebhook(feishuEnvelope(group.appId, "application.bot.menu_v6", data));
+      writeJsonLine(config.paths.feishuEvents, {
+        checkedAt: receivedAt,
+        adapter: "feishu",
+        eventKind: parsed.kind,
+        eventType: parsed.eventType,
+        eventId: parsed.eventId,
+        appId: parsed.appId || group.appId,
+        channelId: parsed.channelId,
+        fromUid: parsed.fromUid,
+        messageId: parsed.messageId,
+        longConnection: true,
+        rawEventShape: isRecord(data) ? Object.keys(data).slice(0, 12) : [],
+      });
       updateFeishuRuntime(config, state, group);
       dispatchFeishuParsedEventInBackground({
         config,
@@ -6424,8 +6574,15 @@ function createFeishuDispatcher(input: {
       });
     },
     "im.message.recalled_v1": async (data: unknown) => {
+      const receivedAt = markFeishuDispatcherCallback({
+        config,
+        state,
+        group,
+        eventType: "im.message.recalled_v1",
+        persist: true,
+      });
       writeJsonLine(config.paths.feishuEvents, {
-        checkedAt: new Date().toISOString(),
+        checkedAt: receivedAt,
         adapter: "feishu",
         eventKind: "message-recalled",
         eventType: "im.message.recalled_v1",
@@ -6433,9 +6590,51 @@ function createFeishuDispatcher(input: {
         rawEventShape: isRecord(data) ? Object.keys(data).slice(0, 12) : [],
       });
     },
-    "im.message.read_v1": async () => {},
-    "im.message.reaction.created_v1": async () => {},
-    "im.message.reaction.deleted_v1": async () => {},
+    "im.message.read_v1": async () => {
+      markFeishuDispatcherCallback({
+        config,
+        state,
+        group,
+        eventType: "im.message.read_v1",
+        persist: true,
+      });
+    },
+    "im.message.reaction.created_v1": async () => {
+      markFeishuDispatcherCallback({
+        config,
+        state,
+        group,
+        eventType: "im.message.reaction.created_v1",
+        persist: true,
+      });
+    },
+    "im.message.reaction.deleted_v1": async () => {
+      markFeishuDispatcherCallback({
+        config,
+        state,
+        group,
+        eventType: "im.message.reaction.deleted_v1",
+        persist: true,
+      });
+    },
+    "chat.access_event.bot_p2p_chat_entered_v1": async () => {
+      markFeishuDispatcherCallback({
+        config,
+        state,
+        group,
+        eventType: "chat.access_event.bot_p2p_chat_entered_v1",
+        persist: true,
+      });
+    },
+    "p2p_chat.created_v1": async () => {
+      markFeishuDispatcherCallback({
+        config,
+        state,
+        group,
+        eventType: "p2p_chat.created_v1",
+        persist: true,
+      });
+    },
   });
   return dispatcher;
 }
@@ -6491,6 +6690,9 @@ function startFeishuClientForGroup(input: {
         pingTimeoutSeconds: feishuPingTimeoutSeconds(group),
         ingressUnverifiedAfterMs: feishuIngressUnverifiedAfterMs(group),
         ingressUnverifiedRenewMax: feishuIngressUnverifiedRenewMax(group),
+        verifiedIngressSilentRenewAfterMs: feishuVerifiedIngressSilentRenewMs(group),
+        dispatcherVerificationConfigured: Boolean(feishuDispatcherVerificationToken(group)),
+        dispatcherEncryptConfigured: Boolean(feishuDispatcherEncryptKey(group)),
         connectedIdleRenewAfterMs: feishuConnectedIdleRenewMs(group),
         zeroInboundRenewAfterMs: feishuZeroInboundRenewMs(group),
         zeroInboundRenewMax: feishuZeroInboundRenewMax(group),
@@ -6531,6 +6733,9 @@ function startFeishuClientForGroup(input: {
         reconnects: group.reconnects,
         ingressUnverifiedAfterMs: feishuIngressUnverifiedAfterMs(group),
         ingressUnverifiedRenewMax: feishuIngressUnverifiedRenewMax(group),
+        verifiedIngressSilentRenewAfterMs: feishuVerifiedIngressSilentRenewMs(group),
+        dispatcherVerificationConfigured: Boolean(feishuDispatcherVerificationToken(group)),
+        dispatcherEncryptConfigured: Boolean(feishuDispatcherEncryptKey(group)),
       });
       updateFeishuRuntime(config, state, group);
     },
@@ -6575,6 +6780,10 @@ function restartFeishuGroupClient(input: {
     group.lifecycleLastReceivedAt = null;
   }
   if (reason.startsWith("watchdog_ingress_unverified_")) {
+    group.lifecycleReceivedMessages = 0;
+    group.lifecycleLastReceivedAt = null;
+  }
+  if (reason.startsWith("watchdog_verified_ingress_silent_")) {
     group.lifecycleReceivedMessages = 0;
     group.lifecycleLastReceivedAt = null;
   }
@@ -6703,6 +6912,43 @@ function startFeishuWatchdog(input: {
             zeroInboundRenewals: group.zeroInboundRenewals,
             zeroInboundRenewMax,
             lastConnectedAt: group.lastConnectedAt,
+          });
+          continue;
+        }
+        const verifiedIngressSilentRenewAfterMs = feishuVerifiedIngressSilentRenewMs(group);
+        const latestVerifiedIngressLeaseAt = latestFeishuVerifiedIngressLeaseAt(group);
+        const latestVerifiedIngressLeaseAtMs = latestVerifiedIngressLeaseAt
+          ? Date.parse(latestVerifiedIngressLeaseAt)
+          : NaN;
+        const verifiedIngressSilentForMs = Number.isFinite(latestVerifiedIngressLeaseAtMs)
+          ? nowMs - latestVerifiedIngressLeaseAtMs
+          : connectedForMs;
+        if (
+          verifiedIngressSilentRenewAfterMs > 0
+          && group.receivedMessages > 0
+          && Number.isFinite(connectedAtMs)
+          && verifiedIngressSilentForMs >= verifiedIngressSilentRenewAfterMs
+        ) {
+          group.verifiedIngressSilentRenewals += 1;
+          group.lastVerifiedIngressSilentRenewAt = new Date().toISOString();
+          restartFeishuGroupClient({
+            config,
+            state,
+            activeRunCancels,
+            group,
+            clients,
+            seenMessages,
+            reason: `watchdog_verified_ingress_silent_${verifiedIngressSilentForMs}`,
+          });
+          appendLog(config.paths.log, "Feishu WebSocket verified-ingress silent renewal threshold elapsed", {
+            key: group.key,
+            silentForMs: verifiedIngressSilentForMs,
+            renewAfterMs: verifiedIngressSilentRenewAfterMs,
+            verifiedIngressSilentRenewals: group.verifiedIngressSilentRenewals,
+            lastVerifiedIngressLeaseAt: latestVerifiedIngressLeaseAt,
+            lastConnectedAt: group.lastConnectedAt,
+            lastReceivedAt: group.lastReceivedAt,
+            receivedMessages: group.receivedMessages,
           });
           continue;
         }

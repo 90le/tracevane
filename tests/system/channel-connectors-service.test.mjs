@@ -7005,12 +7005,14 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /MIN_FEISHU_PING_TIMEOUT_SECONDS\s*=\s*30/);
   assert.match(daemonSource, /DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS\s*=\s*0/);
   assert.match(daemonSource, /MIN_FEISHU_CONNECTED_IDLE_RENEW_MS\s*=\s*60_?000/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_VERIFIED_INGRESS_SILENT_RENEW_MS\s*=\s*0/);
+  assert.match(daemonSource, /MIN_FEISHU_VERIFIED_INGRESS_SILENT_RENEW_MS\s*=\s*120_?000/);
   assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS\s*=\s*0/);
   assert.match(daemonSource, /MIN_FEISHU_ZERO_INBOUND_RENEW_MS\s*=\s*60_?000/);
   assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX\s*=\s*0/);
   assert.match(daemonSource, /DEFAULT_FEISHU_WATCHDOG_RESTART_MS\s*=\s*180_?000/);
   assert.match(daemonSource, /MIN_FEISHU_WATCHDOG_RESTART_MS\s*=\s*60_?000/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_INGRESS_UNVERIFIED_AFTER_MS\s*=\s*60_?000/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_INGRESS_UNVERIFIED_AFTER_MS\s*=\s*0/);
   assert.match(daemonSource, /DEFAULT_FEISHU_INGRESS_UNVERIFIED_RENEW_MAX\s*=\s*0/);
   assert.match(daemonSource, /feishuPingTimeoutSeconds/);
   assert.match(daemonSource, /feishuIngressUnverifiedAfterMs/);
@@ -7029,6 +7031,7 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.doesNotMatch(daemonSource, /handshakeTimeoutMs/);
   assert.match(daemonSource, /pingTimeoutSeconds: feishuPingTimeoutSeconds\(group\)/);
   assert.match(daemonSource, /feishuConnectedIdleRenewMs/);
+  assert.match(daemonSource, /feishuVerifiedIngressSilentRenewMs/);
   assert.match(daemonSource, /feishuZeroInboundRenewMs/);
   assert.match(daemonSource, /feishuZeroInboundRenewMax/);
   assert.match(daemonSource, /feishuWatchdogRestartMs/);
@@ -7046,6 +7049,7 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /group\.lifecycleReceivedMessages > 0/);
   assert.match(daemonSource, /reason\.startsWith\("watchdog_connected_idle_"\)/);
   assert.match(daemonSource, /reason\.startsWith\("watchdog_ingress_unverified_"\)/);
+  assert.match(daemonSource, /reason\.startsWith\("watchdog_verified_ingress_silent_"\)/);
   const feishuWatchdogRestartBlock = daemonSource.slice(
     daemonSource.indexOf("function restartFeishuGroupClient"),
     daemonSource.indexOf("function startFeishuWatchdog"),
@@ -7059,6 +7063,8 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(feishuConnectionStateBlock, /zeroInboundRenewMax:\s*feishuZeroInboundRenewMax\(group\)/);
   assert.match(feishuConnectionStateBlock, /ingressUnverifiedRenewMax:\s*feishuIngressUnverifiedRenewMax\(group\)/);
   assert.match(feishuConnectionStateBlock, /ingressUnverifiedRenewDelayMs:\s*feishuIngressUnverifiedRenewDelayMs\(group\)/);
+  assert.match(feishuConnectionStateBlock, /verifiedIngressSilentRenewAfterMs/);
+  assert.match(feishuConnectionStateBlock, /verifiedIngressSilentRenewals/);
   assert.match(feishuConnectionStateBlock, /ingressVerified/);
   assert.match(feishuConnectionStateBlock, /ingressState/);
   assert.match(feishuConnectionStateBlock, /lockAcquired/);
@@ -7066,6 +7072,7 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /!\s*group\.suppressZeroInboundRenewal/);
   assert.match(daemonSource, /feishu_ping_timeout_seconds/);
   assert.match(daemonSource, /feishu_connected_idle_renew_ms/);
+  assert.match(daemonSource, /feishu_verified_ingress_silent_renew_ms/);
   assert.match(daemonSource, /feishu_zero_inbound_renew_ms/);
   assert.match(daemonSource, /feishu_ingress_unverified_renew_max/);
   assert.match(daemonSource, /zeroInboundRenewals/);
@@ -7073,6 +7080,7 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /feishu_watchdog_restart_ms/);
   assert.match(daemonSource, /lastReceivedAt/);
   assert.match(daemonSource, /Feishu WebSocket ingress-unverified renewal threshold elapsed/);
+  assert.match(daemonSource, /Feishu WebSocket verified-ingress silent renewal threshold elapsed/);
   assert.match(daemonSource, /Feishu WebSocket zero-inbound startup renewal threshold elapsed/);
   assert.match(daemonSource, /Feishu WebSocket reconnecting/);
   assert.match(daemonSource, /Feishu WebSocket reconnected/);
@@ -7664,6 +7672,26 @@ test("native Channel Connectors Octo long connection follows CC Go heartbeat and
   assert.match(daemonSource, /"octo_rest_heartbeat_ms"/);
   assert.match(daemonSource, /"octo_heartbeat_ms"/);
   assert.match(daemonSource, /"octo_reconnect_jitter_ms"/);
+});
+
+test("native Channel Connectors daemon keeps Feishu dispatcher parity diagnostics", () => {
+  const daemonSource = fs.readFileSync(
+    path.resolve("apps/api/modules/channel-connectors/daemon.ts"),
+    "utf8",
+  );
+
+  assert.match(daemonSource, /function feishuDispatcherVerificationToken/);
+  assert.match(daemonSource, /function feishuDispatcherEncryptKey/);
+  assert.match(daemonSource, /verificationToken:\s*verificationToken \|\| undefined/);
+  assert.match(daemonSource, /encryptKey:\s*encryptKey \|\| undefined/);
+  assert.match(daemonSource, /function markFeishuDispatcherCallback/);
+  assert.match(daemonSource, /dispatcherCallbacks/);
+  assert.match(daemonSource, /lastDispatcherCallbackAt/);
+  assert.match(daemonSource, /lastDispatcherEventType/);
+  assert.match(daemonSource, /dispatcherVerificationConfigured/);
+  assert.match(daemonSource, /dispatcherEncryptConfigured/);
+  assert.match(daemonSource, /chat\.access_event\.bot_p2p_chat_entered_v1/);
+  assert.match(daemonSource, /p2p_chat\.created_v1/);
 });
 
 test("native Channel Connectors daemon queues same-session messages while an Agent run is active", () => {
