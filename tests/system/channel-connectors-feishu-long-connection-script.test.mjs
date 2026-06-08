@@ -27,7 +27,12 @@ function feishuRuntime(overrides = {}) {
         lastDisconnectedAt: null,
         lastReceivedAt: null,
         lastUnhealthyAt: null,
-        pingTimeoutSeconds: 0,
+        pingTimeoutSeconds: 3,
+        reconnectingRecycleAfterMs: 10000,
+        lastReconnectingAt: null,
+        reconnectingRecycles: 0,
+        lastReconnectingRecycleAt: null,
+        lastReconnectingRecycleReason: null,
         connectedIdleRenewAfterMs: 0,
         verifiedIngressSilentRenewAfterMs: 0,
         verifiedIngressSilentRenewals: 0,
@@ -37,10 +42,12 @@ function feishuRuntime(overrides = {}) {
         dispatcherCallbacks: 0,
         lastDispatcherCallbackAt: null,
         lastDispatcherEventType: null,
+        lifecycleDispatcherCallbacks: 0,
+        lifecycleLastDispatcherCallbackAt: null,
         zeroInboundRenewAfterMs: 0,
         zeroInboundRenewMax: 0,
         zeroInboundRenewals: 0,
-        watchdogRestartAfterMs: 180000,
+        watchdogRestartAfterMs: 0,
         ingressVerified: true,
         ingressState: "receiving",
         ingressSilentForMs: 0,
@@ -111,24 +118,29 @@ test("Feishu long-connection smoke passes clean SDK-owned runtime", async () => 
   const parsed = JSON.parse(output);
   assert.equal(parsed.ok, true);
   assert.equal(parsed.summary.connections, 1);
-  assert.equal(parsed.summary.violations, 0);
-  assert.equal(parsed.connections[0].pingTimeoutSeconds, 0);
-  assert.equal(parsed.connections[0].connectedIdleRenewAfterMs, 0);
+    assert.equal(parsed.summary.violations, 0);
+    assert.equal(parsed.connections[0].pingTimeoutSeconds, 3);
+    assert.equal(parsed.connections[0].reconnectingRecycleAfterMs, 10000);
+    assert.equal(parsed.connections[0].reconnectingRecycles, 0);
+    assert.equal(parsed.connections[0].connectedIdleRenewAfterMs, 0);
   assert.equal(parsed.connections[0].verifiedIngressSilentRenewAfterMs, 0);
   assert.equal(parsed.connections[0].dispatcherVerificationConfigured, true);
   assert.equal(parsed.connections[0].dispatcherEncryptConfigured, false);
   assert.equal(parsed.connections[0].dispatcherCallbacks, 0);
+  assert.equal(parsed.connections[0].lifecycleDispatcherCallbacks, 0);
+  assert.equal(parsed.connections[0].lifecycleLastDispatcherCallbackAt, null);
   assert.equal(parsed.connections[0].zeroInboundRenewAfterMs, 0);
   assert.equal(parsed.connections[0].zeroInboundRenewMax, 0);
   assert.equal(parsed.connections[0].ingressUnverifiedAfterMs, 0);
   assert.equal(parsed.connections[0].ingressUnverifiedRenewMax, 0);
-  assert.equal(parsed.connections[0].watchdogRestartAfterMs, 180000);
+  assert.equal(parsed.connections[0].ingressUnverifiedRenewDelayMs, 0);
+  assert.equal(parsed.connections[0].watchdogRestartAfterMs, 0);
 });
 
 test("Feishu long-connection smoke rejects unsafe proactive rebuild defaults", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
   const { runtimePath, logPath } = writeFixture(root, feishuRuntime({
-    pingTimeoutSeconds: 10,
+    pingTimeoutSeconds: 0,
     connectedIdleRenewAfterMs: 300000,
     verifiedIngressSilentRenewAfterMs: 30000,
     ingressUnverifiedAfterMs: 30000,
@@ -147,7 +159,7 @@ test("Feishu long-connection smoke rejects unsafe proactive rebuild defaults", a
   const parsed = JSON.parse(failed.stdout);
   assert.equal(parsed.ok, false);
   const types = parsed.violations.map((item) => item.type);
-  assert.ok(types.includes("ping_timeout_too_fast"));
+  assert.ok(types.includes("ping_timeout_mismatch"));
   assert.ok(types.includes("connected_idle_renewal_enabled"));
   assert.ok(types.includes("verified_ingress_silent_renewal_too_fast"));
   assert.ok(types.includes("ingress_unverified_renewal_too_fast"));
@@ -156,7 +168,7 @@ test("Feishu long-connection smoke rejects unsafe proactive rebuild defaults", a
   assert.ok(types.includes("watchdog_too_fast"));
 });
 
-test("Feishu long-connection smoke allows bounded ingress-unverified renewal logs", async () => {
+test("Feishu long-connection smoke rejects old ingress-unverified renewal logs", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
   const runtimeRestartAt = new Date(Date.now() + 1_000).toISOString();
   const logText = [
@@ -176,17 +188,18 @@ test("Feishu long-connection smoke allows bounded ingress-unverified renewal log
     lastWatchdogRestartReason: "watchdog_ingress_unverified_61000",
   }), logText);
 
-  const output = await runScript([
+  const failed = await runScriptFailure([
     "--runtime", runtimePath,
     "--log", logPath,
     "--since", "2026-06-08T09:59:00.000Z",
     "--duration-ms", "0",
     "--json",
   ], root);
-  const parsed = JSON.parse(output);
-  assert.equal(parsed.ok, true);
+  const parsed = JSON.parse(failed.stdout);
+  assert.equal(parsed.ok, false);
   assert.equal(parsed.summary.logEvents, 2);
   assert.equal(parsed.summary.logEventsByType.watchdog_ingress_unverified, 2);
+  assert.ok(parsed.violations.some((item) => item.type === "watchdog_ingress_unverified"));
 });
 
 test("Feishu long-connection smoke rejects unsafe ingress-unverified renewal logs", async () => {
@@ -214,7 +227,7 @@ test("Feishu long-connection smoke rejects unsafe ingress-unverified renewal log
   assert.ok(types.includes("watchdog_ingress_unverified"));
 });
 
-test("Feishu long-connection smoke allows safe verified-ingress silent renewal logs", async () => {
+test("Feishu long-connection smoke rejects old verified-ingress silent renewal logs", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
   const runtimeRestartAt = new Date(Date.now() + 1_000).toISOString();
   const logText = [
@@ -230,16 +243,17 @@ test("Feishu long-connection smoke allows safe verified-ingress silent renewal l
     lastWatchdogRestartReason: "watchdog_verified_ingress_silent_121000",
   }), logText);
 
-  const output = await runScript([
+  const failed = await runScriptFailure([
     "--runtime", runtimePath,
     "--log", logPath,
     "--since", "2026-06-08T09:59:00.000Z",
     "--duration-ms", "0",
     "--json",
   ], root);
-  const parsed = JSON.parse(output);
-  assert.equal(parsed.ok, true);
+  const parsed = JSON.parse(failed.stdout);
+  assert.equal(parsed.ok, false);
   assert.equal(parsed.summary.logEventsByType.watchdog_verified_ingress_silent, 2);
+  assert.ok(parsed.violations.some((item) => item.type === "watchdog_verified_ingress_silent"));
 });
 
 test("Feishu long-connection smoke rejects unsafe verified-ingress silent renewal logs", async () => {
@@ -334,6 +348,34 @@ test("Feishu long-connection smoke rejects old unstable log patterns", async () 
   const types = parsed.violations.map((item) => item.type);
   assert.ok(types.includes("sdk_ping_timeout"));
   assert.ok(types.includes("watchdog_connected_idle"));
+});
+
+test("Feishu long-connection smoke records SDK reconnect recycle without treating it as old watchdog churn", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
+  const logText = [
+    '2026-06-08T10:00:00.000Z Feishu WebSocket reconnecting exceeded limit; recycling client {"key":"feishu-key","reason":"sdk_reconnecting_timeout_10000ms","reconnectingForMs":12000,"reconnectingRecycles":1}',
+    '2026-06-08T10:00:01.000Z Feishu WebSocket connection ended; recreating client {"key":"feishu-key","delayMs":1000,"error":"sdk_reconnecting_timeout_10000ms"}',
+    "",
+  ].join("\n");
+  const { runtimePath, logPath } = writeFixture(root, feishuRuntime({
+    reconnectingRecycles: 1,
+    lastReconnectingRecycleAt: "2026-06-08T10:00:00.000Z",
+    lastReconnectingRecycleReason: "sdk_reconnecting_timeout_10000ms",
+  }), logText);
+
+  const output = await runScript([
+    "--runtime", runtimePath,
+    "--log", logPath,
+    "--since", "2026-06-08T09:59:00.000Z",
+    "--duration-ms", "0",
+    "--json",
+  ], root);
+  const parsed = JSON.parse(output);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.summary.logEventsByType.sdk_reconnect_recycle, 1);
+  assert.equal(parsed.summary.violations, 0);
+  assert.equal(parsed.connections[0].reconnectingRecycles, 1);
+  assert.equal(parsed.connections[0].lastReconnectingRecycleReason, "sdk_reconnecting_timeout_10000ms");
 });
 
 test("Feishu long-connection smoke rejects dispatcher-level event failures", async () => {

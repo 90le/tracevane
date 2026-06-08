@@ -8,7 +8,7 @@ const DEFAULT_RUNTIME_PATH = path.join(os.homedir(), ".config/openclaw-studio/ch
 const DEFAULT_LOG_PATH = path.join(os.homedir(), ".config/openclaw-studio/channel-connectors/daemon/logs/channel-connectors.log");
 const DEFAULT_DURATION_MS = 70_000;
 const DEFAULT_POLL_MS = 1_000;
-const MIN_SAFE_PING_TIMEOUT_SECONDS = 30;
+const EXPECTED_FEISHU_PING_TIMEOUT_SECONDS = 3;
 const MIN_SAFE_WATCHDOG_MS = 60_000;
 const MIN_SAFE_INGRESS_UNVERIFIED_RENEW_MS = 60_000;
 const MAX_SAFE_INGRESS_UNVERIFIED_RENEW_MAX = 3;
@@ -79,7 +79,7 @@ Read-only Feishu long-connection soak for the native Channel Connectors daemon.
 The script does not send IM messages. By default it watches the live runtime for
 70 seconds, crossing the old 30s zero-inbound failure window, and fails on the
 Studio-side rebuild patterns that previously made Feishu unstable. SDK ping
-timeout is allowed only when it is conservative enough for the Feishu Node SDK.
+liveness must match the current OpenClaw/Lark SDK contract.
 
 Options:
   --duration-ms <n>                 Watch duration. Default: ${DEFAULT_DURATION_MS}.
@@ -92,7 +92,7 @@ Options:
   --require-always-connected        Fail if a selected connection is ever sampled non-connected.
   --require-ingress-verified        Fail unless selected connections have received a real Feishu event.
   --allow-disconnected              Do not fail when the final runtime state is non-connected.
-  --allow-ping-timeout              Allow SDK pingTimeout to be enabled or logged.
+  --allow-ping-timeout              Do not enforce the expected SDK pingTimeout value.
   --allow-ingress-unverified-renewal Allow bounded startup ingress verification renewals.
   --allow-zero-inbound-renewal      Allow all zero-inbound proactive rebuilds.
   --allow-connected-idle-renewal    Allow connected-idle proactive rebuilds.
@@ -153,6 +153,11 @@ function connectionSnapshot(connection) {
     connected: connection.connected === true,
     state: String(connection.state || ""),
     pingTimeoutSeconds: Number(connection.pingTimeoutSeconds || 0),
+    reconnectingRecycleAfterMs: Number(connection.reconnectingRecycleAfterMs || 0),
+    lastReconnectingAt: connection.lastReconnectingAt || null,
+    reconnectingRecycles: Number(connection.reconnectingRecycles || 0),
+    lastReconnectingRecycleAt: connection.lastReconnectingRecycleAt || null,
+    lastReconnectingRecycleReason: connection.lastReconnectingRecycleReason || null,
     connectedIdleRenewAfterMs: Number(connection.connectedIdleRenewAfterMs || 0),
     verifiedIngressSilentRenewAfterMs: Number(connection.verifiedIngressSilentRenewAfterMs || 0),
     verifiedIngressSilentRenewals: Number(connection.verifiedIngressSilentRenewals || 0),
@@ -162,6 +167,8 @@ function connectionSnapshot(connection) {
     dispatcherCallbacks: Number(connection.dispatcherCallbacks || 0),
     lastDispatcherCallbackAt: connection.lastDispatcherCallbackAt || null,
     lastDispatcherEventType: connection.lastDispatcherEventType || null,
+    lifecycleDispatcherCallbacks: Number(connection.lifecycleDispatcherCallbacks || 0),
+    lifecycleLastDispatcherCallbackAt: connection.lifecycleLastDispatcherCallbackAt || null,
     zeroInboundRenewAfterMs: Number(connection.zeroInboundRenewAfterMs || 0),
     zeroInboundRenewMax: Number(connection.zeroInboundRenewMax ?? 1),
     watchdogRestartAfterMs: Number(connection.watchdogRestartAfterMs || 0),
@@ -205,14 +212,12 @@ function runtimeViolations(connections, options, startedAtMs, samples) {
         message: `Feishu connection ${key} is ${connection.state || "not connected"}.`,
       });
     }
-    if (!options.allowPingTimeout && connection.pingTimeoutSeconds > 0) {
-      if (connection.pingTimeoutSeconds < MIN_SAFE_PING_TIMEOUT_SECONDS) {
-        violations.push({
-          type: "ping_timeout_too_fast",
-          key,
-          message: `Feishu connection ${key} has unsafe SDK pingTimeoutSeconds=${connection.pingTimeoutSeconds}.`,
-        });
-      }
+    if (!options.allowPingTimeout && connection.pingTimeoutSeconds !== EXPECTED_FEISHU_PING_TIMEOUT_SECONDS) {
+      violations.push({
+        type: "ping_timeout_mismatch",
+        key,
+        message: `Feishu connection ${key} has SDK pingTimeoutSeconds=${connection.pingTimeoutSeconds}; expected ${EXPECTED_FEISHU_PING_TIMEOUT_SECONDS}.`,
+      });
     }
     if (!options.allowZeroInboundRenewal && connection.zeroInboundRenewAfterMs > 0) {
       violations.push({
@@ -287,16 +292,11 @@ function runtimeViolations(connections, options, startedAtMs, samples) {
       && lastWatchdogMs >= startedAtMs
     ) {
       const reason = String(connection.lastWatchdogRestartReason || "");
-      if (
-        !isSafeIngressUnverifiedRuntimeRestart(connection, reason, options)
-        && !isSafeVerifiedIngressSilentRuntimeRestart(connection, reason)
-      ) {
-        violations.push({
-          type: "watchdog_restart_runtime",
-          key,
-          message: `Feishu connection ${key} was watchdog-restarted during this smoke: ${reason || "unknown"}.`,
-        });
-      }
+      violations.push({
+        type: "watchdog_restart_runtime",
+        key,
+        message: `Feishu connection ${key} was watchdog-restarted during this smoke: ${reason || "unknown"}.`,
+      });
     }
   }
 
@@ -360,6 +360,7 @@ function classifyLogLine(line) {
   if (/watchdog_zero_inbound_|zero-inbound startup renewal/i.test(line)) return "watchdog_zero_inbound";
   if (/watchdog_connected_idle_|connected-idle renewal/i.test(line)) return "watchdog_connected_idle";
   if (/Feishu WebSocket watchdog restarting client/i.test(line)) return "watchdog_restart";
+  if (/Feishu WebSocket reconnecting exceeded limit; recycling client/i.test(line)) return "sdk_reconnect_recycle";
   if (/no\s+[^"]+\s+handle/i.test(line)) return "sdk_event_no_handler";
   if (/verification failed event/i.test(line)) return "sdk_event_verification_failed";
   if (/invoke event failed/i.test(line)) return "sdk_event_invoke_failed";
@@ -381,12 +382,12 @@ function logViolations(events, options) {
   for (const event of events) {
     if (event.type === "sdk_ping_timeout" && !options.allowPingTimeout) {
       const timeoutSeconds = pingTimeoutSecondsInLine(event.line);
-      if (timeoutSeconds === null || timeoutSeconds < MIN_SAFE_PING_TIMEOUT_SECONDS) {
+      if (timeoutSeconds !== EXPECTED_FEISHU_PING_TIMEOUT_SECONDS) {
         violations.push({
           type: event.type,
           key: event.key,
           timestamp: event.timestamp,
-          message: "Feishu SDK pingTimeout terminated the socket with an unsafe timeout during the checked window.",
+          message: "Feishu SDK pingTimeout terminated the socket with an unexpected timeout during the checked window.",
           line: event.line,
         });
       }
@@ -401,21 +402,13 @@ function logViolations(events, options) {
       });
     }
     if (event.type === "watchdog_ingress_unverified" && !options.allowIngressUnverifiedRenewal) {
-      const delayMs = ingressUnverifiedRenewDelayMsInLine(event.line);
-      const max = ingressUnverifiedRenewMaxInLine(event.line);
-      if (
-        delayMs === null
-        || delayMs < MIN_SAFE_INGRESS_UNVERIFIED_RENEW_MS
-        || (max !== null && max > MAX_SAFE_INGRESS_UNVERIFIED_RENEW_MAX)
-      ) {
-        violations.push({
-          type: event.type,
-          key: event.key,
-          timestamp: event.timestamp,
-          message: "Studio ingress-unverified renewal rebuilt the Feishu socket with an unsafe threshold during the checked window.",
-          line: event.line,
-        });
-      }
+      violations.push({
+        type: event.type,
+        key: event.key,
+        timestamp: event.timestamp,
+        message: "Studio ingress-unverified renewal rebuilt the Feishu socket during the checked window.",
+        line: event.line,
+      });
     }
     if (event.type === "watchdog_connected_idle" && !options.allowConnectedIdleRenewal) {
       violations.push({
@@ -427,16 +420,13 @@ function logViolations(events, options) {
       });
     }
     if (event.type === "watchdog_verified_ingress_silent") {
-      const renewMs = verifiedIngressSilentRenewMsInLine(event.line);
-      if (renewMs === null || renewMs < MIN_SAFE_VERIFIED_INGRESS_SILENT_RENEW_MS) {
-        violations.push({
-          type: event.type,
-          key: event.key,
-          timestamp: event.timestamp,
-          message: "Studio verified-ingress renewal rebuilt the Feishu socket with an unsafe threshold during the checked window.",
-          line: event.line,
-        });
-      }
+      violations.push({
+        type: event.type,
+        key: event.key,
+        timestamp: event.timestamp,
+        message: "Studio verified-ingress renewal rebuilt the Feishu socket during the checked window.",
+        line: event.line,
+      });
     }
     if (event.type === "watchdog_restart" && !options.allowWatchdogRestart) {
       violations.push({
@@ -483,51 +473,6 @@ function pingTimeoutSecondsInLine(line) {
   if (!match) return null;
   const value = Number(match[1]);
   return Number.isFinite(value) ? value : null;
-}
-
-function ingressUnverifiedRenewDelayMsInLine(line) {
-  const match = line.match(/"ingressUnverifiedRenewDelayMs"\s*:\s*(\d+)/)
-    || line.match(/watchdog_ingress_unverified_(\d+)/);
-  if (!match) return null;
-  const value = Number(match[1]);
-  return Number.isFinite(value) ? value : null;
-}
-
-function ingressUnverifiedRenewMaxInLine(line) {
-  const match = line.match(/"ingressUnverifiedRenewMax"\s*:\s*(\d+)/);
-  if (!match) return null;
-  const value = Number(match[1]);
-  return Number.isFinite(value) ? value : null;
-}
-
-function verifiedIngressSilentRenewMsInLine(line) {
-  const match = line.match(/"renewAfterMs"\s*:\s*(\d+)/)
-    || line.match(/watchdog_verified_ingress_silent_(\d+)/);
-  if (!match) return null;
-  const value = Number(match[1]);
-  return Number.isFinite(value) ? value : null;
-}
-
-function isSafeIngressUnverifiedRuntimeRestart(connection, reason, options) {
-  if (options.allowIngressUnverifiedRenewal) return true;
-  if (!reason.startsWith("watchdog_ingress_unverified_")) return false;
-  const reasonDelay = Number(reason.slice("watchdog_ingress_unverified_".length));
-  const threshold = Number(connection.ingressUnverifiedAfterMs || 0);
-  const max = Number(connection.ingressUnverifiedRenewMax || 0);
-  return Number.isFinite(reasonDelay)
-    && reasonDelay >= MIN_SAFE_INGRESS_UNVERIFIED_RENEW_MS
-    && threshold >= MIN_SAFE_INGRESS_UNVERIFIED_RENEW_MS
-    && max > 0
-    && max <= MAX_SAFE_INGRESS_UNVERIFIED_RENEW_MAX;
-}
-
-function isSafeVerifiedIngressSilentRuntimeRestart(connection, reason) {
-  if (!reason.startsWith("watchdog_verified_ingress_silent_")) return false;
-  const reasonDelay = Number(reason.slice("watchdog_verified_ingress_silent_".length));
-  const threshold = Number(connection.verifiedIngressSilentRenewAfterMs || 0);
-  return Number.isFinite(reasonDelay)
-    && reasonDelay >= MIN_SAFE_VERIFIED_INGRESS_SILENT_RENEW_MS
-    && threshold >= MIN_SAFE_VERIFIED_INGRESS_SILENT_RENEW_MS;
 }
 
 function countByType(items) {
@@ -612,6 +557,7 @@ function printResult(result) {
       `connected=${connection.connected}`,
       `state=${connection.state}`,
       `pingTimeout=${connection.pingTimeoutSeconds > 0 ? `${connection.pingTimeoutSeconds}s` : "sdk"}`,
+      `reconnectingRecycle=${connection.reconnectingRecycleAfterMs}ms/${connection.reconnectingRecycles}`,
       `ingressUnverified=${connection.ingressUnverifiedAfterMs}ms/${connection.ingressUnverifiedRenewMax}`,
       `verifiedIngressSilent=${connection.verifiedIngressSilentRenewAfterMs}ms`,
       `dispatcherCallbacks=${connection.dispatcherCallbacks}`,

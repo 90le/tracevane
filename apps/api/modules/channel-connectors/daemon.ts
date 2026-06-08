@@ -157,19 +157,26 @@ import {
   type OctoWukongSocketStatus,
 } from "./octo-wukong.js";
 
-const DEFAULT_FEISHU_PING_TIMEOUT_SECONDS = 0;
-const MIN_FEISHU_PING_TIMEOUT_SECONDS = 30;
-const MAX_FEISHU_PING_TIMEOUT_SECONDS = 300;
-const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 180_000;
+const DEFAULT_FEISHU_PING_TIMEOUT_SECONDS = 3;
+const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 0;
 const MIN_FEISHU_WATCHDOG_RESTART_MS = 60_000;
 const MAX_FEISHU_WATCHDOG_RESTART_MS = 600_000;
+const FEISHU_WS_RECONNECT_INITIAL_DELAY_MS = 1_000;
+const FEISHU_WS_RECONNECT_MAX_DELAY_MS = 30_000;
+const DEFAULT_FEISHU_RECONNECTING_RECYCLE_MS = 10_000;
+const MIN_FEISHU_RECONNECTING_RECYCLE_MS = 5_000;
+const MAX_FEISHU_RECONNECTING_RECYCLE_MS = 60_000;
+const FEISHU_WS_RECONNECT_EXHAUSTED_RE = /^WebSocket reconnect exhausted after \d+ attempts?/;
+const FEISHU_WS_AUTORECONNECT_DISABLED_ERROR = "WebSocket connect failed and autoReconnect is disabled";
 // Feishu long connection delivery is cluster-mode rather than broadcast. CC Go
 // avoids random delivery loss by using one app_id owner and fan-out; Studio also
-// keeps one OS-user owner. OpenClaw's TypeScript connector and CC Go both let
-// the official SDK own the WebSocket keepalive/reconnect loop. Studio therefore
-// keeps custom SDK ping-timeout and business-ingress renewals disabled by
-// default. They remain metadata opt-ins for diagnostics only; default health is
-// proven by dispatcher/business ingress counters, not by rebuilding sockets.
+// keeps one OS-user owner. OpenClaw's current TypeScript Feishu plugin recreates
+// a fresh SDK WSClient after terminal SDK errors and backs off 1s..30s. Studio
+// copies that lifecycle shape. Live Studio soak showed the SDK can remain in its
+// own reconnecting state for ~20s after a ping timeout, so Studio also recycles
+// that same current client when reconnecting exceeds a fixed upper bound. This is
+// not a connected-idle/zero-inbound guess; the SDK has already declared the link
+// unhealthy.
 const DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS = 0;
 const MIN_FEISHU_CONNECTED_IDLE_RENEW_MS = 60_000;
 const MAX_FEISHU_CONNECTED_IDLE_RENEW_MS = 3_600_000;
@@ -281,10 +288,13 @@ interface ChannelDaemonFeishuConnectionState {
   dispatcherCallbacks: number;
   lastDispatcherCallbackAt: string | null;
   lastDispatcherEventType: string | null;
+  lifecycleDispatcherCallbacks: number;
+  lifecycleLastDispatcherCallbackAt: string | null;
   lockAcquired: boolean;
   lockOwnerPid: number | null;
   lockPath: string | null;
   pingTimeoutSeconds: number;
+  reconnectingRecycleAfterMs: number;
   connectedIdleRenewAfterMs: number;
   zeroInboundRenewAfterMs: number;
   zeroInboundRenewMax: number;
@@ -293,6 +303,10 @@ interface ChannelDaemonFeishuConnectionState {
   lifecycleReceivedMessages: number;
   lifecycleLastReceivedAt: string | null;
   suppressZeroInboundRenewal: boolean;
+  lastReconnectingAt: string | null;
+  reconnectingRecycles: number;
+  lastReconnectingRecycleAt: string | null;
+  lastReconnectingRecycleReason: string | null;
   lastWatchdogRestartAt: string | null;
   lastWatchdogRestartReason: string | null;
   reconnects: number;
@@ -312,6 +326,7 @@ interface ChannelDaemonFeishuGroup {
   apiUrl: string | null;
   refs: ChannelDaemonFeishuBindingRef[];
   client: WSClient | null;
+  clientLoopActive: boolean;
   reconnects: number;
   receivedMessages: number;
   lastConnectedAt: string | null;
@@ -320,6 +335,10 @@ interface ChannelDaemonFeishuGroup {
   lifecycleReceivedMessages: number;
   lifecycleLastReceivedAt: string | null;
   suppressZeroInboundRenewal: boolean;
+  lastReconnectingAt: string | null;
+  reconnectingRecycles: number;
+  lastReconnectingRecycleAt: string | null;
+  lastReconnectingRecycleReason: string | null;
   lastWatchdogRestartAt: string | null;
   lastWatchdogRestartReason: string | null;
   lastUnhealthyAt: string | null;
@@ -333,10 +352,13 @@ interface ChannelDaemonFeishuGroup {
   dispatcherCallbacks: number;
   lastDispatcherCallbackAt: string | null;
   lastDispatcherEventType: string | null;
+  lifecycleDispatcherCallbacks: number;
+  lifecycleLastDispatcherCallbackAt: string | null;
   lockAcquired: boolean;
   lockOwnerPid: number | null;
   lockPath: string | null;
   lastLockRetryAt: string | null;
+  recycleCurrentClient: ((reason: string) => void) | null;
 }
 
 interface ChannelDaemonState {
@@ -1555,17 +1577,24 @@ function firstFeishuBinding(group: ChannelDaemonFeishuGroup): ChannelConnectorRu
 }
 
 function feishuPingTimeoutSeconds(group: ChannelDaemonFeishuGroup): number {
+  void group;
+  return DEFAULT_FEISHU_PING_TIMEOUT_SECONDS;
+}
+
+function feishuReconnectingRecycleMs(group: ChannelDaemonFeishuGroup): number {
   const binding = firstFeishuBinding(group);
   const value = binding
     ? metadataNumber(binding, [
-      "feishuPingTimeoutSeconds",
-      "feishu_ping_timeout_seconds",
-      "pingTimeoutSeconds",
-      "ping_timeout_seconds",
-    ], DEFAULT_FEISHU_PING_TIMEOUT_SECONDS)
-    : DEFAULT_FEISHU_PING_TIMEOUT_SECONDS;
+      "feishuReconnectingRecycleMs",
+      "feishu_reconnecting_recycle_ms",
+      "reconnectingRecycleMs",
+      "reconnecting_recycle_ms",
+      "sdkReconnectingRecycleMs",
+      "sdk_reconnecting_recycle_ms",
+    ], DEFAULT_FEISHU_RECONNECTING_RECYCLE_MS)
+    : DEFAULT_FEISHU_RECONNECTING_RECYCLE_MS;
   if (value <= 0) return 0;
-  return clampNumber(Math.floor(value), MIN_FEISHU_PING_TIMEOUT_SECONDS, MAX_FEISHU_PING_TIMEOUT_SECONDS);
+  return clampNumber(Math.floor(value), MIN_FEISHU_RECONNECTING_RECYCLE_MS, MAX_FEISHU_RECONNECTING_RECYCLE_MS);
 }
 
 function feishuIngressUnverifiedAfterMs(group: ChannelDaemonFeishuGroup): number {
@@ -2463,10 +2492,13 @@ function feishuConnectionState(group: ChannelDaemonFeishuGroup): ChannelDaemonFe
     dispatcherCallbacks: group.dispatcherCallbacks,
     lastDispatcherCallbackAt: group.lastDispatcherCallbackAt,
     lastDispatcherEventType: group.lastDispatcherEventType,
+    lifecycleDispatcherCallbacks: group.lifecycleDispatcherCallbacks,
+    lifecycleLastDispatcherCallbackAt: group.lifecycleLastDispatcherCallbackAt,
     lockAcquired: group.lockAcquired,
     lockOwnerPid: group.lockOwnerPid,
     lockPath: group.lockPath,
     pingTimeoutSeconds: feishuPingTimeoutSeconds(group),
+    reconnectingRecycleAfterMs: feishuReconnectingRecycleMs(group),
     connectedIdleRenewAfterMs: feishuConnectedIdleRenewMs(group),
     zeroInboundRenewAfterMs: feishuZeroInboundRenewMs(group),
     zeroInboundRenewMax: feishuZeroInboundRenewMax(group),
@@ -2475,6 +2507,10 @@ function feishuConnectionState(group: ChannelDaemonFeishuGroup): ChannelDaemonFe
     lifecycleReceivedMessages: group.lifecycleReceivedMessages,
     lifecycleLastReceivedAt: group.lifecycleLastReceivedAt,
     suppressZeroInboundRenewal: group.suppressZeroInboundRenewal,
+    lastReconnectingAt: group.lastReconnectingAt,
+    reconnectingRecycles: group.reconnectingRecycles,
+    lastReconnectingRecycleAt: group.lastReconnectingRecycleAt,
+    lastReconnectingRecycleReason: group.lastReconnectingRecycleReason,
     lastWatchdogRestartAt: group.lastWatchdogRestartAt,
     lastWatchdogRestartReason: group.lastWatchdogRestartReason,
     reconnects: group.reconnects,
@@ -6261,6 +6297,7 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
           apiUrl: null,
           refs: [],
           client: null,
+          clientLoopActive: false,
           reconnects: 0,
           receivedMessages: 0,
           lastConnectedAt: null,
@@ -6269,6 +6306,10 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
           lifecycleReceivedMessages: 0,
           lifecycleLastReceivedAt: null,
           suppressZeroInboundRenewal: false,
+          lastReconnectingAt: null,
+          reconnectingRecycles: 0,
+          lastReconnectingRecycleAt: null,
+          lastReconnectingRecycleReason: null,
           lastWatchdogRestartAt: null,
           lastWatchdogRestartReason: null,
           lastUnhealthyAt: null,
@@ -6282,10 +6323,13 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
           dispatcherCallbacks: 0,
           lastDispatcherCallbackAt: null,
           lastDispatcherEventType: null,
+          lifecycleDispatcherCallbacks: 0,
+          lifecycleLastDispatcherCallbackAt: null,
           lockAcquired: false,
           lockOwnerPid: null,
           lockPath: null,
           lastLockRetryAt: null,
+          recycleCurrentClient: null,
         });
         continue;
       }
@@ -6297,6 +6341,7 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
         apiUrl: transport.apiUrl,
         refs: [],
         client: null,
+        clientLoopActive: false,
         reconnects: 0,
         receivedMessages: 0,
         lastConnectedAt: null,
@@ -6305,6 +6350,10 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
         lifecycleReceivedMessages: 0,
         lifecycleLastReceivedAt: null,
         suppressZeroInboundRenewal: false,
+        lastReconnectingAt: null,
+        reconnectingRecycles: 0,
+        lastReconnectingRecycleAt: null,
+        lastReconnectingRecycleReason: null,
         lastWatchdogRestartAt: null,
         lastWatchdogRestartReason: null,
         lastUnhealthyAt: null,
@@ -6318,10 +6367,13 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
         dispatcherCallbacks: 0,
         lastDispatcherCallbackAt: null,
         lastDispatcherEventType: null,
+        lifecycleDispatcherCallbacks: 0,
+        lifecycleLastDispatcherCallbackAt: null,
         lockAcquired: false,
         lockOwnerPid: null,
         lockPath: null,
         lastLockRetryAt: null,
+        recycleCurrentClient: null,
       };
       group.refs.push({ project, binding, transport });
       groups.set(key, group);
@@ -6435,7 +6487,9 @@ function markFeishuDispatcherCallback(input: {
 }): string {
   const receivedAt = new Date().toISOString();
   input.group.dispatcherCallbacks += 1;
+  input.group.lifecycleDispatcherCallbacks += 1;
   input.group.lastDispatcherCallbackAt = receivedAt;
+  input.group.lifecycleLastDispatcherCallbackAt = receivedAt;
   input.group.lastDispatcherEventType = input.eventType;
   if (input.persist) {
     updateFeishuRuntime(input.config, input.state, input.group);
@@ -6454,6 +6508,13 @@ function markFeishuBusinessIngress(group: ChannelDaemonFeishuGroup, receivedAt: 
   group.verifiedIngressSilentRenewals = 0;
   group.lastVerifiedIngressSilentRenewAt = null;
   group.suppressZeroInboundRenewal = false;
+}
+
+function resetFeishuLifecycleIngressEvidence(group: ChannelDaemonFeishuGroup): void {
+  group.lifecycleReceivedMessages = 0;
+  group.lifecycleLastReceivedAt = null;
+  group.lifecycleDispatcherCallbacks = 0;
+  group.lifecycleLastDispatcherCallbackAt = null;
 }
 
 function createFeishuDispatcher(input: {
@@ -6639,15 +6700,303 @@ function createFeishuDispatcher(input: {
   return dispatcher;
 }
 
-function startFeishuClientForGroup(input: {
+function getFeishuWsReconnectDelayMs(attempt: number): number {
+  return Math.min(
+    FEISHU_WS_RECONNECT_INITIAL_DELAY_MS * (2 ** Math.max(0, attempt - 1)),
+    FEISHU_WS_RECONNECT_MAX_DELAY_MS,
+  );
+}
+
+function isFeishuWsTerminalError(error: Error): boolean {
+  const message = error.message.trim();
+  return (
+    FEISHU_WS_RECONNECT_EXHAUSTED_RE.test(message)
+    || message.startsWith(FEISHU_WS_AUTORECONNECT_DISABLED_ERROR)
+  );
+}
+
+function waitForAbortableDelay(delayMs: number, abortSignal?: AbortSignal): Promise<boolean> {
+  if (abortSignal?.aborted) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const finish = (value: boolean) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      abortSignal?.removeEventListener("abort", onAbort);
+      resolve(value);
+    };
+    const onAbort = () => finish(false);
+    abortSignal?.addEventListener("abort", onAbort, { once: true });
+    timer = setTimeout(() => finish(true), delayMs);
+    timer.unref?.();
+  });
+}
+
+function waitForFeishuWsCycleEnd(input: {
+  abortSignal?: AbortSignal;
+  terminalError: Promise<Error>;
+}): Promise<"abort" | Error> {
+  if (input.abortSignal?.aborted) return Promise.resolve("abort");
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result: "abort" | Error) => {
+      if (settled) return;
+      settled = true;
+      input.abortSignal?.removeEventListener("abort", onAbort);
+      resolve(result);
+    };
+    const onAbort = () => finish("abort");
+    input.abortSignal?.addEventListener("abort", onAbort, { once: true });
+    void input.terminalError.then(finish);
+  });
+}
+
+function closeFeishuGroupWsClient(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  group: ChannelDaemonFeishuGroup;
+  clients: WSClient[];
+  client?: WSClient | null;
+  reason: string;
+}): void {
+  const { config, group, clients, client, reason } = input;
+  if (!client) return;
+  const index = clients.indexOf(client);
+  if (index >= 0) clients.splice(index, 1);
+  if (group.client === client) group.client = null;
+  try {
+    client.close({ force: true });
+  } catch (error) {
+    appendLog(config.paths.log, "Feishu WebSocket close failed", {
+      key: group.key,
+      reason,
+      error: shortMessage(error),
+    });
+  }
+}
+
+async function runFeishuGroupClientLoop(input: {
   config: ChannelConnectorsDaemonRuntimeConfig;
   state: ChannelDaemonState;
   activeRunCancels: ChannelDaemonActiveRunCancelRegistry;
   group: ChannelDaemonFeishuGroup;
   clients: WSClient[];
   seenMessages: Map<string, number>;
-}): WSClient | null {
-  const { config, state, activeRunCancels, group, clients, seenMessages } = input;
+  abortSignal: AbortSignal;
+  dispatcher: EventDispatcher;
+}): Promise<void> {
+  const { config, state, group, clients, abortSignal, dispatcher } = input;
+  let attempt = 0;
+  try {
+    while (!abortSignal.aborted) {
+      let client: WSClient | null = null;
+      try {
+        let reportTerminalError: (error: Error) => void = () => {};
+        const terminalError = new Promise<Error>((resolve) => {
+          reportTerminalError = resolve;
+        });
+        let cycleEndReported = false;
+        const reportCycleEnd = (error: Error) => {
+          if (cycleEndReported) return;
+          cycleEndReported = true;
+          reportTerminalError(error);
+        };
+        const pingTimeoutSeconds = feishuPingTimeoutSeconds(group);
+        appendLog(config.paths.log, "Feishu WebSocket starting connection", {
+          key: group.key,
+          appId: group.appId,
+          pingTimeoutSeconds,
+        });
+        client = new WSClient({
+          appId: group.appId,
+          appSecret: group.refs[0].transport.appSecret,
+          domain: metadataString(group.refs[0].binding, ["domain", "apiUrl", "api_url", "baseUrl", "base_url"]) || undefined,
+          logger: feishuLogger(config),
+          loggerLevel: LoggerLevel.info,
+          // Latest OpenClaw Feishu copies the SDK liveness intent from its
+          // FEISHU_WS_CONFIG. The installed Lark SDK exposes that knob as
+          // lower-case `pingTimeout`, so use the effective SDK contract here.
+          ...(pingTimeoutSeconds > 0 ? { wsConfig: { pingTimeout: pingTimeoutSeconds } } : {}),
+          onReady: () => {
+            group.lastConnectedAt = new Date().toISOString();
+            group.lastDisconnectedAt = null;
+            group.lastReconnectingAt = null;
+            resetFeishuLifecycleIngressEvidence(group);
+            group.ingressUnverifiedRenewals = 0;
+            group.lastIngressUnverifiedRenewAt = null;
+            group.lastUnhealthyAt = null;
+            group.lastError = null;
+            group.watchdogRestarting = false;
+            appendLog(config.paths.log, "Feishu WebSocket connected", {
+              key: group.key,
+              bindingIds: group.refs.map((ref) => ref.binding.id),
+              pingTimeoutSeconds,
+              dispatcherVerificationConfigured: Boolean(feishuDispatcherVerificationToken(group)),
+              dispatcherEncryptConfigured: Boolean(feishuDispatcherEncryptKey(group)),
+            });
+            updateFeishuRuntime(config, state, group);
+          },
+          onError: (error) => {
+            const terminal = isFeishuWsTerminalError(error);
+            group.lastError = shortMessage(error);
+            group.lastDisconnectedAt = new Date().toISOString();
+            group.lastUnhealthyAt ||= group.lastDisconnectedAt;
+            appendLog(config.paths.log, terminal
+              ? "Feishu WebSocket SDK reported terminal error"
+              : "Feishu WebSocket SDK reported recoverable error", {
+              key: group.key,
+              error: group.lastError,
+            });
+            updateFeishuRuntime(config, state, group);
+            if (terminal) reportCycleEnd(error);
+          },
+          onReconnecting: () => {
+            const now = new Date().toISOString();
+            group.reconnects += 1;
+            group.lastDisconnectedAt = now;
+            group.lastUnhealthyAt ||= group.lastDisconnectedAt;
+            group.lastReconnectingAt ||= now;
+            appendLog(config.paths.log, "Feishu WebSocket reconnecting", {
+              key: group.key,
+              reconnects: group.reconnects,
+              state: group.client?.getConnectionStatus()?.state || "unknown",
+            });
+            updateFeishuRuntime(config, state, group);
+          },
+          onReconnected: () => {
+            group.lastConnectedAt = new Date().toISOString();
+            group.lastDisconnectedAt = null;
+            group.lastReconnectingAt = null;
+            resetFeishuLifecycleIngressEvidence(group);
+            group.ingressUnverifiedRenewals = 0;
+            group.lastIngressUnverifiedRenewAt = null;
+            group.lastUnhealthyAt = null;
+            group.lastError = null;
+            group.watchdogRestarting = false;
+            appendLog(config.paths.log, "Feishu WebSocket reconnected", {
+              key: group.key,
+              reconnects: group.reconnects,
+              pingTimeoutSeconds,
+              dispatcherVerificationConfigured: Boolean(feishuDispatcherVerificationToken(group)),
+              dispatcherEncryptConfigured: Boolean(feishuDispatcherEncryptKey(group)),
+            });
+            updateFeishuRuntime(config, state, group);
+          },
+        });
+        const recycleCurrentClient = (reason: string) => {
+          if (!client || group.client !== client) return;
+          const recycledAt = new Date().toISOString();
+          const reconnectingSinceMs = Date.parse(group.lastReconnectingAt || "");
+          const reconnectingForMs = Number.isFinite(reconnectingSinceMs)
+            ? Math.max(0, Date.now() - reconnectingSinceMs)
+            : 0;
+          group.reconnectingRecycles += 1;
+          group.lastReconnectingRecycleAt = recycledAt;
+          group.lastReconnectingRecycleReason = reason;
+          group.lastError = reason;
+          group.lastDisconnectedAt = recycledAt;
+          group.lastUnhealthyAt ||= recycledAt;
+          appendLog(config.paths.log, "Feishu WebSocket reconnecting exceeded limit; recycling client", {
+            key: group.key,
+            reason,
+            reconnectingForMs,
+            reconnectingRecycles: group.reconnectingRecycles,
+            state: group.client?.getConnectionStatus()?.state || "unknown",
+          });
+          updateFeishuRuntime(config, state, group);
+          reportCycleEnd(new Error(reason));
+        };
+        group.recycleCurrentClient = recycleCurrentClient;
+        group.client = client;
+        clients.push(client);
+        updateFeishuRuntime(config, state, group);
+        await client.start({ eventDispatcher: dispatcher });
+        attempt = 0;
+        appendLog(config.paths.log, "Feishu WebSocket client started", {
+          key: group.key,
+          pingTimeoutSeconds,
+        });
+        const cycleEnd = await waitForFeishuWsCycleEnd({ abortSignal, terminalError });
+        if (group.recycleCurrentClient === recycleCurrentClient) {
+          group.recycleCurrentClient = null;
+        }
+        if (cycleEnd === "abort") break;
+        closeFeishuGroupWsClient({
+          config,
+          group,
+          clients,
+          client,
+          reason: "terminal-error",
+        });
+        group.lastError = shortMessage(cycleEnd);
+        group.lastDisconnectedAt = new Date().toISOString();
+        group.lastUnhealthyAt ||= group.lastDisconnectedAt;
+        updateFeishuRuntime(config, state, group);
+        attempt += 1;
+        const delayMs = getFeishuWsReconnectDelayMs(attempt);
+        appendLog(config.paths.log, "Feishu WebSocket connection ended; recreating client", {
+          key: group.key,
+          delayMs,
+          error: group.lastError,
+        });
+        const shouldRetry = await waitForAbortableDelay(delayMs, abortSignal);
+        if (!shouldRetry) break;
+      } catch (error) {
+        closeFeishuGroupWsClient({
+          config,
+          group,
+          clients,
+          client,
+          reason: "start-failed",
+        });
+        group.recycleCurrentClient = null;
+        group.lastReconnectingAt = null;
+        if (abortSignal.aborted) break;
+        group.lastError = shortMessage(error);
+        group.lastDisconnectedAt = new Date().toISOString();
+        group.lastUnhealthyAt ||= group.lastDisconnectedAt;
+        updateFeishuRuntime(config, state, group);
+        attempt += 1;
+        const delayMs = getFeishuWsReconnectDelayMs(attempt);
+        appendLog(config.paths.log, "Feishu WebSocket start failed; retrying", {
+          key: group.key,
+          delayMs,
+          error: group.lastError,
+        });
+        const shouldRetry = await waitForAbortableDelay(delayMs, abortSignal);
+        if (!shouldRetry) break;
+      }
+    }
+  } finally {
+    closeFeishuGroupWsClient({
+      config,
+      group,
+      clients,
+      client: group.client,
+      reason: "loop-stop",
+    });
+    group.clientLoopActive = false;
+    group.watchdogRestarting = false;
+    group.recycleCurrentClient = null;
+    group.lastReconnectingAt = null;
+    group.lastDisconnectedAt ||= new Date().toISOString();
+    updateFeishuRuntime(config, state, group);
+    releaseFeishuGroupLock(config, group);
+  }
+}
+
+function startFeishuClientForGroup(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  state: ChannelDaemonState;
+  activeRunCancels: ChannelDaemonActiveRunCancelRegistry;
+  group: ChannelDaemonFeishuGroup;
+  clients: WSClient[];
+  clientAbortControllers: AbortController[];
+  seenMessages: Map<string, number>;
+}): void {
+  const { config, state, activeRunCancels, group, clients, clientAbortControllers, seenMessages } = input;
+  if (group.clientLoopActive) return;
   if (!acquireFeishuGroupLock(config, group)) {
     appendLog(config.paths.log, "Feishu WebSocket local owner lock held; skipping client start", {
       key: group.key,
@@ -6658,7 +7007,7 @@ function startFeishuClientForGroup(input: {
     });
     state.feishuConnections[group.key] = feishuConnectionState(group);
     writeRuntime(config, state);
-    return null;
+    return;
   }
   const dispatcher = createFeishuDispatcher({
     config,
@@ -6667,150 +7016,27 @@ function startFeishuClientForGroup(input: {
     group,
     seenMessages,
   });
-  const pingTimeout = feishuPingTimeoutSeconds(group);
-  const feishuWsConfig = pingTimeout > 0 ? { pingTimeout } : undefined;
-  const client = new WSClient({
-    appId: group.appId,
-    appSecret: group.refs[0].transport.appSecret,
-    domain: metadataString(group.refs[0].binding, ["domain", "apiUrl", "api_url", "baseUrl", "base_url"]) || undefined,
-    logger: feishuLogger(config),
-    loggerLevel: LoggerLevel.info,
-    ...(feishuWsConfig ? { wsConfig: feishuWsConfig } : {}),
-    onReady: () => {
-      group.lastConnectedAt = new Date().toISOString();
-      group.lastDisconnectedAt = null;
-      group.lifecycleReceivedMessages = 0;
-      group.lifecycleLastReceivedAt = null;
-      group.lastUnhealthyAt = null;
-      group.lastError = null;
-      group.watchdogRestarting = false;
-      appendLog(config.paths.log, "Feishu WebSocket connected", {
-        key: group.key,
-        bindingIds: group.refs.map((ref) => ref.binding.id),
-        pingTimeoutSeconds: feishuPingTimeoutSeconds(group),
-        ingressUnverifiedAfterMs: feishuIngressUnverifiedAfterMs(group),
-        ingressUnverifiedRenewMax: feishuIngressUnverifiedRenewMax(group),
-        verifiedIngressSilentRenewAfterMs: feishuVerifiedIngressSilentRenewMs(group),
-        dispatcherVerificationConfigured: Boolean(feishuDispatcherVerificationToken(group)),
-        dispatcherEncryptConfigured: Boolean(feishuDispatcherEncryptKey(group)),
-        connectedIdleRenewAfterMs: feishuConnectedIdleRenewMs(group),
-        zeroInboundRenewAfterMs: feishuZeroInboundRenewMs(group),
-        zeroInboundRenewMax: feishuZeroInboundRenewMax(group),
-      });
-      updateFeishuRuntime(config, state, group);
-    },
-    onError: (error) => {
-      group.lastError = shortMessage(error);
-      group.lastDisconnectedAt = new Date().toISOString();
-      group.lastUnhealthyAt ||= group.lastDisconnectedAt;
-      appendLog(config.paths.log, "Feishu WebSocket error", {
-        key: group.key,
-        error: group.lastError,
-      });
-      updateFeishuRuntime(config, state, group);
-    },
-    onReconnecting: () => {
-      group.reconnects += 1;
-      group.lastDisconnectedAt = new Date().toISOString();
-      group.lastUnhealthyAt ||= group.lastDisconnectedAt;
-      appendLog(config.paths.log, "Feishu WebSocket reconnecting", {
-        key: group.key,
-        reconnects: group.reconnects,
-        state: group.client?.getConnectionStatus()?.state || "unknown",
-      });
-      updateFeishuRuntime(config, state, group);
-    },
-    onReconnected: () => {
-      group.lastConnectedAt = new Date().toISOString();
-      group.lastDisconnectedAt = null;
-      group.lifecycleReceivedMessages = 0;
-      group.lifecycleLastReceivedAt = null;
-      group.lastUnhealthyAt = null;
-      group.lastError = null;
-      group.watchdogRestarting = false;
-      appendLog(config.paths.log, "Feishu WebSocket reconnected", {
-        key: group.key,
-        reconnects: group.reconnects,
-        ingressUnverifiedAfterMs: feishuIngressUnverifiedAfterMs(group),
-        ingressUnverifiedRenewMax: feishuIngressUnverifiedRenewMax(group),
-        verifiedIngressSilentRenewAfterMs: feishuVerifiedIngressSilentRenewMs(group),
-        dispatcherVerificationConfigured: Boolean(feishuDispatcherVerificationToken(group)),
-        dispatcherEncryptConfigured: Boolean(feishuDispatcherEncryptKey(group)),
-      });
-      updateFeishuRuntime(config, state, group);
-    },
-  });
-  group.client = client;
-  clients.push(client);
-  state.feishuConnections[group.key] = feishuConnectionState(group);
-  writeRuntime(config, state);
-  void client.start({ eventDispatcher: dispatcher }).catch((error) => {
-    group.lastError = shortMessage(error);
-    group.lastDisconnectedAt = new Date().toISOString();
-    group.lastUnhealthyAt ||= group.lastDisconnectedAt;
-    group.watchdogRestarting = false;
-    appendLog(config.paths.log, "Feishu WebSocket startup failed", {
-      key: group.key,
-      error: group.lastError,
-    });
-    updateFeishuRuntime(config, state, group);
-  });
-  return client;
-}
-
-function restartFeishuGroupClient(input: {
-  config: ChannelConnectorsDaemonRuntimeConfig;
-  state: ChannelDaemonState;
-  activeRunCancels: ChannelDaemonActiveRunCancelRegistry;
-  group: ChannelDaemonFeishuGroup;
-  clients: WSClient[];
-  seenMessages: Map<string, number>;
-  reason: string;
-}): void {
-  const { config, state, activeRunCancels, group, clients, seenMessages, reason } = input;
-  if (!group.refs.length || group.watchdogRestarting) return;
-  group.watchdogRestarting = true;
-  group.reconnects += 1;
-  group.lastError = reason;
-  group.lastWatchdogRestartAt = new Date().toISOString();
-  group.lastWatchdogRestartReason = reason;
-  if (reason.startsWith("watchdog_connected_idle_")) {
-    group.suppressZeroInboundRenewal = true;
-    group.lifecycleReceivedMessages = 0;
-    group.lifecycleLastReceivedAt = null;
-  }
-  if (reason.startsWith("watchdog_ingress_unverified_")) {
-    group.lifecycleReceivedMessages = 0;
-    group.lifecycleLastReceivedAt = null;
-  }
-  if (reason.startsWith("watchdog_verified_ingress_silent_")) {
-    group.lifecycleReceivedMessages = 0;
-    group.lifecycleLastReceivedAt = null;
-  }
-  const currentClient = group.client;
-  if (currentClient) {
-    const index = clients.indexOf(currentClient);
-    if (index >= 0) clients.splice(index, 1);
-  }
-  appendLog(config.paths.log, "Feishu WebSocket watchdog restarting client", {
-    key: group.key,
-    reason,
-  });
-  try {
-    group.client?.close({ force: true });
-  } catch (error) {
-    appendLog(config.paths.log, "Feishu WebSocket watchdog close failed", {
-      key: group.key,
-      error: shortMessage(error),
-    });
-  }
-  startFeishuClientForGroup({
+  group.clientLoopActive = true;
+  const abortController = new AbortController();
+  clientAbortControllers.push(abortController);
+  updateFeishuRuntime(config, state, group);
+  void runFeishuGroupClientLoop({
     config,
     state,
     activeRunCancels,
     group,
     clients,
     seenMessages,
+    abortSignal: abortController.signal,
+    dispatcher,
+  }).catch((error) => {
+    group.lastError = shortMessage(error);
+    group.clientLoopActive = false;
+    appendLog(config.paths.log, "Feishu WebSocket client loop failed", {
+      key: group.key,
+      error: group.lastError,
+    });
+    updateFeishuRuntime(config, state, group);
   });
 }
 
@@ -6820,9 +7046,10 @@ function startFeishuWatchdog(input: {
   activeRunCancels: ChannelDaemonActiveRunCancelRegistry;
   groups: ChannelDaemonFeishuGroup[];
   clients: WSClient[];
+  clientAbortControllers: AbortController[];
   seenMessages: Map<string, number>;
 }): NodeJS.Timeout {
-  const { config, state, activeRunCancels, groups, clients, seenMessages } = input;
+  const { config, state, activeRunCancels, groups, clients, clientAbortControllers, seenMessages } = input;
   const timer = setInterval(() => {
     const nowMs = Date.now();
     for (const group of groups) {
@@ -6831,7 +7058,7 @@ function startFeishuWatchdog(input: {
         state.feishuConnections[group.key] = feishuConnectionState(group);
         const retryAfterMs = feishuLockRetryMs(group);
         const lastRetryMs = group.lastLockRetryAt ? Date.parse(group.lastLockRetryAt) : NaN;
-        if (!group.lockAcquired && (!Number.isFinite(lastRetryMs) || nowMs - lastRetryMs >= retryAfterMs)) {
+        if (!group.clientLoopActive && !group.lockAcquired && (!Number.isFinite(lastRetryMs) || nowMs - lastRetryMs >= retryAfterMs)) {
           group.lastLockRetryAt = new Date().toISOString();
           startFeishuClientForGroup({
             config,
@@ -6839,6 +7066,7 @@ function startFeishuWatchdog(input: {
             activeRunCancels,
             group,
             clients,
+            clientAbortControllers,
             seenMessages,
           });
         }
@@ -6846,168 +7074,31 @@ function startFeishuWatchdog(input: {
       }
       const status = group.client.getConnectionStatus();
       if (status?.state === "connected") {
-        const connectedAtMs = group.lastConnectedAt ? new Date(group.lastConnectedAt).getTime() : NaN;
-        const connectedForMs = Number.isFinite(connectedAtMs) ? nowMs - connectedAtMs : 0;
-        const ingressUnverifiedRenewDelayMs = feishuIngressUnverifiedRenewDelayMs(group);
-        const ingressUnverifiedRenewMax = feishuIngressUnverifiedRenewMax(group);
-        if (
-          ingressUnverifiedRenewDelayMs > 0
-          && ingressUnverifiedRenewMax > 0
-          && group.receivedMessages === 0
-          && group.lifecycleReceivedMessages === 0
-          && !group.lifecycleLastReceivedAt
-          && group.ingressUnverifiedRenewals < ingressUnverifiedRenewMax
-          && Number.isFinite(connectedAtMs)
-          && connectedForMs >= ingressUnverifiedRenewDelayMs
-        ) {
-          group.ingressUnverifiedRenewals += 1;
-          group.lastIngressUnverifiedRenewAt = new Date().toISOString();
-          restartFeishuGroupClient({
-            config,
-            state,
-            activeRunCancels,
-            group,
-            clients,
-            seenMessages,
-            reason: `watchdog_ingress_unverified_${connectedForMs}`,
-          });
-          appendLog(config.paths.log, "Feishu WebSocket ingress-unverified renewal threshold elapsed", {
-            key: group.key,
-            connectedForMs,
-            ingressUnverifiedAfterMs: feishuIngressUnverifiedAfterMs(group),
-            ingressUnverifiedRenewDelayMs,
-            ingressUnverifiedRenewals: group.ingressUnverifiedRenewals,
-            ingressUnverifiedRenewMax,
-            lastConnectedAt: group.lastConnectedAt,
-          });
-          continue;
-        }
-        const zeroInboundRenewAfterMs = feishuZeroInboundRenewMs(group);
-        const zeroInboundRenewMax = feishuZeroInboundRenewMax(group);
-        if (
-          zeroInboundRenewAfterMs > 0
-          && zeroInboundRenewMax > 0
-          && !group.suppressZeroInboundRenewal
-          && group.receivedMessages === 0
-          && group.lifecycleReceivedMessages === 0
-          && !group.lifecycleLastReceivedAt
-          && group.zeroInboundRenewals < zeroInboundRenewMax
-          && Number.isFinite(connectedAtMs)
-          && connectedForMs >= zeroInboundRenewAfterMs
-        ) {
-          group.zeroInboundRenewals += 1;
-          restartFeishuGroupClient({
-            config,
-            state,
-            activeRunCancels,
-            group,
-            clients,
-            seenMessages,
-            reason: `watchdog_zero_inbound_${connectedForMs}`,
-          });
-          appendLog(config.paths.log, "Feishu WebSocket zero-inbound startup renewal threshold elapsed", {
-            key: group.key,
-            connectedForMs,
-            zeroInboundRenewAfterMs,
-            zeroInboundRenewals: group.zeroInboundRenewals,
-            zeroInboundRenewMax,
-            lastConnectedAt: group.lastConnectedAt,
-          });
-          continue;
-        }
-        const verifiedIngressSilentRenewAfterMs = feishuVerifiedIngressSilentRenewMs(group);
-        const latestVerifiedIngressLeaseAt = latestFeishuVerifiedIngressLeaseAt(group);
-        const latestVerifiedIngressLeaseAtMs = latestVerifiedIngressLeaseAt
-          ? Date.parse(latestVerifiedIngressLeaseAt)
-          : NaN;
-        const verifiedIngressSilentForMs = Number.isFinite(latestVerifiedIngressLeaseAtMs)
-          ? nowMs - latestVerifiedIngressLeaseAtMs
-          : connectedForMs;
-        if (
-          verifiedIngressSilentRenewAfterMs > 0
-          && group.receivedMessages > 0
-          && Number.isFinite(connectedAtMs)
-          && verifiedIngressSilentForMs >= verifiedIngressSilentRenewAfterMs
-        ) {
-          group.verifiedIngressSilentRenewals += 1;
-          group.lastVerifiedIngressSilentRenewAt = new Date().toISOString();
-          restartFeishuGroupClient({
-            config,
-            state,
-            activeRunCancels,
-            group,
-            clients,
-            seenMessages,
-            reason: `watchdog_verified_ingress_silent_${verifiedIngressSilentForMs}`,
-          });
-          appendLog(config.paths.log, "Feishu WebSocket verified-ingress silent renewal threshold elapsed", {
-            key: group.key,
-            silentForMs: verifiedIngressSilentForMs,
-            renewAfterMs: verifiedIngressSilentRenewAfterMs,
-            verifiedIngressSilentRenewals: group.verifiedIngressSilentRenewals,
-            lastVerifiedIngressLeaseAt: latestVerifiedIngressLeaseAt,
-            lastConnectedAt: group.lastConnectedAt,
-            lastReceivedAt: group.lastReceivedAt,
-            receivedMessages: group.receivedMessages,
-          });
-          continue;
-        }
-        const renewAfterMs = feishuConnectedIdleRenewMs(group);
-        const lastActivityAt = latestFeishuLifecycleActivityAt(group);
-        const idleForMs = lastActivityAt ? nowMs - new Date(lastActivityAt).getTime() : 0;
-        if (
-          renewAfterMs > 0
-          && group.lifecycleReceivedMessages > 0
-          && lastActivityAt
-          && idleForMs >= renewAfterMs
-        ) {
-          restartFeishuGroupClient({
-            config,
-            state,
-            activeRunCancels,
-            group,
-            clients,
-            seenMessages,
-            reason: `watchdog_connected_idle_${idleForMs}`,
-          });
-          appendLog(config.paths.log, "Feishu WebSocket connected-idle renewal threshold elapsed", {
-            key: group.key,
-            idleForMs,
-            renewAfterMs,
-            lastActivityAt,
-            lastConnectedAt: group.lastConnectedAt,
-            lastReceivedAt: group.lastReceivedAt,
-            receivedMessages: group.receivedMessages,
-          });
-          continue;
-        }
         group.lastUnhealthyAt = null;
+        group.lastReconnectingAt = null;
         group.watchdogRestarting = false;
+        state.feishuConnections[group.key] = feishuConnectionState(group);
+        continue;
+      }
+      if (status?.state === "reconnecting") {
+        const reconnectingStartedAt = group.lastReconnectingAt || new Date().toISOString();
+        group.lastReconnectingAt = reconnectingStartedAt;
+        group.lastUnhealthyAt ||= reconnectingStartedAt;
+        const startedAtMs = Date.parse(reconnectingStartedAt);
+        const reconnectingForMs = Number.isFinite(startedAtMs)
+          ? Math.max(0, nowMs - startedAtMs)
+          : 0;
+        const recycleAfterMs = feishuReconnectingRecycleMs(group);
+        if (recycleAfterMs > 0 && reconnectingForMs >= recycleAfterMs && group.recycleCurrentClient) {
+          group.recycleCurrentClient(`sdk_reconnecting_timeout_${recycleAfterMs}ms`);
+        }
         state.feishuConnections[group.key] = feishuConnectionState(group);
         continue;
       }
       const unhealthyAt = group.lastUnhealthyAt || new Date().toISOString();
       group.lastUnhealthyAt = unhealthyAt;
+      group.lastReconnectingAt = null;
       state.feishuConnections[group.key] = feishuConnectionState(group);
-      const unhealthyForMs = nowMs - new Date(unhealthyAt).getTime();
-      const restartAfterMs = feishuWatchdogRestartMs(group);
-      if (restartAfterMs > 0 && unhealthyForMs >= restartAfterMs) {
-        restartFeishuGroupClient({
-          config,
-          state,
-          activeRunCancels,
-          group,
-          clients,
-          seenMessages,
-          reason: `watchdog_non_connected_${status?.state || "unknown"}`,
-        });
-        appendLog(config.paths.log, "Feishu WebSocket watchdog threshold elapsed", {
-          key: group.key,
-          state: status?.state || "unknown",
-          unhealthyForMs,
-          restartAfterMs,
-        });
-      }
     }
     writeRuntime(config, state);
   }, 5_000);
@@ -7020,6 +7111,7 @@ async function startFeishuConnections(
   state: ChannelDaemonState,
   activeRunCancels: ChannelDaemonActiveRunCancelRegistry,
   clients: WSClient[],
+  clientAbortControllers: AbortController[],
   seenMessages: Map<string, number>,
   groupsOut?: ChannelDaemonFeishuGroup[],
 ): Promise<NodeJS.Timeout | null> {
@@ -7037,11 +7129,12 @@ async function startFeishuConnections(
       activeRunCancels,
       group,
       clients,
+      clientAbortControllers,
       seenMessages,
     });
   }
   return groups.some((group) => group.refs.length)
-    ? startFeishuWatchdog({ config, state, activeRunCancels, groups, clients, seenMessages })
+    ? startFeishuWatchdog({ config, state, activeRunCancels, groups, clients, clientAbortControllers, seenMessages })
     : null;
 }
 
@@ -7057,6 +7150,7 @@ async function main(): Promise<void> {
   const sockets: OctoWukongSocket[] = [];
   const octoRestHeartbeatTimers: NodeJS.Timeout[] = [];
   const feishuClients: WSClient[] = [];
+  const feishuClientAbortControllers: AbortController[] = [];
   const feishuGroups: ChannelDaemonFeishuGroup[] = [];
   const activeRunCancels: ChannelDaemonActiveRunCancelRegistry = new Map();
   const seenMessages = loadFeishuSeenMessages(config);
@@ -7068,7 +7162,7 @@ async function main(): Promise<void> {
       error: error instanceof Error ? error.message : String(error),
     });
   });
-  void startFeishuConnections(config, state, activeRunCancels, feishuClients, seenMessages, feishuGroups)
+  void startFeishuConnections(config, state, activeRunCancels, feishuClients, feishuClientAbortControllers, seenMessages, feishuGroups)
     .then((timer) => {
       feishuWatchdog = timer;
     })
@@ -7083,6 +7177,7 @@ async function main(): Promise<void> {
     if (feishuWatchdog) clearInterval(feishuWatchdog);
     if (agentSessionReaper) clearInterval(agentSessionReaper);
     for (const entry of activeRunCancels.values()) entry.controller.abort();
+    for (const controller of feishuClientAbortControllers) controller.abort();
     for (const timer of octoRestHeartbeatTimers) clearInterval(timer);
     for (const socket of sockets) socket.disconnect();
     for (const client of feishuClients) client.close({ force: true });
