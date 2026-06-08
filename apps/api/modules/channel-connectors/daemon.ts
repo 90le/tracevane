@@ -163,10 +163,11 @@ const MAX_FEISHU_PING_TIMEOUT_SECONDS = 300;
 const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 180_000;
 const MIN_FEISHU_WATCHDOG_RESTART_MS = 60_000;
 const MAX_FEISHU_WATCHDOG_RESTART_MS = 600_000;
-// CC Go keeps Feishu's SDK WebSocket as the single owner for an app_id and lets
-// the SDK own heartbeat/reconnect. Studio follows the same shape: no business
-// layer connected-idle or startup-silence rebuilds by default. SDK pingTimeout
-// is kept as a conservative half-open detector for the Node SDK path.
+// Feishu long connection delivery is cluster-mode rather than broadcast. CC Go
+// avoids random delivery loss by using one app_id owner and fan-out; Studio also
+// keeps one local owner. Until the CC Go + OpenClaw parity investigation is
+// closed, Studio treats the first real inbound event as ingress verification and
+// keeps startup ingress renewal disabled unless explicitly enabled per binding.
 const DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS = 0;
 const MIN_FEISHU_CONNECTED_IDLE_RENEW_MS = 60_000;
 const MAX_FEISHU_CONNECTED_IDLE_RENEW_MS = 3_600_000;
@@ -175,9 +176,11 @@ const MIN_FEISHU_ZERO_INBOUND_RENEW_MS = 60_000;
 const MAX_FEISHU_ZERO_INBOUND_RENEW_MS = 15 * 60_000;
 const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX = 0;
 const MAX_FEISHU_ZERO_INBOUND_RENEW_MAX = 10;
-const DEFAULT_FEISHU_INGRESS_UNVERIFIED_AFTER_MS = 120_000;
+const DEFAULT_FEISHU_INGRESS_UNVERIFIED_AFTER_MS = 60_000;
 const MIN_FEISHU_INGRESS_UNVERIFIED_AFTER_MS = 30_000;
 const MAX_FEISHU_INGRESS_UNVERIFIED_AFTER_MS = 3_600_000;
+const DEFAULT_FEISHU_INGRESS_UNVERIFIED_RENEW_MAX = 0;
+const MAX_FEISHU_INGRESS_UNVERIFIED_RENEW_MAX = 10;
 const DEFAULT_FEISHU_LOCK_RETRY_MS = 30_000;
 const MIN_FEISHU_LOCK_RETRY_MS = 5_000;
 const MAX_FEISHU_LOCK_RETRY_MS = 300_000;
@@ -261,6 +264,10 @@ interface ChannelDaemonFeishuConnectionState {
   ingressState: "receiving" | "warming" | "silent" | "disconnected" | "lock-held" | "closed";
   ingressSilentForMs: number;
   ingressUnverifiedAfterMs: number;
+  ingressUnverifiedRenewMax: number;
+  ingressUnverifiedRenewals: number;
+  ingressUnverifiedRenewDelayMs: number;
+  lastIngressUnverifiedRenewAt: string | null;
   lockAcquired: boolean;
   lockOwnerPid: number | null;
   lockPath: string | null;
@@ -306,6 +313,8 @@ interface ChannelDaemonFeishuGroup {
   lastError: string | null;
   watchdogRestarting: boolean;
   zeroInboundRenewals: number;
+  ingressUnverifiedRenewals: number;
+  lastIngressUnverifiedRenewAt: string | null;
   lockAcquired: boolean;
   lockOwnerPid: number | null;
   lockPath: string | null;
@@ -1557,6 +1566,29 @@ function feishuIngressUnverifiedAfterMs(group: ChannelDaemonFeishuGroup): number
   return clampNumber(Math.floor(value), MIN_FEISHU_INGRESS_UNVERIFIED_AFTER_MS, MAX_FEISHU_INGRESS_UNVERIFIED_AFTER_MS);
 }
 
+function feishuIngressUnverifiedRenewMax(group: ChannelDaemonFeishuGroup): number {
+  const binding = firstFeishuBinding(group);
+  const value = binding
+    ? metadataNumber(binding, [
+      "feishuIngressUnverifiedRenewMax",
+      "feishu_ingress_unverified_renew_max",
+      "ingressUnverifiedRenewMax",
+      "ingress_unverified_renew_max",
+      "deliveryUnverifiedRenewMax",
+      "delivery_unverified_renew_max",
+    ], DEFAULT_FEISHU_INGRESS_UNVERIFIED_RENEW_MAX)
+    : DEFAULT_FEISHU_INGRESS_UNVERIFIED_RENEW_MAX;
+  if (value <= 0) return 0;
+  return clampNumber(Math.floor(value), 0, MAX_FEISHU_INGRESS_UNVERIFIED_RENEW_MAX);
+}
+
+function feishuIngressUnverifiedRenewDelayMs(group: ChannelDaemonFeishuGroup): number {
+  const baseMs = feishuIngressUnverifiedAfterMs(group);
+  if (baseMs <= 0) return 0;
+  const renewals = Math.max(0, Math.floor(group.ingressUnverifiedRenewals || 0));
+  return clampNumber(baseMs * (2 ** renewals), baseMs, MAX_FEISHU_INGRESS_UNVERIFIED_AFTER_MS);
+}
+
 function feishuLockRetryMs(group: ChannelDaemonFeishuGroup): number {
   const binding = firstFeishuBinding(group);
   const value = binding
@@ -2354,6 +2386,10 @@ function feishuConnectionState(group: ChannelDaemonFeishuGroup): ChannelDaemonFe
     ingressState,
     ingressSilentForMs,
     ingressUnverifiedAfterMs,
+    ingressUnverifiedRenewMax: feishuIngressUnverifiedRenewMax(group),
+    ingressUnverifiedRenewals: group.ingressUnverifiedRenewals,
+    ingressUnverifiedRenewDelayMs: feishuIngressUnverifiedRenewDelayMs(group),
+    lastIngressUnverifiedRenewAt: group.lastIngressUnverifiedRenewAt,
     lockAcquired: group.lockAcquired,
     lockOwnerPid: group.lockOwnerPid,
     lockPath: group.lockPath,
@@ -6145,6 +6181,8 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
           lastError: "feishu_transport_config_missing",
           watchdogRestarting: false,
           zeroInboundRenewals: 0,
+          ingressUnverifiedRenewals: 0,
+          lastIngressUnverifiedRenewAt: null,
           lockAcquired: false,
           lockOwnerPid: null,
           lockPath: null,
@@ -6174,6 +6212,8 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
         lastError: null,
         watchdogRestarting: false,
         zeroInboundRenewals: 0,
+        ingressUnverifiedRenewals: 0,
+        lastIngressUnverifiedRenewAt: null,
         lockAcquired: false,
         lockOwnerPid: null,
         lockPath: null,
@@ -6302,6 +6342,8 @@ function createFeishuDispatcher(input: {
       group.lastReceivedAt = receivedAt;
       group.lifecycleLastReceivedAt = receivedAt;
       group.zeroInboundRenewals = 0;
+      group.ingressUnverifiedRenewals = 0;
+      group.lastIngressUnverifiedRenewAt = null;
       group.suppressZeroInboundRenewal = false;
       const parsed = parseChannelConnectorFeishuWebhook(feishuEnvelope(group.appId, "im.message.receive_v1", data));
       writeJsonLine(config.paths.feishuEvents, {
@@ -6334,6 +6376,8 @@ function createFeishuDispatcher(input: {
       group.receivedMessages += 1;
       group.lifecycleReceivedMessages += 1;
       group.zeroInboundRenewals = 0;
+      group.ingressUnverifiedRenewals = 0;
+      group.lastIngressUnverifiedRenewAt = null;
       group.suppressZeroInboundRenewal = false;
       const parsed = parseChannelConnectorFeishuWebhook(feishuEnvelope(group.appId, "card.action.trigger", data));
       updateFeishuRuntime(config, state, group);
@@ -6355,6 +6399,8 @@ function createFeishuDispatcher(input: {
       group.receivedMessages += 1;
       group.lifecycleReceivedMessages += 1;
       group.zeroInboundRenewals = 0;
+      group.ingressUnverifiedRenewals = 0;
+      group.lastIngressUnverifiedRenewAt = null;
       group.suppressZeroInboundRenewal = false;
       const parsed = parseChannelConnectorFeishuWebhook(feishuEnvelope(group.appId, "application.bot.menu_v6", data));
       updateFeishuRuntime(config, state, group);
@@ -6437,6 +6483,8 @@ function startFeishuClientForGroup(input: {
         key: group.key,
         bindingIds: group.refs.map((ref) => ref.binding.id),
         pingTimeoutSeconds: feishuPingTimeoutSeconds(group),
+        ingressUnverifiedAfterMs: feishuIngressUnverifiedAfterMs(group),
+        ingressUnverifiedRenewMax: feishuIngressUnverifiedRenewMax(group),
         connectedIdleRenewAfterMs: feishuConnectedIdleRenewMs(group),
         zeroInboundRenewAfterMs: feishuZeroInboundRenewMs(group),
         zeroInboundRenewMax: feishuZeroInboundRenewMax(group),
@@ -6475,6 +6523,8 @@ function startFeishuClientForGroup(input: {
       appendLog(config.paths.log, "Feishu WebSocket reconnected", {
         key: group.key,
         reconnects: group.reconnects,
+        ingressUnverifiedAfterMs: feishuIngressUnverifiedAfterMs(group),
+        ingressUnverifiedRenewMax: feishuIngressUnverifiedRenewMax(group),
       });
       updateFeishuRuntime(config, state, group);
     },
@@ -6515,6 +6565,10 @@ function restartFeishuGroupClient(input: {
   group.lastWatchdogRestartReason = reason;
   if (reason.startsWith("watchdog_connected_idle_")) {
     group.suppressZeroInboundRenewal = true;
+    group.lifecycleReceivedMessages = 0;
+    group.lifecycleLastReceivedAt = null;
+  }
+  if (reason.startsWith("watchdog_ingress_unverified_")) {
     group.lifecycleReceivedMessages = 0;
     group.lifecycleLastReceivedAt = null;
   }
@@ -6577,10 +6631,44 @@ function startFeishuWatchdog(input: {
       }
       const status = group.client.getConnectionStatus();
       if (status?.state === "connected") {
-        const zeroInboundRenewAfterMs = feishuZeroInboundRenewMs(group);
-        const zeroInboundRenewMax = feishuZeroInboundRenewMax(group);
         const connectedAtMs = group.lastConnectedAt ? new Date(group.lastConnectedAt).getTime() : NaN;
         const connectedForMs = Number.isFinite(connectedAtMs) ? nowMs - connectedAtMs : 0;
+        const ingressUnverifiedRenewDelayMs = feishuIngressUnverifiedRenewDelayMs(group);
+        const ingressUnverifiedRenewMax = feishuIngressUnverifiedRenewMax(group);
+        if (
+          ingressUnverifiedRenewDelayMs > 0
+          && ingressUnverifiedRenewMax > 0
+          && group.receivedMessages === 0
+          && group.lifecycleReceivedMessages === 0
+          && !group.lifecycleLastReceivedAt
+          && group.ingressUnverifiedRenewals < ingressUnverifiedRenewMax
+          && Number.isFinite(connectedAtMs)
+          && connectedForMs >= ingressUnverifiedRenewDelayMs
+        ) {
+          group.ingressUnverifiedRenewals += 1;
+          group.lastIngressUnverifiedRenewAt = new Date().toISOString();
+          restartFeishuGroupClient({
+            config,
+            state,
+            activeRunCancels,
+            group,
+            clients,
+            seenMessages,
+            reason: `watchdog_ingress_unverified_${connectedForMs}`,
+          });
+          appendLog(config.paths.log, "Feishu WebSocket ingress-unverified renewal threshold elapsed", {
+            key: group.key,
+            connectedForMs,
+            ingressUnverifiedAfterMs: feishuIngressUnverifiedAfterMs(group),
+            ingressUnverifiedRenewDelayMs,
+            ingressUnverifiedRenewals: group.ingressUnverifiedRenewals,
+            ingressUnverifiedRenewMax,
+            lastConnectedAt: group.lastConnectedAt,
+          });
+          continue;
+        }
+        const zeroInboundRenewAfterMs = feishuZeroInboundRenewMs(group);
+        const zeroInboundRenewMax = feishuZeroInboundRenewMax(group);
         if (
           zeroInboundRenewAfterMs > 0
           && zeroInboundRenewMax > 0

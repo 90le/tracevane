@@ -12,6 +12,7 @@
 - Provider Center 已支持自定义 provider、启停、模型列表/别名/默认模型、能力勾选、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
 - App Connections 已覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收。
 - Channel Connectors 已切换为 Studio 原生 CLI Agent Bot 路线；本地 Octo(dmwork) 与 Feishu 已接入 Codex/Claude Code/OpenCode runner、Studio Gateway key、IM session override、slash command、Feishu card/menu/progress、附件 staging、history、group context、reply buffer 和基础治理。
+- Feishu 长连接假在线/延迟问题进入专项跟踪：`docs/feishu-long-connection-issue-tracker.md`。后续反馈、证据、CC Go / OpenClaw 对照和修复验收都先更新该文档。
 - IM 文件收发边界已固定为 Studio native transport：Agent 只读入站 staging 文件，出站只声明工作目录内文件 manifest，由 daemon 按平台上传发送。
 - IM Agent run 默认按 binding + sessionKey 串行排队：上一条 Agent 消息未结束时，新普通消息会收到“已加入队列”引导，并在前序任务完成后自动处理；`/stop`、`/status` 等 Studio 命令仍可执行，binding metadata 可显式打开 parallel。
 - IM Agent runner 策略固定为混合架构：系统默认 one-shot `exec/resume` 保稳定；Codex 持久 session driver 保留为 metadata 实验路径，binding 显式开启时使用 `codex app-server`，已覆盖 `turn/start`、原生 `/compact`、`turn/interrupt`、`/stop`、超时中断和失败回退。
@@ -28,7 +29,7 @@
 - 新增出站文件校验：普通权限只允许 Agent workDir 或当前 runtime/staging 根；`yolo` 权限允许任意可读普通文件出站，但仍保留平台/daemon 文件大小限制。
 - Feishu transport 补 image/file upload + message send；Octo daemon 接入已有 upload+send media，事件日志记录 declared/resolved/sent/errors。
 - Feishu 长连接重投去重改为 messageId 优先，避免同一消息在 reconnect/redelivery 后因 eventId 变化再次触发 Agent 回复。
-- Feishu 长连接主动重建策略按 CC Go/官方 SDK 思路收紧：默认关闭 `pingTimeout` 和 connected-idle renewal；SDK 自己负责心跳与重连，Studio 外层 watchdog 只作为慢速 circuit-breaker，默认非 connected 180 秒后才重建；启动后若 90 秒内从未收到任何 Feishu 事件，做最多 1 次 delivery-silence renewal，避免 SDK `connected=true` 但入站不投递。
+- Feishu 长连接假在线问题已建立专项临时文档，明确不以 socket/daemon 重启自愈作为完成标准；下一步按 CC Go 行为合同和 OpenClaw Node/TS 实现逐项复刻，再做 Studio 整合。
 - 新增 Feishu 长连接只读 soak 脚本：`scripts/smoke-channel-connectors-feishu-long-connection.mjs`，可按 binding/key 轮询 runtime 和日志，失败识别旧的 `pingTimeout`、zero-inbound、connected-idle 与过快 watchdog 重建路径。
 - Octo 出站上传改用共享文件名清洗，保留原始文件名中的中文、空格和括号；Agent prompt 明确要求除非用户指定改名，否则 manifest `name` 保持原文件名。
 - 入站附件 staging 改为可读文件名策略：仍剥离路径穿越和非法字符，但保留中文、空格、括号等原始文件名信息，方便 Agent 和用户核对文件。
@@ -81,10 +82,10 @@
 - 通过：`npm run build:api`。
 - 通过：`git diff --check`。
 - 通过：`node --test tests/system/model-gateway-service.test.mjs`，52 个 Model Gateway 子测试通过。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，60 个 Channel Connectors 子测试通过；覆盖 Codex resume 参数顺序、one-shot 多段 `agent_message` 合并、工具输出不污染最终回复、`studio-channel-files` manifest 换行保真、Feishu/Octo 文件收发、Feishu transport-smoke 文件发送入口、Agent/config 自定义命令扫描/展开/添加/删除、CC 风格唯一前缀命令、binding metadata 命令别名与 `/commands` 子命令缩写、`/help` 表格化分组帮助和多表格空行兼容、`/quiet` 显示控制、`/delete` session 删除和 Feishu delete action、`/whoami`/`/version` 只读诊断回执和 Feishu action、CC Card 文本降级、Feishu SDK pingTimeout opt-in、90 秒单次 startup delivery-silence renewal 与慢速非 connected watchdog、Skill 扫描/调用、Commands 菜单卡片、Studio `/compact` Gateway 请求与 session 清理、Feishu/Octo service slash compact、Octo service `/new`/`/reset`、adapter dry-run 不触发 Gateway compact 或清理状态、Claude Code stream-json 进度、图片输入、`--resume` 续接、权限 `control_response`、IM 文本批准、Feishu 权限卡片按钮、AskUserQuestion IM 回答、进度/工具事件和 daemon 合同。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，60 个 Channel Connectors 子测试通过；覆盖 Codex resume 参数顺序、one-shot 多段 `agent_message` 合并、工具输出不污染最终回复、`studio-channel-files` manifest 换行保真、Feishu/Octo 文件收发、Feishu transport-smoke 文件发送入口、Agent/config 自定义命令扫描/展开/添加/删除、CC 风格唯一前缀命令、binding metadata 命令别名与 `/commands` 子命令缩写、`/help` 表格化分组帮助和多表格空行兼容、`/quiet` 显示控制、`/delete` session 删除和 Feishu delete action、`/whoami`/`/version` 只读诊断回执和 Feishu action、CC Card 文本降级、Feishu SDK pingTimeout opt-in、入站验证 runtime 字段、显式 opt-in ingress renewal 判定与慢速非 connected watchdog、Skill 扫描/调用、Commands 菜单卡片、Studio `/compact` Gateway 请求与 session 清理、Feishu/Octo service slash compact、Octo service `/new`/`/reset`、adapter dry-run 不触发 Gateway compact 或清理状态、Claude Code stream-json 进度、图片输入、`--resume` 续接、权限 `control_response`、IM 文本批准、Feishu 权限卡片按钮、AskUserQuestion IM 回答、进度/工具事件和 daemon 合同。
 - 通过：`node --test tests/system/channel-connectors-command-live-script.test.mjs`，9 个命令 live smoke 脚本子测试通过；覆盖 dry-run 不触发后端、recent session 自动定位、probe adapter dry-run、Feishu smoke debug response 可观测 action/ok、apply 前强制显式会话地址或 recent session、apply 请求带真实发送开关。
 - 通过：`node --test tests/system/channel-connectors-agent-run-live-script.test.mjs`，3 个 Agent run live 观测脚本子测试通过；覆盖 Octo 工具、入站文件、出站文件、视觉附件、自动切视觉模型、Markdown 信号证据、Feishu 最终卡片+Markdown 信号证据和缺少必需证据时失败。
-- 通过：`node --test tests/system/channel-connectors-feishu-long-connection-script.test.mjs`，5 个 Feishu 长连接 smoke 脚本子测试通过；覆盖安全 runtime 通过、旧 30 秒 zero-inbound 策略失败、安全 90 秒单次启动静默自愈通过、旧日志模式失败。
+- 通过：`node --test tests/system/channel-connectors-feishu-long-connection-script.test.mjs`，Feishu 长连接 smoke 脚本覆盖安全 runtime、旧 30 秒 zero-inbound 策略失败、显式 opt-in ingress renewal 判定、不安全 ingress renewal 失败、旧 connected-idle 日志失败、真实入站验证开关。
 - 通过：`node scripts/smoke-channel-connectors-command-live.mjs --json` 的真实本机配置 dry-run 探针，规划 Feishu/Octo 共 6 个命令请求，输出中的 Feishu token 已脱敏。
 - 通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --require-ok --require-inbound-file --json`，真实本机 daemon 日志中 Feishu/Octo 各 1 条入站文件 run 匹配，staging 无失败。
 - 通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --require-ok --require-visual --require-auto-vision --json`，真实本机 daemon 日志中 5 条图片 run 匹配，覆盖 Feishu/Octo，`glm-5` 自动切到视觉模型。
@@ -120,7 +121,7 @@
 - 通过：`npm run dev:restart`，前端 `http://127.0.0.1:5176`，后端 `http://127.0.0.1:3761`。
 - 通过：Gateway status 显示 local daemon `state=running`、preferred CLI endpoint `http://127.0.0.1:18796/v1`；无正确 Gateway key 访问 `/v1/models` 返回 401，鉴权仍生效。
 - 通过：Channel daemon `/health` 返回 `ok=true`。
-- 通过：Feishu 长连接稳定性改为 CC Go 风格：本机同 App owner lock、默认 60s SDK half-open timeout、`zeroInboundRenewAfterMs=0`、`connectedIdleRenewAfterMs=0`、非 connected watchdog 180s；runtime 新增 `ingressState` / `lockOwnerPid`，smoke 可用 `--require-ingress-verified` 判断真实入站。
+- 通过：Feishu 长连接稳定性基础合同为本机同 App owner lock、默认 60s SDK half-open timeout、`zeroInboundRenewAfterMs=0`、`connectedIdleRenewAfterMs=0`、非 connected watchdog 180s；runtime 新增 `ingressState` / `lockOwnerPid` / 入站验证字段，smoke 可用 `--require-ingress-verified` 判断真实入站。假在线根因继续按专项文档复刻 CC Go + OpenClaw。
 - 通过：用户在 2026-06-08T11:37:58Z 的 Feishu 消息 `把docs文档总结发我` 已进入 long-connection 入站并在 2026-06-08T11:39:02Z 完成回复；该现场证明问题属于 Feishu 入站连接延迟/假在线，不是 Agent 或模型链路失败。
 - 通过：构建产物 `/help` 命令探针显示 `分组帮助\n\n| 命令 | 作用 |`，第二个 Markdown 表格前空行已保留。
 - 通过：本次重启后 Channel daemon `/agent-sessions` 返回 Feishu/Octo live binding 当前 metadata 请求 `effectiveMode=persistent`，`activeSessions=[]`；未修改真实 Channel 配置。
