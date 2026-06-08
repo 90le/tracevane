@@ -325,6 +325,7 @@ function plannedRequest(binding, command, options, target) {
       bindingId: binding.id,
       dryRun: !options.apply,
       sendReply: options.apply && options.sendReply,
+      studioDebugResponse: true,
       schema: "2.0",
       header: {
         event_type: "im.message.receive_v1",
@@ -415,6 +416,7 @@ function summarizeResponse(response) {
     replyPreview: String(
       body.commandAction?.commandResult?.replyText
       || body.commandResult?.replyText
+      || body.feishuResponse?.toast?.content
       || body.toast?.content
       || body.replyPlan?.chunks?.join("\n")
       || "",
@@ -479,7 +481,9 @@ async function main() {
     stateDir: options.stateDir,
     plans,
     note: options.apply
-      ? "apply executed adapter requests; transport replies may have been sent"
+      ? options.sendReply
+        ? "apply executed adapter requests; transport replies may have been sent"
+        : "apply executed adapter requests; transport replies were suppressed"
       : options.probe
         ? "probe posted dry-run adapter requests; no transport replies were requested"
         : "dry-run only; pass --probe or --apply to execute",

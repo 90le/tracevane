@@ -141,13 +141,15 @@ function startFakeBackend() {
       posts.push({ method: req.method, path: req.url, body });
       res.setHeader("content-type", "application/json");
       if (req.url === "/api/channel-connectors/adapters/octo/incoming") {
+        const command = body.message?.payload?.content || null;
+        const name = String(command || "").replace(/^\/+/, "").split(/\s+/, 1)[0] || null;
         res.end(JSON.stringify({
           ok: true,
           accepted: true,
           commandAction: {
-            command: body.message?.payload?.content || null,
+            command,
             commandResult: {
-              action: body.message?.payload?.content === "/compact" ? "compact" : "new",
+              action: name,
               ok: true,
               replyText: "ok from octo command",
             },
@@ -157,9 +159,28 @@ function startFakeBackend() {
         return;
       }
       if (req.url === "/api/channel-connectors/adapters/feishu/webhook") {
-        res.end(JSON.stringify({
-          toast: { content: "ok from feishu command" },
-        }));
+        const content = body.event?.message?.content ? JSON.parse(body.event.message.content) : {};
+        const command = content.text || null;
+        const name = String(command || "").replace(/^\/+/, "").split(/\s+/, 1)[0] || null;
+        if (body.studioDebugResponse === true) {
+          res.end(JSON.stringify({
+            ok: true,
+            accepted: true,
+            commandAction: {
+              command,
+              commandResult: {
+                action: name,
+                ok: true,
+                replyText: "ok from feishu command",
+              },
+            },
+            feishuResponse: {
+              toast: { content: "ok from feishu command" },
+            },
+          }));
+          return;
+        }
+        res.end(JSON.stringify({ toast: { content: "ok from feishu command" } }));
         return;
       }
       res.statusCode = 404;
@@ -261,8 +282,13 @@ test("command live smoke script probes adapter dry-run requests", async () => {
     assert.equal(fake.posts[0].body.sendReply, false);
     assert.equal(fake.posts[1].body.dryRun, true);
     assert.equal(fake.posts[1].body.sendReply, false);
+    assert.equal(fake.posts[1].body.studioDebugResponse, true);
     assert.equal(fake.posts[1].body.header.token, "verify-token");
     assert.equal(parsed.plans[1].request.body.header.token, "<redacted>");
+    assert.equal(parsed.plans[0].result.action, "new");
+    assert.equal(parsed.plans[0].result.ok, true);
+    assert.equal(parsed.plans[1].result.action, "new");
+    assert.equal(parsed.plans[1].result.ok, true);
   } finally {
     await new Promise((resolve) => fake.server.close(resolve));
   }
@@ -308,6 +334,8 @@ test("command live smoke script can apply against recent sessions without copyin
     assert.equal(fake.posts[0].body.message.fromUid, "user-2");
     assert.equal(fake.posts[0].body.message.channelId, "user-2");
     assert.equal(parsed.plans[0].sessionKey, "dmwork:dm:user-2");
+    assert.equal(parsed.plans[0].result.action, "reset");
+    assert.equal(parsed.plans[0].result.ok, true);
   } finally {
     await new Promise((resolve) => fake.server.close(resolve));
   }
@@ -336,6 +364,8 @@ test("command live smoke script applies adapter requests with sendReply", async 
     assert.equal(fake.posts[0].body.sendReply, true);
     assert.equal(fake.posts[0].body.message.payload.content, "/reset");
     assert.equal(parsed.plans[0].result.status, 200);
+    assert.equal(parsed.plans[0].result.action, "reset");
+    assert.equal(parsed.plans[0].result.ok, true);
   } finally {
     await new Promise((resolve) => fake.server.close(resolve));
   }

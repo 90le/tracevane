@@ -453,6 +453,7 @@ export interface ChannelConnectorFeishuWebhookRequest {
   models?: string[];
   dryRun?: boolean;
   sendReply?: boolean;
+  studioDebugResponse?: boolean;
   token?: string | null;
   challenge?: string | null;
   type?: string | null;

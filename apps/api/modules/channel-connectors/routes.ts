@@ -96,6 +96,10 @@ export function registerChannelConnectorsRoutes(router: StudioRouter): void {
         });
         return;
       }
+      if (payload.studioDebugResponse === true) {
+        sendJson(res, 200, response);
+        return;
+      }
       sendJson(res, 200, response.feishuResponse || response);
     } catch (error) {
       sendChannelConnectorsError(res, error);
