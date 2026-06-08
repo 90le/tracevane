@@ -2291,6 +2291,41 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(resumeVisionAttachmentRequest.args.at(-1), "-");
   for (const cleanupPath of resumeVisionAttachmentRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
+  const claudeVisionAttachmentRequest = buildChannelConnectorAgentProcessRequest({
+    project: { ...project, agent: "claude-code", model: "claude-sonnet" },
+    binding: { ...binding, agent: "claude-code" },
+    message: {
+      ...message,
+      messageId: "m-runner-claude-vision-image",
+      payload: { type: 2, content: "", name: "vision.png" },
+      attachments: [{
+        kind: "image",
+        platform: "feishu",
+        fileName: "vision.png",
+        mimeType: "image/png",
+        localPath: visionImagePath,
+        stagedAt: "2026-06-06T08:00:00.000Z",
+      }],
+    },
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    modelCapabilities: { vision: true },
+  });
+  assert.ok(claudeVisionAttachmentRequest);
+  assert.equal(claudeVisionAttachmentRequest.command, "claude");
+  assert.equal(claudeVisionAttachmentRequest.args.includes("--image"), false);
+  const claudeVisionInput = JSON.parse(claudeVisionAttachmentRequest.stdin);
+  assert.equal(Array.isArray(claudeVisionInput.message.content), true);
+  assert.equal(claudeVisionInput.message.content[0].type, "image");
+  assert.equal(claudeVisionInput.message.content[0].source.type, "base64");
+  assert.equal(claudeVisionInput.message.content[0].source.media_type, "image/png");
+  assert.equal(claudeVisionInput.message.content[0].source.data, Buffer.from("fake-png").toString("base64"));
+  assert.equal(claudeVisionInput.message.content[1].type, "text");
+  assert.match(claudeVisionInput.message.content[1].text, /native image content blocks/);
+  assert.match(claudeVisionInput.message.content[1].text, /Studio attachment summary/);
+  assert.doesNotMatch(claudeVisionInput.message.content[1].text, /Studio visual attachment policy/);
+
   const stagedLocalPath = path.join(workDir, ".studio-agent-attachments", "report.txt");
   const stagedAttachmentRequest = buildChannelConnectorAgentProcessRequest({
     project,

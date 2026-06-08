@@ -104,7 +104,11 @@ export interface ChannelConnectorAgentTurnResult {
   };
 }
 
-type ChannelConnectorVisualInputMode = "none" | "codex-native-image";
+type ChannelConnectorVisualInputMode = "none" | "codex-native-image" | "claude-native-image";
+
+type ClaudeCodeContentPart =
+  | { type: "text"; text: string }
+  | { type: "image"; source: { type: "base64"; media_type: string; data: string } };
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -143,7 +147,7 @@ function isVisualAttachment(attachment: ChannelConnectorInboundAttachment): bool
   return attachment.kind === "image" || attachment.kind === "video" || attachment.kind === "sticker";
 }
 
-function isCodexNativeImageAttachment(attachment: ChannelConnectorInboundAttachment): boolean {
+function isNativeImageAttachment(attachment: ChannelConnectorInboundAttachment): boolean {
   if (attachment.kind !== "image" && attachment.kind !== "sticker") return false;
   const mimeType = normalizeString(attachment.mimeType).toLowerCase();
   if (mimeType) return mimeType.startsWith("image/");
@@ -155,7 +159,7 @@ function collectCodexNativeImagePaths(attachments: ChannelConnectorInboundAttach
   const paths: string[] = [];
   const seen = new Set<string>();
   for (const attachment of attachments) {
-    if (!isCodexNativeImageAttachment(attachment)) continue;
+    if (!isNativeImageAttachment(attachment)) continue;
     const localPath = normalizeString(attachment.localPath);
     if (!localPath || seen.has(localPath)) continue;
     try {
@@ -167,6 +171,54 @@ function collectCodexNativeImagePaths(attachments: ChannelConnectorInboundAttach
     paths.push(localPath);
   }
   return paths;
+}
+
+function inferImageMimeType(filePath: string, mimeType?: string | null): string {
+  const normalizedMime = normalizeString(mimeType).toLowerCase();
+  if (normalizedMime.startsWith("image/")) return normalizedMime;
+  const ext = path.extname(filePath).toLowerCase();
+  switch (ext) {
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".gif":
+      return "image/gif";
+    case ".webp":
+      return "image/webp";
+    case ".bmp":
+      return "image/bmp";
+    case ".tif":
+    case ".tiff":
+      return "image/tiff";
+    default:
+      return "image/png";
+  }
+}
+
+function collectClaudeNativeImageParts(attachments: ChannelConnectorInboundAttachment[]): ClaudeCodeContentPart[] {
+  const parts: ClaudeCodeContentPart[] = [];
+  const seen = new Set<string>();
+  for (const attachment of attachments) {
+    if (!isNativeImageAttachment(attachment)) continue;
+    const localPath = normalizeString(attachment.localPath);
+    if (!localPath || seen.has(localPath)) continue;
+    try {
+      if (!fs.statSync(localPath).isFile()) continue;
+      const data = fs.readFileSync(localPath).toString("base64");
+      seen.add(localPath);
+      parts.push({
+        type: "image",
+        source: {
+          type: "base64",
+          media_type: inferImageMimeType(localPath, attachment.mimeType),
+          data,
+        },
+      });
+    } catch {
+      // Attachment summaries still include staging errors/paths; unreadable files stay as text context.
+    }
+  }
+  return parts;
 }
 
 function metadataBooleanOverride(metadata: Record<string, unknown> | undefined, keys: string[]): boolean | null {
@@ -313,6 +365,8 @@ function buildAgentInputContent(
     : null;
   const visualInputText = hasVisualAttachment && visualInputMode === "codex-native-image"
     ? "Vision-capable Codex runtime received staged image attachments through native --image arguments; inspect those attached images for visual tasks."
+    : hasVisualAttachment && visualInputMode === "claude-native-image"
+      ? "Vision-capable Claude Code runtime received staged image attachments through native image content blocks; inspect those attached images for visual tasks."
     : "";
   const attachmentText = [
     "[Studio attachment summary]",
@@ -643,6 +697,19 @@ function gatewayEnv(gatewayEndpoint: string, gatewayClientKey: string | null): R
   return env;
 }
 
+function buildClaudeCodeStdin(content: string, imageParts: ClaudeCodeContentPart[]): string {
+  const messageContent: string | ClaudeCodeContentPart[] = imageParts.length
+    ? [...imageParts, { type: "text", text: content }]
+    : content;
+  return `${JSON.stringify({
+    type: "user",
+    message: {
+      role: "user",
+      content: messageContent,
+    },
+  })}\n`;
+}
+
 export function buildChannelConnectorAgentProcessRequest(
   request: ChannelConnectorAgentTurnRequest,
 ): ChannelConnectorAgentProcessRequest | null {
@@ -654,13 +721,19 @@ export function buildChannelConnectorAgentProcessRequest(
     && channelConnectorModelSupportsVision(model || null, request.binding, request.modelCapabilities)
     ? collectCodexNativeImagePaths(attachments)
     : [];
+  const claudeNativeImageParts = project.agent === "claude-code"
+    && channelConnectorModelSupportsVision(model || null, request.binding, request.modelCapabilities)
+    ? collectClaudeNativeImageParts(attachments)
+    : [];
   const content = nativeCommand || buildAgentInputContent(
     request.message,
     request.binding,
     project.model,
     request.historyContext,
     request.modelCapabilities,
-    codexNativeImagePaths.length ? "codex-native-image" : "none",
+    codexNativeImagePaths.length ? "codex-native-image"
+      : claudeNativeImageParts.length ? "claude-native-image"
+        : "none",
   );
   if (!content) return null;
   const cwd = ensureWorkDir(project.workDir);
@@ -765,13 +838,7 @@ export function buildChannelConnectorAgentProcessRequest(
       command: "claude",
       args,
       cwd,
-      stdin: `${JSON.stringify({
-        type: "user",
-        message: {
-          role: "user",
-          content,
-        },
-      })}\n`,
+      stdin: buildClaudeCodeStdin(content, claudeNativeImageParts),
       env: {
         ...baseEnv,
         ANTHROPIC_BASE_URL: request.gatewayEndpoint.replace(/\/v1\/?$/, ""),
