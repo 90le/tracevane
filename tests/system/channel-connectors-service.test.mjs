@@ -3333,6 +3333,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(help.replyText, /\/reasoning/);
   assert.match(help.replyText, /\/stream/);
   assert.match(help.replyText, /\/tools/);
+  assert.match(help.replyText, /\/quiet/);
   assert.match(help.replyText, /`\/help session`/);
   assert.match(help.replyText, /`\/help native`/);
   assert.match(help.replyText, /`\/compact`/);
@@ -3351,6 +3352,15 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(sessionHelp.replyText, /`\/usage`/);
   assert.match(sessionHelp.replyText, /`\/approve`/);
   assert.match(sessionHelp.replyText, /返回：`\/help`/);
+  const displayHelp = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/help display"),
+  });
+  assert.equal(displayHelp.handled, true);
+  assert.equal(displayHelp.ok, true);
+  assert.match(displayHelp.replyText, /Studio Channel \/ display/);
+  assert.match(displayHelp.replyText, /`\/quiet \[quiet\|compact\|full\]`/);
+  assert.match(displayHelp.replyText, /`\/buffer <id\|前缀\|latest>`/);
   const nativeHelp = await handleChannelConnectorCommand({
     ...baseContext,
     message: message("/help native"),
@@ -3365,6 +3375,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(matchChannelConnectorCommandPrefix("stat"), "status");
   assert.equal(matchChannelConnectorCommandPrefix("hist"), "history");
   assert.equal(matchChannelConnectorCommandPrefix("quo"), "usage");
+  assert.equal(matchChannelConnectorCommandPrefix("qui"), "quiet");
   assert.equal(matchChannelConnectorCommandPrefix("n"), null);
   assert.equal(matchChannelConnectorCommandPrefix("s"), null);
   assert.equal(matchChannelConnectorSubCommand("l", ["list", "add", "del", "delete"]), "list");
@@ -3940,6 +3951,42 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(displayDefault.ok, true);
   assert.equal(displayDefault.control.streamMessages, null);
   assert.equal(displayDefault.control.toolMessages, null);
+
+  const quietOn = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/quiet"),
+  });
+  assert.equal(quietOn.ok, true);
+  assert.equal(quietOn.control.streamMessages, false);
+  assert.equal(quietOn.control.toolMessages, false);
+  assert.match(quietOn.replyText, /Quiet mode ON/);
+
+  const quietOff = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/quiet"),
+  });
+  assert.equal(quietOff.ok, true);
+  assert.equal(quietOff.control.streamMessages, null);
+  assert.equal(quietOff.control.toolMessages, null);
+  assert.match(quietOff.replyText, /Quiet mode OFF/);
+
+  const compactDisplay = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/quiet compact"),
+  });
+  assert.equal(compactDisplay.ok, true);
+  assert.equal(compactDisplay.control.streamMessages, false);
+  assert.equal(compactDisplay.control.toolMessages, false);
+  assert.match(compactDisplay.replyText, /Compact display ON/);
+
+  const fullDisplay = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/quiet full"),
+  });
+  assert.equal(fullDisplay.ok, true);
+  assert.equal(fullDisplay.control.streamMessages, null);
+  assert.equal(fullDisplay.control.toolMessages, null);
+  assert.match(fullDisplay.replyText, /Quiet mode OFF/);
 
   const sameSessionReply = `完整群聊回复 ${"buffer内容".repeat(80)}`;
   const sameSessionBuffer = prepareChannelConnectorGroupBufferedReply({
@@ -4872,6 +4919,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   });
   const displayCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(displaySurface));
   assert.match(displayCardRaw, /Studio Display/);
+  assert.match(displayCardRaw, /act:\/quiet quiet/);
   assert.match(displayCardRaw, /act:\/stream on/);
   assert.match(displayCardRaw, /act:\/stream off/);
   assert.match(displayCardRaw, /act:\/tools on/);
@@ -4896,6 +4944,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   const groupDisplayCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(groupDisplaySurface));
   assert.match(groupDisplayCardRaw, /流式\/进度消息：关闭/);
   assert.match(groupDisplayCardRaw, /工具\/思考消息：关闭/);
+  assert.match(groupDisplayCardRaw, /act:\/quiet full/);
 
   const bufferSurface = buildChannelConnectorCommandSurface({
     config: runtimeConfig,

@@ -353,6 +353,7 @@ const STUDIO_COMMAND_MATCH_CANDIDATES: readonly CommandMatchCandidate[] = [
   { id: "display", names: ["display"] },
   { id: "stream", names: ["stream", "streams", "progress"] },
   { id: "tools", names: ["tools", "tool"] },
+  { id: "quiet", names: ["quiet"] },
   { id: "buffer", names: ["buffer", "buffers", "reply-buffer", "reply-buffers"] },
   { id: "stop", names: ["stop", "cancel"] },
   { id: "compact", names: ["compact", "compress"] },
@@ -804,6 +805,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
     return [
       "Studio Channel / display",
       "`/display` 查看流式和工具消息开关",
+      "`/quiet [quiet|compact|full]` 按 CC 习惯隐藏或恢复中间态消息",
       "`/stream <on|off|default>` 开关本会话进度/流式消息",
       "`/tools <on|off|default>` 开关本会话工具/思考消息",
       "`/buffer` 查看本会话最近 reply buffer",
@@ -846,7 +848,7 @@ function commandHelpText(section?: string | null): string {
     "常用",
     "`/status` `/new` `/reset` `/stop` `/compact`",
     "`/agent` `/model` `/mode` `/reasoning`",
-    "`/display` `/stream on|off` `/tools on|off`",
+    "`/display` `/quiet` `/stream on|off` `/tools on|off`",
     "`/commands` `/skills` `/native /help`",
     "",
     "分组帮助",
@@ -978,7 +980,7 @@ function toggleStatusText(
     "显示设置：",
     `流式/进度消息：${stream ? "开启" : "关闭"}${control?.streamMessages === null || control?.streamMessages === undefined ? " (默认)" : ""}`,
     `工具/思考消息：${tools ? "开启" : "关闭"}${control?.toolMessages === null || control?.toolMessages === undefined ? " (默认)" : ""}`,
-    "用法：/stream <on|off|default>；/tools <on|off|default>；/display default 恢复默认。",
+    "用法：/quiet 隐藏/恢复中间态；/stream <on|off|default>；/tools <on|off|default>；/display default 恢复默认。",
   ].join("\n");
 }
 
@@ -995,6 +997,36 @@ function toggleLabel(value: boolean | null): string {
   if (value === true) return "开启";
   if (value === false) return "关闭";
   return "默认开启";
+}
+
+type QuietTarget = "toggle" | "quiet" | "compact" | "full" | "status" | "invalid";
+
+function parseQuietTarget(input: string): QuietTarget {
+  const value = normalizeString(input).toLowerCase();
+  if (!value) return "toggle";
+  if (["status", "current", "list"].includes(value)) return "status";
+  if (["quiet", "on", "enable", "enabled", "true", "1", "hide", "silent", "静音"].includes(value)) {
+    return "quiet";
+  }
+  if (["compact", "compress"].includes(value)) return "compact";
+  if (["full", "off", "disable", "disabled", "false", "0", "default", "reset", "show", "恢复"].includes(value)) {
+    return "full";
+  }
+  return "invalid";
+}
+
+function isQuietMode(control: ChannelConnectorSessionControlRecord | null): boolean {
+  return !effectiveToggle(control?.streamMessages) && !effectiveToggle(control?.toolMessages);
+}
+
+function quietModeReply(mode: "quiet" | "compact" | "full"): string {
+  if (mode === "full") {
+    return "Quiet mode OFF：已恢复本 IM 会话默认中间态显示；最终回复不受影响。";
+  }
+  if (mode === "compact") {
+    return "Compact display ON：已按 CC /quiet compact 习惯隐藏本 IM 会话流式/工具中间态；最终回复不受影响。";
+  }
+  return "Quiet mode ON：已隐藏本 IM 会话流式/工具中间态；最终回复不受影响。";
 }
 
 function bufferPreviewText(value: string, maxRunes = 120): string {
@@ -1543,6 +1575,7 @@ export async function handleChannelConnectorCommand(
       "display",
       "stream",
       "tools",
+      "quiet",
       "stop",
       "compact",
     ].includes(name);
@@ -2232,6 +2265,50 @@ export async function handleChannelConnectorCommand(
       replyText: target
         ? `已切换本会话工作目录：${target}\n已断开旧 Agent 续接：${sessionsCleared}`
         : `已恢复本会话默认工作目录。\n已断开旧 Agent 续接：${sessionsCleared}`,
+      passthroughText: null,
+    };
+  }
+
+  if (name === "quiet") {
+    const target = parseQuietTarget(args.join(" "));
+    if (target === "status") {
+      return {
+        handled: true,
+        command: name,
+        action: "list",
+        ok: true,
+        control: currentControl,
+        replyText: toggleStatusText(currentControl),
+        passthroughText: null,
+      };
+    }
+    if (target === "invalid") {
+      return {
+        handled: true,
+        command: name,
+        action: "set",
+        ok: false,
+        control: currentControl,
+        replyText: "不支持的 quiet 参数。用 /quiet、/quiet compact 或 /quiet full。",
+        passthroughText: null,
+      };
+    }
+    const mode = target === "toggle"
+      ? isQuietMode(currentControl) ? "full" : "quiet"
+      : target;
+    const control = upsertChannelConnectorSessionControl(context.controlsPath, {
+      ...lookup,
+      streamMessages: mode === "full" ? null : false,
+      toolMessages: mode === "full" ? null : false,
+      lastCommand: parsed.raw,
+    });
+    return {
+      handled: true,
+      command: name,
+      action: "set",
+      ok: true,
+      control,
+      replyText: quietModeReply(mode),
       passthroughText: null,
     };
   }

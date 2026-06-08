@@ -129,6 +129,7 @@ const FEISHU_MENU_SECTION_ALIASES: Record<string, FeishuMenuSectionId> = {
   progress: "display",
   tools: "display",
   tool: "display",
+  quiet: "display",
   buffer: "buffer",
   buffers: "buffer",
   "reply-buffer": "buffer",
@@ -188,6 +189,7 @@ const FEISHU_MENU_VIEW_ALIASES: Record<string, FeishuMenuViewId> = {
   progress: "display",
   tools: "display",
   tool: "display",
+  quiet: "display",
   "display-picker": "display",
   buffer: "buffer",
   buffers: "buffer",
@@ -291,7 +293,7 @@ export function channelConnectorCommandSurfaceViewFromCommand(
   if (name === "agent" || name === "agents") return "agent";
   if (name === "model" || name === "models") return "model";
   if (["mode", "permission", "permissions", "yolo", "reasoning", "effort"].includes(name)) return "mode";
-  if (["display", "stream", "streams", "progress", "tools", "tool"].includes(name)) return "display";
+  if (["display", "stream", "streams", "progress", "tools", "tool", "quiet"].includes(name)) return "display";
   if (["buffer", "buffers", "reply-buffer", "reply-buffers"].includes(name)) return "buffer";
   if (["workdir", "dir", "pwd", "cd", "chdir"].includes(name)) return "workdir";
   return null;
@@ -395,6 +397,7 @@ export function buildChannelConnectorCommandSurface(
   const toolMessages = input.control?.toolMessages
     ?? input.displayDefaults?.toolMessages
     ?? true;
+  const quietEnabled = !streamMessages && !toolMessages;
   const models = uniqueStrings([
     ...(input.models || []),
     current.model || "",
@@ -471,6 +474,16 @@ export function buildChannelConnectorCommandSurface(
       summary: "控制 IM 中间态消息；最终回复不受影响。",
       actions: [
         action("display-status", "Status", "/display"),
+        action(
+          "quiet-toggle",
+          quietEnabled ? "Quiet Off" : "Quiet On",
+          quietEnabled ? "/quiet full" : "/quiet quiet",
+          {
+            tone: quietEnabled ? "primary" : "default",
+            requiresAdmin: true,
+            description: "按 CC /quiet 习惯隐藏或恢复中间态消息",
+          },
+        ),
         action("stream-on", "Stream On", "/stream on", {
           tone: input.control?.streamMessages === false ? "default" : "primary",
           requiresAdmin: true,
@@ -871,6 +884,7 @@ function commandSurfaceItemDescription(item: ChannelConnectorCommandSurfaceActio
     case "stream-off":
     case "tools-on":
     case "tools-off":
+    case "quiet-toggle":
     case "display-default":
       return item.description;
     default:
@@ -1364,6 +1378,8 @@ function renderDisplayCard(surface: ChannelConnectorCommandSurface): ChannelConn
   const actions = section?.actions || [];
   const displayStatus = actions.find((item) => item.id === "display-status")
     || action("display-status", "Status", "/display");
+  const quietToggle = actions.find((item) => item.id === "quiet-toggle")
+    || action("quiet-toggle", "Quiet On", "/quiet quiet", { requiresAdmin: true });
   const streamOn = actions.find((item) => item.id === "stream-on")
     || action("stream-on", "Stream On", "/stream on", { requiresAdmin: true });
   const streamOff = actions.find((item) => item.id === "stream-off")
@@ -1387,7 +1403,8 @@ function renderDisplayCard(surface: ChannelConnectorCommandSurface): ChannelConn
       ].join("\n"),
     },
   ];
-  pushActionRows(elements, [displayStatus, defaults], surface, 2, true);
+  pushActionRows(elements, [displayStatus, quietToggle], surface, 2, true);
+  pushActionRows(elements, [defaults], surface, 2, true);
   pushActionRows(elements, [streamOn, streamOff], surface, 2, true);
   pushActionRows(elements, [toolsOn, toolsOff], surface, 2, true);
   pushSubcardNavRows(elements, surface, "display");
