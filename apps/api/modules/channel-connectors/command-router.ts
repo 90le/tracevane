@@ -1648,6 +1648,43 @@ function parseSessionDeleteBatchIndices(spec: string, max: number): number[] | n
   return indices;
 }
 
+function resolveSessionDeleteTargets(
+  records: ChannelConnectorAgentSessionRecord[],
+  target: string,
+): {
+  records: ChannelConnectorAgentSessionRecord[];
+  error: string | null;
+} {
+  if (isExplicitSessionDeleteBatchArg(target)) {
+    const indices = parseSessionDeleteBatchIndices(target, records.length);
+    if (indices) {
+      return {
+        records: indices.map((index) => records[index - 1]).filter((record): record is ChannelConnectorAgentSessionRecord => Boolean(record)),
+        error: null,
+      };
+    }
+    if (!target.includes(",")) {
+      return { records: [], error: "不支持的删除范围。用法：/delete 1,3-5。" };
+    }
+  }
+  const parts = target.includes(",")
+    ? target.split(",").map((part) => normalizeString(part)).filter(Boolean)
+    : [target];
+  if (!parts.length) return { records: [], error: "用法：/delete <序号|sessionId前缀|1,3-5>" };
+  const seen = new Set<string>();
+  const resolvedRecords: ChannelConnectorAgentSessionRecord[] = [];
+  for (const part of parts) {
+    const resolved = resolveSessionSwitchTarget(records, part);
+    if (!resolved.record) {
+      return { records: [], error: resolved.error || `未找到 Agent session：${part}` };
+    }
+    if (seen.has(resolved.record.id)) continue;
+    seen.add(resolved.record.id);
+    resolvedRecords.push(resolved.record);
+  }
+  return { records: resolvedRecords, error: null };
+}
+
 function deleteSessionDisplayName(record: ChannelConnectorAgentSessionRecord): string {
   return record.name || record.projectId || record.agentNativeSessionId || shortIdentifier(record.id, 18);
 }
@@ -2175,36 +2212,19 @@ export async function handleChannelConnectorCommand(
         };
       }
       const target = normalizeString(args[0]);
-      let targets: ChannelConnectorAgentSessionRecord[] = [];
-      if (isExplicitSessionDeleteBatchArg(target)) {
-        const indices = parseSessionDeleteBatchIndices(target, records.length);
-        if (!indices) {
-          return {
-            handled: true,
-            command: name,
-            action: "delete",
-            ok: false,
-            control: currentControl,
-            replyText: "不支持的删除范围。用法：/delete 1,3-5。",
-            passthroughText: null,
-          };
-        }
-        targets = indices.map((index) => records[index - 1]).filter(Boolean);
-      } else {
-        const resolved = resolveSessionSwitchTarget(records, target);
-        if (!resolved.record) {
-          return {
-            handled: true,
-            command: name,
-            action: "delete",
-            ok: false,
-            control: currentControl,
-            replyText: `${resolved.error || "未找到 Agent session。"}\n\n${sessionListText(records, activeSession?.id || null)}`,
-            passthroughText: null,
-          };
-        }
-        targets = [resolved.record];
+      const resolvedTargets = resolveSessionDeleteTargets(records, target);
+      if (resolvedTargets.error) {
+        return {
+          handled: true,
+          command: name,
+          action: "delete",
+          ok: false,
+          control: currentControl,
+          replyText: `${resolvedTargets.error}\n\n${sessionListText(records, activeSession?.id || null)}`,
+          passthroughText: null,
+        };
       }
+      const targets = resolvedTargets.records;
       const lines = targets.map((record) => deleteSessionRecordText(context, lookup, record, activeSession?.id || null));
       return {
         handled: true,

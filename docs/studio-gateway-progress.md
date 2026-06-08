@@ -67,7 +67,7 @@
 - `/help` 与 command surface 文本 fallback 已改为 Markdown 表格布局：Feishu/Octo 可渲染为更清晰的表格，纯文本渠道仍可读，命令说明不再是松散长列表。
 - Feishu `/help` 与 command surface 文本 fallback 的 Markdown 表格兼容性已加固：每个表格前都保留空行，避免 Feishu/Octo 等 IM 渲染器把第二个表格当普通段落导致渲染失败。
 - Studio `/quiet` 已按 CC Go 显示控制习惯接入：文本命令和 Feishu Display 子卡均可隐藏/恢复本 IM session 的流式/工具中间态；当前 `compact` 映射为同样的隐藏中间态，独立 compact display schema 留到后续。
-- Studio `/delete` 已按 CC Go session 管理习惯接入文本命令：支持序号、sessionId、逗号和范围删除非当前 Agent session 续接记录；Feishu Session list 子卡为非当前 session 提供删除按钮。当前删除范围是 Studio 本地 resume/session store，不强杀 daemon persistent process。
+- Studio `/delete` 已按 CC Go session 管理习惯接入文本命令：支持序号、sessionId、逗号和范围删除非当前 Agent session 续接记录；Feishu Session List 子卡支持单 session 删除和 CC Go delete-mode `checker` 批量删除表单，`form_value` 回调会统一映射到 `/delete id1,id2`。当前删除范围是 Studio 本地 resume/session store，不强杀 daemon persistent process。
 - Studio `/whoami` / `/myid` 已按 CC Go 身份排查习惯接入：返回当前 IM User ID、Channel ID、Channel type、Platform、Binding、Session key 和管理权限状态，并在 Feishu Session 子卡提供按钮。
 - Studio `/version` 已按 CC Go 内置命令习惯接入：返回 Studio Channel runtime 版本、Node、平台、binding、daemon config 和 runtime root，并在 Feishu Session 子卡提供按钮，便于排查当前 IM 连接到的 daemon。
 - Claude Code AskUserQuestion 基础闭环已按 CC Go 语义接入：`AskUserQuestion` 不再被 yolo/full-auto 自动 allow；pending question 时 IM 下一条普通回复会作为答案写入 `updatedInput.answers`，`allow/deny` 也按答案处理，`/stop` 等硬控制命令仍可执行。

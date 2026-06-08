@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { Buffer } from "node:buffer";
 import type {
   ChannelConnectorInboundAttachment,
   ChannelConnectorFeishuWebhookEventKind,
@@ -83,6 +84,52 @@ export function buildFeishuSessionKey(
 
 function recordValue(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {};
+}
+
+const DELETE_MODE_CHECKER_NAME_PREFIX = "delete_sel_";
+
+function decodeHexUtf8(value: string): string {
+  const normalized = normalizeString(value);
+  if (!normalized || normalized.length % 2 !== 0 || !/^[0-9a-f]+$/i.test(normalized)) return "";
+  try {
+    return Buffer.from(normalized, "hex").toString("utf8");
+  } catch {
+    return "";
+  }
+}
+
+function parseDeleteModeCheckerName(name: string): string {
+  const normalized = normalizeString(name);
+  if (!normalized.startsWith(DELETE_MODE_CHECKER_NAME_PREFIX)) return "";
+  return decodeHexUtf8(normalized.slice(DELETE_MODE_CHECKER_NAME_PREFIX.length));
+}
+
+function isTruthyFormValue(value: unknown): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  const normalized = normalizeString(value).toLowerCase();
+  return normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on";
+}
+
+function collectDeleteModeSelectedFromAction(action: Record<string, unknown>): string[] {
+  const formValue = recordValue(action.form_value || action.formValue || action.FormValue);
+  const selected = new Set<string>();
+  for (const [name, value] of Object.entries(formValue)) {
+    if (!isTruthyFormValue(value)) continue;
+    const sessionId = parseDeleteModeCheckerName(name);
+    if (sessionId) selected.add(sessionId);
+  }
+  return [...selected].sort();
+}
+
+function deleteModeSelectedFromActionText(actionText: string): string[] {
+  const prefix = "act:/delete-mode form-submit";
+  const normalized = normalizeString(actionText);
+  if (!normalized.startsWith(prefix)) return [];
+  return normalized.slice(prefix.length).split(",")
+    .map((part) => normalizeString(part))
+    .filter(Boolean)
+    .sort();
 }
 
 function nestedRecord(root: Record<string, unknown>, path: string[]): Record<string, unknown> {
@@ -237,9 +284,29 @@ function isMessageEvent(eventType: string): boolean {
 function extractActionValue(payload: Record<string, unknown>, event: Record<string, unknown>): unknown {
   if (payload.actionValue !== undefined) return payload.actionValue;
   const action = recordValue(event.action || payload.action);
+  const valueRecord = recordValue(action.value);
+  const valueAction = normalizeString(valueRecord.action) || normalizeString(valueRecord.command);
+  const name = normalizeString(action.name);
+  const fallbackAction = name === "delete_mode_submit"
+    ? "act:/delete-mode form-submit"
+    : name === "delete_mode_cancel"
+      ? "nav:/list"
+      : "";
+  const explicitAction = valueAction || fallbackAction;
+  if (explicitAction.startsWith("act:/delete-mode form-submit")) {
+    const formSelectedIds = collectDeleteModeSelectedFromAction(action);
+    const selectedIds = formSelectedIds.length ? formSelectedIds : deleteModeSelectedFromActionText(explicitAction);
+    const suffix = selectedIds.join(",");
+    return {
+      ...valueRecord,
+      action: suffix ? `act:/delete ${suffix}` : "act:/delete",
+      command: suffix ? `/delete ${suffix}` : "/delete",
+      source_action: explicitAction,
+      delete_mode_selected_ids: selectedIds,
+    };
+  }
   const option = normalizeString(action.option);
   if (option) {
-    const valueRecord = recordValue(action.value);
     if (Object.keys(valueRecord).length > 0) {
       return {
         ...valueRecord,
@@ -250,7 +317,7 @@ function extractActionValue(payload: Record<string, unknown>, event: Record<stri
     return { action: option, command: option };
   }
   if (action.value !== undefined) return action.value;
-  const name = normalizeString(action.name);
+  if (fallbackAction) return { ...valueRecord, action: fallbackAction, command: fallbackAction };
   if (name) return { action: name, command: name };
   return null;
 }

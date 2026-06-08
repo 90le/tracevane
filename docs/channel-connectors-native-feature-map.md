@@ -1,6 +1,6 @@
 # Channel Connectors Native Feature Map
 
-> 更新：2026-06-08
+> 更新：2026-06-09
 > 目的：把 CC/OpenClaw 参考能力映射到 Studio 原生实现，避免后续回到托管 cc-connect 或旧 Codex Stack。
 
 ## 参考范围
@@ -41,7 +41,7 @@
 - 已完成：F3f Feishu ingress + outbound contract：`/api/channel-connectors/adapters/feishu/webhook` 支持 URL verification、card action、bot menu、message receive，`transport-smoke` 支持 tenant token cache、send message、patch card；message webhook 默认可把 command-router 回复发回 Feishu。
 - 已完成：F3f Feishu daemon 长连接基础合同：使用官方 SDK `WSClient` / `EventDispatcher` 接 `im.message.receive_v1`、`card.action.trigger`、`application.bot.menu_v6`；按 CC/官方集群推送约束，同一 Feishu App 多 binding 共享单条 WS，本机多进程用用户级全局 owner lock；支持 chatId 过滤、thread/root 字段保留、command-router 回复和 Agent runner 回包；按最新 OpenClaw 外层循环处理 terminal error 并 `1s..30s` 退避重建；SDK `pingTimeout=3`；SDK `reconnecting` 超过 10s 时回收到外层重建；connected-idle / zero-inbound / verified-ingress / generic watchdog 重建关闭；`connected` 与真实入站 `ingressState` / global/lifecycle `dispatcherCallbacks` / business `receivedMessages` 分离。假在线问题进入 `feishu-long-connection-issue-tracker.md` 专项，不以重启自愈作为完成标准。
 - 已完成：F3f live 闭环：本地用户配置写入 Feishu binding、tenant token cache 验证通过、callback verification 通过、错误 verification token 不回显 challenge、systemd `WorkingDirectory` 模板修复、daemon active/enabled、真实 `/status`/`/help` 入站并 `replySent=true`；CLI runner 补用户级 PATH fallback，覆盖 systemd 下找不到 `codex`；仓库只记录脱敏状态。
-- 已完成：Feishu card/menu/progress loop：参考 CC `renderHelpGroupCard` / `renderCurrentCard` / `renderHistoryCard` / `renderListCard` / `ListItem` / `ButtonsEqual` 结构，`/help` 为主菜单 Dashboard，`/help <section>` 为分组菜单，主菜单已精简为入口按钮网格，callback toast 使用页面/动作级短回显；`/current`/`/history`/`/list` 为真实信息子卡并显示 session name、短 sessionId/threadId、history 数量与 usage 入口，`/history [n]` 支持按条数读取最近消息，`/switch <序号|sessionId前缀>` 可切换当前 IM session 已知 Agent session，`/model`/`/agent`/`/mode`/`/dir` 等为可操作子卡；WorkDir 子卡已显示上一目录、最近目录和子目录；文本 slash、`%help` 兼容命令与卡片点击共用 command-router，导航动作刷新卡片，help 菜单不再附带长文本 notice。
+- 已完成：Feishu card/menu/progress loop：参考 CC `renderHelpGroupCard` / `renderCurrentCard` / `renderHistoryCard` / `renderListCard` / `ListItem` / `ButtonsEqual` 结构，`/help` 为主菜单 Dashboard，`/help <section>` 为分组菜单，主菜单已精简为入口按钮网格，callback toast 使用页面/动作级短回显；`/current`/`/history`/`/list` 为真实信息子卡并显示 session name、短 sessionId/threadId、history 数量与 usage 入口，`/history [n]` 支持按条数读取最近消息，`/switch <序号|sessionId前缀>` 可切换当前 IM session 已知 Agent session，Session List 已补 CC Go delete-mode `checker` 批量删除表单并把 `form_value` 映射回统一 `/delete id1,id2`；`/model`/`/agent`/`/mode`/`/dir` 等为可操作子卡；WorkDir 子卡已显示上一目录、最近目录和子目录；文本 slash、`%help` 兼容命令与卡片点击共用 command-router，导航动作刷新卡片，help 菜单不再附带长文本 notice。
 - 已完成：Feishu/Octo 过程显示策略：参考 CC `platform/dmwork` group buffer 和 Feishu rich card 流程；Feishu 私聊默认用单张可 patch Progress card 显示运行/思考/工具过程，Octo 私聊只发送思考、工具和错误气泡，不发送 start/running/completed/event 噪音，工具事件优先发送不受普通进度节流影响；群聊默认隐藏中间过程，只保留最终回复；`/stream` / `/tools` 仍可按当前 IM session 覆盖；工具输入/结果格式化已覆盖命令代码块、exit/status、长输出和 TodoWrite 列表。
 - 已完成：Feishu/Octo 回复展示精修：Feishu 保持单张 Progress card patch 更新，最终回复使用无标题 schema 2.0 Markdown card，card 失败后先用 post(md) 富文本兜底再退 text；Octo 最终回复保留原始 Markdown 文本，过程消息只保留短状态行，并用 inline code / code block 承载工具名、参数和结果；RichText=14 仅作为后续图文混排方向。
 - 已完成：非 Feishu 文本菜单精修：`/help` 与 command surface fallback 使用同一类信息架构，纯文本/Octo Markdown 下也按当前会话、快捷操作、会话、Agent/模型/权限、目录、显示/工具/长回复、原生 Agent 分组展示；未知 slash 透传和 `/native /help` 规则明确可见。

@@ -117,6 +117,10 @@ function makeTempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-connectors-"));
 }
 
+function feishuDeleteModeCheckerName(sessionId) {
+  return `delete_sel_${Buffer.from(sessionId, "utf8").toString("hex")}`;
+}
+
 function createStudioConfig(root) {
   const openclawRoot = path.join(root, ".openclaw");
   fs.mkdirSync(openclawRoot, { recursive: true });
@@ -3973,6 +3977,32 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     name: "Delete Two",
     now: new Date("2026-06-06T09:02:00.000Z"),
   });
+  const deleteThree = upsertChannelConnectorAgentSession(agentSessionsPath, {
+    bindingId: binding.id,
+    projectId: "claude-main",
+    sessionKey: baseContext.sessionKey,
+    agent: "claude-code",
+    model: "claude-sonnet",
+    workDir: path.join(root, "delete-three-work"),
+    agentNativeSessionId: "claude-delete-three",
+    messageId: "m-delete-three",
+    status: "completed",
+    name: "Delete Three",
+    now: new Date("2026-06-06T09:03:00.000Z"),
+  });
+  const deleteFour = upsertChannelConnectorAgentSession(agentSessionsPath, {
+    bindingId: binding.id,
+    projectId: "codex-main",
+    sessionKey: baseContext.sessionKey,
+    agent: "codex",
+    model: "gpt-5",
+    workDir: path.join(root, "delete-four-work"),
+    codexThreadId: "thread-delete-four",
+    messageId: "m-delete-four",
+    status: "completed",
+    name: "Delete Four",
+    now: new Date("2026-06-06T09:04:00.000Z"),
+  });
   const deleteExact = await handleChannelConnectorCommand({
     ...baseContext,
     message: message(`/delete ${deleteOne.id}`),
@@ -3983,6 +4013,17 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     bindingId: binding.id,
     sessionKey: baseContext.sessionKey,
   }).some((record) => record.id === deleteOne.id), false);
+  const deleteIdList = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message(`/delete ${deleteThree.id},${deleteFour.id}`),
+  });
+  assert.equal(deleteIdList.ok, true);
+  assert.match(deleteIdList.replyText, /已删除 Agent session：Delete Three/);
+  assert.match(deleteIdList.replyText, /已删除 Agent session：Delete Four/);
+  assert.equal(listChannelConnectorAgentSessionsForConversation(agentSessionsPath, {
+    bindingId: binding.id,
+    sessionKey: baseContext.sessionKey,
+  }).some((record) => record.id === deleteThree.id || record.id === deleteFour.id), false);
   const deleteBatchRecords = listChannelConnectorAgentSessionsForConversation(agentSessionsPath, {
     bindingId: binding.id,
     sessionKey: baseContext.sessionKey,
@@ -5802,7 +5843,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.match(JSON.stringify(historyCardAction.feishuResponse.card.data), /历史里的真实助手回复/);
 
   const feishuAgentSessionsPath = path.join(resolveChannelConnectorsPaths(config).stateDir, "channel-sessions.json");
-  upsertChannelConnectorAgentSession(feishuAgentSessionsPath, {
+  const feishuCodexSession = upsertChannelConnectorAgentSession(feishuAgentSessionsPath, {
     bindingId: "feishu-main",
     projectId: "feishu-codex",
     sessionKey: "feishu:oc_chat:ou_admin",
@@ -5814,7 +5855,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
     status: "ok",
     now: new Date("2026-06-06T08:00:15.000Z"),
   });
-  upsertChannelConnectorAgentSession(feishuAgentSessionsPath, {
+  const feishuClaudeSession = upsertChannelConnectorAgentSession(feishuAgentSessionsPath, {
     bindingId: "feishu-main",
     projectId: "feishu-claude",
     sessionKey: "feishu:oc_chat:ou_admin",
@@ -5825,6 +5866,19 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
     messageId: "om_session_claude",
     status: "ok",
     now: new Date("2026-06-06T08:00:20.000Z"),
+  });
+  const feishuDeleteSession = upsertChannelConnectorAgentSession(feishuAgentSessionsPath, {
+    bindingId: "feishu-main",
+    projectId: "feishu-codex",
+    sessionKey: "feishu:oc_chat:ou_admin",
+    agent: "codex",
+    model: "gpt-5",
+    workDir: path.join(root, "codex-work-delete"),
+    codexThreadId: "codex-thread-delete",
+    messageId: "om_session_delete",
+    status: "ok",
+    name: "Feishu Delete",
+    now: new Date("2026-06-06T08:00:25.000Z"),
   });
   const sessionListCardAction = await service.dispatchFeishuWebhook({
     schema: "2.0",
@@ -5852,6 +5906,41 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.match(JSON.stringify(sessionListCardAction.feishuResponse.card.data), /Studio Agent Sessions/);
   assert.match(JSON.stringify(sessionListCardAction.feishuResponse.card.data), /feishu-claude/);
   assert.match(JSON.stringify(sessionListCardAction.feishuResponse.card.data), /act:\/switch 1/);
+  assert.match(JSON.stringify(sessionListCardAction.feishuResponse.card.data), /delete_mode_form/);
+  assert.match(JSON.stringify(sessionListCardAction.feishuResponse.card.data), /delete_mode_submit/);
+
+  const deleteModeFormSubmit = await service.dispatchFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "card.action.trigger",
+      app_id: "cli_test",
+      event_id: "evt_card_delete_mode_submit",
+      token: "verify-token",
+    },
+    event: {
+      operator: { open_id: "ou_admin" },
+      context: { open_chat_id: "oc_chat", open_message_id: "om_card_sessions" },
+      action: {
+        name: "delete_mode_submit",
+        value: {
+          binding_id: "feishu-main",
+          session_key: "feishu:oc_chat:ou_admin",
+        },
+        form_value: {
+          [feishuDeleteModeCheckerName(feishuDeleteSession.id)]: true,
+          [feishuDeleteModeCheckerName(feishuCodexSession.id)]: false,
+        },
+      },
+    },
+  });
+  assert.equal(deleteModeFormSubmit.accepted, true);
+  assert.equal(deleteModeFormSubmit.commandAction.command, `/delete ${feishuDeleteSession.id}`);
+  assert.equal(deleteModeFormSubmit.commandAction.commandResult.ok, true);
+  assert.match(deleteModeFormSubmit.commandAction.commandResult.replyText, /已删除 Agent session：Feishu Delete/);
+  assert.equal(listChannelConnectorAgentSessionsForConversation(feishuAgentSessionsPath, {
+    bindingId: "feishu-main",
+    sessionKey: "feishu:oc_chat:ou_admin",
+  }).some((record) => record.id === feishuDeleteSession.id), false);
 
   const sessionSwitchCardAction = await service.dispatchFeishuWebhook({
     schema: "2.0",

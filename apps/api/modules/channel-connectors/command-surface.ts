@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { Buffer } from "node:buffer";
 import type {
   ChannelConnectorCommandSurface,
   ChannelConnectorCommandSurfaceAction,
@@ -890,6 +891,89 @@ function listItemElement(
   };
 }
 
+function feishuDeleteModeCheckerName(sessionId: string): string {
+  return `delete_sel_${Buffer.from(sessionId, "utf8").toString("hex")}`;
+}
+
+function feishuDeleteModeValue(surface: ChannelConnectorCommandSurface, actionText: string, command: string): Record<string, string> {
+  return {
+    action: actionText,
+    command,
+    binding_id: surface.current.bindingId,
+    surface_action_kind: "act",
+    surface_section_id: "session",
+    surface_view_id: "sessions",
+    ...(surface.current.sessionKey ? { session_key: surface.current.sessionKey } : {}),
+  };
+}
+
+function deleteModeFormElement(
+  records: ChannelConnectorCommandSurface["sessionList"],
+  surface: ChannelConnectorCommandSurface,
+): Record<string, unknown> | null {
+  const candidates = records.filter((record) => !record.active).slice(0, 10);
+  if (!candidates.length) return null;
+  const formElements: Array<Record<string, unknown>> = [
+    {
+      tag: "markdown",
+      content: "**批量删除**\n勾选非当前 Agent session 后删除；当前 session 不会出现在可选项里。",
+    },
+    ...candidates.map((record, index) => {
+      const title = record.name || record.projectId;
+      const detail = `${record.projectId} · ${record.agent} · ${record.model || "default"} · ${record.turnCount} turns`;
+      return {
+        tag: "checker",
+        name: feishuDeleteModeCheckerName(record.id),
+        checked: false,
+        text: {
+          tag: "lark_md",
+          content: `**${index + 1}. ${title}**\n${detail}`,
+        },
+      };
+    }),
+    {
+      tag: "column_set",
+      horizontal_align: "left",
+      columns: [
+        {
+          tag: "column",
+          width: "auto",
+          vertical_align: "center",
+          elements: [
+            {
+              tag: "button",
+              text: plainText("删除已选"),
+              type: "danger",
+              name: "delete_mode_submit",
+              form_action_type: "submit",
+              value: feishuDeleteModeValue(surface, "act:/delete-mode form-submit", "/delete"),
+            },
+          ],
+        },
+        {
+          tag: "column",
+          width: "auto",
+          vertical_align: "center",
+          elements: [
+            {
+              tag: "button",
+              text: plainText("取消"),
+              type: "default",
+              name: "delete_mode_cancel",
+              value: feishuDeleteModeValue(surface, "nav:/list", "/list"),
+            },
+          ],
+        },
+      ],
+    },
+  ];
+  return {
+    tag: "form",
+    name: "delete_mode_form",
+    elements: formElements,
+  };
+}
+
 function commandSurfaceItemDescription(item: ChannelConnectorCommandSurfaceAction): string | null {
   if (item.description) return item.description;
   switch (item.id) {
@@ -1709,6 +1793,11 @@ function renderSessionListCard(surface: ChannelConnectorCommandSurface): Channel
         )], surface, 1, true);
       }
     });
+    const deleteModeForm = deleteModeFormElement(records, surface);
+    if (deleteModeForm) {
+      elements.push({ tag: "hr" });
+      elements.push(deleteModeForm);
+    }
   }
   pushActionRows(elements, [
     action("current", "当前会话", "/current", { actionKind: "nav" }),
