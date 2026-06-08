@@ -91,6 +91,10 @@ import {
   renderChannelConnectorConversationHistoryContext,
 } from "../../dist/apps/api/modules/channel-connectors/conversation-history-store.js";
 import {
+  channelConnectorCompactGatewayUrl,
+  compactChannelConnectorConversation,
+} from "../../dist/apps/api/modules/channel-connectors/conversation-compact.js";
+import {
   createOctoX25519KeyPair,
   decodeOctoConnectPacket,
   encodeOctoConnackPacket,
@@ -2751,6 +2755,149 @@ test("native Channel Connectors conversation history stores sanitized session co
   const cleared = clearChannelConnectorConversationHistory(historyPath, lookup);
   assert.equal(cleared, 1);
   assert.deepEqual(getChannelConnectorConversationHistory(historyPath, lookup), []);
+});
+
+test("native Channel Connectors compact posts to Gateway and clears stale Agent sessions", async () => {
+  const root = makeTempRoot();
+  const historyPath = path.join(root, "state", "channel-history.json");
+  const agentSessionsPath = path.join(root, "state", "channel-sessions.json");
+  const lookup = {
+    bindingId: "octo-codex",
+    sessionKey: "dmwork:dm:user-1",
+  };
+  const workDir = path.join(root, "work");
+  const project = {
+    id: "codex-main",
+    name: "Codex main",
+    workDir,
+    agent: "codex",
+    model: "gpt-5",
+    permissionMode: "suggest",
+    gatewayEndpoint: "",
+    gatewayKeyRef: "studio-gateway-client-key",
+    appProfileRef: "codex",
+    platformBindings: [],
+  };
+
+  appendChannelConnectorConversationHistory(historyPath, {
+    ...lookup,
+    messageId: "m-compact-user",
+    role: "user",
+    text: "继续处理 TOOLS.md 和文件发送能力。",
+    now: new Date("2026-06-06T08:00:00.000Z"),
+  });
+  appendChannelConnectorConversationHistory(historyPath, {
+    ...lookup,
+    messageId: "m-compact-assistant",
+    role: "assistant",
+    text: "已确认需要复刻 CC Go 的文件能力。",
+    status: "completed",
+    now: new Date("2026-06-06T08:00:01.000Z"),
+  });
+  upsertChannelConnectorAgentSession(agentSessionsPath, {
+    ...lookup,
+    projectId: project.id,
+    agent: project.agent,
+    model: project.model,
+    workDir,
+    agentNativeSessionId: "thread-codex-before-compact",
+    codexThreadId: "thread-codex-before-compact",
+    messageId: "m-compact-assistant",
+    status: "completed",
+  });
+  upsertChannelConnectorAgentSession(agentSessionsPath, {
+    ...lookup,
+    projectId: "claude-main",
+    agent: "claude-code",
+    model: "claude-sonnet",
+    workDir,
+    agentNativeSessionId: "claude-before-compact",
+    messageId: "m-claude-before-compact",
+    status: "completed",
+  });
+  upsertChannelConnectorAgentSession(agentSessionsPath, {
+    bindingId: lookup.bindingId,
+    sessionKey: "dmwork:dm:other-user",
+    projectId: project.id,
+    agent: project.agent,
+    model: project.model,
+    workDir,
+    agentNativeSessionId: "thread-other-session",
+    codexThreadId: "thread-other-session",
+    messageId: "m-other",
+    status: "completed",
+  });
+
+  const requests = [];
+  await withServer(async (req, res) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
+    await new Promise((resolve) => req.on("end", resolve));
+    const raw = Buffer.concat(chunks).toString("utf8");
+    requests.push({
+      method: req.method,
+      path: req.url,
+      authorization: req.headers.authorization || null,
+      body: raw ? JSON.parse(raw) : {},
+    });
+    res.setHeader("content-type", "application/json");
+    if (req.method === "POST" && req.url === "/v1/responses/compact") {
+      res.end(JSON.stringify({
+        output_text: "compact summary from gateway: 继续文件发送能力，保留 TOOLS.md 背景。",
+      }));
+      return true;
+    }
+    return false;
+  }, async (baseUrl) => {
+    assert.equal(channelConnectorCompactGatewayUrl(`${baseUrl}/v1`), `${baseUrl}/v1/responses/compact`);
+    const result = await compactChannelConnectorConversation({
+      historyPath,
+      agentSessionsPath,
+      gatewayEndpoint: `${baseUrl}/v1`,
+      gatewayClientKey: "sk-test-compact-client",
+      ...lookup,
+      project: {
+        ...project,
+        gatewayEndpoint: `${baseUrl}/v1`,
+      },
+      now: new Date("2026-06-06T08:00:02.000Z"),
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.beforeEntries, 2);
+    assert.equal(result.afterEntries, 1);
+    assert.equal(result.sessionsCleared, 2);
+    assert.match(result.summaryText, /compact summary from gateway/);
+  });
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].method, "POST");
+  assert.equal(requests[0].path, "/v1/responses/compact");
+  assert.equal(requests[0].authorization, "Bearer sk-test-compact-client");
+  assert.equal(requests[0].body.model, "gpt-5");
+  assert.equal(requests[0].body.stream, false);
+  assert.equal(requests[0].body.metadata.studio_channel_compact, true);
+  assert.match(requests[0].body.input, /Summarize this Studio IM conversation/);
+  assert.match(requests[0].body.input, /TOOLS\.md/);
+
+  const compactEntries = getChannelConnectorConversationHistory(historyPath, lookup, 10);
+  assert.equal(compactEntries.length, 1);
+  assert.equal(compactEntries[0].status, "compact-summary");
+  assert.match(compactEntries[0].text, /继续文件发送能力/);
+  assert.equal(getChannelConnectorAgentSession(agentSessionsPath, {
+    ...lookup,
+    projectId: project.id,
+    agent: project.agent,
+    model: project.model,
+    workDir,
+  }), null);
+  assert.equal(getChannelConnectorAgentSession(agentSessionsPath, {
+    bindingId: lookup.bindingId,
+    sessionKey: "dmwork:dm:other-user",
+    projectId: project.id,
+    agent: project.agent,
+    model: project.model,
+    workDir,
+  })?.codexThreadId, "thread-other-session");
 });
 
 test("native Channel Connectors IM commands switch agent, model, and permission per session", async () => {
