@@ -1318,8 +1318,38 @@ export async function defaultChannelConnectorAgentProcessRunner(
   });
 }
 
-function collectJsonLineText(stdout: string): string[] {
-  const output: string[] = [];
+interface JsonLineReplyText {
+  kind: "assistant" | "message" | "result" | "content";
+  text: string;
+}
+
+function appendJsonLineReplyText(
+  output: JsonLineReplyText[],
+  kind: JsonLineReplyText["kind"],
+  value: unknown,
+): void {
+  if (typeof value === "string" && value) output.push({ kind, text: value });
+}
+
+function appendJsonLineContentParts(
+  output: JsonLineReplyText[],
+  kind: JsonLineReplyText["kind"],
+  value: unknown,
+): void {
+  if (typeof value === "string") {
+    appendJsonLineReplyText(output, kind, value);
+    return;
+  }
+  if (!Array.isArray(value)) return;
+  for (const part of value) {
+    if (typeof part === "object" && part !== null && typeof (part as Record<string, unknown>).text === "string") {
+      appendJsonLineReplyText(output, kind, (part as Record<string, unknown>).text);
+    }
+  }
+}
+
+function collectJsonLineText(stdout: string): JsonLineReplyText[] {
+  const output: JsonLineReplyText[] = [];
   for (const line of stdout.split(/\r?\n/)) {
     const trimmed = line.trim();
     if (!trimmed || !trimmed.startsWith("{")) continue;
@@ -1328,27 +1358,19 @@ function collectJsonLineText(stdout: string): string[] {
       const message = raw.message;
       if (typeof message === "object" && message !== null) {
         const messageRecord = message as Record<string, unknown>;
-        if (typeof messageRecord.content === "string") output.push(messageRecord.content);
+        appendJsonLineContentParts(output, "message", messageRecord.content);
       }
       const item = raw.item;
       if (typeof item === "object" && item !== null) {
         const itemRecord = item as Record<string, unknown>;
-        if (itemRecord.type === "agent_message" && typeof itemRecord.text === "string") {
-          output.push(itemRecord.text);
-        }
-        const content = itemRecord.content;
-        if (typeof content === "string") output.push(content);
-        if (Array.isArray(content)) {
-          for (const part of content) {
-            if (typeof part === "object" && part !== null && typeof (part as Record<string, unknown>).text === "string") {
-              output.push((part as Record<string, string>).text);
-            }
-          }
+        if (itemRecord.type === "agent_message") {
+          appendJsonLineReplyText(output, "assistant", itemRecord.text);
+          appendJsonLineContentParts(output, "assistant", itemRecord.content);
         }
       }
-      if (typeof raw.content === "string") output.push(raw.content);
-      if (typeof raw.text === "string") output.push(raw.text);
-      if (typeof raw.result === "string") output.push(raw.result);
+      appendJsonLineReplyText(output, "content", raw.content);
+      appendJsonLineReplyText(output, "content", raw.text);
+      appendJsonLineReplyText(output, "result", raw.result);
     } catch {
       // Non-event lines are intentionally ignored; the raw stdout is still retained in the result.
     }
@@ -1356,11 +1378,27 @@ function collectJsonLineText(stdout: string): string[] {
   return output;
 }
 
+function joinJsonReplyTextParts(parts: string[]): string {
+  let output = "";
+  for (const part of parts) {
+    if (!part) continue;
+    const startsWithFence = part.trimStart().startsWith("```");
+    if (output && startsWithFence && !output.endsWith("\n")) output += "\n\n";
+    output += part;
+  }
+  return output.trim();
+}
+
 function extractReplyText(stdout: string): string | null {
-  const jsonTexts = collectJsonLineText(stdout)
-    .map((item) => item.trim())
-    .filter(Boolean);
-  if (jsonTexts.length) return jsonTexts[jsonTexts.length - 1];
+  const jsonTexts = collectJsonLineText(stdout);
+  const results = jsonTexts.filter((item) => item.kind === "result").map((item) => item.text.trim()).filter(Boolean);
+  if (results.length) return results[results.length - 1];
+  const assistant = jsonTexts.filter((item) => item.kind === "assistant").map((item) => item.text).filter((item) => item.trim());
+  if (assistant.length) return joinJsonReplyTextParts(assistant);
+  const messages = jsonTexts.filter((item) => item.kind === "message").map((item) => item.text).filter((item) => item.trim());
+  if (messages.length) return joinJsonReplyTextParts(messages);
+  const content = jsonTexts.filter((item) => item.kind === "content").map((item) => item.text).filter((item) => item.trim());
+  if (content.length) return joinJsonReplyTextParts(content);
   const plain = stdout.trim();
   return plain || null;
 }

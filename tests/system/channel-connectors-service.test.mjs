@@ -2066,6 +2066,42 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.ok(turnCleanupPath);
   assert.equal(fs.existsSync(turnCleanupPath), false);
 
+  const manifestResult = await runChannelConnectorAgentTurn({
+    project,
+    binding,
+    message: {
+      ...message,
+      messageId: "m-runner-manifest",
+      payload: { type: 1, content: "发一个文件给我" },
+    },
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    processRunner: async () => ({
+      exitCode: 0,
+      signal: null,
+      stdout: [
+        JSON.stringify({ type: "thread.started", thread_id: "019e9b45-manifest" }),
+        JSON.stringify({ type: "item.completed", item: { type: "function_call_output", call_id: "read-file", content: [{ type: "output_text", text: "tool output should not be final reply" }] } }),
+        JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "给你发一个 TOOLS.md 文件，里面是小丘的角色分工图和工具使用规范：" } }),
+        JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "```studio-channel-files\n[{\"path\":\"workspace/TOOLS.md\",\"name\":\"TOOLS.md\",\"caption\":\"小丘角色分工与工具规范\"}]\n```" } }),
+        "",
+      ].join("\n"),
+      stderr: "",
+      durationMs: 12,
+      timedOut: false,
+      error: null,
+    }),
+  });
+  assert.equal(manifestResult.ok, true);
+  assert.match(manifestResult.replyText, /规范：\n\n```studio-channel-files\n\[/);
+  assert.doesNotMatch(manifestResult.replyText, /tool output should not be final reply/);
+  const manifest = extractChannelConnectorOutboundFiles(manifestResult.replyText);
+  assert.equal(manifest.replyText, "给你发一个 TOOLS.md 文件，里面是小丘的角色分工图和工具使用规范：");
+  assert.equal(manifest.files.length, 1);
+  assert.equal(manifest.files[0].path, "workspace/TOOLS.md");
+  assert.equal(manifest.files[0].name, "TOOLS.md");
+
   const claudeRequest = buildChannelConnectorAgentProcessRequest({
     project: { ...project, agent: "claude-code", permissionMode: "plan", reasoningEffort: "xhigh" },
     binding: { ...binding, agent: "claude-code" },

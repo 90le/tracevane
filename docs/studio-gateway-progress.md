@@ -15,7 +15,7 @@
 - IM 文件收发边界已固定为 Studio native transport：Agent 只读入站 staging 文件，出站只声明工作目录内文件 manifest，由 daemon 按平台上传发送。
 - IM Agent run 默认按 binding + sessionKey 串行排队：上一条 Agent 消息未结束时，新普通消息会收到“已加入队列”引导，并在前序任务完成后自动处理；`/stop`、`/status` 等 Studio 命令仍可执行，binding metadata 可显式打开 parallel。
 - IM Agent runner 策略固定为混合架构：真实 Feishu/Octo live binding 当前使用 one-shot `exec/resume` 保稳定；Codex 持久 session driver 保留为 metadata 实验路径，显式开启时使用 `codex app-server`，已覆盖 `turn/start`、原生 `/compact`、`turn/interrupt`、`/stop`、超时中断和失败回退。
-- CC Go 旧源码对照结论已固定：Codex 正式稳定路径优先复刻 CC 的 `codex exec/resume` 子进程模型；当前 Codex 未全部完成，one-shot 主链路可用，`/new`/`/reset`/Studio `/compact` 自动合同、service smoke、真实 Feishu/Octo no-send apply 均已覆盖，但仍需真实 Feishu/Octo 文件、工具流和最终 Markdown 收口。Codex app-server 不作为默认 live 路线，只保留为受控 beta。
+- CC Go 旧源码对照结论已固定：Codex 正式稳定路径优先复刻 CC 的 `codex exec/resume` 子进程模型；当前 Codex 未全部完成，one-shot 主链路可用，`/new`/`/reset`/Studio `/compact` 自动合同、service smoke、真实 Feishu/Octo no-send apply 和 one-shot 最终回复/manifest 保真测试均已覆盖，但仍需真实 Feishu/Octo 文件、工具流和最终 Markdown 用户可见 smoke 收口。Codex app-server 不作为默认 live 路线，只保留为受控 beta。
 - 仓库级约束已固定：Channel Connectors 任意新功能必须先按 CC Go 1:1 迁移，再做 Studio 精修；迁移跟踪见 `channel-connectors-cc-migration-checklist.md`。
 
 ## 本次完成
@@ -49,6 +49,7 @@
 - Claude Code runner 开始按 CC Go `agent/claudecode` 对齐：CLI 参数补 `--verbose`，stream-json 解析已能拆出 `system` session、assistant `thinking/tool_use/text`、user `tool_result` 和最终 `result`；视觉模型收到本地 staged 图片时，stdin 改用 Claude 原生 base64 image content block；`system/result.session_id` 已写入通用 `agentNativeSessionId`，下一轮按 CC 合同追加 `--resume <session_id>`；`control_request` 已按权限模式写回 CC 兼容 `control_response`，`suggest/plan` 下可经 IM `/approve`、`/deny`、`/allow-all` 或 pending 时纯文本 `allow/deny` 批准，Feishu 已补权限确认卡片按钮并保留文本 fallback。
 - Codex persistent app-server 输出链路已补齐保真：delta 不再 trim，最终回复优先使用完整 `item/completed agentMessage`，工具事件复用结构化输出解析，`studio-channel-files` fenced block 不会被压成一行导致文件无法发送。
 - Codex persistent app-server 已过滤内部 `userMessage` / history prompt 回显，Feishu/Octo 进度不再展示 `Recent messages in this IM session...` 等内部上下文；one-shot runner 也过滤 `user_message` 事件，避免同类噪音。
+- Codex one-shot 最终回复提取已按 CC 完整回复思路收紧：top-level `result` 优先，其次合并 `agent_message` 片段；工具输出不再误作为最终回复；代码围栏前自动补安全空行，避免正文和 `studio-channel-files` manifest 黏连导致文件无法发送。
 - Codex persistent app-server 普通 turn 新增独立完成超时：若 app-server 已有 assistant 输出但迟迟没有 `turn/completed`，driver 会发 `turn/interrupt`、释放 active run，并交给外层 pool 按策略回退 one-shot，避免 IM 发送文件等场景永久卡住。
 - Feishu/Octo 可见进度新增生命周期噪音过滤：底层仍保留 `turn.started` / `turn/started` 到日志和 runtime，但 IM 卡片/文本不再展示 `Codex turn started` 或 `Codex app-server turn started` 这类无业务价值的“运行中”条目。
 - Feishu `transport-smoke` 补齐 `upload-and-send-media`：复用已有 `uploadAndSendFeishuMedia`，只增加 service/API 验证入口，不改 Studio 已定义的工具流、`studio-channel-files` 出站合同或底层文件发送实现。
@@ -68,7 +69,7 @@
 
 - 通过：`npm run build:api`。
 - 通过：`node --test tests/system/model-gateway-service.test.mjs`，52 个 Model Gateway 子测试通过。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，60 个 Channel Connectors 子测试通过；覆盖 Codex resume 参数顺序、Feishu/Octo 文件收发、Feishu transport-smoke 文件发送入口、Agent/config 自定义命令扫描/展开/添加/删除、Skill 扫描/调用、Commands 菜单卡片、Studio `/compact` Gateway 请求与 session 清理、Feishu/Octo service slash compact、Octo service `/new`/`/reset`、adapter dry-run 不触发 Gateway compact 或清理状态、Claude Code stream-json 进度、图片输入、`--resume` 续接、权限 `control_response`、IM 文本批准、Feishu 权限卡片按钮、AskUserQuestion IM 回答、进度/工具事件和 daemon 合同。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，60 个 Channel Connectors 子测试通过；覆盖 Codex resume 参数顺序、one-shot 多段 `agent_message` 合并、工具输出不污染最终回复、`studio-channel-files` manifest 换行保真、Feishu/Octo 文件收发、Feishu transport-smoke 文件发送入口、Agent/config 自定义命令扫描/展开/添加/删除、Skill 扫描/调用、Commands 菜单卡片、Studio `/compact` Gateway 请求与 session 清理、Feishu/Octo service slash compact、Octo service `/new`/`/reset`、adapter dry-run 不触发 Gateway compact 或清理状态、Claude Code stream-json 进度、图片输入、`--resume` 续接、权限 `control_response`、IM 文本批准、Feishu 权限卡片按钮、AskUserQuestion IM 回答、进度/工具事件和 daemon 合同。
 - 通过：`node --test tests/system/channel-connectors-command-live-script.test.mjs`，6 个命令 live smoke 脚本子测试通过；覆盖 dry-run 不触发后端、recent session 自动定位、probe adapter dry-run、Feishu smoke debug response 可观测 action/ok、apply 前强制显式会话地址或 recent session、apply 请求带真实发送开关。
 - 通过：`node scripts/smoke-channel-connectors-command-live.mjs --json` 的真实本机配置 dry-run 探针，规划 Feishu/Octo 共 6 个命令请求，输出中的 Feishu token 已脱敏。
 - 通过：重启后 `node scripts/smoke-channel-connectors-command-live.mjs --recent-sessions --commands /compact --probe --json`，真实 Feishu/Octo 最近会话均返回 dry-run 提示，未再触发 Gateway compact。
@@ -115,6 +116,6 @@
 
 ## 下一步
 
-1. 继续 Codex `exec/resume` live 文件、工具流式和最终 Markdown 排版；`/new`、`/reset`、`/compact` 已完成真实 no-send apply 验收，下一轮只需做用户可见回归抽测。
+1. 继续 Codex `exec/resume` 真实 IM 用户可见 smoke：发文件、工具流式和最终 Markdown 排版；`/new`、`/reset`、`/compact` 已完成真实 no-send apply 验收。
 2. 继续复刻 CC Go 的 Feishu/Octo 菜单、设置卡片、长连接和媒体收发细节。
 3. 继续迁移 Claude Code AskUserQuestion 卡片精修/file 能力与 OpenCode runner；Codex app-server 继续保持 beta，不阻塞稳定 live 路线。
