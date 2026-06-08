@@ -39,6 +39,12 @@ import {
   listChannelConnectorReplyBuffersForSession,
   type ChannelConnectorReplyBufferRecord,
 } from "./reply-buffer-store.js";
+import {
+  buildChannelConnectorSkillPrompt,
+  channelConnectorSkillDirs,
+  listChannelConnectorSkills,
+  resolveChannelConnectorSkill,
+} from "./skill-registry.js";
 import type {
   ChannelConnectorRuntimeBinding,
   ChannelConnectorRuntimeProject,
@@ -163,6 +169,13 @@ export interface ChannelConnectorCommandSummary {
   name: string;
   description: string;
   source: "config" | "agent";
+}
+
+export interface ChannelConnectorSkillSummary {
+  name: string;
+  displayName: string;
+  description: string;
+  source: string;
 }
 
 function normalizeString(value: unknown): string {
@@ -356,6 +369,26 @@ function customCommandsListText(
   return lines.join("\n");
 }
 
+function skillsListText(project: ChannelConnectorRuntimeProject): string {
+  const skills = listChannelConnectorSkills(project);
+  if (!skills.length) {
+    const dirs = channelConnectorSkillDirs(project);
+    return [
+      "未发现任何 Skill。",
+      dirs.length
+        ? `Studio 会按 CC SkillProvider 合同扫描：${dirs.join("；")}`
+        : `当前 Agent (${project.agent}) 尚未在 Studio 中声明 Skill 目录。`,
+    ].join("\n");
+  }
+  const lines = [`Studio Skills (${project.agent}) - ${skills.length} 个`];
+  for (const skill of skills) {
+    lines.push(`/${skill.name}`);
+    lines.push(`  ${skill.description || "Skill"}`);
+  }
+  lines.push("用法：/<skill名称> [参数...]。Studio 会把 Skill 指令和用户参数一起交给当前 Agent。");
+  return lines.join("\n");
+}
+
 export function listChannelConnectorCommandSummaries(
   context: Pick<ChannelConnectorCommandContext, "customCommandsPath">,
   project: ChannelConnectorRuntimeProject,
@@ -367,6 +400,17 @@ export function listChannelConnectorCommandSummaries(
     name: command.name,
     description: command.description || firstLine(command.prompt) || "Custom prompt command",
     source: command.source,
+  }));
+}
+
+export function listChannelConnectorSkillSummaries(
+  project: ChannelConnectorRuntimeProject,
+): ChannelConnectorSkillSummary[] {
+  return listChannelConnectorSkills(project).map((skill) => ({
+    name: skill.name,
+    displayName: skill.displayName,
+    description: skill.description,
+    source: skill.source,
   }));
 }
 
@@ -475,6 +519,8 @@ function isStudioCommand(name: string): boolean {
     "commands",
     "command",
     "cmd",
+    "skills",
+    "skill",
     "status",
     "usage",
     "tokens",
@@ -567,6 +613,8 @@ function commandHelpText(): string {
     "- `/buffer <id|前缀|latest>` 读取本会话缓存的完整长回复",
     "",
     "**原生 Agent**",
+    "- `/commands` 列出当前 Agent 自定义 prompt 命令",
+    "- `/skills` 列出当前 Agent Skills",
     "- `/native /help` 查看当前 Agent 原生帮助或 skills 命令",
     "- `/native <原生命令>` 强制透传给当前 Agent",
   ].join("\n");
@@ -1235,6 +1283,19 @@ export async function handleChannelConnectorCommand(
         nativeCommand: null,
       };
     }
+    const skill = resolveChannelConnectorSkill(currentProject, name);
+    if (skill) {
+      return {
+        handled: false,
+        command: skill.name,
+        action: "passthrough",
+        ok: null,
+        control: currentControl,
+        replyText: null,
+        passthroughText: buildChannelConnectorSkillPrompt(skill, args),
+        nativeCommand: null,
+      };
+    }
     return {
       handled: false,
       command: name,
@@ -1270,6 +1331,18 @@ export async function handleChannelConnectorCommand(
       replyText: null,
       passthroughText: target,
       nativeCommand: target,
+    };
+  }
+
+  if (name === "skills" || name === "skill") {
+    return {
+      handled: true,
+      command: name,
+      action: "list",
+      ok: true,
+      control: currentControl,
+      replyText: skillsListText(currentProject),
+      passthroughText: null,
     };
   }
 

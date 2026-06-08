@@ -222,6 +222,12 @@ export interface ChannelConnectorCommandSurfaceInput {
     description: string;
     source: "config" | "agent";
   }>;
+  skills?: Array<{
+    name: string;
+    displayName: string;
+    description: string;
+    source: string;
+  }>;
   selectedSectionId?: string | null;
   selectedViewId?: string | null;
 }
@@ -496,11 +502,15 @@ export function buildChannelConnectorCommandSurface(
     {
       id: "commands",
       title: "Commands",
-      summary: "当前 Agent 可用的 config prompt commands 与 Agent command files。",
+      summary: "当前 Agent 可用的 config prompt commands、Agent command files 与 Skills。",
       actions: [
         action("commands-list", "List Commands", "/commands", {
           actionKind: "nav",
           description: "查看当前 Agent 自定义命令列表和 add/del 用法",
+        }),
+        action("skills-list", "List Skills", "/skills", {
+          actionKind: "nav",
+          description: "查看当前 Agent 自动发现的 SKILL.md",
         }),
         ...(input.customCommands || []).slice(0, 12).map((command, index) => action(
           `custom-command-${command.source}-${command.name}`,
@@ -508,6 +518,14 @@ export function buildChannelConnectorCommandSurface(
           `/${command.name}`,
           {
             description: `${command.source === "agent" ? "agent" : "config"} · ${command.description || "Custom prompt command"}`,
+          },
+        )),
+        ...(input.skills || []).slice(0, 12).map((skill, index) => action(
+          `skill-${skill.name}`,
+          `${index + 1}. /${skill.name}`,
+          `/${skill.name}`,
+          {
+            description: `skill · ${skill.description || skill.displayName || "Skill"}`,
           },
         )),
       ],
@@ -1006,11 +1024,12 @@ function helpSectionActions(
   }
   if (section.id === "commands") {
     const commandCount = section.actions.filter((item) => item.id.startsWith("custom-command-")).length;
+    const skillCount = section.actions.filter((item) => item.id.startsWith("skill-")).length;
     return [
       action("commands-picker", "自定义命令", "/commands", {
         actionKind: "nav",
         tone: "primary",
-        description: `${commandCount} 个可用命令 · 支持 /commands add/del`,
+        description: `${commandCount} 个命令 · ${skillCount} 个 Skill · 支持 /commands add/del`,
       }),
     ];
   }
@@ -1406,15 +1425,18 @@ function renderCommandsCard(surface: ChannelConnectorCommandSurface): ChannelCon
   const actions = section?.actions || [];
   const list = actions.find((item) => item.id === "commands-list")
     || action("commands-list", "List Commands", "/commands", { actionKind: "nav" });
+  const skills = actions.find((item) => item.id === "skills-list")
+    || action("skills-list", "List Skills", "/skills", { actionKind: "nav" });
   const commandActions = actions.filter((item) => item.id.startsWith("custom-command-"));
+  const skillActions = actions.filter((item) => item.id.startsWith("skill-"));
   const elements: Array<Record<string, unknown>> = [
     {
       tag: "markdown",
       content: [
-        "**自定义命令**",
-        commandActions.length
-          ? `当前 Agent 可用 ${commandActions.length} 个自定义命令。点击按钮会把对应 /命令 交给 Agent。`
-          : "当前 Agent 还没有可用的自定义命令。",
+        "**Commands / Skills**",
+        commandActions.length || skillActions.length
+          ? `当前 Agent 可用 ${commandActions.length} 个自定义命令、${skillActions.length} 个 Skill。点击按钮会交给 Agent 执行。`
+          : "当前 Agent 还没有可用的自定义命令或 Skill。",
         "",
         "**管理**",
         "`/commands add <名称> <prompt 模板>`",
@@ -1422,17 +1444,25 @@ function renderCommandsCard(surface: ChannelConnectorCommandSurface): ChannelCon
       ].join("\n"),
     },
   ];
-  pushActionRows(elements, [list], surface, 1, true);
+  pushActionRows(elements, [list, skills], surface, 2, true);
   if (commandActions.length) {
     elements.push({ tag: "hr" });
+    elements.push({ tag: "markdown", content: "**自定义命令**" });
     for (const item of commandActions) {
+      elements.push(commandSurfaceListItemElement(item, surface, { showCurrent: false }));
+    }
+  }
+  if (skillActions.length) {
+    elements.push({ tag: "hr" });
+    elements.push({ tag: "markdown", content: "**Skills**" });
+    for (const item of skillActions) {
       elements.push(commandSurfaceListItemElement(item, surface, { showCurrent: false }));
     }
   }
   pushSubcardNavRows(elements, surface, "commands");
   elements.push({
     tag: "note",
-    elements: [plainText("config 命令优先于 Agent command file；与 Studio 内置命令冲突时内置命令优先。")],
+    elements: [plainText("优先级：Studio 内置命令 > config command > Agent command file > Skill > 原生透传。")],
   });
   return {
     config: {

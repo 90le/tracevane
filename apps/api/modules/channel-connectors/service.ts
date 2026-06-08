@@ -98,6 +98,7 @@ import {
   handleChannelConnectorCommand,
   listChannelConnectorCommandSummaries,
   listChannelConnectorGatewayModels,
+  listChannelConnectorSkillSummaries,
   resolveChannelConnectorEffectiveProject,
 } from "./command-router.js";
 import {
@@ -1374,13 +1375,15 @@ function commandSurfaceReadOnlyState(input: {
   sessionList: ChannelConnectorCommandSurface["sessionList"];
   history: ChannelConnectorCommandSurface["history"];
   customCommands: NonNullable<ChannelConnectorCommandSurfaceInput["customCommands"]>;
+  skills: NonNullable<ChannelConnectorCommandSurfaceInput["skills"]>;
 } {
   const sessionKey = normalizeString(input.sessionKey);
   const current = resolveChannelConnectorEffectiveProject(input.runtimeConfig, input.project, input.control);
   const customCommands = listChannelConnectorCommandSummaries({
     customCommandsPath: commandSurfaceCustomCommandsPath(input.runtimeConfig),
   }, current);
-  if (!sessionKey) return { agentSession: null, sessionList: [], history: [], customCommands };
+  const skills = listChannelConnectorSkillSummaries(current);
+  if (!sessionKey) return { agentSession: null, sessionList: [], history: [], customCommands, skills };
   const session = getChannelConnectorAgentSession(commandSurfaceAgentSessionsPath(input.runtimeConfig), {
     bindingId: input.binding.id,
     projectId: current.id,
@@ -1444,6 +1447,7 @@ function commandSurfaceReadOnlyState(input: {
     sessionList,
     history,
     customCommands,
+    skills,
   };
 }
 
@@ -1563,6 +1567,7 @@ export function createChannelConnectorsService(
       sessionList: readOnlyState.sessionList,
       history: readOnlyState.history,
       customCommands: readOnlyState.customCommands,
+      skills: readOnlyState.skills,
       selectedSectionId: request.section,
       selectedViewId: request.view,
     });
@@ -1730,6 +1735,7 @@ export function createChannelConnectorsService(
       sessionList: readOnlyState.sessionList,
       history: readOnlyState.history,
       customCommands: readOnlyState.customCommands,
+      skills: readOnlyState.skills,
       selectedSectionId,
       selectedViewId,
     });

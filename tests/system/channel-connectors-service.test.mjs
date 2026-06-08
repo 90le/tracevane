@@ -2684,11 +2684,29 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     platformBindings: [],
   };
   fs.mkdirSync(path.join(codexProject.workDir, "src"), { recursive: true });
+  fs.mkdirSync(path.join(codexProject.workDir, ".codex", "skills", "release-notes"), { recursive: true });
+  fs.writeFileSync(
+    path.join(codexProject.workDir, ".codex", "skills", "release-notes", "SKILL.md"),
+    [
+      "---",
+      "name: Release Notes",
+      "description: Draft concise release notes",
+      "---",
+      "Write release notes from the provided change list.",
+    ].join("\n"),
+    "utf8",
+  );
   fs.mkdirSync(path.join(claudeProject.workDir, "src"), { recursive: true });
   fs.mkdirSync(path.join(claudeProject.workDir, ".claude", "commands"), { recursive: true });
+  fs.mkdirSync(path.join(claudeProject.workDir, ".claude", "skills", "triage"), { recursive: true });
   fs.writeFileSync(
     path.join(claudeProject.workDir, ".claude", "commands", "review-code.md"),
     "Review target {{1}} with notes {{2*:no extra notes}}",
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(claudeProject.workDir, ".claude", "skills", "triage", "SKILL.md"),
+    "---\ndescription: Triage bug reports\n---\nClassify severity and next actions.",
     "utf8",
   );
   const binding = {
@@ -2760,6 +2778,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(help.replyText, /`\/compact`/);
   assert.match(help.replyText, /`\/stop`/);
   assert.match(help.replyText, /`\/native \/help`/);
+  assert.match(help.replyText, /`\/skills`/);
   assert.equal(parseChannelConnectorCommand("%help")?.name, "help");
   assert.equal(parseChannelConnectorCommand("/%help")?.name, "help");
 
@@ -2817,6 +2836,36 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(claudeCommands.action, "list");
   assert.match(claudeCommands.replyText, /\/review-code \[agent\]/);
   assert.match(claudeCommands.replyText, /Review target/);
+
+  const codexSkills = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/skills"),
+  });
+  assert.equal(codexSkills.handled, true);
+  assert.equal(codexSkills.action, "list");
+  assert.match(codexSkills.replyText, /Studio Skills \(codex\)/);
+  assert.match(codexSkills.replyText, /\/release-notes/);
+  assert.match(codexSkills.replyText, /Draft concise release notes/);
+
+  const codexSkillRun = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/release_notes bug fix list"),
+  });
+  assert.equal(codexSkillRun.handled, false);
+  assert.equal(codexSkillRun.command, "release-notes");
+  assert.match(codexSkillRun.passthroughText, /The user is asking you to execute the following skill/);
+  assert.match(codexSkillRun.passthroughText, /## Skill: Release Notes/);
+  assert.match(codexSkillRun.passthroughText, /Write release notes from the provided change list/);
+  assert.match(codexSkillRun.passthroughText, /## User Arguments:\nbug fix list/);
+
+  const claudeSkills = await handleChannelConnectorCommand({
+    ...baseContext,
+    project: claudeProject,
+    message: message("/skills"),
+  });
+  assert.equal(claudeSkills.handled, true);
+  assert.match(claudeSkills.replyText, /\/triage/);
+  assert.match(claudeSkills.replyText, /Triage bug reports/);
 
   const addClaudeOverride = await handleChannelConnectorCommand({
     ...baseContext,
@@ -3764,6 +3813,14 @@ test("native Channel Connectors command surface renders text and Feishu card act
         source: "agent",
       },
     ],
+    skills: [
+      {
+        name: "release-notes",
+        displayName: "Release Notes",
+        description: "Draft concise release notes",
+        source: path.join(codexProject.workDir, ".codex", "skills", "release-notes"),
+      },
+    ],
   });
 
   assert.equal(surface.current.bindingId, "octo-codex");
@@ -3955,6 +4012,14 @@ test("native Channel Connectors command surface renders text and Feishu card act
         description: item.description || "",
         source: item.id.includes("-agent-") ? "agent" : "config",
       })),
+    skills: surface.sections.find((section) => section.id === "commands").actions
+      .filter((item) => item.id.startsWith("skill-"))
+      .map((item) => ({
+        name: item.command.replace(/^\//, ""),
+        displayName: item.label,
+        description: item.description || "",
+        source: path.join(codexProject.workDir, ".codex", "skills"),
+      })),
     selectedSectionId: "commands",
     selectedViewId: "commands",
   });
@@ -3962,6 +4027,8 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(commandsCardRaw, /Studio Commands/);
   assert.match(commandsCardRaw, /act:\/daily/);
   assert.match(commandsCardRaw, /act:\/review-code/);
+  assert.match(commandsCardRaw, /act:\/release-notes/);
+  assert.match(commandsCardRaw, /List Skills/);
   assert.match(commandsCardRaw, /\/commands add <名称> <prompt 模板>/);
   assert.match(commandsCardRaw, /nav:\/help commands/);
 

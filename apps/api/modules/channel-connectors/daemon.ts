@@ -54,6 +54,7 @@ import {
   handleChannelConnectorCommand,
   listChannelConnectorCommandSummaries,
   listChannelConnectorGatewayModels,
+  listChannelConnectorSkillSummaries,
   resolveChannelConnectorEffectiveProject,
   type ChannelConnectorUsageSummary,
 } from "./command-router.js";
@@ -3229,6 +3230,7 @@ function buildFeishuCommandCard(input: {
   const customCommands = listChannelConnectorCommandSummaries({
     customCommandsPath: customCommandsPath(input.config),
   }, current);
+  const skills = listChannelConnectorSkillSummaries(current);
   const session = getChannelConnectorAgentSession(agentSessionsPath(input.config), {
     bindingId: input.binding.id,
     projectId: current.id,
@@ -3292,6 +3294,7 @@ function buildFeishuCommandCard(input: {
     sessionList,
     history,
     customCommands,
+    skills,
     selectedSectionId: input.selectedSectionId,
     selectedViewId: input.selectedViewId,
   });

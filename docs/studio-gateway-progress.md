@@ -54,12 +54,14 @@
 - 按 CC CommandProvider 合同补 Agent 命令文件扫描：Claude Code 扫描 `.claude/commands`，Gemini 扫描 `.gemini/commands`；`/commands` 列出当前 Agent 命令文件，未知 `/xxx` 命中命令文件时按 `{{1}}`、`{{2*}}`、`{{args}}` 等占位规则展开 prompt 后交给当前 Agent，未命中仍原生透传。
 - `/commands add/del` 已接入 Studio 原生 prompt 自定义命令 store：按 project 隔离，built-in 命令优先，其次 config prompt command，再次 Agent command file，最后才原生透传；`addexec` 暂不开放，shell 执行面后续需按 admin/yolo/审计合同单独验收。
 - Feishu/Studio command surface 新增 Commands tab：主菜单可进入自定义命令子卡，显示 config prompt command 与 Agent command file，并提供按钮执行；添加/删除仍通过 `/commands add/del` 文本命令完成，避免卡片输入复杂化。
+- 按 CC SkillRegistry 合同接入 `/skills` 与 Skill invocation：递归发现 `SKILL.md`，解析 frontmatter，Codex/Claude Code/Gemini/Kimi/Cursor/Qoder 使用各自 CC `SkillDirs()` 路径；未知 `/skill-name` 命中后构造成 CC 风格 Skill 执行 prompt 交给当前 Agent。
+- Commands tab 已同时展示 Skills：可从 Feishu 卡片查看 `/skills`，并按钮执行当前 Agent 可用 Skill；优先级固定为 Studio 内置命令 > config command > Agent command file > Skill > 原生透传。
 
 ## 最近验证
 
 - 通过：`npm run build:api`。
 - 通过：`node --test tests/system/model-gateway-service.test.mjs`，51 个 Model Gateway 子测试通过。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，53 个 Channel Connectors 子测试通过；覆盖 Codex resume 参数顺序、Feishu/Octo 文件收发、Feishu transport-smoke 文件发送入口、Agent/config 自定义命令扫描/展开/添加/删除、Commands 菜单卡片、进度/工具事件和 daemon 合同。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，53 个 Channel Connectors 子测试通过；覆盖 Codex resume 参数顺序、Feishu/Octo 文件收发、Feishu transport-smoke 文件发送入口、Agent/config 自定义命令扫描/展开/添加/删除、Skill 扫描/调用、Commands 菜单卡片、进度/工具事件和 daemon 合同。
 - 通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，9 个 Codex app-server driver 原型子测试通过；覆盖 persistent markdown/文件 manifest 保真、工具输出保真、内部 userMessage 回显过滤、unfinished turn 超时中断。
 - 通过：`node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，默认跳过真实 Codex smoke。
 - 通过：`STUDIO_CODEX_APP_SERVER_LIVE_TURN=1 STUDIO_CODEX_APP_SERVER_LIVE_COMPACT=1 STUDIO_CODEX_APP_SERVER_LIVE_MODEL=gpt-5.4-mini node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，隔离 HOME 下真实 `codex app-server --stdio` 经本机 Studio Gateway 完成 `turn/start` 精确回复与原生 compact 完成信号。
