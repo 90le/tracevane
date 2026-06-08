@@ -27,12 +27,19 @@ function feishuRuntime(overrides = {}) {
         lastDisconnectedAt: null,
         lastReceivedAt: null,
         lastUnhealthyAt: null,
-        pingTimeoutSeconds: 0,
+        pingTimeoutSeconds: 60,
         connectedIdleRenewAfterMs: 0,
-        zeroInboundRenewAfterMs: 90000,
-        zeroInboundRenewMax: 1,
+        zeroInboundRenewAfterMs: 0,
+        zeroInboundRenewMax: 0,
         zeroInboundRenewals: 0,
         watchdogRestartAfterMs: 180000,
+        ingressVerified: true,
+        ingressState: "receiving",
+        ingressSilentForMs: 0,
+        ingressUnverifiedAfterMs: 120000,
+        lockAcquired: true,
+        lockOwnerPid: process.pid,
+        lockPath: "/tmp/feishu.lock",
         lifecycleReceivedMessages: 0,
         lifecycleLastReceivedAt: null,
         suppressZeroInboundRenewal: false,
@@ -93,10 +100,10 @@ test("Feishu long-connection smoke passes clean SDK-owned runtime", async () => 
   assert.equal(parsed.ok, true);
   assert.equal(parsed.summary.connections, 1);
   assert.equal(parsed.summary.violations, 0);
-  assert.equal(parsed.connections[0].pingTimeoutSeconds, 0);
+  assert.equal(parsed.connections[0].pingTimeoutSeconds, 60);
   assert.equal(parsed.connections[0].connectedIdleRenewAfterMs, 0);
-  assert.equal(parsed.connections[0].zeroInboundRenewAfterMs, 90000);
-  assert.equal(parsed.connections[0].zeroInboundRenewMax, 1);
+  assert.equal(parsed.connections[0].zeroInboundRenewAfterMs, 0);
+  assert.equal(parsed.connections[0].zeroInboundRenewMax, 0);
   assert.equal(parsed.connections[0].watchdogRestartAfterMs, 180000);
 });
 
@@ -119,31 +126,36 @@ test("Feishu long-connection smoke rejects unsafe proactive rebuild defaults", a
   const parsed = JSON.parse(failed.stdout);
   assert.equal(parsed.ok, false);
   const types = parsed.violations.map((item) => item.type);
-  assert.ok(types.includes("ping_timeout_enabled"));
+  assert.ok(types.includes("ping_timeout_too_fast"));
   assert.ok(types.includes("connected_idle_renewal_enabled"));
-  assert.ok(types.includes("zero_inbound_renewal_unsafe"));
+  assert.ok(types.includes("zero_inbound_renewal_enabled"));
   assert.ok(types.includes("watchdog_too_fast"));
 });
 
-test("Feishu long-connection smoke allows one delayed startup delivery-silence renewal", async () => {
+test("Feishu long-connection smoke rejects delayed startup delivery-silence renewal", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
   const logText = [
     '2026-06-08T10:00:00.000Z Feishu WebSocket watchdog restarting client {"key":"feishu-key","reason":"watchdog_zero_inbound_91000"}',
     '2026-06-08T10:00:00.001Z Feishu WebSocket zero-inbound startup renewal threshold elapsed {"key":"feishu-key","connectedForMs":91000,"zeroInboundRenewAfterMs":90000,"zeroInboundRenewals":1,"zeroInboundRenewMax":1}',
     "",
   ].join("\n");
-  const { runtimePath, logPath } = writeFixture(root, feishuRuntime(), logText);
+  const { runtimePath, logPath } = writeFixture(root, feishuRuntime({
+    zeroInboundRenewAfterMs: 90000,
+    zeroInboundRenewMax: 1,
+  }), logText);
 
-  const output = await runScript([
+  const failed = await runScriptFailure([
     "--runtime", runtimePath,
     "--log", logPath,
     "--since", "2026-06-08T09:59:00.000Z",
     "--duration-ms", "0",
     "--json",
   ], root);
-  const parsed = JSON.parse(output);
-  assert.equal(parsed.ok, true);
-  assert.equal(parsed.summary.violations, 0);
+  const parsed = JSON.parse(failed.stdout);
+  assert.equal(parsed.ok, false);
+  const types = parsed.violations.map((item) => item.type);
+  assert.ok(types.includes("zero_inbound_renewal_enabled"));
+  assert.ok(types.includes("watchdog_zero_inbound"));
   assert.equal(parsed.summary.logEvents, 2);
 });
 
@@ -188,4 +200,23 @@ test("Feishu long-connection smoke rejects old unstable log patterns", async () 
   const types = parsed.violations.map((item) => item.type);
   assert.ok(types.includes("sdk_ping_timeout"));
   assert.ok(types.includes("watchdog_connected_idle"));
+});
+
+test("Feishu long-connection smoke rejects unverified ingress when required", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
+  const { runtimePath, logPath } = writeFixture(root, feishuRuntime({
+    ingressVerified: false,
+    ingressState: "warming",
+  }));
+
+  const failed = await runScriptFailure([
+    "--runtime", runtimePath,
+    "--log", logPath,
+    "--duration-ms", "0",
+    "--require-ingress-verified",
+    "--json",
+  ], root);
+  const parsed = JSON.parse(failed.stdout);
+  assert.equal(parsed.ok, false);
+  assert.ok(parsed.violations.map((item) => item.type).includes("feishu_ingress_unverified"));
 });

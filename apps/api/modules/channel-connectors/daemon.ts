@@ -157,25 +157,30 @@ import {
   type OctoWukongSocketStatus,
 } from "./octo-wukong.js";
 
-const DEFAULT_FEISHU_PING_TIMEOUT_SECONDS = 0;
-const MIN_FEISHU_PING_TIMEOUT_SECONDS = 0;
+const DEFAULT_FEISHU_PING_TIMEOUT_SECONDS = 60;
+const MIN_FEISHU_PING_TIMEOUT_SECONDS = 30;
 const MAX_FEISHU_PING_TIMEOUT_SECONDS = 300;
 const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 180_000;
 const MIN_FEISHU_WATCHDOG_RESTART_MS = 60_000;
 const MAX_FEISHU_WATCHDOG_RESTART_MS = 600_000;
-// CC Go keeps Feishu's SDK WebSocket alive and lets the SDK own ping/pong and
-// reconnect behavior. Studio keeps SDK pingTimeout and connected-idle rebuilds
-// opt-in, but still does one delayed startup delivery-silence renewal: the Node
-// SDK can report ready/connected after a daemon restart while no Feishu events
-// are delivered. Once any event is received, this startup probe is suppressed.
+// CC Go keeps Feishu's SDK WebSocket as the single owner for an app_id and lets
+// the SDK own heartbeat/reconnect. Studio follows the same shape: no business
+// layer connected-idle or startup-silence rebuilds by default. SDK pingTimeout
+// is kept as a conservative half-open detector for the Node SDK path.
 const DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS = 0;
 const MIN_FEISHU_CONNECTED_IDLE_RENEW_MS = 60_000;
 const MAX_FEISHU_CONNECTED_IDLE_RENEW_MS = 3_600_000;
-const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS = 90_000;
+const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MS = 0;
 const MIN_FEISHU_ZERO_INBOUND_RENEW_MS = 60_000;
 const MAX_FEISHU_ZERO_INBOUND_RENEW_MS = 15 * 60_000;
-const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX = 1;
+const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX = 0;
 const MAX_FEISHU_ZERO_INBOUND_RENEW_MAX = 10;
+const DEFAULT_FEISHU_INGRESS_UNVERIFIED_AFTER_MS = 120_000;
+const MIN_FEISHU_INGRESS_UNVERIFIED_AFTER_MS = 30_000;
+const MAX_FEISHU_INGRESS_UNVERIFIED_AFTER_MS = 3_600_000;
+const DEFAULT_FEISHU_LOCK_RETRY_MS = 30_000;
+const MIN_FEISHU_LOCK_RETRY_MS = 5_000;
+const MAX_FEISHU_LOCK_RETRY_MS = 300_000;
 const DEFAULT_OCTO_HEARTBEAT_MS = 30_000;
 const MIN_OCTO_HEARTBEAT_MS = 5_000;
 const MAX_OCTO_HEARTBEAT_MS = 300_000;
@@ -246,12 +251,19 @@ interface ChannelDaemonFeishuConnectionState {
   apiUrl: string | null;
   bindingIds: string[];
   connected: boolean;
-  state: WSConnectionStatus["state"] | "closed";
+  state: WSConnectionStatus["state"] | "closed" | "lock-held";
   lastError: string | null;
   lastConnectedAt: string | null;
   lastDisconnectedAt: string | null;
   lastReceivedAt: string | null;
   lastUnhealthyAt: string | null;
+  ingressVerified: boolean;
+  ingressState: "receiving" | "warming" | "silent" | "disconnected" | "lock-held" | "closed";
+  ingressSilentForMs: number;
+  ingressUnverifiedAfterMs: number;
+  lockAcquired: boolean;
+  lockOwnerPid: number | null;
+  lockPath: string | null;
   pingTimeoutSeconds: number;
   connectedIdleRenewAfterMs: number;
   zeroInboundRenewAfterMs: number;
@@ -294,6 +306,10 @@ interface ChannelDaemonFeishuGroup {
   lastError: string | null;
   watchdogRestarting: boolean;
   zeroInboundRenewals: number;
+  lockAcquired: boolean;
+  lockOwnerPid: number | null;
+  lockPath: string | null;
+  lastLockRetryAt: string | null;
 }
 
 interface ChannelDaemonState {
@@ -1521,7 +1537,37 @@ function feishuPingTimeoutSeconds(group: ChannelDaemonFeishuGroup): number {
       "ping_timeout_seconds",
     ], DEFAULT_FEISHU_PING_TIMEOUT_SECONDS)
     : DEFAULT_FEISHU_PING_TIMEOUT_SECONDS;
+  if (value <= 0) return 0;
   return clampNumber(Math.floor(value), MIN_FEISHU_PING_TIMEOUT_SECONDS, MAX_FEISHU_PING_TIMEOUT_SECONDS);
+}
+
+function feishuIngressUnverifiedAfterMs(group: ChannelDaemonFeishuGroup): number {
+  const binding = firstFeishuBinding(group);
+  const value = binding
+    ? metadataNumber(binding, [
+      "feishuIngressUnverifiedAfterMs",
+      "feishu_ingress_unverified_after_ms",
+      "ingressUnverifiedAfterMs",
+      "ingress_unverified_after_ms",
+      "deliveryUnverifiedAfterMs",
+      "delivery_unverified_after_ms",
+    ], DEFAULT_FEISHU_INGRESS_UNVERIFIED_AFTER_MS)
+    : DEFAULT_FEISHU_INGRESS_UNVERIFIED_AFTER_MS;
+  if (value <= 0) return 0;
+  return clampNumber(Math.floor(value), MIN_FEISHU_INGRESS_UNVERIFIED_AFTER_MS, MAX_FEISHU_INGRESS_UNVERIFIED_AFTER_MS);
+}
+
+function feishuLockRetryMs(group: ChannelDaemonFeishuGroup): number {
+  const binding = firstFeishuBinding(group);
+  const value = binding
+    ? metadataNumber(binding, [
+      "feishuLockRetryMs",
+      "feishu_lock_retry_ms",
+      "lockRetryMs",
+      "lock_retry_ms",
+    ], DEFAULT_FEISHU_LOCK_RETRY_MS)
+    : DEFAULT_FEISHU_LOCK_RETRY_MS;
+  return clampNumber(Math.floor(value), MIN_FEISHU_LOCK_RETRY_MS, MAX_FEISHU_LOCK_RETRY_MS);
 }
 
 function feishuConnectedIdleRenewMs(group: ChannelDaemonFeishuGroup): number {
@@ -2268,19 +2314,49 @@ function connectionState(
 
 function feishuConnectionState(group: ChannelDaemonFeishuGroup): ChannelDaemonFeishuConnectionState {
   const status = group.client?.getConnectionStatus();
+  const connected = status?.state === "connected";
+  const lockHeld = !group.lockAcquired && !group.client && Boolean(group.lockOwnerPid);
+  const ingressUnverifiedAfterMs = feishuIngressUnverifiedAfterMs(group);
+  const lastIngressActivityAt = group.lastReceivedAt || group.lastConnectedAt;
+  const lastIngressActivityMs = lastIngressActivityAt ? Date.parse(lastIngressActivityAt) : NaN;
+  const ingressSilentForMs = connected && Number.isFinite(lastIngressActivityMs)
+    ? Math.max(0, Date.now() - lastIngressActivityMs)
+    : 0;
+  const ingressVerified = group.receivedMessages > 0;
+  let ingressState: ChannelDaemonFeishuConnectionState["ingressState"];
+  if (lockHeld) {
+    ingressState = "lock-held";
+  } else if (!status && !group.client) {
+    ingressState = "closed";
+  } else if (!connected) {
+    ingressState = "disconnected";
+  } else if (ingressVerified) {
+    ingressState = "receiving";
+  } else if (ingressUnverifiedAfterMs > 0 && ingressSilentForMs >= ingressUnverifiedAfterMs) {
+    ingressState = "silent";
+  } else {
+    ingressState = "warming";
+  }
   return {
     key: group.key,
     appId: group.appId,
     accountId: group.accountId,
     apiUrl: group.apiUrl,
     bindingIds: group.refs.map((ref) => ref.binding.id),
-    connected: status?.state === "connected",
-    state: status?.state || "closed",
+    connected,
+    state: status?.state || (lockHeld ? "lock-held" : "closed"),
     lastError: group.lastError,
     lastConnectedAt: group.lastConnectedAt,
     lastDisconnectedAt: group.lastDisconnectedAt,
     lastReceivedAt: group.lastReceivedAt,
     lastUnhealthyAt: group.lastUnhealthyAt,
+    ingressVerified,
+    ingressState,
+    ingressSilentForMs,
+    ingressUnverifiedAfterMs,
+    lockAcquired: group.lockAcquired,
+    lockOwnerPid: group.lockOwnerPid,
+    lockPath: group.lockPath,
     pingTimeoutSeconds: feishuPingTimeoutSeconds(group),
     connectedIdleRenewAfterMs: feishuConnectedIdleRenewMs(group),
     zeroInboundRenewAfterMs: feishuZeroInboundRenewMs(group),
@@ -2319,6 +2395,116 @@ function latestFeishuLifecycleActivityAt(group: ChannelDaemonFeishuGroup): strin
 
 function feishuGroupKey(transport: ChannelConnectorFeishuTransportConfig): string {
   return `${transport.apiUrl}|${transport.appId}`.replace(/[^a-zA-Z0-9._-]+/g, "_");
+}
+
+function feishuGroupLockPath(config: ChannelConnectorsDaemonRuntimeConfig, group: ChannelDaemonFeishuGroup): string {
+  return path.join(config.paths.state, "feishu-ws-locks", `${group.key}.lock`);
+}
+
+function processIsAlive(pid: number): boolean {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isNodeError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && "code" in error;
+}
+
+function readFeishuLockOwner(lockPath: string): { pid: number | null; startedAt: string | null } {
+  try {
+    const raw = fs.readFileSync(path.join(lockPath, "owner.json"), "utf8");
+    const parsed = JSON.parse(raw) as { pid?: unknown; startedAt?: unknown };
+    const pid = typeof parsed.pid === "number" && Number.isInteger(parsed.pid) ? parsed.pid : null;
+    const startedAt = typeof parsed.startedAt === "string" ? parsed.startedAt : null;
+    return { pid, startedAt };
+  } catch {
+    return { pid: null, startedAt: null };
+  }
+}
+
+function acquireFeishuGroupLock(
+  config: ChannelConnectorsDaemonRuntimeConfig,
+  group: ChannelDaemonFeishuGroup,
+): boolean {
+  const lockPath = feishuGroupLockPath(config, group);
+  ensureDir(path.dirname(lockPath));
+  group.lockPath = lockPath;
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      fs.mkdirSync(lockPath);
+      writeJsonFileAtomic(path.join(lockPath, "owner.json"), {
+        pid: process.pid,
+        groupKey: group.key,
+        appId: group.appId,
+        bindingIds: group.refs.map((ref) => ref.binding.id),
+        startedAt: new Date().toISOString(),
+      });
+      group.lockAcquired = true;
+      group.lockOwnerPid = process.pid;
+      group.lastError = null;
+      return true;
+    } catch (error) {
+      if (!isNodeError(error) || error.code !== "EEXIST") {
+        group.lockAcquired = false;
+        group.lockOwnerPid = null;
+        group.lastError = shortMessage(error);
+        return false;
+      }
+      const owner = readFeishuLockOwner(lockPath);
+      if (owner.pid === process.pid) {
+        group.lockAcquired = true;
+        group.lockOwnerPid = process.pid;
+        return true;
+      }
+      if (owner.pid && processIsAlive(owner.pid)) {
+        group.lockAcquired = false;
+        group.lockOwnerPid = owner.pid;
+        group.lastError = `feishu_ws_lock_held_by_pid_${owner.pid}`;
+        return false;
+      }
+      try {
+        fs.rmSync(lockPath, { recursive: true, force: true });
+      } catch (removeError) {
+        group.lockAcquired = false;
+        group.lockOwnerPid = owner.pid;
+        group.lastError = `feishu_ws_stale_lock_remove_failed:${shortMessage(removeError)}`;
+        return false;
+      }
+    }
+  }
+
+  group.lockAcquired = false;
+  group.lockOwnerPid = null;
+  group.lastError = "feishu_ws_lock_acquire_failed";
+  return false;
+}
+
+function releaseFeishuGroupLock(config: ChannelConnectorsDaemonRuntimeConfig, group: ChannelDaemonFeishuGroup): void {
+  if (!group.lockAcquired || !group.lockPath) return;
+  const owner = readFeishuLockOwner(group.lockPath);
+  if (owner.pid && owner.pid !== process.pid) {
+    group.lockAcquired = false;
+    group.lockOwnerPid = owner.pid;
+    return;
+  }
+  try {
+    fs.rmSync(group.lockPath, { recursive: true, force: true });
+  } catch (error) {
+    appendLog(config.paths.log, "Feishu WebSocket lock release failed", {
+      key: group.key,
+      lockPath: group.lockPath,
+      error: shortMessage(error),
+    });
+  } finally {
+    group.lockAcquired = false;
+    group.lockOwnerPid = null;
+  }
 }
 
 function feishuChatFilters(binding: ChannelConnectorRuntimeBinding): string[] {
@@ -5959,6 +6145,10 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
           lastError: "feishu_transport_config_missing",
           watchdogRestarting: false,
           zeroInboundRenewals: 0,
+          lockAcquired: false,
+          lockOwnerPid: null,
+          lockPath: null,
+          lastLockRetryAt: null,
         });
         continue;
       }
@@ -5984,6 +6174,10 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
         lastError: null,
         watchdogRestarting: false,
         zeroInboundRenewals: 0,
+        lockAcquired: false,
+        lockOwnerPid: null,
+        lockPath: null,
+        lastLockRetryAt: null,
       };
       group.refs.push({ project, binding, transport });
       groups.set(key, group);
@@ -6198,8 +6392,20 @@ function startFeishuClientForGroup(input: {
   group: ChannelDaemonFeishuGroup;
   clients: WSClient[];
   seenMessages: Map<string, number>;
-}): WSClient {
+}): WSClient | null {
   const { config, state, activeRunCancels, group, clients, seenMessages } = input;
+  if (!acquireFeishuGroupLock(config, group)) {
+    appendLog(config.paths.log, "Feishu WebSocket local owner lock held; skipping client start", {
+      key: group.key,
+      appId: group.appId,
+      lockPath: group.lockPath,
+      ownerPid: group.lockOwnerPid,
+      error: group.lastError,
+    });
+    state.feishuConnections[group.key] = feishuConnectionState(group);
+    writeRuntime(config, state);
+    return null;
+  }
   const dispatcher = createFeishuDispatcher({
     config,
     state,
@@ -6351,7 +6557,24 @@ function startFeishuWatchdog(input: {
   const timer = setInterval(() => {
     const nowMs = Date.now();
     for (const group of groups) {
-      if (!group.refs.length || !group.client) continue;
+      if (!group.refs.length) continue;
+      if (!group.client) {
+        state.feishuConnections[group.key] = feishuConnectionState(group);
+        const retryAfterMs = feishuLockRetryMs(group);
+        const lastRetryMs = group.lastLockRetryAt ? Date.parse(group.lastLockRetryAt) : NaN;
+        if (!group.lockAcquired && (!Number.isFinite(lastRetryMs) || nowMs - lastRetryMs >= retryAfterMs)) {
+          group.lastLockRetryAt = new Date().toISOString();
+          startFeishuClientForGroup({
+            config,
+            state,
+            activeRunCancels,
+            group,
+            clients,
+            seenMessages,
+          });
+        }
+        continue;
+      }
       const status = group.client.getConnectionStatus();
       if (status?.state === "connected") {
         const zeroInboundRenewAfterMs = feishuZeroInboundRenewMs(group);
@@ -6458,8 +6681,10 @@ async function startFeishuConnections(
   activeRunCancels: ChannelDaemonActiveRunCancelRegistry,
   clients: WSClient[],
   seenMessages: Map<string, number>,
+  groupsOut?: ChannelDaemonFeishuGroup[],
 ): Promise<NodeJS.Timeout | null> {
   const groups = createFeishuGroups(config);
+  groupsOut?.push(...groups);
   for (const group of groups) {
     if (!group.refs.length) {
       state.feishuConnections[group.key] = feishuConnectionState(group);
@@ -6492,6 +6717,7 @@ async function main(): Promise<void> {
   const sockets: OctoWukongSocket[] = [];
   const octoRestHeartbeatTimers: NodeJS.Timeout[] = [];
   const feishuClients: WSClient[] = [];
+  const feishuGroups: ChannelDaemonFeishuGroup[] = [];
   const activeRunCancels: ChannelDaemonActiveRunCancelRegistry = new Map();
   const seenMessages = loadFeishuSeenMessages(config);
   const agentSessionReaper = startAgentSessionDriverReaper(config, state);
@@ -6502,7 +6728,7 @@ async function main(): Promise<void> {
       error: error instanceof Error ? error.message : String(error),
     });
   });
-  void startFeishuConnections(config, state, activeRunCancels, feishuClients, seenMessages)
+  void startFeishuConnections(config, state, activeRunCancels, feishuClients, seenMessages, feishuGroups)
     .then((timer) => {
       feishuWatchdog = timer;
     })
@@ -6520,6 +6746,7 @@ async function main(): Promise<void> {
     for (const timer of octoRestHeartbeatTimers) clearInterval(timer);
     for (const socket of sockets) socket.disconnect();
     for (const client of feishuClients) client.close({ force: true });
+    for (const group of feishuGroups) releaseFeishuGroupLock(config, group);
     server.close(() => process.exit(0));
   };
   process.on("SIGINT", stop);
