@@ -36,6 +36,18 @@ function writeFixture(root) {
 
   appendJsonLine(octoEvents, {
     checkedAt: "2026-06-08T01:00:00.000Z",
+    eventKind: "agent.progress",
+    adapter: "octo",
+    bindingId: "octo-live",
+    sessionKey: "dmwork:dm:user-1",
+    messageId: "octo-message-1",
+    progressType: "assistant",
+    rawType: "item/completed",
+    itemType: "agentMessage",
+    text: "工具完成：\n\n1. **结果**：`ok`\n2. 文件已准备。",
+  });
+  appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:00:01.000Z",
     eventKind: "agent.progress.reply",
     adapter: "octo",
     bindingId: "octo-live",
@@ -45,7 +57,7 @@ function writeFixture(root) {
     transportAction: "send-progress-markdown",
   });
   appendJsonLine(octoEvents, {
-    checkedAt: "2026-06-08T01:00:02.000Z",
+    checkedAt: "2026-06-08T01:00:03.000Z",
     eventKind: "agent.run.finished",
     adapter: "octo",
     bindingId: "octo-live",
@@ -63,6 +75,18 @@ function writeFixture(root) {
   });
   appendJsonLine(feishuEvents, {
     checkedAt: "2026-06-08T01:05:00.000Z",
+    eventKind: "agent.progress",
+    adapter: "feishu",
+    bindingId: "feishu-live",
+    sessionKey: "feishu:oc_real:ou_real",
+    messageId: "feishu-message-1",
+    progressType: "assistant",
+    rawType: "item/completed",
+    itemType: "agentMessage",
+    text: "完成：\n\n- **工具**：`echo ok`\n- **状态**：成功",
+  });
+  appendJsonLine(feishuEvents, {
+    checkedAt: "2026-06-08T01:05:01.000Z",
     eventKind: "agent.progress.card",
     adapter: "feishu",
     bindingId: "feishu-live",
@@ -72,7 +96,7 @@ function writeFixture(root) {
     transportAction: "patch-progress-card",
   });
   appendJsonLine(feishuEvents, {
-    checkedAt: "2026-06-08T01:05:03.000Z",
+    checkedAt: "2026-06-08T01:05:04.000Z",
     eventKind: "agent.run.finished",
     adapter: "feishu",
     bindingId: "feishu-live",
@@ -108,6 +132,7 @@ test("agent run live smoke script verifies Octo tool, reply, and outbound file e
     "--require-reply",
     "--require-tool",
     "--require-file",
+    "--require-markdown",
     "--json",
   ], root);
   const parsed = JSON.parse(output.stdout);
@@ -116,6 +141,8 @@ test("agent run live smoke script verifies Octo tool, reply, and outbound file e
   assert.equal(parsed.matchingRuns[0].adapter, "octo");
   assert.equal(parsed.matchingRuns[0].outboundFilesSent, 1);
   assert.equal(parsed.matchingRuns[0].toolProgressCount, 1);
+  assert.equal(parsed.matchingRuns[0].replyMarkdownLikely, true);
+  assert.deepEqual(parsed.matchingRuns[0].markdownSignals.sort(), ["bold", "inline_code", "list"].sort());
 });
 
 test("agent run live smoke script verifies Feishu final card path", async () => {
@@ -128,6 +155,7 @@ test("agent run live smoke script verifies Feishu final card path", async () => 
     "--require-ok",
     "--require-reply",
     "--require-feishu-card",
+    "--require-markdown",
     "--json",
   ], root);
   const parsed = JSON.parse(output.stdout);
@@ -135,6 +163,7 @@ test("agent run live smoke script verifies Feishu final card path", async () => 
   assert.equal(parsed.matchingRuns.length, 1);
   assert.equal(parsed.matchingRuns[0].adapter, "feishu");
   assert.equal(parsed.matchingRuns[0].replyTransportAction, "send-final-card");
+  assert.equal(parsed.matchingRuns[0].replyMarkdownLikely, true);
 });
 
 test("agent run live smoke script fails when required evidence is missing", async () => {

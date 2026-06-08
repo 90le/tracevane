@@ -26,6 +26,7 @@ function parseArgs(argv) {
     requireProgress: false,
     requireTool: false,
     requireFile: false,
+    requireMarkdown: false,
     requireFeishuCard: false,
     json: false,
   };
@@ -39,6 +40,7 @@ function parseArgs(argv) {
     else if (arg === "--require-progress") options.requireProgress = true;
     else if (arg === "--require-tool") options.requireTool = true;
     else if (arg === "--require-file") options.requireFile = true;
+    else if (arg === "--require-markdown" || arg === "--require-markdown-reply") options.requireMarkdown = true;
     else if (arg === "--require-feishu-card" || arg === "--require-markdown-card") options.requireFeishuCard = true;
     else if (arg === "--config") options.configPath = requireValue(argv, ++index, arg);
     else if (arg.startsWith("--config=")) options.configPath = arg.slice("--config=".length);
@@ -90,6 +92,7 @@ Options:
   --require-progress        Require any progress event.
   --require-tool            Require tool progress.
   --require-file            Require outboundFilesDeclared>0 and outboundFilesSent>0.
+  --require-markdown        Require assistant progress with Markdown-like reply signals.
   --require-feishu-card     Require Feishu final card/post path for Markdown rendering.
   --config <path>           Daemon config path. Default: ${DEFAULT_CONFIG_PATH}
   --timeout-ms <n>          Wait deadline. Default: ${DEFAULT_TIMEOUT_MS}
@@ -201,8 +204,14 @@ function runKey(event) {
 
 function summarizeRun(event, relatedProgress) {
   const progressTypes = uniqueStrings(relatedProgress.map((item) => String(item.progressType || item.latestProgress?.type || "")).filter(Boolean));
-  const toolProgress = relatedProgress.filter((item) => item.progressType === "tool" || item.latestProgress?.type === "tool");
+  const rawProgress = relatedProgress.filter((item) => item.eventKind === "agent.progress");
+  const transportProgress = relatedProgress.filter((item) => item.eventKind === "agent.progress.reply" || item.eventKind === "agent.progress.card");
+  const rawToolProgress = rawProgress.filter((item) => item.progressType === "tool" || item.latestProgress?.type === "tool");
+  const transportToolProgress = transportProgress.filter((item) => item.progressType === "tool" || item.latestProgress?.type === "tool");
   const transportActions = uniqueStrings(relatedProgress.map((item) => String(item.transportAction || "")).filter(Boolean));
+  const assistantProgress = rawProgress.filter((item) => item.progressType === "assistant" || item.latestProgress?.type === "assistant");
+  const markdownSignals = uniqueStrings(assistantProgress.flatMap((item) => detectMarkdownSignals(String(item.text || item.latestProgress?.text || ""))));
+  const toolProgressCount = rawToolProgress.length > 0 ? rawToolProgress.length : transportToolProgress.length;
   return {
     checkedAt: event.checkedAt || null,
     adapter: event.adapter || null,
@@ -215,8 +224,15 @@ function summarizeRun(event, relatedProgress) {
     agentError: event.agentError || event.error || null,
     progressEventCount: numberValue(event.progressEventCount),
     progressLogCount: relatedProgress.length,
+    rawProgressLogCount: rawProgress.length,
+    transportProgressLogCount: transportProgress.length,
     progressTypes,
-    toolProgressCount: toolProgress.length,
+    toolProgressCount,
+    transportToolProgressCount: transportToolProgress.length,
+    assistantProgressCount: assistantProgress.length,
+    markdownSignalCount: markdownSignals.length,
+    markdownSignals,
+    replyMarkdownLikely: markdownSignals.length > 0,
     latestProgressType: event.latestProgress?.type || null,
     latestProgressRawType: event.latestProgress?.rawType || null,
     latestProgressItemType: event.latestProgress?.itemType || null,
@@ -245,6 +261,20 @@ function uniqueStrings(values) {
   return [...new Set(values)];
 }
 
+function detectMarkdownSignals(text) {
+  const signals = [];
+  if (!text) return signals;
+  if (/```[\s\S]*```/.test(text) || /(^|\n)```/.test(text)) signals.push("fenced_code");
+  if (/(^|\n)\s{0,3}#{1,6}\s+\S/.test(text)) signals.push("heading");
+  if (/(^|\n)\s{0,3}(?:[-*+]|\d+[.)])\s+\S/.test(text)) signals.push("list");
+  if (/\*\*[^*\n][\s\S]*?\*\*/.test(text)) signals.push("bold");
+  if (/(^|[^`])`[^`\n]+`([^`]|$)/.test(text)) signals.push("inline_code");
+  if (/\[[^\]\n]+\]\([^)]+\)/.test(text)) signals.push("link");
+  if (/(^|\n)\s*\|.+\|\s*(\n|$)/.test(text)) signals.push("table");
+  if (/(^|\n)>\s+\S/.test(text)) signals.push("blockquote");
+  return signals;
+}
+
 function loadSummary(options, since) {
   const config = readJson(options.configPath);
   const paths = eventPaths(config);
@@ -253,9 +283,10 @@ function loadSummary(options, since) {
     ...readJsonLines(paths.feishu),
     ...readJsonLines(paths.octo),
   ].filter((event) => eventMatches(event, options, sinceMs));
-  const progressEvents = allEvents.filter((event) => event.eventKind === "agent.progress.reply" || event.eventKind === "agent.progress.card");
+  const progressEvents = allEvents.filter((event) => event.eventKind === "agent.progress");
+  const transportProgressEvents = allEvents.filter((event) => event.eventKind === "agent.progress.reply" || event.eventKind === "agent.progress.card");
   const progressByRun = new Map();
-  for (const event of progressEvents) {
+  for (const event of [...progressEvents, ...transportProgressEvents]) {
     const key = runKey(event);
     const bucket = progressByRun.get(key) || [];
     bucket.push(event);
@@ -281,6 +312,7 @@ function loadSummary(options, since) {
       requireProgress: options.requireProgress,
       requireTool: options.requireTool,
       requireFile: options.requireFile,
+      requireMarkdown: options.requireMarkdown,
       requireFeishuCard: options.requireFeishuCard,
     },
     filters: {
@@ -290,6 +322,7 @@ function loadSummary(options, since) {
     counts: {
       events: allEvents.length,
       progressEvents: progressEvents.length,
+      transportProgressEvents: transportProgressEvents.length,
       finishedRuns: runs.length,
       matchingRuns: matchingRuns.length,
       displayedRuns: displayedRuns.length,
@@ -306,6 +339,7 @@ function runSatisfies(run, options) {
   if (options.requireProgress && !(run.progressEventCount > 0 || run.progressLogCount > 0)) return false;
   if (options.requireTool && !(run.toolProgressCount > 0 || run.latestProgressType === "tool")) return false;
   if (options.requireFile && !(run.outboundFilesDeclared > 0 && run.outboundFilesSent > 0 && run.outboundFileErrors.length === 0)) return false;
+  if (options.requireMarkdown && run.replyMarkdownLikely !== true) return false;
   if (options.requireFeishuCard) {
     if (run.adapter !== "feishu") return false;
     if (run.replyCardAttempted !== true && !["send-final-card", "send-final-post-after-card"].includes(run.replyTransportAction)) return false;
@@ -333,6 +367,7 @@ function printHuman(summary, wait) {
       run.replySent === true ? "reply" : "",
       run.outboundFilesSent > 0 ? `files=${run.outboundFilesSent}` : "",
       run.toolProgressCount > 0 ? `tools=${run.toolProgressCount}` : "",
+      run.replyMarkdownLikely === true ? `markdown=${run.markdownSignals.join(",")}` : "",
       run.replyCardAttempted === true ? "feishu-card" : "",
     ].filter(Boolean).join(" ");
     console.log(`- ${run.adapter}/${run.bindingId} message=${run.messageId} ${marks}`);
