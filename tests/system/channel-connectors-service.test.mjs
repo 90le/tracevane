@@ -7033,6 +7033,12 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
     daemonSource.indexOf("function restartFeishuGroupClient"),
     daemonSource.indexOf("function startFeishuWatchdog"),
   );
+  const feishuConnectionStateBlock = daemonSource.slice(
+    daemonSource.indexOf("function feishuConnectionState"),
+    daemonSource.indexOf("function updateFeishuRuntime"),
+  );
+  assert.match(feishuConnectionStateBlock, /pingTimeoutSeconds:\s*feishuPingTimeoutSeconds\(group\)/);
+  assert.match(feishuConnectionStateBlock, /watchdogRestartAfterMs:\s*feishuWatchdogRestartMs\(group\)/);
   assert.match(feishuWatchdogRestartBlock, /reason\.startsWith\("watchdog_connected_idle_"\)[\s\S]*group\.lifecycleReceivedMessages\s*=\s*0;[\s\S]*group\.lifecycleLastReceivedAt\s*=\s*null;/);
   assert.match(daemonSource, /!\s*group\.suppressZeroInboundRenewal/);
   assert.match(daemonSource, /feishu_ping_timeout_seconds/);

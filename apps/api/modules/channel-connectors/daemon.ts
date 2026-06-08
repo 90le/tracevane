@@ -254,6 +254,7 @@ interface ChannelDaemonFeishuConnectionState {
   lastDisconnectedAt: string | null;
   lastReceivedAt: string | null;
   lastUnhealthyAt: string | null;
+  pingTimeoutSeconds: number;
   connectedIdleRenewAfterMs: number;
   zeroInboundRenewAfterMs: number;
   zeroInboundRenewals: number;
@@ -2281,6 +2282,7 @@ function feishuConnectionState(group: ChannelDaemonFeishuGroup): ChannelDaemonFe
     lastDisconnectedAt: group.lastDisconnectedAt,
     lastReceivedAt: group.lastReceivedAt,
     lastUnhealthyAt: group.lastUnhealthyAt,
+    pingTimeoutSeconds: feishuPingTimeoutSeconds(group),
     connectedIdleRenewAfterMs: feishuConnectedIdleRenewMs(group),
     zeroInboundRenewAfterMs: feishuZeroInboundRenewMs(group),
     zeroInboundRenewals: group.zeroInboundRenewals,
