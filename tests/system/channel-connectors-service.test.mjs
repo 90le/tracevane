@@ -3330,6 +3330,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(help.replyText, /^Studio Channel/);
   assert.match(help.replyText, /普通消息会交给当前 Agent/);
   assert.match(help.replyText, /`\/status`/);
+  assert.match(help.replyText, /`\/whoami`/);
   assert.match(help.replyText, /\/mode/);
   assert.match(help.replyText, /\/reasoning/);
   assert.match(help.replyText, /\/stream/);
@@ -3348,6 +3349,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(sessionHelp.handled, true);
   assert.equal(sessionHelp.ok, true);
   assert.match(sessionHelp.replyText, /Studio Channel \/ session/);
+  assert.match(sessionHelp.replyText, /`\/whoami`/);
   assert.match(sessionHelp.replyText, /`\/name <名称>`/);
   assert.match(sessionHelp.replyText, /`\/search <关键字>`/);
   assert.match(sessionHelp.replyText, /`\/delete <序号\|sessionId前缀\|1,3-5>`/);
@@ -3375,6 +3377,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(parseChannelConnectorCommand("%help")?.name, "help");
   assert.equal(parseChannelConnectorCommand("/%help")?.name, "help");
   assert.equal(matchChannelConnectorCommandPrefix("stat"), "status");
+  assert.equal(matchChannelConnectorCommandPrefix("myid"), "whoami");
   assert.equal(matchChannelConnectorCommandPrefix("hist"), "history");
   assert.equal(matchChannelConnectorCommandPrefix("quo"), "usage");
   assert.equal(matchChannelConnectorCommandPrefix("qui"), "quiet");
@@ -3420,6 +3423,29 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     assert.equal(aliasHelp.action, "help");
     assert.match(aliasHelp.replyText, /^Studio Channel/);
   }
+
+  const whoami = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/whoami"),
+  });
+  assert.equal(whoami.handled, true);
+  assert.equal(whoami.ok, true);
+  assert.equal(whoami.action, "show");
+  assert.match(whoami.replyText, /Studio Whoami/);
+  assert.match(whoami.replyText, /User ID: admin-1/);
+  assert.match(whoami.replyText, /Channel ID: admin-1/);
+  assert.match(whoami.replyText, /Platform: octo/);
+  assert.match(whoami.replyText, /Binding: octo-codex/);
+  assert.match(whoami.replyText, /Session key: dmwork:dm:admin-1/);
+  assert.match(whoami.replyText, /Can manage session: yes/);
+  const myid = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/myid", "user-2"),
+  });
+  assert.equal(myid.handled, true);
+  assert.equal(myid.ok, true);
+  assert.match(myid.replyText, /User ID: user-2/);
+  assert.match(myid.replyText, /Can manage session: no/);
 
   const abbreviatedStatus = await handleChannelConnectorCommand({
     ...baseContext,
@@ -4764,6 +4790,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   const sessionCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(sessionSurface));
   assert.match(sessionCardRaw, /Studio Session/);
   assert.match(sessionCardRaw, /act:\/status/);
+  assert.match(sessionCardRaw, /act:\/whoami/);
   assert.match(sessionCardRaw, /nav:\/current/);
   assert.match(sessionCardRaw, /nav:\/list/);
   assert.match(sessionCardRaw, /nav:\/history/);

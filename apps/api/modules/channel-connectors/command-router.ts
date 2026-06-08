@@ -337,6 +337,7 @@ const STUDIO_COMMAND_MATCH_CANDIDATES: readonly CommandMatchCandidate[] = [
   { id: "skills", names: ["skills", "skill"] },
   { id: "status", names: ["status"] },
   { id: "usage", names: ["usage", "tokens", "quota"] },
+  { id: "whoami", names: ["whoami", "myid"] },
   { id: "current", names: ["current"] },
   { id: "list", names: ["list", "sessions"] },
   { id: "switch", names: ["switch"] },
@@ -760,7 +761,7 @@ type CommandHelpSection = "session" | "agent" | "display" | "workdir" | "native"
 function commandHelpSectionAlias(value: string | null | undefined): CommandHelpSection | null {
   const target = normalizeString(value).toLowerCase();
   if (!target) return null;
-  if (["session", "sessions", "status", "current", "history", "compact", "stop", "delete", "del", "rm"].includes(target)) {
+  if (["session", "sessions", "status", "current", "history", "compact", "stop", "delete", "del", "rm", "whoami", "myid"].includes(target)) {
     return "session";
   }
   if (["agent", "profile", "model", "mode", "reasoning", "permission"].includes(target)) return "agent";
@@ -774,6 +775,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
   if (section === "session") {
     return [
       "Studio Channel / session",
+      "`/whoami` 查看当前 IM 用户、频道和 session id",
       "`/status` 查看当前 Agent、模型、权限和续接状态",
       "`/current` 查看当前 IM 会话详情",
       "`/list` 列出当前 IM 会话已知 Agent sessions",
@@ -852,6 +854,7 @@ function commandHelpText(section?: string | null): string {
     "",
     "常用",
     "`/status` `/new` `/reset` `/stop` `/compact`",
+    "`/whoami` 查看 IM 用户和 session id",
     "`/agent` `/model` `/mode` `/reasoning`",
     "`/display` `/quiet` `/stream on|off` `/tools on|off`",
     "`/commands` `/skills` `/native /help`",
@@ -1326,6 +1329,35 @@ async function handleCurrent(context: ChannelConnectorCommandContext): Promise<C
       `History entries: ${historyCount}`,
       "Actions: /list · /history 20 · /name <名称> · /search <关键字>",
     ].join("\n"),
+  };
+}
+
+function handleWhoami(context: ChannelConnectorCommandContext): ChannelConnectorCommandResult {
+  const control = getChannelConnectorSessionControl(context.controlsPath, controlsLookup(context));
+  const message = context.message;
+  const canManage = canManageSession(context.binding, message);
+  const userId = normalizeString(message.fromUid) || "(unknown)";
+  const channelId = normalizeString(message.channelId) || "(unknown)";
+  return {
+    handled: true,
+    command: "whoami",
+    action: "show",
+    ok: true,
+    control,
+    replyText: [
+      "Studio Whoami",
+      `User ID: ${userId}`,
+      `Channel ID: ${channelId}`,
+      `Channel type: ${message.channelType}`,
+      `Platform: ${context.binding.platform}`,
+      `Binding: ${context.binding.id}`,
+      `Account: ${context.binding.accountId || "-"}`,
+      `Session key: ${context.sessionKey}`,
+      `Can manage session: ${canManage ? "yes" : "no"}`,
+      "",
+      "用途：把 User ID 加到 binding allowlist 或 adminUsers；把 Channel ID 用于排查群聊/session 绑定。",
+    ].join("\n"),
+    passthroughText: null,
   };
 }
 
@@ -1918,6 +1950,7 @@ export async function handleChannelConnectorCommand(
       passthroughText: null,
     };
   }
+  if (name === "whoami") return handleWhoami(context);
   if (name === "current") return handleCurrent(context);
   if (name === "list" || name === "switch" || name === "search" || name === "name" || name === "delete") {
     const activeSession = getChannelConnectorAgentSession(context.agentSessionsPath, {

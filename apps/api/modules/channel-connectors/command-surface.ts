@@ -98,6 +98,8 @@ const FEISHU_MENU_SECTION_LABELS: Record<FeishuMenuSectionId, string> = {
 const FEISHU_MENU_SECTION_ALIASES: Record<string, FeishuMenuSectionId> = {
   session: "session",
   status: "session",
+  whoami: "session",
+  myid: "session",
   current: "session",
   list: "session",
   sessions: "session",
@@ -157,6 +159,8 @@ const FEISHU_MENU_VIEW_ALIASES: Record<string, FeishuMenuViewId> = {
   command: "commands",
   cmd: "commands",
   start: "help",
+  whoami: "session",
+  myid: "session",
   session: "session",
   status: "session",
   current: "current",
@@ -292,6 +296,7 @@ export function channelConnectorCommandSurfaceViewFromCommand(
   const name = parts[0]?.toLowerCase() || "";
   if (["commands", "command", "cmd"].includes(name)) return "commands";
   if (["help", "menu", "start"].includes(name)) return "help";
+  if (name === "whoami" || name === "myid") return "session";
   if (name === "current") return "current";
   if (
     name === "list"
@@ -430,6 +435,7 @@ export function buildChannelConnectorCommandSurface(
       summary: "当前 IM 会话级控制，不修改全局 Provider/App 配置。",
       actions: [
         action("status", "Status", "/status"),
+        action("whoami", "Whoami", "/whoami"),
         action("usage", "Usage", "/usage"),
         action("current", "Current Session", "/current", { actionKind: "nav" }),
         action("sessions", "Agent Sessions", "/list", { actionKind: "nav" }),
@@ -869,6 +875,8 @@ function commandSurfaceItemDescription(item: ChannelConnectorCommandSurfaceActio
   switch (item.id) {
     case "status":
       return "查看当前 Agent、模型、权限和 session 状态";
+    case "whoami":
+      return "查看当前 IM 用户、频道和 session id";
     case "current":
       return "查看当前 IM session、Agent 续接和最近状态";
     case "sessions":
@@ -1538,6 +1546,7 @@ function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConn
   const section = sectionById(surface, "session");
   const actions = section?.actions || [];
   const status = actions.find((item) => item.id === "status") || action("status", "Status", "/status");
+  const whoami = actions.find((item) => item.id === "whoami") || action("whoami", "Whoami", "/whoami");
   const usage = actions.find((item) => item.id === "usage") || action("usage", "Usage", "/usage");
   const current = actions.find((item) => item.id === "current") || action("current", "Current Session", "/current", { actionKind: "nav" });
   const sessions = actions.find((item) => item.id === "sessions") || action("sessions", "Agent Sessions", "/list", { actionKind: "nav" });
@@ -1558,7 +1567,7 @@ function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConn
   ];
   pushActionRows(elements, [current, sessions], surface, 2, true);
   pushActionRows(elements, [history, usage], surface, 2, true);
-  pushActionRows(elements, [status], surface, 1, true);
+  pushActionRows(elements, [status, whoami], surface, 2, true);
   elements.push({ tag: "hr" });
   pushActionRows(elements, [compact, stop], surface, 2, true);
   pushActionRows(elements, [fresh, reset], surface, 2, true);
