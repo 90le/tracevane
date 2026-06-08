@@ -104,6 +104,15 @@ export interface ChannelConnectorCommandContext {
     project: ChannelConnectorRuntimeProject;
     command: string;
   }) => Promise<ChannelConnectorUsageSummary | null>;
+  respondPermissionRequest?: (input: {
+    bindingId: string;
+    sessionKey: string;
+    action: ChannelConnectorPermissionResponseAction;
+  }) => ChannelConnectorPermissionResponseResult;
+  hasPendingPermissionRequest?: (input: {
+    bindingId: string;
+    sessionKey: string;
+  }) => boolean;
 }
 
 export interface ChannelConnectorGatewayModel {
@@ -138,10 +147,21 @@ export interface ChannelConnectorUsageSummary {
   requestIds: string[];
 }
 
+export type ChannelConnectorPermissionResponseAction = "allow" | "deny" | "allow-all";
+
+export interface ChannelConnectorPermissionResponseResult {
+  handled: boolean;
+  ok: boolean;
+  replyText: string;
+  requestId: string | null;
+  toolName: string | null;
+  error?: string | null;
+}
+
 export interface ChannelConnectorCommandResult {
   handled: boolean;
   command: string | null;
-  action: "help" | "status" | "list" | "show" | "set" | "reset" | "new" | "stop" | "compact" | "usage" | "passthrough" | null;
+  action: "help" | "status" | "list" | "show" | "set" | "reset" | "new" | "stop" | "compact" | "usage" | "permission" | "passthrough" | null;
   ok: boolean | null;
   replyText: string | null;
   control: ChannelConnectorSessionControlRecord | null;
@@ -511,6 +531,46 @@ function canManageSession(binding: ChannelConnectorRuntimeBinding, message: Chan
   return binding.adminUsers.includes(message.fromUid);
 }
 
+function permissionResponseActionAlias(value: string): ChannelConnectorPermissionResponseAction | null {
+  const target = normalizeString(value)
+    .toLowerCase()
+    .replace(/^\/+/, "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+  if (!target) return null;
+  if (["approve", "allow", "yes", "y", "ok", "继续"].includes(target)) return "allow";
+  if (["deny", "reject", "no", "n", "拒绝"].includes(target)) return "deny";
+  if (["approve all", "allow all", "yes all", "全部允许"].includes(target)) return "allow-all";
+  return null;
+}
+
+function handlePermissionResponseCommand(
+  context: ChannelConnectorCommandContext,
+  action: ChannelConnectorPermissionResponseAction,
+  currentControl: ChannelConnectorSessionControlRecord | null,
+  commandName: string,
+): ChannelConnectorCommandResult {
+  const response = context.respondPermissionRequest?.({
+    ...controlsLookup(context),
+    action,
+  }) || {
+    handled: false,
+    ok: false,
+    replyText: "当前没有等待批准的 Agent 工具请求。",
+    requestId: null,
+    toolName: null,
+  };
+  return {
+    handled: true,
+    command: commandName,
+    action: "permission",
+    ok: response.ok,
+    control: currentControl,
+    replyText: response.replyText,
+    passthroughText: null,
+  };
+}
+
 function isStudioCommand(name: string): boolean {
   return [
     "start",
@@ -540,6 +600,14 @@ function isStudioCommand(name: string): boolean {
     "mode",
     "permission",
     "permissions",
+    "approve",
+    "allow",
+    "yes",
+    "deny",
+    "reject",
+    "no",
+    "approve-all",
+    "allow-all",
     "yolo",
     "reasoning",
     "effort",
@@ -587,6 +655,7 @@ function commandHelpText(): string {
     "- `/usage` 查看本 IM 会话最近 Agent run 的 Gateway token usage",
     "- `/compact` 压缩当前 IM 会话上下文并开启新续接",
     "- `/stop` 停止当前 IM 会话正在运行的 Agent",
+    "- `/approve` `/deny` 回复 Agent 工具权限请求；`/allow-all` 允许本次 run 后续工具请求",
     "- `/new` 开启新 Agent 会话，保留本会话配置",
     "- `/reset` 清空本 IM 会话 override 和 Agent 续接状态",
     "",
@@ -1204,7 +1273,38 @@ function resolveSessionSwitchTarget(
 export async function handleChannelConnectorCommand(
   context: ChannelConnectorCommandContext,
 ): Promise<ChannelConnectorCommandResult> {
-  const parsed = parseChannelConnectorCommand(extractOctoContent(context.message));
+  const content = extractOctoContent(context.message);
+  const parsed = parseChannelConnectorCommand(content);
+  const plainPermissionAction = parsed ? null : permissionResponseActionAlias(content);
+  if (plainPermissionAction && context.hasPendingPermissionRequest?.(controlsLookup(context))) {
+    const currentControl = getChannelConnectorSessionControl(context.controlsPath, controlsLookup(context));
+    if (!canManageSession(context.binding, context.message)) {
+      return {
+        handled: true,
+        command: plainPermissionAction,
+        action: "permission",
+        ok: false,
+        control: currentControl,
+        replyText: "当前用户没有批准该 Channel session 工具请求的权限。",
+        passthroughText: null,
+      };
+    }
+    const response = context.respondPermissionRequest?.({
+      ...controlsLookup(context),
+      action: plainPermissionAction,
+    });
+    if (response?.handled) {
+      return {
+        handled: true,
+        command: plainPermissionAction,
+        action: "permission",
+        ok: response.ok,
+        control: currentControl,
+        replyText: response.replyText,
+        passthroughText: null,
+      };
+    }
+  }
   if (!parsed) {
     return {
       handled: false,
@@ -1234,6 +1334,14 @@ export async function handleChannelConnectorCommand(
       "mode",
       "permission",
       "permissions",
+      "approve",
+      "allow",
+      "yes",
+      "deny",
+      "reject",
+      "no",
+      "approve-all",
+      "allow-all",
       "reasoning",
       "effort",
       "switch",
@@ -1269,6 +1377,11 @@ export async function handleChannelConnectorCommand(
       replyText: "当前用户没有管理该 Channel session 的权限。",
       passthroughText: null,
     };
+  }
+
+  const permissionAction = permissionResponseActionAlias([name, ...args].join(" "));
+  if (permissionAction) {
+    return handlePermissionResponseCommand(context, permissionAction, currentControl, name);
   }
 
   if (!isStudioCommand(name)) {

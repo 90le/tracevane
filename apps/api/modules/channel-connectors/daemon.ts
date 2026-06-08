@@ -27,6 +27,8 @@ import type {
 import {
   buildChannelConnectorAgentProcessRequest,
   runChannelConnectorAgentTurn,
+  type ChannelConnectorAgentPermissionDecision,
+  type ChannelConnectorAgentPermissionRequest,
   type ChannelConnectorAgentProgressEvent,
   type ChannelConnectorAgentTurnResult,
   type ChannelConnectorRuntimeBinding,
@@ -56,6 +58,8 @@ import {
   listChannelConnectorGatewayModels,
   listChannelConnectorSkillSummaries,
   resolveChannelConnectorEffectiveProject,
+  type ChannelConnectorPermissionResponseAction,
+  type ChannelConnectorPermissionResponseResult,
   type ChannelConnectorUsageSummary,
 } from "./command-router.js";
 import {
@@ -390,6 +394,22 @@ interface ChannelDaemonActiveRunCancelEntry {
 
 type ChannelDaemonActiveRunCancelRegistry = Map<string, ChannelDaemonActiveRunCancelEntry>;
 
+interface ChannelDaemonPendingPermissionEntry {
+  id: string;
+  runId: string;
+  bindingId: string;
+  sessionKey: string;
+  messageId: string;
+  agent: string;
+  model: string | null;
+  requestedAt: string;
+  request: ChannelConnectorAgentPermissionRequest;
+  resolve: (decision: ChannelConnectorAgentPermissionDecision) => void;
+  timeout: NodeJS.Timeout;
+}
+
+type ChannelDaemonPendingPermissionRegistry = Map<string, ChannelDaemonPendingPermissionEntry>;
+
 interface ChannelDaemonActiveRunLookupResult {
   runId: string;
   entry: ChannelDaemonActiveRunCancelEntry;
@@ -418,6 +438,8 @@ interface ChannelDaemonStopActiveRunResult {
 type FeishuProgressCardEntryKind = "info" | "thinking" | "tool_use" | "tool_result" | "error";
 
 const channelSessionAgentRunQueues: ChannelDaemonSessionRunQueueRegistry = new Map();
+const channelPendingPermissions: ChannelDaemonPendingPermissionRegistry = new Map();
+const channelPermissionApproveAllRunIds = new Set<string>();
 
 interface FeishuProgressCardEntry {
   kind: FeishuProgressCardEntryKind;
@@ -713,6 +735,142 @@ function stopLatestActiveRunForSession(
     agent: entry.agent,
     model: entry.model,
     error: null,
+  };
+}
+
+function pendingPermissionKey(input: { bindingId: string; sessionKey: string }): string {
+  return [input.bindingId, input.sessionKey].map((part) => encodeURIComponent(part)).join("|");
+}
+
+function latestPendingPermissionForSession(
+  registry: ChannelDaemonPendingPermissionRegistry,
+  input: { bindingId: string; sessionKey: string },
+): ChannelDaemonPendingPermissionEntry | null {
+  const key = pendingPermissionKey(input);
+  return registry.get(key) || null;
+}
+
+function hasPendingPermissionForSession(
+  registry: ChannelDaemonPendingPermissionRegistry,
+  input: { bindingId: string; sessionKey: string },
+): boolean {
+  return Boolean(latestPendingPermissionForSession(registry, input));
+}
+
+function permissionDecisionFromAction(
+  action: ChannelConnectorPermissionResponseAction,
+  entry: ChannelDaemonPendingPermissionEntry,
+): ChannelConnectorAgentPermissionDecision {
+  if (action === "deny") {
+    return { behavior: "deny", message: "User denied this tool use from the IM channel." };
+  }
+  return { behavior: "allow", updatedInput: entry.request.input };
+}
+
+function respondPendingPermissionForSession(
+  registry: ChannelDaemonPendingPermissionRegistry,
+  input: {
+    bindingId: string;
+    sessionKey: string;
+    action: ChannelConnectorPermissionResponseAction;
+  },
+): ChannelConnectorPermissionResponseResult {
+  const key = pendingPermissionKey(input);
+  const entry = registry.get(key) || null;
+  if (!entry) {
+    return {
+      handled: false,
+      ok: false,
+      replyText: "当前没有等待批准的 Agent 工具请求。",
+      requestId: null,
+      toolName: null,
+    };
+  }
+  registry.delete(key);
+  clearTimeout(entry.timeout);
+  if (input.action === "allow-all") channelPermissionApproveAllRunIds.add(entry.runId);
+  entry.resolve(permissionDecisionFromAction(input.action, entry));
+  const actionText = input.action === "deny"
+    ? "已拒绝"
+    : input.action === "allow-all" ? "已允许，并将允许本次运行后续工具请求" : "已允许";
+  return {
+    handled: true,
+    ok: true,
+    replyText: `${actionText}：${entry.request.toolName || "tool"} (${entry.request.requestId})`,
+    requestId: entry.request.requestId,
+    toolName: entry.request.toolName || null,
+  };
+}
+
+function clearPendingPermissionsForRun(registry: ChannelDaemonPendingPermissionRegistry, runId: string): void {
+  channelPermissionApproveAllRunIds.delete(runId);
+  for (const [key, entry] of registry.entries()) {
+    if (entry.runId !== runId) continue;
+    registry.delete(key);
+    clearTimeout(entry.timeout);
+    entry.resolve({ behavior: "deny", message: "Agent run ended before the permission request was approved." });
+  }
+}
+
+function renderPermissionPrompt(request: ChannelConnectorAgentPermissionRequest): string {
+  const input = JSON.stringify(request.input || {}, null, 2);
+  return [
+    "Agent 请求执行工具，需要确认。",
+    `工具：${request.toolName || "tool"}`,
+    `请求：${request.requestId}`,
+    input && input !== "{}" ? `参数：\n\`\`\`json\n${input}\n\`\`\`` : "",
+    "回复 `/approve` 允许，`/deny` 拒绝，`/allow-all` 允许本次运行后续工具请求。",
+  ].filter(Boolean).join("\n");
+}
+
+function createPermissionResolver(input: {
+  registry: ChannelDaemonPendingPermissionRegistry;
+  runId: string;
+  bindingId: string;
+  sessionKey: string;
+  messageId: string;
+  agent: string;
+  model: string | null;
+  timeoutMs?: number;
+  onPrompt: (prompt: string, request: ChannelConnectorAgentPermissionRequest) => Promise<void> | void;
+}): (request: ChannelConnectorAgentPermissionRequest) => Promise<ChannelConnectorAgentPermissionDecision> {
+  return async (request) => {
+    if (channelPermissionApproveAllRunIds.has(input.runId)) {
+      return { behavior: "allow", updatedInput: request.input };
+    }
+    const key = pendingPermissionKey(input);
+    const timeoutMs = input.timeoutMs || 120_000;
+    return new Promise<ChannelConnectorAgentPermissionDecision>((resolve) => {
+      const previous = input.registry.get(key);
+      if (previous) {
+        clearTimeout(previous.timeout);
+        previous.resolve({ behavior: "deny", message: "A newer permission request replaced this request." });
+      }
+      const timeout = setTimeout(() => {
+        if (input.registry.get(key)?.id === request.requestId) input.registry.delete(key);
+        resolve({ behavior: "deny", message: "Permission request timed out waiting for IM approval." });
+      }, timeoutMs);
+      timeout.unref();
+      const entry: ChannelDaemonPendingPermissionEntry = {
+        id: request.requestId,
+        runId: input.runId,
+        bindingId: input.bindingId,
+        sessionKey: input.sessionKey,
+        messageId: input.messageId,
+        agent: input.agent,
+        model: input.model,
+        requestedAt: new Date().toISOString(),
+        request,
+        resolve,
+        timeout,
+      };
+      input.registry.set(key, entry);
+      Promise.resolve(input.onPrompt(renderPermissionPrompt(request), request)).catch((error) => {
+        if (input.registry.get(key)?.id === request.requestId) input.registry.delete(key);
+        clearTimeout(timeout);
+        resolve({ behavior: "deny", message: `Permission prompt delivery failed: ${shortMessage(error)}` });
+      });
+    });
   };
 }
 
@@ -3673,6 +3831,8 @@ async function dispatchOctoMessage(input: {
     conversationHistoryPath: conversationHistoryPath(config),
     replyBuffersPath: replyBufferPath(config),
     gatewayClientKey: key,
+    hasPendingPermissionRequest: (scope) => hasPendingPermissionForSession(channelPendingPermissions, scope),
+    respondPermissionRequest: (scope) => respondPendingPermissionForSession(channelPendingPermissions, scope),
     stopActiveRun: (scope) => stopLatestActiveRunForSession(activeRunCancels, scope),
     compactConversation: (scope) => compactChannelConnectorConversation({
       config,
@@ -4030,6 +4190,20 @@ async function dispatchOctoMessage(input: {
         modelCapabilities: modelResolution.modelCapabilities,
         nativeCommand: nativeCommand || null,
         signal: abortController.signal,
+        resolvePermission: createPermissionResolver({
+          registry: channelPendingPermissions,
+          runId: activeRunId,
+          bindingId: binding.id,
+          sessionKey,
+          messageId: message.messageId,
+          agent: turnProject.agent,
+          model: turnProject.model,
+          onPrompt: async (prompt) => {
+            if (!transport) return;
+            const replyPlan = renderOctoTextReply(message, prompt);
+            if (replyPlan) await sendOctoTextReply(transport, replyPlan);
+          },
+        }),
         session: {
           agentNativeSessionId: currentSession?.agentNativeSessionId || currentSession?.codexThreadId || null,
           codexThreadId: currentSession?.codexThreadId || null,
@@ -4108,6 +4282,7 @@ async function dispatchOctoMessage(input: {
   } finally {
     stopTypingPulse();
     activeRunCancels.delete(activeRunId);
+    clearPendingPermissionsForRun(channelPendingPermissions, activeRunId);
     state.activeRuns = state.activeRuns.filter((run) => run.id !== activeRunId);
     sessionRunLease.release();
     writeRuntime(config, state);
@@ -4524,6 +4699,8 @@ async function dispatchFeishuParsedEvent(input: {
     conversationHistoryPath: conversationHistoryPath(config),
     replyBuffersPath: replyBufferPath(config),
     gatewayClientKey: key,
+    hasPendingPermissionRequest: (scope) => hasPendingPermissionForSession(channelPendingPermissions, scope),
+    respondPermissionRequest: (scope) => respondPendingPermissionForSession(channelPendingPermissions, scope),
     stopActiveRun: (scope) => stopLatestActiveRunForSession(activeRunCancels, scope),
     compactConversation: (scope) => compactChannelConnectorConversation({
       config,
@@ -4951,6 +5128,21 @@ async function dispatchFeishuParsedEvent(input: {
         modelCapabilities: modelResolution.modelCapabilities,
         nativeCommand: nativeCommand || null,
         signal: abortController.signal,
+        resolvePermission: createPermissionResolver({
+          registry: channelPendingPermissions,
+          runId: activeRunId,
+          bindingId: binding.id,
+          sessionKey,
+          messageId,
+          agent: turnProject.agent,
+          model: turnProject.model,
+          onPrompt: async (prompt) => {
+            await sendFeishuTextMessage(transport, {
+              chatId: parsed.channelId || sessionKey,
+              content: prompt,
+            }, feishuTokenCachePath(config));
+          },
+        }),
         session: {
           agentNativeSessionId: currentSession?.agentNativeSessionId || currentSession?.codexThreadId || null,
           codexThreadId: currentSession?.codexThreadId || null,
@@ -5034,6 +5226,7 @@ async function dispatchFeishuParsedEvent(input: {
   } finally {
     await stopTypingReaction();
     activeRunCancels.delete(activeRunId);
+    clearPendingPermissionsForRun(channelPendingPermissions, activeRunId);
     state.activeRuns = state.activeRuns.filter((run) => run.id !== activeRunId);
     sessionRunLease.release();
     writeRuntime(config, state);

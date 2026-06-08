@@ -2879,6 +2879,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(help.replyText, /`\/usage`/);
   assert.match(help.replyText, /`\/compact`/);
   assert.match(help.replyText, /`\/stop`/);
+  assert.match(help.replyText, /`\/approve`/);
   assert.match(help.replyText, /`\/native \/help`/);
   assert.match(help.replyText, /`\/skills`/);
   assert.equal(parseChannelConnectorCommand("%help")?.name, "help");
@@ -3142,6 +3143,59 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(noActiveRun.action, "stop");
   assert.equal(noActiveRun.ok, false);
   assert.match(noActiveRun.replyText, /没有正在运行的 Agent/);
+
+  let permissionAction = null;
+  const approvedPermission = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/approve"),
+    hasPendingPermissionRequest: () => true,
+    respondPermissionRequest: (scope) => {
+      permissionAction = scope.action;
+      assert.equal(scope.bindingId, "octo-codex");
+      assert.equal(scope.sessionKey, "dmwork:dm:admin-1");
+      return {
+        handled: true,
+        ok: true,
+        replyText: "已允许：Bash (perm-1)",
+        requestId: "perm-1",
+        toolName: "Bash",
+      };
+    },
+  });
+  assert.equal(permissionAction, "allow");
+  assert.equal(approvedPermission.handled, true);
+  assert.equal(approvedPermission.action, "permission");
+  assert.equal(approvedPermission.ok, true);
+  assert.match(approvedPermission.replyText, /已允许/);
+
+  let deniedPermissionAction = null;
+  const deniedPermission = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("deny"),
+    hasPendingPermissionRequest: () => true,
+    respondPermissionRequest: (scope) => {
+      deniedPermissionAction = scope.action;
+      return {
+        handled: true,
+        ok: true,
+        replyText: "已拒绝：Write (perm-2)",
+        requestId: "perm-2",
+        toolName: "Write",
+      };
+    },
+  });
+  assert.equal(deniedPermissionAction, "deny");
+  assert.equal(deniedPermission.handled, true);
+  assert.equal(deniedPermission.action, "permission");
+  assert.match(deniedPermission.replyText, /已拒绝/);
+
+  const plainYesWithoutPending = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("yes"),
+    hasPendingPermissionRequest: () => false,
+  });
+  assert.equal(plainYesWithoutPending.handled, false);
+  assert.equal(plainYesWithoutPending.passthroughText, null);
 
   const denied = await handleChannelConnectorCommand({
     ...baseContext,
@@ -6003,6 +6057,52 @@ test("native Channel Connectors process runner denies Claude Code tools in read-
   assert.equal(progress.at(-1)?.type, "completed");
   assert.match(progress.at(-1)?.text || "", /"behavior":"deny"/);
   assert.match(progress.at(-1)?.text || "", /read-only/);
+});
+
+test("native Channel Connectors process runner waits for interactive Claude Code permission decisions", async () => {
+  const root = makeTempRoot();
+  const childScript = [
+    "const readline = require('node:readline');",
+    "const rl = readline.createInterface({ input: process.stdin });",
+    "let asked = false;",
+    "function write(value) { process.stdout.write(JSON.stringify(value) + '\\n'); }",
+    "rl.on('line', (line) => {",
+    "  const message = JSON.parse(line);",
+    "  if (!asked && message.type === 'user') {",
+    "    asked = true;",
+    "    write({ type: 'control_request', request_id: 'perm-interactive-1', request: { subtype: 'can_use_tool', tool_name: 'Bash', input: { command: 'ls' } } });",
+    "    return;",
+    "  }",
+    "  if (message.type === 'control_response') {",
+    "    write({ type: 'result', result: JSON.stringify(message.response.response), session_id: 'claude-interactive-session' });",
+    "    process.exit(0);",
+    "  }",
+    "});",
+  ].join("");
+  const seenRequests = [];
+
+  const result = await defaultChannelConnectorAgentProcessRunner({
+    command: process.execPath,
+    args: ["-e", childScript],
+    cwd: root,
+    stdin: `${JSON.stringify({ type: "user", message: { role: "user", content: "list files" } })}\n`,
+    env: {},
+    timeoutMs: 1000,
+    agent: "claude-code",
+    permissionMode: "suggest",
+    resolvePermission: async (request) => {
+      seenRequests.push(request);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return { behavior: "allow", updatedInput: request.input };
+    },
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.error, null);
+  assert.equal(seenRequests.length, 1);
+  assert.equal(seenRequests[0].requestId, "perm-interactive-1");
+  assert.equal(seenRequests[0].toolName, "Bash");
+  assert.match(result.stdout, /"behavior\\":\\"allow/);
 });
 
 test("native Channel Connectors service management is guarded before daemon entry is built", async () => {

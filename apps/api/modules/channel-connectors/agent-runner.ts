@@ -32,6 +32,7 @@ export interface ChannelConnectorAgentProcessRequest {
   agent: ChannelConnectorAgentId;
   permissionMode?: ChannelConnectorPermissionMode | null;
   onProgress?: (event: ChannelConnectorAgentProgressEvent) => void;
+  resolvePermission?: (request: ChannelConnectorAgentPermissionRequest) => Promise<ChannelConnectorAgentPermissionDecision>;
 }
 
 export interface ChannelConnectorAgentProgressEvent {
@@ -41,6 +42,17 @@ export interface ChannelConnectorAgentProgressEvent {
   itemType: string | null;
   text: string | null;
 }
+
+export interface ChannelConnectorAgentPermissionRequest {
+  requestId: string;
+  subtype: string;
+  toolName: string;
+  input: Record<string, unknown>;
+}
+
+export type ChannelConnectorAgentPermissionDecision =
+  | { behavior: "allow"; updatedInput?: Record<string, unknown> | null }
+  | { behavior: "deny"; message?: string | null };
 
 export interface ChannelConnectorAgentProcessResult {
   exitCode: number | null;
@@ -76,6 +88,7 @@ export interface ChannelConnectorAgentTurnRequest {
   } | null;
   nativeCommand?: string | null;
   onProgress?: (event: ChannelConnectorAgentProgressEvent) => void;
+  resolvePermission?: (request: ChannelConnectorAgentPermissionRequest) => Promise<ChannelConnectorAgentPermissionDecision>;
   signal?: AbortSignal | null;
   timeoutMs?: number;
   processRunner?: ChannelConnectorAgentProcessRunner;
@@ -761,6 +774,7 @@ export function buildChannelConnectorAgentProcessRequest(
         codexThreadId: request.session?.codexThreadId || null,
         agent: project.agent,
         permissionMode: project.permissionMode,
+        resolvePermission: request.resolvePermission,
       };
     }
 
@@ -825,6 +839,7 @@ export function buildChannelConnectorAgentProcessRequest(
       codexThreadId: codexThreadId || null,
       agent: project.agent,
       permissionMode: project.permissionMode,
+      resolvePermission: request.resolvePermission,
     };
   }
 
@@ -859,6 +874,7 @@ export function buildChannelConnectorAgentProcessRequest(
       agentNativeSessionId: claudeSessionId || null,
       agent: project.agent,
       permissionMode: project.permissionMode,
+      resolvePermission: request.resolvePermission,
     };
   }
 
@@ -885,6 +901,7 @@ export function buildChannelConnectorAgentProcessRequest(
       nativeCommand: nativeCommand || null,
       agent: project.agent,
       permissionMode: project.permissionMode,
+      resolvePermission: request.resolvePermission,
     };
   }
 
@@ -980,22 +997,11 @@ function claudeToolProgressText(item: Record<string, unknown>, label = "tool"): 
   return [name, input ? `input:\n${input}` : ""].filter(Boolean).join("\n");
 }
 
-interface ClaudeCodeControlToolRequest {
-  requestId: string;
-  subtype: string;
-  toolName: string;
-  input: Record<string, unknown>;
-}
-
-type ClaudeCodePermissionDecision =
-  | { behavior: "allow"; updatedInput: Record<string, unknown> }
-  | { behavior: "deny"; message: string };
-
 function isClaudeEditTool(toolName: string): boolean {
   return ["Edit", "Write", "NotebookEdit", "MultiEdit"].includes(toolName);
 }
 
-function parseClaudeControlToolRequest(line: string): ClaudeCodeControlToolRequest | null {
+function parseClaudeControlToolRequest(line: string): ChannelConnectorAgentPermissionRequest | null {
   const raw = recordValue(JSON.parse(line));
   if (!raw || normalizeString(raw.type) !== "control_request") return null;
   const request = recordValue(raw.request);
@@ -1010,10 +1016,10 @@ function parseClaudeControlToolRequest(line: string): ClaudeCodeControlToolReque
   };
 }
 
-function claudePermissionDecision(
+function claudeAutomaticPermissionDecision(
   mode: ChannelConnectorPermissionMode | null | undefined,
-  request: ClaudeCodeControlToolRequest,
-): ClaudeCodePermissionDecision {
+  request: ChannelConnectorAgentPermissionRequest,
+): ChannelConnectorAgentPermissionDecision | null {
   if (mode === "yolo" || mode === "full-auto") {
     return { behavior: "allow", updatedInput: request.input };
   }
@@ -1026,16 +1032,20 @@ function claudePermissionDecision(
   if (mode === "auto-edit") {
     return { behavior: "deny", message: "Permission mode is auto-edit; Studio only auto-allows Claude edit tools." };
   }
+  return null;
+}
+
+function claudeFallbackPermissionDecision(): ChannelConnectorAgentPermissionDecision {
   return {
     behavior: "deny",
     message: "Interactive Claude tool approval is not available in this Studio runner yet. Switch to yolo/full-auto or retry with an edit-only tool.",
   };
 }
 
-function claudeControlResponseLine(requestId: string, decision: ClaudeCodePermissionDecision): string {
+function claudeControlResponseLine(requestId: string, decision: ChannelConnectorAgentPermissionDecision): string {
   const response = decision.behavior === "allow"
-    ? { behavior: "allow", updatedInput: decision.updatedInput }
-    : { behavior: "deny", message: decision.message };
+    ? { behavior: "allow", updatedInput: decision.updatedInput || {} }
+    : { behavior: "deny", message: decision.message || "The user denied this tool use. Stop and wait for the user's instructions." };
   return `${JSON.stringify({
     type: "control_response",
     response: {
@@ -1205,11 +1215,14 @@ export async function defaultChannelConnectorAgentProcessRunner(
         stderr += `\nstdin write failed: ${error instanceof Error ? error.message : String(error)}`;
       }
     };
-    const handleClaudeCodeLine = (line: string): void => {
+    const handleClaudeCodeLine = async (line: string): Promise<void> => {
       try {
         const controlRequest = parseClaudeControlToolRequest(line);
         if (controlRequest) {
-          const decision = claudePermissionDecision(request.permissionMode, controlRequest);
+          const decision = claudeAutomaticPermissionDecision(request.permissionMode, controlRequest)
+            || (request.resolvePermission
+              ? await request.resolvePermission(controlRequest)
+              : claudeFallbackPermissionDecision());
           writeStdinLine(claudeControlResponseLine(controlRequest.requestId, decision));
         }
       } catch (error) {
@@ -1254,7 +1267,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
           progressEvents.push(event);
           request.onProgress?.(event);
         }
-        if (isClaudeCode) handleClaudeCodeLine(line);
+        if (isClaudeCode) void handleClaudeCodeLine(line);
       }
     });
     child.stderr.on("data", (chunk) => {
@@ -1283,7 +1296,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
         progressEvents.push(trailingEvent);
         request.onProgress?.(trailingEvent);
       }
-      if (isClaudeCode && stdoutLineBuffer) handleClaudeCodeLine(stdoutLineBuffer);
+      if (isClaudeCode && stdoutLineBuffer) void handleClaudeCodeLine(stdoutLineBuffer);
       cleanupProcessRequest(request);
       resolve({
         exitCode,
