@@ -3189,6 +3189,67 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(deniedPermission.action, "permission");
   assert.match(deniedPermission.replyText, /已拒绝/);
 
+  let questionAnswer = null;
+  let permissionHijackedByQuestion = false;
+  const answeredQuestion = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("allow"),
+    hasPendingQuestionRequest: () => true,
+    respondQuestionRequest: (scope) => {
+      questionAnswer = scope.answer;
+      assert.equal(scope.bindingId, "octo-codex");
+      assert.equal(scope.sessionKey, "dmwork:dm:admin-1");
+      return {
+        handled: true,
+        ok: true,
+        replyText: "已回答：Which database? -> allow",
+        requestId: "ask-1",
+        toolName: "AskUserQuestion",
+      };
+    },
+    hasPendingPermissionRequest: () => true,
+    respondPermissionRequest: () => {
+      permissionHijackedByQuestion = true;
+      return {
+        handled: true,
+        ok: false,
+        replyText: "should not be used",
+        requestId: "perm-x",
+        toolName: "Bash",
+      };
+    },
+  });
+  assert.equal(questionAnswer, "allow");
+  assert.equal(permissionHijackedByQuestion, false);
+  assert.equal(answeredQuestion.handled, true);
+  assert.equal(answeredQuestion.action, "permission");
+  assert.equal(answeredQuestion.ok, true);
+  assert.match(answeredQuestion.replyText, /Which database/);
+
+  let questionStoppedRun = false;
+  const stopDuringQuestion = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/stop"),
+    hasPendingQuestionRequest: () => true,
+    respondQuestionRequest: () => {
+      throw new Error("stop should not be treated as a question answer");
+    },
+    stopActiveRun: () => {
+      questionStoppedRun = true;
+      return {
+        stopped: true,
+        runId: "run-question",
+        messageId: "msg-question",
+        agent: "claude-code",
+        model: "claude-sonnet",
+        error: null,
+      };
+    },
+  });
+  assert.equal(questionStoppedRun, true);
+  assert.equal(stopDuringQuestion.handled, true);
+  assert.equal(stopDuringQuestion.action, "stop");
+
   const plainYesWithoutPending = await handleChannelConnectorCommand({
     ...baseContext,
     message: message("yes"),
@@ -6112,6 +6173,60 @@ test("native Channel Connectors process runner waits for interactive Claude Code
   assert.equal(seenRequests[0].requestId, "perm-interactive-1");
   assert.equal(seenRequests[0].toolName, "Bash");
   assert.match(result.stdout, /"behavior\\":\\"allow/);
+});
+
+test("native Channel Connectors process runner routes Claude Code AskUserQuestion through IM answers", async () => {
+  const root = makeTempRoot();
+  const childScript = [
+    "const readline = require('node:readline');",
+    "const rl = readline.createInterface({ input: process.stdin });",
+    "let asked = false;",
+    "function write(value) { process.stdout.write(JSON.stringify(value) + '\\n'); }",
+    "rl.on('line', (line) => {",
+    "  const message = JSON.parse(line);",
+    "  if (!asked && message.type === 'user') {",
+    "    asked = true;",
+    "    write({ type: 'control_request', request_id: 'ask-1', request: { subtype: 'can_use_tool', tool_name: 'AskUserQuestion', input: { questions: [{ question: 'Which database?', options: [{ label: 'PostgreSQL' }, { label: 'SQLite' }] }] } } });",
+    "    return;",
+    "  }",
+    "  if (message.type === 'control_response') {",
+    "    write({ type: 'result', result: JSON.stringify(message.response.response), session_id: 'claude-ask-session' });",
+    "    process.exit(0);",
+    "  }",
+    "});",
+  ].join("");
+  const seenRequests = [];
+
+  const result = await defaultChannelConnectorAgentProcessRunner({
+    command: process.execPath,
+    args: ["-e", childScript],
+    cwd: root,
+    stdin: `${JSON.stringify({ type: "user", message: { role: "user", content: "choose a database" } })}\n`,
+    env: {},
+    timeoutMs: 1000,
+    agent: "claude-code",
+    permissionMode: "yolo",
+    resolvePermission: async (request) => {
+      seenRequests.push(request);
+      return {
+        behavior: "allow",
+        updatedInput: {
+          ...request.input,
+          answers: {
+            "Which database?": "SQLite",
+          },
+        },
+      };
+    },
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.error, null);
+  assert.equal(seenRequests.length, 1);
+  assert.equal(seenRequests[0].requestId, "ask-1");
+  assert.equal(seenRequests[0].toolName, "AskUserQuestion");
+  assert.match(result.stdout, /Which database/);
+  assert.match(result.stdout, /SQLite/);
 });
 
 test("native Channel Connectors service management is guarded before daemon entry is built", async () => {

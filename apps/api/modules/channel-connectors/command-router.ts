@@ -113,6 +113,15 @@ export interface ChannelConnectorCommandContext {
     bindingId: string;
     sessionKey: string;
   }) => boolean;
+  respondQuestionRequest?: (input: {
+    bindingId: string;
+    sessionKey: string;
+    answer: string;
+  }) => ChannelConnectorPermissionResponseResult;
+  hasPendingQuestionRequest?: (input: {
+    bindingId: string;
+    sessionKey: string;
+  }) => boolean;
 }
 
 export interface ChannelConnectorGatewayModel {
@@ -1275,9 +1284,39 @@ export async function handleChannelConnectorCommand(
 ): Promise<ChannelConnectorCommandResult> {
   const content = extractOctoContent(context.message);
   const parsed = parseChannelConnectorCommand(content);
+  const lookup = controlsLookup(context);
+  if (context.hasPendingQuestionRequest?.(lookup) && !["stop", "cancel", "reset", "new"].includes(parsed?.name || "")) {
+    const currentControl = getChannelConnectorSessionControl(context.controlsPath, lookup);
+    if (!canManageSession(context.binding, context.message)) {
+      return {
+        handled: true,
+        command: "answer",
+        action: "permission",
+        ok: false,
+        control: currentControl,
+        replyText: "当前用户没有回答该 Channel session 问题的权限。",
+        passthroughText: null,
+      };
+    }
+    const response = context.respondQuestionRequest?.({
+      ...lookup,
+      answer: content,
+    });
+    if (response?.handled) {
+      return {
+        handled: true,
+        command: "answer",
+        action: "permission",
+        ok: response.ok,
+        control: currentControl,
+        replyText: response.replyText,
+        passthroughText: null,
+      };
+    }
+  }
   const plainPermissionAction = parsed ? null : permissionResponseActionAlias(content);
-  if (plainPermissionAction && context.hasPendingPermissionRequest?.(controlsLookup(context))) {
-    const currentControl = getChannelConnectorSessionControl(context.controlsPath, controlsLookup(context));
+  if (plainPermissionAction && context.hasPendingPermissionRequest?.(lookup)) {
+    const currentControl = getChannelConnectorSessionControl(context.controlsPath, lookup);
     if (!canManageSession(context.binding, context.message)) {
       return {
         handled: true,
@@ -1312,13 +1351,12 @@ export async function handleChannelConnectorCommand(
       action: null,
       ok: null,
       replyText: null,
-      control: getChannelConnectorSessionControl(context.controlsPath, controlsLookup(context)),
+      control: getChannelConnectorSessionControl(context.controlsPath, lookup),
       passthroughText: null,
       nativeCommand: null,
     };
   }
 
-  const lookup = controlsLookup(context);
   const currentControl = getChannelConnectorSessionControl(context.controlsPath, lookup);
   const currentProject = resolveChannelConnectorEffectiveProject(context.config, context.project, currentControl);
   const name = parsed.name;

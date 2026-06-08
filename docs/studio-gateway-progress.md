@@ -15,7 +15,7 @@
 - IM 文件收发边界已固定为 Studio native transport：Agent 只读入站 staging 文件，出站只声明工作目录内文件 manifest，由 daemon 按平台上传发送。
 - IM Agent run 默认按 binding + sessionKey 串行排队：上一条 Agent 消息未结束时，新普通消息会收到“已加入队列”引导，并在前序任务完成后自动处理；`/stop`、`/status` 等 Studio 命令仍可执行，binding metadata 可显式打开 parallel。
 - IM Agent runner 策略固定为混合架构：真实 Feishu/Octo live binding 当前使用 one-shot `exec/resume` 保稳定；Codex 持久 session driver 保留为 metadata 实验路径，显式开启时使用 `codex app-server`，已覆盖 `turn/start`、原生 `/compact`、`turn/interrupt`、`/stop`、超时中断和失败回退。
-- CC Go 旧源码对照结论已固定：Codex 正式稳定路径优先复刻 CC 的 `codex exec/resume` 子进程模型；Claude Code / ACP 等再按其原生长驻流式会话单独迁移。Codex app-server 不作为默认 live 路线，只保留为受控 beta。
+- CC Go 旧源码对照结论已固定：Codex 正式稳定路径优先复刻 CC 的 `codex exec/resume` 子进程模型；当前 Codex 未全部完成，one-shot 主链路可用但仍需真实 Feishu/Octo 文件、工具流、Markdown、new/reset/compact smoke 收口。Codex app-server 不作为默认 live 路线，只保留为受控 beta。
 - 仓库级约束已固定：Channel Connectors 任意新功能必须先按 CC Go 1:1 迁移，再做 Studio 精修；迁移跟踪见 `channel-connectors-cc-migration-checklist.md`。
 
 ## 本次完成
@@ -57,12 +57,13 @@
 - Feishu/Studio command surface 新增 Commands tab：主菜单可进入自定义命令子卡，显示 config prompt command 与 Agent command file，并提供按钮执行；添加/删除仍通过 `/commands add/del` 文本命令完成，避免卡片输入复杂化。
 - 按 CC SkillRegistry 合同接入 `/skills` 与 Skill invocation：递归发现 `SKILL.md`，解析 frontmatter，Codex/Claude Code/Gemini/Kimi/Cursor/Qoder 使用各自 CC `SkillDirs()` 路径；未知 `/skill-name` 命中后构造成 CC 风格 Skill 执行 prompt 交给当前 Agent。
 - Commands tab 已同时展示 Skills：可从 Feishu 卡片查看 `/skills`，并按钮执行当前 Agent 可用 Skill；优先级固定为 Studio 内置命令 > config command > Agent command file > Skill > 原生透传。
+- Claude Code AskUserQuestion 基础闭环已按 CC Go 语义接入：`AskUserQuestion` 不再被 yolo/full-auto 自动 allow；pending question 时 IM 下一条普通回复会作为答案写入 `updatedInput.answers`，`allow/deny` 也按答案处理，`/stop` 等硬控制命令仍可执行。
 
 ## 最近验证
 
 - 通过：`npm run build:api`。
 - 通过：`node --test tests/system/model-gateway-service.test.mjs`，51 个 Model Gateway 子测试通过。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，57 个 Channel Connectors 子测试通过；覆盖 Codex resume 参数顺序、Feishu/Octo 文件收发、Feishu transport-smoke 文件发送入口、Agent/config 自定义命令扫描/展开/添加/删除、Skill 扫描/调用、Commands 菜单卡片、Claude Code stream-json 进度、图片输入、`--resume` 续接、权限 `control_response`、IM 文本批准、Feishu 权限卡片按钮、进度/工具事件和 daemon 合同。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，58 个 Channel Connectors 子测试通过；覆盖 Codex resume 参数顺序、Feishu/Octo 文件收发、Feishu transport-smoke 文件发送入口、Agent/config 自定义命令扫描/展开/添加/删除、Skill 扫描/调用、Commands 菜单卡片、Claude Code stream-json 进度、图片输入、`--resume` 续接、权限 `control_response`、IM 文本批准、Feishu 权限卡片按钮、AskUserQuestion IM 回答、进度/工具事件和 daemon 合同。
 - 通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，9 个 Codex app-server driver 原型子测试通过；覆盖 persistent markdown/文件 manifest 保真、工具输出保真、内部 userMessage 回显过滤、unfinished turn 超时中断。
 - 通过：`node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，默认跳过真实 Codex smoke。
 - 通过：`STUDIO_CODEX_APP_SERVER_LIVE_TURN=1 STUDIO_CODEX_APP_SERVER_LIVE_COMPACT=1 STUDIO_CODEX_APP_SERVER_LIVE_MODEL=gpt-5.4-mini node --test tests/system/channel-connectors-codex-app-server-live-smoke.test.mjs`，隔离 HOME 下真实 `codex app-server --stdio` 经本机 Studio Gateway 完成 `turn/start` 精确回复与原生 compact 完成信号。
@@ -101,6 +102,6 @@
 
 ## 下一步
 
-1. 先按迁移清单 P1 复验 Codex `exec/resume` live 路径：Feishu/Octo 发文件、工具流式、最终 Markdown 排版。
+1. 先按迁移清单 P1 复验 Codex `exec/resume` live 路径：Feishu/Octo 发文件、工具流式、最终 Markdown 排版、new/reset/compact。
 2. 继续复刻 CC Go 的 Feishu/Octo 菜单、设置卡片、长连接和媒体收发细节。
-3. 继续迁移 Claude Code AskUserQuestion/file 能力与 OpenCode runner；Codex app-server 继续保持 beta，不阻塞稳定 live 路线。
+3. 继续迁移 Claude Code AskUserQuestion 卡片精修/file 能力与 OpenCode runner；Codex app-server 继续保持 beta，不阻塞稳定 live 路线。

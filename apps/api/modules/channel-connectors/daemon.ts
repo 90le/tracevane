@@ -394,6 +394,18 @@ interface ChannelDaemonActiveRunCancelEntry {
 
 type ChannelDaemonActiveRunCancelRegistry = Map<string, ChannelDaemonActiveRunCancelEntry>;
 
+interface ChannelDaemonUserQuestionOption {
+  label: string;
+  description: string;
+}
+
+interface ChannelDaemonUserQuestion {
+  question: string;
+  header: string;
+  options: ChannelDaemonUserQuestionOption[];
+  multiSelect: boolean;
+}
+
 interface ChannelDaemonPendingPermissionEntry {
   id: string;
   runId: string;
@@ -406,6 +418,9 @@ interface ChannelDaemonPendingPermissionEntry {
   request: ChannelConnectorAgentPermissionRequest;
   resolve: (decision: ChannelConnectorAgentPermissionDecision) => void;
   timeout: NodeJS.Timeout;
+  questions: ChannelDaemonUserQuestion[];
+  answers: Map<number, string>;
+  currentQuestion: number;
 }
 
 type ChannelDaemonPendingPermissionRegistry = Map<string, ChannelDaemonPendingPermissionEntry>;
@@ -750,11 +765,147 @@ function latestPendingPermissionForSession(
   return registry.get(key) || null;
 }
 
+function isAskUserQuestionRequest(request: ChannelConnectorAgentPermissionRequest): boolean {
+  return request.toolName === "AskUserQuestion";
+}
+
+function latestPendingQuestionForSession(
+  registry: ChannelDaemonPendingPermissionRegistry,
+  input: { bindingId: string; sessionKey: string },
+): ChannelDaemonPendingPermissionEntry | null {
+  const entry = latestPendingPermissionForSession(registry, input);
+  return entry && isAskUserQuestionRequest(entry.request) ? entry : null;
+}
+
 function hasPendingPermissionForSession(
   registry: ChannelDaemonPendingPermissionRegistry,
   input: { bindingId: string; sessionKey: string },
 ): boolean {
   return Boolean(latestPendingPermissionForSession(registry, input));
+}
+
+function hasPendingQuestionForSession(
+  registry: ChannelDaemonPendingPermissionRegistry,
+  input: { bindingId: string; sessionKey: string },
+): boolean {
+  return Boolean(latestPendingQuestionForSession(registry, input));
+}
+
+function parseAskUserQuestions(input: Record<string, unknown>): ChannelDaemonUserQuestion[] {
+  const rawQuestions = Array.isArray(input.questions) ? input.questions : [];
+  return rawQuestions
+    .map((raw): ChannelDaemonUserQuestion | null => {
+      if (!isRecord(raw)) return null;
+      const question = normalizeString(raw.question);
+      if (!question) return null;
+      const rawOptions = Array.isArray(raw.options) ? raw.options : [];
+      return {
+        question,
+        header: normalizeString(raw.header),
+        multiSelect: raw.multiSelect === true,
+        options: rawOptions
+          .map((option): ChannelDaemonUserQuestionOption | null => {
+            if (!isRecord(option)) return null;
+            const label = normalizeString(option.label);
+            if (!label) return null;
+            return {
+              label,
+              description: normalizeString(option.description),
+            };
+          })
+          .filter((option): option is ChannelDaemonUserQuestionOption => Boolean(option)),
+      };
+    })
+    .filter((question): question is ChannelDaemonUserQuestion => Boolean(question));
+}
+
+function fallbackAskUserQuestion(): ChannelDaemonUserQuestion {
+  return {
+    question: "Claude Code 需要你补充信息。",
+    header: "",
+    options: [],
+    multiSelect: false,
+  };
+}
+
+function pendingAskUserQuestions(request: ChannelConnectorAgentPermissionRequest): ChannelDaemonUserQuestion[] {
+  const questions = parseAskUserQuestions(request.input);
+  return questions.length ? questions : [fallbackAskUserQuestion()];
+}
+
+function firstAskUserQuestion(entry: ChannelDaemonPendingPermissionEntry): ChannelDaemonUserQuestion {
+  return entry.questions[entry.currentQuestion] || fallbackAskUserQuestion();
+}
+
+function renderAskUserQuestionPrompt(entry: ChannelDaemonPendingPermissionEntry): string {
+  return renderAskUserQuestionPromptData({
+    questions: entry.questions,
+    currentQuestion: entry.currentQuestion,
+  });
+}
+
+function renderAskUserQuestionPromptData(input: {
+  questions: ChannelDaemonUserQuestion[];
+  currentQuestion: number;
+}): string {
+  const question = input.questions[input.currentQuestion] || {
+    ...fallbackAskUserQuestion(),
+  };
+  const total = Math.max(input.questions.length, 1);
+  const index = Math.min(input.currentQuestion + 1, total);
+  const title = total > 1 ? `Claude Code 提问 (${index}/${total})` : "Claude Code 提问";
+  const optionLines = question.options.map((option, optionIndex) => {
+    const description = option.description ? ` - ${option.description}` : "";
+    return `${optionIndex + 1}. ${option.label}${description}`;
+  });
+  return [
+    title,
+    question.header ? `分类：${question.header}` : "",
+    question.question,
+    question.multiSelect ? "可多选；可回复序号组合，例如：1,3，也可以直接回复文字。" : "",
+    optionLines.length ? optionLines.join("\n") : "",
+    "请直接回复答案；此时 `allow` / `deny` 会作为答案文本，不会被当成工具权限命令。",
+  ].filter(Boolean).join("\n");
+}
+
+function resolveAskUserQuestionAnswer(question: ChannelDaemonUserQuestion, rawAnswer: string): string {
+  const answer = normalizeString(rawAnswer);
+  if (answer.startsWith("askq:")) {
+    const parts = answer.split(":");
+    const indexText = parts.length >= 3 ? parts[2] : parts[1];
+    const index = Number(indexText);
+    if (Number.isInteger(index) && index >= 1 && index <= question.options.length) {
+      return question.options[index - 1]?.label || answer;
+    }
+  }
+  if (question.multiSelect) {
+    const parts = answer.split(/[,\s，]+/).map((part) => part.trim()).filter(Boolean);
+    const labels: string[] = [];
+    const allValid = parts.length > 0 && parts.every((part) => {
+      const index = Number(part);
+      if (!Number.isInteger(index) || index < 1 || index > question.options.length) return false;
+      labels.push(question.options[index - 1]?.label || part);
+      return true;
+    });
+    if (allValid && labels.length) return labels.join(", ");
+  } else {
+    const index = Number(answer);
+    if (Number.isInteger(index) && index >= 1 && index <= question.options.length) {
+      return question.options[index - 1]?.label || answer;
+    }
+  }
+  return answer;
+}
+
+function buildAskUserQuestionUpdatedInput(entry: ChannelDaemonPendingPermissionEntry): Record<string, unknown> {
+  const output: Record<string, unknown> = { ...entry.request.input };
+  const answers: Record<string, unknown> = {};
+  for (const [index, answer] of entry.answers.entries()) {
+    const question = entry.questions[index];
+    if (question?.question) answers[question.question] = answer;
+  }
+  output.answers = answers;
+  return output;
 }
 
 function permissionDecisionFromAction(
@@ -765,6 +916,57 @@ function permissionDecisionFromAction(
     return { behavior: "deny", message: "User denied this tool use from the IM channel." };
   }
   return { behavior: "allow", updatedInput: entry.request.input };
+}
+
+function respondPendingQuestionForSession(
+  registry: ChannelDaemonPendingPermissionRegistry,
+  input: {
+    bindingId: string;
+    sessionKey: string;
+    answer: string;
+  },
+): ChannelConnectorPermissionResponseResult {
+  const entry = latestPendingQuestionForSession(registry, input);
+  if (!entry) {
+    return {
+      handled: false,
+      ok: false,
+      replyText: "当前没有等待回答的 Claude Code 问题。",
+      requestId: null,
+      toolName: null,
+    };
+  }
+  const question = firstAskUserQuestion(entry);
+  const answer = resolveAskUserQuestionAnswer(question, input.answer);
+  entry.answers.set(entry.currentQuestion, answer);
+  if (entry.currentQuestion + 1 < entry.questions.length) {
+    entry.currentQuestion += 1;
+    return {
+      handled: true,
+      ok: true,
+      replyText: [
+        `已记录：${question.question} -> ${answer}`,
+        "",
+        renderAskUserQuestionPrompt(entry),
+      ].join("\n"),
+      requestId: entry.request.requestId,
+      toolName: entry.request.toolName || null,
+    };
+  }
+  const key = pendingPermissionKey(input);
+  registry.delete(key);
+  clearTimeout(entry.timeout);
+  entry.resolve({
+    behavior: "allow",
+    updatedInput: buildAskUserQuestionUpdatedInput(entry),
+  });
+  return {
+    handled: true,
+    ok: true,
+    replyText: `已回答：${question.question} -> ${answer}`,
+    requestId: entry.request.requestId,
+    toolName: entry.request.toolName || null,
+  };
 }
 
 function respondPendingPermissionForSession(
@@ -784,6 +986,15 @@ function respondPendingPermissionForSession(
       replyText: "当前没有等待批准的 Agent 工具请求。",
       requestId: null,
       toolName: null,
+    };
+  }
+  if (isAskUserQuestionRequest(entry.request)) {
+    return {
+      handled: false,
+      ok: false,
+      replyText: "当前等待的是 Claude Code 问题回答，请直接回复答案。",
+      requestId: entry.request.requestId,
+      toolName: entry.request.toolName || null,
     };
   }
   registry.delete(key);
@@ -813,6 +1024,12 @@ function clearPendingPermissionsForRun(registry: ChannelDaemonPendingPermissionR
 }
 
 function renderPermissionPrompt(request: ChannelConnectorAgentPermissionRequest): string {
+  if (isAskUserQuestionRequest(request)) {
+    return renderAskUserQuestionPromptData({
+      questions: pendingAskUserQuestions(request),
+      currentQuestion: 0,
+    });
+  }
   const input = JSON.stringify(request.input || {}, null, 2);
   return [
     "Agent 请求执行工具，需要确认。",
@@ -835,7 +1052,7 @@ function createPermissionResolver(input: {
   onPrompt: (prompt: string, request: ChannelConnectorAgentPermissionRequest) => Promise<void> | void;
 }): (request: ChannelConnectorAgentPermissionRequest) => Promise<ChannelConnectorAgentPermissionDecision> {
   return async (request) => {
-    if (channelPermissionApproveAllRunIds.has(input.runId)) {
+    if (!isAskUserQuestionRequest(request) && channelPermissionApproveAllRunIds.has(input.runId)) {
       return { behavior: "allow", updatedInput: request.input };
     }
     const key = pendingPermissionKey(input);
@@ -863,6 +1080,9 @@ function createPermissionResolver(input: {
         request,
         resolve,
         timeout,
+        questions: pendingAskUserQuestions(request),
+        answers: new Map(),
+        currentQuestion: 0,
       };
       input.registry.set(key, entry);
       Promise.resolve(input.onPrompt(renderPermissionPrompt(request), request)).catch((error) => {
@@ -3942,6 +4162,8 @@ async function dispatchOctoMessage(input: {
     gatewayClientKey: key,
     hasPendingPermissionRequest: (scope) => hasPendingPermissionForSession(channelPendingPermissions, scope),
     respondPermissionRequest: (scope) => respondPendingPermissionForSession(channelPendingPermissions, scope),
+    hasPendingQuestionRequest: (scope) => hasPendingQuestionForSession(channelPendingPermissions, scope),
+    respondQuestionRequest: (scope) => respondPendingQuestionForSession(channelPendingPermissions, scope),
     stopActiveRun: (scope) => stopLatestActiveRunForSession(activeRunCancels, scope),
     compactConversation: (scope) => compactChannelConnectorConversation({
       config,
@@ -4810,6 +5032,8 @@ async function dispatchFeishuParsedEvent(input: {
     gatewayClientKey: key,
     hasPendingPermissionRequest: (scope) => hasPendingPermissionForSession(channelPendingPermissions, scope),
     respondPermissionRequest: (scope) => respondPendingPermissionForSession(channelPendingPermissions, scope),
+    hasPendingQuestionRequest: (scope) => hasPendingQuestionForSession(channelPendingPermissions, scope),
+    respondQuestionRequest: (scope) => respondPendingQuestionForSession(channelPendingPermissions, scope),
     stopActiveRun: (scope) => stopLatestActiveRunForSession(activeRunCancels, scope),
     compactConversation: (scope) => compactChannelConnectorConversation({
       config,

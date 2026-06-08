@@ -1020,6 +1020,7 @@ function claudeAutomaticPermissionDecision(
   mode: ChannelConnectorPermissionMode | null | undefined,
   request: ChannelConnectorAgentPermissionRequest,
 ): ChannelConnectorAgentPermissionDecision | null {
+  if (request.toolName === "AskUserQuestion") return null;
   if (mode === "yolo" || mode === "full-auto") {
     return { behavior: "allow", updatedInput: request.input };
   }
