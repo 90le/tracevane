@@ -1532,6 +1532,7 @@ function renderCurrentSessionCard(surface: ChannelConnectorCommandSurface): Chan
     ["Stream / Tools", `${surface.current.streamMessages ? "on" : "off"} / ${surface.current.toolMessages ? "on" : "off"}`],
     ["Agent session", session?.started ? `${session.turnCount} turns` : "not started"],
     ["Session id", shortSurfaceId(session?.id)],
+    ["Native session", shortSurfaceId(session?.agentNativeSessionId)],
     ["Last status", session?.lastStatus || "-"],
     ["Last message", session?.lastMessageId || "-"],
     ["Codex thread", shortSurfaceId(session?.codexThreadId)],
@@ -1588,7 +1589,7 @@ function renderSessionListCard(surface: ChannelConnectorCommandSurface): Channel
       const description = [
         `${record.projectId} · ${record.agent} · ${model}`,
         `${record.turnCount} turns · ${record.lastStatus || "unknown"} · ${record.updatedAt}`,
-        `session ${shortSurfaceId(record.id)} · thread ${shortSurfaceId(record.codexThreadId)}`,
+        `session ${shortSurfaceId(record.id)} · native ${shortSurfaceId(record.agentNativeSessionId)} · thread ${shortSurfaceId(record.codexThreadId)}`,
         compactPath(record.workDir),
       ].join("\n");
       elements.push(listItemElement(action(

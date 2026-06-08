@@ -1000,6 +1000,7 @@ async function handleStatus(context: ChannelConnectorCommandContext): Promise<Ch
       `Stream: ${effectiveToggle(control?.streamMessages) ? "on" : "off"}`,
       `Tools: ${effectiveToggle(control?.toolMessages) ? "on" : "off"}`,
       `Session: ${session ? `${session.turnCount} turns` : "new"}`,
+      `Native session: ${session?.agentNativeSessionId || "-"}`,
       `Codex thread: ${session?.codexThreadId || "-"}`,
     ].join("\n"),
   };
@@ -1041,6 +1042,7 @@ async function handleCurrent(context: ChannelConnectorCommandContext): Promise<C
       `Tools: ${effectiveToggle(control?.toolMessages) ? "on" : "off"}`,
       `Agent session: ${session ? `${session.turnCount} turns` : "not started"}`,
       `Agent session id: ${shortIdentifier(session?.id, 18)}`,
+      `Native session: ${session?.agentNativeSessionId || "-"}`,
       `Last status: ${session?.lastStatus || "-"}`,
       `Last message: ${session?.lastMessageId || "-"}`,
       `Codex thread: ${session?.codexThreadId || "-"}`,
@@ -1114,7 +1116,7 @@ function sessionListText(
       `${marker} ${index + 1}. ${title} (${record.agent})`,
       `   model=${record.model || "default"} turns=${record.turnCount} status=${record.lastStatus || "-"}`,
       record.name ? `   profile=${record.projectId}` : "",
-      `   sessionId=${shortIdentifier(record.id, 18)} thread=${shortIdentifier(record.codexThreadId, 18)}`,
+      `   sessionId=${shortIdentifier(record.id, 18)} native=${shortIdentifier(record.agentNativeSessionId, 18)} thread=${shortIdentifier(record.codexThreadId, 18)}`,
       `   updated=${record.updatedAt}`,
       `   workDir=${record.workDir}`,
     ].filter(Boolean).join("\n"));

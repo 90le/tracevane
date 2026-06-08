@@ -27,6 +27,7 @@ export interface ChannelConnectorAgentProcessRequest {
   signal?: AbortSignal | null;
   cleanupPaths?: string[];
   sessionMode?: "new" | "resume";
+  agentNativeSessionId?: string | null;
   codexThreadId?: string | null;
   agent: ChannelConnectorAgentId;
   onProgress?: (event: ChannelConnectorAgentProgressEvent) => void;
@@ -65,6 +66,7 @@ export interface ChannelConnectorAgentTurnRequest {
   gatewayClientKey: string | null;
   agentRuntimeDir?: string | null;
   session?: {
+    agentNativeSessionId?: string | null;
     codexThreadId?: string | null;
   } | null;
   historyContext?: string | null;
@@ -100,6 +102,7 @@ export interface ChannelConnectorAgentTurnResult {
   };
   session: {
     resumed: boolean;
+    agentNativeSessionId: string | null;
     codexThreadId: string | null;
   };
 }
@@ -753,6 +756,7 @@ export function buildChannelConnectorAgentProcessRequest(
         timeoutMs,
         nativeCommand,
         sessionMode: "new",
+        agentNativeSessionId: request.session?.agentNativeSessionId || request.session?.codexThreadId || null,
         codexThreadId: request.session?.codexThreadId || null,
         agent: project.agent,
       };
@@ -815,6 +819,7 @@ export function buildChannelConnectorAgentProcessRequest(
       nativeCommand: nativeCommand || null,
       cleanupPaths: codexHome.cleanupRoot ? [codexHome.cleanupRoot] : [],
       sessionMode: codexThreadId ? "resume" : "new",
+      agentNativeSessionId: codexThreadId || null,
       codexThreadId: codexThreadId || null,
       agent: project.agent,
     };
@@ -822,6 +827,7 @@ export function buildChannelConnectorAgentProcessRequest(
 
   if (project.agent === "claude-code") {
     const permissionMode = claudePermissionMode(project.permissionMode);
+    const claudeSessionId = normalizeString(request.session?.agentNativeSessionId);
     const args = [
       "--output-format",
       "stream-json",
@@ -831,6 +837,7 @@ export function buildChannelConnectorAgentProcessRequest(
       "stdio",
       "--verbose",
       ...(permissionMode ? ["--permission-mode", permissionMode] : []),
+      ...(claudeSessionId ? ["--resume", claudeSessionId] : []),
       ...(reasoningEffort ? ["--effort", reasoningEffort] : []),
       ...(model ? ["--model", model] : []),
     ];
@@ -845,6 +852,8 @@ export function buildChannelConnectorAgentProcessRequest(
       },
       timeoutMs,
       nativeCommand: nativeCommand || null,
+      sessionMode: claudeSessionId ? "resume" : "new",
+      agentNativeSessionId: claudeSessionId || null,
       agent: project.agent,
     };
   }
@@ -1246,6 +1255,30 @@ function extractCodexThreadId(stdout: string): string | null {
   return null;
 }
 
+function extractClaudeNativeSessionId(stdout: string): string | null {
+  let latest: string | null = null;
+  for (const line of stdout.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || !trimmed.startsWith("{")) continue;
+    try {
+      const raw = JSON.parse(trimmed) as Record<string, unknown>;
+      const type = normalizeString(raw.type);
+      if ((type === "system" || type === "result") && typeof raw.session_id === "string") {
+        latest = normalizeString(raw.session_id) || latest;
+      }
+    } catch {
+      // Non-event lines are intentionally ignored.
+    }
+  }
+  return latest;
+}
+
+function extractAgentNativeSessionId(agent: ChannelConnectorAgentId, stdout: string): string | null {
+  if (agent === "codex") return extractCodexThreadId(stdout);
+  if (agent === "claude-code") return extractClaudeNativeSessionId(stdout);
+  return null;
+}
+
 function progressSummary(events: ChannelConnectorAgentProgressEvent[]): string | null {
   const latestText = [...events].reverse().find((event) => event.text)?.text || null;
   return latestText ? truncateText(latestText, 180) : null;
@@ -1266,6 +1299,14 @@ function agentFailureMessage(
   const stderr = result.stderr.trim();
   if (stderr) return truncateText(stderr, 400);
   return failureSummary(progressEvents) || `Agent process exited with ${result.exitCode}`;
+}
+
+function fallbackTurnSession(session: ChannelConnectorAgentTurnRequest["session"]): ChannelConnectorAgentTurnResult["session"] {
+  return {
+    resumed: false,
+    agentNativeSessionId: session?.agentNativeSessionId || session?.codexThreadId || null,
+    codexThreadId: session?.codexThreadId || null,
+  };
 }
 
 export async function runChannelConnectorAgentTurn(
@@ -1295,10 +1336,7 @@ export async function runChannelConnectorAgentTurn(
         latest: null,
         summary: null,
       },
-      session: {
-        resumed: false,
-        codexThreadId: request.session?.codexThreadId || null,
-      },
+      session: fallbackTurnSession(request.session),
     };
   }
   const unsupportedNativeCommand = unsupportedNativeCommandMessage(request.project.agent, nativeCommand);
@@ -1323,10 +1361,7 @@ export async function runChannelConnectorAgentTurn(
         latest: null,
         summary: null,
       },
-      session: {
-        resumed: false,
-        codexThreadId: request.session?.codexThreadId || null,
-      },
+      session: fallbackTurnSession(request.session),
     };
   }
   if (request.project.agent === "codex" && !nativeCommand && !normalizeString(request.gatewayClientKey)) {
@@ -1350,10 +1385,7 @@ export async function runChannelConnectorAgentTurn(
         latest: null,
         summary: null,
       },
-      session: {
-        resumed: false,
-        codexThreadId: request.session?.codexThreadId || null,
-      },
+      session: fallbackTurnSession(request.session),
     };
   }
 
@@ -1379,10 +1411,7 @@ export async function runChannelConnectorAgentTurn(
         latest: null,
         summary: null,
       },
-      session: {
-        resumed: false,
-        codexThreadId: request.session?.codexThreadId || null,
-      },
+      session: fallbackTurnSession(request.session),
     };
   }
 
@@ -1400,6 +1429,11 @@ export async function runChannelConnectorAgentTurn(
   const codexThreadId = request.project.agent === "codex"
     ? extractCodexThreadId(result.stdout) || processRequest.codexThreadId || null
     : request.session?.codexThreadId || null;
+  const agentNativeSessionId = extractAgentNativeSessionId(request.project.agent, result.stdout)
+    || processRequest.agentNativeSessionId
+    || request.session?.agentNativeSessionId
+    || (request.project.agent === "codex" ? codexThreadId : null)
+    || null;
   const progressEvents = result.progressEvents?.length
     ? result.progressEvents
     : collectProgressEvents(result.stdout, request.project.agent);
@@ -1426,6 +1460,7 @@ export async function runChannelConnectorAgentTurn(
     },
     session: {
       resumed: processRequest.sessionMode === "resume",
+      agentNativeSessionId,
       codexThreadId,
     },
   };

@@ -334,6 +334,7 @@ export interface ChannelConnectorCommandSurface {
     id?: string | null;
     name?: string | null;
     turnCount: number;
+    agentNativeSessionId: string | null;
     codexThreadId: string | null;
     lastStatus: string | null;
     lastMessageId: string | null;
@@ -347,6 +348,7 @@ export interface ChannelConnectorCommandSurface {
     agent: ChannelConnectorAgentId;
     model: string | null;
     workDir: string;
+    agentNativeSessionId: string | null;
     codexThreadId: string | null;
     turnCount: number;
     createdAt: string;

@@ -11,6 +11,7 @@ export interface ChannelConnectorAgentSessionRecord {
   agent: ChannelConnectorAgentId;
   model: string | null;
   workDir: string;
+  agentNativeSessionId: string | null;
   codexThreadId: string | null;
   turnCount: number;
   createdAt: string;
@@ -35,6 +36,7 @@ export interface ChannelConnectorAgentSessionLookup {
 }
 
 export interface ChannelConnectorAgentSessionUpdate extends ChannelConnectorAgentSessionLookup {
+  agentNativeSessionId?: string | null;
   codexThreadId?: string | null;
   messageId?: string | null;
   status?: string | null;
@@ -99,6 +101,7 @@ export function readChannelConnectorAgentSessions(filePath: string): ChannelConn
         agent,
         model: normalizeString(value.model) || null,
         workDir,
+        agentNativeSessionId: normalizeString(value.agentNativeSessionId) || null,
         codexThreadId: normalizeString(value.codexThreadId) || null,
         turnCount: Number.isFinite(Number(value.turnCount)) ? Math.max(0, Number(value.turnCount)) : 0,
         createdAt: normalizeString(value.createdAt) || nowIso(),
@@ -175,6 +178,7 @@ export function upsertChannelConnectorAgentSession(
     agent: update.agent,
     model: update.model,
     workDir: update.workDir,
+    agentNativeSessionId: normalizeString(update.agentNativeSessionId) || current?.agentNativeSessionId || null,
     codexThreadId: normalizeString(update.codexThreadId) || current?.codexThreadId || null,
     turnCount: (current?.turnCount || 0) + 1,
     createdAt: current?.createdAt || now,

@@ -167,6 +167,7 @@ function agentResult(input: {
     },
     session: {
       resumed: input.resumed,
+      agentNativeSessionId: input.threadId,
       codexThreadId: input.threadId,
     },
   };

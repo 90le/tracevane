@@ -2087,6 +2087,52 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(claudeRequest.env.ANTHROPIC_API_KEY, "sk-local");
   assert.equal(claudeRequest.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:18796");
 
+  const claudeResumeRequest = buildChannelConnectorAgentProcessRequest({
+    project: { ...project, agent: "claude-code", permissionMode: "plan" },
+    binding: { ...binding, agent: "claude-code" },
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    session: { agentNativeSessionId: "claude-session-1" },
+  });
+  assert.ok(claudeResumeRequest);
+  assert.equal(claudeResumeRequest.sessionMode, "resume");
+  const claudeResumeArgIndex = claudeResumeRequest.args.indexOf("--resume");
+  assert.notEqual(claudeResumeArgIndex, -1);
+  assert.equal(claudeResumeRequest.args[claudeResumeArgIndex + 1], "claude-session-1");
+  assert.equal(claudeResumeRequest.agentNativeSessionId, "claude-session-1");
+
+  const claudeTurnResult = await runChannelConnectorAgentTurn({
+    project: { ...project, agent: "claude-code", permissionMode: "plan" },
+    binding: { ...binding, agent: "claude-code" },
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    processRunner: async (request) => {
+      assert.equal(request.command, "claude");
+      assert.equal(request.sessionMode, "new");
+      return {
+        exitCode: 0,
+        signal: null,
+        stdout: [
+          '{"type":"system","session_id":"claude-session-created"}',
+          '{"type":"result","result":"hello from claude","session_id":"claude-session-created"}',
+          "",
+        ].join("\n"),
+        stderr: "",
+        durationMs: 10,
+        timedOut: false,
+        error: null,
+      };
+    },
+  });
+  assert.equal(claudeTurnResult.ok, true);
+  assert.equal(claudeTurnResult.replyText, "hello from claude");
+  assert.equal(claudeTurnResult.session.agentNativeSessionId, "claude-session-created");
+  assert.equal(claudeTurnResult.session.codexThreadId, null);
+
   const opencodeRequest = buildChannelConnectorAgentProcessRequest({
     project: { ...project, agent: "opencode", permissionMode: "yolo", reasoningEffort: "high" },
     binding: { ...binding, agent: "opencode" },
@@ -2574,11 +2620,13 @@ test("native Channel Connectors session store persists Codex thread ids by IM se
   assert.equal(getChannelConnectorAgentSession(storePath, lookup), null);
   const first = upsertChannelConnectorAgentSession(storePath, {
     ...lookup,
+    agentNativeSessionId: "thread-a",
     codexThreadId: "thread-a",
     messageId: "message-1",
     status: "completed",
     now: new Date("2026-06-06T08:00:00.000Z"),
   });
+  assert.equal(first.agentNativeSessionId, "thread-a");
   assert.equal(first.codexThreadId, "thread-a");
   assert.equal(first.turnCount, 1);
   assert.equal(first.lastMessageId, "message-1");
@@ -2596,6 +2644,7 @@ test("native Channel Connectors session store persists Codex thread ids by IM se
   assert.equal(second.lastStatus, "failed");
 
   const loaded = getChannelConnectorAgentSession(storePath, lookup);
+  assert.equal(loaded?.agentNativeSessionId, "thread-a");
   assert.equal(loaded?.codexThreadId, "thread-a");
   assert.equal(loaded?.turnCount, 2);
 
@@ -2606,11 +2655,27 @@ test("native Channel Connectors session store persists Codex thread ids by IM se
   assert.equal(switchedModel?.codexThreadId, "thread-a");
   assert.equal(switchedModel?.turnCount, 2);
 
+  const claudeLookup = {
+    ...lookup,
+    projectId: "claude-main",
+    agent: "claude-code",
+    model: "claude-sonnet",
+  };
+  const claude = upsertChannelConnectorAgentSession(storePath, {
+    ...claudeLookup,
+    agentNativeSessionId: "claude-session-a",
+    messageId: "message-claude-1",
+    status: "completed",
+    now: new Date("2026-06-06T08:02:00.000Z"),
+  });
+  assert.equal(claude.agentNativeSessionId, "claude-session-a");
+  assert.equal(claude.codexThreadId, null);
+
   const deleted = clearChannelConnectorAgentSessionsForConversation(storePath, {
     bindingId: lookup.bindingId,
     sessionKey: lookup.sessionKey,
   });
-  assert.equal(deleted, 1);
+  assert.equal(deleted, 2);
   assert.equal(getChannelConnectorAgentSession(storePath, lookup), null);
 });
 

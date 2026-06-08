@@ -315,6 +315,7 @@ interface ChannelDaemonState {
     model: string | null;
     status: "running";
     sessionResumed: boolean;
+    agentNativeSessionId: string | null;
     codexThreadId: string | null;
     progressEventCount: number;
     latestProgress: ChannelConnectorAgentProgressEvent | null;
@@ -334,6 +335,7 @@ interface ChannelDaemonState {
     durationMs: number;
     error: string | null;
     sessionResumed: boolean;
+    agentNativeSessionId: string | null;
     codexThreadId: string | null;
     progressEventCount: number;
     latestProgress: ChannelConnectorAgentProgressEvent | null;
@@ -3249,6 +3251,7 @@ function buildFeishuCommandCard(input: {
     agent: record.agent,
     model: record.model,
     workDir: record.workDir,
+    agentNativeSessionId: record.agentNativeSessionId,
     codexThreadId: record.codexThreadId,
     turnCount: record.turnCount,
     createdAt: record.createdAt,
@@ -3279,6 +3282,7 @@ function buildFeishuCommandCard(input: {
     agentSession: session ? {
       started: true,
       turnCount: session.turnCount,
+      agentNativeSessionId: session.agentNativeSessionId,
       codexThreadId: session.codexThreadId,
       lastStatus: session.lastStatus,
       lastMessageId: session.lastMessageId,
@@ -3286,6 +3290,7 @@ function buildFeishuCommandCard(input: {
     } : {
       started: false,
       turnCount: 0,
+      agentNativeSessionId: null,
       codexThreadId: null,
       lastStatus: null,
       lastMessageId: null,
@@ -3924,7 +3929,8 @@ async function dispatchOctoMessage(input: {
     agent: turnProject.agent,
     model: turnProject.model,
     status: "running",
-    sessionResumed: Boolean(currentSession?.codexThreadId),
+    sessionResumed: Boolean(currentSession?.agentNativeSessionId || currentSession?.codexThreadId),
+    agentNativeSessionId: currentSession?.agentNativeSessionId || currentSession?.codexThreadId || null,
     codexThreadId: currentSession?.codexThreadId || null,
     progressEventCount,
     latestProgress,
@@ -3953,7 +3959,8 @@ async function dispatchOctoMessage(input: {
     messageId: message.messageId,
     agent: turnProject.agent,
     model: turnProject.model,
-    sessionResumed: Boolean(currentSession?.codexThreadId),
+    sessionResumed: Boolean(currentSession?.agentNativeSessionId || currentSession?.codexThreadId),
+    agentNativeSessionId: currentSession?.agentNativeSessionId || currentSession?.codexThreadId || null,
     codexThreadId: currentSession?.codexThreadId || null,
     progressDefaults,
     progressStreamEnabled: channelConnectorStreamMessagesEnabled(control, progressDefaults),
@@ -4024,6 +4031,7 @@ async function dispatchOctoMessage(input: {
         nativeCommand: nativeCommand || null,
         signal: abortController.signal,
         session: {
+          agentNativeSessionId: currentSession?.agentNativeSessionId || currentSession?.codexThreadId || null,
           codexThreadId: currentSession?.codexThreadId || null,
         },
         onProgress: (event) => {
@@ -4092,7 +4100,8 @@ async function dispatchOctoMessage(input: {
         summary: caughtLatestProgress?.text || null,
       },
       session: {
-        resumed: Boolean(currentSession?.codexThreadId),
+        resumed: Boolean(currentSession?.agentNativeSessionId || currentSession?.codexThreadId),
+        agentNativeSessionId: currentSession?.agentNativeSessionId || currentSession?.codexThreadId || null,
         codexThreadId: currentSession?.codexThreadId || null,
       },
     };
@@ -4158,9 +4167,10 @@ async function dispatchOctoMessage(input: {
     status: agent.status,
   });
   let nextSession: ChannelConnectorAgentSessionRecord | null = null;
-  if (agent.session.codexThreadId || currentSession?.codexThreadId) {
+  if (agent.session.agentNativeSessionId || agent.session.codexThreadId || currentSession?.agentNativeSessionId || currentSession?.codexThreadId) {
     nextSession = upsertChannelConnectorAgentSession(agentSessionsPath(config), {
       ...effectiveSessionLookup,
+      agentNativeSessionId: agent.session.agentNativeSessionId || currentSession?.agentNativeSessionId || agent.session.codexThreadId || currentSession?.codexThreadId || null,
       codexThreadId: agent.session.codexThreadId || currentSession?.codexThreadId || null,
       messageId: message.messageId,
       status: agent.status,
@@ -4187,6 +4197,7 @@ async function dispatchOctoMessage(input: {
     durationMs: agent.durationMs,
     error: agent.error,
     sessionResumed: agent.session.resumed,
+    agentNativeSessionId: agent.session.agentNativeSessionId,
     codexThreadId: agent.session.codexThreadId,
     progressEventCount,
     latestProgress,
@@ -4288,6 +4299,7 @@ async function dispatchOctoMessage(input: {
     progressEventCount,
     latestProgress,
     sessionResumed: agent.session.resumed,
+    agentNativeSessionId: agent.session.agentNativeSessionId,
     codexThreadId: agent.session.codexThreadId,
     sessionTurnCount: nextSession?.turnCount || null,
     replyBuffered,
@@ -4841,7 +4853,8 @@ async function dispatchFeishuParsedEvent(input: {
     agent: turnProject.agent,
     model: turnProject.model,
     status: "running",
-    sessionResumed: Boolean(currentSession?.codexThreadId),
+    sessionResumed: Boolean(currentSession?.agentNativeSessionId || currentSession?.codexThreadId),
+    agentNativeSessionId: currentSession?.agentNativeSessionId || currentSession?.codexThreadId || null,
     codexThreadId: currentSession?.codexThreadId || null,
     progressEventCount,
     latestProgress,
@@ -4870,7 +4883,8 @@ async function dispatchFeishuParsedEvent(input: {
     messageId,
     agent: turnProject.agent,
     model: turnProject.model,
-    sessionResumed: Boolean(currentSession?.codexThreadId),
+    sessionResumed: Boolean(currentSession?.agentNativeSessionId || currentSession?.codexThreadId),
+    agentNativeSessionId: currentSession?.agentNativeSessionId || currentSession?.codexThreadId || null,
     codexThreadId: currentSession?.codexThreadId || null,
     progressDefaults,
     progressStreamEnabled: channelConnectorStreamMessagesEnabled(control, progressDefaults),
@@ -4938,6 +4952,7 @@ async function dispatchFeishuParsedEvent(input: {
         nativeCommand: nativeCommand || null,
         signal: abortController.signal,
         session: {
+          agentNativeSessionId: currentSession?.agentNativeSessionId || currentSession?.codexThreadId || null,
           codexThreadId: currentSession?.codexThreadId || null,
         },
         onProgress: (event) => {
@@ -5011,7 +5026,8 @@ async function dispatchFeishuParsedEvent(input: {
         summary: caughtLatestProgress?.text || null,
       },
       session: {
-        resumed: Boolean(currentSession?.codexThreadId),
+        resumed: Boolean(currentSession?.agentNativeSessionId || currentSession?.codexThreadId),
+        agentNativeSessionId: currentSession?.agentNativeSessionId || currentSession?.codexThreadId || null,
         codexThreadId: currentSession?.codexThreadId || null,
       },
     };
@@ -5086,9 +5102,10 @@ async function dispatchFeishuParsedEvent(input: {
     status: agent.status,
   });
   let nextSession: ChannelConnectorAgentSessionRecord | null = null;
-  if (agent.session.codexThreadId || currentSession?.codexThreadId) {
+  if (agent.session.agentNativeSessionId || agent.session.codexThreadId || currentSession?.agentNativeSessionId || currentSession?.codexThreadId) {
     nextSession = upsertChannelConnectorAgentSession(agentSessionsPath(config), {
       ...effectiveSessionLookup,
+      agentNativeSessionId: agent.session.agentNativeSessionId || currentSession?.agentNativeSessionId || agent.session.codexThreadId || currentSession?.codexThreadId || null,
       codexThreadId: agent.session.codexThreadId || currentSession?.codexThreadId || null,
       messageId,
       status: agent.status,
@@ -5115,6 +5132,7 @@ async function dispatchFeishuParsedEvent(input: {
     durationMs: agent.durationMs,
     error: agent.error,
     sessionResumed: agent.session.resumed,
+    agentNativeSessionId: agent.session.agentNativeSessionId,
     codexThreadId: agent.session.codexThreadId,
     progressEventCount,
     latestProgress,
@@ -5234,6 +5252,7 @@ async function dispatchFeishuParsedEvent(input: {
     progressEventCount,
     latestProgress,
     sessionResumed: agent.session.resumed,
+    agentNativeSessionId: agent.session.agentNativeSessionId,
     codexThreadId: agent.session.codexThreadId,
     sessionTurnCount: nextSession?.turnCount || null,
     replyBuffered,
