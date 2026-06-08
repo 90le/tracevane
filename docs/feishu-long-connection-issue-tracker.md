@@ -104,6 +104,15 @@ Runtime proof fields:
 - Post-restart short smoke:
   `node scripts/smoke-channel-connectors-feishu-long-connection.mjs --duration-ms 15000 --json`
   passed with `violations=0`, `samples=16`.
+- Post-patch user message proof: the user sent `Justin`; Feishu delivered
+  `im.message.receive_v1` at `2026-06-08T15:55:16.881Z` for message
+  `om_x100b6d5a10f0f8a4c0a9b55a14b8674`, and Studio recorded
+  `agent.run.finished` at `2026-06-08T15:55:26.892Z`. Runtime at
+  `2026-06-08T15:57:12Z` remained `connected=true`, `ingressVerified=true`,
+  `ingressState=receiving`, `dispatcherCallbacks=10`,
+  `lifecycleDispatcherCallbacks=10`, `receivedMessages=3`,
+  `lifecycleReceivedMessages=3`, `lockOwnerPid=2097069`, and all old watchdog /
+  delivery-renewal fields stayed `0`.
 
 Automated verification:
 
