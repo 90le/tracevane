@@ -10,6 +10,7 @@ import type {
 import { extractOctoContent } from "./octo-adapter.js";
 import {
   clearChannelConnectorAgentSessionsForConversation,
+  deleteChannelConnectorAgentSession,
   getChannelConnectorAgentSession,
   listChannelConnectorAgentSessionsForConversation,
   renameChannelConnectorAgentSession,
@@ -170,7 +171,7 @@ export interface ChannelConnectorPermissionResponseResult {
 export interface ChannelConnectorCommandResult {
   handled: boolean;
   command: string | null;
-  action: "help" | "status" | "list" | "show" | "set" | "reset" | "new" | "stop" | "compact" | "usage" | "permission" | "passthrough" | null;
+  action: "help" | "status" | "list" | "show" | "set" | "reset" | "new" | "stop" | "compact" | "usage" | "delete" | "permission" | "passthrough" | null;
   ok: boolean | null;
   replyText: string | null;
   control: ChannelConnectorSessionControlRecord | null;
@@ -341,6 +342,7 @@ const STUDIO_COMMAND_MATCH_CANDIDATES: readonly CommandMatchCandidate[] = [
   { id: "switch", names: ["switch"] },
   { id: "search", names: ["search", "find"] },
   { id: "name", names: ["name", "rename"] },
+  { id: "delete", names: ["delete", "del", "rm"] },
   { id: "history", names: ["history"] },
   { id: "agent", names: ["agent", "agents"] },
   { id: "model", names: ["model", "models"] },
@@ -758,7 +760,9 @@ type CommandHelpSection = "session" | "agent" | "display" | "workdir" | "native"
 function commandHelpSectionAlias(value: string | null | undefined): CommandHelpSection | null {
   const target = normalizeString(value).toLowerCase();
   if (!target) return null;
-  if (["session", "sessions", "status", "current", "history", "compact", "stop"].includes(target)) return "session";
+  if (["session", "sessions", "status", "current", "history", "compact", "stop", "delete", "del", "rm"].includes(target)) {
+    return "session";
+  }
   if (["agent", "profile", "model", "mode", "reasoning", "permission"].includes(target)) return "agent";
   if (["display", "stream", "tools", "tool", "buffer", "quiet"].includes(target)) return "display";
   if (["workdir", "dir", "cd", "directory"].includes(target)) return "workdir";
@@ -776,6 +780,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
       "`/switch <序号|sessionId前缀>` 切换到已知 Agent session",
       "`/search <关键字>` 按名称或 sessionId 搜索 sessions",
       "`/name <名称>` 或 `/name <序号> <名称>` 命名 session",
+      "`/delete <序号|sessionId前缀|1,3-5>` 删除非当前 Agent session 续接记录",
       "`/history [条数]` 查看最近上下文",
       "`/usage` 查看最近 Gateway token usage",
       "`/compact` 压缩当前 IM history 并开启新续接",
@@ -1391,7 +1396,7 @@ function sessionListText(
       `   workDir=${record.workDir}`,
     ].filter(Boolean).join("\n"));
   });
-  lines.push("用法：/switch <序号|sessionId前缀>；/name <序号> <名称>；/search <关键字>");
+  lines.push("用法：/switch <序号|sessionId前缀>；/name <序号> <名称>；/delete <序号|sessionId前缀|1,3-5>；/search <关键字>");
   return lines.join("\n");
 }
 
@@ -1469,6 +1474,67 @@ function resolveSessionSwitchTarget(
   if (matches.length === 1) return { record: matches[0] || null, error: null };
   if (matches.length > 1) return { record: null, error: `sessionId 前缀匹配到 ${matches.length} 个记录，请输入更长前缀。` };
   return { record: null, error: `未找到 Agent session：${target}` };
+}
+
+function isExplicitSessionDeleteBatchArg(arg: string): boolean {
+  if (arg.includes(",")) return true;
+  if (!arg.includes("-")) return false;
+  return Array.from(arg).every((char) => /[0-9-]/.test(char));
+}
+
+function parseSessionDeleteBatchIndices(spec: string, max: number): number[] | null {
+  const parts = spec.split(",");
+  if (!parts.length) return null;
+  const seen = new Set<number>();
+  const indices: number[] = [];
+  for (const rawPart of parts) {
+    const part = rawPart.trim();
+    if (!part) return null;
+    if (part.includes("-")) {
+      const bounds = part.split("-");
+      if (bounds.length !== 2 || !bounds[0] || !bounds[1]) return null;
+      const start = Number(bounds[0]);
+      const end = Number(bounds[1]);
+      if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start || end > max) {
+        return null;
+      }
+      for (let index = start; index <= end; index += 1) {
+        if (seen.has(index)) continue;
+        seen.add(index);
+        indices.push(index);
+      }
+      continue;
+    }
+    const index = Number(part);
+    if (!Number.isInteger(index) || index < 1 || index > max) return null;
+    if (seen.has(index)) continue;
+    seen.add(index);
+    indices.push(index);
+  }
+  return indices;
+}
+
+function deleteSessionDisplayName(record: ChannelConnectorAgentSessionRecord): string {
+  return record.name || record.projectId || record.agentNativeSessionId || shortIdentifier(record.id, 18);
+}
+
+function deleteSessionRecordText(
+  context: ChannelConnectorCommandContext,
+  lookup: ReturnType<typeof controlsLookup>,
+  record: ChannelConnectorAgentSessionRecord,
+  activeSessionId: string | null,
+): string {
+  const displayName = deleteSessionDisplayName(record);
+  if (record.id === activeSessionId) {
+    return `禁止删除当前 Agent session：${displayName}。先 /new 或 /switch 到其它 session 后再删除。`;
+  }
+  const deleted = deleteChannelConnectorAgentSession(context.agentSessionsPath, {
+    ...lookup,
+    sessionId: record.id,
+  });
+  return deleted
+    ? `已删除 Agent session：${displayName}`
+    : `删除失败，未找到 Agent session：${displayName}`;
 }
 
 export async function handleChannelConnectorCommand(
@@ -1563,6 +1629,7 @@ export async function handleChannelConnectorCommand(
       "agent",
       "model",
       "name",
+      "delete",
       "mode",
       "approve",
       "deny",
@@ -1852,7 +1919,7 @@ export async function handleChannelConnectorCommand(
     };
   }
   if (name === "current") return handleCurrent(context);
-  if (name === "list" || name === "switch" || name === "search" || name === "name") {
+  if (name === "list" || name === "switch" || name === "search" || name === "name" || name === "delete") {
     const activeSession = getChannelConnectorAgentSession(context.agentSessionsPath, {
       bindingId: context.binding.id,
       projectId: currentProject.id,
@@ -1951,6 +2018,65 @@ export async function handleChannelConnectorCommand(
         replyText: renamed
           ? `已命名当前 Agent session：${parsedName.name}`
           : `已设置当前 IM 会话名称：${parsedName.name}。下一次 Agent session 会使用该名称。`,
+        passthroughText: null,
+      };
+    }
+    if (name === "delete") {
+      if (args.length !== 1) {
+        return {
+          handled: true,
+          command: name,
+          action: "delete",
+          ok: false,
+          control: currentControl,
+          replyText: [
+            "用法：/delete <序号|sessionId前缀|1,3-5>",
+            "只能删除当前 IM 会话里的非当前 Agent session 续接记录。",
+            "",
+            sessionListText(records, activeSession?.id || null),
+          ].join("\n"),
+          passthroughText: null,
+        };
+      }
+      const target = normalizeString(args[0]);
+      let targets: ChannelConnectorAgentSessionRecord[] = [];
+      if (isExplicitSessionDeleteBatchArg(target)) {
+        const indices = parseSessionDeleteBatchIndices(target, records.length);
+        if (!indices) {
+          return {
+            handled: true,
+            command: name,
+            action: "delete",
+            ok: false,
+            control: currentControl,
+            replyText: "不支持的删除范围。用法：/delete 1,3-5。",
+            passthroughText: null,
+          };
+        }
+        targets = indices.map((index) => records[index - 1]).filter(Boolean);
+      } else {
+        const resolved = resolveSessionSwitchTarget(records, target);
+        if (!resolved.record) {
+          return {
+            handled: true,
+            command: name,
+            action: "delete",
+            ok: false,
+            control: currentControl,
+            replyText: `${resolved.error || "未找到 Agent session。"}\n\n${sessionListText(records, activeSession?.id || null)}`,
+            passthroughText: null,
+          };
+        }
+        targets = [resolved.record];
+      }
+      const lines = targets.map((record) => deleteSessionRecordText(context, lookup, record, activeSession?.id || null));
+      return {
+        handled: true,
+        command: name,
+        action: "delete",
+        ok: lines.some((line) => line.startsWith("已删除")),
+        control: currentControl,
+        replyText: lines.join("\n"),
         passthroughText: null,
       };
     }

@@ -106,6 +106,9 @@ const FEISHU_MENU_SECTION_ALIASES: Record<string, FeishuMenuSectionId> = {
   find: "session",
   name: "session",
   rename: "session",
+  delete: "session",
+  del: "session",
+  rm: "session",
   history: "session",
   compact: "session",
   compress: "session",
@@ -164,6 +167,9 @@ const FEISHU_MENU_VIEW_ALIASES: Record<string, FeishuMenuViewId> = {
   find: "sessions",
   name: "sessions",
   rename: "sessions",
+  delete: "sessions",
+  del: "sessions",
+  rm: "sessions",
   history: "history",
   compact: "session",
   compress: "session",
@@ -287,7 +293,20 @@ export function channelConnectorCommandSurfaceViewFromCommand(
   if (["commands", "command", "cmd"].includes(name)) return "commands";
   if (["help", "menu", "start"].includes(name)) return "help";
   if (name === "current") return "current";
-  if (name === "list" || name === "sessions" || name === "switch" || name === "search" || name === "find" || name === "name" || name === "rename") return "sessions";
+  if (
+    name === "list"
+    || name === "sessions"
+    || name === "switch"
+    || name === "search"
+    || name === "find"
+    || name === "name"
+    || name === "rename"
+    || name === "delete"
+    || name === "del"
+    || name === "rm"
+  ) {
+    return "sessions";
+  }
   if (name === "history") return "history";
   if (["status", "compact", "compress", "new", "reset"].includes(name)) return "session";
   if (name === "agent" || name === "agents") return "agent";
@@ -854,6 +873,8 @@ function commandSurfaceItemDescription(item: ChannelConnectorCommandSurfaceActio
       return "查看当前 IM session、Agent 续接和最近状态";
     case "sessions":
       return "列出当前 IM session 已知 Agent sessions 并切换续接";
+    case "delete-session":
+      return "删除非当前 Agent session 续接记录";
     case "usage":
       return "查看当前 IM session 最近 Agent run 的 Gateway usage";
     case "history":
@@ -1642,6 +1663,18 @@ function renderSessionListCard(surface: ChannelConnectorCommandSurface): Channel
         actionLabel: "切换",
         primaryLabel: "当前",
       }));
+      if (!record.active) {
+        pushActionRows(elements, [action(
+          `delete-session-${index + 1}`,
+          `删除 ${index + 1}`,
+          `/delete ${index + 1}`,
+          {
+            tone: "danger",
+            description: "删除这条非当前 Agent session 续接记录",
+            requiresAdmin: true,
+          },
+        )], surface, 1, true);
+      }
     });
   }
   pushActionRows(elements, [

@@ -212,6 +212,20 @@ export function renameChannelConnectorAgentSession(
   return next;
 }
 
+export function deleteChannelConnectorAgentSession(
+  filePath: string,
+  input: Pick<ChannelConnectorAgentSessionLookup, "bindingId" | "sessionKey"> & {
+    sessionId: string;
+  },
+): ChannelConnectorAgentSessionRecord | null {
+  const state = readChannelConnectorAgentSessions(filePath);
+  const record = state.sessions[input.sessionId];
+  if (!record || record.bindingId !== input.bindingId || record.sessionKey !== input.sessionKey) return null;
+  delete state.sessions[input.sessionId];
+  writeChannelConnectorAgentSessions(filePath, state);
+  return record;
+}
+
 export function clearChannelConnectorAgentSessionsForConversation(
   filePath: string,
   lookup: Pick<ChannelConnectorAgentSessionLookup, "bindingId" | "sessionKey">,

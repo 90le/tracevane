@@ -24,6 +24,7 @@ import {
 import {
   clearChannelConnectorAgentSessionsForConversation,
   getChannelConnectorAgentSession,
+  listChannelConnectorAgentSessionsForConversation,
   renameChannelConnectorAgentSession,
   upsertChannelConnectorAgentSession,
 } from "../../dist/apps/api/modules/channel-connectors/agent-session-store.js";
@@ -3349,6 +3350,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(sessionHelp.replyText, /Studio Channel \/ session/);
   assert.match(sessionHelp.replyText, /`\/name <名称>`/);
   assert.match(sessionHelp.replyText, /`\/search <关键字>`/);
+  assert.match(sessionHelp.replyText, /`\/delete <序号\|sessionId前缀\|1,3-5>`/);
   assert.match(sessionHelp.replyText, /`\/usage`/);
   assert.match(sessionHelp.replyText, /`\/approve`/);
   assert.match(sessionHelp.replyText, /返回：`\/help`/);
@@ -3900,6 +3902,67 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(searchNamed.ok, true);
   assert.match(searchNamed.replyText, /Sprint Beta/);
+  const deleteOne = upsertChannelConnectorAgentSession(agentSessionsPath, {
+    bindingId: binding.id,
+    projectId: "claude-main",
+    sessionKey: baseContext.sessionKey,
+    agent: "claude-code",
+    model: "claude-sonnet",
+    workDir: claudeProject.workDir,
+    agentNativeSessionId: "claude-delete-one",
+    messageId: "m-delete-one",
+    status: "completed",
+    name: "Delete One",
+    now: new Date("2026-06-06T09:01:00.000Z"),
+  });
+  const deleteTwo = upsertChannelConnectorAgentSession(agentSessionsPath, {
+    bindingId: binding.id,
+    projectId: "codex-main",
+    sessionKey: baseContext.sessionKey,
+    agent: "codex",
+    model: "gpt-5",
+    workDir: path.join(root, "delete-two-work"),
+    codexThreadId: "thread-delete-two",
+    messageId: "m-delete-two",
+    status: "completed",
+    name: "Delete Two",
+    now: new Date("2026-06-06T09:02:00.000Z"),
+  });
+  const deleteExact = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message(`/delete ${deleteOne.id}`),
+  });
+  assert.equal(deleteExact.ok, true);
+  assert.match(deleteExact.replyText, /已删除 Agent session：Delete One/);
+  assert.equal(listChannelConnectorAgentSessionsForConversation(agentSessionsPath, {
+    bindingId: binding.id,
+    sessionKey: baseContext.sessionKey,
+  }).some((record) => record.id === deleteOne.id), false);
+  const deleteBatchRecords = listChannelConnectorAgentSessionsForConversation(agentSessionsPath, {
+    bindingId: binding.id,
+    sessionKey: baseContext.sessionKey,
+  });
+  assert.equal(deleteBatchRecords[0].id, currentSessionRecord.id);
+  assert.equal(deleteBatchRecords[1].id, deleteTwo.id);
+  const deleteBatch = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/delete 1-2"),
+  });
+  assert.equal(deleteBatch.ok, true);
+  assert.match(deleteBatch.replyText, /禁止删除当前 Agent session：Sprint Beta/);
+  assert.match(deleteBatch.replyText, /已删除 Agent session：Delete Two/);
+  assert.ok(getChannelConnectorAgentSession(agentSessionsPath, {
+    bindingId: binding.id,
+    projectId: "codex-main",
+    sessionKey: baseContext.sessionKey,
+    agent: "codex",
+    model: "gpt-5.5",
+    workDir: codexProject.workDir,
+  }));
+  assert.equal(listChannelConnectorAgentSessionsForConversation(agentSessionsPath, {
+    bindingId: binding.id,
+    sessionKey: baseContext.sessionKey,
+  }).some((record) => record.id === deleteTwo.id), false);
   const reasoningList = await handleChannelConnectorCommand({
     ...baseContext,
     message: message("/reasoning"),
@@ -4753,6 +4816,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(sessionListCardRaw, /thread thread-codex-1/);
   assert.match(sessionListCardRaw, /claude-main/);
   assert.match(sessionListCardRaw, /act:\/switch 1/);
+  assert.match(sessionListCardRaw, /act:\/delete 2/);
   assert.match(sessionListCardRaw, /nav:\/current/);
   assert.match(sessionListCardRaw, /nav:\/history/);
 
