@@ -3331,6 +3331,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(help.replyText, /普通消息会交给当前 Agent/);
   assert.match(help.replyText, /`\/status`/);
   assert.match(help.replyText, /`\/whoami`/);
+  assert.match(help.replyText, /`\/version`/);
   assert.match(help.replyText, /\/mode/);
   assert.match(help.replyText, /\/reasoning/);
   assert.match(help.replyText, /\/stream/);
@@ -3350,6 +3351,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(sessionHelp.ok, true);
   assert.match(sessionHelp.replyText, /Studio Channel \/ session/);
   assert.match(sessionHelp.replyText, /`\/whoami`/);
+  assert.match(sessionHelp.replyText, /`\/version`/);
   assert.match(sessionHelp.replyText, /`\/name <名称>`/);
   assert.match(sessionHelp.replyText, /`\/search <关键字>`/);
   assert.match(sessionHelp.replyText, /`\/delete <序号\|sessionId前缀\|1,3-5>`/);
@@ -3378,6 +3380,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(parseChannelConnectorCommand("/%help")?.name, "help");
   assert.equal(matchChannelConnectorCommandPrefix("stat"), "status");
   assert.equal(matchChannelConnectorCommandPrefix("myid"), "whoami");
+  assert.equal(matchChannelConnectorCommandPrefix("ver"), "version");
   assert.equal(matchChannelConnectorCommandPrefix("hist"), "history");
   assert.equal(matchChannelConnectorCommandPrefix("quo"), "usage");
   assert.equal(matchChannelConnectorCommandPrefix("qui"), "quiet");
@@ -3446,6 +3449,20 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(myid.ok, true);
   assert.match(myid.replyText, /User ID: user-2/);
   assert.match(myid.replyText, /Can manage session: no/);
+  const version = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/version"),
+  });
+  assert.equal(version.handled, true);
+  assert.equal(version.ok, true);
+  assert.equal(version.action, "show");
+  assert.match(version.replyText, /Studio Channel Version/);
+  assert.match(version.replyText, /Studio: 0\.1\.70/);
+  assert.match(version.replyText, /Node: v/);
+  assert.match(version.replyText, /Platform: /);
+  assert.match(version.replyText, /Binding: octo-codex \(octo\)/);
+  assert.match(version.replyText, /Daemon config: v1/);
+  assert.match(version.replyText, /Runtime root: /);
 
   const abbreviatedStatus = await handleChannelConnectorCommand({
     ...baseContext,
@@ -4791,6 +4808,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(sessionCardRaw, /Studio Session/);
   assert.match(sessionCardRaw, /act:\/status/);
   assert.match(sessionCardRaw, /act:\/whoami/);
+  assert.match(sessionCardRaw, /act:\/version/);
   assert.match(sessionCardRaw, /nav:\/current/);
   assert.match(sessionCardRaw, /nav:\/list/);
   assert.match(sessionCardRaw, /nav:\/history/);

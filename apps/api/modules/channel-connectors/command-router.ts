@@ -234,6 +234,57 @@ function uniqueStrings(values: string[]): string[] {
   return output;
 }
 
+let cachedStudioRuntimeVersion: string | null = null;
+
+function readPackageVersionFromFile(filePath: string): string | null {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as { version?: unknown };
+    const version = normalizeString(parsed.version);
+    return version || null;
+  } catch {
+    return null;
+  }
+}
+
+function packageVersionCandidateFiles(): string[] {
+  const roots = uniqueStrings([
+    process.env.OPENCLAW_STUDIO_ROOT || "",
+    process.env.OPENCLAW_STUDIO_EXTENSION_DIR || "",
+    process.cwd(),
+    process.argv[1] ? path.dirname(process.argv[1]) : "",
+  ]);
+  const files: string[] = [];
+  for (const root of roots) {
+    let current = path.resolve(root);
+    for (let depth = 0; depth < 8; depth += 1) {
+      files.push(path.join(current, "package.json"));
+      const next = path.dirname(current);
+      if (next === current) break;
+      current = next;
+    }
+  }
+  return uniqueStrings(files);
+}
+
+function studioRuntimeVersion(): string {
+  const envVersion = normalizeString(process.env.OPENCLAW_STUDIO_BUILD_VERSION)
+    || normalizeString(process.env.OPENCLAW_STUDIO_VERSION)
+    || normalizeString(process.env.STUDIO_VERSION)
+    || normalizeString(process.env.npm_package_version);
+  if (envVersion) return envVersion;
+  if (cachedStudioRuntimeVersion) return cachedStudioRuntimeVersion;
+
+  for (const filePath of packageVersionCandidateFiles()) {
+    const version = readPackageVersionFromFile(filePath);
+    if (!version) continue;
+    cachedStudioRuntimeVersion = version;
+    return version;
+  }
+
+  cachedStudioRuntimeVersion = "unknown";
+  return cachedStudioRuntimeVersion;
+}
+
 function normalizeAgentCommandName(value: string): string {
   return normalizeString(value).toLowerCase().replaceAll("-", "_");
 }
@@ -338,6 +389,7 @@ const STUDIO_COMMAND_MATCH_CANDIDATES: readonly CommandMatchCandidate[] = [
   { id: "status", names: ["status"] },
   { id: "usage", names: ["usage", "tokens", "quota"] },
   { id: "whoami", names: ["whoami", "myid"] },
+  { id: "version", names: ["version"] },
   { id: "current", names: ["current"] },
   { id: "list", names: ["list", "sessions"] },
   { id: "switch", names: ["switch"] },
@@ -761,7 +813,7 @@ type CommandHelpSection = "session" | "agent" | "display" | "workdir" | "native"
 function commandHelpSectionAlias(value: string | null | undefined): CommandHelpSection | null {
   const target = normalizeString(value).toLowerCase();
   if (!target) return null;
-  if (["session", "sessions", "status", "current", "history", "compact", "stop", "delete", "del", "rm", "whoami", "myid"].includes(target)) {
+  if (["session", "sessions", "status", "current", "history", "compact", "stop", "delete", "del", "rm", "whoami", "myid", "version"].includes(target)) {
     return "session";
   }
   if (["agent", "profile", "model", "mode", "reasoning", "permission"].includes(target)) return "agent";
@@ -776,6 +828,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
     return [
       "Studio Channel / session",
       "`/whoami` 查看当前 IM 用户、频道和 session id",
+      "`/version` 查看 Studio Channel runtime 版本",
       "`/status` 查看当前 Agent、模型、权限和续接状态",
       "`/current` 查看当前 IM 会话详情",
       "`/list` 列出当前 IM 会话已知 Agent sessions",
@@ -854,7 +907,7 @@ function commandHelpText(section?: string | null): string {
     "",
     "常用",
     "`/status` `/new` `/reset` `/stop` `/compact`",
-    "`/whoami` 查看 IM 用户和 session id",
+    "`/whoami` 查看 IM 用户和 session id；`/version` 查看 runtime 版本",
     "`/agent` `/model` `/mode` `/reasoning`",
     "`/display` `/quiet` `/stream on|off` `/tools on|off`",
     "`/commands` `/skills` `/native /help`",
@@ -1356,6 +1409,27 @@ function handleWhoami(context: ChannelConnectorCommandContext): ChannelConnector
       `Can manage session: ${canManage ? "yes" : "no"}`,
       "",
       "用途：把 User ID 加到 binding allowlist 或 adminUsers；把 Channel ID 用于排查群聊/session 绑定。",
+    ].join("\n"),
+    passthroughText: null,
+  };
+}
+
+function handleVersion(context: ChannelConnectorCommandContext): ChannelConnectorCommandResult {
+  const control = getChannelConnectorSessionControl(context.controlsPath, controlsLookup(context));
+  return {
+    handled: true,
+    command: "version",
+    action: "show",
+    ok: true,
+    control,
+    replyText: [
+      "Studio Channel Version",
+      `Studio: ${studioRuntimeVersion()}`,
+      `Node: ${process.version}`,
+      `Platform: ${os.platform()} ${os.arch()}`,
+      `Binding: ${context.binding.id} (${context.binding.platform})`,
+      `Daemon config: v${context.config.version}`,
+      `Runtime root: ${context.config.paths.root}`,
     ].join("\n"),
     passthroughText: null,
   };
@@ -1951,6 +2025,7 @@ export async function handleChannelConnectorCommand(
     };
   }
   if (name === "whoami") return handleWhoami(context);
+  if (name === "version") return handleVersion(context);
   if (name === "current") return handleCurrent(context);
   if (name === "list" || name === "switch" || name === "search" || name === "name" || name === "delete") {
     const activeSession = getChannelConnectorAgentSession(context.agentSessionsPath, {
