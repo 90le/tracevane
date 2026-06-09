@@ -26,6 +26,7 @@
 - 对照本地 Lark SDK：OpenClaw 的 upper-case `PingTimeout:3` 不等价于当前 SDK lower-case `pingTimeout`；Studio 不再默认把它翻译为生效 watchdog，`pingTimeoutSeconds` 改为 `0`。
 - 复核官方 Node SDK：`EventDispatcher.invoke()` 会在 ACK 前等待 handler，且 `wsClient.start()` 没有默认握手超时；已把 Feishu WS 的 card action 也改为快速 ACK + 后台业务派发，并给 WS handshake 加 15s timeout。
 - 替换 Feishu 启动期静默重建默认策略：默认 `ingressUnverifiedAfterMs=0` / `ingressUnverifiedRenewMax=0`，不再因为空闲无业务消息重建；新增 SDK 应用层 `ping`/`pong` probe，runtime 记录 `sentPings`、`receivedPongs`、`pingIntervalMs`、`lastPongAt`、`transportVerified`。默认 `pongTimeoutMs=210000`，避免当前 90s ping interval 下的 30s 误回收；仅当已发 ping 超过该窗口仍无 pong 时回收。
+- 外部复核 Feishu 官方长连接、Lark Node SDK `Channel`、SDK issue `#177/#183`、`ws` heartbeat 和 Slack Socket Mode ACK 规则：当前方向应保持快速 ACK、ping/pong proof、handshake/onReady readiness 和外层 fresh-client rebuild；不要恢复业务 idle 轮询重启。`createLarkChannel` 可作为后续减少维护面的候选，不是立即替换 `WSClient` 的稳定性银弹。
 
 ## 最近验证
 
@@ -45,6 +46,7 @@
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
 - GMN provider 可作为视觉测试源，但未设为所有 App scope 默认 active provider；测试时需显式选择 `gpt-5.5`、`gmn-vision` 或 `gmn/gpt-5.5`。
 - Feishu SDK 仍可能因网络或平台关闭连接而 reconnect；当前不使用 connected-idle / zero-inbound / generic watchdog 暴力重建。ping/pong proof 能证明 transport 活着，真实消息级延迟仍需用户继续用 Feishu live 反馈；如仍不稳定，下一步评估 webhook/hybrid ingress 或 Studio-owned WS transport。
+- Feishu 官方长连接仍要求 3s 内处理事件且同 App 多连接是集群分发；Studio 必须保持同 App owner lock 和 fast ACK，不允许让 Agent run、附件下载或卡片更新阻塞 SDK ACK。
 - Claude Code/OpenCode 原生 compact 需要先迁移类似 CC Go 的 live interactive session driver；当前不能用 one-shot `--resume` / `run` 假装完成原生压缩。
 - `/status` 与 Channel 管理页已能显示最近 auto compact 记录；真实剩余 token 仍取决于上游 usage 或 Gateway runtime ledger 是否能归因。
 - Gateway usage 只有在上游返回 usage 或 runtime ledger 可归因时才准确；缺失 usage 时 Channel 只能用 IM history 字符估算，不能替代真实 tokenizer。
