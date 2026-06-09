@@ -792,7 +792,7 @@ export interface ChannelConnectorAgentSessionDriverBindingStatus {
   model: string | null;
   requestedMode: "one-shot" | "persistent";
   effectiveMode: "one-shot" | "persistent";
-  reason: "default" | "codex-app-server-experimental" | "unsupported-agent";
+  reason: "default" | "codex-app-server-experimental" | "claude-code-stream-json" | "opencode-run-session" | "unsupported-agent";
 }
 
 export interface ChannelConnectorAgentSessionRuntimeStatus {
@@ -844,7 +844,7 @@ export interface ChannelConnectorAgentSessionDriverStatusResponse {
   ok: true;
   checkedAt: string;
   defaultMode: "one-shot";
-  implementation: "codex-app-server-experimental";
+  implementation: "native-cli-session-drivers";
   persistentDriverReady: true;
   policy: {
     idleTimeoutMs: number;

@@ -16,7 +16,7 @@ function sessionPayload(overrides = {}) {
     ok: true,
     checkedAt: "2026-06-07T00:00:00.000Z",
     defaultMode: "one-shot",
-    implementation: "codex-app-server-experimental",
+    implementation: "native-cli-session-drivers",
     persistentDriverReady: true,
     policy: {
       idleTimeoutMs: 600000,

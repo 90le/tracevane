@@ -87,6 +87,7 @@ export interface ChannelConnectorAgentTurnRequest {
     vision?: boolean | null;
   } | null;
   nativeCommand?: string | null;
+  allowNativeCompact?: boolean;
   onProgress?: (event: ChannelConnectorAgentProgressEvent) => void;
   resolvePermission?: (request: ChannelConnectorAgentPermissionRequest) => Promise<ChannelConnectorAgentPermissionDecision>;
   signal?: AbortSignal | null;
@@ -694,10 +695,11 @@ function nativeCompactCommand(command: string): boolean {
   return head === "compact" || head === "compress";
 }
 
-function unsupportedNativeCommandMessage(agent: ChannelConnectorAgentId, command: string): string | null {
+function unsupportedNativeCommandMessage(agent: ChannelConnectorAgentId, command: string, allowNativeCompact = false): string | null {
   const normalized = normalizeString(command);
   if (!normalized) return null;
   if (nativeCompactCommand(normalized) && agent !== "codex") {
+    if (allowNativeCompact && (agent === "claude-code" || agent === "opencode")) return null;
     return [
       `${agent} native compact is not supported through the Studio one-shot runner yet.`,
       "CC Go sends /compact only into a live interactive Agent session.",
@@ -893,10 +895,12 @@ export function buildChannelConnectorAgentProcessRequest(
   }
 
   if (project.agent === "opencode") {
+    const opencodeSessionId = normalizeString(request.session?.agentNativeSessionId);
     const args = [
       "run",
       "--format",
       "json",
+      ...(opencodeSessionId ? ["--session", opencodeSessionId] : []),
       ...(model ? ["--model", model] : []),
       ...(reasoningEffort ? ["--variant", reasoningEffort] : []),
       "--dir",
@@ -913,6 +917,8 @@ export function buildChannelConnectorAgentProcessRequest(
       env: baseEnv,
       timeoutMs,
       nativeCommand: nativeCommand || null,
+      sessionMode: opencodeSessionId ? "resume" : "new",
+      agentNativeSessionId: opencodeSessionId || null,
       agent: project.agent,
       permissionMode: project.permissionMode,
       resolvePermission: request.resolvePermission,
@@ -977,8 +983,15 @@ function parseGenericProgressLine(line: string): ChannelConnectorAgentProgressEv
   const rawType = normalizeString(raw.type) || normalizeString(raw.event) || null;
   const message = recordValue(raw.message);
   const item = recordValue(raw.item);
+  const part = recordValue(raw.part);
+  const state = recordValue(part?.state);
   const text = normalizeString(raw.text)
     || normalizeString(raw.content)
+    || normalizeString(part?.text)
+    || normalizeString(part?.content)
+    || normalizeString(state?.output)
+    || normalizeString(state?.title)
+    || normalizeString(state?.input)
     || normalizeString(message?.content)
     || normalizeString(item?.text)
     || normalizeString(item?.content)
@@ -992,7 +1005,7 @@ function parseGenericProgressLine(line: string): ChannelConnectorAgentProgressEv
           : lowered.includes("tool") ? "tool"
             : lowered.includes("reason") || lowered.includes("thinking") ? "reasoning"
               : "event";
-  return progressEvent({ type, rawType, itemType: normalizeString(item?.type) || null, text });
+  return progressEvent({ type, rawType, itemType: normalizeString(item?.type) || normalizeString(part?.type) || null, text });
 }
 
 function claudeContentItems(raw: Record<string, unknown>): Record<string, unknown>[] {
@@ -1382,6 +1395,13 @@ function collectJsonLineText(stdout: string): JsonLineReplyText[] {
           appendJsonLineContentParts(output, "assistant", itemRecord.content);
         }
       }
+      const part = raw.part;
+      if (typeof part === "object" && part !== null) {
+        const partRecord = part as Record<string, unknown>;
+        if (raw.type === "text" || partRecord.type === "text") {
+          appendJsonLineReplyText(output, "assistant", partRecord.text);
+        }
+      }
       appendJsonLineReplyText(output, "content", raw.content);
       appendJsonLineReplyText(output, "content", raw.text);
       appendJsonLineReplyText(output, "result", raw.result);
@@ -1451,9 +1471,28 @@ function extractClaudeNativeSessionId(stdout: string): string | null {
   return latest;
 }
 
+function extractOpencodeNativeSessionId(stdout: string): string | null {
+  let latest: string | null = null;
+  for (const line of stdout.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || !trimmed.startsWith("{")) continue;
+    try {
+      const raw = JSON.parse(trimmed) as Record<string, unknown>;
+      const part = typeof raw.part === "object" && raw.part !== null ? raw.part as Record<string, unknown> : null;
+      if (typeof part?.sessionID === "string") latest = normalizeString(part.sessionID) || latest;
+      if (typeof raw.sessionID === "string") latest = normalizeString(raw.sessionID) || latest;
+      if (typeof raw.session_id === "string") latest = normalizeString(raw.session_id) || latest;
+    } catch {
+      // Non-event lines are intentionally ignored.
+    }
+  }
+  return latest;
+}
+
 function extractAgentNativeSessionId(agent: ChannelConnectorAgentId, stdout: string): string | null {
   if (agent === "codex") return extractCodexThreadId(stdout);
   if (agent === "claude-code") return extractClaudeNativeSessionId(stdout);
+  if (agent === "opencode") return extractOpencodeNativeSessionId(stdout);
   return null;
 }
 
@@ -1517,7 +1556,11 @@ export async function runChannelConnectorAgentTurn(
       session: fallbackTurnSession(request.session),
     };
   }
-  const unsupportedNativeCommand = unsupportedNativeCommandMessage(request.project.agent, nativeCommand);
+  const unsupportedNativeCommand = unsupportedNativeCommandMessage(
+    request.project.agent,
+    nativeCommand,
+    request.allowNativeCompact === true,
+  );
   if (unsupportedNativeCommand) {
     return {
       attempted: false,

@@ -1,11 +1,18 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import {
   channelConnectorAgentSessionDriverPoolKey,
   createChannelConnectorAgentSessionDriverPool,
   resolveChannelConnectorAgentSessionDriverMode,
 } from "../../dist/apps/api/modules/channel-connectors/agent-session-driver.js";
+import {
+  createNativeCliSessionDriverFactory,
+  OpenCodeRunSession,
+} from "../../dist/apps/api/modules/channel-connectors/cli-agent-session-driver.js";
 
 const baseKey = {
   bindingId: "binding-1",
@@ -15,6 +22,63 @@ const baseKey = {
   model: "gpt-5",
   workDir: "/tmp/studio-project",
 };
+
+function makeTempRoot() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-driver-"));
+}
+
+function writeExecutable(filePath, lines) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, `${lines.join("\n")}\n`, { mode: 0o755 });
+}
+
+function baseTurnRequest(root, agent, nativeCommand = null) {
+  return {
+    project: {
+      id: `${agent}-project`,
+      name: `${agent} project`,
+      agent,
+      model: agent === "opencode" ? "openai/gpt-5" : "sonnet",
+      workDir: root,
+      permissionMode: "yolo",
+      gatewayEndpoint: "http://127.0.0.1:18796/v1",
+      gatewayKeyRef: null,
+      appProfileRef: null,
+      metadata: {},
+    },
+    binding: {
+      id: `${agent}-binding`,
+      platform: "octo",
+      accountId: "octo-account",
+      botId: null,
+      displayName: `${agent} binding`,
+      agent,
+      enabled: true,
+      allowlist: [],
+      adminUsers: [],
+      metadata: {
+        agentSessionDriver: "persistent",
+      },
+    },
+    message: {
+      messageId: nativeCommand ? "compact-message" : "normal-message",
+      messageSeq: 1,
+      fromUid: "user-1",
+      channelId: "user-1",
+      channelType: 1,
+      payload: {
+        type: 1,
+        content: nativeCommand || "hello",
+      },
+      attachments: [],
+      raw: {},
+    },
+    sessionKey: "octo:dm:user-1",
+    gatewayEndpoint: "http://127.0.0.1:18796/v1",
+    gatewayClientKey: "sk-local",
+    nativeCommand,
+  };
+}
 
 function completedResult(replyText, extra = {}) {
   return {
@@ -353,4 +417,230 @@ test("Channel Connectors session driver mode stays one-shot unless metadata expl
   assert.equal(resolveChannelConnectorAgentSessionDriverMode({ persistentSession: false }), "one-shot");
   assert.equal(resolveChannelConnectorAgentSessionDriverMode({ agentSessionDriver: "persistent" }), "persistent");
   assert.equal(resolveChannelConnectorAgentSessionDriverMode({ persistent_agent_session: true }), "persistent");
+});
+
+test("Channel Connectors native CLI session driver sends OpenCode compact through a persisted --session turn", async () => {
+  const root = makeTempRoot();
+  const fakeBin = path.join(root, "bin");
+  const capturePath = path.join(root, "opencode-capture.jsonl");
+  writeExecutable(path.join(fakeBin, "opencode"), [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    "const argv = process.argv.slice(2);",
+    "const sessionIndex = argv.indexOf('--session');",
+    "const incomingSession = sessionIndex >= 0 ? argv[sessionIndex + 1] : '';",
+    "const marker = argv.lastIndexOf('--');",
+    "const message = marker >= 0 ? argv.slice(marker + 1).join(' ') : argv.slice(-1)[0];",
+    "const sessionID = incomingSession || 'opencode-session-created';",
+    "fs.appendFileSync(process.env.STUDIO_TEST_CAPTURE, JSON.stringify({ argv, message, incomingSession, sessionID }) + '\\n');",
+    "function emit(value) { process.stdout.write(JSON.stringify(value) + '\\n'); }",
+    "emit({ type: 'step_start', part: { type: 'step-start', sessionID } });",
+    "emit({ type: 'tool_use', part: { type: 'tool', tool: 'bash', state: { status: 'completed', title: 'List files', output: 'file-a' } } });",
+    "emit({ type: 'text', part: { type: 'text', text: message === '/compact' ? '' : 'opencode ok' } });",
+    "emit({ type: 'step_finish', part: { reason: 'done' } });",
+  ]);
+
+  const originalPath = process.env.PATH || "";
+  process.env.PATH = `${fakeBin}:${originalPath}`;
+  process.env.STUDIO_TEST_CAPTURE = capturePath;
+  try {
+    const factory = createNativeCliSessionDriverFactory({
+      codexFactory: {
+        create: () => {
+          throw new Error("codex factory should not be used");
+        },
+      },
+    });
+    const key = { ...baseKey, agent: "opencode", model: "openai/gpt-5", workDir: root };
+    const session = await factory.create({
+      key,
+      poolKey: channelConnectorAgentSessionDriverPoolKey(key),
+      turnInput: {
+        mode: "persistent",
+        key,
+        messageId: "normal-message",
+        agentTurnRequest: baseTurnRequest(root, "opencode"),
+        runOneShot: async () => completedResult("unused"),
+      },
+    });
+    const progress = [];
+    const first = await session.runTurn({
+      mode: "persistent",
+      key,
+      messageId: "normal-message",
+      agentTurnRequest: baseTurnRequest(root, "opencode"),
+      onProgress: (event) => progress.push(event),
+      runOneShot: async () => {
+        throw new Error("one-shot fallback should not run");
+      },
+    });
+    const compact = await session.runTurn({
+      mode: "persistent",
+      key,
+      messageId: "compact-message",
+      agentTurnRequest: baseTurnRequest(root, "opencode", "/compact"),
+      onProgress: (event) => progress.push(event),
+      runOneShot: async () => {
+        throw new Error("one-shot fallback should not run for compact");
+      },
+    });
+
+    assert.equal(first.ok, true);
+    assert.equal(first.replyText, "opencode ok");
+    assert.equal(first.session.agentNativeSessionId, "opencode-session-created");
+    assert.equal(compact.ok, true);
+    assert.equal(compact.replyText, "OpenCode compact 已完成。");
+    assert.equal(compact.session.agentNativeSessionId, "opencode-session-created");
+    assert.ok(progress.some((event) => event.type === "tool" && /file-a|List files/.test(event.text || "")));
+    const captures = fs.readFileSync(capturePath, "utf8").trim().split(/\r?\n/).map((line) => JSON.parse(line));
+    assert.equal(captures[0].incomingSession, "");
+    assert.equal(captures[1].incomingSession, "opencode-session-created");
+    assert.equal(captures[1].message, "/compact");
+  } finally {
+    process.env.PATH = originalPath;
+    delete process.env.STUDIO_TEST_CAPTURE;
+  }
+});
+
+test("Channel Connectors native CLI session driver keeps Claude stream-json process alive for native compact", async () => {
+  const root = makeTempRoot();
+  const fakeBin = path.join(root, "bin");
+  const capturePath = path.join(root, "claude-capture.jsonl");
+  writeExecutable(path.join(fakeBin, "claude"), [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    "const readline = require('readline');",
+    "fs.appendFileSync(process.env.STUDIO_TEST_CAPTURE, JSON.stringify({ argv: process.argv.slice(2) }) + '\\n');",
+    "function emit(value) { process.stdout.write(JSON.stringify(value) + '\\n'); }",
+    "emit({ type: 'system', session_id: 'claude-live-session' });",
+    "const rl = readline.createInterface({ input: process.stdin });",
+    "rl.on('line', (line) => {",
+    "  if (!line.trim()) return;",
+    "  const msg = JSON.parse(line);",
+    "  const content = msg.message && msg.message.content;",
+    "  const text = Array.isArray(content) ? (content.find((part) => part.type === 'text') || {}).text : content;",
+    "  fs.appendFileSync(process.env.STUDIO_TEST_CAPTURE, JSON.stringify({ stdin: text }) + '\\n');",
+    "  if (text === '/compact') {",
+    "    emit({ type: 'assistant', message: { content: [{ type: 'text', text: '' }] } });",
+    "    emit({ type: 'result', result: '', session_id: 'claude-live-session' });",
+    "  } else {",
+    "    emit({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash', input: { command: 'pwd' } }, { type: 'text', text: 'claude ok' }] } });",
+    "    emit({ type: 'result', result: 'claude ok', session_id: 'claude-live-session' });",
+    "  }",
+    "});",
+    "setInterval(() => {}, 1000);",
+  ]);
+
+  const originalPath = process.env.PATH || "";
+  process.env.PATH = `${fakeBin}:${originalPath}`;
+  process.env.STUDIO_TEST_CAPTURE = capturePath;
+  try {
+    const factory = createNativeCliSessionDriverFactory({
+      codexFactory: {
+        create: () => {
+          throw new Error("codex factory should not be used");
+        },
+      },
+    });
+    const key = { ...baseKey, agent: "claude-code", model: "sonnet", workDir: root };
+    const session = await factory.create({
+      key,
+      poolKey: channelConnectorAgentSessionDriverPoolKey(key),
+      turnInput: {
+        mode: "persistent",
+        key,
+        messageId: "normal-message",
+        agentTurnRequest: baseTurnRequest(root, "claude-code"),
+        runOneShot: async () => completedResult("unused"),
+      },
+    });
+    const progress = [];
+    const first = await session.runTurn({
+      mode: "persistent",
+      key,
+      messageId: "normal-message",
+      agentTurnRequest: baseTurnRequest(root, "claude-code"),
+      onProgress: (event) => progress.push(event),
+      runOneShot: async () => {
+        throw new Error("one-shot fallback should not run");
+      },
+    });
+    const compact = await session.runTurn({
+      mode: "persistent",
+      key,
+      messageId: "compact-message",
+      agentTurnRequest: baseTurnRequest(root, "claude-code", "/compact"),
+      onProgress: (event) => progress.push(event),
+      runOneShot: async () => {
+        throw new Error("one-shot fallback should not run for compact");
+      },
+    });
+    session.dispose("test-complete");
+
+    assert.equal(first.ok, true);
+    assert.equal(first.replyText, "claude ok");
+    assert.equal(first.session.agentNativeSessionId, "claude-live-session");
+    assert.equal(compact.ok, true);
+    assert.equal(compact.replyText, "Claude Code compact 已完成。");
+    assert.equal(compact.session.agentNativeSessionId, "claude-live-session");
+    assert.ok(progress.some((event) => event.type === "tool" && /Bash/.test(event.text || "")));
+    const captures = fs.readFileSync(capturePath, "utf8").trim().split(/\r?\n/).map((line) => JSON.parse(line));
+    assert.equal(captures.filter((item) => item.argv).length, 1);
+    const stdinMessages = captures.filter((item) => item.stdin).map((item) => item.stdin);
+    assert.equal(stdinMessages.length, 2);
+    assert.match(stdinMessages[0], /^hello\b/);
+    assert.equal(stdinMessages[1], "/compact");
+  } finally {
+    process.env.PATH = originalPath;
+    delete process.env.STUDIO_TEST_CAPTURE;
+  }
+});
+
+test("Channel Connectors OpenCode persistent session stop aborts active process runner", async () => {
+  const root = makeTempRoot();
+  const session = new OpenCodeRunSession({
+    id: "opencode-run-session:test",
+    sessionId: "opencode-session-created",
+  });
+  let sawAbortSignal = false;
+  let markRunnerStarted = () => {};
+  const runnerStarted = new Promise((resolve) => {
+    markRunnerStarted = resolve;
+  });
+  const resultPromise = session.runTurn({
+    mode: "persistent",
+    key: { ...baseKey, agent: "opencode", model: "openai/gpt-5", workDir: root },
+    messageId: "opencode-stop-message",
+    agentTurnRequest: {
+      ...baseTurnRequest(root, "opencode"),
+      processRunner: async (request) => {
+        markRunnerStarted();
+        return new Promise((resolve) => {
+          request.signal?.addEventListener("abort", () => {
+            sawAbortSignal = true;
+            resolve({
+              exitCode: null,
+              signal: null,
+              stdout: "",
+              stderr: "",
+              durationMs: 1,
+              timedOut: false,
+              cancelled: true,
+              error: "Agent process cancelled.",
+              progressEvents: [],
+            });
+          }, { once: true });
+        });
+      },
+    },
+    runOneShot: async () => {
+      throw new Error("one-shot fallback should not run");
+    },
+  });
+  await runnerStarted;
+  session.stop("manual-stop");
+  const result = await resultPromise;
+  assert.equal(sawAbortSignal, true);
+  assert.equal(result.status, "cancelled");
+  assert.equal(result.ok, false);
 });

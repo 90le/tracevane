@@ -47,6 +47,7 @@ import {
   createCodexAppServerSessionDriverFactory,
   JsonLineCodexAppServerTransport,
 } from "./codex-app-server-driver.js";
+import { createNativeCliSessionDriverFactory } from "./cli-agent-session-driver.js";
 import {
   getChannelConnectorAgentSession,
   listChannelConnectorAgentSessionsForConversation,
@@ -238,27 +239,29 @@ const channelAgentSessionDriverPool = createChannelConnectorAgentSessionDriverPo
   idleTimeoutMs: optionalPositiveIntegerEnv("STUDIO_CHANNEL_AGENT_SESSION_IDLE_TIMEOUT_MS"),
   maxSessions: optionalPositiveIntegerEnv("STUDIO_CHANNEL_AGENT_SESSION_MAX_SESSIONS"),
   onEvent: recordChannelAgentSessionDriverEvent,
-  factory: createCodexAppServerSessionDriverFactory({
-    transportFactory: ({ sessionId, key, agentTurnRequest }) => {
-      const processRequest = agentTurnRequest
-        ? buildChannelConnectorAgentProcessRequest(agentTurnRequest)
-        : null;
-      const env = processRequest?.env ? { ...processRequest.env } : {};
-      const codexHome = normalizeString(env.CODEX_HOME);
-      if (codexHome) {
-        const sessionCodexHome = path.join(path.dirname(codexHome), "persistent-sessions", safePathSegment(sessionId), "codex-home");
-        fs.mkdirSync(sessionCodexHome, { recursive: true, mode: 0o700 });
-        const sourceConfigPath = path.join(codexHome, "config.toml");
-        if (fs.existsSync(sourceConfigPath)) {
-          fs.copyFileSync(sourceConfigPath, path.join(sessionCodexHome, "config.toml"));
+  factory: createNativeCliSessionDriverFactory({
+    codexFactory: createCodexAppServerSessionDriverFactory({
+      transportFactory: ({ sessionId, key, agentTurnRequest }) => {
+        const processRequest = agentTurnRequest
+          ? buildChannelConnectorAgentProcessRequest(agentTurnRequest)
+          : null;
+        const env = processRequest?.env ? { ...processRequest.env } : {};
+        const codexHome = normalizeString(env.CODEX_HOME);
+        if (codexHome) {
+          const sessionCodexHome = path.join(path.dirname(codexHome), "persistent-sessions", safePathSegment(sessionId), "codex-home");
+          fs.mkdirSync(sessionCodexHome, { recursive: true, mode: 0o700 });
+          const sourceConfigPath = path.join(codexHome, "config.toml");
+          if (fs.existsSync(sourceConfigPath)) {
+            fs.copyFileSync(sourceConfigPath, path.join(sessionCodexHome, "config.toml"));
+          }
+          env.CODEX_HOME = sessionCodexHome;
         }
-        env.CODEX_HOME = sessionCodexHome;
-      }
-      return new JsonLineCodexAppServerTransport({
-        cwd: key.workDir,
-        env,
-      });
-    },
+        return new JsonLineCodexAppServerTransport({
+          cwd: key.workDir,
+          env,
+        });
+      },
+    }),
   }),
 });
 
@@ -496,12 +499,12 @@ interface ChannelDaemonAgentSessionDriverBindingState {
   model: string | null;
   requestedMode: "one-shot" | "persistent";
   effectiveMode: "one-shot" | "persistent";
-  reason: "default" | "codex-app-server-experimental" | "unsupported-agent";
+  reason: "default" | "codex-app-server-experimental" | "claude-code-stream-json" | "opencode-run-session" | "unsupported-agent";
 }
 
 interface ChannelDaemonAgentSessionDriverState {
   defaultMode: "one-shot";
-  implementation: "codex-app-server-experimental";
+  implementation: "native-cli-session-drivers";
   persistentDriverReady: true;
   policy: {
     idleTimeoutMs: number;
@@ -691,6 +694,20 @@ function effectiveAgentSessionDriverMode(input: {
       reason: "default",
     };
   }
+  if (input.project.agent === "claude-code") {
+    return {
+      requestedMode,
+      effectiveMode: "persistent",
+      reason: "claude-code-stream-json",
+    };
+  }
+  if (input.project.agent === "opencode") {
+    return {
+      requestedMode,
+      effectiveMode: "persistent",
+      reason: "opencode-run-session",
+    };
+  }
   if (input.project.agent !== "codex") {
     return {
       requestedMode,
@@ -735,7 +752,7 @@ function buildAgentSessionDriverState(
   });
   return {
     defaultMode: "one-shot",
-    implementation: "codex-app-server-experimental",
+    implementation: "native-cli-session-drivers",
     persistentDriverReady: true,
     policy: channelAgentSessionDriverPool.policy(),
     requestedPersistentBindings: bindings.filter((binding) => binding.requestedMode === "persistent"),

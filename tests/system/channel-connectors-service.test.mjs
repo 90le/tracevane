@@ -8009,7 +8009,7 @@ test("native Channel Connectors daemon entry exposes health and writes runtime",
     const status = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
     assert.equal(status.status, 200);
     assert.equal(status.body.agentSessionDriver.defaultMode, "one-shot");
-    assert.equal(status.body.agentSessionDriver.implementation, "codex-app-server-experimental");
+    assert.equal(status.body.agentSessionDriver.implementation, "native-cli-session-drivers");
     assert.equal(status.body.agentSessionDriver.persistentDriverReady, true);
     assert.equal(status.body.agentSessionDriver.policy.idleTimeoutMs, 600000);
     assert.equal(status.body.agentSessionDriver.policy.maxSessions, 8);
@@ -8102,6 +8102,7 @@ test("native Channel Connectors daemon queues same-session messages while an Age
   assert.match(daemonSource, /function latestActiveRunForSession/);
   assert.match(daemonSource, /function acquireChannelSessionAgentRun/);
   assert.match(daemonSource, /createChannelConnectorAgentSessionDriverPool/);
+  assert.match(daemonSource, /createNativeCliSessionDriverFactory/);
   assert.match(daemonSource, /createCodexAppServerSessionDriverFactory/);
   assert.match(daemonSource, /function runChannelConnectorAgentTurnWithSessionDriver/);
   assert.match(daemonSource, /effectiveAgentSessionDriverMode/);
