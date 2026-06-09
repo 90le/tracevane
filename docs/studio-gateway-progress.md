@@ -60,9 +60,9 @@
 - `/commands add/del` 已接入 Studio 原生 prompt 自定义命令 store：按 project 隔离，built-in 命令优先，其次 config prompt command，再次 Agent command file，最后才原生透传；`addexec` 暂不开放，shell 执行面后续需按 admin/yolo/审计合同单独验收。
 - Feishu/Studio command surface 新增 Commands tab：主菜单可进入自定义命令子卡，显示 config prompt command 与 Agent command file，并提供按钮执行；添加/删除仍通过 `/commands add/del` 文本命令完成，避免卡片输入复杂化。
 - 按 CC SkillRegistry 合同接入 `/skills` 与 Skill invocation：递归发现 `SKILL.md`，解析 frontmatter，Codex/Claude Code/Gemini/Kimi/Cursor/Qoder 使用各自 CC `SkillDirs()` 路径；未知 `/skill-name` 命中后构造成 CC 风格 Skill 执行 prompt 交给当前 Agent。
-- Commands tab 已同时展示 Skills：可从 Feishu 卡片查看 `/skills`，并按钮执行当前 Agent 可用 Skill；优先级固定为 Studio 内置命令 > config command > Agent command file > Skill > 原生透传。
+- Commands tab 已同时展示 Skills 和 Aliases：可从 Feishu 卡片查看 `/skills` / `/alias`，并按钮执行当前 Agent 可用 Skill；优先级固定为 Studio 内置命令 > config command > Agent command file > Skill > 原生透传。
 - Studio IM 命令路由已补 CC Go 风格前缀匹配：exact alias 优先，唯一前缀可展开，歧义前缀原样透传；`/commands` 子命令同步支持唯一缩写，避免短命令误触发。
-- Studio IM 入口已补 CC Go `AliasConfig/resolveAlias` 行为：Feishu/Octo binding metadata 可配置命令别名，支持完整命中和首词命中后拼接剩余参数；service dry-run 与 daemon live 路径共用同一解析。
+- Studio IM 入口已补 CC Go `AliasConfig/resolveAlias` 行为：Feishu/Octo binding metadata 可配置命令别名，支持完整命中和首词命中后拼接剩余参数；`/alias add/del/list` 已接入 binding 级本地 alias store，service dry-run 与 daemon live 路径共用同一解析。
 - CC Card `RenderText()` 式文本降级已落到 Studio command surface：无卡片渠道不再一次性展开全部菜单，`/help` 返回紧凑主菜单，`/help session|agent|display|workdir|native` 返回分组帮助；Feishu 富卡片和 callback 逻辑保持不变。
 - `/help` 与 command surface 文本 fallback 已改为 Markdown 表格布局：Feishu/Octo 可渲染为更清晰的表格，纯文本渠道仍可读，命令说明不再是松散长列表。
 - Feishu `/help` 与 command surface 文本 fallback 的 Markdown 表格兼容性已加固：每个表格前都保留空行，避免 Feishu/Octo 等 IM 渲染器把第二个表格当普通段落导致渲染失败。

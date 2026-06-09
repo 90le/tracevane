@@ -2014,6 +2014,10 @@ function customCommandsPath(config: ChannelConnectorsDaemonRuntimeConfig): strin
   return path.join(config.paths.state, "channel-custom-commands.json");
 }
 
+function commandAliasesPath(config: ChannelConnectorsDaemonRuntimeConfig): string {
+  return path.join(config.paths.state, "channel-command-aliases.json");
+}
+
 function conversationHistoryPath(config: ChannelConnectorsDaemonRuntimeConfig): string {
   return path.join(config.paths.state, "channel-history.json");
 }
@@ -4302,7 +4306,7 @@ async function dispatchOctoMessage(input: {
   let message = input.message;
   if (shouldSkipSeenMessage(seenMessages, message.messageId)) return;
   const originalContent = extractOctoContent(message);
-  const aliasResolution = resolveChannelConnectorBindingCommandAlias(binding, originalContent);
+  const aliasResolution = resolveChannelConnectorBindingCommandAlias(binding, originalContent, commandAliasesPath(config));
   if (aliasResolution.matchedAlias) {
     message = {
       ...message,
@@ -4383,6 +4387,7 @@ async function dispatchOctoMessage(input: {
     message,
     sessionKey,
     controlsPath: sessionControlsPath(config),
+    commandAliasesPath: commandAliasesPath(config),
     customCommandsPath: customCommandsPath(config),
     agentSessionsPath: agentSessionsPath(config),
     conversationHistoryPath: conversationHistoryPath(config),
@@ -5129,7 +5134,7 @@ async function dispatchFeishuParsedEvent(input: {
   const ref = refs[0];
   const { project, binding, transport } = ref;
   const aliasResolution = parsed.kind === "message"
-    ? resolveChannelConnectorBindingCommandAlias(binding, content)
+    ? resolveChannelConnectorBindingCommandAlias(binding, content, commandAliasesPath(config))
     : { content, matchedAlias: null };
   content = aliasResolution.content;
   const sessionKey = feishuSessionKey(binding, parsed);
@@ -5272,6 +5277,7 @@ async function dispatchFeishuParsedEvent(input: {
     message,
     sessionKey,
     controlsPath: sessionControlsPath(config),
+    commandAliasesPath: commandAliasesPath(config),
     customCommandsPath: customCommandsPath(config),
     agentSessionsPath: agentSessionsPath(config),
     conversationHistoryPath: conversationHistoryPath(config),

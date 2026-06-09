@@ -79,9 +79,11 @@ import {
   channelConnectorCommandAliasesFromMetadata,
   handleChannelConnectorCommand,
   listChannelConnectorGatewayModels,
+  listChannelConnectorCommandAliasesForBinding,
   matchChannelConnectorCommandPrefix,
   matchChannelConnectorSubCommand,
   parseChannelConnectorCommand,
+  resolveChannelConnectorBindingCommandAlias,
   resolveChannelConnectorCommandAlias,
   resolveChannelConnectorEffectiveProject,
 } from "../../dist/apps/api/modules/channel-connectors/command-router.js";
@@ -3223,6 +3225,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   const stateDir = path.join(root, "state");
   const controlsPath = path.join(stateDir, "channel-session-controls.json");
   const customCommandsPath = path.join(stateDir, "channel-custom-commands.json");
+  const commandAliasesPath = path.join(stateDir, "channel-command-aliases.json");
   const agentSessionsPath = path.join(stateDir, "channel-sessions.json");
   const conversationHistoryPath = path.join(stateDir, "channel-history.json");
   const replyBuffersPath = path.join(stateDir, "channel-reply-buffers.json");
@@ -3310,6 +3313,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     binding,
     sessionKey: "dmwork:dm:admin-1",
     controlsPath,
+    commandAliasesPath,
     customCommandsPath,
     agentSessionsPath,
     conversationHistoryPath,
@@ -3404,24 +3408,83 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
       "模型=>/model",
     ],
   });
-  assert.deepEqual(aliases.map((alias) => [alias.name, alias.command]), [
-    ["帮助", "/help"],
-    ["新建", "/new"],
-    ["状态", "/status"],
-    ["模型", "/model"],
+  assert.deepEqual(aliases.map((alias) => [alias.name, alias.command, alias.source]), [
+    ["帮助", "/help", "metadata"],
+    ["新建", "/new", "metadata"],
+    ["状态", "/status", "metadata"],
+    ["模型", "/model", "metadata"],
   ]);
   assert.deepEqual(resolveChannelConnectorCommandAlias("帮助", aliases), {
     content: "/help",
-    matchedAlias: { name: "帮助", command: "/help" },
+    matchedAlias: { name: "帮助", command: "/help", source: "metadata" },
   });
   assert.deepEqual(resolveChannelConnectorCommandAlias("新建 sprint", aliases), {
     content: "/new sprint",
-    matchedAlias: { name: "新建", command: "/new" },
+    matchedAlias: { name: "新建", command: "/new", source: "metadata" },
   });
   assert.deepEqual(resolveChannelConnectorCommandAlias("普通消息", aliases), {
     content: "普通消息",
     matchedAlias: null,
   });
+  const aliasListEmpty = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/alias"),
+  });
+  assert.equal(aliasListEmpty.handled, true);
+  assert.equal(aliasListEmpty.ok, true);
+  assert.match(aliasListEmpty.replyText, /暂无别名配置/);
+  const addAlias = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/alias add 快捷 status"),
+  });
+  assert.equal(addAlias.handled, true);
+  assert.equal(addAlias.ok, true);
+  assert.match(addAlias.replyText, /已添加命令别名：快捷 -> \/status/);
+  assert.deepEqual(listChannelConnectorCommandAliasesForBinding(binding, commandAliasesPath).map((alias) => [alias.name, alias.command, alias.source]), [
+    ["快捷", "/status", "store"],
+  ]);
+  assert.deepEqual(resolveChannelConnectorBindingCommandAlias(binding, "快捷 now", commandAliasesPath), {
+    content: "/status now",
+    matchedAlias: { name: "快捷", command: "/status", source: "store" },
+  });
+  const aliasList = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/alias"),
+  });
+  assert.match(aliasList.replyText, /快捷 -> \/status \[store\]/);
+  const nonAdminAddAlias = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/alias add 非法 /help", "user-2"),
+  });
+  assert.equal(nonAdminAddAlias.ok, false);
+  assert.match(nonAdminAddAlias.replyText, /没有管理/);
+  const metadataProtectedAlias = await handleChannelConnectorCommand({
+    ...baseContext,
+    binding: {
+      ...binding,
+      metadata: { aliases: { 帮助: "/help" } },
+    },
+    message: message("/alias add 帮助 /status"),
+  });
+  assert.equal(metadataProtectedAlias.ok, false);
+  assert.match(metadataProtectedAlias.replyText, /来自 binding metadata/);
+  const deleteMetadataAlias = await handleChannelConnectorCommand({
+    ...baseContext,
+    binding: {
+      ...binding,
+      metadata: { aliases: { 帮助: "/help" } },
+    },
+    message: message("/alias del 帮助"),
+  });
+  assert.equal(deleteMetadataAlias.ok, false);
+  assert.match(deleteMetadataAlias.replyText, /不能通过 \/alias del 删除/);
+  const deleteAlias = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/alias del 快捷"),
+  });
+  assert.equal(deleteAlias.ok, true);
+  assert.match(deleteAlias.replyText, /已删除命令别名：快捷/);
+  assert.deepEqual(listChannelConnectorCommandAliasesForBinding(binding, commandAliasesPath), []);
 
   for (const alias of ["/menu", "/start"]) {
     const aliasHelp = await handleChannelConnectorCommand({

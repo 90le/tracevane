@@ -36,6 +36,15 @@ import {
   upsertChannelConnectorCustomCommand,
 } from "./custom-command-store.js";
 import {
+  deleteChannelConnectorCommandAlias,
+  getChannelConnectorCommandAlias,
+  isValidCommandAliasName,
+  listChannelConnectorCommandAliases,
+  normalizeCommandAliasCommand,
+  upsertChannelConnectorCommandAlias,
+  type ChannelConnectorCommandAliasRecord,
+} from "./command-alias-store.js";
+import {
   findChannelConnectorReplyBufferForSession,
   listChannelConnectorReplyBuffersForSession,
   type ChannelConnectorReplyBufferRecord,
@@ -69,6 +78,7 @@ export interface ChannelConnectorCommandContext {
   message: ChannelConnectorOctoInboundMessage;
   sessionKey: string;
   controlsPath: string;
+  commandAliasesPath?: string | null;
   customCommandsPath?: string | null;
   agentSessionsPath: string;
   conversationHistoryPath?: string | null;
@@ -216,6 +226,7 @@ export interface ChannelConnectorSkillSummary {
 export interface ChannelConnectorCommandAlias {
   name: string;
   command: string;
+  source?: "metadata" | "store";
 }
 
 function normalizeString(value: unknown): string {
@@ -305,7 +316,7 @@ function addCommandAlias(
   const key = normalizedName.toLowerCase();
   if (seen.has(key)) return;
   seen.add(key);
-  output.push({ name: normalizedName, command: normalizedCommand });
+  output.push({ name: normalizedName, command: normalizedCommand, source: "metadata" });
 }
 
 function collectCommandAliasesFromValue(
@@ -343,6 +354,42 @@ export function channelConnectorCommandAliasesFromMetadata(metadataValue: unknow
   return output;
 }
 
+function channelConnectorCommandAliasesFromStore(filePath: string | null | undefined, bindingId: string): ChannelConnectorCommandAlias[] {
+  const normalizedPath = normalizeString(filePath || null);
+  const normalizedBindingId = normalizeString(bindingId);
+  if (!normalizedPath || !normalizedBindingId) return [];
+  return listChannelConnectorCommandAliases(normalizedPath, normalizedBindingId)
+    .map((alias) => ({ name: alias.name, command: alias.command, source: "store" as const }));
+}
+
+function mergeChannelConnectorCommandAliases(
+  storeAliases: readonly ChannelConnectorCommandAlias[],
+  metadataAliases: readonly ChannelConnectorCommandAlias[],
+): ChannelConnectorCommandAlias[] {
+  const output: ChannelConnectorCommandAlias[] = [];
+  const seen = new Set<string>();
+  for (const alias of [...storeAliases, ...metadataAliases]) {
+    const name = normalizeString(alias.name);
+    const command = normalizeString(alias.command);
+    if (!name || !command) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    output.push({ name, command, source: alias.source || "metadata" });
+  }
+  return output;
+}
+
+export function listChannelConnectorCommandAliasesForBinding(
+  binding: Pick<ChannelConnectorRuntimeBinding, "id" | "metadata">,
+  commandAliasesPath?: string | null,
+): ChannelConnectorCommandAlias[] {
+  return mergeChannelConnectorCommandAliases(
+    channelConnectorCommandAliasesFromStore(commandAliasesPath, binding.id),
+    channelConnectorCommandAliasesFromMetadata(binding.metadata),
+  );
+}
+
 export function resolveChannelConnectorCommandAlias(
   content: string,
   aliases: readonly ChannelConnectorCommandAlias[],
@@ -368,15 +415,16 @@ export function resolveChannelConnectorCommandAlias(
 }
 
 export function resolveChannelConnectorBindingCommandAlias(
-  binding: Pick<ChannelConnectorRuntimeBinding, "metadata">,
+  binding: Pick<ChannelConnectorRuntimeBinding, "id" | "metadata">,
   content: string,
+  commandAliasesPath?: string | null,
 ): {
   content: string;
   matchedAlias: ChannelConnectorCommandAlias | null;
 } {
   return resolveChannelConnectorCommandAlias(
     content,
-    channelConnectorCommandAliasesFromMetadata(binding.metadata),
+    listChannelConnectorCommandAliasesForBinding(binding, commandAliasesPath),
   );
 }
 
@@ -385,6 +433,7 @@ const STUDIO_COMMAND_MATCH_CANDIDATES: readonly CommandMatchCandidate[] = [
   { id: "help", names: ["help"] },
   { id: "menu", names: ["menu"] },
   { id: "commands", names: ["commands", "command", "cmd"] },
+  { id: "alias", names: ["alias", "aliases"] },
   { id: "skills", names: ["skills", "skill"] },
   { id: "status", names: ["status"] },
   { id: "usage", names: ["usage", "tokens", "quota"] },
@@ -677,6 +726,49 @@ function commandsUsageText(): string {
   ].join("\n");
 }
 
+function commandAliasStorePath(context: Pick<ChannelConnectorCommandContext, "commandAliasesPath">): string | null {
+  return normalizeString(context.commandAliasesPath || null) || null;
+}
+
+function commandAliasListText(aliases: readonly ChannelConnectorCommandAlias[]): string {
+  if (!aliases.length) {
+    return [
+      "暂无别名配置。",
+      "用法：/alias add <触发词> <命令>",
+      "示例：/alias add 帮助 /help",
+    ].join("\n");
+  }
+  const lines = [`Studio Command Aliases (${aliases.length})`];
+  for (const alias of aliases) {
+    const source = alias.source === "store" ? "store" : "metadata";
+    lines.push(`  ${alias.name} -> ${alias.command} [${source}]`);
+  }
+  lines.push("用法：/alias add <触发词> <命令>；/alias del <触发词>。");
+  return lines.join("\n");
+}
+
+function aliasUsageText(): string {
+  return [
+    "用法：",
+    "/alias - 列出所有别名",
+    "/alias add <触发词> <命令> - 添加或更新别名",
+    "/alias del <触发词> - 删除通过 IM 添加的别名",
+    "示例：/alias add 帮助 /help",
+  ].join("\n");
+}
+
+function metadataAliasByName(binding: Pick<ChannelConnectorRuntimeBinding, "metadata">, name: string): ChannelConnectorCommandAlias | null {
+  const key = normalizeString(name).toLowerCase();
+  if (!key) return null;
+  return channelConnectorCommandAliasesFromMetadata(binding.metadata)
+    .find((alias) => alias.name.toLowerCase() === key) || null;
+}
+
+function storeAliasByName(filePath: string | null, bindingId: string, name: string): ChannelConnectorCommandAliasRecord | null {
+  if (!filePath) return null;
+  return getChannelConnectorCommandAlias(filePath, bindingId, name);
+}
+
 export function parseChannelConnectorCommand(content: string): ParsedCommand | null {
   const trimmed = normalizeCommandPrefix(normalizeString(content));
   if (!trimmed.startsWith("/")) return null;
@@ -828,7 +920,7 @@ function commandHelpSectionAlias(value: string | null | undefined): CommandHelpS
   if (["agent", "profile", "model", "mode", "reasoning", "permission"].includes(target)) return "agent";
   if (["display", "stream", "tools", "tool", "buffer", "quiet"].includes(target)) return "display";
   if (["workdir", "dir", "cd", "directory"].includes(target)) return "workdir";
-  if (["native", "commands", "command", "skills", "skill", "slash"].includes(target)) return "native";
+  if (["native", "commands", "command", "cmd", "alias", "aliases", "skills", "skill", "slash"].includes(target)) return "native";
   return null;
 }
 
@@ -912,6 +1004,9 @@ function commandHelpSectionText(section: CommandHelpSection): string {
       ["`/commands`", "列出当前 Agent 自定义 prompt 命令"],
       ["`/commands add <名称> <prompt 模板>`", "添加 prompt 命令"],
       ["`/commands del <名称>`", "删除 prompt 命令"],
+      ["`/alias`", "列出当前 binding 命令别名"],
+      ["`/alias add <触发词> <命令>`", "添加或更新当前 binding 别名"],
+      ["`/alias del <触发词>`", "删除通过 IM 添加的别名"],
       ["`/skills`", "列出当前 Agent Skills"],
       ["`/<skill名称> [参数...]`", "调用 Skill"],
       ["`/native /help`", "查看当前 Agent 原生帮助或 skills 命令"],
@@ -934,7 +1029,7 @@ function commandHelpText(section?: string | null): string {
       ["`/whoami` `/version`", "身份排查和 runtime 版本"],
       ["`/agent` `/model` `/mode` `/reasoning`", "切换 Agent、模型、权限、推理强度"],
       ["`/display` `/quiet` `/stream on|off` `/tools on|off`", "控制进度和工具显示"],
-      ["`/commands` `/skills` `/native /help`", "自定义命令、Skills、Agent 原生命令"],
+      ["`/commands` `/alias` `/skills` `/native /help`", "自定义命令、命令别名、Skills、Agent 原生命令"],
     ]),
     "",
     "分组帮助",
@@ -1796,6 +1891,11 @@ export async function handleChannelConnectorCommand(
   const commandsMutation = name === "commands"
     && args.length > 0
     && !(rawCommandsSubcommand === "ls" || matchChannelConnectorSubCommand(rawCommandsSubcommand, ["list"]) === "list");
+  const aliasSubcommand = name === "alias"
+    ? matchChannelConnectorSubCommand(rawCommandsSubcommand, ["list", "add", "del", "delete", "rm", "remove"]) || rawCommandsSubcommand
+    : "";
+  const aliasMutation = name === "alias"
+    && ["add", "del", "delete", "rm", "remove"].includes(aliasSubcommand);
   const mutableCommandName = [
       "agent",
       "model",
@@ -1819,7 +1919,7 @@ export async function handleChannelConnectorCommand(
     ].includes(name);
   const listOnlyCommand = ["agent", "model", "mode", "reasoning", "dir", "display", "stream", "tools"].includes(name)
     && args.length === 0;
-  const mutating = (mutableCommandName || commandsMutation) && !listOnlyCommand;
+  const mutating = (mutableCommandName || commandsMutation || aliasMutation) && !listOnlyCommand;
 
   if (mutating && !canManageSession(context.binding, context.message)) {
     return {
@@ -1911,6 +2011,145 @@ export async function handleChannelConnectorCommand(
       ok: true,
       control: currentControl,
       replyText: skillsListText(currentProject),
+      passthroughText: null,
+    };
+  }
+
+  if (name === "alias") {
+    const subcommand = !rawCommandsSubcommand || rawCommandsSubcommand === "ls"
+      ? "list"
+      : aliasSubcommand;
+    const storePath = commandAliasStorePath(context);
+    if (!subcommand || subcommand === "list") {
+      return {
+        handled: true,
+        command: name,
+        action: "list",
+        ok: true,
+        control: currentControl,
+        replyText: commandAliasListText(listChannelConnectorCommandAliasesForBinding(context.binding, storePath)),
+        passthroughText: null,
+      };
+    }
+
+    if (subcommand === "add") {
+      if (!storePath) {
+        return {
+          handled: true,
+          command: name,
+          action: "set",
+          ok: false,
+          control: currentControl,
+          replyText: "当前 runtime 未启用命令别名 store，不能添加别名。",
+          passthroughText: null,
+        };
+      }
+      const aliasName = normalizeString(args[1]);
+      const aliasCommand = normalizeCommandAliasCommand(args.slice(2).join(" "));
+      if (!aliasName || !aliasCommand) {
+        return {
+          handled: true,
+          command: name,
+          action: "set",
+          ok: false,
+          control: currentControl,
+          replyText: aliasUsageText(),
+          passthroughText: null,
+        };
+      }
+      if (!isValidCommandAliasName(aliasName)) {
+        return {
+          handled: true,
+          command: name,
+          action: "set",
+          ok: false,
+          control: currentControl,
+          replyText: "别名触发词不能为空、不能包含空白字符，且最长 64 个字符。",
+          passthroughText: null,
+        };
+      }
+      const metadataAlias = metadataAliasByName(context.binding, aliasName);
+      if (metadataAlias) {
+        return {
+          handled: true,
+          command: name,
+          action: "set",
+          ok: false,
+          control: currentControl,
+          replyText: `别名 ${aliasName} 来自 binding metadata：${metadataAlias.command}。请在 Studio 配置中修改，或换一个触发词。`,
+          passthroughText: null,
+        };
+      }
+      const record = upsertChannelConnectorCommandAlias(storePath, context.binding.id, aliasName, aliasCommand);
+      return {
+        handled: true,
+        command: name,
+        action: "set",
+        ok: true,
+        control: currentControl,
+        replyText: `已添加命令别名：${record.name} -> ${record.command}`,
+        passthroughText: null,
+      };
+    }
+
+    if (["del", "delete", "rm", "remove"].includes(subcommand)) {
+      if (!storePath) {
+        return {
+          handled: true,
+          command: name,
+          action: "set",
+          ok: false,
+          control: currentControl,
+          replyText: "当前 runtime 未启用命令别名 store，不能删除别名。",
+          passthroughText: null,
+        };
+      }
+      const aliasName = normalizeString(args[1]);
+      if (!aliasName) {
+        return {
+          handled: true,
+          command: name,
+          action: "set",
+          ok: false,
+          control: currentControl,
+          replyText: aliasUsageText(),
+          passthroughText: null,
+        };
+      }
+      const storeAlias = storeAliasByName(storePath, context.binding.id, aliasName);
+      if (!storeAlias) {
+        const metadataAlias = metadataAliasByName(context.binding, aliasName);
+        return {
+          handled: true,
+          command: name,
+          action: "set",
+          ok: false,
+          control: currentControl,
+          replyText: metadataAlias
+            ? `别名 ${aliasName} 来自 binding metadata，不能通过 /alias del 删除。`
+            : `未找到通过 IM 添加的别名：${aliasName}`,
+          passthroughText: null,
+        };
+      }
+      const deleted = deleteChannelConnectorCommandAlias(storePath, context.binding.id, aliasName);
+      return {
+        handled: true,
+        command: name,
+        action: "set",
+        ok: deleted,
+        control: currentControl,
+        replyText: deleted ? `已删除命令别名：${storeAlias.name}` : `未找到通过 IM 添加的别名：${aliasName}`,
+        passthroughText: null,
+      };
+    }
+
+    return {
+      handled: true,
+      command: name,
+      action: "list",
+      ok: false,
+      control: currentControl,
+      replyText: aliasUsageText(),
       passthroughText: null,
     };
   }

@@ -149,6 +149,8 @@ const FEISHU_MENU_SECTION_ALIASES: Record<string, FeishuMenuSectionId> = {
   commands: "commands",
   command: "commands",
   cmd: "commands",
+  alias: "commands",
+  aliases: "commands",
   native: "native",
   raw: "native",
   pass: "native",
@@ -160,6 +162,8 @@ const FEISHU_MENU_VIEW_ALIASES: Record<string, FeishuMenuViewId> = {
   commands: "commands",
   command: "commands",
   cmd: "commands",
+  alias: "commands",
+  aliases: "commands",
   start: "help",
   whoami: "session",
   myid: "session",
@@ -281,7 +285,7 @@ export function channelConnectorCommandSurfaceSectionFromCommand(command: string
   const parts = normalized.replace(/^[/%]+/, "").split(/\s+/).filter(Boolean);
   if (!parts.length) return null;
   const name = parts[0] || "";
-  if (["commands", "command", "cmd"].includes(name.toLowerCase())) return "commands";
+  if (["commands", "command", "cmd", "alias", "aliases"].includes(name.toLowerCase())) return "commands";
   if (["help", "menu", "start"].includes(name.toLowerCase())) {
     return normalizeChannelConnectorCommandSurfaceSection(parts[1]) || "session";
   }
@@ -297,7 +301,7 @@ export function channelConnectorCommandSurfaceViewFromCommand(
   const parts = normalized.replace(/^[/%]+/, "").split(/\s+/).filter(Boolean);
   if (!parts.length) return null;
   const name = parts[0]?.toLowerCase() || "";
-  if (["commands", "command", "cmd"].includes(name)) return "commands";
+  if (["commands", "command", "cmd", "alias", "aliases"].includes(name)) return "commands";
   if (["help", "menu", "start"].includes(name)) return "help";
   if (name === "whoami" || name === "myid" || name === "version") return "session";
   if (name === "current") return "current";
@@ -417,7 +421,7 @@ function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFa
       markdownTable([
         ["`/agent` `/model` `/mode` `/reasoning`", "切换当前 IM session 配置"],
         ["`/display` `/stream on|off` `/tools on|off`", "控制进度和工具显示"],
-        ["`/commands` `/skills`", "查看可执行命令和 Skill"],
+        ["`/commands` `/alias` `/skills`", "查看可执行命令、别名和 Skill"],
       ]),
     );
   }
@@ -586,6 +590,10 @@ export function buildChannelConnectorCommandSurface(
         action("commands-list", "List Commands", "/commands", {
           actionKind: "nav",
           description: "查看当前 Agent 自定义命令列表和 add/del 用法",
+        }),
+        action("aliases-list", "Aliases", "/alias", {
+          actionKind: "nav",
+          description: "查看当前 binding 命令别名和 add/del 用法",
         }),
         action("skills-list", "List Skills", "/skills", {
           actionKind: "nav",
@@ -1007,6 +1015,8 @@ function commandSurfaceItemDescription(item: ChannelConnectorCommandSurfaceActio
       return "恢复 Agent Profile 默认目录";
     case "native-help":
       return "打开当前 CLI Agent 的原生帮助或 skills 命令";
+    case "aliases-list":
+      return "查看或管理当前 binding 命令别名";
     case "model-default":
       return "恢复 Agent Profile 默认模型";
     case "display-status":
@@ -1597,6 +1607,8 @@ function renderCommandsCard(surface: ChannelConnectorCommandSurface): ChannelCon
   const actions = section?.actions || [];
   const list = actions.find((item) => item.id === "commands-list")
     || action("commands-list", "List Commands", "/commands", { actionKind: "nav" });
+  const aliases = actions.find((item) => item.id === "aliases-list")
+    || action("aliases-list", "Aliases", "/alias", { actionKind: "nav" });
   const skills = actions.find((item) => item.id === "skills-list")
     || action("skills-list", "List Skills", "/skills", { actionKind: "nav" });
   const commandActions = actions.filter((item) => item.id.startsWith("custom-command-"));
@@ -1613,10 +1625,12 @@ function renderCommandsCard(surface: ChannelConnectorCommandSurface): ChannelCon
         "**管理**",
         "`/commands add <名称> <prompt 模板>`",
         "`/commands del <名称>`",
+        "`/alias add <触发词> <命令>`",
+        "`/alias del <触发词>`",
       ].join("\n"),
     },
   ];
-  pushActionRows(elements, [list, skills], surface, 2, true);
+  pushActionRows(elements, [list, aliases, skills], surface, 3, true);
   if (commandActions.length) {
     elements.push({ tag: "hr" });
     elements.push({ tag: "markdown", content: "**自定义命令**" });

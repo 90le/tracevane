@@ -127,6 +127,7 @@ Studio 增强点：
 - Channel daemon 已支持 Agent 原生命令透传：未知 `/xxx` 直接转给当前 Agent，`/native <命令>` 用于透传与 Studio 命令同名的原生命令。
 - Channel Connectors 已支持 command surface preview：text fallback、平台无关 action sections、Feishu card JSON、action payload -> command 解析。
 - Channel Connectors 已支持 command action callback：通用 `/commands/action` 和 Feishu `card-action` / `bot-menu` aliases 可把 action value / event key 转回 command-router。
+- Channel Connectors 已支持 CC Go `/alias` 管理合同：binding metadata alias 与 Studio 本地 alias store 合并解析，`/alias add/del/list` 可在 IM 内管理当前 binding 的命令别名；Feishu Commands 子卡提供 Aliases 入口。
 - Channel Connectors 已支持 Feishu webhook ingress：URL verification、card action、bot menu、message receive 进入同一 command-router；`verificationToken` 放在 binding metadata，不写入文档或源码。
 - Channel daemon 已支持 Feishu 官方 WebSocket 长连接：`im.message.receive_v1`、`card.action.trigger`、`application.bot.menu_v6` 进入同一 command-router/Agent runner；同一 Feishu App 多 binding 共享单条 WS，支持 chatId 过滤并保留 thread/root 字段。
 - Feishu 长连接稳定性已按最新 OpenClaw 与 Lark SDK 进一步收敛：同 App 共享 WS、消息快速 ACK 后后台派发；SDK `pingTimeout=3` 负责 half-open liveness；terminal error 和超过 10s 的 SDK `reconnecting` 都回到外层重建循环；zero-inbound / connected-idle / verified-ingress / generic watchdog 重建默认关闭；用户级全局 owner lock 防止同 App 多进程随机抢投递；runtime 新增 reconnecting recycle、global/lifecycle `dispatcherCallbacks` 与 lock owner 诊断。假在线问题进入专项文档继续验收。

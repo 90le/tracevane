@@ -1359,6 +1359,10 @@ function commandSurfaceCustomCommandsPath(runtimeConfig: ChannelConnectorsDaemon
   return path.join(runtimeConfig.paths.state, "channel-custom-commands.json");
 }
 
+function commandSurfaceCommandAliasesPath(runtimeConfig: ChannelConnectorsDaemonRuntimeConfig): string {
+  return path.join(runtimeConfig.paths.state, "channel-command-aliases.json");
+}
+
 function commandSurfaceAgentSessionsPath(runtimeConfig: ChannelConnectorsDaemonRuntimeConfig): string {
   return path.join(runtimeConfig.paths.state, "channel-sessions.json");
 }
@@ -1712,6 +1716,7 @@ export function createChannelConnectorsService(
         binding: resolved.runtimeBinding,
         sessionKey,
         controlsPath,
+        commandAliasesPath: commandSurfaceCommandAliasesPath(runtimeConfig),
         customCommandsPath: commandSurfaceCustomCommandsPath(runtimeConfig),
         agentSessionsPath,
         conversationHistoryPath: historyPath,
@@ -1991,7 +1996,11 @@ export function createChannelConnectorsService(
     if (parsed.kind !== "message") return skipped("feishu_event_unsupported");
     if (!parsed.messageId || !parsed.fromUid || !parsed.channelId) return skipped("feishu_message_identity_missing");
     let effectiveText = normalizeString(parsed.text);
-    const aliasResolution = resolveChannelConnectorBindingCommandAlias(resolved.runtimeBinding, effectiveText);
+    const aliasResolution = resolveChannelConnectorBindingCommandAlias(
+      resolved.runtimeBinding,
+      effectiveText,
+      commandSurfaceCommandAliasesPath(runtimeConfig),
+    );
     effectiveText = aliasResolution.content;
     if (!effectiveText) return skipped("feishu_message_text_missing");
     if (!parsed.directed) return skipped("feishu_group_message_not_directed");
@@ -2232,7 +2241,11 @@ export function createChannelConnectorsService(
     let message = request.message;
     const binding = resolved.binding;
     const agentProfile = resolved.agentProfile;
-    const aliasResolution = resolveChannelConnectorBindingCommandAlias(binding, extractOctoContent(message));
+    const aliasResolution = resolveChannelConnectorBindingCommandAlias(
+      binding,
+      extractOctoContent(message),
+      commandSurfaceCommandAliasesPath(runtimeConfig),
+    );
     if (aliasResolution.matchedAlias) {
       message = {
         ...message,
