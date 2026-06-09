@@ -253,6 +253,13 @@ function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function nativeCompactCommand(value: unknown): boolean {
+  const normalized = normalizeString(value);
+  if (!normalized) return false;
+  const head = normalizeString(normalized.split(/\s+/)[0]).replace(/^\/+/, "").toLowerCase();
+  return head === "compact" || head === "compress";
+}
+
 function uniqueStrings(values: string[]): string[] {
   const seen = new Set<string>();
   const output: string[] = [];
@@ -2055,6 +2062,68 @@ export async function handleChannelConnectorCommand(
         ok: false,
         control: currentControl,
         replyText: "用法：/native <要发送给 Agent 的原生命令>",
+        passthroughText: null,
+        nativeCommand: null,
+      };
+    }
+    if (nativeCompactCommand(target)) {
+      if (!canManageSession(context.binding, context.message)) {
+        return {
+          handled: true,
+          command: name,
+          action: "compact",
+          ok: false,
+          control: currentControl,
+          replyText: "当前用户没有管理该 Channel session 的权限。",
+          passthroughText: null,
+          nativeCommand: null,
+        };
+      }
+      if (!context.nativeCompactConversation) {
+        return {
+          handled: true,
+          command: name,
+          action: "compact",
+          ok: false,
+          control: currentControl,
+          replyText: "当前 Channel runtime 未启用 Agent 原生 compact contract。请使用 /compact 允许 Studio Gateway fallback。",
+          passthroughText: null,
+          nativeCommand: null,
+        };
+      }
+      const nativeResult = await context.nativeCompactConversation({
+        bindingId: context.binding.id,
+        sessionKey: context.sessionKey,
+        project: currentProject,
+        message: context.message,
+        command: target,
+      });
+      if (nativeResult.attempted && nativeResult.ok) {
+        return {
+          handled: true,
+          command: name,
+          action: "compact",
+          ok: true,
+          control: currentControl,
+          replyText: [
+            "Agent 原生 compact 已完成。",
+            nativeResult.replyText ? bufferPreviewText(nativeResult.replyText, 240) : "",
+          ].filter(Boolean).join("\n"),
+          passthroughText: null,
+          nativeCommand: null,
+        };
+      }
+      return {
+        handled: true,
+        command: name,
+        action: "compact",
+        ok: false,
+        control: currentControl,
+        replyText: [
+          "Agent 原生 compact 未执行。",
+          nativeResult.error ? bufferPreviewText(nativeResult.error, 260) : "当前 Agent 没有 live persistent compact session。",
+          "请使用 /compact 让 Studio 按 native-first 后降级 Gateway compact。",
+        ].filter(Boolean).join("\n"),
         passthroughText: null,
         nativeCommand: null,
       };

@@ -687,9 +687,23 @@ function codexNativeCommandArgs(command: string): string[] | null {
   return null;
 }
 
+function nativeCompactCommand(command: string): boolean {
+  const normalized = normalizeString(command);
+  if (!normalized) return false;
+  const head = normalizeString(normalized.split(/\s+/)[0]).replace(/^\/+/, "").toLowerCase();
+  return head === "compact" || head === "compress";
+}
+
 function unsupportedNativeCommandMessage(agent: ChannelConnectorAgentId, command: string): string | null {
   const normalized = normalizeString(command);
   if (!normalized) return null;
+  if (nativeCompactCommand(normalized) && agent !== "codex") {
+    return [
+      `${agent} native compact is not supported through the Studio one-shot runner yet.`,
+      "CC Go sends /compact only into a live interactive Agent session.",
+      "Use /compact for native-first with Studio Gateway fallback until the matching persistent driver is available.",
+    ].join(" ");
+  }
   if (agent !== "codex") return null;
   if (codexNativeCommandArgs(normalized)) return null;
   return [

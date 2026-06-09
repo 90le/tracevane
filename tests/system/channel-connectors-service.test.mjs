@@ -2268,6 +2268,34 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.match(codexUnsupportedNative.error, /not supported through the non-interactive exec runner/);
   assert.match(codexUnsupportedNative.error, /must not be sent as ordinary model text/);
 
+  const claudeUnsupportedNativeCompact = await runChannelConnectorAgentTurn({
+    project: { ...project, agent: "claude-code" },
+    binding: { ...binding, agent: "claude-code" },
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    nativeCommand: "/compact",
+  });
+  assert.equal(claudeUnsupportedNativeCompact.attempted, false);
+  assert.equal(claudeUnsupportedNativeCompact.status, "failed");
+  assert.match(claudeUnsupportedNativeCompact.error, /one-shot runner/);
+  assert.match(claudeUnsupportedNativeCompact.error, /live interactive Agent session/);
+
+  const opencodeUnsupportedNativeCompact = await runChannelConnectorAgentTurn({
+    project: { ...project, agent: "opencode" },
+    binding: { ...binding, agent: "opencode" },
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    nativeCommand: "/compact",
+  });
+  assert.equal(opencodeUnsupportedNativeCompact.attempted, false);
+  assert.equal(opencodeUnsupportedNativeCompact.status, "failed");
+  assert.match(opencodeUnsupportedNativeCompact.error, /one-shot runner/);
+  assert.match(opencodeUnsupportedNativeCompact.error, /live interactive Agent session/);
+
   const claudeNativeRequest = buildChannelConnectorAgentProcessRequest({
     project: { ...project, agent: "claude-code", permissionMode: "plan" },
     binding: { ...binding, agent: "claude-code" },
@@ -4431,13 +4459,43 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(nativePassthrough.passthroughText, "/help");
   assert.equal(nativePassthrough.nativeCommand, "/help");
 
-  const nativeCompactPassthrough = await handleChannelConnectorCommand({
+  const nativeCompactNoContract = await handleChannelConnectorCommand({
     ...baseContext,
     message: message("/native /compact"),
   });
-  assert.equal(nativeCompactPassthrough.handled, false);
-  assert.equal(nativeCompactPassthrough.passthroughText, "/compact");
-  assert.equal(nativeCompactPassthrough.nativeCommand, "/compact");
+  assert.equal(nativeCompactNoContract.handled, true);
+  assert.equal(nativeCompactNoContract.action, "compact");
+  assert.equal(nativeCompactNoContract.ok, false);
+  assert.equal(nativeCompactNoContract.passthroughText, null);
+  assert.equal(nativeCompactNoContract.nativeCommand, null);
+  assert.match(nativeCompactNoContract.replyText, /未启用 Agent 原生 compact contract/);
+
+  let forcedNativeCompactCalled = false;
+  const nativeCompactForced = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/native /compact"),
+    nativeCompactConversation: async (scope) => {
+      forcedNativeCompactCalled = true;
+      assert.equal(scope.command, "/compact");
+      assert.equal(scope.project.id, "codex-main");
+      return {
+        attempted: true,
+        ok: true,
+        fallbackAllowed: false,
+        replyText: "Codex compact 已完成。",
+        error: null,
+      };
+    },
+    compactConversation: async () => {
+      throw new Error("forced /native /compact must not use Studio fallback");
+    },
+  });
+  assert.equal(forcedNativeCompactCalled, true);
+  assert.equal(nativeCompactForced.handled, true);
+  assert.equal(nativeCompactForced.action, "compact");
+  assert.equal(nativeCompactForced.ok, true);
+  assert.equal(nativeCompactForced.nativeCommand, null);
+  assert.match(nativeCompactForced.replyText, /Agent 原生 compact 已完成/);
 
   const badNative = await handleChannelConnectorCommand({
     ...baseContext,
