@@ -529,6 +529,53 @@
                       <span>{{ text('添加模型', 'Add model') }}</span>
                     </button>
                   </div>
+                  <details class="mgw-model-batch">
+                    <summary>{{ text('批量导入 / 能力预算', 'Bulk import / capabilities') }}</summary>
+                    <div class="mgw-model-batch__body">
+                      <label class="form-field form-field-full">
+                        <span class="form-label">{{ text('批量文本', 'Bulk text') }}</span>
+                        <textarea
+                          v-model="draft.modelListText"
+                          class="form-input mgw-model-list-input"
+                          rows="4"
+                          placeholder="model-id | Display name | alias1,alias2&#10;model-b | Model B | b1,b2"
+                        />
+                      </label>
+                      <div class="mgw-model-batch__actions">
+                        <button type="button" class="secondary-button compact-button" @click="applyModelTextToRows">
+                          {{ text('导入文本', 'Import text') }}
+                        </button>
+                        <button type="button" class="secondary-button compact-button" @click="copyModelRowsToBatchText">
+                          {{ text('从表格同步', 'Sync from table') }}
+                        </button>
+                        <button type="button" class="secondary-button compact-button" @click="fillMissingModelMetadata">
+                          {{ text('补齐空白预算/能力', 'Fill blanks') }}
+                        </button>
+                      </div>
+                      <div class="mgw-model-batch__bulk">
+                        <label class="form-field">
+                          <span class="form-label">{{ text('批量上下文', 'Bulk context') }}</span>
+                          <input v-model.trim="modelBulk.contextWindow" class="form-input" inputmode="numeric" placeholder="128000" />
+                        </label>
+                        <label class="form-field">
+                          <span class="form-label">{{ text('批量输出', 'Bulk output') }}</span>
+                          <input v-model.trim="modelBulk.maxOutputTokens" class="form-input" inputmode="numeric" placeholder="8192" />
+                        </label>
+                        <button type="button" class="secondary-button compact-button" @click="applyModelBulkBudget">
+                          {{ text('应用预算到全部', 'Apply budget') }}
+                        </button>
+                      </div>
+                      <div class="mgw-model-batch__capabilities" :aria-label="text('批量模型能力', 'Bulk model capabilities')">
+                        <label v-for="capability in modelCapabilityOptions" :key="`bulk-${capability.id}`" class="mgw-model-capability">
+                          <input v-model="modelBulk[capability.id]" type="checkbox" />
+                          <span>{{ text(capability.zh, capability.en) }}</span>
+                        </label>
+                        <button type="button" class="secondary-button compact-button" @click="applyModelBulkCapabilities">
+                          {{ text('应用能力到全部', 'Apply capabilities') }}
+                        </button>
+                      </div>
+                    </div>
+                  </details>
                   <div class="mgw-model-table" data-testid="gateway-model-capability-list">
                     <div class="mgw-model-table__head">
                       <span>{{ text('模型 ID', 'Model ID') }}</span>
@@ -844,6 +891,17 @@ type ProviderModelRow = {
   streaming: boolean;
 };
 
+type ProviderModelBulkDraft = {
+  contextWindow: string;
+  maxOutputTokens: string;
+  text: boolean;
+  vision: boolean;
+  tools: boolean;
+  reasoning: boolean;
+  responses: boolean;
+  streaming: boolean;
+};
+
 type ProtocolTemplate = {
   id: string;
   label: string;
@@ -1016,6 +1074,7 @@ const detectError = ref<string | null>(null);
 const appliedProtocolKey = ref('');
 
 const draft = reactive<ProviderDraft>(createEmptyDraft());
+const modelBulk = reactive<ProviderModelBulkDraft>(createModelBulkDraft());
 
 const runtimeEntries = computed<ModelGatewayRuntimeRequestLogEntry[]>(() =>
   [...(runtime.value?.runtime.requestLog || [])].reverse().slice(0, 8),
@@ -1439,8 +1498,22 @@ function createEmptyDraft(): ProviderDraft {
   };
 }
 
+function createModelBulkDraft(): ProviderModelBulkDraft {
+  return {
+    contextWindow: '',
+    maxOutputTokens: '',
+    text: true,
+    vision: false,
+    tools: false,
+    reasoning: false,
+    responses: true,
+    streaming: true,
+  };
+}
+
 function resetDraft(): void {
   Object.assign(draft, createEmptyDraft());
+  Object.assign(modelBulk, createModelBulkDraft());
 }
 
 function applyProtocolTemplate(template: ProtocolTemplate): void {
@@ -1455,6 +1528,7 @@ function applyProtocolTemplate(template: ProtocolTemplate): void {
     : draft.apiFormat === 'openai_responses'
       ? 'openai_responses'
       : 'openai_chat_completions';
+  Object.assign(modelBulk, createModelBulkDraft());
   syncDefaultModelWithList();
 }
 
@@ -1489,6 +1563,7 @@ function editProvider(provider: ModelGatewayProviderView): void {
   });
   smokeProviderId.value = provider.id;
   smokeModel.value = draft.defaultModel;
+  Object.assign(modelBulk, createModelBulkDraft());
 }
 
 function providerExists(providerId: string): boolean {
@@ -1524,21 +1599,59 @@ function uniqueStrings(values: string[]): string[] {
     .filter((value, index, list) => list.indexOf(value) === index);
 }
 
-function createProviderModelRow(model?: ModelGatewayProviderModel): ProviderModelRow {
-  const id = model?.id || '';
+function inferProviderModelCapabilities(modelId: string): Pick<ProviderModelRow, ModelCapabilityId> {
+  const normalized = normalizeModelKey(modelId);
+  const isEmbeddingLike = /embedding|embed|rerank|tts|speech|audio|image[-_]?gen/.test(normalized);
+  const vision = /vision|vl|gpt-4o|gpt-5\.[45]|gemini|claude|qwen.*vl|glm-4v|grok|pixtral/.test(normalized);
+  const reasoning = /gpt-5|^o[134]|claude|gemini|deepseek[-_]?r|reason|thinking|qwq|grok|glm[-_]?5/.test(normalized);
+  const tools = !isEmbeddingLike && /gpt|claude|gemini|qwen|deepseek|glm|kimi|grok|tools?/.test(normalized);
   return {
-    key: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
-    id,
-    label: model?.label || '',
-    aliases: model?.aliases?.join(', ') || '',
-    contextWindow: model?.contextWindow ? String(model.contextWindow) : '',
-    maxOutputTokens: model?.maxOutputTokens ? String(model.maxOutputTokens) : '',
+    text: !isEmbeddingLike,
+    vision,
+    tools,
+    reasoning,
+    responses: true,
+    streaming: !isEmbeddingLike,
+  };
+}
+
+function defaultProviderModelCapabilities(model?: ModelGatewayProviderModel): Pick<ProviderModelRow, ModelCapabilityId> {
+  return {
     text: model?.features?.text ?? true,
     vision: model?.features?.vision ?? false,
     tools: model?.features?.tools ?? false,
     reasoning: model?.features?.reasoning ?? false,
     responses: model?.features?.responses ?? true,
     streaming: model?.features?.streaming ?? true,
+  };
+}
+
+function providerModelRowHasDefaultCapabilities(row: ProviderModelRow): boolean {
+  return row.text === true
+    && row.vision === false
+    && row.tools === false
+    && row.reasoning === false
+    && row.responses === true
+    && row.streaming === true;
+}
+
+function createProviderModelRow(
+  model?: ModelGatewayProviderModel,
+  options: { inferMissing?: boolean } = {},
+): ProviderModelRow {
+  const id = model?.id || '';
+  const inferredBudget = options.inferMissing ? inferAppConnectionBudget(id) : { contextWindow: null, maxOutputTokens: null };
+  const capabilities = options.inferMissing && !model?.features
+    ? inferProviderModelCapabilities(id)
+    : defaultProviderModelCapabilities(model);
+  return {
+    key: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    id,
+    label: model?.label || '',
+    aliases: model?.aliases?.join(', ') || '',
+    contextWindow: model?.contextWindow ? String(model.contextWindow) : inferredBudget.contextWindow ? String(inferredBudget.contextWindow) : '',
+    maxOutputTokens: model?.maxOutputTokens ? String(model.maxOutputTokens) : inferredBudget.maxOutputTokens ? String(inferredBudget.maxOutputTokens) : '',
+    ...capabilities,
   };
 }
 
@@ -1564,7 +1677,7 @@ function parseModelLines(value: string): ModelGatewayProviderModel[] {
 }
 
 function modelRowsFromText(value: string): ProviderModelRow[] {
-  return parseModelLines(value).map(createProviderModelRow);
+  return parseModelLines(value).map((model) => createProviderModelRow(model, { inferMissing: true }));
 }
 
 function modelRowsToModels(rows: ProviderModelRow[]): ModelGatewayProviderModel[] {
@@ -1594,6 +1707,88 @@ function modelRowsToModels(rows: ProviderModelRow[]): ModelGatewayProviderModel[
 
 function syncModelTextFromRows(): void {
   draft.modelListText = modelRowsToModels(draft.modelRows).map(formatModelLine).join('\n');
+}
+
+function applyModelTextToRows(): void {
+  const rows = modelRowsFromText(draft.modelListText);
+  draft.modelRows = rows;
+  syncDefaultModelWithList();
+  syncModelTextFromRows();
+  notice.value = {
+    kind: rows.length ? 'success' : 'error',
+    message: rows.length
+      ? text(`已导入 ${rows.length} 个模型。`, `${rows.length} models imported.`)
+      : text('没有可导入的模型行。', 'No model rows to import.'),
+  };
+}
+
+function copyModelRowsToBatchText(): void {
+  syncModelTextFromRows();
+  notice.value = {
+    kind: 'success',
+    message: text('模型文本已从当前表格同步。', 'Model text synced from the current table.'),
+  };
+}
+
+function fillMissingModelMetadata(): void {
+  let changed = 0;
+  for (const row of draft.modelRows) {
+    const id = row.id.trim();
+    if (!id) continue;
+    const budget = inferAppConnectionBudget(id);
+    if (!row.contextWindow && budget.contextWindow) {
+      row.contextWindow = String(budget.contextWindow);
+      changed += 1;
+    }
+    if (!row.maxOutputTokens && budget.maxOutputTokens) {
+      row.maxOutputTokens = String(budget.maxOutputTokens);
+      changed += 1;
+    }
+    if (providerModelRowHasDefaultCapabilities(row)) {
+      Object.assign(row, inferProviderModelCapabilities(id));
+      changed += 1;
+    }
+  }
+  syncModelTextFromRows();
+  notice.value = {
+    kind: changed ? 'success' : 'error',
+    message: changed
+      ? text('已补齐空白预算和默认能力。', 'Missing budgets and default capabilities filled.')
+      : text('没有可补齐的空白字段。', 'No empty fields to fill.'),
+  };
+}
+
+function applyModelBulkBudget(): void {
+  if (!draft.modelRows.length) {
+    notice.value = { kind: 'error', message: text('先添加或导入模型。', 'Add or import models first.') };
+    return;
+  }
+  const contextWindow = parsePositiveDraftInteger(modelBulk.contextWindow);
+  const maxOutputTokens = parsePositiveDraftInteger(modelBulk.maxOutputTokens);
+  if (!contextWindow && !maxOutputTokens) {
+    notice.value = { kind: 'error', message: text('先填写上下文或输出预算。', 'Enter context or output budget first.') };
+    return;
+  }
+  for (const row of draft.modelRows) {
+    if (contextWindow) row.contextWindow = String(contextWindow);
+    if (maxOutputTokens) row.maxOutputTokens = String(maxOutputTokens);
+  }
+  syncModelTextFromRows();
+  notice.value = { kind: 'success', message: text('已把预算应用到全部模型。', 'Budget applied to all models.') };
+}
+
+function applyModelBulkCapabilities(): void {
+  if (!draft.modelRows.length) {
+    notice.value = { kind: 'error', message: text('先添加或导入模型。', 'Add or import models first.') };
+    return;
+  }
+  for (const row of draft.modelRows) {
+    for (const capability of modelCapabilityOptions) {
+      row[capability.id] = modelBulk[capability.id];
+    }
+  }
+  syncModelTextFromRows();
+  notice.value = { kind: 'success', message: text('已把能力应用到全部模型。', 'Capabilities applied to all models.') };
 }
 
 function addDraftModelRow(model?: ModelGatewayProviderModel): void {

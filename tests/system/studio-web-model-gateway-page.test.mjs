@@ -174,6 +174,18 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "modelRows",
     "normalizedDraftModels",
     "formatModelLine",
+    "Bulk import / capabilities",
+    "批量导入 / 能力预算",
+    "modelBulk",
+    "applyModelTextToRows",
+    "copyModelRowsToBatchText",
+    "fillMissingModelMetadata",
+    "applyModelBulkBudget",
+    "applyModelBulkCapabilities",
+    "应用预算到全部",
+    "应用能力到全部",
+    "补齐空白预算/能力",
+    "inferProviderModelCapabilities",
     "daemonActionResult",
   ]) {
     assert.match(page, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
@@ -212,4 +224,7 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
   assert.match(css, /\.mgw-model-row > \.form-input\s*\{[^}]*min-width:\s*0/s);
   assert.match(css, /\.mgw-model-capabilities\s*\{[^}]*flex-wrap:\s*wrap/s);
   assert.match(css, /\.mgw-model-capability\s*\{[^}]*white-space:\s*nowrap/s);
+  assert.match(css, /\.mgw-model-batch\s*\{[^}]*border:\s*1px solid var\(--mono-line\)/s);
+  assert.match(css, /\.mgw-model-batch__body\s*\{[^}]*display:\s*grid/s);
+  assert.match(css, /\.mgw-model-batch__actions,\s*\.mgw-model-batch__bulk,\s*\.mgw-model-batch__capabilities\s*\{[^}]*flex-wrap:\s*wrap/s);
 });
