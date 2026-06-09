@@ -8,7 +8,7 @@ const DEFAULT_RUNTIME_PATH = path.join(os.homedir(), ".config/openclaw-studio/ch
 const DEFAULT_LOG_PATH = path.join(os.homedir(), ".config/openclaw-studio/channel-connectors/daemon/logs/channel-connectors.log");
 const DEFAULT_DURATION_MS = 70_000;
 const DEFAULT_POLL_MS = 1_000;
-const EXPECTED_FEISHU_PING_TIMEOUT_SECONDS = 3;
+const EXPECTED_FEISHU_PING_TIMEOUT_SECONDS = 0;
 const MIN_SAFE_WATCHDOG_MS = 60_000;
 const MIN_SAFE_INGRESS_UNVERIFIED_RENEW_MS = 60_000;
 const MAX_SAFE_INGRESS_UNVERIFIED_RENEW_MAX = 3;
@@ -78,8 +78,10 @@ function printHelp() {
 Read-only Feishu long-connection soak for the native Channel Connectors daemon.
 The script does not send IM messages. By default it watches the live runtime for
 70 seconds, crossing the old 30s zero-inbound failure window, and fails on the
-Studio-side rebuild patterns that previously made Feishu unstable. SDK ping
-liveness must match the current OpenClaw/Lark SDK contract.
+Studio-side rebuild patterns that previously made Feishu unstable. The default
+Feishu contract follows the current OpenClaw/Lark SDK effective behavior: no
+extra client-side lower-case pingTimeout watchdog is armed unless explicitly
+configured.
 
 Options:
   --duration-ms <n>                 Watch duration. Default: ${DEFAULT_DURATION_MS}.
@@ -92,8 +94,8 @@ Options:
   --require-always-connected        Fail if a selected connection is ever sampled non-connected.
   --require-ingress-verified        Fail unless selected connections have received a real Feishu event.
   --allow-disconnected              Do not fail when the final runtime state is non-connected.
-  --allow-ping-timeout              Do not enforce the expected SDK pingTimeout value.
-  --allow-ingress-unverified-renewal Allow bounded startup ingress verification renewals.
+  --allow-ping-timeout              Allow explicit SDK pingTimeout / ping-timeout log events.
+  --allow-ingress-unverified-renewal Compatibility flag; bounded startup ingress validation renewals are allowed by default.
   --allow-zero-inbound-renewal      Allow all zero-inbound proactive rebuilds.
   --allow-connected-idle-renewal    Allow connected-idle proactive rebuilds.
   --allow-watchdog-restart          Allow daemon watchdog restart log entries.
@@ -216,7 +218,7 @@ function runtimeViolations(connections, options, startedAtMs, samples) {
       violations.push({
         type: "ping_timeout_mismatch",
         key,
-        message: `Feishu connection ${key} has SDK pingTimeoutSeconds=${connection.pingTimeoutSeconds}; expected ${EXPECTED_FEISHU_PING_TIMEOUT_SECONDS}.`,
+        message: `Feishu connection ${key} has SDK pingTimeoutSeconds=${connection.pingTimeoutSeconds}; expected ${EXPECTED_FEISHU_PING_TIMEOUT_SECONDS} (disabled by default).`,
       });
     }
     if (!options.allowZeroInboundRenewal && connection.zeroInboundRenewAfterMs > 0) {
@@ -355,6 +357,7 @@ function extractLogKey(line) {
 
 function classifyLogLine(line) {
   if (/no pong\/inbound within/i.test(line)) return "sdk_ping_timeout";
+  if (/startup ingress validation/i.test(line)) return "startup_ingress_unverified";
   if (/watchdog_ingress_unverified_|ingress-unverified renewal/i.test(line)) return "watchdog_ingress_unverified";
   if (/watchdog_verified_ingress_silent_|verified-ingress silent renewal/i.test(line)) return "watchdog_verified_ingress_silent";
   if (/watchdog_zero_inbound_|zero-inbound startup renewal/i.test(line)) return "watchdog_zero_inbound";
@@ -382,15 +385,13 @@ function logViolations(events, options) {
   for (const event of events) {
     if (event.type === "sdk_ping_timeout" && !options.allowPingTimeout) {
       const timeoutSeconds = pingTimeoutSecondsInLine(event.line);
-      if (timeoutSeconds !== EXPECTED_FEISHU_PING_TIMEOUT_SECONDS) {
-        violations.push({
-          type: event.type,
-          key: event.key,
-          timestamp: event.timestamp,
-          message: "Feishu SDK pingTimeout terminated the socket with an unexpected timeout during the checked window.",
-          line: event.line,
-        });
-      }
+      violations.push({
+        type: event.type,
+        key: event.key,
+        timestamp: event.timestamp,
+        message: `Feishu SDK pingTimeout terminated the socket during the checked window; expected disabled default, observed ${timeoutSeconds || "unknown"}s.`,
+        line: event.line,
+      });
     }
     if (event.type === "watchdog_zero_inbound" && !options.allowZeroInboundRenewal) {
       violations.push({

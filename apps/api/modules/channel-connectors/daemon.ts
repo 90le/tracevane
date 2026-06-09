@@ -164,7 +164,7 @@ import {
   type OctoWukongSocketStatus,
 } from "./octo-wukong.js";
 
-const DEFAULT_FEISHU_PING_TIMEOUT_SECONDS = 3;
+const DEFAULT_FEISHU_PING_TIMEOUT_SECONDS = 0;
 const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 0;
 const MIN_FEISHU_WATCHDOG_RESTART_MS = 60_000;
 const MAX_FEISHU_WATCHDOG_RESTART_MS = 600_000;
@@ -179,11 +179,14 @@ const FEISHU_WS_AUTORECONNECT_DISABLED_ERROR = "WebSocket connect failed and aut
 // avoids random delivery loss by using one app_id owner and fan-out; Studio also
 // keeps one OS-user owner. OpenClaw's current TypeScript Feishu plugin recreates
 // a fresh SDK WSClient after terminal SDK errors and backs off 1s..30s. Studio
-// copies that lifecycle shape. Live Studio soak showed the SDK can remain in its
-// own reconnecting state for ~20s after a ping timeout, so Studio also recycles
-// that same current client when reconnecting exceeds a fixed upper bound. This is
-// not a connected-idle/zero-inbound guess; the SDK has already declared the link
-// unhealthy.
+// copies that lifecycle shape. OpenClaw currently passes an upper-case
+// FEISHU_WS_CONFIG shape that the installed Lark SDK does not treat as the
+// client-side lower-case `pingTimeout` watchdog. Studio therefore keeps that
+// effective contract by default and does not arm the SDK's extra pong watchdog.
+// If the SDK has already entered `reconnecting` and stays there for too long,
+// Studio still recycles that same current client through the OpenClaw-style
+// outer loop. This is not a connected-idle/zero-inbound guess; the SDK has
+// already marked the link unhealthy.
 const DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS = 0;
 const MIN_FEISHU_CONNECTED_IDLE_RENEW_MS = 60_000;
 const MAX_FEISHU_CONNECTED_IDLE_RENEW_MS = 3_600_000;
@@ -195,11 +198,11 @@ const MIN_FEISHU_ZERO_INBOUND_RENEW_MS = 60_000;
 const MAX_FEISHU_ZERO_INBOUND_RENEW_MS = 15 * 60_000;
 const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX = 0;
 const MAX_FEISHU_ZERO_INBOUND_RENEW_MAX = 10;
-const DEFAULT_FEISHU_INGRESS_UNVERIFIED_AFTER_MS = 0;
-const MIN_FEISHU_INGRESS_UNVERIFIED_AFTER_MS = 30_000;
+const DEFAULT_FEISHU_INGRESS_UNVERIFIED_AFTER_MS = 60_000;
+const MIN_FEISHU_INGRESS_UNVERIFIED_AFTER_MS = 60_000;
 const MAX_FEISHU_INGRESS_UNVERIFIED_AFTER_MS = 3_600_000;
-const DEFAULT_FEISHU_INGRESS_UNVERIFIED_RENEW_MAX = 0;
-const MAX_FEISHU_INGRESS_UNVERIFIED_RENEW_MAX = 10;
+const DEFAULT_FEISHU_INGRESS_UNVERIFIED_RENEW_MAX = 3;
+const MAX_FEISHU_INGRESS_UNVERIFIED_RENEW_MAX = 3;
 const DEFAULT_FEISHU_LOCK_RETRY_MS = 30_000;
 const MIN_FEISHU_LOCK_RETRY_MS = 5_000;
 const MAX_FEISHU_LOCK_RETRY_MS = 300_000;
@@ -3116,7 +3119,7 @@ function feishuConnectionState(group: ChannelDaemonFeishuGroup): ChannelDaemonFe
   const ingressSilentForMs = connected && Number.isFinite(lastIngressActivityMs)
     ? Math.max(0, Date.now() - lastIngressActivityMs)
     : 0;
-  const ingressVerified = group.receivedMessages > 0;
+  const ingressVerified = group.lifecycleDispatcherCallbacks > 0 || group.lifecycleReceivedMessages > 0;
   let ingressState: ChannelDaemonFeishuConnectionState["ingressState"];
   if (lockHeld) {
     ingressState = "lock-held";
@@ -3211,6 +3214,7 @@ function latestFeishuLifecycleActivityAt(group: ChannelDaemonFeishuGroup): strin
 function latestFeishuVerifiedIngressLeaseAt(group: ChannelDaemonFeishuGroup): string | null {
   const candidates = [
     group.lifecycleLastReceivedAt,
+    group.lifecycleLastDispatcherCallbackAt,
     group.lastVerifiedIngressSilentRenewAt,
     group.lastConnectedAt,
   ]
@@ -7208,6 +7212,9 @@ function markFeishuDispatcherCallback(input: {
   input.group.lastDispatcherCallbackAt = receivedAt;
   input.group.lifecycleLastDispatcherCallbackAt = receivedAt;
   input.group.lastDispatcherEventType = input.eventType;
+  input.group.ingressUnverifiedRenewals = 0;
+  input.group.lastIngressUnverifiedRenewAt = null;
+  input.group.suppressZeroInboundRenewal = false;
   if (input.persist) {
     updateFeishuRuntime(input.config, input.state, input.group);
   }
@@ -7531,17 +7538,16 @@ async function runFeishuGroupClientLoop(input: {
           domain: metadataString(group.refs[0].binding, ["domain", "apiUrl", "api_url", "baseUrl", "base_url"]) || undefined,
           logger: feishuLogger(config),
           loggerLevel: LoggerLevel.info,
-          // Latest OpenClaw Feishu copies the SDK liveness intent from its
-          // FEISHU_WS_CONFIG. The installed Lark SDK exposes that knob as
-          // lower-case `pingTimeout`, so use the effective SDK contract here.
+          // Latest OpenClaw passes an upper-case FEISHU_WS_CONFIG to the Lark
+          // SDK. In the installed SDK, only lower-case `pingTimeout` arms the
+          // extra pong watchdog. Keep the effective OpenClaw contract by not
+          // sending that lower-case option unless this runtime explicitly opts in.
           ...(pingTimeoutSeconds > 0 ? { wsConfig: { pingTimeout: pingTimeoutSeconds } } : {}),
           onReady: () => {
             group.lastConnectedAt = new Date().toISOString();
             group.lastDisconnectedAt = null;
             group.lastReconnectingAt = null;
             resetFeishuLifecycleIngressEvidence(group);
-            group.ingressUnverifiedRenewals = 0;
-            group.lastIngressUnverifiedRenewAt = null;
             group.lastUnhealthyAt = null;
             group.lastError = null;
             group.watchdogRestarting = false;
@@ -7586,8 +7592,6 @@ async function runFeishuGroupClientLoop(input: {
             group.lastDisconnectedAt = null;
             group.lastReconnectingAt = null;
             resetFeishuLifecycleIngressEvidence(group);
-            group.ingressUnverifiedRenewals = 0;
-            group.lastIngressUnverifiedRenewAt = null;
             group.lastUnhealthyAt = null;
             group.lastError = null;
             group.watchdogRestarting = false;
@@ -7614,7 +7618,9 @@ async function runFeishuGroupClientLoop(input: {
           group.lastError = reason;
           group.lastDisconnectedAt = recycledAt;
           group.lastUnhealthyAt ||= recycledAt;
-          appendLog(config.paths.log, "Feishu WebSocket reconnecting exceeded limit; recycling client", {
+          appendLog(config.paths.log, reason.startsWith("startup_ingress_unverified_")
+            ? "Feishu WebSocket startup ingress validation cycle ended; recreating client"
+            : "Feishu WebSocket reconnecting exceeded limit; recycling client", {
             key: group.key,
             reason,
             reconnectingForMs,
@@ -7794,6 +7800,37 @@ function startFeishuWatchdog(input: {
         group.lastUnhealthyAt = null;
         group.lastReconnectingAt = null;
         group.watchdogRestarting = false;
+        const renewAfterMs = feishuIngressUnverifiedRenewDelayMs(group);
+        const renewMax = feishuIngressUnverifiedRenewMax(group);
+        const connectedAtMs = Date.parse(group.lastConnectedAt || "");
+        const connectedForMs = Number.isFinite(connectedAtMs)
+          ? Math.max(0, nowMs - connectedAtMs)
+          : 0;
+        if (
+          group.lifecycleDispatcherCallbacks === 0
+          && renewAfterMs > 0
+          && renewMax > 0
+          && group.ingressUnverifiedRenewals < renewMax
+          && connectedForMs >= renewAfterMs
+          && group.recycleCurrentClient
+        ) {
+          group.ingressUnverifiedRenewals += 1;
+          group.lastIngressUnverifiedRenewAt = new Date().toISOString();
+          const reason = `startup_ingress_unverified_${renewAfterMs}ms`;
+          appendLog(config.paths.log, "Feishu WebSocket startup ingress validation missing; recycling client", {
+            key: group.key,
+            reason,
+            connectedForMs,
+            ingressUnverifiedAfterMs: feishuIngressUnverifiedAfterMs(group),
+            ingressUnverifiedRenewDelayMs: renewAfterMs,
+            ingressUnverifiedRenewals: group.ingressUnverifiedRenewals,
+            ingressUnverifiedRenewMax: renewMax,
+          });
+          updateFeishuRuntime(config, state, group);
+          group.recycleCurrentClient(reason);
+          state.feishuConnections[group.key] = feishuConnectionState(group);
+          continue;
+        }
         state.feishuConnections[group.key] = feishuConnectionState(group);
         continue;
       }
