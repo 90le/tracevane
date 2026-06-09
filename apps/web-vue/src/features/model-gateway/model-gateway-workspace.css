@@ -631,7 +631,14 @@
 .mgw-model-table__head,
 .mgw-model-row {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) minmax(120px, 0.8fr) minmax(150px, 0.9fr) minmax(260px, 1.6fr) 38px;
+  grid-template-columns:
+    minmax(150px, 1fr)
+    minmax(110px, 0.75fr)
+    minmax(130px, 0.85fr)
+    minmax(96px, 0.5fr)
+    minmax(88px, 0.5fr)
+    minmax(240px, 1.45fr)
+    38px;
   gap: 8px;
   align-items: center;
 }
@@ -649,6 +656,10 @@
 .mgw-model-row {
   border-top: 1px solid var(--mono-line);
   padding: 10px;
+}
+
+.mgw-model-row > .form-input {
+  min-width: 0;
 }
 
 .mgw-model-empty {

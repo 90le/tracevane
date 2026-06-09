@@ -266,15 +266,11 @@
             <div class="mgw-profile-grid">
               <label class="form-field form-field-full">
                 <span class="form-label">{{ text('默认模型', 'Default model') }}</span>
-                <input
-                  v-model.trim="appConnectionProfile.model"
-                  class="form-input"
-                  list="mgw-app-connection-models"
-                  :placeholder="text('从可用模型列表选择', 'Choose from available models')"
-                />
-                <datalist id="mgw-app-connection-models">
-                  <option v-for="model in appConnectionAvailableModels" :key="model" :value="model" />
-                </datalist>
+                <select v-if="appConnectionModelOptions.length" v-model="appConnectionProfile.model" class="form-input">
+                  <option value="">{{ text('选择模型', 'Select a model') }}</option>
+                  <option v-for="model in appConnectionModelOptions" :key="model.id" :value="model.id">{{ model.label }}</option>
+                </select>
+                <input v-else v-model.trim="appConnectionProfile.model" class="form-input" :placeholder="text('手动填写模型 ID', 'Enter model ID')" />
               </label>
               <label class="form-field">
                 <span class="form-label">{{ text('上下文大小', 'Context window') }}</span>
@@ -348,12 +344,11 @@
 
               <label class="form-field mgw-app-model-field">
                 <span class="form-label">{{ text('App 模型', 'App model') }}</span>
-                <input
-                  v-model.trim="appConnectionProfile.appModels[connection.id]"
-                  class="form-input"
-                  list="mgw-app-connection-models"
-                  :placeholder="text('留空使用默认模型', 'Use default model')"
-                />
+                <select v-if="appConnectionModelOptions.length" v-model="appConnectionProfile.appModels[connection.id]" class="form-input">
+                  <option value="">{{ text('使用默认模型', 'Use default model') }}</option>
+                  <option v-for="model in appConnectionModelOptions" :key="`${connection.id}-${model.id}`" :value="model.id">{{ model.label }}</option>
+                </select>
+                <input v-else v-model.trim="appConnectionProfile.appModels[connection.id]" class="form-input" :placeholder="text('留空使用默认模型', 'Use default model')" />
               </label>
 
               <details class="mgw-app-preview">
@@ -523,6 +518,8 @@
                       <span>{{ text('模型 ID', 'Model ID') }}</span>
                       <span>{{ text('显示名', 'Display name') }}</span>
                       <span>{{ text('别名', 'Aliases') }}</span>
+                      <span>{{ text('上下文', 'Context') }}</span>
+                      <span>{{ text('输出', 'Output') }}</span>
                       <span>{{ text('能力', 'Capabilities') }}</span>
                       <span></span>
                     </div>
@@ -533,6 +530,8 @@
                       <input v-model.trim="model.id" class="form-input" placeholder="gpt-5.5" @blur="syncDefaultModelWithList" />
                       <input v-model.trim="model.label" class="form-input" :placeholder="text('可选', 'Optional')" />
                       <input v-model.trim="model.aliases" class="form-input" placeholder="alias1, alias2" />
+                      <input v-model.trim="model.contextWindow" class="form-input" inputmode="numeric" placeholder="128000" />
+                      <input v-model.trim="model.maxOutputTokens" class="form-input" inputmode="numeric" placeholder="8192" />
                       <div class="mgw-model-capabilities" :aria-label="text('模型能力', 'Model capabilities')">
                         <label v-for="capability in modelCapabilityOptions" :key="capability.id" class="mgw-model-capability">
                           <input v-model="model[capability.id]" type="checkbox" />
@@ -819,6 +818,8 @@ type ProviderModelRow = {
   id: string;
   label: string;
   aliases: string;
+  contextWindow: string;
+  maxOutputTokens: string;
   text: boolean;
   vision: boolean;
   tools: boolean;
@@ -854,6 +855,11 @@ type AppConnectionProfileDraft = {
   codexResponsesWebsockets: boolean;
   codexResponsesWebsocketsV2: boolean;
   codexRequestCompression: boolean;
+};
+
+type AppConnectionModelOption = {
+  id: string;
+  label: string;
 };
 
 const { text } = useLocalePreference();
@@ -989,6 +995,13 @@ const draft = reactive<ProviderDraft>(createEmptyDraft());
 
 const runtimeEntries = computed<ModelGatewayRuntimeRequestLogEntry[]>(() =>
   [...(runtime.value?.runtime.requestLog || [])].reverse().slice(0, 8),
+);
+
+const appConnectionModelOptions = computed<AppConnectionModelOption[]>(() =>
+  appConnectionAvailableModels.value.map((model) => ({
+    id: model,
+    label: appConnectionModelOptionLabel(model),
+  })),
 );
 
 const selectedSmokeProvider = computed(() =>
@@ -1474,6 +1487,8 @@ function createProviderModelRow(model?: ModelGatewayProviderModel): ProviderMode
     id,
     label: model?.label || '',
     aliases: model?.aliases?.join(', ') || '',
+    contextWindow: model?.contextWindow ? String(model.contextWindow) : '',
+    maxOutputTokens: model?.maxOutputTokens ? String(model.maxOutputTokens) : '',
     text: model?.features?.text ?? true,
     vision: model?.features?.vision ?? false,
     tools: model?.features?.tools ?? false,
@@ -1517,6 +1532,8 @@ function modelRowsToModels(rows: ProviderModelRow[]): ModelGatewayProviderModel[
       return {
         id,
         ...(row.label.trim() ? { label: row.label.trim() } : {}),
+        ...(parsePositiveDraftInteger(row.contextWindow) ? { contextWindow: parsePositiveDraftInteger(row.contextWindow) } : {}),
+        ...(parsePositiveDraftInteger(row.maxOutputTokens) ? { maxOutputTokens: parsePositiveDraftInteger(row.maxOutputTokens) } : {}),
         ...(aliases.length ? { aliases } : {}),
         features: {
           text: row.text,
@@ -1560,6 +1577,59 @@ function formatModelLine(model: ModelGatewayProviderModel): string {
   return model.id;
 }
 
+function appConnectionModelOptionLabel(modelId: string): string {
+  const metadata = appConnectionModelMetadata(modelId);
+  const budget = [
+    metadata.contextWindow ? text(`${formatCompactNumber(metadata.contextWindow)} 上下文`, `${formatCompactNumber(metadata.contextWindow)} context`) : '',
+    metadata.maxOutputTokens ? text(`${formatCompactNumber(metadata.maxOutputTokens)} 输出`, `${formatCompactNumber(metadata.maxOutputTokens)} output`) : '',
+  ].filter(Boolean).join(' · ');
+  const label = metadata.label && metadata.label !== modelId ? ` · ${metadata.label}` : '';
+  return budget ? `${modelId}${label} · ${budget}` : `${modelId}${label}`;
+}
+
+function appConnectionModelMetadata(modelId: string): { label: string | null; contextWindow: number | null; maxOutputTokens: number | null } {
+  const key = normalizeModelKey(modelId);
+  const result: { label: string | null; contextWindow: number | null; maxOutputTokens: number | null } = {
+    label: null,
+    contextWindow: null,
+    maxOutputTokens: null,
+  };
+
+  for (const provider of providers.value.filter((item) => item.enabled)) {
+    const providerModels = provider.models.models.length
+      ? provider.models.models
+      : provider.models.defaultModel
+        ? [{ id: provider.models.defaultModel } as ModelGatewayProviderModel]
+        : [];
+    for (const model of providerModels) {
+      const aliases = model.aliases || [];
+      const matches = normalizeModelKey(model.id) === key || aliases.some((alias) => normalizeModelKey(alias) === key);
+      if (!matches) continue;
+      result.label ||= model.label || null;
+      result.contextWindow = mergeModelBudget(result.contextWindow, model.contextWindow);
+      result.maxOutputTokens = mergeModelBudget(result.maxOutputTokens, model.maxOutputTokens);
+    }
+  }
+
+  return result;
+}
+
+function mergeModelBudget(current: number | null, next: unknown): number | null {
+  const normalized = typeof next === 'number' && Number.isFinite(next) && next > 0 ? Math.floor(next) : null;
+  if (!normalized) return current;
+  return current === null ? normalized : Math.min(current, normalized);
+}
+
+function normalizeModelKey(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function formatCompactNumber(value: number): string {
+  if (value >= 1_000_000) return `${Number((value / 1_000_000).toFixed(1))}m`;
+  if (value >= 1_000) return `${Number((value / 1_000).toFixed(1))}k`;
+  return String(value);
+}
+
 function normalizedDraftModels(): { defaultModel: string | null; models: ModelGatewayProviderModel[] } {
   let listed = modelRowsToModels(draft.modelRows);
   if (!listed.length && draft.modelListText.trim()) {
@@ -1571,6 +1641,8 @@ function normalizedDraftModels(): { defaultModel: string | null; models: ModelGa
   if (fallbackDefault && !models.some((model) => model.id === fallbackDefault)) {
     models.unshift({
       id: fallbackDefault,
+      contextWindow: null,
+      maxOutputTokens: null,
       features: {
         text: true,
         vision: false,

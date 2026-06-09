@@ -423,6 +423,14 @@ function positiveIntegerOrNull(value: unknown): number | null {
   return normalized > 0 ? normalized : null;
 }
 
+function firstPositiveInteger(...values: unknown[]): number | null {
+  for (const value of values) {
+    const normalized = numberOrNull(value);
+    if (normalized !== null && normalized > 0) return normalized;
+  }
+  return null;
+}
+
 function mergeModelBudgetMinimum(current: number | null, next: unknown): number | null {
   const normalized = positiveIntegerOrNull(next);
   if (normalized === null) return current;
@@ -1411,7 +1419,7 @@ function extractModelItems(value: unknown): ModelGatewayProviderModel[] {
   })();
 
   const models = source
-    .map((item) => {
+    .map((item): ModelGatewayProviderModel | null => {
       if (typeof item === "string") return { id: item };
       if (!isRecord(item)) return null;
       const id = normalizeString(item.id)
@@ -1423,9 +1431,29 @@ function extractModelItems(value: unknown): ModelGatewayProviderModel[] {
         || normalizeString(item.displayName)
         || normalizeString(item.label)
         || normalizeString(item.name);
+      const contextWindow = firstPositiveInteger(
+        item.contextWindow,
+        item.context_window,
+        item.context_length,
+        item.contextLength,
+        item.max_context_length,
+        item.maxContextLength,
+        item.max_input_tokens,
+        item.maxInputTokens,
+      );
+      const maxOutputTokens = firstPositiveInteger(
+        item.maxOutputTokens,
+        item.max_output_tokens,
+        item.max_completion_tokens,
+        item.maxCompletionTokens,
+        item.output_token_limit,
+        item.outputTokenLimit,
+      );
       return {
         id,
         ...(label && label !== id ? { label } : {}),
+        ...(contextWindow ? { contextWindow } : {}),
+        ...(maxOutputTokens ? { maxOutputTokens } : {}),
       } satisfies ModelGatewayProviderModel;
     })
     .filter((item): item is ModelGatewayProviderModel => Boolean(item));

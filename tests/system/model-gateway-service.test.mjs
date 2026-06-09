@@ -337,8 +337,8 @@ test("model gateway detects provider protocols without persisting probe secrets"
     if (target.pathname.endsWith("/models")) {
       return new Response(JSON.stringify({
         data: [
-          { id: "model-a", display_name: "Model A" },
-          { id: "model-b" },
+          { id: "model-a", display_name: "Model A", context_length: 128000, max_output_tokens: 8192 },
+          { id: "model-b", contextWindow: "256000", maxOutputTokens: "16384" },
         ],
       }), {
         status: 200,
@@ -404,6 +404,10 @@ test("model gateway detects provider protocols without persisting probe secrets"
       assert.equal(response.body.ok, true);
       assert.equal(response.body.models.length, 2);
       assert.deepEqual(response.body.models.map((model) => model.id), ["model-a", "model-b"]);
+      assert.deepEqual(
+        response.body.models.map((model) => [model.contextWindow, model.maxOutputTokens]),
+        [[128000, 8192], [256000, 16384]],
+      );
       assert.equal(response.body.selectedModel, "model-a");
       assert.deepEqual(
         response.body.protocols.map((protocol) => [protocol.apiFormat, protocol.ok, protocol.authStrategy]),

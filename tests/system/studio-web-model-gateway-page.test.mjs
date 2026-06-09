@@ -100,6 +100,10 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "Context window",
     "Compact limit",
     "Max output",
+    "appConnectionModelOptions",
+    "appConnectionModelOptionLabel",
+    "contextWindow",
+    "maxOutputTokens",
     "Codex advanced",
     "Request compression",
     "Provider configuration",
@@ -152,6 +156,8 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "模型 ID",
     "显示名",
     "别名",
+    "上下文",
+    "输出",
     "文字",
     "图片",
     "推理",
@@ -195,7 +201,8 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
   assert.match(css, /\.mgw-workspace-tab\s*\{[^}]*overflow-wrap:\s*anywhere/s);
   assert.match(css, /\.mgw-app-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
   assert.match(css, /\.mgw-app-preview pre\s*\{[^}]*overflow-wrap:\s*anywhere/s);
-  assert.match(css, /\.mgw-model-table__head,\s*\.mgw-model-row\s*\{[^}]*grid-template-columns:\s*minmax\(150px,\s*1fr\)/s);
+  assert.match(css, /\.mgw-model-table__head,\s*\.mgw-model-row\s*\{[^}]*grid-template-columns:[^}]*minmax\(150px,\s*1fr\)[^}]*minmax\(96px,\s*0\.5fr\)[^}]*minmax\(88px,\s*0\.5fr\)/s);
+  assert.match(css, /\.mgw-model-row > \.form-input\s*\{[^}]*min-width:\s*0/s);
   assert.match(css, /\.mgw-model-capabilities\s*\{[^}]*flex-wrap:\s*wrap/s);
   assert.match(css, /\.mgw-model-capability\s*\{[^}]*white-space:\s*nowrap/s);
 });

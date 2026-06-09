@@ -27,12 +27,18 @@
 - Channel daemon 已接 Codex app-server 原生 compact：仅当当前 binding 是 persistent、当前 IM session 已有 live driver session 时，发送 `thread/compact/start`；没有 live session 时不会新建空 thread，而是降级 Studio Gateway compact。
 - 用户可见 `/compact` 文案已更新为真实状态：手动入口有 live persistent Agent session 时原生优先，否则 Gateway `/responses/compact` 兜底；自动触发仍未启用。
 - 更新迁移清单：P1 上下文预算从“待迁移”改为“进行中”，明确 `/status` 预算和手动 native-first compact 已接入，自动 native-first compact 仍未启用。
+- Provider Center 模型行已补齐 `contextWindow` 与 `maxOutputTokens` 配置；编辑、保存、检测导入都会保留模型预算字段。
+- Detect Provider 会从常见 `/models` 字段识别上下文/输出预算，例如 `context_length`、`contextWindow`、`max_output_tokens`、`maxOutputTokens`。
+- App Connections 模型选择已优先使用 Gateway 可用模型下拉，并在选项中显示模型预算；无模型目录时仍允许手动填写兼容 alias。
 
 ## 最近验证
 
 - 通过：`npm run typecheck -- --pretty false`。
 - 通过：`npm run build:api`。
+- 通过：`npm run typecheck:web`。
+- 通过：`npm run build:web`。
 - 通过：`node --test tests/system/model-gateway-service.test.mjs`，52 个 Model Gateway 子测试通过。
+- 通过：`node --test tests/system/studio-web-model-gateway-page.test.mjs`，3 个 Studio Gateway 页面 contract 子测试通过。
 - 通过：`node --test --test-name-pattern "IM commands switch agent|command surface renders text" tests/system/channel-connectors-service.test.mjs`，2 个本轮 Channel 命令/卡片合同子测试通过。
 - 通过：`node --test --test-name-pattern "IM commands switch agent|runs Codex app-server when persistent session metadata is enabled" tests/system/channel-connectors-service.test.mjs`，覆盖 `/compact` native 成功不走 fallback，以及 daemon fake app-server 收到 `thread/compact/start`。
 - 通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，9 个 Codex app-server driver 子测试通过。
@@ -55,5 +61,6 @@
 ## 下一步
 
 1. 接入 native-first auto compact 冷却触发：使用 `/status` 预算结果和模型 `autoCompactTokenLimit`，先做无副作用记录，再开启自动执行。
-2. 扩展 Agent compact capability：Claude Code / OpenCode 等 runner 有真实原生 compact/compress 合同时再加入；不支持时继续 Studio fallback。
-3. 继续按 CC Go 迁移 Feishu/Octo 菜单与命令细节、Claude Code AskUserQuestion 卡片精修、OpenCode runner 文件/权限/流式能力。
+2. 优化 Gateway UI 的批量模型导入/检测结果应用：保持 `模型ID | 显示名 | 别名1,别名2` 简单格式，同时允许批量设置能力和预算。
+3. 扩展 Agent compact capability：Claude Code / OpenCode 等 runner 有真实原生 compact/compress 合同时再加入；不支持时继续 Studio fallback。
+4. 继续按 CC Go 迁移 Feishu/Octo 菜单与命令细节、Claude Code AskUserQuestion 卡片精修、OpenCode runner 文件/权限/流式能力。
