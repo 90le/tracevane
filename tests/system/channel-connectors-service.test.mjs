@@ -7345,6 +7345,7 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /MIN_FEISHU_RECONNECTING_RECYCLE_MS\s*=\s*5_?000/);
   assert.match(daemonSource, /MAX_FEISHU_RECONNECTING_RECYCLE_MS\s*=\s*60_?000/);
   assert.match(daemonSource, /FEISHU_WS_RECONNECT_EXHAUSTED_RE/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_HANDSHAKE_TIMEOUT_MS\s*=\s*15_?000/);
   assert.match(daemonSource, /FEISHU_WS_AUTORECONNECT_DISABLED_ERROR/);
   assert.match(daemonSource, /startFeishuWatchdog/);
   assert.doesNotMatch(daemonSource, /function restartFeishuGroupClient/);
@@ -7386,7 +7387,7 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.doesNotMatch(daemonSource, /wsConfig:\s*feishuWsConfig/);
   assert.match(daemonSource, /wsConfig:\s*\{\s*pingTimeout:\s*pingTimeoutSeconds\s*\}/);
   assert.doesNotMatch(daemonSource, /autoReconnect:\s*true/);
-  assert.doesNotMatch(daemonSource, /handshakeTimeoutMs/);
+  assert.match(daemonSource, /handshakeTimeoutMs:\s*DEFAULT_FEISHU_HANDSHAKE_TIMEOUT_MS/);
   assert.match(daemonSource, /pingTimeoutSeconds: feishuPingTimeoutSeconds\(group\)/);
   assert.match(daemonSource, /reconnectingRecycleAfterMs:\s*feishuReconnectingRecycleMs\(group\)/);
   assert.match(daemonSource, /feishuConnectedIdleRenewMs/);
@@ -7542,7 +7543,7 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /eventKind:\s*"channel\.command\.reply"/);
   assert.match(daemonSource, /replyQueued/);
   assert.match(daemonSource, /!shouldSendCard && parsed\.kind === "card-action"/);
-  assert.match(daemonSource, /return response \|\| undefined/);
+  assert.doesNotMatch(daemonSource, /return response \|\| undefined/);
   assert.doesNotMatch(daemonSource, /Studio 已收到操作/);
   assert.match(daemonSource, /loadFeishuSeenMessages/);
   assert.match(daemonSource, /seedFeishuSeenMessagesFromEventLog/);
@@ -7564,6 +7565,13 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   );
   assert.match(messageHandler, /dispatchFeishuParsedEventInBackground/);
   assert.doesNotMatch(messageHandler, /await dispatchFeishuParsedEvent/);
+  const cardActionHandler = daemonSource.slice(
+    daemonSource.indexOf('"card.action.trigger"'),
+    daemonSource.indexOf('"application.bot.menu_v6"'),
+  );
+  assert.match(cardActionHandler, /dispatchFeishuParsedEventInBackground/);
+  assert.doesNotMatch(cardActionHandler, /await dispatchFeishuParsedEvent/);
+  assert.doesNotMatch(cardActionHandler, /return response \|\| undefined/);
   const botMenuHandler = daemonSource.slice(
     daemonSource.indexOf('"application.bot.menu_v6"'),
     daemonSource.indexOf('"im.message.recalled_v1"'),

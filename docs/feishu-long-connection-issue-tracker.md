@@ -33,8 +33,12 @@ WS lifecycle files. The mature reference remains:
   matching bindings.
 - Each owner cycle creates one official SDK `WSClient` and one
   `EventDispatcher`.
-- Handler ACK is fast; attachment download, Agent run, progress card updates and
-  final reply run asynchronously.
+- Handler ACK must be fast for every WS event. Message receive, bot menu and
+  card action all dispatch business work asynchronously; attachment download,
+  Agent run, progress card updates and final reply must not run before the SDK
+  ACK frame is sent.
+- WS handshake has a 15s timeout, matching the official Channel wrapper's
+  behavior instead of allowing `wsClient.start()` to hang indefinitely.
 - Studio does not arm the SDK lower-case `wsConfig.pingTimeout` by default:
   `pingTimeoutSeconds=0`.
 - OpenClaw passes upper-case `PingTimeout`; the installed SDK's active watchdog
@@ -79,6 +83,39 @@ WS lifecycle files. The mature reference remains:
   reconnect stabilized.
 - Default was corrected to `pingTimeoutSeconds=0`.
 
+2026-06-09 stability reassessment:
+
+- This is not a message-order bug. The earlier Octo-first reproduction exposed a
+  broader Feishu design risk: SDK `connected` can be true while real business
+  ingress is not proven.
+- Current bounded startup validation is a mitigation, not final proof that the
+  Feishu channel has Octo-level stability.
+- Official SDK source shows `EventDispatcher.invoke()` is awaited before the ACK
+  response is sent. Therefore every WS handler must stay synchronous-light and
+  queue work immediately.
+- Official SDK source also shows default `reconnectCount=-1`, `pingInterval`
+  comes from Feishu server config, and `pingTimeout` is disabled unless caller
+  sets lower-case `wsConfig.pingTimeout`; this can leave silent-alive cases
+  unless Studio adds independent health proof or uses another ingress mode.
+
+## Stability Direction
+
+To reach Octo-level behavior, do not rely on one signal:
+
+1. Keep the official SDK owner loop for compatibility, but require fast ACK,
+   handshake timeout, owner lock, terminal-error recreate and runtime evidence.
+2. Add a stronger health proof path: observe control ping/pong or run a patched
+   WS layer that exposes pong/inbound timestamps instead of inferring health from
+   business messages only.
+3. Evaluate webhook or hybrid ingress for production-grade Feishu stability when
+   a reliable public callback URL is available. Webhook removes the local
+   long-lived socket failure class, but depends on a public endpoint and cannot
+   survive that endpoint being down.
+4. If Node SDK continues to show silent-alive behavior, replace the transport
+   layer with a maintained patched WSClient or a small Studio-owned Feishu WS
+   transport copied from the SDK protocol, with explicit ping/pong metrics,
+   capped reconnect, jitter and health-state transitions.
+
 ## Verification
 
 - `npm run typecheck -- --pretty false`
@@ -97,9 +134,13 @@ WS lifecycle files. The mature reference remains:
 
 ## Next Validation
 
+- Verify fresh Feishu card actions still update/send results after the WS handler
+  returns immediately.
 - After the user sends a fresh Feishu message, runtime must move to
   `ingressVerified=true` / `ingressState=receiving` and reset startup recycle
   counters.
+- Research and prototype the stronger health proof path before claiming Feishu
+  has Octo-level stability.
 - If a future stall appears, capture runtime JSON, log tail, owner lock,
   `systemctl --user status openclaw-studio-channel-connectors.service`, and
   process list before restarting.

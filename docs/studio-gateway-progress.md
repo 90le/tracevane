@@ -25,6 +25,7 @@
 - 定位 Feishu/Octo 重启后顺序相关延迟：Octo-first 后 Feishu 可处于 `connected=true` 但 `dispatcherCallbacks=0` / `receivedMessages=0` / `lastReceivedAt=null`，旧 smoke 因只看 connected/no-log 漏掉了“启动期未验证真实 ingress”。
 - 对照本地 Lark SDK：OpenClaw 的 upper-case `PingTimeout:3` 不等价于当前 SDK lower-case `pingTimeout`；Studio 不再默认把它翻译为生效 watchdog，`pingTimeoutSeconds` 改为 `0`。
 - 补 Studio 特有启动期 ingress 验证：当前 lifecycle 尚无 dispatcher callback 时，60s 后回收当前 client，指数退避最多 3 次；任何真实 dispatcher callback 会重置计数。smoke 脚本允许该 bounded startup 事件，但继续拒绝旧 watchdog/zero-inbound/ping-timeout churn。
+- 复核官方 Node SDK：`EventDispatcher.invoke()` 会在 ACK 前等待 handler，且 `wsClient.start()` 没有默认握手超时；已把 Feishu WS 的 card action 也改为快速 ACK + 后台业务派发，并给 WS handshake 加 15s timeout。
 
 ## 最近验证
 
@@ -43,7 +44,7 @@
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
 - GMN provider 可作为视觉测试源，但未设为所有 App scope 默认 active provider；测试时需显式选择 `gpt-5.5`、`gmn-vision` 或 `gmn/gpt-5.5`。
-- Feishu SDK 仍可能因网络或平台关闭连接而 reconnect；当前不使用 connected-idle / zero-inbound / generic watchdog 暴力重建。启动期 ingress 验证只能证明“SDK connected 后至少有真实 dispatcher callback”，仍需要用户真实 Feishu 消息复验进入 `receiving`。
+- Feishu SDK 仍可能因网络或平台关闭连接而 reconnect；当前不使用 connected-idle / zero-inbound / generic watchdog 暴力重建。启动期 ingress 验证只能证明“SDK connected 后至少有真实 dispatcher callback”，仍需要用户真实 Feishu 消息复验进入 `receiving`。Feishu 尚不能宣称达到 Octo 级稳定；下一步需做 ping/pong 级健康证明或评估 webhook/hybrid ingress。
 - Claude Code/OpenCode 原生 compact 需要先迁移类似 CC Go 的 live interactive session driver；当前不能用 one-shot `--resume` / `run` 假装完成原生压缩。
 - `/status` 与 Channel 管理页已能显示最近 auto compact 记录；真实剩余 token 仍取决于上游 usage 或 Gateway runtime ledger 是否能归因。
 - Gateway usage 只有在上游返回 usage 或 runtime ledger 可归因时才准确；缺失 usage 时 Channel 只能用 IM history 字符估算，不能替代真实 tokenizer。

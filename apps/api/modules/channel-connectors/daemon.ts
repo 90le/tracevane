@@ -165,6 +165,7 @@ import {
 } from "./octo-wukong.js";
 
 const DEFAULT_FEISHU_PING_TIMEOUT_SECONDS = 0;
+const DEFAULT_FEISHU_HANDSHAKE_TIMEOUT_MS = 15_000;
 const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 0;
 const MIN_FEISHU_WATCHDOG_RESTART_MS = 60_000;
 const MAX_FEISHU_WATCHDOG_RESTART_MS = 600_000;
@@ -7314,7 +7315,7 @@ function createFeishuDispatcher(input: {
         rawEventShape: isRecord(data) ? Object.keys(data).slice(0, 12) : [],
       });
       updateFeishuRuntime(config, state, group);
-      const response = await dispatchFeishuParsedEvent({
+      dispatchFeishuParsedEventInBackground({
         config,
         state,
         activeRunCancels,
@@ -7323,7 +7324,6 @@ function createFeishuDispatcher(input: {
         rawEvent: data,
         seenMessages,
       });
-      return response || undefined;
     },
     "application.bot.menu_v6": async (data: unknown) => {
       const receivedAt = markFeishuDispatcherCallback({
@@ -7543,6 +7543,7 @@ async function runFeishuGroupClientLoop(input: {
           // extra pong watchdog. Keep the effective OpenClaw contract by not
           // sending that lower-case option unless this runtime explicitly opts in.
           ...(pingTimeoutSeconds > 0 ? { wsConfig: { pingTimeout: pingTimeoutSeconds } } : {}),
+          handshakeTimeoutMs: DEFAULT_FEISHU_HANDSHAKE_TIMEOUT_MS,
           onReady: () => {
             group.lastConnectedAt = new Date().toISOString();
             group.lastDisconnectedAt = null;
