@@ -3366,6 +3366,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(sessionHelp.replyText, /`\/search <关键字>`/);
   assert.ok(sessionHelp.replyText.includes("`/delete <序号\\|sessionId前缀\\|1,3-5>`"));
   assert.match(sessionHelp.replyText, /`\/usage`/);
+  assert.match(sessionHelp.replyText, /Studio compact/);
+  assert.match(sessionHelp.replyText, /Gateway `\/responses\/compact`/);
   assert.match(sessionHelp.replyText, /`\/approve`/);
   assert.match(sessionHelp.replyText, /返回：`\/help`/);
   const displayHelp = await handleChannelConnectorCommand({
@@ -3386,6 +3388,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(nativeHelp.replyText, /Studio Channel \/ native/);
   assert.match(nativeHelp.replyText, /`\/commands add <名称> <prompt 模板>`/);
   assert.match(nativeHelp.replyText, /`\/skills`/);
+  assert.match(nativeHelp.replyText, /`\/native \/compact`/);
+  assert.match(nativeHelp.replyText, /Codex one-shot/);
   assert.equal(parseChannelConnectorCommand("%help")?.name, "help");
   assert.equal(parseChannelConnectorCommand("/%help")?.name, "help");
   assert.equal(matchChannelConnectorCommandPrefix("stat"), "status");
@@ -4290,6 +4294,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(compact.handled, true);
   assert.equal(compact.action, "compact");
   assert.equal(compact.ok, true);
+  assert.match(compact.replyText, /Studio compact 已压缩/);
   assert.match(compact.replyText, /history: 6 -> 1/);
   assert.match(compact.replyText, /cleared 2/);
 
@@ -4308,6 +4313,14 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(nativePassthrough.handled, false);
   assert.equal(nativePassthrough.passthroughText, "/help");
   assert.equal(nativePassthrough.nativeCommand, "/help");
+
+  const nativeCompactPassthrough = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/native /compact"),
+  });
+  assert.equal(nativeCompactPassthrough.handled, false);
+  assert.equal(nativeCompactPassthrough.passthroughText, "/compact");
+  assert.equal(nativeCompactPassthrough.nativeCommand, "/compact");
 
   const badNative = await handleChannelConnectorCommand({
     ...baseContext,
@@ -4876,12 +4889,15 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(surface.textFallback, /常用命令\n\n\| 项目 \| 内容 \|/);
   assert.match(surface.textFallback, /`\/status`/);
   assert.match(surface.textFallback, /`\/native \/help`/);
+  assert.match(surface.textFallback, /`\/native \/compact`/);
   assert.match(surface.textFallback, /`\/help agent`/);
   assert.match(surface.textFallback, /`\/help native`/);
   const nativeSection = surface.sections.find((section) => section.id === "native");
   assert.ok(nativeSection);
   assert.equal(nativeSection.actions[0].nativePassthrough, true);
   assert.equal(nativeSection.actions[0].command, "/native /help");
+  assert.equal(nativeSection.actions[1].nativePassthrough, true);
+  assert.equal(nativeSection.actions[1].command, "/native /compact");
 
   const feishu = renderChannelConnectorCommandSurfaceFeishu(surface);
   assert.equal(feishu.config.wide_screen_mode, true);

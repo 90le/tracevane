@@ -430,7 +430,7 @@ function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFa
     "",
     "原生 Agent",
     "未被 Studio 占用的 `/xxx` 会透传给当前 Agent；冲突命令用 `/native <命令>`。",
-    "示例：`/native /help` 查看当前 Agent 原生帮助或 skills 命令。",
+    "示例：`/native /help` 查看当前 Agent 原生帮助或 skills 命令；`/native /compact` 只在持久/交互式 runner 支持时执行原生压缩。",
   );
   return lines.join("\n");
 }
@@ -465,7 +465,11 @@ export function buildChannelConnectorCommandSurface(
         action("current", "Current Session", "/current", { actionKind: "nav" }),
         action("sessions", "Agent Sessions", "/list", { actionKind: "nav" }),
         action("history", "History", "/history", { actionKind: "nav" }),
-        action("compact", "Compact Context", "/compact", { tone: "primary", requiresAdmin: true }),
+        action("compact", "Studio Compact", "/compact", {
+          tone: "primary",
+          requiresAdmin: true,
+          description: "Studio 自建压缩：Gateway /responses/compact 摘要 IM history",
+        }),
         action("stop", "Stop Run", "/stop", { tone: "danger", requiresAdmin: true }),
         action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true }),
         action("reset", "Reset", "/reset", { tone: "danger", requiresAdmin: true }),
@@ -625,6 +629,10 @@ export function buildChannelConnectorCommandSurface(
         action("native-help", "Agent /help", "/native /help", {
           nativePassthrough: true,
           description: "透传当前 Agent 的原生帮助或 skills 命令入口。",
+        }),
+        action("native-compact", "Agent /compact", "/native /compact", {
+          nativePassthrough: true,
+          description: "尝试 Agent 原生压缩；Codex one-shot 不伪执行交互式 compact。",
         }),
       ],
     },
@@ -1002,7 +1010,7 @@ function commandSurfaceItemDescription(item: ChannelConnectorCommandSurfaceActio
     case "history":
       return "查看当前 IM session 最近上下文";
     case "compact":
-      return "压缩当前 IM session history，并断开旧 Agent 续接";
+      return "Studio 自建压缩：调用 Gateway /responses/compact 摘要 IM history，并断开旧 Agent 续接";
     case "stop":
       return "停止当前 IM session 正在运行的 Agent";
     case "new":
@@ -1015,6 +1023,8 @@ function commandSurfaceItemDescription(item: ChannelConnectorCommandSurfaceActio
       return "恢复 Agent Profile 默认目录";
     case "native-help":
       return "打开当前 CLI Agent 的原生帮助或 skills 命令";
+    case "native-compact":
+      return "尝试当前 CLI Agent 原生 compact；Codex one-shot 不伪执行";
     case "aliases-list":
       return "查看或管理当前 binding 命令别名";
     case "model-default":
@@ -1672,7 +1682,7 @@ function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConn
   const current = actions.find((item) => item.id === "current") || action("current", "Current Session", "/current", { actionKind: "nav" });
   const sessions = actions.find((item) => item.id === "sessions") || action("sessions", "Agent Sessions", "/list", { actionKind: "nav" });
   const history = actions.find((item) => item.id === "history") || action("history", "History", "/history", { actionKind: "nav" });
-  const compact = actions.find((item) => item.id === "compact") || action("compact", "Compact Context", "/compact", { tone: "primary", requiresAdmin: true });
+  const compact = actions.find((item) => item.id === "compact") || action("compact", "Studio Compact", "/compact", { tone: "primary", requiresAdmin: true });
   const stop = actions.find((item) => item.id === "stop") || action("stop", "Stop Run", "/stop", { tone: "danger", requiresAdmin: true });
   const fresh = actions.find((item) => item.id === "new") || action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true });
   const reset = actions.find((item) => item.id === "reset") || action("reset", "Reset", "/reset", { tone: "danger", requiresAdmin: true });
@@ -1860,7 +1870,11 @@ function renderHistoryCard(surface: ChannelConnectorCommandSurface): ChannelConn
   pushActionRows(elements, [
     action("current", "当前会话", "/current", { actionKind: "nav" }),
     action("sessions", "续接列表", "/list", { actionKind: "nav" }),
-    action("compact", "压缩上下文", "/compact", { tone: "primary", requiresAdmin: true }),
+    action("compact", "Studio 压缩", "/compact", {
+      tone: "primary",
+      requiresAdmin: true,
+      description: "Gateway /responses/compact 摘要本 IM history",
+    }),
     action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true }),
   ], surface, 1);
   pushSubcardNavRows(elements, surface, "session");

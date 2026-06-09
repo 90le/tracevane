@@ -941,7 +941,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
         ["`/delete <序号|sessionId前缀|1,3-5>`", "删除非当前 Agent session 续接记录"],
         ["`/history [条数]`", "查看最近上下文"],
         ["`/usage`", "查看最近 Gateway token usage"],
-        ["`/compact`", "压缩当前 IM history 并开启新续接"],
+        ["`/compact` / `/compress`", "Studio compact：调用 Gateway `/responses/compact` 摘要 IM history，并开启新续接"],
         ["`/stop`", "停止当前 run"],
         ["`/approve` / `/deny` / `/allow-all`", "回复工具权限请求"],
         ["`/new` / `/reset`", "开启新 Agent 会话 / 清空 override 和续接状态"],
@@ -1010,6 +1010,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
       ["`/skills`", "列出当前 Agent Skills"],
       ["`/<skill名称> [参数...]`", "调用 Skill"],
       ["`/native /help`", "查看当前 Agent 原生帮助或 skills 命令"],
+      ["`/native /compact`", "尝试 CLI Agent 原生压缩；仅持久/交互式 runner 支持，Codex one-shot 会拒绝伪执行"],
       ["`/native <原生命令>`", "强制透传给当前 Agent"],
     ]),
     "",
@@ -1025,7 +1026,7 @@ function commandHelpText(section?: string | null): string {
     "普通消息会交给当前 Agent。未被 Studio 占用的 `/xxx` 会自动透传；冲突命令用 `/native <命令>`。",
     "",
     markdownTable([
-      ["`/status` `/new` `/reset` `/stop` `/compact`", "会话状态、新会话、重置、停止、压缩"],
+      ["`/status` `/new` `/reset` `/stop` `/compact`", "会话状态、新会话、重置、停止、Studio compact"],
       ["`/whoami` `/version`", "身份排查和 runtime 版本"],
       ["`/agent` `/model` `/mode` `/reasoning`", "切换 Agent、模型、权限、推理强度"],
       ["`/display` `/quiet` `/stream on|off` `/tools on|off`", "控制进度和工具显示"],
@@ -2944,7 +2945,7 @@ export async function handleChannelConnectorCommand(
       control: currentControl,
       replyText: result.ok
         ? [
-          "已压缩当前 IM 会话上下文。",
+          "Studio compact 已压缩当前 IM 会话上下文。",
           `history: ${result.beforeEntries} -> ${result.afterEntries}`,
           `Agent sessions: cleared ${result.sessionsCleared}`,
           result.summaryText ? `summary: ${bufferPreviewText(result.summaryText, 160)}` : "",

@@ -71,7 +71,7 @@
 - Studio `/whoami` / `/myid` 已按 CC Go 身份排查习惯接入：返回当前 IM User ID、Channel ID、Channel type、Platform、Binding、Session key 和管理权限状态，并在 Feishu Session 子卡提供按钮。
 - Studio `/version` 已按 CC Go 内置命令习惯接入：返回 Studio Channel runtime 版本、Node、平台、binding、daemon config 和 runtime root，并在 Feishu Session 子卡提供按钮，便于排查当前 IM 连接到的 daemon。
 - Claude Code AskUserQuestion 基础闭环已按 CC Go 语义接入：`AskUserQuestion` 不再被 yolo/full-auto 自动 allow；pending question 时 IM 下一条普通回复会作为答案写入 `updatedInput.answers`，`allow/deny` 也按答案处理，`/stop` 等硬控制命令仍可执行。
-- Studio `/compact` 合同已从 Channel daemon 抽成可测 helper：自动验证会向 Gateway `/responses/compact` 发送摘要请求，成功后 IM history 只保留 compact summary，并清理当前 binding + sessionKey 的旧 Codex/Claude Agent 续接；daemon 仍只负责把 runtime config 映射为路径和 Gateway endpoint。
+- Studio `/compact` / `/compress` 合同已从 Channel daemon 抽成可测 helper：默认不是 CLI 原生命令穿透，而是调用 Gateway `/responses/compact` 摘要 IM history，成功后只保留 compact summary，并清理当前 binding + sessionKey 的旧 Codex/Claude Agent 续接；CLI 原生 compact 只走 `/native /compact`，Codex one-shot 不伪执行交互式 compact。
 - Service 层命令 smoke 已补齐 Feishu/Octo `/compact`：Feishu slash webhook 和 Octo incoming slash 都复用 Studio compact helper，返回用户可见文本结果，不进入 Agent；Octo service slash `/new`、`/reset` 也已覆盖清 history/session 和文本 replyPlan。
 - 新增 Channel Connectors 命令 live smoke 脚本：默认只做 dry-run 计划，`--recent-sessions` 可从 daemon state 自动定位每个 binding 最近真实会话；`--probe` 只打后端 adapter dry-run，不触发平台发送、Gateway compact 或 session/history 清理；显式 `--apply --from-uid --channel-id` 或 `--apply --recent-sessions` 才发送真实 Feishu/Octo 命令请求；JSON 输出会脱敏 token/key/secret。
 - Feishu webhook 路由新增仅 smoke 使用的 `studioDebugResponse` 开关：真实飞书回调仍返回 `feishuResponse`，命令 live smoke 可返回完整 Studio `commandAction`，从而断言 `/new`、`/reset`、`/compact` 的 action/ok/replyPreview。
@@ -139,7 +139,7 @@
 - GMN provider 可作为视觉测试源，但未设为所有 App scope 默认 active provider；测试时需显式选择 `gpt-5.5`、`gmn-vision` 或 `gmn/gpt-5.5`。
 - Feishu 官方 SDK 仍可能因网络或平台关闭连接而 reconnect；当前策略不做 connected-idle / zero-inbound / verified-ingress / generic watchdog 重建。Studio 保留用户级全局单 owner lock、SDK `pingTimeout=3`、SDK `reconnecting` 超 10s 回收、快速 ACK、messageId 去重和 runtime 入站观测；后续仍需真实 SDK reconnect 后新消息复验才能关闭专项。
 - 最新代码重启后 runtime 已连接并通过短 smoke，用户全新 Feishu 消息已完成端到端回复，10 分钟 idle smoke 也通过；下一步等待真实 SDK reconnect 后，再由用户发新消息复验即时入站。
-- Codex Agent 图片已走原生 `--image`；Studio `/compact` 已覆盖 IM history 压缩，但 Codex 原生交互式 `/compact`、`/clear` 仍需要持久 Codex session，不能通过一次性 `codex exec` 伪实现；Claude Code 已支持图片输入、权限自动回包和 IM 文本批准，但 Feishu 权限按钮卡片、AskUserQuestion、视频理解、OCR、语音/STT/TTS 仍待迁移；OpenCode 视觉输入仍待迁移。
+- Codex Agent 图片已走原生 `--image`；Studio `/compact`/`/compress` 已覆盖自建 IM history 压缩，但 Codex 原生交互式 `/compact`、`/clear` 仍需要持久 Codex session，不能通过一次性 `codex exec` 伪实现；Claude Code 已支持图片输入、权限自动回包和 IM 文本批准，但 Feishu 权限按钮卡片、AskUserQuestion、视频理解、OCR、语音/STT/TTS 仍待迁移；OpenCode 视觉输入仍待迁移。
 - 出站文件基础链路已覆盖小/中型本地文件，Octo 已具备 multipart/direct upload 自动分流；高级 `yolo` 权限仅放宽本地路径根限制，不绕过平台上传限制。后续仍需做真实大文件限额和更多平台文件收发实测。
 - 同 session FIFO queue 当前是 daemon 内存队列；Studio/OpenClaw 崩溃不影响 daemon 内排队，但 Channel daemon 自身重启会丢失未开始的排队消息。持久 session driver 合同已覆盖 session 级 crash fallback，但尚未实现 durable queue。
 - 持久 session driver 当前只对 Codex metadata 实验路径开放，不作为 live 默认路径；真实 Codex app-server 已验证 `initialize/thread-start`、Studio Gateway `turn/start` 模型调用、原生 `/compact`、`turn/interrupt`、daemon idle reaper、超时中断和内部 prompt 过滤。文件发送/工具流式的正式 live 路径仍优先 one-shot，persistent 继续做受控 beta。
