@@ -18,6 +18,8 @@ import {
   type ChannelConnectorsDaemonRequest,
   type ChannelConnectorsDaemonResponse,
   type ChannelConnectorsDaemonRuntimeConfig,
+  type ChannelConnectorsDaemonRuntimeAutoCompactRecord,
+  type ChannelConnectorsDaemonRuntimeStatus,
   type ChannelConnectorsDaemonTemplate,
   type ChannelConnectorsLogsResponse,
   type ChannelConnectorsNativeConfig,
@@ -313,6 +315,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function nullableString(value: unknown): string | null {
+  const normalized = normalizeString(value);
+  return normalized || null;
+}
+
+function nullableNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function nullableBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
+}
+
+function arrayCount(value: unknown): number | null {
+  if (Array.isArray(value)) return value.length;
+  return nullableNumber(value);
+}
+
 function isAgentId(value: unknown): value is ChannelConnectorAgentId {
   return (CHANNEL_CONNECTOR_AGENT_IDS as readonly string[]).includes(String(value));
 }
@@ -497,6 +517,123 @@ function daemonEntryPath(config: StudioServerConfig): string {
 
 function managementEndpoint(): string {
   return `http://127.0.0.1:${MANAGEMENT_PORT}`;
+}
+
+function runtimeStatusError(checkedAt: string, error: unknown): ChannelConnectorsDaemonRuntimeStatus {
+  return {
+    ok: false,
+    checkedAt,
+    reachable: false,
+    implementation: null,
+    pid: null,
+    projects: null,
+    platformBindings: null,
+    octoConnections: null,
+    feishuConnections: null,
+    activeRuns: null,
+    agentRuns: null,
+    autoCompacts: [],
+    error: error instanceof Error ? error.message : normalizeString(error, "Channel daemon runtime status unavailable"),
+  };
+}
+
+function normalizeAutoCompactAction(value: unknown): ChannelConnectorsDaemonRuntimeAutoCompactRecord["action"] {
+  if (value === "native" || value === "fallback" || value === "skipped") return value;
+  return "skipped";
+}
+
+function normalizeAutoCompactReason(value: unknown): ChannelConnectorsDaemonRuntimeAutoCompactRecord["reason"] {
+  if (value === "threshold-reached" || value === "cooldown" || value === "native-blocked" || value === "fallback-failed") {
+    return value;
+  }
+  return "threshold-reached";
+}
+
+function normalizeUsageSource(value: unknown): ChannelConnectorsDaemonRuntimeAutoCompactRecord["usageSource"] {
+  if (value === "gateway-runtime-window" || value === "history-estimate" || value === "none") return value;
+  return "none";
+}
+
+function normalizeDaemonAutoCompactRecord(value: unknown): ChannelConnectorsDaemonRuntimeAutoCompactRecord | null {
+  if (!isRecord(value)) return null;
+  const checkedAt = nullableString(value.checkedAt);
+  const bindingId = nullableString(value.bindingId);
+  const sessionKey = nullableString(value.sessionKey);
+  const projectId = nullableString(value.projectId);
+  const agent = nullableString(value.agent);
+  const workDir = nullableString(value.workDir);
+  const messageId = nullableString(value.messageId);
+  if (!checkedAt || !bindingId || !sessionKey || !projectId || !agent || !workDir || !messageId) return null;
+  return {
+    checkedAt,
+    bindingId,
+    sessionKey,
+    projectId,
+    agent,
+    model: nullableString(value.model),
+    workDir,
+    messageId,
+    action: normalizeAutoCompactAction(value.action),
+    ok: nullableBoolean(value.ok),
+    reason: normalizeAutoCompactReason(value.reason),
+    usageSource: normalizeUsageSource(value.usageSource),
+    usedTokens: nullableNumber(value.usedTokens),
+    effectiveUsedTokens: nullableNumber(value.effectiveUsedTokens),
+    contextWindow: nullableNumber(value.contextWindow),
+    autoCompactTokenLimit: nullableNumber(value.autoCompactTokenLimit),
+    remainingTokens: nullableNumber(value.remainingTokens),
+    nativeAttempted: value.nativeAttempted === true,
+    fallbackAttempted: value.fallbackAttempted === true,
+    beforeEntries: nullableNumber(value.beforeEntries),
+    afterEntries: nullableNumber(value.afterEntries),
+    sessionsCleared: nullableNumber(value.sessionsCleared),
+    summaryPreview: nullableString(value.summaryPreview),
+    error: nullableString(value.error),
+    cooldownStartedAt: nullableString(value.cooldownStartedAt),
+    cooldownUntil: nullableString(value.cooldownUntil),
+  };
+}
+
+async function requestDaemonRuntimeStatus(checkedAt: string): Promise<ChannelConnectorsDaemonRuntimeStatus> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1500);
+  try {
+    const response = await fetch(`${managementEndpoint()}/status`, { signal: controller.signal });
+    const text = await response.text();
+    let body: unknown = null;
+    try {
+      body = text ? JSON.parse(text) : null;
+    } catch {
+      body = text;
+    }
+    if (!response.ok) {
+      const message = isRecord(body) ? normalizeString(body.message) || normalizeString(body.error) : "";
+      throw new Error(message || `Channel daemon runtime status failed with HTTP ${response.status}`);
+    }
+    if (!isRecord(body)) throw new Error("Channel daemon runtime status returned an invalid payload");
+    const autoCompacts = Array.isArray(body.autoCompacts)
+      ? body.autoCompacts.map(normalizeDaemonAutoCompactRecord).filter((record): record is ChannelConnectorsDaemonRuntimeAutoCompactRecord => Boolean(record))
+      : [];
+    return {
+      ok: true,
+      checkedAt,
+      reachable: true,
+      implementation: nullableString(body.implementation),
+      pid: nullableNumber(body.pid),
+      projects: nullableNumber(body.projects),
+      platformBindings: nullableNumber(body.platformBindings),
+      octoConnections: arrayCount(body.octoConnections),
+      feishuConnections: arrayCount(body.feishuConnections),
+      activeRuns: arrayCount(body.activeRuns),
+      agentRuns: arrayCount(body.agentRuns),
+      autoCompacts,
+      error: null,
+    };
+  } catch (error) {
+    return runtimeStatusError(checkedAt, error);
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function requestDaemonAgentSessions(
@@ -2602,9 +2739,11 @@ export function createChannelConnectorsService(
 
   async function getStatus(): Promise<ChannelConnectorsStatusResponse> {
     const service = await getDaemonService();
+    const checkedAt = now().toISOString();
+    const runtime = await requestDaemonRuntimeStatus(checkedAt);
     return {
       ok: true,
-      checkedAt: now().toISOString(),
+      checkedAt,
       phase: "native-config-f2",
       implementation: "studio-native",
       referenceSources: [
@@ -2635,6 +2774,7 @@ export function createChannelConnectorsService(
         channelDaemonOwner: "studio-native-channel-daemon",
       },
       service,
+      runtime,
     };
   }
 

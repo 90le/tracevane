@@ -608,6 +608,9 @@ test("native Channel Connectors status keeps daemon and binding policy separate 
   assert.equal(status.paths.nativeConfig.startsWith(config.openclawRoot), false);
   assert.match(status.service.plan.selectedTemplate.template, /^WorkingDirectory=\/.+channel-connectors\/daemon$/m);
   assert.doesNotMatch(status.service.plan.selectedTemplate.template, /^WorkingDirectory="/m);
+  assert.equal(typeof status.runtime.reachable, "boolean");
+  assert.equal(status.runtime.checkedAt, "2026-06-06T08:00:00.000Z");
+  assert.ok(Array.isArray(status.runtime.autoCompacts));
   assert.match(status.referenceSources.join("\n"), /CC archived reference implementation/);
 });
 

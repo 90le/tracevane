@@ -192,6 +192,99 @@
   gap: 8px;
 }
 
+.ccx-runtime-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.ccx-runtime-card,
+.ccx-auto-compact-row {
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-base) 84%, var(--surface-soft));
+  padding: 12px;
+}
+
+.ccx-runtime-card {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ccx-runtime-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ccx-runtime-card__head > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.ccx-runtime-card__head small,
+.ccx-metric-strip span,
+.ccx-auto-compact-row small,
+.ccx-auto-compact-row span,
+.ccx-muted {
+  color: var(--mono-ink-2);
+}
+
+.ccx-metric-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.ccx-metric-strip > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 36%, var(--mono-line));
+  padding-left: 8px;
+}
+
+.ccx-metric-strip strong,
+.ccx-runtime-card__head strong,
+.ccx-auto-compact-row strong,
+.ccx-auto-compact-row span {
+  overflow-wrap: anywhere;
+}
+
+.ccx-auto-compact-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.ccx-auto-compact-row {
+  display: grid;
+  gap: 4px;
+}
+
+.ccx-auto-compact-row > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ccx-auto-compact-row.success {
+  border-color: color-mix(in srgb, var(--success) 34%, var(--mono-line));
+}
+
+.ccx-auto-compact-row.failure {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--mono-line));
+  background: color-mix(in srgb, var(--danger) 5%, var(--surface-base));
+}
+
+.ccx-auto-compact-row.skipped:not(.failure) {
+  border-color: color-mix(in srgb, var(--warning) 36%, var(--mono-line));
+}
+
 .ccx-chain-row,
 .ccx-list-row {
   display: grid;
@@ -394,8 +487,13 @@
 
   .ccx-split,
   .ccx-session-grid,
+  .ccx-runtime-grid,
   .ccx-form,
   .ccx-credential-box {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .ccx-metric-strip {
     grid-template-columns: minmax(0, 1fr);
   }
 

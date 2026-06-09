@@ -864,6 +864,51 @@ export interface ChannelConnectorAgentSessionDriverStatusResponse {
   } | null;
 }
 
+export interface ChannelConnectorsDaemonRuntimeAutoCompactRecord {
+  checkedAt: string;
+  bindingId: string;
+  sessionKey: string;
+  projectId: string;
+  agent: string;
+  model: string | null;
+  workDir: string;
+  messageId: string;
+  action: "native" | "fallback" | "skipped";
+  ok: boolean | null;
+  reason: "threshold-reached" | "cooldown" | "native-blocked" | "fallback-failed";
+  usageSource: ChannelConnectorContextBudgetSummary["usageSource"];
+  usedTokens: number | null;
+  effectiveUsedTokens: number | null;
+  contextWindow: number | null;
+  autoCompactTokenLimit: number | null;
+  remainingTokens: number | null;
+  nativeAttempted: boolean;
+  fallbackAttempted: boolean;
+  beforeEntries: number | null;
+  afterEntries: number | null;
+  sessionsCleared: number | null;
+  summaryPreview: string | null;
+  error: string | null;
+  cooldownStartedAt: string | null;
+  cooldownUntil: string | null;
+}
+
+export interface ChannelConnectorsDaemonRuntimeStatus {
+  ok: boolean;
+  checkedAt: string;
+  reachable: boolean;
+  implementation: "studio-native" | string | null;
+  pid: number | null;
+  projects: number | null;
+  platformBindings: number | null;
+  octoConnections: number | null;
+  feishuConnections: number | null;
+  activeRuns: number | null;
+  agentRuns: number | null;
+  autoCompacts: ChannelConnectorsDaemonRuntimeAutoCompactRecord[];
+  error: string | null;
+}
+
 export interface ChannelConnectorAgentSessionActionRequest {
   action?: "status" | "reap-idle" | "kill";
   poolKey?: string | null;
@@ -914,4 +959,5 @@ export interface ChannelConnectorsStatusResponse {
     channelDaemonOwner: "studio-native-channel-daemon";
   };
   service: ChannelConnectorsDaemonResponse;
+  runtime: ChannelConnectorsDaemonRuntimeStatus;
 }

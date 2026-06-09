@@ -20,18 +20,11 @@
 
 ## 本轮完成
 
-- Gateway 聚合模型目录新增 `contextWindow` 与 `maxOutputTokens` 输出；同名模型跨 provider 组成模型池时，按最小已知窗口/输出预算合并，避免 failover 到更小窗口 provider 时高估容量。
-- Channel Connectors 新增 context budget resolver：按当前模型从 Gateway `/v1/models` 匹配模型 ID / alias / `provider/model` tail，优先使用 Gateway runtime usage，缺失时用本地 IM history 字符估算兜底。
-- `/status` 现在会显示当前会话上下文预算：窗口、已用、剩余、usage 来源、max output reserve、auto compact threshold，以及当前 compact 状态边界。
-- `/compact` 命令路由新增 native-first capability contract：native 成功时不调用 fallback；native 不支持或失败且允许降级时才调用 Studio compact fallback；active run 正在执行时拒绝 compact，避免和同一 app-server turn 并发。
-- Channel daemon 已接 Codex app-server 原生 compact：仅当当前 binding 是 persistent、当前 IM session 已有 live driver session 时，发送 `thread/compact/start`；没有 live session 时不会新建空 thread，而是降级 Studio Gateway compact。
-- daemon 自动 compact 已接入普通 Agent 消息执行前：用当前模型预算计算剩余上下文，达到阈值时 native-first；成功后记录 compact baseline，后续按 `当前 used - baseline used` 判断，避免刚 compact 完又重复触发；失败或 native 阻塞才进入 retry cooldown。
-- 更新迁移清单：P1 上下文预算明确 `/status` 预算、手动 native-first compact 和 daemon 自动 native-first compact 均已接入；后续继续扩展更多 Agent 原生 compact 能力。
-- Provider Center 模型行已补齐 `contextWindow` 与 `maxOutputTokens` 配置；编辑、保存、检测导入都会保留模型预算字段。
-- Detect Provider 会从常见 `/models` 字段识别上下文/输出预算和能力信号，例如 `context_length`、`contextWindow`、`max_output_tokens`、`features`、`capabilities`、`input_modalities`、`supported_parameters`；模型商未返回时用保守模型族默认值兜底。
-- Detect Provider 在 `/models` 未返回用户填写模型时，会返回该模型的推断预算和能力，避免小白用户只填 base/key/model 后没有可应用配置。
-- App Connections 模型选择已优先使用 Gateway 可用模型下拉，并在选项中显示模型预算；无模型目录时仍允许手动填写兼容 alias。
-- App Connections 新增“应用模型预算”和每个 App 的有效预算展示；Codex 写入 `model_context_window` 与 `model_auto_compact_token_limit`，OpenCode/OpenClaw 写入模型目录预算，Claude Code 仍只写官方可识别的 endpoint/key/model，预算由 Gateway/Channel 层用于上下文管理。
+- Channel daemon `/status` 的最近 `autoCompacts` 记录已通过 Studio API `/api/channel-connectors/status` 代理到前端；daemon 离线时返回 `runtime.reachable=false`，页面不报错。
+- Channel Connectors 管理页 Runtime tab 新增 daemon snapshot 与 Auto compact 观察区：展示最近 native / fallback / skipped、effective used、threshold、remaining、history cleanup、summary preview、error 和 retry window。
+- 自动 compact 的触发语义保持不变：按模型上下文剩余量触发；retry/cooldown 只作为失败或 native 阻塞后的恢复状态展示，不作为正常触发条件。
+- 共享类型新增 `ChannelConnectorsDaemonRuntimeStatus` 与 `ChannelConnectorsDaemonRuntimeAutoCompactRecord`，前后端和测试都走同一 contract。
+- 更新迁移清单：P1 上下文预算与自动压缩的“成功 baseline 和失败 retry 记录可观测”已落到 `/status` 与管理页。
 
 ## 最近验证
 
@@ -39,30 +32,25 @@
 - 通过：`npm run build:api`。
 - 通过：`npm run typecheck:web`。
 - 通过：`npm run build:web`。
-- 通过：`node --test tests/system/model-gateway-service.test.mjs`，53 个 Model Gateway 子测试通过。
-- 通过：`node --test tests/system/studio-web-model-gateway-page.test.mjs`，3 个 Studio Gateway 页面 contract 子测试通过。
-- 通过：`node --test --test-name-pattern "IM commands switch agent|command surface renders text" tests/system/channel-connectors-service.test.mjs`，2 个本轮 Channel 命令/卡片合同子测试通过。
-- 通过：`node --test --test-name-pattern "native Channel Connectors daemon runs Codex app-server" tests/system/channel-connectors-service.test.mjs`，覆盖上下文阈值触发 auto compact、成功 baseline 防重复触发、手动 `/compact` 强制原生 compact。
-- 通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，9 个 Codex app-server driver 子测试通过。
-- 通过：`node --test --test-name-pattern "isolates Codex app-server persistent sessions by IM session" tests/system/channel-connectors-service.test.mjs`，1 个 persistent 隔离用例通过；用于排除首次全量并发跑法中的时序超时。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs`，61 个 Channel Connectors 子测试通过。
+- 通过：`node --test tests/system/studio-web-channel-connectors-page.test.mjs`，3 个页面 contract 子测试通过。
 - 通过：`git diff --check`。
 - 通过：`systemctl --user restart openclaw-studio-model-gateway.service openclaw-studio-channel-connectors.service` 后两个 user services 均为 `active/enabled`。
 - 通过：`npm run dev:restart`，前端 `http://127.0.0.1:5176`，后端 `http://127.0.0.1:3761`。
-- 通过：Gateway daemon `/gateway/status` 与后端 `/api/model-gateway/status` 均返回 `ok=true`、local daemon `state=running`；后端 `/api/channel-connectors/status` 返回 `ok=true`。
+- 通过：Gateway daemon `/gateway/status` 返回 `ok=true`；Channel daemon `/status` 返回 `ok=true`、`autoCompacts=0`；后端 `/api/channel-connectors/status` 返回 `runtime.reachable=true`、`runtime.autoCompacts=0`。
 
 ## 已知边界
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
 - GMN provider 可作为视觉测试源，但未设为所有 App scope 默认 active provider；测试时需显式选择 `gpt-5.5`、`gmn-vision` 或 `gmn/gpt-5.5`。
 - Feishu SDK 仍可能因网络或平台关闭连接而 reconnect；当前不使用 connected-idle / zero-inbound / generic watchdog 暴力重建，后续仍按专项文档跟踪真实 reconnect 后消息复验。
-- `/status` 已能显示上下文预算；App Connections 已按模型预算写入支持的 Agent 配置；Channel 自动 compact 已在 daemon 消息执行前根据预算触发，但 `/status` 还未展示最近 auto compact baseline 详情。
+- `/status` 与 Channel 管理页已能显示最近 auto compact 记录；真实剩余 token 仍取决于上游 usage 或 Gateway runtime ledger 是否能归因。
 - Gateway usage 只有在上游返回 usage 或 runtime ledger 可归因时才准确；缺失 usage 时 Channel 只能用 IM history 字符估算，不能替代真实 tokenizer。
 - 同 session FIFO queue 当前是 daemon 内存队列；Channel daemon 自身重启会丢失未开始的排队消息，durable queue 尚未实现。
 
 ## 下一步
 
-1. 在 `/status` 和 Channel 管理页展示最近 auto compact baseline / fallback / retry 记录，方便用户理解是否已触发。
-2. 优化 Gateway UI 的批量模型导入/检测结果应用：保持 `模型ID | 显示名 | 别名1,别名2` 简单格式，同时允许批量设置能力和预算。
-3. 扩展 Agent compact capability：Claude Code / OpenCode 等 runner 有真实原生 compact/compress 合同时再加入；不支持时继续 Studio fallback。
-4. 继续按 CC Go 迁移 Feishu/Octo 菜单与命令细节、Claude Code AskUserQuestion 卡片精修、OpenCode runner 文件/权限/流式能力。
+1. 优化 Gateway UI 的批量模型导入/检测结果应用：保持 `模型ID | 显示名 | 别名1,别名2` 简单格式，同时允许批量设置能力和预算。
+2. 扩展 Agent compact capability：Claude Code / OpenCode 等 runner 有真实原生 compact/compress 合同时再加入；不支持时继续 Studio fallback。
+3. 继续按 CC Go 迁移 Feishu/Octo 菜单与命令细节、Claude Code AskUserQuestion 卡片精修、OpenCode runner 文件/权限/流式能力。
+4. 设计 durable queue，避免 Channel daemon 重启时丢失尚未开始的同 session 排队消息。

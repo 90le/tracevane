@@ -147,6 +147,80 @@
               <strong>{{ item }}</strong>
             </div>
           </div>
+
+          <section class="ccx-runtime-grid" aria-label="Channel runtime status">
+            <div class="ccx-runtime-card">
+              <div class="ccx-runtime-card__head">
+                <div>
+                  <small>Daemon snapshot</small>
+                  <strong>{{ runtimeStatus?.implementation || 'studio-native' }}</strong>
+                </div>
+                <StatusPill :label="runtimeReachableLabel" :tone="runtimeReachableTone" />
+              </div>
+              <div class="ccx-metric-strip">
+                <div>
+                  <span>PID</span>
+                  <strong>{{ formatMetric(runtimeStatus?.pid) }}</strong>
+                </div>
+                <div>
+                  <span>{{ text('活动任务', 'Active runs') }}</span>
+                  <strong>{{ formatMetric(runtimeStatus?.activeRuns) }}</strong>
+                </div>
+                <div>
+                  <span>Agent turns</span>
+                  <strong>{{ formatMetric(runtimeStatus?.agentRuns) }}</strong>
+                </div>
+              </div>
+              <span v-if="runtimeStatus?.error" class="ccx-danger-text">{{ runtimeStatus.error }}</span>
+            </div>
+
+            <div class="ccx-runtime-card">
+              <div class="ccx-runtime-card__head">
+                <div>
+                  <small>Auto compact</small>
+                  <strong>{{ autoCompactHeadline }}</strong>
+                </div>
+                <StatusPill :label="autoCompactStatusLabel" :tone="autoCompactStatusTone" />
+              </div>
+              <div v-if="latestAutoCompact" class="ccx-metric-strip">
+                <div>
+                  <span>{{ text('有效使用', 'Effective used') }}</span>
+                  <strong>{{ formatTokens(latestAutoCompact.effectiveUsedTokens) }}</strong>
+                </div>
+                <div>
+                  <span>{{ text('触发阈值', 'Threshold') }}</span>
+                  <strong>{{ formatTokens(latestAutoCompact.autoCompactTokenLimit) }}</strong>
+                </div>
+                <div>
+                  <span>{{ text('剩余', 'Remaining') }}</span>
+                  <strong>{{ formatTokens(latestAutoCompact.remainingTokens) }}</strong>
+                </div>
+              </div>
+              <span v-else class="ccx-muted">{{ text('暂无自动压缩记录', 'No auto compact records yet') }}</span>
+            </div>
+          </section>
+
+          <section class="ccx-auto-compact-list" aria-label="Recent auto compact records">
+            <div
+              v-for="record in autoCompactRecords"
+              :key="`${record.checkedAt}:${record.bindingId}:${record.messageId}:${record.action}`"
+              class="ccx-auto-compact-row"
+              :class="autoCompactRowClass(record)"
+            >
+              <div>
+                <small>{{ formatTimestamp(record.checkedAt) }} · {{ record.bindingId }} · {{ record.agent }}</small>
+                <strong>{{ autoCompactActionLabel(record) }} · {{ autoCompactReasonLabel(record.reason) }}</strong>
+                <span>{{ record.model || 'default model' }} · {{ autoCompactBudgetLine(record) }}</span>
+                <span v-if="autoCompactHistoryLine(record)">{{ autoCompactHistoryLine(record) }}</span>
+                <span v-if="record.cooldownUntil">{{ text('重试窗口', 'Retry window') }} {{ formatTimestamp(record.cooldownUntil) }}</span>
+                <span v-if="record.summaryPreview">{{ record.summaryPreview }}</span>
+                <span v-if="record.error" class="ccx-danger-text">{{ record.error }}</span>
+              </div>
+            </div>
+            <div v-if="runtimeStatus?.reachable && !autoCompactRecords.length" class="ccx-empty compact">
+              {{ text('按模型上下文剩余量触发后，这里会显示 native / fallback / retry 记录。', 'Native, fallback, and retry records appear here after model budget pressure triggers auto compact.') }}
+            </div>
+          </section>
         </article>
 
         <article
@@ -558,6 +632,7 @@ import type {
   ChannelConnectorsDaemonAction,
   ChannelConnectorsDaemonConfigResponse,
   ChannelConnectorsDaemonResponse,
+  ChannelConnectorsDaemonRuntimeAutoCompactRecord,
   ChannelConnectorsLogsResponse,
   ChannelConnectorsNativeConfig,
   ChannelConnectorsNativeConfigResponse,
@@ -634,6 +709,40 @@ const runtimeChain = computed(() => status.value?.runtimeChain || [
   'Studio Gateway daemon',
   'upstream provider',
 ]);
+
+const runtimeStatus = computed(() => status.value?.runtime || null);
+const autoCompactRecords = computed(() => (runtimeStatus.value?.autoCompacts || []).slice(0, 6));
+const latestAutoCompact = computed(() => autoCompactRecords.value[0] || null);
+
+const runtimeReachableLabel = computed(() => {
+  if (!runtimeStatus.value) return text('未知', 'Unknown');
+  return runtimeStatus.value.reachable ? text('在线', 'Online') : text('离线', 'Offline');
+});
+
+const runtimeReachableTone = computed<'neutral' | 'accent' | 'sage' | 'danger'>(() => {
+  if (!runtimeStatus.value) return 'neutral';
+  return runtimeStatus.value.reachable ? 'sage' : 'danger';
+});
+
+const autoCompactHeadline = computed(() => {
+  const latest = latestAutoCompact.value;
+  if (!latest) return text('等待触发', 'Waiting');
+  return `${latest.agent}${latest.model ? ` / ${latest.model}` : ''}`;
+});
+
+const autoCompactStatusLabel = computed(() => {
+  const latest = latestAutoCompact.value;
+  if (!latest) return text('暂无记录', 'No records');
+  return autoCompactActionLabel(latest);
+});
+
+const autoCompactStatusTone = computed<'neutral' | 'accent' | 'sage' | 'danger'>(() => {
+  const latest = latestAutoCompact.value;
+  if (!latest) return 'neutral';
+  if (latest.ok === false) return 'danger';
+  if (latest.action === 'native' || latest.action === 'fallback') return 'sage';
+  return 'accent';
+});
 
 const supportedAgents = computed<ChannelConnectorAgentId[]>(() =>
   nativeConfig.value?.supportedAgents || status.value?.bindingPolicy.supportedAgents || ['codex', 'claude-code', 'opencode'] as ChannelConnectorAgentId[],
@@ -749,6 +858,50 @@ function agentSessionEventLabel(type: string): string {
 
 function isAgentSessionEventFailure(type: string): boolean {
   return type === 'turn.failed' || type === 'turn.fallback';
+}
+
+function autoCompactActionLabel(record: ChannelConnectorsDaemonRuntimeAutoCompactRecord): string {
+  if (record.ok === false) return text('失败', 'Failed');
+  if (record.action === 'native') return text('原生压缩', 'Native compact');
+  if (record.action === 'fallback') return text('Studio 压缩', 'Studio compact');
+  return text('已跳过', 'Skipped');
+}
+
+function autoCompactReasonLabel(reason: ChannelConnectorsDaemonRuntimeAutoCompactRecord['reason']): string {
+  const labels: Record<ChannelConnectorsDaemonRuntimeAutoCompactRecord['reason'], string> = {
+    'threshold-reached': text('上下文阈值', 'Context threshold'),
+    cooldown: text('等待重试', 'Retry cooldown'),
+    'native-blocked': text('原生不可用', 'Native blocked'),
+    'fallback-failed': text('降级失败', 'Fallback failed'),
+  };
+  return labels[reason] || reason;
+}
+
+function autoCompactRowClass(record: ChannelConnectorsDaemonRuntimeAutoCompactRecord): Record<string, boolean> {
+  return {
+    success: record.ok === true,
+    failure: record.ok === false,
+    skipped: record.action === 'skipped',
+  };
+}
+
+function autoCompactBudgetLine(record: ChannelConnectorsDaemonRuntimeAutoCompactRecord): string {
+  return [
+    `${text('有效', 'effective')} ${formatTokens(record.effectiveUsedTokens)}`,
+    `${text('原始', 'raw')} ${formatTokens(record.usedTokens)}`,
+    `${text('窗口', 'window')} ${formatTokens(record.contextWindow)}`,
+  ].join(' · ');
+}
+
+function autoCompactHistoryLine(record: ChannelConnectorsDaemonRuntimeAutoCompactRecord): string {
+  const parts: string[] = [];
+  if (record.beforeEntries !== null || record.afterEntries !== null) {
+    parts.push(`history ${formatMetric(record.beforeEntries)} -> ${formatMetric(record.afterEntries)}`);
+  }
+  if (record.sessionsCleared !== null) {
+    parts.push(`${text('清理会话', 'cleared sessions')} ${formatMetric(record.sessionsCleared)}`);
+  }
+  return parts.join(' · ');
 }
 
 const platformSmokeOutput = computed(() => {
@@ -1141,6 +1294,15 @@ function formatTimestamp(value: string): string {
   }
 }
 
+function formatMetric(value: number | null | undefined): string {
+  return typeof value === 'number' && Number.isFinite(value) ? value.toLocaleString() : '-';
+}
+
+function formatTokens(value: number | null | undefined): string {
+  const formatted = formatMetric(value);
+  return formatted === '-' ? formatted : `${formatted} tokens`;
+}
+
 function formatDuration(valueMs: number): string {
   if (!Number.isFinite(valueMs) || valueMs < 0) return '-';
   if (valueMs < 1000) return `${Math.round(valueMs)} ms`;
@@ -1156,6 +1318,12 @@ function formatDuration(valueMs: number): string {
 function reportError(error: unknown, fallback: string): void {
   const message = error instanceof Error ? error.message : fallback;
   notice.value = { kind: 'error', message };
+}
+
+async function refreshStatusSnapshot(): Promise<void> {
+  const nextStatus = await fetchChannelConnectorsStatus();
+  status.value = nextStatus;
+  service.value = nextStatus.service;
 }
 
 async function refreshLogs(): Promise<void> {
@@ -1274,6 +1442,7 @@ async function runServiceAction(action: ChannelConnectorsDaemonAction): Promise<
     };
     await refreshLogs();
     await refreshAgentSessions({ silent: true });
+    await refreshStatusSnapshot();
   } catch (error) {
     reportError(error, text('操作失败', 'Action failed'));
   } finally {

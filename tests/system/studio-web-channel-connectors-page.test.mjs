@@ -78,6 +78,12 @@ test("Channel Connectors page calls only channel connector APIs", () => {
   assert.match(page, /reapAgentSessions/);
   assert.match(page, /recentAgentSessionEvents/);
   assert.match(page, /turn\.fallback/);
+  assert.match(page, /autoCompactRecords/);
+  assert.match(page, /latestAutoCompact/);
+  assert.match(page, /Auto compact/);
+  assert.match(page, /Effective used|有效使用/);
+  assert.match(page, /Retry window|重试窗口/);
+  assert.match(page, /autoCompactBudgetLine/);
   assert.match(page, /Test|测试连接/);
   assert.match(page, /Reap idle|清理空闲/);
   assert.match(page, /Save profile|保存 Profile/);
