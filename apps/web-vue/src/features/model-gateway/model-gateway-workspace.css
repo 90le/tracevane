@@ -417,6 +417,25 @@
   align-items: center;
 }
 
+.mgw-profile-budget-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: var(--surface-base);
+  padding: 9px 10px;
+}
+
+.mgw-profile-budget-bar span {
+  min-width: 0;
+  color: var(--mono-ink-2);
+  font-size: 0.84rem;
+  overflow-wrap: anywhere;
+}
+
 .mgw-profile-advanced {
   min-width: 0;
   border-top: 1px solid var(--mono-line);

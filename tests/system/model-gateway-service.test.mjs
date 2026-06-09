@@ -337,8 +337,17 @@ test("model gateway detects provider protocols without persisting probe secrets"
     if (target.pathname.endsWith("/models")) {
       return new Response(JSON.stringify({
         data: [
-          { id: "model-a", display_name: "Model A", context_length: 128000, max_output_tokens: 8192 },
+          {
+            id: "model-a",
+            display_name: "Model A",
+            context_length: 128000,
+            max_output_tokens: 8192,
+            input_modalities: ["text", "image"],
+            supported_parameters: ["tools", "tool_choice", "stream", "reasoning_effort"],
+            endpoints: ["/v1/responses"],
+          },
           { id: "model-b", contextWindow: "256000", maxOutputTokens: "16384" },
+          "deepseek-reasoner",
         ],
       }), {
         status: 200,
@@ -402,12 +411,28 @@ test("model gateway detects provider protocols without persisting probe secrets"
 
       assert.equal(response.status, 200);
       assert.equal(response.body.ok, true);
-      assert.equal(response.body.models.length, 2);
-      assert.deepEqual(response.body.models.map((model) => model.id), ["model-a", "model-b"]);
+      assert.equal(response.body.models.length, 3);
+      assert.deepEqual(response.body.models.map((model) => model.id), ["model-a", "model-b", "deepseek-reasoner"]);
       assert.deepEqual(
         response.body.models.map((model) => [model.contextWindow, model.maxOutputTokens]),
-        [[128000, 8192], [256000, 16384]],
+        [[128000, 8192], [256000, 16384], [64000, 8000]],
       );
+      assert.deepEqual(response.body.models[0].features, {
+        text: true,
+        streaming: true,
+        tools: true,
+        vision: true,
+        reasoning: true,
+        responses: true,
+      });
+      assert.deepEqual(response.body.models[2].features, {
+        text: true,
+        streaming: true,
+        tools: false,
+        vision: false,
+        reasoning: true,
+        responses: true,
+      });
       assert.equal(response.body.selectedModel, "model-a");
       assert.deepEqual(
         response.body.protocols.map((protocol) => [protocol.apiFormat, protocol.ok, protocol.authStrategy]),
@@ -1105,6 +1130,69 @@ test("model gateway app connections preview and apply client config files with r
   assert.equal(appliedPreview.connections.every((connection) => connection.configured), true);
   assert.equal(appliedPreview.connections.every((connection) => connection.canRollback), true);
   assert.equal(JSON.stringify(appliedPreview).includes("sk-local-app-connection"), false);
+});
+
+test("model gateway app connections resolve budgets from each selected app model", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const homeDir = path.join(root, "home");
+  const service = createModelGatewayService(config, { homeDir });
+
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "budget-provider",
+      name: "Budget Provider",
+      appScopes: ["codex", "opencode"],
+      baseUrl: "https://budget.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "gpt-main",
+        models: [
+          { id: "gpt-main", contextWindow: 256000, maxOutputTokens: 128000 },
+          { id: "gpt-small", aliases: ["small"], contextWindow: 64000, maxOutputTokens: 8192 },
+        ],
+      },
+    },
+    secret: { apiKey: "sk-upstream-budget" },
+  });
+  service.updateClientAuth(undefined, { apiKey: "sk-local-budget" });
+  service.updateAppConnectionProfile(undefined, {
+    profile: {
+      model: "gpt-main",
+      appModels: {
+        codex: "gpt-small",
+        opencode: "small",
+      },
+      contextWindow: 300000,
+      autoCompactTokenLimit: 250000,
+      maxOutputTokens: 128000,
+      protocolOptions: {
+        codexResponsesWebsockets: false,
+        codexResponsesWebsocketsV2: false,
+        codexRequestCompression: false,
+      },
+    },
+  });
+
+  const codexPath = path.join(homeDir, ".codex", "config.toml");
+  const opencodePath = path.join(homeDir, ".config", "opencode", "opencode.json");
+  fs.mkdirSync(path.dirname(codexPath), { recursive: true });
+  fs.mkdirSync(path.dirname(opencodePath), { recursive: true });
+  fs.writeFileSync(codexPath, "", "utf8");
+  fs.writeFileSync(opencodePath, "{}\n", "utf8");
+
+  service.applyAppConnection(undefined, { appId: "codex" });
+  const codexConfig = fs.readFileSync(codexPath, "utf8");
+  assert.match(codexConfig, /model = "gpt-small"/);
+  assert.match(codexConfig, /model_context_window = 64000/);
+  assert.match(codexConfig, /model_auto_compact_token_limit = 47436/);
+
+  service.applyAppConnection(undefined, { appId: "opencode" });
+  const opencodeConfig = JSON.parse(fs.readFileSync(opencodePath, "utf8"));
+  assert.equal(opencodeConfig.model, "studio-gateway/small");
+  assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-small"].contextWindow, 64000);
+  assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-small"].maxOutputTokens, 8192);
 });
 
 test("model gateway app connections apply through HTTP routes against an isolated home", async () => {

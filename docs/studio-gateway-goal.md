@@ -45,7 +45,7 @@ Provider / model routing 目标：
 - Provider 可新增多个，并支持启用、停用、删除；停用 provider 不参与 active routing、模型目录和自动 failover。
 - Active routing 按 App scope 选择 provider：Codex、Claude Code、OpenCode、OpenClaw 可各自固定 provider，也可保持 Auto 按启用 provider 和健康状态选择。
 - Studio Gateway 对外提供统一模型目录，例如 `GET /v1/models`，聚合所有已启用 provider 的模型；模型 ID 必须能映射回 provider，可支持显示名、别名和能力标记（文字、图片、工具、推理、Responses、流式），并允许 App Connections / Channel Connectors 依据能力选择模型。
-- Gateway 模型目录是上下文预算源头：每个模型必须允许配置或识别 `contextWindow`、`maxOutputTokens`、是否支持 reasoning/vision/tools；App Connections 和 Channel Connectors 的上下文窗口、自动 compact 阈值、max output 默认从 resolved model 派生，用户可在 App/Profile 层覆盖。
+- Gateway 模型目录是上下文预算源头：每个模型必须允许配置或识别 `contextWindow`、`maxOutputTokens`、是否支持 reasoning/vision/tools；检测优先使用 provider 返回字段，其次用保守模型族默认值兜底；App Connections 和 Channel Connectors 的上下文窗口、自动 compact 阈值、max output 默认从 resolved model 派生，用户可在 App/Profile 层覆盖但不能高于已知模型预算。
 - 客户端只配置 daemon endpoint 和一个本地 Gateway key；真实 upstream key 留在 Studio secret store。Gateway key 必须可由用户编辑或生成；设置并启用后，`/v1/models` 和三类客户端协议端点都必须校验该 key，且不会把本地 key 透传上游。
 - 不同 provider 暴露同名 model ID 是合法模型池：优先 active routing 所属 provider；Auto 按 provider priority 和健康状态选择；open circuit 自动切换到下一个同名模型 provider；也支持 `provider/model` 或 alias 显式选择。
 - 同一个 provider 内不允许重复 model ID 或重复 alias，重复判定大小写不敏感，保存时必须拒绝。
@@ -113,7 +113,7 @@ Provider / model routing 目标：
 | Studio Gateway Core | provider registry、secret store、active route、health、request log、usage ledger、adapter registry |
 | Studio Gateway daemon | loopback HTTP listener、协议 adapter、provider router、runtime metadata、supervisor contract |
 | Gateway Service & Config | daemon 安装/启用自启动/启动/停止/重启/状态、用户自定义 provider 配置、provider 启停、协议/模型自动识别弹层、secret 写入、聚合模型目录、模型别名、默认模型、模型能力标记、模型上下文/输出预算、active provider、resolved route 状态、provider-native smoke、client-protocol active-route smoke |
-| App Connections | Codex、Claude Code、OpenCode、OpenClaw 的配置检测、脱敏 preview、确认后 apply、备份/rollback、默认模型与 App 级模型覆盖、模型目录选择、上下文/compact/max output/reasoning profile；Codex 低频兼容参数收进高级折叠 |
+| App Connections | Codex、Claude Code、OpenCode、OpenClaw 的配置检测、脱敏 preview、确认后 apply、备份/rollback、默认模型与 App 级模型覆盖、模型目录选择、上下文/compact/max output/reasoning profile；支持写入预算字段的 Agent 配置直接随选中模型写入，Claude Code 等无标准预算字段的工具由 Gateway/Channel 层使用预算做上下文管理；Codex 低频兼容参数收进高级折叠 |
 | Channel Connectors | Studio 原生 Channel daemon、typed config store、Agent Profile、workDir/model/permission/Gateway key ref、platform/bot->Agent 绑定、CC 全功能原生化、Octo(dmwork)、飞书、微信等 IM 渠道事件接入、会话映射、治理、自动化和消息路由 |
 | Gateway UI | Runtime/Gateway key/Active routing 左侧常驻，右侧用 tabs 分开 App Connections、Provider Center、Smoke；参考旧 CPA 管理页的运行态布局和 cc-switch 的 provider 表单，但不内置具体 vendor 预设，也不复用旧 Codex Stack / CPA / Compact 文案、诊断矩阵、安装修复复杂度；Provider 原生协议只展示三类常见协议 |
 

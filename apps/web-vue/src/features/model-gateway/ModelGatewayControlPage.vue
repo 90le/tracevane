@@ -290,6 +290,18 @@
               </label>
             </div>
 
+            <div class="mgw-profile-budget-bar">
+              <span>{{ appConnectionBudgetSummary }}</span>
+              <button
+                type="button"
+                class="secondary-button compact-button"
+                :disabled="!canApplyAppConnectionModelBudget"
+                @click="applyAppConnectionModelBudget(true)"
+              >
+                {{ text('应用模型预算', 'Use model budget') }}
+              </button>
+            </div>
+
             <details class="mgw-profile-advanced">
               <summary>{{ text('Codex 高级', 'Codex advanced') }}</summary>
               <div class="mgw-profile-toggles">
@@ -331,6 +343,10 @@
                 <div>
                   <span>{{ text('Profile 模型', 'Profile model') }}</span>
                   <strong>{{ connection.model || '-' }}</strong>
+                </div>
+                <div>
+                  <span>{{ text('有效预算', 'Effective budget') }}</span>
+                  <strong>{{ appConnectionBudgetLabel(connection.model || appConnectionProfile.model) }}</strong>
                 </div>
                 <div>
                   <span>{{ text('最近备份', 'Latest backup') }}</span>
@@ -862,6 +878,13 @@ type AppConnectionModelOption = {
   label: string;
 };
 
+type AppConnectionBudgetDraft = {
+  model: string;
+  contextWindow: string;
+  autoCompactTokenLimit: string;
+  maxOutputTokens: string;
+};
+
 const { text } = useLocalePreference();
 
 const appScopeOptions: Array<{ id: ModelGatewayAppScope; zh: string; en: string }> = [
@@ -975,6 +998,7 @@ const appConnectionProfile = reactive<AppConnectionProfileDraft>(createEmptyAppC
 const appConnectionAvailableModels = ref<string[]>([]);
 const appConnectionProfileBusy = ref(false);
 const appConnectionApplyAllBusy = ref(false);
+const lastAutoAppConnectionBudget = ref<AppConnectionBudgetDraft | null>(null);
 const providers = ref<ModelGatewayProviderView[]>([]);
 const activeProviders = ref<Partial<Record<ModelGatewayAppScope, string>>>({});
 const activeRouteStatuses = ref<ModelGatewayActiveRouteStatus[]>([]);
@@ -1003,6 +1027,25 @@ const appConnectionModelOptions = computed<AppConnectionModelOption[]>(() =>
     label: appConnectionModelOptionLabel(model),
   })),
 );
+
+const selectedAppConnectionBudget = computed(() =>
+  appConnectionBudgetDraftForModel(appConnectionProfile.model),
+);
+
+const canApplyAppConnectionModelBudget = computed(() =>
+  Boolean(selectedAppConnectionBudget.value.contextWindow || selectedAppConnectionBudget.value.maxOutputTokens),
+);
+
+const appConnectionBudgetSummary = computed(() => {
+  const budget = selectedAppConnectionBudget.value;
+  if (!budget.contextWindow && !budget.maxOutputTokens) {
+    return text('未识别模型预算', 'No model budget detected');
+  }
+  return text(
+    `模型预算 ${appConnectionBudgetLabel(budget.model)} · Compact ${formatCompactNumber(Number(budget.autoCompactTokenLimit || 0))}`,
+    `Model budget ${appConnectionBudgetLabel(budget.model)} · Compact ${formatCompactNumber(Number(budget.autoCompactTokenLimit || 0))}`,
+  );
+});
 
 const selectedSmokeProvider = computed(() =>
   providers.value.find((provider) => provider.id === smokeProviderId.value) || null,
@@ -1334,6 +1377,7 @@ function assignAppConnectionProfile(profile: ModelGatewayAppConnectionProfile): 
   appConnectionProfile.codexResponsesWebsockets = profile.protocolOptions.codexResponsesWebsockets;
   appConnectionProfile.codexResponsesWebsocketsV2 = profile.protocolOptions.codexResponsesWebsocketsV2;
   appConnectionProfile.codexRequestCompression = profile.protocolOptions.codexRequestCompression;
+  lastAutoAppConnectionBudget.value = null;
 }
 
 function parsePositiveDraftInteger(value: string): number | null {
@@ -1577,6 +1621,13 @@ function formatModelLine(model: ModelGatewayProviderModel): string {
   return model.id;
 }
 
+function appConnectionBudgetLabel(modelId: string): string {
+  const budget = appConnectionBudgetDraftForModel(modelId);
+  const context = budget.contextWindow ? `${formatCompactNumber(Number(budget.contextWindow))} ${text('上下文', 'context')}` : '-';
+  const output = budget.maxOutputTokens ? `${formatCompactNumber(Number(budget.maxOutputTokens))} ${text('输出', 'output')}` : '-';
+  return `${context} · ${output}`;
+}
+
 function appConnectionModelOptionLabel(modelId: string): string {
   const metadata = appConnectionModelMetadata(modelId);
   const budget = [
@@ -1611,13 +1662,75 @@ function appConnectionModelMetadata(modelId: string): { label: string | null; co
     }
   }
 
+  const fallback = inferAppConnectionBudget(modelId);
+  result.contextWindow ||= fallback.contextWindow;
+  result.maxOutputTokens ||= fallback.maxOutputTokens;
   return result;
+}
+
+function inferAppConnectionBudget(modelId: string): { contextWindow: number | null; maxOutputTokens: number | null } {
+  const normalized = normalizeModelKey(modelId);
+  if (!normalized) return { contextWindow: null, maxOutputTokens: null };
+  if (/^gpt-5\.(4|5)(\b|-|_)?/.test(normalized)) return { contextWindow: 1050000, maxOutputTokens: 128000 };
+  if (/^gpt-5(\b|-|_|\.)?/.test(normalized) || /^o[134](\b|-|_|\.)?/.test(normalized)) return { contextWindow: 400000, maxOutputTokens: 128000 };
+  if (/^gpt-4\.1(\b|-|_)?/.test(normalized)) return { contextWindow: 1047576, maxOutputTokens: 32768 };
+  if (/^gpt-4o(\b|-|_)?/.test(normalized)) return { contextWindow: 128000, maxOutputTokens: 16384 };
+  if (/claude/.test(normalized) && /((opus|sonnet).*4[-.]?[678]|4[-.]?[678].*(opus|sonnet))/.test(normalized)) return { contextWindow: 1000000, maxOutputTokens: 64000 };
+  if (/claude/.test(normalized)) return { contextWindow: 200000, maxOutputTokens: 64000 };
+  if (/gemini-3|gemini-2\.5/.test(normalized)) return { contextWindow: 1048576, maxOutputTokens: 65536 };
+  if (/gemini/.test(normalized)) return { contextWindow: 1048576, maxOutputTokens: 8192 };
+  if (/deepseek/.test(normalized)) return { contextWindow: 64000, maxOutputTokens: 8000 };
+  if (/^glm[-_]?5|^glm[-_]?4\.[56]/.test(normalized)) return { contextWindow: 200000, maxOutputTokens: 128000 };
+  if (/qwen/.test(normalized)) return { contextWindow: /1m|long/.test(normalized) ? 1000000 : 128000, maxOutputTokens: 8192 };
+  if (/grok/.test(normalized)) return { contextWindow: 256000, maxOutputTokens: 32768 };
+  return { contextWindow: 64000, maxOutputTokens: 8192 };
 }
 
 function mergeModelBudget(current: number | null, next: unknown): number | null {
   const normalized = typeof next === 'number' && Number.isFinite(next) && next > 0 ? Math.floor(next) : null;
   if (!normalized) return current;
   return current === null ? normalized : Math.min(current, normalized);
+}
+
+function deriveAppConnectionCompactLimit(contextWindow: number | null, maxOutputTokens: number | null): number | null {
+  if (!contextWindow) return null;
+  const outputReserve = Math.min(
+    Math.max(maxOutputTokens || 8192, 8192),
+    Math.floor(contextWindow * 0.5),
+  );
+  return Math.max(1024, Math.floor(Math.max(1024, contextWindow - outputReserve) * 0.85));
+}
+
+function appConnectionBudgetDraftForModel(modelId: string): AppConnectionBudgetDraft {
+  const metadata = appConnectionModelMetadata(modelId);
+  const compact = deriveAppConnectionCompactLimit(metadata.contextWindow, metadata.maxOutputTokens);
+  return {
+    model: modelId || '-',
+    contextWindow: metadata.contextWindow ? String(metadata.contextWindow) : '',
+    autoCompactTokenLimit: compact ? String(compact) : '',
+    maxOutputTokens: metadata.maxOutputTokens ? String(metadata.maxOutputTokens) : '',
+  };
+}
+
+function appConnectionBudgetFieldsMatchLastAuto(): boolean {
+  const last = lastAutoAppConnectionBudget.value;
+  return Boolean(last)
+    && appConnectionProfile.contextWindow === last.contextWindow
+    && appConnectionProfile.autoCompactTokenLimit === last.autoCompactTokenLimit
+    && appConnectionProfile.maxOutputTokens === last.maxOutputTokens;
+}
+
+function applyAppConnectionModelBudget(force = false): void {
+  const next = selectedAppConnectionBudget.value;
+  if (!next.contextWindow && !next.maxOutputTokens) return;
+  const fieldsAreEmpty = !appConnectionProfile.contextWindow
+    && !appConnectionProfile.autoCompactTokenLimit
+    && !appConnectionProfile.maxOutputTokens;
+  if (!force && !fieldsAreEmpty && !appConnectionBudgetFieldsMatchLastAuto()) return;
+  appConnectionProfile.contextWindow = next.contextWindow;
+  appConnectionProfile.autoCompactTokenLimit = next.autoCompactTokenLimit;
+  appConnectionProfile.maxOutputTokens = next.maxOutputTokens;
+  lastAutoAppConnectionBudget.value = { ...next };
 }
 
 function normalizeModelKey(value: string): string {
@@ -1788,6 +1901,7 @@ async function loadAll(): Promise<void> {
     assignAppConnectionProfile(nextAppConnections.profile);
     appConnectionAvailableModels.value = nextAppConnections.availableModels;
     applyProviderResponse(nextProviders);
+    applyAppConnectionModelBudget(false);
     ensureSelectedProvider();
     loaded.value = true;
   } catch (error) {
@@ -1806,6 +1920,7 @@ async function refreshAppConnections(): Promise<void> {
     appConnections.value = response.connections;
     assignAppConnectionProfile(response.profile);
     appConnectionAvailableModels.value = response.availableModels;
+    applyAppConnectionModelBudget(false);
   } catch (error) {
     notice.value = {
       kind: 'error',
@@ -2264,6 +2379,10 @@ watch(selectedSmokeProvider, (provider) => {
   if (!smokeModel.value) {
     smokeModel.value = provider.models.defaultModel || provider.models.models[0]?.id || '';
   }
+});
+
+watch(() => appConnectionProfile.model, () => {
+  applyAppConnectionModelBudget(false);
 });
 
 onMounted(loadAll);

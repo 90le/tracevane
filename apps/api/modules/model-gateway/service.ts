@@ -55,6 +55,7 @@ import {
   type ModelGatewayProviderHealth,
   type ModelGatewayProviderInput,
   type ModelGatewayModelListResponse,
+  type ModelGatewayModelListItem,
   type ModelGatewayProviderModel,
   type ModelGatewayProviderModelCatalog,
   type ModelGatewayModelFeatures,
@@ -131,6 +132,8 @@ const DEFAULT_STREAMING_IDLE_TIMEOUT_MS = 120_000;
 const MODEL_GATEWAY_CIRCUIT_OPEN_RETRY_MS = 60_000;
 const MAX_RUNTIME_REQUEST_LOG_ENTRIES = 200;
 const REQUEST_LOG_PREVIEW_CHARS = 1_000;
+const DEFAULT_UNKNOWN_MODEL_CONTEXT_WINDOW = 64_000;
+const DEFAULT_UNKNOWN_MODEL_MAX_OUTPUT_TOKENS = 8_192;
 const CLIENT_AUTH_SECRET_REF = "gateway:client-api-key";
 const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
@@ -431,6 +434,19 @@ function firstPositiveInteger(...values: unknown[]): number | null {
   return null;
 }
 
+function firstBooleanLike(...values: unknown[]): boolean | null {
+  for (const value of values) {
+    if (typeof value === "boolean") return value;
+    if (typeof value === "number" && Number.isFinite(value)) return value > 0;
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase();
+      if (["true", "yes", "supported", "enabled", "available", "1"].includes(normalized)) return true;
+      if (["false", "no", "unsupported", "disabled", "unavailable", "0"].includes(normalized)) return false;
+    }
+  }
+  return null;
+}
+
 function mergeModelBudgetMinimum(current: number | null, next: unknown): number | null {
   const normalized = positiveIntegerOrNull(next);
   if (normalized === null) return current;
@@ -488,6 +504,169 @@ function compactModelFeatures(features: ModelGatewayModelFeatures): ModelGateway
       .filter((key) => typeof features[key] === "boolean")
       .map((key) => [key, features[key]]),
   ) as ModelGatewayModelFeatures;
+}
+
+function modelNameMatches(modelId: string, patterns: RegExp[]): boolean {
+  const normalized = modelId.trim().toLowerCase();
+  return patterns.some((pattern) => pattern.test(normalized));
+}
+
+function knownModelDefaults(modelId: string): Partial<ModelGatewayProviderModel> {
+  const features: ModelGatewayModelFeatures = {
+    text: true,
+    streaming: true,
+    responses: true,
+  };
+
+  if (modelNameMatches(modelId, [/^gpt-5\.(?:4|5)(?:\b|-|_)/, /^gpt-5\.(?:4|5)$/])) {
+    return {
+      contextWindow: 1_050_000,
+      maxOutputTokens: 128_000,
+      features: { ...features, vision: true, tools: true, reasoning: true },
+    };
+  }
+  if (modelNameMatches(modelId, [/^gpt-5(?:\b|-|_|\.)/, /^o[134](?:\b|-|_|\.)/])) {
+    return {
+      contextWindow: 400_000,
+      maxOutputTokens: 128_000,
+      features: { ...features, vision: true, tools: true, reasoning: true },
+    };
+  }
+  if (modelNameMatches(modelId, [/^gpt-4\.1(?:\b|-|_)/, /^gpt-4\.1$/])) {
+    return {
+      contextWindow: 1_047_576,
+      maxOutputTokens: 32_768,
+      features: { ...features, vision: true, tools: true, reasoning: false },
+    };
+  }
+  if (modelNameMatches(modelId, [/^gpt-4o(?:\b|-|_)/, /^gpt-4o$/])) {
+    return {
+      contextWindow: 128_000,
+      maxOutputTokens: 16_384,
+      features: { ...features, vision: true, tools: true, reasoning: false },
+    };
+  }
+  if (modelNameMatches(modelId, [/claude.*(?:opus|sonnet).*4[-.]?[678]\b/, /claude.*4[-.]?[678].*(?:opus|sonnet)/])) {
+    return {
+      contextWindow: 1_000_000,
+      maxOutputTokens: 64_000,
+      features: { ...features, vision: true, tools: true, reasoning: true },
+    };
+  }
+  if (modelNameMatches(modelId, [/claude/])) {
+    return {
+      contextWindow: 200_000,
+      maxOutputTokens: 64_000,
+      features: { ...features, vision: true, tools: true, reasoning: true },
+    };
+  }
+  if (modelNameMatches(modelId, [/gemini-3/, /gemini-2\.5/])) {
+    return {
+      contextWindow: 1_048_576,
+      maxOutputTokens: 65_536,
+      features: { ...features, vision: true, tools: true, reasoning: true },
+    };
+  }
+  if (modelNameMatches(modelId, [/gemini/])) {
+    return {
+      contextWindow: 1_048_576,
+      maxOutputTokens: 8_192,
+      features: { ...features, vision: true, tools: true, reasoning: modelNameMatches(modelId, [/thinking/, /pro/]) },
+    };
+  }
+  if (modelNameMatches(modelId, [/deepseek/])) {
+    const isReasoner = modelNameMatches(modelId, [/reasoner/, /r1/]);
+    return {
+      contextWindow: 64_000,
+      maxOutputTokens: 8_000,
+      features: { ...features, tools: !isReasoner, reasoning: isReasoner, vision: false },
+    };
+  }
+  if (modelNameMatches(modelId, [/^glm[-_]?5/, /^glm[-_]?4\.[56]/])) {
+    return {
+      contextWindow: 200_000,
+      maxOutputTokens: 128_000,
+      features: { ...features, vision: modelNameMatches(modelId, [/vl/, /vision/, /v$/]), tools: true, reasoning: true },
+    };
+  }
+  if (modelNameMatches(modelId, [/qwen/])) {
+    return {
+      contextWindow: modelNameMatches(modelId, [/1m/, /long/]) ? 1_000_000 : 128_000,
+      maxOutputTokens: 8_192,
+      features: {
+        ...features,
+        vision: modelNameMatches(modelId, [/vl/, /omni/, /vision/]),
+        tools: true,
+        reasoning: modelNameMatches(modelId, [/qwq/, /qvq/, /qwen3/, /thinking/]),
+      },
+    };
+  }
+  if (modelNameMatches(modelId, [/grok/])) {
+    return {
+      contextWindow: modelNameMatches(modelId, [/build/]) ? 256_000 : 256_000,
+      maxOutputTokens: 32_768,
+      features: { ...features, vision: true, tools: true, reasoning: true },
+    };
+  }
+
+  return { features };
+}
+
+function collectModelItemSignals(value: unknown, depth = 0): string[] {
+  if (depth > 2 || value === null || value === undefined) return [];
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return [String(value).toLowerCase()];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => collectModelItemSignals(item, depth + 1));
+  }
+  if (!isRecord(value)) return [];
+  return Object.entries(value).flatMap(([key, item]) => [
+    key.toLowerCase(),
+    ...collectModelItemSignals(item, depth + 1),
+  ]);
+}
+
+function modelItemHasSignal(signals: string[], patterns: RegExp[]): boolean {
+  return signals.some((signal) => patterns.some((pattern) => pattern.test(signal)));
+}
+
+function modelItemBooleanCapability(item: Record<string, unknown>, keys: string[]): boolean | null {
+  const sources = [
+    item,
+    isRecord(item.features) ? item.features : null,
+    isRecord(item.capabilities) ? item.capabilities : null,
+    isRecord(item.supports) ? item.supports : null,
+  ].filter((source): source is Record<string, unknown> => source !== null);
+  for (const source of sources) {
+    for (const key of keys) {
+      if (Object.prototype.hasOwnProperty.call(source, key)) {
+        const value = firstBooleanLike(source[key]);
+        if (value !== null) return value;
+      }
+    }
+  }
+  return null;
+}
+
+function inferModelFeatures(modelId: string, item?: Record<string, unknown>): ModelGatewayModelFeatures {
+  const known = knownModelDefaults(modelId).features || {};
+  const signals = item ? collectModelItemSignals(item) : [];
+  return compactModelFeatures({
+    text: modelItemBooleanCapability(item || {}, ["text", "textInput", "text_input"]) ?? true,
+    vision: modelItemBooleanCapability(item || {}, ["vision", "image", "imageInput", "image_input", "multimodal"])
+      ?? (modelItemHasSignal(signals, [/vision/, /image/, /video/, /multimodal/, /\bvl\b/]) ? true : known.vision),
+    tools: modelItemBooleanCapability(item || {}, ["tools", "toolUse", "tool_use", "functionCalling", "function_calling", "functions"])
+      ?? (modelItemHasSignal(signals, [/tool/, /function[_ -]?calling/, /function[_ -]?call/, /code[_ -]?execution/]) ? true : known.tools),
+    reasoning: modelItemBooleanCapability(item || {}, ["reasoning", "thinking", "cot", "chainOfThought", "chain_of_thought"])
+      ?? (modelItemHasSignal(signals, [/reasoning/, /thinking/, /\bcot\b/, /reasoning_effort/]) ? true : known.reasoning),
+    responses: modelItemBooleanCapability(item || {}, ["responses", "responseApi", "response_api"])
+      ?? (modelItemHasSignal(signals, [/responses/, /response_api/, /structured[_ -]?outputs?/]) ? true : known.responses)
+      ?? true,
+    streaming: modelItemBooleanCapability(item || {}, ["streaming", "stream"])
+      ?? (modelItemHasSignal(signals, [/stream/, /streaming/]) ? true : known.streaming)
+      ?? true,
+  });
 }
 
 function validateProviderModelCatalog(providerId: string, catalog: ModelGatewayProviderModelCatalog): void {
@@ -1420,7 +1599,7 @@ function extractModelItems(value: unknown): ModelGatewayProviderModel[] {
 
   const models = source
     .map((item): ModelGatewayProviderModel | null => {
-      if (typeof item === "string") return { id: item };
+      if (typeof item === "string") return inferredModelFromId(item);
       if (!isRecord(item)) return null;
       const id = normalizeString(item.id)
         || normalizeString(item.name)
@@ -1431,6 +1610,7 @@ function extractModelItems(value: unknown): ModelGatewayProviderModel[] {
         || normalizeString(item.displayName)
         || normalizeString(item.label)
         || normalizeString(item.name);
+      const known = knownModelDefaults(id);
       const contextWindow = firstPositiveInteger(
         item.contextWindow,
         item.context_window,
@@ -1440,6 +1620,7 @@ function extractModelItems(value: unknown): ModelGatewayProviderModel[] {
         item.maxContextLength,
         item.max_input_tokens,
         item.maxInputTokens,
+        known.contextWindow,
       );
       const maxOutputTokens = firstPositiveInteger(
         item.maxOutputTokens,
@@ -1448,12 +1629,14 @@ function extractModelItems(value: unknown): ModelGatewayProviderModel[] {
         item.maxCompletionTokens,
         item.output_token_limit,
         item.outputTokenLimit,
+        known.maxOutputTokens,
       );
       return {
         id,
         ...(label && label !== id ? { label } : {}),
         ...(contextWindow ? { contextWindow } : {}),
         ...(maxOutputTokens ? { maxOutputTokens } : {}),
+        features: inferModelFeatures(id, item),
       } satisfies ModelGatewayProviderModel;
     })
     .filter((item): item is ModelGatewayProviderModel => Boolean(item));
@@ -1464,6 +1647,16 @@ function extractModelItems(value: unknown): ModelGatewayProviderModel[] {
     seen.add(model.id);
     return true;
   });
+}
+
+function inferredModelFromId(modelId: string): ModelGatewayProviderModel {
+  const known = knownModelDefaults(modelId);
+  return {
+    id: modelId,
+    ...(known.contextWindow ? { contextWindow: known.contextWindow } : {}),
+    ...(known.maxOutputTokens ? { maxOutputTokens: known.maxOutputTokens } : {}),
+    features: inferModelFeatures(modelId),
+  };
 }
 
 function parseModelsResponseText(value: string): ModelGatewayProviderModel[] {
@@ -3328,6 +3521,10 @@ export function createModelGatewayService(
     const selectedModel = normalizeString(payload.model)
       || models[0]?.id
       || null;
+    if (selectedModel && !seenModels.has(selectedModel)) {
+      seenModels.add(selectedModel);
+      models.push(inferredModelFromId(selectedModel));
+    }
     const protocols = await Promise.all([
       detectProtocolCandidate({
         baseUrl,
@@ -3696,7 +3893,7 @@ export function createModelGatewayService(
     sourceProfile: ModelGatewayAppConnectionProfile = readRegistry().appConnectionProfile,
   ): ModelGatewayAppConnectionProfile {
     const normalized = normalizeAppConnectionProfile(sourceProfile);
-    return normalizeAppConnectionProfile({
+    return withResolvedAppConnectionBudget({
       ...normalized,
       model: normalized.appModels[spec.id] || normalized.model || defaultModelForConnection(spec.appScope),
     });
@@ -3723,6 +3920,72 @@ export function createModelGatewayService(
       ...Object.values(profile.appModels || {}).map((item) => item || ""),
       ...modelIds,
     ].filter((item, index, list) => item && list.indexOf(item) === index);
+  }
+
+  function modelListItemMatchesRequest(item: ModelGatewayModelListItem, requestedModel: string): boolean {
+    const requested = normalizeModelLookupKey(requestedModel);
+    if (!requested) return false;
+    const direct = [
+      item.id,
+      ...item.aliases,
+      ...item.providerIds.map((providerId) => `${providerId}/${item.id}`),
+      ...item.providerIds.flatMap((providerId) => item.aliases.map((alias) => `${providerId}/${alias}`)),
+    ].some((candidate) => normalizeModelLookupKey(candidate) === requested);
+    if (direct) return true;
+    const tail = requested.split("/").pop() || requested;
+    return normalizeModelLookupKey(item.id) === tail
+      || item.aliases.some((alias) => normalizeModelLookupKey(alias) === tail);
+  }
+
+  function modelBudgetForAppConnectionModel(modelId: string | null): { contextWindow: number | null; maxOutputTokens: number | null } {
+    const requested = normalizeString(modelId);
+    if (!requested) {
+      return {
+        contextWindow: null,
+        maxOutputTokens: null,
+      };
+    }
+    const item = listGatewayModels().data.find((model) => modelListItemMatchesRequest(model, requested));
+    const known = knownModelDefaults(requested);
+    return {
+      contextWindow: positiveIntegerOrNull(item?.contextWindow)
+        ?? positiveIntegerOrNull(known.contextWindow)
+        ?? null,
+      maxOutputTokens: positiveIntegerOrNull(item?.maxOutputTokens)
+        ?? positiveIntegerOrNull(known.maxOutputTokens)
+        ?? null,
+    };
+  }
+
+  function mergeAppConnectionBudget(profileValue: number | null, modelValue: number | null): number | null {
+    if (profileValue && modelValue) return Math.min(profileValue, modelValue);
+    return profileValue || modelValue || null;
+  }
+
+  function deriveAutoCompactTokenLimit(contextWindow: number | null, maxOutputTokens: number | null): number | null {
+    if (!contextWindow) return null;
+    const outputReserve = Math.min(
+      Math.max(maxOutputTokens || DEFAULT_UNKNOWN_MODEL_MAX_OUTPUT_TOKENS, DEFAULT_UNKNOWN_MODEL_MAX_OUTPUT_TOKENS),
+      Math.floor(contextWindow * 0.5),
+    );
+    const usableInputWindow = Math.max(1_024, contextWindow - outputReserve);
+    return Math.max(1_024, Math.floor(usableInputWindow * 0.85));
+  }
+
+  function withResolvedAppConnectionBudget(profile: ModelGatewayAppConnectionProfile): ModelGatewayAppConnectionProfile {
+    const normalized = normalizeAppConnectionProfile(profile);
+    const budget = modelBudgetForAppConnectionModel(normalized.model);
+    const contextWindow = mergeAppConnectionBudget(normalized.contextWindow, budget.contextWindow)
+      ?? DEFAULT_UNKNOWN_MODEL_CONTEXT_WINDOW;
+    const maxOutputTokens = mergeAppConnectionBudget(normalized.maxOutputTokens, budget.maxOutputTokens)
+      ?? DEFAULT_UNKNOWN_MODEL_MAX_OUTPUT_TOKENS;
+    const derivedCompactLimit = deriveAutoCompactTokenLimit(contextWindow, maxOutputTokens);
+    return {
+      ...normalized,
+      contextWindow,
+      maxOutputTokens,
+      autoCompactTokenLimit: mergeAppConnectionBudget(normalized.autoCompactTokenLimit, derivedCompactLimit),
+    };
   }
 
   function buildAppConnectionContent(spec: ModelGatewayAppConnectionSpec, options: {
