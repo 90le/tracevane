@@ -8385,7 +8385,11 @@ test("native Channel Connectors daemon runs Codex app-server when persistent ses
         inboundSent = true;
         setTimeout(() => {
           if (socket.readyState !== 1) return;
-          sendInbound(3001, "persistent-user", "hello persistent session");
+          sendInbound(
+            3001,
+            "persistent-user",
+            "hello persistent session with a deliberately long context budget prelude that should push the next turn past the automatic compact threshold",
+          );
         }, 50);
       }
     });
@@ -8406,7 +8410,15 @@ test("native Channel Connectors daemon runs Codex app-server when persistent ses
       });
       res.setHeader("content-type", "application/json");
       if (req.url === "/v1/models") {
-        res.end(JSON.stringify({ object: "list", data: [{ id: "gpt-5", object: "model" }] }));
+        res.end(JSON.stringify({
+          object: "list",
+          data: [{
+            id: "gpt-5",
+            object: "model",
+            contextWindow: 60,
+            maxOutputTokens: 8,
+          }],
+        }));
         return true;
       }
       if (req.url?.startsWith("/v1/bot/register")) {
@@ -8514,12 +8526,51 @@ test("native Channel Connectors daemon runs Codex app-server when persistent ses
         assert.equal(sessionStatus.body.activeSessions.some((item) => item.poolKey === poolKey), true);
 
         assert.ok(sendInbound);
-        sendInbound(3002, "persistent-user", "/compact");
+        sendInbound(3002, "persistent-user", "second normal turn after threshold");
+        const autoCompactCapture = await waitFor(() => {
+          if (!fs.existsSync(capturePath)) return null;
+          const lines = fs.readFileSync(capturePath, "utf8").trim().split(/\r?\n/).filter(Boolean);
+          const capture = lines.map((line) => JSON.parse(line));
+          const compactIndex = capture.findIndex((item) => item.method === "thread/compact/start");
+          const turnStarts = capture
+            .map((item, index) => ({ item, index }))
+            .filter(({ item }) => item.method === "turn/start");
+          return compactIndex >= 0 && turnStarts.length >= 2 ? { capture, compactIndex, secondTurnIndex: turnStarts[1].index } : null;
+        }, 5000);
+        assert.ok(
+          autoCompactCapture.compactIndex < autoCompactCapture.secondTurnIndex,
+          `auto compact did not run before second turn: ${JSON.stringify(autoCompactCapture.capture)}`,
+        );
+        const autoCompactStatus = await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const autoCompact = response.body?.autoCompacts?.find?.((item) => item.messageId === "3002" && item.action === "native" && item.ok === true);
+          const secondRun = response.body?.agentRuns?.find?.((item) => item.messageId === "3002" && item.ok);
+          return autoCompact && secondRun ? response.body : null;
+        }, 5000);
+        assert.equal(autoCompactStatus.autoCompacts[0].cooldownUntil, null);
+        assert.equal(autoCompactStatus.autoCompacts[0].usedTokens >= autoCompactStatus.autoCompacts[0].effectiveUsedTokens, true);
+        assert.equal(requests.filter((request) => request.path === "/v1/responses/compact").length, 0);
+
+        sendInbound(3003, "persistent-user", "third normal turn should use auto compact baseline");
+        const postBaselineCapture = await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const thirdRun = response.body?.agentRuns?.find?.((item) => item.messageId === "3003" && item.ok);
+          if (!thirdRun || !fs.existsSync(capturePath)) return null;
+          const lines = fs.readFileSync(capturePath, "utf8").trim().split(/\r?\n/).filter(Boolean);
+          return lines.map((line) => JSON.parse(line));
+        }, 5000);
+        assert.equal(
+          postBaselineCapture.filter((item) => item.method === "thread/compact/start").length,
+          1,
+          `auto compact baseline should prevent immediate repeat compact: ${JSON.stringify(postBaselineCapture)}`,
+        );
+
+        sendInbound(3004, "persistent-user", "/compact");
         await waitFor(() => {
           if (!fs.existsSync(capturePath)) return null;
           const lines = fs.readFileSync(capturePath, "utf8").trim().split(/\r?\n/).filter(Boolean);
           const capture = lines.map((line) => JSON.parse(line));
-          return capture.some((item) => item.method === "thread/compact/start") ? capture : null;
+          return capture.filter((item) => item.method === "thread/compact/start").length >= 2 ? capture : null;
         }, 5000);
         const nativeCompactReply = await waitFor(() => {
           const replyContents = requests

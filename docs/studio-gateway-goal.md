@@ -143,7 +143,7 @@ Provider / model routing 目标：
 - Channel Connectors 原生配置 Octo(dmwork) / 飞书 / 微信等 IM 渠道；消息进入本地 CLI Agent bot，再由 Studio Gateway 调模型。
 - Channel Connectors 遇到图片/视频/贴纸等视觉附件时，必须优先使用 Gateway 模型能力：当前模型支持 vision 则保持不变；当前模型不支持且模型池存在 vision 模型时，仅本轮切换到 vision 模型；没有 vision 模型时继续受控对话并禁止视觉推断。
 - Channel Connectors `/compact` 验收必须证明：命令不会作为普通 prompt 发送给 Agent；优先按当前 runner 能力触发 Agent 原生 compact/compress；不支持或失败时 Gateway compact 使用用户/配置给出的 endpoint 前缀请求 `/responses/compact`，例如 endpoint 已带 `/v1` 时请求 `/v1/responses/compact`；Gateway compact 成功后 history 只保留 compact summary；不可靠的旧 Agent/Codex thread 续接被清理；所有失败都返回明确错误。
-- Channel Connectors 自动上下文管理验收必须证明：resolved model 的 `contextWindow/maxOutputTokens` 可进入本 IM session 预算；Gateway runtime usage 优先，字符估算兜底；达到阈值时按冷却间隔优先触发 Agent-native compact；runner 不支持、原生失败或 one-shot 不可靠时降级 Studio compact；每次 `/status` 或可选 footer 能显示剩余上下文百分比。
+- Channel Connectors 自动上下文管理验收必须证明：resolved model 的 `contextWindow/maxOutputTokens` 可进入本 IM session 预算；Gateway runtime usage 优先，字符估算兜底；达到剩余上下文阈值时优先触发 Agent-native compact；成功后记录 used-token baseline，后续按 `当前 used - baseline used` 继续判断；runner 不支持、原生失败或 one-shot 不可靠时降级 Studio compact；失败或 native 阻塞才进入 retry cooldown；每次 `/status` 或可选 footer 能显示剩余上下文百分比。
 - Channel Connectors `/usage` 验收必须证明：命令读取 Studio Gateway runtime 的真实 usage/token 账本，并按当前 binding + IM session 的 Agent run 时间窗汇总；没有上游 usage 时必须明确提示无统计，不能返回占位数字。
 - Channel Connectors `/reasoning` 验收必须证明：IM session 可用序号或 `low|medium|high|xhigh|default` 切换推理强度，切换后旧 Agent 续接被清理，Codex/Claude Code/OpenCode runner 都收到对应原生 CLI 参数。
 - Claude Code 权限验收必须证明：`control_request` 不能只作为进度展示，必须按 CC Go 合同回写 `control_response`；自动模式可 allow，保守模式必须 fail-safe deny 或经 IM 文本/Feishu 按钮卡片批准；`AskUserQuestion` 必须按 CC Go 特例处理为用户问题回答，不能被 yolo/full-auto 自动 allow，也不能把 `allow/deny` 误当权限命令。

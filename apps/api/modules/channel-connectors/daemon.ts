@@ -18,6 +18,7 @@ import type {
   ChannelConnectorInboundAttachment,
   ChannelConnectorAgentSessionActionRequest,
   ChannelConnectorAgentSessionDriverStatusResponse,
+  ChannelConnectorContextBudgetSummary,
   ChannelConnectorOctoTransportConfig,
   ChannelConnectorOctoInboundMessage,
   ChannelConnectorOctoInboundRequest,
@@ -54,11 +55,13 @@ import {
 } from "./agent-session-store.js";
 import {
   handleChannelConnectorCommand,
+  listChannelConnectorGatewayModelCatalog,
   listChannelConnectorCommandSummaries,
   listChannelConnectorGatewayModels,
   listChannelConnectorSkillSummaries,
   resolveChannelConnectorBindingCommandAlias,
   resolveChannelConnectorEffectiveProject,
+  type ChannelConnectorGatewayModel,
   type ChannelConnectorPermissionResponseAction,
   type ChannelConnectorPermissionResponseResult,
   type ChannelConnectorUsageSummary,
@@ -79,6 +82,9 @@ import {
 import {
   compactChannelConnectorConversation as compactChannelConnectorConversationCore,
 } from "./conversation-compact.js";
+import {
+  resolveChannelConnectorContextBudget,
+} from "./context-budget.js";
 import {
   resolveChannelConnectorGatewayClientKey,
 } from "./gateway-secret.js";
@@ -212,6 +218,8 @@ const MAX_OCTO_RECONNECT_JITTER_MS = 60_000;
 const DEFAULT_OCTO_REST_HEARTBEAT_MS = 5 * 60_000;
 const MIN_OCTO_REST_HEARTBEAT_MS = 30_000;
 const MAX_OCTO_REST_HEARTBEAT_MS = 30 * 60_000;
+const DEFAULT_CHANNEL_AUTO_COMPACT_COOLDOWN_MS = 15 * 60_000;
+const MAX_CHANNEL_AUTO_COMPACT_COOLDOWN_MS = 24 * 60 * 60_000;
 const FEISHU_FINAL_REPLY_CARD_MAX_RUNES = 12_000;
 const DEFAULT_CHANNEL_AGENT_SESSION_REAP_INTERVAL_MS = 60_000;
 const MAX_CHANNEL_AGENT_SESSION_DRIVER_EVENTS = 80;
@@ -420,6 +428,36 @@ interface ChannelDaemonState {
     finalProgressLagMs?: number | null;
     usage?: ChannelConnectorUsageSummary | null;
   }>;
+  autoCompacts: ChannelDaemonAutoCompactRecord[];
+}
+
+interface ChannelDaemonAutoCompactRecord {
+  checkedAt: string;
+  bindingId: string;
+  sessionKey: string;
+  projectId: string;
+  agent: string;
+  model: string | null;
+  workDir: string;
+  messageId: string;
+  action: "native" | "fallback" | "skipped";
+  ok: boolean | null;
+  reason: "threshold-reached" | "cooldown" | "native-blocked" | "fallback-failed";
+  usageSource: ChannelConnectorContextBudgetSummary["usageSource"];
+  usedTokens: number | null;
+  effectiveUsedTokens: number | null;
+  contextWindow: number | null;
+  autoCompactTokenLimit: number | null;
+  remainingTokens: number | null;
+  nativeAttempted: boolean;
+  fallbackAttempted: boolean;
+  beforeEntries: number | null;
+  afterEntries: number | null;
+  sessionsCleared: number | null;
+  summaryPreview: string | null;
+  error: string | null;
+  cooldownStartedAt: string | null;
+  cooldownUntil: string | null;
 }
 
 interface ChannelDaemonAgentSessionDriverBindingState {
@@ -611,6 +649,7 @@ function createDaemonState(config: ChannelConnectorsDaemonRuntimeConfig): Channe
     agentSessionDriver: buildAgentSessionDriverState(config),
     activeRuns: [],
     agentRuns: [],
+    autoCompacts: [],
   };
 }
 
@@ -1237,6 +1276,7 @@ function startHttp(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelD
         agentSessionDriver: state.agentSessionDriver,
         activeRuns: state.activeRuns,
         agentRuns: state.agentRuns,
+        autoCompacts: state.autoCompacts || [],
       }));
       return;
     }
@@ -2381,6 +2421,477 @@ function summarizeChannelConnectorUsageFromState(
     models: uniqueStrings(summaries.flatMap((item) => item.models)),
     requestIds: uniqueStrings(summaries.flatMap((item) => item.requestIds)).slice(0, 50),
   };
+}
+
+function channelAutoCompactEnabled(binding: ChannelConnectorRuntimeBinding): boolean {
+  if (metadataBoolean(binding, [
+    "disableAutoCompact",
+    "disable_auto_compact",
+    "autoCompactDisabled",
+    "auto_compact_disabled",
+  ], false)) {
+    return false;
+  }
+  return metadataBoolean(binding, [
+    "autoCompact",
+    "auto_compact",
+    "autoCompactEnabled",
+    "auto_compact_enabled",
+  ], true);
+}
+
+function channelAutoCompactCooldownMs(binding: ChannelConnectorRuntimeBinding): number {
+  const fallback = optionalNonNegativeIntegerEnv("STUDIO_CHANNEL_AUTO_COMPACT_COOLDOWN_MS")
+    ?? DEFAULT_CHANNEL_AUTO_COMPACT_COOLDOWN_MS;
+  const value = metadataNumber(binding, [
+    "autoCompactCooldownMs",
+    "auto_compact_cooldown_ms",
+    "compactCooldownMs",
+    "compact_cooldown_ms",
+  ], fallback);
+  if (value <= 0) return 0;
+  return clampNumber(Math.floor(value), 0, MAX_CHANNEL_AUTO_COMPACT_COOLDOWN_MS);
+}
+
+function autoCompactLogPath(
+  config: ChannelConnectorsDaemonRuntimeConfig,
+  binding: ChannelConnectorRuntimeBinding,
+): string {
+  return binding.platform === "feishu" ? config.paths.feishuEvents : config.paths.octoEvents;
+}
+
+function autoCompactScopeMatches(
+  record: ChannelDaemonAutoCompactRecord,
+  input: {
+    bindingId: string;
+    sessionKey: string;
+    project: ChannelConnectorRuntimeProject;
+  },
+): boolean {
+  return record.bindingId === input.bindingId
+    && record.sessionKey === input.sessionKey
+    && record.projectId === input.project.id
+    && record.agent === input.project.agent
+    && (record.model || "") === (input.project.model || "")
+    && record.workDir === input.project.workDir;
+}
+
+function latestAutoCompactCooldownAnchor(
+  state: ChannelDaemonState,
+  input: {
+    bindingId: string;
+    sessionKey: string;
+    project: ChannelConnectorRuntimeProject;
+  },
+): ChannelDaemonAutoCompactRecord | null {
+  return (state.autoCompacts || []).find((record) => {
+    return autoCompactScopeMatches(record, input)
+      && record.ok !== true
+      && Boolean(record.cooldownStartedAt);
+  }) || null;
+}
+
+function pushAutoCompactRecord(
+  state: ChannelDaemonState,
+  record: ChannelDaemonAutoCompactRecord,
+): void {
+  state.autoCompacts = [record, ...(state.autoCompacts || [])].slice(0, 40);
+}
+
+function autoCompactSummaryPreview(value: string | null): string | null {
+  const normalized = normalizeString(value);
+  if (!normalized) return null;
+  return shortMessage(normalized, 180);
+}
+
+function latestSuccessfulAutoCompactBaseline(
+  state: ChannelDaemonState,
+  input: {
+    bindingId: string;
+    sessionKey: string;
+    project: ChannelConnectorRuntimeProject;
+  },
+): ChannelDaemonAutoCompactRecord | null {
+  return (state.autoCompacts || []).find((record) => {
+    return autoCompactScopeMatches(record, input)
+      && record.ok === true
+      && record.usedTokens !== null;
+  }) || null;
+}
+
+function roundBudgetPercent(value: number): number {
+  return Math.round(value * 10) / 10;
+}
+
+function budgetWithEffectiveUsedTokens(
+  budget: ChannelConnectorContextBudgetSummary,
+  usedTokens: number | null,
+): ChannelConnectorContextBudgetSummary {
+  const remainingTokens = budget.contextWindow !== null && usedTokens !== null
+    ? Math.max(0, budget.contextWindow - usedTokens)
+    : null;
+  const usedPercent = budget.contextWindow !== null && usedTokens !== null
+    ? roundBudgetPercent((usedTokens / budget.contextWindow) * 100)
+    : null;
+  const remainingPercent = budget.contextWindow !== null && remainingTokens !== null
+    ? roundBudgetPercent((remainingTokens / budget.contextWindow) * 100)
+    : null;
+  const shouldCompact = usedTokens !== null && budget.autoCompactTokenLimit !== null
+    ? usedTokens >= budget.autoCompactTokenLimit
+    : null;
+  return {
+    ...budget,
+    usedTokens,
+    remainingTokens,
+    usedPercent,
+    remainingPercent,
+    shouldCompact,
+  };
+}
+
+function applySuccessfulAutoCompactBaseline(input: {
+  budget: ChannelConnectorContextBudgetSummary;
+  baseline: ChannelDaemonAutoCompactRecord | null;
+}): ChannelConnectorContextBudgetSummary {
+  if (!input.baseline || input.budget.usedTokens === null || input.baseline.usedTokens === null) {
+    return input.budget;
+  }
+  return budgetWithEffectiveUsedTokens(
+    input.budget,
+    Math.max(0, input.budget.usedTokens - input.baseline.usedTokens),
+  );
+}
+
+async function resolveAutoCompactBudget(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  state: ChannelDaemonState;
+  bindingId: string;
+  sessionKey: string;
+  project: ChannelConnectorRuntimeProject;
+  gatewayClientKey: string | null;
+}): Promise<{
+  budget: ChannelConnectorContextBudgetSummary;
+  catalogError: string | null;
+}> {
+  let catalog: ChannelConnectorGatewayModel[] = [];
+  let catalogError: string | null = null;
+  try {
+    catalog = await listChannelConnectorGatewayModelCatalog(
+      input.project.gatewayEndpoint || input.config.gateway.endpoint,
+      input.gatewayClientKey,
+    );
+  } catch (error) {
+    catalogError = shortMessage(error);
+  }
+  const history = getChannelConnectorConversationHistory(conversationHistoryPath(input.config), {
+    bindingId: input.bindingId,
+    sessionKey: input.sessionKey,
+  }, 50);
+  return {
+    budget: resolveChannelConnectorContextBudget({
+      model: input.project.model,
+      modelCatalog: catalog,
+      usageSummary: summarizeChannelConnectorUsageFromState(input.state, {
+        bindingId: input.bindingId,
+        sessionKey: input.sessionKey,
+      }),
+      history,
+    }),
+    catalogError,
+  };
+}
+
+async function maybeAutoCompactChannelConnectorConversation(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  state: ChannelDaemonState;
+  activeRunCancels: ChannelDaemonActiveRunCancelRegistry;
+  binding: ChannelConnectorRuntimeBinding;
+  sessionKey: string;
+  project: ChannelConnectorRuntimeProject;
+  message: ChannelConnectorOctoInboundMessage;
+  gatewayClientKey: string | null;
+  adapter: "octo" | "feishu";
+  messageId: string;
+  threadFields?: Record<string, unknown>;
+}): Promise<ChannelDaemonAutoCompactRecord | null> {
+  if (!channelAutoCompactEnabled(input.binding)) return null;
+  const { budget: rawBudget, catalogError } = await resolveAutoCompactBudget({
+    config: input.config,
+    state: input.state,
+    bindingId: input.binding.id,
+    sessionKey: input.sessionKey,
+    project: input.project,
+    gatewayClientKey: input.gatewayClientKey,
+  });
+  const baseline = latestSuccessfulAutoCompactBaseline(input.state, {
+    bindingId: input.binding.id,
+    sessionKey: input.sessionKey,
+    project: input.project,
+  });
+  const budget = applySuccessfulAutoCompactBaseline({
+    budget: rawBudget,
+    baseline,
+  });
+  if (catalogError) {
+    appendLog(input.config.paths.log, "Gateway model catalog lookup failed for auto compact", {
+      adapter: input.adapter,
+      bindingId: input.binding.id,
+      projectId: input.project.id,
+      model: input.project.model,
+      error: catalogError,
+    });
+  }
+  if (budget.shouldCompact !== true) return null;
+
+  const checkedAt = new Date().toISOString();
+  const cooldownMs = channelAutoCompactCooldownMs(input.binding);
+  const latest = latestAutoCompactCooldownAnchor(input.state, {
+    bindingId: input.binding.id,
+    sessionKey: input.sessionKey,
+    project: input.project,
+  });
+  const latestAtMs = latest?.cooldownStartedAt ? isoTimestampMs(latest.cooldownStartedAt) : null;
+  const nowMs = isoTimestampMs(checkedAt) ?? Date.now();
+  if (cooldownMs > 0 && latestAtMs !== null && nowMs - latestAtMs < cooldownMs) {
+    const cooldownUntil = new Date(latestAtMs + cooldownMs).toISOString();
+    const record: ChannelDaemonAutoCompactRecord = {
+      checkedAt,
+      bindingId: input.binding.id,
+      sessionKey: input.sessionKey,
+      projectId: input.project.id,
+      agent: input.project.agent,
+      model: input.project.model || null,
+      workDir: input.project.workDir,
+      messageId: input.messageId,
+      action: "skipped",
+      ok: null,
+      reason: "cooldown",
+      usageSource: budget.usageSource,
+      usedTokens: rawBudget.usedTokens,
+      effectiveUsedTokens: budget.usedTokens,
+      contextWindow: budget.contextWindow,
+      autoCompactTokenLimit: budget.autoCompactTokenLimit,
+      remainingTokens: budget.remainingTokens,
+      nativeAttempted: false,
+      fallbackAttempted: false,
+      beforeEntries: null,
+      afterEntries: null,
+      sessionsCleared: null,
+      summaryPreview: null,
+      error: `Auto compact cooldown active until ${cooldownUntil}.`,
+      cooldownStartedAt: null,
+      cooldownUntil,
+    };
+    pushAutoCompactRecord(input.state, record);
+    writeJsonLine(autoCompactLogPath(input.config, input.binding), {
+      checkedAt,
+      eventKind: "agent.auto_compact.skipped",
+      adapter: input.adapter,
+      bindingId: input.binding.id,
+      sessionKey: input.sessionKey,
+      messageId: input.messageId,
+      ...(input.threadFields || {}),
+      reason: record.reason,
+      cooldownUntil,
+      budget,
+      rawBudget,
+      baselineCompactAt: baseline?.checkedAt || null,
+    });
+    writeRuntime(input.config, input.state);
+    return record;
+  }
+
+  writeJsonLine(autoCompactLogPath(input.config, input.binding), {
+    checkedAt,
+    eventKind: "agent.auto_compact.threshold",
+    adapter: input.adapter,
+    bindingId: input.binding.id,
+    sessionKey: input.sessionKey,
+    messageId: input.messageId,
+    ...(input.threadFields || {}),
+    budget,
+    rawBudget,
+    baselineCompactAt: baseline?.checkedAt || null,
+  });
+
+  const nativeResult = await nativeCompactChannelConnectorConversation({
+    config: input.config,
+    state: input.state,
+    activeRunCancels: input.activeRunCancels,
+    binding: input.binding,
+    sessionKey: input.sessionKey,
+    project: input.project,
+    message: input.message,
+    gatewayClientKey: input.gatewayClientKey,
+  });
+  const cooldownStartedAt = new Date().toISOString();
+  const cooldownUntil = cooldownMs > 0
+    ? new Date((isoTimestampMs(cooldownStartedAt) ?? Date.now()) + cooldownMs).toISOString()
+    : null;
+
+  if (nativeResult.attempted && nativeResult.ok) {
+    const record: ChannelDaemonAutoCompactRecord = {
+      checkedAt: cooldownStartedAt,
+      bindingId: input.binding.id,
+      sessionKey: input.sessionKey,
+      projectId: input.project.id,
+      agent: input.project.agent,
+      model: input.project.model || null,
+      workDir: input.project.workDir,
+      messageId: input.messageId,
+      action: "native",
+      ok: true,
+      reason: "threshold-reached",
+      usageSource: budget.usageSource,
+      usedTokens: rawBudget.usedTokens,
+      effectiveUsedTokens: budget.usedTokens,
+      contextWindow: budget.contextWindow,
+      autoCompactTokenLimit: budget.autoCompactTokenLimit,
+      remainingTokens: budget.remainingTokens,
+      nativeAttempted: true,
+      fallbackAttempted: false,
+      beforeEntries: null,
+      afterEntries: null,
+      sessionsCleared: null,
+      summaryPreview: autoCompactSummaryPreview(nativeResult.replyText),
+      error: null,
+      cooldownStartedAt: null,
+      cooldownUntil: null,
+    };
+    pushAutoCompactRecord(input.state, record);
+    writeJsonLine(autoCompactLogPath(input.config, input.binding), {
+      checkedAt: cooldownStartedAt,
+      eventKind: "agent.auto_compact.finished",
+      adapter: input.adapter,
+      bindingId: input.binding.id,
+      sessionKey: input.sessionKey,
+      messageId: input.messageId,
+      ...(input.threadFields || {}),
+      action: record.action,
+      ok: record.ok,
+      cooldownUntil: null,
+      budget,
+      rawBudget,
+      baselineCompactAt: baseline?.checkedAt || null,
+    });
+    writeRuntime(input.config, input.state);
+    return record;
+  }
+
+  if (nativeResult.attempted && !nativeResult.fallbackAllowed) {
+    const record: ChannelDaemonAutoCompactRecord = {
+      checkedAt: cooldownStartedAt,
+      bindingId: input.binding.id,
+      sessionKey: input.sessionKey,
+      projectId: input.project.id,
+      agent: input.project.agent,
+      model: input.project.model || null,
+      workDir: input.project.workDir,
+      messageId: input.messageId,
+      action: "native",
+      ok: false,
+      reason: "native-blocked",
+      usageSource: budget.usageSource,
+      usedTokens: rawBudget.usedTokens,
+      effectiveUsedTokens: budget.usedTokens,
+      contextWindow: budget.contextWindow,
+      autoCompactTokenLimit: budget.autoCompactTokenLimit,
+      remainingTokens: budget.remainingTokens,
+      nativeAttempted: true,
+      fallbackAttempted: false,
+      beforeEntries: null,
+      afterEntries: null,
+      sessionsCleared: null,
+      summaryPreview: null,
+      error: nativeResult.error || "Agent native compact blocked fallback.",
+      cooldownStartedAt,
+      cooldownUntil,
+    };
+    pushAutoCompactRecord(input.state, record);
+    writeJsonLine(autoCompactLogPath(input.config, input.binding), {
+      checkedAt: cooldownStartedAt,
+      eventKind: "agent.auto_compact.finished",
+      adapter: input.adapter,
+      bindingId: input.binding.id,
+      sessionKey: input.sessionKey,
+      messageId: input.messageId,
+      ...(input.threadFields || {}),
+      action: record.action,
+      ok: record.ok,
+      error: record.error,
+      cooldownUntil,
+      budget,
+      rawBudget,
+      baselineCompactAt: baseline?.checkedAt || null,
+    });
+    writeRuntime(input.config, input.state);
+    return record;
+  }
+
+  const fallbackResult = await compactChannelConnectorConversation({
+    config: input.config,
+    bindingId: input.binding.id,
+    sessionKey: input.sessionKey,
+    project: input.project,
+    gatewayClientKey: input.gatewayClientKey,
+  });
+  const finishedAt = new Date().toISOString();
+  const fallbackCooldownStartedAt = fallbackResult.ok ? null : cooldownStartedAt;
+  const fallbackCooldownUntil = fallbackResult.ok ? null : cooldownUntil;
+  const record: ChannelDaemonAutoCompactRecord = {
+    checkedAt: finishedAt,
+    bindingId: input.binding.id,
+    sessionKey: input.sessionKey,
+    projectId: input.project.id,
+    agent: input.project.agent,
+    model: input.project.model || null,
+    workDir: input.project.workDir,
+    messageId: input.messageId,
+    action: "fallback",
+    ok: fallbackResult.ok,
+    reason: fallbackResult.ok ? "threshold-reached" : "fallback-failed",
+    usageSource: budget.usageSource,
+    usedTokens: rawBudget.usedTokens,
+    effectiveUsedTokens: budget.usedTokens,
+    contextWindow: budget.contextWindow,
+    autoCompactTokenLimit: budget.autoCompactTokenLimit,
+    remainingTokens: budget.remainingTokens,
+    nativeAttempted: nativeResult.attempted,
+    fallbackAttempted: true,
+    beforeEntries: fallbackResult.beforeEntries,
+    afterEntries: fallbackResult.afterEntries,
+    sessionsCleared: fallbackResult.sessionsCleared,
+    summaryPreview: autoCompactSummaryPreview(fallbackResult.summaryText),
+    error: fallbackResult.ok
+      ? nativeResult.error || null
+      : fallbackResult.error || nativeResult.error || "Studio compact fallback failed.",
+    cooldownStartedAt: fallbackCooldownStartedAt,
+    cooldownUntil: fallbackCooldownUntil,
+  };
+  pushAutoCompactRecord(input.state, record);
+  writeJsonLine(autoCompactLogPath(input.config, input.binding), {
+    checkedAt: finishedAt,
+    eventKind: "agent.auto_compact.finished",
+    adapter: input.adapter,
+    bindingId: input.binding.id,
+    sessionKey: input.sessionKey,
+    messageId: input.messageId,
+    ...(input.threadFields || {}),
+    action: record.action,
+    ok: record.ok,
+    nativeAttempted: record.nativeAttempted,
+    fallbackAttempted: record.fallbackAttempted,
+    beforeEntries: record.beforeEntries,
+    afterEntries: record.afterEntries,
+    sessionsCleared: record.sessionsCleared,
+    error: record.error,
+    cooldownUntil: fallbackCooldownUntil,
+    budget,
+    rawBudget,
+    baselineCompactAt: baseline?.checkedAt || null,
+  });
+  writeRuntime(input.config, input.state);
+  return record;
 }
 
 function safePathSegment(value: string): string {
@@ -4743,6 +5254,18 @@ async function dispatchOctoMessage(input: {
       message.channelType,
     );
   }
+  await maybeAutoCompactChannelConnectorConversation({
+    config,
+    state,
+    activeRunCancels,
+    binding,
+    sessionKey,
+    project: turnProject,
+    message,
+    gatewayClientKey: key,
+    adapter: "octo",
+    messageId: message.messageId,
+  });
   const activeRunId = `${binding.id}:${message.messageId}`;
   const currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
   const historyContext = renderChannelConnectorConversationHistoryContext(
@@ -5705,6 +6228,19 @@ async function dispatchFeishuParsedEvent(input: {
       });
       writeRuntime(config, state);
     },
+  });
+  await maybeAutoCompactChannelConnectorConversation({
+    config,
+    state,
+    activeRunCancels,
+    binding,
+    sessionKey,
+    project: turnProject,
+    message,
+    gatewayClientKey: key,
+    adapter: "feishu",
+    messageId,
+    threadFields: feishuThreadLogFields(parsed),
   });
   const activeRunId = `${binding.id}:${messageId}`;
   const currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
