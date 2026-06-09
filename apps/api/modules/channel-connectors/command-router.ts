@@ -101,6 +101,19 @@ export interface ChannelConnectorCommandContext {
     model: string | null;
     error: string | null;
   };
+  nativeCompactConversation?: (input: {
+    bindingId: string;
+    sessionKey: string;
+    project: ChannelConnectorRuntimeProject;
+    message: ChannelConnectorOctoInboundMessage;
+    command: string;
+  }) => Promise<{
+    attempted: boolean;
+    ok: boolean;
+    fallbackAllowed: boolean;
+    replyText: string | null;
+    error: string | null;
+  }>;
   compactConversation?: (input: {
     bindingId: string;
     sessionKey: string;
@@ -948,7 +961,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
         ["`/delete <序号|sessionId前缀|1,3-5>`", "删除非当前 Agent session 续接记录"],
         ["`/history [条数]`", "查看最近上下文"],
         ["`/usage`", "查看最近 Gateway token usage"],
-        ["`/compact` / `/compress`", "当前 Gateway `/responses/compact` 兜底；native-first 自动触发待接入"],
+        ["`/compact` / `/compress`", "先尝试 live persistent Agent 原生 compact；否则 Gateway `/responses/compact` 兜底"],
         ["`/stop`", "停止当前 run"],
         ["`/approve` / `/deny` / `/allow-all`", "回复工具权限请求"],
         ["`/new` / `/reset`", "开启新 Agent 会话 / 清空 override 和续接状态"],
@@ -1033,7 +1046,7 @@ function commandHelpText(section?: string | null): string {
     "普通消息会交给当前 Agent。未被 Studio 占用的 `/xxx` 会自动透传；冲突命令用 `/native <命令>`。",
     "",
     markdownTable([
-      ["`/status` `/new` `/reset` `/stop` `/compact`", "会话状态、新会话、重置、停止、当前 compact 兜底"],
+      ["`/status` `/new` `/reset` `/stop` `/compact`", "会话状态、新会话、重置、停止、native-first compact"],
       ["`/whoami` `/version`", "身份排查和 runtime 版本"],
       ["`/agent` `/model` `/mode` `/reasoning`", "切换 Agent、模型、权限、推理强度"],
       ["`/display` `/quiet` `/stream on|off` `/tools on|off`", "控制进度和工具显示"],
@@ -2974,6 +2987,40 @@ export async function handleChannelConnectorCommand(
   }
 
   if (name === "compact") {
+    const nativeResult = context.nativeCompactConversation
+      ? await context.nativeCompactConversation({
+        bindingId: context.binding.id,
+        sessionKey: context.sessionKey,
+        project: currentProject,
+        message: context.message,
+        command: parsed.raw,
+      })
+      : null;
+    if (nativeResult?.attempted && nativeResult.ok) {
+      return {
+        handled: true,
+        command: name,
+        action: "compact",
+        ok: true,
+        control: currentControl,
+        replyText: [
+          "Agent 原生 compact 已完成。",
+          nativeResult.replyText ? bufferPreviewText(nativeResult.replyText, 240) : "",
+        ].filter(Boolean).join("\n"),
+        passthroughText: null,
+      };
+    }
+    if (nativeResult?.attempted && !nativeResult.fallbackAllowed) {
+      return {
+        handled: true,
+        command: name,
+        action: "compact",
+        ok: false,
+        control: currentControl,
+        replyText: nativeResult.error || "Agent 原生 compact 未完成，且当前不允许降级 Studio compact。",
+        passthroughText: null,
+      };
+    }
     if (!context.compactConversation) {
       return {
         handled: true,
@@ -2981,7 +3028,9 @@ export async function handleChannelConnectorCommand(
         action: "compact",
         ok: false,
         control: currentControl,
-        replyText: "当前 Channel runtime 未启用 Studio compact contract。",
+        replyText: nativeResult?.error
+          ? `Agent 原生 compact 未完成：${nativeResult.error}\n当前 Channel runtime 未启用 Studio compact contract。`
+          : "当前 Channel runtime 未启用 Studio compact contract。",
         passthroughText: null,
       };
     }
@@ -2999,6 +3048,9 @@ export async function handleChannelConnectorCommand(
       control: currentControl,
       replyText: result.ok
         ? [
+          nativeResult?.attempted && nativeResult.error
+            ? `Agent 原生 compact 未完成，已降级 Studio compact：${bufferPreviewText(nativeResult.error, 180)}`
+            : "",
           "Studio compact 已压缩当前 IM 会话上下文。",
           `history: ${result.beforeEntries} -> ${result.afterEntries}`,
           `Agent sessions: cleared ${result.sessionsCleared}`,

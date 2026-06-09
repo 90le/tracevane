@@ -35,6 +35,7 @@ import {
   type ChannelConnectorRuntimeProject,
 } from "./agent-runner.js";
 import {
+  channelConnectorAgentSessionDriverPoolKey,
   createChannelConnectorAgentSessionDriverPool,
   resolveChannelConnectorAgentSessionDriverMode,
   type ChannelConnectorAgentSessionDriverEvent,
@@ -2053,6 +2054,160 @@ async function compactChannelConnectorConversation(input: {
     sessionKey: input.sessionKey,
     project: input.project,
   });
+}
+
+async function nativeCompactChannelConnectorConversation(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  state: ChannelDaemonState;
+  activeRunCancels: ChannelDaemonActiveRunCancelRegistry;
+  binding: ChannelConnectorRuntimeBinding;
+  sessionKey: string;
+  project: ChannelConnectorRuntimeProject;
+  message: ChannelConnectorOctoInboundMessage;
+  gatewayClientKey: string | null;
+}): Promise<{
+  attempted: boolean;
+  ok: boolean;
+  fallbackAllowed: boolean;
+  replyText: string | null;
+  error: string | null;
+}> {
+  const mode = effectiveAgentSessionDriverMode({
+    binding: input.binding,
+    project: input.project,
+  });
+  if (mode.effectiveMode !== "persistent") {
+    return {
+      attempted: false,
+      ok: false,
+      fallbackAllowed: true,
+      replyText: null,
+      error: mode.reason === "unsupported-agent"
+        ? `Agent ${input.project.agent} has no persistent native compact driver yet.`
+        : "Current binding is using one-shot Agent runner.",
+    };
+  }
+  const activeRun = latestActiveRunForSession(input.activeRunCancels, {
+    bindingId: input.binding.id,
+    sessionKey: input.sessionKey,
+  });
+  if (activeRun) {
+    return {
+      attempted: true,
+      ok: false,
+      fallbackAllowed: false,
+      replyText: null,
+      error: `当前 IM 会话仍有 Agent run 在执行，先发送 /stop 或等待完成后再 compact。Active message=${activeRun.entry.messageId}`,
+    };
+  }
+  const key = {
+    bindingId: input.binding.id,
+    projectId: input.project.id,
+    sessionKey: input.sessionKey,
+    agent: input.project.agent,
+    model: input.project.model,
+    workDir: input.project.workDir,
+    permissionMode: input.project.permissionMode,
+  };
+  const poolKey = channelConnectorAgentSessionDriverPoolKey(key);
+  const activeSession = channelAgentSessionDriverPool.status().find((session) => session.poolKey === poolKey);
+  if (!activeSession) {
+    return {
+      attempted: false,
+      ok: false,
+      fallbackAllowed: true,
+      replyText: null,
+      error: "No live persistent Agent session exists for native compact.",
+    };
+  }
+  const currentSession = getChannelConnectorAgentSession(agentSessionsPath(input.config), {
+    bindingId: input.binding.id,
+    sessionKey: input.sessionKey,
+    projectId: input.project.id,
+    agent: input.project.agent,
+    model: input.project.model,
+    workDir: input.project.workDir,
+  });
+  const messageId = `compact:${normalizeString(input.message.messageId) || Date.now()}`;
+  try {
+    const result = await runChannelConnectorAgentTurnWithSessionDriver({
+      binding: input.binding,
+      project: input.project,
+      sessionKey: input.sessionKey,
+      messageId,
+      request: {
+        project: input.project,
+        binding: input.binding,
+        message: input.message,
+        sessionKey: input.sessionKey,
+        gatewayEndpoint: input.project.gatewayEndpoint || input.config.gateway.endpoint,
+        gatewayClientKey: input.gatewayClientKey,
+        agentRuntimeDir: agentRuntimeDir(input.config, input.project, input.binding),
+        historyContext: null,
+        nativeCommand: "/compact",
+        session: {
+          agentNativeSessionId: currentSession?.agentNativeSessionId || currentSession?.codexThreadId || activeSession.sessionId || null,
+          codexThreadId: currentSession?.codexThreadId || null,
+        },
+      },
+    });
+    if (result.session.agentNativeSessionId || result.session.codexThreadId) {
+      upsertChannelConnectorAgentSession(agentSessionsPath(input.config), {
+        bindingId: input.binding.id,
+        sessionKey: input.sessionKey,
+        projectId: input.project.id,
+        agent: input.project.agent,
+        model: input.project.model,
+        workDir: input.project.workDir,
+        agentNativeSessionId: result.session.agentNativeSessionId || result.session.codexThreadId || null,
+        codexThreadId: result.session.codexThreadId || null,
+        messageId,
+        status: result.status,
+      });
+    }
+    writeJsonLine(input.binding.platform === "feishu" ? input.config.paths.feishuEvents : input.config.paths.octoEvents, {
+      checkedAt: new Date().toISOString(),
+      eventKind: "agent.native_compact.finished",
+      platform: input.binding.platform,
+      bindingId: input.binding.id,
+      sessionKey: input.sessionKey,
+      messageId,
+      agent: input.project.agent,
+      model: input.project.model,
+      ok: result.ok,
+      status: result.status,
+      error: result.error,
+      progressEventCount: result.progress.eventCount,
+    });
+    writeRuntime(input.config, input.state);
+    return {
+      attempted: true,
+      ok: result.ok === true,
+      fallbackAllowed: result.ok !== true,
+      replyText: result.replyText,
+      error: result.ok === true ? null : result.error || "Agent native compact failed.",
+    };
+  } catch (error) {
+    writeJsonLine(input.binding.platform === "feishu" ? input.config.paths.feishuEvents : input.config.paths.octoEvents, {
+      checkedAt: new Date().toISOString(),
+      eventKind: "agent.native_compact.failed",
+      platform: input.binding.platform,
+      bindingId: input.binding.id,
+      sessionKey: input.sessionKey,
+      messageId,
+      agent: input.project.agent,
+      model: input.project.model,
+      error: shortMessage(error),
+    });
+    writeRuntime(input.config, input.state);
+    return {
+      attempted: true,
+      ok: false,
+      fallbackAllowed: true,
+      replyText: null,
+      error: shortMessage(error),
+    };
+  }
 }
 
 interface GatewayRuntimeLogEntryForUsage {
@@ -4398,6 +4553,16 @@ async function dispatchOctoMessage(input: {
     hasPendingQuestionRequest: (scope) => hasPendingQuestionForSession(channelPendingPermissions, scope),
     respondQuestionRequest: (scope) => respondPendingQuestionForSession(channelPendingPermissions, scope),
     stopActiveRun: (scope) => stopLatestActiveRunForSession(activeRunCancels, scope),
+    nativeCompactConversation: (scope) => nativeCompactChannelConnectorConversation({
+      config,
+      state,
+      activeRunCancels,
+      binding,
+      sessionKey: scope.sessionKey,
+      project: scope.project,
+      message: scope.message,
+      gatewayClientKey: key,
+    }),
     compactConversation: (scope) => compactChannelConnectorConversation({
       config,
       bindingId: scope.bindingId,
@@ -5288,6 +5453,16 @@ async function dispatchFeishuParsedEvent(input: {
     hasPendingQuestionRequest: (scope) => hasPendingQuestionForSession(channelPendingPermissions, scope),
     respondQuestionRequest: (scope) => respondPendingQuestionForSession(channelPendingPermissions, scope),
     stopActiveRun: (scope) => stopLatestActiveRunForSession(activeRunCancels, scope),
+    nativeCompactConversation: (scope) => nativeCompactChannelConnectorConversation({
+      config,
+      state,
+      activeRunCancels,
+      binding,
+      sessionKey: scope.sessionKey,
+      project: scope.project,
+      message: scope.message,
+      gatewayClientKey: key,
+    }),
     compactConversation: (scope) => compactChannelConnectorConversation({
       config,
       bindingId: scope.bindingId,

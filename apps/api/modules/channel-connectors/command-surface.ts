@@ -468,7 +468,7 @@ export function buildChannelConnectorCommandSurface(
         action("compact", "智能压缩", "/compact", {
           tone: "primary",
           requiresAdmin: true,
-          description: "当前使用 Gateway /responses/compact 兜底；native-first 待接入",
+          description: "有 live persistent Agent session 时原生优先；否则 Gateway 兜底",
         }),
         action("stop", "Stop Run", "/stop", { tone: "danger", requiresAdmin: true }),
         action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true }),
@@ -1010,7 +1010,7 @@ function commandSurfaceItemDescription(item: ChannelConnectorCommandSurfaceActio
     case "history":
       return "查看当前 IM session 最近上下文";
     case "compact":
-      return "当前使用 Gateway /responses/compact 摘要 IM history；native-first 待接入";
+      return "先尝试 live persistent Agent 原生 compact；否则 Gateway /responses/compact 摘要 IM history";
     case "stop":
       return "停止当前 IM session 正在运行的 Agent";
     case "new":
@@ -1873,7 +1873,7 @@ function renderHistoryCard(surface: ChannelConnectorCommandSurface): ChannelConn
     action("compact", "智能压缩", "/compact", {
       tone: "primary",
       requiresAdmin: true,
-      description: "当前摘要本 IM history；native-first 待接入",
+      description: "原生优先；否则摘要本 IM history",
     }),
     action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true }),
   ], surface, 1);

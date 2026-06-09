@@ -133,7 +133,7 @@ export function formatChannelConnectorContextBudget(
   if (!budget.contextWindow) {
     lines.push(`Model ${modelLabel}: context window unknown.`);
     if (budget.note) lines.push(`Note: ${budget.note}`);
-    lines.push("Compact plan: native-first; current manual /compact uses Studio fallback.");
+    lines.push("Compact plan: native-first with a live persistent Agent session; Studio fallback otherwise.");
     return lines;
   }
 
@@ -152,6 +152,6 @@ export function formatChannelConnectorContextBudget(
   if (budget.autoCompactTokenLimit) {
     lines.push(`Auto compact threshold: ${budget.autoCompactTokenLimit} tokens.`);
   }
-  lines.push(`Compact plan: ${budget.shouldCompact ? "threshold reached; " : ""}native-first next, current manual /compact fallback.`);
+  lines.push(`Compact plan: ${budget.shouldCompact ? "threshold reached; " : ""}native-first with live persistent Agent session; Studio fallback otherwise.`);
   return lines;
 }

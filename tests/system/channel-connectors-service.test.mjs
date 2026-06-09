@@ -3388,7 +3388,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(sessionHelp.replyText, /`\/search <关键字>`/);
   assert.ok(sessionHelp.replyText.includes("`/delete <序号\\|sessionId前缀\\|1,3-5>`"));
   assert.match(sessionHelp.replyText, /`\/usage`/);
-  assert.match(sessionHelp.replyText, /当前 Gateway `\/responses\/compact` 兜底/);
+  assert.match(sessionHelp.replyText, /先尝试 live persistent Agent 原生 compact/);
   assert.match(sessionHelp.replyText, /Gateway `\/responses\/compact`/);
   assert.match(sessionHelp.replyText, /`\/approve`/);
   assert.match(sessionHelp.replyText, /返回：`\/help`/);
@@ -3598,7 +3598,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(statusWithUsage.ok, true);
   assert.match(statusWithUsage.replyText, /Used: 80 \/ 128000 tokens/);
   assert.match(statusWithUsage.replyText, /Remaining: 127920 tokens; source: Gateway usage\./);
-  assert.match(statusWithUsage.replyText, /Compact plan: native-first next, current manual \/compact fallback\./);
+  assert.match(statusWithUsage.replyText, /Compact plan: native-first with live persistent Agent session; Studio fallback otherwise\./);
 
   const abbreviatedHistory = await handleChannelConnectorCommand({
     ...baseContext,
@@ -4352,6 +4352,65 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(compact.replyText, /Studio compact 已压缩/);
   assert.match(compact.replyText, /history: 6 -> 1/);
   assert.match(compact.replyText, /cleared 2/);
+
+  let nativeCompactCalled = false;
+  let nativeFallbackCalled = false;
+  const nativeCompact = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/compact"),
+    nativeCompactConversation: async (scope) => {
+      nativeCompactCalled = true;
+      assert.equal(scope.bindingId, "octo-codex");
+      assert.equal(scope.sessionKey, "dmwork:dm:admin-1");
+      assert.equal(scope.project.id, "codex-main");
+      assert.equal(scope.command, "/compact");
+      assert.equal(scope.message.messageId, "m--compact-admin-1");
+      return {
+        attempted: true,
+        ok: true,
+        fallbackAllowed: false,
+        replyText: "Codex compact 已完成。",
+        error: null,
+      };
+    },
+    compactConversation: async () => {
+      nativeFallbackCalled = true;
+      throw new Error("fallback should not run after native compact success");
+    },
+  });
+  assert.equal(nativeCompactCalled, true);
+  assert.equal(nativeFallbackCalled, false);
+  assert.equal(nativeCompact.ok, true);
+  assert.match(nativeCompact.replyText, /Agent 原生 compact 已完成/);
+  assert.match(nativeCompact.replyText, /Codex compact 已完成/);
+
+  let fallbackAfterNativeFailure = false;
+  const nativeFailureFallback = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/compact"),
+    nativeCompactConversation: async () => ({
+      attempted: true,
+      ok: false,
+      fallbackAllowed: true,
+      replyText: null,
+      error: "native compact unavailable",
+    }),
+    compactConversation: async () => {
+      fallbackAfterNativeFailure = true;
+      return {
+        ok: true,
+        beforeEntries: 4,
+        afterEntries: 1,
+        sessionsCleared: 1,
+        summaryText: "fallback summary",
+        error: null,
+      };
+    },
+  });
+  assert.equal(fallbackAfterNativeFailure, true);
+  assert.equal(nativeFailureFallback.ok, true);
+  assert.match(nativeFailureFallback.replyText, /已降级 Studio compact/);
+  assert.match(nativeFailureFallback.replyText, /native compact unavailable/);
 
   const passthrough = await handleChannelConnectorCommand({
     ...baseContext,
@@ -8263,6 +8322,15 @@ test("native Channel Connectors daemon runs Codex app-server when persistent ses
     "        emit({ method: 'item/completed', params: { threadId: message.params.threadId, turnId, item: { type: 'agentMessage', id: 'agent-1', text: 'persistent ok' } } });",
     "        emit({ method: 'turn/completed', params: { threadId: message.params.threadId, turn: { id: turnId, status: 'completed', items: [] } } });",
     "      }, 10);",
+    "    } else if (message.method === 'thread/compact/start') {",
+    "      const turnId = `compact-${nextTurn++}`;",
+    "      emit({ id: message.id, result: { turn: { id: turnId, status: 'running', items: [] } } });",
+    "      setTimeout(() => {",
+    "        emit({ method: 'turn/started', params: { threadId: message.params.threadId, turn: { id: turnId, status: 'running' } } });",
+    "        emit({ method: 'item/completed', params: { threadId: message.params.threadId, turnId, item: { type: 'contextCompaction', id: 'compact-1' } } });",
+    "        emit({ method: 'thread/compacted', params: { threadId: message.params.threadId } });",
+    "        emit({ method: 'turn/completed', params: { threadId: message.params.threadId, turn: { id: turnId, status: 'completed', items: [] } } });",
+    "      }, 10);",
     "    } else {",
     "      emit({ id: message.id, error: { code: -32601, message: `unexpected ${message.method}` } });",
     "    }",
@@ -8274,6 +8342,7 @@ test("native Channel Connectors daemon runs Codex app-server when persistent ses
 
   const wsConnects = [];
   let inboundSent = false;
+  let sendInbound = null;
   const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await new Promise((resolve, reject) => {
     wss.once("listening", resolve);
@@ -8295,24 +8364,28 @@ test("native Channel Connectors daemon runs Codex app-server when persistent ses
         serverPublicKeyBase64: serverKey.publicKeyBase64,
         salt,
       }));
+      sendInbound = (messageId, fromUid, content) => {
+        if (socket.readyState !== 1) throw new Error("Octo fake socket is not open");
+        socket.send(encodeOctoRecvPacket({
+          serverPrivateKey: serverKey.privateKey,
+          clientPublicKeyBase64: packet.clientPublicKeyBase64,
+          salt,
+          messageId,
+          messageSeq: messageId - 3000,
+          fromUid,
+          channelId: fromUid,
+          channelType: 1,
+          payload: {
+            type: 1,
+            content,
+          },
+        }));
+      };
       if (!inboundSent) {
         inboundSent = true;
         setTimeout(() => {
           if (socket.readyState !== 1) return;
-          socket.send(encodeOctoRecvPacket({
-            serverPrivateKey: serverKey.privateKey,
-            clientPublicKeyBase64: packet.clientPublicKeyBase64,
-            salt,
-            messageId: 3001,
-            messageSeq: 1,
-            fromUid: "persistent-user",
-            channelId: "persistent-user",
-            channelType: 1,
-            payload: {
-              type: 1,
-              content: "hello persistent session",
-            },
-          }));
+          sendInbound(3001, "persistent-user", "hello persistent session");
         }, 50);
       }
     });
@@ -8439,6 +8512,24 @@ test("native Channel Connectors daemon runs Codex app-server when persistent ses
         assert.equal(sessionStatus.body.reaped, undefined);
         assert.equal(sessionStatus.body.activeSessions.find((item) => item.poolKey === poolKey).permissionMode, "read-only");
         assert.equal(sessionStatus.body.activeSessions.some((item) => item.poolKey === poolKey), true);
+
+        assert.ok(sendInbound);
+        sendInbound(3002, "persistent-user", "/compact");
+        await waitFor(() => {
+          if (!fs.existsSync(capturePath)) return null;
+          const lines = fs.readFileSync(capturePath, "utf8").trim().split(/\r?\n/).filter(Boolean);
+          const capture = lines.map((line) => JSON.parse(line));
+          return capture.some((item) => item.method === "thread/compact/start") ? capture : null;
+        }, 5000);
+        const nativeCompactReply = await waitFor(() => {
+          const replyContents = requests
+            .filter((request) => request.path === "/v1/bot/sendMessage")
+            .map((request) => request.body?.payload?.content || "")
+            .join("\n");
+          return /Agent 原生 compact 已完成/.test(replyContents) ? replyContents : null;
+        }, 5000);
+        assert.match(nativeCompactReply, /Codex compact 已完成/);
+        assert.equal(requests.filter((request) => request.path === "/v1/responses/compact").length, 0);
 
         const reapedStatus = await waitFor(async () => {
           const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/agent-sessions`);
