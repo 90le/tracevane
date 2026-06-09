@@ -95,8 +95,8 @@ Provider / model routing 目标：
 - Feishu card/menu 的导航动作才返回卡片；`/new`、`/reset` 等执行动作必须直接执行并返回结果，不得自动弹出完整菜单。
 - IM 原生命令穿透必须区分未知 slash 兜底和显式 `/native`：未知 `/xxx` 可按 CC Go 提示后进入 Agent，显式 `/native <命令>` 必须作为 runner `nativeCommand` 处理，不得混入 history/group/attachment prompt；不支持的 CLI 原生命令必须明确拒绝，不能送给模型当普通文本。
 - IM 文件收发必须由 Studio native Channel transport 完成：入站附件 staging 后交给 Agent，出站文件由 Agent 声明本地文件 manifest，daemon 再按 Feishu/Octo/后续平台上传和发送；不得把外部桥接命令或平台 CLI 暴露为生产发送路径。
-- IM 上下文管理分两层：Studio-managed compact 是所有 Agent/Provider 的通用兜底，按 Gateway 模型 `contextWindow`、`maxOutputTokens`、runtime usage 和本地 history 估算自动压缩；Agent-native compact 只在持久/交互式 runner 明确支持时执行，用于压缩 Agent 内部 session。
-- IM `/compact` / `/compress` 默认走 Studio-managed compact contract：调用 Studio Gateway `/responses/compact` 压缩当前 IM history，替换为 summary，并清理当前 IM session 的旧 Agent 续接；不得把 Codex `/compact` 硬塞进非交互 `codex exec`。`/native /compact` 才是原生命令入口。
+- IM 上下文管理分三层：Studio/Gateway 负责模型预算和触发决策；Agent 原生上下文管理优先执行，用于压缩 Agent 内部 session；Studio-managed compact 只作为不支持原生、原生失败或非持久 runner 不可靠时的通用兜底。
+- IM `/compact` / `/compress` 是“智能压缩”入口：优先调用当前 Agent 的原生 compact/compress 能力；不支持或失败时调用 Studio Gateway `/responses/compact` 压缩当前 IM history，替换为 summary，并清理不可靠的旧 Agent 续接。Codex `exec/resume` 不得硬塞交互式 `/compact`，Codex `app-server` 等持久 driver 才可走原生 compact。`/native /compact` 保留为强制原生命令入口。
 - Agent runner 采用混合策略：默认 one-shot `exec/resume` 保持守护稳定、易恢复、易隔离；Codex persistent driver 先作为 metadata 实验路径接入 `codex app-server`，真实 `turn/start`、`/compact` 和 `turn/interrupt` 已通过 Studio Gateway smoke，IM `/stop` 已通过 daemon fake app-server 回归；扩大默认范围前仍需真实 IM live stop、session cleanup 和 fallback 验收。其他 Agent 的持久 driver 逐 Agent 评估。持久 driver 必须按 binding + IM session + Agent Profile + permission 隔离，有 idle TTL、max sessions、健康检查、强制 kill、日志和降级到 one-shot 的策略。
 - 多 Agent 必须基于 session pool 而不是单全局 TUI：每个 IM 会话可绑定不同 Agent/Profile/模型/工作目录；群聊中多 bot 或多 Agent relay 不共享进程上下文，跨 Agent 协作通过显式 relay/session key 记录。
 - `/stop`、取消、重置等 IM 执行动作必须走真实 runner/session contract；其中 `/stop` 必须终止当前 binding + IM session 的 active CLI Agent 进程，不能只返回占位提示。
@@ -142,8 +142,8 @@ Provider / model routing 目标：
 - App Connections 支持一键切换 app profile：默认模型、每个 App 单独模型覆盖、上下文窗口、compact 阈值、max output、reasoning/effort、必要兼容参数；模型选择必须来自 Gateway 可用模型列表并允许手动输入兼容 alias。
 - Channel Connectors 原生配置 Octo(dmwork) / 飞书 / 微信等 IM 渠道；消息进入本地 CLI Agent bot，再由 Studio Gateway 调模型。
 - Channel Connectors 遇到图片/视频/贴纸等视觉附件时，必须优先使用 Gateway 模型能力：当前模型支持 vision 则保持不变；当前模型不支持且模型池存在 vision 模型时，仅本轮切换到 vision 模型；没有 vision 模型时继续受控对话并禁止视觉推断。
-- Channel Connectors `/compact` 验收必须证明：命令不会作为普通 prompt 发送给 Agent；Gateway compact 使用用户/配置给出的 endpoint 前缀请求 `/responses/compact`，例如 endpoint 已带 `/v1` 时请求 `/v1/responses/compact`；Gateway compact 成功后 history 只保留 compact summary；旧 Agent/Codex thread 续接被清理；Gateway compact 失败时返回明确错误。
-- Channel Connectors 自动上下文管理验收必须证明：resolved model 的 `contextWindow/maxOutputTokens` 可进入本 IM session 预算；Gateway runtime usage 优先，字符估算兜底；达到阈值时按冷却间隔触发 Studio compact；持久/交互式 Agent 支持原生 compact 时可追加 Agent-native compact；每次 `/status` 或可选 footer 能显示剩余上下文百分比。
+- Channel Connectors `/compact` 验收必须证明：命令不会作为普通 prompt 发送给 Agent；优先按当前 runner 能力触发 Agent 原生 compact/compress；不支持或失败时 Gateway compact 使用用户/配置给出的 endpoint 前缀请求 `/responses/compact`，例如 endpoint 已带 `/v1` 时请求 `/v1/responses/compact`；Gateway compact 成功后 history 只保留 compact summary；不可靠的旧 Agent/Codex thread 续接被清理；所有失败都返回明确错误。
+- Channel Connectors 自动上下文管理验收必须证明：resolved model 的 `contextWindow/maxOutputTokens` 可进入本 IM session 预算；Gateway runtime usage 优先，字符估算兜底；达到阈值时按冷却间隔优先触发 Agent-native compact；runner 不支持、原生失败或 one-shot 不可靠时降级 Studio compact；每次 `/status` 或可选 footer 能显示剩余上下文百分比。
 - Channel Connectors `/usage` 验收必须证明：命令读取 Studio Gateway runtime 的真实 usage/token 账本，并按当前 binding + IM session 的 Agent run 时间窗汇总；没有上游 usage 时必须明确提示无统计，不能返回占位数字。
 - Channel Connectors `/reasoning` 验收必须证明：IM session 可用序号或 `low|medium|high|xhigh|default` 切换推理强度，切换后旧 Agent 续接被清理，Codex/Claude Code/OpenCode runner 都收到对应原生 CLI 参数。
 - Claude Code 权限验收必须证明：`control_request` 不能只作为进度展示，必须按 CC Go 合同回写 `control_response`；自动模式可 allow，保守模式必须 fail-safe deny 或经 IM 文本/Feishu 按钮卡片批准；`AskUserQuestion` 必须按 CC Go 特例处理为用户问题回答，不能被 yolo/full-auto 自动 allow，也不能把 `allow/deny` 误当权限命令。

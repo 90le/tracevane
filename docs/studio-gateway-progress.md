@@ -16,7 +16,7 @@
 - IM 文件收发边界已固定为 Studio native transport：Agent 只读入站 staging 文件，出站只声明工作目录内文件 manifest，由 daemon 按平台上传发送。
 - IM Agent run 默认按 binding + sessionKey 串行排队：上一条 Agent 消息未结束时，新普通消息会收到“已加入队列”引导，并在前序任务完成后自动处理；`/stop`、`/status` 等 Studio 命令仍可执行，binding metadata 可显式打开 parallel。
 - IM Agent runner 策略固定为混合架构：系统默认 one-shot `exec/resume` 保稳定；Codex 持久 session driver 保留为 metadata 实验路径，binding 显式开启时使用 `codex app-server`，已覆盖 `turn/start`、原生 `/compact`、`turn/interrupt`、`/stop`、超时中断和失败回退。
-- 上下文管理设计已固定为 Gateway 预算层 + Channel 通用 compact + Agent 原生 compact：Gateway 模型目录提供 `contextWindow/maxOutputTokens`，Channel 用 runtime usage 优先、字符估算兜底做剩余上下文和自动 compact；持久/交互式 Agent 支持时再执行原生 compact。
+- 上下文管理设计已调整为 native-first：Gateway 模型目录提供 `contextWindow/maxOutputTokens`，Channel 用 runtime usage 优先、字符估算兜底做剩余上下文和触发决策；压缩优先调用 Agent 原生 compact/compress，不支持、失败或 one-shot 不可靠时才降级 Studio Gateway `/responses/compact`。
 - CC Go 旧源码对照结论已固定：Codex 正式稳定路径优先复刻 CC 的 `codex exec/resume` 子进程模型；当前 Codex 未全部完成，one-shot 主链路可用，`/new`/`/reset`/Studio `/compact` 自动合同、service smoke、真实 Feishu/Octo no-send apply、工具流与 Markdown 用户可见 live、图片/文件 live 日志证据、one-shot 最终回复/manifest 保真测试均已覆盖。Codex app-server 不作为默认 live 路线，只保留为受控 beta。
 - 仓库级约束已固定：Channel Connectors 任意新功能必须先按 CC Go 1:1 迁移，再做 Studio 精修；迁移跟踪见 `channel-connectors-cc-migration-checklist.md`。
 
@@ -72,13 +72,13 @@
 - Studio `/whoami` / `/myid` 已按 CC Go 身份排查习惯接入：返回当前 IM User ID、Channel ID、Channel type、Platform、Binding、Session key 和管理权限状态，并在 Feishu Session 子卡提供按钮。
 - Studio `/version` 已按 CC Go 内置命令习惯接入：返回 Studio Channel runtime 版本、Node、平台、binding、daemon config 和 runtime root，并在 Feishu Session 子卡提供按钮，便于排查当前 IM 连接到的 daemon。
 - Claude Code AskUserQuestion 基础闭环已按 CC Go 语义接入：`AskUserQuestion` 不再被 yolo/full-auto 自动 allow；pending question 时 IM 下一条普通回复会作为答案写入 `updatedInput.answers`，`allow/deny` 也按答案处理，`/stop` 等硬控制命令仍可执行。
-- Studio `/compact` / `/compress` 合同已从 Channel daemon 抽成可测 helper：默认不是 CLI 原生命令穿透，而是调用 Gateway `/responses/compact` 摘要 IM history，成功后只保留 compact summary，并清理当前 binding + sessionKey 的旧 Codex/Claude Agent 续接；CLI 原生 compact 只走 `/native /compact`，Codex one-shot 不伪执行交互式 compact。
+- Studio `/compact` / `/compress` 合同已从 Channel daemon 抽成可测 helper：当前实现仍是 Gateway `/responses/compact` 兜底路径，成功后只保留 compact summary，并清理当前 binding + sessionKey 的旧 Codex/Claude Agent 续接；下一步需把入口改为 native-first，CLI 原生 compact 失败或不可用时再调用该兜底 helper。Codex one-shot 不伪执行交互式 compact。
 - Service 层命令 smoke 已补齐 Feishu/Octo `/compact`：Feishu slash webhook 和 Octo incoming slash 都复用 Studio compact helper，返回用户可见文本结果，不进入 Agent；Octo service slash `/new`、`/reset` 也已覆盖清 history/session 和文本 replyPlan。
 - 新增 Channel Connectors 命令 live smoke 脚本：默认只做 dry-run 计划，`--recent-sessions` 可从 daemon state 自动定位每个 binding 最近真实会话；`--probe` 只打后端 adapter dry-run，不触发平台发送、Gateway compact 或 session/history 清理；显式 `--apply --from-uid --channel-id` 或 `--apply --recent-sessions` 才发送真实 Feishu/Octo 命令请求；JSON 输出会脱敏 token/key/secret。
 - Feishu webhook 路由新增仅 smoke 使用的 `studioDebugResponse` 开关：真实飞书回调仍返回 `feishuResponse`，命令 live smoke 可返回完整 Studio `commandAction`，从而断言 `/new`、`/reset`、`/compact` 的 action/ok/replyPreview。
 - Channel Connectors Agent run live 观测脚本增强：只读扫描 Feishu/Octo daemon JSONL 事件，不注入 IM 消息；可等待用户真实发送消息后验证 `agent.run.finished`、reply、工具进度、入站文件、出站文件、入站视觉附件、非视觉模型自动切视觉模型、Feishu 最终卡片和 Markdown-like assistant reply 信号；输出不包含回复正文和本地附件路径，默认限量避免一天内大量历史 run 淹没 smoke 结果。
 - Studio Gateway 新增 OpenAI Chat-compatible upstream 统一兼容层：所有进入 `apiFormat=openai_chat` provider 的 direct Chat、Anthropic->Chat、Responses/compact->Chat 请求默认剥离顶层 `metadata`，避免 BigModel 等严格 Chat 网关返回 `400/1210`；高级 provider 可用 metadata `openaiChatMetadataPassthrough=true` 显式保留。cc-switch 默认允许 `metadata` passthrough，本项目在该点偏离的原因是常见 Chat-compatible provider 兼容性。
-- 对照 CC Go 与 cc-switch/Codex 配置固定上下文预算方案：CC Go 有 `ContextUsageReporter`、reply footer 剩余上下文、`ContextCompressor` 和 auto-compress；cc-switch/Codex 已使用 `model_context_window`、`model_auto_compact_token_limit`；Studio 下一步把这些能力接到 Gateway resolved model 与 Channel session budget。
+- 对照 CC Go 与 cc-switch/Codex 配置固定 native-first 上下文方案：CC Go 有 `ContextUsageReporter`、reply footer 剩余上下文、`ContextCompressor` 和 auto-compress；cc-switch/Codex 已使用 `model_context_window`、`model_auto_compact_token_limit`；Studio 下一步把这些能力接到 Gateway resolved model、Channel session budget 和 Agent-native compact capability registry。
 
 ## 最近验证
 
@@ -142,7 +142,7 @@
 - Feishu 官方 SDK 仍可能因网络或平台关闭连接而 reconnect；当前策略不做 connected-idle / zero-inbound / verified-ingress / generic watchdog 重建。Studio 保留用户级全局单 owner lock、SDK `pingTimeout=3`、SDK `reconnecting` 超 10s 回收、快速 ACK、messageId 去重和 runtime 入站观测；后续仍需真实 SDK reconnect 后新消息复验才能关闭专项。
 - 最新代码重启后 runtime 已连接并通过短 smoke，用户全新 Feishu 消息已完成端到端回复，10 分钟 idle smoke 也通过；下一步等待真实 SDK reconnect 后，再由用户发新消息复验即时入站。
 - Codex Agent 图片已走原生 `--image`；Studio `/compact`/`/compress` 已覆盖自建 IM history 压缩，但 Codex 原生交互式 `/compact`、`/clear` 仍需要持久 Codex session，不能通过一次性 `codex exec` 伪实现；Claude Code 已支持图片输入、权限自动回包和 IM 文本批准，但 Feishu 权限按钮卡片、AskUserQuestion、视频理解、OCR、语音/STT/TTS 仍待迁移；OpenCode 视觉输入仍待迁移。
-- 自动上下文预算/剩余百分比/自动 compact 尚未实现到 live Channel daemon；当前只有手动 Studio `/compact`、Gateway usage 汇总和 Codex/App Connection 配置字段。下一步需先做无副作用预算计算与状态展示，再启用自动触发。
+- 自动上下文预算/剩余百分比/native-first 自动 compact 尚未实现到 live Channel daemon；当前只有手动 Studio compact 兜底、Gateway usage 汇总和 Codex/App Connection 配置字段。下一步需先做无副作用预算计算与状态展示，再启用原生优先的自动触发。
 - 出站文件基础链路已覆盖小/中型本地文件，Octo 已具备 multipart/direct upload 自动分流；高级 `yolo` 权限仅放宽本地路径根限制，不绕过平台上传限制。后续仍需做真实大文件限额和更多平台文件收发实测。
 - 同 session FIFO queue 当前是 daemon 内存队列；Studio/OpenClaw 崩溃不影响 daemon 内排队，但 Channel daemon 自身重启会丢失未开始的排队消息。持久 session driver 合同已覆盖 session 级 crash fallback，但尚未实现 durable queue。
 - 持久 session driver 当前只对 Codex metadata 实验路径开放，不作为 live 默认路径；真实 Codex app-server 已验证 `initialize/thread-start`、Studio Gateway `turn/start` 模型调用、原生 `/compact`、`turn/interrupt`、daemon idle reaper、超时中断和内部 prompt 过滤。文件发送/工具流式的正式 live 路径仍优先 one-shot，persistent 继续做受控 beta。
@@ -151,4 +151,4 @@
 ## 下一步
 
 1. 先实现 Gateway resolved model -> Channel session context budget：`contextWindow/maxOutputTokens/autoCompactTokenLimit`、usage 优先、字符估算兜底、`/status` 剩余百分比。
-2. 再接 auto compact 冷却触发：默认 Studio compact，持久/交互式 Agent 支持时追加 native compact；随后继续复刻 Feishu/Octo 菜单、Claude Code AskUserQuestion 精修和 OpenCode runner。
+2. 再接 native-first auto compact 冷却触发：Codex app-server / Claude Code / OpenCode 等支持时优先 Agent 原生压缩；不支持、失败或 one-shot 不可靠时降级 Studio compact；随后继续复刻 Feishu/Octo 菜单、Claude Code AskUserQuestion 精修和 OpenCode runner。
