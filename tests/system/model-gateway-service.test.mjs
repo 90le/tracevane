@@ -712,8 +712,8 @@ test("model gateway exposes enabled provider model pool through OpenAI models en
       models: {
         defaultModel: "shared-model",
         models: [
-          { id: "shared-model", label: "Shared", aliases: ["shared-a"], features: { text: true, vision: false, tools: true } },
-          { id: "a-only", features: { text: true, responses: true } },
+          { id: "shared-model", label: "Shared", aliases: ["shared-a"], contextWindow: 128000, maxOutputTokens: 8192, features: { text: true, vision: false, tools: true } },
+          { id: "a-only", contextWindow: 32000, maxOutputTokens: 2048, features: { text: true, responses: true } },
         ],
       },
       failover: { priority: 10 },
@@ -730,7 +730,7 @@ test("model gateway exposes enabled provider model pool through OpenAI models en
       models: {
         defaultModel: "shared-model",
         models: [
-          { id: "shared-model", features: { vision: true, reasoning: true } },
+          { id: "shared-model", contextWindow: 64000, maxOutputTokens: 4096, features: { vision: true, reasoning: true } },
           { id: "b-only", features: { vision: true, streaming: true } },
         ],
       },
@@ -762,12 +762,16 @@ test("model gateway exposes enabled provider model pool through OpenAI models en
   assert.deepEqual(shared?.providerIds, ["models-a", "models-b"]);
   assert.deepEqual(shared?.healthyProviderIds, ["models-a"]);
   assert.deepEqual(shared?.openCircuitProviderIds, ["models-b"]);
+  assert.equal(shared?.contextWindow, 64000);
+  assert.equal(shared?.maxOutputTokens, 4096);
   assert.deepEqual(shared?.features, {
     text: true,
     tools: true,
     vision: true,
     reasoning: true,
   });
+  assert.equal(direct.data.find((model) => model.id === "a-only")?.contextWindow, 32000);
+  assert.equal(direct.data.find((model) => model.id === "a-only")?.maxOutputTokens, 2048);
   assert.deepEqual(direct.data.find((model) => model.id === "a-only")?.features, {
     text: true,
     responses: true,
@@ -787,6 +791,8 @@ test("model gateway exposes enabled provider model pool through OpenAI models en
     assert.equal(response.body.object, "list");
     assert.deepEqual(response.body.data.map((model) => model.id).sort(), ["a-only", "b-only", "shared-model"]);
     assert.equal(response.body.data.find((model) => model.id === "shared-model")?.features.vision, true);
+    assert.equal(response.body.data.find((model) => model.id === "shared-model")?.contextWindow, 64000);
+    assert.equal(response.body.data.find((model) => model.id === "shared-model")?.maxOutputTokens, 4096);
   });
 });
 

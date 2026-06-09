@@ -465,10 +465,10 @@ export function buildChannelConnectorCommandSurface(
         action("current", "Current Session", "/current", { actionKind: "nav" }),
         action("sessions", "Agent Sessions", "/list", { actionKind: "nav" }),
         action("history", "History", "/history", { actionKind: "nav" }),
-        action("compact", "Studio Compact", "/compact", {
+        action("compact", "智能压缩", "/compact", {
           tone: "primary",
           requiresAdmin: true,
-          description: "Studio 自建压缩：Gateway /responses/compact 摘要 IM history",
+          description: "当前使用 Gateway /responses/compact 兜底；native-first 待接入",
         }),
         action("stop", "Stop Run", "/stop", { tone: "danger", requiresAdmin: true }),
         action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true }),
@@ -1010,7 +1010,7 @@ function commandSurfaceItemDescription(item: ChannelConnectorCommandSurfaceActio
     case "history":
       return "查看当前 IM session 最近上下文";
     case "compact":
-      return "Studio 自建压缩：调用 Gateway /responses/compact 摘要 IM history，并断开旧 Agent 续接";
+      return "当前使用 Gateway /responses/compact 摘要 IM history；native-first 待接入";
     case "stop":
       return "停止当前 IM session 正在运行的 Agent";
     case "new":
@@ -1682,7 +1682,7 @@ function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConn
   const current = actions.find((item) => item.id === "current") || action("current", "Current Session", "/current", { actionKind: "nav" });
   const sessions = actions.find((item) => item.id === "sessions") || action("sessions", "Agent Sessions", "/list", { actionKind: "nav" });
   const history = actions.find((item) => item.id === "history") || action("history", "History", "/history", { actionKind: "nav" });
-  const compact = actions.find((item) => item.id === "compact") || action("compact", "Studio Compact", "/compact", { tone: "primary", requiresAdmin: true });
+  const compact = actions.find((item) => item.id === "compact") || action("compact", "智能压缩", "/compact", { tone: "primary", requiresAdmin: true });
   const stop = actions.find((item) => item.id === "stop") || action("stop", "Stop Run", "/stop", { tone: "danger", requiresAdmin: true });
   const fresh = actions.find((item) => item.id === "new") || action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true });
   const reset = actions.find((item) => item.id === "reset") || action("reset", "Reset", "/reset", { tone: "danger", requiresAdmin: true });
@@ -1870,10 +1870,10 @@ function renderHistoryCard(surface: ChannelConnectorCommandSurface): ChannelConn
   pushActionRows(elements, [
     action("current", "当前会话", "/current", { actionKind: "nav" }),
     action("sessions", "续接列表", "/list", { actionKind: "nav" }),
-    action("compact", "Studio 压缩", "/compact", {
+    action("compact", "智能压缩", "/compact", {
       tone: "primary",
       requiresAdmin: true,
-      description: "Gateway /responses/compact 摘要本 IM history",
+      description: "当前摘要本 IM history；native-first 待接入",
     }),
     action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true }),
   ], surface, 1);

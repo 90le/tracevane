@@ -3320,6 +3320,28 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     replyBuffersPath,
     gatewayClientKey: "sk-local",
     listModels: async () => ["gpt-5", "gpt-5.5", "claude-sonnet"],
+    listModelCatalog: async () => [
+      {
+        id: "gpt-5",
+        contextWindow: 128000,
+        maxOutputTokens: 8192,
+        aliases: ["gpt-main"],
+        providerIds: ["gmn"],
+        healthyProviderIds: ["gmn"],
+        openCircuitProviderIds: [],
+        features: { text: true, tools: true, reasoning: true },
+      },
+      {
+        id: "gpt-5.5",
+        contextWindow: 256000,
+        maxOutputTokens: 16384,
+        aliases: [],
+        providerIds: ["gmn"],
+        healthyProviderIds: ["gmn"],
+        openCircuitProviderIds: [],
+        features: { text: true, tools: true, reasoning: true, vision: true },
+      },
+    ],
   };
   const message = (content, fromUid = "admin-1") => ({
     messageId: `m-${content.replace(/[^a-z0-9]+/gi, "-")}-${fromUid}`,
@@ -3366,7 +3388,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(sessionHelp.replyText, /`\/search <关键字>`/);
   assert.ok(sessionHelp.replyText.includes("`/delete <序号\\|sessionId前缀\\|1,3-5>`"));
   assert.match(sessionHelp.replyText, /`\/usage`/);
-  assert.match(sessionHelp.replyText, /Studio compact/);
+  assert.match(sessionHelp.replyText, /当前 Gateway `\/responses\/compact` 兜底/);
   assert.match(sessionHelp.replyText, /Gateway `\/responses\/compact`/);
   assert.match(sessionHelp.replyText, /`\/approve`/);
   assert.match(sessionHelp.replyText, /返回：`\/help`/);
@@ -3544,6 +3566,39 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(abbreviatedStatus.handled, true);
   assert.equal(abbreviatedStatus.action, "status");
   assert.equal(abbreviatedStatus.ok, true);
+  assert.match(abbreviatedStatus.replyText, /Context budget:/);
+  assert.match(abbreviatedStatus.replyText, /Window: 128000 tokens; no usage\/history estimate yet\./);
+  assert.match(abbreviatedStatus.replyText, /Auto compact threshold: 115200 tokens/);
+
+  const statusWithUsage = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/status"),
+    summarizeUsage: async (scope) => {
+      assert.equal(scope.bindingId, "octo-codex");
+      assert.equal(scope.sessionKey, "dmwork:dm:admin-1");
+      assert.equal(scope.project.id, "codex-main");
+      assert.equal(scope.command, "/status");
+      return {
+        source: "gateway-runtime-window",
+        requests: 1,
+        successfulRequests: 1,
+        failedRequests: 0,
+        inputTokens: 60,
+        outputTokens: 20,
+        totalTokens: 80,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        lastRequestAt: "2026-06-09T08:00:00.000Z",
+        providers: ["gmn"],
+        models: ["gpt-5"],
+        requestIds: ["req-status"],
+      };
+    },
+  });
+  assert.equal(statusWithUsage.ok, true);
+  assert.match(statusWithUsage.replyText, /Used: 80 \/ 128000 tokens/);
+  assert.match(statusWithUsage.replyText, /Remaining: 127920 tokens; source: Gateway usage\./);
+  assert.match(statusWithUsage.replyText, /Compact plan: native-first next, current manual \/compact fallback\./);
 
   const abbreviatedHistory = await handleChannelConnectorCommand({
     ...baseContext,

@@ -417,6 +417,19 @@ function normalizeModelLookupKey(value: string): string {
   return value.trim().toLowerCase();
 }
 
+function positiveIntegerOrNull(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const normalized = Math.floor(value);
+  return normalized > 0 ? normalized : null;
+}
+
+function mergeModelBudgetMinimum(current: number | null, next: unknown): number | null {
+  const normalized = positiveIntegerOrNull(next);
+  if (normalized === null) return current;
+  if (current === null) return normalized;
+  return Math.min(current, normalized);
+}
+
 function providerModelLookupEntries(provider: ModelGatewayProvider): Map<string, string> {
   const entries = new Map<string, string>();
   for (const model of provider.models.models) {
@@ -3488,6 +3501,8 @@ export function createModelGatewayService(
     const byModelId = new Map<string, {
       id: string;
       label: string | null;
+      contextWindow: number | null;
+      maxOutputTokens: number | null;
       aliases: Set<string>;
       providerIds: Set<string>;
       healthyProviderIds: Set<string>;
@@ -3511,6 +3526,8 @@ export function createModelGatewayService(
           byModelId.set(key, {
             id,
             label: model.label || null,
+            contextWindow: positiveIntegerOrNull(model.contextWindow),
+            maxOutputTokens: positiveIntegerOrNull(model.maxOutputTokens),
             aliases: new Set(model.aliases || []),
             providerIds: new Set([provider.id]),
             healthyProviderIds: new Set(provider.health.circuitState !== "open" ? [provider.id] : []),
@@ -3524,6 +3541,8 @@ export function createModelGatewayService(
         if (provider.health.circuitState === "open") current.openCircuitProviderIds.add(provider.id);
         else current.healthyProviderIds.add(provider.id);
         for (const alias of model.aliases || []) current.aliases.add(alias);
+        current.contextWindow = mergeModelBudgetMinimum(current.contextWindow, model.contextWindow);
+        current.maxOutputTokens = mergeModelBudgetMinimum(current.maxOutputTokens, model.maxOutputTokens);
         mergeModelFeatures(current.features, model.features);
         if (provider.failover.priority < current.priority) {
           current.id = id;
@@ -3543,6 +3562,8 @@ export function createModelGatewayService(
           created: 0,
           owned_by: item.providerIds.size > 1 ? "studio-gateway" : `provider:${[...item.providerIds][0] || "unknown"}`,
           label: item.label,
+          contextWindow: item.contextWindow,
+          maxOutputTokens: item.maxOutputTokens,
           aliases: [...item.aliases].sort(),
           providerIds: [...item.providerIds].sort(),
           healthyProviderIds: [...item.healthyProviderIds].sort(),

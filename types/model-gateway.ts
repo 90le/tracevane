@@ -218,6 +218,8 @@ export interface ModelGatewayModelListItem {
   created: number;
   owned_by: string;
   label: string | null;
+  contextWindow?: number | null;
+  maxOutputTokens?: number | null;
   aliases: string[];
   providerIds: string[];
   healthyProviderIds?: string[];

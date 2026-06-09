@@ -370,6 +370,23 @@ export interface ChannelConnectorCommandSurface {
   textFallback: string;
 }
 
+export interface ChannelConnectorContextBudgetSummary {
+  modelId: string | null;
+  matchedModelId: string | null;
+  contextWindow: number | null;
+  maxOutputTokens: number | null;
+  autoCompactTokenLimit: number | null;
+  usedTokens: number | null;
+  remainingTokens: number | null;
+  usedPercent: number | null;
+  remainingPercent: number | null;
+  usageSource: "gateway-runtime-window" | "history-estimate" | "none";
+  estimatedTokens: number | null;
+  shouldCompact: boolean | null;
+  compactStrategy: "agent-native-first";
+  note: string | null;
+}
+
 export interface ChannelConnectorFeishuInteractiveCard {
   config: {
     wide_screen_mode: true;

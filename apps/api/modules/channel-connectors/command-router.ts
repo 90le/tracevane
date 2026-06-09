@@ -55,6 +55,10 @@ import {
   listChannelConnectorSkills,
   resolveChannelConnectorSkill,
 } from "./skill-registry.js";
+import {
+  formatChannelConnectorContextBudget,
+  resolveChannelConnectorContextBudget,
+} from "./context-budget.js";
 import type {
   ChannelConnectorRuntimeBinding,
   ChannelConnectorRuntimeProject,
@@ -84,6 +88,7 @@ export interface ChannelConnectorCommandContext {
   conversationHistoryPath?: string | null;
   replyBuffersPath?: string | null;
   gatewayClientKey: string | null;
+  listModelCatalog?: (endpoint: string, clientKey: string | null) => Promise<ChannelConnectorGatewayModel[]>;
   listModels?: (endpoint: string, clientKey: string | null) => Promise<string[]>;
   stopActiveRun?: (input: {
     bindingId: string;
@@ -137,6 +142,8 @@ export interface ChannelConnectorCommandContext {
 
 export interface ChannelConnectorGatewayModel {
   id: string;
+  contextWindow?: number | null;
+  maxOutputTokens?: number | null;
   aliases: string[];
   providerIds: string[];
   healthyProviderIds?: string[];
@@ -941,7 +948,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
         ["`/delete <序号|sessionId前缀|1,3-5>`", "删除非当前 Agent session 续接记录"],
         ["`/history [条数]`", "查看最近上下文"],
         ["`/usage`", "查看最近 Gateway token usage"],
-        ["`/compact` / `/compress`", "Studio compact：调用 Gateway `/responses/compact` 摘要 IM history，并开启新续接"],
+        ["`/compact` / `/compress`", "当前 Gateway `/responses/compact` 兜底；native-first 自动触发待接入"],
         ["`/stop`", "停止当前 run"],
         ["`/approve` / `/deny` / `/allow-all`", "回复工具权限请求"],
         ["`/new` / `/reset`", "开启新 Agent 会话 / 清空 override 和续接状态"],
@@ -1026,7 +1033,7 @@ function commandHelpText(section?: string | null): string {
     "普通消息会交给当前 Agent。未被 Studio 占用的 `/xxx` 会自动透传；冲突命令用 `/native <命令>`。",
     "",
     markdownTable([
-      ["`/status` `/new` `/reset` `/stop` `/compact`", "会话状态、新会话、重置、停止、Studio compact"],
+      ["`/status` `/new` `/reset` `/stop` `/compact`", "会话状态、新会话、重置、停止、当前 compact 兜底"],
       ["`/whoami` `/version`", "身份排查和 runtime 版本"],
       ["`/agent` `/model` `/mode` `/reasoning`", "切换 Agent、模型、权限、推理强度"],
       ["`/display` `/quiet` `/stream on|off` `/tools on|off`", "控制进度和工具显示"],
@@ -1370,6 +1377,12 @@ function normalizeGatewayStringArray(value: unknown): string[] {
     : [];
 }
 
+function normalizeGatewayPositiveInteger(value: unknown): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  const normalized = Math.floor(value);
+  return normalized > 0 ? normalized : null;
+}
+
 export async function listChannelConnectorGatewayModelCatalog(
   endpoint: string,
   clientKey: string | null,
@@ -1389,6 +1402,8 @@ export async function listChannelConnectorGatewayModelCatalog(
     seen.add(key);
     models.push({
       id,
+      contextWindow: normalizeGatewayPositiveInteger(item.contextWindow),
+      maxOutputTokens: normalizeGatewayPositiveInteger(item.maxOutputTokens),
       aliases: normalizeGatewayStringArray(item.aliases),
       providerIds: normalizeGatewayStringArray(item.providerIds),
       healthyProviderIds: normalizeGatewayStringArray(item.healthyProviderIds),
@@ -1428,9 +1443,46 @@ function resolveModelTarget(input: string, models: string[]): string | null {
   return exact || target;
 }
 
+async function contextBudgetForCommand(input: {
+  context: ChannelConnectorCommandContext;
+  project: ChannelConnectorRuntimeProject;
+  usageSummary?: ChannelConnectorUsageSummary | null;
+}): Promise<ReturnType<typeof resolveChannelConnectorContextBudget>> {
+  let catalog: ChannelConnectorGatewayModel[] = [];
+  try {
+    catalog = await (input.context.listModelCatalog || listChannelConnectorGatewayModelCatalog)(
+      input.project.gatewayEndpoint || input.context.config.gateway.endpoint,
+      input.context.gatewayClientKey,
+    );
+  } catch {
+    catalog = [];
+  }
+  const history = input.context.conversationHistoryPath
+    ? getChannelConnectorConversationHistory(input.context.conversationHistoryPath, controlsLookup(input.context), 50)
+    : [];
+  return resolveChannelConnectorContextBudget({
+    model: input.project.model,
+    modelCatalog: catalog,
+    usageSummary: input.usageSummary || null,
+    history,
+  });
+}
+
 async function handleStatus(context: ChannelConnectorCommandContext): Promise<ChannelConnectorCommandResult> {
   const control = getChannelConnectorSessionControl(context.controlsPath, controlsLookup(context));
   const currentProject = resolveChannelConnectorEffectiveProject(context.config, context.project, control);
+  const usageSummary = context.summarizeUsage
+    ? await context.summarizeUsage({
+      ...controlsLookup(context),
+      project: currentProject,
+      command: "/status",
+    })
+    : null;
+  const contextBudget = await contextBudgetForCommand({
+    context,
+    project: currentProject,
+    usageSummary,
+  });
   const session = getChannelConnectorAgentSession(context.agentSessionsPath, {
     bindingId: context.binding.id,
     projectId: currentProject.id,
@@ -1457,6 +1509,8 @@ async function handleStatus(context: ChannelConnectorCommandContext): Promise<Ch
       `Session: ${session ? `${session.turnCount} turns` : "new"}`,
       `Native session: ${session?.agentNativeSessionId || "-"}`,
       `Codex thread: ${session?.codexThreadId || "-"}`,
+      "",
+      ...formatChannelConnectorContextBudget(contextBudget),
     ].join("\n"),
   };
 }
