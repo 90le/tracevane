@@ -28,6 +28,15 @@ function feishuRuntime(overrides = {}) {
         lastReceivedAt: null,
         lastUnhealthyAt: null,
         pingTimeoutSeconds: 0,
+        pongTimeoutMs: 210000,
+        pingIntervalMs: 0,
+        sentPings: 0,
+        lastPingAt: null,
+        receivedPongs: 0,
+        lastPongAt: null,
+        controlFrames: 0,
+        lastControlFrameAt: null,
+        lastControlFrameType: null,
         reconnectingRecycleAfterMs: 10000,
         lastReconnectingAt: null,
         reconnectingRecycles: 0,
@@ -51,10 +60,11 @@ function feishuRuntime(overrides = {}) {
         ingressVerified: false,
         ingressState: "warming",
         ingressSilentForMs: 0,
-        ingressUnverifiedAfterMs: 60000,
-        ingressUnverifiedRenewMax: 3,
+        transportVerified: false,
+        ingressUnverifiedAfterMs: 0,
+        ingressUnverifiedRenewMax: 0,
         ingressUnverifiedRenewals: 0,
-        ingressUnverifiedRenewDelayMs: 60000,
+        ingressUnverifiedRenewDelayMs: 0,
         lastIngressUnverifiedRenewAt: null,
         lockAcquired: true,
         lockOwnerPid: process.pid,
@@ -120,6 +130,10 @@ test("Feishu long-connection smoke passes clean SDK-owned runtime", async () => 
   assert.equal(parsed.summary.connections, 1);
   assert.equal(parsed.summary.violations, 0);
   assert.equal(parsed.connections[0].pingTimeoutSeconds, 0);
+  assert.equal(parsed.connections[0].pongTimeoutMs, 210000);
+  assert.equal(parsed.connections[0].sentPings, 0);
+  assert.equal(parsed.connections[0].receivedPongs, 0);
+  assert.equal(parsed.connections[0].transportVerified, false);
   assert.equal(parsed.connections[0].reconnectingRecycleAfterMs, 10000);
   assert.equal(parsed.connections[0].reconnectingRecycles, 0);
   assert.equal(parsed.connections[0].connectedIdleRenewAfterMs, 0);
@@ -131,9 +145,9 @@ test("Feishu long-connection smoke passes clean SDK-owned runtime", async () => 
   assert.equal(parsed.connections[0].lifecycleLastDispatcherCallbackAt, null);
   assert.equal(parsed.connections[0].zeroInboundRenewAfterMs, 0);
   assert.equal(parsed.connections[0].zeroInboundRenewMax, 0);
-  assert.equal(parsed.connections[0].ingressUnverifiedAfterMs, 60000);
-  assert.equal(parsed.connections[0].ingressUnverifiedRenewMax, 3);
-  assert.equal(parsed.connections[0].ingressUnverifiedRenewDelayMs, 60000);
+  assert.equal(parsed.connections[0].ingressUnverifiedAfterMs, 0);
+  assert.equal(parsed.connections[0].ingressUnverifiedRenewMax, 0);
+  assert.equal(parsed.connections[0].ingressUnverifiedRenewDelayMs, 0);
   assert.equal(parsed.connections[0].watchdogRestartAfterMs, 0);
 });
 

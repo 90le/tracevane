@@ -7356,6 +7356,9 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.doesNotMatch(daemonSource, /watchdog_ingress_unverified_/);
   assert.doesNotMatch(daemonSource, /watchdog_zero_inbound_/);
   assert.match(daemonSource, /DEFAULT_FEISHU_PING_TIMEOUT_SECONDS\s*=\s*0/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_PONG_TIMEOUT_MS\s*=\s*210_?000/);
+  assert.match(daemonSource, /MIN_FEISHU_PONG_TIMEOUT_MS\s*=\s*60_?000/);
+  assert.match(daemonSource, /MAX_FEISHU_PONG_TIMEOUT_MS\s*=\s*600_?000/);
   assert.doesNotMatch(daemonSource, /MIN_FEISHU_PING_TIMEOUT_SECONDS/);
   assert.doesNotMatch(daemonSource, /MAX_FEISHU_PING_TIMEOUT_SECONDS/);
   assert.match(daemonSource, /DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS\s*=\s*0/);
@@ -7367,9 +7370,10 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX\s*=\s*0/);
   assert.match(daemonSource, /DEFAULT_FEISHU_WATCHDOG_RESTART_MS\s*=\s*0/);
   assert.match(daemonSource, /MIN_FEISHU_WATCHDOG_RESTART_MS\s*=\s*60_?000/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_INGRESS_UNVERIFIED_AFTER_MS\s*=\s*60_?000/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_INGRESS_UNVERIFIED_RENEW_MAX\s*=\s*3/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_INGRESS_UNVERIFIED_AFTER_MS\s*=\s*0/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_INGRESS_UNVERIFIED_RENEW_MAX\s*=\s*0/);
   assert.match(daemonSource, /feishuPingTimeoutSeconds/);
+  assert.match(daemonSource, /feishuPongTimeoutMs/);
   assert.match(daemonSource, /feishuIngressUnverifiedAfterMs/);
   assert.match(daemonSource, /feishuIngressUnverifiedRenewMax/);
   assert.match(daemonSource, /feishuIngressUnverifiedRenewDelayMs/);
@@ -7388,7 +7392,15 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /wsConfig:\s*\{\s*pingTimeout:\s*pingTimeoutSeconds\s*\}/);
   assert.doesNotMatch(daemonSource, /autoReconnect:\s*true/);
   assert.match(daemonSource, /handshakeTimeoutMs:\s*DEFAULT_FEISHU_HANDSHAKE_TIMEOUT_MS/);
+  assert.match(daemonSource, /attachFeishuControlFrameProbe/);
+  assert.match(daemonSource, /function feishuFrameType/);
+  assert.match(daemonSource, /function markFeishuControlFrame/);
+  assert.match(daemonSource, /function feishuClientPingIntervalMs/);
   assert.match(daemonSource, /pingTimeoutSeconds: feishuPingTimeoutSeconds\(group\)/);
+  assert.match(daemonSource, /pongTimeoutMs:\s*feishuPongTimeoutMs\(group\)/);
+  assert.match(daemonSource, /pingIntervalMs:\s*group\.pingIntervalMs/);
+  assert.match(daemonSource, /sentPings:\s*group\.sentPings/);
+  assert.match(daemonSource, /receivedPongs:\s*group\.receivedPongs/);
   assert.match(daemonSource, /reconnectingRecycleAfterMs:\s*feishuReconnectingRecycleMs\(group\)/);
   assert.match(daemonSource, /feishuConnectedIdleRenewMs/);
   assert.match(daemonSource, /feishuVerifiedIngressSilentRenewMs/);
@@ -7409,6 +7421,8 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /reconnectingRecycles/);
   assert.match(daemonSource, /lastReconnectingRecycleAt/);
   assert.match(daemonSource, /lastReconnectingRecycleReason/);
+  assert.match(daemonSource, /sdk_pong_timeout_/);
+  assert.match(daemonSource, /Feishu WebSocket pong timeout; recycling client/);
   assert.doesNotMatch(daemonSource, /group\.receivedMessages === 0/);
   assert.match(daemonSource, /group\.lifecycleDispatcherCallbacks === 0/);
   assert.match(daemonSource, /group\.lifecycleReceivedMessages > 0/);
@@ -7423,6 +7437,10 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
     daemonSource.indexOf("function updateFeishuRuntime"),
   );
   assert.match(feishuConnectionStateBlock, /pingTimeoutSeconds:\s*feishuPingTimeoutSeconds\(group\)/);
+  assert.match(feishuConnectionStateBlock, /pongTimeoutMs:\s*feishuPongTimeoutMs\(group\)/);
+  assert.match(feishuConnectionStateBlock, /transportVerified/);
+  assert.match(feishuConnectionStateBlock, /lastPongAt:\s*group\.lastPongAt/);
+  assert.match(feishuConnectionStateBlock, /lastPingAt:\s*group\.lastPingAt/);
   assert.match(feishuConnectionStateBlock, /reconnectingRecycleAfterMs:\s*feishuReconnectingRecycleMs\(group\)/);
   assert.match(feishuConnectionStateBlock, /watchdogRestartAfterMs:\s*feishuWatchdogRestartMs\(group\)/);
   assert.match(feishuConnectionStateBlock, /zeroInboundRenewMax:\s*feishuZeroInboundRenewMax\(group\)/);

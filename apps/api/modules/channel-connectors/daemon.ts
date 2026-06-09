@@ -166,6 +166,9 @@ import {
 
 const DEFAULT_FEISHU_PING_TIMEOUT_SECONDS = 0;
 const DEFAULT_FEISHU_HANDSHAKE_TIMEOUT_MS = 15_000;
+const DEFAULT_FEISHU_PONG_TIMEOUT_MS = 210_000;
+const MIN_FEISHU_PONG_TIMEOUT_MS = 60_000;
+const MAX_FEISHU_PONG_TIMEOUT_MS = 600_000;
 const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 0;
 const MIN_FEISHU_WATCHDOG_RESTART_MS = 60_000;
 const MAX_FEISHU_WATCHDOG_RESTART_MS = 600_000;
@@ -182,8 +185,9 @@ const FEISHU_WS_AUTORECONNECT_DISABLED_ERROR = "WebSocket connect failed and aut
 // a fresh SDK WSClient after terminal SDK errors and backs off 1s..30s. Studio
 // copies that lifecycle shape. OpenClaw currently passes an upper-case
 // FEISHU_WS_CONFIG shape that the installed Lark SDK does not treat as the
-// client-side lower-case `pingTimeout` watchdog. Studio therefore keeps that
-// effective contract by default and does not arm the SDK's extra pong watchdog.
+// client-side lower-case `pingTimeout` watchdog. Studio keeps that effective
+// SDK contract but records the SDK's application-level ping/pong frames and
+// recycles only after an observed outbound ping misses its pong timeout.
 // If the SDK has already entered `reconnecting` and stays there for too long,
 // Studio still recycles that same current client through the OpenClaw-style
 // outer loop. This is not a connected-idle/zero-inbound guess; the SDK has
@@ -199,10 +203,10 @@ const MIN_FEISHU_ZERO_INBOUND_RENEW_MS = 60_000;
 const MAX_FEISHU_ZERO_INBOUND_RENEW_MS = 15 * 60_000;
 const DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX = 0;
 const MAX_FEISHU_ZERO_INBOUND_RENEW_MAX = 10;
-const DEFAULT_FEISHU_INGRESS_UNVERIFIED_AFTER_MS = 60_000;
+const DEFAULT_FEISHU_INGRESS_UNVERIFIED_AFTER_MS = 0;
 const MIN_FEISHU_INGRESS_UNVERIFIED_AFTER_MS = 60_000;
 const MAX_FEISHU_INGRESS_UNVERIFIED_AFTER_MS = 3_600_000;
-const DEFAULT_FEISHU_INGRESS_UNVERIFIED_RENEW_MAX = 3;
+const DEFAULT_FEISHU_INGRESS_UNVERIFIED_RENEW_MAX = 0;
 const MAX_FEISHU_INGRESS_UNVERIFIED_RENEW_MAX = 3;
 const DEFAULT_FEISHU_LOCK_RETRY_MS = 30_000;
 const MIN_FEISHU_LOCK_RETRY_MS = 5_000;
@@ -288,6 +292,7 @@ interface ChannelDaemonFeishuConnectionState {
   ingressVerified: boolean;
   ingressState: "receiving" | "warming" | "silent" | "stale" | "disconnected" | "lock-held" | "closed";
   ingressSilentForMs: number;
+  transportVerified: boolean;
   ingressUnverifiedAfterMs: number;
   ingressUnverifiedRenewMax: number;
   ingressUnverifiedRenewals: number;
@@ -307,6 +312,15 @@ interface ChannelDaemonFeishuConnectionState {
   lockOwnerPid: number | null;
   lockPath: string | null;
   pingTimeoutSeconds: number;
+  pongTimeoutMs: number;
+  pingIntervalMs: number;
+  sentPings: number;
+  lastPingAt: string | null;
+  receivedPongs: number;
+  lastPongAt: string | null;
+  controlFrames: number;
+  lastControlFrameAt: string | null;
+  lastControlFrameType: string | null;
   reconnectingRecycleAfterMs: number;
   connectedIdleRenewAfterMs: number;
   zeroInboundRenewAfterMs: number;
@@ -367,6 +381,14 @@ interface ChannelDaemonFeishuGroup {
   lastDispatcherEventType: string | null;
   lifecycleDispatcherCallbacks: number;
   lifecycleLastDispatcherCallbackAt: string | null;
+  pingIntervalMs: number;
+  sentPings: number;
+  lastPingAt: string | null;
+  receivedPongs: number;
+  lastPongAt: string | null;
+  controlFrames: number;
+  lastControlFrameAt: string | null;
+  lastControlFrameType: string | null;
   lockAcquired: boolean;
   lockOwnerPid: number | null;
   lockPath: string | null;
@@ -1624,6 +1646,20 @@ function firstFeishuBinding(group: ChannelDaemonFeishuGroup): ChannelConnectorRu
 function feishuPingTimeoutSeconds(group: ChannelDaemonFeishuGroup): number {
   void group;
   return DEFAULT_FEISHU_PING_TIMEOUT_SECONDS;
+}
+
+function feishuPongTimeoutMs(group: ChannelDaemonFeishuGroup): number {
+  const binding = firstFeishuBinding(group);
+  const value = binding
+    ? metadataNumber(binding, [
+      "feishuPongTimeoutMs",
+      "feishu_pong_timeout_ms",
+      "pongTimeoutMs",
+      "pong_timeout_ms",
+    ], DEFAULT_FEISHU_PONG_TIMEOUT_MS)
+    : DEFAULT_FEISHU_PONG_TIMEOUT_MS;
+  if (value <= 0) return 0;
+  return clampNumber(Math.floor(value), MIN_FEISHU_PONG_TIMEOUT_MS, MAX_FEISHU_PONG_TIMEOUT_MS);
 }
 
 function feishuReconnectingRecycleMs(group: ChannelDaemonFeishuGroup): number {
@@ -3121,6 +3157,7 @@ function feishuConnectionState(group: ChannelDaemonFeishuGroup): ChannelDaemonFe
     ? Math.max(0, Date.now() - lastIngressActivityMs)
     : 0;
   const ingressVerified = group.lifecycleDispatcherCallbacks > 0 || group.lifecycleReceivedMessages > 0;
+  const transportVerified = group.receivedPongs > 0;
   let ingressState: ChannelDaemonFeishuConnectionState["ingressState"];
   if (lockHeld) {
     ingressState = "lock-held";
@@ -3153,6 +3190,7 @@ function feishuConnectionState(group: ChannelDaemonFeishuGroup): ChannelDaemonFe
     ingressVerified,
     ingressState,
     ingressSilentForMs,
+    transportVerified,
     ingressUnverifiedAfterMs,
     ingressUnverifiedRenewMax: feishuIngressUnverifiedRenewMax(group),
     ingressUnverifiedRenewals: group.ingressUnverifiedRenewals,
@@ -3172,6 +3210,15 @@ function feishuConnectionState(group: ChannelDaemonFeishuGroup): ChannelDaemonFe
     lockOwnerPid: group.lockOwnerPid,
     lockPath: group.lockPath,
     pingTimeoutSeconds: feishuPingTimeoutSeconds(group),
+    pongTimeoutMs: feishuPongTimeoutMs(group),
+    pingIntervalMs: group.pingIntervalMs,
+    sentPings: group.sentPings,
+    lastPingAt: group.lastPingAt,
+    receivedPongs: group.receivedPongs,
+    lastPongAt: group.lastPongAt,
+    controlFrames: group.controlFrames,
+    lastControlFrameAt: group.lastControlFrameAt,
+    lastControlFrameType: group.lastControlFrameType,
     reconnectingRecycleAfterMs: feishuReconnectingRecycleMs(group),
     connectedIdleRenewAfterMs: feishuConnectedIdleRenewMs(group),
     zeroInboundRenewAfterMs: feishuZeroInboundRenewMs(group),
@@ -7047,6 +7094,14 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
           lastDispatcherEventType: null,
           lifecycleDispatcherCallbacks: 0,
           lifecycleLastDispatcherCallbackAt: null,
+          pingIntervalMs: 0,
+          sentPings: 0,
+          lastPingAt: null,
+          receivedPongs: 0,
+          lastPongAt: null,
+          controlFrames: 0,
+          lastControlFrameAt: null,
+          lastControlFrameType: null,
           lockAcquired: false,
           lockOwnerPid: null,
           lockPath: null,
@@ -7091,6 +7146,14 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
         lastDispatcherEventType: null,
         lifecycleDispatcherCallbacks: 0,
         lifecycleLastDispatcherCallbackAt: null,
+        pingIntervalMs: 0,
+        sentPings: 0,
+        lastPingAt: null,
+        receivedPongs: 0,
+        lastPongAt: null,
+        controlFrames: 0,
+        lastControlFrameAt: null,
+        lastControlFrameType: null,
         lockAcquired: false,
         lockOwnerPid: null,
         lockPath: null,
@@ -7240,6 +7303,94 @@ function resetFeishuLifecycleIngressEvidence(group: ChannelDaemonFeishuGroup): v
   group.lifecycleLastReceivedAt = null;
   group.lifecycleDispatcherCallbacks = 0;
   group.lifecycleLastDispatcherCallbackAt = null;
+  group.sentPings = 0;
+  group.lastPingAt = null;
+  group.receivedPongs = 0;
+  group.lastPongAt = null;
+  group.controlFrames = 0;
+  group.lastControlFrameAt = null;
+  group.lastControlFrameType = null;
+}
+
+function feishuFrameType(data: unknown): string | null {
+  if (!isRecord(data) || !Array.isArray(data.headers)) return null;
+  const header = data.headers.find((item) => isRecord(item) && item.key === "type");
+  return isRecord(header) && typeof header.value === "string" ? header.value : null;
+}
+
+function feishuClientPingIntervalMs(client: WSClient | null): number {
+  const wsConfig = (client as unknown as {
+    wsConfig?: { getWS?: (key: string) => unknown };
+  } | null)?.wsConfig;
+  const value = wsConfig?.getWS?.("pingInterval");
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 0;
+}
+
+function markFeishuControlFrame(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  state: ChannelDaemonState;
+  group: ChannelDaemonFeishuGroup;
+  direction: "inbound" | "outbound";
+  frameType: string | null;
+}): void {
+  const { config, state, group, direction, frameType } = input;
+  if (!frameType) return;
+  const now = new Date().toISOString();
+  group.controlFrames += 1;
+  group.lastControlFrameAt = now;
+  group.lastControlFrameType = `${direction}:${frameType}`;
+  group.pingIntervalMs = feishuClientPingIntervalMs(group.client) || group.pingIntervalMs;
+  if (direction === "outbound" && frameType === "ping") {
+    group.sentPings += 1;
+    group.lastPingAt = now;
+  }
+  if (direction === "inbound" && frameType === "pong") {
+    group.receivedPongs += 1;
+    group.lastPongAt = now;
+  }
+  updateFeishuRuntime(config, state, group);
+}
+
+function attachFeishuControlFrameProbe(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  state: ChannelDaemonState;
+  group: ChannelDaemonFeishuGroup;
+  client: WSClient;
+}): void {
+  const { config, state, group, client } = input;
+  const probe = client as unknown as {
+    sendMessage?: (data: unknown) => void;
+    handleControlData?: (data: unknown) => Promise<void>;
+  };
+  const originalSendMessage = probe.sendMessage?.bind(client);
+  if (originalSendMessage) {
+    probe.sendMessage = (data: unknown) => {
+      markFeishuControlFrame({
+        config,
+        state,
+        group,
+        direction: "outbound",
+        frameType: feishuFrameType(data),
+      });
+      originalSendMessage(data);
+    };
+  }
+  const originalHandleControlData = probe.handleControlData?.bind(client);
+  if (originalHandleControlData) {
+    probe.handleControlData = async (data: unknown) => {
+      try {
+        return await originalHandleControlData(data);
+      } finally {
+        markFeishuControlFrame({
+          config,
+          state,
+          group,
+          direction: "inbound",
+          frameType: feishuFrameType(data),
+        });
+      }
+    };
+  }
 }
 
 function createFeishuDispatcher(input: {
@@ -7606,6 +7757,12 @@ async function runFeishuGroupClientLoop(input: {
             updateFeishuRuntime(config, state, group);
           },
         });
+        attachFeishuControlFrameProbe({
+          config,
+          state,
+          group,
+          client,
+        });
         const recycleCurrentClient = (reason: string) => {
           if (!client || group.client !== client) return;
           const recycledAt = new Date().toISOString();
@@ -7801,6 +7958,34 @@ function startFeishuWatchdog(input: {
         group.lastUnhealthyAt = null;
         group.lastReconnectingAt = null;
         group.watchdogRestarting = false;
+        group.pingIntervalMs = feishuClientPingIntervalMs(group.client) || group.pingIntervalMs;
+        const pongTimeoutMs = feishuPongTimeoutMs(group);
+        const lastPingMs = Date.parse(group.lastPingAt || "");
+        const lastPongMs = Date.parse(group.lastPongAt || "");
+        const waitingForPong = Number.isFinite(lastPingMs)
+          && (!Number.isFinite(lastPongMs) || lastPongMs < lastPingMs);
+        if (
+          pongTimeoutMs > 0
+          && waitingForPong
+          && nowMs - lastPingMs >= pongTimeoutMs
+          && group.recycleCurrentClient
+        ) {
+          const reason = `sdk_pong_timeout_${pongTimeoutMs}ms`;
+          appendLog(config.paths.log, "Feishu WebSocket pong timeout; recycling client", {
+            key: group.key,
+            reason,
+            sentPings: group.sentPings,
+            receivedPongs: group.receivedPongs,
+            lastPingAt: group.lastPingAt,
+            lastPongAt: group.lastPongAt,
+            pingIntervalMs: group.pingIntervalMs,
+            pongTimeoutMs,
+          });
+          updateFeishuRuntime(config, state, group);
+          group.recycleCurrentClient(reason);
+          state.feishuConnections[group.key] = feishuConnectionState(group);
+          continue;
+        }
         const renewAfterMs = feishuIngressUnverifiedRenewDelayMs(group);
         const renewMax = feishuIngressUnverifiedRenewMax(group);
         const connectedAtMs = Date.parse(group.lastConnectedAt || "");

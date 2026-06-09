@@ -78,10 +78,11 @@ function printHelp() {
 Read-only Feishu long-connection soak for the native Channel Connectors daemon.
 The script does not send IM messages. By default it watches the live runtime for
 70 seconds, crossing the old 30s zero-inbound failure window, and fails on the
-Studio-side rebuild patterns that previously made Feishu unstable. The default
-Feishu contract follows the current OpenClaw/Lark SDK effective behavior: no
-extra client-side lower-case pingTimeout watchdog is armed unless explicitly
-configured.
+  Studio-side rebuild patterns that previously made Feishu unstable. The default
+  Feishu contract follows the current OpenClaw/Lark SDK effective behavior: no
+  extra client-side lower-case pingTimeout watchdog is armed unless explicitly
+  configured. Studio still records the SDK's application-level ping/pong frames
+  and recycles only after an observed outbound ping misses its pong timeout.
 
 Options:
   --duration-ms <n>                 Watch duration. Default: ${DEFAULT_DURATION_MS}.
@@ -155,6 +156,15 @@ function connectionSnapshot(connection) {
     connected: connection.connected === true,
     state: String(connection.state || ""),
     pingTimeoutSeconds: Number(connection.pingTimeoutSeconds || 0),
+    pongTimeoutMs: Number(connection.pongTimeoutMs || 0),
+    pingIntervalMs: Number(connection.pingIntervalMs || 0),
+    sentPings: Number(connection.sentPings || 0),
+    lastPingAt: connection.lastPingAt || null,
+    receivedPongs: Number(connection.receivedPongs || 0),
+    lastPongAt: connection.lastPongAt || null,
+    controlFrames: Number(connection.controlFrames || 0),
+    lastControlFrameAt: connection.lastControlFrameAt || null,
+    lastControlFrameType: connection.lastControlFrameType || null,
     reconnectingRecycleAfterMs: Number(connection.reconnectingRecycleAfterMs || 0),
     lastReconnectingAt: connection.lastReconnectingAt || null,
     reconnectingRecycles: Number(connection.reconnectingRecycles || 0),
@@ -177,6 +187,7 @@ function connectionSnapshot(connection) {
     ingressVerified: connection.ingressVerified === true,
     ingressState: String(connection.ingressState || ""),
     ingressSilentForMs: Number(connection.ingressSilentForMs || 0),
+    transportVerified: connection.transportVerified === true,
     ingressUnverifiedAfterMs: Number(connection.ingressUnverifiedAfterMs || 0),
     ingressUnverifiedRenewMax: Number(connection.ingressUnverifiedRenewMax || 0),
     ingressUnverifiedRenewals: Number(connection.ingressUnverifiedRenewals || 0),
@@ -558,6 +569,10 @@ function printResult(result) {
       `connected=${connection.connected}`,
       `state=${connection.state}`,
       `pingTimeout=${connection.pingTimeoutSeconds > 0 ? `${connection.pingTimeoutSeconds}s` : "sdk"}`,
+      `pong=${connection.receivedPongs}/${connection.sentPings}`,
+      `pongTimeout=${connection.pongTimeoutMs}ms`,
+      `pingInterval=${connection.pingIntervalMs}ms`,
+      `transportVerified=${connection.transportVerified}`,
       `reconnectingRecycle=${connection.reconnectingRecycleAfterMs}ms/${connection.reconnectingRecycles}`,
       `ingressUnverified=${connection.ingressUnverifiedAfterMs}ms/${connection.ingressUnverifiedRenewMax}`,
       `verifiedIngressSilent=${connection.verifiedIngressSilentRenewAfterMs}ms`,

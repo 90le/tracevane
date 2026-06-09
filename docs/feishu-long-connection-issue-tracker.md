@@ -44,15 +44,22 @@ WS lifecycle files. The mature reference remains:
 - OpenClaw passes upper-case `PingTimeout`; the installed SDK's active watchdog
   knob is lower-case `pingTimeout`. Translating OpenClaw's upper-case config into
   lower-case made Studio stricter than OpenClaw and caused false reconnect churn.
+- Studio now records SDK application-level control frames: outbound `ping`,
+  inbound `pong`, `pingIntervalMs`, `sentPings`, `receivedPongs` and
+  `transportVerified`.
+- Studio recycles a connected client only after an observed outbound `ping`
+  misses its `pongTimeoutMs` window; default `pongTimeoutMs=210000`. This
+  intentionally covers more than two current observed `90000ms` Feishu ping
+  intervals because a `30000ms` window caused a false recycle during live
+  validation.
 - If SDK state is `reconnecting` for more than `10s`, Studio closes that same
   cycle and lets the OpenClaw-style outer loop recreate the client.
 - Connected-idle, zero-inbound, verified-ingress and generic watchdog rebuilds
   remain disabled by default.
-- Studio adds bounded startup ingress validation: while the current Feishu
-  lifecycle has received zero dispatcher callbacks, recycle after `60s`, then
-  exponential retry, max `3` cycles. Reason prefix:
-  `startup_ingress_unverified_`. Any real dispatcher callback resets this
-  counter.
+- Startup ingress validation remains available only as an explicit diagnostic
+  option. Default `ingressUnverifiedAfterMs=0` and
+  `ingressUnverifiedRenewMax=0`; no business message during idle time must not
+  cause proactive reconnects.
 
 ## Evidence
 
@@ -88,8 +95,8 @@ WS lifecycle files. The mature reference remains:
 - This is not a message-order bug. The earlier Octo-first reproduction exposed a
   broader Feishu design risk: SDK `connected` can be true while real business
   ingress is not proven.
-- Current bounded startup validation is a mitigation, not final proof that the
-  Feishu channel has Octo-level stability.
+- Bounded startup validation was a mitigation, not final proof that the Feishu
+  channel has Octo-level stability; it is no longer the default path.
 - Official SDK source shows `EventDispatcher.invoke()` is awaited before the ACK
   response is sent. Therefore every WS handler must stay synchronous-light and
   queue work immediately.
@@ -104,9 +111,10 @@ To reach Octo-level behavior, do not rely on one signal:
 
 1. Keep the official SDK owner loop for compatibility, but require fast ACK,
    handshake timeout, owner lock, terminal-error recreate and runtime evidence.
-2. Add a stronger health proof path: observe control ping/pong or run a patched
-   WS layer that exposes pong/inbound timestamps instead of inferring health from
-   business messages only.
+2. Observe control ping/pong or run a patched WS layer that exposes pong/inbound
+   timestamps instead of inferring health from business messages only. Studio now
+   wraps the SDK client methods to expose application-level ping/pong runtime
+   proof while keeping the official SDK protocol implementation.
 3. Evaluate webhook or hybrid ingress for production-grade Feishu stability when
    a reliable public callback URL is available. Webhook removes the local
    long-lived socket failure class, but depends on a public endpoint and cannot
@@ -123,24 +131,34 @@ To reach Octo-level behavior, do not rely on one signal:
 - `node --test tests/system/channel-connectors-feishu-long-connection-script.test.mjs`
 - `node --test --test-name-pattern "Feishu long-connection ingress|Feishu dispatcher parity diagnostics" tests/system/channel-connectors-service.test.mjs`
 - Restarted `openclaw-studio-channel-connectors.service`, PID `2667130`.
-- Runtime after restart exposed `pingTimeoutSeconds=0`,
-  `ingressUnverifiedAfterMs=60000`, `ingressUnverifiedRenewMax=3`.
-- At `2026-06-09T07:13:40Z`, Feishu had been connected for `63567ms` with zero
-  dispatcher callbacks; Studio logged `startup_ingress_unverified_60000ms`,
-  recycled the current client, and reconnected with `pingTimeoutSeconds=0`.
-- Live smoke since restart passed with `violations=0`; multiple bounded
-  `startup_ingress_unverified_*` cycles were observed and no old ping-timeout,
-  zero-inbound, connected-idle or generic watchdog violation appeared.
+- Runtime after restart must expose `pingTimeoutSeconds=0`,
+  `pongTimeoutMs=210000`, `ingressUnverifiedAfterMs=0` and
+  `ingressUnverifiedRenewMax=0`.
+- Live smoke at `2026-06-09T10:45:55Z` ran for `100000ms` with
+  `violations=0` and proved ping/pong instrumentation. It also revealed
+  `pongTimeoutMs=30000` could falsely recycle after a later ping was not answered
+  within 30s.
+- Default `pongTimeoutMs` was raised to `210000` and `MAX_FEISHU_PONG_TIMEOUT_MS`
+  to `600000`.
+- Live smoke at `2026-06-09T10:53:20Z` ran for `100000ms` with
+  `violations=0`. Runtime showed `pingIntervalMs=90000`, `sentPings=1`,
+  `receivedPongs=2`, `transportVerified=true`, `reconnectingRecycles=0`,
+  `ingressUnverifiedAfterMs=0`, and no reconnect/rebuild cycles. No fresh user
+  message was sent during this final smoke, so `ingressVerified=false` is
+  expected and must not trigger reconnect.
+- Old ping-timeout, zero-inbound, connected-idle, generic watchdog and default
+  startup-ingress recycle paths must remain absent.
 
 ## Next Validation
 
 - Verify fresh Feishu card actions still update/send results after the WS handler
   returns immediately.
-- After the user sends a fresh Feishu message, runtime must move to
-  `ingressVerified=true` / `ingressState=receiving` and reset startup recycle
-  counters.
-- Research and prototype the stronger health proof path before claiming Feishu
-  has Octo-level stability.
+- Ask the user to send a fresh Feishu message after code changes when validating
+  message-level latency, because runtime ping/pong proof only proves transport
+  health.
+- If Feishu remains unstable after ping/pong proof and fast ACK, evaluate
+  webhook/hybrid or a Studio-owned WS transport before claiming Octo-level
+  stability.
 - If a future stall appears, capture runtime JSON, log tail, owner lock,
   `systemctl --user status openclaw-studio-channel-connectors.service`, and
   process list before restarting.
