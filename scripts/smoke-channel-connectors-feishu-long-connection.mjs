@@ -8,7 +8,8 @@ const DEFAULT_RUNTIME_PATH = path.join(os.homedir(), ".config/openclaw-studio/ch
 const DEFAULT_LOG_PATH = path.join(os.homedir(), ".config/openclaw-studio/channel-connectors/daemon/logs/channel-connectors.log");
 const DEFAULT_DURATION_MS = 70_000;
 const DEFAULT_POLL_MS = 1_000;
-const EXPECTED_FEISHU_PING_TIMEOUT_SECONDS = 0;
+const EXPECTED_FEISHU_PING_TIMEOUT_SECONDS = 3;
+const EXPECTED_FEISHU_PING_INTERVAL_MS = 30_000;
 const MIN_SAFE_WATCHDOG_MS = 60_000;
 const MIN_SAFE_INGRESS_UNVERIFIED_RENEW_MS = 15_000;
 const MAX_SAFE_INGRESS_UNVERIFIED_RENEW_MAX = 5;
@@ -79,10 +80,9 @@ Read-only Feishu long-connection soak for the native Channel Connectors daemon.
 The script does not send IM messages. By default it watches the live runtime for
 70 seconds, crossing the old 30s zero-inbound failure window, and fails on the
   Studio-side rebuild patterns that previously made Feishu unstable. The default
-  Feishu contract follows the current OpenClaw/Lark SDK effective behavior: no
-  extra client-side lower-case pingTimeout watchdog is armed unless explicitly
-  configured. Studio still records the SDK's application-level ping/pong frames
-  and recycles only after an observed outbound ping misses its pong timeout.
+  Feishu contract arms the Lark SDK lower-case pingTimeout watchdog and also
+  records the SDK's application-level ping/pong frames so Studio can surface and
+  recover false-connected sockets.
 
 Options:
   --duration-ms <n>                 Watch duration. Default: ${DEFAULT_DURATION_MS}.
@@ -95,7 +95,7 @@ Options:
   --require-always-connected        Fail if a selected connection is ever sampled non-connected.
   --require-ingress-verified        Fail unless selected connections have received a real Feishu event.
   --allow-disconnected              Do not fail when the final runtime state is non-connected.
-  --allow-ping-timeout              Allow explicit SDK pingTimeout / ping-timeout log events.
+  --allow-ping-timeout              Allow non-default SDK pingTimeout values.
   --allow-ingress-unverified-renewal Compatibility flag; bounded startup ingress validation renewals are allowed by default.
   --allow-zero-inbound-renewal      Allow all zero-inbound proactive rebuilds.
   --allow-connected-idle-renewal    Allow connected-idle proactive rebuilds.
@@ -158,6 +158,10 @@ function connectionSnapshot(connection) {
     pingTimeoutSeconds: Number(connection.pingTimeoutSeconds || 0),
     pongTimeoutMs: Number(connection.pongTimeoutMs || 0),
     pingIntervalMs: Number(connection.pingIntervalMs || 0),
+    sdkConnected: connection.sdkConnected === true,
+    transportStaleForMs: Number(connection.transportStaleForMs || 0),
+    transportStaleAfterMs: Number(connection.transportStaleAfterMs || 0),
+    transportStale: connection.transportStale === true,
     sentPings: Number(connection.sentPings || 0),
     lastPingAt: connection.lastPingAt || null,
     receivedPongs: Number(connection.receivedPongs || 0),
@@ -188,6 +192,8 @@ function connectionSnapshot(connection) {
     ingressState: String(connection.ingressState || ""),
     ingressSilentForMs: Number(connection.ingressSilentForMs || 0),
     transportVerified: connection.transportVerified === true,
+    pongWaitingForMs: Number(connection.pongWaitingForMs || 0),
+    pongOverdue: connection.pongOverdue === true,
     ingressUnverifiedAfterMs: Number(connection.ingressUnverifiedAfterMs || 0),
     ingressUnverifiedRenewMax: Number(connection.ingressUnverifiedRenewMax || 0),
     ingressUnverifiedRenewals: Number(connection.ingressUnverifiedRenewals || 0),
@@ -229,7 +235,28 @@ function runtimeViolations(connections, options, startedAtMs, samples) {
       violations.push({
         type: "ping_timeout_mismatch",
         key,
-        message: `Feishu connection ${key} has SDK pingTimeoutSeconds=${connection.pingTimeoutSeconds}; expected ${EXPECTED_FEISHU_PING_TIMEOUT_SECONDS} (disabled by default).`,
+        message: `Feishu connection ${key} has SDK pingTimeoutSeconds=${connection.pingTimeoutSeconds}; expected ${EXPECTED_FEISHU_PING_TIMEOUT_SECONDS}.`,
+      });
+    }
+    if (connection.transportVerified && connection.pingIntervalMs !== EXPECTED_FEISHU_PING_INTERVAL_MS) {
+      violations.push({
+        type: "ping_interval_mismatch",
+        key,
+        message: `Feishu connection ${key} has pingIntervalMs=${connection.pingIntervalMs}; expected ${EXPECTED_FEISHU_PING_INTERVAL_MS}.`,
+      });
+    }
+    if (connection.pongOverdue) {
+      violations.push({
+        type: "pong_overdue",
+        key,
+        message: `Feishu connection ${key} has not received pong for ${connection.pongWaitingForMs}ms.`,
+      });
+    }
+    if (connection.transportStale) {
+      violations.push({
+        type: "transport_stale",
+        key,
+        message: `Feishu connection ${key} has stale control frames for ${connection.transportStaleForMs}ms (limit ${connection.transportStaleAfterMs}ms).`,
       });
     }
     if (!options.allowZeroInboundRenewal && connection.zeroInboundRenewAfterMs > 0) {
@@ -568,11 +595,13 @@ function printResult(result) {
       `- ${connection.key}`,
       `connected=${connection.connected}`,
       `state=${connection.state}`,
+      `sdkConnected=${connection.sdkConnected}`,
       `pingTimeout=${connection.pingTimeoutSeconds > 0 ? `${connection.pingTimeoutSeconds}s` : "sdk"}`,
       `pong=${connection.receivedPongs}/${connection.sentPings}`,
       `pongTimeout=${connection.pongTimeoutMs}ms`,
       `pingInterval=${connection.pingIntervalMs}ms`,
       `transportVerified=${connection.transportVerified}`,
+      `transportStale=${connection.transportStale ? `${connection.transportStaleForMs}/${connection.transportStaleAfterMs}ms` : "false"}`,
       `reconnectingRecycle=${connection.reconnectingRecycleAfterMs}ms/${connection.reconnectingRecycles}`,
       `ingressUnverified=${connection.ingressUnverifiedAfterMs}ms/${connection.ingressUnverifiedRenewMax}`,
       `verifiedIngressSilent=${connection.verifiedIngressSilentRenewAfterMs}ms`,

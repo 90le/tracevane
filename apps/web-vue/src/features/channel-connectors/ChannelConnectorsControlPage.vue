@@ -548,6 +548,7 @@
                 <small>{{ session.agent }} · {{ session.bindingId }} · {{ session.permissionMode || 'default permission' }} · {{ text('运行中', 'running') }} {{ session.running }}</small>
                 <strong>{{ session.model || 'default model' }}</strong>
                 <span>{{ session.workDir }}</span>
+                <span :class="{ 'ccx-danger-text': sessionChannelHealth(session).danger }">{{ sessionChannelHealth(session).label }}</span>
                 <span>{{ text('最近使用', 'Last used') }} {{ formatTimestamp(session.lastUsedAt) }} · {{ text('空闲', 'Idle') }} {{ formatDuration(session.idleMs) }}</span>
                 <span v-if="session.lastError" class="ccx-danger-text">{{ session.lastError }}</span>
               </div>
@@ -624,6 +625,7 @@ import type {
   ChannelConnectorAgentId,
   ChannelConnectorAgentProfile,
   ChannelConnectorAgentSessionDriverStatusResponse,
+  ChannelConnectorAgentSessionRuntimeStatus,
   ChannelConnectorFeishuTransportSmokeResponse,
   ChannelConnectorOctoTransportSmokeResponse,
   ChannelConnectorPermissionMode,
@@ -810,6 +812,38 @@ const actionOutput = computed(() => {
 
 const activeAgentSessions = computed(() => agentSessions.value?.activeSessions || []);
 const recentAgentSessionEvents = computed(() => (agentSessions.value?.recentEvents || []).slice(0, 8));
+const feishuConnectionsByBindingId = computed(() => {
+  const map = new Map<string, NonNullable<ChannelConnectorsStatusResponse['runtime']['feishuConnectionDetails']>[number]>();
+  for (const connection of status.value?.runtime.feishuConnectionDetails || []) {
+    for (const bindingId of connection.bindingIds) map.set(bindingId, connection);
+  }
+  return map;
+});
+
+function sessionChannelHealth(session: ChannelConnectorAgentSessionRuntimeStatus): { label: string; danger: boolean } {
+  const connection = feishuConnectionsByBindingId.value.get(session.bindingId);
+  if (!connection) return { label: text('渠道状态未知', 'Channel status unknown'), danger: false };
+  if (connection.transportStale) {
+    return {
+      label: `${text('飞书长连接控制帧超时', 'Feishu control frames stale')} · ${formatDuration(connection.transportStaleForMs || 0)}`,
+      danger: true,
+    };
+  }
+  if (!connection.connected) return { label: text('飞书长连接未连接', 'Feishu long connection disconnected'), danger: true };
+  if (connection.pongOverdue) {
+    return {
+      label: `${text('飞书长连接 pong 超时', 'Feishu pong overdue')} · ${formatDuration(connection.pongWaitingForMs)}`,
+      danger: true,
+    };
+  }
+  if (connection.ingressState === 'silent' || connection.ingressState === 'stale') {
+    return {
+      label: `${text('飞书长连接入站异常', 'Feishu ingress unhealthy')} · ${connection.ingressState}`,
+      danger: true,
+    };
+  }
+  return { label: `${text('飞书长连接正常', 'Feishu long connection healthy')} · ${connection.ingressState}`, danger: false };
+}
 
 const agentSessionResultTitle = computed(() => {
   const result = agentSessionResult.value;
@@ -1334,7 +1368,10 @@ async function refreshAgentSessions(options: { silent?: boolean } = {}): Promise
   agentSessionBusy.value = true;
   if (!options.silent) notice.value = null;
   try {
-    const result = await fetchChannelConnectorAgentSessions();
+    const [result] = await Promise.all([
+      fetchChannelConnectorAgentSessions(),
+      refreshStatusSnapshot(),
+    ]);
     agentSessions.value = result;
     if (!options.silent) agentSessionResult.value = result;
   } catch (error) {

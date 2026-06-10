@@ -894,6 +894,27 @@ export interface ChannelConnectorsDaemonRuntimeAutoCompactRecord {
   cooldownUntil: string | null;
 }
 
+export interface ChannelConnectorsDaemonRuntimeFeishuConnectionStatus {
+  key: string;
+  bindingIds: string[];
+  connected: boolean;
+  state: string;
+  ingressState: string;
+  ingressVerified: boolean;
+  transportVerified: boolean;
+  pongWaitingForMs: number;
+  pongOverdue: boolean;
+  sdkConnected?: boolean;
+  transportStaleForMs?: number;
+  transportStaleAfterMs?: number;
+  transportStale?: boolean;
+  lastPingAt: string | null;
+  lastPongAt: string | null;
+  lastReceivedAt: string | null;
+  lastRawEventFrameAt: string | null;
+  lastError: string | null;
+}
+
 export interface ChannelConnectorsDaemonRuntimeStatus {
   ok: boolean;
   checkedAt: string;
@@ -904,6 +925,7 @@ export interface ChannelConnectorsDaemonRuntimeStatus {
   platformBindings: number | null;
   octoConnections: number | null;
   feishuConnections: number | null;
+  feishuConnectionDetails: ChannelConnectorsDaemonRuntimeFeishuConnectionStatus[];
   activeRuns: number | null;
   agentRuns: number | null;
   autoCompacts: ChannelConnectorsDaemonRuntimeAutoCompactRecord[];

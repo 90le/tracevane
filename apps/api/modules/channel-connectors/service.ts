@@ -530,10 +530,35 @@ function runtimeStatusError(checkedAt: string, error: unknown): ChannelConnector
     platformBindings: null,
     octoConnections: null,
     feishuConnections: null,
+    feishuConnectionDetails: [],
     activeRuns: null,
     agentRuns: null,
     autoCompacts: [],
     error: error instanceof Error ? error.message : normalizeString(error, "Channel daemon runtime status unavailable"),
+  };
+}
+
+function normalizeDaemonFeishuConnection(value: unknown): ChannelConnectorsDaemonRuntimeStatus["feishuConnectionDetails"][number] | null {
+  if (!isRecord(value)) return null;
+  return {
+    key: normalizeString(value.key),
+    bindingIds: stringList(value.bindingIds),
+    connected: value.connected === true,
+    state: normalizeString(value.state, "unknown"),
+    ingressState: normalizeString(value.ingressState, "unknown"),
+    ingressVerified: value.ingressVerified === true,
+    transportVerified: value.transportVerified === true,
+    pongWaitingForMs: nullableNumber(value.pongWaitingForMs) ?? 0,
+    pongOverdue: value.pongOverdue === true,
+    sdkConnected: value.sdkConnected === true,
+    transportStaleForMs: nullableNumber(value.transportStaleForMs) ?? 0,
+    transportStaleAfterMs: nullableNumber(value.transportStaleAfterMs) ?? 0,
+    transportStale: value.transportStale === true,
+    lastPingAt: nullableString(value.lastPingAt),
+    lastPongAt: nullableString(value.lastPongAt),
+    lastReceivedAt: nullableString(value.lastReceivedAt),
+    lastRawEventFrameAt: nullableString(value.lastRawEventFrameAt),
+    lastError: nullableString(value.lastError),
   };
 }
 
@@ -614,6 +639,11 @@ async function requestDaemonRuntimeStatus(checkedAt: string): Promise<ChannelCon
     const autoCompacts = Array.isArray(body.autoCompacts)
       ? body.autoCompacts.map(normalizeDaemonAutoCompactRecord).filter((record): record is ChannelConnectorsDaemonRuntimeAutoCompactRecord => Boolean(record))
       : [];
+    const feishuConnectionDetails = Array.isArray(body.feishuConnections)
+      ? body.feishuConnections
+        .map(normalizeDaemonFeishuConnection)
+        .filter((record): record is ChannelConnectorsDaemonRuntimeStatus["feishuConnectionDetails"][number] => Boolean(record))
+      : [];
     return {
       ok: true,
       checkedAt,
@@ -624,6 +654,7 @@ async function requestDaemonRuntimeStatus(checkedAt: string): Promise<ChannelCon
       platformBindings: nullableNumber(body.platformBindings),
       octoConnections: arrayCount(body.octoConnections),
       feishuConnections: arrayCount(body.feishuConnections),
+      feishuConnectionDetails,
       activeRuns: arrayCount(body.activeRuns),
       agentRuns: arrayCount(body.agentRuns),
       autoCompacts,

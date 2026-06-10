@@ -27,9 +27,13 @@ function feishuRuntime(overrides = {}) {
         lastDisconnectedAt: null,
         lastReceivedAt: null,
         lastUnhealthyAt: null,
-        pingTimeoutSeconds: 0,
-        pongTimeoutMs: 210000,
-        pingIntervalMs: 0,
+        pingTimeoutSeconds: 3,
+        pongTimeoutMs: 15000,
+        pingIntervalMs: 30000,
+        sdkConnected: true,
+        transportStaleForMs: 0,
+        transportStaleAfterMs: 55000,
+        transportStale: false,
         sentPings: 0,
         lastPingAt: null,
         receivedPongs: 0,
@@ -61,16 +65,18 @@ function feishuRuntime(overrides = {}) {
         ingressState: "warming",
         ingressSilentForMs: 0,
         transportVerified: false,
+        pongWaitingForMs: 0,
+        pongOverdue: false,
         rawEventFrames: 0,
         lifecycleRawEventFrames: 0,
         lastRawEventFrameAt: null,
         lastRawEventFrameType: null,
         rawEventHandlerErrors: 0,
         lastRawEventHandlerError: null,
-        ingressUnverifiedAfterMs: 15000,
-        ingressUnverifiedRenewMax: 5,
+        ingressUnverifiedAfterMs: 0,
+        ingressUnverifiedRenewMax: 0,
         ingressUnverifiedRenewals: 0,
-        ingressUnverifiedRenewDelayMs: 15000,
+        ingressUnverifiedRenewDelayMs: 0,
         lastIngressUnverifiedRenewAt: null,
         lockAcquired: true,
         lockOwnerPid: process.pid,
@@ -135,11 +141,17 @@ test("Feishu long-connection smoke passes clean SDK-owned runtime", async () => 
   assert.equal(parsed.ok, true);
   assert.equal(parsed.summary.connections, 1);
   assert.equal(parsed.summary.violations, 0);
-  assert.equal(parsed.connections[0].pingTimeoutSeconds, 0);
-  assert.equal(parsed.connections[0].pongTimeoutMs, 210000);
+  assert.equal(parsed.connections[0].pingTimeoutSeconds, 3);
+  assert.equal(parsed.connections[0].pongTimeoutMs, 15000);
+  assert.equal(parsed.connections[0].pingIntervalMs, 30000);
+  assert.equal(parsed.connections[0].sdkConnected, true);
+  assert.equal(parsed.connections[0].transportStale, false);
+  assert.equal(parsed.connections[0].transportStaleAfterMs, 55000);
   assert.equal(parsed.connections[0].sentPings, 0);
   assert.equal(parsed.connections[0].receivedPongs, 0);
   assert.equal(parsed.connections[0].transportVerified, false);
+  assert.equal(parsed.connections[0].pongWaitingForMs, 0);
+  assert.equal(parsed.connections[0].pongOverdue, false);
   assert.equal(parsed.connections[0].reconnectingRecycleAfterMs, 10000);
   assert.equal(parsed.connections[0].reconnectingRecycles, 0);
   assert.equal(parsed.connections[0].connectedIdleRenewAfterMs, 0);
@@ -151,16 +163,68 @@ test("Feishu long-connection smoke passes clean SDK-owned runtime", async () => 
   assert.equal(parsed.connections[0].lifecycleLastDispatcherCallbackAt, null);
   assert.equal(parsed.connections[0].zeroInboundRenewAfterMs, 0);
   assert.equal(parsed.connections[0].zeroInboundRenewMax, 0);
-  assert.equal(parsed.connections[0].ingressUnverifiedAfterMs, 15000);
-  assert.equal(parsed.connections[0].ingressUnverifiedRenewMax, 5);
-  assert.equal(parsed.connections[0].ingressUnverifiedRenewDelayMs, 15000);
+  assert.equal(parsed.connections[0].ingressUnverifiedAfterMs, 0);
+  assert.equal(parsed.connections[0].ingressUnverifiedRenewMax, 0);
+  assert.equal(parsed.connections[0].ingressUnverifiedRenewDelayMs, 0);
   assert.equal(parsed.connections[0].watchdogRestartAfterMs, 0);
+});
+
+test("Feishu long-connection smoke rejects connected runtime with overdue pong", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
+  const { runtimePath, logPath } = writeFixture(root, feishuRuntime({
+    transportVerified: true,
+    sentPings: 7,
+    receivedPongs: 3,
+    pongWaitingForMs: 420000,
+    pongOverdue: true,
+    lastPingAt: "2026-06-10T07:16:40.893Z",
+    lastPongAt: "2026-06-10T07:09:44.689Z",
+  }));
+
+  const failed = await runScriptFailure([
+    "--runtime", runtimePath,
+    "--log", logPath,
+    "--duration-ms", "0",
+    "--json",
+  ], root);
+  const parsed = JSON.parse(failed.stdout);
+  assert.equal(parsed.ok, false);
+  assert.ok(parsed.violations.some((item) => item.type === "pong_overdue"));
+});
+
+test("Feishu long-connection smoke rejects SDK-connected runtime with stale transport", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
+  const { runtimePath, logPath } = writeFixture(root, feishuRuntime({
+    connected: false,
+    sdkConnected: true,
+    state: "connected",
+    transportVerified: true,
+    transportStale: true,
+    transportStaleForMs: 61000,
+    transportStaleAfterMs: 55000,
+    sentPings: 2,
+    receivedPongs: 2,
+    lastControlFrameAt: "2026-06-10T07:09:44.689Z",
+    lastControlFrameType: "inbound:pong",
+  }));
+
+  const failed = await runScriptFailure([
+    "--runtime", runtimePath,
+    "--log", logPath,
+    "--duration-ms", "0",
+    "--json",
+  ], root);
+  const parsed = JSON.parse(failed.stdout);
+  assert.equal(parsed.ok, false);
+  const types = parsed.violations.map((item) => item.type);
+  assert.ok(types.includes("not_connected"));
+  assert.ok(types.includes("transport_stale"));
 });
 
 test("Feishu long-connection smoke rejects unsafe proactive rebuild defaults", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
   const { runtimePath, logPath } = writeFixture(root, feishuRuntime({
-    pingTimeoutSeconds: 3,
+    pingTimeoutSeconds: 0,
     connectedIdleRenewAfterMs: 300000,
     verifiedIngressSilentRenewAfterMs: 30000,
     ingressUnverifiedAfterMs: 10000,

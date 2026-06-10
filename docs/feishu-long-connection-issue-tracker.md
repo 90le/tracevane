@@ -52,33 +52,45 @@ WS lifecycle files. The mature reference remains:
   ACK frame is sent.
 - WS handshake has a 15s timeout, matching the official Channel wrapper's
   behavior instead of allowing `wsClient.start()` to hang indefinitely.
-- Studio does not arm the SDK lower-case `wsConfig.pingTimeout` by default:
-  `pingTimeoutSeconds=0`.
-- OpenClaw passes upper-case `PingTimeout`; the installed SDK's active watchdog
-  knob is lower-case `pingTimeout`. Translating OpenClaw's upper-case config into
-  lower-case made Studio stricter than OpenClaw and caused false reconnect churn.
+- Studio arms the SDK lower-case `wsConfig.pingTimeout` by default:
+  `pingTimeoutSeconds=3`. This is the primary protection against half-open
+  sockets that still report `connected`.
+- OpenClaw's TypeScript plugin passes upper-case `PingTimeout`; the installed
+  Node SDK's active watchdog knob is lower-case `pingTimeout`. Live Studio
+  evidence and the public OpenClaw/Lark issue `#543` showed that leaving this
+  watchdog disabled can keep a dead connection false-ready until manual restart.
 - Studio now records SDK application-level control frames: outbound `ping`,
-  inbound `pong`, `pingIntervalMs`, `sentPings`, `receivedPongs` and
+  inbound `pong`, effective `pingIntervalMs`, `sentPings`, `receivedPongs` and
   `transportVerified`.
+- Studio wraps the installed SDK `WSClient.pingLoop()` and clamps the effective
+  ping interval to `pingIntervalMs=30000` by default. The SDK may overwrite its
+  raw interval from Feishu's `pong` payload, but the next loop re-clamps before
+  scheduling. This removes the previous 90s false-health window.
 - Studio also records raw SDK business frames before `EventDispatcher` parses
   them: `rawEventFrames`, `lifecycleRawEventFrames`, `lastRawEventFrameAt`,
   `lastRawEventFrameType` and handler errors. This separates "Feishu never
   delivered a business frame" from "Studio handler failed after delivery".
-- Studio recycles a connected client only after an observed outbound `ping`
-  misses its `pongTimeoutMs` window; default `pongTimeoutMs=210000`. This
-  intentionally covers more than two current observed `90000ms` Feishu ping
-  intervals because a `30000ms` window caused a false recycle during live
-  validation.
+- Studio also recycles a connected client after an observed outbound `ping`
+  misses its outer `pongTimeoutMs` window; default `pongTimeoutMs=15000`. This
+  is a Studio-side fallback if the SDK liveness watchdog does not close the
+  socket. The timeout window is measured from the latest outbound `ping`, so a
+  healthy connection gets a grace window for the matching pong.
+- Runtime and health now expose `sdkConnected`, `pongWaitingForMs`,
+  `pongOverdue`, `transportStaleForMs`, `transportStaleAfterMs` and
+  `transportStale`. `connected` means SDK connected plus no pong overdue and no
+  stale control frames. Default stale window is
+  `pingIntervalMs + pongTimeoutMs + 10000 = 55000ms`.
 - If SDK state is `reconnecting` for more than `10s`, Studio closes that same
   cycle and lets the OpenClaw-style outer loop recreate the client.
 - Connected-idle, zero-inbound, verified-ingress and generic watchdog rebuilds
   remain disabled by default.
-- Startup ingress validation is now enabled by default because live evidence
-  showed manual service restart recovers stuck Feishu delivery. The current
-  cycle must receive at least one raw event frame or dispatcher callback;
-  otherwise it is rebuilt after `15s`, then exponential delays, up to 5 times.
-  Any raw event frame counts as ingress proof, even if later handler parsing
-  fails. `/health` reports `silent` Feishu connections as unhealthy.
+- Startup ingress validation remains available as an explicit diagnostic option,
+  but is disabled by default. Live evidence showed the primary failure is
+  transport-level disconnect/no-pong, and rebuilding a healthy idle connection
+  only because no business event arrived can create unnecessary long-connection
+  churn. Raw event counters are diagnostic proof, not the default transport
+  health gate. `/health` reports `silent` as unhealthy only when that diagnostic
+  gate is explicitly enabled.
 
 ## Evidence
 
@@ -118,13 +130,15 @@ WS lifecycle files. The mature reference remains:
   restart restoring delivery means Studio must recycle this false-ready owner
   automatically instead of waiting for a human restart.
 
-2026-06-09 earlier pingTimeout finding:
+2026-06-09 earlier pingTimeout finding, superseded by 2026-06-10 evidence:
 
 - Studio had previously translated OpenClaw upper-case `PingTimeout:3` to active
   lower-case SDK `pingTimeout:3`.
 - Live logs showed `no pong/inbound within 3s`; Feishu replies delayed until SDK
   reconnect stabilized.
-- Default was corrected to `pingTimeoutSeconds=0`.
+- Default was temporarily corrected to `pingTimeoutSeconds=0`, but that was
+  later proven incomplete: official-tool failure plus no-pong runtime evidence
+  showed disabled SDK liveness is exactly the false-ready failure class.
 
 2026-06-10 root-cause narrowing:
 
@@ -140,6 +154,50 @@ WS lifecycle files. The mature reference remains:
 - `verificationToken` remains irrelevant for long-connection delivery. It is
   only used by webhook/callback validation paths.
 
+2026-06-10 pong-overdue bug:
+
+- Immediately after the previous false-ready fix, the official Feishu tool still
+  reported the long connection as failed and a fresh user message `test 1` was
+  not handled.
+- Studio runtime incorrectly showed `connected=true`, `ingressState=receiving`
+  and `/health ok`. The important counterexample was:
+  `lastPongAt=2026-06-10T07:09:44.689Z`, `lastPingAt=2026-06-10T07:16:40.893Z`,
+  `sentPings=7`, `receivedPongs=3`.
+- Root cause: the watchdog checked `now - lastPingAt >= pongTimeoutMs`. Because
+  the SDK kept emitting new outbound pings, `lastPingAt` moved forward and the
+  timeout window was repeatedly reset. A connection with no pongs could remain
+  forever "healthy" in Studio.
+- Initial fix: calculate pong timeout from the last known healthy transport point
+  (`lastPongAt`, falling back to `lastConnectedAt` before first pong). A new ping
+  no longer resets the no-pong timeout.
+- Follow-up correction: once the SDK lower-case `pingTimeout` is enabled, the
+  outer fallback can be short and measured from the latest outbound ping. The
+  old `210000ms` window only detected the issue after several minutes; it is not
+  acceptable for the user's "official tool says disconnected, Studio says
+  connected" case.
+- Correction: the earlier startup raw-event auto-rebuild default was too broad
+  for an idle bot and could itself create reconnect churn. It is now opt-in;
+  ping/pong is the default long-connection health contract.
+- UI issue: the Sessions page showed a persistent Agent session as "running /
+  idle", which is separate from platform connectivity. The page now surfaces the
+  binding's Feishu long-connection health next to each Agent session.
+
+2026-06-10 ping interval / false-health correction:
+
+- After the service was manually restarted, Feishu immediately recovered again.
+  That confirmed credentials, bot setup and platform configuration were valid;
+  the remaining fault was a stuck/false-ready long-connection owner.
+- Live runtime showed `pingTimeoutSeconds=3` but raw SDK
+  `pingIntervalMs=90000`, because Feishu's server-provided `pong` config
+  overwrote the SDK interval. The lower-case SDK timeout could recover after a
+  ping, but the next ping could still be delayed by up to 90s.
+- Studio now wraps the SDK ping loop and re-clamps to 30s before each scheduled
+  ping. Runtime reports the effective Studio interval.
+- A 75s live smoke after restart passed with `violations=0`,
+  `pingIntervalMs=30000`, `sentPings=4`, `receivedPongs=5`,
+  `transportVerified=true`, `transportStale=false` and no reconnect/stale log
+  events.
+
 2026-06-09 stability reassessment:
 
 - This is not a message-order bug. The earlier Octo-first reproduction exposed a
@@ -154,8 +212,8 @@ WS lifecycle files. The mature reference remains:
   queue work immediately.
 - Official SDK source also shows default `reconnectCount=-1`, `pingInterval`
   comes from Feishu server config, and `pingTimeout` is disabled unless caller
-  sets lower-case `wsConfig.pingTimeout`; this can leave silent-alive cases
-  unless Studio adds independent health proof or uses another ingress mode.
+  sets lower-case `wsConfig.pingTimeout`; Studio now sets it by default and keeps
+  independent runtime proof for health/UI.
 
 2026-06-09 external research:
 
@@ -176,9 +234,10 @@ WS lifecycle files. The mature reference remains:
   correct readiness signals.
 - The `ws` project heartbeat guidance matches Studio's current direction:
   broken links can leave both sides unaware, health should be proven with
-  ping/pong, and timeout must be the server ping interval plus conservative
-  latency. Studio's `210000ms` default intentionally covers the observed
-  `90000ms` interval by more than two cycles.
+  ping/pong. Studio now uses the SDK's active `pingTimeout=3` watchdog plus a
+  short outer fallback after each outbound ping. The old `210000ms` fallback was
+  too slow for real Feishu user traffic and must not be reintroduced as the
+  default.
 - Slack Socket Mode is not Feishu, but its official ACK rule reinforces the same
   pattern: acknowledge immediately, then run slow business work asynchronously.
 
@@ -211,15 +270,19 @@ To reach Octo-level behavior, do not rely on one signal:
 - `node --test tests/system/channel-connectors-feishu-long-connection-script.test.mjs`
 - `node --test --test-name-pattern "Feishu long-connection ingress|Feishu dispatcher parity diagnostics" tests/system/channel-connectors-service.test.mjs`
 - Restarted `openclaw-studio-channel-connectors.service`, PID `3248732`.
-- Runtime after restart must expose `pingTimeoutSeconds=0`,
-  `pongTimeoutMs=210000`, `ingressUnverifiedAfterMs=15000` and
-  `ingressUnverifiedRenewMax=5`.
-- 2026-06-10 live service evidence: after restart, Studio recycled the Feishu
-  SDK client at `15s`, `30s` and `60s` because no raw event arrived, without
-  restarting the daemon process. The subsequent owner received real Feishu
-  events: `rawEventFrames=3`, `dispatcherCallbacks=3`,
-  `receivedMessages=1`, `transportVerified=true`, `ingressVerified=true`,
-  `/health={"ok":true,"feishu":{"groups":1,"connected":1,"silent":0}}`.
+- Runtime after restart must expose `pingTimeoutSeconds=3`,
+  `pingIntervalMs=30000`, `pongTimeoutMs=15000`,
+  `transportStaleAfterMs=55000`, `ingressUnverifiedAfterMs=0` and
+  `ingressUnverifiedRenewMax=0`; Feishu status also includes `sdkConnected`,
+  `pongWaitingForMs`, `pongOverdue` and `transportStale`.
+- 2026-06-10 regression added: the smoke script fails a connected runtime when
+  `pongOverdue=true`, covering the official-tool-disconnected / Studio-connected
+  mismatch.
+- 2026-06-10 earlier live service evidence: after restart, Studio recycled the
+  Feishu SDK client at `15s`, `30s` and `60s` because no raw event arrived, and
+  the subsequent owner received real Feishu events. This proved raw-event
+  instrumentation worked, but the auto-rebuild default was later corrected to
+  avoid idle reconnect churn.
 - 2026-06-10 live smoke:
   `node scripts/smoke-channel-connectors-feishu-long-connection.mjs --duration-ms 0 --since 2026-06-10T07:04:50.000Z --bindings feishu-live --json`
   returned `violations=0` and recorded the bounded startup validation cycles as
@@ -228,14 +291,20 @@ To reach Octo-level behavior, do not rely on one signal:
   `violations=0` and proved ping/pong instrumentation. It also revealed
   `pongTimeoutMs=30000` could falsely recycle after a later ping was not answered
   within 30s.
-- Default `pongTimeoutMs` was raised to `210000` and `MAX_FEISHU_PONG_TIMEOUT_MS`
-  to `600000`.
+- 2026-06-10 later correction: default SDK `pingTimeoutSeconds=3`; default
+  Studio fallback `pongTimeoutMs=15000`; `MAX_FEISHU_PONG_TIMEOUT_MS=600000`
+  remains only for explicit override.
 - Earlier live smoke at `2026-06-09T10:53:20Z` ran for `100000ms` with
   `violations=0`. Runtime showed `pingIntervalMs=90000`, `sentPings=1`,
   `receivedPongs=2`, `transportVerified=true`, `reconnectingRecycles=0`,
   `ingressUnverifiedAfterMs=0`, and no reconnect/rebuild cycles. No fresh user
   message was sent during this final smoke, so `ingressVerified=false` is
   expected under the old contract.
+- 2026-06-10 final live smoke:
+  `node scripts/smoke-channel-connectors-feishu-long-connection.mjs --duration-ms 75000 --bindings feishu-live --json`
+  returned `violations=0` with `pingIntervalMs=30000`, `sentPings=4`,
+  `receivedPongs=5`, `transportStale=false`, `reconnectingRecycles=0` and
+  `logEvents=0`.
 - Old ping-timeout, zero-inbound, connected-idle and generic watchdog rebuild
   paths must remain absent. Startup ingress validation is the intentionally
   allowed bounded exception.

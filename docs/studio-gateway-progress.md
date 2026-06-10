@@ -14,7 +14,7 @@
 - Channel Connectors 走 Studio 原生 CLI Agent Bot 路线；Octo(dmwork) 与 Feishu 已接入 Codex/Claude Code/OpenCode runner、Studio Gateway key、IM session override、slash command、Feishu card/menu/progress、附件 staging、history、group context、reply buffer、queue、stop 和基础治理。
 - OpenCode Agent runner 走 Gateway-first：Channel 配置保存 Gateway 模型短名或模型 ID，runner 转换为 OpenCode 需要的 `studio-gateway/<model>`；每轮生成隔离 OpenCode config，session 数据写入 Channel runtime dataHome；旧全局 sessionId 在当前 dataHome 不存在时自动新建，避免 IM 切换 OpenCode 后被 stale session 卡死。
 - Channel Connectors 任意新功能必须先对照 CC Go 1:1 迁移，再做 Studio 精修；迁移清单见 `channel-connectors-cc-migration-checklist.md`。
-- Feishu 长连接专项跟踪见 `feishu-long-connection-issue-tracker.md`；Feishu 目前采用同 App 用户级全局 owner lock、官方 SDK `WSClient`/`EventDispatcher`、默认不启用 SDK 额外 `pingTimeout`、SDK reconnecting 超 10s 回收、应用层 ping/pong runtime proof、pong timeout 回收、快速 ACK、messageId 去重和 runtime 入站观测；无业务消息时不再默认 startup recycle。
+- Feishu 长连接专项跟踪见 `feishu-long-connection-issue-tracker.md`；Feishu 目前采用同 App 用户级全局 owner lock、官方 SDK `WSClient`/`EventDispatcher`、默认启用 SDK lower-case `pingTimeout=3`、包装 SDK `pingLoop()` 将有效心跳调度 clamp 到 `pingIntervalMs=30000`、SDK reconnecting 超 10s 回收、应用层 ping/pong runtime proof、`pongTimeoutMs=15000` 外层兜底回收、55s control-frame stale 判死、快速 ACK、messageId 去重和 runtime 入站观测；无业务消息时不再默认 startup recycle。
 - IM 文件收发固定为 Studio native transport：入站附件 staging 后交给 Agent；出站由 Agent 声明 `studio-channel-files` manifest，daemon 按平台上传发送。
 - Codex live 默认仍是 CC Go 风格 one-shot `codex exec/resume`；persistent session pool 作为 metadata beta 覆盖 Codex app-server、Claude Code stream-json 和 OpenCode `run --session`，已锁定原生 compact、interrupt/stop、idle reaper、fallback、session 管理合同和真实 CLI mock-Gateway smoke。
 - 上下文管理策略固定为 native-first：Gateway/Channel 负责模型预算与触发决策；App Connections apply 会按每个 App 选中模型派生上下文、max output 和 compact 阈值；`/compact` 手动入口和 daemon 自动触发都优先尝试 live persistent Agent 原生 compact；Studio Gateway `/responses/compact` 只作为不支持、失败或 one-shot 不可靠时的兜底；`/native /compact` 是强制原生入口，没有真实 native compact contract 时会拒绝伪透传。
@@ -22,6 +22,9 @@
 
 ## 本轮完成
 
+- 修复 Feishu 长连接“重启后恢复但运行一段时间假在线”的核心窗口：SDK 收到 Feishu pong 后会把内部 `pingInterval` 覆盖回 90s，Studio 现在包装 `WSClient.pingLoop()`，每次调度前 re-clamp 到 30s。
+- Feishu runtime 新增 `sdkConnected`、`transportStaleForMs`、`transportStaleAfterMs`、`transportStale`；`connected` 不再等同 SDK 原始 connected，而是 SDK connected 且无 pong overdue、无 transport stale。
+- `/health`、Channel 管理页会把 transport stale 视为不健康；会话行可直接显示“飞书长连接控制帧超时”，避免把 Agent session idle 误判为平台连接正常。
 - OpenCode 1.16/1.17 `run --format json` 在本机可能 exit 0 但 stdout 为空；已补本地 `opencode.db` fallback，恢复 session id、assistant text、step/tool progress，并保留 stdout JSONL 路径优先；fallback 只接受本轮启动后的 assistant part 并短轮询等待异步写入，避免读到上一轮旧回复。
 - 修复 OpenCode IM 切换失败：短模型名（例如 `glm-5`）和带斜杠的 Gateway 模型 ID 都会传给 OpenCode 为 `studio-gateway/<model>`；OpenCode JSON error envelope 会显示真实 `data.message/name/ref`，不再只显示 `error`。
 - 扩展 `smoke:channel-connectors:native-cli-sessions`：隔离 HOME + mock Studio Gateway，直接调用 daemon 同款 native persistent driver，覆盖 Claude Code 普通 turn、Bash tool-use、`studio-channel-files` manifest、`/compact`、`/stop`，以及 OpenCode 普通 turn、`studio-channel-files` manifest、`/compact`、`/stop`。
@@ -34,7 +37,13 @@
 
 ## 最近验证
 
+- 通过：`npm run typecheck:api`。
+- 通过：`npm run typecheck:web`。
 - 通过：`npm run build:api`。
+- 通过：`node --test tests/system/channel-connectors-feishu-long-connection-script.test.mjs`，覆盖 SDK connected 但 transport stale 时 smoke 失败。
+- 通过：`node --test --test-name-pattern "Feishu long-connection ingress|Feishu dispatcher parity diagnostics" tests/system/channel-connectors-service.test.mjs`。
+- 通过：`node scripts/smoke-channel-connectors-feishu-long-connection.mjs --duration-ms 75000 --bindings feishu-live --json`，现场结果 `violations=0`、`pingIntervalMs=30000`、`sentPings=4`、`receivedPongs=5`、`transportStale=false`、`logEvents=0`。
+- 通过：`curl http://127.0.0.1:18797/health` 返回 `ok=true`、`connected=1`、`pongOverdue=0`、`transportStale=0`。
 - 通过：`npm run typecheck -- --pretty false`。
 - 通过：`node --test tests/system/channel-connectors-agent-session-driver.test.mjs`，覆盖 OpenCode `--session` compact、OpenCode 空 stdout SQLite fallback、Claude stream-json compact、Claude persistent stop cancel 和 OpenCode persistent stop abort。
 - 通过：`node --test --test-name-pattern "agent runner builds gateway-backed" tests/system/channel-connectors-service.test.mjs`，覆盖 Codex `--image`、Claude image content block、OpenCode `--file` 图片传入和非视觉模型保护。
@@ -54,7 +63,7 @@
 
 - OpenAI Platform official smoke 已降为可选 vendor proof；GMN 已作为 Responses-native substitute 完成当前验收。
 - GMN provider 可作为视觉测试源，但未设为所有 App scope 默认 active provider；测试时需显式选择 `gpt-5.5`、`gmn-vision` 或 `gmn/gpt-5.5`。
-- Feishu SDK 仍可能因网络或平台关闭连接而 reconnect；当前不使用 connected-idle / zero-inbound / generic watchdog 暴力重建。ping/pong proof 能证明 transport 活着，真实消息级延迟仍需用户继续用 Feishu live 反馈；如仍不稳定，下一步评估 webhook/hybrid ingress 或 Studio-owned WS transport。
+- Feishu SDK 仍可能因网络或平台关闭连接而 reconnect；当前不使用 connected-idle / zero-inbound / generic watchdog 暴力重建。ping/pong/control-frame proof 能证明 transport 活着，真实消息级延迟仍需用户继续用 Feishu live 反馈；如仍不稳定，下一步评估 webhook/hybrid ingress 或 Studio-owned WS transport。
 - Feishu 官方长连接仍要求 3s 内处理事件且同 App 多连接是集群分发；Studio 必须保持同 App owner lock 和 fast ACK，不允许让 Agent run、附件下载或卡片更新阻塞 SDK ACK。
 - Claude Code 普通 turn、Bash tool-use、文件 manifest、`/compact`、`/stop` 和 OpenCode 普通 turn、文件 manifest、`/compact`、`/stop` 已有真实 CLI mock-Gateway smoke；OpenCode 已按 CC Go 补原生图片 `--file` 参数构建测试；Claude 权限批准已有 runner/IM 基础闭环；Codex app-server requestApproval 已有 driver 合同回归；assistant 过程回复已接入 IM progress，但真实 Feishu/Octo live 视觉效果、真实 IM live approval、真实视觉 CLI smoke 和 IM live 文件上传链路仍需逐项验收。
 - `/status` 与 Channel 管理页已能显示最近 auto compact 记录；真实剩余 token 仍取决于上游 usage 或 Gateway runtime ledger 是否能归因。
@@ -63,7 +72,7 @@
 
 ## 下一步
 
-1. 做真实 IM live approval smoke：Codex app-server Bash/Patch/Permissions、Claude AskUserQuestion/permission、OpenCode permission，确认飞书按钮和文本 `/approve`/`/deny` 都能闭环。
-2. 继续扩展真实 Claude Code / OpenCode persistent smoke：视觉输入、工具流、权限和 IM live 文件上传链路，并确认 one-shot 默认路径不受影响。
-3. 继续按 CC Go 迁移 Feishu/Octo 菜单与命令细节、Claude Code AskUserQuestion 卡片精修、OpenCode 文件/权限/流式能力。
-4. 设计 durable queue，避免 Channel daemon 重启时丢失尚未开始的同 session 排队消息。
+1. 用户发送一条新的 Feishu 消息，做业务入站复验：runtime 应出现 dispatcher callback / receivedMessages，且无 reconnect/stale。
+2. 做真实 IM live approval smoke：Codex app-server Bash/Patch/Permissions、Claude AskUserQuestion/permission、OpenCode permission，确认飞书按钮和文本 `/approve`/`/deny` 都能闭环。
+3. 继续扩展真实 Claude Code / OpenCode persistent smoke：视觉输入、工具流、权限和 IM live 文件上传链路，并确认 one-shot 默认路径不受影响。
+4. 继续按 CC Go 迁移 Feishu/Octo 菜单与命令细节、Claude Code AskUserQuestion 卡片精修、OpenCode 文件/权限/流式能力。
