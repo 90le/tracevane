@@ -1838,6 +1838,7 @@ function nativeBindingFromRuntime(
     enabled: binding.enabled,
     allowlist: binding.allowlist,
     adminUsers: binding.adminUsers,
+    disabledCommands: binding.disabledCommands,
     metadata: binding.metadata,
   };
 }

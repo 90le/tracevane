@@ -468,6 +468,7 @@ function normalizeNativeConfig(
       enabled: raw.enabled !== false,
       allowlist: stringList(raw.allowlist),
       adminUsers: stringList(raw.adminUsers),
+      disabledCommands: stringList(raw.disabledCommands ?? raw.disabled_commands),
       metadata: isRecord(raw.metadata) ? raw.metadata : undefined,
     });
   }
@@ -744,6 +745,7 @@ function buildRuntimeConfig(
             enabled: binding.enabled,
             allowlist: binding.allowlist,
             adminUsers: binding.adminUsers,
+            disabledCommands: binding.disabledCommands,
             metadata: binding.metadata,
           })),
       })),

@@ -666,6 +666,7 @@ export interface ChannelConnectorsDaemonRuntimeConfig {
       enabled: boolean;
       allowlist: string[];
       adminUsers: string[];
+      disabledCommands: string[];
       metadata?: Record<string, unknown>;
     }>;
   }>;
@@ -694,6 +695,7 @@ export interface ChannelConnectorPlatformBinding {
   enabled: boolean;
   allowlist: string[];
   adminUsers: string[];
+  disabledCommands: string[];
   metadata?: Record<string, unknown>;
 }
 

@@ -1040,6 +1040,7 @@ test("native Channel Connectors store persists agent profiles and derives daemon
           enabled: true,
           allowlist: ["user-a", "user-b"],
           adminUsers: ["admin-a"],
+          disabledCommands: ["whoami", "deploy"],
           metadata: {
             apiUrl: "https://im.example.test/api",
             botToken: "test-token",
@@ -1060,6 +1061,8 @@ test("native Channel Connectors store persists agent profiles and derives daemon
   assert.equal(preview.config.projects[0].platformBindings[0].platform, "octo");
   assert.equal(preview.config.projects[0].platformBindings[0].agent, "claude-code");
   assert.deepEqual(preview.config.projects[0].platformBindings[0].allowlist, ["user-a", "user-b"]);
+  assert.deepEqual(saved.config.platformBindings[0].disabledCommands, ["whoami", "deploy"]);
+  assert.deepEqual(preview.config.projects[0].platformBindings[0].disabledCommands, ["whoami", "deploy"]);
   assert.equal(saved.config.platformBindings[0].metadata.botToken, "test-token");
   assert.equal(preview.config.projects[0].platformBindings[0].metadata.botToken, "[redacted]");
   assert.match(preview.preview, /"botToken": "\[redacted\]"/);
@@ -3740,7 +3743,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(myid.replyText, /Can manage session: no/);
   const commandAclBinding = {
     ...binding,
-    metadata: { disabledCommands: ["whoami", "daily", "release-notes"] },
+    disabledCommands: ["whoami", "daily", "release-notes"],
   };
   const blockedMyid = await handleChannelConnectorCommand({
     ...baseContext,
@@ -3763,13 +3766,24 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     ...baseContext,
     binding: {
       ...binding,
-      metadata: { disabled_commands: "*" },
+      disabledCommands: ["*"],
     },
     message: message("/status", "user-2"),
   });
   assert.equal(wildcardDisabledStatus.handled, true);
   assert.equal(wildcardDisabledStatus.ok, false);
   assert.match(wildcardDisabledStatus.replyText, /已禁用所有命令/);
+  const metadataDisabledVersion = await handleChannelConnectorCommand({
+    ...baseContext,
+    binding: {
+      ...binding,
+      metadata: { disabled_commands: "version" },
+    },
+    message: message("/version", "user-2"),
+  });
+  assert.equal(metadataDisabledVersion.handled, true);
+  assert.equal(metadataDisabledVersion.ok, false);
+  assert.match(metadataDisabledVersion.replyText, /禁用命令 \/version/);
   const version = await handleChannelConnectorCommand({
     ...baseContext,
     message: message("/version"),

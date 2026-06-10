@@ -998,9 +998,10 @@ function metadataStringList(value: unknown): string[] {
   return uniqueStrings(output);
 }
 
-function bindingDisabledCommands(binding: Pick<ChannelConnectorRuntimeBinding, "metadata">): string[] {
+function bindingDisabledCommands(binding: Pick<ChannelConnectorRuntimeBinding, "disabledCommands" | "metadata">): string[] {
   const metadata = isRecord(binding.metadata) ? binding.metadata : {};
   return uniqueStrings([
+    ...metadataStringList(binding.disabledCommands),
     ...metadataStringList(metadata.disabledCommands),
     ...metadataStringList(metadata.disabled_commands),
   ].map((command) => command.replace(/^\/+/, "").toLowerCase()));
@@ -1011,7 +1012,7 @@ function explicitBindingAdmin(binding: Pick<ChannelConnectorRuntimeBinding, "adm
 }
 
 function disabledCommandDecision(
-  binding: Pick<ChannelConnectorRuntimeBinding, "adminUsers" | "metadata">,
+  binding: Pick<ChannelConnectorRuntimeBinding, "adminUsers" | "disabledCommands" | "metadata">,
   message: ChannelConnectorOctoInboundMessage,
   names: readonly string[],
 ): { disabled: boolean; command: string | null } {

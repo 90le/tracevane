@@ -420,6 +420,10 @@
                 <span>{{ text('管理员', 'Admins') }}</span>
                 <textarea v-model="bindingDraft.adminUsersText" rows="3" placeholder="admin-a&#10;admin-b" />
               </label>
+              <label class="ccx-wide-field">
+                <span>{{ text('禁用命令', 'Disabled commands') }}</span>
+                <textarea v-model="bindingDraft.disabledCommandsText" rows="3" placeholder="whoami&#10;daily&#10;*" />
+              </label>
               <div class="ccx-form-actions">
                 <button type="submit" class="primary-button compact-button ccx-icon-button" :disabled="savingConfig">
                   <Save :size="16" />
@@ -660,9 +664,10 @@ import './channel-connectors-workspace.css';
 defineOptions({ name: 'ChannelConnectorsControlPage' });
 
 type WorkspaceTab = 'runtime' | 'projects' | 'platforms' | 'sessions';
-type BindingDraft = Omit<ChannelConnectorPlatformBinding, 'allowlist' | 'adminUsers' | 'metadata'> & {
+type BindingDraft = Omit<ChannelConnectorPlatformBinding, 'allowlist' | 'adminUsers' | 'disabledCommands' | 'metadata'> & {
   allowlistText: string;
   adminUsersText: string;
+  disabledCommandsText: string;
   metadata: Record<string, unknown>;
   metadataApiUrl: string;
   metadataBotToken: string;
@@ -983,6 +988,7 @@ function emptyBindingDraft(): BindingDraft {
     enabled: true,
     allowlistText: '',
     adminUsersText: '',
+    disabledCommandsText: '',
     metadata: {},
     metadataApiUrl: '',
     metadataBotToken: '',
@@ -1063,6 +1069,7 @@ function cloneNativeConfig(): ChannelConnectorsNativeConfig | null {
         ...binding,
         allowlist: [...binding.allowlist],
         adminUsers: [...binding.adminUsers],
+        disabledCommands: [...(binding.disabledCommands || [])],
       };
       if (binding.metadata) next.metadata = cloneMetadata(binding.metadata);
       return next;
@@ -1089,6 +1096,7 @@ function selectBinding(binding: ChannelConnectorPlatformBinding): void {
     enabled: binding.enabled,
     allowlistText: listToText(binding.allowlist),
     adminUsersText: listToText(binding.adminUsers),
+    disabledCommandsText: listToText(binding.disabledCommands || []),
     metadata,
     metadataApiUrl: metadataString(metadata, ['apiUrl', 'api_url', 'baseUrl', 'base_url', 'domain'], defaultApiUrl(binding.platform)),
     metadataBotToken: metadataString(metadata, ['botToken', 'bot_token', 'token']),
@@ -1217,6 +1225,7 @@ function bindingFromDraft(): ChannelConnectorPlatformBinding {
     enabled: bindingDraft.value.enabled,
     allowlist: textToList(bindingDraft.value.allowlistText),
     adminUsers: textToList(bindingDraft.value.adminUsersText),
+    disabledCommands: textToList(bindingDraft.value.disabledCommandsText).map((command) => command.replace(/^\/+/, '')),
     ...(Object.keys(metadata).length ? { metadata } : {}),
   };
 }
