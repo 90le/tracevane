@@ -4104,7 +4104,10 @@ function parseProgressToolText(entry: FeishuProgressCardEntry): {
     || normalizeString(entry.title.split("：")[1])
     || "tool";
   const lines = String(entry.text || "").split(/\r?\n/);
-  const bodyLines = lines.slice(1);
+  const pureClaudeToolResult = entry.kind === "tool_result"
+    && normalizeString(entry.rawType).toLowerCase() === "user"
+    && normalizeString(entry.itemType).toLowerCase() === "tool_result";
+  const bodyLines = pureClaudeToolResult ? lines : lines.slice(1);
   let command = "";
   let exitCode: string | null = null;
   let status: string | null = null;
