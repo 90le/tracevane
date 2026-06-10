@@ -9,6 +9,9 @@ const DEFAULT_BASE_URL = "http://127.0.0.1:3761";
 const DEFAULT_CONFIG_PATH = path.join(os.homedir(), ".config/openclaw-studio/channel-connectors/config.json");
 const DEFAULT_STATE_DIR = path.join(os.homedir(), ".config/openclaw-studio/channel-connectors/daemon/state");
 const DEFAULT_COMMANDS = ["/new", "/reset", "/compact"];
+const DEFAULT_SINCE_MINUTES = 10;
+const DEFAULT_PROGRESS_TIMEOUT_MS = 60_000;
+const DEFAULT_PROGRESS_POLL_MS = 1_000;
 
 function parseArgs(argv) {
   const options = {
@@ -27,6 +30,13 @@ function parseArgs(argv) {
     apply: false,
     probe: false,
     sendReply: true,
+    since: "",
+    sinceMinutes: DEFAULT_SINCE_MINUTES,
+    timeoutMs: DEFAULT_PROGRESS_TIMEOUT_MS,
+    pollMs: DEFAULT_PROGRESS_POLL_MS,
+    requireCommandProgress: false,
+    requireCommandProgressTerminal: false,
+    waitCommandProgress: false,
     json: false,
   };
 
@@ -60,6 +70,22 @@ function parseArgs(argv) {
     else if (arg === "--feishu-token") options.feishuToken = requireValue(argv, ++index, arg);
     else if (arg.startsWith("--feishu-token=")) options.feishuToken = arg.slice("--feishu-token=".length);
     else if (arg === "--recent-sessions" || arg === "--use-recent-sessions") options.useRecentSessions = true;
+    else if (arg === "--since") options.since = requireValue(argv, ++index, arg);
+    else if (arg.startsWith("--since=")) options.since = arg.slice("--since=".length);
+    else if (arg === "--since-minutes") options.sinceMinutes = nonNegativeNumber(requireValue(argv, ++index, arg), DEFAULT_SINCE_MINUTES);
+    else if (arg.startsWith("--since-minutes=")) options.sinceMinutes = nonNegativeNumber(arg.slice("--since-minutes=".length), DEFAULT_SINCE_MINUTES);
+    else if (arg === "--timeout-ms") options.timeoutMs = positiveInt(requireValue(argv, ++index, arg), DEFAULT_PROGRESS_TIMEOUT_MS);
+    else if (arg.startsWith("--timeout-ms=")) options.timeoutMs = positiveInt(arg.slice("--timeout-ms=".length), DEFAULT_PROGRESS_TIMEOUT_MS);
+    else if (arg === "--poll-ms") options.pollMs = positiveInt(requireValue(argv, ++index, arg), DEFAULT_PROGRESS_POLL_MS);
+    else if (arg.startsWith("--poll-ms=")) options.pollMs = positiveInt(arg.slice("--poll-ms=".length), DEFAULT_PROGRESS_POLL_MS);
+    else if (arg === "--require-command-progress") options.requireCommandProgress = true;
+    else if (arg === "--require-command-progress-terminal") {
+      options.requireCommandProgress = true;
+      options.requireCommandProgressTerminal = true;
+    } else if (arg === "--wait-command-progress") {
+      options.requireCommandProgress = true;
+      options.waitCommandProgress = true;
+    }
     else if (arg === "--help" || arg === "-h") {
       printHelp();
       process.exit(0);
@@ -95,6 +121,15 @@ Options:
   --feishu-chat-type <t>  Feishu chat_type. Default: p2p.
   --feishu-token <token>  Feishu verification token override.
   --recent-sessions      Use the newest known state session per binding when ids are omitted.
+  --require-command-progress
+                          Require daemon channel.command.progress evidence for each planned command.
+  --require-command-progress-terminal
+                          Also require completed/failed/timeout command progress evidence.
+  --wait-command-progress Poll daemon event logs until command progress requirements pass.
+  --since <iso>           Include command progress events at or after this timestamp.
+  --since-minutes <n>     Include recent command progress window. Default: ${DEFAULT_SINCE_MINUTES}.
+  --timeout-ms <n>        Wait deadline for --wait-command-progress. Default: ${DEFAULT_PROGRESS_TIMEOUT_MS}.
+  --poll-ms <n>           Wait poll interval. Default: ${DEFAULT_PROGRESS_POLL_MS}.
   --base-url <url>        Studio API base. Default: ${DEFAULT_BASE_URL}
   --config <path>         Native Channel config. Default: ${DEFAULT_CONFIG_PATH}
   --state-dir <path>      Daemon state dir. Default: ${DEFAULT_STATE_DIR}
@@ -109,6 +144,7 @@ Examples:
   node scripts/smoke-channel-connectors-command-live.mjs --recent-sessions --probe --json
   node scripts/smoke-channel-connectors-command-live.mjs --bindings octo-studio-cc --from-uid user --channel-id user --probe --json
   node scripts/smoke-channel-connectors-command-live.mjs --bindings feishu-live --from-uid ou_x --channel-id oc_x --commands /new,/reset --apply
+  node scripts/smoke-channel-connectors-command-live.mjs --bindings feishu-live --recent-sessions --commands /slow --wait-command-progress --require-command-progress-terminal --json
 `);
 }
 
@@ -127,6 +163,11 @@ function positiveInt(value, fallback) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function nonNegativeNumber(value, fallback) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
 function normalizeCommand(value) {
   const normalized = String(value || "").trim();
   return normalized ? (normalized.startsWith("/") ? normalized : `/${normalized}`) : "";
@@ -139,6 +180,28 @@ function readJsonIfExists(filePath, fallback) {
     if (error.code === "ENOENT") return fallback;
     throw error;
   }
+}
+
+function readJsonLinesIfExists(filePath) {
+  let raw = "";
+  try {
+    raw = fs.readFileSync(filePath, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return [];
+    throw error;
+  }
+  const output = [];
+  for (const line of raw.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) output.push(parsed);
+    } catch {
+      // Ignore partial lines from a concurrently written JSONL log.
+    }
+  }
+  return output;
 }
 
 function selectBindings(config, options) {
@@ -178,6 +241,13 @@ function readState(options) {
     history: readJsonIfExists(path.join(options.stateDir, "channel-history.json"), { entries: [] }),
     sessions: readJsonIfExists(path.join(options.stateDir, "channel-sessions.json"), { sessions: {} }),
     controls: readJsonIfExists(path.join(options.stateDir, "channel-session-controls.json"), { controls: {} }),
+  };
+}
+
+function eventPaths(options) {
+  return {
+    octo: path.join(options.stateDir, "octo-events.jsonl"),
+    feishu: path.join(options.stateDir, "feishu-events.jsonl"),
   };
 }
 
@@ -255,6 +325,18 @@ function candidateSessions(binding, state) {
 function toTime(value) {
   const parsed = Date.parse(value || "");
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function sinceMs(options, startedAt) {
+  if (options.since) {
+    const parsed = Date.parse(options.since);
+    if (!Number.isFinite(parsed)) throw new Error(`Invalid --since timestamp: ${options.since}`);
+    return parsed;
+  }
+  if (options.waitCommandProgress && !process.argv.some((arg) => arg === "--since-minutes" || arg.startsWith("--since-minutes="))) {
+    return startedAt.getTime();
+  }
+  return Date.now() - options.sinceMinutes * 60_000;
 }
 
 function targetFromSessionKey(binding, sessionKey, options) {
@@ -347,6 +429,98 @@ function plannedRequest(binding, command, options, target) {
   };
 }
 
+function commandNameFromCommand(command) {
+  return String(command || "").trim().replace(/^\/+/, "").split(/\s+/, 1)[0] || "";
+}
+
+function readCommandProgressEvents(options, minCheckedAtMs) {
+  const paths = eventPaths(options);
+  return [
+    ...readJsonLinesIfExists(paths.octo),
+    ...readJsonLinesIfExists(paths.feishu),
+  ].filter((event) => {
+    return event.eventKind === "channel.command.progress"
+      && toTime(event.checkedAt) >= minCheckedAtMs;
+  });
+}
+
+function summarizeCommandProgressEvents(events) {
+  const sorted = [...events].sort((a, b) => toTime(a.checkedAt) - toTime(b.checkedAt));
+  const types = uniqueStrings(sorted.map((event) => String(event.commandProgressType || "")).filter(Boolean));
+  const latest = sorted[sorted.length - 1] || null;
+  const terminal = sorted.find((event) => ["completed", "failed", "timeout"].includes(String(event.commandProgressType || ""))) || null;
+  return {
+    count: sorted.length,
+    types,
+    terminal: terminal ? String(terminal.commandProgressType || "") : null,
+    latest: latest ? {
+      checkedAt: latest.checkedAt || null,
+      type: latest.commandProgressType || null,
+      elapsedMs: latest.commandProgressElapsedMs ?? null,
+      exitCode: latest.commandProgressExitCode ?? null,
+      signal: latest.commandProgressSignal || null,
+      error: latest.commandProgressError || null,
+      outputPreview: latest.commandProgressOutputPreview || null,
+    } : null,
+  };
+}
+
+function attachCommandProgress(plans, options, minCheckedAtMs) {
+  const events = readCommandProgressEvents(options, minCheckedAtMs);
+  for (const plan of plans) {
+    const commandName = commandNameFromCommand(plan.command);
+    const matching = events.filter((event) => {
+      return String(event.bindingId || "") === plan.bindingId
+        && String(event.sessionKey || "") === plan.sessionKey
+        && String(event.commandProgressName || "") === commandName;
+    });
+    plan.commandProgress = summarizeCommandProgressEvents(matching);
+  }
+  return commandProgressFailures(plans, options);
+}
+
+function commandProgressFailures(plans, options) {
+  if (!options.requireCommandProgress) return [];
+  const failures = [];
+  for (const plan of plans) {
+    if (!plan.commandProgress || plan.commandProgress.count <= 0) {
+      failures.push({
+        bindingId: plan.bindingId,
+        command: plan.command,
+        sessionKey: plan.sessionKey,
+        reason: "missing-command-progress",
+      });
+      continue;
+    }
+    if (options.requireCommandProgressTerminal && !plan.commandProgress.terminal) {
+      failures.push({
+        bindingId: plan.bindingId,
+        command: plan.command,
+        sessionKey: plan.sessionKey,
+        reason: "missing-terminal-command-progress",
+      });
+    }
+  }
+  return failures;
+}
+
+async function waitForCommandProgress(plans, options, minCheckedAtMs, deadlineMs) {
+  let failures = attachCommandProgress(plans, options, minCheckedAtMs);
+  while (failures.length && Date.now() < deadlineMs) {
+    await sleep(options.pollMs);
+    failures = attachCommandProgress(plans, options, minCheckedAtMs);
+  }
+  return failures;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function uniqueStrings(values) {
+  return [...new Set(values.map((value) => String(value || "")).filter(Boolean))];
+}
+
 function redactRequest(request) {
   return {
     path: request.path,
@@ -425,6 +599,7 @@ function summarizeResponse(response) {
 }
 
 async function main() {
+  const startedAt = new Date();
   const options = parseArgs(process.argv.slice(2));
   const config = readJsonIfExists(options.configPath, null);
   if (!config) throw new Error(`Channel Connectors config not found: ${options.configPath}`);
@@ -457,6 +632,7 @@ async function main() {
         },
         command,
         state,
+        commandProgress: null,
         request: options.json ? redactRequest(request) : { path: request.path },
         result: null,
       });
@@ -472,13 +648,26 @@ async function main() {
     }
   }
 
+  const progressSinceMs = sinceMs(options, startedAt);
+  const commandProgressFailures = options.waitCommandProgress
+    ? await waitForCommandProgress(plans, options, progressSinceMs, Date.now() + options.timeoutMs)
+    : attachCommandProgress(plans, options, progressSinceMs);
+  const ok = commandProgressFailures.length === 0;
+
   const output = {
-    ok: true,
+    ok,
     checkedAt: new Date().toISOString(),
     mode: options.apply ? "apply" : options.probe ? "probe" : "dry-run",
     baseUrl: options.baseUrl,
     configPath: options.configPath,
     stateDir: options.stateDir,
+    commandProgress: {
+      required: options.requireCommandProgress,
+      terminalRequired: options.requireCommandProgressTerminal,
+      wait: options.waitCommandProgress,
+      since: new Date(progressSinceMs).toISOString(),
+      failures: commandProgressFailures,
+    },
     plans,
     note: options.apply
       ? options.sendReply
@@ -491,6 +680,7 @@ async function main() {
 
   if (options.json) {
     console.log(JSON.stringify(output, null, 2));
+    if (!ok) process.exitCode = 1;
     return;
   }
   console.log(`Channel command smoke ${output.mode}: ${plans.length} planned command(s)`);
@@ -502,8 +692,15 @@ async function main() {
     if (plan.result) {
       console.log(`  -> HTTP ${plan.result.status} accepted=${plan.result.accepted} ok=${plan.result.ok} action=${plan.result.action || "n/a"} ${plan.result.replyPreview}`);
     }
+    if (plan.commandProgress) {
+      console.log(`  -> command progress count=${plan.commandProgress.count} types=${plan.commandProgress.types.join(",") || "none"} terminal=${plan.commandProgress.terminal || "none"}`);
+    }
   }
   console.log(output.note);
+  if (!ok) {
+    console.error(`Command progress requirement failed for ${commandProgressFailures.length} plan(s).`);
+    process.exitCode = 1;
+  }
 }
 
 main().catch((error) => {

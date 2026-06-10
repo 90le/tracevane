@@ -16,6 +16,11 @@ function writeJson(filePath, data) {
   fs.writeFileSync(filePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
 }
 
+function writeJsonl(filePath, entries) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, `${entries.map((entry) => JSON.stringify(entry)).join("\n")}\n`, "utf8");
+}
+
 function writeFixture(root) {
   const configPath = path.join(root, "channel-config.json");
   const stateDir = path.join(root, "state");
@@ -292,6 +297,70 @@ test("command live smoke script probes adapter dry-run requests", async () => {
   } finally {
     await new Promise((resolve) => fake.server.close(resolve));
   }
+});
+
+test("command live smoke script verifies daemon command progress logs", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-command-live-smoke-"));
+  const { configPath, stateDir } = writeFixture(root);
+  writeJsonl(path.join(stateDir, "octo-events.jsonl"), [
+    {
+      checkedAt: "2026-06-08T00:29:58.000Z",
+      eventKind: "channel.command.progress",
+      adapter: "octo",
+      bindingId: "octo-live",
+      sessionKey: "dmwork:dm:user-1",
+      commandProgressName: "slow",
+      commandProgressType: "completed",
+      commandProgressElapsedMs: 710,
+      commandProgressExitCode: 0,
+      commandProgressOutputPreview: "wrong session",
+    },
+    {
+      checkedAt: "2026-06-08T00:30:00.000Z",
+      eventKind: "channel.command.progress",
+      adapter: "octo",
+      bindingId: "octo-live",
+      sessionKey: "dmwork:dm:user-2",
+      commandProgressName: "slow",
+      commandProgressType: "started",
+      commandProgressElapsedMs: 501,
+      commandProgressOutputPreview: null,
+    },
+    {
+      checkedAt: "2026-06-08T00:30:01.000Z",
+      eventKind: "channel.command.progress",
+      adapter: "octo",
+      bindingId: "octo-live",
+      sessionKey: "dmwork:dm:user-2",
+      commandProgressName: "slow",
+      commandProgressType: "completed",
+      commandProgressElapsedMs: 720,
+      commandProgressExitCode: 0,
+      commandProgressOutputPreview: "slow done",
+    },
+  ]);
+
+  const output = await runScript([
+    "--config", configPath,
+    "--state-dir", stateDir,
+    "--bindings", "octo-live",
+    "--commands", "/slow",
+    "--recent-sessions",
+    "--require-command-progress-terminal",
+    "--since", "2026-06-08T00:29:59.000Z",
+    "--json",
+  ], root);
+  const parsed = JSON.parse(output.stdout);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.commandProgress.required, true);
+  assert.equal(parsed.commandProgress.terminalRequired, true);
+  assert.deepEqual(parsed.commandProgress.failures, []);
+  assert.equal(parsed.plans.length, 1);
+  assert.equal(parsed.plans[0].sessionKey, "dmwork:dm:user-2");
+  assert.equal(parsed.plans[0].commandProgress.count, 2);
+  assert.deepEqual(parsed.plans[0].commandProgress.types, ["started", "completed"]);
+  assert.equal(parsed.plans[0].commandProgress.terminal, "completed");
+  assert.equal(parsed.plans[0].commandProgress.latest.outputPreview, "slow done");
 });
 
 test("command live smoke script requires explicit address before apply", async () => {
