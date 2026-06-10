@@ -35,6 +35,7 @@
 - 修复 Claude 工具流渲染：Claude `user/tool_result` 的纯输出文本不再被进度卡片解析器吞掉首行，单行工具结果不会再显示为“无输出”。
 - 按 CC Go 迁移 Codex app-server 运行中权限批准合同：`item/commandExecution/requestApproval`、`item/fileChange/requestApproval` 和 `item/permissions/requestApproval` 进入现有 IM permission resolver，分别回写 `{decision:"accept|decline"}` 与 turn-scoped `permissions` 结果。
 - 修复 IM 过程回复误判：Codex app-server `item/agentMessage/delta` 不再逐 token 推送成过程回复；Codex one-shot、Claude Code、OpenCode 的最终 assistant 文本统一标记为 `phase=final`，渠道发送层只允许 `phase=intermediate` 的 assistant 文本进入“过程回复”；`/thinking`、`/process`、`/tools` 三路开关保持不变。
+- 清理 Channel Connectors 回归测试债：OpenCode persistent fake session 测试显式模拟当前 runtime dataHome session 存在性；OpenCode stop 测试区分启动前合法 session 验证与取消后禁止 DB fallback；daemon runtime / Octo JSONL 测试改为等待 async debounce/buffer flush，不再误报。
 
 ## 最近验证
 
@@ -46,6 +47,7 @@
 - 通过：`node scripts/smoke-channel-connectors-feishu-long-connection.mjs --duration-ms 35000 --bindings feishu-live --json`，现场结果 `violations=0`、`pingIntervalMs=10000`、`pongTimeoutMs=8000`、`transportStaleAfterMs=23000`、`sentPings=14`、`receivedPongs=15`、`transportStale=false`、`logEvents=0`。
 - 通过：`curl http://127.0.0.1:18797/health` 返回 `ok=true`、`connected=1`、`pongOverdue=0`、`transportStale=0`。
 - 通过：`npm run typecheck -- --pretty false`。
+- 通过：`node --test tests/system/channel-connectors-agent-session-driver.test.mjs`，覆盖 persistent session pool、OpenCode `--session` compact、OpenCode SQLite fallback、Claude stream-json compact、Claude persistent stop cancel 和 OpenCode persistent stop abort。
 - 通过：`node --test --test-name-pattern "agent runner builds gateway-backed" tests/system/channel-connectors-service.test.mjs`，覆盖 Codex `--image`、Claude image content block、OpenCode `--file` 图片传入和非视觉模型保护。
 - 通过：`node --test --test-name-pattern "native Channel Connectors process runner streams progress events from agent JSONL|native Channel Connectors process progress only includes intermediate assistant text|native Channel Connectors process runner maps Claude Code stream-json progress|native Channel Connectors process runner keeps Claude Code final text out of process progress|native Channel Connectors daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，覆盖 Codex app-server delta 不再生成 assistant 过程进度、最终 reply/manifest 保真、compact、stop、tool output 和 requestApproval。
@@ -58,6 +60,7 @@
 - 通过：`node --test tests/system/channel-connectors-agent-sessions-live-script.test.mjs`。
 - 通过：`node --test --test-name-pattern "native Channel Connectors IM commands switch agent, model, and permission per session" tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test --test-name-pattern "native Channel Connectors agent runner builds gateway-backed Codex turns" tests/system/channel-connectors-service.test.mjs`。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，63/63 全部通过。
 
 ## 已知边界
 
@@ -69,8 +72,6 @@
 - `/status` 与 Channel 管理页已能显示最近 auto compact 记录；真实剩余 token 仍取决于上游 usage 或 Gateway runtime ledger 是否能归因。
 - Gateway usage 只有在上游返回 usage 或 runtime ledger 可归因时才准确；缺失 usage 时 Channel 只能用 IM history 字符估算，不能替代真实 tokenizer。
 - 同 session FIFO queue 当前是 daemon 内存队列；Channel daemon 自身重启会丢失未开始的排队消息，durable queue 尚未实现。
-- 完整 `tests/system/channel-connectors-agent-session-driver.test.mjs` 当前 9/11 通过；剩余失败集中在 OpenCode fake session 创建/stop abort 测试，不属于本轮过程回复链路，需后续专项修复。
-- 完整 `tests/system/channel-connectors-service.test.mjs` 当前 60/63 通过；剩余失败集中在 daemon runtime 文件写入断言与 Octo `octo-events.jsonl` 测试文件生成，不属于本轮过程回复链路，需后续专项修复。
 
 ## 下一步
 

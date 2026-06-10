@@ -41,7 +41,7 @@ async function waitForFilePattern(filePath, pattern, timeoutMs = 5000) {
   throw new Error(`Timed out waiting for ${pattern} in ${filePath}`);
 }
 
-function baseTurnRequest(root, agent, nativeCommand = null) {
+function baseTurnRequest(root, agent, nativeCommand = null, extra = {}) {
   return {
     project: {
       id: `${agent}-project`,
@@ -86,6 +86,7 @@ function baseTurnRequest(root, agent, nativeCommand = null) {
     gatewayEndpoint: "http://127.0.0.1:18796/v1",
     gatewayClientKey: "sk-local",
     nativeCommand,
+    ...extra,
   };
 }
 
@@ -431,7 +432,12 @@ test("Channel Connectors session driver mode stays one-shot unless metadata expl
 test("Channel Connectors native CLI session driver sends OpenCode compact through a persisted --session turn", async () => {
   const root = makeTempRoot();
   const fakeBin = path.join(root, "bin");
+  const agentRuntimeDir = path.join(root, "agent-runtime", "opencode-main");
+  const dataHome = path.join(agentRuntimeDir, "opencode-data");
+  const dbPath = path.join(dataHome, "opencode", "opencode.db");
   const capturePath = path.join(root, "opencode-capture.jsonl");
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  fs.writeFileSync(dbPath, "");
   writeExecutable(path.join(fakeBin, "opencode"), [
     "#!/usr/bin/env node",
     "const fs = require('fs');",
@@ -448,6 +454,16 @@ test("Channel Connectors native CLI session driver sends OpenCode compact throug
     "emit({ type: 'text', messageID: 'assistant-message', timestamp: 2, part: { type: 'text', messageID: 'assistant-message', text: message === '/compact' ? '' : 'opencode ok' } });",
     "if (message !== '/compact') emit({ type: 'text', messageID: 'assistant-message', timestamp: 3, part: { type: 'text', messageID: 'assistant-message', text: 'opencode ok' } });",
     "emit({ type: 'step_finish', part: { reason: 'done' } });",
+  ]);
+  writeExecutable(path.join(fakeBin, "sqlite3"), [
+    "#!/usr/bin/env node",
+    "const dbPath = process.argv.includes('-json') ? process.argv[process.argv.indexOf('-json') + 1] : (process.argv[2] || '');",
+    "const query = process.argv[process.argv.length - 1] || '';",
+    "if (dbPath.endsWith('/opencode-data/opencode/opencode.db') && query.includes(\"id = 'opencode-session-created'\")) {",
+    "  process.stdout.write(JSON.stringify([{ id: 'opencode-session-created' }]));",
+    "} else {",
+    "  process.stdout.write('[]');",
+    "}",
   ]);
 
   const originalPath = process.env.PATH || "";
@@ -469,7 +485,7 @@ test("Channel Connectors native CLI session driver sends OpenCode compact throug
         mode: "persistent",
         key,
         messageId: "normal-message",
-        agentTurnRequest: baseTurnRequest(root, "opencode"),
+        agentTurnRequest: baseTurnRequest(root, "opencode", null, { agentRuntimeDir }),
         runOneShot: async () => completedResult("unused"),
       },
     });
@@ -478,7 +494,7 @@ test("Channel Connectors native CLI session driver sends OpenCode compact throug
       mode: "persistent",
       key,
       messageId: "normal-message",
-      agentTurnRequest: baseTurnRequest(root, "opencode"),
+      agentTurnRequest: baseTurnRequest(root, "opencode", null, { agentRuntimeDir }),
       onProgress: (event) => progress.push(event),
       runOneShot: async () => {
         throw new Error("one-shot fallback should not run");
@@ -488,7 +504,7 @@ test("Channel Connectors native CLI session driver sends OpenCode compact throug
       mode: "persistent",
       key,
       messageId: "compact-message",
-      agentTurnRequest: baseTurnRequest(root, "opencode", "/compact"),
+      agentTurnRequest: baseTurnRequest(root, "opencode", "/compact", { agentRuntimeDir }),
       onProgress: (event) => progress.push(event),
       runOneShot: async () => {
         throw new Error("one-shot fallback should not run for compact");
@@ -815,6 +831,7 @@ test("Channel Connectors OpenCode persistent session stop aborts active process 
       },
     });
     await runnerStarted;
+    fs.rmSync(sqliteMarker, { force: true });
     session.stop("manual-stop");
     const result = await resultPromise;
     assert.equal(sawAbortSignal, true);

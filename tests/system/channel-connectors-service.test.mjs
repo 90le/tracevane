@@ -303,6 +303,25 @@ async function waitFor(predicate, timeoutMs = 3000) {
   throw new Error("Timed out waiting for condition");
 }
 
+async function waitForJsonFile(filePath, timeoutMs = 5000) {
+  return await waitFor(() => {
+    if (!fs.existsSync(filePath)) return null;
+    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+  }, timeoutMs);
+}
+
+async function waitForJsonLines(filePath, predicate, timeoutMs = 5000) {
+  return await waitFor(() => {
+    if (!fs.existsSync(filePath)) return null;
+    const lines = fs.readFileSync(filePath, "utf8")
+      .trim()
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => JSON.parse(line));
+    return predicate(lines) ? lines : null;
+  }, timeoutMs);
+}
+
 async function withServer(handler, task) {
   const server = http.createServer(async (req, res) => {
     const handled = await handler(req, res);
@@ -8301,8 +8320,7 @@ test("native Channel Connectors daemon entry exposes health and writes runtime",
     assert.equal(status.body.agentSessionDriver.requestedPersistentBindings[0].requestedMode, "persistent");
     assert.equal(status.body.agentSessionDriver.requestedPersistentBindings[0].effectiveMode, "persistent");
     assert.equal(status.body.agentSessionDriver.requestedPersistentBindings[0].reason, "codex-app-server-experimental");
-    assert.equal(fs.existsSync(runtimeConfig.paths.runtime), true);
-    const runtime = JSON.parse(fs.readFileSync(runtimeConfig.paths.runtime, "utf8"));
+    const runtime = await waitForJsonFile(runtimeConfig.paths.runtime);
     assert.equal(runtime.agentSessionDriver.requestedPersistentBindings.length, 1);
     assert.equal(runtime.agentSessionDriver.requestedPersistentBindings[0].effectiveMode, "persistent");
     assert.equal(runtime.agentSessionDriver.policy.idleTimeoutMs, 600000);
@@ -8625,11 +8643,13 @@ test("native Channel Connectors daemon serializes same-session Octo Agent turns"
         assert.match(replyContents, /本条已加入队列/);
         assert.match(replyContents, /first done/);
         assert.match(replyContents, /second done/);
-        const octoEvents = fs.readFileSync(runtimeConfig.paths.octoEvents, "utf8")
-          .trim()
-          .split(/\r?\n/)
-          .filter(Boolean)
-          .map((line) => JSON.parse(line));
+        const octoEvents = await waitForJsonLines(runtimeConfig.paths.octoEvents, (events) => {
+          return events.some((event) => {
+            return event.eventKind === "channel.agent.queued"
+              && event.messageId === "2002"
+              && event.sessionKey === "dmwork:dm:queue-user";
+          });
+        });
         assert.ok(octoEvents.some((event) => {
           return event.eventKind === "channel.agent.queued"
             && event.messageId === "2002"
@@ -9947,11 +9967,11 @@ test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSock
         }, 8000);
         const run = finalStatus.agentRuns.find((item) => item.messageId === "1001");
         assert.equal(run.ok, true);
-        const octoEvents = fs.readFileSync(runtimeConfig.paths.octoEvents, "utf8")
-          .trim()
-          .split(/\r?\n/)
-          .filter(Boolean)
-          .map((line) => JSON.parse(line));
+        const octoEvents = await waitForJsonLines(runtimeConfig.paths.octoEvents, (events) => {
+          return events.some((event) => event.eventKind === "agent.model.selected" && event.messageId === "1001")
+            && events.some((event) => event.eventKind === "agent.attachments.staged" && event.messageId === "1001")
+            && events.some((event) => event.eventKind === "agent.visual.input" && event.messageId === "1001");
+        });
         assert.ok(octoEvents.some((event) => {
           return event.eventKind === "agent.model.selected"
             && event.messageId === "1001"
