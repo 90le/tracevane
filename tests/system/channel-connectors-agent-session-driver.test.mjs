@@ -436,7 +436,8 @@ test("Channel Connectors native CLI session driver sends OpenCode compact throug
     "function emit(value) { process.stdout.write(JSON.stringify(value) + '\\n'); }",
     "emit({ type: 'step_start', part: { type: 'step-start', sessionID } });",
     "emit({ type: 'tool_use', part: { type: 'tool', tool: 'bash', state: { status: 'completed', title: 'List files', output: 'file-a' } } });",
-    "emit({ type: 'text', part: { type: 'text', text: message === '/compact' ? '' : 'opencode ok' } });",
+    "emit({ type: 'text', messageID: 'assistant-message', timestamp: 2, part: { type: 'text', messageID: 'assistant-message', text: message === '/compact' ? '' : 'opencode ok' } });",
+    "if (message !== '/compact') emit({ type: 'text', messageID: 'assistant-message', timestamp: 3, part: { type: 'text', messageID: 'assistant-message', text: 'opencode ok' } });",
     "emit({ type: 'step_finish', part: { reason: 'done' } });",
   ]);
 
@@ -499,6 +500,84 @@ test("Channel Connectors native CLI session driver sends OpenCode compact throug
   } finally {
     process.env.PATH = originalPath;
     delete process.env.STUDIO_TEST_CAPTURE;
+  }
+});
+
+test("Channel Connectors native CLI session driver recovers OpenCode output from sqlite state when stdout is empty", async () => {
+  const root = makeTempRoot();
+  const fakeBin = path.join(root, "bin");
+  const dataHome = path.join(root, "data");
+  const dbPath = path.join(dataHome, "opencode", "opencode.db");
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  fs.writeFileSync(dbPath, "");
+  writeExecutable(path.join(fakeBin, "opencode"), [
+    "#!/usr/bin/env node",
+    "process.exit(0);",
+  ]);
+  writeExecutable(path.join(fakeBin, "sqlite3"), [
+    "#!/usr/bin/env node",
+    "const query = process.argv[process.argv.length - 1] || '';",
+    "if (query.includes('select id from session')) {",
+    "  process.stdout.write(JSON.stringify([{ id: 'opencode-db-session' }]));",
+    "} else if (query.includes('from part p join message m')) {",
+    "  process.stdout.write(JSON.stringify([",
+    "    { message_id: 'assistant-previous', part_time_created: 1, message_data: JSON.stringify({ role: 'assistant', time: { completed: 1 } }), part_data: JSON.stringify({ type: 'text', text: 'old reply' }) },",
+    "    { message_id: 'user-current', part_time_created: 2, message_data: JSON.stringify({ role: 'user', time: { created: 2 } }), part_data: JSON.stringify({ type: 'text', text: 'hello' }) },",
+    "    { message_id: 'assistant-current', part_time_created: 3, message_data: JSON.stringify({ role: 'assistant', time: { completed: 4 } }), part_data: JSON.stringify({ type: 'text', text: 'opencode db ok' }) },",
+    "    { message_id: 'assistant-current', part_time_created: 4, message_data: JSON.stringify({ role: 'assistant', time: { completed: 4 } }), part_data: JSON.stringify({ type: 'step-finish', reason: 'stop' }) },",
+    "  ]));",
+    "} else {",
+    "  process.stdout.write('[]');",
+    "}",
+  ]);
+
+  const originalPath = process.env.PATH || "";
+  const originalHome = process.env.HOME;
+  const originalDataHome = process.env.XDG_DATA_HOME;
+  process.env.PATH = `${fakeBin}:${originalPath}`;
+  process.env.HOME = root;
+  process.env.XDG_DATA_HOME = dataHome;
+  try {
+    const factory = createNativeCliSessionDriverFactory({
+      codexFactory: {
+        create: () => {
+          throw new Error("codex factory should not be used");
+        },
+      },
+    });
+    const key = { ...baseKey, agent: "opencode", model: "openai/gpt-5", workDir: root };
+    const session = await factory.create({
+      key,
+      poolKey: channelConnectorAgentSessionDriverPoolKey(key),
+      turnInput: {
+        mode: "persistent",
+        key,
+        messageId: "normal-message",
+        agentTurnRequest: baseTurnRequest(root, "opencode"),
+        runOneShot: async () => completedResult("unused"),
+      },
+    });
+    const result = await session.runTurn({
+      mode: "persistent",
+      key,
+      messageId: "normal-message",
+      agentTurnRequest: baseTurnRequest(root, "opencode"),
+      runOneShot: async () => {
+        throw new Error("one-shot fallback should not run");
+      },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.replyText, "opencode db ok");
+    assert.equal(result.session.agentNativeSessionId, "opencode-db-session");
+    assert.match(result.stdout, /opencode db ok/);
+    assert.equal(result.progress.eventCount, 2);
+  } finally {
+    process.env.PATH = originalPath;
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalDataHome === undefined) delete process.env.XDG_DATA_HOME;
+    else process.env.XDG_DATA_HOME = originalDataHome;
   }
 });
 

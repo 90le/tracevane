@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -1348,31 +1348,68 @@ export async function defaultChannelConnectorAgentProcessRunner(
 interface JsonLineReplyText {
   kind: "assistant" | "message" | "result" | "content";
   text: string;
+  messageId: string | null;
+  timestamp: number | null;
 }
 
 function appendJsonLineReplyText(
   output: JsonLineReplyText[],
   kind: JsonLineReplyText["kind"],
   value: unknown,
+  meta: { messageId?: string | null; timestamp?: number | null } = {},
 ): void {
-  if (typeof value === "string" && value) output.push({ kind, text: value });
+  if (typeof value === "string" && value) {
+    output.push({
+      kind,
+      text: value,
+      messageId: normalizeString(meta.messageId) || null,
+      timestamp: Number.isFinite(Number(meta.timestamp)) ? Number(meta.timestamp) : null,
+    });
+  }
 }
 
 function appendJsonLineContentParts(
   output: JsonLineReplyText[],
   kind: JsonLineReplyText["kind"],
   value: unknown,
+  meta: { messageId?: string | null; timestamp?: number | null } = {},
 ): void {
   if (typeof value === "string") {
-    appendJsonLineReplyText(output, kind, value);
+    appendJsonLineReplyText(output, kind, value, meta);
     return;
   }
   if (!Array.isArray(value)) return;
   for (const part of value) {
     if (typeof part === "object" && part !== null && typeof (part as Record<string, unknown>).text === "string") {
-      appendJsonLineReplyText(output, kind, (part as Record<string, unknown>).text);
+      appendJsonLineReplyText(output, kind, (part as Record<string, unknown>).text, meta);
     }
   }
+}
+
+function jsonLineMessageId(raw: Record<string, unknown>, part: Record<string, unknown> | null = null): string | null {
+  return normalizeString(raw.messageID)
+    || normalizeString(raw.message_id)
+    || normalizeString(raw.messageId)
+    || normalizeString(part?.messageID)
+    || normalizeString(part?.message_id)
+    || normalizeString(part?.messageId)
+    || null;
+}
+
+function jsonLineTimestamp(raw: Record<string, unknown>, part: Record<string, unknown> | null = null): number | null {
+  const partTime = recordValue(part?.time);
+  const candidates = [
+    raw.timestamp,
+    raw.time,
+    partTime?.end,
+    partTime?.start,
+    part?.timestamp,
+  ];
+  for (const candidate of candidates) {
+    const value = Number(candidate);
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
 }
 
 function collectJsonLineText(stdout: string): JsonLineReplyText[] {
@@ -1383,28 +1420,40 @@ function collectJsonLineText(stdout: string): JsonLineReplyText[] {
     try {
       const raw = JSON.parse(trimmed) as Record<string, unknown>;
       const message = raw.message;
+      const rawMessageId = jsonLineMessageId(raw);
+      const rawTimestamp = jsonLineTimestamp(raw);
       if (typeof message === "object" && message !== null) {
         const messageRecord = message as Record<string, unknown>;
-        appendJsonLineContentParts(output, "message", messageRecord.content);
+        appendJsonLineContentParts(output, "message", messageRecord.content, {
+          messageId: rawMessageId || jsonLineMessageId(messageRecord),
+          timestamp: rawTimestamp || jsonLineTimestamp(messageRecord),
+        });
       }
       const item = raw.item;
       if (typeof item === "object" && item !== null) {
         const itemRecord = item as Record<string, unknown>;
         if (itemRecord.type === "agent_message") {
-          appendJsonLineReplyText(output, "assistant", itemRecord.text);
-          appendJsonLineContentParts(output, "assistant", itemRecord.content);
+          const meta = {
+            messageId: rawMessageId || jsonLineMessageId(itemRecord),
+            timestamp: rawTimestamp || jsonLineTimestamp(itemRecord),
+          };
+          appendJsonLineReplyText(output, "assistant", itemRecord.text, meta);
+          appendJsonLineContentParts(output, "assistant", itemRecord.content, meta);
         }
       }
       const part = raw.part;
       if (typeof part === "object" && part !== null) {
         const partRecord = part as Record<string, unknown>;
         if (raw.type === "text" || partRecord.type === "text") {
-          appendJsonLineReplyText(output, "assistant", partRecord.text);
+          appendJsonLineReplyText(output, "assistant", partRecord.text, {
+            messageId: rawMessageId || jsonLineMessageId(raw, partRecord),
+            timestamp: rawTimestamp || jsonLineTimestamp(raw, partRecord),
+          });
         }
       }
-      appendJsonLineReplyText(output, "content", raw.content);
-      appendJsonLineReplyText(output, "content", raw.text);
-      appendJsonLineReplyText(output, "result", raw.result);
+      appendJsonLineReplyText(output, "content", raw.content, { messageId: rawMessageId, timestamp: rawTimestamp });
+      appendJsonLineReplyText(output, "content", raw.text, { messageId: rawMessageId, timestamp: rawTimestamp });
+      appendJsonLineReplyText(output, "result", raw.result, { messageId: rawMessageId, timestamp: rawTimestamp });
     } catch {
       // Non-event lines are intentionally ignored; the raw stdout is still retained in the result.
     }
@@ -1423,10 +1472,54 @@ function joinJsonReplyTextParts(parts: string[]): string {
   return output.trim();
 }
 
-function extractReplyText(stdout: string): string | null {
+function joinOpenCodeTextParts(parts: string[]): string {
+  const normalized = parts.map((part) => part).filter((part) => part.trim());
+  if (!normalized.length) return "";
+  let cumulative = true;
+  for (let index = 1; index < normalized.length; index += 1) {
+    if (!normalized[index].startsWith(normalized[index - 1])) {
+      cumulative = false;
+      break;
+    }
+  }
+  if (cumulative) return normalized[normalized.length - 1].trim();
+  const deduped: string[] = [];
+  for (const part of normalized) {
+    if (deduped[deduped.length - 1] === part) continue;
+    deduped.push(part);
+  }
+  return joinJsonReplyTextParts(deduped);
+}
+
+function extractOpenCodeReplyText(jsonTexts: JsonLineReplyText[]): string | null {
+  const assistant = jsonTexts.filter((item) => item.kind === "assistant" && item.text.trim());
+  if (!assistant.length) return null;
+  const groups = new Map<string, JsonLineReplyText[]>();
+  for (const item of assistant) {
+    const key = item.messageId || "__unscoped__";
+    const group = groups.get(key) || [];
+    group.push(item);
+    groups.set(key, group);
+  }
+  const orderedGroups = [...groups.entries()].map(([key, items], index) => ({
+    key,
+    items,
+    index,
+    timestamp: Math.max(...items.map((item) => item.timestamp || 0)),
+  }));
+  orderedGroups.sort((left, right) => (left.timestamp - right.timestamp) || (left.index - right.index));
+  const latest = orderedGroups[orderedGroups.length - 1]?.items || assistant;
+  return joinOpenCodeTextParts(latest.map((item) => item.text)) || null;
+}
+
+function extractReplyText(stdout: string, agent: ChannelConnectorAgentId | null = null): string | null {
   const jsonTexts = collectJsonLineText(stdout);
   const results = jsonTexts.filter((item) => item.kind === "result").map((item) => item.text.trim()).filter(Boolean);
   if (results.length) return results[results.length - 1];
+  if (agent === "opencode") {
+    const opencodeText = extractOpenCodeReplyText(jsonTexts);
+    if (opencodeText) return opencodeText;
+  }
   const assistant = jsonTexts.filter((item) => item.kind === "assistant").map((item) => item.text).filter((item) => item.trim());
   if (assistant.length) return joinJsonReplyTextParts(assistant);
   const messages = jsonTexts.filter((item) => item.kind === "message").map((item) => item.text).filter((item) => item.trim());
@@ -1487,6 +1580,142 @@ function extractOpencodeNativeSessionId(stdout: string): string | null {
     }
   }
   return latest;
+}
+
+interface OpenCodeDbFallback {
+  sessionId: string | null;
+  replyText: string | null;
+  stdout: string;
+  progressEvents: ChannelConnectorAgentProgressEvent[];
+}
+
+function sqlString(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`;
+}
+
+function opencodeDbPath(env: NodeJS.ProcessEnv): string | null {
+  const dataHome = normalizeString(env.XDG_DATA_HOME);
+  if (dataHome) return path.join(dataHome, "opencode", "opencode.db");
+  const home = normalizeString(env.HOME);
+  if (!home) return null;
+  return path.join(home, ".local", "share", "opencode", "opencode.db");
+}
+
+function runSqliteJson(dbPath: string, query: string, env: NodeJS.ProcessEnv): Record<string, unknown>[] {
+  const result = spawnSync("sqlite3", ["-json", dbPath, query], {
+    encoding: "utf8",
+    env,
+    timeout: 5000,
+    maxBuffer: 1024 * 1024,
+  });
+  if (result.error || result.status !== 0) return [];
+  try {
+    const parsed = JSON.parse(result.stdout || "[]") as unknown;
+    return Array.isArray(parsed) ? parsed.filter(recordValue) : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseJsonRecord(value: unknown): Record<string, unknown> | null {
+  const existing = recordValue(value);
+  if (existing) return existing;
+  if (typeof value !== "string" || !value.trim()) return null;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return recordValue(parsed);
+  } catch {
+    return null;
+  }
+}
+
+function openCodeDbFallback(processRequest: ChannelConnectorAgentProcessRequest): OpenCodeDbFallback | null {
+  if (processRequest.agent !== "opencode") return null;
+  const env = mergeProcessEnv(processRequest.env);
+  const dbPath = opencodeDbPath(env);
+  if (!dbPath || !fs.existsSync(dbPath)) return null;
+  const requestedSessionId = normalizeString(processRequest.agentNativeSessionId);
+  const directory = normalizeString(processRequest.cwd);
+  const sessionWhere = requestedSessionId
+    ? `id = ${sqlString(requestedSessionId)}`
+    : directory ? `directory = ${sqlString(directory)}` : "1 = 1";
+  const sessions = runSqliteJson(
+    dbPath,
+    `select id from session where ${sessionWhere} order by time_updated desc limit 1`,
+    env,
+  );
+  const sessionId = normalizeString(sessions[0]?.id);
+  if (!sessionId) return null;
+  const rows = runSqliteJson(
+    dbPath,
+    [
+      "select m.id as message_id, m.data as message_data, p.data as part_data, p.time_created as part_time_created",
+      "from part p join message m on p.message_id = m.id",
+      `where p.session_id = ${sqlString(sessionId)}`,
+      "order by p.time_created, p.id",
+    ].join(" "),
+    env,
+  );
+  const latestAssistantMessageId = rows
+    .map((row, index) => {
+      const messageData = parseJsonRecord(row.message_data);
+      if (normalizeString(messageData?.role) !== "assistant") return null;
+      return {
+        id: normalizeString(row.message_id),
+        index,
+        time: Number(row.part_time_created) || Number(recordValue(messageData?.time)?.completed) || Number(recordValue(messageData?.time)?.created) || 0,
+      };
+    })
+    .filter((item): item is { id: string; index: number; time: number } => Boolean(item?.id))
+    .sort((left, right) => (left.time - right.time) || (left.index - right.index))
+    .pop()?.id || null;
+  const scopedRows = latestAssistantMessageId
+    ? rows.filter((row) => normalizeString(row.message_id) === latestAssistantMessageId)
+    : rows;
+  const stdoutLines: string[] = [];
+  const progressEvents: ChannelConnectorAgentProgressEvent[] = [];
+  const replyParts: string[] = [];
+  stdoutLines.push(JSON.stringify({ type: "step_start", part: { type: "step-start", sessionID: sessionId } }));
+  for (const row of scopedRows) {
+    const messageData = parseJsonRecord(row.message_data);
+    const partData = parseJsonRecord(row.part_data);
+    if (!partData) continue;
+    const role = normalizeString(messageData?.role);
+    const partType = normalizeString(partData.type);
+    const text = normalizeString(partData.text);
+    if (role === "assistant" && partType === "text" && text) {
+      replyParts.push(text);
+      const raw = { type: "text", part: { type: "text", text } };
+      stdoutLines.push(JSON.stringify(raw));
+      progressEvents.push(progressEvent({ type: "assistant", rawType: "text", itemType: "text", text }));
+    } else if (partType === "reasoning" && text) {
+      const raw = { type: "reasoning", part: { type: "reasoning", text } };
+      stdoutLines.push(JSON.stringify(raw));
+      progressEvents.push(progressEvent({ type: "reasoning", rawType: "reasoning", itemType: "reasoning", text }));
+    } else if (partType === "tool" || partType === "tool-use" || partType === "tool_use") {
+      const tool = normalizeString(partData.tool) || normalizeString(partData.name) || "tool";
+      const state = recordValue(partData.state);
+      const toolText = [
+        tool,
+        normalizeString(state?.title) || normalizeString(partData.title),
+        normalizeString(state?.output) || normalizeString(partData.output),
+      ].filter(Boolean).join("\n");
+      const raw = { type: "tool_use", part: partData };
+      stdoutLines.push(JSON.stringify(raw));
+      progressEvents.push(progressEvent({ type: "tool", rawType: "tool_use", itemType: partType, text: toolText || tool }));
+    } else if (partType === "step-finish") {
+      const raw = { type: "step_finish", part: partData };
+      stdoutLines.push(JSON.stringify(raw));
+      progressEvents.push(progressEvent({ type: "completed", rawType: "step_finish", itemType: partType, text: normalizeString(partData.reason) || "done" }));
+    }
+  }
+  const replyText = replyParts.join("").trim() || null;
+  return {
+    sessionId,
+    replyText,
+    stdout: `${stdoutLines.join("\n")}\n`,
+    progressEvents,
+  };
 }
 
 function extractAgentNativeSessionId(agent: ChannelConnectorAgentId, stdout: string): string | null {
@@ -1645,20 +1874,26 @@ export async function runChannelConnectorAgentTurn(
   } finally {
     cleanupProcessRequest(processRequest);
   }
+  const openCodeFallback = openCodeDbFallback(processRequest);
+  const effectiveStdout = result.stdout || openCodeFallback?.stdout || "";
   const cancelled = result.cancelled === true;
   const ok = result.exitCode === 0 && !result.error && !cancelled;
   const codexThreadId = request.project.agent === "codex"
-    ? extractCodexThreadId(result.stdout) || processRequest.codexThreadId || null
+    ? extractCodexThreadId(effectiveStdout) || processRequest.codexThreadId || null
     : request.session?.codexThreadId || null;
-  const agentNativeSessionId = extractAgentNativeSessionId(request.project.agent, result.stdout)
+  const agentNativeSessionId = extractAgentNativeSessionId(request.project.agent, effectiveStdout)
+    || openCodeFallback?.sessionId
     || processRequest.agentNativeSessionId
     || request.session?.agentNativeSessionId
     || (request.project.agent === "codex" ? codexThreadId : null)
     || null;
   const progressEvents = result.progressEvents?.length
     ? result.progressEvents
-    : collectProgressEvents(result.stdout, request.project.agent);
+    : openCodeFallback?.progressEvents?.length
+      ? openCodeFallback.progressEvents
+      : collectProgressEvents(effectiveStdout, request.project.agent);
   const latestProgress = progressEvents.length ? progressEvents[progressEvents.length - 1] : null;
+  const replyText = extractReplyText(effectiveStdout, request.project.agent) || openCodeFallback?.replyText || null;
   return {
     attempted: true,
     ok,
@@ -1668,8 +1903,8 @@ export async function runChannelConnectorAgentTurn(
     command: processRequest.command,
     args: processRequest.args,
     cwd: processRequest.cwd,
-    replyText: ok ? extractReplyText(result.stdout) : null,
-    stdout: result.stdout,
+    replyText: ok ? replyText : null,
+    stdout: effectiveStdout,
     stderr: result.stderr,
     exitCode: result.exitCode,
     durationMs: result.durationMs,

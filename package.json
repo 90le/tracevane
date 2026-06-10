@@ -45,6 +45,8 @@
     "smoke:model-gateway:live:strict": "npm run build:api && node scripts/smoke-model-gateway-live.mjs --strict",
     "smoke:channel-connectors:persistent-live": "npm run build:api && node scripts/smoke-channel-connectors-persistent-live.mjs",
     "smoke:channel-connectors:agent-sessions": "node scripts/smoke-channel-connectors-agent-sessions.mjs",
+    "smoke:channel-connectors:native-cli-sessions": "npm run build:api && node scripts/smoke-channel-connectors-native-cli-sessions.mjs",
+    "smoke:channel-connectors:native-cli-sessions:strict": "npm run build:api && node scripts/smoke-channel-connectors-native-cli-sessions.mjs --strict",
     "smoke:channel-connectors:feishu-long-connection": "node scripts/smoke-channel-connectors-feishu-long-connection.mjs",
     "smoke:chat:browser": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"cd /home/binbin/.openclaw/extensions/openclaw-studio && exec bash scripts/dev-web-smoke.sh\" --port 5176 -- python tests/chat/browser.acceptance.py",
     "smoke:chat:composer-draft": "python /home/binbin/.agents/skills/webapp-testing/scripts/with_server.py --server \"cd /home/binbin/.openclaw/extensions/openclaw-studio && exec bash scripts/dev-web-smoke.sh\" --port 5176 -- python tests/chat/composer-draft.acceptance.py",
