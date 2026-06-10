@@ -3299,7 +3299,7 @@ function octoProgressTitle(event: ChannelConnectorAgentProgressEvent): string {
   if (event.type === "assistant") return "过程回复";
   if (event.type === "running") return "运行中";
   if (event.type === "reasoning") return "思考";
-  if (event.type === "tool") return event.rawType?.endsWith(".started") ? "工具调用" : "工具结果";
+  if (event.type === "tool") return progressEventToolDirection(event) === "use" ? "工具调用" : "工具结果";
   if (event.type === "failed") return "失败";
   if (event.type === "error") return "错误";
   if (event.type === "completed") return "完成";
@@ -3324,6 +3324,38 @@ function progressResultIcon(input: { status: string | null; exitCode: string | n
   if (label === "完成" || input.exitCode === "0") return "🟢";
   if (label === "执行中") return "⏳";
   return "⚪";
+}
+
+function progressEventToolDirection(event: ChannelConnectorAgentProgressEvent): "use" | "result" | null {
+  if (event.type !== "tool") return null;
+  const rawType = normalizeString(event.rawType).toLowerCase();
+  const itemType = normalizeString(event.itemType).toLowerCase();
+  if (
+    rawType.includes("tool_use")
+    || rawType.includes("tool-use")
+    || itemType.includes("tool_use")
+    || itemType.includes("tool-use")
+    || rawType === "control_request"
+    || rawType.includes("requestapproval")
+    || rawType.endsWith(".started")
+    || rawType.endsWith("/started")
+    || rawType === "item.started"
+  ) {
+    return "use";
+  }
+  if (
+    rawType.includes("tool_result")
+    || rawType.includes("tool-result")
+    || itemType.includes("tool_result")
+    || itemType.includes("tool-result")
+    || rawType === "user"
+    || rawType.endsWith(".completed")
+    || rawType.endsWith("/completed")
+    || rawType === "item.completed"
+  ) {
+    return "result";
+  }
+  return "result";
 }
 
 function renderPlainProgressMessage(input: {
@@ -4386,7 +4418,7 @@ function feishuProgressEntryKind(event: ChannelConnectorAgentProgressEvent): Fei
   if (event.type === "reasoning") return "thinking";
   if (isRecoverableToolResultErrorProgressEvent(event)) return "tool_result";
   if (event.type === "tool") {
-    return event.rawType?.endsWith(".started") ? "tool_use" : "tool_result";
+    return progressEventToolDirection(event) === "use" ? "tool_use" : "tool_result";
   }
   if (event.type === "failed" || event.type === "error") return "error";
   return "info";
@@ -4597,7 +4629,7 @@ function inlineProgressCode(value: string): string {
 }
 
 function isBashLikeToolName(value: string | null): boolean {
-  return ["bash", "shell", "run_shell_command", "command_execution", "command"].includes(normalizeString(value).toLowerCase());
+  return ["bash", "shell", "run_shell_command", "command_execution", "commandexecution", "command"].includes(normalizeString(value).toLowerCase());
 }
 
 function isTodoWriteToolName(value: string | null): boolean {
@@ -4609,6 +4641,37 @@ function codeBlock(language: string, value: string): string {
   return body ? `\`\`\`${language}\n${body}\n\`\`\`` : "";
 }
 
+function isGenericProgressToolName(value: string): boolean {
+  return ["", "tool", "tool_use", "tool-use", "tool_result", "tool-result"].includes(normalizeString(value).toLowerCase());
+}
+
+function progressToolNameFromFirstLine(line: string): string {
+  const value = normalizeString(line);
+  if (!value) return "";
+  if (/^(input|output|command|exit|status)\s*[:=]/i.test(value)) return "";
+  const match = value.match(/^([A-Za-z0-9_.:/-]+)\s+(started|completed|failed|finished)$/i);
+  return match ? normalizeString(match[1]) : value;
+}
+
+function progressToolInputFromStructuredText(toolName: string, value: string): string {
+  const text = normalizeString(value);
+  if (!text) return "";
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (isRecord(parsed)) {
+      const command = normalizeString(parsed.command);
+      const description = normalizeString(parsed.description);
+      if (isBashLikeToolName(toolName) && command) return command;
+      if (description) return description;
+      if (command) return command;
+      return JSON.stringify(parsed, null, 2);
+    }
+  } catch {
+    // Fall through to the original text.
+  }
+  return text;
+}
+
 function parseProgressToolText(entry: FeishuProgressCardEntry): {
   toolName: string;
   command: string;
@@ -4616,34 +4679,63 @@ function parseProgressToolText(entry: FeishuProgressCardEntry): {
   status: string | null;
   output: string;
 } {
-  const toolName = normalizeString(entry.itemType)
-    || normalizeString(entry.title.split("：")[1])
-    || "tool";
   const lines = String(entry.text || "").split(/\r?\n/);
+  const firstToolName = progressToolNameFromFirstLine(lines[0] || "");
+  const itemTypeName = normalizeString(entry.itemType);
+  const titleToolName = normalizeString(entry.title.split("：")[1]);
+  const toolName = firstToolName
+    || (!isGenericProgressToolName(itemTypeName) ? itemTypeName : "")
+    || (!isGenericProgressToolName(titleToolName) ? titleToolName : "")
+    || "tool";
   const pureClaudeToolResult = entry.kind === "tool_result"
     && normalizeString(entry.rawType).toLowerCase() === "user"
     && normalizeString(entry.itemType).toLowerCase() === "tool_result";
-  const bodyLines = pureClaudeToolResult ? lines : lines.slice(1);
+  const firstLineIsToolName = Boolean(firstToolName);
+  const bodyLines = pureClaudeToolResult ? lines : firstLineIsToolName ? lines.slice(1) : lines;
   let command = "";
   let exitCode: string | null = null;
   let status: string | null = null;
+  const inputLines: string[] = [];
   const outputLines: string[] = [];
-  let inOutput = false;
+  let activeBlock: "input" | "output" | null = null;
   for (let index = 0; index < bodyLines.length; index += 1) {
     const rawLine = bodyLines[index] || "";
     const line = rawLine.trim();
-    if (inOutput) {
+    if (activeBlock === "input") {
+      const outputMatch = line.match(/^output\s*:\s*(.*)$/i);
+      const metaMatch = /^command[=:]/i.test(line)
+        || /^exit=.+$/i.test(line)
+        || /^status=.+$/i.test(line)
+        || /^(in_progress|running|started|pending|completed|failed|success|succeeded|ok|error)$/i.test(line);
+      if (!outputMatch && !metaMatch) {
+        inputLines.push(rawLine);
+        continue;
+      }
+      if (outputMatch) {
+        activeBlock = "output";
+        if (outputMatch[1]) outputLines.push(outputMatch[1]);
+        continue;
+      }
+      activeBlock = null;
+    }
+    if (activeBlock === "output") {
       outputLines.push(rawLine);
       continue;
     }
     if (!line) continue;
+    const inputMatch = line.match(/^input\s*:\s*(.*)$/i);
+    if (inputMatch) {
+      activeBlock = "input";
+      if (inputMatch[1]) inputLines.push(inputMatch[1]);
+      continue;
+    }
     const outputMatch = line.match(/^output\s*:\s*(.*)$/i);
     if (outputMatch) {
-      inOutput = true;
+      activeBlock = "output";
       if (outputMatch[1]) outputLines.push(outputMatch[1]);
       continue;
     }
-    const commandMatch = line.match(/^command=(.*)$/i);
+    const commandMatch = line.match(/^command[=:]\s*(.*)$/i);
     if (commandMatch) {
       command = normalizeString(commandMatch[1]);
       continue;
@@ -4651,6 +4743,11 @@ function parseProgressToolText(entry: FeishuProgressCardEntry): {
     const exitMatch = line.match(/^exit=(.+)$/i);
     if (exitMatch) {
       exitCode = normalizeString(exitMatch[1]);
+      continue;
+    }
+    const statusMatch = line.match(/^status=(.+)$/i);
+    if (statusMatch) {
+      status = normalizeString(statusMatch[1]);
       continue;
     }
     if (!status && /^(in_progress|running|started|pending|completed|failed|success|succeeded|ok|error)$/i.test(line)) {
@@ -4671,6 +4768,9 @@ function parseProgressToolText(entry: FeishuProgressCardEntry): {
       }
     }
     outputLines.push(rawLine);
+  }
+  if (entry.kind === "tool_use" && inputLines.length > 0) {
+    command = progressToolInputFromStructuredText(toolName, inputLines.join("\n"));
   }
   return {
     toolName,

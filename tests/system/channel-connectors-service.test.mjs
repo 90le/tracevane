@@ -7986,9 +7986,17 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /renderFeishuProgressCard/);
   assert.match(daemonSource, /function formatProgressToolInput/);
   assert.match(daemonSource, /function formatTodoWriteProgressInput/);
+  assert.match(daemonSource, /function progressEventToolDirection/);
+  assert.match(daemonSource, /rawType\.includes\("tool_use"\)/);
+  assert.match(daemonSource, /itemType\.includes\("tool_use"\)/);
+  assert.match(daemonSource, /rawType\.includes\("tool_result"\)/);
+  assert.match(daemonSource, /itemType\.includes\("tool_result"\)/);
+  assert.match(daemonSource, /progressEventToolDirection\(event\) === "use" \? "tool_use" : "tool_result"/);
   assert.match(daemonSource, /const pureClaudeToolResult = entry\.kind === "tool_result"/);
   assert.match(daemonSource, /normalizeString\(entry\.rawType\)\.toLowerCase\(\) === "user"/);
-  assert.match(daemonSource, /const bodyLines = pureClaudeToolResult \? lines : lines\.slice\(1\)/);
+  assert.match(daemonSource, /const firstLineIsToolName = Boolean\(firstToolName\)/);
+  assert.match(daemonSource, /const bodyLines = pureClaudeToolResult \? lines : firstLineIsToolName \? lines\.slice\(1\) : lines/);
+  assert.match(daemonSource, /const statusMatch = line\.match\(\/\^status=\(\.\+\)\$\/i\)/);
   assert.match(daemonSource, /function renderFeishuProgressEntry/);
   assert.match(daemonSource, /function renderPlainProgressEntry/);
   assert.match(daemonSource, /function renderPlainProgressMessage/);
