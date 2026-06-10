@@ -1458,11 +1458,11 @@ function parseProgressLineEvents(agent: ChannelConnectorAgentId, line: string): 
   }
 }
 
-function isBufferedOpenCodeAssistantText(event: ChannelConnectorAgentProgressEvent): boolean {
+function isBufferedAssistantText(event: ChannelConnectorAgentProgressEvent): boolean {
   return event.type === "assistant" && event.phase === "final" && Boolean(normalizeString(event.text));
 }
 
-function isOpenCodeTerminalProgressEvent(event: ChannelConnectorAgentProgressEvent): boolean {
+function isTerminalProgressEvent(event: ChannelConnectorAgentProgressEvent): boolean {
   return event.type === "completed" || event.type === "failed" || event.type === "error";
 }
 
@@ -1470,33 +1470,34 @@ function createProgressLineParser(agent: ChannelConnectorAgentId): {
   parse: (line: string) => ChannelConnectorAgentProgressEvent[];
   flushFinal: () => ChannelConnectorAgentProgressEvent[];
 } {
-  const pendingOpenCodeText: ChannelConnectorAgentProgressEvent[] = [];
-  const flushOpenCodeText = (phase: "intermediate" | "final"): ChannelConnectorAgentProgressEvent[] => {
-    if (!pendingOpenCodeText.length) return [];
-    const latest = pendingOpenCodeText[pendingOpenCodeText.length - 1];
-    const text = joinOpenCodeTextParts(pendingOpenCodeText.map((event) => event.text || "")) || latest.text || "";
-    pendingOpenCodeText.length = 0;
+  const bufferAssistantText = agent === "codex" || agent === "claude-code" || agent === "opencode";
+  const pendingAssistantText: ChannelConnectorAgentProgressEvent[] = [];
+  const flushAssistantText = (phase: "intermediate" | "final"): ChannelConnectorAgentProgressEvent[] => {
+    if (!pendingAssistantText.length) return [];
+    const latest = pendingAssistantText[pendingAssistantText.length - 1];
+    const text = joinOpenCodeTextParts(pendingAssistantText.map((event) => event.text || "")) || latest.text || "";
+    pendingAssistantText.length = 0;
     return text ? [{ ...latest, text, phase }] : [];
   };
   return {
     parse: (line: string): ChannelConnectorAgentProgressEvent[] => {
       const events = parseProgressLineEvents(agent, line);
-      if (agent !== "opencode") return events;
+      if (!bufferAssistantText) return events;
       const output: ChannelConnectorAgentProgressEvent[] = [];
       for (const event of events) {
-        if (isBufferedOpenCodeAssistantText(event)) {
-          pendingOpenCodeText.push(event);
+        if (isBufferedAssistantText(event)) {
+          pendingAssistantText.push(event);
           continue;
         }
-        if (pendingOpenCodeText.length && !isOpenCodeTerminalProgressEvent(event)) {
-          output.push(...flushOpenCodeText("intermediate"));
+        if (pendingAssistantText.length) {
+          output.push(...flushAssistantText(isTerminalProgressEvent(event) ? "final" : "intermediate"));
         }
         output.push(event);
       }
       return output;
     },
     flushFinal: (): ChannelConnectorAgentProgressEvent[] => {
-      return agent === "opencode" ? flushOpenCodeText("final") : [];
+      return bufferAssistantText ? flushAssistantText("final") : [];
     },
   };
 }

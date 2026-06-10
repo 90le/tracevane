@@ -631,8 +631,10 @@ test("Channel Connectors native CLI session driver keeps Claude stream-json proc
     "    emit({ type: 'assistant', message: { content: [{ type: 'text', text: '' }] } });",
     "    emit({ type: 'result', result: '', session_id: 'claude-live-session' });",
     "  } else {",
-    "    emit({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash', input: { command: 'pwd' } }, { type: 'text', text: 'claude ok' }] } });",
+    "    emit({ type: 'assistant', message: { content: [{ type: 'text', text: '准备执行 Bash。' }] } });",
+    "    emit({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash', input: { command: 'pwd' } }] } });",
     "    emit({ type: 'user', message: { content: [{ type: 'tool_result', content: [{ type: 'text', text: '/tmp/project' }, { type: 'text', text: 'done' }] }] } });",
+    "    emit({ type: 'assistant', message: { content: [{ type: 'text', text: 'claude ok' }] } });",
     "    emit({ type: 'result', result: 'claude ok', session_id: 'claude-live-session' });",
     "  }",
     "});",
@@ -691,6 +693,9 @@ test("Channel Connectors native CLI session driver keeps Claude stream-json proc
     assert.equal(compact.ok, true);
     assert.equal(compact.replyText, "Claude Code compact 已完成。");
     assert.equal(compact.session.agentNativeSessionId, "claude-live-session");
+    const assistantProgress = progress.filter((event) => event.type === "assistant");
+    assert.deepEqual(assistantProgress.map((event) => event.text), ["准备执行 Bash。", "claude ok"]);
+    assert.deepEqual(assistantProgress.map((event) => event.phase), ["intermediate", "final"]);
     assert.ok(progress.some((event) => event.type === "tool" && /Bash/.test(event.text || "")));
     assert.ok(progress.some((event) => event.itemType === "tool_result" && /\/tmp\/project\ndone/.test(event.text || "")));
     const captures = fs.readFileSync(capturePath, "utf8").trim().split(/\r?\n/).map((line) => JSON.parse(line));

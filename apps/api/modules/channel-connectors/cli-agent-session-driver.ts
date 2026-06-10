@@ -31,6 +31,7 @@ interface PendingClaudeTurn {
   replyParts: string[];
   completedText: string | null;
   resultText: string | null;
+  pendingAssistantProgress: ChannelConnectorAgentProgressEvent[];
   terminalStatus: ChannelConnectorAgentTurnResult["status"];
   terminalError: string | null;
   timeout: NodeJS.Timeout;
@@ -69,6 +70,19 @@ function progressEvent(input: {
     text: input.text ? truncateProgressText(input.text) : null,
     phase: input.phase || null,
   };
+}
+
+function joinAssistantProgressText(parts: string[]): string {
+  const normalized = parts.filter((part) => normalizeString(part));
+  if (!normalized.length) return "";
+  const output: string[] = [];
+  for (const part of normalized) {
+    if (output[output.length - 1] === part) continue;
+    const startsWithFence = part.trimStart().startsWith("```");
+    if (output.length && startsWithFence) output.push("\n\n");
+    output.push(part);
+  }
+  return output.join("").trim();
 }
 
 function firstText(...values: unknown[]): string {
@@ -265,6 +279,7 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
         replyParts: [],
         completedText: null,
         resultText: null,
+        pendingAssistantProgress: [],
         terminalStatus: "completed",
         terminalError: null,
         timeout,
@@ -409,8 +424,30 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
 
   private pushProgress(event: ChannelConnectorAgentProgressEvent): void {
     if (!this.activeTurn) return;
+    if (event.type === "assistant" && event.phase === "final" && normalizeString(event.text)) {
+      this.activeTurn.pendingAssistantProgress.push(event);
+      return;
+    }
+    if (this.activeTurn.pendingAssistantProgress.length) {
+      const terminal = event.type === "completed" || event.type === "failed" || event.type === "error";
+      this.flushPendingAssistantProgress(terminal ? "final" : "intermediate");
+    }
     this.activeTurn.progressEvents.push(event);
     this.activeTurn.input.onProgress?.(event);
+  }
+
+  private flushPendingAssistantProgress(phase: "intermediate" | "final"): void {
+    const turn = this.activeTurn;
+    if (!turn?.pendingAssistantProgress.length) return;
+    const latest = turn.pendingAssistantProgress[turn.pendingAssistantProgress.length - 1];
+    const text = joinAssistantProgressText(turn.pendingAssistantProgress.map((event) => event.text || ""))
+      || latest.text
+      || "";
+    turn.pendingAssistantProgress.length = 0;
+    if (!text) return;
+    const event = { ...latest, text, phase };
+    turn.progressEvents.push(event);
+    turn.input.onProgress?.(event);
   }
 
   private finishActive(): void {

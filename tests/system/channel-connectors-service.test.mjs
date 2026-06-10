@@ -7274,6 +7274,41 @@ test("native Channel Connectors process runner maps Codex command execution prog
   assert.equal(result.progressEvents?.length, 4);
 });
 
+test("native Channel Connectors process runner maps Codex agent messages before later tools as process progress", async () => {
+  const root = makeTempRoot();
+  const progress = [];
+  const stdout = [
+    JSON.stringify({ type: "thread.started", thread_id: "thread-process-reply" }),
+    JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "准备执行第一条命令。" } }),
+    JSON.stringify({ type: "item.started", item: { type: "command_execution", command: "pwd" } }),
+    JSON.stringify({ type: "item.completed", item: { type: "command_execution", command: "pwd", exit_code: 0, output: "/tmp/project" } }),
+    JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "最终总结。" } }),
+    JSON.stringify({ type: "turn.completed" }),
+    "",
+  ].join("\n");
+  const childScript = `process.stdout.write(${JSON.stringify(stdout)});`;
+
+  const result = await defaultChannelConnectorAgentProcessRunner({
+    command: process.execPath,
+    args: ["-e", childScript],
+    cwd: root,
+    stdin: "",
+    env: {},
+    timeoutMs: 1000,
+    agent: "codex",
+    onProgress: (event) => progress.push(event),
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.error, null);
+  const assistantProgress = progress.filter((event) => event.type === "assistant");
+  assert.deepEqual(assistantProgress.map((event) => event.text), ["准备执行第一条命令。", "最终总结。"]);
+  assert.deepEqual(assistantProgress.map((event) => event.phase), ["intermediate", "final"]);
+  assert.equal(isChannelConnectorProcessProgressEvent(assistantProgress[0]), true);
+  assert.equal(isChannelConnectorProcessProgressEvent(assistantProgress[1]), false);
+  assert.equal(progress.at(-1).type, "completed");
+});
+
 test("native Channel Connectors process runner maps Claude Code stream-json progress", async () => {
   const root = makeTempRoot();
   const progress = [];
@@ -7334,6 +7369,69 @@ test("native Channel Connectors process runner maps Claude Code stream-json prog
   assert.equal(progress[5].type, "completed");
   assert.equal(progress[5].text, "完成\n\n下一步可以发送文件。");
   assert.equal(result.progressEvents?.length, 6);
+});
+
+test("native Channel Connectors process runner maps Claude text before later tools as process progress", async () => {
+  const root = makeTempRoot();
+  const progress = [];
+  const stdout = [
+    JSON.stringify({ type: "system", session_id: "claude-text-before-tool" }),
+    JSON.stringify({
+      type: "assistant",
+      message: {
+        content: [
+          { type: "text", text: "先说明一下，我会读取文件。" },
+        ],
+      },
+    }),
+    JSON.stringify({
+      type: "assistant",
+      message: {
+        content: [
+          { type: "tool_use", name: "Read", input: { file_path: "TOOLS.md" } },
+        ],
+      },
+    }),
+    JSON.stringify({
+      type: "user",
+      message: {
+        content: [
+          { type: "tool_result", content: [{ type: "text", text: "line 1" }] },
+        ],
+      },
+    }),
+    JSON.stringify({
+      type: "assistant",
+      message: {
+        content: [
+          { type: "text", text: "最终回复。" },
+        ],
+      },
+    }),
+    JSON.stringify({ type: "result", result: "最终回复。", session_id: "claude-text-before-tool" }),
+    "",
+  ].join("\n");
+  const childScript = `process.stdout.write(${JSON.stringify(stdout)});`;
+
+  const result = await defaultChannelConnectorAgentProcessRunner({
+    command: process.execPath,
+    args: ["-e", childScript],
+    cwd: root,
+    stdin: "",
+    env: {},
+    timeoutMs: 1000,
+    agent: "claude-code",
+    onProgress: (event) => progress.push(event),
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.error, null);
+  const assistantProgress = progress.filter((event) => event.type === "assistant");
+  assert.deepEqual(assistantProgress.map((event) => event.text), ["先说明一下，我会读取文件。", "最终回复。"]);
+  assert.deepEqual(assistantProgress.map((event) => event.phase), ["intermediate", "final"]);
+  assert.equal(isChannelConnectorProcessProgressEvent(assistantProgress[0]), true);
+  assert.equal(isChannelConnectorProcessProgressEvent(assistantProgress[1]), false);
+  assert.equal(progress.at(-1).type, "completed");
 });
 
 test("native Channel Connectors process runner maps OpenCode JSON progress without leaking final text", async () => {
@@ -7410,12 +7508,12 @@ test("native Channel Connectors process runner maps OpenCode JSON progress witho
   assert.equal(progress[6].type, "tool");
   assert.equal(progress[6].rawType, "tool_result");
   assert.match(progress[6].text, /output:\n\/tmp\/project/);
-  assert.equal(progress[7].type, "completed");
-  assert.equal(progress[7].text, "done");
-  assert.equal(progress[8].type, "assistant");
-  assert.equal(progress[8].text, "OpenCode done.");
-  assert.equal(progress[8].phase, "final");
-  assert.equal(isChannelConnectorProcessProgressEvent(progress[8]), false);
+  assert.equal(progress[7].type, "assistant");
+  assert.equal(progress[7].text, "OpenCode done.");
+  assert.equal(progress[7].phase, "final");
+  assert.equal(isChannelConnectorProcessProgressEvent(progress[7]), false);
+  assert.equal(progress[8].type, "completed");
+  assert.equal(progress[8].text, "done");
   assert.equal(result.progressEvents?.length, 9);
 });
 

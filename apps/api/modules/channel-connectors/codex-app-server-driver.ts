@@ -89,6 +89,19 @@ function progressEvent(input: {
   };
 }
 
+function joinAssistantProgressText(parts: string[]): string {
+  const normalized = parts.filter((part) => normalizeString(part));
+  if (!normalized.length) return "";
+  const output: string[] = [];
+  for (const part of normalized) {
+    if (output[output.length - 1] === part) continue;
+    const startsWithFence = part.trimStart().startsWith("```");
+    if (output.length && startsWithFence) output.push("\n\n");
+    output.push(part);
+  }
+  return output.join("").trim();
+}
+
 function sandboxPolicy(permissionMode: ChannelConnectorPermissionMode): Record<string, unknown> | null {
   if (permissionMode === "read-only" || permissionMode === "plan") {
     return { type: "readOnly", networkAccess: true };
@@ -511,6 +524,31 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
     let completedAgentMessageText = "";
     let terminalStatus: ChannelConnectorAgentTurnResult["status"] = "completed";
     let terminalError: string | null = null;
+    const pendingAssistantProgress: ChannelConnectorAgentProgressEvent[] = [];
+    const flushAssistantProgress = (phase: "intermediate" | "final"): void => {
+      if (!pendingAssistantProgress.length) return;
+      const latest = pendingAssistantProgress[pendingAssistantProgress.length - 1];
+      const text = joinAssistantProgressText(pendingAssistantProgress.map((event) => event.text || ""))
+        || latest.text
+        || "";
+      pendingAssistantProgress.length = 0;
+      if (!text) return;
+      const event = { ...latest, text, phase };
+      progressEvents.push(event);
+      input.onProgress?.(event);
+    };
+    const emitProgress = (event: ChannelConnectorAgentProgressEvent): void => {
+      if (event.type === "assistant" && event.phase === "final" && normalizeString(event.text)) {
+        pendingAssistantProgress.push(event);
+        return;
+      }
+      if (pendingAssistantProgress.length) {
+        const terminal = event.type === "completed" || event.type === "failed" || event.type === "error";
+        flushAssistantProgress(terminal ? "final" : "intermediate");
+      }
+      progressEvents.push(event);
+      input.onProgress?.(event);
+    };
     this.activeTurnInput = input;
     let turnResponse: Record<string, unknown>;
     try {
@@ -558,8 +596,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
             ? "Codex app-server turn timed out waiting for completion after assistant output. The app-server may be waiting for tool approval or a missing completion event."
             : "Codex app-server turn timed out waiting for completion.";
           const event = progressEvent({ type: "failed", rawType: "turn/timeout", text: terminalError });
-          progressEvents.push(event);
-          input.onProgress?.(event);
+          emitProgress(event);
           void this.stop("turn-timeout");
           done(new Error(terminalError));
         }, turnWaitTimeoutMs(this.requestTimeoutMs, this.turnTimeoutMs));
@@ -599,14 +636,12 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
               text,
               phase: itemType === "agentMessage" ? "final" : null,
             });
-            progressEvents.push(event);
-            input.onProgress?.(event);
+            emitProgress(event);
             return;
           }
           if (method === "turn/started") {
             const event = progressEvent({ type: "running", rawType: method, text: "Codex app-server turn started" });
-            progressEvents.push(event);
-            input.onProgress?.(event);
+            emitProgress(event);
             return;
           }
           if (method !== "turn/completed") return;
@@ -618,8 +653,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
             rawType: method,
             text: `Codex app-server turn ${status || "completed"}`,
           });
-          progressEvents.push(event);
-          input.onProgress?.(event);
+          emitProgress(event);
           if (status === "failed") {
             terminalStatus = "failed";
             terminalError = "Codex app-server turn failed.";

@@ -21,6 +21,7 @@ class FakeCodexAppServerTransport {
   deltaChunks = null;
   completedText = null;
   userMessageEchoText = null;
+  completedItems = null;
   toolItems = [];
 
   send(message) {
@@ -110,7 +111,17 @@ class FakeCodexAppServerTransport {
               },
             });
           }
-          for (const item of this.toolItems) {
+          const completedItems = Array.isArray(this.completedItems)
+            ? this.completedItems
+            : [
+              ...this.toolItems,
+              {
+                type: "agentMessage",
+                id: "agent-1",
+                text: finalText,
+              },
+            ];
+          for (const item of completedItems) {
             this.emit({
               method: "item/completed",
               params: {
@@ -121,19 +132,6 @@ class FakeCodexAppServerTransport {
               },
             });
           }
-          this.emit({
-            method: "item/completed",
-            params: {
-              threadId: this.nextThreadId,
-              turnId,
-              completedAtMs: Date.now(),
-              item: {
-                type: "agentMessage",
-                id: "agent-1",
-                text: finalText,
-              },
-            },
-          });
           if (this.emitTurnCompleted) {
             this.emit({
               method: "turn/completed",
@@ -498,6 +496,63 @@ test("Codex app-server driver preserves tool command output", async () => {
   assert.match(tool.text, /command=cat TOOLS\.md/);
   assert.match(tool.text, /exit=0/);
   assert.match(tool.text, /output:\nalpha\n  beta\n\ngamma/);
+});
+
+test("Codex app-server driver maps agent messages before later tools as process progress", async () => {
+  const transport = new FakeCodexAppServerTransport();
+  transport.completedItems = [
+    {
+      type: "agentMessage",
+      id: "agent-process-1",
+      text: "准备执行第一条命令。",
+    },
+    {
+      type: "commandExecution",
+      command: "pwd",
+      exitCode: 0,
+      aggregatedOutput: "/tmp/project",
+    },
+    {
+      type: "agentMessage",
+      id: "agent-process-2",
+      text: "最终总结。",
+    },
+  ];
+  const session = new CodexAppServerSession({
+    sessionId: "session-process-progress",
+    transport,
+    model: "gpt-5",
+    cwd: "/tmp/project",
+    permissionMode: "suggest",
+  });
+  const progress = [];
+
+  const result = await session.runTurn({
+    mode: "persistent",
+    key: {
+      bindingId: "octo-codex",
+      projectId: "codex-app-server",
+      sessionKey: "dmwork:dm:user-1",
+      agent: "codex",
+      model: "gpt-5",
+      workDir: "/tmp/project",
+    },
+    messageId: "m-process-progress",
+    agentTurnRequest: agentTurnRequest({ messageId: "m-process-progress", content: "先说一句，再调用工具" }),
+    onProgress: (event) => progress.push(event),
+    runOneShot: async () => {
+      throw new Error("one-shot should not run for app-server driver");
+    },
+  });
+
+  const assistantProgress = progress.filter((event) => event.type === "assistant");
+  assert.equal(result.ok, true);
+  assert.equal(result.replyText, "最终总结。");
+  assert.deepEqual(assistantProgress.map((event) => event.text), ["准备执行第一条命令。", "最终总结。"]);
+  assert.deepEqual(assistantProgress.map((event) => event.phase), ["intermediate", "final"]);
+  assert.equal(isChannelConnectorProcessProgressEvent(assistantProgress[0]), true);
+  assert.equal(isChannelConnectorProcessProgressEvent(assistantProgress[1]), false);
+  assert.equal(progress.at(-1).type, "completed");
 });
 
 test("Codex app-server driver hides internal user prompt echoes from progress", async () => {

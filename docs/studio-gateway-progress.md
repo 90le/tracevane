@@ -35,12 +35,12 @@
 - 修复 Claude 工具流渲染：Claude `user/tool_result` 的纯输出文本不再被进度卡片解析器吞掉首行，单行工具结果不会再显示为“无输出”。
 - 按 CC Go 迁移 Codex app-server 运行中权限批准合同：`item/commandExecution/requestApproval`、`item/fileChange/requestApproval` 和 `item/permissions/requestApproval` 进入现有 IM permission resolver，分别回写 `{decision:"accept|decline"}` 与 turn-scoped `permissions` 结果。
 - Feishu 运行中权限审批优先并入当前进度卡片：审批条目展示工具、请求、输入和状态，卡片内提供允许/拒绝/本轮全部允许按钮；点击后同一进度卡更新为已允许/已拒绝，不再默认刷独立审批卡。若进度卡尚未创建或 AskUserQuestion 需要独立交互，则保留原独立提示回退。
-- 修复 IM 过程回复误判：Codex app-server `item/agentMessage/delta` 不再逐 token 推送成过程回复；Codex one-shot、Claude Code、OpenCode 的最终 assistant 文本统一标记为 `phase=final`，渠道发送层只允许 `phase=intermediate` 的 assistant 文本进入“过程回复”；`/thinking`、`/process`、`/tools` 三路开关保持不变。
+- 修复 IM 过程回复相位：Codex one-shot、Codex app-server、Claude Code stream-json 和 OpenCode 都先暂存 assistant 正文；后面仍有工具/思考/运行事件时转为 `phase=intermediate` 过程回复，后面只剩 terminal 时保留 `phase=final`，渠道发送层仍只允许 intermediate 进入“过程回复”。
 - 修复 Feishu 进度卡状态误判：Agent 可恢复的 `user/tool_result` error/failed 现在渲染为失败的工具结果，不再把整轮运行卡锁死为 failed；最终 `agent.ok=true` 时进度卡会收尾为 completed。
 - 增强 `smoke-channel-connectors-agent-run-live.mjs`：新增 `--require-no-final-progress-reply` 和 `--require-feishu-progress-card-completed`，并把这两项做成窗口级硬保护；用户发真实 IM 消息后，脚本会验收最终回复未被当过程消息发送，且任何成功 Feishu run 的最终进度卡都不能停在 failed。
-- 修复 OpenCode 过程回复缺失：OpenCode `text` JSONL 先缓冲，若后续还有工具/思考/新步骤则转为 `phase=intermediate` 过程回复；若到进程结束仍无后续工具，则保留 `phase=final`，避免最终回复污染 IM 过程消息。
+- 保留 Codex delta 防刷屏保护：Codex app-server `item/agentMessage/delta` 仍只用于拼最终 reply，不会逐 token 推送过程回复。
 - 清理 Channel Connectors 回归测试债：OpenCode persistent fake session 测试显式模拟当前 runtime dataHome session 存在性；OpenCode stop 测试区分启动前合法 session 验证与取消后禁止 DB fallback；daemon runtime / Octo JSONL 测试改为等待 async debounce/buffer flush，不再误报。
-- 对照 CC Go 修复 Claude/OpenCode 工具流：Claude live/session 递归提取 tool input/result，OpenCode NDJSON 按 completed `tool_use` 拆出工具调用和工具输出；OpenCode text 只标记为最终回复，不进入过程消息。
+- 对照 CC Go 修复 Claude/OpenCode 工具流：Claude live/session 递归提取 tool input/result，OpenCode NDJSON 按 completed `tool_use` 拆出工具调用和工具输出；assistant 正文统一由后续事件判定 intermediate/final。
 
 ## 最近验证
 
@@ -58,6 +58,10 @@
 - 通过：`node --test --test-name-pattern "process progress only includes intermediate assistant text|daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`，覆盖 Codex delta 非过程回复和 Feishu 可恢复工具错误不锁死整轮卡片失败的结构合同。
 - 通过：`node --test --test-name-pattern "maps Claude Code stream-json progress|maps OpenCode JSON progress|keeps Claude Code final text out of process progress" tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test --test-name-pattern "maps OpenCode JSON progress|process progress only includes intermediate assistant text|maps Claude Code stream-json progress|keeps Claude Code final text out of process progress" tests/system/channel-connectors-service.test.mjs`，覆盖 OpenCode 工具间 text 转过程回复、最终 text 不进过程回复。
+- 通过：`node --test --test-name-pattern "maps Codex agent messages before later tools|maps Claude text before later tools|maps OpenCode JSON progress|keeps Claude Code final text out|streams progress events from agent JSONL|process progress only includes intermediate" tests/system/channel-connectors-service.test.mjs`，覆盖 Codex/Claude text-only 正文在后续工具前转 intermediate，最终正文不进过程回复。
+- 通过：`node --test --test-name-pattern "maps agent messages before later tools|preserves completed markdown|preserves tool command output|starts one thread" tests/system/channel-connectors-codex-app-server-driver.test.mjs`，覆盖 Codex app-server assistant 正文在后续工具前转 intermediate，delta 仍不刷过程。
+- 通过：`node --test --test-name-pattern "Claude stream-json process alive|OpenCode compact" tests/system/channel-connectors-agent-session-driver.test.mjs`，覆盖 Claude persistent text-before-tool 过程回复与 final 分离。
+- 通过：`node scripts/smoke-channel-connectors-feishu-long-connection.mjs --duration-ms 15000 --bindings feishu-live --json`，重启后 15s 窗口 `violations=0`、`reconnects=0`、`transportStale=false`。
 - 通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，覆盖 Codex app-server delta 不再生成 assistant 过程进度、最终 reply/manifest 保真、compact、stop、tool output 和 requestApproval。
 - 通过：`node --test --test-name-pattern "Channel Connectors native CLI session driver keeps Claude stream-json process alive for native compact" tests/system/channel-connectors-agent-session-driver.test.mjs`。
 - 通过：`node --test --test-name-pattern "OpenCode compact|Claude stream-json process alive" tests/system/channel-connectors-agent-session-driver.test.mjs`。
