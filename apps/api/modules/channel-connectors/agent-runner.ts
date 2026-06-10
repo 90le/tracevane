@@ -1458,11 +1458,56 @@ function parseProgressLineEvents(agent: ChannelConnectorAgentId, line: string): 
   }
 }
 
+function isBufferedOpenCodeAssistantText(event: ChannelConnectorAgentProgressEvent): boolean {
+  return event.type === "assistant" && event.phase === "final" && Boolean(normalizeString(event.text));
+}
+
+function isOpenCodeTerminalProgressEvent(event: ChannelConnectorAgentProgressEvent): boolean {
+  return event.type === "completed" || event.type === "failed" || event.type === "error";
+}
+
+function createProgressLineParser(agent: ChannelConnectorAgentId): {
+  parse: (line: string) => ChannelConnectorAgentProgressEvent[];
+  flushFinal: () => ChannelConnectorAgentProgressEvent[];
+} {
+  const pendingOpenCodeText: ChannelConnectorAgentProgressEvent[] = [];
+  const flushOpenCodeText = (phase: "intermediate" | "final"): ChannelConnectorAgentProgressEvent[] => {
+    if (!pendingOpenCodeText.length) return [];
+    const latest = pendingOpenCodeText[pendingOpenCodeText.length - 1];
+    const text = joinOpenCodeTextParts(pendingOpenCodeText.map((event) => event.text || "")) || latest.text || "";
+    pendingOpenCodeText.length = 0;
+    return text ? [{ ...latest, text, phase }] : [];
+  };
+  return {
+    parse: (line: string): ChannelConnectorAgentProgressEvent[] => {
+      const events = parseProgressLineEvents(agent, line);
+      if (agent !== "opencode") return events;
+      const output: ChannelConnectorAgentProgressEvent[] = [];
+      for (const event of events) {
+        if (isBufferedOpenCodeAssistantText(event)) {
+          pendingOpenCodeText.push(event);
+          continue;
+        }
+        if (pendingOpenCodeText.length && !isOpenCodeTerminalProgressEvent(event)) {
+          output.push(...flushOpenCodeText("intermediate"));
+        }
+        output.push(event);
+      }
+      return output;
+    },
+    flushFinal: (): ChannelConnectorAgentProgressEvent[] => {
+      return agent === "opencode" ? flushOpenCodeText("final") : [];
+    },
+  };
+}
+
 function collectProgressEvents(stdout: string, agent: ChannelConnectorAgentId): ChannelConnectorAgentProgressEvent[] {
   const events: ChannelConnectorAgentProgressEvent[] = [];
+  const parser = createProgressLineParser(agent);
   for (const line of stdout.split(/\r?\n/)) {
-    events.push(...parseProgressLineEvents(agent, line));
+    events.push(...parser.parse(line));
   }
+  events.push(...parser.flushFinal());
   return events;
 }
 
@@ -1492,6 +1537,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
       stdio: ["pipe", "pipe", "pipe"],
     });
     const isClaudeCode = request.agent === "claude-code";
+    const progressParser = createProgressLineParser(request.agent);
     let stdout = "";
     let stderr = "";
     let stdoutLineBuffer = "";
@@ -1561,7 +1607,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
       const lines = stdoutLineBuffer.split(/\r?\n/);
       stdoutLineBuffer = lines.pop() || "";
       for (const line of lines) {
-        for (const event of parseProgressLineEvents(request.agent, line)) {
+        for (const event of progressParser.parse(line)) {
           progressEvents.push(event);
           request.onProgress?.(event);
         }
@@ -1590,7 +1636,11 @@ export async function defaultChannelConnectorAgentProcessRunner(
     child.on("close", (exitCode, signal) => {
       if (settled) return;
       settle();
-      for (const trailingEvent of parseProgressLineEvents(request.agent, stdoutLineBuffer)) {
+      for (const trailingEvent of progressParser.parse(stdoutLineBuffer)) {
+        progressEvents.push(trailingEvent);
+        request.onProgress?.(trailingEvent);
+      }
+      for (const trailingEvent of progressParser.flushFinal()) {
         progressEvents.push(trailingEvent);
         request.onProgress?.(trailingEvent);
       }

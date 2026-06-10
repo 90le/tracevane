@@ -7355,6 +7355,20 @@ test("native Channel Connectors process runner maps OpenCode JSON progress witho
         },
       },
     }),
+    JSON.stringify({ type: "text", messageID: "assistant-message-1", timestamp: 2, part: { type: "text", messageID: "assistant-message-1", text: "第一次工具完成。" } }),
+    JSON.stringify({
+      type: "tool_use",
+      part: {
+        type: "tool",
+        tool: "bash",
+        state: {
+          status: "completed",
+          title: "Print cwd",
+          input: { command: "pwd" },
+          output: "/tmp/project",
+        },
+      },
+    }),
     JSON.stringify({ type: "text", messageID: "assistant-message", timestamp: 2, part: { type: "text", messageID: "assistant-message", text: "OpenCode done." } }),
     JSON.stringify({ type: "step_finish", part: { type: "step-finish", reason: "done" } }),
     "",
@@ -7374,7 +7388,7 @@ test("native Channel Connectors process runner maps OpenCode JSON progress witho
 
   assert.equal(result.exitCode, 0);
   assert.equal(result.error, null);
-  assert.equal(progress.length, 6);
+  assert.equal(progress.length, 9);
   assert.equal(progress[0].type, "session");
   assert.equal(progress[0].text, "opencode-session-1");
   assert.equal(progress[1].type, "reasoning");
@@ -7387,11 +7401,22 @@ test("native Channel Connectors process runner maps OpenCode JSON progress witho
   assert.equal(progress[3].rawType, "tool_result");
   assert.match(progress[3].text, /output:\nfile-a\nfile-b/);
   assert.equal(progress[4].type, "assistant");
-  assert.equal(progress[4].phase, "final");
-  assert.equal(isChannelConnectorProcessProgressEvent(progress[4]), false);
-  assert.equal(progress[5].type, "completed");
-  assert.equal(progress[5].text, "done");
-  assert.equal(result.progressEvents?.length, 6);
+  assert.equal(progress[4].text, "第一次工具完成。");
+  assert.equal(progress[4].phase, "intermediate");
+  assert.equal(isChannelConnectorProcessProgressEvent(progress[4]), true);
+  assert.equal(progress[5].type, "tool");
+  assert.equal(progress[5].rawType, "tool_use");
+  assert.match(progress[5].text, /Print cwd/);
+  assert.equal(progress[6].type, "tool");
+  assert.equal(progress[6].rawType, "tool_result");
+  assert.match(progress[6].text, /output:\n\/tmp\/project/);
+  assert.equal(progress[7].type, "completed");
+  assert.equal(progress[7].text, "done");
+  assert.equal(progress[8].type, "assistant");
+  assert.equal(progress[8].text, "OpenCode done.");
+  assert.equal(progress[8].phase, "final");
+  assert.equal(isChannelConnectorProcessProgressEvent(progress[8]), false);
+  assert.equal(result.progressEvents?.length, 9);
 });
 
 test("native Channel Connectors process runner keeps Claude Code final text out of process progress", async () => {

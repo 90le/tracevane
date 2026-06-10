@@ -38,6 +38,7 @@
 - 修复 IM 过程回复误判：Codex app-server `item/agentMessage/delta` 不再逐 token 推送成过程回复；Codex one-shot、Claude Code、OpenCode 的最终 assistant 文本统一标记为 `phase=final`，渠道发送层只允许 `phase=intermediate` 的 assistant 文本进入“过程回复”；`/thinking`、`/process`、`/tools` 三路开关保持不变。
 - 修复 Feishu 进度卡状态误判：Agent 可恢复的 `user/tool_result` error/failed 现在渲染为失败的工具结果，不再把整轮运行卡锁死为 failed；最终 `agent.ok=true` 时进度卡会收尾为 completed。
 - 增强 `smoke-channel-connectors-agent-run-live.mjs`：新增 `--require-no-final-progress-reply` 和 `--require-feishu-progress-card-completed`，并把这两项做成窗口级硬保护；用户发真实 IM 消息后，脚本会验收最终回复未被当过程消息发送，且任何成功 Feishu run 的最终进度卡都不能停在 failed。
+- 修复 OpenCode 过程回复缺失：OpenCode `text` JSONL 先缓冲，若后续还有工具/思考/新步骤则转为 `phase=intermediate` 过程回复；若到进程结束仍无后续工具，则保留 `phase=final`，避免最终回复污染 IM 过程消息。
 - 清理 Channel Connectors 回归测试债：OpenCode persistent fake session 测试显式模拟当前 runtime dataHome session 存在性；OpenCode stop 测试区分启动前合法 session 验证与取消后禁止 DB fallback；daemon runtime / Octo JSONL 测试改为等待 async debounce/buffer flush，不再误报。
 - 对照 CC Go 修复 Claude/OpenCode 工具流：Claude live/session 递归提取 tool input/result，OpenCode NDJSON 按 completed `tool_use` 拆出工具调用和工具输出；OpenCode text 只标记为最终回复，不进入过程消息。
 
@@ -56,6 +57,7 @@
 - 通过：`node --test --test-name-pattern "native Channel Connectors process runner streams progress events from agent JSONL|native Channel Connectors process progress only includes intermediate assistant text|native Channel Connectors process runner maps Claude Code stream-json progress|native Channel Connectors process runner keeps Claude Code final text out of process progress|native Channel Connectors daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test --test-name-pattern "process progress only includes intermediate assistant text|daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`，覆盖 Codex delta 非过程回复和 Feishu 可恢复工具错误不锁死整轮卡片失败的结构合同。
 - 通过：`node --test --test-name-pattern "maps Claude Code stream-json progress|maps OpenCode JSON progress|keeps Claude Code final text out of process progress" tests/system/channel-connectors-service.test.mjs`。
+- 通过：`node --test --test-name-pattern "maps OpenCode JSON progress|process progress only includes intermediate assistant text|maps Claude Code stream-json progress|keeps Claude Code final text out of process progress" tests/system/channel-connectors-service.test.mjs`，覆盖 OpenCode 工具间 text 转过程回复、最终 text 不进过程回复。
 - 通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，覆盖 Codex app-server delta 不再生成 assistant 过程进度、最终 reply/manifest 保真、compact、stop、tool output 和 requestApproval。
 - 通过：`node --test --test-name-pattern "Channel Connectors native CLI session driver keeps Claude stream-json process alive for native compact" tests/system/channel-connectors-agent-session-driver.test.mjs`。
 - 通过：`node --test --test-name-pattern "OpenCode compact|Claude stream-json process alive" tests/system/channel-connectors-agent-session-driver.test.mjs`。
