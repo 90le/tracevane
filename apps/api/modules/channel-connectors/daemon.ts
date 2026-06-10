@@ -3075,6 +3075,7 @@ function startOctoTypingPulse(
     if (inFlight) return;
     inFlight = true;
     void sendOctoTyping(transport, channelId, message.channelType)
+      .catch(() => {})
       .finally(() => {
         inFlight = false;
       });
