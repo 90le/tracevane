@@ -4053,6 +4053,51 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(execRun.audit.exec.stderrBytes, 0);
   assert.match(execRun.audit.exec.stdoutPreview, /exec:.*:alpha beta/);
 
+  const fastProgressEvents = [];
+  const fastExecRun = await handleChannelConnectorCommand({
+    ...baseContext,
+    onCommandProgress: (event) => {
+      fastProgressEvents.push(event);
+      return { handled: true };
+    },
+    message: message("/xstat quick"),
+  });
+  assert.equal(fastExecRun.handled, true);
+  assert.equal(fastExecRun.ok, true);
+  assert.equal(fastProgressEvents.length, 0);
+  assert.equal(fastExecRun.progressHandled, false);
+
+  const addSlowExec = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/commands addexec slow node -e \"setTimeout(()=>console.log('slow done'), 700)\""),
+  });
+  assert.equal(addSlowExec.handled, true);
+  assert.equal(addSlowExec.ok, true);
+  const slowProgressEvents = [];
+  const slowExecRun = await handleChannelConnectorCommand({
+    ...baseContext,
+    onCommandProgress: (event) => {
+      slowProgressEvents.push(event);
+      return {
+        handled: true,
+        suppressFinalReply: event.type === "completed",
+      };
+    },
+    message: message("/slow"),
+  });
+  assert.equal(slowExecRun.handled, true);
+  assert.equal(slowExecRun.ok, true);
+  assert.equal(slowExecRun.progressHandled, true);
+  assert.equal(slowExecRun.suppressReply, true);
+  assert.match(slowExecRun.replyText, /slow done/);
+  assert.deepEqual(slowProgressEvents.map((event) => event.type), ["started", "completed"]);
+  assert.equal(slowProgressEvents[0].commandName, "slow");
+  assert.match(slowProgressEvents[0].commandPreview, /setTimeout/);
+  assert.match(slowProgressEvents[0].workDir, /codex-work$/);
+  assert.equal(slowProgressEvents[0].outputPreview, null);
+  assert.equal(slowProgressEvents[1].exitCode, 0);
+  assert.match(slowProgressEvents[1].outputPreview, /slow done/);
+
   const duplicateBuiltin = await handleChannelConnectorCommand({
     ...baseContext,
     message: message("/commands add status should not override builtin"),
@@ -8210,6 +8255,15 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /agent\.progress\.card/);
   assert.match(daemonSource, /renderOctoProgressText/);
   assert.match(daemonSource, /agent\.progress\.reply/);
+  assert.match(daemonSource, /function renderFeishuCommandProgressCard/);
+  assert.match(daemonSource, /function formatCommandProgressText/);
+  assert.match(daemonSource, /eventKind:\s*"channel\.command\.progress"/);
+  assert.match(daemonSource, /patch-command-progress-card/);
+  assert.match(daemonSource, /send-command-progress-card/);
+  assert.match(daemonSource, /send-command-progress-text/);
+  assert.match(daemonSource, /formatCommandProgressText\(event\)/);
+  assert.match(daemonSource, /event\.type === "started"/);
+  assert.match(daemonSource, /suppressFinalReply:\s*handled && feishuCardsEnabled\(binding\) && commandProgressIsTerminal\(event\)/);
   assert.match(daemonSource, /octoPermissionPending/);
   assert.match(daemonSource, /octoPermissionBufferedProgress/);
   assert.match(daemonSource, /queueOctoPermissionStateReply/);

@@ -64,6 +64,8 @@ import {
   resolveChannelConnectorBindingCommandAlias,
   resolveChannelConnectorEffectiveProject,
   type ChannelConnectorCommandAudit,
+  type ChannelConnectorCommandProgressAck,
+  type ChannelConnectorCommandProgressEvent,
   type ChannelConnectorGatewayModel,
   type ChannelConnectorPermissionResponseAction,
   type ChannelConnectorPermissionResponseResult,
@@ -767,6 +769,112 @@ function commandAuditLogFields(audit: ChannelConnectorCommandAudit | null | unde
     commandExecStderrBytes: audit.exec?.stderrBytes ?? null,
     commandExecStdoutPreview: audit.exec?.stdoutPreview || null,
     commandExecStderrPreview: audit.exec?.stderrPreview || null,
+  };
+}
+
+function commandProgressLogFields(event: ChannelConnectorCommandProgressEvent): Record<string, unknown> {
+  return {
+    commandProgressType: event.type,
+    commandProgressName: event.commandName,
+    commandProgressPreview: event.commandPreview,
+    commandProgressWorkDir: event.workDir,
+    commandProgressElapsedMs: event.elapsedMs,
+    commandProgressOutputPreview: event.outputPreview,
+    commandProgressStdoutPreview: event.stdoutPreview,
+    commandProgressStderrPreview: event.stderrPreview,
+    commandProgressExitCode: event.exitCode ?? null,
+    commandProgressSignal: event.signal || null,
+    commandProgressError: event.error || null,
+  };
+}
+
+function commandProgressIsTerminal(event: ChannelConnectorCommandProgressEvent): boolean {
+  return event.type === "completed" || event.type === "failed" || event.type === "timeout";
+}
+
+function commandProgressStatusLabel(type: ChannelConnectorCommandProgressEvent["type"]): string {
+  if (type === "completed") return "完成";
+  if (type === "failed") return "失败";
+  if (type === "timeout") return "超时";
+  if (type === "progress") return "运行中";
+  return "已启动";
+}
+
+function commandProgressCardTemplate(type: ChannelConnectorCommandProgressEvent["type"]): string {
+  if (type === "completed") return "green";
+  if (type === "failed") return "red";
+  if (type === "timeout") return "orange";
+  return "blue";
+}
+
+function commandProgressOutputBlock(event: ChannelConnectorCommandProgressEvent, maxRunes = 2_000): string {
+  const output = normalizeString(event.outputPreview) || normalizeString(event.stdoutPreview) || normalizeString(event.stderrPreview);
+  return output ? shortMessage(output, maxRunes) : "暂无输出";
+}
+
+function formatCommandProgressText(event: ChannelConnectorCommandProgressEvent): string {
+  const meta = [
+    `状态=${commandProgressStatusLabel(event.type)}`,
+    `耗时=${event.elapsedMs}ms`,
+    event.exitCode === null || event.exitCode === undefined ? "" : `exit=${event.exitCode}`,
+    event.signal ? `signal=${event.signal}` : "",
+    event.error ? `error=${event.error}` : "",
+  ].filter(Boolean).join(" · ");
+  return renderPlainProgressMessage({
+    icon: progressKindIcon(commandProgressIsTerminal(event) ? event.type === "completed" ? "completed" : "failed" : "running"),
+    title: `Shell /${event.commandName}`,
+    meta,
+    body: [
+      `cwd: ${event.workDir}`,
+      `command: ${event.commandPreview}`,
+      "```text",
+      commandProgressOutputBlock(event),
+      "```",
+    ].join("\n"),
+  });
+}
+
+function renderFeishuCommandProgressCard(event: ChannelConnectorCommandProgressEvent): ChannelConnectorFeishuInteractiveCard {
+  const lines = [
+    `**状态**：<text_tag color='${commandProgressCardTemplate(event.type)}'>${inlineProgressCode(commandProgressStatusLabel(event.type))}</text_tag>`,
+    `**命令**：\`/${inlineProgressCode(event.commandName)}\``,
+    `**耗时**：${event.elapsedMs}ms`,
+    `**目录**：${inlineProgressCode(event.workDir)}`,
+    event.exitCode === null || event.exitCode === undefined ? "" : `**Exit**：${inlineProgressCode(String(event.exitCode))}`,
+    event.signal ? `**Signal**：${inlineProgressCode(event.signal)}` : "",
+    event.error ? `**错误**：${inlineProgressCode(event.error)}` : "",
+  ].filter(Boolean);
+  return {
+    config: {
+      wide_screen_mode: true,
+    },
+    header: {
+      title: {
+        tag: "plain_text",
+        content: `Studio Shell /${event.commandName} · ${commandProgressStatusLabel(event.type)}`,
+      },
+      template: commandProgressCardTemplate(event.type),
+    },
+    elements: [
+      {
+        tag: "markdown",
+        content: lines.join("\n"),
+      },
+      { tag: "hr" },
+      {
+        tag: "markdown",
+        content: [
+          "**执行命令**",
+          "```text",
+          sanitizeFeishuCardMarkdown(shortMessage(event.commandPreview, 1_000)),
+          "```",
+          "**输出预览**",
+          "```text",
+          sanitizeFeishuCardMarkdown(commandProgressOutputBlock(event, 2_500)),
+          "```",
+        ].join("\n"),
+      },
+    ],
   };
 }
 
@@ -6105,6 +6213,33 @@ async function dispatchOctoMessage(input: {
       bindingId: scope.bindingId,
       sessionKey: scope.sessionKey,
     }),
+    onCommandProgress: async (event) => {
+      let progressReplySent = false;
+      let progressReplyRequestCount: number | null = null;
+      if (transport && event.type === "started") {
+        const replyPlan = renderOctoTextReply(message, formatCommandProgressText(event));
+        if (replyPlan) {
+          const result = await sendOctoTextReply(transport, replyPlan);
+          progressReplySent = result.ok === true;
+          progressReplyRequestCount = result.requestCount;
+        }
+      }
+      writeJsonLine(config.paths.octoEvents, {
+        checkedAt: new Date().toISOString(),
+        eventKind: "channel.command.progress",
+        adapter: "octo",
+        bindingId: binding.id,
+        sessionKey,
+        messageId: message.messageId,
+        channelId: message.channelId,
+        channelType: message.channelType,
+        fromUid: message.fromUid,
+        ...commandProgressLogFields(event),
+        progressReplySent,
+        progressReplyRequestCount,
+      });
+      return { handled: progressReplySent };
+    },
   });
   if (command.handled) {
     let replySent = false;
@@ -7162,6 +7297,59 @@ async function dispatchFeishuParsedEvent(input: {
       bindingId: scope.bindingId,
       sessionKey: scope.sessionKey,
     }),
+    onCommandProgress: (() => {
+      let progressCardMessageId: string | null = null;
+      return async (event: ChannelConnectorCommandProgressEvent): Promise<ChannelConnectorCommandProgressAck> => {
+        let result: ChannelConnectorFeishuTransportResult | null = null;
+        let action = "none";
+        const cachePath = feishuTokenCachePath(config);
+        if (feishuCardsEnabled(binding)) {
+          if (progressCardMessageId) {
+            result = await patchFeishuCardMessage(transport, {
+              messageId: progressCardMessageId,
+              card: renderFeishuCommandProgressCard(event),
+            }, cachePath);
+            action = "patch-command-progress-card";
+          } else {
+            result = await sendFeishuCardMessage(transport, {
+              chatId: parsed.channelId || sessionKey,
+              card: renderFeishuCommandProgressCard(event),
+            }, cachePath);
+            action = "send-command-progress-card";
+            if (result.ok === true && result.messageId) progressCardMessageId = result.messageId;
+          }
+        } else if (event.type === "started") {
+          result = await sendFeishuTextMessage(transport, {
+            chatId: parsed.channelId || sessionKey,
+            content: formatCommandProgressText(event),
+          }, cachePath);
+          action = "send-command-progress-text";
+        }
+        writeJsonLine(config.paths.feishuEvents, {
+          checkedAt: new Date().toISOString(),
+          eventKind: "channel.command.progress",
+          adapter: "feishu",
+          bindingId: binding.id,
+          sessionKey,
+          messageId,
+          channelId: parsed.channelId,
+          chatType: parsed.chatType,
+          fromUid: parsed.fromUid,
+          ...feishuThreadLogFields(parsed),
+          ...commandProgressLogFields(event),
+          progressTransportAction: action,
+          progressReplySent: result?.ok === true,
+          progressReplyMessageId: result?.messageId || null,
+          progressReplyRequestCount: result?.requestCount ?? null,
+          progressReplyError: result?.error || null,
+        });
+        const handled = result?.ok === true;
+        return {
+          handled,
+          suppressFinalReply: handled && feishuCardsEnabled(binding) && commandProgressIsTerminal(event),
+        };
+      };
+    })(),
   });
 
   if (command.handled) {

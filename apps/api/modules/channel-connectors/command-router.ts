@@ -134,6 +134,7 @@ export interface ChannelConnectorCommandContext {
     project: ChannelConnectorRuntimeProject;
     command: string;
   }) => Promise<ChannelConnectorUsageSummary | null>;
+  onCommandProgress?: (event: ChannelConnectorCommandProgressEvent) => Promise<ChannelConnectorCommandProgressAck | void> | ChannelConnectorCommandProgressAck | void;
   respondPermissionRequest?: (input: {
     bindingId: string;
     sessionKey: string;
@@ -231,6 +232,27 @@ export interface ChannelConnectorCommandAudit {
   };
 }
 
+export type ChannelConnectorCommandProgressType = "started" | "progress" | "completed" | "failed" | "timeout";
+
+export interface ChannelConnectorCommandProgressEvent {
+  type: ChannelConnectorCommandProgressType;
+  commandName: string;
+  commandPreview: string;
+  workDir: string;
+  elapsedMs: number;
+  outputPreview: string | null;
+  stdoutPreview: string | null;
+  stderrPreview: string | null;
+  exitCode?: number | null;
+  signal?: string | null;
+  error?: string | null;
+}
+
+export interface ChannelConnectorCommandProgressAck {
+  handled?: boolean;
+  suppressFinalReply?: boolean;
+}
+
 export interface ChannelConnectorCommandResult {
   handled: boolean;
   command: string | null;
@@ -242,6 +264,7 @@ export interface ChannelConnectorCommandResult {
   nativeCommand?: string | null;
   suppressReply?: boolean;
   audit?: ChannelConnectorCommandAudit | null;
+  progressHandled?: boolean;
 }
 
 interface ParsedCommand {
@@ -757,10 +780,13 @@ async function runCustomExecCommand(input: {
   project: ChannelConnectorRuntimeProject;
   args: string[];
   timeoutMs?: number;
+  onProgress?: ChannelConnectorCommandContext["onCommandProgress"];
 }): Promise<{
   ok: boolean;
   replyText: string;
   audit: ChannelConnectorCommandAudit;
+  suppressFinalReply: boolean;
+  progressHandled: boolean;
 }> {
   const commandText = expandAgentCommandPrompt(input.command.exec, input.args);
   const workDir = resolveExecCommandWorkDir(input.project, input.command.workDir);
@@ -772,32 +798,79 @@ async function runCustomExecCommand(input: {
     let stderr = "";
     let stdoutBytes = 0;
     let stderrBytes = 0;
+    let suppressFinalReply = false;
+    let progressHandled = false;
+    let progressStarted = false;
+    let progressTimer: NodeJS.Timeout | null = null;
     let settled = false;
     const child = spawn(shell.command, shell.args, {
       cwd: workDir,
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
     });
-    const finish = (ok: boolean, detail: {
+
+    const outputText = (): string => [
+      stdout.trim() ? `stdout:\n${stdout.trim()}` : "",
+      stderr.trim() ? `stderr:\n${stderr.trim()}` : "",
+    ].filter(Boolean).join("\n\n");
+
+    const emitProgress = async (
+      type: ChannelConnectorCommandProgressType,
+      detail: {
+        exitCode?: number | null;
+        signal?: NodeJS.Signals | string | null;
+        error?: string | null;
+      } = {},
+    ): Promise<void> => {
+      if (!input.onProgress) return;
+      const ack = await input.onProgress({
+        type,
+        commandName: input.command.name,
+        commandPreview: bufferPreviewText(commandText, 500),
+        workDir,
+        elapsedMs: Date.now() - startedAt,
+        outputPreview: outputText().trim() ? bufferPreviewText(outputText().trim(), 4_000) : null,
+        stdoutPreview: stdout.trim() ? bufferPreviewText(stdout.trim(), 2_000) : null,
+        stderrPreview: stderr.trim() ? bufferPreviewText(stderr.trim(), 2_000) : null,
+        exitCode: detail.exitCode ?? null,
+        signal: detail.signal ? String(detail.signal) : null,
+        error: detail.error || null,
+      });
+      if (ack?.handled) progressHandled = true;
+      if (ack?.suppressFinalReply) suppressFinalReply = true;
+    };
+
+    const finish = async (ok: boolean, detail: {
       exitCode?: number | null;
       signal?: NodeJS.Signals | null;
       error?: string | null;
       timedOut?: boolean;
-    } = {}): void => {
+    } = {}): Promise<void> => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      clearTimeout(quickTimer);
+      if (progressTimer) clearInterval(progressTimer);
       const elapsedMs = Date.now() - startedAt;
-      const output = [
-        stdout.trim() ? `stdout:\n${stdout.trim()}` : "",
-        stderr.trim() ? `stderr:\n${stderr.trim()}` : "",
-      ].filter(Boolean).join("\n\n");
+      const output = outputText();
       const status = ok ? "completed" : detail.timedOut ? "timed out" : "failed";
       const exitDetail = detail.exitCode === null || detail.exitCode === undefined
         ? detail.signal ? `signal=${detail.signal}` : ""
         : `exit=${detail.exitCode}`;
+      if (progressStarted) {
+        await emitProgress(
+          ok ? "completed" : detail.timedOut ? "timeout" : "failed",
+          {
+            exitCode: detail.exitCode ?? null,
+            signal: detail.signal ?? null,
+            error: detail.error || null,
+          },
+        );
+      }
       resolve({
         ok,
+        suppressFinalReply,
+        progressHandled,
         audit: {
           ...commandAudit({
             kind: "custom-exec",
@@ -830,13 +903,23 @@ async function runCustomExecCommand(input: {
         ].filter(Boolean).join("\n"),
       });
     };
+    const quickTimer = setTimeout(() => {
+      if (settled || progressStarted) return;
+      progressStarted = true;
+      void emitProgress("started");
+      progressTimer = setInterval(() => {
+        if (!settled) void emitProgress("progress");
+      }, 2_000);
+      progressTimer.unref();
+    }, 500);
+    quickTimer.unref();
     const timer = setTimeout(() => {
       try {
         child.kill("SIGTERM");
       } catch {
         // best effort
       }
-      finish(false, { timedOut: true, error: `timeout=${timeoutMs}ms` });
+      void finish(false, { timedOut: true, error: `timeout=${timeoutMs}ms` });
     }, timeoutMs);
     timer.unref();
     child.stdout.on("data", (chunk) => {
@@ -849,8 +932,8 @@ async function runCustomExecCommand(input: {
       stderrBytes += Buffer.byteLength(text);
       stderr = bufferPreviewText(`${stderr}${text}`, 16_000);
     });
-    child.on("error", (error) => finish(false, { error: error.message }));
-    child.on("close", (code, signal) => finish(code === 0, { exitCode: code, signal }));
+    child.on("error", (error) => void finish(false, { error: error.message }));
+    child.on("close", (code, signal) => void finish(code === 0, { exitCode: code, signal }));
   });
 }
 
@@ -2332,6 +2415,7 @@ export async function handleChannelConnectorCommand(
           command: customCommand,
           project: currentProject,
           args,
+          onProgress: context.onCommandProgress,
         });
         return {
           handled: true,
@@ -2343,6 +2427,8 @@ export async function handleChannelConnectorCommand(
           passthroughText: null,
           nativeCommand: null,
           audit: result.audit,
+          suppressReply: result.suppressFinalReply,
+          progressHandled: result.progressHandled,
         };
       }
       return {

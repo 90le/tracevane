@@ -22,18 +22,19 @@
 
 ## 本轮完成
 
-- 按 CC Go `CommandProvider` 可审计执行方向补齐命令审计合同：prompt custom command、Agent command、Skill、native passthrough 和 unknown passthrough 都会返回结构化 `audit`。
-- `/commands addexec` shell 命令执行结果新增结构化 audit：记录命令类型、source、参数预览、cwd、exit/signal、timeout、elapsed、stdout/stderr 字节数和短预览。
-- Octo/Feishu daemon 的 `channel.command` 与 `channel.command.passthrough` 事件会写出扁平化 `commandKind/source/argsPreview/exec*` 字段，后续管理页、日志 smoke 和审计视图可直接复用。
-- 回归测试覆盖 custom prompt、Agent command、Skill 和 shell exec 的 audit 字段；主进度文档继续保持压缩，只保留当前轮摘要。
+- 按 CC Go `runShellWithProgress` 迁移 `/commands addexec` 长命令进度合同：500ms 内完成只回最终结果，超过 500ms 后发 started/progress/terminal 事件。
+- Feishu 侧长 shell 命令会发送并 patch 同一张进度卡，终态卡 patch 成功时压制重复最终文本；Octo 侧只发送一次运行提示并保留最终结果，避免不可 patch 渠道刷屏。
+- Octo/Feishu daemon 会写入 `channel.command.progress` 事件，记录 command、cwd、elapsed、stdout/stderr/output preview、exit/signal/error。
+- 回归测试覆盖 quick shell command 不发进度、slow shell command 发 started/completed、终态压制 final reply、daemon 结构接入 Feishu card patch / Octo started-only / progress log。
 
 ## 最近验证
 
 - 通过：`npm run typecheck:api`。
 - 通过：`npm run build:api`。
 - 通过：`node --test --test-name-pattern "native Channel Connectors IM commands switch agent, model, and permission per session" tests/system/channel-connectors-service.test.mjs`。
+- 通过：`node --test --test-name-pattern "native Channel Connectors IM commands switch agent, model, and permission per session|native Channel Connectors daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs`，66/66 全部通过。
-- 通过：重启 `openclaw-studio-channel-connectors.service` 与 `npm run dev:restart`；`/health` 显示 `connected=1`、`pongOverdue=0`、`transportStale=0`，backend gateway online，frontend HTTP 200。
+- 通过：重启 `openclaw-studio-channel-connectors.service` 与 `npm run dev:restart`；Channel `/health` 显示 `connected=1`、`pongOverdue=0`、`transportStale=0`，backend gateway online，frontend HTTP 200。
 
 ## 已知边界
 
@@ -49,6 +50,6 @@
 ## 下一步
 
 1. 用户发送一条新的 Feishu 消息，做业务入站复验：runtime 应出现 dispatcher callback / receivedMessages，且无 reconnect/stale。
-2. 做真实 IM live approval smoke：先运行 `node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings feishu-live --require-ok --require-reply --require-progress --require-tool --require-feishu-card --require-feishu-progress-card-completed --require-no-final-progress-reply --json`，再用三次顺序 `exec_command` 的提示词验证思考、过程回复、工具输入、工具输出和最终回复；同时确认 Feishu 进度卡内允许/拒绝按钮、文本 `/approve`/`/deny`、Codex app-server Bash/Patch/Permissions、Claude AskUserQuestion/permission、OpenCode permission 都能闭环。
+2. 做真实 IM live smoke：先验证 `/commands addexec` 长命令在 Feishu 单卡 patch、Octo 单提示 + final reply；再运行 `node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings feishu-live --require-ok --require-reply --require-progress --require-tool --require-feishu-card --require-feishu-progress-card-completed --require-no-final-progress-reply --json`，用三次顺序 `exec_command` 的提示词验证思考、过程回复、工具输入、工具输出和最终回复；同时确认 Feishu 进度卡内允许/拒绝按钮、文本 `/approve`/`/deny`、Codex app-server Bash/Patch/Permissions、Claude AskUserQuestion/permission、OpenCode permission 都能闭环。
 3. 继续扩展真实 Claude Code / OpenCode persistent smoke：视觉输入、权限和 IM live 文件上传链路，并确认 one-shot 默认路径不受影响。
 4. 继续按 CC Go 迁移 Feishu/Octo 菜单与命令细节、OpenCode 文件/权限/流式能力，并继续优化非 Feishu 纯文本进度样式。
