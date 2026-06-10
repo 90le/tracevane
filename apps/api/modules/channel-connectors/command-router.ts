@@ -931,15 +931,10 @@ function isStudioCommand(name: string): boolean {
   return Boolean(matchChannelConnectorCommandPrefix(name));
 }
 
-type CommandHelpSection = "session" | "agent" | "display" | "workdir" | "native";
+type CommandHelpSection = "session" | "agent" | "display" | "buffer" | "workdir" | "commands" | "native";
 
-function markdownTable(rows: Array<[string, string]>): string {
-  const escapeCell = (value: string): string => value.replace(/\|/g, "\\|").replace(/\n/g, " ");
-  return [
-    "| 命令 | 作用 |",
-    "| --- | --- |",
-    ...rows.map(([command, description]) => `| ${escapeCell(command)} | ${escapeCell(description)} |`),
-  ].join("\n");
+function commandHelpList(rows: Array<[string, string]>): string {
+  return rows.map(([command, description]) => `- ${command} - ${description}`).join("\n");
 }
 
 function commandHelpSectionAlias(value: string | null | undefined): CommandHelpSection | null {
@@ -949,9 +944,11 @@ function commandHelpSectionAlias(value: string | null | undefined): CommandHelpS
     return "session";
   }
   if (["agent", "profile", "model", "mode", "reasoning", "permission"].includes(target)) return "agent";
-  if (["display", "thinking", "think", "process", "progress", "tools", "tool", "buffer", "quiet"].includes(target)) return "display";
+  if (["display", "thinking", "think", "process", "progress", "tools", "tool", "quiet"].includes(target)) return "display";
+  if (["buffer", "buffers", "reply-buffer", "reply-buffers"].includes(target)) return "buffer";
   if (["workdir", "dir", "cd", "directory"].includes(target)) return "workdir";
-  if (["native", "commands", "command", "cmd", "alias", "aliases", "skills", "skill", "slash"].includes(target)) return "native";
+  if (["commands", "command", "cmd", "alias", "aliases", "skills", "skill"].includes(target)) return "commands";
+  if (["native", "raw", "pass", "slash"].includes(target)) return "native";
   return null;
 }
 
@@ -960,7 +957,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
     return [
       "Studio Channel / session",
       "",
-      markdownTable([
+      commandHelpList([
         ["`/whoami`", "查看当前 IM 用户、频道和 session id"],
         ["`/version`", "查看 Studio Channel runtime 版本"],
         ["`/status`", "查看当前 Agent、模型、权限和续接状态"],
@@ -985,7 +982,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
     return [
       "Studio Channel / agent",
       "",
-      markdownTable([
+      commandHelpList([
         ["`/agent`", "列出可切换 Agent Profile"],
         ["`/agent <序号|id|codex|claude-code|opencode>`", "切换本会话 Agent"],
         ["`/model`", "列出 Studio Gateway 可用模型"],
@@ -1003,14 +1000,26 @@ function commandHelpSectionText(section: CommandHelpSection): string {
     return [
       "Studio Channel / display",
       "",
-      markdownTable([
+      commandHelpList([
         ["`/display`", "查看思考、过程回复和工具消息开关"],
         ["`/quiet [quiet|compact|full]`", "按 CC 习惯隐藏或恢复中间态消息"],
         ["`/thinking <on|off|default>`", "开关本会话思考消息"],
         ["`/process <on|off|default>`", "开关本会话过程回复"],
         ["`/tools <on|off|default>`", "开关本会话工具消息"],
+      ]),
+      "",
+      "返回：`/help`",
+    ].join("\n");
+  }
+  if (section === "buffer") {
+    return [
+      "Studio Channel / buffer",
+      "",
+      commandHelpList([
         ["`/buffer`", "查看本会话最近 reply buffer"],
         ["`/buffer <id|前缀|latest>`", "读取缓存的完整长回复"],
+        ["`/quiet compact`", "隐藏思考、过程回复和工具消息，只保留最终回复"],
+        ["`/display`", "查看当前显示开关"],
       ]),
       "",
       "返回：`/help`",
@@ -1020,7 +1029,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
     return [
       "Studio Channel / workdir",
       "",
-      markdownTable([
+      commandHelpList([
         ["`/dir`", "查看当前工作目录、最近目录和子目录"],
         ["`/dir <路径|序号|->`", "切换目录；序号优先选最近目录，`-` 返回上一目录"],
         ["`/cd <路径|default>`", "`/dir` 的兼容别名"],
@@ -1029,18 +1038,28 @@ function commandHelpSectionText(section: CommandHelpSection): string {
       "返回：`/help`",
     ].join("\n");
   }
+  if (section === "commands") {
+    return [
+      "Studio Channel / commands",
+      "",
+      commandHelpList([
+        ["`/commands`", "列出当前 Agent 自定义 prompt 命令"],
+        ["`/commands add <名称> <prompt 模板>`", "添加 prompt 命令"],
+        ["`/commands del <名称>`", "删除 prompt 命令"],
+        ["`/alias`", "列出当前 binding 命令别名"],
+        ["`/alias add <触发词> <命令>`", "添加或更新当前 binding 别名"],
+        ["`/alias del <触发词>`", "删除通过 IM 添加的别名"],
+        ["`/skills`", "列出当前 Agent Skills"],
+        ["`/<skill名称> [参数...]`", "调用 Skill"],
+      ]),
+      "",
+      "返回：`/help`",
+    ].join("\n");
+  }
   return [
     "Studio Channel / native",
     "",
-    markdownTable([
-      ["`/commands`", "列出当前 Agent 自定义 prompt 命令"],
-      ["`/commands add <名称> <prompt 模板>`", "添加 prompt 命令"],
-      ["`/commands del <名称>`", "删除 prompt 命令"],
-      ["`/alias`", "列出当前 binding 命令别名"],
-      ["`/alias add <触发词> <命令>`", "添加或更新当前 binding 别名"],
-      ["`/alias del <触发词>`", "删除通过 IM 添加的别名"],
-      ["`/skills`", "列出当前 Agent Skills"],
-      ["`/<skill名称> [参数...]`", "调用 Skill"],
+    commandHelpList([
       ["`/native /help`", "查看当前 Agent 原生帮助或 skills 命令"],
       ["`/native /compact`", "尝试 CLI Agent 原生压缩；仅持久/交互式 runner 支持，Codex one-shot 会拒绝伪执行"],
       ["`/native <原生命令>`", "强制透传给当前 Agent"],
@@ -1057,7 +1076,8 @@ function commandHelpText(section?: string | null): string {
     "Studio Channel",
     "普通消息会交给当前 Agent。未被 Studio 占用的 `/xxx` 会自动透传；冲突命令用 `/native <命令>`。",
     "",
-    markdownTable([
+    "**常用命令**",
+    commandHelpList([
       ["`/status` `/new` `/reset` `/stop` `/compact`", "会话状态、新会话、重置、停止、native-first compact"],
       ["`/whoami` `/version`", "身份排查和 runtime 版本"],
       ["`/agent` `/model` `/mode` `/reasoning`", "切换 Agent、模型、权限、推理强度"],
@@ -1065,14 +1085,15 @@ function commandHelpText(section?: string | null): string {
       ["`/commands` `/alias` `/skills` `/native /help`", "自定义命令、命令别名、Skills、Agent 原生命令"],
     ]),
     "",
-    "分组帮助",
-    "",
-    markdownTable([
+    "**分组帮助**",
+    commandHelpList([
       ["`/help session`", "会话、history、usage、权限批准"],
       ["`/help agent`", "Agent、模型、权限、推理"],
-      ["`/help display`", "思考、过程回复、工具消息、reply buffer"],
+      ["`/help display`", "思考、过程回复和工具消息"],
+      ["`/help buffer`", "群聊长回复缓存和紧凑显示"],
       ["`/help workdir`", "工作目录切换"],
-      ["`/help native`", "自定义命令、Skills、原生命令透传"],
+      ["`/help commands`", "自定义命令、别名和 Skills"],
+      ["`/help native`", "Agent 原生命令透传"],
     ]),
   ].join("\n");
 }

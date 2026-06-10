@@ -3535,25 +3535,30 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(help.replyText, /\/tools/);
   assert.match(help.replyText, /\/quiet/);
   assert.match(help.replyText, /`\/help session`/);
+  assert.match(help.replyText, /`\/help buffer`/);
+  assert.match(help.replyText, /`\/help commands`/);
   assert.match(help.replyText, /`\/help native`/);
   assert.match(help.replyText, /`\/compact`/);
   assert.match(help.replyText, /`\/stop`/);
   assert.match(help.replyText, /`\/native \/help`/);
   assert.match(help.replyText, /`\/skills`/);
-  assert.match(help.replyText, /分组帮助\n\n\| 命令 \| 作用 \|/);
+  assert.match(help.replyText, /\*\*常用命令\*\*/);
+  assert.match(help.replyText, /\*\*分组帮助\*\*/);
+  assert.match(help.replyText, /- `\/help session` - 会话、history、usage、权限批准/);
+  assert.doesNotMatch(help.replyText, /\| 命令 \| 作用 \|/);
   const sessionHelp = await handleChannelConnectorCommand({
     ...baseContext,
     message: message("/help session"),
   });
   assert.equal(sessionHelp.handled, true);
   assert.equal(sessionHelp.ok, true);
-  assert.match(sessionHelp.replyText, /Studio Channel \/ session\n\n\| 命令 \| 作用 \|/);
-  assert.match(sessionHelp.replyText, /\| 命令 \| 作用 \|/);
+  assert.match(sessionHelp.replyText, /Studio Channel \/ session\n\n- `\/whoami` - /);
+  assert.doesNotMatch(sessionHelp.replyText, /\| 命令 \| 作用 \|/);
   assert.match(sessionHelp.replyText, /`\/whoami`/);
   assert.match(sessionHelp.replyText, /`\/version`/);
   assert.match(sessionHelp.replyText, /`\/name <名称>`/);
   assert.match(sessionHelp.replyText, /`\/search <关键字>`/);
-  assert.ok(sessionHelp.replyText.includes("`/delete <序号\\|sessionId前缀\\|1,3-5>`"));
+  assert.ok(sessionHelp.replyText.includes("`/delete <序号|sessionId前缀|1,3-5>`"));
   assert.match(sessionHelp.replyText, /`\/usage`/);
   assert.match(sessionHelp.replyText, /先尝试 live persistent Agent 原生 compact/);
   assert.match(sessionHelp.replyText, /Gateway `\/responses\/compact`/);
@@ -3565,9 +3570,30 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(displayHelp.handled, true);
   assert.equal(displayHelp.ok, true);
-  assert.match(displayHelp.replyText, /Studio Channel \/ display\n\n\| 命令 \| 作用 \|/);
-  assert.ok(displayHelp.replyText.includes("`/quiet [quiet\\|compact\\|full]`"));
-  assert.ok(displayHelp.replyText.includes("`/buffer <id\\|前缀\\|latest>`"));
+  assert.match(displayHelp.replyText, /Studio Channel \/ display\n\n- `\/display` - /);
+  assert.doesNotMatch(displayHelp.replyText, /\| 命令 \| 作用 \|/);
+  assert.ok(displayHelp.replyText.includes("`/quiet [quiet|compact|full]`"));
+  assert.doesNotMatch(displayHelp.replyText, /`\/buffer <id\|前缀\|latest>`/);
+  const bufferHelp = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/help buffer"),
+  });
+  assert.equal(bufferHelp.handled, true);
+  assert.equal(bufferHelp.ok, true);
+  assert.match(bufferHelp.replyText, /Studio Channel \/ buffer\n\n- `\/buffer` - /);
+  assert.ok(bufferHelp.replyText.includes("`/buffer <id|前缀|latest>`"));
+  assert.match(bufferHelp.replyText, /`\/quiet compact`/);
+  assert.doesNotMatch(bufferHelp.replyText, /\| 命令 \| 作用 \|/);
+  const commandsHelp = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/help commands"),
+  });
+  assert.equal(commandsHelp.handled, true);
+  assert.equal(commandsHelp.ok, true);
+  assert.match(commandsHelp.replyText, /Studio Channel \/ commands/);
+  assert.match(commandsHelp.replyText, /`\/commands add <名称> <prompt 模板>`/);
+  assert.match(commandsHelp.replyText, /`\/skills`/);
+  assert.doesNotMatch(commandsHelp.replyText, /\| 命令 \| 作用 \|/);
   const nativeHelp = await handleChannelConnectorCommand({
     ...baseContext,
     message: message("/help native"),
@@ -3575,10 +3601,10 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(nativeHelp.handled, true);
   assert.equal(nativeHelp.ok, true);
   assert.match(nativeHelp.replyText, /Studio Channel \/ native/);
-  assert.match(nativeHelp.replyText, /`\/commands add <名称> <prompt 模板>`/);
-  assert.match(nativeHelp.replyText, /`\/skills`/);
   assert.match(nativeHelp.replyText, /`\/native \/compact`/);
   assert.match(nativeHelp.replyText, /Codex one-shot/);
+  assert.doesNotMatch(nativeHelp.replyText, /`\/commands add <名称> <prompt 模板>`/);
+  assert.doesNotMatch(nativeHelp.replyText, /\| 命令 \| 作用 \|/);
   assert.equal(parseChannelConnectorCommand("%help")?.name, "help");
   assert.equal(parseChannelConnectorCommand("/%help")?.name, "help");
   assert.equal(matchChannelConnectorCommandPrefix("stat"), "status");
