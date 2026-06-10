@@ -983,6 +983,57 @@ function canManageSession(binding: ChannelConnectorRuntimeBinding, message: Chan
   return binding.adminUsers.includes(message.fromUid);
 }
 
+function metadataStringList(value: unknown): string[] {
+  const output: string[] = [];
+  const add = (item: unknown): void => {
+    if (Array.isArray(item)) {
+      for (const nested of item) add(nested);
+      return;
+    }
+    const normalized = normalizeString(item);
+    if (!normalized) return;
+    output.push(...normalized.split(/[,\s]+/).map((part) => normalizeString(part)).filter(Boolean));
+  };
+  add(value);
+  return uniqueStrings(output);
+}
+
+function bindingDisabledCommands(binding: Pick<ChannelConnectorRuntimeBinding, "metadata">): string[] {
+  const metadata = isRecord(binding.metadata) ? binding.metadata : {};
+  return uniqueStrings([
+    ...metadataStringList(metadata.disabledCommands),
+    ...metadataStringList(metadata.disabled_commands),
+  ].map((command) => command.replace(/^\/+/, "").toLowerCase()));
+}
+
+function explicitBindingAdmin(binding: Pick<ChannelConnectorRuntimeBinding, "adminUsers">, message: ChannelConnectorOctoInboundMessage): boolean {
+  return binding.adminUsers.length > 0 && binding.adminUsers.includes(message.fromUid);
+}
+
+function disabledCommandDecision(
+  binding: Pick<ChannelConnectorRuntimeBinding, "adminUsers" | "metadata">,
+  message: ChannelConnectorOctoInboundMessage,
+  names: readonly string[],
+): { disabled: boolean; command: string | null } {
+  if (explicitBindingAdmin(binding, message)) return { disabled: false, command: null };
+  const disabled = bindingDisabledCommands(binding);
+  if (!disabled.length) return { disabled: false, command: null };
+  if (disabled.includes("*")) return { disabled: true, command: "*" };
+  const candidates = uniqueStrings(
+    names
+      .map((name) => normalizeString(name).replace(/^\/+/, "").toLowerCase())
+      .filter(Boolean),
+  );
+  const matched = candidates.find((candidate) => disabled.includes(candidate));
+  return matched ? { disabled: true, command: matched } : { disabled: false, command: null };
+}
+
+function disabledCommandReply(command: string | null): string {
+  return command === "*"
+    ? "当前 Channel binding 已禁用所有命令。"
+    : `当前 Channel binding 已禁用命令 /${command || "unknown"}。`;
+}
+
 function permissionResponseActionAlias(value: string): ChannelConnectorPermissionResponseAction | null {
   const target = normalizeString(value)
     .toLowerCase()
@@ -2146,9 +2197,38 @@ export async function handleChannelConnectorCommand(
     return handlePermissionResponseCommand(context, permissionAction, currentControl, name);
   }
 
+  if (isStudioCommand(name)) {
+    const disabled = disabledCommandDecision(context.binding, context.message, [name, parsed.name]);
+    if (disabled.disabled) {
+      return {
+        handled: true,
+        command: name,
+        action: "show",
+        ok: false,
+        control: currentControl,
+        replyText: disabledCommandReply(disabled.command),
+        passthroughText: null,
+        nativeCommand: null,
+      };
+    }
+  }
+
   if (!isStudioCommand(name)) {
     const customCommand = resolveCustomCommand(context, currentProject, name);
     if (customCommand) {
+      const disabled = disabledCommandDecision(context.binding, context.message, [customCommand.name, name, parsed.name]);
+      if (disabled.disabled) {
+        return {
+          handled: true,
+          command: customCommand.name,
+          action: "show",
+          ok: false,
+          control: currentControl,
+          replyText: disabledCommandReply(disabled.command),
+          passthroughText: null,
+          nativeCommand: null,
+        };
+      }
       if (isExecCustomCommand(customCommand)) {
         if (!canManageSession(context.binding, context.message)) {
           return {
@@ -2191,6 +2271,19 @@ export async function handleChannelConnectorCommand(
     }
     const skill = resolveChannelConnectorSkill(currentProject, name);
     if (skill) {
+      const disabled = disabledCommandDecision(context.binding, context.message, [skill.name, name, parsed.name]);
+      if (disabled.disabled) {
+        return {
+          handled: true,
+          command: skill.name,
+          action: "show",
+          ok: false,
+          control: currentControl,
+          replyText: disabledCommandReply(disabled.command),
+          passthroughText: null,
+          nativeCommand: null,
+        };
+      }
       return {
         handled: false,
         command: skill.name,

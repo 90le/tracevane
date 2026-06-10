@@ -3738,6 +3738,38 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(myid.ok, true);
   assert.match(myid.replyText, /User ID: user-2/);
   assert.match(myid.replyText, /Can manage session: no/);
+  const commandAclBinding = {
+    ...binding,
+    metadata: { disabledCommands: ["whoami", "daily", "release-notes"] },
+  };
+  const blockedMyid = await handleChannelConnectorCommand({
+    ...baseContext,
+    binding: commandAclBinding,
+    message: message("/myid", "user-2"),
+  });
+  assert.equal(blockedMyid.handled, true);
+  assert.equal(blockedMyid.ok, false);
+  assert.equal(blockedMyid.action, "show");
+  assert.match(blockedMyid.replyText, /禁用命令 \/whoami/);
+  const adminBypassesDisabledMyid = await handleChannelConnectorCommand({
+    ...baseContext,
+    binding: commandAclBinding,
+    message: message("/myid"),
+  });
+  assert.equal(adminBypassesDisabledMyid.handled, true);
+  assert.equal(adminBypassesDisabledMyid.ok, true);
+  assert.match(adminBypassesDisabledMyid.replyText, /Can manage session: yes/);
+  const wildcardDisabledStatus = await handleChannelConnectorCommand({
+    ...baseContext,
+    binding: {
+      ...binding,
+      metadata: { disabled_commands: "*" },
+    },
+    message: message("/status", "user-2"),
+  });
+  assert.equal(wildcardDisabledStatus.handled, true);
+  assert.equal(wildcardDisabledStatus.ok, false);
+  assert.match(wildcardDisabledStatus.replyText, /已禁用所有命令/);
   const version = await handleChannelConnectorCommand({
     ...baseContext,
     message: message("/version"),
@@ -3834,6 +3866,15 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(addedCommand.handled, false);
   assert.equal(addedCommand.command, "daily");
   assert.equal(addedCommand.passthroughText, "Summarize release with blockers");
+  const blockedCustomCommand = await handleChannelConnectorCommand({
+    ...baseContext,
+    binding: commandAclBinding,
+    message: message("/daily release blockers", "user-2"),
+  });
+  assert.equal(blockedCustomCommand.handled, true);
+  assert.equal(blockedCustomCommand.ok, false);
+  assert.equal(blockedCustomCommand.command, "daily");
+  assert.match(blockedCustomCommand.replyText, /禁用命令 \/daily/);
 
   const listConfigCommands = await handleChannelConnectorCommand({
     ...baseContext,
@@ -3890,6 +3931,15 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(codexSkillRun.passthroughText, /## Skill: Release Notes/);
   assert.match(codexSkillRun.passthroughText, /Write release notes from the provided change list/);
   assert.match(codexSkillRun.passthroughText, /## User Arguments:\nbug fix list/);
+  const blockedSkillRun = await handleChannelConnectorCommand({
+    ...baseContext,
+    binding: commandAclBinding,
+    message: message("/release_notes bug fix list", "user-2"),
+  });
+  assert.equal(blockedSkillRun.handled, true);
+  assert.equal(blockedSkillRun.ok, false);
+  assert.equal(blockedSkillRun.command, "release-notes");
+  assert.match(blockedSkillRun.replyText, /禁用命令 \/release-notes/);
 
   const claudeSkills = await handleChannelConnectorCommand({
     ...baseContext,

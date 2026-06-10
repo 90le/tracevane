@@ -22,6 +22,7 @@
 
 ## 本轮完成
 
+- 按 CC Go 命令 ACL 迁移 binding metadata `disabledCommands` / `disabled_commands`：非显式 admin 用户会被阻断 built-in、custom prompt command 和 Skill；`*` 可禁用全部命令；`/myid` 等 alias 会按解析后的 `whoami` 命令名检查，避免绕过。
 - 按 CC Go `CommandProvider` 迁移 `/commands addexec` 基础合同：仅管理用户可添加/执行 shell 自定义命令；支持 `--work-dir` 相对 Agent workDir、`{{1}}` / `{{2*}}` / `{{args}}` 占位符展开、`/commands` 列表 `[shell]` 标记和 stdout/stderr/exit 同步回显；非管理用户添加或执行都会被拒绝。
 - 同步更新 `/help commands` 与 Feishu Commands/Skills 卡片，避免 addexec 已实现但入口说明仍停留在旧的 blocked 状态。
 - 修复 Feishu 长连接“重启后恢复但运行一段时间假在线”的核心窗口：SDK 收到 Feishu pong 后会把内部 `pingInterval` 覆盖回 90s，Studio 现在包装 `WSClient.pingLoop()`，每次调度前 re-clamp 到 10s。
@@ -52,6 +53,9 @@
 
 ## 最近验证
 
+- 通过：`npm run typecheck:api && npm run build:api`。
+- 通过：`node --test --test-name-pattern "native Channel Connectors IM commands switch agent, model, and permission per session" tests/system/channel-connectors-service.test.mjs`。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，66/66 全部通过。
 - 通过：`npm run typecheck:api && npm run build:api`。
 - 通过：`node --test --test-name-pattern "native Channel Connectors IM commands switch agent, model, and permission per session|native Channel Connectors command surface renders text and Feishu card actions|native Channel Connectors daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs`，66/66 全部通过。
