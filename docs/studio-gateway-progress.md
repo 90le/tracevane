@@ -12,6 +12,7 @@
 - Provider Center 已支持自定义 provider、启停、模型列表/别名/默认模型、能力勾选、批量模型导入、批量预算/能力应用、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
 - App Connections 已覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收。
 - Channel Connectors 走 Studio 原生 CLI Agent Bot 路线；Octo(dmwork) 与 Feishu 已接入 Codex/Claude Code/OpenCode runner、Studio Gateway key、IM session override、slash command、Feishu card/menu/progress、附件 staging、history、group context、reply buffer、queue、stop 和基础治理。
+- OpenCode Agent runner 走 Gateway-first：Channel 配置保存 Gateway 模型短名或模型 ID，runner 转换为 OpenCode 需要的 `studio-gateway/<model>`；每轮生成隔离 OpenCode config，session 数据写入 Channel runtime dataHome；旧全局 sessionId 在当前 dataHome 不存在时自动新建，避免 IM 切换 OpenCode 后被 stale session 卡死。
 - Channel Connectors 任意新功能必须先对照 CC Go 1:1 迁移，再做 Studio 精修；迁移清单见 `channel-connectors-cc-migration-checklist.md`。
 - Feishu 长连接专项跟踪见 `feishu-long-connection-issue-tracker.md`；Feishu 目前采用同 App 用户级全局 owner lock、官方 SDK `WSClient`/`EventDispatcher`、默认不启用 SDK 额外 `pingTimeout`、SDK reconnecting 超 10s 回收、应用层 ping/pong runtime proof、pong timeout 回收、快速 ACK、messageId 去重和 runtime 入站观测；无业务消息时不再默认 startup recycle。
 - IM 文件收发固定为 Studio native transport：入站附件 staging 后交给 Agent；出站由 Agent 声明 `studio-channel-files` manifest，daemon 按平台上传发送。
@@ -21,7 +22,8 @@
 
 ## 本轮完成
 
-- OpenCode 1.16.2 `run --format json` 在本机可能 exit 0 但 stdout 为空；已补本地 `opencode.db` best-effort fallback，恢复 session id、assistant text、step/tool progress，并保留旧 stdout JSONL 路径优先。
+- OpenCode 1.16/1.17 `run --format json` 在本机可能 exit 0 但 stdout 为空；已补本地 `opencode.db` fallback，恢复 session id、assistant text、step/tool progress，并保留 stdout JSONL 路径优先；fallback 只接受本轮启动后的 assistant part 并短轮询等待异步写入，避免读到上一轮旧回复。
+- 修复 OpenCode IM 切换失败：短模型名（例如 `glm-5`）和带斜杠的 Gateway 模型 ID 都会传给 OpenCode 为 `studio-gateway/<model>`；OpenCode JSON error envelope 会显示真实 `data.message/name/ref`，不再只显示 `error`。
 - 扩展 `smoke:channel-connectors:native-cli-sessions`：隔离 HOME + mock Studio Gateway，直接调用 daemon 同款 native persistent driver，覆盖 Claude Code 普通 turn、Bash tool-use、`studio-channel-files` manifest、`/compact`、`/stop`，以及 OpenCode 普通 turn、`studio-channel-files` manifest、`/compact`、`/stop`。
 - 修复 OpenCode 取消路径误读旧 `opencode.db` 状态的问题：DB fallback 只在 exit 0、未取消、无错误且 stdout 为空时启用。
 - 修复 Claude Code persistent stop：用户停止当前 turn 时直接返回 `cancelled` 结果，不再把被取消的 resident process 当成 driver crash 或 one-shot fallback。
@@ -41,6 +43,7 @@
 - 通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，覆盖 Codex app-server sandbox/approvalPolicy、compact、stop、tool output、command/file/permissions requestApproval 回包。
 - 通过：`node scripts/smoke-channel-connectors-native-cli-sessions.mjs --apps opencode --strict --json`，本机真实 OpenCode 通过普通 turn、文件 manifest、原生 compact 和 stop cancel；取消结果不再混入旧 DB 输出。
 - 通过：`npm run smoke:channel-connectors:native-cli-sessions:strict -- --json`，本机真实 Claude Code / OpenCode 均通过普通 turn、文件 manifest、原生 compact 和 stop cancel；Claude Code 额外通过 Bash tool-use，OpenCode 命中 `opencode.db` fallback 或 stdout JSONL 路径。
+- 通过：本机真实 Studio Gateway + OpenCode + `glm-5` 短模型 smoke，`runChannelConnectorAgentTurn` 返回 `ok=true`、`status=completed` 和 OpenCode native session id。
 - 通过：`node --test --test-name-pattern "native Channel Connectors daemon entry exposes health" tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test --test-name-pattern "native Channel Connectors daemon runs Codex app-server when persistent session metadata is enabled" tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test tests/system/channel-connectors-agent-sessions-live-script.test.mjs`。
@@ -61,6 +64,6 @@
 ## 下一步
 
 1. 做真实 IM live approval smoke：Codex app-server Bash/Patch/Permissions、Claude AskUserQuestion/permission、OpenCode permission，确认飞书按钮和文本 `/approve`/`/deny` 都能闭环。
-2. 继续扩展真实 Claude Code / OpenCode persistent smoke：视觉输入和 IM live 文件上传链路，并确认 one-shot 默认路径不受影响。
+2. 继续扩展真实 Claude Code / OpenCode persistent smoke：视觉输入、工具流、权限和 IM live 文件上传链路，并确认 one-shot 默认路径不受影响。
 3. 继续按 CC Go 迁移 Feishu/Octo 菜单与命令细节、Claude Code AskUserQuestion 卡片精修、OpenCode 文件/权限/流式能力。
 4. 设计 durable queue，避免 Channel daemon 重启时丢失尚未开始的同 session 排队消息。

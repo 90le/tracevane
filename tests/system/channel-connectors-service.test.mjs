@@ -2200,12 +2200,57 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(opencodeRequest.command, "opencode");
   assert.equal(opencodeRequest.agent, "opencode");
   assert.deepEqual(opencodeRequest.args.slice(0, 3), ["run", "--format", "json"]);
+  const opencodeModelArgIndex = opencodeRequest.args.indexOf("--model");
+  assert.notEqual(opencodeModelArgIndex, -1);
+  assert.equal(opencodeRequest.args[opencodeModelArgIndex + 1], "studio-gateway/gpt-5");
   assert.equal(opencodeRequest.args.includes("--thinking"), true);
   assert.equal(opencodeRequest.args.includes("--variant"), true);
   assert.equal(opencodeRequest.args.includes("high"), true);
+  assert.match(opencodeRequest.env.XDG_CONFIG_HOME, /studio-channel-opencode-/);
+  assert.match(opencodeRequest.env.XDG_DATA_HOME, /studio-channel-opencode-/);
+  const opencodeConfigPath = path.join(opencodeRequest.env.XDG_CONFIG_HOME, "opencode", "opencode.json");
+  const opencodeConfig = JSON.parse(fs.readFileSync(opencodeConfigPath, "utf8"));
+  assert.equal(opencodeConfig.model, "studio-gateway/gpt-5");
+  assert.equal(opencodeConfig.provider["studio-gateway"].options.baseURL, project.gatewayEndpoint);
+  assert.equal(opencodeConfig.provider["studio-gateway"].options.apiKey, "sk-local");
+  assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-5"].name, "gpt-5");
+  assert.equal(fs.statSync(opencodeConfigPath).mode & 0o777, 0o600);
   assert.match(opencodeRequest.args.at(-1), /^hi codex/);
   assert.match(opencodeRequest.args.at(-1), /studio-channel-files/);
   assert.doesNotMatch(opencodeRequest.args.at(-1), /cc-connect/);
+  for (const cleanupPath of opencodeRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
+  const opencodeSlashModelRequest = buildChannelConnectorAgentProcessRequest({
+    project: { ...project, agent: "opencode", model: "mlamp/deepseek-v4-flash" },
+    binding: { ...binding, agent: "opencode" },
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+  });
+  assert.ok(opencodeSlashModelRequest);
+  const slashModelArgIndex = opencodeSlashModelRequest.args.indexOf("--model");
+  assert.equal(opencodeSlashModelRequest.args[slashModelArgIndex + 1], "studio-gateway/mlamp/deepseek-v4-flash");
+  const slashModelConfig = JSON.parse(fs.readFileSync(path.join(opencodeSlashModelRequest.env.XDG_CONFIG_HOME, "opencode", "opencode.json"), "utf8"));
+  assert.equal(slashModelConfig.model, "studio-gateway/mlamp/deepseek-v4-flash");
+  assert.equal(slashModelConfig.provider["studio-gateway"].models["mlamp/deepseek-v4-flash"].name, "mlamp/deepseek-v4-flash");
+  for (const cleanupPath of opencodeSlashModelRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
+  const opencodeStaleSessionRequest = buildChannelConnectorAgentProcessRequest({
+    project: { ...project, agent: "opencode" },
+    binding: { ...binding, agent: "opencode" },
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    agentRuntimeDir: path.join(root, "state", "agent-runtime", "opencode-main"),
+    session: { agentNativeSessionId: "ses_stale_global_opencode" },
+  });
+  assert.ok(opencodeStaleSessionRequest);
+  assert.equal(opencodeStaleSessionRequest.args.includes("--session"), false);
+  assert.equal(opencodeStaleSessionRequest.sessionMode, "new");
+  assert.equal(opencodeStaleSessionRequest.agentNativeSessionId, null);
+  for (const cleanupPath of opencodeStaleSessionRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const codexNativeHelpRequest = buildChannelConnectorAgentProcessRequest({
     project,
@@ -2718,6 +2763,42 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(failedWithoutStderr.ok, false);
   assert.match(failedWithoutStderr.error, /No enabled Model Gateway provider offers model gpt-5\.5/);
   assert.doesNotMatch(failedWithoutStderr.error, /Agent process exited/);
+
+  const opencodeEnvelopeFailure = await runChannelConnectorAgentTurn({
+    project: { ...project, agent: "opencode" },
+    binding: { ...binding, agent: "opencode" },
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    processRunner: async (request) => {
+      const modelArgIndex = request.args.indexOf("--model");
+      assert.equal(request.args[modelArgIndex + 1], "studio-gateway/gpt-5");
+      return {
+        exitCode: 1,
+        signal: null,
+        stdout: JSON.stringify({
+          type: "error",
+          error: {
+            name: "UnknownError",
+            data: {
+              message: "Unexpected server error. Check server logs for details.",
+              ref: "err_opencode_gateway",
+            },
+          },
+        }) + "\n",
+        stderr: "",
+        durationMs: 22,
+        timedOut: false,
+        error: null,
+      };
+    },
+  });
+  assert.equal(opencodeEnvelopeFailure.ok, false);
+  assert.match(opencodeEnvelopeFailure.error, /Unexpected server error/);
+  assert.match(opencodeEnvelopeFailure.error, /name=UnknownError/);
+  assert.match(opencodeEnvelopeFailure.error, /ref=err_opencode_gateway/);
+  assert.doesNotMatch(opencodeEnvelopeFailure.error, /^error$/);
 });
 
 test("native Channel Connectors session store persists Codex thread ids by IM session", () => {

@@ -464,15 +464,21 @@ export function firstProgressTextValue(...values: unknown[]): string {
 function errorMessageFromValue(value: unknown): string {
   const record = recordValue(value);
   const error = recordValue(record?.error) || record;
+  const data = recordValue(error?.data) || recordValue(record?.data);
   const message = normalizeString(error?.message)
+    || normalizeString(data?.message)
     || normalizeString(record?.message)
     || normalizeString(error?.error)
     || normalizeString(record?.error);
   const type = normalizeString(error?.type) || normalizeString(record?.type);
   const code = normalizeString(error?.code) || normalizeString(record?.code);
+  const name = normalizeString(error?.name) || normalizeString(record?.name);
+  const ref = normalizeString(data?.ref) || normalizeString(record?.ref);
   const detail = [
     type ? `type=${type}` : "",
     code ? `code=${code}` : "",
+    name ? `name=${name}` : "",
+    ref ? `ref=${ref}` : "",
   ].filter(Boolean).join(", ");
   if (message && detail) return `${message} (${detail})`;
   if (message) return message;
@@ -625,6 +631,105 @@ function createCodexGatewayHome(input: {
   const configPath = path.join(codexHome, "config.toml");
   fs.writeFileSync(configPath, config, { encoding: "utf8", mode: 0o600 });
   return { codexHome, cleanupRoot: runtimeDir ? "" : cleanupRoot };
+}
+
+const OPENCODE_GATEWAY_PROVIDER_ID = "studio-gateway";
+
+function opencodeGatewayModelId(model: string | null): string {
+  const normalized = normalizeString(model);
+  const prefix = `${OPENCODE_GATEWAY_PROVIDER_ID}/`;
+  return normalized.startsWith(prefix) ? normalized.slice(prefix.length).trim() : normalized;
+}
+
+function opencodeCliModel(model: string | null): string | null {
+  const modelId = opencodeGatewayModelId(model);
+  return modelId ? `${OPENCODE_GATEWAY_PROVIDER_ID}/${modelId}` : null;
+}
+
+function createOpenCodeGatewayHome(input: {
+  gatewayEndpoint: string;
+  gatewayClientKey: string | null;
+  model: string | null;
+  agentRuntimeDir?: string | null;
+}): {
+  configHome: string;
+  dataHome: string;
+  cleanupRoot: string;
+  cliModel: string | null;
+} {
+  const runtimeDir = normalizeString(input.agentRuntimeDir);
+  const envDataHome = normalizeString(process.env.XDG_DATA_HOME);
+  const cleanupRoot = fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-opencode-"));
+  const configHome = path.join(cleanupRoot, "config");
+  const dataHome = runtimeDir
+    ? path.join(runtimeDir, "opencode-data")
+    : envDataHome || path.join(cleanupRoot, "data");
+  const ownsDataHome = Boolean(runtimeDir) || !envDataHome;
+  const configDir = path.join(configHome, "opencode");
+  const modelId = opencodeGatewayModelId(input.model);
+  const cliModel = opencodeCliModel(input.model);
+  fs.mkdirSync(configDir, { recursive: true, mode: 0o700 });
+  fs.mkdirSync(dataHome, { recursive: true, mode: 0o700 });
+  try {
+    fs.chmodSync(configHome, 0o700);
+    fs.chmodSync(configDir, 0o700);
+    if (ownsDataHome) fs.chmodSync(dataHome, 0o700);
+  } catch {
+    // Best-effort hardening; opencode.json itself is still written 0600.
+  }
+  const models = modelId
+    ? {
+      [modelId]: {
+        name: modelId,
+        contextWindow: 200000,
+        maxOutputTokens: 8192,
+      },
+    }
+    : {};
+  const config = {
+    $schema: "https://opencode.ai/config.json",
+    ...(cliModel ? { model: cliModel } : {}),
+    provider: {
+      [OPENCODE_GATEWAY_PROVIDER_ID]: {
+        npm: "@ai-sdk/openai-compatible",
+        name: "OpenClaw Studio Gateway",
+        options: {
+          apiKey: input.gatewayClientKey || "",
+          baseURL: input.gatewayEndpoint,
+          setCacheKey: true,
+        },
+        models,
+      },
+    },
+  };
+  fs.writeFileSync(path.join(configDir, "opencode.json"), `${JSON.stringify(config, null, 2)}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
+  return {
+    configHome,
+    dataHome,
+    cleanupRoot,
+    cliModel,
+  };
+}
+
+function openCodeDataHomeDbPath(dataHome: string): string | null {
+  const normalized = normalizeString(dataHome);
+  return normalized ? path.join(normalized, "opencode", "opencode.db") : null;
+}
+
+function openCodeSessionExistsInDataHome(dataHome: string, sessionId: string): boolean {
+  const normalizedSessionId = normalizeString(sessionId);
+  if (!normalizedSessionId) return false;
+  const dbPath = openCodeDataHomeDbPath(dataHome);
+  if (!dbPath || !fs.existsSync(dbPath)) return false;
+  const rows = runSqliteJson(
+    dbPath,
+    `select id from session where id = ${sqlString(normalizedSessionId)} limit 1`,
+    mergeProcessEnv({ XDG_DATA_HOME: dataHome }),
+  );
+  return rows.some((row) => normalizeString(row.id) === normalizedSessionId);
 }
 
 function cleanupProcessRequest(request: ChannelConnectorAgentProcessRequest): void {
@@ -902,14 +1007,23 @@ export function buildChannelConnectorAgentProcessRequest(
   }
 
   if (project.agent === "opencode") {
-    const opencodeSessionId = normalizeString(request.session?.agentNativeSessionId);
     const opencodeImageArgs = opencodeNativeImagePaths.flatMap((imagePath) => ["--file", imagePath]);
+    const opencodeHome = createOpenCodeGatewayHome({
+      gatewayEndpoint: request.gatewayEndpoint,
+      gatewayClientKey: request.gatewayClientKey,
+      model: model || null,
+      agentRuntimeDir: request.agentRuntimeDir,
+    });
+    const requestedOpenCodeSessionId = normalizeString(request.session?.agentNativeSessionId);
+    const opencodeSessionId = requestedOpenCodeSessionId && openCodeSessionExistsInDataHome(opencodeHome.dataHome, requestedOpenCodeSessionId)
+      ? requestedOpenCodeSessionId
+      : "";
     const args = [
       "run",
       "--format",
       "json",
       ...(opencodeSessionId ? ["--session", opencodeSessionId] : []),
-      ...(model ? ["--model", model] : []),
+      ...(opencodeHome.cliModel ? ["--model", opencodeHome.cliModel] : []),
       ...(reasoningEffort ? ["--variant", reasoningEffort] : []),
       "--dir",
       cwd,
@@ -923,9 +1037,14 @@ export function buildChannelConnectorAgentProcessRequest(
       args,
       cwd,
       stdin: "",
-      env: baseEnv,
+      env: {
+        ...baseEnv,
+        XDG_CONFIG_HOME: opencodeHome.configHome,
+        XDG_DATA_HOME: opencodeHome.dataHome,
+      },
       timeoutMs,
       nativeCommand: nativeCommand || null,
+      cleanupPaths: opencodeHome.cleanupRoot ? [opencodeHome.cleanupRoot] : [],
       sessionMode: opencodeSessionId ? "resume" : "new",
       agentNativeSessionId: opencodeSessionId || null,
       agent: project.agent,
@@ -994,7 +1113,11 @@ function parseGenericProgressLine(line: string): ChannelConnectorAgentProgressEv
   const item = recordValue(raw.item);
   const part = recordValue(raw.part);
   const state = recordValue(part?.state);
-  const text = normalizeString(raw.text)
+  const errorText = rawType === "error" || recordValue(raw.error)
+    ? errorMessageFromValue(raw.error) || errorMessageFromValue(raw)
+    : "";
+  const text = errorText
+    || normalizeString(raw.text)
     || normalizeString(raw.content)
     || normalizeString(part?.text)
     || normalizeString(part?.content)
@@ -1638,11 +1761,17 @@ function parseJsonRecord(value: unknown): Record<string, unknown> | null {
   }
 }
 
-function openCodeDbFallback(processRequest: ChannelConnectorAgentProcessRequest): OpenCodeDbFallback | null {
+function openCodeDbFallback(
+  processRequest: ChannelConnectorAgentProcessRequest,
+  options: { minPartTimeMs?: number } = {},
+): OpenCodeDbFallback | null {
   if (processRequest.agent !== "opencode") return null;
   const env = mergeProcessEnv(processRequest.env);
   const dbPath = opencodeDbPath(env);
   if (!dbPath || !fs.existsSync(dbPath)) return null;
+  const minPartTimeMs = Number.isFinite(Number(options.minPartTimeMs))
+    ? Math.max(0, Number(options.minPartTimeMs) - 250)
+    : 0;
   const requestedSessionId = normalizeString(processRequest.agentNativeSessionId);
   const directory = normalizeString(processRequest.cwd);
   const sessionWhere = requestedSessionId
@@ -1669,10 +1798,12 @@ function openCodeDbFallback(processRequest: ChannelConnectorAgentProcessRequest)
     .map((row, index) => {
       const messageData = parseJsonRecord(row.message_data);
       if (normalizeString(messageData?.role) !== "assistant") return null;
+      const partTime = Number(row.part_time_created) || Number(recordValue(messageData?.time)?.completed) || Number(recordValue(messageData?.time)?.created) || 0;
+      if (minPartTimeMs > 0 && partTime < minPartTimeMs) return null;
       return {
         id: normalizeString(row.message_id),
         index,
-        time: Number(row.part_time_created) || Number(recordValue(messageData?.time)?.completed) || Number(recordValue(messageData?.time)?.created) || 0,
+        time: partTime,
       };
     })
     .filter((item): item is { id: string; index: number; time: number } => Boolean(item?.id))
@@ -1725,6 +1856,20 @@ function openCodeDbFallback(processRequest: ChannelConnectorAgentProcessRequest)
     stdout: `${stdoutLines.join("\n")}\n`,
     progressEvents,
   };
+}
+
+async function waitForOpenCodeDbFallback(
+  processRequest: ChannelConnectorAgentProcessRequest,
+  minPartTimeMs: number,
+): Promise<OpenCodeDbFallback | null> {
+  const deadline = Date.now() + 1500;
+  let latest: OpenCodeDbFallback | null = null;
+  while (Date.now() <= deadline) {
+    latest = openCodeDbFallback(processRequest, { minPartTimeMs });
+    if (latest?.replyText || latest?.progressEvents.length) return latest;
+    await new Promise((resolve) => setTimeout(resolve, 75));
+  }
+  return latest;
 }
 
 function extractAgentNativeSessionId(agent: ChannelConnectorAgentId, stdout: string): string | null {
@@ -1878,6 +2023,7 @@ export async function runChannelConnectorAgentTurn(
   processRequest.onProgress = request.onProgress;
   processRequest.signal = request.signal || null;
   let result: ChannelConnectorAgentProcessResult;
+  const runnerStartedAtMs = Date.now();
   try {
     result = await runner(processRequest);
   } finally {
@@ -1888,7 +2034,9 @@ export async function runChannelConnectorAgentTurn(
     && result.exitCode === 0
     && !result.error
     && !normalizeString(result.stdout);
-  const openCodeFallback = shouldUseOpenCodeFallback ? openCodeDbFallback(processRequest) : null;
+  const openCodeFallback = shouldUseOpenCodeFallback
+    ? await waitForOpenCodeDbFallback(processRequest, runnerStartedAtMs)
+    : null;
   const effectiveStdout = result.stdout || openCodeFallback?.stdout || "";
   const ok = result.exitCode === 0 && !result.error && !cancelled;
   const codexThreadId = request.project.agent === "codex"
