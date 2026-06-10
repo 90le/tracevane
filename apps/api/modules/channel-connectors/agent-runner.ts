@@ -41,6 +41,7 @@ export interface ChannelConnectorAgentProgressEvent {
   rawType: string | null;
   itemType: string | null;
   text: string | null;
+  phase?: "intermediate" | "final" | null;
 }
 
 export interface ChannelConnectorAgentPermissionRequest {
@@ -1061,6 +1062,7 @@ function progressEvent(input: {
   rawType?: string | null;
   itemType?: string | null;
   text?: string | null;
+  phase?: ChannelConnectorAgentProgressEvent["phase"];
 }): ChannelConnectorAgentProgressEvent {
   return {
     checkedAt: nowIso(),
@@ -1068,7 +1070,12 @@ function progressEvent(input: {
     rawType: input.rawType || null,
     itemType: input.itemType || null,
     text: input.text ? truncateProgressText(input.text) : null,
+    phase: input.phase || null,
   };
+}
+
+export function isChannelConnectorProcessProgressEvent(event: ChannelConnectorAgentProgressEvent): boolean {
+  return event.type === "assistant" && event.phase === "intermediate" && Boolean(normalizeString(event.text));
 }
 
 function parseCodexProgressLine(line: string): ChannelConnectorAgentProgressEvent | null {
@@ -1096,7 +1103,7 @@ function parseCodexProgressLine(line: string): ChannelConnectorAgentProgressEven
     const itemType = normalizeString(item?.type) || null;
     if (itemType === "user_message" || itemType === "userMessage") return null;
     if (itemType === "reasoning") return progressEvent({ type: "reasoning", rawType, itemType, text: normalizeString(item?.text) || null });
-    if (itemType === "agent_message") return progressEvent({ type: "assistant", rawType, itemType, text: normalizeString(item?.text) || null });
+    if (itemType === "agent_message") return progressEvent({ type: "assistant", rawType, itemType, text: normalizeString(item?.text) || null, phase: "final" });
     if (toolLikeItemType(itemType)) {
       return progressEvent({ type: "tool", rawType, itemType, text: codexToolProgressText(item, itemType, rawType) });
     }
@@ -1238,7 +1245,13 @@ function parseClaudeProgressLineEvents(line: string): ChannelConnectorAgentProgr
 
   if (rawType === "assistant") {
     const events: ChannelConnectorAgentProgressEvent[] = [];
-    for (const item of claudeContentItems(raw)) {
+    const items = claudeContentItems(raw);
+    const hasIntermediateContext = items.some((item) => {
+      const itemType = normalizeString(item.type);
+      return itemType === "thinking"
+        || (itemType === "tool_use" && normalizeString(item.name) !== "AskUserQuestion");
+    });
+    for (const item of items) {
       const itemType = normalizeString(item.type) || null;
       if (itemType === "tool_use") {
         const toolName = normalizeString(item.name);
@@ -1254,13 +1267,21 @@ function parseClaudeProgressLineEvents(line: string): ChannelConnectorAgentProgr
         if (thinking) events.push(progressEvent({ type: "reasoning", rawType, itemType, text: thinking }));
       } else if (itemType === "text") {
         const text = normalizeString(item.text);
-        if (text) events.push(progressEvent({ type: "assistant", rawType, itemType, text }));
+        if (text) {
+          events.push(progressEvent({
+            type: "assistant",
+            rawType,
+            itemType,
+            text,
+            phase: hasIntermediateContext ? "intermediate" : "final",
+          }));
+        }
       }
     }
     const message = recordValue(raw.message);
     const content = normalizeString(message?.content);
     if (!events.length && content) {
-      events.push(progressEvent({ type: "assistant", rawType, itemType: null, text: content }));
+      events.push(progressEvent({ type: "assistant", rawType, itemType: null, text: content, phase: "final" }));
     }
     return events;
   }
@@ -1827,7 +1848,7 @@ function openCodeDbFallback(
       replyParts.push(text);
       const raw = { type: "text", part: { type: "text", text } };
       stdoutLines.push(JSON.stringify(raw));
-      progressEvents.push(progressEvent({ type: "assistant", rawType: "text", itemType: "text", text }));
+      progressEvents.push(progressEvent({ type: "assistant", rawType: "text", itemType: "text", text, phase: "final" }));
     } else if (partType === "reasoning" && text) {
       const raw = { type: "reasoning", part: { type: "reasoning", text } };
       stdoutLines.push(JSON.stringify(raw));

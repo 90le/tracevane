@@ -16,7 +16,7 @@
 - Channel Connectors 任意新功能必须先对照 CC Go 1:1 迁移，再做 Studio 精修；迁移清单见 `channel-connectors-cc-migration-checklist.md`。
 - Feishu 长连接专项跟踪见 `feishu-long-connection-issue-tracker.md`；Feishu 目前采用同 App 用户级全局 owner lock、官方 SDK `WSClient`/`EventDispatcher`、默认启用 SDK lower-case `pingTimeout=3`、包装 SDK `pingLoop()` 将有效心跳调度 clamp 到 `pingIntervalMs=10000`、SDK reconnecting 超 5s 回收、应用层 ping/pong runtime proof、`pongTimeoutMs=8000` 外层兜底回收、23s control-frame stale 判死、快速 ACK、messageId 去重、会话水位线防旧消息插队和 runtime 入站观测；无业务消息时不再默认 startup recycle。
 - IM 文件收发固定为 Studio native transport：入站附件 staging 后交给 Agent；出站由 Agent 声明 `studio-channel-files` manifest，daemon 按平台上传发送。
-- Codex live 默认仍是 CC Go 风格 one-shot `codex exec/resume`；persistent session pool 作为 metadata beta 覆盖 Codex app-server、Claude Code stream-json 和 OpenCode `run --session`，已锁定原生 compact、interrupt/stop、idle reaper、fallback、session 管理合同和真实 CLI mock-Gateway smoke。
+- Codex live 默认仍是 CC Go 风格 one-shot `codex exec/resume`；persistent session pool 作为 metadata beta 覆盖 Codex app-server、Claude Code stream-json 和 OpenCode `run --session`，已锁定原生 compact、interrupt/stop、idle reaper、fallback、session 管理合同和真实 CLI mock-Gateway smoke；IM 进度里的“过程回复”只接受 `assistant/intermediate`，最终回复 `assistant/final` 只走最终结果渲染。
 - 上下文管理策略固定为 native-first：Gateway/Channel 负责模型预算与触发决策；App Connections apply 会按每个 App 选中模型派生上下文、max output 和 compact 阈值；`/compact` 手动入口和 daemon 自动触发都优先尝试 live persistent Agent 原生 compact；Studio Gateway `/responses/compact` 只作为不支持、失败或 one-shot 不可靠时的兜底；`/native /compact` 是强制原生入口，没有真实 native compact contract 时会拒绝伪透传。
 - Channel daemon `/status` 的最近 `autoCompacts` 已通过 Studio API 代理到 Channel 管理页；自动 compact 触发仍只看上下文预算压力，retry/cooldown 只表示失败恢复状态。
 
@@ -34,7 +34,7 @@
 - 按 CC Go `agent/opencode/session.go` 迁移 OpenCode 视觉输入合同：视觉模型 + 已 staging 图片时，`opencode run` 会在 `--` prompt 分隔符前追加 `--file <imagePath>`，非视觉模型仍走 Studio 视觉保护提示。
 - 修复 Claude 工具流渲染：Claude `user/tool_result` 的纯输出文本不再被进度卡片解析器吞掉首行，单行工具结果不会再显示为“无输出”。
 - 按 CC Go 迁移 Codex app-server 运行中权限批准合同：`item/commandExecution/requestApproval`、`item/fileChange/requestApproval` 和 `item/permissions/requestApproval` 进入现有 IM permission resolver，分别回写 `{decision:"accept|decline"}` 与 turn-scoped `permissions` 结果。
-- 补齐 IM 中间态展示遗漏并拆分三路开关：runner 早已产生 `assistant` 过程回复事件，daemon 发送层此前过滤掉了；现在 `/thinking` 控制思考、`/process` 控制过程回复、`/tools` 控制工具，群聊默认仍静默。
+- 修复 IM 过程回复误判：Codex app-server `item/agentMessage/delta` 不再逐 token 推送成过程回复；Codex one-shot、Claude Code、OpenCode 的最终 assistant 文本统一标记为 `phase=final`，渠道发送层只允许 `phase=intermediate` 的 assistant 文本进入“过程回复”；`/thinking`、`/process`、`/tools` 三路开关保持不变。
 
 ## 最近验证
 
@@ -46,15 +46,14 @@
 - 通过：`node scripts/smoke-channel-connectors-feishu-long-connection.mjs --duration-ms 35000 --bindings feishu-live --json`，现场结果 `violations=0`、`pingIntervalMs=10000`、`pongTimeoutMs=8000`、`transportStaleAfterMs=23000`、`sentPings=14`、`receivedPongs=15`、`transportStale=false`、`logEvents=0`。
 - 通过：`curl http://127.0.0.1:18797/health` 返回 `ok=true`、`connected=1`、`pongOverdue=0`、`transportStale=0`。
 - 通过：`npm run typecheck -- --pretty false`。
-- 通过：`node --test tests/system/channel-connectors-agent-session-driver.test.mjs`，覆盖 OpenCode `--session` compact、OpenCode 空 stdout SQLite fallback、Claude stream-json compact、Claude persistent stop cancel 和 OpenCode persistent stop abort。
 - 通过：`node --test --test-name-pattern "agent runner builds gateway-backed" tests/system/channel-connectors-service.test.mjs`，覆盖 Codex `--image`、Claude image content block、OpenCode `--file` 图片传入和非视觉模型保护。
-- 通过：`node --test --test-name-pattern "native Channel Connectors process runner maps Claude Code stream-json progress|process runner answers Claude Code permission requests|process runner waits for interactive Claude Code permission decisions" tests/system/channel-connectors-service.test.mjs`。
+- 通过：`node --test --test-name-pattern "native Channel Connectors process runner streams progress events from agent JSONL|native Channel Connectors process progress only includes intermediate assistant text|native Channel Connectors process runner maps Claude Code stream-json progress|native Channel Connectors process runner keeps Claude Code final text out of process progress|native Channel Connectors daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`。
+- 通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，覆盖 Codex app-server delta 不再生成 assistant 过程进度、最终 reply/manifest 保真、compact、stop、tool output 和 requestApproval。
+- 通过：`node --test --test-name-pattern "Channel Connectors native CLI session driver keeps Claude stream-json process alive for native compact" tests/system/channel-connectors-agent-session-driver.test.mjs`。
 - 通过：`node --test --test-name-pattern "native Channel Connectors IM commands switch agent, model, and permission per session|native Channel Connectors command surface renders text and Feishu card actions|native Channel Connectors command surface loads Gateway models when request omits models|native Channel Connectors daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`，覆盖 `/thinking`、`/process`、`/tools` 三路显示控制、Feishu 菜单和 daemon 发送合同。
-- 通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，覆盖 Codex app-server sandbox/approvalPolicy、compact、stop、tool output、command/file/permissions requestApproval 回包。
 - 通过：`node scripts/smoke-channel-connectors-native-cli-sessions.mjs --apps opencode --strict --json`，本机真实 OpenCode 通过普通 turn、文件 manifest、原生 compact 和 stop cancel；取消结果不再混入旧 DB 输出。
 - 通过：`npm run smoke:channel-connectors:native-cli-sessions:strict -- --json`，本机真实 Claude Code / OpenCode 均通过普通 turn、文件 manifest、原生 compact 和 stop cancel；Claude Code 额外通过 Bash tool-use，OpenCode 命中 `opencode.db` fallback 或 stdout JSONL 路径。
 - 通过：本机真实 Studio Gateway + OpenCode + `glm-5` 短模型 smoke，`runChannelConnectorAgentTurn` 返回 `ok=true`、`status=completed` 和 OpenCode native session id。
-- 通过：`node --test --test-name-pattern "native Channel Connectors daemon entry exposes health" tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test --test-name-pattern "native Channel Connectors daemon runs Codex app-server when persistent session metadata is enabled" tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test tests/system/channel-connectors-agent-sessions-live-script.test.mjs`。
 - 通过：`node --test --test-name-pattern "native Channel Connectors IM commands switch agent, model, and permission per session" tests/system/channel-connectors-service.test.mjs`。
@@ -70,6 +69,8 @@
 - `/status` 与 Channel 管理页已能显示最近 auto compact 记录；真实剩余 token 仍取决于上游 usage 或 Gateway runtime ledger 是否能归因。
 - Gateway usage 只有在上游返回 usage 或 runtime ledger 可归因时才准确；缺失 usage 时 Channel 只能用 IM history 字符估算，不能替代真实 tokenizer。
 - 同 session FIFO queue 当前是 daemon 内存队列；Channel daemon 自身重启会丢失未开始的排队消息，durable queue 尚未实现。
+- 完整 `tests/system/channel-connectors-agent-session-driver.test.mjs` 当前 9/11 通过；剩余失败集中在 OpenCode fake session 创建/stop abort 测试，不属于本轮过程回复链路，需后续专项修复。
+- 完整 `tests/system/channel-connectors-service.test.mjs` 当前 60/63 通过；剩余失败集中在 daemon runtime 文件写入断言与 Octo `octo-events.jsonl` 测试文件生成，不属于本轮过程回复链路，需后续专项修复。
 
 ## 下一步
 

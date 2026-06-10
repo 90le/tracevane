@@ -19,6 +19,7 @@ import {
 import {
   buildChannelConnectorAgentProcessRequest,
   defaultChannelConnectorAgentProcessRunner,
+  isChannelConnectorProcessProgressEvent,
   runChannelConnectorAgentTurn,
 } from "../../dist/apps/api/modules/channel-connectors/agent-runner.js";
 import {
@@ -2075,6 +2076,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(result.progress.latest?.type, "assistant");
   assert.equal(result.progress.latest?.text, "hello from codex");
   assert.equal(result.progress.summary, "hello from codex");
+  assert.equal(result.progress.latest?.phase, "final");
+  assert.equal(isChannelConnectorProcessProgressEvent(result.progress.latest), false);
   assert.equal(result.session.resumed, false);
   assert.equal(result.session.codexThreadId, "019e9b45-8ab3-7f41-99a0-a9e7d0f2abf5");
   assert.ok(turnCleanupPath);
@@ -7156,7 +7159,24 @@ test("native Channel Connectors process runner streams progress events from agen
   assert.equal(progress[0].text, "thread-progress");
   assert.equal(progress[1].type, "assistant");
   assert.equal(progress[1].text, "progress reply");
+  assert.equal(progress[1].phase, "final");
+  assert.equal(isChannelConnectorProcessProgressEvent(progress[1]), false);
   assert.equal(result.progressEvents?.length, 2);
+});
+
+test("native Channel Connectors process progress only includes intermediate assistant text", () => {
+  const base = {
+    checkedAt: new Date(0).toISOString(),
+    type: "assistant",
+    rawType: "assistant",
+    itemType: "text",
+    text: "assistant text",
+  };
+
+  assert.equal(isChannelConnectorProcessProgressEvent({ ...base, phase: "intermediate" }), true);
+  assert.equal(isChannelConnectorProcessProgressEvent({ ...base, phase: "final" }), false);
+  assert.equal(isChannelConnectorProcessProgressEvent({ ...base, phase: null }), false);
+  assert.equal(isChannelConnectorProcessProgressEvent({ ...base, type: "tool", phase: "intermediate" }), false);
 });
 
 test("native Channel Connectors process runner cancels active child processes", async () => {
@@ -7279,12 +7299,54 @@ test("native Channel Connectors process runner maps Claude Code stream-json prog
   assert.match(progress[2].text, /TOOLS\.md/);
   assert.equal(progress[3].type, "assistant");
   assert.equal(progress[3].text, "我会读取文件。");
+  assert.equal(progress[3].phase, "intermediate");
+  assert.equal(isChannelConnectorProcessProgressEvent(progress[3]), true);
   assert.equal(progress[4].type, "tool");
   assert.equal(progress[4].itemType, "tool_result");
   assert.equal(progress[4].text, "line 1\nline 2");
   assert.equal(progress[5].type, "completed");
   assert.equal(progress[5].text, "完成\n\n下一步可以发送文件。");
   assert.equal(result.progressEvents?.length, 6);
+});
+
+test("native Channel Connectors process runner keeps Claude Code final text out of process progress", async () => {
+  const root = makeTempRoot();
+  const progress = [];
+  const stdout = [
+    JSON.stringify({ type: "system", session_id: "claude-final-session" }),
+    JSON.stringify({
+      type: "assistant",
+      message: {
+        content: [
+          { type: "text", text: "最终回复\n\n不是过程回复。" },
+        ],
+      },
+    }),
+    JSON.stringify({ type: "result", result: "最终回复\n\n不是过程回复。", session_id: "claude-final-session" }),
+    "",
+  ].join("\n");
+  const childScript = `process.stdout.write(${JSON.stringify(stdout)});`;
+
+  const result = await defaultChannelConnectorAgentProcessRunner({
+    command: process.execPath,
+    args: ["-e", childScript],
+    cwd: root,
+    stdin: "",
+    env: {},
+    timeoutMs: 1000,
+    agent: "claude-code",
+    onProgress: (event) => progress.push(event),
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.error, null);
+  assert.equal(progress.length, 3);
+  assert.equal(progress[1].type, "assistant");
+  assert.equal(progress[1].text, "最终回复\n\n不是过程回复。");
+  assert.equal(progress[1].phase, "final");
+  assert.equal(isChannelConnectorProcessProgressEvent(progress[1]), false);
+  assert.equal(progress[2].type, "completed");
+  assert.equal(progress[2].text, "最终回复\n\n不是过程回复。");
 });
 
 test("native Channel Connectors process runner answers Claude Code permission requests", async () => {
@@ -7716,11 +7778,11 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /function renderPlainProgressMessage/);
   assert.match(daemonSource, /if \(kind === "assistant"\)[\s\S]{0,40}return "💬";/);
   assert.match(daemonSource, /if \(event\.type === "assistant"\)[\s\S]{0,40}return "过程回复"/);
-  assert.match(daemonSource, /event\.type === "assistant"[\s\S]{0,140}channelConnectorProcessMessagesEnabled\(control,\s*defaults\)/);
+  assert.match(daemonSource, /isChannelConnectorProcessProgressEvent/);
+  assert.match(daemonSource, /return shouldSendChannelProgressEvent\(control,\s*event,\s*defaults\);/);
+  assert.match(daemonSource, /event\.type === "assistant"[\s\S]{0,180}isChannelConnectorProcessProgressEvent\(event\)[\s\S]{0,140}channelConnectorProcessMessagesEnabled\(control,\s*defaults\)/);
   assert.match(daemonSource, /event\.type === "reasoning"[\s\S]{0,100}channelConnectorThinkingMessagesEnabled\(control,\s*defaults\)/);
   assert.match(daemonSource, /event\.type === "tool"[\s\S]{0,100}channelConnectorToolMessagesEnabled\(control,\s*defaults\)/);
-  assert.match(daemonSource, /\["assistant",\s*"running",\s*"reasoning",\s*"tool",\s*"failed",\s*"error",\s*"completed",\s*"event"\]\.includes\(event\.type\)/);
-  assert.match(daemonSource, /if \(event\.type === "assistant"\)[\s\S]{0,140}channelConnectorProcessMessagesEnabled\(control,\s*defaults\)/);
   assert.match(daemonSource, /function progressKindIcon/);
   assert.match(daemonSource, /function progressResultIcon/);
   assert.match(daemonSource, /function renderAgentFailureReply/);

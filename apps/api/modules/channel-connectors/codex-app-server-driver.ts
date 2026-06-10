@@ -77,6 +77,7 @@ function progressEvent(input: {
   rawType: string;
   itemType?: string | null;
   text?: string | null;
+  phase?: ChannelConnectorAgentProgressEvent["phase"];
 }): ChannelConnectorAgentProgressEvent {
   return {
     checkedAt: nowIso(),
@@ -84,6 +85,7 @@ function progressEvent(input: {
     rawType: input.rawType,
     itemType: input.itemType || null,
     text: input.text ? truncateProgressText(input.text) : null,
+    phase: input.phase || null,
   };
 }
 
@@ -566,14 +568,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
           const params = isRecord(message.params) ? message.params : {};
           if (method === "item/agentMessage/delta") {
             const delta = stringValue(params.delta);
-            if (delta) {
-              replyText += delta;
-              if (delta.trim()) {
-                const event = progressEvent({ type: "assistant", rawType: method, itemType: "agentMessage", text: delta });
-                progressEvents.push(event);
-                input.onProgress?.(event);
-              }
-            }
+            if (delta) replyText += delta;
             return;
           }
           if (method === "item/completed") {
@@ -597,7 +592,13 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
               completedAgentMessageText = text;
               if (!replyText.trim()) replyText = text;
             }
-            const event = progressEvent({ type, rawType: method, itemType, text });
+            const event = progressEvent({
+              type,
+              rawType: method,
+              itemType,
+              text,
+              phase: itemType === "agentMessage" ? "final" : null,
+            });
             progressEvents.push(event);
             input.onProgress?.(event);
             return;

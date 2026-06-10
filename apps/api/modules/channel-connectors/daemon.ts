@@ -27,6 +27,7 @@ import type {
 } from "../../../../types/channel-connectors.js";
 import {
   buildChannelConnectorAgentProcessRequest,
+  isChannelConnectorProcessProgressEvent,
   runChannelConnectorAgentTurn,
   type ChannelConnectorAgentPermissionDecision,
   type ChannelConnectorAgentPermissionRequest,
@@ -4234,14 +4235,7 @@ function shouldSendFeishuProgressEvent(
   event: ChannelConnectorAgentProgressEvent,
   defaults: ChannelConnectorProgressDefaults,
 ): boolean {
-  if (!isVisibleChannelProgressEvent(event)) return false;
-  if (event.type === "assistant") {
-    return Boolean(normalizeString(event.text)) && channelConnectorProcessMessagesEnabled(control, defaults);
-  }
-  if (event.type === "reasoning") return channelConnectorThinkingMessagesEnabled(control, defaults);
-  if (event.type === "tool") return channelConnectorToolMessagesEnabled(control, defaults);
-  if (!channelConnectorProcessMessagesEnabled(control, defaults)) return false;
-  return ["assistant", "running", "reasoning", "tool", "failed", "error", "completed", "event"].includes(event.type);
+  return shouldSendChannelProgressEvent(control, event, defaults);
 }
 
 function channelConnectorProgressDefaults(isGroup: boolean): ChannelConnectorProgressDefaults {
@@ -4289,7 +4283,8 @@ function shouldSendChannelProgressEvent(
 ): boolean {
   if (!isVisibleChannelProgressEvent(event)) return false;
   if (event.type === "assistant") {
-    return Boolean(normalizeString(event.text)) && channelConnectorProcessMessagesEnabled(control, defaults);
+    return isChannelConnectorProcessProgressEvent(event)
+      && channelConnectorProcessMessagesEnabled(control, defaults);
   }
   if (event.type === "running" || event.type === "completed" || event.type === "event") return false;
   if (event.type === "reasoning") return channelConnectorThinkingMessagesEnabled(control, defaults);
@@ -5774,6 +5769,7 @@ async function dispatchOctoMessage(input: {
         progressType: event.type,
         rawType: event.rawType,
         itemType: event.itemType,
+        phase: event.phase || null,
         replySent: result.ok === true,
         replyError: result.error,
         replyRequestCount: result.requestCount,
@@ -5793,6 +5789,7 @@ async function dispatchOctoMessage(input: {
         progressType: event.type,
         rawType: event.rawType,
         itemType: event.itemType,
+        phase: event.phase || null,
         replySent: false,
         replyError: shortMessage(error),
         progressReplySendCount: octoProgressSendCount,
@@ -5963,6 +5960,7 @@ async function dispatchOctoMessage(input: {
             progressType: event.type,
             rawType: event.rawType,
             itemType: event.itemType,
+            phase: event.phase || null,
             text: event.text,
             progressDefaultGroup: progressDefaults.isGroup,
             progressThinkingEnabled: channelConnectorThinkingMessagesEnabled(control, progressDefaults),
@@ -7018,6 +7016,7 @@ async function dispatchFeishuParsedEvent(input: {
             progressType: event.type,
             rawType: event.rawType,
             itemType: event.itemType,
+            phase: event.phase || null,
             text: event.text,
             progressDefaultGroup: progressDefaults.isGroup,
             progressThinkingEnabled: channelConnectorThinkingMessagesEnabled(control, progressDefaults),

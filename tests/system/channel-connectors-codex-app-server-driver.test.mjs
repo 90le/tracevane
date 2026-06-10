@@ -4,6 +4,9 @@ import assert from "node:assert/strict";
 import {
   CodexAppServerSession,
 } from "../../dist/apps/api/modules/channel-connectors/codex-app-server-driver.js";
+import {
+  isChannelConnectorProcessProgressEvent,
+} from "../../dist/apps/api/modules/channel-connectors/agent-runner.js";
 
 class FakeCodexAppServerTransport {
   messages = [];
@@ -393,7 +396,10 @@ test("Codex app-server driver starts one thread and reuses it across turns", asy
   assert.equal(transport.messages.filter((message) => message.method === "turn/start").length, 2);
   assert.equal(transport.messages.find((message) => message.method === "turn/start").params.model, "gpt-5");
   assert.match(transport.messages.find((message) => message.method === "turn/start").params.input[0].text, /hello codex app server/);
-  assert.ok(progress.some((event) => event.type === "assistant" && event.text === "reply for m-1"));
+  const assistantProgress = progress.filter((event) => event.type === "assistant");
+  assert.deepEqual(assistantProgress.map((event) => event.text), ["reply for m-1", "reply for m-2"]);
+  assert.deepEqual(assistantProgress.map((event) => event.phase), ["final", "final"]);
+  assert.equal(assistantProgress.some((event) => isChannelConnectorProcessProgressEvent(event)), false);
 });
 
 test("Codex app-server driver preserves completed markdown and outbound file manifests", async () => {
@@ -418,6 +424,7 @@ test("Codex app-server driver preserves completed markdown and outbound file man
     cwd: "/tmp/project",
     permissionMode: "suggest",
   });
+  const progress = [];
 
   const result = await session.runTurn({
     mode: "persistent",
@@ -431,6 +438,7 @@ test("Codex app-server driver preserves completed markdown and outbound file man
     },
     messageId: "m-file",
     agentTurnRequest: agentTurnRequest({ messageId: "m-file", content: "发个文件给我" }),
+    onProgress: (event) => progress.push(event),
     runOneShot: async () => {
       throw new Error("one-shot should not run for app-server driver");
     },
@@ -439,6 +447,12 @@ test("Codex app-server driver preserves completed markdown and outbound file man
   assert.equal(result.ok, true);
   assert.equal(result.replyText, transport.completedText);
   assert.match(result.replyText, /：\n\n```studio-channel-files\n\[/);
+  assert.equal(progress.some((event) => event.rawType === "item/agentMessage/delta"), false);
+  const assistantProgress = progress.filter((event) => event.type === "assistant");
+  assert.equal(assistantProgress.length, 1);
+  assert.equal(assistantProgress[0].text, transport.completedText);
+  assert.equal(assistantProgress[0].phase, "final");
+  assert.equal(isChannelConnectorProcessProgressEvent(assistantProgress[0]), false);
 });
 
 test("Codex app-server driver preserves tool command output", async () => {

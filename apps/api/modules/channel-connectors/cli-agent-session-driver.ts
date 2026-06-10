@@ -58,6 +58,7 @@ function progressEvent(input: {
   rawType: string | null;
   itemType?: string | null;
   text?: string | null;
+  phase?: ChannelConnectorAgentProgressEvent["phase"];
 }): ChannelConnectorAgentProgressEvent {
   return {
     checkedAt: nowIso(),
@@ -65,6 +66,7 @@ function progressEvent(input: {
     rawType: input.rawType,
     itemType: input.itemType || null,
     text: input.text ? truncateProgressText(input.text) : null,
+    phase: input.phase || null,
   };
 }
 
@@ -333,13 +335,25 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
       return;
     }
     if (rawType === "assistant") {
-      for (const item of claudeContentItems(raw)) {
+      const items = claudeContentItems(raw);
+      const hasIntermediateContext = items.some((item) => {
+        const itemType = normalizeString(item.type);
+        return itemType === "thinking"
+          || (itemType === "tool_use" && normalizeString(item.name) !== "AskUserQuestion");
+      });
+      for (const item of items) {
         const itemType = normalizeString(item.type);
         if (itemType === "text") {
           const text = stringValue(item.text);
           if (text) {
             if (this.activeTurn) this.activeTurn.replyParts.push(text);
-            this.pushProgress(progressEvent({ type: "assistant", rawType, itemType, text }));
+            this.pushProgress(progressEvent({
+              type: "assistant",
+              rawType,
+              itemType,
+              text,
+              phase: hasIntermediateContext ? "intermediate" : "final",
+            }));
           }
         } else if (itemType === "thinking") {
           const text = stringValue(item.thinking) || firstText(item);
