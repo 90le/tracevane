@@ -677,6 +677,17 @@ test("Channel Connectors native CLI session driver keeps Claude stream-json proc
 
 test("Channel Connectors OpenCode persistent session stop aborts active process runner", async () => {
   const root = makeTempRoot();
+  const fakeBin = path.join(root, "bin");
+  const dataHome = path.join(root, "data");
+  const dbPath = path.join(dataHome, "opencode", "opencode.db");
+  const sqliteMarker = path.join(root, "sqlite-called");
+  fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  fs.writeFileSync(dbPath, "");
+  writeExecutable(path.join(fakeBin, "sqlite3"), [
+    "#!/usr/bin/env node",
+    "require('fs').writeFileSync(process.env.STUDIO_SQLITE_MARKER, 'called');",
+    "process.stdout.write(JSON.stringify([{ id: 'stale-session' }]));",
+  ]);
   const session = new OpenCodeRunSession({
     id: "opencode-run-session:test",
     sessionId: "opencode-session-created",
@@ -686,40 +697,60 @@ test("Channel Connectors OpenCode persistent session stop aborts active process 
   const runnerStarted = new Promise((resolve) => {
     markRunnerStarted = resolve;
   });
-  const resultPromise = session.runTurn({
-    mode: "persistent",
-    key: { ...baseKey, agent: "opencode", model: "openai/gpt-5", workDir: root },
-    messageId: "opencode-stop-message",
-    agentTurnRequest: {
-      ...baseTurnRequest(root, "opencode"),
-      processRunner: async (request) => {
-        markRunnerStarted();
-        return new Promise((resolve) => {
-          request.signal?.addEventListener("abort", () => {
-            sawAbortSignal = true;
-            resolve({
-              exitCode: null,
-              signal: null,
-              stdout: "",
-              stderr: "",
-              durationMs: 1,
-              timedOut: false,
-              cancelled: true,
-              error: "Agent process cancelled.",
-              progressEvents: [],
-            });
-          }, { once: true });
-        });
+  const originalPath = process.env.PATH || "";
+  const originalHome = process.env.HOME;
+  const originalDataHome = process.env.XDG_DATA_HOME;
+  const originalMarker = process.env.STUDIO_SQLITE_MARKER;
+  process.env.PATH = `${fakeBin}:${originalPath}`;
+  process.env.HOME = root;
+  process.env.XDG_DATA_HOME = dataHome;
+  process.env.STUDIO_SQLITE_MARKER = sqliteMarker;
+  try {
+    const resultPromise = session.runTurn({
+      mode: "persistent",
+      key: { ...baseKey, agent: "opencode", model: "openai/gpt-5", workDir: root },
+      messageId: "opencode-stop-message",
+      agentTurnRequest: {
+        ...baseTurnRequest(root, "opencode"),
+        processRunner: async (request) => {
+          markRunnerStarted();
+          return new Promise((resolve) => {
+            request.signal?.addEventListener("abort", () => {
+              sawAbortSignal = true;
+              resolve({
+                exitCode: null,
+                signal: null,
+                stdout: "",
+                stderr: "",
+                durationMs: 1,
+                timedOut: false,
+                cancelled: true,
+                error: "Agent process cancelled.",
+                progressEvents: [],
+              });
+            }, { once: true });
+          });
+        },
       },
-    },
-    runOneShot: async () => {
-      throw new Error("one-shot fallback should not run");
-    },
-  });
-  await runnerStarted;
-  session.stop("manual-stop");
-  const result = await resultPromise;
-  assert.equal(sawAbortSignal, true);
-  assert.equal(result.status, "cancelled");
-  assert.equal(result.ok, false);
+      runOneShot: async () => {
+        throw new Error("one-shot fallback should not run");
+      },
+    });
+    await runnerStarted;
+    session.stop("manual-stop");
+    const result = await resultPromise;
+    assert.equal(sawAbortSignal, true);
+    assert.equal(result.status, "cancelled");
+    assert.equal(result.ok, false);
+    assert.equal(result.stdout, "");
+    assert.equal(fs.existsSync(sqliteMarker), false);
+  } finally {
+    process.env.PATH = originalPath;
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalDataHome === undefined) delete process.env.XDG_DATA_HOME;
+    else process.env.XDG_DATA_HOME = originalDataHome;
+    if (originalMarker === undefined) delete process.env.STUDIO_SQLITE_MARKER;
+    else process.env.STUDIO_SQLITE_MARKER = originalMarker;
+  }
 });

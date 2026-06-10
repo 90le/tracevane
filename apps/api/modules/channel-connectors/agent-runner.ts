@@ -1874,9 +1874,13 @@ export async function runChannelConnectorAgentTurn(
   } finally {
     cleanupProcessRequest(processRequest);
   }
-  const openCodeFallback = openCodeDbFallback(processRequest);
-  const effectiveStdout = result.stdout || openCodeFallback?.stdout || "";
   const cancelled = result.cancelled === true;
+  const shouldUseOpenCodeFallback = !cancelled
+    && result.exitCode === 0
+    && !result.error
+    && !normalizeString(result.stdout);
+  const openCodeFallback = shouldUseOpenCodeFallback ? openCodeDbFallback(processRequest) : null;
+  const effectiveStdout = result.stdout || openCodeFallback?.stdout || "";
   const ok = result.exitCode === 0 && !result.error && !cancelled;
   const codexThreadId = request.project.agent === "codex"
     ? extractCodexThreadId(effectiveStdout) || processRequest.codexThreadId || null

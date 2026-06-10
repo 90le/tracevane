@@ -117,6 +117,19 @@ function sendSse(res, events) {
   res.end();
 }
 
+function sendNeverCompletingResponse(res) {
+  const timer = setTimeout(() => {
+    if (res.destroyed || res.writableEnded) return;
+    sendJson(res, 504, {
+      error: {
+        message: "Stop smoke did not cancel the pending request before the mock timeout.",
+        type: "timeout_error",
+      },
+    });
+  }, 60_000);
+  res.on("close", () => clearTimeout(timer));
+}
+
 function requestText(value) {
   if (typeof value === "string") return value;
   if (value === null || value === undefined) return "";
@@ -308,6 +321,10 @@ function chatResponseText(body) {
 }
 
 function respondChatCompletions(res, body) {
+  if (requestText(body).includes("OPENCODE_STOP_SMOKE")) {
+    sendNeverCompletingResponse(res);
+    return;
+  }
   const text = chatResponseText(body);
   if (body.stream) {
     const created = Math.floor(Date.now() / 1000);
@@ -485,6 +502,16 @@ function preview(value) {
   return text.length > 300 ? `${text.slice(0, 300)}...` : text;
 }
 
+async function waitForRequest(requests, beforeCount, predicate, timeoutMs) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() <= deadline) {
+    const hit = requests.slice(beforeCount).find(predicate);
+    if (hit) return hit;
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  throw new Error("Timed out waiting for expected mock Gateway request.");
+}
+
 async function runAppSmoke(app, root, endpoint, requests, timeoutMs) {
   const command = app === "claude-code" ? "claude" : app;
   if (!commandExists(command)) return skippedResult(app, `${command} is not installed or not on PATH.`);
@@ -584,6 +611,31 @@ async function runAppSmoke(app, root, endpoint, requests, timeoutMs) {
         throw new Error("Persistent compact smoke should not call one-shot fallback.");
       },
     });
+    let stop = null;
+    if (app === "opencode") {
+      const beforeStopRequest = requests.length;
+      const stopPromise = session.runTurn({
+        mode: "persistent",
+        key,
+        messageId: `${app}-stop`,
+        agentTurnRequest: {
+          ...baseTurnRequest(root, app, endpoint, null, "OPENCODE_STOP_SMOKE: Start a long pending request so Studio can cancel it."),
+          session: compact.session,
+        },
+        onProgress: (event) => progress.push(event),
+        runOneShot: async () => {
+          throw new Error("Persistent stop smoke should not call one-shot fallback.");
+        },
+      });
+      await waitForRequest(
+        requests,
+        beforeStopRequest,
+        (request) => request.path === "/v1/chat/completions" && requestText(request.body).includes("OPENCODE_STOP_SMOKE"),
+        Math.min(timeoutMs, 10_000),
+      );
+      session.stop?.("native-cli-smoke-stop");
+      stop = await stopPromise;
+    }
     const marker = app === "claude-code" ? "CLAUDE_DRIVER_OK" : "OPENCODE_DRIVER_OK";
     const compactMarker = app === "claude-code" ? "Claude Code compact 已完成。" : "OpenCode compact 已完成。";
     const fileMarker = app === "claude-code" ? "CLAUDE_FILE_OK" : "OPENCODE_FILE_OK";
@@ -594,6 +646,9 @@ async function runAppSmoke(app, root, endpoint, requests, timeoutMs) {
     if (tool && !tool.ok) errors.push(`tool turn failed: ${tool.error || tool.status}`);
     if (!file.ok) errors.push(`file turn failed: ${file.error || file.status}`);
     if (!compact.ok) errors.push(`compact turn failed: ${compact.error || compact.status}`);
+    if (stop && (stop.ok || stop.status !== "cancelled")) {
+      errors.push(`stop turn status was ${JSON.stringify(stop.status)}, expected cancelled`);
+    }
     if (normal.replyText !== marker) errors.push(`normal reply was ${JSON.stringify(normal.replyText)}, expected ${marker}`);
     if (tool && tool.replyText !== "CLAUDE_TOOL_OK") errors.push(`tool reply was ${JSON.stringify(tool.replyText)}, expected CLAUDE_TOOL_OK`);
     if (!String(file.replyText || "").includes(fileMarker)) errors.push(`file reply did not include ${fileMarker}`);
@@ -646,6 +701,18 @@ async function runAppSmoke(app, root, endpoint, requests, timeoutMs) {
         stdoutPreview: preview(compact.stdout),
         stderrPreview: preview(compact.stderr),
       },
+      ...(stop ? {
+        stop: {
+          ok: stop.ok,
+          status: stop.status,
+          replyText: stop.replyText,
+          nativeSessionId: stop.session.agentNativeSessionId || null,
+          progressCount: stop.progress.eventCount,
+          error: stop.error,
+          stdoutPreview: preview(stop.stdout),
+          stderrPreview: preview(stop.stderr),
+        },
+      } : {}),
       progressCount: progress.length,
     };
   } finally {
@@ -667,6 +734,7 @@ function printHuman(summary) {
     if (result.tool) console.log(`  tool: ${result.tool.replyText || "<empty>"}`);
     if (result.file) console.log(`  file: ${preview(result.file.replyText || "")}`);
     if (result.compact) console.log(`  compact: ${result.compact.replyText || "<empty>"}`);
+    if (result.stop) console.log(`  stop: ${result.stop.status} ${result.stop.error || ""}`.trim());
   }
 }
 
