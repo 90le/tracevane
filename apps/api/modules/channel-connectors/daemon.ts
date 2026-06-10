@@ -1400,6 +1400,15 @@ function startHttp(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelD
       }));
       return;
     }
+    const managementToken = (config.management as { token?: string }).token || process.env.STUDIO_DAEMON_MANAGEMENT_TOKEN;
+    if (managementToken && req.url !== "/health" && req.url !== "/status") {
+      const auth = req.headers.authorization;
+      if (auth !== `Bearer ${managementToken}`) {
+        res.statusCode = 401;
+        res.end("unauthorized");
+        return;
+      }
+    }
     if (req.url === "/status") {
       state.agentSessionDriver = buildAgentSessionDriverState(config);
       res.setHeader("content-type", "application/json; charset=utf-8");
