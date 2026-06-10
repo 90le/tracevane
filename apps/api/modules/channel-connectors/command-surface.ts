@@ -376,6 +376,26 @@ function fallbackActionTable(items: readonly ChannelConnectorCommandSurfaceActio
   ]));
 }
 
+function fallbackActionList(items: readonly ChannelConnectorCommandSurfaceAction[]): string {
+  return items.map((item) => {
+    const description = commandSurfaceItemDescription(item);
+    return description
+      ? `- \`${item.command}\` - ${item.label}: ${description}`
+      : `- \`${item.command}\` - ${item.label}`;
+  }).join("\n");
+}
+
+function fallbackCurrentSummary(surface: Omit<ChannelConnectorCommandSurface, "textFallback">): string {
+  return [
+    `- Agent: ${surface.current.projectId} (${surface.current.agent})`,
+    `- Model: ${surface.current.model || "default"}`,
+    `- Reasoning: ${surface.current.reasoningEffort || "default"}`,
+    `- Permission: ${surface.current.permissionMode}`,
+    `- WorkDir: \`${compactPath(surface.current.workDir)}\``,
+    `- Display: thinking=${surface.current.thinkingMessages ? "on" : "off"} / process=${surface.current.processMessages ? "on" : "off"} / tools=${surface.current.toolMessages ? "on" : "off"}`,
+  ].join("\n");
+}
+
 function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFallback">): string {
   const normalizedSurface = surface as ChannelConnectorCommandSurface;
   const selectedSectionId = normalizeChannelConnectorCommandSurfaceSection(surface.selectedSectionId);
@@ -385,58 +405,42 @@ function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFa
   const lines: string[] = [
     "Studio Channel",
     "",
-    "当前",
-    "",
-    markdownTable([
-      ["Agent", `${surface.current.projectId} (${surface.current.agent})`],
-      ["Model", surface.current.model || "default"],
-      ["Reasoning", surface.current.reasoningEffort || "default"],
-      ["Mode", surface.current.permissionMode],
-      ["WorkDir", compactPath(surface.current.workDir)],
-      [
-        "Display",
-        `thinking=${surface.current.thinkingMessages ? "on" : "off"} / process=${surface.current.processMessages ? "on" : "off"} / tools=${surface.current.toolMessages ? "on" : "off"}`,
-      ],
-    ]),
+    "**当前会话**",
+    fallbackCurrentSummary(surface),
   ];
   if (surface.current.workDirHistory.length) {
-    lines.push(`Previous WorkDir: ${compactPath(surface.current.workDirHistory[0] || "")}`);
+    lines.push(`- Previous WorkDir: \`${compactPath(surface.current.workDirHistory[0] || "")}\``);
   }
 
   if (quickActions.length) {
-    lines.push("", "快捷操作", "");
-    lines.push(fallbackActionTable(quickActions));
+    lines.push("", "**快捷操作**", fallbackActionList(quickActions));
   }
 
   if (selectedSection) {
-    lines.push("", selectedSection.title);
+    lines.push("", `**${selectedSection.title}**`);
     if (selectedSection.summary) lines.push(selectedSection.summary);
-    lines.push("");
-    lines.push(fallbackActionTable(helpSectionActions(selectedSection, normalizedSurface)));
-    lines.push("", "返回：`/help` 主菜单。");
+    lines.push(fallbackActionList(helpSectionActions(selectedSection, normalizedSurface)));
+    lines.push("", "返回：`/help` 主菜单");
   } else {
-    lines.push("", "菜单分组", "");
-    lines.push(markdownTable(homeMenuSections().map((group) => [
-      group.title,
-      group.sectionIds.map((sectionId) => `\`/help ${sectionId}\``).join("  "),
-    ])));
+    lines.push("", "**菜单入口**");
+    for (const group of homeMenuSections()) {
+      lines.push(`- ${group.title}: ${group.sectionIds.map((sectionId) => `\`/help ${sectionId}\``).join("  ")}`);
+    }
     lines.push(
       "",
-      "常用命令",
-      "",
-      markdownTable([
-        ["`/agent` `/model` `/mode` `/reasoning`", "切换当前 IM session 配置"],
-        ["`/display` `/thinking` `/process` `/tools`", "控制思考、过程回复和工具显示"],
-        ["`/commands` `/alias` `/skills`", "查看可执行命令、别名和 Skill"],
-      ]),
+      "**常用命令**",
+      "- `/agent` `/model` `/mode` `/reasoning` - 切换当前 IM session 配置",
+      "- `/display` `/thinking` `/process` `/tools` - 控制思考、过程回复和工具显示",
+      "- `/commands` `/alias` `/skills` - 查看可执行命令、别名和 Skill",
     );
   }
 
   lines.push(
     "",
-    "原生 Agent",
-    "未被 Studio 占用的 `/xxx` 会透传给当前 Agent；冲突命令用 `/native <命令>`。",
-    "示例：`/native /help` 查看当前 Agent 原生帮助或 skills 命令；`/native /compact` 只在持久/交互式 runner 支持时执行原生压缩。",
+    "**原生 Agent**",
+    "- 未被 Studio 占用的 `/xxx` 会透传给当前 Agent；冲突命令用 `/native <命令>`。",
+    "- `/native /help` 查看当前 Agent 原生帮助或 skills 命令。",
+    "- `/native /compact` 只在持久/交互式 runner 支持时执行原生压缩。",
   );
   return lines.join("\n");
 }

@@ -3418,7 +3418,7 @@ function renderPlainProgressMessage(input: {
   meta?: string;
 }): string {
   const heading = [
-    `${input.icon} **${input.title}**`,
+    `${input.icon} ${input.title}`,
     input.meta || "",
   ].filter(Boolean).join(" · ");
   const lines = [
@@ -4714,7 +4714,7 @@ function inlineProgressCode(value: string): string {
 }
 
 function isBashLikeToolName(value: string | null): boolean {
-  return ["bash", "shell", "run_shell_command", "command_execution", "commandexecution", "command"].includes(normalizeString(value).toLowerCase());
+  return ["bash", "shell", "run_shell_command", "exec_command", "execcommand", "command_execution", "commandexecution", "command", "write_stdin"].includes(normalizeString(value).toLowerCase());
 }
 
 function isTodoWriteToolName(value: string | null): boolean {
@@ -4728,15 +4728,18 @@ function normalizedProgressToolKey(value: string | null): string {
 function progressToolUseLabel(toolName: string): string {
   const key = normalizedProgressToolKey(toolName);
   if (["bash", "shell", "runshellcommand", "execcommand", "commandexecution", "command"].includes(key)) return "命令执行";
+  if (["writestdin"].includes(key)) return "命令输入";
   if (key === "todowrite") return "任务清单";
   if (key === "todoread") return "任务查看";
   if (["read", "readfile", "notebookread"].includes(key)) return "文件读取";
-  if (["write", "writefile", "edit", "multiedit", "notebookedit", "applypatch"].includes(key)) return "文件修改";
+  if (["write", "writefile", "edit", "multiedit", "notebookedit", "applypatch", "patch"].includes(key)) return "文件修改";
   if (["grep", "glob", "ls", "list", "search", "find"].includes(key)) return "文件检索";
   if (["webfetch", "websearch", "webopen", "webfind"].includes(key)) return "网页检索";
   if (["viewimage", "imageview", "screenshot"].includes(key)) return "图像查看";
   if (key.startsWith("mcp")) return "MCP 工具";
-  if (["agent", "task"].includes(key)) return "子任务";
+  if (["agent", "task", "spawnagent", "assigntask", "sendmessage", "waitagent", "closeagent", "listagents"].includes(key)) return "子任务";
+  if (["updateplan"].includes(key)) return "计划更新";
+  if (["permissions", "permission"].includes(key)) return "权限策略";
   if (["askuserquestion", "ask", "question"].includes(key)) return "用户确认";
   return "工具调用";
 }
@@ -4744,15 +4747,18 @@ function progressToolUseLabel(toolName: string): string {
 function progressToolResultLabel(toolName: string): string {
   const key = normalizedProgressToolKey(toolName);
   if (["bash", "shell", "runshellcommand", "execcommand", "commandexecution", "command"].includes(key)) return "命令输出";
+  if (["writestdin"].includes(key)) return "命令输入结果";
   if (key === "todowrite") return "任务清单结果";
   if (key === "todoread") return "任务查看结果";
   if (["read", "readfile", "notebookread"].includes(key)) return "读取结果";
-  if (["write", "writefile", "edit", "multiedit", "notebookedit", "applypatch"].includes(key)) return "修改结果";
+  if (["write", "writefile", "edit", "multiedit", "notebookedit", "applypatch", "patch"].includes(key)) return "修改结果";
   if (["grep", "glob", "ls", "list", "search", "find"].includes(key)) return "检索结果";
   if (["webfetch", "websearch", "webopen", "webfind"].includes(key)) return "网页结果";
   if (["viewimage", "imageview", "screenshot"].includes(key)) return "图像查看结果";
   if (key.startsWith("mcp")) return "MCP 结果";
-  if (["agent", "task"].includes(key)) return "子任务结果";
+  if (["agent", "task", "spawnagent", "assigntask", "sendmessage", "waitagent", "closeagent", "listagents"].includes(key)) return "子任务结果";
+  if (["updateplan"].includes(key)) return "计划更新结果";
+  if (["permissions", "permission"].includes(key)) return "权限策略结果";
   if (["askuserquestion", "ask", "question"].includes(key)) return "用户确认结果";
   return "工具结果";
 }
@@ -4981,6 +4987,13 @@ function formatProgressToolResult(value: string): string {
   return text;
 }
 
+function formatPlainProgressToolResult(value: string): string {
+  const text = normalizeString(value);
+  if (!text) return "_无输出_";
+  if (text.includes("```")) return text;
+  return codeBlock("text", text);
+}
+
 function indentPlainProgressBody(value: string): string {
   const text = normalizeString(value);
   if (!text) return "";
@@ -5081,7 +5094,7 @@ function renderPlainProgressEntry(entry: FeishuProgressCardEntry): string {
       icon: progressResultIcon({ status: parsed.status, exitCode: parsed.exitCode }),
       title: `${progressToolResultLabel(parsed.toolName)} \`${inlineProgressCode(parsed.toolName)}\``,
       meta,
-      body: formatProgressToolResult(parsed.output),
+      body: formatPlainProgressToolResult(parsed.output),
     });
   }
   return renderPlainProgressMessage({

@@ -1,7 +1,7 @@
 # Studio Gateway / Channel Connectors 进度
 
 > 状态：Studio Gateway core、Provider Center、App Connections、Channel Connectors Octo/Feishu 基础闭环已完成；当前推进 CC Go 成熟能力迁移与上下文管理。
-> 更新：2026-06-10
+> 更新：2026-06-11
 > 文档规则：只保留当前事实、本轮完成、验证、边界和下一步；历史细节看 git commit 与专项文档。
 
 ## 当前事实
@@ -44,9 +44,13 @@
 - 明确思考流边界：OpenCode 已带 `--thinking`，Claude Code 已解析 stream-json `thinking` block；渠道只展示上游真实 `reasoning/thinking` 事件，不合成伪思考。
 - 修复 Octo 纯文本渠道审批顺序：等待权限审批时，非终止进度会先缓冲，审批通过后再按顺序释放；拒绝/超时会丢弃缓冲进度；权限请求不再作为普通工具气泡重复发送。Octo 纯文本审批提示/结果已改为轻量 Markdown，带工具名、request id、输入 JSON 和 `/approve`/`/deny`/`/allow-all` 指令；AskUserQuestion 不进入工具审批门控。
 - Claude Code stream-json 现在把 `tool_use_id` / request id 和工具名传入统一 progress event，后续工具结果能稳定显示为对应工具的“命令输出 / 读取结果 / 检索结果”等标签；工具识别补齐 `exec_command`、`TodoRead`、`find`、`webopen/webfind`、图像查看和 MCP 工具。
+- 精修非 Feishu 命令菜单：`/help` 纯文本 fallback 从多表格改为列表式 Markdown，避免 Octo/纯文本渠道出现第二张表渲染失败；保留当前会话、快捷操作、菜单入口、常用命令和原生 Agent 入口。
+- 精修纯文本进度流：Octo/纯文本标题不再用粗体大标题；工具结果统一代码块显示；工具标签补齐 `write_stdin`、`Patch`、`Permissions`、子任务、计划更新等语义，权限审批和工具流更容易区分。
 
 ## 最近验证
 
+- 通过：`node --test --test-name-pattern "native Channel Connectors command surface renders text and Feishu card actions|native Channel Connectors daemon owns Feishu long-connection ingress|native Channel Connectors resolves outbound file manifests under the Agent workdir|native Channel Connectors compact posts to Gateway and clears stale Agent sessions" tests/system/channel-connectors-service.test.mjs`。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，66/66 全部通过。
 - 通过：`node --test --test-name-pattern "native Channel Connectors process runner answers Claude Code permission requests|native Channel Connectors process runner waits for interactive Claude Code permission decisions|native Channel Connectors process runner routes Claude Code AskUserQuestion through IM answers|native Channel Connectors daemon owns Feishu long-connection ingress|native Channel Connectors daemon serializes same-session Octo Agent turns" tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs`，66/66 全部通过。
 - 通过：`npm run typecheck:api`。
