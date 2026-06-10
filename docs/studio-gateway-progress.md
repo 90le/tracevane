@@ -36,6 +36,7 @@
 - 按 CC Go 迁移 Codex app-server 运行中权限批准合同：`item/commandExecution/requestApproval`、`item/fileChange/requestApproval` 和 `item/permissions/requestApproval` 进入现有 IM permission resolver，分别回写 `{decision:"accept|decline"}` 与 turn-scoped `permissions` 结果。
 - Feishu 运行中权限审批优先并入当前进度卡片：审批条目展示工具、请求、输入和状态，卡片内提供允许/拒绝/本轮全部允许按钮；点击后同一进度卡更新为已允许/已拒绝，不再默认刷独立审批卡。若进度卡尚未创建或 AskUserQuestion 需要独立交互，则保留原独立提示回退。
 - 修复 IM 过程回复误判：Codex app-server `item/agentMessage/delta` 不再逐 token 推送成过程回复；Codex one-shot、Claude Code、OpenCode 的最终 assistant 文本统一标记为 `phase=final`，渠道发送层只允许 `phase=intermediate` 的 assistant 文本进入“过程回复”；`/thinking`、`/process`、`/tools` 三路开关保持不变。
+- 修复 Feishu 进度卡状态误判：Agent 可恢复的 `user/tool_result` error/failed 现在渲染为失败的工具结果，不再把整轮运行卡锁死为 failed；最终 `agent.ok=true` 时进度卡会收尾为 completed。
 - 清理 Channel Connectors 回归测试债：OpenCode persistent fake session 测试显式模拟当前 runtime dataHome session 存在性；OpenCode stop 测试区分启动前合法 session 验证与取消后禁止 DB fallback；daemon runtime / Octo JSONL 测试改为等待 async debounce/buffer flush，不再误报。
 - 对照 CC Go 修复 Claude/OpenCode 工具流：Claude live/session 递归提取 tool input/result，OpenCode NDJSON 按 completed `tool_use` 拆出工具调用和工具输出；OpenCode text 只标记为最终回复，不进入过程消息。
 
@@ -46,12 +47,13 @@
 - 通过：`npm run build:api`。
 - 通过：`node --test tests/system/channel-connectors-feishu-long-connection-script.test.mjs`，覆盖 SDK connected 但 transport stale 时 smoke 失败。
 - 通过：`node --test --test-name-pattern "native Channel Connectors Feishu webhook parses live envelopes|Feishu long-connection|native Channel Connectors daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs tests/system/channel-connectors-feishu-long-connection-script.test.mjs`，覆盖 Feishu create_time 解析、过期消息跳过、10s ping / 8s pong / 23s stale 默认和 daemon 结构合同。
-- 通过：`node scripts/smoke-channel-connectors-feishu-long-connection.mjs --duration-ms 35000 --bindings feishu-live --json`，现场结果 `violations=0`、`pingIntervalMs=10000`、`pongTimeoutMs=8000`、`transportStaleAfterMs=23000`、`sentPings=14`、`receivedPongs=15`、`transportStale=false`、`logEvents=0`。
+- 通过：`node scripts/smoke-channel-connectors-feishu-long-connection.mjs --duration-ms 35000 --bindings feishu-live --json`，最新重启后现场结果 `violations=0`、`pingIntervalMs=10000`、`pongTimeoutMs=8000`、`transportStaleAfterMs=23000`、`transportStale=false`、`logEvents=0`。
 - 通过：`curl http://127.0.0.1:18797/health` 返回 `ok=true`、`connected=1`、`pongOverdue=0`、`transportStale=0`。
 - 通过：`npm run typecheck -- --pretty false`。
 - 通过：`node --test tests/system/channel-connectors-agent-session-driver.test.mjs`，11/11 全部通过；覆盖 persistent session pool、OpenCode `--session` compact/tool-result、OpenCode SQLite fallback、Claude stream-json compact/tool-result、Claude persistent stop cancel 和 OpenCode persistent stop abort。
 - 通过：`node --test --test-name-pattern "agent runner builds gateway-backed" tests/system/channel-connectors-service.test.mjs`，覆盖 Codex `--image`、Claude image content block、OpenCode `--file` 图片传入和非视觉模型保护。
 - 通过：`node --test --test-name-pattern "native Channel Connectors process runner streams progress events from agent JSONL|native Channel Connectors process progress only includes intermediate assistant text|native Channel Connectors process runner maps Claude Code stream-json progress|native Channel Connectors process runner keeps Claude Code final text out of process progress|native Channel Connectors daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`。
+- 通过：`node --test --test-name-pattern "process progress only includes intermediate assistant text|daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`，覆盖 Codex delta 非过程回复和 Feishu 可恢复工具错误不锁死整轮卡片失败的结构合同。
 - 通过：`node --test --test-name-pattern "maps Claude Code stream-json progress|maps OpenCode JSON progress|keeps Claude Code final text out of process progress" tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，覆盖 Codex app-server delta 不再生成 assistant 过程进度、最终 reply/manifest 保真、compact、stop、tool output 和 requestApproval。
 - 通过：`node --test --test-name-pattern "Channel Connectors native CLI session driver keeps Claude stream-json process alive for native compact" tests/system/channel-connectors-agent-session-driver.test.mjs`。

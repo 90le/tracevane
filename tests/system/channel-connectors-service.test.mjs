@@ -7197,6 +7197,12 @@ test("native Channel Connectors process progress only includes intermediate assi
   assert.equal(isChannelConnectorProcessProgressEvent({ ...base, phase: "intermediate" }), true);
   assert.equal(isChannelConnectorProcessProgressEvent({ ...base, phase: "final" }), false);
   assert.equal(isChannelConnectorProcessProgressEvent({ ...base, phase: null }), false);
+  assert.equal(isChannelConnectorProcessProgressEvent({
+    ...base,
+    rawType: "item/agentMessage/delta",
+    itemType: "agentMessage",
+    phase: null,
+  }), false);
   assert.equal(isChannelConnectorProcessProgressEvent({ ...base, type: "tool", phase: "intermediate" }), false);
 });
 
@@ -7863,6 +7869,11 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /function renderFeishuProgressEntry/);
   assert.match(daemonSource, /function renderPlainProgressEntry/);
   assert.match(daemonSource, /function renderPlainProgressMessage/);
+  assert.match(daemonSource, /function isRecoverableToolResultErrorProgressEvent/);
+  assert.match(daemonSource, /event\.type !== "failed" && event\.type !== "error"/);
+  assert.match(daemonSource, /normalizeString\(event\.rawType\)\.toLowerCase\(\) === "user"/);
+  assert.match(daemonSource, /normalizeString\(event\.itemType\)\.toLowerCase\(\) === "tool_result"/);
+  assert.match(daemonSource, /kind === "tool_result" && isRecoverableToolResultErrorProgressEvent\(event\)/);
   assert.match(daemonSource, /if \(kind === "assistant"\)[\s\S]{0,40}return "💬";/);
   assert.match(daemonSource, /if \(event\.type === "assistant"\)[\s\S]{0,40}return "过程回复"/);
   assert.match(daemonSource, /isChannelConnectorProcessProgressEvent/);

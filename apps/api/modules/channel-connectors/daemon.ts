@@ -4384,11 +4384,30 @@ function createFeishuProgressCardState(): FeishuProgressCardState {
 function feishuProgressEntryKind(event: ChannelConnectorAgentProgressEvent): FeishuProgressCardEntryKind {
   if (event.type === "assistant") return "assistant";
   if (event.type === "reasoning") return "thinking";
+  if (isRecoverableToolResultErrorProgressEvent(event)) return "tool_result";
   if (event.type === "tool") {
     return event.rawType?.endsWith(".started") ? "tool_use" : "tool_result";
   }
   if (event.type === "failed" || event.type === "error") return "error";
   return "info";
+}
+
+function isRecoverableToolResultErrorProgressEvent(event: ChannelConnectorAgentProgressEvent): boolean {
+  if (event.type !== "failed" && event.type !== "error") return false;
+  return normalizeString(event.rawType).toLowerCase() === "user"
+    && normalizeString(event.itemType).toLowerCase() === "tool_result";
+}
+
+function feishuProgressEntryText(
+  event: ChannelConnectorAgentProgressEvent,
+  kind: FeishuProgressCardEntryKind,
+): string {
+  const text = normalizeString(event.text || event.rawType || event.type);
+  if (!text) return "";
+  if (kind === "tool_result" && isRecoverableToolResultErrorProgressEvent(event)) {
+    return `failed\noutput: ${text}`;
+  }
+  return text;
 }
 
 function feishuProgressEntryTitle(event: ChannelConnectorAgentProgressEvent, kind: FeishuProgressCardEntryKind): string {
@@ -4413,7 +4432,7 @@ function pushFeishuProgressCardEvent(
     cardState.dirty = true;
     return true;
   }
-  const text = shortMessage(event.text || event.rawType || event.type, 520);
+  const text = shortMessage(feishuProgressEntryText(event, kind), 520);
   if (!text) return false;
   const fingerprint = `${kind}:${event.rawType || ""}:${event.itemType || ""}:${text}`;
   if (cardState.seenFingerprints.has(fingerprint)) return false;
@@ -4541,7 +4560,6 @@ function ensureFeishuProgressCardFailure(
 }
 
 function completeFeishuProgressCard(cardState: FeishuProgressCardState): void {
-  if (cardState.status === "failed") return;
   cardState.status = "completed";
   cardState.updatedAtMs = Date.now();
   cardState.dirty = true;
