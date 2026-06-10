@@ -2455,6 +2455,38 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.match(claudeVisionInput.message.content[1].text, /Studio attachment summary/);
   assert.doesNotMatch(claudeVisionInput.message.content[1].text, /Studio visual attachment policy/);
 
+  const opencodeVisionAttachmentRequest = buildChannelConnectorAgentProcessRequest({
+    project: { ...project, agent: "opencode", model: "gmn-vision" },
+    binding: { ...binding, agent: "opencode" },
+    message: {
+      ...message,
+      messageId: "m-runner-opencode-vision-image",
+      payload: { type: 2, content: "", name: "vision.png" },
+      attachments: [{
+        kind: "image",
+        platform: "feishu",
+        fileName: "vision.png",
+        mimeType: "image/png",
+        localPath: visionImagePath,
+        stagedAt: "2026-06-06T08:00:00.000Z",
+      }],
+    },
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    modelCapabilities: { vision: true },
+  });
+  assert.ok(opencodeVisionAttachmentRequest);
+  assert.equal(opencodeVisionAttachmentRequest.command, "opencode");
+  const opencodeFileArgIndex = opencodeVisionAttachmentRequest.args.indexOf("--file");
+  const opencodePromptSeparatorIndex = opencodeVisionAttachmentRequest.args.indexOf("--");
+  assert.notEqual(opencodeFileArgIndex, -1);
+  assert.notEqual(opencodePromptSeparatorIndex, -1);
+  assert.ok(opencodeFileArgIndex < opencodePromptSeparatorIndex);
+  assert.equal(opencodeVisionAttachmentRequest.args[opencodeFileArgIndex + 1], visionImagePath);
+  assert.match(opencodeVisionAttachmentRequest.args.at(-1), /native --file arguments/);
+  assert.doesNotMatch(opencodeVisionAttachmentRequest.args.at(-1), /Studio visual attachment policy/);
+
   const stagedLocalPath = path.join(workDir, ".studio-agent-attachments", "report.txt");
   const stagedAttachmentRequest = buildChannelConnectorAgentProcessRequest({
     project,

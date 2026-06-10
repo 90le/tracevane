@@ -122,7 +122,7 @@ export interface ChannelConnectorAgentTurnResult {
   };
 }
 
-type ChannelConnectorVisualInputMode = "none" | "codex-native-image" | "claude-native-image";
+type ChannelConnectorVisualInputMode = "none" | "codex-native-image" | "claude-native-image" | "opencode-native-file";
 
 type ClaudeCodeContentPart =
   | { type: "text"; text: string }
@@ -385,7 +385,9 @@ function buildAgentInputContent(
     ? "Vision-capable Codex runtime received staged image attachments through native --image arguments; inspect those attached images for visual tasks."
     : hasVisualAttachment && visualInputMode === "claude-native-image"
       ? "Vision-capable Claude Code runtime received staged image attachments through native image content blocks; inspect those attached images for visual tasks."
-    : "";
+      : hasVisualAttachment && visualInputMode === "opencode-native-file"
+        ? "Vision-capable OpenCode runtime received staged image attachments through native --file arguments; inspect those attached images for visual tasks."
+        : "";
   const attachmentText = [
     "[Studio attachment summary]",
     summary,
@@ -758,6 +760,10 @@ export function buildChannelConnectorAgentProcessRequest(
     && channelConnectorModelSupportsVision(model || null, request.binding, request.modelCapabilities)
     ? collectClaudeNativeImageParts(attachments)
     : [];
+  const opencodeNativeImagePaths = project.agent === "opencode"
+    && channelConnectorModelSupportsVision(model || null, request.binding, request.modelCapabilities)
+    ? collectCodexNativeImagePaths(attachments)
+    : [];
   const content = nativeCommand || buildAgentInputContent(
     request.message,
     request.binding,
@@ -766,7 +772,8 @@ export function buildChannelConnectorAgentProcessRequest(
     request.modelCapabilities,
     codexNativeImagePaths.length ? "codex-native-image"
       : claudeNativeImageParts.length ? "claude-native-image"
-        : "none",
+        : opencodeNativeImagePaths.length ? "opencode-native-file"
+          : "none",
   );
   if (!content) return null;
   const cwd = ensureWorkDir(project.workDir);
@@ -896,6 +903,7 @@ export function buildChannelConnectorAgentProcessRequest(
 
   if (project.agent === "opencode") {
     const opencodeSessionId = normalizeString(request.session?.agentNativeSessionId);
+    const opencodeImageArgs = opencodeNativeImagePaths.flatMap((imagePath) => ["--file", imagePath]);
     const args = [
       "run",
       "--format",
@@ -906,6 +914,7 @@ export function buildChannelConnectorAgentProcessRequest(
       "--dir",
       cwd,
       "--thinking",
+      ...opencodeImageArgs,
       "--",
       content,
     ];
