@@ -518,6 +518,8 @@ test("Channel Connectors native CLI session driver sends OpenCode compact throug
     assert.equal(compact.replyText, "OpenCode compact 已完成。");
     assert.equal(compact.session.agentNativeSessionId, "opencode-session-created");
     assert.ok(progress.some((event) => event.type === "tool" && /file-a|List files/.test(event.text || "")));
+    assert.ok(progress.some((event) => event.rawType === "tool_result" && /output:\nfile-a/.test(event.text || "")));
+    assert.ok(progress.some((event) => event.type === "assistant" && event.phase === "final" && event.text === "opencode ok"));
     const captures = fs.readFileSync(capturePath, "utf8").trim().split(/\r?\n/).map((line) => JSON.parse(line));
     assert.equal(captures[0].incomingSession, "");
     assert.equal(captures[1].incomingSession, "opencode-session-created");
@@ -630,6 +632,7 @@ test("Channel Connectors native CLI session driver keeps Claude stream-json proc
     "    emit({ type: 'result', result: '', session_id: 'claude-live-session' });",
     "  } else {",
     "    emit({ type: 'assistant', message: { content: [{ type: 'tool_use', name: 'Bash', input: { command: 'pwd' } }, { type: 'text', text: 'claude ok' }] } });",
+    "    emit({ type: 'user', message: { content: [{ type: 'tool_result', content: [{ type: 'text', text: '/tmp/project' }, { type: 'text', text: 'done' }] }] } });",
     "    emit({ type: 'result', result: 'claude ok', session_id: 'claude-live-session' });",
     "  }",
     "});",
@@ -689,6 +692,7 @@ test("Channel Connectors native CLI session driver keeps Claude stream-json proc
     assert.equal(compact.replyText, "Claude Code compact 已完成。");
     assert.equal(compact.session.agentNativeSessionId, "claude-live-session");
     assert.ok(progress.some((event) => event.type === "tool" && /Bash/.test(event.text || "")));
+    assert.ok(progress.some((event) => event.itemType === "tool_result" && /\/tmp\/project\ndone/.test(event.text || "")));
     const captures = fs.readFileSync(capturePath, "utf8").trim().split(/\r?\n/).map((line) => JSON.parse(line));
     assert.equal(captures.filter((item) => item.argv).length, 1);
     const stdinMessages = captures.filter((item) => item.stdin).map((item) => item.stdin);

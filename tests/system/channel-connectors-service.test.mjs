@@ -7285,7 +7285,7 @@ test("native Channel Connectors process runner maps Claude Code stream-json prog
       type: "user",
       message: {
         content: [
-          { type: "tool_result", content: "line 1\nline 2" },
+          { type: "tool_result", content: [{ type: "text", text: "line 1" }, { type: "text", text: "line 2" }] },
         ],
       },
     }),
@@ -7325,6 +7325,64 @@ test("native Channel Connectors process runner maps Claude Code stream-json prog
   assert.equal(progress[4].text, "line 1\nline 2");
   assert.equal(progress[5].type, "completed");
   assert.equal(progress[5].text, "完成\n\n下一步可以发送文件。");
+  assert.equal(result.progressEvents?.length, 6);
+});
+
+test("native Channel Connectors process runner maps OpenCode JSON progress without leaking final text", async () => {
+  const root = makeTempRoot();
+  const progress = [];
+  const stdout = [
+    JSON.stringify({ type: "step_start", part: { type: "step-start", sessionID: "opencode-session-1" } }),
+    JSON.stringify({ type: "reasoning", part: { type: "reasoning", text: "I should inspect the directory." } }),
+    JSON.stringify({
+      type: "tool_use",
+      part: {
+        type: "tool",
+        tool: "bash",
+        state: {
+          status: "completed",
+          title: "List files",
+          input: { command: "ls" },
+          output: "file-a\nfile-b",
+        },
+      },
+    }),
+    JSON.stringify({ type: "text", messageID: "assistant-message", timestamp: 2, part: { type: "text", messageID: "assistant-message", text: "OpenCode done." } }),
+    JSON.stringify({ type: "step_finish", part: { type: "step-finish", reason: "done" } }),
+    "",
+  ].join("\n");
+  const childScript = `process.stdout.write(${JSON.stringify(stdout)});`;
+
+  const result = await defaultChannelConnectorAgentProcessRunner({
+    command: process.execPath,
+    args: ["-e", childScript],
+    cwd: root,
+    stdin: "",
+    env: {},
+    timeoutMs: 1000,
+    agent: "opencode",
+    onProgress: (event) => progress.push(event),
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.error, null);
+  assert.equal(progress.length, 6);
+  assert.equal(progress[0].type, "session");
+  assert.equal(progress[0].text, "opencode-session-1");
+  assert.equal(progress[1].type, "reasoning");
+  assert.equal(progress[1].text, "I should inspect the directory.");
+  assert.equal(progress[2].type, "tool");
+  assert.equal(progress[2].rawType, "tool_use");
+  assert.match(progress[2].text, /bash/);
+  assert.match(progress[2].text, /List files/);
+  assert.equal(progress[3].type, "tool");
+  assert.equal(progress[3].rawType, "tool_result");
+  assert.match(progress[3].text, /output:\nfile-a\nfile-b/);
+  assert.equal(progress[4].type, "assistant");
+  assert.equal(progress[4].phase, "final");
+  assert.equal(isChannelConnectorProcessProgressEvent(progress[4]), false);
+  assert.equal(progress[5].type, "completed");
+  assert.equal(progress[5].text, "done");
   assert.equal(result.progressEvents?.length, 6);
 });
 

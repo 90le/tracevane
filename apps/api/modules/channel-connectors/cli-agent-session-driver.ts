@@ -3,6 +3,7 @@ import type { ChannelConnectorAgentId, ChannelConnectorPermissionMode } from "..
 import {
   buildChannelConnectorAgentProcessRequest,
   defaultChannelConnectorAgentProcessRunner,
+  firstProgressTextValue,
   truncateProgressText,
   type ChannelConnectorAgentPermissionDecision,
   type ChannelConnectorAgentPermissionRequest,
@@ -71,22 +72,7 @@ function progressEvent(input: {
 }
 
 function firstText(...values: unknown[]): string {
-  for (const value of values) {
-    if (typeof value === "string" && value.trim()) return value;
-    if (Array.isArray(value)) {
-      const parts = value.map((part) => {
-        if (typeof part === "string") return part;
-        if (isRecord(part)) return stringValue(part.text) || stringValue(part.content);
-        return "";
-      }).filter(Boolean);
-      if (parts.length) return parts.join("");
-    }
-    if (isRecord(value)) {
-      const nested = firstText(value.text, value.content, value.message, value.result, value.output);
-      if (nested) return nested;
-    }
-  }
-  return "";
+  return firstProgressTextValue(...values);
 }
 
 function compactCommand(command: string | null | undefined): boolean {

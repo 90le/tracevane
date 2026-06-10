@@ -1147,6 +1147,122 @@ function parseGenericProgressLine(line: string): ChannelConnectorAgentProgressEv
   return progressEvent({ type, rawType, itemType: normalizeString(item?.type) || normalizeString(part?.type) || null, text });
 }
 
+function openCodeToolInputText(state: Record<string, unknown> | null, part: Record<string, unknown> | null): string {
+  const input = recordValue(state?.input) || recordValue(part?.input);
+  return normalizeString(state?.title)
+    || normalizeString(part?.title)
+    || normalizeString(input?.description)
+    || normalizeString(input?.command)
+    || firstProgressTextValue(state?.input, part?.input);
+}
+
+function openCodeToolOutputText(state: Record<string, unknown> | null, part: Record<string, unknown> | null, raw: Record<string, unknown>): string {
+  return firstProgressTextValue(
+    state?.output,
+    part?.output,
+    state?.result,
+    part?.result,
+    state?.stdout,
+    part?.stdout,
+    state?.stderr,
+    part?.stderr,
+    raw.output,
+    raw.result,
+    raw.error,
+  );
+}
+
+function openCodeToolProgressEvents(
+  raw: Record<string, unknown>,
+  rawType: string,
+  part: Record<string, unknown> | null,
+): ChannelConnectorAgentProgressEvent[] {
+  const state = recordValue(part?.state);
+  const partType = normalizeString(part?.type) || normalizeString(raw.item_type) || normalizeString(raw.itemType) || rawType;
+  const toolName = normalizeString(part?.tool)
+    || normalizeString(part?.name)
+    || normalizeString(part?.tool_name)
+    || normalizeString(part?.toolName)
+    || normalizeString(raw.tool)
+    || normalizeString(raw.name)
+    || "tool";
+  const status = normalizeString(state?.status) || normalizeString(part?.status);
+  const input = openCodeToolInputText(state, part);
+  const output = openCodeToolOutputText(state, part, raw);
+  const inputText = [
+    toolName,
+    input ? `input:\n${input}` : "",
+    status && status !== "completed" ? `status=${status}` : "",
+  ].filter(Boolean).join("\n");
+  const resultText = [
+    toolName,
+    status ? `status=${status}` : "",
+    output ? `output:\n${output}` : "",
+  ].filter(Boolean).join("\n");
+  const isResultOnly = rawType === "tool_result" || partType === "tool_result" || partType === "tool-result";
+  if (isResultOnly) {
+    return resultText
+      ? [progressEvent({ type: status === "error" ? "error" : "tool", rawType, itemType: partType, text: resultText })]
+      : [];
+  }
+  if (status === "completed" && output) {
+    return [
+      progressEvent({ type: "tool", rawType, itemType: partType, text: inputText || toolName }),
+      progressEvent({ type: "tool", rawType: "tool_result", itemType: "tool_result", text: resultText }),
+    ];
+  }
+  return [progressEvent({ type: "tool", rawType, itemType: partType, text: inputText || resultText || toolName })];
+}
+
+function parseOpenCodeProgressLineEvents(line: string): ChannelConnectorAgentProgressEvent[] {
+  const raw = recordValue(JSON.parse(line));
+  if (!raw) return [];
+  const rawType = normalizeString(raw.type) || normalizeString(raw.event) || null;
+  if (!rawType) return [];
+  const part = recordValue(raw.part);
+  const partType = normalizeString(part?.type);
+
+  if (rawType === "step_start" || partType === "step-start") {
+    const sessionId = normalizeString(part?.sessionID) || normalizeString(raw.sessionID) || normalizeString(raw.session_id);
+    return sessionId ? [progressEvent({ type: "session", rawType, itemType: partType || null, text: sessionId })] : [];
+  }
+
+  if (rawType === "text" || partType === "text") {
+    const metadata = recordValue(part?.metadata);
+    if (part?.synthetic === true && metadata?.compaction_continue === true) return [];
+    const text = normalizeString(part?.text) || normalizeString(raw.text) || normalizeString(raw.content);
+    return text ? [progressEvent({ type: "assistant", rawType, itemType: partType || "text", text, phase: "final" })] : [];
+  }
+
+  if (rawType === "reasoning" || partType === "reasoning") {
+    const text = normalizeString(part?.text) || normalizeString(raw.text) || progressTextValue(part || raw);
+    return text ? [progressEvent({ type: "reasoning", rawType, itemType: partType || "reasoning", text })] : [];
+  }
+
+  if (
+    rawType === "tool_use"
+    || rawType === "tool_result"
+    || ["tool", "tool-use", "tool_use", "tool-result", "tool_result"].includes(partType)
+  ) {
+    return openCodeToolProgressEvents(raw, rawType, part);
+  }
+
+  if (rawType === "step_finish" || partType === "step-finish") {
+    return [progressEvent({
+      type: "completed",
+      rawType,
+      itemType: partType || null,
+      text: normalizeString(part?.reason) || normalizeString(raw.reason) || "OpenCode step completed",
+    })];
+  }
+
+  if (rawType === "error") {
+    return [progressEvent({ type: "error", rawType, itemType: partType || null, text: errorMessageFromValue(raw) || "OpenCode error" })];
+  }
+
+  return [parseGenericProgressLine(line)].filter((event): event is ChannelConnectorAgentProgressEvent => Boolean(event));
+}
+
 function claudeContentItems(raw: Record<string, unknown>): Record<string, unknown>[] {
   const message = recordValue(raw.message);
   const content = message?.content;
@@ -1334,6 +1450,7 @@ function parseProgressLineEvents(agent: ChannelConnectorAgentId, line: string): 
       return event ? [event] : [];
     }
     if (agent === "claude-code") return parseClaudeProgressLineEvents(trimmed);
+    if (agent === "opencode") return parseOpenCodeProgressLineEvents(trimmed);
     const event = parseGenericProgressLine(trimmed);
     return event ? [event] : [];
   } catch {
