@@ -31,6 +31,8 @@ function parseArgs(argv) {
     requireAutoVision: false,
     requireMarkdown: false,
     requireFeishuCard: false,
+    requireNoFinalProgressReply: false,
+    requireFeishuProgressCardCompleted: false,
     json: false,
   };
 
@@ -48,6 +50,8 @@ function parseArgs(argv) {
     else if (arg === "--require-auto-vision" || arg === "--require-vision-switch") options.requireAutoVision = true;
     else if (arg === "--require-markdown" || arg === "--require-markdown-reply") options.requireMarkdown = true;
     else if (arg === "--require-feishu-card" || arg === "--require-markdown-card") options.requireFeishuCard = true;
+    else if (arg === "--require-no-final-progress-reply") options.requireNoFinalProgressReply = true;
+    else if (arg === "--require-feishu-progress-card-completed") options.requireFeishuProgressCardCompleted = true;
     else if (arg === "--config") options.configPath = requireValue(argv, ++index, arg);
     else if (arg.startsWith("--config=")) options.configPath = arg.slice("--config=".length);
     else if (arg === "--since") options.since = requireValue(argv, ++index, arg);
@@ -103,6 +107,10 @@ Options:
   --require-auto-vision     Require a non-vision model auto-switched to a vision model.
   --require-markdown        Require assistant progress with Markdown-like reply signals.
   --require-feishu-card     Require Feishu final card/post path for Markdown rendering.
+  --require-no-final-progress-reply
+                            Require final assistant text not to be sent as a progress reply.
+  --require-feishu-progress-card-completed
+                            Require successful Feishu runs to end with completed progress card status.
   --config <path>           Daemon config path. Default: ${DEFAULT_CONFIG_PATH}
   --timeout-ms <n>          Wait deadline. Default: ${DEFAULT_TIMEOUT_MS}
   --poll-ms <n>             Poll interval. Default: ${DEFAULT_POLL_MS}
@@ -219,6 +227,13 @@ function summarizeRun(event, relatedProgress, relatedEvidence) {
   const transportToolProgress = transportProgress.filter((item) => item.progressType === "tool" || item.latestProgress?.type === "tool");
   const transportActions = uniqueStrings(relatedProgress.map((item) => String(item.transportAction || "")).filter(Boolean));
   const assistantProgress = rawProgress.filter((item) => item.progressType === "assistant" || item.latestProgress?.type === "assistant");
+  const finalProgressReplies = transportProgress.filter((item) => {
+    return String(item.progressType || item.latestProgress?.type || "") === "assistant"
+      && String(item.phase || item.latestProgress?.phase || "") === "final";
+  });
+  const recoverableToolErrors = rawProgress.filter(isRecoverableToolResultError);
+  const feishuProgressCards = relatedProgress.filter((item) => item.eventKind === "agent.progress.card" && item.adapter === "feishu");
+  const latestFeishuProgressCard = latestEvent(feishuProgressCards);
   const markdownSignals = uniqueStrings(assistantProgress.flatMap((item) => detectMarkdownSignals(String(item.text || item.latestProgress?.text || ""))));
   const toolProgressCount = rawToolProgress.length > 0 ? rawToolProgress.length : transportToolProgress.length;
   const modelSelectionEvents = relatedEvidence.filter((item) => item.eventKind === "agent.model.selected");
@@ -253,6 +268,10 @@ function summarizeRun(event, relatedProgress, relatedEvidence) {
     progressLogCount: relatedProgress.length,
     rawProgressLogCount: rawProgress.length,
     transportProgressLogCount: transportProgress.length,
+    finalProgressReplyCount: finalProgressReplies.length,
+    recoverableToolErrorCount: recoverableToolErrors.length,
+    feishuProgressCardStatuses: uniqueStrings(feishuProgressCards.map((item) => String(item.progressStatus || "")).filter(Boolean)),
+    latestFeishuProgressCardStatus: latestFeishuProgressCard?.progressStatus || null,
     evidenceLogCount: relatedEvidence.length,
     progressTypes,
     toolProgressCount,
@@ -377,10 +396,11 @@ function loadSummary(options, since) {
       evidenceByRun.get(runKey(event)) || [],
     ));
   const matchingRuns = runs.filter((run) => runSatisfies(run, options));
+  const requirementViolations = runs.flatMap((run) => strictRunRequirementViolations(run, options));
   const displayedRuns = options.limitRuns === 0 ? [] : runs.slice(0, options.limitRuns);
   const displayedMatchingRuns = options.limitRuns === 0 ? [] : matchingRuns.slice(0, options.limitRuns);
   return {
-    ok: matchingRuns.length >= options.minRuns,
+    ok: matchingRuns.length >= options.minRuns && requirementViolations.length === 0,
     checkedAt: new Date().toISOString(),
     since: since.toISOString(),
     configPath: options.configPath,
@@ -397,6 +417,8 @@ function loadSummary(options, since) {
       requireAutoVision: options.requireAutoVision,
       requireMarkdown: options.requireMarkdown,
       requireFeishuCard: options.requireFeishuCard,
+      requireNoFinalProgressReply: options.requireNoFinalProgressReply,
+      requireFeishuProgressCardCompleted: options.requireFeishuProgressCardCompleted,
     },
     filters: {
       bindings: options.bindings,
@@ -409,9 +431,11 @@ function loadSummary(options, since) {
       evidenceEvents: evidenceEvents.length,
       finishedRuns: runs.length,
       matchingRuns: matchingRuns.length,
+      requirementViolations: requirementViolations.length,
       displayedRuns: displayedRuns.length,
       displayedMatchingRuns: displayedMatchingRuns.length,
     },
+    requirementViolations,
     runs: displayedRuns,
     matchingRuns: displayedMatchingRuns,
   };
@@ -431,7 +455,42 @@ function runSatisfies(run, options) {
     if (run.adapter !== "feishu") return false;
     if (run.replyCardAttempted !== true && !["send-final-card", "send-final-post-after-card"].includes(run.replyTransportAction)) return false;
   }
+  if (options.requireNoFinalProgressReply && run.finalProgressReplyCount > 0) return false;
+  if (options.requireFeishuProgressCardCompleted) {
+    if (run.adapter !== "feishu") return false;
+    if (run.agentOk === true && run.latestFeishuProgressCardStatus !== "completed") return false;
+  }
   return true;
+}
+
+function strictRunRequirementViolations(run, options) {
+  const violations = [];
+  if (options.requireNoFinalProgressReply && run.finalProgressReplyCount > 0) {
+    violations.push({
+      type: "final-progress-reply",
+      adapter: run.adapter,
+      bindingId: run.bindingId,
+      sessionKey: run.sessionKey,
+      messageId: run.messageId,
+      count: run.finalProgressReplyCount,
+    });
+  }
+  if (
+    options.requireFeishuProgressCardCompleted
+    && run.adapter === "feishu"
+    && run.agentOk === true
+    && run.latestFeishuProgressCardStatus !== "completed"
+  ) {
+    violations.push({
+      type: "feishu-progress-card-not-completed",
+      adapter: run.adapter,
+      bindingId: run.bindingId,
+      sessionKey: run.sessionKey,
+      messageId: run.messageId,
+      status: run.latestFeishuProgressCardStatus,
+    });
+  }
+  return violations;
 }
 
 async function waitForSummary(options, since) {
@@ -447,7 +506,7 @@ async function waitForSummary(options, since) {
 
 function printHuman(summary, wait) {
   console.log(`Channel Agent run smoke ${summary.ok ? "passed" : "not satisfied"} since ${summary.since}`);
-  console.log(`events=${summary.counts.events} progress=${summary.counts.progressEvents} runs=${summary.counts.finishedRuns} matching=${summary.counts.matchingRuns}/${summary.requirements.minRuns}`);
+  console.log(`events=${summary.counts.events} progress=${summary.counts.progressEvents} runs=${summary.counts.finishedRuns} matching=${summary.counts.matchingRuns}/${summary.requirements.minRuns} violations=${summary.counts.requirementViolations}`);
   for (const run of summary.runs.slice(0, 8)) {
     const marks = [
       run.agentOk === true ? "ok" : run.agentOk === false ? "failed" : "unknown",
@@ -457,6 +516,8 @@ function printHuman(summary, wait) {
       run.visualAttachmentCount > 0 ? `visual=${run.visualAttachmentCount}` : "",
       run.autoVisionSwitched === true ? `auto-vision=${run.autoVisionOriginalModel}->${run.autoVisionSelectedModel}` : "",
       run.toolProgressCount > 0 ? `tools=${run.toolProgressCount}` : "",
+      run.finalProgressReplyCount > 0 ? `final-progress-replies=${run.finalProgressReplyCount}` : "",
+      run.latestFeishuProgressCardStatus ? `progress-card=${run.latestFeishuProgressCardStatus}` : "",
       run.replyMarkdownLikely === true ? `markdown=${run.markdownSignals.join(",")}` : "",
       run.replyCardAttempted === true ? "feishu-card" : "",
     ].filter(Boolean).join(" ");
@@ -465,6 +526,13 @@ function printHuman(summary, wait) {
   if (wait && !summary.ok) {
     console.log("Timed out before requirements were satisfied.");
   }
+}
+
+function isRecoverableToolResultError(event) {
+  const progressType = String(event.progressType || event.latestProgress?.type || "");
+  if (progressType !== "failed" && progressType !== "error") return false;
+  return String(event.rawType || event.latestProgress?.rawType || "").toLowerCase() === "user"
+    && String(event.itemType || event.latestProgress?.itemType || "").toLowerCase() === "tool_result";
 }
 
 async function main() {

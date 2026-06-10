@@ -37,6 +37,7 @@
 - Feishu 运行中权限审批优先并入当前进度卡片：审批条目展示工具、请求、输入和状态，卡片内提供允许/拒绝/本轮全部允许按钮；点击后同一进度卡更新为已允许/已拒绝，不再默认刷独立审批卡。若进度卡尚未创建或 AskUserQuestion 需要独立交互，则保留原独立提示回退。
 - 修复 IM 过程回复误判：Codex app-server `item/agentMessage/delta` 不再逐 token 推送成过程回复；Codex one-shot、Claude Code、OpenCode 的最终 assistant 文本统一标记为 `phase=final`，渠道发送层只允许 `phase=intermediate` 的 assistant 文本进入“过程回复”；`/thinking`、`/process`、`/tools` 三路开关保持不变。
 - 修复 Feishu 进度卡状态误判：Agent 可恢复的 `user/tool_result` error/failed 现在渲染为失败的工具结果，不再把整轮运行卡锁死为 failed；最终 `agent.ok=true` 时进度卡会收尾为 completed。
+- 增强 `smoke-channel-connectors-agent-run-live.mjs`：新增 `--require-no-final-progress-reply` 和 `--require-feishu-progress-card-completed`，并把这两项做成窗口级硬保护；用户发真实 IM 消息后，脚本会验收最终回复未被当过程消息发送，且任何成功 Feishu run 的最终进度卡都不能停在 failed。
 - 清理 Channel Connectors 回归测试债：OpenCode persistent fake session 测试显式模拟当前 runtime dataHome session 存在性；OpenCode stop 测试区分启动前合法 session 验证与取消后禁止 DB fallback；daemon runtime / Octo JSONL 测试改为等待 async debounce/buffer flush，不再误报。
 - 对照 CC Go 修复 Claude/OpenCode 工具流：Claude live/session 递归提取 tool input/result，OpenCode NDJSON 按 completed `tool_use` 拆出工具调用和工具输出；OpenCode text 只标记为最终回复，不进入过程消息。
 
@@ -68,6 +69,9 @@
 - 通过：`node --test --test-name-pattern "native Channel Connectors IM commands switch agent, model, and permission per session" tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test --test-name-pattern "native Channel Connectors agent runner builds gateway-backed Codex turns" tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs`，64/64 全部通过。
+- 通过：`node --test tests/system/channel-connectors-agent-run-live-script.test.mjs`，覆盖真实日志 smoke 的工具、附件、视觉、Markdown、最终回复不进过程消息、Feishu 成功进度卡必须 completed 等验收项。
+- 验证：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 90 --bindings feishu-live --require-ok --require-reply --require-feishu-card --require-feishu-progress-card-completed --require-no-final-progress-reply --json` 现在按预期失败，抓到 2 条旧 `feishu-progress-card-not-completed` 历史违规；真实验收应使用 `--wait` 从脚本启动后的干净窗口采样。
+- 通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 360 --bindings octo-studio-cc --require-ok --require-reply --require-no-final-progress-reply --json`，当前真实 Octo 日志窗口 `finalProgressReplyCount=0`。
 
 ## 已知边界
 
@@ -83,6 +87,6 @@
 ## 下一步
 
 1. 用户发送一条新的 Feishu 消息，做业务入站复验：runtime 应出现 dispatcher callback / receivedMessages，且无 reconnect/stale。
-2. 做真实 IM live approval smoke：用三次顺序 `exec_command` 的提示词验证思考、过程回复、工具输入、工具输出和最终回复；同时确认 Feishu 进度卡内允许/拒绝按钮、文本 `/approve`/`/deny`、Codex app-server Bash/Patch/Permissions、Claude AskUserQuestion/permission、OpenCode permission 都能闭环。
+2. 做真实 IM live approval smoke：先运行 `node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings feishu-live --require-ok --require-reply --require-progress --require-tool --require-feishu-card --require-feishu-progress-card-completed --require-no-final-progress-reply --json`，再用三次顺序 `exec_command` 的提示词验证思考、过程回复、工具输入、工具输出和最终回复；同时确认 Feishu 进度卡内允许/拒绝按钮、文本 `/approve`/`/deny`、Codex app-server Bash/Patch/Permissions、Claude AskUserQuestion/permission、OpenCode permission 都能闭环。
 3. 继续扩展真实 Claude Code / OpenCode persistent smoke：视觉输入、权限和 IM live 文件上传链路，并确认 one-shot 默认路径不受影响。
 4. 继续按 CC Go 迁移 Feishu/Octo 菜单与命令细节、Claude Code AskUserQuestion 卡片精修、OpenCode 文件/权限/流式能力。

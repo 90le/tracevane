@@ -123,6 +123,18 @@ function writeFixture(root) {
     text: "完成：\n\n- **工具**：`echo ok`\n- **状态**：成功",
   });
   appendJsonLine(feishuEvents, {
+    checkedAt: "2026-06-08T01:05:00.500Z",
+    eventKind: "agent.progress",
+    adapter: "feishu",
+    bindingId: "feishu-live",
+    sessionKey: "feishu:oc_real:ou_real",
+    messageId: "feishu-message-1",
+    progressType: "error",
+    rawType: "user",
+    itemType: "tool_result",
+    text: "File does not exist.",
+  });
+  appendJsonLine(feishuEvents, {
     checkedAt: "2026-06-08T01:05:01.000Z",
     eventKind: "agent.progress.card",
     adapter: "feishu",
@@ -130,6 +142,18 @@ function writeFixture(root) {
     sessionKey: "feishu:oc_real:ou_real",
     messageId: "feishu-message-1",
     progressType: "thinking",
+    progressStatus: "failed",
+    transportAction: "patch-progress-card",
+  });
+  appendJsonLine(feishuEvents, {
+    checkedAt: "2026-06-08T01:05:03.000Z",
+    eventKind: "agent.progress.card",
+    adapter: "feishu",
+    bindingId: "feishu-live",
+    sessionKey: "feishu:oc_real:ou_real",
+    messageId: "feishu-message-1",
+    progressType: "completed",
+    progressStatus: "completed",
     transportAction: "patch-progress-card",
   });
   appendJsonLine(feishuEvents, {
@@ -139,6 +163,57 @@ function writeFixture(root) {
     bindingId: "feishu-live",
     sessionKey: "feishu:oc_real:ou_real",
     messageId: "feishu-message-1",
+    channelId: "oc_real",
+    agentStatus: "completed",
+    agentOk: true,
+    replySent: true,
+    replyCardAttempted: true,
+    replyTransportAction: "send-final-card",
+    progressEventCount: 1,
+  });
+  appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:08:00.000Z",
+    eventKind: "agent.progress.reply",
+    adapter: "octo",
+    bindingId: "octo-final-bad",
+    sessionKey: "dmwork:dm:user-2",
+    messageId: "octo-message-bad-final",
+    progressType: "assistant",
+    rawType: "assistant",
+    itemType: "text",
+    phase: "final",
+    replySent: true,
+  });
+  appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:08:01.000Z",
+    eventKind: "agent.run.finished",
+    adapter: "octo",
+    bindingId: "octo-final-bad",
+    sessionKey: "dmwork:dm:user-2",
+    messageId: "octo-message-bad-final",
+    channelId: "dm:user-2",
+    agentStatus: "completed",
+    agentOk: true,
+    replySent: true,
+    progressEventCount: 1,
+  });
+  appendJsonLine(feishuEvents, {
+    checkedAt: "2026-06-08T01:09:00.000Z",
+    eventKind: "agent.progress.card",
+    adapter: "feishu",
+    bindingId: "feishu-bad-card",
+    sessionKey: "feishu:oc_real:ou_real",
+    messageId: "feishu-message-bad-card",
+    progressStatus: "failed",
+    transportAction: "patch-progress-card",
+  });
+  appendJsonLine(feishuEvents, {
+    checkedAt: "2026-06-08T01:09:01.000Z",
+    eventKind: "agent.run.finished",
+    adapter: "feishu",
+    bindingId: "feishu-bad-card",
+    sessionKey: "feishu:oc_real:ou_real",
+    messageId: "feishu-message-bad-card",
     channelId: "oc_real",
     agentStatus: "completed",
     agentOk: true,
@@ -173,6 +248,7 @@ test("agent run live smoke script verifies Octo tool, reply, and outbound file e
     "--require-visual",
     "--require-auto-vision",
     "--require-markdown",
+    "--require-no-final-progress-reply",
     "--json",
   ], root);
   const parsed = JSON.parse(output.stdout);
@@ -190,6 +266,7 @@ test("agent run live smoke script verifies Octo tool, reply, and outbound file e
   assert.equal(parsed.matchingRuns[0].autoVisionSelectedModel, "gpt-5.5");
   assert.equal(parsed.matchingRuns[0].autoVisionReason, "current-model-non-vision");
   assert.equal(parsed.matchingRuns[0].toolProgressCount, 1);
+  assert.equal(parsed.matchingRuns[0].finalProgressReplyCount, 0);
   assert.equal(parsed.matchingRuns[0].replyMarkdownLikely, true);
   assert.deepEqual(parsed.matchingRuns[0].markdownSignals.sort(), ["bold", "inline_code", "list"].sort());
 });
@@ -200,19 +277,23 @@ test("agent run live smoke script verifies Feishu final card path", async () => 
   const output = await runScript([
     "--config", configPath,
     "--since", "2026-06-08T00:00:00.000Z",
-    "--platforms", "feishu",
+    "--bindings", "feishu-live",
     "--require-ok",
     "--require-reply",
     "--require-feishu-card",
+    "--require-feishu-progress-card-completed",
     "--require-markdown",
     "--json",
   ], root);
   const parsed = JSON.parse(output.stdout);
   assert.equal(parsed.ok, true);
+  assert.equal(parsed.counts.requirementViolations, 0);
   assert.equal(parsed.matchingRuns.length, 1);
   assert.equal(parsed.matchingRuns[0].adapter, "feishu");
   assert.equal(parsed.matchingRuns[0].replyTransportAction, "send-final-card");
   assert.equal(parsed.matchingRuns[0].replyMarkdownLikely, true);
+  assert.equal(parsed.matchingRuns[0].recoverableToolErrorCount, 1);
+  assert.equal(parsed.matchingRuns[0].latestFeishuProgressCardStatus, "completed");
 });
 
 test("agent run live smoke script fails when required evidence is missing", async () => {
@@ -231,6 +312,48 @@ test("agent run live smoke script fails when required evidence is missing", asyn
       assert.equal(parsed.ok, false);
       assert.equal(parsed.counts.finishedRuns, 1);
       assert.equal(parsed.counts.matchingRuns, 0);
+      return true;
+    },
+  );
+});
+
+test("agent run live smoke script rejects final text progress replies and failed final cards", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
+  const { configPath } = writeFixture(root);
+  await assert.rejects(
+    runScript([
+      "--config", configPath,
+      "--since", "2026-06-08T00:00:00.000Z",
+      "--bindings", "octo-final-bad",
+      "--require-ok",
+      "--require-no-final-progress-reply",
+      "--json",
+    ], root),
+    (error) => {
+      const parsed = JSON.parse(error.stdout);
+      assert.equal(parsed.ok, false);
+      assert.equal(parsed.counts.requirementViolations, 1);
+      assert.equal(parsed.requirementViolations[0].type, "final-progress-reply");
+      assert.equal(parsed.runs[0].finalProgressReplyCount, 1);
+      return true;
+    },
+  );
+
+  await assert.rejects(
+    runScript([
+      "--config", configPath,
+      "--since", "2026-06-08T00:00:00.000Z",
+      "--bindings", "feishu-bad-card",
+      "--require-ok",
+      "--require-feishu-progress-card-completed",
+      "--json",
+    ], root),
+    (error) => {
+      const parsed = JSON.parse(error.stdout);
+      assert.equal(parsed.ok, false);
+      assert.equal(parsed.counts.requirementViolations, 1);
+      assert.equal(parsed.requirementViolations[0].type, "feishu-progress-card-not-completed");
+      assert.equal(parsed.runs[0].latestFeishuProgressCardStatus, "failed");
       return true;
     },
   );
