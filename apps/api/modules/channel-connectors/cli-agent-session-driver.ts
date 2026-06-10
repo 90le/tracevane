@@ -292,6 +292,7 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
   }
 
   stop(reason: string): void {
+    this.cancelActive(reason || "manual-stop");
     if (!this.child.killed) this.child.kill(reason === "dispose" ? "SIGTERM" : "SIGTERM");
   }
 
@@ -442,6 +443,29 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
     this.activeTurn = null;
     clearTimeout(turn.timeout);
     turn.reject(error);
+  }
+
+  private cancelActive(reason: string): void {
+    const turn = this.activeTurn;
+    if (!turn) return;
+    this.activeTurn = null;
+    clearTimeout(turn.timeout);
+    turn.resolve(agentResult({
+      agent: "claude-code",
+      messageId: turn.input.messageId,
+      model: this.model,
+      cwd: this.cwd,
+      command: "claude stream-json",
+      nativeCommand: turn.nativeCommand,
+      replyText: null,
+      durationMs: Date.now() - turn.startedAt,
+      ok: false,
+      status: "cancelled",
+      error: reason === "signal-aborted" ? "Agent process cancelled." : `Agent process cancelled: ${reason}`,
+      progressEvents: turn.progressEvents,
+      sessionId: this.sessionId,
+      resumed: true,
+    }));
   }
 }
 

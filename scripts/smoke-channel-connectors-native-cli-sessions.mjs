@@ -266,6 +266,10 @@ function respondAnthropicToolUse(res, body) {
 }
 
 function respondAnthropicMessages(res, body) {
+  if (requestText(body).includes("CLAUDE_STOP_SMOKE")) {
+    sendNeverCompletingResponse(res);
+    return;
+  }
   if (body.stream && respondAnthropicToolUse(res, body)) return;
   const text = anthropicResponseText(body);
   if (body.stream) {
@@ -445,6 +449,7 @@ function baseTurnRequest(root, agent, endpoint, nativeCommand = null, contentOve
     ? "compact"
     : contentOverride?.includes("_TOOL_SMOKE") ? "tool"
       : contentOverride?.includes("_FILE_SMOKE") ? "file"
+        : contentOverride?.includes("_STOP_SMOKE") ? "stop"
         : "normal";
   return {
     project: {
@@ -611,31 +616,30 @@ async function runAppSmoke(app, root, endpoint, requests, timeoutMs) {
         throw new Error("Persistent compact smoke should not call one-shot fallback.");
       },
     });
-    let stop = null;
-    if (app === "opencode") {
-      const beforeStopRequest = requests.length;
-      const stopPromise = session.runTurn({
-        mode: "persistent",
-        key,
-        messageId: `${app}-stop`,
-        agentTurnRequest: {
-          ...baseTurnRequest(root, app, endpoint, null, "OPENCODE_STOP_SMOKE: Start a long pending request so Studio can cancel it."),
-          session: compact.session,
-        },
-        onProgress: (event) => progress.push(event),
-        runOneShot: async () => {
-          throw new Error("Persistent stop smoke should not call one-shot fallback.");
-        },
-      });
-      await waitForRequest(
-        requests,
-        beforeStopRequest,
-        (request) => request.path === "/v1/chat/completions" && requestText(request.body).includes("OPENCODE_STOP_SMOKE"),
-        Math.min(timeoutMs, 10_000),
-      );
-      session.stop?.("native-cli-smoke-stop");
-      stop = await stopPromise;
-    }
+    const beforeStopRequest = requests.length;
+    const stopMarker = app === "claude-code" ? "CLAUDE_STOP_SMOKE" : "OPENCODE_STOP_SMOKE";
+    const stopPath = app === "claude-code" ? "/v1/messages" : "/v1/chat/completions";
+    const stopPromise = session.runTurn({
+      mode: "persistent",
+      key,
+      messageId: `${app}-stop`,
+      agentTurnRequest: {
+        ...baseTurnRequest(root, app, endpoint, null, `${stopMarker}: Start a long pending request so Studio can cancel it.`),
+        session: compact.session,
+      },
+      onProgress: (event) => progress.push(event),
+      runOneShot: async () => {
+        throw new Error("Persistent stop smoke should not call one-shot fallback.");
+      },
+    });
+    await waitForRequest(
+      requests,
+      beforeStopRequest,
+      (request) => request.path === stopPath && requestText(request.body).includes(stopMarker),
+      Math.min(timeoutMs, 10_000),
+    );
+    session.stop?.("native-cli-smoke-stop");
+    const stop = await stopPromise;
     const marker = app === "claude-code" ? "CLAUDE_DRIVER_OK" : "OPENCODE_DRIVER_OK";
     const compactMarker = app === "claude-code" ? "Claude Code compact 已完成。" : "OpenCode compact 已完成。";
     const fileMarker = app === "claude-code" ? "CLAUDE_FILE_OK" : "OPENCODE_FILE_OK";

@@ -22,16 +22,17 @@
 ## 本轮完成
 
 - OpenCode 1.16.2 `run --format json` 在本机可能 exit 0 但 stdout 为空；已补本地 `opencode.db` best-effort fallback，恢复 session id、assistant text、step/tool progress，并保留旧 stdout JSONL 路径优先。
-- 扩展 `smoke:channel-connectors:native-cli-sessions`：隔离 HOME + mock Studio Gateway，直接调用 daemon 同款 native persistent driver，覆盖 Claude Code 普通 turn、Bash tool-use、`studio-channel-files` manifest、`/compact`，以及 OpenCode 普通 turn、`studio-channel-files` manifest、`/compact`、`/stop` 取消。
+- 扩展 `smoke:channel-connectors:native-cli-sessions`：隔离 HOME + mock Studio Gateway，直接调用 daemon 同款 native persistent driver，覆盖 Claude Code 普通 turn、Bash tool-use、`studio-channel-files` manifest、`/compact`、`/stop`，以及 OpenCode 普通 turn、`studio-channel-files` manifest、`/compact`、`/stop`。
 - 修复 OpenCode 取消路径误读旧 `opencode.db` 状态的问题：DB fallback 只在 exit 0、未取消、无错误且 stdout 为空时启用。
+- 修复 Claude Code persistent stop：用户停止当前 turn 时直接返回 `cancelled` 结果，不再把被取消的 resident process 当成 driver crash 或 one-shot fallback。
 
 ## 最近验证
 
 - 通过：`npm run build:api`。
 - 通过：`npm run typecheck -- --pretty false`。
-- 通过：`node --test tests/system/channel-connectors-agent-session-driver.test.mjs`，覆盖 OpenCode `--session` compact、OpenCode 空 stdout SQLite fallback、Claude stream-json compact 和 OpenCode persistent stop abort。
+- 通过：`node --test tests/system/channel-connectors-agent-session-driver.test.mjs`，覆盖 OpenCode `--session` compact、OpenCode 空 stdout SQLite fallback、Claude stream-json compact、Claude persistent stop cancel 和 OpenCode persistent stop abort。
 - 通过：`node scripts/smoke-channel-connectors-native-cli-sessions.mjs --apps opencode --strict --json`，本机真实 OpenCode 通过普通 turn、文件 manifest、原生 compact 和 stop cancel；取消结果不再混入旧 DB 输出。
-- 通过：`node scripts/smoke-channel-connectors-native-cli-sessions.mjs --strict --json --keep-temp`，本机真实 Claude Code / OpenCode 均通过普通 turn + 文件 manifest + 原生 compact；Claude Code 额外通过 Bash tool-use；OpenCode 命中 `opencode.db` fallback 或 stdout JSONL 路径。
+- 通过：`npm run smoke:channel-connectors:native-cli-sessions:strict -- --json`，本机真实 Claude Code / OpenCode 均通过普通 turn、文件 manifest、原生 compact 和 stop cancel；Claude Code 额外通过 Bash tool-use，OpenCode 命中 `opencode.db` fallback 或 stdout JSONL 路径。
 - 通过：`node --test --test-name-pattern "native Channel Connectors daemon entry exposes health" tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test --test-name-pattern "native Channel Connectors daemon runs Codex app-server when persistent session metadata is enabled" tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test tests/system/channel-connectors-agent-sessions-live-script.test.mjs`。
@@ -44,14 +45,14 @@
 - GMN provider 可作为视觉测试源，但未设为所有 App scope 默认 active provider；测试时需显式选择 `gpt-5.5`、`gmn-vision` 或 `gmn/gpt-5.5`。
 - Feishu SDK 仍可能因网络或平台关闭连接而 reconnect；当前不使用 connected-idle / zero-inbound / generic watchdog 暴力重建。ping/pong proof 能证明 transport 活着，真实消息级延迟仍需用户继续用 Feishu live 反馈；如仍不稳定，下一步评估 webhook/hybrid ingress 或 Studio-owned WS transport。
 - Feishu 官方长连接仍要求 3s 内处理事件且同 App 多连接是集群分发；Studio 必须保持同 App owner lock 和 fast ACK，不允许让 Agent run、附件下载或卡片更新阻塞 SDK ACK。
-- Claude Code 普通 turn、Bash tool-use、文件 manifest、`/compact` 和 OpenCode 普通 turn、文件 manifest、`/compact`、`/stop` 已有真实 CLI mock-Gateway smoke；权限批准、视觉输入和 IM live 文件上传链路仍需逐项验收。
+- Claude Code 普通 turn、Bash tool-use、文件 manifest、`/compact`、`/stop` 和 OpenCode 普通 turn、文件 manifest、`/compact`、`/stop` 已有真实 CLI mock-Gateway smoke；权限批准、视觉输入和 IM live 文件上传链路仍需逐项验收。
 - `/status` 与 Channel 管理页已能显示最近 auto compact 记录；真实剩余 token 仍取决于上游 usage 或 Gateway runtime ledger 是否能归因。
 - Gateway usage 只有在上游返回 usage 或 runtime ledger 可归因时才准确；缺失 usage 时 Channel 只能用 IM history 字符估算，不能替代真实 tokenizer。
 - 同 session FIFO queue 当前是 daemon 内存队列；Channel daemon 自身重启会丢失未开始的排队消息，durable queue 尚未实现。
 
 ## 下一步
 
-1. 继续扩展真实 Claude Code / OpenCode persistent smoke：权限批准、视觉输入、Claude Code stop 和 IM live 文件上传链路，并确认 one-shot 默认路径不受影响。
+1. 继续扩展真实 Claude Code / OpenCode persistent smoke：权限批准、视觉输入和 IM live 文件上传链路，并确认 one-shot 默认路径不受影响。
 2. 继续按 CC Go 迁移 Feishu/Octo 菜单与命令细节、Claude Code AskUserQuestion 卡片精修、OpenCode 文件/权限/流式能力。
 3. 设计 durable queue，避免 Channel daemon 重启时丢失尚未开始的同 session 排队消息。
 4. 继续优化 Gateway provider 检测结果弹层，把支持多协议时的选择结果和模型预算差异展示得更清楚。

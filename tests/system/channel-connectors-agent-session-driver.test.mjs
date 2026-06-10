@@ -32,6 +32,15 @@ function writeExecutable(filePath, lines) {
   fs.writeFileSync(filePath, `${lines.join("\n")}\n`, { mode: 0o755 });
 }
 
+async function waitForFilePattern(filePath, pattern, timeoutMs = 5000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() <= deadline) {
+    if (fs.existsSync(filePath) && pattern.test(fs.readFileSync(filePath, "utf8"))) return;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error(`Timed out waiting for ${pattern} in ${filePath}`);
+}
+
 function baseTurnRequest(root, agent, nativeCommand = null) {
   return {
     project: {
@@ -669,6 +678,74 @@ test("Channel Connectors native CLI session driver keeps Claude stream-json proc
     assert.equal(stdinMessages.length, 2);
     assert.match(stdinMessages[0], /^hello\b/);
     assert.equal(stdinMessages[1], "/compact");
+  } finally {
+    process.env.PATH = originalPath;
+    delete process.env.STUDIO_TEST_CAPTURE;
+  }
+});
+
+test("Channel Connectors Claude persistent session stop resolves the active turn as cancelled", async () => {
+  const root = makeTempRoot();
+  const fakeBin = path.join(root, "bin");
+  const capturePath = path.join(root, "claude-stop-capture.jsonl");
+  writeExecutable(path.join(fakeBin, "claude"), [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    "const readline = require('readline');",
+    "fs.appendFileSync(process.env.STUDIO_TEST_CAPTURE, JSON.stringify({ argv: process.argv.slice(2) }) + '\\n');",
+    "function emit(value) { process.stdout.write(JSON.stringify(value) + '\\n'); }",
+    "emit({ type: 'system', session_id: 'claude-stop-session' });",
+    "const rl = readline.createInterface({ input: process.stdin });",
+    "rl.on('line', (line) => {",
+    "  if (!line.trim()) return;",
+    "  const msg = JSON.parse(line);",
+    "  const content = msg.message && msg.message.content;",
+    "  const text = Array.isArray(content) ? (content.find((part) => part.type === 'text') || {}).text : content;",
+    "  fs.appendFileSync(process.env.STUDIO_TEST_CAPTURE, JSON.stringify({ stdin: text }) + '\\n');",
+    "});",
+    "setInterval(() => {}, 1000);",
+  ]);
+
+  const originalPath = process.env.PATH || "";
+  process.env.PATH = `${fakeBin}:${originalPath}`;
+  process.env.STUDIO_TEST_CAPTURE = capturePath;
+  try {
+    const factory = createNativeCliSessionDriverFactory({
+      codexFactory: {
+        create: () => {
+          throw new Error("codex factory should not be used");
+        },
+      },
+    });
+    const key = { ...baseKey, agent: "claude-code", model: "sonnet", workDir: root };
+    const session = await factory.create({
+      key,
+      poolKey: channelConnectorAgentSessionDriverPoolKey(key),
+      turnInput: {
+        mode: "persistent",
+        key,
+        messageId: "claude-stop-message",
+        agentTurnRequest: baseTurnRequest(root, "claude-code"),
+        runOneShot: async () => completedResult("unused"),
+      },
+    });
+    const resultPromise = session.runTurn({
+      mode: "persistent",
+      key,
+      messageId: "claude-stop-message",
+      agentTurnRequest: baseTurnRequest(root, "claude-code"),
+      runOneShot: async () => {
+        throw new Error("one-shot fallback should not run");
+      },
+    });
+    await waitForFilePattern(capturePath, /"stdin":/);
+    session.stop("manual-stop");
+    const result = await resultPromise;
+
+    assert.equal(result.ok, false);
+    assert.equal(result.status, "cancelled");
+    assert.match(result.error || "", /cancelled/);
+    assert.equal(result.session.agentNativeSessionId, "claude-stop-session");
   } finally {
     process.env.PATH = originalPath;
     delete process.env.STUDIO_TEST_CAPTURE;
