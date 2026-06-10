@@ -327,7 +327,8 @@ export interface ChannelConnectorCommandSurface {
     permissionMode: ChannelConnectorPermissionMode;
     workDir: string;
     workDirHistory: string[];
-    streamMessages: boolean;
+    thinkingMessages: boolean;
+    processMessages: boolean;
     toolMessages: boolean;
   };
   session: {

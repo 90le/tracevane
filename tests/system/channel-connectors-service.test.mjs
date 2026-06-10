@@ -3427,7 +3427,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(help.replyText, /`\/version`/);
   assert.match(help.replyText, /\/mode/);
   assert.match(help.replyText, /\/reasoning/);
-  assert.match(help.replyText, /\/stream/);
+  assert.match(help.replyText, /\/thinking/);
+  assert.match(help.replyText, /\/process/);
   assert.match(help.replyText, /\/tools/);
   assert.match(help.replyText, /\/quiet/);
   assert.match(help.replyText, /`\/help session`/);
@@ -3849,7 +3850,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     ["/reasoning", "list"],
     ["/dir", "list"],
     ["/display", "list"],
-    ["/stream", "list"],
+    ["/thinking", "list"],
+    ["/process", "list"],
     ["/tools", "list"],
     ["/buffer", "list"],
   ];
@@ -4262,28 +4264,43 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     workDir: codexProject.workDir,
   }), null);
 
-  const streamOff = await handleChannelConnectorCommand({
+  const thinkingOff = await handleChannelConnectorCommand({
     ...baseContext,
-    message: message("/stream off"),
+    message: message("/thinking off"),
   });
-  assert.equal(streamOff.ok, true);
-  assert.equal(streamOff.control.streamMessages, false);
-  assert.match(streamOff.replyText, /流式\/进度消息：关闭/);
+  assert.equal(thinkingOff.ok, true);
+  assert.equal(thinkingOff.control.thinkingMessages, false);
+  assert.equal(thinkingOff.control.processMessages, null);
+  assert.equal(thinkingOff.control.toolMessages, null);
+  assert.match(thinkingOff.replyText, /思考消息：关闭/);
+
+  const processOff = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/process off"),
+  });
+  assert.equal(processOff.ok, true);
+  assert.equal(processOff.control.thinkingMessages, false);
+  assert.equal(processOff.control.processMessages, false);
+  assert.equal(processOff.control.toolMessages, null);
+  assert.match(processOff.replyText, /过程回复：关闭/);
 
   const toolsOff = await handleChannelConnectorCommand({
     ...baseContext,
     message: message("/tools off"),
   });
   assert.equal(toolsOff.ok, true);
+  assert.equal(toolsOff.control.thinkingMessages, false);
+  assert.equal(toolsOff.control.processMessages, false);
   assert.equal(toolsOff.control.toolMessages, false);
-  assert.match(toolsOff.replyText, /工具\/思考消息：关闭/);
+  assert.match(toolsOff.replyText, /工具消息：关闭/);
 
   const displayDefault = await handleChannelConnectorCommand({
     ...baseContext,
     message: message("/display default"),
   });
   assert.equal(displayDefault.ok, true);
-  assert.equal(displayDefault.control.streamMessages, null);
+  assert.equal(displayDefault.control.thinkingMessages, null);
+  assert.equal(displayDefault.control.processMessages, null);
   assert.equal(displayDefault.control.toolMessages, null);
 
   const quietOn = await handleChannelConnectorCommand({
@@ -4291,7 +4308,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     message: message("/quiet"),
   });
   assert.equal(quietOn.ok, true);
-  assert.equal(quietOn.control.streamMessages, false);
+  assert.equal(quietOn.control.thinkingMessages, false);
+  assert.equal(quietOn.control.processMessages, false);
   assert.equal(quietOn.control.toolMessages, false);
   assert.match(quietOn.replyText, /Quiet mode ON/);
 
@@ -4300,7 +4318,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     message: message("/quiet"),
   });
   assert.equal(quietOff.ok, true);
-  assert.equal(quietOff.control.streamMessages, null);
+  assert.equal(quietOff.control.thinkingMessages, null);
+  assert.equal(quietOff.control.processMessages, null);
   assert.equal(quietOff.control.toolMessages, null);
   assert.match(quietOff.replyText, /Quiet mode OFF/);
 
@@ -4309,7 +4328,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     message: message("/quiet compact"),
   });
   assert.equal(compactDisplay.ok, true);
-  assert.equal(compactDisplay.control.streamMessages, false);
+  assert.equal(compactDisplay.control.thinkingMessages, false);
+  assert.equal(compactDisplay.control.processMessages, false);
   assert.equal(compactDisplay.control.toolMessages, false);
   assert.match(compactDisplay.replyText, /Compact display ON/);
 
@@ -4318,7 +4338,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     message: message("/quiet full"),
   });
   assert.equal(fullDisplay.ok, true);
-  assert.equal(fullDisplay.control.streamMessages, null);
+  assert.equal(fullDisplay.control.thinkingMessages, null);
+  assert.equal(fullDisplay.control.processMessages, null);
   assert.equal(fullDisplay.control.toolMessages, null);
   assert.match(fullDisplay.replyText, /Quiet mode OFF/);
 
@@ -5081,7 +5102,8 @@ test("native Channel Connectors command surface renders text and Feishu card act
 
   assert.equal(surface.current.bindingId, "octo-codex");
   assert.equal(surface.current.projectId, "codex-main");
-  assert.equal(surface.current.streamMessages, true);
+  assert.equal(surface.current.thinkingMessages, true);
+  assert.equal(surface.current.processMessages, true);
   assert.equal(surface.current.toolMessages, true);
   assert.match(surface.textFallback, /skills 命令/);
   assert.match(surface.textFallback, /^Studio Channel/);
@@ -5250,7 +5272,8 @@ test("native Channel Connectors command surface renders text and Feishu card act
       permissionMode: null,
       workDir: null,
       workDirHistory: [recentWorkDir],
-      streamMessages: null,
+      thinkingMessages: null,
+      processMessages: null,
       toolMessages: null,
       createdAt: "2026-06-06T08:00:00.000Z",
       updatedAt: "2026-06-06T08:00:00.000Z",
@@ -5364,8 +5387,10 @@ test("native Channel Connectors command surface renders text and Feishu card act
   const displayCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(displaySurface));
   assert.match(displayCardRaw, /Studio Display/);
   assert.match(displayCardRaw, /act:\/quiet quiet/);
-  assert.match(displayCardRaw, /act:\/stream on/);
-  assert.match(displayCardRaw, /act:\/stream off/);
+  assert.match(displayCardRaw, /act:\/thinking on/);
+  assert.match(displayCardRaw, /act:\/thinking off/);
+  assert.match(displayCardRaw, /act:\/process on/);
+  assert.match(displayCardRaw, /act:\/process off/);
   assert.match(displayCardRaw, /act:\/tools on/);
   assert.match(displayCardRaw, /act:\/tools off/);
   assert.match(displayCardRaw, /act:\/display default/);
@@ -5377,17 +5402,20 @@ test("native Channel Connectors command surface renders text and Feishu card act
     binding,
     sessionKey: "dmwork:group:chat-1",
     displayDefaults: {
-      streamMessages: false,
+      thinkingMessages: false,
+      processMessages: false,
       toolMessages: false,
     },
     selectedSectionId: "display",
     selectedViewId: "display",
   });
-  assert.equal(groupDisplaySurface.current.streamMessages, false);
+  assert.equal(groupDisplaySurface.current.thinkingMessages, false);
+  assert.equal(groupDisplaySurface.current.processMessages, false);
   assert.equal(groupDisplaySurface.current.toolMessages, false);
   const groupDisplayCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(groupDisplaySurface));
-  assert.match(groupDisplayCardRaw, /流式\/进度消息：关闭/);
-  assert.match(groupDisplayCardRaw, /工具\/思考消息：关闭/);
+  assert.match(groupDisplayCardRaw, /思考消息：关闭/);
+  assert.match(groupDisplayCardRaw, /过程回复：关闭/);
+  assert.match(groupDisplayCardRaw, /工具消息：关闭/);
   assert.match(groupDisplayCardRaw, /act:\/quiet full/);
 
   const bufferSurface = buildChannelConnectorCommandSurface({
@@ -7521,7 +7549,9 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /function channelConnectorProgressDefaults/);
   assert.match(daemonSource, /function feishuProgressDefaults/);
   assert.match(daemonSource, /function octoProgressDefaults/);
-  assert.match(daemonSource, /function channelConnectorStreamMessagesEnabled/);
+  assert.match(daemonSource, /function channelConnectorThinkingMessagesEnabled/);
+  assert.match(daemonSource, /function channelConnectorProcessMessagesEnabled/);
+  assert.match(daemonSource, /function channelConnectorToolMessagesEnabled/);
   assert.match(daemonSource, /function shouldSendChannelProgressEvent/);
   assert.match(daemonSource, /shouldSendFeishuProgressEvent/);
   assert.match(daemonSource, /function isVisibleChannelProgressEvent/);
@@ -7539,6 +7569,13 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /function renderFeishuProgressEntry/);
   assert.match(daemonSource, /function renderPlainProgressEntry/);
   assert.match(daemonSource, /function renderPlainProgressMessage/);
+  assert.match(daemonSource, /if \(kind === "assistant"\)[\s\S]{0,40}return "💬";/);
+  assert.match(daemonSource, /if \(event\.type === "assistant"\)[\s\S]{0,40}return "过程回复"/);
+  assert.match(daemonSource, /event\.type === "assistant"[\s\S]{0,140}channelConnectorProcessMessagesEnabled\(control,\s*defaults\)/);
+  assert.match(daemonSource, /event\.type === "reasoning"[\s\S]{0,100}channelConnectorThinkingMessagesEnabled\(control,\s*defaults\)/);
+  assert.match(daemonSource, /event\.type === "tool"[\s\S]{0,100}channelConnectorToolMessagesEnabled\(control,\s*defaults\)/);
+  assert.match(daemonSource, /\["assistant",\s*"running",\s*"reasoning",\s*"tool",\s*"failed",\s*"error",\s*"completed",\s*"event"\]\.includes\(event\.type\)/);
+  assert.match(daemonSource, /if \(event\.type === "assistant"\)[\s\S]{0,140}channelConnectorProcessMessagesEnabled\(control,\s*defaults\)/);
   assert.match(daemonSource, /function progressKindIcon/);
   assert.match(daemonSource, /function progressResultIcon/);
   assert.match(daemonSource, /function renderAgentFailureReply/);
@@ -7566,6 +7603,7 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /renderOctoProgressText/);
   assert.match(daemonSource, /agent\.progress\.reply/);
   assert.match(daemonSource, /event\.type === "failed" \|\| event\.type === "error" \|\| event\.type === "tool"/);
+  assert.match(daemonSource, /title:\s*"过程回复"/);
   assert.match(daemonSource, /工具调用[^\n]+inlineProgressCode\(parsed\.toolName\)/);
   assert.match(daemonSource, /exit[^\n]+inlineProgressCode\(parsed\.exitCode\)/);
   assert.match(daemonSource, /event\.type === "running"/);
@@ -7580,7 +7618,9 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /isOctoGroupChannel\(message\.channelType\)/);
   assert.match(daemonSource, /shouldSendChannelProgressEvent\(control,\s*event,\s*progressDefaults\)/);
   assert.match(daemonSource, /shouldSendFeishuProgressEvent\(control,\s*event,\s*progressDefaults\)/);
-  assert.match(daemonSource, /channelConnectorStreamMessagesEnabled\(control,\s*progressDefaults\)/);
+  assert.match(daemonSource, /progressThinkingEnabled:\s*channelConnectorThinkingMessagesEnabled\(control,\s*progressDefaults\)/);
+  assert.match(daemonSource, /progressProcessEnabled:\s*channelConnectorProcessMessagesEnabled\(control,\s*progressDefaults\)/);
+  assert.match(daemonSource, /progressToolsEnabled:\s*channelConnectorToolMessagesEnabled\(control,\s*progressDefaults\)/);
   assert.match(daemonSource, /jsonErrorEnvelopeMessage/);
   assert.match(daemonSource, /renderChannelConnectorCommandSurfaceFeishu/);
   assert.match(daemonSource, /shouldSendFeishuCommandCard/);
@@ -7760,10 +7800,10 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
       method: "POST",
       body: {
         actionValue: {
-          action: "act:/stream off",
+          action: "act:/process off",
           binding_id: "octo-route",
           session_key: "dmwork:dm:route-user",
-          surface_action_id: "stream-off",
+          surface_action_id: "process-off",
           surface_section_id: "display",
           surface_view_id: "display",
         },
@@ -7776,9 +7816,9 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     assert.equal(displayAction.status, 200);
     assert.equal(displayAction.body.accepted, true);
     assert.equal(displayAction.body.commandResult.ok, true);
-    assert.equal(displayAction.body.surface.current.streamMessages, false);
+    assert.equal(displayAction.body.surface.current.processMessages, false);
     assert.match(JSON.stringify(displayAction.body.feishuCard), /Studio Display/);
-    assert.match(JSON.stringify(displayAction.body.feishuCard), /流式\/进度消息：关闭/);
+    assert.match(JSON.stringify(displayAction.body.feishuCard), /过程回复：关闭/);
 
     const cardAction = await requestJson(`${baseUrl}/api/channel-connectors/adapters/feishu/card-action`, {
       method: "POST",

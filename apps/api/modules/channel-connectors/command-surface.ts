@@ -131,8 +131,9 @@ const FEISHU_MENU_SECTION_ALIASES: Record<string, FeishuMenuSectionId> = {
   reasoning: "mode",
   effort: "mode",
   display: "display",
-  stream: "display",
-  streams: "display",
+  thinking: "display",
+  think: "display",
+  process: "display",
   progress: "display",
   tools: "display",
   tool: "display",
@@ -201,8 +202,9 @@ const FEISHU_MENU_VIEW_ALIASES: Record<string, FeishuMenuViewId> = {
   effort: "mode",
   "mode-picker": "mode",
   display: "display",
-  stream: "display",
-  streams: "display",
+  thinking: "display",
+  think: "display",
+  process: "display",
   progress: "display",
   tools: "display",
   tool: "display",
@@ -228,7 +230,8 @@ export interface ChannelConnectorCommandSurfaceInput {
   binding: ChannelConnectorRuntimeBinding;
   control?: ChannelConnectorSessionControlRecord | null;
   displayDefaults?: {
-    streamMessages?: boolean | null;
+    thinkingMessages?: boolean | null;
+    processMessages?: boolean | null;
     toolMessages?: boolean | null;
   } | null;
   sessionKey?: string | null;
@@ -324,7 +327,7 @@ export function channelConnectorCommandSurfaceViewFromCommand(
   if (name === "agent" || name === "agents") return "agent";
   if (name === "model" || name === "models") return "model";
   if (["mode", "permission", "permissions", "yolo", "reasoning", "effort"].includes(name)) return "mode";
-  if (["display", "stream", "streams", "progress", "tools", "tool", "quiet"].includes(name)) return "display";
+  if (["display", "thinking", "think", "process", "progress", "tools", "tool", "quiet"].includes(name)) return "display";
   if (["buffer", "buffers", "reply-buffer", "reply-buffers"].includes(name)) return "buffer";
   if (["workdir", "dir", "pwd", "cd", "chdir"].includes(name)) return "workdir";
   return null;
@@ -390,7 +393,10 @@ function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFa
       ["Reasoning", surface.current.reasoningEffort || "default"],
       ["Mode", surface.current.permissionMode],
       ["WorkDir", compactPath(surface.current.workDir)],
-      ["Display", `stream=${surface.current.streamMessages ? "on" : "off"} / tools=${surface.current.toolMessages ? "on" : "off"}`],
+      [
+        "Display",
+        `thinking=${surface.current.thinkingMessages ? "on" : "off"} / process=${surface.current.processMessages ? "on" : "off"} / tools=${surface.current.toolMessages ? "on" : "off"}`,
+      ],
     ]),
   ];
   if (surface.current.workDirHistory.length) {
@@ -420,7 +426,7 @@ function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFa
       "",
       markdownTable([
         ["`/agent` `/model` `/mode` `/reasoning`", "切换当前 IM session 配置"],
-        ["`/display` `/stream on|off` `/tools on|off`", "控制进度和工具显示"],
+        ["`/display` `/thinking` `/process` `/tools`", "控制思考、过程回复和工具显示"],
         ["`/commands` `/alias` `/skills`", "查看可执行命令、别名和 Skill"],
       ]),
     );
@@ -439,13 +445,16 @@ export function buildChannelConnectorCommandSurface(
   input: ChannelConnectorCommandSurfaceInput,
 ): ChannelConnectorCommandSurface {
   const current = resolveChannelConnectorEffectiveProject(input.config, input.project, input.control || null);
-  const streamMessages = input.control?.streamMessages
-    ?? input.displayDefaults?.streamMessages
+  const thinkingMessages = input.control?.thinkingMessages
+    ?? input.displayDefaults?.thinkingMessages
+    ?? true;
+  const processMessages = input.control?.processMessages
+    ?? input.displayDefaults?.processMessages
     ?? true;
   const toolMessages = input.control?.toolMessages
     ?? input.displayDefaults?.toolMessages
     ?? true;
-  const quietEnabled = !streamMessages && !toolMessages;
+  const quietEnabled = !thinkingMessages && !processMessages && !toolMessages;
   const models = uniqueStrings([
     ...(input.models || []),
     current.model || "",
@@ -538,29 +547,39 @@ export function buildChannelConnectorCommandSurface(
             description: "按 CC /quiet 习惯隐藏或恢复中间态消息",
           },
         ),
-        action("stream-on", "Stream On", "/stream on", {
-          tone: input.control?.streamMessages === false ? "default" : "primary",
+        action("thinking-on", "Thinking On", "/thinking on", {
+          tone: input.control?.thinkingMessages === false ? "default" : "primary",
           requiresAdmin: true,
-          description: "显示 Agent 运行、失败、完成等进度消息",
+          description: "显示 Agent 思考过程",
         }),
-        action("stream-off", "Stream Off", "/stream off", {
-          tone: input.control?.streamMessages === false ? "danger" : "default",
+        action("thinking-off", "Thinking Off", "/thinking off", {
+          tone: input.control?.thinkingMessages === false ? "danger" : "default",
           requiresAdmin: true,
-          description: "关闭本 IM session 中间态消息",
+          description: "隐藏 Agent 思考过程",
+        }),
+        action("process-on", "Process On", "/process on", {
+          tone: input.control?.processMessages === false ? "default" : "primary",
+          requiresAdmin: true,
+          description: "显示 Agent 过程回复",
+        }),
+        action("process-off", "Process Off", "/process off", {
+          tone: input.control?.processMessages === false ? "danger" : "default",
+          requiresAdmin: true,
+          description: "隐藏 Agent 过程回复",
         }),
         action("tools-on", "Tools On", "/tools on", {
           tone: input.control?.toolMessages === false ? "default" : "primary",
           requiresAdmin: true,
-          description: "显示工具调用和思考进度",
+          description: "显示工具调用和工具结果",
         }),
         action("tools-off", "Tools Off", "/tools off", {
           tone: input.control?.toolMessages === false ? "danger" : "default",
           requiresAdmin: true,
-          description: "隐藏工具调用和思考进度",
+          description: "隐藏工具调用和工具结果",
         }),
         action("display-default", "Default", "/display default", {
           requiresAdmin: true,
-          description: "恢复默认：流式/工具消息开启",
+          description: "恢复默认：思考、过程回复和工具消息开启",
         }),
       ],
     },
@@ -656,7 +675,8 @@ export function buildChannelConnectorCommandSurface(
         .map((item) => path.resolve(item))
         .filter((item) => item !== path.resolve(current.workDir))
         .slice(0, 10),
-      streamMessages,
+      thinkingMessages,
+      processMessages,
       toolMessages,
     },
     session: input.agentSession || null,
@@ -807,7 +827,11 @@ function statusBlock(surface: ChannelConnectorCommandSurface): Record<string, un
               `\`${workDir}\``,
               "",
               "**显示**",
-              `stream=${surface.current.streamMessages ? "on" : "off"} · tools=${surface.current.toolMessages ? "on" : "off"}`,
+              [
+                `thinking=${surface.current.thinkingMessages ? "on" : "off"}`,
+                `process=${surface.current.processMessages ? "on" : "off"}`,
+                `tools=${surface.current.toolMessages ? "on" : "off"}`,
+              ].join(" · "),
             ].join("\n"),
           },
         ],
@@ -1030,13 +1054,15 @@ function commandSurfaceItemDescription(item: ChannelConnectorCommandSurfaceActio
     case "model-default":
       return "恢复 Agent Profile 默认模型";
     case "display-status":
-      return "查看流式/工具消息开关";
+      return "查看思考、过程回复和工具消息开关";
     case "buffer-list":
       return "列出当前 IM session 最近的 reply buffer";
     case "buffer-latest":
       return "读取当前 IM session 最新的完整缓存回复";
-    case "stream-on":
-    case "stream-off":
+    case "thinking-on":
+    case "thinking-off":
+    case "process-on":
+    case "process-off":
     case "tools-on":
     case "tools-off":
     case "quiet-toggle":
@@ -1119,7 +1145,7 @@ function sectionSummary(sectionId: FeishuMenuSectionId): string {
     case "mode":
       return "切换当前会话权限模式和推理强度";
     case "display":
-      return "流式进度和工具过程显示开关";
+      return "思考、过程回复和工具过程显示开关";
     case "buffer":
       return "查看群聊长回复的完整缓存";
     case "workdir":
@@ -1200,13 +1226,14 @@ function helpSectionActions(
     ];
   }
   if (section.id === "display") {
-    const stream = surface.current.streamMessages ? "stream on" : "stream off";
+    const thinking = surface.current.thinkingMessages ? "thinking on" : "thinking off";
+    const process = surface.current.processMessages ? "process on" : "process off";
     const tools = surface.current.toolMessages ? "tools on" : "tools off";
     return [
       action("display-picker", "显示设置", "/display", {
         actionKind: "nav",
         tone: "primary",
-        description: `${stream} · ${tools}`,
+        description: `${thinking} · ${process} · ${tools}`,
         requiresAdmin: true,
       }),
     ];
@@ -1535,10 +1562,14 @@ function renderDisplayCard(surface: ChannelConnectorCommandSurface): ChannelConn
     || action("display-status", "Status", "/display");
   const quietToggle = actions.find((item) => item.id === "quiet-toggle")
     || action("quiet-toggle", "Quiet On", "/quiet quiet", { requiresAdmin: true });
-  const streamOn = actions.find((item) => item.id === "stream-on")
-    || action("stream-on", "Stream On", "/stream on", { requiresAdmin: true });
-  const streamOff = actions.find((item) => item.id === "stream-off")
-    || action("stream-off", "Stream Off", "/stream off", { requiresAdmin: true });
+  const thinkingOn = actions.find((item) => item.id === "thinking-on")
+    || action("thinking-on", "Thinking On", "/thinking on", { requiresAdmin: true });
+  const thinkingOff = actions.find((item) => item.id === "thinking-off")
+    || action("thinking-off", "Thinking Off", "/thinking off", { requiresAdmin: true });
+  const processOn = actions.find((item) => item.id === "process-on")
+    || action("process-on", "Process On", "/process on", { requiresAdmin: true });
+  const processOff = actions.find((item) => item.id === "process-off")
+    || action("process-off", "Process Off", "/process off", { requiresAdmin: true });
   const toolsOn = actions.find((item) => item.id === "tools-on")
     || action("tools-on", "Tools On", "/tools on", { requiresAdmin: true });
   const toolsOff = actions.find((item) => item.id === "tools-off")
@@ -1550,8 +1581,9 @@ function renderDisplayCard(surface: ChannelConnectorCommandSurface): ChannelConn
       tag: "markdown",
       content: [
         "**当前显示设置**",
-        `流式/进度消息：${surface.current.streamMessages ? "开启" : "关闭"}`,
-        `工具/思考消息：${surface.current.toolMessages ? "开启" : "关闭"}`,
+        `思考消息：${surface.current.thinkingMessages ? "开启" : "关闭"}`,
+        `过程回复：${surface.current.processMessages ? "开启" : "关闭"}`,
+        `工具消息：${surface.current.toolMessages ? "开启" : "关闭"}`,
         "",
         "**作用范围**",
         "只作用于当前 IM session；最终回复仍会正常发送。",
@@ -1560,7 +1592,8 @@ function renderDisplayCard(surface: ChannelConnectorCommandSurface): ChannelConn
   ];
   pushActionRows(elements, [displayStatus, quietToggle], surface, 2, true);
   pushActionRows(elements, [defaults], surface, 2, true);
-  pushActionRows(elements, [streamOn, streamOff], surface, 2, true);
+  pushActionRows(elements, [thinkingOn, thinkingOff], surface, 2, true);
+  pushActionRows(elements, [processOn, processOff], surface, 2, true);
   pushActionRows(elements, [toolsOn, toolsOff], surface, 2, true);
   pushSubcardNavRows(elements, surface, "display");
   return {
@@ -1728,7 +1761,10 @@ function renderCurrentSessionCard(surface: ChannelConnectorCommandSurface): Chan
     ["Reasoning", surface.current.reasoningEffort || "default"],
     ["Permission", surface.current.permissionMode],
     ["WorkDir", surface.current.workDir],
-    ["Stream / Tools", `${surface.current.streamMessages ? "on" : "off"} / ${surface.current.toolMessages ? "on" : "off"}`],
+    [
+      "Thinking / Process / Tools",
+      `${surface.current.thinkingMessages ? "on" : "off"} / ${surface.current.processMessages ? "on" : "off"} / ${surface.current.toolMessages ? "on" : "off"}`,
+    ],
     ["Agent session", session?.started ? `${session.turnCount} turns` : "not started"],
     ["Session id", shortSurfaceId(session?.id)],
     ["Native session", shortSurfaceId(session?.agentNativeSessionId)],

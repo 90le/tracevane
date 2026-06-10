@@ -16,7 +16,8 @@ export interface ChannelConnectorSessionControlRecord {
   permissionMode: ChannelConnectorPermissionMode | null;
   workDir: string | null;
   workDirHistory: string[];
-  streamMessages: boolean | null;
+  thinkingMessages: boolean | null;
+  processMessages: boolean | null;
   toolMessages: boolean | null;
   createdAt: string;
   updatedAt: string;
@@ -24,7 +25,7 @@ export interface ChannelConnectorSessionControlRecord {
 }
 
 export interface ChannelConnectorSessionControlState {
-  version: 1;
+  version: 2;
   updatedAt: string;
   controls: Record<string, ChannelConnectorSessionControlRecord>;
 }
@@ -42,7 +43,8 @@ export interface ChannelConnectorSessionControlUpdate extends ChannelConnectorSe
   permissionMode?: ChannelConnectorPermissionMode | null;
   workDir?: string | null;
   workDirHistory?: string[] | null;
-  streamMessages?: boolean | null;
+  thinkingMessages?: boolean | null;
+  processMessages?: boolean | null;
   toolMessages?: boolean | null;
   lastCommand?: string | null;
   now?: Date;
@@ -80,7 +82,7 @@ export function channelConnectorSessionControlId(input: ChannelConnectorSessionC
 
 function emptyState(): ChannelConnectorSessionControlState {
   return {
-    version: 1,
+    version: 2,
     updatedAt: nowIso(),
     controls: {},
   };
@@ -93,7 +95,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 export function readChannelConnectorSessionControls(filePath: string): ChannelConnectorSessionControlState {
   try {
     const raw = JSON.parse(fs.readFileSync(filePath, "utf8")) as unknown;
-    if (!isRecord(raw) || !isRecord(raw.controls)) return emptyState();
+    if (!isRecord(raw) || raw.version !== 2 || !isRecord(raw.controls)) return emptyState();
     const controls: Record<string, ChannelConnectorSessionControlRecord> = {};
     for (const [id, value] of Object.entries(raw.controls)) {
       if (!isRecord(value)) continue;
@@ -112,7 +114,8 @@ export function readChannelConnectorSessionControls(filePath: string): ChannelCo
         permissionMode: normalizeString(value.permissionMode) as ChannelConnectorPermissionMode || null,
         workDir: normalizeString(value.workDir) || null,
         workDirHistory: normalizeStringArray(value.workDirHistory),
-        streamMessages: typeof value.streamMessages === "boolean" ? value.streamMessages : null,
+        thinkingMessages: typeof value.thinkingMessages === "boolean" ? value.thinkingMessages : null,
+        processMessages: typeof value.processMessages === "boolean" ? value.processMessages : null,
         toolMessages: typeof value.toolMessages === "boolean" ? value.toolMessages : null,
         createdAt: normalizeString(value.createdAt) || nowIso(),
         updatedAt: normalizeString(value.updatedAt) || nowIso(),
@@ -120,7 +123,7 @@ export function readChannelConnectorSessionControls(filePath: string): ChannelCo
       };
     }
     return {
-      version: 1,
+      version: 2,
       updatedAt: normalizeString(raw.updatedAt) || nowIso(),
       controls,
     };
@@ -136,7 +139,7 @@ export function writeChannelConnectorSessionControls(
 ): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const next = {
-    version: 1 as const,
+    version: 2 as const,
     updatedAt: nowIso(),
     controls: state.controls,
   };
@@ -182,9 +185,12 @@ export function upsertChannelConnectorSessionControl(
     workDirHistory: update.workDirHistory === undefined
       ? current?.workDirHistory || []
       : normalizeStringArray(update.workDirHistory),
-    streamMessages: update.streamMessages === undefined
-      ? current?.streamMessages ?? null
-      : typeof update.streamMessages === "boolean" ? update.streamMessages : null,
+    thinkingMessages: update.thinkingMessages === undefined
+      ? current?.thinkingMessages ?? null
+      : typeof update.thinkingMessages === "boolean" ? update.thinkingMessages : null,
+    processMessages: update.processMessages === undefined
+      ? current?.processMessages ?? null
+      : typeof update.processMessages === "boolean" ? update.processMessages : null,
     toolMessages: update.toolMessages === undefined
       ? current?.toolMessages ?? null
       : typeof update.toolMessages === "boolean" ? update.toolMessages : null,

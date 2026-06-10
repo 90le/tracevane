@@ -482,7 +482,8 @@ const STUDIO_COMMAND_MATCH_CANDIDATES: readonly CommandMatchCandidate[] = [
   { id: "reasoning", names: ["reasoning", "effort"] },
   { id: "dir", names: ["dir", "cd", "chdir", "workdir", "pwd"] },
   { id: "display", names: ["display"] },
-  { id: "stream", names: ["stream", "streams", "progress"] },
+  { id: "thinking", names: ["thinking", "think"] },
+  { id: "process", names: ["process", "progress"] },
   { id: "tools", names: ["tools", "tool"] },
   { id: "quiet", names: ["quiet"] },
   { id: "buffer", names: ["buffer", "buffers", "reply-buffer", "reply-buffers"] },
@@ -945,7 +946,7 @@ function commandHelpSectionAlias(value: string | null | undefined): CommandHelpS
     return "session";
   }
   if (["agent", "profile", "model", "mode", "reasoning", "permission"].includes(target)) return "agent";
-  if (["display", "stream", "tools", "tool", "buffer", "quiet"].includes(target)) return "display";
+  if (["display", "thinking", "think", "process", "progress", "tools", "tool", "buffer", "quiet"].includes(target)) return "display";
   if (["workdir", "dir", "cd", "directory"].includes(target)) return "workdir";
   if (["native", "commands", "command", "cmd", "alias", "aliases", "skills", "skill", "slash"].includes(target)) return "native";
   return null;
@@ -1000,10 +1001,11 @@ function commandHelpSectionText(section: CommandHelpSection): string {
       "Studio Channel / display",
       "",
       markdownTable([
-        ["`/display`", "查看流式和工具消息开关"],
+        ["`/display`", "查看思考、过程回复和工具消息开关"],
         ["`/quiet [quiet|compact|full]`", "按 CC 习惯隐藏或恢复中间态消息"],
-        ["`/stream <on|off|default>`", "开关本会话进度/流式消息"],
-        ["`/tools <on|off|default>`", "开关本会话工具/思考消息"],
+        ["`/thinking <on|off|default>`", "开关本会话思考消息"],
+        ["`/process <on|off|default>`", "开关本会话过程回复"],
+        ["`/tools <on|off|default>`", "开关本会话工具消息"],
         ["`/buffer`", "查看本会话最近 reply buffer"],
         ["`/buffer <id|前缀|latest>`", "读取缓存的完整长回复"],
       ]),
@@ -1056,7 +1058,7 @@ function commandHelpText(section?: string | null): string {
       ["`/status` `/new` `/reset` `/stop` `/compact`", "会话状态、新会话、重置、停止、native-first compact"],
       ["`/whoami` `/version`", "身份排查和 runtime 版本"],
       ["`/agent` `/model` `/mode` `/reasoning`", "切换 Agent、模型、权限、推理强度"],
-      ["`/display` `/quiet` `/stream on|off` `/tools on|off`", "控制进度和工具显示"],
+      ["`/display` `/quiet` `/thinking` `/process` `/tools`", "控制思考、过程回复和工具显示"],
       ["`/commands` `/alias` `/skills` `/native /help`", "自定义命令、命令别名、Skills、Agent 原生命令"],
     ]),
     "",
@@ -1065,7 +1067,7 @@ function commandHelpText(section?: string | null): string {
     markdownTable([
       ["`/help session`", "会话、history、usage、权限批准"],
       ["`/help agent`", "Agent、模型、权限、推理"],
-      ["`/help display`", "流式、工具消息、reply buffer"],
+      ["`/help display`", "思考、过程回复、工具消息、reply buffer"],
       ["`/help workdir`", "工作目录切换"],
       ["`/help native`", "自定义命令、Skills、原生命令透传"],
     ]),
@@ -1186,13 +1188,15 @@ function effectiveToggle(value: boolean | null | undefined): boolean {
 function toggleStatusText(
   control: ChannelConnectorSessionControlRecord | null,
 ): string {
-  const stream = effectiveToggle(control?.streamMessages);
+  const thinking = effectiveToggle(control?.thinkingMessages);
+  const process = effectiveToggle(control?.processMessages);
   const tools = effectiveToggle(control?.toolMessages);
   return [
     "显示设置：",
-    `流式/进度消息：${stream ? "开启" : "关闭"}${control?.streamMessages === null || control?.streamMessages === undefined ? " (默认)" : ""}`,
-    `工具/思考消息：${tools ? "开启" : "关闭"}${control?.toolMessages === null || control?.toolMessages === undefined ? " (默认)" : ""}`,
-    "用法：/quiet 隐藏/恢复中间态；/stream <on|off|default>；/tools <on|off|default>；/display default 恢复默认。",
+    `思考消息：${thinking ? "开启" : "关闭"}${control?.thinkingMessages === null || control?.thinkingMessages === undefined ? " (默认)" : ""}`,
+    `过程回复：${process ? "开启" : "关闭"}${control?.processMessages === null || control?.processMessages === undefined ? " (默认)" : ""}`,
+    `工具消息：${tools ? "开启" : "关闭"}${control?.toolMessages === null || control?.toolMessages === undefined ? " (默认)" : ""}`,
+    "用法：/quiet 隐藏/恢复中间态；/thinking <on|off|default>；/process <on|off|default>；/tools <on|off|default>；/display default 恢复默认。",
   ].join("\n");
 }
 
@@ -1228,7 +1232,9 @@ function parseQuietTarget(input: string): QuietTarget {
 }
 
 function isQuietMode(control: ChannelConnectorSessionControlRecord | null): boolean {
-  return !effectiveToggle(control?.streamMessages) && !effectiveToggle(control?.toolMessages);
+  return !effectiveToggle(control?.thinkingMessages)
+    && !effectiveToggle(control?.processMessages)
+    && !effectiveToggle(control?.toolMessages);
 }
 
 function quietModeReply(mode: "quiet" | "compact" | "full"): string {
@@ -1236,9 +1242,9 @@ function quietModeReply(mode: "quiet" | "compact" | "full"): string {
     return "Quiet mode OFF：已恢复本 IM 会话默认中间态显示；最终回复不受影响。";
   }
   if (mode === "compact") {
-    return "Compact display ON：已按 CC /quiet compact 习惯隐藏本 IM 会话流式/工具中间态；最终回复不受影响。";
+    return "Compact display ON：已按 CC /quiet compact 习惯隐藏本 IM 会话思考、过程回复和工具中间态；最终回复不受影响。";
   }
-  return "Quiet mode ON：已隐藏本 IM 会话流式/工具中间态；最终回复不受影响。";
+  return "Quiet mode ON：已隐藏本 IM 会话思考、过程回复和工具中间态；最终回复不受影响。";
 }
 
 function bufferPreviewText(value: string, maxRunes = 120): string {
@@ -1524,7 +1530,8 @@ async function handleStatus(context: ChannelConnectorCommandContext): Promise<Ch
       `Reasoning: ${currentProject.reasoningEffort || "default"}`,
       `Mode: ${currentProject.permissionMode}`,
       `WorkDir: ${currentProject.workDir}`,
-      `Stream: ${effectiveToggle(control?.streamMessages) ? "on" : "off"}`,
+      `Thinking: ${effectiveToggle(control?.thinkingMessages) ? "on" : "off"}`,
+      `Process: ${effectiveToggle(control?.processMessages) ? "on" : "off"}`,
       `Tools: ${effectiveToggle(control?.toolMessages) ? "on" : "off"}`,
       `Session: ${session ? `${session.turnCount} turns` : "new"}`,
       `Native session: ${session?.agentNativeSessionId || "-"}`,
@@ -1567,7 +1574,8 @@ async function handleCurrent(context: ChannelConnectorCommandContext): Promise<C
       `Reasoning: ${currentProject.reasoningEffort || "default"}`,
       `Mode: ${currentProject.permissionMode}`,
       `WorkDir: ${currentProject.workDir}`,
-      `Stream: ${effectiveToggle(control?.streamMessages) ? "on" : "off"}`,
+      `Thinking: ${effectiveToggle(control?.thinkingMessages) ? "on" : "off"}`,
+      `Process: ${effectiveToggle(control?.processMessages) ? "on" : "off"}`,
       `Tools: ${effectiveToggle(control?.toolMessages) ? "on" : "off"}`,
       `Agent session: ${session ? `${session.turnCount} turns` : "not started"}`,
       `Agent session id: ${shortIdentifier(session?.id, 18)}`,
@@ -1986,13 +1994,14 @@ export async function handleChannelConnectorCommand(
       "new",
       "dir",
       "display",
-      "stream",
+      "thinking",
+      "process",
       "tools",
       "quiet",
       "stop",
       "compact",
     ].includes(name);
-  const listOnlyCommand = ["agent", "model", "mode", "reasoning", "dir", "display", "stream", "tools"].includes(name)
+  const listOnlyCommand = ["agent", "model", "mode", "reasoning", "dir", "display", "thinking", "process", "tools"].includes(name)
     && args.length === 0;
   const mutating = (mutableCommandName || commandsMutation || aliasMutation) && !listOnlyCommand;
 
@@ -2956,7 +2965,8 @@ export async function handleChannelConnectorCommand(
       : target;
     const control = upsertChannelConnectorSessionControl(context.controlsPath, {
       ...lookup,
-      streamMessages: mode === "full" ? null : false,
+      thinkingMessages: mode === "full" ? null : false,
+      processMessages: mode === "full" ? null : false,
       toolMessages: mode === "full" ? null : false,
       lastCommand: parsed.raw,
     });
@@ -2971,7 +2981,7 @@ export async function handleChannelConnectorCommand(
     };
   }
 
-  if (name === "display" || name === "stream" || name === "tools") {
+  if (name === "display" || name === "thinking" || name === "process" || name === "tools") {
     const target = parseToggleTarget(args.join(" "));
     if (target === "status") {
       return {
@@ -2996,20 +3006,24 @@ export async function handleChannelConnectorCommand(
       };
     }
     const update = name === "display"
-      ? { streamMessages: target, toolMessages: target }
-      : name === "tools"
-        ? { toolMessages: target }
-        : { streamMessages: target };
+      ? { thinkingMessages: target, processMessages: target, toolMessages: target }
+      : name === "thinking"
+        ? { thinkingMessages: target }
+        : name === "process"
+          ? { processMessages: target }
+          : { toolMessages: target };
     const control = upsertChannelConnectorSessionControl(context.controlsPath, {
       ...lookup,
       ...update,
       lastCommand: parsed.raw,
     });
     const changed = name === "display"
-      ? `流式/进度消息和工具/思考消息：${toggleLabel(target)}`
-      : name === "tools"
-        ? `工具/思考消息：${toggleLabel(target)}`
-        : `流式/进度消息：${toggleLabel(target)}`;
+      ? `思考、过程回复和工具消息：${toggleLabel(target)}`
+      : name === "thinking"
+        ? `思考消息：${toggleLabel(target)}`
+        : name === "process"
+          ? `过程回复：${toggleLabel(target)}`
+          : `工具消息：${toggleLabel(target)}`;
     return {
       handled: true,
       command: name,

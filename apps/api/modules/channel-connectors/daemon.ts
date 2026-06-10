@@ -585,7 +585,7 @@ interface ChannelDaemonStopActiveRunResult {
   error: string | null;
 }
 
-type FeishuProgressCardEntryKind = "info" | "thinking" | "tool_use" | "tool_result" | "error";
+type FeishuProgressCardEntryKind = "info" | "assistant" | "thinking" | "tool_use" | "tool_result" | "error";
 
 const channelSessionAgentRunQueues: ChannelDaemonSessionRunQueueRegistry = new Map();
 const channelPendingPermissions: ChannelDaemonPendingPermissionRegistry = new Map();
@@ -614,7 +614,8 @@ interface FeishuProgressCardState {
 
 interface ChannelConnectorProgressDefaults {
   isGroup: boolean;
-  streamMessages: boolean;
+  thinkingMessages: boolean;
+  processMessages: boolean;
   toolMessages: boolean;
 }
 
@@ -2989,6 +2990,7 @@ function startOctoTypingPulse(
 }
 
 function octoProgressTitle(event: ChannelConnectorAgentProgressEvent): string {
+  if (event.type === "assistant") return "过程回复";
   if (event.type === "running") return "运行中";
   if (event.type === "reasoning") return "思考";
   if (event.type === "tool") return event.rawType?.endsWith(".started") ? "工具调用" : "工具结果";
@@ -2999,6 +3001,7 @@ function octoProgressTitle(event: ChannelConnectorAgentProgressEvent): string {
 }
 
 function progressKindIcon(kind: FeishuProgressCardEntryKind | ChannelConnectorAgentProgressEvent["type"]): string {
+  if (kind === "assistant") return "💬";
   if (kind === "thinking" || kind === "reasoning") return "💭";
   if (kind === "tool_use" || kind === "tool") return "🔧";
   if (kind === "tool_result") return "🟢";
@@ -3887,16 +3890,20 @@ function shouldSendFeishuProgressEvent(
   defaults: ChannelConnectorProgressDefaults,
 ): boolean {
   if (!isVisibleChannelProgressEvent(event)) return false;
-  if (!channelConnectorStreamMessagesEnabled(control, defaults)) return false;
-  if (event.type === "assistant") return false;
-  if ((event.type === "tool" || event.type === "reasoning") && !channelConnectorToolMessagesEnabled(control, defaults)) return false;
-  return ["running", "reasoning", "tool", "failed", "error", "completed", "event"].includes(event.type);
+  if (event.type === "assistant") {
+    return Boolean(normalizeString(event.text)) && channelConnectorProcessMessagesEnabled(control, defaults);
+  }
+  if (event.type === "reasoning") return channelConnectorThinkingMessagesEnabled(control, defaults);
+  if (event.type === "tool") return channelConnectorToolMessagesEnabled(control, defaults);
+  if (!channelConnectorProcessMessagesEnabled(control, defaults)) return false;
+  return ["assistant", "running", "reasoning", "tool", "failed", "error", "completed", "event"].includes(event.type);
 }
 
 function channelConnectorProgressDefaults(isGroup: boolean): ChannelConnectorProgressDefaults {
   return {
     isGroup,
-    streamMessages: !isGroup,
+    thinkingMessages: !isGroup,
+    processMessages: !isGroup,
     toolMessages: !isGroup,
   };
 }
@@ -3909,11 +3916,18 @@ function octoProgressDefaults(message: ChannelConnectorOctoInboundMessage): Chan
   return channelConnectorProgressDefaults(isOctoGroupChannel(message.channelType));
 }
 
-function channelConnectorStreamMessagesEnabled(
+function channelConnectorThinkingMessagesEnabled(
   control: ChannelConnectorSessionControlRecord | null,
   defaults: ChannelConnectorProgressDefaults,
 ): boolean {
-  return control?.streamMessages ?? defaults.streamMessages;
+  return control?.thinkingMessages ?? defaults.thinkingMessages;
+}
+
+function channelConnectorProcessMessagesEnabled(
+  control: ChannelConnectorSessionControlRecord | null,
+  defaults: ChannelConnectorProgressDefaults,
+): boolean {
+  return control?.processMessages ?? defaults.processMessages;
 }
 
 function channelConnectorToolMessagesEnabled(
@@ -3929,9 +3943,13 @@ function shouldSendChannelProgressEvent(
   defaults: ChannelConnectorProgressDefaults,
 ): boolean {
   if (!isVisibleChannelProgressEvent(event)) return false;
-  if (!channelConnectorStreamMessagesEnabled(control, defaults)) return false;
-  if (event.type === "assistant" || event.type === "running" || event.type === "completed" || event.type === "event") return false;
-  if ((event.type === "tool" || event.type === "reasoning") && !channelConnectorToolMessagesEnabled(control, defaults)) return false;
+  if (event.type === "assistant") {
+    return Boolean(normalizeString(event.text)) && channelConnectorProcessMessagesEnabled(control, defaults);
+  }
+  if (event.type === "running" || event.type === "completed" || event.type === "event") return false;
+  if (event.type === "reasoning") return channelConnectorThinkingMessagesEnabled(control, defaults);
+  if (event.type === "tool") return channelConnectorToolMessagesEnabled(control, defaults);
+  if (!channelConnectorProcessMessagesEnabled(control, defaults)) return false;
   return ["reasoning", "tool", "failed", "error"].includes(event.type);
 }
 
@@ -3959,6 +3977,7 @@ function createFeishuProgressCardState(): FeishuProgressCardState {
 }
 
 function feishuProgressEntryKind(event: ChannelConnectorAgentProgressEvent): FeishuProgressCardEntryKind {
+  if (event.type === "assistant") return "assistant";
   if (event.type === "reasoning") return "thinking";
   if (event.type === "tool") {
     return event.rawType?.endsWith(".started") ? "tool_use" : "tool_result";
@@ -3968,6 +3987,7 @@ function feishuProgressEntryKind(event: ChannelConnectorAgentProgressEvent): Fei
 }
 
 function feishuProgressEntryTitle(event: ChannelConnectorAgentProgressEvent, kind: FeishuProgressCardEntryKind): string {
+  if (kind === "assistant") return "过程回复";
   if (kind === "thinking") return "思考";
   if (kind === "tool_use") return event.itemType ? `工具调用：${event.itemType}` : "工具调用";
   if (kind === "tool_result") return event.itemType ? `工具结果：${event.itemType}` : "工具结果";
@@ -4250,6 +4270,7 @@ function indentPlainProgressBody(value: string): string {
 }
 
 function renderFeishuProgressEntry(entry: FeishuProgressCardEntry): string {
+  if (entry.kind === "assistant") return `${progressKindIcon(entry.kind)} <text_tag color='green'>过程回复</text_tag>\n${entry.text}`;
   if (entry.kind === "thinking") return `${progressKindIcon(entry.kind)} <text_tag color='grey'>思考</text_tag>\n${inlineProgressCode(entry.text)}`;
   if (entry.kind === "tool_use") {
     const parsed = parseProgressToolText(entry);
@@ -4276,6 +4297,13 @@ function renderFeishuProgressEntry(entry: FeishuProgressCardEntry): string {
 }
 
 function renderPlainProgressEntry(entry: FeishuProgressCardEntry): string {
+  if (entry.kind === "assistant") {
+    return renderPlainProgressMessage({
+      icon: progressKindIcon(entry.kind),
+      title: "过程回复",
+      body: entry.text,
+    });
+  }
   if (entry.kind === "thinking") {
     return renderPlainProgressMessage({
       icon: progressKindIcon(entry.kind),
@@ -5453,7 +5481,8 @@ async function dispatchOctoMessage(input: {
     agentNativeSessionId: currentSession?.agentNativeSessionId || currentSession?.codexThreadId || null,
     codexThreadId: currentSession?.codexThreadId || null,
     progressDefaults,
-    progressStreamEnabled: channelConnectorStreamMessagesEnabled(control, progressDefaults),
+    progressThinkingEnabled: channelConnectorThinkingMessagesEnabled(control, progressDefaults),
+    progressProcessEnabled: channelConnectorProcessMessagesEnabled(control, progressDefaults),
     progressToolsEnabled: channelConnectorToolMessagesEnabled(control, progressDefaults),
     aliasName: aliasResolution.matchedAlias?.name || null,
     aliasCommand: aliasResolution.matchedAlias?.command || null,
@@ -5573,7 +5602,8 @@ async function dispatchOctoMessage(input: {
             itemType: event.itemType,
             text: event.text,
             progressDefaultGroup: progressDefaults.isGroup,
-            progressStreamEnabled: channelConnectorStreamMessagesEnabled(control, progressDefaults),
+            progressThinkingEnabled: channelConnectorThinkingMessagesEnabled(control, progressDefaults),
+            progressProcessEnabled: channelConnectorProcessMessagesEnabled(control, progressDefaults),
             progressToolsEnabled: channelConnectorToolMessagesEnabled(control, progressDefaults),
             agentElapsedMs: elapsedMsSince(runStartedAtMs, progressAtMs),
             sincePreviousProgressMs,
@@ -6437,7 +6467,8 @@ async function dispatchFeishuParsedEvent(input: {
     agentNativeSessionId: currentSession?.agentNativeSessionId || currentSession?.codexThreadId || null,
     codexThreadId: currentSession?.codexThreadId || null,
     progressDefaults,
-    progressStreamEnabled: channelConnectorStreamMessagesEnabled(control, progressDefaults),
+    progressThinkingEnabled: channelConnectorThinkingMessagesEnabled(control, progressDefaults),
+    progressProcessEnabled: channelConnectorProcessMessagesEnabled(control, progressDefaults),
     progressToolsEnabled: channelConnectorToolMessagesEnabled(control, progressDefaults),
     ingressAt,
     ingressToAgentStartMs: elapsedMsSince(ingressAtMs, runStartedAtMs),
@@ -6558,7 +6589,8 @@ async function dispatchFeishuParsedEvent(input: {
             itemType: event.itemType,
             text: event.text,
             progressDefaultGroup: progressDefaults.isGroup,
-            progressStreamEnabled: channelConnectorStreamMessagesEnabled(control, progressDefaults),
+            progressThinkingEnabled: channelConnectorThinkingMessagesEnabled(control, progressDefaults),
+            progressProcessEnabled: channelConnectorProcessMessagesEnabled(control, progressDefaults),
             progressToolsEnabled: channelConnectorToolMessagesEnabled(control, progressDefaults),
             agentElapsedMs: elapsedMsSince(runStartedAtMs, progressAtMs),
             sincePreviousProgressMs,
@@ -6615,7 +6647,7 @@ async function dispatchFeishuParsedEvent(input: {
     progressEventCount = agent.progress.eventCount;
     latestProgress = agent.progress.latest;
   }
-  if (channelConnectorStreamMessagesEnabled(control, progressDefaults) && (progressCardState.messageId || progressCardState.entries.length > 0)) {
+  if (progressCardState.messageId || progressCardState.entries.length > 0) {
     if (agent.ok === false) {
       ensureFeishuProgressCardFailure(progressCardState, agent.error, agent.status);
     } else if (agent.ok === true) {
