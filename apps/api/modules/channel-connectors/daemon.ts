@@ -642,9 +642,47 @@ function appendLog(filePath: string, message: string, meta?: Record<string, unkn
   fs.appendFileSync(filePath, `${new Date().toISOString()} ${message}${suffix}\n`, "utf8");
 }
 
+const jsonLineBuffers = new Map<string, { lines: string[]; timer: NodeJS.Timeout | null }>();
+const JSON_LINE_FLUSH_INTERVAL_MS = 1000;
+const JSON_LINE_FLUSH_MAX_LINES = 100;
+const JSON_LINE_MAX_FILE_BYTES = 100 * 1024 * 1024;
+
 function writeJsonLine(filePath: string, value: Record<string, unknown>): void {
+  let buffer = jsonLineBuffers.get(filePath);
+  if (!buffer) {
+    buffer = { lines: [], timer: null };
+    jsonLineBuffers.set(filePath, buffer);
+  }
+  buffer.lines.push(JSON.stringify(value));
+  if (buffer.lines.length >= JSON_LINE_FLUSH_MAX_LINES) {
+    flushJsonLineBuffer(filePath, buffer);
+    return;
+  }
+  if (!buffer.timer) {
+    buffer.timer = setTimeout(() => {
+      buffer!.timer = null;
+      flushJsonLineBuffer(filePath, buffer!);
+    }, JSON_LINE_FLUSH_INTERVAL_MS);
+    buffer.timer.unref();
+  }
+}
+
+function flushJsonLineBuffer(filePath: string, buffer: { lines: string[]; timer: NodeJS.Timeout | null }): void {
+  if (buffer.lines.length === 0) return;
+  const content = buffer.lines.join("\n") + "\n";
+  buffer.lines = [];
   ensureDir(path.dirname(filePath));
-  fs.appendFileSync(filePath, `${JSON.stringify(value)}\n`, "utf8");
+  fs.promises.appendFile(filePath, content, "utf8").catch(() => {});
+  rotateJsonLineFile(filePath);
+}
+
+function rotateJsonLineFile(filePath: string): void {
+  try {
+    const stat = fs.statSync(filePath);
+    if (stat.size < JSON_LINE_MAX_FILE_BYTES) return;
+    const rotated = `${filePath}.${Date.now()}.rotated`;
+    fs.renameSync(filePath, rotated);
+  } catch {}
 }
 
 function writeJsonFileAtomic(filePath: string, value: unknown): void {
@@ -5020,7 +5058,18 @@ function seedFeishuSeenMessagesFromEventLog(
   try {
     const cutoff = Date.now() - FEISHU_SEEN_MESSAGE_TTL_MS;
     let seeded = 0;
-    const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
+    const { size } = fs.statSync(filePath);
+    const start = Math.max(0, size - 5 * 1024 * 1024);
+    const fd = fs.openSync(filePath, "r");
+    const buf = Buffer.alloc(size - start);
+    try {
+      fs.readSync(fd, buf, 0, buf.length, start);
+    } finally {
+      fs.closeSync(fd);
+    }
+    const raw = buf.toString("utf8");
+    const firstNewline = raw.indexOf("\n");
+    const lines = (firstNewline >= 0 ? raw.slice(firstNewline + 1) : raw).split(/\r?\n/);
     for (const line of lines) {
       if (!line.trim()) continue;
       let record: unknown;
