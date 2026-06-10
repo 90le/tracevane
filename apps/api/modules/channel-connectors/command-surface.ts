@@ -1671,6 +1671,7 @@ function renderCommandsCard(surface: ChannelConnectorCommandSurface): ChannelCon
         "",
         "**管理**",
         "`/commands add <名称> <prompt 模板>`",
+        "`/commands addexec [--work-dir <目录>] <名称> <shell 命令>`",
         "`/commands del <名称>`",
         "`/alias add <触发词> <命令>`",
         "`/alias del <触发词>`",

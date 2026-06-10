@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -647,6 +648,10 @@ function resolveCustomCommand(
   return resolveConfiguredCommand(context, project, name) || resolveAgentCommandFile(project, name);
 }
 
+function isExecCustomCommand(command: ResolvedCustomCommand): command is ChannelConnectorCustomCommandRecord {
+  return command.source === "config" && Boolean(normalizeString(command.exec));
+}
+
 const promptPlaceholderRe = /\{\{(\d+\*?|args)(:[^}]*)?\}\}/g;
 
 function expandAgentCommandPrompt(template: string, args: string[]): string {
@@ -672,6 +677,98 @@ function expandAgentCommandPrompt(template: string, args: string[]): string {
   });
 }
 
+function resolveExecCommandWorkDir(project: ChannelConnectorRuntimeProject, workDir: string): string {
+  const baseDir = normalizeString(project.workDir) || process.cwd();
+  const configured = normalizeString(workDir);
+  return configured ? path.resolve(baseDir, configured) : path.resolve(baseDir);
+}
+
+function shellCommandArgs(command: string): { command: string; args: string[] } {
+  if (process.platform === "win32") {
+    return {
+      command: "powershell.exe",
+      args: ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", command],
+    };
+  }
+  return {
+    command: "sh",
+    args: ["-c", command],
+  };
+}
+
+async function runCustomExecCommand(input: {
+  command: ChannelConnectorCustomCommandRecord;
+  project: ChannelConnectorRuntimeProject;
+  args: string[];
+  timeoutMs?: number;
+}): Promise<{
+  ok: boolean;
+  replyText: string;
+}> {
+  const commandText = expandAgentCommandPrompt(input.command.exec, input.args);
+  const workDir = resolveExecCommandWorkDir(input.project, input.command.workDir);
+  const timeoutMs = input.timeoutMs || 60_000;
+  const shell = shellCommandArgs(commandText);
+  const startedAt = Date.now();
+  return new Promise((resolve) => {
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const child = spawn(shell.command, shell.args, {
+      cwd: workDir,
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const finish = (ok: boolean, detail: {
+      exitCode?: number | null;
+      signal?: NodeJS.Signals | null;
+      error?: string | null;
+      timedOut?: boolean;
+    } = {}): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      const elapsedMs = Date.now() - startedAt;
+      const output = [
+        stdout.trim() ? `stdout:\n${stdout.trim()}` : "",
+        stderr.trim() ? `stderr:\n${stderr.trim()}` : "",
+      ].filter(Boolean).join("\n\n");
+      const status = ok ? "completed" : detail.timedOut ? "timed out" : "failed";
+      const exitDetail = detail.exitCode === null || detail.exitCode === undefined
+        ? detail.signal ? `signal=${detail.signal}` : ""
+        : `exit=${detail.exitCode}`;
+      resolve({
+        ok,
+        replyText: [
+          `shell command /${input.command.name} ${status}`,
+          `cwd=${workDir}`,
+          exitDetail,
+          detail.error || "",
+          output ? `\`\`\`text\n${bufferPreviewText(output, 12_000)}\n\`\`\`` : "无输出",
+          `elapsed=${elapsedMs}ms`,
+        ].filter(Boolean).join("\n"),
+      });
+    };
+    const timer = setTimeout(() => {
+      try {
+        child.kill("SIGTERM");
+      } catch {
+        // best effort
+      }
+      finish(false, { timedOut: true, error: `timeout=${timeoutMs}ms` });
+    }, timeoutMs);
+    timer.unref();
+    child.stdout.on("data", (chunk) => {
+      stdout = bufferPreviewText(`${stdout}${String(chunk)}`, 16_000);
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr = bufferPreviewText(`${stderr}${String(chunk)}`, 16_000);
+    });
+    child.on("error", (error) => finish(false, { error: error.message }));
+    child.on("close", (code, signal) => finish(code === 0, { exitCode: code, signal }));
+  });
+}
+
 function customCommandsListText(
   context: Pick<ChannelConnectorCommandContext, "customCommandsPath">,
   project: ChannelConnectorRuntimeProject,
@@ -692,12 +789,12 @@ function customCommandsListText(
   }
   const lines = [`Studio Custom Commands (${commands.length})`];
   for (const command of commands) {
-    const tag = command.source === "agent" ? " [agent]" : "";
+    const tag = command.source === "agent" ? " [agent]" : isExecCustomCommand(command) ? " [shell]" : "";
     lines.push(`/${command.name}${tag}`);
-    lines.push(`  ${command.description || firstLine(command.prompt) || "Custom prompt command"}`);
+    lines.push(`  ${command.description || firstLine(isExecCustomCommand(command) ? `$ ${command.exec}` : command.prompt) || "Custom command"}`);
   }
   lines.push("用法：/<命令名> [参数]。支持 {{1}}、{{2*}}、{{args}} 和默认值占位。");
-  lines.push("管理：/commands add <名称> <prompt 模板>；/commands del <名称>。");
+  lines.push("管理：/commands add <名称> <prompt 模板>；/commands addexec [--work-dir <目录>] <名称> <shell 命令>；/commands del <名称>。");
   return lines.join("\n");
 }
 
@@ -730,7 +827,7 @@ export function listChannelConnectorCommandSummaries(
   const agentCommands = listAgentCommandFiles(project, seen);
   return [...configuredCommands, ...agentCommands].map((command) => ({
     name: command.name,
-    description: command.description || firstLine(command.prompt) || "Custom prompt command",
+    description: command.description || firstLine(isExecCustomCommand(command) ? `$ ${command.exec}` : command.prompt) || "Custom command",
     source: command.source,
   }));
 }
@@ -751,8 +848,8 @@ function commandsUsageText(): string {
     "用法：",
     "/commands - 列出自定义命令",
     "/commands add <名称> <prompt 模板> - 添加 prompt 命令",
-    "/commands del <名称> - 删除 prompt 命令",
-    "暂不开放 /commands addexec；shell 执行面后续需单独按 admin/yolo/审计合同验收。",
+    "/commands addexec [--work-dir <目录>] <名称> <shell 命令> - 添加 shell 命令（仅管理用户）",
+    "/commands del <名称> - 删除自定义命令",
   ].join("\n");
 }
 
@@ -1045,7 +1142,8 @@ function commandHelpSectionText(section: CommandHelpSection): string {
       commandHelpList([
         ["`/commands`", "列出当前 Agent 自定义 prompt 命令"],
         ["`/commands add <名称> <prompt 模板>`", "添加 prompt 命令"],
-        ["`/commands del <名称>`", "删除 prompt 命令"],
+        ["`/commands addexec [--work-dir <目录>] <名称> <shell 命令>`", "添加 shell 命令（仅管理用户）"],
+        ["`/commands del <名称>`", "删除自定义命令"],
         ["`/alias`", "列出当前 binding 命令别名"],
         ["`/alias add <触发词> <命令>`", "添加或更新当前 binding 别名"],
         ["`/alias del <触发词>`", "删除通过 IM 添加的别名"],
@@ -2051,6 +2149,35 @@ export async function handleChannelConnectorCommand(
   if (!isStudioCommand(name)) {
     const customCommand = resolveCustomCommand(context, currentProject, name);
     if (customCommand) {
+      if (isExecCustomCommand(customCommand)) {
+        if (!canManageSession(context.binding, context.message)) {
+          return {
+            handled: true,
+            command: customCommand.name,
+            action: "show",
+            ok: false,
+            control: currentControl,
+            replyText: "当前用户没有管理该 Channel session 的权限，不能执行 shell 自定义命令。",
+            passthroughText: null,
+            nativeCommand: null,
+          };
+        }
+        const result = await runCustomExecCommand({
+          command: customCommand,
+          project: currentProject,
+          args,
+        });
+        return {
+          handled: true,
+          command: customCommand.name,
+          action: "show",
+          ok: result.ok,
+          control: currentControl,
+          replyText: result.replyText,
+          passthroughText: null,
+          nativeCommand: null,
+        };
+      }
       return {
         handled: false,
         command: customCommand.name,
@@ -2435,13 +2562,68 @@ export async function handleChannelConnectorCommand(
     }
 
     if (subcommand === "addexec") {
+      const filePath = commandStorePath(context);
+      const workDirFlag = args[1] === "--work-dir";
+      const nameIndex = workDirFlag ? 3 : 1;
+      const commandName = normalizeString(args[nameIndex]).toLowerCase();
+      const execCommand = normalizeString(args.slice(nameIndex + 1).join(" "));
+      const workDir = workDirFlag ? normalizeString(args[2]) : "";
+      if (!filePath) {
+        return {
+          handled: true,
+          command: name,
+          action: "set",
+          ok: false,
+          control: currentControl,
+          replyText: "当前 runtime 未启用自定义命令 store，不能添加 shell 命令。",
+          passthroughText: null,
+        };
+      }
+      if (!commandName || !execCommand || (workDirFlag && !workDir)) {
+        return {
+          handled: true,
+          command: name,
+          action: "set",
+          ok: false,
+          control: currentControl,
+          replyText: "用法：/commands addexec <名称> <shell 命令>\n      /commands addexec --work-dir <目录> <名称> <shell 命令>\n示例：/commands addexec status git status {{args}}",
+          passthroughText: null,
+        };
+      }
+      if (!isValidCustomCommandName(commandName)) {
+        return {
+          handled: true,
+          command: name,
+          action: "set",
+          ok: false,
+          control: currentControl,
+          replyText: "命令名称只支持小写字母、数字、-、_，且必须以字母或数字开头。",
+          passthroughText: null,
+        };
+      }
+      if (isStudioCommand(commandName) || resolveCustomCommand(context, currentProject, commandName)) {
+        return {
+          handled: true,
+          command: name,
+          action: "set",
+          ok: false,
+          control: currentControl,
+          replyText: `命令 /${commandName} 已存在。请先用 /commands del ${commandName} 删除自定义命令，或换一个名称。`,
+          passthroughText: null,
+        };
+      }
+      const record = upsertChannelConnectorCustomCommand(filePath, currentProject.id, commandName, "", "", execCommand, workDir);
       return {
         handled: true,
         command: name,
         action: "set",
-        ok: false,
+        ok: true,
         control: currentControl,
-        replyText: "暂不开放 /commands addexec。shell 执行面需要单独按 admin/yolo/审计合同验收后再启用。",
+        replyText: [
+          `已添加 shell 命令 /${record.name}`,
+          firstLine(record.exec, 80),
+          record.workDir ? `workDir=${record.workDir}` : "",
+        ].filter(Boolean).join("\n"),
         passthroughText: null,
       };
     }

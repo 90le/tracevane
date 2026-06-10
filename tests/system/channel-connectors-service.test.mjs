@@ -3592,6 +3592,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(commandsHelp.ok, true);
   assert.match(commandsHelp.replyText, /Studio Channel \/ commands/);
   assert.match(commandsHelp.replyText, /`\/commands add <名称> <prompt 模板>`/);
+  assert.match(commandsHelp.replyText, /`\/commands addexec \[--work-dir <目录>\] <名称> <shell 命令>`/);
   assert.match(commandsHelp.replyText, /`\/skills`/);
   assert.doesNotMatch(commandsHelp.replyText, /\| 命令 \| 作用 \|/);
   const nativeHelp = await handleChannelConnectorCommand({
@@ -3918,13 +3919,47 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(claudeAgentCommand.passthroughText, "Review target src with notes auth module");
   assert.equal(claudeAgentCommand.nativeCommand, null);
 
+  const deniedAddExec = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/commands addexec status git status", "user-2"),
+  });
+  assert.equal(deniedAddExec.handled, true);
+  assert.equal(deniedAddExec.ok, false);
+  assert.match(deniedAddExec.replyText, /没有管理/);
+
   const addExec = await handleChannelConnectorCommand({
     ...baseContext,
-    message: message("/commands addexec status git status"),
+    message: message("/commands addexec --work-dir . xstat node -e \"console.log('exec:' + process.cwd().split('/').pop() + ':{{args}}')\""),
   });
   assert.equal(addExec.handled, true);
-  assert.equal(addExec.ok, false);
-  assert.match(addExec.replyText, /暂不开放/);
+  assert.equal(addExec.action, "set");
+  assert.equal(addExec.ok, true);
+  assert.match(addExec.replyText, /已添加 shell 命令 \/xstat/);
+
+  const listExecCommands = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/commands"),
+  });
+  assert.equal(listExecCommands.handled, true);
+  assert.match(listExecCommands.replyText, /\/xstat \[shell\]/);
+
+  const deniedExecRun = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/xstat alpha", "user-2"),
+  });
+  assert.equal(deniedExecRun.handled, true);
+  assert.equal(deniedExecRun.ok, false);
+  assert.match(deniedExecRun.replyText, /没有管理/);
+
+  const execRun = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/xstat alpha beta"),
+  });
+  assert.equal(execRun.handled, true);
+  assert.equal(execRun.action, "show");
+  assert.equal(execRun.ok, true);
+  assert.match(execRun.replyText, /shell command \/xstat completed/);
+  assert.match(execRun.replyText, /exec:.*:alpha beta/);
 
   const duplicateBuiltin = await handleChannelConnectorCommand({
     ...baseContext,
@@ -5453,6 +5488,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(commandsCardRaw, /act:\/release-notes/);
   assert.match(commandsCardRaw, /List Skills/);
   assert.match(commandsCardRaw, /\/commands add <名称> <prompt 模板>/);
+  assert.match(commandsCardRaw, /\/commands addexec \[--work-dir <目录>\] <名称> <shell 命令>/);
   assert.match(commandsCardRaw, /nav:\/help commands/);
 
   const modelSurface = buildChannelConnectorCommandSurface({

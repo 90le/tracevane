@@ -5,6 +5,8 @@ export interface ChannelConnectorCustomCommandRecord {
   name: string;
   description: string;
   prompt: string;
+  exec: string;
+  workDir: string;
   source: "config";
   createdAt: string;
   updatedAt: string;
@@ -57,11 +59,14 @@ export function readChannelConnectorCustomCommands(filePath: string): ChannelCon
         if (!isRecord(rawCommand)) continue;
         const name = normalizeString(rawCommand.name) || normalizeString(key);
         const prompt = normalizeString(rawCommand.prompt);
-        if (!name || !prompt || !isValidCustomCommandName(name)) continue;
+        const exec = normalizeString(rawCommand.exec);
+        if (!name || (!prompt && !exec) || !isValidCustomCommandName(name)) continue;
         commands[normalizeCustomCommandName(name)] = {
           name,
           description: normalizeString(rawCommand.description),
           prompt,
+          exec,
+          workDir: normalizeString(rawCommand.workDir),
           source: "config",
           createdAt: normalizeString(rawCommand.createdAt) || nowIso(),
           updatedAt: normalizeString(rawCommand.updatedAt) || nowIso(),
@@ -120,14 +125,18 @@ export function upsertChannelConnectorCustomCommand(
   name: string,
   prompt: string,
   description = "",
+  exec = "",
+  workDir = "",
 ): ChannelConnectorCustomCommandRecord {
   const state = readChannelConnectorCustomCommands(filePath);
   const normalizedProjectId = normalizeString(projectId);
   const normalizedName = normalizeString(name).toLowerCase();
   const normalizedPrompt = normalizeString(prompt);
+  const normalizedExec = normalizeString(exec);
   if (!normalizedProjectId) throw new Error("projectId is required.");
   if (!isValidCustomCommandName(normalizedName)) throw new Error("Invalid custom command name.");
-  if (!normalizedPrompt) throw new Error("Custom command prompt is required.");
+  if (!normalizedPrompt && !normalizedExec) throw new Error("Custom command prompt or exec is required.");
+  if (normalizedPrompt && normalizedExec) throw new Error("Custom command prompt and exec are mutually exclusive.");
   const key = normalizeCustomCommandName(normalizedName);
   const now = nowIso();
   const current = state.projects[normalizedProjectId]?.[key] || null;
@@ -135,6 +144,8 @@ export function upsertChannelConnectorCustomCommand(
     name: normalizedName,
     description: normalizeString(description),
     prompt: normalizedPrompt,
+    exec: normalizedExec,
+    workDir: normalizeString(workDir),
     source: "config",
     createdAt: current?.createdAt || now,
     updatedAt: now,

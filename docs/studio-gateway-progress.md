@@ -22,6 +22,8 @@
 
 ## 本轮完成
 
+- 按 CC Go `CommandProvider` 迁移 `/commands addexec` 基础合同：仅管理用户可添加/执行 shell 自定义命令；支持 `--work-dir` 相对 Agent workDir、`{{1}}` / `{{2*}}` / `{{args}}` 占位符展开、`/commands` 列表 `[shell]` 标记和 stdout/stderr/exit 同步回显；非管理用户添加或执行都会被拒绝。
+- 同步更新 `/help commands` 与 Feishu Commands/Skills 卡片，避免 addexec 已实现但入口说明仍停留在旧的 blocked 状态。
 - 修复 Feishu 长连接“重启后恢复但运行一段时间假在线”的核心窗口：SDK 收到 Feishu pong 后会把内部 `pingInterval` 覆盖回 90s，Studio 现在包装 `WSClient.pingLoop()`，每次调度前 re-clamp 到 10s。
 - 修复 Feishu 重连后补投旧消息插队：parser 读取 Feishu event/message `create_time`；daemon 按默认 2 分钟陈旧阈值跳过过期事件，并按 binding + session 持久化最新消息时间水位线，后到达的更旧事件记录 `feishu_event_out_of_order`，不再进入 Agent 队列。
 - Feishu runtime 新增 `sdkConnected`、`transportStaleForMs`、`transportStaleAfterMs`、`transportStale`；`connected` 不再等同 SDK 原始 connected，而是 SDK connected 且无 pong overdue、无 transport stale。
@@ -50,6 +52,9 @@
 
 ## 最近验证
 
+- 通过：`npm run typecheck:api && npm run build:api`。
+- 通过：`node --test --test-name-pattern "native Channel Connectors IM commands switch agent, model, and permission per session|native Channel Connectors command surface renders text and Feishu card actions|native Channel Connectors daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，66/66 全部通过。
 - 通过：`npm run typecheck:api && npm run build:api`。
 - 通过：`node --test --test-name-pattern "native Channel Connectors process runner routes Claude Code AskUserQuestion through IM answers|native Channel Connectors daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs`，66/66 全部通过。
