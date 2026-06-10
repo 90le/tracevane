@@ -1321,6 +1321,7 @@ async function acquireChannelSessionAgentRun(
     sessionKey: string;
     parallel: boolean;
     onQueued?: (queuePosition: number) => Promise<void> | void;
+    onQueueTimeout?: (error: Error) => void;
   },
 ): Promise<ChannelDaemonSessionRunLease> {
   if (input.parallel) {
@@ -1345,7 +1346,20 @@ async function acquireChannelSessionAgentRun(
   });
   if (existing) {
     await input.onQueued?.(queuePosition);
-    await previous.catch(() => undefined);
+    const queueTimeoutMs = 300_000;
+    let queueTimeoutTimer: NodeJS.Timeout | null = null;
+    await Promise.race([
+      previous.catch(() => undefined),
+      new Promise<void>((_, reject) => {
+        queueTimeoutTimer = setTimeout(() => reject(new Error("session_queue_timeout")), queueTimeoutMs);
+        queueTimeoutTimer.unref();
+      }),
+    ]).catch((error) => {
+      input.onQueueTimeout?.(error instanceof Error ? error : new Error(String(error)));
+      releaseCurrent();
+    }).finally(() => {
+      if (queueTimeoutTimer) clearTimeout(queueTimeoutTimer);
+    });
   }
   const state = registry.get(key);
   if (state) state.pending = Math.max(0, state.pending - 1);
@@ -5437,6 +5451,13 @@ async function dispatchOctoMessage(input: {
       });
       markRuntimeDirty(config, state);
     },
+    onQueueTimeout: (error) => {
+      appendLog(config.paths.log, "Session run queue timeout, releasing", {
+        bindingId: binding.id,
+        sessionKey,
+        error: error.message,
+      });
+    },
   });
   if (transport) {
     await sendOctoTyping(
@@ -6420,6 +6441,13 @@ async function dispatchFeishuParsedEvent(input: {
         elapsedMs: elapsedMsSince(ingressAtMs),
       });
       markRuntimeDirty(config, state);
+    },
+    onQueueTimeout: (error) => {
+      appendLog(config.paths.log, "Session run queue timeout, releasing", {
+        bindingId: binding.id,
+        sessionKey,
+        error: error.message,
+      });
     },
   });
   await maybeAutoCompactChannelConnectorConversation({
