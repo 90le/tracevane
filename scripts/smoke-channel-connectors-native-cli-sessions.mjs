@@ -17,6 +17,7 @@ const DEFAULT_APPS = ["claude-code", "opencode"];
 const DEFAULT_MODEL = "gpt-test";
 const LOCAL_GATEWAY_KEY = "sk-native-cli-smoke";
 const DEFAULT_TIMEOUT_MS = 90_000;
+const FILE_SMOKE_NAME = "native-smoke-output.txt";
 
 function parseArgs(argv) {
   const options = {
@@ -174,8 +175,86 @@ async function startMockGateway() {
   };
 }
 
+function anthropicResponseText(body) {
+  const text = requestText(body);
+  if (text.includes("/compact")) return "";
+  if (text.includes("CLAUDE_FILE_SMOKE")) {
+    return [
+      "CLAUDE_FILE_OK",
+      "```studio-channel-files",
+      JSON.stringify([{ path: FILE_SMOKE_NAME, name: FILE_SMOKE_NAME, caption: "native CLI smoke file" }]),
+      "```",
+    ].join("\n");
+  }
+  if (text.includes("CLAUDE_TOOL_SMOKE") && text.includes("tool_result")) return "CLAUDE_TOOL_OK";
+  return "CLAUDE_DRIVER_OK";
+}
+
+function respondAnthropicToolUse(res, body) {
+  const text = requestText(body);
+  const hasToolResult = text.includes("tool_result");
+  const shouldCallBash = Array.isArray(body.tools)
+    && text.includes("CLAUDE_TOOL_SMOKE")
+    && !hasToolResult;
+  if (!shouldCallBash) return false;
+  sendSse(res, [
+    {
+      event: "message_start",
+      data: {
+        type: "message_start",
+        message: {
+          id: "msg_native_cli_tool_smoke",
+          type: "message",
+          role: "assistant",
+          model: DEFAULT_MODEL,
+          content: [],
+          stop_reason: null,
+          stop_sequence: null,
+          usage: { input_tokens: 8, output_tokens: 0 },
+        },
+      },
+    },
+    {
+      event: "content_block_start",
+      data: {
+        type: "content_block_start",
+        index: 0,
+        content_block: {
+          type: "tool_use",
+          id: "toolu_native_cli_smoke",
+          name: "Bash",
+          input: {},
+        },
+      },
+    },
+    {
+      event: "content_block_delta",
+      data: {
+        type: "content_block_delta",
+        index: 0,
+        delta: {
+          type: "input_json_delta",
+          partial_json: "{\"command\":\"printf CLAUDE_TOOL_RESULT\",\"description\":\"Print native CLI smoke marker\"}",
+        },
+      },
+    },
+    { event: "content_block_stop", data: { type: "content_block_stop", index: 0 } },
+    {
+      event: "message_delta",
+      data: {
+        type: "message_delta",
+        delta: { stop_reason: "tool_use", stop_sequence: null },
+        usage: { output_tokens: 4 },
+      },
+    },
+    { event: "message_stop", data: { type: "message_stop" } },
+  ]);
+  return true;
+}
+
 function respondAnthropicMessages(res, body) {
-  const text = requestText(body).includes("/compact") ? "" : "CLAUDE_DRIVER_OK";
+  if (body.stream && respondAnthropicToolUse(res, body)) return;
+  const text = anthropicResponseText(body);
   if (body.stream) {
     sendSse(res, [
       {
@@ -214,8 +293,22 @@ function respondAnthropicMessages(res, body) {
   });
 }
 
+function chatResponseText(body) {
+  const text = requestText(body);
+  if (text.includes("/compact")) return "OPENCODE_COMPACT_OK";
+  if (text.includes("OPENCODE_FILE_SMOKE")) {
+    return [
+      "OPENCODE_FILE_OK",
+      "```studio-channel-files",
+      JSON.stringify([{ path: FILE_SMOKE_NAME, name: FILE_SMOKE_NAME, caption: "native CLI smoke file" }]),
+      "```",
+    ].join("\n");
+  }
+  return "OPENCODE_DRIVER_OK";
+}
+
 function respondChatCompletions(res, body) {
-  const text = requestText(body).includes("/compact") ? "OPENCODE_COMPACT_OK" : "OPENCODE_DRIVER_OK";
+  const text = chatResponseText(body);
   if (body.stream) {
     const created = Math.floor(Date.now() / 1000);
     sendSse(res, [
@@ -329,8 +422,13 @@ function installIsolatedEnv(root, endpoint) {
   };
 }
 
-function baseTurnRequest(root, agent, endpoint, nativeCommand = null) {
+function baseTurnRequest(root, agent, endpoint, nativeCommand = null, contentOverride = null) {
   const model = agent === "opencode" ? `studio-gateway/${DEFAULT_MODEL}` : DEFAULT_MODEL;
+  const messageKind = nativeCommand
+    ? "compact"
+    : contentOverride?.includes("_TOOL_SMOKE") ? "tool"
+      : contentOverride?.includes("_FILE_SMOKE") ? "file"
+        : "normal";
   return {
     project: {
       id: `${agent}-native-cli-smoke`,
@@ -358,14 +456,14 @@ function baseTurnRequest(root, agent, endpoint, nativeCommand = null) {
       metadata: { agentSessionDriver: "persistent" },
     },
     message: {
-      messageId: nativeCommand ? `${agent}-compact` : `${agent}-normal`,
+      messageId: `${agent}-${messageKind}`,
       messageSeq: nativeCommand ? 2 : 1,
       fromUid: "native-cli-smoke-user",
       channelId: "native-cli-smoke-user",
       channelType: 1,
       payload: {
         type: 1,
-        content: nativeCommand || "Reply exactly with the driver marker.",
+        content: nativeCommand || contentOverride || "Reply exactly with the driver marker.",
       },
       attachments: [],
       raw: {},
@@ -410,6 +508,8 @@ async function runAppSmoke(app, root, endpoint, requests, timeoutMs) {
   };
   const progress = [];
   const startedAt = Date.now();
+  const smokeFilePath = path.join(root, FILE_SMOKE_NAME);
+  fs.writeFileSync(smokeFilePath, `native cli smoke file for ${app}\n`);
   const firstTurnRequest = baseTurnRequest(root, app, endpoint);
   const session = await factory.create({
     key,
@@ -435,13 +535,49 @@ async function runAppSmoke(app, root, endpoint, requests, timeoutMs) {
         throw new Error("Persistent driver smoke should not call one-shot fallback.");
       },
     });
+    const tool = app === "claude-code"
+      ? await session.runTurn({
+        mode: "persistent",
+        key,
+        messageId: `${app}-tool`,
+        agentTurnRequest: {
+          ...baseTurnRequest(root, app, endpoint, null, "CLAUDE_TOOL_SMOKE: Use Bash to print CLAUDE_TOOL_RESULT."),
+          session: normal.session,
+        },
+        onProgress: (event) => progress.push(event),
+        runOneShot: async () => {
+          throw new Error("Persistent tool smoke should not call one-shot fallback.");
+        },
+      })
+      : null;
+    const file = await session.runTurn({
+      mode: "persistent",
+      key,
+      messageId: `${app}-file`,
+      agentTurnRequest: {
+        ...baseTurnRequest(
+          root,
+          app,
+          endpoint,
+          null,
+          app === "claude-code"
+            ? "CLAUDE_FILE_SMOKE: Return the existing native smoke file with a studio-channel-files block."
+            : "OPENCODE_FILE_SMOKE: Return the existing native smoke file with a studio-channel-files block.",
+        ),
+        session: (tool || normal).session,
+      },
+      onProgress: (event) => progress.push(event),
+      runOneShot: async () => {
+        throw new Error("Persistent file smoke should not call one-shot fallback.");
+      },
+    });
     const compact = await session.runTurn({
       mode: "persistent",
       key,
       messageId: `${app}-compact`,
       agentTurnRequest: {
         ...baseTurnRequest(root, app, endpoint, "/compact"),
-        session: normal.session,
+        session: file.session,
       },
       onProgress: (event) => progress.push(event),
       runOneShot: async () => {
@@ -450,14 +586,24 @@ async function runAppSmoke(app, root, endpoint, requests, timeoutMs) {
     });
     const marker = app === "claude-code" ? "CLAUDE_DRIVER_OK" : "OPENCODE_DRIVER_OK";
     const compactMarker = app === "claude-code" ? "Claude Code compact 已完成。" : "OpenCode compact 已完成。";
+    const fileMarker = app === "claude-code" ? "CLAUDE_FILE_OK" : "OPENCODE_FILE_OK";
     const appRequests = requests.slice(before);
     const hitPaths = [...new Set(appRequests.map((request) => request.path))];
     const errors = [];
     if (!normal.ok) errors.push(`normal turn failed: ${normal.error || normal.status}`);
+    if (tool && !tool.ok) errors.push(`tool turn failed: ${tool.error || tool.status}`);
+    if (!file.ok) errors.push(`file turn failed: ${file.error || file.status}`);
     if (!compact.ok) errors.push(`compact turn failed: ${compact.error || compact.status}`);
     if (normal.replyText !== marker) errors.push(`normal reply was ${JSON.stringify(normal.replyText)}, expected ${marker}`);
+    if (tool && tool.replyText !== "CLAUDE_TOOL_OK") errors.push(`tool reply was ${JSON.stringify(tool.replyText)}, expected CLAUDE_TOOL_OK`);
+    if (!String(file.replyText || "").includes(fileMarker)) errors.push(`file reply did not include ${fileMarker}`);
+    if (!String(file.replyText || "").includes("studio-channel-files")) errors.push("file reply did not include studio-channel-files manifest");
+    if (!String(file.replyText || "").includes(FILE_SMOKE_NAME)) errors.push(`file reply did not include ${FILE_SMOKE_NAME}`);
     if (compact.replyText !== compactMarker) errors.push(`compact reply was ${JSON.stringify(compact.replyText)}, expected ${compactMarker}`);
     if (!normal.session.agentNativeSessionId) errors.push("normal turn did not preserve a native session id");
+    if (tool && !progress.some((event) => event.type === "tool" && /Bash|CLAUDE_TOOL_RESULT|printf/.test(event.text || ""))) {
+      errors.push("Claude tool turn did not emit a Bash/tool progress event");
+    }
     if (hitPaths.length === 0) errors.push("mock Gateway did not receive any request");
     return {
       app,
@@ -473,6 +619,24 @@ async function runAppSmoke(app, root, endpoint, requests, timeoutMs) {
         progressCount: normal.progress.eventCount,
         stdoutPreview: preview(normal.stdout),
         stderrPreview: preview(normal.stderr),
+      },
+      ...(tool ? {
+        tool: {
+          ok: tool.ok,
+          replyText: tool.replyText,
+          nativeSessionId: tool.session.agentNativeSessionId || null,
+          progressCount: tool.progress.eventCount,
+          stdoutPreview: preview(tool.stdout),
+          stderrPreview: preview(tool.stderr),
+        },
+      } : {}),
+      file: {
+        ok: file.ok,
+        replyText: file.replyText,
+        nativeSessionId: file.session.agentNativeSessionId || null,
+        progressCount: file.progress.eventCount,
+        stdoutPreview: preview(file.stdout),
+        stderrPreview: preview(file.stderr),
       },
       compact: {
         ok: compact.ok,
@@ -500,6 +664,8 @@ function printHuman(summary) {
     if (result.errors?.length) console.log(`  errors: ${result.errors.join("; ")}`);
     if (result.hitPaths?.length) console.log(`  hit paths: ${result.hitPaths.join(", ")} (${result.requestCount} requests)`);
     if (result.normal) console.log(`  normal: ${result.normal.replyText || "<empty>"} session=${result.normal.nativeSessionId || "<none>"}`);
+    if (result.tool) console.log(`  tool: ${result.tool.replyText || "<empty>"}`);
+    if (result.file) console.log(`  file: ${preview(result.file.replyText || "")}`);
     if (result.compact) console.log(`  compact: ${result.compact.replyText || "<empty>"}`);
   }
 }
