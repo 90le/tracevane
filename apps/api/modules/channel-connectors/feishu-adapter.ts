@@ -10,6 +10,8 @@ export interface ChannelConnectorFeishuParsedWebhook {
   kind: ChannelConnectorFeishuWebhookEventKind;
   eventType: string | null;
   eventId: string | null;
+  eventCreateTimeMs: number | null;
+  messageCreateTimeMs: number | null;
   appId: string | null;
   token: string | null;
   challenge: string | null;
@@ -48,6 +50,15 @@ function normalizeNumber(value: unknown): number | null {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : null;
   }
+  return null;
+}
+
+function normalizeFeishuTimestampMs(value: unknown): number | null {
+  const numeric = normalizeNumber(value);
+  if (!numeric || numeric <= 0) return null;
+  if (numeric >= 1_000_000_000_000_000) return Math.floor(numeric / 1_000);
+  if (numeric >= 10_000_000_000) return Math.floor(numeric);
+  if (numeric >= 1_000_000_000) return Math.floor(numeric * 1000);
   return null;
 }
 
@@ -360,6 +371,7 @@ function extractFeishuMessage(event: Record<string, unknown>): {
   threadId: string | null;
   chatType: string | null;
   messageType: string | null;
+  messageCreateTimeMs: number | null;
   text: string | null;
   attachments: ChannelConnectorInboundAttachment[];
 } {
@@ -374,6 +386,8 @@ function extractFeishuMessage(event: Record<string, unknown>): {
       threadId: normalizeString(event.thread_id) || null,
       chatType: normalizeString(event.chat_type) || null,
       messageType,
+      messageCreateTimeMs: normalizeFeishuTimestampMs(event.create_time)
+        || normalizeFeishuTimestampMs(event.createTime),
       text: extracted.text,
       attachments: extracted.attachments,
     };
@@ -387,6 +401,8 @@ function extractFeishuMessage(event: Record<string, unknown>): {
     threadId: normalizeString(message.thread_id) || null,
     chatType: normalizeString(message.chat_type) || null,
     messageType,
+    messageCreateTimeMs: normalizeFeishuTimestampMs(message.create_time)
+      || normalizeFeishuTimestampMs(message.createTime),
     text: extracted.text,
     attachments: extracted.attachments,
   };
@@ -399,6 +415,12 @@ export function parseChannelConnectorFeishuWebhook(
   const header = recordValue(payload.header);
   const event = recordValue(payload.event);
   const eventType = normalizeFeishuEventType(payload, header);
+  const eventCreateTimeMs = normalizeFeishuTimestampMs(header.create_time)
+    || normalizeFeishuTimestampMs(header.createTime)
+    || normalizeFeishuTimestampMs(payload.create_time)
+    || normalizeFeishuTimestampMs(payload.createTime)
+    || normalizeFeishuTimestampMs(event.create_time)
+    || normalizeFeishuTimestampMs(event.createTime);
   const challenge = normalizeString(payload.challenge);
   const appId = normalizeString(header.app_id)
     || normalizeString(payload.app_id)
@@ -418,6 +440,8 @@ export function parseChannelConnectorFeishuWebhook(
       kind: "url-verification",
       eventType: "url_verification",
       eventId,
+      eventCreateTimeMs,
+      messageCreateTimeMs: null,
       appId,
       token,
       challenge,
@@ -443,6 +467,8 @@ export function parseChannelConnectorFeishuWebhook(
       kind: "card-action",
       eventType,
       eventId,
+      eventCreateTimeMs,
+      messageCreateTimeMs: null,
       appId,
       token,
       challenge: null,
@@ -468,6 +494,8 @@ export function parseChannelConnectorFeishuWebhook(
       kind: "bot-menu",
       eventType,
       eventId,
+      eventCreateTimeMs,
+      messageCreateTimeMs: null,
       appId,
       token,
       challenge: null,
@@ -497,6 +525,8 @@ export function parseChannelConnectorFeishuWebhook(
       kind: "message",
       eventType,
       eventId,
+      eventCreateTimeMs,
+      messageCreateTimeMs: message.messageCreateTimeMs,
       appId,
       token,
       challenge: null,
@@ -521,6 +551,8 @@ export function parseChannelConnectorFeishuWebhook(
     kind: "unsupported",
     eventType: eventType || null,
     eventId,
+    eventCreateTimeMs,
+    messageCreateTimeMs: null,
     appId,
     token,
     challenge: null,

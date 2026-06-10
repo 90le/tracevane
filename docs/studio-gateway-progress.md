@@ -14,7 +14,7 @@
 - Channel Connectors 走 Studio 原生 CLI Agent Bot 路线；Octo(dmwork) 与 Feishu 已接入 Codex/Claude Code/OpenCode runner、Studio Gateway key、IM session override、slash command、Feishu card/menu/progress、附件 staging、history、group context、reply buffer、queue、stop 和基础治理。
 - OpenCode Agent runner 走 Gateway-first：Channel 配置保存 Gateway 模型短名或模型 ID，runner 转换为 OpenCode 需要的 `studio-gateway/<model>`；每轮生成隔离 OpenCode config，session 数据写入 Channel runtime dataHome；旧全局 sessionId 在当前 dataHome 不存在时自动新建，避免 IM 切换 OpenCode 后被 stale session 卡死。
 - Channel Connectors 任意新功能必须先对照 CC Go 1:1 迁移，再做 Studio 精修；迁移清单见 `channel-connectors-cc-migration-checklist.md`。
-- Feishu 长连接专项跟踪见 `feishu-long-connection-issue-tracker.md`；Feishu 目前采用同 App 用户级全局 owner lock、官方 SDK `WSClient`/`EventDispatcher`、默认启用 SDK lower-case `pingTimeout=3`、包装 SDK `pingLoop()` 将有效心跳调度 clamp 到 `pingIntervalMs=30000`、SDK reconnecting 超 10s 回收、应用层 ping/pong runtime proof、`pongTimeoutMs=15000` 外层兜底回收、55s control-frame stale 判死、快速 ACK、messageId 去重和 runtime 入站观测；无业务消息时不再默认 startup recycle。
+- Feishu 长连接专项跟踪见 `feishu-long-connection-issue-tracker.md`；Feishu 目前采用同 App 用户级全局 owner lock、官方 SDK `WSClient`/`EventDispatcher`、默认启用 SDK lower-case `pingTimeout=3`、包装 SDK `pingLoop()` 将有效心跳调度 clamp 到 `pingIntervalMs=10000`、SDK reconnecting 超 5s 回收、应用层 ping/pong runtime proof、`pongTimeoutMs=8000` 外层兜底回收、23s control-frame stale 判死、快速 ACK、messageId 去重、会话水位线防旧消息插队和 runtime 入站观测；无业务消息时不再默认 startup recycle。
 - IM 文件收发固定为 Studio native transport：入站附件 staging 后交给 Agent；出站由 Agent 声明 `studio-channel-files` manifest，daemon 按平台上传发送。
 - Codex live 默认仍是 CC Go 风格 one-shot `codex exec/resume`；persistent session pool 作为 metadata beta 覆盖 Codex app-server、Claude Code stream-json 和 OpenCode `run --session`，已锁定原生 compact、interrupt/stop、idle reaper、fallback、session 管理合同和真实 CLI mock-Gateway smoke。
 - 上下文管理策略固定为 native-first：Gateway/Channel 负责模型预算与触发决策；App Connections apply 会按每个 App 选中模型派生上下文、max output 和 compact 阈值；`/compact` 手动入口和 daemon 自动触发都优先尝试 live persistent Agent 原生 compact；Studio Gateway `/responses/compact` 只作为不支持、失败或 one-shot 不可靠时的兜底；`/native /compact` 是强制原生入口，没有真实 native compact contract 时会拒绝伪透传。
@@ -22,7 +22,8 @@
 
 ## 本轮完成
 
-- 修复 Feishu 长连接“重启后恢复但运行一段时间假在线”的核心窗口：SDK 收到 Feishu pong 后会把内部 `pingInterval` 覆盖回 90s，Studio 现在包装 `WSClient.pingLoop()`，每次调度前 re-clamp 到 30s。
+- 修复 Feishu 长连接“重启后恢复但运行一段时间假在线”的核心窗口：SDK 收到 Feishu pong 后会把内部 `pingInterval` 覆盖回 90s，Studio 现在包装 `WSClient.pingLoop()`，每次调度前 re-clamp 到 10s。
+- 修复 Feishu 重连后补投旧消息插队：parser 读取 Feishu event/message `create_time`；daemon 按默认 2 分钟陈旧阈值跳过过期事件，并按 binding + session 持久化最新消息时间水位线，后到达的更旧事件记录 `feishu_event_out_of_order`，不再进入 Agent 队列。
 - Feishu runtime 新增 `sdkConnected`、`transportStaleForMs`、`transportStaleAfterMs`、`transportStale`；`connected` 不再等同 SDK 原始 connected，而是 SDK connected 且无 pong overdue、无 transport stale。
 - `/health`、Channel 管理页会把 transport stale 视为不健康；会话行可直接显示“飞书长连接控制帧超时”，避免把 Agent session idle 误判为平台连接正常。
 - OpenCode 1.16/1.17 `run --format json` 在本机可能 exit 0 但 stdout 为空；已补本地 `opencode.db` fallback，恢复 session id、assistant text、step/tool progress，并保留 stdout JSONL 路径优先；fallback 只接受本轮启动后的 assistant part 并短轮询等待异步写入，避免读到上一轮旧回复。
@@ -41,8 +42,8 @@
 - 通过：`npm run typecheck:web`。
 - 通过：`npm run build:api`。
 - 通过：`node --test tests/system/channel-connectors-feishu-long-connection-script.test.mjs`，覆盖 SDK connected 但 transport stale 时 smoke 失败。
-- 通过：`node --test --test-name-pattern "Feishu long-connection ingress|Feishu dispatcher parity diagnostics" tests/system/channel-connectors-service.test.mjs`。
-- 通过：`node scripts/smoke-channel-connectors-feishu-long-connection.mjs --duration-ms 75000 --bindings feishu-live --json`，现场结果 `violations=0`、`pingIntervalMs=30000`、`sentPings=4`、`receivedPongs=5`、`transportStale=false`、`logEvents=0`。
+- 通过：`node --test --test-name-pattern "native Channel Connectors Feishu webhook parses live envelopes|Feishu long-connection|native Channel Connectors daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs tests/system/channel-connectors-feishu-long-connection-script.test.mjs`，覆盖 Feishu create_time 解析、过期消息跳过、10s ping / 8s pong / 23s stale 默认和 daemon 结构合同。
+- 通过：`node scripts/smoke-channel-connectors-feishu-long-connection.mjs --duration-ms 35000 --bindings feishu-live --json`，现场结果 `violations=0`、`pingIntervalMs=10000`、`pongTimeoutMs=8000`、`transportStaleAfterMs=23000`、`sentPings=14`、`receivedPongs=15`、`transportStale=false`、`logEvents=0`。
 - 通过：`curl http://127.0.0.1:18797/health` 返回 `ok=true`、`connected=1`、`pongOverdue=0`、`transportStale=0`。
 - 通过：`npm run typecheck -- --pretty false`。
 - 通过：`node --test tests/system/channel-connectors-agent-session-driver.test.mjs`，覆盖 OpenCode `--session` compact、OpenCode 空 stdout SQLite fallback、Claude stream-json compact、Claude persistent stop cancel 和 OpenCode persistent stop abort。

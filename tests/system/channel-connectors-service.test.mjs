@@ -5788,6 +5788,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
       app_id: "cli_test",
       event_id: "evt_msg_parse",
       token: "verify-token",
+      create_time: "1780732800000",
     },
     event: {
       sender: { sender_id: { open_id: "ou_admin" } },
@@ -5799,6 +5800,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
         parent_id: "om_parent",
         thread_id: "om_thread",
         message_type: "text",
+        create_time: "1780732801",
         content: JSON.stringify({ text: "/status" }),
       },
     },
@@ -5806,6 +5808,8 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(parsedMessage.rootId, "om_root");
   assert.equal(parsedMessage.parentId, "om_parent");
   assert.equal(parsedMessage.threadId, "om_thread");
+  assert.equal(parsedMessage.eventCreateTimeMs, 1780732800000);
+  assert.equal(parsedMessage.messageCreateTimeMs, 1780732801000);
   assert.equal(buildFeishuSessionKey(parsedMessage), "feishu:oc_chat:root:om_root");
   assert.equal(buildFeishuSessionKey({ ...parsedMessage, rootId: null }), "feishu:oc_chat:root:om_msg_parse");
   assert.equal(buildFeishuSessionKey(parsedMessage, { threadIsolation: false }), "feishu:oc_chat:ou_admin");
@@ -5980,6 +5984,34 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   const imageLog = fs.readFileSync(imageDryRunMessage.eventStored.path, "utf8");
   assert.match(imageLog, /"messageType":"image"/);
   assert.match(imageLog, /"attachmentKinds":\["image"\]/);
+
+  const staleMessage = await service.dispatchFeishuWebhook({
+    dryRun: true,
+    schema: "2.0",
+    header: {
+      event_type: "im.message.receive_v1",
+      app_id: "cli_test",
+      event_id: "evt_msg_stale",
+      token: "verify-token",
+    },
+    event: {
+      sender: { sender_id: { open_id: "ou_admin" } },
+      message: {
+        message_id: "om_msg_stale",
+        chat_id: "oc_chat",
+        chat_type: "p2p",
+        message_type: "text",
+        create_time: "1780732500000",
+        content: JSON.stringify({ text: "stale" }),
+      },
+    },
+  });
+  assert.equal(staleMessage.accepted, false);
+  assert.equal(staleMessage.skippedReason, "feishu_event_stale");
+  assert.equal(staleMessage.agentDispatch.status, "skipped");
+  assert.equal(staleMessage.incoming, null);
+  const staleLog = fs.readFileSync(staleMessage.eventStored.path, "utf8");
+  assert.match(staleLog, /"messageCreateTimeMs":1780732500000/);
 
   const slashModelMessage = await service.dispatchFeishuWebhook({
     schema: "2.0",
@@ -7482,7 +7514,7 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /getFeishuWsReconnectDelayMs/);
   assert.match(daemonSource, /FEISHU_WS_RECONNECT_INITIAL_DELAY_MS\s*=\s*1_?000/);
   assert.match(daemonSource, /FEISHU_WS_RECONNECT_MAX_DELAY_MS\s*=\s*30_?000/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_RECONNECTING_RECYCLE_MS\s*=\s*10_?000/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_RECONNECTING_RECYCLE_MS\s*=\s*5_?000/);
   assert.match(daemonSource, /MIN_FEISHU_RECONNECTING_RECYCLE_MS\s*=\s*5_?000/);
   assert.match(daemonSource, /MAX_FEISHU_RECONNECTING_RECYCLE_MS\s*=\s*60_?000/);
   assert.match(daemonSource, /FEISHU_WS_RECONNECT_EXHAUSTED_RE/);
@@ -7499,13 +7531,14 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /DEFAULT_FEISHU_PING_TIMEOUT_SECONDS\s*=\s*3/);
   assert.match(daemonSource, /MIN_FEISHU_PING_TIMEOUT_SECONDS\s*=\s*1/);
   assert.match(daemonSource, /MAX_FEISHU_PING_TIMEOUT_SECONDS\s*=\s*60/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_PING_INTERVAL_MS\s*=\s*30_?000/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_PING_INTERVAL_MS\s*=\s*10_?000/);
   assert.match(daemonSource, /MIN_FEISHU_PING_INTERVAL_MS\s*=\s*10_?000/);
   assert.match(daemonSource, /MAX_FEISHU_PING_INTERVAL_MS\s*=\s*120_?000/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_PONG_TIMEOUT_MS\s*=\s*15_?000/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_PONG_TIMEOUT_MS\s*=\s*8_?000/);
   assert.match(daemonSource, /MIN_FEISHU_PONG_TIMEOUT_MS\s*=\s*3_?000/);
   assert.match(daemonSource, /MAX_FEISHU_PONG_TIMEOUT_MS\s*=\s*600_?000/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_TRANSPORT_STALE_MARGIN_MS\s*=\s*10_?000/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_TRANSPORT_STALE_MARGIN_MS\s*=\s*5_?000/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_STALE_EVENT_MAX_AGE_MS\s*=\s*2\s*\*\s*60_?000/);
   assert.match(daemonSource, /DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS\s*=\s*0/);
   assert.match(daemonSource, /MIN_FEISHU_CONNECTED_IDLE_RENEW_MS\s*=\s*60_?000/);
   assert.match(daemonSource, /DEFAULT_FEISHU_VERIFIED_INGRESS_SILENT_RENEW_MS\s*=\s*0/);
@@ -7550,6 +7583,11 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /function feishuClientPingIntervalMs/);
   assert.match(daemonSource, /function feishuPongTimeoutState/);
   assert.match(daemonSource, /function feishuTransportStaleState/);
+  assert.match(daemonSource, /function feishuStaleEventState/);
+  assert.match(daemonSource, /function feishuOutOfOrderEventState/);
+  assert.match(daemonSource, /function updateFeishuConversationWatermark/);
+  assert.match(daemonSource, /feishu_event_stale/);
+  assert.match(daemonSource, /feishu_event_out_of_order/);
   assert.match(daemonSource, /pingTimeoutSeconds: feishuPingTimeoutSeconds\(group\)/);
   assert.match(daemonSource, /pongTimeoutMs:\s*feishuPongTimeoutMs\(group\)/);
   assert.match(daemonSource, /pingIntervalMs:\s*group\.pingIntervalMs/);

@@ -168,14 +168,14 @@ import {
 const DEFAULT_FEISHU_PING_TIMEOUT_SECONDS = 3;
 const MIN_FEISHU_PING_TIMEOUT_SECONDS = 1;
 const MAX_FEISHU_PING_TIMEOUT_SECONDS = 60;
-const DEFAULT_FEISHU_PING_INTERVAL_MS = 30_000;
+const DEFAULT_FEISHU_PING_INTERVAL_MS = 10_000;
 const MIN_FEISHU_PING_INTERVAL_MS = 10_000;
 const MAX_FEISHU_PING_INTERVAL_MS = 120_000;
 const DEFAULT_FEISHU_HANDSHAKE_TIMEOUT_MS = 15_000;
-const DEFAULT_FEISHU_PONG_TIMEOUT_MS = 15_000;
+const DEFAULT_FEISHU_PONG_TIMEOUT_MS = 8_000;
 const MIN_FEISHU_PONG_TIMEOUT_MS = 3_000;
 const MAX_FEISHU_PONG_TIMEOUT_MS = 600_000;
-const DEFAULT_FEISHU_TRANSPORT_STALE_MARGIN_MS = 10_000;
+const DEFAULT_FEISHU_TRANSPORT_STALE_MARGIN_MS = 5_000;
 const MIN_FEISHU_TRANSPORT_STALE_MS = 20_000;
 const MAX_FEISHU_TRANSPORT_STALE_MS = 600_000;
 const DEFAULT_FEISHU_WATCHDOG_RESTART_MS = 0;
@@ -183,7 +183,7 @@ const MIN_FEISHU_WATCHDOG_RESTART_MS = 60_000;
 const MAX_FEISHU_WATCHDOG_RESTART_MS = 600_000;
 const FEISHU_WS_RECONNECT_INITIAL_DELAY_MS = 1_000;
 const FEISHU_WS_RECONNECT_MAX_DELAY_MS = 30_000;
-const DEFAULT_FEISHU_RECONNECTING_RECYCLE_MS = 10_000;
+const DEFAULT_FEISHU_RECONNECTING_RECYCLE_MS = 5_000;
 const MIN_FEISHU_RECONNECTING_RECYCLE_MS = 5_000;
 const MAX_FEISHU_RECONNECTING_RECYCLE_MS = 60_000;
 const FEISHU_WS_RECONNECT_EXHAUSTED_RE = /^WebSocket reconnect exhausted after \d+ attempts?/;
@@ -197,7 +197,7 @@ const FEISHU_WS_AUTORECONNECT_DISABLED_ERROR = "WebSocket connect failed and aut
 // client-side lower-case `pingTimeout` watchdog. Real Studio and upstream issue
 // evidence showed that this leaves half-open sockets falsely connected until
 // manual restart. Studio therefore arms the SDK lower-case watchdog, clamps the
-// SDK's internal ping interval to OpenClaw's 30s intent, and keeps a short
+// SDK's internal ping interval to a 10s Agent-facing default, and keeps a short
 // outer ping/control-frame fallback for runtime visibility and recovery.
 // If the SDK has already entered `reconnecting` and stays there for too long,
 // Studio still recycles that same current client through the OpenClaw-style
@@ -224,6 +224,9 @@ const MAX_FEISHU_INGRESS_UNVERIFIED_RENEW_MAX = 5;
 const DEFAULT_FEISHU_LOCK_RETRY_MS = 30_000;
 const MIN_FEISHU_LOCK_RETRY_MS = 5_000;
 const MAX_FEISHU_LOCK_RETRY_MS = 300_000;
+const DEFAULT_FEISHU_STALE_EVENT_MAX_AGE_MS = 2 * 60_000;
+const MIN_FEISHU_STALE_EVENT_MAX_AGE_MS = 10_000;
+const MAX_FEISHU_STALE_EVENT_MAX_AGE_MS = 24 * 60 * 60_000;
 const DEFAULT_OCTO_HEARTBEAT_MS = 30_000;
 const MIN_OCTO_HEARTBEAT_MS = 5_000;
 const MAX_OCTO_HEARTBEAT_MS = 300_000;
@@ -1855,6 +1858,25 @@ function feishuTransportStaleAfterMs(group: ChannelDaemonFeishuGroup): number {
     pingIntervalMs + pongTimeoutMs + DEFAULT_FEISHU_TRANSPORT_STALE_MARGIN_MS,
     MIN_FEISHU_TRANSPORT_STALE_MS,
     MAX_FEISHU_TRANSPORT_STALE_MS,
+  );
+}
+
+function feishuStaleEventMaxAgeMs(binding: ChannelConnectorRuntimeBinding): number {
+  const value = metadataNumber(binding, [
+    "feishuStaleEventMaxAgeMs",
+    "feishu_stale_event_max_age_ms",
+    "feishuStaleMessageMaxAgeMs",
+    "feishu_stale_message_max_age_ms",
+    "staleEventMaxAgeMs",
+    "stale_event_max_age_ms",
+    "staleMessageMaxAgeMs",
+    "stale_message_max_age_ms",
+  ], DEFAULT_FEISHU_STALE_EVENT_MAX_AGE_MS);
+  if (value <= 0) return 0;
+  return clampNumber(
+    Math.floor(value),
+    MIN_FEISHU_STALE_EVENT_MAX_AGE_MS,
+    MAX_FEISHU_STALE_EVENT_MAX_AGE_MS,
   );
 }
 
@@ -3712,6 +3734,92 @@ function feishuThreadLogFields(parsed: ChannelConnectorFeishuParsedWebhook): {
     attachmentCount: parsed.attachments.length,
     attachmentKinds: parsed.attachments.map((attachment) => attachment.kind),
   };
+}
+
+function feishuTimingLogFields(parsed: ChannelConnectorFeishuParsedWebhook): {
+  eventCreateTimeMs: number | null;
+  messageCreateTimeMs: number | null;
+} {
+  return {
+    eventCreateTimeMs: parsed.eventCreateTimeMs,
+    messageCreateTimeMs: parsed.messageCreateTimeMs,
+  };
+}
+
+function feishuParsedEventTimeMs(parsed: ChannelConnectorFeishuParsedWebhook): number | null {
+  return parsed.messageCreateTimeMs || parsed.eventCreateTimeMs || null;
+}
+
+function feishuStaleEventState(
+  binding: ChannelConnectorRuntimeBinding,
+  parsed: ChannelConnectorFeishuParsedWebhook,
+  nowMs = Date.now(),
+): {
+  stale: boolean;
+  eventTimeMs: number | null;
+  eventAgeMs: number | null;
+  maxAgeMs: number;
+} {
+  const maxAgeMs = feishuStaleEventMaxAgeMs(binding);
+  const eventTimeMs = feishuParsedEventTimeMs(parsed);
+  if (maxAgeMs <= 0 || !eventTimeMs) {
+    return { stale: false, eventTimeMs, eventAgeMs: null, maxAgeMs };
+  }
+  const eventAgeMs = Math.max(0, nowMs - eventTimeMs);
+  return {
+    stale: eventAgeMs > maxAgeMs,
+    eventTimeMs,
+    eventAgeMs,
+    maxAgeMs,
+  };
+}
+
+function feishuWatermarkKey(bindingId: string, sessionKey: string): string {
+  return `feishu:watermark:${bindingId}:${sessionKey}`;
+}
+
+function feishuConversationWatermarkMs(
+  seenMessages: Map<string, number>,
+  binding: ChannelConnectorRuntimeBinding,
+  sessionKey: string,
+): number | null {
+  const value = seenMessages.get(feishuWatermarkKey(binding.id, sessionKey));
+  return Number.isFinite(value) && value ? value : null;
+}
+
+function feishuOutOfOrderEventState(input: {
+  seenMessages: Map<string, number>;
+  binding: ChannelConnectorRuntimeBinding;
+  sessionKey: string;
+  parsed: ChannelConnectorFeishuParsedWebhook;
+}): {
+  outOfOrder: boolean;
+  eventTimeMs: number | null;
+  watermarkMs: number | null;
+} {
+  const eventTimeMs = feishuParsedEventTimeMs(input.parsed);
+  const watermarkMs = feishuConversationWatermarkMs(input.seenMessages, input.binding, input.sessionKey);
+  return {
+    outOfOrder: Boolean(eventTimeMs && watermarkMs && eventTimeMs < watermarkMs),
+    eventTimeMs,
+    watermarkMs,
+  };
+}
+
+function updateFeishuConversationWatermark(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  seenMessages: Map<string, number>;
+  binding: ChannelConnectorRuntimeBinding;
+  sessionKey: string;
+  parsed: ChannelConnectorFeishuParsedWebhook;
+}): void {
+  const eventTimeMs = feishuParsedEventTimeMs(input.parsed);
+  if (!eventTimeMs) return;
+  const key = feishuWatermarkKey(input.binding.id, input.sessionKey);
+  const previous = input.seenMessages.get(key);
+  if (typeof previous === "number" && Number.isFinite(previous) && previous >= eventTimeMs) return;
+  input.seenMessages.set(key, eventTimeMs);
+  saveFeishuSeenMessages(input.config, input.seenMessages);
 }
 
 function feishuMessageFromParsed(
@@ -6225,6 +6333,59 @@ async function dispatchFeishuParsedEvent(input: {
     return null;
   }
 
+  const staleEvent = feishuStaleEventState(binding, parsed, ingressAtMs);
+  if (staleEvent.stale) {
+    writeJsonLine(config.paths.feishuEvents, {
+      checkedAt,
+      adapter: "feishu",
+      eventKind: "feishu.event.stale",
+      eventType: parsed.eventType,
+      eventId: parsed.eventId,
+      accepted: false,
+      skippedReason: "feishu_event_stale",
+      bindingId: binding.id,
+      sessionKey,
+      messageId,
+      channelId: parsed.channelId,
+      chatType: parsed.chatType,
+      fromUid: parsed.fromUid,
+      dedupeKey,
+      eventTimeMs: staleEvent.eventTimeMs,
+      eventAgeMs: staleEvent.eventAgeMs,
+      staleEventMaxAgeMs: staleEvent.maxAgeMs,
+      ...feishuTimingLogFields(parsed),
+      ...feishuThreadLogFields(parsed),
+    });
+    return null;
+  }
+
+  const outOfOrderEvent = sessionKey
+    ? feishuOutOfOrderEventState({ seenMessages, binding, sessionKey, parsed })
+    : { outOfOrder: false, eventTimeMs: feishuParsedEventTimeMs(parsed), watermarkMs: null };
+  if (outOfOrderEvent.outOfOrder) {
+    writeJsonLine(config.paths.feishuEvents, {
+      checkedAt,
+      adapter: "feishu",
+      eventKind: "feishu.event.out_of_order",
+      eventType: parsed.eventType,
+      eventId: parsed.eventId,
+      accepted: false,
+      skippedReason: "feishu_event_out_of_order",
+      bindingId: binding.id,
+      sessionKey,
+      messageId,
+      channelId: parsed.channelId,
+      chatType: parsed.chatType,
+      fromUid: parsed.fromUid,
+      dedupeKey,
+      eventTimeMs: outOfOrderEvent.eventTimeMs,
+      conversationWatermarkMs: outOfOrderEvent.watermarkMs,
+      ...feishuTimingLogFields(parsed),
+      ...feishuThreadLogFields(parsed),
+    });
+    return null;
+  }
+
   if (!sessionKey || !parsed.fromUid || !parsed.channelId) {
     writeJsonLine(config.paths.feishuEvents, {
       checkedAt,
@@ -6281,6 +6442,14 @@ async function dispatchFeishuParsedEvent(input: {
     });
     return null;
   }
+
+  updateFeishuConversationWatermark({
+    config,
+    seenMessages,
+    binding,
+    sessionKey,
+    parsed,
+  });
 
   const governance = evaluateChannelConnectorGovernance({
     binding,
@@ -7851,6 +8020,7 @@ function createFeishuDispatcher(input: {
         channelId: parsed.channelId,
         fromUid: parsed.fromUid,
         messageId: parsed.messageId,
+        ...feishuTimingLogFields(parsed),
         longConnection: true,
         rawEventShape: isRecord(data) ? Object.keys(data).slice(0, 12) : [],
       });
@@ -7884,6 +8054,7 @@ function createFeishuDispatcher(input: {
         channelId: parsed.channelId,
         fromUid: parsed.fromUid,
         messageId: parsed.messageId,
+        ...feishuTimingLogFields(parsed),
         longConnection: true,
         rawEventShape: isRecord(data) ? Object.keys(data).slice(0, 12) : [],
       });
@@ -7917,6 +8088,7 @@ function createFeishuDispatcher(input: {
         channelId: parsed.channelId,
         fromUid: parsed.fromUid,
         messageId: parsed.messageId,
+        ...feishuTimingLogFields(parsed),
         longConnection: true,
         rawEventShape: isRecord(data) ? Object.keys(data).slice(0, 12) : [],
       });

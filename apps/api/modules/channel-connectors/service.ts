@@ -121,6 +121,10 @@ import {
   compactChannelConnectorConversation,
 } from "./conversation-compact.js";
 
+const DEFAULT_FEISHU_STALE_EVENT_MAX_AGE_MS = 2 * 60_000;
+const MIN_FEISHU_STALE_EVENT_MAX_AGE_MS = 10_000;
+const MAX_FEISHU_STALE_EVENT_MAX_AGE_MS = 24 * 60 * 60_000;
+
 const execFileAsync = promisify(execFile);
 const DAEMON_ACTIONS: readonly ChannelConnectorsDaemonAction[] = [
   "preview",
@@ -1407,6 +1411,63 @@ function metadataBooleanValue(metadata: Record<string, unknown> | undefined, key
   return fallback;
 }
 
+function metadataNumberValue(metadata: Record<string, unknown> | undefined, keys: string[], fallback: number): number {
+  for (const key of keys) {
+    const value = Number(metadata?.[key]);
+    if (Number.isFinite(value)) return value;
+  }
+  return fallback;
+}
+
+function clampNumber(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, value));
+}
+
+function feishuWebhookStaleEventMaxAgeMs(binding: ChannelConnectorPlatformBinding): number {
+  const value = metadataNumberValue(binding.metadata, [
+    "feishuStaleEventMaxAgeMs",
+    "feishu_stale_event_max_age_ms",
+    "feishuStaleMessageMaxAgeMs",
+    "feishu_stale_message_max_age_ms",
+    "staleEventMaxAgeMs",
+    "stale_event_max_age_ms",
+    "staleMessageMaxAgeMs",
+    "stale_message_max_age_ms",
+  ], DEFAULT_FEISHU_STALE_EVENT_MAX_AGE_MS);
+  if (value <= 0) return 0;
+  return clampNumber(
+    Math.floor(value),
+    MIN_FEISHU_STALE_EVENT_MAX_AGE_MS,
+    MAX_FEISHU_STALE_EVENT_MAX_AGE_MS,
+  );
+}
+
+function feishuWebhookParsedEventTimeMs(parsed: ReturnType<typeof parseChannelConnectorFeishuWebhook>): number | null {
+  return parsed.messageCreateTimeMs || parsed.eventCreateTimeMs || null;
+}
+
+function feishuWebhookStaleEventState(
+  binding: ChannelConnectorPlatformBinding,
+  parsed: ReturnType<typeof parseChannelConnectorFeishuWebhook>,
+  nowMs: number,
+): {
+  stale: boolean;
+  eventTimeMs: number | null;
+  eventAgeMs: number | null;
+  maxAgeMs: number;
+} {
+  const maxAgeMs = feishuWebhookStaleEventMaxAgeMs(binding);
+  const eventTimeMs = feishuWebhookParsedEventTimeMs(parsed);
+  if (maxAgeMs <= 0 || !eventTimeMs) return { stale: false, eventTimeMs, eventAgeMs: null, maxAgeMs };
+  const eventAgeMs = Math.max(0, nowMs - eventTimeMs);
+  return {
+    stale: eventAgeMs > maxAgeMs,
+    eventTimeMs,
+    eventAgeMs,
+    maxAgeMs,
+  };
+}
+
 function feishuSessionKeyForWebhook(
   binding: ChannelConnectorPlatformBinding,
   parsed: ReturnType<typeof parseChannelConnectorFeishuWebhook>,
@@ -2012,6 +2073,8 @@ export function createChannelConnectorsService(
         eventKind: response.eventKind,
         eventType: response.eventType,
         eventId: response.eventId,
+        eventCreateTimeMs: parsed.eventCreateTimeMs,
+        messageCreateTimeMs: parsed.messageCreateTimeMs,
         accepted: response.accepted,
         skippedReason: response.skippedReason,
         bindingId: response.binding?.id || null,
@@ -2162,6 +2225,8 @@ export function createChannelConnectorsService(
     }
 
     if (parsed.kind !== "message") return skipped("feishu_event_unsupported");
+    const staleEvent = feishuWebhookStaleEventState(resolved.binding, parsed, Date.parse(checkedAt));
+    if (staleEvent.stale) return skipped("feishu_event_stale");
     if (!parsed.messageId || !parsed.fromUid || !parsed.channelId) return skipped("feishu_message_identity_missing");
     let effectiveText = normalizeString(parsed.text);
     const aliasResolution = resolveChannelConnectorBindingCommandAlias(
