@@ -1367,8 +1367,23 @@ async function acquireChannelSessionAgentRun(
 function startHttp(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelDaemonState): http.Server {
   const server = http.createServer((req, res) => {
     if (req.url === "/health") {
+      const feishuStates = Object.values(state.feishuConnections);
+      const feishuHealthy = feishuStates.length === 0 || feishuStates.every((connection) =>
+        connection.connected === true && connection.state !== "reconnecting"
+      );
+      const runsHealthy = state.activeRuns.length < 50;
+      const ok = feishuHealthy && runsHealthy;
+      res.statusCode = ok ? 200 : 503;
       res.setHeader("content-type", "application/json; charset=utf-8");
-      res.end(JSON.stringify({ ok: true, pid: process.pid }));
+      res.end(JSON.stringify({
+        ok,
+        pid: process.pid,
+        feishu: {
+          groups: feishuStates.length,
+          connected: feishuStates.filter((connection) => connection.connected).length,
+        },
+        activeRuns: state.activeRuns.length,
+      }));
       return;
     }
     if (req.url === "/status") {
