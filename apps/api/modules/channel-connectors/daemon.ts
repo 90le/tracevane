@@ -654,10 +654,37 @@ function writeJsonFileAtomic(filePath: string, value: unknown): void {
   fs.renameSync(tempPath, filePath);
 }
 
-function writeRuntime(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelDaemonState): void {
-  ensureDir(path.dirname(config.paths.runtime));
+let runtimeDirty = false;
+let runtimeDirtyAt = 0;
+let runtimeDebounceTimer: NodeJS.Timeout | null = null;
+const RUNTIME_DEBOUNCE_MS = 2000;
+
+function markRuntimeDirty(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelDaemonState): void {
   state.agentSessionDriver = buildAgentSessionDriverState(config);
   state.updatedAt = new Date().toISOString();
+  runtimeDirty = true;
+  runtimeDirtyAt = Date.now();
+  if (!runtimeDebounceTimer) {
+    runtimeDebounceTimer = setTimeout(() => {
+      runtimeDebounceTimer = null;
+      if (!runtimeDirty) return;
+      runtimeDirty = false;
+      ensureDir(path.dirname(config.paths.runtime));
+      fs.promises.writeFile(config.paths.runtime, `${JSON.stringify(state, null, 2)}\n`, "utf8").catch(() => {});
+    }, RUNTIME_DEBOUNCE_MS);
+    runtimeDebounceTimer.unref();
+  }
+}
+
+function flushRuntime(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelDaemonState): void {
+  if (runtimeDebounceTimer) {
+    clearTimeout(runtimeDebounceTimer);
+    runtimeDebounceTimer = null;
+  }
+  runtimeDirty = false;
+  state.agentSessionDriver = buildAgentSessionDriverState(config);
+  state.updatedAt = new Date().toISOString();
+  ensureDir(path.dirname(config.paths.runtime));
   fs.writeFileSync(config.paths.runtime, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
 
@@ -1368,7 +1395,7 @@ function startAgentSessionDriverReaper(
           intervalMs,
           activeSessions: state.agentSessionDriver.activeSessions.length,
         });
-        writeRuntime(config, state);
+        markRuntimeDirty(config, state);
       })
       .catch((error) => {
         appendLog(config.paths.log, "Persistent Agent session idle reaper failed", {
@@ -2277,7 +2304,7 @@ async function nativeCompactChannelConnectorConversation(input: {
       error: result.error,
       progressEventCount: result.progress.eventCount,
     });
-    writeRuntime(input.config, input.state);
+    markRuntimeDirty(input.config, input.state);
     return {
       attempted: true,
       ok: result.ok === true,
@@ -2297,7 +2324,7 @@ async function nativeCompactChannelConnectorConversation(input: {
       model: input.project.model,
       error: shortMessage(error),
     });
-    writeRuntime(input.config, input.state);
+    markRuntimeDirty(input.config, input.state);
     return {
       attempted: true,
       ok: false,
@@ -2755,7 +2782,7 @@ async function maybeAutoCompactChannelConnectorConversation(input: {
       rawBudget,
       baselineCompactAt: baseline?.checkedAt || null,
     });
-    writeRuntime(input.config, input.state);
+    markRuntimeDirty(input.config, input.state);
     return record;
   }
 
@@ -2832,7 +2859,7 @@ async function maybeAutoCompactChannelConnectorConversation(input: {
       rawBudget,
       baselineCompactAt: baseline?.checkedAt || null,
     });
-    writeRuntime(input.config, input.state);
+    markRuntimeDirty(input.config, input.state);
     return record;
   }
 
@@ -2882,7 +2909,7 @@ async function maybeAutoCompactChannelConnectorConversation(input: {
       rawBudget,
       baselineCompactAt: baseline?.checkedAt || null,
     });
-    writeRuntime(input.config, input.state);
+    markRuntimeDirty(input.config, input.state);
     return record;
   }
 
@@ -2948,7 +2975,7 @@ async function maybeAutoCompactChannelConnectorConversation(input: {
     rawBudget,
     baselineCompactAt: baseline?.checkedAt || null,
   });
-  writeRuntime(input.config, input.state);
+  markRuntimeDirty(input.config, input.state);
   return record;
 }
 
@@ -3265,7 +3292,7 @@ function updateFeishuRuntime(
   group: ChannelDaemonFeishuGroup,
 ): void {
   state.feishuConnections[group.key] = feishuConnectionState(group);
-  writeRuntime(config, state);
+  markRuntimeDirty(config, state);
 }
 
 function latestFeishuLifecycleActivityAt(group: ChannelDaemonFeishuGroup): string | null {
@@ -5220,7 +5247,7 @@ async function dispatchOctoMessage(input: {
       replyRequestCount,
       commandElapsedMs: elapsedMsSince(ingressAtMs, isoTimestampMs(commandFinishedAt) ?? Date.now()),
     });
-    writeRuntime(config, state);
+    markRuntimeDirty(config, state);
     return;
   }
   const nativeCommand = normalizeString(command.nativeCommand);
@@ -5344,7 +5371,7 @@ async function dispatchOctoMessage(input: {
         ingressAt,
         elapsedMs: elapsedMsSince(ingressAtMs),
       });
-      writeRuntime(config, state);
+      markRuntimeDirty(config, state);
     },
   });
   if (transport) {
@@ -5467,7 +5494,7 @@ async function dispatchOctoMessage(input: {
     model: turnProject.model,
   });
   state.activeRuns = state.activeRuns.slice(0, 20);
-  writeRuntime(config, state);
+  markRuntimeDirty(config, state);
   writeJsonLine(config.paths.octoEvents, {
     checkedAt: runStartedAt,
     eventKind: "agent.run.started",
@@ -5612,7 +5639,7 @@ async function dispatchOctoMessage(input: {
               : elapsedMsSince(runStartedAtMs, firstProgressAtMs),
           });
           queueOctoProgressReply(event);
-          writeRuntime(config, state);
+          markRuntimeDirty(config, state);
         },
       },
     });
@@ -5650,7 +5677,7 @@ async function dispatchOctoMessage(input: {
     clearPendingPermissionsForRun(channelPendingPermissions, activeRunId);
     state.activeRuns = state.activeRuns.filter((run) => run.id !== activeRunId);
     sessionRunLease.release();
-    writeRuntime(config, state);
+    markRuntimeDirty(config, state);
   }
   if (agent.progress.eventCount > progressEventCount) {
     progressEventCount = agent.progress.eventCount;
@@ -5866,7 +5893,7 @@ async function dispatchOctoMessage(input: {
       ? null
       : elapsedMsSince(latestProgressAtMs, finishedAtMs),
   });
-  writeRuntime(config, state);
+  markRuntimeDirty(config, state);
 }
 
 function feishuContentFromParsed(parsed: ChannelConnectorFeishuParsedWebhook): string {
@@ -6199,7 +6226,7 @@ async function dispatchFeishuParsedEvent(input: {
       replyRequestCount,
       commandElapsedMs: elapsedMsSince(ingressAtMs, isoTimestampMs(commandFinishedAt) ?? Date.now()),
     });
-    writeRuntime(config, state);
+    markRuntimeDirty(config, state);
     return feishuResponse;
   }
 
@@ -6328,7 +6355,7 @@ async function dispatchFeishuParsedEvent(input: {
         ingressAt,
         elapsedMs: elapsedMsSince(ingressAtMs),
       });
-      writeRuntime(config, state);
+      markRuntimeDirty(config, state);
     },
   });
   await maybeAutoCompactChannelConnectorConversation({
@@ -6453,7 +6480,7 @@ async function dispatchFeishuParsedEvent(input: {
     model: turnProject.model,
   });
   state.activeRuns = state.activeRuns.slice(0, 20);
-  writeRuntime(config, state);
+  markRuntimeDirty(config, state);
   writeJsonLine(config.paths.feishuEvents, {
     checkedAt: runStartedAt,
     eventKind: "agent.run.started",
@@ -6603,7 +6630,7 @@ async function dispatchFeishuParsedEvent(input: {
             const changed = pushFeishuProgressCardEvent(progressCardState, event);
             if (changed) queueFeishuProgressFlush(highPriority, event.type);
           }
-          writeRuntime(config, state);
+          markRuntimeDirty(config, state);
         },
       },
     });
@@ -6641,7 +6668,7 @@ async function dispatchFeishuParsedEvent(input: {
     clearPendingPermissionsForRun(channelPendingPermissions, activeRunId);
     state.activeRuns = state.activeRuns.filter((run) => run.id !== activeRunId);
     sessionRunLease.release();
-    writeRuntime(config, state);
+    markRuntimeDirty(config, state);
   }
   if (agent.progress.eventCount > progressEventCount) {
     progressEventCount = agent.progress.eventCount;
@@ -6894,7 +6921,7 @@ async function dispatchFeishuParsedEvent(input: {
       : elapsedMsSince(latestProgressAtMs, finishedAtMs),
     rawEventShape: isRecord(rawEvent) ? Object.keys(rawEvent).slice(0, 12) : [],
   });
-  writeRuntime(config, state);
+  markRuntimeDirty(config, state);
   return null;
 }
 
@@ -6915,7 +6942,7 @@ async function startOctoConnection(input: {
       state: "closed",
       lastError: "octo_transport_config_missing",
     });
-    writeRuntime(config, state);
+    markRuntimeDirty(config, state);
     return;
   }
   const resolved = await resolveOctoCredentials(config, binding);
@@ -6925,7 +6952,7 @@ async function startOctoConnection(input: {
       apiUrl: transport.apiUrl,
       lastError: "octo_register_failed",
     });
-    writeRuntime(config, state);
+    markRuntimeDirty(config, state);
     return;
   }
   const octoStatus = (status: Partial<ChannelDaemonOctoConnectionState>): ChannelDaemonOctoConnectionState => connectionState(
@@ -6954,7 +6981,7 @@ async function startOctoConnection(input: {
         credentialSource: resolved.source,
       });
       appendLog(config.paths.log, "Octo WebSocket connected", { bindingId: binding.id });
-      writeRuntime(config, state);
+      markRuntimeDirty(config, state);
     },
     onDisconnected: () => {
       state.octoConnections[binding.id] = octoStatus({
@@ -6963,7 +6990,7 @@ async function startOctoConnection(input: {
         robotId: resolved.entry.robotId,
         credentialSource: resolved.source,
       });
-      writeRuntime(config, state);
+      markRuntimeDirty(config, state);
     },
     onError: () => {
       state.octoConnections[binding.id] = octoStatus({
@@ -6972,7 +6999,7 @@ async function startOctoConnection(input: {
         robotId: resolved.entry.robotId,
         credentialSource: resolved.source,
       });
-      writeRuntime(config, state);
+      markRuntimeDirty(config, state);
     },
     onMessage: (message) => {
       state.octoConnections[binding.id] = octoStatus({
@@ -6981,7 +7008,7 @@ async function startOctoConnection(input: {
         robotId: resolved.entry.robotId,
         credentialSource: resolved.source,
       });
-      writeRuntime(config, state);
+      markRuntimeDirty(config, state);
       void dispatchOctoMessage({
         config,
         state,
@@ -7043,7 +7070,7 @@ async function startOctoConnection(input: {
             restHeartbeatLastError: null,
           });
         }
-        writeRuntime(config, state);
+        markRuntimeDirty(config, state);
       });
     }, restHeartbeatMs);
     timer.unref();
@@ -7056,7 +7083,7 @@ async function startOctoConnection(input: {
     credentialSource: resolved.source,
     restHeartbeatIntervalMs: restHeartbeatMs,
   });
-  writeRuntime(config, state);
+  markRuntimeDirty(config, state);
   socket.connect();
 }
 
@@ -7939,7 +7966,7 @@ function startFeishuClientForGroup(input: {
       error: group.lastError,
     });
     state.feishuConnections[group.key] = feishuConnectionState(group);
-    writeRuntime(config, state);
+    markRuntimeDirty(config, state);
     return;
   }
   const dispatcher = createFeishuDispatcher({
@@ -8092,7 +8119,7 @@ function startFeishuWatchdog(input: {
       group.lastReconnectingAt = null;
       state.feishuConnections[group.key] = feishuConnectionState(group);
     }
-    writeRuntime(config, state);
+    markRuntimeDirty(config, state);
   }, 5_000);
   timer.unref();
   return timer;
@@ -8112,7 +8139,7 @@ async function startFeishuConnections(
   for (const group of groups) {
     if (!group.refs.length) {
       state.feishuConnections[group.key] = feishuConnectionState(group);
-      writeRuntime(config, state);
+      markRuntimeDirty(config, state);
       continue;
     }
     startFeishuClientForGroup({
@@ -8136,7 +8163,7 @@ async function main(): Promise<void> {
   ensureDir(config.paths.root);
   ensureDir(config.paths.state);
   const state = createDaemonState(config);
-  writeRuntime(config, state);
+  markRuntimeDirty(config, state);
   appendLog(config.paths.log, "Studio native Channel Connectors daemon started");
   const server = startHttp(config, state);
   const sockets: OctoWukongSocket[] = [];
@@ -8174,6 +8201,7 @@ async function main(): Promise<void> {
     for (const socket of sockets) socket.disconnect();
     for (const client of feishuClients) client.close({ force: true });
     for (const group of feishuGroups) releaseFeishuGroupLock(config, group);
+    flushRuntime(config, state);
     server.close(() => process.exit(0));
   };
   process.on("SIGINT", stop);
