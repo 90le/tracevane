@@ -4071,6 +4071,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
         replyText: "已允许：Bash (perm-1)",
         requestId: "perm-1",
         toolName: "Bash",
+        suppressReply: true,
       };
     },
   });
@@ -4078,6 +4079,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(approvedPermission.handled, true);
   assert.equal(approvedPermission.action, "permission");
   assert.equal(approvedPermission.ok, true);
+  assert.equal(approvedPermission.suppressReply, true);
   assert.match(approvedPermission.replyText, /已允许/);
 
   let deniedPermissionAction = null;
@@ -7822,6 +7824,14 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /patchFeishuCardMessage/);
   assert.match(daemonSource, /function renderFeishuPermissionCard/);
   assert.match(daemonSource, /function sendFeishuPermissionPrompt/);
+  assert.match(daemonSource, /allowed-all/);
+  assert.match(daemonSource, /function upsertFeishuPermissionProgressEntry/);
+  assert.match(daemonSource, /kind:\s*"permission"/);
+  assert.match(daemonSource, /permissionProgressStatusLabel/);
+  assert.match(daemonSource, /renderFeishuProgressPermissionActions/);
+  assert.match(daemonSource, /suppressReplyOnResolve:\s*feishuCardsEnabled\(binding\)/);
+  assert.match(daemonSource, /command\.suppressReply !== true/);
+  assert.match(daemonSource, /if \(input\.command\.suppressReply === true\)[\s\S]{0,40}return null;/);
   assert.match(daemonSource, /action:\s*`act:\$\{input\.command\}`/);
   assert.match(daemonSource, /permission-approve/);
   assert.match(daemonSource, /permission-deny/);

@@ -196,6 +196,7 @@ export interface ChannelConnectorPermissionResponseResult {
   requestId: string | null;
   toolName: string | null;
   error?: string | null;
+  suppressReply?: boolean;
 }
 
 export interface ChannelConnectorCommandResult {
@@ -207,6 +208,7 @@ export interface ChannelConnectorCommandResult {
   control: ChannelConnectorSessionControlRecord | null;
   passthroughText?: string | null;
   nativeCommand?: string | null;
+  suppressReply?: boolean;
 }
 
 interface ParsedCommand {
@@ -921,6 +923,7 @@ function handlePermissionResponseCommand(
     control: currentControl,
     replyText: response.replyText,
     passthroughText: null,
+    suppressReply: response.suppressReply === true,
   };
 }
 
@@ -1920,6 +1923,7 @@ export async function handleChannelConnectorCommand(
         control: currentControl,
         replyText: response.replyText,
         passthroughText: null,
+        suppressReply: response.suppressReply === true,
       };
     }
   }
@@ -1950,6 +1954,7 @@ export async function handleChannelConnectorCommand(
         control: currentControl,
         replyText: response.replyText,
         passthroughText: null,
+        suppressReply: response.suppressReply === true,
       };
     }
   }

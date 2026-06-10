@@ -590,9 +590,27 @@ interface ChannelDaemonPendingPermissionEntry {
   questions: ChannelDaemonUserQuestion[];
   answers: Map<number, string>;
   currentQuestion: number;
+  suppressReplyOnResolve?: boolean;
+  onStateChange?: (input: ChannelDaemonPendingPermissionStateChange) => Promise<void> | void;
 }
 
 type ChannelDaemonPendingPermissionRegistry = Map<string, ChannelDaemonPendingPermissionEntry>;
+
+type ChannelDaemonPendingPermissionState =
+  | "pending"
+  | "allowed"
+  | "allowed-all"
+  | "denied"
+  | "timed-out"
+  | "replaced"
+  | "ended"
+  | "failed";
+
+interface ChannelDaemonPendingPermissionStateChange {
+  request: ChannelConnectorAgentPermissionRequest;
+  status: ChannelDaemonPendingPermissionState;
+  message?: string | null;
+}
 
 interface ChannelDaemonActiveRunLookupResult {
   runId: string;
@@ -619,7 +637,7 @@ interface ChannelDaemonStopActiveRunResult {
   error: string | null;
 }
 
-type FeishuProgressCardEntryKind = "info" | "assistant" | "thinking" | "tool_use" | "tool_result" | "error";
+type FeishuProgressCardEntryKind = "info" | "assistant" | "thinking" | "tool_use" | "tool_result" | "permission" | "error";
 
 const channelSessionAgentRunQueues: ChannelDaemonSessionRunQueueRegistry = new Map();
 const channelPendingPermissions: ChannelDaemonPendingPermissionRegistry = new Map();
@@ -633,6 +651,13 @@ interface FeishuProgressCardEntry {
   fingerprint: string;
   rawType: string | null;
   itemType: string | null;
+  permission?: {
+    requestId: string;
+    toolName: string;
+    input: Record<string, unknown>;
+    status: ChannelDaemonPendingPermissionState;
+    message: string | null;
+  };
 }
 
 interface FeishuProgressCardState {
@@ -1168,6 +1193,28 @@ function permissionDecisionFromAction(
   return { behavior: "allow", updatedInput: entry.request.input };
 }
 
+function permissionStateFromAction(action: ChannelConnectorPermissionResponseAction): ChannelDaemonPendingPermissionState {
+  if (action === "deny") return "denied";
+  if (action === "allow-all") return "allowed-all";
+  return "allowed";
+}
+
+function notifyPendingPermissionState(
+  entry: ChannelDaemonPendingPermissionEntry,
+  status: ChannelDaemonPendingPermissionState,
+  message?: string | null,
+): void {
+  try {
+    void Promise.resolve(entry.onStateChange?.({
+      request: entry.request,
+      status,
+      message: message || null,
+    })).catch(() => undefined);
+  } catch {
+    // best effort UI update
+  }
+}
+
 function respondPendingQuestionForSession(
   registry: ChannelDaemonPendingPermissionRegistry,
   input: {
@@ -1250,6 +1297,7 @@ function respondPendingPermissionForSession(
   registry.delete(key);
   clearTimeout(entry.timeout);
   if (input.action === "allow-all") channelPermissionApproveAllRunIds.add(entry.runId);
+  notifyPendingPermissionState(entry, permissionStateFromAction(input.action));
   entry.resolve(permissionDecisionFromAction(input.action, entry));
   const actionText = input.action === "deny"
     ? "已拒绝"
@@ -1260,6 +1308,7 @@ function respondPendingPermissionForSession(
     replyText: `${actionText}：${entry.request.toolName || "tool"} (${entry.request.requestId})`,
     requestId: entry.request.requestId,
     toolName: entry.request.toolName || null,
+    suppressReply: entry.suppressReplyOnResolve === true,
   };
 }
 
@@ -1269,6 +1318,7 @@ function clearPendingPermissionsForRun(registry: ChannelDaemonPendingPermissionR
     if (entry.runId !== runId) continue;
     registry.delete(key);
     clearTimeout(entry.timeout);
+    notifyPendingPermissionState(entry, "ended", "Agent run ended before approval.");
     entry.resolve({ behavior: "deny", message: "Agent run ended before the permission request was approved." });
   }
 }
@@ -1300,6 +1350,8 @@ function createPermissionResolver(input: {
   model: string | null;
   timeoutMs?: number;
   onPrompt: (prompt: string, request: ChannelConnectorAgentPermissionRequest) => Promise<void> | void;
+  onStateChange?: (input: ChannelDaemonPendingPermissionStateChange) => Promise<void> | void;
+  suppressReplyOnResolve?: boolean;
 }): (request: ChannelConnectorAgentPermissionRequest) => Promise<ChannelConnectorAgentPermissionDecision> {
   return async (request) => {
     if (!isAskUserQuestionRequest(request) && channelPermissionApproveAllRunIds.has(input.runId)) {
@@ -1311,10 +1363,15 @@ function createPermissionResolver(input: {
       const previous = input.registry.get(key);
       if (previous) {
         clearTimeout(previous.timeout);
+        notifyPendingPermissionState(previous, "replaced", "A newer permission request replaced this request.");
         previous.resolve({ behavior: "deny", message: "A newer permission request replaced this request." });
       }
       const timeout = setTimeout(() => {
-        if (input.registry.get(key)?.id === request.requestId) input.registry.delete(key);
+        const entry = input.registry.get(key);
+        if (entry?.id === request.requestId) {
+          input.registry.delete(key);
+          notifyPendingPermissionState(entry, "timed-out", "Permission request timed out.");
+        }
         resolve({ behavior: "deny", message: "Permission request timed out waiting for IM approval." });
       }, timeoutMs);
       timeout.unref();
@@ -1333,10 +1390,17 @@ function createPermissionResolver(input: {
         questions: pendingAskUserQuestions(request),
         answers: new Map(),
         currentQuestion: 0,
+        suppressReplyOnResolve: input.suppressReplyOnResolve === true,
+        onStateChange: input.onStateChange,
       };
       input.registry.set(key, entry);
+      notifyPendingPermissionState(entry, "pending");
       Promise.resolve(input.onPrompt(renderPermissionPrompt(request), request)).catch((error) => {
-        if (input.registry.get(key)?.id === request.requestId) input.registry.delete(key);
+        const current = input.registry.get(key);
+        if (current?.id === request.requestId) {
+          input.registry.delete(key);
+          notifyPendingPermissionState(current, "failed", shortMessage(error));
+        }
         clearTimeout(timeout);
         resolve({ behavior: "deny", message: `Permission prompt delivery failed: ${shortMessage(error)}` });
       });
@@ -3247,6 +3311,7 @@ function progressKindIcon(kind: FeishuProgressCardEntryKind | ChannelConnectorAg
   if (kind === "thinking" || kind === "reasoning") return "💭";
   if (kind === "tool_use" || kind === "tool") return "🔧";
   if (kind === "tool_result") return "🟢";
+  if (kind === "permission") return "🛂";
   if (kind === "error" || kind === "failed") return "🔴";
   if (kind === "completed") return "✅";
   if (kind === "running") return "⏳";
@@ -4375,6 +4440,79 @@ function pushFeishuProgressCardEvent(
   return true;
 }
 
+function permissionProgressStatusLabel(status: ChannelDaemonPendingPermissionState): string {
+  if (status === "pending") return "等待审批";
+  if (status === "allowed") return "已允许";
+  if (status === "allowed-all") return "已允许本次运行后续请求";
+  if (status === "denied") return "已拒绝";
+  if (status === "timed-out") return "已超时拒绝";
+  if (status === "replaced") return "已被新请求替换";
+  if (status === "ended") return "运行结束，已取消";
+  return "审批失败";
+}
+
+function permissionProgressStatusColor(status: ChannelDaemonPendingPermissionState): "blue" | "green" | "red" | "grey" {
+  if (status === "pending") return "blue";
+  if (status === "allowed" || status === "allowed-all") return "green";
+  if (status === "denied" || status === "timed-out" || status === "failed") return "red";
+  return "grey";
+}
+
+function permissionProgressText(input: {
+  request: ChannelConnectorAgentPermissionRequest;
+  status: ChannelDaemonPendingPermissionState;
+  message?: string | null;
+}): string {
+  const inputJson = JSON.stringify(input.request.input || {}, null, 2);
+  const lines = [
+    `工具：${normalizeString(input.request.toolName) || "tool"}`,
+    `请求：${normalizeString(input.request.requestId) || "permission"}`,
+    `状态：${permissionProgressStatusLabel(input.status)}`,
+    input.message ? `说明：${input.message}` : "",
+    inputJson && inputJson !== "{}" ? `参数：\n${inputJson}` : "",
+  ].filter(Boolean);
+  return lines.join("\n");
+}
+
+function upsertFeishuPermissionProgressEntry(
+  cardState: FeishuProgressCardState,
+  input: {
+    request: ChannelConnectorAgentPermissionRequest;
+    status: ChannelDaemonPendingPermissionState;
+    message?: string | null;
+  },
+): boolean {
+  const requestId = normalizeString(input.request.requestId) || "permission";
+  const toolName = normalizeString(input.request.toolName) || "tool";
+  const fingerprint = `permission:${requestId}`;
+  const existing = cardState.entries.find((entry) => entry.fingerprint === fingerprint);
+  const entry: FeishuProgressCardEntry = {
+    kind: "permission",
+    title: "权限审批",
+    text: shortMessage(permissionProgressText(input), 1_200),
+    checkedAt: new Date().toISOString(),
+    fingerprint,
+    rawType: "permission",
+    itemType: toolName,
+    permission: {
+      requestId,
+      toolName,
+      input: input.request.input || {},
+      status: input.status,
+      message: input.message || null,
+    },
+  };
+  if (existing) {
+    Object.assign(existing, entry);
+  } else {
+    cardState.entries.push(entry);
+  }
+  cardState.entries = cardState.entries.slice(-8);
+  cardState.updatedAtMs = Date.now();
+  cardState.dirty = true;
+  return true;
+}
+
 function ensureFeishuProgressCardFailure(
   cardState: FeishuProgressCardState,
   error: string | null,
@@ -4612,6 +4750,19 @@ function indentPlainProgressBody(value: string): string {
 function renderFeishuProgressEntry(entry: FeishuProgressCardEntry): string {
   if (entry.kind === "assistant") return `${progressKindIcon(entry.kind)} <text_tag color='green'>过程回复</text_tag>\n${entry.text}`;
   if (entry.kind === "thinking") return `${progressKindIcon(entry.kind)} <text_tag color='grey'>思考</text_tag>\n${inlineProgressCode(entry.text)}`;
+  if (entry.kind === "permission") {
+    const status = entry.permission?.status || "pending";
+    const toolName = entry.permission?.toolName || "tool";
+    const requestId = entry.permission?.requestId || "permission";
+    const inputJson = JSON.stringify(entry.permission?.input || {}, null, 2);
+    const inputBlock = inputJson && inputJson !== "{}" ? codeBlock("json", inputJson) : "";
+    return [
+      `${progressKindIcon(entry.kind)} <text_tag color='${permissionProgressStatusColor(status)}'>${permissionProgressStatusLabel(status)}</text_tag> \`${inlineProgressCode(toolName)}\``,
+      `请求 \`${inlineProgressCode(requestId)}\``,
+      entry.permission?.message ? inlineProgressCode(entry.permission.message) : "",
+      inputBlock,
+    ].filter(Boolean).join("\n");
+  }
   if (entry.kind === "tool_use") {
     const parsed = parseProgressToolText(entry);
     const title = `${progressKindIcon(entry.kind)} <text_tag color='blue'>工具调用</text_tag> \`${inlineProgressCode(parsed.toolName)}\``;
@@ -4651,6 +4802,22 @@ function renderPlainProgressEntry(entry: FeishuProgressCardEntry): string {
       body: entry.text,
     });
   }
+  if (entry.kind === "permission") {
+    const status = entry.permission?.status || "pending";
+    const body = [
+      `请求 \`${inlineProgressCode(entry.permission?.requestId || "permission")}\``,
+      entry.permission?.message || "",
+      entry.permission?.input && Object.keys(entry.permission.input).length
+        ? codeBlock("json", JSON.stringify(entry.permission.input, null, 2))
+        : "",
+    ].filter(Boolean).join("\n");
+    return renderPlainProgressMessage({
+      icon: progressKindIcon(entry.kind),
+      title: `权限审批 \`${inlineProgressCode(entry.permission?.toolName || "tool")}\``,
+      meta: permissionProgressStatusLabel(status),
+      body,
+    });
+  }
   if (entry.kind === "tool_use") {
     const parsed = parseProgressToolText(entry);
     const status = progressStatusLabel(parsed.status);
@@ -4683,6 +4850,33 @@ function renderPlainProgressEntry(entry: FeishuProgressCardEntry): string {
   });
 }
 
+function renderFeishuProgressPermissionActions(entry: FeishuProgressCardEntry): Record<string, unknown> | null {
+  if (entry.kind !== "permission" || entry.permission?.status !== "pending") return null;
+  return {
+    tag: "action",
+    actions: [
+      feishuPermissionButton({
+        label: "允许",
+        type: "primary",
+        command: "/approve",
+        actionId: "permission-approve",
+      }),
+      feishuPermissionButton({
+        label: "拒绝",
+        type: "danger",
+        command: "/deny",
+        actionId: "permission-deny",
+      }),
+      feishuPermissionButton({
+        label: "本次运行全部允许",
+        type: "default",
+        command: "/allow-all",
+        actionId: "permission-allow-all",
+      }),
+    ],
+  };
+}
+
 function renderFeishuProgressCardEventElements(entries: FeishuProgressCardEntry[]): Array<Record<string, unknown>> {
   if (!entries.length) {
     return [{
@@ -4698,6 +4892,8 @@ function renderFeishuProgressCardEventElements(entries: FeishuProgressCardEntry[
       tag: "markdown",
       content: `**${indexText}** ${renderFeishuProgressEntry(entry)}`,
     });
+    const actions = renderFeishuProgressPermissionActions(entry);
+    if (actions) elements.push(actions);
   });
   return elements;
 }
@@ -4929,6 +5125,7 @@ function feishuCommandNotice(input: {
   command: ReturnType<typeof handleChannelConnectorCommand> extends Promise<infer Result> ? Result : never;
   actionKind: "nav" | "act" | "cmd" | null;
 }): { title: string; text: string; ok: boolean | null } | null {
+  if (input.command.suppressReply === true) return null;
   if (input.actionKind === "nav") return null;
   if (normalizeString(input.command.action).toLowerCase() === "help") return null;
   const text = normalizeString(input.command.replyText || input.command.passthroughText);
@@ -4990,6 +5187,9 @@ function feishuCommandToast(input: {
   }
   if (action === "list") {
     return { type: "info", content: "列表已刷新" };
+  }
+  if (action === "permission" && input.command.suppressReply === true) {
+    return { type: "info", content: "审批已更新" };
   }
   return {
     type: "info",
@@ -5540,7 +5740,7 @@ async function dispatchOctoMessage(input: {
   if (command.handled) {
     let replySent = false;
     let replyRequestCount: number | null = null;
-    if (transport && command.replyText) {
+    if (transport && command.replyText && command.suppressReply !== true) {
       const replyPlan = renderOctoTextReply(message, command.replyText);
       if (replyPlan) {
         const result = await sendOctoTextReply(transport, replyPlan);
@@ -6571,7 +6771,7 @@ async function dispatchFeishuParsedEvent(input: {
         };
       }
     }
-    if (!replySent && !shouldSendCard && parsed.kind === "card-action" && command.replyText) {
+    if (!replySent && !shouldSendCard && parsed.kind === "card-action" && command.replyText && command.suppressReply !== true) {
       sendFeishuCommandTextReplyInBackground({
         config,
         transport,
@@ -6586,7 +6786,7 @@ async function dispatchFeishuParsedEvent(input: {
       replyQueued = true;
       replyTransportAction = "send-message-async";
     }
-    if (!replySent && !replyQueued && command.replyText) {
+    if (!replySent && !replyQueued && command.replyText && command.suppressReply !== true) {
       const result = await sendFeishuTextMessage(transport, {
         chatId: parsed.channelId,
         content: command.replyText,
@@ -6972,7 +7172,18 @@ async function dispatchFeishuParsedEvent(input: {
           messageId,
           agent: turnProject.agent,
           model: turnProject.model,
+          suppressReplyOnResolve: feishuCardsEnabled(binding) && Boolean(parsed.channelId),
+          onStateChange: (change) => {
+            if (isAskUserQuestionRequest(change.request)) return;
+            if (!feishuCardsEnabled(binding) || !parsed.channelId) return;
+            upsertFeishuPermissionProgressEntry(progressCardState, change);
+            queueFeishuProgressFlush(true, `permission-${change.status}`);
+          },
           onPrompt: async (prompt, request) => {
+            if (!isAskUserQuestionRequest(request) && feishuCardsEnabled(binding) && parsed.channelId) {
+              await feishuProgressFlush;
+              if (progressCardState.messageId) return;
+            }
             await sendFeishuPermissionPrompt({
               config,
               transport,
