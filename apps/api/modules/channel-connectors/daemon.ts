@@ -8266,7 +8266,15 @@ async function main(): Promise<void> {
     for (const client of feishuClients) client.close({ force: true });
     for (const group of feishuGroups) releaseFeishuGroupLock(config, group);
     flushRuntime(config, state);
-    server.close(() => process.exit(0));
+    const forceExitTimer = setTimeout(() => {
+      process.stderr.write("channel-connectors daemon: forced exit after 5s timeout\n");
+      process.exit(0);
+    }, 5000);
+    forceExitTimer.unref();
+    server.close(() => {
+      clearTimeout(forceExitTimer);
+      process.exit(0);
+    });
   };
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
