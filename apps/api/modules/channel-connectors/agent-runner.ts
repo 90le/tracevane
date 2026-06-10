@@ -42,6 +42,8 @@ export interface ChannelConnectorAgentProgressEvent {
   itemType: string | null;
   text: string | null;
   phase?: "intermediate" | "final" | null;
+  toolName?: string | null;
+  toolCallId?: string | null;
 }
 
 export interface ChannelConnectorAgentPermissionRequest {
@@ -507,15 +509,28 @@ function toolLikeItemType(itemType: string | null): boolean {
   ].some((needle) => lowered.includes(needle));
 }
 
-export function codexToolProgressText(item: Record<string, unknown> | null, itemType: string | null, rawType: string): string {
+function codexToolProgressName(item: Record<string, unknown> | null, itemType: string | null): string {
   if (!item) return itemType || "tool";
-  const name = normalizeString(item.name)
+  return normalizeString(item.name)
     || normalizeString(item.tool_name)
     || normalizeString(item.toolName)
     || normalizeString(item.call_id)
     || normalizeString(item.callId)
     || itemType
     || "tool";
+}
+
+function codexToolCallId(item: Record<string, unknown> | null): string | null {
+  if (!item) return null;
+  return normalizeString(item.call_id)
+    || normalizeString(item.callId)
+    || normalizeString(item.id)
+    || null;
+}
+
+export function codexToolProgressText(item: Record<string, unknown> | null, itemType: string | null, rawType: string): string {
+  if (!item) return itemType || "tool";
+  const name = codexToolProgressName(item, itemType);
   const command = normalizeString(item.command)
     || normalizeString(item.cmd)
     || stringifyProgressValue(item.arguments)
@@ -1063,6 +1078,8 @@ function progressEvent(input: {
   itemType?: string | null;
   text?: string | null;
   phase?: ChannelConnectorAgentProgressEvent["phase"];
+  toolName?: string | null;
+  toolCallId?: string | null;
 }): ChannelConnectorAgentProgressEvent {
   return {
     checkedAt: nowIso(),
@@ -1071,6 +1088,8 @@ function progressEvent(input: {
     itemType: input.itemType || null,
     text: input.text ? truncateProgressText(input.text) : null,
     phase: input.phase || null,
+    toolName: normalizeString(input.toolName) || null,
+    toolCallId: normalizeString(input.toolCallId) || null,
   };
 }
 
@@ -1105,7 +1124,14 @@ function parseCodexProgressLine(line: string): ChannelConnectorAgentProgressEven
     if (itemType === "reasoning") return progressEvent({ type: "reasoning", rawType, itemType, text: normalizeString(item?.text) || null });
     if (itemType === "agent_message") return progressEvent({ type: "assistant", rawType, itemType, text: normalizeString(item?.text) || null, phase: "final" });
     if (toolLikeItemType(itemType)) {
-      return progressEvent({ type: "tool", rawType, itemType, text: codexToolProgressText(item, itemType, rawType) });
+      return progressEvent({
+        type: "tool",
+        rawType,
+        itemType,
+        text: codexToolProgressText(item, itemType, rawType),
+        toolName: codexToolProgressName(item, itemType),
+        toolCallId: codexToolCallId(item),
+      });
     }
     return progressEvent({ type: "event", rawType, itemType, text: itemType });
   }
@@ -1202,16 +1228,16 @@ function openCodeToolProgressEvents(
   const isResultOnly = rawType === "tool_result" || partType === "tool_result" || partType === "tool-result";
   if (isResultOnly) {
     return resultText
-      ? [progressEvent({ type: status === "error" ? "error" : "tool", rawType, itemType: partType, text: resultText })]
+      ? [progressEvent({ type: status === "error" ? "error" : "tool", rawType, itemType: partType, text: resultText, toolName })]
       : [];
   }
   if (status === "completed" && output) {
     return [
-      progressEvent({ type: "tool", rawType, itemType: partType, text: inputText || toolName }),
-      progressEvent({ type: "tool", rawType: "tool_result", itemType: "tool_result", text: resultText }),
+      progressEvent({ type: "tool", rawType, itemType: partType, text: inputText || toolName, toolName }),
+      progressEvent({ type: "tool", rawType: "tool_result", itemType: "tool_result", text: resultText, toolName }),
     ];
   }
-  return [progressEvent({ type: "tool", rawType, itemType: partType, text: inputText || resultText || toolName })];
+  return [progressEvent({ type: "tool", rawType, itemType: partType, text: inputText || resultText || toolName, toolName })];
 }
 
 function parseOpenCodeProgressLineEvents(line: string): ChannelConnectorAgentProgressEvent[] {
@@ -1372,11 +1398,14 @@ function parseClaudeProgressLineEvents(line: string): ChannelConnectorAgentProgr
       if (itemType === "tool_use") {
         const toolName = normalizeString(item.name);
         if (toolName === "AskUserQuestion") continue;
+        const toolCallId = normalizeString(item.id) || normalizeString(item.tool_use_id);
         events.push(progressEvent({
           type: "tool",
           rawType,
           itemType,
           text: claudeToolProgressText(item),
+          toolName,
+          toolCallId,
         }));
       } else if (itemType === "thinking") {
         const thinking = normalizeString(item.thinking) || progressTextValue(item);
@@ -1409,12 +1438,14 @@ function parseClaudeProgressLineEvents(line: string): ChannelConnectorAgentProgr
       if (itemType !== "tool_result") continue;
       const isError = item.is_error === true;
       const text = firstProgressTextValue(item.content, item.text, item.result);
+      const toolCallId = normalizeString(item.tool_use_id) || normalizeString(item.id);
       if (!text && !isError) continue;
       events.push(progressEvent({
         type: isError ? "error" : "tool",
         rawType,
         itemType,
         text: text || "Claude tool result reported an error.",
+        toolCallId,
       }));
     }
     return events;
@@ -1435,7 +1466,7 @@ function parseClaudeProgressLineEvents(line: string): ChannelConnectorAgentProgr
     const subtype = normalizeString(request?.subtype);
     const toolName = normalizeString(request?.tool_name);
     const text = [subtype || "control_request", toolName].filter(Boolean).join(": ");
-    return [progressEvent({ type: "tool", rawType, text })];
+    return [progressEvent({ type: "tool", rawType, text, toolName })];
   }
 
   return [parseGenericProgressLine(line)].filter((event): event is ChannelConnectorAgentProgressEvent => Boolean(event));
@@ -1466,12 +1497,38 @@ function isTerminalProgressEvent(event: ChannelConnectorAgentProgressEvent): boo
   return event.type === "completed" || event.type === "failed" || event.type === "error";
 }
 
+function isToolUseProgressEvent(event: ChannelConnectorAgentProgressEvent): boolean {
+  if (event.type !== "tool") return false;
+  const rawType = normalizeString(event.rawType).toLowerCase();
+  const itemType = normalizeString(event.itemType).toLowerCase();
+  return rawType.includes("tool_use")
+    || itemType.includes("tool_use")
+    || rawType === "control_request"
+    || rawType.endsWith(".started")
+    || rawType.endsWith("/started")
+    || rawType === "item.started";
+}
+
+function isToolResultProgressEvent(event: ChannelConnectorAgentProgressEvent): boolean {
+  if (event.type !== "tool" && event.type !== "error") return false;
+  const rawType = normalizeString(event.rawType).toLowerCase();
+  const itemType = normalizeString(event.itemType).toLowerCase();
+  return rawType.includes("tool_result")
+    || itemType.includes("tool_result")
+    || rawType === "user"
+    || rawType.endsWith(".completed")
+    || rawType.endsWith("/completed")
+    || rawType === "item.completed";
+}
+
 function createProgressLineParser(agent: ChannelConnectorAgentId): {
   parse: (line: string) => ChannelConnectorAgentProgressEvent[];
   flushFinal: () => ChannelConnectorAgentProgressEvent[];
 } {
   const bufferAssistantText = agent === "codex" || agent === "claude-code" || agent === "opencode";
   const pendingAssistantText: ChannelConnectorAgentProgressEvent[] = [];
+  const pendingToolNamesById = new Map<string, string>();
+  let latestToolName: string | null = null;
   const flushAssistantText = (phase: "intermediate" | "final"): ChannelConnectorAgentProgressEvent[] => {
     if (!pendingAssistantText.length) return [];
     const latest = pendingAssistantText[pendingAssistantText.length - 1];
@@ -1479,12 +1536,29 @@ function createProgressLineParser(agent: ChannelConnectorAgentId): {
     pendingAssistantText.length = 0;
     return text ? [{ ...latest, text, phase }] : [];
   };
+  const enrichToolProgress = (event: ChannelConnectorAgentProgressEvent): ChannelConnectorAgentProgressEvent => {
+    if (isToolUseProgressEvent(event)) {
+      const toolName = normalizeString(event.toolName);
+      if (toolName) {
+        latestToolName = toolName;
+        const toolCallId = normalizeString(event.toolCallId);
+        if (toolCallId) pendingToolNamesById.set(toolCallId, toolName);
+      }
+      return event;
+    }
+    if (!isToolResultProgressEvent(event) || normalizeString(event.toolName)) return event;
+    const toolCallId = normalizeString(event.toolCallId);
+    const toolName = (toolCallId ? pendingToolNamesById.get(toolCallId) : null) || latestToolName;
+    if (!toolName) return event;
+    return { ...event, toolName };
+  };
   return {
     parse: (line: string): ChannelConnectorAgentProgressEvent[] => {
       const events = parseProgressLineEvents(agent, line);
       if (!bufferAssistantText) return events;
       const output: ChannelConnectorAgentProgressEvent[] = [];
-      for (const event of events) {
+      for (const rawEvent of events) {
+        const event = enrichToolProgress(rawEvent);
         if (isBufferedAssistantText(event)) {
           pendingAssistantText.push(event);
           continue;

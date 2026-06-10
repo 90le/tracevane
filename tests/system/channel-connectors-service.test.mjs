@@ -7319,7 +7319,7 @@ test("native Channel Connectors process runner maps Claude Code stream-json prog
       message: {
         content: [
           { type: "thinking", thinking: "I should inspect the file." },
-          { type: "tool_use", name: "Read", input: { file_path: "TOOLS.md" } },
+          { type: "tool_use", id: "toolu_read_1", name: "Read", input: { file_path: "TOOLS.md" } },
           { type: "text", text: "我会读取文件。" },
         ],
       },
@@ -7328,7 +7328,7 @@ test("native Channel Connectors process runner maps Claude Code stream-json prog
       type: "user",
       message: {
         content: [
-          { type: "tool_result", content: [{ type: "text", text: "line 1" }, { type: "text", text: "line 2" }] },
+          { type: "tool_result", tool_use_id: "toolu_read_1", content: [{ type: "text", text: "line 1" }, { type: "text", text: "line 2" }] },
         ],
       },
     }),
@@ -7357,6 +7357,8 @@ test("native Channel Connectors process runner maps Claude Code stream-json prog
   assert.equal(progress[1].text, "I should inspect the file.");
   assert.equal(progress[2].type, "tool");
   assert.equal(progress[2].itemType, "tool_use");
+  assert.equal(progress[2].toolName, "Read");
+  assert.equal(progress[2].toolCallId, "toolu_read_1");
   assert.match(progress[2].text, /Read/);
   assert.match(progress[2].text, /TOOLS\.md/);
   assert.equal(progress[3].type, "assistant");
@@ -7365,6 +7367,8 @@ test("native Channel Connectors process runner maps Claude Code stream-json prog
   assert.equal(isChannelConnectorProcessProgressEvent(progress[3]), true);
   assert.equal(progress[4].type, "tool");
   assert.equal(progress[4].itemType, "tool_result");
+  assert.equal(progress[4].toolName, "Read");
+  assert.equal(progress[4].toolCallId, "toolu_read_1");
   assert.equal(progress[4].text, "line 1\nline 2");
   assert.equal(progress[5].type, "completed");
   assert.equal(progress[5].text, "完成\n\n下一步可以发送文件。");
@@ -7493,10 +7497,12 @@ test("native Channel Connectors process runner maps OpenCode JSON progress witho
   assert.equal(progress[1].text, "I should inspect the directory.");
   assert.equal(progress[2].type, "tool");
   assert.equal(progress[2].rawType, "tool_use");
+  assert.equal(progress[2].toolName, "bash");
   assert.match(progress[2].text, /bash/);
   assert.match(progress[2].text, /List files/);
   assert.equal(progress[3].type, "tool");
   assert.equal(progress[3].rawType, "tool_result");
+  assert.equal(progress[3].toolName, "bash");
   assert.match(progress[3].text, /output:\nfile-a\nfile-b/);
   assert.equal(progress[4].type, "assistant");
   assert.equal(progress[4].text, "第一次工具完成。");
@@ -7504,9 +7510,11 @@ test("native Channel Connectors process runner maps OpenCode JSON progress witho
   assert.equal(isChannelConnectorProcessProgressEvent(progress[4]), true);
   assert.equal(progress[5].type, "tool");
   assert.equal(progress[5].rawType, "tool_use");
+  assert.equal(progress[5].toolName, "bash");
   assert.match(progress[5].text, /Print cwd/);
   assert.equal(progress[6].type, "tool");
   assert.equal(progress[6].rawType, "tool_result");
+  assert.equal(progress[6].toolName, "bash");
   assert.match(progress[6].text, /output:\n\/tmp\/project/);
   assert.equal(progress[7].type, "assistant");
   assert.equal(progress[7].text, "OpenCode done.");
@@ -7987,6 +7995,9 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /function formatProgressToolInput/);
   assert.match(daemonSource, /function formatTodoWriteProgressInput/);
   assert.match(daemonSource, /function progressEventToolDirection/);
+  assert.match(daemonSource, /function progressToolUseLabel/);
+  assert.match(daemonSource, /function progressToolResultLabel/);
+  assert.match(daemonSource, /function recentFeishuProgressToolName/);
   assert.match(daemonSource, /rawType\.includes\("tool_use"\)/);
   assert.match(daemonSource, /itemType\.includes\("tool_use"\)/);
   assert.match(daemonSource, /rawType\.includes\("tool_result"\)/);
@@ -8040,7 +8051,8 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /agent\.progress\.reply/);
   assert.match(daemonSource, /event\.type === "failed" \|\| event\.type === "error" \|\| event\.type === "tool"/);
   assert.match(daemonSource, /title:\s*"过程回复"/);
-  assert.match(daemonSource, /工具调用[^\n]+inlineProgressCode\(parsed\.toolName\)/);
+  assert.match(daemonSource, /progressToolUseLabel\(parsed\.toolName\)/);
+  assert.match(daemonSource, /progressToolResultLabel\(parsed\.toolName\)/);
   assert.match(daemonSource, /exit[^\n]+inlineProgressCode\(parsed\.exitCode\)/);
   assert.match(daemonSource, /event\.type === "running"/);
   assert.match(daemonSource, /\["reasoning",\s*"tool",\s*"failed",\s*"error"\]\.includes\(event\.type\)/);

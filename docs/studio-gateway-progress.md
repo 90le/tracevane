@@ -40,7 +40,7 @@
 - 增强 `smoke-channel-connectors-agent-run-live.mjs`：新增 `--require-no-final-progress-reply` 和 `--require-feishu-progress-card-completed`，并把这两项做成窗口级硬保护；用户发真实 IM 消息后，脚本会验收最终回复未被当过程消息发送，且任何成功 Feishu run 的最终进度卡都不能停在 failed。
 - 保留 Codex delta 防刷屏保护：Codex app-server `item/agentMessage/delta` 仍只用于拼最终 reply，不会逐 token 推送过程回复。
 - 清理 Channel Connectors 回归测试债：OpenCode persistent fake session 测试显式模拟当前 runtime dataHome session 存在性；OpenCode stop 测试区分启动前合法 session 验证与取消后禁止 DB fallback；daemon runtime / Octo JSONL 测试改为等待 async debounce/buffer flush，不再误报。
-- 对照 CC Go 修复 Claude/OpenCode 工具流：Claude live/session 递归提取 tool input/result，OpenCode NDJSON 按 completed `tool_use` 拆出工具调用和工具输出；assistant 正文统一由后续事件判定 intermediate/final；进度渲染层改为按 `rawType/itemType` 区分 `tool_use/tool_result`，Feishu 卡片和 Octo/纯文本不再把 Claude/OpenCode 工具调用误显示成“工具结果”，并能解析 `status=...`。
+- 对照 CC Go 修复 Claude/OpenCode 工具流：Claude live/session 递归提取 tool input/result，并通过 `tool_use_id` 把工具结果回填到对应工具名；OpenCode NDJSON 按 completed `tool_use` 拆出工具调用和工具输出；assistant 正文统一由后续事件判定 intermediate/final；进度渲染层改为按 `rawType/itemType` 区分 `tool_use/tool_result`，Feishu 卡片和 Octo/纯文本不再把 Claude/OpenCode 工具调用误显示成“工具结果”，并按工具名显示“命令输出 / 读取结果 / 检索结果”等语义标签。
 - 明确思考流边界：OpenCode 已带 `--thinking`，Claude Code 已解析 stream-json `thinking` block；渠道只展示上游真实 `reasoning/thinking` 事件，不合成伪思考。
 
 ## 最近验证
@@ -51,6 +51,7 @@
 - 通过：`npm run typecheck:api && npm run build:api`。
 - 通过：`node --test --test-name-pattern "native Channel Connectors process runner maps Claude Code stream-json progress|native Channel Connectors process runner maps OpenCode JSON progress without leaking final text|native Channel Connectors daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test --test-name-pattern "native Channel Connectors process runner maps Codex command execution progress|native Channel Connectors process runner maps Codex agent messages before later tools as process progress|native Channel Connectors process runner keeps Claude Code final text out of process progress" tests/system/channel-connectors-service.test.mjs`。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，66/66 全部通过。
 - 通过：`node --test tests/system/channel-connectors-feishu-long-connection-script.test.mjs`，覆盖 SDK connected 但 transport stale 时 smoke 失败。
 - 通过：`node --test --test-name-pattern "native Channel Connectors Feishu webhook parses live envelopes|Feishu long-connection|native Channel Connectors daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs tests/system/channel-connectors-feishu-long-connection-script.test.mjs`，覆盖 Feishu create_time 解析、过期消息跳过、10s ping / 8s pong / 23s stale 默认和 daemon 结构合同。
 - 通过：`node scripts/smoke-channel-connectors-feishu-long-connection.mjs --duration-ms 35000 --bindings feishu-live --json`，最新重启后现场结果 `violations=0`、`pingIntervalMs=10000`、`pongTimeoutMs=8000`、`transportStaleAfterMs=23000`、`transportStale=false`、`logEvents=0`。

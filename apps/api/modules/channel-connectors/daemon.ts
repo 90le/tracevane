@@ -651,6 +651,8 @@ interface FeishuProgressCardEntry {
   fingerprint: string;
   rawType: string | null;
   itemType: string | null;
+  toolName?: string | null;
+  toolCallId?: string | null;
   permission?: {
     requestId: string;
     toolName: string;
@@ -3385,6 +3387,8 @@ function renderOctoProgressText(event: ChannelConnectorAgentProgressEvent): stri
       fingerprint: "",
       rawType: event.rawType,
       itemType: event.itemType,
+      toolName: event.toolName,
+      toolCallId: event.toolCallId,
     };
     return renderPlainProgressEntry(entry);
   }
@@ -4445,12 +4449,29 @@ function feishuProgressEntryText(
 function feishuProgressEntryTitle(event: ChannelConnectorAgentProgressEvent, kind: FeishuProgressCardEntryKind): string {
   if (kind === "assistant") return "过程回复";
   if (kind === "thinking") return "思考";
-  if (kind === "tool_use") return event.itemType ? `工具调用：${event.itemType}` : "工具调用";
-  if (kind === "tool_result") return event.itemType ? `工具结果：${event.itemType}` : "工具结果";
+  const toolName = normalizeString(event.toolName)
+    || (!isGenericProgressToolName(normalizeString(event.itemType)) ? normalizeString(event.itemType) : "");
+  if (kind === "tool_use") return toolName ? `工具调用：${toolName}` : "工具调用";
+  if (kind === "tool_result") return toolName ? `工具结果：${toolName}` : "工具结果";
   if (kind === "error") return event.type === "failed" ? "失败" : "错误";
   if (event.type === "running") return "运行中";
   if (event.type === "completed") return "完成";
   return event.rawType || "进度";
+}
+
+function recentFeishuProgressToolName(
+  cardState: FeishuProgressCardState,
+  toolCallId: string | null | undefined,
+): string {
+  const normalizedToolCallId = normalizeString(toolCallId);
+  for (let index = cardState.entries.length - 1; index >= 0; index -= 1) {
+    const entry = cardState.entries[index];
+    if (entry.kind !== "tool_use") continue;
+    if (normalizedToolCallId && normalizeString(entry.toolCallId) !== normalizedToolCallId) continue;
+    const parsed = parseProgressToolText(entry);
+    if (parsed.toolName && !isGenericProgressToolName(parsed.toolName)) return parsed.toolName;
+  }
+  return "";
 }
 
 function pushFeishuProgressCardEvent(
@@ -4466,7 +4487,9 @@ function pushFeishuProgressCardEvent(
   }
   const text = shortMessage(feishuProgressEntryText(event, kind), 520);
   if (!text) return false;
-  const fingerprint = `${kind}:${event.rawType || ""}:${event.itemType || ""}:${text}`;
+  const toolName = normalizeString(event.toolName)
+    || (kind === "tool_result" ? recentFeishuProgressToolName(cardState, event.toolCallId) : "");
+  const fingerprint = `${kind}:${event.rawType || ""}:${event.itemType || ""}:${event.toolCallId || ""}:${toolName}:${text}`;
   if (cardState.seenFingerprints.has(fingerprint)) return false;
   if (kind === "error" && cardState.latestError === text) return false;
   cardState.seenFingerprints.add(fingerprint);
@@ -4484,6 +4507,8 @@ function pushFeishuProgressCardEvent(
     fingerprint,
     rawType: event.rawType,
     itemType: event.itemType,
+    toolName,
+    toolCallId: event.toolCallId,
   });
   cardState.entries = cardState.entries.slice(-8);
   cardState.updatedAtMs = Date.now();
@@ -4636,6 +4661,36 @@ function isTodoWriteToolName(value: string | null): boolean {
   return normalizeString(value).toLowerCase() === "todowrite";
 }
 
+function normalizedProgressToolKey(value: string | null): string {
+  return normalizeString(value).toLowerCase().replace(/[\s_.:-]+/g, "");
+}
+
+function progressToolUseLabel(toolName: string): string {
+  const key = normalizedProgressToolKey(toolName);
+  if (["bash", "shell", "runshellcommand", "commandexecution", "command"].includes(key)) return "命令执行";
+  if (key === "todowrite") return "任务清单";
+  if (["read", "readfile", "notebookread"].includes(key)) return "文件读取";
+  if (["write", "writefile", "edit", "multiedit", "notebookedit", "applypatch"].includes(key)) return "文件修改";
+  if (["grep", "glob", "ls", "list", "search"].includes(key)) return "文件检索";
+  if (["webfetch", "websearch"].includes(key)) return "网页检索";
+  if (["agent", "task"].includes(key)) return "子任务";
+  if (["askuserquestion", "ask", "question"].includes(key)) return "用户确认";
+  return "工具调用";
+}
+
+function progressToolResultLabel(toolName: string): string {
+  const key = normalizedProgressToolKey(toolName);
+  if (["bash", "shell", "runshellcommand", "commandexecution", "command"].includes(key)) return "命令输出";
+  if (key === "todowrite") return "任务清单结果";
+  if (["read", "readfile", "notebookread"].includes(key)) return "读取结果";
+  if (["write", "writefile", "edit", "multiedit", "notebookedit", "applypatch"].includes(key)) return "修改结果";
+  if (["grep", "glob", "ls", "list", "search"].includes(key)) return "检索结果";
+  if (["webfetch", "websearch"].includes(key)) return "网页结果";
+  if (["agent", "task"].includes(key)) return "子任务结果";
+  if (["askuserquestion", "ask", "question"].includes(key)) return "用户确认结果";
+  return "工具结果";
+}
+
 function codeBlock(language: string, value: string): string {
   const body = normalizeString(value).replace(/```/g, "'''");
   return body ? `\`\`\`${language}\n${body}\n\`\`\`` : "";
@@ -4681,9 +4736,11 @@ function parseProgressToolText(entry: FeishuProgressCardEntry): {
 } {
   const lines = String(entry.text || "").split(/\r?\n/);
   const firstToolName = progressToolNameFromFirstLine(lines[0] || "");
+  const explicitToolName = normalizeString(entry.toolName);
   const itemTypeName = normalizeString(entry.itemType);
   const titleToolName = normalizeString(entry.title.split("：")[1]);
-  const toolName = firstToolName
+  const toolName = explicitToolName
+    || firstToolName
     || (!isGenericProgressToolName(itemTypeName) ? itemTypeName : "")
     || (!isGenericProgressToolName(titleToolName) ? titleToolName : "")
     || "tool";
@@ -4883,7 +4940,7 @@ function renderFeishuProgressEntry(entry: FeishuProgressCardEntry): string {
   }
   if (entry.kind === "tool_use") {
     const parsed = parseProgressToolText(entry);
-    const title = `${progressKindIcon(entry.kind)} <text_tag color='blue'>工具调用</text_tag> \`${inlineProgressCode(parsed.toolName)}\``;
+    const title = `${progressKindIcon(entry.kind)} <text_tag color='blue'>${progressToolUseLabel(parsed.toolName)}</text_tag> \`${inlineProgressCode(parsed.toolName)}\``;
     const status = progressStatusTag(parsed.status);
     const body = formatProgressToolInput(parsed.toolName, parsed.command || entry.text);
     return [title, status, body].filter(Boolean).join("\n");
@@ -4899,7 +4956,7 @@ function renderFeishuProgressEntry(entry: FeishuProgressCardEntry): string {
       parsed.status ? `status \`${inlineProgressCode(parsed.status)}\`` : "",
     ].filter(Boolean).join(" ");
     const output = formatProgressToolResult(parsed.output);
-    return `${icon} <text_tag color='turquoise'>工具结果</text_tag> \`${inlineProgressCode(parsed.toolName)}\`\n${meta}\n${output}`;
+    return `${icon} <text_tag color='turquoise'>${progressToolResultLabel(parsed.toolName)}</text_tag> \`${inlineProgressCode(parsed.toolName)}\`\n${meta}\n${output}`;
   }
   if (entry.kind === "error") return `${progressKindIcon(entry.kind)} <text_tag color='red'>${inlineProgressCode(entry.title)}</text_tag>\n${entry.text}`;
   return `${progressKindIcon(entry.kind)} <text_tag color='grey'>${inlineProgressCode(entry.title)}</text_tag>\n${entry.text}`;
@@ -4941,7 +4998,7 @@ function renderPlainProgressEntry(entry: FeishuProgressCardEntry): string {
     const status = progressStatusLabel(parsed.status);
     return renderPlainProgressMessage({
       icon: progressKindIcon(entry.kind),
-      title: `工具调用 \`${inlineProgressCode(parsed.toolName)}\``,
+      title: `${progressToolUseLabel(parsed.toolName)} \`${inlineProgressCode(parsed.toolName)}\``,
       meta: status || undefined,
       body: formatProgressToolInput(parsed.toolName, parsed.command || entry.text),
     });
@@ -4956,7 +5013,7 @@ function renderPlainProgressEntry(entry: FeishuProgressCardEntry): string {
     ].filter(Boolean).join(" · ");
     return renderPlainProgressMessage({
       icon: progressResultIcon({ status: parsed.status, exitCode: parsed.exitCode }),
-      title: `工具结果 \`${inlineProgressCode(parsed.toolName)}\``,
+      title: `${progressToolResultLabel(parsed.toolName)} \`${inlineProgressCode(parsed.toolName)}\``,
       meta,
       body: formatProgressToolResult(parsed.output),
     });
