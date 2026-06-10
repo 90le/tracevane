@@ -8273,15 +8273,25 @@ async function main(): Promise<void> {
       error: error instanceof Error ? error.message : String(error),
     });
   });
-  void startFeishuConnections(config, state, activeRunCancels, feishuClients, feishuClientAbortControllers, seenMessages, feishuGroups)
-    .then((timer) => {
-      feishuWatchdog = timer;
-    })
-    .catch((error) => {
-      appendLog(config.paths.log, "Feishu connection startup failed", {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    });
+  void (async () => {
+    let attempt = 0;
+    while (true) {
+      try {
+        const timer = await startFeishuConnections(config, state, activeRunCancels, feishuClients, feishuClientAbortControllers, seenMessages, feishuGroups);
+        feishuWatchdog = timer;
+        return;
+      } catch (error) {
+        attempt += 1;
+        const delayMs = Math.min(30_000 * 2 ** Math.min(attempt - 1, 4), 300_000);
+        appendLog(config.paths.log, "Feishu connection startup failed, retrying", {
+          error: error instanceof Error ? error.message : String(error),
+          attempt,
+          retryInMs: delayMs,
+        });
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    }
+  })();
 
   const stop = () => {
     appendLog(config.paths.log, "Studio native Channel Connectors daemon stopping");
