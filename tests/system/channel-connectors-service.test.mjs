@@ -7984,7 +7984,12 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /sendFeishuTextMessage/);
   assert.match(daemonSource, /sendFeishuCardMessage/);
   assert.match(daemonSource, /patchFeishuCardMessage/);
+  assert.match(daemonSource, /function renderFeishuAskUserQuestionCard/);
   assert.match(daemonSource, /function renderFeishuPermissionCard/);
+  assert.match(daemonSource, /return renderFeishuAskUserQuestionCard\(request\)/);
+  assert.match(daemonSource, /Claude Code 提问/);
+  assert.match(daemonSource, /askq:\$\{input\.requestId\}:\$\{optionNumber\}/);
+  assert.match(daemonSource, /allow \/ deny 会作为答案文本处理/);
   assert.match(daemonSource, /function sendFeishuPermissionPrompt/);
   assert.match(daemonSource, /function renderPlainPermissionPrompt/);
   assert.match(daemonSource, /function renderPlainPermissionState/);

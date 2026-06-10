@@ -4274,7 +4274,97 @@ function feishuPermissionButton(input: {
   };
 }
 
+function feishuAskUserQuestionButton(input: {
+  label: string;
+  requestId: string;
+  optionIndex: number;
+}): Record<string, unknown> {
+  const optionNumber = input.optionIndex + 1;
+  const answer = `askq:${input.requestId}:${optionNumber}`;
+  return {
+    tag: "button",
+    text: {
+      tag: "plain_text",
+      content: shortMessage(input.label, 48),
+    },
+    type: input.optionIndex === 0 ? "primary" : "default",
+    value: {
+      action: `act:${answer}`,
+      command: answer,
+      surface_action_kind: "act",
+      surface_action_id: `ask-user-question-${optionNumber}`,
+      surface_section_id: "question",
+      surface_view_id: "question",
+    },
+  };
+}
+
+function renderFeishuAskUserQuestionCard(
+  request: ChannelConnectorAgentPermissionRequest,
+): ChannelConnectorFeishuInteractiveCard {
+  const requestId = normalizeString(request.requestId) || "question";
+  const questions = pendingAskUserQuestions(request);
+  const question = questions[0] || fallbackAskUserQuestion();
+  const total = Math.max(questions.length, 1);
+  const optionLines = question.options.map((option, optionIndex) => {
+    const description = option.description ? ` - ${option.description}` : "";
+    return `${optionIndex + 1}. ${option.label}${description}`;
+  });
+  const actions = !question.multiSelect && question.options.length > 0 && question.options.length <= 6
+    ? [{
+      tag: "action",
+      actions: question.options.map((option, optionIndex) => feishuAskUserQuestionButton({
+        label: option.label,
+        requestId,
+        optionIndex,
+      })),
+    }]
+    : [];
+  const answerHelp = question.multiSelect
+    ? "可回复多个序号，例如 `1,3`；也可以直接回复文字。"
+    : question.options.length
+      ? "可点击选项按钮，或直接回复序号/文字。"
+      : "请直接回复答案。";
+  return {
+    config: {
+      wide_screen_mode: true,
+    },
+    header: {
+      title: {
+        tag: "plain_text",
+        content: total > 1 ? `Claude Code 提问 1/${total}` : "Claude Code 提问",
+      },
+      template: "blue",
+    },
+    elements: [
+      {
+        tag: "markdown",
+        content: [
+          question.header ? `**${question.header}**` : "",
+          question.question,
+          optionLines.length ? `**可选回答**\n${optionLines.join("\n")}` : "",
+          `**回复方式**\n${answerHelp}`,
+          `请求：\`${inlineProgressCode(requestId)}\``,
+        ].filter(Boolean).join("\n\n"),
+      },
+      ...actions,
+      {
+        tag: "note",
+        elements: [
+          {
+            tag: "plain_text",
+            content: "这是 Claude Code 的提问，不是工具权限审批；allow / deny 会作为答案文本处理。",
+          },
+        ],
+      },
+    ],
+  };
+}
+
 function renderFeishuPermissionCard(request: ChannelConnectorAgentPermissionRequest): ChannelConnectorFeishuInteractiveCard {
+  if (isAskUserQuestionRequest(request)) {
+    return renderFeishuAskUserQuestionCard(request);
+  }
   const toolName = normalizeString(request.toolName) || "tool";
   const requestId = normalizeString(request.requestId) || "permission";
   const inputJson = JSON.stringify(request.input || {}, null, 2);

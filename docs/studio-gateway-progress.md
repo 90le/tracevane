@@ -46,9 +46,13 @@
 - Claude Code stream-json 现在把 `tool_use_id` / request id 和工具名传入统一 progress event，后续工具结果能稳定显示为对应工具的“命令输出 / 读取结果 / 检索结果”等标签；工具识别补齐 `exec_command`、`TodoRead`、`find`、`webopen/webfind`、图像查看和 MCP 工具。
 - 精修非 Feishu 命令菜单：实际 `/help` 命令与 command surface fallback 都从多表格改为列表式 Markdown，避免 Octo/纯文本渠道出现第二张表渲染失败；`/help buffer`、`/help commands`、`/help native` 已拆分为独立文本页。
 - 精修纯文本进度流：Octo/纯文本标题不再用粗体大标题；工具结果统一代码块显示；工具标签补齐 `write_stdin`、`Patch`、`Permissions`、子任务、计划更新等语义，权限审批和工具流更容易区分。
+- 精修 Claude Code AskUserQuestion 飞书交互：AskUserQuestion 不再复用泛工具权限卡；Feishu 会显示独立问题卡、可选答案列表和单选按钮，按钮走已有 `askq:<request>:<index>` 回答合同；多选/自由回答仍直接回复文字。
 
 ## 最近验证
 
+- 通过：`npm run typecheck:api && npm run build:api`。
+- 通过：`node --test --test-name-pattern "native Channel Connectors process runner routes Claude Code AskUserQuestion through IM answers|native Channel Connectors daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，66/66 全部通过。
 - 通过：`node --test --test-name-pattern "native Channel Connectors command surface renders text and Feishu card actions|native Channel Connectors daemon owns Feishu long-connection ingress|native Channel Connectors resolves outbound file manifests under the Agent workdir|native Channel Connectors compact posts to Gateway and clears stale Agent sessions" tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test --test-name-pattern "native Channel Connectors IM commands switch agent, model, and permission per session|native Channel Connectors command surface renders text and Feishu card actions" tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs`，66/66 全部通过。
@@ -109,4 +113,4 @@
 1. 用户发送一条新的 Feishu 消息，做业务入站复验：runtime 应出现 dispatcher callback / receivedMessages，且无 reconnect/stale。
 2. 做真实 IM live approval smoke：先运行 `node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings feishu-live --require-ok --require-reply --require-progress --require-tool --require-feishu-card --require-feishu-progress-card-completed --require-no-final-progress-reply --json`，再用三次顺序 `exec_command` 的提示词验证思考、过程回复、工具输入、工具输出和最终回复；同时确认 Feishu 进度卡内允许/拒绝按钮、文本 `/approve`/`/deny`、Codex app-server Bash/Patch/Permissions、Claude AskUserQuestion/permission、OpenCode permission 都能闭环。
 3. 继续扩展真实 Claude Code / OpenCode persistent smoke：视觉输入、权限和 IM live 文件上传链路，并确认 one-shot 默认路径不受影响。
-4. 继续按 CC Go 迁移 Feishu/Octo 菜单与命令细节、Claude Code AskUserQuestion 卡片精修、OpenCode 文件/权限/流式能力。
+4. 继续按 CC Go 迁移 Feishu/Octo 菜单与命令细节、OpenCode 文件/权限/流式能力，并继续优化非 Feishu 纯文本进度样式。
