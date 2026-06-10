@@ -22,6 +22,7 @@ class FakeCodexAppServerTransport {
 
   send(message) {
     this.messages.push(message);
+    if (!message.method) return;
     const id = message.id;
     const respond = (result) => {
       const emit = () => this.emit({ id, result });
@@ -233,6 +234,62 @@ class FakeCodexAppServerTransport {
   emit(message) {
     for (const callback of this.messageCallbacks) callback(message);
   }
+}
+
+async function waitFor(assertion, timeoutMs = 1000) {
+  const startedAt = Date.now();
+  let lastError = null;
+  while (Date.now() - startedAt < timeoutMs) {
+    try {
+      const value = assertion();
+      if (value) return value;
+    } catch (error) {
+      lastError = error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  if (lastError) throw lastError;
+  throw new Error("Timed out waiting for condition.");
+}
+
+function emitCodexTurnReply(transport, input = {}) {
+  const turnId = input.turnId || "turn-1";
+  const text = input.text || "approval finished";
+  transport.emit({
+    method: "item/agentMessage/delta",
+    params: {
+      threadId: transport.nextThreadId,
+      turnId,
+      itemId: "agent-approval",
+      delta: text,
+    },
+  });
+  transport.emit({
+    method: "item/completed",
+    params: {
+      threadId: transport.nextThreadId,
+      turnId,
+      completedAtMs: Date.now(),
+      item: {
+        type: "agentMessage",
+        id: "agent-approval",
+        text,
+      },
+    },
+  });
+  transport.emit({
+    method: "turn/completed",
+    params: {
+      threadId: transport.nextThreadId,
+      turn: {
+        id: turnId,
+        status: "completed",
+        items: [],
+        error: null,
+        durationMs: 5,
+      },
+    },
+  });
 }
 
 const project = {
@@ -570,6 +627,177 @@ test("Codex app-server driver uses real thread sandbox mode and turn sandbox pol
     assert.deepEqual(turnStart.params.sandboxPolicy, item.turnSandboxPolicy);
     assert.equal(turnStart.params.approvalPolicy, item.approvalPolicy);
   }
+});
+
+test("Codex app-server driver answers command approval requests through the permission resolver", async () => {
+  const transport = new FakeCodexAppServerTransport();
+  transport.completeTurns = false;
+  const session = new CodexAppServerSession({
+    sessionId: "session-command-approval",
+    transport,
+    model: "gpt-5",
+    cwd: "/tmp/project",
+    permissionMode: "suggest",
+  });
+  const progress = [];
+  let permissionRequest = null;
+
+  const run = session.runTurn({
+    mode: "persistent",
+    key: {
+      bindingId: "octo-codex",
+      projectId: "codex-app-server",
+      sessionKey: "dmwork:dm:user-1",
+      agent: "codex",
+      model: "gpt-5",
+      workDir: "/tmp/project",
+    },
+    messageId: "m-command-approval",
+    agentTurnRequest: {
+      ...agentTurnRequest({ messageId: "m-command-approval" }),
+      resolvePermission: async (request) => {
+        permissionRequest = request;
+        return { behavior: "allow", updatedInput: request.input };
+      },
+    },
+    onProgress: (event) => progress.push(event),
+    runOneShot: async () => {
+      throw new Error("one-shot should not run for app-server driver");
+    },
+  });
+
+  await waitFor(() => transport.messages.find((message) => message.method === "turn/start"));
+  transport.emit({
+    id: "approval-command-1",
+    method: "item/commandExecution/requestApproval",
+    params: {
+      command: "cat TOOLS.md",
+      cwd: "/tmp/project",
+    },
+  });
+  const response = await waitFor(() => transport.messages.find((message) => message.id === "approval-command-1" && message.result));
+  assert.equal(permissionRequest.requestId, "approval-command-1");
+  assert.equal(permissionRequest.subtype, "item/commandExecution/requestApproval");
+  assert.equal(permissionRequest.toolName, "Bash");
+  assert.equal(permissionRequest.input.command, "cat TOOLS.md");
+  assert.deepEqual(response.result, { decision: "accept" });
+  assert.ok(progress.some((event) => event.rawType === "item/commandExecution/requestApproval" && /command=cat TOOLS\.md/.test(event.text || "")));
+
+  emitCodexTurnReply(transport, { text: "command approved" });
+  const result = await run;
+  assert.equal(result.ok, true);
+  assert.equal(result.replyText, "command approved");
+});
+
+test("Codex app-server driver answers file-change approval denial", async () => {
+  const transport = new FakeCodexAppServerTransport();
+  transport.completeTurns = false;
+  const session = new CodexAppServerSession({
+    sessionId: "session-file-approval",
+    transport,
+    model: "gpt-5",
+    cwd: "/tmp/project",
+    permissionMode: "suggest",
+  });
+  let permissionRequest = null;
+
+  const run = session.runTurn({
+    mode: "persistent",
+    key: {
+      bindingId: "octo-codex",
+      projectId: "codex-app-server",
+      sessionKey: "dmwork:dm:user-1",
+      agent: "codex",
+      model: "gpt-5",
+      workDir: "/tmp/project",
+    },
+    messageId: "m-file-approval",
+    agentTurnRequest: {
+      ...agentTurnRequest({ messageId: "m-file-approval" }),
+      resolvePermission: async (request) => {
+        permissionRequest = request;
+        return { behavior: "deny", message: "no patch" };
+      },
+    },
+    runOneShot: async () => {
+      throw new Error("one-shot should not run for app-server driver");
+    },
+  });
+
+  await waitFor(() => transport.messages.find((message) => message.method === "turn/start"));
+  transport.emit({
+    id: "approval-file-1",
+    method: "item/fileChange/requestApproval",
+    params: {
+      reason: "modify package files",
+      changes: [{ path: "package.json" }],
+    },
+  });
+  const response = await waitFor(() => transport.messages.find((message) => message.id === "approval-file-1" && message.result));
+  assert.equal(permissionRequest.toolName, "Patch");
+  assert.equal(permissionRequest.input.reason, "modify package files");
+  assert.deepEqual(response.result, { decision: "decline" });
+
+  emitCodexTurnReply(transport, { text: "file denied" });
+  const result = await run;
+  assert.equal(result.ok, true);
+  assert.equal(result.replyText, "file denied");
+});
+
+test("Codex app-server driver answers permissions approval with turn-scoped permissions", async () => {
+  const transport = new FakeCodexAppServerTransport();
+  transport.completeTurns = false;
+  const session = new CodexAppServerSession({
+    sessionId: "session-permissions-approval",
+    transport,
+    model: "gpt-5",
+    cwd: "/tmp/project",
+    permissionMode: "suggest",
+  });
+
+  const run = session.runTurn({
+    mode: "persistent",
+    key: {
+      bindingId: "octo-codex",
+      projectId: "codex-app-server",
+      sessionKey: "dmwork:dm:user-1",
+      agent: "codex",
+      model: "gpt-5",
+      workDir: "/tmp/project",
+    },
+    messageId: "m-permissions-approval",
+    agentTurnRequest: {
+      ...agentTurnRequest({ messageId: "m-permissions-approval" }),
+      resolvePermission: async (request) => {
+        assert.equal(request.toolName, "Permissions");
+        assert.deepEqual(request.input.permissions, { network: true });
+        return { behavior: "allow", updatedInput: request.input };
+      },
+    },
+    runOneShot: async () => {
+      throw new Error("one-shot should not run for app-server driver");
+    },
+  });
+
+  await waitFor(() => transport.messages.find((message) => message.method === "turn/start"));
+  transport.emit({
+    id: "approval-permissions-1",
+    method: "item/permissions/requestApproval",
+    params: {
+      permissions: { network: true },
+      reason: "fetch dependency metadata",
+    },
+  });
+  const response = await waitFor(() => transport.messages.find((message) => message.id === "approval-permissions-1" && message.result));
+  assert.deepEqual(response.result, {
+    permissions: { network: true },
+    scope: "turn",
+  });
+
+  emitCodexTurnReply(transport, { text: "permissions approved" });
+  const result = await run;
+  assert.equal(result.ok, true);
+  assert.equal(result.replyText, "permissions approved");
 });
 
 test("Codex app-server driver stop sends turn interrupt for active turn", async () => {

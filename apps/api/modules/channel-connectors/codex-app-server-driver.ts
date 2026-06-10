@@ -6,6 +6,8 @@ import {
   firstProgressTextValue,
   truncateProgressText,
   type ChannelConnectorAgentProgressEvent,
+  type ChannelConnectorAgentPermissionDecision,
+  type ChannelConnectorAgentPermissionRequest,
   type ChannelConnectorAgentTurnResult,
 } from "./agent-runner.js";
 import type {
@@ -46,6 +48,11 @@ export interface CodexAppServerSessionFactoryOptions {
 interface PendingRequest {
   resolve: (value: Record<string, unknown>) => void;
   reject: (error: Error) => void;
+  timeout: NodeJS.Timeout;
+}
+
+interface PendingApproval {
+  resolve: (decision: ChannelConnectorAgentPermissionDecision) => void;
   timeout: NodeJS.Timeout;
 }
 
@@ -109,6 +116,100 @@ function sandboxMode(permissionMode: ChannelConnectorPermissionMode): string | n
 function approvalPolicy(permissionMode: ChannelConnectorPermissionMode): string {
   if (permissionMode === "yolo" || permissionMode === "full-auto" || permissionMode === "auto-edit") return "never";
   return "on-request";
+}
+
+function jsonRpcIdKey(value: unknown): string {
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean" || value === null) {
+    return JSON.stringify(value);
+  }
+  return JSON.stringify(value ?? null);
+}
+
+function jsonRpcDisplayId(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  return jsonRpcIdKey(value);
+}
+
+function prettyJson(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function codexApprovalRequest(input: {
+  id: unknown;
+  method: string;
+  params: Record<string, unknown>;
+}): ChannelConnectorAgentPermissionRequest {
+  if (input.method === "item/commandExecution/requestApproval") {
+    return {
+      requestId: jsonRpcDisplayId(input.id),
+      subtype: input.method,
+      toolName: "Bash",
+      input: input.params,
+    };
+  }
+  if (input.method === "item/fileChange/requestApproval") {
+    return {
+      requestId: jsonRpcDisplayId(input.id),
+      subtype: input.method,
+      toolName: "Patch",
+      input: input.params,
+    };
+  }
+  return {
+    requestId: jsonRpcDisplayId(input.id),
+    subtype: input.method,
+    toolName: "Permissions",
+    input: input.params,
+  };
+}
+
+function codexApprovalProgressText(request: ChannelConnectorAgentPermissionRequest): string {
+  if (request.toolName === "Bash") {
+    const command = normalizeString(request.input.command);
+    const cwd = normalizeString(request.input.cwd);
+    return [
+      "Codex app-server permission requested: Bash",
+      command ? `command=${command}` : "",
+      cwd ? `cwd=${cwd}` : "",
+    ].filter(Boolean).join("\n");
+  }
+  if (request.toolName === "Patch") {
+    return [
+      "Codex app-server permission requested: Patch",
+      normalizeString(request.input.reason) || prettyJson(request.input),
+    ].filter(Boolean).join("\n");
+  }
+  return [
+    "Codex app-server permission requested: Permissions",
+    prettyJson(request.input),
+  ].filter(Boolean).join("\n");
+}
+
+function codexAutomaticPermissionDecision(
+  mode: ChannelConnectorPermissionMode,
+  request: ChannelConnectorAgentPermissionRequest,
+): ChannelConnectorAgentPermissionDecision | null {
+  if (mode === "yolo" || mode === "full-auto") return { behavior: "allow", updatedInput: request.input };
+  if (mode === "read-only" || mode === "plan") {
+    return { behavior: "deny", message: `Permission mode is ${mode}; Studio denied this Codex app-server request.` };
+  }
+  if (mode === "auto-edit") {
+    if (request.toolName === "Patch") return { behavior: "allow", updatedInput: request.input };
+    return { behavior: "deny", message: "Permission mode is auto-edit; Studio only auto-allows Codex file changes." };
+  }
+  return null;
+}
+
+function codexFallbackPermissionDecision(): ChannelConnectorAgentPermissionDecision {
+  return {
+    behavior: "deny",
+    message: "Interactive Codex app-server approval is not available in this Studio runner.",
+  };
 }
 
 function codexImagePaths(args: string[]): string[] {
@@ -241,10 +342,12 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
   private readonly requestTimeoutMs: number;
   private readonly turnTimeoutMs: number | null;
   private pending = new Map<number, PendingRequest>();
+  private pendingApprovals = new Map<string, PendingApproval>();
   private nextRequestId = 1;
   private initialized = false;
   private threadId: string | null = null;
   private activeTurnId: string | null = null;
+  private activeTurnInput: ChannelConnectorAgentSessionDriverTurnInput | null = null;
   private activeTurnCompleted: ((message: Record<string, unknown>) => void) | null = null;
 
   constructor(options: CodexAppServerSessionOptions) {
@@ -261,12 +364,14 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
       : null;
     this.transport.onMessage((message) => this.handleMessage(message));
     this.transport.onClose((error) => {
-      if (!error) return;
+      if (!error && this.pending.size === 0 && this.pendingApprovals.size === 0) return;
+      const closeError = error || new Error("Codex app-server connection closed.");
       for (const pending of this.pending.values()) {
         clearTimeout(pending.timeout);
-        pending.reject(error);
+        pending.reject(closeError);
       }
       this.pending.clear();
+      this.denyPendingApprovals(closeError.message);
     });
   }
 
@@ -404,24 +509,31 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
     let completedAgentMessageText = "";
     let terminalStatus: ChannelConnectorAgentTurnResult["status"] = "completed";
     let terminalError: string | null = null;
-    const turnResponse = await this.request("turn/start", {
-      threadId: this.threadId,
-      clientUserMessageId: input.messageId,
-      input: [
-        {
-          type: "text",
-          text: processRequest.stdin,
-          text_elements: [],
-        },
-        ...imageInputs,
-      ],
-      cwd: this.cwd,
-      model: this.model,
-      approvalPolicy: approvalPolicy(this.permissionMode),
-      sandboxPolicy: sandboxPolicy(this.permissionMode),
-    });
-    const turn = isRecord(turnResponse.turn) ? turnResponse.turn : {};
-    this.activeTurnId = normalizeString(turn.id) || null;
+    this.activeTurnInput = input;
+    let turnResponse: Record<string, unknown>;
+    try {
+      turnResponse = await this.request("turn/start", {
+        threadId: this.threadId,
+        clientUserMessageId: input.messageId,
+        input: [
+          {
+            type: "text",
+            text: processRequest.stdin,
+            text_elements: [],
+          },
+          ...imageInputs,
+        ],
+        cwd: this.cwd,
+        model: this.model,
+        approvalPolicy: approvalPolicy(this.permissionMode),
+        sandboxPolicy: sandboxPolicy(this.permissionMode),
+      });
+      const turn = isRecord(turnResponse.turn) ? turnResponse.turn : {};
+      this.activeTurnId = normalizeString(turn.id) || null;
+    } catch (error) {
+      this.activeTurnInput = null;
+      throw error;
+    }
     const abortListener = (): void => {
       void this.stop("signal-aborted");
     };
@@ -537,6 +649,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
       input.signal?.removeEventListener("abort", abortListener);
       this.activeTurnCompleted = null;
       this.activeTurnId = null;
+      this.activeTurnInput = null;
     }
   }
 
@@ -555,6 +668,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
       pending.reject(new Error(`Codex app-server session disposed: ${reason || "dispose"}`));
     }
     this.pending.clear();
+    this.denyPendingApprovals(`Codex app-server session disposed: ${reason || "dispose"}`);
     this.transport.close(reason || "dispose");
   }
 
@@ -613,6 +727,12 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
   }
 
   private handleMessage(message: Record<string, unknown>): void {
+    const hasId = Object.prototype.hasOwnProperty.call(message, "id");
+    const method = normalizeString(message.method);
+    if (hasId && method) {
+      void this.handleServerRequest(message.id, method, isRecord(message.params) ? message.params : {});
+      return;
+    }
     const id = typeof message.id === "number" ? message.id : null;
     if (id !== null && this.pending.has(id)) {
       const pending = this.pending.get(id);
@@ -627,6 +747,145 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
       return;
     }
     this.activeTurnCompleted?.(message);
+  }
+
+  private async handleServerRequest(
+    id: unknown,
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<void> {
+    if (method === "item/commandExecution/requestApproval" || method === "item/fileChange/requestApproval") {
+      await this.handleApprovalRequest(id, method, params);
+      return;
+    }
+    if (method === "item/permissions/requestApproval") {
+      await this.handlePermissionsApproval(id, method, params);
+      return;
+    }
+    if (method === "item/tool/call") {
+      this.transport.send({
+        jsonrpc: "2.0",
+        id,
+        result: {
+          success: false,
+          contentItems: [{ type: "inputText", text: "tool not available on this client" }],
+        },
+      });
+      return;
+    }
+    this.transport.send({
+      jsonrpc: "2.0",
+      id,
+      error: { code: -32601, message: "method not found" },
+    });
+  }
+
+  private async handleApprovalRequest(
+    id: unknown,
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<void> {
+    const request = codexApprovalRequest({ id, method, params });
+    const decision = await this.resolveCodexApproval(id, request);
+    this.transport.send({
+      jsonrpc: "2.0",
+      id,
+      result: {
+        decision: decision.behavior === "allow" ? "accept" : "decline",
+      },
+    });
+  }
+
+  private async handlePermissionsApproval(
+    id: unknown,
+    method: string,
+    params: Record<string, unknown>,
+  ): Promise<void> {
+    const request = codexApprovalRequest({ id, method, params });
+    const decision = await this.resolveCodexApproval(id, request);
+    if (decision.behavior === "allow") {
+      this.transport.send({
+        jsonrpc: "2.0",
+        id,
+        result: {
+          permissions: params.permissions || {},
+          scope: "turn",
+        },
+      });
+      return;
+    }
+    this.transport.send({
+      jsonrpc: "2.0",
+      id,
+      result: {
+        permissions: {},
+      },
+    });
+  }
+
+  private async resolveCodexApproval(
+    id: unknown,
+    request: ChannelConnectorAgentPermissionRequest,
+  ): Promise<ChannelConnectorAgentPermissionDecision> {
+    const requestKey = jsonRpcIdKey(id);
+    const previous = this.pendingApprovals.get(requestKey);
+    if (previous) {
+      clearTimeout(previous.timeout);
+      previous.resolve({ behavior: "deny", message: "A newer Codex app-server approval request replaced this request." });
+    }
+
+    const activeInput = this.activeTurnInput;
+    activeInput?.onProgress?.(progressEvent({
+      type: "event",
+      rawType: request.subtype,
+      itemType: request.toolName,
+      text: codexApprovalProgressText(request),
+    }));
+
+    return new Promise<ChannelConnectorAgentPermissionDecision>((resolve) => {
+      let settled = false;
+      const finish = (decision: ChannelConnectorAgentPermissionDecision): void => {
+        if (settled) return;
+        settled = true;
+        const entry = this.pendingApprovals.get(requestKey);
+        if (entry) {
+          clearTimeout(entry.timeout);
+          this.pendingApprovals.delete(requestKey);
+        }
+        resolve(decision);
+      };
+      const timeout = setTimeout(() => {
+        finish({ behavior: "deny", message: "Codex app-server permission request timed out waiting for IM approval." });
+      }, 5 * 60_000);
+      timeout.unref();
+      this.pendingApprovals.set(requestKey, { resolve: finish, timeout });
+
+      const automatic = codexAutomaticPermissionDecision(this.permissionMode, request);
+      if (automatic) {
+        finish(automatic);
+        return;
+      }
+
+      const resolver = activeInput?.agentTurnRequest?.resolvePermission || null;
+      if (!resolver) {
+        finish(codexFallbackPermissionDecision());
+        return;
+      }
+      Promise.resolve(resolver(request))
+        .then((decision) => finish(decision || codexFallbackPermissionDecision()))
+        .catch((error) => finish({
+          behavior: "deny",
+          message: error instanceof Error ? error.message : "Codex app-server permission resolver failed.",
+        }));
+    });
+  }
+
+  private denyPendingApprovals(message: string): void {
+    for (const [requestKey, entry] of [...this.pendingApprovals.entries()]) {
+      this.pendingApprovals.delete(requestKey);
+      clearTimeout(entry.timeout);
+      entry.resolve({ behavior: "deny", message });
+    }
   }
 }
 
