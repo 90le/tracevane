@@ -2,7 +2,7 @@
 
 > 状态：Studio 原生 Channel daemon 路线；Octo/Feishu 基础闭环、CC-style 菜单/会话子卡和 native CLI persistent compact/stop real CLI smoke 已完成
 > 更新：2026-06-10
-> 参考源：CC 二开全量源码 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`；OpenClaw 频道与运行时实现；OpenClaw Octo 插件 `~/.openclaw/extensions/octo`；迁移清单见 `channel-connectors-cc-migration-checklist.md`；Feishu 长连接专项见 `feishu-long-connection-issue-tracker.md`
+> 参考源：CC 二开全量源码 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`；OpenClaw 频道与运行时实现（最新本地源码：`/home/binbin/.openclaw/projects/openclaw/latest/extensions/feishu`）；OpenClaw Octo 插件 `~/.openclaw/extensions/octo`；迁移清单见 `channel-connectors-cc-migration-checklist.md`；Feishu 长连接专项见 `feishu-long-connection-issue-tracker.md`
 
 ## 1. 新结论
 
@@ -34,7 +34,7 @@ Octo(dmwork) / 飞书 / 微信 / IM
 - Studio / OpenClaw 崩溃时，Channel daemon 仍保持在线。
 - Channel daemon 运行期不依赖 Studio API；它直接调用本地 CLI Agent，CLI Agent 再走 Studio Gateway daemon。
 - Studio 负责配置、安装、启停、日志、会话可视化和平台账号管理。
-- Feishu 长连接按 CC Go、最新 OpenClaw 与官方 SDK 约束：同 App 只允许一个本机 WS owner，进程内扇出、跨进程用用户级全局 lock 防多连接；每个 owner cycle 使用官方 SDK `WSClient` + `EventDispatcher`；默认不启用当前 SDK lower-case `pingTimeout` 额外 watchdog，保持 OpenClaw 在 Lark SDK `1.66.x` 下的有效行为；SDK terminal error 后按 OpenClaw 外层循环关闭当前 client 并 `1s..30s` 退避重建；SDK 已进入 `reconnecting` 且超过 10s 时也回收到同一外层循环；不做 connected-idle / zero-inbound / verified-ingress / generic watchdog 重建；Studio 额外做启动期真实 ingress 验证：当前 lifecycle 尚无 dispatcher callback 时，60s 后回收当前 client，最多 3 次，任意真实 callback 立即重置；runtime 暴露 `connected`、`ingressState`、global/lifecycle `dispatcherCallbacks`、owner lock 和入站验证状态；假在线问题按 `feishu-long-connection-issue-tracker.md` 专项跟踪，不以重启自愈作为完成标准。
+- Feishu 长连接按 CC Go、最新 OpenClaw 与官方 SDK 约束：同 App 只允许一个本机 WS owner，进程内扇出、跨进程用用户级全局 lock 防多连接；每个 owner cycle 使用官方 SDK `WSClient` + `EventDispatcher`；默认不启用当前 SDK lower-case `pingTimeout` 额外 watchdog，保持 OpenClaw 在 Lark SDK `1.66.x` 下的有效行为；SDK terminal error 后按 OpenClaw 外层循环关闭当前 client 并 `1s..30s` 退避重建；SDK 已进入 `reconnecting` 且超过 10s 时也回收到同一外层循环；不做 connected-idle / zero-inbound / verified-ingress / generic watchdog 重建；Studio 额外做启动期真实 ingress 验证：当前 lifecycle 尚无 raw event / dispatcher callback 时，15s 后回收当前 client，并按退避最多 5 次；任意真实 raw event 立即证明当前 owner 可收业务帧；runtime 暴露 `connected`、`ingressState`、raw event、global/lifecycle `dispatcherCallbacks`、owner lock 和入站验证状态；`/health` 不再把 `silent` owner 视为健康；假在线问题按 `feishu-long-connection-issue-tracker.md` 专项跟踪，不以手工重启作为完成标准。
 - Feishu `im.message.receive_v1` / bot menu 入口必须像 CC Go 一样只在同步段完成解析、去重和 runtime 记录，随后后台执行附件下载、Agent runner、进度卡片和回复；去重状态需落盘，避免 daemon 重启后平台重投旧事件再次触发 Agent。
 - 同一 binding + IM session 的 Agent run 默认 FIFO 排队：上一条未完成时，新普通消息先回复“已加入队列”，前序任务完成后自动处理；`/stop`、`/status` 等命令不进队列并即时执行；确需并行时由 binding metadata 显式开启。
 - Feishu card/menu 按 CC 语义区分导航和执行：导航显示/更新卡片，`/new`、`/reset` 等无卡片执行动作快速 ACK 回调并异步发送普通文本结果，不弹悬浮 toast，也不自动弹完整菜单。
@@ -131,7 +131,7 @@ Studio 增强点：
 - Channel Connectors 已支持 CC Go `/alias` 管理合同：binding metadata alias 与 Studio 本地 alias store 合并解析，`/alias add/del/list` 可在 IM 内管理当前 binding 的命令别名；Feishu Commands 子卡提供 Aliases 入口。
 - Channel Connectors 已支持 Feishu webhook ingress：URL verification、card action、bot menu、message receive 进入同一 command-router；`verificationToken` 放在 binding metadata，不写入文档或源码。
 - Channel daemon 已支持 Feishu 官方 WebSocket 长连接：`im.message.receive_v1`、`card.action.trigger`、`application.bot.menu_v6` 进入同一 command-router/Agent runner；同一 Feishu App 多 binding 共享单条 WS，支持 chatId 过滤并保留 thread/root 字段。
-- Feishu 长连接稳定性已按最新 OpenClaw 与 Lark SDK 进一步收敛：同 App 共享 WS、消息快速 ACK 后后台派发；默认不启用当前 SDK lower-case `pingTimeout` 额外 watchdog；terminal error 和超过 10s 的 SDK `reconnecting` 都回到外层重建循环；zero-inbound / connected-idle / verified-ingress / generic watchdog 重建默认关闭；用户级全局 owner lock 防止同 App 多进程随机抢投递；runtime 新增 reconnecting recycle、global/lifecycle `dispatcherCallbacks`、startup ingress validation 与 lock owner 诊断。假在线问题进入专项文档继续验收。
+- Feishu 长连接稳定性已按最新 OpenClaw 与 Lark SDK 进一步收敛：同 App 共享 WS、消息快速 ACK 后后台派发；默认不启用当前 SDK lower-case `pingTimeout` 额外 watchdog；terminal error 和超过 10s 的 SDK `reconnecting` 都回到外层重建循环；zero-inbound / connected-idle / verified-ingress / generic watchdog 重建默认关闭；用户级全局 owner lock 防止同 App 多进程随机抢投递；runtime 暴露 raw event 与 dispatcher callback 诊断；启动期无真实业务帧时会 15s 起步有界重建，`silent` 状态会使 `/health` 返回不健康。假在线问题进入专项文档继续验收。
 - Feishu 消息/菜单长连接入口已改为快速 ACK + 后台派发；事件去重提升为 24 小时持久化缓存，并从 `feishu-events.jsonl` 启动回填，平台重投会记录 `feishu_event_duplicate` 而不再重复跑 Agent。
 - Feishu `/new`、`/reset` 已改为执行后只返回普通文本结果，不再自动生成 `Studio Session` 菜单卡片；卡片执行动作异步发文本并返回空 callback，导航类 action 仍返回卡片。
 - `/dir` / `/cd` 已按 CC Go 补齐最近目录历史、`/dir -` 和历史序号切换；Feishu WorkDir 子卡同步提供上一目录、最近目录和子目录选择。

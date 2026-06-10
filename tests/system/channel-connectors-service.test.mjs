@@ -7511,8 +7511,8 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /DEFAULT_FEISHU_ZERO_INBOUND_RENEW_MAX\s*=\s*0/);
   assert.match(daemonSource, /DEFAULT_FEISHU_WATCHDOG_RESTART_MS\s*=\s*0/);
   assert.match(daemonSource, /MIN_FEISHU_WATCHDOG_RESTART_MS\s*=\s*60_?000/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_INGRESS_UNVERIFIED_AFTER_MS\s*=\s*0/);
-  assert.match(daemonSource, /DEFAULT_FEISHU_INGRESS_UNVERIFIED_RENEW_MAX\s*=\s*0/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_INGRESS_UNVERIFIED_AFTER_MS\s*=\s*15_?000/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_INGRESS_UNVERIFIED_RENEW_MAX\s*=\s*5/);
   assert.match(daemonSource, /feishuPingTimeoutSeconds/);
   assert.match(daemonSource, /feishuPongTimeoutMs/);
   assert.match(daemonSource, /feishuIngressUnverifiedAfterMs/);
@@ -7566,6 +7566,7 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /Feishu WebSocket pong timeout; recycling client/);
   assert.doesNotMatch(daemonSource, /group\.receivedMessages === 0/);
   assert.match(daemonSource, /group\.lifecycleDispatcherCallbacks === 0/);
+  assert.match(daemonSource, /group\.lifecycleRawEventFrames === 0/);
   assert.match(daemonSource, /group\.lifecycleReceivedMessages > 0/);
   assert.match(daemonSource, /Feishu WebSocket SDK reported terminal error/);
   assert.match(daemonSource, /Feishu WebSocket connection ended; recreating client/);
@@ -7593,6 +7594,9 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(feishuConnectionStateBlock, /ingressState/);
   assert.match(feishuConnectionStateBlock, /lifecycleDispatcherCallbacks/);
   assert.match(feishuConnectionStateBlock, /lifecycleLastDispatcherCallbackAt/);
+  assert.match(feishuConnectionStateBlock, /rawEventFrames/);
+  assert.match(feishuConnectionStateBlock, /lifecycleRawEventFrames/);
+  assert.match(feishuConnectionStateBlock, /lastRawEventFrameAt/);
   assert.match(feishuConnectionStateBlock, /lastReconnectingAt/);
   assert.match(feishuConnectionStateBlock, /reconnectingRecycles/);
   assert.match(feishuConnectionStateBlock, /lockAcquired/);

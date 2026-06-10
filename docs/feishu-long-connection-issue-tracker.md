@@ -1,7 +1,7 @@
 # Feishu Long Connection Issue Tracker
 
 > Status: active validation
-> Updated: 2026-06-09
+> Updated: 2026-06-10
 > Scope: Studio native Channel Connectors Feishu long-connection ingress.
 
 This is the single tracker for Feishu "connected but no reply" incidents. New
@@ -10,7 +10,7 @@ feedback must update this file before code changes.
 ## Reference
 
 - CC Go: `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source/platform/feishu`
-- Latest OpenClaw local checkout: `.tmp/openclaw-latest-src`
+- Latest OpenClaw local checkout: `/home/binbin/.openclaw/projects/openclaw/latest/extensions/feishu`
 - Latest checked OpenClaw `origin/main`: `f57c3b55fdc4b714300480ed8240c988e85a83c7`
 - Commit time: `2026-06-09T15:45:19+09:00`
 - Feishu lifecycle files checked: `extensions/feishu/src/client.ts`,
@@ -19,6 +19,11 @@ feedback must update this file before code changes.
   `@larksuiteoapi/node-sdk@1.66.1`
 - Feishu official long-connection docs:
   `https://open.larkoffice.com/document/uAjLw4CM/ukTMukTMukTM/event-subscription-guide/callback-subscription/configure-callback-request-address`
+- Feishu official Node SDK docs:
+  `https://open.feishu.cn/document/server-side-sdk/nodejs-sdk/preparation-before-development`,
+  `https://open.feishu.cn/document/server-side-sdk/nodejs-sdk/invoke-server-api`,
+  `https://open.feishu.cn/document/server-side-sdk/nodejs-sdk/handling-events`,
+  `https://open.feishu.cn/document/server-side-sdk/nodejs-sdk/handling-callbacks`
 - Lark Node SDK Channel docs:
   `https://github.com/larksuite/node-sdk/blob/main/docs/channel.md`
 - Lark Node SDK issues checked: `#177` reconnect timer leak, `#183`
@@ -55,6 +60,10 @@ WS lifecycle files. The mature reference remains:
 - Studio now records SDK application-level control frames: outbound `ping`,
   inbound `pong`, `pingIntervalMs`, `sentPings`, `receivedPongs` and
   `transportVerified`.
+- Studio also records raw SDK business frames before `EventDispatcher` parses
+  them: `rawEventFrames`, `lifecycleRawEventFrames`, `lastRawEventFrameAt`,
+  `lastRawEventFrameType` and handler errors. This separates "Feishu never
+  delivered a business frame" from "Studio handler failed after delivery".
 - Studio recycles a connected client only after an observed outbound `ping`
   misses its `pongTimeoutMs` window; default `pongTimeoutMs=210000`. This
   intentionally covers more than two current observed `90000ms` Feishu ping
@@ -64,10 +73,12 @@ WS lifecycle files. The mature reference remains:
   cycle and lets the OpenClaw-style outer loop recreate the client.
 - Connected-idle, zero-inbound, verified-ingress and generic watchdog rebuilds
   remain disabled by default.
-- Startup ingress validation remains available only as an explicit diagnostic
-  option. Default `ingressUnverifiedAfterMs=0` and
-  `ingressUnverifiedRenewMax=0`; no business message during idle time must not
-  cause proactive reconnects.
+- Startup ingress validation is now enabled by default because live evidence
+  showed manual service restart recovers stuck Feishu delivery. The current
+  cycle must receive at least one raw event frame or dispatcher callback;
+  otherwise it is rebuilt after `15s`, then exponential delays, up to 5 times.
+  Any raw event frame counts as ingress proof, even if later handler parsing
+  fails. `/health` reports `silent` Feishu connections as unhealthy.
 
 ## Evidence
 
@@ -90,6 +101,23 @@ WS lifecycle files. The mature reference remains:
 - Conclusion: this case is startup ingress not proven, not Agent/session driver
   blocking.
 
+2026-06-10 live reassessment:
+
+- The same Feishu app credentials can fetch the official WebSocket endpoint via
+  the SDK's real `POST /callback/ws/endpoint` request, and REST bot info/send
+  succeeds. The endpoint itself is not down.
+- Long-connection mode does not need webhook `verificationToken`; the Node SDK
+  invokes WebSocket events with `needCheck:false`. A configured token is
+  harmless but must not be treated as the reason long connection is down.
+- Disabling local `cc-connect` did not fix the incident. No second local
+  cc-connect/Feishu process was found after that, and the Studio daemon held the
+  only visible local Feishu app owner lock.
+- Runtime diagnostics showed both cases: when the link is healthy, raw event
+  frames and dispatcher callbacks increment immediately; during failures,
+  `connected=true` can coexist with zero raw business frames. Manual daemon
+  restart restoring delivery means Studio must recycle this false-ready owner
+  automatically instead of waiting for a human restart.
+
 2026-06-09 earlier pingTimeout finding:
 
 - Studio had previously translated OpenClaw upper-case `PingTimeout:3` to active
@@ -98,13 +126,29 @@ WS lifecycle files. The mature reference remains:
   reconnect stabilized.
 - Default was corrected to `pingTimeoutSeconds=0`.
 
+2026-06-10 root-cause narrowing:
+
+- User evidence is decisive: when Feishu does not reply, manually restarting the
+  Channel Connectors service makes the bot receive messages again. That points
+  at Studio's long-connection lifecycle getting stuck or false-ready, not at
+  menu rendering, model latency, verification token, Agent queueing or cc-connect
+  interference.
+- The fix direction is therefore to make the Feishu owner cycle self-heal in the
+  daemon: if a newly connected owner cannot prove real business ingress, recycle
+  that SDK client in-process. Do not require the user to restart the whole
+  service.
+- `verificationToken` remains irrelevant for long-connection delivery. It is
+  only used by webhook/callback validation paths.
+
 2026-06-09 stability reassessment:
 
 - This is not a message-order bug. The earlier Octo-first reproduction exposed a
   broader Feishu design risk: SDK `connected` can be true while real business
   ingress is not proven.
-- Bounded startup validation was a mitigation, not final proof that the Feishu
-  channel has Octo-level stability; it is no longer the default path.
+- Bounded startup validation is now the default mitigation for the user's
+  manual-restart recovery case. It is still not final proof that the Feishu
+  channel has Octo-level stability; a fresh inbound Feishu event remains the only
+  proof that the current owner is receiving business frames.
 - Official SDK source shows `EventDispatcher.invoke()` is awaited before the ACK
   response is sent. Therefore every WS handler must stay synchronous-light and
   queue work immediately.
@@ -163,28 +207,38 @@ To reach Octo-level behavior, do not rely on one signal:
 
 ## Verification
 
-- `npm run typecheck -- --pretty false`
-- `npm run build:api`
+- `npm run typecheck:api && npm run build:api`
 - `node --test tests/system/channel-connectors-feishu-long-connection-script.test.mjs`
 - `node --test --test-name-pattern "Feishu long-connection ingress|Feishu dispatcher parity diagnostics" tests/system/channel-connectors-service.test.mjs`
-- Restarted `openclaw-studio-channel-connectors.service`, PID `2667130`.
+- Restarted `openclaw-studio-channel-connectors.service`, PID `3248732`.
 - Runtime after restart must expose `pingTimeoutSeconds=0`,
-  `pongTimeoutMs=210000`, `ingressUnverifiedAfterMs=0` and
-  `ingressUnverifiedRenewMax=0`.
+  `pongTimeoutMs=210000`, `ingressUnverifiedAfterMs=15000` and
+  `ingressUnverifiedRenewMax=5`.
+- 2026-06-10 live service evidence: after restart, Studio recycled the Feishu
+  SDK client at `15s`, `30s` and `60s` because no raw event arrived, without
+  restarting the daemon process. The subsequent owner received real Feishu
+  events: `rawEventFrames=3`, `dispatcherCallbacks=3`,
+  `receivedMessages=1`, `transportVerified=true`, `ingressVerified=true`,
+  `/health={"ok":true,"feishu":{"groups":1,"connected":1,"silent":0}}`.
+- 2026-06-10 live smoke:
+  `node scripts/smoke-channel-connectors-feishu-long-connection.mjs --duration-ms 0 --since 2026-06-10T07:04:50.000Z --bindings feishu-live --json`
+  returned `violations=0` and recorded the bounded startup validation cycles as
+  expected events.
 - Live smoke at `2026-06-09T10:45:55Z` ran for `100000ms` with
   `violations=0` and proved ping/pong instrumentation. It also revealed
   `pongTimeoutMs=30000` could falsely recycle after a later ping was not answered
   within 30s.
 - Default `pongTimeoutMs` was raised to `210000` and `MAX_FEISHU_PONG_TIMEOUT_MS`
   to `600000`.
-- Live smoke at `2026-06-09T10:53:20Z` ran for `100000ms` with
+- Earlier live smoke at `2026-06-09T10:53:20Z` ran for `100000ms` with
   `violations=0`. Runtime showed `pingIntervalMs=90000`, `sentPings=1`,
   `receivedPongs=2`, `transportVerified=true`, `reconnectingRecycles=0`,
   `ingressUnverifiedAfterMs=0`, and no reconnect/rebuild cycles. No fresh user
   message was sent during this final smoke, so `ingressVerified=false` is
-  expected and must not trigger reconnect.
-- Old ping-timeout, zero-inbound, connected-idle, generic watchdog and default
-  startup-ingress recycle paths must remain absent.
+  expected under the old contract.
+- Old ping-timeout, zero-inbound, connected-idle and generic watchdog rebuild
+  paths must remain absent. Startup ingress validation is the intentionally
+  allowed bounded exception.
 
 ## Next Validation
 

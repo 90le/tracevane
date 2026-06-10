@@ -61,10 +61,16 @@ function feishuRuntime(overrides = {}) {
         ingressState: "warming",
         ingressSilentForMs: 0,
         transportVerified: false,
-        ingressUnverifiedAfterMs: 0,
-        ingressUnverifiedRenewMax: 0,
+        rawEventFrames: 0,
+        lifecycleRawEventFrames: 0,
+        lastRawEventFrameAt: null,
+        lastRawEventFrameType: null,
+        rawEventHandlerErrors: 0,
+        lastRawEventHandlerError: null,
+        ingressUnverifiedAfterMs: 15000,
+        ingressUnverifiedRenewMax: 5,
         ingressUnverifiedRenewals: 0,
-        ingressUnverifiedRenewDelayMs: 0,
+        ingressUnverifiedRenewDelayMs: 15000,
         lastIngressUnverifiedRenewAt: null,
         lockAcquired: true,
         lockOwnerPid: process.pid,
@@ -145,9 +151,9 @@ test("Feishu long-connection smoke passes clean SDK-owned runtime", async () => 
   assert.equal(parsed.connections[0].lifecycleLastDispatcherCallbackAt, null);
   assert.equal(parsed.connections[0].zeroInboundRenewAfterMs, 0);
   assert.equal(parsed.connections[0].zeroInboundRenewMax, 0);
-  assert.equal(parsed.connections[0].ingressUnverifiedAfterMs, 0);
-  assert.equal(parsed.connections[0].ingressUnverifiedRenewMax, 0);
-  assert.equal(parsed.connections[0].ingressUnverifiedRenewDelayMs, 0);
+  assert.equal(parsed.connections[0].ingressUnverifiedAfterMs, 15000);
+  assert.equal(parsed.connections[0].ingressUnverifiedRenewMax, 5);
+  assert.equal(parsed.connections[0].ingressUnverifiedRenewDelayMs, 15000);
   assert.equal(parsed.connections[0].watchdogRestartAfterMs, 0);
 });
 
@@ -157,8 +163,8 @@ test("Feishu long-connection smoke rejects unsafe proactive rebuild defaults", a
     pingTimeoutSeconds: 3,
     connectedIdleRenewAfterMs: 300000,
     verifiedIngressSilentRenewAfterMs: 30000,
-    ingressUnverifiedAfterMs: 30000,
-    ingressUnverifiedRenewMax: 11,
+    ingressUnverifiedAfterMs: 10000,
+    ingressUnverifiedRenewMax: 6,
     zeroInboundRenewAfterMs: 30000,
     zeroInboundRenewMax: 2,
     watchdogRestartAfterMs: 20000,
@@ -219,11 +225,11 @@ test("Feishu long-connection smoke rejects old ingress-unverified renewal logs",
 test("Feishu long-connection smoke rejects unsafe ingress-unverified renewal logs", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
   const logText = [
-    '2026-06-08T10:00:00.001Z Feishu WebSocket ingress-unverified renewal threshold elapsed {"key":"feishu-key","connectedForMs":31000,"ingressUnverifiedAfterMs":30000,"ingressUnverifiedRenewDelayMs":30000,"ingressUnverifiedRenewals":1,"ingressUnverifiedRenewMax":3}',
+    '2026-06-08T10:00:00.001Z Feishu WebSocket ingress-unverified renewal threshold elapsed {"key":"feishu-key","connectedForMs":11000,"ingressUnverifiedAfterMs":10000,"ingressUnverifiedRenewDelayMs":10000,"ingressUnverifiedRenewals":1,"ingressUnverifiedRenewMax":3}',
     "",
   ].join("\n");
   const { runtimePath, logPath } = writeFixture(root, feishuRuntime({
-    ingressUnverifiedAfterMs: 30000,
+    ingressUnverifiedAfterMs: 10000,
     ingressUnverifiedRenewMax: 3,
   }), logText);
 
@@ -344,8 +350,8 @@ test("Feishu long-connection smoke rejects old fast zero-inbound renewal logs", 
 test("Feishu long-connection smoke records bounded startup ingress validation without treating it as old watchdog churn", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
   const logText = [
-    '2026-06-08T10:00:00.001Z Feishu WebSocket startup ingress validation missing; recycling client {"key":"feishu-key","reason":"startup_ingress_unverified_60000ms","connectedForMs":61000,"ingressUnverifiedAfterMs":60000,"ingressUnverifiedRenewDelayMs":60000,"ingressUnverifiedRenewals":1,"ingressUnverifiedRenewMax":3}',
-    '2026-06-08T10:00:00.002Z Feishu WebSocket startup ingress validation cycle ended; recreating client {"key":"feishu-key","reason":"startup_ingress_unverified_60000ms","reconnectingForMs":0,"reconnectingRecycles":1,"state":"connected"}',
+    '2026-06-08T10:00:00.001Z Feishu WebSocket startup ingress validation missing; recycling client {"key":"feishu-key","reason":"startup_ingress_unverified_15000ms","connectedForMs":16000,"ingressUnverifiedAfterMs":15000,"ingressUnverifiedRenewDelayMs":15000,"ingressUnverifiedRenewals":1,"ingressUnverifiedRenewMax":5}',
+    '2026-06-08T10:00:00.002Z Feishu WebSocket startup ingress validation cycle ended; recreating client {"key":"feishu-key","reason":"startup_ingress_unverified_15000ms","reconnectingForMs":0,"reconnectingRecycles":1,"state":"connected"}',
     "",
   ].join("\n");
   const { runtimePath, logPath } = writeFixture(root, feishuRuntime({
@@ -354,7 +360,7 @@ test("Feishu long-connection smoke records bounded startup ingress validation wi
     lastIngressUnverifiedRenewAt: "2026-06-08T10:00:00.001Z",
     reconnectingRecycles: 1,
     lastReconnectingRecycleAt: "2026-06-08T10:00:00.002Z",
-    lastReconnectingRecycleReason: "startup_ingress_unverified_60000ms",
+    lastReconnectingRecycleReason: "startup_ingress_unverified_15000ms",
   }), logText);
 
   const output = await runScript([
