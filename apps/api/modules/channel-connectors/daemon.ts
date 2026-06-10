@@ -63,6 +63,7 @@ import {
   listChannelConnectorSkillSummaries,
   resolveChannelConnectorBindingCommandAlias,
   resolveChannelConnectorEffectiveProject,
+  type ChannelConnectorCommandAudit,
   type ChannelConnectorGatewayModel,
   type ChannelConnectorPermissionResponseAction,
   type ChannelConnectorPermissionResponseResult,
@@ -744,6 +745,29 @@ function rotateJsonLineFile(filePath: string): void {
     const rotated = `${filePath}.${Date.now()}.rotated`;
     fs.renameSync(filePath, rotated);
   } catch {}
+}
+
+function commandAuditLogFields(audit: ChannelConnectorCommandAudit | null | undefined): Record<string, unknown> {
+  if (!audit) return {};
+  return {
+    commandKind: audit.kind,
+    commandSource: audit.source,
+    commandName: audit.name,
+    commandArgsCount: audit.argsCount,
+    commandArgsPreview: audit.argsPreview,
+    commandPreview: audit.commandPreview || null,
+    commandExecWorkDir: audit.exec?.workDir || null,
+    commandExecPreview: audit.exec?.commandPreview || null,
+    commandExecExitCode: audit.exec?.exitCode ?? null,
+    commandExecSignal: audit.exec?.signal || null,
+    commandExecTimedOut: audit.exec?.timedOut ?? null,
+    commandExecError: audit.exec?.error || null,
+    commandExecElapsedMs: audit.exec?.elapsedMs ?? null,
+    commandExecStdoutBytes: audit.exec?.stdoutBytes ?? null,
+    commandExecStderrBytes: audit.exec?.stderrBytes ?? null,
+    commandExecStdoutPreview: audit.exec?.stdoutPreview || null,
+    commandExecStderrPreview: audit.exec?.stderrPreview || null,
+  };
 }
 
 function writeJsonFileAtomic(filePath: string, value: unknown): void {
@@ -6112,6 +6136,7 @@ async function dispatchOctoMessage(input: {
       command: command.command,
       commandAction: command.action,
       commandOk: command.ok,
+      ...commandAuditLogFields(command.audit),
       replySent,
       replyRequestCount,
       commandElapsedMs: elapsedMsSince(ingressAtMs, isoTimestampMs(commandFinishedAt) ?? Date.now()),
@@ -6147,6 +6172,7 @@ async function dispatchOctoMessage(input: {
       aliasName: aliasResolution.matchedAlias?.name || null,
       aliasCommand: aliasResolution.matchedAlias?.command || null,
       command: command.command,
+      ...commandAuditLogFields(command.audit),
       passthroughText: command.passthroughText,
       nativeCommand: nativeCommand || null,
     });
@@ -7229,6 +7255,7 @@ async function dispatchFeishuParsedEvent(input: {
       command: command.command,
       commandAction: command.action,
       commandOk: command.ok,
+      ...commandAuditLogFields(command.audit),
       replySent,
       replyQueued,
       replyTransportAction,
@@ -7265,6 +7292,7 @@ async function dispatchFeishuParsedEvent(input: {
       aliasCommand: aliasResolution.matchedAlias?.command || null,
       ...feishuThreadLogFields(parsed),
       command: command.command,
+      ...commandAuditLogFields(command.audit),
       passthroughText: command.passthroughText,
       nativeCommand: nativeCommand || null,
     });

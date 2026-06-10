@@ -200,6 +200,37 @@ export interface ChannelConnectorPermissionResponseResult {
   suppressReply?: boolean;
 }
 
+export type ChannelConnectorCommandAuditKind =
+  | "builtin"
+  | "custom-prompt"
+  | "custom-exec"
+  | "agent-command"
+  | "skill"
+  | "native"
+  | "passthrough";
+
+export interface ChannelConnectorCommandAudit {
+  kind: ChannelConnectorCommandAuditKind;
+  source: "studio" | "config" | "agent" | "skill" | "user";
+  name: string;
+  argsCount: number;
+  argsPreview: string | null;
+  commandPreview?: string | null;
+  exec?: {
+    workDir: string;
+    commandPreview: string;
+    exitCode: number | null;
+    signal: string | null;
+    timedOut: boolean;
+    error: string | null;
+    elapsedMs: number;
+    stdoutBytes: number;
+    stderrBytes: number;
+    stdoutPreview: string | null;
+    stderrPreview: string | null;
+  };
+}
+
 export interface ChannelConnectorCommandResult {
   handled: boolean;
   command: string | null;
@@ -210,6 +241,7 @@ export interface ChannelConnectorCommandResult {
   passthroughText?: string | null;
   nativeCommand?: string | null;
   suppressReply?: boolean;
+  audit?: ChannelConnectorCommandAudit | null;
 }
 
 interface ParsedCommand {
@@ -696,6 +728,30 @@ function shellCommandArgs(command: string): { command: string; args: string[] } 
   };
 }
 
+function commandArgsAudit(args: readonly string[]): Pick<ChannelConnectorCommandAudit, "argsCount" | "argsPreview"> {
+  const text = args.join(" ").trim();
+  return {
+    argsCount: args.length,
+    argsPreview: text ? bufferPreviewText(text, 500) : null,
+  };
+}
+
+function commandAudit(input: {
+  kind: ChannelConnectorCommandAuditKind;
+  source: ChannelConnectorCommandAudit["source"];
+  name: string;
+  args: readonly string[];
+  commandPreview?: string | null;
+}): ChannelConnectorCommandAudit {
+  return {
+    kind: input.kind,
+    source: input.source,
+    name: input.name,
+    ...commandArgsAudit(input.args),
+    ...(input.commandPreview ? { commandPreview: bufferPreviewText(input.commandPreview, 500) } : {}),
+  };
+}
+
 async function runCustomExecCommand(input: {
   command: ChannelConnectorCustomCommandRecord;
   project: ChannelConnectorRuntimeProject;
@@ -704,6 +760,7 @@ async function runCustomExecCommand(input: {
 }): Promise<{
   ok: boolean;
   replyText: string;
+  audit: ChannelConnectorCommandAudit;
 }> {
   const commandText = expandAgentCommandPrompt(input.command.exec, input.args);
   const workDir = resolveExecCommandWorkDir(input.project, input.command.workDir);
@@ -713,6 +770,8 @@ async function runCustomExecCommand(input: {
   return new Promise((resolve) => {
     let stdout = "";
     let stderr = "";
+    let stdoutBytes = 0;
+    let stderrBytes = 0;
     let settled = false;
     const child = spawn(shell.command, shell.args, {
       cwd: workDir,
@@ -739,6 +798,28 @@ async function runCustomExecCommand(input: {
         : `exit=${detail.exitCode}`;
       resolve({
         ok,
+        audit: {
+          ...commandAudit({
+            kind: "custom-exec",
+            source: "config",
+            name: input.command.name,
+            args: input.args,
+            commandPreview: commandText,
+          }),
+          exec: {
+            workDir,
+            commandPreview: bufferPreviewText(commandText, 500),
+            exitCode: detail.exitCode ?? null,
+            signal: detail.signal ? String(detail.signal) : null,
+            timedOut: detail.timedOut === true,
+            error: detail.error || null,
+            elapsedMs,
+            stdoutBytes,
+            stderrBytes,
+            stdoutPreview: stdout.trim() ? bufferPreviewText(stdout.trim(), 1_000) : null,
+            stderrPreview: stderr.trim() ? bufferPreviewText(stderr.trim(), 1_000) : null,
+          },
+        },
         replyText: [
           `shell command /${input.command.name} ${status}`,
           `cwd=${workDir}`,
@@ -759,10 +840,14 @@ async function runCustomExecCommand(input: {
     }, timeoutMs);
     timer.unref();
     child.stdout.on("data", (chunk) => {
-      stdout = bufferPreviewText(`${stdout}${String(chunk)}`, 16_000);
+      const text = String(chunk);
+      stdoutBytes += Buffer.byteLength(text);
+      stdout = bufferPreviewText(`${stdout}${text}`, 16_000);
     });
     child.stderr.on("data", (chunk) => {
-      stderr = bufferPreviewText(`${stderr}${String(chunk)}`, 16_000);
+      const text = String(chunk);
+      stderrBytes += Buffer.byteLength(text);
+      stderr = bufferPreviewText(`${stderr}${text}`, 16_000);
     });
     child.on("error", (error) => finish(false, { error: error.message }));
     child.on("close", (code, signal) => finish(code === 0, { exitCode: code, signal }));
@@ -2257,6 +2342,7 @@ export async function handleChannelConnectorCommand(
           replyText: result.replyText,
           passthroughText: null,
           nativeCommand: null,
+          audit: result.audit,
         };
       }
       return {
@@ -2268,6 +2354,13 @@ export async function handleChannelConnectorCommand(
         replyText: null,
         passthroughText: expandAgentCommandPrompt(customCommand.prompt, args),
         nativeCommand: null,
+        audit: commandAudit({
+          kind: customCommand.source === "agent" ? "agent-command" : "custom-prompt",
+          source: customCommand.source,
+          name: customCommand.name,
+          args,
+          commandPreview: customCommand.prompt,
+        }),
       };
     }
     const skill = resolveChannelConnectorSkill(currentProject, name);
@@ -2294,6 +2387,13 @@ export async function handleChannelConnectorCommand(
         replyText: null,
         passthroughText: buildChannelConnectorSkillPrompt(skill, args),
         nativeCommand: null,
+        audit: commandAudit({
+          kind: "skill",
+          source: "skill",
+          name: skill.name,
+          args,
+          commandPreview: skill.source,
+        }),
       };
     }
     return {
@@ -2305,6 +2405,13 @@ export async function handleChannelConnectorCommand(
       replyText: null,
       passthroughText: parsed.raw,
       nativeCommand: null,
+      audit: commandAudit({
+        kind: "passthrough",
+        source: "user",
+        name,
+        args,
+        commandPreview: parsed.raw,
+      }),
     };
   }
 
@@ -2393,6 +2500,13 @@ export async function handleChannelConnectorCommand(
       replyText: null,
       passthroughText: target,
       nativeCommand: target,
+      audit: commandAudit({
+        kind: "native",
+        source: "user",
+        name,
+        args,
+        commandPreview: target,
+      }),
     };
   }
 
@@ -3488,5 +3602,12 @@ export async function handleChannelConnectorCommand(
     replyText: null,
     passthroughText: parsed.raw,
     nativeCommand: null,
+    audit: commandAudit({
+      kind: "passthrough",
+      source: "user",
+      name,
+      args,
+      commandPreview: parsed.raw,
+    }),
   };
 }

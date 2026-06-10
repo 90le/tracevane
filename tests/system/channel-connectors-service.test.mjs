@@ -3880,6 +3880,11 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(addedCommand.handled, false);
   assert.equal(addedCommand.command, "daily");
   assert.equal(addedCommand.passthroughText, "Summarize release with blockers");
+  assert.equal(addedCommand.audit.kind, "custom-prompt");
+  assert.equal(addedCommand.audit.source, "config");
+  assert.equal(addedCommand.audit.name, "daily");
+  assert.equal(addedCommand.audit.argsCount, 2);
+  assert.equal(addedCommand.audit.argsPreview, "release blockers");
   const blockedCustomCommand = await handleChannelConnectorCommand({
     ...baseContext,
     binding: commandAclBinding,
@@ -3945,6 +3950,10 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(codexSkillRun.passthroughText, /## Skill: Release Notes/);
   assert.match(codexSkillRun.passthroughText, /Write release notes from the provided change list/);
   assert.match(codexSkillRun.passthroughText, /## User Arguments:\nbug fix list/);
+  assert.equal(codexSkillRun.audit.kind, "skill");
+  assert.equal(codexSkillRun.audit.source, "skill");
+  assert.equal(codexSkillRun.audit.name, "release-notes");
+  assert.equal(codexSkillRun.audit.argsPreview, "bug fix list");
   const blockedSkillRun = await handleChannelConnectorCommand({
     ...baseContext,
     binding: commandAclBinding,
@@ -3982,6 +3991,10 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(claudeAgentCommand.command, "review-code");
   assert.equal(claudeAgentCommand.passthroughText, "Review target src with notes auth module");
   assert.equal(claudeAgentCommand.nativeCommand, null);
+  assert.equal(claudeAgentCommand.audit.kind, "agent-command");
+  assert.equal(claudeAgentCommand.audit.source, "agent");
+  assert.equal(claudeAgentCommand.audit.name, "review-code");
+  assert.equal(claudeAgentCommand.audit.argsPreview, "src auth module");
 
   const deniedAddExec = await handleChannelConnectorCommand({
     ...baseContext,
@@ -4024,6 +4037,21 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(execRun.ok, true);
   assert.match(execRun.replyText, /shell command \/xstat completed/);
   assert.match(execRun.replyText, /exec:.*:alpha beta/);
+  assert.equal(execRun.audit.kind, "custom-exec");
+  assert.equal(execRun.audit.source, "config");
+  assert.equal(execRun.audit.name, "xstat");
+  assert.equal(execRun.audit.argsCount, 2);
+  assert.equal(execRun.audit.argsPreview, "alpha beta");
+  assert.equal(execRun.audit.exec.exitCode, 0);
+  assert.equal(execRun.audit.exec.signal, null);
+  assert.equal(execRun.audit.exec.timedOut, false);
+  assert.equal(execRun.audit.exec.error, null);
+  assert.match(execRun.audit.exec.workDir, /codex-work$/);
+  assert.match(execRun.audit.exec.commandPreview, /alpha beta/);
+  assert.ok(execRun.audit.exec.elapsedMs >= 0);
+  assert.ok(execRun.audit.exec.stdoutBytes > 0);
+  assert.equal(execRun.audit.exec.stderrBytes, 0);
+  assert.match(execRun.audit.exec.stdoutPreview, /exec:.*:alpha beta/);
 
   const duplicateBuiltin = await handleChannelConnectorCommand({
     ...baseContext,

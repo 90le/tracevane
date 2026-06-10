@@ -22,17 +22,16 @@
 
 ## 本轮完成
 
-- 按 CC Go 命令 ACL 将 Channel binding `disabledCommands` 提升为 native config / daemon runtime / 前端表单一等字段，并兼容 metadata `disabledCommands` / `disabled_commands`；非显式 admin 用户会被阻断 built-in、custom prompt command 和 Skill，`*` 可禁用全部命令，`/myid` 等 alias 会按解析后的 `whoami` 检查。
-- Channel Connectors UI 的 binding 编辑表单新增“禁用命令”，保存后直接进入 native config；API normalize / runtime preview / daemon reverse mapping 全链路保留该字段。
-- 回归测试覆盖 config 持久化、runtime 派生、built-in/custom/skill 阻断、`*` 全禁用、显式 admin 绕过和旧 metadata 配置兼容。
-- 主进度文档按压缩规则整理：历史细节保留在 git commit 与 `channel-connectors-cc-migration-checklist.md`，本文件只保留当前轮摘要和最新验证。
+- 按 CC Go `CommandProvider` 可审计执行方向补齐命令审计合同：prompt custom command、Agent command、Skill、native passthrough 和 unknown passthrough 都会返回结构化 `audit`。
+- `/commands addexec` shell 命令执行结果新增结构化 audit：记录命令类型、source、参数预览、cwd、exit/signal、timeout、elapsed、stdout/stderr 字节数和短预览。
+- Octo/Feishu daemon 的 `channel.command` 与 `channel.command.passthrough` 事件会写出扁平化 `commandKind/source/argsPreview/exec*` 字段，后续管理页、日志 smoke 和审计视图可直接复用。
+- 回归测试覆盖 custom prompt、Agent command、Skill 和 shell exec 的 audit 字段；主进度文档继续保持压缩，只保留当前轮摘要。
 
 ## 最近验证
 
-- 通过：`npm run typecheck:api && npm run typecheck:web`。
+- 通过：`npm run typecheck:api`。
 - 通过：`npm run build:api`。
-- 通过：`npm run build:web`。
-- 通过：`node --test --test-name-pattern "native Channel Connectors store persists agent profiles and derives daemon runtime|native Channel Connectors IM commands switch agent, model, and permission per session" tests/system/channel-connectors-service.test.mjs`。
+- 通过：`node --test --test-name-pattern "native Channel Connectors IM commands switch agent, model, and permission per session" tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test tests/system/channel-connectors-service.test.mjs`，66/66 全部通过。
 - 通过：重启 `openclaw-studio-channel-connectors.service` 与 `npm run dev:restart`；`/health` 显示 `connected=1`、`pongOverdue=0`、`transportStale=0`，backend gateway online，frontend HTTP 200。
 
