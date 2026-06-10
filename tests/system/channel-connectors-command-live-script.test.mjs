@@ -325,6 +325,9 @@ test("command live smoke script verifies daemon command progress logs", async ()
       commandProgressType: "started",
       commandProgressElapsedMs: 501,
       commandProgressOutputPreview: null,
+      progressTransportAction: "send-command-progress-text",
+      progressReplySent: true,
+      progressReplyRequestCount: 1,
     },
     {
       checkedAt: "2026-06-08T00:30:01.000Z",
@@ -337,6 +340,9 @@ test("command live smoke script verifies daemon command progress logs", async ()
       commandProgressElapsedMs: 720,
       commandProgressExitCode: 0,
       commandProgressOutputPreview: "slow done",
+      progressTransportAction: "none",
+      progressReplySent: false,
+      progressReplyRequestCount: null,
     },
   ]);
 
@@ -347,6 +353,7 @@ test("command live smoke script verifies daemon command progress logs", async ()
     "--commands", "/slow",
     "--recent-sessions",
     "--require-command-progress-terminal",
+    "--require-command-progress-sent",
     "--since", "2026-06-08T00:29:59.000Z",
     "--json",
   ], root);
@@ -354,13 +361,79 @@ test("command live smoke script verifies daemon command progress logs", async ()
   assert.equal(parsed.ok, true);
   assert.equal(parsed.commandProgress.required, true);
   assert.equal(parsed.commandProgress.terminalRequired, true);
+  assert.equal(parsed.commandProgress.sentRequired, true);
   assert.deepEqual(parsed.commandProgress.failures, []);
   assert.equal(parsed.plans.length, 1);
   assert.equal(parsed.plans[0].sessionKey, "dmwork:dm:user-2");
   assert.equal(parsed.plans[0].commandProgress.count, 2);
   assert.deepEqual(parsed.plans[0].commandProgress.types, ["started", "completed"]);
   assert.equal(parsed.plans[0].commandProgress.terminal, "completed");
+  assert.deepEqual(parsed.plans[0].commandProgress.transportActions, ["send-command-progress-text"]);
+  assert.equal(parsed.plans[0].commandProgress.sentCount, 1);
+  assert.equal(parsed.plans[0].commandProgress.textSendCount, 1);
+  assert.equal(parsed.plans[0].commandProgress.cardPatchCount, 0);
+  assert.equal(parsed.plans[0].commandProgress.requestCount, 1);
   assert.equal(parsed.plans[0].commandProgress.latest.outputPreview, "slow done");
+});
+
+test("command live smoke script can require Feishu command progress card patches", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-command-live-smoke-"));
+  const { configPath, stateDir } = writeFixture(root);
+  writeJsonl(path.join(stateDir, "feishu-events.jsonl"), [
+    {
+      checkedAt: "2026-06-08T00:30:00.000Z",
+      eventKind: "channel.command.progress",
+      adapter: "feishu",
+      bindingId: "feishu-live",
+      sessionKey: "feishu:oc_real:ou_real",
+      commandProgressName: "slow",
+      commandProgressType: "started",
+      commandProgressElapsedMs: 501,
+      progressTransportAction: "send-command-progress-card",
+      progressReplySent: true,
+      progressReplyMessageId: "om_progress_card",
+      progressReplyRequestCount: 1,
+    },
+    {
+      checkedAt: "2026-06-08T00:30:01.000Z",
+      eventKind: "channel.command.progress",
+      adapter: "feishu",
+      bindingId: "feishu-live",
+      sessionKey: "feishu:oc_real:ou_real",
+      commandProgressName: "slow",
+      commandProgressType: "completed",
+      commandProgressElapsedMs: 720,
+      commandProgressExitCode: 0,
+      commandProgressOutputPreview: "slow done",
+      progressTransportAction: "patch-command-progress-card",
+      progressReplySent: true,
+      progressReplyMessageId: "om_progress_card",
+      progressReplyRequestCount: 1,
+    },
+  ]);
+
+  const output = await runScript([
+    "--config", configPath,
+    "--state-dir", stateDir,
+    "--bindings", "feishu-live",
+    "--commands", "/slow",
+    "--recent-sessions",
+    "--require-command-progress-terminal",
+    "--require-command-progress-patch",
+    "--since", "2026-06-08T00:29:59.000Z",
+    "--json",
+  ], root);
+  const parsed = JSON.parse(output.stdout);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.commandProgress.patchRequired, true);
+  assert.deepEqual(parsed.commandProgress.failures, []);
+  assert.equal(parsed.plans[0].commandProgress.count, 2);
+  assert.deepEqual(parsed.plans[0].commandProgress.transportActions, ["send-command-progress-card", "patch-command-progress-card"]);
+  assert.equal(parsed.plans[0].commandProgress.sentCount, 2);
+  assert.equal(parsed.plans[0].commandProgress.cardSendCount, 1);
+  assert.equal(parsed.plans[0].commandProgress.cardPatchCount, 1);
+  assert.deepEqual(parsed.plans[0].commandProgress.messageIds, ["om_progress_card"]);
+  assert.equal(parsed.plans[0].commandProgress.requestCount, 2);
 });
 
 test("command live smoke script requires explicit address before apply", async () => {

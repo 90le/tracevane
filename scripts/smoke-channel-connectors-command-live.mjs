@@ -36,6 +36,8 @@ function parseArgs(argv) {
     pollMs: DEFAULT_PROGRESS_POLL_MS,
     requireCommandProgress: false,
     requireCommandProgressTerminal: false,
+    requireCommandProgressSent: false,
+    requireCommandProgressPatch: false,
     waitCommandProgress: false,
     json: false,
   };
@@ -82,6 +84,13 @@ function parseArgs(argv) {
     else if (arg === "--require-command-progress-terminal") {
       options.requireCommandProgress = true;
       options.requireCommandProgressTerminal = true;
+    } else if (arg === "--require-command-progress-sent") {
+      options.requireCommandProgress = true;
+      options.requireCommandProgressSent = true;
+    } else if (arg === "--require-command-progress-patch") {
+      options.requireCommandProgress = true;
+      options.requireCommandProgressSent = true;
+      options.requireCommandProgressPatch = true;
     } else if (arg === "--wait-command-progress") {
       options.requireCommandProgress = true;
       options.waitCommandProgress = true;
@@ -125,6 +134,10 @@ Options:
                           Require daemon channel.command.progress evidence for each planned command.
   --require-command-progress-terminal
                           Also require completed/failed/timeout command progress evidence.
+  --require-command-progress-sent
+                          Require at least one successful transport progress send/patch.
+  --require-command-progress-patch
+                          Require a Feishu command progress card patch action.
   --wait-command-progress Poll daemon event logs until command progress requirements pass.
   --since <iso>           Include command progress events at or after this timestamp.
   --since-minutes <n>     Include recent command progress window. Default: ${DEFAULT_SINCE_MINUTES}.
@@ -144,7 +157,7 @@ Examples:
   node scripts/smoke-channel-connectors-command-live.mjs --recent-sessions --probe --json
   node scripts/smoke-channel-connectors-command-live.mjs --bindings octo-studio-cc --from-uid user --channel-id user --probe --json
   node scripts/smoke-channel-connectors-command-live.mjs --bindings feishu-live --from-uid ou_x --channel-id oc_x --commands /new,/reset --apply
-  node scripts/smoke-channel-connectors-command-live.mjs --bindings feishu-live --recent-sessions --commands /slow --wait-command-progress --require-command-progress-terminal --json
+  node scripts/smoke-channel-connectors-command-live.mjs --bindings feishu-live --recent-sessions --commands /slow --wait-command-progress --require-command-progress-terminal --require-command-progress-patch --json
 `);
 }
 
@@ -447,12 +460,25 @@ function readCommandProgressEvents(options, minCheckedAtMs) {
 function summarizeCommandProgressEvents(events) {
   const sorted = [...events].sort((a, b) => toTime(a.checkedAt) - toTime(b.checkedAt));
   const types = uniqueStrings(sorted.map((event) => String(event.commandProgressType || "")).filter(Boolean));
+  const transportActions = uniqueStrings(sorted.map((event) => String(event.progressTransportAction || "")).filter((value) => value && value !== "none"));
   const latest = sorted[sorted.length - 1] || null;
   const terminal = sorted.find((event) => ["completed", "failed", "timeout"].includes(String(event.commandProgressType || ""))) || null;
+  const sentEvents = sorted.filter((event) => event.progressReplySent === true);
+  const cardPatchEvents = sorted.filter((event) => String(event.progressTransportAction || "") === "patch-command-progress-card");
+  const cardSendEvents = sorted.filter((event) => String(event.progressTransportAction || "") === "send-command-progress-card");
+  const textSendEvents = sorted.filter((event) => String(event.progressTransportAction || "") === "send-command-progress-text");
   return {
     count: sorted.length,
     types,
     terminal: terminal ? String(terminal.commandProgressType || "") : null,
+    transportActions,
+    sentCount: sentEvents.length,
+    cardSendCount: cardSendEvents.length,
+    cardPatchCount: cardPatchEvents.length,
+    textSendCount: textSendEvents.length,
+    messageIds: uniqueStrings(sorted.map((event) => String(event.progressReplyMessageId || "")).filter(Boolean)),
+    requestCount: sorted.reduce((total, event) => total + Number(event.progressReplyRequestCount || 0), 0),
+    errors: uniqueStrings(sorted.map((event) => String(event.progressReplyError || "")).filter(Boolean)),
     latest: latest ? {
       checkedAt: latest.checkedAt || null,
       type: latest.commandProgressType || null,
@@ -498,6 +524,22 @@ function commandProgressFailures(plans, options) {
         command: plan.command,
         sessionKey: plan.sessionKey,
         reason: "missing-terminal-command-progress",
+      });
+    }
+    if (options.requireCommandProgressSent && Number(plan.commandProgress.sentCount || 0) <= 0) {
+      failures.push({
+        bindingId: plan.bindingId,
+        command: plan.command,
+        sessionKey: plan.sessionKey,
+        reason: "missing-sent-command-progress",
+      });
+    }
+    if (options.requireCommandProgressPatch && Number(plan.commandProgress.cardPatchCount || 0) <= 0) {
+      failures.push({
+        bindingId: plan.bindingId,
+        command: plan.command,
+        sessionKey: plan.sessionKey,
+        reason: "missing-patched-command-progress-card",
       });
     }
   }
@@ -664,6 +706,8 @@ async function main() {
     commandProgress: {
       required: options.requireCommandProgress,
       terminalRequired: options.requireCommandProgressTerminal,
+      sentRequired: options.requireCommandProgressSent,
+      patchRequired: options.requireCommandProgressPatch,
       wait: options.waitCommandProgress,
       since: new Date(progressSinceMs).toISOString(),
       failures: commandProgressFailures,
@@ -693,7 +737,7 @@ async function main() {
       console.log(`  -> HTTP ${plan.result.status} accepted=${plan.result.accepted} ok=${plan.result.ok} action=${plan.result.action || "n/a"} ${plan.result.replyPreview}`);
     }
     if (plan.commandProgress) {
-      console.log(`  -> command progress count=${plan.commandProgress.count} types=${plan.commandProgress.types.join(",") || "none"} terminal=${plan.commandProgress.terminal || "none"}`);
+      console.log(`  -> command progress count=${plan.commandProgress.count} types=${plan.commandProgress.types.join(",") || "none"} terminal=${plan.commandProgress.terminal || "none"} sent=${plan.commandProgress.sentCount} patch=${plan.commandProgress.cardPatchCount}`);
     }
   }
   console.log(output.note);

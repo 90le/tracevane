@@ -22,19 +22,19 @@
 
 ## 本轮完成
 
-- 扩展 `scripts/smoke-channel-connectors-command-live.mjs`，新增只读验证 daemon `channel.command.progress` 日志的能力，避免用 Studio API adapter smoke 误当作 Feishu/Octo 长连接 daemon 验收。
-- 新增 `--require-command-progress`、`--require-command-progress-terminal`、`--wait-command-progress`、`--since/--since-minutes`、`--timeout-ms`、`--poll-ms`；按 binding、sessionKey 和 slash command name 匹配 Octo/Feishu 事件日志。
-- 脚本输出每个计划命令的 progress count/types/latest/terminal，并在缺少进度或终态时以 `ok=false` / 非零退出码报告，可用于真实 IM 发 `/commands addexec` 长命令后的验收。
-- 回归测试覆盖 recent session 匹配、错误 session 过滤、started/completed 类型汇总和 terminal requirement。
+- 继续强化 `scripts/smoke-channel-connectors-command-live.mjs` 的 daemon `channel.command.progress` 验收：除事件存在和终态外，现在可要求真实 transport progress 已发送。
+- 新增 `--require-command-progress-sent` 和 `--require-command-progress-patch`；脚本汇总 `progressTransportAction`、sent/card-send/card-patch/text-send 计数、messageId、requestCount 和错误列表。
+- Feishu 真实 `/commands addexec` 长命令 smoke 现在可以证明“send card -> patch card -> terminal”的 UX 合同；Octo 可以证明 started-only 文本提示已发送，同时仍保留最终结果。
+- 回归测试覆盖 Octo `send-command-progress-text`、Feishu `send-command-progress-card` + `patch-command-progress-card`、messageId 归并、requestCount 汇总和 missing patch 失败门禁。
 
 ## 最近验证
 
 - 通过：`npm run typecheck:api`。
 - 通过：`npm run build:api`。
-- 通过：`node --test tests/system/channel-connectors-command-live-script.test.mjs`，7/7 全部通过。
+- 通过：`node --test tests/system/channel-connectors-command-live-script.test.mjs`，8/8 全部通过。
 - 通过：`node --test --test-name-pattern "native Channel Connectors IM commands switch agent, model, and permission per session" tests/system/channel-connectors-service.test.mjs`。
 - 通过：`node --test --test-name-pattern "native Channel Connectors IM commands switch agent, model, and permission per session|native Channel Connectors daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs tests/system/channel-connectors-command-live-script.test.mjs`，73/73 全部通过。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs tests/system/channel-connectors-command-live-script.test.mjs`，74/74 全部通过。
 - 通过：`node scripts/smoke-channel-connectors-command-live.mjs --bindings feishu-live,octo-studio-cc --commands /slow --recent-sessions --json` 只读 dry-run，可解析真实 Feishu/Octo recent sessions；因未实际发送 `/slow`，progress count 为 0 且未要求通过。
 - 通过：重启 `openclaw-studio-channel-connectors.service` 与 `npm run dev:restart`；Channel `/health` 显示 `connected=1`、`pongOverdue=0`、`transportStale=0`，backend gateway online，frontend HTTP 200。
 
@@ -52,6 +52,6 @@
 ## 下一步
 
 1. 用户发送一条新的 Feishu 消息，做业务入站复验：runtime 应出现 dispatcher callback / receivedMessages，且无 reconnect/stale。
-2. 做真实 IM live smoke：先从 Feishu/Octo 真实发送 `/commands addexec slow node -e "setTimeout(()=>console.log('slow done'), 900)"` 和 `/slow`，再运行 `node scripts/smoke-channel-connectors-command-live.mjs --bindings feishu-live,octo-studio-cc --recent-sessions --commands /slow --wait-command-progress --require-command-progress-terminal --json` 验证 daemon progress；再运行 `node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings feishu-live --require-ok --require-reply --require-progress --require-tool --require-feishu-card --require-feishu-progress-card-completed --require-no-final-progress-reply --json`，用三次顺序 `exec_command` 的提示词验证思考、过程回复、工具输入、工具输出和最终回复；同时确认 Feishu 进度卡内允许/拒绝按钮、文本 `/approve`/`/deny`、Codex app-server Bash/Patch/Permissions、Claude AskUserQuestion/permission、OpenCode permission 都能闭环。
+2. 做真实 IM live smoke：先从 Feishu/Octo 真实发送 `/commands addexec slow node -e "setTimeout(()=>console.log('slow done'), 900)"` 和 `/slow`，再运行 `node scripts/smoke-channel-connectors-command-live.mjs --bindings feishu-live --recent-sessions --commands /slow --wait-command-progress --require-command-progress-terminal --require-command-progress-patch --json` 验证 Feishu daemon card patch，并运行 `node scripts/smoke-channel-connectors-command-live.mjs --bindings octo-studio-cc --recent-sessions --commands /slow --wait-command-progress --require-command-progress-terminal --require-command-progress-sent --json` 验证 Octo started-only 文本提示；再运行 `node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings feishu-live --require-ok --require-reply --require-progress --require-tool --require-feishu-card --require-feishu-progress-card-completed --require-no-final-progress-reply --json`，用三次顺序 `exec_command` 的提示词验证思考、过程回复、工具输入、工具输出和最终回复；同时确认 Feishu 进度卡内允许/拒绝按钮、文本 `/approve`/`/deny`、Codex app-server Bash/Patch/Permissions、Claude AskUserQuestion/permission、OpenCode permission 都能闭环。
 3. 继续扩展真实 Claude Code / OpenCode persistent smoke：视觉输入、权限和 IM live 文件上传链路，并确认 one-shot 默认路径不受影响。
 4. 继续按 CC Go 迁移 Feishu/Octo 菜单与命令细节、OpenCode 文件/权限/流式能力，并继续优化非 Feishu 纯文本进度样式。
