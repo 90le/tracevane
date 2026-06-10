@@ -1342,6 +1342,57 @@ function renderPermissionPrompt(request: ChannelConnectorAgentPermissionRequest)
   ].filter(Boolean).join("\n");
 }
 
+function renderPlainPermissionPrompt(request: ChannelConnectorAgentPermissionRequest, fallbackText: string): string {
+  if (isAskUserQuestionRequest(request)) {
+    return renderPlainProgressMessage({
+      icon: "❓",
+      title: "Claude Code 提问",
+      meta: "等待回复",
+      body: fallbackText,
+    });
+  }
+  const toolName = normalizeString(request.toolName) || "tool";
+  const requestId = normalizeString(request.requestId) || "permission";
+  const inputJson = JSON.stringify(request.input || {}, null, 2);
+  const body = [
+    `请求 \`${inlineProgressCode(requestId)}\``,
+    inputJson && inputJson !== "{}" ? codeBlock("json", inputJson) : "",
+    "回复 `/approve` 允许，`/deny` 拒绝，`/allow-all` 允许本次运行后续工具请求。",
+  ].filter(Boolean).join("\n");
+  return renderPlainProgressMessage({
+    icon: progressKindIcon("permission"),
+    title: `${progressToolUseLabel(toolName)} \`${inlineProgressCode(toolName)}\``,
+    meta: "等待审批",
+    body,
+  });
+}
+
+function renderPlainPermissionState(change: ChannelDaemonPendingPermissionStateChange): string {
+  const toolName = normalizeString(change.request.toolName) || "tool";
+  const requestId = normalizeString(change.request.requestId) || "permission";
+  const status = change.status;
+  const body = [
+    `请求 \`${inlineProgressCode(requestId)}\``,
+    change.message ? inlineProgressCode(change.message) : "",
+    status === "allowed" || status === "allowed-all" ? "审批已通过，Agent 将继续执行后续步骤。" : "",
+    status === "denied" || status === "timed-out" ? "审批未通过，Agent 会收到拒绝结果。" : "",
+  ].filter(Boolean).join("\n");
+  return renderPlainProgressMessage({
+    icon: progressKindIcon(status === "allowed" || status === "allowed-all" ? "completed" : status === "denied" || status === "timed-out" || status === "failed" ? "failed" : "permission"),
+    title: `${progressToolUseLabel(toolName)} \`${inlineProgressCode(toolName)}\``,
+    meta: permissionProgressStatusLabel(status),
+    body,
+  });
+}
+
+function permissionStateContinuesRun(status: ChannelDaemonPendingPermissionState): boolean {
+  return status === "allowed" || status === "allowed-all";
+}
+
+function permissionStateSettled(status: ChannelDaemonPendingPermissionState): boolean {
+  return status !== "pending";
+}
+
 function createPermissionResolver(input: {
   registry: ChannelDaemonPendingPermissionRegistry;
   runId: string;
@@ -4403,6 +4454,15 @@ function isVisibleChannelProgressEvent(event: ChannelConnectorAgentProgressEvent
   return true;
 }
 
+function isPermissionApprovalProgressEvent(event: ChannelConnectorAgentProgressEvent): boolean {
+  const rawType = normalizeString(event.rawType).toLowerCase();
+  const text = normalizeString(event.text).toLowerCase();
+  return rawType === "control_request"
+    || rawType.includes("requestapproval")
+    || text.includes("permission requested")
+    || text.includes("can_use_tool");
+}
+
 function createFeishuProgressCardState(): FeishuProgressCardState {
   const startedAtMs = Date.now();
   return {
@@ -4667,12 +4727,15 @@ function normalizedProgressToolKey(value: string | null): string {
 
 function progressToolUseLabel(toolName: string): string {
   const key = normalizedProgressToolKey(toolName);
-  if (["bash", "shell", "runshellcommand", "commandexecution", "command"].includes(key)) return "命令执行";
+  if (["bash", "shell", "runshellcommand", "execcommand", "commandexecution", "command"].includes(key)) return "命令执行";
   if (key === "todowrite") return "任务清单";
+  if (key === "todoread") return "任务查看";
   if (["read", "readfile", "notebookread"].includes(key)) return "文件读取";
   if (["write", "writefile", "edit", "multiedit", "notebookedit", "applypatch"].includes(key)) return "文件修改";
-  if (["grep", "glob", "ls", "list", "search"].includes(key)) return "文件检索";
-  if (["webfetch", "websearch"].includes(key)) return "网页检索";
+  if (["grep", "glob", "ls", "list", "search", "find"].includes(key)) return "文件检索";
+  if (["webfetch", "websearch", "webopen", "webfind"].includes(key)) return "网页检索";
+  if (["viewimage", "imageview", "screenshot"].includes(key)) return "图像查看";
+  if (key.startsWith("mcp")) return "MCP 工具";
   if (["agent", "task"].includes(key)) return "子任务";
   if (["askuserquestion", "ask", "question"].includes(key)) return "用户确认";
   return "工具调用";
@@ -4680,12 +4743,15 @@ function progressToolUseLabel(toolName: string): string {
 
 function progressToolResultLabel(toolName: string): string {
   const key = normalizedProgressToolKey(toolName);
-  if (["bash", "shell", "runshellcommand", "commandexecution", "command"].includes(key)) return "命令输出";
+  if (["bash", "shell", "runshellcommand", "execcommand", "commandexecution", "command"].includes(key)) return "命令输出";
   if (key === "todowrite") return "任务清单结果";
+  if (key === "todoread") return "任务查看结果";
   if (["read", "readfile", "notebookread"].includes(key)) return "读取结果";
   if (["write", "writefile", "edit", "multiedit", "notebookedit", "applypatch"].includes(key)) return "修改结果";
-  if (["grep", "glob", "ls", "list", "search"].includes(key)) return "检索结果";
-  if (["webfetch", "websearch"].includes(key)) return "网页结果";
+  if (["grep", "glob", "ls", "list", "search", "find"].includes(key)) return "检索结果";
+  if (["webfetch", "websearch", "webopen", "webfind"].includes(key)) return "网页结果";
+  if (["viewimage", "imageview", "screenshot"].includes(key)) return "图像查看结果";
+  if (key.startsWith("mcp")) return "MCP 结果";
   if (["agent", "task"].includes(key)) return "子任务结果";
   if (["askuserquestion", "ask", "question"].includes(key)) return "用户确认结果";
   return "工具结果";
@@ -6117,34 +6183,43 @@ async function dispatchOctoMessage(input: {
   let lastOctoProgressSentAt = 0;
   let octoProgressSendCount = 0;
   let octoProgressFlush: Promise<void> = Promise.resolve();
-  const queueOctoProgressReply = (event: ChannelConnectorAgentProgressEvent): void => {
-    if (!transport) return;
-    if (event.type === "completed") return;
-    if (!shouldSendChannelProgressEvent(control, event, progressDefaults)) return;
-    const replyText = renderOctoProgressText(event);
+  let octoPermissionPending = false;
+  const octoPermissionBufferedProgress: ChannelConnectorAgentProgressEvent[] = [];
+  const queueOctoTextProgressReply = (
+    replyText: string,
+    log: {
+      eventKind: string;
+      progressType?: ChannelConnectorAgentProgressEvent["type"] | "permission" | null;
+      rawType?: string | null;
+      itemType?: string | null;
+      phase?: ChannelConnectorAgentProgressEvent["phase"];
+      permissionStatus?: ChannelDaemonPendingPermissionState | null;
+      requestId?: string | null;
+      toolName?: string | null;
+    },
+  ): Promise<void> => {
+    if (!transport) return Promise.resolve();
     const replyPlan = renderOctoTextReply(message, replyText);
-    if (!replyPlan) return;
-    const highPriority = event.type === "failed" || event.type === "error" || event.type === "tool";
-    const nowMs = Date.now();
-    if (!highPriority && nowMs - lastOctoProgressSentAt < 1500) return;
-    if (!highPriority && octoProgressSendCount >= 40) return;
-    lastOctoProgressSentAt = nowMs;
+    if (!replyPlan) return Promise.resolve();
     octoProgressSendCount += 1;
     octoProgressFlush = octoProgressFlush.catch(() => undefined).then(async () => {
       const result = await sendOctoTextReply(transport, replyPlan);
       writeJsonLine(config.paths.octoEvents, {
         checkedAt: new Date().toISOString(),
-        eventKind: "agent.progress.reply",
+        eventKind: log.eventKind,
         adapter: "octo",
         bindingId: binding.id,
         sessionKey,
         messageId: message.messageId,
         channelId: message.channelId,
         channelType: message.channelType,
-        progressType: event.type,
-        rawType: event.rawType,
-        itemType: event.itemType,
-        phase: event.phase || null,
+        progressType: log.progressType || null,
+        rawType: log.rawType || null,
+        itemType: log.itemType || null,
+        phase: log.phase || null,
+        permissionStatus: log.permissionStatus || null,
+        requestId: log.requestId || null,
+        toolName: log.toolName || null,
         replySent: result.ok === true,
         replyError: result.error,
         replyRequestCount: result.requestCount,
@@ -6154,23 +6229,75 @@ async function dispatchOctoMessage(input: {
     }).catch((error) => {
       writeJsonLine(config.paths.octoEvents, {
         checkedAt: new Date().toISOString(),
-        eventKind: "agent.progress.reply",
+        eventKind: log.eventKind,
         adapter: "octo",
         bindingId: binding.id,
         sessionKey,
         messageId: message.messageId,
         channelId: message.channelId,
         channelType: message.channelType,
-        progressType: event.type,
-        rawType: event.rawType,
-        itemType: event.itemType,
-        phase: event.phase || null,
+        progressType: log.progressType || null,
+        rawType: log.rawType || null,
+        itemType: log.itemType || null,
+        phase: log.phase || null,
+        permissionStatus: log.permissionStatus || null,
+        requestId: log.requestId || null,
+        toolName: log.toolName || null,
         replySent: false,
         replyError: shortMessage(error),
         progressReplySendCount: octoProgressSendCount,
         agentElapsedMs: elapsedMsSince(runStartedAtMs),
       });
     });
+    return octoProgressFlush;
+  };
+  const queueOctoProgressReply = (event: ChannelConnectorAgentProgressEvent, fromPermissionBuffer = false): void => {
+    if (event.type === "completed") return;
+    if (isPermissionApprovalProgressEvent(event)) return;
+    if (octoPermissionPending && !fromPermissionBuffer && event.type !== "failed" && event.type !== "error") {
+      if (octoPermissionBufferedProgress.length < 20) octoPermissionBufferedProgress.push(event);
+      return;
+    }
+    if (!shouldSendChannelProgressEvent(control, event, progressDefaults)) return;
+    const replyText = renderOctoProgressText(event);
+    const highPriority = event.type === "failed" || event.type === "error" || event.type === "tool";
+    const nowMs = Date.now();
+    if (!highPriority && nowMs - lastOctoProgressSentAt < 1500) return;
+    if (!highPriority && octoProgressSendCount >= 40) return;
+    lastOctoProgressSentAt = nowMs;
+    void queueOctoTextProgressReply(replyText, {
+      eventKind: "agent.progress.reply",
+      progressType: event.type,
+      rawType: event.rawType,
+      itemType: event.itemType,
+      phase: event.phase || null,
+    });
+  };
+  const flushOctoPermissionBufferedProgress = (): void => {
+    if (!octoPermissionBufferedProgress.length) return;
+    const buffered = octoPermissionBufferedProgress.splice(0);
+    for (const event of buffered) queueOctoProgressReply(event, true);
+  };
+  const queueOctoPermissionStateReply = (change: ChannelDaemonPendingPermissionStateChange): void => {
+    const status = change.status;
+    if (status === "pending") {
+      octoPermissionPending = true;
+      return;
+    }
+    if (!permissionStateSettled(status)) return;
+    octoPermissionPending = false;
+    void queueOctoTextProgressReply(renderPlainPermissionState(change), {
+      eventKind: "agent.permission.reply",
+      progressType: "permission",
+      permissionStatus: status,
+      requestId: change.request.requestId,
+      toolName: change.request.toolName,
+    });
+    if (permissionStateContinuesRun(status)) {
+      flushOctoPermissionBufferedProgress();
+    } else {
+      octoPermissionBufferedProgress.length = 0;
+    }
   };
   state.activeRuns.unshift({
     id: activeRunId,
@@ -6297,10 +6424,19 @@ async function dispatchOctoMessage(input: {
           messageId: message.messageId,
           agent: turnProject.agent,
           model: turnProject.model,
-          onPrompt: async (prompt) => {
-            if (!transport) return;
-            const replyPlan = renderOctoTextReply(message, prompt);
-            if (replyPlan) await sendOctoTextReply(transport, replyPlan);
+          onStateChange: (change) => {
+            if (isAskUserQuestionRequest(change.request)) return;
+            queueOctoPermissionStateReply(change);
+          },
+          onPrompt: async (prompt, request) => {
+            if (!isAskUserQuestionRequest(request)) octoPermissionPending = true;
+            await queueOctoTextProgressReply(renderPlainPermissionPrompt(request, prompt), {
+              eventKind: "agent.permission.prompt",
+              progressType: "permission",
+              permissionStatus: "pending",
+              requestId: request.requestId,
+              toolName: request.toolName,
+            });
           },
         }),
         session: {

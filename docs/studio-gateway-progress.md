@@ -42,9 +42,13 @@
 - 清理 Channel Connectors 回归测试债：OpenCode persistent fake session 测试显式模拟当前 runtime dataHome session 存在性；OpenCode stop 测试区分启动前合法 session 验证与取消后禁止 DB fallback；daemon runtime / Octo JSONL 测试改为等待 async debounce/buffer flush，不再误报。
 - 对照 CC Go 修复 Claude/OpenCode 工具流：Claude live/session 递归提取 tool input/result，并通过 `tool_use_id` 把工具结果回填到对应工具名；OpenCode NDJSON 按 completed `tool_use` 拆出工具调用和工具输出；assistant 正文统一由后续事件判定 intermediate/final；进度渲染层改为按 `rawType/itemType` 区分 `tool_use/tool_result`，Feishu 卡片和 Octo/纯文本不再把 Claude/OpenCode 工具调用误显示成“工具结果”，并按工具名显示“命令输出 / 读取结果 / 检索结果”等语义标签。
 - 明确思考流边界：OpenCode 已带 `--thinking`，Claude Code 已解析 stream-json `thinking` block；渠道只展示上游真实 `reasoning/thinking` 事件，不合成伪思考。
+- 修复 Octo 纯文本渠道审批顺序：等待权限审批时，非终止进度会先缓冲，审批通过后再按顺序释放；拒绝/超时会丢弃缓冲进度；权限请求不再作为普通工具气泡重复发送。Octo 纯文本审批提示/结果已改为轻量 Markdown，带工具名、request id、输入 JSON 和 `/approve`/`/deny`/`/allow-all` 指令；AskUserQuestion 不进入工具审批门控。
+- Claude Code stream-json 现在把 `tool_use_id` / request id 和工具名传入统一 progress event，后续工具结果能稳定显示为对应工具的“命令输出 / 读取结果 / 检索结果”等标签；工具识别补齐 `exec_command`、`TodoRead`、`find`、`webopen/webfind`、图像查看和 MCP 工具。
 
 ## 最近验证
 
+- 通过：`node --test --test-name-pattern "native Channel Connectors process runner answers Claude Code permission requests|native Channel Connectors process runner waits for interactive Claude Code permission decisions|native Channel Connectors process runner routes Claude Code AskUserQuestion through IM answers|native Channel Connectors daemon owns Feishu long-connection ingress|native Channel Connectors daemon serializes same-session Octo Agent turns" tests/system/channel-connectors-service.test.mjs`。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，66/66 全部通过。
 - 通过：`npm run typecheck:api`。
 - 通过：`npm run typecheck:web`。
 - 通过：`npm run build:api`。

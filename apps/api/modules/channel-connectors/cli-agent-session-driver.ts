@@ -61,6 +61,8 @@ function progressEvent(input: {
   itemType?: string | null;
   text?: string | null;
   phase?: ChannelConnectorAgentProgressEvent["phase"];
+  toolName?: string | null;
+  toolCallId?: string | null;
 }): ChannelConnectorAgentProgressEvent {
   return {
     checkedAt: nowIso(),
@@ -69,6 +71,8 @@ function progressEvent(input: {
     itemType: input.itemType || null,
     text: input.text ? truncateProgressText(input.text) : null,
     phase: input.phase || null,
+    toolName: normalizeString(input.toolName) || null,
+    toolCallId: normalizeString(input.toolCallId) || null,
   };
 }
 
@@ -211,6 +215,8 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
   private sessionId: string | null;
   private closed = false;
   private activeTurn: PendingClaudeTurn | null = null;
+  private readonly pendingToolNamesById = new Map<string, string>();
+  private latestToolName: string | null = null;
 
   constructor(input: {
     id: string;
@@ -362,7 +368,17 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
         } else if (itemType === "tool_use") {
           const toolName = normalizeString(item.name);
           if (toolName !== "AskUserQuestion") {
-            this.pushProgress(progressEvent({ type: "tool", rawType, itemType, text: claudeToolProgressText(item) }));
+            const toolCallId = normalizeString(item.id) || normalizeString(item.tool_use_id);
+            this.latestToolName = toolName;
+            if (toolCallId) this.pendingToolNamesById.set(toolCallId, toolName);
+            this.pushProgress(progressEvent({
+              type: "tool",
+              rawType,
+              itemType,
+              text: claudeToolProgressText(item),
+              toolName,
+              toolCallId,
+            }));
           }
         }
       }
@@ -375,11 +391,15 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
         const isError = item.is_error === true;
         const text = firstText(item.content, item.text, item.result);
         if (text || isError) {
+          const toolCallId = normalizeString(item.tool_use_id) || normalizeString(item.id);
+          const toolName = (toolCallId ? this.pendingToolNamesById.get(toolCallId) : null) || this.latestToolName;
           this.pushProgress(progressEvent({
             type: isError ? "error" : "tool",
             rawType,
             itemType,
             text: text || "Claude tool result reported an error.",
+            toolName,
+            toolCallId,
           }));
         }
       }
@@ -411,7 +431,13 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
   private async handlePermissionRequest(raw: Record<string, unknown>): Promise<void> {
     const request = parseClaudePermissionRequest(raw);
     if (!request) return;
-    this.pushProgress(progressEvent({ type: "tool", rawType: "control_request", text: [request.subtype, request.toolName].filter(Boolean).join(": ") }));
+    this.pushProgress(progressEvent({
+      type: "tool",
+      rawType: "control_request",
+      text: [request.subtype, request.toolName].filter(Boolean).join(": "),
+      toolName: request.toolName,
+      toolCallId: request.requestId,
+    }));
     const resolver = this.activeTurn?.input.agentTurnRequest?.resolvePermission;
     const decision = claudePermissionDecision(this.permissionMode, request)
       || (resolver ? await resolver(request) : { behavior: "deny", message: "Interactive Claude tool approval is not available in this Studio runner." });

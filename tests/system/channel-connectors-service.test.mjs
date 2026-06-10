@@ -7961,6 +7961,9 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /patchFeishuCardMessage/);
   assert.match(daemonSource, /function renderFeishuPermissionCard/);
   assert.match(daemonSource, /function sendFeishuPermissionPrompt/);
+  assert.match(daemonSource, /function renderPlainPermissionPrompt/);
+  assert.match(daemonSource, /function renderPlainPermissionState/);
+  assert.match(daemonSource, /function isPermissionApprovalProgressEvent/);
   assert.match(daemonSource, /allowed-all/);
   assert.match(daemonSource, /function upsertFeishuPermissionProgressEntry/);
   assert.match(daemonSource, /kind:\s*"permission"/);
@@ -8049,6 +8052,17 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /agent\.progress\.card/);
   assert.match(daemonSource, /renderOctoProgressText/);
   assert.match(daemonSource, /agent\.progress\.reply/);
+  assert.match(daemonSource, /octoPermissionPending/);
+  assert.match(daemonSource, /octoPermissionBufferedProgress/);
+  assert.match(daemonSource, /queueOctoPermissionStateReply/);
+  assert.match(daemonSource, /agent\.permission\.prompt/);
+  assert.match(daemonSource, /agent\.permission\.reply/);
+  assert.match(daemonSource, /octoPermissionPending && !fromPermissionBuffer/);
+  assert.match(daemonSource, /if \(!isAskUserQuestionRequest\(request\)\)\s+octoPermissionPending = true;/);
+  assert.match(daemonSource, /if \(permissionStateContinuesRun\(status\)\)\s*\{\s*flushOctoPermissionBufferedProgress\(\);/);
+  assert.match(daemonSource, /if \(isPermissionApprovalProgressEvent\(event\)\)\s+return;/);
+  assert.match(daemonSource, /renderPlainPermissionPrompt\(request,\s*prompt\)/);
+  assert.match(daemonSource, /renderPlainPermissionState\(change\)/);
   assert.match(daemonSource, /event\.type === "failed" \|\| event\.type === "error" \|\| event\.type === "tool"/);
   assert.match(daemonSource, /title:\s*"过程回复"/);
   assert.match(daemonSource, /progressToolUseLabel\(parsed\.toolName\)/);
