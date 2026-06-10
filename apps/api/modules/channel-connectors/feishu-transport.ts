@@ -22,6 +22,22 @@ const TOKEN_EXPIRY_SKEW_MS = 5 * 60 * 1000;
 const DEFAULT_FEISHU_RESOURCE_MAX_BYTES = 128 * 1024 * 1024;
 const FEISHU_IMAGE_MESSAGE_MAX_BYTES = 10 * 1024 * 1024;
 
+const tokenMemoryCache = new Map<string, { token: string; expiresAt: number }>();
+
+function cachedTokenFromMemory(cacheKey: string): string | null {
+  const cached = tokenMemoryCache.get(cacheKey);
+  if (!cached) return null;
+  if (Date.now() >= cached.expiresAt - TOKEN_EXPIRY_SKEW_MS) {
+    tokenMemoryCache.delete(cacheKey);
+    return null;
+  }
+  return cached.token;
+}
+
+function setTokenToMemory(cacheKey: string, token: string, expiresAt: number): void {
+  tokenMemoryCache.set(cacheKey, { token, expiresAt });
+}
+
 interface FeishuTokenCacheRecord {
   tenantAccessToken: string;
   expiresAt: string;
@@ -175,10 +191,14 @@ function tokenCacheKey(config: ChannelConnectorFeishuTransportConfig): string {
 
 function cachedToken(cachePath: string | null | undefined, config: ChannelConnectorFeishuTransportConfig): string | null {
   if (!cachePath) return null;
-  const record = readCache(cachePath)[tokenCacheKey(config)];
+  const key = tokenCacheKey(config);
+  const memToken = cachedTokenFromMemory(key);
+  if (memToken) return memToken;
+  const record = readCache(cachePath)[key];
   if (!record?.tenantAccessToken || !record.expiresAt) return null;
   const expiresAt = Date.parse(record.expiresAt);
   if (!Number.isFinite(expiresAt) || expiresAt <= Date.now() + TOKEN_EXPIRY_SKEW_MS) return null;
+  setTokenToMemory(key, record.tenantAccessToken, expiresAt);
   return record.tenantAccessToken;
 }
 
@@ -557,6 +577,9 @@ async function getFeishuTenantToken(
       expiresAt: new Date(Date.now() + (Number.isFinite(expiresIn) ? expiresIn * 1000 : 3600_000)).toISOString(),
     };
     writeCache(cachePath, cache);
+    if (Number.isFinite(expiresIn)) {
+      setTokenToMemory(tokenCacheKey(config), token, Date.now() + expiresIn * 1000);
+    }
   }
   return {
     token,
