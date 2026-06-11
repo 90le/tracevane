@@ -394,10 +394,14 @@ export function buildChannelConnectorSkillContext(
       const description = normalizeString(skill.description);
       return `- /${skill.name}${description ? `: ${description}` : ""}`;
     }),
+    platform === "octo"
+      ? "Studio native Octo commands available to users: /octo groups, /octo members [group_no], /octo search <keyword>."
+      : "",
     "Use these channel/platform skills only when the user asks for platform-specific IM, file, group, document, or bot API work.",
     "For sending local files back to the user, emit a studio-channel-files manifest; do not call cc-connect or external IM bridge CLIs.",
+    "For sending IM messages, emit a studio-channel-messages manifest; Studio will deliver it through the active channel.",
   ];
-  return lines.join("\n");
+  return lines.filter(Boolean).join("\n");
 }
 
 export function buildChannelConnectorSkillPrompt(skill: ChannelConnectorSkill, args: string[]): string {

@@ -58,6 +58,7 @@ import {
 } from "./agent-session-store.js";
 import {
   handleChannelConnectorCommand,
+  formatChannelConnectorOctoManagementReply,
   listChannelConnectorGatewayModelCatalog,
   listChannelConnectorCommandSummaries,
   listChannelConnectorGatewayModels,
@@ -68,6 +69,8 @@ import {
   type ChannelConnectorCommandProgressAck,
   type ChannelConnectorCommandProgressEvent,
   type ChannelConnectorGatewayModel,
+  type ChannelConnectorOctoManagementRequest,
+  type ChannelConnectorOctoManagementResult,
   type ChannelConnectorPermissionResponseAction,
   type ChannelConnectorPermissionResponseResult,
   type ChannelConnectorUsageSummary,
@@ -155,8 +158,10 @@ import {
 import {
   getOctoFileDownloadUrl,
   listOctoGroupMembers,
+  listOctoGroups,
   octoTransportFromMetadata,
   registerOctoBot,
+  searchOctoSpaceMembers,
   sendOctoHeartbeat,
   sendOctoReadReceipt,
   sendOctoTextReply,
@@ -4475,6 +4480,37 @@ async function loadOctoGroupMembers(input: {
   };
 }
 
+async function runOctoManagementCommand(
+  transport: ChannelConnectorOctoTransportConfig | null,
+  input: ChannelConnectorOctoManagementRequest,
+): Promise<ChannelConnectorOctoManagementResult> {
+  if (!transport) {
+    return {
+      ok: false,
+      replyText: "Octo Bot API 未配置，无法查询群或成员。",
+      error: "octo_transport_config_missing",
+    };
+  }
+  const result = input.action === "list-groups"
+    ? await listOctoGroups(transport)
+    : input.action === "group-members"
+      ? await listOctoGroupMembers(transport, normalizeString(input.groupNo))
+      : await searchOctoSpaceMembers(transport, {
+        keyword: input.keyword || null,
+        limit: input.limit || 30,
+      });
+  return {
+    ok: result.ok === true,
+    replyText: formatChannelConnectorOctoManagementReply({
+      action: input.action,
+      result,
+      groupNo: input.groupNo || null,
+      keyword: input.keyword || null,
+    }),
+    error: result.error || null,
+  };
+}
+
 function octoSyncedMessageText(payload: unknown): string {
   if (typeof payload === "string") return normalizeString(payload);
   if (!isRecord(payload)) return "";
@@ -6645,6 +6681,7 @@ async function dispatchOctoMessage(input: {
     conversationHistoryPath: conversationHistoryPath(config),
     replyBuffersPath: replyBufferPath(config),
     gatewayClientKey: key,
+    runOctoManagement: (input) => runOctoManagementCommand(transport, input),
     hasPendingPermissionRequest: (scope) => hasPendingPermissionForSession(channelPendingPermissions, scope),
     respondPermissionRequest: (scope) => respondPendingPermissionForSession(channelPendingPermissions, scope),
     hasPendingQuestionRequest: (scope) => hasPendingQuestionForSession(channelPendingPermissions, scope),

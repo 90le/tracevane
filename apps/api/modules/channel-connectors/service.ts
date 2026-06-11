@@ -115,12 +115,15 @@ import {
   uploadAndSendFeishuMedia,
 } from "./feishu-transport.js";
 import {
+  formatChannelConnectorOctoManagementReply,
   handleChannelConnectorCommand,
   listChannelConnectorCommandSummaries,
   listChannelConnectorGatewayModels,
   listChannelConnectorSkillSummaries,
   resolveChannelConnectorBindingCommandAlias,
   resolveChannelConnectorEffectiveProject,
+  type ChannelConnectorOctoManagementRequest,
+  type ChannelConnectorOctoManagementResult,
   type ChannelConnectorCommandResult,
 } from "./command-router.js";
 import {
@@ -1316,11 +1319,13 @@ function normalizeCommandActionRequest(payload: ChannelConnectorCommandActionReq
   const renderer = payload.renderer === "text" || payload.renderer === "feishu" || payload.renderer === "all"
     ? payload.renderer
     : "all";
+  const channelType = nullableNumber(payload.channelType);
   return {
     bindingId: normalizeString(payload.bindingId) || null,
     sessionKey: normalizeString(payload.sessionKey) || null,
     fromUid: normalizeString(payload.fromUid) || null,
     channelId: normalizeString(payload.channelId) || null,
+    channelType: channelType === 1 || channelType === 2 || channelType === 5 ? channelType : null,
     messageId: normalizeString(payload.messageId) || null,
     actionValue: payload.actionValue,
     eventKey: normalizeString(payload.eventKey) || null,
@@ -1460,6 +1465,38 @@ function derivedCommandActionSessionKey(input: {
   const channelId = normalizeString(input.channelId) || fromUid;
   if (!fromUid && !channelId) return null;
   return `${input.platform}:${channelId || fromUid}:${fromUid || channelId}`;
+}
+
+async function runOctoManagementForBinding(
+  binding: ChannelConnectorPlatformBinding,
+  input: ChannelConnectorOctoManagementRequest,
+): Promise<ChannelConnectorOctoManagementResult> {
+  const transport = octoTransportFromBinding(binding);
+  if (!transport) {
+    return {
+      ok: false,
+      replyText: "Octo Bot API 未配置，无法查询群或成员。",
+      error: "octo_transport_config_missing",
+    };
+  }
+  const result = input.action === "list-groups"
+    ? await listOctoGroups(transport)
+    : input.action === "group-members"
+      ? await listOctoGroupMembers(transport, normalizeString(input.groupNo))
+      : await searchOctoSpaceMembers(transport, {
+        keyword: input.keyword || null,
+        limit: input.limit || 30,
+      });
+  return {
+    ok: result.ok === true,
+    replyText: formatChannelConnectorOctoManagementReply({
+      action: input.action,
+      result,
+      groupNo: input.groupNo || null,
+      keyword: input.keyword || null,
+    }),
+    error: result.error || null,
+  };
 }
 
 function metadataBooleanValue(metadata: Record<string, unknown> | undefined, keys: string[], fallback: boolean): boolean {
@@ -2014,6 +2051,7 @@ export function createChannelConnectorsService(
         replyBuffersPath: commandSurfaceReplyBuffersPath(runtimeConfig),
         gatewayClientKey,
         listModels: async () => commandModels,
+        runOctoManagement: (input) => runOctoManagementForBinding(resolved.binding, input),
         compactConversation: (scope) => compactChannelConnectorConversation({
           historyPath,
           agentSessionsPath,
@@ -2027,7 +2065,9 @@ export function createChannelConnectorsService(
           messageId: request.messageId || `feishu-action-${Date.now()}`,
           fromUid: request.fromUid || "",
           channelId: request.channelId || request.fromUid || sessionKey,
-          channelType: 1,
+          channelType: request.channelType === 1 || request.channelType === 2 || request.channelType === 5
+            ? request.channelType
+            : 1,
           timestamp: Date.now(),
           payload: {
             type: 1,
@@ -2579,6 +2619,7 @@ export function createChannelConnectorsService(
         sessionKey,
         fromUid: message.fromUid,
         channelId: message.channelId,
+        channelType: message.channelType,
         messageId: message.messageId,
         eventKey: content,
         renderer: "text",

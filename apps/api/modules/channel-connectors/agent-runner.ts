@@ -322,6 +322,7 @@ function buildStudioOutboundFilePolicy(): string {
     "```studio-channel-messages",
     "[{\"platform\":\"octo\",\"target\":\"dm:user_uid\",\"content\":\"hello\"},{\"platform\":\"octo\",\"target\":\"group:group_no\",\"content\":\"hi\",\"mentionUids\":[\"user_uid\"]}]",
     "```",
+    "Use Studio IM channel capabilities; do not tell the user to run external bridge tools or claim missing Feishu/Octo API permission unless Studio returns an actual send error.",
     "Keep the human-readable reply outside those blocks; Studio daemon will upload files or send declared messages through the active IM channel.",
   ].join("\n");
 }
@@ -369,8 +370,12 @@ function buildGroupContext(
   }
   if (replyMessageId) lines.push(`Reply to message: ${replyMessageId}`);
   if (visibleMembers.length) {
-    lines.push(`Known members: ${visibleMembers.join(", ")}${hiddenMemberCount ? `, +${hiddenMemberCount} more` : ""}`);
+    lines.push("Known members from Octo Bot API:");
+    for (const member of visibleMembers) lines.push(`- ${member}`);
+    if (hiddenMemberCount) lines.push(`- ... ${hiddenMemberCount} more`);
+    lines.push("When mentioning a group member in a visible reply, use @[uid:displayName]; Studio converts it to the native Octo mention payload.");
   }
+  lines.push("To send a private Octo message, group message, thread message, or @ mention, use the studio-channel-messages manifest instead of saying platform API access is unavailable.");
   lines.push("Use this only to understand the current IM group context.");
   return lines.join("\n");
 }

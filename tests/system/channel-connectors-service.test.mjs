@@ -1886,6 +1886,95 @@ test("Octo transport smoke covers Bot API groups, members, history, threads, and
   });
 });
 
+test("Octo native management commands expose groups, members, and Space search", async () => {
+  await withMockOctoServer(async (apiUrl, requests) => {
+    const root = makeTempRoot();
+    const config = createStudioConfig(root);
+    const service = createChannelConnectorsService(config, {
+      now: () => new Date("2026-06-06T08:00:00.000Z"),
+    });
+    const initial = service.getNativeConfig().config;
+    service.saveNativeConfig({
+      config: {
+        ...initial,
+        platformBindings: [
+          {
+            id: "octo-api",
+            platform: "octo",
+            accountId: "octo-account",
+            botId: "robot-1",
+            displayName: "Octo API",
+            agentProfileId: initial.defaultAgentProfileId,
+            enabled: true,
+            allowlist: ["user-1"],
+            adminUsers: ["user-1"],
+            metadata: {
+              apiUrl,
+              botToken: "test-token",
+            },
+          },
+        ],
+      },
+    });
+
+    const groups = await service.dispatchOctoIncoming({
+      bindingId: "octo-api",
+      sendReply: false,
+      message: {
+        messageId: "octo-command-groups",
+        fromUid: "user-1",
+        channelId: "user-1",
+        channelType: 1,
+        payload: { type: 1, content: "/octo groups" },
+      },
+    });
+    assert.equal(groups.accepted, true);
+    assert.equal(groups.commandAction.commandResult.action, "list");
+    assert.match(groups.replyPlan.chunks.join("\n"), /Octo 群列表（2）/);
+    assert.match(groups.replyPlan.chunks.join("\n"), /Studio Group · group-1/);
+
+    const members = await service.dispatchOctoIncoming({
+      bindingId: "octo-api",
+      sendReply: false,
+      message: {
+        messageId: "octo-command-members",
+        fromUid: "user-1",
+        channelId: "group-1",
+        channelType: 2,
+        payload: {
+          type: 1,
+          content: "/octo members",
+          mention: { uids: ["robot-1"] },
+        },
+      },
+    });
+    assert.equal(members.accepted, true);
+    assert.equal(members.commandAction.commandResult.action, "show");
+    assert.match(members.replyPlan.chunks.join("\n"), /Octo 群成员：group-1（2）/);
+    assert.match(members.replyPlan.chunks.join("\n"), /Alice · user-1 · human/);
+    assert.match(members.replyPlan.chunks.join("\n"), /Studio Bot · robot-1 · bot/);
+
+    const search = await service.dispatchOctoIncoming({
+      bindingId: "octo-api",
+      sendReply: false,
+      message: {
+        messageId: "octo-command-search",
+        fromUid: "user-1",
+        channelId: "user-1",
+        channelType: 1,
+        payload: { type: 1, content: "/octo search Alice" },
+      },
+    });
+    assert.equal(search.accepted, true);
+    assert.equal(search.commandAction.commandResult.action, "list");
+    assert.match(search.replyPlan.chunks.join("\n"), /Octo Space 成员搜索：Alice（1）/);
+    assert.match(search.replyPlan.chunks.join("\n"), /私聊 target：`dm:<uid>`/);
+    assert.ok(requests.some((request) => request.path === "/v1/bot/groups"));
+    assert.ok(requests.some((request) => request.path === "/v1/bot/groups/group-1/members"));
+    assert.ok(requests.some((request) => request.path === "/v1/bot/space/members?keyword=Alice&limit=30"));
+  });
+});
+
 test("Octo transport smoke probes STS upload credentials without exposing secrets", async () => {
   await withMockOctoServer(async (apiUrl, requests) => {
     const root = makeTempRoot();
@@ -2441,7 +2530,10 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.match(groupRequest.stdin, /Sender: user-2/);
   assert.match(groupRequest.stdin, /Mentioned users: robot-1/);
   assert.match(groupRequest.stdin, /Reply to message: m-parent-1/);
-  assert.match(groupRequest.stdin, /Known members: Alice\(user-2\), Studio\(robot-1\)/);
+  assert.match(groupRequest.stdin, /Known members from Octo Bot API:/);
+  assert.match(groupRequest.stdin, /- Alice\(user-2\)/);
+  assert.match(groupRequest.stdin, /- Studio\(robot-1\)/);
+  assert.match(groupRequest.stdin, /studio-channel-messages manifest/);
   assert.match(groupRequest.stdin, /\n\nhi group\n\n\[Studio outbound file policy\]/);
   assert.doesNotMatch(groupRequest.stdin, /cc-connect/);
   for (const cleanupPath of groupRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });

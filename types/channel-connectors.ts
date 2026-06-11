@@ -507,6 +507,7 @@ export interface ChannelConnectorCommandActionRequest {
   sessionKey?: string | null;
   fromUid?: string | null;
   channelId?: string | null;
+  channelType?: ChannelConnectorOctoChannelType | null;
   messageId?: string | null;
   actionValue?: unknown;
   eventKey?: string | null;

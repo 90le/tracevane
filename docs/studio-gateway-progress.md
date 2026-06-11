@@ -11,7 +11,7 @@
 - Gateway 对外提供 Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions；`GET /v1/models` 聚合启用 provider，并保留模型别名、模型池、能力标记、上下文窗口和输出预算；模型预算是 App Connections 与 Channel Connectors 的默认上下文来源。
 - Provider Center 已支持自定义 provider、启停、模型列表/别名/默认模型、能力勾选、批量模型导入、批量预算/能力应用、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
 - App Connections 已覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收。
-- Channel Connectors 走 Studio 原生 CLI Agent Bot 路线；Octo(dmwork) 与 Feishu 已接入 Codex/Claude Code/OpenCode runner、Studio Gateway key、IM session override、slash command、Feishu card/menu/progress、附件 staging、history、group context、reply buffer、queue、stop 和基础治理；Octo daemon 已接入 Bot API 群成员、最近历史、文件下载 URL、平台 skill 和出站消息 manifest。
+- Channel Connectors 走 Studio 原生 CLI Agent Bot 路线；Octo(dmwork) 与 Feishu 已接入 Codex/Claude Code/OpenCode runner、Studio Gateway key、IM session override、slash command、Feishu card/menu/progress、附件 staging、history、group context、reply buffer、queue、stop 和基础治理；Octo daemon 已接入 Bot API 群成员、最近历史、文件下载 URL、平台 skill、`/octo` 群/成员/Space 查询命令和出站消息 manifest。
 - OpenCode Agent runner 走 Gateway-first：Channel 配置保存 Gateway 模型短名或模型 ID，runner 转换为 OpenCode 需要的 `studio-gateway/<model>`；每轮生成隔离 OpenCode config，session 数据写入 Channel runtime dataHome；旧全局 sessionId 在当前 dataHome 不存在时自动新建，避免 IM 切换 OpenCode 后被 stale session 卡死。
 - Channel Connectors 任意新功能必须先对照 CC Go 1:1 迁移，再做 Studio 精修；迁移清单见 `channel-connectors-cc-migration-checklist.md`。
 - Feishu 长连接专项跟踪见 `feishu-long-connection-issue-tracker.md`；Feishu 目前采用同 App 用户级全局 owner lock、官方 SDK `WSClient`/`EventDispatcher`、默认启用 SDK lower-case `pingTimeout=3`、包装 SDK `pingLoop()` 将有效心跳调度 clamp 到 `pingIntervalMs=10000`、SDK reconnecting 超 5s 回收、应用层 ping/pong runtime proof、`pongTimeoutMs=8000` 外层兜底回收、23s control-frame stale 判死、快速 ACK、messageId 去重、会话水位线防旧消息插队和 runtime 入站观测；无业务消息时不再默认 startup recycle。
@@ -22,18 +22,17 @@
 
 ## 本轮完成
 
-- `/skills` 与 Skill 调用改为 binding-aware：同一 Agent 会同时扫描 Agent 本地 skill、binding metadata `channelSkillDirs` 和平台内置 skill 目录。
-- Octo 默认纳入 `~/.openclaw/extensions/octo/skills`；Feishu 默认纳入 OpenClaw 最新 Feishu 扩展 `skills` 目录；命令卡片/API summary 会显示 skill scope。
-- Agent 普通对话输入新增精简的 IM channel skill context，避免模型把 Octo 能力误判成 Feishu 权限或旧 `cc-connect` 链路。
-- 新增 `studio-channel-messages` 出站 manifest：Octo 已支持 DM/group/thread 文本发送、`mentionUids` 和 `mentionAll`；Feishu 先支持显式 `chatId` 文本发送。
-- 出站文件和出站消息统一进入 conversation history 与 daemon event 统计。
+- 新增 Studio 原生 `/octo` 平台命令：`/octo groups`、`/octo members [group_no]`、`/octo search <keyword>`，复用 Octo Bot API 群列表、群成员和 Space 成员搜索；Octo 群内 `/octo members` 可自动取当前 group_no。
+- daemon 与 service/dry-run 两条路径都接入同一 Octo management contract，前端/API、真实 daemon 和系统测试行为一致。
+- Agent 群上下文改为结构化成员列表，明确 Octo `@[uid:显示名]` @ 写法和 `studio-channel-messages` 私聊/group/thread/mention 发送能力，避免模型误称没有 Feishu/Octo API 权限。
+- Channel skill context 增补 Octo 原生命令和出站消息 manifest 提示，但提示词仍禁止出现旧 `cc-connect` 链路名称。
 
 ## 最近验证
 
 - 通过：`npm run typecheck:api`。
 - 通过：`npm run build:api`。
-- 通过：`node --test --test-name-pattern "outbound (file|IM message)|Agent process request|native Channel Connectors IM commands" tests/system/channel-connectors-service.test.mjs`，3/3 全部通过。
-- 通过：`node --test --test-name-pattern "agent runner builds gateway-backed Codex turns" tests/system/channel-connectors-service.test.mjs`，1/1 通过。
+- 通过：`node --test --test-name-pattern "Octo native management commands|Octo transport smoke covers Bot API groups|agent runner builds gateway-backed Codex turns" tests/system/channel-connectors-service.test.mjs`，3/3 全部通过。
+- 通过：真实 Octo 配置非发送 smoke：`/octo groups` 返回 1 个群，`/octo members` 返回“小丘测试群”6 个成员，`/octo search 小维` 返回 2 个成员。
 
 ## 已知边界
 
@@ -45,11 +44,11 @@
 - `/status` 与 Channel 管理页已能显示最近 auto compact 记录；真实剩余 token 仍取决于上游 usage 或 Gateway runtime ledger 是否能归因。
 - Gateway usage 只有在上游返回 usage 或 runtime ledger 可归因时才准确；缺失 usage 时 Channel 只能用 IM history 字符估算，不能替代真实 tokenizer。
 - 同 session FIFO queue 当前是 daemon 内存队列；Channel daemon 自身重启会丢失未开始的排队消息，durable queue 尚未实现。
-- `studio-channel-messages` 已有 parser 与 daemon send path；真实 Octo 私聊/@群成员 live smoke 还未执行，Feishu open_id/user_id 私聊解析后续补。
+- `studio-channel-messages` 已有 parser 与 daemon send path；`/octo` 群/成员/Space 查询已有 Bot API 与真实配置非发送 smoke，真实 Octo 私聊/@群成员 live smoke 还未执行，Feishu open_id/user_id 私聊解析后续补。
 
 ## 下一步
 
-1. 用户发送一条新的 Feishu 消息，做业务入站复验：runtime 应出现 dispatcher callback / receivedMessages，且无 reconnect/stale。
-2. 做真实 IM live smoke：先从 Feishu/Octo 真实发送 `/commands addexec slow node -e "setTimeout(()=>console.log('slow done'), 900)"` 和 `/slow`，再运行 `node scripts/smoke-channel-connectors-command-live.mjs --bindings feishu-live --recent-sessions --commands /slow --wait-command-progress --require-command-progress-terminal --require-command-progress-patch --json` 验证 Feishu daemon card patch，并运行 `node scripts/smoke-channel-connectors-command-live.mjs --bindings octo-studio-cc --recent-sessions --commands /slow --wait-command-progress --require-command-progress-terminal --require-command-progress-sent --json` 验证 Octo started-only 文本提示；再运行 `node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings feishu-live --require-ok --require-reply --require-progress --require-tool --require-feishu-card --require-feishu-progress-card-completed --require-permission-prompt --require-permission-resolved --require-feishu-permission-progress-card --require-no-final-progress-reply --json`，用三次顺序 `exec_command` 和需要审批的提示词验证思考、过程回复、工具输入、工具输出、审批卡和最终回复。
-3. 用户在 Octo 群聊让 Agent 私聊或 @ 某个群成员，验证 `studio-channel-messages` 的 DM/group/thread 与 mention 能真实发送。
-4. 继续按 Octo 插件迁移 `octo_management` 等价能力：Space 成员搜索、群/线程管理、GROUP.md/thread MD/persona context；随后按同一模式补 Feishu open_id/user_id 私聊、富文本和文档/云盘 skills。
+1. 用户在真实 Octo 群聊让 Agent 私聊或 @ 某个成员，验证 `studio-channel-messages` 的 DM/group/thread 与 mention 能真实发送。
+2. 用户发送一条新的 Feishu 消息，做业务入站复验：runtime 应出现 dispatcher callback / receivedMessages，且无 reconnect/stale。
+3. 做真实 IM live command/progress smoke：Feishu 验证 card patch、权限审批和三次顺序工具调用；Octo 验证文本进度、工具输出、文件/消息 manifest。
+4. 继续按 Octo 插件迁移剩余 `octo_management`：建群/改群/加减成员、thread 管理、GROUP.md/thread MD/persona context；随后补 Feishu open_id/user_id 私聊、富文本和文档/云盘 skills。

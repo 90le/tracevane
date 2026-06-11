@@ -4,11 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import type {
   ChannelConnectorOctoInboundMessage,
+  ChannelConnectorOctoTransportResult,
   ChannelConnectorPermissionMode,
   ChannelConnectorReasoningEffort,
   ChannelConnectorsDaemonRuntimeConfig,
 } from "../../../../types/channel-connectors.js";
-import { extractOctoContent } from "./octo-adapter.js";
+import { extractOctoContent, isOctoGroupChannel } from "./octo-adapter.js";
 import {
   clearChannelConnectorAgentSessionsForConversation,
   deleteChannelConnectorAgentSession,
@@ -91,6 +92,7 @@ export interface ChannelConnectorCommandContext {
   gatewayClientKey: string | null;
   listModelCatalog?: (endpoint: string, clientKey: string | null) => Promise<ChannelConnectorGatewayModel[]>;
   listModels?: (endpoint: string, clientKey: string | null) => Promise<string[]>;
+  runOctoManagement?: (input: ChannelConnectorOctoManagementRequest) => Promise<ChannelConnectorOctoManagementResult>;
   stopActiveRun?: (input: {
     bindingId: string;
     sessionKey: string;
@@ -153,6 +155,24 @@ export interface ChannelConnectorCommandContext {
     bindingId: string;
     sessionKey: string;
   }) => boolean;
+}
+
+export type ChannelConnectorOctoManagementAction = "list-groups" | "group-members" | "search-members";
+
+export interface ChannelConnectorOctoManagementRequest {
+  action: ChannelConnectorOctoManagementAction;
+  bindingId: string;
+  sessionKey: string;
+  message: ChannelConnectorOctoInboundMessage;
+  groupNo?: string | null;
+  keyword?: string | null;
+  limit?: number | null;
+}
+
+export interface ChannelConnectorOctoManagementResult {
+  ok: boolean;
+  replyText: string;
+  error: string | null;
 }
 
 export interface ChannelConnectorGatewayModel {
@@ -552,6 +572,7 @@ const STUDIO_COMMAND_MATCH_CANDIDATES: readonly CommandMatchCandidate[] = [
   { id: "new", names: ["new"] },
   { id: "reset", names: ["reset"] },
   { id: "native", names: ["native", "raw", "pass"] },
+  { id: "octo", names: ["octo"] },
 ];
 
 export function matchChannelConnectorCommandPrefix(
@@ -1263,7 +1284,7 @@ function isStudioCommand(name: string): boolean {
   return Boolean(matchChannelConnectorCommandPrefix(name));
 }
 
-type CommandHelpSection = "session" | "agent" | "display" | "buffer" | "workdir" | "commands" | "native";
+type CommandHelpSection = "session" | "agent" | "display" | "buffer" | "workdir" | "commands" | "native" | "platform";
 
 function commandHelpList(rows: Array<[string, string]>): string {
   return rows.map(([command, description]) => `- ${command} - ${description}`).join("\n");
@@ -1280,6 +1301,7 @@ function commandHelpSectionAlias(value: string | null | undefined): CommandHelpS
   if (["buffer", "buffers", "reply-buffer", "reply-buffers"].includes(target)) return "buffer";
   if (["workdir", "dir", "cd", "directory"].includes(target)) return "workdir";
   if (["commands", "command", "cmd", "alias", "aliases", "skills", "skill"].includes(target)) return "commands";
+  if (["platform", "channel", "im", "octo", "dmwork"].includes(target)) return "platform";
   if (["native", "raw", "pass", "slash"].includes(target)) return "native";
   return null;
 }
@@ -1389,6 +1411,20 @@ function commandHelpSectionText(section: CommandHelpSection): string {
       "返回：`/help`",
     ].join("\n");
   }
+  if (section === "platform") {
+    return [
+      "Studio Channel / platform",
+      "",
+      commandHelpList([
+        ["`/octo groups`", "列出当前 Octo bot 所在群"],
+        ["`/octo members [group_no]`", "查看 Octo 群成员；在群内可省略 group_no"],
+        ["`/octo search <名字|关键词>`", "搜索 Octo Space 成员，方便私聊和 @"],
+      ]),
+      "",
+      "Agent 可通过 `studio-channel-messages` manifest 发送 Octo 私聊、群消息、thread 消息和 @。",
+      "返回：`/help`",
+    ].join("\n");
+  }
   return [
     "Studio Channel / native",
     "",
@@ -1416,6 +1452,7 @@ function commandHelpText(section?: string | null): string {
       ["`/agent` `/model` `/mode` `/reasoning`", "切换 Agent、模型、权限、推理强度"],
       ["`/display` `/quiet` `/thinking` `/process` `/tools`", "控制思考、过程回复和工具显示"],
       ["`/commands` `/alias` `/skills` `/native /help`", "自定义命令、命令别名、Skills、Agent 原生命令"],
+      ["`/octo groups` `/octo members` `/octo search`", "Octo 群和成员查询"],
     ]),
     "",
     "**分组帮助**",
@@ -1426,9 +1463,222 @@ function commandHelpText(section?: string | null): string {
       ["`/help buffer`", "群聊长回复缓存和紧凑显示"],
       ["`/help workdir`", "工作目录切换"],
       ["`/help commands`", "自定义命令、别名和 Skills"],
+      ["`/help platform`", "Octo 等 IM 平台能力"],
       ["`/help native`", "Agent 原生命令透传"],
     ]),
   ].join("\n");
+}
+
+function octoCommandUsageText(): string {
+  return [
+    "Octo 管理命令：",
+    "- `/octo groups`：列出当前 bot 所在群",
+    "- `/octo members [group_no]`：查看群成员；Octo 群内可省略 group_no",
+    "- `/octo search <名字|关键词>`：搜索 Space 成员，拿 UID 后可私聊或 @",
+  ].join("\n");
+}
+
+function octoParentGroupNo(message: ChannelConnectorOctoInboundMessage): string {
+  const channelId = normalizeString(message.channelId);
+  if (!channelId || !isOctoGroupChannel(message.channelType)) return "";
+  const [groupNo] = channelId.split("____");
+  return normalizeString(groupNo) || channelId;
+}
+
+function octoDataItems(value: unknown, keys: string[]): Record<string, unknown>[] {
+  const source = Array.isArray(value)
+    ? value
+    : isRecord(value)
+      ? keys
+        .map((key) => value[key])
+        .find((item) => Array.isArray(item)) || []
+      : [];
+  return Array.isArray(source)
+    ? source.filter(isRecord)
+    : [];
+}
+
+function octoRecordString(value: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const normalized = normalizeString(value[key]);
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
+function octoRecordNumber(value: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const raw = value[key];
+    if (typeof raw === "number" && Number.isFinite(raw)) return raw;
+    const parsed = Number(normalizeString(raw));
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  return null;
+}
+
+function octoHumanOrBotLabel(value: Record<string, unknown>): string {
+  const robot = octoRecordNumber(value, ["robot", "is_robot", "isBot", "bot"]);
+  return robot === 1 || robot === 2 ? "bot" : "human";
+}
+
+function octoGroupLine(value: Record<string, unknown>, index: number): string {
+  const id = octoRecordString(value, ["group_no", "groupNo", "id"]);
+  const name = octoRecordString(value, ["name", "display_name", "displayName"]) || id || "unknown";
+  return `${index + 1}. ${name}${id ? ` · ${id}` : ""}`;
+}
+
+function octoMemberLine(value: Record<string, unknown>, index: number): string {
+  const uid = octoRecordString(value, ["uid", "user_id", "userId", "id"]);
+  const name = octoRecordString(value, ["name", "display_name", "displayName", "nickname"]) || uid || "unknown";
+  return `${index + 1}. ${name}${uid ? ` · ${uid}` : ""} · ${octoHumanOrBotLabel(value)}`;
+}
+
+export function formatChannelConnectorOctoManagementReply(input: {
+  action: ChannelConnectorOctoManagementAction;
+  result: Pick<ChannelConnectorOctoTransportResult, "ok" | "error" | "data" | "itemCount">;
+  groupNo?: string | null;
+  keyword?: string | null;
+}): string {
+  if (input.result.ok !== true) {
+    return `Octo Bot API 调用失败：${input.result.error || "unknown_error"}`;
+  }
+  if (input.action === "list-groups") {
+    const groups = octoDataItems(input.result.data, ["groups", "data", "items"]);
+    const count = input.result.itemCount ?? groups.length;
+    return [
+      `Octo 群列表（${count}）`,
+      ...groups.slice(0, 30).map(octoGroupLine),
+      groups.length > 30 ? `... 还有 ${groups.length - 30} 个` : "",
+      "",
+      "查看成员：`/octo members <group_no>`",
+    ].filter(Boolean).join("\n");
+  }
+  if (input.action === "group-members") {
+    const members = octoDataItems(input.result.data, ["members", "data", "items"]);
+    const count = input.result.itemCount ?? members.length;
+    return [
+      `Octo 群成员：${normalizeString(input.groupNo) || "unknown"}（${count}）`,
+      ...members.slice(0, 60).map(octoMemberLine),
+      members.length > 60 ? `... 还有 ${members.length - 60} 个` : "",
+      "",
+      "可见回复里可以使用 `@[uid:显示名]`，Studio 会转换成 Octo @；私聊用 `studio-channel-messages` 的 `dm:<uid>` target。",
+    ].filter(Boolean).join("\n");
+  }
+  const members = octoDataItems(input.result.data, ["members", "data", "items"]);
+  const count = input.result.itemCount ?? members.length;
+  return [
+    `Octo Space 成员搜索：${normalizeString(input.keyword) || "all"}（${count}）`,
+    ...members.slice(0, 30).map(octoMemberLine),
+    members.length > 30 ? `... 还有 ${members.length - 30} 个` : "",
+    "",
+    "私聊 target：`dm:<uid>`；群 @ 使用 `mentionUids:[\"<uid>\"]`。",
+  ].filter(Boolean).join("\n");
+}
+
+async function handleOctoManagementCommand(
+  context: ChannelConnectorCommandContext,
+  args: string[],
+  currentControl: ChannelConnectorSessionControlRecord | null,
+): Promise<ChannelConnectorCommandResult> {
+  const subcommand = normalizeString(args[0]).toLowerCase();
+  if (!subcommand || subcommand === "help" || subcommand === "?") {
+    return {
+      handled: true,
+      command: "octo",
+      action: "help",
+      ok: true,
+      control: currentControl,
+      replyText: octoCommandUsageText(),
+      passthroughText: null,
+    };
+  }
+  if (normalizeString(context.binding.platform).toLowerCase() !== "octo") {
+    return {
+      handled: true,
+      command: "octo",
+      action: "show",
+      ok: false,
+      control: currentControl,
+      replyText: "当前 binding 不是 Octo，不能执行 `/octo` 平台命令。",
+      passthroughText: null,
+    };
+  }
+  if (!context.runOctoManagement) {
+    return {
+      handled: true,
+      command: "octo",
+      action: "show",
+      ok: false,
+      control: currentControl,
+      replyText: "当前 runtime 未接入 Octo Bot API 管理能力。",
+      passthroughText: null,
+    };
+  }
+
+  const callOcto = async (input: Omit<ChannelConnectorOctoManagementRequest, "bindingId" | "sessionKey" | "message">): Promise<ChannelConnectorCommandResult> => {
+    const result = await context.runOctoManagement?.({
+      ...input,
+      bindingId: context.binding.id,
+      sessionKey: context.sessionKey,
+      message: context.message,
+    }) || {
+      ok: false,
+      replyText: "当前 runtime 未接入 Octo Bot API 管理能力。",
+      error: "octo_management_unavailable",
+    };
+    return {
+      handled: true,
+      command: "octo",
+      action: input.action === "group-members" ? "show" : "list",
+      ok: result.ok,
+      control: currentControl,
+      replyText: result.replyText,
+      passthroughText: null,
+    };
+  };
+
+  if (["groups", "group", "list", "list-groups"].includes(subcommand)) {
+    return callOcto({ action: "list-groups" });
+  }
+  if (["members", "member", "group-members"].includes(subcommand)) {
+    const groupNo = normalizeString(args[1]) || octoParentGroupNo(context.message);
+    if (!groupNo) {
+      return {
+        handled: true,
+        command: "octo",
+        action: "show",
+        ok: false,
+        control: currentControl,
+        replyText: "用法：`/octo members <group_no>`；在 Octo 群聊里可以省略 group_no。",
+        passthroughText: null,
+      };
+    }
+    return callOcto({ action: "group-members", groupNo });
+  }
+  if (["search", "find", "space", "space-members", "search-members"].includes(subcommand)) {
+    const keyword = normalizeString(args.slice(1).join(" "));
+    if (!keyword) {
+      return {
+        handled: true,
+        command: "octo",
+        action: "list",
+        ok: false,
+        control: currentControl,
+        replyText: "用法：`/octo search <名字|关键词>`",
+        passthroughText: null,
+      };
+    }
+    return callOcto({ action: "search-members", keyword, limit: 30 });
+  }
+  return {
+    handled: true,
+    command: "octo",
+    action: "help",
+    ok: false,
+    control: currentControl,
+    replyText: octoCommandUsageText(),
+    passthroughText: null,
+  };
 }
 
 function projectListText(
@@ -2621,6 +2871,10 @@ export async function handleChannelConnectorCommand(
       replyText: skillsListText(currentProject, context.binding),
       passthroughText: null,
     };
+  }
+
+  if (name === "octo") {
+    return handleOctoManagementCommand(context, args, currentControl);
   }
 
   if (name === "alias") {
