@@ -28,7 +28,17 @@ export interface ChannelConnectorFeishuParsedWebhook {
   messageType: string | null;
   text: string | null;
   attachments: ChannelConnectorInboundAttachment[];
+  mentions: ChannelConnectorFeishuMention[];
+  hasAnyMention: boolean;
   directed: boolean;
+}
+
+export interface ChannelConnectorFeishuMention {
+  key: string | null;
+  name: string | null;
+  openId: string | null;
+  userId: string | null;
+  unionId: string | null;
 }
 
 export interface ChannelConnectorFeishuSessionKeyOptions {
@@ -50,6 +60,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function normalizeStringList(values: unknown[]): string[] {
+  const output: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const normalized = normalizeString(value);
+    const key = normalized.toLowerCase();
+    if (!normalized || seen.has(key)) continue;
+    seen.add(key);
+    output.push(normalized);
+  }
+  return output;
 }
 
 function normalizeNumber(value: unknown): number | null {
@@ -139,6 +162,163 @@ export function buildFeishuConversationScopeId(
 
 function recordValue(value: unknown): Record<string, unknown> {
   return isRecord(value) ? value : {};
+}
+
+function stringFromRecord(record: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = normalizeString(record[key]);
+    if (value) return value;
+  }
+  return "";
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function escapeAtText(value: string): string {
+  return value.replace(/[<>&]/g, (char) => {
+    if (char === "<") return "&lt;";
+    if (char === ">") return "&gt;";
+    return "&amp;";
+  });
+}
+
+function feishuMentionFromValue(value: unknown): ChannelConnectorFeishuMention | null {
+  const record = recordValue(value);
+  if (!Object.keys(record).length) return null;
+  const id = recordValue(record.id);
+  const mention: ChannelConnectorFeishuMention = {
+    key: normalizeString(record.key) || null,
+    name: normalizeString(record.name) || null,
+    openId: normalizeString(id.open_id) || normalizeString(id.openId) || normalizeString(record.open_id) || normalizeString(record.openId) || null,
+    userId: normalizeString(id.user_id) || normalizeString(id.userId) || normalizeString(record.user_id) || normalizeString(record.userId) || null,
+    unionId: normalizeString(id.union_id) || normalizeString(id.unionId) || normalizeString(record.union_id) || normalizeString(record.unionId) || null,
+  };
+  return mention.key || mention.name || mention.openId || mention.userId || mention.unionId ? mention : null;
+}
+
+function extractFeishuMentions(value: unknown): ChannelConnectorFeishuMention[] {
+  const source = Array.isArray(value) ? value : [];
+  const output: ChannelConnectorFeishuMention[] = [];
+  const seen = new Set<string>();
+  for (const item of source) {
+    const mention = feishuMentionFromValue(item);
+    if (!mention) continue;
+    const key = [mention.openId, mention.userId, mention.unionId, mention.key, mention.name]
+      .map((part) => normalizeString(part).toLowerCase())
+      .find(Boolean);
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    output.push(mention);
+  }
+  return output;
+}
+
+export function isChannelConnectorFeishuGroupChatType(chatType: string | null | undefined): boolean {
+  const normalized = normalizeString(chatType).toLowerCase();
+  return normalized === "group" || normalized === "topic_group" || normalized.includes("group");
+}
+
+export function channelConnectorFeishuBotMentionCandidates(input: {
+  botId?: unknown;
+  accountId?: unknown;
+  metadata?: unknown;
+}): string[] {
+  const metadata = recordValue(input.metadata);
+  return normalizeStringList([
+    input.botId,
+    stringFromRecord(metadata, [
+      "botOpenId",
+      "bot_open_id",
+      "feishuBotOpenId",
+      "feishu_bot_open_id",
+      "openId",
+      "open_id",
+    ]),
+    stringFromRecord(metadata, [
+      "botUserId",
+      "bot_user_id",
+      "feishuBotUserId",
+      "feishu_bot_user_id",
+      "userId",
+      "user_id",
+    ]),
+    stringFromRecord(metadata, [
+      "botUnionId",
+      "bot_union_id",
+      "feishuBotUnionId",
+      "feishu_bot_union_id",
+      "unionId",
+      "union_id",
+    ]),
+  ]);
+}
+
+export function isChannelConnectorFeishuBroadcastMention(mention: ChannelConnectorFeishuMention): boolean {
+  const values = [mention.key, mention.name, mention.openId, mention.userId, mention.unionId]
+    .map((value) => normalizeString(value).toLowerCase());
+  return values.some((value) => value === "all" || value === "@all" || value === "@_all");
+}
+
+function feishuMentionMatchesCandidate(mention: ChannelConnectorFeishuMention, candidates: Set<string>): boolean {
+  if (!candidates.size || isChannelConnectorFeishuBroadcastMention(mention)) return false;
+  return [mention.openId, mention.userId, mention.unionId]
+    .map((value) => normalizeString(value).toLowerCase())
+    .some((value) => value && candidates.has(value));
+}
+
+export function isChannelConnectorFeishuBotMentioned(
+  parsed: Pick<ChannelConnectorFeishuParsedWebhook, "mentions">,
+  botCandidates: readonly string[],
+): boolean {
+  const candidates = new Set(botCandidates.map((value) => normalizeString(value).toLowerCase()).filter(Boolean));
+  return parsed.mentions.some((mention) => feishuMentionMatchesCandidate(mention, candidates));
+}
+
+export function normalizeFeishuMessageTextForBot(
+  text: string | null | undefined,
+  mentions: readonly ChannelConnectorFeishuMention[],
+  botCandidates: readonly string[],
+): string {
+  let output = normalizeString(text);
+  if (!output || !mentions.length) return output;
+  const candidates = new Set(botCandidates.map((value) => normalizeString(value).toLowerCase()).filter(Boolean));
+  for (const mention of mentions) {
+    const key = normalizeString(mention.key);
+    if (!key) continue;
+    const isBotMention = feishuMentionMatchesCandidate(mention, candidates);
+    const replacement = isBotMention
+      ? ""
+      : mention.openId
+        ? `<at user_id="${escapeAtText(mention.openId)}">${escapeAtText(mention.name || mention.openId)}</at>`
+        : mention.name
+          ? `@${mention.name}`
+          : "";
+    output = output.replace(new RegExp(escapeRegExp(key), "g"), replacement);
+  }
+  return output.replace(/[ \t]+\n/g, "\n").replace(/\n[ \t]+/g, "\n").replace(/[ \t]{2,}/g, " ").trim();
+}
+
+export function normalizeFeishuCommandProbeBody(text: string | null | undefined): string {
+  return normalizeString(text)
+    .replace(/<at\b[^>]*>.*?<\/at>/g, "")
+    .replace(/@[^\s]+/g, "")
+    .trim();
+}
+
+export function isChannelConnectorFeishuMessageDirected(
+  parsed: Pick<ChannelConnectorFeishuParsedWebhook, "kind" | "chatType" | "text" | "mentions">,
+  botCandidates: readonly string[],
+  textOverride?: string | null,
+): boolean {
+  if (parsed.kind !== "message") return true;
+  if (!isChannelConnectorFeishuGroupChatType(parsed.chatType)) return true;
+  const text = textOverride === undefined
+    ? normalizeFeishuMessageTextForBot(parsed.text, parsed.mentions, botCandidates)
+    : normalizeString(textOverride);
+  const probe = normalizeFeishuCommandProbeBody(text);
+  return probe.startsWith("/") || probe.startsWith("%") || isChannelConnectorFeishuBotMentioned(parsed, botCandidates);
 }
 
 const DELETE_MODE_CHECKER_NAME_PREFIX = "delete_sel_";
@@ -418,6 +598,7 @@ function extractFeishuMessage(event: Record<string, unknown>): {
   messageCreateTimeMs: number | null;
   text: string | null;
   attachments: ChannelConnectorInboundAttachment[];
+  mentions: ChannelConnectorFeishuMention[];
 } {
   const message = nestedRecord(event, ["message"]);
   if (!Object.keys(message).length) {
@@ -434,6 +615,7 @@ function extractFeishuMessage(event: Record<string, unknown>): {
         || normalizeFeishuTimestampMs(event.createTime),
       text: extracted.text,
       attachments: extracted.attachments,
+      mentions: extractFeishuMentions(event.mentions),
     };
   }
   const messageType = normalizeString(message.message_type) || null;
@@ -449,6 +631,7 @@ function extractFeishuMessage(event: Record<string, unknown>): {
       || normalizeFeishuTimestampMs(message.createTime),
     text: extracted.text,
     attachments: extracted.attachments,
+    mentions: extractFeishuMentions(message.mentions),
   };
 }
 
@@ -502,6 +685,8 @@ export function parseChannelConnectorFeishuWebhook(
       messageType: null,
       text: null,
       attachments: [],
+      mentions: [],
+      hasAnyMention: false,
       directed: false,
     };
   }
@@ -529,6 +714,8 @@ export function parseChannelConnectorFeishuWebhook(
       messageType: null,
       text: null,
       attachments: [],
+      mentions: [],
+      hasAnyMention: false,
       directed: true,
     };
   }
@@ -556,6 +743,8 @@ export function parseChannelConnectorFeishuWebhook(
       messageType: null,
       text: null,
       attachments: [],
+      mentions: [],
+      hasAnyMention: false,
       directed: true,
     };
   }
@@ -564,7 +753,13 @@ export function parseChannelConnectorFeishuWebhook(
     const message = extractFeishuMessage(event);
     const chatType = message.chatType;
     const text = message.text;
-    const directed = chatType !== "group" || Boolean(text && (text.startsWith("/") || text.startsWith("%")));
+    const parsedForDirection = {
+      kind: "message" as const,
+      chatType,
+      text,
+      mentions: message.mentions,
+    };
+    const directed = isChannelConnectorFeishuMessageDirected(parsedForDirection, []);
     return {
       kind: "message",
       eventType,
@@ -587,6 +782,8 @@ export function parseChannelConnectorFeishuWebhook(
       messageType: message.messageType,
       text: text || null,
       attachments: message.attachments,
+      mentions: message.mentions,
+      hasAnyMention: message.mentions.length > 0,
       directed,
     };
   }
@@ -613,6 +810,8 @@ export function parseChannelConnectorFeishuWebhook(
     messageType: null,
     text: null,
     attachments: [],
+    mentions: [],
+    hasAnyMention: false,
     directed: false,
   };
 }

@@ -112,6 +112,9 @@ import {
 } from "./command-surface.js";
 import {
   buildFeishuSessionKey,
+  channelConnectorFeishuBotMentionCandidates,
+  isChannelConnectorFeishuMessageDirected,
+  normalizeFeishuMessageTextForBot,
   parseChannelConnectorFeishuWebhook,
   safeEqualFeishuWebhookToken,
   type ChannelConnectorFeishuGroupSessionScope,
@@ -1753,6 +1756,13 @@ function feishuSessionKeyForWebhook(
   });
 }
 
+function normalizeFeishuWebhookCommandText(value: string): string {
+  const text = normalizeString(value);
+  if (text.startsWith("/%")) return `/${text.slice(2)}`;
+  if (text.startsWith("%")) return `/${text.slice(1)}`;
+  return text;
+}
+
 function resolveOctoBindingById(
   nativeConfig: ChannelConnectorsNativeConfig,
   bindingId: string | null | undefined,
@@ -2507,7 +2517,11 @@ export function createChannelConnectorsService(
     const staleEvent = feishuWebhookStaleEventState(resolved.binding, parsed, Date.parse(checkedAt));
     if (staleEvent.stale) return skipped("feishu_event_stale");
     if (!parsed.messageId || !parsed.fromUid || !parsed.channelId) return skipped("feishu_message_identity_missing");
-    let effectiveText = normalizeString(parsed.text);
+    const botMentionCandidates = channelConnectorFeishuBotMentionCandidates(resolved.binding);
+    let effectiveText = normalizeFeishuWebhookCommandText(
+      normalizeFeishuMessageTextForBot(parsed.text, parsed.mentions, botMentionCandidates),
+    );
+    const directed = isChannelConnectorFeishuMessageDirected(parsed, botMentionCandidates, effectiveText);
     const aliasResolution = resolveChannelConnectorBindingCommandAlias(
       resolved.runtimeBinding,
       effectiveText,
@@ -2515,7 +2529,7 @@ export function createChannelConnectorsService(
     );
     effectiveText = aliasResolution.content;
     if (!effectiveText) return skipped("feishu_message_text_missing");
-    if (!parsed.directed) return skipped("feishu_group_message_not_directed");
+    if (!directed) return skipped("feishu_group_message_not_directed");
 
     const sessionKey = feishuSessionKeyForWebhook(resolved.binding, parsed);
     if (!sessionKey) return skipped("session_key_missing");
@@ -2617,7 +2631,7 @@ export function createChannelConnectorsService(
         messageType: parsed.messageType,
         attachments: parsed.attachments,
         content: effectiveText,
-        directed: parsed.directed,
+        directed,
       },
       commandAction,
       agentDispatch: {

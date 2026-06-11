@@ -132,6 +132,11 @@ import {
 import {
   buildFeishuConversationScopeId,
   buildFeishuSessionKey,
+  channelConnectorFeishuBotMentionCandidates,
+  isChannelConnectorFeishuBotMentioned,
+  isChannelConnectorFeishuMessageDirected,
+  isChannelConnectorFeishuGroupChatType,
+  normalizeFeishuMessageTextForBot,
   parseChannelConnectorFeishuWebhook,
   type ChannelConnectorFeishuGroupSessionScope,
   type ChannelConnectorFeishuParsedWebhook,
@@ -4610,7 +4615,7 @@ async function loadFeishuGroupMembers(input: {
   if (input.parsed.kind !== "message") {
     return { members: [], error: null, attempted: false, pageCount: 0, hasMore: false };
   }
-  if (normalizeString(input.parsed.chatType).toLowerCase() !== "group") {
+  if (!isChannelConnectorFeishuGroupChatType(input.parsed.chatType)) {
     return { members: [], error: null, attempted: false, pageCount: 0, hasMore: false };
   }
   if (!metadataBoolean(input.binding, [
@@ -8826,6 +8831,18 @@ async function dispatchFeishuParsedEvent(input: {
 
   const ref = refs[0];
   const { project, binding, transport } = ref;
+  const botMentionCandidates = channelConnectorFeishuBotMentionCandidates(binding);
+  const mentionedBot = parsed.kind === "message"
+    ? isChannelConnectorFeishuBotMentioned(parsed, botMentionCandidates)
+    : false;
+  const directed = parsed.kind === "message"
+    ? isChannelConnectorFeishuMessageDirected(parsed, botMentionCandidates, content)
+    : true;
+  if (parsed.kind === "message") {
+    content = normalizeFeishuCommandContent(
+      normalizeFeishuMessageTextForBot(content, parsed.mentions, botMentionCandidates),
+    );
+  }
   const aliasResolution = parsed.kind === "message"
     ? resolveChannelConnectorBindingCommandAlias(binding, content, commandAliasesPath(config))
     : { content, matchedAlias: null };
@@ -8971,7 +8988,7 @@ async function dispatchFeishuParsedEvent(input: {
     content,
   });
 
-  if (parsed.kind === "message" && !parsed.directed) {
+  if (parsed.kind === "message" && !directed) {
     writeJsonLine(config.paths.feishuEvents, {
       checkedAt,
       adapter: "feishu",
@@ -8986,6 +9003,8 @@ async function dispatchFeishuParsedEvent(input: {
       channelId: parsed.channelId,
       fromUid: parsed.fromUid,
       timelineRecorded: feishuTimelineRecorded,
+      hasAnyMention: parsed.hasAnyMention,
+      mentionedBot,
       ...feishuThreadLogFields(parsed),
     });
     return null;

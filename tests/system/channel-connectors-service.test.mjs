@@ -38,6 +38,10 @@ import {
 import {
   buildFeishuConversationScopeId,
   buildFeishuSessionKey,
+  channelConnectorFeishuBotMentionCandidates,
+  isChannelConnectorFeishuBotMentioned,
+  isChannelConnectorFeishuMessageDirected,
+  normalizeFeishuMessageTextForBot,
   parseChannelConnectorFeishuWebhook,
 } from "../../dist/apps/api/modules/channel-connectors/feishu-adapter.js";
 import {
@@ -7665,6 +7669,89 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(parsedPercentHelp.chatType, "group");
   assert.equal(parsedPercentHelp.directed, true);
 
+  const parsedMentionedBot = parseChannelConnectorFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "im.message.receive_v1",
+      app_id: "cli_test",
+      event_id: "evt_mentioned_bot",
+      token: "verify-token",
+    },
+    event: {
+      sender: { sender_id: { open_id: "ou_admin" } },
+      message: {
+        message_id: "om_mentioned_bot",
+        chat_id: "oc_group",
+        chat_type: "group",
+        message_type: "text",
+        content: JSON.stringify({ text: "@_user_1 /status" }),
+        mentions: [
+          { key: "@_user_1", name: "Studio Main", id: { open_id: "bot_test" } },
+        ],
+      },
+    },
+  });
+  const botMentionCandidates = channelConnectorFeishuBotMentionCandidates(service.getNativeConfig().config.platformBindings[0]);
+  const mentionedText = normalizeFeishuMessageTextForBot(
+    parsedMentionedBot.text,
+    parsedMentionedBot.mentions,
+    botMentionCandidates,
+  );
+  assert.equal(parsedMentionedBot.hasAnyMention, true);
+  assert.equal(isChannelConnectorFeishuBotMentioned(parsedMentionedBot, botMentionCandidates), true);
+  assert.equal(isChannelConnectorFeishuMessageDirected(parsedMentionedBot, botMentionCandidates, mentionedText), true);
+  assert.equal(mentionedText, "/status");
+
+  const parsedMentionedOther = parseChannelConnectorFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "im.message.receive_v1",
+      app_id: "cli_test",
+      event_id: "evt_mentioned_other",
+      token: "verify-token",
+    },
+    event: {
+      sender: { sender_id: { open_id: "ou_admin" } },
+      message: {
+        message_id: "om_mentioned_other",
+        chat_id: "oc_group",
+        chat_type: "group",
+        message_type: "text",
+        content: JSON.stringify({ text: "@_user_2 hello" }),
+        mentions: [
+          { key: "@_user_2", name: "Alice", id: { open_id: "ou_alice" } },
+        ],
+      },
+    },
+  });
+  assert.equal(isChannelConnectorFeishuBotMentioned(parsedMentionedOther, botMentionCandidates), false);
+  assert.equal(isChannelConnectorFeishuMessageDirected(parsedMentionedOther, botMentionCandidates), false);
+
+  const parsedMentionedAll = parseChannelConnectorFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "im.message.receive_v1",
+      app_id: "cli_test",
+      event_id: "evt_mentioned_all",
+      token: "verify-token",
+    },
+    event: {
+      sender: { sender_id: { open_id: "ou_admin" } },
+      message: {
+        message_id: "om_mentioned_all",
+        chat_id: "oc_group",
+        chat_type: "group",
+        message_type: "text",
+        content: JSON.stringify({ text: "@_all hello" }),
+        mentions: [
+          { key: "@_all", name: "所有人", id: { open_id: "all" } },
+        ],
+      },
+    },
+  });
+  assert.equal(isChannelConnectorFeishuBotMentioned(parsedMentionedAll, botMentionCandidates), false);
+  assert.equal(isChannelConnectorFeishuMessageDirected(parsedMentionedAll, botMentionCandidates), false);
+
   const challenge = await service.dispatchFeishuWebhook({
     type: "url_verification",
     app_id: "cli_test",
@@ -7709,6 +7796,60 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(deniedUser.accepted, false);
   assert.equal(deniedUser.skippedReason, "channel_user_not_allowed");
   assert.equal(deniedUser.agentDispatch.status, "skipped");
+
+  const mentionedBotCommand = await service.dispatchFeishuWebhook({
+    dryRun: true,
+    schema: "2.0",
+    header: {
+      event_type: "im.message.receive_v1",
+      app_id: "cli_test",
+      event_id: "evt_mentioned_bot_command",
+      token: "verify-token",
+    },
+    event: {
+      sender: { sender_id: { open_id: "ou_admin" } },
+      message: {
+        message_id: "om_mentioned_bot_command",
+        chat_id: "oc_group",
+        chat_type: "group",
+        message_type: "text",
+        content: JSON.stringify({ text: "@_user_1 %help" }),
+        mentions: [
+          { key: "@_user_1", name: "Studio Main", id: { open_id: "bot_test" } },
+        ],
+      },
+    },
+  });
+  assert.equal(mentionedBotCommand.accepted, true);
+  assert.equal(mentionedBotCommand.incoming.content, "/help");
+  assert.equal(mentionedBotCommand.incoming.directed, true);
+  assert.equal(mentionedBotCommand.commandAction.command, "/help");
+
+  const mentionedOtherMessage = await service.dispatchFeishuWebhook({
+    dryRun: true,
+    schema: "2.0",
+    header: {
+      event_type: "im.message.receive_v1",
+      app_id: "cli_test",
+      event_id: "evt_mentioned_other_skip",
+      token: "verify-token",
+    },
+    event: {
+      sender: { sender_id: { open_id: "ou_admin" } },
+      message: {
+        message_id: "om_mentioned_other_skip",
+        chat_id: "oc_group",
+        chat_type: "group",
+        message_type: "text",
+        content: JSON.stringify({ text: "@_user_2 hello" }),
+        mentions: [
+          { key: "@_user_2", name: "Alice", id: { open_id: "ou_alice" } },
+        ],
+      },
+    },
+  });
+  assert.equal(mentionedOtherMessage.accepted, false);
+  assert.equal(mentionedOtherMessage.skippedReason, "feishu_group_message_not_directed");
 
   const parsedMessage = parseChannelConnectorFeishuWebhook({
     schema: "2.0",
@@ -7768,6 +7909,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
       },
     },
   });
+  assert.equal(parsedTopicGroupMessage.directed, false);
   assert.equal(buildFeishuSessionKey(parsedTopicGroupMessage), "feishu:oc_topic_group:topic:omt_topic_1");
   assert.equal(
     buildFeishuSessionKey(parsedTopicGroupMessage, { groupSessionScope: "group_topic_sender" }),

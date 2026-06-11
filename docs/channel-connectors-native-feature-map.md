@@ -52,6 +52,7 @@
 - 已完成：真实 Feishu 客户端三工具调用复测：长连接入站、reaction、Progress card send/patch、工具步骤和最终回复成功；Gateway 最新 `/v1/responses` 请求无 1213。
 - 已完成：F4 长回复拆分基础能力：共享 Unicode-safe text chunk helper，Feishu text 自动多条发送并记录 `chunkCount/messageIds`，Octo 回复复用同一拆分规则。
 - 已完成：F4 Feishu thread/reply session：daemon/service 共用 OpenClaw 插件风格 session scope，支持 `group/group_sender/group_topic/group_topic_sender`；`topic_group` 优先按 topic/thread 续接，私聊仍按用户隔离，日志和 webhook 返回保留 root/parent/thread；新 topic/thread Agent session 首轮会拉 root/thread 前文并进入同一 history 预算窗口。
+- 已完成：F4 Feishu mention/topic_group 触发规则：解析 Feishu `mentions`，按 binding `botId/botOpenId` 识别 @bot；`@bot` 会从正文剥离后再进入 slash/alias/Agent 路由，`@all` 和 @其它成员只作为群历史记录不触发；`topic_group` 不再被当私聊自动触发，只有命令或 @bot 才进入 Agent；topic 群同样拉取 chat members 进入 Studio group context。
 - 已完成：F4 attachment metadata：Feishu `image/file/audio/media/sticker` 与 Octo 图片/文件/语音/视频映射到统一 attachment contract；Agent 只收到脱敏摘要，平台 key 留在本地结构化数据中；入站 staging 落盘路径保留中文、空格、括号等可读文件名，同时继续剥离路径穿越和非法字符。
 - 已完成：F4 Feishu attachment staging：Feishu resource streaming 下载到 `agent-runtime/attachments`，路径清洗；daemon 默认 128MB 安全阀，binding metadata 可覆盖或关闭上限；失败降级为 `stagingError`，Agent prompt 使用本地路径。
 - 已完成：F4 Octo URL attachment staging：Octo URL 型图片/文件/语音/视频在进入 Agent 前 streaming 落盘，默认拒绝私网 URL，大小上限复用 attachment metadata；失败只写 `stagingError`。
@@ -73,4 +74,4 @@
 - 已完成：F5 基础治理：allowlist/admin、banned words、rate limit 覆盖 Octo/Feishu daemon 与 HTTP dispatch/action。
 - 已完成：F4 飞书群成员拉取：群聊 Agent 分支分页拉取 chat members 并注入 group context，失败只记日志不阻断。
 - 已完成：平台配置 UI：Octo/Feishu binding 凭证 metadata 可在 Channel Connectors 页面编辑并直接执行连接测试。
-- 下一步：对照 OpenClaw Feishu 插件迁移 mention/topic_group 触发规则；继续做 `studio-channel-messages` Octo human DM、thread、@成员和 @其它 Studio/外部 bot、Feishu open_id/user_id 文本/Markdown live smoke；继续按 Octo 插件迁移更完整菜单；随后按同一模式补 Feishu 文档/云盘 skills 和更多平台 adapter。
+- 下一步：继续做真实 Feishu @bot、未 @ 群消息、topic/thread、成员上下文 live smoke；继续做 `studio-channel-messages` Octo human DM、thread、@成员和 @其它 Studio/外部 bot、Feishu open_id/user_id 文本/Markdown live smoke；继续按 Octo 插件迁移更完整菜单；随后按同一模式补 Feishu 文档/云盘 skills 和更多平台 adapter。
