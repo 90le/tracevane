@@ -11169,7 +11169,7 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
             clientPublicKeyBase64: packet.clientPublicKeyBase64,
             salt,
             messageId: 3001,
-            messageSeq: 8,
+            messageSeq: 30,
             fromUid: "user-1",
             channelId: "group-1",
             channelType: 2,
@@ -11237,21 +11237,39 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         return true;
       }
       if (req.method === "POST" && req.url === "/v1/bot/messages/sync") {
-        const oldPayload = Buffer.from(JSON.stringify({ type: 1, content: "old question" }), "utf8").toString("base64");
-        const botPayload = Buffer.from(JSON.stringify({ type: 1, content: "old answer" }), "utf8").toString("base64");
-        const helperPayload = Buffer.from(JSON.stringify({
-          type: 1,
-          content: `helper bot already replied ${"long-context ".repeat(30)}`,
-        }), "utf8").toString("base64");
-        const newPayload = Buffer.from(JSON.stringify({ type: 1, content: "history hello" }), "utf8").toString("base64");
-        res.end([
-          "{\"start_message_seq\":1,\"end_message_seq\":7,\"pull_mode\":1,\"messages\":[",
-          `{"message_id":"2996","message_seq":4,"from_uid":"user-1","channel_id":"group-1","channel_type":2,"timestamp":1742547597,"payload":"${oldPayload}"},`,
-          `{"message_id":"2997","message_seq":5,"from_uid":"robot-1","channel_id":"group-1","channel_type":2,"timestamp":1742547598,"payload":"${botPayload}"},`,
-          `{"message_id":"2998","message_seq":6,"from_uid":"helper_bot","channel_id":"group-1","channel_type":2,"timestamp":1742547599,"payload":"${helperPayload}"},`,
-          `{"message_id":"2999","message_seq":7,"from_uid":"user-1","channel_id":"group-1","channel_type":2,"timestamp":1742547600,"payload":"${newPayload}"}`,
-          "]}",
-        ].join(""));
+        const textPayload = (content) => Buffer.from(JSON.stringify({ type: 1, content }), "utf8").toString("base64");
+        const messages = [
+          { id: "2976", seq: 4, from: "user-1", content: "old question" },
+          { id: "2977", seq: 5, from: "robot-1", content: "old answer" },
+        ];
+        for (let seq = 6; seq <= 21; seq += 1) {
+          messages.push({
+            id: String(2972 + seq),
+            seq,
+            from: seq % 3 === 0 ? "helper_bot" : "user-1",
+            content: seq === 12
+              ? `large history filler ${"long-context ".repeat(120)}TAIL-SHOULD-NOT-ENTER-OCTO-CONTEXT`
+              : `history filler ${seq}`,
+          });
+        }
+        messages.push(
+          { id: "2998", seq: 22, from: "helper_bot", content: `helper bot already replied ${"long-context ".repeat(30)}` },
+          { id: "2999", seq: 23, from: "user-1", content: "history hello" },
+        );
+        res.end(JSON.stringify({
+          start_message_seq: 1,
+          end_message_seq: 29,
+          pull_mode: 1,
+          messages: messages.map((message) => ({
+            message_id: message.id,
+            message_seq: message.seq,
+            from_uid: message.from,
+            channel_id: "group-1",
+            channel_type: 2,
+            timestamp: 1742547590 + message.seq,
+            payload: textPayload(message.content),
+          })),
+        }));
         return true;
       }
       if (req.method === "GET" && req.url?.startsWith("/v1/bot/file/download/chat/hello.txt")) {
@@ -11301,7 +11319,7 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
                 wsUrl,
                 allowPrivateAttachmentUrls: true,
                 attachmentMaxBytes: 1024,
-                octoHistorySyncLimit: 4,
+                octoHistorySyncLimit: 20,
                 octoHistoryMessageMaxRunes: 200,
                 octoHeartbeatMs: 30_000,
                 octoPongTimeoutMs: 10_000,
@@ -11357,6 +11375,7 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         assert.match(capture[0].stdin, /Octo Bot API recent channel timeline/);
         assert.match(capture[0].stdin, /inspect senderType=bot entries here before saying you cannot see the reply/);
         assert.match(capture[0].stdin, /Last answered messageSeq: 5/);
+        assert.match(capture[0].stdin, /History budget: 20\/20 messages included/);
         assert.match(capture[0].stdin, /Previous Octo channel context - already answered/);
         assert.match(capture[0].stdin, /Octo channel messages since your last Studio reply/);
         assert.match(capture[0].stdin, /senderType/);
@@ -11367,6 +11386,7 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         assert.match(capture[0].stdin, /helper bot already replied/);
         assert.match(capture[0].stdin, /truncated/);
         assert.match(capture[0].stdin, /originalRunes/);
+        assert.doesNotMatch(capture[0].stdin, /TAIL-SHOULD-NOT-ENTER-OCTO-CONTEXT/);
         assert.match(capture[0].stdin, /history hello/);
         assert.match(capture[0].stdin, /Octo realtime local channel timeline/);
         assert.match(capture[0].stdin, /Previous Octo realtime context - already answered/);
@@ -11403,9 +11423,9 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         }));
         assert.ok(octoEvents.some((event) => {
           return event.eventKind === "channel.octo.history.synced"
-            && event.includedCount === 4
+            && event.includedCount === 20
             && event.answeredCount === 2
-            && event.newCount === 2
+            && event.newCount === 18
             && event.lastAnsweredMessageSeq === 5
             && event.inferredLastAnsweredMessageSeq === 5
             && event.error === null;
@@ -11414,14 +11434,14 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
           const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
           const cutoff = response.body?.octoHistoryCutoffs?.find?.((item) =>
             item.bindingId === "octo-context"
-            && item.lastAnsweredMessageSeq === 8
+            && item.lastAnsweredMessageSeq === 30
             && item.source === "agent-reply"
           );
           return cutoff ? response.body : null;
         }, 8000);
         assert.ok(cutoffStatus.octoHistoryCutoffs.some((item) =>
           item.bindingId === "octo-context"
-          && item.lastAnsweredMessageSeq === 8
+          && item.lastAnsweredMessageSeq === 30
           && item.messageId === "3001"
         ));
         assert.ok(octoEvents.some((event) => {

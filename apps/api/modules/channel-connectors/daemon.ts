@@ -4982,20 +4982,52 @@ function truncateOctoHistoryBody(value: string, maxRunes: number): { text: strin
   };
 }
 
-function fitOctoHistoryEntriesToBudget<T extends { body: string }>(
+type OctoHistoryBudgetEntry = {
+  sender?: string;
+  senderType?: string;
+  body: string;
+  truncated?: boolean;
+  originalRunes?: number;
+  seq?: number | null;
+  messageSeq?: number | null;
+  attachmentSummaries?: string[];
+};
+
+function octoHistoryBudgetProjection(entry: OctoHistoryBudgetEntry): Record<string, unknown> {
+  return {
+    ...(entry.sender ? { sender: entry.sender } : {}),
+    ...(entry.senderType ? { senderType: entry.senderType } : {}),
+    body: entry.body,
+    ...(entry.truncated ? { truncated: true, originalRunes: entry.originalRunes } : {}),
+    ...(entry.seq ? { messageSeq: entry.seq } : {}),
+    ...(entry.messageSeq ? { messageSeq: entry.messageSeq } : {}),
+    ...(entry.attachmentSummaries?.length ? { attachments: entry.attachmentSummaries } : {}),
+  };
+}
+
+function octoHistoryEntryBudgetRunes(entry: OctoHistoryBudgetEntry): number {
+  return Array.from(JSON.stringify(octoHistoryBudgetProjection(entry), null, 2)).length + 8;
+}
+
+function effectiveOctoHistoryMessageMaxRunes(messageMaxRunes: number, totalMaxRunes: number): number {
+  const entryBudget = Math.max(200, totalMaxRunes - 1200);
+  return Math.max(200, Math.min(messageMaxRunes, entryBudget));
+}
+
+function fitOctoHistoryEntriesToBudget<T extends OctoHistoryBudgetEntry>(
   entries: T[],
   totalMaxRunes: number,
 ): T[] {
   if (totalMaxRunes <= 0) return entries;
   const output: T[] = [];
   let used = 0;
+  const entriesBudget = Math.max(200, totalMaxRunes - 800);
   for (let index = entries.length - 1; index >= 0; index -= 1) {
     const entry = entries[index];
-    const runes = Array.from(entry.body).length;
-    const overhead = 160;
-    if (output.length > 0 && used + runes + overhead > totalMaxRunes) break;
+    const runes = octoHistoryEntryBudgetRunes(entry);
+    if (output.length > 0 && used + runes > entriesBudget) break;
     output.unshift(entry);
-    used += runes + overhead;
+    used += runes;
   }
   return output.length ? output : entries.slice(-1);
 }
@@ -5047,10 +5079,12 @@ function renderOctoSyncedHistoryContext(input: {
   newCount: number;
   inferredLastAnsweredMessageSeq: number | null;
   inferredLastAnsweredMessageId: string | null;
+  messageIds: string[];
 } {
   const botUid = normalizeString(input.botUid);
   const nameByUid = octoMemberNameByUid(input.members || []);
   const robotByUid = octoMemberRobotByUid(input.members || []);
+  const messageMaxRunes = effectiveOctoHistoryMessageMaxRunes(input.messageMaxRunes, input.totalMaxRunes);
   const syncedMessages = octoSyncedMessagesFromData(input.data)
     .filter((message) => normalizeString(message.message_id) !== input.currentMessageId)
     .sort((a, b) => (octoSyncedMessageSeq(a) || 0) - (octoSyncedMessageSeq(b) || 0));
@@ -5068,7 +5102,7 @@ function renderOctoSyncedHistoryContext(input: {
     .slice(-input.limit)
     .map((message) => {
       const sender = normalizeString(message.from_uid) || normalizeString(message.fromUid) || "unknown";
-      const body = truncateOctoHistoryBody(octoSyncedMessageText(message.payload), input.messageMaxRunes);
+      const body = truncateOctoHistoryBody(octoSyncedMessageText(message.payload), messageMaxRunes);
       return {
         sender: octoSyncedSenderLabel(sender, nameByUid),
         senderType: octoSyncedSenderType(sender, botUid, robotByUid),
@@ -5087,6 +5121,7 @@ function renderOctoSyncedHistoryContext(input: {
       newCount: 0,
       inferredLastAnsweredMessageSeq: null,
       inferredLastAnsweredMessageId: null,
+      messageIds: [],
     };
   }
   const budgetedEntries = fitOctoHistoryEntriesToBudget(contextEntries, input.totalMaxRunes);
@@ -5111,7 +5146,7 @@ function renderOctoSyncedHistoryContext(input: {
     "Messages are segmented by the last successful Studio bot reply. Treat the previous context section as already answered; use the new section for collaborator replies and fresh context.",
     "If the current user asks whether another bot replied, inspect senderType=bot entries here before saying you cannot see the reply.",
     lastAnsweredMessageSeq ? `Last answered messageSeq: ${lastAnsweredMessageSeq}.` : "No last answered messageSeq is known yet; all entries below are fresh context.",
-    `History budget: ${budgetedEntries.length}/${contextEntries.length} messages included, max ${input.messageMaxRunes} chars per message, max ${input.totalMaxRunes} chars total.${droppedCount ? ` Dropped ${droppedCount} older messages due to budget.` : ""}`,
+    `History budget: ${budgetedEntries.length}/${contextEntries.length} messages included, max ${messageMaxRunes} chars per message, max ${input.totalMaxRunes} chars total.${droppedCount ? ` Dropped ${droppedCount} older messages due to budget.` : ""}`,
   ];
   if (segmented.answered.length) {
     sections.push(
@@ -5139,6 +5174,7 @@ function renderOctoSyncedHistoryContext(input: {
     newCount: segmented.fresh.length,
     inferredLastAnsweredMessageSeq: inferredCutoff?.seq || null,
     inferredLastAnsweredMessageId: inferredCutoff?.messageId || null,
+    messageIds: budgetedEntries.map((entry) => normalizeString(entry.messageId)).filter(Boolean),
   };
 }
 
@@ -5166,6 +5202,7 @@ function renderOctoRealtimeTimelineContext(input: {
   const botUid = normalizeString(input.botUid);
   const nameByUid = octoMemberNameByUid(input.members || []);
   const robotByUid = octoMemberRobotByUid(input.members || []);
+  const messageMaxRunes = effectiveOctoHistoryMessageMaxRunes(input.messageMaxRunes, input.totalMaxRunes);
   const contextEntries = entries
     .filter((entry) => {
       if (entry.messageId === input.message.messageId) return false;
@@ -5175,7 +5212,7 @@ function renderOctoRealtimeTimelineContext(input: {
     })
     .slice(-input.limit)
     .map((entry) => {
-      const body = truncateOctoHistoryBody(entry.body, input.messageMaxRunes);
+      const body = truncateOctoHistoryBody(entry.body, messageMaxRunes);
       return {
         sender: octoSyncedSenderLabel(entry.fromUid, nameByUid),
         senderType: octoSyncedSenderType(entry.fromUid, botUid, robotByUid),
@@ -5197,7 +5234,7 @@ function renderOctoRealtimeTimelineContext(input: {
     "Use this as short-term collaboration context when Bot API history is delayed or missing. Entries are segmented by the last successful Studio bot reply when known.",
     "If the current user asks whether another bot replied, inspect senderType=bot entries here before saying you cannot see the reply.",
     positiveMessageSeq(input.lastAnsweredMessageSeq) ? `Last answered messageSeq: ${positiveMessageSeq(input.lastAnsweredMessageSeq)}.` : "No last answered messageSeq is known yet; all entries below are fresh context.",
-    `History budget: ${budgetedEntries.length}/${contextEntries.length} messages included, max ${input.messageMaxRunes} chars per message, max ${input.totalMaxRunes} chars total.${droppedCount ? ` Dropped ${droppedCount} older messages due to budget.` : ""}`,
+    `History budget: ${budgetedEntries.length}/${contextEntries.length} messages included, max ${messageMaxRunes} chars per message, max ${input.totalMaxRunes} chars total.${droppedCount ? ` Dropped ${droppedCount} older messages due to budget.` : ""}`,
   ];
   const formatEntries = (entries: typeof budgetedEntries) => JSON.stringify(entries.map((entry) => ({
       sender: entry.sender,
@@ -5319,24 +5356,12 @@ async function loadOctoSyncedHistoryContext(input: {
     totalMaxRunes,
     lastAnsweredMessageSeq: input.lastAnsweredMessageSeq || null,
   });
-  const currentSeq = typeof input.message.messageSeq === "number" && Number.isFinite(input.message.messageSeq)
-    ? input.message.messageSeq
-    : null;
-  const includedMessages = octoSyncedMessagesFromData(result.data)
-    .filter((message) => {
-      if (normalizeString(message.message_id) === input.message.messageId) return false;
-      if (!octoSyncedMessageText(message.payload)) return false;
-      const seq = octoSyncedMessageSeq(message);
-      if (currentSeq && seq && seq >= currentSeq) return false;
-      return true;
-    })
-    .slice(-limit);
   return {
     context: rendered.context,
     error: null,
     attempted: result.attempted,
     itemCount: result.itemCount ?? null,
-    includedCount: rendered.context ? includedMessages.length : 0,
+    includedCount: rendered.includedCount,
     answeredCount: rendered.answeredCount,
     newCount: rendered.newCount,
     lastAnsweredMessageSeq: positiveMessageSeq(input.lastAnsweredMessageSeq)
@@ -5344,7 +5369,7 @@ async function loadOctoSyncedHistoryContext(input: {
       || null,
     inferredLastAnsweredMessageSeq: rendered.inferredLastAnsweredMessageSeq,
     inferredLastAnsweredMessageId: rendered.inferredLastAnsweredMessageId,
-    messageIds: includedMessages.map((message) => normalizeString(message.message_id)).filter(Boolean),
+    messageIds: rendered.messageIds,
   };
 }
 
