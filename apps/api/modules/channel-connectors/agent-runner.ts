@@ -667,6 +667,7 @@ function createOpenCodeGatewayHome(input: {
   gatewayClientKey: string | null;
   model: string | null;
   agentRuntimeDir?: string | null;
+  supportsVision?: boolean;
 }): {
   configHome: string;
   dataHome: string;
@@ -696,9 +697,24 @@ function createOpenCodeGatewayHome(input: {
   const models = modelId
     ? {
       [modelId]: {
+        id: modelId,
         name: modelId,
         contextWindow: 200000,
         maxOutputTokens: 8192,
+        limit: {
+          context: 200000,
+          output: 8192,
+        },
+        tool_call: true,
+        reasoning: true,
+        temperature: true,
+        ...(input.supportsVision ? {
+          attachment: true,
+          modalities: {
+            input: ["text", "image"],
+            output: ["text"],
+          },
+        } : {}),
       },
     }
     : {};
@@ -885,6 +901,8 @@ export function buildChannelConnectorAgentProcessRequest(
     && channelConnectorModelSupportsVision(model || null, request.binding, request.modelCapabilities)
     ? collectCodexNativeImagePaths(attachments)
     : [];
+  const opencodeSupportsVision = project.agent === "opencode"
+    && channelConnectorModelSupportsVision(model || null, request.binding, request.modelCapabilities);
   const content = nativeCommand || buildAgentInputContent(
     request.message,
     request.binding,
@@ -1029,6 +1047,7 @@ export function buildChannelConnectorAgentProcessRequest(
       gatewayClientKey: request.gatewayClientKey,
       model: model || null,
       agentRuntimeDir: request.agentRuntimeDir,
+      supportsVision: opencodeSupportsVision,
     });
     const requestedOpenCodeSessionId = normalizeString(request.session?.agentNativeSessionId);
     const opencodeSessionId = requestedOpenCodeSessionId && openCodeSessionExistsInDataHome(opencodeHome.dataHome, requestedOpenCodeSessionId)

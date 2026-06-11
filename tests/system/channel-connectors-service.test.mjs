@@ -2556,6 +2556,13 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(opencodeVisionAttachmentRequest.args[opencodeFileArgIndex + 1], visionImagePath);
   assert.match(opencodeVisionAttachmentRequest.args.at(-1), /native --file arguments/);
   assert.doesNotMatch(opencodeVisionAttachmentRequest.args.at(-1), /Studio visual attachment policy/);
+  const opencodeVisionConfigPath = path.join(opencodeVisionAttachmentRequest.env.XDG_CONFIG_HOME, "opencode", "opencode.json");
+  const opencodeVisionConfig = JSON.parse(fs.readFileSync(opencodeVisionConfigPath, "utf8"));
+  const opencodeVisionModelConfig = opencodeVisionConfig.provider["studio-gateway"].models["gmn-vision"];
+  assert.equal(opencodeVisionModelConfig.attachment, true);
+  assert.deepEqual(opencodeVisionModelConfig.modalities, { input: ["text", "image"], output: ["text"] });
+  assert.deepEqual(opencodeVisionModelConfig.limit, { context: 200000, output: 8192 });
+  assert.equal(opencodeVisionModelConfig.tool_call, true);
 
   const stagedLocalPath = path.join(workDir, ".studio-agent-attachments", "report.txt");
   const stagedAttachmentRequest = buildChannelConnectorAgentProcessRequest({

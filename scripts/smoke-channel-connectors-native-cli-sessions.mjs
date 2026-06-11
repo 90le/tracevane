@@ -18,6 +18,9 @@ const DEFAULT_MODEL = "gpt-test";
 const LOCAL_GATEWAY_KEY = "sk-native-cli-smoke";
 const DEFAULT_TIMEOUT_MS = 90_000;
 const FILE_SMOKE_NAME = "native-smoke-output.txt";
+const VISUAL_SMOKE_NAME = "native-smoke-image.jpg";
+const VISUAL_SMOKE_MIME_TYPE = "image/jpeg";
+const VISUAL_SMOKE_IMAGE_BASE64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAAgACADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD50ooor8MP9UwooooAKKKKACiiigD/2Q==";
 
 function parseArgs(argv) {
   const options = {
@@ -191,6 +194,7 @@ async function startMockGateway() {
 function anthropicResponseText(body) {
   const text = requestText(body);
   if (text.includes("/compact")) return "";
+  if (text.includes("CLAUDE_VISUAL_SMOKE")) return "CLAUDE_VISUAL_OK";
   if (text.includes("CLAUDE_FILE_SMOKE")) {
     return [
       "CLAUDE_FILE_OK",
@@ -313,6 +317,7 @@ function respondAnthropicMessages(res, body) {
 function chatResponseText(body) {
   const text = requestText(body);
   if (text.includes("/compact")) return "OPENCODE_COMPACT_OK";
+  if (text.includes("OPENCODE_VISUAL_SMOKE")) return "OPENCODE_VISUAL_OK";
   if (text.includes("OPENCODE_FILE_SMOKE")) {
     return [
       "OPENCODE_FILE_OK",
@@ -395,9 +400,22 @@ function writeOpenCodeConfig(homeDir, endpoint) {
         },
         models: {
           [DEFAULT_MODEL]: {
+            id: DEFAULT_MODEL,
             name: DEFAULT_MODEL,
             contextWindow: 128000,
             maxOutputTokens: 8192,
+            limit: {
+              context: 128000,
+              output: 8192,
+            },
+            tool_call: true,
+            reasoning: true,
+            temperature: true,
+            attachment: true,
+            modalities: {
+              input: ["text", "image"],
+              output: ["text"],
+            },
           },
         },
       },
@@ -443,12 +461,13 @@ function installIsolatedEnv(root, endpoint) {
   };
 }
 
-function baseTurnRequest(root, agent, endpoint, nativeCommand = null, contentOverride = null) {
+function baseTurnRequest(root, agent, endpoint, nativeCommand = null, contentOverride = null, attachments = []) {
   const model = agent === "opencode" ? `studio-gateway/${DEFAULT_MODEL}` : DEFAULT_MODEL;
   const messageKind = nativeCommand
     ? "compact"
     : contentOverride?.includes("_TOOL_SMOKE") ? "tool"
       : contentOverride?.includes("_FILE_SMOKE") ? "file"
+        : contentOverride?.includes("_VISUAL_SMOKE") ? "visual"
         : contentOverride?.includes("_STOP_SMOKE") ? "stop"
         : "normal";
   return {
@@ -487,12 +506,13 @@ function baseTurnRequest(root, agent, endpoint, nativeCommand = null, contentOve
         type: 1,
         content: nativeCommand || contentOverride || "Reply exactly with the driver marker.",
       },
-      attachments: [],
+      attachments,
       raw: {},
     },
     sessionKey: "native-cli-smoke:dm:user",
     gatewayEndpoint: endpoint,
     gatewayClientKey: LOCAL_GATEWAY_KEY,
+    modelCapabilities: attachments.some((attachment) => attachment?.kind === "image") ? { vision: true } : null,
     timeoutMs: DEFAULT_TIMEOUT_MS,
     nativeCommand,
   };
@@ -505,6 +525,13 @@ function skippedResult(app, reason) {
 function preview(value) {
   const text = String(value || "").trim();
   return text.length > 300 ? `${text.slice(0, 300)}...` : text;
+}
+
+function requestPreview(request) {
+  return preview(JSON.stringify({
+    path: request.path,
+    body: request.body,
+  }));
 }
 
 async function waitForRequest(requests, beforeCount, predicate, timeoutMs) {
@@ -542,6 +569,16 @@ async function runAppSmoke(app, root, endpoint, requests, timeoutMs) {
   const startedAt = Date.now();
   const smokeFilePath = path.join(root, FILE_SMOKE_NAME);
   fs.writeFileSync(smokeFilePath, `native cli smoke file for ${app}\n`);
+  const visualFilePath = path.join(root, VISUAL_SMOKE_NAME);
+  fs.writeFileSync(visualFilePath, Buffer.from(VISUAL_SMOKE_IMAGE_BASE64, "base64"));
+  const visualAttachment = {
+    kind: "image",
+    platform: "native-cli-smoke",
+    fileName: VISUAL_SMOKE_NAME,
+    mimeType: VISUAL_SMOKE_MIME_TYPE,
+    localPath: visualFilePath,
+    stagedAt: new Date(startedAt).toISOString(),
+  };
   const firstTurnRequest = baseTurnRequest(root, app, endpoint);
   const session = await factory.create({
     key,
@@ -603,13 +640,35 @@ async function runAppSmoke(app, root, endpoint, requests, timeoutMs) {
         throw new Error("Persistent file smoke should not call one-shot fallback.");
       },
     });
+    const visual = await session.runTurn({
+      mode: "persistent",
+      key,
+      messageId: `${app}-visual`,
+      agentTurnRequest: {
+        ...baseTurnRequest(
+          root,
+          app,
+          endpoint,
+          null,
+          app === "claude-code"
+            ? "CLAUDE_VISUAL_SMOKE: Inspect the attached image through the native visual path and reply CLAUDE_VISUAL_OK."
+            : "OPENCODE_VISUAL_SMOKE: Inspect the attached image through the native visual path and reply OPENCODE_VISUAL_OK.",
+          [visualAttachment],
+        ),
+        session: file.session,
+      },
+      onProgress: (event) => progress.push(event),
+      runOneShot: async () => {
+        throw new Error("Persistent visual smoke should not call one-shot fallback.");
+      },
+    });
     const compact = await session.runTurn({
       mode: "persistent",
       key,
       messageId: `${app}-compact`,
       agentTurnRequest: {
         ...baseTurnRequest(root, app, endpoint, "/compact"),
-        session: file.session,
+        session: visual.session,
       },
       onProgress: (event) => progress.push(event),
       runOneShot: async () => {
@@ -643,12 +702,26 @@ async function runAppSmoke(app, root, endpoint, requests, timeoutMs) {
     const marker = app === "claude-code" ? "CLAUDE_DRIVER_OK" : "OPENCODE_DRIVER_OK";
     const compactMarker = app === "claude-code" ? "Claude Code compact 已完成。" : "OpenCode compact 已完成。";
     const fileMarker = app === "claude-code" ? "CLAUDE_FILE_OK" : "OPENCODE_FILE_OK";
+    const visualMarker = app === "claude-code" ? "CLAUDE_VISUAL_OK" : "OPENCODE_VISUAL_OK";
+    const visualRequestMarker = app === "claude-code" ? "CLAUDE_VISUAL_SMOKE" : "OPENCODE_VISUAL_SMOKE";
+    const visualRequestPath = app === "claude-code" ? "/v1/messages" : "/v1/chat/completions";
     const appRequests = requests.slice(before);
     const hitPaths = [...new Set(appRequests.map((request) => request.path))];
+    const visualRequest = appRequests.find((request) => request.path === visualRequestPath && requestText(request.body).includes(visualRequestMarker));
+    const visualRequestBody = JSON.stringify(visualRequest?.body || {});
     const errors = [];
+    const warnings = [];
+    const openCodeVisualUnsupported = app === "opencode"
+      && !visual.ok
+      && !visualRequest
+      && /BadRequest|type=error/.test([visual.error, visual.stdout, visual.stderr].filter(Boolean).join("\n"));
+    if (openCodeVisualUnsupported) {
+      warnings.push("OpenCode 1.17 rejected local image attachment before sending a Gateway request; config/args construction is covered, real OpenCode visual CLI smoke remains pending.");
+    }
     if (!normal.ok) errors.push(`normal turn failed: ${normal.error || normal.status}`);
     if (tool && !tool.ok) errors.push(`tool turn failed: ${tool.error || tool.status}`);
     if (!file.ok) errors.push(`file turn failed: ${file.error || file.status}`);
+    if (!visual.ok && !openCodeVisualUnsupported) errors.push(`visual turn failed: ${visual.error || visual.status}`);
     if (!compact.ok) errors.push(`compact turn failed: ${compact.error || compact.status}`);
     if (stop && (stop.ok || stop.status !== "cancelled")) {
       errors.push(`stop turn status was ${JSON.stringify(stop.status)}, expected cancelled`);
@@ -658,6 +731,14 @@ async function runAppSmoke(app, root, endpoint, requests, timeoutMs) {
     if (!String(file.replyText || "").includes(fileMarker)) errors.push(`file reply did not include ${fileMarker}`);
     if (!String(file.replyText || "").includes("studio-channel-files")) errors.push("file reply did not include studio-channel-files manifest");
     if (!String(file.replyText || "").includes(FILE_SMOKE_NAME)) errors.push(`file reply did not include ${FILE_SMOKE_NAME}`);
+    if (!openCodeVisualUnsupported && visual.replyText !== visualMarker) errors.push(`visual reply was ${JSON.stringify(visual.replyText)}, expected ${visualMarker}`);
+    if (!openCodeVisualUnsupported && !visualRequest) errors.push(`mock Gateway did not receive ${visualRequestMarker}`);
+    if (visualRequest && app === "claude-code" && !visualRequestBody.includes("\"image\"")) {
+      errors.push("Claude visual request did not include an image content block");
+    }
+    if (visualRequest && app === "opencode" && !visualRequestBody.includes(VISUAL_SMOKE_NAME)) {
+      errors.push(`OpenCode visual request did not include ${VISUAL_SMOKE_NAME}`);
+    }
     if (compact.replyText !== compactMarker) errors.push(`compact reply was ${JSON.stringify(compact.replyText)}, expected ${compactMarker}`);
     if (!normal.session.agentNativeSessionId) errors.push("normal turn did not preserve a native session id");
     if (tool && !progress.some((event) => event.type === "tool" && /Bash|CLAUDE_TOOL_RESULT|printf/.test(event.text || ""))) {
@@ -669,8 +750,10 @@ async function runAppSmoke(app, root, endpoint, requests, timeoutMs) {
       status: errors.length ? "failed" : "passed",
       durationMs: Math.max(0, Date.now() - startedAt),
       errors,
+      warnings,
       hitPaths,
       requestCount: appRequests.length,
+      requestPreviews: errors.length || warnings.length ? appRequests.map(requestPreview) : [],
       normal: {
         ok: normal.ok,
         replyText: normal.replyText,
@@ -696,6 +779,17 @@ async function runAppSmoke(app, root, endpoint, requests, timeoutMs) {
         progressCount: file.progress.eventCount,
         stdoutPreview: preview(file.stdout),
         stderrPreview: preview(file.stderr),
+      },
+      visual: {
+        ok: visual.ok,
+        replyText: visual.replyText,
+        nativeSessionId: visual.session.agentNativeSessionId || null,
+        progressCount: visual.progress.eventCount,
+        stdoutPreview: preview(visual.stdout),
+        stderrPreview: preview(visual.stderr),
+        requestHadNativeImage: app === "claude-code"
+          ? visualRequestBody.includes("\"image\"")
+          : visualRequestBody.includes(VISUAL_SMOKE_NAME),
       },
       compact: {
         ok: compact.ok,
@@ -733,10 +827,12 @@ function printHuman(summary) {
     console.log(`${prefix} ${result.app}: ${result.status}`);
     if (result.reason) console.log(`  reason: ${result.reason}`);
     if (result.errors?.length) console.log(`  errors: ${result.errors.join("; ")}`);
+    if (result.warnings?.length) console.log(`  warnings: ${result.warnings.join("; ")}`);
     if (result.hitPaths?.length) console.log(`  hit paths: ${result.hitPaths.join(", ")} (${result.requestCount} requests)`);
     if (result.normal) console.log(`  normal: ${result.normal.replyText || "<empty>"} session=${result.normal.nativeSessionId || "<none>"}`);
     if (result.tool) console.log(`  tool: ${result.tool.replyText || "<empty>"}`);
     if (result.file) console.log(`  file: ${preview(result.file.replyText || "")}`);
+    if (result.visual) console.log(`  visual: ${result.visual.replyText || "<empty>"} nativeImage=${result.visual.requestHadNativeImage ? "yes" : "no"}`);
     if (result.compact) console.log(`  compact: ${result.compact.replyText || "<empty>"}`);
     if (result.stop) console.log(`  stop: ${result.stop.status} ${result.stop.error || ""}`.trim());
   }
