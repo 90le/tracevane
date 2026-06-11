@@ -182,7 +182,9 @@ export type ChannelConnectorOctoManagementAction =
   | "voice-context-read"
   | "voice-context-update"
   | "voice-context-delete"
-  | "history";
+  | "history"
+  | "file-download-url"
+  | "message-edit";
 
 export interface ChannelConnectorOctoManagementRequest {
   action: ChannelConnectorOctoManagementAction;
@@ -198,6 +200,9 @@ export interface ChannelConnectorOctoManagementRequest {
   name?: string | null;
   notice?: string | null;
   content?: string | null;
+  filePath?: string | null;
+  fileName?: string | null;
+  messageId?: string | null;
   members?: string[] | null;
   creator?: string | null;
   limit?: number | null;
@@ -1525,8 +1530,10 @@ function octoCommandUsageText(): string {
     "- `/octo group-md [group_no]`：读取 GROUP.md；群内可省略 group_no",
     "- `/octo thread-md <short_id> [group_no]`：读取 THREAD.md；thread 内可省略 short_id",
     "- `/octo voice-context`：读取当前 bot owner 的语音纠错上下文",
+    "- `/octo download-url <file_path> [file_name]`：获取 Octo 文件下载 URL",
     "",
     "管理命令：",
+    "- `/octo edit-message <message_id> <content>`",
     "- `/octo create-group <群名> --members uid1,uid2`",
     "- `/octo update-group <group_no> --name 新名称 --notice 新公告`",
     "- `/octo add-members <group_no> uid1,uid2`",
@@ -1664,6 +1671,9 @@ export function formatChannelConnectorOctoManagementReply(input: {
   keyword?: string | null;
   name?: string | null;
   content?: string | null;
+  filePath?: string | null;
+  fileName?: string | null;
+  messageId?: string | null;
 }): string {
   if (input.result.ok !== true) {
     return `Octo Bot API 调用失败：${input.result.error || "unknown_error"}`;
@@ -1798,6 +1808,14 @@ export function formatChannelConnectorOctoManagementReply(input: {
       lines.length ? "```" : "（没有读取到历史消息）",
     ].filter(Boolean).join("\n");
   }
+  if (input.action === "file-download-url") {
+    const info = octoSingleRecord(input.result.data);
+    const location = octoRecordString(info, ["location", "url", "download_url", "downloadUrl"]);
+    return [
+      `Octo 文件下载 URL：${normalizeString(input.fileName) || normalizeString(input.filePath) || "unknown"}`,
+      location || "（未返回下载 URL）",
+    ].join("\n");
+  }
   if (input.action === "create-group") {
     const info = octoSingleRecord(input.result.data);
     const id = octoRecordString(info, ["group_no", "groupNo", "id"]);
@@ -1821,6 +1839,7 @@ export function formatChannelConnectorOctoManagementReply(input: {
     "thread-md-update",
     "voice-context-update",
     "voice-context-delete",
+    "message-edit",
   ].includes(input.action)) {
     const info = octoSingleRecord(input.result.data);
     const labels: Record<string, string> = {
@@ -1834,6 +1853,7 @@ export function formatChannelConnectorOctoManagementReply(input: {
       "thread-md-update": "已更新 Octo THREAD.md",
       "voice-context-update": "已更新 Octo Voice Context",
       "voice-context-delete": "已删除 Octo Voice Context",
+      "message-edit": `已编辑 Octo 消息${normalizeString(input.messageId) ? ` ${normalizeString(input.messageId)}` : ""}`,
     };
     return `${labels[input.action] || "Octo 操作已完成"}：${octoOkSummary(info)}`;
   }
@@ -1853,6 +1873,7 @@ const OCTO_MUTATING_ACTIONS = new Set<ChannelConnectorOctoManagementAction>([
   "thread-md-update",
   "voice-context-update",
   "voice-context-delete",
+  "message-edit",
 ]);
 
 function parseOctoOptionArgs(tokens: string[]): {
@@ -2145,6 +2166,22 @@ async function handleOctoManagementCommand(
   if (["voice-context", "voice-context-read", "read-voice-context"].includes(subcommand)) {
     return callOcto({ action: "voice-context-read" }, "show");
   }
+  if (["download-url", "file-download-url", "download", "file-url"].includes(subcommand)) {
+    const filePath = normalizeString(args[1]);
+    const fileName = normalizeString(args[2]) || null;
+    if (!filePath) {
+      return {
+        handled: true,
+        command: "octo",
+        action: "show",
+        ok: false,
+        control: currentControl,
+        replyText: "用法：`/octo download-url <file_path> [file_name]`",
+        passthroughText: null,
+      };
+    }
+    return callOcto({ action: "file-download-url", filePath, fileName }, "show");
+  }
   if (["create-group", "new-group"].includes(subcommand)) {
     const parsed = parseOctoOptionArgs(args.slice(1));
     const name = octoOptionText(parsed, ["name"]) || parsed.positionals.join(" ");
@@ -2279,6 +2316,22 @@ async function handleOctoManagementCommand(
   }
   if (["delete-voice-context", "remove-voice-context", "voice-context-delete"].includes(subcommand)) {
     return callOcto({ action: "voice-context-delete" }, "set");
+  }
+  if (["edit-message", "message-edit", "edit"].includes(subcommand)) {
+    const messageId = normalizeString(args[1]);
+    const content = normalizeString(args.slice(2).join(" "));
+    if (!messageId || !content) {
+      return {
+        handled: true,
+        command: "octo",
+        action: "set",
+        ok: false,
+        control: currentControl,
+        replyText: "用法：`/octo edit-message <message_id> <content>`",
+        passthroughText: null,
+      };
+    }
+    return callOcto({ action: "message-edit", messageId, content }, "set");
   }
   if (["set-thread-md", "update-thread-md", "thread-md-update"].includes(subcommand)) {
     const currentGroupNo = octoParentGroupNo(context.message);

@@ -57,6 +57,7 @@ const octoManagementActions: ChannelConnectorCommandSurfaceSkillAction[] = [
   action("octo-history", "Sync Octo channel history", "studio-octo-actions", "octo_management", "history", "none"),
   action("octo-group-md-read", "Read Octo GROUP.md", "studio-octo-actions", "octo_management", "group-md-read", "none"),
   action("octo-thread-md-read", "Read Octo THREAD.md", "studio-octo-actions", "octo_management", "thread-md-read", "none"),
+  action("octo-file-download-url", "Get Octo file download URL", "studio-octo-actions", "octo_management", "file-download-url", "none"),
   action("octo-list-threads", "List Octo threads", "studio-octo-actions", "octo_management", "list-threads", "none"),
   action("octo-thread-info", "Read Octo thread info", "studio-octo-actions", "octo_management", "thread-info", "none"),
   action("octo-thread-members", "List Octo thread members", "studio-octo-actions", "octo_management", "thread-members", "none"),
@@ -73,6 +74,7 @@ const octoManagementActions: ChannelConnectorCommandSurfaceSkillAction[] = [
   action("octo-thread-md-update", "Update Octo THREAD.md", "studio-octo-actions", "octo_management", "thread-md-update", "required"),
   action("octo-voice-context-update", "Update Octo voice context", "studio-octo-actions", "octo_management", "voice-context-update", "required"),
   action("octo-voice-context-delete", "Delete Octo voice context", "studio-octo-actions", "octo_management", "voice-context-delete", "required"),
+  action("octo-message-edit", "Edit Octo bot message", "studio-octo-actions", "octo_management", "message-edit", "required"),
 ];
 
 const feishuDocActions: ChannelConnectorCommandSurfaceSkillAction[] = [
@@ -168,7 +170,7 @@ Targets: \`dm:<human_uid>\`, \`group:<group_no>\`, \`thread:<group_no>____<short
 
 ## Files
 
-Use \`studio-channel-files\` for images, documents, archives, binaries, and generated files. Studio validates paths, preserves file names, uploads through Octo STS/COS when available, and falls back to the supported upload path when needed.
+Use \`studio-channel-files\` for images, documents, archives, binaries, and generated files. Studio validates paths, preserves file names, uploads through Octo STS/COS when available, and falls back to the supported upload path when needed. For inbound Octo file references that only include a platform path, use the \`file-download-url\` runtime action instead of calling Octo endpoints directly.
 
 \`\`\`studio-channel-files
 [
@@ -183,6 +185,17 @@ Generate or copy requested outgoing files under the current working directory un
 Studio injects recent Octo timeline context before the current request. In groups and threads, unmentioned messages are recorded as context but do not trigger a reply. When mentioned later, use the injected timeline to understand collaborator replies. Do not re-answer old messages unless the current user explicitly asks.
 
 Studio also exposes the user command \`/octo history [limit]\` for the current group/thread and supports bounded history budgets to avoid context overflow.
+
+For explicit platform operations, return a \`studio-octo-actions\` JSON block. Read-only actions run directly; mutating actions require Studio IM approval.
+
+\`\`\`studio-octo-actions
+[
+  {"tool":"octo_management","action":"group-members","params":{"group_no":"group_no"}},
+  {"tool":"octo_management","action":"history","params":{"channel_id":"group_no","channel_type":2,"limit":20}},
+  {"tool":"octo_management","action":"file-download-url","params":{"file_path":"chat/hello.txt","file_name":"hello.txt"}},
+  {"tool":"octo_management","action":"message-edit","params":{"message_id":"12345678901234567","content":"updated text"}}
+]
+\`\`\`
 
 ## Multi-Bot Coordination
 
@@ -203,6 +216,8 @@ Studio provides Octo management commands to users and Agent-native context:
 - \`/octo group-md [group_no]\`
 - \`/octo thread-md <short_id> [group_no]\`
 - \`/octo voice-context\`
+- \`/octo download-url <file_path> [file_name]\`
+- \`/octo edit-message <message_id> <content>\`
 - \`/octo create-group <name> --members uid1,uid2\`
 - \`/octo update-group <group_no> --name <name> --notice <notice>\`
 - \`/octo add-members <group_no> uid1,uid2\`
@@ -220,7 +235,7 @@ Mutating Octo commands require Studio channel management permission. For natural
 
 ## Runtime Safety
 
-Never expose bot tokens or platform credentials. Do not install plugins or tell the user to configure OpenClaw for this Studio channel. Keep group replies concise and use current channel context, member IDs, and thread IDs exactly as Studio provides them.`,
+Never expose bot tokens or platform credentials. Do not install plugins or tell the user to configure OpenClaw for this Studio channel. Keep group replies concise and use current channel context, member IDs, and thread IDs exactly as Studio provides them. Studio owns connection lifecycle actions including register, heartbeat, typing, read receipt, event ack, upload credentials, and raw delivery retries; Agents should not emit runtime actions for those lifecycle operations.`,
   },
   {
     platform: "feishu",

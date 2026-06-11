@@ -269,7 +269,8 @@ export interface ChannelConnectorOctoTransportResult {
     | "voice-context-delete"
     | "event-ack"
     | "sync-messages"
-    | "file-download-url";
+    | "file-download-url"
+    | "message-edit";
   apiUrl: string | null;
   statusCode: number | null;
   error: string | null;
@@ -327,7 +328,8 @@ export interface ChannelConnectorOctoTransportSmokeRequest {
     | "voice-context-delete"
     | "event-ack"
     | "sync-messages"
-    | "file-download-url";
+    | "file-download-url"
+    | "message-edit";
   channelId?: string | null;
   channelType?: ChannelConnectorOctoChannelType;
   content?: string | null;
@@ -347,6 +349,7 @@ export interface ChannelConnectorOctoTransportSmokeRequest {
   endMessageSeq?: number | null;
   pullMode?: 0 | 1 | null;
   filePath?: string | null;
+  messageId?: string | null;
 }
 
 export interface ChannelConnectorOctoTransportSmokeResponse {

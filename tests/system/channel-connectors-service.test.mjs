@@ -615,6 +615,10 @@ async function withMockOctoServer(task, options = {}) {
         res.end();
         return;
       }
+      if (req.method === "POST" && req.url === "/v1/bot/message/edit") {
+        res.end(JSON.stringify({ ok: true, message_id: body.message_id || "msg-1" }));
+        return;
+      }
       if (req.url?.startsWith("/v1/bot/upload/credentials")) {
         res.end(JSON.stringify({
           bucket: "studio-bucket-123",
@@ -1359,6 +1363,8 @@ test("native Channel Connectors extracts Octo action manifests", () => {
       { tool: "octo_management", action: "group-members", group_id: "g1" },
       { action: "get-thread", params: { groupId: "g1", shortId: "t1" } },
       { skill: "octo", action: "history", params: { channel_id: "g1", channel_type: 2, limit: 20 } },
+      { skill: "octo", action: "download-url", params: { file_path: "chat/hello.txt", file_name: "hello.txt" } },
+      { skill: "octo", action: "edit-message", params: { message_id: "msg-1", content: "updated" } },
     ]),
     "```",
   ].join("\n"));
@@ -1369,6 +1375,8 @@ test("native Channel Connectors extracts Octo action manifests", () => {
     { tool: "octo_management", action: "group-members", params: { group_id: "g1" } },
     { tool: "octo_management", action: "thread-info", params: { groupId: "g1", shortId: "t1" } },
     { tool: "octo_management", action: "history", params: { channel_id: "g1", channel_type: 2, limit: 20 } },
+    { tool: "octo_management", action: "file-download-url", params: { file_path: "chat/hello.txt", file_name: "hello.txt" } },
+    { tool: "octo_management", action: "message-edit", params: { message_id: "msg-1", content: "updated" } },
   ]);
 
   const invalid = extractChannelConnectorOctoActions([
@@ -3488,6 +3496,16 @@ test("Octo transport smoke covers Bot API groups, members, history, threads, and
     const download = await smoke({ action: "file-download-url", filePath: "chat/hello.txt", fileName: "hello.txt" });
     assert.equal(download.transport.mediaUrl, "https://cdn.example.test/chat/hello.txt");
     assert.equal(download.transport.data.location, "https://cdn.example.test/chat/hello.txt");
+
+    const editedMessage = await smoke({ action: "message-edit", messageId: "msg-1", content: "updated text" });
+    assert.equal(editedMessage.transport.ok, true);
+    assert.ok(requests.some((request) =>
+      request.path === "/v1/bot/message/edit"
+      && request.method === "POST"
+      && request.body.message_id === "msg-1"
+      && request.body.payload.type === 1
+      && request.body.payload.content === "updated text"
+    ));
   });
 });
 
@@ -3710,6 +3728,41 @@ test("Octo native management commands expose groups, members, and Space search",
     assert.equal(voiceContext.commandAction.commandResult.action, "show");
     assert.match(voiceContext.replyPlan.chunks.join("\n"), /Octo Voice Context：已配置/);
     assert.match(voiceContext.replyPlan.chunks.join("\n"), /Alice may be transcribed/);
+
+    const downloadUrl = await service.dispatchOctoIncoming({
+      bindingId: "octo-api",
+      sendReply: false,
+      message: {
+        messageId: "octo-command-download-url",
+        fromUid: "user-1",
+        channelId: "user-1",
+        channelType: 1,
+        payload: { type: 1, content: "/octo download-url chat/hello.txt hello.txt" },
+      },
+    });
+    assert.equal(downloadUrl.commandAction.commandResult.action, "show");
+    assert.match(downloadUrl.replyPlan.chunks.join("\n"), /Octo 文件下载 URL：hello\.txt/);
+    assert.match(downloadUrl.replyPlan.chunks.join("\n"), /https:\/\/cdn\.example\.test\/chat\/hello\.txt/);
+
+    const editMessage = await service.dispatchOctoIncoming({
+      bindingId: "octo-api",
+      sendReply: false,
+      message: {
+        messageId: "octo-command-edit-message",
+        fromUid: "user-1",
+        channelId: "user-1",
+        channelType: 1,
+        payload: { type: 1, content: "/octo edit-message msg-1 updated text" },
+      },
+    });
+    assert.equal(editMessage.commandAction.commandResult.action, "set");
+    assert.equal(editMessage.commandAction.commandResult.ok, true);
+    assert.match(editMessage.replyPlan.chunks.join("\n"), /已编辑 Octo 消息 msg-1/);
+    assert.ok(requests.some((request) =>
+      request.path === "/v1/bot/message/edit"
+      && request.body.message_id === "msg-1"
+      && request.body.payload.content === "updated text"
+    ));
 
     const createGroup = await service.dispatchOctoIncoming({
       bindingId: "octo-api",
@@ -6707,6 +6760,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(octoSkillContext, /studio-channel-messages/);
   assert.match(octoSkillContext, /studio-octo-actions/);
   assert.match(octoSkillContext, /octo_management.*group-members/);
+  assert.match(octoSkillContext, /octo_management.*file-download-url/);
+  assert.match(octoSkillContext, /octo_management.*message-edit/);
   assert.doesNotMatch(octoSkillContext, /feishu-card/);
 
   const codexSkillRun = await handleChannelConnectorCommand({
@@ -6777,6 +6832,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(defaultOctoContext, /studio-channel-messages/);
   assert.match(defaultOctoContext, /studio-octo-actions/);
   assert.match(defaultOctoContext, /octo_management.*history/);
+  assert.match(defaultOctoContext, /octo_management.*file-download-url/);
+  assert.match(defaultOctoContext, /octo_management.*message-edit/);
   assert.match(defaultOctoContext, /\/octo create-group/);
   assert.doesNotMatch(defaultOctoContext, /openclaw plugins install/);
 

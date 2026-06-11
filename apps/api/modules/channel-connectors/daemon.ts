@@ -193,6 +193,7 @@ import {
   createOctoThread,
   deleteOctoThread,
   deleteOctoVoiceContext,
+  editOctoMessage,
   getOctoGroupInfo,
   getOctoThreadInfo,
   joinOctoThread,
@@ -2808,6 +2809,7 @@ const OCTO_MUTATING_ACTIONS = new Set<ChannelConnectorOctoManagementAction>([
   "thread-md-update",
   "voice-context-update",
   "voice-context-delete",
+  "message-edit",
 ]);
 
 function octoChannelTypeFromValue(value: unknown): 1 | 2 | 5 | null {
@@ -2869,6 +2871,9 @@ function octoActionManagementRequest(input: {
       || params.group_no,
   ) || octoSyncChannelId(input.message);
   const members = stringListFromValue(params.members ?? params.memberIds ?? params.member_ids ?? params.uids);
+  const filePath = normalizeString(params.filePath || params.file_path || params.path);
+  const fileName = normalizeString(params.fileName || params.file_name || params.filename);
+  const messageId = normalizeString(params.messageId || params.message_id || params.id);
   return {
     action: input.action.action,
     bindingId: input.bindingId,
@@ -2883,6 +2888,9 @@ function octoActionManagementRequest(input: {
     name: normalizeString(params.name || params.threadName || params.thread_name || params.title) || null,
     notice: normalizeString(params.notice || params.announcement) || null,
     content: normalizeString(params.content || params.markdown || params.text || params.message) || null,
+    filePath: filePath || null,
+    fileName: fileName || null,
+    messageId: messageId || null,
     members,
     creator: normalizeString(params.creator || params.creatorUid || params.creator_uid) || input.message.fromUid || null,
     limit: numberFromParams(params, ["limit", "page_size", "pageSize"]) || null,
@@ -5329,6 +5337,37 @@ async function runOctoManagementCommand(
         pullMode: 1,
       });
       break;
+    case "file-download-url": {
+      const filePath = normalizeString(input.filePath);
+      if (!filePath) {
+        return {
+          ok: false,
+          replyText: "Octo file-download-url 需要 filePath。",
+          error: "octo_file_path_required",
+        };
+      }
+      result = await getOctoFileDownloadUrl(transport, {
+        filePath,
+        fileName: input.fileName || null,
+      });
+      break;
+    }
+    case "message-edit": {
+      const messageId = normalizeString(input.messageId);
+      const content = normalizeString(input.content);
+      if (!messageId || !content) {
+        return {
+          ok: false,
+          replyText: "Octo message-edit 需要 messageId 和 content。",
+          error: "octo_message_edit_input_required",
+        };
+      }
+      result = await editOctoMessage(transport, {
+        messageId,
+        content,
+      });
+      break;
+    }
     case "create-thread":
       result = await createOctoThread(transport, {
         groupNo: normalizeString(input.groupNo),
@@ -5365,6 +5404,9 @@ async function runOctoManagementCommand(
       keyword: input.keyword || null,
       name: input.name || null,
       content: input.content || null,
+      filePath: input.filePath || null,
+      fileName: input.fileName || null,
+      messageId: input.messageId || null,
     }),
     error: result.error || null,
   };

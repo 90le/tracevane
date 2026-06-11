@@ -71,6 +71,7 @@ import {
   deleteOctoVoiceContext,
   directUploadAndSendOctoMedia,
   directUploadOctoFile,
+  editOctoMessage,
   emptyOctoTransportResult,
   getOctoFileDownloadUrl,
   getOctoGroupInfo,
@@ -1283,6 +1284,7 @@ function normalizeOctoTransportSmokeRequest(payload: ChannelConnectorOctoTranspo
     || payload.action === "event-ack"
     || payload.action === "sync-messages"
     || payload.action === "file-download-url"
+    || payload.action === "message-edit"
     || payload.action === "register"
     ? payload.action
     : "register";
@@ -1310,6 +1312,7 @@ function normalizeOctoTransportSmokeRequest(payload: ChannelConnectorOctoTranspo
     endMessageSeq: nullableNumber(payload.endMessageSeq),
     pullMode: pullMode === 0 || pullMode === 1 ? pullMode : 1,
     filePath: normalizeString(payload.filePath) || null,
+    messageId: normalizeString(payload.messageId) || null,
   };
 }
 
@@ -1559,6 +1562,37 @@ async function runOctoManagementForBinding(
         pullMode: 1,
       });
       break;
+    case "file-download-url": {
+      const filePath = normalizeString(input.filePath);
+      if (!filePath) {
+        return {
+          ok: false,
+          replyText: "Octo file-download-url 需要 filePath。",
+          error: "octo_file_path_required",
+        };
+      }
+      result = await getOctoFileDownloadUrl(transport, {
+        filePath,
+        fileName: input.fileName || null,
+      });
+      break;
+    }
+    case "message-edit": {
+      const messageId = normalizeString(input.messageId);
+      const content = normalizeString(input.content);
+      if (!messageId || !content) {
+        return {
+          ok: false,
+          replyText: "Octo message-edit 需要 messageId 和 content。",
+          error: "octo_message_edit_input_required",
+        };
+      }
+      result = await editOctoMessage(transport, {
+        messageId,
+        content,
+      });
+      break;
+    }
     case "search-members":
       result = await searchOctoSpaceMembers(transport, {
         keyword: input.keyword || null,
@@ -1655,6 +1689,9 @@ async function runOctoManagementForBinding(
       keyword: input.keyword || null,
       name: input.name || null,
       content: input.content || null,
+      filePath: input.filePath || null,
+      fileName: input.fileName || null,
+      messageId: input.messageId || null,
     }),
     error: result.error || null,
   };
@@ -3154,6 +3191,12 @@ export function createChannelConnectorsService(
       transport = await getOctoFileDownloadUrl(transportConfig, {
         filePath: request.filePath,
         fileName: request.fileName || null,
+      });
+    } else if (request.action === "message-edit") {
+      if (!request.messageId || !request.content) throw new Error("messageId and content are required for Octo message-edit smoke.");
+      transport = await editOctoMessage(transportConfig, {
+        messageId: request.messageId,
+        content: request.content,
       });
     } else {
       transport = await registerOctoBot(transportConfig, false);

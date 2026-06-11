@@ -1137,6 +1137,27 @@ export async function getOctoFileDownloadUrl(
   }
 }
 
+export async function editOctoMessage(
+  config: ChannelConnectorOctoTransportConfig,
+  input: {
+    messageId: string;
+    content: string;
+  },
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await postOctoJson(config, "/v1/bot/message/edit", {
+      message_id: input.messageId,
+      payload: {
+        type: OCTO_TEXT_MESSAGE_TYPE,
+        content: input.content,
+      },
+    });
+    return octoTransportData(config, "message-edit", response);
+  } catch (error) {
+    return octoTransportError(config, "message-edit", error);
+  }
+}
+
 export async function getOctoUploadCredentials(
   config: ChannelConnectorOctoTransportConfig,
   input: {

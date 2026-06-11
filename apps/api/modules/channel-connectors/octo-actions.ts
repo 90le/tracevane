@@ -53,6 +53,12 @@ function normalizeAction(value: unknown): ChannelConnectorOctoManagementAction |
     "voice-context": "voice-context-read",
     "set-voice-context": "voice-context-update",
     "delete-voice": "voice-context-delete",
+    download: "file-download-url",
+    "download-url": "file-download-url",
+    "file-download": "file-download-url",
+    "file-url": "file-download-url",
+    edit: "message-edit",
+    "edit-message": "message-edit",
   };
   const action = aliases[normalized] || normalized;
   const supported = new Set<ChannelConnectorOctoManagementAction>([
@@ -79,6 +85,8 @@ function normalizeAction(value: unknown): ChannelConnectorOctoManagementAction |
     "voice-context-update",
     "voice-context-delete",
     "history",
+    "file-download-url",
+    "message-edit",
   ]);
   return supported.has(action as ChannelConnectorOctoManagementAction)
     ? action as ChannelConnectorOctoManagementAction
