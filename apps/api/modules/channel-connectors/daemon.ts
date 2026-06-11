@@ -290,6 +290,7 @@ const MAX_OCTO_RECONNECT_JITTER_MS = 60_000;
 const DEFAULT_OCTO_REST_HEARTBEAT_MS = 5 * 60_000;
 const MIN_OCTO_REST_HEARTBEAT_MS = 30_000;
 const MAX_OCTO_REST_HEARTBEAT_MS = 30 * 60_000;
+const OCTO_PROGRESS_REPLY_TIMEOUT_MS = 5_000;
 const DEFAULT_CHANNEL_AUTO_COMPACT_COOLDOWN_MS = 15 * 60_000;
 const MAX_CHANNEL_AUTO_COMPACT_COOLDOWN_MS = 24 * 60 * 60_000;
 const FEISHU_FINAL_REPLY_CARD_MAX_RUNES = 12_000;
@@ -7426,8 +7427,14 @@ async function dispatchOctoMessage(input: {
     const replyPlan = renderOctoTextReply(message, replyText);
     if (!replyPlan) return Promise.resolve();
     octoProgressSendCount += 1;
+    const replyQueuedAt = new Date().toISOString();
+    const replyTimeoutMs = log.eventKind === "agent.progress.reply" ? OCTO_PROGRESS_REPLY_TIMEOUT_MS : null;
     octoProgressFlush = octoProgressFlush.catch(() => undefined).then(async () => {
-      const result = await sendOctoTextReply(transport, replyPlan);
+      const replyStartedAtMs = Date.now();
+      const replyStartedAt = new Date(replyStartedAtMs).toISOString();
+      const result = await sendOctoTextReply(transport, replyPlan, {
+        timeoutMs: replyTimeoutMs,
+      });
       writeJsonLine(config.paths.octoEvents, {
         checkedAt: new Date().toISOString(),
         eventKind: log.eventKind,
@@ -7448,6 +7455,10 @@ async function dispatchOctoMessage(input: {
         replyError: result.error,
         replyRequestCount: result.requestCount,
         progressReplySendCount: octoProgressSendCount,
+        replyQueuedAt,
+        replyStartedAt,
+        replyDurationMs: elapsedMsSince(replyStartedAtMs),
+        replyTimeoutMs,
         agentElapsedMs: elapsedMsSince(runStartedAtMs),
       });
     }).catch((error) => {
@@ -7470,6 +7481,10 @@ async function dispatchOctoMessage(input: {
         replySent: false,
         replyError: shortMessage(error),
         progressReplySendCount: octoProgressSendCount,
+        replyQueuedAt,
+        replyStartedAt: null,
+        replyDurationMs: null,
+        replyTimeoutMs,
         agentElapsedMs: elapsedMsSince(runStartedAtMs),
       });
     });

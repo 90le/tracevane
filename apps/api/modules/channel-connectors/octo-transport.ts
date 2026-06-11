@@ -1,4 +1,4 @@
-import { createHash, createHmac } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import type {
   ChannelConnectorOctoReplyPlan,
   ChannelConnectorOctoTransportConfig,
@@ -124,9 +124,13 @@ async function requestOctoJson(
   method: "GET" | "POST" | "PUT" | "DELETE",
   path: string,
   payload?: unknown,
+  options: { timeoutMs?: number | null } = {},
 ): Promise<{ statusCode: number; body: Record<string, unknown> }> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  const timeoutMs = typeof options.timeoutMs === "number" && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+    ? Math.floor(options.timeoutMs)
+    : DEFAULT_TIMEOUT_MS;
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const headers: Record<string, string> = {
       authorization: `Bearer ${config.botToken}`,
@@ -166,8 +170,9 @@ async function postOctoJson(
   config: ChannelConnectorOctoTransportConfig,
   path: string,
   payload: unknown,
+  options?: { timeoutMs?: number | null },
 ): Promise<{ statusCode: number; body: Record<string, unknown> }> {
-  return requestOctoJson(config, "POST", path, payload);
+  return requestOctoJson(config, "POST", path, payload, options);
 }
 
 async function getOctoJson(
@@ -1171,6 +1176,7 @@ export async function getOctoUploadCredentials(
 export async function sendOctoTextReply(
   config: ChannelConnectorOctoTransportConfig,
   replyPlan: ChannelConnectorOctoReplyPlan,
+  options: { timeoutMs?: number | null } = {},
 ): Promise<ChannelConnectorOctoTransportResult> {
   let requestCount = 0;
   try {
@@ -1189,7 +1195,8 @@ export async function sendOctoTextReply(
           content: textPayload.content,
           ...(textPayload.mention ? { mention: textPayload.mention } : {}),
         },
-      });
+        client_msg_no: randomUUID(),
+      }, options);
       lastStatusCode = response.statusCode;
     }
     return transportResult({

@@ -401,6 +401,7 @@ async function withMockGatewayModelsServer(task) {
 async function withMockOctoServer(task, options = {}) {
   const requests = [];
   const fileUploadStatus = Number.isInteger(options.fileUploadStatus) ? options.fileUploadStatus : 200;
+  const sendMessageDelayMs = Number.isInteger(options.sendMessageDelayMs) ? options.sendMessageDelayMs : 0;
   const server = http.createServer(async (req, res) => {
     const chunks = [];
     req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
@@ -579,7 +580,12 @@ async function withMockOctoServer(task, options = {}) {
         return;
       }
       if (req.url === "/v1/bot/typing" || req.url === "/v1/bot/sendMessage" || req.url === "/v1/bot/heartbeat") {
-        res.end(JSON.stringify({ ok: true, message_id: 123 }));
+        const finish = () => res.end(JSON.stringify({ ok: true, message_id: 123 }));
+        if (req.url === "/v1/bot/sendMessage" && sendMessageDelayMs > 0) {
+          setTimeout(finish, sendMessageDelayMs);
+        } else {
+          finish();
+        }
         return;
       }
       res.statusCode = 404;
@@ -1930,12 +1936,48 @@ test("Octo transport keeps group mentions visible when payload only carries ment
     assert.equal(request.authorization, "Bearer octo-token");
     assert.equal(request.body.channel_id, "group-1");
     assert.equal(request.body.channel_type, 2);
+    assert.equal(typeof request.body.client_msg_no, "string");
+    assert.ok(request.body.client_msg_no);
     assert.equal(request.body.payload.content, "@27xIxHrNV0Qc3ee2129_bot 请介绍一下能力");
     assert.deepEqual(request.body.payload.mention.uids, ["27xIxHrNV0Qc3ee2129_bot"]);
     assert.deepEqual(request.body.payload.mention.entities, [
       { uid: "27xIxHrNV0Qc3ee2129_bot", offset: 0, length: "@27xIxHrNV0Qc3ee2129_bot".length },
     ]);
   });
+});
+
+test("Octo transport times out slow text replies for best-effort progress sends", async () => {
+  await withMockOctoServer(async (apiUrl, requests) => {
+    const startedAt = performance.now();
+    const result = await sendOctoTextReply({
+      apiUrl,
+      botToken: "octo-token",
+    }, {
+      chunks: ["过程回复"],
+      mentionUids: [],
+      mentionEntities: [],
+      payloads: [
+        {
+          channel_id: "group-1",
+          channel_type: 2,
+          payload: {
+            type: 1,
+            content: "过程回复",
+          },
+        },
+      ],
+    }, {
+      timeoutMs: 50,
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.action, "send-message");
+    assert.equal(result.requestCount, 1);
+    assert.ok(performance.now() - startedAt < 1000);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].path, "/v1/bot/sendMessage");
+    assert.equal(typeof requests[0].body.client_msg_no, "string");
+  }, { sendMessageDelayMs: 300 });
 });
 
 test("Octo transport upload strategy defaults to direct upload and honors overrides", () => {
@@ -9473,6 +9515,10 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /agent\.progress\.card/);
   assert.match(daemonSource, /renderOctoProgressText/);
   assert.match(daemonSource, /agent\.progress\.reply/);
+  assert.match(daemonSource, /OCTO_PROGRESS_REPLY_TIMEOUT_MS\s*=\s*5_000/);
+  assert.match(daemonSource, /log\.eventKind === "agent\.progress\.reply" \? OCTO_PROGRESS_REPLY_TIMEOUT_MS : null/);
+  assert.match(daemonSource, /sendOctoTextReply\(transport,\s*replyPlan,\s*\{\s*timeoutMs:\s*replyTimeoutMs/);
+  assert.match(daemonSource, /replyDurationMs/);
   assert.match(daemonSource, /function renderFeishuCommandProgressCard/);
   assert.match(daemonSource, /function formatCommandProgressText/);
   assert.match(daemonSource, /eventKind:\s*"channel\.command\.progress"/);
