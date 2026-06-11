@@ -2917,7 +2917,7 @@ function handleVersion(context: ChannelConnectorCommandContext): ChannelConnecto
 function historyCommandText(context: ChannelConnectorCommandContext, args: string[] = []): string {
   const filePath = normalizeString(context.conversationHistoryPath);
   if (!filePath) return "当前 Channel daemon 未启用 history store。";
-  const limit = parsePositiveLimit(args[0], 10, 50);
+  const limit = parsePositiveLimit(args[0], 20, 50);
   const entries = getChannelConnectorConversationHistory(filePath, controlsLookup(context), limit);
   if (!entries.length) return "当前 IM 会话还没有可显示的 history。";
   const lines = [`Studio Session History (last ${entries.length}/${limit})`];

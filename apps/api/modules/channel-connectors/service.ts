@@ -1903,7 +1903,7 @@ function commandSurfaceReadOnlyState(input: {
   const history = getChannelConnectorConversationHistory(commandSurfaceHistoryPath(input.runtimeConfig), {
     bindingId: input.binding.id,
     sessionKey,
-  }, 10).map((entry) => ({
+  }, 20).map((entry) => ({
     role: entry.role,
     text: entry.text,
     attachmentSummaries: entry.attachmentSummaries,

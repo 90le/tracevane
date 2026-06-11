@@ -4255,6 +4255,53 @@ test("native Channel Connectors conversation history stores sanitized session co
   assert.deepEqual(getChannelConnectorConversationHistory(historyPath, lookup), []);
 });
 
+test("native Channel Connectors conversation history keeps twenty prompt entries within budget", () => {
+  const root = makeTempRoot();
+  const historyPath = path.join(root, "state", "channel-history.json");
+  const lookup = {
+    bindingId: "octo-codex",
+    sessionKey: "dmwork:dm:user-20",
+  };
+
+  for (let index = 1; index <= 20; index += 1) {
+    appendChannelConnectorConversationHistory(historyPath, {
+      ...lookup,
+      messageId: `m-${index}`,
+      role: index % 2 === 0 ? "assistant" : "user",
+      text: `short history message ${index}`,
+      status: "completed",
+      now: new Date(`2026-06-06T08:00:${String(index).padStart(2, "0")}.000Z`),
+    });
+  }
+
+  const firstEntries = getChannelConnectorConversationHistory(historyPath, lookup);
+  assert.equal(firstEntries.length, 20);
+  const firstContext = renderChannelConnectorConversationHistoryContext(firstEntries);
+  assert.match(firstContext, /up to 20 messages/);
+  assert.match(firstContext, /short history message 1/);
+  assert.match(firstContext, /short history message 20/);
+  assert.equal((firstContext.match(/\n\d+\. /g) || []).length, 20);
+
+  appendChannelConnectorConversationHistory(historyPath, {
+    ...lookup,
+    messageId: "m-21",
+    role: "user",
+    text: `${"very-long-history ".repeat(900)}TAIL-SHOULD-NOT-ENTER-CONTEXT`,
+    status: "completed",
+    now: new Date("2026-06-06T08:00:21.000Z"),
+  });
+
+  const entries = getChannelConnectorConversationHistory(historyPath, lookup);
+  assert.equal(entries.length, 20);
+  assert.equal(entries[0].messageId, "m-2");
+  const context = renderChannelConnectorConversationHistoryContext(entries);
+  assert.match(context, /short history message 2/);
+  assert.match(context, /short history message 20/);
+  assert.match(context, /truncated/);
+  assert.doesNotMatch(context, /TAIL-SHOULD-NOT-ENTER-CONTEXT/);
+  assert.ok(Array.from(context).length <= 8000);
+});
+
 test("native Channel Connectors compact posts to Gateway and clears stale Agent sessions", async () => {
   const root = makeTempRoot();
   const historyPath = path.join(root, "state", "channel-history.json");
@@ -6330,6 +6377,14 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(historyOne.replyText, /Studio Session History \(last 1\/1\)/);
   assert.doesNotMatch(historyOne.replyText, /first current history entry/);
   assert.match(historyOne.replyText, /second current history entry/);
+  const historyDefault = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/history"),
+  });
+  assert.equal(historyDefault.ok, true);
+  assert.match(historyDefault.replyText, /Studio Session History \(last 2\/20\)/);
+  assert.match(historyDefault.replyText, /first current history entry/);
+  assert.match(historyDefault.replyText, /second current history entry/);
 
   upsertChannelConnectorAgentSession(agentSessionsPath, {
     bindingId: binding.id,

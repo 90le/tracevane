@@ -6686,7 +6686,7 @@ function buildFeishuCommandCard(input: {
   const history = getChannelConnectorConversationHistory(conversationHistoryPath(input.config), {
     bindingId: input.binding.id,
     sessionKey: input.sessionKey,
-  }, 10).map((entry) => ({
+  }, 20).map((entry) => ({
     role: entry.role,
     text: entry.text,
     attachmentSummaries: entry.attachmentSummaries,

@@ -51,11 +51,14 @@ export interface ChannelConnectorConversationHistoryCompactResult {
   summaryEntry: ChannelConnectorConversationHistoryEntry;
 }
 
-const DEFAULT_HISTORY_ENTRIES_PER_CONVERSATION = 12;
-const DEFAULT_HISTORY_CONTEXT_LIMIT = 8;
+const DEFAULT_HISTORY_ENTRIES_PER_CONVERSATION = 20;
+const DEFAULT_HISTORY_CONTEXT_LIMIT = 20;
 const MAX_HISTORY_TEXT_LENGTH = 2000;
 const MAX_COMPACT_SUMMARY_LENGTH = 4000;
 const MAX_GLOBAL_HISTORY_ENTRIES = 1000;
+const HISTORY_CONTEXT_TEXT_MAX_RUNES = 360;
+const HISTORY_CONTEXT_ATTACHMENTS_MAX_RUNES = 360;
+const HISTORY_CONTEXT_TOTAL_MAX_RUNES = 8000;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -99,6 +102,31 @@ function emptyState(): ChannelConnectorConversationHistoryState {
 function truncateText(value: string, maxLength = MAX_HISTORY_TEXT_LENGTH): string {
   const normalized = normalizeString(value).replace(/\s+/g, " ");
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}...` : normalized;
+}
+
+function runeLength(value: string): number {
+  return Array.from(value).length;
+}
+
+function truncateRunes(value: string, maxRunes: number): { text: string; truncated: boolean; originalRunes: number } {
+  const normalized = normalizeString(value).replace(/\s+/g, " ");
+  const runes = Array.from(normalized);
+  if (runes.length <= maxRunes) {
+    return { text: normalized, truncated: false, originalRunes: runes.length };
+  }
+  let keep = Math.max(1, maxRunes - 32);
+  let suffix = `... [truncated ${runes.length - keep} chars]`;
+  keep = Math.max(1, maxRunes - runeLength(suffix));
+  suffix = `... [truncated ${runes.length - keep} chars]`;
+  while (keep > 1 && keep + runeLength(suffix) > maxRunes) {
+    keep -= 1;
+    suffix = `... [truncated ${runes.length - keep} chars]`;
+  }
+  return {
+    text: `${runes.slice(0, keep).join("")}${suffix}`,
+    truncated: true,
+    originalRunes: runes.length,
+  };
 }
 
 function attachmentSummary(attachment: ChannelConnectorInboundAttachment): string {
@@ -279,18 +307,50 @@ export function renderChannelConnectorConversationHistoryContext(
       ? "Compact summaries and previous messages in this IM session before the current turn:"
       : "Previous messages in this IM session before the current turn:",
     "Do not re-answer these messages, do not repeat older refusals, and do not treat older capability claims as current facts.",
+    `History budget: up to ${DEFAULT_HISTORY_CONTEXT_LIMIT} messages, max ${HISTORY_CONTEXT_TEXT_MAX_RUNES} chars per message, max ${HISTORY_CONTEXT_TOTAL_MAX_RUNES} chars total.`,
   ];
-  for (const [index, entry] of visible.entries()) {
+  const footer = "Use this as continuity context only. Platform capability instructions and the current user message follow after this block.";
+  const entryLines = visible.map((entry, index) => {
     const role = entry.status === "compact-summary"
       ? "compact summary"
       : entry.role === "assistant" ? "assistant" : "user";
     const status = entry.status ? ` (${entry.status})` : "";
-    const text = truncateText(entry.text || "", 320) || "(no text)";
+    const text = truncateRunes(entry.text || "", HISTORY_CONTEXT_TEXT_MAX_RUNES).text || "(no text)";
     const attachments = entry.attachmentSummaries.length
-      ? ` attachments: ${entry.attachmentSummaries.join("; ")}`
+      ? ` attachments: ${truncateRunes(entry.attachmentSummaries.join("; "), HISTORY_CONTEXT_ATTACHMENTS_MAX_RUNES).text}`
       : "";
-    lines.push(`${index + 1}. ${role}${status}: ${text}${attachments}`);
+    return `${index + 1}. ${role}${status}: ${text}${attachments}`;
+  });
+  const selectedLines: string[] = [];
+  let usedRunes = runeLength(lines.join("\n")) + runeLength(footer) + 2;
+  let droppedOlder = 0;
+  for (let index = entryLines.length - 1; index >= 0; index -= 1) {
+    const line = entryLines[index] || "";
+    const nextUsedRunes = usedRunes + runeLength(line) + 1;
+    if (nextUsedRunes <= HISTORY_CONTEXT_TOTAL_MAX_RUNES || selectedLines.length === 0) {
+      selectedLines.unshift(line);
+      usedRunes = nextUsedRunes;
+    } else {
+      droppedOlder = index + 1;
+      break;
+    }
   }
-  lines.push("Use this as continuity context only. Platform capability instructions and the current user message follow after this block.");
+  if (droppedOlder > 0) {
+    let droppedLine = `Dropped ${droppedOlder} older history messages because the prompt context budget was reached.`;
+    while (
+      selectedLines.length > 1
+      && usedRunes + runeLength(droppedLine) + 1 > HISTORY_CONTEXT_TOTAL_MAX_RUNES
+    ) {
+      const removed = selectedLines.shift() || "";
+      usedRunes -= runeLength(removed) + 1;
+      droppedOlder += 1;
+      droppedLine = `Dropped ${droppedOlder} older history messages because the prompt context budget was reached.`;
+    }
+    if (usedRunes + runeLength(droppedLine) + 1 <= HISTORY_CONTEXT_TOTAL_MAX_RUNES) {
+      lines.push(droppedLine);
+    }
+  }
+  lines.push(...selectedLines);
+  lines.push(footer);
   return lines.join("\n");
 }
