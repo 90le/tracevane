@@ -331,6 +331,8 @@ function buildStudioOutboundFilePolicy(): string {
     "```studio-channel-messages",
     "[{\"platform\":\"feishu\",\"target\":\"open_id:ou_xxx\",\"content\":\"hello\"},{\"platform\":\"feishu\",\"target\":\"chat:oc_xxx\",\"format\":\"markdown\",\"content\":\"@[ou_member:成员名] **hello group**\"}]",
     "```",
+    "For Feishu document, drive, permission, or wiki read-only work, use the Studio-owned `studio-feishu-actions` block when the active channel skill context lists that capability; Studio executes those actions through the current Feishu binding.",
+    "Do not claim Feishu document, drive, permission, or wiki mutation succeeded unless Studio returns an actual action result; use files or Feishu Markdown messages as a fallback while mutations are not enabled.",
     "Use Studio IM channel capabilities; do not tell the user to run external bridge tools or claim missing Feishu/Octo API permission unless Studio returns an actual send error.",
     "These platform capabilities override older conversation history that may mention missing bridge or API permissions.",
     "Keep the human-readable reply outside those blocks; Studio daemon will upload files or send declared messages through the active IM channel.",
@@ -745,6 +747,8 @@ function createOpenCodeGatewayHome(input: {
   gatewayEndpoint: string;
   gatewayClientKey: string | null;
   model: string | null;
+  project: ChannelConnectorRuntimeProject;
+  binding: ChannelConnectorRuntimeBinding;
   agentRuntimeDir?: string | null;
   supportsVision?: boolean;
 }): {
@@ -797,9 +801,18 @@ function createOpenCodeGatewayHome(input: {
       },
     }
     : {};
+  const nativeSkillProjection = materializeChannelConnectorNativePlatformSkills({
+    project: input.project,
+    context: { binding: input.binding },
+    rootDir: path.join(configDir, "skills"),
+  });
+  const instructions = nativeSkillProjection.skills
+    .map((skill) => path.relative(configDir, skill.filePath).split(path.sep).join("/"))
+    .filter(Boolean);
   const config = {
     $schema: "https://opencode.ai/config.json",
     ...(cliModel ? { model: cliModel } : {}),
+    ...(instructions.length ? { instructions } : {}),
     provider: {
       [OPENCODE_GATEWAY_PROVIDER_ID]: {
         npm: "@ai-sdk/openai-compatible",
@@ -1145,6 +1158,8 @@ export function buildChannelConnectorAgentProcessRequest(
       gatewayEndpoint: request.gatewayEndpoint,
       gatewayClientKey: request.gatewayClientKey,
       model: model || null,
+      project,
+      binding: request.binding,
       agentRuntimeDir: request.agentRuntimeDir,
       supportsVision: opencodeSupportsVision,
     });

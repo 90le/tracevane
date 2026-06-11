@@ -3865,12 +3865,48 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(opencodeConfig.provider["studio-gateway"].options.baseURL, project.gatewayEndpoint);
   assert.equal(opencodeConfig.provider["studio-gateway"].options.apiKey, "sk-local");
   assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-5"].name, "gpt-5");
+  assert.deepEqual(opencodeConfig.instructions, ["skills/octo_bot_api/SKILL.md"]);
   assert.equal(fs.statSync(opencodeConfigPath).mode & 0o777, 0o600);
+  const opencodeNativeSkillPath = path.join(opencodeRequest.env.XDG_CONFIG_HOME, "opencode", "skills", "octo_bot_api", "SKILL.md");
+  assert.equal(fs.existsSync(opencodeNativeSkillPath), true);
+  const opencodeNativeSkill = fs.readFileSync(opencodeNativeSkillPath, "utf8");
+  assert.match(opencodeNativeSkill, /Studio Channel Connector runtime projection/);
+  assert.match(opencodeNativeSkill, /Step 3: Send Messages/);
+  assert.match(opencodeNativeSkill, /studio-channel-messages/);
+  assert.doesNotMatch(opencodeNativeSkill, /openclaw plugins install/);
   assert.match(opencodeRequest.args.at(-1), /^\[Studio outbound file\/message policy\]/);
   assert.match(opencodeRequest.args.at(-1), /\[Current IM message - respond to this ONLY\]\nhi codex/);
   assert.match(opencodeRequest.args.at(-1), /studio-channel-files/);
+  assert.match(opencodeRequest.args.at(-1), /studio-feishu-actions/);
   assert.doesNotMatch(opencodeRequest.args.at(-1), /cc-connect/);
   for (const cleanupPath of opencodeRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
+  const feishuOpenCodeRequest = buildChannelConnectorAgentProcessRequest({
+    project: { ...project, agent: "opencode", permissionMode: "yolo" },
+    binding: { ...binding, platform: "feishu", id: "feishu-opencode", agent: "opencode", metadata: {} },
+    message,
+    sessionKey: "feishu:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+  });
+  assert.ok(feishuOpenCodeRequest);
+  const feishuOpenCodeConfigPath = path.join(feishuOpenCodeRequest.env.XDG_CONFIG_HOME, "opencode", "opencode.json");
+  const feishuOpenCodeConfig = JSON.parse(fs.readFileSync(feishuOpenCodeConfigPath, "utf8"));
+  assert.deepEqual(feishuOpenCodeConfig.instructions, [
+    "skills/feishu_messaging/SKILL.md",
+    "skills/feishu_doc/SKILL.md",
+    "skills/feishu_drive/SKILL.md",
+    "skills/feishu_perm/SKILL.md",
+    "skills/feishu_wiki/SKILL.md",
+  ]);
+  const feishuDocSkill = fs.readFileSync(
+    path.join(feishuOpenCodeRequest.env.XDG_CONFIG_HOME, "opencode", "skills", "feishu_doc", "SKILL.md"),
+    "utf8",
+  );
+  assert.match(feishuDocSkill, /studio-feishu-actions/);
+  assert.match(feishuDocSkill, /Supported now: `read`, `list_blocks`, `get_block`/);
+  assert.doesNotMatch(feishuDocSkill, /openclaw plugins install/i);
+  for (const cleanupPath of feishuOpenCodeRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const opencodeSlashModelRequest = buildChannelConnectorAgentProcessRequest({
     project: { ...project, agent: "opencode", model: "mlamp/deepseek-v4-flash" },
