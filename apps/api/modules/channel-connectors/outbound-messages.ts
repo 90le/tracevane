@@ -113,6 +113,7 @@ function channelTypeFromTarget(target: string): { channelId: string; channelType
 }
 
 function normalizeChannelType(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
   const normalized = normalizeString(value);
   if (!normalized) return null;
   if (/^\d+$/.test(normalized)) {
@@ -233,8 +234,8 @@ export function resolveOctoOutboundMessageTarget(input: {
   const channelId = normalizeString(input.message.channelId);
   const channelType = Number(input.message.channelType || 1);
   const mentionUids = uniqueStrings(input.message.mentionUids);
-  const dmTargetIsBot = channelType === 1 && isOctoBotUid(channelId);
-  if (!dmTargetIsBot) {
+  const targetIsBotUid = isOctoBotUid(channelId);
+  if (!targetIsBotUid) {
     return {
       channelId,
       channelType,
@@ -256,7 +257,7 @@ export function resolveOctoOutboundMessageTarget(input: {
     channelId,
     channelType,
     mentionUids,
-    error: `${channelId}: Octo Bot API does not support bot DM targets; use a group/thread mention or Studio internal agent routing.`,
+    error: `${channelId}: Octo Bot API does not support bot channel targets; use a group/thread mention or Studio internal agent routing.`,
     remappedBotDm: false,
   };
 }

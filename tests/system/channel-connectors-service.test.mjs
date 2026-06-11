@@ -1099,6 +1099,7 @@ test("native Channel Connectors extracts outbound IM message manifests", () => {
     JSON.stringify([
       { platform: "octo", target: "dm:user-1", content: "请介绍一下你的能力" },
       { platform: "octo", target: "bot:27xIxHrNV0Qc3ee2129_bot", content: "请介绍一下你的能力" },
+      { platform: "octo", channelId: "helper_bot", channelType: 2, content: "请介绍一下你的能力" },
       { platform: "octo", target: "group:group-a", content: "@[user-2:Alice] 大家看这里", onBehalfOf: "grantor-1" },
       { platform: "octo", target: "thread:group-a____topic-1", content: "Thread ping", mentionAll: true },
       { platform: "feishu", chatId: "oc_chat", content: "Feishu ping" },
@@ -1113,10 +1114,11 @@ test("native Channel Connectors extracts outbound IM message manifests", () => {
 
   assert.equal(extracted.replyText, "我会通知她们。");
   assert.deepEqual(extracted.errors, []);
-  assert.equal(extracted.messages.length, 10);
+  assert.equal(extracted.messages.length, 11);
   assert.deepEqual(extracted.messages.map((message) => [message.platform, message.channelId, message.channelType, message.chatId, message.content, message.format]), [
     ["octo", "user-1", 1, null, "请介绍一下你的能力", null],
     ["octo", "27xIxHrNV0Qc3ee2129_bot", 1, null, "请介绍一下你的能力", null],
+    ["octo", "helper_bot", 2, null, "请介绍一下你的能力", null],
     ["octo", "group-a", 2, null, "大家看这里", null],
     ["octo", "group-a____topic-1", 5, null, "Thread ping", null],
     ["feishu", "", null, "oc_chat", "Feishu ping", null],
@@ -1126,10 +1128,10 @@ test("native Channel Connectors extracts outbound IM message manifests", () => {
     ["feishu", "", null, "oc_other", "Feishu chat ping", null],
     ["feishu", "open_id:ou_markdown", null, null, "**Feishu md ping**", "markdown"],
   ]);
-  assert.deepEqual(extracted.messages[2].mentionUids, ["user-2"]);
-  assert.equal(extracted.messages[2].onBehalfOf, "grantor-1");
-  assert.equal(extracted.messages[3].mentionAll, true);
-  assert.deepEqual(extracted.messages.slice(4).map((message) => {
+  assert.deepEqual(extracted.messages[3].mentionUids, ["user-2"]);
+  assert.equal(extracted.messages[3].onBehalfOf, "grantor-1");
+  assert.equal(extracted.messages[4].mentionAll, true);
+  assert.deepEqual(extracted.messages.slice(5).map((message) => {
     const target = resolveFeishuOutboundMessageTarget(message);
     return [target.receiveId, target.receiveIdType, target.error];
   }), [
@@ -1152,12 +1154,23 @@ test("native Channel Connectors extracts outbound IM message manifests", () => {
   assert.equal(botFromGroup.remappedBotDm, true);
   assert.deepEqual(botFromGroup.mentionUids, ["27xIxHrNV0Qc3ee2129_bot"]);
 
+  const misdeclaredBotFromGroup = resolveOctoOutboundMessageTarget({
+    message: extracted.messages[2],
+    sourceChannelId: "group-a",
+    sourceChannelType: 2,
+  });
+  assert.equal(misdeclaredBotFromGroup.error, null);
+  assert.equal(misdeclaredBotFromGroup.channelId, "group-a");
+  assert.equal(misdeclaredBotFromGroup.channelType, 2);
+  assert.equal(misdeclaredBotFromGroup.remappedBotDm, true);
+  assert.deepEqual(misdeclaredBotFromGroup.mentionUids, ["helper_bot"]);
+
   const botFromDm = resolveOctoOutboundMessageTarget({
     message: extracted.messages[1],
     sourceChannelId: "user-1",
     sourceChannelType: 1,
   });
-  assert.match(botFromDm.error, /does not support bot DM targets/);
+  assert.match(botFromDm.error, /does not support bot channel targets/);
 
   const visibleBotMention = renderOctoOutboundText({
     channelId: botFromGroup.channelId,
@@ -11342,6 +11355,7 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         assert.match(capture[0].stdin, /Octo GROUP\.md/);
         assert.match(capture[0].stdin, /Use Studio native Octo messages for DM and mentions/);
         assert.match(capture[0].stdin, /Octo Bot API recent channel timeline/);
+        assert.match(capture[0].stdin, /inspect senderType=bot entries here before saying you cannot see the reply/);
         assert.match(capture[0].stdin, /senderType/);
         assert.match(capture[0].stdin, /self-bot/);
         assert.match(capture[0].stdin, /old question/);

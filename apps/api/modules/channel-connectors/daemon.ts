@@ -4926,6 +4926,7 @@ function renderOctoSyncedHistoryContext(input: {
     "[Octo Bot API recent channel timeline]",
     "Messages are chronological and may include humans, this Studio bot (senderType=self-bot), and other bots.",
     "Use this timeline to verify whether collaborators already replied. Do not answer old questions unless the current user asks you to summarize, inspect, or act on them.",
+    "If the current user asks whether another bot replied, inspect senderType=bot entries here before saying you cannot see the reply.",
     `History budget: ${budgetedEntries.length}/${contextEntries.length} messages included, max ${input.messageMaxRunes} chars per message, max ${input.totalMaxRunes} chars total.${droppedCount ? ` Dropped ${droppedCount} older messages due to budget.` : ""}`,
     "```json",
     formatEntries(budgetedEntries),
@@ -4985,6 +4986,7 @@ function renderOctoRealtimeTimelineContext(input: {
     "[Octo realtime local channel timeline]",
     "Messages were observed by this Studio daemon in real time, including messages that did not @mention this bot and therefore did not trigger a reply.",
     "Use this as short-term collaboration context when Bot API history is delayed or missing. Do not answer old questions unless the current user asks you to summarize, inspect, or act on them.",
+    "If the current user asks whether another bot replied, inspect senderType=bot entries here before saying you cannot see the reply.",
     `History budget: ${budgetedEntries.length}/${contextEntries.length} messages included, max ${input.messageMaxRunes} chars per message, max ${input.totalMaxRunes} chars total.${droppedCount ? ` Dropped ${droppedCount} older messages due to budget.` : ""}`,
     "```json",
     JSON.stringify(budgetedEntries.map((entry) => ({
