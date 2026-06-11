@@ -46,6 +46,7 @@
 - Platform skill 自动映射补 Runtime Action Index：从 Octo/Feishu skill 标题抽取最多 16 个运行时动作，放入 IM prompt 与 Codex/Claude 原生 skill 投影；真实 OpenClaw Feishu 内置 `feishu-doc/drive/perm/wiki` 可自动发现，包含 doc 上传附件动作且不注入 app secret/setup 段。
 - Octo bot 协作出站容错：`studio-channel-messages` 中任何把 `<*_bot>` 当 channelId 的消息，在群/thread 来源内都会自动重写为当前群/thread @，并保留可见 @ 与 native mention payload，避免把 bot id 当群号请求 Octo API 造成 400。
 - Octo 群历史已按 CC Go 分段：daemon 记录每个 Octo 群/thread session 的 lastAnsweredSeq，重启时从 event log 尾部恢复，冷启动可从 Bot API self-bot 历史推断；Agent prompt 把历史拆成已答上下文和上次回复后新增消息，状态接口暴露最近 cutoff。
+- 对照 OpenClaw Octo/Feishu 插件复核群聊上下文策略：Octo 继续沿用 Bot API history + daemon realtime timeline + GROUP.md/THREAD.md 三层上下文；Feishu 普通群不伪造全量历史，沿用实时 timeline + 成员/mention，topic/thread 才使用官方 `im.message.get/list` bootstrap。下一步优先补 Feishu 出站原生 @ 协作语法，使 Agent 像 Octo `@[uid:显示名]` 一样能在群里真正 @ 到成员/机器人。
 
 ## 最近验证
 
@@ -91,7 +92,7 @@
 
 ## 下一步
 
-1. 用户在真实 Octo 群聊让 Agent 私聊 human 或 @其它 Studio/外部 bot，验证 `studio-channel-messages` 的 human DM、group/thread mention 能真实发送。
-2. 做真实 Feishu @bot、未 @ 群消息、topic/thread 和成员上下文 live smoke，确认自然语言 @bot 与普通未 @ 群消息行为一致。
-3. 对照 Octo 插件继续迁移更完整菜单、技能说明和多 bot 协作 live smoke；platform skill 普通注入已只保留运行时能力，显式 `/skill` 仍保留完整文档。
-4. 做真实 IM live command/progress smoke：Feishu 验证 card patch、权限审批、三次顺序工具调用、topic/thread bootstrap 和 open_id/user_id 文本/Markdown 出站消息；Octo 验证文本进度、工具输出、文件/消息 manifest；随后补 Feishu 文档/云盘 skills。
+1. 补 Feishu `studio-channel-messages` 群出站原生 @：Agent 使用 `@[open_id:显示名]` 或成员上下文给出的等价短语，daemon 转为 Feishu post/text at-tag 并用回归锁定。
+2. 用户在真实 Octo 群聊让 Agent 私聊 human 或 @其它 Studio/外部 bot，验证 `studio-channel-messages` 的 human DM、group/thread mention 能真实发送。
+3. 做真实 Feishu @bot、未 @ 群消息、topic/thread 和成员上下文 live smoke，确认自然语言 @bot 与普通未 @ 群消息行为一致。
+4. 对照 Octo 插件继续迁移更完整菜单、技能说明和多 bot 协作 live smoke；platform skill 普通注入已只保留运行时能力，显式 `/skill` 仍保留完整文档。
