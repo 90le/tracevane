@@ -1,6 +1,7 @@
 export const STUDIO_CHANNEL_MESSAGES_BLOCK = "studio-channel-messages";
 
 export type ChannelConnectorOutboundMessagePlatform = "octo" | "feishu";
+export type ChannelConnectorOutboundMessageFormat = "text" | "markdown";
 
 export interface ChannelConnectorOutboundMessageRequest {
   platform?: ChannelConnectorOutboundMessagePlatform | null;
@@ -8,6 +9,7 @@ export interface ChannelConnectorOutboundMessageRequest {
   channelType?: number | null;
   chatId?: string | null;
   content: string;
+  format?: ChannelConnectorOutboundMessageFormat | null;
   mentionUids: string[];
   mentionAll: boolean;
 }
@@ -123,6 +125,25 @@ function normalizeChannelType(value: unknown): number | null {
   return null;
 }
 
+function normalizeOutboundMessageFormat(record: Record<string, unknown>): ChannelConnectorOutboundMessageFormat | null {
+  const raw = normalizeString(
+    record.format
+      || record.messageFormat
+      || record.message_format
+      || record.messageType
+      || record.message_type
+      || record.msgType
+      || record.msg_type
+      || record.contentType
+      || record.content_type
+      || record.type,
+  ).toLowerCase();
+  if (!raw) return null;
+  if (["markdown", "md", "post", "rich", "rich_text", "rich-text"].includes(raw)) return "markdown";
+  if (["text", "plain", "plain_text", "plain-text"].includes(raw)) return "text";
+  return null;
+}
+
 function outboundMessageFromValue(value: unknown): ChannelConnectorOutboundMessageRequest | null {
   const record = recordFrom(value);
   const platform = normalizeString(record.platform).toLowerCase();
@@ -149,6 +170,7 @@ function outboundMessageFromValue(value: unknown): ChannelConnectorOutboundMessa
     channelType,
     chatId,
     content,
+    format: normalizeOutboundMessageFormat(record),
     mentionUids: uniqueStrings([
       ...stringList(record.mentionUids ?? record.mention_uids ?? record.mentions),
       ...structuredMentions.mentionUids,

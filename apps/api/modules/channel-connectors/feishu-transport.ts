@@ -1207,7 +1207,9 @@ export async function sendFeishuTextMessage(
 export async function sendFeishuPostMessage(
   config: ChannelConnectorFeishuTransportConfig,
   input: {
-    chatId: string;
+    chatId?: string | null;
+    receiveId?: string | null;
+    receiveIdType?: FeishuReceiveIdType | null;
     content: string;
   },
   cachePath?: string | null,
@@ -1215,7 +1217,7 @@ export async function sendFeishuPostMessage(
   let requestCount = 0;
   let tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"] = cachePath ? "miss" : "disabled";
   try {
-    if (!normalizeString(input.chatId)) throw new Error("Feishu chatId is required.");
+    const target = normalizeFeishuReceiveTarget(input);
     if (!normalizeString(input.content)) throw new Error("Feishu post content is required.");
     const chunks = splitChannelConnectorTextChunks(input.content, FEISHU_TEXT_CHUNK_RUNES)
       .filter((chunk) => normalizeString(chunk));
@@ -1228,10 +1230,10 @@ export async function sendFeishuPostMessage(
     for (const chunk of chunks) {
       const response = await feishuJsonRequest(config, {
         method: "POST",
-        path: "/open-apis/im/v1/messages?receive_id_type=chat_id",
+        path: `/open-apis/im/v1/messages?receive_id_type=${target.receiveIdType}`,
         token: token.token,
         payload: {
-          receive_id: input.chatId,
+          receive_id: target.receiveId,
           msg_type: "post",
           content: JSON.stringify({
             zh_cn: {

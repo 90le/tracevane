@@ -57,6 +57,7 @@ import {
   downloadFeishuMessageResourceToFile,
   listFeishuChatMembers,
   removeFeishuMessageReaction,
+  sendFeishuPostMessage,
   sendFeishuTextMessage,
   uploadAndSendFeishuMedia,
 } from "../../dist/apps/api/modules/channel-connectors/feishu-transport.js";
@@ -1102,23 +1103,25 @@ test("native Channel Connectors extracts outbound IM message manifests", () => {
       { platform: "feishu", target: "user_id:u_admin", content: "Feishu user ping" },
       { platform: "feishu", target: "dm:ou_dm", content: "Feishu dm ping" },
       { platform: "feishu", target: "chat:oc_other", content: "Feishu chat ping" },
+      { platform: "feishu", target: "open_id:ou_markdown", format: "markdown", content: "**Feishu md ping**" },
     ]),
     "```",
   ].join("\n"));
 
   assert.equal(extracted.replyText, "我会通知她们。");
   assert.deepEqual(extracted.errors, []);
-  assert.equal(extracted.messages.length, 9);
-  assert.deepEqual(extracted.messages.map((message) => [message.platform, message.channelId, message.channelType, message.chatId, message.content]), [
-    ["octo", "user-1", 1, null, "请介绍一下你的能力"],
-    ["octo", "27xIxHrNV0Qc3ee2129_bot", 1, null, "请介绍一下你的能力"],
-    ["octo", "group-a", 2, null, "大家看这里"],
-    ["octo", "group-a____topic-1", 5, null, "Thread ping"],
-    ["feishu", "", null, "oc_chat", "Feishu ping"],
-    ["feishu", "open_id:ou_admin", null, null, "Feishu open ping"],
-    ["feishu", "user_id:u_admin", null, null, "Feishu user ping"],
-    ["feishu", "ou_dm", 1, null, "Feishu dm ping"],
-    ["feishu", "", null, "oc_other", "Feishu chat ping"],
+  assert.equal(extracted.messages.length, 10);
+  assert.deepEqual(extracted.messages.map((message) => [message.platform, message.channelId, message.channelType, message.chatId, message.content, message.format]), [
+    ["octo", "user-1", 1, null, "请介绍一下你的能力", null],
+    ["octo", "27xIxHrNV0Qc3ee2129_bot", 1, null, "请介绍一下你的能力", null],
+    ["octo", "group-a", 2, null, "大家看这里", null],
+    ["octo", "group-a____topic-1", 5, null, "Thread ping", null],
+    ["feishu", "", null, "oc_chat", "Feishu ping", null],
+    ["feishu", "open_id:ou_admin", null, null, "Feishu open ping", null],
+    ["feishu", "user_id:u_admin", null, null, "Feishu user ping", null],
+    ["feishu", "ou_dm", 1, null, "Feishu dm ping", null],
+    ["feishu", "", null, "oc_other", "Feishu chat ping", null],
+    ["feishu", "open_id:ou_markdown", null, null, "**Feishu md ping**", "markdown"],
   ]);
   assert.deepEqual(extracted.messages[2].mentionUids, ["user-2"]);
   assert.equal(extracted.messages[3].mentionAll, true);
@@ -1131,6 +1134,7 @@ test("native Channel Connectors extracts outbound IM message manifests", () => {
     ["u_admin", "user_id", null],
     ["ou_dm", "open_id", null],
     ["oc_other", "chat_id", null],
+    ["ou_markdown", "open_id", null],
   ]);
 
   const botFromGroup = resolveOctoOutboundMessageTarget({
@@ -3094,6 +3098,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.match(groupRequest.stdin, /Octo does not support bot DMs/);
   assert.match(groupRequest.stdin, /current group\/thread message using @\[uid:displayName\]/);
   assert.match(groupRequest.stdin, /studio-channel-messages manifest/);
+  assert.match(groupRequest.stdin, /format: "markdown"/);
   assert.match(groupRequest.stdin, /\[Studio outbound file\/message policy\]/);
   assert.match(groupRequest.stdin, /\[Current IM message - respond to this ONLY\]\nhi group/);
   assert.doesNotMatch(groupRequest.stdin, /cc-connect/);
@@ -8386,6 +8391,38 @@ test("native Channel Connectors Feishu transport sends text to open_id and user_
     assert.equal(requests[2].path, "/open-apis/im/v1/messages?receive_id_type=user_id");
     assert.equal(requests[2].body.receive_id, "u_admin");
     assert.equal(JSON.parse(requests[2].body.content).text, "user id ping");
+  });
+});
+
+test("native Channel Connectors Feishu transport sends markdown post to open_id targets", async () => {
+  await withMockFeishuServer(async (apiUrl, requests) => {
+    const root = makeTempRoot();
+    const cachePath = path.join(root, "feishu-token-cache.json");
+    const transport = {
+      apiUrl,
+      appId: "cli_post_receive_id",
+      appSecret: "test-secret",
+    };
+
+    const result = await sendFeishuPostMessage(transport, {
+      receiveId: "ou_admin",
+      receiveIdType: "open_id",
+      content: "**hello**\n\n```text\npost\n```",
+    }, cachePath);
+
+    assert.equal(result.ok, true);
+    assert.equal(result.action, "send-post");
+    assert.equal(result.requestCount, 2);
+    assert.equal(result.tokenCache, "miss");
+    assert.equal(requests[0].path, "/open-apis/auth/v3/tenant_access_token/internal");
+    assert.equal(requests[1].path, "/open-apis/im/v1/messages?receive_id_type=open_id");
+    assert.equal(requests[1].body.receive_id, "ou_admin");
+    assert.equal(requests[1].body.msg_type, "post");
+    assert.deepEqual(JSON.parse(requests[1].body.content), {
+      zh_cn: {
+        content: [[{ tag: "md", text: "**hello**\n\n```text\npost\n```" }]],
+      },
+    });
   });
 });
 

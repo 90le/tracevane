@@ -2746,11 +2746,17 @@ async function sendFeishuOutboundMessages(input: {
       errors.push(target.error || "Feishu outbound message requires content.");
       continue;
     }
-    const result = await sendFeishuTextMessage(input.transport, {
-      receiveId: target.receiveId,
-      receiveIdType: target.receiveIdType,
-      content,
-    }, cachePath);
+    const result = message.format === "markdown"
+      ? await sendFeishuPostMessage(input.transport, {
+        receiveId: target.receiveId,
+        receiveIdType: target.receiveIdType,
+        content,
+      }, cachePath)
+      : await sendFeishuTextMessage(input.transport, {
+        receiveId: target.receiveId,
+        receiveIdType: target.receiveIdType,
+        content,
+      }, cachePath);
     requestCount += result.requestCount;
     if (result.ok === true) {
       sentCount += 1;

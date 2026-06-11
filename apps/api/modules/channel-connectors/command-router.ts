@@ -1459,7 +1459,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
         ["`/octo thread-md <short_id> [group_no]`", "读取 THREAD.md；thread 内可省略 short_id"],
       ]),
       "",
-      "Agent 可通过 `studio-channel-messages` manifest 发送 Octo 私聊/群/thread/@，以及 Feishu chat/open_id/user_id 文本消息。",
+      "Agent 可通过 `studio-channel-messages` manifest 发送 Octo 私聊/群/thread/@，以及 Feishu chat/open_id/user_id 文本或 Markdown 消息。",
       "返回：`/help`",
     ].join("\n");
   }
