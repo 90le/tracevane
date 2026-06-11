@@ -56,7 +56,7 @@
 - 已完成：F4 Octo URL attachment staging：Octo URL 型图片/文件/语音/视频在进入 Agent 前 streaming 落盘，默认拒绝私网 URL，大小上限复用 attachment metadata；失败只写 `stagingError`。
 - 已完成：F4 Octo 入站 URL 字段兼容：除 `url` 外，识别 `file_url/fileUrl/media_url/mediaUrl/download_url/downloadUrl/cdn_url/cdnUrl/origin_url/originUrl/src/href`，减少平台字段差异导致的 `[image]` 无本地路径。
 - 已完成：F4 Octo payload-only 附件补回与插件协议对齐：daemon 进入 Agent 前把 payload 推断附件写回 `attachments`；支持 GIF=3、RichText=14 图文混排、有序 image blocks 和多图 `mediaUrls`。
-- 已完成：F4 Octo Bot API transport 基础能力：按 OpenClaw Octo 插件与 bot-api skill 接入 read receipt、event ack、群/成员/Space 搜索、thread、消息历史同步和文件下载 URL smoke；消息历史 payload 解码与 `message_id` 大整数保护已覆盖。
+- 已完成：F4 Octo Bot API transport + daemon 入站能力：按 OpenClaw Octo 插件与 bot-api skill 接入 read receipt、event ack、群/成员/Space 搜索、thread、消息历史同步和文件下载 URL smoke；daemon 入站会用 `messageSeq` 拉取短历史、拉取群成员补 group context，并在附件只有 `file_path/download_path/object_key/storage_key` 时先换取下载 URL 再本地 staging。消息历史 payload 解码与 `message_id` 大整数保护已覆盖。
 - 已完成：F4 Octo v1.0.15 identity / mention / read-receipt 兼容：Studio binding 解析、群 @bot 判断和自身消息跳过按插件 `normalizeAccountId()` 语义大小写归一；普通 bot 不再被 `mention.all` / `mention.humans` 广播触发，纯 `mention.ais=1` 或显式 @bot 仍触发；daemon 入站通过 gate 后异步发送带 `message_ids` 的 read receipt。插件 `globalThis` runtime singleton 是 jiti/ESM 双实例修复，Studio daemon 当前无同类加载路径，暂不迁移。
 - 已完成：F4 图片非视觉模型保护：Feishu/Octo 图片附件可 staging；`glm-5` 等未标记 vision 的模型仍启动受控 Agent turn，但 prompt 禁止视觉推断并要求询问下一步，普通文件仍进入 Agent，避免路径诱导的看图幻觉。
 - 已完成：F4 Studio 原生出站文件合同：Agent 只声明 `studio-channel-files` manifest，daemon 校验文件位于 Agent workDir 或当前 runtime/staging 根，`yolo` 权限可发送任意可读普通文件但仍保留大小/平台限制；Octo 默认按 OpenClaw Octo 插件和 bot-api skill 推荐走 STS + COS PUT 直传后 image/file send，显式 `uploadStrategy=multipart` 才走旧 `/v1/bot/file/upload`，auto 遇到旧 multipart 404/405/410 会回退直传；Feishu 走 image/file upload + message send；runtime 记录 declared/resolved/sent/errors；Octo 出站保留原始文件名，且 `transport-smoke` 已支持 STS 探测、direct upload、direct upload + send media；Feishu 去重改为 messageId 优先以跳过重连重投；本机 Octo 小文本文件、STS 凭证和 COS 直传真实 smoke 已通过，Feishu/Octo daemon 出站文件已加回归。
@@ -68,4 +68,4 @@
 - 已完成：F5 基础治理：allowlist/admin、banned words、rate limit 覆盖 Octo/Feishu daemon 与 HTTP dispatch/action。
 - 已完成：F4 飞书群成员拉取：群聊 Agent 分支分页拉取 chat members 并注入 group context，失败只记日志不阻断。
 - 已完成：平台配置 UI：Octo/Feishu binding 凭证 metadata 可在 Channel Connectors 页面编辑并直接执行连接测试。
-- 下一步：先做 Feishu/Octo 私聊与群聊 live 复验；把 Octo Bot API transport 接入 daemon 上下文/read receipt/event ack/thread/file staging；继续迁移 CC/OpenClaw 视觉输入/OCR、语音/STT/TTS、RichText、真实大文件限额验证和多平台 adapter；Feishu 菜单继续补更多设置型子卡、切换结果卡片、分页和 Studio 化精修。
+- 下一步：先做 Feishu/Octo 私聊与群聊 live 复验；继续迁移 Octo thread target、群/线程管理命令和后续菜单；Bot API event ack 只在 HTTP/sync 事件链路暴露真实 event_id 时接入，WuKongIM 当前已有 RECVACK；继续迁移 CC/OpenClaw 视觉输入/OCR、语音/STT/TTS、RichText、真实大文件限额验证和多平台 adapter；Feishu 菜单继续补更多设置型子卡、切换结果卡片、分页和 Studio 化精修。

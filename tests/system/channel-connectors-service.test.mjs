@@ -9512,6 +9512,278 @@ test("native Channel Connectors daemon serializes same-session Octo Agent turns"
   }
 });
 
+test("native Channel Connectors daemon enriches Octo group turns with Bot API context and file download URLs", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+  });
+  const fakeBin = path.join(root, "fake-bin");
+  const capturePath = path.join(root, "codex-octo-context-capture.jsonl");
+  fs.mkdirSync(fakeBin, { recursive: true });
+  const fakeCodexPath = path.join(fakeBin, "codex");
+  fs.writeFileSync(fakeCodexPath, [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    "let stdin = '';",
+    "process.stdin.on('data', (chunk) => { stdin += chunk.toString('utf8'); });",
+    "process.stdin.on('end', () => {",
+    "  fs.appendFileSync(process.env.STUDIO_TEST_CODEX_CAPTURE, `${JSON.stringify({ argv: process.argv.slice(2), stdin })}\\n`);",
+    "  process.stdout.write('{\"type\":\"thread.started\",\"thread_id\":\"thread-octo-context\"}\\n');",
+    "  process.stdout.write('{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"context ok\"}}\\n');",
+    "  process.stdout.write('{\"type\":\"turn.completed\"}\\n');",
+    "});",
+    "",
+  ].join("\n"), { mode: 0o755 });
+
+  const wsConnects = [];
+  let inboundSent = false;
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  await new Promise((resolve, reject) => {
+    wss.once("listening", resolve);
+    wss.once("error", reject);
+  });
+  const wsAddress = wss.address();
+  assert.ok(wsAddress && typeof wsAddress === "object");
+  const wsUrl = `ws://127.0.0.1:${wsAddress.port}/ws`;
+  wss.on("connection", (socket) => {
+    let connected = false;
+    socket.on("message", (data) => {
+      if (connected) return;
+      const packet = decodeOctoConnectPacket(Buffer.isBuffer(data) ? data : Buffer.from(data));
+      connected = true;
+      wsConnects.push(packet);
+      const serverKey = createOctoX25519KeyPair();
+      const salt = "abcdef1234567890";
+      socket.send(encodeOctoConnackPacket({
+        serverPublicKeyBase64: serverKey.publicKeyBase64,
+        salt,
+      }));
+      if (!inboundSent) {
+        inboundSent = true;
+        setTimeout(() => {
+          if (socket.readyState !== 1) return;
+          socket.send(encodeOctoRecvPacket({
+            serverPrivateKey: serverKey.privateKey,
+            clientPublicKeyBase64: packet.clientPublicKeyBase64,
+            salt,
+            messageId: 3001,
+            messageSeq: 8,
+            fromUid: "user-1",
+            channelId: "group-1",
+            channelType: 2,
+            payload: {
+              type: 8,
+              content: "",
+              name: "hello.txt",
+              file_path: "chat/hello.txt",
+              size: 12,
+              mention: { uids: ["robot-1"] },
+            },
+          }));
+        }, 50);
+      }
+    });
+  });
+
+  try {
+    const requests = [];
+    await withServer(async (req, res) => {
+      const chunks = [];
+      req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
+      await new Promise((resolve) => req.on("end", resolve));
+      const bodyRaw = Buffer.concat(chunks).toString("utf8");
+      requests.push({
+        method: req.method,
+        path: req.url,
+        authorization: req.headers.authorization,
+        body: bodyRaw ? JSON.parse(bodyRaw) : {},
+      });
+      if (req.url === "/media/hello.txt") {
+        res.setHeader("content-type", "text/plain");
+        res.end("hello octo\n");
+        return true;
+      }
+      res.setHeader("content-type", "application/json");
+      if (req.url === "/v1/models") {
+        res.end(JSON.stringify({
+          object: "list",
+          data: [
+            { id: "gpt-5", object: "model", features: { text: true } },
+          ],
+        }));
+        return true;
+      }
+      if (req.url?.startsWith("/v1/bot/register")) {
+        res.end(JSON.stringify({ robot_id: "robot-1", im_token: "im-token-1", ws_url: wsUrl }));
+        return true;
+      }
+      if (req.method === "GET" && req.url === "/v1/bot/groups/group-1/members") {
+        res.end(JSON.stringify({
+          members: [
+            { uid: "user-1", name: "Alice", role: 1, robot: 0 },
+            { uid: "robot-1", name: "Studio Bot", role: 2, robot: 1 },
+          ],
+        }));
+        return true;
+      }
+      if (req.method === "POST" && req.url === "/v1/bot/messages/sync") {
+        const payload = Buffer.from(JSON.stringify({ type: 1, content: "history hello" }), "utf8").toString("base64");
+        res.end(`{"start_message_seq":1,"end_message_seq":7,"pull_mode":1,"messages":[{"message_id":"2999","message_seq":7,"from_uid":"user-1","channel_id":"group-1","channel_type":2,"timestamp":1742547600,"payload":"${payload}"}]}`);
+        return true;
+      }
+      if (req.method === "GET" && req.url?.startsWith("/v1/bot/file/download/chat/hello.txt")) {
+        res.statusCode = 302;
+        res.setHeader("location", `http://${req.headers.host}/media/hello.txt`);
+        res.end();
+        return true;
+      }
+      if (req.url === "/v1/bot/typing" || req.url === "/v1/bot/sendMessage" || req.url === "/v1/bot/heartbeat") {
+        res.end(JSON.stringify({ ok: true, message_id: `octo-context-${requests.length}` }));
+        return true;
+      }
+      return false;
+    }, async (apiUrl) => {
+      const initial = service.getNativeConfig().config;
+      service.saveNativeConfig({
+        config: {
+          ...initial,
+          agentProfiles: [
+            {
+              id: "codex-octo-context",
+              name: "Codex Octo Context",
+              agent: "codex",
+              model: "gpt-5",
+              workDir: config.projectRoot,
+              permissionMode: "suggest",
+              gatewayEndpoint: `${apiUrl}/v1`,
+              gatewayKeyRef: "studio-gateway-client-key",
+              appProfileRef: "codex",
+            },
+          ],
+          defaultAgentProfileId: "codex-octo-context",
+          platformBindings: [
+            {
+              id: "octo-context",
+              platform: "octo",
+              accountId: "octo-account",
+              botId: null,
+              displayName: "Octo Context",
+              agentProfileId: "codex-octo-context",
+              enabled: true,
+              allowlist: [],
+              adminUsers: [],
+              metadata: {
+                apiUrl,
+                botToken: "test-token",
+                wsUrl,
+                allowPrivateAttachmentUrls: true,
+                attachmentMaxBytes: 1024,
+                octoHistorySyncLimit: 3,
+                octoHeartbeatMs: 30_000,
+                octoPongTimeoutMs: 10_000,
+                octoReconnectMs: 3_000,
+                octoReconnectJitterMs: 0,
+              },
+            },
+          ],
+        },
+      });
+
+      const runtimeConfig = service.getDaemonConfig().config;
+      runtimeConfig.management.port = await findFreePort();
+      const configPath = path.join(root, "daemon-octo-context-config.json");
+      fs.mkdirSync(path.dirname(runtimeConfig.paths.log), { recursive: true });
+      fs.writeFileSync(configPath, JSON.stringify(runtimeConfig, null, 2), "utf8");
+
+      const daemonEntry = path.resolve("dist/apps/api/modules/channel-connectors/daemon.js");
+      const child = spawn(process.execPath, [daemonEntry, "--config", configPath], {
+        cwd: path.resolve("."),
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:${process.env.PATH || ""}`,
+          STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+          STUDIO_TEST_CODEX_CAPTURE: capturePath,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stderr = "";
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk.toString("utf8");
+      });
+
+      try {
+        const status = await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const connected = response.body?.octoConnections?.find?.((item) => item.bindingId === "octo-context" && item.connected);
+          return connected ? response.body : null;
+        }, 5000);
+        assert.equal(status.ok, true);
+        assert.equal(wsConnects.length, 1);
+
+        const capture = await waitFor(() => {
+          if (!fs.existsSync(capturePath)) return null;
+          const lines = fs.readFileSync(capturePath, "utf8").trim().split(/\r?\n/).filter(Boolean);
+          return lines.length ? lines.map((line) => JSON.parse(line)) : null;
+        }, 8000);
+        assert.equal(capture.length, 1);
+        assert.match(capture[0].stdin, /Studio group context/);
+        assert.match(capture[0].stdin, /Known members: Alice\(user-1\), Studio Bot\(robot-1\)/);
+        assert.match(capture[0].stdin, /Octo Bot API recent channel history/);
+        assert.match(capture[0].stdin, /history hello/);
+        assert.match(capture[0].stdin, /file: hello\.txt, 11 bytes, local:/);
+        assert.match(capture[0].stdin, /Staged files are available locally/);
+
+        const finalStatus = await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const run = response.body?.agentRuns?.find?.((item) => item.messageId === "3001");
+          return run ? response.body : null;
+        }, 8000);
+        const run = finalStatus.agentRuns.find((item) => item.messageId === "3001");
+        assert.equal(run.ok, true);
+        const requestPaths = requests.map((request) => request.path);
+        assert.equal(requestPaths.includes("/v1/bot/groups/group-1/members"), true);
+        assert.equal(requestPaths.includes("/v1/bot/messages/sync"), true);
+        assert.equal(requestPaths.some((item) => item?.startsWith("/v1/bot/file/download/chat/hello.txt")), true);
+        assert.equal(requestPaths.includes("/media/hello.txt"), true);
+        const octoEvents = await waitForJsonLines(runtimeConfig.paths.octoEvents, (events) => {
+          return events.some((event) => event.eventKind === "channel.octo.members.loaded" && event.messageId === "3001")
+            && events.some((event) => event.eventKind === "channel.octo.history.synced" && event.messageId === "3001")
+            && events.some((event) => event.eventKind === "agent.attachments.staged" && event.messageId === "3001");
+        }, 10_000);
+        assert.ok(octoEvents.some((event) => {
+          return event.eventKind === "channel.octo.members.loaded"
+            && event.memberCount === 2
+            && event.error === null;
+        }));
+        assert.ok(octoEvents.some((event) => {
+          return event.eventKind === "channel.octo.history.synced"
+            && event.includedCount === 1
+            && event.error === null;
+        }));
+        assert.ok(octoEvents.some((event) => {
+          return event.eventKind === "agent.attachments.staged"
+            && event.stagedCount === 1
+            && event.downloadUrlAttemptCount === 1
+            && event.downloadUrlResolvedCount === 1;
+        }));
+      } finally {
+        child.kill("SIGTERM");
+        await new Promise((resolve) => {
+          child.once("exit", resolve);
+          setTimeout(resolve, 1000);
+        });
+      }
+
+      assert.equal(stderr.trim(), "");
+    });
+  } finally {
+    await new Promise((resolve, reject) => {
+      wss.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
 test("native Channel Connectors daemon runs Codex app-server when persistent session metadata is enabled", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

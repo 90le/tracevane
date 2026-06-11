@@ -19,6 +19,7 @@ import type {
   ChannelConnectorAgentSessionActionRequest,
   ChannelConnectorAgentSessionDriverStatusResponse,
   ChannelConnectorContextBudgetSummary,
+  ChannelConnectorOctoGroupMember,
   ChannelConnectorOctoTransportConfig,
   ChannelConnectorOctoInboundMessage,
   ChannelConnectorOctoInboundRequest,
@@ -149,12 +150,15 @@ import {
   renderChannelConnectorCommandSurfaceFeishu,
 } from "./command-surface.js";
 import {
+  getOctoFileDownloadUrl,
+  listOctoGroupMembers,
   octoTransportFromMetadata,
   registerOctoBot,
   sendOctoHeartbeat,
   sendOctoReadReceipt,
   sendOctoTextReply,
   sendOctoTyping,
+  syncOctoMessages,
   uploadAndSendOctoMedia,
 } from "./octo-transport.js";
 import {
@@ -4260,6 +4264,234 @@ async function loadFeishuGroupMembers(input: {
   };
 }
 
+const OCTO_THREAD_CHANNEL_SEPARATOR = "____";
+
+function octoSyncChannelId(message: ChannelConnectorOctoInboundMessage): string {
+  return message.channelType === 1 ? normalizeString(message.fromUid) : normalizeString(message.channelId);
+}
+
+function octoParentGroupNo(channelId: string): string {
+  const normalized = normalizeString(channelId);
+  if (!normalized) return "";
+  const [groupNo] = normalized.split(OCTO_THREAD_CHANNEL_SEPARATOR);
+  return normalizeString(groupNo) || normalized;
+}
+
+function normalizeOctoGroupMember(value: unknown): ChannelConnectorOctoGroupMember | null {
+  if (!isRecord(value)) return null;
+  const uid = normalizeString(value.uid)
+    || normalizeString(value.user_id)
+    || normalizeString(value.userId)
+    || normalizeString(value.id);
+  const name = normalizeString(value.name)
+    || normalizeString(value.display_name)
+    || normalizeString(value.displayName)
+    || normalizeString(value.nickname)
+    || uid;
+  return uid ? { uid, name } : null;
+}
+
+function normalizeOctoGroupMembers(value: unknown, limit: number): ChannelConnectorOctoGroupMember[] {
+  const source = Array.isArray(value)
+    ? value
+    : isRecord(value) && Array.isArray(value.members)
+      ? value.members
+      : isRecord(value) && Array.isArray(value.data)
+        ? value.data
+        : [];
+  const output: ChannelConnectorOctoGroupMember[] = [];
+  const seen = new Set<string>();
+  for (const item of source) {
+    const member = normalizeOctoGroupMember(item);
+    if (!member || seen.has(member.uid)) continue;
+    seen.add(member.uid);
+    output.push(member);
+    if (output.length >= limit) break;
+  }
+  return output;
+}
+
+function mergeOctoGroupMembers(
+  current: ChannelConnectorOctoGroupMember[] | undefined,
+  incoming: ChannelConnectorOctoGroupMember[],
+): ChannelConnectorOctoGroupMember[] {
+  if (!incoming.length) return current || [];
+  const output: ChannelConnectorOctoGroupMember[] = [];
+  const seen = new Set<string>();
+  for (const member of [...(current || []), ...incoming]) {
+    const normalized = normalizeOctoGroupMember(member);
+    if (!normalized || seen.has(normalized.uid)) continue;
+    seen.add(normalized.uid);
+    output.push(normalized);
+  }
+  return output;
+}
+
+async function loadOctoGroupMembers(input: {
+  binding: ChannelConnectorRuntimeBinding;
+  transport: ChannelConnectorOctoTransportConfig | null;
+  message: ChannelConnectorOctoInboundMessage;
+}): Promise<{
+  members: ChannelConnectorOctoGroupMember[];
+  groupNo: string | null;
+  error: string | null;
+  attempted: boolean;
+  itemCount: number | null;
+}> {
+  if (!isOctoGroupChannel(input.message.channelType)) {
+    return { members: [], groupNo: null, error: null, attempted: false, itemCount: null };
+  }
+  if (!metadataBoolean(input.binding, [
+    "enableOctoMemberPull",
+    "enable_octo_member_pull",
+    "pullOctoMembers",
+    "pull_octo_members",
+  ], true)) {
+    return { members: [], groupNo: null, error: null, attempted: false, itemCount: null };
+  }
+  const groupNo = octoParentGroupNo(input.message.channelId);
+  if (!groupNo) {
+    return { members: [], groupNo: null, error: "octo_group_no_missing", attempted: true, itemCount: null };
+  }
+  if (!input.transport) {
+    return { members: [], groupNo, error: "octo_transport_config_missing", attempted: true, itemCount: null };
+  }
+  const limit = Math.max(1, Math.min(500, Math.floor(metadataNumber(input.binding, [
+    "octoMemberMaxEntries",
+    "octo_member_max_entries",
+    "memberMaxEntries",
+    "member_max_entries",
+  ], 100))));
+  const result = await listOctoGroupMembers(input.transport, groupNo);
+  const members = result.ok ? normalizeOctoGroupMembers(result.data, limit) : [];
+  return {
+    members,
+    groupNo,
+    error: result.ok ? null : result.error || "octo_member_pull_failed",
+    attempted: result.attempted,
+    itemCount: result.itemCount ?? null,
+  };
+}
+
+function octoSyncedMessageText(payload: unknown): string {
+  if (typeof payload === "string") return normalizeString(payload);
+  if (!isRecord(payload)) return "";
+  const content = payload.content;
+  if (typeof content === "string") return normalizeString(content);
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => {
+        if (typeof item === "string") return normalizeString(item);
+        if (!isRecord(item)) return "";
+        return normalizeString(item.text) || normalizeString(item.content) || normalizeString(item.name);
+      })
+      .filter(Boolean)
+      .join("");
+  }
+  return normalizeString(payload.plain) || normalizeString(payload.name);
+}
+
+function octoSyncedMessagesFromData(value: unknown): Record<string, unknown>[] {
+  if (!isRecord(value)) return [];
+  return Array.isArray(value.messages) ? value.messages.filter(isRecord) : [];
+}
+
+function renderOctoSyncedHistoryContext(input: {
+  data: unknown;
+  currentMessageId: string;
+  limit: number;
+}): string | null {
+  const lines = octoSyncedMessagesFromData(input.data)
+    .filter((message) => normalizeString(message.message_id) !== input.currentMessageId)
+    .map((message) => {
+      const sender = normalizeString(message.from_uid) || normalizeString(message.fromUid) || "unknown";
+      const seq = Number(message.message_seq ?? message.messageSeq);
+      const text = octoSyncedMessageText(message.payload);
+      if (!text) return "";
+      const prefix = Number.isFinite(seq) && seq > 0 ? `#${seq} ` : "";
+      return `${prefix}${sender}: ${text}`;
+    })
+    .filter(Boolean)
+    .slice(-input.limit);
+  if (!lines.length) return null;
+  return [
+    "[Octo Bot API recent channel history]",
+    ...lines,
+    "Use this only as nearby IM context before answering the current message.",
+  ].join("\n");
+}
+
+async function loadOctoSyncedHistoryContext(input: {
+  binding: ChannelConnectorRuntimeBinding;
+  transport: ChannelConnectorOctoTransportConfig | null;
+  message: ChannelConnectorOctoInboundMessage;
+}): Promise<{
+  context: string | null;
+  error: string | null;
+  attempted: boolean;
+  itemCount: number | null;
+  includedCount: number;
+}> {
+  if (!metadataBoolean(input.binding, [
+    "enableOctoHistorySync",
+    "enable_octo_history_sync",
+    "syncOctoHistory",
+    "sync_octo_history",
+  ], true)) {
+    return { context: null, error: null, attempted: false, itemCount: null, includedCount: 0 };
+  }
+  const limit = Math.max(0, Math.min(20, Math.floor(metadataNumber(input.binding, [
+    "octoHistorySyncLimit",
+    "octo_history_sync_limit",
+    "historySyncLimit",
+    "history_sync_limit",
+  ], 6))));
+  if (limit <= 0) {
+    return { context: null, error: null, attempted: false, itemCount: null, includedCount: 0 };
+  }
+  const channelId = octoSyncChannelId(input.message);
+  if (!channelId) {
+    return { context: null, error: "octo_channel_id_missing", attempted: true, itemCount: null, includedCount: 0 };
+  }
+  if (!input.transport) {
+    return { context: null, error: "octo_transport_config_missing", attempted: true, itemCount: null, includedCount: 0 };
+  }
+  const messageSeq = typeof input.message.messageSeq === "number" && Number.isFinite(input.message.messageSeq)
+    ? input.message.messageSeq
+    : null;
+  const result = await syncOctoMessages(input.transport, {
+    channelId,
+    channelType: input.message.channelType,
+    limit,
+    endMessageSeq: messageSeq && messageSeq > 1 ? messageSeq - 1 : 0,
+    pullMode: 1,
+  });
+  if (!result.ok) {
+    return {
+      context: null,
+      error: result.error || "octo_history_sync_failed",
+      attempted: result.attempted,
+      itemCount: result.itemCount ?? null,
+      includedCount: 0,
+    };
+  }
+  const context = renderOctoSyncedHistoryContext({
+    data: result.data,
+    currentMessageId: input.message.messageId,
+    limit,
+  });
+  const includedCount = context
+    ? Math.max(0, context.split("\n").length - 2)
+    : 0;
+  return {
+    context,
+    error: null,
+    attempted: result.attempted,
+    itemCount: result.itemCount ?? null,
+    includedCount,
+  };
+}
+
 async function stageFeishuMessageAttachments(input: {
   config: ChannelConnectorsDaemonRuntimeConfig;
   transport: ChannelConnectorFeishuTransportConfig | null;
@@ -4356,7 +4588,52 @@ async function stageFeishuMessageAttachments(input: {
   };
 }
 
+function octoAttachmentFilePath(attachment: ChannelConnectorInboundAttachment): string {
+  const record = attachment as unknown as Record<string, unknown>;
+  for (const key of [
+    "filePath",
+    "file_path",
+    "downloadPath",
+    "download_path",
+    "objectKey",
+    "object_key",
+    "storageKey",
+    "storage_key",
+  ]) {
+    const candidate = normalizeString(record[key]);
+    if (candidate && !/^https?:\/\//i.test(candidate)) return candidate;
+  }
+  const key = normalizeString(attachment.key);
+  return key && !/^https?:\/\//i.test(key) && key.includes("/") ? key : "";
+}
+
+async function resolveOctoAttachmentStagingUrl(input: {
+  transport: ChannelConnectorOctoTransportConfig | null;
+  attachment: ChannelConnectorInboundAttachment;
+}): Promise<{
+  url: string | null;
+  error: string | null;
+  attemptedDownloadUrl: boolean;
+}> {
+  const directUrl = normalizeString(input.attachment.url);
+  if (directUrl) return { url: directUrl, error: null, attemptedDownloadUrl: false };
+  const filePath = octoAttachmentFilePath(input.attachment);
+  if (!filePath) return { url: null, error: "octo_attachment_url_missing", attemptedDownloadUrl: false };
+  if (!input.transport) return { url: null, error: "octo_transport_config_missing", attemptedDownloadUrl: true };
+  const result = await getOctoFileDownloadUrl(input.transport, {
+    filePath,
+    fileName: normalizeString(input.attachment.fileName) || null,
+  });
+  const mediaUrl = normalizeString(result.mediaUrl);
+  return {
+    url: result.ok && mediaUrl ? mediaUrl : null,
+    error: result.ok && mediaUrl ? null : result.error || "octo_file_download_url_failed",
+    attemptedDownloadUrl: true,
+  };
+}
+
 async function stageOctoMessageAttachments(input: {
+  transport: ChannelConnectorOctoTransportConfig | null;
   message: ChannelConnectorOctoInboundMessage;
   rootDir: string;
   maxBytes: number;
@@ -4365,6 +4642,8 @@ async function stageOctoMessageAttachments(input: {
   message: ChannelConnectorOctoInboundMessage;
   stagedCount: number;
   failedCount: number;
+  downloadUrlAttemptCount: number;
+  downloadUrlResolvedCount: number;
   localPaths: string[];
 }> {
   const attachments = input.message.attachments || [];
@@ -4373,6 +4652,8 @@ async function stageOctoMessageAttachments(input: {
       message: input.message,
       stagedCount: 0,
       failedCount: 0,
+      downloadUrlAttemptCount: 0,
+      downloadUrlResolvedCount: 0,
       localPaths: [],
     };
   }
@@ -4381,6 +4662,8 @@ async function stageOctoMessageAttachments(input: {
   const localPaths: string[] = [];
   let stagedCount = 0;
   let failedCount = 0;
+  let downloadUrlAttemptCount = 0;
+  let downloadUrlResolvedCount = 0;
   for (let index = 0; index < attachments.length; index += 1) {
     const attachment = attachments[index];
     const existingLocalPath = normalizeString(attachment.localPath);
@@ -4389,17 +4672,26 @@ async function stageOctoMessageAttachments(input: {
       stagedAttachments.push(attachment);
       continue;
     }
-    const url = normalizeString(attachment.url);
+    const resolved = await resolveOctoAttachmentStagingUrl({
+      transport: input.transport,
+      attachment,
+    });
+    if (resolved.attemptedDownloadUrl) downloadUrlAttemptCount += 1;
+    if (resolved.attemptedDownloadUrl && resolved.url) downloadUrlResolvedCount += 1;
+    const url = normalizeString(resolved.url);
     if (!url) {
       failedCount += 1;
       stagedAttachments.push({
         ...attachment,
-        stagingError: "octo_attachment_url_missing",
+        stagingError: resolved.error || "octo_attachment_url_missing",
       });
       continue;
     }
     const staged = await stageChannelConnectorAttachmentUrl({
-      attachment,
+      attachment: {
+        ...attachment,
+        url,
+      },
       url,
       rootDir: input.rootDir,
       messageId: input.message.messageId,
@@ -4423,6 +4715,8 @@ async function stageOctoMessageAttachments(input: {
     },
     stagedCount,
     failedCount,
+    downloadUrlAttemptCount,
+    downloadUrlResolvedCount,
     localPaths,
   };
 }
@@ -6352,6 +6646,38 @@ async function dispatchOctoMessage(input: {
     }
     : message;
   agentMessage = attachExtractedOctoAttachments(agentMessage);
+  const octoMembers = await loadOctoGroupMembers({
+    binding,
+    transport,
+    message: agentMessage,
+  });
+  if (octoMembers.members.length) {
+    const members = mergeOctoGroupMembers(agentMessage.members, octoMembers.members);
+    message = {
+      ...message,
+      members,
+    };
+    agentMessage = {
+      ...agentMessage,
+      members,
+    };
+  }
+  if (octoMembers.attempted) {
+    writeJsonLine(config.paths.octoEvents, {
+      checkedAt: new Date().toISOString(),
+      eventKind: "channel.octo.members.loaded",
+      adapter: "octo",
+      bindingId: binding.id,
+      sessionKey,
+      messageId: message.messageId,
+      channelId: message.channelId,
+      channelType: message.channelType,
+      groupNo: octoMembers.groupNo,
+      memberCount: octoMembers.members.length,
+      itemCount: octoMembers.itemCount,
+      error: octoMembers.error,
+    });
+  }
   if (command.passthroughText) {
     writeJsonLine(config.paths.octoEvents, {
       checkedAt,
@@ -6494,12 +6820,36 @@ async function dispatchOctoMessage(input: {
   });
   const activeRunId = `${binding.id}:${message.messageId}`;
   const currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
-  const historyContext = renderChannelConnectorConversationHistoryContext(
+  const localHistoryContext = renderChannelConnectorConversationHistoryContext(
     getChannelConnectorConversationHistory(conversationHistoryPath(config), {
       bindingId: binding.id,
       sessionKey,
     }),
   );
+  const syncedHistoryContext = await loadOctoSyncedHistoryContext({
+    binding,
+    transport,
+    message: agentMessage,
+  });
+  if (syncedHistoryContext.attempted) {
+    writeJsonLine(config.paths.octoEvents, {
+      checkedAt: new Date().toISOString(),
+      eventKind: "channel.octo.history.synced",
+      adapter: "octo",
+      bindingId: binding.id,
+      sessionKey,
+      messageId: message.messageId,
+      channelId: message.channelId,
+      channelType: message.channelType,
+      includedCount: syncedHistoryContext.includedCount,
+      itemCount: syncedHistoryContext.itemCount,
+      error: syncedHistoryContext.error,
+    });
+  }
+  const historyContext = [
+    syncedHistoryContext.context,
+    localHistoryContext,
+  ].filter(Boolean).join("\n\n") || null;
   const runStartedAt = new Date().toISOString();
   const runStartedAtMs = isoTimestampMs(runStartedAt) ?? Date.now();
   const abortController = new AbortController();
@@ -6679,9 +7029,9 @@ async function dispatchOctoMessage(input: {
     ingressToAgentStartMs: elapsedMsSince(ingressAtMs, runStartedAtMs),
   });
 
-  const runtimeDir = agentRuntimeDir(config, turnProject, binding);
-  if ((agentMessage.attachments || []).length > 0 && metadataBoolean(binding, [
-    "stageOctoUrlAttachments",
+	  const runtimeDir = agentRuntimeDir(config, turnProject, binding);
+	  if ((agentMessage.attachments || []).length > 0 && metadataBoolean(binding, [
+	    "stageOctoUrlAttachments",
     "stage_octo_url_attachments",
     "stageUrlAttachments",
     "stage_url_attachments",
@@ -6691,15 +7041,16 @@ async function dispatchOctoMessage(input: {
       "attachment_max_bytes",
       "maxAttachmentBytes",
       "max_attachment_bytes",
-      "octoAttachmentMaxBytes",
-      "octo_attachment_max_bytes",
-    ], DEFAULT_CHANNEL_CONNECTOR_ATTACHMENT_MAX_BYTES);
-    const staged = await stageOctoMessageAttachments({
-      message: agentMessage,
-      rootDir: runtimeDir,
-      maxBytes: attachmentMaxBytes,
-      allowPrivateNetwork: metadataBoolean(binding, [
-        "allowPrivateAttachmentUrls",
+	      "octoAttachmentMaxBytes",
+	      "octo_attachment_max_bytes",
+	    ], DEFAULT_CHANNEL_CONNECTOR_ATTACHMENT_MAX_BYTES);
+	    const staged = await stageOctoMessageAttachments({
+	      transport,
+	      message: agentMessage,
+	      rootDir: runtimeDir,
+	      maxBytes: attachmentMaxBytes,
+	      allowPrivateNetwork: metadataBoolean(binding, [
+	        "allowPrivateAttachmentUrls",
         "allow_private_attachment_urls",
         "allowOctoPrivateAttachmentUrls",
         "allow_octo_private_attachment_urls",
@@ -6714,14 +7065,16 @@ async function dispatchOctoMessage(input: {
       sessionKey,
       messageId: message.messageId,
       attachmentMaxBytes: describeByteSizeLimit(attachmentMaxBytes),
-      attachmentCount: (staged.message.attachments || []).length,
-      attachmentKinds: (staged.message.attachments || []).map((attachment) => attachment.kind),
-      visualAttachmentCount: countChannelConnectorVisualAttachments(staged.message),
-      stagedCount: staged.stagedCount,
-      failedCount: staged.failedCount,
-      localPaths: staged.localPaths,
-    });
-  }
+	      attachmentCount: (staged.message.attachments || []).length,
+	      attachmentKinds: (staged.message.attachments || []).map((attachment) => attachment.kind),
+	      visualAttachmentCount: countChannelConnectorVisualAttachments(staged.message),
+	      stagedCount: staged.stagedCount,
+	      failedCount: staged.failedCount,
+	      downloadUrlAttemptCount: staged.downloadUrlAttemptCount,
+	      downloadUrlResolvedCount: staged.downloadUrlResolvedCount,
+	      localPaths: staged.localPaths,
+	    });
+	  }
 
   const stopTypingPulse = startOctoTypingPulse(transport, message);
   let agent: ChannelConnectorAgentTurnResult;

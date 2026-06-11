@@ -386,6 +386,7 @@ function parseRecv(
     ack: encodeOctoRecvackPacket(messageId, messageSeq),
     message: {
       messageId,
+      messageSeq,
       fromUid,
       channelId,
       channelType,

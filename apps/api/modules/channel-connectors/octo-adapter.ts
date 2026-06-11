@@ -81,6 +81,25 @@ function extractOctoUrlFromRecord(value: unknown): string {
   return looksLikeHttpUrl(content) ? content : "";
 }
 
+function extractOctoFilePathFromRecord(value: unknown): string {
+  const record = recordFrom(value);
+  const pathKeys = [
+    "file_path",
+    "filePath",
+    "download_path",
+    "downloadPath",
+    "object_key",
+    "objectKey",
+    "storage_key",
+    "storageKey",
+  ];
+  for (const key of pathKeys) {
+    const candidate = normalizeString(record[key]);
+    if (candidate && !looksLikeHttpUrl(candidate)) return candidate;
+  }
+  return "";
+}
+
 function extractOctoUrlsFromValue(value: unknown): string[] {
   if (typeof value === "string") return looksLikeHttpUrl(value) ? [value] : [];
   if (Array.isArray(value)) {
@@ -225,11 +244,13 @@ function extractOctoRichTextAttachments(payload: ChannelConnectorOctoInboundMess
     const block = blocks[index];
     if (normalizeString(block.type).toLowerCase() !== OCTO_RICH_TEXT_BLOCK_IMAGE) continue;
     const url = extractOctoUrlFromRecord(block);
+    const filePath = extractOctoFilePathFromRecord(block);
     attachments.push({
       kind: "image",
       platform: "octo",
-      key: url || normalizeString(block.name) || `rich-text-image-${index + 1}`,
+      key: url || filePath || normalizeString(block.name) || `rich-text-image-${index + 1}`,
       url: url || null,
+      filePath: filePath || null,
       fileName: normalizeString(block.name) || null,
       size: typeof block.size === "number" ? block.size : null,
     });
@@ -261,7 +282,8 @@ export function extractOctoAttachments(message: ChannelConnectorOctoInboundMessa
   }
   const payload = message.payload || {};
   const url = extractOctoUrlFromRecord(payload);
-  const key = url || normalizeString(payload.name) || null;
+  const filePath = extractOctoFilePathFromRecord(payload);
+  const key = url || filePath || normalizeString(payload.name) || null;
   switch (payload.type) {
     case OCTO_MESSAGE_TYPE_IMAGE:
       return [{
@@ -269,6 +291,7 @@ export function extractOctoAttachments(message: ChannelConnectorOctoInboundMessa
         platform: "octo",
         key,
         url: url || null,
+        filePath: filePath || null,
         fileName: normalizeString(payload.name) || null,
         size: typeof payload.size === "number" ? payload.size : null,
       }];
@@ -278,6 +301,7 @@ export function extractOctoAttachments(message: ChannelConnectorOctoInboundMessa
         platform: "octo",
         key,
         url: url || null,
+        filePath: filePath || null,
         fileName: normalizeString(payload.name) || null,
         size: typeof payload.size === "number" ? payload.size : null,
       }];
@@ -287,6 +311,7 @@ export function extractOctoAttachments(message: ChannelConnectorOctoInboundMessa
         platform: "octo",
         key,
         url: url || null,
+        filePath: filePath || null,
         fileName: normalizeString(payload.name) || null,
         size: typeof payload.size === "number" ? payload.size : null,
       }];
@@ -296,6 +321,7 @@ export function extractOctoAttachments(message: ChannelConnectorOctoInboundMessa
         platform: "octo",
         key,
         url: url || null,
+        filePath: filePath || null,
         fileName: normalizeString(payload.name) || null,
         size: typeof payload.size === "number" ? payload.size : null,
       }];
@@ -305,6 +331,7 @@ export function extractOctoAttachments(message: ChannelConnectorOctoInboundMessa
         platform: "octo",
         key,
         url: url || null,
+        filePath: filePath || null,
         fileName: normalizeString(payload.name) || null,
         size: typeof payload.size === "number" ? payload.size : null,
       }];

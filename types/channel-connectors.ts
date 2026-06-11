@@ -85,6 +85,14 @@ export interface ChannelConnectorInboundAttachment {
   cdnUrl?: string | null;
   origin_url?: string | null;
   originUrl?: string | null;
+  file_path?: string | null;
+  filePath?: string | null;
+  download_path?: string | null;
+  downloadPath?: string | null;
+  object_key?: string | null;
+  objectKey?: string | null;
+  storage_key?: string | null;
+  storageKey?: string | null;
   src?: string | null;
   href?: string | null;
   localPath?: string | null;
@@ -109,6 +117,14 @@ export interface ChannelConnectorOctoMessagePayload {
   cdnUrl?: string;
   origin_url?: string;
   originUrl?: string;
+  file_path?: string;
+  filePath?: string;
+  download_path?: string;
+  downloadPath?: string;
+  object_key?: string;
+  objectKey?: string;
+  storage_key?: string;
+  storageKey?: string;
   src?: string;
   href?: string;
   name?: string;
@@ -133,6 +149,14 @@ export interface ChannelConnectorOctoRichTextBlock {
   cdnUrl?: string;
   origin_url?: string;
   originUrl?: string;
+  file_path?: string;
+  filePath?: string;
+  download_path?: string;
+  downloadPath?: string;
+  object_key?: string;
+  objectKey?: string;
+  storage_key?: string;
+  storageKey?: string;
   src?: string;
   href?: string;
   name?: string;
@@ -148,6 +172,7 @@ export interface ChannelConnectorOctoGroupMember {
 
 export interface ChannelConnectorOctoInboundMessage {
   messageId: string;
+  messageSeq?: number | null;
   fromUid: string;
   channelId: string;
   channelType: ChannelConnectorOctoChannelType;

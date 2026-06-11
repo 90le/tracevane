@@ -11,7 +11,7 @@
 - Gateway 对外提供 Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions；`GET /v1/models` 聚合启用 provider，并保留模型别名、模型池、能力标记、上下文窗口和输出预算；模型预算是 App Connections 与 Channel Connectors 的默认上下文来源。
 - Provider Center 已支持自定义 provider、启停、模型列表/别名/默认模型、能力勾选、批量模型导入、批量预算/能力应用、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
 - App Connections 已覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收。
-- Channel Connectors 走 Studio 原生 CLI Agent Bot 路线；Octo(dmwork) 与 Feishu 已接入 Codex/Claude Code/OpenCode runner、Studio Gateway key、IM session override、slash command、Feishu card/menu/progress、附件 staging、history、group context、reply buffer、queue、stop 和基础治理。
+- Channel Connectors 走 Studio 原生 CLI Agent Bot 路线；Octo(dmwork) 与 Feishu 已接入 Codex/Claude Code/OpenCode runner、Studio Gateway key、IM session override、slash command、Feishu card/menu/progress、附件 staging、history、group context、reply buffer、queue、stop 和基础治理；Octo daemon 已接入 Bot API 群成员、最近历史和文件下载 URL 到 Agent 入站上下文。
 - OpenCode Agent runner 走 Gateway-first：Channel 配置保存 Gateway 模型短名或模型 ID，runner 转换为 OpenCode 需要的 `studio-gateway/<model>`；每轮生成隔离 OpenCode config，session 数据写入 Channel runtime dataHome；旧全局 sessionId 在当前 dataHome 不存在时自动新建，避免 IM 切换 OpenCode 后被 stale session 卡死。
 - Channel Connectors 任意新功能必须先对照 CC Go 1:1 迁移，再做 Studio 精修；迁移清单见 `channel-connectors-cc-migration-checklist.md`。
 - Feishu 长连接专项跟踪见 `feishu-long-connection-issue-tracker.md`；Feishu 目前采用同 App 用户级全局 owner lock、官方 SDK `WSClient`/`EventDispatcher`、默认启用 SDK lower-case `pingTimeout=3`、包装 SDK `pingLoop()` 将有效心跳调度 clamp 到 `pingIntervalMs=10000`、SDK reconnecting 超 5s 回收、应用层 ping/pong runtime proof、`pongTimeoutMs=8000` 外层兜底回收、23s control-frame stale 判死、快速 ACK、messageId 去重、会话水位线防旧消息插队和 runtime 入站观测；无业务消息时不再默认 startup recycle。
@@ -22,16 +22,17 @@
 
 ## 本轮完成
 
-- 对照 Octo 插件 v1.0.15，Studio Octo identity 比较改为 account/bot ID 小写归一：binding 解析、群 @bot 判断、自身消息跳过均兼容 BotFather mixed-case bot ID；原始 ID 仍保留给平台 API。
-- 对照 Octo 插件 mention gate，普通 bot 不再因 `mention.all` / `mention.humans` 广播被触发；纯 `mention.ais=1` 或显式 @bot 仍触发。
-- Octo read receipt 按插件方式带 `message_ids`；Channel daemon 在消息通过去重、系统消息、群 directed 和治理 gate 后异步发送 read receipt，失败只写 Octo event log，不阻塞 Agent。
-- Octo v1.0.15 的 `globalThis[Symbol.for("openclaw.octo.runtime")]` 是插件 jiti/ESM 双实例修复；Studio daemon 不通过插件 runtime 双加载，当前无需迁移同款 singleton。
+- Octo WuKongIM 入站消息保留 `messageSeq`，用于 Bot API `messages/sync` 拉取当前消息前的短历史窗口。
+- Octo 群聊 Agent turn 会按 OpenClaw Octo Bot API 拉取群成员并合并进 group context；失败只写 Octo event，不阻断 Agent。
+- Octo Agent prompt 现在会拼接 Bot API 最近频道历史和本地 IM history；默认只取小窗口，可用 binding metadata 关闭或调整。
+- Octo 附件 staging 支持 `file_path/filePath/download_path/object_key/storage_key`：没有 HTTP URL 时先调用 `/v1/bot/file/download/*path` 拿重定向 URL，再走现有本地 staging。
+- 新增 daemon 级回归，覆盖 Octo group 消息、成员上下文、历史同步、文件下载 URL、本地 staging 和 Agent stdin。
 
 ## 最近验证
 
 - 通过：`npm run typecheck:api`。
 - 通过：`npm run build:api`。
-- 通过：`node --test --test-name-pattern "Octo adapter|Octo transport sends CC-compatible REST heartbeat|Octo transport sends read receipt|Octo transport smoke covers Bot API|Octo transport upload strategy|Octo transport direct uploads|Octo upload-and-send media auto routes|Octo transport preserves outbound upload file names|Octo auto upload falls back|Octo transport smoke uploads and sends media" tests/system/channel-connectors-service.test.mjs`，12/12 全部通过。
+- 通过：`node --test --test-name-pattern "Octo adapter|Octo transport sends CC-compatible REST heartbeat|Octo transport sends read receipt|Octo transport smoke covers Bot API|Octo transport upload strategy|Octo transport direct uploads|Octo upload-and-send media auto routes|Octo transport preserves outbound upload file names|Octo auto upload falls back|Octo transport smoke uploads and sends media|Octo group turns with Bot API context|registers Octo and opens WuKongIM WebSocket|serializes same-session Octo Agent turns" tests/system/channel-connectors-service.test.mjs`，15/15 全部通过。
 - 上轮通过：真实 Octo `octo-studio-cc` 只读 smoke：`list-groups` HTTP 200 / 1 个群；取第一个群执行 `group-members` HTTP 200 / 6 个成员。
 
 ## 已知边界
@@ -49,5 +50,5 @@
 
 1. 用户发送一条新的 Feishu 消息，做业务入站复验：runtime 应出现 dispatcher callback / receivedMessages，且无 reconnect/stale。
 2. 做真实 IM live smoke：先从 Feishu/Octo 真实发送 `/commands addexec slow node -e "setTimeout(()=>console.log('slow done'), 900)"` 和 `/slow`，再运行 `node scripts/smoke-channel-connectors-command-live.mjs --bindings feishu-live --recent-sessions --commands /slow --wait-command-progress --require-command-progress-terminal --require-command-progress-patch --json` 验证 Feishu daemon card patch，并运行 `node scripts/smoke-channel-connectors-command-live.mjs --bindings octo-studio-cc --recent-sessions --commands /slow --wait-command-progress --require-command-progress-terminal --require-command-progress-sent --json` 验证 Octo started-only 文本提示；再运行 `node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings feishu-live --require-ok --require-reply --require-progress --require-tool --require-feishu-card --require-feishu-progress-card-completed --require-permission-prompt --require-permission-resolved --require-feishu-permission-progress-card --require-no-final-progress-reply --json`，用三次顺序 `exec_command` 和需要审批的提示词验证思考、过程回复、工具输入、工具输出、审批卡和最终回复。
-3. 用户在 Octo 真实会话重试“让 Agent 发 `hello.txt`”，并做一轮 Octo Bot API live smoke：`sync-messages`、`file-download-url` 先只读验证。
-4. 继续把 Octo Bot API 能力接入 Channel daemon：群成员/历史上下文补全、event ack、thread target、文件下载 URL 到本地 staging、群/线程管理命令与后续菜单。
+3. 用户在 Octo 真实会话重试“让 Agent 发 `hello.txt`”，并发一条群文件/图片消息，验证 Bot API 群成员、最近历史和文件下载 URL 在真实平台中可用。
+4. 继续迁移 Octo thread target、群/线程管理命令和后续菜单；Bot API event ack 只在后续 HTTP/sync 事件链路暴露真实 event_id 时接入，WuKongIM 已有 RECVACK。
