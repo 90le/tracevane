@@ -36,6 +36,7 @@ const CHANNEL_SKILL_CONTEXT_MAX_EXCERPTS = 4;
 const CHANNEL_SKILL_CONTEXT_EXCERPT_CHARS = 1200;
 const CHANNEL_SKILL_CONTEXT_TOTAL_EXCERPT_CHARS = 3600;
 const CHANNEL_SKILL_CONTEXT_SECTION_CHARS = 360;
+const CHANNEL_SKILL_ACTION_INDEX_MAX_ITEMS = 16;
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -420,6 +421,37 @@ function selectRuntimeSkillPromptForContext(skill: ChannelConnectorSkill): strin
   return selected.map((section) => skillSectionSnippet(section)).join("\n\n");
 }
 
+function isRuntimeActionSection(section: MarkdownSection): boolean {
+  const key = sectionSearchText(section.title);
+  if (!key) return false;
+  if (/\b(configuration|permissions|required|known limitations?|note|examples?|workflow|reading workflow|token extraction|file types|token types|member types|permission levels)\b/.test(key)) {
+    return false;
+  }
+  return /\b(read|write|append|create|upload|list|get|update|delete|move|rename|add|remove|send|download|history|search|thread|group|node|folder|collaborator|table|block|file|image|message|space)\b/.test(key);
+}
+
+function buildRuntimeSkillActionIndex(skill: ChannelConnectorSkill): string | null {
+  const sections = splitMarkdownSections(skill.prompt)
+    .filter((section) => !isSetupOrBridgeSection(section.title))
+    .filter(isRuntimeActionSection);
+  const seen = new Set<string>();
+  const items: string[] = [];
+  for (const section of sections) {
+    const title = normalizeString(section.title);
+    const key = sectionSearchText(title);
+    if (!title || !key || seen.has(key)) continue;
+    seen.add(key);
+    items.push(title);
+    if (items.length >= CHANNEL_SKILL_ACTION_INDEX_MAX_ITEMS) break;
+  }
+  if (!items.length) return null;
+  return [
+    "## Runtime Action Index",
+    "Use this index to identify available channel skill operations before reading the excerpts below:",
+    items.map((item) => `- ${item}`).join("\n"),
+  ].join("\n");
+}
+
 function skillScopeLabel(skill: Pick<ChannelConnectorSkill, "scope" | "platform">): string {
   if (skill.scope === "binding") return "binding";
   if (skill.scope === "platform") return skill.platform ? `platform:${skill.platform}` : "platform";
@@ -443,6 +475,7 @@ export function buildChannelConnectorNativeSkillPrompt(skill: ChannelConnectorSk
   const description = normalizeString(skill.description)
     || `${displayName} Studio Channel Connector runtime skill`;
   const runtimePrompt = selectRuntimeSkillPromptForContext(skill);
+  const actionIndex = buildRuntimeSkillActionIndex(skill);
   return [
     "---",
     `name: ${yamlString(displayName)}`,
@@ -467,6 +500,7 @@ export function buildChannelConnectorNativeSkillPrompt(skill: ChannelConnectorSk
     "",
     `Current platform family: ${platform}.`,
     "",
+    ...(actionIndex ? [actionIndex, ""] : []),
     "## Runtime Instructions",
     "",
     runtimePrompt,
@@ -513,8 +547,12 @@ function channelSkillContextExcerpts(skills: ChannelConnectorSkill[]): string[] 
     if (remaining <= 0) break;
     const prompt = selectRuntimeSkillPromptForContext(skill);
     if (!prompt) continue;
+    const actionIndex = buildRuntimeSkillActionIndex(skill);
     const maxRunes = Math.min(CHANNEL_SKILL_CONTEXT_EXCERPT_CHARS, remaining);
-    const excerpt = truncateRunes(prompt, maxRunes);
+    const excerpt = truncateRunes([
+      actionIndex,
+      prompt,
+    ].filter(Boolean).join("\n\n"), maxRunes);
     remaining -= Array.from(excerpt).length;
     excerpts.push([
       `### /${skill.name} [${skillScopeLabel(skill)}]`,

@@ -13,7 +13,7 @@
 - App Connections 已覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收。
 - Channel Connectors 走 Studio 原生 CLI Agent Bot 路线；Octo(dmwork) 与 Feishu 已接入 Codex/Claude Code/OpenCode runner、Studio Gateway key、IM session override、slash command、Feishu card/menu/progress、附件 staging、history、group context、reply buffer、queue、stop 和基础治理；Octo daemon 已接入 Bot API 群成员、最近 timeline 历史、文件下载 URL、GROUP.md/THREAD.md、voice context、平台 skill 自动上下文、`/octo` 群/成员/Space/thread 管理命令和出站消息 manifest。
 - Channel Connectors API/前端只暴露当前已有 runner 的 live Agent：Codex、Claude Code、OpenCode；Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP 保留为迁移路线图，未实现前不进入可选 `supportedAgents`。
-- 自动 channel skill 支持分两层：普通 IM turn 会给 Codex/Claude Code/OpenCode 注入 Studio runtime skill 摘要；同时 Codex `CODEX_HOME/skills` 与 Claude `CLAUDE_CONFIG_DIR/skills` 会收到当前渠道 platform skill 的 Studio runtime 投影，过滤安装/凭证/setup 章节，供原生 skills 机制发现。OpenCode 当前用 prompt/manifest 映射。
+- 自动 channel skill 支持分两层：普通 IM turn 会给 Codex/Claude Code/OpenCode 注入 Studio runtime skill 摘要和 Runtime Action Index；同时 Codex `CODEX_HOME/skills` 与 Claude `CLAUDE_CONFIG_DIR/skills` 会收到当前渠道 platform skill 的 Studio runtime 投影，过滤安装/凭证/setup 章节，供原生 skills 机制发现。OpenCode 当前用 prompt/manifest 映射。
 - OpenCode Agent runner 走 Gateway-first：Channel 配置保存 Gateway 模型短名或模型 ID，runner 转换为 OpenCode 需要的 `studio-gateway/<model>`；每轮生成隔离 OpenCode config，session 数据写入 Channel runtime dataHome；旧全局 sessionId 在当前 dataHome 不存在时自动新建，避免 IM 切换 OpenCode 后被 stale session 卡死。
 - Channel Connectors 任意新功能必须先对照 CC Go 1:1 迁移，再做 Studio 精修；迁移清单见 `channel-connectors-cc-migration-checklist.md`。
 - Feishu 长连接专项跟踪见 `feishu-long-connection-issue-tracker.md`；Feishu 目前采用同 App 用户级全局 owner lock、官方 SDK `WSClient`/`EventDispatcher`、默认启用 SDK lower-case `pingTimeout=3`、包装 SDK `pingLoop()` 将有效心跳调度 clamp 到 `pingIntervalMs=10000`、SDK reconnecting 超 5s 回收、应用层 ping/pong runtime proof、`pongTimeoutMs=8000` 外层兜底回收、23s control-frame stale 判死、快速 ACK、messageId 去重、会话水位线防旧消息插队和 runtime 入站观测；无业务消息时不再默认 startup recycle。
@@ -38,6 +38,7 @@
 - Feishu transport-smoke 支持 `receiveId/receiveIdType`，可直接验证 `chat_id/open_id/user_id` 目标；真实 open_id 文本与 Markdown(post) 发送已通过，user_id 真实目标仍待平台可用 ID 验收。
 - supportedAgents 收敛为 runtime subset：Channel 配置保存、status 和 native config 只暴露 Codex/Claude Code/OpenCode；未实现 runner 的 roadmap Agent 会在保存时拒绝，避免用户选择后运行时才 `unsupported-agent`。
 - Codex/Claude 原生 skill 投影已接入：当前 binding/platform skills 会写入隔离 Agent 配置目录的 `skills/<skill>/SKILL.md`，内容为 Studio runtime 版说明，不包含 OpenClaw 插件安装、注册、凭证配置等 setup 段落。
+- Platform skill 自动映射补 Runtime Action Index：从 Octo/Feishu skill 标题抽取最多 16 个运行时动作，放入 IM prompt 与 Codex/Claude 原生 skill 投影；真实 OpenClaw Feishu 内置 `feishu-doc/drive/perm/wiki` 可自动发现，包含 doc 上传附件动作且不注入 app secret/setup 段。
 - Octo bot 协作出站容错：`studio-channel-messages` 中任何把 `<*_bot>` 当 channelId 的消息，在群/thread 来源内都会自动重写为当前群/thread @，并保留可见 @ 与 native mention payload，避免把 bot id 当群号请求 Octo API 造成 400。
 - Octo 群历史已按 CC Go 分段：daemon 记录每个 Octo 群/thread session 的 lastAnsweredSeq，重启时从 event log 尾部恢复，冷启动可从 Bot API self-bot 历史推断；Agent prompt 把历史拆成已答上下文和上次回复后新增消息，状态接口暴露最近 cutoff。
 
@@ -45,6 +46,8 @@
 
 - 通过：`npm run typecheck:api`。
 - 通过：`npm run build:api`。
+- 通过：`node --test --test-name-pattern "native Channel Connectors agent runner builds gateway-backed Codex turns|native Channel Connectors IM commands switch agent, model, and permission per session" tests/system/channel-connectors-service.test.mjs`，覆盖 Runtime Action Index 注入 Codex 原生 skill 投影、IM channel skill context 和 Feishu doc 动作索引。
+- 通过：本机只读 smoke 直接加载 OpenClaw Feishu 内置 skills，发现 `feishu-doc`、`feishu-drive`、`feishu-perm`、`feishu-wiki`，确认 action index、doc upload 动作存在且不泄露 `FEISHU_APP_SECRET` setup。
 - 通过：`node --test --test-name-pattern "native Channel Connectors daemon enriches Octo group turns with Bot API context and file download URLs|native Channel Connectors conversation history keeps twenty prompt entries within budget" tests/system/channel-connectors-service.test.mjs`，覆盖本地 IM history 20 条预算、Octo Bot API 20 条协作 history、超长消息截断、预算后 `includedCount/messageIds` 和回复后 cutoff。
 - 通过：`node --test --test-name-pattern "native Channel Connectors IM commands switch agent, model, and permission per session" tests/system/channel-connectors-service.test.mjs`，覆盖 Octo/Feishu platform skill 运行时章节抽取与 setup/bridge/config 章节过滤。
 - 通过：`node --test --test-name-pattern "native Channel Connectors agent runner builds gateway-backed Codex turns" tests/system/channel-connectors-service.test.mjs`，覆盖 channel skill context 注入 Codex、Claude Code、OpenCode 三个当前 runner。

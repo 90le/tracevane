@@ -3228,6 +3228,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(fs.existsSync(codexNativeSkillPath), true);
   const codexNativeSkill = fs.readFileSync(codexNativeSkillPath, "utf8");
   assert.match(codexNativeSkill, /Studio Channel Connector runtime projection/);
+  assert.match(codexNativeSkill, /Runtime Action Index/);
+  assert.match(codexNativeSkill, /- Step 3: Send Messages/);
   assert.match(codexNativeSkill, /Step 3: Send Messages/);
   assert.match(codexNativeSkill, /studio-channel-messages/);
   assert.doesNotMatch(codexNativeSkill, /openclaw plugins install/);
@@ -4936,6 +4938,16 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
       "## Token Extraction",
       "Extract docx tokens from Feishu URLs.",
       "## Actions",
+      "### Read Document",
+      "Read title and plain text content.",
+      "### Create Document",
+      "Create a new cloud document for the requester.",
+      "### Create Table With Values",
+      "Create a Docx table and fill cell values in one operation.",
+      "### Upload Image to Docx",
+      "Upload image from URL or local file.",
+      "### Upload File Attachment to Docx",
+      "Upload binary files as document attachments.",
       "Read Document, Append Content, Create Document, Upload Image to Docx, Upload File Attachment to Docx.",
       "## Permissions",
       "Use collaborator APIs only when the user asks for permission changes.",
@@ -5500,6 +5512,11 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(feishuSkillContext, /### \/feishu-card \[binding\]/);
   assert.match(feishuSkillContext, /Use Studio Feishu channel transport for card and message work/);
   assert.match(feishuSkillContext, /### \/feishu-doc-api \[binding\]/);
+  assert.match(feishuSkillContext, /Runtime Action Index/);
+  assert.match(feishuSkillContext, /- Read Document/);
+  assert.match(feishuSkillContext, /- Create Table With Values/);
+  assert.match(feishuSkillContext, /- Upload Image to Docx/);
+  assert.match(feishuSkillContext, /- Upload File Attachment to Docx/);
   assert.match(feishuSkillContext, /## Actions/);
   assert.match(feishuSkillContext, /Upload File Attachment to Docx/);
   assert.match(feishuSkillContext, /Auto-activation/);
