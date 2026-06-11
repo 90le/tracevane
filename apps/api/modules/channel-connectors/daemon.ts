@@ -145,6 +145,7 @@ import {
   addFeishuMessageReaction,
   downloadFeishuMessageResourceToFile,
   executeFeishuChannelAction,
+  feishuChannelActionIsReadOnly,
   feishuTransportFromMetadata,
   getFeishuBotInfo,
   listFeishuChatMembers,
@@ -10032,8 +10033,73 @@ async function dispatchFeishuParsedEvent(input: {
   let feishuActionSucceededCount = 0;
   let feishuActionErrorCount = 0;
   if (agent.ok === true && outboundReply.feishuActions.length > 0) {
-    for (const action of outboundReply.feishuActions) {
-      const result = await executeFeishuChannelAction(transport, action, feishuTokenCachePath(config));
+    for (const [index, action] of outboundReply.feishuActions.entries()) {
+      const readOnlyAction = feishuChannelActionIsReadOnly(action.tool, action.action);
+      let allowMutation = false;
+      if (!readOnlyAction) {
+        const actionRunId = `${activeRunId}:feishu-action:${index}`;
+        const permissionResolver = createPermissionResolver({
+          registry: channelPendingPermissions,
+          runId: actionRunId,
+          bindingId: binding.id,
+          sessionKey,
+          messageId,
+          agent: turnProject.agent,
+          model: turnProject.model,
+          suppressReplyOnResolve: feishuCardsEnabled(binding) && Boolean(parsed.channelId),
+          onStateChange: (change) => {
+            if (isAskUserQuestionRequest(change.request)) return;
+            if (!feishuCardsEnabled(binding) || !parsed.channelId) return;
+            upsertFeishuPermissionProgressEntry(progressCardState, change);
+            queueFeishuProgressFlush(true, `feishu-action-permission-${change.status}`);
+          },
+          onPrompt: async (prompt, request) => {
+            await sendFeishuPermissionPrompt({
+              config,
+              transport,
+              binding,
+              chatId: parsed.channelId || sessionKey,
+              request,
+              fallbackText: prompt,
+            });
+          },
+        });
+        const decision = await permissionResolver({
+          requestId: `feishu-action-${index + 1}`,
+          subtype: "feishu_channel_action",
+          toolName: "FeishuChannelAction",
+          input: {
+            tool: action.tool,
+            action: action.action,
+            params: action.params,
+          },
+        }).finally(() => {
+          channelPermissionApproveAllRunIds.delete(actionRunId);
+        });
+        allowMutation = decision.behavior === "allow";
+        if (!allowMutation) {
+          feishuActionResults.push({
+            attempted: true,
+            ok: false,
+            tool: action.tool,
+            action: normalizeString(action.action).toLowerCase(),
+            readOnly: false,
+            apiUrl: transport.apiUrl,
+            statusCode: null,
+            requestCount: 0,
+            tokenCache: null,
+            data: null,
+            error: decision.behavior === "deny" && decision.message
+              ? decision.message
+              : "User denied this Feishu channel action.",
+          });
+          feishuActionErrorCount += 1;
+          continue;
+        }
+      }
+      const result = await executeFeishuChannelAction(transport, action, feishuTokenCachePath(config), {
+        allowMutation,
+      });
       feishuActionResults.push(result);
       feishuActionRequestCount += result.requestCount;
       if (result.ok) feishuActionSucceededCount += 1;

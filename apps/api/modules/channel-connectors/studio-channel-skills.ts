@@ -151,7 +151,7 @@ description: Feishu document action catalog for Studio-managed channel skills. A
 
 # Feishu Document Runtime Skill
 
-Studio manages this skill as a channel capability contract. Use \`studio-feishu-actions\` for Feishu document read-only actions. Studio executes the action with the active Feishu binding and returns structured results. Mutation actions are not enabled until Studio adds approval-backed executors; do not fabricate remote write success.
+Studio manages this skill as a channel capability contract. Use \`studio-feishu-actions\` for Feishu document actions. Studio executes read-only actions immediately and asks for Studio IM approval before enabled mutation actions. Do not fabricate remote write success.
 
 ## Token Extraction
 
@@ -159,24 +159,27 @@ From \`https://xxx.feishu.cn/docx/ABC123def\`, use doc token \`ABC123def\`.
 
 ## Actions
 
+Supported now without approval: \`read\`, \`list_blocks\`, \`get_block\`.
+
+Supported now after Studio IM approval: \`create\`.
+
 Use this manifest shape:
 
 \`\`\`studio-feishu-actions
 [
   {"tool":"feishu_doc","action":"read","doc_token":"ABC123def"},
   {"tool":"feishu_doc","action":"list_blocks","doc_token":"ABC123def"},
-  {"tool":"feishu_doc","action":"get_block","doc_token":"ABC123def","block_id":"doxcnXXX"}
+  {"tool":"feishu_doc","action":"get_block","doc_token":"ABC123def","block_id":"doxcnXXX"},
+  {"tool":"feishu_doc","action":"create","title":"New Document","folder_token":"fldcnXXX"}
 ]
 \`\`\`
 
-Supported now: \`read\`, \`list_blocks\`, \`get_block\`. The following actions mirror the OpenClaw Feishu extension contract, but write/mutation actions are blocked until approval-backed execution is enabled:
-
-Planned native actions mirror the OpenClaw Feishu extension contract:
+Full action catalog mirrors the OpenClaw Feishu extension contract. Content mutation actions still need the full OpenClaw docx markdown/block conversion pipeline before Studio enables them:
 
 - Read Document: \`{"action":"read","doc_token":"ABC123def"}\`
 - Write Document: \`{"action":"write","doc_token":"ABC123def","content":"# Title\\n\\nMarkdown"}\`
 - Append Content: \`{"action":"append","doc_token":"ABC123def","content":"Additional content"}\`
-- Create Document: \`{"action":"create","title":"New Document","owner_open_id":"ou_xxx"}\`
+- Create Document: \`{"action":"create","title":"New Document","folder_token":"fldcnXXX"}\`
 - List Blocks: \`{"action":"list_blocks","doc_token":"ABC123def"}\`
 - Get Single Block: \`{"action":"get_block","doc_token":"ABC123def","block_id":"doxcnXXX"}\`
 - Update Block Text: \`{"action":"update_block","doc_token":"ABC123def","block_id":"doxcnXXX","content":"New text"}\`
@@ -189,7 +192,7 @@ Planned native actions mirror the OpenClaw Feishu extension contract:
 
 ## Studio Fallback
 
-When mutation is needed before Studio enables it, create requested content locally and send it with \`studio-channel-files\`, or send a Feishu Markdown message with \`studio-channel-messages\` summarizing the document changes the user should apply.`,
+When unsupported content mutation is needed before Studio enables it, create requested content locally and send it with \`studio-channel-files\`, or send a Feishu Markdown message with \`studio-channel-messages\` summarizing the document changes the user should apply.`,
   },
   {
     platform: "feishu",
@@ -201,7 +204,7 @@ description: Feishu Drive action catalog for Studio-managed channel skills. Acti
 
 # Feishu Drive Runtime Skill
 
-Studio manages this skill as a channel capability contract. Use \`studio-feishu-actions\` for Feishu Drive read-only actions. Studio executes the action with the active Feishu binding and returns structured results. Mutation actions are not enabled until Studio adds approval-backed executors; do not fabricate remote Drive changes.
+Studio manages this skill as a channel capability contract. Use \`studio-feishu-actions\` for Feishu Drive actions. Studio executes read-only actions immediately and asks for Studio IM approval before enabled mutation actions. Do not fabricate remote Drive changes.
 
 ## Token Extraction
 
@@ -209,18 +212,23 @@ From \`https://xxx.feishu.cn/drive/folder/ABC123\`, use folder token \`ABC123\`.
 
 ## Actions
 
+Supported now without approval: \`list\`, \`info\`.
+
+Supported now after Studio IM approval: \`create_folder\`, \`move\`, \`delete\`.
+
 Use this manifest shape:
 
 \`\`\`studio-feishu-actions
 [
   {"tool":"feishu_drive","action":"list","folder_token":"fldcnXXX"},
-  {"tool":"feishu_drive","action":"info","file_token":"ABC123","folder_token":"fldcnXXX"}
+  {"tool":"feishu_drive","action":"info","file_token":"ABC123","folder_token":"fldcnXXX"},
+  {"tool":"feishu_drive","action":"create_folder","name":"New Folder","folder_token":"fldcnXXX"},
+  {"tool":"feishu_drive","action":"move","file_token":"ABC123","type":"docx","folder_token":"fldcnXXX"},
+  {"tool":"feishu_drive","action":"delete","file_token":"ABC123","type":"docx"}
 ]
 \`\`\`
 
-Supported now: \`list\`, \`info\`. The following actions mirror the OpenClaw Feishu extension contract, but create/move/delete actions are blocked until approval-backed execution is enabled:
-
-Planned native actions mirror the OpenClaw Feishu extension contract:
+Full action catalog mirrors the OpenClaw Feishu extension contract:
 
 - List Folder Contents: \`{"action":"list","folder_token":"fldcnXXX"}\`
 - Get File Info: \`{"action":"info","file_token":"ABC123","type":"docx"}\`
@@ -234,7 +242,7 @@ Supported catalog types: \`doc\`, \`docx\`, \`sheet\`, \`bitable\`, \`folder\`, 
 
 ## Studio Fallback
 
-For now, create or collect the requested local files and send them through \`studio-channel-files\`. Do not claim a Feishu Drive move/create/delete succeeded unless Studio reports an actual tool result.`,
+For unsupported Drive actions, create or collect the requested local files and send them through \`studio-channel-files\`. Do not claim a Feishu Drive move/create/delete succeeded unless Studio reports an actual tool result.`,
   },
   {
     platform: "feishu",
@@ -246,21 +254,25 @@ description: Feishu permission action catalog for Studio-managed channel skills.
 
 # Feishu Permission Runtime Skill
 
-Studio manages this skill as a channel capability contract. Use \`studio-feishu-actions\` for Feishu permission read-only collaborator listing. Permission mutation is sensitive and blocked until Studio adds approval-backed executors. Do not fabricate permission changes.
+Studio manages this skill as a channel capability contract. Use \`studio-feishu-actions\` for Feishu permission actions. Studio executes collaborator listing immediately and asks for Studio IM approval before add/remove. Do not fabricate permission changes.
 
 ## Actions
+
+Supported now without approval: \`list\`.
+
+Supported now after Studio IM approval: \`add\`, \`remove\`.
 
 Use this manifest shape:
 
 \`\`\`studio-feishu-actions
 [
-  {"tool":"feishu_perm","action":"list","token":"ABC123","type":"docx"}
+  {"tool":"feishu_perm","action":"list","token":"ABC123","type":"docx"},
+  {"tool":"feishu_perm","action":"add","token":"ABC123","type":"docx","member_type":"email","member_id":"user@example.com","perm":"edit"},
+  {"tool":"feishu_perm","action":"remove","token":"ABC123","type":"docx","member_type":"email","member_id":"user@example.com"}
 ]
 \`\`\`
 
-Supported now: \`list\`. The following actions mirror the OpenClaw Feishu extension contract, but add/remove are blocked until approval-backed execution is enabled:
-
-Planned native actions mirror the OpenClaw Feishu extension contract:
+Full action catalog mirrors the OpenClaw Feishu extension contract:
 
 - List Collaborators: \`{"action":"list","token":"ABC123","type":"docx"}\`
 - Add Collaborator: \`{"action":"add","token":"ABC123","type":"docx","member_type":"email","member_id":"user@example.com","perm":"edit"}\`
@@ -292,7 +304,7 @@ description: Feishu Wiki action catalog for Studio-managed channel skills. Activ
 
 # Feishu Wiki Runtime Skill
 
-Studio manages this skill as a channel capability contract. Use \`studio-feishu-actions\` for Feishu Wiki read-only navigation. Studio executes the action with the active Feishu binding and returns structured results. Create/move/rename are blocked until Studio adds approval-backed executors.
+Studio manages this skill as a channel capability contract. Use \`studio-feishu-actions\` for Feishu Wiki navigation and node mutations. Studio executes read-only actions immediately and asks for Studio IM approval before create/move/rename.
 
 ## Token Extraction
 
@@ -300,19 +312,24 @@ From \`https://xxx.feishu.cn/wiki/ABC123def\`, use wiki token \`ABC123def\`. Tre
 
 ## Actions
 
+Supported now without approval: \`spaces\`, \`nodes\`, \`get\`, and safe \`search\` fallback.
+
+Supported now after Studio IM approval: \`create\`, \`move\`, \`rename\`.
+
 Use this manifest shape:
 
 \`\`\`studio-feishu-actions
 [
   {"tool":"feishu_wiki","action":"spaces"},
   {"tool":"feishu_wiki","action":"nodes","space_id":"7xxx"},
-  {"tool":"feishu_wiki","action":"get","token":"ABC123def"}
+  {"tool":"feishu_wiki","action":"get","token":"ABC123def"},
+  {"tool":"feishu_wiki","action":"create","space_id":"7xxx","title":"New Page","obj_type":"docx"},
+  {"tool":"feishu_wiki","action":"move","space_id":"7xxx","node_token":"wikcnXXX","target_parent_token":"wikcnYYY"},
+  {"tool":"feishu_wiki","action":"rename","space_id":"7xxx","node_token":"wikcnXXX","title":"New Title"}
 ]
 \`\`\`
 
-Supported now: \`spaces\`, \`nodes\`, \`get\`, and safe \`search\` fallback. The following actions mirror the OpenClaw Feishu extension contract, but create/move/rename are blocked until approval-backed execution is enabled:
-
-Planned native actions mirror the OpenClaw Feishu extension contract:
+Full action catalog mirrors the OpenClaw Feishu extension contract:
 
 - List Knowledge Spaces: \`{"action":"spaces"}\`
 - List Nodes: \`{"action":"nodes","space_id":"7xxx","parent_node_token":"wikcnXXX"}\`
@@ -323,7 +340,7 @@ Planned native actions mirror the OpenClaw Feishu extension contract:
 
 ## Wiki-Doc Workflow
 
-Workflow: get wiki node, then use \`feishu_doc\` read/list_blocks/get_block on the returned \`obj_token\`. For wiki edits before Studio enables mutation, provide a local document or a Feishu Markdown message rather than claiming remote wiki edits were applied.`,
+Workflow: get wiki node, then use \`feishu_doc\` read/list_blocks/get_block on the returned \`obj_token\`. For unsupported wiki-doc content edits, provide a local document or a Feishu Markdown message rather than claiming remote wiki edits were applied.`,
   },
 ];
 

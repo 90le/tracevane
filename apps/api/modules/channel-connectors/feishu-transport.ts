@@ -175,6 +175,10 @@ export interface ChannelConnectorFeishuActionResult {
   error: string | null;
 }
 
+export interface ChannelConnectorFeishuActionOptions {
+  allowMutation?: boolean;
+}
+
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -1216,7 +1220,7 @@ function optionalParamString(params: Record<string, unknown>, keys: string[]): s
   return paramString(params, keys) || undefined;
 }
 
-function feishuActionIsReadOnly(tool: ChannelConnectorFeishuActionTool, action: string): boolean {
+export function feishuChannelActionIsReadOnly(tool: ChannelConnectorFeishuActionTool, action: string): boolean {
   const normalized = normalizedAction(action);
   if (tool === "feishu_doc") return ["read", "list_blocks", "get_block"].includes(normalized);
   if (tool === "feishu_drive") return ["list", "info"].includes(normalized);
@@ -1225,7 +1229,7 @@ function feishuActionIsReadOnly(tool: ChannelConnectorFeishuActionTool, action: 
   return false;
 }
 
-function feishuActionUnsupportedMutation(
+function feishuActionMutationRequiresApproval(
   config: ChannelConnectorFeishuTransportConfig,
   request: ChannelConnectorFeishuActionRequest,
 ): ChannelConnectorFeishuActionResult {
@@ -1235,7 +1239,7 @@ function feishuActionUnsupportedMutation(
     readOnly: false,
     config,
     ok: false,
-    error: `${request.tool}.${request.action} is a Feishu mutation action. Studio has not enabled native mutation execution for this action yet; use studio-channel-files or studio-channel-messages as a safe fallback, or wait for the explicit approval-backed executor.`,
+    error: `${request.tool}.${request.action} is a Feishu mutation action and requires Studio IM approval before execution.`,
   });
 }
 
@@ -1385,14 +1389,191 @@ async function executeFeishuReadOnlyAction(
   throw new Error(`Unsupported Feishu action: ${request.tool}.${request.action}`);
 }
 
+async function executeFeishuMutationAction(
+  config: ChannelConnectorFeishuTransportConfig,
+  request: ChannelConnectorFeishuActionRequest,
+  token: string,
+): Promise<{ data: unknown; statusCode: number | null; requestCount: number }> {
+  let requestCount = 0;
+  let statusCode: number | null = null;
+  const params = request.params || {};
+  const action = normalizedAction(request.action);
+  const call = async (method: "GET" | "POST" | "PATCH" | "DELETE", pathValue: string, payload?: unknown) => {
+    const response = await feishuJsonRequest(config, {
+      method,
+      path: pathValue,
+      payload,
+      token,
+    });
+    requestCount += response.requestCount;
+    statusCode = response.statusCode;
+    return response.body;
+  };
+
+  if (request.tool === "feishu_doc") {
+    if (action === "create") {
+      const title = requireParamString(params, ["title"], "title");
+      const folderToken = optionalParamString(params, ["folder_token", "folderToken"]);
+      const body = await call("POST", "/open-apis/docx/v1/documents", {
+        title,
+        ...(folderToken ? { folder_token: folderToken } : {}),
+      });
+      const document = recordFrom(recordFrom(body.data).document);
+      const docToken = normalizeString(document.document_id) || normalizeString(document.token);
+      return {
+        data: {
+          document_id: docToken || null,
+          title: normalizeString(document.title) || title,
+          url: docToken ? `https://feishu.cn/docx/${docToken}` : null,
+          document,
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+  }
+
+  if (request.tool === "feishu_drive") {
+    if (action === "create_folder") {
+      const name = requireParamString(params, ["name"], "name");
+      const folderToken = optionalParamString(params, ["folder_token", "folderToken"]);
+      const body = await call("POST", "/open-apis/drive/v1/files/create_folder", {
+        name,
+        folder_token: folderToken && folderToken !== "0" ? folderToken : "0",
+      });
+      const data = recordFrom(body.data);
+      return {
+        data: {
+          token: normalizeString(data.token) || null,
+          url: normalizeString(data.url) || null,
+          raw: data,
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+    if (action === "move") {
+      const fileToken = requireParamString(params, ["file_token", "fileToken", "token"], "file_token");
+      const type = requireParamString(params, ["type", "file_type", "fileType"], "type");
+      const folderToken = requireParamString(params, ["folder_token", "folderToken"], "folder_token");
+      const body = await call("POST", `/open-apis/drive/v1/files/${encodeURIComponent(fileToken)}/move`, {
+        type,
+        folder_token: folderToken,
+      });
+      const data = recordFrom(body.data);
+      return {
+        data: {
+          success: true,
+          task_id: normalizeString(data.task_id) || null,
+          raw: data,
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+    if (action === "delete") {
+      const fileToken = requireParamString(params, ["file_token", "fileToken", "token"], "file_token");
+      const type = requireParamString(params, ["type", "file_type", "fileType"], "type");
+      const search = new URLSearchParams({ type });
+      const body = await call("DELETE", `/open-apis/drive/v1/files/${encodeURIComponent(fileToken)}?${search.toString()}`);
+      return { data: { success: true, raw: recordFrom(body.data) }, statusCode, requestCount };
+    }
+  }
+
+  if (request.tool === "feishu_perm") {
+    if (action === "add") {
+      const tokenValue = requireParamString(params, ["token", "file_token", "doc_token"], "token");
+      const type = paramString(params, ["type", "file_type", "fileType"]) || "docx";
+      const memberType = requireParamString(params, ["member_type", "memberType"], "member_type");
+      const memberId = requireParamString(params, ["member_id", "memberId"], "member_id");
+      const perm = requireParamString(params, ["perm", "permission"], "perm");
+      const search = new URLSearchParams({ type, need_notification: "false" });
+      const body = await call("POST", `/open-apis/drive/v1/permissions/${encodeURIComponent(tokenValue)}/members?${search.toString()}`, {
+        member_type: memberType,
+        member_id: memberId,
+        perm,
+      });
+      return { data: { success: true, member: recordFrom(recordFrom(body.data).member) }, statusCode, requestCount };
+    }
+    if (action === "remove") {
+      const tokenValue = requireParamString(params, ["token", "file_token", "doc_token"], "token");
+      const type = paramString(params, ["type", "file_type", "fileType"]) || "docx";
+      const memberType = requireParamString(params, ["member_type", "memberType"], "member_type");
+      const memberId = requireParamString(params, ["member_id", "memberId"], "member_id");
+      const search = new URLSearchParams({ type, member_type: memberType });
+      await call("DELETE", `/open-apis/drive/v1/permissions/${encodeURIComponent(tokenValue)}/members/${encodeURIComponent(memberId)}?${search.toString()}`);
+      return { data: { success: true }, statusCode, requestCount };
+    }
+  }
+
+  if (request.tool === "feishu_wiki") {
+    if (action === "create") {
+      const spaceId = requireParamString(params, ["space_id", "spaceId"], "space_id");
+      const title = requireParamString(params, ["title"], "title");
+      const objType = paramString(params, ["obj_type", "objType"]) || "docx";
+      const parentNodeToken = optionalParamString(params, ["parent_node_token", "parentNodeToken"]);
+      const body = await call("POST", `/open-apis/wiki/v2/spaces/${encodeURIComponent(spaceId)}/nodes`, {
+        obj_type: objType,
+        node_type: "origin",
+        title,
+        ...(parentNodeToken ? { parent_node_token: parentNodeToken } : {}),
+      });
+      const node = recordFrom(recordFrom(body.data).node);
+      return {
+        data: {
+          node_token: normalizeString(node.node_token) || null,
+          obj_token: normalizeString(node.obj_token) || null,
+          obj_type: normalizeString(node.obj_type) || objType,
+          title: normalizeString(node.title) || title,
+          raw: node,
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+    if (action === "move") {
+      const spaceId = requireParamString(params, ["space_id", "spaceId"], "space_id");
+      const nodeToken = requireParamString(params, ["node_token", "nodeToken"], "node_token");
+      const targetSpaceId = optionalParamString(params, ["target_space_id", "targetSpaceId"]) || spaceId;
+      const targetParentToken = optionalParamString(params, ["target_parent_token", "targetParentToken"]);
+      const body = await call("POST", `/open-apis/wiki/v2/spaces/${encodeURIComponent(spaceId)}/nodes/${encodeURIComponent(nodeToken)}/move`, {
+        target_space_id: targetSpaceId,
+        ...(targetParentToken ? { target_parent_token: targetParentToken } : {}),
+      });
+      const node = recordFrom(recordFrom(body.data).node);
+      return {
+        data: {
+          success: true,
+          node_token: normalizeString(node.node_token) || nodeToken,
+          raw: node,
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+    if (action === "rename") {
+      const spaceId = requireParamString(params, ["space_id", "spaceId"], "space_id");
+      const nodeToken = requireParamString(params, ["node_token", "nodeToken"], "node_token");
+      const title = requireParamString(params, ["title"], "title");
+      const body = await call("PATCH", `/open-apis/wiki/v2/spaces/${encodeURIComponent(spaceId)}/nodes/${encodeURIComponent(nodeToken)}/title`, {
+        title,
+      });
+      return { data: { success: true, node_token: nodeToken, title, raw: recordFrom(body.data) }, statusCode, requestCount };
+    }
+  }
+
+  throw new Error(`Unsupported Feishu mutation action: ${request.tool}.${request.action}`);
+}
+
 export async function executeFeishuChannelAction(
   config: ChannelConnectorFeishuTransportConfig,
   request: ChannelConnectorFeishuActionRequest,
   cachePath?: string | null,
+  options: ChannelConnectorFeishuActionOptions = {},
 ): Promise<ChannelConnectorFeishuActionResult> {
   const action = normalizedAction(request.action);
-  const readOnly = feishuActionIsReadOnly(request.tool, action);
-  if (!readOnly) return feishuActionUnsupportedMutation(config, request);
+  const readOnly = feishuChannelActionIsReadOnly(request.tool, action);
+  if (!readOnly && options.allowMutation !== true) return feishuActionMutationRequiresApproval(config, request);
 
   let requestCount = 0;
   let tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"] = cachePath ? "miss" : "disabled";
@@ -1400,7 +1581,9 @@ export async function executeFeishuChannelAction(
     const token = await getFeishuTenantToken(config, cachePath);
     requestCount += token.requestCount;
     tokenCache = token.tokenCache;
-    const executed = await executeFeishuReadOnlyAction(config, { ...request, action }, token.token);
+    const executed = readOnly
+      ? await executeFeishuReadOnlyAction(config, { ...request, action }, token.token)
+      : await executeFeishuMutationAction(config, { ...request, action }, token.token);
     requestCount += executed.requestCount;
     return actionResult({
       tool: request.tool,

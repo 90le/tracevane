@@ -1343,7 +1343,7 @@ test("native Channel Connectors extracts Feishu action manifests", () => {
   assert.match(invalid.errors.join("\n"), /JSON/);
 });
 
-test("native Channel Connectors executes Feishu read-only actions and blocks mutations", async () => {
+test("native Channel Connectors executes Feishu read-only actions and approval-gated mutations", async () => {
   const originalFetch = globalThis.fetch;
   const requests = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -1367,6 +1367,22 @@ test("native Channel Connectors executes Feishu read-only actions and blocks mut
           items: [
             { space_id: "7370955161512345678", name: "Studio KB", description: "docs" },
           ],
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).endsWith("/open-apis/drive/v1/permissions/doc_a/members?type=docx&need_notification=false")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: {
+          member: { member_type: "email", member_id: "a@example.com", perm: "edit" },
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).endsWith("/open-apis/wiki/v2/spaces/space_1/nodes")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: {
+          node: { node_token: "wikcn_node", obj_token: "docx_node", obj_type: "docx", title: "New Page" },
         },
       }), { status: 200, headers: { "content-type": "application/json" } });
     }
@@ -1396,15 +1412,49 @@ test("native Channel Connectors executes Feishu read-only actions and blocks mut
     assert.equal(requests[1].authorization, "Bearer tenant-token");
 
     const requestCountBeforeMutation = requests.length;
-    const mutation = await executeFeishuChannelAction(config, {
+    const mutationWithoutApproval = await executeFeishuChannelAction(config, {
       tool: "feishu_perm",
       action: "add",
       params: { token: "doc_a", type: "docx", member_type: "email", member_id: "a@example.com", perm: "edit" },
     }, null);
-    assert.equal(mutation.ok, false);
-    assert.equal(mutation.readOnly, false);
-    assert.match(mutation.error || "", /not enabled/);
+    assert.equal(mutationWithoutApproval.ok, false);
+    assert.equal(mutationWithoutApproval.readOnly, false);
+    assert.match(mutationWithoutApproval.error || "", /requires Studio IM approval/);
     assert.equal(requests.length, requestCountBeforeMutation);
+
+    const mutation = await executeFeishuChannelAction(config, {
+      tool: "feishu_perm",
+      action: "add",
+      params: { token: "doc_a", type: "docx", member_type: "email", member_id: "a@example.com", perm: "edit" },
+    }, null, { allowMutation: true });
+    assert.equal(mutation.ok, true);
+    assert.equal(mutation.readOnly, false);
+    assert.deepEqual(mutation.data, {
+      success: true,
+      member: { member_type: "email", member_id: "a@example.com", perm: "edit" },
+    });
+    const permRequest = requests.at(-1);
+    assert.match(permRequest.url, /\/open-apis\/drive\/v1\/permissions\/doc_a\/members\?type=docx&need_notification=false$/);
+    assert.equal(permRequest.method, "POST");
+    assert.deepEqual(JSON.parse(permRequest.body), {
+      member_type: "email",
+      member_id: "a@example.com",
+      perm: "edit",
+    });
+
+    const wikiCreate = await executeFeishuChannelAction(config, {
+      tool: "feishu_wiki",
+      action: "create",
+      params: { space_id: "space_1", title: "New Page", obj_type: "docx" },
+    }, null, { allowMutation: true });
+    assert.equal(wikiCreate.ok, true);
+    assert.deepEqual(wikiCreate.data, {
+      node_token: "wikcn_node",
+      obj_token: "docx_node",
+      obj_type: "docx",
+      title: "New Page",
+      raw: { node_token: "wikcn_node", obj_token: "docx_node", obj_type: "docx", title: "New Page" },
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -3430,8 +3480,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   const codexNativeSkill = fs.readFileSync(codexNativeSkillPath, "utf8");
   assert.match(codexNativeSkill, /Studio Channel Connector runtime projection/);
   assert.match(codexNativeSkill, /Runtime Action Index/);
-  assert.match(codexNativeSkill, /- Step 3: Send Messages/);
-  assert.match(codexNativeSkill, /Step 3: Send Messages/);
+  assert.match(codexNativeSkill, /- Send Messages/);
+  assert.match(codexNativeSkill, /dm:human_uid/);
   assert.match(codexNativeSkill, /studio-channel-messages/);
   assert.doesNotMatch(codexNativeSkill, /openclaw plugins install/);
   assert.doesNotMatch(codexNativeSkill, /Step 1: Register/);
@@ -3788,7 +3838,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(fs.existsSync(claudeNativeSkillPath), true);
   const claudeNativeSkill = fs.readFileSync(claudeNativeSkillPath, "utf8");
   assert.match(claudeNativeSkill, /Studio Channel Connector runtime projection/);
-  assert.match(claudeNativeSkill, /Step 3: Send Messages/);
+  assert.match(claudeNativeSkill, /dm:human_uid/);
   assert.doesNotMatch(claudeNativeSkill, /openclaw plugins install/);
   for (const cleanupPath of claudeRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
@@ -3871,7 +3921,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(fs.existsSync(opencodeNativeSkillPath), true);
   const opencodeNativeSkill = fs.readFileSync(opencodeNativeSkillPath, "utf8");
   assert.match(opencodeNativeSkill, /Studio Channel Connector runtime projection/);
-  assert.match(opencodeNativeSkill, /Step 3: Send Messages/);
+  assert.match(opencodeNativeSkill, /dm:human_uid/);
   assert.match(opencodeNativeSkill, /studio-channel-messages/);
   assert.doesNotMatch(opencodeNativeSkill, /openclaw plugins install/);
   assert.match(opencodeRequest.args.at(-1), /^\[Studio outbound file\/message policy\]/);
@@ -3904,7 +3954,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     "utf8",
   );
   assert.match(feishuDocSkill, /studio-feishu-actions/);
-  assert.match(feishuDocSkill, /Supported now: `read`, `list_blocks`, `get_block`/);
+  assert.match(feishuDocSkill, /Supported now without approval: `read`, `list_blocks`, `get_block`/);
+  assert.match(feishuDocSkill, /Supported now after Studio IM approval: `create`/);
   assert.doesNotMatch(feishuDocSkill, /openclaw plugins install/i);
   for (const cleanupPath of feishuOpenCodeRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
@@ -5762,8 +5813,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(octoSkillContext, /Auto-activation: if the current user request matches a platform skill description/);
   assert.match(octoSkillContext, /Studio owns channel credentials and transport/);
   assert.match(octoSkillContext, /\/octo history \[limit\]/);
-  assert.match(octoSkillContext, /### \/octo-bot-api \[binding\]/);
-  assert.match(octoSkillContext, /Step 3: Send Messages/);
+  assert.match(octoSkillContext, /### \/octo-bot-api \[platform:octo\]/);
+  assert.match(octoSkillContext, /Send Messages/);
   assert.match(octoSkillContext, /Message History Sync/);
   assert.match(octoSkillContext, /Multi-Bot Coordination/);
   assert.doesNotMatch(octoSkillContext, /openclaw plugins install/);
@@ -5805,20 +5856,19 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(feishuSkills.handled, true);
   assert.match(feishuSkills.replyText, /Studio Skills \(codex · feishu\)/);
+  assert.match(feishuSkills.replyText, /\/feishu-doc \[platform:feishu\]/);
   assert.match(feishuSkills.replyText, /\/feishu-card \[binding\]/);
   assert.doesNotMatch(feishuSkills.replyText, /\/octo-send/);
   const feishuSkillContext = buildChannelConnectorSkillContext(codexProject, { binding: feishuBinding });
   assert.ok(feishuSkillContext);
-  assert.match(feishuSkillContext, /### \/feishu-card \[binding\]/);
-  assert.match(feishuSkillContext, /Use Studio Feishu channel transport for card and message work/);
-  assert.match(feishuSkillContext, /### \/feishu-doc-api \[binding\]/);
+  assert.match(feishuSkillContext, /### \/feishu-doc \[platform:feishu\]/);
+  assert.match(feishuSkillContext, /### \/feishu-drive \[platform:feishu\]/);
+  assert.match(feishuSkillContext, /\/feishu-card: Build Feishu card and message workflows/);
+  assert.match(feishuSkillContext, /\/feishu-doc-api: Read, write, and attach files in Feishu documents/);
   assert.match(feishuSkillContext, /Runtime Action Index/);
-  assert.match(feishuSkillContext, /- Read Document/);
-  assert.match(feishuSkillContext, /- Create Table With Values/);
-  assert.match(feishuSkillContext, /- Upload Image to Docx/);
-  assert.match(feishuSkillContext, /- Upload File Attachment to Docx/);
+  assert.match(feishuSkillContext, /Supported now after Studio IM approval: `create`/);
+  assert.match(feishuSkillContext, /Supported now after Studio IM approval: `create_folder`, `move`, `delete`/);
   assert.match(feishuSkillContext, /## Actions/);
-  assert.match(feishuSkillContext, /Upload File Attachment to Docx/);
   assert.match(feishuSkillContext, /Auto-activation/);
   assert.doesNotMatch(feishuSkillContext, /FEISHU_APP_SECRET/);
   assert.doesNotMatch(feishuSkillContext, /octo-send/);
@@ -5856,7 +5906,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(defaultFeishuContext, /### \/feishu-messaging \[platform:feishu\]/);
   assert.match(defaultFeishuContext, /### \/feishu-doc \[platform:feishu\]/);
   assert.match(defaultFeishuContext, /studio-feishu-actions/);
-  assert.match(defaultFeishuContext, /Supported now: `read`, `list_blocks`, `get_block`/);
+  assert.match(defaultFeishuContext, /Supported now without approval: `read`, `list_blocks`, `get_block`/);
+  assert.match(defaultFeishuContext, /Supported now after Studio IM approval: `create`/);
   assert.match(defaultFeishuContext, /studio-channel-files/);
   assert.doesNotMatch(defaultFeishuContext, /FEISHU_APP_SECRET/);
   assert.doesNotMatch(defaultFeishuContext, /openclaw plugins install/);

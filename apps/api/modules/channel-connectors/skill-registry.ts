@@ -485,7 +485,7 @@ export function buildChannelConnectorNativeSkillPrompt(skill: ChannelConnectorSk
     "Use Studio native manifests for outbound work:",
     "- `studio-channel-files` for files, images, and binary attachments.",
     "- `studio-channel-messages` for IM messages, Octo group/thread mentions, and Feishu text/Markdown/group mention targets.",
-    "- `studio-feishu-actions` for Studio-owned Feishu doc/drive/perm/wiki read-only actions when the active platform is Feishu.",
+    "- `studio-feishu-actions` for Studio-owned Feishu doc/drive/perm/wiki actions when the active platform is Feishu. Studio executes read-only actions directly and approval-gated mutations only after IM approval.",
     "",
     `Current platform family: ${platform}.`,
     "",
@@ -658,6 +658,7 @@ export function listChannelConnectorSkills(
 ): ChannelConnectorSkill[] {
   const seen = new Set<string>();
   const skills: ChannelConnectorSkill[] = [];
+  skills.push(...addStudioPlatformSkills({ binding: context?.binding || null, seen }));
   for (const spec of channelConnectorSkillDirSpecs(project, context)) {
     skills.push(...discoverSkillsInDir(
       path.resolve(spec.dir),
@@ -668,7 +669,6 @@ export function listChannelConnectorSkills(
       spec.platform,
     ));
   }
-  skills.push(...addStudioPlatformSkills({ binding: context?.binding || null, seen }));
   return skills;
 }
 
@@ -716,7 +716,7 @@ export function buildChannelConnectorSkillContext(
     "For sending local files back to the user, emit a studio-channel-files manifest; do not call cc-connect or external IM bridge CLIs.",
     "For sending IM messages, emit a studio-channel-messages manifest; Studio will deliver it through the active channel.",
     platform === "feishu"
-      ? "For Feishu doc/drive/perm/wiki read-only actions, emit a studio-feishu-actions manifest; Studio will execute it with the active Feishu binding and return structured results. Mutation actions are blocked until approval-backed executors are enabled."
+      ? "For Feishu doc/drive/perm/wiki actions, emit a studio-feishu-actions manifest; Studio will execute read-only actions with the active Feishu binding and request IM approval before enabled mutations. Unsupported content mutations must fall back to studio-channel-files or studio-channel-messages."
       : "",
     excerpts.length ? "[Platform skill instruction excerpts]" : "",
     ...excerpts,
