@@ -5,7 +5,8 @@ export type ChannelConnectorFeishuActionTool =
   | "feishu_doc"
   | "feishu_drive"
   | "feishu_perm"
-  | "feishu_wiki";
+  | "feishu_wiki"
+  | "feishu_bitable";
 
 export interface ChannelConnectorFeishuActionRequest {
   tool: ChannelConnectorFeishuActionTool;
@@ -50,6 +51,7 @@ function normalizeToolName(value: unknown): ChannelConnectorFeishuActionTool | n
     return "feishu_perm";
   }
   if (normalized === "feishu_wiki" || normalized === "wiki") return "feishu_wiki";
+  if (normalized === "feishu_bitable" || normalized === "bitable" || normalized === "base") return "feishu_bitable";
   return null;
 }
 

@@ -1518,6 +1518,201 @@ function normalizeFeishuDriveComment(comment: unknown): Record<string, unknown> 
   };
 }
 
+const FEISHU_BITABLE_FIELD_TYPE_NAMES: Record<number, string> = {
+  1: "Text",
+  2: "Number",
+  3: "SingleSelect",
+  4: "MultiSelect",
+  5: "DateTime",
+  7: "Checkbox",
+  11: "User",
+  13: "Phone",
+  15: "URL",
+  17: "Attachment",
+  18: "SingleLink",
+  19: "Lookup",
+  20: "Formula",
+  21: "DuplexLink",
+  22: "Location",
+  23: "GroupChat",
+  1001: "CreatedTime",
+  1002: "ModifiedTime",
+  1003: "CreatedUser",
+  1004: "ModifiedUser",
+  1005: "AutoNumber",
+};
+
+const FEISHU_BITABLE_DEFAULT_CLEANUP_FIELD_TYPES = new Set([3, 5, 17]);
+
+function normalizedFeishuBitableAction(value: string): string {
+  return normalizedAction(value).replace(/-/g, "_");
+}
+
+function parseFeishuBitableUrl(value: string): { token: string; tableId: string | null; isWiki: boolean } | null {
+  try {
+    const parsed = new URL(value);
+    const tableId = normalizeString(parsed.searchParams.get("table")) || null;
+    const wikiMatch = parsed.pathname.match(/\/wiki\/([A-Za-z0-9]+)/);
+    if (wikiMatch) return { token: wikiMatch[1], tableId, isWiki: true };
+    const baseMatch = parsed.pathname.match(/\/base\/([A-Za-z0-9]+)/);
+    if (baseMatch) return { token: baseMatch[1], tableId, isWiki: false };
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function bitableAppTokenFromParams(params: Record<string, unknown>): string {
+  return paramString(params, ["app_token", "appToken", "base_token", "baseToken", "token"]);
+}
+
+function bitableTableIdFromParams(params: Record<string, unknown>): string {
+  return paramString(params, ["table_id", "tableId"]);
+}
+
+async function resolveFeishuBitableIdentity(
+  call: FeishuActionCall,
+  params: Record<string, unknown>,
+): Promise<{ appToken: string; tableId: string | null; urlType: "wiki" | "base" | "token" }> {
+  const directAppToken = bitableAppTokenFromParams(params);
+  if (directAppToken) {
+    return {
+      appToken: directAppToken,
+      tableId: bitableTableIdFromParams(params) || null,
+      urlType: "token",
+    };
+  }
+
+  const url = requireParamString(params, ["url", "link"], "url or app_token");
+  const parsed = parseFeishuBitableUrl(url);
+  if (!parsed) throw new Error("Invalid Feishu Bitable URL. Expected /base/<token> or /wiki/<token>.");
+  if (!parsed.isWiki) {
+    return {
+      appToken: parsed.token,
+      tableId: parsed.tableId,
+      urlType: "base",
+    };
+  }
+
+  const search = new URLSearchParams({ token: parsed.token });
+  const body = await call("GET", `/open-apis/wiki/v2/spaces/get_node?${search.toString()}`);
+  const node = recordFrom(recordFrom(body.data).node);
+  const objType = normalizeString(node.obj_type);
+  if (objType && objType !== "bitable") {
+    throw new Error(`Feishu wiki node is not a bitable (type: ${objType}).`);
+  }
+  const appToken = normalizeString(node.obj_token);
+  if (!appToken) throw new Error("Feishu wiki bitable node did not return obj_token.");
+  return {
+    appToken,
+    tableId: parsed.tableId,
+    urlType: "wiki",
+  };
+}
+
+function normalizeFeishuBitableFields(fields: unknown): Record<string, unknown> {
+  const record = recordFrom(fields);
+  if (!Object.keys(record).length) throw new Error("fields must be a non-empty object.");
+  return record;
+}
+
+function normalizeFeishuBitableField(value: unknown): Record<string, unknown> {
+  const field = recordFrom(value);
+  const type = Number(field.type);
+  return {
+    field_id: normalizeString(field.field_id) || null,
+    field_name: normalizeString(field.field_name) || null,
+    type: Number.isFinite(type) ? type : field.type ?? null,
+    type_name: Number.isFinite(type) ? FEISHU_BITABLE_FIELD_TYPE_NAMES[type] || `type_${type}` : null,
+    is_primary: field.is_primary ?? null,
+    ...(Object.prototype.hasOwnProperty.call(field, "property") ? { property: field.property } : {}),
+  };
+}
+
+function isDefaultEmptyFeishuBitableFieldValue(value: unknown): boolean {
+  if (value === undefined || value === null || value === "") return true;
+  if (Array.isArray(value)) return value.every(isDefaultEmptyFeishuBitableFieldValue);
+  if (typeof value === "object") {
+    const record = recordFrom(value);
+    const keys = Object.keys(record);
+    if (keys.length === 0) return true;
+    if ("text" in record && keys.every((key) => key === "text" || key === "type")) {
+      return record.text === undefined || record.text === null || record.text === "";
+    }
+    return Object.values(record).every(isDefaultEmptyFeishuBitableFieldValue);
+  }
+  return false;
+}
+
+function isPlaceholderFeishuBitableRecord(fields: unknown): boolean {
+  const record = recordFrom(fields);
+  const values = Object.values(record);
+  return values.length === 0 || values.every(isDefaultEmptyFeishuBitableFieldValue);
+}
+
+async function cleanupCreatedFeishuBitable(
+  call: FeishuActionCall,
+  appToken: string,
+  tableId: string,
+  tableName: string,
+): Promise<{ cleanedRows: number; cleanedFields: number }> {
+  let cleanedRows = 0;
+  let cleanedFields = 0;
+  const fieldsBody = await call("GET", `/open-apis/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/fields`);
+  const fields = arrayFrom(recordFrom(fieldsBody.data).items);
+  const primaryField = fields.map(recordFrom).find((field) => field.is_primary === true);
+  const primaryFieldId = normalizeString(primaryField?.field_id);
+  if (primaryFieldId) {
+    try {
+      await call("PUT", `/open-apis/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/fields/${encodeURIComponent(primaryFieldId)}`, {
+        field_name: tableName.length <= 20 ? tableName : "Name",
+        type: 1,
+      });
+      cleanedFields += 1;
+    } catch {
+      // Cleanup is best effort; the new bitable is still usable if Feishu rejects default-field edits.
+    }
+  }
+
+  for (const fieldValue of fields) {
+    const field = recordFrom(fieldValue);
+    const fieldId = normalizeString(field.field_id);
+    const type = Number(field.type);
+    if (!fieldId || field.is_primary === true || !FEISHU_BITABLE_DEFAULT_CLEANUP_FIELD_TYPES.has(type)) continue;
+    try {
+      await call("DELETE", `/open-apis/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/fields/${encodeURIComponent(fieldId)}`);
+      cleanedFields += 1;
+    } catch {
+      // Keep cleanup non-critical.
+    }
+  }
+
+  const recordsBody = await call("GET", `/open-apis/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records?page_size=100`);
+  const recordIds = arrayFrom(recordFrom(recordsBody.data).items)
+    .map(recordFrom)
+    .filter((record) => isPlaceholderFeishuBitableRecord(record.fields))
+    .map((record) => normalizeString(record.record_id))
+    .filter(Boolean);
+  if (!recordIds.length) return { cleanedRows, cleanedFields };
+
+  try {
+    await call("POST", `/open-apis/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records/batch_delete`, {
+      records: recordIds,
+    });
+    cleanedRows = recordIds.length;
+  } catch {
+    for (const recordId of recordIds) {
+      try {
+        await call("DELETE", `/open-apis/bitable/v1/apps/${encodeURIComponent(appToken)}/tables/${encodeURIComponent(tableId)}/records/${encodeURIComponent(recordId)}`);
+        cleanedRows += 1;
+      } catch {
+        // Keep cleanup non-critical.
+      }
+    }
+  }
+  return { cleanedRows, cleanedFields };
+}
+
 function requireParamUploadIndex(params: Record<string, unknown>): number {
   const raw = params.index ?? params.block_index ?? params.blockIndex;
   if (raw === undefined || raw === null || raw === "") return -1;
@@ -1537,6 +1732,9 @@ export function feishuChannelActionIsReadOnly(tool: ChannelConnectorFeishuAction
   if (tool === "feishu_drive") return ["list", "info", "list_comments", "list_comment_replies"].includes(normalized);
   if (tool === "feishu_perm") return normalized === "list";
   if (tool === "feishu_wiki") return ["spaces", "nodes", "get", "search"].includes(normalized);
+  if (tool === "feishu_bitable") {
+    return ["meta", "get_meta", "list_fields", "list_records", "get_record"].includes(normalizedFeishuBitableAction(normalized));
+  }
   return false;
 }
 
@@ -2470,6 +2668,84 @@ async function executeFeishuReadOnlyAction(
       };
     }
   }
+  if (request.tool === "feishu_bitable") {
+    const bitableAction = normalizedFeishuBitableAction(action);
+    if (bitableAction === "meta" || bitableAction === "get_meta") {
+      const identity = await resolveFeishuBitableIdentity(call, params);
+      const appBody = await call("GET", `/open-apis/bitable/v1/apps/${encodeURIComponent(identity.appToken)}`);
+      const app = recordFrom(recordFrom(appBody.data).app);
+      let tables: unknown[] = [];
+      if (!identity.tableId || optionalParamBoolean(params, ["include_tables", "includeTables", "tables"]) === true) {
+        const tablesBody = await call("GET", `/open-apis/bitable/v1/apps/${encodeURIComponent(identity.appToken)}/tables`);
+        tables = arrayFrom(recordFrom(tablesBody.data).items).map((item) => {
+          const table = recordFrom(item);
+          return {
+            table_id: normalizeString(table.table_id) || null,
+            name: normalizeString(table.name) || null,
+          };
+        });
+      }
+      return {
+        data: {
+          app_token: identity.appToken,
+          table_id: identity.tableId,
+          name: normalizeString(app.name) || null,
+          url_type: identity.urlType,
+          ...(tables.length ? { tables } : {}),
+          hint: identity.tableId
+            ? `Use app_token="${identity.appToken}" and table_id="${identity.tableId}" for other bitable actions.`
+            : `Use app_token="${identity.appToken}" for other bitable actions. Select a table_id from the tables list.`,
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+    if (bitableAction === "list_fields") {
+      const identity = await resolveFeishuBitableIdentity(call, params);
+      const tableId = identity.tableId || requireParamString(params, ["table_id", "tableId"], "table_id");
+      const body = await call("GET", `/open-apis/bitable/v1/apps/${encodeURIComponent(identity.appToken)}/tables/${encodeURIComponent(tableId)}/fields`);
+      const fields = arrayFrom(recordFrom(body.data).items).map(normalizeFeishuBitableField);
+      return { data: { app_token: identity.appToken, table_id: tableId, fields, total: fields.length }, statusCode, requestCount };
+    }
+    if (bitableAction === "list_records") {
+      const identity = await resolveFeishuBitableIdentity(call, params);
+      const tableId = identity.tableId || requireParamString(params, ["table_id", "tableId"], "table_id");
+      const pageSize = optionalPositiveInteger(params, ["page_size", "pageSize"], 100, 500);
+      const pageToken = optionalParamString(params, ["page_token", "pageToken"]);
+      const search = new URLSearchParams({ page_size: String(pageSize) });
+      if (pageToken) search.set("page_token", pageToken);
+      const body = await call("GET", `/open-apis/bitable/v1/apps/${encodeURIComponent(identity.appToken)}/tables/${encodeURIComponent(tableId)}/records?${search.toString()}`);
+      const data = recordFrom(body.data);
+      return {
+        data: {
+          app_token: identity.appToken,
+          table_id: tableId,
+          records: arrayFrom(data.items),
+          has_more: data.has_more === true,
+          page_token: normalizeString(data.page_token) || null,
+          total: data.total ?? null,
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+    if (bitableAction === "get_record") {
+      const identity = await resolveFeishuBitableIdentity(call, params);
+      const tableId = identity.tableId || requireParamString(params, ["table_id", "tableId"], "table_id");
+      const recordId = requireParamString(params, ["record_id", "recordId"], "record_id");
+      const body = await call("GET", `/open-apis/bitable/v1/apps/${encodeURIComponent(identity.appToken)}/tables/${encodeURIComponent(tableId)}/records/${encodeURIComponent(recordId)}`);
+      return {
+        data: {
+          app_token: identity.appToken,
+          table_id: tableId,
+          record_id: recordId,
+          record: recordFrom(recordFrom(body.data).record),
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+  }
   if (request.tool === "feishu_doc") {
     const docToken = requireParamString(params, ["doc_token", "document_id", "docToken", "token"], "doc_token");
     if (action === "read") {
@@ -2737,6 +3013,112 @@ async function executeFeishuMutationAction(
           message_id: messageId,
           reaction_id: normalizeString(data.reaction_id) || null,
           emoji_type: emoji,
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+  }
+
+  if (request.tool === "feishu_bitable") {
+    const bitableAction = normalizedFeishuBitableAction(action);
+    if (bitableAction === "create_record") {
+      const identity = await resolveFeishuBitableIdentity(call, params);
+      const tableId = identity.tableId || requireParamString(params, ["table_id", "tableId"], "table_id");
+      const fields = normalizeFeishuBitableFields(params.fields);
+      const body = await call("POST", `/open-apis/bitable/v1/apps/${encodeURIComponent(identity.appToken)}/tables/${encodeURIComponent(tableId)}/records`, {
+        fields,
+      });
+      return {
+        data: {
+          success: true,
+          app_token: identity.appToken,
+          table_id: tableId,
+          record: recordFrom(recordFrom(body.data).record),
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+    if (bitableAction === "update_record") {
+      const identity = await resolveFeishuBitableIdentity(call, params);
+      const tableId = identity.tableId || requireParamString(params, ["table_id", "tableId"], "table_id");
+      const recordId = requireParamString(params, ["record_id", "recordId"], "record_id");
+      const fields = normalizeFeishuBitableFields(params.fields);
+      const body = await call("PUT", `/open-apis/bitable/v1/apps/${encodeURIComponent(identity.appToken)}/tables/${encodeURIComponent(tableId)}/records/${encodeURIComponent(recordId)}`, {
+        fields,
+      });
+      return {
+        data: {
+          success: true,
+          app_token: identity.appToken,
+          table_id: tableId,
+          record_id: recordId,
+          record: recordFrom(recordFrom(body.data).record),
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+    if (bitableAction === "create_app") {
+      const name = requireParamString(params, ["name", "title"], "name");
+      const folderToken = optionalParamString(params, ["folder_token", "folderToken"]);
+      const body = await call("POST", "/open-apis/bitable/v1/apps", {
+        name,
+        ...(folderToken ? { folder_token: folderToken } : {}),
+      });
+      const app = recordFrom(recordFrom(body.data).app);
+      const appToken = normalizeString(app.app_token);
+      if (!appToken) throw new Error("Feishu Bitable create_app response did not include app_token.");
+      let tableId: string | null = null;
+      let cleanedRows = 0;
+      let cleanedFields = 0;
+      try {
+        const tablesBody = await call("GET", `/open-apis/bitable/v1/apps/${encodeURIComponent(appToken)}/tables`);
+        const firstTable = arrayFrom(recordFrom(tablesBody.data).items).map(recordFrom).find((item) => normalizeString(item.table_id));
+        tableId = normalizeString(firstTable?.table_id) || null;
+        if (tableId && optionalParamBoolean(params, ["cleanup", "cleanup_defaults", "cleanupDefaults"]) !== false) {
+          const cleanup = await cleanupCreatedFeishuBitable(call, appToken, tableId, name);
+          cleanedRows = cleanup.cleanedRows;
+          cleanedFields = cleanup.cleanedFields;
+        }
+      } catch {
+        // Creation succeeded; default table cleanup is intentionally non-critical.
+      }
+      return {
+        data: {
+          success: true,
+          app_token: appToken,
+          table_id: tableId,
+          name: normalizeString(app.name) || name,
+          url: normalizeString(app.url) || null,
+          cleaned_placeholder_rows: cleanedRows,
+          cleaned_default_fields: cleanedFields,
+          hint: tableId
+            ? `Table created. Use app_token="${appToken}" and table_id="${tableId}" for other bitable actions.`
+            : "Table created. Use feishu_bitable get_meta to get table_id and field details.",
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+    if (bitableAction === "create_field") {
+      const identity = await resolveFeishuBitableIdentity(call, params);
+      const tableId = identity.tableId || requireParamString(params, ["table_id", "tableId"], "table_id");
+      const fieldName = requireParamString(params, ["field_name", "fieldName", "name"], "field_name");
+      const fieldType = requireParamNumber(params, ["field_type", "fieldType", "type"], "field_type");
+      const property = Object.keys(recordFrom(params.property)).length ? recordFrom(params.property) : undefined;
+      const body = await call("POST", `/open-apis/bitable/v1/apps/${encodeURIComponent(identity.appToken)}/tables/${encodeURIComponent(tableId)}/fields`, {
+        field_name: fieldName,
+        type: fieldType,
+        ...(property ? { property } : {}),
+      });
+      return {
+        data: {
+          success: true,
+          app_token: identity.appToken,
+          table_id: tableId,
+          field: normalizeFeishuBitableField(recordFrom(recordFrom(body.data).field)),
         },
         statusCode,
         requestCount,

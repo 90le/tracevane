@@ -1,7 +1,7 @@
 # Studio Gateway 目标方案
 
 > 状态：Studio Gateway core matrix、daemon lifecycle、Provider Center、App Connections、真实 provider/CLI smoke 与文档迁移已完成；Channel Connectors 迁移进行中；OpenAI Platform vendor proof optional
-> 更新：2026-06-11
+> 更新：2026-06-12
 > 文档规则：本文件只保留目标、边界、验收和阶段计划；进度写到 `studio-gateway-progress.md`。旧 `codex-stack-model-gateway-*` 文档名已停止使用。
 
 ## 1. 最终目标

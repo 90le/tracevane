@@ -1325,6 +1325,7 @@ test("native Channel Connectors extracts Feishu action manifests", () => {
       { skill: "wiki", action: "nodes", params: { space_id: "7370955161512345678" } },
       { name: "feishu_perm", action: "list", token: "doc_a", type: "docx" },
       { skill: "im", action: "channel-info", params: { chat_id: "oc_1" } },
+      { skill: "bitable", action: "list_records", params: { app_token: "base_a", table_id: "tbl_a" } },
     ]),
     "```",
   ].join("\n"));
@@ -1336,6 +1337,7 @@ test("native Channel Connectors extracts Feishu action manifests", () => {
     { tool: "feishu_wiki", action: "nodes", params: { space_id: "7370955161512345678" } },
     { tool: "feishu_perm", action: "list", params: { token: "doc_a", type: "docx" } },
     { tool: "feishu_channel", action: "channel-info", params: { chat_id: "oc_1" } },
+    { tool: "feishu_bitable", action: "list_records", params: { app_token: "base_a", table_id: "tbl_a" } },
   ]);
 
   const invalid = extractChannelConnectorFeishuActions([
@@ -1473,6 +1475,109 @@ test("native Channel Connectors executes Feishu read-only actions and approval-g
         data: {
           node: { node_token: "wikcn_node", obj_token: "docx_node", obj_type: "docx", title: "New Page" },
         },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).endsWith("/open-apis/wiki/v2/spaces/get_node?token=wikibase")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: {
+          node: { node_token: "wikibase", obj_token: "base_from_wiki", obj_type: "bitable", title: "Tracker" },
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).endsWith("/open-apis/bitable/v1/apps/base_from_wiki")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: { app: { app_token: "base_from_wiki", name: "Wiki Tracker" } },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).endsWith("/open-apis/bitable/v1/apps/base_from_wiki/tables")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: { items: [{ table_id: "tbl_wiki", name: "Tasks" }] },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if ((init.method || "GET") === "GET" && String(url).endsWith("/open-apis/bitable/v1/apps/base_a/tables/tbl_a/fields")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: {
+          items: [
+            { field_id: "fld_name", field_name: "Name", type: 1, is_primary: true },
+            { field_id: "fld_status", field_name: "Status", type: 3, property: { options: [{ name: "Open" }] } },
+          ],
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).endsWith("/open-apis/bitable/v1/apps/base_a/tables/tbl_a/records?page_size=20")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: {
+          has_more: false,
+          total: 1,
+          items: [{ record_id: "rec_1", fields: { Name: "Alpha", Status: "Open" } }],
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).endsWith("/open-apis/bitable/v1/apps/base_a/tables/tbl_a/records/rec_1")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: { record: { record_id: "rec_1", fields: { Name: "Alpha", Status: "Open" } } },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if ((init.method || "GET") === "POST" && String(url).endsWith("/open-apis/bitable/v1/apps/base_a/tables/tbl_a/records")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: { record: { record_id: "rec_2", fields: JSON.parse(init.body || "{}").fields } },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if ((init.method || "GET") === "PUT" && String(url).endsWith("/open-apis/bitable/v1/apps/base_a/tables/tbl_a/records/rec_1")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: { record: { record_id: "rec_1", fields: JSON.parse(init.body || "{}").fields } },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if ((init.method || "GET") === "POST" && String(url).endsWith("/open-apis/bitable/v1/apps")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: { app: { app_token: "base_new", name: "New Tracker", url: "https://example.feishu.cn/base/base_new" } },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).endsWith("/open-apis/bitable/v1/apps/base_new/tables")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: { items: [{ table_id: "tbl_new", name: "Sheet 1" }] },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).endsWith("/open-apis/bitable/v1/apps/base_new/tables/tbl_new/fields")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: {
+          items: [
+            { field_id: "fld_primary", field_name: "Text", type: 1, is_primary: true },
+            { field_id: "fld_select", field_name: "Single select", type: 3, is_primary: false },
+          ],
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if ((init.method || "GET") === "PUT" && String(url).endsWith("/open-apis/bitable/v1/apps/base_new/tables/tbl_new/fields/fld_primary")) {
+      return new Response(JSON.stringify({ code: 0, data: { field: { field_id: "fld_primary" } } }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if ((init.method || "GET") === "DELETE" && String(url).endsWith("/open-apis/bitable/v1/apps/base_new/tables/tbl_new/fields/fld_select")) {
+      return new Response(JSON.stringify({ code: 0, data: {} }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).endsWith("/open-apis/bitable/v1/apps/base_new/tables/tbl_new/records?page_size=100")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: { items: [{ record_id: "rec_empty", fields: { Text: "" } }] },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if ((init.method || "GET") === "POST" && String(url).endsWith("/open-apis/bitable/v1/apps/base_new/tables/tbl_new/records/batch_delete")) {
+      return new Response(JSON.stringify({ code: 0, data: {} }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if ((init.method || "GET") === "POST" && String(url).endsWith("/open-apis/bitable/v1/apps/base_a/tables/tbl_a/fields")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: { field: { field_id: "fld_score", field_name: "Score", type: 2 } },
       }), { status: 200, headers: { "content-type": "application/json" } });
     }
     if (String(url).endsWith("/open-apis/docx/v1/documents/blocks/convert")) {
@@ -1634,6 +1739,125 @@ test("native Channel Connectors executes Feishu read-only actions and approval-g
       obj_type: "docx",
       title: "New Page",
       raw: { node_token: "wikcn_node", obj_token: "docx_node", obj_type: "docx", title: "New Page" },
+    });
+
+    const bitableMeta = await executeFeishuChannelAction(config, {
+      tool: "feishu_bitable",
+      action: "get_meta",
+      params: { url: "https://example.feishu.cn/wiki/wikibase?table=tbl_wiki", include_tables: true },
+    }, null);
+    assert.equal(bitableMeta.ok, true);
+    assert.equal(bitableMeta.readOnly, true);
+    assert.deepEqual(bitableMeta.data, {
+      app_token: "base_from_wiki",
+      table_id: "tbl_wiki",
+      name: "Wiki Tracker",
+      url_type: "wiki",
+      tables: [{ table_id: "tbl_wiki", name: "Tasks" }],
+      hint: 'Use app_token="base_from_wiki" and table_id="tbl_wiki" for other bitable actions.',
+    });
+
+    const bitableFields = await executeFeishuChannelAction(config, {
+      tool: "feishu_bitable",
+      action: "list_fields",
+      params: { app_token: "base_a", table_id: "tbl_a" },
+    }, null);
+    assert.equal(bitableFields.ok, true);
+    assert.equal(bitableFields.readOnly, true);
+    assert.equal(bitableFields.data.total, 2);
+    assert.deepEqual(bitableFields.data.fields[0], {
+      field_id: "fld_name",
+      field_name: "Name",
+      type: 1,
+      type_name: "Text",
+      is_primary: true,
+    });
+
+    const bitableRecords = await executeFeishuChannelAction(config, {
+      tool: "feishu_bitable",
+      action: "list_records",
+      params: { app_token: "base_a", table_id: "tbl_a", page_size: 20 },
+    }, null);
+    assert.equal(bitableRecords.ok, true);
+    assert.equal(bitableRecords.readOnly, true);
+    assert.equal(bitableRecords.data.records[0].record_id, "rec_1");
+
+    const bitableRecord = await executeFeishuChannelAction(config, {
+      tool: "feishu_bitable",
+      action: "get_record",
+      params: { app_token: "base_a", table_id: "tbl_a", record_id: "rec_1" },
+    }, null);
+    assert.equal(bitableRecord.ok, true);
+    assert.equal(bitableRecord.data.record.fields.Name, "Alpha");
+
+    const bitableCreateWithoutApprovalRequestCount = requests.length;
+    const bitableCreateWithoutApproval = await executeFeishuChannelAction(config, {
+      tool: "feishu_bitable",
+      action: "create_record",
+      params: { app_token: "base_a", table_id: "tbl_a", fields: { Name: "Beta" } },
+    }, null);
+    assert.equal(bitableCreateWithoutApproval.ok, false);
+    assert.equal(bitableCreateWithoutApproval.readOnly, false);
+    assert.match(bitableCreateWithoutApproval.error || "", /requires Studio IM approval/);
+    assert.equal(requests.length, bitableCreateWithoutApprovalRequestCount);
+
+    const bitableCreateRecord = await executeFeishuChannelAction(config, {
+      tool: "feishu_bitable",
+      action: "create_record",
+      params: { app_token: "base_a", table_id: "tbl_a", fields: { Name: "Beta", Status: "Open" } },
+    }, null, { allowMutation: true });
+    assert.equal(bitableCreateRecord.ok, true);
+    assert.equal(bitableCreateRecord.data.record.record_id, "rec_2");
+    assert.deepEqual(JSON.parse(requests.at(-1).body), {
+      fields: { Name: "Beta", Status: "Open" },
+    });
+
+    const bitableUpdateRecord = await executeFeishuChannelAction(config, {
+      tool: "feishu_bitable",
+      action: "update_record",
+      params: { app_token: "base_a", table_id: "tbl_a", record_id: "rec_1", fields: { Status: "Done" } },
+    }, null, { allowMutation: true });
+    assert.equal(bitableUpdateRecord.ok, true);
+    assert.deepEqual(JSON.parse(requests.at(-1).body), {
+      fields: { Status: "Done" },
+    });
+
+    const bitableCreateApp = await executeFeishuChannelAction(config, {
+      tool: "feishu_bitable",
+      action: "create_app",
+      params: { name: "New Tracker", folder_token: "fldcn_1" },
+    }, null, { allowMutation: true });
+    assert.equal(bitableCreateApp.ok, true);
+    assert.deepEqual(bitableCreateApp.data, {
+      success: true,
+      app_token: "base_new",
+      table_id: "tbl_new",
+      name: "New Tracker",
+      url: "https://example.feishu.cn/base/base_new",
+      cleaned_placeholder_rows: 1,
+      cleaned_default_fields: 2,
+      hint: 'Table created. Use app_token="base_new" and table_id="tbl_new" for other bitable actions.',
+    });
+    const bitableAppCreateRequest = requests.find((request) => request.method === "POST" && request.url.endsWith("/open-apis/bitable/v1/apps"));
+    assert.deepEqual(JSON.parse(bitableAppCreateRequest.body), {
+      name: "New Tracker",
+      folder_token: "fldcn_1",
+    });
+    const bitableCleanupBatchDelete = requests.find((request) => request.method === "POST" && request.url.endsWith("/open-apis/bitable/v1/apps/base_new/tables/tbl_new/records/batch_delete"));
+    assert.deepEqual(JSON.parse(bitableCleanupBatchDelete.body), { records: ["rec_empty"] });
+
+    const bitableCreateField = await executeFeishuChannelAction(config, {
+      tool: "feishu_bitable",
+      action: "create_field",
+      params: { app_token: "base_a", table_id: "tbl_a", field_name: "Score", field_type: 2 },
+    }, null, { allowMutation: true });
+    assert.equal(bitableCreateField.ok, true);
+    assert.deepEqual(bitableCreateField.data.field, {
+      field_id: "fld_score",
+      field_name: "Score",
+      type: 2,
+      type_name: "Number",
+      is_primary: null,
     });
 
     const appendWithoutApprovalRequestCount = requests.length;
@@ -6567,6 +6791,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     "feishu-drive",
     "feishu-perm",
     "feishu-wiki",
+    "feishu-bitable",
   ]);
   assert.equal(defaultFeishuPlatformSkills.every((skill) => skill.source.startsWith("studio://channel-skills/feishu/")), true);
   const defaultFeishuContext = buildChannelConnectorSkillContext(codexProject, { binding: defaultFeishuBinding });
@@ -6579,6 +6804,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(defaultFeishuContext, /Supported now after Studio IM approval: `create`/);
   assert.match(defaultFeishuContext, /feishu_doc.*insert_table_row/);
   assert.match(defaultFeishuContext, /feishu_drive.*reply_comment/);
+  assert.match(defaultFeishuContext, /feishu_bitable.*list_records/);
   assert.match(defaultFeishuContext, /studio-channel-files/);
   assert.doesNotMatch(defaultFeishuContext, /FEISHU_APP_SECRET/);
   assert.doesNotMatch(defaultFeishuContext, /openclaw plugins install/);
@@ -6594,11 +6820,13 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     "feishu-drive",
     "feishu-perm",
     "feishu-wiki",
+    "feishu-bitable",
   ]);
   assert.equal(feishuSurface.skills.every((skill) => skill.scope !== "platform" || skill.source.startsWith("studio://channel-skills/feishu/")), true);
   assert.ok(feishuSurface.skills.find((skill) => skill.name === "feishu-messaging")?.actions?.some((action) => action.tool === "feishu_channel" && action.action === "channel-info"));
   assert.ok(feishuSurface.skills.find((skill) => skill.name === "feishu-doc")?.actions?.some((action) => action.action === "color_text"));
   assert.ok(feishuSurface.skills.find((skill) => skill.name === "feishu-drive")?.actions?.some((action) => action.action === "list_comments"));
+  assert.ok(feishuSurface.skills.find((skill) => skill.name === "feishu-bitable")?.actions?.some((action) => action.action === "create_record" && action.approval === "required"));
   const commandsSection = feishuSurface.sections.find((section) => section.id === "commands");
   assert.ok(commandsSection);
   assert.ok(commandsSection.actions.some((action) => action.id === "skill-feishu-doc"));

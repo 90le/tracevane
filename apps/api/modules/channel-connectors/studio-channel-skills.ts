@@ -126,6 +126,17 @@ const feishuWikiActions: ChannelConnectorCommandSurfaceSkillAction[] = [
   action("feishu-wiki-rename", "Rename Feishu wiki node", "studio-feishu-actions", "feishu_wiki", "rename", "required"),
 ];
 
+const feishuBitableActions: ChannelConnectorCommandSurfaceSkillAction[] = [
+  action("feishu-bitable-get-meta", "Get Feishu Bitable metadata", "studio-feishu-actions", "feishu_bitable", "get_meta", "none"),
+  action("feishu-bitable-list-fields", "List Feishu Bitable fields", "studio-feishu-actions", "feishu_bitable", "list_fields", "none"),
+  action("feishu-bitable-list-records", "List Feishu Bitable records", "studio-feishu-actions", "feishu_bitable", "list_records", "none"),
+  action("feishu-bitable-get-record", "Get Feishu Bitable record", "studio-feishu-actions", "feishu_bitable", "get_record", "none"),
+  action("feishu-bitable-create-record", "Create Feishu Bitable record", "studio-feishu-actions", "feishu_bitable", "create_record", "required"),
+  action("feishu-bitable-update-record", "Update Feishu Bitable record", "studio-feishu-actions", "feishu_bitable", "update_record", "required"),
+  action("feishu-bitable-create-app", "Create Feishu Bitable app", "studio-feishu-actions", "feishu_bitable", "create_app", "required"),
+  action("feishu-bitable-create-field", "Create Feishu Bitable field", "studio-feishu-actions", "feishu_bitable", "create_field", "required"),
+];
+
 export const STUDIO_CHANNEL_CONNECTOR_PLATFORM_SKILLS: StudioChannelConnectorPlatformSkillDefinition[] = [
   {
     platform: "octo",
@@ -511,6 +522,63 @@ Full action catalog mirrors the OpenClaw Feishu extension contract:
 ## Wiki-Doc Workflow
 
 Workflow: get wiki node, then use \`feishu_doc\` read/list_blocks/get_block on the returned \`obj_token\`. For unsupported wiki-doc content edits, provide a local document or a Feishu Markdown message rather than claiming remote wiki edits were applied.`,
+  },
+  {
+    platform: "feishu",
+    name: "feishu-bitable",
+    runtimeActions: feishuBitableActions,
+    markdown: `---
+name: feishu-bitable
+description: Feishu Bitable action catalog for Studio-managed channel skills. Activate for multidimensional tables, base/wiki bitable links, fields, records, and Bitable creation.
+---
+
+# Feishu Bitable Runtime Skill
+
+Studio manages this skill as a channel capability contract. Use \`studio-feishu-actions\` for Feishu Bitable actions. Studio executes metadata/field/record reads immediately and asks for Studio IM approval before creating or updating tables, fields, or records.
+
+## Token Extraction
+
+From \`https://xxx.feishu.cn/base/ABC123?table=tblXXX\`, use app token \`ABC123\` and table ID \`tblXXX\`. From \`https://xxx.feishu.cn/wiki/ABC123?table=tblXXX\`, call \`get_meta\` first; Studio resolves the wiki node to a Bitable \`app_token\`.
+
+## Actions
+
+Supported now without approval: \`get_meta\`, \`list_fields\`, \`list_records\`, \`get_record\`.
+
+Supported now after Studio IM approval: \`create_record\`, \`update_record\`, \`create_app\`, \`create_field\`.
+
+Use this manifest shape:
+
+\`\`\`studio-feishu-actions
+[
+  {"tool":"feishu_bitable","action":"get_meta","url":"https://example.feishu.cn/wiki/WIKITOKEN?table=tblXXX"},
+  {"tool":"feishu_bitable","action":"list_fields","app_token":"baseXXX","table_id":"tblXXX"},
+  {"tool":"feishu_bitable","action":"list_records","app_token":"baseXXX","table_id":"tblXXX","page_size":100},
+  {"tool":"feishu_bitable","action":"get_record","app_token":"baseXXX","table_id":"tblXXX","record_id":"recXXX"},
+  {"tool":"feishu_bitable","action":"create_record","app_token":"baseXXX","table_id":"tblXXX","fields":{"Name":"Alice","Status":"Open"}},
+  {"tool":"feishu_bitable","action":"update_record","app_token":"baseXXX","table_id":"tblXXX","record_id":"recXXX","fields":{"Status":"Done"}},
+  {"tool":"feishu_bitable","action":"create_app","name":"Project Tracker","folder_token":"fldcnXXX"},
+  {"tool":"feishu_bitable","action":"create_field","app_token":"baseXXX","table_id":"tblXXX","field_name":"Score","field_type":2}
+]
+\`\`\`
+
+Full action catalog mirrors the OpenClaw Feishu extension contract:
+
+- Get Bitable Metadata: \`{"action":"get_meta","url":"https://xxx.feishu.cn/base/ABC?table=tblXXX"}\`
+- List Fields: \`{"action":"list_fields","app_token":"baseXXX","table_id":"tblXXX"}\`
+- List Records: \`{"action":"list_records","app_token":"baseXXX","table_id":"tblXXX","page_size":100,"page_token":"optional"}\`
+- Get Record: \`{"action":"get_record","app_token":"baseXXX","table_id":"tblXXX","record_id":"recXXX"}\`
+- Create Record: \`{"action":"create_record","app_token":"baseXXX","table_id":"tblXXX","fields":{"Field":"Value"}}\`
+- Update Record: \`{"action":"update_record","app_token":"baseXXX","table_id":"tblXXX","record_id":"recXXX","fields":{"Field":"Value"}}\`
+- Create App: \`{"action":"create_app","name":"New Bitable","folder_token":"fldcnXXX"}\`
+- Create Field: \`{"action":"create_field","app_token":"baseXXX","table_id":"tblXXX","field_name":"Name","field_type":1}\`
+
+## Field Types
+
+Common field type IDs: \`1\` Text, \`2\` Number, \`3\` SingleSelect, \`4\` MultiSelect, \`5\` DateTime, \`7\` Checkbox, \`11\` User, \`15\` URL, \`17\` Attachment, \`20\` Formula.
+
+## Studio Fallback
+
+For unsupported Bitable operations, export or generate the needed data locally and send it with \`studio-channel-files\`, or send a Feishu Markdown summary with \`studio-channel-messages\`. Do not claim remote Bitable changes succeeded without a Studio action result.`,
   },
 ];
 
