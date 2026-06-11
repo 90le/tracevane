@@ -1347,10 +1347,25 @@ test("native Channel Connectors executes Feishu read-only actions and approval-g
   const originalFetch = globalThis.fetch;
   const requests = [];
   globalThis.fetch = async (url, init = {}) => {
+    const form = init.body && typeof init.body.get === "function"
+      ? {
+        file_name: String(init.body.get("file_name") || ""),
+        parent_type: String(init.body.get("parent_type") || ""),
+        parent_node: String(init.body.get("parent_node") || ""),
+        size: String(init.body.get("size") || ""),
+        extra: String(init.body.get("extra") || ""),
+        file: init.body.get("file") ? {
+          name: String(init.body.get("file").name || ""),
+          size: Number(init.body.get("file").size || 0),
+          type: String(init.body.get("file").type || ""),
+        } : null,
+      }
+      : null;
     requests.push({
       url: String(url),
       method: init.method || "GET",
       body: typeof init.body === "string" ? init.body : "",
+      form,
       authorization: init.headers?.authorization || init.headers?.Authorization || "",
     });
     if (String(url).endsWith("/open-apis/auth/v3/tenant_access_token/internal")) {
@@ -1405,6 +1420,16 @@ test("native Channel Connectors executes Feishu read-only actions and approval-g
         data: { children: [{ block_id: "new_block_1", block_type: 2 }] },
       }), { status: 200, headers: { "content-type": "application/json" } });
     }
+    if ((init.method || "GET") === "POST" && String(url).endsWith("/open-apis/docx/v1/documents/doc_a/blocks/doc_a/children?document_revision_id=-1")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: {
+          children: [
+            { block_id: "image_block_1", block_type: 27, image: {} },
+          ],
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
     if ((init.method || "GET") === "POST" && String(url).endsWith("/open-apis/docx/v1/documents/doc_a/blocks/doc_a/children")) {
       return new Response(JSON.stringify({
         code: 0,
@@ -1448,8 +1473,18 @@ test("native Channel Connectors executes Feishu read-only actions and approval-g
         data: { block: { block_id: "old_block_1", parent_id: "doc_a", block_type: 2 } },
       }), { status: 200, headers: { "content-type": "application/json" } });
     }
+    if ((init.method || "GET") === "PATCH" && String(url).endsWith("/open-apis/docx/v1/documents/doc_a/blocks/image_block_1")) {
+      return new Response(JSON.stringify({ code: 0, data: { revision_id: 3 } }), { status: 200, headers: { "content-type": "application/json" } });
+    }
     if (String(url).endsWith("/open-apis/docx/v1/documents/doc_a/blocks/doc_a/children/batch_delete")) {
       return new Response(JSON.stringify({ code: 0, data: { revision_id: 2 } }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).endsWith("/open-apis/drive/v1/medias/upload_all")) {
+      const parentType = form?.parent_type || "";
+      return new Response(JSON.stringify({
+        code: 0,
+        data: { file_token: parentType === "docx_image" ? "img_token_1" : "file_token_1" },
+      }), { status: 200, headers: { "content-type": "application/json" } });
     }
     return new Response(JSON.stringify({ code: 404, msg: "not mocked" }), { status: 404 });
   };
@@ -1615,6 +1650,76 @@ test("native Channel Connectors executes Feishu read-only actions and approval-g
     const cellDescendantRequests = requests.filter((request) => request.method === "POST" && /\/blocks\/cell_[12]\/descendant$/.test(request.url));
     assert.equal(cellDescendantRequests.length, 2);
     assert.equal(JSON.parse(cellDescendantRequests[0].body).children_id[0], "append_tmp");
+
+    const uploadedImage = await executeFeishuChannelAction(config, {
+      tool: "feishu_doc",
+      action: "upload_image",
+      params: {
+        doc_token: "doc_a",
+        image: `data:image/png;base64,${Buffer.from("png").toString("base64")}`,
+        filename: "image.png",
+      },
+    }, null, { allowMutation: true });
+    assert.equal(uploadedImage.ok, true);
+    assert.deepEqual(uploadedImage.data, {
+      success: true,
+      block_id: "image_block_1",
+      file_token: "img_token_1",
+      file_name: "image.png",
+      mime_type: "image/png",
+      size: 3,
+    });
+    const imageUploadRequest = requests.find((request) => request.form?.parent_type === "docx_image");
+    assert.equal(imageUploadRequest.form.parent_node, "image_block_1");
+    assert.equal(imageUploadRequest.form.file_name, "image.png");
+    assert.equal(JSON.parse(imageUploadRequest.form.extra).drive_route_token, "doc_a");
+    const imagePatchRequest = requests.find((request) => request.method === "PATCH" && request.url.endsWith("/open-apis/docx/v1/documents/doc_a/blocks/image_block_1"));
+    assert.deepEqual(JSON.parse(imagePatchRequest.body), { replace_image: { token: "img_token_1" } });
+
+    const uploadedFile = await executeFeishuChannelAction(config, {
+      tool: "feishu_doc",
+      action: "upload_file",
+      params: {
+        doc_token: "doc_a",
+        data: Buffer.from("hello").toString("base64"),
+        filename: "hello.txt",
+        mime_type: "text/plain",
+      },
+    }, null, { allowMutation: true });
+    assert.equal(uploadedFile.ok, true);
+    assert.deepEqual(uploadedFile.data, {
+      success: true,
+      file_token: "file_token_1",
+      file_name: "hello.txt",
+      mime_type: "text/plain",
+      size: 5,
+      note: "File uploaded to the Feishu docx media store. Feishu does not support direct file block creation through this action; use the returned file_token if a later workflow needs to reference it.",
+    });
+    const fileUploadRequest = requests.find((request) => request.form?.parent_type === "docx_file");
+    assert.equal(fileUploadRequest.form.parent_node, "doc_a");
+    assert.equal(fileUploadRequest.form.file_name, "hello.txt");
+    assert.equal(fileUploadRequest.form.size, "5");
+
+    const uploadDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-doc-upload-"));
+    const localImagePath = path.join(uploadDir, "local-image.png");
+    try {
+      fs.writeFileSync(localImagePath, "local png");
+      const uploadedLocalImage = await executeFeishuChannelAction(config, {
+        tool: "feishu_doc",
+        action: "upload_image",
+        params: {
+          doc_token: "doc_a",
+          image: localImagePath,
+        },
+      }, null, { allowMutation: true });
+      assert.equal(uploadedLocalImage.ok, true);
+      const localImageUploadRequest = requests.find((request) => request.form?.file_name === "local-image.png");
+      assert.equal(localImageUploadRequest.form.parent_type, "docx_image");
+      assert.equal(localImageUploadRequest.form.file.name, "local-image.png");
+      assert.equal(localImageUploadRequest.form.file.size, 9);
+    } finally {
+      fs.rmSync(uploadDir, { recursive: true, force: true });
+    }
   } finally {
     globalThis.fetch = originalFetch;
   }

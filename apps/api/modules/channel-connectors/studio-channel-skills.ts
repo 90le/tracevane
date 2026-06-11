@@ -161,7 +161,7 @@ From \`https://xxx.feishu.cn/docx/ABC123def\`, use doc token \`ABC123def\`.
 
 Supported now without approval: \`read\`, \`list_blocks\`, \`get_block\`.
 
-Supported now after Studio IM approval: \`create\`, \`write\`, \`append\`, \`insert\`, \`update_block\`, \`delete_block\`, \`create_table\`, \`write_table_cells\`, \`create_table_with_values\`.
+Supported now after Studio IM approval: \`create\`, \`write\`, \`append\`, \`insert\`, \`update_block\`, \`delete_block\`, \`create_table\`, \`write_table_cells\`, \`create_table_with_values\`, \`upload_image\`, \`upload_file\`.
 
 Use this manifest shape:
 
@@ -172,7 +172,9 @@ Use this manifest shape:
   {"tool":"feishu_doc","action":"get_block","doc_token":"ABC123def","block_id":"doxcnXXX"},
   {"tool":"feishu_doc","action":"create","title":"New Document","folder_token":"fldcnXXX"},
   {"tool":"feishu_doc","action":"append","doc_token":"ABC123def","content":"## Update\\n\\nMarkdown content"},
-  {"tool":"feishu_doc","action":"create_table_with_values","doc_token":"ABC123def","row_size":2,"column_size":2,"values":[["A1","B1"],["A2","B2"]]}
+  {"tool":"feishu_doc","action":"create_table_with_values","doc_token":"ABC123def","row_size":2,"column_size":2,"values":[["A1","B1"],["A2","B2"]]},
+  {"tool":"feishu_doc","action":"upload_image","doc_token":"ABC123def","file_path":"/abs/path/image.png","filename":"image.png"},
+  {"tool":"feishu_doc","action":"upload_file","doc_token":"ABC123def","file_path":"/abs/path/report.pdf","filename":"report.pdf"}
 ]
 \`\`\`
 
@@ -192,14 +194,14 @@ Document content actions use Feishu markdown-to-block conversion plus Docx desce
 - Write Table Cells: \`{"action":"write_table_cells","doc_token":"ABC123def","table_block_id":"doxcnTABLE","values":[["A1","B1"]]}\`
 - Create Table With Values: \`{"action":"create_table_with_values","doc_token":"ABC123def","row_size":2,"column_size":2,"values":[["A1","B1"],["A2","B2"]]}\`
 
-Media actions still need the rest of the OpenClaw docx upload pipeline before Studio enables them:
+Media actions use Feishu Drive \`upload_all\`; keep each upload at or below 20MB unless Studio later enables chunked upload:
 
-- Upload Image to Docx: upload an image URL or local file into a docx.
-- Upload File Attachment to Docx: attach a binary file to a docx.
+- Upload Image to Docx: \`{"action":"upload_image","doc_token":"ABC123def","file_path":"/abs/path/image.png","filename":"image.png"}\`; sources can be exactly one of \`file_path\`, \`url\`, \`image\` data URI/base64/local path, or \`data\`/ \`base64\`.
+- Upload File Attachment to Docx: \`{"action":"upload_file","doc_token":"ABC123def","file_path":"/abs/path/report.pdf","filename":"report.pdf"}\`; sources can be exactly one of \`file_path\`, \`url\`, \`file\` data URI/base64/local path, \`data\`, or \`base64\`.
 
 ## Studio Fallback
 
-When unsupported media mutation is needed before Studio enables it, create requested content locally and send it with \`studio-channel-files\`, or send a Feishu Markdown message with \`studio-channel-messages\` summarizing the document changes the user should apply.`,
+When a requested media upload is larger than Feishu \`upload_all\` supports, create requested content locally and send it with \`studio-channel-files\`, or send a Feishu Markdown message with \`studio-channel-messages\` summarizing the document changes the user should apply until chunked docx upload is implemented.`,
   },
   {
     platform: "feishu",

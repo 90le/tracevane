@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { isIP } from "node:net";
 import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -27,6 +28,7 @@ const FEISHU_TEXT_CHUNK_RUNES = 3800;
 const TOKEN_EXPIRY_SKEW_MS = 5 * 60 * 1000;
 const DEFAULT_FEISHU_RESOURCE_MAX_BYTES = 128 * 1024 * 1024;
 const FEISHU_IMAGE_MESSAGE_MAX_BYTES = 10 * 1024 * 1024;
+const FEISHU_DOCX_UPLOAD_ALL_MAX_BYTES = 20 * 1024 * 1024;
 const FEISHU_DOCX_CONVERT_MAX_DEPTH = 8;
 const FEISHU_DOCX_DESCENDANT_BATCH_SIZE = 900;
 
@@ -77,6 +79,14 @@ type FeishuActionCall = (
   pathValue: string,
   payload?: unknown,
 ) => Promise<Record<string, unknown>>;
+type FeishuActionMultipart = (input: {
+  path: string;
+  fieldName: string;
+  fileName: string;
+  data: Uint8Array;
+  mimeType: string;
+  fields?: Record<string, string>;
+}) => Promise<Record<string, unknown>>;
 
 export interface ChannelConnectorFeishuResourceDownloadResult {
   attempted: boolean;
@@ -1260,6 +1270,14 @@ function requireParamStringMatrix(params: Record<string, unknown>, keys: string[
   throw new Error(`${label} must be a non-empty 2D array.`);
 }
 
+function requireParamUploadIndex(params: Record<string, unknown>): number {
+  const raw = params.index ?? params.block_index ?? params.blockIndex;
+  if (raw === undefined || raw === null || raw === "") return -1;
+  const value = typeof raw === "number" ? raw : Number(normalizeString(raw));
+  if (!Number.isFinite(value)) throw new Error("index must be a number.");
+  return Math.trunc(value);
+}
+
 export function feishuChannelActionIsReadOnly(tool: ChannelConnectorFeishuActionTool, action: string): boolean {
   const normalized = normalizedAction(action);
   if (tool === "feishu_doc") return ["read", "list_blocks", "get_block"].includes(normalized);
@@ -1315,6 +1333,209 @@ function docxReadSummary(input: {
       ? { hint: `This document contains ${structuredTypes.join(", ")} which are not included in plain text. Use feishu_doc action list_blocks for structured content.` }
       : {}),
   };
+}
+
+function isPrivateDocxUploadHost(hostname: string): boolean {
+  const lower = hostname.toLowerCase();
+  if (lower === "localhost" || lower.endsWith(".localhost")) return true;
+  const version = isIP(lower);
+  if (version === 4) {
+    const parts = lower.split(".").map((part) => Number(part));
+    const [first, second] = parts;
+    return first === 10
+      || first === 127
+      || (first === 169 && second === 254)
+      || (first === 172 && second >= 16 && second <= 31)
+      || (first === 192 && second === 168);
+  }
+  if (version === 6) return lower === "::1" || lower.startsWith("fc") || lower.startsWith("fd") || lower.startsWith("fe80:");
+  return false;
+}
+
+function docxUploadParamSource(params: Record<string, unknown>, keys: string[]): { key: string; value: string } | null {
+  for (const key of keys) {
+    const value = normalizeString(params[key]);
+    if (value) return { key, value };
+  }
+  return null;
+}
+
+function isLikelyDocxUploadPath(value: string): boolean {
+  return value.startsWith("/")
+    || value.startsWith("./")
+    || value.startsWith("../")
+    || value.startsWith("~/")
+    || /^[A-Za-z]:[\\/]/.test(value);
+}
+
+function readDocxUploadLocalFile(input: {
+  filePath: string;
+  requestedFileName?: string | null;
+  fallbackFileName: string;
+  fallbackMimeType?: string | null;
+  maxBytes: number;
+}): { data: Uint8Array; fileName: string; mimeType: string } {
+  const expanded = input.filePath.startsWith("~")
+    ? path.join(process.env.HOME || "", input.filePath.slice(1))
+    : input.filePath;
+  const absolutePath = path.resolve(expanded);
+  let stat: fs.Stats;
+  try {
+    stat = fs.statSync(absolutePath);
+  } catch {
+    throw new Error(`Upload file does not exist: ${input.filePath}`);
+  }
+  if (!stat.isFile()) throw new Error(`Upload path is not a regular file: ${input.filePath}`);
+  if (stat.size > input.maxBytes) {
+    throw new Error(`Upload file exceeds Feishu docx upload_all limit: ${stat.size} > ${input.maxBytes}.`);
+  }
+  const resolvedFileName = safeChannelConnectorFileName(input.requestedFileName || path.basename(absolutePath), input.fallbackFileName);
+  return {
+    data: fs.readFileSync(absolutePath),
+    fileName: resolvedFileName,
+    mimeType: inferChannelConnectorMimeType(resolvedFileName, input.fallbackMimeType),
+  };
+}
+
+function decodeDocxUploadData(input: {
+  value: string;
+  fallbackFileName: string;
+  fallbackMimeType?: string | null;
+  maxBytes: number;
+}): { data: Uint8Array; fileName: string; mimeType: string } {
+  if (input.value.startsWith("data:")) {
+    const commaIndex = input.value.indexOf(",");
+    if (commaIndex < 0) throw new Error("Invalid data URI: missing comma separator.");
+    const header = input.value.slice(0, commaIndex);
+    const payload = input.value.slice(commaIndex + 1).trim();
+    if (!header.includes(";base64")) throw new Error("Invalid data URI: only base64 data URIs are supported.");
+    if (!payload || !/^[A-Za-z0-9+/]+=*$/.test(payload)) throw new Error("Invalid data URI: base64 payload is malformed.");
+    const estimatedBytes = Math.ceil((payload.length * 3) / 4);
+    if (estimatedBytes > input.maxBytes) throw new Error(`Upload data exceeds Feishu docx upload_all limit: ${estimatedBytes} > ${input.maxBytes}.`);
+    const mimeType = normalizeString(header.match(/^data:([^;]+)/)?.[1]) || input.fallbackMimeType || "application/octet-stream";
+    const extension = mimeType === "image/jpeg"
+      ? ".jpg"
+      : mimeType === "image/png"
+        ? ".png"
+        : mimeType === "image/gif"
+          ? ".gif"
+          : mimeType === "image/webp"
+            ? ".webp"
+            : "";
+    const fileName = safeChannelConnectorFileName(input.fallbackFileName, `studio-docx-upload${extension || ".bin"}`);
+    const data = Buffer.from(payload, "base64");
+    return { data, fileName, mimeType: inferChannelConnectorMimeType(fileName, mimeType) };
+  }
+  const payload = input.value.trim();
+  if (!payload || !/^[A-Za-z0-9+/]+=*$/.test(payload)) {
+    throw new Error("Invalid base64 upload data. Use a data URI, base64 payload, url, or file_path.");
+  }
+  const estimatedBytes = Math.ceil((payload.length * 3) / 4);
+  if (estimatedBytes > input.maxBytes) throw new Error(`Upload data exceeds Feishu docx upload_all limit: ${estimatedBytes} > ${input.maxBytes}.`);
+  const fileName = safeChannelConnectorFileName(input.fallbackFileName, "studio-docx-upload.bin");
+  const mimeType = inferChannelConnectorMimeType(fileName, input.fallbackMimeType);
+  return { data: Buffer.from(payload, "base64"), fileName, mimeType };
+}
+
+async function fetchDocxUploadUrl(input: {
+  url: string;
+  fallbackFileName: string;
+  fallbackMimeType?: string | null;
+  maxBytes: number;
+}): Promise<{ data: Uint8Array; fileName: string; mimeType: string }> {
+  let parsed: URL;
+  try {
+    parsed = new URL(input.url);
+  } catch {
+    throw new Error("upload url is invalid.");
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") throw new Error("upload url must use http or https.");
+  if (isPrivateDocxUploadHost(parsed.hostname)) throw new Error("upload url points to a private network host.");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  try {
+    const response = await fetch(parsed, { signal: controller.signal });
+    if (!response.ok) throw new Error(`upload url fetch failed with HTTP ${response.status}.`);
+    const contentLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > input.maxBytes) {
+      throw new Error(`Upload URL exceeds Feishu docx upload_all limit: ${contentLength} > ${input.maxBytes}.`);
+    }
+    const data = new Uint8Array(await response.arrayBuffer());
+    if (data.byteLength > input.maxBytes) throw new Error(`Upload URL exceeds Feishu docx upload_all limit: ${data.byteLength} > ${input.maxBytes}.`);
+    const urlName = decodeURIComponent(parsed.pathname.split("/").filter(Boolean).pop() || "");
+    const fileName = safeChannelConnectorFileName(input.fallbackFileName || urlName, "studio-docx-upload.bin");
+    const mimeType = inferChannelConnectorMimeType(fileName, response.headers.get("content-type") || input.fallbackMimeType);
+    return { data, fileName, mimeType };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function resolveDocxUploadInput(
+  params: Record<string, unknown>,
+  options: { dataKeys: string[]; defaultFileName: string; defaultMimeType?: string | null },
+): Promise<{ data: Uint8Array; fileName: string; mimeType: string }> {
+  const requestedFileName = paramString(params, ["filename", "file_name", "fileName", "name"]);
+  const fileName = safeChannelConnectorFileName(requestedFileName, options.defaultFileName);
+  const mimeType = optionalParamString(params, ["mime_type", "mimeType", "content_type", "contentType"]) || options.defaultMimeType || null;
+  const url = optionalParamString(params, ["url", "download_url", "downloadUrl"]);
+  const filePath = optionalParamString(params, ["file_path", "filePath", "path", "local_path", "localPath"]);
+  const dataSource = docxUploadParamSource(params, options.dataKeys);
+  const dataValue = dataSource?.value || "";
+  const provided = [url ? "url" : "", filePath ? "file_path" : "", dataValue ? dataSource!.key : ""].filter(Boolean);
+  if (provided.length !== 1) throw new Error(`Provide exactly one upload source: url, file_path, or data/base64; got ${provided.join(", ") || "none"}.`);
+  if (url) return fetchDocxUploadUrl({ url, fallbackFileName: requestedFileName, fallbackMimeType: mimeType, maxBytes: FEISHU_DOCX_UPLOAD_ALL_MAX_BYTES });
+  if (dataValue) {
+    try {
+      return decodeDocxUploadData({ value: dataValue, fallbackFileName: requestedFileName || fileName, fallbackMimeType: mimeType, maxBytes: FEISHU_DOCX_UPLOAD_ALL_MAX_BYTES });
+    } catch (error) {
+      if (!isLikelyDocxUploadPath(dataValue)) throw error;
+      return readDocxUploadLocalFile({
+        filePath: dataValue,
+        requestedFileName,
+        fallbackFileName: options.defaultFileName,
+        fallbackMimeType: mimeType,
+        maxBytes: FEISHU_DOCX_UPLOAD_ALL_MAX_BYTES,
+      });
+    }
+  }
+  return readDocxUploadLocalFile({
+    filePath: filePath!,
+    requestedFileName,
+    fallbackFileName: options.defaultFileName,
+    fallbackMimeType: mimeType,
+    maxBytes: FEISHU_DOCX_UPLOAD_ALL_MAX_BYTES,
+  });
+}
+
+async function uploadFeishuDocxMedia(
+  multipart: FeishuActionMultipart,
+  input: {
+    parentType: "docx_image" | "docx_file";
+    parentNode: string;
+    data: Uint8Array;
+    fileName: string;
+    mimeType: string;
+    routeDocToken?: string | null;
+  },
+): Promise<string> {
+  const body = await multipart({
+    path: "/open-apis/drive/v1/medias/upload_all",
+    fieldName: "file",
+    fileName: input.fileName,
+    data: input.data,
+    mimeType: input.mimeType,
+    fields: {
+      file_name: input.fileName,
+      parent_type: input.parentType,
+      parent_node: input.parentNode,
+      size: String(input.data.byteLength),
+      ...(input.routeDocToken ? { extra: JSON.stringify({ drive_route_token: input.routeDocToken }) } : {}),
+    },
+  });
+  const fileToken = normalizeString(recordFrom(body.data).file_token) || normalizeString(body.file_token);
+  if (!fileToken) throw new Error("Feishu docx media upload response did not include file_token.");
+  return fileToken;
 }
 
 function normalizeDocxBlockId(block: unknown): string {
@@ -1762,6 +1983,80 @@ async function createDocxTableWithValues(
   };
 }
 
+async function uploadDocxImageBlock(
+  call: FeishuActionCall,
+  multipart: FeishuActionMultipart,
+  docToken: string,
+  params: Record<string, unknown>,
+) {
+  const upload = await resolveDocxUploadInput(params, {
+    dataKeys: ["image", "data", "base64"],
+    defaultFileName: "studio-docx-image.png",
+    defaultMimeType: "image/png",
+  });
+  const parentBlockId = optionalParamString(params, ["parent_block_id", "parentBlockId"]) || docToken;
+  const created = await call(
+    "POST",
+    `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/blocks/${encodeURIComponent(parentBlockId)}/children?document_revision_id=-1`,
+    {
+      children: [{ block_type: 27, image: {} }],
+      index: requireParamUploadIndex(params),
+    },
+  );
+  const imageBlock = arrayFrom(recordFrom(created.data).children)
+    .map(recordFrom)
+    .find((block) => Number(block.block_type) === 27);
+  const imageBlockId = normalizeDocxBlockId(imageBlock);
+  if (!imageBlockId) throw new Error("Failed to create Feishu docx image block.");
+  const fileToken = await uploadFeishuDocxMedia(multipart, {
+    parentType: "docx_image",
+    parentNode: imageBlockId,
+    data: upload.data,
+    fileName: upload.fileName,
+    mimeType: upload.mimeType,
+    routeDocToken: docToken,
+  });
+  await call(
+    "PATCH",
+    `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/blocks/${encodeURIComponent(imageBlockId)}`,
+    { replace_image: { token: fileToken } },
+  );
+  return {
+    success: true,
+    block_id: imageBlockId,
+    file_token: fileToken,
+    file_name: upload.fileName,
+    mime_type: upload.mimeType,
+    size: upload.data.byteLength,
+  };
+}
+
+async function uploadDocxFile(
+  multipart: FeishuActionMultipart,
+  docToken: string,
+  params: Record<string, unknown>,
+) {
+  const upload = await resolveDocxUploadInput(params, {
+    dataKeys: ["file", "data", "base64"],
+    defaultFileName: "studio-docx-file.bin",
+  });
+  const fileToken = await uploadFeishuDocxMedia(multipart, {
+    parentType: "docx_file",
+    parentNode: docToken,
+    data: upload.data,
+    fileName: upload.fileName,
+    mimeType: upload.mimeType,
+  });
+  return {
+    success: true,
+    file_token: fileToken,
+    file_name: upload.fileName,
+    mime_type: upload.mimeType,
+    size: upload.data.byteLength,
+    note: "File uploaded to the Feishu docx media store. Feishu does not support direct file block creation through this action; use the returned file_token if a later workflow needs to reference it.",
+  };
+}
+
 async function executeFeishuReadOnlyAction(
   config: ChannelConnectorFeishuTransportConfig,
   request: ChannelConnectorFeishuActionRequest,
@@ -1782,7 +2077,6 @@ async function executeFeishuReadOnlyAction(
     statusCode = response.statusCode;
     return response.body;
   };
-
   if (request.tool === "feishu_doc") {
     const docToken = requireParamString(params, ["doc_token", "document_id", "docToken", "token"], "doc_token");
     if (action === "read") {
@@ -1894,6 +2188,20 @@ async function executeFeishuMutationAction(
     statusCode = response.statusCode;
     return response.body;
   };
+  const multipart: FeishuActionMultipart = async (input) => {
+    const response = await feishuMultipartRequest(config, {
+      path: input.path,
+      token,
+      fieldName: input.fieldName,
+      fileName: input.fileName,
+      data: input.data,
+      mimeType: input.mimeType,
+      fields: input.fields,
+    });
+    requestCount += response.requestCount;
+    statusCode = response.statusCode;
+    return response.body;
+  };
 
   if (request.tool === "feishu_doc") {
     if (action === "write") {
@@ -1954,6 +2262,16 @@ async function executeFeishuMutationAction(
         parentBlockId: optionalParamString(params, ["parent_block_id", "parentBlockId"]),
         columnWidth: optionalParamNumberArray(params, ["column_width", "columnWidth"]),
       });
+      return { data, statusCode, requestCount };
+    }
+    if (action === "upload_image") {
+      const docToken = requireParamString(params, ["doc_token", "document_id", "docToken", "token"], "doc_token");
+      const data = await uploadDocxImageBlock(call, multipart, docToken, params);
+      return { data, statusCode, requestCount };
+    }
+    if (action === "upload_file") {
+      const docToken = requireParamString(params, ["doc_token", "document_id", "docToken", "token"], "doc_token");
+      const data = await uploadDocxFile(multipart, docToken, params);
       return { data, statusCode, requestCount };
     }
     if (action === "create") {
