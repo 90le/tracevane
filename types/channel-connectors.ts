@@ -46,7 +46,9 @@ export type ChannelConnectorOctoChannelType = 1 | 2 | 5;
 
 export interface ChannelConnectorOctoMentionPayload {
   uids?: string[];
-  all?: number;
+  all?: number | boolean;
+  ais?: number | boolean;
+  humans?: number | boolean;
 }
 
 export interface ChannelConnectorOctoReplyPayload {

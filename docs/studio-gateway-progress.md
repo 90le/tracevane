@@ -22,16 +22,17 @@
 
 ## 本轮完成
 
-- 对照 `~/.openclaw/extensions/octo/dist/src/{channel,api-fetch}.js` 与 `~/.openclaw/extensions/octo/skills/octo-bot-api/SKILL.md`，扩展 Studio Octo Bot API transport 能力。
-- `/api/channel-connectors/adapters/octo/transport-smoke` 已支持 read receipt、event ack、群列表/详情/成员、Space 成员搜索、群创建/更新/成员增删、thread 列表/详情/成员/创建/加入/离开、消息历史同步和文件下载 URL 探测。
-- Octo REST JSON 解析补齐 OpenClaw 插件同款 `message_id` 大整数保护；消息历史 smoke 会把 base64 payload 解码成结构化 payload，便于后续注入群/会话上下文。
+- 对照 Octo 插件 v1.0.15，Studio Octo identity 比较改为 account/bot ID 小写归一：binding 解析、群 @bot 判断、自身消息跳过均兼容 BotFather mixed-case bot ID；原始 ID 仍保留给平台 API。
+- 对照 Octo 插件 mention gate，普通 bot 不再因 `mention.all` / `mention.humans` 广播被触发；纯 `mention.ais=1` 或显式 @bot 仍触发。
+- Octo read receipt 按插件方式带 `message_ids`；Channel daemon 在消息通过去重、系统消息、群 directed 和治理 gate 后异步发送 read receipt，失败只写 Octo event log，不阻塞 Agent。
+- Octo v1.0.15 的 `globalThis[Symbol.for("openclaw.octo.runtime")]` 是插件 jiti/ESM 双实例修复；Studio daemon 不通过插件 runtime 双加载，当前无需迁移同款 singleton。
 
 ## 最近验证
 
 - 通过：`npm run typecheck:api`。
 - 通过：`npm run build:api`。
-- 通过：`node --test --test-name-pattern "Octo transport smoke covers Bot API|Octo transport upload strategy|Octo transport direct uploads|Octo upload-and-send media auto routes|Octo transport preserves outbound upload file names|Octo auto upload falls back|Octo transport smoke uploads and sends media" tests/system/channel-connectors-service.test.mjs`，7/7 全部通过。
-- 通过：真实 Octo `octo-studio-cc` 只读 smoke：`list-groups` HTTP 200 / 1 个群；取第一个群执行 `group-members` HTTP 200 / 6 个成员。
+- 通过：`node --test --test-name-pattern "Octo adapter|Octo transport sends CC-compatible REST heartbeat|Octo transport sends read receipt|Octo transport smoke covers Bot API|Octo transport upload strategy|Octo transport direct uploads|Octo upload-and-send media auto routes|Octo transport preserves outbound upload file names|Octo auto upload falls back|Octo transport smoke uploads and sends media" tests/system/channel-connectors-service.test.mjs`，12/12 全部通过。
+- 上轮通过：真实 Octo `octo-studio-cc` 只读 smoke：`list-groups` HTTP 200 / 1 个群；取第一个群执行 `group-members` HTTP 200 / 6 个成员。
 
 ## 已知边界
 
@@ -48,5 +49,5 @@
 
 1. 用户发送一条新的 Feishu 消息，做业务入站复验：runtime 应出现 dispatcher callback / receivedMessages，且无 reconnect/stale。
 2. 做真实 IM live smoke：先从 Feishu/Octo 真实发送 `/commands addexec slow node -e "setTimeout(()=>console.log('slow done'), 900)"` 和 `/slow`，再运行 `node scripts/smoke-channel-connectors-command-live.mjs --bindings feishu-live --recent-sessions --commands /slow --wait-command-progress --require-command-progress-terminal --require-command-progress-patch --json` 验证 Feishu daemon card patch，并运行 `node scripts/smoke-channel-connectors-command-live.mjs --bindings octo-studio-cc --recent-sessions --commands /slow --wait-command-progress --require-command-progress-terminal --require-command-progress-sent --json` 验证 Octo started-only 文本提示；再运行 `node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings feishu-live --require-ok --require-reply --require-progress --require-tool --require-feishu-card --require-feishu-progress-card-completed --require-permission-prompt --require-permission-resolved --require-feishu-permission-progress-card --require-no-final-progress-reply --json`，用三次顺序 `exec_command` 和需要审批的提示词验证思考、过程回复、工具输入、工具输出、审批卡和最终回复。
-3. 用户在 Octo 真实会话重试“让 Agent 发 `hello.txt`”，并做一轮 Octo Bot API live smoke：`list-groups`、`group-members`、`sync-messages`、`file-download-url` 先只读验证。
-4. 把 Octo Bot API 能力接入 Channel daemon：群成员/历史上下文补全、read receipt、event ack、thread target、文件下载/staging 与后续菜单命令。
+3. 用户在 Octo 真实会话重试“让 Agent 发 `hello.txt`”，并做一轮 Octo Bot API live smoke：`sync-messages`、`file-download-url` 先只读验证。
+4. 继续把 Octo Bot API 能力接入 Channel daemon：群成员/历史上下文补全、event ack、thread target、文件下载 URL 到本地 staging、群/线程管理命令与后续菜单。

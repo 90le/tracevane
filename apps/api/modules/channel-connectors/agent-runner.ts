@@ -349,8 +349,15 @@ function buildGroupContext(
   ];
   const botId = normalizeString(binding.botId);
   if (botId) lines.push(`Bot: ${botId}`);
-  if (mention?.all && mention.all > 0) {
+  const mentionAll = mention?.all === true || mention?.all === 1;
+  const mentionAis = mention?.ais === true || mention?.ais === 1;
+  const mentionHumans = mention?.humans === true || mention?.humans === 1;
+  if (mentionAll) {
     lines.push("Mention: @all");
+  } else if (mentionAis) {
+    lines.push("Mention: @AI");
+  } else if (mentionHumans) {
+    lines.push("Mention: @humans");
   } else if (mentionUids.length) {
     lines.push(`Mentioned users: ${mentionUids.join(", ")}`);
   }

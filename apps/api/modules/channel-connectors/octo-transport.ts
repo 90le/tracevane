@@ -673,12 +673,16 @@ export async function sendOctoHeartbeat(
 
 export async function sendOctoReadReceipt(
   config: ChannelConnectorOctoTransportConfig,
-  input: { channelId: string; channelType: number },
+  input: { channelId: string; channelType: number; messageIds?: Array<string | number> | null },
 ): Promise<ChannelConnectorOctoTransportResult> {
   try {
+    const messageIds = Array.isArray(input.messageIds)
+      ? input.messageIds.map((id) => String(id).trim()).filter(Boolean)
+      : [];
     const response = await postOctoJson(config, "/v1/bot/readReceipt", {
       channel_id: input.channelId,
       channel_type: input.channelType,
+      ...(messageIds.length > 0 ? { message_ids: messageIds } : {}),
     });
     return octoTransportData(config, "read-receipt", response);
   } catch (error) {

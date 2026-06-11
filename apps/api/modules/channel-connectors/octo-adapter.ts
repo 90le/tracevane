@@ -36,6 +36,16 @@ function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+export function normalizeOctoAccountId(value: unknown): string {
+  return normalizeString(value).toLowerCase();
+}
+
+function sameOctoAccountId(a: unknown, b: unknown): boolean {
+  const left = normalizeOctoAccountId(a);
+  const right = normalizeOctoAccountId(b);
+  return Boolean(left && right && left === right);
+}
+
 function recordFrom(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
@@ -131,9 +141,12 @@ export function isOctoMessageDirectedAtBot(
   if (!isOctoGroupChannel(message.channelType)) return true;
   const mention = message.payload.mention;
   const mentionUids = Array.isArray(mention?.uids) ? mention?.uids || [] : [];
-  if (mention?.all && mention.all > 0) return true;
-  const normalizedBotId = normalizeString(botId);
-  if (normalizedBotId && mentionUids.includes(normalizedBotId)) return true;
+  const normalizedBotId = normalizeOctoAccountId(botId);
+  if (normalizedBotId && mentionUids.some((uid) => normalizeOctoAccountId(uid) === normalizedBotId)) return true;
+  const mentionAll = mention?.all === true || mention?.all === 1;
+  const mentionHumans = mention?.humans === true || mention?.humans === 1;
+  const mentionAis = mention?.ais === true || mention?.ais === 1;
+  if (mentionAis && !mentionAll && !mentionHumans) return true;
   if (message.payload.reply && (message.payload.reply.messageId || message.payload.reply.message_id)) return true;
   return normalizeString(message.payload.content).startsWith("/");
 }
@@ -423,14 +436,14 @@ export function resolveOctoBinding(
 ): ChannelConnectorsOctoResolvedBinding | null {
   const octoBindings = bindings.filter((binding) => binding.platform === "octo" && binding.enabled);
   const requestedBindingId = normalizeString(request.bindingId);
-  const requestedAccountId = normalizeString(request.accountId);
-  const requestedBotId = normalizeString(request.botId);
+  const requestedAccountId = normalizeOctoAccountId(request.accountId);
+  const requestedBotId = normalizeOctoAccountId(request.botId);
   let binding: ChannelConnectorPlatformBinding | undefined;
   if (requestedBindingId) binding = octoBindings.find((candidate) => candidate.id === requestedBindingId);
   if (!binding && requestedAccountId) {
     binding = octoBindings.find((candidate) =>
-      candidate.accountId === requestedAccountId
-      && (!requestedBotId || candidate.botId === requestedBotId),
+      normalizeOctoAccountId(candidate.accountId) === requestedAccountId
+      && (!requestedBotId || normalizeOctoAccountId(candidate.botId) === requestedBotId),
     );
   }
   if (!binding && octoBindings.length === 1) binding = octoBindings[0];
@@ -497,7 +510,7 @@ export function shouldSkipOctoMessage(
   if (!message) return "octo_message_required";
   if (!resolved) return "octo_binding_not_found";
   if (isSystemOctoMessage(message)) return "octo_system_message";
-  if (normalizeString(message.fromUid) === normalizeString(resolved.binding.botId)) return "octo_self_message";
+  if (sameOctoAccountId(message.fromUid, resolved.binding.botId)) return "octo_self_message";
   const content = extractOctoContent(message);
   if (!content) return "octo_empty_message";
   if (!isOctoMessageDirectedAtBot(message, resolved.binding.botId)) return "octo_group_message_not_directed";

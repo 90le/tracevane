@@ -46,6 +46,7 @@ import {
   uploadAndSendOctoMedia,
   shouldDirectUploadOctoMedia,
   sendOctoHeartbeat,
+  sendOctoReadReceipt,
 } from "../../dist/apps/api/modules/channel-connectors/octo-transport.js";
 import {
   addFeishuMessageReaction,
@@ -1427,6 +1428,86 @@ test("Octo adapter dry-run dispatch resolves binding, session key, and reply pla
   assert.equal(denied.agentDispatch.status, "skipped");
 });
 
+test("Octo adapter normalizes mixed-case account identity like the Octo plugin", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+  });
+  const initial = service.getNativeConfig().config;
+  service.saveNativeConfig({
+    config: {
+      ...initial,
+      agentProfiles: [
+        {
+          id: "codex-main",
+          name: "Codex main",
+          agent: "codex",
+          model: "gpt-5",
+          workDir: config.projectRoot,
+          permissionMode: "suggest",
+          gatewayEndpoint: "http://127.0.0.1:18796/v1",
+          gatewayKeyRef: "studio-gateway-client-key",
+          appProfileRef: "codex",
+        },
+      ],
+      defaultAgentProfileId: "codex-main",
+      platformBindings: [
+        {
+          id: "octo-mixed-case",
+          platform: "octo",
+          accountId: "27xIxHrNV0Qc3ee2129_bot",
+          botId: "27xIxHrNV0Qc3ee2129_bot",
+          displayName: "Octo mixed-case BotFather bot",
+          agentProfileId: "codex-main",
+          enabled: true,
+          allowlist: [],
+          adminUsers: [],
+        },
+      ],
+    },
+  });
+
+  const resolvedByLowercaseRequest = await service.dispatchOctoIncoming({
+    accountId: "27xixhrnv0qc3ee2129_bot",
+    botId: "27xixhrnv0qc3ee2129_bot",
+    dryRun: true,
+    message: {
+      messageId: "mixed-case-directed",
+      fromUid: "user-1",
+      channelId: "group-a",
+      channelType: 2,
+      payload: {
+        type: 1,
+        content: "@studio status",
+        mention: { uids: ["27xixhrnv0qc3ee2129_bot"] },
+      },
+    },
+  });
+
+  assert.equal(resolvedByLowercaseRequest.accepted, true);
+  assert.equal(resolvedByLowercaseRequest.binding.id, "octo-mixed-case");
+  assert.equal(resolvedByLowercaseRequest.incoming.directed, true);
+
+  const selfMessage = await service.dispatchOctoIncoming({
+    bindingId: "octo-mixed-case",
+    dryRun: true,
+    message: {
+      messageId: "mixed-case-self",
+      fromUid: "27xixhrnv0qc3ee2129_bot",
+      channelId: "group-a",
+      channelType: 2,
+      payload: {
+        type: 1,
+        content: "self echo",
+      },
+    },
+  });
+
+  assert.equal(selfMessage.accepted, false);
+  assert.equal(selfMessage.skippedReason, "octo_self_message");
+});
+
 test("Octo adapter follows group direction and mention rendering rules", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -1484,6 +1565,42 @@ test("Octo adapter follows group direction and mention rendering rules", async (
   assert.equal(ignored.accepted, false);
   assert.equal(ignored.skippedReason, "octo_group_message_not_directed");
   assert.equal(ignored.sessionKey, "dmwork:group:group-a");
+
+  const broadcast = await service.dispatchOctoIncoming({
+    bindingId: "octo-group",
+    dryRun: true,
+    message: {
+      messageId: "g-broadcast",
+      fromUid: "user-2",
+      channelId: "group-a",
+      channelType: 2,
+      payload: {
+        type: 1,
+        content: "@所有人 status",
+        mention: { all: 1, ais: 1, humans: 1 },
+      },
+    },
+  });
+  assert.equal(broadcast.accepted, false);
+  assert.equal(broadcast.skippedReason, "octo_group_message_not_directed");
+
+  const aiMention = await service.dispatchOctoIncoming({
+    bindingId: "octo-group",
+    dryRun: true,
+    message: {
+      messageId: "g-ai-mention",
+      fromUid: "user-2",
+      channelId: "group-a",
+      channelType: 2,
+      payload: {
+        type: 1,
+        content: "@所有AI status",
+        mention: { ais: 1 },
+      },
+    },
+  });
+  assert.equal(aiMention.accepted, true);
+  assert.equal(aiMention.incoming.directed, true);
 
   const directed = await service.dispatchOctoIncoming({
     bindingId: "octo-group",
@@ -1574,6 +1691,31 @@ test("Octo transport sends CC-compatible REST heartbeat", async () => {
     assert.ok(request);
     assert.equal(request.method, "POST");
     assert.equal(request.authorization, "Bearer octo-token");
+  });
+});
+
+test("Octo transport sends read receipt with message ids", async () => {
+  await withMockOctoServer(async (apiUrl, requests) => {
+    const result = await sendOctoReadReceipt({
+      apiUrl,
+      botToken: "octo-token",
+    }, {
+      channelId: "group-1",
+      channelType: 2,
+      messageIds: ["12345678901234567"],
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.action, "read-receipt");
+    const request = requests.find((item) => item.path === "/v1/bot/readReceipt");
+    assert.ok(request);
+    assert.equal(request.method, "POST");
+    assert.equal(request.authorization, "Bearer octo-token");
+    assert.deepEqual(request.body, {
+      channel_id: "group-1",
+      channel_type: 2,
+      message_ids: ["12345678901234567"],
+    });
   });
 });
 

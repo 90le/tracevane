@@ -152,6 +152,7 @@ import {
   octoTransportFromMetadata,
   registerOctoBot,
   sendOctoHeartbeat,
+  sendOctoReadReceipt,
   sendOctoTextReply,
   sendOctoTyping,
   uploadAndSendOctoMedia,
@@ -3481,6 +3482,60 @@ function startOctoTypingPulse(
   return () => clearInterval(timer);
 }
 
+function octoReadReceiptEnabled(binding: ChannelConnectorRuntimeBinding): boolean {
+  return metadataBoolean(binding, [
+    "octoReadReceipt",
+    "octo_read_receipt",
+    "readReceipt",
+    "read_receipt",
+  ], true);
+}
+
+function sendOctoReadReceiptForMessage(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  binding: ChannelConnectorRuntimeBinding;
+  transport: ChannelConnectorOctoTransportConfig | null;
+  message: ChannelConnectorOctoInboundMessage;
+  sessionKey: string;
+}): void {
+  if (!input.transport || !octoReadReceiptEnabled(input.binding)) return;
+  const channelId = input.message.channelType === 1 ? input.message.fromUid : input.message.channelId;
+  const messageIds = input.message.messageId ? [input.message.messageId] : [];
+  void sendOctoReadReceipt(input.transport, {
+    channelId,
+    channelType: input.message.channelType,
+    messageIds,
+  }).then((result) => {
+    writeJsonLine(input.config.paths.octoEvents, {
+      checkedAt: new Date().toISOString(),
+      eventKind: "channel.read_receipt",
+      adapter: "octo",
+      bindingId: input.binding.id,
+      sessionKey: input.sessionKey,
+      messageId: input.message.messageId,
+      channelId,
+      channelType: input.message.channelType,
+      ok: result.ok,
+      statusCode: result.statusCode,
+      error: result.error,
+      requestCount: result.requestCount,
+    });
+  }).catch((error) => {
+    writeJsonLine(input.config.paths.octoEvents, {
+      checkedAt: new Date().toISOString(),
+      eventKind: "channel.read_receipt",
+      adapter: "octo",
+      bindingId: input.binding.id,
+      sessionKey: input.sessionKey,
+      messageId: input.message.messageId,
+      channelId,
+      channelType: input.message.channelType,
+      ok: false,
+      error: shortMessage(error),
+    });
+  });
+}
+
 function octoProgressTitle(event: ChannelConnectorAgentProgressEvent): string {
   if (event.type === "assistant") return "过程回复";
   if (event.type === "running") return "运行中";
@@ -6173,6 +6228,13 @@ async function dispatchOctoMessage(input: {
   }
 
   const transport = octoTransportFromMetadata(binding.metadata);
+  sendOctoReadReceiptForMessage({
+    config,
+    binding,
+    transport,
+    message,
+    sessionKey,
+  });
   const key = gatewayClientKey(config);
   const command = await handleChannelConnectorCommand({
     config,

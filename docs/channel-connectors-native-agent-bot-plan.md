@@ -1,7 +1,7 @@
 # Channel Connectors / CLI Agent Bot 原生方案
 
 > 状态：Studio 原生 Channel daemon 路线；Octo/Feishu 基础闭环、CC-style 菜单/会话子卡和 native CLI persistent compact/stop real CLI smoke 已完成
-> 更新：2026-06-10
+> 更新：2026-06-11
 > 参考源：CC 二开全量源码 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`；OpenClaw 频道与运行时实现（最新本地源码：`/home/binbin/.openclaw/projects/openclaw/latest/extensions/feishu`）；OpenClaw Octo 插件 `~/.openclaw/extensions/octo`；迁移清单见 `channel-connectors-cc-migration-checklist.md`；Feishu 长连接专项见 `feishu-long-connection-issue-tracker.md`
 
 ## 1. 新结论
@@ -25,7 +25,7 @@ Octo(dmwork) / 飞书 / 微信 / IM
 - Studio 化精修只能发生在 parity 之后；若不用 CC 方案，必须证明 CC 没有该能力、Studio runtime 无法采用，或新方案更好，并在 `channel-connectors-cc-migration-checklist.md` 和 commit trailer 写明原因。
 - Codex app-server / persistent session 保持 beta，未通过 CC `exec/resume` 路径同等文件、工具、流式、stop、compact、恢复能力验收前，不得成为 live 默认。
 - OpenClaw 用作频道配置、账号/机器人绑定、运行态管理和事件抽象参考。
-- Octo 专属问题优先参考已安装的 OpenClaw Octo 插件（当前 1.0.14）：它覆盖 WuKongIM、Bot API、RichText=14、COS STS、群/thread/mention、persona 和多账号能力；当 CC Go 源码没有 Octo 方案时，以该插件为主要协议依据。
+- Octo 专属问题优先参考已安装的 OpenClaw Octo 插件（当前 1.0.15）：它覆盖 WuKongIM、Bot API、RichText=14、COS STS、群/thread/mention、persona、多账号能力和 mixed-case accountId 归一；当 CC Go 源码没有 Octo 方案时，以该插件为主要协议依据。
 - 生产实现不依赖 cc-connect binary，也不恢复旧 `resources/codex-stack` 生产路径。
 
 ## 2. 守护与边界
@@ -146,6 +146,7 @@ Studio 增强点：
 - F4 Octo 入站 URL 字段兼容已落地：除 `url` 外，支持常见 snake/camel URL 变体；若 live payload 仍无 URL，需要继续补 Octo/COS 媒体下载接口。
 - F4 Octo payload-only 附件补回已落地：daemon 运行前把 payload 推断出的附件写回 `attachments`，避免 live image/file 只显示 `[image]` 却不进入 staging；同时按 OpenClaw Octo 插件补 GIF=3、RichText=14 图文混排和多图 `mediaUrls` 入站归一化。
 - F4 Octo Bot API transport 基础能力已落地：`transport-smoke` 支持 read receipt、event ack、群/成员/Space 搜索、群管理、thread 管理、消息历史同步和文件下载 URL；消息历史 payload 解码和大整数 `message_id` 保护已对齐 OpenClaw Octo 插件。下一步把这些能力接入 daemon 自动 read receipt、群成员/历史上下文、thread target 和文件下载/staging。
+- F4 Octo v1.0.15 兼容已落地：binding 解析、群 @bot 判断和自身消息跳过按插件 `normalizeAccountId()` 语义大小写归一；`mention.all/humans` 广播不触发普通 bot，纯 `mention.ais=1` 或显式 @bot 触发；daemon 入站通过 gate 后异步发送带 `message_ids` 的 read receipt。插件 global runtime singleton 修复的是 jiti/ESM 双实例问题，Studio daemon 当前无同类 runtime 双加载，不迁移同款单例。
 - F4 图片能力门控已落地：Feishu/Octo 图片会先 staging；若当前模型未标记为 vision（例如 `glm-5`），Channel runner 仍启动受控 Agent turn，但 prompt 会禁止视觉推断并要求询问用户下一步；普通文件仍照常进入 Agent，避免把“不能看图”误判成“不能收文件”。
 - F4 Gateway vision 模型自动选择已落地：Channel daemon 会读取 Studio Gateway `/v1/models` 的模型能力；视觉附件 turn 如果当前模型不支持 vision 且模型池存在 vision 模型，会仅本轮切到 vision 模型，未找到或 catalog 不可用时回到非视觉保护；binding metadata 可用 `autoVisionModel:false` 关闭。
 - F4 Codex 原生图片输入已落地：当 image/sticker 已 staging 且当前 turn 为 vision-capable Codex 模型，runner 会把本地文件通过 Codex CLI `--image` 传入；纯附件消息不再因文本为空被丢弃。视频、Claude Code/OpenCode 视觉输入和 OCR 仍是后续项。
