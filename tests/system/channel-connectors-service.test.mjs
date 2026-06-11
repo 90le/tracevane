@@ -58,12 +58,17 @@ import {
   addFeishuMessageReaction,
   downloadFeishuMessageResource,
   downloadFeishuMessageResourceToFile,
+  getFeishuMessage,
   listFeishuChatMembers,
+  listFeishuThreadMessages,
   removeFeishuMessageReaction,
   sendFeishuPostMessage,
   sendFeishuTextMessage,
   uploadAndSendFeishuMedia,
 } from "../../dist/apps/api/modules/channel-connectors/feishu-transport.js";
+import {
+  loadFeishuThreadBootstrapContext,
+} from "../../dist/apps/api/modules/channel-connectors/feishu-thread-bootstrap.js";
 import {
   parseChannelConnectorByteSize,
   prepareChannelConnectorAttachmentStagingTarget,
@@ -8902,6 +8907,227 @@ test("native Channel Connectors Feishu transport lists chat members with paginat
     assert.equal(cached.requestCount, 1);
     assert.equal(cached.pageCount, 1);
     assert.equal(cached.hasMore, true);
+  });
+});
+
+test("native Channel Connectors Feishu thread bootstrap fetches root and topic history within budget", async () => {
+  const root = makeTempRoot();
+  const requests = [];
+  const textItem = ({
+    messageId,
+    senderId,
+    senderType = "user",
+    text,
+    createTime,
+    threadId = "omt_topic_1",
+  }) => ({
+    message_id: messageId,
+    msg_type: "text",
+    sender: {
+      sender_id: { open_id: senderId },
+      sender_type: senderType,
+    },
+    body: {
+      content: JSON.stringify({ text }),
+    },
+    create_time: String(createTime),
+    thread_id: threadId,
+  });
+
+  await withServer(async (req, res) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
+    await new Promise((resolve) => req.on("end", resolve));
+    const bodyRaw = Buffer.concat(chunks).toString("utf8");
+    requests.push({
+      method: req.method,
+      path: req.url,
+      authorization: req.headers.authorization,
+      body: bodyRaw ? JSON.parse(bodyRaw) : null,
+    });
+    res.setHeader("content-type", "application/json");
+    if (req.method === "POST" && req.url === "/open-apis/auth/v3/tenant_access_token/internal") {
+      res.end(JSON.stringify({
+        code: 0,
+        tenant_access_token: "tenant-token-1",
+        expire: 3600,
+      }));
+      return true;
+    }
+    if (req.method === "GET" && req.url === "/open-apis/im/v1/messages/om_root") {
+      res.end(JSON.stringify({
+        code: 0,
+        data: {
+          items: [
+            textItem({
+              messageId: "om_root",
+              senderId: "ou_owner",
+              text: "thread starter asks for a coordinated status report",
+              createTime: 1780732700000,
+            }),
+          ],
+        },
+      }));
+      return true;
+    }
+    if (req.method === "GET" && req.url === "/open-apis/im/v1/messages/om_current") {
+      res.end(JSON.stringify({
+        code: 0,
+        data: textItem({
+          messageId: "om_current",
+          senderId: "ou_user",
+          text: "current message should not be duplicated in fetched context",
+          createTime: 1780732800000,
+        }),
+      }));
+      return true;
+    }
+    if (req.method === "GET" && req.url?.startsWith("/open-apis/im/v1/messages?")) {
+      const parsedUrl = new URL(req.url, "http://feishu.local");
+      assert.equal(parsedUrl.searchParams.get("container_id_type"), "thread");
+      assert.equal(parsedUrl.searchParams.get("container_id"), "omt_topic_1");
+      res.end(JSON.stringify({
+        code: 0,
+        data: {
+          items: [
+            textItem({
+              messageId: "om_current",
+              senderId: "ou_user",
+              text: "current message should be excluded",
+              createTime: 1780732800000,
+            }),
+            textItem({
+              messageId: "om_helper",
+              senderId: "ou_helper",
+              text: "helper already replied with the latest summary",
+              createTime: 1780732799000,
+            }),
+            textItem({
+              messageId: "om_bot",
+              senderId: "cli_a9280cc8eab85cca",
+              senderType: "app",
+              text: "studio bot previous answer",
+              createTime: 1780732790000,
+            }),
+            textItem({
+              messageId: "om_long",
+              senderId: "ou_user",
+              text: `large topic history ${"long-context ".repeat(80)}TAIL-SHOULD-NOT-ENTER-FEISHU-CONTEXT`,
+              createTime: 1780732780000,
+            }),
+            textItem({
+              messageId: "om_root",
+              senderId: "ou_owner",
+              text: "thread starter duplicated in list should be excluded",
+              createTime: 1780732700000,
+            }),
+          ],
+        },
+      }));
+      return true;
+    }
+    return false;
+  }, async (apiUrl) => {
+    const transport = {
+      apiUrl,
+      appId: "cli_a9280cc8eab85cca",
+      appSecret: "secret",
+    };
+    const cachePath = path.join(root, "feishu-token-cache.json");
+    const rootMessage = await getFeishuMessage(transport, { messageId: "om_root" }, cachePath);
+    assert.equal(rootMessage.ok, true);
+    assert.equal(rootMessage.message?.content, "thread starter asks for a coordinated status report");
+    assert.equal(rootMessage.message?.threadId, "omt_topic_1");
+
+    const listed = await listFeishuThreadMessages(transport, {
+      threadId: "omt_topic_1",
+      currentMessageId: "om_current",
+      rootMessageId: "om_root",
+      limit: 20,
+    }, cachePath);
+    assert.equal(listed.ok, true);
+    assert.deepEqual(listed.messages.map((message) => message.messageId), ["om_long", "om_bot", "om_helper"]);
+
+    const parsed = parseChannelConnectorFeishuWebhook({
+      schema: "2.0",
+      header: {
+        event_type: "im.message.receive_v1",
+        app_id: "cli_a9280cc8eab85cca",
+        event_id: "evt_thread_bootstrap",
+        token: "verify-token",
+      },
+      event: {
+        sender: { sender_id: { open_id: "ou_user" } },
+        message: {
+          message_id: "om_current",
+          chat_id: "oc_group",
+          chat_type: "group",
+          root_id: "om_root",
+          thread_id: "omt_topic_1",
+          message_type: "text",
+          content: JSON.stringify({ text: "@studio-cc summarize the thread" }),
+        },
+      },
+    });
+    const bootstrap = await loadFeishuThreadBootstrapContext({
+      transport,
+      tokenCachePath: cachePath,
+      parsed,
+      sessionKey: "feishu:oc_group:topic:om_root",
+      groupSessionScope: "group_topic",
+      hasExistingSession: false,
+      limit: 20,
+      messageMaxRunes: 160,
+      totalMaxRunes: 1600,
+    });
+    assert.equal(bootstrap.attempted, true);
+    assert.equal(bootstrap.included, true);
+    assert.equal(bootstrap.threadId, "omt_topic_1");
+    assert.equal(bootstrap.rootMessageId, "om_root");
+    assert.equal(bootstrap.rootFetched, true);
+    assert.equal(bootstrap.messageCount, 4);
+    assert.match(bootstrap.context || "", /Feishu thread bootstrap/);
+    assert.match(bootstrap.context || "", /thread starter asks for a coordinated status report/);
+    assert.match(bootstrap.context || "", /studio bot previous answer/);
+    assert.match(bootstrap.context || "", /helper already replied with the latest summary/);
+    assert.match(bootstrap.context || "", /truncated/);
+    assert.match(bootstrap.context || "", /originalRunes/);
+    assert.doesNotMatch(bootstrap.context || "", /current message should be excluded/);
+    assert.doesNotMatch(bootstrap.context || "", /thread starter duplicated in list should be excluded/);
+    assert.doesNotMatch(bootstrap.context || "", /TAIL-SHOULD-NOT-ENTER-FEISHU-CONTEXT/);
+
+    const senderScoped = await loadFeishuThreadBootstrapContext({
+      transport,
+      tokenCachePath: cachePath,
+      parsed,
+      sessionKey: "feishu:oc_group:topic:om_root:sender:ou_user",
+      groupSessionScope: "group_topic_sender",
+      hasExistingSession: false,
+      limit: 20,
+      messageMaxRunes: 160,
+      totalMaxRunes: 1600,
+    });
+    assert.equal(senderScoped.included, true);
+    assert.match(senderScoped.context || "", /studio bot previous answer/);
+    assert.doesNotMatch(senderScoped.context || "", /helper already replied/);
+
+    const skipped = await loadFeishuThreadBootstrapContext({
+      transport,
+      tokenCachePath: cachePath,
+      parsed,
+      sessionKey: "feishu:oc_group:topic:om_root",
+      groupSessionScope: "group_topic",
+      hasExistingSession: true,
+      limit: 20,
+      messageMaxRunes: 160,
+      totalMaxRunes: 1600,
+    });
+    assert.equal(skipped.attempted, false);
+    assert.equal(skipped.skippedReason, "existing_session");
+
+    assert.equal(requests.some((request) => request.path === "/open-apis/im/v1/messages/om_root"), true);
+    assert.equal(requests.some((request) => request.path?.startsWith("/open-apis/im/v1/messages?")), true);
+    assert.equal(requests.every((request) => request.authorization === undefined || request.authorization === "Bearer tenant-token-1"), true);
   });
 });
 

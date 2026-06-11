@@ -258,7 +258,7 @@ function durationLabel(durationMs: number | null): string {
   return `${Math.round(durationMs / 1000)}s`;
 }
 
-function extractFeishuMessageContent(messageType: string | null, content: unknown): {
+export function extractFeishuMessageContent(messageType: string | null, content: unknown): {
   text: string | null;
   attachments: ChannelConnectorInboundAttachment[];
 } {

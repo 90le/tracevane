@@ -3,12 +3,14 @@ import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type {
+  ChannelConnectorInboundAttachment,
   ChannelConnectorFeishuInteractiveCard,
   ChannelConnectorFeishuTransportConfig,
   ChannelConnectorFeishuTransportResult,
   ChannelConnectorOctoGroupMember,
   ChannelConnectorPlatformBinding,
 } from "../../../../types/channel-connectors.js";
+import { extractFeishuMessageContent } from "./feishu-adapter.js";
 import { inferChannelConnectorMimeType, safeChannelConnectorFileName } from "./outbound-files.js";
 import { splitChannelConnectorTextChunks } from "./text-chunks.js";
 
@@ -108,6 +110,41 @@ export interface ChannelConnectorFeishuChatMembersResult {
   error: string | null;
 }
 
+export interface ChannelConnectorFeishuMessageInfo {
+  messageId: string;
+  senderId?: string;
+  senderType?: string;
+  content: string;
+  contentType: string;
+  createTime?: number;
+  threadId?: string;
+  attachments?: ChannelConnectorInboundAttachment[];
+}
+
+export interface ChannelConnectorFeishuMessageGetResult {
+  attempted: boolean;
+  ok: boolean;
+  apiUrl: string;
+  statusCode: number | null;
+  requestCount: number;
+  tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"];
+  messageId: string | null;
+  message: ChannelConnectorFeishuMessageInfo | null;
+  error: string | null;
+}
+
+export interface ChannelConnectorFeishuThreadMessagesResult {
+  attempted: boolean;
+  ok: boolean;
+  apiUrl: string;
+  statusCode: number | null;
+  requestCount: number;
+  tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"];
+  threadId: string | null;
+  messages: ChannelConnectorFeishuMessageInfo[];
+  error: string | null;
+}
+
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -116,6 +153,26 @@ function recordFrom(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
+}
+
+function arrayFrom(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+function nestedString(value: unknown, keys: string[]): string {
+  let current: unknown = value;
+  for (const key of keys) {
+    current = recordFrom(current)[key];
+  }
+  return normalizeString(current);
+}
+
+function normalizeFeishuTimestampMs(value: unknown): number | undefined {
+  const raw = normalizeString(value);
+  if (!raw) return undefined;
+  const numeric = Number(raw);
+  if (!Number.isFinite(numeric) || numeric <= 0) return undefined;
+  return numeric < 10_000_000_000 ? Math.floor(numeric * 1000) : Math.floor(numeric);
 }
 
 function normalizeApiUrl(value: unknown): string {
@@ -842,6 +899,168 @@ export async function downloadFeishuMessageResourceToFile(
       localPath: null,
       size: null,
       mimeType: null,
+      error: errorMessage(error),
+    };
+  }
+}
+
+function parseFeishuMessageItem(value: unknown, fallbackMessageId = ""): ChannelConnectorFeishuMessageInfo | null {
+  const item = recordFrom(value);
+  const body = recordFrom(item.body);
+  const messageId = normalizeString(item.message_id) || normalizeString(item.messageId) || normalizeString(fallbackMessageId);
+  if (!messageId && !Object.keys(item).length) return null;
+  const contentType = normalizeString(item.msg_type)
+    || normalizeString(item.message_type)
+    || normalizeString(body.msg_type)
+    || normalizeString(body.message_type)
+    || "text";
+  const rawContent = body.content !== undefined ? body.content : item.content;
+  const extracted = extractFeishuMessageContent(contentType, rawContent);
+  const senderId = nestedString(item, ["sender", "sender_id", "open_id"])
+    || nestedString(item, ["sender", "sender_id", "user_id"])
+    || nestedString(item, ["sender", "sender_id", "union_id"])
+    || nestedString(item, ["sender", "id"])
+    || normalizeString(item.sender_id)
+    || normalizeString(item.senderId)
+    || normalizeString(item.open_id)
+    || normalizeString(item.user_id);
+  const senderType = nestedString(item, ["sender", "sender_type"])
+    || normalizeString(item.sender_type)
+    || normalizeString(item.senderType);
+  return {
+    messageId,
+    senderId: senderId || undefined,
+    senderType: senderType || undefined,
+    content: extracted.text || "",
+    contentType,
+    createTime: normalizeFeishuTimestampMs(item.create_time) || normalizeFeishuTimestampMs(item.createTime),
+    threadId: normalizeString(item.thread_id) || normalizeString(item.threadId) || undefined,
+    attachments: extracted.attachments,
+  };
+}
+
+function feishuGetMessageItem(body: Record<string, unknown>): unknown | null {
+  const data = recordFrom(body.data);
+  const items = arrayFrom(data.items);
+  if (items.length) return items[0];
+  if (data.body !== undefined || data.message_id !== undefined || data.messageId !== undefined) return data;
+  return null;
+}
+
+export async function getFeishuMessage(
+  config: ChannelConnectorFeishuTransportConfig,
+  input: {
+    messageId: string;
+  },
+  cachePath?: string | null,
+): Promise<ChannelConnectorFeishuMessageGetResult> {
+  let requestCount = 0;
+  let tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"] = cachePath ? "miss" : "disabled";
+  const messageId = normalizeString(input.messageId);
+  try {
+    if (!messageId) throw new Error("Feishu messageId is required.");
+    const token = await getFeishuTenantToken(config, cachePath);
+    requestCount += token.requestCount;
+    tokenCache = token.tokenCache;
+    const response = await feishuJsonRequest(config, {
+      method: "GET",
+      token: token.token,
+      path: `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}`,
+    });
+    requestCount += response.requestCount;
+    const item = feishuGetMessageItem(response.body);
+    const message = item ? parseFeishuMessageItem(item, messageId) : null;
+    return {
+      attempted: true,
+      ok: true,
+      apiUrl: config.apiUrl,
+      statusCode: response.statusCode,
+      requestCount,
+      tokenCache,
+      messageId,
+      message,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      attempted: true,
+      ok: false,
+      apiUrl: config.apiUrl,
+      statusCode: errorStatusCode(error),
+      requestCount: Math.max(requestCount + errorRequestCount(error), 1),
+      tokenCache,
+      messageId: messageId || null,
+      message: null,
+      error: errorMessage(error),
+    };
+  }
+}
+
+export async function listFeishuThreadMessages(
+  config: ChannelConnectorFeishuTransportConfig,
+  input: {
+    threadId: string;
+    currentMessageId?: string | null;
+    rootMessageId?: string | null;
+    limit?: number | null;
+  },
+  cachePath?: string | null,
+): Promise<ChannelConnectorFeishuThreadMessagesResult> {
+  let requestCount = 0;
+  let tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"] = cachePath ? "miss" : "disabled";
+  const threadId = normalizeString(input.threadId);
+  const currentMessageId = normalizeString(input.currentMessageId);
+  const rootMessageId = normalizeString(input.rootMessageId);
+  const limit = Math.max(1, Math.min(50, Math.floor(Number(input.limit || 20))));
+  try {
+    if (!threadId) throw new Error("Feishu threadId is required.");
+    const token = await getFeishuTenantToken(config, cachePath);
+    requestCount += token.requestCount;
+    tokenCache = token.tokenCache;
+    const search = new URLSearchParams({
+      container_id_type: "thread",
+      container_id: threadId,
+      sort_type: "ByCreateTimeDesc",
+      page_size: String(Math.min(limit + 2, 50)),
+    });
+    const response = await feishuJsonRequest(config, {
+      method: "GET",
+      token: token.token,
+      path: `/open-apis/im/v1/messages?${search.toString()}`,
+    });
+    requestCount += response.requestCount;
+    const data = recordFrom(response.body.data);
+    const messages: ChannelConnectorFeishuMessageInfo[] = [];
+    for (const item of arrayFrom(data.items)) {
+      const parsed = parseFeishuMessageItem(item);
+      if (!parsed) continue;
+      if (currentMessageId && parsed.messageId === currentMessageId) continue;
+      if (rootMessageId && parsed.messageId === rootMessageId) continue;
+      messages.push(parsed);
+      if (messages.length >= limit) break;
+    }
+    messages.reverse();
+    return {
+      attempted: true,
+      ok: true,
+      apiUrl: config.apiUrl,
+      statusCode: response.statusCode,
+      requestCount,
+      tokenCache,
+      threadId,
+      messages,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      attempted: true,
+      ok: false,
+      apiUrl: config.apiUrl,
+      statusCode: errorStatusCode(error),
+      requestCount: Math.max(requestCount + errorRequestCount(error), 1),
+      tokenCache,
+      threadId: threadId || null,
+      messages: [],
       error: errorMessage(error),
     };
   }

@@ -149,6 +149,9 @@ import {
   uploadAndSendFeishuMedia,
 } from "./feishu-transport.js";
 import {
+  loadFeishuThreadBootstrapContext,
+} from "./feishu-thread-bootstrap.js";
+import {
   DEFAULT_CHANNEL_CONNECTOR_ATTACHMENT_MAX_BYTES,
   finalizeChannelConnectorAttachmentStaging,
   parseChannelConnectorByteSize,
@@ -4428,6 +4431,12 @@ function feishuGroupSessionScope(binding: ChannelConnectorRuntimeBinding): Chann
   return null;
 }
 
+function feishuEffectiveGroupSessionScope(binding: ChannelConnectorRuntimeBinding): ChannelConnectorFeishuGroupSessionScope {
+  const configured = feishuGroupSessionScope(binding);
+  if (configured) return configured;
+  return metadataBoolean(binding, ["threadIsolation", "thread_isolation"], true) ? "group_topic" : "group";
+}
+
 function feishuConversationScopeId(
   binding: ChannelConnectorRuntimeBinding,
   parsed: ChannelConnectorFeishuParsedWebhook,
@@ -4549,7 +4558,8 @@ function feishuMessageFromParsed(
   content: string,
   members: ChannelConnectorOctoInboundMessage["members"] = [],
 ): ChannelConnectorOctoInboundMessage {
-  const isGroup = normalizeString(parsed.chatType).toLowerCase() === "group";
+  const chatType = normalizeString(parsed.chatType).toLowerCase();
+  const isGroup = chatType === "group" || chatType === "topic_group" || chatType.includes("group");
   return {
     messageId: normalizeString(parsed.messageId) || `${parsed.kind}-${Date.now()}`,
     fromUid: normalizeString(parsed.fromUid),
@@ -9370,6 +9380,47 @@ async function dispatchFeishuParsedEvent(input: {
   });
   const activeRunId = `${binding.id}:${messageId}`;
   const currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
+  const feishuThreadBootstrapContext = !nativeCommand
+    ? await loadFeishuThreadBootstrapContext({
+      transport,
+      tokenCachePath: feishuTokenCachePath(config),
+      parsed,
+      sessionKey,
+      groupSessionScope: feishuEffectiveGroupSessionScope(binding),
+      hasExistingSession: Boolean(currentSession),
+      enabled: metadataBoolean(binding, [
+        "enableFeishuThreadBootstrap",
+        "enable_feishu_thread_bootstrap",
+        "feishuThreadBootstrap",
+        "feishu_thread_bootstrap",
+      ], true),
+      limit: feishuRealtimeTimelineLimit(binding),
+      messageMaxRunes: feishuHistoryMessageMaxRunes(binding),
+      totalMaxRunes: feishuHistoryTotalMaxRunes(binding),
+    })
+    : null;
+  if (feishuThreadBootstrapContext?.attempted) {
+    writeJsonLine(config.paths.feishuEvents, {
+      checkedAt: new Date().toISOString(),
+      eventKind: "channel.feishu.thread_bootstrap",
+      adapter: "feishu",
+      bindingId: binding.id,
+      sessionKey,
+      messageId,
+      ...feishuThreadLogFields(parsed),
+      included: feishuThreadBootstrapContext.included,
+      skippedReason: feishuThreadBootstrapContext.skippedReason,
+      threadId: feishuThreadBootstrapContext.threadId,
+      rootMessageId: feishuThreadBootstrapContext.rootMessageId,
+      rootFetched: feishuThreadBootstrapContext.rootFetched,
+      hydratedThreadId: feishuThreadBootstrapContext.hydratedThreadId,
+      messageCount: feishuThreadBootstrapContext.messageCount,
+      droppedCount: feishuThreadBootstrapContext.droppedCount,
+      requestCount: feishuThreadBootstrapContext.requestCount,
+      tokenCache: feishuThreadBootstrapContext.tokenCache,
+      error: feishuThreadBootstrapContext.error,
+    });
+  }
   const feishuRealtimeHistoryContext = renderFeishuRealtimeTimelineContext({
     timelines: feishuTimelines,
     binding,
@@ -9387,6 +9438,7 @@ async function dispatchFeishuParsedEvent(input: {
     }),
   );
   const historyContext = [
+    feishuThreadBootstrapContext?.context || null,
     feishuRealtimeHistoryContext,
     localHistoryContext,
   ].filter(Boolean).join("\n\n") || null;

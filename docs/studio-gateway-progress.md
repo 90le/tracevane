@@ -33,6 +33,7 @@
 - Octo persona/OBO 入站路由已接入：binding metadata `onBehalfOf/on_behalf_of/respondAs/grantorUid` 会启用 grantor persona；普通 bot 仍不响应 `mention.all/humans` 广播，persona bot 会响应 @grantor / @所有人，并按 Octo 插件合同把文字、typing、文件/媒体和 manifest 消息发到源群/源私聊且携带顶层 `on_behalf_of`。可信 OBO v2 只接受配置 grantor 发来的 payload，`obo_system_hint` 会注入 Agent prompt，AI-only fan-out 会跳过，payload `respond_as` 不作为真实身份。
 - 本地 IM history 默认保留并注入最多 20 条；prompt 渲染每条最多 360 字符、整段最多 8000 字符，超长消息截断并在必要时丢弃更早历史，避免大段文本撑爆上下文；`/history`、`/status` 预算估算、自动 compact 判断和 Studio fallback `/compact` 已复用同一 20 条窗口，compact prompt 单条再裁剪到 900 字符。
 - Feishu 群上下文已对齐 OpenClaw 插件分桶语义：支持 `group/group_sender/group_topic/group_topic_sender`，`topic_group` 优先按 thread/topic 续接；群消息未 @bot 时只记录不触发，后续被 @ 时按同一分桶注入最多 20 条、每条默认 1200 字符、总量 8000 字符的短上下文，避免跨话题混入或被超长消息撑爆上下文。
+- Feishu topic/thread 首轮 bootstrap 已接入：新 topic/thread Agent session 首次触发时会通过 Feishu `im.message.get/list` 拉 root/thread 前文，排除当前消息和重复 root，并进入同一 20 条/单条/总量预算；已有 Agent session、非 topic scope、`/native` 透传不会重复注入。
 - Octo 群历史同步改为协作 timeline：默认窗口从 6 条提高到 20 条，prompt 按时间顺序保留 human、Studio self-bot 和其它 bot 回复，并标注 `senderType`；预算按最终 JSON 条目计算，每条默认最多 1200 字符、整段 timeline 默认最多 8000 字符，超出会标 `truncated/originalRunes` 并优先保留最近消息；`includedCount/messageIds` 只记录实际注入内容，避免 Agent 看不到协作者回复、被超长历史撑爆上下文或错误排重 realtime 补偿。
 - Octo Bot API history、daemon realtime timeline 和 `/octo history` 已共用递归 payload 文本抽取：富文本、Markdown/嵌套 content、图片/文件占位和普通文本都会进入上下文，避免其它 bot 的结构化回复被当成空消息。
 - Octo daemon 对齐 OpenClaw 插件实时历史语义：未 @bot 的群/thread 消息也会进入 daemon 内存短 timeline，但不会触发 Agent；后续被 @ 时，prompt 会合并 Bot API timeline 与 realtime local timeline，避免刚发生的协作者回复因为 Bot API sync 延迟而不可见。
@@ -53,6 +54,7 @@
 - 通过：本机只读 smoke 直接加载 OpenClaw Feishu 内置 skills，发现 `feishu-doc`、`feishu-drive`、`feishu-perm`、`feishu-wiki`，确认 action index、doc upload 动作存在且不泄露 `FEISHU_APP_SECRET` setup。
 - 通过：`node --test --test-name-pattern "native Channel Connectors daemon enriches Octo group turns with Bot API context and file download URLs|native Channel Connectors conversation history keeps twenty prompt entries within budget" tests/system/channel-connectors-service.test.mjs`，覆盖本地 IM history 20 条预算、Octo Bot API 20 条协作 history、超长消息截断、预算后 `includedCount/messageIds` 和回复后 cutoff。
 - 通过：`node --test --test-name-pattern "native Channel Connectors Feishu webhook parses live envelopes and reuses command router" tests/system/channel-connectors-service.test.mjs`，覆盖 Feishu `group/topic/sender` 会话分桶、`topic_group` topic scope 和 webhook command-router 复用。
+- 通过：`node --test --test-name-pattern "native Channel Connectors Feishu thread bootstrap fetches root and topic history within budget" tests/system/channel-connectors-service.test.mjs`，覆盖 Feishu root/thread API 拉取、current/root 去重、sender scoped 过滤和超长 history 裁剪。
 - 通过：`node --test --test-name-pattern "native Channel Connectors IM commands switch agent, model, and permission per session" tests/system/channel-connectors-service.test.mjs`，覆盖 Octo/Feishu platform skill 运行时章节抽取与 setup/bridge/config 章节过滤。
 - 通过：`node --test --test-name-pattern "native Channel Connectors agent runner builds gateway-backed Codex turns" tests/system/channel-connectors-service.test.mjs`，覆盖 channel skill context 注入 Codex、Claude Code、OpenCode 三个当前 runner。
 - 通过：同一测试覆盖 Codex `CODEX_HOME/skills` 与 Claude `CLAUDE_CONFIG_DIR/skills` 的 channel skill 原生投影，且投影内容过滤 setup/bridge 章节。
@@ -89,6 +91,6 @@
 ## 下一步
 
 1. 用户在真实 Octo 群聊让 Agent 私聊 human 或 @其它 Studio/外部 bot，验证 `studio-channel-messages` 的 human DM、group/thread mention 能真实发送。
-2. 补 Feishu topic/thread bootstrap：对照 OpenClaw 插件在新 topic/thread 会话首次触发时拉 root/thread 前文，再进入同一 20 条预算窗口。
+2. 对照 OpenClaw Feishu 插件继续迁移 mention / topic_group 触发规则，确认自然语言 @bot 与普通未 @ 群消息行为一致。
 3. 对照 Octo 插件继续迁移更完整菜单、技能说明和多 bot 协作 live smoke；platform skill 普通注入已只保留运行时能力，显式 `/skill` 仍保留完整文档。
-4. 做真实 IM live command/progress smoke：Feishu 验证 card patch、权限审批、三次顺序工具调用和 open_id/user_id 文本/Markdown 出站消息；Octo 验证文本进度、工具输出、文件/消息 manifest；随后补 Feishu 文档/云盘 skills。
+4. 做真实 IM live command/progress smoke：Feishu 验证 card patch、权限审批、三次顺序工具调用、topic/thread bootstrap 和 open_id/user_id 文本/Markdown 出站消息；Octo 验证文本进度、工具输出、文件/消息 manifest；随后补 Feishu 文档/云盘 skills。
