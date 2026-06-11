@@ -11356,6 +11356,9 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         assert.match(capture[0].stdin, /Use Studio native Octo messages for DM and mentions/);
         assert.match(capture[0].stdin, /Octo Bot API recent channel timeline/);
         assert.match(capture[0].stdin, /inspect senderType=bot entries here before saying you cannot see the reply/);
+        assert.match(capture[0].stdin, /Last answered messageSeq: 5/);
+        assert.match(capture[0].stdin, /Previous Octo channel context - already answered/);
+        assert.match(capture[0].stdin, /Octo channel messages since your last Studio reply/);
         assert.match(capture[0].stdin, /senderType/);
         assert.match(capture[0].stdin, /self-bot/);
         assert.match(capture[0].stdin, /old question/);
@@ -11366,9 +11369,13 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         assert.match(capture[0].stdin, /originalRunes/);
         assert.match(capture[0].stdin, /history hello/);
         assert.match(capture[0].stdin, /Octo realtime local channel timeline/);
+        assert.match(capture[0].stdin, /Previous Octo realtime context - already answered/);
         assert.match(capture[0].stdin, /local realtime unmentioned context/);
         assert.match(capture[0].stdin, /file: hello\.txt, 11 bytes, local:/);
         assert.match(capture[0].stdin, /Staged files are available locally/);
+        assert.ok(capture[0].stdin.indexOf("old question") < capture[0].stdin.indexOf("Octo channel messages since your last Studio reply"));
+        assert.ok(capture[0].stdin.indexOf("old answer") < capture[0].stdin.indexOf("Octo channel messages since your last Studio reply"));
+        assert.ok(capture[0].stdin.indexOf("helper bot already replied") > capture[0].stdin.indexOf("Octo channel messages since your last Studio reply"));
 
         const finalStatus = await waitFor(async () => {
           const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
@@ -11397,8 +11404,26 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         assert.ok(octoEvents.some((event) => {
           return event.eventKind === "channel.octo.history.synced"
             && event.includedCount === 4
+            && event.answeredCount === 2
+            && event.newCount === 2
+            && event.lastAnsweredMessageSeq === 5
+            && event.inferredLastAnsweredMessageSeq === 5
             && event.error === null;
         }));
+        const cutoffStatus = await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const cutoff = response.body?.octoHistoryCutoffs?.find?.((item) =>
+            item.bindingId === "octo-context"
+            && item.lastAnsweredMessageSeq === 8
+            && item.source === "agent-reply"
+          );
+          return cutoff ? response.body : null;
+        }, 8000);
+        assert.ok(cutoffStatus.octoHistoryCutoffs.some((item) =>
+          item.bindingId === "octo-context"
+          && item.lastAnsweredMessageSeq === 8
+          && item.messageId === "3001"
+        ));
         assert.ok(octoEvents.some((event) => {
           return event.eventKind === "channel.octo.md.loaded"
             && event.kind === "group"

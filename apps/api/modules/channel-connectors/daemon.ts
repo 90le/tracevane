@@ -503,6 +503,7 @@ interface ChannelDaemonState {
   octoConnections: Record<string, ChannelDaemonOctoConnectionState>;
   feishuConnections: Record<string, ChannelDaemonFeishuConnectionState>;
   agentSessionDriver: ChannelDaemonAgentSessionDriverState;
+  octoHistoryCutoffs: Record<string, ChannelDaemonOctoHistoryCutoffRecord>;
   activeRuns: Array<{
     id: string;
     startedAt: string;
@@ -548,6 +549,17 @@ interface ChannelDaemonState {
     usage?: ChannelConnectorUsageSummary | null;
   }>;
   autoCompacts: ChannelDaemonAutoCompactRecord[];
+}
+
+interface ChannelDaemonOctoHistoryCutoffRecord {
+  bindingId: string;
+  sessionKey: string;
+  channelId: string;
+  channelType: number;
+  lastAnsweredMessageSeq: number;
+  messageId: string | null;
+  updatedAt: string;
+  source: "agent-reply" | "synced-history";
 }
 
 interface ChannelDaemonAutoCompactRecord {
@@ -952,6 +964,25 @@ function writeJsonFileAtomic(filePath: string, value: unknown): void {
   fs.renameSync(tempPath, filePath);
 }
 
+function readTextFileTail(filePath: string, maxBytes: number): string {
+  try {
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile() || stat.size <= 0) return "";
+    const length = Math.max(0, Math.min(stat.size, maxBytes));
+    const start = Math.max(0, stat.size - length);
+    const fd = fs.openSync(filePath, "r");
+    try {
+      const buffer = Buffer.alloc(length);
+      const bytesRead = fs.readSync(fd, buffer, 0, length, start);
+      return buffer.subarray(0, bytesRead).toString("utf8");
+    } finally {
+      fs.closeSync(fd);
+    }
+  } catch {
+    return "";
+  }
+}
+
 let runtimeDirty = false;
 let runtimeDirtyAt = 0;
 let runtimeDebounceTimer: NodeJS.Timeout | null = null;
@@ -986,6 +1017,99 @@ function flushRuntime(config: ChannelConnectorsDaemonRuntimeConfig, state: Chann
   fs.writeFileSync(config.paths.runtime, `${JSON.stringify(state, null, 2)}\n`, "utf8");
 }
 
+function octoHistoryCutoffKey(bindingId: string, sessionKey: string): string {
+  return `${bindingId}\u0000${sessionKey}`;
+}
+
+function positiveMessageSeq(value: unknown): number | null {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? Math.floor(numeric) : null;
+}
+
+function pruneOctoHistoryCutoffs(records: Record<string, ChannelDaemonOctoHistoryCutoffRecord>): Record<string, ChannelDaemonOctoHistoryCutoffRecord> {
+  const entries = Object.entries(records)
+    .sort((a, b) => Date.parse(b[1].updatedAt) - Date.parse(a[1].updatedAt));
+  return Object.fromEntries(entries.slice(0, 200));
+}
+
+function setOctoHistoryCutoff(input: {
+  state: ChannelDaemonState;
+  bindingId: string;
+  sessionKey: string;
+  channelId: string;
+  channelType: number;
+  messageSeq: number | null;
+  messageId?: string | null;
+  source: ChannelDaemonOctoHistoryCutoffRecord["source"];
+}): ChannelDaemonOctoHistoryCutoffRecord | null {
+  const messageSeq = positiveMessageSeq(input.messageSeq);
+  if (!messageSeq || !input.bindingId || !input.sessionKey || !input.channelId) return null;
+  const key = octoHistoryCutoffKey(input.bindingId, input.sessionKey);
+  const current = input.state.octoHistoryCutoffs?.[key] || null;
+  if (current && current.lastAnsweredMessageSeq >= messageSeq) return current;
+  const record: ChannelDaemonOctoHistoryCutoffRecord = {
+    bindingId: input.bindingId,
+    sessionKey: input.sessionKey,
+    channelId: input.channelId,
+    channelType: input.channelType,
+    lastAnsweredMessageSeq: messageSeq,
+    messageId: input.messageId || null,
+    updatedAt: new Date().toISOString(),
+    source: input.source,
+  };
+  input.state.octoHistoryCutoffs = pruneOctoHistoryCutoffs({
+    ...(input.state.octoHistoryCutoffs || {}),
+    [key]: record,
+  });
+  return record;
+}
+
+function getOctoHistoryCutoff(
+  state: ChannelDaemonState,
+  bindingId: string,
+  sessionKey: string,
+): ChannelDaemonOctoHistoryCutoffRecord | null {
+  return state.octoHistoryCutoffs?.[octoHistoryCutoffKey(bindingId, sessionKey)] || null;
+}
+
+function restoreOctoHistoryCutoffs(config: ChannelConnectorsDaemonRuntimeConfig): Record<string, ChannelDaemonOctoHistoryCutoffRecord> {
+  const records: Record<string, ChannelDaemonOctoHistoryCutoffRecord> = {};
+  const raw = readTextFileTail(config.paths.octoEvents, 2 * 1024 * 1024);
+  if (!raw) return records;
+  for (const line of raw.split(/\r?\n/)) {
+    if (!line.trim().startsWith("{")) continue;
+    let event: Record<string, unknown>;
+    try {
+      event = JSON.parse(line) as Record<string, unknown>;
+    } catch {
+      continue;
+    }
+    if (event.eventKind !== "agent.run.finished" || event.adapter !== "octo") continue;
+    if (event.agentOk !== true || event.replySent !== true) continue;
+    const bindingId = normalizeString(event.bindingId);
+    const sessionKey = normalizeString(event.sessionKey);
+    const channelId = normalizeString(event.channelId);
+    const channelType = Number(event.channelType);
+    if (!bindingId || !sessionKey || !channelId || !isOctoGroupChannel(channelType)) continue;
+    const messageSeq = positiveMessageSeq(event.messageSeq);
+    if (!messageSeq) continue;
+    const key = octoHistoryCutoffKey(bindingId, sessionKey);
+    const current = records[key] || null;
+    if (current && current.lastAnsweredMessageSeq >= messageSeq) continue;
+    records[key] = {
+      bindingId,
+      sessionKey,
+      channelId,
+      channelType,
+      lastAnsweredMessageSeq: messageSeq,
+      messageId: normalizeString(event.messageId) || null,
+      updatedAt: normalizeString(event.finishedAt) || normalizeString(event.checkedAt) || new Date().toISOString(),
+      source: "agent-reply",
+    };
+  }
+  return pruneOctoHistoryCutoffs(records);
+}
+
 function createDaemonState(config: ChannelConnectorsDaemonRuntimeConfig): ChannelDaemonState {
   const now = new Date().toISOString();
   return {
@@ -1002,6 +1126,7 @@ function createDaemonState(config: ChannelConnectorsDaemonRuntimeConfig): Channe
     octoConnections: {},
     feishuConnections: {},
     agentSessionDriver: buildAgentSessionDriverState(config),
+    octoHistoryCutoffs: restoreOctoHistoryCutoffs(config),
     activeRuns: [],
     agentRuns: [],
     autoCompacts: [],
@@ -1778,6 +1903,9 @@ function startHttp(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelD
         octoConnections: Object.values(state.octoConnections),
         feishuConnections: Object.values(state.feishuConnections),
         agentSessionDriver: state.agentSessionDriver,
+        octoHistoryCutoffs: Object.values(state.octoHistoryCutoffs || {})
+          .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))
+          .slice(0, 50),
         activeRuns: state.activeRuns,
         agentRuns: state.agentRuns,
         autoCompacts: state.autoCompacts || [],
@@ -4872,6 +5000,36 @@ function fitOctoHistoryEntriesToBudget<T extends { body: string }>(
   return output.length ? output : entries.slice(-1);
 }
 
+function octoHistoryEntrySeq(entry: { seq?: number | null; messageSeq?: number | null }): number {
+  const seq = Number(entry.seq ?? entry.messageSeq ?? 0);
+  return Number.isFinite(seq) && seq > 0 ? seq : 0;
+}
+
+function segmentOctoHistoryEntries<T extends { seq?: number | null; messageSeq?: number | null }>(
+  entries: T[],
+  lastAnsweredMessageSeq: number | null,
+): { answered: T[]; fresh: T[] } {
+  const cutoff = positiveMessageSeq(lastAnsweredMessageSeq) || 0;
+  if (cutoff <= 0) return { answered: [], fresh: entries };
+  return {
+    answered: entries.filter((entry) => octoHistoryEntrySeq(entry) <= cutoff),
+    fresh: entries.filter((entry) => octoHistoryEntrySeq(entry) > cutoff),
+  };
+}
+
+function inferOctoLastAnsweredFromSelfBot<T extends { senderType: string; seq?: number | null; messageSeq?: number | null; messageId?: string | null }>(
+  entries: T[],
+): { seq: number; messageId: string | null } | null {
+  let best: { seq: number; messageId: string | null } | null = null;
+  for (const entry of entries) {
+    if (entry.senderType !== "self-bot") continue;
+    const seq = octoHistoryEntrySeq(entry);
+    if (!seq) continue;
+    if (!best || seq > best.seq) best = { seq, messageId: normalizeString(entry.messageId) || null };
+  }
+  return best;
+}
+
 function renderOctoSyncedHistoryContext(input: {
   data: unknown;
   currentMessageId: string;
@@ -4881,7 +5039,15 @@ function renderOctoSyncedHistoryContext(input: {
   limit: number;
   messageMaxRunes: number;
   totalMaxRunes: number;
-}): string | null {
+  lastAnsweredMessageSeq?: number | null;
+}): {
+  context: string | null;
+  includedCount: number;
+  answeredCount: number;
+  newCount: number;
+  inferredLastAnsweredMessageSeq: number | null;
+  inferredLastAnsweredMessageId: string | null;
+} {
   const botUid = normalizeString(input.botUid);
   const nameByUid = octoMemberNameByUid(input.members || []);
   const robotByUid = octoMemberRobotByUid(input.members || []);
@@ -4910,11 +5076,28 @@ function renderOctoSyncedHistoryContext(input: {
         truncated: body.truncated,
         originalRunes: body.originalRunes,
         seq: octoSyncedMessageSeq(message),
+        messageId: normalizeString(message.message_id),
       };
     });
-  if (!contextEntries.length) return null;
+  if (!contextEntries.length) {
+    return {
+      context: null,
+      includedCount: 0,
+      answeredCount: 0,
+      newCount: 0,
+      inferredLastAnsweredMessageSeq: null,
+      inferredLastAnsweredMessageId: null,
+    };
+  }
   const budgetedEntries = fitOctoHistoryEntriesToBudget(contextEntries, input.totalMaxRunes);
   const droppedCount = contextEntries.length - budgetedEntries.length;
+  const inferredCutoff = positiveMessageSeq(input.lastAnsweredMessageSeq)
+    ? null
+    : inferOctoLastAnsweredFromSelfBot(contextEntries);
+  const lastAnsweredMessageSeq = positiveMessageSeq(input.lastAnsweredMessageSeq)
+    || inferredCutoff?.seq
+    || null;
+  const segmented = segmentOctoHistoryEntries(budgetedEntries, lastAnsweredMessageSeq);
   const formatEntries = (entries: typeof budgetedEntries) => JSON.stringify(entries.map((entry) => ({
     sender: entry.sender,
     senderType: entry.senderType,
@@ -4922,17 +5105,41 @@ function renderOctoSyncedHistoryContext(input: {
     ...(entry.truncated ? { truncated: true, originalRunes: entry.originalRunes } : {}),
     ...(entry.seq ? { messageSeq: entry.seq } : {}),
   })), null, 2);
-  return [
+  const sections = [
     "[Octo Bot API recent channel timeline]",
     "Messages are chronological and may include humans, this Studio bot (senderType=self-bot), and other bots.",
-    "Use this timeline to verify whether collaborators already replied. Do not answer old questions unless the current user asks you to summarize, inspect, or act on them.",
+    "Messages are segmented by the last successful Studio bot reply. Treat the previous context section as already answered; use the new section for collaborator replies and fresh context.",
     "If the current user asks whether another bot replied, inspect senderType=bot entries here before saying you cannot see the reply.",
+    lastAnsweredMessageSeq ? `Last answered messageSeq: ${lastAnsweredMessageSeq}.` : "No last answered messageSeq is known yet; all entries below are fresh context.",
     `History budget: ${budgetedEntries.length}/${contextEntries.length} messages included, max ${input.messageMaxRunes} chars per message, max ${input.totalMaxRunes} chars total.${droppedCount ? ` Dropped ${droppedCount} older messages due to budget.` : ""}`,
-    "```json",
-    formatEntries(budgetedEntries),
-    "```",
+  ];
+  if (segmented.answered.length) {
+    sections.push(
+      "[Previous Octo channel context - already answered, do NOT re-answer]",
+      "```json",
+      formatEntries(segmented.answered),
+      "```",
+    );
+  }
+  if (segmented.fresh.length) {
+    sections.push(
+      "[Octo channel messages since your last Studio reply - context only, do NOT re-answer unless asked]",
+      "```json",
+      formatEntries(segmented.fresh),
+      "```",
+    );
+  }
+  sections.push(
     "[Current message follows later - respond to that only]",
-  ].join("\n");
+  );
+  return {
+    context: sections.join("\n"),
+    includedCount: budgetedEntries.length,
+    answeredCount: segmented.answered.length,
+    newCount: segmented.fresh.length,
+    inferredLastAnsweredMessageSeq: inferredCutoff?.seq || null,
+    inferredLastAnsweredMessageId: inferredCutoff?.messageId || null,
+  };
 }
 
 function renderOctoRealtimeTimelineContext(input: {
@@ -4945,6 +5152,7 @@ function renderOctoRealtimeTimelineContext(input: {
   messageMaxRunes: number;
   totalMaxRunes: number;
   excludeMessageIds?: readonly string[] | null;
+  lastAnsweredMessageSeq?: number | null;
 }): string | null {
   if (!isOctoGroupChannel(input.message.channelType)) return null;
   const channelId = octoSyncChannelId(input.message);
@@ -4974,7 +5182,7 @@ function renderOctoRealtimeTimelineContext(input: {
         body: body.text,
         truncated: body.truncated,
         originalRunes: body.originalRunes,
-        messageSeq: entry.messageSeq,
+        seq: entry.messageSeq,
         messageId: entry.messageId,
         attachmentSummaries: entry.attachmentSummaries,
       };
@@ -4982,36 +5190,61 @@ function renderOctoRealtimeTimelineContext(input: {
   if (!contextEntries.length) return null;
   const budgetedEntries = fitOctoHistoryEntriesToBudget(contextEntries, input.totalMaxRunes);
   const droppedCount = contextEntries.length - budgetedEntries.length;
-  return [
+  const segmented = segmentOctoHistoryEntries(budgetedEntries, input.lastAnsweredMessageSeq || null);
+  const sections = [
     "[Octo realtime local channel timeline]",
     "Messages were observed by this Studio daemon in real time, including messages that did not @mention this bot and therefore did not trigger a reply.",
-    "Use this as short-term collaboration context when Bot API history is delayed or missing. Do not answer old questions unless the current user asks you to summarize, inspect, or act on them.",
+    "Use this as short-term collaboration context when Bot API history is delayed or missing. Entries are segmented by the last successful Studio bot reply when known.",
     "If the current user asks whether another bot replied, inspect senderType=bot entries here before saying you cannot see the reply.",
+    positiveMessageSeq(input.lastAnsweredMessageSeq) ? `Last answered messageSeq: ${positiveMessageSeq(input.lastAnsweredMessageSeq)}.` : "No last answered messageSeq is known yet; all entries below are fresh context.",
     `History budget: ${budgetedEntries.length}/${contextEntries.length} messages included, max ${input.messageMaxRunes} chars per message, max ${input.totalMaxRunes} chars total.${droppedCount ? ` Dropped ${droppedCount} older messages due to budget.` : ""}`,
-    "```json",
-    JSON.stringify(budgetedEntries.map((entry) => ({
+  ];
+  const formatEntries = (entries: typeof budgetedEntries) => JSON.stringify(entries.map((entry) => ({
       sender: entry.sender,
       senderType: entry.senderType,
       body: entry.body,
       ...(entry.truncated ? { truncated: true, originalRunes: entry.originalRunes } : {}),
-      ...(entry.messageSeq ? { messageSeq: entry.messageSeq } : {}),
+      ...(entry.seq ? { messageSeq: entry.seq } : {}),
       ...(entry.attachmentSummaries.length ? { attachments: entry.attachmentSummaries } : {}),
-    })), null, 2),
-    "```",
+    })), null, 2);
+  if (segmented.answered.length) {
+    sections.push(
+      "[Previous Octo realtime context - already answered, do NOT re-answer]",
+      "```json",
+      formatEntries(segmented.answered),
+      "```",
+    );
+  }
+  if (segmented.fresh.length) {
+    sections.push(
+      "[Octo realtime messages since your last Studio reply - context only, do NOT re-answer unless asked]",
+      "```json",
+      formatEntries(segmented.fresh),
+      "```",
+    );
+  }
+  sections.push(
     "[Current message follows later - respond to that only]",
-  ].join("\n");
+  );
+  return sections.join("\n");
 }
 
 async function loadOctoSyncedHistoryContext(input: {
   binding: ChannelConnectorRuntimeBinding;
   transport: ChannelConnectorOctoTransportConfig | null;
   message: ChannelConnectorOctoInboundMessage;
+  lastAnsweredMessageSeq?: number | null;
 }): Promise<{
   context: string | null;
   error: string | null;
   attempted: boolean;
   itemCount: number | null;
   includedCount: number;
+  answeredCount: number;
+  newCount: number;
+  lastAnsweredMessageSeq: number | null;
+  inferredLastAnsweredMessageSeq: number | null;
+  inferredLastAnsweredMessageId: string | null;
   messageIds: string[];
 }> {
   if (!metadataBoolean(input.binding, [
@@ -5020,7 +5253,7 @@ async function loadOctoSyncedHistoryContext(input: {
     "syncOctoHistory",
     "sync_octo_history",
   ], true)) {
-    return { context: null, error: null, attempted: false, itemCount: null, includedCount: 0, messageIds: [] };
+    return { context: null, error: null, attempted: false, itemCount: null, includedCount: 0, answeredCount: 0, newCount: 0, lastAnsweredMessageSeq: null, inferredLastAnsweredMessageSeq: null, inferredLastAnsweredMessageId: null, messageIds: [] };
   }
   const limit = Math.max(0, Math.min(20, Math.floor(metadataNumber(input.binding, [
     "octoHistorySyncLimit",
@@ -5029,7 +5262,7 @@ async function loadOctoSyncedHistoryContext(input: {
     "history_sync_limit",
   ], DEFAULT_OCTO_HISTORY_SYNC_LIMIT))));
   if (limit <= 0) {
-    return { context: null, error: null, attempted: false, itemCount: null, includedCount: 0, messageIds: [] };
+    return { context: null, error: null, attempted: false, itemCount: null, includedCount: 0, answeredCount: 0, newCount: 0, lastAnsweredMessageSeq: null, inferredLastAnsweredMessageSeq: null, inferredLastAnsweredMessageId: null, messageIds: [] };
   }
   const messageMaxRunes = Math.max(200, Math.min(8000, Math.floor(metadataNumber(input.binding, [
     "octoHistoryMessageMaxRunes",
@@ -5045,10 +5278,10 @@ async function loadOctoSyncedHistoryContext(input: {
   ], DEFAULT_OCTO_HISTORY_TOTAL_MAX_RUNES))));
   const channelId = octoSyncChannelId(input.message);
   if (!channelId) {
-    return { context: null, error: "octo_channel_id_missing", attempted: true, itemCount: null, includedCount: 0, messageIds: [] };
+    return { context: null, error: "octo_channel_id_missing", attempted: true, itemCount: null, includedCount: 0, answeredCount: 0, newCount: 0, lastAnsweredMessageSeq: null, inferredLastAnsweredMessageSeq: null, inferredLastAnsweredMessageId: null, messageIds: [] };
   }
   if (!input.transport) {
-    return { context: null, error: "octo_transport_config_missing", attempted: true, itemCount: null, includedCount: 0, messageIds: [] };
+    return { context: null, error: "octo_transport_config_missing", attempted: true, itemCount: null, includedCount: 0, answeredCount: 0, newCount: 0, lastAnsweredMessageSeq: null, inferredLastAnsweredMessageSeq: null, inferredLastAnsweredMessageId: null, messageIds: [] };
   }
   const messageSeq = typeof input.message.messageSeq === "number" && Number.isFinite(input.message.messageSeq)
     ? input.message.messageSeq
@@ -5067,10 +5300,15 @@ async function loadOctoSyncedHistoryContext(input: {
       attempted: result.attempted,
       itemCount: result.itemCount ?? null,
       includedCount: 0,
+      answeredCount: 0,
+      newCount: 0,
+      lastAnsweredMessageSeq: positiveMessageSeq(input.lastAnsweredMessageSeq),
+      inferredLastAnsweredMessageSeq: null,
+      inferredLastAnsweredMessageId: null,
       messageIds: [],
     };
   }
-  const context = renderOctoSyncedHistoryContext({
+  const rendered = renderOctoSyncedHistoryContext({
     data: result.data,
     currentMessageId: input.message.messageId,
     currentMessageSeq: input.message.messageSeq || null,
@@ -5079,6 +5317,7 @@ async function loadOctoSyncedHistoryContext(input: {
     limit,
     messageMaxRunes,
     totalMaxRunes,
+    lastAnsweredMessageSeq: input.lastAnsweredMessageSeq || null,
   });
   const currentSeq = typeof input.message.messageSeq === "number" && Number.isFinite(input.message.messageSeq)
     ? input.message.messageSeq
@@ -5092,13 +5331,19 @@ async function loadOctoSyncedHistoryContext(input: {
       return true;
     })
     .slice(-limit);
-  const includedCount = context ? includedMessages.length : 0;
   return {
-    context,
+    context: rendered.context,
     error: null,
     attempted: result.attempted,
     itemCount: result.itemCount ?? null,
-    includedCount,
+    includedCount: rendered.context ? includedMessages.length : 0,
+    answeredCount: rendered.answeredCount,
+    newCount: rendered.newCount,
+    lastAnsweredMessageSeq: positiveMessageSeq(input.lastAnsweredMessageSeq)
+      || rendered.inferredLastAnsweredMessageSeq
+      || null,
+    inferredLastAnsweredMessageSeq: rendered.inferredLastAnsweredMessageSeq,
+    inferredLastAnsweredMessageId: rendered.inferredLastAnsweredMessageId,
     messageIds: includedMessages.map((message) => normalizeString(message.message_id)).filter(Boolean),
   };
 }
@@ -7558,6 +7803,7 @@ async function dispatchOctoMessage(input: {
   });
   const activeRunId = `${binding.id}:${message.messageId}`;
   const currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
+  const octoHistoryCutoff = getOctoHistoryCutoff(state, binding.id, sessionKey);
   const localHistoryContext = renderChannelConnectorConversationHistoryContext(
     getChannelConnectorConversationHistory(conversationHistoryPath(config), {
       bindingId: binding.id,
@@ -7568,7 +7814,22 @@ async function dispatchOctoMessage(input: {
     binding,
     transport,
     message: agentMessage,
+    lastAnsweredMessageSeq: octoHistoryCutoff?.lastAnsweredMessageSeq || null,
   });
+  if (syncedHistoryContext.inferredLastAnsweredMessageSeq) {
+    const inferredCutoff = setOctoHistoryCutoff({
+      state,
+      bindingId: binding.id,
+      sessionKey,
+      channelId: octoSyncChannelId(agentMessage) || agentMessage.channelId,
+      channelType: agentMessage.channelType,
+      messageSeq: syncedHistoryContext.inferredLastAnsweredMessageSeq,
+      messageId: syncedHistoryContext.inferredLastAnsweredMessageId,
+      source: "synced-history",
+    });
+    if (inferredCutoff) markRuntimeDirty(config, state);
+  }
+  const effectiveOctoHistoryCutoff = getOctoHistoryCutoff(state, binding.id, sessionKey);
   const realtimeHistoryContext = renderOctoRealtimeTimelineContext({
     timelines: octoTimelines,
     binding,
@@ -7579,6 +7840,7 @@ async function dispatchOctoMessage(input: {
     messageMaxRunes: DEFAULT_OCTO_HISTORY_MESSAGE_MAX_RUNES,
     totalMaxRunes: DEFAULT_OCTO_HISTORY_TOTAL_MAX_RUNES,
     excludeMessageIds: syncedHistoryContext.messageIds,
+    lastAnsweredMessageSeq: effectiveOctoHistoryCutoff?.lastAnsweredMessageSeq || null,
   });
   if (syncedHistoryContext.attempted) {
     writeJsonLine(config.paths.octoEvents, {
@@ -7591,6 +7853,10 @@ async function dispatchOctoMessage(input: {
       channelId: message.channelId,
       channelType: message.channelType,
       includedCount: syncedHistoryContext.includedCount,
+      answeredCount: syncedHistoryContext.answeredCount,
+      newCount: syncedHistoryContext.newCount,
+      lastAnsweredMessageSeq: syncedHistoryContext.lastAnsweredMessageSeq,
+      inferredLastAnsweredMessageSeq: syncedHistoryContext.inferredLastAnsweredMessageSeq,
       itemCount: syncedHistoryContext.itemCount,
       error: syncedHistoryContext.error,
     });
@@ -8194,6 +8460,18 @@ async function dispatchOctoMessage(input: {
       replyRequestCount = result.requestCount;
     }
   }
+  const updatedOctoHistoryCutoff = agent.ok === true && replySent && isOctoGroupChannel(message.channelType)
+    ? setOctoHistoryCutoff({
+      state,
+      bindingId: binding.id,
+      sessionKey,
+      channelId: octoSyncChannelId(message) || message.channelId,
+      channelType: message.channelType,
+      messageSeq: typeof message.messageSeq === "number" && Number.isFinite(message.messageSeq) ? message.messageSeq : null,
+      messageId: message.messageId,
+      source: "agent-reply",
+    })
+    : null;
 
   const finishedAt = new Date().toISOString();
   const finishedAtMs = isoTimestampMs(finishedAt) ?? Date.now();
@@ -8207,6 +8485,7 @@ async function dispatchOctoMessage(input: {
     messageId: message.messageId,
     channelId: message.channelId,
     channelType: message.channelType,
+    messageSeq: typeof message.messageSeq === "number" && Number.isFinite(message.messageSeq) ? message.messageSeq : null,
     fromUid: message.fromUid,
     content,
     messageType: typeof message.payload?.type === "number" ? message.payload.type : null,
@@ -8234,6 +8513,7 @@ async function dispatchOctoMessage(input: {
     replyPreviewRunes,
     replySent,
     replyRequestCount,
+    octoLastAnsweredMessageSeq: updatedOctoHistoryCutoff?.lastAnsweredMessageSeq || null,
     outboundFilesDeclared: outboundReply.declaredCount,
     outboundFilesResolved: outboundReply.files.length,
     outboundFilesSent: outboundFileSentCount,
