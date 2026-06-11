@@ -2680,6 +2680,7 @@ async function sendOctoOutboundMessages(input: {
       members: input.sourceMessage.members || [],
       mentionUids,
       mentionAll: message.mentionAll,
+      onBehalfOf: message.onBehalfOf,
     });
     if (!replyPlan) {
       errors.push(`Octo outbound message to ${channelId} has empty rendered content.`);

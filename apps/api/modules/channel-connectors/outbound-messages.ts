@@ -10,6 +10,7 @@ export interface ChannelConnectorOutboundMessageRequest {
   chatId?: string | null;
   content: string;
   format?: ChannelConnectorOutboundMessageFormat | null;
+  onBehalfOf?: string | null;
   mentionUids: string[];
   mentionAll: boolean;
 }
@@ -163,6 +164,12 @@ function outboundMessageFromValue(value: unknown): ChannelConnectorOutboundMessa
   const rawContent = normalizeString(record.content ?? record.text ?? record.message);
   const structuredMentions = extractStructuredMentionUids(rawContent);
   const content = structuredMentions.content;
+  const onBehalfOf = normalizeString(
+    record.onBehalfOf
+      || record.on_behalf_of
+      || record.respondAs
+      || record.respond_as,
+  ) || null;
   if (!content) return null;
   return {
     platform: platform === "octo" || platform === "feishu" ? platform : null,
@@ -171,6 +178,7 @@ function outboundMessageFromValue(value: unknown): ChannelConnectorOutboundMessa
     chatId,
     content,
     format: normalizeOutboundMessageFormat(record),
+    onBehalfOf,
     mentionUids: uniqueStrings([
       ...stringList(record.mentionUids ?? record.mention_uids ?? record.mentions),
       ...structuredMentions.mentionUids,

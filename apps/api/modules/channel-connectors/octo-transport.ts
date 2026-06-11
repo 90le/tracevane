@@ -1196,6 +1196,7 @@ export async function sendOctoTextReply(
           ...(textPayload.mention ? { mention: textPayload.mention } : {}),
         },
         client_msg_no: randomUUID(),
+        ...(replyPlan.onBehalfOf ? { on_behalf_of: replyPlan.onBehalfOf } : {}),
       }, options);
       lastStatusCode = response.statusCode;
     }

@@ -561,6 +561,7 @@ export function renderOctoOutboundText(input: {
   members?: ChannelConnectorOctoGroupMember[];
   mentionUids?: string[];
   mentionAll?: boolean;
+  onBehalfOf?: string | null;
 }): ChannelConnectorOctoReplyPlan | null {
   const members = input.members || [];
   const source = isOctoGroupChannel(input.channelType)
@@ -579,6 +580,7 @@ export function renderOctoOutboundText(input: {
     chunks,
     mentionUids,
     mentionEntities: rendered.mentionEntities,
+    onBehalfOf: normalizeString(input.onBehalfOf) || null,
     payloads: chunks.map((chunk, index) => {
       const payload: ChannelConnectorOctoReplyPlan["payloads"][number]["payload"] = {
         type: OCTO_MESSAGE_TYPE_TEXT,

@@ -1097,7 +1097,7 @@ test("native Channel Connectors extracts outbound IM message manifests", () => {
     JSON.stringify([
       { platform: "octo", target: "dm:user-1", content: "请介绍一下你的能力" },
       { platform: "octo", target: "bot:27xIxHrNV0Qc3ee2129_bot", content: "请介绍一下你的能力" },
-      { platform: "octo", target: "group:group-a", content: "@[user-2:Alice] 大家看这里" },
+      { platform: "octo", target: "group:group-a", content: "@[user-2:Alice] 大家看这里", onBehalfOf: "grantor-1" },
       { platform: "octo", target: "thread:group-a____topic-1", content: "Thread ping", mentionAll: true },
       { platform: "feishu", chatId: "oc_chat", content: "Feishu ping" },
       { platform: "feishu", target: "open_id:ou_admin", content: "Feishu open ping" },
@@ -1125,6 +1125,7 @@ test("native Channel Connectors extracts outbound IM message manifests", () => {
     ["feishu", "open_id:ou_markdown", null, null, "**Feishu md ping**", "markdown"],
   ]);
   assert.deepEqual(extracted.messages[2].mentionUids, ["user-2"]);
+  assert.equal(extracted.messages[2].onBehalfOf, "grantor-1");
   assert.equal(extracted.messages[3].mentionAll, true);
   assert.deepEqual(extracted.messages.slice(4).map((message) => {
     const target = resolveFeishuOutboundMessageTarget(message);
@@ -1947,6 +1948,37 @@ test("Octo transport keeps group mentions visible when payload only carries ment
     assert.deepEqual(request.body.payload.mention.uids, ["27xIxHrNV0Qc3ee2129_bot"]);
     assert.deepEqual(request.body.payload.mention.entities, [
       { uid: "27xIxHrNV0Qc3ee2129_bot", offset: 0, length: "@27xIxHrNV0Qc3ee2129_bot".length },
+    ]);
+  });
+});
+
+test("Octo transport carries on_behalf_of for persona outbound messages", async () => {
+  await withMockOctoServer(async (apiUrl, requests) => {
+    const replyPlan = renderOctoOutboundText({
+      channelId: "group-1",
+      channelType: 2,
+      content: "@[grantor-1:Alice] 我来代为回复。",
+      members: [
+        { uid: "grantor-1", name: "Alice", robot: 0 },
+      ],
+      onBehalfOf: "grantor-1",
+    });
+    assert.ok(replyPlan);
+    assert.equal(replyPlan.onBehalfOf, "grantor-1");
+
+    const result = await sendOctoTextReply({
+      apiUrl,
+      botToken: "octo-token",
+    }, replyPlan);
+
+    assert.equal(result.ok, true);
+    const request = requests.find((item) => item.path === "/v1/bot/sendMessage");
+    assert.ok(request);
+    assert.equal(request.body.on_behalf_of, "grantor-1");
+    assert.equal(request.body.payload.content, "@Alice 我来代为回复。");
+    assert.deepEqual(request.body.payload.mention.uids, ["grantor-1"]);
+    assert.deepEqual(request.body.payload.mention.entities, [
+      { uid: "grantor-1", offset: 0, length: "@Alice".length },
     ]);
   });
 });

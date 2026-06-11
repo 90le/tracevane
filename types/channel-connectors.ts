@@ -344,6 +344,7 @@ export interface ChannelConnectorOctoReplyPlan {
   chunks: string[];
   mentionUids: string[];
   mentionEntities: ChannelConnectorOctoMentionEntity[];
+  onBehalfOf?: string | null;
   payloads: Array<{
     channel_id: string;
     channel_type: ChannelConnectorOctoChannelType;
