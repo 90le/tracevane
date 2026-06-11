@@ -151,7 +151,7 @@ description: Feishu document action catalog for Studio-managed channel skills. A
 
 # Feishu Document Runtime Skill
 
-Studio manages this skill as a channel capability contract. Current Studio runtime can send Feishu IM messages and files; Feishu document API execution is a planned native tool surface and must not be fabricated. If Studio has not exposed a concrete \`feishu_doc\` runtime tool in the current turn, explain the limitation and offer to create/send a local document or file through \`studio-channel-files\`.
+Studio manages this skill as a channel capability contract. Use \`studio-feishu-actions\` for Feishu document read-only actions. Studio executes the action with the active Feishu binding and returns structured results. Mutation actions are not enabled until Studio adds approval-backed executors; do not fabricate remote write success.
 
 ## Token Extraction
 
@@ -159,7 +159,17 @@ From \`https://xxx.feishu.cn/docx/ABC123def\`, use doc token \`ABC123def\`.
 
 ## Actions
 
-Feishu document API execution is a planned native tool surface. In the current Studio runtime, these actions are an action catalog unless a concrete \`feishu_doc\` tool is present in the current Agent turn. Do not claim a remote document action succeeded without a Studio tool result.
+Use this manifest shape:
+
+\`\`\`studio-feishu-actions
+[
+  {"tool":"feishu_doc","action":"read","doc_token":"ABC123def"},
+  {"tool":"feishu_doc","action":"list_blocks","doc_token":"ABC123def"},
+  {"tool":"feishu_doc","action":"get_block","doc_token":"ABC123def","block_id":"doxcnXXX"}
+]
+\`\`\`
+
+Supported now: \`read\`, \`list_blocks\`, \`get_block\`. The following actions mirror the OpenClaw Feishu extension contract, but write/mutation actions are blocked until approval-backed execution is enabled:
 
 Planned native actions mirror the OpenClaw Feishu extension contract:
 
@@ -179,7 +189,7 @@ Planned native actions mirror the OpenClaw Feishu extension contract:
 
 ## Studio Fallback
 
-Until the native Feishu document tool is present, create requested content locally and send it with \`studio-channel-files\`, or send a Feishu Markdown message with \`studio-channel-messages\` summarizing the document changes the user should apply.`,
+When mutation is needed before Studio enables it, create requested content locally and send it with \`studio-channel-files\`, or send a Feishu Markdown message with \`studio-channel-messages\` summarizing the document changes the user should apply.`,
   },
   {
     platform: "feishu",
@@ -191,7 +201,7 @@ description: Feishu Drive action catalog for Studio-managed channel skills. Acti
 
 # Feishu Drive Runtime Skill
 
-Studio manages this skill as a channel capability contract. Current Studio runtime can send Feishu IM files; Feishu Drive API execution is a planned native tool surface and must not be fabricated. If Studio has not exposed a concrete \`feishu_drive\` runtime tool, explain the limitation and offer a local file workflow through \`studio-channel-files\`.
+Studio manages this skill as a channel capability contract. Use \`studio-feishu-actions\` for Feishu Drive read-only actions. Studio executes the action with the active Feishu binding and returns structured results. Mutation actions are not enabled until Studio adds approval-backed executors; do not fabricate remote Drive changes.
 
 ## Token Extraction
 
@@ -199,7 +209,16 @@ From \`https://xxx.feishu.cn/drive/folder/ABC123\`, use folder token \`ABC123\`.
 
 ## Actions
 
-Feishu Drive API execution is a planned native tool surface. In the current Studio runtime, these actions are an action catalog unless a concrete \`feishu_drive\` tool is present in the current Agent turn. Do not claim a remote Drive action succeeded without a Studio tool result.
+Use this manifest shape:
+
+\`\`\`studio-feishu-actions
+[
+  {"tool":"feishu_drive","action":"list","folder_token":"fldcnXXX"},
+  {"tool":"feishu_drive","action":"info","file_token":"ABC123","folder_token":"fldcnXXX"}
+]
+\`\`\`
+
+Supported now: \`list\`, \`info\`. The following actions mirror the OpenClaw Feishu extension contract, but create/move/delete actions are blocked until approval-backed execution is enabled:
 
 Planned native actions mirror the OpenClaw Feishu extension contract:
 
@@ -227,11 +246,19 @@ description: Feishu permission action catalog for Studio-managed channel skills.
 
 # Feishu Permission Runtime Skill
 
-Studio manages this skill as a channel capability contract. Feishu permission mutation is sensitive and not yet exposed as a default Studio runtime tool. Do not fabricate permission changes. If no concrete \`feishu_perm\` runtime tool is available, explain that Studio can send instructions or files but cannot yet mutate Feishu permissions in this turn.
+Studio manages this skill as a channel capability contract. Use \`studio-feishu-actions\` for Feishu permission read-only collaborator listing. Permission mutation is sensitive and blocked until Studio adds approval-backed executors. Do not fabricate permission changes.
 
 ## Actions
 
-Feishu permission API execution is a planned native tool surface. In the current Studio runtime, these actions are an action catalog unless a concrete \`feishu_perm\` tool is present in the current Agent turn. Do not claim permission changes succeeded without a Studio tool result.
+Use this manifest shape:
+
+\`\`\`studio-feishu-actions
+[
+  {"tool":"feishu_perm","action":"list","token":"ABC123","type":"docx"}
+]
+\`\`\`
+
+Supported now: \`list\`. The following actions mirror the OpenClaw Feishu extension contract, but add/remove are blocked until approval-backed execution is enabled:
 
 Planned native actions mirror the OpenClaw Feishu extension contract:
 
@@ -265,7 +292,7 @@ description: Feishu Wiki action catalog for Studio-managed channel skills. Activ
 
 # Feishu Wiki Runtime Skill
 
-Studio manages this skill as a channel capability contract. Feishu Wiki API execution is a planned native tool surface and must not be fabricated. If no concrete \`feishu_wiki\` runtime tool is available, explain the limitation and offer a local/IM workflow.
+Studio manages this skill as a channel capability contract. Use \`studio-feishu-actions\` for Feishu Wiki read-only navigation. Studio executes the action with the active Feishu binding and returns structured results. Create/move/rename are blocked until Studio adds approval-backed executors.
 
 ## Token Extraction
 
@@ -273,7 +300,17 @@ From \`https://xxx.feishu.cn/wiki/ABC123def\`, use wiki token \`ABC123def\`. Tre
 
 ## Actions
 
-Feishu Wiki API execution is a planned native tool surface. In the current Studio runtime, these actions are an action catalog unless a concrete \`feishu_wiki\` tool is present in the current Agent turn. Do not claim a remote Wiki action succeeded without a Studio tool result.
+Use this manifest shape:
+
+\`\`\`studio-feishu-actions
+[
+  {"tool":"feishu_wiki","action":"spaces"},
+  {"tool":"feishu_wiki","action":"nodes","space_id":"7xxx"},
+  {"tool":"feishu_wiki","action":"get","token":"ABC123def"}
+]
+\`\`\`
+
+Supported now: \`spaces\`, \`nodes\`, \`get\`, and safe \`search\` fallback. The following actions mirror the OpenClaw Feishu extension contract, but create/move/rename are blocked until approval-backed execution is enabled:
 
 Planned native actions mirror the OpenClaw Feishu extension contract:
 
@@ -286,7 +323,7 @@ Planned native actions mirror the OpenClaw Feishu extension contract:
 
 ## Wiki-Doc Workflow
 
-Planned workflow: get wiki node, read/write the backing doc with the Feishu document tool. Until Studio exposes those tools, provide a local document or a Feishu Markdown message rather than claiming remote wiki edits were applied.`,
+Workflow: get wiki node, then use \`feishu_doc\` read/list_blocks/get_block on the returned \`obj_token\`. For wiki edits before Studio enables mutation, provide a local document or a Feishu Markdown message rather than claiming remote wiki edits were applied.`,
   },
 ];
 

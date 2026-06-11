@@ -144,6 +144,7 @@ import {
 import {
   addFeishuMessageReaction,
   downloadFeishuMessageResourceToFile,
+  executeFeishuChannelAction,
   feishuTransportFromMetadata,
   getFeishuBotInfo,
   listFeishuChatMembers,
@@ -153,7 +154,12 @@ import {
   sendFeishuPostMessage,
   sendFeishuTextMessage,
   uploadAndSendFeishuMedia,
+  type ChannelConnectorFeishuActionResult,
 } from "./feishu-transport.js";
+import {
+  extractChannelConnectorFeishuActions,
+  type ChannelConnectorFeishuActionRequest,
+} from "./feishu-actions.js";
 import {
   loadFeishuThreadBootstrapContext,
 } from "./feishu-thread-bootstrap.js";
@@ -2689,12 +2695,15 @@ function prepareAgentOutboundReply(input: {
   replyText: string;
   files: ChannelConnectorResolvedOutboundFile[];
   messages: ChannelConnectorOutboundMessageRequest[];
+  feishuActions: ChannelConnectorFeishuActionRequest[];
   errors: string[];
   declaredCount: number;
   declaredMessageCount: number;
+  declaredFeishuActionCount: number;
   maxBytes: number;
 } {
-  const extractedMessages = extractChannelConnectorOutboundMessages(input.replyText || "");
+  const extractedFeishuActions = extractChannelConnectorFeishuActions(input.replyText || "");
+  const extractedMessages = extractChannelConnectorOutboundMessages(extractedFeishuActions.replyText);
   const extracted = extractChannelConnectorOutboundFiles(extractedMessages.replyText);
   const maxBytes = outboundFileMaxBytes(input.binding);
   const resolved = resolveChannelConnectorOutboundFiles({
@@ -2708,9 +2717,19 @@ function prepareAgentOutboundReply(input: {
     replyText: extracted.replyText,
     files: resolved.files,
     messages: extractedMessages.messages,
-    errors: [...extractedMessages.errors, ...extracted.errors, ...resolved.errors],
+    feishuActions: input.binding.platform === "feishu" ? extractedFeishuActions.actions : [],
+    errors: [
+      ...extractedFeishuActions.errors,
+      ...(input.binding.platform === "feishu" || extractedFeishuActions.actions.length === 0
+        ? []
+        : ["studio-feishu-actions can only run on Feishu bindings."]),
+      ...extractedMessages.errors,
+      ...extracted.errors,
+      ...resolved.errors,
+    ],
     declaredCount: extracted.files.length,
     declaredMessageCount: extractedMessages.messages.length,
+    declaredFeishuActionCount: extractedFeishuActions.actions.length,
     maxBytes,
   };
 }
@@ -2719,6 +2738,7 @@ function outboundFilesHistoryText(input: {
   replyText: string;
   files: ChannelConnectorResolvedOutboundFile[];
   messages: ChannelConnectorOutboundMessageRequest[];
+  feishuActions?: ChannelConnectorFeishuActionRequest[];
   errors: string[];
 }): string {
   const parts = [input.replyText];
@@ -2728,10 +2748,32 @@ function outboundFilesHistoryText(input: {
   if (input.messages.length) {
     parts.push(`[Studio outbound messages: ${input.messages.map((message) => `${message.platform || "current"}:${message.chatId || message.channelId}`).join(", ")}]`);
   }
+  if (input.feishuActions?.length) {
+    parts.push(`[Studio Feishu actions: ${input.feishuActions.map((action) => `${action.tool}.${action.action}`).join(", ")}]`);
+  }
   if (input.errors.length) {
     parts.push(`[Studio outbound errors: ${input.errors.join("; ")}]`);
   }
   return parts.filter(Boolean).join("\n\n");
+}
+
+function summarizeFeishuActionResult(result: ChannelConnectorFeishuActionResult): string {
+  if (result.ok) {
+    const payload = JSON.stringify(result.data ?? {}, null, 2);
+    return [
+      `OK ${result.tool}.${result.action}`,
+      payload === "{}" ? "" : `\`\`\`json\n${payload}\n\`\`\``,
+    ].filter(Boolean).join("\n");
+  }
+  return `FAIL ${result.tool}.${result.action}: ${result.error || "unknown error"}`;
+}
+
+function feishuActionResultsReply(results: ChannelConnectorFeishuActionResult[]): string {
+  if (!results.length) return "";
+  return [
+    "Feishu action results:",
+    ...results.map(summarizeFeishuActionResult),
+  ].join("\n\n");
 }
 
 function appendOutboundFileErrors(replyText: string, errors: string[]): string {
@@ -8609,9 +8651,11 @@ async function dispatchOctoMessage(input: {
       replyText: agent.replyText || "",
       files: [],
       messages: [],
+      feishuActions: [],
       errors: [],
       declaredCount: 0,
       declaredMessageCount: 0,
+      declaredFeishuActionCount: 0,
       maxBytes: outboundFileMaxBytes(binding),
     };
   appendChannelConnectorConversationHistory(conversationHistoryPath(config), {
@@ -9884,9 +9928,11 @@ async function dispatchFeishuParsedEvent(input: {
       replyText: agent.replyText || "",
       files: [],
       messages: [],
+      feishuActions: [],
       errors: [],
       declaredCount: 0,
       declaredMessageCount: 0,
+      declaredFeishuActionCount: 0,
       maxBytes: outboundFileMaxBytes(binding),
     };
   appendChannelConnectorConversationHistory(conversationHistoryPath(config), {
@@ -9981,8 +10027,27 @@ async function dispatchFeishuParsedEvent(input: {
   let outboundMessageSentCount = 0;
   let outboundMessageRequestCount = 0;
   let outboundMessageNativeMentionIds: string[] = [];
-  let outboundFileErrors = [...outboundReply.errors];
-  const outboundReplyText = appendOutboundFileErrors(outboundReply.replyText, outboundReply.errors);
+  let feishuActionResults: ChannelConnectorFeishuActionResult[] = [];
+  let feishuActionRequestCount = 0;
+  let feishuActionSucceededCount = 0;
+  let feishuActionErrorCount = 0;
+  if (agent.ok === true && outboundReply.feishuActions.length > 0) {
+    for (const action of outboundReply.feishuActions) {
+      const result = await executeFeishuChannelAction(transport, action, feishuTokenCachePath(config));
+      feishuActionResults.push(result);
+      feishuActionRequestCount += result.requestCount;
+      if (result.ok) feishuActionSucceededCount += 1;
+      else feishuActionErrorCount += 1;
+    }
+  }
+  const feishuActionErrors = feishuActionResults
+    .filter((result) => !result.ok)
+    .map((result) => `${result.tool}.${result.action}: ${result.error || "unknown error"}`);
+  let outboundFileErrors = [...outboundReply.errors, ...feishuActionErrors];
+  const outboundReplyText = appendOutboundFileErrors(
+    [outboundReply.replyText, feishuActionResultsReply(feishuActionResults)].filter(Boolean).join("\n\n"),
+    outboundReply.errors,
+  );
   const replyContent = agent.ok === true && outboundReplyText
     ? outboundReplyText
     : agent.ok === false && !progressCardState.messageId
@@ -10113,6 +10178,12 @@ async function dispatchFeishuParsedEvent(input: {
     outboundMessagesSent: outboundMessageSentCount,
     outboundMessageRequestCount,
     outboundMessageNativeMentionIds,
+    feishuActionsDeclared: outboundReply.declaredFeishuActionCount,
+    feishuActionsExecuted: feishuActionResults.length,
+    feishuActionsSucceeded: feishuActionSucceededCount,
+    feishuActionsFailed: feishuActionErrorCount,
+    feishuActionRequestCount,
+    feishuActionErrors,
     outboundFileErrors,
     groupMemberPullAttempted: groupMembers.attempted,
     groupMemberCount: groupMembers.members.length,

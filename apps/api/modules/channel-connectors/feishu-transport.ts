@@ -10,6 +10,10 @@ import type {
   ChannelConnectorOctoGroupMember,
   ChannelConnectorPlatformBinding,
 } from "../../../../types/channel-connectors.js";
+import type {
+  ChannelConnectorFeishuActionRequest,
+  ChannelConnectorFeishuActionTool,
+} from "./feishu-actions.js";
 import { extractFeishuMessageContent } from "./feishu-adapter.js";
 import { inferChannelConnectorMimeType, safeChannelConnectorFileName } from "./outbound-files.js";
 import { splitChannelConnectorTextChunks } from "./text-chunks.js";
@@ -154,6 +158,20 @@ export interface ChannelConnectorFeishuThreadMessagesResult {
   tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"];
   threadId: string | null;
   messages: ChannelConnectorFeishuMessageInfo[];
+  error: string | null;
+}
+
+export interface ChannelConnectorFeishuActionResult {
+  attempted: boolean;
+  ok: boolean;
+  tool: ChannelConnectorFeishuActionTool;
+  action: string;
+  readOnly: boolean;
+  apiUrl: string;
+  statusCode: number | null;
+  requestCount: number;
+  tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"];
+  data: unknown | null;
   error: string | null;
 }
 
@@ -1124,6 +1142,289 @@ export async function listFeishuThreadMessages(
       messages: [],
       error: errorMessage(error),
     };
+  }
+}
+
+const FEISHU_DOCX_STRUCTURED_BLOCK_TYPES = new Set([14, 18, 21, 23, 27, 30, 31, 32]);
+const FEISHU_DOCX_BLOCK_TYPE_NAMES: Record<number, string> = {
+  1: "Page",
+  2: "Text",
+  3: "Heading1",
+  4: "Heading2",
+  5: "Heading3",
+  12: "Bullet",
+  13: "Ordered",
+  14: "Code",
+  15: "Quote",
+  17: "Todo",
+  18: "Bitable",
+  21: "Diagram",
+  22: "Divider",
+  23: "File",
+  27: "Image",
+  30: "Sheet",
+  31: "Table",
+  32: "TableCell",
+};
+
+function actionResult(input: {
+  tool: ChannelConnectorFeishuActionTool;
+  action: string;
+  readOnly: boolean;
+  config: ChannelConnectorFeishuTransportConfig;
+  ok?: boolean;
+  statusCode?: number | null;
+  requestCount?: number;
+  tokenCache?: ChannelConnectorFeishuTransportResult["tokenCache"];
+  data?: unknown | null;
+  error?: string | null;
+}): ChannelConnectorFeishuActionResult {
+  return {
+    attempted: true,
+    ok: input.ok === true,
+    tool: input.tool,
+    action: input.action,
+    readOnly: input.readOnly,
+    apiUrl: input.config.apiUrl,
+    statusCode: input.statusCode ?? null,
+    requestCount: input.requestCount ?? 0,
+    tokenCache: input.tokenCache ?? null,
+    data: input.data ?? null,
+    error: input.error ?? null,
+  };
+}
+
+function normalizedAction(value: unknown): string {
+  return normalizeString(value).toLowerCase();
+}
+
+function paramString(params: Record<string, unknown>, keys: string[]): string {
+  for (const key of keys) {
+    const value = normalizeString(params[key]);
+    if (value) return value;
+  }
+  return "";
+}
+
+function requireParamString(params: Record<string, unknown>, keys: string[], label: string): string {
+  const value = paramString(params, keys);
+  if (!value) throw new Error(`${label} is required.`);
+  return value;
+}
+
+function optionalParamString(params: Record<string, unknown>, keys: string[]): string | undefined {
+  return paramString(params, keys) || undefined;
+}
+
+function feishuActionIsReadOnly(tool: ChannelConnectorFeishuActionTool, action: string): boolean {
+  const normalized = normalizedAction(action);
+  if (tool === "feishu_doc") return ["read", "list_blocks", "get_block"].includes(normalized);
+  if (tool === "feishu_drive") return ["list", "info"].includes(normalized);
+  if (tool === "feishu_perm") return normalized === "list";
+  if (tool === "feishu_wiki") return ["spaces", "nodes", "get", "search"].includes(normalized);
+  return false;
+}
+
+function feishuActionUnsupportedMutation(
+  config: ChannelConnectorFeishuTransportConfig,
+  request: ChannelConnectorFeishuActionRequest,
+): ChannelConnectorFeishuActionResult {
+  return actionResult({
+    tool: request.tool,
+    action: normalizedAction(request.action),
+    readOnly: false,
+    config,
+    ok: false,
+    error: `${request.tool}.${request.action} is a Feishu mutation action. Studio has not enabled native mutation execution for this action yet; use studio-channel-files or studio-channel-messages as a safe fallback, or wait for the explicit approval-backed executor.`,
+  });
+}
+
+function normalizeDocxBlocks(body: Record<string, unknown>): unknown[] {
+  const data = recordFrom(body.data);
+  const items = arrayFrom(data.items);
+  return items;
+}
+
+function docxReadSummary(input: {
+  rawContentBody: Record<string, unknown>;
+  documentBody: Record<string, unknown>;
+  blocksBody: Record<string, unknown>;
+}): Record<string, unknown> {
+  const rawData = recordFrom(input.rawContentBody.data);
+  const document = recordFrom(recordFrom(input.documentBody.data).document);
+  const blocks = normalizeDocxBlocks(input.blocksBody);
+  const blockCounts: Record<string, number> = {};
+  const structuredTypes: string[] = [];
+  for (const block of blocks) {
+    const type = Number(recordFrom(block).block_type);
+    const name = FEISHU_DOCX_BLOCK_TYPE_NAMES[type] || `type_${Number.isFinite(type) ? type : 0}`;
+    blockCounts[name] = (blockCounts[name] || 0) + 1;
+    if (FEISHU_DOCX_STRUCTURED_BLOCK_TYPES.has(type) && !structuredTypes.includes(name)) structuredTypes.push(name);
+  }
+  return {
+    title: normalizeString(document.title) || null,
+    content: normalizeString(rawData.content),
+    revision_id: normalizeString(document.revision_id) || null,
+    block_count: blocks.length,
+    block_types: blockCounts,
+    ...(structuredTypes.length
+      ? { hint: `This document contains ${structuredTypes.join(", ")} which are not included in plain text. Use feishu_doc action list_blocks for structured content.` }
+      : {}),
+  };
+}
+
+async function executeFeishuReadOnlyAction(
+  config: ChannelConnectorFeishuTransportConfig,
+  request: ChannelConnectorFeishuActionRequest,
+  token: string,
+): Promise<{ data: unknown; statusCode: number | null; requestCount: number }> {
+  let requestCount = 0;
+  let statusCode: number | null = null;
+  const params = request.params || {};
+  const action = normalizedAction(request.action);
+  const call = async (method: "GET" | "POST" | "PATCH" | "DELETE", pathValue: string, payload?: unknown) => {
+    const response = await feishuJsonRequest(config, {
+      method,
+      path: pathValue,
+      payload,
+      token,
+    });
+    requestCount += response.requestCount;
+    statusCode = response.statusCode;
+    return response.body;
+  };
+
+  if (request.tool === "feishu_doc") {
+    const docToken = requireParamString(params, ["doc_token", "document_id", "docToken", "token"], "doc_token");
+    if (action === "read") {
+      const rawContentBody = await call("GET", `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/raw_content`);
+      const documentBody = await call("GET", `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}`);
+      const blocksBody = await call("GET", `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/blocks`);
+      return { data: docxReadSummary({ rawContentBody, documentBody, blocksBody }), statusCode, requestCount };
+    }
+    if (action === "list_blocks") {
+      const body = await call("GET", `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/blocks`);
+      return { data: { blocks: normalizeDocxBlocks(body) }, statusCode, requestCount };
+    }
+    if (action === "get_block") {
+      const blockId = requireParamString(params, ["block_id", "blockId"], "block_id");
+      const body = await call("GET", `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/blocks/${encodeURIComponent(blockId)}`);
+      return { data: { block: recordFrom(recordFrom(body.data).block) }, statusCode, requestCount };
+    }
+  }
+
+  if (request.tool === "feishu_drive") {
+    if (action === "list") {
+      const search = new URLSearchParams();
+      const folderToken = optionalParamString(params, ["folder_token", "folderToken"]);
+      if (folderToken && folderToken !== "0") search.set("folder_token", folderToken);
+      const body = await call("GET", `/open-apis/drive/v1/files${search.size ? `?${search.toString()}` : ""}`);
+      const data = recordFrom(body.data);
+      return {
+        data: {
+          files: arrayFrom(data.files),
+          next_page_token: normalizeString(data.next_page_token) || null,
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+    if (action === "info") {
+      const fileToken = requireParamString(params, ["file_token", "fileToken", "token"], "file_token");
+      const search = new URLSearchParams();
+      const folderToken = optionalParamString(params, ["folder_token", "folderToken"]);
+      if (folderToken && folderToken !== "0") search.set("folder_token", folderToken);
+      const body = await call("GET", `/open-apis/drive/v1/files${search.size ? `?${search.toString()}` : ""}`);
+      const files = arrayFrom(recordFrom(body.data).files);
+      const file = files.find((item) => normalizeString(recordFrom(item).token) === fileToken) || null;
+      if (!file) throw new Error(`File not found: ${fileToken}`);
+      return { data: file, statusCode, requestCount };
+    }
+  }
+
+  if (request.tool === "feishu_perm") {
+    if (action === "list") {
+      const tokenValue = requireParamString(params, ["token", "file_token", "doc_token"], "token");
+      const type = paramString(params, ["type", "file_type", "fileType"]) || "docx";
+      const search = new URLSearchParams({ type });
+      const body = await call("GET", `/open-apis/drive/v1/permissions/${encodeURIComponent(tokenValue)}/members?${search.toString()}`);
+      return { data: { members: arrayFrom(recordFrom(body.data).items) }, statusCode, requestCount };
+    }
+  }
+
+  if (request.tool === "feishu_wiki") {
+    if (action === "spaces") {
+      const body = await call("GET", "/open-apis/wiki/v2/spaces");
+      return { data: { spaces: arrayFrom(recordFrom(body.data).items) }, statusCode, requestCount };
+    }
+    if (action === "nodes") {
+      const spaceId = requireParamString(params, ["space_id", "spaceId"], "space_id");
+      const search = new URLSearchParams();
+      const parentToken = optionalParamString(params, ["parent_node_token", "parentNodeToken"]);
+      if (parentToken) search.set("parent_node_token", parentToken);
+      const body = await call("GET", `/open-apis/wiki/v2/spaces/${encodeURIComponent(spaceId)}/nodes${search.size ? `?${search.toString()}` : ""}`);
+      return { data: { nodes: arrayFrom(recordFrom(body.data).items) }, statusCode, requestCount };
+    }
+    if (action === "get") {
+      const tokenValue = requireParamString(params, ["token", "node_token", "nodeToken"], "token");
+      const search = new URLSearchParams({ token: tokenValue });
+      const body = await call("GET", `/open-apis/wiki/v2/spaces/get_node?${search.toString()}`);
+      return { data: { node: recordFrom(recordFrom(body.data).node) }, statusCode, requestCount };
+    }
+    if (action === "search") {
+      return {
+        data: {
+          error: "Search is not available. Use feishu_wiki action nodes to browse or action get to lookup by token.",
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+  }
+
+  throw new Error(`Unsupported Feishu action: ${request.tool}.${request.action}`);
+}
+
+export async function executeFeishuChannelAction(
+  config: ChannelConnectorFeishuTransportConfig,
+  request: ChannelConnectorFeishuActionRequest,
+  cachePath?: string | null,
+): Promise<ChannelConnectorFeishuActionResult> {
+  const action = normalizedAction(request.action);
+  const readOnly = feishuActionIsReadOnly(request.tool, action);
+  if (!readOnly) return feishuActionUnsupportedMutation(config, request);
+
+  let requestCount = 0;
+  let tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"] = cachePath ? "miss" : "disabled";
+  try {
+    const token = await getFeishuTenantToken(config, cachePath);
+    requestCount += token.requestCount;
+    tokenCache = token.tokenCache;
+    const executed = await executeFeishuReadOnlyAction(config, { ...request, action }, token.token);
+    requestCount += executed.requestCount;
+    return actionResult({
+      tool: request.tool,
+      action,
+      readOnly,
+      config,
+      ok: true,
+      statusCode: executed.statusCode,
+      requestCount,
+      tokenCache,
+      data: executed.data,
+    });
+  } catch (error) {
+    return actionResult({
+      tool: request.tool,
+      action,
+      readOnly,
+      config,
+      ok: false,
+      statusCode: errorStatusCode(error),
+      requestCount: Math.max(requestCount + errorRequestCount(error), 1),
+      tokenCache,
+      error: errorMessage(error),
+    });
   }
 }
 

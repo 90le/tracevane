@@ -62,6 +62,7 @@ import {
   addFeishuMessageReaction,
   downloadFeishuMessageResource,
   downloadFeishuMessageResourceToFile,
+  executeFeishuChannelAction,
   getFeishuBotInfo,
   getFeishuMessage,
   listFeishuChatMembers,
@@ -71,6 +72,9 @@ import {
   sendFeishuTextMessage,
   uploadAndSendFeishuMedia,
 } from "../../dist/apps/api/modules/channel-connectors/feishu-transport.js";
+import {
+  extractChannelConnectorFeishuActions,
+} from "../../dist/apps/api/modules/channel-connectors/feishu-actions.js";
 import {
   loadFeishuThreadBootstrapContext,
 } from "../../dist/apps/api/modules/channel-connectors/feishu-thread-bootstrap.js";
@@ -1306,6 +1310,104 @@ test("native Channel Connectors extracts outbound IM message manifests", () => {
   assert.equal(invalid.replyText, "bad");
   assert.equal(invalid.messages.length, 0);
   assert.match(invalid.errors.join("\n"), /JSON/);
+});
+
+test("native Channel Connectors extracts Feishu action manifests", () => {
+  const extracted = extractChannelConnectorFeishuActions([
+    "先读取文档和知识库。",
+    "```studio-feishu-actions",
+    JSON.stringify([
+      { tool: "feishu_doc", action: "read", doc_token: "doc_a" },
+      { skill: "wiki", action: "nodes", params: { space_id: "7370955161512345678" } },
+      { name: "feishu_perm", action: "list", token: "doc_a", type: "docx" },
+    ]),
+    "```",
+  ].join("\n"));
+
+  assert.equal(extracted.replyText, "先读取文档和知识库。");
+  assert.deepEqual(extracted.errors, []);
+  assert.deepEqual(extracted.actions, [
+    { tool: "feishu_doc", action: "read", params: { doc_token: "doc_a" } },
+    { tool: "feishu_wiki", action: "nodes", params: { space_id: "7370955161512345678" } },
+    { tool: "feishu_perm", action: "list", params: { token: "doc_a", type: "docx" } },
+  ]);
+
+  const invalid = extractChannelConnectorFeishuActions([
+    "bad",
+    "```studio-feishu-actions",
+    "{nope",
+    "```",
+  ].join("\n"));
+  assert.equal(invalid.replyText, "bad");
+  assert.equal(invalid.actions.length, 0);
+  assert.match(invalid.errors.join("\n"), /JSON/);
+});
+
+test("native Channel Connectors executes Feishu read-only actions and blocks mutations", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, init = {}) => {
+    requests.push({
+      url: String(url),
+      method: init.method || "GET",
+      body: typeof init.body === "string" ? init.body : "",
+      authorization: init.headers?.authorization || init.headers?.Authorization || "",
+    });
+    if (String(url).endsWith("/open-apis/auth/v3/tenant_access_token/internal")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        tenant_access_token: "tenant-token",
+        expire: 3600,
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).endsWith("/open-apis/wiki/v2/spaces")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: {
+          items: [
+            { space_id: "7370955161512345678", name: "Studio KB", description: "docs" },
+          ],
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return new Response(JSON.stringify({ code: 404, msg: "not mocked" }), { status: 404 });
+  };
+  try {
+    const config = {
+      apiUrl: "https://open.feishu.cn",
+      appId: "cli_test",
+      appSecret: "secret",
+    };
+    const readOnly = await executeFeishuChannelAction(config, {
+      tool: "feishu_wiki",
+      action: "spaces",
+      params: {},
+    }, null);
+    assert.equal(readOnly.ok, true);
+    assert.equal(readOnly.tool, "feishu_wiki");
+    assert.equal(readOnly.action, "spaces");
+    assert.equal(readOnly.readOnly, true);
+    assert.equal(readOnly.requestCount, 2);
+    assert.deepEqual(readOnly.data, {
+      spaces: [
+        { space_id: "7370955161512345678", name: "Studio KB", description: "docs" },
+      ],
+    });
+    assert.equal(requests[1].authorization, "Bearer tenant-token");
+
+    const requestCountBeforeMutation = requests.length;
+    const mutation = await executeFeishuChannelAction(config, {
+      tool: "feishu_perm",
+      action: "add",
+      params: { token: "doc_a", type: "docx", member_type: "email", member_id: "a@example.com", perm: "edit" },
+    }, null);
+    assert.equal(mutation.ok, false);
+    assert.equal(mutation.readOnly, false);
+    assert.match(mutation.error || "", /not enabled/);
+    assert.equal(requests.length, requestCountBeforeMutation);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("native Channel Connectors config preview targets Studio Gateway without cc-connect TOML", () => {
@@ -5717,7 +5819,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.ok(defaultFeishuContext);
   assert.match(defaultFeishuContext, /### \/feishu-messaging \[platform:feishu\]/);
   assert.match(defaultFeishuContext, /### \/feishu-doc \[platform:feishu\]/);
-  assert.match(defaultFeishuContext, /Feishu document API execution is a planned native tool surface/);
+  assert.match(defaultFeishuContext, /studio-feishu-actions/);
+  assert.match(defaultFeishuContext, /Supported now: `read`, `list_blocks`, `get_block`/);
   assert.match(defaultFeishuContext, /studio-channel-files/);
   assert.doesNotMatch(defaultFeishuContext, /FEISHU_APP_SECRET/);
   assert.doesNotMatch(defaultFeishuContext, /openclaw plugins install/);
