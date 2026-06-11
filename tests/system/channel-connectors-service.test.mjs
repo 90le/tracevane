@@ -95,6 +95,7 @@ import {
 } from "../../dist/apps/api/modules/channel-connectors/command-router.js";
 import {
   getChannelConnectorSessionControl,
+  upsertChannelConnectorSessionControl,
 } from "../../dist/apps/api/modules/channel-connectors/session-control-store.js";
 import {
   appendChannelConnectorConversationHistory,
@@ -10409,6 +10410,251 @@ test("native Channel Connectors daemon serializes same-session Octo Agent turns"
           return event.eventKind === "channel.agent.queued"
             && event.messageId === "2002"
             && event.sessionKey === "dmwork:dm:queue-user";
+        }));
+      } finally {
+        child.kill("SIGTERM");
+        await new Promise((resolve) => {
+          child.once("exit", resolve);
+          setTimeout(resolve, 1000);
+        });
+      }
+
+      assert.equal(stderr.trim(), "");
+    });
+  } finally {
+    await new Promise((resolve, reject) => {
+      wss.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
+test("native Channel Connectors daemon sends Octo group process replies before final reply", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+  });
+  const fakeBin = path.join(root, "fake-bin");
+  const capturePath = path.join(root, "opencode-process-capture.jsonl");
+  fs.mkdirSync(fakeBin, { recursive: true });
+  const fakeOpenCodePath = path.join(fakeBin, "opencode");
+  fs.writeFileSync(fakeOpenCodePath, [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    "fs.appendFileSync(process.env.STUDIO_TEST_OPENCODE_CAPTURE, `${JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd() })}\\n`);",
+    "function emit(value) { process.stdout.write(`${JSON.stringify(value)}\\n`); }",
+    "emit({ type: 'step_start', part: { type: 'step-start', sessionID: 'opencode-process-session' } });",
+    "emit({ type: 'text', messageID: 'assistant-process', part: { type: 'text', messageID: 'assistant-process', text: '我先说明第一步。' } });",
+    "emit({ type: 'step_finish', part: { type: 'step-finish', reason: 'tool-calls' } });",
+    "emit({ type: 'step_start', part: { type: 'step-start', sessionID: 'opencode-process-session' } });",
+    "emit({ type: 'tool_use', part: { type: 'tool', tool: 'bash', state: { status: 'completed', title: 'Echo step', input: { command: 'echo step' }, output: 'step output' } } });",
+    "emit({ type: 'text', messageID: 'assistant-final', part: { type: 'text', messageID: 'assistant-final', text: '最终总结。' } });",
+    "emit({ type: 'step_finish', part: { type: 'step-finish', reason: 'stop' } });",
+    "",
+  ].join("\n"), { mode: 0o755 });
+
+  const wsConnects = [];
+  let inboundSent = false;
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  await new Promise((resolve, reject) => {
+    wss.once("listening", resolve);
+    wss.once("error", reject);
+  });
+  const wsAddress = wss.address();
+  assert.ok(wsAddress && typeof wsAddress === "object");
+  const wsUrl = `ws://127.0.0.1:${wsAddress.port}/ws`;
+  wss.on("connection", (socket) => {
+    let connected = false;
+    socket.on("message", (data) => {
+      if (connected) return;
+      const packet = decodeOctoConnectPacket(Buffer.isBuffer(data) ? data : Buffer.from(data));
+      connected = true;
+      wsConnects.push(packet);
+      const serverKey = createOctoX25519KeyPair();
+      const salt = "abcd1234abcd1234";
+      socket.send(encodeOctoConnackPacket({
+        serverPublicKeyBase64: serverKey.publicKeyBase64,
+        salt,
+      }));
+      if (!inboundSent) {
+        inboundSent = true;
+        setTimeout(() => {
+          if (socket.readyState !== 1) return;
+          socket.send(encodeOctoRecvPacket({
+            serverPrivateKey: serverKey.privateKey,
+            clientPublicKeyBase64: packet.clientPublicKeyBase64,
+            salt,
+            messageId: 4001,
+            messageSeq: 1,
+            fromUid: "process-user",
+            channelId: "group-process",
+            channelType: 2,
+            payload: {
+              type: 1,
+              content: "@Studio Bot run process smoke",
+              mention: { uids: ["robot-process"] },
+            },
+          }));
+        }, 50);
+      }
+    });
+  });
+
+  try {
+    const requests = [];
+    await withServer(async (req, res) => {
+      const chunks = [];
+      req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
+      await new Promise((resolve) => req.on("end", resolve));
+      const bodyRaw = Buffer.concat(chunks).toString("utf8");
+      requests.push({
+        method: req.method,
+        path: req.url,
+        authorization: req.headers.authorization,
+        body: bodyRaw ? JSON.parse(bodyRaw) : {},
+      });
+      res.setHeader("content-type", "application/json");
+      if (req.url === "/v1/models") {
+        res.end(JSON.stringify({
+          object: "list",
+          data: [
+            { id: "gpt-5", object: "model", features: { text: true } },
+          ],
+        }));
+        return true;
+      }
+      if (req.url?.startsWith("/v1/bot/register")) {
+        res.end(JSON.stringify({ robot_id: "robot-process", im_token: "im-token-process", ws_url: wsUrl }));
+        return true;
+      }
+      if (req.method === "GET" && req.url === "/v1/bot/groups/group-process/members") {
+        res.end(JSON.stringify({
+          members: [
+            { uid: "process-user", name: "Process User", role: 1, robot: 0 },
+            { uid: "robot-process", name: "Studio Bot", role: 2, robot: 1 },
+          ],
+        }));
+        return true;
+      }
+      if (req.url === "/v1/bot/typing" || req.url === "/v1/bot/sendMessage" || req.url === "/v1/bot/heartbeat") {
+        res.end(JSON.stringify({ ok: true, message_id: `octo-process-${requests.length}` }));
+        return true;
+      }
+      return false;
+    }, async (apiUrl) => {
+      const initial = service.getNativeConfig().config;
+      service.saveNativeConfig({
+        config: {
+          ...initial,
+          agentProfiles: [
+            {
+              id: "opencode-process",
+              name: "OpenCode Process",
+              agent: "opencode",
+              model: "gpt-5",
+              workDir: config.projectRoot,
+              permissionMode: "suggest",
+              gatewayEndpoint: `${apiUrl}/v1`,
+              gatewayKeyRef: "studio-gateway-client-key",
+              appProfileRef: "opencode",
+            },
+          ],
+          defaultAgentProfileId: "opencode-process",
+          platformBindings: [
+            {
+              id: "octo-process",
+              platform: "octo",
+              accountId: "octo-account",
+              botId: "robot-process",
+              displayName: "Octo Process",
+              agentProfileId: "opencode-process",
+              enabled: true,
+              allowlist: [],
+              adminUsers: [],
+              metadata: {
+                apiUrl,
+                botToken: "test-token",
+                wsUrl,
+                octoReconnectJitterMs: 0,
+              },
+            },
+          ],
+        },
+      });
+
+      const runtimeConfig = service.getDaemonConfig().config;
+      runtimeConfig.management.port = await findFreePort();
+      const sessionKey = "dmwork:group:group-process";
+      upsertChannelConnectorSessionControl(path.join(runtimeConfig.paths.state, "channel-session-controls.json"), {
+        bindingId: "octo-process",
+        sessionKey,
+        processMessages: true,
+      });
+      const configPath = path.join(root, "daemon-octo-process-config.json");
+      fs.mkdirSync(path.dirname(runtimeConfig.paths.log), { recursive: true });
+      fs.writeFileSync(configPath, JSON.stringify(runtimeConfig, null, 2), "utf8");
+
+      const daemonEntry = path.resolve("dist/apps/api/modules/channel-connectors/daemon.js");
+      const child = spawn(process.execPath, [daemonEntry, "--config", configPath], {
+        cwd: path.resolve("."),
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:${process.env.PATH || ""}`,
+          STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+          STUDIO_TEST_OPENCODE_CAPTURE: capturePath,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stderr = "";
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk.toString("utf8");
+      });
+
+      try {
+        await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const connected = response.body?.octoConnections?.find?.((item) => item.bindingId === "octo-process" && item.connected);
+          return connected ? response.body : null;
+        }, 5000);
+        assert.equal(wsConnects.length, 1);
+
+        const finalStatus = await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const run = response.body?.agentRuns?.find?.((item) => item.messageId === "4001" && item.ok);
+          return run ? response.body : null;
+        }, 8000);
+        assert.equal(finalStatus.ok, true);
+
+        const sendContents = requests
+          .filter((request) => request.path === "/v1/bot/sendMessage")
+          .map((request) => request.body?.payload?.content || "");
+        const processIndex = sendContents.findIndex((content) => {
+          return content.includes("过程回复") && content.includes("我先说明第一步。");
+        });
+        const finalIndex = sendContents.findIndex((content) => content.includes("最终总结。"));
+        assert.notEqual(processIndex, -1, JSON.stringify(sendContents));
+        assert.notEqual(finalIndex, -1, JSON.stringify(sendContents));
+        assert.ok(processIndex < finalIndex, JSON.stringify(sendContents));
+        assert.equal(sendContents.some((content) => content.includes("step output")), false);
+
+        const octoEvents = await waitForJsonLines(runtimeConfig.paths.octoEvents, (events) => {
+          return events.some((event) => {
+            return event.eventKind === "agent.progress.reply"
+              && event.messageId === "4001"
+              && event.progressType === "assistant"
+              && event.phase === "intermediate"
+              && event.replySent === true;
+          }) && events.some((event) => {
+            return event.eventKind === "agent.run.finished"
+              && event.messageId === "4001"
+              && event.agentOk === true;
+          });
+        }, 8000);
+        assert.ok(octoEvents.some((event) => {
+          return event.eventKind === "agent.run.started"
+            && event.messageId === "4001"
+            && event.progressDefaults?.isGroup === true
+            && event.progressProcessEnabled === true;
         }));
       } finally {
         child.kill("SIGTERM");
