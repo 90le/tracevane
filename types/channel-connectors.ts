@@ -15,6 +15,12 @@ export const CHANNEL_CONNECTOR_AGENT_IDS = [
   "acp",
 ] as const;
 
+export const CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS = [
+  "codex",
+  "claude-code",
+  "opencode",
+] as const satisfies readonly (typeof CHANNEL_CONNECTOR_AGENT_IDS[number])[];
+
 export const CHANNEL_CONNECTOR_PLATFORM_IDS = [
   "octo",
   "feishu",

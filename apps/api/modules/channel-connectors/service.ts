@@ -6,7 +6,7 @@ import { promisify } from "node:util";
 import type { StudioServerConfig } from "../../../../types/api.js";
 import {
   CHANNEL_CONNECTORS_DAEMON_SERVICE_NAME,
-  CHANNEL_CONNECTOR_AGENT_IDS,
+  CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS,
   CHANNEL_CONNECTOR_PLATFORM_IDS,
   type ChannelConnectorsBindingPolicy,
   type ChannelConnectorsDaemonAction,
@@ -369,8 +369,8 @@ function arrayCount(value: unknown): number | null {
   return nullableNumber(value);
 }
 
-function isAgentId(value: unknown): value is ChannelConnectorAgentId {
-  return (CHANNEL_CONNECTOR_AGENT_IDS as readonly string[]).includes(String(value));
+function isRuntimeAgentId(value: unknown): value is ChannelConnectorAgentId {
+  return (CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS as readonly string[]).includes(String(value));
 }
 
 function isPlatformId(value: unknown): value is ChannelConnectorPlatformId {
@@ -434,7 +434,7 @@ function normalizeNativeConfig(
       continue;
     }
     const agent = raw.agent;
-    if (strict && !isAgentId(agent)) throw new Error(`Unsupported agent id for profile ${id}.`);
+    if (strict && !isRuntimeAgentId(agent)) throw new Error(`Unsupported agent id for profile ${id}.`);
     const permissionMode = raw.permissionMode;
     if (strict && !isPermissionMode(permissionMode)) throw new Error(`Unsupported permission mode for profile ${id}.`);
     const workDir = normalizeString(raw.workDir, fallback.agentProfiles[0].workDir);
@@ -443,7 +443,7 @@ function normalizeNativeConfig(
     agentProfiles.push({
       id,
       name: normalizeString(raw.name, id),
-      agent: isAgentId(agent) ? agent : "codex",
+      agent: isRuntimeAgentId(agent) ? agent : "codex",
       model: normalizeString(raw.model) || null,
       workDir,
       permissionMode: isPermissionMode(permissionMode) ? permissionMode : "suggest",
@@ -1945,7 +1945,7 @@ function commandSurfaceReadOnlyState(input: {
 function bindingPolicy(): ChannelConnectorsBindingPolicy {
   return {
     model: "platform-account-or-bot-to-agent",
-    supportedAgents: [...CHANNEL_CONNECTOR_AGENT_IDS],
+    supportedAgents: [...CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS],
     supportedPlatforms: [...CHANNEL_CONNECTOR_PLATFORM_IDS],
     multiBot: {
       allowed: true,
@@ -1967,7 +1967,7 @@ function buildNativeConfigResponse(
     checkedAt: now.toISOString(),
     configPath: paths.nativeConfigPath,
     config: readNativeConfig(config, paths, now),
-    supportedAgents: [...CHANNEL_CONNECTOR_AGENT_IDS],
+    supportedAgents: [...CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS],
     supportedPlatforms: [...CHANNEL_CONNECTOR_PLATFORM_IDS],
     permissionModes: [...PERMISSION_MODES],
   };
@@ -2003,7 +2003,7 @@ export function createChannelConnectorsService(
       checkedAt: now().toISOString(),
       configPath: resolvedPaths.nativeConfigPath,
       config: saved,
-      supportedAgents: [...CHANNEL_CONNECTOR_AGENT_IDS],
+      supportedAgents: [...CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS],
       supportedPlatforms: [...CHANNEL_CONNECTOR_PLATFORM_IDS],
       permissionModes: [...PERMISSION_MODES],
     };

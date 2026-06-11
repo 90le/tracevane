@@ -764,8 +764,8 @@ test("native Channel Connectors status keeps daemon and binding policy separate 
   assert.equal(status.lifecycle.channelDaemonOwner, "studio-native-channel-daemon");
   assert.equal(status.bindingPolicy.model, "platform-account-or-bot-to-agent");
   assert.equal(status.bindingPolicy.wechatPersonal.maxAgentsPerAccount, 1);
-  assert.deepEqual(status.bindingPolicy.supportedAgents.slice(0, 3), ["codex", "claude-code", "opencode"]);
-  assert.ok(status.bindingPolicy.supportedAgents.includes("gemini"));
+  assert.deepEqual(status.bindingPolicy.supportedAgents, ["codex", "claude-code", "opencode"]);
+  assert.equal(status.bindingPolicy.supportedAgents.includes("gemini"), false);
   assert.ok(status.bindingPolicy.supportedPlatforms.includes("octo"));
   assert.ok(status.bindingPolicy.supportedPlatforms.includes("discord"));
   assert.match(status.paths.root, /channel-connectors\/daemon/);
@@ -1264,8 +1264,21 @@ test("native Channel Connectors store persists agent profiles and derives daemon
 
   const initial = service.getNativeConfig();
   assert.equal(initial.config.agentProfiles[0].id, "default-codex");
-  assert.ok(initial.supportedAgents.includes("claude-code"));
+  assert.deepEqual(initial.supportedAgents, ["codex", "claude-code", "opencode"]);
   assert.ok(initial.permissionModes.includes("full-auto"));
+  assert.throws(() => service.saveNativeConfig({
+    config: {
+      ...initial.config,
+      agentProfiles: [
+        {
+          ...initial.config.agentProfiles[0],
+          id: "gemini-main",
+          name: "Gemini main",
+          agent: "gemini",
+        },
+      ],
+    },
+  }), /Unsupported agent id for profile gemini-main/);
 
   const saved = service.saveNativeConfig({
     config: {

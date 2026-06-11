@@ -10,6 +10,7 @@
 - Octo(dmwork)：`platform/dmwork`
 - 平台集合：`platform/{dmwork,feishu,weixin,wecom,dingtalk,telegram,slack,discord,qq,qqbot,line}`
 - Agent 集合：`agent/{codex,claudecode,opencode,gemini,kimi,cursor,qoder,iflow,devin,acp}`
+- Live Agent 集合当前只暴露已有 runner 的 `codex`、`claude-code`、`opencode`；其余 Agent 是路线图，迁移完成并补自动 channel skill 回归后才进入前端/API `supportedAgents`。
 - 守护/配置参考：`daemon/*`、`config/config.go`
 - OpenClaw 参考：频道账号、bot 绑定、运行态和事件抽象；不作为运行期依赖。
 - OpenClaw 最新本地源码：`/home/binbin/.openclaw/projects/openclaw/latest/extensions/feishu`，飞书长连接问题优先核对 `src/client.ts`、`src/monitor.transport.ts`、`src/monitor.startup.ts` 和分析文档。
