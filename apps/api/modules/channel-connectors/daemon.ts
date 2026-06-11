@@ -199,6 +199,7 @@ import {
 } from "./outbound-files.js";
 import {
   extractChannelConnectorOutboundMessages,
+  resolveFeishuOutboundMessageTarget,
   resolveOctoOutboundMessageTarget,
   type ChannelConnectorOutboundMessageRequest,
 } from "./outbound-messages.js";
@@ -2738,18 +2739,22 @@ async function sendFeishuOutboundMessages(input: {
   const cachePath = feishuTokenCachePath(input.config);
   for (const message of input.messages) {
     if (message.platform && message.platform !== "feishu") continue;
-    const chatId = normalizeString(message.chatId || message.channelId);
+    const target = resolveFeishuOutboundMessageTarget(message);
     const content = normalizeString(message.content);
-    if (!chatId || !content) {
-      errors.push("Feishu outbound message requires chatId/content.");
+    if (target.error || !content) {
+      errors.push(target.error || "Feishu outbound message requires content.");
       continue;
     }
-    const result = await sendFeishuTextMessage(input.transport, { chatId, content }, cachePath);
+    const result = await sendFeishuTextMessage(input.transport, {
+      receiveId: target.receiveId,
+      receiveIdType: target.receiveIdType,
+      content,
+    }, cachePath);
     requestCount += result.requestCount;
     if (result.ok === true) {
       sentCount += 1;
     } else {
-      errors.push(`${chatId}: ${result.error || "Feishu message send failed"}`);
+      errors.push(`${target.receiveId}: ${result.error || "Feishu message send failed"}`);
     }
   }
   return { sentCount, requestCount, errors };

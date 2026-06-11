@@ -26,6 +26,14 @@ export interface ChannelConnectorOctoOutboundTargetResolution {
   remappedBotDm: boolean;
 }
 
+export type ChannelConnectorFeishuReceiveIdType = "chat_id" | "open_id" | "user_id";
+
+export interface ChannelConnectorFeishuOutboundTargetResolution {
+  receiveId: string;
+  receiveIdType: ChannelConnectorFeishuReceiveIdType;
+  error: string | null;
+}
+
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -80,15 +88,24 @@ function extractStructuredMentionUids(content: string): { content: string; menti
   };
 }
 
+function stripProviderPrefix(target: string, provider: string): string {
+  const normalized = normalizeString(target);
+  return normalized.toLowerCase().startsWith(`${provider}:`)
+    ? normalized.slice(provider.length + 1).trim()
+    : normalized;
+}
+
 function channelTypeFromTarget(target: string): { channelId: string; channelType: number | null; chatId: string | null } {
   const normalized = normalizeString(target);
-  const match = normalized.match(/^(dm|user|uid|bot|group|thread|chat):(.+)$/i);
-  if (!match) return { channelId: normalized, channelType: null, chatId: null };
+  const withoutProvider = stripProviderPrefix(stripProviderPrefix(normalized, "feishu"), "lark");
+  const match = withoutProvider.match(/^(dm|user|uid|bot|group|thread|chat|channel|open_id|user_id):(.+)$/i);
+  if (!match) return { channelId: withoutProvider, channelType: null, chatId: null };
   const kind = match[1].toLowerCase();
   const value = normalizeString(match[2]);
   if (kind === "dm" || kind === "user" || kind === "uid" || kind === "bot") return { channelId: value, channelType: 1, chatId: null };
   if (kind === "group") return { channelId: value, channelType: 2, chatId: null };
   if (kind === "thread") return { channelId: value, channelType: 5, chatId: null };
+  if (kind === "open_id" || kind === "user_id") return { channelId: `${kind}:${value}`, channelType: null, chatId: null };
   return { channelId: "", channelType: null, chatId: value };
 }
 
@@ -211,5 +228,48 @@ export function resolveOctoOutboundMessageTarget(input: {
     mentionUids,
     error: `${channelId}: Octo Bot API does not support bot DM targets; use a group/thread mention or Studio internal agent routing.`,
     remappedBotDm: false,
+  };
+}
+
+function normalizeFeishuTargetValue(value: string): string {
+  return stripProviderPrefix(stripProviderPrefix(value, "feishu"), "lark");
+}
+
+function feishuTargetReceiveIdType(value: string): ChannelConnectorFeishuReceiveIdType {
+  const normalized = normalizeFeishuTargetValue(value);
+  const lower = normalized.toLowerCase();
+  if (lower.startsWith("chat:") || lower.startsWith("group:") || lower.startsWith("channel:")) return "chat_id";
+  if (lower.startsWith("open_id:")) return "open_id";
+  if (lower.startsWith("user_id:")) return "user_id";
+  if (lower.startsWith("user:") || lower.startsWith("dm:") || lower.startsWith("uid:")) {
+    const id = normalized.replace(/^(user|dm|uid):/i, "").trim();
+    return id.startsWith("ou_") ? "open_id" : "user_id";
+  }
+  if (normalized.startsWith("oc_")) return "chat_id";
+  if (normalized.startsWith("ou_")) return "open_id";
+  return "user_id";
+}
+
+function stripFeishuTargetPrefix(value: string): string {
+  const normalized = normalizeFeishuTargetValue(value);
+  return normalized.replace(/^(chat|group|channel|open_id|user_id|user|dm|uid):/i, "").trim();
+}
+
+export function resolveFeishuOutboundMessageTarget(
+  message: ChannelConnectorOutboundMessageRequest,
+): ChannelConnectorFeishuOutboundTargetResolution {
+  const raw = normalizeString(message.chatId || message.channelId);
+  const receiveId = stripFeishuTargetPrefix(raw);
+  if (!receiveId) {
+    return {
+      receiveId: "",
+      receiveIdType: "chat_id",
+      error: "Feishu outbound message requires chat/open_id/user_id target.",
+    };
+  }
+  return {
+    receiveId,
+    receiveIdType: feishuTargetReceiveIdType(raw),
+    error: null,
   };
 }
