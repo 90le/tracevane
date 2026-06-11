@@ -20,6 +20,17 @@ export interface ChannelConnectorSkillDiscoveryContext {
   binding?: ChannelConnectorRuntimeBinding | null;
 }
 
+export interface ChannelConnectorNativeSkillProjection {
+  rootDir: string;
+  skills: Array<{
+    name: string;
+    filePath: string;
+    source: string;
+    scope: ChannelConnectorSkill["scope"];
+    platform?: string | null;
+  }>;
+}
+
 const CHANNEL_SKILL_CONTEXT_MAX_LISTED = 10;
 const CHANNEL_SKILL_CONTEXT_MAX_EXCERPTS = 4;
 const CHANNEL_SKILL_CONTEXT_EXCERPT_CHARS = 1200;
@@ -413,6 +424,86 @@ function skillScopeLabel(skill: Pick<ChannelConnectorSkill, "scope" | "platform"
   if (skill.scope === "binding") return "binding";
   if (skill.scope === "platform") return skill.platform ? `platform:${skill.platform}` : "platform";
   return "agent";
+}
+
+function nativeSkillDirName(value: string): string {
+  const normalized = commandNameKey(value)
+    .replace(/[^a-z0-9_.-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || "channel-skill";
+}
+
+function yamlString(value: string): string {
+  return JSON.stringify(value);
+}
+
+export function buildChannelConnectorNativeSkillPrompt(skill: ChannelConnectorSkill): string {
+  const platform = normalizeString(skill.platform) || "unknown";
+  const displayName = normalizeString(skill.displayName) || skill.name;
+  const description = normalizeString(skill.description)
+    || `${displayName} Studio Channel Connector runtime skill`;
+  const runtimePrompt = selectRuntimeSkillPromptForContext(skill);
+  return [
+    "---",
+    `name: ${yamlString(displayName)}`,
+    `description: ${yamlString(description)}`,
+    `metadata: ${yamlString(JSON.stringify({
+      studioChannelConnector: true,
+      platform,
+      sourceScope: skill.scope,
+      sourceSkill: skill.name,
+    }))}`,
+    "---",
+    "",
+    `# ${displayName}`,
+    "",
+    "This is a Studio Channel Connector runtime projection of the platform skill.",
+    "",
+    "Studio owns channel credentials, transport, file upload, and message delivery. Do not run cc-connect, OpenClaw plugin setup, curl registration flows, or external IM bridge CLIs from the Agent.",
+    "",
+    "Use Studio native manifests for outbound work:",
+    "- `studio-channel-files` for files, images, and binary attachments.",
+    "- `studio-channel-messages` for IM messages, Octo group/thread mentions, and Feishu text/Markdown targets.",
+    "",
+    `Current platform family: ${platform}.`,
+    "",
+    "## Runtime Instructions",
+    "",
+    runtimePrompt,
+    "",
+  ].join("\n");
+}
+
+export function materializeChannelConnectorNativePlatformSkills(input: {
+  project: ChannelConnectorRuntimeProject;
+  context?: ChannelConnectorSkillDiscoveryContext;
+  rootDir: string;
+}): ChannelConnectorNativeSkillProjection {
+  const rootDir = path.resolve(input.rootDir);
+  fs.mkdirSync(rootDir, { recursive: true, mode: 0o700 });
+  try {
+    fs.chmodSync(rootDir, 0o700);
+  } catch {
+    // Best-effort; generated skill files contain no secrets.
+  }
+  const projected: ChannelConnectorNativeSkillProjection["skills"] = [];
+  for (const skill of listChannelConnectorPlatformSkills(input.project, input.context)) {
+    const skillDir = path.join(rootDir, nativeSkillDirName(skill.name));
+    fs.mkdirSync(skillDir, { recursive: true, mode: 0o700 });
+    const filePath = path.join(skillDir, "SKILL.md");
+    fs.writeFileSync(filePath, buildChannelConnectorNativeSkillPrompt(skill), {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+    projected.push({
+      name: skill.name,
+      filePath,
+      source: skill.source,
+      scope: skill.scope,
+      platform: skill.platform || null,
+    });
+  }
+  return { rootDir, skills: projected };
 }
 
 function channelSkillContextExcerpts(skills: ChannelConnectorSkill[]): string[] {

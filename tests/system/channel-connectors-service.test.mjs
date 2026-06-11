@@ -3125,6 +3125,25 @@ test("Octo incoming can send rendered reply through REST transport when opted in
 test("native Channel Connectors agent runner builds gateway-backed Codex turns", async () => {
   const root = makeTempRoot();
   const workDir = path.join(root, "work");
+  const platformSkillDir = path.join(root, "platform-skills", "octo");
+  fs.mkdirSync(path.join(platformSkillDir, "octo-bot-api"), { recursive: true });
+  fs.writeFileSync(
+    path.join(platformSkillDir, "octo-bot-api", "SKILL.md"),
+    [
+      "---",
+      "name: Octo Bot API",
+      "description: Octo runtime messaging",
+      "---",
+      "# Octo Bot Skill",
+      "## Step 1: Register",
+      "openclaw plugins install clawhub:octo",
+      "## Step 3: Send Messages",
+      "Use Studio channel manifests for Octo group and thread messaging.",
+      "## Message History Sync",
+      "Use recent channel messages before responding.",
+    ].join("\n"),
+    "utf8",
+  );
   const project = {
     id: "codex-main",
     name: "Codex main",
@@ -3147,7 +3166,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     enabled: true,
     allowlist: [],
     adminUsers: [],
-    metadata: {},
+    metadata: { channelSkillDirs: [platformSkillDir] },
   };
   const message = {
     messageId: "m-runner-1",
@@ -3192,6 +3211,14 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.match(codexConfig, /model_provider = "studio_gateway"/);
   assert.match(codexConfig, /experimental_bearer_token = "sk-local"/);
   assert.equal(fs.statSync(codexConfigPath).mode & 0o777, 0o600);
+  const codexNativeSkillPath = path.join(processRequest.env.CODEX_HOME, "skills", "octo_bot_api", "SKILL.md");
+  assert.equal(fs.existsSync(codexNativeSkillPath), true);
+  const codexNativeSkill = fs.readFileSync(codexNativeSkillPath, "utf8");
+  assert.match(codexNativeSkill, /Studio Channel Connector runtime projection/);
+  assert.match(codexNativeSkill, /Step 3: Send Messages/);
+  assert.match(codexNativeSkill, /studio-channel-messages/);
+  assert.doesNotMatch(codexNativeSkill, /openclaw plugins install/);
+  assert.doesNotMatch(codexNativeSkill, /Step 1: Register/);
   for (const cleanupPath of processRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const codexReasoningRequest = buildChannelConnectorAgentProcessRequest({
@@ -3495,6 +3522,14 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.doesNotMatch(claudeRequest.stdin, /cc-connect/);
   assert.equal(claudeRequest.env.ANTHROPIC_API_KEY, "sk-local");
   assert.equal(claudeRequest.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:18796");
+  assert.ok(claudeRequest.env.CLAUDE_CONFIG_DIR);
+  const claudeNativeSkillPath = path.join(claudeRequest.env.CLAUDE_CONFIG_DIR, "skills", "octo_bot_api", "SKILL.md");
+  assert.equal(fs.existsSync(claudeNativeSkillPath), true);
+  const claudeNativeSkill = fs.readFileSync(claudeNativeSkillPath, "utf8");
+  assert.match(claudeNativeSkill, /Studio Channel Connector runtime projection/);
+  assert.match(claudeNativeSkill, /Step 3: Send Messages/);
+  assert.doesNotMatch(claudeNativeSkill, /openclaw plugins install/);
+  for (const cleanupPath of claudeRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const claudeResumeRequest = buildChannelConnectorAgentProcessRequest({
     project: { ...project, agent: "claude-code", permissionMode: "plan" },
@@ -3511,6 +3546,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.notEqual(claudeResumeArgIndex, -1);
   assert.equal(claudeResumeRequest.args[claudeResumeArgIndex + 1], "claude-session-1");
   assert.equal(claudeResumeRequest.agentNativeSessionId, "claude-session-1");
+  for (const cleanupPath of claudeResumeRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const claudeTurnResult = await runChannelConnectorAgentTurn({
     project: { ...project, agent: "claude-code", permissionMode: "plan" },
@@ -3710,6 +3746,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(claudeNativeRequest.nativeCommand, "/help");
   assert.match(claudeNativeRequest.stdin, /"content":"\/help"/);
   assert.doesNotMatch(claudeNativeRequest.stdin, /should not leak/);
+  for (const cleanupPath of claudeNativeRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const opencodeNativeRequest = buildChannelConnectorAgentProcessRequest({
     project: { ...project, agent: "opencode", permissionMode: "yolo" },

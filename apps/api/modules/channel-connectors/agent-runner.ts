@@ -12,6 +12,7 @@ import type {
   ChannelConnectorsDaemonRuntimeConfig,
 } from "../../../../types/channel-connectors.js";
 import { extractOctoAttachments, extractOctoContent, isOctoGroupChannel } from "./octo-adapter.js";
+import { materializeChannelConnectorNativePlatformSkills } from "./skill-registry.js";
 
 export type ChannelConnectorRuntimeProject = ChannelConnectorsDaemonRuntimeConfig["projects"][number];
 export type ChannelConnectorRuntimeBinding = ChannelConnectorRuntimeProject["platformBindings"][number];
@@ -695,6 +696,21 @@ function createCodexGatewayHome(input: {
   return { codexHome, cleanupRoot: runtimeDir ? "" : cleanupRoot };
 }
 
+function createClaudeConfigHome(input: {
+  agentRuntimeDir?: string | null;
+}): { configHome: string; cleanupRoot: string } {
+  const runtimeDir = normalizeString(input.agentRuntimeDir);
+  const cleanupRoot = runtimeDir || fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-claude-"));
+  const configHome = path.join(cleanupRoot, "claude-config");
+  fs.mkdirSync(configHome, { recursive: true, mode: 0o700 });
+  try {
+    fs.chmodSync(configHome, 0o700);
+  } catch {
+    // Best-effort hardening; generated skills contain no secrets.
+  }
+  return { configHome, cleanupRoot: runtimeDir ? "" : cleanupRoot };
+}
+
 const OPENCODE_GATEWAY_PROVIDER_ID = "studio-gateway";
 
 function opencodeGatewayModelId(model: string | null): string {
@@ -995,6 +1011,13 @@ export function buildChannelConnectorAgentProcessRequest(
       agentRuntimeDir: request.agentRuntimeDir,
       reasoningEffort,
     });
+    if (!nativeCommand) {
+      materializeChannelConnectorNativePlatformSkills({
+        project,
+        context: { binding: request.binding },
+        rootDir: path.join(codexHome.codexHome, "skills"),
+      });
+    }
     const codexConfigArgs = [
       "-c",
       "model_provider=\"studio_gateway\"",
@@ -1055,6 +1078,16 @@ export function buildChannelConnectorAgentProcessRequest(
   if (project.agent === "claude-code") {
     const permissionMode = claudePermissionMode(project.permissionMode);
     const claudeSessionId = normalizeString(request.session?.agentNativeSessionId);
+    const claudeConfigHome = createClaudeConfigHome({
+      agentRuntimeDir: request.agentRuntimeDir,
+    });
+    if (!nativeCommand) {
+      materializeChannelConnectorNativePlatformSkills({
+        project,
+        context: { binding: request.binding },
+        rootDir: path.join(claudeConfigHome.configHome, "skills"),
+      });
+    }
     const args = [
       "--output-format",
       "stream-json",
@@ -1076,9 +1109,11 @@ export function buildChannelConnectorAgentProcessRequest(
       env: {
         ...baseEnv,
         ANTHROPIC_BASE_URL: request.gatewayEndpoint.replace(/\/v1\/?$/, ""),
+        CLAUDE_CONFIG_DIR: claudeConfigHome.configHome,
       },
       timeoutMs,
       nativeCommand: nativeCommand || null,
+      cleanupPaths: claudeConfigHome.cleanupRoot ? [claudeConfigHome.cleanupRoot] : [],
       sessionMode: claudeSessionId ? "resume" : "new",
       agentNativeSessionId: claudeSessionId || null,
       agent: project.agent,
