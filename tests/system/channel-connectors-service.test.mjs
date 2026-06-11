@@ -142,6 +142,8 @@ import {
 } from "../../dist/apps/api/modules/channel-connectors/outbound-messages.js";
 import {
   buildChannelConnectorSkillContext,
+  channelConnectorSkillDirs,
+  listChannelConnectorPlatformSkills,
 } from "../../dist/apps/api/modules/channel-connectors/skill-registry.js";
 
 function makeTempRoot() {
@@ -5682,6 +5684,44 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(feishuSkillContext, /Auto-activation/);
   assert.doesNotMatch(feishuSkillContext, /FEISHU_APP_SECRET/);
   assert.doesNotMatch(feishuSkillContext, /octo-send/);
+
+  const defaultOctoBinding = { ...binding, metadata: {} };
+  const defaultOctoDirs = channelConnectorSkillDirs(codexProject, { binding: defaultOctoBinding });
+  assert.equal(defaultOctoDirs.some((dir) => dir.includes(".openclaw/extensions/octo")), false);
+  assert.equal(defaultOctoDirs.some((dir) => dir.includes("projects/openclaw/latest/extensions/feishu")), false);
+  const defaultOctoPlatformSkills = listChannelConnectorPlatformSkills(codexProject, { binding: defaultOctoBinding });
+  assert.deepEqual(defaultOctoPlatformSkills.map((skill) => [skill.name, skill.scope, skill.platform, skill.source]), [
+    ["octo-bot-api", "platform", "octo", "studio://channel-skills/octo/octo-bot-api"],
+  ]);
+  const defaultOctoContext = buildChannelConnectorSkillContext(codexProject, { binding: defaultOctoBinding });
+  assert.ok(defaultOctoContext);
+  assert.match(defaultOctoContext, /### \/octo-bot-api \[platform:octo\]/);
+  assert.match(defaultOctoContext, /studio-channel-messages/);
+  assert.match(defaultOctoContext, /\/octo create-group/);
+  assert.doesNotMatch(defaultOctoContext, /openclaw plugins install/);
+
+  const defaultFeishuBinding = { ...feishuBinding, metadata: {} };
+  const defaultFeishuDirs = channelConnectorSkillDirs(codexProject, { binding: defaultFeishuBinding });
+  assert.equal(defaultFeishuDirs.some((dir) => dir.includes(".openclaw/extensions/feishu")), false);
+  assert.equal(defaultFeishuDirs.some((dir) => dir.includes("projects/openclaw/latest/extensions/feishu")), false);
+  const defaultFeishuPlatformSkills = listChannelConnectorPlatformSkills(codexProject, { binding: defaultFeishuBinding });
+  assert.deepEqual(defaultFeishuPlatformSkills.map((skill) => skill.name), [
+    "feishu-messaging",
+    "feishu-doc",
+    "feishu-drive",
+    "feishu-perm",
+    "feishu-wiki",
+  ]);
+  assert.equal(defaultFeishuPlatformSkills.every((skill) => skill.source.startsWith("studio://channel-skills/feishu/")), true);
+  const defaultFeishuContext = buildChannelConnectorSkillContext(codexProject, { binding: defaultFeishuBinding });
+  assert.ok(defaultFeishuContext);
+  assert.match(defaultFeishuContext, /### \/feishu-messaging \[platform:feishu\]/);
+  assert.match(defaultFeishuContext, /### \/feishu-doc \[platform:feishu\]/);
+  assert.match(defaultFeishuContext, /Feishu document API execution is a planned native tool surface/);
+  assert.match(defaultFeishuContext, /studio-channel-files/);
+  assert.doesNotMatch(defaultFeishuContext, /FEISHU_APP_SECRET/);
+  assert.doesNotMatch(defaultFeishuContext, /openclaw plugins install/);
+
   const blockedOctoSkillRun = await handleChannelConnectorCommand({
     ...baseContext,
     binding: {

@@ -5,6 +5,9 @@ import type {
   ChannelConnectorRuntimeBinding,
   ChannelConnectorRuntimeProject,
 } from "./agent-runner.js";
+import {
+  studioChannelConnectorPlatformSkills,
+} from "./studio-channel-skills.js";
 
 export interface ChannelConnectorSkill {
   name: string;
@@ -195,22 +198,7 @@ function platformSkillDirSpecs(context?: ChannelConnectorSkillDiscoveryContext):
     "platformSkillDirs",
     "platform_skill_dirs",
   ]).map((dir) => resolveConfiguredPath(dir, home)).filter(Boolean);
-  const builtInDirs: string[] = [];
-  if (platform === "octo" || platform === "dmwork") {
-    builtInDirs.push(
-      path.join(home, ".openclaw", "extensions", "octo", "skills"),
-    );
-  }
-  if (platform === "feishu" || platform === "lark") {
-    builtInDirs.push(
-      path.join(home, ".openclaw", "projects", "openclaw", "latest", "extensions", "feishu", "skills"),
-      path.join(home, ".openclaw", "extensions", "feishu", "skills"),
-    );
-  }
-  return [
-    ...explicitDirs.map((dir) => ({ dir, scope: "binding" as const, platform })),
-    ...uniqueStrings(builtInDirs).map((dir) => ({ dir, scope: "platform" as const, platform })),
-  ];
+  return explicitDirs.map((dir) => ({ dir, scope: "binding" as const, platform }));
 }
 
 function channelConnectorSkillDirSpecs(
@@ -594,6 +582,30 @@ function parseSkillMd(
   };
 }
 
+function addStudioPlatformSkills(input: {
+  binding?: ChannelConnectorRuntimeBinding | null;
+  seen: Set<string>;
+}): ChannelConnectorSkill[] {
+  const platform = normalizeString(input.binding?.platform).toLowerCase();
+  if (!platform) return [];
+  const skills: ChannelConnectorSkill[] = [];
+  for (const definition of studioChannelConnectorPlatformSkills(platform)) {
+    const key = definition.name.toLowerCase();
+    if (!definition.name || input.seen.has(key)) continue;
+    const skill = parseSkillMd(
+      definition.name,
+      definition.markdown,
+      `studio://channel-skills/${definition.platform}/${definition.name}`,
+      "platform",
+      definition.platform,
+    );
+    if (!skill) continue;
+    input.seen.add(key);
+    skills.push(skill);
+  }
+  return skills;
+}
+
 function discoverSkillsInDir(
   rootDir: string,
   currentDir: string,
@@ -655,6 +667,7 @@ export function listChannelConnectorSkills(
       spec.platform,
     ));
   }
+  skills.push(...addStudioPlatformSkills({ binding: context?.binding || null, seen }));
   return skills;
 }
 
@@ -696,7 +709,7 @@ export function buildChannelConnectorSkillContext(
     "Auto-activation: if the current user request matches a platform skill description or asks for IM platform, file, group, document, permission, member, bot, or channel work, follow the relevant skill excerpt even when the user did not type /skill.",
     "Studio owns channel credentials and transport. Do not run cc-connect, OpenClaw plugin setup, or external IM bridge CLIs from the Agent; adapt platform skill instructions to Studio native manifests and commands.",
     platform === "octo"
-      ? "Studio native Octo commands available to users: /octo groups, /octo members [group_no], /octo search <keyword>, /octo history [limit]."
+      ? "Studio native Octo commands available to users: /octo groups, /octo info [group_no], /octo members [group_no], /octo search <keyword>, /octo threads [group_no], /octo thread <short_id> [group_no], /octo thread-members <short_id> [group_no], /octo history [limit], /octo group-md [group_no], /octo thread-md <short_id> [group_no], /octo voice-context, /octo create-group <name> --members uid1,uid2, /octo update-group <group_no> --name <name> --notice <notice>, /octo add-members <group_no> uid1,uid2, /octo remove-members <group_no> uid1,uid2, /octo create-thread <group_no> <name>, /octo delete-thread <short_id> [group_no], /octo join-thread <short_id> [group_no], /octo leave-thread <short_id> [group_no], /octo set-group-md [--group group_no] <markdown>, /octo set-thread-md [--group group_no] [--thread short_id] <markdown>, /octo set-voice-context <text>, /octo delete-voice-context."
       : "",
     "Use these channel/platform skills only when the user asks for platform-specific IM, file, group, document, or bot API work.",
     "For sending local files back to the user, emit a studio-channel-files manifest; do not call cc-connect or external IM bridge CLIs.",
