@@ -11,7 +11,7 @@
 - Gateway 对外提供 Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions；`GET /v1/models` 聚合启用 provider，并保留模型别名、模型池、能力标记、上下文窗口和输出预算；模型预算是 App Connections 与 Channel Connectors 的默认上下文来源。
 - Provider Center 已支持自定义 provider、启停、模型列表/别名/默认模型、能力勾选、批量模型导入、批量预算/能力应用、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
 - App Connections 已覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收。
-- Channel Connectors 走 Studio 原生 CLI Agent Bot 路线；Octo(dmwork) 与 Feishu 已接入 Codex/Claude Code/OpenCode runner、Studio Gateway key、IM session override、slash command、Feishu card/menu/progress、附件 staging、history、group context、reply buffer、queue、stop 和基础治理；Octo daemon 已接入 Bot API 群成员、最近历史、文件下载 URL、GROUP.md/THREAD.md、voice context、平台 skill、`/octo` 群/成员/Space/thread 管理命令和出站消息 manifest。
+- Channel Connectors 走 Studio 原生 CLI Agent Bot 路线；Octo(dmwork) 与 Feishu 已接入 Codex/Claude Code/OpenCode runner、Studio Gateway key、IM session override、slash command、Feishu card/menu/progress、附件 staging、history、group context、reply buffer、queue、stop 和基础治理；Octo daemon 已接入 Bot API 群成员、最近历史、文件下载 URL、GROUP.md/THREAD.md、voice context、平台 skill 自动上下文、`/octo` 群/成员/Space/thread 管理命令和出站消息 manifest。
 - OpenCode Agent runner 走 Gateway-first：Channel 配置保存 Gateway 模型短名或模型 ID，runner 转换为 OpenCode 需要的 `studio-gateway/<model>`；每轮生成隔离 OpenCode config，session 数据写入 Channel runtime dataHome；旧全局 sessionId 在当前 dataHome 不存在时自动新建，避免 IM 切换 OpenCode 后被 stale session 卡死。
 - Channel Connectors 任意新功能必须先对照 CC Go 1:1 迁移，再做 Studio 精修；迁移清单见 `channel-connectors-cc-migration-checklist.md`。
 - Feishu 长连接专项跟踪见 `feishu-long-connection-issue-tracker.md`；Feishu 目前采用同 App 用户级全局 owner lock、官方 SDK `WSClient`/`EventDispatcher`、默认启用 SDK lower-case `pingTimeout=3`、包装 SDK `pingLoop()` 将有效心跳调度 clamp 到 `pingIntervalMs=10000`、SDK reconnecting 超 5s 回收、应用层 ping/pong runtime proof、`pongTimeoutMs=8000` 外层兜底回收、23s control-frame stale 判死、快速 ACK、messageId 去重、会话水位线防旧消息插队和 runtime 入站观测；无业务消息时不再默认 startup recycle。
@@ -24,6 +24,7 @@
 
 - 对照 Octo 插件固定群协作 @ 合同：`@[uid:显示名]`、bot DM 重写和 transport mention metadata 兜底都会发送可见 `@显示名`/`@uid` + Octo `mention.entities/uids`，避免隐藏 @。
 - 修复 Octo 群聊 `/process on` 下 OpenCode 过程回复延迟：`step_finish: tool-calls` 现在是继续调用工具的步骤边界，不再误判为最终完成；中间 assistant 文本会作为 `assistant/intermediate` 发送，最终回复仍只走最终结果渲染。
+- 平台 skill 自动映射增强：普通 IM turn 现在会注入当前 binding/platform skill 的自动激活规则和短指令片段；显式 `/skill` 仍交付完整 `SKILL.md`，普通自然语言请求也能让 Codex/Claude/OpenCode 参考 Octo/Feishu 渠道能力。
 - `/octo history [条数]` 已接入 service/daemon，默认读取当前群/thread 前文，供用户和 Agent 直接查看 Bot API 群历史。
 - Codex stale resume 自愈：`thread/resume failed` / `no rollout found` 会自动 fresh turn 重试；fallback compact 成功时不再暴露 “No live persistent session” 作为错误。
 
@@ -31,6 +32,7 @@
 
 - 通过：`npm run typecheck:api`。
 - 通过：`npm run build:api`。
+- 通过：`node --test --test-name-pattern "native Channel Connectors IM commands switch agent, model, and permission per session|native Channel Connectors agent runner builds gateway-backed Codex turns" tests/system/channel-connectors-service.test.mjs`，2/2 全部通过。
 - 通过：`node --test --test-name-pattern "Octo transport keeps group mentions visible|native Channel Connectors process runner maps Codex agent messages before later tools|native Channel Connectors process runner maps Claude text before later tools|native Channel Connectors process runner maps OpenCode JSON progress|native Channel Connectors process runner treats OpenCode tool-calls" tests/system/channel-connectors-service.test.mjs`，5/5 全部通过。
 - 通过：`node --test --test-name-pattern "native Channel Connectors extracts outbound IM message manifests|Octo adapter follows group direction and mention rendering rules|Octo transport smoke covers Bot API groups|Octo native management commands|native Channel Connectors agent runner builds gateway-backed Codex turns|native Channel Connectors service slash compact works" tests/system/channel-connectors-service.test.mjs`，6/6 全部通过。
 - 通过：真实 Octo 配置非发送 smoke：`/octo groups` 返回 1 个群，`/octo members` 返回“小丘测试群”6 个成员，`/octo search 小维` 返回 2 个成员，`/octo info` 返回“小丘测试群”群信息，`/octo threads` 返回当前群 thread 列表（0）。

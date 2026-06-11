@@ -20,6 +20,11 @@ export interface ChannelConnectorSkillDiscoveryContext {
   binding?: ChannelConnectorRuntimeBinding | null;
 }
 
+const CHANNEL_SKILL_CONTEXT_MAX_LISTED = 10;
+const CHANNEL_SKILL_CONTEXT_MAX_EXCERPTS = 4;
+const CHANNEL_SKILL_CONTEXT_EXCERPT_CHARS = 1200;
+const CHANNEL_SKILL_CONTEXT_TOTAL_EXCERPT_CHARS = 3600;
+
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -266,6 +271,42 @@ function firstLine(value: string, maxRunes = 80): string {
   return runes.length > maxRunes ? `${runes.slice(0, maxRunes).join("")}...` : line;
 }
 
+function truncateRunes(value: string, maxRunes: number): string {
+  const runes = Array.from(value);
+  return runes.length > maxRunes ? `${runes.slice(0, maxRunes).join("")}\n...` : value;
+}
+
+function compactSkillPromptForContext(value: string): string {
+  return normalizeString(value)
+    .replace(/\r\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n");
+}
+
+function skillScopeLabel(skill: Pick<ChannelConnectorSkill, "scope" | "platform">): string {
+  if (skill.scope === "binding") return "binding";
+  if (skill.scope === "platform") return skill.platform ? `platform:${skill.platform}` : "platform";
+  return "agent";
+}
+
+function channelSkillContextExcerpts(skills: ChannelConnectorSkill[]): string[] {
+  const excerpts: string[] = [];
+  let remaining = CHANNEL_SKILL_CONTEXT_TOTAL_EXCERPT_CHARS;
+  for (const skill of skills.slice(0, CHANNEL_SKILL_CONTEXT_MAX_EXCERPTS)) {
+    if (remaining <= 0) break;
+    const prompt = compactSkillPromptForContext(skill.prompt);
+    if (!prompt) continue;
+    const maxRunes = Math.min(CHANNEL_SKILL_CONTEXT_EXCERPT_CHARS, remaining);
+    const excerpt = truncateRunes(prompt, maxRunes);
+    remaining -= Array.from(excerpt).length;
+    excerpts.push([
+      `### /${skill.name} [${skillScopeLabel(skill)}]`,
+      skill.description ? `Intent: ${skill.description}` : "",
+      excerpt,
+    ].filter(Boolean).join("\n"));
+  }
+  return excerpts;
+}
+
 function parseSkillMd(
   skillName: string,
   raw: string,
@@ -386,20 +427,26 @@ export function buildChannelConnectorSkillContext(
   const skills = listChannelConnectorPlatformSkills(project, context);
   if (!binding || !skills.length) return null;
   const platform = normalizeString(binding.platform) || "unknown";
+  const excerpts = channelSkillContextExcerpts(skills);
   const lines = [
     "[Studio IM channel skills]",
     `Current IM platform: ${platform}.`,
     "Available platform skills in this binding:",
-    ...skills.slice(0, 10).map((skill) => {
+    ...skills.slice(0, CHANNEL_SKILL_CONTEXT_MAX_LISTED).map((skill) => {
       const description = normalizeString(skill.description);
       return `- /${skill.name}${description ? `: ${description}` : ""}`;
     }),
+    "",
+    "Auto-activation: if the current user request matches a platform skill description or asks for IM platform, file, group, document, permission, member, bot, or channel work, follow the relevant skill excerpt even when the user did not type /skill.",
+    "Studio owns channel credentials and transport. Do not run cc-connect, OpenClaw plugin setup, or external IM bridge CLIs from the Agent; adapt platform skill instructions to Studio native manifests and commands.",
     platform === "octo"
-      ? "Studio native Octo commands available to users: /octo groups, /octo members [group_no], /octo search <keyword>."
+      ? "Studio native Octo commands available to users: /octo groups, /octo members [group_no], /octo search <keyword>, /octo history [limit]."
       : "",
     "Use these channel/platform skills only when the user asks for platform-specific IM, file, group, document, or bot API work.",
     "For sending local files back to the user, emit a studio-channel-files manifest; do not call cc-connect or external IM bridge CLIs.",
     "For sending IM messages, emit a studio-channel-messages manifest; Studio will deliver it through the active channel.",
+    excerpts.length ? "[Platform skill instruction excerpts]" : "",
+    ...excerpts,
   ];
   return lines.filter(Boolean).join("\n");
 }

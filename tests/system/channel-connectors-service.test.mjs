@@ -123,6 +123,9 @@ import {
   extractChannelConnectorOutboundMessages,
   resolveOctoOutboundMessageTarget,
 } from "../../dist/apps/api/modules/channel-connectors/outbound-messages.js";
+import {
+  buildChannelConnectorSkillContext,
+} from "../../dist/apps/api/modules/channel-connectors/skill-registry.js";
 
 function makeTempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-connectors-"));
@@ -5001,6 +5004,15 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(codexSkills.replyText, /\/octo-send \[binding\]/);
   assert.match(codexSkills.replyText, /Send Octo DM, group, thread, and mention messages/);
   assert.doesNotMatch(codexSkills.replyText, /\/feishu-card/);
+  const octoSkillContext = buildChannelConnectorSkillContext(codexProject, { binding });
+  assert.ok(octoSkillContext);
+  assert.match(octoSkillContext, /Auto-activation: if the current user request matches a platform skill description/);
+  assert.match(octoSkillContext, /Studio owns channel credentials and transport/);
+  assert.match(octoSkillContext, /\/octo history \[limit\]/);
+  assert.match(octoSkillContext, /### \/octo-send \[binding\]/);
+  assert.match(octoSkillContext, /Use Studio Octo channel transport for DM, group, thread, and mention work/);
+  assert.match(octoSkillContext, /studio-channel-messages/);
+  assert.doesNotMatch(octoSkillContext, /feishu-card/);
 
   const codexSkillRun = await handleChannelConnectorCommand({
     ...baseContext,
@@ -5036,6 +5048,12 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(feishuSkills.replyText, /Studio Skills \(codex · feishu\)/);
   assert.match(feishuSkills.replyText, /\/feishu-card \[binding\]/);
   assert.doesNotMatch(feishuSkills.replyText, /\/octo-send/);
+  const feishuSkillContext = buildChannelConnectorSkillContext(codexProject, { binding: feishuBinding });
+  assert.ok(feishuSkillContext);
+  assert.match(feishuSkillContext, /### \/feishu-card \[binding\]/);
+  assert.match(feishuSkillContext, /Use Studio Feishu channel transport for card and message work/);
+  assert.match(feishuSkillContext, /Auto-activation/);
+  assert.doesNotMatch(feishuSkillContext, /octo-send/);
   const blockedOctoSkillRun = await handleChannelConnectorCommand({
     ...baseContext,
     binding: {
