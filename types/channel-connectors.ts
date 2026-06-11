@@ -325,7 +325,8 @@ export interface ChannelConnectorOctoReplyPlan {
       type: 1;
       content: string;
       mention?: {
-        uids: string[];
+        uids?: string[];
+        all?: true;
       };
     };
   }>;

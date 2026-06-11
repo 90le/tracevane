@@ -116,6 +116,9 @@ import {
   extractChannelConnectorOutboundFiles,
   resolveChannelConnectorOutboundFiles,
 } from "../../dist/apps/api/modules/channel-connectors/outbound-files.js";
+import {
+  extractChannelConnectorOutboundMessages,
+} from "../../dist/apps/api/modules/channel-connectors/outbound-messages.js";
 
 function makeTempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-connectors-"));
@@ -1032,6 +1035,42 @@ test("native Channel Connectors resolves outbound file manifests under the Agent
   ].join("\n"));
   assert.equal(invalid.replyText, "bad");
   assert.equal(invalid.files.length, 0);
+  assert.match(invalid.errors.join("\n"), /JSON/);
+});
+
+test("native Channel Connectors extracts outbound IM message manifests", () => {
+  const extracted = extractChannelConnectorOutboundMessages([
+    "我会通知她们。",
+    "```studio-channel-messages",
+    JSON.stringify([
+      { platform: "octo", target: "dm:user-1", content: "请介绍一下你的能力" },
+      { platform: "octo", target: "group:group-a", content: "大家看这里", mentionUids: ["user-2"] },
+      { platform: "octo", target: "thread:group-a____topic-1", content: "Thread ping", mentionAll: true },
+      { platform: "feishu", chatId: "oc_chat", content: "Feishu ping" },
+    ]),
+    "```",
+  ].join("\n"));
+
+  assert.equal(extracted.replyText, "我会通知她们。");
+  assert.deepEqual(extracted.errors, []);
+  assert.equal(extracted.messages.length, 4);
+  assert.deepEqual(extracted.messages.map((message) => [message.platform, message.channelId, message.channelType, message.chatId, message.content]), [
+    ["octo", "user-1", 1, null, "请介绍一下你的能力"],
+    ["octo", "group-a", 2, null, "大家看这里"],
+    ["octo", "group-a____topic-1", 5, null, "Thread ping"],
+    ["feishu", "", null, "oc_chat", "Feishu ping"],
+  ]);
+  assert.deepEqual(extracted.messages[1].mentionUids, ["user-2"]);
+  assert.equal(extracted.messages[2].mentionAll, true);
+
+  const invalid = extractChannelConnectorOutboundMessages([
+    "bad",
+    "```studio-channel-messages",
+    "{nope",
+    "```",
+  ].join("\n"));
+  assert.equal(invalid.replyText, "bad");
+  assert.equal(invalid.messages.length, 0);
   assert.match(invalid.errors.join("\n"), /JSON/);
 });
 
@@ -2352,6 +2391,26 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.match(historyRequest.stdin, /\n\nhi codex\n\n\[Studio outbound file policy\]/);
   assert.doesNotMatch(historyRequest.stdin, /cc-connect/);
   for (const cleanupPath of historyRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
+  const channelSkillRequest = buildChannelConnectorAgentProcessRequest({
+    project,
+    binding,
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    channelSkillContext: [
+      "[Studio IM channel skills]",
+      "Current IM platform: octo.",
+      "Available platform skills in this binding:",
+      "- /octo-send: Send Octo DM, group, thread, and mention messages",
+    ].join("\n"),
+  });
+  assert.ok(channelSkillRequest);
+  assert.match(channelSkillRequest.stdin, /^\[Studio IM channel skills\]/);
+  assert.match(channelSkillRequest.stdin, /\/octo-send: Send Octo DM, group, thread, and mention messages/);
+  assert.match(channelSkillRequest.stdin, /\n\nhi codex\n\n\[Studio outbound file policy\]/);
+  for (const cleanupPath of channelSkillRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const groupRequest = buildChannelConnectorAgentProcessRequest({
     project,
@@ -3834,6 +3893,20 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     "---\ndescription: Triage bug reports\n---\nClassify severity and next actions.",
     "utf8",
   );
+  const octoPlatformSkillDir = path.join(root, "platform-skills", "octo");
+  fs.mkdirSync(path.join(octoPlatformSkillDir, "octo-send"), { recursive: true });
+  fs.writeFileSync(
+    path.join(octoPlatformSkillDir, "octo-send", "SKILL.md"),
+    "---\nname: Octo Send\ndescription: Send Octo DM, group, thread, and mention messages\n---\nUse Studio Octo channel transport for DM, group, thread, and mention work.",
+    "utf8",
+  );
+  const feishuPlatformSkillDir = path.join(root, "platform-skills", "feishu");
+  fs.mkdirSync(path.join(feishuPlatformSkillDir, "feishu-card"), { recursive: true });
+  fs.writeFileSync(
+    path.join(feishuPlatformSkillDir, "feishu-card", "SKILL.md"),
+    "---\nname: Feishu Card\ndescription: Build Feishu card and message workflows\n---\nUse Studio Feishu channel transport for card and message work.",
+    "utf8",
+  );
   const binding = {
     id: "octo-codex",
     platform: "octo",
@@ -3844,7 +3917,16 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     enabled: true,
     allowlist: [],
     adminUsers: ["admin-1"],
-    metadata: {},
+    metadata: { channelSkillDirs: [octoPlatformSkillDir] },
+  };
+  const feishuBinding = {
+    ...binding,
+    id: "feishu-codex",
+    platform: "feishu",
+    accountId: "feishu-app",
+    botId: "feishu-bot",
+    displayName: "Feishu Codex",
+    metadata: { channelSkillDirs: [feishuPlatformSkillDir] },
   };
   const runtimeConfig = {
     version: 1,
@@ -4322,9 +4404,12 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(codexSkills.handled, true);
   assert.equal(codexSkills.action, "list");
-  assert.match(codexSkills.replyText, /Studio Skills \(codex\)/);
+  assert.match(codexSkills.replyText, /Studio Skills \(codex · octo\)/);
   assert.match(codexSkills.replyText, /\/release-notes/);
   assert.match(codexSkills.replyText, /Draft concise release notes/);
+  assert.match(codexSkills.replyText, /\/octo-send \[binding\]/);
+  assert.match(codexSkills.replyText, /Send Octo DM, group, thread, and mention messages/);
+  assert.doesNotMatch(codexSkills.replyText, /\/feishu-card/);
 
   const codexSkillRun = await handleChannelConnectorCommand({
     ...baseContext,
@@ -4340,6 +4425,38 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(codexSkillRun.audit.source, "skill");
   assert.equal(codexSkillRun.audit.name, "release-notes");
   assert.equal(codexSkillRun.audit.argsPreview, "bug fix list");
+  const octoSkillRun = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/octo_send @user hello"),
+  });
+  assert.equal(octoSkillRun.handled, false);
+  assert.equal(octoSkillRun.command, "octo-send");
+  assert.match(octoSkillRun.passthroughText, /## Skill: Octo Send/);
+  assert.match(octoSkillRun.passthroughText, /Use Studio Octo channel transport/);
+  assert.equal(octoSkillRun.audit.kind, "skill");
+  assert.equal(octoSkillRun.audit.name, "octo-send");
+  assert.equal(octoSkillRun.audit.commandPreview, path.join(octoPlatformSkillDir, "octo-send"));
+  const feishuSkills = await handleChannelConnectorCommand({
+    ...baseContext,
+    binding: feishuBinding,
+    message: message("/skills"),
+  });
+  assert.equal(feishuSkills.handled, true);
+  assert.match(feishuSkills.replyText, /Studio Skills \(codex · feishu\)/);
+  assert.match(feishuSkills.replyText, /\/feishu-card \[binding\]/);
+  assert.doesNotMatch(feishuSkills.replyText, /\/octo-send/);
+  const blockedOctoSkillRun = await handleChannelConnectorCommand({
+    ...baseContext,
+    binding: {
+      ...binding,
+      disabledCommands: ["octo-send"],
+    },
+    message: message("/octo_send @user hello", "user-2"),
+  });
+  assert.equal(blockedOctoSkillRun.handled, true);
+  assert.equal(blockedOctoSkillRun.ok, false);
+  assert.equal(blockedOctoSkillRun.command, "octo-send");
+  assert.match(blockedOctoSkillRun.replyText, /禁用命令 \/octo-send/);
   const blockedSkillRun = await handleChannelConnectorCommand({
     ...baseContext,
     binding: commandAclBinding,

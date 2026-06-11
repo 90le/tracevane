@@ -1688,7 +1688,7 @@ function commandSurfaceReadOnlyState(input: {
   const customCommands = listChannelConnectorCommandSummaries({
     customCommandsPath: commandSurfaceCustomCommandsPath(input.runtimeConfig),
   }, current);
-  const skills = listChannelConnectorSkillSummaries(current);
+  const skills = listChannelConnectorSkillSummaries(current, input.binding);
   if (!sessionKey) return { agentSession: null, sessionList: [], history: [], customCommands, skills };
   const session = getChannelConnectorAgentSession(commandSurfaceAgentSessionsPath(input.runtimeConfig), {
     bindingId: input.binding.id,

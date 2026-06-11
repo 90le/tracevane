@@ -73,6 +73,9 @@ import {
   type ChannelConnectorUsageSummary,
 } from "./command-router.js";
 import {
+  buildChannelConnectorSkillContext,
+} from "./skill-registry.js";
+import {
   countChannelConnectorVisualAttachments,
   resolveChannelConnectorVisualTurnProject,
 } from "./visual-model-routing.js";
@@ -167,6 +170,13 @@ import {
   resolveChannelConnectorOutboundFiles,
   type ChannelConnectorResolvedOutboundFile,
 } from "./outbound-files.js";
+import {
+  extractChannelConnectorOutboundMessages,
+  type ChannelConnectorOutboundMessageRequest,
+} from "./outbound-messages.js";
+import {
+  splitChannelConnectorTextChunks,
+} from "./text-chunks.js";
 import {
   deriveOctoWsUrl,
   OctoWukongSocket,
@@ -2452,11 +2462,14 @@ function prepareAgentOutboundReply(input: {
 }): {
   replyText: string;
   files: ChannelConnectorResolvedOutboundFile[];
+  messages: ChannelConnectorOutboundMessageRequest[];
   errors: string[];
   declaredCount: number;
+  declaredMessageCount: number;
   maxBytes: number;
 } {
-  const extracted = extractChannelConnectorOutboundFiles(input.replyText || "");
+  const extractedMessages = extractChannelConnectorOutboundMessages(input.replyText || "");
+  const extracted = extractChannelConnectorOutboundFiles(extractedMessages.replyText);
   const maxBytes = outboundFileMaxBytes(input.binding);
   const resolved = resolveChannelConnectorOutboundFiles({
     files: extracted.files,
@@ -2468,26 +2481,36 @@ function prepareAgentOutboundReply(input: {
   return {
     replyText: extracted.replyText,
     files: resolved.files,
-    errors: [...extracted.errors, ...resolved.errors],
+    messages: extractedMessages.messages,
+    errors: [...extractedMessages.errors, ...extracted.errors, ...resolved.errors],
     declaredCount: extracted.files.length,
+    declaredMessageCount: extractedMessages.messages.length,
     maxBytes,
   };
 }
 
-function outboundFilesHistoryText(input: { replyText: string; files: ChannelConnectorResolvedOutboundFile[]; errors: string[] }): string {
+function outboundFilesHistoryText(input: {
+  replyText: string;
+  files: ChannelConnectorResolvedOutboundFile[];
+  messages: ChannelConnectorOutboundMessageRequest[];
+  errors: string[];
+}): string {
   const parts = [input.replyText];
   if (input.files.length) {
     parts.push(`[Studio outbound files: ${input.files.map((file) => `${file.fileName} (${file.size} bytes)`).join(", ")}]`);
   }
+  if (input.messages.length) {
+    parts.push(`[Studio outbound messages: ${input.messages.map((message) => `${message.platform || "current"}:${message.chatId || message.channelId}`).join(", ")}]`);
+  }
   if (input.errors.length) {
-    parts.push(`[Studio outbound file errors: ${input.errors.join("; ")}]`);
+    parts.push(`[Studio outbound errors: ${input.errors.join("; ")}]`);
   }
   return parts.filter(Boolean).join("\n\n");
 }
 
 function appendOutboundFileErrors(replyText: string, errors: string[]): string {
   if (!errors.length) return replyText;
-  const message = `文件发送准备失败：${errors.join("; ")}`;
+  const message = `出站消息准备失败：${errors.join("; ")}`;
   return [replyText, message].filter(Boolean).join("\n\n");
 }
 
@@ -2566,6 +2589,57 @@ async function sendOctoOutboundFiles(input: {
   return { sentCount, requestCount, errors };
 }
 
+async function sendOctoOutboundMessages(input: {
+  transport: ChannelConnectorOctoTransportConfig;
+  messages: ChannelConnectorOutboundMessageRequest[];
+}): Promise<{ sentCount: number; requestCount: number; errors: string[] }> {
+  let sentCount = 0;
+  let requestCount = 0;
+  const errors: string[] = [];
+  for (const message of input.messages) {
+    if (message.platform && message.platform !== "octo") continue;
+    const channelId = normalizeString(message.channelId);
+    const channelType = Number(message.channelType || 1);
+    const content = normalizeString(message.content);
+    if (!channelId || !content || !Number.isFinite(channelType)) {
+      errors.push("Octo outbound message requires channelId/channelType/content.");
+      continue;
+    }
+    const chunks = splitChannelConnectorTextChunks(content, 3800).filter((chunk) => normalizeString(chunk));
+    if (!chunks.length) {
+      errors.push(`Octo outbound message to ${channelId} has empty content.`);
+      continue;
+    }
+    const result = await sendOctoTextReply(input.transport, {
+      channelId,
+      channelType: channelType as 1 | 2 | 5,
+      chunks,
+      mentionUids: message.mentionUids,
+      payloads: chunks.map((chunk) => {
+        const payload: {
+          type: 1;
+          content: string;
+          mention?: { uids?: string[]; all?: true };
+        } = { type: 1, content: chunk };
+        if (message.mentionAll) payload.mention = { all: true };
+        if (message.mentionUids.length) payload.mention = { ...(payload.mention || {}), uids: message.mentionUids };
+        return {
+          channel_id: channelId,
+          channel_type: channelType as 1 | 2 | 5,
+          payload,
+        };
+      }),
+    });
+    requestCount += result.requestCount;
+    if (result.ok === true) {
+      sentCount += 1;
+    } else {
+      errors.push(`${channelId}: ${result.error || "Octo message send failed"}`);
+    }
+  }
+  return { sentCount, requestCount, errors };
+}
+
 async function sendFeishuOutboundFiles(input: {
   config: ChannelConnectorsDaemonRuntimeConfig;
   transport: ChannelConnectorFeishuTransportConfig;
@@ -2592,6 +2666,34 @@ async function sendFeishuOutboundFiles(input: {
       }
     } catch (error) {
       errors.push(`${file.fileName}: ${shortMessage(error)}`);
+    }
+  }
+  return { sentCount, requestCount, errors };
+}
+
+async function sendFeishuOutboundMessages(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  transport: ChannelConnectorFeishuTransportConfig;
+  messages: ChannelConnectorOutboundMessageRequest[];
+}): Promise<{ sentCount: number; requestCount: number; errors: string[] }> {
+  let sentCount = 0;
+  let requestCount = 0;
+  const errors: string[] = [];
+  const cachePath = feishuTokenCachePath(input.config);
+  for (const message of input.messages) {
+    if (message.platform && message.platform !== "feishu") continue;
+    const chatId = normalizeString(message.chatId || message.channelId);
+    const content = normalizeString(message.content);
+    if (!chatId || !content) {
+      errors.push("Feishu outbound message requires chatId/content.");
+      continue;
+    }
+    const result = await sendFeishuTextMessage(input.transport, { chatId, content }, cachePath);
+    requestCount += result.requestCount;
+    if (result.ok === true) {
+      sentCount += 1;
+    } else {
+      errors.push(`${chatId}: ${result.error || "Feishu message send failed"}`);
     }
   }
   return { sentCount, requestCount, errors };
@@ -6067,7 +6169,7 @@ function buildFeishuCommandCard(input: {
   const customCommands = listChannelConnectorCommandSummaries({
     customCommandsPath: customCommandsPath(input.config),
   }, current);
-  const skills = listChannelConnectorSkillSummaries(current);
+  const skills = listChannelConnectorSkillSummaries(current, input.binding);
   const session = getChannelConnectorAgentSession(agentSessionsPath(input.config), {
     bindingId: input.binding.id,
     projectId: current.id,
@@ -7077,6 +7179,9 @@ async function dispatchOctoMessage(input: {
 	  }
 
   const stopTypingPulse = startOctoTypingPulse(transport, message);
+  const channelSkillContext = nativeCommand
+    ? null
+    : buildChannelConnectorSkillContext(turnProject, { binding });
   let agent: ChannelConnectorAgentTurnResult;
   try {
     agent = await runChannelConnectorAgentTurnWithSessionDriver({
@@ -7093,6 +7198,7 @@ async function dispatchOctoMessage(input: {
         gatewayClientKey: key,
         agentRuntimeDir: runtimeDir,
         historyContext: nativeCommand ? null : historyContext,
+        channelSkillContext,
         modelCapabilities: modelResolution.modelCapabilities,
         nativeCommand: nativeCommand || null,
         signal: abortController.signal,
@@ -7235,8 +7341,10 @@ async function dispatchOctoMessage(input: {
     : {
       replyText: agent.replyText || "",
       files: [],
+      messages: [],
       errors: [],
       declaredCount: 0,
+      declaredMessageCount: 0,
       maxBytes: outboundFileMaxBytes(binding),
     };
   appendChannelConnectorConversationHistory(conversationHistoryPath(config), {
@@ -7316,6 +7424,8 @@ async function dispatchOctoMessage(input: {
   let replyRequestCount: number | null = null;
   let outboundFileSentCount = 0;
   let outboundFileRequestCount = 0;
+  let outboundMessageSentCount = 0;
+  let outboundMessageRequestCount = 0;
   let outboundFileErrors = [...outboundReply.errors];
   const outboundReplyText = appendOutboundFileErrors(outboundReply.replyText, outboundReply.errors);
   if (transport && agent.ok === true && outboundReplyText) {
@@ -7352,6 +7462,24 @@ async function dispatchOctoMessage(input: {
     outboundFileErrors = [...outboundFileErrors, ...sentFiles.errors];
     if (sentFiles.errors.length > 0) {
       const replyPlan = renderOctoTextReply(message, `文件发送失败：${sentFiles.errors.join("; ")}`);
+      if (replyPlan) {
+        const result = await sendOctoTextReply(transport, replyPlan);
+        replyRequestCount = (replyRequestCount || 0) + result.requestCount;
+      }
+    }
+  }
+  if (transport && agent.ok === true && outboundReply.messages.length > 0) {
+    const sentMessages = await sendOctoOutboundMessages({
+      transport,
+      messages: outboundReply.messages,
+    });
+    outboundMessageSentCount = sentMessages.sentCount;
+    outboundMessageRequestCount = sentMessages.requestCount;
+    replyRequestCount = (replyRequestCount || 0) + sentMessages.requestCount;
+    if (sentMessages.sentCount > 0) replySent = true;
+    outboundFileErrors = [...outboundFileErrors, ...sentMessages.errors];
+    if (sentMessages.errors.length > 0) {
+      const replyPlan = renderOctoTextReply(message, `消息发送失败：${sentMessages.errors.join("; ")}`);
       if (replyPlan) {
         const result = await sendOctoTextReply(transport, replyPlan);
         replyRequestCount = (replyRequestCount || 0) + result.requestCount;
@@ -7405,6 +7533,9 @@ async function dispatchOctoMessage(input: {
     outboundFilesSent: outboundFileSentCount,
     outboundFileRequestCount,
     outboundFileMaxBytes: describeByteSizeLimit(outboundReply.maxBytes),
+    outboundMessagesDeclared: outboundReply.declaredMessageCount,
+    outboundMessagesSent: outboundMessageSentCount,
+    outboundMessageRequestCount,
     outboundFileErrors,
     ingressAt,
     startedAt: runStartedAt,
@@ -8192,6 +8323,9 @@ async function dispatchFeishuParsedEvent(input: {
     });
   }
   let agent: ChannelConnectorAgentTurnResult;
+  const channelSkillContext = nativeCommand
+    ? null
+    : buildChannelConnectorSkillContext(turnProject, { binding });
   try {
     agent = await runChannelConnectorAgentTurnWithSessionDriver({
       binding,
@@ -8207,6 +8341,7 @@ async function dispatchFeishuParsedEvent(input: {
         gatewayClientKey: key,
         agentRuntimeDir: runtimeDir,
         historyContext: nativeCommand ? null : historyContext,
+        channelSkillContext,
         modelCapabilities: modelResolution.modelCapabilities,
         nativeCommand: nativeCommand || null,
         signal: abortController.signal,
@@ -8370,8 +8505,10 @@ async function dispatchFeishuParsedEvent(input: {
     : {
       replyText: agent.replyText || "",
       files: [],
+      messages: [],
       errors: [],
       declaredCount: 0,
+      declaredMessageCount: 0,
       maxBytes: outboundFileMaxBytes(binding),
     };
   appendChannelConnectorConversationHistory(conversationHistoryPath(config), {
@@ -8455,6 +8592,8 @@ async function dispatchFeishuParsedEvent(input: {
   let replyPreviewRunes: number | null = null;
   let outboundFileSentCount = 0;
   let outboundFileRequestCount = 0;
+  let outboundMessageSentCount = 0;
+  let outboundMessageRequestCount = 0;
   let outboundFileErrors = [...outboundReply.errors];
   const outboundReplyText = appendOutboundFileErrors(outboundReply.replyText, outboundReply.errors);
   const replyContent = agent.ok === true && outboundReplyText
@@ -8521,6 +8660,25 @@ async function dispatchFeishuParsedEvent(input: {
       replyRequestCount = (replyRequestCount || 0) + result.requestCount;
     }
   }
+  if (agent.ok === true && outboundReply.messages.length > 0) {
+    const sentMessages = await sendFeishuOutboundMessages({
+      config,
+      transport,
+      messages: outboundReply.messages,
+    });
+    outboundMessageSentCount = sentMessages.sentCount;
+    outboundMessageRequestCount = sentMessages.requestCount;
+    replyRequestCount = (replyRequestCount || 0) + sentMessages.requestCount;
+    if (sentMessages.sentCount > 0) replySent = true;
+    outboundFileErrors = [...outboundFileErrors, ...sentMessages.errors];
+    if (sentMessages.errors.length > 0) {
+      const result = await sendFeishuTextMessage(transport, {
+        chatId: parsed.channelId,
+        content: `消息发送失败：${sentMessages.errors.join("; ")}`,
+      }, feishuTokenCachePath(config));
+      replyRequestCount = (replyRequestCount || 0) + result.requestCount;
+    }
+  }
 
   const finishedAt = new Date().toISOString();
   const finishedAtMs = isoTimestampMs(finishedAt) ?? Date.now();
@@ -8562,6 +8720,9 @@ async function dispatchFeishuParsedEvent(input: {
     outboundFilesSent: outboundFileSentCount,
     outboundFileRequestCount,
     outboundFileMaxBytes: describeByteSizeLimit(outboundReply.maxBytes),
+    outboundMessagesDeclared: outboundReply.declaredMessageCount,
+    outboundMessagesSent: outboundMessageSentCount,
+    outboundMessageRequestCount,
     outboundFileErrors,
     groupMemberPullAttempted: groupMembers.attempted,
     groupMemberCount: groupMembers.members.length,

@@ -1,7 +1,10 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { ChannelConnectorRuntimeProject } from "./agent-runner.js";
+import type {
+  ChannelConnectorRuntimeBinding,
+  ChannelConnectorRuntimeProject,
+} from "./agent-runner.js";
 
 export interface ChannelConnectorSkill {
   name: string;
@@ -9,6 +12,12 @@ export interface ChannelConnectorSkill {
   description: string;
   prompt: string;
   source: string;
+  scope: "agent" | "binding" | "platform";
+  platform?: string | null;
+}
+
+export interface ChannelConnectorSkillDiscoveryContext {
+  binding?: ChannelConnectorRuntimeBinding | null;
 }
 
 function normalizeString(value: unknown): string {
@@ -27,12 +36,46 @@ function uniqueStrings(values: string[]): string[] {
   return output;
 }
 
+function recordValue(value: unknown): Record<string, unknown> | null {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null;
+}
+
+function metadataStringList(metadata: Record<string, unknown>, keys: string[]): string[] {
+  const values: string[] = [];
+  for (const key of keys) {
+    const value = metadata[key];
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const normalized = normalizeString(item);
+        if (normalized) values.push(normalized);
+      }
+      continue;
+    }
+    const normalized = normalizeString(value);
+    if (!normalized) continue;
+    values.push(...normalized.split(/[,\n;]+/).map((item) => item.trim()).filter(Boolean));
+  }
+  return uniqueStrings(values);
+}
+
 function samePath(a: string, b: string): boolean {
   return path.resolve(a) === path.resolve(b);
 }
 
 function commandNameKey(value: string): string {
   return normalizeString(value).toLowerCase().replaceAll("-", "_");
+}
+
+function resolveConfiguredPath(value: string, home: string): string {
+  const normalized = normalizeString(value);
+  if (!normalized) return "";
+  if (normalized === "~") return home;
+  if (normalized.startsWith("~/")) return path.join(home, normalized.slice(2));
+  return path.resolve(normalized
+    .replaceAll("$HOME", home)
+    .replaceAll("${HOME}", home));
 }
 
 function findProjectRoot(start: string): string {
@@ -67,7 +110,13 @@ function walkUpSkillDirs(input: {
   return uniqueStrings(dirs);
 }
 
-export function channelConnectorSkillDirs(project: ChannelConnectorRuntimeProject): string[] {
+interface SkillDirSpec {
+  dir: string;
+  scope: ChannelConnectorSkill["scope"];
+  platform?: string | null;
+}
+
+function agentSkillDirSpecs(project: ChannelConnectorRuntimeProject): SkillDirSpec[] {
   const workDir = path.resolve(normalizeString(project.workDir) || process.cwd());
   const home = os.homedir();
   if (project.agent === "codex") {
@@ -80,7 +129,7 @@ export function channelConnectorSkillDirs(project: ChannelConnectorRuntimeProjec
       }),
       path.join(codexHome, "skills"),
       path.join(home, ".agents", "skills"),
-    ]);
+    ]).map((dir) => ({ dir, scope: "agent" }));
   }
   if (project.agent === "claude-code") {
     const claudeHome = normalizeString(process.env.CLAUDE_CONFIG_DIR) || path.join(home, ".claude");
@@ -91,27 +140,81 @@ export function channelConnectorSkillDirs(project: ChannelConnectorRuntimeProjec
         stopAtProjectRoot: true,
       }),
       path.join(claudeHome, "skills"),
-    ]);
+    ]).map((dir) => ({ dir, scope: "agent" }));
   }
   if (project.agent === "gemini") {
     return uniqueStrings([
       path.join(workDir, ".gemini", "skills"),
       path.join(home, ".gemini", "skills"),
-    ]);
+    ]).map((dir) => ({ dir, scope: "agent" }));
   }
   if (project.agent === "kimi") {
     return uniqueStrings([
       path.join(workDir, ".kimi", "skills"),
       path.join(home, ".kimi", "skills"),
-    ]);
+    ]).map((dir) => ({ dir, scope: "agent" }));
   }
   if (project.agent === "cursor" || project.agent === "qoder") {
     return uniqueStrings([
       path.join(workDir, ".claude", "skills"),
       path.join(home, ".claude", "skills"),
-    ]);
+    ]).map((dir) => ({ dir, scope: "agent" }));
   }
   return [];
+}
+
+function platformSkillDirSpecs(context?: ChannelConnectorSkillDiscoveryContext): SkillDirSpec[] {
+  const binding = context?.binding || null;
+  const platform = normalizeString(binding?.platform).toLowerCase();
+  if (!binding || !platform) return [];
+  const home = os.homedir();
+  const metadata = recordValue(binding.metadata) || {};
+  const explicitDirs = metadataStringList(metadata, [
+    "skillDirs",
+    "skill_dirs",
+    "channelSkillDirs",
+    "channel_skill_dirs",
+    "platformSkillDirs",
+    "platform_skill_dirs",
+  ]).map((dir) => resolveConfiguredPath(dir, home)).filter(Boolean);
+  const builtInDirs: string[] = [];
+  if (platform === "octo" || platform === "dmwork") {
+    builtInDirs.push(
+      path.join(home, ".openclaw", "extensions", "octo", "skills"),
+    );
+  }
+  if (platform === "feishu" || platform === "lark") {
+    builtInDirs.push(
+      path.join(home, ".openclaw", "projects", "openclaw", "latest", "extensions", "feishu", "skills"),
+      path.join(home, ".openclaw", "extensions", "feishu", "skills"),
+    );
+  }
+  return [
+    ...explicitDirs.map((dir) => ({ dir, scope: "binding" as const, platform })),
+    ...uniqueStrings(builtInDirs).map((dir) => ({ dir, scope: "platform" as const, platform })),
+  ];
+}
+
+function channelConnectorSkillDirSpecs(
+  project: ChannelConnectorRuntimeProject,
+  context?: ChannelConnectorSkillDiscoveryContext,
+): SkillDirSpec[] {
+  const seen = new Set<string>();
+  const specs: SkillDirSpec[] = [];
+  for (const spec of [...agentSkillDirSpecs(project), ...platformSkillDirSpecs(context)]) {
+    const dir = normalizeString(spec.dir);
+    if (!dir || seen.has(path.resolve(dir))) continue;
+    seen.add(path.resolve(dir));
+    specs.push({ ...spec, dir });
+  }
+  return specs;
+}
+
+export function channelConnectorSkillDirs(
+  project: ChannelConnectorRuntimeProject,
+  context?: ChannelConnectorSkillDiscoveryContext,
+): string[] {
+  return channelConnectorSkillDirSpecs(project, context).map((spec) => spec.dir);
 }
 
 function realPath(value: string): string {
@@ -163,7 +266,13 @@ function firstLine(value: string, maxRunes = 80): string {
   return runes.length > maxRunes ? `${runes.slice(0, maxRunes).join("")}...` : line;
 }
 
-function parseSkillMd(skillName: string, raw: string, source: string): ChannelConnectorSkill | null {
+function parseSkillMd(
+  skillName: string,
+  raw: string,
+  source: string,
+  scope: ChannelConnectorSkill["scope"],
+  platform?: string | null,
+): ChannelConnectorSkill | null {
   const content = normalizeString(raw);
   if (!content) return null;
   let body = content;
@@ -183,6 +292,8 @@ function parseSkillMd(skillName: string, raw: string, source: string): ChannelCo
     description: normalizeString(frontmatter.description) || firstLine(body),
     prompt: body,
     source,
+    scope,
+    platform: platform || null,
   };
 }
 
@@ -191,6 +302,8 @@ function discoverSkillsInDir(
   currentDir: string,
   seen: Set<string>,
   visited: Set<string>,
+  scope: ChannelConnectorSkill["scope"],
+  platform?: string | null,
 ): ChannelConnectorSkill[] {
   const real = realPath(currentDir);
   if (visited.has(real)) return [];
@@ -216,24 +329,34 @@ function discoverSkillsInDir(
       } catch {
         continue;
       }
-      const skill = parseSkillMd(skillName, raw, skillDir);
+      const skill = parseSkillMd(skillName, raw, skillDir, scope, platform);
       if (!skill) continue;
       seen.add(key);
       skills.push(skill);
       continue;
     }
     if (shouldDescend(fullPath, entry)) {
-      skills.push(...discoverSkillsInDir(rootDir, fullPath, seen, visited));
+      skills.push(...discoverSkillsInDir(rootDir, fullPath, seen, visited, scope, platform));
     }
   }
   return skills;
 }
 
-export function listChannelConnectorSkills(project: ChannelConnectorRuntimeProject): ChannelConnectorSkill[] {
+export function listChannelConnectorSkills(
+  project: ChannelConnectorRuntimeProject,
+  context?: ChannelConnectorSkillDiscoveryContext,
+): ChannelConnectorSkill[] {
   const seen = new Set<string>();
   const skills: ChannelConnectorSkill[] = [];
-  for (const dir of channelConnectorSkillDirs(project)) {
-    skills.push(...discoverSkillsInDir(path.resolve(dir), path.resolve(dir), seen, new Set<string>()));
+  for (const spec of channelConnectorSkillDirSpecs(project, context)) {
+    skills.push(...discoverSkillsInDir(
+      path.resolve(spec.dir),
+      path.resolve(spec.dir),
+      seen,
+      new Set<string>(),
+      spec.scope,
+      spec.platform,
+    ));
   }
   return skills;
 }
@@ -241,10 +364,40 @@ export function listChannelConnectorSkills(project: ChannelConnectorRuntimeProje
 export function resolveChannelConnectorSkill(
   project: ChannelConnectorRuntimeProject,
   name: string,
+  context?: ChannelConnectorSkillDiscoveryContext,
 ): ChannelConnectorSkill | null {
   const key = commandNameKey(name);
   if (!key) return null;
-  return listChannelConnectorSkills(project).find((skill) => commandNameKey(skill.name) === key) || null;
+  return listChannelConnectorSkills(project, context).find((skill) => commandNameKey(skill.name) === key) || null;
+}
+
+export function listChannelConnectorPlatformSkills(
+  project: ChannelConnectorRuntimeProject,
+  context?: ChannelConnectorSkillDiscoveryContext,
+): ChannelConnectorSkill[] {
+  return listChannelConnectorSkills(project, context).filter((skill) => skill.scope !== "agent");
+}
+
+export function buildChannelConnectorSkillContext(
+  project: ChannelConnectorRuntimeProject,
+  context?: ChannelConnectorSkillDiscoveryContext,
+): string | null {
+  const binding = context?.binding || null;
+  const skills = listChannelConnectorPlatformSkills(project, context);
+  if (!binding || !skills.length) return null;
+  const platform = normalizeString(binding.platform) || "unknown";
+  const lines = [
+    "[Studio IM channel skills]",
+    `Current IM platform: ${platform}.`,
+    "Available platform skills in this binding:",
+    ...skills.slice(0, 10).map((skill) => {
+      const description = normalizeString(skill.description);
+      return `- /${skill.name}${description ? `: ${description}` : ""}`;
+    }),
+    "Use these channel/platform skills only when the user asks for platform-specific IM, file, group, document, or bot API work.",
+    "For sending local files back to the user, emit a studio-channel-files manifest; do not call cc-connect or external IM bridge CLIs.",
+  ];
+  return lines.join("\n");
 }
 
 export function buildChannelConnectorSkillPrompt(skill: ChannelConnectorSkill, args: string[]): string {

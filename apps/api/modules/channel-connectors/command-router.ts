@@ -299,6 +299,8 @@ export interface ChannelConnectorSkillSummary {
   displayName: string;
   description: string;
   source: string;
+  scope?: "agent" | "binding" | "platform";
+  platform?: string | null;
 }
 
 export interface ChannelConnectorCommandAlias {
@@ -966,20 +968,30 @@ function customCommandsListText(
   return lines.join("\n");
 }
 
-function skillsListText(project: ChannelConnectorRuntimeProject): string {
-  const skills = listChannelConnectorSkills(project);
+function skillScopeLabel(skill: { scope?: string; platform?: string | null }): string {
+  if (skill.scope === "binding") return "binding";
+  if (skill.scope === "platform") return skill.platform ? `platform:${skill.platform}` : "platform";
+  return "agent";
+}
+
+function skillsListText(
+  project: ChannelConnectorRuntimeProject,
+  binding?: ChannelConnectorRuntimeBinding | null,
+): string {
+  const skills = listChannelConnectorSkills(project, { binding });
   if (!skills.length) {
-    const dirs = channelConnectorSkillDirs(project);
+    const dirs = channelConnectorSkillDirs(project, { binding });
     return [
       "未发现任何 Skill。",
       dirs.length
-        ? `Studio 会按 CC SkillProvider 合同扫描：${dirs.join("；")}`
+        ? `Studio 会按 CC SkillProvider 合同扫描 Agent 与当前 binding/platform 目录：${dirs.join("；")}`
         : `当前 Agent (${project.agent}) 尚未在 Studio 中声明 Skill 目录。`,
     ].join("\n");
   }
-  const lines = [`Studio Skills (${project.agent}) - ${skills.length} 个`];
+  const platform = normalizeString(binding?.platform);
+  const lines = [`Studio Skills (${project.agent}${platform ? ` · ${platform}` : ""}) - ${skills.length} 个`];
   for (const skill of skills) {
-    lines.push(`/${skill.name}`);
+    lines.push(`/${skill.name} [${skillScopeLabel(skill)}]`);
     lines.push(`  ${skill.description || "Skill"}`);
   }
   lines.push("用法：/<skill名称> [参数...]。Studio 会把 Skill 指令和用户参数一起交给当前 Agent。");
@@ -1002,12 +1014,15 @@ export function listChannelConnectorCommandSummaries(
 
 export function listChannelConnectorSkillSummaries(
   project: ChannelConnectorRuntimeProject,
+  binding?: ChannelConnectorRuntimeBinding | null,
 ): ChannelConnectorSkillSummary[] {
-  return listChannelConnectorSkills(project).map((skill) => ({
+  return listChannelConnectorSkills(project, { binding }).map((skill) => ({
     name: skill.name,
     displayName: skill.displayName,
     description: skill.description,
     source: skill.source,
+    scope: skill.scope,
+    platform: skill.platform || null,
   }));
 }
 
@@ -2449,7 +2464,7 @@ export async function handleChannelConnectorCommand(
         }),
       };
     }
-    const skill = resolveChannelConnectorSkill(currentProject, name);
+    const skill = resolveChannelConnectorSkill(currentProject, name, { binding: context.binding });
     if (skill) {
       const disabled = disabledCommandDecision(context.binding, context.message, [skill.name, name, parsed.name]);
       if (disabled.disabled) {
@@ -2603,7 +2618,7 @@ export async function handleChannelConnectorCommand(
       action: "list",
       ok: true,
       control: currentControl,
-      replyText: skillsListText(currentProject),
+      replyText: skillsListText(currentProject, context.binding),
       passthroughText: null,
     };
   }

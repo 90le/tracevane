@@ -249,6 +249,8 @@ export interface ChannelConnectorCommandSurfaceInput {
     displayName: string;
     description: string;
     source: string;
+    scope?: "agent" | "binding" | "platform";
+    platform?: string | null;
   }>;
   selectedSectionId?: string | null;
   selectedViewId?: string | null;
@@ -639,7 +641,7 @@ export function buildChannelConnectorCommandSurface(
           `${index + 1}. /${skill.name}`,
           `/${skill.name}`,
           {
-            description: `skill · ${skill.description || skill.displayName || "Skill"}`,
+            description: `${skill.scope === "binding" ? "binding skill" : skill.scope === "platform" ? `${skill.platform || "platform"} skill` : "agent skill"} · ${skill.description || skill.displayName || "Skill"}`,
           },
         )),
       ],

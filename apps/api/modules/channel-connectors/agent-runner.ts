@@ -86,6 +86,7 @@ export interface ChannelConnectorAgentTurnRequest {
     codexThreadId?: string | null;
   } | null;
   historyContext?: string | null;
+  channelSkillContext?: string | null;
   modelCapabilities?: {
     vision?: boolean | null;
   } | null;
@@ -308,15 +309,20 @@ function buildNonVisionVisualAttachmentPolicy(
 function buildStudioOutboundFilePolicy(): string {
   return [
     "[Studio outbound file policy]",
-    "Do not call channel-specific CLIs, webhooks, curl commands, or external bridge tools to send files back to the IM user.",
+    "Do not call channel-specific CLIs, webhooks, curl commands, or external bridge tools to send files or IM messages.",
     "When the user asks you to send or return files, create them under the current working directory or declare the exact readable path you just used; do not invent relative paths from memory.",
     "If an existing file is outside the current working directory and the current permission mode may block direct sending, copy or generate the requested file under the current working directory before declaring it.",
     "Preserve the original file name in the name field unless the user explicitly asks for a new name.",
-    "Example:",
+    "File example:",
     "```studio-channel-files",
     "[{\"path\":\"relative/path/to/file.ext\",\"name\":\"optional-display-name.ext\",\"caption\":\"optional short caption\"}]",
     "```",
-    "Keep the human-readable reply outside that block; Studio daemon will upload and send the declared files through the active IM channel.",
+    "When the user asks you to send an IM message to another Octo member, group, or thread, declare it instead of claiming you lack a Feishu/Octo API permission.",
+    "Octo message example:",
+    "```studio-channel-messages",
+    "[{\"platform\":\"octo\",\"target\":\"dm:user_uid\",\"content\":\"hello\"},{\"platform\":\"octo\",\"target\":\"group:group_no\",\"content\":\"hi\",\"mentionUids\":[\"user_uid\"]}]",
+    "```",
+    "Keep the human-readable reply outside those blocks; Studio daemon will upload files or send declared messages through the active IM channel.",
   ].join("\n");
 }
 
@@ -374,15 +380,17 @@ function buildAgentInputContent(
   binding: ChannelConnectorRuntimeBinding,
   model?: string | null,
   historyContext?: string | null,
+  channelSkillContext?: string | null,
   modelCapabilities?: { vision?: boolean | null } | null,
   visualInputMode: ChannelConnectorVisualInputMode = "none",
 ): string {
   const content = extractOctoContent(message);
   const attachments = extractOctoAttachments(message);
   const history = normalizeString(historyContext);
+  const skills = normalizeString(channelSkillContext);
   const groupContext = buildGroupContext(message, binding);
   const outboundFilePolicy = buildStudioOutboundFilePolicy();
-  if (!attachments.length) return [history, groupContext, content, outboundFilePolicy].filter(Boolean).join("\n\n");
+  if (!attachments.length) return [history, groupContext, skills, content, outboundFilePolicy].filter(Boolean).join("\n\n");
   const summary = attachments
     .map((attachment) => `- ${attachmentSummaryLabel(attachment)}`)
     .join("\n");
@@ -409,7 +417,7 @@ function buildAgentInputContent(
       : "",
     visualInputText,
   ].filter(Boolean).join("\n");
-  return [history, groupContext, visualPolicy, content, attachmentText, outboundFilePolicy].filter(Boolean).join("\n\n");
+  return [history, groupContext, skills, visualPolicy, content, attachmentText, outboundFilePolicy].filter(Boolean).join("\n\n");
 }
 
 function recordValue(value: unknown): Record<string, unknown> | null {
@@ -915,6 +923,7 @@ export function buildChannelConnectorAgentProcessRequest(
     request.binding,
     project.model,
     request.historyContext,
+    request.channelSkillContext,
     request.modelCapabilities,
     codexNativeImagePaths.length ? "codex-native-image"
       : claudeNativeImageParts.length ? "claude-native-image"
