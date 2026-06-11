@@ -648,6 +648,8 @@ export interface ChannelConnectorFeishuTransportSmokeRequest {
   bindingId?: string | null;
   action?: "tenant-token" | "send-message" | "send-post" | "send-card" | "patch-card" | "upload-and-send-media";
   channelId?: string | null;
+  receiveId?: string | null;
+  receiveIdType?: "chat_id" | "open_id" | "user_id" | null;
   messageId?: string | null;
   content?: string | null;
   fileName?: string | null;

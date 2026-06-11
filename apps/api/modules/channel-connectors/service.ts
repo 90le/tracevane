@@ -1311,6 +1311,10 @@ function normalizeFeishuTransportSmokeRequest(payload: ChannelConnectorFeishuTra
     bindingId: normalizeString(payload.bindingId) || null,
     action,
     channelId: normalizeString(payload.channelId) || null,
+    receiveId: normalizeString(payload.receiveId) || null,
+    receiveIdType: payload.receiveIdType === "open_id" || payload.receiveIdType === "user_id" || payload.receiveIdType === "chat_id"
+      ? payload.receiveIdType
+      : null,
     messageId: normalizeString(payload.messageId) || null,
     content: normalizeString(payload.content) || "Studio Feishu transport smoke",
     fileName: normalizeString(payload.fileName) || null,
@@ -2633,15 +2637,19 @@ export function createChannelConnectorsService(
 
     let transport: ChannelConnectorFeishuTransportResult;
     if (request.action === "send-message") {
-      if (!request.channelId) throw new Error("channelId is required for Feishu send-message smoke.");
+      if (!request.channelId && !request.receiveId) throw new Error("channelId or receiveId is required for Feishu send-message smoke.");
       transport = await sendFeishuTextMessage(transportConfig, {
         chatId: request.channelId,
+        receiveId: request.receiveId,
+        receiveIdType: request.receiveIdType,
         content: request.content || "Studio Feishu transport smoke",
       }, resolvedPaths.feishuTokenCacheFile);
     } else if (request.action === "send-post") {
-      if (!request.channelId) throw new Error("channelId is required for Feishu send-post smoke.");
+      if (!request.channelId && !request.receiveId) throw new Error("channelId or receiveId is required for Feishu send-post smoke.");
       transport = await sendFeishuPostMessage(transportConfig, {
         chatId: request.channelId,
+        receiveId: request.receiveId,
+        receiveIdType: request.receiveIdType,
         content: request.content || "**Studio Feishu post smoke**\n\n```text\nmarkdown\n```",
       }, resolvedPaths.feishuTokenCacheFile);
     } else if (request.action === "send-card") {
