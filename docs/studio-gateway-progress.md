@@ -11,27 +11,26 @@
 - Gateway 对外提供 Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions；`GET /v1/models` 聚合启用 provider，并保留模型别名、模型池、能力标记、上下文窗口和输出预算；模型预算是 App Connections 与 Channel Connectors 的默认上下文来源。
 - Provider Center 已支持自定义 provider、启停、模型列表/别名/默认模型、能力勾选、批量模型导入、批量预算/能力应用、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
 - App Connections 已覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收。
-- Channel Connectors 走 Studio 原生 CLI Agent Bot 路线；Octo(dmwork) 与 Feishu 已接入 Codex/Claude Code/OpenCode runner、Studio Gateway key、IM session override、slash command、Feishu card/menu/progress、附件 staging、history、group context、reply buffer、queue、stop 和基础治理；Octo daemon 已接入 Bot API 群成员、最近历史、文件下载 URL、平台 skill、`/octo` 群/成员/Space 查询命令和出站消息 manifest。
+- Channel Connectors 走 Studio 原生 CLI Agent Bot 路线；Octo(dmwork) 与 Feishu 已接入 Codex/Claude Code/OpenCode runner、Studio Gateway key、IM session override、slash command、Feishu card/menu/progress、附件 staging、history、group context、reply buffer、queue、stop 和基础治理；Octo daemon 已接入 Bot API 群成员、最近历史、文件下载 URL、GROUP.md/THREAD.md、voice context、平台 skill、`/octo` 群/成员/Space/thread 管理命令和出站消息 manifest。
 - OpenCode Agent runner 走 Gateway-first：Channel 配置保存 Gateway 模型短名或模型 ID，runner 转换为 OpenCode 需要的 `studio-gateway/<model>`；每轮生成隔离 OpenCode config，session 数据写入 Channel runtime dataHome；旧全局 sessionId 在当前 dataHome 不存在时自动新建，避免 IM 切换 OpenCode 后被 stale session 卡死。
 - Channel Connectors 任意新功能必须先对照 CC Go 1:1 迁移，再做 Studio 精修；迁移清单见 `channel-connectors-cc-migration-checklist.md`。
 - Feishu 长连接专项跟踪见 `feishu-long-connection-issue-tracker.md`；Feishu 目前采用同 App 用户级全局 owner lock、官方 SDK `WSClient`/`EventDispatcher`、默认启用 SDK lower-case `pingTimeout=3`、包装 SDK `pingLoop()` 将有效心跳调度 clamp 到 `pingIntervalMs=10000`、SDK reconnecting 超 5s 回收、应用层 ping/pong runtime proof、`pongTimeoutMs=8000` 外层兜底回收、23s control-frame stale 判死、快速 ACK、messageId 去重、会话水位线防旧消息插队和 runtime 入站观测；无业务消息时不再默认 startup recycle。
-- IM 文件/消息收发固定为 Studio native transport：入站附件 staging 后交给 Agent；出站由 Agent 声明 `studio-channel-files` 或 `studio-channel-messages` manifest，daemon 按平台上传文件或发送 Octo DM/group/thread 文本消息；Agent 不应调用 `cc-connect` 或平台 CLI。
+- IM 文件/消息收发固定为 Studio native transport：入站附件 staging 后交给 Agent；出站由 Agent 声明 `studio-channel-files` 或 `studio-channel-messages` manifest，daemon 按平台上传文件或发送 Octo human DM/group/thread 文本消息；Octo 机器人协作走群/thread @，不走 bot DM；Agent 不应调用 `cc-connect` 或平台 CLI。
 - Codex live 默认仍是 CC Go 风格 one-shot `codex exec/resume`；persistent session pool 作为 metadata beta 覆盖 Codex app-server、Claude Code stream-json 和 OpenCode `run --session`，已锁定原生 compact、interrupt/stop、idle reaper、fallback、session 管理合同和真实 CLI mock-Gateway smoke；IM 进度里的“过程回复”只接受 `assistant/intermediate`，最终回复 `assistant/final` 只走最终结果渲染。
 - 上下文管理策略固定为 native-first：Gateway/Channel 负责模型预算与触发决策；App Connections apply 会按每个 App 选中模型派生上下文、max output 和 compact 阈值；`/compact` 手动入口和 daemon 自动触发都优先尝试 live persistent Agent 原生 compact；Studio Gateway `/responses/compact` 只作为不支持、失败或 one-shot 不可靠时的兜底；`/native /compact` 是强制原生入口，没有真实 native compact contract 时会拒绝伪透传。
 - Channel daemon `/status` 的最近 `autoCompacts` 已通过 Studio API 代理到 Channel 管理页；自动 compact 触发仍只看上下文预算压力，retry/cooldown 只表示失败恢复状态。
 
 ## 本轮完成
 
-- 对照 Octo 插件补齐 GROUP.md / THREAD.md / delete-thread Bot API：transport、service smoke、daemon 命令路径和类型 action 均已接入。
-- `/octo` 平台命令新增 `group-md`、`thread-md`、`set-group-md`、`set-thread-md`、`delete-thread`；更新类命令继续走 Channel 管理权限校验。
-- daemon 在 Octo 群聊进入 Agent 前主动拉 GROUP.md；thread 会话只拉 THREAD.md，不继承 GROUP.md；失败只写事件日志，不阻断当前消息。
-- Agent prompt 现在同时包含 Octo 群成员、短历史、GROUP.md/THREAD.md、平台 skill 和 `studio-channel-messages` 能力，减少“不能私聊其它 bot/成员”“没有 Feishu API 权限”这类错误自述。
+- 对照 Octo 插件固定群协作 @ 合同：`@[uid:显示名]` 和 bot DM 重写都会发送可见 `@显示名` + Octo `mention.entities/uids`，避免隐藏 @。
+- `/octo history [条数]` 已接入 service/daemon，默认读取当前群/thread 前文，供用户和 Agent 直接查看 Bot API 群历史。
+- Codex stale resume 自愈：`thread/resume failed` / `no rollout found` 会自动 fresh turn 重试；fallback compact 成功时不再暴露 “No live persistent session” 作为错误。
 
 ## 最近验证
 
 - 通过：`npm run typecheck:api`。
 - 通过：`npm run build:api`。
-- 通过：`node --test --test-name-pattern "Octo transport smoke covers Bot API groups|Octo native management commands|daemon enriches Octo group turns" tests/system/channel-connectors-service.test.mjs`，3/3 全部通过。
+- 通过：`node --test --test-name-pattern "native Channel Connectors extracts outbound IM message manifests|Octo adapter follows group direction and mention rendering rules|Octo transport smoke covers Bot API groups|Octo native management commands|native Channel Connectors agent runner builds gateway-backed Codex turns|native Channel Connectors service slash compact works" tests/system/channel-connectors-service.test.mjs`，6/6 全部通过。
 - 通过：真实 Octo 配置非发送 smoke：`/octo groups` 返回 1 个群，`/octo members` 返回“小丘测试群”6 个成员，`/octo search 小维` 返回 2 个成员，`/octo info` 返回“小丘测试群”群信息，`/octo threads` 返回当前群 thread 列表（0）。
 
 ## 已知边界
@@ -44,11 +43,11 @@
 - `/status` 与 Channel 管理页已能显示最近 auto compact 记录；真实剩余 token 仍取决于上游 usage 或 Gateway runtime ledger 是否能归因。
 - Gateway usage 只有在上游返回 usage 或 runtime ledger 可归因时才准确；缺失 usage 时 Channel 只能用 IM history 字符估算，不能替代真实 tokenizer。
 - 同 session FIFO queue 当前是 daemon 内存队列；Channel daemon 自身重启会丢失未开始的排队消息，durable queue 尚未实现。
-- `studio-channel-messages` 已有 parser 与 daemon send path，并支持 Octo 结构化 `@[uid:显示名]` mention 抽取；Octo 群/成员/Space 查询、GROUP.md/THREAD.md 和群/thread 管理命令已有 mock 回归，真实 Octo 私聊/@群成员、建群/改群/thread 管理 live smoke 还未执行；Feishu open_id/user_id 私聊解析后续补。
+- `studio-channel-messages` 已有 parser 与 daemon send path，并支持 Octo 结构化 `@[uid:显示名]` mention 抽取；Octo human DM 和群/thread @其它 Studio/外部 bot 仍需 live smoke。外部产品 bot 只能通过平台群/thread 消息协作；等待多 bot 异步回复并自动汇总需要后续 Studio 内部协作调度。Octo 建群/改群/thread 管理 live smoke 还未执行；Feishu open_id/user_id 私聊解析后续补。
 
 ## 下一步
 
-1. 用户在真实 Octo 群聊让 Agent 私聊或 @ 某个成员/机器人，验证 `studio-channel-messages` 的 DM/group/thread 与 mention 能真实发送。
-2. 对照 Octo 插件继续迁移 persona/voice context 和更完整的菜单/技能说明。
+1. 用户在真实 Octo 群聊让 Agent 私聊 human 或 @其它 Studio/外部 bot，验证 `studio-channel-messages` 的 human DM、group/thread mention 能真实发送。
+2. 对照 Octo 插件继续迁移 persona/OBO 和更完整的菜单/技能说明。
 3. 用户发送一条新的 Feishu 消息，做业务入站复验：runtime 应出现 dispatcher callback / receivedMessages，且无 reconnect/stale。
 4. 做真实 IM live command/progress smoke：Feishu 验证 card patch、权限审批和三次顺序工具调用；Octo 验证文本进度、工具输出、文件/消息 manifest；随后补 Feishu open_id/user_id 私聊、富文本和文档/云盘 skills。

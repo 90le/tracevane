@@ -749,6 +749,42 @@ export async function updateOctoGroupMd(
   }
 }
 
+export async function readOctoVoiceContext(
+  config: ChannelConnectorOctoTransportConfig,
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await getOctoJson(config, "/v1/bot/voice/context");
+    return octoTransportData(config, "voice-context-read", response);
+  } catch (error) {
+    return octoTransportError(config, "voice-context-read", error);
+  }
+}
+
+export async function updateOctoVoiceContext(
+  config: ChannelConnectorOctoTransportConfig,
+  input: { content: string },
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await putOctoJson(config, "/v1/bot/voice/context", {
+      context: input.content,
+    });
+    return octoTransportData(config, "voice-context-update", response);
+  } catch (error) {
+    return octoTransportError(config, "voice-context-update", error);
+  }
+}
+
+export async function deleteOctoVoiceContext(
+  config: ChannelConnectorOctoTransportConfig,
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await deleteOctoJson(config, "/v1/bot/voice/context");
+    return octoTransportData(config, "voice-context-delete", response);
+  } catch (error) {
+    return octoTransportError(config, "voice-context-delete", error);
+  }
+}
+
 export async function listOctoGroupMembers(
   config: ChannelConnectorOctoTransportConfig,
   groupNo: string,

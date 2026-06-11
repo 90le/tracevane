@@ -176,7 +176,11 @@ export type ChannelConnectorOctoManagementAction =
   | "group-md-read"
   | "group-md-update"
   | "thread-md-read"
-  | "thread-md-update";
+  | "thread-md-update"
+  | "voice-context-read"
+  | "voice-context-update"
+  | "voice-context-delete"
+  | "history";
 
 export interface ChannelConnectorOctoManagementRequest {
   action: ChannelConnectorOctoManagementAction;
@@ -185,6 +189,9 @@ export interface ChannelConnectorOctoManagementRequest {
   message: ChannelConnectorOctoInboundMessage;
   groupNo?: string | null;
   shortId?: string | null;
+  channelId?: string | null;
+  channelType?: 1 | 2 | 5 | null;
+  endMessageSeq?: number | null;
   keyword?: string | null;
   name?: string | null;
   notice?: string | null;
@@ -1510,8 +1517,10 @@ function octoCommandUsageText(): string {
     "- `/octo threads [group_no]`：列出群 thread",
     "- `/octo thread <short_id> [group_no]`：查看 thread 详情",
     "- `/octo thread-members <short_id> [group_no]`：查看 thread 成员",
+    "- `/octo history [条数]`：读取当前群/thread 最近聊天；也可 `/octo history <group_no> [条数]`",
     "- `/octo group-md [group_no]`：读取 GROUP.md；群内可省略 group_no",
     "- `/octo thread-md <short_id> [group_no]`：读取 THREAD.md；thread 内可省略 short_id",
+    "- `/octo voice-context`：读取当前 bot owner 的语音纠错上下文",
     "",
     "管理命令：",
     "- `/octo create-group <群名> --members uid1,uid2`",
@@ -1523,6 +1532,7 @@ function octoCommandUsageText(): string {
     "- `/octo join-thread <short_id> [group_no]` / `/octo leave-thread <short_id> [group_no]`",
     "- `/octo set-group-md [--group group_no] <markdown>`",
     "- `/octo set-thread-md [--group group_no] [--thread short_id] <markdown>`",
+    "- `/octo set-voice-context <文本>` / `/octo delete-voice-context`",
   ].join("\n");
 }
 
@@ -1551,6 +1561,45 @@ function octoDataItems(value: unknown, keys: string[]): Record<string, unknown>[
   return Array.isArray(source)
     ? source.filter(isRecord)
     : [];
+}
+
+function octoDecodeSyncedPayload(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const normalized = normalizeString(value);
+  if (!normalized) return value;
+  try {
+    return JSON.parse(Buffer.from(normalized, "base64").toString("utf8")) as unknown;
+  } catch {
+    return value;
+  }
+}
+
+function octoSyncedMessageText(payload: unknown): string {
+  const decoded = octoDecodeSyncedPayload(payload);
+  if (typeof decoded === "string") return normalizeString(decoded);
+  if (!isRecord(decoded)) return "";
+  const content = decoded.content;
+  if (typeof content === "string") return normalizeString(content);
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => {
+        if (typeof item === "string") return normalizeString(item);
+        if (!isRecord(item)) return "";
+        return normalizeString(item.text) || normalizeString(item.content) || normalizeString(item.name);
+      })
+      .filter(Boolean)
+      .join("");
+  }
+  return normalizeString(decoded.plain) || normalizeString(decoded.name);
+}
+
+function octoSyncedMessagesFromData(value: unknown): Record<string, unknown>[] {
+  return octoDataItems(value, ["messages", "data", "items"]);
+}
+
+function octoSyncedMessageSeq(message: Record<string, unknown>): number | null {
+  const seq = Number(message.message_seq ?? message.messageSeq);
+  return Number.isFinite(seq) && seq > 0 ? seq : null;
 }
 
 function octoRecordString(value: Record<string, unknown>, keys: string[]): string {
@@ -1621,6 +1670,7 @@ export function formatChannelConnectorOctoManagementReply(input: {
   result: Pick<ChannelConnectorOctoTransportResult, "ok" | "error" | "data" | "itemCount">;
   groupNo?: string | null;
   shortId?: string | null;
+  channelId?: string | null;
   keyword?: string | null;
   name?: string | null;
   content?: string | null;
@@ -1670,7 +1720,7 @@ export function formatChannelConnectorOctoManagementReply(input: {
       ...members.slice(0, 30).map(octoMemberLine),
       members.length > 30 ? `... 还有 ${members.length - 30} 个` : "",
       "",
-      "私聊 target：`dm:<uid>`；群 @ 使用 `mentionUids:[\"<uid>\"]`。",
+      "私聊 human target：`dm:<uid>`；群/thread @ 使用 `@[uid:显示名]`，Studio 会发送可见 @ 并附带 Octo mention entity。",
     ].filter(Boolean).join("\n");
   }
   if (input.action === "list-threads") {
@@ -1727,6 +1777,37 @@ export function formatChannelConnectorOctoManagementReply(input: {
       content ? "```" : "",
     ].filter(Boolean).join("\n");
   }
+  if (input.action === "voice-context-read") {
+    const info = octoSingleRecord(input.result.data);
+    const hasContext = info.has_context === true || info.hasContext === true || Boolean(octoRecordString(info, ["context"]));
+    const context = normalizeString(info.context);
+    const updatedAt = octoRecordString(info, ["updated_at", "updatedAt"]);
+    return [
+      `Octo Voice Context：${hasContext ? "已配置" : "未配置"}`,
+      updatedAt ? `更新时间：${updatedAt}` : "",
+      context ? "```text" : "",
+      context || "（未配置语音纠错上下文）",
+      context ? "```" : "",
+    ].filter(Boolean).join("\n");
+  }
+  if (input.action === "history") {
+    const messages = octoSyncedMessagesFromData(input.result.data)
+      .sort((left, right) => (octoSyncedMessageSeq(left) || 0) - (octoSyncedMessageSeq(right) || 0));
+    const lines = messages
+      .map((message, index) => {
+        const seq = octoSyncedMessageSeq(message);
+        const sender = octoRecordString(message, ["from_uid", "fromUid", "sender", "uid"]) || "unknown";
+        const text = octoSyncedMessageText(message.payload);
+        return `${index + 1}. ${seq ? `#${seq} ` : ""}${sender}: ${text || "（空消息）"}`;
+      })
+      .slice(-60);
+    return [
+      `Octo 聊天记录：${normalizeString(input.channelId) || normalizeString(input.groupNo) || "当前会话"}（${input.result.itemCount ?? messages.length}）`,
+      lines.length ? "```text" : "",
+      ...lines,
+      lines.length ? "```" : "（没有读取到历史消息）",
+    ].filter(Boolean).join("\n");
+  }
   if (input.action === "create-group") {
     const info = octoSingleRecord(input.result.data);
     const id = octoRecordString(info, ["group_no", "groupNo", "id"]);
@@ -1748,6 +1829,8 @@ export function formatChannelConnectorOctoManagementReply(input: {
     "delete-thread",
     "group-md-update",
     "thread-md-update",
+    "voice-context-update",
+    "voice-context-delete",
   ].includes(input.action)) {
     const info = octoSingleRecord(input.result.data);
     const labels: Record<string, string> = {
@@ -1759,6 +1842,8 @@ export function formatChannelConnectorOctoManagementReply(input: {
       "delete-thread": "已删除 Octo Thread",
       "group-md-update": "已更新 Octo GROUP.md",
       "thread-md-update": "已更新 Octo THREAD.md",
+      "voice-context-update": "已更新 Octo Voice Context",
+      "voice-context-delete": "已删除 Octo Voice Context",
     };
     return `${labels[input.action] || "Octo 操作已完成"}：${octoOkSummary(info)}`;
   }
@@ -1776,6 +1861,8 @@ const OCTO_MUTATING_ACTIONS = new Set<ChannelConnectorOctoManagementAction>([
   "leave-thread",
   "group-md-update",
   "thread-md-update",
+  "voice-context-update",
+  "voice-context-delete",
 ]);
 
 function parseOctoOptionArgs(tokens: string[]): {
@@ -2000,6 +2087,40 @@ async function handleOctoManagementCommand(
     }
     return callOcto({ action: "thread-members", groupNo, shortId }, "show");
   }
+  if (["history", "messages", "sync", "sync-messages"].includes(subcommand)) {
+    const first = normalizeString(args[1]);
+    const second = normalizeString(args[2]);
+    const firstAsLimit = Number(first);
+    const hasNumericFirst = Boolean(first) && Number.isFinite(firstAsLimit);
+    const channelId = hasNumericFirst
+      ? context.message.channelType === 1 ? normalizeString(context.message.fromUid) : normalizeString(context.message.channelId)
+      : first || (context.message.channelType === 1 ? normalizeString(context.message.fromUid) : normalizeString(context.message.channelId));
+    const channelType = first && !hasNumericFirst && first.includes("____") ? 5 : context.message.channelType;
+    const parsedLimit = hasNumericFirst ? firstAsLimit : Number(second);
+    const limit = Number.isFinite(parsedLimit) ? Math.max(1, Math.min(100, Math.floor(parsedLimit))) : 20;
+    const currentSeq = typeof context.message.messageSeq === "number" && Number.isFinite(context.message.messageSeq)
+      ? context.message.messageSeq
+      : null;
+    if (!channelId) {
+      return {
+        handled: true,
+        command: "octo",
+        action: "show",
+        ok: false,
+        control: currentControl,
+        replyText: "用法：`/octo history [条数]`；也可 `/octo history <group_no|channel_id> [条数]`。",
+        passthroughText: null,
+      };
+    }
+    return callOcto({
+      action: "history",
+      channelId,
+      channelType,
+      groupNo: octoParentGroupNo(context.message) || null,
+      limit,
+      endMessageSeq: currentSeq && currentSeq > 1 ? currentSeq - 1 : 0,
+    }, "show");
+  }
   if (["group-md", "group-md-read", "read-group-md"].includes(subcommand)) {
     const groupNo = normalizeString(args[1]) || octoParentGroupNo(context.message);
     if (!groupNo) {
@@ -2030,6 +2151,9 @@ async function handleOctoManagementCommand(
       };
     }
     return callOcto({ action: "thread-md-read", groupNo, shortId }, "show");
+  }
+  if (["voice-context", "voice-context-read", "read-voice-context"].includes(subcommand)) {
+    return callOcto({ action: "voice-context-read" }, "show");
   }
   if (["create-group", "new-group"].includes(subcommand)) {
     const parsed = parseOctoOptionArgs(args.slice(1));
@@ -2094,6 +2218,22 @@ async function handleOctoManagementCommand(
     }
     return callOcto({ action: "group-md-update", groupNo, content }, "set");
   }
+  if (["set-voice-context", "update-voice-context", "voice-context-update"].includes(subcommand)) {
+    const parsed = parseOctoOptionArgs(args.slice(1));
+    const content = octoOptionText(parsed, ["content", "text", "context"]) || normalizeString(parsed.positionals.join(" "));
+    if (!content) {
+      return {
+        handled: true,
+        command: "octo",
+        action: "set",
+        ok: false,
+        control: currentControl,
+        replyText: "用法：`/octo set-voice-context <语音纠错上下文>`",
+        passthroughText: null,
+      };
+    }
+    return callOcto({ action: "voice-context-update", content }, "set");
+  }
   if (["add-members", "add-member", "remove-members", "remove-member"].includes(subcommand)) {
     const hasExplicitGroupNo = Boolean(normalizeString(args[1]));
     const groupNo = normalizeString(args[1]) || octoParentGroupNo(context.message);
@@ -2146,6 +2286,9 @@ async function handleOctoManagementCommand(
       };
     }
     return callOcto({ action: "delete-thread", groupNo, shortId }, "set");
+  }
+  if (["delete-voice-context", "remove-voice-context", "voice-context-delete"].includes(subcommand)) {
+    return callOcto({ action: "voice-context-delete" }, "set");
   }
   if (["set-thread-md", "update-thread-md", "thread-md-update"].includes(subcommand)) {
     const currentGroupNo = octoParentGroupNo(context.message);

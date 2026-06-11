@@ -52,6 +52,7 @@ import {
 } from "./codex-app-server-driver.js";
 import { createNativeCliSessionDriverFactory } from "./cli-agent-session-driver.js";
 import {
+  deleteChannelConnectorAgentSession,
   getChannelConnectorAgentSession,
   listChannelConnectorAgentSessionsForConversation,
   upsertChannelConnectorAgentSession,
@@ -116,6 +117,7 @@ import {
   extractOctoContent,
   isOctoGroupChannel,
   isOctoMessageDirectedAtBot,
+  renderOctoOutboundText,
   renderOctoTextReply,
   shouldSkipOctoMessage,
 } from "./octo-adapter.js";
@@ -162,6 +164,7 @@ import {
   createOctoGroup,
   createOctoThread,
   deleteOctoThread,
+  deleteOctoVoiceContext,
   getOctoGroupInfo,
   getOctoThreadInfo,
   joinOctoThread,
@@ -173,6 +176,7 @@ import {
   octoTransportFromMetadata,
   readOctoGroupMd,
   readOctoThreadMd,
+  readOctoVoiceContext,
   registerOctoBot,
   removeOctoGroupMembers,
   searchOctoSpaceMembers,
@@ -184,6 +188,7 @@ import {
   updateOctoGroupMd,
   updateOctoGroupInfo,
   updateOctoThreadMd,
+  updateOctoVoiceContext,
   uploadAndSendOctoMedia,
 } from "./octo-transport.js";
 import {
@@ -194,6 +199,7 @@ import {
 } from "./outbound-files.js";
 import {
   extractChannelConnectorOutboundMessages,
+  resolveOctoOutboundMessageTarget,
   type ChannelConnectorOutboundMessageRequest,
 } from "./outbound-messages.js";
 import {
@@ -2551,6 +2557,18 @@ function queuedAgentRunReply(input: {
   ].filter(Boolean).join("\n");
 }
 
+function isStaleAgentSessionResumeFailure(result: ChannelConnectorAgentTurnResult): boolean {
+  if (result.status !== "failed" || result.session.resumed !== true) return false;
+  const haystack = [
+    result.error,
+    result.stderr,
+    result.stdout,
+    result.progress.summary,
+    result.progress.latest?.text,
+  ].map((value) => normalizeString(value)).filter(Boolean).join("\n");
+  return /thread\/resume failed|no rollout found/i.test(haystack);
+}
+
 async function runChannelConnectorAgentTurnWithSessionDriver(input: {
   binding: ChannelConnectorRuntimeBinding;
   project: ChannelConnectorRuntimeProject;
@@ -2562,7 +2580,7 @@ async function runChannelConnectorAgentTurnWithSessionDriver(input: {
     binding: input.binding,
     project: input.project,
   }).effectiveMode;
-  return channelAgentSessionDriverPool.runTurn({
+  const run = (request: Parameters<typeof runChannelConnectorAgentTurn>[0]) => channelAgentSessionDriverPool.runTurn({
     mode,
     key: {
       bindingId: input.binding.id,
@@ -2574,11 +2592,21 @@ async function runChannelConnectorAgentTurnWithSessionDriver(input: {
       permissionMode: input.project.permissionMode,
     },
     messageId: input.messageId,
-    agentTurnRequest: input.request,
-    signal: input.request.signal || null,
-    onProgress: input.request.onProgress,
-    runOneShot: () => runChannelConnectorAgentTurn(input.request),
+    agentTurnRequest: request,
+    signal: request.signal || null,
+    onProgress: request.onProgress,
+    runOneShot: () => runChannelConnectorAgentTurn(request),
   });
+  const first = await run(input.request);
+  if (!isStaleAgentSessionResumeFailure(first)) return first;
+  const freshRequest: Parameters<typeof runChannelConnectorAgentTurn>[0] = {
+    ...input.request,
+    session: {
+      agentNativeSessionId: null,
+      codexThreadId: null,
+    },
+  };
+  return run(freshRequest);
 }
 
 async function sendOctoOutboundFiles(input: {
@@ -2613,6 +2641,7 @@ async function sendOctoOutboundFiles(input: {
 
 async function sendOctoOutboundMessages(input: {
   transport: ChannelConnectorOctoTransportConfig;
+  sourceMessage: ChannelConnectorOctoInboundMessage;
   messages: ChannelConnectorOutboundMessageRequest[];
 }): Promise<{ sentCount: number; requestCount: number; errors: string[] }> {
   let sentCount = 0;
@@ -2620,8 +2649,18 @@ async function sendOctoOutboundMessages(input: {
   const errors: string[] = [];
   for (const message of input.messages) {
     if (message.platform && message.platform !== "octo") continue;
-    const channelId = normalizeString(message.channelId);
-    const channelType = Number(message.channelType || 1);
+    const target = resolveOctoOutboundMessageTarget({
+      message,
+      sourceChannelId: input.sourceMessage.channelId,
+      sourceChannelType: input.sourceMessage.channelType,
+    });
+    if (target.error) {
+      errors.push(target.error);
+      continue;
+    }
+    const channelId = target.channelId;
+    const channelType = target.channelType;
+    const mentionUids = target.mentionUids;
     const content = normalizeString(message.content);
     if (!channelId || !content || !Number.isFinite(channelType)) {
       errors.push("Octo outbound message requires channelId/channelType/content.");
@@ -2632,25 +2671,20 @@ async function sendOctoOutboundMessages(input: {
       errors.push(`Octo outbound message to ${channelId} has empty content.`);
       continue;
     }
-    const result = await sendOctoTextReply(input.transport, {
+    const replyPlan = renderOctoOutboundText({
       channelId,
       channelType: channelType as 1 | 2 | 5,
-      chunks,
-      mentionUids: message.mentionUids,
-      payloads: chunks.map((chunk) => {
-        const payload: {
-          type: 1;
-          content: string;
-          mention?: { uids?: string[]; all?: true };
-        } = { type: 1, content: chunk };
-        if (message.mentionAll) payload.mention = { all: true };
-        if (message.mentionUids.length) payload.mention = { ...(payload.mention || {}), uids: message.mentionUids };
-        return {
-          channel_id: channelId,
-          channel_type: channelType as 1 | 2 | 5,
-          payload,
-        };
-      }),
+      content,
+      members: input.sourceMessage.members || [],
+      mentionUids,
+      mentionAll: message.mentionAll,
+    });
+    if (!replyPlan) {
+      errors.push(`Octo outbound message to ${channelId} has empty rendered content.`);
+      continue;
+    }
+    const result = await sendOctoTextReply(input.transport, {
+      ...replyPlan,
     });
     requestCount += result.requestCount;
     if (result.ok === true) {
@@ -3541,7 +3575,7 @@ async function maybeAutoCompactChannelConnectorConversation(input: {
     sessionsCleared: fallbackResult.sessionsCleared,
     summaryPreview: autoCompactSummaryPreview(fallbackResult.summaryText),
     error: fallbackResult.ok
-      ? nativeResult.error || null
+      ? null
       : fallbackResult.error || nativeResult.error || "Studio compact fallback failed.",
     cooldownStartedAt: fallbackCooldownStartedAt,
     cooldownUntil: fallbackCooldownUntil,
@@ -4590,6 +4624,26 @@ async function runOctoManagementCommand(
         content: normalizeString(input.content),
       });
       break;
+    case "voice-context-read":
+      result = await readOctoVoiceContext(transport);
+      break;
+    case "voice-context-update":
+      result = await updateOctoVoiceContext(transport, {
+        content: normalizeString(input.content),
+      });
+      break;
+    case "voice-context-delete":
+      result = await deleteOctoVoiceContext(transport);
+      break;
+    case "history":
+      result = await syncOctoMessages(transport, {
+        channelId: normalizeString(input.channelId) || normalizeString(input.groupNo),
+        channelType: input.channelType || input.message.channelType,
+        limit: input.limit || 20,
+        endMessageSeq: input.endMessageSeq || 0,
+        pullMode: 1,
+      });
+      break;
     case "create-thread":
       result = await createOctoThread(transport, {
         groupNo: normalizeString(input.groupNo),
@@ -4622,6 +4676,7 @@ async function runOctoManagementCommand(
       result,
       groupNo: input.groupNo || null,
       shortId: input.shortId || null,
+      channelId: input.channelId || null,
       keyword: input.keyword || null,
       name: input.name || null,
       content: input.content || null,
@@ -7752,7 +7807,15 @@ async function dispatchOctoMessage(input: {
     status: agent.status,
   });
   let nextSession: ChannelConnectorAgentSessionRecord | null = null;
-  if (agent.session.agentNativeSessionId || agent.session.codexThreadId || currentSession?.agentNativeSessionId || currentSession?.codexThreadId) {
+  const dropStaleSession = isStaleAgentSessionResumeFailure(agent);
+  if (dropStaleSession && currentSession) {
+    deleteChannelConnectorAgentSession(agentSessionsPath(config), {
+      bindingId: effectiveSessionLookup.bindingId,
+      sessionKey: effectiveSessionLookup.sessionKey,
+      sessionId: currentSession.id,
+    });
+  }
+  if (!dropStaleSession && (agent.session.agentNativeSessionId || agent.session.codexThreadId || currentSession?.agentNativeSessionId || currentSession?.codexThreadId)) {
     nextSession = upsertChannelConnectorAgentSession(agentSessionsPath(config), {
       ...effectiveSessionLookup,
       agentNativeSessionId: agent.session.agentNativeSessionId || currentSession?.agentNativeSessionId || agent.session.codexThreadId || currentSession?.codexThreadId || null,
@@ -7856,6 +7919,7 @@ async function dispatchOctoMessage(input: {
   if (transport && agent.ok === true && outboundReply.messages.length > 0) {
     const sentMessages = await sendOctoOutboundMessages({
       transport,
+      sourceMessage: message,
       messages: outboundReply.messages,
     });
     outboundMessageSentCount = sentMessages.sentCount;
@@ -8916,7 +8980,15 @@ async function dispatchFeishuParsedEvent(input: {
     status: agent.status,
   });
   let nextSession: ChannelConnectorAgentSessionRecord | null = null;
-  if (agent.session.agentNativeSessionId || agent.session.codexThreadId || currentSession?.agentNativeSessionId || currentSession?.codexThreadId) {
+  const dropStaleSession = isStaleAgentSessionResumeFailure(agent);
+  if (dropStaleSession && currentSession) {
+    deleteChannelConnectorAgentSession(agentSessionsPath(config), {
+      bindingId: effectiveSessionLookup.bindingId,
+      sessionKey: effectiveSessionLookup.sessionKey,
+      sessionId: currentSession.id,
+    });
+  }
+  if (!dropStaleSession && (agent.session.agentNativeSessionId || agent.session.codexThreadId || currentSession?.agentNativeSessionId || currentSession?.codexThreadId)) {
     nextSession = upsertChannelConnectorAgentSession(agentSessionsPath(config), {
       ...effectiveSessionLookup,
       agentNativeSessionId: agent.session.agentNativeSessionId || currentSession?.agentNativeSessionId || agent.session.codexThreadId || currentSession?.codexThreadId || null,

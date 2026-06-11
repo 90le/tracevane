@@ -65,6 +65,7 @@ import {
   createOctoGroup,
   createOctoThread,
   deleteOctoThread,
+  deleteOctoVoiceContext,
   directUploadAndSendOctoMedia,
   directUploadOctoFile,
   emptyOctoTransportResult,
@@ -81,6 +82,7 @@ import {
   octoTransportFromBinding,
   readOctoGroupMd,
   readOctoThreadMd,
+  readOctoVoiceContext,
   registerOctoBot,
   removeOctoGroupMembers,
   searchOctoSpaceMembers,
@@ -91,6 +93,7 @@ import {
   updateOctoGroupMd,
   updateOctoGroupInfo,
   updateOctoThreadMd,
+  updateOctoVoiceContext,
   uploadAndSendOctoMedia,
   uploadOctoFile,
 } from "./octo-transport.js";
@@ -1255,6 +1258,9 @@ function normalizeOctoTransportSmokeRequest(payload: ChannelConnectorOctoTranspo
     || payload.action === "group-md-update"
     || payload.action === "thread-md-read"
     || payload.action === "thread-md-update"
+    || payload.action === "voice-context-read"
+    || payload.action === "voice-context-update"
+    || payload.action === "voice-context-delete"
     || payload.action === "event-ack"
     || payload.action === "sync-messages"
     || payload.action === "file-download-url"
@@ -1337,6 +1343,7 @@ function normalizeCommandActionRequest(payload: ChannelConnectorCommandActionReq
     channelId: normalizeString(payload.channelId) || null,
     channelType: channelType === 1 || channelType === 2 || channelType === 5 ? channelType : null,
     messageId: normalizeString(payload.messageId) || null,
+    messageSeq: typeof payload.messageSeq === "number" && Number.isFinite(payload.messageSeq) ? payload.messageSeq : null,
     actionValue: payload.actionValue,
     eventKey: normalizeString(payload.eventKey) || null,
     view: normalizeChannelConnectorCommandSurfaceView(payload.view) || null,
@@ -1509,6 +1516,26 @@ async function runOctoManagementForBinding(
         content: normalizeString(input.content),
       });
       break;
+    case "voice-context-read":
+      result = await readOctoVoiceContext(transport);
+      break;
+    case "voice-context-update":
+      result = await updateOctoVoiceContext(transport, {
+        content: normalizeString(input.content),
+      });
+      break;
+    case "voice-context-delete":
+      result = await deleteOctoVoiceContext(transport);
+      break;
+    case "history":
+      result = await syncOctoMessages(transport, {
+        channelId: normalizeString(input.channelId) || normalizeString(input.groupNo),
+        channelType: input.channelType || input.message.channelType,
+        limit: input.limit || 20,
+        endMessageSeq: input.endMessageSeq || 0,
+        pullMode: 1,
+      });
+      break;
     case "search-members":
       result = await searchOctoSpaceMembers(transport, {
         keyword: input.keyword || null,
@@ -1601,6 +1628,7 @@ async function runOctoManagementForBinding(
       result,
       groupNo: input.groupNo || null,
       shortId: input.shortId || null,
+      channelId: input.channelId || null,
       keyword: input.keyword || null,
       name: input.name || null,
       content: input.content || null,
@@ -2173,6 +2201,7 @@ export function createChannelConnectorsService(
         }),
         message: {
           messageId: request.messageId || `feishu-action-${Date.now()}`,
+          messageSeq: typeof request.messageSeq === "number" && Number.isFinite(request.messageSeq) ? request.messageSeq : null,
           fromUid: request.fromUid || "",
           channelId: request.channelId || request.fromUid || sessionKey,
           channelType: request.channelType === 1 || request.channelType === 2 || request.channelType === 5
@@ -2731,6 +2760,7 @@ export function createChannelConnectorsService(
         channelId: message.channelId,
         channelType: message.channelType,
         messageId: message.messageId,
+        messageSeq: message.messageSeq || null,
         eventKey: content,
         renderer: "text",
         dryRun,
@@ -2865,6 +2895,7 @@ export function createChannelConnectorsService(
         channelType: request.channelType || 1,
         chunks: [request.content || "Studio Octo transport smoke"],
         mentionUids: [],
+        mentionEntities: [],
         payloads: [
           {
             channel_id: request.channelId,
@@ -2938,6 +2969,15 @@ export function createChannelConnectorsService(
         groupNo: request.groupNo,
         content: request.content || "",
       });
+    } else if (request.action === "voice-context-read") {
+      transport = await readOctoVoiceContext(transportConfig);
+    } else if (request.action === "voice-context-update") {
+      if (!request.content) throw new Error("content is required for Octo voice-context-update smoke.");
+      transport = await updateOctoVoiceContext(transportConfig, {
+        content: request.content,
+      });
+    } else if (request.action === "voice-context-delete") {
+      transport = await deleteOctoVoiceContext(transportConfig);
     } else if (request.action === "space-members") {
       transport = await searchOctoSpaceMembers(transportConfig, {
         keyword: request.keyword || "",

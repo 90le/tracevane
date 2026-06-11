@@ -44,8 +44,15 @@ export type ChannelConnectorReasoningEffort = "low" | "medium" | "high" | "xhigh
 
 export type ChannelConnectorOctoChannelType = 1 | 2 | 5;
 
+export interface ChannelConnectorOctoMentionEntity {
+  uid: string;
+  offset: number;
+  length: number;
+}
+
 export interface ChannelConnectorOctoMentionPayload {
   uids?: string[];
+  entities?: ChannelConnectorOctoMentionEntity[];
   all?: number | boolean;
   ais?: number | boolean;
   humans?: number | boolean;
@@ -238,6 +245,9 @@ export interface ChannelConnectorOctoTransportResult {
 	    | "group-md-update"
 	    | "thread-md-read"
 	    | "thread-md-update"
+	    | "voice-context-read"
+	    | "voice-context-update"
+	    | "voice-context-delete"
 	    | "event-ack"
 	    | "sync-messages"
 	    | "file-download-url";
@@ -293,6 +303,9 @@ export interface ChannelConnectorOctoTransportSmokeRequest {
 	    | "group-md-update"
 	    | "thread-md-read"
 	    | "thread-md-update"
+	    | "voice-context-read"
+	    | "voice-context-update"
+	    | "voice-context-delete"
 	    | "event-ack"
 	    | "sync-messages"
 	    | "file-download-url";
@@ -330,6 +343,7 @@ export interface ChannelConnectorOctoReplyPlan {
   channelType: ChannelConnectorOctoChannelType;
   chunks: string[];
   mentionUids: string[];
+  mentionEntities: ChannelConnectorOctoMentionEntity[];
   payloads: Array<{
     channel_id: string;
     channel_type: ChannelConnectorOctoChannelType;
@@ -338,6 +352,7 @@ export interface ChannelConnectorOctoReplyPlan {
       content: string;
       mention?: {
         uids?: string[];
+        entities?: ChannelConnectorOctoMentionEntity[];
         all?: true;
       };
     };
@@ -521,6 +536,7 @@ export interface ChannelConnectorCommandActionRequest {
   channelId?: string | null;
   channelType?: ChannelConnectorOctoChannelType | null;
   messageId?: string | null;
+  messageSeq?: number | null;
   actionValue?: unknown;
   eventKey?: string | null;
   view?: string | null;

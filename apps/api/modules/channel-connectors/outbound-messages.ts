@@ -18,6 +18,14 @@ export interface ChannelConnectorExtractedOutboundMessages {
   errors: string[];
 }
 
+export interface ChannelConnectorOctoOutboundTargetResolution {
+  channelId: string;
+  channelType: number;
+  mentionUids: string[];
+  error: string | null;
+  remappedBotDm: boolean;
+}
+
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -47,6 +55,14 @@ function uniqueStrings(values: string[]): string[] {
   return [...new Set(values.map(normalizeString).filter(Boolean))];
 }
 
+function isOctoGroupChannelType(channelType: number): boolean {
+  return channelType === 2 || channelType === 5;
+}
+
+function isOctoBotUid(value: string): boolean {
+  return normalizeString(value).toLowerCase().endsWith("_bot");
+}
+
 function extractStructuredMentionUids(content: string): { content: string; mentionUids: string[] } {
   const mentionUids: string[] = [];
   const stripped = content.replace(/@\[([A-Za-z0-9_.:-]+):([^\]\r\n]+)\]/g, (_match, uid: string) => {
@@ -66,11 +82,11 @@ function extractStructuredMentionUids(content: string): { content: string; menti
 
 function channelTypeFromTarget(target: string): { channelId: string; channelType: number | null; chatId: string | null } {
   const normalized = normalizeString(target);
-  const match = normalized.match(/^(dm|user|uid|group|thread|chat):(.+)$/i);
+  const match = normalized.match(/^(dm|user|uid|bot|group|thread|chat):(.+)$/i);
   if (!match) return { channelId: normalized, channelType: null, chatId: null };
   const kind = match[1].toLowerCase();
   const value = normalizeString(match[2]);
-  if (kind === "dm" || kind === "user" || kind === "uid") return { channelId: value, channelType: 1, chatId: null };
+  if (kind === "dm" || kind === "user" || kind === "uid" || kind === "bot") return { channelId: value, channelType: 1, chatId: null };
   if (kind === "group") return { channelId: value, channelType: 2, chatId: null };
   if (kind === "thread") return { channelId: value, channelType: 5, chatId: null };
   return { channelId: "", channelType: null, chatId: value };
@@ -157,5 +173,43 @@ export function extractChannelConnectorOutboundMessages(replyText: string | null
     replyText: stripped,
     messages,
     errors,
+  };
+}
+
+export function resolveOctoOutboundMessageTarget(input: {
+  message: ChannelConnectorOutboundMessageRequest;
+  sourceChannelId: string | null | undefined;
+  sourceChannelType: number | null | undefined;
+}): ChannelConnectorOctoOutboundTargetResolution {
+  const sourceChannelId = normalizeString(input.sourceChannelId);
+  const sourceChannelType = Number(input.sourceChannelType);
+  const channelId = normalizeString(input.message.channelId);
+  const channelType = Number(input.message.channelType || 1);
+  const mentionUids = uniqueStrings(input.message.mentionUids);
+  const dmTargetIsBot = channelType === 1 && isOctoBotUid(channelId);
+  if (!dmTargetIsBot) {
+    return {
+      channelId,
+      channelType,
+      mentionUids,
+      error: null,
+      remappedBotDm: false,
+    };
+  }
+  if (sourceChannelId && isOctoGroupChannelType(sourceChannelType)) {
+    return {
+      channelId: sourceChannelId,
+      channelType: sourceChannelType,
+      mentionUids: uniqueStrings([...mentionUids, channelId]),
+      error: null,
+      remappedBotDm: true,
+    };
+  }
+  return {
+    channelId,
+    channelType,
+    mentionUids,
+    error: `${channelId}: Octo Bot API does not support bot DM targets; use a group/thread mention or Studio internal agent routing.`,
+    remappedBotDm: false,
   };
 }

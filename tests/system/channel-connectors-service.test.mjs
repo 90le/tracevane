@@ -41,6 +41,8 @@ import {
 } from "../../dist/apps/api/modules/channel-connectors/feishu-adapter.js";
 import {
   attachExtractedOctoAttachments,
+  renderOctoOutboundText,
+  renderOctoTextReply,
 } from "../../dist/apps/api/modules/channel-connectors/octo-adapter.js";
 import {
   uploadAndSendOctoMedia,
@@ -118,6 +120,7 @@ import {
 } from "../../dist/apps/api/modules/channel-connectors/outbound-files.js";
 import {
   extractChannelConnectorOutboundMessages,
+  resolveOctoOutboundMessageTarget,
 } from "../../dist/apps/api/modules/channel-connectors/outbound-messages.js";
 
 function makeTempRoot() {
@@ -446,7 +449,7 @@ async function withMockOctoServer(task, options = {}) {
         return;
       }
       if (req.method === "GET" && req.url === "/v1/bot/groups/group-1/md") {
-        res.end(JSON.stringify({ content: "# Group Rules\n- Ask bots by DM when requested.", version: 2 }));
+        res.end(JSON.stringify({ content: "# Group Rules\n- Ask human members by DM.\n- Ask bots by group/thread mention.", version: 2 }));
         return;
       }
       if (req.method === "PUT" && req.url === "/v1/bot/groups/group-1/md") {
@@ -491,6 +494,22 @@ async function withMockOctoServer(task, options = {}) {
       }
       if (req.method === "PUT" && req.url === "/v1/bot/groups/group-1/threads/thread-1/md") {
         res.end(JSON.stringify({ version: 5 }));
+        return;
+      }
+      if (req.method === "GET" && req.url === "/v1/bot/voice/context") {
+        res.end(JSON.stringify({
+          has_context: true,
+          context: "Alice may be transcribed as A list.",
+          updated_at: "2026-06-06T08:00:00Z",
+        }));
+        return;
+      }
+      if (req.method === "PUT" && req.url === "/v1/bot/voice/context") {
+        res.end(JSON.stringify({ ok: true, updated: true }));
+        return;
+      }
+      if (req.method === "DELETE" && req.url === "/v1/bot/voice/context") {
+        res.end(JSON.stringify({ ok: true, deleted: true }));
         return;
       }
       if (req.method === "POST" && req.url === "/v1/bot/groups/group-1/threads") {
@@ -1064,6 +1083,7 @@ test("native Channel Connectors extracts outbound IM message manifests", () => {
     "```studio-channel-messages",
     JSON.stringify([
       { platform: "octo", target: "dm:user-1", content: "请介绍一下你的能力" },
+      { platform: "octo", target: "bot:27xIxHrNV0Qc3ee2129_bot", content: "请介绍一下你的能力" },
       { platform: "octo", target: "group:group-a", content: "@[user-2:Alice] 大家看这里" },
       { platform: "octo", target: "thread:group-a____topic-1", content: "Thread ping", mentionAll: true },
       { platform: "feishu", chatId: "oc_chat", content: "Feishu ping" },
@@ -1073,15 +1093,64 @@ test("native Channel Connectors extracts outbound IM message manifests", () => {
 
   assert.equal(extracted.replyText, "我会通知她们。");
   assert.deepEqual(extracted.errors, []);
-  assert.equal(extracted.messages.length, 4);
+  assert.equal(extracted.messages.length, 5);
   assert.deepEqual(extracted.messages.map((message) => [message.platform, message.channelId, message.channelType, message.chatId, message.content]), [
     ["octo", "user-1", 1, null, "请介绍一下你的能力"],
+    ["octo", "27xIxHrNV0Qc3ee2129_bot", 1, null, "请介绍一下你的能力"],
     ["octo", "group-a", 2, null, "大家看这里"],
     ["octo", "group-a____topic-1", 5, null, "Thread ping"],
     ["feishu", "", null, "oc_chat", "Feishu ping"],
   ]);
-  assert.deepEqual(extracted.messages[1].mentionUids, ["user-2"]);
-  assert.equal(extracted.messages[2].mentionAll, true);
+  assert.deepEqual(extracted.messages[2].mentionUids, ["user-2"]);
+  assert.equal(extracted.messages[3].mentionAll, true);
+
+  const botFromGroup = resolveOctoOutboundMessageTarget({
+    message: extracted.messages[1],
+    sourceChannelId: "group-a",
+    sourceChannelType: 2,
+  });
+  assert.equal(botFromGroup.error, null);
+  assert.equal(botFromGroup.channelId, "group-a");
+  assert.equal(botFromGroup.channelType, 2);
+  assert.equal(botFromGroup.remappedBotDm, true);
+  assert.deepEqual(botFromGroup.mentionUids, ["27xIxHrNV0Qc3ee2129_bot"]);
+
+  const botFromDm = resolveOctoOutboundMessageTarget({
+    message: extracted.messages[1],
+    sourceChannelId: "user-1",
+    sourceChannelType: 1,
+  });
+  assert.match(botFromDm.error, /does not support bot DM targets/);
+
+  const visibleBotMention = renderOctoOutboundText({
+    channelId: botFromGroup.channelId,
+    channelType: botFromGroup.channelType,
+    content: extracted.messages[1].content,
+    mentionUids: botFromGroup.mentionUids,
+    members: [
+      { uid: "27xIxHrNV0Qc3ee2129_bot", name: "studio-cc", robot: 1 },
+    ],
+  });
+  assert.ok(visibleBotMention);
+  assert.deepEqual(visibleBotMention.chunks, ["@studio-cc 请介绍一下你的能力"]);
+  assert.deepEqual(visibleBotMention.payloads[0].payload.mention.uids, ["27xIxHrNV0Qc3ee2129_bot"]);
+  assert.deepEqual(visibleBotMention.payloads[0].payload.mention.entities, [
+    { uid: "27xIxHrNV0Qc3ee2129_bot", offset: 0, length: "@studio-cc".length },
+  ]);
+
+  const structuredBotMention = renderOctoOutboundText({
+    channelId: "group-a",
+    channelType: 2,
+    content: "@[27xIxHrNV0Qc3ee2129_bot:studio-cc] 请介绍一下你的能力",
+    members: [
+      { uid: "27xIxHrNV0Qc3ee2129_bot", name: "studio-cc", robot: 1 },
+    ],
+  });
+  assert.ok(structuredBotMention);
+  assert.deepEqual(structuredBotMention.chunks, ["@studio-cc 请介绍一下你的能力"]);
+  assert.deepEqual(structuredBotMention.payloads[0].payload.mention.entities, [
+    { uid: "27xIxHrNV0Qc3ee2129_bot", offset: 0, length: "@studio-cc".length },
+  ]);
 
   const invalid = extractChannelConnectorOutboundMessages([
     "bad",
@@ -1686,8 +1755,11 @@ test("Octo adapter follows group direction and mention rendering rules", async (
   assert.equal(directed.sessionKey, "dmwork:group:group-a");
   assert.equal(directed.incoming.content, "status");
   assert.deepEqual(directed.replyPlan.mentionUids, ["user-3"]);
-  assert.deepEqual(directed.replyPlan.chunks, ["已处理"]);
+  assert.deepEqual(directed.replyPlan.chunks, ["@Alice 已处理"]);
   assert.deepEqual(directed.replyPlan.payloads[0].payload.mention.uids, ["user-3"]);
+  assert.deepEqual(directed.replyPlan.payloads[0].payload.mention.entities, [
+    { uid: "user-3", offset: 0, length: "@Alice".length },
+  ]);
 
   const structuredMention = await service.dispatchOctoIncoming({
     bindingId: "octo-group",
@@ -1710,7 +1782,10 @@ test("Octo adapter follows group direction and mention rendering rules", async (
     },
   });
   assert.deepEqual(structuredMention.replyPlan.mentionUids, ["user-3"]);
-  assert.deepEqual(structuredMention.replyPlan.chunks, ["已处理"]);
+  assert.deepEqual(structuredMention.replyPlan.chunks, ["@Alice 已处理"]);
+  assert.deepEqual(structuredMention.replyPlan.payloads[0].payload.mention.entities, [
+    { uid: "user-3", offset: 0, length: "@Alice".length },
+  ]);
 });
 
 test("Octo transport smoke registers bot through binding metadata", async () => {
@@ -1930,6 +2005,25 @@ test("Octo transport smoke covers Bot API groups, members, history, threads, and
       && request.body.content === "# Updated Thread"
     ));
 
+    const voiceContext = await smoke({ action: "voice-context-read" });
+    assert.equal(voiceContext.transport.action, "voice-context-read");
+    assert.match(voiceContext.transport.data.context, /Alice/);
+
+    const updatedVoiceContext = await smoke({ action: "voice-context-update", content: "Bob => 包博" });
+    assert.equal(updatedVoiceContext.transport.ok, true);
+    assert.ok(requests.some((request) =>
+      request.path === "/v1/bot/voice/context"
+      && request.method === "PUT"
+      && request.body.context === "Bob => 包博"
+    ));
+
+    const deletedVoiceContext = await smoke({ action: "voice-context-delete" });
+    assert.equal(deletedVoiceContext.transport.ok, true);
+    assert.ok(requests.some((request) =>
+      request.path === "/v1/bot/voice/context"
+      && request.method === "DELETE"
+    ));
+
     const createdThread = await smoke({ action: "create-thread", groupNo: "group-1", name: "New Thread" });
     assert.equal(createdThread.transport.data.short_id, "thread-new");
 
@@ -2039,7 +2133,8 @@ test("Octo native management commands expose groups, members, and Space search",
     assert.equal(search.accepted, true);
     assert.equal(search.commandAction.commandResult.action, "list");
     assert.match(search.replyPlan.chunks.join("\n"), /Octo Space 成员搜索：Alice（1）/);
-    assert.match(search.replyPlan.chunks.join("\n"), /私聊 target：`dm:<uid>`/);
+    assert.match(search.replyPlan.chunks.join("\n"), /私聊 human target：`dm:<uid>`/);
+    assert.match(search.replyPlan.chunks.join("\n"), /@\[uid:显示名\]/);
     assert.ok(requests.some((request) => request.path === "/v1/bot/groups"));
     assert.ok(requests.some((request) => request.path === "/v1/bot/groups/group-1/members"));
     assert.ok(requests.some((request) => request.path === "/v1/bot/space/members?keyword=Alice&limit=30"));
@@ -2088,6 +2183,30 @@ test("Octo native management commands expose groups, members, and Space search",
     assert.equal(threadInfo.commandAction.commandResult.action, "show");
     assert.match(threadInfo.replyPlan.chunks.join("\n"), /Octo Thread：thread-1/);
 
+    const history = await service.dispatchOctoIncoming({
+      bindingId: "octo-api",
+      sendReply: false,
+      message: {
+        messageId: "octo-command-history",
+        messageSeq: 9,
+        fromUid: "user-1",
+        channelId: "group-1",
+        channelType: 2,
+        payload: { type: 1, content: "/octo history 5", mention: { uids: ["robot-1"] } },
+      },
+    });
+    assert.equal(history.commandAction.commandResult.action, "show");
+    assert.match(history.replyPlan.chunks.join("\n"), /Octo 聊天记录：group-1/);
+    assert.match(history.replyPlan.chunks.join("\n"), /history hello/);
+    const historyRequests = requests.filter((request) => request.path === "/v1/bot/messages/sync");
+    assert.ok(historyRequests.some((request) =>
+      request.path === "/v1/bot/messages/sync"
+      && request.body.channel_id === "group-1"
+      && request.body.channel_type === 2
+      && request.body.limit === 5
+      && request.body.end_message_seq === 8
+    ), JSON.stringify(historyRequests.map((request) => request.body)));
+
     const groupMd = await service.dispatchOctoIncoming({
       bindingId: "octo-api",
       sendReply: false,
@@ -2101,7 +2220,7 @@ test("Octo native management commands expose groups, members, and Space search",
     });
     assert.equal(groupMd.commandAction.commandResult.action, "show");
     assert.match(groupMd.replyPlan.chunks.join("\n"), /Octo GROUP\.md：group-1 · v2/);
-    assert.match(groupMd.replyPlan.chunks.join("\n"), /Ask bots by DM/);
+    assert.match(groupMd.replyPlan.chunks.join("\n"), /Ask bots by group\/thread mention/);
 
     const setGroupMd = await service.dispatchOctoIncoming({
       bindingId: "octo-api",
@@ -2132,6 +2251,21 @@ test("Octo native management commands expose groups, members, and Space search",
     assert.equal(threadMd.commandAction.commandResult.action, "show");
     assert.match(threadMd.replyPlan.chunks.join("\n"), /Octo THREAD\.md：thread-1 · v4/);
     assert.match(threadMd.replyPlan.chunks.join("\n"), /Focus on release notes/);
+
+    const voiceContext = await service.dispatchOctoIncoming({
+      bindingId: "octo-api",
+      sendReply: false,
+      message: {
+        messageId: "octo-command-voice-context",
+        fromUid: "user-1",
+        channelId: "user-1",
+        channelType: 1,
+        payload: { type: 1, content: "/octo voice-context" },
+      },
+    });
+    assert.equal(voiceContext.commandAction.commandResult.action, "show");
+    assert.match(voiceContext.replyPlan.chunks.join("\n"), /Octo Voice Context：已配置/);
+    assert.match(voiceContext.replyPlan.chunks.join("\n"), /Alice may be transcribed/);
 
     const createGroup = await service.dispatchOctoIncoming({
       bindingId: "octo-api",
@@ -2193,6 +2327,36 @@ test("Octo native management commands expose groups, members, and Space search",
     assert.equal(setThreadMd.commandAction.commandResult.ok, true);
     assert.match(setThreadMd.replyPlan.chunks.join("\n"), /已更新 Octo THREAD\.md/);
 
+    const setVoiceContext = await service.dispatchOctoIncoming({
+      bindingId: "octo-api",
+      sendReply: false,
+      message: {
+        messageId: "octo-command-set-voice-context",
+        fromUid: "user-1",
+        channelId: "user-1",
+        channelType: 1,
+        payload: { type: 1, content: "/octo set-voice-context Alice => 艾丽丝" },
+      },
+    });
+    assert.equal(setVoiceContext.commandAction.commandResult.action, "set");
+    assert.equal(setVoiceContext.commandAction.commandResult.ok, true);
+    assert.match(setVoiceContext.replyPlan.chunks.join("\n"), /已更新 Octo Voice Context/);
+
+    const deleteVoiceContext = await service.dispatchOctoIncoming({
+      bindingId: "octo-api",
+      sendReply: false,
+      message: {
+        messageId: "octo-command-delete-voice-context",
+        fromUid: "user-1",
+        channelId: "user-1",
+        channelType: 1,
+        payload: { type: 1, content: "/octo delete-voice-context" },
+      },
+    });
+    assert.equal(deleteVoiceContext.commandAction.commandResult.action, "set");
+    assert.equal(deleteVoiceContext.commandAction.commandResult.ok, true);
+    assert.match(deleteVoiceContext.replyPlan.chunks.join("\n"), /已删除 Octo Voice Context/);
+
     const deleteThread = await service.dispatchOctoIncoming({
       bindingId: "octo-api",
       sendReply: false,
@@ -2242,6 +2406,15 @@ test("Octo native management commands expose groups, members, and Space search",
       request.path === "/v1/bot/groups/group-1/threads/thread-1/md"
       && request.method === "PUT"
       && request.body.content === "# New Thread Rule"
+    ));
+    assert.ok(requests.some((request) =>
+      request.path === "/v1/bot/voice/context"
+      && request.method === "PUT"
+      && request.body.context === "Alice => 艾丽丝"
+    ));
+    assert.ok(requests.some((request) =>
+      request.path === "/v1/bot/voice/context"
+      && request.method === "DELETE"
     ));
     assert.ok(requests.some((request) =>
       request.path === "/v1/bot/groups/group-1/threads/thread-1"
@@ -2796,6 +2969,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
       members: [
         { uid: "user-2", name: "Alice" },
         { uid: "robot-1", name: "Studio" },
+        { uid: "external-helper_bot", name: "External Helper", robot: 1 },
       ],
     },
     sessionKey: "dmwork:group:group-a",
@@ -2811,6 +2985,9 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.match(groupRequest.stdin, /Known members from Octo Bot API:/);
   assert.match(groupRequest.stdin, /- Alice\(user-2\)/);
   assert.match(groupRequest.stdin, /- Studio\(robot-1\)/);
+  assert.match(groupRequest.stdin, /- External Helper\(external-helper_bot, bot\)/);
+  assert.match(groupRequest.stdin, /Octo does not support bot DMs/);
+  assert.match(groupRequest.stdin, /current group\/thread message using @\[uid:displayName\]/);
   assert.match(groupRequest.stdin, /studio-channel-messages manifest/);
   assert.match(groupRequest.stdin, /\[Studio outbound file\/message policy\]/);
   assert.match(groupRequest.stdin, /\[Current IM message - respond to this ONLY\]\nhi group/);

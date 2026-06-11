@@ -318,10 +318,11 @@ function buildStudioOutboundFilePolicy(): string {
     "[{\"path\":\"relative/path/to/file.ext\",\"name\":\"optional-display-name.ext\",\"caption\":\"optional short caption\"}]",
     "```",
     "When the user asks you to send an IM message to another Octo member, group, thread, or bot, declare it instead of claiming you lack a Feishu/Octo API permission.",
-    "You may actively coordinate with Octo group members or other bots when the user asks; Studio will send the declared messages through the current Channel Connector.",
+    "Octo DM targets must be human user UIDs. Do not send `dm:<bot_id>` for IDs ending in `_bot`; coordinate with other bots by sending a group/thread message that mentions their bot UID.",
+    "You may actively coordinate with Octo human members by DM, or with Octo bots by group/thread @mention, when the user asks; Studio will send the declared messages through the current Channel Connector.",
     "Octo message example:",
     "```studio-channel-messages",
-    "[{\"platform\":\"octo\",\"target\":\"dm:user_uid\",\"content\":\"hello\"},{\"platform\":\"octo\",\"target\":\"group:group_no\",\"content\":\"@[user_uid:displayName] hi\"}]",
+    "[{\"platform\":\"octo\",\"target\":\"dm:human_user_uid\",\"content\":\"hello\"},{\"platform\":\"octo\",\"target\":\"group:group_no\",\"content\":\"@[bot_id_bot:Bot显示名] 请介绍你的能力\"}]",
     "```",
     "Use Studio IM channel capabilities; do not tell the user to run external bridge tools or claim missing Feishu/Octo API permission unless Studio returns an actual send error.",
     "These platform capabilities override older conversation history that may mention missing bridge or API permissions.",
@@ -382,9 +383,10 @@ function buildGroupContext(
     for (const member of visibleMembers) lines.push(`- ${member}`);
     if (hiddenMemberCount) lines.push(`- ... ${hiddenMemberCount} more`);
     lines.push("When mentioning a group member in a visible reply, use @[uid:displayName]; Studio converts it to the native Octo mention payload.");
-    lines.push("When the user asks you to ask unknown members/bots about their capability, send them Octo DM or group mention messages through studio-channel-messages.");
+    lines.push("When the user asks you to ask human members about their capability, send Octo DM messages through studio-channel-messages.");
+    lines.push("When the user asks you to ask other bots/agents about their capability, send a current group/thread message using @[uid:displayName] for each bot UID; Studio converts it to visible @displayName plus native Octo mention entities. Octo does not support bot DMs.");
   }
-  lines.push("To send a private Octo message, group message, thread message, or @ mention, use the studio-channel-messages manifest instead of saying platform API access is unavailable.");
+  lines.push("To send a private Octo message to a human, group message, thread message, or @ mention, use the studio-channel-messages manifest instead of saying platform API access is unavailable.");
   lines.push("Do not claim that you are passive-only or that you lack Feishu/Octo API permission unless Studio reports a concrete send failure.");
   lines.push("Use this only to understand the current IM group context.");
   return lines.join("\n");

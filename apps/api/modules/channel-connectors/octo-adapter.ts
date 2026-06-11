@@ -5,6 +5,7 @@ import type {
   ChannelConnectorOctoGroupMember,
   ChannelConnectorOctoInboundMessage,
   ChannelConnectorOctoInboundRequest,
+  ChannelConnectorOctoMentionEntity,
   ChannelConnectorOctoReplyPlan,
   ChannelConnectorOctoTransportResult,
   ChannelConnectorPlatformBinding,
@@ -382,34 +383,127 @@ function cleanMentionContent(content: string): string {
     .trim();
 }
 
-function extractStructuredOctoMentions(content: string): { content: string; mentionUids: string[] } {
+function sameOctoUid(a: unknown, b: unknown): boolean {
+  const left = normalizeOctoAccountId(a);
+  const right = normalizeOctoAccountId(b);
+  return Boolean(left && right && left === right);
+}
+
+function memberDisplayNameByUid(members: ChannelConnectorOctoGroupMember[]): Map<string, string> {
+  const names = new Map<string, string>();
+  for (const member of members) {
+    const uid = normalizeString(member.uid);
+    const name = normalizeString(member.name);
+    if (uid && name) names.set(normalizeOctoAccountId(uid), name);
+  }
+  return names;
+}
+
+function visibleStructuredMention(uid: string, members: ChannelConnectorOctoGroupMember[]): string {
+  const name = memberDisplayNameByUid(members).get(normalizeOctoAccountId(uid)) || uid;
+  return `@[${uid}:${name}]`;
+}
+
+function contentHasVisibleMentionForUid(
+  content: string,
+  uid: string,
+  members: ChannelConnectorOctoGroupMember[],
+): boolean {
+  const normalizedUid = normalizeOctoAccountId(uid);
+  if (!normalizedUid) return false;
+  const structuredPattern = /@\[([A-Za-z0-9_.:-]+):([^\]\r\n]+)\]/g;
+  let match: RegExpExecArray | null;
+  while ((match = structuredPattern.exec(content)) !== null) {
+    if (sameOctoUid(match[1], uid)) return true;
+  }
+  const displayName = memberDisplayNameByUid(members).get(normalizedUid);
+  return Boolean(displayName && content.includes(`@${displayName}`));
+}
+
+function prependMissingVisibleMentions(
+  content: string,
+  mentionUids: string[],
+  members: ChannelConnectorOctoGroupMember[],
+): string {
+  const missing = uniqueStrings(mentionUids)
+    .filter((uid) => !contentHasVisibleMentionForUid(content, uid, members))
+    .map((uid) => visibleStructuredMention(uid, members));
+  if (!missing.length) return content;
+  return `${missing.join(" ")}${content ? ` ${content}` : ""}`;
+}
+
+function extractStructuredOctoMentions(content: string): {
+  content: string;
+  mentionUids: string[];
+  mentionEntities: ChannelConnectorOctoMentionEntity[];
+} {
   const mentionUids: string[] = [];
-  const stripped = content.replace(/@\[([A-Za-z0-9_.:-]+):([^\]\r\n]+)\]/g, (_match, uid: string) => {
+  const mentionEntities: ChannelConnectorOctoMentionEntity[] = [];
+  let output = "";
+  let cursor = 0;
+  const pattern = /@\[([A-Za-z0-9_.:-]+):([^\]\r\n]+)\]/g;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(content)) !== null) {
+    const [raw, uid, name] = match;
     const normalizedUid = normalizeString(uid);
-    if (normalizedUid) mentionUids.push(normalizedUid);
-    return " ";
-  });
+    output += content.slice(cursor, match.index);
+    const replacement = `@${normalizeString(name) || normalizedUid}`;
+    const offset = output.length;
+    output += replacement;
+    if (normalizedUid) {
+      mentionUids.push(normalizedUid);
+      mentionEntities.push({
+        uid: normalizedUid,
+        offset,
+        length: replacement.length,
+      });
+    }
+    cursor = match.index + raw.length;
+  }
+  output += content.slice(cursor);
   return {
-    content: cleanMentionContent(stripped),
+    content: cleanMentionContent(output),
     mentionUids: uniqueStrings(mentionUids),
+    mentionEntities,
   };
 }
 
-function extractOctoMentions(content: string, members: ChannelConnectorOctoGroupMember[]): { content: string; mentionUids: string[] } {
+function extractOctoMentions(
+  content: string,
+  members: ChannelConnectorOctoGroupMember[],
+): {
+  content: string;
+  mentionUids: string[];
+  mentionEntities: ChannelConnectorOctoMentionEntity[];
+} {
   const structured = extractStructuredOctoMentions(content);
   const mentionUids = [...structured.mentionUids];
+  const mentionEntities = [...structured.mentionEntities];
   content = structured.content;
-  if (!members.length) return { content, mentionUids: uniqueStrings(mentionUids) };
+  if (!members.length) {
+    return {
+      content,
+      mentionUids: uniqueStrings(mentionUids),
+      mentionEntities,
+    };
+  }
   const nameToUid = new Map<string, string>();
   for (const member of members) {
     const name = normalizeString(member.name).toLowerCase();
     const uid = normalizeString(member.uid);
     if (name && uid) nameToUid.set(name, uid);
   }
-  if (!nameToUid.size) return { content, mentionUids: uniqueStrings(mentionUids) };
+  if (!nameToUid.size) {
+    return {
+      content,
+      mentionUids: uniqueStrings(mentionUids),
+      mentionEntities,
+    };
+  }
 
   const runes = Array.from(content);
-  let output = "";
+  const existingOffsets = new Set(mentionEntities.map((entity) => entity.offset));
+  let utf16Offset = 0;
   for (let index = 0; index < runes.length; index += 1) {
     const char = runes[index];
     if (char === "@" && (index === 0 || /\s/u.test(runes[index - 1]))) {
@@ -419,16 +513,92 @@ function extractOctoMentions(content: string, members: ChannelConnectorOctoGroup
       const uid = nameToUid.get(name);
       if (uid) {
         mentionUids.push(uid);
-        index = end - 1;
-        continue;
+        if (!existingOffsets.has(utf16Offset)) {
+          mentionEntities.push({
+            uid,
+            offset: utf16Offset,
+            length: runes.slice(index, end).join("").length,
+          });
+          existingOffsets.add(utf16Offset);
+        }
       }
     }
-    output += char;
+    utf16Offset += char.length;
   }
 
+  mentionEntities.sort((a, b) => a.offset - b.offset);
   return {
-    content: cleanMentionContent(output),
+    content: cleanMentionContent(content),
     mentionUids: uniqueStrings(mentionUids),
+    mentionEntities,
+  };
+}
+
+function chunkMentionEntities(
+  content: string,
+  chunks: string[],
+  entities: ChannelConnectorOctoMentionEntity[],
+): ChannelConnectorOctoMentionEntity[][] {
+  let cursor = 0;
+  return chunks.map((chunk) => {
+    const start = content.indexOf(chunk, cursor);
+    const effectiveStart = start >= 0 ? start : cursor;
+    const end = effectiveStart + chunk.length;
+    cursor = end;
+    return entities
+      .filter((entity) => entity.offset >= effectiveStart && entity.offset + entity.length <= end)
+      .map((entity) => ({
+        ...entity,
+        offset: entity.offset - effectiveStart,
+      }));
+  });
+}
+
+export function renderOctoOutboundText(input: {
+  channelId: string;
+  channelType: 1 | 2 | 5;
+  content: string;
+  members?: ChannelConnectorOctoGroupMember[];
+  mentionUids?: string[];
+  mentionAll?: boolean;
+}): ChannelConnectorOctoReplyPlan | null {
+  const members = input.members || [];
+  const source = isOctoGroupChannel(input.channelType)
+    ? prependMissingVisibleMentions(input.content.trim(), input.mentionUids || [], members)
+    : input.content.trim();
+  const rendered = isOctoGroupChannel(input.channelType)
+    ? extractOctoMentions(source, members)
+    : { content: source, mentionUids: [], mentionEntities: [] };
+  if (!rendered.content) return null;
+  const chunks = splitOctoTextChunks(rendered.content);
+  const chunkEntities = chunkMentionEntities(rendered.content, chunks, rendered.mentionEntities);
+  const mentionUids = uniqueStrings([...(input.mentionUids || []), ...rendered.mentionUids]);
+  return {
+    channelId: input.channelId,
+    channelType: input.channelType,
+    chunks,
+    mentionUids,
+    mentionEntities: rendered.mentionEntities,
+    payloads: chunks.map((chunk, index) => {
+      const payload: ChannelConnectorOctoReplyPlan["payloads"][number]["payload"] = {
+        type: OCTO_MESSAGE_TYPE_TEXT,
+        content: chunk,
+      };
+      const entities = chunkEntities[index] || [];
+      const chunkMentionUids = uniqueStrings(entities.map((entity) => entity.uid));
+      if (chunkMentionUids.length || entities.length || input.mentionAll) {
+        payload.mention = {
+          ...(chunkMentionUids.length ? { uids: chunkMentionUids } : {}),
+          ...(entities.length ? { entities } : {}),
+          ...(input.mentionAll ? { all: true } : {}),
+        };
+      }
+      return {
+        channel_id: input.channelId,
+        channel_type: input.channelType,
+        payload,
+      };
+    }),
   };
 }
 
@@ -438,30 +608,13 @@ export function renderOctoTextReply(
 ): ChannelConnectorOctoReplyPlan | null {
   const stripped = stripOctoReplyFooter(replyText).trim();
   if (!stripped) return null;
-  const rendered = isOctoGroupChannel(message.channelType)
-    ? extractOctoMentions(stripped, message.members || [])
-    : { content: stripped, mentionUids: [] };
-  if (!rendered.content) return null;
   const channelId = message.channelType === OCTO_CHANNEL_TYPE_DM ? message.fromUid : message.channelId;
-  const chunks = splitOctoTextChunks(rendered.content);
-  return {
+  return renderOctoOutboundText({
     channelId,
     channelType: message.channelType,
-    chunks,
-    mentionUids: rendered.mentionUids,
-    payloads: chunks.map((chunk) => {
-      const payload: ChannelConnectorOctoReplyPlan["payloads"][number]["payload"] = {
-        type: OCTO_MESSAGE_TYPE_TEXT,
-        content: chunk,
-      };
-      if (rendered.mentionUids.length) payload.mention = { uids: rendered.mentionUids };
-      return {
-        channel_id: channelId,
-        channel_type: message.channelType,
-        payload,
-      };
-    }),
-  };
+    content: stripped,
+    members: message.members || [],
+  });
 }
 
 function emptyTransportResult(): ChannelConnectorOctoTransportResult {
