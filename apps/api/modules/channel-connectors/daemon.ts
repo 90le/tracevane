@@ -291,6 +291,9 @@ const DEFAULT_OCTO_REST_HEARTBEAT_MS = 5 * 60_000;
 const MIN_OCTO_REST_HEARTBEAT_MS = 30_000;
 const MAX_OCTO_REST_HEARTBEAT_MS = 30 * 60_000;
 const OCTO_PROGRESS_REPLY_TIMEOUT_MS = 5_000;
+const DEFAULT_OCTO_HISTORY_SYNC_LIMIT = 20;
+const DEFAULT_OCTO_HISTORY_MESSAGE_MAX_RUNES = 1200;
+const DEFAULT_OCTO_HISTORY_TOTAL_MAX_RUNES = 8000;
 const DEFAULT_CHANNEL_AUTO_COMPACT_COOLDOWN_MS = 15 * 60_000;
 const MAX_CHANNEL_AUTO_COMPACT_COOLDOWN_MS = 24 * 60 * 60_000;
 const FEISHU_FINAL_REPLY_CARD_MAX_RUNES = 12_000;
@@ -4736,9 +4739,64 @@ function octoMemberNameByUid(members: readonly ChannelConnectorOctoGroupMember[]
   return map;
 }
 
+function octoMemberRobotByUid(members: readonly ChannelConnectorOctoGroupMember[]): Map<string, boolean> {
+  const map = new Map<string, boolean>();
+  for (const member of members) {
+    const uid = normalizeString(member.uid);
+    if (!uid) continue;
+    if (member.robot === true || member.robot === 1) map.set(uid, true);
+    if (member.robot === false || member.robot === 0) map.set(uid, false);
+  }
+  return map;
+}
+
 function octoSyncedSenderLabel(uid: string, nameByUid: Map<string, string>): string {
   const name = nameByUid.get(uid);
   return name ? `${name} (${uid})` : uid || "unknown";
+}
+
+function octoSyncedSenderType(
+  uid: string,
+  botUid: string,
+  robotByUid: Map<string, boolean>,
+): "self-bot" | "bot" | "human" | "unknown" {
+  if (botUid && uid === botUid) return "self-bot";
+  const robot = robotByUid.get(uid);
+  if (robot === true) return "bot";
+  if (robot === false) return "human";
+  return "unknown";
+}
+
+function truncateOctoHistoryBody(value: string, maxRunes: number): { text: string; truncated: boolean; originalRunes: number } {
+  const runes = Array.from(value);
+  const originalRunes = runes.length;
+  if (maxRunes <= 0 || originalRunes <= maxRunes) {
+    return { text: value, truncated: false, originalRunes };
+  }
+  const kept = Math.max(1, maxRunes);
+  return {
+    text: `${runes.slice(0, kept).join("")}\n... [truncated ${originalRunes - kept} chars]`,
+    truncated: true,
+    originalRunes,
+  };
+}
+
+function fitOctoHistoryEntriesToBudget<T extends { body: string }>(
+  entries: T[],
+  totalMaxRunes: number,
+): T[] {
+  if (totalMaxRunes <= 0) return entries;
+  const output: T[] = [];
+  let used = 0;
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    const runes = Array.from(entry.body).length;
+    const overhead = 160;
+    if (output.length > 0 && used + runes + overhead > totalMaxRunes) break;
+    output.unshift(entry);
+    used += runes + overhead;
+  }
+  return output.length ? output : entries.slice(-1);
 }
 
 function renderOctoSyncedHistoryContext(input: {
@@ -4748,26 +4806,20 @@ function renderOctoSyncedHistoryContext(input: {
   botUid?: string | null;
   members?: readonly ChannelConnectorOctoGroupMember[] | null;
   limit: number;
+  messageMaxRunes: number;
+  totalMaxRunes: number;
 }): string | null {
   const botUid = normalizeString(input.botUid);
   const nameByUid = octoMemberNameByUid(input.members || []);
+  const robotByUid = octoMemberRobotByUid(input.members || []);
   const syncedMessages = octoSyncedMessagesFromData(input.data)
     .filter((message) => normalizeString(message.message_id) !== input.currentMessageId)
     .sort((a, b) => (octoSyncedMessageSeq(a) || 0) - (octoSyncedMessageSeq(b) || 0));
-  const latestBotSeq = botUid
-    ? syncedMessages.reduce((max, message) => {
-      const sender = normalizeString(message.from_uid) || normalizeString(message.fromUid);
-      const seq = octoSyncedMessageSeq(message);
-      return sender === botUid && seq ? Math.max(max, seq) : max;
-    }, 0)
-    : 0;
   const currentSeq = typeof input.currentMessageSeq === "number" && Number.isFinite(input.currentMessageSeq)
     ? input.currentMessageSeq
     : null;
   const contextEntries = syncedMessages
     .filter((message) => {
-      const sender = normalizeString(message.from_uid) || normalizeString(message.fromUid);
-      if (botUid && sender === botUid) return false;
       const text = octoSyncedMessageText(message.payload);
       if (!text) return false;
       const seq = octoSyncedMessageSeq(message);
@@ -4777,45 +4829,34 @@ function renderOctoSyncedHistoryContext(input: {
     .slice(-input.limit)
     .map((message) => {
       const sender = normalizeString(message.from_uid) || normalizeString(message.fromUid) || "unknown";
+      const body = truncateOctoHistoryBody(octoSyncedMessageText(message.payload), input.messageMaxRunes);
       return {
         sender: octoSyncedSenderLabel(sender, nameByUid),
-        body: octoSyncedMessageText(message.payload),
+        senderType: octoSyncedSenderType(sender, botUid, robotByUid),
+        body: body.text,
+        truncated: body.truncated,
+        originalRunes: body.originalRunes,
         seq: octoSyncedMessageSeq(message),
       };
     });
   if (!contextEntries.length) return null;
-  const answeredEntries = latestBotSeq > 0
-    ? contextEntries.filter((entry) => (entry.seq || 0) <= latestBotSeq)
-    : [];
-  const newEntries = latestBotSeq > 0
-    ? contextEntries.filter((entry) => (entry.seq || 0) > latestBotSeq)
-    : contextEntries;
-  const formatEntries = (entries: typeof contextEntries) => JSON.stringify(entries.map((entry) => ({
+  const budgetedEntries = fitOctoHistoryEntriesToBudget(contextEntries, input.totalMaxRunes);
+  const droppedCount = contextEntries.length - budgetedEntries.length;
+  const formatEntries = (entries: typeof budgetedEntries) => JSON.stringify(entries.map((entry) => ({
     sender: entry.sender,
+    senderType: entry.senderType,
     body: entry.body,
+    ...(entry.truncated ? { truncated: true, originalRunes: entry.originalRunes } : {}),
     ...(entry.seq ? { messageSeq: entry.seq } : {}),
   })), null, 2);
-  const blocks: string[] = [];
-  if (answeredEntries.length) {
-    blocks.push([
-      "[Previous context - already answered, do NOT re-answer]",
-      "```json",
-      formatEntries(answeredEntries),
-      "```",
-    ].join("\n"));
-  }
-  if (newEntries.length) {
-    blocks.push([
-      "[Chat messages since your last reply - context only, do NOT re-answer questions from this history]",
-      "```json",
-      formatEntries(newEntries),
-      "```",
-    ].join("\n"));
-  }
   return [
-    "[Octo Bot API recent channel history]",
-    `Cutoff: latest bot reply seq ${latestBotSeq || "unknown"}.`,
-    ...blocks,
+    "[Octo Bot API recent channel timeline]",
+    "Messages are chronological and may include humans, this Studio bot (senderType=self-bot), and other bots.",
+    "Use this timeline to verify whether collaborators already replied. Do not answer old questions unless the current user asks you to summarize, inspect, or act on them.",
+    `History budget: ${budgetedEntries.length}/${contextEntries.length} messages included, max ${input.messageMaxRunes} chars per message, max ${input.totalMaxRunes} chars total.${droppedCount ? ` Dropped ${droppedCount} older messages due to budget.` : ""}`,
+    "```json",
+    formatEntries(budgetedEntries),
+    "```",
     "[Current message follows later - respond to that only]",
   ].join("\n");
 }
@@ -4844,10 +4885,22 @@ async function loadOctoSyncedHistoryContext(input: {
     "octo_history_sync_limit",
     "historySyncLimit",
     "history_sync_limit",
-  ], 6))));
+  ], DEFAULT_OCTO_HISTORY_SYNC_LIMIT))));
   if (limit <= 0) {
     return { context: null, error: null, attempted: false, itemCount: null, includedCount: 0 };
   }
+  const messageMaxRunes = Math.max(200, Math.min(8000, Math.floor(metadataNumber(input.binding, [
+    "octoHistoryMessageMaxRunes",
+    "octo_history_message_max_runes",
+    "historyMessageMaxRunes",
+    "history_message_max_runes",
+  ], DEFAULT_OCTO_HISTORY_MESSAGE_MAX_RUNES))));
+  const totalMaxRunes = Math.max(1000, Math.min(32000, Math.floor(metadataNumber(input.binding, [
+    "octoHistoryTotalMaxRunes",
+    "octo_history_total_max_runes",
+    "historyTotalMaxRunes",
+    "history_total_max_runes",
+  ], DEFAULT_OCTO_HISTORY_TOTAL_MAX_RUNES))));
   const channelId = octoSyncChannelId(input.message);
   if (!channelId) {
     return { context: null, error: "octo_channel_id_missing", attempted: true, itemCount: null, includedCount: 0 };
@@ -4881,8 +4934,9 @@ async function loadOctoSyncedHistoryContext(input: {
     botUid: input.binding.botId || null,
     members: input.message.members || [],
     limit,
+    messageMaxRunes,
+    totalMaxRunes,
   });
-  const botUid = normalizeString(input.binding.botId);
   const currentSeq = typeof input.message.messageSeq === "number" && Number.isFinite(input.message.messageSeq)
     ? input.message.messageSeq
     : null;
@@ -4890,8 +4944,6 @@ async function loadOctoSyncedHistoryContext(input: {
     ? octoSyncedMessagesFromData(result.data)
       .filter((message) => {
         if (normalizeString(message.message_id) === input.message.messageId) return false;
-        const sender = normalizeString(message.from_uid) || normalizeString(message.fromUid);
-        if (botUid && sender === botUid) return false;
         if (!octoSyncedMessageText(message.payload)) return false;
         const seq = octoSyncedMessageSeq(message);
         if (currentSeq && seq && seq >= currentSeq) return false;

@@ -10816,6 +10816,7 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
           members: [
             { uid: "user-1", name: "Alice", role: 1, robot: 0 },
             { uid: "robot-1", name: "Studio Bot", role: 2, robot: 1 },
+            { uid: "helper_bot", name: "Helper Bot", role: 2, robot: 1 },
           ],
         }));
         return true;
@@ -10830,11 +10831,16 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
       if (req.method === "POST" && req.url === "/v1/bot/messages/sync") {
         const oldPayload = Buffer.from(JSON.stringify({ type: 1, content: "old question" }), "utf8").toString("base64");
         const botPayload = Buffer.from(JSON.stringify({ type: 1, content: "old answer" }), "utf8").toString("base64");
+        const helperPayload = Buffer.from(JSON.stringify({
+          type: 1,
+          content: `helper bot already replied ${"long-context ".repeat(30)}`,
+        }), "utf8").toString("base64");
         const newPayload = Buffer.from(JSON.stringify({ type: 1, content: "history hello" }), "utf8").toString("base64");
         res.end([
           "{\"start_message_seq\":1,\"end_message_seq\":7,\"pull_mode\":1,\"messages\":[",
-          `{"message_id":"2997","message_seq":5,"from_uid":"user-1","channel_id":"group-1","channel_type":2,"timestamp":1742547598,"payload":"${oldPayload}"},`,
-          `{"message_id":"2998","message_seq":6,"from_uid":"robot-1","channel_id":"group-1","channel_type":2,"timestamp":1742547599,"payload":"${botPayload}"},`,
+          `{"message_id":"2996","message_seq":4,"from_uid":"user-1","channel_id":"group-1","channel_type":2,"timestamp":1742547597,"payload":"${oldPayload}"},`,
+          `{"message_id":"2997","message_seq":5,"from_uid":"robot-1","channel_id":"group-1","channel_type":2,"timestamp":1742547598,"payload":"${botPayload}"},`,
+          `{"message_id":"2998","message_seq":6,"from_uid":"helper_bot","channel_id":"group-1","channel_type":2,"timestamp":1742547599,"payload":"${helperPayload}"},`,
           `{"message_id":"2999","message_seq":7,"from_uid":"user-1","channel_id":"group-1","channel_type":2,"timestamp":1742547600,"payload":"${newPayload}"}`,
           "]}",
         ].join(""));
@@ -10887,7 +10893,8 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
                 wsUrl,
                 allowPrivateAttachmentUrls: true,
                 attachmentMaxBytes: 1024,
-                octoHistorySyncLimit: 3,
+                octoHistorySyncLimit: 4,
+                octoHistoryMessageMaxRunes: 200,
                 octoHeartbeatMs: 30_000,
                 octoPongTimeoutMs: 10_000,
                 octoReconnectMs: 3_000,
@@ -10936,13 +10943,18 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         }, 8000);
         assert.equal(capture.length, 1);
         assert.match(capture[0].stdin, /Studio group context/);
-        assert.match(capture[0].stdin, /Known members: Alice\(user-1, human\), Studio Bot\(robot-1, bot\)/);
+        assert.match(capture[0].stdin, /Known members: Alice\(user-1, human\), Studio Bot\(robot-1, bot\), Helper Bot\(helper_bot, bot\)/);
         assert.match(capture[0].stdin, /Octo GROUP\.md/);
         assert.match(capture[0].stdin, /Use Studio native Octo messages for DM and mentions/);
-        assert.match(capture[0].stdin, /Octo Bot API recent channel history/);
-        assert.match(capture[0].stdin, /Previous context - already answered/);
+        assert.match(capture[0].stdin, /Octo Bot API recent channel timeline/);
+        assert.match(capture[0].stdin, /senderType/);
+        assert.match(capture[0].stdin, /self-bot/);
         assert.match(capture[0].stdin, /old question/);
-        assert.match(capture[0].stdin, /Chat messages since your last reply/);
+        assert.match(capture[0].stdin, /old answer/);
+        assert.match(capture[0].stdin, /Helper Bot \(helper_bot\)/);
+        assert.match(capture[0].stdin, /helper bot already replied/);
+        assert.match(capture[0].stdin, /truncated/);
+        assert.match(capture[0].stdin, /originalRunes/);
         assert.match(capture[0].stdin, /history hello/);
         assert.match(capture[0].stdin, /file: hello\.txt, 11 bytes, local:/);
         assert.match(capture[0].stdin, /Staged files are available locally/);
@@ -10968,12 +10980,12 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         }, 10_000);
         assert.ok(octoEvents.some((event) => {
           return event.eventKind === "channel.octo.members.loaded"
-            && event.memberCount === 2
+            && event.memberCount === 3
             && event.error === null;
         }));
         assert.ok(octoEvents.some((event) => {
           return event.eventKind === "channel.octo.history.synced"
-            && event.includedCount === 2
+            && event.includedCount === 4
             && event.error === null;
         }));
         assert.ok(octoEvents.some((event) => {
