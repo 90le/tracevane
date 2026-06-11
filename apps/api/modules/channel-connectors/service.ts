@@ -595,6 +595,18 @@ function normalizeDaemonFeishuConnection(value: unknown): ChannelConnectorsDaemo
     transportStaleForMs: nullableNumber(value.transportStaleForMs) ?? 0,
     transportStaleAfterMs: nullableNumber(value.transportStaleAfterMs) ?? 0,
     transportStale: value.transportStale === true,
+    botOpenId: nullableString(value.botOpenId),
+    botName: nullableString(value.botName),
+    botIdentityResolvedAt: nullableString(value.botIdentityResolvedAt),
+    botIdentityLastError: nullableString(value.botIdentityLastError),
+    botIdentityRequestCount: nullableNumber(value.botIdentityRequestCount) ?? 0,
+    botIdentityStatusCode: nullableNumber(value.botIdentityStatusCode),
+    botIdentityTokenCache: value.botIdentityTokenCache === "disabled"
+      || value.botIdentityTokenCache === "hit"
+      || value.botIdentityTokenCache === "miss"
+      || value.botIdentityTokenCache === "refresh"
+      ? value.botIdentityTokenCache
+      : null,
     lastPingAt: nullableString(value.lastPingAt),
     lastPongAt: nullableString(value.lastPongAt),
     lastReceivedAt: nullableString(value.lastReceivedAt),

@@ -62,6 +62,7 @@ import {
   addFeishuMessageReaction,
   downloadFeishuMessageResource,
   downloadFeishuMessageResourceToFile,
+  getFeishuBotInfo,
   getFeishuMessage,
   listFeishuChatMembers,
   listFeishuThreadMessages,
@@ -689,6 +690,17 @@ async function withMockFeishuServer(task) {
           msg: "success",
           tenant_access_token: "tenant-token-1",
           expire: 7200,
+        }));
+        return;
+      }
+      if (req.url === "/open-apis/bot/v3/info" && req.method === "GET") {
+        res.end(JSON.stringify({
+          code: 0,
+          msg: "success",
+          bot: {
+            open_id: "ou_mock_bot",
+            app_name: "Mock Feishu Bot",
+          },
         }));
         return;
       }
@@ -9344,6 +9356,29 @@ test("native Channel Connectors Feishu transport splits long text replies", asyn
   });
 });
 
+test("native Channel Connectors Feishu transport resolves bot open_id for group mention gating", async () => {
+  await withMockFeishuServer(async (apiUrl, requests) => {
+    const root = makeTempRoot();
+    const cachePath = path.join(root, "feishu-token-cache.json");
+    const transport = {
+      apiUrl,
+      appId: "cli_bot_info",
+      appSecret: "test-secret",
+    };
+
+    const result = await getFeishuBotInfo(transport, cachePath);
+
+    assert.equal(result.ok, true);
+    assert.equal(result.botOpenId, "ou_mock_bot");
+    assert.equal(result.botName, "Mock Feishu Bot");
+    assert.equal(result.requestCount, 2);
+    assert.equal(result.tokenCache, "miss");
+    assert.equal(requests[0].path, "/open-apis/auth/v3/tenant_access_token/internal");
+    assert.equal(requests[1].path, "/open-apis/bot/v3/info");
+    assert.equal(requests[1].authorization, "Bearer tenant-token-1");
+  });
+});
+
 test("native Channel Connectors Feishu transport sends text to open_id and user_id targets", async () => {
   await withMockFeishuServer(async (apiUrl, requests) => {
     const root = makeTempRoot();
@@ -10691,6 +10726,45 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.doesNotMatch(botMenuHandler, /await dispatchFeishuParsedEvent/);
 });
 
+test("native Channel Connectors keeps platform-native group context strategy", () => {
+  const daemonSource = fs.readFileSync(
+    path.resolve("apps/api/modules/channel-connectors/daemon.ts"),
+    "utf8",
+  );
+  const feishuThreadSource = fs.readFileSync(
+    path.resolve("apps/api/modules/channel-connectors/feishu-thread-bootstrap.ts"),
+    "utf8",
+  );
+
+  assert.match(daemonSource, /async function loadOctoSyncedHistoryContext/);
+  assert.match(daemonSource, /syncOctoMessages\(input\.transport/);
+  assert.match(daemonSource, /function renderOctoRealtimeTimelineContext/);
+  assert.match(daemonSource, /async function loadOctoMdContext/);
+  assert.match(daemonSource, /setOctoHistoryCutoff/);
+  assert.match(daemonSource, /\[\s*octoMdContext\.context,\s*syncedHistoryContext\.context,\s*realtimeHistoryContext,\s*localHistoryContext,\s*\]/);
+  assert.match(daemonSource, /Messages are segmented by the last successful Studio bot reply/);
+  assert.match(daemonSource, /inspect senderType=bot entries here before saying you cannot see the reply/);
+
+  assert.match(daemonSource, /function renderFeishuRealtimeTimelineContext/);
+  assert.match(daemonSource, /function recordFeishuRealtimeTimeline/);
+  assert.match(daemonSource, /async function resolveFeishuGroupBotIdentity/);
+  assert.match(daemonSource, /getFeishuBotInfo\(primaryRef\.transport/);
+  assert.match(daemonSource, /function feishuBotMentionCandidateInput/);
+  assert.match(daemonSource, /channelConnectorFeishuBotMentionCandidates\(feishuBotMentionCandidateInput\(group, binding\)\)/);
+  assert.match(daemonSource, /botOpenId:\s*group\.botOpenId/);
+  assert.match(daemonSource, /feishu_group_message_not_directed[\s\S]{0,260}timelineRecorded/);
+  assert.match(daemonSource, /\[\s*feishuThreadBootstrapContext\?\.context \|\| null,\s*feishuRealtimeHistoryContext,\s*localHistoryContext,\s*\]/);
+  assert.match(feishuThreadSource, /export async function loadFeishuThreadBootstrapContext/);
+  assert.match(feishuThreadSource, /getFeishuMessage/);
+  assert.match(feishuThreadSource, /listFeishuThreadMessages/);
+  assert.match(feishuThreadSource, /function renderFeishuThreadBootstrapContext/);
+  assert.match(feishuThreadSource, /function fitEntriesToBudget/);
+  assert.match(feishuThreadSource, /\[Feishu thread bootstrap\]/);
+
+  assert.doesNotMatch(daemonSource, /syncFeishuMessages/);
+  assert.doesNotMatch(feishuThreadSource, /buildPendingHistoryContextFromMap/);
+});
+
 test("Channel Connectors routes are registered under /api/channel-connectors", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -11179,6 +11253,8 @@ test("native Channel Connectors daemon keeps Feishu dispatcher parity diagnostic
   assert.match(daemonSource, /lifecycleDispatcherCallbacks/);
   assert.match(daemonSource, /lifecycleLastDispatcherCallbackAt/);
   assert.match(daemonSource, /resetFeishuLifecycleIngressEvidence/);
+  assert.match(daemonSource, /botIdentityResolvedAt/);
+  assert.match(daemonSource, /botIdentityLastError/);
   assert.match(daemonSource, /dispatcherVerificationConfigured/);
   assert.match(daemonSource, /dispatcherEncryptConfigured/);
   assert.match(daemonSource, /chat\.access_event\.bot_p2p_chat_entered_v1/);

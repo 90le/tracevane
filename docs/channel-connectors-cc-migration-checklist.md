@@ -25,6 +25,8 @@ Octo 专属能力若 CC Go 不完整，参考 `~/.openclaw/extensions/octo`；Fe
 
 当前已记录边界：`CHANNEL_CONNECTOR_AGENT_IDS` 保留完整迁移路线图，但 Channel Connectors 的 live `supportedAgents` 只暴露当前已有 runner 和自动 skill 回归的 Codex、Claude Code、OpenCode。其它 Agent 未迁移前保存配置会被拒绝，避免前端提供不可运行选项。Codex/Claude Code 这类原生支持 skills 目录的 Agent，会额外收到 Studio runtime 版 platform skill 投影；投影必须过滤安装、注册、凭证等 setup 章节。
 
+当前已记录边界：Feishu 群 @bot 不能依赖用户手工填写 `botId`。Studio daemon 必须启动前解析并缓存 Feishu `bot.open_id`，并把运行时 `botOpenId` 与配置 `botId/metadata.botOpenId` 一起用于 mention gate；`/status` 必须暴露 bot identity 诊断，群消息跳过日志必须能区分“未 @bot”和“bot 身份未解析”。
+
 ## 任务清单
 
 | 优先级 | 任务 | CC 对照 | 状态 | 验收 |
@@ -48,7 +50,7 @@ Octo 专属能力若 CC Go 不完整，参考 `~/.openclaw/extensions/octo`；Fe
 
 ## 当前执行顺序
 
-1. 继续做真实 Feishu 群 @、自然语言 @bot、未 @ 群消息、topic/thread 和成员上下文 live smoke；Feishu agent run 日志用 `outboundMessageNativeMentionIds` 校验原生 @。
+1. 继续做真实 Feishu 群 @、自然语言 @bot、未 @ 群消息、topic/thread 和成员上下文 live smoke；当前 daemon 已解析 `botOpenId=ou_5d0c07a660589f2df634e8f3220d02ed`，旧跳过消息不回放，需重新发送群 @ 验证入站触发；Feishu agent run 日志用 `outboundMessageNativeMentionIds` 校验原生 @。
 2. 继续做真实 Octo human DM、thread、@成员和 @其它 Studio/外部 bot live smoke；Octo 群 outbound-message 已有日志证据，等待多 bot 异步回复并自动汇总需后续 Studio 内部协作调度。
 3. 继续做真实 IM live approval smoke：Claude 已由用户确认通过，下一步用 agent-run-live permission flags 覆盖 Codex/OpenCode/Octo 的 prompt、resolved decision 和 Feishu 进度卡状态。
 4. 对照 Octo 插件继续迁移更完整菜单和群/thread 管理细节；persona/OBO 入站触发与 grantor 信任已进入 Studio 主链路，下一步需要真实平台协作 smoke；Feishu mention/topic_group 已有自动回归，下一步补真实群聊 live smoke。

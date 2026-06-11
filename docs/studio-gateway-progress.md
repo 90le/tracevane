@@ -24,6 +24,7 @@
 
 ## 本轮完成
 
+- 修复 Feishu 群聊 @bot 不触发：Channel daemon 启动时按 CC Go / OpenClaw 路径调用 Feishu `/open-apis/bot/v3/info` 解析并缓存 `botOpenId/botName`，群 @ 判断同时使用配置 `botId/metadata` 与运行时 botOpenId；`/status` 透出 `botIdentity*` 诊断字段，群消息被跳过时记录 `botOpenId` 和候选数量，避免再把身份解析问题误判成长连接问题。
 - 对照 Octo 插件固定群协作 @ 合同：`@[uid:显示名]`、bot DM 重写和 transport mention metadata 兜底都会发送可见 `@显示名`/`@uid` + Octo `mention.entities/uids`，避免隐藏 @。
 - 修复 Octo 群聊 `/process on` 下过程回复延迟：`step_finish: tool-calls` 仍是继续边界；Octo progress 气泡改为 5s best-effort 发送并带 `client_msg_no`，慢 REST 不再把旧过程回复拖到最终阶段补发；新增 daemon 级回归证明群聊开启 process 后中间回复先于最终回复发送。
 - 平台 skill 自动映射增强：普通 IM turn 会给 Codex、Claude Code、OpenCode 注入当前 binding/platform skill 的自动激活规则和运行时短指令片段；Octo/Feishu 平台 skill 摘要会优先抽取消息发送、历史、群协作、文件、权限等章节，并过滤注册、安装 OpenClaw 插件、保存凭证等 setup 章节，避免 Agent 误走外部桥接。
@@ -53,6 +54,7 @@
 
 - 通过：`npm run typecheck:api`。
 - 通过：`npm run build:api`。
+- 通过：`node --test --test-name-pattern "Feishu transport resolves bot open_id|Feishu webhook parses live envelopes|platform-native group context strategy|Feishu dispatcher parity diagnostics" tests/system/channel-connectors-service.test.mjs`；重启 `openclaw-studio-channel-connectors.service` 后 runtime/API 状态均显示 Feishu `connected=true`、`botOpenId=ou_5d0c07a660589f2df634e8f3220d02ed`、`botName=小丘`、`botIdentityLastError=null`。旧已跳过群消息不会回放，需用户重新发送群 @ 做 live 入站确认。
 - 通过：`node --test --test-name-pattern "native Channel Connectors extracts outbound IM message manifests|native Channel Connectors Feishu transport preserves group mention at-tags in text and post payloads|native Channel Connectors Feishu transport sends markdown post to open_id targets|native Channel Connectors daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`，覆盖 Feishu text/post at-tag payload、daemon mention 证据字段和长连接结构约束。
 - 通过：`node --test --test-name-pattern "native Channel Connectors extracts outbound IM message manifests|native Channel Connectors agent runner builds gateway-backed Codex turns" tests/system/channel-connectors-service.test.mjs`，覆盖 Feishu 群 `@[open_id:显示名]` 出站 at-tag 渲染和 Agent 群上下文提示词。
 - 通过：`node --test --test-name-pattern "native Channel Connectors agent runner builds gateway-backed Codex turns|native Channel Connectors IM commands switch agent, model, and permission per session" tests/system/channel-connectors-service.test.mjs`，覆盖 Runtime Action Index 注入 Codex 原生 skill 投影、IM channel skill context 和 Feishu doc 动作索引。

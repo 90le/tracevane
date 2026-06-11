@@ -145,6 +145,7 @@ import {
   addFeishuMessageReaction,
   downloadFeishuMessageResourceToFile,
   feishuTransportFromMetadata,
+  getFeishuBotInfo,
   listFeishuChatMembers,
   patchFeishuCardMessage,
   removeFeishuMessageReaction,
@@ -425,6 +426,13 @@ interface ChannelDaemonFeishuConnectionState {
   controlFrames: number;
   lastControlFrameAt: string | null;
   lastControlFrameType: string | null;
+  botOpenId: string | null;
+  botName: string | null;
+  botIdentityResolvedAt: string | null;
+  botIdentityLastError: string | null;
+  botIdentityRequestCount: number;
+  botIdentityStatusCode: number | null;
+  botIdentityTokenCache: ChannelConnectorFeishuTransportResult["tokenCache"];
   reconnectingRecycleAfterMs: number;
   connectedIdleRenewAfterMs: number;
   zeroInboundRenewAfterMs: number;
@@ -499,6 +507,13 @@ interface ChannelDaemonFeishuGroup {
   controlFrames: number;
   lastControlFrameAt: string | null;
   lastControlFrameType: string | null;
+  botOpenId: string | null;
+  botName: string | null;
+  botIdentityResolvedAt: string | null;
+  botIdentityLastError: string | null;
+  botIdentityRequestCount: number;
+  botIdentityStatusCode: number | null;
+  botIdentityTokenCache: ChannelConnectorFeishuTransportResult["tokenCache"];
   lockAcquired: boolean;
   lockOwnerPid: number | null;
   lockPath: string | null;
@@ -4204,6 +4219,13 @@ function feishuConnectionState(group: ChannelDaemonFeishuGroup): ChannelDaemonFe
     controlFrames: group.controlFrames,
     lastControlFrameAt: group.lastControlFrameAt,
     lastControlFrameType: group.lastControlFrameType,
+    botOpenId: group.botOpenId,
+    botName: group.botName,
+    botIdentityResolvedAt: group.botIdentityResolvedAt,
+    botIdentityLastError: group.botIdentityLastError,
+    botIdentityRequestCount: group.botIdentityRequestCount,
+    botIdentityStatusCode: group.botIdentityStatusCode,
+    botIdentityTokenCache: group.botIdentityTokenCache,
     reconnectingRecycleAfterMs: feishuReconnectingRecycleMs(group),
     connectedIdleRenewAfterMs: feishuConnectedIdleRenewMs(group),
     zeroInboundRenewAfterMs: feishuZeroInboundRenewMs(group),
@@ -4263,6 +4285,47 @@ function latestFeishuVerifiedIngressLeaseAt(group: ChannelDaemonFeishuGroup): st
 
 function feishuGroupKey(transport: ChannelConnectorFeishuTransportConfig): string {
   return `${transport.apiUrl}|${transport.appId}`.replace(/[^a-zA-Z0-9._-]+/g, "_");
+}
+
+function feishuConfiguredBotOpenId(binding: ChannelConnectorRuntimeBinding): string | null {
+  return normalizeString(binding.botId)
+    || metadataString(binding, [
+      "botOpenId",
+      "bot_open_id",
+      "feishuBotOpenId",
+      "feishu_bot_open_id",
+      "openId",
+      "open_id",
+    ])
+    || null;
+}
+
+function feishuConfiguredBotName(binding: ChannelConnectorRuntimeBinding): string | null {
+  return metadataString(binding, [
+    "botName",
+    "bot_name",
+    "feishuBotName",
+    "feishu_bot_name",
+  ]) || normalizeString(binding.displayName) || null;
+}
+
+function feishuResolvedBotOpenId(group: ChannelDaemonFeishuGroup, binding: ChannelConnectorRuntimeBinding): string | null {
+  return feishuConfiguredBotOpenId(binding) || group.botOpenId || null;
+}
+
+function feishuBotMentionCandidateInput(
+  group: ChannelDaemonFeishuGroup,
+  binding: ChannelConnectorRuntimeBinding,
+): Pick<ChannelConnectorRuntimeBinding, "botId" | "accountId" | "metadata"> {
+  const metadata = {
+    ...metadataRecord(binding),
+    ...(group.botOpenId ? { botOpenId: group.botOpenId } : {}),
+  };
+  return {
+    botId: feishuResolvedBotOpenId(group, binding),
+    accountId: binding.accountId,
+    metadata,
+  };
 }
 
 function feishuGroupLockRoot(): string {
@@ -8840,7 +8903,8 @@ async function dispatchFeishuParsedEvent(input: {
 
   const ref = refs[0];
   const { project, binding, transport } = ref;
-  const botMentionCandidates = channelConnectorFeishuBotMentionCandidates(binding);
+  const botMentionCandidates = channelConnectorFeishuBotMentionCandidates(feishuBotMentionCandidateInput(group, binding));
+  const botOpenId = feishuResolvedBotOpenId(group, binding);
   const mentionedBot = parsed.kind === "message"
     ? isChannelConnectorFeishuBotMentioned(parsed, botMentionCandidates)
     : false;
@@ -9014,6 +9078,8 @@ async function dispatchFeishuParsedEvent(input: {
       timelineRecorded: feishuTimelineRecorded,
       hasAnyMention: parsed.hasAnyMention,
       mentionedBot,
+      botOpenId,
+      botMentionCandidateCount: botMentionCandidates.length,
       ...feishuThreadLogFields(parsed),
     });
     return null;
@@ -9453,7 +9519,7 @@ async function dispatchFeishuParsedEvent(input: {
     timelines: feishuTimelines,
     binding,
     parsed,
-    botUid: binding.botId || null,
+    botUid: feishuResolvedBotOpenId(group, binding),
     members: groupMembers.members,
     limit: feishuRealtimeTimelineLimit(binding),
     messageMaxRunes: feishuHistoryMessageMaxRunes(binding),
@@ -10336,6 +10402,13 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
           controlFrames: 0,
           lastControlFrameAt: null,
           lastControlFrameType: null,
+          botOpenId: null,
+          botName: null,
+          botIdentityResolvedAt: null,
+          botIdentityLastError: null,
+          botIdentityRequestCount: 0,
+          botIdentityStatusCode: null,
+          botIdentityTokenCache: null,
           lockAcquired: false,
           lockOwnerPid: null,
           lockPath: null,
@@ -10394,6 +10467,13 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
         controlFrames: 0,
         lastControlFrameAt: null,
         lastControlFrameType: null,
+        botOpenId: null,
+        botName: null,
+        botIdentityResolvedAt: null,
+        botIdentityLastError: null,
+        botIdentityRequestCount: 0,
+        botIdentityStatusCode: null,
+        botIdentityTokenCache: null,
         lockAcquired: false,
         lockOwnerPid: null,
         lockPath: null,
@@ -10405,6 +10485,60 @@ function createFeishuGroups(config: ChannelConnectorsDaemonRuntimeConfig): Chann
     }
   }
   return [...groups.values()];
+}
+
+async function resolveFeishuGroupBotIdentity(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  state: ChannelDaemonState;
+  group: ChannelDaemonFeishuGroup;
+}): Promise<void> {
+  const { config, state, group } = input;
+  const configuredOpenId = group.refs
+    .map((ref) => feishuConfiguredBotOpenId(ref.binding))
+    .find((value): value is string => Boolean(value));
+  const configuredName = group.refs
+    .map((ref) => feishuConfiguredBotName(ref.binding))
+    .find((value): value is string => Boolean(value));
+  if (configuredOpenId) {
+    group.botOpenId = configuredOpenId;
+    group.botName = configuredName || group.botName;
+    group.botIdentityResolvedAt = new Date().toISOString();
+    group.botIdentityLastError = null;
+    updateFeishuRuntime(config, state, group);
+    return;
+  }
+
+  const primaryRef = group.refs[0];
+  if (!primaryRef) return;
+  const result = await getFeishuBotInfo(primaryRef.transport, feishuTokenCachePath(config));
+  group.botIdentityRequestCount += result.requestCount;
+  group.botIdentityStatusCode = result.statusCode;
+  group.botIdentityTokenCache = result.tokenCache;
+  if (result.ok && result.botOpenId) {
+    group.botOpenId = result.botOpenId;
+    group.botName = result.botName || configuredName || group.botName;
+    group.botIdentityResolvedAt = new Date().toISOString();
+    group.botIdentityLastError = null;
+    appendLog(config.paths.log, "Feishu bot identity resolved", {
+      key: group.key,
+      appId: group.appId,
+      botOpenId: group.botOpenId,
+      botName: group.botName,
+      requestCount: result.requestCount,
+      tokenCache: result.tokenCache,
+    });
+  } else {
+    group.botIdentityLastError = result.error || "feishu_bot_identity_probe_failed";
+    appendLog(config.paths.log, "Feishu bot identity probe failed", {
+      key: group.key,
+      appId: group.appId,
+      statusCode: result.statusCode,
+      error: group.botIdentityLastError,
+      requestCount: result.requestCount,
+      tokenCache: result.tokenCache,
+    });
+  }
+  updateFeishuRuntime(config, state, group);
 }
 
 function dispatchFeishuParsedEventInBackground(input: {
@@ -11442,6 +11576,11 @@ async function startFeishuConnections(
       markRuntimeDirty(config, state);
       continue;
     }
+    await resolveFeishuGroupBotIdentity({
+      config,
+      state,
+      group,
+    });
     startFeishuClientForGroup({
       config,
       state,

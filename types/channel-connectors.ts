@@ -1041,6 +1041,13 @@ export interface ChannelConnectorsDaemonRuntimeFeishuConnectionStatus {
   transportStaleForMs?: number;
   transportStaleAfterMs?: number;
   transportStale?: boolean;
+  botOpenId: string | null;
+  botName: string | null;
+  botIdentityResolvedAt: string | null;
+  botIdentityLastError: string | null;
+  botIdentityRequestCount: number;
+  botIdentityStatusCode: number | null;
+  botIdentityTokenCache: "disabled" | "hit" | "miss" | "refresh" | null;
   lastPingAt: string | null;
   lastPongAt: string | null;
   lastReceivedAt: string | null;

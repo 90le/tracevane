@@ -110,6 +110,18 @@ export interface ChannelConnectorFeishuChatMembersResult {
   error: string | null;
 }
 
+export interface ChannelConnectorFeishuBotInfoResult {
+  attempted: boolean;
+  ok: boolean;
+  apiUrl: string;
+  statusCode: number | null;
+  requestCount: number;
+  tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"];
+  botOpenId: string | null;
+  botName: string | null;
+  error: string | null;
+}
+
 export interface ChannelConnectorFeishuMessageInfo {
   messageId: string;
   senderId?: string;
@@ -685,6 +697,55 @@ export async function smokeFeishuTenantToken(
       requestCount: Math.max(errorRequestCount(error), 1),
       tokenCache: cachePath ? "miss" : "disabled",
     });
+  }
+}
+
+export async function getFeishuBotInfo(
+  config: ChannelConnectorFeishuTransportConfig,
+  cachePath?: string | null,
+): Promise<ChannelConnectorFeishuBotInfoResult> {
+  let requestCount = 0;
+  let tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"] = cachePath ? "miss" : "disabled";
+  try {
+    const token = await getFeishuTenantToken(config, cachePath);
+    requestCount += token.requestCount;
+    tokenCache = token.tokenCache;
+    const response = await feishuJsonRequest(config, {
+      method: "GET",
+      token: token.token,
+      path: "/open-apis/bot/v3/info",
+    });
+    requestCount += response.requestCount;
+    const bot = recordFrom(response.body.bot || recordFrom(response.body.data).bot);
+    const botOpenId = normalizeString(bot.open_id) || normalizeString(bot.openId);
+    const botName = normalizeString(bot.app_name)
+      || normalizeString(bot.name)
+      || normalizeString(bot.bot_name)
+      || normalizeString(bot.botName);
+    if (!botOpenId) throw new Error("Feishu bot info response did not include bot.open_id.");
+    return {
+      attempted: true,
+      ok: true,
+      apiUrl: config.apiUrl,
+      statusCode: response.statusCode,
+      requestCount,
+      tokenCache,
+      botOpenId,
+      botName: botName || null,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      attempted: true,
+      ok: false,
+      apiUrl: config.apiUrl,
+      statusCode: errorStatusCode(error),
+      requestCount: Math.max(requestCount + errorRequestCount(error), 1),
+      tokenCache,
+      botOpenId: null,
+      botName: null,
+      error: errorMessage(error),
+    };
   }
 }
 
