@@ -161,7 +161,7 @@ From \`https://xxx.feishu.cn/docx/ABC123def\`, use doc token \`ABC123def\`.
 
 Supported now without approval: \`read\`, \`list_blocks\`, \`get_block\`.
 
-Supported now after Studio IM approval: \`create\`, \`write\`, \`append\`, \`insert\`, \`update_block\`, \`delete_block\`.
+Supported now after Studio IM approval: \`create\`, \`write\`, \`append\`, \`insert\`, \`update_block\`, \`delete_block\`, \`create_table\`, \`write_table_cells\`, \`create_table_with_values\`.
 
 Use this manifest shape:
 
@@ -171,7 +171,8 @@ Use this manifest shape:
   {"tool":"feishu_doc","action":"list_blocks","doc_token":"ABC123def"},
   {"tool":"feishu_doc","action":"get_block","doc_token":"ABC123def","block_id":"doxcnXXX"},
   {"tool":"feishu_doc","action":"create","title":"New Document","folder_token":"fldcnXXX"},
-  {"tool":"feishu_doc","action":"append","doc_token":"ABC123def","content":"## Update\\n\\nMarkdown content"}
+  {"tool":"feishu_doc","action":"append","doc_token":"ABC123def","content":"## Update\\n\\nMarkdown content"},
+  {"tool":"feishu_doc","action":"create_table_with_values","doc_token":"ABC123def","row_size":2,"column_size":2,"values":[["A1","B1"],["A2","B2"]]}
 ]
 \`\`\`
 
@@ -187,17 +188,18 @@ Document content actions use Feishu markdown-to-block conversion plus Docx desce
 - Update Block Text: \`{"action":"update_block","doc_token":"ABC123def","block_id":"doxcnXXX","content":"New text"}\`
 - Delete Block: \`{"action":"delete_block","doc_token":"ABC123def","block_id":"doxcnXXX"}\`
 
-Table and media actions still need the rest of the OpenClaw docx conversion/upload pipeline before Studio enables them:
-
 - Create Table: \`{"action":"create_table","doc_token":"ABC123def","row_size":2,"column_size":2}\`
 - Write Table Cells: \`{"action":"write_table_cells","doc_token":"ABC123def","table_block_id":"doxcnTABLE","values":[["A1","B1"]]}\`
-- Create Table With Values: create a table and fill values in one operation.
+- Create Table With Values: \`{"action":"create_table_with_values","doc_token":"ABC123def","row_size":2,"column_size":2,"values":[["A1","B1"],["A2","B2"]]}\`
+
+Media actions still need the rest of the OpenClaw docx upload pipeline before Studio enables them:
+
 - Upload Image to Docx: upload an image URL or local file into a docx.
 - Upload File Attachment to Docx: attach a binary file to a docx.
 
 ## Studio Fallback
 
-When unsupported table/media mutation is needed before Studio enables it, create requested content locally and send it with \`studio-channel-files\`, or send a Feishu Markdown message with \`studio-channel-messages\` summarizing the document changes the user should apply.`,
+When unsupported media mutation is needed before Studio enables it, create requested content locally and send it with \`studio-channel-files\`, or send a Feishu Markdown message with \`studio-channel-messages\` summarizing the document changes the user should apply.`,
   },
   {
     platform: "feishu",

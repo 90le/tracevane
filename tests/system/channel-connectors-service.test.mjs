@@ -1405,10 +1405,41 @@ test("native Channel Connectors executes Feishu read-only actions and approval-g
         data: { children: [{ block_id: "new_block_1", block_type: 2 }] },
       }), { status: 200, headers: { "content-type": "application/json" } });
     }
+    if ((init.method || "GET") === "POST" && String(url).endsWith("/open-apis/docx/v1/documents/doc_a/blocks/doc_a/children")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: {
+          children: [
+            { block_id: "table_1", block_type: 31, children: ["cell_1", "cell_2", "cell_3", "cell_4"] },
+          ],
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
     if (String(url).endsWith("/open-apis/docx/v1/documents/doc_a/blocks/doc_a/children")) {
       return new Response(JSON.stringify({
         code: 0,
         data: { items: [{ block_id: "old_block_1", block_type: 2 }] },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).endsWith("/open-apis/docx/v1/documents/doc_a/blocks/table_1")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: {
+          block: {
+            block_id: "table_1",
+            block_type: 31,
+            table: { property: { row_size: 2, column_size: 2 }, cells: ["cell_1", "cell_2", "cell_3", "cell_4"] },
+          },
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (/\/open-apis\/docx\/v1\/documents\/doc_a\/blocks\/cell_[12]\/children$/.test(String(url))) {
+      return new Response(JSON.stringify({ code: 0, data: { items: [] } }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (/\/open-apis\/docx\/v1\/documents\/doc_a\/blocks\/cell_[12]\/descendant$/.test(String(url))) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: { children: [{ block_id: "cell_text", block_type: 2 }] },
       }), { status: 200, headers: { "content-type": "application/json" } });
     }
     if (String(url).endsWith("/open-apis/docx/v1/documents/doc_a/blocks/old_block_1")) {
@@ -1544,6 +1575,46 @@ test("native Channel Connectors executes Feishu read-only actions and approval-g
     assert.deepEqual(deleteBlock.data, { success: true, deleted_block_id: "old_block_1" });
     const deleteRequest = requests.find((request) => request.method === "DELETE" && request.url.endsWith("/open-apis/docx/v1/documents/doc_a/blocks/doc_a/children/batch_delete"));
     assert.deepEqual(JSON.parse(deleteRequest.body), { start_index: 0, end_index: 1 });
+
+    const createTable = await executeFeishuChannelAction(config, {
+      tool: "feishu_doc",
+      action: "create_table",
+      params: { doc_token: "doc_a", row_size: 2, column_size: 2, column_width: [120, 160] },
+    }, null, { allowMutation: true });
+    assert.equal(createTable.ok, true);
+    assert.deepEqual(createTable.data, {
+      success: true,
+      table_block_id: "table_1",
+      row_size: 2,
+      column_size: 2,
+      table_cell_block_ids: ["cell_1", "cell_2", "cell_3", "cell_4"],
+      raw_children_count: 1,
+    });
+    const createTableRequest = requests.find((request) => request.method === "POST" && request.url.endsWith("/open-apis/docx/v1/documents/doc_a/blocks/doc_a/children"));
+    assert.deepEqual(JSON.parse(createTableRequest.body), {
+      children: [
+        {
+          block_type: 31,
+          table: { property: { row_size: 2, column_size: 2, column_width: [120, 160] } },
+        },
+      ],
+    });
+
+    const writeCells = await executeFeishuChannelAction(config, {
+      tool: "feishu_doc",
+      action: "write_table_cells",
+      params: { doc_token: "doc_a", table_block_id: "table_1", values: [["A1", "B1"]] },
+    }, null, { allowMutation: true });
+    assert.equal(writeCells.ok, true);
+    assert.deepEqual(writeCells.data, {
+      success: true,
+      table_block_id: "table_1",
+      cells_written: 2,
+      table_size: { rows: 2, cols: 2 },
+    });
+    const cellDescendantRequests = requests.filter((request) => request.method === "POST" && /\/blocks\/cell_[12]\/descendant$/.test(request.url));
+    assert.equal(cellDescendantRequests.length, 2);
+    assert.equal(JSON.parse(cellDescendantRequests[0].body).children_id[0], "append_tmp");
   } finally {
     globalThis.fetch = originalFetch;
   }

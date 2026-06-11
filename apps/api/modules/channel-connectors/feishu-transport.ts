@@ -1229,6 +1229,37 @@ function optionalParamString(params: Record<string, unknown>, keys: string[]): s
   return paramString(params, keys) || undefined;
 }
 
+function requireParamNumber(params: Record<string, unknown>, keys: string[], label: string): number {
+  for (const key of keys) {
+    const raw = params[key];
+    const value = typeof raw === "number" ? raw : Number(normalizeString(raw));
+    if (Number.isFinite(value)) return value;
+  }
+  throw new Error(`${label} is required.`);
+}
+
+function optionalParamNumberArray(params: Record<string, unknown>, keys: string[]): number[] | undefined {
+  for (const key of keys) {
+    const raw = params[key];
+    if (!Array.isArray(raw)) continue;
+    const values = raw.map((item) => Number(item)).filter((item) => Number.isFinite(item));
+    if (values.length > 0) return values;
+  }
+  return undefined;
+}
+
+function requireParamStringMatrix(params: Record<string, unknown>, keys: string[], label: string): string[][] {
+  for (const key of keys) {
+    const raw = params[key];
+    if (!Array.isArray(raw)) continue;
+    const rows = raw
+      .filter((row): row is unknown[] => Array.isArray(row))
+      .map((row) => row.map((cell) => normalizeString(cell)));
+    if (rows.length > 0 && rows.some((row) => row.length > 0)) return rows;
+  }
+  throw new Error(`${label} must be a non-empty 2D array.`);
+}
+
 export function feishuChannelActionIsReadOnly(tool: ChannelConnectorFeishuActionTool, action: string): boolean {
   const normalized = normalizedAction(action);
   if (tool === "feishu_doc") return ["read", "list_blocks", "get_block"].includes(normalized);
@@ -1616,6 +1647,121 @@ async function deleteDocxBlock(call: FeishuActionCall, docToken: string, blockId
   return { success: true, deleted_block_id: blockId };
 }
 
+async function createDocxTable(
+  call: FeishuActionCall,
+  docToken: string,
+  rowSize: number,
+  columnSize: number,
+  options: { parentBlockId?: string; columnWidth?: number[] } = {},
+) {
+  if (rowSize <= 0 || columnSize <= 0) throw new Error("row_size and column_size must be positive.");
+  if (options.columnWidth && options.columnWidth.length !== columnSize) {
+    throw new Error("column_width length must equal column_size.");
+  }
+  const body = await call(
+    "POST",
+    `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/blocks/${encodeURIComponent(options.parentBlockId || docToken)}/children`,
+    {
+      children: [
+        {
+          block_type: 31,
+          table: {
+            property: {
+              row_size: rowSize,
+              column_size: columnSize,
+              ...(options.columnWidth ? { column_width: options.columnWidth } : {}),
+            },
+          },
+        },
+      ],
+    },
+  );
+  const children = arrayFrom(recordFrom(body.data).children).map(recordFrom);
+  const tableBlock = children.find((block) => Number(block.block_type) === 31) || children[0] || {};
+  return {
+    success: true,
+    table_block_id: normalizeDocxBlockId(tableBlock) || null,
+    row_size: rowSize,
+    column_size: columnSize,
+    table_cell_block_ids: normalizeDocxBlockChildren(tableBlock.children),
+    raw_children_count: children.length,
+  };
+}
+
+async function writeDocxTableCells(
+  call: FeishuActionCall,
+  docToken: string,
+  tableBlockId: string,
+  values: string[][],
+) {
+  const tableBody = await call(
+    "GET",
+    `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/blocks/${encodeURIComponent(tableBlockId)}`,
+  );
+  const tableBlock = recordFrom(recordFrom(tableBody.data).block);
+  if (Number(tableBlock.block_type) !== 31) throw new Error("table_block_id is not a table block.");
+  const table = recordFrom(tableBlock.table);
+  const property = recordFrom(table.property);
+  const rows = Number(property.row_size);
+  const cols = Number(property.column_size);
+  const cellIds = arrayFrom(table.cells).map((item) => normalizeString(item)).filter(Boolean);
+  if (!Number.isFinite(rows) || rows <= 0 || !Number.isFinite(cols) || cols <= 0 || cellIds.length === 0) {
+    throw new Error("Table cell IDs unavailable from table block. Use list_blocks/get_block and pass an editable table block.");
+  }
+
+  const writeRows = Math.min(values.length, rows);
+  let written = 0;
+  for (let rowIndex = 0; rowIndex < writeRows; rowIndex += 1) {
+    const row = values[rowIndex] || [];
+    const writeCols = Math.min(row.length, cols);
+    for (let columnIndex = 0; columnIndex < writeCols; columnIndex += 1) {
+      const cellId = cellIds[rowIndex * cols + columnIndex];
+      if (!cellId) continue;
+      const existingChildren = await listDocxChildBlocks(call, docToken, cellId);
+      if (existingChildren.length > 0) {
+        await call(
+          "DELETE",
+          `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/blocks/${encodeURIComponent(cellId)}/children/batch_delete`,
+          { start_index: 0, end_index: existingChildren.length },
+        );
+      }
+      const text = row[columnIndex] || "";
+      const converted = await convertDocxMarkdownChunks(call, text);
+      if (converted.blocks.length > 0) {
+        await insertDocxBlocks(call, docToken, converted.blocks, converted.firstLevelBlockIds, { parentBlockId: cellId });
+      }
+      written += 1;
+    }
+  }
+  return {
+    success: true,
+    table_block_id: tableBlockId,
+    cells_written: written,
+    table_size: { rows, cols },
+  };
+}
+
+async function createDocxTableWithValues(
+  call: FeishuActionCall,
+  docToken: string,
+  rowSize: number,
+  columnSize: number,
+  values: string[][],
+  options: { parentBlockId?: string; columnWidth?: number[] } = {},
+) {
+  const created = await createDocxTable(call, docToken, rowSize, columnSize, options);
+  const tableBlockId = normalizeString(created.table_block_id);
+  if (!tableBlockId) throw new Error("create_table succeeded but table_block_id is missing.");
+  const written = await writeDocxTableCells(call, docToken, tableBlockId, values);
+  return {
+    success: true,
+    table_block_id: tableBlockId,
+    row_size: rowSize,
+    column_size: columnSize,
+    cells_written: written.cells_written,
+  };
+}
+
 async function executeFeishuReadOnlyAction(
   config: ChannelConnectorFeishuTransportConfig,
   request: ChannelConnectorFeishuActionRequest,
@@ -1780,6 +1926,34 @@ async function executeFeishuMutationAction(
       const docToken = requireParamString(params, ["doc_token", "document_id", "docToken", "token"], "doc_token");
       const blockId = requireParamString(params, ["block_id", "blockId"], "block_id");
       const data = await deleteDocxBlock(call, docToken, blockId);
+      return { data, statusCode, requestCount };
+    }
+    if (action === "create_table") {
+      const docToken = requireParamString(params, ["doc_token", "document_id", "docToken", "token"], "doc_token");
+      const rowSize = requireParamNumber(params, ["row_size", "rowSize"], "row_size");
+      const columnSize = requireParamNumber(params, ["column_size", "columnSize"], "column_size");
+      const data = await createDocxTable(call, docToken, rowSize, columnSize, {
+        parentBlockId: optionalParamString(params, ["parent_block_id", "parentBlockId"]),
+        columnWidth: optionalParamNumberArray(params, ["column_width", "columnWidth"]),
+      });
+      return { data, statusCode, requestCount };
+    }
+    if (action === "write_table_cells") {
+      const docToken = requireParamString(params, ["doc_token", "document_id", "docToken", "token"], "doc_token");
+      const tableBlockId = requireParamString(params, ["table_block_id", "tableBlockId", "block_id", "blockId"], "table_block_id");
+      const values = requireParamStringMatrix(params, ["values"], "values");
+      const data = await writeDocxTableCells(call, docToken, tableBlockId, values);
+      return { data, statusCode, requestCount };
+    }
+    if (action === "create_table_with_values") {
+      const docToken = requireParamString(params, ["doc_token", "document_id", "docToken", "token"], "doc_token");
+      const rowSize = requireParamNumber(params, ["row_size", "rowSize"], "row_size");
+      const columnSize = requireParamNumber(params, ["column_size", "columnSize"], "column_size");
+      const values = requireParamStringMatrix(params, ["values"], "values");
+      const data = await createDocxTableWithValues(call, docToken, rowSize, columnSize, values, {
+        parentBlockId: optionalParamString(params, ["parent_block_id", "parentBlockId"]),
+        columnWidth: optionalParamNumberArray(params, ["column_width", "columnWidth"]),
+      });
       return { data, statusCode, requestCount };
     }
     if (action === "create") {
