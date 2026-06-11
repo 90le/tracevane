@@ -21,6 +21,7 @@ import type {
   ChannelConnectorContextBudgetSummary,
   ChannelConnectorOctoGroupMember,
   ChannelConnectorOctoTransportConfig,
+  ChannelConnectorOctoTransportResult,
   ChannelConnectorOctoInboundMessage,
   ChannelConnectorOctoInboundRequest,
   ChannelConnectorPlatformBinding,
@@ -160,6 +161,7 @@ import {
   addOctoGroupMembers,
   createOctoGroup,
   createOctoThread,
+  deleteOctoThread,
   getOctoGroupInfo,
   getOctoThreadInfo,
   joinOctoThread,
@@ -169,6 +171,8 @@ import {
   listOctoThreadMembers,
   listOctoThreads,
   octoTransportFromMetadata,
+  readOctoGroupMd,
+  readOctoThreadMd,
   registerOctoBot,
   removeOctoGroupMembers,
   searchOctoSpaceMembers,
@@ -177,7 +181,9 @@ import {
   sendOctoTextReply,
   sendOctoTyping,
   syncOctoMessages,
+  updateOctoGroupMd,
   updateOctoGroupInfo,
+  updateOctoThreadMd,
   uploadAndSendOctoMedia,
 } from "./octo-transport.js";
 import {
@@ -4504,65 +4510,111 @@ async function runOctoManagementCommand(
       error: "octo_transport_config_missing",
     };
   }
-  const result = input.action === "list-groups"
-    ? await listOctoGroups(transport)
-    : input.action === "group-info"
-      ? await getOctoGroupInfo(transport, normalizeString(input.groupNo))
-      : input.action === "group-members"
-        ? await listOctoGroupMembers(transport, normalizeString(input.groupNo))
-        : input.action === "search-members"
-          ? await searchOctoSpaceMembers(transport, {
-            keyword: input.keyword || null,
-            limit: input.limit || 30,
-          })
-          : input.action === "create-group"
-            ? await createOctoGroup(transport, {
-              name: input.name || null,
-              members: input.members || [],
-              creator: normalizeString(input.creator),
-            })
-            : input.action === "update-group"
-              ? await updateOctoGroupInfo(transport, {
-                groupNo: normalizeString(input.groupNo),
-                name: input.name || null,
-                notice: input.notice || null,
-              })
-              : input.action === "add-members"
-                ? await addOctoGroupMembers(transport, {
-                  groupNo: normalizeString(input.groupNo),
-                  members: input.members || [],
-                })
-                : input.action === "remove-members"
-                  ? await removeOctoGroupMembers(transport, {
-                    groupNo: normalizeString(input.groupNo),
-                    members: input.members || [],
-                  })
-                  : input.action === "list-threads"
-                    ? await listOctoThreads(transport, normalizeString(input.groupNo))
-                    : input.action === "thread-info"
-                      ? await getOctoThreadInfo(transport, {
-                        groupNo: normalizeString(input.groupNo),
-                        shortId: normalizeString(input.shortId),
-                      })
-                      : input.action === "thread-members"
-                        ? await listOctoThreadMembers(transport, {
-                          groupNo: normalizeString(input.groupNo),
-                          shortId: normalizeString(input.shortId),
-                        })
-                        : input.action === "create-thread"
-                          ? await createOctoThread(transport, {
-                            groupNo: normalizeString(input.groupNo),
-                            name: normalizeString(input.name),
-                          })
-                          : input.action === "join-thread"
-                            ? await joinOctoThread(transport, {
-                              groupNo: normalizeString(input.groupNo),
-                              shortId: normalizeString(input.shortId),
-                            })
-                            : await leaveOctoThread(transport, {
-                              groupNo: normalizeString(input.groupNo),
-                              shortId: normalizeString(input.shortId),
-                            });
+  let result: ChannelConnectorOctoTransportResult;
+  switch (input.action) {
+    case "list-groups":
+      result = await listOctoGroups(transport);
+      break;
+    case "group-info":
+      result = await getOctoGroupInfo(transport, normalizeString(input.groupNo));
+      break;
+    case "group-members":
+      result = await listOctoGroupMembers(transport, normalizeString(input.groupNo));
+      break;
+    case "group-md-read":
+      result = await readOctoGroupMd(transport, normalizeString(input.groupNo));
+      break;
+    case "group-md-update":
+      result = await updateOctoGroupMd(transport, {
+        groupNo: normalizeString(input.groupNo),
+        content: normalizeString(input.content),
+      });
+      break;
+    case "search-members":
+      result = await searchOctoSpaceMembers(transport, {
+        keyword: input.keyword || null,
+        limit: input.limit || 30,
+      });
+      break;
+    case "create-group":
+      result = await createOctoGroup(transport, {
+        name: input.name || null,
+        members: input.members || [],
+        creator: normalizeString(input.creator),
+      });
+      break;
+    case "update-group":
+      result = await updateOctoGroupInfo(transport, {
+        groupNo: normalizeString(input.groupNo),
+        name: input.name || null,
+        notice: input.notice || null,
+      });
+      break;
+    case "add-members":
+      result = await addOctoGroupMembers(transport, {
+        groupNo: normalizeString(input.groupNo),
+        members: input.members || [],
+      });
+      break;
+    case "remove-members":
+      result = await removeOctoGroupMembers(transport, {
+        groupNo: normalizeString(input.groupNo),
+        members: input.members || [],
+      });
+      break;
+    case "list-threads":
+      result = await listOctoThreads(transport, normalizeString(input.groupNo));
+      break;
+    case "thread-info":
+      result = await getOctoThreadInfo(transport, {
+        groupNo: normalizeString(input.groupNo),
+        shortId: normalizeString(input.shortId),
+      });
+      break;
+    case "thread-members":
+      result = await listOctoThreadMembers(transport, {
+        groupNo: normalizeString(input.groupNo),
+        shortId: normalizeString(input.shortId),
+      });
+      break;
+    case "thread-md-read":
+      result = await readOctoThreadMd(transport, {
+        groupNo: normalizeString(input.groupNo),
+        shortId: normalizeString(input.shortId),
+      });
+      break;
+    case "thread-md-update":
+      result = await updateOctoThreadMd(transport, {
+        groupNo: normalizeString(input.groupNo),
+        shortId: normalizeString(input.shortId),
+        content: normalizeString(input.content),
+      });
+      break;
+    case "create-thread":
+      result = await createOctoThread(transport, {
+        groupNo: normalizeString(input.groupNo),
+        name: normalizeString(input.name),
+      });
+      break;
+    case "delete-thread":
+      result = await deleteOctoThread(transport, {
+        groupNo: normalizeString(input.groupNo),
+        shortId: normalizeString(input.shortId),
+      });
+      break;
+    case "join-thread":
+      result = await joinOctoThread(transport, {
+        groupNo: normalizeString(input.groupNo),
+        shortId: normalizeString(input.shortId),
+      });
+      break;
+    case "leave-thread":
+      result = await leaveOctoThread(transport, {
+        groupNo: normalizeString(input.groupNo),
+        shortId: normalizeString(input.shortId),
+      });
+      break;
+  }
   return {
     ok: result.ok === true,
     replyText: formatChannelConnectorOctoManagementReply({
@@ -4572,6 +4624,7 @@ async function runOctoManagementCommand(
       shortId: input.shortId || null,
       keyword: input.keyword || null,
       name: input.name || null,
+      content: input.content || null,
     }),
     error: result.error || null,
   };
@@ -4785,6 +4838,120 @@ async function loadOctoSyncedHistoryContext(input: {
     attempted: result.attempted,
     itemCount: result.itemCount ?? null,
     includedCount,
+  };
+}
+
+function octoThreadShortIdFromChannelId(channelId: string): string {
+  const normalized = normalizeString(channelId);
+  if (!normalized) return "";
+  const [, shortId] = normalized.split(OCTO_THREAD_CHANNEL_SEPARATOR);
+  return normalizeString(shortId);
+}
+
+function octoMdContentFromData(value: unknown): string {
+  if (typeof value === "string") return normalizeString(value);
+  if (!isRecord(value)) return "";
+  return normalizeString(value.content)
+    || normalizeString(value.markdown)
+    || normalizeString(value.md);
+}
+
+function renderOctoMdContext(input: {
+  kind: "GROUP.md" | "THREAD.md";
+  groupNo: string;
+  shortId?: string | null;
+  data: unknown;
+  maxChars: number;
+}): string | null {
+  const content = octoMdContentFromData(input.data);
+  if (!content) return null;
+  const trimmed = content.length > input.maxChars
+    ? `${content.slice(0, Math.max(0, input.maxChars))}\n\n[Studio truncated Octo ${input.kind} context]`
+    : content;
+  const record = isRecord(input.data) ? input.data : {};
+  const version = normalizeString(record.version);
+  return [
+    `[Octo ${input.kind}]`,
+    input.shortId
+      ? `Scope: group=${input.groupNo} thread=${input.shortId}${version ? ` version=${version}` : ""}.`
+      : `Scope: group=${input.groupNo}${version ? ` version=${version}` : ""}.`,
+    "These are native Octo channel instructions. Follow them unless they conflict with higher-priority Studio/system/developer instructions.",
+    "```md",
+    trimmed,
+    "```",
+  ].join("\n");
+}
+
+async function loadOctoMdContext(input: {
+  binding: ChannelConnectorRuntimeBinding;
+  transport: ChannelConnectorOctoTransportConfig | null;
+  message: ChannelConnectorOctoInboundMessage;
+}): Promise<{
+  context: string | null;
+  kind: "group" | "thread" | null;
+  groupNo: string | null;
+  shortId: string | null;
+  error: string | null;
+  attempted: boolean;
+}> {
+  if (!isOctoGroupChannel(input.message.channelType)) {
+    return { context: null, kind: null, groupNo: null, shortId: null, error: null, attempted: false };
+  }
+  if (!metadataBoolean(input.binding, [
+    "enableOctoMdContext",
+    "enable_octo_md_context",
+    "octoMdContext",
+    "octo_md_context",
+  ], true)) {
+    return { context: null, kind: null, groupNo: null, shortId: null, error: null, attempted: false };
+  }
+  const groupNo = octoParentGroupNo(input.message.channelId);
+  if (!groupNo) {
+    return { context: null, kind: null, groupNo: null, shortId: null, error: "octo_group_no_missing", attempted: true };
+  }
+  if (!input.transport) {
+    return { context: null, kind: null, groupNo, shortId: null, error: "octo_transport_config_missing", attempted: true };
+  }
+  const maxChars = Math.max(1000, Math.min(20_000, Math.floor(metadataNumber(input.binding, [
+    "octoMdContextMaxChars",
+    "octo_md_context_max_chars",
+    "mdContextMaxChars",
+    "md_context_max_chars",
+  ], 8000))));
+  if (input.message.channelType === 5) {
+    const shortId = octoThreadShortIdFromChannelId(input.message.channelId);
+    if (!shortId) {
+      return { context: null, kind: "thread", groupNo, shortId: null, error: "octo_thread_short_id_missing", attempted: true };
+    }
+    const result = await readOctoThreadMd(input.transport, { groupNo, shortId });
+    return {
+      context: result.ok ? renderOctoMdContext({
+        kind: "THREAD.md",
+        groupNo,
+        shortId,
+        data: result.data,
+        maxChars,
+      }) : null,
+      kind: "thread",
+      groupNo,
+      shortId,
+      error: result.ok ? null : result.error || "octo_thread_md_pull_failed",
+      attempted: result.attempted,
+    };
+  }
+  const result = await readOctoGroupMd(input.transport, groupNo);
+  return {
+    context: result.ok ? renderOctoMdContext({
+      kind: "GROUP.md",
+      groupNo,
+      data: result.data,
+      maxChars,
+    }) : null,
+    kind: "group",
+    groupNo,
+    shortId: null,
+    error: result.ok ? null : result.error || "octo_group_md_pull_failed",
+    attempted: result.attempted,
   };
 }
 
@@ -7143,7 +7310,30 @@ async function dispatchOctoMessage(input: {
       error: syncedHistoryContext.error,
     });
   }
+  const octoMdContext = await loadOctoMdContext({
+    binding,
+    transport,
+    message: agentMessage,
+  });
+  if (octoMdContext.attempted) {
+    writeJsonLine(config.paths.octoEvents, {
+      checkedAt: new Date().toISOString(),
+      eventKind: "channel.octo.md.loaded",
+      adapter: "octo",
+      bindingId: binding.id,
+      sessionKey,
+      messageId: message.messageId,
+      channelId: message.channelId,
+      channelType: message.channelType,
+      kind: octoMdContext.kind,
+      groupNo: octoMdContext.groupNo,
+      shortId: octoMdContext.shortId,
+      included: Boolean(octoMdContext.context),
+      error: octoMdContext.error,
+    });
+  }
   const historyContext = [
+    octoMdContext.context,
     syncedHistoryContext.context,
     localHistoryContext,
   ].filter(Boolean).join("\n\n") || null;

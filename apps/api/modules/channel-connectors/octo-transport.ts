@@ -723,6 +723,32 @@ export async function getOctoGroupInfo(
   }
 }
 
+export async function readOctoGroupMd(
+  config: ChannelConnectorOctoTransportConfig,
+  groupNo: string,
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await getOctoJson(config, `/v1/bot/groups/${octoPathSegment(groupNo)}/md`);
+    return octoTransportData(config, "group-md-read", response);
+  } catch (error) {
+    return octoTransportError(config, "group-md-read", error);
+  }
+}
+
+export async function updateOctoGroupMd(
+  config: ChannelConnectorOctoTransportConfig,
+  input: { groupNo: string; content: string },
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await putOctoJson(config, `/v1/bot/groups/${octoPathSegment(input.groupNo)}/md`, {
+      content: input.content,
+    });
+    return octoTransportData(config, "group-md-update", response);
+  } catch (error) {
+    return octoTransportError(config, "group-md-update", error);
+  }
+}
+
 export async function listOctoGroupMembers(
   config: ChannelConnectorOctoTransportConfig,
   groupNo: string,
@@ -866,6 +892,18 @@ export async function createOctoThread(
   }
 }
 
+export async function deleteOctoThread(
+  config: ChannelConnectorOctoTransportConfig,
+  input: { groupNo: string; shortId: string },
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await deleteOctoJson(config, `/v1/bot/groups/${octoPathSegment(input.groupNo)}/threads/${octoPathSegment(input.shortId)}`);
+    return octoTransportData(config, "delete-thread", response);
+  } catch (error) {
+    return octoTransportError(config, "delete-thread", error);
+  }
+}
+
 export async function joinOctoThread(
   config: ChannelConnectorOctoTransportConfig,
   input: { groupNo: string; shortId: string },
@@ -887,6 +925,32 @@ export async function leaveOctoThread(
     return octoTransportData(config, "leave-thread", response);
   } catch (error) {
     return octoTransportError(config, "leave-thread", error);
+  }
+}
+
+export async function readOctoThreadMd(
+  config: ChannelConnectorOctoTransportConfig,
+  input: { groupNo: string; shortId: string },
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await getOctoJson(config, `/v1/bot/groups/${octoPathSegment(input.groupNo)}/threads/${octoPathSegment(input.shortId)}/md`);
+    return octoTransportData(config, "thread-md-read", response);
+  } catch (error) {
+    return octoTransportError(config, "thread-md-read", error);
+  }
+}
+
+export async function updateOctoThreadMd(
+  config: ChannelConnectorOctoTransportConfig,
+  input: { groupNo: string; shortId: string; content: string },
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await putOctoJson(config, `/v1/bot/groups/${octoPathSegment(input.groupNo)}/threads/${octoPathSegment(input.shortId)}/md`, {
+      content: input.content,
+    });
+    return octoTransportData(config, "thread-md-update", response);
+  } catch (error) {
+    return octoTransportError(config, "thread-md-update", error);
   }
 }
 

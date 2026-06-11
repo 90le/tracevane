@@ -401,10 +401,10 @@ async function withMockOctoServer(task, options = {}) {
       const contentType = String(req.headers["content-type"] || "");
       const body = contentType.includes("multipart/form-data")
         ? { raw: bodyRaw }
-        : req.method === "PUT"
+        : req.method === "PUT" && !contentType.includes("application/json")
           ? { raw: bodyRaw }
-          : bodyRaw
-            ? JSON.parse(bodyRaw)
+        : bodyRaw
+          ? JSON.parse(bodyRaw)
             : {};
       requests.push({
         method: req.method,
@@ -445,6 +445,14 @@ async function withMockOctoServer(task, options = {}) {
         }));
         return;
       }
+      if (req.method === "GET" && req.url === "/v1/bot/groups/group-1/md") {
+        res.end(JSON.stringify({ content: "# Group Rules\n- Ask bots by DM when requested.", version: 2 }));
+        return;
+      }
+      if (req.method === "PUT" && req.url === "/v1/bot/groups/group-1/md") {
+        res.end(JSON.stringify({ version: 3 }));
+        return;
+      }
       if (req.method === "GET" && req.url?.startsWith("/v1/bot/space/members")) {
         res.end(JSON.stringify([{ uid: "user-1", name: "Alice", robot: 0 }]));
         return;
@@ -477,8 +485,20 @@ async function withMockOctoServer(task, options = {}) {
         res.end(JSON.stringify([{ uid: "user-1", name: "Alice" }]));
         return;
       }
+      if (req.method === "GET" && req.url === "/v1/bot/groups/group-1/threads/thread-1/md") {
+        res.end(JSON.stringify({ content: "# Thread Rules\n- Focus on release notes.", version: 4 }));
+        return;
+      }
+      if (req.method === "PUT" && req.url === "/v1/bot/groups/group-1/threads/thread-1/md") {
+        res.end(JSON.stringify({ version: 5 }));
+        return;
+      }
       if (req.method === "POST" && req.url === "/v1/bot/groups/group-1/threads") {
         res.end(JSON.stringify({ short_id: "thread-new", name: body.name || "Thread Name", creator_uid: "robot-1" }));
+        return;
+      }
+      if (req.method === "DELETE" && req.url === "/v1/bot/groups/group-1/threads/thread-1") {
+        res.end(JSON.stringify({ deleted: true, group_no: "group-1", short_id: "thread-1" }));
         return;
       }
       if (req.method === "POST" && req.url === "/v1/bot/groups/group-1/threads/thread-1/join") {
@@ -1847,6 +1867,18 @@ test("Octo transport smoke covers Bot API groups, members, history, threads, and
     assert.equal(members.transport.itemCount, 2);
     assert.equal(members.transport.data[1].robot, 1);
 
+    const groupMd = await smoke({ action: "group-md-read", groupNo: "group-1" });
+    assert.equal(groupMd.transport.action, "group-md-read");
+    assert.match(groupMd.transport.data.content, /Group Rules/);
+
+    const updatedGroupMd = await smoke({ action: "group-md-update", groupNo: "group-1", content: "# Updated Group" });
+    assert.equal(updatedGroupMd.transport.ok, true);
+    assert.ok(requests.some((request) =>
+      request.path === "/v1/bot/groups/group-1/md"
+      && request.method === "PUT"
+      && request.body.content === "# Updated Group"
+    ));
+
     const space = await smoke({ action: "space-members", keyword: "Alice", limit: 1 });
     assert.equal(space.transport.itemCount, 1);
     assert.ok(requests.some((request) => request.path === "/v1/bot/space/members?keyword=Alice&limit=1"));
@@ -1886,8 +1918,24 @@ test("Octo transport smoke covers Bot API groups, members, history, threads, and
     const threadMembers = await smoke({ action: "thread-members", groupNo: "group-1", shortId: "thread-1" });
     assert.equal(threadMembers.transport.data[0].uid, "user-1");
 
+    const threadMd = await smoke({ action: "thread-md-read", groupNo: "group-1", shortId: "thread-1" });
+    assert.equal(threadMd.transport.action, "thread-md-read");
+    assert.match(threadMd.transport.data.content, /Thread Rules/);
+
+    const updatedThreadMd = await smoke({ action: "thread-md-update", groupNo: "group-1", shortId: "thread-1", content: "# Updated Thread" });
+    assert.equal(updatedThreadMd.transport.ok, true);
+    assert.ok(requests.some((request) =>
+      request.path === "/v1/bot/groups/group-1/threads/thread-1/md"
+      && request.method === "PUT"
+      && request.body.content === "# Updated Thread"
+    ));
+
     const createdThread = await smoke({ action: "create-thread", groupNo: "group-1", name: "New Thread" });
     assert.equal(createdThread.transport.data.short_id, "thread-new");
+
+    const deletedThread = await smoke({ action: "delete-thread", groupNo: "group-1", shortId: "thread-1" });
+    assert.equal(deletedThread.transport.ok, true);
+    assert.equal(deletedThread.transport.data.deleted, true);
 
     const joined = await smoke({ action: "join-thread", groupNo: "group-1", shortId: "thread-1" });
     assert.equal(joined.transport.ok, true);
@@ -2040,6 +2088,51 @@ test("Octo native management commands expose groups, members, and Space search",
     assert.equal(threadInfo.commandAction.commandResult.action, "show");
     assert.match(threadInfo.replyPlan.chunks.join("\n"), /Octo Thread：thread-1/);
 
+    const groupMd = await service.dispatchOctoIncoming({
+      bindingId: "octo-api",
+      sendReply: false,
+      message: {
+        messageId: "octo-command-group-md",
+        fromUid: "user-1",
+        channelId: "group-1",
+        channelType: 2,
+        payload: { type: 1, content: "/octo group-md", mention: { uids: ["robot-1"] } },
+      },
+    });
+    assert.equal(groupMd.commandAction.commandResult.action, "show");
+    assert.match(groupMd.replyPlan.chunks.join("\n"), /Octo GROUP\.md：group-1 · v2/);
+    assert.match(groupMd.replyPlan.chunks.join("\n"), /Ask bots by DM/);
+
+    const setGroupMd = await service.dispatchOctoIncoming({
+      bindingId: "octo-api",
+      sendReply: false,
+      message: {
+        messageId: "octo-command-set-group-md",
+        fromUid: "user-1",
+        channelId: "group-1",
+        channelType: 2,
+        payload: { type: 1, content: "/octo set-group-md # New Group Rule", mention: { uids: ["robot-1"] } },
+      },
+    });
+    assert.equal(setGroupMd.commandAction.commandResult.action, "set");
+    assert.equal(setGroupMd.commandAction.commandResult.ok, true);
+    assert.match(setGroupMd.replyPlan.chunks.join("\n"), /已更新 Octo GROUP\.md/);
+
+    const threadMd = await service.dispatchOctoIncoming({
+      bindingId: "octo-api",
+      sendReply: false,
+      message: {
+        messageId: "octo-command-thread-md",
+        fromUid: "user-1",
+        channelId: "group-1____thread-1",
+        channelType: 5,
+        payload: { type: 1, content: "/octo thread-md", mention: { uids: ["robot-1"] } },
+      },
+    });
+    assert.equal(threadMd.commandAction.commandResult.action, "show");
+    assert.match(threadMd.replyPlan.chunks.join("\n"), /Octo THREAD\.md：thread-1 · v4/);
+    assert.match(threadMd.replyPlan.chunks.join("\n"), /Focus on release notes/);
+
     const createGroup = await service.dispatchOctoIncoming({
       bindingId: "octo-api",
       sendReply: false,
@@ -2085,6 +2178,36 @@ test("Octo native management commands expose groups, members, and Space search",
     assert.equal(createThread.commandAction.commandResult.ok, true);
     assert.match(createThread.replyPlan.chunks.join("\n"), /已创建 Octo Thread：Release Notes · thread-new/);
 
+    const setThreadMd = await service.dispatchOctoIncoming({
+      bindingId: "octo-api",
+      sendReply: false,
+      message: {
+        messageId: "octo-command-set-thread-md",
+        fromUid: "user-1",
+        channelId: "group-1____thread-1",
+        channelType: 5,
+        payload: { type: 1, content: "/octo set-thread-md # New Thread Rule", mention: { uids: ["robot-1"] } },
+      },
+    });
+    assert.equal(setThreadMd.commandAction.commandResult.action, "set");
+    assert.equal(setThreadMd.commandAction.commandResult.ok, true);
+    assert.match(setThreadMd.replyPlan.chunks.join("\n"), /已更新 Octo THREAD\.md/);
+
+    const deleteThread = await service.dispatchOctoIncoming({
+      bindingId: "octo-api",
+      sendReply: false,
+      message: {
+        messageId: "octo-command-delete-thread",
+        fromUid: "user-1",
+        channelId: "group-1",
+        channelType: 2,
+        payload: { type: 1, content: "/octo delete-thread thread-1", mention: { uids: ["robot-1"] } },
+      },
+    });
+    assert.equal(deleteThread.commandAction.commandResult.action, "set");
+    assert.equal(deleteThread.commandAction.commandResult.ok, true);
+    assert.match(deleteThread.replyPlan.chunks.join("\n"), /已删除 Octo Thread/);
+
     const deniedMutation = await service.dispatchOctoIncoming({
       bindingId: "octo-api",
       sendReply: false,
@@ -2109,6 +2232,20 @@ test("Octo native management commands expose groups, members, and Space search",
     assert.ok(requests.some((request) =>
       request.path === "/v1/bot/groups/group-1/threads"
       && request.body.name === "Release Notes"
+    ));
+    assert.ok(requests.some((request) =>
+      request.path === "/v1/bot/groups/group-1/md"
+      && request.method === "PUT"
+      && request.body.content === "# New Group Rule"
+    ));
+    assert.ok(requests.some((request) =>
+      request.path === "/v1/bot/groups/group-1/threads/thread-1/md"
+      && request.method === "PUT"
+      && request.body.content === "# New Thread Rule"
+    ));
+    assert.ok(requests.some((request) =>
+      request.path === "/v1/bot/groups/group-1/threads/thread-1"
+      && request.method === "DELETE"
     ));
   });
 });
@@ -9981,6 +10118,13 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         }));
         return true;
       }
+      if (req.method === "GET" && req.url === "/v1/bot/groups/group-1/md") {
+        res.end(JSON.stringify({
+          content: "# Group Rules\n- Use Studio native Octo messages for DM and mentions.",
+          version: 7,
+        }));
+        return true;
+      }
       if (req.method === "POST" && req.url === "/v1/bot/messages/sync") {
         const oldPayload = Buffer.from(JSON.stringify({ type: 1, content: "old question" }), "utf8").toString("base64");
         const botPayload = Buffer.from(JSON.stringify({ type: 1, content: "old answer" }), "utf8").toString("base64");
@@ -10091,6 +10235,8 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         assert.equal(capture.length, 1);
         assert.match(capture[0].stdin, /Studio group context/);
         assert.match(capture[0].stdin, /Known members: Alice\(user-1, human\), Studio Bot\(robot-1, bot\)/);
+        assert.match(capture[0].stdin, /Octo GROUP\.md/);
+        assert.match(capture[0].stdin, /Use Studio native Octo messages for DM and mentions/);
         assert.match(capture[0].stdin, /Octo Bot API recent channel history/);
         assert.match(capture[0].stdin, /Previous context - already answered/);
         assert.match(capture[0].stdin, /old question/);
@@ -10108,11 +10254,13 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         assert.equal(run.ok, true);
         const requestPaths = requests.map((request) => request.path);
         assert.equal(requestPaths.includes("/v1/bot/groups/group-1/members"), true);
+        assert.equal(requestPaths.includes("/v1/bot/groups/group-1/md"), true);
         assert.equal(requestPaths.includes("/v1/bot/messages/sync"), true);
         assert.equal(requestPaths.some((item) => item?.startsWith("/v1/bot/file/download/chat/hello.txt")), true);
         assert.equal(requestPaths.includes("/media/hello.txt"), true);
         const octoEvents = await waitForJsonLines(runtimeConfig.paths.octoEvents, (events) => {
           return events.some((event) => event.eventKind === "channel.octo.members.loaded" && event.messageId === "3001")
+            && events.some((event) => event.eventKind === "channel.octo.md.loaded" && event.messageId === "3001")
             && events.some((event) => event.eventKind === "channel.octo.history.synced" && event.messageId === "3001")
             && events.some((event) => event.eventKind === "agent.attachments.staged" && event.messageId === "3001");
         }, 10_000);
@@ -10124,6 +10272,12 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         assert.ok(octoEvents.some((event) => {
           return event.eventKind === "channel.octo.history.synced"
             && event.includedCount === 2
+            && event.error === null;
+        }));
+        assert.ok(octoEvents.some((event) => {
+          return event.eventKind === "channel.octo.md.loaded"
+            && event.kind === "group"
+            && event.included === true
             && event.error === null;
         }));
         assert.ok(octoEvents.some((event) => {

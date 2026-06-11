@@ -57,6 +57,7 @@
 - 已完成：F4 Octo 入站 URL 字段兼容：除 `url` 外，识别 `file_url/fileUrl/media_url/mediaUrl/download_url/downloadUrl/cdn_url/cdnUrl/origin_url/originUrl/src/href`，减少平台字段差异导致的 `[image]` 无本地路径。
 - 已完成：F4 Octo payload-only 附件补回与插件协议对齐：daemon 进入 Agent 前把 payload 推断附件写回 `attachments`；支持 GIF=3、RichText=14 图文混排、有序 image blocks 和多图 `mediaUrls`。
 - 已完成：F4 Octo Bot API transport + daemon 入站能力：按 OpenClaw Octo 插件与 bot-api skill 接入 read receipt、event ack、群/成员/Space 搜索、thread、消息历史同步和文件下载 URL smoke；daemon 入站会用 `messageSeq` 拉取短历史、按最新 bot 回复 seq 分段为已回答/新增上下文、拉取群成员补 group context，并在附件只有 `file_path/download_path/object_key/storage_key` 时先换取下载 URL 再本地 staging。消息历史 payload 解码与 `message_id` 大整数保护已覆盖；`/octo` 已作为 Studio 原生命令接入 daemon 和 service，查询类覆盖 `groups/members/search/info/threads/thread/thread-members`，管理类覆盖 `create-group/update-group/add-members/remove-members/create-thread/join-thread/leave-thread` 并要求 Channel 管理权限；`groups/members/search` 已通过真实配置非发送 smoke，完整命令集已通过 mock 回归。
+- 已完成：F4 Octo GROUP.md / THREAD.md / delete-thread：按 Octo 插件 bot-api skill 接入 `GET/PUT /groups/:group_no/md`、`GET/PUT /groups/:group_no/threads/:short_id/md`、`DELETE /groups/:group_no/threads/:short_id`；thread 会话只注入 THREAD.md，不继承 GROUP.md；普通群会话注入 GROUP.md；`/octo group-md/thread-md/set-group-md/set-thread-md/delete-thread` 已接入 service/daemon 并通过 mock 回归。
 - 已完成：F4 平台 skill 映射：`/skills` 与 Skill invocation 会同时扫描 Agent 本地目录、binding metadata `channelSkillDirs` 和平台内置 skill 目录；Octo 默认参考 `~/.openclaw/extensions/octo/skills`，Feishu 默认参考 OpenClaw 最新 Feishu 扩展 `skills`；Agent 普通 turn 会收到精简 channel skill context，避免误用 `cc-connect` 或误判平台权限。
 - 已完成：F4 Octo v1.0.15 identity / mention / read-receipt 兼容：Studio binding 解析、群 @bot 判断和自身消息跳过按插件 `normalizeAccountId()` 语义大小写归一；普通 bot 不再被 `mention.all` / `mention.humans` 广播触发，纯 `mention.ais=1` 或显式 @bot 仍触发；daemon 入站通过 gate 后异步发送带 `message_ids` 的 read receipt。插件 `globalThis` runtime singleton 是 jiti/ESM 双实例修复，Studio daemon 当前无同类加载路径，暂不迁移。
 - 已完成：F4 图片非视觉模型保护：Feishu/Octo 图片附件可 staging；`glm-5` 等未标记 vision 的模型仍启动受控 Agent turn，但 prompt 禁止视觉推断并要求询问下一步，普通文件仍进入 Agent，避免路径诱导的看图幻觉。
@@ -70,4 +71,4 @@
 - 已完成：F5 基础治理：allowlist/admin、banned words、rate limit 覆盖 Octo/Feishu daemon 与 HTTP dispatch/action。
 - 已完成：F4 飞书群成员拉取：群聊 Agent 分支分页拉取 chat members 并注入 group context，失败只记日志不阻断。
 - 已完成：平台配置 UI：Octo/Feishu binding 凭证 metadata 可在 Channel Connectors 页面编辑并直接执行连接测试。
-- 下一步：先做 `studio-channel-messages` Octo 私聊/@群成员 live smoke；继续按 Octo 插件迁移 GROUP.md/thread MD/persona context、delete-thread 和菜单；随后按同一模式补 Feishu open_id/user_id 私聊、富文本、文档/云盘 skills 和更多平台 adapter。
+- 下一步：先做 `studio-channel-messages` Octo 私聊/@群成员 live smoke；继续按 Octo 插件迁移 persona/voice context 和更完整菜单；随后按同一模式补 Feishu open_id/user_id 私聊、富文本、文档/云盘 skills 和更多平台 adapter。
