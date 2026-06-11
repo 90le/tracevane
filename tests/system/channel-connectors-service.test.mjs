@@ -417,6 +417,89 @@ async function withMockOctoServer(task, options = {}) {
         res.end(JSON.stringify({ robot_id: "robot-1", im_token: "im-token-1", ws_url: "wss://octo.example/ws" }));
         return;
       }
+      if (req.method === "POST" && req.url === "/v1/bot/readReceipt") {
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+      if (req.method === "GET" && req.url === "/v1/bot/groups") {
+        res.end(JSON.stringify([
+          { group_no: "group-1", name: "Studio Group" },
+          { group_no: "group-2", name: "Build Group" },
+        ]));
+        return;
+      }
+      if (req.method === "GET" && req.url === "/v1/bot/groups/group-1") {
+        res.end(JSON.stringify({ group_no: "group-1", name: "Studio Group", notice: "Ship", creator: "user-owner" }));
+        return;
+      }
+      if (req.method === "GET" && req.url === "/v1/bot/groups/group-1/members") {
+        res.end(JSON.stringify({
+          members: [
+            { uid: "user-1", name: "Alice", role: 1, robot: 0 },
+            { uid: "robot-1", name: "Studio Bot", role: 2, robot: 1 },
+          ],
+        }));
+        return;
+      }
+      if (req.method === "GET" && req.url?.startsWith("/v1/bot/space/members")) {
+        res.end(JSON.stringify([{ uid: "user-1", name: "Alice", robot: 0 }]));
+        return;
+      }
+      if (req.method === "POST" && req.url === "/v1/bot/createGroup") {
+        res.end(JSON.stringify({ group_no: "group-new", name: body.name || "Group Name" }));
+        return;
+      }
+      if (req.method === "PUT" && req.url === "/v1/bot/groups/group-1/info") {
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+      if (req.method === "POST" && req.url === "/v1/bot/groups/group-1/members/add") {
+        res.end(JSON.stringify({ ok: true, added: Array.isArray(body.members) ? body.members.length : 0 }));
+        return;
+      }
+      if (req.method === "POST" && req.url === "/v1/bot/groups/group-1/members/remove") {
+        res.end(JSON.stringify({ ok: true, removed: Array.isArray(body.members) ? body.members.length : 0 }));
+        return;
+      }
+      if (req.method === "GET" && req.url === "/v1/bot/groups/group-1/threads") {
+        res.end(JSON.stringify([{ short_id: "thread-1", name: "Thread One", creator_uid: "user-1", status: 1 }]));
+        return;
+      }
+      if (req.method === "GET" && req.url === "/v1/bot/groups/group-1/threads/thread-1") {
+        res.end(JSON.stringify({ short_id: "thread-1", name: "Thread One", creator_uid: "user-1", status: 1 }));
+        return;
+      }
+      if (req.method === "GET" && req.url === "/v1/bot/groups/group-1/threads/thread-1/members") {
+        res.end(JSON.stringify([{ uid: "user-1", name: "Alice" }]));
+        return;
+      }
+      if (req.method === "POST" && req.url === "/v1/bot/groups/group-1/threads") {
+        res.end(JSON.stringify({ short_id: "thread-new", name: body.name || "Thread Name", creator_uid: "robot-1" }));
+        return;
+      }
+      if (req.method === "POST" && req.url === "/v1/bot/groups/group-1/threads/thread-1/join") {
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+      if (req.method === "POST" && req.url === "/v1/bot/groups/group-1/threads/thread-1/leave") {
+        res.end(JSON.stringify({ ok: true }));
+        return;
+      }
+      if (req.method === "POST" && req.url === "/v1/bot/events/event-1/ack") {
+        res.end(JSON.stringify({ status: 200 }));
+        return;
+      }
+      if (req.method === "POST" && req.url === "/v1/bot/messages/sync") {
+        const payload = Buffer.from(JSON.stringify({ type: 1, content: "history hello" }), "utf8").toString("base64");
+        res.end(`{"start_message_seq":1,"end_message_seq":1,"pull_mode":1,"messages":[{"message_id":12345678901234567,"message_seq":1,"from_uid":"user-1","channel_id":"group-1","channel_type":2,"timestamp":1742547600,"payload":"${payload}"}]}`);
+        return;
+      }
+      if (req.method === "GET" && req.url?.startsWith("/v1/bot/file/download/chat/hello.txt")) {
+        res.statusCode = 302;
+        res.setHeader("location", "https://cdn.example.test/chat/hello.txt");
+        res.end();
+        return;
+      }
       if (req.url?.startsWith("/v1/bot/upload/credentials")) {
         res.end(JSON.stringify({
           bucket: "studio-bucket-123",
@@ -1513,6 +1596,113 @@ test("Octo transport upload strategy defaults to direct upload and honors overri
     botToken: "token",
     directUploadMinBytes: 1,
   }, 1), true);
+});
+
+test("Octo transport smoke covers Bot API groups, members, history, threads, and files", async () => {
+  await withMockOctoServer(async (apiUrl, requests) => {
+    const root = makeTempRoot();
+    const config = createStudioConfig(root);
+    const service = createChannelConnectorsService(config, {
+      now: () => new Date("2026-06-06T08:00:00.000Z"),
+    });
+    const initial = service.getNativeConfig().config;
+    service.saveNativeConfig({
+      config: {
+        ...initial,
+        platformBindings: [
+          {
+            id: "octo-api",
+            platform: "octo",
+            accountId: "octo-account",
+            botId: "robot-1",
+            displayName: "Octo API",
+            agentProfileId: initial.defaultAgentProfileId,
+            enabled: true,
+            allowlist: [],
+            adminUsers: [],
+            metadata: {
+              apiUrl,
+              botToken: "test-token",
+            },
+          },
+        ],
+      },
+    });
+
+    const smoke = (payload) => service.runOctoTransportSmoke({ bindingId: "octo-api", ...payload });
+    const groups = await smoke({ action: "list-groups" });
+    assert.equal(groups.transport.ok, true);
+    assert.equal(groups.transport.action, "list-groups");
+    assert.equal(groups.transport.itemCount, 2);
+    assert.equal(groups.transport.data[0].group_no, "group-1");
+
+    const groupInfo = await smoke({ action: "group-info", groupNo: "group-1" });
+    assert.equal(groupInfo.transport.data.name, "Studio Group");
+
+    const members = await smoke({ action: "group-members", groupNo: "group-1" });
+    assert.equal(members.transport.itemCount, 2);
+    assert.equal(members.transport.data[1].robot, 1);
+
+    const space = await smoke({ action: "space-members", keyword: "Alice", limit: 1 });
+    assert.equal(space.transport.itemCount, 1);
+    assert.ok(requests.some((request) => request.path === "/v1/bot/space/members?keyword=Alice&limit=1"));
+
+    const readReceipt = await smoke({ action: "read-receipt", channelId: "group-1", channelType: 2 });
+    assert.equal(readReceipt.transport.ok, true);
+    assert.ok(requests.some((request) =>
+      request.path === "/v1/bot/readReceipt"
+      && request.body.channel_id === "group-1"
+      && request.body.channel_type === 2
+    ));
+
+    const createdGroup = await smoke({
+      action: "create-group",
+      name: "New Group",
+      members: ["user-1"],
+      creator: "user-owner",
+    });
+    assert.equal(createdGroup.transport.data.group_no, "group-new");
+
+    const updatedGroup = await smoke({ action: "update-group", groupNo: "group-1", name: "Renamed", notice: "Notice" });
+    assert.equal(updatedGroup.transport.ok, true);
+
+    const added = await smoke({ action: "add-group-members", groupNo: "group-1", members: ["user-2", "user-3"] });
+    assert.equal(added.transport.data.added, 2);
+
+    const removed = await smoke({ action: "remove-group-members", groupNo: "group-1", members: ["user-2"] });
+    assert.equal(removed.transport.data.removed, 1);
+
+    const threads = await smoke({ action: "list-threads", groupNo: "group-1" });
+    assert.equal(threads.transport.itemCount, 1);
+    assert.equal(threads.transport.data[0].short_id, "thread-1");
+
+    const threadInfo = await smoke({ action: "thread-info", groupNo: "group-1", shortId: "thread-1" });
+    assert.equal(threadInfo.transport.data.name, "Thread One");
+
+    const threadMembers = await smoke({ action: "thread-members", groupNo: "group-1", shortId: "thread-1" });
+    assert.equal(threadMembers.transport.data[0].uid, "user-1");
+
+    const createdThread = await smoke({ action: "create-thread", groupNo: "group-1", name: "New Thread" });
+    assert.equal(createdThread.transport.data.short_id, "thread-new");
+
+    const joined = await smoke({ action: "join-thread", groupNo: "group-1", shortId: "thread-1" });
+    assert.equal(joined.transport.ok, true);
+
+    const left = await smoke({ action: "leave-thread", groupNo: "group-1", shortId: "thread-1" });
+    assert.equal(left.transport.ok, true);
+
+    const ack = await smoke({ action: "event-ack", eventId: "event-1" });
+    assert.equal(ack.transport.data.status, 200);
+
+    const history = await smoke({ action: "sync-messages", channelId: "group-1", channelType: 2, limit: 10 });
+    assert.equal(history.transport.itemCount, 1);
+    assert.equal(history.transport.data.messages[0].message_id, "12345678901234567");
+    assert.equal(history.transport.data.messages[0].payload.content, "history hello");
+
+    const download = await smoke({ action: "file-download-url", filePath: "chat/hello.txt", fileName: "hello.txt" });
+    assert.equal(download.transport.mediaUrl, "https://cdn.example.test/chat/hello.txt");
+    assert.equal(download.transport.data.location, "https://cdn.example.test/chat/hello.txt");
+  });
 });
 
 test("Octo transport smoke probes STS upload credentials without exposing secrets", async () => {

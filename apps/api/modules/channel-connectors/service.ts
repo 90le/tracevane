@@ -60,14 +60,32 @@ import {
   shouldSkipOctoMessage,
 } from "./octo-adapter.js";
 import {
+  ackOctoEvent,
+  addOctoGroupMembers,
+  createOctoGroup,
+  createOctoThread,
   directUploadAndSendOctoMedia,
   directUploadOctoFile,
   emptyOctoTransportResult,
+  getOctoFileDownloadUrl,
+  getOctoGroupInfo,
+  getOctoThreadInfo,
   getOctoUploadCredentials,
+  joinOctoThread,
+  leaveOctoThread,
+  listOctoGroupMembers,
+  listOctoGroups,
+  listOctoThreadMembers,
+  listOctoThreads,
   octoTransportFromBinding,
   registerOctoBot,
+  removeOctoGroupMembers,
+  searchOctoSpaceMembers,
   sendOctoTextReply,
+  sendOctoReadReceipt,
   sendOctoTyping,
+  syncOctoMessages,
+  updateOctoGroupInfo,
   uploadAndSendOctoMedia,
   uploadOctoFile,
 } from "./octo-transport.js";
@@ -1200,10 +1218,29 @@ function normalizeOctoTransportSmokeRequest(payload: ChannelConnectorOctoTranspo
     || payload.action === "upload-file"
     || payload.action === "direct-upload-and-send-media"
     || payload.action === "upload-and-send-media"
+    || payload.action === "read-receipt"
+    || payload.action === "list-groups"
+    || payload.action === "group-info"
+    || payload.action === "group-members"
+    || payload.action === "space-members"
+    || payload.action === "create-group"
+    || payload.action === "update-group"
+    || payload.action === "add-group-members"
+    || payload.action === "remove-group-members"
+    || payload.action === "list-threads"
+    || payload.action === "thread-info"
+    || payload.action === "thread-members"
+    || payload.action === "create-thread"
+    || payload.action === "join-thread"
+    || payload.action === "leave-thread"
+    || payload.action === "event-ack"
+    || payload.action === "sync-messages"
+    || payload.action === "file-download-url"
     || payload.action === "register"
     ? payload.action
     : "register";
   const channelType = Number(payload.channelType || 1);
+  const pullMode = Number(payload.pullMode ?? 1);
   return {
     bindingId: normalizeString(payload.bindingId) || null,
     action,
@@ -1212,6 +1249,20 @@ function normalizeOctoTransportSmokeRequest(payload: ChannelConnectorOctoTranspo
     content: normalizeString(payload.content) || "Studio Octo transport smoke",
     fileName: normalizeString(payload.fileName) || null,
     mimeType: normalizeString(payload.mimeType) || null,
+    groupNo: normalizeString(payload.groupNo) || null,
+    shortId: normalizeString(payload.shortId) || null,
+    eventId: typeof payload.eventId === "number" || typeof payload.eventId === "string" ? payload.eventId : null,
+    keyword: normalizeString(payload.keyword) || null,
+    limit: nullableNumber(payload.limit),
+    members: Array.isArray(payload.members) ? payload.members.map((member) => normalizeString(member)).filter(Boolean) : [],
+    creator: normalizeString(payload.creator) || null,
+    name: normalizeString(payload.name) || null,
+    notice: normalizeString(payload.notice) || null,
+    spaceId: normalizeString(payload.spaceId) || null,
+    startMessageSeq: nullableNumber(payload.startMessageSeq),
+    endMessageSeq: nullableNumber(payload.endMessageSeq),
+    pullMode: pullMode === 0 || pullMode === 1 ? pullMode : 1,
+    filePath: normalizeString(payload.filePath) || null,
   };
 }
 
@@ -2703,6 +2754,108 @@ export function createChannelConnectorsService(
         data: new TextEncoder().encode(content),
         fileName: request.fileName || "studio-octo-smoke.txt",
         mimeType: request.mimeType || "text/plain",
+      });
+    } else if (request.action === "read-receipt") {
+      if (!request.channelId) throw new Error("channelId is required for Octo read-receipt smoke.");
+      transport = await sendOctoReadReceipt(transportConfig, {
+        channelId: request.channelId,
+        channelType: request.channelType || 1,
+      });
+    } else if (request.action === "list-groups") {
+      transport = await listOctoGroups(transportConfig);
+    } else if (request.action === "group-info") {
+      if (!request.groupNo) throw new Error("groupNo is required for Octo group-info smoke.");
+      transport = await getOctoGroupInfo(transportConfig, request.groupNo);
+    } else if (request.action === "group-members") {
+      if (!request.groupNo) throw new Error("groupNo is required for Octo group-members smoke.");
+      transport = await listOctoGroupMembers(transportConfig, request.groupNo);
+    } else if (request.action === "space-members") {
+      transport = await searchOctoSpaceMembers(transportConfig, {
+        keyword: request.keyword || "",
+        limit: request.limit || 50,
+        spaceId: request.spaceId || null,
+      });
+    } else if (request.action === "create-group") {
+      if (!request.creator) throw new Error("creator is required for Octo create-group smoke.");
+      if (!request.members?.length) throw new Error("members are required for Octo create-group smoke.");
+      transport = await createOctoGroup(transportConfig, {
+        name: request.name || null,
+        members: request.members,
+        creator: request.creator,
+        spaceId: request.spaceId || null,
+      });
+    } else if (request.action === "update-group") {
+      if (!request.groupNo) throw new Error("groupNo is required for Octo update-group smoke.");
+      transport = await updateOctoGroupInfo(transportConfig, {
+        groupNo: request.groupNo,
+        name: request.name || null,
+        notice: request.notice || null,
+      });
+    } else if (request.action === "add-group-members") {
+      if (!request.groupNo) throw new Error("groupNo is required for Octo add-group-members smoke.");
+      if (!request.members?.length) throw new Error("members are required for Octo add-group-members smoke.");
+      transport = await addOctoGroupMembers(transportConfig, {
+        groupNo: request.groupNo,
+        members: request.members,
+      });
+    } else if (request.action === "remove-group-members") {
+      if (!request.groupNo) throw new Error("groupNo is required for Octo remove-group-members smoke.");
+      if (!request.members?.length) throw new Error("members are required for Octo remove-group-members smoke.");
+      transport = await removeOctoGroupMembers(transportConfig, {
+        groupNo: request.groupNo,
+        members: request.members,
+      });
+    } else if (request.action === "list-threads") {
+      if (!request.groupNo) throw new Error("groupNo is required for Octo list-threads smoke.");
+      transport = await listOctoThreads(transportConfig, request.groupNo);
+    } else if (request.action === "thread-info") {
+      if (!request.groupNo || !request.shortId) throw new Error("groupNo and shortId are required for Octo thread-info smoke.");
+      transport = await getOctoThreadInfo(transportConfig, {
+        groupNo: request.groupNo,
+        shortId: request.shortId,
+      });
+    } else if (request.action === "thread-members") {
+      if (!request.groupNo || !request.shortId) throw new Error("groupNo and shortId are required for Octo thread-members smoke.");
+      transport = await listOctoThreadMembers(transportConfig, {
+        groupNo: request.groupNo,
+        shortId: request.shortId,
+      });
+    } else if (request.action === "create-thread") {
+      if (!request.groupNo) throw new Error("groupNo is required for Octo create-thread smoke.");
+      transport = await createOctoThread(transportConfig, {
+        groupNo: request.groupNo,
+        name: request.name || "Studio Thread Smoke",
+      });
+    } else if (request.action === "join-thread") {
+      if (!request.groupNo || !request.shortId) throw new Error("groupNo and shortId are required for Octo join-thread smoke.");
+      transport = await joinOctoThread(transportConfig, {
+        groupNo: request.groupNo,
+        shortId: request.shortId,
+      });
+    } else if (request.action === "leave-thread") {
+      if (!request.groupNo || !request.shortId) throw new Error("groupNo and shortId are required for Octo leave-thread smoke.");
+      transport = await leaveOctoThread(transportConfig, {
+        groupNo: request.groupNo,
+        shortId: request.shortId,
+      });
+    } else if (request.action === "event-ack") {
+      if (request.eventId === null || request.eventId === undefined) throw new Error("eventId is required for Octo event-ack smoke.");
+      transport = await ackOctoEvent(transportConfig, request.eventId);
+    } else if (request.action === "sync-messages") {
+      if (!request.channelId) throw new Error("channelId is required for Octo sync-messages smoke.");
+      transport = await syncOctoMessages(transportConfig, {
+        channelId: request.channelId,
+        channelType: request.channelType || 1,
+        limit: request.limit || 50,
+        startMessageSeq: request.startMessageSeq || 0,
+        endMessageSeq: request.endMessageSeq || 0,
+        pullMode: request.pullMode ?? 1,
+      });
+    } else if (request.action === "file-download-url") {
+      if (!request.filePath) throw new Error("filePath is required for Octo file-download-url smoke.");
+      transport = await getOctoFileDownloadUrl(transportConfig, {
+        filePath: request.filePath,
+        fileName: request.fileName || null,
       });
     } else {
       transport = await registerOctoBot(transportConfig, false);

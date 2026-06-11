@@ -22,15 +22,16 @@
 
 ## 本轮完成
 
-- 对照 `~/.openclaw/extensions/octo/dist/src/{channel,api-fetch}.js` 与 `~/.openclaw/extensions/octo/skills/octo-bot-api/SKILL.md`，确认 Octo 文件发送应优先走 STS 临时凭证 + COS PUT + `/v1/bot/sendMessage`。
-- 修复 Octo 出站文件发送 HTTP 410：`upload-and-send-media` 的 auto 模式默认改为 STS/COS 直传；显式 `uploadStrategy=multipart` 仍保留旧 `/v1/bot/file/upload`；auto 先走旧 multipart 且遇到 404/405/410 时会自动回退直传。
-- 更新 Octo transport 回归：默认小文件直传、原始文件名保留、旧 multipart 410 回退、binding metadata smoke 均已覆盖。
+- 对照 `~/.openclaw/extensions/octo/dist/src/{channel,api-fetch}.js` 与 `~/.openclaw/extensions/octo/skills/octo-bot-api/SKILL.md`，扩展 Studio Octo Bot API transport 能力。
+- `/api/channel-connectors/adapters/octo/transport-smoke` 已支持 read receipt、event ack、群列表/详情/成员、Space 成员搜索、群创建/更新/成员增删、thread 列表/详情/成员/创建/加入/离开、消息历史同步和文件下载 URL 探测。
+- Octo REST JSON 解析补齐 OpenClaw 插件同款 `message_id` 大整数保护；消息历史 smoke 会把 base64 payload 解码成结构化 payload，便于后续注入群/会话上下文。
 
 ## 最近验证
 
 - 通过：`npm run typecheck:api`。
 - 通过：`npm run build:api`。
-- 通过：`node --test --test-name-pattern "Octo transport upload strategy|Octo transport direct uploads|Octo upload-and-send media auto routes|Octo transport preserves outbound upload file names|Octo auto upload falls back|Octo transport smoke uploads and sends media" tests/system/channel-connectors-service.test.mjs`，6/6 全部通过。
+- 通过：`node --test --test-name-pattern "Octo transport smoke covers Bot API|Octo transport upload strategy|Octo transport direct uploads|Octo upload-and-send media auto routes|Octo transport preserves outbound upload file names|Octo auto upload falls back|Octo transport smoke uploads and sends media" tests/system/channel-connectors-service.test.mjs`，7/7 全部通过。
+- 通过：真实 Octo `octo-studio-cc` 只读 smoke：`list-groups` HTTP 200 / 1 个群；取第一个群执行 `group-members` HTTP 200 / 6 个成员。
 
 ## 已知边界
 
@@ -47,5 +48,5 @@
 
 1. 用户发送一条新的 Feishu 消息，做业务入站复验：runtime 应出现 dispatcher callback / receivedMessages，且无 reconnect/stale。
 2. 做真实 IM live smoke：先从 Feishu/Octo 真实发送 `/commands addexec slow node -e "setTimeout(()=>console.log('slow done'), 900)"` 和 `/slow`，再运行 `node scripts/smoke-channel-connectors-command-live.mjs --bindings feishu-live --recent-sessions --commands /slow --wait-command-progress --require-command-progress-terminal --require-command-progress-patch --json` 验证 Feishu daemon card patch，并运行 `node scripts/smoke-channel-connectors-command-live.mjs --bindings octo-studio-cc --recent-sessions --commands /slow --wait-command-progress --require-command-progress-terminal --require-command-progress-sent --json` 验证 Octo started-only 文本提示；再运行 `node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings feishu-live --require-ok --require-reply --require-progress --require-tool --require-feishu-card --require-feishu-progress-card-completed --require-permission-prompt --require-permission-resolved --require-feishu-permission-progress-card --require-no-final-progress-reply --json`，用三次顺序 `exec_command` 和需要审批的提示词验证思考、过程回复、工具输入、工具输出、审批卡和最终回复。
-3. 用户在 Octo 真实会话重试“让 Agent 发 `hello.txt`”并观察是否不再出现 `/v1/bot/file/upload` HTTP 410；若仍失败，直接抓 daemon `channel.outbound_files` 与 Octo transport 日志定位 COS 凭证或 sendMessage 层。
-4. 继续按 CC Go 与 OpenClaw Octo 插件迁移 Octo 群聊、成员、聊天历史、thread/RichText/文件下载等平台能力；同时推进 Feishu/Octo 菜单与命令细节、OpenCode 文件/权限/流式能力和非 Feishu 纯文本进度样式。
+3. 用户在 Octo 真实会话重试“让 Agent 发 `hello.txt`”，并做一轮 Octo Bot API live smoke：`list-groups`、`group-members`、`sync-messages`、`file-download-url` 先只读验证。
+4. 把 Octo Bot API 能力接入 Channel daemon：群成员/历史上下文补全、read receipt、event ack、thread target、文件下载/staging 与后续菜单命令。

@@ -185,10 +185,28 @@ export interface ChannelConnectorOctoTransportResult {
     | "send-message"
     | "upload-credentials"
     | "direct-upload-file"
-    | "upload-file"
-    | "send-media"
-    | "direct-upload-and-send-media"
-    | "upload-and-send-media";
+	    | "upload-file"
+	    | "send-media"
+	    | "direct-upload-and-send-media"
+	    | "upload-and-send-media"
+	    | "read-receipt"
+	    | "list-groups"
+	    | "group-info"
+	    | "group-members"
+	    | "space-members"
+	    | "create-group"
+	    | "update-group"
+	    | "add-group-members"
+	    | "remove-group-members"
+	    | "list-threads"
+	    | "thread-info"
+	    | "thread-members"
+	    | "create-thread"
+	    | "join-thread"
+	    | "leave-thread"
+	    | "event-ack"
+	    | "sync-messages"
+	    | "file-download-url";
   apiUrl: string | null;
   statusCode: number | null;
   error: string | null;
@@ -203,10 +221,12 @@ export interface ChannelConnectorOctoTransportResult {
   uploadBucket?: string | null;
   uploadRegion?: string | null;
   uploadKey?: string | null;
-  uploadCdnBaseUrl?: string | null;
-  uploadExpiredTime?: number | null;
-  uploadCredentialKeys?: string[] | null;
-}
+	  uploadCdnBaseUrl?: string | null;
+	  uploadExpiredTime?: number | null;
+	  uploadCredentialKeys?: string[] | null;
+	  data?: unknown;
+	  itemCount?: number | null;
+	}
 
 export interface ChannelConnectorOctoTransportSmokeRequest {
   bindingId?: string | null;
@@ -215,16 +235,48 @@ export interface ChannelConnectorOctoTransportSmokeRequest {
     | "typing"
     | "send-message"
     | "upload-credentials"
-    | "direct-upload-file"
-    | "upload-file"
-    | "direct-upload-and-send-media"
-    | "upload-and-send-media";
-  channelId?: string | null;
-  channelType?: ChannelConnectorOctoChannelType;
-  content?: string | null;
-  fileName?: string | null;
-  mimeType?: string | null;
-}
+	    | "direct-upload-file"
+	    | "upload-file"
+	    | "direct-upload-and-send-media"
+	    | "upload-and-send-media"
+	    | "read-receipt"
+	    | "list-groups"
+	    | "group-info"
+	    | "group-members"
+	    | "space-members"
+	    | "create-group"
+	    | "update-group"
+	    | "add-group-members"
+	    | "remove-group-members"
+	    | "list-threads"
+	    | "thread-info"
+	    | "thread-members"
+	    | "create-thread"
+	    | "join-thread"
+	    | "leave-thread"
+	    | "event-ack"
+	    | "sync-messages"
+	    | "file-download-url";
+	  channelId?: string | null;
+	  channelType?: ChannelConnectorOctoChannelType;
+	  content?: string | null;
+	  fileName?: string | null;
+	  mimeType?: string | null;
+	  groupNo?: string | null;
+	  shortId?: string | null;
+	  eventId?: string | number | null;
+	  keyword?: string | null;
+	  limit?: number | null;
+	  members?: string[] | null;
+	  creator?: string | null;
+	  name?: string | null;
+	  notice?: string | null;
+	  spaceId?: string | null;
+	  startMessageSeq?: number | null;
+	  endMessageSeq?: number | null;
+	  pullMode?: 0 | 1 | null;
+	  filePath?: string | null;
+	}
 
 export interface ChannelConnectorOctoTransportSmokeResponse {
   ok: true;

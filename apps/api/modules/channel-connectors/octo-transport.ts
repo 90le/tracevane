@@ -37,6 +37,11 @@ function recordFrom(value: unknown): Record<string, unknown> {
     : {};
 }
 
+function parseOctoJson(raw: string): unknown {
+  const safe = raw.replace(/"message_id"\s*:\s*(\d{16,})/g, '"message_id":"$1"');
+  return JSON.parse(safe) as unknown;
+}
+
 function parseOctoDirectUploadMinBytes(value: unknown): number {
   if (typeof value === "number" && Number.isFinite(value)) return Math.max(0, Math.floor(value));
   const raw = normalizeString(value).toLowerCase();
@@ -83,7 +88,7 @@ export function octoTransportFromBinding(binding: ChannelConnectorPlatformBindin
 function transportResult(
   input: Partial<ChannelConnectorOctoTransportResult> & Pick<ChannelConnectorOctoTransportResult, "action">,
 ): ChannelConnectorOctoTransportResult {
-  return {
+  const result: ChannelConnectorOctoTransportResult = {
     attempted: input.attempted ?? false,
     ok: input.ok ?? null,
     action: input.action,
@@ -105,40 +110,45 @@ function transportResult(
     uploadExpiredTime: input.uploadExpiredTime ?? null,
     uploadCredentialKeys: input.uploadCredentialKeys ?? null,
   };
+  if ("data" in input) result.data = input.data ?? null;
+  if ("itemCount" in input) result.itemCount = input.itemCount ?? null;
+  return result;
 }
 
 export function emptyOctoTransportResult(action: ChannelConnectorOctoTransportResult["action"] = "none"): ChannelConnectorOctoTransportResult {
   return transportResult({ action });
 }
 
-async function postOctoJson(
+async function requestOctoJson(
   config: ChannelConnectorOctoTransportConfig,
+  method: "GET" | "POST" | "PUT" | "DELETE",
   path: string,
-  payload: unknown,
+  payload?: unknown,
 ): Promise<{ statusCode: number; body: Record<string, unknown> }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
   try {
+    const headers: Record<string, string> = {
+      authorization: `Bearer ${config.botToken}`,
+    };
+    if (payload !== undefined) headers["content-type"] = "application/json";
     const response = await fetch(`${config.apiUrl.replace(/\/+$/, "")}${path}`, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        authorization: `Bearer ${config.botToken}`,
-      },
-      body: JSON.stringify(payload),
+      method,
+      headers,
+      body: payload === undefined ? undefined : JSON.stringify(payload),
       signal: controller.signal,
     });
     const raw = await response.text();
     let body: Record<string, unknown> = {};
     if (raw) {
       try {
-        body = JSON.parse(raw) as Record<string, unknown>;
+        body = parseOctoJson(raw) as Record<string, unknown>;
       } catch {
         body = { raw };
       }
     }
     if (!response.ok) {
-      throw Object.assign(new Error(`Octo API ${path} failed with HTTP ${response.status}`), {
+      throw Object.assign(new Error(`Octo API ${method} ${path} failed with HTTP ${response.status}`), {
         statusCode: response.status,
         body,
       });
@@ -152,10 +162,40 @@ async function postOctoJson(
   }
 }
 
+async function postOctoJson(
+  config: ChannelConnectorOctoTransportConfig,
+  path: string,
+  payload: unknown,
+): Promise<{ statusCode: number; body: Record<string, unknown> }> {
+  return requestOctoJson(config, "POST", path, payload);
+}
+
 async function getOctoJson(
   config: ChannelConnectorOctoTransportConfig,
   path: string,
 ): Promise<{ statusCode: number; body: Record<string, unknown> }> {
+  return requestOctoJson(config, "GET", path);
+}
+
+async function putOctoJson(
+  config: ChannelConnectorOctoTransportConfig,
+  path: string,
+  payload: unknown,
+): Promise<{ statusCode: number; body: Record<string, unknown> }> {
+  return requestOctoJson(config, "PUT", path, payload);
+}
+
+async function deleteOctoJson(
+  config: ChannelConnectorOctoTransportConfig,
+  path: string,
+): Promise<{ statusCode: number; body: Record<string, unknown> }> {
+  return requestOctoJson(config, "DELETE", path);
+}
+
+async function getOctoRedirect(
+  config: ChannelConnectorOctoTransportConfig,
+  path: string,
+): Promise<{ statusCode: number; location: string | null; body: Record<string, unknown> }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
   try {
@@ -164,25 +204,28 @@ async function getOctoJson(
       headers: {
         authorization: `Bearer ${config.botToken}`,
       },
+      redirect: "manual",
       signal: controller.signal,
     });
     const raw = await response.text();
     let body: Record<string, unknown> = {};
     if (raw) {
       try {
-        body = JSON.parse(raw) as Record<string, unknown>;
+        body = parseOctoJson(raw) as Record<string, unknown>;
       } catch {
         body = { raw };
       }
     }
-    if (!response.ok) {
-      throw Object.assign(new Error(`Octo API ${path} failed with HTTP ${response.status}`), {
+    const location = response.headers.get("location");
+    if (!response.ok && !location) {
+      throw Object.assign(new Error(`Octo API GET ${path} failed with HTTP ${response.status}`), {
         statusCode: response.status,
         body,
       });
     }
     return {
       statusCode: response.status,
+      location,
       body,
     };
   } finally {
@@ -218,6 +261,89 @@ function mediaUrlFromResponse(body: Record<string, unknown>): string {
 function normalizeNumber(value: unknown): number | null {
   const numberValue = Number(value);
   return Number.isFinite(numberValue) ? numberValue : null;
+}
+
+function itemCountFromOctoData(value: unknown): number | null {
+  if (Array.isArray(value)) return value.length;
+  const record = recordFrom(value);
+  for (const key of ["data", "groups", "members", "messages", "threads", "items"]) {
+    const candidate = record[key];
+    if (Array.isArray(candidate)) return candidate.length;
+  }
+  return null;
+}
+
+function octoTransportData(
+  config: ChannelConnectorOctoTransportConfig,
+  action: ChannelConnectorOctoTransportResult["action"],
+  response: { statusCode: number; body: unknown },
+  data: unknown = response.body,
+): ChannelConnectorOctoTransportResult {
+  return transportResult({
+    attempted: true,
+    ok: true,
+    action,
+    apiUrl: config.apiUrl,
+    statusCode: response.statusCode,
+    requestCount: 1,
+    data,
+    itemCount: itemCountFromOctoData(data),
+  });
+}
+
+function octoTransportError(
+  config: ChannelConnectorOctoTransportConfig,
+  action: ChannelConnectorOctoTransportResult["action"],
+  error: unknown,
+): ChannelConnectorOctoTransportResult {
+  return transportResult({
+    attempted: true,
+    ok: false,
+    action,
+    apiUrl: config.apiUrl,
+    statusCode: errorStatusCode(error),
+    error: errorMessage(error),
+    requestCount: 1,
+  });
+}
+
+function octoPathSegment(value: string): string {
+  return encodeURIComponent(value);
+}
+
+function octoQuery(params: Record<string, string | number | null | undefined>): string {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value === null || value === undefined || value === "") continue;
+    query.set(key, String(value));
+  }
+  const raw = query.toString();
+  return raw ? `?${raw}` : "";
+}
+
+function normalizeOctoMessagePayload(value: unknown): unknown {
+  if (typeof value !== "string" || !value) return value;
+  try {
+    const decoded = Buffer.from(value, "base64").toString("utf8");
+    return parseOctoJson(decoded);
+  } catch {
+    return value;
+  }
+}
+
+function normalizeOctoMessagesSyncData(body: unknown): unknown {
+  const record = recordFrom(body);
+  const messages = Array.isArray(record.messages) ? record.messages : [];
+  return {
+    ...record,
+    messages: messages.map((entry) => {
+      const message = recordFrom(entry);
+      return {
+        ...message,
+        payload: normalizeOctoMessagePayload(message.payload),
+      };
+    }),
+  };
 }
 
 function normalizeUploadCredentialString(source: Record<string, unknown>, ...keys: string[]): string {
@@ -437,7 +563,7 @@ async function postOctoMultipart(
     let body: Record<string, unknown> = {};
     if (raw) {
       try {
-        body = JSON.parse(raw) as Record<string, unknown>;
+        body = parseOctoJson(raw) as Record<string, unknown>;
       } catch {
         body = { raw };
       }
@@ -542,6 +668,274 @@ export async function sendOctoHeartbeat(
       error: errorMessage(error),
       requestCount: 1,
     });
+  }
+}
+
+export async function sendOctoReadReceipt(
+  config: ChannelConnectorOctoTransportConfig,
+  input: { channelId: string; channelType: number },
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await postOctoJson(config, "/v1/bot/readReceipt", {
+      channel_id: input.channelId,
+      channel_type: input.channelType,
+    });
+    return octoTransportData(config, "read-receipt", response);
+  } catch (error) {
+    return octoTransportError(config, "read-receipt", error);
+  }
+}
+
+export async function ackOctoEvent(
+  config: ChannelConnectorOctoTransportConfig,
+  eventId: string | number,
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await postOctoJson(config, `/v1/bot/events/${octoPathSegment(String(eventId))}/ack`, {});
+    return octoTransportData(config, "event-ack", response);
+  } catch (error) {
+    return octoTransportError(config, "event-ack", error);
+  }
+}
+
+export async function listOctoGroups(config: ChannelConnectorOctoTransportConfig): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await getOctoJson(config, "/v1/bot/groups");
+    return octoTransportData(config, "list-groups", response);
+  } catch (error) {
+    return octoTransportError(config, "list-groups", error);
+  }
+}
+
+export async function getOctoGroupInfo(
+  config: ChannelConnectorOctoTransportConfig,
+  groupNo: string,
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await getOctoJson(config, `/v1/bot/groups/${octoPathSegment(groupNo)}`);
+    return octoTransportData(config, "group-info", response);
+  } catch (error) {
+    return octoTransportError(config, "group-info", error);
+  }
+}
+
+export async function listOctoGroupMembers(
+  config: ChannelConnectorOctoTransportConfig,
+  groupNo: string,
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await getOctoJson(config, `/v1/bot/groups/${octoPathSegment(groupNo)}/members`);
+    const data = Array.isArray(response.body)
+      ? response.body
+      : Array.isArray(response.body.members)
+        ? response.body.members
+        : response.body;
+    return octoTransportData(config, "group-members", response, data);
+  } catch (error) {
+    return octoTransportError(config, "group-members", error);
+  }
+}
+
+export async function searchOctoSpaceMembers(
+  config: ChannelConnectorOctoTransportConfig,
+  input: { keyword?: string | null; limit?: number | null; spaceId?: string | null },
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await getOctoJson(config, `/v1/bot/space/members${octoQuery({
+      keyword: input.keyword || null,
+      limit: input.limit || null,
+      space_id: input.spaceId || null,
+    })}`);
+    return octoTransportData(config, "space-members", response);
+  } catch (error) {
+    return octoTransportError(config, "space-members", error);
+  }
+}
+
+export async function createOctoGroup(
+  config: ChannelConnectorOctoTransportConfig,
+  input: { name?: string | null; members: string[]; creator: string; spaceId?: string | null },
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await postOctoJson(config, "/v1/bot/createGroup", {
+      ...(input.name ? { name: input.name } : {}),
+      members: input.members,
+      creator: input.creator,
+      ...(input.spaceId ? { space_id: input.spaceId } : {}),
+    });
+    return octoTransportData(config, "create-group", response);
+  } catch (error) {
+    return octoTransportError(config, "create-group", error);
+  }
+}
+
+export async function updateOctoGroupInfo(
+  config: ChannelConnectorOctoTransportConfig,
+  input: { groupNo: string; name?: string | null; notice?: string | null },
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await putOctoJson(config, `/v1/bot/groups/${octoPathSegment(input.groupNo)}/info`, {
+      ...(input.name ? { name: input.name } : {}),
+      ...(input.notice ? { notice: input.notice } : {}),
+    });
+    return octoTransportData(config, "update-group", response);
+  } catch (error) {
+    return octoTransportError(config, "update-group", error);
+  }
+}
+
+export async function addOctoGroupMembers(
+  config: ChannelConnectorOctoTransportConfig,
+  input: { groupNo: string; members: string[] },
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await postOctoJson(config, `/v1/bot/groups/${octoPathSegment(input.groupNo)}/members/add`, {
+      members: input.members,
+    });
+    return octoTransportData(config, "add-group-members", response);
+  } catch (error) {
+    return octoTransportError(config, "add-group-members", error);
+  }
+}
+
+export async function removeOctoGroupMembers(
+  config: ChannelConnectorOctoTransportConfig,
+  input: { groupNo: string; members: string[] },
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await postOctoJson(config, `/v1/bot/groups/${octoPathSegment(input.groupNo)}/members/remove`, {
+      members: input.members,
+    });
+    return octoTransportData(config, "remove-group-members", response);
+  } catch (error) {
+    return octoTransportError(config, "remove-group-members", error);
+  }
+}
+
+export async function listOctoThreads(
+  config: ChannelConnectorOctoTransportConfig,
+  groupNo: string,
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await getOctoJson(config, `/v1/bot/groups/${octoPathSegment(groupNo)}/threads`);
+    return octoTransportData(config, "list-threads", response);
+  } catch (error) {
+    return octoTransportError(config, "list-threads", error);
+  }
+}
+
+export async function getOctoThreadInfo(
+  config: ChannelConnectorOctoTransportConfig,
+  input: { groupNo: string; shortId: string },
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await getOctoJson(config, `/v1/bot/groups/${octoPathSegment(input.groupNo)}/threads/${octoPathSegment(input.shortId)}`);
+    return octoTransportData(config, "thread-info", response);
+  } catch (error) {
+    return octoTransportError(config, "thread-info", error);
+  }
+}
+
+export async function listOctoThreadMembers(
+  config: ChannelConnectorOctoTransportConfig,
+  input: { groupNo: string; shortId: string },
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await getOctoJson(config, `/v1/bot/groups/${octoPathSegment(input.groupNo)}/threads/${octoPathSegment(input.shortId)}/members`);
+    return octoTransportData(config, "thread-members", response);
+  } catch (error) {
+    return octoTransportError(config, "thread-members", error);
+  }
+}
+
+export async function createOctoThread(
+  config: ChannelConnectorOctoTransportConfig,
+  input: { groupNo: string; name: string },
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await postOctoJson(config, `/v1/bot/groups/${octoPathSegment(input.groupNo)}/threads`, {
+      name: input.name,
+    });
+    return octoTransportData(config, "create-thread", response);
+  } catch (error) {
+    return octoTransportError(config, "create-thread", error);
+  }
+}
+
+export async function joinOctoThread(
+  config: ChannelConnectorOctoTransportConfig,
+  input: { groupNo: string; shortId: string },
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await postOctoJson(config, `/v1/bot/groups/${octoPathSegment(input.groupNo)}/threads/${octoPathSegment(input.shortId)}/join`, {});
+    return octoTransportData(config, "join-thread", response);
+  } catch (error) {
+    return octoTransportError(config, "join-thread", error);
+  }
+}
+
+export async function leaveOctoThread(
+  config: ChannelConnectorOctoTransportConfig,
+  input: { groupNo: string; shortId: string },
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await postOctoJson(config, `/v1/bot/groups/${octoPathSegment(input.groupNo)}/threads/${octoPathSegment(input.shortId)}/leave`, {});
+    return octoTransportData(config, "leave-thread", response);
+  } catch (error) {
+    return octoTransportError(config, "leave-thread", error);
+  }
+}
+
+export async function syncOctoMessages(
+  config: ChannelConnectorOctoTransportConfig,
+  input: {
+    channelId: string;
+    channelType: number;
+    limit?: number | null;
+    startMessageSeq?: number | null;
+    endMessageSeq?: number | null;
+    pullMode?: 0 | 1 | null;
+  },
+): Promise<ChannelConnectorOctoTransportResult> {
+  try {
+    const response = await postOctoJson(config, "/v1/bot/messages/sync", {
+      channel_id: input.channelId,
+      channel_type: input.channelType,
+      limit: input.limit || 50,
+      start_message_seq: input.startMessageSeq || 0,
+      end_message_seq: input.endMessageSeq || 0,
+      pull_mode: input.pullMode ?? 1,
+    });
+    return octoTransportData(config, "sync-messages", response, normalizeOctoMessagesSyncData(response.body));
+  } catch (error) {
+    return octoTransportError(config, "sync-messages", error);
+  }
+}
+
+export async function getOctoFileDownloadUrl(
+  config: ChannelConnectorOctoTransportConfig,
+  input: { filePath: string; fileName?: string | null },
+): Promise<ChannelConnectorOctoTransportResult> {
+  const cleanPath = input.filePath.split("/").filter(Boolean).map(octoPathSegment).join("/");
+  try {
+    const response = await getOctoRedirect(config, `/v1/bot/file/download/${cleanPath}${octoQuery({
+      filename: input.fileName || null,
+    })}`);
+    return transportResult({
+      attempted: true,
+      ok: true,
+      action: "file-download-url",
+      apiUrl: config.apiUrl,
+      statusCode: response.statusCode,
+      requestCount: 1,
+      mediaUrl: response.location,
+      data: {
+        location: response.location,
+        body: response.body,
+      },
+    });
+  } catch (error) {
+    return octoTransportError(config, "file-download-url", error);
   }
 }
 

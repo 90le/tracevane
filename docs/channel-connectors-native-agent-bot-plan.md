@@ -145,6 +145,7 @@ Studio 增强点：
 - F4 Octo URL attachment staging 已落地：Octo URL 型图片/文件/语音/视频进入 Agent 前 streaming 下载到本地 attachment 目录，默认拒绝私网 URL，大小上限可由 binding metadata 覆盖；失败只写 `stagingError` 不阻断对话。
 - F4 Octo 入站 URL 字段兼容已落地：除 `url` 外，支持常见 snake/camel URL 变体；若 live payload 仍无 URL，需要继续补 Octo/COS 媒体下载接口。
 - F4 Octo payload-only 附件补回已落地：daemon 运行前把 payload 推断出的附件写回 `attachments`，避免 live image/file 只显示 `[image]` 却不进入 staging；同时按 OpenClaw Octo 插件补 GIF=3、RichText=14 图文混排和多图 `mediaUrls` 入站归一化。
+- F4 Octo Bot API transport 基础能力已落地：`transport-smoke` 支持 read receipt、event ack、群/成员/Space 搜索、群管理、thread 管理、消息历史同步和文件下载 URL；消息历史 payload 解码和大整数 `message_id` 保护已对齐 OpenClaw Octo 插件。下一步把这些能力接入 daemon 自动 read receipt、群成员/历史上下文、thread target 和文件下载/staging。
 - F4 图片能力门控已落地：Feishu/Octo 图片会先 staging；若当前模型未标记为 vision（例如 `glm-5`），Channel runner 仍启动受控 Agent turn，但 prompt 会禁止视觉推断并要求询问用户下一步；普通文件仍照常进入 Agent，避免把“不能看图”误判成“不能收文件”。
 - F4 Gateway vision 模型自动选择已落地：Channel daemon 会读取 Studio Gateway `/v1/models` 的模型能力；视觉附件 turn 如果当前模型不支持 vision 且模型池存在 vision 模型，会仅本轮切到 vision 模型，未找到或 catalog 不可用时回到非视觉保护；binding metadata 可用 `autoVisionModel:false` 关闭。
 - F4 Codex 原生图片输入已落地：当 image/sticker 已 staging 且当前 turn 为 vision-capable Codex 模型，runner 会把本地文件通过 Codex CLI `--image` 传入；纯附件消息不再因文本为空被丢弃。视频、Claude Code/OpenCode 视觉输入和 OCR 仍是后续项。
