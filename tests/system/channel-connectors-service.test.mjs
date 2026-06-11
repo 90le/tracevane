@@ -47,6 +47,7 @@ import {
 import {
   uploadAndSendOctoMedia,
   shouldDirectUploadOctoMedia,
+  sendOctoTextReply,
   sendOctoHeartbeat,
   sendOctoReadReceipt,
 } from "../../dist/apps/api/modules/channel-connectors/octo-transport.js";
@@ -1873,6 +1874,45 @@ test("Octo transport sends read receipt with message ids", async () => {
       channel_type: 2,
       message_ids: ["12345678901234567"],
     });
+  });
+});
+
+test("Octo transport keeps group mentions visible when payload only carries mention metadata", async () => {
+  await withMockOctoServer(async (apiUrl, requests) => {
+    const result = await sendOctoTextReply({
+      apiUrl,
+      botToken: "octo-token",
+    }, {
+      chunks: ["请介绍一下能力"],
+      mentionUids: ["27xIxHrNV0Qc3ee2129_bot"],
+      mentionEntities: [],
+      payloads: [
+        {
+          channel_id: "group-1",
+          channel_type: 2,
+          payload: {
+            content: "请介绍一下能力",
+            mention: {
+              uids: ["27xIxHrNV0Qc3ee2129_bot"],
+            },
+          },
+        },
+      ],
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.action, "send-message");
+    const request = requests.find((item) => item.path === "/v1/bot/sendMessage");
+    assert.ok(request);
+    assert.equal(request.method, "POST");
+    assert.equal(request.authorization, "Bearer octo-token");
+    assert.equal(request.body.channel_id, "group-1");
+    assert.equal(request.body.channel_type, 2);
+    assert.equal(request.body.payload.content, "@27xIxHrNV0Qc3ee2129_bot 请介绍一下能力");
+    assert.deepEqual(request.body.payload.mention.uids, ["27xIxHrNV0Qc3ee2129_bot"]);
+    assert.deepEqual(request.body.payload.mention.entities, [
+      { uid: "27xIxHrNV0Qc3ee2129_bot", offset: 0, length: "@27xIxHrNV0Qc3ee2129_bot".length },
+    ]);
   });
 });
 
@@ -8775,6 +8815,57 @@ test("native Channel Connectors process runner maps OpenCode JSON progress witho
   assert.equal(progress[8].type, "completed");
   assert.equal(progress[8].text, "done");
   assert.equal(result.progressEvents?.length, 9);
+});
+
+test("native Channel Connectors process runner treats OpenCode tool-calls step finish as process boundary", async () => {
+  const root = makeTempRoot();
+  const progress = [];
+  const stdout = [
+    JSON.stringify({ type: "step_start", part: { type: "step-start", sessionID: "opencode-session-process" } }),
+    JSON.stringify({ type: "text", messageID: "assistant-message-1", part: { type: "text", messageID: "assistant-message-1", text: "我先查一下群成员。" } }),
+    JSON.stringify({ type: "step_finish", part: { type: "step-finish", reason: "tool-calls" } }),
+    JSON.stringify({ type: "step_start", part: { type: "step-start", sessionID: "opencode-session-process" } }),
+    JSON.stringify({
+      type: "tool_use",
+      part: {
+        type: "tool",
+        tool: "octo-group-members",
+        state: {
+          status: "completed",
+          input: { groupNo: "group-1" },
+          output: "Alice\nstudio-cc",
+        },
+      },
+    }),
+    JSON.stringify({ type: "text", messageID: "assistant-message-2", part: { type: "text", messageID: "assistant-message-2", text: "最终汇总。" } }),
+    JSON.stringify({ type: "step_finish", part: { type: "step-finish", reason: "stop" } }),
+    "",
+  ].join("\n");
+  const childScript = `process.stdout.write(${JSON.stringify(stdout)});`;
+
+  const result = await defaultChannelConnectorAgentProcessRunner({
+    command: process.execPath,
+    args: ["-e", childScript],
+    cwd: root,
+    stdin: "",
+    env: {},
+    timeoutMs: 1000,
+    agent: "opencode",
+    onProgress: (event) => progress.push(event),
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.error, null);
+  const assistantProgress = progress.filter((event) => event.type === "assistant");
+  assert.deepEqual(assistantProgress.map((event) => event.text), ["我先查一下群成员。", "最终汇总。"]);
+  assert.deepEqual(assistantProgress.map((event) => event.phase), ["intermediate", "final"]);
+  assert.equal(isChannelConnectorProcessProgressEvent(assistantProgress[0]), true);
+  assert.equal(isChannelConnectorProcessProgressEvent(assistantProgress[1]), false);
+  const toolCallBoundary = progress.find((event) => event.rawType === "step_finish" && event.text === "tool-calls");
+  assert.ok(toolCallBoundary);
+  assert.equal(toolCallBoundary.type, "event");
+  assert.equal(progress.at(-1).type, "completed");
+  assert.equal(progress.at(-1).text, "stop");
 });
 
 test("native Channel Connectors process runner keeps Claude Code final text out of process progress", async () => {

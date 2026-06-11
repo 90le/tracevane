@@ -273,6 +273,93 @@ function itemCountFromOctoData(value: unknown): number | null {
   return null;
 }
 
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.map(normalizeString).filter(Boolean))];
+}
+
+function normalizeOctoMentionEntities(value: unknown): ChannelConnectorOctoReplyPlan["mentionEntities"] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      const record = recordFrom(item);
+      const uid = normalizeString(record.uid);
+      const offset = Number(record.offset);
+      const length = Number(record.length);
+      return uid && Number.isFinite(offset) && Number.isFinite(length) && offset >= 0 && length > 0
+        ? { uid, offset: Math.floor(offset), length: Math.floor(length) }
+        : null;
+    })
+    .filter((item): item is ChannelConnectorOctoReplyPlan["mentionEntities"][number] => item !== null);
+}
+
+function octoMentionToken(uid: string): string {
+  return `@${uid}`;
+}
+
+function visibleMentionEntityForUid(content: string, uid: string): ChannelConnectorOctoReplyPlan["mentionEntities"][number] | null {
+  const token = octoMentionToken(uid);
+  const offset = content.indexOf(token);
+  return offset >= 0 ? { uid, offset, length: token.length } : null;
+}
+
+function normalizeOctoVisibleMentionPayload(input: {
+  content: string;
+  mention?: ChannelConnectorOctoReplyPlan["payloads"][number]["payload"]["mention"] | null;
+}): {
+  content: string;
+  mention?: ChannelConnectorOctoReplyPlan["payloads"][number]["payload"]["mention"];
+} {
+  const mention = input.mention || null;
+  if (!mention) return { content: input.content };
+  const uids = uniqueStrings(Array.isArray(mention.uids) ? mention.uids : []);
+  const originalEntities = normalizeOctoMentionEntities(mention.entities);
+  const covered = new Set(originalEntities.map((entity) => normalizeString(entity.uid)));
+  let content = input.content;
+  const generatedEntities: ChannelConnectorOctoReplyPlan["mentionEntities"] = [];
+  const missingUids = uids.filter((uid) => !covered.has(uid));
+  const prefixUids: string[] = [];
+
+  for (const uid of missingUids) {
+    const visible = visibleMentionEntityForUid(content, uid);
+    if (visible) {
+      generatedEntities.push(visible);
+      covered.add(uid);
+    } else {
+      prefixUids.push(uid);
+    }
+  }
+
+  if (prefixUids.length) {
+    const tokens = prefixUids.map(octoMentionToken);
+    const prefix = tokens.join(" ");
+    const shift = prefix.length + (content ? 1 : 0);
+    let offset = 0;
+    for (let index = 0; index < prefixUids.length; index += 1) {
+      const token = tokens[index];
+      generatedEntities.push({
+        uid: prefixUids[index],
+        offset,
+        length: token.length,
+      });
+      offset += token.length + 1;
+    }
+    content = `${prefix}${content ? ` ${content}` : ""}`;
+    for (const entity of originalEntities) {
+      entity.offset += shift;
+    }
+  }
+
+  const entities = [...generatedEntities, ...originalEntities].sort((a, b) => a.offset - b.offset);
+  return {
+    content,
+    mention: {
+      ...(uids.length ? { uids } : {}),
+      ...(entities.length ? { entities } : {}),
+      ...(mention.all ? { all: mention.all } : {}),
+    },
+  };
+}
+
 function octoTransportData(
   config: ChannelConnectorOctoTransportConfig,
   action: ChannelConnectorOctoTransportResult["action"],
@@ -1090,13 +1177,17 @@ export async function sendOctoTextReply(
     let lastStatusCode: number | null = null;
     for (const payload of replyPlan.payloads) {
       requestCount += 1;
+      const textPayload = normalizeOctoVisibleMentionPayload({
+        content: payload.payload.content,
+        mention: payload.payload.mention,
+      });
       const response = await postOctoJson(config, "/v1/bot/sendMessage", {
         channel_id: payload.channel_id,
         channel_type: payload.channel_type,
         payload: {
           type: OCTO_TEXT_MESSAGE_TYPE,
-          content: payload.payload.content,
-          ...(payload.payload.mention ? { mention: payload.payload.mention } : {}),
+          content: textPayload.content,
+          ...(textPayload.mention ? { mention: textPayload.mention } : {}),
         },
       });
       lastStatusCode = response.statusCode;

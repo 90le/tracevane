@@ -1300,6 +1300,11 @@ function openCodeToolProgressEvents(
   return [progressEvent({ type: "tool", rawType, itemType: partType, text: inputText || resultText || toolName, toolName })];
 }
 
+function isOpenCodeToolCallStepBoundary(reason: string | null | undefined): boolean {
+  const lowerReason = normalizeString(reason).toLowerCase();
+  return lowerReason === "tool-calls" || lowerReason === "tool_calls" || lowerReason === "tool-call";
+}
+
 function parseOpenCodeProgressLineEvents(line: string): ChannelConnectorAgentProgressEvent[] {
   const raw = recordValue(JSON.parse(line));
   if (!raw) return [];
@@ -1334,11 +1339,12 @@ function parseOpenCodeProgressLineEvents(line: string): ChannelConnectorAgentPro
   }
 
   if (rawType === "step_finish" || partType === "step-finish") {
+    const reason = normalizeString(part?.reason) || normalizeString(raw.reason) || null;
     return [progressEvent({
-      type: "completed",
+      type: isOpenCodeToolCallStepBoundary(reason) ? "event" : "completed",
       rawType,
       itemType: partType || null,
-      text: normalizeString(part?.reason) || normalizeString(raw.reason) || "OpenCode step completed",
+      text: reason || "OpenCode step completed",
     })];
   }
 
@@ -2168,8 +2174,14 @@ function openCodeDbFallback(
       progressEvents.push(progressEvent({ type: "tool", rawType: "tool_use", itemType: partType, text: toolText || tool }));
     } else if (partType === "step-finish") {
       const raw = { type: "step_finish", part: partData };
+      const reason = normalizeString(partData.reason) || "done";
       stdoutLines.push(JSON.stringify(raw));
-      progressEvents.push(progressEvent({ type: "completed", rawType: "step_finish", itemType: partType, text: normalizeString(partData.reason) || "done" }));
+      progressEvents.push(progressEvent({
+        type: isOpenCodeToolCallStepBoundary(reason) ? "event" : "completed",
+        rawType: "step_finish",
+        itemType: partType,
+        text: reason,
+      }));
     }
   }
   const replyText = replyParts.join("").trim() || null;

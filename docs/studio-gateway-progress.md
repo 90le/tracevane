@@ -22,7 +22,8 @@
 
 ## 本轮完成
 
-- 对照 Octo 插件固定群协作 @ 合同：`@[uid:显示名]` 和 bot DM 重写都会发送可见 `@显示名` + Octo `mention.entities/uids`，避免隐藏 @。
+- 对照 Octo 插件固定群协作 @ 合同：`@[uid:显示名]`、bot DM 重写和 transport mention metadata 兜底都会发送可见 `@显示名`/`@uid` + Octo `mention.entities/uids`，避免隐藏 @。
+- 修复 Octo 群聊 `/process on` 下 OpenCode 过程回复延迟：`step_finish: tool-calls` 现在是继续调用工具的步骤边界，不再误判为最终完成；中间 assistant 文本会作为 `assistant/intermediate` 发送，最终回复仍只走最终结果渲染。
 - `/octo history [条数]` 已接入 service/daemon，默认读取当前群/thread 前文，供用户和 Agent 直接查看 Bot API 群历史。
 - Codex stale resume 自愈：`thread/resume failed` / `no rollout found` 会自动 fresh turn 重试；fallback compact 成功时不再暴露 “No live persistent session” 作为错误。
 
@@ -30,6 +31,7 @@
 
 - 通过：`npm run typecheck:api`。
 - 通过：`npm run build:api`。
+- 通过：`node --test --test-name-pattern "Octo transport keeps group mentions visible|native Channel Connectors process runner maps Codex agent messages before later tools|native Channel Connectors process runner maps Claude text before later tools|native Channel Connectors process runner maps OpenCode JSON progress|native Channel Connectors process runner treats OpenCode tool-calls" tests/system/channel-connectors-service.test.mjs`，5/5 全部通过。
 - 通过：`node --test --test-name-pattern "native Channel Connectors extracts outbound IM message manifests|Octo adapter follows group direction and mention rendering rules|Octo transport smoke covers Bot API groups|Octo native management commands|native Channel Connectors agent runner builds gateway-backed Codex turns|native Channel Connectors service slash compact works" tests/system/channel-connectors-service.test.mjs`，6/6 全部通过。
 - 通过：真实 Octo 配置非发送 smoke：`/octo groups` 返回 1 个群，`/octo members` 返回“小丘测试群”6 个成员，`/octo search 小维` 返回 2 个成员，`/octo info` 返回“小丘测试群”群信息，`/octo threads` 返回当前群 thread 列表（0）。
 
