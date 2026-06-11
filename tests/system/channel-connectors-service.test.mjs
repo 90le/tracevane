@@ -3237,6 +3237,48 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.match(channelSkillRequest.stdin, /\[Current IM message - respond to this ONLY\]\nhi codex/);
   for (const cleanupPath of channelSkillRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
+  const sharedChannelSkillContext = [
+    "[Studio IM channel skills]",
+    "Current IM platform: octo.",
+    "Available platform skills in this binding:",
+    "- /octo-bot-api: Octo runtime messages, history, files, and multi-bot collaboration",
+    "[Platform skill instruction excerpts]",
+    "### /octo-bot-api [platform:octo]",
+    "## Step 3: Send Messages",
+    "Use Studio channel manifests instead of external bridge tools.",
+  ].join("\n");
+  const claudeChannelSkillRequest = buildChannelConnectorAgentProcessRequest({
+    project: { ...project, agent: "claude-code", permissionMode: "plan" },
+    binding: { ...binding, agent: "claude-code" },
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    channelSkillContext: sharedChannelSkillContext,
+  });
+  assert.ok(claudeChannelSkillRequest);
+  const claudeChannelSkillInput = JSON.parse(claudeChannelSkillRequest.stdin);
+  assert.match(claudeChannelSkillInput.message.content, /^\[Studio IM channel skills\]/);
+  assert.match(claudeChannelSkillInput.message.content, /\/octo-bot-api/);
+  assert.match(claudeChannelSkillInput.message.content, /\[Studio outbound file\/message policy\]/);
+  assert.match(claudeChannelSkillInput.message.content, /\[Current IM message - respond to this ONLY\]\nhi codex/);
+
+  const opencodeChannelSkillRequest = buildChannelConnectorAgentProcessRequest({
+    project: { ...project, agent: "opencode", permissionMode: "yolo" },
+    binding: { ...binding, agent: "opencode" },
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    channelSkillContext: sharedChannelSkillContext,
+  });
+  assert.ok(opencodeChannelSkillRequest);
+  assert.match(opencodeChannelSkillRequest.args.at(-1), /^\[Studio IM channel skills\]/);
+  assert.match(opencodeChannelSkillRequest.args.at(-1), /\/octo-bot-api/);
+  assert.match(opencodeChannelSkillRequest.args.at(-1), /\[Studio outbound file\/message policy\]/);
+  assert.match(opencodeChannelSkillRequest.args.at(-1), /\[Current IM message - respond to this ONLY\]\nhi codex/);
+  for (const cleanupPath of opencodeChannelSkillRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
   const groupRequest = buildChannelConnectorAgentProcessRequest({
     project,
     binding,
