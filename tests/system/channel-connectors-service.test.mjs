@@ -4859,6 +4859,26 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     "---\nname: Feishu Card\ndescription: Build Feishu card and message workflows\n---\nUse Studio Feishu channel transport for card and message work.",
     "utf8",
   );
+  fs.mkdirSync(path.join(feishuPlatformSkillDir, "feishu-doc-api"), { recursive: true });
+  fs.writeFileSync(
+    path.join(feishuPlatformSkillDir, "feishu-doc-api", "SKILL.md"),
+    [
+      "---",
+      "name: Feishu Doc API",
+      "description: Read, write, and attach files in Feishu documents",
+      "---",
+      "# Feishu Document Tool",
+      "## Configuration",
+      "Set FEISHU_APP_ID and FEISHU_APP_SECRET before running tools.",
+      "## Token Extraction",
+      "Extract docx tokens from Feishu URLs.",
+      "## Actions",
+      "Read Document, Append Content, Create Document, Upload Image to Docx, Upload File Attachment to Docx.",
+      "## Permissions",
+      "Use collaborator APIs only when the user asks for permission changes.",
+    ].join("\n"),
+    "utf8",
+  );
   const binding = {
     id: "octo-codex",
     platform: "octo",
@@ -5416,7 +5436,11 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.ok(feishuSkillContext);
   assert.match(feishuSkillContext, /### \/feishu-card \[binding\]/);
   assert.match(feishuSkillContext, /Use Studio Feishu channel transport for card and message work/);
+  assert.match(feishuSkillContext, /### \/feishu-doc-api \[binding\]/);
+  assert.match(feishuSkillContext, /## Actions/);
+  assert.match(feishuSkillContext, /Upload File Attachment to Docx/);
   assert.match(feishuSkillContext, /Auto-activation/);
+  assert.doesNotMatch(feishuSkillContext, /FEISHU_APP_SECRET/);
   assert.doesNotMatch(feishuSkillContext, /octo-send/);
   const blockedOctoSkillRun = await handleChannelConnectorCommand({
     ...baseContext,
