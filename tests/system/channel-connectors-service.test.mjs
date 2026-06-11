@@ -543,8 +543,48 @@ async function withMockOctoServer(task, options = {}) {
         return;
       }
       if (req.method === "POST" && req.url === "/v1/bot/messages/sync") {
-        const payload = Buffer.from(JSON.stringify({ type: 1, content: "history hello" }), "utf8").toString("base64");
-        res.end(`{"start_message_seq":1,"end_message_seq":1,"pull_mode":1,"messages":[{"message_id":12345678901234567,"message_seq":1,"from_uid":"user-1","channel_id":"group-1","channel_type":2,"timestamp":1742547600,"payload":"${payload}"}]}`);
+        const payload = (value) => Buffer.from(JSON.stringify(value), "utf8").toString("base64");
+        const richPayload = payload({
+          type: 14,
+          content: [
+            { type: "text", text: "rich helper reply " },
+            { type: "image", name: "diagram.png" },
+            { type: "text", text: " done" },
+          ],
+        });
+        const markdownPayload = payload({
+          type: 1,
+          content: {
+            markdown: "markdown helper reply",
+            elements: [{ tag: "text", text: "nested fallback text" }],
+          },
+        });
+        const filePayload = payload({ type: 8, name: "handoff.pdf", size: 128 });
+        const textPayload = payload({ type: 1, content: "history hello" });
+        const historyMessages = body.limit === 5
+          ? [
+            { id: "12345678901234567", seq: 1, from: "user-1", payload: textPayload },
+            { id: "12345678901234568", seq: 2, from: "helper_bot", payload: richPayload },
+            { id: "12345678901234569", seq: 3, from: "helper_bot", payload: markdownPayload },
+            { id: "12345678901234570", seq: 4, from: "helper_bot", payload: filePayload },
+          ]
+          : [
+            { id: "12345678901234567", seq: 1, from: "user-1", payload: textPayload },
+          ];
+        res.end(JSON.stringify({
+          start_message_seq: 1,
+          end_message_seq: historyMessages.length,
+          pull_mode: 1,
+          messages: historyMessages.map((message) => ({
+            message_id: message.id,
+            message_seq: message.seq,
+            from_uid: message.from,
+            channel_id: "group-1",
+            channel_type: 2,
+            timestamp: 1742547600 + message.seq,
+            payload: message.payload,
+          })),
+        }));
         return;
       }
       if (req.method === "GET" && req.url?.startsWith("/v1/bot/file/download/chat/hello.txt")) {
@@ -1499,7 +1539,7 @@ test("Octo adapter dry-run dispatch resolves binding, session key, and reply pla
     },
   });
   assert.equal(mediaUrlMessage.accepted, true);
-  assert.equal(mediaUrlMessage.incoming.content, "[image]");
+  assert.equal(mediaUrlMessage.incoming.content, "[image: inbound-image.png]");
   assert.equal(mediaUrlMessage.incoming.attachments.length, 1);
   assert.equal(mediaUrlMessage.incoming.attachments[0].kind, "image");
   assert.equal(mediaUrlMessage.incoming.attachments[0].url, "https://cdn.example.test/inbound-image.png");
@@ -2508,6 +2548,10 @@ test("Octo native management commands expose groups, members, and Space search",
     assert.equal(history.commandAction.commandResult.action, "show");
     assert.match(history.replyPlan.chunks.join("\n"), /Octo 聊天记录：group-1/);
     assert.match(history.replyPlan.chunks.join("\n"), /history hello/);
+    assert.match(history.replyPlan.chunks.join("\n"), /rich helper reply/);
+    assert.match(history.replyPlan.chunks.join("\n"), /\[图片\]/);
+    assert.match(history.replyPlan.chunks.join("\n"), /markdown helper reply/);
+    assert.match(history.replyPlan.chunks.join("\n"), /\[file: handoff\.pdf\]/);
     const historyRequests = requests.filter((request) => request.path === "/v1/bot/messages/sync");
     assert.ok(historyRequests.some((request) =>
       request.path === "/v1/bot/messages/sync"
@@ -11278,7 +11322,8 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         return true;
       }
       if (req.method === "POST" && req.url === "/v1/bot/messages/sync") {
-        const textPayload = (content) => Buffer.from(JSON.stringify({ type: 1, content }), "utf8").toString("base64");
+        const payloadFor = (value) => Buffer.from(JSON.stringify(value), "utf8").toString("base64");
+        const textPayload = (content) => payloadFor({ type: 1, content });
         const messages = [
           { id: "2976", seq: 4, from: "user-1", content: "old question" },
           { id: "2977", seq: 5, from: "robot-1", content: "old answer" },
@@ -11290,7 +11335,18 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
             from: seq % 3 === 0 ? "helper_bot" : "user-1",
             content: seq === 12
               ? `large history filler ${"long-context ".repeat(120)}TAIL-SHOULD-NOT-ENTER-OCTO-CONTEXT`
-              : `history filler ${seq}`,
+              : seq === 18
+                ? {
+                  type: 14,
+                  content: [
+                    { type: "text", text: "rich collaborator reply " },
+                    { type: "image", name: "diagram.png" },
+                    { type: "text", text: " acknowledged" },
+                  ],
+                }
+                : seq === 19
+                  ? { type: 8, name: "handoff.pdf", size: 128 }
+                  : `history filler ${seq}`,
           });
         }
         messages.push(
@@ -11308,7 +11364,7 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
             channel_id: "group-1",
             channel_type: 2,
             timestamp: 1742547590 + message.seq,
-            payload: textPayload(message.content),
+            payload: typeof message.content === "string" ? textPayload(message.content) : payloadFor(message.content),
           })),
         }));
         return true;
@@ -11424,6 +11480,9 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         assert.match(capture[0].stdin, /old question/);
         assert.match(capture[0].stdin, /old answer/);
         assert.match(capture[0].stdin, /Helper Bot \(helper_bot\)/);
+        assert.match(capture[0].stdin, /rich collaborator reply/);
+        assert.match(capture[0].stdin, /\[图片\]/);
+        assert.match(capture[0].stdin, /\[file: handoff\.pdf\]/);
         assert.match(capture[0].stdin, /helper bot already replied/);
         assert.match(capture[0].stdin, /truncated/);
         assert.match(capture[0].stdin, /originalRunes/);

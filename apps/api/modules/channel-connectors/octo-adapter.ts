@@ -249,36 +249,132 @@ function stripLeadingMention(content: string): string {
   return next;
 }
 
+const OCTO_PAYLOAD_TEXT_KEYS = [
+  "plain",
+  "text",
+  "content",
+  "caption",
+  "title",
+  "name",
+  "description",
+  "summary",
+  "alt",
+  "markdown",
+  "md",
+  "message",
+  "body",
+  "value",
+];
+const OCTO_PAYLOAD_CONTAINER_KEYS = [
+  "elements",
+  "children",
+  "blocks",
+  "items",
+  "paragraphs",
+  "lines",
+  "rows",
+  "cells",
+  "fields",
+  "data",
+  "payload",
+  "zh_cn",
+  "en_us",
+];
+const OCTO_PAYLOAD_TEXT_MAX_DEPTH = 6;
+
+function joinOctoPayloadTextParts(parts: string[]): string {
+  const output: string[] = [];
+  for (const part of parts) {
+    const normalized = normalizeString(part).replace(/[ \t]{2,}/g, " ");
+    if (!normalized) continue;
+    if (output[output.length - 1] === normalized) continue;
+    output.push(normalized);
+  }
+  return output.join("\n").trim();
+}
+
+function octoPayloadMediaPlaceholder(value: unknown): string {
+  const record = recordFrom(value);
+  const type = Number(record.type);
+  const stringType = normalizeString(record.type).toLowerCase();
+  const name = normalizeString(record.name)
+    || normalizeString(record.title)
+    || normalizeString(record.file_name)
+    || normalizeString(record.fileName);
+  if (stringType === OCTO_RICH_TEXT_BLOCK_IMAGE) return OCTO_RICH_TEXT_IMAGE_PLACEHOLDER;
+  if (type === OCTO_MESSAGE_TYPE_IMAGE) return `[image${name ? `: ${name}` : ""}]`;
+  if (type === OCTO_MESSAGE_TYPE_GIF) return `[gif${name ? `: ${name}` : ""}]`;
+  if (type === OCTO_MESSAGE_TYPE_FILE) return `[file: ${name || "file"}]`;
+  if (type === OCTO_MESSAGE_TYPE_VOICE) return `[voice${name ? `: ${name}` : ""}]`;
+  if (type === OCTO_MESSAGE_TYPE_VIDEO) return `[video${name ? `: ${name}` : ""}]`;
+  return "";
+}
+
+function extractOctoPayloadTextParts(value: unknown, depth = 0): string[] {
+  if (depth > OCTO_PAYLOAD_TEXT_MAX_DEPTH) return [];
+  if (typeof value === "string") {
+    const normalized = normalizeString(value);
+    return normalized ? [normalized] : [];
+  }
+  if (Array.isArray(value)) {
+    return value.flatMap((item) => extractOctoPayloadTextParts(item, depth + 1));
+  }
+  if (typeof value !== "object" || value === null) return [];
+  const record = recordFrom(value);
+  const placeholder = octoPayloadMediaPlaceholder(record);
+  if (placeholder) {
+    const mediaText = ["plain", "text", "content", "caption", "description", "summary", "alt", "markdown", "md"]
+      .flatMap((key) => key in record ? extractOctoPayloadTextParts(record[key], depth + 1) : []);
+    return mediaText.length > 0 ? mediaText : [placeholder];
+  }
+  const directParts: string[] = [];
+  for (const key of OCTO_PAYLOAD_TEXT_KEYS) {
+    if (!(key in record)) continue;
+    directParts.push(...extractOctoPayloadTextParts(record[key], depth + 1));
+  }
+  if (directParts.length > 0) return directParts;
+  const nestedParts: string[] = [];
+  for (const key of OCTO_PAYLOAD_CONTAINER_KEYS) {
+    if (!(key in record)) continue;
+    nestedParts.push(...extractOctoPayloadTextParts(record[key], depth + 1));
+  }
+  return nestedParts;
+}
+
+export function extractOctoPayloadText(payload: unknown): string {
+  return joinOctoPayloadTextParts(extractOctoPayloadTextParts(payload));
+}
+
 export function extractOctoContent(message: ChannelConnectorOctoInboundMessage): string {
   const payload = message.payload || {};
   let content = "";
   switch (payload.type) {
     case OCTO_MESSAGE_TYPE_TEXT:
-      content = normalizeString(payload.content);
+      content = extractOctoPayloadText(payload);
       break;
     case OCTO_MESSAGE_TYPE_IMAGE:
-      content = "[image]";
+      content = octoPayloadMediaPlaceholder(payload) || "[image]";
       break;
     case OCTO_MESSAGE_TYPE_GIF:
-      content = "[gif]";
+      content = octoPayloadMediaPlaceholder(payload) || "[gif]";
       break;
     case OCTO_MESSAGE_TYPE_FILE:
-      content = `[file: ${normalizeString(payload.name) || "file"}]`;
+      content = octoPayloadMediaPlaceholder(payload) || `[file: ${normalizeString(payload.name) || "file"}]`;
       break;
     case OCTO_MESSAGE_TYPE_VOICE:
-      content = "[voice]";
+      content = octoPayloadMediaPlaceholder(payload) || "[voice]";
       break;
     case OCTO_MESSAGE_TYPE_VIDEO:
-      content = "[video]";
+      content = octoPayloadMediaPlaceholder(payload) || "[video]";
       break;
     case OCTO_MESSAGE_TYPE_LOCATION:
-      content = normalizeString(payload.content);
+      content = extractOctoPayloadText(payload);
       break;
     case OCTO_MESSAGE_TYPE_RICH_TEXT:
-      content = extractOctoRichTextPlain(payload) || "[rich text]";
+      content = extractOctoRichTextPlain(payload) || extractOctoPayloadText(payload) || "[rich text]";
       break;
     default:
-      content = normalizeString(payload.content) || `[message type: ${payload.type ?? "unknown"}]`;
+      content = extractOctoPayloadText(payload) || `[message type: ${payload.type ?? "unknown"}]`;
       break;
   }
   return isOctoGroupChannel(message.channelType) ? stripLeadingMention(content) : content;

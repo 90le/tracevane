@@ -9,7 +9,7 @@ import type {
   ChannelConnectorReasoningEffort,
   ChannelConnectorsDaemonRuntimeConfig,
 } from "../../../../types/channel-connectors.js";
-import { extractOctoContent, isOctoGroupChannel } from "./octo-adapter.js";
+import { extractOctoContent, extractOctoPayloadText, isOctoGroupChannel } from "./octo-adapter.js";
 import {
   clearChannelConnectorAgentSessionsForConversation,
   deleteChannelConnectorAgentSession,
@@ -1577,21 +1577,7 @@ function octoDecodeSyncedPayload(value: unknown): unknown {
 
 function octoSyncedMessageText(payload: unknown): string {
   const decoded = octoDecodeSyncedPayload(payload);
-  if (typeof decoded === "string") return normalizeString(decoded);
-  if (!isRecord(decoded)) return "";
-  const content = decoded.content;
-  if (typeof content === "string") return normalizeString(content);
-  if (Array.isArray(content)) {
-    return content
-      .map((item) => {
-        if (typeof item === "string") return normalizeString(item);
-        if (!isRecord(item)) return "";
-        return normalizeString(item.text) || normalizeString(item.content) || normalizeString(item.name);
-      })
-      .filter(Boolean)
-      .join("");
-  }
-  return normalizeString(decoded.plain) || normalizeString(decoded.name);
+  return extractOctoPayloadText(decoded);
 }
 
 function octoSyncedMessagesFromData(value: unknown): Record<string, unknown>[] {

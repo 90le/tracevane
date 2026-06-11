@@ -116,6 +116,7 @@ import {
   buildOctoSessionKey,
   extractOctoAttachments,
   extractOctoContent,
+  extractOctoPayloadText,
   isOctoGroupChannel,
   isOctoMessageDirectedAtBot,
   octoOnBehalfOfFromBinding,
@@ -4903,21 +4904,7 @@ async function runOctoManagementCommand(
 }
 
 function octoSyncedMessageText(payload: unknown): string {
-  if (typeof payload === "string") return normalizeString(payload);
-  if (!isRecord(payload)) return "";
-  const content = payload.content;
-  if (typeof content === "string") return normalizeString(content);
-  if (Array.isArray(content)) {
-    return content
-      .map((item) => {
-        if (typeof item === "string") return normalizeString(item);
-        if (!isRecord(item)) return "";
-        return normalizeString(item.text) || normalizeString(item.content) || normalizeString(item.name);
-      })
-      .filter(Boolean)
-      .join("");
-  }
-  return normalizeString(payload.plain) || normalizeString(payload.name);
+  return extractOctoPayloadText(payload);
 }
 
 function octoSyncedMessagesFromData(value: unknown): Record<string, unknown>[] {
