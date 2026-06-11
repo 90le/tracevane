@@ -301,6 +301,10 @@ const DEFAULT_OCTO_HISTORY_MESSAGE_MAX_RUNES = 1200;
 const DEFAULT_OCTO_HISTORY_TOTAL_MAX_RUNES = 8000;
 const DEFAULT_OCTO_REALTIME_TIMELINE_LIMIT = 20;
 const MAX_OCTO_REALTIME_TIMELINE_PER_CHANNEL = 60;
+const DEFAULT_FEISHU_REALTIME_TIMELINE_LIMIT = CHANNEL_CONNECTOR_HISTORY_CONTEXT_LIMIT;
+const DEFAULT_FEISHU_HISTORY_MESSAGE_MAX_RUNES = DEFAULT_OCTO_HISTORY_MESSAGE_MAX_RUNES;
+const DEFAULT_FEISHU_HISTORY_TOTAL_MAX_RUNES = DEFAULT_OCTO_HISTORY_TOTAL_MAX_RUNES;
+const MAX_FEISHU_REALTIME_TIMELINE_PER_CHANNEL = 60;
 const DEFAULT_CHANNEL_AUTO_COMPACT_COOLDOWN_MS = 15 * 60_000;
 const MAX_CHANNEL_AUTO_COMPACT_COOLDOWN_MS = 24 * 60 * 60_000;
 const FEISHU_FINAL_REPLY_CARD_MAX_RUNES = 12_000;
@@ -705,6 +709,20 @@ interface ChannelDaemonOctoTimelineEntry {
 }
 
 type ChannelDaemonOctoTimelineRegistry = Map<string, ChannelDaemonOctoTimelineEntry[]>;
+
+interface ChannelDaemonFeishuTimelineEntry {
+  bindingId: string;
+  channelId: string;
+  chatType: string | null;
+  messageId: string;
+  fromUid: string;
+  body: string;
+  attachmentSummaries: string[];
+  eventTimeMs: number | null;
+  receivedAt: string;
+}
+
+type ChannelDaemonFeishuTimelineRegistry = Map<string, ChannelDaemonFeishuTimelineEntry[]>;
 
 interface ChannelDaemonSessionRunLease {
   queued: boolean;
@@ -4587,6 +4605,162 @@ async function loadFeishuGroupMembers(input: {
     pageCount: result.pageCount,
     hasMore: result.hasMore,
   };
+}
+
+function isFeishuGroupChat(parsed: ChannelConnectorFeishuParsedWebhook): boolean {
+  const chatType = normalizeString(parsed.chatType).toLowerCase();
+  return chatType === "group" || chatType === "topic_group" || chatType.includes("group");
+}
+
+function feishuRealtimeTimelineKey(bindingId: string, channelId: string, chatType: string | null | undefined): string {
+  return `${bindingId}:${normalizeString(chatType).toLowerCase() || "group"}:${channelId}`;
+}
+
+function feishuInboundAttachmentSummary(attachment: ChannelConnectorInboundAttachment): string {
+  const url = normalizeString(attachment.url)
+    || normalizeString(attachment.fileUrl)
+    || normalizeString(attachment.file_url)
+    || normalizeString(attachment.downloadUrl)
+    || normalizeString(attachment.download_url)
+    || normalizeString(attachment.cdnUrl)
+    || normalizeString(attachment.cdn_url);
+  const parts = [
+    attachment.kind,
+    normalizeString(attachment.fileName),
+    typeof attachment.size === "number" && attachment.size > 0 ? `${attachment.size} bytes` : "",
+    normalizeString(attachment.localPath) ? `local:${normalizeString(attachment.localPath)}` : "",
+    url ? `url:${url}` : "",
+    normalizeString(attachment.stagingError) ? `staging failed:${normalizeString(attachment.stagingError)}` : "",
+  ].filter(Boolean);
+  return parts.join(", ");
+}
+
+function recordFeishuRealtimeTimeline(input: {
+  timelines: ChannelDaemonFeishuTimelineRegistry;
+  binding: ChannelConnectorRuntimeBinding;
+  parsed: ChannelConnectorFeishuParsedWebhook;
+  content: string;
+}): boolean {
+  if (input.parsed.kind !== "message" || !isFeishuGroupChat(input.parsed)) return false;
+  const channelId = normalizeString(input.parsed.channelId);
+  const messageId = normalizeString(input.parsed.messageId);
+  if (!channelId || !messageId) return false;
+  const attachments = input.parsed.attachments.map(feishuInboundAttachmentSummary).filter(Boolean);
+  const body = normalizeString(input.content) || (attachments.length ? `[attachments: ${attachments.join("; ")}]` : "");
+  if (!body && !attachments.length) return false;
+  const eventTimeMs = feishuParsedEventTimeMs(input.parsed);
+  const key = feishuRealtimeTimelineKey(input.binding.id, channelId, input.parsed.chatType);
+  const nextEntry: ChannelDaemonFeishuTimelineEntry = {
+    bindingId: input.binding.id,
+    channelId,
+    chatType: normalizeString(input.parsed.chatType) || null,
+    messageId,
+    fromUid: normalizeString(input.parsed.fromUid) || "unknown",
+    body,
+    attachmentSummaries: attachments,
+    eventTimeMs,
+    receivedAt: new Date().toISOString(),
+  };
+  const retained = (input.timelines.get(key) || [])
+    .filter((entry) => entry.messageId !== nextEntry.messageId)
+    .concat(nextEntry)
+    .sort((a, b) => {
+      if (a.eventTimeMs !== null && b.eventTimeMs !== null && a.eventTimeMs !== b.eventTimeMs) return a.eventTimeMs - b.eventTimeMs;
+      return Date.parse(a.receivedAt) - Date.parse(b.receivedAt);
+    })
+    .slice(-MAX_FEISHU_REALTIME_TIMELINE_PER_CHANNEL);
+  input.timelines.set(key, retained);
+  return true;
+}
+
+function feishuRealtimeTimelineLimit(binding: ChannelConnectorRuntimeBinding): number {
+  return Math.max(0, Math.min(CHANNEL_CONNECTOR_HISTORY_CONTEXT_LIMIT, Math.floor(metadataNumber(binding, [
+    "feishuHistorySyncLimit",
+    "feishu_history_sync_limit",
+    "feishuRealtimeTimelineLimit",
+    "feishu_realtime_timeline_limit",
+    "historySyncLimit",
+    "history_sync_limit",
+  ], DEFAULT_FEISHU_REALTIME_TIMELINE_LIMIT))));
+}
+
+function feishuHistoryMessageMaxRunes(binding: ChannelConnectorRuntimeBinding): number {
+  return Math.max(200, Math.min(8000, Math.floor(metadataNumber(binding, [
+    "feishuHistoryMessageMaxRunes",
+    "feishu_history_message_max_runes",
+    "historyMessageMaxRunes",
+    "history_message_max_runes",
+  ], DEFAULT_FEISHU_HISTORY_MESSAGE_MAX_RUNES))));
+}
+
+function feishuHistoryTotalMaxRunes(binding: ChannelConnectorRuntimeBinding): number {
+  return Math.max(1000, Math.min(32000, Math.floor(metadataNumber(binding, [
+    "feishuHistoryTotalMaxRunes",
+    "feishu_history_total_max_runes",
+    "historyTotalMaxRunes",
+    "history_total_max_runes",
+  ], DEFAULT_FEISHU_HISTORY_TOTAL_MAX_RUNES))));
+}
+
+function renderFeishuRealtimeTimelineContext(input: {
+  timelines: ChannelDaemonFeishuTimelineRegistry;
+  binding: ChannelConnectorRuntimeBinding;
+  parsed: ChannelConnectorFeishuParsedWebhook;
+  botUid?: string | null;
+  members?: readonly ChannelConnectorOctoGroupMember[] | null;
+  limit: number;
+  messageMaxRunes: number;
+  totalMaxRunes: number;
+}): string | null {
+  if (!isFeishuGroupChat(input.parsed) || input.limit <= 0) return null;
+  const channelId = normalizeString(input.parsed.channelId);
+  if (!channelId) return null;
+  const key = feishuRealtimeTimelineKey(input.binding.id, channelId, input.parsed.chatType);
+  const entries = input.timelines.get(key) || [];
+  const currentMessageId = normalizeString(input.parsed.messageId);
+  const currentEventTimeMs = feishuParsedEventTimeMs(input.parsed);
+  const botUid = normalizeString(input.botUid);
+  const nameByUid = octoMemberNameByUid(input.members || []);
+  const robotByUid = octoMemberRobotByUid(input.members || []);
+  const messageMaxRunes = effectiveOctoHistoryMessageMaxRunes(input.messageMaxRunes, input.totalMaxRunes);
+  const contextEntries = entries
+    .filter((entry) => {
+      if (currentMessageId && entry.messageId === currentMessageId) return false;
+      if (currentEventTimeMs && entry.eventTimeMs && entry.eventTimeMs > currentEventTimeMs) return false;
+      return Boolean(entry.body || entry.attachmentSummaries.length);
+    })
+    .slice(-input.limit)
+    .map((entry) => {
+      const body = truncateOctoHistoryBody(entry.body, messageMaxRunes);
+      return {
+        sender: octoSyncedSenderLabel(entry.fromUid, nameByUid),
+        senderType: octoSyncedSenderType(entry.fromUid, botUid, robotByUid),
+        body: body.text,
+        truncated: body.truncated,
+        originalRunes: body.originalRunes,
+        attachmentSummaries: entry.attachmentSummaries,
+      };
+    });
+  if (!contextEntries.length) return null;
+  const budgetedEntries = fitOctoHistoryEntriesToBudget(contextEntries, input.totalMaxRunes);
+  const droppedCount = contextEntries.length - budgetedEntries.length;
+  return [
+    "[Feishu realtime local group timeline]",
+    "Messages were observed by this Studio daemon in real time, including group messages that did not @mention this bot and therefore did not trigger a reply.",
+    "Use this as short-term collaboration context when Feishu group history APIs are not synced. Do not re-answer older messages unless the current user asks.",
+    "If the current user asks whether another member or bot replied, inspect entries here before saying you cannot see the reply.",
+    `History budget: ${budgetedEntries.length}/${contextEntries.length} messages included, max ${messageMaxRunes} chars per message, max ${input.totalMaxRunes} chars total.${droppedCount ? ` Dropped ${droppedCount} older messages due to budget.` : ""}`,
+    "```json",
+    JSON.stringify(budgetedEntries.map((entry) => ({
+      sender: entry.sender,
+      senderType: entry.senderType,
+      body: entry.body,
+      ...(entry.truncated ? { truncated: true, originalRunes: entry.originalRunes } : {}),
+      ...(entry.attachmentSummaries.length ? { attachments: entry.attachmentSummaries } : {}),
+    })), null, 2),
+    "```",
+    "[Current message follows later - respond to that only]",
+  ].join("\n");
 }
 
 const OCTO_THREAD_CHANNEL_SEPARATOR = "____";
@@ -8578,8 +8752,9 @@ async function dispatchFeishuParsedEvent(input: {
   parsed: ChannelConnectorFeishuParsedWebhook;
   rawEvent: unknown;
   seenMessages: Map<string, number>;
+  feishuTimelines: ChannelDaemonFeishuTimelineRegistry;
 }): Promise<Record<string, unknown> | null> {
-  const { config, state, activeRunCancels, group, parsed, rawEvent, seenMessages } = input;
+  const { config, state, activeRunCancels, group, parsed, rawEvent, seenMessages, feishuTimelines } = input;
   const checkedAt = new Date().toISOString();
   const ingressAt = checkedAt;
   const ingressAtMs = isoTimestampMs(ingressAt) ?? Date.now();
@@ -8743,6 +8918,13 @@ async function dispatchFeishuParsedEvent(input: {
     return null;
   }
 
+  const feishuTimelineRecorded = recordFeishuRealtimeTimeline({
+    timelines: feishuTimelines,
+    binding,
+    parsed,
+    content,
+  });
+
   if (parsed.kind === "message" && !parsed.directed) {
     writeJsonLine(config.paths.feishuEvents, {
       checkedAt,
@@ -8757,6 +8939,7 @@ async function dispatchFeishuParsedEvent(input: {
       messageId,
       channelId: parsed.channelId,
       fromUid: parsed.fromUid,
+      timelineRecorded: feishuTimelineRecorded,
       ...feishuThreadLogFields(parsed),
     });
     return null;
@@ -9151,12 +9334,26 @@ async function dispatchFeishuParsedEvent(input: {
   });
   const activeRunId = `${binding.id}:${messageId}`;
   const currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
-  const historyContext = renderChannelConnectorConversationHistoryContext(
+  const feishuRealtimeHistoryContext = renderFeishuRealtimeTimelineContext({
+    timelines: feishuTimelines,
+    binding,
+    parsed,
+    botUid: binding.botId || null,
+    members: groupMembers.members,
+    limit: feishuRealtimeTimelineLimit(binding),
+    messageMaxRunes: feishuHistoryMessageMaxRunes(binding),
+    totalMaxRunes: feishuHistoryTotalMaxRunes(binding),
+  });
+  const localHistoryContext = renderChannelConnectorConversationHistoryContext(
     getChannelConnectorConversationHistory(conversationHistoryPath(config), {
       bindingId: binding.id,
       sessionKey,
     }),
   );
+  const historyContext = [
+    feishuRealtimeHistoryContext,
+    localHistoryContext,
+  ].filter(Boolean).join("\n\n") || null;
   const runStartedAt = new Date().toISOString();
   const runStartedAtMs = isoTimestampMs(runStartedAt) ?? Date.now();
   const abortController = new AbortController();
@@ -10098,6 +10295,7 @@ function dispatchFeishuParsedEventInBackground(input: {
   parsed: ChannelConnectorFeishuParsedWebhook;
   rawEvent: unknown;
   seenMessages: Map<string, number>;
+  feishuTimelines: ChannelDaemonFeishuTimelineRegistry;
 }): void {
   void dispatchFeishuParsedEvent(input).catch((error) => {
     appendLog(input.config.paths.log, "Feishu async event dispatch failed", {
@@ -10418,8 +10616,9 @@ function createFeishuDispatcher(input: {
   activeRunCancels: ChannelDaemonActiveRunCancelRegistry;
   group: ChannelDaemonFeishuGroup;
   seenMessages: Map<string, number>;
+  feishuTimelines: ChannelDaemonFeishuTimelineRegistry;
 }): EventDispatcher {
-  const { config, state, activeRunCancels, group, seenMessages } = input;
+  const { config, state, activeRunCancels, group, seenMessages, feishuTimelines } = input;
   const verificationToken = feishuDispatcherVerificationToken(group);
   const encryptKey = feishuDispatcherEncryptKey(group);
   const dispatcher = new EventDispatcher({
@@ -10461,6 +10660,7 @@ function createFeishuDispatcher(input: {
         parsed,
         rawEvent: data,
         seenMessages,
+        feishuTimelines,
       });
     },
     "card.action.trigger": async (data: unknown) => {
@@ -10495,6 +10695,7 @@ function createFeishuDispatcher(input: {
         parsed,
         rawEvent: data,
         seenMessages,
+        feishuTimelines,
       });
     },
     "application.bot.menu_v6": async (data: unknown) => {
@@ -10529,6 +10730,7 @@ function createFeishuDispatcher(input: {
         parsed,
         rawEvent: data,
         seenMessages,
+        feishuTimelines,
       });
     },
     "im.message.recalled_v1": async (data: unknown) => {
@@ -10907,8 +11109,9 @@ function startFeishuClientForGroup(input: {
   clients: WSClient[];
   clientAbortControllers: AbortController[];
   seenMessages: Map<string, number>;
+  feishuTimelines: ChannelDaemonFeishuTimelineRegistry;
 }): void {
-  const { config, state, activeRunCancels, group, clients, clientAbortControllers, seenMessages } = input;
+  const { config, state, activeRunCancels, group, clients, clientAbortControllers, seenMessages, feishuTimelines } = input;
   if (group.clientLoopActive) return;
   if (!acquireFeishuGroupLock(config, group)) {
     appendLog(config.paths.log, "Feishu WebSocket local owner lock held; skipping client start", {
@@ -10928,6 +11131,7 @@ function startFeishuClientForGroup(input: {
     activeRunCancels,
     group,
     seenMessages,
+    feishuTimelines,
   });
   group.clientLoopActive = true;
   const abortController = new AbortController();
@@ -10961,8 +11165,9 @@ function startFeishuWatchdog(input: {
   clients: WSClient[];
   clientAbortControllers: AbortController[];
   seenMessages: Map<string, number>;
+  feishuTimelines: ChannelDaemonFeishuTimelineRegistry;
 }): NodeJS.Timeout {
-  const { config, state, activeRunCancels, groups, clients, clientAbortControllers, seenMessages } = input;
+  const { config, state, activeRunCancels, groups, clients, clientAbortControllers, seenMessages, feishuTimelines } = input;
   const timer = setInterval(() => {
     const nowMs = Date.now();
     for (const group of groups) {
@@ -10981,6 +11186,7 @@ function startFeishuWatchdog(input: {
             clients,
             clientAbortControllers,
             seenMessages,
+            feishuTimelines,
           });
         }
         continue;
@@ -11105,6 +11311,7 @@ async function startFeishuConnections(
   clients: WSClient[],
   clientAbortControllers: AbortController[],
   seenMessages: Map<string, number>,
+  feishuTimelines: ChannelDaemonFeishuTimelineRegistry,
   groupsOut?: ChannelDaemonFeishuGroup[],
 ): Promise<NodeJS.Timeout | null> {
   const groups = createFeishuGroups(config);
@@ -11123,10 +11330,11 @@ async function startFeishuConnections(
       clients,
       clientAbortControllers,
       seenMessages,
+      feishuTimelines,
     });
   }
   return groups.some((group) => group.refs.length)
-    ? startFeishuWatchdog({ config, state, activeRunCancels, groups, clients, clientAbortControllers, seenMessages })
+    ? startFeishuWatchdog({ config, state, activeRunCancels, groups, clients, clientAbortControllers, seenMessages, feishuTimelines })
     : null;
 }
 
@@ -11147,6 +11355,7 @@ async function main(): Promise<void> {
   const activeRunCancels: ChannelDaemonActiveRunCancelRegistry = new Map();
   const seenMessages = loadFeishuSeenMessages(config);
   const octoTimelines: ChannelDaemonOctoTimelineRegistry = new Map();
+  const feishuTimelines: ChannelDaemonFeishuTimelineRegistry = new Map();
   const agentSessionReaper = startAgentSessionDriverReaper(config, state);
   let feishuWatchdog: NodeJS.Timeout | null = null;
 
@@ -11159,7 +11368,7 @@ async function main(): Promise<void> {
     let attempt = 0;
     while (true) {
       try {
-        const timer = await startFeishuConnections(config, state, activeRunCancels, feishuClients, feishuClientAbortControllers, seenMessages, feishuGroups);
+        const timer = await startFeishuConnections(config, state, activeRunCancels, feishuClients, feishuClientAbortControllers, seenMessages, feishuTimelines, feishuGroups);
         feishuWatchdog = timer;
         return;
       } catch (error) {

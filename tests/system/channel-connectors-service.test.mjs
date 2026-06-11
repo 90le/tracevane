@@ -10034,6 +10034,15 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /listFeishuChatMembers/);
   assert.match(daemonSource, /loadFeishuGroupMembers/);
   assert.match(daemonSource, /groupMemberCount/);
+  assert.match(daemonSource, /DEFAULT_FEISHU_REALTIME_TIMELINE_LIMIT\s*=\s*CHANNEL_CONNECTOR_HISTORY_CONTEXT_LIMIT/);
+  assert.match(daemonSource, /MAX_FEISHU_REALTIME_TIMELINE_PER_CHANNEL\s*=\s*60/);
+  assert.match(daemonSource, /const feishuTimelines = new Map\(\)/);
+  assert.match(daemonSource, /function recordFeishuRealtimeTimeline/);
+  assert.match(daemonSource, /function renderFeishuRealtimeTimelineContext/);
+  assert.match(daemonSource, /feishu_group_message_not_directed[\s\S]{0,260}timelineRecorded/);
+  assert.match(daemonSource, /const feishuRealtimeHistoryContext = renderFeishuRealtimeTimelineContext/);
+  assert.match(daemonSource, /\[\s*feishuRealtimeHistoryContext,\s*localHistoryContext,\s*\]/);
+  assert.match(daemonSource, /Messages were observed by this Studio daemon in real time, including group messages that did not @mention this bot/);
   assert.match(daemonSource, /function channelConnectorProgressDefaults/);
   assert.match(daemonSource, /function feishuProgressDefaults/);
   assert.match(daemonSource, /function octoProgressDefaults/);
