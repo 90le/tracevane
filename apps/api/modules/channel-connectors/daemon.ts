@@ -90,6 +90,7 @@ import {
 } from "./session-control-store.js";
 import {
   appendChannelConnectorConversationHistory,
+  CHANNEL_CONNECTOR_HISTORY_CONTEXT_LIMIT,
   getChannelConnectorConversationHistory,
   renderChannelConnectorConversationHistoryContext,
 } from "./conversation-history-store.js";
@@ -3463,7 +3464,7 @@ async function resolveAutoCompactBudget(input: {
   const history = getChannelConnectorConversationHistory(conversationHistoryPath(input.config), {
     bindingId: input.bindingId,
     sessionKey: input.sessionKey,
-  }, 50);
+  }, CHANNEL_CONNECTOR_HISTORY_CONTEXT_LIMIT);
   return {
     budget: resolveChannelConnectorContextBudget({
       model: input.project.model,
