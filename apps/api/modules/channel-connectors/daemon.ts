@@ -130,8 +130,10 @@ import {
   prepareChannelConnectorGroupBufferedReply,
 } from "./reply-buffer-store.js";
 import {
+  buildFeishuConversationScopeId,
   buildFeishuSessionKey,
   parseChannelConnectorFeishuWebhook,
+  type ChannelConnectorFeishuGroupSessionScope,
   type ChannelConnectorFeishuParsedWebhook,
 } from "./feishu-adapter.js";
 import {
@@ -4403,6 +4405,38 @@ function feishuSessionKey(
   return buildFeishuSessionKey(parsed, {
     threadIsolation: metadataBoolean(binding, ["threadIsolation", "thread_isolation"], true),
     shareSessionInChannel: metadataBoolean(binding, ["shareSessionInChannel", "share_session_in_channel"], false),
+    groupSessionScope: feishuGroupSessionScope(binding),
+    replyInThread: metadataBoolean(binding, ["replyInThread", "reply_in_thread"], false),
+  });
+}
+
+function feishuGroupSessionScope(binding: ChannelConnectorRuntimeBinding): ChannelConnectorFeishuGroupSessionScope | null {
+  const value = metadataString(binding, [
+    "feishuGroupSessionScope",
+    "feishu_group_session_scope",
+    "groupSessionScope",
+    "group_session_scope",
+  ]);
+  if (
+    value === "group"
+    || value === "group_sender"
+    || value === "group_topic"
+    || value === "group_topic_sender"
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function feishuConversationScopeId(
+  binding: ChannelConnectorRuntimeBinding,
+  parsed: ChannelConnectorFeishuParsedWebhook,
+): string | null {
+  return buildFeishuConversationScopeId(parsed, {
+    threadIsolation: metadataBoolean(binding, ["threadIsolation", "thread_isolation"], true),
+    shareSessionInChannel: metadataBoolean(binding, ["shareSessionInChannel", "share_session_in_channel"], false),
+    groupSessionScope: feishuGroupSessionScope(binding),
+    replyInThread: metadataBoolean(binding, ["replyInThread", "reply_in_thread"], false),
   });
 }
 
@@ -4612,8 +4646,8 @@ function isFeishuGroupChat(parsed: ChannelConnectorFeishuParsedWebhook): boolean
   return chatType === "group" || chatType === "topic_group" || chatType.includes("group");
 }
 
-function feishuRealtimeTimelineKey(bindingId: string, channelId: string, chatType: string | null | undefined): string {
-  return `${bindingId}:${normalizeString(chatType).toLowerCase() || "group"}:${channelId}`;
+function feishuRealtimeTimelineKey(bindingId: string, scopeId: string, chatType: string | null | undefined): string {
+  return `${bindingId}:${normalizeString(chatType).toLowerCase() || "group"}:${scopeId}`;
 }
 
 function feishuInboundAttachmentSummary(attachment: ChannelConnectorInboundAttachment): string {
@@ -4649,7 +4683,8 @@ function recordFeishuRealtimeTimeline(input: {
   const body = normalizeString(input.content) || (attachments.length ? `[attachments: ${attachments.join("; ")}]` : "");
   if (!body && !attachments.length) return false;
   const eventTimeMs = feishuParsedEventTimeMs(input.parsed);
-  const key = feishuRealtimeTimelineKey(input.binding.id, channelId, input.parsed.chatType);
+  const scopeId = feishuConversationScopeId(input.binding, input.parsed) || channelId;
+  const key = feishuRealtimeTimelineKey(input.binding.id, scopeId, input.parsed.chatType);
   const nextEntry: ChannelDaemonFeishuTimelineEntry = {
     bindingId: input.binding.id,
     channelId,
@@ -4715,7 +4750,8 @@ function renderFeishuRealtimeTimelineContext(input: {
   if (!isFeishuGroupChat(input.parsed) || input.limit <= 0) return null;
   const channelId = normalizeString(input.parsed.channelId);
   if (!channelId) return null;
-  const key = feishuRealtimeTimelineKey(input.binding.id, channelId, input.parsed.chatType);
+  const scopeId = feishuConversationScopeId(input.binding, input.parsed) || channelId;
+  const key = feishuRealtimeTimelineKey(input.binding.id, scopeId, input.parsed.chatType);
   const entries = input.timelines.get(key) || [];
   const currentMessageId = normalizeString(input.parsed.messageId);
   const currentEventTimeMs = feishuParsedEventTimeMs(input.parsed);

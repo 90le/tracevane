@@ -36,6 +36,7 @@ import {
   renderChannelConnectorCommandSurfaceFeishu,
 } from "../../dist/apps/api/modules/channel-connectors/command-surface.js";
 import {
+  buildFeishuConversationScopeId,
   buildFeishuSessionKey,
   parseChannelConnectorFeishuWebhook,
 } from "../../dist/apps/api/modules/channel-connectors/feishu-adapter.js";
@@ -7733,9 +7734,40 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(parsedMessage.threadId, "om_thread");
   assert.equal(parsedMessage.eventCreateTimeMs, 1780732800000);
   assert.equal(parsedMessage.messageCreateTimeMs, 1780732801000);
-  assert.equal(buildFeishuSessionKey(parsedMessage), "feishu:oc_chat:root:om_root");
-  assert.equal(buildFeishuSessionKey({ ...parsedMessage, rootId: null }), "feishu:oc_chat:root:om_msg_parse");
-  assert.equal(buildFeishuSessionKey(parsedMessage, { threadIsolation: false }), "feishu:oc_chat:ou_admin");
+  assert.equal(buildFeishuConversationScopeId(parsedMessage), "oc_chat:topic:om_root");
+  assert.equal(buildFeishuSessionKey(parsedMessage), "feishu:oc_chat:topic:om_root");
+  assert.equal(buildFeishuSessionKey({ ...parsedMessage, rootId: null }), "feishu:oc_chat:topic:om_thread");
+  assert.equal(buildFeishuSessionKey(parsedMessage, { threadIsolation: false }), "feishu:oc_chat");
+  assert.equal(buildFeishuSessionKey(parsedMessage, { groupSessionScope: "group" }), "feishu:oc_chat");
+  assert.equal(buildFeishuSessionKey(parsedMessage, { groupSessionScope: "group_sender" }), "feishu:oc_chat:sender:ou_admin");
+  assert.equal(buildFeishuSessionKey(parsedMessage, { groupSessionScope: "group_topic_sender" }), "feishu:oc_chat:topic:om_root:sender:ou_admin");
+
+  const parsedTopicGroupMessage = parseChannelConnectorFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "im.message.receive_v1",
+      app_id: "cli_test",
+      event_id: "evt_msg_topic_group",
+      token: "verify-token",
+    },
+    event: {
+      sender: { sender_id: { open_id: "ou_topic" } },
+      message: {
+        message_id: "om_topic_reply",
+        chat_id: "oc_topic_group",
+        chat_type: "topic_group",
+        root_id: "om_topic_root",
+        thread_id: "omt_topic_1",
+        message_type: "text",
+        content: JSON.stringify({ text: "topic reply" }),
+      },
+    },
+  });
+  assert.equal(buildFeishuSessionKey(parsedTopicGroupMessage), "feishu:oc_topic_group:topic:omt_topic_1");
+  assert.equal(
+    buildFeishuSessionKey(parsedTopicGroupMessage, { groupSessionScope: "group_topic_sender" }),
+    "feishu:oc_topic_group:topic:omt_topic_1:sender:ou_topic",
+  );
 
   const parsedImage = parseChannelConnectorFeishuWebhook({
     schema: "2.0",
@@ -7868,12 +7900,12 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
     },
   });
   assert.equal(slashThreadMessage.accepted, true);
-  assert.equal(slashThreadMessage.sessionKey, "feishu:oc_chat:root:om_thread_root");
+  assert.equal(slashThreadMessage.sessionKey, "feishu:oc_chat:topic:om_thread_root");
   assert.equal(slashThreadMessage.commandAction.command, "/status");
   assert.equal(slashThreadMessage.incoming.rootId, "om_thread_root");
   assert.equal(slashThreadMessage.incoming.parentId, "om_thread_parent");
   assert.equal(slashThreadMessage.incoming.threadId, "om_thread_id");
-  assert.match(JSON.stringify(slashThreadMessage.feishuResponse.card.data), /feishu:oc_chat:root:om_thread_root/);
+  assert.match(JSON.stringify(slashThreadMessage.feishuResponse.card.data), /feishu:oc_chat:topic:om_thread_root/);
   const feishuLog = fs.readFileSync(slashThreadMessage.eventStored.path, "utf8");
   assert.match(feishuLog, /"rootId":"om_thread_root"/);
   assert.match(feishuLog, /"threadId":"om_thread_id"/);

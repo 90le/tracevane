@@ -34,7 +34,15 @@ export interface ChannelConnectorFeishuParsedWebhook {
 export interface ChannelConnectorFeishuSessionKeyOptions {
   threadIsolation?: boolean;
   shareSessionInChannel?: boolean;
+  groupSessionScope?: ChannelConnectorFeishuGroupSessionScope | null;
+  replyInThread?: boolean;
 }
+
+export type ChannelConnectorFeishuGroupSessionScope =
+  | "group"
+  | "group_sender"
+  | "group_topic"
+  | "group_topic_sender";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -74,23 +82,59 @@ export function buildFeishuSessionKey(
   },
   options: ChannelConnectorFeishuSessionKeyOptions = {},
 ): string | null {
+  const scopeId = buildFeishuConversationScopeId(input, options);
+  return scopeId ? `feishu:${scopeId}` : null;
+}
+
+export function buildFeishuConversationScopeId(
+  input: {
+    channelId?: string | null;
+    fromUid?: string | null;
+    chatType?: string | null;
+    messageId?: string | null;
+    rootId?: string | null;
+    parentId?: string | null;
+    threadId?: string | null;
+  },
+  options: ChannelConnectorFeishuSessionKeyOptions = {},
+): string | null {
   const channelId = normalizeString(input.channelId);
   const fromUid = normalizeString(input.fromUid);
   if (!channelId && !fromUid) return null;
 
-  const threadIsolation = options.threadIsolation !== false;
-  const isGroup = normalizeString(input.chatType).toLowerCase() === "group";
-  if (threadIsolation && isGroup) {
-    const rootId = normalizeString(input.rootId) || normalizeString(input.messageId);
-    if (rootId) return `feishu:${channelId || "unknown"}:root:${rootId}`;
+  const chatType = normalizeString(input.chatType).toLowerCase();
+  const isGroup = chatType === "group" || chatType === "topic_group" || chatType.includes("group");
+  if (isGroup) {
+    const legacyThreadScope = options.threadIsolation === false ? "group" : "group_topic";
+    const groupSessionScope = options.groupSessionScope || legacyThreadScope;
+    const rootId = normalizeString(input.rootId);
     const threadId = normalizeString(input.threadId);
-    if (threadId) return `feishu:${channelId || "unknown"}:thread:${threadId}`;
     const parentId = normalizeString(input.parentId);
-    if (parentId) return `feishu:${channelId || "unknown"}:reply:${parentId}`;
+    const messageId = normalizeString(input.messageId);
+    const topicScope = groupSessionScope === "group_topic" || groupSessionScope === "group_topic_sender"
+      ? (
+        chatType === "topic_group"
+          ? threadId || rootId || parentId
+          : rootId || threadId || parentId || (options.replyInThread ? messageId : "")
+      )
+      : "";
+    const base = channelId || "unknown";
+    switch (groupSessionScope) {
+      case "group_sender":
+        return fromUid ? `${base}:sender:${fromUid}` : base;
+      case "group_topic":
+        return topicScope ? `${base}:topic:${topicScope}` : base;
+      case "group_topic_sender":
+        if (topicScope && fromUid) return `${base}:topic:${topicScope}:sender:${fromUid}`;
+        if (topicScope) return `${base}:topic:${topicScope}`;
+        return fromUid ? `${base}:sender:${fromUid}` : base;
+      default:
+        return base;
+    }
   }
 
-  if (options.shareSessionInChannel && channelId) return `feishu:${channelId}`;
-  return `feishu:${channelId || fromUid}:${fromUid || channelId}`;
+  if (options.shareSessionInChannel && channelId) return channelId;
+  return `${channelId || fromUid}:${fromUid || channelId}`;
 }
 
 function recordValue(value: unknown): Record<string, unknown> {

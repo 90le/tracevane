@@ -114,6 +114,7 @@ import {
   buildFeishuSessionKey,
   parseChannelConnectorFeishuWebhook,
   safeEqualFeishuWebhookToken,
+  type ChannelConnectorFeishuGroupSessionScope,
 } from "./feishu-adapter.js";
 import {
   emptyFeishuTransportResult,
@@ -1655,6 +1656,34 @@ function metadataBooleanValue(metadata: Record<string, unknown> | undefined, key
   return fallback;
 }
 
+function metadataStringValue(metadata: Record<string, unknown> | undefined, keys: string[]): string {
+  for (const key of keys) {
+    const value = normalizeString(metadata?.[key]);
+    if (value) return value;
+  }
+  return "";
+}
+
+function metadataFeishuGroupSessionScopeValue(
+  metadata: Record<string, unknown> | undefined,
+): ChannelConnectorFeishuGroupSessionScope | null {
+  const value = metadataStringValue(metadata, [
+    "feishuGroupSessionScope",
+    "feishu_group_session_scope",
+    "groupSessionScope",
+    "group_session_scope",
+  ]);
+  if (
+    value === "group"
+    || value === "group_sender"
+    || value === "group_topic"
+    || value === "group_topic_sender"
+  ) {
+    return value;
+  }
+  return null;
+}
+
 function metadataNumberValue(metadata: Record<string, unknown> | undefined, keys: string[], fallback: number): number {
   for (const key of keys) {
     const value = Number(metadata?.[key]);
@@ -1719,6 +1748,8 @@ function feishuSessionKeyForWebhook(
   return buildFeishuSessionKey(parsed, {
     threadIsolation: metadataBooleanValue(binding.metadata, ["threadIsolation", "thread_isolation"], true),
     shareSessionInChannel: metadataBooleanValue(binding.metadata, ["shareSessionInChannel", "share_session_in_channel"], false),
+    groupSessionScope: metadataFeishuGroupSessionScopeValue(binding.metadata),
+    replyInThread: metadataBooleanValue(binding.metadata, ["replyInThread", "reply_in_thread"], false),
   });
 }
 
