@@ -2,6 +2,7 @@ import type {
   ChannelConnectorAgentProfile,
   ChannelConnectorInboundAttachment,
   ChannelConnectorOctoDispatchResponse,
+  ChannelConnectorOctoChannelType,
   ChannelConnectorOctoGroupMember,
   ChannelConnectorOctoInboundMessage,
   ChannelConnectorOctoInboundRequest,
@@ -33,6 +34,17 @@ export interface ChannelConnectorsOctoResolvedBinding {
   agentProfile: ChannelConnectorAgentProfile;
 }
 
+export interface ChannelConnectorOctoPersonaRouting {
+  skipReason: string | null;
+  replyChannelId: string | null;
+  replyChannelType: ChannelConnectorOctoChannelType | null;
+  replyOnBehalfOf: string | null;
+  personaSystemPrompt: string | null;
+  triggeredByPersona: boolean;
+  oboTrusted: boolean;
+  oboRejectedReason: string | null;
+}
+
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -51,6 +63,15 @@ function recordFrom(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? value as Record<string, unknown>
     : {};
+}
+
+function metadataString(binding: ChannelConnectorPlatformBinding, keys: string[]): string {
+  const metadata = recordFrom(binding.metadata);
+  for (const key of keys) {
+    const value = normalizeString(metadata[key]);
+    if (value) return value;
+  }
+  return "";
 }
 
 function looksLikeHttpUrl(value: string): boolean {
@@ -143,6 +164,51 @@ export function isOctoGroupChannel(channelType: number): boolean {
   return channelType === OCTO_CHANNEL_TYPE_GROUP || channelType === OCTO_CHANNEL_TYPE_COMMUNITY_TOPIC;
 }
 
+function normalizeOctoChannelType(value: unknown): ChannelConnectorOctoChannelType | null {
+  const channelType = typeof value === "number" ? value : Number(value);
+  return channelType === OCTO_CHANNEL_TYPE_DM
+    || channelType === OCTO_CHANNEL_TYPE_GROUP
+    || channelType === OCTO_CHANNEL_TYPE_COMMUNITY_TOPIC
+    ? channelType
+    : null;
+}
+
+export function octoOnBehalfOfFromBinding(binding: ChannelConnectorPlatformBinding): string | null {
+  return metadataString(binding, [
+    "onBehalfOf",
+    "on_behalf_of",
+    "respondAs",
+    "respond_as",
+    "grantorUid",
+    "grantor_uid",
+  ]) || null;
+}
+
+function octoMentionUids(message: ChannelConnectorOctoInboundMessage): string[] {
+  const mention = message.payload.mention;
+  return Array.isArray(mention?.uids) ? mention.uids.map(normalizeString).filter(Boolean) : [];
+}
+
+function octoMentionFlags(message: ChannelConnectorOctoInboundMessage): {
+  all: boolean;
+  ais: boolean;
+  humans: boolean;
+  uids: string[];
+} {
+  const mention = message.payload.mention;
+  return {
+    all: mention?.all === true || mention?.all === 1,
+    ais: mention?.ais === true || mention?.ais === 1,
+    humans: mention?.humans === true || mention?.humans === 1,
+    uids: octoMentionUids(message),
+  };
+}
+
+function octoMentionIncludesUid(message: ChannelConnectorOctoInboundMessage, uid: unknown): boolean {
+  const normalizedUid = normalizeOctoAccountId(uid);
+  return Boolean(normalizedUid && octoMentionUids(message).some((candidate) => normalizeOctoAccountId(candidate) === normalizedUid));
+}
+
 export function buildOctoSessionKey(message: ChannelConnectorOctoInboundMessage): string {
   if (message.channelType === OCTO_CHANNEL_TYPE_DM) return `dmwork:dm:${message.fromUid}`;
   if (isOctoGroupChannel(message.channelType)) return `dmwork:group:${message.channelId}`;
@@ -157,16 +223,18 @@ function isSystemOctoMessage(message: ChannelConnectorOctoInboundMessage): boole
 export function isOctoMessageDirectedAtBot(
   message: ChannelConnectorOctoInboundMessage,
   botId: string | null,
+  onBehalfOf: string | null = null,
 ): boolean {
   if (!isOctoGroupChannel(message.channelType)) return true;
   const mention = message.payload.mention;
-  const mentionUids = Array.isArray(mention?.uids) ? mention?.uids || [] : [];
+  const flags = octoMentionFlags(message);
   const normalizedBotId = normalizeOctoAccountId(botId);
-  if (normalizedBotId && mentionUids.some((uid) => normalizeOctoAccountId(uid) === normalizedBotId)) return true;
-  const mentionAll = mention?.all === true || mention?.all === 1;
-  const mentionHumans = mention?.humans === true || mention?.humans === 1;
-  const mentionAis = mention?.ais === true || mention?.ais === 1;
-  if (mentionAis && !mentionAll && !mentionHumans) return true;
+  if (normalizedBotId && flags.uids.some((uid) => normalizeOctoAccountId(uid) === normalizedBotId)) return true;
+  const normalizedGrantor = normalizeOctoAccountId(onBehalfOf);
+  const grantorMentioned = Boolean(normalizedGrantor && flags.uids.some((uid) => normalizeOctoAccountId(uid) === normalizedGrantor));
+  const broadcast = flags.all || flags.humans;
+  if (flags.ais && !broadcast) return true;
+  if (normalizedGrantor && (flags.humans || flags.all || grantorMentioned)) return true;
   if (message.payload.reply && (message.payload.reply.messageId || message.payload.reply.message_id)) return true;
   return normalizeString(message.payload.content).startsWith("/");
 }
@@ -399,6 +467,145 @@ function memberDisplayNameByUid(members: ChannelConnectorOctoGroupMember[]): Map
   return names;
 }
 
+export function buildOctoPersonaGroupSystemPrompt(
+  grantorUid: string,
+  members: ChannelConnectorOctoGroupMember[] = [],
+): string {
+  const grantorName = memberDisplayNameByUid(members).get(normalizeOctoAccountId(grantorUid)) || grantorUid;
+  return `你是${grantorName}的AI分身（persona clone）。当群里有人@${grantorName}或@所有人时，就是在叫你，你应当以${grantorName}的身份回复，不要返回 NO_REPLY。`;
+}
+
+function isOctoTrustedOboMessage(
+  message: ChannelConnectorOctoInboundMessage,
+  grantorUid: string | null,
+): boolean {
+  const payload = message.payload || {};
+  const originChannel = normalizeString(payload.obo_origin_channel_id);
+  const respondAs = normalizeString(payload.obo_respond_as) || normalizeString(payload.obo_grantor_uid);
+  return Boolean(originChannel && respondAs && grantorUid && sameOctoAccountId(message.fromUid, grantorUid));
+}
+
+function octoOboPayloadRejectedReason(
+  message: ChannelConnectorOctoInboundMessage,
+  grantorUid: string | null,
+): string | null {
+  const payload = message.payload || {};
+  const originChannel = normalizeString(payload.obo_origin_channel_id);
+  if (!originChannel) return null;
+  const respondAs = normalizeString(payload.obo_respond_as) || normalizeString(payload.obo_grantor_uid);
+  if (!respondAs) return "octo_obo_missing_respond_as";
+  if (!grantorUid) return "octo_obo_grantor_not_configured";
+  if (!sameOctoAccountId(message.fromUid, grantorUid)) return "octo_obo_untrusted_sender";
+  return null;
+}
+
+function isOctoOboRelevantToPersona(
+  message: ChannelConnectorOctoInboundMessage,
+  grantorUid: string,
+): boolean {
+  const flags = octoMentionFlags(message);
+  const grantorMentioned = octoMentionIncludesUid(message, grantorUid);
+  const noMentionPayload = !flags.ais && !flags.humans && !flags.all && flags.uids.length === 0;
+  return flags.humans || flags.all || grantorMentioned || noMentionPayload;
+}
+
+export function resolveOctoPersonaRouting(
+  message: ChannelConnectorOctoInboundMessage,
+  binding: ChannelConnectorPlatformBinding,
+): ChannelConnectorOctoPersonaRouting {
+  const grantorUid = octoOnBehalfOfFromBinding(binding);
+  const oboRejectedReason = octoOboPayloadRejectedReason(message, grantorUid);
+  const oboTrusted = isOctoTrustedOboMessage(message, grantorUid);
+  if (oboTrusted && grantorUid && !isOctoOboRelevantToPersona(message, grantorUid)) {
+    return {
+      skipReason: "octo_obo_message_not_relevant",
+      replyChannelId: null,
+      replyChannelType: null,
+      replyOnBehalfOf: null,
+      personaSystemPrompt: null,
+      triggeredByPersona: false,
+      oboTrusted: true,
+      oboRejectedReason: null,
+    };
+  }
+  if (oboTrusted && grantorUid) {
+    const payload = message.payload || {};
+    const originChannel = normalizeString(payload.obo_origin_channel_id);
+    const originChannelType = normalizeOctoChannelType(payload.obo_origin_channel_type) || OCTO_CHANNEL_TYPE_GROUP;
+    const originFromUid = normalizeString(payload.obo_origin_from_uid);
+    const replyChannelId = originChannelType === OCTO_CHANNEL_TYPE_DM
+      ? originFromUid || originChannel
+      : originChannel;
+    return {
+      skipReason: null,
+      replyChannelId,
+      replyChannelType: originChannelType,
+      replyOnBehalfOf: grantorUid,
+      personaSystemPrompt: normalizeString(payload.obo_system_hint) || null,
+      triggeredByPersona: true,
+      oboTrusted: true,
+      oboRejectedReason: null,
+    };
+  }
+
+  if (isOctoGroupChannel(message.channelType) && grantorUid) {
+    const flags = octoMentionFlags(message);
+    const explicitBotMention = octoMentionIncludesUid(message, binding.botId);
+    const grantorMentioned = octoMentionIncludesUid(message, grantorUid);
+    const triggeredByPersona = (flags.humans || flags.all || grantorMentioned) && !explicitBotMention;
+    if (triggeredByPersona) {
+      return {
+        skipReason: null,
+        replyChannelId: message.channelId,
+        replyChannelType: message.channelType,
+        replyOnBehalfOf: grantorUid,
+        personaSystemPrompt: buildOctoPersonaGroupSystemPrompt(grantorUid, message.members || []),
+        triggeredByPersona: true,
+        oboTrusted: false,
+        oboRejectedReason,
+      };
+    }
+  }
+
+  return {
+    skipReason: null,
+    replyChannelId: null,
+    replyChannelType: null,
+    replyOnBehalfOf: null,
+    personaSystemPrompt: null,
+    triggeredByPersona: false,
+    oboTrusted: false,
+    oboRejectedReason,
+  };
+}
+
+export function applyOctoPersonaRouting(
+  message: ChannelConnectorOctoInboundMessage,
+  routing: ChannelConnectorOctoPersonaRouting,
+): ChannelConnectorOctoInboundMessage {
+  if (
+    !routing.replyChannelId
+    && !routing.replyChannelType
+    && !routing.replyOnBehalfOf
+    && !routing.personaSystemPrompt
+    && !routing.triggeredByPersona
+    && !routing.oboTrusted
+    && !routing.oboRejectedReason
+  ) {
+    return message;
+  }
+  return {
+    ...message,
+    replyChannelId: routing.replyChannelId,
+    replyChannelType: routing.replyChannelType,
+    replyOnBehalfOf: routing.replyOnBehalfOf,
+    personaSystemPrompt: routing.personaSystemPrompt,
+    personaTriggered: routing.triggeredByPersona,
+    oboTrusted: routing.oboTrusted,
+    oboRejectedReason: routing.oboRejectedReason,
+  };
+}
+
 function visibleStructuredMention(uid: string, members: ChannelConnectorOctoGroupMember[]): string {
   const name = memberDisplayNameByUid(members).get(normalizeOctoAccountId(uid)) || uid;
   return `@[${uid}:${name}]`;
@@ -610,12 +817,15 @@ export function renderOctoTextReply(
 ): ChannelConnectorOctoReplyPlan | null {
   const stripped = stripOctoReplyFooter(replyText).trim();
   if (!stripped) return null;
-  const channelId = message.channelType === OCTO_CHANNEL_TYPE_DM ? message.fromUid : message.channelId;
+  const channelId = normalizeString(message.replyChannelId)
+    || (message.channelType === OCTO_CHANNEL_TYPE_DM ? message.fromUid : message.channelId);
+  const channelType = message.replyChannelType || message.channelType;
   return renderOctoOutboundText({
     channelId,
-    channelType: message.channelType,
+    channelType,
     content: stripped,
     members: message.members || [],
+    onBehalfOf: message.replyOnBehalfOf || null,
   });
 }
 
@@ -716,8 +926,10 @@ export function shouldSkipOctoMessage(
   if (!resolved) return "octo_binding_not_found";
   if (isSystemOctoMessage(message)) return "octo_system_message";
   if (sameOctoAccountId(message.fromUid, resolved.binding.botId)) return "octo_self_message";
+  const personaRouting = resolveOctoPersonaRouting(message, resolved.binding);
+  if (personaRouting.skipReason) return personaRouting.skipReason;
   const content = extractOctoContent(message);
   if (!content) return "octo_empty_message";
-  if (!isOctoMessageDirectedAtBot(message, resolved.binding.botId)) return "octo_group_message_not_directed";
+  if (!isOctoMessageDirectedAtBot(message, resolved.binding.botId, octoOnBehalfOfFromBinding(resolved.binding))) return "octo_group_message_not_directed";
   return null;
 }

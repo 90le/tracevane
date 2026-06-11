@@ -415,12 +415,13 @@ function buildAgentInputContent(
 ): string {
   const content = extractOctoContent(message);
   const attachments = extractOctoAttachments(message);
+  const persona = normalizeString(message.personaSystemPrompt);
   const history = normalizeString(historyContext);
   const skills = normalizeString(channelSkillContext);
   const groupContext = buildGroupContext(message, binding);
   const outboundFilePolicy = buildStudioOutboundFilePolicy();
   const current = currentMessageBlock(content);
-  if (!attachments.length) return [history, groupContext, skills, outboundFilePolicy, current].filter(Boolean).join("\n\n");
+  if (!attachments.length) return [persona, history, groupContext, skills, outboundFilePolicy, current].filter(Boolean).join("\n\n");
   const summary = attachments
     .map((attachment) => `- ${attachmentSummaryLabel(attachment)}`)
     .join("\n");
@@ -447,7 +448,7 @@ function buildAgentInputContent(
       : "",
     visualInputText,
   ].filter(Boolean).join("\n");
-  return [history, groupContext, skills, outboundFilePolicy, visualPolicy, current, attachmentText].filter(Boolean).join("\n\n");
+  return [persona, history, groupContext, skills, outboundFilePolicy, visualPolicy, current, attachmentText].filter(Boolean).join("\n\n");
 }
 
 function recordValue(value: unknown): Record<string, unknown> | null {

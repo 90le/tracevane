@@ -710,11 +710,13 @@ export async function sendOctoTyping(
   config: ChannelConnectorOctoTransportConfig,
   channelId: string,
   channelType: number,
+  onBehalfOf?: string | null,
 ): Promise<ChannelConnectorOctoTransportResult> {
   try {
     const response = await postOctoJson(config, "/v1/bot/typing", {
       channel_id: channelId,
       channel_type: channelType,
+      ...(onBehalfOf ? { on_behalf_of: onBehalfOf } : {}),
     });
     return transportResult({
       attempted: true,
@@ -1336,6 +1338,7 @@ export async function sendOctoMediaMessage(
     size?: number | null;
     width?: number | null;
     height?: number | null;
+    onBehalfOf?: string | null;
   },
 ): Promise<ChannelConnectorOctoTransportResult> {
   const fileName = safeChannelConnectorFileName(input.fileName, "studio-upload.bin");
@@ -1356,6 +1359,7 @@ export async function sendOctoMediaMessage(
       channel_id: input.channelId,
       channel_type: input.channelType,
       payload,
+      ...(input.onBehalfOf ? { on_behalf_of: input.onBehalfOf } : {}),
     });
     return transportResult({
       attempted: true,
@@ -1394,6 +1398,7 @@ export async function directUploadAndSendOctoMedia(
     data: Uint8Array;
     fileName: string;
     mimeType?: string | null;
+    onBehalfOf?: string | null;
   },
 ): Promise<ChannelConnectorOctoTransportResult> {
   const upload = await directUploadOctoFile(config, input);
@@ -1405,6 +1410,7 @@ export async function directUploadAndSendOctoMedia(
     fileName: upload.fileName,
     mimeType: upload.mimeType,
     size: upload.size,
+    onBehalfOf: input.onBehalfOf || null,
   });
   return transportResult({
     attempted: true,
@@ -1435,6 +1441,7 @@ export async function uploadAndSendOctoMedia(
     data: Uint8Array;
     fileName: string;
     mimeType?: string | null;
+    onBehalfOf?: string | null;
   },
 ): Promise<ChannelConnectorOctoTransportResult> {
   if (shouldDirectUploadOctoMedia(config, input.data.length)) {
@@ -1458,6 +1465,7 @@ export async function uploadAndSendOctoMedia(
     fileName: upload.fileName,
     mimeType: upload.mimeType,
     size: upload.size,
+    onBehalfOf: input.onBehalfOf || null,
   });
   return transportResult({
     attempted: true,

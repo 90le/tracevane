@@ -50,12 +50,15 @@ import {
   type ChannelConnectorPlatformId,
 } from "../../../../types/channel-connectors.js";
 import {
+  applyOctoPersonaRouting,
   buildOctoSessionKey,
   buildSkippedOctoResponse,
   extractOctoAttachments,
   extractOctoContent,
   isOctoMessageDirectedAtBot,
+  octoOnBehalfOfFromBinding,
   renderOctoTextReply,
+  resolveOctoPersonaRouting,
   resolveOctoBinding,
   shouldSkipOctoMessage,
 } from "./octo-adapter.js";
@@ -2729,10 +2732,12 @@ export function createChannelConnectorsService(
         },
       };
     }
+    const personaRouting = resolveOctoPersonaRouting(message, binding);
+    message = applyOctoPersonaRouting(message, personaRouting);
     const sessionKey = buildOctoSessionKey(message);
     const content = extractOctoContent(message);
     const attachments = extractOctoAttachments(message);
-    const directed = isOctoMessageDirectedAtBot(message, binding.botId);
+    const directed = isOctoMessageDirectedAtBot(message, binding.botId, octoOnBehalfOfFromBinding(binding));
     const governance = evaluateChannelConnectorGovernance({
       binding,
       platform: "octo",

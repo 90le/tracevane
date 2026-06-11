@@ -111,14 +111,17 @@ import {
   type OctoCredentialCacheEntry,
 } from "./octo-credential-cache.js";
 import {
+  applyOctoPersonaRouting,
   attachExtractedOctoAttachments,
   buildOctoSessionKey,
   extractOctoAttachments,
   extractOctoContent,
   isOctoGroupChannel,
   isOctoMessageDirectedAtBot,
+  octoOnBehalfOfFromBinding,
   renderOctoOutboundText,
   renderOctoTextReply,
+  resolveOctoPersonaRouting,
   shouldSkipOctoMessage,
 } from "./octo-adapter.js";
 import {
@@ -2625,11 +2628,12 @@ async function sendOctoOutboundFiles(input: {
   for (const file of input.files) {
     try {
       const result = await uploadAndSendOctoMedia(input.transport, {
-        channelId: input.message.channelId,
-        channelType: input.message.channelType,
+        channelId: input.message.replyChannelId || input.message.channelId,
+        channelType: input.message.replyChannelType || input.message.channelType,
         data: fs.readFileSync(file.localPath),
         fileName: file.fileName,
         mimeType: file.mimeType,
+        onBehalfOf: input.message.replyOnBehalfOf || null,
       });
       requestCount += result.requestCount;
       if (result.ok === true) {
@@ -2683,7 +2687,7 @@ async function sendOctoOutboundMessages(input: {
       members: input.sourceMessage.members || [],
       mentionUids,
       mentionAll: message.mentionAll,
-      onBehalfOf: message.onBehalfOf,
+      onBehalfOf: message.onBehalfOf || input.sourceMessage.replyOnBehalfOf || null,
     });
     if (!replyPlan) {
       errors.push(`Octo outbound message to ${channelId} has empty rendered content.`);
@@ -3645,12 +3649,13 @@ function startOctoTypingPulse(
   message: ChannelConnectorOctoInboundMessage,
 ): () => void {
   if (!transport) return () => {};
-  const channelId = message.channelType === 1 ? message.fromUid : message.channelId;
+  const channelId = message.replyChannelId || (message.channelType === 1 ? message.fromUid : message.channelId);
+  const channelType = message.replyChannelType || message.channelType;
   let inFlight = false;
   const timer = setInterval(() => {
     if (inFlight) return;
     inFlight = true;
-    void sendOctoTyping(transport, channelId, message.channelType)
+    void sendOctoTyping(transport, channelId, channelType, message.replyOnBehalfOf || null)
       .catch(() => {})
       .finally(() => {
         inFlight = false;
@@ -7074,6 +7079,8 @@ async function dispatchOctoMessage(input: {
     });
     return;
   }
+  let octoPersonaRouting = resolveOctoPersonaRouting(message, nativeBinding);
+  message = applyOctoPersonaRouting(message, octoPersonaRouting);
   const governance = evaluateChannelConnectorGovernance({
     binding,
     platform: "octo",
@@ -7246,6 +7253,9 @@ async function dispatchOctoMessage(input: {
       members,
     };
   }
+  octoPersonaRouting = resolveOctoPersonaRouting(agentMessage, nativeBinding);
+  message = applyOctoPersonaRouting(message, octoPersonaRouting);
+  agentMessage = applyOctoPersonaRouting(agentMessage, octoPersonaRouting);
   if (octoMembers.attempted) {
     writeJsonLine(config.paths.octoEvents, {
       checkedAt: new Date().toISOString(),
@@ -7386,8 +7396,9 @@ async function dispatchOctoMessage(input: {
   if (transport) {
     await sendOctoTyping(
       transport,
-      message.channelType === 1 ? message.fromUid : message.channelId,
-      message.channelType,
+      message.replyChannelId || (message.channelType === 1 ? message.fromUid : message.channelId),
+      message.replyChannelType || message.channelType,
+      message.replyOnBehalfOf || null,
     );
   }
   await maybeAutoCompactChannelConnectorConversation({
@@ -7644,6 +7655,12 @@ async function dispatchOctoMessage(input: {
     progressThinkingEnabled: channelConnectorThinkingMessagesEnabled(control, progressDefaults),
     progressProcessEnabled: channelConnectorProcessMessagesEnabled(control, progressDefaults),
     progressToolsEnabled: channelConnectorToolMessagesEnabled(control, progressDefaults),
+    replyChannelId: message.replyChannelId || null,
+    replyChannelType: message.replyChannelType || null,
+    replyOnBehalfOf: message.replyOnBehalfOf || null,
+    personaTriggered: message.personaTriggered === true,
+    oboTrusted: message.oboTrusted === true,
+    oboRejectedReason: message.oboRejectedReason || null,
     aliasName: aliasResolution.matchedAlias?.name || null,
     aliasCommand: aliasResolution.matchedAlias?.command || null,
     ingressAt,
@@ -8040,7 +8057,13 @@ async function dispatchOctoMessage(input: {
     messageType: typeof message.payload?.type === "number" ? message.payload.type : null,
     attachmentCount: attachments.length,
     attachmentKinds: attachments.map((attachment) => attachment.kind),
-    directed: isOctoMessageDirectedAtBot(message, nativeBinding.botId),
+    directed: isOctoMessageDirectedAtBot(message, nativeBinding.botId, octoOnBehalfOfFromBinding(nativeBinding)),
+    replyChannelId: message.replyChannelId || null,
+    replyChannelType: message.replyChannelType || null,
+    replyOnBehalfOf: message.replyOnBehalfOf || null,
+    personaTriggered: message.personaTriggered === true,
+    oboTrusted: message.oboTrusted === true,
+    oboRejectedReason: message.oboRejectedReason || null,
     agentStatus: agent.status,
     agentOk: agent.ok,
     agentError: agent.error,

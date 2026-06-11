@@ -140,6 +140,12 @@ export interface ChannelConnectorOctoMessagePayload {
   height?: number;
   mention?: ChannelConnectorOctoMentionPayload | null;
   reply?: ChannelConnectorOctoReplyPayload | null;
+  obo_origin_channel_id?: string;
+  obo_origin_channel_type?: ChannelConnectorOctoChannelType | number;
+  obo_origin_from_uid?: string;
+  obo_respond_as?: string;
+  obo_grantor_uid?: string;
+  obo_system_hint?: string;
 }
 
 export interface ChannelConnectorOctoRichTextBlock {
@@ -189,6 +195,13 @@ export interface ChannelConnectorOctoInboundMessage {
   payload: ChannelConnectorOctoMessagePayload;
   attachments?: ChannelConnectorInboundAttachment[];
   members?: ChannelConnectorOctoGroupMember[];
+  replyChannelId?: string | null;
+  replyChannelType?: ChannelConnectorOctoChannelType | null;
+  replyOnBehalfOf?: string | null;
+  personaSystemPrompt?: string | null;
+  personaTriggered?: boolean | null;
+  oboTrusted?: boolean | null;
+  oboRejectedReason?: string | null;
 }
 
 export interface ChannelConnectorOctoInboundRequest {

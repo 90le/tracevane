@@ -50,6 +50,8 @@ import {
   sendOctoTextReply,
   sendOctoHeartbeat,
   sendOctoReadReceipt,
+  sendOctoTyping,
+  sendOctoMediaMessage,
 } from "../../dist/apps/api/modules/channel-connectors/octo-transport.js";
 import {
   addFeishuMessageReaction,
@@ -1707,6 +1709,20 @@ test("Octo adapter follows group direction and mention rendering rules", async (
           allowlist: [],
           adminUsers: [],
         },
+        {
+          id: "octo-persona",
+          platform: "octo",
+          accountId: "octo-account",
+          botId: "persona-bot",
+          displayName: "Octo Persona Bot",
+          agentProfileId: "claude-main",
+          enabled: true,
+          allowlist: [],
+          adminUsers: [],
+          metadata: {
+            onBehalfOf: "grantor-1",
+          },
+        },
       ],
     },
   });
@@ -1746,6 +1762,103 @@ test("Octo adapter follows group direction and mention rendering rules", async (
   });
   assert.equal(broadcast.accepted, false);
   assert.equal(broadcast.skippedReason, "octo_group_message_not_directed");
+
+  const personaBroadcast = await service.dispatchOctoIncoming({
+    bindingId: "octo-persona",
+    dryRun: true,
+    replyText: "收到",
+    message: {
+      messageId: "g-persona-broadcast",
+      fromUid: "user-2",
+      channelId: "group-a",
+      channelType: 2,
+      payload: {
+        type: 1,
+        content: "@所有人 status",
+        mention: { all: 1, ais: 1, humans: 1 },
+      },
+      members: [
+        { uid: "grantor-1", name: "Grantor" },
+        { uid: "persona-bot", name: "PersonaBot", robot: 1 },
+      ],
+    },
+  });
+  assert.equal(personaBroadcast.accepted, true);
+  assert.equal(personaBroadcast.incoming.directed, true);
+  assert.equal(personaBroadcast.replyPlan.channelId, "group-a");
+  assert.equal(personaBroadcast.replyPlan.channelType, 2);
+  assert.equal(personaBroadcast.replyPlan.onBehalfOf, "grantor-1");
+
+  const personaObo = await service.dispatchOctoIncoming({
+    bindingId: "octo-persona",
+    dryRun: true,
+    replyText: "代答完成",
+    message: {
+      messageId: "g-persona-obo",
+      fromUid: "grantor-1",
+      channelId: "grantor-1",
+      channelType: 1,
+      payload: {
+        type: 1,
+        content: "relay",
+        mention: { humans: 1 },
+        obo_origin_channel_id: "group-a",
+        obo_origin_channel_type: 2,
+        obo_origin_from_uid: "user-2",
+        obo_respond_as: "forged-grantor",
+        obo_system_hint: "trusted persona hint",
+      },
+    },
+  });
+  assert.equal(personaObo.accepted, true);
+  assert.equal(personaObo.sessionKey, "dmwork:dm:grantor-1");
+  assert.equal(personaObo.replyPlan.channelId, "group-a");
+  assert.equal(personaObo.replyPlan.channelType, 2);
+  assert.equal(personaObo.replyPlan.onBehalfOf, "grantor-1");
+
+  const personaBinding = service.getNativeConfig().config.platformBindings.find((binding) => binding.id === "octo-persona");
+  const personaProject = service.getNativeConfig().config.agentProfiles.find((profile) => profile.id === "claude-main");
+  const personaProcess = buildChannelConnectorAgentProcessRequest({
+    project: personaProject,
+    binding: personaBinding,
+    message: {
+      messageId: "g-persona-process",
+      fromUid: "grantor-1",
+      channelId: "grantor-1",
+      channelType: 1,
+      payload: {
+        type: 1,
+        content: "relay",
+      },
+      personaSystemPrompt: "trusted persona hint",
+    },
+    sessionKey: "dmwork:dm:grantor-1",
+    gatewayEndpoint: "http://127.0.0.1:18796/v1",
+    gatewayClientKey: "sk-test",
+  });
+  assert.ok(personaProcess);
+  assert.match(personaProcess.stdin, /trusted persona hint/);
+
+  const personaOboAiOnly = await service.dispatchOctoIncoming({
+    bindingId: "octo-persona",
+    dryRun: true,
+    message: {
+      messageId: "g-persona-obo-ai-only",
+      fromUid: "grantor-1",
+      channelId: "grantor-1",
+      channelType: 1,
+      payload: {
+        type: 1,
+        content: "relay to AI only",
+        mention: { ais: 1 },
+        obo_origin_channel_id: "group-a",
+        obo_origin_channel_type: 2,
+        obo_respond_as: "grantor-1",
+      },
+    },
+  });
+  assert.equal(personaOboAiOnly.accepted, false);
+  assert.equal(personaOboAiOnly.skippedReason, "octo_obo_message_not_relevant");
 
   const aiMention = await service.dispatchOctoIncoming({
     bindingId: "octo-group",
@@ -1908,6 +2021,36 @@ test("Octo transport sends read receipt with message ids", async () => {
       channel_type: 2,
       message_ids: ["12345678901234567"],
     });
+  });
+});
+
+test("Octo transport carries on_behalf_of for typing and media", async () => {
+  await withMockOctoServer(async (apiUrl, requests) => {
+    const typing = await sendOctoTyping({
+      apiUrl,
+      botToken: "octo-token",
+    }, "group-1", 2, "grantor-1");
+    const media = await sendOctoMediaMessage({
+      apiUrl,
+      botToken: "octo-token",
+    }, {
+      channelId: "group-1",
+      channelType: 2,
+      mediaUrl: "https://cdn.example.test/image.png",
+      fileName: "image.png",
+      mimeType: "image/png",
+      onBehalfOf: "grantor-1",
+    });
+
+    assert.equal(typing.ok, true);
+    assert.equal(media.ok, true);
+    const typingRequest = requests.find((item) => item.path === "/v1/bot/typing");
+    const mediaRequest = requests.find((item) => item.path === "/v1/bot/sendMessage");
+    assert.ok(typingRequest);
+    assert.ok(mediaRequest);
+    assert.equal(typingRequest.body.on_behalf_of, "grantor-1");
+    assert.equal(mediaRequest.body.on_behalf_of, "grantor-1");
+    assert.equal(mediaRequest.body.payload.type, 2);
   });
 });
 
