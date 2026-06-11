@@ -47,12 +47,13 @@
 - Octo bot 协作出站容错：`studio-channel-messages` 中任何把 `<*_bot>` 当 channelId 的消息，在群/thread 来源内都会自动重写为当前群/thread @，并保留可见 @ 与 native mention payload，避免把 bot id 当群号请求 Octo API 造成 400。
 - Octo 群历史已按 CC Go 分段：daemon 记录每个 Octo 群/thread session 的 lastAnsweredSeq，重启时从 event log 尾部恢复，冷启动可从 Bot API self-bot 历史推断；Agent prompt 把历史拆成已答上下文和上次回复后新增消息，状态接口暴露最近 cutoff。
 - 对照 OpenClaw Octo/Feishu 插件复核群聊上下文策略：Octo 继续沿用 Bot API history + daemon realtime timeline + GROUP.md/THREAD.md 三层上下文；Feishu 普通群不伪造全量历史，沿用实时 timeline + 成员/mention，topic/thread 才使用官方 `im.message.get/list` bootstrap。
-- Feishu 群出站原生 @ 已接入：Agent 在 `studio-channel-messages` 中写 `@[open_id:显示名]` 或 `@[member_open_id:displayName]`，parser 保留 uid/displayName，daemon 发送群消息前转为 Feishu at-tag；回归覆盖 manifest 解析、target 解析、成员名 fallback 和 Agent prompt 约束。
+- Feishu 群出站原生 @ 已接入：Agent 在 `studio-channel-messages` 中写 `@[open_id:显示名]` 或 `@[member_open_id:displayName]`，parser 保留 uid/displayName，daemon 发送群消息前转为 Feishu at-tag，并在 Feishu agent run JSONL 里记录 `outboundMessageNativeMentionIds` 作为 live smoke 证据；回归覆盖 manifest 解析、target 解析、成员名 fallback、text/post payload 透传和 Agent prompt 约束。
 
 ## 最近验证
 
 - 通过：`npm run typecheck:api`。
 - 通过：`npm run build:api`。
+- 通过：`node --test --test-name-pattern "native Channel Connectors extracts outbound IM message manifests|native Channel Connectors Feishu transport preserves group mention at-tags in text and post payloads|native Channel Connectors Feishu transport sends markdown post to open_id targets|native Channel Connectors daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`，覆盖 Feishu text/post at-tag payload、daemon mention 证据字段和长连接结构约束。
 - 通过：`node --test --test-name-pattern "native Channel Connectors extracts outbound IM message manifests|native Channel Connectors agent runner builds gateway-backed Codex turns" tests/system/channel-connectors-service.test.mjs`，覆盖 Feishu 群 `@[open_id:显示名]` 出站 at-tag 渲染和 Agent 群上下文提示词。
 - 通过：`node --test --test-name-pattern "native Channel Connectors agent runner builds gateway-backed Codex turns|native Channel Connectors IM commands switch agent, model, and permission per session" tests/system/channel-connectors-service.test.mjs`，覆盖 Runtime Action Index 注入 Codex 原生 skill 投影、IM channel skill context 和 Feishu doc 动作索引。
 - 通过：本机只读 smoke 直接加载 OpenClaw Feishu 内置 skills，发现 `feishu-doc`、`feishu-drive`、`feishu-perm`、`feishu-wiki`，确认 action index、doc upload 动作存在且不泄露 `FEISHU_APP_SECRET` setup。

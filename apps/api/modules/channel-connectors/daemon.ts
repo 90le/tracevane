@@ -2917,10 +2917,11 @@ async function sendFeishuOutboundMessages(input: {
   transport: ChannelConnectorFeishuTransportConfig;
   messages: ChannelConnectorOutboundMessageRequest[];
   members?: readonly ChannelConnectorOctoGroupMember[] | null;
-}): Promise<{ sentCount: number; requestCount: number; errors: string[] }> {
+}): Promise<{ sentCount: number; requestCount: number; errors: string[]; nativeMentionIds: string[] }> {
   let sentCount = 0;
   let requestCount = 0;
   const errors: string[] = [];
+  const nativeMentionIds: string[] = [];
   const cachePath = feishuTokenCachePath(input.config);
   for (const message of input.messages) {
     if (message.platform && message.platform !== "feishu") continue;
@@ -2935,6 +2936,7 @@ async function sendFeishuOutboundMessages(input: {
       target,
       members: input.members || [],
     });
+    nativeMentionIds.push(...rendered.nativeMentionIds);
     const result = message.format === "markdown"
       ? await sendFeishuPostMessage(input.transport, {
         receiveId: target.receiveId,
@@ -2953,7 +2955,7 @@ async function sendFeishuOutboundMessages(input: {
       errors.push(`${target.receiveId}: ${result.error || "Feishu message send failed"}`);
     }
   }
-  return { sentCount, requestCount, errors };
+  return { sentCount, requestCount, errors, nativeMentionIds: uniqueStrings(nativeMentionIds) };
 }
 
 function agentSessionsPath(config: ChannelConnectorsDaemonRuntimeConfig): string {
@@ -9912,6 +9914,7 @@ async function dispatchFeishuParsedEvent(input: {
   let outboundFileRequestCount = 0;
   let outboundMessageSentCount = 0;
   let outboundMessageRequestCount = 0;
+  let outboundMessageNativeMentionIds: string[] = [];
   let outboundFileErrors = [...outboundReply.errors];
   const outboundReplyText = appendOutboundFileErrors(outboundReply.replyText, outboundReply.errors);
   const replyContent = agent.ok === true && outboundReplyText
@@ -9987,6 +9990,7 @@ async function dispatchFeishuParsedEvent(input: {
     });
     outboundMessageSentCount = sentMessages.sentCount;
     outboundMessageRequestCount = sentMessages.requestCount;
+    outboundMessageNativeMentionIds = sentMessages.nativeMentionIds;
     replyRequestCount = (replyRequestCount || 0) + sentMessages.requestCount;
     if (sentMessages.sentCount > 0) replySent = true;
     outboundFileErrors = [...outboundFileErrors, ...sentMessages.errors];
@@ -10042,6 +10046,7 @@ async function dispatchFeishuParsedEvent(input: {
     outboundMessagesDeclared: outboundReply.declaredMessageCount,
     outboundMessagesSent: outboundMessageSentCount,
     outboundMessageRequestCount,
+    outboundMessageNativeMentionIds,
     outboundFileErrors,
     groupMemberPullAttempted: groupMembers.attempted,
     groupMemberCount: groupMembers.members.length,

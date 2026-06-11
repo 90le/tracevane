@@ -9411,6 +9411,47 @@ test("native Channel Connectors Feishu transport sends markdown post to open_id 
   });
 });
 
+test("native Channel Connectors Feishu transport preserves group mention at-tags in text and post payloads", async () => {
+  await withMockFeishuServer(async (apiUrl, requests) => {
+    const root = makeTempRoot();
+    const cachePath = path.join(root, "feishu-token-cache.json");
+    const transport = {
+      apiUrl,
+      appId: "cli_at_tag",
+      appSecret: "test-secret",
+    };
+    const atTagged = '<at user_id="ou_helper">Helper</at> 请看一下';
+
+    const text = await sendFeishuTextMessage(transport, {
+      receiveId: "oc_group",
+      receiveIdType: "chat_id",
+      content: atTagged,
+    }, cachePath);
+    const post = await sendFeishuPostMessage(transport, {
+      receiveId: "oc_group",
+      receiveIdType: "chat_id",
+      content: `${atTagged}\n\n**markdown**`,
+    }, cachePath);
+
+    assert.equal(text.ok, true);
+    assert.equal(post.ok, true);
+    assert.equal(text.tokenCache, "miss");
+    assert.equal(post.tokenCache, "hit");
+    assert.equal(requests[0].path, "/open-apis/auth/v3/tenant_access_token/internal");
+    assert.equal(requests[1].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
+    assert.equal(requests[1].body.receive_id, "oc_group");
+    assert.equal(requests[1].body.msg_type, "text");
+    assert.equal(JSON.parse(requests[1].body.content).text, atTagged);
+    assert.equal(requests[2].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
+    assert.equal(requests[2].body.receive_id, "oc_group");
+    assert.equal(requests[2].body.msg_type, "post");
+    assert.equal(
+      JSON.parse(requests[2].body.content).zh_cn.content[0][0].text,
+      `${atTagged}\n\n**markdown**`,
+    );
+  });
+});
+
 test("native Channel Connectors Feishu transport uploads and sends images or files", async () => {
   await withMockFeishuServer(async (apiUrl, requests) => {
     const root = makeTempRoot();
@@ -10437,6 +10478,8 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /Feishu WebSocket reconnecting/);
   assert.match(daemonSource, /Feishu WebSocket reconnected/);
   assert.match(daemonSource, /sendFeishuTextMessage/);
+  assert.match(daemonSource, /renderFeishuOutboundMessageContent/);
+  assert.match(daemonSource, /outboundMessageNativeMentionIds/);
   assert.match(daemonSource, /sendFeishuCardMessage/);
   assert.match(daemonSource, /patchFeishuCardMessage/);
   assert.match(daemonSource, /function renderFeishuAskUserQuestionCard/);
@@ -10472,7 +10515,7 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /function renderFeishuRealtimeTimelineContext/);
   assert.match(daemonSource, /feishu_group_message_not_directed[\s\S]{0,260}timelineRecorded/);
   assert.match(daemonSource, /const feishuRealtimeHistoryContext = renderFeishuRealtimeTimelineContext/);
-  assert.match(daemonSource, /\[\s*feishuRealtimeHistoryContext,\s*localHistoryContext,\s*\]/);
+  assert.match(daemonSource, /\[\s*feishuThreadBootstrapContext\?\.context \|\| null,\s*feishuRealtimeHistoryContext,\s*localHistoryContext,\s*\]/);
   assert.match(daemonSource, /Messages were observed by this Studio daemon in real time, including group messages that did not @mention this bot/);
   assert.match(daemonSource, /function channelConnectorProgressDefaults/);
   assert.match(daemonSource, /function feishuProgressDefaults/);
