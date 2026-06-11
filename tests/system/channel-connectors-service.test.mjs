@@ -386,8 +386,9 @@ async function withMockGatewayModelsServer(task) {
   }
 }
 
-async function withMockOctoServer(task) {
+async function withMockOctoServer(task, options = {}) {
   const requests = [];
+  const fileUploadStatus = Number.isInteger(options.fileUploadStatus) ? options.fileUploadStatus : 200;
   const server = http.createServer(async (req, res) => {
     const chunks = [];
     req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
@@ -438,6 +439,11 @@ async function withMockOctoServer(task) {
         return;
       }
       if (req.url === "/v1/bot/file/upload") {
+        if (fileUploadStatus !== 200) {
+          res.statusCode = fileUploadStatus;
+          res.end(JSON.stringify({ error: "legacy_upload_unavailable" }));
+          return;
+        }
         res.end(JSON.stringify({ url: "https://cdn.example.test/studio-octo-upload" }));
         return;
       }
@@ -1488,9 +1494,18 @@ test("Octo transport sends CC-compatible REST heartbeat", async () => {
   });
 });
 
-test("Octo transport upload strategy switches direct upload by size", () => {
-  assert.equal(shouldDirectUploadOctoMedia({ apiUrl: "https://octo.test", botToken: "token" }, 1024), false);
-  assert.equal(shouldDirectUploadOctoMedia({ apiUrl: "https://octo.test", botToken: "token" }, 9 * 1024 * 1024), true);
+test("Octo transport upload strategy defaults to direct upload and honors overrides", () => {
+  assert.equal(shouldDirectUploadOctoMedia({ apiUrl: "https://octo.test", botToken: "token" }, 1024), true);
+  assert.equal(shouldDirectUploadOctoMedia({
+    apiUrl: "https://octo.test",
+    botToken: "token",
+    directUploadMinBytes: 8 * 1024 * 1024,
+  }, 1024), false);
+  assert.equal(shouldDirectUploadOctoMedia({
+    apiUrl: "https://octo.test",
+    botToken: "token",
+    directUploadMinBytes: 8 * 1024 * 1024,
+  }, 9 * 1024 * 1024), true);
   assert.equal(shouldDirectUploadOctoMedia({ apiUrl: "https://octo.test", botToken: "token", uploadStrategy: "direct" }, 1), true);
   assert.equal(shouldDirectUploadOctoMedia({ apiUrl: "https://octo.test", botToken: "token", uploadStrategy: "multipart" }, 99 * 1024 * 1024), false);
   assert.equal(shouldDirectUploadOctoMedia({
@@ -1695,6 +1710,7 @@ test("Octo transport preserves outbound upload file names", async () => {
     const result = await uploadAndSendOctoMedia({
       apiUrl,
       botToken: "octo-token",
+      cosUploadBaseUrl: apiUrl,
     }, {
       channelId: "user-2",
       channelType: 1,
@@ -1704,13 +1720,43 @@ test("Octo transport preserves outbound upload file names", async () => {
     });
 
     assert.equal(result.ok, true);
-    assert.equal(result.action, "upload-and-send-media");
+    assert.equal(result.action, "direct-upload-and-send-media");
     assert.equal(result.fileName, "龙虾 计划(最终版).md");
-    assert.equal(requests[0].path, "/v1/bot/file/upload");
-    assert.match(requests[0].body.raw, /filename="龙虾 计划\(最终版\)\.md"/);
-    assert.equal(requests[1].path, "/v1/bot/sendMessage");
-    assert.equal(requests[1].body.payload.name, "龙虾 计划(最终版).md");
+    assert.equal(
+      requests[0].path,
+      `/v1/bot/upload/credentials?filename=${encodeURIComponent("龙虾 计划(最终版).md")}`,
+    );
+    assert.equal(requests[1].method, "PUT");
+    assert.equal(requests[2].path, "/v1/bot/sendMessage");
+    assert.equal(requests[2].body.payload.name, "龙虾 计划(最终版).md");
   });
+});
+
+test("Octo auto upload falls back to direct upload when legacy multipart is gone", async () => {
+  await withMockOctoServer(async (apiUrl, requests) => {
+    const result = await uploadAndSendOctoMedia({
+      apiUrl,
+      botToken: "octo-token",
+      cosUploadBaseUrl: apiUrl,
+      directUploadMinBytes: 8 * 1024 * 1024,
+    }, {
+      channelId: "user-2",
+      channelType: 1,
+      data: Buffer.from("hello"),
+      fileName: "hello.txt",
+      mimeType: "text/plain",
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.action, "direct-upload-and-send-media");
+    assert.equal(result.fileName, "hello.txt");
+    assert.equal(result.requestCount, 4);
+    assert.equal(requests[0].path, "/v1/bot/file/upload");
+    assert.equal(requests[1].path, `/v1/bot/upload/credentials?filename=${encodeURIComponent("hello.txt")}`);
+    assert.equal(requests[2].method, "PUT");
+    assert.equal(requests[3].path, "/v1/bot/sendMessage");
+    assert.equal(requests[3].body.payload.name, "hello.txt");
+  }, { fileUploadStatus: 410 });
 });
 
 test("Octo transport smoke uploads and sends media through binding metadata", async () => {
@@ -1738,6 +1784,7 @@ test("Octo transport smoke uploads and sends media through binding metadata", as
             metadata: {
               apiUrl,
               botToken: "test-token",
+              cosUploadBaseUrl: apiUrl,
             },
           },
         ],
@@ -1755,25 +1802,25 @@ test("Octo transport smoke uploads and sends media through binding metadata", as
     });
 
     assert.equal(result.transport.ok, true);
-    assert.equal(result.transport.action, "upload-and-send-media");
-    assert.equal(result.transport.requestCount, 2);
-    assert.equal(result.transport.mediaUrl, "https://cdn.example.test/studio-octo-upload");
+    assert.equal(result.transport.action, "direct-upload-and-send-media");
+    assert.equal(result.transport.requestCount, 3);
+    assert.equal(result.transport.mediaUrl, "https://cdn.example.test/im-test/chat/1742547600/uuid_report.pdf");
     assert.equal(result.transport.fileName, "diagram.png");
     assert.equal(result.transport.mimeType, "image/png");
     assert.equal(result.transport.size, Buffer.byteLength("mock image bytes"));
-    assert.equal(requests.length, 2);
-    assert.equal(requests[0].path, "/v1/bot/file/upload");
+    assert.equal(requests.length, 3);
+    assert.equal(requests[0].path, `/v1/bot/upload/credentials?filename=${encodeURIComponent("diagram.png")}`);
     assert.equal(requests[0].authorization, "Bearer test-token");
-    assert.match(requests[0].contentType, /multipart\/form-data/);
-    assert.match(requests[0].body.raw, /name="file"; filename="diagram\.png"/);
-    assert.match(requests[0].body.raw, /mock image bytes/);
-    assert.equal(requests[1].path, "/v1/bot/sendMessage");
-    assert.deepEqual(requests[1].body, {
+    assert.equal(requests[1].method, "PUT");
+    assert.equal(requests[1].path, "/im-test/chat/1742547600/uuid_report.pdf");
+    assert.equal(requests[1].body.raw, "mock image bytes");
+    assert.equal(requests[2].path, "/v1/bot/sendMessage");
+    assert.deepEqual(requests[2].body, {
       channel_id: "user-2",
       channel_type: 1,
       payload: {
         type: 2,
-        url: "https://cdn.example.test/studio-octo-upload",
+        url: "https://cdn.example.test/im-test/chat/1742547600/uuid_report.pdf",
         name: "diagram.png",
         size: Buffer.byteLength("mock image bytes"),
       },

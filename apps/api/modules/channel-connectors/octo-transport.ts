@@ -12,7 +12,8 @@ const OCTO_TEXT_MESSAGE_TYPE = 1;
 const OCTO_IMAGE_MESSAGE_TYPE = 2;
 const OCTO_FILE_MESSAGE_TYPE = 8;
 const DEFAULT_TIMEOUT_MS = 30_000;
-const DEFAULT_OCTO_DIRECT_UPLOAD_MIN_BYTES = 8 * 1024 * 1024;
+const DEFAULT_OCTO_DIRECT_UPLOAD_MIN_BYTES = 0;
+const OCTO_LEGACY_MULTIPART_GONE_STATUS_CODES = new Set([404, 405, 410]);
 
 interface OctoUploadCredentials {
   bucket: string;
@@ -261,6 +262,17 @@ export function shouldDirectUploadOctoMedia(config: ChannelConnectorOctoTranspor
     ? config.directUploadMinBytes
     : DEFAULT_OCTO_DIRECT_UPLOAD_MIN_BYTES;
   return size >= minBytes;
+}
+
+function shouldFallbackToOctoDirectUpload(
+  config: ChannelConnectorOctoTransportConfig,
+  result: ChannelConnectorOctoTransportResult,
+): boolean {
+  return (config.uploadStrategy || "auto") === "auto"
+    && result.action === "upload-file"
+    && result.ok === false
+    && typeof result.statusCode === "number"
+    && OCTO_LEGACY_MULTIPART_GONE_STATUS_CODES.has(result.statusCode);
 }
 
 function canonicalCosValues(values: Record<string, string>): { list: string; text: string } {
@@ -832,7 +844,16 @@ export async function uploadAndSendOctoMedia(
     return directUploadAndSendOctoMedia(config, input);
   }
   const upload = await uploadOctoFile(config, input);
-  if (upload.ok !== true || !upload.mediaUrl) return upload;
+  if (upload.ok !== true || !upload.mediaUrl) {
+    if (shouldFallbackToOctoDirectUpload(config, upload)) {
+      const fallback = await directUploadAndSendOctoMedia(config, input);
+      return transportResult({
+        ...fallback,
+        requestCount: upload.requestCount + fallback.requestCount,
+      });
+    }
+    return upload;
+  }
   const sent = await sendOctoMediaMessage(config, {
     channelId: input.channelId,
     channelType: input.channelType,
