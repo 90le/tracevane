@@ -157,7 +157,21 @@ export interface ChannelConnectorCommandContext {
   }) => boolean;
 }
 
-export type ChannelConnectorOctoManagementAction = "list-groups" | "group-members" | "search-members";
+export type ChannelConnectorOctoManagementAction =
+  | "list-groups"
+  | "group-info"
+  | "group-members"
+  | "search-members"
+  | "create-group"
+  | "update-group"
+  | "add-members"
+  | "remove-members"
+  | "list-threads"
+  | "thread-info"
+  | "thread-members"
+  | "create-thread"
+  | "join-thread"
+  | "leave-thread";
 
 export interface ChannelConnectorOctoManagementRequest {
   action: ChannelConnectorOctoManagementAction;
@@ -165,7 +179,12 @@ export interface ChannelConnectorOctoManagementRequest {
   sessionKey: string;
   message: ChannelConnectorOctoInboundMessage;
   groupNo?: string | null;
+  shortId?: string | null;
   keyword?: string | null;
+  name?: string | null;
+  notice?: string | null;
+  members?: string[] | null;
+  creator?: string | null;
   limit?: number | null;
 }
 
@@ -1417,8 +1436,12 @@ function commandHelpSectionText(section: CommandHelpSection): string {
       "",
       commandHelpList([
         ["`/octo groups`", "列出当前 Octo bot 所在群"],
+        ["`/octo info [group_no]`", "查看群信息；群内可省略 group_no"],
         ["`/octo members [group_no]`", "查看 Octo 群成员；在群内可省略 group_no"],
         ["`/octo search <名字|关键词>`", "搜索 Octo Space 成员，方便私聊和 @"],
+        ["`/octo threads [group_no]`", "查看群 thread"],
+        ["`/octo thread <short_id> [group_no]`", "查看 thread 详情"],
+        ["`/octo thread-members <short_id> [group_no]`", "查看 thread 成员"],
       ]),
       "",
       "Agent 可通过 `studio-channel-messages` manifest 发送 Octo 私聊、群消息、thread 消息和 @。",
@@ -1473,8 +1496,20 @@ function octoCommandUsageText(): string {
   return [
     "Octo 管理命令：",
     "- `/octo groups`：列出当前 bot 所在群",
+    "- `/octo info [group_no]`：查看群信息；Octo 群内可省略 group_no",
     "- `/octo members [group_no]`：查看群成员；Octo 群内可省略 group_no",
     "- `/octo search <名字|关键词>`：搜索 Space 成员，拿 UID 后可私聊或 @",
+    "- `/octo threads [group_no]`：列出群 thread",
+    "- `/octo thread <short_id> [group_no]`：查看 thread 详情",
+    "- `/octo thread-members <short_id> [group_no]`：查看 thread 成员",
+    "",
+    "管理命令：",
+    "- `/octo create-group <群名> --members uid1,uid2`",
+    "- `/octo update-group <group_no> --name 新名称 --notice 新公告`",
+    "- `/octo add-members <group_no> uid1,uid2`",
+    "- `/octo remove-members <group_no> uid1,uid2`",
+    "- `/octo create-thread <group_no> <thread名称>`",
+    "- `/octo join-thread <short_id> [group_no]` / `/octo leave-thread <short_id> [group_no]`",
   ].join("\n");
 }
 
@@ -1533,11 +1568,34 @@ function octoMemberLine(value: Record<string, unknown>, index: number): string {
   return `${index + 1}. ${name}${uid ? ` · ${uid}` : ""} · ${octoHumanOrBotLabel(value)}`;
 }
 
+function octoThreadLine(value: Record<string, unknown>, index: number): string {
+  const shortId = octoRecordString(value, ["short_id", "shortId", "id"]);
+  const name = octoRecordString(value, ["name", "title"]) || shortId || "unknown";
+  const status = octoRecordString(value, ["status"]);
+  return `${index + 1}. ${name}${shortId ? ` · ${shortId}` : ""}${status ? ` · status=${status}` : ""}`;
+}
+
+function octoSingleRecord(value: unknown): Record<string, unknown> {
+  if (isRecord(value)) return value;
+  if (Array.isArray(value) && isRecord(value[0])) return value[0];
+  return {};
+}
+
+function octoOkSummary(value: Record<string, unknown>): string {
+  const pairs = Object.entries(value)
+    .filter(([, item]) => typeof item !== "object" || item === null)
+    .map(([key, item]) => `${key}=${String(item)}`)
+    .slice(0, 8);
+  return pairs.length ? pairs.join(" · ") : "ok=true";
+}
+
 export function formatChannelConnectorOctoManagementReply(input: {
   action: ChannelConnectorOctoManagementAction;
   result: Pick<ChannelConnectorOctoTransportResult, "ok" | "error" | "data" | "itemCount">;
   groupNo?: string | null;
+  shortId?: string | null;
   keyword?: string | null;
+  name?: string | null;
 }): string {
   if (input.result.ok !== true) {
     return `Octo Bot API 调用失败：${input.result.error || "unknown_error"}`;
@@ -1553,6 +1611,18 @@ export function formatChannelConnectorOctoManagementReply(input: {
       "查看成员：`/octo members <group_no>`",
     ].filter(Boolean).join("\n");
   }
+  if (input.action === "group-info") {
+    const info = octoSingleRecord(input.result.data);
+    const id = octoRecordString(info, ["group_no", "groupNo", "id"]) || normalizeString(input.groupNo) || "unknown";
+    return [
+      `Octo 群信息：${id}`,
+      `名称：${octoRecordString(info, ["name", "display_name", "displayName"]) || "-"}`,
+      `公告：${octoRecordString(info, ["notice", "announcement"]) || "-"}`,
+      `创建者：${octoRecordString(info, ["creator", "creator_uid", "creatorUid"]) || "-"}`,
+      `状态：${octoRecordString(info, ["status"]) || "-"}`,
+      `创建时间：${octoRecordString(info, ["created_at", "createdAt"]) || "-"}`,
+    ].join("\n");
+  }
   if (input.action === "group-members") {
     const members = octoDataItems(input.result.data, ["members", "data", "items"]);
     const count = input.result.itemCount ?? members.length;
@@ -1564,15 +1634,133 @@ export function formatChannelConnectorOctoManagementReply(input: {
       "可见回复里可以使用 `@[uid:显示名]`，Studio 会转换成 Octo @；私聊用 `studio-channel-messages` 的 `dm:<uid>` target。",
     ].filter(Boolean).join("\n");
   }
-  const members = octoDataItems(input.result.data, ["members", "data", "items"]);
-  const count = input.result.itemCount ?? members.length;
-  return [
-    `Octo Space 成员搜索：${normalizeString(input.keyword) || "all"}（${count}）`,
-    ...members.slice(0, 30).map(octoMemberLine),
-    members.length > 30 ? `... 还有 ${members.length - 30} 个` : "",
-    "",
-    "私聊 target：`dm:<uid>`；群 @ 使用 `mentionUids:[\"<uid>\"]`。",
-  ].filter(Boolean).join("\n");
+  if (input.action === "search-members") {
+    const members = octoDataItems(input.result.data, ["members", "data", "items"]);
+    const count = input.result.itemCount ?? members.length;
+    return [
+      `Octo Space 成员搜索：${normalizeString(input.keyword) || "all"}（${count}）`,
+      ...members.slice(0, 30).map(octoMemberLine),
+      members.length > 30 ? `... 还有 ${members.length - 30} 个` : "",
+      "",
+      "私聊 target：`dm:<uid>`；群 @ 使用 `mentionUids:[\"<uid>\"]`。",
+    ].filter(Boolean).join("\n");
+  }
+  if (input.action === "list-threads") {
+    const threads = octoDataItems(input.result.data, ["threads", "data", "items"]);
+    const count = input.result.itemCount ?? threads.length;
+    return [
+      `Octo Thread 列表：${normalizeString(input.groupNo) || "unknown"}（${count}）`,
+      ...threads.slice(0, 40).map(octoThreadLine),
+      threads.length > 40 ? `... 还有 ${threads.length - 40} 个` : "",
+      "",
+      "查看详情：`/octo thread <short_id> <group_no>`",
+    ].filter(Boolean).join("\n");
+  }
+  if (input.action === "thread-info") {
+    const info = octoSingleRecord(input.result.data);
+    const shortId = octoRecordString(info, ["short_id", "shortId", "id"]) || normalizeString(input.shortId) || "unknown";
+    return [
+      `Octo Thread：${shortId}`,
+      `群：${normalizeString(input.groupNo) || "-"}`,
+      `名称：${octoRecordString(info, ["name", "title"]) || "-"}`,
+      `创建者：${octoRecordString(info, ["creator_uid", "creatorUid", "creator"]) || "-"}`,
+      `状态：${octoRecordString(info, ["status"]) || "-"}`,
+    ].join("\n");
+  }
+  if (input.action === "thread-members") {
+    const members = octoDataItems(input.result.data, ["members", "data", "items"]);
+    const count = input.result.itemCount ?? members.length;
+    return [
+      `Octo Thread 成员：${normalizeString(input.shortId) || "unknown"}（${count}）`,
+      ...members.slice(0, 60).map(octoMemberLine),
+      members.length > 60 ? `... 还有 ${members.length - 60} 个` : "",
+    ].filter(Boolean).join("\n");
+  }
+  if (input.action === "create-group") {
+    const info = octoSingleRecord(input.result.data);
+    const id = octoRecordString(info, ["group_no", "groupNo", "id"]);
+    const name = octoRecordString(info, ["name", "display_name", "displayName"]) || normalizeString(input.name);
+    return `已创建 Octo 群：${name || id || "unknown"}${id ? ` · ${id}` : ""}`;
+  }
+  if (input.action === "create-thread") {
+    const info = octoSingleRecord(input.result.data);
+    const shortId = octoRecordString(info, ["short_id", "shortId", "id"]);
+    const name = octoRecordString(info, ["name", "title"]) || normalizeString(input.name);
+    return `已创建 Octo Thread：${name || shortId || "unknown"}${shortId ? ` · ${shortId}` : ""}`;
+  }
+  if (["update-group", "add-members", "remove-members", "join-thread", "leave-thread"].includes(input.action)) {
+    const info = octoSingleRecord(input.result.data);
+    const labels: Record<string, string> = {
+      "update-group": "已更新 Octo 群信息",
+      "add-members": "已添加 Octo 群成员",
+      "remove-members": "已移除 Octo 群成员",
+      "join-thread": "已加入 Octo Thread",
+      "leave-thread": "已离开 Octo Thread",
+    };
+    return `${labels[input.action] || "Octo 操作已完成"}：${octoOkSummary(info)}`;
+  }
+  return "Octo 操作已完成。";
+}
+
+const OCTO_MUTATING_ACTIONS = new Set<ChannelConnectorOctoManagementAction>([
+  "create-group",
+  "update-group",
+  "add-members",
+  "remove-members",
+  "create-thread",
+  "join-thread",
+  "leave-thread",
+]);
+
+function parseOctoOptionArgs(tokens: string[]): {
+  positionals: string[];
+  options: Record<string, string[]>;
+} {
+  const positionals: string[] = [];
+  const options: Record<string, string[]> = {};
+  let currentOption: string | null = null;
+  for (const token of tokens) {
+    const normalized = normalizeString(token);
+    if (!normalized) continue;
+    if (normalized.startsWith("--") && normalized.length > 2) {
+      currentOption = normalized.slice(2).toLowerCase().replaceAll("-", "_");
+      if (!options[currentOption]) options[currentOption] = [];
+      continue;
+    }
+    if (currentOption) {
+      options[currentOption].push(normalized);
+    } else {
+      positionals.push(normalized);
+    }
+  }
+  return { positionals, options };
+}
+
+function octoOptionText(
+  parsed: ReturnType<typeof parseOctoOptionArgs>,
+  names: string[],
+): string {
+  for (const name of names) {
+    const values = parsed.options[name]?.map(normalizeString).filter(Boolean) || [];
+    if (values.length) return values.join(" ");
+  }
+  return "";
+}
+
+function octoMemberList(values: string[]): string[] {
+  return values
+    .flatMap((value) => normalizeString(value).split(/[,\s]+/))
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function octoOptionMembers(parsed: ReturnType<typeof parseOctoOptionArgs>): string[] {
+  return octoMemberList([
+    ...(parsed.options.members || []),
+    ...(parsed.options.member || []),
+    ...(parsed.options.uids || []),
+    ...(parsed.options.uid || []),
+  ]);
 }
 
 async function handleOctoManagementCommand(
@@ -1615,7 +1803,21 @@ async function handleOctoManagementCommand(
     };
   }
 
-  const callOcto = async (input: Omit<ChannelConnectorOctoManagementRequest, "bindingId" | "sessionKey" | "message">): Promise<ChannelConnectorCommandResult> => {
+  const callOcto = async (
+    input: Omit<ChannelConnectorOctoManagementRequest, "bindingId" | "sessionKey" | "message">,
+    action: ChannelConnectorCommandResult["action"] = "list",
+  ): Promise<ChannelConnectorCommandResult> => {
+    if (OCTO_MUTATING_ACTIONS.has(input.action) && !canManageSession(context.binding, context.message)) {
+      return {
+        handled: true,
+        command: "octo",
+        action: "set",
+        ok: false,
+        control: currentControl,
+        replyText: "当前用户没有管理该 Octo binding 的权限。",
+        passthroughText: null,
+      };
+    }
     const result = await context.runOctoManagement?.({
       ...input,
       bindingId: context.binding.id,
@@ -1629,7 +1831,7 @@ async function handleOctoManagementCommand(
     return {
       handled: true,
       command: "octo",
-      action: input.action === "group-members" ? "show" : "list",
+      action,
       ok: result.ok,
       control: currentControl,
       replyText: result.replyText,
@@ -1639,6 +1841,21 @@ async function handleOctoManagementCommand(
 
   if (["groups", "group", "list", "list-groups"].includes(subcommand)) {
     return callOcto({ action: "list-groups" });
+  }
+  if (["info", "group-info", "show"].includes(subcommand)) {
+    const groupNo = normalizeString(args[1]) || octoParentGroupNo(context.message);
+    if (!groupNo) {
+      return {
+        handled: true,
+        command: "octo",
+        action: "show",
+        ok: false,
+        control: currentControl,
+        replyText: "用法：`/octo info <group_no>`；在 Octo 群聊里可以省略 group_no。",
+        passthroughText: null,
+      };
+    }
+    return callOcto({ action: "group-info", groupNo }, "show");
   }
   if (["members", "member", "group-members"].includes(subcommand)) {
     const groupNo = normalizeString(args[1]) || octoParentGroupNo(context.message);
@@ -1653,7 +1870,7 @@ async function handleOctoManagementCommand(
         passthroughText: null,
       };
     }
-    return callOcto({ action: "group-members", groupNo });
+    return callOcto({ action: "group-members", groupNo }, "show");
   }
   if (["search", "find", "space", "space-members", "search-members"].includes(subcommand)) {
     const keyword = normalizeString(args.slice(1).join(" "));
@@ -1669,6 +1886,147 @@ async function handleOctoManagementCommand(
       };
     }
     return callOcto({ action: "search-members", keyword, limit: 30 });
+  }
+  if (["threads", "list-threads"].includes(subcommand)) {
+    const groupNo = normalizeString(args[1]) || octoParentGroupNo(context.message);
+    if (!groupNo) {
+      return {
+        handled: true,
+        command: "octo",
+        action: "list",
+        ok: false,
+        control: currentControl,
+        replyText: "用法：`/octo threads <group_no>`；在 Octo 群聊里可以省略 group_no。",
+        passthroughText: null,
+      };
+    }
+    return callOcto({ action: "list-threads", groupNo });
+  }
+  if (["thread", "thread-info", "get-thread"].includes(subcommand)) {
+    const shortId = normalizeString(args[1]);
+    const groupNo = normalizeString(args[2]) || octoParentGroupNo(context.message);
+    if (!shortId || !groupNo) {
+      return {
+        handled: true,
+        command: "octo",
+        action: "show",
+        ok: false,
+        control: currentControl,
+        replyText: "用法：`/octo thread <short_id> <group_no>`；在 Octo 群聊里可以省略 group_no。",
+        passthroughText: null,
+      };
+    }
+    return callOcto({ action: "thread-info", groupNo, shortId }, "show");
+  }
+  if (["thread-members", "list-thread-members"].includes(subcommand)) {
+    const shortId = normalizeString(args[1]);
+    const groupNo = normalizeString(args[2]) || octoParentGroupNo(context.message);
+    if (!shortId || !groupNo) {
+      return {
+        handled: true,
+        command: "octo",
+        action: "show",
+        ok: false,
+        control: currentControl,
+        replyText: "用法：`/octo thread-members <short_id> <group_no>`；在 Octo 群聊里可以省略 group_no。",
+        passthroughText: null,
+      };
+    }
+    return callOcto({ action: "thread-members", groupNo, shortId }, "show");
+  }
+  if (["create-group", "new-group"].includes(subcommand)) {
+    const parsed = parseOctoOptionArgs(args.slice(1));
+    const name = octoOptionText(parsed, ["name"]) || parsed.positionals.join(" ");
+    const members = octoOptionMembers(parsed);
+    if (!members.length) {
+      return {
+        handled: true,
+        command: "octo",
+        action: "set",
+        ok: false,
+        control: currentControl,
+        replyText: "用法：`/octo create-group <群名> --members uid1,uid2`",
+        passthroughText: null,
+      };
+    }
+    return callOcto({
+      action: "create-group",
+      name: name || null,
+      members,
+      creator: context.message.fromUid,
+    }, "set");
+  }
+  if (["update-group", "set-group"].includes(subcommand)) {
+    const hasExplicitGroupNo = Boolean(normalizeString(args[1]));
+    const groupNo = normalizeString(args[1]) || octoParentGroupNo(context.message);
+    const parsed = parseOctoOptionArgs(args.slice(hasExplicitGroupNo ? 2 : 1));
+    const name = octoOptionText(parsed, ["name"]);
+    const notice = octoOptionText(parsed, ["notice", "announcement"]);
+    if (!groupNo || (!name && !notice)) {
+      return {
+        handled: true,
+        command: "octo",
+        action: "set",
+        ok: false,
+        control: currentControl,
+        replyText: "用法：`/octo update-group <group_no> --name 新名称 --notice 新公告`；在 Octo 群聊里可以省略 group_no。",
+        passthroughText: null,
+      };
+    }
+    return callOcto({ action: "update-group", groupNo, name, notice }, "set");
+  }
+  if (["add-members", "add-member", "remove-members", "remove-member"].includes(subcommand)) {
+    const hasExplicitGroupNo = Boolean(normalizeString(args[1]));
+    const groupNo = normalizeString(args[1]) || octoParentGroupNo(context.message);
+    const members = octoMemberList(args.slice(hasExplicitGroupNo ? 2 : 1));
+    const action: ChannelConnectorOctoManagementAction = subcommand.startsWith("remove") ? "remove-members" : "add-members";
+    if (!groupNo || !members.length) {
+      return {
+        handled: true,
+        command: "octo",
+        action: "set",
+        ok: false,
+        control: currentControl,
+        replyText: `用法：\`/octo ${action} <group_no> uid1,uid2\`；在 Octo 群聊里可以省略 group_no。`,
+        passthroughText: null,
+      };
+    }
+    return callOcto({ action, groupNo, members }, "set");
+  }
+  if (["create-thread", "new-thread"].includes(subcommand)) {
+    const currentGroupNo = octoParentGroupNo(context.message);
+    const explicitGroupNo = normalizeString(args[1]);
+    const useCurrentGroup = Boolean(currentGroupNo) && args.length <= 2;
+    const groupNo = useCurrentGroup ? currentGroupNo : explicitGroupNo;
+    const name = normalizeString((useCurrentGroup ? args.slice(1) : args.slice(2)).join(" "));
+    if (!groupNo || !name) {
+      return {
+        handled: true,
+        command: "octo",
+        action: "set",
+        ok: false,
+        control: currentControl,
+        replyText: "用法：`/octo create-thread <group_no> <thread名称>`；在 Octo 群聊里可以省略 group_no。",
+        passthroughText: null,
+      };
+    }
+    return callOcto({ action: "create-thread", groupNo, name }, "set");
+  }
+  if (["join-thread", "leave-thread"].includes(subcommand)) {
+    const shortId = normalizeString(args[1]);
+    const groupNo = normalizeString(args[2]) || octoParentGroupNo(context.message);
+    if (!shortId || !groupNo) {
+      return {
+        handled: true,
+        command: "octo",
+        action: "set",
+        ok: false,
+        control: currentControl,
+        replyText: `用法：\`/octo ${subcommand} <short_id> <group_no>\`；在 Octo 群聊里可以省略 group_no。`,
+        passthroughText: null,
+      };
+    }
+    return callOcto({ action: subcommand as "join-thread" | "leave-thread", groupNo, shortId }, "set");
   }
   return {
     handled: true,

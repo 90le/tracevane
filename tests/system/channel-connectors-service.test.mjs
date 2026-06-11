@@ -1906,7 +1906,7 @@ test("Octo native management commands expose groups, members, and Space search",
             displayName: "Octo API",
             agentProfileId: initial.defaultAgentProfileId,
             enabled: true,
-            allowlist: ["user-1"],
+            allowlist: ["user-1", "user-2"],
             adminUsers: ["user-1"],
             metadata: {
               apiUrl,
@@ -1972,6 +1972,121 @@ test("Octo native management commands expose groups, members, and Space search",
     assert.ok(requests.some((request) => request.path === "/v1/bot/groups"));
     assert.ok(requests.some((request) => request.path === "/v1/bot/groups/group-1/members"));
     assert.ok(requests.some((request) => request.path === "/v1/bot/space/members?keyword=Alice&limit=30"));
+
+    const groupInfo = await service.dispatchOctoIncoming({
+      bindingId: "octo-api",
+      sendReply: false,
+      message: {
+        messageId: "octo-command-group-info",
+        fromUid: "user-1",
+        channelId: "group-1",
+        channelType: 2,
+        payload: { type: 1, content: "/octo info", mention: { uids: ["robot-1"] } },
+      },
+    });
+    assert.equal(groupInfo.commandAction.commandResult.action, "show");
+    assert.match(groupInfo.replyPlan.chunks.join("\n"), /Octo 群信息：group-1/);
+    assert.match(groupInfo.replyPlan.chunks.join("\n"), /公告：Ship/);
+
+    const threads = await service.dispatchOctoIncoming({
+      bindingId: "octo-api",
+      sendReply: false,
+      message: {
+        messageId: "octo-command-threads",
+        fromUid: "user-1",
+        channelId: "group-1",
+        channelType: 2,
+        payload: { type: 1, content: "/octo threads", mention: { uids: ["robot-1"] } },
+      },
+    });
+    assert.equal(threads.commandAction.commandResult.action, "list");
+    assert.match(threads.replyPlan.chunks.join("\n"), /Octo Thread 列表：group-1（1）/);
+    assert.match(threads.replyPlan.chunks.join("\n"), /Thread One · thread-1/);
+
+    const threadInfo = await service.dispatchOctoIncoming({
+      bindingId: "octo-api",
+      sendReply: false,
+      message: {
+        messageId: "octo-command-thread-info",
+        fromUid: "user-1",
+        channelId: "group-1",
+        channelType: 2,
+        payload: { type: 1, content: "/octo thread thread-1", mention: { uids: ["robot-1"] } },
+      },
+    });
+    assert.equal(threadInfo.commandAction.commandResult.action, "show");
+    assert.match(threadInfo.replyPlan.chunks.join("\n"), /Octo Thread：thread-1/);
+
+    const createGroup = await service.dispatchOctoIncoming({
+      bindingId: "octo-api",
+      sendReply: false,
+      message: {
+        messageId: "octo-command-create-group",
+        fromUid: "user-1",
+        channelId: "user-1",
+        channelType: 1,
+        payload: { type: 1, content: "/octo create-group New Group --members user-1" },
+      },
+    });
+    assert.equal(createGroup.commandAction.commandResult.action, "set");
+    assert.equal(createGroup.commandAction.commandResult.ok, true);
+    assert.match(createGroup.replyPlan.chunks.join("\n"), /已创建 Octo 群：New Group · group-new/);
+
+    const addMembers = await service.dispatchOctoIncoming({
+      bindingId: "octo-api",
+      sendReply: false,
+      message: {
+        messageId: "octo-command-add-members",
+        fromUid: "user-1",
+        channelId: "group-1",
+        channelType: 2,
+        payload: { type: 1, content: "/octo add-members group-1 user-2,user-3", mention: { uids: ["robot-1"] } },
+      },
+    });
+    assert.equal(addMembers.commandAction.commandResult.action, "set");
+    assert.equal(addMembers.commandAction.commandResult.ok, true);
+    assert.match(addMembers.replyPlan.chunks.join("\n"), /已添加 Octo 群成员/);
+
+    const createThread = await service.dispatchOctoIncoming({
+      bindingId: "octo-api",
+      sendReply: false,
+      message: {
+        messageId: "octo-command-create-thread",
+        fromUid: "user-1",
+        channelId: "group-1",
+        channelType: 2,
+        payload: { type: 1, content: "/octo create-thread group-1 Release Notes", mention: { uids: ["robot-1"] } },
+      },
+    });
+    assert.equal(createThread.commandAction.commandResult.action, "set");
+    assert.equal(createThread.commandAction.commandResult.ok, true);
+    assert.match(createThread.replyPlan.chunks.join("\n"), /已创建 Octo Thread：Release Notes · thread-new/);
+
+    const deniedMutation = await service.dispatchOctoIncoming({
+      bindingId: "octo-api",
+      sendReply: false,
+      message: {
+        messageId: "octo-command-denied-mutation",
+        fromUid: "user-2",
+        channelId: "group-1",
+        channelType: 2,
+        payload: { type: 1, content: "/octo add-members group-1 user-3", mention: { uids: ["robot-1"] } },
+      },
+    });
+    assert.equal(deniedMutation.accepted, true);
+    assert.equal(deniedMutation.commandAction.commandResult.action, "set");
+    assert.equal(deniedMutation.commandAction.commandResult.ok, false);
+    assert.match(deniedMutation.replyPlan.chunks.join("\n"), /没有管理该 Octo binding 的权限/);
+    assert.ok(requests.some((request) => request.path === "/v1/bot/createGroup" && request.body.name === "New Group"));
+    assert.ok(requests.some((request) =>
+      request.path === "/v1/bot/groups/group-1/members/add"
+      && Array.isArray(request.body.members)
+      && request.body.members.length === 2
+    ));
+    assert.ok(requests.some((request) =>
+      request.path === "/v1/bot/groups/group-1/threads"
+      && request.body.name === "Release Notes"
+    ));
   });
 });
 

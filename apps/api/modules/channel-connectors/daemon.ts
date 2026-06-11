@@ -157,16 +157,27 @@ import {
 } from "./command-surface.js";
 import {
   getOctoFileDownloadUrl,
+  addOctoGroupMembers,
+  createOctoGroup,
+  createOctoThread,
+  getOctoGroupInfo,
+  getOctoThreadInfo,
+  joinOctoThread,
+  leaveOctoThread,
   listOctoGroupMembers,
   listOctoGroups,
+  listOctoThreadMembers,
+  listOctoThreads,
   octoTransportFromMetadata,
   registerOctoBot,
+  removeOctoGroupMembers,
   searchOctoSpaceMembers,
   sendOctoHeartbeat,
   sendOctoReadReceipt,
   sendOctoTextReply,
   sendOctoTyping,
   syncOctoMessages,
+  updateOctoGroupInfo,
   uploadAndSendOctoMedia,
 } from "./octo-transport.js";
 import {
@@ -4487,25 +4498,78 @@ async function runOctoManagementCommand(
   if (!transport) {
     return {
       ok: false,
-      replyText: "Octo Bot API 未配置，无法查询群或成员。",
+      replyText: "Octo Bot API 未配置，无法执行平台管理命令。",
       error: "octo_transport_config_missing",
     };
   }
   const result = input.action === "list-groups"
     ? await listOctoGroups(transport)
-    : input.action === "group-members"
-      ? await listOctoGroupMembers(transport, normalizeString(input.groupNo))
-      : await searchOctoSpaceMembers(transport, {
-        keyword: input.keyword || null,
-        limit: input.limit || 30,
-      });
+    : input.action === "group-info"
+      ? await getOctoGroupInfo(transport, normalizeString(input.groupNo))
+      : input.action === "group-members"
+        ? await listOctoGroupMembers(transport, normalizeString(input.groupNo))
+        : input.action === "search-members"
+          ? await searchOctoSpaceMembers(transport, {
+            keyword: input.keyword || null,
+            limit: input.limit || 30,
+          })
+          : input.action === "create-group"
+            ? await createOctoGroup(transport, {
+              name: input.name || null,
+              members: input.members || [],
+              creator: normalizeString(input.creator),
+            })
+            : input.action === "update-group"
+              ? await updateOctoGroupInfo(transport, {
+                groupNo: normalizeString(input.groupNo),
+                name: input.name || null,
+                notice: input.notice || null,
+              })
+              : input.action === "add-members"
+                ? await addOctoGroupMembers(transport, {
+                  groupNo: normalizeString(input.groupNo),
+                  members: input.members || [],
+                })
+                : input.action === "remove-members"
+                  ? await removeOctoGroupMembers(transport, {
+                    groupNo: normalizeString(input.groupNo),
+                    members: input.members || [],
+                  })
+                  : input.action === "list-threads"
+                    ? await listOctoThreads(transport, normalizeString(input.groupNo))
+                    : input.action === "thread-info"
+                      ? await getOctoThreadInfo(transport, {
+                        groupNo: normalizeString(input.groupNo),
+                        shortId: normalizeString(input.shortId),
+                      })
+                      : input.action === "thread-members"
+                        ? await listOctoThreadMembers(transport, {
+                          groupNo: normalizeString(input.groupNo),
+                          shortId: normalizeString(input.shortId),
+                        })
+                        : input.action === "create-thread"
+                          ? await createOctoThread(transport, {
+                            groupNo: normalizeString(input.groupNo),
+                            name: normalizeString(input.name),
+                          })
+                          : input.action === "join-thread"
+                            ? await joinOctoThread(transport, {
+                              groupNo: normalizeString(input.groupNo),
+                              shortId: normalizeString(input.shortId),
+                            })
+                            : await leaveOctoThread(transport, {
+                              groupNo: normalizeString(input.groupNo),
+                              shortId: normalizeString(input.shortId),
+                            });
   return {
     ok: result.ok === true,
     replyText: formatChannelConnectorOctoManagementReply({
       action: input.action,
       result,
       groupNo: input.groupNo || null,
+      shortId: input.shortId || null,
       keyword: input.keyword || null,
+      name: input.name || null,
     }),
     error: result.error || null,
   };
