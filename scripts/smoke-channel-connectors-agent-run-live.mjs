@@ -26,6 +26,7 @@ function parseArgs(argv) {
     requireProgress: false,
     requireTool: false,
     requireFile: false,
+    requireOutboundMessage: false,
     requireInboundFile: false,
     requireVisual: false,
     requireAutoVision: false,
@@ -48,6 +49,7 @@ function parseArgs(argv) {
     else if (arg === "--require-progress") options.requireProgress = true;
     else if (arg === "--require-tool") options.requireTool = true;
     else if (arg === "--require-file") options.requireFile = true;
+    else if (arg === "--require-outbound-message" || arg === "--require-message") options.requireOutboundMessage = true;
     else if (arg === "--require-inbound-file" || arg === "--require-uploaded-file") options.requireInboundFile = true;
     else if (arg === "--require-visual" || arg === "--require-visual-input") options.requireVisual = true;
     else if (arg === "--require-auto-vision" || arg === "--require-vision-switch") options.requireAutoVision = true;
@@ -108,6 +110,8 @@ Options:
   --require-progress        Require any progress event.
   --require-tool            Require tool progress.
   --require-file            Require outboundFilesDeclared>0 and outboundFilesSent>0.
+  --require-outbound-message
+                            Require outboundMessagesDeclared>0 and outboundMessagesSent>0.
   --require-inbound-file    Require a user-uploaded file attachment was received/staged.
   --require-visual          Require inbound visual attachment evidence.
   --require-auto-vision     Require a non-vision model auto-switched to a vision model.
@@ -133,6 +137,7 @@ Examples:
   node scripts/smoke-channel-connectors-agent-run-live.mjs --json
   node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings feishu-live --require-ok --require-reply --require-tool --json
   node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings octo-studio-cc --require-ok --require-file --json
+  node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings octo-studio-cc --require-ok --require-outbound-message --json
 `);
 }
 
@@ -353,6 +358,9 @@ function summarizeRun(event, relatedProgress, relatedEvidence, relatedPermission
     outboundFilesSent: numberValue(event.outboundFilesSent),
     outboundFileRequestCount: numberValue(event.outboundFileRequestCount),
     outboundFileErrors: Array.isArray(event.outboundFileErrors) ? event.outboundFileErrors : [],
+    outboundMessagesDeclared: numberValue(event.outboundMessagesDeclared),
+    outboundMessagesSent: numberValue(event.outboundMessagesSent),
+    outboundMessageRequestCount: numberValue(event.outboundMessageRequestCount),
     progressTransportActions: transportActions,
     totalElapsedMs: numberValue(event.totalElapsedMs),
     agentElapsedMs: numberValue(event.agentElapsedMs),
@@ -479,6 +487,7 @@ function loadSummary(options, since) {
       requireProgress: options.requireProgress,
       requireTool: options.requireTool,
       requireFile: options.requireFile,
+      requireOutboundMessage: options.requireOutboundMessage,
       requireInboundFile: options.requireInboundFile,
       requireVisual: options.requireVisual,
       requireAutoVision: options.requireAutoVision,
@@ -518,6 +527,7 @@ function runSatisfies(run, options) {
   if (options.requireProgress && !(run.progressEventCount > 0 || run.progressLogCount > 0)) return false;
   if (options.requireTool && !(run.toolProgressCount > 0 || run.latestProgressType === "tool")) return false;
   if (options.requireFile && !(run.outboundFilesDeclared > 0 && run.outboundFilesSent > 0 && run.outboundFileErrors.length === 0)) return false;
+  if (options.requireOutboundMessage && !(run.outboundMessagesDeclared > 0 && run.outboundMessagesSent > 0)) return false;
   if (options.requireInboundFile && !(run.fileAttachmentCount > 0 && run.attachmentStagingFailedCount === 0)) return false;
   if (options.requireVisual && !(run.visualAttachmentCount > 0 || run.visualInputCount > 0)) return false;
   if (options.requireAutoVision && run.autoVisionSwitched !== true) return false;
@@ -613,6 +623,7 @@ function printHuman(summary, wait) {
       run.agentOk === true ? "ok" : run.agentOk === false ? "failed" : "unknown",
       run.replySent === true ? "reply" : "",
       run.outboundFilesSent > 0 ? `files=${run.outboundFilesSent}` : "",
+      run.outboundMessagesSent > 0 ? `messages=${run.outboundMessagesSent}` : "",
       run.fileAttachmentCount > 0 ? `inbound-files=${run.fileAttachmentCount}` : "",
       run.visualAttachmentCount > 0 ? `visual=${run.visualAttachmentCount}` : "",
       run.autoVisionSwitched === true ? `auto-vision=${run.autoVisionOriginalModel}->${run.autoVisionSelectedModel}` : "",

@@ -109,6 +109,9 @@ function writeFixture(root) {
     outboundFilesResolved: 1,
     outboundFilesSent: 1,
     outboundFileErrors: [],
+    outboundMessagesDeclared: 1,
+    outboundMessagesSent: 1,
+    outboundMessageRequestCount: 1,
   });
   appendJsonLine(feishuEvents, {
     checkedAt: "2026-06-08T01:05:00.000Z",
@@ -296,6 +299,7 @@ test("agent run live smoke script verifies Octo tool, reply, and outbound file e
     "--require-reply",
     "--require-tool",
     "--require-file",
+    "--require-outbound-message",
     "--require-inbound-file",
     "--require-visual",
     "--require-auto-vision",
@@ -308,6 +312,8 @@ test("agent run live smoke script verifies Octo tool, reply, and outbound file e
   assert.equal(parsed.matchingRuns.length, 1);
   assert.equal(parsed.matchingRuns[0].adapter, "octo");
   assert.equal(parsed.matchingRuns[0].outboundFilesSent, 1);
+  assert.equal(parsed.matchingRuns[0].outboundMessagesSent, 1);
+  assert.equal(parsed.matchingRuns[0].outboundMessageRequestCount, 1);
   assert.equal(parsed.matchingRuns[0].fileAttachmentCount, 1);
   assert.equal(parsed.matchingRuns[0].attachmentsStagedCount, 2);
   assert.equal(parsed.matchingRuns[0].visualAttachmentCount, 1);
@@ -402,6 +408,23 @@ test("agent run live smoke script fails when required evidence is missing", asyn
       "--since", "2026-06-08T00:00:00.000Z",
       "--bindings", "octo-live",
       "--require-permission-prompt",
+      "--json",
+    ], root),
+    (error) => {
+      const parsed = JSON.parse(error.stdout);
+      assert.equal(parsed.ok, false);
+      assert.equal(parsed.counts.finishedRuns, 1);
+      assert.equal(parsed.counts.matchingRuns, 0);
+      return true;
+    },
+  );
+
+  await assert.rejects(
+    runScript([
+      "--config", configPath,
+      "--since", "2026-06-08T00:00:00.000Z",
+      "--bindings", "feishu-live",
+      "--require-outbound-message",
       "--json",
     ], root),
     (error) => {

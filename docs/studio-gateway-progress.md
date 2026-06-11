@@ -44,6 +44,8 @@
 - 通过：`node --test --test-name-pattern "extracts outbound IM message manifests|Octo transport carries on_behalf_of|Octo transport keeps group mentions visible|Octo transport times out slow text replies" tests/system/channel-connectors-service.test.mjs`，4/4 全部通过。
 - 通过：`node --test --test-name-pattern "daemon enriches Octo group turns with Bot API context and file download URLs|Octo adapter follows group direction and mention rendering rules|native Channel Connectors extracts outbound IM message manifests" tests/system/channel-connectors-service.test.mjs`，3/3 全部通过。
 - 通过：`node --test --test-name-pattern "Octo adapter follows group direction and mention rendering rules|Octo transport carries on_behalf_of|Octo transport carries on_behalf_of for typing and media|daemon enriches Octo group turns with Bot API context and file download URLs" tests/system/channel-connectors-service.test.mjs`，4/4 全部通过。
+- 通过：`node --test tests/system/channel-connectors-agent-run-live-script.test.mjs`，5/5 全部通过；`scripts/smoke-channel-connectors-agent-run-live.mjs` 新增 `--require-outbound-message`，可验证 `studio-channel-messages` 的 declared/sent 真实日志证据。
+- 通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --bindings octo-studio-cc,feishu-live --require-ok --require-outbound-message --json`，真实日志中命中 8 条 Octo `outboundMessagesDeclared/Sent` 成功 run；Feishu 单独执行同一检查尚无匹配 run，Feishu open_id/user_id/Markdown 出站 live smoke 仍待触发。
 - 通过：`node --test --test-name-pattern "native Channel Connectors extracts outbound IM message manifests|Octo adapter follows group direction and mention rendering rules|Octo transport smoke covers Bot API groups|Octo native management commands|native Channel Connectors agent runner builds gateway-backed Codex turns|native Channel Connectors service slash compact works" tests/system/channel-connectors-service.test.mjs`，6/6 全部通过。
 - 通过：真实 Octo 配置非发送 smoke：`/octo groups` 返回 1 个群，`/octo members` 返回“小丘测试群”6 个成员，`/octo search 小维` 返回 2 个成员，`/octo info` 返回“小丘测试群”群信息，`/octo threads` 返回当前群 thread 列表（0）。
 
@@ -57,7 +59,7 @@
 - `/status` 与 Channel 管理页已能显示最近 auto compact 记录；真实剩余 token 仍取决于上游 usage 或 Gateway runtime ledger 是否能归因。
 - Gateway usage 只有在上游返回 usage 或 runtime ledger 可归因时才准确；缺失 usage 时 Channel 只能用 IM history 字符估算，不能替代真实 tokenizer。
 - 同 session FIFO queue 当前是 daemon 内存队列；Channel daemon 自身重启会丢失未开始的排队消息，durable queue 尚未实现。
-- `studio-channel-messages` 已有 parser 与 daemon send path，并支持 Octo 结构化 `@[uid:显示名]` mention、Octo `on_behalf_of` 出站身份、Feishu chat/open_id/user_id 文本/Markdown(post) 发送；Octo human DM、群/thread @其它 Studio/外部 bot、Feishu open_id/user_id 真实发送仍需 live smoke。外部产品 bot 只能通过平台群/thread 消息协作；等待多 bot 异步回复并自动汇总需要后续 Studio 内部协作调度。Octo 建群/改群/thread 管理 live smoke 还未执行。
+- `studio-channel-messages` 已有 parser 与 daemon send path，并支持 Octo 结构化 `@[uid:显示名]` mention、Octo `on_behalf_of` 出站身份、Feishu chat/open_id/user_id 文本/Markdown(post) 发送；Octo 群 outbound-message 已有真实日志证据，human DM、thread、@其它 Studio/外部 bot、Feishu open_id/user_id/Markdown 真实发送仍需 live smoke。外部产品 bot 只能通过平台群/thread 消息协作；等待多 bot 异步回复并自动汇总需要后续 Studio 内部协作调度。Octo 建群/改群/thread 管理 live smoke 还未执行。
 
 ## 下一步
 
