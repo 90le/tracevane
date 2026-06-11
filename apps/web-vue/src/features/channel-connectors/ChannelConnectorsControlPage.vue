@@ -465,7 +465,7 @@
                 type="button"
                 class="ccx-select-row"
                 :class="{ active: bindingDraft.id === binding.id }"
-                @click="selectBinding(binding)"
+                @click="selectBindingFromUi(binding)"
               >
                 <small>{{ binding.platform }} · {{ binding.enabled ? text('启用', 'Enabled') : text('停用', 'Disabled') }}</small>
                 <strong>{{ binding.displayName }}</strong>
@@ -475,6 +475,67 @@
                 {{ text('暂无平台绑定', 'No platform bindings') }}
               </div>
             </div>
+          </div>
+        </article>
+
+        <article
+          v-show="activeTab === 'skills'"
+          id="ccx-panel-skills"
+          class="ccx-panel ccx-workspace-panel"
+          role="tabpanel"
+          aria-labelledby="ccx-tab-skills"
+        >
+          <div class="ccx-panel-head">
+            <div>
+              <p class="eyebrow">Skills</p>
+              <h3>{{ text('渠道 Skills', 'Channel skills') }}</h3>
+            </div>
+            <button type="button" class="secondary-button compact-button ccx-icon-button" :disabled="skillSurfaceBusy" @click="refreshSkillSurface()">
+              <RefreshCw :size="16" />
+              {{ skillSurfaceBusy ? text('刷新中...', 'Refreshing...') : text('刷新', 'Refresh') }}
+            </button>
+          </div>
+
+          <section class="ccx-skill-summary" aria-label="Channel skill summary">
+            <div>
+              <span>{{ text('当前绑定', 'Binding') }}</span>
+              <strong>{{ bindingDraft.id || '-' }}</strong>
+            </div>
+            <div>
+              <span>Agent</span>
+              <strong>{{ commandSurface?.current.agent || selectedBindingProfile?.agent || '-' }}</strong>
+            </div>
+            <div>
+              <span>{{ text('Studio 内置', 'Studio built-in') }}</span>
+              <strong>{{ platformSkillCount }}</strong>
+            </div>
+            <div>
+              <span>{{ text('显式扩展', 'Custom') }}</span>
+              <strong>{{ bindingSkillCount }}</strong>
+            </div>
+          </section>
+
+          <div v-if="channelSkills.length" class="ccx-skill-grid">
+            <article v-for="skill in channelSkills" :key="`${skill.scope}:${skill.platform || ''}:${skill.name}:${skill.source}`" class="ccx-skill-card">
+              <small>{{ skillScopeLabel(skill) }}</small>
+              <strong>/{{ skill.name }}</strong>
+              <span>{{ skill.description || skill.displayName || text('无描述', 'No description') }}</span>
+              <div v-if="skill.actions?.length" class="ccx-skill-actions">
+                <span class="ccx-skill-action-count">{{ skill.actions.length }} runtime actions</span>
+                <span
+                  v-for="action in skill.actions.slice(0, 5)"
+                  :key="action.id"
+                  class="ccx-skill-action-chip"
+                  :class="{ required: action.approval === 'required' }"
+                >
+                  {{ action.tool ? `${action.tool}.${action.action || '*'}` : action.manifest }}
+                </span>
+              </div>
+              <code>{{ skill.source }}</code>
+            </article>
+          </div>
+          <div v-else class="ccx-empty">
+            {{ text('当前绑定暂无 Studio 可用渠道 Skill', 'No channel skills are available for the selected binding') }}
           </div>
         </article>
 
@@ -630,6 +691,8 @@ import type {
   ChannelConnectorAgentProfile,
   ChannelConnectorAgentSessionDriverStatusResponse,
   ChannelConnectorAgentSessionRuntimeStatus,
+  ChannelConnectorCommandSurface,
+  ChannelConnectorCommandSurfaceSkill,
   ChannelConnectorFeishuTransportSmokeResponse,
   ChannelConnectorOctoTransportSmokeResponse,
   ChannelConnectorPermissionMode,
@@ -655,6 +718,7 @@ import {
   fetchChannelConnectorsStatus,
   manageChannelConnectorAgentSessions,
   manageChannelConnectorsDaemonService,
+  previewChannelConnectorCommandSurface,
   runFeishuTransportSmoke,
   runOctoTransportSmoke,
   saveChannelConnectorsNativeConfig,
@@ -663,7 +727,7 @@ import './channel-connectors-workspace.css';
 
 defineOptions({ name: 'ChannelConnectorsControlPage' });
 
-type WorkspaceTab = 'runtime' | 'projects' | 'platforms' | 'sessions';
+type WorkspaceTab = 'runtime' | 'projects' | 'platforms' | 'skills' | 'sessions';
 type BindingDraft = Omit<ChannelConnectorPlatformBinding, 'allowlist' | 'adminUsers' | 'disabledCommands' | 'metadata'> & {
   allowlistText: string;
   adminUsersText: string;
@@ -685,6 +749,7 @@ const tabs: Array<{ id: WorkspaceTab; zh: string; en: string }> = [
   { id: 'runtime', zh: '运行', en: 'Runtime' },
   { id: 'projects', zh: '项目', en: 'Projects' },
   { id: 'platforms', zh: '平台', en: 'Platforms' },
+  { id: 'skills', zh: 'Skills', en: 'Skills' },
   { id: 'sessions', zh: '会话', en: 'Sessions' },
 ];
 
@@ -702,6 +767,8 @@ const actionResult = ref<ChannelConnectorsDaemonResponse | null>(null);
 const agentSessions = ref<ChannelConnectorAgentSessionDriverStatusResponse | null>(null);
 const agentSessionResult = ref<ChannelConnectorAgentSessionDriverStatusResponse | null>(null);
 const agentSessionBusy = ref(false);
+const commandSurface = ref<ChannelConnectorCommandSurface | null>(null);
+const skillSurfaceBusy = ref(false);
 const platformSmoke = ref<ChannelConnectorOctoTransportSmokeResponse | ChannelConnectorFeishuTransportSmokeResponse | null>(null);
 const platformSmokeBusy = ref(false);
 const notice = ref<{ kind: 'success' | 'error'; message: string } | null>(null);
@@ -765,6 +832,21 @@ const permissionModes = computed<ChannelConnectorPermissionMode[]>(() =>
 
 const bindingExists = computed(() =>
   (nativeConfig.value?.config.platformBindings || []).some((binding) => binding.id === bindingDraft.value.id),
+);
+
+const selectedBindingProfile = computed(() => {
+  const profileId = bindingDraft.value.agentProfileId;
+  return (nativeConfig.value?.config.agentProfiles || []).find((profile) => profile.id === profileId) || null;
+});
+
+const channelSkills = computed(() => commandSurface.value?.skills || []);
+
+const platformSkillCount = computed(() =>
+  channelSkills.value.filter((skill) => skill.scope === 'platform').length,
+);
+
+const bindingSkillCount = computed(() =>
+  channelSkills.value.filter((skill) => skill.scope === 'binding').length,
 );
 
 const daemonStateLabel = computed(() => {
@@ -1111,6 +1193,11 @@ function selectBinding(binding: ChannelConnectorPlatformBinding): void {
   platformSmoke.value = null;
 }
 
+function selectBindingFromUi(binding: ChannelConnectorPlatformBinding): void {
+  selectBinding(binding);
+  void refreshSkillSurface({ silent: true });
+}
+
 function newProfileDraft(): void {
   const profiles = nativeConfig.value?.config.agentProfiles || [];
   const base = profiles[0] || emptyProfileDraft();
@@ -1135,6 +1222,7 @@ function newBindingDraft(platform: ChannelConnectorPlatformId = 'octo'): void {
     metadataApiUrl: defaultApiUrl(platform),
   };
   platformSmoke.value = null;
+  commandSurface.value = null;
 }
 
 function hydrateConfigDrafts(): void {
@@ -1162,6 +1250,7 @@ async function persistNativeConfig(config: ChannelConnectorsNativeConfig, messag
     nativeConfig.value = saved;
     configPreview.value = await fetchChannelConnectorsDaemonConfig();
     hydrateConfigDrafts();
+    void refreshSkillSurface({ silent: true });
     notice.value = { kind: 'success', message };
   } catch (error) {
     reportError(error, text('保存 Channel Connectors 配置失败', 'Failed to save Channel Connectors config'));
@@ -1329,6 +1418,37 @@ async function testBindingDraft(): Promise<void> {
   }
 }
 
+function skillScopeLabel(skill: ChannelConnectorCommandSurfaceSkill): string {
+  if (skill.scope === 'platform') return skill.platform ? `studio · ${skill.platform}` : 'studio';
+  if (skill.scope === 'binding') return text('显式扩展', 'custom binding');
+  return 'agent';
+}
+
+async function refreshSkillSurface(options: { silent?: boolean } = {}): Promise<void> {
+  const bindingId = bindingDraft.value.id.trim();
+  if (!bindingId) {
+    commandSurface.value = null;
+    return;
+  }
+  skillSurfaceBusy.value = true;
+  if (!options.silent) notice.value = null;
+  try {
+    const result = await previewChannelConnectorCommandSurface({
+      bindingId,
+      renderer: 'text',
+    });
+    commandSurface.value = result.surface;
+    if (!options.silent) {
+      notice.value = { kind: 'success', message: text('渠道 Skills 已刷新', 'Channel skills refreshed') };
+    }
+  } catch (error) {
+    commandSurface.value = null;
+    if (!options.silent) reportError(error, text('刷新渠道 Skills 失败', 'Failed to refresh channel skills'));
+  } finally {
+    skillSurfaceBusy.value = false;
+  }
+}
+
 function formatTimestamp(value: string): string {
   try {
     return new Date(value).toLocaleString();
@@ -1445,6 +1565,7 @@ async function loadAll(): Promise<void> {
     configPreview.value = nextConfig;
     logs.value = nextLogs;
     hydrateConfigDrafts();
+    void refreshSkillSurface({ silent: true });
     loaded.value = true;
     void refreshAgentSessions({ silent: true });
   } catch (error) {
@@ -1488,6 +1609,7 @@ async function runServiceAction(action: ChannelConnectorsDaemonAction): Promise<
     };
     await refreshLogs();
     await refreshAgentSessions({ silent: true });
+    await refreshSkillSurface({ silent: true });
     await refreshStatusSnapshot();
   } catch (error) {
     reportError(error, text('操作失败', 'Action failed'));

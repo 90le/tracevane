@@ -240,36 +240,36 @@ export interface ChannelConnectorOctoTransportResult {
     | "send-message"
     | "upload-credentials"
     | "direct-upload-file"
-	    | "upload-file"
-	    | "send-media"
-	    | "direct-upload-and-send-media"
-	    | "upload-and-send-media"
-	    | "read-receipt"
-	    | "list-groups"
-	    | "group-info"
-	    | "group-members"
-	    | "space-members"
-	    | "create-group"
-	    | "update-group"
-	    | "add-group-members"
-	    | "remove-group-members"
-	    | "list-threads"
-	    | "thread-info"
-	    | "thread-members"
-	    | "create-thread"
-	    | "delete-thread"
-	    | "join-thread"
-	    | "leave-thread"
-	    | "group-md-read"
-	    | "group-md-update"
-	    | "thread-md-read"
-	    | "thread-md-update"
-	    | "voice-context-read"
-	    | "voice-context-update"
-	    | "voice-context-delete"
-	    | "event-ack"
-	    | "sync-messages"
-	    | "file-download-url";
+    | "upload-file"
+    | "send-media"
+    | "direct-upload-and-send-media"
+    | "upload-and-send-media"
+    | "read-receipt"
+    | "list-groups"
+    | "group-info"
+    | "group-members"
+    | "space-members"
+    | "create-group"
+    | "update-group"
+    | "add-group-members"
+    | "remove-group-members"
+    | "list-threads"
+    | "thread-info"
+    | "thread-members"
+    | "create-thread"
+    | "delete-thread"
+    | "join-thread"
+    | "leave-thread"
+    | "group-md-read"
+    | "group-md-update"
+    | "thread-md-read"
+    | "thread-md-update"
+    | "voice-context-read"
+    | "voice-context-update"
+    | "voice-context-delete"
+    | "event-ack"
+    | "sync-messages"
+    | "file-download-url";
   apiUrl: string | null;
   statusCode: number | null;
   error: string | null;
@@ -284,12 +284,12 @@ export interface ChannelConnectorOctoTransportResult {
   uploadBucket?: string | null;
   uploadRegion?: string | null;
   uploadKey?: string | null;
-	  uploadCdnBaseUrl?: string | null;
-	  uploadExpiredTime?: number | null;
-	  uploadCredentialKeys?: string[] | null;
-	  data?: unknown;
-	  itemCount?: number | null;
-	}
+  uploadCdnBaseUrl?: string | null;
+  uploadExpiredTime?: number | null;
+  uploadCredentialKeys?: string[] | null;
+  data?: unknown;
+  itemCount?: number | null;
+}
 
 export interface ChannelConnectorOctoTransportSmokeRequest {
   bindingId?: string | null;
@@ -298,56 +298,56 @@ export interface ChannelConnectorOctoTransportSmokeRequest {
     | "typing"
     | "send-message"
     | "upload-credentials"
-	    | "direct-upload-file"
-	    | "upload-file"
-	    | "direct-upload-and-send-media"
-	    | "upload-and-send-media"
-	    | "read-receipt"
-	    | "list-groups"
-	    | "group-info"
-	    | "group-members"
-	    | "space-members"
-	    | "create-group"
-	    | "update-group"
-	    | "add-group-members"
-	    | "remove-group-members"
-	    | "list-threads"
-	    | "thread-info"
-	    | "thread-members"
-	    | "create-thread"
-	    | "delete-thread"
-	    | "join-thread"
-	    | "leave-thread"
-	    | "group-md-read"
-	    | "group-md-update"
-	    | "thread-md-read"
-	    | "thread-md-update"
-	    | "voice-context-read"
-	    | "voice-context-update"
-	    | "voice-context-delete"
-	    | "event-ack"
-	    | "sync-messages"
-	    | "file-download-url";
-	  channelId?: string | null;
-	  channelType?: ChannelConnectorOctoChannelType;
-	  content?: string | null;
-	  fileName?: string | null;
-	  mimeType?: string | null;
-	  groupNo?: string | null;
-	  shortId?: string | null;
-	  eventId?: string | number | null;
-	  keyword?: string | null;
-	  limit?: number | null;
-	  members?: string[] | null;
-	  creator?: string | null;
-	  name?: string | null;
-	  notice?: string | null;
-	  spaceId?: string | null;
-	  startMessageSeq?: number | null;
-	  endMessageSeq?: number | null;
-	  pullMode?: 0 | 1 | null;
-	  filePath?: string | null;
-	}
+    | "direct-upload-file"
+    | "upload-file"
+    | "direct-upload-and-send-media"
+    | "upload-and-send-media"
+    | "read-receipt"
+    | "list-groups"
+    | "group-info"
+    | "group-members"
+    | "space-members"
+    | "create-group"
+    | "update-group"
+    | "add-group-members"
+    | "remove-group-members"
+    | "list-threads"
+    | "thread-info"
+    | "thread-members"
+    | "create-thread"
+    | "delete-thread"
+    | "join-thread"
+    | "leave-thread"
+    | "group-md-read"
+    | "group-md-update"
+    | "thread-md-read"
+    | "thread-md-update"
+    | "voice-context-read"
+    | "voice-context-update"
+    | "voice-context-delete"
+    | "event-ack"
+    | "sync-messages"
+    | "file-download-url";
+  channelId?: string | null;
+  channelType?: ChannelConnectorOctoChannelType;
+  content?: string | null;
+  fileName?: string | null;
+  mimeType?: string | null;
+  groupNo?: string | null;
+  shortId?: string | null;
+  eventId?: string | number | null;
+  keyword?: string | null;
+  limit?: number | null;
+  members?: string[] | null;
+  creator?: string | null;
+  name?: string | null;
+  notice?: string | null;
+  spaceId?: string | null;
+  startMessageSeq?: number | null;
+  endMessageSeq?: number | null;
+  pullMode?: 0 | 1 | null;
+  filePath?: string | null;
+}
 
 export interface ChannelConnectorOctoTransportSmokeResponse {
   ok: true;
@@ -439,6 +439,26 @@ export interface ChannelConnectorCommandSurfaceSection {
   actions: ChannelConnectorCommandSurfaceAction[];
 }
 
+export interface ChannelConnectorCommandSurfaceSkillAction {
+  id: string;
+  label: string;
+  manifest: string;
+  tool?: string | null;
+  action?: string | null;
+  approval: "none" | "required" | "managed";
+  notes?: string | null;
+}
+
+export interface ChannelConnectorCommandSurfaceSkill {
+  name: string;
+  displayName: string;
+  description: string;
+  source: string;
+  scope: "agent" | "binding" | "platform";
+  platform?: string | null;
+  actions?: ChannelConnectorCommandSurfaceSkillAction[];
+}
+
 export interface ChannelConnectorCommandSurface {
   version: 1;
   title: string;
@@ -494,6 +514,7 @@ export interface ChannelConnectorCommandSurface {
     createdAt: string;
     messageId: string | null;
   }>;
+  skills: ChannelConnectorCommandSurfaceSkill[];
   sections: ChannelConnectorCommandSurfaceSection[];
   textFallback: string;
 }

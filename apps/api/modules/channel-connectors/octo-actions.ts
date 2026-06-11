@@ -1,0 +1,149 @@
+import type {
+  ChannelConnectorOctoManagementAction,
+} from "./command-router.js";
+
+export const STUDIO_OCTO_ACTIONS_BLOCK = "studio-octo-actions";
+
+export interface ChannelConnectorOctoActionRequest {
+  tool: "octo_management";
+  action: ChannelConnectorOctoManagementAction;
+  params: Record<string, unknown>;
+}
+
+export interface ChannelConnectorExtractedOctoActions {
+  replyText: string;
+  actions: ChannelConnectorOctoActionRequest[];
+  errors: string[];
+}
+
+function normalizeString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function recordFrom(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function arrayFromManifest(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  const record = recordFrom(value);
+  if (Array.isArray(record.actions)) return record.actions;
+  if (Array.isArray(record.calls)) return record.calls;
+  return Object.keys(record).length ? [record] : [];
+}
+
+function normalizeAction(value: unknown): ChannelConnectorOctoManagementAction | null {
+  const normalized = normalizeString(value).toLowerCase().replace(/[_\s]+/g, "-");
+  const aliases: Record<string, ChannelConnectorOctoManagementAction> = {
+    groups: "list-groups",
+    "list-group": "list-groups",
+    info: "group-info",
+    members: "group-members",
+    "list-members": "group-members",
+    "group-md": "group-md-read",
+    "set-group-md": "group-md-update",
+    "thread-md": "thread-md-read",
+    "set-thread-md": "thread-md-update",
+    threads: "list-threads",
+    thread: "thread-info",
+    "get-thread": "thread-info",
+    "list-thread-members": "thread-members",
+    "voice-context": "voice-context-read",
+    "set-voice-context": "voice-context-update",
+    "delete-voice": "voice-context-delete",
+  };
+  const action = aliases[normalized] || normalized;
+  const supported = new Set<ChannelConnectorOctoManagementAction>([
+    "list-groups",
+    "group-info",
+    "group-members",
+    "search-members",
+    "create-group",
+    "update-group",
+    "add-members",
+    "remove-members",
+    "list-threads",
+    "thread-info",
+    "thread-members",
+    "create-thread",
+    "delete-thread",
+    "join-thread",
+    "leave-thread",
+    "group-md-read",
+    "group-md-update",
+    "thread-md-read",
+    "thread-md-update",
+    "voice-context-read",
+    "voice-context-update",
+    "voice-context-delete",
+    "history",
+  ]);
+  return supported.has(action as ChannelConnectorOctoManagementAction)
+    ? action as ChannelConnectorOctoManagementAction
+    : null;
+}
+
+function normalizeToolName(value: unknown): "octo_management" | null {
+  const normalized = normalizeString(value).toLowerCase().replace(/[-\s]+/g, "_");
+  if (!normalized) return "octo_management";
+  return normalized === "octo_management" || normalized === "octo" || normalized === "octo_bot_api"
+    ? "octo_management"
+    : null;
+}
+
+function octoActionFromValue(value: unknown): ChannelConnectorOctoActionRequest | null {
+  const record = recordFrom(value);
+  const tool = normalizeToolName(record.tool || record.skill || record.name || record.octoTool || record.octo_tool);
+  const action = normalizeAction(record.action);
+  if (!tool || !action) return null;
+  const paramsSource = record.params !== undefined || record.arguments !== undefined || record.args !== undefined
+    ? recordFrom(record.params ?? record.arguments ?? record.args)
+    : record;
+  const {
+    tool: _tool,
+    skill: _skill,
+    name: _name,
+    octoTool: _octoTool,
+    octo_tool: _octo_tool,
+    action: _action,
+    params: _params,
+    arguments: _arguments,
+    args: _args,
+    ...params
+  } = paramsSource;
+  return { tool, action, params };
+}
+
+export function extractChannelConnectorOctoActions(replyText: string | null | undefined): ChannelConnectorExtractedOctoActions {
+  const source = normalizeString(replyText);
+  if (!source) return { replyText: "", actions: [], errors: [] };
+  const actions: ChannelConnectorOctoActionRequest[] = [];
+  const errors: string[] = [];
+  const pattern = new RegExp(
+    "```[ \\t]*" + STUDIO_OCTO_ACTIONS_BLOCK + "[^\\r\\n]*\\r?\\n([\\s\\S]*?)```",
+    "gi",
+  );
+  const stripped = source.replace(pattern, (_match, rawJson: string) => {
+    try {
+      const parsed = JSON.parse(rawJson.trim()) as unknown;
+      const parsedActions = arrayFromManifest(parsed)
+        .map(octoActionFromValue)
+        .filter((item): item is ChannelConnectorOctoActionRequest => item !== null);
+      if (!parsedActions.length) {
+        errors.push("studio-octo-actions block did not include any valid Octo action entries.");
+      } else {
+        actions.push(...parsedActions);
+      }
+    } catch (error) {
+      errors.push(error instanceof Error ? error.message : "studio-octo-actions block is not valid JSON.");
+    }
+    return "";
+  }).trim();
+  return {
+    replyText: stripped,
+    actions,
+    errors,
+  };
+}

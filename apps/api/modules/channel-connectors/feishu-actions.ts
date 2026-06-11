@@ -1,6 +1,7 @@
 export const STUDIO_FEISHU_ACTIONS_BLOCK = "studio-feishu-actions";
 
 export type ChannelConnectorFeishuActionTool =
+  | "feishu_channel"
   | "feishu_doc"
   | "feishu_drive"
   | "feishu_perm"
@@ -38,6 +39,9 @@ function arrayFromManifest(value: unknown): unknown[] {
 
 function normalizeToolName(value: unknown): ChannelConnectorFeishuActionTool | null {
   const normalized = normalizeString(value).toLowerCase().replace(/[-\s]+/g, "_");
+  if (normalized === "feishu_channel" || normalized === "feishu_im" || normalized === "channel" || normalized === "im") {
+    return "feishu_channel";
+  }
   if (normalized === "feishu_doc" || normalized === "feishu_document" || normalized === "doc" || normalized === "docx") {
     return "feishu_doc";
   }

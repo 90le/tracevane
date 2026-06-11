@@ -76,6 +76,9 @@ import {
   extractChannelConnectorFeishuActions,
 } from "../../dist/apps/api/modules/channel-connectors/feishu-actions.js";
 import {
+  extractChannelConnectorOctoActions,
+} from "../../dist/apps/api/modules/channel-connectors/octo-actions.js";
+import {
   loadFeishuThreadBootstrapContext,
 } from "../../dist/apps/api/modules/channel-connectors/feishu-thread-bootstrap.js";
 import {
@@ -101,6 +104,7 @@ import {
 import {
   channelConnectorCommandAliasesFromMetadata,
   handleChannelConnectorCommand,
+  listChannelConnectorSkillSummaries,
   listChannelConnectorGatewayModels,
   listChannelConnectorCommandAliasesForBinding,
   matchChannelConnectorCommandPrefix,
@@ -1320,6 +1324,7 @@ test("native Channel Connectors extracts Feishu action manifests", () => {
       { tool: "feishu_doc", action: "read", doc_token: "doc_a" },
       { skill: "wiki", action: "nodes", params: { space_id: "7370955161512345678" } },
       { name: "feishu_perm", action: "list", token: "doc_a", type: "docx" },
+      { skill: "im", action: "channel-info", params: { chat_id: "oc_1" } },
     ]),
     "```",
   ].join("\n"));
@@ -1330,11 +1335,43 @@ test("native Channel Connectors extracts Feishu action manifests", () => {
     { tool: "feishu_doc", action: "read", params: { doc_token: "doc_a" } },
     { tool: "feishu_wiki", action: "nodes", params: { space_id: "7370955161512345678" } },
     { tool: "feishu_perm", action: "list", params: { token: "doc_a", type: "docx" } },
+    { tool: "feishu_channel", action: "channel-info", params: { chat_id: "oc_1" } },
   ]);
 
   const invalid = extractChannelConnectorFeishuActions([
     "bad",
     "```studio-feishu-actions",
+    "{nope",
+    "```",
+  ].join("\n"));
+  assert.equal(invalid.replyText, "bad");
+  assert.equal(invalid.actions.length, 0);
+  assert.match(invalid.errors.join("\n"), /JSON/);
+});
+
+test("native Channel Connectors extracts Octo action manifests", () => {
+  const extracted = extractChannelConnectorOctoActions([
+    "先查询群成员。",
+    "```studio-octo-actions",
+    JSON.stringify([
+      { tool: "octo_management", action: "group-members", group_id: "g1" },
+      { action: "get-thread", params: { groupId: "g1", shortId: "t1" } },
+      { skill: "octo", action: "history", params: { channel_id: "g1", channel_type: 2, limit: 20 } },
+    ]),
+    "```",
+  ].join("\n"));
+
+  assert.equal(extracted.replyText, "先查询群成员。");
+  assert.deepEqual(extracted.errors, []);
+  assert.deepEqual(extracted.actions, [
+    { tool: "octo_management", action: "group-members", params: { group_id: "g1" } },
+    { tool: "octo_management", action: "thread-info", params: { groupId: "g1", shortId: "t1" } },
+    { tool: "octo_management", action: "history", params: { channel_id: "g1", channel_type: 2, limit: 20 } },
+  ]);
+
+  const invalid = extractChannelConnectorOctoActions([
+    "bad",
+    "```studio-octo-actions",
     "{nope",
     "```",
   ].join("\n"));
@@ -1391,6 +1428,43 @@ test("native Channel Connectors executes Feishu read-only actions and approval-g
         data: {
           member: { member_type: "email", member_id: "a@example.com", perm: "edit" },
         },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).endsWith("/open-apis/drive/v1/files/doc_a/comments?file_type=docx&user_id_type=open_id&page_size=20")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: {
+          has_more: false,
+          items: [
+            {
+              comment_id: "comment_1",
+              user_id: "ou_a",
+              quote: "Line",
+              reply_list: { replies: [{ reply_id: "root_reply", user_id: "ou_a", content: { elements: [] } }] },
+            },
+          ],
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).endsWith("/open-apis/drive/v1/files/doc_a/comments/comment_1/replies?file_type=docx&user_id_type=open_id")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: {
+          has_more: false,
+          items: [{ reply_id: "reply_1", user_id: "ou_b", content: { elements: [] } }],
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if ((init.method || "GET") === "POST" && String(url).endsWith("/open-apis/drive/v1/files/doc_a/new_comments")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: { comment_id: "comment_new" },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if ((init.method || "GET") === "POST" && String(url).endsWith("/open-apis/drive/v1/files/doc_a/comments/comment_1/replies?file_type=docx")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: { reply_id: "reply_new" },
       }), { status: 200, headers: { "content-type": "application/json" } });
     }
     if (String(url).endsWith("/open-apis/wiki/v2/spaces/space_1/nodes")) {
@@ -1456,6 +1530,12 @@ test("native Channel Connectors executes Feishu read-only actions and approval-g
             table: { property: { row_size: 2, column_size: 2 }, cells: ["cell_1", "cell_2", "cell_3", "cell_4"] },
           },
         },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if ((init.method || "GET") === "PATCH" && String(url).endsWith("/open-apis/docx/v1/documents/doc_a/blocks/color_block_1")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: { block: { block_id: "color_block_1", block_type: 2 } },
       }), { status: 200, headers: { "content-type": "application/json" } });
     }
     if (/\/open-apis\/docx\/v1\/documents\/doc_a\/blocks\/cell_[12]\/children$/.test(String(url))) {
@@ -1651,6 +1731,121 @@ test("native Channel Connectors executes Feishu read-only actions and approval-g
     assert.equal(cellDescendantRequests.length, 2);
     assert.equal(JSON.parse(cellDescendantRequests[0].body).children_id[0], "append_tmp");
 
+    const tableRow = await executeFeishuChannelAction(config, {
+      tool: "feishu_doc",
+      action: "insert_table_row",
+      params: { doc_token: "doc_a", table_block_id: "table_1", row_index: 1 },
+    }, null, { allowMutation: true });
+    assert.equal(tableRow.ok, true);
+    const tableRowRequest = requests.at(-1);
+    assert.deepEqual(JSON.parse(tableRowRequest.body), { insert_table_row: { row_index: 1 } });
+
+    const tableColumn = await executeFeishuChannelAction(config, {
+      tool: "feishu_doc",
+      action: "insert_table_column",
+      params: { doc_token: "doc_a", table_block_id: "table_1", column_index: 2 },
+    }, null, { allowMutation: true });
+    assert.equal(tableColumn.ok, true);
+    assert.deepEqual(JSON.parse(requests.at(-1).body), { insert_table_column: { column_index: 2 } });
+
+    const deleteRows = await executeFeishuChannelAction(config, {
+      tool: "feishu_doc",
+      action: "delete_table_rows",
+      params: { doc_token: "doc_a", table_block_id: "table_1", row_start: 1, row_count: 2 },
+    }, null, { allowMutation: true });
+    assert.equal(deleteRows.ok, true);
+    assert.deepEqual(JSON.parse(requests.at(-1).body), {
+      delete_table_rows: { row_start_index: 1, row_end_index: 3 },
+    });
+
+    const deleteColumns = await executeFeishuChannelAction(config, {
+      tool: "feishu_doc",
+      action: "delete_table_columns",
+      params: { doc_token: "doc_a", table_block_id: "table_1", column_start: 0, column_count: 1 },
+    }, null, { allowMutation: true });
+    assert.equal(deleteColumns.ok, true);
+    assert.deepEqual(JSON.parse(requests.at(-1).body), {
+      delete_table_columns: { column_start_index: 0, column_end_index: 1 },
+    });
+
+    const mergeCells = await executeFeishuChannelAction(config, {
+      tool: "feishu_doc",
+      action: "merge_table_cells",
+      params: { doc_token: "doc_a", table_block_id: "table_1", row_start: 0, row_end: 1, column_start: 0, column_end: 2 },
+    }, null, { allowMutation: true });
+    assert.equal(mergeCells.ok, true);
+    assert.deepEqual(JSON.parse(requests.at(-1).body), {
+      merge_table_cells: {
+        row_start_index: 0,
+        row_end_index: 1,
+        column_start_index: 0,
+        column_end_index: 2,
+      },
+    });
+
+    const coloredText = await executeFeishuChannelAction(config, {
+      tool: "feishu_doc",
+      action: "color_text",
+      params: { doc_token: "doc_a", block_id: "color_block_1", content: "Status [green bold]OK[/green]" },
+    }, null, { allowMutation: true });
+    assert.equal(coloredText.ok, true);
+    assert.equal(coloredText.data.segments, 2);
+    assert.deepEqual(JSON.parse(requests.at(-1).body), {
+      update_text_elements: {
+        elements: [
+          { text_run: { content: "Status ", text_element_style: {} } },
+          { text_run: { content: "OK", text_element_style: { text_color: 4, bold: true } } },
+        ],
+      },
+    });
+
+    const comments = await executeFeishuChannelAction(config, {
+      tool: "feishu_drive",
+      action: "list_comments",
+      params: { file_token: "doc_a", file_type: "docx", page_size: 20 },
+    }, null);
+    assert.equal(comments.ok, true);
+    assert.equal(comments.readOnly, true);
+    assert.equal(comments.data.comments[0].comment_id, "comment_1");
+
+    const replies = await executeFeishuChannelAction(config, {
+      tool: "feishu_drive",
+      action: "list_comment_replies",
+      params: { file_token: "doc_a", file_type: "docx", comment_id: "comment_1" },
+    }, null);
+    assert.equal(replies.ok, true);
+    assert.equal(replies.readOnly, true);
+    assert.equal(replies.data.replies[0].reply_id, "reply_1");
+
+    const addComment = await executeFeishuChannelAction(config, {
+      tool: "feishu_drive",
+      action: "add_comment",
+      params: { file_token: "doc_a", file_type: "docx", content: "Comment", block_id: "block_1" },
+    }, null, { allowMutation: true });
+    assert.equal(addComment.ok, true);
+    assert.deepEqual(JSON.parse(requests.at(-1).body), {
+      file_type: "docx",
+      reply_elements: [{ type: "text", text: "Comment" }],
+      anchor: { block_id: "block_1" },
+    });
+
+    const replyComment = await executeFeishuChannelAction(config, {
+      tool: "feishu_drive",
+      action: "reply_comment",
+      params: { file_token: "doc_a", file_type: "docx", comment_id: "comment_1", content: "Reply" },
+    }, null, { allowMutation: true });
+    assert.equal(replyComment.ok, true);
+    assert.deepEqual(JSON.parse(requests.at(-1).body), {
+      content: {
+        elements: [
+          {
+            type: "text_run",
+            text_run: { text: "Reply" },
+          },
+        ],
+      },
+    });
+
     const uploadedImage = await executeFeishuChannelAction(config, {
       tool: "feishu_doc",
       action: "upload_image",
@@ -1720,6 +1915,205 @@ test("native Channel Connectors executes Feishu read-only actions and approval-g
     } finally {
       fs.rmSync(uploadDir, { recursive: true, force: true });
     }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("native Channel Connectors executes Feishu channel actions through Studio runtime", async () => {
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (url, init = {}) => {
+    requests.push({
+      url: String(url),
+      method: init.method || "GET",
+      body: typeof init.body === "string" ? init.body : "",
+      authorization: init.headers?.authorization || init.headers?.Authorization || "",
+    });
+    const asJson = (body, status = 200) => new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+    const urlText = String(url);
+    const method = init.method || "GET";
+    if (urlText.endsWith("/open-apis/auth/v3/tenant_access_token/internal")) {
+      return asJson({ code: 0, tenant_access_token: "tenant-token", expire: 3600 });
+    }
+    if (urlText.endsWith("/open-apis/im/v1/chats/oc_1")) {
+      return asJson({ code: 0, data: { chat_id: "oc_1", name: "Studio Group", chat_mode: "group" } });
+    }
+    if (urlText.endsWith("/open-apis/im/v1/chats/oc_1/members?member_id_type=open_id&page_size=20")) {
+      return asJson({ code: 0, data: { has_more: false, items: [{ member_id: "ou_1", name: "Alice" }] } });
+    }
+    if (urlText.endsWith("/open-apis/contact/v3/users/ou_1?user_id_type=open_id&department_id_type=open_department_id")) {
+      return asJson({ code: 0, data: { user: { open_id: "ou_1", name: "Alice", email: "a@example.com" } } });
+    }
+    if (urlText.endsWith("/open-apis/im/v1/chats?page_size=5")) {
+      return asJson({ code: 0, data: { items: [{ chat_id: "oc_1", name: "Studio Group" }] } });
+    }
+    if (urlText.endsWith("/open-apis/contact/v3/users?page_size=5&user_id_type=open_id")) {
+      return asJson({ code: 0, data: { items: [{ open_id: "ou_1", name: "Alice" }] } });
+    }
+    if (urlText.endsWith("/open-apis/im/v1/messages/om_1/reactions?reaction_type=THUMBSUP")) {
+      return asJson({
+        code: 0,
+        data: {
+          items: [
+            { reaction_id: "reaction_1", reaction_type: { emoji_type: "THUMBSUP" }, operator_type: "app", operator_id: { open_id: "ou_bot" } },
+          ],
+        },
+      });
+    }
+    if (urlText.endsWith("/open-apis/im/v1/messages/om_1")) {
+      return asJson({
+        code: 0,
+        data: {
+          message_id: "om_1",
+          sender: { id: "ou_1", id_type: "open_id" },
+          body: { content: JSON.stringify({ text: "hello" }) },
+          msg_type: "text",
+        },
+      });
+    }
+    if (method === "POST" && urlText.endsWith("/open-apis/im/v1/messages?receive_id_type=chat_id")) {
+      return asJson({ code: 0, data: { message_id: "om_sent", chat_id: "oc_1" } });
+    }
+    if (method === "POST" && urlText.endsWith("/open-apis/im/v1/messages/om_parent/reply")) {
+      return asJson({ code: 0, data: { message_id: "om_reply", chat_id: "oc_1" } });
+    }
+    if (method === "PUT" && urlText.endsWith("/open-apis/im/v1/messages/om_sent")) {
+      return asJson({ code: 0, data: { message_id: "om_sent" } });
+    }
+    if (method === "POST" && urlText.endsWith("/open-apis/im/v1/pins")) {
+      return asJson({ code: 0, data: { pin: { message_id: "om_sent", chat_id: "oc_1" } } });
+    }
+    if (method === "DELETE" && urlText.endsWith("/open-apis/im/v1/pins/om_sent")) {
+      return asJson({ code: 0, data: {} });
+    }
+    if (method === "POST" && urlText.endsWith("/open-apis/im/v1/messages/om_sent/reactions")) {
+      return asJson({ code: 0, data: { reaction_id: "reaction_new" } });
+    }
+    return asJson({ code: 404, msg: "not mocked" }, 404);
+  };
+
+  try {
+    const config = {
+      apiUrl: "https://open.feishu.cn",
+      appId: "cli_test",
+      appSecret: "secret",
+    };
+
+    const read = await executeFeishuChannelAction(config, {
+      tool: "feishu_channel",
+      action: "read",
+      params: { message_id: "om_1" },
+    }, null);
+    assert.equal(read.ok, true);
+    assert.equal(read.readOnly, true);
+    assert.equal(read.data.message.messageId, "om_1");
+
+    const channelInfo = await executeFeishuChannelAction(config, {
+      tool: "feishu_channel",
+      action: "channel-info",
+      params: { chat_id: "oc_1", include_members: true, page_size: 20 },
+    }, null);
+    assert.equal(channelInfo.ok, true);
+    assert.equal(channelInfo.data.channel.name, "Studio Group");
+    assert.equal(channelInfo.data.members[0].member_id, "ou_1");
+
+    const memberInfo = await executeFeishuChannelAction(config, {
+      tool: "feishu_channel",
+      action: "member-info",
+      params: { open_id: "ou_1" },
+    }, null);
+    assert.equal(memberInfo.ok, true);
+    assert.equal(memberInfo.data.member.name, "Alice");
+
+    const channelList = await executeFeishuChannelAction(config, {
+      tool: "feishu_channel",
+      action: "channel-list",
+      params: { limit: 5, scope: "all", query: "studio" },
+    }, null);
+    assert.equal(channelList.ok, true);
+    assert.equal(channelList.data.groups[0].chat_id, "oc_1");
+    assert.deepEqual(channelList.data.peers, []);
+
+    const reactions = await executeFeishuChannelAction(config, {
+      tool: "feishu_channel",
+      action: "reactions",
+      params: { message_id: "om_1", emoji: "THUMBSUP" },
+    }, null);
+    assert.equal(reactions.ok, true);
+    assert.equal(reactions.data.reactions[0].reaction_id, "reaction_1");
+
+    const requestCountBeforeSend = requests.length;
+    const sendWithoutApproval = await executeFeishuChannelAction(config, {
+      tool: "feishu_channel",
+      action: "send",
+      params: { to: "chat:oc_1", text: "blocked" },
+    }, null);
+    assert.equal(sendWithoutApproval.ok, false);
+    assert.match(sendWithoutApproval.error || "", /requires Studio IM approval/);
+    assert.equal(requests.length, requestCountBeforeSend);
+
+    const send = await executeFeishuChannelAction(config, {
+      tool: "feishu_channel",
+      action: "send",
+      params: { to: "chat:oc_1", format: "markdown", text: "**ok**" },
+    }, null, { allowMutation: true });
+    assert.equal(send.ok, true);
+    assert.equal(send.data.message_id, "om_sent");
+    assert.deepEqual(JSON.parse(requests.at(-1).body), {
+      receive_id: "oc_1",
+      msg_type: "post",
+      content: JSON.stringify({ zh_cn: { content: [[{ tag: "md", text: "**ok**" }]] } }),
+    });
+
+    const threadReply = await executeFeishuChannelAction(config, {
+      tool: "feishu_channel",
+      action: "thread_reply",
+      params: { message_id: "om_parent", text: "reply" },
+    }, null, { allowMutation: true });
+    assert.equal(threadReply.ok, true);
+    assert.deepEqual(JSON.parse(requests.at(-1).body), {
+      msg_type: "text",
+      content: JSON.stringify({ text: "reply" }),
+      reply_in_thread: true,
+    });
+
+    const edit = await executeFeishuChannelAction(config, {
+      tool: "feishu_channel",
+      action: "edit",
+      params: { message_id: "om_sent", text: "edited" },
+    }, null, { allowMutation: true });
+    assert.equal(edit.ok, true);
+    assert.deepEqual(JSON.parse(requests.at(-1).body), {
+      msg_type: "text",
+      content: JSON.stringify({ text: "edited" }),
+    });
+
+    const pin = await executeFeishuChannelAction(config, {
+      tool: "feishu_channel",
+      action: "pin",
+      params: { message_id: "om_sent" },
+    }, null, { allowMutation: true });
+    assert.equal(pin.ok, true);
+    assert.deepEqual(JSON.parse(requests.at(-1).body), { message_id: "om_sent" });
+
+    const unpin = await executeFeishuChannelAction(config, {
+      tool: "feishu_channel",
+      action: "unpin",
+      params: { message_id: "om_sent" },
+    }, null, { allowMutation: true });
+    assert.equal(unpin.ok, true);
+
+    const react = await executeFeishuChannelAction(config, {
+      tool: "feishu_channel",
+      action: "react",
+      params: { message_id: "om_sent", emoji: "THUMBSUP" },
+    }, null, { allowMutation: true });
+    assert.equal(react.ok, true);
+    assert.equal(react.data.reaction_id, "reaction_new");
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -6087,6 +6481,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(octoSkillContext, /### \/octo-send \[binding\]/);
   assert.match(octoSkillContext, /Use Studio Octo channel transport for DM, group, thread, and mention work/);
   assert.match(octoSkillContext, /studio-channel-messages/);
+  assert.match(octoSkillContext, /studio-octo-actions/);
+  assert.match(octoSkillContext, /octo_management.*group-members/);
   assert.doesNotMatch(octoSkillContext, /feishu-card/);
 
   const codexSkillRun = await handleChannelConnectorCommand({
@@ -6131,8 +6527,13 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(feishuSkillContext, /\/feishu-card: Build Feishu card and message workflows/);
   assert.match(feishuSkillContext, /\/feishu-doc-api: Read, write, and attach files in Feishu documents/);
   assert.match(feishuSkillContext, /Runtime Action Index/);
+  assert.match(feishuSkillContext, /Only use the Runtime Action Index entries below/);
+  assert.match(feishuSkillContext, /feishu_channel.*channel-info/);
+  assert.match(feishuSkillContext, /feishu_channel.*thread-reply/);
+  assert.match(feishuSkillContext, /feishu_doc.*color_text/);
+  assert.match(feishuSkillContext, /feishu_drive.*list_comments/);
   assert.match(feishuSkillContext, /Supported now after Studio IM approval: `create`/);
-  assert.match(feishuSkillContext, /Supported now after Studio IM approval: `create_folder`, `move`, `delete`/);
+  assert.match(feishuSkillContext, /Supported now after Studio IM approval: `create_folder`, `move`, `delete`, `add_comment`, `reply_comment`/);
   assert.match(feishuSkillContext, /## Actions/);
   assert.match(feishuSkillContext, /Auto-activation/);
   assert.doesNotMatch(feishuSkillContext, /FEISHU_APP_SECRET/);
@@ -6150,6 +6551,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.ok(defaultOctoContext);
   assert.match(defaultOctoContext, /### \/octo-bot-api \[platform:octo\]/);
   assert.match(defaultOctoContext, /studio-channel-messages/);
+  assert.match(defaultOctoContext, /studio-octo-actions/);
+  assert.match(defaultOctoContext, /octo_management.*history/);
   assert.match(defaultOctoContext, /\/octo create-group/);
   assert.doesNotMatch(defaultOctoContext, /openclaw plugins install/);
 
@@ -6171,11 +6574,34 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(defaultFeishuContext, /### \/feishu-messaging \[platform:feishu\]/);
   assert.match(defaultFeishuContext, /### \/feishu-doc \[platform:feishu\]/);
   assert.match(defaultFeishuContext, /studio-feishu-actions/);
+  assert.match(defaultFeishuContext, /feishu_channel.*channel-list/);
   assert.match(defaultFeishuContext, /Supported now without approval: `read`, `list_blocks`, `get_block`/);
   assert.match(defaultFeishuContext, /Supported now after Studio IM approval: `create`/);
+  assert.match(defaultFeishuContext, /feishu_doc.*insert_table_row/);
+  assert.match(defaultFeishuContext, /feishu_drive.*reply_comment/);
   assert.match(defaultFeishuContext, /studio-channel-files/);
   assert.doesNotMatch(defaultFeishuContext, /FEISHU_APP_SECRET/);
   assert.doesNotMatch(defaultFeishuContext, /openclaw plugins install/);
+  const feishuSurface = buildChannelConnectorCommandSurface({
+    config: runtimeConfig,
+    project: codexProject,
+    binding: defaultFeishuBinding,
+    skills: listChannelConnectorSkillSummaries(codexProject, defaultFeishuBinding),
+  });
+  assert.deepEqual(feishuSurface.skills.filter((skill) => skill.scope === "platform").map((skill) => skill.name), [
+    "feishu-messaging",
+    "feishu-doc",
+    "feishu-drive",
+    "feishu-perm",
+    "feishu-wiki",
+  ]);
+  assert.equal(feishuSurface.skills.every((skill) => skill.scope !== "platform" || skill.source.startsWith("studio://channel-skills/feishu/")), true);
+  assert.ok(feishuSurface.skills.find((skill) => skill.name === "feishu-messaging")?.actions?.some((action) => action.tool === "feishu_channel" && action.action === "channel-info"));
+  assert.ok(feishuSurface.skills.find((skill) => skill.name === "feishu-doc")?.actions?.some((action) => action.action === "color_text"));
+  assert.ok(feishuSurface.skills.find((skill) => skill.name === "feishu-drive")?.actions?.some((action) => action.action === "list_comments"));
+  const commandsSection = feishuSurface.sections.find((section) => section.id === "commands");
+  assert.ok(commandsSection);
+  assert.ok(commandsSection.actions.some((action) => action.id === "skill-feishu-doc"));
 
   const blockedOctoSkillRun = await handleChannelConnectorCommand({
     ...baseContext,

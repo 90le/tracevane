@@ -5,6 +5,8 @@ import type {
   ChannelConnectorCommandSurface,
   ChannelConnectorCommandSurfaceAction,
   ChannelConnectorCommandSurfaceSection,
+  ChannelConnectorCommandSurfaceSkill,
+  ChannelConnectorCommandSurfaceSkillAction,
   ChannelConnectorFeishuInteractiveCard,
   ChannelConnectorPermissionMode,
   ChannelConnectorReasoningEffort,
@@ -244,14 +246,7 @@ export interface ChannelConnectorCommandSurfaceInput {
     description: string;
     source: "config" | "agent";
   }>;
-  skills?: Array<{
-    name: string;
-    displayName: string;
-    description: string;
-    source: string;
-    scope?: "agent" | "binding" | "platform";
-    platform?: string | null;
-  }>;
+  skills?: ChannelConnectorCommandSurfaceSkill[];
   selectedSectionId?: string | null;
   selectedViewId?: string | null;
 }
@@ -466,6 +461,25 @@ export function buildChannelConnectorCommandSurface(
     current.model || "",
     ...input.config.projects.map((project) => project.model || ""),
   ]).slice(0, 12);
+  const skills: ChannelConnectorCommandSurfaceSkill[] = (input.skills || []).map((skill) => ({
+    name: normalizeString(skill.name),
+    displayName: normalizeString(skill.displayName),
+    description: normalizeString(skill.description),
+    source: normalizeString(skill.source),
+    scope: skill.scope || "agent",
+    platform: normalizeString(skill.platform) || null,
+    actions: Array.isArray(skill.actions)
+      ? skill.actions.map((action) => ({
+        id: normalizeString(action.id),
+        label: normalizeString(action.label),
+        manifest: normalizeString(action.manifest),
+        tool: normalizeString(action.tool) || null,
+        action: normalizeString(action.action) || null,
+        approval: (action.approval === "required" || action.approval === "managed" ? action.approval : "none") as ChannelConnectorCommandSurfaceSkillAction["approval"],
+        notes: normalizeString(action.notes) || null,
+      })).filter((action) => action.id && action.label && action.manifest)
+      : [],
+  })).filter((skill) => skill.name);
 
   const sections: ChannelConnectorCommandSurfaceSection[] = [
     {
@@ -636,7 +650,7 @@ export function buildChannelConnectorCommandSurface(
             description: `${command.source === "agent" ? "agent" : "config"} · ${command.description || "Custom prompt command"}`,
           },
         )),
-        ...(input.skills || []).slice(0, 12).map((skill, index) => action(
+        ...skills.slice(0, 12).map((skill, index) => action(
           `skill-${skill.name}`,
           `${index + 1}. /${skill.name}`,
           `/${skill.name}`,
@@ -688,6 +702,7 @@ export function buildChannelConnectorCommandSurface(
     session: input.agentSession || null,
     sessionList: (input.sessionList || []).slice(0, 20),
     history: (input.history || []).slice(-10),
+    skills,
     sections,
   };
   return {

@@ -2,6 +2,9 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type {
+  ChannelConnectorCommandSurfaceSkillAction,
+} from "../../../../types/channel-connectors.js";
+import type {
   ChannelConnectorRuntimeBinding,
   ChannelConnectorRuntimeProject,
 } from "./agent-runner.js";
@@ -17,6 +20,7 @@ export interface ChannelConnectorSkill {
   source: string;
   scope: "agent" | "binding" | "platform";
   platform?: string | null;
+  runtimeActions?: ChannelConnectorCommandSurfaceSkillAction[];
 }
 
 export interface ChannelConnectorSkillDiscoveryContext {
@@ -36,10 +40,11 @@ export interface ChannelConnectorNativeSkillProjection {
 
 const CHANNEL_SKILL_CONTEXT_MAX_LISTED = 10;
 const CHANNEL_SKILL_CONTEXT_MAX_EXCERPTS = 4;
-const CHANNEL_SKILL_CONTEXT_EXCERPT_CHARS = 1200;
-const CHANNEL_SKILL_CONTEXT_TOTAL_EXCERPT_CHARS = 3600;
+const CHANNEL_SKILL_CONTEXT_EXCERPT_CHARS = 3200;
+const CHANNEL_SKILL_CONTEXT_TOTAL_EXCERPT_CHARS = 9000;
 const CHANNEL_SKILL_CONTEXT_SECTION_CHARS = 360;
 const CHANNEL_SKILL_ACTION_INDEX_MAX_ITEMS = 16;
+const CHANNEL_SKILL_CONTEXT_ACTION_INDEX_CHARS = 1600;
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -419,6 +424,23 @@ function isRuntimeActionSection(section: MarkdownSection): boolean {
 }
 
 function buildRuntimeSkillActionIndex(skill: ChannelConnectorSkill): string | null {
+  if (skill.runtimeActions?.length) {
+    return [
+      "## Runtime Action Index",
+      "Only use the Runtime Action Index entries below. If an operation is not listed here, Studio will not execute it from this skill; use the documented fallback or ask the user.",
+      skill.runtimeActions.map((action) => {
+        const parts = [
+          `- ${action.label}`,
+          `manifest \`${action.manifest}\``,
+          action.tool ? `tool \`${action.tool}\`` : "",
+          action.action ? `action \`${action.action}\`` : "",
+          `approval: ${action.approval}`,
+          action.notes ? action.notes : "",
+        ].filter(Boolean);
+        return parts.join(" — ");
+      }).join("\n"),
+    ].join("\n");
+  }
   const sections = splitMarkdownSections(skill.prompt)
     .filter((section) => !isSetupOrBridgeSection(section.title))
     .filter(isRuntimeActionSection);
@@ -435,9 +457,25 @@ function buildRuntimeSkillActionIndex(skill: ChannelConnectorSkill): string | nu
   if (!items.length) return null;
   return [
     "## Runtime Action Index",
-    "Use this index to identify available channel skill operations before reading the excerpts below:",
+    "This index is inferred from external Markdown. It is not an execution guarantee unless the action also appears in a Studio runtime manifest below:",
     items.map((item) => `- ${item}`).join("\n"),
   ].join("\n");
+}
+
+function buildRuntimeSkillActionIndexForContext(skill: ChannelConnectorSkill): string | null {
+  if (skill.runtimeActions?.length) {
+    return [
+      "## Runtime Action Index",
+      "Only use the Runtime Action Index entries below. If an operation is not listed here, Studio will not execute it from this skill; use the documented fallback or ask the user.",
+      skill.runtimeActions.map((action) => {
+        const call = action.tool
+          ? `${action.tool}.${action.action || "*"}`
+          : `${action.manifest}.${action.action || "send"}`;
+        return `- ${call} [${action.approval}]`;
+      }).join("\n"),
+    ].join("\n");
+  }
+  return buildRuntimeSkillActionIndex(skill);
 }
 
 function skillScopeLabel(skill: Pick<ChannelConnectorSkill, "scope" | "platform">): string {
@@ -485,6 +523,7 @@ export function buildChannelConnectorNativeSkillPrompt(skill: ChannelConnectorSk
     "Use Studio native manifests for outbound work:",
     "- `studio-channel-files` for files, images, and binary attachments.",
     "- `studio-channel-messages` for IM messages, Octo group/thread mentions, and Feishu text/Markdown/group mention targets.",
+    "- `studio-octo-actions` for Studio-owned Octo group/thread/history/voice-context management when the active platform is Octo.",
     "- `studio-feishu-actions` for Studio-owned Feishu doc/drive/perm/wiki actions when the active platform is Feishu. Studio executes read-only actions directly and approval-gated mutations only after IM approval.",
     "",
     `Current platform family: ${platform}.`,
@@ -536,12 +575,17 @@ function channelSkillContextExcerpts(skills: ChannelConnectorSkill[]): string[] 
     if (remaining <= 0) break;
     const prompt = selectRuntimeSkillPromptForContext(skill);
     if (!prompt) continue;
-    const actionIndex = buildRuntimeSkillActionIndex(skill);
+    const actionIndex = buildRuntimeSkillActionIndexForContext(skill);
     const maxRunes = Math.min(CHANNEL_SKILL_CONTEXT_EXCERPT_CHARS, remaining);
-    const excerpt = truncateRunes([
-      actionIndex,
-      prompt,
-    ].filter(Boolean).join("\n\n"), maxRunes);
+    const actionIndexExcerpt = actionIndex
+      ? truncateRunes(actionIndex, Math.min(CHANNEL_SKILL_CONTEXT_ACTION_INDEX_CHARS, Math.floor(maxRunes * 0.45)))
+      : "";
+    const actionIndexRunes = Array.from(actionIndexExcerpt).length;
+    const promptBudget = Math.max(0, maxRunes - actionIndexRunes - (actionIndexExcerpt ? 2 : 0));
+    const excerpt = [
+      actionIndexExcerpt,
+      promptBudget > 0 ? truncateRunes(prompt, promptBudget) : "",
+    ].filter(Boolean).join("\n\n");
     remaining -= Array.from(excerpt).length;
     excerpts.push([
       `### /${skill.name} [${skillScopeLabel(skill)}]`,
@@ -558,6 +602,7 @@ function parseSkillMd(
   source: string,
   scope: ChannelConnectorSkill["scope"],
   platform?: string | null,
+  runtimeActions?: ChannelConnectorCommandSurfaceSkillAction[],
 ): ChannelConnectorSkill | null {
   const content = normalizeString(raw);
   if (!content) return null;
@@ -580,6 +625,7 @@ function parseSkillMd(
     source,
     scope,
     platform: platform || null,
+    runtimeActions: runtimeActions || [],
   };
 }
 
@@ -599,6 +645,7 @@ function addStudioPlatformSkills(input: {
       `studio://channel-skills/${definition.platform}/${definition.name}`,
       "platform",
       definition.platform,
+      definition.runtimeActions,
     );
     if (!skill) continue;
     input.seen.add(key);
@@ -715,6 +762,9 @@ export function buildChannelConnectorSkillContext(
     "Use these channel/platform skills only when the user asks for platform-specific IM, file, group, document, or bot API work.",
     "For sending local files back to the user, emit a studio-channel-files manifest; do not call cc-connect or external IM bridge CLIs.",
     "For sending IM messages, emit a studio-channel-messages manifest; Studio will deliver it through the active channel.",
+    platform === "octo"
+      ? "For Octo group/thread/history/voice-context management, emit a studio-octo-actions manifest; Studio will execute read-only actions with the active Octo binding and request IM approval before enabled mutations."
+      : "",
     platform === "feishu"
       ? "For Feishu doc/drive/perm/wiki actions, emit a studio-feishu-actions manifest; Studio will execute read-only actions with the active Feishu binding and request IM approval before enabled mutations. Unsupported content mutations must fall back to studio-channel-files or studio-channel-messages."
       : "",

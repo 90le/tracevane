@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type {
+  ChannelConnectorCommandSurfaceSkillAction,
   ChannelConnectorOctoInboundMessage,
   ChannelConnectorOctoTransportResult,
   ChannelConnectorPermissionMode,
@@ -352,8 +353,9 @@ export interface ChannelConnectorSkillSummary {
   displayName: string;
   description: string;
   source: string;
-  scope?: "agent" | "binding" | "platform";
+  scope: "agent" | "binding" | "platform";
   platform?: string | null;
+  actions?: ChannelConnectorCommandSurfaceSkillAction[];
 }
 
 export interface ChannelConnectorCommandAlias {
@@ -1077,6 +1079,7 @@ export function listChannelConnectorSkillSummaries(
     source: skill.source,
     scope: skill.scope,
     platform: skill.platform || null,
+    actions: skill.runtimeActions || [],
   }));
 }
 

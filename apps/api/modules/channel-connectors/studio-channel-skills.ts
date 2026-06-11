@@ -1,13 +1,136 @@
+import type {
+  ChannelConnectorCommandSurfaceSkillAction,
+} from "../../../../types/channel-connectors.js";
+
 export interface StudioChannelConnectorPlatformSkillDefinition {
   platform: "octo" | "feishu";
   name: string;
   markdown: string;
+  runtimeActions: ChannelConnectorCommandSurfaceSkillAction[];
 }
+
+function action(
+  id: string,
+  label: string,
+  manifest: string,
+  tool: string | null,
+  actionName: string | null,
+  approval: ChannelConnectorCommandSurfaceSkillAction["approval"],
+  notes?: string,
+): ChannelConnectorCommandSurfaceSkillAction {
+  return {
+    id,
+    label,
+    manifest,
+    tool,
+    action: actionName,
+    approval,
+    notes: notes || null,
+  };
+}
+
+const channelMessageActions = [
+  action("channel-send-message", "Send IM message", "studio-channel-messages", null, "send", "managed"),
+  action("channel-send-file", "Send IM file", "studio-channel-files", null, "send", "managed"),
+];
+
+const feishuChannelActions: ChannelConnectorCommandSurfaceSkillAction[] = [
+  action("feishu-channel-send", "Send Feishu message", "studio-feishu-actions", "feishu_channel", "send", "required"),
+  action("feishu-channel-thread-reply", "Reply in Feishu thread", "studio-feishu-actions", "feishu_channel", "thread-reply", "required"),
+  action("feishu-channel-read", "Read Feishu message", "studio-feishu-actions", "feishu_channel", "read", "none"),
+  action("feishu-channel-edit", "Edit Feishu message", "studio-feishu-actions", "feishu_channel", "edit", "required"),
+  action("feishu-channel-pin", "Pin Feishu message", "studio-feishu-actions", "feishu_channel", "pin", "required"),
+  action("feishu-channel-unpin", "Unpin Feishu message", "studio-feishu-actions", "feishu_channel", "unpin", "required"),
+  action("feishu-channel-list-pins", "List Feishu pins", "studio-feishu-actions", "feishu_channel", "list-pins", "none"),
+  action("feishu-channel-channel-info", "Read Feishu chat info", "studio-feishu-actions", "feishu_channel", "channel-info", "none"),
+  action("feishu-channel-member-info", "Read Feishu member info", "studio-feishu-actions", "feishu_channel", "member-info", "none"),
+  action("feishu-channel-channel-list", "List Feishu chats/users", "studio-feishu-actions", "feishu_channel", "channel-list", "none"),
+  action("feishu-channel-react", "React to Feishu message", "studio-feishu-actions", "feishu_channel", "react", "required"),
+  action("feishu-channel-reactions", "List Feishu reactions", "studio-feishu-actions", "feishu_channel", "reactions", "none"),
+];
+
+const octoManagementActions: ChannelConnectorCommandSurfaceSkillAction[] = [
+  action("octo-list-groups", "List Octo groups", "studio-octo-actions", "octo_management", "list-groups", "none"),
+  action("octo-group-info", "Read Octo group info", "studio-octo-actions", "octo_management", "group-info", "none"),
+  action("octo-group-members", "List Octo group members", "studio-octo-actions", "octo_management", "group-members", "none"),
+  action("octo-search-members", "Search Octo Space members", "studio-octo-actions", "octo_management", "search-members", "none"),
+  action("octo-history", "Sync Octo channel history", "studio-octo-actions", "octo_management", "history", "none"),
+  action("octo-group-md-read", "Read Octo GROUP.md", "studio-octo-actions", "octo_management", "group-md-read", "none"),
+  action("octo-thread-md-read", "Read Octo THREAD.md", "studio-octo-actions", "octo_management", "thread-md-read", "none"),
+  action("octo-list-threads", "List Octo threads", "studio-octo-actions", "octo_management", "list-threads", "none"),
+  action("octo-thread-info", "Read Octo thread info", "studio-octo-actions", "octo_management", "thread-info", "none"),
+  action("octo-thread-members", "List Octo thread members", "studio-octo-actions", "octo_management", "thread-members", "none"),
+  action("octo-voice-context-read", "Read Octo voice context", "studio-octo-actions", "octo_management", "voice-context-read", "none"),
+  action("octo-create-group", "Create Octo group", "studio-octo-actions", "octo_management", "create-group", "required"),
+  action("octo-update-group", "Update Octo group", "studio-octo-actions", "octo_management", "update-group", "required"),
+  action("octo-add-members", "Add Octo group members", "studio-octo-actions", "octo_management", "add-members", "required"),
+  action("octo-remove-members", "Remove Octo group members", "studio-octo-actions", "octo_management", "remove-members", "required"),
+  action("octo-create-thread", "Create Octo thread", "studio-octo-actions", "octo_management", "create-thread", "required"),
+  action("octo-delete-thread", "Delete Octo thread", "studio-octo-actions", "octo_management", "delete-thread", "required"),
+  action("octo-join-thread", "Join Octo thread", "studio-octo-actions", "octo_management", "join-thread", "required"),
+  action("octo-leave-thread", "Leave Octo thread", "studio-octo-actions", "octo_management", "leave-thread", "required"),
+  action("octo-group-md-update", "Update Octo GROUP.md", "studio-octo-actions", "octo_management", "group-md-update", "required"),
+  action("octo-thread-md-update", "Update Octo THREAD.md", "studio-octo-actions", "octo_management", "thread-md-update", "required"),
+  action("octo-voice-context-update", "Update Octo voice context", "studio-octo-actions", "octo_management", "voice-context-update", "required"),
+  action("octo-voice-context-delete", "Delete Octo voice context", "studio-octo-actions", "octo_management", "voice-context-delete", "required"),
+];
+
+const feishuDocActions: ChannelConnectorCommandSurfaceSkillAction[] = [
+  action("feishu-doc-read", "Read Feishu Docx", "studio-feishu-actions", "feishu_doc", "read", "none"),
+  action("feishu-doc-list-blocks", "List Feishu Docx blocks", "studio-feishu-actions", "feishu_doc", "list_blocks", "none"),
+  action("feishu-doc-get-block", "Get Feishu Docx block", "studio-feishu-actions", "feishu_doc", "get_block", "none"),
+  action("feishu-doc-create", "Create Feishu Docx", "studio-feishu-actions", "feishu_doc", "create", "required"),
+  action("feishu-doc-write", "Write Feishu Docx", "studio-feishu-actions", "feishu_doc", "write", "required"),
+  action("feishu-doc-append", "Append Feishu Docx", "studio-feishu-actions", "feishu_doc", "append", "required"),
+  action("feishu-doc-insert", "Insert Feishu Docx content", "studio-feishu-actions", "feishu_doc", "insert", "required"),
+  action("feishu-doc-update-block", "Update Feishu Docx block", "studio-feishu-actions", "feishu_doc", "update_block", "required"),
+  action("feishu-doc-delete-block", "Delete Feishu Docx block", "studio-feishu-actions", "feishu_doc", "delete_block", "required"),
+  action("feishu-doc-create-table", "Create Feishu Docx table", "studio-feishu-actions", "feishu_doc", "create_table", "required"),
+  action("feishu-doc-write-table-cells", "Write Feishu Docx table cells", "studio-feishu-actions", "feishu_doc", "write_table_cells", "required"),
+  action("feishu-doc-create-table-with-values", "Create Feishu Docx table with values", "studio-feishu-actions", "feishu_doc", "create_table_with_values", "required"),
+  action("feishu-doc-insert-table-row", "Insert Feishu Docx table row", "studio-feishu-actions", "feishu_doc", "insert_table_row", "required"),
+  action("feishu-doc-insert-table-column", "Insert Feishu Docx table column", "studio-feishu-actions", "feishu_doc", "insert_table_column", "required"),
+  action("feishu-doc-delete-table-rows", "Delete Feishu Docx table rows", "studio-feishu-actions", "feishu_doc", "delete_table_rows", "required"),
+  action("feishu-doc-delete-table-columns", "Delete Feishu Docx table columns", "studio-feishu-actions", "feishu_doc", "delete_table_columns", "required"),
+  action("feishu-doc-merge-table-cells", "Merge Feishu Docx table cells", "studio-feishu-actions", "feishu_doc", "merge_table_cells", "required"),
+  action("feishu-doc-color-text", "Apply Feishu Docx colored text", "studio-feishu-actions", "feishu_doc", "color_text", "required"),
+  action("feishu-doc-upload-image", "Upload image to Feishu Docx", "studio-feishu-actions", "feishu_doc", "upload_image", "required"),
+  action("feishu-doc-upload-file", "Upload file to Feishu Docx", "studio-feishu-actions", "feishu_doc", "upload_file", "required"),
+];
+
+const feishuDriveActions: ChannelConnectorCommandSurfaceSkillAction[] = [
+  action("feishu-drive-list", "List Feishu Drive folder", "studio-feishu-actions", "feishu_drive", "list", "none"),
+  action("feishu-drive-info", "Read Feishu Drive file info", "studio-feishu-actions", "feishu_drive", "info", "none"),
+  action("feishu-drive-list-comments", "List Feishu Drive comments", "studio-feishu-actions", "feishu_drive", "list_comments", "none"),
+  action("feishu-drive-list-comment-replies", "List Feishu Drive comment replies", "studio-feishu-actions", "feishu_drive", "list_comment_replies", "none"),
+  action("feishu-drive-create-folder", "Create Feishu Drive folder", "studio-feishu-actions", "feishu_drive", "create_folder", "required"),
+  action("feishu-drive-move", "Move Feishu Drive file", "studio-feishu-actions", "feishu_drive", "move", "required"),
+  action("feishu-drive-delete", "Delete Feishu Drive file", "studio-feishu-actions", "feishu_drive", "delete", "required"),
+  action("feishu-drive-add-comment", "Add Feishu Drive comment", "studio-feishu-actions", "feishu_drive", "add_comment", "required"),
+  action("feishu-drive-reply-comment", "Reply Feishu Drive comment", "studio-feishu-actions", "feishu_drive", "reply_comment", "required"),
+];
+
+const feishuPermActions: ChannelConnectorCommandSurfaceSkillAction[] = [
+  action("feishu-perm-list", "List Feishu collaborators", "studio-feishu-actions", "feishu_perm", "list", "none"),
+  action("feishu-perm-add", "Add Feishu collaborator", "studio-feishu-actions", "feishu_perm", "add", "required"),
+  action("feishu-perm-remove", "Remove Feishu collaborator", "studio-feishu-actions", "feishu_perm", "remove", "required"),
+];
+
+const feishuWikiActions: ChannelConnectorCommandSurfaceSkillAction[] = [
+  action("feishu-wiki-spaces", "List Feishu wiki spaces", "studio-feishu-actions", "feishu_wiki", "spaces", "none"),
+  action("feishu-wiki-nodes", "List Feishu wiki nodes", "studio-feishu-actions", "feishu_wiki", "nodes", "none"),
+  action("feishu-wiki-get", "Get Feishu wiki node", "studio-feishu-actions", "feishu_wiki", "get", "none"),
+  action("feishu-wiki-search", "Feishu wiki search fallback", "studio-feishu-actions", "feishu_wiki", "search", "none"),
+  action("feishu-wiki-create", "Create Feishu wiki node", "studio-feishu-actions", "feishu_wiki", "create", "required"),
+  action("feishu-wiki-move", "Move Feishu wiki node", "studio-feishu-actions", "feishu_wiki", "move", "required"),
+  action("feishu-wiki-rename", "Rename Feishu wiki node", "studio-feishu-actions", "feishu_wiki", "rename", "required"),
+];
 
 export const STUDIO_CHANNEL_CONNECTOR_PLATFORM_SKILLS: StudioChannelConnectorPlatformSkillDefinition[] = [
   {
     platform: "octo",
     name: "octo-bot-api",
+    runtimeActions: [...channelMessageActions, ...octoManagementActions],
     markdown: `---
 name: octo-bot-api
 description: Octo runtime messaging, history, files, group/thread management, and multi-bot collaboration through Studio Channel Connectors.
@@ -59,6 +182,7 @@ In Octo groups, other bots may be Studio agents or external products. Ask humans
 Studio provides Octo management commands to users and Agent-native context:
 
 - \`/octo groups\`
+- \`/octo history [limit]\`
 - \`/octo info [group_no]\`
 - \`/octo members [group_no]\`
 - \`/octo search <keyword>\`
@@ -90,6 +214,7 @@ Never expose bot tokens or platform credentials. Do not install plugins or tell 
   {
     platform: "feishu",
     name: "feishu-messaging",
+    runtimeActions: [...channelMessageActions, ...feishuChannelActions],
     markdown: `---
 name: feishu-messaging
 description: Feishu/Lark IM runtime messages, Markdown replies, native mentions, files, group context, and member coordination through Studio Channel Connectors.
@@ -137,6 +262,25 @@ Studio records real-time Feishu group messages that do not mention the bot as ti
 
 Feishu menu cards, progress cards, command cards, permission approval buttons, final Markdown cards, and fallback text are rendered by Studio. Agents should provide concise content and manifests; they should not construct Feishu card JSON unless the user explicitly asks for card design content.
 
+## Channel Actions
+
+For OpenClaw-compatible Feishu channel operations, use \`studio-feishu-actions\` with \`tool:"feishu_channel"\`. Studio executes read-only actions immediately and asks for Studio IM approval before mutating actions.
+
+Read-only actions: \`read\`, \`list-pins\`, \`channel-info\`, \`member-info\`, \`channel-list\`, \`reactions\`.
+
+Mutation actions: \`send\`, \`thread-reply\`, \`edit\`, \`pin\`, \`unpin\`, \`react\`.
+
+\`\`\`studio-feishu-actions
+[
+  {"tool":"feishu_channel","action":"channel-info","chat_id":"oc_xxx","include_members":true},
+  {"tool":"feishu_channel","action":"member-info","chat_id":"oc_xxx","page_size":50},
+  {"tool":"feishu_channel","action":"read","message_id":"om_xxx"},
+  {"tool":"feishu_channel","action":"send","to":"chat:oc_xxx","format":"markdown","text":"**status** ok"},
+  {"tool":"feishu_channel","action":"thread-reply","message_id":"om_xxx","text":"thread reply"},
+  {"tool":"feishu_channel","action":"react","message_id":"om_xxx","emoji":"THUMBSUP"}
+]
+\`\`\`
+
 ## Runtime Safety
 
 Never expose App ID, App Secret, tenant tokens, message keys, file keys, or raw platform credentials. Do not install plugins or instruct the user to configure OpenClaw for this Studio channel.`,
@@ -144,6 +288,7 @@ Never expose App ID, App Secret, tenant tokens, message keys, file keys, or raw 
   {
     platform: "feishu",
     name: "feishu-doc",
+    runtimeActions: feishuDocActions,
     markdown: `---
 name: feishu-doc
 description: Feishu document action catalog for Studio-managed channel skills. Activate for Feishu docs/docx links, document read/write, tables, images, and attachments.
@@ -161,7 +306,7 @@ From \`https://xxx.feishu.cn/docx/ABC123def\`, use doc token \`ABC123def\`.
 
 Supported now without approval: \`read\`, \`list_blocks\`, \`get_block\`.
 
-Supported now after Studio IM approval: \`create\`, \`write\`, \`append\`, \`insert\`, \`update_block\`, \`delete_block\`, \`create_table\`, \`write_table_cells\`, \`create_table_with_values\`, \`upload_image\`, \`upload_file\`.
+Supported now after Studio IM approval: \`create\`, \`write\`, \`append\`, \`insert\`, \`update_block\`, \`delete_block\`, \`create_table\`, \`write_table_cells\`, \`create_table_with_values\`, \`insert_table_row\`, \`insert_table_column\`, \`delete_table_rows\`, \`delete_table_columns\`, \`merge_table_cells\`, \`color_text\`, \`upload_image\`, \`upload_file\`.
 
 Use this manifest shape:
 
@@ -173,6 +318,7 @@ Use this manifest shape:
   {"tool":"feishu_doc","action":"create","title":"New Document","folder_token":"fldcnXXX"},
   {"tool":"feishu_doc","action":"append","doc_token":"ABC123def","content":"## Update\\n\\nMarkdown content"},
   {"tool":"feishu_doc","action":"create_table_with_values","doc_token":"ABC123def","row_size":2,"column_size":2,"values":[["A1","B1"],["A2","B2"]]},
+  {"tool":"feishu_doc","action":"color_text","doc_token":"ABC123def","block_id":"doxcnXXX","content":"Status [green bold]OK[/green]"},
   {"tool":"feishu_doc","action":"upload_image","doc_token":"ABC123def","file_path":"/abs/path/image.png","filename":"image.png"},
   {"tool":"feishu_doc","action":"upload_file","doc_token":"ABC123def","file_path":"/abs/path/report.pdf","filename":"report.pdf"}
 ]
@@ -193,6 +339,12 @@ Document content actions use Feishu markdown-to-block conversion plus Docx desce
 - Create Table: \`{"action":"create_table","doc_token":"ABC123def","row_size":2,"column_size":2}\`
 - Write Table Cells: \`{"action":"write_table_cells","doc_token":"ABC123def","table_block_id":"doxcnTABLE","values":[["A1","B1"]]}\`
 - Create Table With Values: \`{"action":"create_table_with_values","doc_token":"ABC123def","row_size":2,"column_size":2,"values":[["A1","B1"],["A2","B2"]]}\`
+- Insert Table Row: \`{"action":"insert_table_row","doc_token":"ABC123def","table_block_id":"doxcnTABLE","row_index":1}\`
+- Insert Table Column: \`{"action":"insert_table_column","doc_token":"ABC123def","table_block_id":"doxcnTABLE","column_index":1}\`
+- Delete Table Rows: \`{"action":"delete_table_rows","doc_token":"ABC123def","table_block_id":"doxcnTABLE","row_start":1,"row_count":1}\`
+- Delete Table Columns: \`{"action":"delete_table_columns","doc_token":"ABC123def","table_block_id":"doxcnTABLE","column_start":1,"column_count":1}\`
+- Merge Table Cells: \`{"action":"merge_table_cells","doc_token":"ABC123def","table_block_id":"doxcnTABLE","row_start":0,"row_end":1,"column_start":0,"column_end":2}\`
+- Color Text: \`{"action":"color_text","doc_token":"ABC123def","block_id":"doxcnXXX","content":"Revenue [green bold]+15%[/green]"}\`
 
 Media actions use Feishu Drive \`upload_all\`; keep each upload at or below 20MB unless Studio later enables chunked upload:
 
@@ -206,6 +358,7 @@ When a requested media upload is larger than Feishu \`upload_all\` supports, cre
   {
     platform: "feishu",
     name: "feishu-drive",
+    runtimeActions: feishuDriveActions,
     markdown: `---
 name: feishu-drive
 description: Feishu Drive action catalog for Studio-managed channel skills. Activate for cloud space, folders, files, and drive management.
@@ -221,9 +374,9 @@ From \`https://xxx.feishu.cn/drive/folder/ABC123\`, use folder token \`ABC123\`.
 
 ## Actions
 
-Supported now without approval: \`list\`, \`info\`.
+Supported now without approval: \`list\`, \`info\`, \`list_comments\`, \`list_comment_replies\`.
 
-Supported now after Studio IM approval: \`create_folder\`, \`move\`, \`delete\`.
+Supported now after Studio IM approval: \`create_folder\`, \`move\`, \`delete\`, \`add_comment\`, \`reply_comment\`.
 
 Use this manifest shape:
 
@@ -231,6 +384,8 @@ Use this manifest shape:
 [
   {"tool":"feishu_drive","action":"list","folder_token":"fldcnXXX"},
   {"tool":"feishu_drive","action":"info","file_token":"ABC123","folder_token":"fldcnXXX"},
+  {"tool":"feishu_drive","action":"list_comments","file_token":"ABC123","file_type":"docx"},
+  {"tool":"feishu_drive","action":"reply_comment","file_token":"ABC123","file_type":"docx","comment_id":"comment_xxx","content":"收到"},
   {"tool":"feishu_drive","action":"create_folder","name":"New Folder","folder_token":"fldcnXXX"},
   {"tool":"feishu_drive","action":"move","file_token":"ABC123","type":"docx","folder_token":"fldcnXXX"},
   {"tool":"feishu_drive","action":"delete","file_token":"ABC123","type":"docx"}
@@ -241,6 +396,10 @@ Full action catalog mirrors the OpenClaw Feishu extension contract:
 
 - List Folder Contents: \`{"action":"list","folder_token":"fldcnXXX"}\`
 - Get File Info: \`{"action":"info","file_token":"ABC123","type":"docx"}\`
+- List Comments: \`{"action":"list_comments","file_token":"ABC123","file_type":"docx"}\`
+- List Comment Replies: \`{"action":"list_comment_replies","file_token":"ABC123","file_type":"docx","comment_id":"comment_xxx"}\`
+- Add Comment: \`{"action":"add_comment","file_token":"ABC123","file_type":"docx","content":"Comment text","block_id":"optional_block"}\`
+- Reply Comment: \`{"action":"reply_comment","file_token":"ABC123","file_type":"docx","comment_id":"comment_xxx","content":"Reply text"}\`
 - Create Folder: \`{"action":"create_folder","name":"New Folder","folder_token":"fldcnXXX"}\`
 - Move File: \`{"action":"move","file_token":"ABC123","type":"docx","folder_token":"fldcnXXX"}\`
 - Delete File: \`{"action":"delete","file_token":"ABC123","type":"docx"}\`
@@ -256,6 +415,7 @@ For unsupported Drive actions, create or collect the requested local files and s
   {
     platform: "feishu",
     name: "feishu-perm",
+    runtimeActions: feishuPermActions,
     markdown: `---
 name: feishu-perm
 description: Feishu permission action catalog for Studio-managed channel skills. Activate for sharing, collaborators, and document/file permissions.
@@ -306,6 +466,7 @@ Use \`studio-channel-messages\` to ask a Feishu user/admin to grant access, or s
   {
     platform: "feishu",
     name: "feishu-wiki",
+    runtimeActions: feishuWikiActions,
     markdown: `---
 name: feishu-wiki
 description: Feishu Wiki action catalog for Studio-managed channel skills. Activate for knowledge base, wiki links, spaces, nodes, and wiki-doc workflows.

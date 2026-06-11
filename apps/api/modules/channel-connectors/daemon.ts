@@ -71,6 +71,7 @@ import {
   type ChannelConnectorCommandProgressAck,
   type ChannelConnectorCommandProgressEvent,
   type ChannelConnectorGatewayModel,
+  type ChannelConnectorOctoManagementAction,
   type ChannelConnectorOctoManagementRequest,
   type ChannelConnectorOctoManagementResult,
   type ChannelConnectorPermissionResponseAction,
@@ -161,6 +162,10 @@ import {
   extractChannelConnectorFeishuActions,
   type ChannelConnectorFeishuActionRequest,
 } from "./feishu-actions.js";
+import {
+  extractChannelConnectorOctoActions,
+  type ChannelConnectorOctoActionRequest,
+} from "./octo-actions.js";
 import {
   loadFeishuThreadBootstrapContext,
 } from "./feishu-thread-bootstrap.js";
@@ -2697,14 +2702,17 @@ function prepareAgentOutboundReply(input: {
   files: ChannelConnectorResolvedOutboundFile[];
   messages: ChannelConnectorOutboundMessageRequest[];
   feishuActions: ChannelConnectorFeishuActionRequest[];
+  octoActions: ChannelConnectorOctoActionRequest[];
   errors: string[];
   declaredCount: number;
   declaredMessageCount: number;
   declaredFeishuActionCount: number;
+  declaredOctoActionCount: number;
   maxBytes: number;
 } {
   const extractedFeishuActions = extractChannelConnectorFeishuActions(input.replyText || "");
-  const extractedMessages = extractChannelConnectorOutboundMessages(extractedFeishuActions.replyText);
+  const extractedOctoActions = extractChannelConnectorOctoActions(extractedFeishuActions.replyText);
+  const extractedMessages = extractChannelConnectorOutboundMessages(extractedOctoActions.replyText);
   const extracted = extractChannelConnectorOutboundFiles(extractedMessages.replyText);
   const maxBytes = outboundFileMaxBytes(input.binding);
   const resolved = resolveChannelConnectorOutboundFiles({
@@ -2719,11 +2727,16 @@ function prepareAgentOutboundReply(input: {
     files: resolved.files,
     messages: extractedMessages.messages,
     feishuActions: input.binding.platform === "feishu" ? extractedFeishuActions.actions : [],
+    octoActions: input.binding.platform === "octo" ? extractedOctoActions.actions : [],
     errors: [
       ...extractedFeishuActions.errors,
       ...(input.binding.platform === "feishu" || extractedFeishuActions.actions.length === 0
         ? []
         : ["studio-feishu-actions can only run on Feishu bindings."]),
+      ...extractedOctoActions.errors,
+      ...(input.binding.platform === "octo" || extractedOctoActions.actions.length === 0
+        ? []
+        : ["studio-octo-actions can only run on Octo bindings."]),
       ...extractedMessages.errors,
       ...extracted.errors,
       ...resolved.errors,
@@ -2731,6 +2744,7 @@ function prepareAgentOutboundReply(input: {
     declaredCount: extracted.files.length,
     declaredMessageCount: extractedMessages.messages.length,
     declaredFeishuActionCount: extractedFeishuActions.actions.length,
+    declaredOctoActionCount: extractedOctoActions.actions.length,
     maxBytes,
   };
 }
@@ -2740,6 +2754,7 @@ function outboundFilesHistoryText(input: {
   files: ChannelConnectorResolvedOutboundFile[];
   messages: ChannelConnectorOutboundMessageRequest[];
   feishuActions?: ChannelConnectorFeishuActionRequest[];
+  octoActions?: ChannelConnectorOctoActionRequest[];
   errors: string[];
 }): string {
   const parts = [input.replyText];
@@ -2751,6 +2766,9 @@ function outboundFilesHistoryText(input: {
   }
   if (input.feishuActions?.length) {
     parts.push(`[Studio Feishu actions: ${input.feishuActions.map((action) => `${action.tool}.${action.action}`).join(", ")}]`);
+  }
+  if (input.octoActions?.length) {
+    parts.push(`[Studio Octo actions: ${input.octoActions.map((action) => `${action.tool}.${action.action}`).join(", ")}]`);
   }
   if (input.errors.length) {
     parts.push(`[Studio outbound errors: ${input.errors.join("; ")}]`);
@@ -2774,6 +2792,114 @@ function feishuActionResultsReply(results: ChannelConnectorFeishuActionResult[])
   return [
     "Feishu action results:",
     ...results.map(summarizeFeishuActionResult),
+  ].join("\n\n");
+}
+
+const OCTO_MUTATING_ACTIONS = new Set<ChannelConnectorOctoManagementAction>([
+  "create-group",
+  "update-group",
+  "add-members",
+  "remove-members",
+  "create-thread",
+  "delete-thread",
+  "join-thread",
+  "leave-thread",
+  "group-md-update",
+  "thread-md-update",
+  "voice-context-update",
+  "voice-context-delete",
+]);
+
+function octoChannelTypeFromValue(value: unknown): 1 | 2 | 5 | null {
+  if (typeof value === "number" && (value === 1 || value === 2 || value === 5)) return value;
+  const normalized = normalizeString(value).toLowerCase();
+  if (!normalized) return null;
+  if (normalized === "1" || normalized === "dm" || normalized === "direct" || normalized === "private") return 1;
+  if (normalized === "2" || normalized === "group") return 2;
+  if (normalized === "5" || normalized === "thread" || normalized === "topic") return 5;
+  return null;
+}
+
+function numberFromParams(params: Record<string, unknown>, keys: string[]): number | null {
+  for (const key of keys) {
+    const value = params[key];
+    if (typeof value === "number" && Number.isFinite(value)) return Math.floor(value);
+    const normalized = normalizeString(value);
+    if (!normalized) continue;
+    const parsed = Number(normalized);
+    if (Number.isFinite(parsed)) return Math.floor(parsed);
+  }
+  return null;
+}
+
+function stringListFromValue(value: unknown): string[] {
+  if (Array.isArray(value)) return uniqueStrings(value.map(normalizeString).filter(Boolean));
+  const normalized = normalizeString(value);
+  if (!normalized) return [];
+  return uniqueStrings(normalized.split(/[,\s]+/).map((item) => item.trim()).filter(Boolean));
+}
+
+function octoActionManagementRequest(input: {
+  action: ChannelConnectorOctoActionRequest;
+  bindingId: string;
+  sessionKey: string;
+  message: ChannelConnectorOctoInboundMessage;
+}): ChannelConnectorOctoManagementRequest {
+  const params = input.action.params || {};
+  const groupNo = normalizeString(
+    params.groupNo
+      || params.group_no
+      || params.groupId
+      || params.group_id
+      || params.targetGroup
+      || params.target_group,
+  ) || (isOctoGroupChannel(input.message.channelType) ? octoParentGroupNo(input.message.channelId) : "");
+  const shortId = normalizeString(
+    params.shortId
+      || params.short_id
+      || params.threadId
+      || params.thread_id,
+  );
+  const channelType = octoChannelTypeFromValue(params.channelType ?? params.channel_type) || input.message.channelType;
+  const channelId = normalizeString(
+    params.channelId
+      || params.channel_id
+      || params.channel
+      || params.groupNo
+      || params.group_no,
+  ) || octoSyncChannelId(input.message);
+  const members = stringListFromValue(params.members ?? params.memberIds ?? params.member_ids ?? params.uids);
+  return {
+    action: input.action.action,
+    bindingId: input.bindingId,
+    sessionKey: input.sessionKey,
+    message: input.message,
+    groupNo,
+    shortId,
+    channelId,
+    channelType,
+    endMessageSeq: numberFromParams(params, ["endMessageSeq", "end_message_seq"]) || null,
+    keyword: normalizeString(params.keyword || params.query || params.name) || null,
+    name: normalizeString(params.name || params.threadName || params.thread_name || params.title) || null,
+    notice: normalizeString(params.notice || params.announcement) || null,
+    content: normalizeString(params.content || params.markdown || params.text || params.message) || null,
+    members,
+    creator: normalizeString(params.creator || params.creatorUid || params.creator_uid) || input.message.fromUid || null,
+    limit: numberFromParams(params, ["limit", "page_size", "pageSize"]) || null,
+  };
+}
+
+function summarizeOctoActionResult(action: ChannelConnectorOctoActionRequest, result: ChannelConnectorOctoManagementResult): string {
+  return result.ok
+    ? `OK ${action.tool}.${action.action}\n${result.replyText}`
+    : `FAIL ${action.tool}.${action.action}: ${result.error || result.replyText || "unknown error"}`;
+}
+
+function octoActionResultsReply(results: Array<{ action: ChannelConnectorOctoActionRequest; result: ChannelConnectorOctoManagementResult }>): string {
+  if (!results.length) return "";
+  return [
+    "Octo action results:",
+    ...results.map((item) => summarizeOctoActionResult(item.action, item.result)),
   ].join("\n\n");
 }
 
@@ -8265,6 +8391,7 @@ async function dispatchOctoMessage(input: {
       permissionStatus?: ChannelDaemonPendingPermissionState | null;
       requestId?: string | null;
       toolName?: string | null;
+      action?: string | null;
     },
   ): Promise<void> => {
     if (!transport) return Promise.resolve();
@@ -8441,9 +8568,9 @@ async function dispatchOctoMessage(input: {
     ingressToAgentStartMs: elapsedMsSince(ingressAtMs, runStartedAtMs),
   });
 
-	  const runtimeDir = agentRuntimeDir(config, turnProject, binding);
-	  if ((agentMessage.attachments || []).length > 0 && metadataBoolean(binding, [
-	    "stageOctoUrlAttachments",
+    const runtimeDir = agentRuntimeDir(config, turnProject, binding);
+    if ((agentMessage.attachments || []).length > 0 && metadataBoolean(binding, [
+      "stageOctoUrlAttachments",
     "stage_octo_url_attachments",
     "stageUrlAttachments",
     "stage_url_attachments",
@@ -8453,16 +8580,16 @@ async function dispatchOctoMessage(input: {
       "attachment_max_bytes",
       "maxAttachmentBytes",
       "max_attachment_bytes",
-	      "octoAttachmentMaxBytes",
-	      "octo_attachment_max_bytes",
-	    ], DEFAULT_CHANNEL_CONNECTOR_ATTACHMENT_MAX_BYTES);
-	    const staged = await stageOctoMessageAttachments({
-	      transport,
-	      message: agentMessage,
-	      rootDir: runtimeDir,
-	      maxBytes: attachmentMaxBytes,
-	      allowPrivateNetwork: metadataBoolean(binding, [
-	        "allowPrivateAttachmentUrls",
+        "octoAttachmentMaxBytes",
+        "octo_attachment_max_bytes",
+      ], DEFAULT_CHANNEL_CONNECTOR_ATTACHMENT_MAX_BYTES);
+      const staged = await stageOctoMessageAttachments({
+        transport,
+        message: agentMessage,
+        rootDir: runtimeDir,
+        maxBytes: attachmentMaxBytes,
+        allowPrivateNetwork: metadataBoolean(binding, [
+          "allowPrivateAttachmentUrls",
         "allow_private_attachment_urls",
         "allowOctoPrivateAttachmentUrls",
         "allow_octo_private_attachment_urls",
@@ -8477,16 +8604,16 @@ async function dispatchOctoMessage(input: {
       sessionKey,
       messageId: message.messageId,
       attachmentMaxBytes: describeByteSizeLimit(attachmentMaxBytes),
-	      attachmentCount: (staged.message.attachments || []).length,
-	      attachmentKinds: (staged.message.attachments || []).map((attachment) => attachment.kind),
-	      visualAttachmentCount: countChannelConnectorVisualAttachments(staged.message),
-	      stagedCount: staged.stagedCount,
-	      failedCount: staged.failedCount,
-	      downloadUrlAttemptCount: staged.downloadUrlAttemptCount,
-	      downloadUrlResolvedCount: staged.downloadUrlResolvedCount,
-	      localPaths: staged.localPaths,
-	    });
-	  }
+        attachmentCount: (staged.message.attachments || []).length,
+        attachmentKinds: (staged.message.attachments || []).map((attachment) => attachment.kind),
+        visualAttachmentCount: countChannelConnectorVisualAttachments(staged.message),
+        stagedCount: staged.stagedCount,
+        failedCount: staged.failedCount,
+        downloadUrlAttemptCount: staged.downloadUrlAttemptCount,
+        downloadUrlResolvedCount: staged.downloadUrlResolvedCount,
+        localPaths: staged.localPaths,
+      });
+    }
 
   const stopTypingPulse = startOctoTypingPulse(transport, message);
   const channelSkillContext = nativeCommand
@@ -8653,10 +8780,12 @@ async function dispatchOctoMessage(input: {
       files: [],
       messages: [],
       feishuActions: [],
+      octoActions: [],
       errors: [],
       declaredCount: 0,
       declaredMessageCount: 0,
       declaredFeishuActionCount: 0,
+      declaredOctoActionCount: 0,
       maxBytes: outboundFileMaxBytes(binding),
     };
   appendChannelConnectorConversationHistory(conversationHistoryPath(config), {
@@ -8746,8 +8875,83 @@ async function dispatchOctoMessage(input: {
   let outboundFileRequestCount = 0;
   let outboundMessageSentCount = 0;
   let outboundMessageRequestCount = 0;
+  let octoActionResults: Array<{ action: ChannelConnectorOctoActionRequest; result: ChannelConnectorOctoManagementResult }> = [];
+  let octoActionSucceededCount = 0;
+  let octoActionErrorCount = 0;
   let outboundFileErrors = [...outboundReply.errors];
-  const outboundReplyText = appendOutboundFileErrors(outboundReply.replyText, outboundReply.errors);
+  if (transport && agent.ok === true && outboundReply.octoActions.length > 0) {
+    for (const [index, action] of outboundReply.octoActions.entries()) {
+      let allowMutation = false;
+      if (OCTO_MUTATING_ACTIONS.has(action.action)) {
+        const actionRunId = `${activeRunId}:octo-action:${index}`;
+        const permissionResolver = createPermissionResolver({
+          registry: channelPendingPermissions,
+          runId: actionRunId,
+          bindingId: binding.id,
+          sessionKey,
+          messageId: message.messageId,
+          agent: turnProject.agent,
+          model: turnProject.model,
+          onStateChange: (change) => {
+            if (isAskUserQuestionRequest(change.request)) return;
+            queueOctoPermissionStateReply(change);
+          },
+          onPrompt: async (prompt, request) => {
+            if (!isAskUserQuestionRequest(request)) octoPermissionPending = true;
+            await queueOctoTextProgressReply(renderPlainPermissionPrompt(request, prompt), {
+              eventKind: "agent.octo_action.permission.prompt",
+              action: action.action,
+            });
+          },
+        });
+        const decision = await permissionResolver({
+          requestId: `octo-action-${index + 1}`,
+          subtype: "octo_channel_action",
+          toolName: "OctoChannelAction",
+          input: {
+            tool: action.tool,
+            action: action.action,
+            params: action.params,
+          },
+        }).finally(() => {
+          channelPermissionApproveAllRunIds.delete(actionRunId);
+        });
+        allowMutation = decision.behavior === "allow";
+        if (!allowMutation) {
+          const result: ChannelConnectorOctoManagementResult = {
+            ok: false,
+            replyText: decision.behavior === "deny" && decision.message
+              ? decision.message
+              : "User denied this Octo channel action.",
+            error: decision.behavior === "deny" && decision.message
+              ? decision.message
+              : "User denied this Octo channel action.",
+          };
+          octoActionResults.push({ action, result });
+          octoActionErrorCount += 1;
+          continue;
+        }
+      }
+      if (OCTO_MUTATING_ACTIONS.has(action.action) && !allowMutation) continue;
+      const result = await runOctoManagementCommand(transport, octoActionManagementRequest({
+        action,
+        bindingId: binding.id,
+        sessionKey,
+        message,
+      }));
+      octoActionResults.push({ action, result });
+      if (result.ok) octoActionSucceededCount += 1;
+      else octoActionErrorCount += 1;
+    }
+  }
+  const octoActionErrors = octoActionResults
+    .filter((item) => !item.result.ok)
+    .map((item) => `${item.action.tool}.${item.action.action}: ${item.result.error || item.result.replyText || "unknown error"}`);
+  outboundFileErrors = [...outboundFileErrors, ...octoActionErrors];
+  const outboundReplyText = appendOutboundFileErrors(
+    [outboundReply.replyText, octoActionResultsReply(octoActionResults)].filter(Boolean).join("\n\n"),
+    outboundReply.errors,
+  );
   if (transport && agent.ok === true && outboundReplyText) {
     const preparedReply = prepareChannelConnectorGroupBufferedReply({
       filePath: replyBufferPath(config),
@@ -8877,6 +9081,11 @@ async function dispatchOctoMessage(input: {
     outboundMessagesDeclared: outboundReply.declaredMessageCount,
     outboundMessagesSent: outboundMessageSentCount,
     outboundMessageRequestCount,
+    octoActionsDeclared: outboundReply.declaredOctoActionCount,
+    octoActionsExecuted: octoActionResults.length,
+    octoActionsSucceeded: octoActionSucceededCount,
+    octoActionsFailed: octoActionErrorCount,
+    octoActionErrors,
     outboundFileErrors,
     ingressAt,
     startedAt: runStartedAt,
@@ -9930,10 +10139,12 @@ async function dispatchFeishuParsedEvent(input: {
       files: [],
       messages: [],
       feishuActions: [],
+      octoActions: [],
       errors: [],
       declaredCount: 0,
       declaredMessageCount: 0,
       declaredFeishuActionCount: 0,
+      declaredOctoActionCount: 0,
       maxBytes: outboundFileMaxBytes(binding),
     };
   appendChannelConnectorConversationHistory(conversationHistoryPath(config), {

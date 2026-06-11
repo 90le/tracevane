@@ -74,8 +74,9 @@ interface FeishuTenantTokenResult {
 }
 
 type FeishuDocxBlockRecord = Record<string, unknown>;
+type FeishuJsonMethod = "GET" | "POST" | "PATCH" | "DELETE" | "PUT";
 type FeishuActionCall = (
-  method: "GET" | "POST" | "PATCH" | "DELETE",
+  method: FeishuJsonMethod,
   pathValue: string,
   payload?: unknown,
 ) => Promise<Record<string, unknown>>;
@@ -328,7 +329,7 @@ function cachedToken(cachePath: string | null | undefined, config: ChannelConnec
 async function feishuJsonRequest(
   config: ChannelConnectorFeishuTransportConfig,
   input: {
-    method: "GET" | "POST" | "PATCH" | "DELETE";
+    method: FeishuJsonMethod;
     path: string;
     payload?: unknown;
     token?: string | null;
@@ -1248,6 +1249,28 @@ function requireParamNumber(params: Record<string, unknown>, keys: string[], lab
   throw new Error(`${label} is required.`);
 }
 
+function optionalParamNumber(params: Record<string, unknown>, keys: string[]): number | undefined {
+  for (const key of keys) {
+    const raw = params[key];
+    if (raw === undefined || raw === null || raw === "") continue;
+    const value = typeof raw === "number" ? raw : Number(normalizeString(raw));
+    if (Number.isFinite(value)) return value;
+  }
+  return undefined;
+}
+
+function optionalParamBoolean(params: Record<string, unknown>, keys: string[]): boolean | undefined {
+  for (const key of keys) {
+    const raw = params[key];
+    if (typeof raw === "boolean") return raw;
+    if (typeof raw === "number") return raw !== 0;
+    const normalized = normalizeString(raw).toLowerCase();
+    if (["true", "yes", "1", "on", "enabled"].includes(normalized)) return true;
+    if (["false", "no", "0", "off", "disabled"].includes(normalized)) return false;
+  }
+  return undefined;
+}
+
 function optionalParamNumberArray(params: Record<string, unknown>, keys: string[]): number[] | undefined {
   for (const key of keys) {
     const raw = params[key];
@@ -1256,6 +1279,129 @@ function optionalParamNumberArray(params: Record<string, unknown>, keys: string[
     if (values.length > 0) return values;
   }
   return undefined;
+}
+
+function optionalPositiveInteger(params: Record<string, unknown>, keys: string[], fallback: number, max: number): number {
+  const value = optionalParamNumber(params, keys);
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(1, Math.min(max, Math.floor(value as number)));
+}
+
+function normalizeFeishuTargetPrefix(value: string): string {
+  const normalized = normalizeString(value);
+  const withoutProvider = normalized.replace(/^(feishu|lark):/i, "");
+  return withoutProvider.replace(/^(chat|group|channel|open_id|user_id|dm|user):/i, "");
+}
+
+function feishuReceiveTargetFromParams(params: Record<string, unknown>): {
+  receiveId: string;
+  receiveIdType: FeishuReceiveIdType;
+} {
+  const explicitReceiveId = paramString(params, ["receive_id", "receiveId"]);
+  const explicitReceiveIdType = paramString(params, ["receive_id_type", "receiveIdType"]);
+  if (explicitReceiveId) {
+    const receiveIdType = explicitReceiveIdType === "open_id" || explicitReceiveIdType === "user_id" ? explicitReceiveIdType : "chat_id";
+    return { receiveId: explicitReceiveId, receiveIdType };
+  }
+
+  const raw = paramString(params, ["to", "target", "chat_id", "chatId", "channel_id", "channelId", "open_id", "openId", "user_id", "userId"]);
+  if (!raw) throw new Error("Feishu channel target is required.");
+  const lower = raw.toLowerCase();
+  if (lower.startsWith("open_id:")) return { receiveId: normalizeFeishuTargetPrefix(raw), receiveIdType: "open_id" };
+  if (lower.startsWith("user_id:") || lower.startsWith("user:")) return { receiveId: normalizeFeishuTargetPrefix(raw), receiveIdType: "user_id" };
+  if (lower.startsWith("dm:")) {
+    const receiveId = normalizeFeishuTargetPrefix(raw);
+    return { receiveId, receiveIdType: receiveId.startsWith("u_") ? "user_id" : "open_id" };
+  }
+  if (params.open_id || params.openId) return { receiveId: normalizeFeishuTargetPrefix(raw), receiveIdType: "open_id" };
+  if (params.user_id || params.userId) return { receiveId: normalizeFeishuTargetPrefix(raw), receiveIdType: "user_id" };
+  return { receiveId: normalizeFeishuTargetPrefix(raw), receiveIdType: "chat_id" };
+}
+
+function feishuChatIdFromParams(params: Record<string, unknown>): string {
+  const raw = paramString(params, ["chat_id", "chatId", "channel_id", "channelId", "to", "target"]);
+  if (!raw) throw new Error("chat_id is required.");
+  if (/^(dm|user|open_id|user_id):/i.test(raw)) throw new Error("Feishu chat action requires a chat/group target.");
+  return normalizeFeishuTargetPrefix(raw);
+}
+
+function feishuMessageIdFromParams(params: Record<string, unknown>): string {
+  return requireParamString(params, ["message_id", "messageId", "reply_to", "replyTo"], "message_id");
+}
+
+function feishuMemberIdTypeFromParams(params: Record<string, unknown>): "open_id" | "user_id" | "union_id" {
+  const explicit = paramString(params, ["member_id_type", "memberIdType", "user_id_type", "userIdType"]);
+  if (explicit === "user_id" || explicit === "union_id") return explicit;
+  if (paramString(params, ["user_id", "userId"]) && !paramString(params, ["open_id", "openId", "union_id", "unionId"])) return "user_id";
+  if (paramString(params, ["union_id", "unionId"]) && !paramString(params, ["open_id", "openId"])) return "union_id";
+  return "open_id";
+}
+
+function feishuMemberIdFromParams(params: Record<string, unknown>): string {
+  return paramString(params, [
+    "member_id",
+    "memberId",
+    "open_id",
+    "openId",
+    "user_id",
+    "userId",
+    "union_id",
+    "unionId",
+  ]);
+}
+
+function normalizedFeishuChannelAction(value: string): string {
+  return normalizedAction(value).replace(/_/g, "-");
+}
+
+function feishuMessagePayload(params: Record<string, unknown>): {
+  msg_type: "text" | "post" | "interactive";
+  content: string;
+} {
+  const card = recordFrom(params.card);
+  if (Object.keys(card).length) {
+    return {
+      msg_type: "interactive",
+      content: JSON.stringify(card),
+    };
+  }
+  const text = requireParamString(params, ["text", "message", "content"], "text");
+  const format = paramString(params, ["format", "message_format", "messageFormat", "msg_type", "msgType"]).toLowerCase();
+  if (["markdown", "md", "post", "rich", "rich_text", "rich-text"].includes(format)) {
+    return {
+      msg_type: "post",
+      content: JSON.stringify({ zh_cn: { content: [[{ tag: "md", text }]] } }),
+    };
+  }
+  return {
+    msg_type: "text",
+    content: JSON.stringify({ text }),
+  };
+}
+
+function filterRecordsByQuery(items: unknown[], query: string, limit: number): Record<string, unknown>[] {
+  const q = query.trim().toLowerCase();
+  const output: Record<string, unknown>[] = [];
+  for (const item of items) {
+    const record = recordFrom(item);
+    const haystack = JSON.stringify(record).toLowerCase();
+    if (!q || haystack.includes(q)) output.push(record);
+    if (output.length >= limit) break;
+  }
+  return output;
+}
+
+function normalizeFeishuReaction(value: unknown): Record<string, unknown> {
+  const record = recordFrom(value);
+  const reactionType = recordFrom(record.reaction_type);
+  const operator = recordFrom(record.operator);
+  const operatorId = recordFrom(record.operator_id);
+  return {
+    reaction_id: normalizeString(record.reaction_id) || null,
+    emoji_type: normalizeString(reactionType.emoji_type) || normalizeString(record.reaction_type) || null,
+    operator_type: normalizeString(operator.operator_type) || normalizeString(record.operator_type) || null,
+    operator_id: normalizeString(operatorId.open_id) || normalizeString(operatorId.user_id) || normalizeString(operatorId.union_id) || normalizeString(record.operator_id) || null,
+  };
 }
 
 function requireParamStringMatrix(params: Record<string, unknown>, keys: string[], label: string): string[][] {
@@ -1270,6 +1416,108 @@ function requireParamStringMatrix(params: Record<string, unknown>, keys: string[
   throw new Error(`${label} must be a non-empty 2D array.`);
 }
 
+const FEISHU_TEXT_COLOR: Record<string, number> = {
+  red: 1,
+  orange: 2,
+  yellow: 3,
+  green: 4,
+  blue: 5,
+  purple: 6,
+  grey: 7,
+  gray: 7,
+};
+
+const FEISHU_BACKGROUND_COLOR: Record<string, number> = {
+  red: 1,
+  orange: 2,
+  yellow: 3,
+  green: 4,
+  blue: 5,
+  purple: 6,
+  grey: 7,
+  gray: 7,
+};
+
+interface FeishuColorTextSegment {
+  text: string;
+  textColor?: number;
+  bgColor?: number;
+  bold?: boolean;
+}
+
+function parseFeishuColorMarkup(content: string): FeishuColorTextSegment[] {
+  const segments: FeishuColorTextSegment[] = [];
+  const known = "(?:bg:[a-z]+|bold|red|orange|yellow|green|blue|purple|gr[ae]y)";
+  const pattern = new RegExp(`\\[(${known}(?:\\s+${known})*)\\](.*?)\\[\\/(?:[^\\]]+)\\]|([^[]+|\\[)`, "gis");
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(content)) !== null) {
+    if (match[3] !== undefined) {
+      if (match[3]) segments.push({ text: match[3] });
+      continue;
+    }
+    const text = match[2] || "";
+    if (!text) continue;
+    const segment: FeishuColorTextSegment = { text };
+    const tags = normalizeString(match[1]).toLowerCase().split(/\s+/).filter(Boolean);
+    for (const tag of tags) {
+      if (tag === "bold") {
+        segment.bold = true;
+        continue;
+      }
+      if (tag.startsWith("bg:")) {
+        const color = FEISHU_BACKGROUND_COLOR[tag.slice(3)];
+        if (color) segment.bgColor = color;
+        continue;
+      }
+      const color = FEISHU_TEXT_COLOR[tag];
+      if (color) segment.textColor = color;
+    }
+    segments.push(segment);
+  }
+  return segments;
+}
+
+function feishuDriveFileType(params: Record<string, unknown>, fallback = "docx"): string {
+  return paramString(params, ["file_type", "fileType", "type"]) || fallback;
+}
+
+function feishuDriveCommentPageSearch(params: Record<string, unknown>, fileType: string): URLSearchParams {
+  const search = new URLSearchParams({ file_type: fileType, user_id_type: "open_id" });
+  const pageSize = optionalParamNumber(params, ["page_size", "pageSize"]);
+  const pageToken = optionalParamString(params, ["page_token", "pageToken"]);
+  if (pageSize !== undefined) search.set("page_size", String(Math.max(1, Math.min(100, Math.floor(pageSize)))));
+  if (pageToken) search.set("page_token", pageToken);
+  return search;
+}
+
+function normalizeFeishuDriveCommentReply(reply: unknown): Record<string, unknown> {
+  const record = recordFrom(reply);
+  return {
+    reply_id: normalizeString(record.reply_id) || normalizeString(record.replyId) || null,
+    user_id: normalizeString(record.user_id) || normalizeString(record.userId) || null,
+    create_time: record.create_time ?? null,
+    update_time: record.update_time ?? null,
+    content: record.content ?? null,
+  };
+}
+
+function normalizeFeishuDriveComment(comment: unknown): Record<string, unknown> {
+  const record = recordFrom(comment);
+  const replyList = recordFrom(record.reply_list);
+  return {
+    comment_id: normalizeString(record.comment_id) || normalizeString(record.commentId) || null,
+    user_id: normalizeString(record.user_id) || normalizeString(record.userId) || null,
+    create_time: record.create_time ?? null,
+    update_time: record.update_time ?? null,
+    is_solved: record.is_solved ?? null,
+    is_whole: record.is_whole ?? null,
+    quote: record.quote ?? null,
+    has_more_replies: record.has_more ?? null,
+    replies_page_token: record.page_token ?? null,
+    replies: arrayFrom(replyList.replies).map(normalizeFeishuDriveCommentReply),
+  };
+}
+
 function requireParamUploadIndex(params: Record<string, unknown>): number {
   const raw = params.index ?? params.block_index ?? params.blockIndex;
   if (raw === undefined || raw === null || raw === "") return -1;
@@ -1280,8 +1528,13 @@ function requireParamUploadIndex(params: Record<string, unknown>): number {
 
 export function feishuChannelActionIsReadOnly(tool: ChannelConnectorFeishuActionTool, action: string): boolean {
   const normalized = normalizedAction(action);
+  if (tool === "feishu_channel") {
+    return ["read", "list-pins", "channel-info", "member-info", "channel-list", "reactions"].includes(
+      normalizedFeishuChannelAction(normalized),
+    );
+  }
   if (tool === "feishu_doc") return ["read", "list_blocks", "get_block"].includes(normalized);
-  if (tool === "feishu_drive") return ["list", "info"].includes(normalized);
+  if (tool === "feishu_drive") return ["list", "info", "list_comments", "list_comment_replies"].includes(normalized);
   if (tool === "feishu_perm") return normalized === "list";
   if (tool === "feishu_wiki") return ["spaces", "nodes", "get", "search"].includes(normalized);
   return false;
@@ -2066,7 +2319,7 @@ async function executeFeishuReadOnlyAction(
   let statusCode: number | null = null;
   const params = request.params || {};
   const action = normalizedAction(request.action);
-  const call = async (method: "GET" | "POST" | "PATCH" | "DELETE", pathValue: string, payload?: unknown) => {
+  const call = async (method: FeishuJsonMethod, pathValue: string, payload?: unknown) => {
     const response = await feishuJsonRequest(config, {
       method,
       path: pathValue,
@@ -2077,6 +2330,146 @@ async function executeFeishuReadOnlyAction(
     statusCode = response.statusCode;
     return response.body;
   };
+  if (request.tool === "feishu_channel") {
+    const channelAction = normalizedFeishuChannelAction(action);
+    if (channelAction === "read") {
+      const messageId = feishuMessageIdFromParams(params);
+      const body = await call("GET", `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}`);
+      const item = feishuGetMessageItem(body);
+      return {
+        data: {
+          message_id: messageId,
+          message: item ? parseFeishuMessageItem(item, messageId) : null,
+          raw: recordFrom(recordFrom(body.data).message),
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+    if (channelAction === "channel-info") {
+      const chatId = feishuChatIdFromParams(params);
+      const body = await call("GET", `/open-apis/im/v1/chats/${encodeURIComponent(chatId)}`);
+      const chat = recordFrom(body.data);
+      const includeMembers = optionalParamBoolean(params, ["include_members", "includeMembers", "members"]) === true;
+      if (!includeMembers) return { data: { chat_id: chatId, channel: chat }, statusCode, requestCount };
+      const pageSize = optionalPositiveInteger(params, ["page_size", "pageSize"], 50, 100);
+      const pageToken = optionalParamString(params, ["page_token", "pageToken"]);
+      const memberIdType = feishuMemberIdTypeFromParams(params);
+      const search = new URLSearchParams({
+        member_id_type: memberIdType,
+        page_size: String(pageSize),
+      });
+      if (pageToken) search.set("page_token", pageToken);
+      const membersBody = await call("GET", `/open-apis/im/v1/chats/${encodeURIComponent(chatId)}/members?${search.toString()}`);
+      const membersData = recordFrom(membersBody.data);
+      return {
+        data: {
+          chat_id: chatId,
+          channel: chat,
+          members: arrayFrom(membersData.items),
+          has_more: membersData.has_more === true,
+          page_token: normalizeString(membersData.page_token) || null,
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+    if (channelAction === "member-info") {
+      const memberId = feishuMemberIdFromParams(params);
+      const memberIdType = feishuMemberIdTypeFromParams(params);
+      if (memberId) {
+        const search = new URLSearchParams({
+          user_id_type: memberIdType,
+          department_id_type: "open_department_id",
+        });
+        const body = await call("GET", `/open-apis/contact/v3/users/${encodeURIComponent(memberId)}?${search.toString()}`);
+        return {
+          data: {
+            member_id: memberId,
+            member_id_type: memberIdType,
+            member: recordFrom(recordFrom(body.data).user),
+          },
+          statusCode,
+          requestCount,
+        };
+      }
+      const chatId = feishuChatIdFromParams(params);
+      const pageSize = optionalPositiveInteger(params, ["page_size", "pageSize"], 50, 100);
+      const pageToken = optionalParamString(params, ["page_token", "pageToken"]);
+      const search = new URLSearchParams({
+        member_id_type: memberIdType,
+        page_size: String(pageSize),
+      });
+      if (pageToken) search.set("page_token", pageToken);
+      const body = await call("GET", `/open-apis/im/v1/chats/${encodeURIComponent(chatId)}/members?${search.toString()}`);
+      const data = recordFrom(body.data);
+      return {
+        data: {
+          chat_id: chatId,
+          members: arrayFrom(data.items),
+          has_more: data.has_more === true,
+          page_token: normalizeString(data.page_token) || null,
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+    if (channelAction === "channel-list") {
+      const scope = (optionalParamString(params, ["scope", "kind"]) || "all").toLowerCase();
+      const query = optionalParamString(params, ["query", "q"]) || "";
+      const limit = optionalPositiveInteger(params, ["limit", "page_size", "pageSize"], 50, 100);
+      const output: Record<string, unknown> = {};
+      if (["all", "groups", "group", "channels", "channel"].includes(scope)) {
+        const body = await call("GET", `/open-apis/im/v1/chats?page_size=${Math.min(limit, 100)}`);
+        output.groups = filterRecordsByQuery(arrayFrom(recordFrom(body.data).items), query, limit);
+      }
+      if (["all", "peers", "peer", "members", "member", "users", "user"].includes(scope)) {
+        const body = await call("GET", `/open-apis/contact/v3/users?page_size=${Math.min(limit, 50)}&user_id_type=open_id`);
+        output.peers = filterRecordsByQuery(arrayFrom(recordFrom(body.data).items), query, limit);
+      }
+      return { data: output, statusCode, requestCount };
+    }
+    if (channelAction === "list-pins") {
+      const chatId = feishuChatIdFromParams(params);
+      const search = new URLSearchParams({ chat_id: chatId });
+      const startTime = optionalParamString(params, ["start_time", "startTime"]);
+      const endTime = optionalParamString(params, ["end_time", "endTime"]);
+      const pageToken = optionalParamString(params, ["page_token", "pageToken"]);
+      const pageSize = optionalParamNumber(params, ["page_size", "pageSize"]);
+      if (startTime) search.set("start_time", startTime);
+      if (endTime) search.set("end_time", endTime);
+      if (pageToken) search.set("page_token", pageToken);
+      if (Number.isFinite(pageSize)) search.set("page_size", String(Math.max(1, Math.min(100, Math.floor(pageSize as number)))));
+      const body = await call("GET", `/open-apis/im/v1/pins?${search.toString()}`);
+      const data = recordFrom(body.data);
+      return {
+        data: {
+          chat_id: chatId,
+          pins: arrayFrom(data.items),
+          has_more: data.has_more === true,
+          page_token: normalizeString(data.page_token) || null,
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+    if (channelAction === "reactions") {
+      const messageId = feishuMessageIdFromParams(params);
+      const search = new URLSearchParams();
+      const emoji = optionalParamString(params, ["emoji", "emoji_type", "emojiType", "reaction_type", "reactionType"]);
+      if (emoji) search.set("reaction_type", emoji);
+      const body = await call("GET", `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/reactions${search.size ? `?${search.toString()}` : ""}`);
+      const data = recordFrom(body.data);
+      return {
+        data: {
+          message_id: messageId,
+          reactions: arrayFrom(data.items).map(normalizeFeishuReaction),
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+  }
   if (request.tool === "feishu_doc") {
     const docToken = requireParamString(params, ["doc_token", "document_id", "docToken", "token"], "doc_token");
     if (action === "read") {
@@ -2122,6 +2515,39 @@ async function executeFeishuReadOnlyAction(
       const file = files.find((item) => normalizeString(recordFrom(item).token) === fileToken) || null;
       if (!file) throw new Error(`File not found: ${fileToken}`);
       return { data: file, statusCode, requestCount };
+    }
+    if (action === "list_comments") {
+      const fileToken = requireParamString(params, ["file_token", "fileToken", "token"], "file_token");
+      const fileType = feishuDriveFileType(params);
+      const search = feishuDriveCommentPageSearch(params, fileType);
+      const body = await call("GET", `/open-apis/drive/v1/files/${encodeURIComponent(fileToken)}/comments?${search.toString()}`);
+      const data = recordFrom(body.data);
+      return {
+        data: {
+          has_more: data.has_more ?? false,
+          page_token: normalizeString(data.page_token) || null,
+          comments: arrayFrom(data.items).map(normalizeFeishuDriveComment),
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+    if (action === "list_comment_replies") {
+      const fileToken = requireParamString(params, ["file_token", "fileToken", "token"], "file_token");
+      const commentId = requireParamString(params, ["comment_id", "commentId"], "comment_id");
+      const fileType = feishuDriveFileType(params);
+      const search = feishuDriveCommentPageSearch(params, fileType);
+      const body = await call("GET", `/open-apis/drive/v1/files/${encodeURIComponent(fileToken)}/comments/${encodeURIComponent(commentId)}/replies?${search.toString()}`);
+      const data = recordFrom(body.data);
+      return {
+        data: {
+          has_more: data.has_more ?? false,
+          page_token: normalizeString(data.page_token) || null,
+          replies: arrayFrom(data.items).map(normalizeFeishuDriveCommentReply),
+        },
+        statusCode,
+        requestCount,
+      };
     }
   }
 
@@ -2177,7 +2603,7 @@ async function executeFeishuMutationAction(
   let statusCode: number | null = null;
   const params = request.params || {};
   const action = normalizedAction(request.action);
-  const call = async (method: "GET" | "POST" | "PATCH" | "DELETE", pathValue: string, payload?: unknown) => {
+  const call = async (method: FeishuJsonMethod, pathValue: string, payload?: unknown) => {
     const response = await feishuJsonRequest(config, {
       method,
       path: pathValue,
@@ -2202,6 +2628,121 @@ async function executeFeishuMutationAction(
     statusCode = response.statusCode;
     return response.body;
   };
+
+  if (request.tool === "feishu_channel") {
+    const channelAction = normalizedFeishuChannelAction(action);
+    if (channelAction === "send" || channelAction === "thread-reply") {
+      const payload = feishuMessagePayload(params);
+      const isThreadReply = channelAction === "thread-reply";
+      const replyToMessageId = isThreadReply ? feishuMessageIdFromParams(params) : optionalParamString(params, ["message_id", "messageId", "reply_to", "replyTo"]);
+      const body = replyToMessageId
+        ? await call("POST", `/open-apis/im/v1/messages/${encodeURIComponent(replyToMessageId)}/reply`, {
+          ...payload,
+          ...(isThreadReply || optionalParamBoolean(params, ["reply_in_thread", "replyInThread"]) === true
+            ? { reply_in_thread: true }
+            : {}),
+        })
+        : await (async () => {
+          const target = feishuReceiveTargetFromParams(params);
+          return call("POST", `/open-apis/im/v1/messages?receive_id_type=${encodeURIComponent(target.receiveIdType)}`, {
+            receive_id: target.receiveId,
+            ...payload,
+          });
+        })();
+      const data = recordFrom(body.data);
+      return {
+        data: {
+          success: true,
+          message_id: normalizeString(data.message_id) || null,
+          chat_id: normalizeString(data.chat_id) || null,
+          raw: data,
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+    if (channelAction === "edit") {
+      const messageId = feishuMessageIdFromParams(params);
+      const payload = feishuMessagePayload(params);
+      const body = await call("PUT", `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}`, payload);
+      return {
+        data: {
+          success: true,
+          message_id: messageId,
+          raw: recordFrom(body.data),
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+    if (channelAction === "pin") {
+      const messageId = feishuMessageIdFromParams(params);
+      const body = await call("POST", "/open-apis/im/v1/pins", { message_id: messageId });
+      return {
+        data: {
+          success: true,
+          message_id: messageId,
+          pin: recordFrom(recordFrom(body.data).pin),
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+    if (channelAction === "unpin") {
+      const messageId = feishuMessageIdFromParams(params);
+      await call("DELETE", `/open-apis/im/v1/pins/${encodeURIComponent(messageId)}`);
+      return { data: { success: true, message_id: messageId }, statusCode, requestCount };
+    }
+    if (channelAction === "react") {
+      const messageId = feishuMessageIdFromParams(params);
+      const emoji = optionalParamString(params, ["emoji", "emoji_type", "emojiType", "reaction_type", "reactionType"]);
+      const remove = optionalParamBoolean(params, ["remove", "delete"]) === true;
+      const clearAll = optionalParamBoolean(params, ["clear_all", "clearAll"]) === true;
+      const explicitReactionId = optionalParamString(params, ["reaction_id", "reactionId"]);
+      if (remove || clearAll) {
+        if (explicitReactionId) {
+          await call("DELETE", `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/reactions/${encodeURIComponent(explicitReactionId)}`);
+          return {
+            data: { success: true, message_id: messageId, removed: [explicitReactionId] },
+            statusCode,
+            requestCount,
+          };
+        }
+        if (!emoji && !clearAll) throw new Error("emoji is required when removing a Feishu reaction without reaction_id.");
+        const search = new URLSearchParams();
+        if (emoji) search.set("reaction_type", emoji);
+        const listBody = await call("GET", `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/reactions${search.size ? `?${search.toString()}` : ""}`);
+        const reactions = arrayFrom(recordFrom(listBody.data).items).map(normalizeFeishuReaction);
+        const ownReactionIds = reactions
+          .filter((item) => normalizeString(item.operator_type) === "app")
+          .map((item) => normalizeString(item.reaction_id))
+          .filter(Boolean);
+        for (const reactionId of ownReactionIds) {
+          await call("DELETE", `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/reactions/${encodeURIComponent(reactionId)}`);
+        }
+        return {
+          data: { success: true, message_id: messageId, removed: ownReactionIds },
+          statusCode,
+          requestCount,
+        };
+      }
+      if (!emoji) throw new Error("emoji is required to add a Feishu reaction.");
+      const body = await call("POST", `/open-apis/im/v1/messages/${encodeURIComponent(messageId)}/reactions`, {
+        reaction_type: { emoji_type: emoji },
+      });
+      const data = recordFrom(body.data);
+      return {
+        data: {
+          success: true,
+          message_id: messageId,
+          reaction_id: normalizeString(data.reaction_id) || null,
+          emoji_type: emoji,
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+  }
 
   if (request.tool === "feishu_doc") {
     if (action === "write") {
@@ -2263,6 +2804,87 @@ async function executeFeishuMutationAction(
         columnWidth: optionalParamNumberArray(params, ["column_width", "columnWidth"]),
       });
       return { data, statusCode, requestCount };
+    }
+    if (action === "insert_table_row") {
+      const docToken = requireParamString(params, ["doc_token", "document_id", "docToken", "token"], "doc_token");
+      const tableBlockId = requireParamString(params, ["table_block_id", "tableBlockId", "block_id", "blockId"], "table_block_id");
+      const rowIndex = optionalParamNumber(params, ["row_index", "rowIndex", "index"]) ?? -1;
+      const body = await call("PATCH", `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/blocks/${encodeURIComponent(tableBlockId)}`, {
+        insert_table_row: { row_index: rowIndex },
+      });
+      return { data: { success: true, block: recordFrom(recordFrom(body.data).block) }, statusCode, requestCount };
+    }
+    if (action === "insert_table_column") {
+      const docToken = requireParamString(params, ["doc_token", "document_id", "docToken", "token"], "doc_token");
+      const tableBlockId = requireParamString(params, ["table_block_id", "tableBlockId", "block_id", "blockId"], "table_block_id");
+      const columnIndex = optionalParamNumber(params, ["column_index", "columnIndex", "index"]) ?? -1;
+      const body = await call("PATCH", `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/blocks/${encodeURIComponent(tableBlockId)}`, {
+        insert_table_column: { column_index: columnIndex },
+      });
+      return { data: { success: true, block: recordFrom(recordFrom(body.data).block) }, statusCode, requestCount };
+    }
+    if (action === "delete_table_rows") {
+      const docToken = requireParamString(params, ["doc_token", "document_id", "docToken", "token"], "doc_token");
+      const tableBlockId = requireParamString(params, ["table_block_id", "tableBlockId", "block_id", "blockId"], "table_block_id");
+      const rowStart = requireParamNumber(params, ["row_start", "rowStart", "row_start_index", "rowStartIndex"], "row_start");
+      const rowCount = optionalParamNumber(params, ["row_count", "rowCount", "count"]) ?? 1;
+      const body = await call("PATCH", `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/blocks/${encodeURIComponent(tableBlockId)}`, {
+        delete_table_rows: {
+          row_start_index: rowStart,
+          row_end_index: rowStart + rowCount,
+        },
+      });
+      return { data: { success: true, rows_deleted: rowCount, block: recordFrom(recordFrom(body.data).block) }, statusCode, requestCount };
+    }
+    if (action === "delete_table_columns") {
+      const docToken = requireParamString(params, ["doc_token", "document_id", "docToken", "token"], "doc_token");
+      const tableBlockId = requireParamString(params, ["table_block_id", "tableBlockId", "block_id", "blockId"], "table_block_id");
+      const columnStart = requireParamNumber(params, ["column_start", "columnStart", "column_start_index", "columnStartIndex"], "column_start");
+      const columnCount = optionalParamNumber(params, ["column_count", "columnCount", "count"]) ?? 1;
+      const body = await call("PATCH", `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/blocks/${encodeURIComponent(tableBlockId)}`, {
+        delete_table_columns: {
+          column_start_index: columnStart,
+          column_end_index: columnStart + columnCount,
+        },
+      });
+      return { data: { success: true, columns_deleted: columnCount, block: recordFrom(recordFrom(body.data).block) }, statusCode, requestCount };
+    }
+    if (action === "merge_table_cells") {
+      const docToken = requireParamString(params, ["doc_token", "document_id", "docToken", "token"], "doc_token");
+      const tableBlockId = requireParamString(params, ["table_block_id", "tableBlockId", "block_id", "blockId"], "table_block_id");
+      const rowStart = requireParamNumber(params, ["row_start", "rowStart", "row_start_index", "rowStartIndex"], "row_start");
+      const rowEnd = requireParamNumber(params, ["row_end", "rowEnd", "row_end_index", "rowEndIndex"], "row_end");
+      const columnStart = requireParamNumber(params, ["column_start", "columnStart", "column_start_index", "columnStartIndex"], "column_start");
+      const columnEnd = requireParamNumber(params, ["column_end", "columnEnd", "column_end_index", "columnEndIndex"], "column_end");
+      const body = await call("PATCH", `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/blocks/${encodeURIComponent(tableBlockId)}`, {
+        merge_table_cells: {
+          row_start_index: rowStart,
+          row_end_index: rowEnd,
+          column_start_index: columnStart,
+          column_end_index: columnEnd,
+        },
+      });
+      return { data: { success: true, block: recordFrom(recordFrom(body.data).block) }, statusCode, requestCount };
+    }
+    if (action === "color_text") {
+      const docToken = requireParamString(params, ["doc_token", "document_id", "docToken", "token"], "doc_token");
+      const blockId = requireParamString(params, ["block_id", "blockId"], "block_id");
+      const content = requireParamString(params, ["content", "text"], "content");
+      const segments = parseFeishuColorMarkup(content);
+      const elements = segments.map((segment) => ({
+        text_run: {
+          content: segment.text,
+          text_element_style: {
+            ...(segment.textColor ? { text_color: segment.textColor } : {}),
+            ...(segment.bgColor ? { background_color: segment.bgColor } : {}),
+            ...(segment.bold ? { bold: true } : {}),
+          },
+        },
+      }));
+      const body = await call("PATCH", `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/blocks/${encodeURIComponent(blockId)}`, {
+        update_text_elements: { elements },
+      });
+      return { data: { success: true, segments: segments.length, block: recordFrom(recordFrom(body.data).block) }, statusCode, requestCount };
     }
     if (action === "upload_image") {
       const docToken = requireParamString(params, ["doc_token", "document_id", "docToken", "token"], "doc_token");
@@ -2339,6 +2961,37 @@ async function executeFeishuMutationAction(
       const type = requireParamString(params, ["type", "file_type", "fileType"], "type");
       const search = new URLSearchParams({ type });
       const body = await call("DELETE", `/open-apis/drive/v1/files/${encodeURIComponent(fileToken)}?${search.toString()}`);
+      return { data: { success: true, raw: recordFrom(body.data) }, statusCode, requestCount };
+    }
+    if (action === "add_comment") {
+      const fileToken = requireParamString(params, ["file_token", "fileToken", "token"], "file_token");
+      const fileType = feishuDriveFileType(params);
+      const content = requireParamString(params, ["content", "text", "message"], "content");
+      const blockId = optionalParamString(params, ["block_id", "blockId"]);
+      if (blockId && fileType !== "docx") throw new Error("block_id is only supported for docx comments.");
+      const body = await call("POST", `/open-apis/drive/v1/files/${encodeURIComponent(fileToken)}/new_comments`, {
+        file_type: fileType,
+        reply_elements: [{ type: "text", text: content }],
+        ...(blockId ? { anchor: { block_id: blockId } } : {}),
+      });
+      return { data: { success: true, raw: recordFrom(body.data) }, statusCode, requestCount };
+    }
+    if (action === "reply_comment") {
+      const fileToken = requireParamString(params, ["file_token", "fileToken", "token"], "file_token");
+      const commentId = requireParamString(params, ["comment_id", "commentId"], "comment_id");
+      const fileType = feishuDriveFileType(params);
+      const content = requireParamString(params, ["content", "text", "message"], "content");
+      const search = new URLSearchParams({ file_type: fileType });
+      const body = await call("POST", `/open-apis/drive/v1/files/${encodeURIComponent(fileToken)}/comments/${encodeURIComponent(commentId)}/replies?${search.toString()}`, {
+        content: {
+          elements: [
+            {
+              type: "text_run",
+              text_run: { text: content },
+            },
+          ],
+        },
+      });
       return { data: { success: true, raw: recordFrom(body.data) }, statusCode, requestCount };
     }
   }

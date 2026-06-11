@@ -27,6 +27,8 @@ Octo 专属能力若 CC Go 不完整，参考 `~/.openclaw/extensions/octo`；Fe
 
 当前已记录边界：Feishu 群 @bot 不能依赖用户手工填写 `botId`。Studio daemon 必须启动前解析并缓存 Feishu `bot.open_id`，并把运行时 `botOpenId` 与配置 `botId/metadata.botOpenId` 一起用于 mention gate；`/status` 必须暴露 bot identity 诊断，群消息跳过日志必须能区分“未 @bot”和“bot 身份未解析”。
 
+当前已记录边界：Octo/Feishu platform skills 不能只复制 OpenClaw/CC skill 文档或注入 prompt。Studio 支持标准是：内置 runtime skill 文档 + `runtimeActions` 白名单 + `studio-channel-messages` / `studio-channel-files` / `studio-octo-actions` / `studio-feishu-actions` 执行器 + 回归测试。外部插件 skill 目录只作为迁移参考，未接执行器的能力必须明确失败或 fallback，不能宣称已支持。
+
 ## 任务清单
 
 | 优先级 | 任务 | CC 对照 | 状态 | 验收 |

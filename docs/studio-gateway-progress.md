@@ -11,9 +11,9 @@
 - Gateway 对外提供 Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions；`GET /v1/models` 聚合启用 provider，并保留模型别名、模型池、能力标记、上下文窗口和输出预算；模型预算是 App Connections 与 Channel Connectors 的默认上下文来源。
 - Provider Center 已支持自定义 provider、启停、模型列表/别名/默认模型、能力勾选、批量模型导入、批量预算/能力应用、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
 - App Connections 已覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收。
-- Channel Connectors 走 Studio 原生 CLI Agent Bot 路线；Octo(dmwork) 与 Feishu 已接入 Codex/Claude Code/OpenCode runner、Studio Gateway key、IM session override、slash command、Feishu card/menu/progress、附件 staging、history、group context、reply buffer、queue、stop 和基础治理；Octo daemon 已接入 Bot API 群成员、最近 timeline 历史、文件下载 URL、GROUP.md/THREAD.md、voice context、平台 skill 自动上下文、`/octo` 群/成员/Space/thread 管理命令和出站消息 manifest。
+- Channel Connectors 走 Studio 原生 CLI Agent Bot 路线；Octo(dmwork) 与 Feishu 已接入 Codex/Claude Code/OpenCode runner、Studio Gateway key、IM session override、slash command、Feishu card/menu/progress、附件 staging、history、group context、reply buffer、queue、stop 和基础治理；Octo daemon 已接入 Bot API 群成员、最近 timeline 历史、文件下载 URL、GROUP.md/THREAD.md、voice context、`/octo` 群/成员/Space/thread 管理命令、出站消息 manifest 和 `studio-octo-actions` runtime manifest。
 - Channel Connectors API/前端只暴露当前已有 runner 的 live Agent：Codex、Claude Code、OpenCode；Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP 保留为迁移路线图，未实现前不进入可选 `supportedAgents`。
-- 自动 channel skill 支持分两层：普通 IM turn 会给 Codex/Claude Code/OpenCode 注入 Studio runtime skill 摘要和 Runtime Action Index；同时 Codex `CODEX_HOME/skills`、Claude `CLAUDE_CONFIG_DIR/skills`、OpenCode 隔离 `opencode.json.instructions` 都会收到当前渠道 platform skill 的 Studio runtime 投影。平台默认 skills 由 Studio 内置管理（Octo `octo-bot-api`；Feishu `messaging/doc/drive/perm/wiki`），同名内置 skill 优先于 binding 外部目录；binding `channelSkillDirs` 仅作为显式自定义扩展；Feishu doc/drive/perm/wiki 已通过 `studio-feishu-actions` 支持只读执行、doc 内容/表格/图片/附件 mutation 和首批 drive/perm/wiki 审批型 mutation；OpenClaw/Octo 插件 skills 只作迁移参考源，不再是运行时默认来源。
+- 自动 channel skill 支持分两层：普通 IM turn 会给 Codex/Claude Code/OpenCode 注入 Studio runtime skill 摘要和显式 Runtime Action Index；同时 Codex `CODEX_HOME/skills`、Claude `CLAUDE_CONFIG_DIR/skills`、OpenCode 隔离 `opencode.json.instructions` 都会收到当前渠道 platform skill 的 Studio runtime 投影。平台默认 skills 由 Studio 内置管理（Octo `octo-bot-api`；Feishu `messaging/doc/drive/perm/wiki`），每个内置 skill 都有 typed `runtimeActions` 白名单和实际执行器；同名内置 skill 优先于 binding 外部目录；binding `channelSkillDirs` 仅作为显式自定义扩展；Octo `studio-octo-actions` 复用 Bot API 管理执行器；Feishu `studio-feishu-actions` 支持 channel/doc/drive/perm/wiki 只读与审批型 mutation；OpenClaw/Octo 插件 skills 只作迁移参考源，不再是运行时默认来源。
 - OpenCode Agent runner 走 Gateway-first：Channel 配置保存 Gateway 模型短名或模型 ID，runner 转换为 OpenCode 需要的 `studio-gateway/<model>`；每轮生成隔离 OpenCode config，session 数据写入 Channel runtime dataHome；旧全局 sessionId 在当前 dataHome 不存在时自动新建，避免 IM 切换 OpenCode 后被 stale session 卡死。
 - Channel Connectors 任意新功能必须先对照 CC Go 1:1 迁移，再做 Studio 精修；迁移清单见 `channel-connectors-cc-migration-checklist.md`。
 - Feishu 长连接专项跟踪见 `feishu-long-connection-issue-tracker.md`；Feishu 目前采用同 App 用户级全局 owner lock、官方 SDK `WSClient`/`EventDispatcher`、默认启用 SDK lower-case `pingTimeout=3`、包装 SDK `pingLoop()` 将有效心跳调度 clamp 到 `pingIntervalMs=10000`、SDK reconnecting 超 5s 回收、应用层 ping/pong runtime proof、`pongTimeoutMs=8000` 外层兜底回收、23s control-frame stale 判死、快速 ACK、messageId 去重、会话水位线防旧消息插队和 runtime 入站观测；无业务消息时不再默认 startup recycle。
@@ -24,6 +24,9 @@
 
 ## 本轮完成
 
+- 将 Octo/Feishu channel skills 从“prompt 提示”升级为显式 runtime contract：shared surface 新增 `skills[].actions[]`，内置 skills 声明 `runtimeActions` 白名单，IM prompt 使用紧凑 Runtime Action Index，Codex/Claude/OpenCode 原生 skill 投影保留完整动作索引，管理页新增 Skills tab 展示 Studio 内置/显式扩展和 runtime action chips。
+- 新增 `studio-octo-actions` manifest parser 与 daemon 执行 glue：Octo read-only management action 直接调用现有 Bot API 执行器，mutation action 走 Studio IM 权限审批后执行，结果并入最终回复和 event log；非 Octo binding 使用该 manifest 会返回明确错误。
+- 扩展 Feishu `studio-feishu-actions` 执行器：channel 新增 `send/thread-reply/read/edit/pin/unpin/list-pins/channel-info/member-info/channel-list/react/reactions`；docx 新增 `insert_table_row/insert_table_column/delete_table_rows/delete_table_columns/merge_table_cells/color_text`；drive 新增 `list_comments/list_comment_replies/add_comment/reply_comment`；对应 skill 文档、Runtime Action Index、command surface 与测试同步更新。
 - 修复 Feishu 群聊 @bot 不触发：Channel daemon 启动时按 CC Go / OpenClaw 路径调用 Feishu `/open-apis/bot/v3/info` 解析并缓存 `botOpenId/botName`，群 @ 判断同时使用配置 `botId/metadata` 与运行时 botOpenId；`/status` 透出 `botIdentity*` 诊断字段，群消息被跳过时记录 `botOpenId` 和候选数量，避免再把身份解析问题误判成长连接问题。
 - 对照 Octo 插件固定群协作 @ 合同：`@[uid:显示名]`、bot DM 重写和 transport mention metadata 兜底都会发送可见 `@显示名`/`@uid` + Octo `mention.entities/uids`，避免隐藏 @。
 - 修复 Octo 群聊 `/process on` 下过程回复延迟：`step_finish: tool-calls` 仍是继续边界；Octo progress 气泡改为 5s best-effort 发送并带 `client_msg_no`，慢 REST 不再把旧过程回复拖到最终阶段补发；新增 daemon 级回归证明群聊开启 process 后中间回复先于最终回复发送。
@@ -45,7 +48,7 @@
 - Feishu transport-smoke 支持 `receiveId/receiveIdType`，可直接验证 `chat_id/open_id/user_id` 目标；真实 open_id 文本与 Markdown(post) 发送已通过，user_id 真实目标仍待平台可用 ID 验收。
 - supportedAgents 收敛为 runtime subset：Channel 配置保存、status 和 native config 只暴露 Codex/Claude Code/OpenCode；未实现 runner 的 roadmap Agent 会在保存时拒绝，避免用户选择后运行时才 `unsupported-agent`。
 - Codex/Claude 原生 skill 投影已接入：当前 binding/platform skills 会写入隔离 Agent 配置目录的 `skills/<skill>/SKILL.md`，内容为 Studio runtime 版说明，不包含 OpenClaw 插件安装、注册、凭证配置等 setup 段落。
-- Platform skill 自动映射补 Runtime Action Index：从 Studio 内置 Octo/Feishu skill 标题抽取最多 16 个运行时动作，放入 IM prompt 与 Codex/Claude 原生 skill 投影；Feishu 文档类 skills 保留 OpenClaw action catalog，但显式标注 doc/drive/perm/wiki native tool 仍待接入。
+- Platform skill Runtime Action Index 已改为显式白名单：Studio 内置 Octo/Feishu skills 不再从标题猜动作；普通 IM prompt 使用紧凑索引避免挤掉操作说明，Codex/Claude/OpenCode 原生 skill 文件保留完整索引；外部自定义 skill 仍只能生成 inferred index，除非后续接入 typed runtime action manifest。
 - Octo bot 协作出站容错：`studio-channel-messages` 中任何把 `<*_bot>` 当 channelId 的消息，在群/thread 来源内都会自动重写为当前群/thread @，并保留可见 @ 与 native mention payload，避免把 bot id 当群号请求 Octo API 造成 400。
 - Octo 群历史已按 CC Go 分段：daemon 记录每个 Octo 群/thread session 的 lastAnsweredSeq，重启时从 event log 尾部恢复，冷启动可从 Bot API self-bot 历史推断；Agent prompt 把历史拆成已答上下文和上次回复后新增消息，状态接口暴露最近 cutoff。
 - 对照 OpenClaw Octo/Feishu 插件复核群聊上下文策略：Octo 继续沿用 Bot API history + daemon realtime timeline + GROUP.md/THREAD.md 三层上下文；Feishu 普通群不伪造全量历史，沿用实时 timeline + 成员/mention，topic/thread 才使用官方 `im.message.get/list` bootstrap。
@@ -55,6 +58,10 @@
 
 - 通过：`npm run typecheck:api`。
 - 通过：`npm run build:api`。
+- 通过：`npm run typecheck:web`。
+- 通过：`npm run build:web`。
+- 通过：`node --test --test-name-pattern "extracts Octo action manifests|extracts Feishu action manifests|executes Feishu read-only actions and approval-gated mutations|executes Feishu channel actions through Studio runtime|native Channel Connectors IM commands switch agent, model, and permission per session" tests/system/channel-connectors-service.test.mjs`，覆盖 Octo manifest 解析、Feishu channel/doc/drive action 执行器、Runtime Action Index 完整注入、command surface `skills[].actions[]` 和内置 skill 优先级。
+- 通过：`node --test --test-name-pattern "Octo transport smoke covers Bot API groups, members, history, threads, and files|Octo native management commands expose groups, members, and Space search" tests/system/channel-connectors-service.test.mjs`，覆盖 `studio-octo-actions` 复用的 Bot API 管理执行器底座。
 - 通过：`node --test --test-name-pattern "agent runner builds gateway-backed Codex turns|extracts Feishu action manifests|executes Feishu read-only actions" tests/system/channel-connectors-service.test.mjs`，覆盖 OpenCode `opencode.json.instructions` 平台 skill 投影、Codex/Claude/OpenCode runner 输入、`studio-feishu-actions` 解析、只读执行、同名内置 skill 优先和首批审批型 mutation 执行器。
 - 通过：`node --test --test-name-pattern "Feishu transport resolves bot open_id|Feishu webhook parses live envelopes|platform-native group context strategy|Feishu dispatcher parity diagnostics" tests/system/channel-connectors-service.test.mjs`；重启 `openclaw-studio-channel-connectors.service` 后 runtime/API 状态均显示 Feishu `connected=true`、`botOpenId=ou_5d0c07a660589f2df634e8f3220d02ed`、`botName=小丘`、`botIdentityLastError=null`。旧已跳过群消息不会回放，需用户重新发送群 @ 做 live 入站确认。
 - 通过：`node --test --test-name-pattern "native Channel Connectors extracts outbound IM message manifests|native Channel Connectors Feishu transport preserves group mention at-tags in text and post payloads|native Channel Connectors Feishu transport sends markdown post to open_id targets|native Channel Connectors daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`，覆盖 Feishu text/post at-tag payload、daemon mention 证据字段和长连接结构约束。
@@ -95,10 +102,11 @@
 - Gateway usage 只有在上游返回 usage 或 runtime ledger 可归因时才准确；缺失 usage 时 Channel 只能用 IM history 字符估算，不能替代真实 tokenizer。
 - 同 session FIFO queue 当前是 daemon 内存队列；Channel daemon 自身重启会丢失未开始的排队消息，durable queue 尚未实现。
 - `studio-channel-messages` 已有 parser 与 daemon send path，并支持 Octo 结构化 `@[uid:显示名]` mention、Octo `on_behalf_of` 出站身份、Feishu chat/open_id/user_id 文本/Markdown(post) 和 Feishu 群原生 at-tag 渲染；Octo 群 outbound-message 已有真实日志证据，Feishu open_id 文本/Markdown transport-smoke 已通过，Octo human DM、thread、@其它 Studio/外部 bot、Feishu user_id 和 Feishu 群 @ 真实发送仍需 live smoke。外部产品 bot 只能通过平台群/thread 消息协作；等待多 bot 异步回复并自动汇总需要后续 Studio 内部协作调度。Octo 建群/改群/thread 管理 live smoke 还未执行。
-- Feishu `doc/drive/perm/wiki` skills 已由 Studio 自管并能进入 Agent prompt/native skill 投影；`studio-feishu-actions` 已支持只读 action、doc 内容/表格/图片/附件 mutation 与首批 drive/perm/wiki 审批型 mutation。Feishu doc 图片/附件上传当前覆盖 `upload_all` 小文件路径，真实 Feishu live smoke 和 >20MB 分片/云文档复杂媒体布局仍待验证。
+- Feishu `messaging/doc/drive/perm/wiki` skills 已由 Studio 自管并能进入 Agent prompt/native skill 投影；`studio-feishu-actions` 已支持 Feishu channel、doc、drive、perm、wiki 的 typed action 白名单和执行器。Feishu doc 图片/附件上传当前覆盖 `upload_all` 小文件路径，真实 Feishu live smoke 和 >20MB 分片/云文档复杂媒体布局仍待验证。
+- `studio-octo-actions` 已接入 daemon glue 与 Bot API 管理执行器，但真实 Octo 群/thread management mutation live smoke 仍未执行；当前验证是 parser + 现有 Bot API mock 执行器组合。
 
 ## 下一步
 
 1. 用户在真实 Octo 群聊让 Agent 私聊 human 或 @其它 Studio/外部 bot，验证 `studio-channel-messages` 的 human DM、group/thread mention 能真实发送。
 2. 做真实 Feishu 群 `@[open_id:显示名]` 出站 @、自然语言 @bot、未 @ 群消息、topic/thread 和成员上下文 live smoke。
-3. 对照 Octo/Feishu 插件继续迁移平台 native tools：优先做 Feishu docx 图片/附件真实 live smoke 和 Octo 多 bot 协作 live smoke，再补 >20MB 分片上传、更多 Octo 菜单和更多平台 adapter。
+3. 对照 Octo/Feishu 插件继续迁移平台 native tools：优先做 `studio-octo-actions` 管理 mutation live smoke、Feishu docx 图片/附件真实 live smoke 和 Octo 多 bot 协作 live smoke，再补 >20MB 分片上传、更多 Octo 菜单和更多平台 adapter。
