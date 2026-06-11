@@ -9549,7 +9549,7 @@ async function main(): Promise<void> {
   ensureDir(config.paths.root);
   ensureDir(config.paths.state);
   const state = createDaemonState(config);
-  markRuntimeDirty(config, state);
+  flushRuntime(config, state);
   appendLog(config.paths.log, "Studio native Channel Connectors daemon started");
   const server = startHttp(config, state);
   const sockets: OctoWukongSocket[] = [];

@@ -22,20 +22,19 @@
 
 ## 本轮完成
 
-- 扩展 `scripts/smoke-channel-connectors-agent-run-live.mjs` 的 approval 验收：现在会把 `agent.permission.prompt` / `agent.permission.reply` 与同一 run 的 progress card/reply 归并。
-- 新增 `--require-permission-prompt`、`--require-permission-resolved`、`--require-feishu-permission-progress-card`，可从 daemon JSONL 证明真实 IM 审批是否出现 prompt、是否已批准/拒绝、Feishu 是否把审批状态写入进度卡。
-- Agent run live summary 现在输出 permission prompt/reply/progress/card 计数、状态、requestId 和 toolName；普通非审批 run 不会因窗口内混入旧对话而误报全局失败。
-- 为 Octo WS 端到端测试的 JSONL 观测等待显式加长，避免 full-suite 负载下日志写入稍晚导致误报。
+- 修复 Channel daemon 启动可观测性：daemon 初始 state 现在同步 `flushRuntime`，避免 `/health` 已可用但 runtime 文件仍在 2s debounce 队列导致 full-suite 漂移。
+- 修复 Channel service 测试 harness：`waitFor` 改用单调时钟 `performance.now()`，避免跨进程端到端测试受系统时间跳变影响，过早抛出启动期 `ECONNREFUSED`。
+- 复跑 `channel-connectors-service` + `agent-run-live` 组合测试已恢复全绿；上一轮记录的 daemon-entry full-suite 波动已从已知边界移除。
 
 ## 最近验证
 
 - 通过：`npm run typecheck:api`。
 - 通过：`npm run build:api`。
 - 通过：`node --test tests/system/channel-connectors-agent-run-live-script.test.mjs`，5/5 全部通过。
-- 通过：`node --test --test-name-pattern "native Channel Connectors daemon runs Codex app-server when persistent session metadata is enabled|native Channel Connectors daemon registers Octo and opens WuKongIM WebSocket" tests/system/channel-connectors-service.test.mjs`，2/2 全部通过。
+- 通过：`node --test --test-name-pattern "native Channel Connectors daemon entry exposes health and writes runtime|native Channel Connectors daemon falls back to one-shot when Codex app-server crashes|native Channel Connectors daemon registers Octo and opens WuKongIM WebSocket" tests/system/channel-connectors-service.test.mjs`，3/3 全部通过。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs tests/system/channel-connectors-agent-run-live-script.test.mjs`，71/71 全部通过。
 - 通过：`node scripts/smoke-channel-connectors-command-live.mjs --bindings feishu-live,octo-studio-cc --commands /slow --recent-sessions --json` 只读 dry-run，可解析真实 Feishu/Octo recent sessions；因未实际发送 `/slow`，progress count 为 0 且未要求通过。
 - 通过：重启 `openclaw-studio-channel-connectors.service` 与 `npm run dev:restart`；Channel `/health` 显示 `connected=1`、`pongOverdue=0`、`transportStale=0`，backend gateway online，frontend HTTP 200。
-- 未通过：`node --test tests/system/channel-connectors-service.test.mjs tests/system/channel-connectors-agent-run-live-script.test.mjs` 在旧跨进程 daemon-entry 用例上仍有 full-suite 时序漂移；失败点在 runtime/capture/WS JSONL 等等待，相关目标用例单独复跑均通过。
 
 ## 已知边界
 
@@ -43,7 +42,6 @@
 - GMN provider 可作为视觉测试源，但未设为所有 App scope 默认 active provider；测试时需显式选择 `gpt-5.5`、`gmn-vision` 或 `gmn/gpt-5.5`。
 - Feishu SDK 仍可能因网络或平台关闭连接而 reconnect；当前不使用 connected-idle / zero-inbound / generic watchdog 暴力重建。ping/pong/control-frame proof 能证明 transport 活着，真实消息级延迟仍需用户继续用 Feishu live 反馈；如仍不稳定，下一步评估 webhook/hybrid ingress 或 Studio-owned WS transport。
 - Feishu 官方长连接仍要求 3s 内处理事件且同 App 多连接是集群分发；Studio 必须保持同 App owner lock 和 fast ACK，不允许让 Agent run、附件下载或卡片更新阻塞 SDK ACK。
-- Channel service full-suite 仍有跨进程 daemon-entry 端到端用例的等待窗口波动；当前本轮只修 Octo WS 视觉日志等待，未展开全量测试 harness 去噪。
 - Claude Code 普通 turn、Bash tool-use、文件 manifest、`/compact`、`/stop` 和 OpenCode 普通 turn、文件 manifest、`/compact`、`/stop` 已有真实 CLI mock-Gateway smoke；OpenCode 已按 CC Go 补原生图片 `--file` 参数构建测试；Claude 权限批准已有 runner/IM 基础闭环；Codex app-server requestApproval 已有 driver 合同回归；assistant 过程回复已接入 IM progress，但真实 Feishu/Octo live 视觉效果、真实 IM live approval、真实视觉 CLI smoke 和 IM live 文件上传链路仍需逐项验收。
 - `/status` 与 Channel 管理页已能显示最近 auto compact 记录；真实剩余 token 仍取决于上游 usage 或 Gateway runtime ledger 是否能归因。
 - Gateway usage 只有在上游返回 usage 或 runtime ledger 可归因时才准确；缺失 usage 时 Channel 只能用 IM history 字符估算，不能替代真实 tokenizer。

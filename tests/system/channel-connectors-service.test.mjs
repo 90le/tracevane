@@ -288,9 +288,9 @@ function encodeOctoRecvPacket(input) {
 }
 
 async function waitFor(predicate, timeoutMs = 3000) {
-  const deadline = Date.now() + timeoutMs;
+  const deadline = performance.now() + timeoutMs;
   let lastError = null;
-  while (Date.now() < deadline) {
+  while (performance.now() < deadline) {
     try {
       const result = await predicate();
       if (result) return result;
