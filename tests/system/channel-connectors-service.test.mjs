@@ -10990,6 +10990,23 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
             serverPrivateKey: serverKey.privateKey,
             clientPublicKeyBase64: packet.clientPublicKeyBase64,
             salt,
+            messageId: 2995,
+            messageSeq: 3,
+            fromUid: "user-1",
+            channelId: "group-1",
+            channelType: 2,
+            payload: {
+              type: 1,
+              content: "local realtime unmentioned context",
+            },
+          }));
+        }, 30);
+        setTimeout(() => {
+          if (socket.readyState !== 1) return;
+          socket.send(encodeOctoRecvPacket({
+            serverPrivateKey: serverKey.privateKey,
+            clientPublicKeyBase64: packet.clientPublicKeyBase64,
+            salt,
             messageId: 3001,
             messageSeq: 8,
             fromUid: "user-1",
@@ -11004,7 +11021,7 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
               mention: { uids: ["robot-1"] },
             },
           }));
-        }, 50);
+        }, 80);
       }
     });
   });
@@ -11186,6 +11203,8 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         assert.match(capture[0].stdin, /truncated/);
         assert.match(capture[0].stdin, /originalRunes/);
         assert.match(capture[0].stdin, /history hello/);
+        assert.match(capture[0].stdin, /Octo realtime local channel timeline/);
+        assert.match(capture[0].stdin, /local realtime unmentioned context/);
         assert.match(capture[0].stdin, /file: hello\.txt, 11 bytes, local:/);
         assert.match(capture[0].stdin, /Staged files are available locally/);
 

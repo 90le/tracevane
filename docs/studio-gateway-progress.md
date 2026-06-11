@@ -30,6 +30,7 @@
 - Octo persona/OBO 入站路由已接入：binding metadata `onBehalfOf/on_behalf_of/respondAs/grantorUid` 会启用 grantor persona；普通 bot 仍不响应 `mention.all/humans` 广播，persona bot 会响应 @grantor / @所有人，并按 Octo 插件合同把文字、typing、文件/媒体和 manifest 消息发到源群/源私聊且携带顶层 `on_behalf_of`。可信 OBO v2 只接受配置 grantor 发来的 payload，`obo_system_hint` 会注入 Agent prompt，AI-only fan-out 会跳过，payload `respond_as` 不作为真实身份。
 - 本地 IM history 默认保留并注入最多 20 条；prompt 渲染每条最多 360 字符、整段最多 8000 字符，超长消息截断并在必要时丢弃更早历史，避免大段文本撑爆上下文。
 - Octo 群历史同步改为协作 timeline：默认窗口从 6 条提高到 20 条，prompt 按时间顺序保留 human、Studio self-bot 和其它 bot 回复，并标注 `senderType`；每条默认最多 1200 字符、整段 timeline 默认最多 8000 字符，超出会标 `truncated/originalRunes` 并优先保留最近消息，避免 Agent 看不到协作者回复或被超长历史撑爆上下文。
+- Octo daemon 对齐 OpenClaw 插件实时历史语义：未 @bot 的群/thread 消息也会进入 daemon 内存短 timeline，但不会触发 Agent；后续被 @ 时，prompt 会合并 Bot API timeline 与 realtime local timeline，避免刚发生的协作者回复因为 Bot API sync 延迟而不可见。
 - `/octo history [条数]` 已接入 service/daemon，默认读取当前群/thread 前文，供用户和 Agent 直接查看 Bot API 群历史。
 - Codex stale resume 自愈：`thread/resume failed` / `no rollout found` 会自动 fresh turn 重试；fallback compact 成功时不再暴露 “No live persistent session” 作为错误。
 - Feishu transport-smoke 支持 `receiveId/receiveIdType`，可直接验证 `chat_id/open_id/user_id` 目标；真实 open_id 文本与 Markdown(post) 发送已通过，user_id 真实目标仍待平台可用 ID 验收。
@@ -47,6 +48,7 @@
 - 通过：`node --test --test-name-pattern "extracts outbound IM message manifests|Octo transport carries on_behalf_of|Octo transport keeps group mentions visible|Octo transport times out slow text replies" tests/system/channel-connectors-service.test.mjs`，4/4 全部通过。
 - 通过：`node --test --test-name-pattern "daemon enriches Octo group turns with Bot API context and file download URLs|Octo adapter follows group direction and mention rendering rules|native Channel Connectors extracts outbound IM message manifests" tests/system/channel-connectors-service.test.mjs`，3/3 全部通过。
 - 通过：`node --test --test-name-pattern "Octo adapter follows group direction and mention rendering rules|Octo transport carries on_behalf_of|Octo transport carries on_behalf_of for typing and media|daemon enriches Octo group turns with Bot API context and file download URLs" tests/system/channel-connectors-service.test.mjs`，4/4 全部通过。
+- 通过：`node --test --test-name-pattern "native Channel Connectors daemon enriches Octo group turns with Bot API context and file download URLs" tests/system/channel-connectors-service.test.mjs`，覆盖 Octo Bot API timeline、realtime local timeline、成员上下文和文件下载 URL。
 - 通过：`node --test tests/system/channel-connectors-agent-run-live-script.test.mjs`，5/5 全部通过；`scripts/smoke-channel-connectors-agent-run-live.mjs` 新增 `--require-outbound-message`，可验证 `studio-channel-messages` 的 declared/sent 真实日志证据。
 - 通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --bindings octo-studio-cc,feishu-live --require-ok --require-outbound-message --json`，真实日志中命中 8 条 Octo `outboundMessagesDeclared/Sent` 成功 run；Feishu 单独执行同一检查尚无匹配 run，Feishu open_id/user_id/Markdown 出站 live smoke 仍待触发。
 - 通过：本机 Feishu `transport-smoke` 使用真实 open_id 发送文本与 Markdown(post)，Feishu API 均返回 200 并产生消息 ID；输出已脱敏，未记录 app secret/token。

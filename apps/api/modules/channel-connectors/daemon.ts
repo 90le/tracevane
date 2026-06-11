@@ -297,6 +297,8 @@ const OCTO_PROGRESS_REPLY_TIMEOUT_MS = 5_000;
 const DEFAULT_OCTO_HISTORY_SYNC_LIMIT = 20;
 const DEFAULT_OCTO_HISTORY_MESSAGE_MAX_RUNES = 1200;
 const DEFAULT_OCTO_HISTORY_TOTAL_MAX_RUNES = 8000;
+const DEFAULT_OCTO_REALTIME_TIMELINE_LIMIT = 20;
+const MAX_OCTO_REALTIME_TIMELINE_PER_CHANNEL = 60;
 const DEFAULT_CHANNEL_AUTO_COMPACT_COOLDOWN_MS = 15 * 60_000;
 const MAX_CHANNEL_AUTO_COMPACT_COOLDOWN_MS = 24 * 60 * 60_000;
 const FEISHU_FINAL_REPLY_CARD_MAX_RUNES = 12_000;
@@ -675,6 +677,20 @@ type ChannelDaemonSessionRunQueueRegistry = Map<string, {
   tail: Promise<void>;
   pending: number;
 }>;
+
+interface ChannelDaemonOctoTimelineEntry {
+  bindingId: string;
+  channelId: string;
+  channelType: number;
+  messageId: string;
+  messageSeq: number | null;
+  fromUid: string;
+  body: string;
+  attachmentSummaries: string[];
+  receivedAt: string;
+}
+
+type ChannelDaemonOctoTimelineRegistry = Map<string, ChannelDaemonOctoTimelineEntry[]>;
 
 interface ChannelDaemonSessionRunLease {
   queued: boolean;
@@ -4456,6 +4472,58 @@ function octoParentGroupNo(channelId: string): string {
   return normalizeString(groupNo) || normalized;
 }
 
+function octoRealtimeTimelineKey(bindingId: string, channelId: string, channelType: number): string {
+  return `${bindingId}:${channelType}:${channelId}`;
+}
+
+function octoInboundAttachmentSummary(attachment: ChannelConnectorInboundAttachment): string {
+  const parts = [
+    attachment.kind,
+    normalizeString(attachment.fileName),
+    typeof attachment.size === "number" && attachment.size > 0 ? `${attachment.size} bytes` : "",
+    normalizeString(attachment.localPath) ? `local:${normalizeString(attachment.localPath)}` : "",
+    normalizeString(attachment.stagingError) ? `staging failed:${normalizeString(attachment.stagingError)}` : "",
+  ].filter(Boolean);
+  return parts.join(", ");
+}
+
+function recordOctoRealtimeTimeline(input: {
+  timelines: ChannelDaemonOctoTimelineRegistry;
+  binding: ChannelConnectorRuntimeBinding;
+  message: ChannelConnectorOctoInboundMessage;
+}): void {
+  if (!isOctoGroupChannel(input.message.channelType)) return;
+  const channelId = octoSyncChannelId(input.message);
+  if (!channelId || !input.message.messageId) return;
+  const text = extractOctoContent(input.message);
+  const attachments = extractOctoAttachments(input.message).map(octoInboundAttachmentSummary).filter(Boolean);
+  if (!text && !attachments.length) return;
+  const key = octoRealtimeTimelineKey(input.binding.id, channelId, input.message.channelType);
+  const existing = input.timelines.get(key) || [];
+  const nextEntry: ChannelDaemonOctoTimelineEntry = {
+    bindingId: input.binding.id,
+    channelId,
+    channelType: input.message.channelType,
+    messageId: input.message.messageId,
+    messageSeq: typeof input.message.messageSeq === "number" && Number.isFinite(input.message.messageSeq)
+      ? input.message.messageSeq
+      : null,
+    fromUid: normalizeString(input.message.fromUid) || "unknown",
+    body: text || `[attachments: ${attachments.join("; ")}]`,
+    attachmentSummaries: attachments,
+    receivedAt: new Date().toISOString(),
+  };
+  const retained = existing
+    .filter((entry) => entry.messageId !== nextEntry.messageId)
+    .concat(nextEntry)
+    .sort((a, b) => {
+      if (a.messageSeq !== null && b.messageSeq !== null && a.messageSeq !== b.messageSeq) return a.messageSeq - b.messageSeq;
+      return Date.parse(a.receivedAt) - Date.parse(b.receivedAt);
+    })
+    .slice(-MAX_OCTO_REALTIME_TIMELINE_PER_CHANNEL);
+  input.timelines.set(key, retained);
+}
+
 function normalizeOctoGroupMember(value: unknown): ChannelConnectorOctoGroupMember | null {
   if (!isRecord(value)) return null;
   const uid = normalizeString(value.uid)
@@ -4866,6 +4934,72 @@ function renderOctoSyncedHistoryContext(input: {
   ].join("\n");
 }
 
+function renderOctoRealtimeTimelineContext(input: {
+  timelines: ChannelDaemonOctoTimelineRegistry;
+  binding: ChannelConnectorRuntimeBinding;
+  message: ChannelConnectorOctoInboundMessage;
+  botUid?: string | null;
+  members?: readonly ChannelConnectorOctoGroupMember[] | null;
+  limit: number;
+  messageMaxRunes: number;
+  totalMaxRunes: number;
+  excludeMessageIds?: readonly string[] | null;
+}): string | null {
+  if (!isOctoGroupChannel(input.message.channelType)) return null;
+  const channelId = octoSyncChannelId(input.message);
+  if (!channelId) return null;
+  const key = octoRealtimeTimelineKey(input.binding.id, channelId, input.message.channelType);
+  const entries = input.timelines.get(key) || [];
+  const exclude = new Set((input.excludeMessageIds || []).map(normalizeString).filter(Boolean));
+  const currentSeq = typeof input.message.messageSeq === "number" && Number.isFinite(input.message.messageSeq)
+    ? input.message.messageSeq
+    : null;
+  const botUid = normalizeString(input.botUid);
+  const nameByUid = octoMemberNameByUid(input.members || []);
+  const robotByUid = octoMemberRobotByUid(input.members || []);
+  const contextEntries = entries
+    .filter((entry) => {
+      if (entry.messageId === input.message.messageId) return false;
+      if (exclude.has(entry.messageId)) return false;
+      if (currentSeq && entry.messageSeq && entry.messageSeq >= currentSeq) return false;
+      return Boolean(entry.body || entry.attachmentSummaries.length);
+    })
+    .slice(-input.limit)
+    .map((entry) => {
+      const body = truncateOctoHistoryBody(entry.body, input.messageMaxRunes);
+      return {
+        sender: octoSyncedSenderLabel(entry.fromUid, nameByUid),
+        senderType: octoSyncedSenderType(entry.fromUid, botUid, robotByUid),
+        body: body.text,
+        truncated: body.truncated,
+        originalRunes: body.originalRunes,
+        messageSeq: entry.messageSeq,
+        messageId: entry.messageId,
+        attachmentSummaries: entry.attachmentSummaries,
+      };
+    });
+  if (!contextEntries.length) return null;
+  const budgetedEntries = fitOctoHistoryEntriesToBudget(contextEntries, input.totalMaxRunes);
+  const droppedCount = contextEntries.length - budgetedEntries.length;
+  return [
+    "[Octo realtime local channel timeline]",
+    "Messages were observed by this Studio daemon in real time, including messages that did not @mention this bot and therefore did not trigger a reply.",
+    "Use this as short-term collaboration context when Bot API history is delayed or missing. Do not answer old questions unless the current user asks you to summarize, inspect, or act on them.",
+    `History budget: ${budgetedEntries.length}/${contextEntries.length} messages included, max ${input.messageMaxRunes} chars per message, max ${input.totalMaxRunes} chars total.${droppedCount ? ` Dropped ${droppedCount} older messages due to budget.` : ""}`,
+    "```json",
+    JSON.stringify(budgetedEntries.map((entry) => ({
+      sender: entry.sender,
+      senderType: entry.senderType,
+      body: entry.body,
+      ...(entry.truncated ? { truncated: true, originalRunes: entry.originalRunes } : {}),
+      ...(entry.messageSeq ? { messageSeq: entry.messageSeq } : {}),
+      ...(entry.attachmentSummaries.length ? { attachments: entry.attachmentSummaries } : {}),
+    })), null, 2),
+    "```",
+    "[Current message follows later - respond to that only]",
+  ].join("\n");
+}
+
 async function loadOctoSyncedHistoryContext(input: {
   binding: ChannelConnectorRuntimeBinding;
   transport: ChannelConnectorOctoTransportConfig | null;
@@ -4876,6 +5010,7 @@ async function loadOctoSyncedHistoryContext(input: {
   attempted: boolean;
   itemCount: number | null;
   includedCount: number;
+  messageIds: string[];
 }> {
   if (!metadataBoolean(input.binding, [
     "enableOctoHistorySync",
@@ -4883,7 +5018,7 @@ async function loadOctoSyncedHistoryContext(input: {
     "syncOctoHistory",
     "sync_octo_history",
   ], true)) {
-    return { context: null, error: null, attempted: false, itemCount: null, includedCount: 0 };
+    return { context: null, error: null, attempted: false, itemCount: null, includedCount: 0, messageIds: [] };
   }
   const limit = Math.max(0, Math.min(20, Math.floor(metadataNumber(input.binding, [
     "octoHistorySyncLimit",
@@ -4892,7 +5027,7 @@ async function loadOctoSyncedHistoryContext(input: {
     "history_sync_limit",
   ], DEFAULT_OCTO_HISTORY_SYNC_LIMIT))));
   if (limit <= 0) {
-    return { context: null, error: null, attempted: false, itemCount: null, includedCount: 0 };
+    return { context: null, error: null, attempted: false, itemCount: null, includedCount: 0, messageIds: [] };
   }
   const messageMaxRunes = Math.max(200, Math.min(8000, Math.floor(metadataNumber(input.binding, [
     "octoHistoryMessageMaxRunes",
@@ -4908,10 +5043,10 @@ async function loadOctoSyncedHistoryContext(input: {
   ], DEFAULT_OCTO_HISTORY_TOTAL_MAX_RUNES))));
   const channelId = octoSyncChannelId(input.message);
   if (!channelId) {
-    return { context: null, error: "octo_channel_id_missing", attempted: true, itemCount: null, includedCount: 0 };
+    return { context: null, error: "octo_channel_id_missing", attempted: true, itemCount: null, includedCount: 0, messageIds: [] };
   }
   if (!input.transport) {
-    return { context: null, error: "octo_transport_config_missing", attempted: true, itemCount: null, includedCount: 0 };
+    return { context: null, error: "octo_transport_config_missing", attempted: true, itemCount: null, includedCount: 0, messageIds: [] };
   }
   const messageSeq = typeof input.message.messageSeq === "number" && Number.isFinite(input.message.messageSeq)
     ? input.message.messageSeq
@@ -4930,6 +5065,7 @@ async function loadOctoSyncedHistoryContext(input: {
       attempted: result.attempted,
       itemCount: result.itemCount ?? null,
       includedCount: 0,
+      messageIds: [],
     };
   }
   const context = renderOctoSyncedHistoryContext({
@@ -4945,24 +5081,23 @@ async function loadOctoSyncedHistoryContext(input: {
   const currentSeq = typeof input.message.messageSeq === "number" && Number.isFinite(input.message.messageSeq)
     ? input.message.messageSeq
     : null;
-  const includedCount = context
-    ? octoSyncedMessagesFromData(result.data)
-      .filter((message) => {
-        if (normalizeString(message.message_id) === input.message.messageId) return false;
-        if (!octoSyncedMessageText(message.payload)) return false;
-        const seq = octoSyncedMessageSeq(message);
-        if (currentSeq && seq && seq >= currentSeq) return false;
-        return true;
-      })
-      .slice(-limit)
-      .length
-    : 0;
+  const includedMessages = octoSyncedMessagesFromData(result.data)
+    .filter((message) => {
+      if (normalizeString(message.message_id) === input.message.messageId) return false;
+      if (!octoSyncedMessageText(message.payload)) return false;
+      const seq = octoSyncedMessageSeq(message);
+      if (currentSeq && seq && seq >= currentSeq) return false;
+      return true;
+    })
+    .slice(-limit);
+  const includedCount = context ? includedMessages.length : 0;
   return {
     context,
     error: null,
     attempted: result.attempted,
     itemCount: result.itemCount ?? null,
     includedCount,
+    messageIds: includedMessages.map((message) => normalizeString(message.message_id)).filter(Boolean),
   };
 }
 
@@ -7032,10 +7167,16 @@ async function dispatchOctoMessage(input: {
   robotId: string | null;
   message: ChannelConnectorOctoInboundMessage;
   seenMessages: Map<string, number>;
+  octoTimelines: ChannelDaemonOctoTimelineRegistry;
 }): Promise<void> {
-  const { config, state, activeRunCancels, project, binding, robotId, seenMessages } = input;
+  const { config, state, activeRunCancels, project, binding, robotId, seenMessages, octoTimelines } = input;
   let message = input.message;
   if (shouldSkipSeenMessage(seenMessages, message.messageId)) return;
+  recordOctoRealtimeTimeline({
+    timelines: octoTimelines,
+    binding,
+    message,
+  });
   const originalContent = extractOctoContent(message);
   const aliasResolution = resolveChannelConnectorBindingCommandAlias(binding, originalContent, commandAliasesPath(config));
   if (aliasResolution.matchedAlias) {
@@ -7426,6 +7567,17 @@ async function dispatchOctoMessage(input: {
     transport,
     message: agentMessage,
   });
+  const realtimeHistoryContext = renderOctoRealtimeTimelineContext({
+    timelines: octoTimelines,
+    binding,
+    message: agentMessage,
+    botUid: binding.botId || robotId || null,
+    members: agentMessage.members || [],
+    limit: DEFAULT_OCTO_REALTIME_TIMELINE_LIMIT,
+    messageMaxRunes: DEFAULT_OCTO_HISTORY_MESSAGE_MAX_RUNES,
+    totalMaxRunes: DEFAULT_OCTO_HISTORY_TOTAL_MAX_RUNES,
+    excludeMessageIds: syncedHistoryContext.messageIds,
+  });
   if (syncedHistoryContext.attempted) {
     writeJsonLine(config.paths.octoEvents, {
       checkedAt: new Date().toISOString(),
@@ -7466,6 +7618,7 @@ async function dispatchOctoMessage(input: {
   const historyContext = [
     octoMdContext.context,
     syncedHistoryContext.context,
+    realtimeHistoryContext,
     localHistoryContext,
   ].filter(Boolean).join("\n\n") || null;
   const runStartedAt = new Date().toISOString();
@@ -9314,8 +9467,9 @@ async function startOctoConnection(input: {
   sockets: OctoWukongSocket[];
   restHeartbeatTimers: NodeJS.Timeout[];
   seenMessages: Map<string, number>;
+  octoTimelines: ChannelDaemonOctoTimelineRegistry;
 }): Promise<void> {
-  const { config, state, activeRunCancels, project, binding, sockets, restHeartbeatTimers, seenMessages } = input;
+  const { config, state, activeRunCancels, project, binding, sockets, restHeartbeatTimers, seenMessages, octoTimelines } = input;
   const transport = octoTransportFromMetadata(binding.metadata);
   if (!transport) {
     state.octoConnections[binding.id] = connectionState(binding, {
@@ -9398,6 +9552,7 @@ async function startOctoConnection(input: {
         robotId: resolved.entry.robotId,
         message,
         seenMessages,
+        octoTimelines,
       }).catch((error) => {
         appendLog(config.paths.log, "Octo message dispatch failed", {
           bindingId: binding.id,
@@ -9474,6 +9629,7 @@ async function startOctoConnections(
   sockets: OctoWukongSocket[],
   restHeartbeatTimers: NodeJS.Timeout[],
   seenMessages: Map<string, number>,
+  octoTimelines: ChannelDaemonOctoTimelineRegistry,
 ): Promise<void> {
   for (const project of config.projects) {
     for (const binding of project.platformBindings) {
@@ -9487,6 +9643,7 @@ async function startOctoConnections(
         sockets,
         restHeartbeatTimers,
         seenMessages,
+        octoTimelines,
       });
     }
   }
@@ -10694,10 +10851,11 @@ async function main(): Promise<void> {
   const feishuGroups: ChannelDaemonFeishuGroup[] = [];
   const activeRunCancels: ChannelDaemonActiveRunCancelRegistry = new Map();
   const seenMessages = loadFeishuSeenMessages(config);
+  const octoTimelines: ChannelDaemonOctoTimelineRegistry = new Map();
   const agentSessionReaper = startAgentSessionDriverReaper(config, state);
   let feishuWatchdog: NodeJS.Timeout | null = null;
 
-  void startOctoConnections(config, state, activeRunCancels, sockets, octoRestHeartbeatTimers, seenMessages).catch((error) => {
+  void startOctoConnections(config, state, activeRunCancels, sockets, octoRestHeartbeatTimers, seenMessages, octoTimelines).catch((error) => {
     appendLog(config.paths.log, "Octo connection startup failed", {
       error: error instanceof Error ? error.message : String(error),
     });
