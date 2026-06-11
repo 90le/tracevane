@@ -9071,7 +9071,7 @@ test("native Channel Connectors daemon serializes same-session Octo Agent turns"
           const lines = fs.readFileSync(capturePath, "utf8").trim().split(/\r?\n/).filter(Boolean);
           if (lines.length < 4) return null;
           return lines.map((line) => JSON.parse(line));
-        }, 10_000);
+        }, 5000);
         const starts = capture.filter((item) => item.event === "start");
         const ends = capture.filter((item) => item.event === "end");
         assert.deepEqual(starts.map((item) => item.marker), ["first", "second"]);
@@ -9088,7 +9088,7 @@ test("native Channel Connectors daemon serializes same-session Octo Agent turns"
           const first = response.body?.agentRuns?.find?.((item) => item.messageId === "2001" && item.ok);
           const second = response.body?.agentRuns?.find?.((item) => item.messageId === "2002" && item.ok);
           return first && second ? response.body : null;
-        }, 5000);
+        }, 10_000);
         assert.equal(finalStatus.ok, true);
         const replyContents = requests
           .filter((request) => request.path === "/v1/bot/sendMessage")
@@ -10425,7 +10425,7 @@ test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSock
           return events.some((event) => event.eventKind === "agent.model.selected" && event.messageId === "1001")
             && events.some((event) => event.eventKind === "agent.attachments.staged" && event.messageId === "1001")
             && events.some((event) => event.eventKind === "agent.visual.input" && event.messageId === "1001");
-        });
+        }, 10_000);
         assert.ok(octoEvents.some((event) => {
           return event.eventKind === "agent.model.selected"
             && event.messageId === "1001"

@@ -146,6 +146,58 @@ function writeFixture(root) {
     transportAction: "patch-progress-card",
   });
   appendJsonLine(feishuEvents, {
+    checkedAt: "2026-06-08T01:05:01.100Z",
+    eventKind: "agent.permission.prompt",
+    adapter: "feishu",
+    bindingId: "feishu-live",
+    sessionKey: "feishu:oc_real:ou_real",
+    messageId: "feishu-message-1",
+    progressType: "permission",
+    permissionStatus: "pending",
+    requestId: "perm-1",
+    toolName: "Bash",
+  });
+  appendJsonLine(feishuEvents, {
+    checkedAt: "2026-06-08T01:05:01.200Z",
+    eventKind: "agent.progress.card",
+    adapter: "feishu",
+    bindingId: "feishu-live",
+    sessionKey: "feishu:oc_real:ou_real",
+    messageId: "feishu-message-1",
+    progressType: "permission",
+    permissionStatus: "pending",
+    progressStatus: "running",
+    transportAction: "patch-progress-card",
+    requestId: "perm-1",
+    toolName: "Bash",
+  });
+  appendJsonLine(feishuEvents, {
+    checkedAt: "2026-06-08T01:05:02.000Z",
+    eventKind: "agent.permission.reply",
+    adapter: "feishu",
+    bindingId: "feishu-live",
+    sessionKey: "feishu:oc_real:ou_real",
+    messageId: "feishu-message-1",
+    progressType: "permission",
+    permissionStatus: "allowed",
+    requestId: "perm-1",
+    toolName: "Bash",
+  });
+  appendJsonLine(feishuEvents, {
+    checkedAt: "2026-06-08T01:05:02.100Z",
+    eventKind: "agent.progress.card",
+    adapter: "feishu",
+    bindingId: "feishu-live",
+    sessionKey: "feishu:oc_real:ou_real",
+    messageId: "feishu-message-1",
+    progressType: "permission",
+    permissionStatus: "allowed",
+    progressStatus: "running",
+    transportAction: "patch-progress-card",
+    requestId: "perm-1",
+    toolName: "Bash",
+  });
+  appendJsonLine(feishuEvents, {
     checkedAt: "2026-06-08T01:05:03.000Z",
     eventKind: "agent.progress.card",
     adapter: "feishu",
@@ -296,6 +348,34 @@ test("agent run live smoke script verifies Feishu final card path", async () => 
   assert.equal(parsed.matchingRuns[0].latestFeishuProgressCardStatus, "completed");
 });
 
+test("agent run live smoke script verifies permission approval evidence", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
+  const { configPath } = writeFixture(root);
+  const output = await runScript([
+    "--config", configPath,
+    "--since", "2026-06-08T00:00:00.000Z",
+    "--bindings", "feishu-live",
+    "--require-ok",
+    "--require-permission-prompt",
+    "--require-permission-resolved",
+    "--require-feishu-permission-progress-card",
+    "--json",
+  ], root);
+  const parsed = JSON.parse(output.stdout);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.counts.permissionEvents, 2);
+  assert.equal(parsed.matchingRuns.length, 1);
+  assert.equal(parsed.matchingRuns[0].permissionPromptCount, 1);
+  assert.equal(parsed.matchingRuns[0].permissionReplyCount, 1);
+  assert.equal(parsed.matchingRuns[0].permissionProgressCount, 2);
+  assert.equal(parsed.matchingRuns[0].feishuPermissionProgressCardCount, 2);
+  assert.equal(parsed.matchingRuns[0].permissionResolved, true);
+  assert.equal(parsed.matchingRuns[0].latestPermissionStatus, "allowed");
+  assert.deepEqual(parsed.matchingRuns[0].permissionStatuses.sort(), ["allowed", "pending"].sort());
+  assert.deepEqual(parsed.matchingRuns[0].permissionRequestIds, ["perm-1"]);
+  assert.deepEqual(parsed.matchingRuns[0].permissionToolNames, ["Bash"]);
+});
+
 test("agent run live smoke script fails when required evidence is missing", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
   const { configPath } = writeFixture(root);
@@ -305,6 +385,23 @@ test("agent run live smoke script fails when required evidence is missing", asyn
       "--since", "2026-06-08T00:00:00.000Z",
       "--bindings", "feishu-live",
       "--require-file",
+      "--json",
+    ], root),
+    (error) => {
+      const parsed = JSON.parse(error.stdout);
+      assert.equal(parsed.ok, false);
+      assert.equal(parsed.counts.finishedRuns, 1);
+      assert.equal(parsed.counts.matchingRuns, 0);
+      return true;
+    },
+  );
+
+  await assert.rejects(
+    runScript([
+      "--config", configPath,
+      "--since", "2026-06-08T00:00:00.000Z",
+      "--bindings", "octo-live",
+      "--require-permission-prompt",
       "--json",
     ], root),
     (error) => {
