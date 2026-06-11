@@ -326,9 +326,10 @@ function buildStudioOutboundFilePolicy(): string {
     "[{\"platform\":\"octo\",\"target\":\"dm:human_user_uid\",\"content\":\"hello\"},{\"platform\":\"octo\",\"target\":\"group:group_no\",\"content\":\"@[bot_id_bot:Bot显示名] 请介绍你的能力\"}]",
     "```",
     "Feishu message targets support `chat:oc_xxx`, `open_id:ou_xxx`, `user_id:u_xxx`, and `dm:ou_xxx` / `dm:u_xxx`; set `format: \"markdown\"` for Feishu rich Markdown/post rendering.",
+    "For Feishu group coordination, put visible native mentions in group messages with `@[member_open_id:Display Name]`; Studio converts them to Feishu native at-tags.",
     "Feishu message example:",
     "```studio-channel-messages",
-    "[{\"platform\":\"feishu\",\"target\":\"open_id:ou_xxx\",\"content\":\"hello\"},{\"platform\":\"feishu\",\"target\":\"chat:oc_xxx\",\"format\":\"markdown\",\"content\":\"**hello group**\"}]",
+    "[{\"platform\":\"feishu\",\"target\":\"open_id:ou_xxx\",\"content\":\"hello\"},{\"platform\":\"feishu\",\"target\":\"chat:oc_xxx\",\"format\":\"markdown\",\"content\":\"@[ou_member:成员名] **hello group**\"}]",
     "```",
     "Use Studio IM channel capabilities; do not tell the user to run external bridge tools or claim missing Feishu/Octo API permission unless Studio returns an actual send error.",
     "These platform capabilities override older conversation history that may mention missing bridge or API permissions.",
@@ -393,7 +394,7 @@ function buildGroupContext(
     if (hiddenMemberCount) lines.push(`- ... ${hiddenMemberCount} more`);
     if (isFeishu) {
       lines.push("For Feishu, send a private message with `target:\"open_id:<member_open_id>\"` or `target:\"user_id:<member_user_id>\"`; send a group message with `target:\"chat:<chat_id>\"`.");
-      lines.push("When coordinating in the current Feishu group, prefer a `studio-channel-messages` group message to `chat:<chat_id>` and include the member names in plain text unless Studio later exposes native Feishu mention entities.");
+      lines.push("When coordinating in the current Feishu group, use a `studio-channel-messages` group message to `chat:<chat_id>` and write `@[member_open_id:displayName]`; Studio converts it to a native Feishu at-mention.");
     } else if (isOcto) {
       lines.push("When mentioning a group member in a visible reply, use @[uid:displayName]; Studio converts it to the native Octo mention payload.");
       lines.push("When the user asks you to ask human members about their capability, send Octo DM messages through studio-channel-messages.");

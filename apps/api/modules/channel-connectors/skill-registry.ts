@@ -496,7 +496,7 @@ export function buildChannelConnectorNativeSkillPrompt(skill: ChannelConnectorSk
     "",
     "Use Studio native manifests for outbound work:",
     "- `studio-channel-files` for files, images, and binary attachments.",
-    "- `studio-channel-messages` for IM messages, Octo group/thread mentions, and Feishu text/Markdown targets.",
+    "- `studio-channel-messages` for IM messages, Octo group/thread mentions, and Feishu text/Markdown/group mention targets.",
     "",
     `Current platform family: ${platform}.`,
     "",

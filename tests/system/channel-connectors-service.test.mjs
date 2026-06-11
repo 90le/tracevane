@@ -135,6 +135,7 @@ import {
 } from "../../dist/apps/api/modules/channel-connectors/outbound-files.js";
 import {
   extractChannelConnectorOutboundMessages,
+  renderFeishuOutboundMessageContent,
   resolveFeishuOutboundMessageTarget,
   resolveOctoOutboundMessageTarget,
 } from "../../dist/apps/api/modules/channel-connectors/outbound-messages.js";
@@ -1158,13 +1159,14 @@ test("native Channel Connectors extracts outbound IM message manifests", () => {
       { platform: "feishu", target: "dm:ou_dm", content: "Feishu dm ping" },
       { platform: "feishu", target: "chat:oc_other", content: "Feishu chat ping" },
       { platform: "feishu", target: "open_id:ou_markdown", format: "markdown", content: "**Feishu md ping**" },
+      { platform: "feishu", target: "chat:oc_mentions", content: "@[ou_helper:Helper] Feishu mention ping" },
     ]),
     "```",
   ].join("\n"));
 
   assert.equal(extracted.replyText, "我会通知她们。");
   assert.deepEqual(extracted.errors, []);
-  assert.equal(extracted.messages.length, 11);
+  assert.equal(extracted.messages.length, 12);
   assert.deepEqual(extracted.messages.map((message) => [message.platform, message.channelId, message.channelType, message.chatId, message.content, message.format]), [
     ["octo", "user-1", 1, null, "请介绍一下你的能力", null],
     ["octo", "27xIxHrNV0Qc3ee2129_bot", 1, null, "请介绍一下你的能力", null],
@@ -1177,10 +1179,13 @@ test("native Channel Connectors extracts outbound IM message manifests", () => {
     ["feishu", "ou_dm", 1, null, "Feishu dm ping", null],
     ["feishu", "", null, "oc_other", "Feishu chat ping", null],
     ["feishu", "open_id:ou_markdown", null, null, "**Feishu md ping**", "markdown"],
+    ["feishu", "", null, "oc_mentions", "Feishu mention ping", null],
   ]);
   assert.deepEqual(extracted.messages[3].mentionUids, ["user-2"]);
   assert.equal(extracted.messages[3].onBehalfOf, "grantor-1");
   assert.equal(extracted.messages[4].mentionAll, true);
+  assert.deepEqual(extracted.messages[11].mentionUids, ["ou_helper"]);
+  assert.deepEqual(extracted.messages[11].structuredMentions, [{ uid: "ou_helper", label: "Helper" }]);
   assert.deepEqual(extracted.messages.slice(5).map((message) => {
     const target = resolveFeishuOutboundMessageTarget(message);
     return [target.receiveId, target.receiveIdType, target.error];
@@ -1191,7 +1196,33 @@ test("native Channel Connectors extracts outbound IM message manifests", () => {
     ["ou_dm", "open_id", null],
     ["oc_other", "chat_id", null],
     ["ou_markdown", "open_id", null],
+    ["oc_mentions", "chat_id", null],
   ]);
+  const feishuMentionTarget = resolveFeishuOutboundMessageTarget(extracted.messages[11]);
+  const feishuMentionContent = renderFeishuOutboundMessageContent({
+    message: extracted.messages[11],
+    target: feishuMentionTarget,
+    members: [
+      { uid: "ou_helper", name: "Helper From Members" },
+    ],
+  });
+  assert.deepEqual(feishuMentionContent.nativeMentionIds, ["ou_helper"]);
+  assert.equal(feishuMentionContent.content, '<at user_id="ou_helper">Helper</at> Feishu mention ping');
+
+  const explicitFeishuMentionContent = renderFeishuOutboundMessageContent({
+    message: {
+      ...extracted.messages[5],
+      content: "Ping",
+      mentionUids: ["open_id:ou_member"],
+      structuredMentions: [],
+    },
+    target: { receiveId: "oc_chat", receiveIdType: "chat_id", error: null },
+    members: [
+      { uid: "ou_member", name: "Member Name" },
+    ],
+  });
+  assert.deepEqual(explicitFeishuMentionContent.nativeMentionIds, ["ou_member"]);
+  assert.equal(explicitFeishuMentionContent.content, '<at user_id="ou_member">Member Name</at> Ping');
 
   const botFromGroup = resolveOctoOutboundMessageTarget({
     message: extracted.messages[1],
@@ -3470,10 +3501,10 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.match(feishuGroupRequest.stdin, /target:"open_id:<member_open_id>"/);
   assert.match(feishuGroupRequest.stdin, /target:"chat:<chat_id>"/);
   assert.match(feishuGroupRequest.stdin, /current Feishu group/);
+  assert.match(feishuGroupRequest.stdin, /@\[member_open_id:displayName\]/);
   assert.match(feishuGroupRequest.stdin, /To send a Feishu private or group message/);
   assert.doesNotMatch(feishuGroupRequest.stdin, /Known members from Octo Bot API/);
   assert.doesNotMatch(feishuGroupRequest.stdin, /Octo does not support bot DMs/);
-  assert.doesNotMatch(feishuGroupRequest.stdin, /@\[uid:displayName\]/);
   for (const cleanupPath of feishuGroupRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const missingKeyRequest = buildChannelConnectorAgentProcessRequest({

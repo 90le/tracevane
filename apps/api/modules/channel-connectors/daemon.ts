@@ -214,6 +214,7 @@ import {
 } from "./outbound-files.js";
 import {
   extractChannelConnectorOutboundMessages,
+  renderFeishuOutboundMessageContent,
   resolveFeishuOutboundMessageTarget,
   resolveOctoOutboundMessageTarget,
   type ChannelConnectorOutboundMessageRequest,
@@ -2915,6 +2916,7 @@ async function sendFeishuOutboundMessages(input: {
   config: ChannelConnectorsDaemonRuntimeConfig;
   transport: ChannelConnectorFeishuTransportConfig;
   messages: ChannelConnectorOutboundMessageRequest[];
+  members?: readonly ChannelConnectorOctoGroupMember[] | null;
 }): Promise<{ sentCount: number; requestCount: number; errors: string[] }> {
   let sentCount = 0;
   let requestCount = 0;
@@ -2928,16 +2930,21 @@ async function sendFeishuOutboundMessages(input: {
       errors.push(target.error || "Feishu outbound message requires content.");
       continue;
     }
+    const rendered = renderFeishuOutboundMessageContent({
+      message,
+      target,
+      members: input.members || [],
+    });
     const result = message.format === "markdown"
       ? await sendFeishuPostMessage(input.transport, {
         receiveId: target.receiveId,
         receiveIdType: target.receiveIdType,
-        content,
+        content: rendered.content,
       }, cachePath)
       : await sendFeishuTextMessage(input.transport, {
         receiveId: target.receiveId,
         receiveIdType: target.receiveIdType,
-        content,
+        content: rendered.content,
       }, cachePath);
     requestCount += result.requestCount;
     if (result.ok === true) {
@@ -9976,6 +9983,7 @@ async function dispatchFeishuParsedEvent(input: {
       config,
       transport,
       messages: outboundReply.messages,
+      members: agentMessage.members || [],
     });
     outboundMessageSentCount = sentMessages.sentCount;
     outboundMessageRequestCount = sentMessages.requestCount;

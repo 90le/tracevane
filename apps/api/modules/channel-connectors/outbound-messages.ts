@@ -1,7 +1,16 @@
+import type {
+  ChannelConnectorOctoGroupMember,
+} from "../../../../types/channel-connectors.js";
+
 export const STUDIO_CHANNEL_MESSAGES_BLOCK = "studio-channel-messages";
 
 export type ChannelConnectorOutboundMessagePlatform = "octo" | "feishu";
 export type ChannelConnectorOutboundMessageFormat = "text" | "markdown";
+
+export interface ChannelConnectorOutboundStructuredMention {
+  uid: string;
+  label: string;
+}
 
 export interface ChannelConnectorOutboundMessageRequest {
   platform?: ChannelConnectorOutboundMessagePlatform | null;
@@ -12,6 +21,7 @@ export interface ChannelConnectorOutboundMessageRequest {
   format?: ChannelConnectorOutboundMessageFormat | null;
   onBehalfOf?: string | null;
   mentionUids: string[];
+  structuredMentions?: ChannelConnectorOutboundStructuredMention[];
   mentionAll: boolean;
 }
 
@@ -35,6 +45,11 @@ export interface ChannelConnectorFeishuOutboundTargetResolution {
   receiveId: string;
   receiveIdType: ChannelConnectorFeishuReceiveIdType;
   error: string | null;
+}
+
+export interface ChannelConnectorRenderedFeishuOutboundMessage {
+  content: string;
+  nativeMentionIds: string[];
 }
 
 function normalizeString(value: unknown): string {
@@ -74,11 +89,25 @@ function isOctoBotUid(value: string): boolean {
   return normalizeString(value).toLowerCase().endsWith("_bot");
 }
 
-function extractStructuredMentionUids(content: string): { content: string; mentionUids: string[] } {
-  const mentionUids: string[] = [];
-  const stripped = content.replace(/@\[([A-Za-z0-9_.:-]+):([^\]\r\n]+)\]/g, (_match, uid: string) => {
+function uniqueStructuredMentions(values: ChannelConnectorOutboundStructuredMention[]): ChannelConnectorOutboundStructuredMention[] {
+  const seen = new Set<string>();
+  const output: ChannelConnectorOutboundStructuredMention[] = [];
+  for (const item of values) {
+    const uid = normalizeString(item.uid);
+    const label = normalizeString(item.label);
+    if (!uid || seen.has(uid)) continue;
+    seen.add(uid);
+    output.push({ uid, label });
+  }
+  return output;
+}
+
+function extractStructuredMentions(content: string): { content: string; mentions: ChannelConnectorOutboundStructuredMention[] } {
+  const mentions: ChannelConnectorOutboundStructuredMention[] = [];
+  const stripped = content.replace(/@\[([A-Za-z0-9_.:-]+):([^\]\r\n]+)\]/g, (_match, uid: string, label: string) => {
     const normalizedUid = normalizeString(uid);
-    if (normalizedUid) mentionUids.push(normalizedUid);
+    const normalizedLabel = normalizeString(label);
+    if (normalizedUid) mentions.push({ uid: normalizedUid, label: normalizedLabel });
     return " ";
   });
   return {
@@ -87,7 +116,7 @@ function extractStructuredMentionUids(content: string): { content: string; menti
       .replace(/[ \t]+\n/g, "\n")
       .replace(/\n[ \t]+/g, "\n")
       .trim(),
-    mentionUids: uniqueStrings(mentionUids),
+    mentions: uniqueStructuredMentions(mentions),
   };
 }
 
@@ -163,7 +192,7 @@ function outboundMessageFromValue(value: unknown): ChannelConnectorOutboundMessa
   );
   const channelType = normalizeChannelType(record.channelType ?? record.channel_type ?? record.type) ?? targetParts.channelType;
   const rawContent = normalizeString(record.content ?? record.text ?? record.message);
-  const structuredMentions = extractStructuredMentionUids(rawContent);
+  const structuredMentions = extractStructuredMentions(rawContent);
   const content = structuredMentions.content;
   const onBehalfOf = normalizeString(
     record.onBehalfOf
@@ -182,8 +211,9 @@ function outboundMessageFromValue(value: unknown): ChannelConnectorOutboundMessa
     onBehalfOf,
     mentionUids: uniqueStrings([
       ...stringList(record.mentionUids ?? record.mention_uids ?? record.mentions),
-      ...structuredMentions.mentionUids,
+      ...structuredMentions.mentions.map((mention) => mention.uid),
     ]),
+    structuredMentions: structuredMentions.mentions,
     mentionAll: record.mentionAll === true
       || record.mention_all === true
       || record.mentionAll === 1
@@ -286,6 +316,33 @@ function stripFeishuTargetPrefix(value: string): string {
   return normalized.replace(/^(chat|group|channel|open_id|user_id|user|dm|uid):/i, "").trim();
 }
 
+function feishuMentionId(value: string): string {
+  return stripFeishuTargetPrefix(value);
+}
+
+function escapeFeishuAtTagText(value: string): string {
+  return normalizeString(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function escapeFeishuAtTagAttribute(value: string): string {
+  return escapeFeishuAtTagText(value).replace(/"/g, "&quot;");
+}
+
+function feishuMemberLabel(
+  id: string,
+  members: readonly ChannelConnectorOctoGroupMember[],
+  structuredMentions: readonly ChannelConnectorOutboundStructuredMention[],
+): string {
+  const normalizedId = feishuMentionId(id);
+  const structured = structuredMentions.find((mention) => feishuMentionId(mention.uid) === normalizedId);
+  if (structured?.label) return structured.label;
+  const member = members.find((item) => feishuMentionId(item.uid) === normalizedId);
+  return normalizeString(member?.name) || normalizedId;
+}
+
 export function resolveFeishuOutboundMessageTarget(
   message: ChannelConnectorOutboundMessageRequest,
 ): ChannelConnectorFeishuOutboundTargetResolution {
@@ -302,5 +359,31 @@ export function resolveFeishuOutboundMessageTarget(
     receiveId,
     receiveIdType: feishuTargetReceiveIdType(raw),
     error: null,
+  };
+}
+
+export function renderFeishuOutboundMessageContent(input: {
+  message: ChannelConnectorOutboundMessageRequest;
+  target: ChannelConnectorFeishuOutboundTargetResolution;
+  members?: readonly ChannelConnectorOctoGroupMember[] | null;
+}): ChannelConnectorRenderedFeishuOutboundMessage {
+  const content = normalizeString(input.message.content);
+  if (input.target.error || input.target.receiveIdType !== "chat_id") {
+    return { content, nativeMentionIds: [] };
+  }
+  const members = input.members || [];
+  const structuredMentions = input.message.structuredMentions || [];
+  const nativeMentionIds = uniqueStrings([
+    ...structuredMentions.map((mention) => feishuMentionId(mention.uid)),
+    ...input.message.mentionUids.map(feishuMentionId),
+  ]);
+  if (!nativeMentionIds.length) return { content, nativeMentionIds: [] };
+  const prefix = nativeMentionIds.map((id) => {
+    const label = feishuMemberLabel(id, members, structuredMentions);
+    return `<at user_id="${escapeFeishuAtTagAttribute(id)}">${escapeFeishuAtTagText(label)}</at>`;
+  }).join(" ");
+  return {
+    content: `${prefix}${content ? ` ${content}` : ""}`.trim(),
+    nativeMentionIds,
   };
 }
