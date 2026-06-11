@@ -24,7 +24,7 @@
 
 - 对照 Octo 插件固定群协作 @ 合同：`@[uid:显示名]`、bot DM 重写和 transport mention metadata 兜底都会发送可见 `@显示名`/`@uid` + Octo `mention.entities/uids`，避免隐藏 @。
 - 修复 Octo 群聊 `/process on` 下过程回复延迟：`step_finish: tool-calls` 仍是继续边界；Octo progress 气泡改为 5s best-effort 发送并带 `client_msg_no`，慢 REST 不再把旧过程回复拖到最终阶段补发；新增 daemon 级回归证明群聊开启 process 后中间回复先于最终回复发送。
-- 平台 skill 自动映射增强：普通 IM turn 现在会注入当前 binding/platform skill 的自动激活规则和短指令片段；显式 `/skill` 仍交付完整 `SKILL.md`，普通自然语言请求也能让 Codex/Claude/OpenCode 参考 Octo/Feishu 渠道能力。
+- 平台 skill 自动映射增强：普通 IM turn 会注入当前 binding/platform skill 的自动激活规则和运行时短指令片段；Octo/Feishu 平台 skill 摘要会优先抽取消息发送、历史、群协作、文件、权限等章节，并过滤注册、安装 OpenClaw 插件、保存凭证等 setup 章节，避免 Agent 误走外部桥接。
 - Feishu 出站消息按 OpenClaw target 合同迁移：`studio-channel-messages` 现在支持 `chat:oc_xxx`、`open_id:ou_xxx`、`user_id:u_xxx`、`dm:ou_xxx/u_xxx`，并支持 `format:"markdown"` 走 Feishu post(md)，发送时会选择对应 `receive_id_type`。
 - Octo persona/OBO 出站身份合同已接入：`studio-channel-messages` 可声明 `onBehalfOf` / `on_behalf_of` / `respondAs`，daemon 会按 Octo 插件 `sendMessage` 合同把它转为 Bot API 顶层 `on_behalf_of`。
 - Octo persona/OBO 入站路由已接入：binding metadata `onBehalfOf/on_behalf_of/respondAs/grantorUid` 会启用 grantor persona；普通 bot 仍不响应 `mention.all/humans` 广播，persona bot 会响应 @grantor / @所有人，并按 Octo 插件合同把文字、typing、文件/媒体和 manifest 消息发到源群/源私聊且携带顶层 `on_behalf_of`。可信 OBO v2 只接受配置 grantor 发来的 payload，`obo_system_hint` 会注入 Agent prompt，AI-only fan-out 会跳过，payload `respond_as` 不作为真实身份。
@@ -39,6 +39,7 @@
 
 - 通过：`npm run typecheck:api`。
 - 通过：`npm run build:api`。
+- 通过：`node --test --test-name-pattern "native Channel Connectors IM commands switch agent, model, and permission per session" tests/system/channel-connectors-service.test.mjs`，覆盖 platform skill 运行时章节抽取与 setup/bridge 章节过滤。
 - 通过：`node --test --test-name-pattern "native Channel Connectors extracts outbound IM message manifests|native Channel Connectors Feishu transport sends text to open_id and user_id targets|native Channel Connectors Feishu transport sends markdown post to open_id targets|native Channel Connectors Feishu transport splits long text replies|native Channel Connectors agent runner builds gateway-backed Codex turns" tests/system/channel-connectors-service.test.mjs`，5/5 全部通过。
 - 通过：`node --test --test-name-pattern "native Channel Connectors conversation history stores sanitized session context|native Channel Connectors conversation history keeps twenty prompt entries within budget|native Channel Connectors IM commands switch agent, model, and permission per session" tests/system/channel-connectors-service.test.mjs`，3/3 全部通过。
 - 通过：`node --test --test-name-pattern "daemon sends Octo group process replies before final reply" tests/system/channel-connectors-service.test.mjs`，1/1 全部通过。
@@ -70,6 +71,6 @@
 ## 下一步
 
 1. 用户在真实 Octo 群聊让 Agent 私聊 human 或 @其它 Studio/外部 bot，验证 `studio-channel-messages` 的 human DM、group/thread mention 能真实发送。
-2. 对照 Octo 插件继续迁移 persona/OBO 入站触发、grantor 信任和更完整的菜单/技能说明。
+2. 对照 Octo 插件继续迁移更完整菜单、技能说明和多 bot 协作 live smoke；platform skill 普通注入已只保留运行时能力，显式 `/skill` 仍保留完整文档。
 3. 用户发送一条新的 Feishu 消息，做业务入站复验：runtime 应出现 dispatcher callback / receivedMessages，且无 reconnect/stale。
 4. 做真实 IM live command/progress smoke：Feishu 验证 card patch、权限审批、三次顺序工具调用和 open_id/user_id 文本/Markdown 出站消息；Octo 验证文本进度、工具输出、文件/消息 manifest；随后补 Feishu 文档/云盘 skills。

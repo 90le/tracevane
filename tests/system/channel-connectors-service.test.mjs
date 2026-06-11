@@ -4778,6 +4778,32 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     "utf8",
   );
   const octoPlatformSkillDir = path.join(root, "platform-skills", "octo");
+  fs.mkdirSync(path.join(octoPlatformSkillDir, "octo-bot-api"), { recursive: true });
+  fs.writeFileSync(
+    path.join(octoPlatformSkillDir, "octo-bot-api", "SKILL.md"),
+    [
+      "---",
+      "name: Octo Bot API",
+      "description: Octo Bot API runtime, files, history, and group collaboration",
+      "---",
+      "# Octo Bot Skill",
+      "### Save Locally",
+      "curl -s <apiUrl>/v1/bot/skill.md > ~/.openclaw/skills/octo/SKILL.md",
+      "## Step 1: Register",
+      "curl -X POST <apiUrl>/v1/bot/register",
+      "## Step 2: Receive Messages",
+      "openclaw plugins install clawhub:octo",
+      "## Step 3: Send Messages",
+      "Use the current Studio channel_id and channel_type. Do not split thread channel ids.",
+      "## Message History Sync",
+      "Use recent channel messages to understand group collaboration before replying.",
+      "## Multi-Bot Coordination",
+      "Mention the target bot visibly and do not respond on behalf of unrelated bots.",
+      "## Files",
+      "Use Studio file manifests for file, image, and binary sends.",
+    ].join("\n"),
+    "utf8",
+  );
   fs.mkdirSync(path.join(octoPlatformSkillDir, "octo-send"), { recursive: true });
   fs.writeFileSync(
     path.join(octoPlatformSkillDir, "octo-send", "SKILL.md"),
@@ -5299,6 +5325,12 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(octoSkillContext, /Auto-activation: if the current user request matches a platform skill description/);
   assert.match(octoSkillContext, /Studio owns channel credentials and transport/);
   assert.match(octoSkillContext, /\/octo history \[limit\]/);
+  assert.match(octoSkillContext, /### \/octo-bot-api \[binding\]/);
+  assert.match(octoSkillContext, /Step 3: Send Messages/);
+  assert.match(octoSkillContext, /Message History Sync/);
+  assert.match(octoSkillContext, /Multi-Bot Coordination/);
+  assert.doesNotMatch(octoSkillContext, /openclaw plugins install/);
+  assert.doesNotMatch(octoSkillContext, /Step 1: Register/);
   assert.match(octoSkillContext, /### \/octo-send \[binding\]/);
   assert.match(octoSkillContext, /Use Studio Octo channel transport for DM, group, thread, and mention work/);
   assert.match(octoSkillContext, /studio-channel-messages/);

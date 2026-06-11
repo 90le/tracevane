@@ -24,6 +24,7 @@ const CHANNEL_SKILL_CONTEXT_MAX_LISTED = 10;
 const CHANNEL_SKILL_CONTEXT_MAX_EXCERPTS = 4;
 const CHANNEL_SKILL_CONTEXT_EXCERPT_CHARS = 1200;
 const CHANNEL_SKILL_CONTEXT_TOTAL_EXCERPT_CHARS = 3600;
+const CHANNEL_SKILL_CONTEXT_SECTION_CHARS = 360;
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -282,6 +283,132 @@ function compactSkillPromptForContext(value: string): string {
     .replace(/\n{3,}/g, "\n\n");
 }
 
+interface MarkdownSection {
+  title: string;
+  level: number;
+  text: string;
+  index: number;
+}
+
+function markdownHeading(line: string): { level: number; title: string } | null {
+  const match = /^(#{1,6})\s+(.+?)\s*#*\s*$/.exec(line);
+  if (!match) return null;
+  return {
+    level: match[1]?.length || 1,
+    title: normalizeString(match[2]).replace(/\s+#*$/, ""),
+  };
+}
+
+function sectionSearchText(value: string): string {
+  return normalizeString(value)
+    .toLowerCase()
+    .replace(/[`*_()[\]{}<>:"'，。；：、]/g, " ")
+    .replace(/[^\p{L}\p{N}.]+/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function splitMarkdownSections(value: string): MarkdownSection[] {
+  const prompt = compactSkillPromptForContext(value);
+  if (!prompt) return [];
+  const lines = prompt.split("\n");
+  const headings: Array<{ lineIndex: number; level: number; title: string }> = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const heading = markdownHeading(lines[index] || "");
+    if (!heading) continue;
+    headings.push({ lineIndex: index, ...heading });
+  }
+  const sections: MarkdownSection[] = [];
+  for (let index = 0; index < headings.length; index += 1) {
+    const heading = headings[index];
+    if (!heading) continue;
+    let endLine = lines.length;
+    for (let next = index + 1; next < headings.length; next += 1) {
+      const nextHeading = headings[next];
+      if (nextHeading && nextHeading.level <= heading.level) {
+        endLine = nextHeading.lineIndex;
+        break;
+      }
+    }
+    sections.push({
+      title: heading.title,
+      level: heading.level,
+      text: lines.slice(heading.lineIndex, endLine).join("\n").trim(),
+      index,
+    });
+  }
+  return sections;
+}
+
+function isSetupOrBridgeSection(title: string): boolean {
+  const key = sectionSearchText(title);
+  return /\b(save locally|register|save credentials|receive messages|openclaw plugin|install plugin|setup guide|multi agent setup guide|session isolation|quickstart flow)\b/.test(key);
+}
+
+function runtimeSectionPatterns(skill: ChannelConnectorSkill): RegExp[] {
+  const platform = normalizeString(skill.platform).toLowerCase();
+  const name = commandNameKey(skill.name);
+  if (platform === "octo" || platform === "dmwork" || name.includes("octo")) {
+    return [
+      /\bstep\s*3\b.*\bsend messages\b|\bsend messages\b/,
+      /\bmessage history sync\b|\bhistory sync\b/,
+      /\bmulti bot coordination\b|\bmulti-bot coordination\b|\bcollaboration\b/,
+      /\bfiles?\b|\bupload file\b|\bsend file\b|\bdownload file\b/,
+      /\bgroups?\b|\bgroup\.md\b|\bgroup conversations\b/,
+      /\bthreads?\b|\bthread\.md\b|\bthread event\b/,
+      /\bchannel types\b|\bevent format\b|\bdm conversations\b/,
+    ];
+  }
+  if (platform === "feishu" || platform === "lark" || name.includes("feishu") || name.includes("lark")) {
+    return [
+      /\bactions\b/,
+      /\b(read|write|append|create) document\b|\bupload image\b|\bupload file\b/,
+      /\blist folder\b|\bget file\b|\bcreate folder\b|\bfile types\b/,
+      /\blist collaborators\b|\badd collaborator\b|\bpermission levels\b/,
+      /\blist knowledge spaces\b|\blist nodes\b|\bwiki doc workflow\b/,
+      /\bpermissions\b|\btoken extraction\b/,
+    ];
+  }
+  return [
+    /\bactions\b|\busage\b|\bworkflow\b/,
+    /\bsend\b|\bmessage\b|\bhistory\b|\bfile\b/,
+    /\bgroup\b|\bmember\b|\bpermission\b|\bbot\b|\bchannel\b/,
+    /\bapi\b|\bcommands\b|\bexamples\b/,
+  ];
+}
+
+function sectionMatches(section: MarkdownSection, pattern: RegExp): boolean {
+  return pattern.test(sectionSearchText(section.title));
+}
+
+function skillSectionSnippet(section: MarkdownSection): string {
+  const lines = compactSkillPromptForContext(section.text).split("\n");
+  const heading = lines.shift() || `## ${section.title}`;
+  const body = lines.join("\n").trim();
+  if (!body) return heading;
+  return `${heading}\n${truncateRunes(body, CHANNEL_SKILL_CONTEXT_SECTION_CHARS)}`;
+}
+
+function selectRuntimeSkillPromptForContext(skill: ChannelConnectorSkill): string {
+  const prompt = compactSkillPromptForContext(skill.prompt);
+  const sections = splitMarkdownSections(prompt).filter((section) => !isSetupOrBridgeSection(section.title));
+  if (!sections.length) return prompt;
+  const selected: MarkdownSection[] = [];
+  const seen = new Set<number>();
+  for (const pattern of runtimeSectionPatterns(skill)) {
+    const section = sections.find((candidate) => !seen.has(candidate.index) && sectionMatches(candidate, pattern));
+    if (!section) continue;
+    selected.push(section);
+    seen.add(section.index);
+    if (selected.length >= 4) break;
+  }
+  if (!selected.length) {
+    const firstRuntimeSection = sections.find((section) => section.level <= 2) || sections[0];
+    return firstRuntimeSection ? skillSectionSnippet(firstRuntimeSection) : prompt;
+  }
+  return selected.map((section) => skillSectionSnippet(section)).join("\n\n");
+}
+
 function skillScopeLabel(skill: Pick<ChannelConnectorSkill, "scope" | "platform">): string {
   if (skill.scope === "binding") return "binding";
   if (skill.scope === "platform") return skill.platform ? `platform:${skill.platform}` : "platform";
@@ -293,7 +420,7 @@ function channelSkillContextExcerpts(skills: ChannelConnectorSkill[]): string[] 
   let remaining = CHANNEL_SKILL_CONTEXT_TOTAL_EXCERPT_CHARS;
   for (const skill of skills.slice(0, CHANNEL_SKILL_CONTEXT_MAX_EXCERPTS)) {
     if (remaining <= 0) break;
-    const prompt = compactSkillPromptForContext(skill.prompt);
+    const prompt = selectRuntimeSkillPromptForContext(skill);
     if (!prompt) continue;
     const maxRunes = Math.min(CHANNEL_SKILL_CONTEXT_EXCERPT_CHARS, remaining);
     const excerpt = truncateRunes(prompt, maxRunes);
