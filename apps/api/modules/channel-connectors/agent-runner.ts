@@ -353,6 +353,9 @@ function buildGroupContext(
   binding: ChannelConnectorRuntimeBinding,
 ): string | null {
   if (!isOctoGroupChannel(message.channelType)) return null;
+  const platform = normalizeString(binding.platform).toLowerCase();
+  const isFeishu = platform === "feishu";
+  const isOcto = platform === "octo";
   const mention = message.payload?.mention || null;
   const mentionUids = Array.isArray(mention?.uids)
     ? (mention?.uids || []).map(normalizeString).filter(Boolean)
@@ -385,14 +388,27 @@ function buildGroupContext(
   if (replyMessageId) lines.push(`Reply to message: ${replyMessageId}`);
   if (visibleMembers.length) {
     lines.push(`Known members: ${visibleMembers.join(", ")}${hiddenMemberCount ? `, ... ${hiddenMemberCount} more` : ""}`);
-    lines.push("Known members from Octo Bot API:");
+    lines.push(isFeishu ? "Known members from Feishu Chat Members API:" : isOcto ? "Known members from Octo Bot API:" : "Known members from the current IM channel:");
     for (const member of visibleMembers) lines.push(`- ${member}`);
     if (hiddenMemberCount) lines.push(`- ... ${hiddenMemberCount} more`);
-    lines.push("When mentioning a group member in a visible reply, use @[uid:displayName]; Studio converts it to the native Octo mention payload.");
-    lines.push("When the user asks you to ask human members about their capability, send Octo DM messages through studio-channel-messages.");
-    lines.push("When the user asks you to ask other bots/agents about their capability, send a current group/thread message using @[uid:displayName] for each bot UID; Studio converts it to visible @displayName plus native Octo mention entities. Octo does not support bot DMs.");
+    if (isFeishu) {
+      lines.push("For Feishu, send a private message with `target:\"open_id:<member_open_id>\"` or `target:\"user_id:<member_user_id>\"`; send a group message with `target:\"chat:<chat_id>\"`.");
+      lines.push("When coordinating in the current Feishu group, prefer a `studio-channel-messages` group message to `chat:<chat_id>` and include the member names in plain text unless Studio later exposes native Feishu mention entities.");
+    } else if (isOcto) {
+      lines.push("When mentioning a group member in a visible reply, use @[uid:displayName]; Studio converts it to the native Octo mention payload.");
+      lines.push("When the user asks you to ask human members about their capability, send Octo DM messages through studio-channel-messages.");
+      lines.push("When the user asks you to ask other bots/agents about their capability, send a current group/thread message using @[uid:displayName] for each bot UID; Studio converts it to visible @displayName plus native Octo mention entities. Octo does not support bot DMs.");
+    } else {
+      lines.push("Use studio-channel-messages with the current platform and target IDs exposed in this context when the user asks you to coordinate with members.");
+    }
   }
-  lines.push("To send a private Octo message to a human, group message, thread message, or @ mention, use the studio-channel-messages manifest instead of saying platform API access is unavailable.");
+  if (isFeishu) {
+    lines.push("To send a Feishu private or group message, use the studio-channel-messages manifest instead of saying platform API access is unavailable.");
+  } else if (isOcto) {
+    lines.push("To send a private Octo message to a human, group message, thread message, or @ mention, use the studio-channel-messages manifest instead of saying platform API access is unavailable.");
+  } else {
+    lines.push("To send an IM private or group message, use the studio-channel-messages manifest instead of saying platform API access is unavailable.");
+  }
   lines.push("Do not claim that you are passive-only or that you lack Feishu/Octo API permission unless Studio reports a concrete send failure.");
   lines.push("Use this only to understand the current IM group context.");
   return lines.join("\n");

@@ -3421,6 +3421,51 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.doesNotMatch(groupRequest.stdin, /cc-connect/);
   for (const cleanupPath of groupRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
+  const feishuGroupRequest = buildChannelConnectorAgentProcessRequest({
+    project,
+    binding: {
+      ...binding,
+      id: "feishu-codex",
+      platform: "feishu",
+      accountId: "cli_test",
+      botId: "ou_bot",
+      displayName: "Feishu Codex",
+    },
+    message: {
+      messageId: "om-group-1",
+      fromUid: "ou_user_1",
+      channelId: "oc_group_1",
+      channelType: 2,
+      payload: {
+        type: 1,
+        content: "@Studio hi feishu group",
+        mention: { uids: ["ou_bot"] },
+        reply: { messageId: "om-parent-1" },
+      },
+      members: [
+        { uid: "ou_user_1", name: "Alice" },
+        { uid: "ou_helper", name: "Helper" },
+        { uid: "ou_bot", name: "Studio Bot", robot: 1 },
+      ],
+    },
+    sessionKey: "feishu:oc_group_1:ou_user_1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+  });
+  assert.ok(feishuGroupRequest);
+  assert.match(feishuGroupRequest.stdin, /\[Studio group context\]/);
+  assert.match(feishuGroupRequest.stdin, /Known members from Feishu Chat Members API:/);
+  assert.match(feishuGroupRequest.stdin, /- Alice\(ou_user_1\)/);
+  assert.match(feishuGroupRequest.stdin, /- Studio Bot\(ou_bot, bot\)/);
+  assert.match(feishuGroupRequest.stdin, /target:"open_id:<member_open_id>"/);
+  assert.match(feishuGroupRequest.stdin, /target:"chat:<chat_id>"/);
+  assert.match(feishuGroupRequest.stdin, /current Feishu group/);
+  assert.match(feishuGroupRequest.stdin, /To send a Feishu private or group message/);
+  assert.doesNotMatch(feishuGroupRequest.stdin, /Known members from Octo Bot API/);
+  assert.doesNotMatch(feishuGroupRequest.stdin, /Octo does not support bot DMs/);
+  assert.doesNotMatch(feishuGroupRequest.stdin, /@\[uid:displayName\]/);
+  for (const cleanupPath of feishuGroupRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
   const missingKeyRequest = buildChannelConnectorAgentProcessRequest({
     project,
     binding,
@@ -3842,7 +3887,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     gatewayClientKey: "sk-local",
   });
   assert.ok(attachmentRequest);
-  assert.match(attachmentRequest.stdin, /\[image\]/);
+  assert.match(attachmentRequest.stdin, /\[image: diagram\.png\]/);
   assert.match(attachmentRequest.stdin, /Studio attachment summary/);
   assert.match(attachmentRequest.stdin, /studio-channel-files/);
   assert.match(attachmentRequest.stdin, /image: diagram\.png/);
@@ -4043,7 +4088,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
       assert.match(request.stdin, /current model glm-5 is not marked as vision-capable/);
       assert.match(request.stdin, /must not describe, classify, OCR, or infer visual contents/);
       assert.match(request.stdin, /ask what they want to do next/);
-      assert.match(request.stdin, /\[image\]/);
+      assert.match(request.stdin, /\[image: photo\.jpg\]/);
       assert.match(request.stdin, /photo\.jpg/);
       return {
         exitCode: 0,
