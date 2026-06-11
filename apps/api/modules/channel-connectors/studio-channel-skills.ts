@@ -161,7 +161,7 @@ From \`https://xxx.feishu.cn/docx/ABC123def\`, use doc token \`ABC123def\`.
 
 Supported now without approval: \`read\`, \`list_blocks\`, \`get_block\`.
 
-Supported now after Studio IM approval: \`create\`.
+Supported now after Studio IM approval: \`create\`, \`write\`, \`append\`, \`insert\`, \`update_block\`, \`delete_block\`.
 
 Use this manifest shape:
 
@@ -170,20 +170,25 @@ Use this manifest shape:
   {"tool":"feishu_doc","action":"read","doc_token":"ABC123def"},
   {"tool":"feishu_doc","action":"list_blocks","doc_token":"ABC123def"},
   {"tool":"feishu_doc","action":"get_block","doc_token":"ABC123def","block_id":"doxcnXXX"},
-  {"tool":"feishu_doc","action":"create","title":"New Document","folder_token":"fldcnXXX"}
+  {"tool":"feishu_doc","action":"create","title":"New Document","folder_token":"fldcnXXX"},
+  {"tool":"feishu_doc","action":"append","doc_token":"ABC123def","content":"## Update\\n\\nMarkdown content"}
 ]
 \`\`\`
 
-Full action catalog mirrors the OpenClaw Feishu extension contract. Content mutation actions still need the full OpenClaw docx markdown/block conversion pipeline before Studio enables them:
+Document content actions use Feishu markdown-to-block conversion plus Docx descendant/block APIs, matching the OpenClaw Feishu extension contract for basic content mutation:
 
 - Read Document: \`{"action":"read","doc_token":"ABC123def"}\`
 - Write Document: \`{"action":"write","doc_token":"ABC123def","content":"# Title\\n\\nMarkdown"}\`
 - Append Content: \`{"action":"append","doc_token":"ABC123def","content":"Additional content"}\`
+- Insert After Block: \`{"action":"insert","doc_token":"ABC123def","after_block_id":"doxcnXXX","content":"Inserted Markdown"}\`
 - Create Document: \`{"action":"create","title":"New Document","folder_token":"fldcnXXX"}\`
 - List Blocks: \`{"action":"list_blocks","doc_token":"ABC123def"}\`
 - Get Single Block: \`{"action":"get_block","doc_token":"ABC123def","block_id":"doxcnXXX"}\`
 - Update Block Text: \`{"action":"update_block","doc_token":"ABC123def","block_id":"doxcnXXX","content":"New text"}\`
 - Delete Block: \`{"action":"delete_block","doc_token":"ABC123def","block_id":"doxcnXXX"}\`
+
+Table and media actions still need the rest of the OpenClaw docx conversion/upload pipeline before Studio enables them:
+
 - Create Table: \`{"action":"create_table","doc_token":"ABC123def","row_size":2,"column_size":2}\`
 - Write Table Cells: \`{"action":"write_table_cells","doc_token":"ABC123def","table_block_id":"doxcnTABLE","values":[["A1","B1"]]}\`
 - Create Table With Values: create a table and fill values in one operation.
@@ -192,7 +197,7 @@ Full action catalog mirrors the OpenClaw Feishu extension contract. Content muta
 
 ## Studio Fallback
 
-When unsupported content mutation is needed before Studio enables it, create requested content locally and send it with \`studio-channel-files\`, or send a Feishu Markdown message with \`studio-channel-messages\` summarizing the document changes the user should apply.`,
+When unsupported table/media mutation is needed before Studio enables it, create requested content locally and send it with \`studio-channel-files\`, or send a Feishu Markdown message with \`studio-channel-messages\` summarizing the document changes the user should apply.`,
   },
   {
     platform: "feishu",

@@ -27,6 +27,8 @@ const FEISHU_TEXT_CHUNK_RUNES = 3800;
 const TOKEN_EXPIRY_SKEW_MS = 5 * 60 * 1000;
 const DEFAULT_FEISHU_RESOURCE_MAX_BYTES = 128 * 1024 * 1024;
 const FEISHU_IMAGE_MESSAGE_MAX_BYTES = 10 * 1024 * 1024;
+const FEISHU_DOCX_CONVERT_MAX_DEPTH = 8;
+const FEISHU_DOCX_DESCENDANT_BATCH_SIZE = 900;
 
 const tokenMemoryCache = new Map<string, { token: string; expiresAt: number }>();
 
@@ -68,6 +70,13 @@ interface FeishuTenantTokenResult {
   requestCount: number;
   tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"];
 }
+
+type FeishuDocxBlockRecord = Record<string, unknown>;
+type FeishuActionCall = (
+  method: "GET" | "POST" | "PATCH" | "DELETE",
+  pathValue: string,
+  payload?: unknown,
+) => Promise<Record<string, unknown>>;
 
 export interface ChannelConnectorFeishuResourceDownloadResult {
   attempted: boolean;
@@ -1277,6 +1286,336 @@ function docxReadSummary(input: {
   };
 }
 
+function normalizeDocxBlockId(block: unknown): string {
+  return normalizeString(recordFrom(block).block_id);
+}
+
+function normalizeDocxBlockChildren(children: unknown): string[] {
+  if (Array.isArray(children)) return children.map((child) => normalizeString(child)).filter(Boolean);
+  const child = normalizeString(children);
+  return child ? [child] : [];
+}
+
+function splitDocxMarkdownByHeadings(markdown: string): string[] {
+  const lines = markdown.split("\n");
+  const chunks: string[] = [];
+  let current: string[] = [];
+  let inFence = false;
+  for (const line of lines) {
+    if (/^(`{3,}|~{3,})/.test(line)) inFence = !inFence;
+    if (!inFence && /^#{1,2}\s/.test(line) && current.length > 0) {
+      chunks.push(current.join("\n"));
+      current = [];
+    }
+    current.push(line);
+  }
+  if (current.length > 0) chunks.push(current.join("\n"));
+  return chunks.filter((chunk) => normalizeString(chunk));
+}
+
+function splitDocxMarkdownBySize(markdown: string, maxChars: number): string[] {
+  if (markdown.length <= maxChars) return [markdown];
+  const lines = markdown.split("\n");
+  const chunks: string[] = [];
+  let current: string[] = [];
+  let currentLength = 0;
+  let inFence = false;
+  for (const line of lines) {
+    if (/^(`{3,}|~{3,})/.test(line)) inFence = !inFence;
+    const lineLength = line.length + 1;
+    if (current.length > 0 && currentLength + lineLength > maxChars && !inFence) {
+      chunks.push(current.join("\n"));
+      current = [];
+      currentLength = 0;
+    }
+    current.push(line);
+    currentLength += lineLength;
+  }
+  if (current.length > 0) chunks.push(current.join("\n"));
+  if (chunks.length > 1) return chunks.filter((chunk) => normalizeString(chunk));
+  const midpoint = Math.floor(lines.length / 2);
+  if (midpoint <= 0 || midpoint >= lines.length) return [markdown];
+  return [lines.slice(0, midpoint).join("\n"), lines.slice(midpoint).join("\n")]
+    .filter((chunk) => normalizeString(chunk));
+}
+
+async function convertDocxMarkdown(
+  call: FeishuActionCall,
+  markdown: string,
+  depth = 0,
+): Promise<{ blocks: FeishuDocxBlockRecord[]; firstLevelBlockIds: string[] }> {
+  try {
+    const body = await call("POST", "/open-apis/docx/v1/documents/blocks/convert", {
+      content_type: "markdown",
+      content: markdown,
+    });
+    const data = recordFrom(body.data);
+    return {
+      blocks: arrayFrom(data.blocks).map(recordFrom),
+      firstLevelBlockIds: arrayFrom(data.first_level_block_ids).map((id) => normalizeString(id)).filter(Boolean),
+    };
+  } catch (error) {
+    if (depth >= FEISHU_DOCX_CONVERT_MAX_DEPTH || markdown.length < 2) throw error;
+    const splitTarget = Math.max(256, Math.floor(markdown.length / 2));
+    const chunks = splitDocxMarkdownBySize(markdown, splitTarget);
+    if (chunks.length <= 1) throw error;
+    const blocks: FeishuDocxBlockRecord[] = [];
+    const firstLevelBlockIds: string[] = [];
+    for (const chunk of chunks) {
+      const converted = await convertDocxMarkdown(call, chunk, depth + 1);
+      blocks.push(...converted.blocks);
+      firstLevelBlockIds.push(...converted.firstLevelBlockIds);
+    }
+    return { blocks, firstLevelBlockIds };
+  }
+}
+
+async function convertDocxMarkdownChunks(
+  call: FeishuActionCall,
+  markdown: string,
+): Promise<{ blocks: FeishuDocxBlockRecord[]; firstLevelBlockIds: string[] }> {
+  const blocks: FeishuDocxBlockRecord[] = [];
+  const firstLevelBlockIds: string[] = [];
+  for (const chunk of splitDocxMarkdownByHeadings(markdown)) {
+    const converted = await convertDocxMarkdown(call, chunk);
+    const normalized = normalizeConvertedDocxBlockTree(converted.blocks, converted.firstLevelBlockIds);
+    blocks.push(...normalized.orderedBlocks);
+    firstLevelBlockIds.push(...normalized.rootIds);
+  }
+  return { blocks, firstLevelBlockIds };
+}
+
+function normalizeConvertedDocxBlockTree(
+  blocks: FeishuDocxBlockRecord[],
+  firstLevelBlockIds: string[],
+): { orderedBlocks: FeishuDocxBlockRecord[]; rootIds: string[] } {
+  if (blocks.length <= 1) {
+    const onlyId = blocks.length === 1 ? normalizeDocxBlockId(blocks[0]) : "";
+    return { orderedBlocks: blocks, rootIds: firstLevelBlockIds.length ? firstLevelBlockIds : (onlyId ? [onlyId] : []) };
+  }
+
+  const byId = new Map<string, FeishuDocxBlockRecord>();
+  const originalOrder = new Map<string, number>();
+  for (const [index, block] of blocks.entries()) {
+    const blockId = normalizeDocxBlockId(block);
+    if (blockId) {
+      byId.set(blockId, block);
+      originalOrder.set(blockId, index);
+    }
+  }
+
+  const childIds = new Set<string>();
+  for (const block of blocks) {
+    for (const childId of normalizeDocxBlockChildren(block.children)) childIds.add(childId);
+  }
+
+  const inferredTopLevelIds = blocks
+    .filter((block) => {
+      const blockId = normalizeDocxBlockId(block);
+      if (!blockId) return false;
+      const parentId = normalizeString(block.parent_id);
+      return !childIds.has(blockId) && (!parentId || !byId.has(parentId));
+    })
+    .sort((a, b) => (originalOrder.get(normalizeDocxBlockId(a)) ?? 0) - (originalOrder.get(normalizeDocxBlockId(b)) ?? 0))
+    .map(normalizeDocxBlockId)
+    .filter(Boolean);
+
+  const rootIds = Array.from(new Set((firstLevelBlockIds.length ? firstLevelBlockIds : inferredTopLevelIds).filter((id) => byId.has(id))));
+  const visited = new Set<string>();
+  const orderedBlocks: FeishuDocxBlockRecord[] = [];
+  const visit = (blockId: string) => {
+    if (visited.has(blockId) || !byId.has(blockId)) return;
+    visited.add(blockId);
+    const block = byId.get(blockId);
+    if (!block) return;
+    orderedBlocks.push(block);
+    for (const childId of normalizeDocxBlockChildren(block.children)) visit(childId);
+  };
+  for (const rootId of rootIds) visit(rootId);
+  for (const block of blocks) {
+    const blockId = normalizeDocxBlockId(block);
+    if (blockId) visit(blockId);
+    else orderedBlocks.push(block);
+  }
+  return { orderedBlocks, rootIds };
+}
+
+function cleanedDocxDescendantBlocks(blocks: FeishuDocxBlockRecord[]): FeishuDocxBlockRecord[] {
+  return blocks.map((block) => {
+    const cleanBlock: FeishuDocxBlockRecord = { ...block };
+    delete cleanBlock.parent_id;
+    const children = normalizeDocxBlockChildren(cleanBlock.children);
+    if (children.length > 0) cleanBlock.children = children;
+    else delete cleanBlock.children;
+    const table = recordFrom(cleanBlock.table);
+    if (Number(cleanBlock.block_type) === 31 && Object.keys(table).length > 0) {
+      const property = recordFrom(table.property);
+      cleanBlock.table = {
+        property: {
+          ...(Number.isFinite(Number(property.row_size)) ? { row_size: Number(property.row_size) } : {}),
+          ...(Number.isFinite(Number(property.column_size)) ? { column_size: Number(property.column_size) } : {}),
+          ...(Array.isArray(property.column_width) ? { column_width: property.column_width } : {}),
+        },
+      };
+    }
+    return cleanBlock;
+  });
+}
+
+function collectDocxDescendants(blockMap: Map<string, FeishuDocxBlockRecord>, rootId: string): FeishuDocxBlockRecord[] {
+  const result: FeishuDocxBlockRecord[] = [];
+  const visited = new Set<string>();
+  const collect = (blockId: string) => {
+    if (visited.has(blockId)) return;
+    visited.add(blockId);
+    const block = blockMap.get(blockId);
+    if (!block) return;
+    result.push(block);
+    for (const childId of normalizeDocxBlockChildren(block.children)) collect(childId);
+  };
+  collect(rootId);
+  return result;
+}
+
+async function insertDocxBlocks(
+  call: FeishuActionCall,
+  docToken: string,
+  blocks: FeishuDocxBlockRecord[],
+  firstLevelBlockIds: string[],
+  options: { parentBlockId?: string; index?: number } = {},
+): Promise<FeishuDocxBlockRecord[]> {
+  const normalized = normalizeConvertedDocxBlockTree(blocks, firstLevelBlockIds);
+  const blockMap = new Map<string, FeishuDocxBlockRecord>();
+  for (const block of normalized.orderedBlocks) {
+    const blockId = normalizeDocxBlockId(block);
+    if (blockId) blockMap.set(blockId, block);
+  }
+
+  const inserted: FeishuDocxBlockRecord[] = [];
+  let batchRootIds: string[] = [];
+  let batchBlocks: FeishuDocxBlockRecord[] = [];
+  let batchIndex = options.index ?? -1;
+  const flush = async () => {
+    if (batchRootIds.length === 0) return;
+    const body = await call(
+      "POST",
+      `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/blocks/${encodeURIComponent(options.parentBlockId || docToken)}/descendant`,
+      {
+        children_id: batchRootIds,
+        descendants: cleanedDocxDescendantBlocks(batchBlocks),
+        index: batchIndex,
+      },
+    );
+    inserted.push(...arrayFrom(recordFrom(body.data).children).map(recordFrom));
+    if (batchIndex >= 0) batchIndex += batchRootIds.length;
+    batchRootIds = [];
+    batchBlocks = [];
+  };
+
+  for (const rootId of normalized.rootIds) {
+    const rootBlocks = collectDocxDescendants(blockMap, rootId);
+    if (rootBlocks.length === 0) continue;
+    if (batchBlocks.length > 0 && batchBlocks.length + rootBlocks.length > FEISHU_DOCX_DESCENDANT_BATCH_SIZE) {
+      await flush();
+    }
+    batchRootIds.push(rootId);
+    batchBlocks.push(...rootBlocks);
+  }
+  await flush();
+  return inserted;
+}
+
+async function listDocxChildBlocks(call: FeishuActionCall, docToken: string, parentBlockId: string): Promise<FeishuDocxBlockRecord[]> {
+  const items: FeishuDocxBlockRecord[] = [];
+  let pageToken = "";
+  do {
+    const search = new URLSearchParams();
+    if (pageToken) search.set("page_token", pageToken);
+    const body = await call(
+      "GET",
+      `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/blocks/${encodeURIComponent(parentBlockId)}/children${search.size ? `?${search.toString()}` : ""}`,
+    );
+    const data = recordFrom(body.data);
+    items.push(...arrayFrom(data.items).map(recordFrom));
+    pageToken = normalizeString(data.page_token) || normalizeString(data.next_page_token);
+  } while (pageToken);
+  return items;
+}
+
+async function clearDocxDocument(call: FeishuActionCall, docToken: string): Promise<number> {
+  const children = await listDocxChildBlocks(call, docToken, docToken);
+  const deletableCount = children.filter((block) => Number(block.block_type) !== 1).length;
+  if (deletableCount <= 0) return 0;
+  await call(
+    "DELETE",
+    `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/blocks/${encodeURIComponent(docToken)}/children/batch_delete`,
+    { start_index: 0, end_index: deletableCount },
+  );
+  return deletableCount;
+}
+
+async function writeDocxMarkdown(call: FeishuActionCall, docToken: string, markdown: string) {
+  const deleted = await clearDocxDocument(call, docToken);
+  const converted = await convertDocxMarkdownChunks(call, markdown);
+  if (converted.blocks.length === 0) return { success: true, blocks_deleted: deleted, blocks_added: 0 };
+  const inserted = await insertDocxBlocks(call, docToken, converted.blocks, converted.firstLevelBlockIds);
+  return { success: true, blocks_deleted: deleted, blocks_added: converted.blocks.length, block_ids: inserted.map(normalizeDocxBlockId).filter(Boolean) };
+}
+
+async function appendDocxMarkdown(call: FeishuActionCall, docToken: string, markdown: string) {
+  const converted = await convertDocxMarkdownChunks(call, markdown);
+  if (converted.blocks.length === 0) throw new Error("content is empty.");
+  const inserted = await insertDocxBlocks(call, docToken, converted.blocks, converted.firstLevelBlockIds);
+  return { success: true, blocks_added: converted.blocks.length, block_ids: inserted.map(normalizeDocxBlockId).filter(Boolean) };
+}
+
+async function insertDocxMarkdownAfter(call: FeishuActionCall, docToken: string, markdown: string, afterBlockId: string) {
+  const blockBody = await call(
+    "GET",
+    `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/blocks/${encodeURIComponent(afterBlockId)}`,
+  );
+  const block = recordFrom(recordFrom(blockBody.data).block);
+  const parentBlockId = normalizeString(block.parent_id) || docToken;
+  const siblings = await listDocxChildBlocks(call, docToken, parentBlockId);
+  const index = siblings.findIndex((item) => normalizeDocxBlockId(item) === afterBlockId);
+  if (index < 0) throw new Error(`after_block_id "${afterBlockId}" was not found under parent block "${parentBlockId}".`);
+  const converted = await convertDocxMarkdownChunks(call, markdown);
+  if (converted.blocks.length === 0) throw new Error("content is empty.");
+  const inserted = await insertDocxBlocks(call, docToken, converted.blocks, converted.firstLevelBlockIds, {
+    parentBlockId,
+    index: index + 1,
+  });
+  return { success: true, blocks_added: converted.blocks.length, block_ids: inserted.map(normalizeDocxBlockId).filter(Boolean) };
+}
+
+async function updateDocxBlockText(call: FeishuActionCall, docToken: string, blockId: string, content: string) {
+  await call("GET", `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/blocks/${encodeURIComponent(blockId)}`);
+  await call("PATCH", `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/blocks/${encodeURIComponent(blockId)}`, {
+    update_text_elements: {
+      elements: [{ text_run: { content } }],
+    },
+  });
+  return { success: true, block_id: blockId };
+}
+
+async function deleteDocxBlock(call: FeishuActionCall, docToken: string, blockId: string) {
+  const blockBody = await call(
+    "GET",
+    `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/blocks/${encodeURIComponent(blockId)}`,
+  );
+  const block = recordFrom(recordFrom(blockBody.data).block);
+  const parentBlockId = normalizeString(block.parent_id) || docToken;
+  const siblings = await listDocxChildBlocks(call, docToken, parentBlockId);
+  const index = siblings.findIndex((item) => normalizeDocxBlockId(item) === blockId);
+  if (index < 0) throw new Error(`block_id "${blockId}" was not found under parent block "${parentBlockId}".`);
+  await call(
+    "DELETE",
+    `/open-apis/docx/v1/documents/${encodeURIComponent(docToken)}/blocks/${encodeURIComponent(parentBlockId)}/children/batch_delete`,
+    { start_index: index, end_index: index + 1 },
+  );
+  return { success: true, deleted_block_id: blockId };
+}
+
 async function executeFeishuReadOnlyAction(
   config: ChannelConnectorFeishuTransportConfig,
   request: ChannelConnectorFeishuActionRequest,
@@ -1411,6 +1750,38 @@ async function executeFeishuMutationAction(
   };
 
   if (request.tool === "feishu_doc") {
+    if (action === "write") {
+      const docToken = requireParamString(params, ["doc_token", "document_id", "docToken", "token"], "doc_token");
+      const content = requireParamString(params, ["content", "markdown", "text"], "content");
+      const data = await writeDocxMarkdown(call, docToken, content);
+      return { data, statusCode, requestCount };
+    }
+    if (action === "append") {
+      const docToken = requireParamString(params, ["doc_token", "document_id", "docToken", "token"], "doc_token");
+      const content = requireParamString(params, ["content", "markdown", "text"], "content");
+      const data = await appendDocxMarkdown(call, docToken, content);
+      return { data, statusCode, requestCount };
+    }
+    if (action === "insert") {
+      const docToken = requireParamString(params, ["doc_token", "document_id", "docToken", "token"], "doc_token");
+      const content = requireParamString(params, ["content", "markdown", "text"], "content");
+      const afterBlockId = requireParamString(params, ["after_block_id", "afterBlockId", "block_id", "blockId"], "after_block_id");
+      const data = await insertDocxMarkdownAfter(call, docToken, content, afterBlockId);
+      return { data, statusCode, requestCount };
+    }
+    if (action === "update_block") {
+      const docToken = requireParamString(params, ["doc_token", "document_id", "docToken", "token"], "doc_token");
+      const blockId = requireParamString(params, ["block_id", "blockId"], "block_id");
+      const content = requireParamString(params, ["content", "text"], "content");
+      const data = await updateDocxBlockText(call, docToken, blockId, content);
+      return { data, statusCode, requestCount };
+    }
+    if (action === "delete_block") {
+      const docToken = requireParamString(params, ["doc_token", "document_id", "docToken", "token"], "doc_token");
+      const blockId = requireParamString(params, ["block_id", "blockId"], "block_id");
+      const data = await deleteDocxBlock(call, docToken, blockId);
+      return { data, statusCode, requestCount };
+    }
     if (action === "create") {
       const title = requireParamString(params, ["title"], "title");
       const folderToken = optionalParamString(params, ["folder_token", "folderToken"]);

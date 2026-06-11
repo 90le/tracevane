@@ -1386,6 +1386,40 @@ test("native Channel Connectors executes Feishu read-only actions and approval-g
         },
       }), { status: 200, headers: { "content-type": "application/json" } });
     }
+    if (String(url).endsWith("/open-apis/docx/v1/documents/blocks/convert")) {
+      const body = JSON.parse(init.body || "{}");
+      const id = String(body.content || "").includes("Inserted") ? "inserted_tmp" : "append_tmp";
+      return new Response(JSON.stringify({
+        code: 0,
+        data: {
+          first_level_block_ids: [id],
+          blocks: [
+            { block_id: id, block_type: 2, text: { elements: [{ text_run: { content: body.content || "" } }] } },
+          ],
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).endsWith("/open-apis/docx/v1/documents/doc_a/blocks/doc_a/descendant")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: { children: [{ block_id: "new_block_1", block_type: 2 }] },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).endsWith("/open-apis/docx/v1/documents/doc_a/blocks/doc_a/children")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: { items: [{ block_id: "old_block_1", block_type: 2 }] },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).endsWith("/open-apis/docx/v1/documents/doc_a/blocks/old_block_1")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: { block: { block_id: "old_block_1", parent_id: "doc_a", block_type: 2 } },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    if (String(url).endsWith("/open-apis/docx/v1/documents/doc_a/blocks/doc_a/children/batch_delete")) {
+      return new Response(JSON.stringify({ code: 0, data: { revision_id: 2 } }), { status: 200, headers: { "content-type": "application/json" } });
+    }
     return new Response(JSON.stringify({ code: 404, msg: "not mocked" }), { status: 404 });
   };
   try {
@@ -1455,6 +1489,61 @@ test("native Channel Connectors executes Feishu read-only actions and approval-g
       title: "New Page",
       raw: { node_token: "wikcn_node", obj_token: "docx_node", obj_type: "docx", title: "New Page" },
     });
+
+    const appendWithoutApprovalRequestCount = requests.length;
+    const appendWithoutApproval = await executeFeishuChannelAction(config, {
+      tool: "feishu_doc",
+      action: "append",
+      params: { doc_token: "doc_a", content: "hello" },
+    }, null);
+    assert.equal(appendWithoutApproval.ok, false);
+    assert.equal(appendWithoutApproval.readOnly, false);
+    assert.match(appendWithoutApproval.error || "", /requires Studio IM approval/);
+    assert.equal(requests.length, appendWithoutApprovalRequestCount);
+
+    const append = await executeFeishuChannelAction(config, {
+      tool: "feishu_doc",
+      action: "append",
+      params: { doc_token: "doc_a", content: "## Appended\n\nhello" },
+    }, null, { allowMutation: true });
+    assert.equal(append.ok, true);
+    assert.equal(append.readOnly, false);
+    assert.deepEqual(append.data, {
+      success: true,
+      blocks_added: 1,
+      block_ids: ["new_block_1"],
+    });
+    const descendantRequest = requests.find((request) => request.url.endsWith("/open-apis/docx/v1/documents/doc_a/blocks/doc_a/descendant"));
+    assert.equal(descendantRequest.method, "POST");
+    assert.deepEqual(JSON.parse(descendantRequest.body), {
+      children_id: ["append_tmp"],
+      descendants: [
+        { block_id: "append_tmp", block_type: 2, text: { elements: [{ text_run: { content: "## Appended\n\nhello" } }] } },
+      ],
+      index: -1,
+    });
+
+    const updateBlock = await executeFeishuChannelAction(config, {
+      tool: "feishu_doc",
+      action: "update_block",
+      params: { doc_token: "doc_a", block_id: "old_block_1", content: "Updated text" },
+    }, null, { allowMutation: true });
+    assert.equal(updateBlock.ok, true);
+    assert.deepEqual(updateBlock.data, { success: true, block_id: "old_block_1" });
+    const patchRequest = requests.find((request) => request.method === "PATCH" && request.url.endsWith("/open-apis/docx/v1/documents/doc_a/blocks/old_block_1"));
+    assert.deepEqual(JSON.parse(patchRequest.body), {
+      update_text_elements: { elements: [{ text_run: { content: "Updated text" } }] },
+    });
+
+    const deleteBlock = await executeFeishuChannelAction(config, {
+      tool: "feishu_doc",
+      action: "delete_block",
+      params: { doc_token: "doc_a", block_id: "old_block_1" },
+    }, null, { allowMutation: true });
+    assert.equal(deleteBlock.ok, true);
+    assert.deepEqual(deleteBlock.data, { success: true, deleted_block_id: "old_block_1" });
+    const deleteRequest = requests.find((request) => request.method === "DELETE" && request.url.endsWith("/open-apis/docx/v1/documents/doc_a/blocks/doc_a/children/batch_delete"));
+    assert.deepEqual(JSON.parse(deleteRequest.body), { start_index: 0, end_index: 1 });
   } finally {
     globalThis.fetch = originalFetch;
   }
