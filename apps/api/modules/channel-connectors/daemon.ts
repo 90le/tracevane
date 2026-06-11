@@ -4406,7 +4406,9 @@ function normalizeOctoGroupMember(value: unknown): ChannelConnectorOctoGroupMemb
     || normalizeString(value.displayName)
     || normalizeString(value.nickname)
     || uid;
-  return uid ? { uid, name } : null;
+  const robot = typeof value.robot === "boolean" || typeof value.robot === "number" ? value.robot : null;
+  const role = typeof value.role === "string" || typeof value.role === "number" ? value.role : null;
+  return uid ? { uid, name, robot, role } : null;
 }
 
 function normalizeOctoGroupMembers(value: unknown, limit: number): ChannelConnectorOctoGroupMember[] {
@@ -4598,28 +4600,102 @@ function octoSyncedMessagesFromData(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value.messages) ? value.messages.filter(isRecord) : [];
 }
 
+function octoSyncedMessageSeq(message: Record<string, unknown>): number | null {
+  const seq = Number(message.message_seq ?? message.messageSeq);
+  return Number.isFinite(seq) && seq > 0 ? seq : null;
+}
+
+function octoMemberNameByUid(members: readonly ChannelConnectorOctoGroupMember[]): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const member of members) {
+    const uid = normalizeString(member.uid);
+    const name = normalizeString(member.name);
+    if (uid && name) map.set(uid, name);
+  }
+  return map;
+}
+
+function octoSyncedSenderLabel(uid: string, nameByUid: Map<string, string>): string {
+  const name = nameByUid.get(uid);
+  return name ? `${name} (${uid})` : uid || "unknown";
+}
+
 function renderOctoSyncedHistoryContext(input: {
   data: unknown;
   currentMessageId: string;
+  currentMessageSeq?: number | null;
+  botUid?: string | null;
+  members?: readonly ChannelConnectorOctoGroupMember[] | null;
   limit: number;
 }): string | null {
-  const lines = octoSyncedMessagesFromData(input.data)
+  const botUid = normalizeString(input.botUid);
+  const nameByUid = octoMemberNameByUid(input.members || []);
+  const syncedMessages = octoSyncedMessagesFromData(input.data)
     .filter((message) => normalizeString(message.message_id) !== input.currentMessageId)
+    .sort((a, b) => (octoSyncedMessageSeq(a) || 0) - (octoSyncedMessageSeq(b) || 0));
+  const latestBotSeq = botUid
+    ? syncedMessages.reduce((max, message) => {
+      const sender = normalizeString(message.from_uid) || normalizeString(message.fromUid);
+      const seq = octoSyncedMessageSeq(message);
+      return sender === botUid && seq ? Math.max(max, seq) : max;
+    }, 0)
+    : 0;
+  const currentSeq = typeof input.currentMessageSeq === "number" && Number.isFinite(input.currentMessageSeq)
+    ? input.currentMessageSeq
+    : null;
+  const contextEntries = syncedMessages
+    .filter((message) => {
+      const sender = normalizeString(message.from_uid) || normalizeString(message.fromUid);
+      if (botUid && sender === botUid) return false;
+      const text = octoSyncedMessageText(message.payload);
+      if (!text) return false;
+      const seq = octoSyncedMessageSeq(message);
+      if (currentSeq && seq && seq >= currentSeq) return false;
+      return true;
+    })
+    .slice(-input.limit)
     .map((message) => {
       const sender = normalizeString(message.from_uid) || normalizeString(message.fromUid) || "unknown";
-      const seq = Number(message.message_seq ?? message.messageSeq);
-      const text = octoSyncedMessageText(message.payload);
-      if (!text) return "";
-      const prefix = Number.isFinite(seq) && seq > 0 ? `#${seq} ` : "";
-      return `${prefix}${sender}: ${text}`;
-    })
-    .filter(Boolean)
-    .slice(-input.limit);
-  if (!lines.length) return null;
+      return {
+        sender: octoSyncedSenderLabel(sender, nameByUid),
+        body: octoSyncedMessageText(message.payload),
+        seq: octoSyncedMessageSeq(message),
+      };
+    });
+  if (!contextEntries.length) return null;
+  const answeredEntries = latestBotSeq > 0
+    ? contextEntries.filter((entry) => (entry.seq || 0) <= latestBotSeq)
+    : [];
+  const newEntries = latestBotSeq > 0
+    ? contextEntries.filter((entry) => (entry.seq || 0) > latestBotSeq)
+    : contextEntries;
+  const formatEntries = (entries: typeof contextEntries) => JSON.stringify(entries.map((entry) => ({
+    sender: entry.sender,
+    body: entry.body,
+    ...(entry.seq ? { messageSeq: entry.seq } : {}),
+  })), null, 2);
+  const blocks: string[] = [];
+  if (answeredEntries.length) {
+    blocks.push([
+      "[Previous context - already answered, do NOT re-answer]",
+      "```json",
+      formatEntries(answeredEntries),
+      "```",
+    ].join("\n"));
+  }
+  if (newEntries.length) {
+    blocks.push([
+      "[Chat messages since your last reply - context only, do NOT re-answer questions from this history]",
+      "```json",
+      formatEntries(newEntries),
+      "```",
+    ].join("\n"));
+  }
   return [
     "[Octo Bot API recent channel history]",
-    ...lines,
-    "Use this only as nearby IM context before answering the current message.",
+    `Cutoff: latest bot reply seq ${latestBotSeq || "unknown"}.`,
+    ...blocks,
+    "[Current message follows later - respond to that only]",
   ].join("\n");
 }
 
@@ -4680,10 +4756,28 @@ async function loadOctoSyncedHistoryContext(input: {
   const context = renderOctoSyncedHistoryContext({
     data: result.data,
     currentMessageId: input.message.messageId,
+    currentMessageSeq: input.message.messageSeq || null,
+    botUid: input.binding.botId || null,
+    members: input.message.members || [],
     limit,
   });
+  const botUid = normalizeString(input.binding.botId);
+  const currentSeq = typeof input.message.messageSeq === "number" && Number.isFinite(input.message.messageSeq)
+    ? input.message.messageSeq
+    : null;
   const includedCount = context
-    ? Math.max(0, context.split("\n").length - 2)
+    ? octoSyncedMessagesFromData(result.data)
+      .filter((message) => {
+        if (normalizeString(message.message_id) === input.message.messageId) return false;
+        const sender = normalizeString(message.from_uid) || normalizeString(message.fromUid);
+        if (botUid && sender === botUid) return false;
+        if (!octoSyncedMessageText(message.payload)) return false;
+        const seq = octoSyncedMessageSeq(message);
+        if (currentSeq && seq && seq >= currentSeq) return false;
+        return true;
+      })
+      .slice(-limit)
+      .length
     : 0;
   return {
     context,

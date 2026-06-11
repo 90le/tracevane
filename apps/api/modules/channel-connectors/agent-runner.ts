@@ -308,7 +308,7 @@ function buildNonVisionVisualAttachmentPolicy(
 
 function buildStudioOutboundFilePolicy(): string {
   return [
-    "[Studio outbound file policy]",
+    "[Studio outbound file/message policy]",
     "Do not call channel-specific CLIs, webhooks, curl commands, or external bridge tools to send files or IM messages.",
     "When the user asks you to send or return files, create them under the current working directory or declare the exact readable path you just used; do not invent relative paths from memory.",
     "If an existing file is outside the current working directory and the current permission mode may block direct sending, copy or generate the requested file under the current working directory before declaring it.",
@@ -317,12 +317,14 @@ function buildStudioOutboundFilePolicy(): string {
     "```studio-channel-files",
     "[{\"path\":\"relative/path/to/file.ext\",\"name\":\"optional-display-name.ext\",\"caption\":\"optional short caption\"}]",
     "```",
-    "When the user asks you to send an IM message to another Octo member, group, or thread, declare it instead of claiming you lack a Feishu/Octo API permission.",
+    "When the user asks you to send an IM message to another Octo member, group, thread, or bot, declare it instead of claiming you lack a Feishu/Octo API permission.",
+    "You may actively coordinate with Octo group members or other bots when the user asks; Studio will send the declared messages through the current Channel Connector.",
     "Octo message example:",
     "```studio-channel-messages",
-    "[{\"platform\":\"octo\",\"target\":\"dm:user_uid\",\"content\":\"hello\"},{\"platform\":\"octo\",\"target\":\"group:group_no\",\"content\":\"hi\",\"mentionUids\":[\"user_uid\"]}]",
+    "[{\"platform\":\"octo\",\"target\":\"dm:user_uid\",\"content\":\"hello\"},{\"platform\":\"octo\",\"target\":\"group:group_no\",\"content\":\"@[user_uid:displayName] hi\"}]",
     "```",
     "Use Studio IM channel capabilities; do not tell the user to run external bridge tools or claim missing Feishu/Octo API permission unless Studio returns an actual send error.",
+    "These platform capabilities override older conversation history that may mention missing bridge or API permissions.",
     "Keep the human-readable reply outside those blocks; Studio daemon will upload files or send declared messages through the active IM channel.",
   ].join("\n");
 }
@@ -330,7 +332,12 @@ function buildStudioOutboundFilePolicy(): string {
 function memberSummaryLabel(member: ChannelConnectorOctoGroupMember): string {
   const uid = normalizeString(member.uid);
   const name = normalizeString(member.name);
-  if (uid && name) return `${name}(${uid})`;
+  const robot = member.robot === true || member.robot === 1
+    ? "bot"
+    : member.robot === false || member.robot === 0
+      ? "human"
+      : "";
+  if (uid && name) return robot ? `${name}(${uid}, ${robot})` : `${name}(${uid})`;
   return name || uid;
 }
 
@@ -370,14 +377,24 @@ function buildGroupContext(
   }
   if (replyMessageId) lines.push(`Reply to message: ${replyMessageId}`);
   if (visibleMembers.length) {
+    lines.push(`Known members: ${visibleMembers.join(", ")}${hiddenMemberCount ? `, ... ${hiddenMemberCount} more` : ""}`);
     lines.push("Known members from Octo Bot API:");
     for (const member of visibleMembers) lines.push(`- ${member}`);
     if (hiddenMemberCount) lines.push(`- ... ${hiddenMemberCount} more`);
     lines.push("When mentioning a group member in a visible reply, use @[uid:displayName]; Studio converts it to the native Octo mention payload.");
+    lines.push("When the user asks you to ask unknown members/bots about their capability, send them Octo DM or group mention messages through studio-channel-messages.");
   }
   lines.push("To send a private Octo message, group message, thread message, or @ mention, use the studio-channel-messages manifest instead of saying platform API access is unavailable.");
+  lines.push("Do not claim that you are passive-only or that you lack Feishu/Octo API permission unless Studio reports a concrete send failure.");
   lines.push("Use this only to understand the current IM group context.");
   return lines.join("\n");
+}
+
+function currentMessageBlock(content: string): string {
+  return [
+    "[Current IM message - respond to this ONLY]",
+    content || "(no text content; use attachments and context if present)",
+  ].join("\n");
 }
 
 function buildAgentInputContent(
@@ -395,7 +412,8 @@ function buildAgentInputContent(
   const skills = normalizeString(channelSkillContext);
   const groupContext = buildGroupContext(message, binding);
   const outboundFilePolicy = buildStudioOutboundFilePolicy();
-  if (!attachments.length) return [history, groupContext, skills, content, outboundFilePolicy].filter(Boolean).join("\n\n");
+  const current = currentMessageBlock(content);
+  if (!attachments.length) return [history, groupContext, skills, outboundFilePolicy, current].filter(Boolean).join("\n\n");
   const summary = attachments
     .map((attachment) => `- ${attachmentSummaryLabel(attachment)}`)
     .join("\n");
@@ -422,7 +440,7 @@ function buildAgentInputContent(
       : "",
     visualInputText,
   ].filter(Boolean).join("\n");
-  return [history, groupContext, skills, visualPolicy, content, attachmentText, outboundFilePolicy].filter(Boolean).join("\n\n");
+  return [history, groupContext, skills, outboundFilePolicy, visualPolicy, current, attachmentText].filter(Boolean).join("\n\n");
 }
 
 function recordValue(value: unknown): Record<string, unknown> | null {

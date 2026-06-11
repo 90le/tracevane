@@ -1044,7 +1044,7 @@ test("native Channel Connectors extracts outbound IM message manifests", () => {
     "```studio-channel-messages",
     JSON.stringify([
       { platform: "octo", target: "dm:user-1", content: "请介绍一下你的能力" },
-      { platform: "octo", target: "group:group-a", content: "大家看这里", mentionUids: ["user-2"] },
+      { platform: "octo", target: "group:group-a", content: "@[user-2:Alice] 大家看这里" },
       { platform: "octo", target: "thread:group-a____topic-1", content: "Thread ping", mentionAll: true },
       { platform: "feishu", chatId: "oc_chat", content: "Feishu ping" },
     ]),
@@ -1668,6 +1668,29 @@ test("Octo adapter follows group direction and mention rendering rules", async (
   assert.deepEqual(directed.replyPlan.mentionUids, ["user-3"]);
   assert.deepEqual(directed.replyPlan.chunks, ["已处理"]);
   assert.deepEqual(directed.replyPlan.payloads[0].payload.mention.uids, ["user-3"]);
+
+  const structuredMention = await service.dispatchOctoIncoming({
+    bindingId: "octo-group",
+    dryRun: true,
+    replyText: "@[user-3:Alice] 已处理",
+    message: {
+      messageId: "g-structured",
+      fromUid: "user-2",
+      channelId: "group-a",
+      channelType: 2,
+      payload: {
+        type: 1,
+        content: "@OctoBot status",
+        mention: { uids: ["robot-1"] },
+      },
+      members: [
+        { uid: "user-3", name: "Alice" },
+        { uid: "robot-1", name: "OctoBot", robot: 1 },
+      ],
+    },
+  });
+  assert.deepEqual(structuredMention.replyPlan.mentionUids, ["user-3"]);
+  assert.deepEqual(structuredMention.replyPlan.chunks, ["已处理"]);
 });
 
 test("Octo transport smoke registers bot through binding metadata", async () => {
@@ -2543,7 +2566,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(processRequest.args.includes("--cd"), true);
   assert.equal(processRequest.args.at(-1), "-");
   assert.equal(processRequest.cwd, workDir);
-  assert.match(processRequest.stdin, /^hi codex/);
+  assert.match(processRequest.stdin, /^\[Studio outbound file\/message policy\]/);
+  assert.match(processRequest.stdin, /\[Current IM message - respond to this ONLY\]\nhi codex/);
   assert.match(processRequest.stdin, /studio-channel-files/);
   assert.doesNotMatch(processRequest.stdin, /cc-connect/);
   assert.equal(processRequest.env.OPENAI_API_KEY, "sk-local");
@@ -2592,7 +2616,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.ok(historyRequest);
   assert.match(historyRequest.stdin, /^\[Studio IM history context\]/);
   assert.match(historyRequest.stdin, /earlier question/);
-  assert.match(historyRequest.stdin, /\n\nhi codex\n\n\[Studio outbound file policy\]/);
+  assert.match(historyRequest.stdin, /\[Studio outbound file\/message policy\]/);
+  assert.match(historyRequest.stdin, /\[Current IM message - respond to this ONLY\]\nhi codex/);
   assert.doesNotMatch(historyRequest.stdin, /cc-connect/);
   for (const cleanupPath of historyRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
@@ -2613,7 +2638,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.ok(channelSkillRequest);
   assert.match(channelSkillRequest.stdin, /^\[Studio IM channel skills\]/);
   assert.match(channelSkillRequest.stdin, /\/octo-send: Send Octo DM, group, thread, and mention messages/);
-  assert.match(channelSkillRequest.stdin, /\n\nhi codex\n\n\[Studio outbound file policy\]/);
+  assert.match(channelSkillRequest.stdin, /\[Studio outbound file\/message policy\]/);
+  assert.match(channelSkillRequest.stdin, /\[Current IM message - respond to this ONLY\]\nhi codex/);
   for (const cleanupPath of channelSkillRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const groupRequest = buildChannelConnectorAgentProcessRequest({
@@ -2649,7 +2675,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.match(groupRequest.stdin, /- Alice\(user-2\)/);
   assert.match(groupRequest.stdin, /- Studio\(robot-1\)/);
   assert.match(groupRequest.stdin, /studio-channel-messages manifest/);
-  assert.match(groupRequest.stdin, /\n\nhi group\n\n\[Studio outbound file policy\]/);
+  assert.match(groupRequest.stdin, /\[Studio outbound file\/message policy\]/);
+  assert.match(groupRequest.stdin, /\[Current IM message - respond to this ONLY\]\nhi group/);
   assert.doesNotMatch(groupRequest.stdin, /cc-connect/);
   for (const cleanupPath of groupRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
@@ -2714,7 +2741,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     gatewayClientKey: "sk-local",
     processRunner: async (request) => {
       assert.equal(request.command, "codex");
-      assert.match(request.stdin, /^hi codex/);
+      assert.match(request.stdin, /^\[Studio outbound file\/message policy\]/);
+      assert.match(request.stdin, /\[Current IM message - respond to this ONLY\]\nhi codex/);
       assert.match(request.stdin, /studio-channel-files/);
       assert.doesNotMatch(request.stdin, /cc-connect/);
       assert.ok(request.env.CODEX_HOME);
@@ -2806,7 +2834,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(claudeRequest.args.includes("--effort"), true);
   assert.equal(claudeRequest.args.includes("max"), true);
   const claudeInput = JSON.parse(claudeRequest.stdin);
-  assert.match(claudeInput.message.content, /^hi codex/);
+  assert.match(claudeInput.message.content, /^\[Studio outbound file\/message policy\]/);
+  assert.match(claudeInput.message.content, /\[Current IM message - respond to this ONLY\]\nhi codex/);
   assert.match(claudeInput.message.content, /studio-channel-files/);
   assert.doesNotMatch(claudeRequest.stdin, /cc-connect/);
   assert.equal(claudeRequest.env.ANTHROPIC_API_KEY, "sk-local");
@@ -2885,7 +2914,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(opencodeConfig.provider["studio-gateway"].options.apiKey, "sk-local");
   assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-5"].name, "gpt-5");
   assert.equal(fs.statSync(opencodeConfigPath).mode & 0o777, 0o600);
-  assert.match(opencodeRequest.args.at(-1), /^hi codex/);
+  assert.match(opencodeRequest.args.at(-1), /^\[Studio outbound file\/message policy\]/);
+  assert.match(opencodeRequest.args.at(-1), /\[Current IM message - respond to this ONLY\]\nhi codex/);
   assert.match(opencodeRequest.args.at(-1), /studio-channel-files/);
   assert.doesNotMatch(opencodeRequest.args.at(-1), /cc-connect/);
   for (const cleanupPath of opencodeRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
@@ -9952,8 +9982,16 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         return true;
       }
       if (req.method === "POST" && req.url === "/v1/bot/messages/sync") {
-        const payload = Buffer.from(JSON.stringify({ type: 1, content: "history hello" }), "utf8").toString("base64");
-        res.end(`{"start_message_seq":1,"end_message_seq":7,"pull_mode":1,"messages":[{"message_id":"2999","message_seq":7,"from_uid":"user-1","channel_id":"group-1","channel_type":2,"timestamp":1742547600,"payload":"${payload}"}]}`);
+        const oldPayload = Buffer.from(JSON.stringify({ type: 1, content: "old question" }), "utf8").toString("base64");
+        const botPayload = Buffer.from(JSON.stringify({ type: 1, content: "old answer" }), "utf8").toString("base64");
+        const newPayload = Buffer.from(JSON.stringify({ type: 1, content: "history hello" }), "utf8").toString("base64");
+        res.end([
+          "{\"start_message_seq\":1,\"end_message_seq\":7,\"pull_mode\":1,\"messages\":[",
+          `{"message_id":"2997","message_seq":5,"from_uid":"user-1","channel_id":"group-1","channel_type":2,"timestamp":1742547598,"payload":"${oldPayload}"},`,
+          `{"message_id":"2998","message_seq":6,"from_uid":"robot-1","channel_id":"group-1","channel_type":2,"timestamp":1742547599,"payload":"${botPayload}"},`,
+          `{"message_id":"2999","message_seq":7,"from_uid":"user-1","channel_id":"group-1","channel_type":2,"timestamp":1742547600,"payload":"${newPayload}"}`,
+          "]}",
+        ].join(""));
         return true;
       }
       if (req.method === "GET" && req.url?.startsWith("/v1/bot/file/download/chat/hello.txt")) {
@@ -9991,7 +10029,7 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
               id: "octo-context",
               platform: "octo",
               accountId: "octo-account",
-              botId: null,
+              botId: "robot-1",
               displayName: "Octo Context",
               agentProfileId: "codex-octo-context",
               enabled: true,
@@ -10052,8 +10090,11 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         }, 8000);
         assert.equal(capture.length, 1);
         assert.match(capture[0].stdin, /Studio group context/);
-        assert.match(capture[0].stdin, /Known members: Alice\(user-1\), Studio Bot\(robot-1\)/);
+        assert.match(capture[0].stdin, /Known members: Alice\(user-1, human\), Studio Bot\(robot-1, bot\)/);
         assert.match(capture[0].stdin, /Octo Bot API recent channel history/);
+        assert.match(capture[0].stdin, /Previous context - already answered/);
+        assert.match(capture[0].stdin, /old question/);
+        assert.match(capture[0].stdin, /Chat messages since your last reply/);
         assert.match(capture[0].stdin, /history hello/);
         assert.match(capture[0].stdin, /file: hello\.txt, 11 bytes, local:/);
         assert.match(capture[0].stdin, /Staged files are available locally/);
@@ -10082,7 +10123,7 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         }));
         assert.ok(octoEvents.some((event) => {
           return event.eventKind === "channel.octo.history.synced"
-            && event.includedCount === 1
+            && event.includedCount === 2
             && event.error === null;
         }));
         assert.ok(octoEvents.some((event) => {

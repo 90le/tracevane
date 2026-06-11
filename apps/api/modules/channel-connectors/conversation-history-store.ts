@@ -274,10 +274,11 @@ export function renderChannelConnectorConversationHistoryContext(
   const visible = entries.slice(-DEFAULT_HISTORY_CONTEXT_LIMIT);
   if (!visible.length) return null;
   const lines = [
-    "[Studio IM history context]",
+    "[Studio IM history context - previous turns only]",
     visible.some((entry) => entry.status === "compact-summary")
-      ? "Compact summaries and recent messages in this IM session before the current turn:"
-      : "Recent messages in this IM session before the current turn:",
+      ? "Compact summaries and previous messages in this IM session before the current turn:"
+      : "Previous messages in this IM session before the current turn:",
+    "Do not re-answer these messages, do not repeat older refusals, and do not treat older capability claims as current facts.",
   ];
   for (const [index, entry] of visible.entries()) {
     const role = entry.status === "compact-summary"
@@ -290,6 +291,6 @@ export function renderChannelConnectorConversationHistoryContext(
       : "";
     lines.push(`${index + 1}. ${role}${status}: ${text}${attachments}`);
   }
-  lines.push("Use this as session context only. The current user message follows after this block.");
+  lines.push("Use this as continuity context only. Platform capability instructions and the current user message follow after this block.");
   return lines.join("\n");
 }

@@ -43,6 +43,27 @@ function stringList(value: unknown): string[] {
   return [...new Set(normalized.split(/[,\s]+/).map((item) => item.trim()).filter(Boolean))];
 }
 
+function uniqueStrings(values: string[]): string[] {
+  return [...new Set(values.map(normalizeString).filter(Boolean))];
+}
+
+function extractStructuredMentionUids(content: string): { content: string; mentionUids: string[] } {
+  const mentionUids: string[] = [];
+  const stripped = content.replace(/@\[([A-Za-z0-9_.:-]+):([^\]\r\n]+)\]/g, (_match, uid: string) => {
+    const normalizedUid = normalizeString(uid);
+    if (normalizedUid) mentionUids.push(normalizedUid);
+    return " ";
+  });
+  return {
+    content: stripped
+      .replace(/[ \t]{2,}/g, " ")
+      .replace(/[ \t]+\n/g, "\n")
+      .replace(/\n[ \t]+/g, "\n")
+      .trim(),
+    mentionUids: uniqueStrings(mentionUids),
+  };
+}
+
 function channelTypeFromTarget(target: string): { channelId: string; channelType: number | null; chatId: string | null } {
   const normalized = normalizeString(target);
   const match = normalized.match(/^(dm|user|uid|group|thread|chat):(.+)$/i);
@@ -85,7 +106,9 @@ function outboundMessageFromValue(value: unknown): ChannelConnectorOutboundMessa
       || targetParts.channelId,
   );
   const channelType = normalizeChannelType(record.channelType ?? record.channel_type ?? record.type) ?? targetParts.channelType;
-  const content = normalizeString(record.content ?? record.text ?? record.message);
+  const rawContent = normalizeString(record.content ?? record.text ?? record.message);
+  const structuredMentions = extractStructuredMentionUids(rawContent);
+  const content = structuredMentions.content;
   if (!content) return null;
   return {
     platform: platform === "octo" || platform === "feishu" ? platform : null,
@@ -93,8 +116,15 @@ function outboundMessageFromValue(value: unknown): ChannelConnectorOutboundMessa
     channelType,
     chatId,
     content,
-    mentionUids: stringList(record.mentionUids ?? record.mention_uids ?? record.mentions),
-    mentionAll: record.mentionAll === true || record.mention_all === true || record.mentionAll === 1 || record.mention_all === 1,
+    mentionUids: uniqueStrings([
+      ...stringList(record.mentionUids ?? record.mention_uids ?? record.mentions),
+      ...structuredMentions.mentionUids,
+    ]),
+    mentionAll: record.mentionAll === true
+      || record.mention_all === true
+      || record.mentionAll === 1
+      || record.mention_all === 1
+      || /(?:^|(?<=\s))@(?:all|所有人)(?=\s|[^\w]|$)/i.test(rawContent),
   };
 }
 

@@ -374,18 +374,41 @@ function isMentionNameDelimiter(value: string): boolean {
   return /[\s,.;:!?，。；：！？、]/u.test(value);
 }
 
+function cleanMentionContent(content: string): string {
+  return content
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .trim();
+}
+
+function extractStructuredOctoMentions(content: string): { content: string; mentionUids: string[] } {
+  const mentionUids: string[] = [];
+  const stripped = content.replace(/@\[([A-Za-z0-9_.:-]+):([^\]\r\n]+)\]/g, (_match, uid: string) => {
+    const normalizedUid = normalizeString(uid);
+    if (normalizedUid) mentionUids.push(normalizedUid);
+    return " ";
+  });
+  return {
+    content: cleanMentionContent(stripped),
+    mentionUids: uniqueStrings(mentionUids),
+  };
+}
+
 function extractOctoMentions(content: string, members: ChannelConnectorOctoGroupMember[]): { content: string; mentionUids: string[] } {
-  if (!members.length) return { content, mentionUids: [] };
+  const structured = extractStructuredOctoMentions(content);
+  const mentionUids = [...structured.mentionUids];
+  content = structured.content;
+  if (!members.length) return { content, mentionUids: uniqueStrings(mentionUids) };
   const nameToUid = new Map<string, string>();
   for (const member of members) {
     const name = normalizeString(member.name).toLowerCase();
     const uid = normalizeString(member.uid);
     if (name && uid) nameToUid.set(name, uid);
   }
-  if (!nameToUid.size) return { content, mentionUids: [] };
+  if (!nameToUid.size) return { content, mentionUids: uniqueStrings(mentionUids) };
 
   const runes = Array.from(content);
-  const mentionUids: string[] = [];
   let output = "";
   for (let index = 0; index < runes.length; index += 1) {
     const char = runes[index];
@@ -404,7 +427,7 @@ function extractOctoMentions(content: string, members: ChannelConnectorOctoGroup
   }
 
   return {
-    content: output.trim(),
+    content: cleanMentionContent(output),
     mentionUids: uniqueStrings(mentionUids),
   };
 }

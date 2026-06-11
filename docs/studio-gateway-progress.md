@@ -22,16 +22,17 @@
 
 ## 本轮完成
 
-- 扩展 Studio 原生 `/octo` 平台命令：查询类覆盖 `groups`、`members`、`search`、`info`、`threads`、`thread`、`thread-members`；管理类覆盖 `create-group`、`update-group`、`add-members`、`remove-members`、`create-thread`、`join-thread`、`leave-thread`。
-- Octo 管理类命令统一走 Channel session 管理权限校验；非 admin 只能查询，不能建群、改群、增减成员或改 thread 绑定。
-- daemon 与 service/dry-run 两条路径复用同一 Octo management contract，前端/API、真实 daemon 和系统测试行为一致。
-- Agent 群上下文已结构化展示 Octo 成员，并提示 `@[uid:显示名]`、`studio-channel-messages` 私聊/group/thread/mention 能力；下一轮继续修正群聊最近上下文理解和 Agent 错称“没有平台私聊权限”的 prompt 问题。
+- 对照 Octo 插件修正群聊上下文：Octo Bot API 最近历史按最新 bot 回复 seq 分成“已回答历史”和“上次回复后新消息”，并明确只回答当前消息，避免旧群聊/旧 assistant 回复污染当前任务。
+- Studio 本地 IM history prompt 已降权为 previous-turn context：禁止复答旧消息、禁止复述旧的“没有 API 权限”判断，后续平台能力说明覆盖旧历史。
+- Octo 成员上下文保留 `robot/role`，Agent prompt 明确 bot/human、`@[uid:显示名]`、私聊/group/thread/mention 发送能力；用户要求协作时，Agent 应通过 `studio-channel-messages` 主动私聊或 @，而不是让用户手动转述。
+- Octo 普通最终回复和 `studio-channel-messages` manifest 都能解析 `@[uid:显示名]`，自动生成 Octo mention payload；manifest content 不再要求同时手写 `mentionUids`。
 
 ## 最近验证
 
 - 通过：`npm run typecheck:api`。
 - 通过：`npm run build:api`。
 - 通过：`node --test --test-name-pattern "Octo native management commands|Octo transport smoke covers Bot API groups|agent runner builds gateway-backed Codex turns" tests/system/channel-connectors-service.test.mjs`，3/3 全部通过。
+- 通过：`node --test --test-name-pattern "outbound IM message manifests|Octo adapter follows group direction|agent runner builds gateway-backed Codex turns|daemon enriches Octo group turns" tests/system/channel-connectors-service.test.mjs`，4/4 全部通过。
 - 通过：真实 Octo 配置非发送 smoke：`/octo groups` 返回 1 个群，`/octo members` 返回“小丘测试群”6 个成员，`/octo search 小维` 返回 2 个成员，`/octo info` 返回“小丘测试群”群信息，`/octo threads` 返回当前群 thread 列表（0）。
 
 ## 已知边界
@@ -44,11 +45,11 @@
 - `/status` 与 Channel 管理页已能显示最近 auto compact 记录；真实剩余 token 仍取决于上游 usage 或 Gateway runtime ledger 是否能归因。
 - Gateway usage 只有在上游返回 usage 或 runtime ledger 可归因时才准确；缺失 usage 时 Channel 只能用 IM history 字符估算，不能替代真实 tokenizer。
 - 同 session FIFO queue 当前是 daemon 内存队列；Channel daemon 自身重启会丢失未开始的排队消息，durable queue 尚未实现。
-- `studio-channel-messages` 已有 parser 与 daemon send path；Octo 群/成员/Space 查询和群/thread 管理命令已有 mock 回归，真实 Octo 私聊/@群成员、建群/改群/thread 管理 live smoke 还未执行；Feishu open_id/user_id 私聊解析后续补。
+- `studio-channel-messages` 已有 parser 与 daemon send path，并支持 Octo 结构化 `@[uid:显示名]` mention 抽取；Octo 群/成员/Space 查询和群/thread 管理命令已有 mock 回归，真实 Octo 私聊/@群成员、建群/改群/thread 管理 live smoke 还未执行；Feishu open_id/user_id 私聊解析后续补。
 
 ## 下一步
 
-1. 修正 Octo 群聊最近上下文与成员能力提示：对照 Octo 插件的 group/thread history、member profile 和 mention/DM 语义，确保 Agent 能正确私聊或 @ 群成员/机器人，不再误称没有平台 API 权限。
-2. 用户在真实 Octo 群聊让 Agent 私聊或 @ 某个成员，验证 `studio-channel-messages` 的 DM/group/thread 与 mention 能真实发送。
+1. 用户在真实 Octo 群聊让 Agent 私聊或 @ 某个成员/机器人，验证 `studio-channel-messages` 的 DM/group/thread 与 mention 能真实发送。
+2. 对照 Octo 插件继续迁移 GROUP.md/thread MD/persona context、delete-thread 和更完整的菜单/技能说明。
 3. 用户发送一条新的 Feishu 消息，做业务入站复验：runtime 应出现 dispatcher callback / receivedMessages，且无 reconnect/stale。
 4. 做真实 IM live command/progress smoke：Feishu 验证 card patch、权限审批和三次顺序工具调用；Octo 验证文本进度、工具输出、文件/消息 manifest；随后补 Feishu open_id/user_id 私聊、富文本和文档/云盘 skills。

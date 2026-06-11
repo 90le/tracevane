@@ -168,6 +168,8 @@ export interface ChannelConnectorOctoRichTextBlock {
 export interface ChannelConnectorOctoGroupMember {
   uid: string;
   name: string;
+  robot?: number | boolean | null;
+  role?: number | string | null;
 }
 
 export interface ChannelConnectorOctoInboundMessage {
