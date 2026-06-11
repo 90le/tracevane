@@ -4435,7 +4435,7 @@ test("native Channel Connectors compact posts to Gateway and clears stale Agent 
     ...lookup,
     messageId: "m-compact-user",
     role: "user",
-    text: "继续处理 TOOLS.md 和文件发送能力。",
+    text: "OLDER-SHOULD-NOT-ENTER-COMPACT 继续处理早期文件发送能力。",
     now: new Date("2026-06-06T08:00:00.000Z"),
   });
   appendChannelConnectorConversationHistory(historyPath, {
@@ -4446,6 +4446,20 @@ test("native Channel Connectors compact posts to Gateway and clears stale Agent 
     status: "completed",
     now: new Date("2026-06-06T08:00:01.000Z"),
   });
+  for (let index = 3; index <= 25; index += 1) {
+    appendChannelConnectorConversationHistory(historyPath, {
+      ...lookup,
+      messageId: `m-compact-extra-${index}`,
+      role: index % 2 === 0 ? "assistant" : "user",
+      text: index === 24
+        ? "继续处理 TOOLS.md 和文件发送能力，这是最近 20 条内应进入 compact 的上下文。"
+        : index === 25
+          ? `${"LONG-COMPACT-CONTEXT ".repeat(80)}COMPACT-TAIL-SHOULD-NOT-ENTER-COMPACT`
+          : `recent compact history ${index}`,
+      status: "completed",
+      now: new Date(`2026-06-06T08:00:${String(index).padStart(2, "0")}.000Z`),
+    });
+  }
   upsertChannelConnectorAgentSession(agentSessionsPath, {
     ...lookup,
     projectId: project.id,
@@ -4515,7 +4529,7 @@ test("native Channel Connectors compact posts to Gateway and clears stale Agent 
       now: new Date("2026-06-06T08:00:02.000Z"),
     });
     assert.equal(result.ok, true);
-    assert.equal(result.beforeEntries, 2);
+    assert.equal(result.beforeEntries, 20);
     assert.equal(result.afterEntries, 1);
     assert.equal(result.sessionsCleared, 2);
     assert.match(result.summaryText, /compact summary from gateway/);
@@ -4530,6 +4544,10 @@ test("native Channel Connectors compact posts to Gateway and clears stale Agent 
   assert.equal(requests[0].body.metadata.studio_channel_compact, true);
   assert.match(requests[0].body.input, /Summarize this Studio IM conversation/);
   assert.match(requests[0].body.input, /TOOLS\.md/);
+  assert.match(requests[0].body.input, /recent compact history 6/);
+  assert.match(requests[0].body.input, /truncated/);
+  assert.doesNotMatch(requests[0].body.input, /OLDER-SHOULD-NOT-ENTER-COMPACT/);
+  assert.doesNotMatch(requests[0].body.input, /COMPACT-TAIL-SHOULD-NOT-ENTER-COMPACT/);
 
   const compactEntries = getChannelConnectorConversationHistory(historyPath, lookup, 10);
   assert.equal(compactEntries.length, 1);
@@ -6563,6 +6581,12 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(historyDefault.replyText, /Studio Session History \(last 2\/20\)/);
   assert.match(historyDefault.replyText, /first current history entry/);
   assert.match(historyDefault.replyText, /second current history entry/);
+  const historyTooMany = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/history 999"),
+  });
+  assert.equal(historyTooMany.ok, true);
+  assert.match(historyTooMany.replyText, /Studio Session History \(last 2\/20\)/);
 
   upsertChannelConnectorAgentSession(agentSessionsPath, {
     bindingId: binding.id,

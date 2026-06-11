@@ -5,12 +5,15 @@ import type {
   ChannelConnectorRuntimeProject,
 } from "./agent-runner.js";
 import {
+  CHANNEL_CONNECTOR_HISTORY_CONTEXT_LIMIT,
   compactChannelConnectorConversationHistory,
   getChannelConnectorConversationHistory,
 } from "./conversation-history-store.js";
 
-export const CHANNEL_CONNECTOR_COMPACT_HISTORY_LIMIT = 40;
+export const CHANNEL_CONNECTOR_COMPACT_HISTORY_LIMIT = CHANNEL_CONNECTOR_HISTORY_CONTEXT_LIMIT;
 const CHANNEL_CONNECTOR_COMPACT_PROMPT_MAX_RUNES = 24_000;
+const CHANNEL_CONNECTOR_COMPACT_ENTRY_MAX_RUNES = 900;
+const CHANNEL_CONNECTOR_COMPACT_ATTACHMENTS_MAX_RUNES = 600;
 const CHANNEL_CONNECTOR_COMPACT_TIMEOUT_MS = 45_000;
 
 export interface ChannelConnectorConversationCompactResult {
@@ -48,6 +51,17 @@ function shortMessage(value: unknown, maxLength = 260): string {
     .trim();
   if (!redacted) return "unknown error";
   return redacted.length > maxLength ? `${redacted.slice(0, maxLength - 1)}...` : redacted;
+}
+
+function truncateRunes(value: string, maxRunes: number): string {
+  const normalized = normalizeString(value);
+  const runes = Array.from(normalized);
+  if (runes.length <= maxRunes) return normalized;
+  let keep = Math.max(1, maxRunes - 32);
+  let suffix = `\n... [truncated ${runes.length - keep} chars]`;
+  keep = Math.max(1, maxRunes - Array.from(suffix).length);
+  suffix = `\n... [truncated ${runes.length - keep} chars]`;
+  return `${runes.slice(0, keep).join("")}${suffix}`;
 }
 
 export function channelConnectorCompactGatewayUrl(endpoint: string): string {
@@ -98,9 +112,9 @@ export function channelConnectorCompactHistoryPrompt(input: {
   input.history.forEach((entry, index) => {
     const role = entry.status === "compact-summary" ? "compact-summary" : entry.role;
     const status = entry.status ? ` status=${entry.status}` : "";
-    const text = normalizeString(entry.text) || "(no text)";
+    const text = truncateRunes(entry.text || "", CHANNEL_CONNECTOR_COMPACT_ENTRY_MAX_RUNES) || "(no text)";
     const attachments = entry.attachmentSummaries.length
-      ? `\nattachments: ${entry.attachmentSummaries.join("; ")}`
+      ? `\nattachments: ${truncateRunes(entry.attachmentSummaries.join("; "), CHANNEL_CONNECTOR_COMPACT_ATTACHMENTS_MAX_RUNES)}`
       : "";
     lines.push(`${index + 1}. ${role}${status} @ ${entry.createdAt}\n${text}${attachments}`);
   });

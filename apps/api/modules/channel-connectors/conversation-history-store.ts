@@ -51,14 +51,14 @@ export interface ChannelConnectorConversationHistoryCompactResult {
   summaryEntry: ChannelConnectorConversationHistoryEntry;
 }
 
-const DEFAULT_HISTORY_ENTRIES_PER_CONVERSATION = 20;
-const DEFAULT_HISTORY_CONTEXT_LIMIT = 20;
+export const CHANNEL_CONNECTOR_HISTORY_ENTRIES_PER_CONVERSATION = 20;
+export const CHANNEL_CONNECTOR_HISTORY_CONTEXT_LIMIT = 20;
 const MAX_HISTORY_TEXT_LENGTH = 2000;
 const MAX_COMPACT_SUMMARY_LENGTH = 4000;
 const MAX_GLOBAL_HISTORY_ENTRIES = 1000;
-const HISTORY_CONTEXT_TEXT_MAX_RUNES = 360;
-const HISTORY_CONTEXT_ATTACHMENTS_MAX_RUNES = 360;
-const HISTORY_CONTEXT_TOTAL_MAX_RUNES = 8000;
+export const CHANNEL_CONNECTOR_HISTORY_CONTEXT_TEXT_MAX_RUNES = 360;
+export const CHANNEL_CONNECTOR_HISTORY_CONTEXT_ATTACHMENTS_MAX_RUNES = 360;
+export const CHANNEL_CONNECTOR_HISTORY_CONTEXT_TOTAL_MAX_RUNES = 8000;
 
 function nowIso(): string {
   return new Date().toISOString();
@@ -198,7 +198,7 @@ export function writeChannelConnectorConversationHistory(
 export function getChannelConnectorConversationHistory(
   filePath: string,
   lookup: ChannelConnectorConversationHistoryLookup,
-  limit = DEFAULT_HISTORY_CONTEXT_LIMIT,
+  limit = CHANNEL_CONNECTOR_HISTORY_CONTEXT_LIMIT,
 ): ChannelConnectorConversationHistoryEntry[] {
   const state = readChannelConnectorConversationHistory(filePath);
   return state.entries
@@ -230,7 +230,7 @@ export function appendChannelConnectorConversationHistory(
     status: normalizeString(input.status) || null,
     createdAt,
   };
-  const maxEntries = Math.max(2, input.maxEntriesPerConversation || DEFAULT_HISTORY_ENTRIES_PER_CONVERSATION);
+  const maxEntries = Math.max(2, input.maxEntriesPerConversation || CHANNEL_CONNECTOR_HISTORY_ENTRIES_PER_CONVERSATION);
   const sameConversation = (candidate: ChannelConnectorConversationHistoryEntry) => (
     candidate.bindingId === input.bindingId && candidate.sessionKey === input.sessionKey
   );
@@ -299,7 +299,7 @@ export function compactChannelConnectorConversationHistory(
 export function renderChannelConnectorConversationHistoryContext(
   entries: ChannelConnectorConversationHistoryEntry[],
 ): string | null {
-  const visible = entries.slice(-DEFAULT_HISTORY_CONTEXT_LIMIT);
+  const visible = entries.slice(-CHANNEL_CONNECTOR_HISTORY_CONTEXT_LIMIT);
   if (!visible.length) return null;
   const lines = [
     "[Studio IM history context - previous turns only]",
@@ -307,7 +307,7 @@ export function renderChannelConnectorConversationHistoryContext(
       ? "Compact summaries and previous messages in this IM session before the current turn:"
       : "Previous messages in this IM session before the current turn:",
     "Do not re-answer these messages, do not repeat older refusals, and do not treat older capability claims as current facts.",
-    `History budget: up to ${DEFAULT_HISTORY_CONTEXT_LIMIT} messages, max ${HISTORY_CONTEXT_TEXT_MAX_RUNES} chars per message, max ${HISTORY_CONTEXT_TOTAL_MAX_RUNES} chars total.`,
+    `History budget: up to ${CHANNEL_CONNECTOR_HISTORY_CONTEXT_LIMIT} messages, max ${CHANNEL_CONNECTOR_HISTORY_CONTEXT_TEXT_MAX_RUNES} chars per message, max ${CHANNEL_CONNECTOR_HISTORY_CONTEXT_TOTAL_MAX_RUNES} chars total.`,
   ];
   const footer = "Use this as continuity context only. Platform capability instructions and the current user message follow after this block.";
   const entryLines = visible.map((entry, index) => {
@@ -315,9 +315,9 @@ export function renderChannelConnectorConversationHistoryContext(
       ? "compact summary"
       : entry.role === "assistant" ? "assistant" : "user";
     const status = entry.status ? ` (${entry.status})` : "";
-    const text = truncateRunes(entry.text || "", HISTORY_CONTEXT_TEXT_MAX_RUNES).text || "(no text)";
+    const text = truncateRunes(entry.text || "", CHANNEL_CONNECTOR_HISTORY_CONTEXT_TEXT_MAX_RUNES).text || "(no text)";
     const attachments = entry.attachmentSummaries.length
-      ? ` attachments: ${truncateRunes(entry.attachmentSummaries.join("; "), HISTORY_CONTEXT_ATTACHMENTS_MAX_RUNES).text}`
+      ? ` attachments: ${truncateRunes(entry.attachmentSummaries.join("; "), CHANNEL_CONNECTOR_HISTORY_CONTEXT_ATTACHMENTS_MAX_RUNES).text}`
       : "";
     return `${index + 1}. ${role}${status}: ${text}${attachments}`;
   });
@@ -327,7 +327,7 @@ export function renderChannelConnectorConversationHistoryContext(
   for (let index = entryLines.length - 1; index >= 0; index -= 1) {
     const line = entryLines[index] || "";
     const nextUsedRunes = usedRunes + runeLength(line) + 1;
-    if (nextUsedRunes <= HISTORY_CONTEXT_TOTAL_MAX_RUNES || selectedLines.length === 0) {
+    if (nextUsedRunes <= CHANNEL_CONNECTOR_HISTORY_CONTEXT_TOTAL_MAX_RUNES || selectedLines.length === 0) {
       selectedLines.unshift(line);
       usedRunes = nextUsedRunes;
     } else {
@@ -339,14 +339,14 @@ export function renderChannelConnectorConversationHistoryContext(
     let droppedLine = `Dropped ${droppedOlder} older history messages because the prompt context budget was reached.`;
     while (
       selectedLines.length > 1
-      && usedRunes + runeLength(droppedLine) + 1 > HISTORY_CONTEXT_TOTAL_MAX_RUNES
+      && usedRunes + runeLength(droppedLine) + 1 > CHANNEL_CONNECTOR_HISTORY_CONTEXT_TOTAL_MAX_RUNES
     ) {
       const removed = selectedLines.shift() || "";
       usedRunes -= runeLength(removed) + 1;
       droppedOlder += 1;
       droppedLine = `Dropped ${droppedOlder} older history messages because the prompt context budget was reached.`;
     }
-    if (usedRunes + runeLength(droppedLine) + 1 <= HISTORY_CONTEXT_TOTAL_MAX_RUNES) {
+    if (usedRunes + runeLength(droppedLine) + 1 <= CHANNEL_CONNECTOR_HISTORY_CONTEXT_TOTAL_MAX_RUNES) {
       lines.push(droppedLine);
     }
   }

@@ -25,6 +25,7 @@ import {
   type ChannelConnectorSessionControlRecord,
 } from "./session-control-store.js";
 import {
+  CHANNEL_CONNECTOR_HISTORY_CONTEXT_LIMIT,
   clearChannelConnectorConversationHistory,
   getChannelConnectorConversationHistory,
 } from "./conversation-history-store.js";
@@ -2532,7 +2533,7 @@ function shortIdentifier(value: string | null | undefined, maxRunes = 12): strin
   return bufferPreviewText(normalized, maxRunes);
 }
 
-function parsePositiveLimit(value: string | null | undefined, fallback: number, max = 50): number {
+function parsePositiveLimit(value: string | null | undefined, fallback: number, max = CHANNEL_CONNECTOR_HISTORY_CONTEXT_LIMIT): number {
   const parsed = Number(normalizeString(value));
   if (!Number.isInteger(parsed) || parsed <= 0) return fallback;
   return Math.max(1, Math.min(max, parsed));
@@ -2757,7 +2758,7 @@ async function contextBudgetForCommand(input: {
     catalog = [];
   }
   const history = input.context.conversationHistoryPath
-    ? getChannelConnectorConversationHistory(input.context.conversationHistoryPath, controlsLookup(input.context), 50)
+    ? getChannelConnectorConversationHistory(input.context.conversationHistoryPath, controlsLookup(input.context), CHANNEL_CONNECTOR_HISTORY_CONTEXT_LIMIT)
     : [];
   return resolveChannelConnectorContextBudget({
     model: input.project.model,
@@ -2828,7 +2829,7 @@ async function handleCurrent(context: ChannelConnectorCommandContext): Promise<C
     workDir: currentProject.workDir,
   });
   const historyCount = context.conversationHistoryPath
-    ? getChannelConnectorConversationHistory(context.conversationHistoryPath, lookup, 50).length
+    ? getChannelConnectorConversationHistory(context.conversationHistoryPath, lookup, CHANNEL_CONNECTOR_HISTORY_CONTEXT_LIMIT).length
     : 0;
   const sessionName = session?.name || control?.sessionName || "-";
   return {
@@ -2917,7 +2918,7 @@ function handleVersion(context: ChannelConnectorCommandContext): ChannelConnecto
 function historyCommandText(context: ChannelConnectorCommandContext, args: string[] = []): string {
   const filePath = normalizeString(context.conversationHistoryPath);
   if (!filePath) return "当前 Channel daemon 未启用 history store。";
-  const limit = parsePositiveLimit(args[0], 20, 50);
+  const limit = parsePositiveLimit(args[0], CHANNEL_CONNECTOR_HISTORY_CONTEXT_LIMIT, CHANNEL_CONNECTOR_HISTORY_CONTEXT_LIMIT);
   const entries = getChannelConnectorConversationHistory(filePath, controlsLookup(context), limit);
   if (!entries.length) return "当前 IM 会话还没有可显示的 history。";
   const lines = [`Studio Session History (last ${entries.length}/${limit})`];
