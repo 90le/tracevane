@@ -42,7 +42,7 @@
 - `studio-channel-files` 已覆盖出站文件声明、路径校验、原始文件名、Feishu/Octo 上传和发送。
 - `studio-channel-messages` 已覆盖私聊出站消息声明，Feishu 支持 open_id/user_id/dm markdown，Octo 支持 human DM 和 best-effort group/thread。
 - Feishu 入站文件 live 已验证：长连接文件消息进入本地 staging、history 附件摘要和 Agent CLI 文件读取链路。
-- 图片附件可 staging；非视觉模型会被提示不能做视觉推断，存在视觉模型时可按模型能力切换。
+- 图片附件可 staging；非视觉模型默认收到附件说明/本地路径，不做视觉推断。平台 binding 可显式开启自动切视觉模型；切换失败会回退原模型的附件说明模式。
 - 同 session FIFO queue、`/stop`、`/new`、`/reset`、`/compact`、`/thinking`、`/process`、`/tools` 已接入。
 - Claude Code / OpenCode persistent native compact 已有真实子进程 driver 回归：Claude 复用同一个 stream-json 常驻进程，OpenCode 通过 `run --session` 续接。
 - Claude Code persistent driver 已修复过程回复污染最终回复，并补进度回调兼容回归。
@@ -69,5 +69,5 @@
 ## 下一步
 
 1. 工具流和回复解析：继续复核 Claude/Codex live 差异，修复空工具结果、工具输出丢失、过程回复/最终回复分类错误。
-2. Feishu/Octo 私聊 live smoke：图片、出站文件、权限审批和 Octo 文件；Markdown 做抽查回归。
+2. Feishu/Octo 私聊 live smoke：Feishu 图片重发验证、出站文件、权限审批和 Octo 文件；Markdown 做抽查回归。
 3. durable queue 设计与实现。

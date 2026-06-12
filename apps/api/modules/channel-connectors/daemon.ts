@@ -2292,6 +2292,49 @@ function metadataBoolean(binding: ChannelConnectorRuntimeBinding, keys: string[]
   return fallback;
 }
 
+function shouldFallbackVisualModelToAttachmentSummary(input: {
+  binding: ChannelConnectorRuntimeBinding;
+  message: ChannelConnectorOctoInboundMessage;
+  switched: boolean;
+  nativeCommand: string | null;
+  agent: ChannelConnectorAgentTurnResult;
+}): boolean {
+  // Intentional image fail-safe: opt-in vision model routing can still hit provider capability mismatches.
+  if (!input.switched) return false;
+  if (normalizeString(input.nativeCommand)) return false;
+  if (input.agent.ok !== false) return false;
+  if (countChannelConnectorVisualAttachments(input.message) <= 0) return false;
+  return metadataBoolean(input.binding, [
+    "fallbackVisionToAttachmentSummary",
+    "fallback_vision_to_attachment_summary",
+    "visionFallbackToAttachmentSummary",
+    "vision_fallback_to_attachment_summary",
+  ], true);
+}
+
+function updateActiveRunAgentModel(input: {
+  state: ChannelDaemonState;
+  activeRunCancels: ChannelDaemonActiveRunCancelRegistry;
+  activeRunId: string;
+  agent: string;
+  model: string | null;
+  session: ChannelConnectorAgentSessionRecord | null;
+}): void {
+  const activeRun = input.state.activeRuns.find((run) => run.id === input.activeRunId);
+  if (activeRun) {
+    activeRun.agent = input.agent;
+    activeRun.model = input.model;
+    activeRun.sessionResumed = Boolean(input.session?.agentNativeSessionId || input.session?.codexThreadId);
+    activeRun.agentNativeSessionId = input.session?.agentNativeSessionId || input.session?.codexThreadId || null;
+    activeRun.codexThreadId = input.session?.codexThreadId || null;
+  }
+  const activeCancel = input.activeRunCancels.get(input.activeRunId);
+  if (activeCancel) {
+    activeCancel.agent = input.agent;
+    activeCancel.model = input.model;
+  }
+}
+
 function channelSessionParallelAgentRunsEnabled(binding: ChannelConnectorRuntimeBinding): boolean {
   return metadataBoolean(binding, [
     "parallelAgentRuns",
@@ -8110,7 +8153,7 @@ async function dispatchOctoMessage(input: {
       error: modelResolution.catalogError,
     });
   }
-  const turnProject = modelResolution.project;
+  let turnProject = modelResolution.project;
   if (modelResolution.switched) {
     writeJsonLine(config.paths.octoEvents, {
       checkedAt,
@@ -8128,7 +8171,7 @@ async function dispatchOctoMessage(input: {
       aliasCommand: aliasResolution.matchedAlias?.command || null,
     });
   }
-  const effectiveSessionLookup = {
+  let effectiveSessionLookup = {
     bindingId: binding.id,
     projectId: turnProject.id,
     sessionKey,
@@ -8206,7 +8249,7 @@ async function dispatchOctoMessage(input: {
     messageId: message.messageId,
   });
   const activeRunId = `${binding.id}:${message.messageId}`;
-  const currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
+  let currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
   const octoHistoryCutoff = getOctoHistoryCutoff(state, binding.id, sessionKey);
   const localHistoryContext = renderChannelConnectorConversationHistoryContext(
     getChannelConnectorConversationHistory(conversationHistoryPath(config), {
@@ -8495,9 +8538,9 @@ async function dispatchOctoMessage(input: {
     ingressToAgentStartMs: elapsedMsSince(ingressAtMs, runStartedAtMs),
   });
 
-    const runtimeDir = agentRuntimeDir(config, turnProject, binding);
-    if ((agentMessage.attachments || []).length > 0 && metadataBoolean(binding, [
-      "stageOctoUrlAttachments",
+  let runtimeDir = agentRuntimeDir(config, turnProject, binding);
+  if ((agentMessage.attachments || []).length > 0 && metadataBoolean(binding, [
+    "stageOctoUrlAttachments",
     "stage_octo_url_attachments",
     "stageUrlAttachments",
     "stage_url_attachments",
@@ -8507,16 +8550,16 @@ async function dispatchOctoMessage(input: {
       "attachment_max_bytes",
       "maxAttachmentBytes",
       "max_attachment_bytes",
-        "octoAttachmentMaxBytes",
-        "octo_attachment_max_bytes",
-      ], DEFAULT_CHANNEL_CONNECTOR_ATTACHMENT_MAX_BYTES);
-      const staged = await stageOctoMessageAttachments({
-        transport,
-        message: agentMessage,
-        rootDir: runtimeDir,
-        maxBytes: attachmentMaxBytes,
-        allowPrivateNetwork: metadataBoolean(binding, [
-          "allowPrivateAttachmentUrls",
+      "octoAttachmentMaxBytes",
+      "octo_attachment_max_bytes",
+    ], DEFAULT_CHANNEL_CONNECTOR_ATTACHMENT_MAX_BYTES);
+    const staged = await stageOctoMessageAttachments({
+      transport,
+      message: agentMessage,
+      rootDir: runtimeDir,
+      maxBytes: attachmentMaxBytes,
+      allowPrivateNetwork: metadataBoolean(binding, [
+        "allowPrivateAttachmentUrls",
         "allow_private_attachment_urls",
         "allowOctoPrivateAttachmentUrls",
         "allow_octo_private_attachment_urls",
@@ -8531,19 +8574,19 @@ async function dispatchOctoMessage(input: {
       sessionKey,
       messageId: message.messageId,
       attachmentMaxBytes: describeByteSizeLimit(attachmentMaxBytes),
-        attachmentCount: (staged.message.attachments || []).length,
-        attachmentKinds: (staged.message.attachments || []).map((attachment) => attachment.kind),
-        visualAttachmentCount: countChannelConnectorVisualAttachments(staged.message),
-        stagedCount: staged.stagedCount,
-        failedCount: staged.failedCount,
-        downloadUrlAttemptCount: staged.downloadUrlAttemptCount,
-        downloadUrlResolvedCount: staged.downloadUrlResolvedCount,
-        localPaths: staged.localPaths,
-      });
-    }
+      attachmentCount: (staged.message.attachments || []).length,
+      attachmentKinds: (staged.message.attachments || []).map((attachment) => attachment.kind),
+      visualAttachmentCount: countChannelConnectorVisualAttachments(staged.message),
+      stagedCount: staged.stagedCount,
+      failedCount: staged.failedCount,
+      downloadUrlAttemptCount: staged.downloadUrlAttemptCount,
+      downloadUrlResolvedCount: staged.downloadUrlResolvedCount,
+      localPaths: staged.localPaths,
+    });
+  }
 
   const stopTypingPulse = startOctoTypingPulse(transport, message);
-  const channelSkillContext = nativeCommand
+  let channelSkillContext = nativeCommand
     ? null
     : buildChannelConnectorSkillContext(turnProject, { binding });
   let agent: ChannelConnectorAgentTurnResult;
@@ -8638,6 +8681,156 @@ async function dispatchOctoMessage(input: {
         },
       },
     });
+    if (shouldFallbackVisualModelToAttachmentSummary({
+      binding,
+      message: agentMessage,
+      switched: modelResolution.switched,
+      nativeCommand,
+      agent,
+    })) {
+      const failedModel = turnProject.model;
+      const failedError = agent.error;
+      turnProject = effectiveProject;
+      effectiveSessionLookup = {
+        bindingId: binding.id,
+        projectId: turnProject.id,
+        sessionKey,
+        agent: turnProject.agent,
+        model: turnProject.model,
+        workDir: turnProject.workDir,
+      };
+      currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
+      runtimeDir = agentRuntimeDir(config, turnProject, binding);
+      channelSkillContext = buildChannelConnectorSkillContext(turnProject, { binding });
+      updateActiveRunAgentModel({
+        state,
+        activeRunCancels,
+        activeRunId,
+        agent: turnProject.agent,
+        model: turnProject.model,
+        session: currentSession,
+      });
+      writeJsonLine(config.paths.octoEvents, {
+        checkedAt: new Date().toISOString(),
+        eventKind: "agent.visual.fallback.started",
+        adapter: "octo",
+        bindingId: binding.id,
+        sessionKey,
+        messageId: message.messageId,
+        agent: turnProject.agent,
+        originalModel: modelResolution.originalModel,
+        failedModel,
+        fallbackModel: turnProject.model,
+        failedError,
+        visualAttachmentCount: countChannelConnectorVisualAttachments(agentMessage),
+      });
+      agent = await runChannelConnectorAgentTurnWithSessionDriver({
+        binding,
+        project: turnProject,
+        sessionKey,
+        messageId: message.messageId,
+        request: {
+          project: turnProject,
+          binding,
+          message: agentMessage,
+          sessionKey,
+          gatewayEndpoint: turnProject.gatewayEndpoint || config.gateway.endpoint,
+          gatewayClientKey: key,
+          agentRuntimeDir: runtimeDir,
+          historyContext: nativeCommand ? null : historyContext,
+          channelSkillContext,
+          modelCapabilities: { vision: false },
+          nativeCommand: nativeCommand || null,
+          signal: abortController.signal,
+          resolvePermission: createPermissionResolver({
+            registry: channelPendingPermissions,
+            runId: activeRunId,
+            bindingId: binding.id,
+            sessionKey,
+            messageId: message.messageId,
+            agent: turnProject.agent,
+            model: turnProject.model,
+            onStateChange: (change) => {
+              if (isAskUserQuestionRequest(change.request)) return;
+              queueOctoPermissionStateReply(change);
+            },
+            onPrompt: async (prompt, request) => {
+              if (!isAskUserQuestionRequest(request)) octoPermissionPending = true;
+              await queueOctoTextProgressReply(renderPlainPermissionPrompt(request, prompt), {
+                eventKind: "agent.permission.prompt",
+                progressType: "permission",
+                permissionStatus: "pending",
+                requestId: request.requestId,
+                toolName: request.toolName,
+              });
+            },
+          }),
+          session: {
+            agentNativeSessionId: currentSession?.agentNativeSessionId || currentSession?.codexThreadId || null,
+            codexThreadId: currentSession?.codexThreadId || null,
+          },
+          onProgress: (event) => {
+            progressEventCount += 1;
+            latestProgress = event;
+            const progressAtMs = isoTimestampMs(event.checkedAt) ?? Date.now();
+            const sincePreviousProgressMs = elapsedMsSince(previousProgressAtMs, progressAtMs);
+            if (firstProgressAtMs === null) firstProgressAtMs = progressAtMs;
+            previousProgressAtMs = progressAtMs;
+            const activeRun = state.activeRuns.find((run) => run.id === activeRunId);
+            if (activeRun) {
+              activeRun.updatedAt = event.checkedAt;
+              activeRun.progressEventCount = progressEventCount;
+              activeRun.latestProgress = latestProgress;
+              activeRun.agentElapsedMs = elapsedMsSince(runStartedAtMs, progressAtMs);
+              activeRun.firstProgressLatencyMs = firstProgressAtMs === null
+                ? null
+                : elapsedMsSince(runStartedAtMs, firstProgressAtMs);
+            }
+            writeJsonLine(config.paths.octoEvents, {
+              checkedAt: event.checkedAt,
+              eventKind: "agent.progress",
+              adapter: "octo",
+              bindingId: binding.id,
+              sessionKey,
+              messageId: message.messageId,
+              agent: turnProject.agent,
+              progressType: event.type,
+              rawType: event.rawType,
+              itemType: event.itemType,
+              phase: event.phase || null,
+              text: event.text,
+              progressDefaultGroup: progressDefaults.isGroup,
+              progressThinkingEnabled: channelConnectorThinkingMessagesEnabled(control, progressDefaults),
+              progressProcessEnabled: channelConnectorProcessMessagesEnabled(control, progressDefaults),
+              progressToolsEnabled: channelConnectorToolMessagesEnabled(control, progressDefaults),
+              agentElapsedMs: elapsedMsSince(runStartedAtMs, progressAtMs),
+              sincePreviousProgressMs,
+              firstProgressLatencyMs: firstProgressAtMs === null
+                ? null
+                : elapsedMsSince(runStartedAtMs, firstProgressAtMs),
+            });
+            queueOctoProgressReply(event);
+            markRuntimeDirty(config, state);
+          },
+        },
+      });
+      writeJsonLine(config.paths.octoEvents, {
+        checkedAt: new Date().toISOString(),
+        eventKind: "agent.visual.fallback.finished",
+        adapter: "octo",
+        bindingId: binding.id,
+        sessionKey,
+        messageId: message.messageId,
+        agent: turnProject.agent,
+        originalModel: modelResolution.originalModel,
+        failedModel,
+        fallbackModel: turnProject.model,
+        failedError,
+        fallbackOk: agent.ok,
+        fallbackStatus: agent.status,
+        fallbackError: agent.error,
+      });
+    }
   } catch (error) {
     const caughtLatestProgress = latestProgress as ChannelConnectorAgentProgressEvent | null;
     agent = {
@@ -9514,7 +9707,7 @@ async function dispatchFeishuParsedEvent(input: {
       error: modelResolution.catalogError,
     });
   }
-  const turnProject = modelResolution.project;
+  let turnProject = modelResolution.project;
   if (modelResolution.switched) {
     writeJsonLine(config.paths.feishuEvents, {
       checkedAt,
@@ -9531,7 +9724,7 @@ async function dispatchFeishuParsedEvent(input: {
       visualAttachmentCount: countChannelConnectorVisualAttachments(agentMessage),
     });
   }
-  const effectiveSessionLookup = {
+  let effectiveSessionLookup = {
     bindingId: binding.id,
     projectId: turnProject.id,
     sessionKey,
@@ -9598,7 +9791,7 @@ async function dispatchFeishuParsedEvent(input: {
     threadFields: feishuThreadLogFields(parsed),
   });
   const activeRunId = `${binding.id}:${messageId}`;
-  const currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
+  let currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
   const feishuThreadBootstrapContext = !nativeCommand
     ? await loadFeishuThreadBootstrapContext({
       transport,
@@ -9790,7 +9983,7 @@ async function dispatchFeishuParsedEvent(input: {
     sessionKey,
     messageId,
   });
-  const runtimeDir = agentRuntimeDir(config, turnProject, binding);
+  let runtimeDir = agentRuntimeDir(config, turnProject, binding);
   if ((agentMessage.attachments || []).length > 0) {
     const attachmentMaxBytes = metadataByteSize(binding, [
       "attachmentMaxBytes",
@@ -9826,7 +10019,7 @@ async function dispatchFeishuParsedEvent(input: {
     });
   }
   let agent: ChannelConnectorAgentTurnResult;
-  const channelSkillContext = nativeCommand
+  let channelSkillContext = nativeCommand
     ? null
     : buildChannelConnectorSkillContext(turnProject, { binding });
   try {
@@ -9932,6 +10125,170 @@ async function dispatchFeishuParsedEvent(input: {
         },
       },
     });
+    if (shouldFallbackVisualModelToAttachmentSummary({
+      binding,
+      message: agentMessage,
+      switched: modelResolution.switched,
+      nativeCommand,
+      agent,
+    })) {
+      const failedModel = turnProject.model;
+      const failedError = agent.error;
+      turnProject = effectiveProject;
+      effectiveSessionLookup = {
+        bindingId: binding.id,
+        projectId: turnProject.id,
+        sessionKey,
+        agent: turnProject.agent,
+        model: turnProject.model,
+        workDir: turnProject.workDir,
+      };
+      currentSession = getChannelConnectorAgentSession(agentSessionsPath(config), effectiveSessionLookup);
+      runtimeDir = agentRuntimeDir(config, turnProject, binding);
+      channelSkillContext = buildChannelConnectorSkillContext(turnProject, { binding });
+      updateActiveRunAgentModel({
+        state,
+        activeRunCancels,
+        activeRunId,
+        agent: turnProject.agent,
+        model: turnProject.model,
+        session: currentSession,
+      });
+      writeJsonLine(config.paths.feishuEvents, {
+        checkedAt: new Date().toISOString(),
+        eventKind: "agent.visual.fallback.started",
+        adapter: "feishu",
+        bindingId: binding.id,
+        sessionKey,
+        messageId,
+        ...feishuThreadLogFields(parsed),
+        agent: turnProject.agent,
+        originalModel: modelResolution.originalModel,
+        failedModel,
+        fallbackModel: turnProject.model,
+        failedError,
+        visualAttachmentCount: countChannelConnectorVisualAttachments(agentMessage),
+      });
+      agent = await runChannelConnectorAgentTurnWithSessionDriver({
+        binding,
+        project: turnProject,
+        sessionKey,
+        messageId,
+        request: {
+          project: turnProject,
+          binding,
+          message: agentMessage,
+          sessionKey,
+          gatewayEndpoint: turnProject.gatewayEndpoint || config.gateway.endpoint,
+          gatewayClientKey: key,
+          agentRuntimeDir: runtimeDir,
+          historyContext: nativeCommand ? null : historyContext,
+          channelSkillContext,
+          modelCapabilities: { vision: false },
+          nativeCommand: nativeCommand || null,
+          signal: abortController.signal,
+          resolvePermission: createPermissionResolver({
+            registry: channelPendingPermissions,
+            runId: activeRunId,
+            bindingId: binding.id,
+            sessionKey,
+            messageId,
+            agent: turnProject.agent,
+            model: turnProject.model,
+            suppressReplyOnResolve: feishuCardsEnabled(binding) && Boolean(parsed.channelId),
+            onStateChange: (change) => {
+              if (isAskUserQuestionRequest(change.request)) return;
+              if (!feishuCardsEnabled(binding) || !parsed.channelId) return;
+              upsertFeishuPermissionProgressEntry(progressCardState, change);
+              queueFeishuProgressFlush(true, `permission-${change.status}`);
+            },
+            onPrompt: async (prompt, request) => {
+              if (shouldUseFeishuProgressPermissionPrompt(binding, parsed.channelId, request)) {
+                await feishuProgressFlush;
+                return;
+              }
+              await sendFeishuPermissionPrompt({
+                config,
+                transport,
+                binding,
+                chatId: parsed.channelId || sessionKey,
+                request,
+                fallbackText: prompt,
+              });
+            },
+          }),
+          session: {
+            agentNativeSessionId: currentSession?.agentNativeSessionId || currentSession?.codexThreadId || null,
+            codexThreadId: currentSession?.codexThreadId || null,
+          },
+          onProgress: (event) => {
+            progressEventCount += 1;
+            latestProgress = event;
+            const progressAtMs = isoTimestampMs(event.checkedAt) ?? Date.now();
+            const sincePreviousProgressMs = elapsedMsSince(previousProgressAtMs, progressAtMs);
+            if (firstProgressAtMs === null) firstProgressAtMs = progressAtMs;
+            previousProgressAtMs = progressAtMs;
+            const activeRun = state.activeRuns.find((run) => run.id === activeRunId);
+            if (activeRun) {
+              activeRun.updatedAt = event.checkedAt;
+              activeRun.progressEventCount = progressEventCount;
+              activeRun.latestProgress = latestProgress;
+              activeRun.agentElapsedMs = elapsedMsSince(runStartedAtMs, progressAtMs);
+              activeRun.firstProgressLatencyMs = firstProgressAtMs === null
+                ? null
+                : elapsedMsSince(runStartedAtMs, firstProgressAtMs);
+            }
+            writeJsonLine(config.paths.feishuEvents, {
+              checkedAt: event.checkedAt,
+              eventKind: "agent.progress",
+              adapter: "feishu",
+              bindingId: binding.id,
+              sessionKey,
+              messageId,
+              ...feishuThreadLogFields(parsed),
+              agent: turnProject.agent,
+              progressType: event.type,
+              rawType: event.rawType,
+              itemType: event.itemType,
+              phase: event.phase || null,
+              text: event.text,
+              progressDefaultGroup: progressDefaults.isGroup,
+              progressThinkingEnabled: channelConnectorThinkingMessagesEnabled(control, progressDefaults),
+              progressProcessEnabled: channelConnectorProcessMessagesEnabled(control, progressDefaults),
+              progressToolsEnabled: channelConnectorToolMessagesEnabled(control, progressDefaults),
+              agentElapsedMs: elapsedMsSince(runStartedAtMs, progressAtMs),
+              sincePreviousProgressMs,
+              firstProgressLatencyMs: firstProgressAtMs === null
+                ? null
+                : elapsedMsSince(runStartedAtMs, firstProgressAtMs),
+            });
+            const highPriority = event.type === "failed" || event.type === "error" || event.type === "completed";
+            if (shouldSendFeishuProgressEvent(control, event, progressDefaults)) {
+              const changed = pushFeishuProgressCardEvent(progressCardState, event);
+              if (changed) queueFeishuProgressFlush(highPriority, event.type);
+            }
+            markRuntimeDirty(config, state);
+          },
+        },
+      });
+      writeJsonLine(config.paths.feishuEvents, {
+        checkedAt: new Date().toISOString(),
+        eventKind: "agent.visual.fallback.finished",
+        adapter: "feishu",
+        bindingId: binding.id,
+        sessionKey,
+        messageId,
+        ...feishuThreadLogFields(parsed),
+        agent: turnProject.agent,
+        originalModel: modelResolution.originalModel,
+        failedModel,
+        fallbackModel: turnProject.model,
+        failedError,
+        fallbackOk: agent.ok,
+        fallbackStatus: agent.status,
+        fallbackError: agent.error,
+      });
+    }
   } catch (error) {
     const caughtLatestProgress = latestProgress as ChannelConnectorAgentProgressEvent | null;
     agent = {

@@ -366,6 +366,10 @@
                 <input v-model="bindingDraft.enabled" type="checkbox" />
                 <span>{{ text('启用', 'Enabled') }}</span>
               </label>
+              <label class="ccx-check-field">
+                <input v-model="bindingDraft.metadataAutoVisionModel" type="checkbox" />
+                <span>{{ text('图片自动切视觉模型', 'Auto vision model for images') }}</span>
+              </label>
               <fieldset v-if="bindingDraft.platform === 'octo'" class="ccx-credential-box">
                 <legend>Octo(dmwork)</legend>
                 <label>
@@ -739,6 +743,7 @@ type BindingDraft = Omit<ChannelConnectorPlatformBinding, 'allowlist' | 'adminUs
   metadataAttachmentMaxBytes: string;
   metadataAllowPrivateAttachmentUrls: boolean;
   metadataStageOctoUrlAttachments: boolean;
+  metadataAutoVisionModel: boolean;
 };
 
 const { text } = useLocalePreference();
@@ -1078,6 +1083,7 @@ function emptyBindingDraft(): BindingDraft {
     metadataAttachmentMaxBytes: '',
     metadataAllowPrivateAttachmentUrls: false,
     metadataStageOctoUrlAttachments: true,
+    metadataAutoVisionModel: false,
   };
 }
 
@@ -1186,6 +1192,7 @@ function selectBinding(binding: ChannelConnectorPlatformBinding): void {
     metadataAttachmentMaxBytes: metadataString(metadata, ['attachmentMaxBytes', 'attachment_max_bytes', 'maxAttachmentBytes', 'max_attachment_bytes']),
     metadataAllowPrivateAttachmentUrls: metadataBoolean(metadata, ['allowPrivateAttachmentUrls', 'allow_private_attachment_urls', 'allowOctoPrivateAttachmentUrls', 'allow_octo_private_attachment_urls'], false),
     metadataStageOctoUrlAttachments: metadataBoolean(metadata, ['stageOctoUrlAttachments', 'stage_octo_url_attachments', 'stageUrlAttachments', 'stage_url_attachments'], true),
+    metadataAutoVisionModel: metadataBoolean(metadata, ['autoVisionModel', 'auto_vision_model', 'visionAutoModel', 'vision_auto_model'], false),
   };
   platformSmoke.value = null;
 }
@@ -1331,6 +1338,13 @@ function setMetadataList(metadata: Record<string, unknown>, key: string, value: 
 function metadataFromBindingDraft(): Record<string, unknown> {
   const metadata = cloneMetadata(bindingDraft.value.metadata);
   setMetadataString(metadata, 'apiUrl', bindingDraft.value.metadataApiUrl || defaultApiUrl(bindingDraft.value.platform));
+  if (bindingDraft.value.metadataAutoVisionModel) metadata.autoVisionModel = true;
+  else {
+    delete metadata.autoVisionModel;
+    delete metadata.auto_vision_model;
+    delete metadata.visionAutoModel;
+    delete metadata.vision_auto_model;
+  }
   if (bindingDraft.value.platform === 'octo') {
     setMetadataString(metadata, 'botToken', bindingDraft.value.metadataBotToken);
     setMetadataString(metadata, 'wsUrl', bindingDraft.value.metadataWsUrl);

@@ -116,7 +116,7 @@ Octo(dmwork)：
 
 - 独立 `/channel-connectors` 页面和 `/api/channel-connectors/*` API。
 - 原生 config store：Agent Profile、workDir、Agent、model、permission、Gateway key ref、platform/bot binding、allowlist/admin。
-- Octo/Feishu 私聊文本往返、文件/图片 staging、出站文件 manifest、视觉模型自动选择。
+- Octo/Feishu 私聊文本往返、文件/图片 staging、出站文件 manifest；视觉模型自动选择是 binding 级显式开关，默认关闭，失败回退原模型附件说明模式。
 - Octo/Feishu 长连接已由用户 live 验证稳定，Markdown 已验证。
 - Feishu card/menu、会话子卡、命令路由、进度卡片和快速 ACK 后台派发。
 - IM 命令：`/help`、`/status`、`/agent`、`/model`、`/mode`、`/reasoning`、`/dir`、`/cd`、`/new`、`/reset`、`/stop`、`/display`、`/thinking`、`/process`、`/tools`、`/compact` 等核心命令。

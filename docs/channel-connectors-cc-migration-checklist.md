@@ -40,8 +40,8 @@
 | P1 | Codex runner | 进行中：结构化 stdout/stderr 回归已补 | `exec/resume`、thread、cwd、permission、tool stream、file manifest、stop/new/reset/compact 按 CC 验收；app-server 仍是 beta |
 | P1 | Claude Code runner | 进行中：native compact、结构化 tool_result 与过程/最终回复回归已补 | stream-json、permission prompt、session resume、tool event、文件/图片输入、native compact/stop live driver |
 | P1 | OpenCode runner | 进行中：parser 已对齐；结构化 stdout/stderr/exitCode 与 native compact 回归已补 | JSON/SQLite fallback、session、tool stream、文件/图片输入、native compact/stop live driver |
-| P1 | Feishu 私聊 | 进行中：长连接 live 稳定；Markdown、入站文件、native-first compact wiring、真实长连接 auto compact、三 Agent 显式 `/compact` smoke 已补 | 图片、出站文件、权限审批复验 |
-| P1 | Octo 私聊 | 进行中：长连接 live 稳定；Markdown 已验证 | 文件/图片、权限审批、compact live smoke |
+| P1 | Feishu 私聊 | 进行中：长连接 live 稳定；Markdown、入站文件、native-first compact wiring、真实长连接 auto compact、三 Agent 显式 `/compact` smoke、图片默认非视觉/显式自动切换策略已补 | 图片重发 live、出站文件、权限审批复验 |
+| P1 | Octo 私聊 | 进行中：长连接 live 稳定；Markdown 已验证；图片默认非视觉/显式自动切换策略已补 | 文件/图片、权限审批、compact live smoke |
 | P1 | 工具/思考/过程显示 | 继续推进：非飞书过程回复标题已移除；Codex reasoning summary、Octo `/thinking` 过滤、OpenCode live reasoning 和 parser/live 能力展示已补 | 三个 Agent 都稳定提取工具名、输入、stdout/stderr、exit/status、思考流、过程回复和最终回复分类 |
 | P1 | 上下文预算与 compact | 继续推进 | resolved model 预算进入 IM session；优先 Agent-native compact，不支持/失败再 Gateway compact |
 | P1 | 文件/消息收发 | 继续推进 | 私聊入站 staging、出站 manifest、原始文件名、yolo 权限、大文件策略、Feishu/Octo live smoke |
@@ -68,6 +68,8 @@
 - `node --test --test-name-pattern "Codex reasoning summaries|Claude Code stream-json progress|OpenCode JSON progress|thinking display toggles" tests/system/channel-connectors-service.test.mjs`，4/4 通过。
 - `node --test --test-name-pattern "IM commands switch agent|command surface renders text" tests/system/channel-connectors-service.test.mjs`，2/2 通过。
 - `npm run build:web`
+- `node --test --test-name-pattern "agent runner builds gateway-backed Codex turns|visual turns select Gateway vision models|stages attachments|outbound file manifests" tests/system/channel-connectors-service.test.mjs`，4/4 通过。
+- `node --test --test-name-pattern "daemon registers Octo and opens WuKongIM WebSocket" tests/system/channel-connectors-service.test.mjs`，1/1 通过。
 - `node --test tests/system/channel-connectors-service.test.mjs`，100/100 通过。
 - `node --test tests/system/channel-connectors-feishu-compact-live-script.test.mjs`，4/4 通过。
 - `node scripts/smoke-channel-connectors-feishu-compact-live.mjs --mode auto --since-minutes 1440 --json` 通过，识别 3 条 Feishu long-connection native auto compact 证据。
@@ -79,5 +81,5 @@
 ## 下一步
 
 1. 稳定 Codex / Claude Code / OpenCode 工具流和回复解析。
-2. 私聊文件/图片/权限/compact 做 Feishu 与 Octo live smoke；Feishu 入站文件已完成，继续 Feishu 图片/出站文件和 Octo 对应项。
+2. 私聊文件/图片/权限/compact 做 Feishu 与 Octo live smoke；Feishu 入站文件已完成，继续 Feishu 图片重发验证、出站文件和 Octo 对应项。
 3. 评估 durable queue。

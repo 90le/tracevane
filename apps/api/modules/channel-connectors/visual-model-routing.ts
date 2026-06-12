@@ -107,7 +107,7 @@ export async function resolveChannelConnectorVisualTurnProject(input: {
     "auto_vision_model",
     "visionAutoModel",
     "vision_auto_model",
-  ], true)) {
+  ], false)) {
     return {
       project: input.project,
       modelCapabilities: null,

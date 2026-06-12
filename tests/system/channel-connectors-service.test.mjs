@@ -5335,6 +5335,65 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(catalogNonVisionRequest.args.includes("--image"), false);
   for (const cleanupPath of catalogNonVisionRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
+  const claudeNonVisionImageRequest = buildChannelConnectorAgentProcessRequest({
+    project: { ...project, agent: "claude-code", model: "glm-5" },
+    binding: { ...binding, agent: "claude-code" },
+    message: {
+      ...message,
+      messageId: "m-runner-claude-non-vision-image",
+      payload: { type: 2, content: "", name: "photo.jpg" },
+      attachments: [{
+        kind: "image",
+        platform: "feishu",
+        fileName: "photo.jpg",
+        mimeType: "image/jpeg",
+        localPath: visionImagePath,
+        stagedAt: "2026-06-06T08:00:00.000Z",
+      }],
+    },
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    modelCapabilities: { vision: false },
+  });
+  assert.ok(claudeNonVisionImageRequest);
+  assert.equal(claudeNonVisionImageRequest.command, "claude");
+  const claudeNonVisionInput = JSON.parse(claudeNonVisionImageRequest.stdin);
+  assert.equal(typeof claudeNonVisionInput.message.content, "string");
+  assert.match(claudeNonVisionInput.message.content, /Studio visual attachment policy/);
+  assert.match(claudeNonVisionInput.message.content, /current model glm-5 is not marked as vision-capable/);
+  assert.doesNotMatch(claudeNonVisionInput.message.content, /native image content blocks/);
+  for (const cleanupPath of claudeNonVisionImageRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
+  const opencodeNonVisionImageRequest = buildChannelConnectorAgentProcessRequest({
+    project: { ...project, agent: "opencode", model: "glm-5" },
+    binding: { ...binding, agent: "opencode" },
+    message: {
+      ...message,
+      messageId: "m-runner-opencode-non-vision-image",
+      payload: { type: 2, content: "", name: "photo.jpg" },
+      attachments: [{
+        kind: "image",
+        platform: "octo",
+        fileName: "photo.jpg",
+        mimeType: "image/jpeg",
+        localPath: visionImagePath,
+        stagedAt: "2026-06-06T08:00:00.000Z",
+      }],
+    },
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    modelCapabilities: { vision: false },
+  });
+  assert.ok(opencodeNonVisionImageRequest);
+  assert.equal(opencodeNonVisionImageRequest.command, "opencode");
+  assert.equal(opencodeNonVisionImageRequest.args.includes("--file"), false);
+  assert.match(opencodeNonVisionImageRequest.args.at(-1), /Studio visual attachment policy/);
+  assert.match(opencodeNonVisionImageRequest.args.at(-1), /current model glm-5 is not marked as vision-capable/);
+  assert.doesNotMatch(opencodeNonVisionImageRequest.args.at(-1), /native --file arguments/);
+  for (const cleanupPath of opencodeNonVisionImageRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
   let attachmentOnlyRunnerCalled = false;
   const attachmentOnlyResult = await runChannelConnectorAgentTurn({
     project: { ...project, model: "gmn-vision" },
@@ -8087,9 +8146,24 @@ test("native Channel Connectors visual turns select Gateway vision models from c
     { id: "gpt-5.2", aliases: [], providerIds: ["gmn"], healthyProviderIds: [], openCircuitProviderIds: ["gmn"], features: { text: true, vision: true, responses: true } },
     { id: "gmn-vision", aliases: ["vision-gpt-5.5"], providerIds: ["gmn"], healthyProviderIds: ["gmn"], openCircuitProviderIds: [], features: { text: true, vision: true, responses: true } },
   ];
-  const selected = await resolveChannelConnectorVisualTurnProject({
+  const defaultDisabled = await resolveChannelConnectorVisualTurnProject({
     project,
     binding,
+    message: imageMessage,
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    listCatalog: async () => {
+      throw new Error("auto vision should be opt-in");
+    },
+  });
+  assert.equal(defaultDisabled.switched, false);
+  assert.equal(defaultDisabled.reason, "disabled-by-binding");
+  assert.equal(defaultDisabled.project.model, "gateway-glm-5");
+
+  const autoVisionBinding = { ...binding, metadata: { autoVisionModel: true } };
+  const selected = await resolveChannelConnectorVisualTurnProject({
+    project,
+    binding: autoVisionBinding,
     message: imageMessage,
     gatewayEndpoint: project.gatewayEndpoint,
     gatewayClientKey: "sk-local",
@@ -8104,7 +8178,7 @@ test("native Channel Connectors visual turns select Gateway vision models from c
 
   const noHealthyVision = await resolveChannelConnectorVisualTurnProject({
     project,
-    binding,
+    binding: autoVisionBinding,
     message: imageMessage,
     gatewayEndpoint: project.gatewayEndpoint,
     gatewayClientKey: "sk-local",
@@ -8119,7 +8193,7 @@ test("native Channel Connectors visual turns select Gateway vision models from c
 
   const currentVision = await resolveChannelConnectorVisualTurnProject({
     project: { ...project, model: "vision-gpt-5.5" },
-    binding,
+    binding: autoVisionBinding,
     message: imageMessage,
     gatewayEndpoint: project.gatewayEndpoint,
     gatewayClientKey: "sk-local",
@@ -8143,7 +8217,7 @@ test("native Channel Connectors visual turns select Gateway vision models from c
 
   const catalogUnavailable = await resolveChannelConnectorVisualTurnProject({
     project,
-    binding,
+    binding: autoVisionBinding,
     message: imageMessage,
     gatewayEndpoint: project.gatewayEndpoint,
     gatewayClientKey: "sk-local",
@@ -16279,6 +16353,7 @@ test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSock
                 apiUrl,
                 botToken: "test-token",
                 wsUrl,
+                autoVisionModel: true,
                 allowPrivateAttachmentUrls: true,
                 attachmentMaxBytes: 1024,
                 octoHeartbeatMs: 30_000,
