@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import type { ChannelConnectorPermissionMode } from "../../../../types/channel-connectors.js";
 import {
   buildChannelConnectorAgentProcessRequest,
+  codexReasoningProgressText,
   codexToolProgressText,
   firstProgressTextValue,
   truncateProgressText,
@@ -618,6 +619,8 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
             const toolLike = itemType === "commandExecution" || itemType.endsWith("ToolCall");
             const text = itemType === "agentMessage"
               ? firstProgressTextValue(item.text, item.content, item.message)
+              : itemType === "reasoning"
+                ? codexReasoningProgressText(item)
               : toolLike
                 ? codexToolProgressText(item, itemType, method)
                 : firstProgressTextValue(item.text, item.content, item.message, item.summary)
@@ -632,6 +635,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
               completedAgentMessageText = text;
               if (!replyText.trim()) replyText = text;
             }
+            if (itemType === "reasoning" && !text) return;
             const event = progressEvent({
               type,
               rawType: method,

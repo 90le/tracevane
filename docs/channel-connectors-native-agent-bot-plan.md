@@ -105,7 +105,7 @@ Octo(dmwork)：
 
 当前状态：
 
-- Codex app-server 已覆盖真实 Gateway `turn/start`、`/compact`、`turn/interrupt`、approval driver 合同、内部 prompt echo 过滤和结构化 stdout/stderr 工具结果解析。
+- Codex app-server 已覆盖真实 Gateway `turn/start`、`/compact`、`turn/interrupt`、approval driver 合同、内部 prompt echo 过滤、结构化 stdout/stderr 工具结果解析和 reasoning summary/content 思考流解析。
 - Claude Code stream-json 已覆盖普通 turn、Bash tool-use、文件 manifest、视觉附件、compact、stop/cancel、结构化 tool_result 输出渲染，并修复 persistent 过程回复污染最终回复。
 - OpenCode `run --session` 已覆盖普通 turn、文件 manifest、视觉附件、compact、stop/cancel；SQLite fallback 已统一复用 live parser，结构化 `stdout`/`stderr`/`exitCode` 已保留，避免丢工具结果或把过程回复拼进最终回复。
 - Claude Code / OpenCode persistent native compact 已新增真实子进程 driver 回归：Claude 用同一个 stream-json 常驻进程接收 `/compact`，OpenCode 用 `run --session <id>` 续接 `/compact`，均不回退 one-shot。
@@ -121,14 +121,14 @@ Octo(dmwork)：
 - Feishu card/menu、会话子卡、命令路由、进度卡片和快速 ACK 后台派发。
 - IM 命令：`/help`、`/status`、`/agent`、`/model`、`/mode`、`/reasoning`、`/dir`、`/cd`、`/new`、`/reset`、`/stop`、`/display`、`/thinking`、`/process`、`/tools`、`/compact` 等核心命令。
 - 私聊工具流、思考流、过程回复显示开关。
-- 思考流需要逐 Agent 评估真实支持度；没有 CLI 原生 thinking/reasoning 事件时不伪造。
+- Codex 思考流解析合同已覆盖 one-shot 和 app-server；Claude Code / OpenCode 仍需逐 Agent 评估真实支持度。没有 CLI 原生 thinking/reasoning 事件时不伪造。
 - allowlist/admin、rate limit、banned words 基础治理。
 - active `studio-channel-skill` 与 platform action 暴露层已删除。
 
 ## 7. 下一步
 
 1. 稳定 Codex、Claude Code、OpenCode 的工具流/回复解析，尤其空工具结果、过程回复和最终回复重复问题。
-2. 评估并补齐 Codex、Claude Code、OpenCode 思考流解析和 `/thinking` 开关验收。
+2. 复验 Codex、Claude Code、OpenCode 思考流解析和 `/thinking` 开关验收。
 3. 做 Feishu live `/compact` smoke。
 4. 补 durable queue / 可恢复队列。
 5. 复验 Feishu/Octo 私聊文件、图片、工具流和审批路径；Markdown 后续抽查即可。

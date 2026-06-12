@@ -29,6 +29,9 @@ import {
   createNativeCliSessionDriverFactory,
 } from "../../dist/apps/api/modules/channel-connectors/cli-agent-session-driver.js";
 import {
+  CodexAppServerSession,
+} from "../../dist/apps/api/modules/channel-connectors/codex-app-server-driver.js";
+import {
   clearChannelConnectorAgentSessionsForConversation,
   getChannelConnectorAgentSession,
   listChannelConnectorAgentSessionsForConversation,
@@ -11008,6 +11011,163 @@ test("native Channel Connectors process runner keeps Codex structured command ou
   assert.match(progress[1].text, /stdout:\ndirect ok/);
   assert.match(progress[1].text, /stderr:\ndirect err/);
   assert.equal(result.progressEvents?.length, 2);
+});
+
+test("native Channel Connectors process runner maps Codex reasoning summaries as thinking progress", async () => {
+  const root = makeTempRoot();
+  const progress = [];
+  const stdout = [
+    JSON.stringify({ type: "item.completed", item: { type: "reasoning", summary: ["先检查上下文。", "再执行命令。"] } }),
+    JSON.stringify({ type: "item.completed", item: { type: "reasoning", summary_text: "使用 summary_text 兜底。" } }),
+    JSON.stringify({ type: "item.completed", item: { type: "reasoning", content: ["使用 content 兜底。"] } }),
+    JSON.stringify({ type: "item.completed", item: { type: "reasoning" } }),
+    JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "最终回复。" } }),
+    JSON.stringify({ type: "turn.completed" }),
+    "",
+  ].join("\n");
+  const childScript = `process.stdout.write(${JSON.stringify(stdout)});`;
+
+  const result = await defaultChannelConnectorAgentProcessRunner({
+    command: process.execPath,
+    args: ["-e", childScript],
+    cwd: root,
+    stdin: "",
+    env: {},
+    timeoutMs: 1000,
+    agent: "codex",
+    onProgress: (event) => progress.push(event),
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.error, null);
+  const reasoning = progress.filter((event) => event.type === "reasoning");
+  assert.deepEqual(reasoning.map((event) => event.text), [
+    "先检查上下文。\n再执行命令。",
+    "使用 summary_text 兜底。",
+    "使用 content 兜底。",
+  ]);
+  assert.equal(progress.some((event) => event.text === "reasoning"), false);
+  assert.equal(result.progressEvents?.filter((event) => event.type === "reasoning").length, 3);
+});
+
+test("native Channel Connectors Codex app-server maps reasoning summaries without fake thinking", async () => {
+  const root = makeTempRoot();
+  const progress = [];
+  class FakeCodexAppServerTransport {
+    callbacks = [];
+    closeCallbacks = [];
+    send(message) {
+      if (message.method === "initialize") {
+        queueMicrotask(() => this.emit({ id: message.id, result: { userAgent: "fake-codex-app-server" } }));
+        return;
+      }
+      if (message.method === "initialized") return;
+      if (message.method === "thread/start") {
+        queueMicrotask(() => this.emit({ id: message.id, result: { thread: { id: "thread-reasoning" } } }));
+        return;
+      }
+      if (message.method === "turn/start") {
+        const turnId = "turn-reasoning";
+        queueMicrotask(() => this.emit({ id: message.id, result: { turn: { id: turnId, status: "running" } } }));
+        setTimeout(() => {
+          this.emit({ method: "turn/started", params: { threadId: "thread-reasoning", turn: { id: turnId, status: "running" } } });
+          this.emit({ method: "item/completed", params: { threadId: "thread-reasoning", turnId, item: { type: "reasoning", summary: ["先规划。", "再执行。"] } } });
+          this.emit({ method: "item/completed", params: { threadId: "thread-reasoning", turnId, item: { type: "reasoning", content: ["content 兜底。"] } } });
+          this.emit({ method: "item/completed", params: { threadId: "thread-reasoning", turnId, item: { type: "reasoning" } } });
+          this.emit({ method: "item/completed", params: { threadId: "thread-reasoning", turnId, item: { type: "agentMessage", text: "最终回复。" } } });
+          this.emit({ method: "turn/completed", params: { threadId: "thread-reasoning", turn: { id: turnId, status: "completed" } } });
+        }, 0);
+        return;
+      }
+      queueMicrotask(() => this.emit({ id: message.id, error: { code: -32601, message: `unexpected ${message.method}` } }));
+    }
+    close() {
+      for (const callback of this.closeCallbacks) callback(null);
+    }
+    onMessage(callback) {
+      this.callbacks.push(callback);
+    }
+    onClose(callback) {
+      this.closeCallbacks.push(callback);
+    }
+    emit(message) {
+      for (const callback of this.callbacks) callback(message);
+    }
+  }
+
+  const project = {
+    id: "codex-app-server-reasoning",
+    name: "Codex App Server Reasoning",
+    agent: "codex",
+    model: "gpt-5",
+    workDir: root,
+    permissionMode: "yolo",
+    gatewayEndpoint: "http://127.0.0.1:18796/v1",
+    gatewayKeyRef: "studio-gateway-client-key",
+    appProfileRef: "codex",
+    platformBindings: [],
+  };
+  const binding = {
+    id: "octo-codex-reasoning",
+    platform: "octo",
+    accountId: "octo-account",
+    botId: "robot-1",
+    displayName: "Octo Codex Reasoning",
+    enabled: true,
+    allowlist: [],
+    adminUsers: [],
+    metadata: { agentSessionDriver: "persistent" },
+  };
+  const session = new CodexAppServerSession({
+    transport: new FakeCodexAppServerTransport(),
+    sessionId: "codex-app-server:test",
+    model: "gpt-5",
+    cwd: root,
+    permissionMode: "yolo",
+    requestTimeoutMs: 1000,
+    turnTimeoutMs: 1000,
+  });
+
+  const result = await session.runTurn({
+    mode: "persistent",
+    key: {
+      bindingId: binding.id,
+      projectId: project.id,
+      sessionKey: "octo:dm:user-1",
+      agent: "codex",
+      model: "gpt-5",
+      workDir: root,
+      permissionMode: "yolo",
+    },
+    messageId: "m-codex-app-reasoning",
+    agentTurnRequest: {
+      project,
+      binding,
+      message: {
+        messageId: "m-codex-app-reasoning",
+        fromUid: "user-1",
+        channelId: "user-1",
+        channelType: 1,
+        timestamp: Date.now(),
+        payload: { type: 1, content: "请展示思考流。" },
+      },
+      sessionKey: "octo:dm:user-1",
+      gatewayEndpoint: project.gatewayEndpoint,
+      gatewayClientKey: "sk-local",
+      agentRuntimeDir: root,
+    },
+    onProgress: (event) => progress.push(event),
+    runOneShot: async () => {
+      throw new Error("Codex app-server reasoning test must not fall back to one-shot");
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.replyText, "最终回复。");
+  const reasoning = progress.filter((event) => event.type === "reasoning");
+  assert.deepEqual(reasoning.map((event) => event.text), ["先规划。\n再执行。", "content 兜底。"]);
+  assert.equal(progress.some((event) => event.text === "reasoning"), false);
+  assert.equal(result.progress.eventCount, progress.length);
 });
 
 test("native Channel Connectors process runner maps Codex agent messages before later tools as process progress", async () => {

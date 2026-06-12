@@ -666,6 +666,18 @@ export function codexToolProgressText(item: Record<string, unknown> | null, item
   return parts.join("\n");
 }
 
+export function codexReasoningProgressText(item: Record<string, unknown> | null): string {
+  if (!item) return "";
+  return firstProgressTextValue(
+    item.summary,
+    item.summary_text,
+    item.summaryText,
+    item.content,
+    item.text,
+    item.message,
+  );
+}
+
 function ensureWorkDir(workDir: string): string {
   const normalized = normalizeString(workDir) || process.cwd();
   fs.mkdirSync(normalized, { recursive: true });
@@ -1273,7 +1285,10 @@ function parseCodexProgressLine(line: string): ChannelConnectorAgentProgressEven
     const item = recordValue(raw.item);
     const itemType = normalizeString(item?.type) || null;
     if (itemType === "user_message" || itemType === "userMessage") return null;
-    if (itemType === "reasoning") return progressEvent({ type: "reasoning", rawType, itemType, text: normalizeString(item?.text) || null });
+    if (itemType === "reasoning") {
+      const text = codexReasoningProgressText(item);
+      return text ? progressEvent({ type: "reasoning", rawType, itemType, text }) : null;
+    }
     if (itemType === "agent_message") return progressEvent({ type: "assistant", rawType, itemType, text: normalizeString(item?.text) || null, phase: "final" });
     if (toolLikeItemType(itemType)) {
       return progressEvent({
