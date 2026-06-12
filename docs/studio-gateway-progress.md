@@ -57,6 +57,10 @@
   - 图片自动切视觉模型已改为平台 binding 显式 opt-in，默认关闭；开启后若视觉模型链路失败，会回退原模型并以附件说明/本地路径模式继续对话。
   - 排查 Codex 图片识别异常：当前 Feishu 私聊 override 实际为 `/model gpt-5.4-mini`，不是 Claude 4-6；Codex app-server 视觉输入事件之前缺少 args 证据，已补保留。
   - 修复 Codex `exec resume` 图片参数顺序：`--image` / `--json` 等 option 现在固定放在 session id 之前，避免被 CLI 当成 positional prompt。
+  - 修复 Gateway Responses -> Chat-compatible provider 图片丢失：`input_image` 现在会映射为 Chat `image_url` block，避免 Codex 经第三方 Chat provider 时只能靠历史和附件摘要猜图。
+  - 真实受控图片 smoke：`gpt-5.4-mini`、`gpt-5.5` 直连 `/v1/responses` 可正确识别左上蓝、右上红、下方绿三色方块；隔离 `CODEX_HOME` 的 `codex exec --image` + `gpt-5.4-mini` 也正确识别同一图片。
+  - 当前模型目录没有 `gpt5.5-mini` / `gpt-5.5-mini`，只有 `gpt-5.5` 与 `gpt-5.4-mini`；前者缺失会返回 503，不能误判为图片能力失败。
+  - `claude-opus-4-6` 目前经 `mlamp` Chat-compatible provider 传图片返回 400 `Unexpected item type in content`；该 provider 的 Claude 视觉能力需改用可接受图片的协议/端点后再验收。
   - 真实 CLI thinking smoke：
     - Claude Code 2.1.86 + `claude-sonnet-4-5` + `--effort max` 在当前 Gateway 下只输出 `text`，未输出 `thinking` item。
     - OpenCode 1.17.0 + `--thinking`：`gpt-5.4-mini` 未输出 reasoning；`claude-sonnet-4-5` 输出真实 `reasoning` part。
@@ -86,6 +90,8 @@
 - 本轮验证通过：`node --test --test-name-pattern "daemon registers Octo and opens WuKongIM WebSocket" tests/system/channel-connectors-service.test.mjs`，1/1 通过。
 - 本轮验证通过：`node --test tests/system/channel-connectors-service.test.mjs`，100/100 全部通过。
 - 本轮验证通过：`node --test tests/system/channel-connectors-feishu-compact-live-script.test.mjs`，4/4 通过。
+- 本轮验证通过：`node --test --test-name-pattern "model gateway adapts non-streaming codex responses requests to openai chat providers" tests/system/model-gateway-service.test.mjs`，覆盖 Responses `input_image` 到 Chat `image_url` 映射。
+- 本轮真实 smoke 通过：`/v1/responses` + `gpt-5.4-mini` / `gpt-5.5` 受控三色方块图片识别；`codex exec --image` + `gpt-5.4-mini` 识别同图成功。
 - 本轮 live 验证通过：`node scripts/smoke-channel-connectors-feishu-compact-live.mjs --mode auto --since-minutes 1440 --json`，识别 3 条 Feishu long-connection native auto compact 证据。
 - 本轮 live 验证通过：`node scripts/smoke-channel-connectors-feishu-compact-live.mjs --mode explicit --since-minutes 30 --json`，识别 1 条 Feishu long-connection Codex 显式 `/compact` native 证据。
 - 本轮 live 验证通过：`node scripts/smoke-channel-connectors-feishu-compact-live.mjs --mode explicit --agent claude-code --since-minutes 45 --json`，识别 1 条 Feishu long-connection Claude Code 显式 `/compact` native 证据。
@@ -100,6 +106,7 @@
 - 同 session FIFO queue 当前是 daemon 内存队列；Channel daemon 重启会丢失未开始的排队消息，durable queue 尚未实现。
 - Claude Code / OpenCode native compact 已覆盖 driver 层、Octo daemon 私聊入口、Feishu native-first wiring、Feishu 真实长连接 auto compact 和 Feishu 显式 `/compact` 三 Agent live smoke。
 - 图片自动切视觉模型默认关闭；需要在平台 binding 打开。失败回退已实现，但专门模拟“视觉模型失败后回退附件说明”的系统回归仍需补；Feishu 图片需用户重新发送后做 live 复验。
+- Provider 模型能力仍以用户配置和 smoke 为准；Chat-compatible provider 即使模型名像 Claude/GPT，也必须通过图片 smoke 才能标记 vision。
 - 工具流仍需继续打磨：Codex、Claude Code、OpenCode 都必须稳定提取工具名、输入、stdout/stderr、exit/status、真实输出、过程回复和最终回复分类；三者结构化 stdout/stderr 已对齐，Claude persistent 过程/最终回复重复已修。
 - 思考流 parser 支持 Codex、Claude Code、OpenCode 原生 thinking/reasoning 事件；Octo 私聊 `/thinking on/off` 已做端到端回归；状态/UI 已区分 parser 支持和 live 输出观测。真实 smoke 证明 OpenCode 会在支持 reasoning 的模型上输出 `reasoning`，Claude Code 2.1.86 当前未输出 `thinking` item；没有原生思考事件的 Agent/模型组合只能标为不支持，不伪造。
 
@@ -107,4 +114,5 @@
 
 1. 继续稳定 Codex、Claude Code、OpenCode 工具流/回复解析，重点修复空工具结果、工具结果被吞、过程回复/最终回复分类错误。
 2. 做 Feishu/Octo 私聊文件、图片、权限审批和 `/compact` live smoke 复验；Feishu 入站文件已完成，继续 Feishu 图片重发验证、出站文件和 Octo 对应项。
-3. 评估 durable queue，避免 daemon 重启丢失未开始消息。
+3. 复核 Provider Center 能力识别/测试：图片 smoke 失败的模型不能自动标记 vision，并提示协议/端点不匹配。
+4. 评估 durable queue，避免 daemon 重启丢失未开始消息。

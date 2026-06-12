@@ -259,7 +259,7 @@ function mapResponsesInputItemToChatMessage(item: unknown): JsonRecord | null {
     const role = mapResponsesRoleToChat(item.role);
     const message: JsonRecord = {
       role,
-      content: contentToText(item.content),
+      content: contentToChatContent(item.content, role),
     };
     const toolCallId = stringOrNull(item.tool_call_id) || stringOrNull(item.call_id);
     if (role === "tool" && toolCallId) message.tool_call_id = toolCallId;
@@ -424,6 +424,39 @@ function contentToText(content: unknown): string {
     return content.map(contentPartToText).filter(Boolean).join("");
   }
   return contentPartToText(content);
+}
+
+function contentToChatContent(content: unknown, role: string): string | JsonRecord[] {
+  if (role !== "user") return contentToText(content);
+  const parts = contentToChatParts(content);
+  if (!parts.some((part) => part.type === "image_url")) return contentToText(content);
+  return parts;
+}
+
+function contentToChatParts(content: unknown): JsonRecord[] {
+  if (typeof content === "string") return content ? [{ type: "text", text: content }] : [];
+  if (content === null || content === undefined) return [];
+  if (Array.isArray(content)) return content.flatMap(contentPartToChatParts);
+  return contentPartToChatParts(content);
+}
+
+function contentPartToChatParts(part: unknown): JsonRecord[] {
+  if (typeof part === "string") return part ? [{ type: "text", text: part }] : [];
+  if (!isRecord(part)) return [];
+  const imageUrl = imageUrlFromResponsesPart(part);
+  if (imageUrl) return [{ type: "image_url", image_url: { url: imageUrl } }];
+  const text = stringOrNull(part.text) || stringOrNull(part.output_text) || stringOrNull(part.input_text);
+  if (text) return [{ type: "text", text }];
+  if (Array.isArray(part.content)) return contentToChatParts(part.content);
+  return [];
+}
+
+function imageUrlFromResponsesPart(part: JsonRecord): string | null {
+  const type = stringOrNull(part.type);
+  if (type !== "input_image" && type !== "image_url") return null;
+  if (typeof part.image_url === "string") return part.image_url.trim() || null;
+  if (isRecord(part.image_url)) return stringOrNull(part.image_url.url);
+  return stringOrNull(part.url);
 }
 
 function contentPartToText(part: unknown): string {

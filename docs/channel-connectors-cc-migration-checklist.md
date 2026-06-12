@@ -37,7 +37,7 @@
 | P0 | CC-first 门禁 | 已完成 | `AGENTS.md` 和本文件记录约束 |
 | P0 | Studio Gateway / Channel daemon supervisor | 已完成 | Studio/OpenClaw 崩溃后 daemon direct endpoint 可继续服务 |
 | P0 | 删除 active platform action layer | 已完成 | Agent prompt/env/UI/daemon endpoint 不再暴露 `studio-channel-skill` 或 platform action；旧 action block 不触发审批/API |
-| P1 | Codex runner | 进行中：结构化 stdout/stderr、resume 图片参数顺序、app-server 视觉 args 证据已补 | `exec/resume`、thread、cwd、permission、tool stream、file manifest、stop/new/reset/compact 按 CC 验收；app-server 仍是 beta |
+| P1 | Codex runner | 进行中：结构化 stdout/stderr、resume 图片参数顺序、app-server 视觉 args 证据、Gateway Responses->Chat 图片映射已补；`codex exec --image` 受控 smoke 通过 | `exec/resume`、thread、cwd、permission、tool stream、file manifest、stop/new/reset/compact 按 CC 验收；app-server 仍是 beta |
 | P1 | Claude Code runner | 进行中：native compact、结构化 tool_result 与过程/最终回复回归已补 | stream-json、permission prompt、session resume、tool event、文件/图片输入、native compact/stop live driver |
 | P1 | OpenCode runner | 进行中：parser 已对齐；结构化 stdout/stderr/exitCode 与 native compact 回归已补 | JSON/SQLite fallback、session、tool stream、文件/图片输入、native compact/stop live driver |
 | P1 | Feishu 私聊 | 进行中：长连接 live 稳定；Markdown、入站文件、native-first compact wiring、真实长连接 auto compact、三 Agent 显式 `/compact` smoke、图片默认非视觉/显式自动切换策略已补 | 图片重发 live、出站文件、权限审批复验 |
@@ -71,6 +71,8 @@
 - `node --test --test-name-pattern "agent runner builds gateway-backed Codex turns|visual turns select Gateway vision models|stages attachments|outbound file manifests" tests/system/channel-connectors-service.test.mjs`，4/4 通过。
 - `node --test --test-name-pattern "agent runner builds gateway-backed Codex turns|visual turns select Gateway vision models|daemon registers Octo and opens WuKongIM WebSocket" tests/system/channel-connectors-service.test.mjs`，3/3 通过。
 - `node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，14/14 通过。
+- `node --test --test-name-pattern "model gateway adapts non-streaming codex responses requests to openai chat providers" tests/system/model-gateway-service.test.mjs`，覆盖 Responses `input_image` 到 Chat `image_url` 映射。
+- 真实 smoke：`/v1/responses` + `gpt-5.4-mini` / `gpt-5.5` 受控三色方块图片识别通过；`codex exec --image` + `gpt-5.4-mini` 同图识别通过。
 - `node --test --test-name-pattern "daemon registers Octo and opens WuKongIM WebSocket" tests/system/channel-connectors-service.test.mjs`，1/1 通过。
 - `node --test tests/system/channel-connectors-service.test.mjs`，100/100 通过。
 - `node --test tests/system/channel-connectors-feishu-compact-live-script.test.mjs`，4/4 通过。
@@ -84,5 +86,6 @@
 
 1. 稳定 Codex / Claude Code / OpenCode 工具流和回复解析。
 2. 私聊文件/图片/权限/compact 做 Feishu 与 Octo live smoke；Feishu 入站文件已完成，继续 Feishu 图片重发验证、出站文件和 Octo 对应项。
-3. 补视觉模型失败后回退附件说明的专门系统回归。
-4. 评估 durable queue。
+3. Provider Center 能力测试：图片 smoke 失败时不要自动标记 vision，并提示协议/端点不匹配。
+4. 补视觉模型失败后回退附件说明的专门系统回归。
+5. 评估 durable queue。

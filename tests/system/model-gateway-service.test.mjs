@@ -3932,7 +3932,14 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
           model: "gpt-test",
           instructions: "You are concise.",
           input: [
-            { type: "message", role: "user", content: [{ type: "input_text", text: "Hello" }] },
+            {
+              type: "message",
+              role: "user",
+              content: [
+                { type: "input_text", text: "Hello" },
+                { type: "input_image", image_url: "data:image/png;base64,TEST_IMAGE" },
+              ],
+            },
             { type: "message", role: "assistant", content: [{ type: "output_text", text: "Earlier" }] },
             { role: "user", content: "Next" },
           ],
@@ -4001,7 +4008,13 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
     model: "gpt-test",
     messages: [
       { role: "system", content: "You are concise." },
-      { role: "user", content: "Hello" },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Hello" },
+          { type: "image_url", image_url: { url: "data:image/png;base64,TEST_IMAGE" } },
+        ],
+      },
       { role: "assistant", content: "Earlier" },
       { role: "user", content: "Next" },
     ],
