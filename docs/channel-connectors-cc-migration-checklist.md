@@ -39,7 +39,7 @@
 | P0 | 删除 active platform action layer | 已完成 | Agent prompt/env/UI/daemon endpoint 不再暴露 `studio-channel-skill` 或 platform action；旧 action block 不触发审批/API |
 | P1 | Codex runner | 进行中 | `exec/resume`、thread、cwd、permission、tool stream、file manifest、stop/new/reset/compact 按 CC 验收；app-server 仍是 beta |
 | P1 | Claude Code runner | 进行中：native compact 与过程/最终回复回归已补 | stream-json、permission prompt、session resume、tool event、文件/图片输入、native compact/stop live driver |
-| P1 | OpenCode runner | 进行中：parser 已对齐；driver 与 Octo daemon native compact 回归已补 | JSON/SQLite fallback、session、tool stream、文件/图片输入、native compact/stop live driver |
+| P1 | OpenCode runner | 进行中：parser 已对齐；结构化 stdout/stderr/exitCode 与 native compact 回归已补 | JSON/SQLite fallback、session、tool stream、文件/图片输入、native compact/stop live driver |
 | P1 | Feishu 私聊 | 进行中：native-first compact wiring 已补 | 长连接稳定、私聊文本/Markdown、文件/图片、权限审批、工具流卡片、compact live smoke |
 | P1 | Octo 私聊 | 进行中 | WuKongIM、ACK、heartbeat、重连、私聊 Markdown、文件/图片、权限审批、compact live smoke |
 | P1 | 工具/思考/过程显示 | 继续推进 | 三个 Agent 都稳定提取工具名、输入、stdout/stderr、exit/status、过程回复和最终回复分类 |
@@ -59,7 +59,8 @@
 - `node --test --test-name-pattern "routes Claude and OpenCode compact" tests/system/channel-connectors-service.test.mjs` 通过。
 - `node --test --test-name-pattern "Feishu compact native-first" tests/system/channel-connectors-service.test.mjs` 通过。
 - `node --test --test-name-pattern "persistent Claude driver keeps intermediate text|Claude text before later tools|Claude Code final text" tests/system/channel-connectors-service.test.mjs` 通过。
-- `node --test tests/system/channel-connectors-service.test.mjs`，94/94 通过。
+- `node --test --test-name-pattern "OpenCode structured tool output|OpenCode JSON progress|OpenCode DB fallback" tests/system/channel-connectors-service.test.mjs`，3/3 通过。
+- `node --test tests/system/channel-connectors-service.test.mjs`，95/95 通过。
 
 ## 下一步
 

@@ -524,6 +524,41 @@ export function firstProgressTextValue(...values: unknown[]): string {
   return "";
 }
 
+function commandResultProgressText(value: unknown, maxLength = 1200): string {
+  const record = recordValue(value);
+  if (!record) return "";
+  const hasCommandResultShape = [
+    "stdout",
+    "stderr",
+    "exitCode",
+    "exit_code",
+    "exit",
+    "code",
+    "statusCode",
+  ].some((key) => Object.prototype.hasOwnProperty.call(record, key));
+  if (!hasCommandResultShape) return "";
+  const stdout = progressTextValue(record.stdout, maxLength);
+  const stderr = progressTextValue(record.stderr, maxLength);
+  const output = stdout ? "" : progressTextValue(record.output, maxLength);
+  const result = stdout || stderr || output ? "" : progressTextValue(record.result, maxLength);
+  if (!stdout && !stderr && !output && !result) return "";
+  const exitCode = firstProgressTextValue(
+    record.exitCode,
+    record.exit_code,
+    record.exit,
+    record.code,
+    record.statusCode,
+  );
+  const parts = [
+    stdout ? `stdout:\n${stdout}` : "",
+    stderr ? `stderr:\n${stderr}` : "",
+    output ? `output:\n${output}` : "",
+    result ? `result:\n${result}` : "",
+    exitCode ? `exit_code: ${exitCode}` : "",
+  ].filter(Boolean);
+  return parts.length ? truncateProgressText(parts.join("\n"), maxLength) : "";
+}
+
 function errorMessageFromValue(value: unknown): string {
   const record = recordValue(value);
   const error = recordValue(record?.error) || record;
@@ -1292,6 +1327,12 @@ function openCodeToolInputText(state: Record<string, unknown> | null, part: Reco
 
 function openCodeToolOutputText(state: Record<string, unknown> | null, part: Record<string, unknown> | null, raw: Record<string, unknown>): string {
   return firstProgressTextValue(
+    commandResultProgressText(state?.output),
+    commandResultProgressText(part?.output),
+    commandResultProgressText(state?.result),
+    commandResultProgressText(part?.result),
+    commandResultProgressText(raw.output),
+    commandResultProgressText(raw.result),
     state?.output,
     part?.output,
     state?.result,

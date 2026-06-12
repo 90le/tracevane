@@ -11208,6 +11208,56 @@ test("native Channel Connectors process runner maps OpenCode JSON progress witho
   assert.equal(result.progressEvents?.length, 9);
 });
 
+test("native Channel Connectors process runner keeps OpenCode structured tool output visible", async () => {
+  const root = makeTempRoot();
+  const progress = [];
+  const stdout = [
+    JSON.stringify({ type: "step_start", part: { type: "step-start", sessionID: "opencode-structured-tool-output" } }),
+    JSON.stringify({
+      type: "tool_use",
+      part: {
+        type: "tool",
+        tool: "bash",
+        state: {
+          status: "completed",
+          input: { command: "printf ok; printf err >&2; exit 7" },
+          output: {
+            stdout: "ok\n",
+            stderr: "err\n",
+            exitCode: 7,
+          },
+        },
+      },
+    }),
+    JSON.stringify({ type: "text", messageID: "assistant-message", timestamp: 2, part: { type: "text", messageID: "assistant-message", text: "OpenCode structured output done." } }),
+    JSON.stringify({ type: "step_finish", part: { type: "step-finish", reason: "done" } }),
+    "",
+  ].join("\n");
+  const childScript = `process.stdout.write(${JSON.stringify(stdout)});`;
+
+  const result = await defaultChannelConnectorAgentProcessRunner({
+    command: process.execPath,
+    args: ["-e", childScript],
+    cwd: root,
+    stdin: "",
+    env: {},
+    timeoutMs: 1000,
+    agent: "opencode",
+    onProgress: (event) => progress.push(event),
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.error, null);
+  const toolResult = progress.find((event) => event.rawType === "tool_result");
+  assert.ok(toolResult);
+  assert.equal(toolResult.toolName, "bash");
+  assert.match(toolResult.text || "", /stdout:\nok/);
+  assert.match(toolResult.text || "", /stderr:\nerr/);
+  assert.match(toolResult.text || "", /exit_code: 7/);
+  assert.equal(progress.find((event) => event.type === "assistant")?.phase, "final");
+  assert.equal(result.progressEvents?.length, 5);
+});
+
 test("native Channel Connectors OpenCode DB fallback keeps tool results and final reply separate", async () => {
   const root = makeTempRoot();
   const workDir = path.join(root, "work");
