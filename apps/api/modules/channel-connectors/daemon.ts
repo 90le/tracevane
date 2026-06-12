@@ -334,8 +334,7 @@ const DEFAULT_CHANNEL_AUTO_COMPACT_COOLDOWN_MS = 15 * 60_000;
 const MAX_CHANNEL_AUTO_COMPACT_COOLDOWN_MS = 24 * 60 * 60_000;
 const FEISHU_FINAL_REPLY_CARD_MAX_RUNES = 12_000;
 const FEISHU_FINAL_REPLY_PRIVATE_BUFFER_PREVIEW_RUNES = 1_600;
-const FEISHU_ACTION_RESULT_JSON_PREVIEW_RUNES = 900;
-const FEISHU_ACTION_RESULT_JSON_COMPACT_PREVIEW_RUNES = 360;
+const FEISHU_ACTION_RESULT_HISTORY_JSON_RUNES = 1_400;
 const DEFAULT_CHANNEL_AGENT_SESSION_REAP_INTERVAL_MS = 60_000;
 const MAX_CHANNEL_AGENT_SESSION_DRIVER_EVENTS = 80;
 
@@ -2800,39 +2799,117 @@ function outboundFilesHistoryText(input: {
   return parts.filter(Boolean).join("\n\n");
 }
 
-function feishuActionDataPreview(data: unknown, maxRunes: number): string {
-  if (data === null || data === undefined) return "";
-  const json = JSON.stringify(data, null, 2);
-  if (!json || json === "{}" || json === "[]") return "";
-  return shortMessage(json, maxRunes);
+function truncateRunesForFeishuAction(value: string, maxRunes: number): string {
+  const runes = Array.from(value);
+  if (runes.length <= maxRunes) return value;
+  let keep = Math.max(1, maxRunes - 32);
+  let suffix = `... [truncated ${runes.length - keep} chars]`;
+  keep = Math.max(1, maxRunes - Array.from(suffix).length);
+  suffix = `... [truncated ${runes.length - keep} chars]`;
+  return `${runes.slice(0, keep).join("")}${suffix}`;
 }
 
-function summarizeFeishuActionResult(result: ChannelConnectorFeishuActionResult, maxJsonRunes: number): string {
+function feishuActionResultFactEntries(value: unknown, output: string[] = [], pathParts: string[] = []): string[] {
+  if (output.length >= 6) return output;
+  if (Array.isArray(value)) {
+    if (value.length > 0) output.push(`${pathParts.join(".") || "items"}=${value.length} items`);
+    for (const item of value.slice(0, 3)) {
+      if (output.length >= 6) break;
+      feishuActionResultFactEntries(item, output, pathParts);
+    }
+    return output;
+  }
+  if (!isRecord(value)) return output;
+  const interestingKeys = new Set([
+    "id",
+    "message_id",
+    "messageId",
+    "chat_id",
+    "chatId",
+    "open_id",
+    "openId",
+    "document_id",
+    "doc_token",
+    "obj_token",
+    "node_token",
+    "space_id",
+    "app_token",
+    "table_id",
+    "record_id",
+    "file_token",
+    "reaction_id",
+    "name",
+    "title",
+    "url",
+  ]);
+  for (const [key, raw] of Object.entries(value)) {
+    if (output.length >= 6) break;
+    const nextPath = pathParts.concat(key);
+    if (interestingKeys.has(key) && ["string", "number", "boolean"].includes(typeof raw)) {
+      const fact = `${nextPath.join(".")}=${String(raw)}`;
+      if (!output.includes(fact)) output.push(fact);
+    }
+  }
+  for (const [key, raw] of Object.entries(value)) {
+    if (output.length >= 6) break;
+    if (isRecord(raw) || Array.isArray(raw)) feishuActionResultFactEntries(raw, output, pathParts.concat(key));
+  }
+  return output;
+}
+
+function feishuActionResultFacts(data: unknown): string {
+  return feishuActionResultFactEntries(data).slice(0, 6).join(" · ");
+}
+
+function summarizeFeishuActionResultForUser(result: ChannelConnectorFeishuActionResult): string {
   const label = `${result.tool}.${result.action}`;
   const meta = [
     result.statusCode === null ? "" : `HTTP ${result.statusCode}`,
     result.requestCount > 0 ? `${result.requestCount} req` : "",
   ].filter(Boolean).join(" · ");
   if (result.ok) {
-    const payload = feishuActionDataPreview(result.data, maxJsonRunes);
+    const facts = feishuActionResultFacts(result.data);
     return [
-      `- OK ${label}${meta ? ` · ${meta}` : ""}`,
-      payload ? `\`\`\`json\n${payload}\n\`\`\`` : "",
-    ].filter(Boolean).join("\n");
+      `- 成功 ${label}${meta ? ` · ${meta}` : ""}`,
+      facts ? `：${shortMessage(facts, 260)}` : "",
+    ].filter(Boolean).join("");
   }
-  return `- FAIL ${label}${meta ? ` · ${meta}` : ""}: ${result.error || "unknown error"}`;
+  return `- 失败 ${label}${meta ? ` · ${meta}` : ""}：${shortMessage(result.error || "unknown error", 360)}`;
 }
 
 function feishuActionResultsReply(results: ChannelConnectorFeishuActionResult[]): string {
   if (!results.length) return "";
   const okCount = results.filter((result) => result.ok).length;
   const failedCount = results.length - okCount;
-  const maxJsonRunes = results.length > 6
-    ? FEISHU_ACTION_RESULT_JSON_COMPACT_PREVIEW_RUNES
-    : FEISHU_ACTION_RESULT_JSON_PREVIEW_RUNES;
   return [
     `Feishu 能力执行结果：${okCount} 成功 / ${failedCount} 失败 / ${results.length} 总计`,
-    ...results.map((result) => summarizeFeishuActionResult(result, maxJsonRunes)),
+    ...results.map(summarizeFeishuActionResultForUser),
+  ].join("\n\n");
+}
+
+function feishuActionResultHistoryJson(result: ChannelConnectorFeishuActionResult): string {
+  const payload = {
+    ok: result.ok,
+    tool: result.tool,
+    action: result.action,
+    readOnly: result.readOnly,
+    statusCode: result.statusCode,
+    requestCount: result.requestCount,
+    data: result.data,
+    error: result.error,
+  };
+  return truncateRunesForFeishuAction(JSON.stringify(payload, null, 2), FEISHU_ACTION_RESULT_HISTORY_JSON_RUNES);
+}
+
+function feishuActionResultsHistoryText(results: ChannelConnectorFeishuActionResult[]): string {
+  if (!results.length) return "";
+  return [
+    "[Studio Feishu action execution results]",
+    "Use these results as the source of truth for whether the previous Studio Feishu runtime actions succeeded or failed. Do not re-run successful actions unless the user asks.",
+    ...results.map((result, index) => [
+      `${index + 1}. ${result.ok ? "OK" : "FAIL"} ${result.tool}.${result.action}`,
+      feishuActionResultHistoryJson(result),
+    ].join("\n")),
   ].join("\n\n");
 }
 
@@ -6460,6 +6537,14 @@ async function sendFeishuPermissionPrompt(input: {
     chatId: input.chatId,
     content: input.fallbackText,
   }, cachePath);
+}
+
+function shouldUseFeishuProgressPermissionPrompt(
+  binding: ChannelConnectorRuntimeBinding,
+  chatId: string | null | undefined,
+  request: ChannelConnectorAgentPermissionRequest,
+): boolean {
+  return !isAskUserQuestionRequest(request) && feishuCardsEnabled(binding) && Boolean(chatId);
 }
 
 function shouldRenderFeishuCommandCard(command: ReturnType<typeof handleChannelConnectorCommand> extends Promise<infer Result> ? Result : never): boolean {
@@ -10119,9 +10204,9 @@ async function dispatchFeishuParsedEvent(input: {
             queueFeishuProgressFlush(true, `permission-${change.status}`);
           },
           onPrompt: async (prompt, request) => {
-            if (!isAskUserQuestionRequest(request) && feishuCardsEnabled(binding) && parsed.channelId) {
+            if (shouldUseFeishuProgressPermissionPrompt(binding, parsed.channelId, request)) {
               await feishuProgressFlush;
-              if (progressCardState.messageId) return;
+              return;
             }
             await sendFeishuPermissionPrompt({
               config,
@@ -10391,6 +10476,10 @@ async function dispatchFeishuParsedEvent(input: {
             queueFeishuProgressFlush(true, `feishu-action-permission-${change.status}`);
           },
           onPrompt: async (prompt, request) => {
+            if (shouldUseFeishuProgressPermissionPrompt(binding, parsed.channelId, request)) {
+              await feishuProgressFlush;
+              return;
+            }
             await sendFeishuPermissionPrompt({
               config,
               transport,
@@ -10446,6 +10535,17 @@ async function dispatchFeishuParsedEvent(input: {
   const feishuActionErrors = feishuActionResults
     .filter((result) => !result.ok)
     .map((result) => `${result.tool}.${result.action}: ${result.error || "unknown error"}`);
+  const feishuActionHistoryText = feishuActionResultsHistoryText(feishuActionResults);
+  if (feishuActionHistoryText) {
+    appendChannelConnectorConversationHistory(conversationHistoryPath(config), {
+      bindingId: binding.id,
+      sessionKey,
+      messageId: `${messageId}:feishu-actions`,
+      role: "assistant",
+      text: feishuActionHistoryText,
+      status: "feishu-action-results",
+    });
+  }
   let outboundFileErrors = [...outboundReply.errors, ...feishuActionErrors];
   const outboundReplyText = appendOutboundFileErrors(
     [outboundReply.replyText, feishuActionResultsReply(feishuActionResults)].filter(Boolean).join("\n\n"),

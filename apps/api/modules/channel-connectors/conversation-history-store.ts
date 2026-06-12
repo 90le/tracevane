@@ -57,6 +57,7 @@ const MAX_HISTORY_TEXT_LENGTH = 2000;
 const MAX_COMPACT_SUMMARY_LENGTH = 4000;
 const MAX_GLOBAL_HISTORY_ENTRIES = 1000;
 export const CHANNEL_CONNECTOR_HISTORY_CONTEXT_TEXT_MAX_RUNES = 360;
+const CHANNEL_CONNECTOR_ACTION_RESULT_CONTEXT_TEXT_MAX_RUNES = 1200;
 export const CHANNEL_CONNECTOR_HISTORY_CONTEXT_ATTACHMENTS_MAX_RUNES = 360;
 export const CHANNEL_CONNECTOR_HISTORY_CONTEXT_TOTAL_MAX_RUNES = 8000;
 
@@ -315,7 +316,10 @@ export function renderChannelConnectorConversationHistoryContext(
       ? "compact summary"
       : entry.role === "assistant" ? "assistant" : "user";
     const status = entry.status ? ` (${entry.status})` : "";
-    const text = truncateRunes(entry.text || "", CHANNEL_CONNECTOR_HISTORY_CONTEXT_TEXT_MAX_RUNES).text || "(no text)";
+    const textMaxRunes = entry.status === "feishu-action-results" || entry.status === "octo-action-results"
+      ? CHANNEL_CONNECTOR_ACTION_RESULT_CONTEXT_TEXT_MAX_RUNES
+      : CHANNEL_CONNECTOR_HISTORY_CONTEXT_TEXT_MAX_RUNES;
+    const text = truncateRunes(entry.text || "", textMaxRunes).text || "(no text)";
     const attachments = entry.attachmentSummaries.length
       ? ` attachments: ${truncateRunes(entry.attachmentSummaries.join("; "), CHANNEL_CONNECTOR_HISTORY_CONTEXT_ATTACHMENTS_MAX_RUNES).text}`
       : "";

@@ -5875,8 +5875,22 @@ test("native Channel Connectors conversation history stores sanitized session co
   assert.match(compactContext, /compact summary/);
   assert.match(compactContext, /A-123/);
 
+  appendChannelConnectorConversationHistory(historyPath, {
+    ...lookup,
+    messageId: "m-action-result",
+    role: "assistant",
+    text: `${"feishu action result detail ".repeat(22)}ACTION-RESULT-VISIBLE`,
+    status: "feishu-action-results",
+    now: new Date("2026-06-06T08:00:04.000Z"),
+  });
+  const actionResultContext = renderChannelConnectorConversationHistoryContext(
+    getChannelConnectorConversationHistory(historyPath, lookup, 10),
+  );
+  assert.match(actionResultContext, /feishu-action-results/);
+  assert.match(actionResultContext, /ACTION-RESULT-VISIBLE/);
+
   const cleared = clearChannelConnectorConversationHistory(historyPath, lookup);
-  assert.equal(cleared, 1);
+  assert.equal(cleared, 2);
   assert.deepEqual(getChannelConnectorConversationHistory(historyPath, lookup), []);
 });
 
@@ -12088,10 +12102,12 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /send-final-post/);
   assert.match(daemonSource, /send-final-text-after-post/);
   assert.match(daemonSource, /FEISHU_FINAL_REPLY_PRIVATE_BUFFER_PREVIEW_RUNES\s*=\s*1_?600/);
-  assert.match(daemonSource, /FEISHU_ACTION_RESULT_JSON_PREVIEW_RUNES\s*=\s*900/);
-  assert.match(daemonSource, /FEISHU_ACTION_RESULT_JSON_COMPACT_PREVIEW_RUNES\s*=\s*360/);
-  assert.match(daemonSource, /function feishuActionDataPreview/);
+  assert.match(daemonSource, /FEISHU_ACTION_RESULT_HISTORY_JSON_RUNES\s*=\s*1_?400/);
+  assert.match(daemonSource, /function summarizeFeishuActionResultForUser/);
+  assert.match(daemonSource, /function feishuActionResultsHistoryText/);
   assert.match(daemonSource, /Feishu 能力执行结果/);
+  assert.match(daemonSource, /status:\s*"feishu-action-results"/);
+  assert.match(daemonSource, /shouldUseFeishuProgressPermissionPrompt\(binding,\s*parsed\.channelId,\s*request\)/);
   assert.match(daemonSource, /const forcePreviewBuffer = agent\.ok === true && replyRunes > FEISHU_FINAL_REPLY_CARD_MAX_RUNES/);
   assert.match(daemonSource, /thresholdRunes:\s*replyIsGroup \? undefined : FEISHU_FINAL_REPLY_CARD_MAX_RUNES/);
   assert.match(daemonSource, /previewRunes:\s*replyIsGroup \? undefined : FEISHU_FINAL_REPLY_PRIVATE_BUFFER_PREVIEW_RUNES/);
