@@ -524,7 +524,13 @@ export function firstProgressTextValue(...values: unknown[]): string {
   return "";
 }
 
-function commandResultProgressText(value: unknown, maxLength = 1200, includeExitCode = true): string {
+export function commandResultProgressText(value: unknown, maxLength = 1200, includeExitCode = true): string {
+  if (Array.isArray(value)) {
+    const parts = value
+      .map((item) => commandResultProgressText(item, maxLength, includeExitCode))
+      .filter((item) => item.trim());
+    return parts.length ? truncateProgressText(parts.join("\n"), maxLength) : "";
+  }
   const record = recordValue(value);
   if (!record) return "";
   const hasCommandResultShape = [
@@ -1595,7 +1601,13 @@ function parseClaudeProgressLineEvents(line: string): ChannelConnectorAgentProgr
       const itemType = normalizeString(item.type) || null;
       if (itemType !== "tool_result") continue;
       const isError = item.is_error === true;
-      const text = firstProgressTextValue(item.content, item.text, item.result);
+      const text = firstProgressTextValue(
+        commandResultProgressText(item.content),
+        commandResultProgressText(item.result),
+        item.content,
+        item.text,
+        item.result,
+      );
       const toolCallId = normalizeString(item.tool_use_id) || normalizeString(item.id);
       if (!text && !isError) continue;
       events.push(progressEvent({

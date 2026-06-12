@@ -11174,6 +11174,57 @@ test("native Channel Connectors process runner maps Claude text before later too
   assert.equal(progress.at(-1).type, "completed");
 });
 
+test("native Channel Connectors process runner keeps Claude structured tool output visible", async () => {
+  const root = makeTempRoot();
+  const progress = [];
+  const stdout = [
+    JSON.stringify({
+      type: "assistant",
+      message: {
+        content: [
+          { type: "tool_use", id: "toolu_bash_1", name: "Bash", input: { command: "printf ok; printf err >&2; exit 7" } },
+        ],
+      },
+    }),
+    JSON.stringify({
+      type: "user",
+      message: {
+        content: [
+          {
+            type: "tool_result",
+            tool_use_id: "toolu_bash_1",
+            content: [{ type: "json", stdout: "ok\n", stderr: "err\n", exit_code: 7 }],
+          },
+        ],
+      },
+    }),
+    JSON.stringify({ type: "result", result: "Claude structured output done." }),
+    "",
+  ].join("\n");
+  const childScript = `process.stdout.write(${JSON.stringify(stdout)});`;
+
+  const result = await defaultChannelConnectorAgentProcessRunner({
+    command: process.execPath,
+    args: ["-e", childScript],
+    cwd: root,
+    stdin: "",
+    env: {},
+    timeoutMs: 1000,
+    agent: "claude-code",
+    onProgress: (event) => progress.push(event),
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.error, null);
+  const toolResult = progress.find((event) => event.itemType === "tool_result");
+  assert.ok(toolResult);
+  assert.equal(toolResult.toolName, "Bash");
+  assert.match(toolResult.text || "", /stdout:\nok/);
+  assert.match(toolResult.text || "", /stderr:\nerr/);
+  assert.match(toolResult.text || "", /exit_code: 7/);
+  assert.equal(progress.at(-1).type, "completed");
+});
+
 test("native Channel Connectors process runner maps OpenCode JSON progress without leaking final text", async () => {
   const root = makeTempRoot();
   const progress = [];
@@ -11653,7 +11704,7 @@ test("native Channel Connectors persistent Claude driver keeps intermediate text
     "  emit({ type: 'system', session_id: 'claude-process-session' });",
     "  emit({ type: 'assistant', message: { content: [{ type: 'text', text: '先说明一下，我会读取文件。' }] } });",
     "  emit({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'toolu_read_1', name: 'Read', input: { file_path: 'TOOLS.md' } }] } });",
-    "  emit({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'toolu_read_1', content: [{ type: 'text', text: 'line 1' }] }] } });",
+    "  emit({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'toolu_read_1', content: [{ type: 'json', stdout: 'line 1\\n', stderr: 'warn 1\\n', exit_code: 0 }] }] } });",
     "  emit({ type: 'assistant', message: { content: [{ type: 'text', text: '最终回复。' }] } });",
     "  emit({ type: 'result', session_id: 'claude-process-session' });",
     "});",
@@ -11748,7 +11799,9 @@ test("native Channel Connectors persistent Claude driver keeps intermediate text
     const toolResult = progress.find((event) => event.itemType === "tool_result");
     assert.ok(toolResult);
     assert.equal(toolResult.toolName, "Read");
-    assert.equal(toolResult.text, "line 1");
+    assert.match(toolResult.text || "", /stdout:\nline 1/);
+    assert.match(toolResult.text || "", /stderr:\nwarn 1/);
+    assert.match(toolResult.text || "", /exit_code: 0/);
   } finally {
     await pool.killSession(key, "test-cleanup");
     process.env.PATH = oldPath;

@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import type { ChannelConnectorAgentId, ChannelConnectorPermissionMode } from "../../../../types/channel-connectors.js";
 import {
   buildChannelConnectorAgentProcessRequest,
+  commandResultProgressText,
   defaultChannelConnectorAgentProcessRunner,
   firstProgressTextValue,
   truncateProgressText,
@@ -388,7 +389,13 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
         const itemType = normalizeString(item.type);
         if (itemType !== "tool_result") continue;
         const isError = item.is_error === true;
-        const text = firstText(item.content, item.text, item.result);
+        const text = firstText(
+          commandResultProgressText(item.content),
+          commandResultProgressText(item.result),
+          item.content,
+          item.text,
+          item.result,
+        );
         if (text || isError) {
           const toolCallId = normalizeString(item.tool_use_id) || normalizeString(item.id);
           const toolName = (toolCallId ? this.pendingToolNamesById.get(toolCallId) : null) || this.latestToolName;
