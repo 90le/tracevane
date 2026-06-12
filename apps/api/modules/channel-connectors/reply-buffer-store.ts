@@ -194,7 +194,7 @@ export function prepareChannelConnectorGroupBufferedReply(input: {
   const state = readState(input.filePath);
   state.records = state.records.filter((candidate) => candidate.id !== id).concat(record);
   writeState(input.filePath, state);
-  const notice = `[Studio 已缓存完整回复: ${id}，${originalRunes} 字符。群聊仅发送预览，完整内容保存在本地 reply buffer。]`;
+  const notice = `[Studio 已缓存完整回复: ${id}，${originalRunes} 字符。当前会话仅发送预览，完整内容保存在本地 reply buffer。]`;
   return {
     replyText: [previewText, notice].filter(Boolean).join("\n\n"),
     buffered: true,

@@ -890,6 +890,8 @@ test("native Channel Connectors buffers long group replies without truncating st
   assert.equal(buffered.originalRunes, Array.from(longReply).length);
   assert.ok(buffered.previewRunes <= 80);
   assert.match(buffered.replyText, /Studio 已缓存完整回复/);
+  assert.match(buffered.replyText, /当前会话仅发送预览/);
+  assert.doesNotMatch(buffered.replyText, /群聊仅发送预览/);
   assert.doesNotMatch(buffered.replyText, /final line$/);
   assert.equal(fs.statSync(bufferPath).mode & 0o777, 0o600);
   const stored = readChannelConnectorReplyBuffers(bufferPath);
@@ -12083,6 +12085,17 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /replace\(\/!\\\[/);
   assert.match(daemonSource, /sendFeishuPostMessage/);
   assert.match(daemonSource, /send-final-post-after-card/);
+  assert.match(daemonSource, /send-final-post/);
+  assert.match(daemonSource, /send-final-text-after-post/);
+  assert.match(daemonSource, /FEISHU_FINAL_REPLY_PRIVATE_BUFFER_PREVIEW_RUNES\s*=\s*1_?600/);
+  assert.match(daemonSource, /FEISHU_ACTION_RESULT_JSON_PREVIEW_RUNES\s*=\s*900/);
+  assert.match(daemonSource, /FEISHU_ACTION_RESULT_JSON_COMPACT_PREVIEW_RUNES\s*=\s*360/);
+  assert.match(daemonSource, /function feishuActionDataPreview/);
+  assert.match(daemonSource, /Feishu 能力执行结果/);
+  assert.match(daemonSource, /const forcePreviewBuffer = agent\.ok === true && replyRunes > FEISHU_FINAL_REPLY_CARD_MAX_RUNES/);
+  assert.match(daemonSource, /thresholdRunes:\s*replyIsGroup \? undefined : FEISHU_FINAL_REPLY_CARD_MAX_RUNES/);
+  assert.match(daemonSource, /previewRunes:\s*replyIsGroup \? undefined : FEISHU_FINAL_REPLY_PRIVATE_BUFFER_PREVIEW_RUNES/);
+  assert.match(daemonSource, /plain text is the last delivery fallback only/);
   assert.match(daemonSource, /function renderFeishuProgressCardEventElements/);
   assert.match(daemonSource, /function feishuProgressCardStatusTag/);
   assert.doesNotMatch(daemonSource, /Studio Progress/);

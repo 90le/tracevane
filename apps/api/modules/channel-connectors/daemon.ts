@@ -333,6 +333,9 @@ const MAX_FEISHU_REALTIME_TIMELINE_PER_CHANNEL = 60;
 const DEFAULT_CHANNEL_AUTO_COMPACT_COOLDOWN_MS = 15 * 60_000;
 const MAX_CHANNEL_AUTO_COMPACT_COOLDOWN_MS = 24 * 60 * 60_000;
 const FEISHU_FINAL_REPLY_CARD_MAX_RUNES = 12_000;
+const FEISHU_FINAL_REPLY_PRIVATE_BUFFER_PREVIEW_RUNES = 1_600;
+const FEISHU_ACTION_RESULT_JSON_PREVIEW_RUNES = 900;
+const FEISHU_ACTION_RESULT_JSON_COMPACT_PREVIEW_RUNES = 360;
 const DEFAULT_CHANNEL_AGENT_SESSION_REAP_INTERVAL_MS = 60_000;
 const MAX_CHANNEL_AGENT_SESSION_DRIVER_EVENTS = 80;
 
@@ -2797,22 +2800,39 @@ function outboundFilesHistoryText(input: {
   return parts.filter(Boolean).join("\n\n");
 }
 
-function summarizeFeishuActionResult(result: ChannelConnectorFeishuActionResult): string {
+function feishuActionDataPreview(data: unknown, maxRunes: number): string {
+  if (data === null || data === undefined) return "";
+  const json = JSON.stringify(data, null, 2);
+  if (!json || json === "{}" || json === "[]") return "";
+  return shortMessage(json, maxRunes);
+}
+
+function summarizeFeishuActionResult(result: ChannelConnectorFeishuActionResult, maxJsonRunes: number): string {
+  const label = `${result.tool}.${result.action}`;
+  const meta = [
+    result.statusCode === null ? "" : `HTTP ${result.statusCode}`,
+    result.requestCount > 0 ? `${result.requestCount} req` : "",
+  ].filter(Boolean).join(" · ");
   if (result.ok) {
-    const payload = JSON.stringify(result.data ?? {}, null, 2);
+    const payload = feishuActionDataPreview(result.data, maxJsonRunes);
     return [
-      `OK ${result.tool}.${result.action}`,
-      payload === "{}" ? "" : `\`\`\`json\n${payload}\n\`\`\``,
+      `- OK ${label}${meta ? ` · ${meta}` : ""}`,
+      payload ? `\`\`\`json\n${payload}\n\`\`\`` : "",
     ].filter(Boolean).join("\n");
   }
-  return `FAIL ${result.tool}.${result.action}: ${result.error || "unknown error"}`;
+  return `- FAIL ${label}${meta ? ` · ${meta}` : ""}: ${result.error || "unknown error"}`;
 }
 
 function feishuActionResultsReply(results: ChannelConnectorFeishuActionResult[]): string {
   if (!results.length) return "";
+  const okCount = results.filter((result) => result.ok).length;
+  const failedCount = results.length - okCount;
+  const maxJsonRunes = results.length > 6
+    ? FEISHU_ACTION_RESULT_JSON_COMPACT_PREVIEW_RUNES
+    : FEISHU_ACTION_RESULT_JSON_PREVIEW_RUNES;
   return [
-    "Feishu action results:",
-    ...results.map(summarizeFeishuActionResult),
+    `Feishu 能力执行结果：${okCount} 成功 / ${failedCount} 失败 / ${results.length} 总计`,
+    ...results.map((result) => summarizeFeishuActionResult(result, maxJsonRunes)),
   ].join("\n\n");
 }
 
@@ -7433,8 +7453,8 @@ async function sendFeishuFinalReply(input: {
         cardError: cardResult.error,
       };
     }
-    // Feishu cards can be rejected for platform limits or markdown edge cases;
-    // text send preserves delivery while keeping the card error observable.
+    // Feishu cards and post messages can be rejected for platform limits or
+    // markdown edge cases; plain text is the last delivery fallback only.
     const textResult = await sendFeishuTextMessage(input.transport, {
       chatId: input.chatId,
       content: input.replyText,
@@ -7446,15 +7466,27 @@ async function sendFeishuFinalReply(input: {
       cardError: [cardResult.error, postResult.error ? `post fallback failed: ${postResult.error}` : ""].filter(Boolean).join("; "),
     };
   }
+  const postResult = await sendFeishuPostMessage(input.transport, {
+    chatId: input.chatId,
+    content: sanitizeFeishuCardMarkdown(input.replyText),
+  }, cachePath);
+  if (postResult.ok === true) {
+    return {
+      result: postResult,
+      transportAction: "send-final-post",
+      cardAttempted: false,
+      cardError: null,
+    };
+  }
   const textResult = await sendFeishuTextMessage(input.transport, {
     chatId: input.chatId,
     content: input.replyText,
   }, cachePath);
   return {
     result: textResult,
-    transportAction: "send-final-text",
+    transportAction: "send-final-text-after-post",
     cardAttempted: false,
-    cardError: null,
+    cardError: postResult.error ? `post fallback failed: ${postResult.error}` : null,
   };
 }
 
@@ -10425,6 +10457,9 @@ async function dispatchFeishuParsedEvent(input: {
       ? renderAgentTerminalFailureReply(agent)
       : null;
   if (replyContent) {
+    const replyRunes = Array.from(replyContent).length;
+    const replyIsGroup = normalizeString(parsed.chatType).toLowerCase() === "group";
+    const forcePreviewBuffer = agent.ok === true && replyRunes > FEISHU_FINAL_REPLY_CARD_MAX_RUNES;
     const preparedReply = agent.ok === true
       ? prepareChannelConnectorGroupBufferedReply({
         filePath: replyBufferPath(config),
@@ -10433,7 +10468,9 @@ async function dispatchFeishuParsedEvent(input: {
         messageId,
         platform: "feishu",
         replyText: replyContent,
-        isGroup: normalizeString(parsed.chatType).toLowerCase() === "group",
+        isGroup: replyIsGroup || forcePreviewBuffer,
+        thresholdRunes: replyIsGroup ? undefined : FEISHU_FINAL_REPLY_CARD_MAX_RUNES,
+        previewRunes: replyIsGroup ? undefined : FEISHU_FINAL_REPLY_PRIVATE_BUFFER_PREVIEW_RUNES,
       })
       : {
         replyText: replyContent,
