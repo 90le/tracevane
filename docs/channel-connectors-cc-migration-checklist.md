@@ -36,7 +36,7 @@
 | --- | --- | --- | --- |
 | P0 | CC-first 门禁 | 已完成 | `AGENTS.md` 和本文件记录约束 |
 | P0 | Studio Gateway / Channel daemon supervisor | 已完成 | Studio/OpenClaw 崩溃后 daemon direct endpoint 可继续服务 |
-| P0 | 删除 active platform action layer | 本轮完成 | Agent prompt/env/UI/daemon endpoint 不再暴露 `studio-channel-skill` 或 platform action；旧 action block 不触发审批/API |
+| P0 | 删除 active platform action layer | 已完成 | Agent prompt/env/UI/daemon endpoint 不再暴露 `studio-channel-skill` 或 platform action；旧 action block 不触发审批/API |
 | P1 | Codex runner | 进行中 | `exec/resume`、thread、cwd、permission、tool stream、file manifest、stop/new/reset/compact 按 CC 验收；app-server 仍是 beta |
 | P1 | Claude Code runner | 进行中 | stream-json、permission prompt、session resume、tool event、文件/图片输入、native compact/stop live driver |
 | P1 | OpenCode runner | 进行中：realtime JSONL 与 SQLite fallback 工具流已统一 parser，DB fallback 不再丢工具结果或把过程回复拼进最终回复 | JSON/SQLite fallback、session、tool stream、文件/图片输入、native compact/stop live driver |
@@ -49,7 +49,7 @@
 | P3 | 更多平台 | 路线图 | 微信/企微/钉钉/Telegram/Slack/Discord/QQ/LINE 等只按私聊能力迁移 |
 | P3 | 更多 Agent | 路线图 | Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP 等逐个补 runner 验收 |
 
-## 本轮验证
+## 最近代码验证
 
 - `npm run typecheck:api`
 - `npm run build:api`

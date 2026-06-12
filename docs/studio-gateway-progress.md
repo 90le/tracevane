@@ -20,28 +20,23 @@
 
 ## 本轮完成
 
-- 修复 OpenCode SQLite/DB fallback 工具流：
-  - DB fallback 不再只读取最新 assistant message；进度会读取本轮所有 assistant rows，避免过程文本和工具调用被丢掉。
-  - fallback 重建的 OpenCode JSONL 统一走实时 JSONL parser，工具调用和工具结果继续拆成 `tool_use` / `tool_result`。
-  - fallback 最终回复只取最新 assistant message 的 text，避免把过程回复重新拼进最终回复。
-  - fallback progress events 会回调给 daemon，Feishu/Octo 仍能渲染过程和工具输出。
-- 删除 active `studio-channel-skill` 层：
-  - 删除本地 `studio-channel-skill` tool 脚本生成、runner env、PATH 注入和 daemon `/channel-skill/action` endpoint。
-  - 删除 Agent prompt/native skill 投影里的 Runtime Action Index 和平台 action 指令。
-  - 删除 Studio 内置 platform skill/action registry 文件和 Octo action parser 文件。
-  - Channel Connectors 管理页删除 skill runtime action chips。
-- daemon 不再执行 `studio-octo-actions` / `studio-feishu-actions` 平台 action；旧 fenced action block 只会被剥离并返回“不再支持 private IM mode”的错误提示，不会触发审批或平台 API。
-- `/skills` 和 skill context 只列出用户显式配置的 binding skill 目录；默认不再注入 Studio 内置 Feishu/Octo 平台 action skill。
-- 系统测试改为锁定 private-transport-only 行为：Agent stdin/env 不含 `studio-channel-skill`，skill context 不含 runtime action index，旧 Octo action block 不触发审批/建群。
-- 压缩文档，移除旧 runtime action 建设流水账，避免后续继续按已取消目标推进。
+- 清理并压缩 `docs/`：
+  - 新增 `docs/README.md` 作为文档索引和维护规则。
+  - 压缩 Gateway、Channel Connectors、Feishu、Chat、富消息、渲染、PRD、架构和当前进展文档。
+  - 将 Feishu 9 项稳定性方案归档，当前长连接事实统一写入 `feishu-long-connection-issue-tracker.md`。
+  - 将 Chat 长篇实现日志改为 typed contract / session policy / open gate 摘要。
+  - 明确 `studio-channel-skill`、platform action、群聊/管理类扩展不是当前目标。
+- 上一轮代码完成仍保留为当前事实：
+  - OpenCode SQLite/DB fallback 已共用 realtime JSONL parser，工具调用/工具结果和最终回复分离。
+  - active `studio-channel-skill` 层已从 prompt/env/UI/daemon endpoint 删除。
 
 ## 最近验证
 
-- 通过：`npm run typecheck:api`
-- 通过：`npm run build:api`
-- 通过：`npm run typecheck:web`
-- 通过：`node --test --test-name-pattern "OpenCode DB fallback|OpenCode JSON progress|OpenCode tool-calls|Claude Code stream-json progress|Claude text before later tools|Codex command execution progress|Codex agent messages before later tools" tests/system/channel-connectors-service.test.mjs`，7/7 通过。
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，90/90 全部通过。
+- 上一轮代码验证通过：`npm run typecheck:api`
+- 上一轮代码验证通过：`npm run build:api`
+- 上一轮代码验证通过：`npm run typecheck:web`
+- 上一轮代码验证通过：`node --test tests/system/channel-connectors-service.test.mjs`，90/90 全部通过。
+- 本轮文档清理验证以 `git diff --check` 和 stale term 检查为准。
 
 ## 已知边界
 

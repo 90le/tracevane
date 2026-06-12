@@ -44,7 +44,7 @@
 - 图片附件可 staging；非视觉模型会被提示不能做视觉推断，存在视觉模型时可按模型能力切换。
 - 同 session FIFO queue、`/stop`、`/new`、`/reset`、`/compact`、`/thinking`、`/process`、`/tools` 已接入。
 - Feishu 卡片进度和 Octo 文本/Markdown 进度已有基础渲染。
-- 本轮已删除 active platform action layer：runner/env/prompt/daemon endpoint/UI chips 不再暴露 `studio-channel-skill` 或 runtime action。
+- 已删除 active platform action layer：runner/env/prompt/daemon endpoint/UI chips 不再暴露 `studio-channel-skill` 或 runtime action。
 - OpenCode realtime JSONL 与 SQLite fallback 已共用进度 parser；DB fallback 会保留本轮工具调用/工具结果，并只把最新 assistant message 作为最终回复。
 
 ## 保留边界
