@@ -52,6 +52,7 @@
 - Codex one-shot 与 app-server 已按 CC Go 合同提取 reasoning `summary` / `summary_text` / `content`，空 reasoning 不再显示假思考。
 - Claude Code one-shot 与 persistent driver 已保留结构化 `tool_result` 的 `stdout`、`stderr` 和 `exit_code`。
 - 非飞书气泡式进度流的 assistant 过程回复已改为正文直出，不再携带“过程回复”标题。
+- Octo 私聊已验证 `/thinking off` 会隐藏 reasoning 进度，`/thinking on` 会恢复 reasoning 气泡；Feishu/Octo 使用同一进度过滤函数。
 - Feishu 卡片进度和 Octo 文本/Markdown 进度已有基础渲染；Markdown 已由用户验证。
 - 已删除 active platform action layer：runner/env/prompt/daemon endpoint/UI chips 不再暴露 `studio-channel-skill` 或 runtime action。
 - OpenCode realtime JSONL 与 SQLite fallback 已共用进度 parser；DB fallback 会保留本轮工具调用/工具结果，并只把最新 assistant message 作为最终回复。
@@ -65,7 +66,7 @@
 ## 下一步
 
 1. 工具流和回复解析：继续复核 Claude/Codex live 差异，修复空工具结果、工具输出丢失、过程回复/最终回复分类错误。
-2. 思考流支持矩阵：Codex 解析合同已补；继续确认 Codex、Claude Code、OpenCode 真实 CLI 是否原生返回 thinking/reasoning，并验收 `/thinking` 开关。
+2. 思考流支持矩阵：parser 与 `/thinking` 过滤已补；继续确认 Claude Code、OpenCode 真实 CLI 是否原生返回 thinking/reasoning。
 3. Feishu live `/compact` smoke。
 4. Feishu/Octo 私聊 live smoke：文件、图片、权限审批、compact；Markdown 做抽查回归。
 5. durable queue 设计与实现。

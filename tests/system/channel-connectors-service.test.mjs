@@ -13519,6 +13519,252 @@ test("native Channel Connectors daemon serializes same-session Octo Agent turns"
   }
 });
 
+test("native Channel Connectors daemon applies thinking display toggles to Octo progress replies", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+  });
+  const fakeBin = path.join(root, "fake-bin");
+  const capturePath = path.join(root, "codex-octo-thinking-capture.jsonl");
+  fs.mkdirSync(fakeBin, { recursive: true });
+  fs.writeFileSync(path.join(fakeBin, "codex"), [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    "let stdin = '';",
+    "process.stdin.on('data', (chunk) => { stdin += chunk.toString('utf8'); });",
+    "process.stdin.on('end', () => {",
+    "  const second = stdin.includes('visible thinking turn');",
+    "  const thought = second ? 'visible thought from Codex' : 'hidden thought from Codex';",
+    "  const reply = second ? 'second final reply' : 'first final reply';",
+    "  fs.appendFileSync(process.env.STUDIO_TEST_CODEX_CAPTURE, `${JSON.stringify({ stdin, thought, reply })}\\n`);",
+    "  process.stdout.write(`${JSON.stringify({ type: 'thread.started', thread_id: second ? 'thread-thinking-visible' : 'thread-thinking-hidden' })}\\n`);",
+    "  process.stdout.write(`${JSON.stringify({ type: 'item.completed', item: { type: 'reasoning', summary: [thought] } })}\\n`);",
+    "  process.stdout.write(`${JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: reply } })}\\n`);",
+    "  process.stdout.write('{\"type\":\"turn.completed\"}\\n');",
+    "});",
+    "",
+  ].join("\n"), { mode: 0o755 });
+
+  const wsConnects = [];
+  let sendInbound = null;
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  await new Promise((resolve, reject) => {
+    wss.once("listening", resolve);
+    wss.once("error", reject);
+  });
+  const wsAddress = wss.address();
+  assert.ok(wsAddress && typeof wsAddress === "object");
+  const wsUrl = `ws://127.0.0.1:${wsAddress.port}/ws`;
+  wss.on("connection", (socket) => {
+    let connected = false;
+    socket.on("message", (data) => {
+      if (connected) return;
+      const packet = decodeOctoConnectPacket(Buffer.isBuffer(data) ? data : Buffer.from(data));
+      connected = true;
+      wsConnects.push(packet);
+      const serverKey = createOctoX25519KeyPair();
+      const salt = "think12345678901";
+      socket.send(encodeOctoConnackPacket({
+        serverPublicKeyBase64: serverKey.publicKeyBase64,
+        salt,
+      }));
+      sendInbound = (messageId, content) => {
+        if (socket.readyState !== 1) throw new Error("Octo fake socket is not open");
+        socket.send(encodeOctoRecvPacket({
+          serverPrivateKey: serverKey.privateKey,
+          clientPublicKeyBase64: packet.clientPublicKeyBase64,
+          salt,
+          messageId,
+          messageSeq: messageId - 5000,
+          fromUid: "thinking-user",
+          channelId: "thinking-user",
+          channelType: 1,
+          payload: {
+            type: 1,
+            content,
+          },
+        }));
+      };
+    });
+  });
+
+  try {
+    const requests = [];
+    await withServer(async (req, res) => {
+      const chunks = [];
+      req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
+      await new Promise((resolve) => req.on("end", resolve));
+      const bodyRaw = Buffer.concat(chunks).toString("utf8");
+      requests.push({
+        method: req.method,
+        path: req.url,
+        authorization: req.headers.authorization,
+        body: bodyRaw ? JSON.parse(bodyRaw) : {},
+      });
+      res.setHeader("content-type", "application/json");
+      if (req.url === "/v1/models") {
+        res.end(JSON.stringify({
+          object: "list",
+          data: [
+            { id: "gpt-5", object: "model", features: { text: true, reasoning: true } },
+          ],
+        }));
+        return true;
+      }
+      if (req.url?.startsWith("/v1/bot/register")) {
+        res.end(JSON.stringify({ robot_id: "robot-thinking", im_token: "im-token-thinking", ws_url: wsUrl }));
+        return true;
+      }
+      if (req.url === "/v1/bot/typing" || req.url === "/v1/bot/sendMessage" || req.url === "/v1/bot/heartbeat") {
+        res.end(JSON.stringify({ ok: true, message_id: `octo-thinking-${requests.length}` }));
+        return true;
+      }
+      return false;
+    }, async (apiUrl) => {
+      const initial = service.getNativeConfig().config;
+      service.saveNativeConfig({
+        config: {
+          ...initial,
+          agentProfiles: [
+            {
+              id: "codex-thinking",
+              name: "Codex Thinking",
+              agent: "codex",
+              model: "gpt-5",
+              workDir: config.projectRoot,
+              permissionMode: "suggest",
+              gatewayEndpoint: `${apiUrl}/v1`,
+              gatewayKeyRef: "studio-gateway-client-key",
+              appProfileRef: "codex",
+            },
+          ],
+          defaultAgentProfileId: "codex-thinking",
+          platformBindings: [
+            {
+              id: "octo-thinking",
+              platform: "octo",
+              accountId: "octo-account",
+              botId: null,
+              displayName: "Octo Thinking",
+              agentProfileId: "codex-thinking",
+              enabled: true,
+              allowlist: [],
+              adminUsers: [],
+              metadata: {
+                apiUrl,
+                botToken: "test-token",
+                wsUrl,
+                octoReconnectJitterMs: 0,
+              },
+            },
+          ],
+        },
+      });
+
+      const runtimeConfig = service.getDaemonConfig().config;
+      runtimeConfig.management.port = await findFreePort();
+      const configPath = path.join(root, "daemon-octo-thinking-config.json");
+      fs.mkdirSync(path.dirname(runtimeConfig.paths.log), { recursive: true });
+      fs.writeFileSync(configPath, JSON.stringify(runtimeConfig, null, 2), "utf8");
+
+      const daemonEntry = path.resolve("dist/apps/api/modules/channel-connectors/daemon.js");
+      const child = spawn(process.execPath, [daemonEntry, "--config", configPath], {
+        cwd: path.resolve("."),
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:${process.env.PATH || ""}`,
+          STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+          STUDIO_TEST_CODEX_CAPTURE: capturePath,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stderr = "";
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk.toString("utf8");
+      });
+
+      try {
+        await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const connected = response.body?.octoConnections?.find?.((item) => item.bindingId === "octo-thinking" && item.connected);
+          return connected ? response.body : null;
+        }, 5000);
+        assert.equal(wsConnects.length, 1);
+        assert.ok(sendInbound);
+
+        sendInbound(5001, "/thinking off");
+        await waitFor(() => {
+          const content = requests
+            .filter((request) => request.path === "/v1/bot/sendMessage")
+            .map((request) => request.body?.payload?.content || "")
+            .join("\n");
+          return /思考消息：关闭/.test(content) ? content : null;
+        }, 5000);
+
+        sendInbound(5002, "first hidden thinking turn");
+        await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          return response.body?.agentRuns?.find?.((item) => item.messageId === "5002" && item.ok) ? response.body : null;
+        }, 8000);
+        let replyContents = requests
+          .filter((request) => request.path === "/v1/bot/sendMessage")
+          .map((request) => request.body?.payload?.content || "")
+          .join("\n");
+        assert.match(replyContents, /first final reply/);
+        assert.doesNotMatch(replyContents, /hidden thought from Codex/);
+
+        sendInbound(5003, "/thinking on");
+        await waitFor(() => {
+          const content = requests
+            .filter((request) => request.path === "/v1/bot/sendMessage")
+            .map((request) => request.body?.payload?.content || "")
+            .join("\n");
+          return /思考消息：开启/.test(content) ? content : null;
+        }, 5000);
+
+        sendInbound(5004, "visible thinking turn");
+        await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          return response.body?.agentRuns?.find?.((item) => item.messageId === "5004" && item.ok) ? response.body : null;
+        }, 8000);
+        replyContents = requests
+          .filter((request) => request.path === "/v1/bot/sendMessage")
+          .map((request) => request.body?.payload?.content || "")
+          .join("\n");
+        assert.match(replyContents, /visible thought from Codex/);
+        assert.match(replyContents, /second final reply/);
+
+        const octoEvents = await waitForJsonLines(runtimeConfig.paths.octoEvents, (events) => {
+          return events.some((event) => {
+            return event.eventKind === "agent.progress.reply"
+              && event.messageId === "5004"
+              && event.progressType === "reasoning"
+              && event.replySent === true;
+          });
+        }, 8000);
+        assert.equal(octoEvents.some((event) => {
+          return event.eventKind === "agent.progress.reply"
+            && event.messageId === "5002"
+            && event.progressType === "reasoning";
+        }), false);
+      } finally {
+        child.kill("SIGTERM");
+        await new Promise((resolve) => {
+          child.once("exit", resolve);
+          setTimeout(resolve, 1000);
+        });
+      }
+
+      assert.equal(stderr.trim(), "");
+    });
+  } finally {
+    await new Promise((resolve, reject) => {
+      wss.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
 test("native Channel Connectors daemon ignores legacy Octo action manifests in private IM mode", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

@@ -121,14 +121,14 @@ Octo(dmwork)：
 - Feishu card/menu、会话子卡、命令路由、进度卡片和快速 ACK 后台派发。
 - IM 命令：`/help`、`/status`、`/agent`、`/model`、`/mode`、`/reasoning`、`/dir`、`/cd`、`/new`、`/reset`、`/stop`、`/display`、`/thinking`、`/process`、`/tools`、`/compact` 等核心命令。
 - 私聊工具流、思考流、过程回复显示开关。
-- Codex 思考流解析合同已覆盖 one-shot 和 app-server；Claude Code / OpenCode 仍需逐 Agent 评估真实支持度。没有 CLI 原生 thinking/reasoning 事件时不伪造。
+- Codex 思考流解析合同已覆盖 one-shot 和 app-server；Octo 私聊 `/thinking` 开关已有端到端回归。Claude Code / OpenCode 仍需逐 Agent 评估真实 CLI 是否输出 thinking/reasoning。没有 CLI 原生事件时不伪造。
 - allowlist/admin、rate limit、banned words 基础治理。
 - active `studio-channel-skill` 与 platform action 暴露层已删除。
 
 ## 7. 下一步
 
 1. 稳定 Codex、Claude Code、OpenCode 的工具流/回复解析，尤其空工具结果、过程回复和最终回复重复问题。
-2. 复验 Codex、Claude Code、OpenCode 思考流解析和 `/thinking` 开关验收。
+2. 复验 Claude Code、OpenCode 真实 CLI thinking/reasoning 输出；无原生事件则标为不支持。
 3. 做 Feishu live `/compact` smoke。
 4. 补 durable queue / 可恢复队列。
 5. 复验 Feishu/Octo 私聊文件、图片、工具流和审批路径；Markdown 后续抽查即可。
