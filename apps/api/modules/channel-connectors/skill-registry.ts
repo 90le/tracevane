@@ -94,6 +94,89 @@ function commandNameKey(value: string): string {
   return normalizeString(value).toLowerCase().replaceAll("-", "_");
 }
 
+function shellSingleQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`;
+}
+
+function runtimeRunnerPlatform(skill: Pick<ChannelConnectorSkill, "platform">): string {
+  const platform = normalizeString(skill.platform).toLowerCase();
+  if (platform === "lark") return "feishu";
+  if (platform === "dmwork") return "octo";
+  return platform || "<platform>";
+}
+
+function runtimeRunnerCommandForAction(
+  platform: string,
+  actionValue: unknown,
+): string | null {
+  const record = recordValue(actionValue);
+  if (!record) return null;
+  const tool = normalizeString(record.tool ?? record.skill ?? record.feishuTool ?? record.feishu_tool);
+  const action = normalizeString(record.action);
+  if (!tool || !action) return null;
+  const explicitParams = recordValue(record.params ?? record.arguments ?? record.args);
+  const params = explicitParams
+    ? explicitParams
+    : Object.fromEntries(Object.entries(record).filter(([key]) => ![
+      "tool",
+      "skill",
+      "feishuTool",
+      "feishu_tool",
+      "action",
+      "params",
+      "arguments",
+      "args",
+    ].includes(key)));
+  return `studio-channel-skill ${platform} ${tool}.${action} ${shellSingleQuote(JSON.stringify(params))}`;
+}
+
+function runtimeRunnerFence(platform: string, rawJson: string): string {
+  try {
+    const parsed = JSON.parse(rawJson.trim()) as unknown;
+    const parsedRecord = recordValue(parsed);
+    const actions: unknown[] = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(parsedRecord?.actions)
+        ? parsedRecord.actions as unknown[]
+        : [parsed];
+    const commands = actions
+      .map((action) => runtimeRunnerCommandForAction(platform, action))
+      .filter((command): command is string => Boolean(command));
+    if (commands.length) return ["```bash", ...commands, "```"].join("\n");
+  } catch {
+    // Keep a runnable generic example below when the old manifest sample is malformed.
+  }
+  return [
+    "```bash",
+    `studio-channel-skill ${platform} <tool>.<action> '<json-params>'`,
+    "```",
+  ].join("\n");
+}
+
+function adaptPlatformSkillPromptForNativeRunner(
+  skill: Pick<ChannelConnectorSkill, "platform" | "runtimeActions">,
+  prompt: string,
+): string {
+  if (!skill.runtimeActions?.length) return prompt;
+  const platform = runtimeRunnerPlatform(skill);
+  return prompt
+    .replace(/```[ \t]*(studio-feishu-actions|studio-octo-actions)[^\r\n]*\r?\n([\s\S]*?)```/gi, (_match, blockName: string, rawJson: string) => {
+      const blockPlatform = String(blockName).toLowerCase().includes("octo") ? "octo" : "feishu";
+      return runtimeRunnerFence(blockPlatform, rawJson);
+    })
+    .replace(/For explicit platform operations, return a `studio-octo-actions` JSON block\.[^\n]*/g, "For explicit platform operations, call `studio-channel-skill octo <tool>.<action> '<json-params>'` through the Agent's normal tool/shell path, inspect stdout JSON, and continue the same turn.")
+    .replace(/For OpenClaw-compatible Feishu channel operations, use `studio-feishu-actions` with `tool:"([^"]+)"`\.[^\n]*/g, (_match, tool: string) => `For OpenClaw-compatible Feishu channel operations, call \`studio-channel-skill feishu ${tool}.<action> '<json-params>'\` through the Agent's normal tool/shell path, inspect stdout JSON, and continue the same turn.`)
+    .replace(/Studio manages this skill as a channel capability contract\. Use `studio-feishu-actions` for ([^.]+)\./g, (_match, scope: string) => `Studio manages this skill as a channel capability contract. Use \`studio-channel-skill feishu <tool>.<action> '<json-params>'\` for ${scope}.`)
+    .replace(/Use this manifest shape:/g, "Use runner calls like:")
+    .replace(/Agents should provide concise content and manifests;/g, "Agents should provide concise content and use `studio-channel-skill` for platform operations;")
+    .replace(/Studio native manifests/g, "Studio native runner calls")
+    .replace(/native manifests and commands/g, "the native `studio-channel-skill` command")
+    .replace(/`studio-feishu-actions`/g, "`studio-channel-skill feishu`")
+    .replace(/`studio-octo-actions`/g, "`studio-channel-skill octo`")
+    .replace(/emit a studio-feishu-actions manifest/g, `call \`studio-channel-skill ${platform}\``)
+    .replace(/emit a studio-octo-actions manifest/g, `call \`studio-channel-skill ${platform}\``);
+}
+
 function resolveConfiguredPath(value: string, home: string): string {
   const normalized = normalizeString(value);
   if (!normalized) return "";
@@ -386,8 +469,9 @@ function sectionMatches(section: MarkdownSection, pattern: RegExp): boolean {
   return pattern.test(sectionSearchText(section.title));
 }
 
-function skillSectionSnippet(section: MarkdownSection): string {
-  const lines = compactSkillPromptForContext(section.text).split("\n");
+function skillSectionSnippet(section: MarkdownSection, skill?: ChannelConnectorSkill): string {
+  const source = skill ? adaptPlatformSkillPromptForNativeRunner(skill, section.text) : section.text;
+  const lines = compactSkillPromptForContext(source).split("\n");
   const heading = lines.shift() || `## ${section.title}`;
   const body = lines.join("\n").trim();
   if (!body) return heading;
@@ -397,7 +481,7 @@ function skillSectionSnippet(section: MarkdownSection): string {
 function selectRuntimeSkillPromptForContext(skill: ChannelConnectorSkill): string {
   const prompt = compactSkillPromptForContext(skill.prompt);
   const sections = splitMarkdownSections(prompt).filter((section) => !isSetupOrBridgeSection(section.title));
-  if (!sections.length) return prompt;
+  if (!sections.length) return adaptPlatformSkillPromptForNativeRunner(skill, prompt);
   const selected: MarkdownSection[] = [];
   const seen = new Set<number>();
   for (const pattern of runtimeSectionPatterns(skill)) {
@@ -409,9 +493,10 @@ function selectRuntimeSkillPromptForContext(skill: ChannelConnectorSkill): strin
   }
   if (!selected.length) {
     const firstRuntimeSection = sections.find((section) => section.level <= 2) || sections[0];
-    return firstRuntimeSection ? skillSectionSnippet(firstRuntimeSection) : prompt;
+    const fallback = firstRuntimeSection ? skillSectionSnippet(firstRuntimeSection, skill) : prompt;
+    return adaptPlatformSkillPromptForNativeRunner(skill, fallback);
   }
-  return selected.map((section) => skillSectionSnippet(section)).join("\n\n");
+  return adaptPlatformSkillPromptForNativeRunner(skill, selected.map((section) => skillSectionSnippet(section, skill)).join("\n\n"));
 }
 
 function isRuntimeActionSection(section: MarkdownSection): boolean {
@@ -425,13 +510,17 @@ function isRuntimeActionSection(section: MarkdownSection): boolean {
 
 function buildRuntimeSkillActionIndex(skill: ChannelConnectorSkill): string | null {
   if (skill.runtimeActions?.length) {
+    const platform = normalizeString(skill.platform).toLowerCase();
     return [
       "## Runtime Action Index",
-      "Only use the Runtime Action Index entries below. If an operation is not listed here, Studio will not execute it from this skill; use the documented fallback or ask the user.",
+      "Use the native skill runner for the entries below. The runner returns JSON on stdout; inspect it and continue the same Agent turn.",
       skill.runtimeActions.map((action) => {
+        const command = action.tool
+          ? `studio-channel-skill ${platform || "<platform>"} ${action.tool}.${action.action || "<action>"} '<json-params>'`
+          : `${action.manifest}`;
         const parts = [
           `- ${action.label}`,
-          `manifest \`${action.manifest}\``,
+          `runner \`${command}\``,
           action.tool ? `tool \`${action.tool}\`` : "",
           action.action ? `action \`${action.action}\`` : "",
           `approval: ${action.approval}`,
@@ -464,12 +553,13 @@ function buildRuntimeSkillActionIndex(skill: ChannelConnectorSkill): string | nu
 
 function buildRuntimeSkillActionIndexForContext(skill: ChannelConnectorSkill): string | null {
   if (skill.runtimeActions?.length) {
+    const platform = normalizeString(skill.platform).toLowerCase();
     return [
       "## Runtime Action Index",
-      "Only use the Runtime Action Index entries below. If an operation is not listed here, Studio will not execute it from this skill; use the documented fallback or ask the user.",
+      "Use native skill runner calls below when platform state must be read or changed; stdout is the tool result for the Agent to continue from.",
       skill.runtimeActions.map((action) => {
         const call = action.tool
-          ? `${action.tool}.${action.action || "*"}`
+          ? `studio-channel-skill ${platform || "<platform>"} ${action.tool}.${action.action || "*"}`
           : `${action.manifest}.${action.action || "send"}`;
         return `- ${call} [${action.approval}]`;
       }).join("\n"),
@@ -520,11 +610,17 @@ export function buildChannelConnectorNativeSkillPrompt(skill: ChannelConnectorSk
     "",
     "Studio owns channel credentials, transport, file upload, and message delivery. Do not run cc-connect, OpenClaw plugin setup, curl registration flows, or external IM bridge CLIs from the Agent.",
     "",
-    "Use Studio native manifests for outbound work:",
+    "Use this as a native Agent skill: when the task needs platform data or a platform action, run the local `studio-channel-skill` command through the Agent's normal tool/shell capability, read its stdout JSON, and continue reasoning in the same turn. Do not output a platform action manifest and stop unless the runner is unavailable.",
+    "",
+    "Runner forms:",
+    `- \`studio-channel-skill ${platform} <tool>.<action> '<json-params>'\``,
+    `- \`studio-channel-skill ${platform} '[{"tool":"<tool>","action":"<action>","params":{}}]'\` for batch calls`,
+    "",
+    "Read-only runner calls execute immediately. Mutation runner calls pause for Studio IM approval and then return the approved/denied result to stdout.",
+    "",
+    "Use Studio native manifests only for outbound delivery artifacts that are not direct platform skill calls:",
     "- `studio-channel-files` for files, images, and binary attachments.",
     "- `studio-channel-messages` for IM messages, Octo group/thread mentions, and Feishu text/Markdown/group mention targets.",
-    "- `studio-octo-actions` for Studio-owned Octo group/thread/history/voice-context management when the active platform is Octo.",
-    "- `studio-feishu-actions` for Studio-owned Feishu channel/app-scope/doc/drive/perm/wiki/bitable actions when the active platform is Feishu. Studio executes read-only actions directly and approval-gated mutations only after IM approval.",
     "",
     `Current platform family: ${platform}.`,
     "",
@@ -600,9 +696,10 @@ function channelSkillRuntimeActionSummary(skills: ChannelConnectorSkill[]): stri
   const rows = skills
     .filter((skill) => skill.runtimeActions?.length)
     .map((skill) => {
+      const platform = runtimeRunnerPlatform(skill);
       const calls = (skill.runtimeActions || []).map((action) => {
         const call = action.tool
-          ? `${action.tool}.${action.action || "*"}`
+          ? `studio-channel-skill ${platform} ${action.tool}.${action.action || "*"}`
           : `${action.manifest}.${action.action || "send"}`;
         return `${call}[${action.approval}]`;
       });
@@ -771,7 +868,7 @@ export function buildChannelConnectorSkillContext(
     }),
     "",
     "Auto-activation: if the current user request matches a platform skill description or asks for IM platform, file, group, document, permission, member, bot, or channel work, follow the relevant skill excerpt even when the user did not type /skill.",
-    "Studio owns channel credentials and transport. Do not run cc-connect, OpenClaw plugin setup, or external IM bridge CLIs from the Agent; adapt platform skill instructions to Studio native manifests and commands.",
+    "Studio owns channel credentials and transport. Do not run cc-connect, OpenClaw plugin setup, curl registration flows, or external IM bridge CLIs from the Agent; use the native `studio-channel-skill` command for platform API work.",
     platform === "octo"
       ? "Studio native Octo commands available to users: /octo groups, /octo info [group_no], /octo members [group_no], /octo search <keyword>, /octo threads [group_no], /octo thread <short_id> [group_no], /octo thread-members <short_id> [group_no], /octo history [limit], /octo group-md [group_no], /octo thread-md <short_id> [group_no], /octo voice-context, /octo create-group <name> --members uid1,uid2, /octo update-group <group_no> --name <name> --notice <notice>, /octo add-members <group_no> uid1,uid2, /octo remove-members <group_no> uid1,uid2, /octo create-thread <group_no> <name>, /octo delete-thread <short_id> [group_no], /octo join-thread <short_id> [group_no], /octo leave-thread <short_id> [group_no], /octo set-group-md [--group group_no] <markdown>, /octo set-thread-md [--group group_no] [--thread short_id] <markdown>, /octo set-voice-context <text>, /octo delete-voice-context."
       : "",
@@ -782,10 +879,10 @@ export function buildChannelConnectorSkillContext(
     "For sending local files back to the user, emit a studio-channel-files manifest; do not call cc-connect or external IM bridge CLIs.",
     "For sending IM messages, emit a studio-channel-messages manifest; Studio will deliver it through the active channel.",
     platform === "octo"
-      ? "For Octo group/thread/history/voice-context management, emit a studio-octo-actions manifest; Studio will execute read-only actions with the active Octo binding and request IM approval before enabled mutations."
+      ? "For Octo group/thread/history/voice-context management, call `studio-channel-skill octo <tool>.<action> '<json-params>'`; stdout is the Agent tool result and mutation calls wait for Studio IM approval."
       : "",
     platform === "feishu"
-      ? "For Feishu channel/app-scope/doc/drive/perm/wiki/bitable actions, emit a studio-feishu-actions manifest; Studio will execute read-only actions with the active Feishu binding and request IM approval before enabled mutations. Unsupported content mutations must fall back to studio-channel-files or studio-channel-messages."
+      ? "For Feishu channel/app-scope/doc/drive/perm/wiki/bitable actions, call `studio-channel-skill feishu <tool>.<action> '<json-params>'`; stdout is the Agent tool result and mutation calls wait for Studio IM approval."
       : "",
     actionSummary.length ? "[Runtime action summary]" : "",
     ...actionSummary,
@@ -804,7 +901,7 @@ export function buildChannelConnectorSkillPrompt(skill: ChannelConnectorSkill, a
   if (skill.description) {
     lines.push(`## Description: ${skill.description}`);
   }
-  lines.push("", "## Skill Instructions:", skill.prompt);
+  lines.push("", "## Skill Instructions:", adaptPlatformSkillPromptForNativeRunner(skill, skill.prompt));
   if (args.length > 0) {
     lines.push("", "## User Arguments:", args.join(" "));
   }

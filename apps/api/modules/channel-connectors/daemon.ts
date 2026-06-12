@@ -1340,6 +1340,18 @@ function sendDaemonJson(res: http.ServerResponse, statusCode: number, body: unkn
   res.end(JSON.stringify(body));
 }
 
+function daemonManagementToken(config: ChannelConnectorsDaemonRuntimeConfig): string | null {
+  return normalizeString((config.management as { token?: string }).token)
+    || normalizeString(process.env.STUDIO_DAEMON_MANAGEMENT_TOKEN)
+    || null;
+}
+
+function daemonManagementEndpoint(config: ChannelConnectorsDaemonRuntimeConfig): string {
+  const host = normalizeString(config.management.host);
+  const connectHost = !host || host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
+  return `http://${connectHost}:${config.management.port}`;
+}
+
 async function handleAgentSessionManagement(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -1385,6 +1397,353 @@ async function handleAgentSessionManagement(
     return;
   }
   sendDaemonJson(res, 400, { ok: false, error: "unsupported_agent_session_action" });
+}
+
+interface ChannelSkillActionRequestBody {
+  platform?: string | null;
+  bindingId?: string | null;
+  sessionKey?: string | null;
+  channel?: {
+    channelId?: string | null;
+    channelType?: number | string | null;
+    fromUid?: string | null;
+    messageId?: string | null;
+  } | null;
+  actions?: unknown;
+}
+
+function findChannelSkillBinding(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  platform: "feishu" | "octo";
+  bindingId?: string | null;
+}): { project: ChannelConnectorRuntimeProject; binding: ChannelConnectorRuntimeBinding } | null {
+  const bindingId = normalizeString(input.bindingId);
+  for (const project of input.config.projects) {
+    for (const binding of project.platformBindings) {
+      if (binding.platform !== input.platform) continue;
+      if (bindingId && binding.id !== bindingId) continue;
+      return { project, binding };
+    }
+  }
+  return null;
+}
+
+function normalizeChannelSkillPlatform(value: unknown): "feishu" | "octo" | null {
+  const normalized = normalizeString(value).toLowerCase();
+  if (normalized === "feishu" || normalized === "lark") return "feishu";
+  if (normalized === "octo" || normalized === "dmwork") return "octo";
+  return null;
+}
+
+function parseChannelSkillActions(input: {
+  platform: "feishu" | "octo";
+  actions: unknown;
+}): {
+  feishuActions: ChannelConnectorFeishuActionRequest[];
+  octoActions: ChannelConnectorOctoActionRequest[];
+  errors: string[];
+} {
+  const rawActions = Array.isArray(input.actions) ? input.actions : [input.actions || {}];
+  const block = [
+    input.platform === "feishu" ? "```studio-feishu-actions" : "```studio-octo-actions",
+    JSON.stringify(rawActions),
+    "```",
+  ].join("\n");
+  if (input.platform === "feishu") {
+    const parsed = extractChannelConnectorFeishuActions(block);
+    return { feishuActions: parsed.actions, octoActions: [], errors: parsed.errors };
+  }
+  const parsed = extractChannelConnectorOctoActions(block);
+  return { feishuActions: [], octoActions: parsed.actions, errors: parsed.errors };
+}
+
+function channelSkillOctoChannelType(value: unknown): 1 | 2 | 5 {
+  const numberValue = typeof value === "number" ? value : Number(normalizeString(value));
+  return numberValue === 2 ? 2 : numberValue === 5 ? 5 : 1;
+}
+
+function channelSkillMessage(input: {
+  sessionKey: string;
+  channel?: ChannelSkillActionRequestBody["channel"];
+}): ChannelConnectorOctoInboundMessage {
+  const channel = input.channel || {};
+  const channelId = normalizeString(channel.channelId) || normalizeString(channel.fromUid) || input.sessionKey;
+  return {
+    messageId: normalizeString(channel.messageId) || `channel-skill-${Date.now()}`,
+    fromUid: normalizeString(channel.fromUid) || channelId,
+    channelId,
+    channelType: channelSkillOctoChannelType(channel.channelType),
+    timestamp: Date.now(),
+    payload: {
+      type: 1,
+      content: "[Studio channel skill tool call]",
+    },
+  };
+}
+
+async function executeFeishuSkillActions(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  binding: ChannelConnectorRuntimeBinding;
+  sessionKey: string;
+  channel?: ChannelSkillActionRequestBody["channel"];
+  actions: ChannelConnectorFeishuActionRequest[];
+}): Promise<ChannelConnectorFeishuActionResult[]> {
+  const transport = feishuTransportFromMetadata(input.binding.metadata, input.binding.accountId);
+  if (!transport) {
+    return input.actions.map((action) => ({
+      attempted: true,
+      ok: false,
+      tool: action.tool,
+      action: normalizeString(action.action).toLowerCase(),
+      readOnly: feishuChannelActionIsReadOnly(action.tool, action.action),
+      apiUrl: "",
+      statusCode: null,
+      requestCount: 0,
+      tokenCache: null,
+      data: null,
+      error: "Feishu channel skill requires Feishu App ID and App Secret on the active binding.",
+    }));
+  }
+  const runId = `channel-skill:${input.binding.id}:${input.sessionKey}:${Date.now()}`;
+  const chatId = normalizeString(input.channel?.channelId);
+  const results: ChannelConnectorFeishuActionResult[] = [];
+  try {
+    for (const [index, action] of input.actions.entries()) {
+      const readOnlyAction = feishuChannelActionIsReadOnly(action.tool, action.action);
+      let allowMutation = false;
+      if (!readOnlyAction) {
+        if (!chatId) {
+          results.push({
+            attempted: true,
+            ok: false,
+            tool: action.tool,
+            action: normalizeString(action.action).toLowerCase(),
+            readOnly: false,
+            apiUrl: transport.apiUrl,
+            statusCode: null,
+            requestCount: 0,
+            tokenCache: null,
+            data: null,
+            error: "Feishu channel skill mutation requires the active chat id for IM approval.",
+          });
+          continue;
+        }
+        const permissionResolver = createPermissionResolver({
+          registry: channelPendingPermissions,
+          runId,
+          bindingId: input.binding.id,
+          sessionKey: input.sessionKey,
+          messageId: normalizeString(input.channel?.messageId) || `channel-skill-feishu-${index + 1}`,
+          agent: "channel-skill",
+          model: null,
+          onPrompt: async (prompt, request) => {
+            await sendFeishuPermissionPrompt({
+              config: input.config,
+              transport,
+              binding: input.binding,
+              chatId,
+              request,
+              fallbackText: prompt,
+            });
+          },
+        });
+        const decision = await permissionResolver({
+          requestId: `channel-skill-feishu-${index + 1}`,
+          subtype: "feishu_channel_skill",
+          toolName: "FeishuChannelSkill",
+          input: {
+            tool: action.tool,
+            action: action.action,
+            params: action.params,
+          },
+        });
+        allowMutation = decision.behavior === "allow";
+        if (!allowMutation) {
+          results.push({
+            attempted: true,
+            ok: false,
+            tool: action.tool,
+            action: normalizeString(action.action).toLowerCase(),
+            readOnly: false,
+            apiUrl: transport.apiUrl,
+            statusCode: null,
+            requestCount: 0,
+            tokenCache: null,
+            data: null,
+            error: decision.behavior === "deny" && decision.message
+              ? decision.message
+              : "User denied this Feishu channel skill action.",
+          });
+          continue;
+        }
+      }
+      results.push(await executeFeishuChannelAction(transport, action, feishuTokenCachePath(input.config), {
+        allowMutation,
+      }));
+    }
+    return results;
+  } finally {
+    clearPendingPermissionsForRun(channelPendingPermissions, runId);
+  }
+}
+
+async function executeOctoSkillActions(input: {
+  transport: ChannelConnectorOctoTransportConfig | null;
+  binding: ChannelConnectorRuntimeBinding;
+  sessionKey: string;
+  message: ChannelConnectorOctoInboundMessage;
+  actions: ChannelConnectorOctoActionRequest[];
+}): Promise<Array<{ action: ChannelConnectorOctoActionRequest; result: ChannelConnectorOctoManagementResult }>> {
+  const runId = `channel-skill:${input.binding.id}:${input.sessionKey}:${Date.now()}`;
+  const results: Array<{ action: ChannelConnectorOctoActionRequest; result: ChannelConnectorOctoManagementResult }> = [];
+  try {
+    for (const [index, action] of input.actions.entries()) {
+      let allowMutation = false;
+      if (OCTO_MUTATING_ACTIONS.has(action.action)) {
+        const permissionResolver = createPermissionResolver({
+          registry: channelPendingPermissions,
+          runId,
+          bindingId: input.binding.id,
+          sessionKey: input.sessionKey,
+          messageId: input.message.messageId,
+          agent: "channel-skill",
+          model: null,
+          onStateChange: async (change) => {
+            if (!input.transport || isAskUserQuestionRequest(change.request)) return;
+            const replyPlan = renderOctoTextReply(input.message, renderPlainPermissionState(change));
+            if (replyPlan) await sendOctoTextReply(input.transport, replyPlan);
+          },
+          onPrompt: async (prompt, request) => {
+            if (!input.transport) return;
+            const replyPlan = renderOctoTextReply(input.message, renderPlainPermissionPrompt(request, prompt));
+            if (replyPlan) await sendOctoTextReply(input.transport, replyPlan);
+          },
+        });
+        const decision = await permissionResolver({
+          requestId: `channel-skill-octo-${index + 1}`,
+          subtype: "octo_channel_skill",
+          toolName: "OctoChannelSkill",
+          input: {
+            tool: action.tool,
+            action: action.action,
+            params: action.params,
+          },
+        });
+        allowMutation = decision.behavior === "allow";
+        if (!allowMutation) {
+          results.push({
+            action,
+            result: {
+              ok: false,
+              replyText: decision.behavior === "deny" && decision.message
+                ? decision.message
+                : "User denied this Octo channel skill action.",
+              error: decision.behavior === "deny" && decision.message
+                ? decision.message
+                : "User denied this Octo channel skill action.",
+            },
+          });
+          continue;
+        }
+      }
+      if (OCTO_MUTATING_ACTIONS.has(action.action) && !allowMutation) continue;
+      const result = await runOctoManagementCommand(input.transport, octoActionManagementRequest({
+        action,
+        bindingId: input.binding.id,
+        sessionKey: input.sessionKey,
+        message: input.message,
+      }));
+      results.push({ action, result });
+    }
+    return results;
+  } finally {
+    clearPendingPermissionsForRun(channelPendingPermissions, runId);
+  }
+}
+
+async function handleChannelSkillAction(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  config: ChannelConnectorsDaemonRuntimeConfig,
+): Promise<void> {
+  if (req.method !== "POST") {
+    sendDaemonJson(res, 405, { ok: false, daemonError: true, error: "method_not_allowed" });
+    return;
+  }
+  const payload = await parseRequestJson<ChannelSkillActionRequestBody>(req);
+  const platform = normalizeChannelSkillPlatform(payload.platform);
+  if (!platform) {
+    sendDaemonJson(res, 400, { ok: false, daemonError: true, error: "platform_required" });
+    return;
+  }
+  const sessionKey = normalizeString(payload.sessionKey);
+  if (!sessionKey) {
+    sendDaemonJson(res, 400, { ok: false, daemonError: true, error: "session_key_required" });
+    return;
+  }
+  const resolved = findChannelSkillBinding({
+    config,
+    platform,
+    bindingId: payload.bindingId,
+  });
+  if (!resolved) {
+    sendDaemonJson(res, 404, {
+      ok: false,
+      daemonError: true,
+      error: "binding_not_found",
+      platform,
+      bindingId: normalizeString(payload.bindingId) || null,
+    });
+    return;
+  }
+  const parsed = parseChannelSkillActions({
+    platform,
+    actions: payload.actions,
+  });
+  if (parsed.errors.length) {
+    sendDaemonJson(res, 400, {
+      ok: false,
+      daemonError: true,
+      error: "invalid_channel_skill_actions",
+      errors: parsed.errors,
+    });
+    return;
+  }
+  if (platform === "feishu") {
+    const results = await executeFeishuSkillActions({
+      config,
+      binding: resolved.binding,
+      sessionKey,
+      channel: payload.channel,
+      actions: parsed.feishuActions,
+    });
+    sendDaemonJson(res, 200, {
+      ok: true,
+      platform,
+      bindingId: resolved.binding.id,
+      sessionKey,
+      results,
+    });
+    return;
+  }
+  const message = channelSkillMessage({
+    sessionKey,
+    channel: payload.channel,
+  });
+  const results = await executeOctoSkillActions({
+    transport: octoTransportFromMetadata(resolved.binding.metadata),
+    binding: resolved.binding,
+    sessionKey,
+    message,
+    actions: parsed.octoActions,
+  });
+  sendDaemonJson(res, 200, {
+    ok: true,
+    platform,
+    bindingId: resolved.binding.id,
+    sessionKey,
+    results,
+  });
 }
 
 function latestActiveRunForSession(
@@ -1963,7 +2322,7 @@ function startHttp(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelD
       }));
       return;
     }
-    const managementToken = (config.management as { token?: string }).token || process.env.STUDIO_DAEMON_MANAGEMENT_TOKEN;
+    const managementToken = daemonManagementToken(config);
     if (managementToken && req.url !== "/health" && req.url !== "/status") {
       const auth = req.headers.authorization;
       if (auth !== `Bearer ${managementToken}`) {
@@ -1999,6 +2358,17 @@ function startHttp(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelD
           ok: false,
           error: "agent_session_management_failed",
           message: error instanceof Error ? error.message : "Agent session management failed.",
+        });
+      });
+      return;
+    }
+    if ((req.url || "").split("?")[0] === "/channel-skill/action") {
+      handleChannelSkillAction(req, res, config).catch((error) => {
+        sendDaemonJson(res, 500, {
+          ok: false,
+          daemonError: true,
+          error: "channel_skill_action_failed",
+          message: error instanceof Error ? error.message : "Channel skill action failed.",
         });
       });
       return;
@@ -3406,6 +3776,8 @@ async function nativeCompactChannelConnectorConversation(input: {
         sessionKey: input.sessionKey,
         gatewayEndpoint: input.project.gatewayEndpoint || input.config.gateway.endpoint,
         gatewayClientKey: input.gatewayClientKey,
+        daemonManagementEndpoint: daemonManagementEndpoint(input.config),
+        daemonManagementToken: daemonManagementToken(input.config),
         agentRuntimeDir: agentRuntimeDir(input.config, input.project, input.binding),
         historyContext: null,
         nativeCommand: "/compact",
@@ -8814,6 +9186,8 @@ async function dispatchOctoMessage(input: {
         sessionKey,
         gatewayEndpoint: turnProject.gatewayEndpoint || config.gateway.endpoint,
         gatewayClientKey: key,
+        daemonManagementEndpoint: daemonManagementEndpoint(config),
+        daemonManagementToken: daemonManagementToken(config),
         agentRuntimeDir: runtimeDir,
         historyContext: nativeCommand ? null : historyContext,
         channelSkillContext,
@@ -10182,6 +10556,8 @@ async function dispatchFeishuParsedEvent(input: {
         sessionKey,
         gatewayEndpoint: turnProject.gatewayEndpoint || config.gateway.endpoint,
         gatewayClientKey: key,
+        daemonManagementEndpoint: daemonManagementEndpoint(config),
+        daemonManagementToken: daemonManagementToken(config),
         agentRuntimeDir: runtimeDir,
         historyContext: nativeCommand ? null : historyContext,
         channelSkillContext,

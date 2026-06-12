@@ -1,7 +1,7 @@
 # Channel Connectors / CLI Agent Bot 原生方案
 
-> 状态：Studio 原生 Channel daemon 路线；Octo/Feishu 基础闭环、CC-style 菜单/会话子卡和 native CLI persistent compact/stop real CLI smoke 已完成
-> 更新：2026-06-11
+> 状态：Studio 原生 Channel daemon 路线；Octo/Feishu 私聊基础闭环、CC-style 菜单/会话子卡和 native CLI persistent compact/stop real CLI smoke 已完成
+> 更新：2026-06-12
 > 参考源：CC 二开全量源码 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`；OpenClaw 频道与运行时实现（最新本地源码：`/home/binbin/.openclaw/projects/openclaw/latest/extensions/feishu`）；OpenClaw Octo 插件 `~/.openclaw/extensions/octo`；迁移清单见 `channel-connectors-cc-migration-checklist.md`；Feishu 长连接专项见 `feishu-long-connection-issue-tracker.md`
 
 ## 1. 新结论
@@ -16,7 +16,7 @@ Octo(dmwork) / 飞书 / 微信 / IM
   -> upstream provider
 ```
 
-全量目标不是“接几个渠道”，而是把 CC 二开源码里的能力全部原生纳入 Studio，并结合 Studio Gateway / App Connections / Studio UI 做得更完整。
+最新目标不是“把所有群协作场景无限扩展”，而是先把 Feishu、Octo 以及后续 IM 渠道的私聊能力做完整：Agent CLI 能读 skill、调用 Studio 本地 runtime action、继续同一 turn 推理，并稳定完成文件、权限、流式进度、上下文和 compact。已实现的群聊/thread/多 bot 能力保留为 best-effort，不再作为首期发布或下一步阻断项。
 
 迁移门禁：
 
@@ -39,7 +39,7 @@ Octo(dmwork) / 飞书 / 微信 / IM
 - 同一 binding + IM session 的 Agent run 默认 FIFO 排队：上一条未完成时，新普通消息先回复“已加入队列”，前序任务完成后自动处理；`/stop`、`/status` 等命令不进队列并即时执行；确需并行时由 binding metadata 显式开启。
 - Feishu card/menu 按 CC 语义区分导航和执行：导航显示/更新卡片，`/new`、`/reset` 等无卡片执行动作快速 ACK 回调并异步发送普通文本结果，不弹悬浮 toast，也不自动弹完整菜单。
 - 产品未发布前优先干净实现，不为旧实验命令和旧字段增加兼容负担；确认新语义后直接替换旧实现。
-- 进度过程按 CC 群聊语义处理：私聊默认显示思考、过程回复和工具过程；Feishu 群聊、Octo 群聊默认只发最终回复，除非当前 IM session 显式开启 `/thinking` / `/process` / `/tools`。
+- 进度过程以私聊体验为主线：私聊默认显示思考、过程回复和工具过程；Feishu/Octo 群聊已实现的静默/开关能力保留，不再继续扩展群聊体验。
 - 文件收发边界：入站附件由 daemon 下载/staging 后交给 Agent；出站文件由 Agent 声明 `studio-channel-files` manifest，daemon 默认只允许发送 Agent workDir 或当前 runtime/staging 根内文件，`yolo` 权限可发送任意可读普通文件但仍受大小/平台限制；平台 transport 负责上传发送并尽量保留原始文件名，Octo 已支持 STS + COS PUT 直传；Agent prompt 不暴露旧桥接命令或平台 CLI。
 - Octo(dmwork) WuKongIM 长连接以 CC Go 为基线：30s heartbeat、10s PONG timeout、RECV 后立即 ACK、5 分钟 messageId 去重、断线后 `3s + 0..3s` 抖动重连、5 分钟 REST heartbeat 备用保活；Studio 实现允许 binding metadata 覆盖心跳、超时、重连、抖动窗口和 REST heartbeat，并在 runtime 暴露 REST heartbeat 成功/失败状态。
 
@@ -65,14 +65,14 @@ Octo(dmwork) / 飞书 / 微信 / IM
 - Platforms：Octo(dmwork)、飞书、微信/企业微信账号和 bot 配置。
 - Sessions：IM 会话、session key、绑定 Agent、最近消息、手动测试。
 
-必须原生化的 CC 能力范围：
+首期必须原生化的 CC 能力范围：
 
-- 平台：Octo(dmwork)、飞书、微信个人号、企业微信、钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等 CC 已有平台能力。
+- 平台：Octo(dmwork)、飞书优先；后续微信个人号、企业微信、钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等只按私聊能力推进，除非另行明确恢复群聊目标。
 - Agent：Codex、Claude Code、OpenCode 为首批；后续覆盖 CC 已有 CLI/ACP Agent，包括 Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP 等。
-- 消息：文本、图片、文件、语音/STT/TTS、群聊 mention、thread/reply、流式预览、长回复拆分；入站原始文件由 Studio daemon 下载到受控 staging 目录后交给 Agent，出站文件由 daemon 根据 Agent manifest 通过平台 API 发送，默认 128MB 上限可按 binding 调整或关闭。
+- 消息：私聊文本、图片、文件、语音/STT/TTS、流式预览、长回复拆分；入站原始文件由 Studio daemon 下载到受控 staging 目录后交给 Agent，出站文件由 daemon 根据 Agent manifest 通过平台 API 发送，默认 128MB 上限可按 binding 调整或关闭。群聊 mention、thread/reply 只保留既有 best-effort 能力。
 - 会话：session key、session 续接/切换/重置、workdir 切换、历史恢复、不同 bot/account 独立上下文、跨平台会话观测。
 - 治理：allowlist、admin、rate limit、banned words、权限模式、run-as/user isolation、审计日志。
-- 自动化：slash command、平台菜单、Feishu card、cron、hooks、relay、management API、health/status/logs。
+- 自动化：私聊 slash command、平台菜单、Feishu card、management API、health/status/logs；cron、hooks、relay 不再作为首期任务。
 
 Studio 增强点：
 
@@ -101,7 +101,7 @@ Studio 增强点：
 | F1 | 已完成：native daemon skeleton、service/config/status/logs、独立页面、守护边界测试 |
 | F2 | 已完成：CC/OpenClaw 能力映射、typed config store、Agent Profile、工作目录、模型、权限、Gateway key ref、platform/bot binding |
 | F3 | 已完成核心合同：Octo(dmwork) adapter、REST transport、daemon register/cache/WuKongIM WebSocket、Codex CLI Agent runner、真实 Octo DM 文本往返、Codex session resume、IM command control、native passthrough、command surface、Feishu webhook/outbound/long-connection、Feishu card/menu/session/model/display/progress loop |
-| F4 | 进行中：长回复拆分、Feishu thread/reply session、附件 metadata/staging、Octo URL staging、Feishu/Octo 出站文件、Octo COS 直传与自动分流、Octo CC Go 长连接基线、图片非视觉模型保护、Gateway vision 模型自动选择、Codex 原生图片输入、OpenCode 原生图片 `--file` 输入、轻量 history context、群聊 context、长回复 group buffer、reply buffer 查看命令/菜单、飞书群成员拉取、Feishu 会话列表/切换子卡、`/current`/`/list`/`/history [n]` 信息增强、Feishu/Octo 私聊进度与群聊静默默认、assistant 过程回复展示、`/thinking`/`/process`/`/tools` 三路显示控制、持久 session driver pool 合同/状态面/Codex app-server 真实 Gateway `turn/start`、`/compact`、`turn/interrupt` smoke、Codex app-server requestApproval driver 合同、Claude Code stream-json persistent 普通 turn/Bash tool-use/文件 manifest/视觉附件/compact/stop cancel、Claude tool_result 纯输出渲染、OpenCode `run --session` persistent 普通 turn/文件 manifest/视觉附件/compact/stop cancel、OpenCode SQLite fallback、daemon `/stop`、内部 userMessage 过滤、生命周期进度噪音过滤和 unfinished turn 超时中断已完成；当前 live binding 默认仍是 one-shot，Codex/OpenCode/Octo live approval、真实 IM 文件/工具流式复验、OCR、语音 STT/TTS、长回复预览冻结、真实大文件限额验证、更多设置型卡片待补 |
+| F4 | 进行中：私聊长回复拆分、附件 metadata/staging、Octo URL staging、Feishu/Octo 出站文件、Octo COS 直传与自动分流、Octo CC Go 长连接基线、图片非视觉模型保护、Gateway vision 模型自动选择、Codex 原生图片输入、OpenCode 原生图片 `--file` 输入、轻量 history context、reply buffer 查看命令/菜单、Feishu 会话列表/切换子卡、`/current`/`/list`/`/history [n]` 信息增强、Feishu/Octo 私聊进度、assistant 过程回复展示、`/thinking`/`/process`/`/tools` 三路显示控制、持久 session driver pool 合同/状态面/Codex app-server 真实 Gateway `turn/start`、`/compact`、`turn/interrupt` smoke、Codex app-server requestApproval driver 合同、Claude Code stream-json persistent 普通 turn/Bash tool-use/文件 manifest/视觉附件/compact/stop cancel、Claude tool_result 纯输出渲染、OpenCode `run --session` persistent 普通 turn/文件 manifest/视觉附件/compact/stop cancel、OpenCode SQLite fallback、daemon `/stop`、内部 userMessage 过滤、生命周期进度噪音过滤和 unfinished turn 超时中断已完成；群聊 context、thread/reply、长回复 group buffer 和飞书群成员拉取保留既有 best-effort，不再继续扩展；当前 live binding 默认仍是 one-shot，Codex/OpenCode/Octo live approval、真实私聊 IM 文件/工具流式复验、OCR、语音 STT/TTS、长回复预览冻结、真实大文件限额验证、私聊设置型卡片待补 |
 | F5 | 治理与自动化：allowlist/admin/rate limit/banned words 已完成；继续补 cron、hooks、relay、management API |
 | F6 | 飞书、微信/企业微信；继续迁移钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等 CC 平台 |
 | F7 | 补齐剩余 CC Agent、跨平台会话观测、消息审计、迁移工具和发布验收 |
@@ -145,7 +145,7 @@ Studio 增强点：
 - F4 Octo URL attachment staging 已落地：Octo URL 型图片/文件/语音/视频进入 Agent 前 streaming 下载到本地 attachment 目录，默认拒绝私网 URL，大小上限可由 binding metadata 覆盖；失败只写 `stagingError` 不阻断对话。
 - F4 Octo 入站 URL 字段兼容已落地：除 `url` 外，支持常见 snake/camel URL 变体；若 live payload 仍无 URL，需要继续补 Octo/COS 媒体下载接口。
 - F4 Octo payload-only 附件补回已落地：daemon 运行前把 payload 推断出的附件写回 `attachments`，避免 live image/file 只显示 `[image]` 却不进入 staging；同时按 OpenClaw Octo 插件补 GIF=3、RichText=14 图文混排和多图 `mediaUrls` 入站归一化。
-- F4 Octo Bot API transport + daemon 入站能力已落地：`transport-smoke` 支持 read receipt、event ack、群/成员/Space 搜索、群管理、thread 管理、消息历史同步和文件下载 URL；daemon 通过 gate 后异步 read receipt，入站 Agent turn 会补群成员、短历史上下文，并在附件只有 `file_path/download_path/object_key/storage_key` 时先换取下载 URL 再 staging；消息历史 payload 解码和大整数 `message_id` 保护已对齐 OpenClaw Octo 插件。下一步迁移 thread target、群/线程管理命令和后续菜单；Bot API event ack 只在 HTTP/sync 事件链路暴露真实 event_id 时接入，WuKongIM 当前已有 RECVACK。
+- F4 Octo Bot API transport + daemon 入站能力已落地：`transport-smoke` 支持 read receipt、event ack、群/成员/Space 搜索、群管理、thread 管理、消息历史同步和文件下载 URL；daemon 通过 gate 后异步 read receipt，入站 Agent turn 会补群成员、短历史上下文，并在附件只有 `file_path/download_path/object_key/storage_key` 时先换取下载 URL 再 staging；消息历史 payload 解码和大整数 `message_id` 保护已对齐 OpenClaw Octo 插件。thread target、群/线程管理命令和后续菜单保留既有 best-effort，不再作为下一步；Bot API event ack 只在 HTTP/sync 事件链路暴露真实 event_id 时接入，WuKongIM 当前已有 RECVACK。
 - F4 Octo v1.0.15 兼容已落地：binding 解析、群 @bot 判断和自身消息跳过按插件 `normalizeAccountId()` 语义大小写归一；`mention.all/humans` 广播不触发普通 bot，纯 `mention.ais=1` 或显式 @bot 触发；daemon 入站通过 gate 后异步发送带 `message_ids` 的 read receipt。插件 global runtime singleton 修复的是 jiti/ESM 双实例问题，Studio daemon 当前无同类 runtime 双加载，不迁移同款单例。
 - F4 图片能力门控已落地：Feishu/Octo 图片会先 staging；若当前模型未标记为 vision（例如 `glm-5`），Channel runner 仍启动受控 Agent turn，但 prompt 会禁止视觉推断并要求询问用户下一步；普通文件仍照常进入 Agent，避免把“不能看图”误判成“不能收文件”。
 - F4 Gateway vision 模型自动选择已落地：Channel daemon 会读取 Studio Gateway `/v1/models` 的模型能力；视觉附件 turn 如果当前模型不支持 vision 且模型池存在 vision 模型，会仅本轮切到 vision 模型，未找到或 catalog 不可用时回到非视觉保护；binding metadata 可用 `autoVisionModel:false` 关闭。
@@ -168,6 +168,6 @@ Studio 增强点：
 
 ## 6. 下一步
 
-1. 做真实 IM live approval smoke：Codex app-server requestApproval、Claude Code permission/AskUserQuestion、OpenCode permission。
-2. 扩展真实 Claude Code / OpenCode persistent smoke：视觉输入、权限/tool stream 和 IM live 文件上传。
-3. 按 `channel-connectors-cc-migration-checklist.md` 的 P1 顺序继续复刻 Feishu/Octo 菜单、设置卡片、长连接与媒体收发细节，并继续复验 Codex `exec/resume` 稳定 live 路径。
+1. 做真实私聊 IM live approval smoke：Codex app-server requestApproval、Claude Code permission/AskUserQuestion、OpenCode permission。
+2. 扩展真实 Claude Code / OpenCode persistent 私聊 smoke：视觉输入、权限/tool stream 和 IM live 文件上传。
+3. 按 `channel-connectors-cc-migration-checklist.md` 的 P1 顺序继续复刻 Feishu/Octo 私聊菜单、设置卡片、长连接与媒体收发细节，并继续复验 Codex `exec/resume` 稳定 live 路径；群聊/thread/多 bot 后续任务已冻结。

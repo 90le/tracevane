@@ -364,6 +364,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
   private activeTurnId: string | null = null;
   private activeTurnInput: ChannelConnectorAgentSessionDriverTurnInput | null = null;
   private activeTurnCompleted: ((message: Record<string, unknown>) => void) | null = null;
+  private pendingStopReason: string | null = null;
 
   constructor(options: CodexAppServerSessionOptions) {
     this.id = options.sessionId;
@@ -570,6 +571,8 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
       });
       const turn = isRecord(turnResponse.turn) ? turnResponse.turn : {};
       this.activeTurnId = normalizeString(turn.id) || null;
+      if (input.signal?.aborted) this.pendingStopReason = "signal-aborted";
+      if (this.pendingStopReason) void this.stop(this.pendingStopReason);
     } catch (error) {
       this.activeTurnInput = null;
       throw error;
@@ -685,15 +688,22 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
       this.activeTurnCompleted = null;
       this.activeTurnId = null;
       this.activeTurnInput = null;
+      this.pendingStopReason = null;
     }
   }
 
   async stop(reason: string): Promise<void> {
-    if (!this.threadId || !this.activeTurnId) return;
+    const stopReason = reason || "manual-stop";
+    if (!this.threadId || !this.activeTurnId) {
+      if (this.activeTurnInput) this.pendingStopReason = stopReason;
+      return;
+    }
+    const turnId = this.activeTurnId;
+    this.pendingStopReason = null;
     await this.request("turn/interrupt", {
       threadId: this.threadId,
-      turnId: this.activeTurnId,
-      reason,
+      turnId,
+      reason: stopReason,
     }).catch(() => undefined);
   }
 

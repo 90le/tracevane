@@ -1,6 +1,6 @@
 # Channel Connectors Native Feature Map
 
-> 更新：2026-06-11
+> 更新：2026-06-12
 > 目的：把 CC/OpenClaw 参考能力映射到 Studio 原生实现，避免后续回到托管 cc-connect 或旧 Codex Stack。
 
 ## 参考范围
@@ -15,6 +15,7 @@
 - OpenClaw 参考：频道账号、bot 绑定、运行态和事件抽象；不作为运行期依赖。
 - OpenClaw 最新本地源码：`/home/binbin/.openclaw/projects/openclaw/latest/extensions/feishu`，飞书长连接问题优先核对 `src/client.ts`、`src/monitor.transport.ts`、`src/monitor.startup.ts` 和分析文档。
 - OpenClaw Octo 插件参考：`~/.openclaw/extensions/octo`（当前 1.0.15）。遇到 Octo 专属问题时优先看插件的 `dist/src/{socket,inbound,channel,actions,api-fetch,account-id}.js` 和 `skills/octo-bot-api/SKILL.md`，再回看 CC Go 通用平台抽象。
+- 2026-06-12 范围更新：首期只继续推进 Feishu/Octo 私聊完整性。已实现的群聊、thread、多 bot、GROUP.md/THREAD.md 等能力保留为 best-effort；未完成的群聊扩展、异步多 bot 汇总、thread 管理 live smoke 不再列为下一步。
 
 ## 原生映射
 
@@ -24,7 +25,7 @@
 | Config | TOML project/platform/agent options | typed JSON store：Agent Profile、workDir、model、permission、Gateway key ref、platform binding | F2 |
 | Platforms | dmwork/feishu/weixin/wecom/dingtalk/telegram/slack/discord/qq/qqbot/line | Studio native adapter registry；Octo(dmwork) 先落地，其余按 adapter 迁移 | F3-F6 |
 | Agents | Codex、Claude Code、OpenCode、Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP | local CLI Agent runner；统一走 Studio Gateway endpoint/key/model | F3-F7 |
-| Messages | text、image、file、voice、reply、thread、mention、stream preview、long split、大文件直传 | incoming/reply/attachment/voice/thread/file transfer contract + renderer | F4 |
+| Messages | text、image、file、voice、stream preview、long split、大文件直传；reply/thread/mention 仅保留既有 best-effort | private incoming/reply/attachment/voice/file transfer contract + renderer | F4 |
 | Sessions | session key、续接、重置、workdir 切换、cron reply target、跨 channel context、IM 内切 Agent/model/mode、可选持久 Agent session | Studio session store、bot/account -> Agent context、session override、观测和审计；默认同 session 串行 one-shot runner，高阶持久 session pool 按 binding/session/profile 隔离 | F3-F7 |
 | Governance | allow_from、admin、rate limit、outgoing limit、banned words、run_as_user | allowlist/admin/rate/banned/permission/run-as/audit policy | F5 |
 | Automation | slash command、Agent 原生命令透传、菜单、Feishu card、cron、hook、relay、management API | Studio native command contract；普通平台文本命令，未知 slash 透传，rich 平台消费 command surface | F3-F5 |
@@ -76,4 +77,4 @@
 - 已完成：F5 基础治理：allowlist/admin、banned words、rate limit 覆盖 Octo/Feishu daemon 与 HTTP dispatch/action。
 - 已完成：F4 飞书群成员拉取：群聊 Agent 分支分页拉取 chat members 并注入 group context，失败只记日志不阻断。
 - 已完成：平台配置 UI：Octo/Feishu binding 凭证 metadata 可在 Channel Connectors 页面编辑并直接执行连接测试。
-- 下一步：继续做真实 Feishu 群 @、自然语言 @bot、未 @ 群消息、topic/thread、成员上下文和 doc media live smoke；继续做 `studio-channel-messages` Octo human DM、thread、@成员和 @其它 Studio/外部 bot、Feishu user_id 文本/Markdown live smoke；继续按 Octo 插件迁移更完整菜单；随后按同一模式补 Feishu 大文件/分片能力和更多平台 adapter。
+- 下一步：只做真实 Feishu/Octo 私聊 live smoke 和私聊能力补齐，包括 `studio-channel-skill` 同 turn 调用、私聊文件/图片/语音、权限审批、工具流/过程回复、Markdown/卡片渲染、上下文/compact、Feishu user_id/open_id 文本与 Markdown、Octo human DM 和大文件/COS/分片路径。群聊 @、topic/thread、成员上下文、异步多 bot 汇总和群/thread 管理 live smoke 已冻结；已有实现保留，不继续扩展。

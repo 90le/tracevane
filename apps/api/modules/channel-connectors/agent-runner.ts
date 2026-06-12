@@ -81,6 +81,8 @@ export interface ChannelConnectorAgentTurnRequest {
   sessionKey: string;
   gatewayEndpoint: string;
   gatewayClientKey: string | null;
+  daemonManagementEndpoint?: string | null;
+  daemonManagementToken?: string | null;
   agentRuntimeDir?: string | null;
   session?: {
     agentNativeSessionId?: string | null;
@@ -311,6 +313,7 @@ function buildStudioOutboundFilePolicy(): string {
   return [
     "[Studio outbound file/message policy]",
     "Do not call channel-specific CLIs, webhooks, curl commands, or external bridge tools to send files or IM messages.",
+    "When a generated Studio channel skill is relevant, use its native skill instructions and run the bundled `studio-channel-skill` command through the Agent's normal tool/shell path. Treat that command's stdout as the tool result and continue reasoning in the same Agent turn.",
     "When the user asks you to send or return files, create them under the current working directory or declare the exact readable path you just used; do not invent relative paths from memory.",
     "If an existing file is outside the current working directory and the current permission mode may block direct sending, copy or generate the requested file under the current working directory before declaring it.",
     "Preserve the original file name in the name field unless the user explicitly asks for a new name.",
@@ -331,8 +334,9 @@ function buildStudioOutboundFilePolicy(): string {
     "```studio-channel-messages",
     "[{\"platform\":\"feishu\",\"target\":\"open_id:ou_xxx\",\"content\":\"hello\"},{\"platform\":\"feishu\",\"target\":\"chat:oc_xxx\",\"format\":\"markdown\",\"content\":\"@[ou_member:成员名] **hello group**\"}]",
     "```",
-    "For Feishu channel, app-scope diagnostics, document, drive, permission, wiki, or bitable work, use the Studio-owned `studio-feishu-actions` block when the active channel skill context lists that capability; Studio executes read-only actions through the current Feishu binding and asks the user before enabled mutations.",
-    "Do not claim Feishu channel, document, drive, permission, wiki, or bitable mutation succeeded unless Studio returns an actual action result; use files or Feishu Markdown messages as a fallback for unsupported content mutations.",
+    "For Feishu channel, app-scope diagnostics, document, drive, permission, wiki, or bitable work, prefer the generated Feishu native skill and call `studio-channel-skill feishu ...` so the result returns through stdout before you continue.",
+    "For Octo group, thread, history, voice-context, file-download-url, or multi-bot collaboration work, prefer the generated Octo native skill and call `studio-channel-skill octo ...` so the result returns through stdout before you continue.",
+    "Do not claim Feishu/Octo mutations succeeded unless a native skill tool result says they succeeded; use files or rich IM messages as a fallback for unsupported content mutations.",
     "Use Studio IM channel capabilities; do not tell the user to run external bridge tools or claim missing Feishu/Octo API permission unless Studio returns an actual send error.",
     "These platform capabilities override older conversation history that may mention missing bridge or API permissions.",
     "Keep the human-readable reply outside those blocks; Studio daemon will upload files or send declared messages through the active IM channel.",
@@ -961,6 +965,138 @@ function gatewayEnv(gatewayEndpoint: string, gatewayClientKey: string | null): R
   return env;
 }
 
+function studioChannelSkillToolScript(): string {
+  return [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    "",
+    "function readStdin() {",
+    "  return new Promise((resolve, reject) => {",
+    "    let input = '';",
+    "    process.stdin.setEncoding('utf8');",
+    "    process.stdin.on('data', (chunk) => { input += chunk; });",
+    "    process.stdin.on('end', () => resolve(input.trim()));",
+    "    process.stdin.on('error', reject);",
+    "  });",
+    "}",
+    "",
+    "function parseJson(value, fallback) {",
+    "  const text = String(value || '').trim();",
+    "  if (!text) return fallback;",
+    "  try { return JSON.parse(text); } catch (error) {",
+    "    throw new Error(`Invalid JSON input: ${error.message}`);",
+    "  }",
+    "}",
+    "",
+    "function normalizePlatform(value) {",
+    "  const text = String(value || '').trim().toLowerCase();",
+    "  if (text === 'lark') return 'feishu';",
+    "  if (text === 'dmwork') return 'octo';",
+    "  return text;",
+    "}",
+    "",
+    "function usage() {",
+    "  return [",
+    "    'Usage:',",
+    "    '  studio-channel-skill feishu <json-action-or-array>',",
+    "    '  studio-channel-skill feishu feishu_doc.read <json-params>',",
+    "    '  studio-channel-skill octo <json-action-or-array>',",
+    "    '  studio-channel-skill octo octo_management.group-members <json-params>',",
+    "    'JSON may also be supplied on stdin.'",
+    "  ].join('\\n');",
+    "}",
+    "",
+    "async function main() {",
+    "  const args = process.argv.slice(2);",
+    "  const platform = normalizePlatform(args.shift() || process.env.STUDIO_CHANNEL_SKILL_PLATFORM);",
+    "  if (!platform || !['feishu', 'octo'].includes(platform)) throw new Error(`${usage()}\\n\\nMissing platform feishu|octo.`);",
+    "  const endpoint = process.env.STUDIO_CHANNEL_SKILL_ENDPOINT || process.env.STUDIO_CHANNEL_CONNECTOR_SKILL_ENDPOINT;",
+    "  if (!endpoint) throw new Error('STUDIO_CHANNEL_SKILL_ENDPOINT is not configured.');",
+    "  const first = String(args.shift() || '').trim();",
+    "  let actions;",
+    "  if (/^[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+$/.test(first)) {",
+    "    const [tool, action] = first.split('.');",
+    "    const rest = args.join(' ').trim() || await readStdin();",
+    "    actions = [{ tool, action, params: parseJson(rest, {}) }];",
+    "  } else {",
+    "    const text = [first, ...args].join(' ').trim() || await readStdin();",
+    "    const parsed = parseJson(text, {});",
+    "    actions = Array.isArray(parsed) ? parsed : Array.isArray(parsed.actions) ? parsed.actions : [parsed];",
+    "  }",
+    "  const body = {",
+    "    platform,",
+    "    bindingId: process.env.STUDIO_CHANNEL_SKILL_BINDING_ID || process.env.STUDIO_CHANNEL_CONNECTOR_BINDING_ID || null,",
+    "    sessionKey: process.env.STUDIO_CHANNEL_SKILL_SESSION_KEY || process.env.STUDIO_CHANNEL_CONNECTOR_SESSION_KEY || null,",
+    "    channel: {",
+    "      channelId: process.env.STUDIO_CHANNEL_SKILL_CHANNEL_ID || null,",
+    "      channelType: process.env.STUDIO_CHANNEL_SKILL_CHANNEL_TYPE || null,",
+    "      fromUid: process.env.STUDIO_CHANNEL_SKILL_FROM_UID || null,",
+    "      messageId: process.env.STUDIO_CHANNEL_SKILL_MESSAGE_ID || null",
+    "    },",
+    "    actions",
+    "  };",
+    "  const headers = { 'content-type': 'application/json' };",
+    "  const token = process.env.STUDIO_CHANNEL_SKILL_TOKEN || process.env.STUDIO_DAEMON_MANAGEMENT_TOKEN || '';",
+    "  if (token) headers.authorization = `Bearer ${token}`;",
+    "  const response = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(body) });",
+    "  const text = await response.text();",
+    "  let payload;",
+    "  try { payload = text ? JSON.parse(text) : {}; } catch { payload = { ok: false, error: 'invalid_daemon_response', body: text }; }",
+    "  process.stdout.write(`${JSON.stringify(payload, null, 2)}\\n`);",
+    "  if (!response.ok || payload.daemonError === true) process.exitCode = 1;",
+    "}",
+    "",
+    "main().catch((error) => {",
+    "  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\\n`);",
+    "  process.exitCode = 2;",
+    "});",
+    "",
+  ].join("\n");
+}
+
+function materializeStudioChannelSkillToolBin(agentRuntimeDir?: string | null): string | null {
+  const root = normalizeString(agentRuntimeDir);
+  if (!root) return null;
+  const binDir = path.join(root, "channel-skill-tools", "bin");
+  try {
+    fs.mkdirSync(binDir, { recursive: true, mode: 0o700 });
+    const scriptPath = path.join(binDir, "studio-channel-skill");
+    fs.writeFileSync(scriptPath, studioChannelSkillToolScript(), { encoding: "utf8", mode: 0o700 });
+    fs.chmodSync(scriptPath, 0o700);
+    return binDir;
+  } catch {
+    return null;
+  }
+}
+
+function channelSkillEnv(request: ChannelConnectorAgentTurnRequest): Record<string, string> {
+  const endpoint = normalizeString(request.daemonManagementEndpoint);
+  if (!endpoint) return {};
+  const env: Record<string, string> = {
+    STUDIO_CHANNEL_SKILL_ENDPOINT: `${endpoint.replace(/\/+$/, "")}/channel-skill/action`,
+    STUDIO_CHANNEL_SKILL_BINDING_ID: request.binding.id,
+    STUDIO_CHANNEL_SKILL_SESSION_KEY: request.sessionKey,
+    STUDIO_CHANNEL_SKILL_PLATFORM: request.binding.platform,
+    STUDIO_CHANNEL_SKILL_MESSAGE_ID: request.message.messageId,
+    STUDIO_CHANNEL_SKILL_CHANNEL_ID: request.message.channelId,
+    STUDIO_CHANNEL_SKILL_CHANNEL_TYPE: String(request.message.channelType),
+    STUDIO_CHANNEL_SKILL_FROM_UID: request.message.fromUid,
+  };
+  const token = normalizeString(request.daemonManagementToken);
+  if (token) env.STUDIO_CHANNEL_SKILL_TOKEN = token;
+  return env;
+}
+
+function channelAgentBaseEnv(request: ChannelConnectorAgentTurnRequest): Record<string, string> {
+  const env = {
+    ...gatewayEnv(request.gatewayEndpoint, request.gatewayClientKey),
+    ...channelSkillEnv(request),
+  };
+  const skillToolBin = materializeStudioChannelSkillToolBin(request.agentRuntimeDir);
+  if (skillToolBin) env.PATH = `${skillToolBin}:${env.PATH}`;
+  return env;
+}
+
 function buildClaudeCodeStdin(content: string, imageParts: ClaudeCodeContentPart[]): string {
   const messageContent: string | ClaudeCodeContentPart[] = imageParts.length
     ? [...imageParts, { type: "text", text: content }]
@@ -1010,7 +1146,7 @@ export function buildChannelConnectorAgentProcessRequest(
   if (!content) return null;
   const cwd = ensureWorkDir(project.workDir);
   const timeoutMs = request.timeoutMs || 10 * 60_000;
-  const baseEnv = gatewayEnv(request.gatewayEndpoint, request.gatewayClientKey);
+  const baseEnv = channelAgentBaseEnv(request);
   const reasoningEffort = cliReasoningEffort(project.reasoningEffort, project.agent);
 
   if (project.agent === "codex") {

@@ -86,6 +86,7 @@ Provider / model routing 目标：
 ```
 
 - Channel Connectors 改为 Studio 原生实现，不上线短期托管 cc-connect 方案；CC 二开源码已有功能都必须纳入 Studio 原生目标，首批平台只是实施顺序。
+- 2026-06-12 边界更新：Feishu、Octo 以及后续 IM 渠道的首期上线验收只要求私聊能力完整、稳定、好用；私聊里的 Agent CLI、skills、本地 runtime action、文件收发、权限审批、流式进度、上下文和 compact 必须做完整。已实现的群聊/thread/多 bot 协作能力保留为 best-effort，不再继续扩展，不再作为发布前目标或下一步任务。
 - Channel Connectors 使用独立 Studio 配置/secret/state，不写入 `openclaw.json`、OpenClaw channels 或 OpenClaw bindings。
 - Channel daemon 必须常驻守护；Studio / OpenClaw 崩溃时仍保持渠道服务和 Codex/Gateway 对话链路，不内置额外修复流程。
 - Channel / Agent 任意新功能实现前必须先定位 CC Go 对应实现，按平台协议、消息语义、交互菜单、错误处理、长连接和状态流做 1:1 contract 迁移，再做 Studio 化精修；禁止在已有成熟设计时重新盲目设计。
@@ -99,11 +100,11 @@ Provider / model routing 目标：
 - IM 上下文管理分三层：Studio/Gateway 负责模型预算和触发决策；Agent 原生上下文管理优先执行，用于压缩 Agent 内部 session；Studio-managed compact 只作为不支持原生、原生失败或非持久 runner 不可靠时的通用兜底。
 - IM `/compact` / `/compress` 是“智能压缩”入口：优先调用当前 Agent 的原生 compact/compress 能力；不支持或失败时调用 Studio Gateway `/responses/compact` 压缩当前 IM history，替换为 summary，并清理不可靠的旧 Agent 续接。Codex `exec/resume` 不得硬塞交互式 `/compact`，Codex `app-server` 等持久 driver 才可走原生 compact。`/native /compact` 保留为强制原生命令入口。
 - Agent runner 采用混合策略：默认 one-shot `exec/resume` 保持守护稳定、易恢复、易隔离；Codex persistent driver 先作为 metadata 实验路径接入 `codex app-server`，真实 `turn/start`、`/compact` 和 `turn/interrupt` 已通过 Studio Gateway smoke，IM `/stop` 已通过 daemon fake app-server 回归；扩大默认范围前仍需真实 IM live stop、session cleanup 和 fallback 验收。其他 Agent 的持久 driver 逐 Agent 评估。持久 driver 必须按 binding + IM session + Agent Profile + permission 隔离，有 idle TTL、max sessions、健康检查、强制 kill、日志和降级到 one-shot 的策略。
-- 多 Agent 必须基于 session pool 而不是单全局 TUI：每个 IM 会话可绑定不同 Agent/Profile/模型/工作目录；群聊中多 bot 或多 Agent relay 不共享进程上下文，跨 Agent 协作通过显式 relay/session key 记录。
+- 多 Agent 必须基于 session pool 而不是单全局 TUI：每个私聊 IM 会话可绑定不同 Agent/Profile/模型/工作目录；群聊中的多 bot 或多 Agent relay 只保留现有 best-effort 能力，首期不继续扩展。
 - `/stop`、取消、重置等 IM 执行动作必须走真实 runner/session contract；其中 `/stop` 必须终止当前 binding + IM session 的 active CLI Agent 进程，不能只返回占位提示。
 - Feishu 长连接不得只相信 SDK `connected` 状态；Studio 必须记录真实 dispatcher callback、business message ingress、ping/pong 和控制帧 freshness；默认启用当前 Lark SDK 的 lower-case `pingTimeout=3` liveness watchdog，并把有效 ping 调度 clamp 到 10s，`connected` 只有在无 pong overdue、无 transport stale 时才为真；不因空闲无业务消息主动重建；所有 WS event handler 必须快速 ACK，业务处理后台化；死 socket 依赖 SDK liveness、SDK/socket terminal lifecycle、官方重连、OpenClaw-style 外层重建、Studio short pong timeout 和 transport stale 回收处理；同一会话已处理更新消息后，Feishu 补投的更旧消息必须按水位线跳过，不得插队进入 Agent。其他自动轮换必须先有专项文档证据。发布前必须评估并记录是否采用 webhook/hybrid ingress 或 Studio-owned WS transport 来达到 Octo 级稳定目标。
 - Rich 平台优先使用卡片/Markdown；普通文本平台也必须有清晰命令分组、当前会话状态、原生 Agent 透传说明和长回复读取入口，不能只给一串无结构命令列表。
-- 原生 contract 统一 incoming、reply、attachment、voice、thread、ack/retry、allowlist、admin、rate limit、banned words、slash command、cron、hooks、relay、session key 和 bot->Agent binding。
+- 原生 contract 首期统一私聊 incoming、reply、attachment、voice、ack/retry、allowlist、admin、rate limit、banned words、slash command、session key 和 bot->Agent binding；thread、群聊 relay、cron/hooks 只保留既有能力，不再作为当前推进项。
 - 优先 Octo(dmwork)，再飞书、微信/企业微信；后续覆盖 CC 已有平台，包括钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等。
 - 参考源：CC 二开全量源码 `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`，其中 `platform/dmwork` 即 Octo；OpenClaw Feishu 最新参考 `/home/binbin/.openclaw/projects/openclaw/latest/extensions/feishu`；OpenClaw Octo 插件参考 `/home/binbin/.openclaw/extensions/octo` 与 `/home/binbin/.openclaw/extensions/octo/skills/octo-bot-api/SKILL.md`；生产实现不依赖 cc-connect binary，也不得恢复旧 `resources/codex-stack` 生产路径。
 
@@ -141,7 +142,7 @@ Provider / model routing 目标：
 - Active routing 可把 provider 应用到 Codex、Claude Code、OpenCode、OpenClaw；停用 provider 不可被选中，已被选中的 provider 停用后必须回退或提示；每个 active route 必须显示 resolved provider/model，并能验证实际 Gateway 客户端协议入口。
 - Codex、Claude Code、OpenCode、OpenClaw 可通过 App Connections 生成脱敏配置 preview，并在用户确认后 apply；apply 前必须有本地 Gateway key 和可用 provider 模型，写入前备份原文件，且支持 rollback。
 - App Connections 支持一键切换 app profile：默认模型、每个 App 单独模型覆盖、上下文窗口、compact 阈值、max output、reasoning/effort、必要兼容参数；模型选择必须来自 Gateway 可用模型列表并允许手动输入兼容 alias。
-- Channel Connectors 原生配置 Octo(dmwork) / 飞书 / 微信等 IM 渠道；消息进入本地 CLI Agent bot，再由 Studio Gateway 调模型。
+- Channel Connectors 原生配置 Octo(dmwork) / 飞书 / 微信等 IM 渠道；首期验收聚焦私聊消息进入本地 CLI Agent bot，再由 Studio Gateway 调模型。
 - Channel Connectors 遇到图片/视频/贴纸等视觉附件时，必须优先使用 Gateway 模型能力：当前模型支持 vision 则保持不变；当前模型不支持且模型池存在 vision 模型时，仅本轮切换到 vision 模型；没有 vision 模型时继续受控对话并禁止视觉推断。
 - Channel Connectors `/compact` 验收必须证明：命令不会作为普通 prompt 发送给 Agent；优先按当前 runner 能力触发 Agent 原生 compact/compress；不支持或失败时 Gateway compact 使用用户/配置给出的 endpoint 前缀请求 `/responses/compact`，例如 endpoint 已带 `/v1` 时请求 `/v1/responses/compact`；Gateway compact 成功后 history 只保留 compact summary；不可靠的旧 Agent/Codex thread 续接被清理；所有失败都返回明确错误。
 - Channel Connectors 自动上下文管理验收必须证明：resolved model 的 `contextWindow/maxOutputTokens` 可进入本 IM session 预算；Gateway runtime usage 优先，字符估算兜底；达到剩余上下文阈值时优先触发 Agent-native compact；成功后记录 used-token baseline，后续按 `当前 used - baseline used` 继续判断；runner 不支持、原生失败或 one-shot 不可靠时降级 Studio compact；失败或 native 阻塞才进入 retry cooldown；每次 `/status` 或可选 footer 能显示剩余上下文百分比。
@@ -151,7 +152,7 @@ Provider / model routing 目标：
 - Claude Code 权限验收必须证明：`control_request` 不能只作为进度展示，必须按 CC Go 合同回写 `control_response`；自动模式可 allow，保守模式必须 fail-safe deny 或经 IM 文本/Feishu 按钮卡片批准；`AskUserQuestion` 必须按 CC Go 特例处理为用户问题回答，不能被 yolo/full-auto 自动 allow，也不能把 `allow/deny` 误当权限命令。
 - Channel Connectors session 管理验收必须证明：`/name` 可命名当前或指定序号 Agent session，`/search` 可按名称/sessionId 等字段搜索，Feishu 卡片和纯文本菜单都显示命名结果。
 - 持久 session driver 验收必须证明：进程可观测、可停止、可 idle 回收，并在 Studio API/UI 暴露 status、reap-idle、kill 管理入口；crash 后 session store 不损坏；同一用户可切换多个 Agent；不同用户/群/线程不会串上下文；driver 不支持某能力时能回退 one-shot runner。
-- Channel Connectors 发布前必须覆盖 CC 二开源码的核心能力：多平台、多 Agent、文本/图片/文件/语音、群聊 mention、会话续接/切换、allowlist/admin/rate limit、slash command、cron、hooks、relay、management/status/logs。
+- Channel Connectors 首期发布前必须覆盖 CC 二开源码中私聊相关的核心能力：多平台私聊、多 Agent 绑定、文本/图片/文件/语音、会话续接/切换、allowlist/admin/rate limit、slash command、management/status/logs。群聊 mention、thread、cron、hooks、relay 和多 bot 协作保留既有实现，不再作为首期阻断项。
 - 客户端配置只保存 placeholder 或 local endpoint；真实 upstream key 留在 Studio secret store。
 - OpenClaw/Studio 崩溃隔离测试通过：daemon direct endpoint 继续可用。
 - 生产前后端无 `codex-stack` 命名入口，无 CPA/Compact 用户可见链路。
@@ -166,5 +167,5 @@ Provider / model routing 目标：
 | Phase C | 删除 Codex Stack 前后端、资源和旧测试入口（已完成） |
 | Phase D | 先新建 Studio Gateway 服务与配置面：daemon 状态/启停、provider 配置、provider 启停、active routing、resolved route 状态、聚合 `/v1/models`、模型池/别名/优先级、模型能力和上下文/输出预算、可编辑统一 Gateway key、协议/模型自动识别、secret、模型列表/默认模型、provider-native smoke、client-protocol active-route smoke；UI 借鉴旧 CPA 的运维入口和 cc-switch 的 Provider 管理体验，检测入口贴近 Base URL / API Key，daemon Runtime 只暴露主操作并把低频运维动作收进更多菜单，启停动作以 HTTP readiness 为最终成功条件 |
 | Phase E | Codex、Claude Code、OpenCode、OpenClaw 配置 preview/apply/profile/rollback 与隔离 HOME HTTP 验收已完成；继续做真实 CLI 启动 smoke 和细节兼容 |
-| Phase F | Channel Connectors 原生 daemon 与 CLI Agent Bot：CC 全功能映射、Octo(dmwork)、飞书、微信、多 Agent、消息/治理/自动化 contract、Gateway 模型能力路由、上下文预算/自动 compact 与管理面 |
+| Phase F | Channel Connectors 原生 daemon 与 CLI Agent Bot：首期聚焦 Octo(dmwork)、飞书、后续微信等 IM 私聊完整闭环，多 Agent 私聊绑定、消息/文件/权限/进度/治理 contract、Gateway 模型能力路由、上下文预算/自动 compact 与管理面；群聊/thread/多 bot 协作只保留现有 best-effort |
 | Phase G | Studio Gateway 文档已切到正式文件名；Channel Connectors 原生方案文档已建立 |

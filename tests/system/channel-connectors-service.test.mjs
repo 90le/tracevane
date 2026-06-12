@@ -4557,14 +4557,23 @@ test("Octo incoming can send rendered reply through REST transport when opted in
     assert.equal(requests.length, 1);
     assert.equal(requests[0].path, "/v1/bot/sendMessage");
     assert.equal(requests[0].authorization, "Bearer test-token");
+    assert.match(requests[0].body.client_msg_no, /^[0-9a-f-]{36}$/);
     assert.deepEqual(requests[0].body, {
       channel_id: "group-a",
       channel_type: 2,
+      client_msg_no: requests[0].body.client_msg_no,
       payload: {
         type: 1,
-        content: "完成",
+        content: "@Alice 完成",
         mention: {
           uids: ["user-3"],
+          entities: [
+            {
+              uid: "user-3",
+              offset: 0,
+              length: 6,
+            },
+          ],
         },
       },
     });
@@ -4665,9 +4674,11 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   const codexNativeSkill = fs.readFileSync(codexNativeSkillPath, "utf8");
   assert.match(codexNativeSkill, /Studio Channel Connector runtime projection/);
   assert.match(codexNativeSkill, /Runtime Action Index/);
-  assert.match(codexNativeSkill, /- Send Messages/);
+  assert.match(codexNativeSkill, /## Send Messages/);
+  assert.match(codexNativeSkill, /studio-channel-skill octo octo_management\.group-members/);
   assert.match(codexNativeSkill, /dm:human_uid/);
   assert.match(codexNativeSkill, /studio-channel-messages/);
+  assert.doesNotMatch(codexNativeSkill, /```studio-octo-actions/);
   assert.doesNotMatch(codexNativeSkill, /openclaw plugins install/);
   assert.doesNotMatch(codexNativeSkill, /Step 1: Register/);
   for (const cleanupPath of processRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
@@ -4895,6 +4906,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     gatewayEndpoint: project.gatewayEndpoint,
     gatewayClientKey: "sk-local",
     agentRuntimeDir,
+    daemonManagementEndpoint: "http://127.0.0.1:18798",
+    daemonManagementToken: "mgmt-token",
     session: { codexThreadId: "019e9b49-0b62-7132-845a-f19aba1484b7" },
   });
   assert.ok(resumeRequest);
@@ -4908,6 +4921,21 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(resumeRequest.cleanupPaths?.length || 0, 0);
   assert.equal(resumeRequest.env.CODEX_HOME, path.join(agentRuntimeDir, "codex-home"));
   assert.equal(fs.existsSync(path.join(resumeRequest.env.CODEX_HOME, "config.toml")), true);
+  const channelSkillBin = path.join(agentRuntimeDir, "channel-skill-tools", "bin");
+  const channelSkillScript = path.join(channelSkillBin, "studio-channel-skill");
+  assert.equal(fs.existsSync(channelSkillScript), true);
+  assert.equal(fs.statSync(channelSkillScript).mode & 0o777, 0o700);
+  assert.equal(resumeRequest.env.PATH.split(":")[0], channelSkillBin);
+  assert.equal(resumeRequest.env.STUDIO_CHANNEL_SKILL_ENDPOINT, "http://127.0.0.1:18798/channel-skill/action");
+  assert.equal(resumeRequest.env.STUDIO_CHANNEL_SKILL_TOKEN, "mgmt-token");
+  assert.equal(resumeRequest.env.STUDIO_CHANNEL_SKILL_BINDING_ID, "octo-codex");
+  assert.equal(resumeRequest.env.STUDIO_CHANNEL_SKILL_SESSION_KEY, "dmwork:dm:user-1");
+  assert.equal(resumeRequest.env.STUDIO_CHANNEL_SKILL_CHANNEL_ID, "user-1");
+  assert.equal(resumeRequest.env.STUDIO_CHANNEL_SKILL_FROM_UID, "user-1");
+  assert.equal(resumeRequest.env.STUDIO_CHANNEL_SKILL_MESSAGE_ID, "m-runner-1");
+  const channelSkillScriptSource = fs.readFileSync(channelSkillScript, "utf8");
+  assert.match(channelSkillScriptSource, /STUDIO_CHANNEL_SKILL_ENDPOINT/);
+  assert.match(channelSkillScriptSource, /fetch\(endpoint/);
 
   let turnCleanupPath = null;
   const result = await runChannelConnectorAgentTurn({
@@ -5112,7 +5140,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.match(opencodeRequest.args.at(-1), /^\[Studio outbound file\/message policy\]/);
   assert.match(opencodeRequest.args.at(-1), /\[Current IM message - respond to this ONLY\]\nhi codex/);
   assert.match(opencodeRequest.args.at(-1), /studio-channel-files/);
-  assert.match(opencodeRequest.args.at(-1), /studio-feishu-actions/);
+  assert.match(opencodeRequest.args.at(-1), /studio-channel-skill octo/);
+  assert.doesNotMatch(opencodeRequest.args.at(-1), /studio-feishu-actions/);
   assert.doesNotMatch(opencodeRequest.args.at(-1), /cc-connect/);
   for (const cleanupPath of opencodeRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
@@ -5130,15 +5159,19 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.deepEqual(feishuOpenCodeConfig.instructions, [
     "skills/feishu_messaging/SKILL.md",
     "skills/feishu_doc/SKILL.md",
+    "skills/feishu_app_scopes/SKILL.md",
     "skills/feishu_drive/SKILL.md",
     "skills/feishu_perm/SKILL.md",
     "skills/feishu_wiki/SKILL.md",
+    "skills/feishu_bitable/SKILL.md",
   ]);
   const feishuDocSkill = fs.readFileSync(
     path.join(feishuOpenCodeRequest.env.XDG_CONFIG_HOME, "opencode", "skills", "feishu_doc", "SKILL.md"),
     "utf8",
   );
-  assert.match(feishuDocSkill, /studio-feishu-actions/);
+  assert.match(feishuDocSkill, /studio-channel-skill feishu/);
+  assert.match(feishuDocSkill, /studio-channel-skill feishu feishu_doc\.read/);
+  assert.doesNotMatch(feishuDocSkill, /```studio-feishu-actions/);
   assert.match(feishuDocSkill, /Supported now without approval: `read`, `list_blocks`, `get_block`/);
   assert.match(feishuDocSkill, /Supported now after Studio IM approval: `create`/);
   assert.doesNotMatch(feishuDocSkill, /openclaw plugins install/i);
@@ -7024,7 +7057,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(octoSkillContext, /### \/octo-send \[binding\]/);
   assert.match(octoSkillContext, /Use Studio Octo channel transport for DM, group, thread, and mention work/);
   assert.match(octoSkillContext, /studio-channel-messages/);
-  assert.match(octoSkillContext, /studio-octo-actions/);
+  assert.match(octoSkillContext, /studio-channel-skill octo/);
+  assert.doesNotMatch(octoSkillContext, /studio-octo-actions/);
   assert.match(octoSkillContext, /octo_management.*group-members/);
   assert.match(octoSkillContext, /octo_management.*file-download-url/);
   assert.match(octoSkillContext, /octo_management.*message-edit/);
@@ -7073,7 +7107,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(feishuSkillContext, /\/feishu-card: Build Feishu card and message workflows/);
   assert.match(feishuSkillContext, /\/feishu-doc-api: Read, write, and attach files in Feishu documents/);
   assert.match(feishuSkillContext, /Runtime Action Index/);
-  assert.match(feishuSkillContext, /Only use the Runtime Action Index entries below/);
+  assert.match(feishuSkillContext, /Use native skill runner calls below/);
+  assert.match(feishuSkillContext, /studio-channel-skill feishu/);
   assert.match(feishuSkillContext, /feishu_channel.*channel-info/);
   assert.match(feishuSkillContext, /feishu_channel.*thread-reply/);
   assert.match(feishuSkillContext, /feishu_app_scopes.*list/);
@@ -7098,7 +7133,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.ok(defaultOctoContext);
   assert.match(defaultOctoContext, /### \/octo-bot-api \[platform:octo\]/);
   assert.match(defaultOctoContext, /studio-channel-messages/);
-  assert.match(defaultOctoContext, /studio-octo-actions/);
+  assert.match(defaultOctoContext, /studio-channel-skill octo/);
+  assert.doesNotMatch(defaultOctoContext, /studio-octo-actions/);
   assert.match(defaultOctoContext, /octo_management.*history/);
   assert.match(defaultOctoContext, /octo_management.*file-download-url/);
   assert.match(defaultOctoContext, /octo_management.*message-edit/);
@@ -7136,7 +7172,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(defaultFeishuContext, /### \/feishu-messaging \[platform:feishu\]/);
   assert.match(defaultFeishuContext, /### \/feishu-doc \[platform:feishu\]/);
   assert.match(defaultFeishuContext, /### \/feishu-app-scopes \[platform:feishu\]/);
-  assert.match(defaultFeishuContext, /studio-feishu-actions/);
+  assert.match(defaultFeishuContext, /studio-channel-skill feishu/);
+  assert.doesNotMatch(defaultFeishuContext, /studio-feishu-actions/);
   assert.match(defaultFeishuContext, /feishu_channel.*channel-list/);
   assert.match(defaultFeishuContext, /feishu_app_scopes.*list/);
   assert.match(defaultFeishuContext, /Supported now without approval: `read`, `list_blocks`, `get_block`/);
