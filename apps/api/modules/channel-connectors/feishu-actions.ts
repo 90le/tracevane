@@ -70,9 +70,11 @@ function feishuActionFromValue(value: unknown): ChannelConnectorFeishuActionRequ
   const tool = normalizeToolName(record.tool || record.skill || record.name || record.feishuTool || record.feishu_tool);
   const action = normalizeString(record.action);
   if (!tool || !action) return null;
-  const paramsSource = record.params !== undefined || record.arguments !== undefined || record.args !== undefined
+  const hasExplicitParams = record.params !== undefined || record.arguments !== undefined || record.args !== undefined;
+  const paramsSource = hasExplicitParams
     ? recordFrom(record.params ?? record.arguments ?? record.args)
     : record;
+  if (hasExplicitParams) return { tool, action, params: paramsSource };
   const { tool: _tool, skill: _skill, name: _name, feishuTool: _feishuTool, feishu_tool: _feishu_tool, action: _action, params: _params, arguments: _arguments, args: _args, ...params } = paramsSource;
   return { tool, action, params };
 }

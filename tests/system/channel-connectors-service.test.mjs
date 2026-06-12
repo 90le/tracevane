@@ -1331,6 +1331,8 @@ test("native Channel Connectors extracts Feishu action manifests", () => {
       { skill: "im", action: "channel-info", params: { chat_id: "oc_1" } },
       { skill: "scopes", action: "list" },
       { skill: "bitable", action: "list_records", params: { app_token: "base_a", table_id: "tbl_a" } },
+      { skill: "bitable", action: "create_app", params: { name: "Project Tracker", folder_token: "fld_a" } },
+      { skill: "bitable", action: "create_field", params: { app_token: "base_a", table_id: "tbl_a", name: "Score", field_type: 2 } },
     ]),
     "```",
   ].join("\n"));
@@ -1344,6 +1346,8 @@ test("native Channel Connectors extracts Feishu action manifests", () => {
     { tool: "feishu_channel", action: "channel-info", params: { chat_id: "oc_1" } },
     { tool: "feishu_app_scopes", action: "list", params: {} },
     { tool: "feishu_bitable", action: "list_records", params: { app_token: "base_a", table_id: "tbl_a" } },
+    { tool: "feishu_bitable", action: "create_app", params: { name: "Project Tracker", folder_token: "fld_a" } },
+    { tool: "feishu_bitable", action: "create_field", params: { app_token: "base_a", table_id: "tbl_a", name: "Score", field_type: 2 } },
   ]);
 
   const invalid = extractChannelConnectorFeishuActions([
