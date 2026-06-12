@@ -34,6 +34,7 @@
   - Claude Code 验证同一个 stream-json 常驻进程接收普通 turn 和 `/compact`，不回退 one-shot。
   - OpenCode 验证 `/compact` 通过 `run --session <id>` 续接 live session，不回退 one-shot。
   - 新增 Octo daemon 私聊 `/compact` 回归，证明 IM 入口会路由到 Claude/OpenCode persistent session，不走 Gateway fallback。
+  - 新增 Feishu daemon native-first wiring 回归，锁定 Feishu 长连接派发会先调用 native compact，再允许 Gateway fallback。
 
 ## 最近验证
 
@@ -43,7 +44,8 @@
 - 本轮验证通过：`npm run build:api`
 - 本轮验证通过：`node --test --test-name-pattern "persistent Claude and OpenCode drivers run native compact" tests/system/channel-connectors-service.test.mjs`
 - 本轮验证通过：`node --test --test-name-pattern "routes Claude and OpenCode compact" tests/system/channel-connectors-service.test.mjs`
-- 本轮验证通过：`node --test tests/system/channel-connectors-service.test.mjs`，92/92 全部通过。
+- 本轮验证通过：`node --test --test-name-pattern "Feishu compact native-first" tests/system/channel-connectors-service.test.mjs`
+- 本轮验证通过：`node --test tests/system/channel-connectors-service.test.mjs`，93/93 全部通过。
 - 本轮文档清理验证以 `git diff --check` 和 stale term 检查为准。
 
 ## 已知边界
@@ -51,7 +53,7 @@
 - Feishu transport 内仍保留一套低层 legacy action helper 和对应直接 transport 回归；它已不再由 Agent prompt、runner、daemon endpoint 或 UI 暴露。后续如继续瘦身，应单独删除这段 Doc/Drive/Wiki/Bitable 直接 API helper，避免和私聊文件/图片 transport 误删混在一起。
 - Octo/Feishu 群聊和管理能力已有实现继续 best-effort 保留，但新需求默认不继续扩展。
 - 同 session FIFO queue 当前是 daemon 内存队列；Channel daemon 重启会丢失未开始的排队消息，durable queue 尚未实现。
-- Claude Code / OpenCode native compact 已覆盖 driver 层和 Octo daemon 私聊入口；仍需 Feishu live smoke 证明长连接入口一致。
+- Claude Code / OpenCode native compact 已覆盖 driver 层、Octo daemon 私聊入口和 Feishu native-first wiring；仍需 Feishu 外部 live smoke 证明真实长连接入口一致。
 - 工具流仍需继续打磨：Codex、Claude Code、OpenCode 都必须稳定提取工具名、输入、stdout/stderr、exit/status、真实输出、过程回复和最终回复分类；OpenCode realtime JSONL 与 SQLite fallback 已对齐，后续重点继续看 Claude/Codex live 差异。
 
 ## 下一步

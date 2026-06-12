@@ -12241,6 +12241,34 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.doesNotMatch(botMenuHandler, /await dispatchFeishuParsedEvent/);
 });
 
+test("native Channel Connectors daemon keeps Feishu compact native-first before Gateway fallback", () => {
+  const daemonSource = fs.readFileSync(
+    path.resolve("apps/api/modules/channel-connectors/daemon.ts"),
+    "utf8",
+  );
+  const feishuDispatch = daemonSource.slice(
+    daemonSource.indexOf("async function dispatchFeishuParsedEvent"),
+    daemonSource.indexOf("function dispatchFeishuParsedEventInBackground"),
+  );
+  assert.match(feishuDispatch, /handleChannelConnectorCommand\(\{/);
+  const nativeIndex = feishuDispatch.indexOf("nativeCompactConversation: (scope) => nativeCompactChannelConnectorConversation");
+  const fallbackIndex = feishuDispatch.indexOf("compactConversation: (scope) => compactChannelConnectorConversation");
+  assert.ok(nativeIndex > 0, "Feishu dispatch must wire nativeCompactConversation");
+  assert.ok(fallbackIndex > 0, "Feishu dispatch must still wire Gateway compact fallback");
+  assert.ok(nativeIndex < fallbackIndex, "Feishu dispatch must offer native compact before Gateway fallback");
+  assert.match(feishuDispatch, /binding,\s*sessionKey:\s*scope\.sessionKey,\s*project:\s*scope\.project,\s*message:\s*scope\.message,/);
+  assert.match(feishuDispatch, /gatewayClientKey:\s*key/);
+
+  const nativeCompact = daemonSource.slice(
+    daemonSource.indexOf("async function nativeCompactChannelConnectorConversation"),
+    daemonSource.indexOf("interface GatewayRuntimeLogEntryForUsage"),
+  );
+  assert.match(nativeCompact, /input\.binding\.platform === "feishu"\s*\?\s*input\.config\.paths\.feishuEvents\s*:\s*input\.config\.paths\.octoEvents/);
+  assert.match(nativeCompact, /eventKind:\s*"agent\.native_compact\.finished"/);
+  assert.match(nativeCompact, /eventKind:\s*"agent\.native_compact\.failed"/);
+  assert.match(nativeCompact, /fallbackAllowed:\s*result\.ok !== true/);
+});
+
 test("native Channel Connectors keeps platform-native group context strategy", () => {
   const daemonSource = fs.readFileSync(
     path.resolve("apps/api/modules/channel-connectors/daemon.ts"),

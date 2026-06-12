@@ -108,6 +108,7 @@ Octo(dmwork)：
 - OpenCode `run --session` 已覆盖普通 turn、文件 manifest、视觉附件、compact、stop/cancel；SQLite fallback 已统一复用 live parser，避免丢工具结果或把过程回复拼进最终回复。
 - Claude Code / OpenCode persistent native compact 已新增真实子进程 driver 回归：Claude 用同一个 stream-json 常驻进程接收 `/compact`，OpenCode 用 `run --session <id>` 续接 `/compact`，均不回退 one-shot。
 - Octo daemon 私聊 `/compact` 已新增回归：普通消息建立 live session 后，`/compact` 会进入 Claude/OpenCode persistent driver，不走 Gateway fallback。
+- Feishu daemon 已补 native-first wiring 回归：长连接派发会先调用 Agent native compact，再允许 Gateway fallback；外部 live smoke 仍待复验。
 
 ## 6. 当前完成
 
