@@ -52,6 +52,8 @@
   - Feishu 显式 `/compact` live 已验证 Codex：`longConnection=true`，`command=compact`，`agent=codex`，`model=glm-5`，`nativeOk=true`，`progressEventCount=4`。
   - Feishu 显式 `/compact` live 已验证 Claude Code：`longConnection=true`，`command=compact`，`agent=claude-code`，`model=glm-5`，`nativeOk=true`，`progressEventCount=5`。
   - Feishu 显式 `/compact` live 已验证 OpenCode：`longConnection=true`，`command=compact`，`agent=opencode`，`model=glm-5`，`nativeOk=true`，`progressEventCount=4`。
+  - Feishu 入站文件 live 已验证：`messageType=file`、`attachmentCount=1`、本地 staging 文件存在、history 有 `attachmentSummaries`，Claude Code 可读取文件内容并回复。
+  - Feishu 权限卡片链路同轮观察通过：文件处理触发 Bash `permission-pending`，用户 `approve-all` 后进入 `permission-allowed-all`，工具结果回到 Agent 流。
   - 真实 CLI thinking smoke：
     - Claude Code 2.1.86 + `claude-sonnet-4-5` + `--effort max` 在当前 Gateway 下只输出 `text`，未输出 `thinking` item。
     - OpenCode 1.17.0 + `--thinking`：`gpt-5.4-mini` 未输出 reasoning；`claude-sonnet-4-5` 输出真实 `reasoning` part。
@@ -81,6 +83,7 @@
 - 本轮 live 验证通过：`node scripts/smoke-channel-connectors-feishu-compact-live.mjs --mode explicit --since-minutes 30 --json`，识别 1 条 Feishu long-connection Codex 显式 `/compact` native 证据。
 - 本轮 live 验证通过：`node scripts/smoke-channel-connectors-feishu-compact-live.mjs --mode explicit --agent claude-code --since-minutes 45 --json`，识别 1 条 Feishu long-connection Claude Code 显式 `/compact` native 证据。
 - 本轮 live 验证通过：`node scripts/smoke-channel-connectors-feishu-compact-live.mjs --mode explicit --agent opencode --since-minutes 45 --json`，识别 1 条 Feishu long-connection OpenCode 显式 `/compact` native 证据。
+- 本轮 live 验证通过：Feishu 文件消息 `om_x100b6df679c474a4c23ef686549039b`，staging 路径存在，`agent.run.finished agentOk=true replySent=true`。
 - 本轮文档清理验证以 `git diff --check` 和 stale term 检查为准。
 
 ## 已知边界
@@ -95,5 +98,5 @@
 ## 下一步
 
 1. 继续稳定 Codex、Claude Code、OpenCode 工具流/回复解析，重点修复空工具结果、工具结果被吞、过程回复/最终回复分类错误。
-2. 做 Feishu/Octo 私聊文件、图片、权限审批和 `/compact` live smoke 复验；Markdown 已验证，后续只做回归抽查。
+2. 做 Feishu/Octo 私聊文件、图片、权限审批和 `/compact` live smoke 复验；Feishu 入站文件已完成，继续 Feishu 图片、出站文件和 Octo 对应项。
 3. 评估 durable queue，避免 daemon 重启丢失未开始消息。
