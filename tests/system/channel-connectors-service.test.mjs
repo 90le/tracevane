@@ -12370,7 +12370,7 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /normalizeString\(event\.itemType\)\.toLowerCase\(\) === "tool_result"/);
   assert.match(daemonSource, /kind === "tool_result" && isRecoverableToolResultErrorProgressEvent\(event\)/);
   assert.match(daemonSource, /if \(kind === "assistant"\)[\s\S]{0,40}return "💬";/);
-  assert.match(daemonSource, /if \(event\.type === "assistant"\)[\s\S]{0,40}return "过程回复"/);
+  assert.match(daemonSource, /if \(event\.type === "assistant"\)[\s\S]{0,80}return shortMessage\(event\.text,\s*900\)/);
   assert.match(daemonSource, /isChannelConnectorProcessProgressEvent/);
   assert.match(daemonSource, /return shouldSendChannelProgressEvent\(control,\s*event,\s*defaults\);/);
   assert.match(daemonSource, /event\.type === "assistant"[\s\S]{0,180}isChannelConnectorProcessProgressEvent\(event\)[\s\S]{0,140}channelConnectorProcessMessagesEnabled\(control,\s*defaults\)/);
@@ -12440,7 +12440,7 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /renderPlainPermissionPrompt\(request,\s*prompt\)/);
   assert.match(daemonSource, /renderPlainPermissionState\(change\)/);
   assert.match(daemonSource, /event\.type === "failed" \|\| event\.type === "error" \|\| event\.type === "tool"/);
-  assert.match(daemonSource, /title:\s*"过程回复"/);
+  assert.match(daemonSource, /if \(entry\.kind === "assistant"\)[\s\S]{0,80}return shortMessage\(entry\.text,\s*900\)/);
   assert.match(daemonSource, /progressToolUseLabel\(parsed\.toolName\)/);
   assert.match(daemonSource, /progressToolResultLabel\(parsed\.toolName\)/);
   assert.match(daemonSource, /formatPlainProgressToolResult\(parsed\.output\)/);
@@ -13813,13 +13813,12 @@ test("native Channel Connectors daemon sends Octo group process replies before f
         const sendContents = requests
           .filter((request) => request.path === "/v1/bot/sendMessage")
           .map((request) => request.body?.payload?.content || "");
-        const processIndex = sendContents.findIndex((content) => {
-          return content.includes("过程回复") && content.includes("我先说明第一步。");
-        });
+        const processIndex = sendContents.findIndex((content) => content.includes("我先说明第一步。"));
         const finalIndex = sendContents.findIndex((content) => content.includes("最终总结。"));
         assert.notEqual(processIndex, -1, JSON.stringify(sendContents));
         assert.notEqual(finalIndex, -1, JSON.stringify(sendContents));
         assert.ok(processIndex < finalIndex, JSON.stringify(sendContents));
+        assert.equal(sendContents[processIndex].includes("过程回复"), false);
         assert.equal(sendContents.some((content) => content.includes("step output")), false);
 
         const octoEvents = await waitForJsonLines(runtimeConfig.paths.octoEvents, (events) => {

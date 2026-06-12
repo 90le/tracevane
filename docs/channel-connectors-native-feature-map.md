@@ -50,6 +50,7 @@
 - OpenCode 结构化工具输出已保留 `stdout`、`stderr` 和 `exitCode`，避免 IM 进度显示成空工具结果。
 - Codex 结构化命令输出已保留嵌套或直接 `stdout` / `stderr`，避免命令执行结果被压成单行或空结果。
 - Claude Code one-shot 与 persistent driver 已保留结构化 `tool_result` 的 `stdout`、`stderr` 和 `exit_code`。
+- 非飞书气泡式进度流的 assistant 过程回复已改为正文直出，不再携带“过程回复”标题。
 - Feishu 卡片进度和 Octo 文本/Markdown 进度已有基础渲染；Markdown 已由用户验证。
 - 已删除 active platform action layer：runner/env/prompt/daemon endpoint/UI chips 不再暴露 `studio-channel-skill` 或 runtime action。
 - OpenCode realtime JSONL 与 SQLite fallback 已共用进度 parser；DB fallback 会保留本轮工具调用/工具结果，并只把最新 assistant message 作为最终回复。
@@ -63,6 +64,7 @@
 ## 下一步
 
 1. 工具流和回复解析：继续复核 Claude/Codex live 差异，修复空工具结果、工具输出丢失、过程回复/最终回复分类错误。
-2. Feishu live `/compact` smoke。
-3. Feishu/Octo 私聊 live smoke：文件、图片、权限审批、compact；Markdown 做抽查回归。
-4. durable queue 设计与实现。
+2. 思考流支持矩阵：确认 Codex、Claude Code、OpenCode 是否原生返回 thinking/reasoning，并补齐解析和 `/thinking` 开关验收。
+3. Feishu live `/compact` smoke。
+4. Feishu/Octo 私聊 live smoke：文件、图片、权限审批、compact；Markdown 做抽查回归。
+5. durable queue 设计与实现。

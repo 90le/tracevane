@@ -3960,7 +3960,6 @@ function sendOctoReadReceiptForMessage(input: {
 }
 
 function octoProgressTitle(event: ChannelConnectorAgentProgressEvent): string {
-  if (event.type === "assistant") return "过程回复";
   if (event.type === "running") return "运行中";
   if (event.type === "reasoning") return "思考";
   if (event.type === "tool") return progressEventToolDirection(event) === "use" ? "工具调用" : "工具结果";
@@ -4040,6 +4039,9 @@ function renderPlainProgressMessage(input: {
 }
 
 function renderOctoProgressText(event: ChannelConnectorAgentProgressEvent): string {
+  if (event.type === "assistant") {
+    return shortMessage(event.text, 900);
+  }
   if (event.type === "tool") {
     const entry: FeishuProgressCardEntry = {
       kind: feishuProgressEntryKind(event),
@@ -6979,11 +6981,7 @@ function renderFeishuProgressEntry(entry: FeishuProgressCardEntry): string {
 
 function renderPlainProgressEntry(entry: FeishuProgressCardEntry): string {
   if (entry.kind === "assistant") {
-    return renderPlainProgressMessage({
-      icon: progressKindIcon(entry.kind),
-      title: "过程回复",
-      body: entry.text,
-    });
+    return shortMessage(entry.text, 900);
   }
   if (entry.kind === "thinking") {
     return renderPlainProgressMessage({

@@ -88,7 +88,7 @@ Octo(dmwork)：
 
 - 入站附件先 staging 到受控目录，再交给 Agent。
 - 出站文件由 Agent 输出 `studio-channel-files` manifest，daemon 校验路径和权限后按平台上传发送。
-- 私聊默认显示思考、过程回复和工具过程；群聊中间过程只保留 best-effort。
+- 私聊默认显示思考、过程回复和工具过程；非飞书气泡式渠道的过程回复按最终回复同格式发送正文，不加“过程回复”标题；群聊中间过程只保留 best-effort。
 
 ## 5. Agent Runner 合同
 
@@ -121,13 +121,15 @@ Octo(dmwork)：
 - Feishu card/menu、会话子卡、命令路由、进度卡片和快速 ACK 后台派发。
 - IM 命令：`/help`、`/status`、`/agent`、`/model`、`/mode`、`/reasoning`、`/dir`、`/cd`、`/new`、`/reset`、`/stop`、`/display`、`/thinking`、`/process`、`/tools`、`/compact` 等核心命令。
 - 私聊工具流、思考流、过程回复显示开关。
+- 思考流需要逐 Agent 评估真实支持度；没有 CLI 原生 thinking/reasoning 事件时不伪造。
 - allowlist/admin、rate limit、banned words 基础治理。
 - active `studio-channel-skill` 与 platform action 暴露层已删除。
 
 ## 7. 下一步
 
 1. 稳定 Codex、Claude Code、OpenCode 的工具流/回复解析，尤其空工具结果、过程回复和最终回复重复问题。
-2. 做 Feishu live `/compact` smoke。
-3. 补 durable queue / 可恢复队列。
-4. 复验 Feishu/Octo 私聊文件、图片、工具流和审批路径；Markdown 后续抽查即可。
-5. 后续路线图：微信/企微、钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE；更多 Agent 如 Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP。
+2. 评估并补齐 Codex、Claude Code、OpenCode 思考流解析和 `/thinking` 开关验收。
+3. 做 Feishu live `/compact` smoke。
+4. 补 durable queue / 可恢复队列。
+5. 复验 Feishu/Octo 私聊文件、图片、工具流和审批路径；Markdown 后续抽查即可。
+6. 后续路线图：微信/企微、钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE；更多 Agent 如 Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP。
