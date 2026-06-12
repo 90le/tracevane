@@ -12,9 +12,9 @@
 - Provider Center 已支持自定义 provider、启停、模型列表/别名/默认模型、能力勾选、批量模型导入、批量预算/能力应用、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
 - App Connections 已覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收。
 - Channel Connectors 走 Studio 原生 CLI Agent Bot 路线；Octo(dmwork) 与 Feishu 已接入 Codex/Claude Code/OpenCode runner、Studio Gateway key、IM session override、slash command、Feishu card/menu/progress、附件 staging、history、group context、reply buffer、queue、stop 和基础治理；Octo daemon 已接入 Bot API 群成员、最近 timeline 历史、文件下载 URL、消息编辑、GROUP.md/THREAD.md、voice context、`/octo` 群/成员/Space/thread/下载/编辑命令、出站消息 manifest 和 `studio-octo-actions` runtime manifest。
-- 2026-06-12 范围更新：Feishu/Octo 后续验收只聚焦私聊完整性。私聊中的 Agent CLI skills、`studio-channel-skill` 同 turn 调用、文件/图片/语音、权限审批、工具流/过程回复、Markdown/卡片渲染、上下文和 compact 必须完整；已实现的群聊/thread/多 bot 协作能力保留为 best-effort，未完成项不再继续推进。
+- 2026-06-12 范围更新：Feishu/Octo 后续验收只聚焦私聊完整性。私聊只要求文本对话、文件/图片传输、Agent CLI 原生能力、工具流/回复解析和 compact；`studio-channel-skill`、平台扩展 action、文档/群/管理类能力不再需要并列入删除/清理目标；已实现的群聊/thread/多 bot 协作能力保留为 best-effort，未完成项不再继续推进。
 - Channel Connectors API/前端只暴露当前已有 runner 的 live Agent：Codex、Claude Code、OpenCode；Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP 保留为迁移路线图，未实现前不进入可选 `supportedAgents`。
-- 自动 channel skill 支持分两层：普通 IM turn 会给 Codex/Claude Code/OpenCode 注入 Studio runtime skill 摘要和显式 Runtime Action Index；同时 Codex `CODEX_HOME/skills`、Claude `CLAUDE_CONFIG_DIR/skills`、OpenCode 隔离 `opencode.json.instructions` 都会收到当前渠道 platform skill 的 Studio runtime 投影。平台默认 skills 由 Studio 内置管理（Octo `octo-bot-api`；Feishu `messaging/doc/app-scopes/drive/perm/wiki/bitable`），每个内置 skill 都有 typed `runtimeActions` 白名单和实际执行器；同名内置 skill 优先于 binding 外部目录；binding `channelSkillDirs` 仅作为显式自定义扩展。Agent 主路径必须调用本地 `studio-channel-skill <platform> <tool>.<action> '<json>'`，daemon 把结果写回 stdout 让同一 Agent turn 继续推理；`studio-octo-actions` / `studio-feishu-actions` 只保留为 parser/执行兼容层，不再作为 Agent prompt 主工作流。OpenClaw/Octo 插件 skills 只作迁移参考源，不再是运行时默认来源。
+- Channel prompt/skills 收敛为私聊辅助说明：只描述当前私聊附件、消息发送、工作目录、权限、compact 和 Agent CLI 原生命令。平台 API 扩展层不再继续；`studio-channel-skill`、`studio-octo-actions`、`studio-feishu-actions` 相关 prompt/runner/daemon 代码后续清理，已有实现仅保留到删除前兼容。
 - Octo User API bot management（`/v1/user/bots`、user API key、bot token retrieval）已明确归为 Studio admin-plane，不暴露给 Agent runtime；`studio-octo-actions` 只接受白名单 Bot API runtime action，register/heartbeat/typing/read-receipt/event-ack/upload credentials/raw retry 仍由 daemon 自动处理。
 - OpenCode Agent runner 走 Gateway-first：Channel 配置保存 Gateway 模型短名或模型 ID，runner 转换为 OpenCode 需要的 `studio-gateway/<model>`；每轮生成隔离 OpenCode config，session 数据写入 Channel runtime dataHome；旧全局 sessionId 在当前 dataHome 不存在时自动新建，避免 IM 切换 OpenCode 后被 stale session 卡死。
 - Channel Connectors 任意新功能必须先对照 CC Go 1:1 迁移，再做 Studio 精修；迁移清单见 `channel-connectors-cc-migration-checklist.md`。
@@ -22,13 +22,13 @@
 - IM 文件/消息收发固定为 Studio native transport：入站附件 staging 后交给 Agent；出站由 Agent 声明 `studio-channel-files` 或 `studio-channel-messages` manifest，daemon 按平台上传文件或发送 Octo human DM/group/thread 文本消息、Octo `on_behalf_of` persona 消息、Feishu chat/open_id/user_id 文本/Markdown(post) 消息；Octo 群 @ 使用 `@[uid:显示名]`，Feishu 群 @ 使用 `@[open_id:显示名]` 并转为原生 at-tag；Octo 机器人协作走群/thread @，不走 bot DM；Agent 不应调用 `cc-connect` 或平台 CLI。
 - Codex live 默认仍是 CC Go 风格 one-shot `codex exec/resume`；persistent session pool 作为 metadata beta 覆盖 Codex app-server、Claude Code stream-json 和 OpenCode `run --session`，已锁定原生 compact、interrupt/stop、idle reaper、fallback、session 管理合同和真实 CLI mock-Gateway smoke；IM 进度里的“过程回复”只接受 `assistant/intermediate`，最终回复 `assistant/final` 只走最终结果渲染。
 - 上下文管理策略固定为 native-first：Gateway/Channel 负责模型预算与触发决策；App Connections apply 会按每个 App 选中模型派生上下文、max output 和 compact 阈值；`/compact` 手动入口和 daemon 自动触发都优先尝试 live persistent Agent 原生 compact；Studio Gateway `/responses/compact` 只作为不支持、失败或 one-shot 不可靠时的兜底；`/native /compact` 是强制原生入口，没有真实 native compact contract 时会拒绝伪透传。
-- Channel daemon `/status` 的最近 `autoCompacts` 已通过 Studio API 代理到 Channel 管理页；自动 compact 触发仍只看上下文预算压力，retry/cooldown 只表示失败恢复状态。
+- Channel daemon `/status` 的最近 `autoCompacts` 已通过 Studio API 代理到 Channel 管理页；自动 compact 触发仍只看上下文预算压力，retry/cooldown 只表示失败恢复状态。Channel 侧 `/usage` / token 统计不再继续建设，模型消耗后续统一在 Gateway usage/模型消耗页查看。
 
 ## 本轮完成
 
-- 将 Feishu/Octo 平台 API 能力从 post-turn manifest 工作流改为 native skill runner：Agent 运行环境会生成 `studio-channel-skill` 本地命令、注入 daemon endpoint/token/binding/session/channel env，并写入 Codex/Claude/OpenCode 的平台 `SKILL.md` 投影；只读 action 直接执行，mutation action 等待 Studio IM 审批后把结构化结果返回 stdout。
-- 同步收窄 Channel Connectors 后续目标：私聊是 Feishu/Octo 首期唯一继续推进的用户场景；群聊、thread、多 bot 协作、群管理 live smoke 和异步汇总后续任务已冻结，现有实现只作为 best-effort 保留。
-- 修复 platform skill 文档投影：旧 `studio-feishu-actions` / `studio-octo-actions` 示例会在投给 Agent 前改写为 `studio-channel-skill` 命令，避免 Agent 输出 JSON 块后停止；出站文件/消息仍使用 `studio-channel-files` / `studio-channel-messages`。
+- 按最新目标再次收窄 Channel Connectors：私聊只保留文本、文件/图片传输和 Agent CLI 原生能力；不再扩展 Feishu/Octo 文档、群、管理、Bot API action，也不再需要 `studio-channel-skill`。
+- 将 `studio-channel-skill`、平台 action manifest、platform runtime action index 标记为清理项；后续代码删除时需同步移除 prompt 注入、runner env、daemon endpoint 和相关回归。
+- 明确下一阶段重点改为：Codex/Claude Code/OpenCode 工具流/回复解析稳定性，避免空工具结果和最终回复误归类；继续完善 compact。
 - 修复 Codex app-server persistent `/stop` 竞态：如果 `/stop` 早于 `turn/start` 返回 turn id，会记录 pending stop 并在拿到 turn id 后立即发送 `turn/interrupt`，避免 active run 卡住。
 - 将 Octo/Feishu channel skills 从“prompt 提示”升级为显式 runtime contract：shared surface 新增 `skills[].actions[]`，内置 skills 声明 `runtimeActions` 白名单，IM prompt 使用紧凑 Runtime Action Index，Codex/Claude/OpenCode 原生 skill 投影保留完整动作索引，管理页新增 Skills tab 展示 Studio 内置/显式扩展和 runtime action chips。
 - 新增 `studio-octo-actions` manifest parser 与 daemon/service 执行 glue：Octo read-only management action 直接调用 Bot API 执行器，mutation action 走 Studio IM 权限审批后执行，结果并入最终回复和 event log；已覆盖 `group/thread/history/GROUP.md/THREAD.md/voice-context/file-download-url/message-edit`；非 Octo binding 使用该 manifest 会返回明确错误。
@@ -124,12 +124,11 @@
 - `/status` 与 Channel 管理页已能显示最近 auto compact 记录；真实剩余 token 仍取决于上游 usage 或 Gateway runtime ledger 是否能归因。
 - Gateway usage 只有在上游返回 usage 或 runtime ledger 可归因时才准确；缺失 usage 时 Channel 只能用 IM history 字符估算，不能替代真实 tokenizer。
 - 同 session FIFO queue 当前是 daemon 内存队列；Channel daemon 自身重启会丢失未开始的排队消息，durable queue 尚未实现。
-- `studio-channel-messages` 已有 parser 与 daemon send path，并支持 Octo 结构化 `@[uid:显示名]` mention、Octo `on_behalf_of` 出站身份、Feishu chat/open_id/user_id 文本/Markdown(post) 和 Feishu 群原生 at-tag 渲染；Octo 群 outbound-message 已有真实日志证据，Feishu open_id 文本/Markdown transport-smoke 已通过。后续只继续验收私聊发送：Octo human DM、Feishu open_id/user_id 文本与 Markdown、私聊文件/图片/语音；thread、群 @、外部 bot 协作、异步汇总和群管理 live smoke 已冻结。
-- Feishu `messaging/doc/app-scopes/drive/perm/wiki/bitable` skills 已由 Studio 自管并能进入 Agent prompt/native skill 投影；`studio-feishu-actions` 已支持 Feishu channel、app-scopes、doc、drive、perm、wiki、bitable 的 typed action 白名单和执行器。Feishu doc 图片/附件上传当前覆盖 `upload_all` 小文件路径，Bitable 当前覆盖 OpenClaw 源码已有的元数据、字段、记录和创建/更新动作；真实 Feishu live smoke、>20MB 分片和云文档复杂媒体布局仍待验证。
-- `studio-octo-actions` 已接入 daemon glue 与 Bot API 管理执行器；真实 Octo 群/thread management mutation live smoke 不再作为后续任务，当前能力保留为 parser + 现有 Bot API mock/已有实现的 best-effort。
+- `studio-channel-messages` / `studio-channel-files` 已有 parser 与 daemon send path。后续只保留私聊文本、文件、图片传输能力；thread、群 @、外部 bot 协作、异步汇总和群管理 live smoke 已冻结。
+- Feishu/Octo 文档、群、管理类 platform action 已不再是目标；相关执行器、prompt、测试后续清理，清理前只作为遗留 best-effort。
 
 ## 下一步
 
-1. 做真实 Octo/Feishu 私聊 native runner live smoke：让 Agent 在同一 turn 内通过 `studio-channel-skill octo/feishu ...` 查询或操作私聊相关能力，读取 stdout 后继续总结，不再输出 action JSON 后中断。
-2. 做真实私聊文件/图片/语音与权限审批 smoke：Octo human DM、Feishu open_id/user_id 文本与 Markdown、私聊出站文件、视觉附件、Codex/OpenCode approval、Claude Code AskUserQuestion/permission。
-3. 继续补私聊上下文与 compact：按 resolved model 预算触发原生 compact，失败再 Gateway compact；验证工具流、过程回复、Markdown/卡片最终回复在 Feishu/Octo 私聊中稳定。
+1. 清理 `studio-channel-skill` 与 Feishu/Octo platform action 扩展层：移除 prompt 引导、runner env、本地命令、daemon action endpoint 和对应“平台工具”测试，只保留私聊 transport、文件/图片和 Agent CLI 能力。
+2. 继续稳定 Codex、Claude Code、OpenCode 工具流/回复解析：检查工具调用、工具输入、stdout/stderr、工具结果、过程回复和最终回复分类，修复空工具流/空结果显示。
+3. 继续 compact：优先 Agent 原生 compact/compress；不支持或失败时 Gateway compact；确保不会把 `/compact` 当普通 prompt。

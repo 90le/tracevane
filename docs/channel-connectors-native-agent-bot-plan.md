@@ -16,7 +16,7 @@ Octo(dmwork) / 飞书 / 微信 / IM
   -> upstream provider
 ```
 
-最新目标不是“把所有群协作场景无限扩展”，而是先把 Feishu、Octo 以及后续 IM 渠道的私聊能力做完整：Agent CLI 能读 skill、调用 Studio 本地 runtime action、继续同一 turn 推理，并稳定完成文件、权限、流式进度、上下文和 compact。已实现的群聊/thread/多 bot 能力保留为 best-effort，不再作为首期发布或下一步阻断项。
+最新目标不是“把所有群协作场景无限扩展”，而是先把 Feishu、Octo 以及后续 IM 渠道的私聊能力做完整：文本对话、文件/图片传输、Agent CLI 原生能力、工具流/回复解析和 compact。`studio-channel-skill` 与 Feishu/Octo 平台 API 扩展 action 不再需要，后续删除。已实现的群聊/thread/多 bot 能力保留为 best-effort，不再作为首期发布或下一步阻断项。
 
 迁移门禁：
 
@@ -67,12 +67,13 @@ Octo(dmwork) / 飞书 / 微信 / IM
 
 首期必须原生化的 CC 能力范围：
 
-- 平台：Octo(dmwork)、飞书优先；后续微信个人号、企业微信、钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等只按私聊能力推进，除非另行明确恢复群聊目标。
-- Agent：Codex、Claude Code、OpenCode 为首批；后续覆盖 CC 已有 CLI/ACP Agent，包括 Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP 等。
+- 平台：Octo(dmwork)、飞书优先；微信个人号、企业微信、钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等只保留路线图，当前不推进。
+- Agent：Codex、Claude Code、OpenCode 为首批；Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP 等只保留路线图，当前不推进。
 - 消息：私聊文本、图片、文件、语音/STT/TTS、流式预览、长回复拆分；入站原始文件由 Studio daemon 下载到受控 staging 目录后交给 Agent，出站文件由 daemon 根据 Agent manifest 通过平台 API 发送，默认 128MB 上限可按 binding 调整或关闭。群聊 mention、thread/reply 只保留既有 best-effort 能力。
 - 会话：session key、session 续接/切换/重置、workdir 切换、历史恢复、不同 bot/account 独立上下文、跨平台会话观测。
 - 治理：allowlist、admin、rate limit、banned words、权限模式、run-as/user isolation、审计日志。
 - 自动化：私聊 slash command、平台菜单、Feishu card、management API、health/status/logs；cron、hooks、relay 不再作为首期任务。
+- 不再建设 Channel 侧 token/usage 功能；模型消耗统一回 Gateway usage/模型消耗页。
 
 Studio 增强点：
 
@@ -102,9 +103,9 @@ Studio 增强点：
 | F2 | 已完成：CC/OpenClaw 能力映射、typed config store、Agent Profile、工作目录、模型、权限、Gateway key ref、platform/bot binding |
 | F3 | 已完成核心合同：Octo(dmwork) adapter、REST transport、daemon register/cache/WuKongIM WebSocket、Codex CLI Agent runner、真实 Octo DM 文本往返、Codex session resume、IM command control、native passthrough、command surface、Feishu webhook/outbound/long-connection、Feishu card/menu/session/model/display/progress loop |
 | F4 | 进行中：私聊长回复拆分、附件 metadata/staging、Octo URL staging、Feishu/Octo 出站文件、Octo COS 直传与自动分流、Octo CC Go 长连接基线、图片非视觉模型保护、Gateway vision 模型自动选择、Codex 原生图片输入、OpenCode 原生图片 `--file` 输入、轻量 history context、reply buffer 查看命令/菜单、Feishu 会话列表/切换子卡、`/current`/`/list`/`/history [n]` 信息增强、Feishu/Octo 私聊进度、assistant 过程回复展示、`/thinking`/`/process`/`/tools` 三路显示控制、持久 session driver pool 合同/状态面/Codex app-server 真实 Gateway `turn/start`、`/compact`、`turn/interrupt` smoke、Codex app-server requestApproval driver 合同、Claude Code stream-json persistent 普通 turn/Bash tool-use/文件 manifest/视觉附件/compact/stop cancel、Claude tool_result 纯输出渲染、OpenCode `run --session` persistent 普通 turn/文件 manifest/视觉附件/compact/stop cancel、OpenCode SQLite fallback、daemon `/stop`、内部 userMessage 过滤、生命周期进度噪音过滤和 unfinished turn 超时中断已完成；群聊 context、thread/reply、长回复 group buffer 和飞书群成员拉取保留既有 best-effort，不再继续扩展；当前 live binding 默认仍是 one-shot，Codex/OpenCode/Octo live approval、真实私聊 IM 文件/工具流式复验、OCR、语音 STT/TTS、长回复预览冻结、真实大文件限额验证、私聊设置型卡片待补 |
-| F5 | 治理与自动化：allowlist/admin/rate limit/banned words 已完成；继续补 cron、hooks、relay、management API |
-| F6 | 飞书、微信/企业微信；继续迁移钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等 CC 平台 |
-| F7 | 补齐剩余 CC Agent、跨平台会话观测、消息审计、迁移工具和发布验收 |
+| F5 | 治理与队列：allowlist/admin/rate limit/banned words 已完成；下一步补 durable queue / 可恢复队列，避免 daemon 重启丢失未开始消息 |
+| F6 | 路线图保留：微信/企业微信、钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE 等暂不推进 |
+| F7 | 路线图保留：Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP 等暂不推进 |
 
 ## 5. 当前结果
 
@@ -122,7 +123,7 @@ Studio 增强点：
 - Channel daemon 已支持 `/help`、`/command`、`/cmd`、`/status`、`/usage`、`/tokens`、`/agent`、`/model`、`/mode`、`/reasoning`、`/effort`、`/name`、`/rename`、`/search`、`/find`、`/dir`、`/cd`、`/new`、`/reset`、`/display`、`/thinking`、`/process`、`/tools`；override 按 IM session 存储，模型切换不切断 Codex thread，reasoning/workdir/new session 会断开旧续接，思考/过程回复/工具消息开关只作用于当前 IM session。
 - Channel daemon 已支持同 session FIFO Agent run queue：普通消息不再并行启动第二个 CLI Agent turn，排队消息会收到引导并在前序任务释放后自动继续；命令仍绕过队列即时执行，metadata 可显式打开并行。
 - Channel daemon 后续持久 session driver 已先锁 pool 合同并接入状态面；Codex app-server driver 已覆盖 thread 复用、连续 turn、原生 `/compact`、stop/interrupt、内部 prompt echo 过滤、生命周期进度噪音过滤、unfinished turn 超时中断、permission mode -> approvalPolicy/sandbox，以及 `item/commandExecution/requestApproval`、`item/fileChange/requestApproval`、`item/permissions/requestApproval` driver 回包合同，并通过真实 Studio Gateway `turn/start`、`/compact` 与 `turn/interrupt` live smoke。Claude Code stream-json 和 OpenCode `run --session` 已按 CC Go `AgentSession.Send(CompressCommand())` 合同补 persistent `/compact` 回归，并通过隔离 HOME + mock Gateway 真实 CLI 普通 turn/文件 manifest/视觉附件/compact/stop smoke；Claude Code 额外覆盖 Bash tool-use，且 `user/tool_result` 纯输出不会再被进度渲染吞掉首行或显示“无输出”；OpenCode 额外覆盖空 stdout SQLite fallback、视觉模型配置 `attachment/modalities/limit/tool_call`，且取消路径不会读取旧 `opencode.db` 输出；OpenCode runner 现在会把 Studio Gateway 短模型自动转成 `studio-gateway/<model>`，每轮生成隔离 OpenCode config，并把 session 数据放在 Channel runtime dataHome；旧全局 sessionId 在当前 dataHome 不存在时自动新建，避免 IM 切换 OpenCode 后被 stale session 卡死；OpenCode error envelope 会显示真实 `data.message/name/ref`；本机真实 Gateway + `glm-5` 短对话已通过。metadata 请求 persistent 会在 `/status` / runtime 中显示；正式 live 默认仍保留 one-shot，按 CC Go 的各 Agent 子进程模型继续补成熟度。
-- Channel daemon 已支持 `/usage` / `/tokens`：从 Studio Gateway runtime usage ledger 汇总当前 binding + IM session 最近 Agent run 的真实 token usage；无上游 usage 时明确提示无统计。
+- Channel daemon 曾支持 `/usage` / `/tokens` 从 Studio Gateway runtime usage ledger 汇总当前 binding + IM session 最近 Agent run；该能力不再继续建设，后续模型消耗统一在 Gateway usage/模型消耗页查看。
 - Channel daemon 已按 CC Go 补齐 `/reasoning`、`/name`、`/search`：推理强度支持序号与 `low|medium|high|xhigh|default`，Codex/Claude Code/OpenCode runner 分别映射到 `model_reasoning_effort`、`--effort`、`--variant`；session 命名会显示在 `/list`、`/search`、Feishu Agent Sessions 子卡和文本 fallback。
 - Channel daemon 已按 CC Go 增强 `/current`、`/list`、`/history [n]`：文本和 Feishu card 都显示 session name、短 sessionId/threadId、history 数量、最近消息和 usage 入口。
 - Channel daemon 已支持 Agent 原生命令透传：未知 `/xxx` 直接转给当前 Agent，`/native <命令>` 用于透传与 Studio 命令同名的原生命令。
@@ -168,6 +169,7 @@ Studio 增强点：
 
 ## 6. 下一步
 
-1. 做真实私聊 IM live approval smoke：Codex app-server requestApproval、Claude Code permission/AskUserQuestion、OpenCode permission。
-2. 扩展真实 Claude Code / OpenCode persistent 私聊 smoke：视觉输入、权限/tool stream 和 IM live 文件上传。
-3. 按 `channel-connectors-cc-migration-checklist.md` 的 P1 顺序继续复刻 Feishu/Octo 私聊菜单、设置卡片、长连接与媒体收发细节，并继续复验 Codex `exec/resume` 稳定 live 路径；群聊/thread/多 bot 后续任务已冻结。
+1. 删除 `studio-channel-skill` 与 Feishu/Octo platform action 扩展层，只保留私聊 transport、文件/图片和 Agent CLI 能力。
+2. 稳定 Codex、Claude Code、OpenCode 工具流/回复解析：工具调用、输入、stdout/stderr、工具结果、过程回复、最终回复都必须分类正确，不能出现空工具流。
+3. 继续 compact：优先 Agent 原生 compact/compress；失败或不支持再 Gateway compact；确保 `/compact` 不作为普通 prompt。
+4. 补 durable queue / 可恢复队列，解决 daemon 重启丢失未开始排队消息的问题。
