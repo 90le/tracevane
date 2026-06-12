@@ -1262,13 +1262,18 @@ function normalizeOctoTransportSmokeRequest(payload: ChannelConnectorOctoTranspo
     || payload.action === "list-groups"
     || payload.action === "group-info"
     || payload.action === "group-members"
+    || payload.action === "search-members"
     || payload.action === "space-members"
     || payload.action === "create-group"
     || payload.action === "update-group"
+    || payload.action === "add-members"
     || payload.action === "add-group-members"
+    || payload.action === "remove-members"
     || payload.action === "remove-group-members"
     || payload.action === "list-threads"
+    || payload.action === "get-thread"
     || payload.action === "thread-info"
+    || payload.action === "list-thread-members"
     || payload.action === "thread-members"
     || payload.action === "create-thread"
     || payload.action === "delete-thread"
@@ -1282,6 +1287,7 @@ function normalizeOctoTransportSmokeRequest(payload: ChannelConnectorOctoTranspo
     || payload.action === "voice-context-update"
     || payload.action === "voice-context-delete"
     || payload.action === "event-ack"
+    || payload.action === "history"
     || payload.action === "sync-messages"
     || payload.action === "file-download-url"
     || payload.action === "message-edit"
@@ -1314,6 +1320,29 @@ function normalizeOctoTransportSmokeRequest(payload: ChannelConnectorOctoTranspo
     filePath: normalizeString(payload.filePath) || null,
     messageId: normalizeString(payload.messageId) || null,
   };
+}
+
+function octoTransportSmokeResultAction(
+  action: ChannelConnectorOctoTransportSmokeRequest["action"] | undefined,
+): ChannelConnectorOctoTransportResult["action"] {
+  switch (action) {
+    case "search-members":
+      return "space-members";
+    case "add-members":
+      return "add-group-members";
+    case "remove-members":
+      return "remove-group-members";
+    case "get-thread":
+      return "thread-info";
+    case "list-thread-members":
+      return "thread-members";
+    case "history":
+      return "sync-messages";
+    case undefined:
+      return "register";
+    default:
+      return action;
+  }
 }
 
 function normalizeFeishuTransportSmokeRequest(payload: ChannelConnectorFeishuTransportSmokeRequest | undefined): ChannelConnectorFeishuTransportSmokeRequest {
@@ -2973,7 +3002,7 @@ export function createChannelConnectorsService(
         adapter: "octo",
         binding: null,
         transport: {
-          ...emptyOctoTransportResult(request.action || "register"),
+          ...emptyOctoTransportResult(octoTransportSmokeResultAction(request.action)),
           error: "octo_binding_not_found",
         },
       };
@@ -2986,7 +3015,7 @@ export function createChannelConnectorsService(
         adapter: "octo",
         binding: resolved.binding,
         transport: {
-          ...emptyOctoTransportResult(request.action || "register"),
+          ...emptyOctoTransportResult(octoTransportSmokeResultAction(request.action)),
           error: "octo_transport_config_missing",
         },
       };
@@ -3085,7 +3114,7 @@ export function createChannelConnectorsService(
       });
     } else if (request.action === "voice-context-delete") {
       transport = await deleteOctoVoiceContext(transportConfig);
-    } else if (request.action === "space-members") {
+    } else if (request.action === "space-members" || request.action === "search-members") {
       transport = await searchOctoSpaceMembers(transportConfig, {
         keyword: request.keyword || "",
         limit: request.limit || 50,
@@ -3107,16 +3136,16 @@ export function createChannelConnectorsService(
         name: request.name || null,
         notice: request.notice || null,
       });
-    } else if (request.action === "add-group-members") {
-      if (!request.groupNo) throw new Error("groupNo is required for Octo add-group-members smoke.");
-      if (!request.members?.length) throw new Error("members are required for Octo add-group-members smoke.");
+    } else if (request.action === "add-group-members" || request.action === "add-members") {
+      if (!request.groupNo) throw new Error("groupNo is required for Octo add-members smoke.");
+      if (!request.members?.length) throw new Error("members are required for Octo add-members smoke.");
       transport = await addOctoGroupMembers(transportConfig, {
         groupNo: request.groupNo,
         members: request.members,
       });
-    } else if (request.action === "remove-group-members") {
-      if (!request.groupNo) throw new Error("groupNo is required for Octo remove-group-members smoke.");
-      if (!request.members?.length) throw new Error("members are required for Octo remove-group-members smoke.");
+    } else if (request.action === "remove-group-members" || request.action === "remove-members") {
+      if (!request.groupNo) throw new Error("groupNo is required for Octo remove-members smoke.");
+      if (!request.members?.length) throw new Error("members are required for Octo remove-members smoke.");
       transport = await removeOctoGroupMembers(transportConfig, {
         groupNo: request.groupNo,
         members: request.members,
@@ -3124,13 +3153,13 @@ export function createChannelConnectorsService(
     } else if (request.action === "list-threads") {
       if (!request.groupNo) throw new Error("groupNo is required for Octo list-threads smoke.");
       transport = await listOctoThreads(transportConfig, request.groupNo);
-    } else if (request.action === "thread-info") {
+    } else if (request.action === "thread-info" || request.action === "get-thread") {
       if (!request.groupNo || !request.shortId) throw new Error("groupNo and shortId are required for Octo thread-info smoke.");
       transport = await getOctoThreadInfo(transportConfig, {
         groupNo: request.groupNo,
         shortId: request.shortId,
       });
-    } else if (request.action === "thread-members") {
+    } else if (request.action === "thread-members" || request.action === "list-thread-members") {
       if (!request.groupNo || !request.shortId) throw new Error("groupNo and shortId are required for Octo thread-members smoke.");
       transport = await listOctoThreadMembers(transportConfig, {
         groupNo: request.groupNo,
@@ -3176,8 +3205,8 @@ export function createChannelConnectorsService(
     } else if (request.action === "event-ack") {
       if (request.eventId === null || request.eventId === undefined) throw new Error("eventId is required for Octo event-ack smoke.");
       transport = await ackOctoEvent(transportConfig, request.eventId);
-    } else if (request.action === "sync-messages") {
-      if (!request.channelId) throw new Error("channelId is required for Octo sync-messages smoke.");
+    } else if (request.action === "sync-messages" || request.action === "history") {
+      if (!request.channelId) throw new Error("channelId is required for Octo history smoke.");
       transport = await syncOctoMessages(transportConfig, {
         channelId: request.channelId,
         channelType: request.channelType || 1,

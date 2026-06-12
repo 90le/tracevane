@@ -592,6 +592,26 @@ interface ChannelDaemonState {
     firstProgressLatencyMs?: number | null;
     finalProgressLagMs?: number | null;
     usage?: ChannelConnectorUsageSummary | null;
+    replyBuffered?: boolean;
+    replyBufferId?: string | null;
+    replyOriginalRunes?: number | null;
+    replyPreviewRunes?: number | null;
+    replySent?: boolean;
+    replyRequestCount?: number | null;
+    outboundFilesDeclared?: number;
+    outboundFilesResolved?: number;
+    outboundFilesSent?: number;
+    outboundFileRequestCount?: number;
+    outboundFileMaxBytes?: string;
+    outboundMessagesDeclared?: number;
+    outboundMessagesSent?: number;
+    outboundMessageRequestCount?: number;
+    octoActionsDeclared?: number;
+    octoActionsExecuted?: number;
+    octoActionsSucceeded?: number;
+    octoActionsFailed?: number;
+    octoActionErrors?: string[];
+    outboundFileErrors?: string[];
   }>;
   autoCompacts: ChannelDaemonAutoCompactRecord[];
 }
@@ -8464,6 +8484,7 @@ async function dispatchOctoMessage(input: {
         permissionStatus: log.permissionStatus || null,
         requestId: log.requestId || null,
         toolName: log.toolName || null,
+        action: log.action || null,
         replySent: result.ok === true,
         replyError: result.error,
         replyRequestCount: result.requestCount,
@@ -8491,6 +8512,7 @@ async function dispatchOctoMessage(input: {
         permissionStatus: log.permissionStatus || null,
         requestId: log.requestId || null,
         toolName: log.toolName || null,
+        action: log.action || null,
         replySent: false,
         replyError: shortMessage(error),
         progressReplySendCount: octoProgressSendCount,
@@ -9060,6 +9082,36 @@ async function dispatchOctoMessage(input: {
       replySent = result.ok === true;
       replyRequestCount = result.requestCount;
     }
+  }
+  const agentRunStatusRecord = state.agentRuns.find((item) => {
+    return item.bindingId === binding.id
+      && item.sessionKey === sessionKey
+      && item.messageId === message.messageId
+      && item.startedAt === runStartedAt;
+  });
+  if (agentRunStatusRecord) {
+    Object.assign(agentRunStatusRecord, {
+      replyBuffered,
+      replyBufferId,
+      replyOriginalRunes,
+      replyPreviewRunes,
+      replySent,
+      replyRequestCount,
+      outboundFilesDeclared: outboundReply.declaredCount,
+      outboundFilesResolved: outboundReply.files.length,
+      outboundFilesSent: outboundFileSentCount,
+      outboundFileRequestCount,
+      outboundFileMaxBytes: describeByteSizeLimit(outboundReply.maxBytes),
+      outboundMessagesDeclared: outboundReply.declaredMessageCount,
+      outboundMessagesSent: outboundMessageSentCount,
+      outboundMessageRequestCount,
+      octoActionsDeclared: outboundReply.declaredOctoActionCount,
+      octoActionsExecuted: octoActionResults.length,
+      octoActionsSucceeded: octoActionSucceededCount,
+      octoActionsFailed: octoActionErrorCount,
+      octoActionErrors,
+      outboundFileErrors,
+    });
   }
   const updatedOctoHistoryCutoff = agent.ok === true && replySent && isOctoGroupChannel(message.channelType)
     ? setOctoHistoryCutoff({

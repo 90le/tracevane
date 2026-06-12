@@ -1383,6 +1383,12 @@ test("native Channel Connectors extracts Octo action manifests", () => {
       { skill: "octo", action: "delete-voice-context", params: {} },
       { skill: "octo", action: "createGroup", params: { name: "New", members: ["u1"] } },
       { action: "create-group", name: "Agent 协作群", members: "u1,u2" },
+      { action: "octo_management.list-groups" },
+      { tool: "octo_management.list-groups" },
+      { tool: "octo_bot_api", action: "fetchBotGroups" },
+      { tool: "octo_management", action: "getGroupMembers", groupNo: "g2" },
+      { tool: "octo_management.getThread", params: { groupId: "g1", shortId: "t2" } },
+      { "octo_management.listThreads": { groupId: "g1" } },
     ]),
     "```",
   ].join("\n"));
@@ -1402,6 +1408,74 @@ test("native Channel Connectors extracts Octo action manifests", () => {
     { tool: "octo_management", action: "voice-context-delete", params: {} },
     { tool: "octo_management", action: "create-group", params: { name: "New", members: ["u1"] } },
     { tool: "octo_management", action: "create-group", params: { name: "Agent 协作群", members: "u1,u2" } },
+    { tool: "octo_management", action: "list-groups", params: {} },
+    { tool: "octo_management", action: "list-groups", params: {} },
+    { tool: "octo_management", action: "list-groups", params: {} },
+    { tool: "octo_management", action: "group-members", params: { groupNo: "g2" } },
+    { tool: "octo_management", action: "thread-info", params: { groupId: "g1", shortId: "t2" } },
+    { tool: "octo_management", action: "list-threads", params: { groupId: "g1" } },
+  ]);
+
+  const sdkAliases = extractChannelConnectorOctoActions([
+    "OpenClaw SDK aliases.",
+    "```studio-octo-actions",
+    JSON.stringify([
+      { tool: "octo_management", action: "fetchBotGroups" },
+      { tool: "octo_management", action: "getGroupInfo", groupNo: "g1" },
+      { tool: "octo_management", action: "getGroupMembers", groupNo: "g1" },
+      { tool: "octo_management", action: "searchSpaceMembers", keyword: "Alice" },
+      { tool: "octo_management", action: "createGroup", name: "New", members: ["u1"], creator: "u1" },
+      { tool: "octo_management", action: "updateGroup", groupNo: "g1", name: "Renamed" },
+      { tool: "octo_management", action: "addGroupMembers", groupNo: "g1", members: ["u2"] },
+      { tool: "octo_management", action: "removeGroupMembers", groupNo: "g1", members: ["u2"] },
+      { tool: "octo_management", action: "listThreads", groupNo: "g1" },
+      { tool: "octo_management", action: "getThread", groupNo: "g1", shortId: "t1" },
+      { tool: "octo_management", action: "listThreadMembers", groupNo: "g1", shortId: "t1" },
+      { tool: "octo_management", action: "createThread", groupNo: "g1", name: "Thread" },
+      { tool: "octo_management", action: "deleteThread", groupNo: "g1", shortId: "t1" },
+      { tool: "octo_management", action: "joinThread", groupNo: "g1", shortId: "t1" },
+      { tool: "octo_management", action: "leaveThread", groupNo: "g1", shortId: "t1" },
+      { tool: "octo_management", action: "getGroupMd", groupNo: "g1" },
+      { tool: "octo_management", action: "updateGroupMd", groupNo: "g1", content: "# Group" },
+      { tool: "octo_management", action: "getThreadMd", groupNo: "g1", shortId: "t1" },
+      { tool: "octo_management", action: "updateThreadMd", groupNo: "g1", shortId: "t1", content: "# Thread" },
+      { tool: "octo_management", action: "getVoiceContext" },
+      { tool: "octo_management", action: "updateVoiceContext", content: "Alice => 艾丽丝" },
+      { tool: "octo_management", action: "deleteVoiceContext" },
+      { tool: "octo_management", action: "getChannelMessages", channelId: "g1", channelType: 2 },
+      { tool: "octo_management", action: "getFileDownloadUrl", filePath: "chat/hello.txt" },
+      { tool: "octo_management", action: "editMessage", messageId: "m1", content: "updated" },
+    ]),
+    "```",
+  ].join("\n"));
+  assert.equal(sdkAliases.replyText, "OpenClaw SDK aliases.");
+  assert.deepEqual(sdkAliases.errors, []);
+  assert.deepEqual(sdkAliases.actions.map((action) => action.action), [
+    "list-groups",
+    "group-info",
+    "group-members",
+    "search-members",
+    "create-group",
+    "update-group",
+    "add-members",
+    "remove-members",
+    "list-threads",
+    "thread-info",
+    "thread-members",
+    "create-thread",
+    "delete-thread",
+    "join-thread",
+    "leave-thread",
+    "group-md-read",
+    "group-md-update",
+    "thread-md-read",
+    "thread-md-update",
+    "voice-context-read",
+    "voice-context-update",
+    "voice-context-delete",
+    "history",
+    "file-download-url",
+    "message-edit",
   ]);
 
   const sensitive = extractChannelConnectorOctoActions([
@@ -1453,6 +1527,20 @@ test("native Channel Connectors built-in runtime actions stay parser-addressable
     assert.equal(parsed.actions[0].tool, action.tool, `${action.manifest}:${action.tool}.${action.action}`);
     assert.equal(parsed.actions[0].action, action.action, `${action.manifest}:${action.tool}.${action.action}`);
     assert.equal(parsed.actions[0].params.name, "keep-name", `${action.manifest}:${action.tool}.${action.action}`);
+
+    if (action.manifest === "studio-octo-actions") {
+      const prefixedActionBlock = [
+        "```" + action.manifest,
+        JSON.stringify([{ action: `${action.tool}.${action.action}`, params: { name: "prefixed-action" } }]),
+        "```",
+      ].join("\n");
+      const prefixedActionParsed = extractChannelConnectorOctoActions(prefixedActionBlock);
+      assert.deepEqual(prefixedActionParsed.errors, [], `${action.manifest}:${action.tool}.${action.action}:prefixed-action`);
+      assert.equal(prefixedActionParsed.actions.length, 1, `${action.manifest}:${action.tool}.${action.action}:prefixed-action`);
+      assert.equal(prefixedActionParsed.actions[0].tool, action.tool, `${action.manifest}:${action.tool}.${action.action}:prefixed-action`);
+      assert.equal(prefixedActionParsed.actions[0].action, action.action, `${action.manifest}:${action.tool}.${action.action}:prefixed-action`);
+      assert.equal(prefixedActionParsed.actions[0].params.name, "prefixed-action", `${action.manifest}:${action.tool}.${action.action}:prefixed-action`);
+    }
   }
 });
 
@@ -3541,6 +3629,10 @@ test("Octo transport smoke covers Bot API groups, members, history, threads, and
     assert.equal(space.transport.itemCount, 1);
     assert.ok(requests.some((request) => request.path === "/v1/bot/space/members?keyword=Alice&limit=1"));
 
+    const runtimeSearch = await smoke({ action: "search-members", keyword: "Bob", limit: 2 });
+    assert.equal(runtimeSearch.transport.action, "space-members");
+    assert.ok(requests.some((request) => request.path === "/v1/bot/space/members?keyword=Bob&limit=2"));
+
     const readReceipt = await smoke({ action: "read-receipt", channelId: "group-1", channelType: 2 });
     assert.equal(readReceipt.transport.ok, true);
     assert.ok(requests.some((request) =>
@@ -3563,8 +3655,16 @@ test("Octo transport smoke covers Bot API groups, members, history, threads, and
     const added = await smoke({ action: "add-group-members", groupNo: "group-1", members: ["user-2", "user-3"] });
     assert.equal(added.transport.data.added, 2);
 
+    const runtimeAdded = await smoke({ action: "add-members", groupNo: "group-1", members: ["user-4"] });
+    assert.equal(runtimeAdded.transport.action, "add-group-members");
+    assert.equal(runtimeAdded.transport.data.added, 1);
+
     const removed = await smoke({ action: "remove-group-members", groupNo: "group-1", members: ["user-2"] });
     assert.equal(removed.transport.data.removed, 1);
+
+    const runtimeRemoved = await smoke({ action: "remove-members", groupNo: "group-1", members: ["user-4"] });
+    assert.equal(runtimeRemoved.transport.action, "remove-group-members");
+    assert.equal(runtimeRemoved.transport.data.removed, 1);
 
     const threads = await smoke({ action: "list-threads", groupNo: "group-1" });
     assert.equal(threads.transport.itemCount, 1);
@@ -3573,8 +3673,16 @@ test("Octo transport smoke covers Bot API groups, members, history, threads, and
     const threadInfo = await smoke({ action: "thread-info", groupNo: "group-1", shortId: "thread-1" });
     assert.equal(threadInfo.transport.data.name, "Thread One");
 
+    const pluginThreadInfo = await smoke({ action: "get-thread", groupNo: "group-1", shortId: "thread-1" });
+    assert.equal(pluginThreadInfo.transport.action, "thread-info");
+    assert.equal(pluginThreadInfo.transport.data.name, "Thread One");
+
     const threadMembers = await smoke({ action: "thread-members", groupNo: "group-1", shortId: "thread-1" });
     assert.equal(threadMembers.transport.data[0].uid, "user-1");
+
+    const pluginThreadMembers = await smoke({ action: "list-thread-members", groupNo: "group-1", shortId: "thread-1" });
+    assert.equal(pluginThreadMembers.transport.action, "thread-members");
+    assert.equal(pluginThreadMembers.transport.data[0].uid, "user-1");
 
     const threadMd = await smoke({ action: "thread-md-read", groupNo: "group-1", shortId: "thread-1" });
     assert.equal(threadMd.transport.action, "thread-md-read");
@@ -3627,6 +3735,10 @@ test("Octo transport smoke covers Bot API groups, members, history, threads, and
     assert.equal(history.transport.itemCount, 1);
     assert.equal(history.transport.data.messages[0].message_id, "12345678901234567");
     assert.equal(history.transport.data.messages[0].payload.content, "history hello");
+
+    const runtimeHistory = await smoke({ action: "history", channelId: "group-1", channelType: 2, limit: 10 });
+    assert.equal(runtimeHistory.transport.action, "sync-messages");
+    assert.equal(runtimeHistory.transport.itemCount, 1);
 
     const download = await smoke({ action: "file-download-url", filePath: "chat/hello.txt", fileName: "hello.txt" });
     assert.equal(download.transport.mediaUrl, "https://cdn.example.test/chat/hello.txt");
@@ -12885,6 +12997,281 @@ test("native Channel Connectors daemon serializes same-session Octo Agent turns"
             && event.messageId === "2002"
             && event.sessionKey === "dmwork:dm:queue-user";
         }));
+      } finally {
+        child.kill("SIGTERM");
+        await new Promise((resolve) => {
+          child.once("exit", resolve);
+          setTimeout(resolve, 1000);
+        });
+      }
+
+      assert.equal(stderr.trim(), "");
+    });
+  } finally {
+    await new Promise((resolve, reject) => {
+      wss.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
+test("native Channel Connectors daemon executes compact Octo create-group action after approval", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+  });
+  const fakeBin = path.join(root, "fake-bin");
+  const capturePath = path.join(root, "codex-octo-action-capture.jsonl");
+  fs.mkdirSync(fakeBin, { recursive: true });
+  const fakeCodexPath = path.join(fakeBin, "codex");
+  fs.writeFileSync(fakeCodexPath, [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    "let stdin = '';",
+    "process.stdin.on('data', (chunk) => { stdin += chunk.toString('utf8'); });",
+    "process.stdin.on('end', () => {",
+    "  fs.appendFileSync(process.env.STUDIO_TEST_CODEX_CAPTURE, `${JSON.stringify({ argv: process.argv.slice(2), stdin })}\\n`);",
+    "  const reply = [",
+    "    '正在创建「Agent 协作群」并把你拉进去，请确认授权。',",
+    "    '',",
+    "    '```studio-octo-actions',",
+    "    JSON.stringify([{ action: 'create-group', name: 'Agent 协作群', members: 'approve-user' }]),",
+    "    '```',",
+    "  ].join('\\n');",
+    "  process.stdout.write(`${JSON.stringify({ type: 'thread.started', thread_id: 'thread-octo-action' })}\\n`);",
+    "  process.stdout.write(`${JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: reply } })}\\n`);",
+    "  process.stdout.write('{\"type\":\"turn.completed\"}\\n');",
+    "});",
+    "",
+  ].join("\n"), { mode: 0o755 });
+
+  const wsConnects = [];
+  let inboundSent = false;
+  let approvedSent = false;
+  let sendInbound = null;
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  await new Promise((resolve, reject) => {
+    wss.once("listening", resolve);
+    wss.once("error", reject);
+  });
+  const wsAddress = wss.address();
+  assert.ok(wsAddress && typeof wsAddress === "object");
+  const wsUrl = `ws://127.0.0.1:${wsAddress.port}/ws`;
+  wss.on("connection", (socket) => {
+    let connected = false;
+    socket.on("message", (data) => {
+      if (connected) return;
+      const packet = decodeOctoConnectPacket(Buffer.isBuffer(data) ? data : Buffer.from(data));
+      connected = true;
+      wsConnects.push(packet);
+      const serverKey = createOctoX25519KeyPair();
+      const salt = "facefeed12345678";
+      socket.send(encodeOctoConnackPacket({
+        serverPublicKeyBase64: serverKey.publicKeyBase64,
+        salt,
+      }));
+      sendInbound = (input) => {
+        if (socket.readyState !== 1) return;
+        socket.send(encodeOctoRecvPacket({
+          serverPrivateKey: serverKey.privateKey,
+          clientPublicKeyBase64: packet.clientPublicKeyBase64,
+          salt,
+          fromUid: "approve-user",
+          channelId: "approve-user",
+          channelType: 1,
+          ...input,
+        }));
+      };
+      if (!inboundSent) {
+        inboundSent = true;
+        setTimeout(() => {
+          sendInbound?.({
+            messageId: 3001,
+            messageSeq: 1,
+            payload: {
+              type: 1,
+              content: "创建 Agent 协作群",
+            },
+          });
+        }, 50);
+      }
+    });
+  });
+
+  try {
+    const requests = [];
+    await withServer(async (req, res) => {
+      const chunks = [];
+      req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
+      await new Promise((resolve) => req.on("end", resolve));
+      const bodyRaw = Buffer.concat(chunks).toString("utf8");
+      const body = bodyRaw ? JSON.parse(bodyRaw) : {};
+      requests.push({
+        method: req.method,
+        path: req.url,
+        authorization: req.headers.authorization,
+        body,
+      });
+      res.setHeader("content-type", "application/json");
+      if (req.url === "/v1/models") {
+        res.end(JSON.stringify({
+          object: "list",
+          data: [
+            { id: "gpt-5", object: "model", features: { text: true } },
+          ],
+        }));
+        return true;
+      }
+      if (req.url?.startsWith("/v1/bot/register")) {
+        res.end(JSON.stringify({ robot_id: "robot-approve", im_token: "im-token-approve", ws_url: wsUrl }));
+        return true;
+      }
+      if (req.url === "/v1/bot/sendMessage") {
+        const content = body?.payload?.content || "";
+        if (!approvedSent && content.includes("OctoChannelAction") && content.includes("/approve")) {
+          approvedSent = true;
+          setTimeout(() => {
+            sendInbound?.({
+              messageId: 3002,
+              messageSeq: 2,
+              payload: {
+                type: 1,
+                content: "/approve",
+              },
+            });
+          }, 25);
+        }
+        res.end(JSON.stringify({ ok: true, message_id: `octo-action-${requests.length}` }));
+        return true;
+      }
+      if (req.url === "/v1/bot/typing" || req.url === "/v1/bot/heartbeat" || req.url === "/v1/bot/readReceipt") {
+        res.end(JSON.stringify({ ok: true }));
+        return true;
+      }
+      if (req.method === "POST" && req.url === "/v1/bot/createGroup") {
+        res.end(JSON.stringify({ group_no: "group-approved", name: body.name || "Group Name" }));
+        return true;
+      }
+      return false;
+    }, async (apiUrl) => {
+      const initial = service.getNativeConfig().config;
+      service.saveNativeConfig({
+        config: {
+          ...initial,
+          agentProfiles: [
+            {
+              id: "codex-octo-action",
+              name: "Codex Octo Action",
+              agent: "codex",
+              model: "gpt-5",
+              workDir: config.projectRoot,
+              permissionMode: "suggest",
+              gatewayEndpoint: `${apiUrl}/v1`,
+              gatewayKeyRef: "studio-gateway-client-key",
+              appProfileRef: "codex",
+            },
+          ],
+          defaultAgentProfileId: "codex-octo-action",
+          platformBindings: [
+            {
+              id: "octo-action",
+              platform: "octo",
+              accountId: "octo-account",
+              botId: null,
+              displayName: "Octo Action",
+              agentProfileId: "codex-octo-action",
+              enabled: true,
+              allowlist: [],
+              adminUsers: [],
+              metadata: {
+                apiUrl,
+                botToken: "test-token",
+                wsUrl,
+                octoHeartbeatMs: 30_000,
+                octoPongTimeoutMs: 10_000,
+                octoReconnectMs: 3_000,
+                octoReconnectJitterMs: 0,
+              },
+            },
+          ],
+        },
+      });
+
+      const runtimeConfig = service.getDaemonConfig().config;
+      runtimeConfig.management.port = await findFreePort();
+      const configPath = path.join(root, "daemon-octo-action-config.json");
+      fs.mkdirSync(path.dirname(runtimeConfig.paths.log), { recursive: true });
+      fs.writeFileSync(configPath, JSON.stringify(runtimeConfig, null, 2), "utf8");
+
+      const daemonEntry = path.resolve("dist/apps/api/modules/channel-connectors/daemon.js");
+      const child = spawn(process.execPath, [daemonEntry, "--config", configPath], {
+        cwd: path.resolve("."),
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:${process.env.PATH || ""}`,
+          STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+          STUDIO_TEST_CODEX_CAPTURE: capturePath,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stderr = "";
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk.toString("utf8");
+      });
+
+      try {
+        const connectedStatus = await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const connected = response.body?.octoConnections?.find?.((item) => item.bindingId === "octo-action" && item.connected);
+          return connected ? response.body : null;
+        }, 5000);
+        assert.equal(connectedStatus.ok, true);
+        assert.equal(wsConnects.length, 1);
+
+        const finalStatus = await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const run = response.body?.agentRuns?.find?.((item) => {
+            return item.messageId === "3001"
+              && item.ok === true
+              && item.octoActionsExecuted === 1
+              && item.octoActionsSucceeded === 1;
+          });
+          return run ? response.body : null;
+        }, 10_000);
+        assert.equal(finalStatus.ok, true);
+        const run = finalStatus.agentRuns.find((item) => item.messageId === "3001");
+        assert.equal(run.octoActionsDeclared, 1);
+        assert.equal(run.octoActionsExecuted, 1);
+        assert.equal(run.octoActionsSucceeded, 1);
+        assert.equal(run.octoActionsFailed, 0);
+        assert.deepEqual(run.octoActionErrors, []);
+
+        const createGroupRequest = requests.find((request) => {
+          return request.method === "POST" && request.path === "/v1/bot/createGroup";
+        });
+        assert.ok(createGroupRequest, JSON.stringify(requests));
+        assert.equal(createGroupRequest.body.name, "Agent 协作群");
+        assert.deepEqual(createGroupRequest.body.members, ["approve-user"]);
+        assert.equal(createGroupRequest.body.creator, "approve-user");
+
+        const sendContents = requests
+          .filter((request) => request.path === "/v1/bot/sendMessage")
+          .map((request) => request.body?.payload?.content || "");
+        assert.ok(sendContents.some((content) => content.includes("OctoChannelAction") && content.includes("/approve")), JSON.stringify(sendContents));
+        assert.ok(sendContents.some((content) => content.includes("已允许") && content.includes("octo-action-1")), JSON.stringify(sendContents));
+        assert.ok(sendContents.some((content) => content.includes("Octo action results") && content.includes("group-approved")), JSON.stringify(sendContents));
+        assert.equal(sendContents.some((content) => content.includes("did not include any valid Octo action entries")), false);
+
+        const octoEvents = await waitForJsonLines(runtimeConfig.paths.octoEvents, (events) => {
+          return events.some((event) => event.eventKind === "agent.octo_action.permission.prompt" && event.messageId === "3001")
+            && events.some((event) => {
+              return event.eventKind === "agent.run.finished"
+                && event.messageId === "3001"
+                && event.agentOk === true
+                && event.octoActionsSucceeded === 1;
+            });
+        }, 8000);
+        assert.ok(octoEvents.some((event) => event.eventKind === "agent.octo_action.permission.prompt" && event.action === "create-group"));
       } finally {
         child.kill("SIGTERM");
         await new Promise((resolve) => {
