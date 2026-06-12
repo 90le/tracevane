@@ -86,11 +86,11 @@ Provider / model routing 目标：
 ```
 
 - Channel Connectors 改为 Studio 原生实现，不上线短期托管 cc-connect 方案；CC 二开源码已有功能都必须纳入 Studio 原生目标，首批平台只是实施顺序。
-- 2026-06-12 边界更新：Feishu、Octo 以及后续 IM 渠道的首期上线验收只要求私聊能力完整、稳定、好用；私聊里只保留文本对话、文件/图片传输、Agent CLI 原生能力、工具流/回复解析和 compact。`studio-channel-skill`、平台扩展 action、Feishu/Octo 文档/群/管理类能力不再作为目标，已实现的群聊/thread/多 bot 协作能力保留为 best-effort，不再继续扩展。
+- 2026-06-12 边界更新：Feishu、Octo 以及后续 IM 渠道的首期上线验收只要求私聊能力完整、稳定、好用；私聊里只保留文本对话、文件/图片传输、Agent CLI 原生能力、工具流/回复解析和 compact。active `studio-channel-skill`、平台扩展 action、Feishu/Octo 文档/群/管理类能力不再作为目标，已实现的群聊/thread/多 bot 协作能力保留为 best-effort，不再继续扩展。
 - Channel Connectors 使用独立 Studio 配置/secret/state，不写入 `openclaw.json`、OpenClaw channels 或 OpenClaw bindings。
 - Channel daemon 必须常驻守护；Studio / OpenClaw 崩溃时仍保持渠道服务和 Codex/Gateway 对话链路，不内置额外修复流程。
 - Channel / Agent 任意新功能实现前必须先定位 CC Go 对应实现，按平台协议、消息语义、交互菜单、错误处理、长连接和状态流做 1:1 contract 迁移，再做 Studio 化精修；禁止在已有成熟设计时重新盲目设计。
-- Octo/Feishu 等平台 skills 不再扩展为平台 API 工具层。Agent prompt/skills 只描述当前私聊附件、消息收发约束和 Agent CLI 原生命令使用方式；不再要求 `studio-channel-skill`、平台 action manifest 或文档/群/管理类执行器。已存在的执行器代码后续按迁移清理，不作为新目标。
+- Octo/Feishu 等平台 skills 不再扩展为平台 API 工具层。Agent prompt/skills 只描述当前私聊附件、消息收发约束和 Agent CLI 原生命令使用方式；不再要求 `studio-channel-skill`、平台 action manifest 或文档/群/管理类执行器。active runner/daemon/UI 暴露层必须保持删除；Feishu 低层 legacy action helper 若继续瘦身需单独处理，不作为新功能目标。
 - Channel Connectors 进度跟踪以 `docs/channel-connectors-cc-migration-checklist.md` 为准；任何偏离 CC 的实现都必须写明原因、验收证据和回退方式。
 - Channel daemon 的平台长连接必须以 CC Go 成熟实现为基线迁移；Octo(dmwork) 默认 30s heartbeat、10s PONG timeout、RECVACK、5 分钟 messageId 去重、`3s + 0..3s` 抖动重连和 5 分钟 REST heartbeat 备用保活，Feishu 采用同 App 共享长连接后扇出事件。
 - Feishu 入站消息必须先完成轻量解析/去重/准入并快速 ACK；文件下载、Agent 调用、进度卡片和最终回复必须后台异步执行，避免 SDK dispatcher 被 IO 阻塞后触发平台重投。
@@ -148,7 +148,7 @@ Provider / model routing 目标：
 - Channel Connectors 自动上下文管理验收必须证明：resolved model 的 `contextWindow/maxOutputTokens` 可进入本 IM session 预算；Gateway runtime usage 优先，字符估算兜底；达到剩余上下文阈值时优先触发 Agent-native compact；成功后记录 used-token baseline，后续按 `当前 used - baseline used` 继续判断；runner 不支持、原生失败或 one-shot 不可靠时降级 Studio compact；失败或 native 阻塞才进入 retry cooldown；每次 `/status` 或可选 footer 能显示剩余上下文百分比。
 - Channel Connectors 不再单独建设 `/usage` / token 统计能力；模型消耗后续统一回到 Studio Gateway usage/模型消耗页查看。
 - Channel Connectors `/reasoning` 验收必须证明：IM session 可用序号或 `low|medium|high|xhigh|default` 切换推理强度，切换后旧 Agent 续接被清理，Codex/Claude Code/OpenCode runner 都收到对应原生 CLI 参数。
-- Channel Connectors skill/prompt 验收必须证明：Agent 只看到私聊消息、文件/图片附件、工作目录、权限、compact 和 Agent CLI 原生命令说明；不得再引导 Agent 调用 `studio-channel-skill` 或平台扩展 action。出站文件/消息仍通过 Studio native transport 完成。
+- Channel Connectors skill/prompt 验收必须证明：Agent 只看到私聊消息、文件/图片附件、工作目录、权限、compact 和 Agent CLI 原生命令说明；不得再引导 Agent 调用 `studio-channel-skill` 或平台扩展 action，旧 action block 不得触发审批或平台 API。出站文件/消息仍通过 Studio native transport 完成。
 - Claude Code 权限验收必须证明：`control_request` 不能只作为进度展示，必须按 CC Go 合同回写 `control_response`；自动模式可 allow，保守模式必须 fail-safe deny 或经 IM 文本/Feishu 按钮卡片批准；`AskUserQuestion` 必须按 CC Go 特例处理为用户问题回答，不能被 yolo/full-auto 自动 allow，也不能把 `allow/deny` 误当权限命令。
 - Channel Connectors session 管理验收必须证明：`/name` 可命名当前或指定序号 Agent session，`/search` 可按名称/sessionId 等字段搜索，Feishu 卡片和纯文本菜单都显示命名结果。
 - 持久 session driver 验收必须证明：进程可观测、可停止、可 idle 回收，并在 Studio API/UI 暴露 status、reap-idle、kill 管理入口；crash 后 session store 不损坏；同一用户可切换多个 Agent；不同用户/群/线程不会串上下文；driver 不支持某能力时能回退 one-shot runner。

@@ -73,12 +73,6 @@ import {
   uploadAndSendFeishuMedia,
 } from "../../dist/apps/api/modules/channel-connectors/feishu-transport.js";
 import {
-  extractChannelConnectorFeishuActions,
-} from "../../dist/apps/api/modules/channel-connectors/feishu-actions.js";
-import {
-  extractChannelConnectorOctoActions,
-} from "../../dist/apps/api/modules/channel-connectors/octo-actions.js";
-import {
   loadFeishuThreadBootstrapContext,
 } from "../../dist/apps/api/modules/channel-connectors/feishu-thread-bootstrap.js";
 import {
@@ -153,9 +147,6 @@ import {
   channelConnectorSkillDirs,
   listChannelConnectorPlatformSkills,
 } from "../../dist/apps/api/modules/channel-connectors/skill-registry.js";
-import {
-  STUDIO_CHANNEL_CONNECTOR_PLATFORM_SKILLS,
-} from "../../dist/apps/api/modules/channel-connectors/studio-channel-skills.js";
 
 function makeTempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-connectors-"));
@@ -1323,227 +1314,6 @@ test("native Channel Connectors extracts outbound IM message manifests", () => {
   assert.equal(invalid.replyText, "bad");
   assert.equal(invalid.messages.length, 0);
   assert.match(invalid.errors.join("\n"), /JSON/);
-});
-
-test("native Channel Connectors extracts Feishu action manifests", () => {
-  const extracted = extractChannelConnectorFeishuActions([
-    "先读取文档和知识库。",
-    "```studio-feishu-actions",
-    JSON.stringify([
-      { tool: "feishu_doc", action: "read", doc_token: "doc_a" },
-      { skill: "wiki", action: "nodes", params: { space_id: "7370955161512345678" } },
-      { name: "feishu_perm", action: "list", token: "doc_a", type: "docx" },
-      { skill: "im", action: "channel-info", params: { chat_id: "oc_1" } },
-      { skill: "scopes", action: "list" },
-      { skill: "bitable", action: "list_records", params: { app_token: "base_a", table_id: "tbl_a" } },
-      { tool: "feishu_bitable", action: "create_app", name: "Top Level Bitable", folder_token: "fld_top" },
-      { skill: "bitable", action: "create_app", params: { name: "Project Tracker", folder_token: "fld_a" } },
-      { skill: "bitable", action: "create_field", params: { app_token: "base_a", table_id: "tbl_a", name: "Score", field_type: 2 } },
-    ]),
-    "```",
-  ].join("\n"));
-
-  assert.equal(extracted.replyText, "先读取文档和知识库。");
-  assert.deepEqual(extracted.errors, []);
-  assert.deepEqual(extracted.actions, [
-    { tool: "feishu_doc", action: "read", params: { doc_token: "doc_a" } },
-    { tool: "feishu_wiki", action: "nodes", params: { space_id: "7370955161512345678" } },
-    { tool: "feishu_perm", action: "list", params: { token: "doc_a", type: "docx" } },
-    { tool: "feishu_channel", action: "channel-info", params: { chat_id: "oc_1" } },
-    { tool: "feishu_app_scopes", action: "list", params: {} },
-    { tool: "feishu_bitable", action: "list_records", params: { app_token: "base_a", table_id: "tbl_a" } },
-    { tool: "feishu_bitable", action: "create_app", params: { name: "Top Level Bitable", folder_token: "fld_top" } },
-    { tool: "feishu_bitable", action: "create_app", params: { name: "Project Tracker", folder_token: "fld_a" } },
-    { tool: "feishu_bitable", action: "create_field", params: { app_token: "base_a", table_id: "tbl_a", name: "Score", field_type: 2 } },
-  ]);
-
-  const invalid = extractChannelConnectorFeishuActions([
-    "bad",
-    "```studio-feishu-actions",
-    "{nope",
-    "```",
-  ].join("\n"));
-  assert.equal(invalid.replyText, "bad");
-  assert.equal(invalid.actions.length, 0);
-  assert.match(invalid.errors.join("\n"), /JSON/);
-});
-
-test("native Channel Connectors extracts Octo action manifests", () => {
-  const extracted = extractChannelConnectorOctoActions([
-    "先查询群成员。",
-    "```studio-octo-actions",
-    JSON.stringify([
-      { tool: "octo_management", action: "group-members", group_id: "g1" },
-      { action: "get-thread", params: { groupId: "g1", shortId: "t1" } },
-      { skill: "octo", action: "history", params: { channel_id: "g1", channel_type: 2, limit: 20 } },
-      { skill: "octo", action: "download-url", params: { file_path: "chat/hello.txt", file_name: "hello.txt" } },
-      { skill: "octo", action: "edit-message", params: { message_id: "msg-1", content: "updated" } },
-      { skill: "octo", action: "space-members", params: { keyword: "Alice" } },
-      { skill: "octo", action: "sync-messages", params: { channel_id: "g1", channel_type: 2 } },
-      { skill: "octo", action: "add-group-members", params: { group_no: "g1", members: ["u1"] } },
-      { skill: "octo", action: "set-group-md", params: { group_no: "g1", content: "# Rules" } },
-      { skill: "octo", action: "delete-voice-context", params: {} },
-      { skill: "octo", action: "createGroup", params: { name: "New", members: ["u1"] } },
-      { action: "create-group", name: "Agent 协作群", members: "u1,u2" },
-      { action: "octo_management.list-groups" },
-      { tool: "octo_management.list-groups" },
-      { tool: "octo_bot_api", action: "fetchBotGroups" },
-      { tool: "octo_management", action: "getGroupMembers", groupNo: "g2" },
-      { tool: "octo_management.getThread", params: { groupId: "g1", shortId: "t2" } },
-      { "octo_management.listThreads": { groupId: "g1" } },
-    ]),
-    "```",
-  ].join("\n"));
-
-  assert.equal(extracted.replyText, "先查询群成员。");
-  assert.deepEqual(extracted.errors, []);
-  assert.deepEqual(extracted.actions, [
-    { tool: "octo_management", action: "group-members", params: { group_id: "g1" } },
-    { tool: "octo_management", action: "thread-info", params: { groupId: "g1", shortId: "t1" } },
-    { tool: "octo_management", action: "history", params: { channel_id: "g1", channel_type: 2, limit: 20 } },
-    { tool: "octo_management", action: "file-download-url", params: { file_path: "chat/hello.txt", file_name: "hello.txt" } },
-    { tool: "octo_management", action: "message-edit", params: { message_id: "msg-1", content: "updated" } },
-    { tool: "octo_management", action: "search-members", params: { keyword: "Alice" } },
-    { tool: "octo_management", action: "history", params: { channel_id: "g1", channel_type: 2 } },
-    { tool: "octo_management", action: "add-members", params: { group_no: "g1", members: ["u1"] } },
-    { tool: "octo_management", action: "group-md-update", params: { group_no: "g1", content: "# Rules" } },
-    { tool: "octo_management", action: "voice-context-delete", params: {} },
-    { tool: "octo_management", action: "create-group", params: { name: "New", members: ["u1"] } },
-    { tool: "octo_management", action: "create-group", params: { name: "Agent 协作群", members: "u1,u2" } },
-    { tool: "octo_management", action: "list-groups", params: {} },
-    { tool: "octo_management", action: "list-groups", params: {} },
-    { tool: "octo_management", action: "list-groups", params: {} },
-    { tool: "octo_management", action: "group-members", params: { groupNo: "g2" } },
-    { tool: "octo_management", action: "thread-info", params: { groupId: "g1", shortId: "t2" } },
-    { tool: "octo_management", action: "list-threads", params: { groupId: "g1" } },
-  ]);
-
-  const sdkAliases = extractChannelConnectorOctoActions([
-    "OpenClaw SDK aliases.",
-    "```studio-octo-actions",
-    JSON.stringify([
-      { tool: "octo_management", action: "fetchBotGroups" },
-      { tool: "octo_management", action: "getGroupInfo", groupNo: "g1" },
-      { tool: "octo_management", action: "getGroupMembers", groupNo: "g1" },
-      { tool: "octo_management", action: "searchSpaceMembers", keyword: "Alice" },
-      { tool: "octo_management", action: "createGroup", name: "New", members: ["u1"], creator: "u1" },
-      { tool: "octo_management", action: "updateGroup", groupNo: "g1", name: "Renamed" },
-      { tool: "octo_management", action: "addGroupMembers", groupNo: "g1", members: ["u2"] },
-      { tool: "octo_management", action: "removeGroupMembers", groupNo: "g1", members: ["u2"] },
-      { tool: "octo_management", action: "listThreads", groupNo: "g1" },
-      { tool: "octo_management", action: "getThread", groupNo: "g1", shortId: "t1" },
-      { tool: "octo_management", action: "listThreadMembers", groupNo: "g1", shortId: "t1" },
-      { tool: "octo_management", action: "createThread", groupNo: "g1", name: "Thread" },
-      { tool: "octo_management", action: "deleteThread", groupNo: "g1", shortId: "t1" },
-      { tool: "octo_management", action: "joinThread", groupNo: "g1", shortId: "t1" },
-      { tool: "octo_management", action: "leaveThread", groupNo: "g1", shortId: "t1" },
-      { tool: "octo_management", action: "getGroupMd", groupNo: "g1" },
-      { tool: "octo_management", action: "updateGroupMd", groupNo: "g1", content: "# Group" },
-      { tool: "octo_management", action: "getThreadMd", groupNo: "g1", shortId: "t1" },
-      { tool: "octo_management", action: "updateThreadMd", groupNo: "g1", shortId: "t1", content: "# Thread" },
-      { tool: "octo_management", action: "getVoiceContext" },
-      { tool: "octo_management", action: "updateVoiceContext", content: "Alice => 艾丽丝" },
-      { tool: "octo_management", action: "deleteVoiceContext" },
-      { tool: "octo_management", action: "getChannelMessages", channelId: "g1", channelType: 2 },
-      { tool: "octo_management", action: "getFileDownloadUrl", filePath: "chat/hello.txt" },
-      { tool: "octo_management", action: "editMessage", messageId: "m1", content: "updated" },
-    ]),
-    "```",
-  ].join("\n"));
-  assert.equal(sdkAliases.replyText, "OpenClaw SDK aliases.");
-  assert.deepEqual(sdkAliases.errors, []);
-  assert.deepEqual(sdkAliases.actions.map((action) => action.action), [
-    "list-groups",
-    "group-info",
-    "group-members",
-    "search-members",
-    "create-group",
-    "update-group",
-    "add-members",
-    "remove-members",
-    "list-threads",
-    "thread-info",
-    "thread-members",
-    "create-thread",
-    "delete-thread",
-    "join-thread",
-    "leave-thread",
-    "group-md-read",
-    "group-md-update",
-    "thread-md-read",
-    "thread-md-update",
-    "voice-context-read",
-    "voice-context-update",
-    "voice-context-delete",
-    "history",
-    "file-download-url",
-    "message-edit",
-  ]);
-
-  const sensitive = extractChannelConnectorOctoActions([
-    "不要暴露管理面。",
-    "```studio-octo-actions",
-    JSON.stringify([
-      { tool: "octo_management", action: "register" },
-      { tool: "octo_management", action: "heartbeat" },
-      { tool: "octo_management", action: "upload-credentials", params: { filename: "secret.zip" } },
-      { tool: "octo_management", action: "create-bot", params: { name: "bot" } },
-      { tool: "octo_management", action: "bot-token", params: { bot_id: "27x_bot" } },
-      { tool: "octo_management", action: "user-bots" },
-    ]),
-    "```",
-  ].join("\n"));
-  assert.equal(sensitive.replyText, "不要暴露管理面。");
-  assert.deepEqual(sensitive.actions, []);
-  assert.match(sensitive.errors.join("\n"), /did not include any valid Octo action entries/);
-
-  const invalid = extractChannelConnectorOctoActions([
-    "bad",
-    "```studio-octo-actions",
-    "{nope",
-    "```",
-  ].join("\n"));
-  assert.equal(invalid.replyText, "bad");
-  assert.equal(invalid.actions.length, 0);
-  assert.match(invalid.errors.join("\n"), /JSON/);
-});
-
-test("native Channel Connectors built-in runtime actions stay parser-addressable", () => {
-  const actions = STUDIO_CHANNEL_CONNECTOR_PLATFORM_SKILLS.flatMap((skill) => skill.runtimeActions || []);
-  const executableActions = actions.filter((action) =>
-    action.manifest === "studio-octo-actions" || action.manifest === "studio-feishu-actions"
-  );
-  assert.ok(executableActions.length > 20);
-
-  for (const action of executableActions) {
-    const block = [
-      "```" + action.manifest,
-      JSON.stringify([{ tool: action.tool, action: action.action, params: { name: "keep-name" } }]),
-      "```",
-    ].join("\n");
-    const parsed = action.manifest === "studio-octo-actions"
-      ? extractChannelConnectorOctoActions(block)
-      : extractChannelConnectorFeishuActions(block);
-    assert.deepEqual(parsed.errors, [], `${action.manifest}:${action.tool}.${action.action}`);
-    assert.equal(parsed.actions.length, 1, `${action.manifest}:${action.tool}.${action.action}`);
-    assert.equal(parsed.actions[0].tool, action.tool, `${action.manifest}:${action.tool}.${action.action}`);
-    assert.equal(parsed.actions[0].action, action.action, `${action.manifest}:${action.tool}.${action.action}`);
-    assert.equal(parsed.actions[0].params.name, "keep-name", `${action.manifest}:${action.tool}.${action.action}`);
-
-    if (action.manifest === "studio-octo-actions") {
-      const prefixedActionBlock = [
-        "```" + action.manifest,
-        JSON.stringify([{ action: `${action.tool}.${action.action}`, params: { name: "prefixed-action" } }]),
-        "```",
-      ].join("\n");
-      const prefixedActionParsed = extractChannelConnectorOctoActions(prefixedActionBlock);
-      assert.deepEqual(prefixedActionParsed.errors, [], `${action.manifest}:${action.tool}.${action.action}:prefixed-action`);
-      assert.equal(prefixedActionParsed.actions.length, 1, `${action.manifest}:${action.tool}.${action.action}:prefixed-action`);
-      assert.equal(prefixedActionParsed.actions[0].tool, action.tool, `${action.manifest}:${action.tool}.${action.action}:prefixed-action`);
-      assert.equal(prefixedActionParsed.actions[0].action, action.action, `${action.manifest}:${action.tool}.${action.action}:prefixed-action`);
-      assert.equal(prefixedActionParsed.actions[0].params.name, "prefixed-action", `${action.manifest}:${action.tool}.${action.action}:prefixed-action`);
-    }
-  }
 });
 
 test("native Channel Connectors executes Feishu read-only actions and approval-gated mutations", async () => {
@@ -4653,7 +4423,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.match(processRequest.stdin, /^\[Studio outbound file\/message policy\]/);
   assert.match(processRequest.stdin, /\[Current IM message - respond to this ONLY\]\nhi codex/);
   assert.match(processRequest.stdin, /studio-channel-files/);
-  assert.match(processRequest.stdin, /Feishu message targets support `chat:oc_xxx`, `open_id:ou_xxx`, `user_id:u_xxx`/);
+  assert.match(processRequest.stdin, /Feishu private message targets support `open_id:ou_xxx`, `user_id:u_xxx`, and `dm:ou_xxx`/);
   assert.doesNotMatch(processRequest.stdin, /cc-connect/);
   assert.equal(processRequest.env.OPENAI_API_KEY, "sk-local");
   assert.equal(processRequest.env.OPENAI_BASE_URL, project.gatewayEndpoint);
@@ -4670,17 +4440,10 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.match(codexConfig, /experimental_bearer_token = "sk-local"/);
   assert.equal(fs.statSync(codexConfigPath).mode & 0o777, 0o600);
   const codexNativeSkillPath = path.join(processRequest.env.CODEX_HOME, "skills", "octo_bot_api", "SKILL.md");
-  assert.equal(fs.existsSync(codexNativeSkillPath), true);
-  const codexNativeSkill = fs.readFileSync(codexNativeSkillPath, "utf8");
-  assert.match(codexNativeSkill, /Studio Channel Connector runtime projection/);
-  assert.match(codexNativeSkill, /Runtime Action Index/);
-  assert.match(codexNativeSkill, /## Send Messages/);
-  assert.match(codexNativeSkill, /studio-channel-skill octo octo_management\.group-members/);
-  assert.match(codexNativeSkill, /dm:human_uid/);
-  assert.match(codexNativeSkill, /studio-channel-messages/);
-  assert.doesNotMatch(codexNativeSkill, /```studio-octo-actions/);
-  assert.doesNotMatch(codexNativeSkill, /openclaw plugins install/);
-  assert.doesNotMatch(codexNativeSkill, /Step 1: Register/);
+  assert.equal(fs.existsSync(codexNativeSkillPath), false);
+  assert.doesNotMatch(processRequest.stdin, /studio-channel-skill/);
+  assert.doesNotMatch(processRequest.stdin, /studio-octo-actions/);
+  assert.doesNotMatch(processRequest.stdin, /studio-feishu-actions/);
   for (const cleanupPath of processRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const codexReasoningRequest = buildChannelConnectorAgentProcessRequest({
@@ -4906,8 +4669,6 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     gatewayEndpoint: project.gatewayEndpoint,
     gatewayClientKey: "sk-local",
     agentRuntimeDir,
-    daemonManagementEndpoint: "http://127.0.0.1:18798",
-    daemonManagementToken: "mgmt-token",
     session: { codexThreadId: "019e9b49-0b62-7132-845a-f19aba1484b7" },
   });
   assert.ok(resumeRequest);
@@ -4923,19 +4684,11 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(fs.existsSync(path.join(resumeRequest.env.CODEX_HOME, "config.toml")), true);
   const channelSkillBin = path.join(agentRuntimeDir, "channel-skill-tools", "bin");
   const channelSkillScript = path.join(channelSkillBin, "studio-channel-skill");
-  assert.equal(fs.existsSync(channelSkillScript), true);
-  assert.equal(fs.statSync(channelSkillScript).mode & 0o777, 0o700);
-  assert.equal(resumeRequest.env.PATH.split(":")[0], channelSkillBin);
-  assert.equal(resumeRequest.env.STUDIO_CHANNEL_SKILL_ENDPOINT, "http://127.0.0.1:18798/channel-skill/action");
-  assert.equal(resumeRequest.env.STUDIO_CHANNEL_SKILL_TOKEN, "mgmt-token");
-  assert.equal(resumeRequest.env.STUDIO_CHANNEL_SKILL_BINDING_ID, "octo-codex");
-  assert.equal(resumeRequest.env.STUDIO_CHANNEL_SKILL_SESSION_KEY, "dmwork:dm:user-1");
-  assert.equal(resumeRequest.env.STUDIO_CHANNEL_SKILL_CHANNEL_ID, "user-1");
-  assert.equal(resumeRequest.env.STUDIO_CHANNEL_SKILL_FROM_UID, "user-1");
-  assert.equal(resumeRequest.env.STUDIO_CHANNEL_SKILL_MESSAGE_ID, "m-runner-1");
-  const channelSkillScriptSource = fs.readFileSync(channelSkillScript, "utf8");
-  assert.match(channelSkillScriptSource, /STUDIO_CHANNEL_SKILL_ENDPOINT/);
-  assert.match(channelSkillScriptSource, /fetch\(endpoint/);
+  assert.equal(fs.existsSync(channelSkillScript), false);
+  assert.notEqual(resumeRequest.env.PATH.split(":")[0], channelSkillBin);
+  assert.equal("STUDIO_CHANNEL_SKILL_ENDPOINT" in resumeRequest.env, false);
+  assert.equal("STUDIO_CHANNEL_SKILL_TOKEN" in resumeRequest.env, false);
+  assert.equal("STUDIO_CHANNEL_SKILL_BINDING_ID" in resumeRequest.env, false);
 
   let turnCleanupPath = null;
   const result = await runChannelConnectorAgentTurn({
@@ -5048,11 +4801,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(claudeRequest.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:18796");
   assert.ok(claudeRequest.env.CLAUDE_CONFIG_DIR);
   const claudeNativeSkillPath = path.join(claudeRequest.env.CLAUDE_CONFIG_DIR, "skills", "octo_bot_api", "SKILL.md");
-  assert.equal(fs.existsSync(claudeNativeSkillPath), true);
-  const claudeNativeSkill = fs.readFileSync(claudeNativeSkillPath, "utf8");
-  assert.match(claudeNativeSkill, /Studio Channel Connector runtime projection/);
-  assert.match(claudeNativeSkill, /dm:human_uid/);
-  assert.doesNotMatch(claudeNativeSkill, /openclaw plugins install/);
+  assert.equal(fs.existsSync(claudeNativeSkillPath), false);
+  assert.doesNotMatch(claudeRequest.stdin, /studio-channel-skill/);
   for (const cleanupPath of claudeRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const claudeResumeRequest = buildChannelConnectorAgentProcessRequest({
@@ -5128,19 +4878,14 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(opencodeConfig.provider["studio-gateway"].options.baseURL, project.gatewayEndpoint);
   assert.equal(opencodeConfig.provider["studio-gateway"].options.apiKey, "sk-local");
   assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-5"].name, "gpt-5");
-  assert.deepEqual(opencodeConfig.instructions, ["skills/octo_bot_api/SKILL.md"]);
+  assert.equal("instructions" in opencodeConfig, false);
   assert.equal(fs.statSync(opencodeConfigPath).mode & 0o777, 0o600);
   const opencodeNativeSkillPath = path.join(opencodeRequest.env.XDG_CONFIG_HOME, "opencode", "skills", "octo_bot_api", "SKILL.md");
-  assert.equal(fs.existsSync(opencodeNativeSkillPath), true);
-  const opencodeNativeSkill = fs.readFileSync(opencodeNativeSkillPath, "utf8");
-  assert.match(opencodeNativeSkill, /Studio Channel Connector runtime projection/);
-  assert.match(opencodeNativeSkill, /dm:human_uid/);
-  assert.match(opencodeNativeSkill, /studio-channel-messages/);
-  assert.doesNotMatch(opencodeNativeSkill, /openclaw plugins install/);
+  assert.equal(fs.existsSync(opencodeNativeSkillPath), false);
   assert.match(opencodeRequest.args.at(-1), /^\[Studio outbound file\/message policy\]/);
   assert.match(opencodeRequest.args.at(-1), /\[Current IM message - respond to this ONLY\]\nhi codex/);
   assert.match(opencodeRequest.args.at(-1), /studio-channel-files/);
-  assert.match(opencodeRequest.args.at(-1), /studio-channel-skill octo/);
+  assert.doesNotMatch(opencodeRequest.args.at(-1), /studio-channel-skill/);
   assert.doesNotMatch(opencodeRequest.args.at(-1), /studio-feishu-actions/);
   assert.doesNotMatch(opencodeRequest.args.at(-1), /cc-connect/);
   for (const cleanupPath of opencodeRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
@@ -5156,25 +4901,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.ok(feishuOpenCodeRequest);
   const feishuOpenCodeConfigPath = path.join(feishuOpenCodeRequest.env.XDG_CONFIG_HOME, "opencode", "opencode.json");
   const feishuOpenCodeConfig = JSON.parse(fs.readFileSync(feishuOpenCodeConfigPath, "utf8"));
-  assert.deepEqual(feishuOpenCodeConfig.instructions, [
-    "skills/feishu_messaging/SKILL.md",
-    "skills/feishu_doc/SKILL.md",
-    "skills/feishu_app_scopes/SKILL.md",
-    "skills/feishu_drive/SKILL.md",
-    "skills/feishu_perm/SKILL.md",
-    "skills/feishu_wiki/SKILL.md",
-    "skills/feishu_bitable/SKILL.md",
-  ]);
-  const feishuDocSkill = fs.readFileSync(
-    path.join(feishuOpenCodeRequest.env.XDG_CONFIG_HOME, "opencode", "skills", "feishu_doc", "SKILL.md"),
-    "utf8",
-  );
-  assert.match(feishuDocSkill, /studio-channel-skill feishu/);
-  assert.match(feishuDocSkill, /studio-channel-skill feishu feishu_doc\.read/);
-  assert.doesNotMatch(feishuDocSkill, /```studio-feishu-actions/);
-  assert.match(feishuDocSkill, /Supported now without approval: `read`, `list_blocks`, `get_block`/);
-  assert.match(feishuDocSkill, /Supported now after Studio IM approval: `create`/);
-  assert.doesNotMatch(feishuDocSkill, /openclaw plugins install/i);
+  assert.equal("instructions" in feishuOpenCodeConfig, false);
+  assert.equal(fs.existsSync(path.join(feishuOpenCodeRequest.env.XDG_CONFIG_HOME, "opencode", "skills", "feishu_doc", "SKILL.md")), false);
   for (const cleanupPath of feishuOpenCodeRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const opencodeSlashModelRequest = buildChannelConnectorAgentProcessRequest({
@@ -5910,17 +5638,17 @@ test("native Channel Connectors conversation history stores sanitized session co
 
   appendChannelConnectorConversationHistory(historyPath, {
     ...lookup,
-    messageId: "m-action-result",
+    messageId: "m-tool-result",
     role: "assistant",
-    text: `${"feishu action result detail ".repeat(22)}ACTION-RESULT-VISIBLE`,
-    status: "feishu-action-results",
+    text: `${"tool result detail ".repeat(8)}TOOL-RESULT-VISIBLE`,
+    status: "tool-result",
     now: new Date("2026-06-06T08:00:04.000Z"),
   });
-  const actionResultContext = renderChannelConnectorConversationHistoryContext(
+  const toolResultContext = renderChannelConnectorConversationHistoryContext(
     getChannelConnectorConversationHistory(historyPath, lookup, 10),
   );
-  assert.match(actionResultContext, /feishu-action-results/);
-  assert.match(actionResultContext, /ACTION-RESULT-VISIBLE/);
+  assert.match(toolResultContext, /tool-result/);
+  assert.match(toolResultContext, /TOOL-RESULT-VISIBLE/);
 
   const cleared = clearChannelConnectorConversationHistory(historyPath, lookup);
   assert.equal(cleared, 2);
@@ -7042,26 +6770,13 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.doesNotMatch(codexSkills.replyText, /\/feishu-card/);
   const octoSkillContext = buildChannelConnectorSkillContext(codexProject, { binding });
   assert.ok(octoSkillContext);
-  assert.match(octoSkillContext, /Auto-activation: if the current user request matches a platform skill description/);
-  assert.match(octoSkillContext, /Studio owns channel credentials and transport/);
-  assert.match(octoSkillContext, /\/octo history \[limit\]/);
-  assert.match(octoSkillContext, /### \/octo-bot-api \[platform:octo\]/);
-  assert.match(octoSkillContext, /Send Messages/);
-  assert.match(octoSkillContext, /Message History Sync/);
-  assert.match(octoSkillContext, /Multi-Bot Coordination/);
-  assert.match(octoSkillContext, /Admin-Plane Boundary/);
-  assert.match(octoSkillContext, /User API bot management endpoints/);
-  assert.doesNotMatch(octoSkillContext, /openclaw plugins install/);
-  assert.doesNotMatch(octoSkillContext, /Step 1: Register/);
-  assert.doesNotMatch(octoSkillContext, /\/v1\/user\/bots\/:bot_id\/token/);
+  assert.match(octoSkillContext, /\[Studio IM channel helper skills\]/);
+  assert.match(octoSkillContext, /Configured binding skills/);
   assert.match(octoSkillContext, /### \/octo-send \[binding\]/);
   assert.match(octoSkillContext, /Use Studio Octo channel transport for DM, group, thread, and mention work/);
   assert.match(octoSkillContext, /studio-channel-messages/);
-  assert.match(octoSkillContext, /studio-channel-skill octo/);
+  assert.doesNotMatch(octoSkillContext, /studio-channel-skill/);
   assert.doesNotMatch(octoSkillContext, /studio-octo-actions/);
-  assert.match(octoSkillContext, /octo_management.*group-members/);
-  assert.match(octoSkillContext, /octo_management.*file-download-url/);
-  assert.match(octoSkillContext, /octo_management.*message-edit/);
   assert.doesNotMatch(octoSkillContext, /feishu-card/);
 
   const codexSkillRun = await handleChannelConnectorCommand({
@@ -7096,28 +6811,18 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(feishuSkills.handled, true);
   assert.match(feishuSkills.replyText, /Studio Skills \(codex · feishu\)/);
-  assert.match(feishuSkills.replyText, /\/feishu-doc \[platform:feishu\]/);
+  assert.doesNotMatch(feishuSkills.replyText, /\/feishu-doc \[platform:feishu\]/);
   assert.match(feishuSkills.replyText, /\/feishu-card \[binding\]/);
+  assert.match(feishuSkills.replyText, /\/feishu-doc-api \[binding\]/);
   assert.doesNotMatch(feishuSkills.replyText, /\/octo-send/);
   const feishuSkillContext = buildChannelConnectorSkillContext(codexProject, { binding: feishuBinding });
   assert.ok(feishuSkillContext);
-  assert.match(feishuSkillContext, /### \/feishu-doc \[platform:feishu\]/);
-  assert.match(feishuSkillContext, /### \/feishu-app-scopes \[platform:feishu\]/);
-  assert.match(feishuSkillContext, /### \/feishu-drive \[platform:feishu\]/);
+  assert.match(feishuSkillContext, /\[Studio IM channel helper skills\]/);
   assert.match(feishuSkillContext, /\/feishu-card: Build Feishu card and message workflows/);
   assert.match(feishuSkillContext, /\/feishu-doc-api: Read, write, and attach files in Feishu documents/);
-  assert.match(feishuSkillContext, /Runtime Action Index/);
-  assert.match(feishuSkillContext, /Use native skill runner calls below/);
-  assert.match(feishuSkillContext, /studio-channel-skill feishu/);
-  assert.match(feishuSkillContext, /feishu_channel.*channel-info/);
-  assert.match(feishuSkillContext, /feishu_channel.*thread-reply/);
-  assert.match(feishuSkillContext, /feishu_app_scopes.*list/);
-  assert.match(feishuSkillContext, /feishu_doc.*color_text/);
-  assert.match(feishuSkillContext, /feishu_drive.*list_comments/);
-  assert.match(feishuSkillContext, /Supported now after Studio IM approval: `create`/);
-  assert.match(feishuSkillContext, /Supported now after Studio IM approval: `create_folder`, `move`, `delete`, `add_comment`, `reply_comment`/);
-  assert.match(feishuSkillContext, /## Actions/);
-  assert.match(feishuSkillContext, /Auto-activation/);
+  assert.doesNotMatch(feishuSkillContext, /Runtime Action Index/);
+  assert.doesNotMatch(feishuSkillContext, /studio-channel-skill/);
+  assert.doesNotMatch(feishuSkillContext, /studio-feishu-actions/);
   assert.doesNotMatch(feishuSkillContext, /FEISHU_APP_SECRET/);
   assert.doesNotMatch(feishuSkillContext, /octo-send/);
 
@@ -7126,88 +6831,28 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(defaultOctoDirs.some((dir) => dir.includes(".openclaw/extensions/octo")), false);
   assert.equal(defaultOctoDirs.some((dir) => dir.includes("projects/openclaw/latest/extensions/feishu")), false);
   const defaultOctoPlatformSkills = listChannelConnectorPlatformSkills(codexProject, { binding: defaultOctoBinding });
-  assert.deepEqual(defaultOctoPlatformSkills.map((skill) => [skill.name, skill.scope, skill.platform, skill.source]), [
-    ["octo-bot-api", "platform", "octo", "studio://channel-skills/octo/octo-bot-api"],
-  ]);
+  assert.deepEqual(defaultOctoPlatformSkills, []);
   const defaultOctoContext = buildChannelConnectorSkillContext(codexProject, { binding: defaultOctoBinding });
-  assert.ok(defaultOctoContext);
-  assert.match(defaultOctoContext, /### \/octo-bot-api \[platform:octo\]/);
-  assert.match(defaultOctoContext, /studio-channel-messages/);
-  assert.match(defaultOctoContext, /studio-channel-skill octo/);
-  assert.doesNotMatch(defaultOctoContext, /studio-octo-actions/);
-  assert.match(defaultOctoContext, /octo_management.*history/);
-  assert.match(defaultOctoContext, /octo_management.*file-download-url/);
-  assert.match(defaultOctoContext, /octo_management.*message-edit/);
-  assert.match(defaultOctoContext, /\/octo create-group/);
-  assert.match(defaultOctoContext, /Admin-Plane Boundary/);
-  assert.doesNotMatch(defaultOctoContext, /openclaw plugins install/);
-  assert.doesNotMatch(defaultOctoContext, /\/v1\/user\/bots\/:bot_id\/token/);
-  const octoRuntimeActions = defaultOctoPlatformSkills.flatMap((skill) => skill.runtimeActions || []);
-  assert.ok(octoRuntimeActions.some((action) => action.tool === "octo_management" && action.action === "group-members"));
-  const octoRuntimeActionNames = octoRuntimeActions.map((action) => action.action || action.id);
-  assert.equal(octoRuntimeActionNames.includes("register"), false);
-  assert.equal(octoRuntimeActionNames.includes("heartbeat"), false);
-  assert.equal(octoRuntimeActionNames.includes("upload-credentials"), false);
-  assert.equal(octoRuntimeActionNames.includes("create-bot"), false);
-  assert.equal(octoRuntimeActionNames.includes("bot-token"), false);
-  assert.equal(octoRuntimeActionNames.includes("user-bots"), false);
+  assert.equal(defaultOctoContext, null);
 
   const defaultFeishuBinding = { ...feishuBinding, metadata: {} };
   const defaultFeishuDirs = channelConnectorSkillDirs(codexProject, { binding: defaultFeishuBinding });
   assert.equal(defaultFeishuDirs.some((dir) => dir.includes(".openclaw/extensions/feishu")), false);
   assert.equal(defaultFeishuDirs.some((dir) => dir.includes("projects/openclaw/latest/extensions/feishu")), false);
   const defaultFeishuPlatformSkills = listChannelConnectorPlatformSkills(codexProject, { binding: defaultFeishuBinding });
-  assert.deepEqual(defaultFeishuPlatformSkills.map((skill) => skill.name), [
-    "feishu-messaging",
-    "feishu-doc",
-    "feishu-app-scopes",
-    "feishu-drive",
-    "feishu-perm",
-    "feishu-wiki",
-    "feishu-bitable",
-  ]);
-  assert.equal(defaultFeishuPlatformSkills.every((skill) => skill.source.startsWith("studio://channel-skills/feishu/")), true);
+  assert.deepEqual(defaultFeishuPlatformSkills, []);
   const defaultFeishuContext = buildChannelConnectorSkillContext(codexProject, { binding: defaultFeishuBinding });
-  assert.ok(defaultFeishuContext);
-  assert.match(defaultFeishuContext, /### \/feishu-messaging \[platform:feishu\]/);
-  assert.match(defaultFeishuContext, /### \/feishu-doc \[platform:feishu\]/);
-  assert.match(defaultFeishuContext, /### \/feishu-app-scopes \[platform:feishu\]/);
-  assert.match(defaultFeishuContext, /studio-channel-skill feishu/);
-  assert.doesNotMatch(defaultFeishuContext, /studio-feishu-actions/);
-  assert.match(defaultFeishuContext, /feishu_channel.*channel-list/);
-  assert.match(defaultFeishuContext, /feishu_app_scopes.*list/);
-  assert.match(defaultFeishuContext, /Supported now without approval: `read`, `list_blocks`, `get_block`/);
-  assert.match(defaultFeishuContext, /Supported now after Studio IM approval: `create`/);
-  assert.match(defaultFeishuContext, /feishu_doc.*insert_table_row/);
-  assert.match(defaultFeishuContext, /feishu_drive.*reply_comment/);
-  assert.match(defaultFeishuContext, /feishu_bitable.*list_records/);
-  assert.match(defaultFeishuContext, /studio-channel-files/);
-  assert.doesNotMatch(defaultFeishuContext, /FEISHU_APP_SECRET/);
-  assert.doesNotMatch(defaultFeishuContext, /openclaw plugins install/);
+  assert.equal(defaultFeishuContext, null);
   const feishuSurface = buildChannelConnectorCommandSurface({
     config: runtimeConfig,
     project: codexProject,
     binding: defaultFeishuBinding,
     skills: listChannelConnectorSkillSummaries(codexProject, defaultFeishuBinding),
   });
-  assert.deepEqual(feishuSurface.skills.filter((skill) => skill.scope === "platform").map((skill) => skill.name), [
-    "feishu-messaging",
-    "feishu-doc",
-    "feishu-app-scopes",
-    "feishu-drive",
-    "feishu-perm",
-    "feishu-wiki",
-    "feishu-bitable",
-  ]);
-  assert.equal(feishuSurface.skills.every((skill) => skill.scope !== "platform" || skill.source.startsWith("studio://channel-skills/feishu/")), true);
-  assert.ok(feishuSurface.skills.find((skill) => skill.name === "feishu-messaging")?.actions?.some((action) => action.tool === "feishu_channel" && action.action === "channel-info"));
-  assert.ok(feishuSurface.skills.find((skill) => skill.name === "feishu-app-scopes")?.actions?.some((action) => action.tool === "feishu_app_scopes" && action.action === "list" && action.approval === "none"));
-  assert.ok(feishuSurface.skills.find((skill) => skill.name === "feishu-doc")?.actions?.some((action) => action.action === "color_text"));
-  assert.ok(feishuSurface.skills.find((skill) => skill.name === "feishu-drive")?.actions?.some((action) => action.action === "list_comments"));
-  assert.ok(feishuSurface.skills.find((skill) => skill.name === "feishu-bitable")?.actions?.some((action) => action.action === "create_record" && action.approval === "required"));
+  assert.deepEqual(feishuSurface.skills.filter((skill) => skill.scope === "platform"), []);
   const commandsSection = feishuSurface.sections.find((section) => section.id === "commands");
   assert.ok(commandsSection);
-  assert.ok(commandsSection.actions.some((action) => action.id === "skill-feishu-doc"));
+  assert.equal(commandsSection.actions.some((action) => action.id === "skill-feishu-doc"), false);
 
   const blockedOctoSkillRun = await handleChannelConnectorCommand({
     ...baseContext,
@@ -12139,11 +11784,11 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /send-final-post/);
   assert.match(daemonSource, /send-final-text-after-post/);
   assert.match(daemonSource, /FEISHU_FINAL_REPLY_PRIVATE_BUFFER_PREVIEW_RUNES\s*=\s*1_?600/);
-  assert.match(daemonSource, /FEISHU_ACTION_RESULT_HISTORY_JSON_RUNES\s*=\s*1_?400/);
-  assert.match(daemonSource, /function summarizeFeishuActionResultForUser/);
-  assert.match(daemonSource, /function feishuActionResultsHistoryText/);
-  assert.match(daemonSource, /Feishu 能力执行结果/);
-  assert.match(daemonSource, /status:\s*"feishu-action-results"/);
+  assert.doesNotMatch(daemonSource, /FEISHU_ACTION_RESULT_HISTORY_JSON_RUNES/);
+  assert.doesNotMatch(daemonSource, /function summarizeFeishuActionResultForUser/);
+  assert.doesNotMatch(daemonSource, /function feishuActionResultsHistoryText/);
+  assert.doesNotMatch(daemonSource, /Feishu 能力执行结果/);
+  assert.doesNotMatch(daemonSource, /status:\s*"feishu-action-results"/);
   assert.match(daemonSource, /shouldUseFeishuProgressPermissionPrompt\(binding,\s*parsed\.channelId,\s*request\)/);
   assert.match(daemonSource, /const forcePreviewBuffer = agent\.ok === true && replyRunes > FEISHU_FINAL_REPLY_CARD_MAX_RUNES/);
   assert.match(daemonSource, /thresholdRunes:\s*replyIsGroup \? undefined : FEISHU_FINAL_REPLY_CARD_MAX_RUNES/);
@@ -13080,7 +12725,7 @@ test("native Channel Connectors daemon serializes same-session Octo Agent turns"
   }
 });
 
-test("native Channel Connectors daemon executes compact Octo create-group action after approval", async () => {
+test("native Channel Connectors daemon ignores legacy Octo action manifests in private IM mode", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   const service = createChannelConnectorsService(config, {
@@ -13113,7 +12758,6 @@ test("native Channel Connectors daemon executes compact Octo create-group action
 
   const wsConnects = [];
   let inboundSent = false;
-  let approvedSent = false;
   let sendInbound = null;
   const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await new Promise((resolve, reject) => {
@@ -13193,20 +12837,6 @@ test("native Channel Connectors daemon executes compact Octo create-group action
         return true;
       }
       if (req.url === "/v1/bot/sendMessage") {
-        const content = body?.payload?.content || "";
-        if (!approvedSent && content.includes("OctoChannelAction") && content.includes("/approve")) {
-          approvedSent = true;
-          setTimeout(() => {
-            sendInbound?.({
-              messageId: 3002,
-              messageSeq: 2,
-              payload: {
-                type: 1,
-                content: "/approve",
-              },
-            });
-          }, 25);
-        }
         res.end(JSON.stringify({ ok: true, message_id: `octo-action-${requests.length}` }));
         return true;
       }
@@ -13298,46 +12928,40 @@ test("native Channel Connectors daemon executes compact Octo create-group action
           const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
           const run = response.body?.agentRuns?.find?.((item) => {
             return item.messageId === "3001"
-              && item.ok === true
-              && item.octoActionsExecuted === 1
-              && item.octoActionsSucceeded === 1;
+              && item.ok === true;
           });
           return run ? response.body : null;
         }, 10_000);
         assert.equal(finalStatus.ok, true);
         const run = finalStatus.agentRuns.find((item) => item.messageId === "3001");
-        assert.equal(run.octoActionsDeclared, 1);
-        assert.equal(run.octoActionsExecuted, 1);
-        assert.equal(run.octoActionsSucceeded, 1);
-        assert.equal(run.octoActionsFailed, 0);
-        assert.deepEqual(run.octoActionErrors, []);
+        assert.equal("octoActionsDeclared" in run, false);
+        assert.equal("octoActionsExecuted" in run, false);
+        assert.equal("octoActionsSucceeded" in run, false);
+        assert.equal("octoActionsFailed" in run, false);
+        assert.equal("octoActionErrors" in run, false);
 
         const createGroupRequest = requests.find((request) => {
           return request.method === "POST" && request.path === "/v1/bot/createGroup";
         });
-        assert.ok(createGroupRequest, JSON.stringify(requests));
-        assert.equal(createGroupRequest.body.name, "Agent 协作群");
-        assert.deepEqual(createGroupRequest.body.members, ["approve-user"]);
-        assert.equal(createGroupRequest.body.creator, "approve-user");
+        assert.equal(createGroupRequest, undefined);
 
         const sendContents = requests
           .filter((request) => request.path === "/v1/bot/sendMessage")
           .map((request) => request.body?.payload?.content || "");
-        assert.ok(sendContents.some((content) => content.includes("OctoChannelAction") && content.includes("/approve")), JSON.stringify(sendContents));
-        assert.ok(sendContents.some((content) => content.includes("已允许") && content.includes("octo-action-1")), JSON.stringify(sendContents));
-        assert.ok(sendContents.some((content) => content.includes("Octo action results") && content.includes("group-approved")), JSON.stringify(sendContents));
-        assert.equal(sendContents.some((content) => content.includes("did not include any valid Octo action entries")), false);
+        assert.ok(sendContents.some((content) => content.includes("正在创建「Agent 协作群」")), JSON.stringify(sendContents));
+        assert.ok(sendContents.some((content) => content.includes("studio-octo-actions is no longer supported in Studio private IM mode")), JSON.stringify(sendContents));
+        assert.equal(sendContents.some((content) => content.includes("OctoChannelAction") && content.includes("/approve")), false);
+        assert.equal(sendContents.some((content) => content.includes("Octo action results")), false);
+        assert.equal(sendContents.some((content) => content.includes("group-approved")), false);
 
         const octoEvents = await waitForJsonLines(runtimeConfig.paths.octoEvents, (events) => {
-          return events.some((event) => event.eventKind === "agent.octo_action.permission.prompt" && event.messageId === "3001")
-            && events.some((event) => {
-              return event.eventKind === "agent.run.finished"
-                && event.messageId === "3001"
-                && event.agentOk === true
-                && event.octoActionsSucceeded === 1;
-            });
+          return events.some((event) => {
+            return event.eventKind === "agent.run.finished"
+              && event.messageId === "3001"
+              && event.agentOk === true;
+          });
         }, 8000);
-        assert.ok(octoEvents.some((event) => event.eventKind === "agent.octo_action.permission.prompt" && event.action === "create-group"));
+        assert.equal(octoEvents.some((event) => event.eventKind === "agent.octo_action.permission.prompt"), false);
       } finally {
         child.kill("SIGTERM");
         await new Promise((resolve) => {

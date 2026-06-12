@@ -1084,7 +1084,7 @@ export function listChannelConnectorSkillSummaries(
     source: skill.source,
     scope: skill.scope,
     platform: skill.platform || null,
-    actions: skill.runtimeActions || [],
+    actions: [],
   }));
 }
 

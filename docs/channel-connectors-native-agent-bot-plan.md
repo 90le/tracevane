@@ -16,7 +16,7 @@ Octo(dmwork) / 飞书 / 微信 / IM
   -> upstream provider
 ```
 
-最新目标不是“把所有群协作场景无限扩展”，而是先把 Feishu、Octo 以及后续 IM 渠道的私聊能力做完整：文本对话、文件/图片传输、Agent CLI 原生能力、工具流/回复解析和 compact。`studio-channel-skill` 与 Feishu/Octo 平台 API 扩展 action 不再需要，后续删除。已实现的群聊/thread/多 bot 能力保留为 best-effort，不再作为首期发布或下一步阻断项。
+最新目标不是“把所有群协作场景无限扩展”，而是先把 Feishu、Octo 以及后续 IM 渠道的私聊能力做完整：文本对话、文件/图片传输、Agent CLI 原生能力、工具流/回复解析和 compact。active `studio-channel-skill` 与 Feishu/Octo 平台 API 扩展 action 暴露层已删除；低层 legacy helper 后续如需瘦身单独处理。已实现的群聊/thread/多 bot 能力保留为 best-effort，不再作为首期发布或下一步阻断项。
 
 迁移门禁：
 
@@ -169,7 +169,7 @@ Studio 增强点：
 
 ## 6. 下一步
 
-1. 删除 `studio-channel-skill` 与 Feishu/Octo platform action 扩展层，只保留私聊 transport、文件/图片和 Agent CLI 能力。
+1. 继续稳定私聊 transport、文件/图片和 Agent CLI 能力；active `studio-channel-skill` 与 Feishu/Octo platform action 暴露层已删除，低层 legacy helper 后续单独瘦身。
 2. 稳定 Codex、Claude Code、OpenCode 工具流/回复解析：工具调用、输入、stdout/stderr、工具结果、过程回复、最终回复都必须分类正确，不能出现空工具流。
 3. 继续 compact：优先 Agent 原生 compact/compress；失败或不支持再 Gateway compact；确保 `/compact` 不作为普通 prompt。
 4. 补 durable queue / 可恢复队列，解决 daemon 重启丢失未开始排队消息的问题。

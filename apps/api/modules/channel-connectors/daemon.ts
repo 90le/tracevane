@@ -145,8 +145,6 @@ import {
 import {
   addFeishuMessageReaction,
   downloadFeishuMessageResourceToFile,
-  executeFeishuChannelAction,
-  feishuChannelActionIsReadOnly,
   feishuTransportFromMetadata,
   getFeishuBotInfo,
   listFeishuChatMembers,
@@ -156,16 +154,7 @@ import {
   sendFeishuPostMessage,
   sendFeishuTextMessage,
   uploadAndSendFeishuMedia,
-  type ChannelConnectorFeishuActionResult,
 } from "./feishu-transport.js";
-import {
-  extractChannelConnectorFeishuActions,
-  type ChannelConnectorFeishuActionRequest,
-} from "./feishu-actions.js";
-import {
-  extractChannelConnectorOctoActions,
-  type ChannelConnectorOctoActionRequest,
-} from "./octo-actions.js";
 import {
   loadFeishuThreadBootstrapContext,
 } from "./feishu-thread-bootstrap.js";
@@ -334,7 +323,6 @@ const DEFAULT_CHANNEL_AUTO_COMPACT_COOLDOWN_MS = 15 * 60_000;
 const MAX_CHANNEL_AUTO_COMPACT_COOLDOWN_MS = 24 * 60 * 60_000;
 const FEISHU_FINAL_REPLY_CARD_MAX_RUNES = 12_000;
 const FEISHU_FINAL_REPLY_PRIVATE_BUFFER_PREVIEW_RUNES = 1_600;
-const FEISHU_ACTION_RESULT_HISTORY_JSON_RUNES = 1_400;
 const DEFAULT_CHANNEL_AGENT_SESSION_REAP_INTERVAL_MS = 60_000;
 const MAX_CHANNEL_AGENT_SESSION_DRIVER_EVENTS = 80;
 
@@ -608,11 +596,6 @@ interface ChannelDaemonState {
     outboundMessagesDeclared?: number;
     outboundMessagesSent?: number;
     outboundMessageRequestCount?: number;
-    octoActionsDeclared?: number;
-    octoActionsExecuted?: number;
-    octoActionsSucceeded?: number;
-    octoActionsFailed?: number;
-    octoActionErrors?: string[];
     outboundFileErrors?: string[];
   }>;
   autoCompacts: ChannelDaemonAutoCompactRecord[];
@@ -1346,12 +1329,6 @@ function daemonManagementToken(config: ChannelConnectorsDaemonRuntimeConfig): st
     || null;
 }
 
-function daemonManagementEndpoint(config: ChannelConnectorsDaemonRuntimeConfig): string {
-  const host = normalizeString(config.management.host);
-  const connectHost = !host || host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
-  return `http://${connectHost}:${config.management.port}`;
-}
-
 async function handleAgentSessionManagement(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -1397,353 +1374,6 @@ async function handleAgentSessionManagement(
     return;
   }
   sendDaemonJson(res, 400, { ok: false, error: "unsupported_agent_session_action" });
-}
-
-interface ChannelSkillActionRequestBody {
-  platform?: string | null;
-  bindingId?: string | null;
-  sessionKey?: string | null;
-  channel?: {
-    channelId?: string | null;
-    channelType?: number | string | null;
-    fromUid?: string | null;
-    messageId?: string | null;
-  } | null;
-  actions?: unknown;
-}
-
-function findChannelSkillBinding(input: {
-  config: ChannelConnectorsDaemonRuntimeConfig;
-  platform: "feishu" | "octo";
-  bindingId?: string | null;
-}): { project: ChannelConnectorRuntimeProject; binding: ChannelConnectorRuntimeBinding } | null {
-  const bindingId = normalizeString(input.bindingId);
-  for (const project of input.config.projects) {
-    for (const binding of project.platformBindings) {
-      if (binding.platform !== input.platform) continue;
-      if (bindingId && binding.id !== bindingId) continue;
-      return { project, binding };
-    }
-  }
-  return null;
-}
-
-function normalizeChannelSkillPlatform(value: unknown): "feishu" | "octo" | null {
-  const normalized = normalizeString(value).toLowerCase();
-  if (normalized === "feishu" || normalized === "lark") return "feishu";
-  if (normalized === "octo" || normalized === "dmwork") return "octo";
-  return null;
-}
-
-function parseChannelSkillActions(input: {
-  platform: "feishu" | "octo";
-  actions: unknown;
-}): {
-  feishuActions: ChannelConnectorFeishuActionRequest[];
-  octoActions: ChannelConnectorOctoActionRequest[];
-  errors: string[];
-} {
-  const rawActions = Array.isArray(input.actions) ? input.actions : [input.actions || {}];
-  const block = [
-    input.platform === "feishu" ? "```studio-feishu-actions" : "```studio-octo-actions",
-    JSON.stringify(rawActions),
-    "```",
-  ].join("\n");
-  if (input.platform === "feishu") {
-    const parsed = extractChannelConnectorFeishuActions(block);
-    return { feishuActions: parsed.actions, octoActions: [], errors: parsed.errors };
-  }
-  const parsed = extractChannelConnectorOctoActions(block);
-  return { feishuActions: [], octoActions: parsed.actions, errors: parsed.errors };
-}
-
-function channelSkillOctoChannelType(value: unknown): 1 | 2 | 5 {
-  const numberValue = typeof value === "number" ? value : Number(normalizeString(value));
-  return numberValue === 2 ? 2 : numberValue === 5 ? 5 : 1;
-}
-
-function channelSkillMessage(input: {
-  sessionKey: string;
-  channel?: ChannelSkillActionRequestBody["channel"];
-}): ChannelConnectorOctoInboundMessage {
-  const channel = input.channel || {};
-  const channelId = normalizeString(channel.channelId) || normalizeString(channel.fromUid) || input.sessionKey;
-  return {
-    messageId: normalizeString(channel.messageId) || `channel-skill-${Date.now()}`,
-    fromUid: normalizeString(channel.fromUid) || channelId,
-    channelId,
-    channelType: channelSkillOctoChannelType(channel.channelType),
-    timestamp: Date.now(),
-    payload: {
-      type: 1,
-      content: "[Studio channel skill tool call]",
-    },
-  };
-}
-
-async function executeFeishuSkillActions(input: {
-  config: ChannelConnectorsDaemonRuntimeConfig;
-  binding: ChannelConnectorRuntimeBinding;
-  sessionKey: string;
-  channel?: ChannelSkillActionRequestBody["channel"];
-  actions: ChannelConnectorFeishuActionRequest[];
-}): Promise<ChannelConnectorFeishuActionResult[]> {
-  const transport = feishuTransportFromMetadata(input.binding.metadata, input.binding.accountId);
-  if (!transport) {
-    return input.actions.map((action) => ({
-      attempted: true,
-      ok: false,
-      tool: action.tool,
-      action: normalizeString(action.action).toLowerCase(),
-      readOnly: feishuChannelActionIsReadOnly(action.tool, action.action),
-      apiUrl: "",
-      statusCode: null,
-      requestCount: 0,
-      tokenCache: null,
-      data: null,
-      error: "Feishu channel skill requires Feishu App ID and App Secret on the active binding.",
-    }));
-  }
-  const runId = `channel-skill:${input.binding.id}:${input.sessionKey}:${Date.now()}`;
-  const chatId = normalizeString(input.channel?.channelId);
-  const results: ChannelConnectorFeishuActionResult[] = [];
-  try {
-    for (const [index, action] of input.actions.entries()) {
-      const readOnlyAction = feishuChannelActionIsReadOnly(action.tool, action.action);
-      let allowMutation = false;
-      if (!readOnlyAction) {
-        if (!chatId) {
-          results.push({
-            attempted: true,
-            ok: false,
-            tool: action.tool,
-            action: normalizeString(action.action).toLowerCase(),
-            readOnly: false,
-            apiUrl: transport.apiUrl,
-            statusCode: null,
-            requestCount: 0,
-            tokenCache: null,
-            data: null,
-            error: "Feishu channel skill mutation requires the active chat id for IM approval.",
-          });
-          continue;
-        }
-        const permissionResolver = createPermissionResolver({
-          registry: channelPendingPermissions,
-          runId,
-          bindingId: input.binding.id,
-          sessionKey: input.sessionKey,
-          messageId: normalizeString(input.channel?.messageId) || `channel-skill-feishu-${index + 1}`,
-          agent: "channel-skill",
-          model: null,
-          onPrompt: async (prompt, request) => {
-            await sendFeishuPermissionPrompt({
-              config: input.config,
-              transport,
-              binding: input.binding,
-              chatId,
-              request,
-              fallbackText: prompt,
-            });
-          },
-        });
-        const decision = await permissionResolver({
-          requestId: `channel-skill-feishu-${index + 1}`,
-          subtype: "feishu_channel_skill",
-          toolName: "FeishuChannelSkill",
-          input: {
-            tool: action.tool,
-            action: action.action,
-            params: action.params,
-          },
-        });
-        allowMutation = decision.behavior === "allow";
-        if (!allowMutation) {
-          results.push({
-            attempted: true,
-            ok: false,
-            tool: action.tool,
-            action: normalizeString(action.action).toLowerCase(),
-            readOnly: false,
-            apiUrl: transport.apiUrl,
-            statusCode: null,
-            requestCount: 0,
-            tokenCache: null,
-            data: null,
-            error: decision.behavior === "deny" && decision.message
-              ? decision.message
-              : "User denied this Feishu channel skill action.",
-          });
-          continue;
-        }
-      }
-      results.push(await executeFeishuChannelAction(transport, action, feishuTokenCachePath(input.config), {
-        allowMutation,
-      }));
-    }
-    return results;
-  } finally {
-    clearPendingPermissionsForRun(channelPendingPermissions, runId);
-  }
-}
-
-async function executeOctoSkillActions(input: {
-  transport: ChannelConnectorOctoTransportConfig | null;
-  binding: ChannelConnectorRuntimeBinding;
-  sessionKey: string;
-  message: ChannelConnectorOctoInboundMessage;
-  actions: ChannelConnectorOctoActionRequest[];
-}): Promise<Array<{ action: ChannelConnectorOctoActionRequest; result: ChannelConnectorOctoManagementResult }>> {
-  const runId = `channel-skill:${input.binding.id}:${input.sessionKey}:${Date.now()}`;
-  const results: Array<{ action: ChannelConnectorOctoActionRequest; result: ChannelConnectorOctoManagementResult }> = [];
-  try {
-    for (const [index, action] of input.actions.entries()) {
-      let allowMutation = false;
-      if (OCTO_MUTATING_ACTIONS.has(action.action)) {
-        const permissionResolver = createPermissionResolver({
-          registry: channelPendingPermissions,
-          runId,
-          bindingId: input.binding.id,
-          sessionKey: input.sessionKey,
-          messageId: input.message.messageId,
-          agent: "channel-skill",
-          model: null,
-          onStateChange: async (change) => {
-            if (!input.transport || isAskUserQuestionRequest(change.request)) return;
-            const replyPlan = renderOctoTextReply(input.message, renderPlainPermissionState(change));
-            if (replyPlan) await sendOctoTextReply(input.transport, replyPlan);
-          },
-          onPrompt: async (prompt, request) => {
-            if (!input.transport) return;
-            const replyPlan = renderOctoTextReply(input.message, renderPlainPermissionPrompt(request, prompt));
-            if (replyPlan) await sendOctoTextReply(input.transport, replyPlan);
-          },
-        });
-        const decision = await permissionResolver({
-          requestId: `channel-skill-octo-${index + 1}`,
-          subtype: "octo_channel_skill",
-          toolName: "OctoChannelSkill",
-          input: {
-            tool: action.tool,
-            action: action.action,
-            params: action.params,
-          },
-        });
-        allowMutation = decision.behavior === "allow";
-        if (!allowMutation) {
-          results.push({
-            action,
-            result: {
-              ok: false,
-              replyText: decision.behavior === "deny" && decision.message
-                ? decision.message
-                : "User denied this Octo channel skill action.",
-              error: decision.behavior === "deny" && decision.message
-                ? decision.message
-                : "User denied this Octo channel skill action.",
-            },
-          });
-          continue;
-        }
-      }
-      if (OCTO_MUTATING_ACTIONS.has(action.action) && !allowMutation) continue;
-      const result = await runOctoManagementCommand(input.transport, octoActionManagementRequest({
-        action,
-        bindingId: input.binding.id,
-        sessionKey: input.sessionKey,
-        message: input.message,
-      }));
-      results.push({ action, result });
-    }
-    return results;
-  } finally {
-    clearPendingPermissionsForRun(channelPendingPermissions, runId);
-  }
-}
-
-async function handleChannelSkillAction(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  config: ChannelConnectorsDaemonRuntimeConfig,
-): Promise<void> {
-  if (req.method !== "POST") {
-    sendDaemonJson(res, 405, { ok: false, daemonError: true, error: "method_not_allowed" });
-    return;
-  }
-  const payload = await parseRequestJson<ChannelSkillActionRequestBody>(req);
-  const platform = normalizeChannelSkillPlatform(payload.platform);
-  if (!platform) {
-    sendDaemonJson(res, 400, { ok: false, daemonError: true, error: "platform_required" });
-    return;
-  }
-  const sessionKey = normalizeString(payload.sessionKey);
-  if (!sessionKey) {
-    sendDaemonJson(res, 400, { ok: false, daemonError: true, error: "session_key_required" });
-    return;
-  }
-  const resolved = findChannelSkillBinding({
-    config,
-    platform,
-    bindingId: payload.bindingId,
-  });
-  if (!resolved) {
-    sendDaemonJson(res, 404, {
-      ok: false,
-      daemonError: true,
-      error: "binding_not_found",
-      platform,
-      bindingId: normalizeString(payload.bindingId) || null,
-    });
-    return;
-  }
-  const parsed = parseChannelSkillActions({
-    platform,
-    actions: payload.actions,
-  });
-  if (parsed.errors.length) {
-    sendDaemonJson(res, 400, {
-      ok: false,
-      daemonError: true,
-      error: "invalid_channel_skill_actions",
-      errors: parsed.errors,
-    });
-    return;
-  }
-  if (platform === "feishu") {
-    const results = await executeFeishuSkillActions({
-      config,
-      binding: resolved.binding,
-      sessionKey,
-      channel: payload.channel,
-      actions: parsed.feishuActions,
-    });
-    sendDaemonJson(res, 200, {
-      ok: true,
-      platform,
-      bindingId: resolved.binding.id,
-      sessionKey,
-      results,
-    });
-    return;
-  }
-  const message = channelSkillMessage({
-    sessionKey,
-    channel: payload.channel,
-  });
-  const results = await executeOctoSkillActions({
-    transport: octoTransportFromMetadata(resolved.binding.metadata),
-    binding: resolved.binding,
-    sessionKey,
-    message,
-    actions: parsed.octoActions,
-  });
-  sendDaemonJson(res, 200, {
-    ok: true,
-    platform,
-    bindingId: resolved.binding.id,
-    sessionKey,
-    results,
-  });
 }
 
 function latestActiveRunForSession(
@@ -2358,17 +1988,6 @@ function startHttp(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelD
           ok: false,
           error: "agent_session_management_failed",
           message: error instanceof Error ? error.message : "Agent session management failed.",
-        });
-      });
-      return;
-    }
-    if ((req.url || "").split("?")[0] === "/channel-skill/action") {
-      handleChannelSkillAction(req, res, config).catch((error) => {
-        sendDaemonJson(res, 500, {
-          ok: false,
-          daemonError: true,
-          error: "channel_skill_action_failed",
-          message: error instanceof Error ? error.message : "Channel skill action failed.",
         });
       });
       return;
@@ -3085,6 +2704,18 @@ function outboundFileMaxBytes(binding: ChannelConnectorRuntimeBinding): number {
   ], DEFAULT_CHANNEL_CONNECTOR_OUTBOUND_FILE_MAX_BYTES);
 }
 
+function stripLegacyPlatformActionBlocks(replyText: string): { replyText: string; errors: string[] } {
+  const errors: string[] = [];
+  const stripped = replyText.replace(
+    /```[ \t]*(studio-feishu-actions|studio-octo-actions)[^\r\n]*\r?\n[\s\S]*?```/gi,
+    (_match, blockName: string) => {
+      errors.push(`${String(blockName)} is no longer supported in Studio private IM mode.`);
+      return "";
+    },
+  ).replace(/\n{3,}/g, "\n\n").trim();
+  return { replyText: stripped, errors };
+}
+
 function prepareAgentOutboundReply(input: {
   replyText: string | null;
   project: ChannelConnectorRuntimeProject;
@@ -3094,18 +2725,13 @@ function prepareAgentOutboundReply(input: {
   replyText: string;
   files: ChannelConnectorResolvedOutboundFile[];
   messages: ChannelConnectorOutboundMessageRequest[];
-  feishuActions: ChannelConnectorFeishuActionRequest[];
-  octoActions: ChannelConnectorOctoActionRequest[];
   errors: string[];
   declaredCount: number;
   declaredMessageCount: number;
-  declaredFeishuActionCount: number;
-  declaredOctoActionCount: number;
   maxBytes: number;
 } {
-  const extractedFeishuActions = extractChannelConnectorFeishuActions(input.replyText || "");
-  const extractedOctoActions = extractChannelConnectorOctoActions(extractedFeishuActions.replyText);
-  const extractedMessages = extractChannelConnectorOutboundMessages(extractedOctoActions.replyText);
+  const legacyActions = stripLegacyPlatformActionBlocks(input.replyText || "");
+  const extractedMessages = extractChannelConnectorOutboundMessages(legacyActions.replyText);
   const extracted = extractChannelConnectorOutboundFiles(extractedMessages.replyText);
   const maxBytes = outboundFileMaxBytes(input.binding);
   const resolved = resolveChannelConnectorOutboundFiles({
@@ -3119,25 +2745,14 @@ function prepareAgentOutboundReply(input: {
     replyText: extracted.replyText,
     files: resolved.files,
     messages: extractedMessages.messages,
-    feishuActions: input.binding.platform === "feishu" ? extractedFeishuActions.actions : [],
-    octoActions: input.binding.platform === "octo" ? extractedOctoActions.actions : [],
     errors: [
-      ...extractedFeishuActions.errors,
-      ...(input.binding.platform === "feishu" || extractedFeishuActions.actions.length === 0
-        ? []
-        : ["studio-feishu-actions can only run on Feishu bindings."]),
-      ...extractedOctoActions.errors,
-      ...(input.binding.platform === "octo" || extractedOctoActions.actions.length === 0
-        ? []
-        : ["studio-octo-actions can only run on Octo bindings."]),
+      ...legacyActions.errors,
       ...extractedMessages.errors,
       ...extracted.errors,
       ...resolved.errors,
     ],
     declaredCount: extracted.files.length,
     declaredMessageCount: extractedMessages.messages.length,
-    declaredFeishuActionCount: extractedFeishuActions.actions.length,
-    declaredOctoActionCount: extractedOctoActions.actions.length,
     maxBytes,
   };
 }
@@ -3146,8 +2761,6 @@ function outboundFilesHistoryText(input: {
   replyText: string;
   files: ChannelConnectorResolvedOutboundFile[];
   messages: ChannelConnectorOutboundMessageRequest[];
-  feishuActions?: ChannelConnectorFeishuActionRequest[];
-  octoActions?: ChannelConnectorOctoActionRequest[];
   errors: string[];
 }): string {
   const parts = [input.replyText];
@@ -3157,245 +2770,10 @@ function outboundFilesHistoryText(input: {
   if (input.messages.length) {
     parts.push(`[Studio outbound messages: ${input.messages.map((message) => `${message.platform || "current"}:${message.chatId || message.channelId}`).join(", ")}]`);
   }
-  if (input.feishuActions?.length) {
-    parts.push(`[Studio Feishu actions: ${input.feishuActions.map((action) => `${action.tool}.${action.action}`).join(", ")}]`);
-  }
-  if (input.octoActions?.length) {
-    parts.push(`[Studio Octo actions: ${input.octoActions.map((action) => `${action.tool}.${action.action}`).join(", ")}]`);
-  }
   if (input.errors.length) {
     parts.push(`[Studio outbound errors: ${input.errors.join("; ")}]`);
   }
   return parts.filter(Boolean).join("\n\n");
-}
-
-function truncateRunesForFeishuAction(value: string, maxRunes: number): string {
-  const runes = Array.from(value);
-  if (runes.length <= maxRunes) return value;
-  let keep = Math.max(1, maxRunes - 32);
-  let suffix = `... [truncated ${runes.length - keep} chars]`;
-  keep = Math.max(1, maxRunes - Array.from(suffix).length);
-  suffix = `... [truncated ${runes.length - keep} chars]`;
-  return `${runes.slice(0, keep).join("")}${suffix}`;
-}
-
-function feishuActionResultFactEntries(value: unknown, output: string[] = [], pathParts: string[] = []): string[] {
-  if (output.length >= 6) return output;
-  if (Array.isArray(value)) {
-    if (value.length > 0) output.push(`${pathParts.join(".") || "items"}=${value.length} items`);
-    for (const item of value.slice(0, 3)) {
-      if (output.length >= 6) break;
-      feishuActionResultFactEntries(item, output, pathParts);
-    }
-    return output;
-  }
-  if (!isRecord(value)) return output;
-  const interestingKeys = new Set([
-    "id",
-    "message_id",
-    "messageId",
-    "chat_id",
-    "chatId",
-    "open_id",
-    "openId",
-    "document_id",
-    "doc_token",
-    "obj_token",
-    "node_token",
-    "space_id",
-    "app_token",
-    "table_id",
-    "record_id",
-    "file_token",
-    "reaction_id",
-    "name",
-    "title",
-    "url",
-  ]);
-  for (const [key, raw] of Object.entries(value)) {
-    if (output.length >= 6) break;
-    const nextPath = pathParts.concat(key);
-    if (interestingKeys.has(key) && ["string", "number", "boolean"].includes(typeof raw)) {
-      const fact = `${nextPath.join(".")}=${String(raw)}`;
-      if (!output.includes(fact)) output.push(fact);
-    }
-  }
-  for (const [key, raw] of Object.entries(value)) {
-    if (output.length >= 6) break;
-    if (isRecord(raw) || Array.isArray(raw)) feishuActionResultFactEntries(raw, output, pathParts.concat(key));
-  }
-  return output;
-}
-
-function feishuActionResultFacts(data: unknown): string {
-  return feishuActionResultFactEntries(data).slice(0, 6).join(" · ");
-}
-
-function summarizeFeishuActionResultForUser(result: ChannelConnectorFeishuActionResult): string {
-  const label = `${result.tool}.${result.action}`;
-  const meta = [
-    result.statusCode === null ? "" : `HTTP ${result.statusCode}`,
-    result.requestCount > 0 ? `${result.requestCount} req` : "",
-  ].filter(Boolean).join(" · ");
-  if (result.ok) {
-    const facts = feishuActionResultFacts(result.data);
-    return [
-      `- 成功 ${label}${meta ? ` · ${meta}` : ""}`,
-      facts ? `：${shortMessage(facts, 260)}` : "",
-    ].filter(Boolean).join("");
-  }
-  return `- 失败 ${label}${meta ? ` · ${meta}` : ""}：${shortMessage(result.error || "unknown error", 360)}`;
-}
-
-function feishuActionResultsReply(results: ChannelConnectorFeishuActionResult[]): string {
-  if (!results.length) return "";
-  const okCount = results.filter((result) => result.ok).length;
-  const failedCount = results.length - okCount;
-  return [
-    `Feishu 能力执行结果：${okCount} 成功 / ${failedCount} 失败 / ${results.length} 总计`,
-    ...results.map(summarizeFeishuActionResultForUser),
-  ].join("\n\n");
-}
-
-function feishuActionResultHistoryJson(result: ChannelConnectorFeishuActionResult): string {
-  const payload = {
-    ok: result.ok,
-    tool: result.tool,
-    action: result.action,
-    readOnly: result.readOnly,
-    statusCode: result.statusCode,
-    requestCount: result.requestCount,
-    data: result.data,
-    error: result.error,
-  };
-  return truncateRunesForFeishuAction(JSON.stringify(payload, null, 2), FEISHU_ACTION_RESULT_HISTORY_JSON_RUNES);
-}
-
-function feishuActionResultsHistoryText(results: ChannelConnectorFeishuActionResult[]): string {
-  if (!results.length) return "";
-  return [
-    "[Studio Feishu action execution results]",
-    "Use these results as the source of truth for whether the previous Studio Feishu runtime actions succeeded or failed. Do not re-run successful actions unless the user asks.",
-    ...results.map((result, index) => [
-      `${index + 1}. ${result.ok ? "OK" : "FAIL"} ${result.tool}.${result.action}`,
-      feishuActionResultHistoryJson(result),
-    ].join("\n")),
-  ].join("\n\n");
-}
-
-const OCTO_MUTATING_ACTIONS = new Set<ChannelConnectorOctoManagementAction>([
-  "create-group",
-  "update-group",
-  "add-members",
-  "remove-members",
-  "create-thread",
-  "delete-thread",
-  "join-thread",
-  "leave-thread",
-  "group-md-update",
-  "thread-md-update",
-  "voice-context-update",
-  "voice-context-delete",
-  "message-edit",
-]);
-
-function octoChannelTypeFromValue(value: unknown): 1 | 2 | 5 | null {
-  if (typeof value === "number" && (value === 1 || value === 2 || value === 5)) return value;
-  const normalized = normalizeString(value).toLowerCase();
-  if (!normalized) return null;
-  if (normalized === "1" || normalized === "dm" || normalized === "direct" || normalized === "private") return 1;
-  if (normalized === "2" || normalized === "group") return 2;
-  if (normalized === "5" || normalized === "thread" || normalized === "topic") return 5;
-  return null;
-}
-
-function numberFromParams(params: Record<string, unknown>, keys: string[]): number | null {
-  for (const key of keys) {
-    const value = params[key];
-    if (typeof value === "number" && Number.isFinite(value)) return Math.floor(value);
-    const normalized = normalizeString(value);
-    if (!normalized) continue;
-    const parsed = Number(normalized);
-    if (Number.isFinite(parsed)) return Math.floor(parsed);
-  }
-  return null;
-}
-
-function stringListFromValue(value: unknown): string[] {
-  if (Array.isArray(value)) return uniqueStrings(value.map(normalizeString).filter(Boolean));
-  const normalized = normalizeString(value);
-  if (!normalized) return [];
-  return uniqueStrings(normalized.split(/[,\s]+/).map((item) => item.trim()).filter(Boolean));
-}
-
-function octoActionManagementRequest(input: {
-  action: ChannelConnectorOctoActionRequest;
-  bindingId: string;
-  sessionKey: string;
-  message: ChannelConnectorOctoInboundMessage;
-}): ChannelConnectorOctoManagementRequest {
-  const params = input.action.params || {};
-  const groupNo = normalizeString(
-    params.groupNo
-      || params.group_no
-      || params.groupId
-      || params.group_id
-      || params.targetGroup
-      || params.target_group,
-  ) || (isOctoGroupChannel(input.message.channelType) ? octoParentGroupNo(input.message.channelId) : "");
-  const shortId = normalizeString(
-    params.shortId
-      || params.short_id
-      || params.threadId
-      || params.thread_id,
-  );
-  const channelType = octoChannelTypeFromValue(params.channelType ?? params.channel_type) || input.message.channelType;
-  const channelId = normalizeString(
-    params.channelId
-      || params.channel_id
-      || params.channel
-      || params.groupNo
-      || params.group_no,
-  ) || octoSyncChannelId(input.message);
-  const members = stringListFromValue(params.members ?? params.memberIds ?? params.member_ids ?? params.uids);
-  const filePath = normalizeString(params.filePath || params.file_path || params.path);
-  const fileName = normalizeString(params.fileName || params.file_name || params.filename);
-  const messageId = normalizeString(params.messageId || params.message_id || params.id);
-  return {
-    action: input.action.action,
-    bindingId: input.bindingId,
-    sessionKey: input.sessionKey,
-    message: input.message,
-    groupNo,
-    shortId,
-    channelId,
-    channelType,
-    endMessageSeq: numberFromParams(params, ["endMessageSeq", "end_message_seq"]) || null,
-    keyword: normalizeString(params.keyword || params.query || params.name) || null,
-    name: normalizeString(params.name || params.threadName || params.thread_name || params.title) || null,
-    notice: normalizeString(params.notice || params.announcement) || null,
-    content: normalizeString(params.content || params.markdown || params.text || params.message) || null,
-    filePath: filePath || null,
-    fileName: fileName || null,
-    messageId: messageId || null,
-    members,
-    creator: normalizeString(params.creator || params.creatorUid || params.creator_uid) || input.message.fromUid || null,
-    limit: numberFromParams(params, ["limit", "page_size", "pageSize"]) || null,
-  };
-}
-
-function summarizeOctoActionResult(action: ChannelConnectorOctoActionRequest, result: ChannelConnectorOctoManagementResult): string {
-  return result.ok
-    ? `OK ${action.tool}.${action.action}\n${result.replyText}`
-    : `FAIL ${action.tool}.${action.action}: ${result.error || result.replyText || "unknown error"}`;
-}
-
-function octoActionResultsReply(results: Array<{ action: ChannelConnectorOctoActionRequest; result: ChannelConnectorOctoManagementResult }>): string {
-  if (!results.length) return "";
-  return [
-    "Octo action results:",
-    ...results.map((item) => summarizeOctoActionResult(item.action, item.result)),
-  ].join("\n\n");
 }
 
 function appendOutboundFileErrors(replyText: string, errors: string[]): string {
@@ -3776,8 +3154,6 @@ async function nativeCompactChannelConnectorConversation(input: {
         sessionKey: input.sessionKey,
         gatewayEndpoint: input.project.gatewayEndpoint || input.config.gateway.endpoint,
         gatewayClientKey: input.gatewayClientKey,
-        daemonManagementEndpoint: daemonManagementEndpoint(input.config),
-        daemonManagementToken: daemonManagementToken(input.config),
         agentRuntimeDir: agentRuntimeDir(input.config, input.project, input.binding),
         historyContext: null,
         nativeCommand: "/compact",
@@ -9186,8 +8562,6 @@ async function dispatchOctoMessage(input: {
         sessionKey,
         gatewayEndpoint: turnProject.gatewayEndpoint || config.gateway.endpoint,
         gatewayClientKey: key,
-        daemonManagementEndpoint: daemonManagementEndpoint(config),
-        daemonManagementToken: daemonManagementToken(config),
         agentRuntimeDir: runtimeDir,
         historyContext: nativeCommand ? null : historyContext,
         channelSkillContext,
@@ -9334,13 +8708,9 @@ async function dispatchOctoMessage(input: {
       replyText: agent.replyText || "",
       files: [],
       messages: [],
-      feishuActions: [],
-      octoActions: [],
       errors: [],
       declaredCount: 0,
       declaredMessageCount: 0,
-      declaredFeishuActionCount: 0,
-      declaredOctoActionCount: 0,
       maxBytes: outboundFileMaxBytes(binding),
     };
   appendChannelConnectorConversationHistory(conversationHistoryPath(config), {
@@ -9430,81 +8800,9 @@ async function dispatchOctoMessage(input: {
   let outboundFileRequestCount = 0;
   let outboundMessageSentCount = 0;
   let outboundMessageRequestCount = 0;
-  let octoActionResults: Array<{ action: ChannelConnectorOctoActionRequest; result: ChannelConnectorOctoManagementResult }> = [];
-  let octoActionSucceededCount = 0;
-  let octoActionErrorCount = 0;
   let outboundFileErrors = [...outboundReply.errors];
-  if (transport && agent.ok === true && outboundReply.octoActions.length > 0) {
-    for (const [index, action] of outboundReply.octoActions.entries()) {
-      let allowMutation = false;
-      if (OCTO_MUTATING_ACTIONS.has(action.action)) {
-        const actionRunId = `${activeRunId}:octo-action:${index}`;
-        const permissionResolver = createPermissionResolver({
-          registry: channelPendingPermissions,
-          runId: actionRunId,
-          bindingId: binding.id,
-          sessionKey,
-          messageId: message.messageId,
-          agent: turnProject.agent,
-          model: turnProject.model,
-          onStateChange: (change) => {
-            if (isAskUserQuestionRequest(change.request)) return;
-            queueOctoPermissionStateReply(change);
-          },
-          onPrompt: async (prompt, request) => {
-            if (!isAskUserQuestionRequest(request)) octoPermissionPending = true;
-            await queueOctoTextProgressReply(renderPlainPermissionPrompt(request, prompt), {
-              eventKind: "agent.octo_action.permission.prompt",
-              action: action.action,
-            });
-          },
-        });
-        const decision = await permissionResolver({
-          requestId: `octo-action-${index + 1}`,
-          subtype: "octo_channel_action",
-          toolName: "OctoChannelAction",
-          input: {
-            tool: action.tool,
-            action: action.action,
-            params: action.params,
-          },
-        }).finally(() => {
-          channelPermissionApproveAllRunIds.delete(actionRunId);
-        });
-        allowMutation = decision.behavior === "allow";
-        if (!allowMutation) {
-          const result: ChannelConnectorOctoManagementResult = {
-            ok: false,
-            replyText: decision.behavior === "deny" && decision.message
-              ? decision.message
-              : "User denied this Octo channel action.",
-            error: decision.behavior === "deny" && decision.message
-              ? decision.message
-              : "User denied this Octo channel action.",
-          };
-          octoActionResults.push({ action, result });
-          octoActionErrorCount += 1;
-          continue;
-        }
-      }
-      if (OCTO_MUTATING_ACTIONS.has(action.action) && !allowMutation) continue;
-      const result = await runOctoManagementCommand(transport, octoActionManagementRequest({
-        action,
-        bindingId: binding.id,
-        sessionKey,
-        message,
-      }));
-      octoActionResults.push({ action, result });
-      if (result.ok) octoActionSucceededCount += 1;
-      else octoActionErrorCount += 1;
-    }
-  }
-  const octoActionErrors = octoActionResults
-    .filter((item) => !item.result.ok)
-    .map((item) => `${item.action.tool}.${item.action.action}: ${item.result.error || item.result.replyText || "unknown error"}`);
-  outboundFileErrors = [...outboundFileErrors, ...octoActionErrors];
   const outboundReplyText = appendOutboundFileErrors(
-    [outboundReply.replyText, octoActionResultsReply(octoActionResults)].filter(Boolean).join("\n\n"),
+    outboundReply.replyText,
     outboundReply.errors,
   );
   if (transport && agent.ok === true && outboundReplyText) {
@@ -9596,11 +8894,6 @@ async function dispatchOctoMessage(input: {
       outboundMessagesDeclared: outboundReply.declaredMessageCount,
       outboundMessagesSent: outboundMessageSentCount,
       outboundMessageRequestCount,
-      octoActionsDeclared: outboundReply.declaredOctoActionCount,
-      octoActionsExecuted: octoActionResults.length,
-      octoActionsSucceeded: octoActionSucceededCount,
-      octoActionsFailed: octoActionErrorCount,
-      octoActionErrors,
       outboundFileErrors,
     });
   }
@@ -9666,11 +8959,6 @@ async function dispatchOctoMessage(input: {
     outboundMessagesDeclared: outboundReply.declaredMessageCount,
     outboundMessagesSent: outboundMessageSentCount,
     outboundMessageRequestCount,
-    octoActionsDeclared: outboundReply.declaredOctoActionCount,
-    octoActionsExecuted: octoActionResults.length,
-    octoActionsSucceeded: octoActionSucceededCount,
-    octoActionsFailed: octoActionErrorCount,
-    octoActionErrors,
     outboundFileErrors,
     ingressAt,
     startedAt: runStartedAt,
@@ -10556,8 +9844,6 @@ async function dispatchFeishuParsedEvent(input: {
         sessionKey,
         gatewayEndpoint: turnProject.gatewayEndpoint || config.gateway.endpoint,
         gatewayClientKey: key,
-        daemonManagementEndpoint: daemonManagementEndpoint(config),
-        daemonManagementToken: daemonManagementToken(config),
         agentRuntimeDir: runtimeDir,
         historyContext: nativeCommand ? null : historyContext,
         channelSkillContext,
@@ -10725,13 +10011,9 @@ async function dispatchFeishuParsedEvent(input: {
       replyText: agent.replyText || "",
       files: [],
       messages: [],
-      feishuActions: [],
-      octoActions: [],
       errors: [],
       declaredCount: 0,
       declaredMessageCount: 0,
-      declaredFeishuActionCount: 0,
-      declaredOctoActionCount: 0,
       maxBytes: outboundFileMaxBytes(binding),
     };
   appendChannelConnectorConversationHistory(conversationHistoryPath(config), {
@@ -10826,105 +10108,9 @@ async function dispatchFeishuParsedEvent(input: {
   let outboundMessageSentCount = 0;
   let outboundMessageRequestCount = 0;
   let outboundMessageNativeMentionIds: string[] = [];
-  let feishuActionResults: ChannelConnectorFeishuActionResult[] = [];
-  let feishuActionRequestCount = 0;
-  let feishuActionSucceededCount = 0;
-  let feishuActionErrorCount = 0;
-  if (agent.ok === true && outboundReply.feishuActions.length > 0) {
-    for (const [index, action] of outboundReply.feishuActions.entries()) {
-      const readOnlyAction = feishuChannelActionIsReadOnly(action.tool, action.action);
-      let allowMutation = false;
-      if (!readOnlyAction) {
-        const actionRunId = `${activeRunId}:feishu-action:${index}`;
-        const permissionResolver = createPermissionResolver({
-          registry: channelPendingPermissions,
-          runId: actionRunId,
-          bindingId: binding.id,
-          sessionKey,
-          messageId,
-          agent: turnProject.agent,
-          model: turnProject.model,
-          suppressReplyOnResolve: feishuCardsEnabled(binding) && Boolean(parsed.channelId),
-          onStateChange: (change) => {
-            if (isAskUserQuestionRequest(change.request)) return;
-            if (!feishuCardsEnabled(binding) || !parsed.channelId) return;
-            upsertFeishuPermissionProgressEntry(progressCardState, change);
-            queueFeishuProgressFlush(true, `feishu-action-permission-${change.status}`);
-          },
-          onPrompt: async (prompt, request) => {
-            if (shouldUseFeishuProgressPermissionPrompt(binding, parsed.channelId, request)) {
-              await feishuProgressFlush;
-              return;
-            }
-            await sendFeishuPermissionPrompt({
-              config,
-              transport,
-              binding,
-              chatId: parsed.channelId || sessionKey,
-              request,
-              fallbackText: prompt,
-            });
-          },
-        });
-        const decision = await permissionResolver({
-          requestId: `feishu-action-${index + 1}`,
-          subtype: "feishu_channel_action",
-          toolName: "FeishuChannelAction",
-          input: {
-            tool: action.tool,
-            action: action.action,
-            params: action.params,
-          },
-        }).finally(() => {
-          channelPermissionApproveAllRunIds.delete(actionRunId);
-        });
-        allowMutation = decision.behavior === "allow";
-        if (!allowMutation) {
-          feishuActionResults.push({
-            attempted: true,
-            ok: false,
-            tool: action.tool,
-            action: normalizeString(action.action).toLowerCase(),
-            readOnly: false,
-            apiUrl: transport.apiUrl,
-            statusCode: null,
-            requestCount: 0,
-            tokenCache: null,
-            data: null,
-            error: decision.behavior === "deny" && decision.message
-              ? decision.message
-              : "User denied this Feishu channel action.",
-          });
-          feishuActionErrorCount += 1;
-          continue;
-        }
-      }
-      const result = await executeFeishuChannelAction(transport, action, feishuTokenCachePath(config), {
-        allowMutation,
-      });
-      feishuActionResults.push(result);
-      feishuActionRequestCount += result.requestCount;
-      if (result.ok) feishuActionSucceededCount += 1;
-      else feishuActionErrorCount += 1;
-    }
-  }
-  const feishuActionErrors = feishuActionResults
-    .filter((result) => !result.ok)
-    .map((result) => `${result.tool}.${result.action}: ${result.error || "unknown error"}`);
-  const feishuActionHistoryText = feishuActionResultsHistoryText(feishuActionResults);
-  if (feishuActionHistoryText) {
-    appendChannelConnectorConversationHistory(conversationHistoryPath(config), {
-      bindingId: binding.id,
-      sessionKey,
-      messageId: `${messageId}:feishu-actions`,
-      role: "assistant",
-      text: feishuActionHistoryText,
-      status: "feishu-action-results",
-    });
-  }
-  let outboundFileErrors = [...outboundReply.errors, ...feishuActionErrors];
+  let outboundFileErrors = [...outboundReply.errors];
   const outboundReplyText = appendOutboundFileErrors(
-    [outboundReply.replyText, feishuActionResultsReply(feishuActionResults)].filter(Boolean).join("\n\n"),
+    outboundReply.replyText,
     outboundReply.errors,
   );
   const replyContent = agent.ok === true && outboundReplyText
@@ -11062,12 +10248,6 @@ async function dispatchFeishuParsedEvent(input: {
     outboundMessagesSent: outboundMessageSentCount,
     outboundMessageRequestCount,
     outboundMessageNativeMentionIds,
-    feishuActionsDeclared: outboundReply.declaredFeishuActionCount,
-    feishuActionsExecuted: feishuActionResults.length,
-    feishuActionsSucceeded: feishuActionSucceededCount,
-    feishuActionsFailed: feishuActionErrorCount,
-    feishuActionRequestCount,
-    feishuActionErrors,
     outboundFileErrors,
     groupMemberPullAttempted: groupMembers.attempted,
     groupMemberCount: groupMembers.members.length,

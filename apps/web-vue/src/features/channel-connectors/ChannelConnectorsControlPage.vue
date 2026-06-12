@@ -520,17 +520,6 @@
               <small>{{ skillScopeLabel(skill) }}</small>
               <strong>/{{ skill.name }}</strong>
               <span>{{ skill.description || skill.displayName || text('无描述', 'No description') }}</span>
-              <div v-if="skill.actions?.length" class="ccx-skill-actions">
-                <span class="ccx-skill-action-count">{{ skill.actions.length }} runtime actions</span>
-                <span
-                  v-for="action in skill.actions.slice(0, 5)"
-                  :key="action.id"
-                  class="ccx-skill-action-chip"
-                  :class="{ required: action.approval === 'required' }"
-                >
-                  {{ action.tool ? `${action.tool}.${action.action || '*'}` : action.manifest }}
-                </span>
-              </div>
               <code>{{ skill.source }}</code>
             </article>
           </div>
