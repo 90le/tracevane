@@ -1,6 +1,6 @@
 # Feishu Long Connection Issue Tracker
 
-> Status: active validation
+> Status: stable / monitored
 > Updated: 2026-06-12
 > Scope: Studio native Channel Connectors Feishu long-connection ingress.
 
@@ -29,6 +29,8 @@ Decisive user evidence:
 - Octo stays stable under the same workload, so the Channel daemon and Agent runner are not the primary fault class.
 
 Conclusion: Studio must treat Feishu SDK `connected` as insufficient and manage a self-healing owner cycle.
+
+2026-06-12 live status: user verified Feishu and Octo long connections are both stable. The incident is marked complete and stays in monitored state; any future "connected but no reply" report must reopen this tracker with fresh runtime/log evidence.
 
 ## 3. Current Contract
 
@@ -64,6 +66,11 @@ Required for any Feishu long-connection claim:
 - Compare Studio runtime/health with official Feishu connection check.
 - Confirm `connected=false` or unhealthy when pong is overdue or transport is stale.
 - Confirm old redelivered Feishu messages are skipped after newer message waterline advances.
+
+Latest accepted live claim:
+
+- 2026-06-12: user verified Feishu and Octo long connections remain stable.
+- 2026-06-12: user verified Markdown rendering; file/media contract retest is covered in the Channel Connectors system tests.
 
 ## 6. If It Reappears
 

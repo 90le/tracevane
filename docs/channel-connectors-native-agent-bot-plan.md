@@ -72,6 +72,7 @@ Feishu / Octo(dmwork) / future IM
 Feishu：
 
 - 使用官方长连接 SDK，单 App 本机只允许一个 owner，并在进程内扇出到 binding。
+- 长连接已由用户 live 验证稳定，后续进入监控态。
 - WS event handler 只做轻量解析、去重、准入和快速 ACK；附件下载、Agent run、进度卡片和最终回复后台执行。
 - 健康不只看 SDK `connected`；必须结合 ping/pong、transport stale、dispatcher callback、owner lock 和入站水位线。
 - `/new`、`/reset` 等执行命令返回普通文本结果，不自动弹完整菜单。
@@ -79,6 +80,7 @@ Feishu：
 Octo(dmwork)：
 
 - WuKongIM 长连接参考 CC Go：heartbeat、PONG timeout、RECVACK、messageId 去重、抖动重连和 REST heartbeat。
+- 长连接已由用户 live 验证稳定，后续进入监控态。
 - 文件发送优先 STS + COS PUT 直传；旧 multipart 上传只作为兼容回退。
 - accountId 需要按 OpenClaw Octo v1.0.15 的 mixed-case 归一规则处理。
 
@@ -108,13 +110,14 @@ Octo(dmwork)：
 - OpenCode `run --session` 已覆盖普通 turn、文件 manifest、视觉附件、compact、stop/cancel；SQLite fallback 已统一复用 live parser，结构化 `stdout`/`stderr`/`exitCode` 已保留，避免丢工具结果或把过程回复拼进最终回复。
 - Claude Code / OpenCode persistent native compact 已新增真实子进程 driver 回归：Claude 用同一个 stream-json 常驻进程接收 `/compact`，OpenCode 用 `run --session <id>` 续接 `/compact`，均不回退 one-shot。
 - Octo daemon 私聊 `/compact` 已新增回归：普通消息建立 live session 后，`/compact` 会进入 Claude/OpenCode persistent driver，不走 Gateway fallback。
-- Feishu daemon 已补 native-first wiring 回归：长连接派发会先调用 Agent native compact，再允许 Gateway fallback；外部 live smoke 仍待复验。
+- Feishu daemon 已补 native-first wiring 回归：长连接已稳定，派发会先调用 Agent native compact，再允许 Gateway fallback；外部 `/compact` live smoke 仍待复验。
 
 ## 6. 当前完成
 
 - 独立 `/channel-connectors` 页面和 `/api/channel-connectors/*` API。
 - 原生 config store：Agent Profile、workDir、Agent、model、permission、Gateway key ref、platform/bot binding、allowlist/admin。
 - Octo/Feishu 私聊文本往返、文件/图片 staging、出站文件 manifest、视觉模型自动选择。
+- Octo/Feishu 长连接已由用户 live 验证稳定，Markdown 已验证。
 - Feishu card/menu、会话子卡、命令路由、进度卡片和快速 ACK 后台派发。
 - IM 命令：`/help`、`/status`、`/agent`、`/model`、`/mode`、`/reasoning`、`/dir`、`/cd`、`/new`、`/reset`、`/stop`、`/display`、`/thinking`、`/process`、`/tools`、`/compact` 等核心命令。
 - 私聊工具流、思考流、过程回复显示开关。
@@ -126,5 +129,5 @@ Octo(dmwork)：
 1. 稳定 Codex、Claude Code、OpenCode 的工具流/回复解析，尤其空工具结果、过程回复和最终回复重复问题。
 2. 做 Feishu live `/compact` smoke。
 3. 补 durable queue / 可恢复队列。
-4. 复验 Feishu/Octo 私聊文件、图片、工具流和审批路径。
+4. 复验 Feishu/Octo 私聊文件、图片、工具流和审批路径；Markdown 后续抽查即可。
 5. 后续路线图：微信/企微、钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE；更多 Agent 如 Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP。
