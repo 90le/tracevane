@@ -14289,6 +14289,322 @@ test("native Channel Connectors daemon runs Codex app-server when persistent ses
   }
 });
 
+test("native Channel Connectors daemon routes Claude and OpenCode compact through Octo persistent sessions", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+  });
+  const fakeBin = path.join(root, "fake-bin");
+  const capturePath = path.join(root, "daemon-native-compact-capture.jsonl");
+  fs.mkdirSync(fakeBin, { recursive: true });
+  fs.writeFileSync(path.join(fakeBin, "claude"), [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    "const readline = require('node:readline');",
+    "const rl = readline.createInterface({ input: process.stdin });",
+    "function emit(value) { process.stdout.write(JSON.stringify(value) + '\\n'); }",
+    "function record(value) { fs.appendFileSync(process.env.STUDIO_NATIVE_COMPACT_DAEMON_CAPTURE, JSON.stringify({ cli: 'claude', pid: process.pid, ...value }) + '\\n'); }",
+    "rl.on('line', (line) => {",
+    "  if (!line.trim()) return;",
+    "  const message = JSON.parse(line);",
+    "  const content = message.message && message.message.content;",
+    "  const text = typeof content === 'string' ? content : JSON.stringify(content);",
+    "  record({ argv: process.argv.slice(2), text });",
+    "  emit({ type: 'system', session_id: 'claude-daemon-session' });",
+    "  if (text.includes('/compact')) {",
+    "    emit({ type: 'result', session_id: 'claude-daemon-session' });",
+    "    return;",
+    "  }",
+    "  emit({ type: 'assistant', message: { content: [{ type: 'text', text: 'Claude daemon normal reply.' }] } });",
+    "  emit({ type: 'result', result: 'Claude daemon normal reply.', session_id: 'claude-daemon-session' });",
+    "});",
+    "setInterval(() => {}, 1000);",
+    "",
+  ].join("\n"), { mode: 0o755 });
+  fs.writeFileSync(path.join(fakeBin, "opencode"), [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    "const path = require('node:path');",
+    "const args = process.argv.slice(2);",
+    "const dataHome = process.env.XDG_DATA_HOME || '';",
+    "if (dataHome) {",
+    "  fs.mkdirSync(path.join(dataHome, 'opencode'), { recursive: true });",
+    "  fs.writeFileSync(path.join(dataHome, 'opencode', 'opencode.db'), '');",
+    "}",
+    "const prompt = args.includes('--') ? args.slice(args.indexOf('--') + 1).join(' ') : '';",
+    "fs.appendFileSync(process.env.STUDIO_NATIVE_COMPACT_DAEMON_CAPTURE, JSON.stringify({ cli: 'opencode', argv: args, prompt }) + '\\n');",
+    "function emit(value) { process.stdout.write(JSON.stringify(value) + '\\n'); }",
+    "emit({ type: 'step_start', part: { type: 'step-start', sessionID: 'opencode-daemon-session' } });",
+    "if (!prompt.includes('/compact')) {",
+    "  emit({ type: 'text', messageID: 'opencode-normal', part: { type: 'text', messageID: 'opencode-normal', text: 'OpenCode daemon normal reply.' } });",
+    "}",
+    "emit({ type: 'step_finish', part: { type: 'step-finish', reason: 'stop' } });",
+    "",
+  ].join("\n"), { mode: 0o755 });
+  fs.writeFileSync(path.join(fakeBin, "sqlite3"), [
+    "#!/usr/bin/env node",
+    "const query = process.argv[process.argv.length - 1] || '';",
+    "if (query.includes('select id from session')) console.log(JSON.stringify([{ id: 'opencode-daemon-session' }]));",
+    "else console.log(JSON.stringify([]));",
+    "",
+  ].join("\n"), { mode: 0o755 });
+
+  const sendInboundByRobot = new Map();
+  const wsConnects = [];
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  await new Promise((resolve, reject) => {
+    wss.once("listening", resolve);
+    wss.once("error", reject);
+  });
+  const wsAddress = wss.address();
+  assert.ok(wsAddress && typeof wsAddress === "object");
+  const wsUrl = `ws://127.0.0.1:${wsAddress.port}/ws`;
+  wss.on("connection", (socket) => {
+    let connected = false;
+    socket.on("message", (data) => {
+      if (connected) return;
+      const packet = decodeOctoConnectPacket(Buffer.isBuffer(data) ? data : Buffer.from(data));
+      connected = true;
+      wsConnects.push(packet);
+      const serverKey = createOctoX25519KeyPair();
+      const salt = `salt${packet.uid}`.slice(0, 16).padEnd(16, "0");
+      socket.send(encodeOctoConnackPacket({
+        serverPublicKeyBase64: serverKey.publicKeyBase64,
+        salt,
+      }));
+      sendInboundByRobot.set(packet.uid, (messageId, fromUid, content) => {
+        if (socket.readyState !== 1) throw new Error(`Octo fake socket for ${packet.uid} is not open`);
+        socket.send(encodeOctoRecvPacket({
+          serverPrivateKey: serverKey.privateKey,
+          clientPublicKeyBase64: packet.clientPublicKeyBase64,
+          salt,
+          messageId,
+          messageSeq: messageId - 6100,
+          fromUid,
+          channelId: fromUid,
+          channelType: 1,
+          payload: {
+            type: 1,
+            content,
+          },
+        }));
+      });
+    });
+  });
+
+  try {
+    const requests = [];
+    await withServer(async (req, res) => {
+      const chunks = [];
+      req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
+      await new Promise((resolve) => req.on("end", resolve));
+      const bodyRaw = Buffer.concat(chunks).toString("utf8");
+      requests.push({
+        method: req.method,
+        path: req.url,
+        authorization: req.headers.authorization,
+        body: bodyRaw ? JSON.parse(bodyRaw) : {},
+      });
+      res.setHeader("content-type", "application/json");
+      if (req.url === "/v1/models") {
+        res.end(JSON.stringify({
+          object: "list",
+          data: [{
+            id: "gpt-5",
+            object: "model",
+            contextWindow: 200000,
+            maxOutputTokens: 8192,
+          }],
+        }));
+        return true;
+      }
+      if (req.url?.startsWith("/v1/bot/register")) {
+        const registerRequests = requests.filter((request) => request.path?.startsWith("/v1/bot/register")).length;
+        const kind = registerRequests === 1 ? "claude" : "opencode";
+        res.end(JSON.stringify({
+          robot_id: `robot-${kind}`,
+          im_token: `im-token-${kind}`,
+          ws_url: wsUrl,
+        }));
+        return true;
+      }
+      if (req.url === "/v1/bot/typing" || req.url === "/v1/bot/sendMessage" || req.url === "/v1/bot/heartbeat") {
+        res.end(JSON.stringify({ ok: true, message_id: `octo-${requests.length}` }));
+        return true;
+      }
+      return false;
+    }, async (apiUrl) => {
+      const initial = service.getNativeConfig().config;
+      service.saveNativeConfig({
+        config: {
+          ...initial,
+          agentProfiles: [
+            {
+              id: "claude-persistent-daemon",
+              name: "Claude Persistent Daemon",
+              agent: "claude-code",
+              model: "gpt-5",
+              workDir: config.projectRoot,
+              permissionMode: "yolo",
+              gatewayEndpoint: `${apiUrl}/v1`,
+              gatewayKeyRef: "studio-gateway-client-key",
+              appProfileRef: "claude-code",
+            },
+            {
+              id: "opencode-persistent-daemon",
+              name: "OpenCode Persistent Daemon",
+              agent: "opencode",
+              model: "gpt-5",
+              workDir: config.projectRoot,
+              permissionMode: "yolo",
+              gatewayEndpoint: `${apiUrl}/v1`,
+              gatewayKeyRef: "studio-gateway-client-key",
+              appProfileRef: "opencode",
+            },
+          ],
+          defaultAgentProfileId: "claude-persistent-daemon",
+          platformBindings: [
+            {
+              id: "octo-claude-compact",
+              platform: "octo",
+              accountId: "octo-claude-account",
+              botId: null,
+              displayName: "Octo Claude Compact",
+              agentProfileId: "claude-persistent-daemon",
+              enabled: true,
+              allowlist: [],
+              adminUsers: [],
+              metadata: {
+                apiUrl,
+                botToken: "test-token-claude",
+                wsUrl,
+                agentSessionDriver: "persistent",
+                octoReconnectJitterMs: 0,
+              },
+            },
+            {
+              id: "octo-opencode-compact",
+              platform: "octo",
+              accountId: "octo-opencode-account",
+              botId: null,
+              displayName: "Octo OpenCode Compact",
+              agentProfileId: "opencode-persistent-daemon",
+              enabled: true,
+              allowlist: [],
+              adminUsers: [],
+              metadata: {
+                apiUrl,
+                botToken: "test-token-opencode",
+                wsUrl,
+                agentSessionDriver: "persistent",
+                octoReconnectJitterMs: 0,
+              },
+            },
+          ],
+        },
+      });
+
+      const runtimeConfig = service.getDaemonConfig().config;
+      runtimeConfig.management.port = await findFreePort();
+      const configPath = path.join(root, "daemon-native-compact-config.json");
+      fs.mkdirSync(path.dirname(runtimeConfig.paths.log), { recursive: true });
+      fs.writeFileSync(configPath, JSON.stringify(runtimeConfig, null, 2), "utf8");
+
+      const daemonEntry = path.resolve("dist/apps/api/modules/channel-connectors/daemon.js");
+      const child = spawn(process.execPath, [daemonEntry, "--config", configPath], {
+        cwd: path.resolve("."),
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:${process.env.PATH || ""}`,
+          STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+          STUDIO_NATIVE_COMPACT_DAEMON_CAPTURE: capturePath,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stderr = "";
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk.toString("utf8");
+      });
+
+      try {
+        await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const connected = ["octo-claude-compact", "octo-opencode-compact"].every((bindingId) =>
+            response.body?.octoConnections?.some?.((item) => item.bindingId === bindingId && item.connected)
+          );
+          return connected && sendInboundByRobot.has("robot-claude") && sendInboundByRobot.has("robot-opencode")
+            ? response.body
+            : null;
+        }, 8000);
+        assert.equal(wsConnects.length, 2);
+
+        sendInboundByRobot.get("robot-claude")(6101, "claude-user", "hello claude daemon");
+        sendInboundByRobot.get("robot-opencode")(6201, "opencode-user", "hello opencode daemon");
+        const normalStatus = await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const runs = response.body?.agentRuns?.filter?.((item) => ["6101", "6201"].includes(item.messageId) && item.ok) || [];
+          const sessions = response.body?.agentSessionDriver?.activeSessions?.filter?.((item) =>
+            ["octo-claude-compact", "octo-opencode-compact"].includes(item.bindingId)
+          ) || [];
+          return runs.length === 2 && sessions.length === 2 ? response.body : null;
+        }, 12_000);
+        const requestedModes = normalStatus.agentSessionDriver.requestedPersistentBindings
+          .filter((item) => ["octo-claude-compact", "octo-opencode-compact"].includes(item.bindingId))
+          .map((item) => item.effectiveMode);
+        assert.deepEqual(requestedModes.sort(), ["persistent", "persistent"]);
+
+        sendInboundByRobot.get("robot-claude")(6102, "claude-user", "/compact");
+        sendInboundByRobot.get("robot-opencode")(6202, "opencode-user", "/compact");
+        await waitForJsonLines(runtimeConfig.paths.octoEvents, (events) => {
+          const finished = events.filter((event) =>
+            event.eventKind === "agent.native_compact.finished"
+            && ["octo-claude-compact", "octo-opencode-compact"].includes(event.bindingId)
+            && event.ok === true
+          );
+          return finished.length >= 2;
+        }, 8000);
+        const replyContents = await waitFor(() => {
+          const content = requests
+            .filter((request) => request.path === "/v1/bot/sendMessage")
+            .map((request) => request.body?.payload?.content || "")
+            .join("\n");
+          return /Claude Code compact 已完成/.test(content) && /OpenCode compact 已完成/.test(content) ? content : null;
+        }, 8000);
+        assert.match(replyContents, /Agent 原生 compact 已完成/);
+        assert.equal(requests.filter((request) => request.path === "/v1/responses/compact").length, 0);
+
+        const capture = fs.readFileSync(capturePath, "utf8")
+          .trim()
+          .split(/\r?\n/)
+          .filter(Boolean)
+          .map((line) => JSON.parse(line));
+        const claudeNormal = capture.find((entry) => entry.cli === "claude" && entry.text.includes("hello claude daemon"));
+        const claudeCompact = capture.find((entry) => entry.cli === "claude" && entry.text.includes("/compact"));
+        assert.ok(claudeNormal);
+        assert.ok(claudeCompact);
+        assert.equal(claudeCompact.pid, claudeNormal.pid);
+        const opencodeCompact = capture.find((entry) => entry.cli === "opencode" && entry.prompt.includes("/compact"));
+        assert.ok(opencodeCompact);
+        assert.ok(opencodeCompact.argv.includes("--session"));
+        assert.equal(opencodeCompact.argv[opencodeCompact.argv.indexOf("--session") + 1], "opencode-daemon-session");
+      } finally {
+        child.kill("SIGTERM");
+        await new Promise((resolve) => {
+          child.once("exit", resolve);
+          setTimeout(resolve, 1000);
+        });
+      }
+
+      assert.equal(stderr.trim(), "");
+    });
+  } finally {
+    await new Promise((resolve, reject) => {
+      wss.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
 test("native Channel Connectors daemon isolates Codex app-server persistent sessions by IM session", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
