@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
@@ -55,6 +55,7 @@ import {
 } from "../../dist/apps/api/modules/channel-connectors/feishu-adapter.js";
 import {
   attachExtractedOctoAttachments,
+  extractOctoContent,
   renderOctoOutboundText,
   renderOctoTextReply,
 } from "../../dist/apps/api/modules/channel-connectors/octo-adapter.js";
@@ -2646,6 +2647,30 @@ test("Octo adapter dry-run dispatch resolves binding, session key, and reply pla
   assert.equal(mediaUrlMessage.incoming.attachments[0].kind, "image");
   assert.equal(mediaUrlMessage.incoming.attachments[0].url, "https://cdn.example.test/inbound-image.png");
   assert.equal(mediaUrlMessage.incoming.attachments[0].fileName, "inbound-image.png");
+  assert.equal(extractOctoContent({
+    messageId: "m-image-with-caption",
+    fromUid: "user-1",
+    channelId: "user-1",
+    channelType: 1,
+    payload: {
+      type: 2,
+      name: "captioned.png",
+      content: "请识别这张图里的色块位置",
+      mediaUrl: "https://cdn.example.test/captioned.png",
+    },
+  }), "请识别这张图里的色块位置");
+  assert.equal(extractOctoContent({
+    messageId: "m-video-with-caption",
+    fromUid: "user-1",
+    channelId: "user-1",
+    channelType: 1,
+    payload: {
+      type: 5,
+      name: "clip.mp4",
+      content: "请看视频预览帧是什么颜色",
+      mediaUrl: "https://cdn.example.test/clip.mp4",
+    },
+  }), "请看视频预览帧是什么颜色");
 
   const richTextMessage = await service.dispatchOctoIncoming({
     bindingId: "octo-default",
@@ -5236,6 +5261,124 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.deepEqual(opencodeVisionModelConfig.modalities, { input: ["text", "image"], output: ["text"] });
   assert.deepEqual(opencodeVisionModelConfig.limit, { context: 200000, output: 8192 });
   assert.equal(opencodeVisionModelConfig.tool_call, true);
+
+  const ffmpegAvailable = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0;
+  const videoPath = path.join(workDir, ".studio-agent-attachments", "clip.mp4");
+  if (ffmpegAvailable) {
+    const generatedVideo = spawnSync("ffmpeg", [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "color=c=red:s=32x32:d=0.5",
+      "-pix_fmt",
+      "yuv420p",
+      videoPath,
+    ], { stdio: "ignore" });
+    if (generatedVideo.status === 0 && fs.existsSync(videoPath)) {
+      const videoMessage = {
+        ...message,
+        messageId: "m-runner-vision-video",
+        payload: { type: 5, content: "", name: "clip.mp4" },
+        attachments: [{
+          kind: "video",
+          platform: "feishu",
+          fileName: "clip.mp4",
+          mimeType: "video/mp4",
+          localPath: videoPath,
+          durationMs: 500,
+          stagedAt: "2026-06-06T08:00:00.000Z",
+        }],
+      };
+
+      const codexVideoRequest = buildChannelConnectorAgentProcessRequest({
+        project: { ...project, model: "gmn-vision" },
+        binding,
+        message: videoMessage,
+        sessionKey: "dmwork:dm:user-1",
+        gatewayEndpoint: project.gatewayEndpoint,
+        gatewayClientKey: "sk-local",
+        modelCapabilities: { vision: true },
+      });
+      assert.ok(codexVideoRequest);
+      const codexVideoImageArgIndex = codexVideoRequest.args.indexOf("--image");
+      assert.notEqual(codexVideoImageArgIndex, -1);
+      const codexVideoFramePath = codexVideoRequest.args[codexVideoImageArgIndex + 1];
+      assert.equal(path.basename(codexVideoFramePath), "clip.preview.jpg");
+      assert.equal(fs.existsSync(codexVideoFramePath), true);
+      assert.match(codexVideoRequest.stdin, /extracted video preview frame/);
+      assert.match(codexVideoRequest.stdin, /reason only from extracted preview frame/);
+      for (const cleanupPath of codexVideoRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+      assert.equal(fs.existsSync(codexVideoFramePath), false);
+
+      const claudeVideoRequest = buildChannelConnectorAgentProcessRequest({
+        project: { ...project, agent: "claude-code", model: "claude-sonnet" },
+        binding: { ...binding, agent: "claude-code" },
+        message: videoMessage,
+        sessionKey: "dmwork:dm:user-1",
+        gatewayEndpoint: project.gatewayEndpoint,
+        gatewayClientKey: "sk-local",
+        modelCapabilities: { vision: true },
+      });
+      assert.ok(claudeVideoRequest);
+      const claudeVideoInput = JSON.parse(claudeVideoRequest.stdin);
+      assert.equal(claudeVideoInput.message.content[0].type, "image");
+      assert.equal(claudeVideoInput.message.content[0].source.media_type, "image/jpeg");
+      assert.match(claudeVideoInput.message.content[1].text, /extracted video preview frame/);
+      assert.match(claudeVideoInput.message.content[1].text, /reason only from extracted preview frame/);
+      for (const cleanupPath of claudeVideoRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
+      const opencodeVideoRequest = buildChannelConnectorAgentProcessRequest({
+        project: { ...project, agent: "opencode", model: "gmn-vision" },
+        binding: { ...binding, agent: "opencode" },
+        message: videoMessage,
+        sessionKey: "dmwork:dm:user-1",
+        gatewayEndpoint: project.gatewayEndpoint,
+        gatewayClientKey: "sk-local",
+        modelCapabilities: { vision: true },
+      });
+      assert.ok(opencodeVideoRequest);
+      const opencodeVideoFileArgIndex = opencodeVideoRequest.args.indexOf("--file");
+      assert.notEqual(opencodeVideoFileArgIndex, -1);
+      assert.equal(path.basename(opencodeVideoRequest.args[opencodeVideoFileArgIndex + 1]), "clip.preview.jpg");
+      assert.match(opencodeVideoRequest.args.at(-1), /extracted video preview frame/);
+      assert.match(opencodeVideoRequest.args.at(-1), /reason only from extracted preview frame/);
+      for (const cleanupPath of opencodeVideoRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+    }
+  }
+
+  const badVideoPath = path.join(workDir, ".studio-agent-attachments", "bad-video.mp4");
+  fs.writeFileSync(badVideoPath, "not a real video");
+  const badVideoRequest = buildChannelConnectorAgentProcessRequest({
+    project: { ...project, model: "gmn-vision" },
+    binding,
+    message: {
+      ...message,
+      messageId: "m-runner-bad-video",
+      payload: { type: 5, content: "", name: "bad-video.mp4" },
+      attachments: [{
+        kind: "video",
+        platform: "octo",
+        fileName: "bad-video.mp4",
+        mimeType: "video/mp4",
+        localPath: badVideoPath,
+        stagedAt: "2026-06-06T08:00:00.000Z",
+      }],
+    },
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    modelCapabilities: { vision: true },
+  });
+  assert.ok(badVideoRequest);
+  assert.equal(badVideoRequest.args.includes("--image"), false);
+  assert.match(badVideoRequest.stdin, /Studio visual attachment fallback/);
+  assert.match(badVideoRequest.stdin, /could not attach a native image payload/);
+  assert.match(badVideoRequest.stdin, /Do not describe, classify, OCR, or infer visual contents/);
+  for (const cleanupPath of badVideoRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const stagedLocalPath = path.join(workDir, ".studio-agent-attachments", "report.txt");
   const stagedAttachmentRequest = buildChannelConnectorAgentProcessRequest({

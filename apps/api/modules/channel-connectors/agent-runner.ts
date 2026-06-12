@@ -128,6 +128,20 @@ export interface ChannelConnectorAgentTurnResult {
 
 type ChannelConnectorVisualInputMode = "none" | "codex-native-image" | "claude-native-image" | "opencode-native-file";
 
+interface ChannelConnectorNativeVisualInput {
+  path: string;
+  mediaType: string;
+  sourceKind: "image" | "sticker" | "video-frame";
+  sourcePath: string;
+}
+
+interface ChannelConnectorNativeVisualInputSet {
+  inputs: ChannelConnectorNativeVisualInput[];
+  cleanupPaths: string[];
+  extractedVideoFrameCount: number;
+  failedVideoFrameCount: number;
+}
+
 type ClaudeCodeContentPart =
   | { type: "text"; text: string }
   | { type: "image"; source: { type: "base64"; media_type: string; data: string } };
@@ -177,22 +191,104 @@ function isNativeImageAttachment(attachment: ChannelConnectorInboundAttachment):
   return /\.(png|jpe?g|gif|webp|bmp|tiff?|heic|heif)$/i.test(fileName);
 }
 
-function collectCodexNativeImagePaths(attachments: ChannelConnectorInboundAttachment[]): string[] {
-  const paths: string[] = [];
-  const seen = new Set<string>();
-  for (const attachment of attachments) {
-    if (!isNativeImageAttachment(attachment)) continue;
-    const localPath = normalizeString(attachment.localPath);
-    if (!localPath || seen.has(localPath)) continue;
+function isVideoAttachment(attachment: ChannelConnectorInboundAttachment): boolean {
+  if (attachment.kind !== "video") return false;
+  const mimeType = normalizeString(attachment.mimeType).toLowerCase();
+  if (mimeType) return mimeType.startsWith("video/");
+  const fileName = normalizeString(attachment.fileName) || normalizeString(attachment.localPath);
+  return /\.(mp4|mov|m4v|webm|mkv|avi|mpeg|mpg|3gp)$/i.test(fileName);
+}
+
+function fileExists(filePath: string): boolean {
+  try {
+    return fs.statSync(filePath).isFile();
+  } catch {
+    return false;
+  }
+}
+
+function safeFrameBaseName(attachment: ChannelConnectorInboundAttachment, fallback: string): string {
+  const name = normalizeString(attachment.fileName) || path.basename(normalizeString(attachment.localPath)) || fallback;
+  const base = path.basename(name, path.extname(name)).replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  return base || fallback;
+}
+
+function extractVideoPreviewFrame(attachment: ChannelConnectorInboundAttachment, index: number): {
+  input: ChannelConnectorNativeVisualInput | null;
+  cleanupPath: string | null;
+} {
+  const localPath = normalizeString(attachment.localPath);
+  if (!localPath || !fileExists(localPath)) return { input: null, cleanupPath: null };
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-video-frame-"));
+  const framePath = path.join(tmpDir, `${safeFrameBaseName(attachment, `video-${index}`)}.preview.jpg`);
+  const result = spawnSync("ffmpeg", [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-y",
+    "-ss",
+    "0",
+    "-i",
+    localPath,
+    "-frames:v",
+    "1",
+    framePath,
+  ], {
+    stdio: "ignore",
+    timeout: 15_000,
+  });
+  if (result.status !== 0 || result.error || !fileExists(framePath)) {
     try {
-      if (!fs.statSync(localPath).isFile()) continue;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
     } catch {
+      // Best effort; the caller falls back to text-only attachment policy.
+    }
+    return { input: null, cleanupPath: null };
+  }
+  return {
+    input: {
+      path: framePath,
+      mediaType: "image/jpeg",
+      sourceKind: "video-frame",
+      sourcePath: localPath,
+    },
+    cleanupPath: tmpDir,
+  };
+}
+
+function collectNativeVisualInputs(attachments: ChannelConnectorInboundAttachment[]): ChannelConnectorNativeVisualInputSet {
+  const inputs: ChannelConnectorNativeVisualInput[] = [];
+  const cleanupPaths: string[] = [];
+  const seen = new Set<string>();
+  let extractedVideoFrameCount = 0;
+  let failedVideoFrameCount = 0;
+  for (const attachment of attachments) {
+    if (isNativeImageAttachment(attachment)) {
+      const localPath = normalizeString(attachment.localPath);
+      if (!localPath || seen.has(localPath) || !fileExists(localPath)) continue;
+      seen.add(localPath);
+      inputs.push({
+        path: localPath,
+        mediaType: inferImageMimeType(localPath, attachment.mimeType),
+        sourceKind: attachment.kind === "sticker" ? "sticker" : "image",
+        sourcePath: localPath,
+      });
       continue;
     }
+    if (!isVideoAttachment(attachment)) continue;
+    const localPath = normalizeString(attachment.localPath);
+    if (!localPath || seen.has(localPath)) continue;
     seen.add(localPath);
-    paths.push(localPath);
+    const extracted = extractVideoPreviewFrame(attachment, extractedVideoFrameCount + failedVideoFrameCount + 1);
+    if (!extracted.input) {
+      failedVideoFrameCount += 1;
+      continue;
+    }
+    inputs.push(extracted.input);
+    if (extracted.cleanupPath) cleanupPaths.push(extracted.cleanupPath);
+    extractedVideoFrameCount += 1;
   }
-  return paths;
+  return { inputs, cleanupPaths, extractedVideoFrameCount, failedVideoFrameCount };
 }
 
 function inferImageMimeType(filePath: string, mimeType?: string | null): string {
@@ -217,22 +313,21 @@ function inferImageMimeType(filePath: string, mimeType?: string | null): string 
   }
 }
 
-function collectClaudeNativeImageParts(attachments: ChannelConnectorInboundAttachment[]): ClaudeCodeContentPart[] {
+function collectClaudeNativeImageParts(inputs: ChannelConnectorNativeVisualInput[]): ClaudeCodeContentPart[] {
   const parts: ClaudeCodeContentPart[] = [];
   const seen = new Set<string>();
-  for (const attachment of attachments) {
-    if (!isNativeImageAttachment(attachment)) continue;
-    const localPath = normalizeString(attachment.localPath);
+  for (const input of inputs) {
+    const localPath = normalizeString(input.path);
     if (!localPath || seen.has(localPath)) continue;
     try {
-      if (!fs.statSync(localPath).isFile()) continue;
+      if (!fileExists(localPath)) continue;
       const data = fs.readFileSync(localPath).toString("base64");
       seen.add(localPath);
       parts.push({
         type: "image",
         source: {
           type: "base64",
-          media_type: inferImageMimeType(localPath, attachment.mimeType),
+          media_type: input.mediaType,
           data,
         },
       });
@@ -303,6 +398,23 @@ function buildNonVisionVisualAttachmentPolicy(
     "You must not describe, classify, OCR, or infer visual contents from attachment metadata, file names, or local paths.",
     "You may still help with non-visual file tasks such as saving, renaming, forwarding, format conversion, metadata-oriented handling, or asking the user to switch to a vision-capable model / provide a text description.",
     "If the user only sent a visual attachment without a clear non-visual task, reply in Chinese that the file was received and ask what they want to do next.",
+  ].join("\n");
+}
+
+function buildUnavailableNativeVisualAttachmentPolicy(
+  model: string | null,
+  attachments: ChannelConnectorInboundAttachment[],
+): string | null {
+  const visualCount = attachments.filter(isVisualAttachment).length;
+  if (!visualCount) return null;
+  const modelLabel = normalizeString(model) || "当前模型";
+  return [
+    "[Studio visual attachment fallback]",
+    `The user sent ${visualCount === 1 ? "a visual attachment" : `${visualCount} visual attachments`}; the current model ${modelLabel} may support vision, but Studio could not attach a native image payload for this turn.`,
+    "This can happen when the file was not staged, the attachment is a video/audio-only format, or video preview frame extraction failed.",
+    "Do not describe, classify, OCR, or infer visual contents from attachment metadata, file names, or local paths.",
+    "You may use the staged local file paths with available local tools to inspect metadata, extract frames, convert formats, or ask the user for a vision-capable retry.",
+    "If the user only sent a visual attachment without a clear non-visual task, reply in Chinese that the file was received but visual inspection was not available for this turn, then ask what they want to do next.",
   ].join("\n");
 }
 
@@ -441,15 +553,22 @@ function buildAgentInputContent(
     .join("\n");
   const hasLocalPath = attachments.some((attachment) => normalizeString(attachment.localPath));
   const hasVisualAttachment = attachments.some(isVisualAttachment);
-  const visualPolicy = hasVisualAttachment && !channelConnectorModelSupportsVision(model || null, binding, modelCapabilities)
+  const hasVideoAttachment = attachments.some(isVideoAttachment);
+  const supportsVision = channelConnectorModelSupportsVision(model || null, binding, modelCapabilities);
+  const visualPolicy = hasVisualAttachment && !supportsVision
     ? buildNonVisionVisualAttachmentPolicy(model || null, attachments)
-    : null;
+    : hasVisualAttachment && supportsVision && visualInputMode === "none"
+      ? buildUnavailableNativeVisualAttachmentPolicy(model || null, attachments)
+      : null;
+  const nativeVisualInputLabel = hasVideoAttachment
+    ? "staged image attachments and extracted video preview frame(s)"
+    : "staged image attachments";
   const visualInputText = hasVisualAttachment && visualInputMode === "codex-native-image"
-    ? "Vision-capable Codex runtime received staged image attachments through native --image arguments; inspect those attached images for visual tasks."
+    ? `Vision-capable Codex runtime received ${nativeVisualInputLabel} through native --image arguments; inspect those attached images for visual tasks. For videos, reason only from extracted preview frame(s) unless you use local file tools for deeper analysis.`
     : hasVisualAttachment && visualInputMode === "claude-native-image"
-      ? "Vision-capable Claude Code runtime received staged image attachments through native image content blocks; inspect those attached images for visual tasks."
+      ? `Vision-capable Claude Code runtime received ${nativeVisualInputLabel} through native image content blocks; inspect those attached images for visual tasks. For videos, reason only from extracted preview frame(s) unless you use local file tools for deeper analysis.`
       : hasVisualAttachment && visualInputMode === "opencode-native-file"
-        ? "Vision-capable OpenCode runtime received staged image attachments through native --file arguments; inspect those attached images for visual tasks."
+        ? `Vision-capable OpenCode runtime received ${nativeVisualInputLabel} through native --file arguments; inspect those attached images for visual tasks. For videos, reason only from extracted preview frame(s) unless you use local file tools for deeper analysis.`
         : "";
   const attachmentText = [
     "[Studio attachment summary]",
@@ -897,7 +1016,7 @@ function openCodeSessionExistsInDataHome(dataHome: string, sessionId: string): b
   return rows.some((row) => normalizeString(row.id) === normalizedSessionId);
 }
 
-function cleanupProcessRequest(request: ChannelConnectorAgentProcessRequest): void {
+export function cleanupChannelConnectorAgentProcessRequest(request: ChannelConnectorAgentProcessRequest): void {
   for (const cleanupPath of request.cleanupPaths || []) {
     try {
       fs.rmSync(cleanupPath, { recursive: true, force: true });
@@ -1026,20 +1145,23 @@ export function buildChannelConnectorAgentProcessRequest(
   const model = normalizeString(project.model);
   const nativeCommand = normalizeString(request.nativeCommand);
   const attachments = nativeCommand ? [] : extractOctoAttachments(request.message);
-  const codexNativeImagePaths = project.agent === "codex"
-    && channelConnectorModelSupportsVision(model || null, request.binding, request.modelCapabilities)
-    ? collectCodexNativeImagePaths(attachments)
-    : [];
+  const agentSupportsNativeVisualInput = project.agent === "codex"
+    || project.agent === "claude-code"
+    || project.agent === "opencode";
+  const supportsVision = channelConnectorModelSupportsVision(model || null, request.binding, request.modelCapabilities);
+  const nativeVisualInputs = supportsVision && agentSupportsNativeVisualInput ? collectNativeVisualInputs(attachments) : {
+    inputs: [],
+    cleanupPaths: [],
+    extractedVideoFrameCount: 0,
+    failedVideoFrameCount: 0,
+  };
+  const nativeVisualPaths = nativeVisualInputs.inputs.map((input) => input.path);
+  const codexNativeImagePaths = project.agent === "codex" ? nativeVisualPaths : [];
   const claudeNativeImageParts = project.agent === "claude-code"
-    && channelConnectorModelSupportsVision(model || null, request.binding, request.modelCapabilities)
-    ? collectClaudeNativeImageParts(attachments)
+    ? collectClaudeNativeImageParts(nativeVisualInputs.inputs)
     : [];
-  const opencodeNativeImagePaths = project.agent === "opencode"
-    && channelConnectorModelSupportsVision(model || null, request.binding, request.modelCapabilities)
-    ? collectCodexNativeImagePaths(attachments)
-    : [];
-  const opencodeSupportsVision = project.agent === "opencode"
-    && channelConnectorModelSupportsVision(model || null, request.binding, request.modelCapabilities);
+  const opencodeNativeImagePaths = project.agent === "opencode" ? nativeVisualPaths : [];
+  const opencodeSupportsVision = project.agent === "opencode" && supportsVision;
   const content = nativeCommand || buildAgentInputContent(
     request.message,
     request.binding,
@@ -1133,7 +1255,10 @@ export function buildChannelConnectorAgentProcessRequest(
       },
       timeoutMs,
       nativeCommand: nativeCommand || null,
-      cleanupPaths: codexHome.cleanupRoot ? [codexHome.cleanupRoot] : [],
+      cleanupPaths: [
+        ...(codexHome.cleanupRoot ? [codexHome.cleanupRoot] : []),
+        ...nativeVisualInputs.cleanupPaths,
+      ],
       sessionMode: codexThreadId ? "resume" : "new",
       agentNativeSessionId: codexThreadId || null,
       codexThreadId: codexThreadId || null,
@@ -1174,7 +1299,10 @@ export function buildChannelConnectorAgentProcessRequest(
       },
       timeoutMs,
       nativeCommand: nativeCommand || null,
-      cleanupPaths: claudeConfigHome.cleanupRoot ? [claudeConfigHome.cleanupRoot] : [],
+      cleanupPaths: [
+        ...(claudeConfigHome.cleanupRoot ? [claudeConfigHome.cleanupRoot] : []),
+        ...nativeVisualInputs.cleanupPaths,
+      ],
       sessionMode: claudeSessionId ? "resume" : "new",
       agentNativeSessionId: claudeSessionId || null,
       agent: project.agent,
@@ -1224,7 +1352,10 @@ export function buildChannelConnectorAgentProcessRequest(
       },
       timeoutMs,
       nativeCommand: nativeCommand || null,
-      cleanupPaths: opencodeHome.cleanupRoot ? [opencodeHome.cleanupRoot] : [],
+      cleanupPaths: [
+        ...(opencodeHome.cleanupRoot ? [opencodeHome.cleanupRoot] : []),
+        ...nativeVisualInputs.cleanupPaths,
+      ],
       sessionMode: opencodeSessionId ? "resume" : "new",
       agentNativeSessionId: opencodeSessionId || null,
       agent: project.agent,
@@ -1777,7 +1908,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
   const startedAt = Date.now();
   return new Promise((resolve) => {
     if (request.signal?.aborted) {
-      cleanupProcessRequest(request);
+      cleanupChannelConnectorAgentProcessRequest(request);
       resolve({
         exitCode: null,
         signal: null,
@@ -1880,7 +2011,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
     child.on("error", (error) => {
       if (settled) return;
       settle();
-      cleanupProcessRequest(request);
+      cleanupChannelConnectorAgentProcessRequest(request);
       resolve({
         exitCode: null,
         signal: null,
@@ -1905,7 +2036,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
         request.onProgress?.(trailingEvent);
       }
       if (isClaudeCode && stdoutLineBuffer) void handleClaudeCodeLine(stdoutLineBuffer);
-      cleanupProcessRequest(request);
+      cleanupChannelConnectorAgentProcessRequest(request);
       resolve({
         exitCode,
         signal,
@@ -2470,7 +2601,7 @@ export async function runChannelConnectorAgentTurn(
   try {
     result = await runner(processRequest);
   } finally {
-    cleanupProcessRequest(processRequest);
+    cleanupChannelConnectorAgentProcessRequest(processRequest);
   }
   const cancelled = result.cancelled === true;
   const shouldUseOpenCodeFallback = !cancelled

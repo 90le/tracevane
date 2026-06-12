@@ -353,19 +353,19 @@ export function extractOctoContent(message: ChannelConnectorOctoInboundMessage):
       content = extractOctoPayloadText(payload);
       break;
     case OCTO_MESSAGE_TYPE_IMAGE:
-      content = octoPayloadMediaPlaceholder(payload) || "[image]";
+      content = extractOctoPayloadText(payload) || octoPayloadMediaPlaceholder(payload) || "[image]";
       break;
     case OCTO_MESSAGE_TYPE_GIF:
-      content = octoPayloadMediaPlaceholder(payload) || "[gif]";
+      content = extractOctoPayloadText(payload) || octoPayloadMediaPlaceholder(payload) || "[gif]";
       break;
     case OCTO_MESSAGE_TYPE_FILE:
-      content = octoPayloadMediaPlaceholder(payload) || `[file: ${normalizeString(payload.name) || "file"}]`;
+      content = extractOctoPayloadText(payload) || octoPayloadMediaPlaceholder(payload) || `[file: ${normalizeString(payload.name) || "file"}]`;
       break;
     case OCTO_MESSAGE_TYPE_VOICE:
-      content = octoPayloadMediaPlaceholder(payload) || "[voice]";
+      content = extractOctoPayloadText(payload) || octoPayloadMediaPlaceholder(payload) || "[voice]";
       break;
     case OCTO_MESSAGE_TYPE_VIDEO:
-      content = octoPayloadMediaPlaceholder(payload) || "[video]";
+      content = extractOctoPayloadText(payload) || octoPayloadMediaPlaceholder(payload) || "[video]";
       break;
     case OCTO_MESSAGE_TYPE_LOCATION:
       content = extractOctoPayloadText(payload);

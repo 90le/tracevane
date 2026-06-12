@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import type { ChannelConnectorPermissionMode } from "../../../../types/channel-connectors.js";
 import {
   buildChannelConnectorAgentProcessRequest,
+  cleanupChannelConnectorAgentProcessRequest,
   codexReasoningProgressText,
   codexToolProgressText,
   firstProgressTextValue,
@@ -577,6 +578,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
       if (this.pendingStopReason) void this.stop(this.pendingStopReason);
     } catch (error) {
       this.activeTurnInput = null;
+      cleanupChannelConnectorAgentProcessRequest(processRequest);
       throw error;
     }
     const abortListener = (): void => {
@@ -695,6 +697,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
       this.activeTurnId = null;
       this.activeTurnInput = null;
       this.pendingStopReason = null;
+      cleanupChannelConnectorAgentProcessRequest(processRequest);
     }
   }
 

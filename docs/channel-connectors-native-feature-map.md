@@ -1,6 +1,6 @@
 # Channel Connectors Native Feature Map
 
-> 更新：2026-06-12
+> 更新：2026-06-13
 > 目的：把 CC/OpenClaw 参考能力映射到 Studio 原生实现，避免回到托管 cc-connect 或旧 Codex Stack。
 
 ## 参考范围
@@ -44,6 +44,8 @@
 - Feishu 入站文件 live 已验证：长连接文件消息进入本地 staging、history 附件摘要和 Agent CLI 文件读取链路。
 - 图片附件可 staging；非视觉模型默认收到附件说明/本地路径，不做视觉推断。平台 binding 可显式开启自动切视觉模型；切换失败会回退原模型的附件说明模式。
 - Gateway Responses -> Chat-compatible provider 已保留 `input_image` 为 Chat `image_url`；`gpt-5.4-mini` / `gpt-5.5` 受控图片 smoke 和 `codex exec --image` + `gpt-5.4-mini` 已通过。
+- Codex、Claude Code、OpenCode 均已支持 native visual input：图片直接传入 CLI；视频附件抽取预览帧后传入；抽帧失败或非视觉模型退回附件说明，不允许按文件名/路径猜内容。
+- Octo 图片/视频 payload 带 `content/caption` 时会保留用户任务文本，避免媒体占位吞掉“请识别/请处理”这类指令。
 - 同 session FIFO queue、`/stop`、`/new`、`/reset`、`/compact`、`/thinking`、`/process`、`/tools` 已接入。
 - Claude Code / OpenCode persistent native compact 已有真实子进程 driver 回归：Claude 复用同一个 stream-json 常驻进程，OpenCode 通过 `run --session` 续接。
 - Claude Code persistent driver 已修复过程回复污染最终回复，并补进度回调兼容回归。
@@ -71,6 +73,6 @@
 ## 下一步
 
 1. 工具流和回复解析：继续复核 Claude/Codex live 差异，修复空工具结果、工具输出丢失、过程回复/最终回复分类错误。
-2. Feishu/Octo 私聊 live smoke：Feishu 图片重发验证、出站文件、权限审批和 Octo 文件；Markdown 做抽查回归。
+2. Feishu/Octo 私聊 live smoke：Feishu/Octo 图片与视频重发验证、出站文件、权限审批和 Octo 文件；Markdown 做抽查回归。
 3. Provider Center 能力测试：图片 smoke 失败时不要自动标记 vision，并提示协议/端点不匹配。
 4. durable queue 设计与实现。

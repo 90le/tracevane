@@ -2,6 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import type { ChannelConnectorAgentId, ChannelConnectorPermissionMode } from "../../../../types/channel-connectors.js";
 import {
   buildChannelConnectorAgentProcessRequest,
+  cleanupChannelConnectorAgentProcessRequest,
   commandResultProgressText,
   defaultChannelConnectorAgentProcessRunner,
   firstProgressTextValue,
@@ -36,6 +37,7 @@ interface PendingClaudeTurn {
   terminalStatus: ChannelConnectorAgentTurnResult["status"];
   terminalError: string | null;
   timeout: NodeJS.Timeout;
+  cleanupPaths: string[];
   resolve: (result: ChannelConnectorAgentTurnResult) => void;
   reject: (error: Error) => void;
 }
@@ -290,6 +292,7 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
         terminalStatus: "completed",
         terminalError: null,
         timeout,
+        cleanupPaths: processRequest.cleanupPaths || [],
         resolve,
         reject,
       };
@@ -490,6 +493,16 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
     if (!turn) return;
     this.activeTurn = null;
     clearTimeout(turn.timeout);
+    cleanupChannelConnectorAgentProcessRequest({
+      command: "",
+      args: [],
+      cwd: this.cwd,
+      stdin: "",
+      env: {},
+      timeoutMs: 0,
+      cleanupPaths: turn.cleanupPaths,
+      agent: "claude-code",
+    });
     const reply = turn.resultText || turn.completedText || turn.replyParts.join("").trim() || null;
     turn.resolve(agentResult({
       agent: "claude-code",
@@ -514,6 +527,16 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
     if (!turn) return;
     this.activeTurn = null;
     clearTimeout(turn.timeout);
+    cleanupChannelConnectorAgentProcessRequest({
+      command: "",
+      args: [],
+      cwd: this.cwd,
+      stdin: "",
+      env: {},
+      timeoutMs: 0,
+      cleanupPaths: turn.cleanupPaths,
+      agent: "claude-code",
+    });
     turn.reject(error);
   }
 
@@ -522,6 +545,16 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
     if (!turn) return;
     this.activeTurn = null;
     clearTimeout(turn.timeout);
+    cleanupChannelConnectorAgentProcessRequest({
+      command: "",
+      args: [],
+      cwd: this.cwd,
+      stdin: "",
+      env: {},
+      timeoutMs: 0,
+      cleanupPaths: turn.cleanupPaths,
+      agent: "claude-code",
+    });
     turn.resolve(agentResult({
       agent: "claude-code",
       messageId: turn.input.messageId,
