@@ -48,6 +48,21 @@ export type ChannelConnectorPermissionMode =
 
 export type ChannelConnectorReasoningEffort = "low" | "medium" | "high" | "xhigh";
 
+export type ChannelConnectorThinkingLiveStatus =
+  | "observed"
+  | "not-observed"
+  | "model-dependent"
+  | "unknown"
+  | "unsupported";
+
+export interface ChannelConnectorThinkingSupport {
+  parserSupported: boolean;
+  parserLabel: "ready" | "unsupported";
+  liveStatus: ChannelConnectorThinkingLiveStatus;
+  liveLabel: string;
+  liveNote: string | null;
+}
+
 export type ChannelConnectorOctoChannelType = 1 | 2 | 5;
 
 export interface ChannelConnectorOctoMentionEntity {
@@ -486,6 +501,7 @@ export interface ChannelConnectorCommandSurface {
     thinkingMessages: boolean;
     processMessages: boolean;
     toolMessages: boolean;
+    thinkingSupport: ChannelConnectorThinkingSupport;
   };
   session: {
     started: boolean;

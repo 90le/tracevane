@@ -506,6 +506,14 @@
               <strong>{{ commandSurface?.current.agent || selectedBindingProfile?.agent || '-' }}</strong>
             </div>
             <div>
+              <span>Thinking parser</span>
+              <strong>{{ commandSurface?.current.thinkingSupport.parserLabel || '-' }}</strong>
+            </div>
+            <div>
+              <span>Thinking live</span>
+              <strong>{{ commandSurface?.current.thinkingSupport.liveLabel || '-' }}</strong>
+            </div>
+            <div>
               <span>{{ text('Studio 内置', 'Studio built-in') }}</span>
               <strong>{{ platformSkillCount }}</strong>
             </div>

@@ -63,6 +63,10 @@ import {
   formatChannelConnectorContextBudget,
   resolveChannelConnectorContextBudget,
 } from "./context-budget.js";
+import {
+  formatChannelConnectorThinkingSupport,
+  resolveChannelConnectorThinkingSupport,
+} from "./agent-capabilities.js";
 import type {
   ChannelConnectorRuntimeBinding,
   ChannelConnectorRuntimeProject,
@@ -2825,6 +2829,10 @@ async function handleStatus(context: ChannelConnectorCommandContext): Promise<Ch
     project: currentProject,
     usageSummary,
   });
+  const thinkingSupport = resolveChannelConnectorThinkingSupport({
+    agent: currentProject.agent,
+    model: currentProject.model,
+  });
   const session = getChannelConnectorAgentSession(context.agentSessionsPath, {
     bindingId: context.binding.id,
     projectId: currentProject.id,
@@ -2847,6 +2855,7 @@ async function handleStatus(context: ChannelConnectorCommandContext): Promise<Ch
       `Mode: ${currentProject.permissionMode}`,
       `WorkDir: ${currentProject.workDir}`,
       `Thinking: ${effectiveToggle(control?.thinkingMessages) ? "on" : "off"}`,
+      `Thinking stream: ${formatChannelConnectorThinkingSupport(thinkingSupport)}`,
       `Process: ${effectiveToggle(control?.processMessages) ? "on" : "off"}`,
       `Tools: ${effectiveToggle(control?.toolMessages) ? "on" : "off"}`,
       `Session: ${session ? `${session.turnCount} turns` : "new"}`,
@@ -2874,6 +2883,10 @@ async function handleCurrent(context: ChannelConnectorCommandContext): Promise<C
     ? getChannelConnectorConversationHistory(context.conversationHistoryPath, lookup, CHANNEL_CONNECTOR_HISTORY_CONTEXT_LIMIT).length
     : 0;
   const sessionName = session?.name || control?.sessionName || "-";
+  const thinkingSupport = resolveChannelConnectorThinkingSupport({
+    agent: currentProject.agent,
+    model: currentProject.model,
+  });
   return {
     handled: true,
     command: "current",
@@ -2891,6 +2904,7 @@ async function handleCurrent(context: ChannelConnectorCommandContext): Promise<C
       `Mode: ${currentProject.permissionMode}`,
       `WorkDir: ${currentProject.workDir}`,
       `Thinking: ${effectiveToggle(control?.thinkingMessages) ? "on" : "off"}`,
+      `Thinking stream: ${formatChannelConnectorThinkingSupport(thinkingSupport)}`,
       `Process: ${effectiveToggle(control?.processMessages) ? "on" : "off"}`,
       `Tools: ${effectiveToggle(control?.toolMessages) ? "on" : "off"}`,
       `Agent session: ${session ? `${session.turnCount} turns` : "not started"}`,

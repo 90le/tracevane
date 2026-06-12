@@ -6642,8 +6642,48 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(abbreviatedStatus.action, "status");
   assert.equal(abbreviatedStatus.ok, true);
   assert.match(abbreviatedStatus.replyText, /Context budget:/);
+  assert.match(abbreviatedStatus.replyText, /Thinking stream: parser=ready \/ live=model-dependent/);
   assert.match(abbreviatedStatus.replyText, /Window: 128000 tokens; no usage\/history estimate yet\./);
   assert.match(abbreviatedStatus.replyText, /Auto compact threshold: 115200 tokens/);
+
+  const claudeStatus = await handleChannelConnectorCommand({
+    ...baseContext,
+    project: claudeProject,
+    message: message("/status"),
+  });
+  assert.equal(claudeStatus.ok, true);
+  assert.match(claudeStatus.replyText, /Agent: claude-main \(claude-code\)/);
+  assert.match(claudeStatus.replyText, /Thinking stream: parser=ready \/ live=not observed/);
+
+  const opencodeClaudeStatus = await handleChannelConnectorCommand({
+    ...baseContext,
+    project: {
+      ...codexProject,
+      id: "opencode-claude",
+      name: "OpenCode Claude",
+      agent: "opencode",
+      model: "claude-sonnet-4-5",
+    },
+    message: message("/status"),
+  });
+  assert.equal(opencodeClaudeStatus.ok, true);
+  assert.match(opencodeClaudeStatus.replyText, /Agent: opencode-claude \(opencode\)/);
+  assert.match(opencodeClaudeStatus.replyText, /Thinking stream: parser=ready \/ live=observed/);
+
+  const opencodeMiniStatus = await handleChannelConnectorCommand({
+    ...baseContext,
+    project: {
+      ...codexProject,
+      id: "opencode-mini",
+      name: "OpenCode Mini",
+      agent: "opencode",
+      model: "gpt-5.4-mini",
+    },
+    message: message("/status"),
+  });
+  assert.equal(opencodeMiniStatus.ok, true);
+  assert.match(opencodeMiniStatus.replyText, /Agent: opencode-mini \(opencode\)/);
+  assert.match(opencodeMiniStatus.replyText, /Thinking stream: parser=ready \/ live=not observed/);
 
   const statusWithUsage = await handleChannelConnectorCommand({
     ...baseContext,
@@ -7887,6 +7927,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(current.replyText, /Session name: Claude review thread/);
   assert.match(current.replyText, /History entries: 2/);
   assert.match(current.replyText, /Agent session id:/);
+  assert.match(current.replyText, /Thinking stream: parser=ready \/ live=/);
   assert.match(current.replyText, /Actions: \/list/);
   const historyOne = await handleChannelConnectorCommand({
     ...baseContext,
@@ -8343,11 +8384,14 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.equal(surface.current.thinkingMessages, true);
   assert.equal(surface.current.processMessages, true);
   assert.equal(surface.current.toolMessages, true);
+  assert.equal(surface.current.thinkingSupport.parserLabel, "ready");
+  assert.equal(surface.current.thinkingSupport.liveStatus, "model-dependent");
   assert.match(surface.textFallback, /skills 命令/);
   assert.match(surface.textFallback, /^Studio Channel/);
   assert.match(surface.textFallback, /\*\*当前会话\*\*/);
   assert.match(surface.textFallback, /- Agent: codex-main \(codex\)/);
   assert.match(surface.textFallback, /- Reasoning: default/);
+  assert.match(surface.textFallback, /- Thinking stream: parser=ready \/ live=model-dependent/);
   assert.match(surface.textFallback, /快捷操作/);
   assert.match(surface.textFallback, /- `\/status` - Status:/);
   assert.match(surface.textFallback, /\*\*菜单入口\*\*/);
@@ -8378,6 +8422,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(raw, /会话/);
   assert.match(raw, /配置/);
   assert.match(raw, /显示/);
+  assert.match(raw, /思考流/);
   assert.match(raw, /命令/);
   assert.match(raw, /nav:\/help session/);
   assert.match(raw, /nav:\/help commands/);
@@ -8428,6 +8473,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(currentCardRaw, /Studio Current Session/);
   assert.match(currentCardRaw, /Session name/);
   assert.match(currentCardRaw, /Frontend Fix/);
+  assert.match(currentCardRaw, /Thinking stream/);
   assert.match(currentCardRaw, /Session id/);
   assert.match(currentCardRaw, /History/);
   assert.match(currentCardRaw, /thread-codex-1/);
@@ -8624,6 +8670,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   });
   const displayCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(displaySurface));
   assert.match(displayCardRaw, /Studio Display/);
+  assert.match(displayCardRaw, /思考流/);
   assert.match(displayCardRaw, /act:\/quiet quiet/);
   assert.match(displayCardRaw, /act:\/thinking on/);
   assert.match(displayCardRaw, /act:\/thinking off/);
@@ -8652,6 +8699,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.equal(groupDisplaySurface.current.toolMessages, false);
   const groupDisplayCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(groupDisplaySurface));
   assert.match(groupDisplayCardRaw, /思考消息：关闭/);
+  assert.match(groupDisplayCardRaw, /思考流：parser=ready \/ live=model-dependent/);
   assert.match(groupDisplayCardRaw, /过程回复：关闭/);
   assert.match(groupDisplayCardRaw, /工具消息：关闭/);
   assert.match(groupDisplayCardRaw, /act:\/quiet full/);
@@ -8669,6 +8717,45 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(bufferCardRaw, /act:\/buffer/);
   assert.match(bufferCardRaw, /act:\/buffer latest/);
   assert.match(bufferCardRaw, /nav:\/help buffer/);
+
+  const claudeThinkingSurface = buildChannelConnectorCommandSurface({
+    config: runtimeConfig,
+    project: claudeProject,
+    binding,
+    sessionKey: "dmwork:dm:admin-1",
+  });
+  assert.equal(claudeThinkingSurface.current.thinkingSupport.parserLabel, "ready");
+  assert.equal(claudeThinkingSurface.current.thinkingSupport.liveStatus, "not-observed");
+
+  const opencodeThinkingSurface = buildChannelConnectorCommandSurface({
+    config: runtimeConfig,
+    project: {
+      ...codexProject,
+      id: "opencode-main",
+      name: "OpenCode main",
+      agent: "opencode",
+      model: "claude-sonnet-4-5",
+    },
+    binding,
+    sessionKey: "dmwork:dm:admin-1",
+  });
+  assert.equal(opencodeThinkingSurface.current.thinkingSupport.parserLabel, "ready");
+  assert.equal(opencodeThinkingSurface.current.thinkingSupport.liveStatus, "observed");
+
+  const opencodeMiniThinkingSurface = buildChannelConnectorCommandSurface({
+    config: runtimeConfig,
+    project: {
+      ...codexProject,
+      id: "opencode-mini",
+      name: "OpenCode mini",
+      agent: "opencode",
+      model: "gpt-5.4-mini",
+    },
+    binding,
+    sessionKey: "dmwork:dm:admin-1",
+  });
+  assert.equal(opencodeMiniThinkingSurface.current.thinkingSupport.parserLabel, "ready");
+  assert.equal(opencodeMiniThinkingSurface.current.thinkingSupport.liveStatus, "not-observed");
 
   const parsed = extractChannelConnectorCommandFromActionValue({
     action: "act:/agent claude-main",

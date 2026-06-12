@@ -17,6 +17,10 @@ import type {
   ChannelConnectorRuntimeProject,
 } from "./agent-runner.js";
 import { resolveChannelConnectorEffectiveProject } from "./command-router.js";
+import {
+  formatChannelConnectorThinkingSupport,
+  resolveChannelConnectorThinkingSupport,
+} from "./agent-capabilities.js";
 import type { ChannelConnectorSessionControlRecord } from "./session-control-store.js";
 
 const PERMISSION_MODES: readonly ChannelConnectorPermissionMode[] = [
@@ -390,6 +394,7 @@ function fallbackCurrentSummary(surface: Omit<ChannelConnectorCommandSurface, "t
     `- Permission: ${surface.current.permissionMode}`,
     `- WorkDir: \`${compactPath(surface.current.workDir)}\``,
     `- Display: thinking=${surface.current.thinkingMessages ? "on" : "off"} / process=${surface.current.processMessages ? "on" : "off"} / tools=${surface.current.toolMessages ? "on" : "off"}`,
+    `- Thinking stream: ${formatChannelConnectorThinkingSupport(surface.current.thinkingSupport)}`,
   ].join("\n");
 }
 
@@ -456,6 +461,10 @@ export function buildChannelConnectorCommandSurface(
     ?? input.displayDefaults?.toolMessages
     ?? true;
   const quietEnabled = !thinkingMessages && !processMessages && !toolMessages;
+  const thinkingSupport = resolveChannelConnectorThinkingSupport({
+    agent: current.agent,
+    model: current.model,
+  });
   const models = uniqueStrings([
     ...(input.models || []),
     current.model || "",
@@ -698,6 +707,7 @@ export function buildChannelConnectorCommandSurface(
       thinkingMessages,
       processMessages,
       toolMessages,
+      thinkingSupport,
     },
     session: input.agentSession || null,
     sessionList: (input.sessionList || []).slice(0, 20),
@@ -828,6 +838,9 @@ function statusBlock(surface: ChannelConnectorCommandSurface): Record<string, un
               "",
               "**推理**",
               surface.current.reasoningEffort || "default",
+              "",
+              "**思考流**",
+              formatChannelConnectorThinkingSupport(surface.current.thinkingSupport),
             ].join("\n"),
           },
         ],
@@ -1603,6 +1616,7 @@ function renderDisplayCard(surface: ChannelConnectorCommandSurface): ChannelConn
       content: [
         "**当前显示设置**",
         `思考消息：${surface.current.thinkingMessages ? "开启" : "关闭"}`,
+        `思考流：${formatChannelConnectorThinkingSupport(surface.current.thinkingSupport)}`,
         `过程回复：${surface.current.processMessages ? "开启" : "关闭"}`,
         `工具消息：${surface.current.toolMessages ? "开启" : "关闭"}`,
         "",
@@ -1781,6 +1795,7 @@ function renderCurrentSessionCard(surface: ChannelConnectorCommandSurface): Chan
     ["Agent", `${surface.current.projectId} · ${surface.current.agent}`],
     ["Model", surface.current.model || "default"],
     ["Reasoning", surface.current.reasoningEffort || "default"],
+    ["Thinking stream", formatChannelConnectorThinkingSupport(surface.current.thinkingSupport)],
     ["Permission", surface.current.permissionMode],
     ["WorkDir", surface.current.workDir],
     [
