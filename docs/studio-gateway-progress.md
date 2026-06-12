@@ -20,6 +20,11 @@
 
 ## 本轮完成
 
+- 修复 OpenCode SQLite/DB fallback 工具流：
+  - DB fallback 不再只读取最新 assistant message；进度会读取本轮所有 assistant rows，避免过程文本和工具调用被丢掉。
+  - fallback 重建的 OpenCode JSONL 统一走实时 JSONL parser，工具调用和工具结果继续拆成 `tool_use` / `tool_result`。
+  - fallback 最终回复只取最新 assistant message 的 text，避免把过程回复重新拼进最终回复。
+  - fallback progress events 会回调给 daemon，Feishu/Octo 仍能渲染过程和工具输出。
 - 删除 active `studio-channel-skill` 层：
   - 删除本地 `studio-channel-skill` tool 脚本生成、runner env、PATH 注入和 daemon `/channel-skill/action` endpoint。
   - 删除 Agent prompt/native skill 投影里的 Runtime Action Index 和平台 action 指令。
@@ -35,7 +40,8 @@
 - 通过：`npm run typecheck:api`
 - 通过：`npm run build:api`
 - 通过：`npm run typecheck:web`
-- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，89/89 全部通过。
+- 通过：`node --test --test-name-pattern "OpenCode DB fallback|OpenCode JSON progress|OpenCode tool-calls|Claude Code stream-json progress|Claude text before later tools|Codex command execution progress|Codex agent messages before later tools" tests/system/channel-connectors-service.test.mjs`，7/7 通过。
+- 通过：`node --test tests/system/channel-connectors-service.test.mjs`，90/90 全部通过。
 
 ## 已知边界
 
@@ -43,7 +49,7 @@
 - Octo/Feishu 群聊和管理能力已有实现继续 best-effort 保留，但新需求默认不继续扩展。
 - 同 session FIFO queue 当前是 daemon 内存队列；Channel daemon 重启会丢失未开始的排队消息，durable queue 尚未实现。
 - Claude Code / OpenCode native compact live session driver 已有方向，但仍需继续按 CC Go `AgentSession.Send(CompressCommand())` 合同补齐和验收。
-- 工具流仍需继续打磨：Codex、Claude Code、OpenCode 都必须稳定提取工具名、输入、stdout/stderr、exit/status、真实输出、过程回复和最终回复分类。
+- 工具流仍需继续打磨：Codex、Claude Code、OpenCode 都必须稳定提取工具名、输入、stdout/stderr、exit/status、真实输出、过程回复和最终回复分类；OpenCode realtime JSONL 与 SQLite fallback 已对齐，后续重点继续看 Claude/Codex live 差异。
 
 ## 下一步
 

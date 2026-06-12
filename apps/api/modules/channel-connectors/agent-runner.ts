@@ -2186,11 +2186,14 @@ function openCodeDbFallback(
     .filter((item): item is { id: string; index: number; time: number } => Boolean(item?.id))
     .sort((left, right) => (left.time - right.time) || (left.index - right.index))
     .pop()?.id || null;
-  const scopedRows = latestAssistantMessageId
-    ? rows.filter((row) => normalizeString(row.message_id) === latestAssistantMessageId)
-    : rows;
+  const scopedRows = rows.filter((row) => {
+    const messageData = parseJsonRecord(row.message_data);
+    if (normalizeString(messageData?.role) !== "assistant") return false;
+    if (minPartTimeMs <= 0) return true;
+    const partTime = Number(row.part_time_created) || Number(recordValue(messageData?.time)?.completed) || Number(recordValue(messageData?.time)?.created) || 0;
+    return partTime >= minPartTimeMs;
+  });
   const stdoutLines: string[] = [];
-  const progressEvents: ChannelConnectorAgentProgressEvent[] = [];
   const replyParts: string[] = [];
   stdoutLines.push(JSON.stringify({ type: "step_start", part: { type: "step-start", sessionID: sessionId } }));
   for (const row of scopedRows) {
@@ -2201,43 +2204,29 @@ function openCodeDbFallback(
     const partType = normalizeString(partData.type);
     const text = normalizeString(partData.text);
     if (role === "assistant" && partType === "text" && text) {
-      replyParts.push(text);
+      if (!latestAssistantMessageId || normalizeString(row.message_id) === latestAssistantMessageId) {
+        replyParts.push(text);
+      }
       const raw = { type: "text", part: { type: "text", text } };
       stdoutLines.push(JSON.stringify(raw));
-      progressEvents.push(progressEvent({ type: "assistant", rawType: "text", itemType: "text", text, phase: "final" }));
     } else if (partType === "reasoning" && text) {
       const raw = { type: "reasoning", part: { type: "reasoning", text } };
       stdoutLines.push(JSON.stringify(raw));
-      progressEvents.push(progressEvent({ type: "reasoning", rawType: "reasoning", itemType: "reasoning", text }));
     } else if (partType === "tool" || partType === "tool-use" || partType === "tool_use") {
-      const tool = normalizeString(partData.tool) || normalizeString(partData.name) || "tool";
-      const state = recordValue(partData.state);
-      const toolText = [
-        tool,
-        normalizeString(state?.title) || normalizeString(partData.title),
-        normalizeString(state?.output) || normalizeString(partData.output),
-      ].filter(Boolean).join("\n");
       const raw = { type: "tool_use", part: partData };
       stdoutLines.push(JSON.stringify(raw));
-      progressEvents.push(progressEvent({ type: "tool", rawType: "tool_use", itemType: partType, text: toolText || tool }));
     } else if (partType === "step-finish") {
       const raw = { type: "step_finish", part: partData };
-      const reason = normalizeString(partData.reason) || "done";
       stdoutLines.push(JSON.stringify(raw));
-      progressEvents.push(progressEvent({
-        type: isOpenCodeToolCallStepBoundary(reason) ? "event" : "completed",
-        rawType: "step_finish",
-        itemType: partType,
-        text: reason,
-      }));
     }
   }
   const replyText = replyParts.join("").trim() || null;
+  const stdout = `${stdoutLines.join("\n")}\n`;
   return {
     sessionId,
     replyText,
-    stdout: `${stdoutLines.join("\n")}\n`,
-    progressEvents,
+    stdout,
+    progressEvents: collectProgressEvents(stdout, "opencode"),
   };
 }
 
@@ -2436,8 +2425,11 @@ export async function runChannelConnectorAgentTurn(
     : openCodeFallback?.progressEvents?.length
       ? openCodeFallback.progressEvents
       : collectProgressEvents(effectiveStdout, request.project.agent);
+  if (openCodeFallback?.progressEvents?.length && !result.progressEvents?.length && request.onProgress) {
+    for (const event of openCodeFallback.progressEvents) request.onProgress(event);
+  }
   const latestProgress = progressEvents.length ? progressEvents[progressEvents.length - 1] : null;
-  const replyText = extractReplyText(effectiveStdout, request.project.agent) || openCodeFallback?.replyText || null;
+  const replyText = openCodeFallback?.replyText || extractReplyText(effectiveStdout, request.project.agent) || null;
   return {
     attempted: true,
     ok,

@@ -39,7 +39,7 @@
 | P0 | 删除 active platform action layer | 本轮完成 | Agent prompt/env/UI/daemon endpoint 不再暴露 `studio-channel-skill` 或 platform action；旧 action block 不触发审批/API |
 | P1 | Codex runner | 进行中 | `exec/resume`、thread、cwd、permission、tool stream、file manifest、stop/new/reset/compact 按 CC 验收；app-server 仍是 beta |
 | P1 | Claude Code runner | 进行中 | stream-json、permission prompt、session resume、tool event、文件/图片输入、native compact/stop live driver |
-| P1 | OpenCode runner | 进行中 | JSON/SQLite fallback、session、tool stream、文件/图片输入、native compact/stop live driver |
+| P1 | OpenCode runner | 进行中：realtime JSONL 与 SQLite fallback 工具流已统一 parser，DB fallback 不再丢工具结果或把过程回复拼进最终回复 | JSON/SQLite fallback、session、tool stream、文件/图片输入、native compact/stop live driver |
 | P1 | Feishu 私聊 | 进行中 | 长连接稳定、私聊文本/Markdown、文件/图片、权限审批、工具流卡片、compact live smoke |
 | P1 | Octo 私聊 | 进行中 | WuKongIM、ACK、heartbeat、重连、私聊 Markdown、文件/图片、权限审批、compact live smoke |
 | P1 | 工具/思考/过程显示 | 继续推进 | 三个 Agent 都稳定提取工具名、输入、stdout/stderr、exit/status、过程回复和最终回复分类 |
@@ -54,7 +54,8 @@
 - `npm run typecheck:api`
 - `npm run build:api`
 - `npm run typecheck:web`
-- `node --test tests/system/channel-connectors-service.test.mjs`，89/89 通过。
+- `node --test --test-name-pattern "OpenCode DB fallback|OpenCode JSON progress|OpenCode tool-calls|Claude Code stream-json progress|Claude text before later tools|Codex command execution progress|Codex agent messages before later tools" tests/system/channel-connectors-service.test.mjs`，7/7 通过。
+- `node --test tests/system/channel-connectors-service.test.mjs`，90/90 通过。
 
 ## 下一步
 

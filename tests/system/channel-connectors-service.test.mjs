@@ -11202,6 +11202,128 @@ test("native Channel Connectors process runner maps OpenCode JSON progress witho
   assert.equal(result.progressEvents?.length, 9);
 });
 
+test("native Channel Connectors OpenCode DB fallback keeps tool results and final reply separate", async () => {
+  const root = makeTempRoot();
+  const workDir = path.join(root, "work");
+  const agentRuntimeDir = path.join(root, "agent-runtime");
+  const fakeBin = path.join(root, "fake-bin");
+  fs.mkdirSync(fakeBin, { recursive: true });
+  fs.mkdirSync(workDir, { recursive: true });
+  fs.mkdirSync(path.join(agentRuntimeDir, "opencode-data", "opencode"), { recursive: true });
+  fs.writeFileSync(path.join(agentRuntimeDir, "opencode-data", "opencode", "opencode.db"), "", "utf8");
+
+  fs.writeFileSync(path.join(fakeBin, "opencode"), [
+    "#!/usr/bin/env node",
+    "process.exit(0);",
+    "",
+  ].join("\n"), { mode: 0o755 });
+
+  const sqliteRows = [
+    {
+      message_id: "assistant-process",
+      message_data: JSON.stringify({ role: "assistant", time: { created: 10 } }),
+      part_data: JSON.stringify({ type: "text", text: "我先读取文件。" }),
+      part_time_created: Date.now() + 1,
+    },
+    {
+      message_id: "assistant-process",
+      message_data: JSON.stringify({ role: "assistant", time: { created: 11 } }),
+      part_data: JSON.stringify({
+        type: "tool",
+        tool: "bash",
+        state: {
+          status: "completed",
+          title: "Read TOOLS",
+          input: { command: "cat TOOLS.md" },
+          output: "alpha\nbeta",
+        },
+      }),
+      part_time_created: Date.now() + 2,
+    },
+    {
+      message_id: "assistant-final",
+      message_data: JSON.stringify({ role: "assistant", time: { created: 12 } }),
+      part_data: JSON.stringify({ type: "text", text: "最终回复。" }),
+      part_time_created: Date.now() + 3,
+    },
+    {
+      message_id: "assistant-final",
+      message_data: JSON.stringify({ role: "assistant", time: { created: 13 } }),
+      part_data: JSON.stringify({ type: "step-finish", reason: "stop" }),
+      part_time_created: Date.now() + 4,
+    },
+  ];
+  fs.writeFileSync(path.join(fakeBin, "sqlite3"), [
+    "#!/usr/bin/env node",
+    "const query = process.argv[process.argv.length - 1] || '';",
+    "if (query.includes('select id from session')) {",
+    `  console.log(${JSON.stringify(JSON.stringify([{ id: "opencode-db-session" }]))});`,
+    "} else {",
+    `  console.log(${JSON.stringify(JSON.stringify(sqliteRows))});`,
+    "}",
+    "",
+  ].join("\n"), { mode: 0o755 });
+
+  const oldPath = process.env.PATH || "";
+  process.env.PATH = `${fakeBin}:${oldPath}`;
+  try {
+    const progress = [];
+    const result = await runChannelConnectorAgentTurn({
+      project: {
+        id: "opencode-db",
+        name: "OpenCode DB",
+        workDir,
+        agent: "opencode",
+        model: "gpt-5",
+        permissionMode: "yolo",
+        gatewayEndpoint: "http://127.0.0.1:18796/v1",
+        gatewayKeyRef: "studio-gateway-client-key",
+        appProfileRef: "opencode",
+        platformBindings: [],
+      },
+      binding: {
+        id: "octo-opencode-db",
+        platform: "octo",
+        accountId: "octo-account",
+        botId: "robot-1",
+        displayName: "Octo OpenCode",
+        agent: "opencode",
+        enabled: true,
+        allowlist: [],
+        adminUsers: [],
+        metadata: {},
+      },
+      message: {
+        messageId: "m-opencode-db",
+        fromUid: "user-1",
+        channelId: "user-1",
+        channelType: 1,
+        payload: { type: 1, content: "run with DB fallback" },
+      },
+      sessionKey: "dmwork:dm:user-1",
+      gatewayEndpoint: "http://127.0.0.1:18796/v1",
+      gatewayClientKey: "sk-local",
+      agentRuntimeDir,
+      onProgress: (event) => progress.push(event),
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.replyText, "最终回复。");
+    assert.equal(result.session.agentNativeSessionId, "opencode-db-session");
+    const assistantProgress = progress.filter((event) => event.type === "assistant");
+    assert.deepEqual(assistantProgress.map((event) => event.text), ["我先读取文件。", "最终回复。"]);
+    assert.deepEqual(assistantProgress.map((event) => event.phase), ["intermediate", "final"]);
+    assert.equal(isChannelConnectorProcessProgressEvent(assistantProgress[0]), true);
+    assert.equal(isChannelConnectorProcessProgressEvent(assistantProgress[1]), false);
+    const toolResult = progress.find((event) => event.rawType === "tool_result");
+    assert.ok(toolResult);
+    assert.equal(toolResult.toolName, "bash");
+    assert.match(toolResult.text || "", /output:\nalpha\nbeta/);
+  } finally {
+    process.env.PATH = oldPath;
+  }
+});
+
 test("native Channel Connectors process runner treats OpenCode tool-calls step finish as process boundary", async () => {
   const root = makeTempRoot();
   const progress = [];
