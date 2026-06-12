@@ -105,7 +105,7 @@ Octo(dmwork)：
 
 当前状态：
 
-- Codex app-server 已覆盖真实 Gateway `turn/start`、`/compact`、`turn/interrupt`、approval driver 合同和内部 prompt echo 过滤。
+- Codex app-server 已覆盖真实 Gateway `turn/start`、`/compact`、`turn/interrupt`、approval driver 合同、内部 prompt echo 过滤和结构化 stdout/stderr 工具结果解析。
 - Claude Code stream-json 已覆盖普通 turn、Bash tool-use、文件 manifest、视觉附件、compact、stop/cancel、tool_result 输出渲染，并修复 persistent 过程回复污染最终回复。
 - OpenCode `run --session` 已覆盖普通 turn、文件 manifest、视觉附件、compact、stop/cancel；SQLite fallback 已统一复用 live parser，结构化 `stdout`/`stderr`/`exitCode` 已保留，避免丢工具结果或把过程回复拼进最终回复。
 - Claude Code / OpenCode persistent native compact 已新增真实子进程 driver 回归：Claude 用同一个 stream-json 常驻进程接收 `/compact`，OpenCode 用 `run --session <id>` 续接 `/compact`，均不回退 one-shot。

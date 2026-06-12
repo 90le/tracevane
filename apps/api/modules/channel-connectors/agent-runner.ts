@@ -524,7 +524,7 @@ export function firstProgressTextValue(...values: unknown[]): string {
   return "";
 }
 
-function commandResultProgressText(value: unknown, maxLength = 1200): string {
+function commandResultProgressText(value: unknown, maxLength = 1200, includeExitCode = true): string {
   const record = recordValue(value);
   if (!record) return "";
   const hasCommandResultShape = [
@@ -539,8 +539,8 @@ function commandResultProgressText(value: unknown, maxLength = 1200): string {
   if (!hasCommandResultShape) return "";
   const stdout = progressTextValue(record.stdout, maxLength);
   const stderr = progressTextValue(record.stderr, maxLength);
-  const output = stdout ? "" : progressTextValue(record.output, maxLength);
-  const result = stdout || stderr || output ? "" : progressTextValue(record.result, maxLength);
+  const output = stdout ? "" : commandResultProgressText(record.output, maxLength, includeExitCode) || progressTextValue(record.output, maxLength);
+  const result = stdout || stderr || output ? "" : commandResultProgressText(record.result, maxLength, includeExitCode) || progressTextValue(record.result, maxLength);
   if (!stdout && !stderr && !output && !result) return "";
   const exitCode = firstProgressTextValue(
     record.exitCode,
@@ -554,7 +554,7 @@ function commandResultProgressText(value: unknown, maxLength = 1200): string {
     stderr ? `stderr:\n${stderr}` : "",
     output ? `output:\n${output}` : "",
     result ? `result:\n${result}` : "",
-    exitCode ? `exit_code: ${exitCode}` : "",
+    includeExitCode && exitCode ? `exit_code: ${exitCode}` : "",
   ].filter(Boolean);
   return parts.length ? truncateProgressText(parts.join("\n"), maxLength) : "";
 }
@@ -633,6 +633,9 @@ export function codexToolProgressText(item: Record<string, unknown> | null, item
   const status = normalizeString(item.status);
   const exitCode = Number(item.exit_code ?? item.exitCode);
   const output = firstProgressTextValue(
+    commandResultProgressText(item.output),
+    commandResultProgressText(item.result),
+    commandResultProgressText(item, 1200, false),
     item.output,
     item.aggregated_output,
     item.aggregatedOutput,

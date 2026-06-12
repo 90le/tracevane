@@ -37,6 +37,7 @@
   - 新增 Feishu daemon native-first wiring 回归，锁定 Feishu 长连接派发会先调用 native compact，再允许 Gateway fallback。
   - 修复 Claude Code persistent driver：过程回复不再进入最终回复，且进度回调兼容 `agentTurnRequest.onProgress`。
   - 修复 OpenCode 结构化工具输出解析：`stdout`、`stderr`、`exitCode` 不再被压成空工具结果。
+  - 修复 Codex 结构化命令输出解析：嵌套或直接 `stdout` / `stderr` 都会进入工具结果进度。
 - 本轮 live/contract 验证：
   - 用户确认 Feishu 与 Octo 长连接都处于稳定状态，标记完成并进入监控态。
   - 用户确认 Markdown 已验证；自动化复验覆盖 Feishu Markdown、Feishu/Octo 文件和媒体收发 contract。
@@ -53,7 +54,8 @@
 - 本轮验证通过：`node --test --test-name-pattern "persistent Claude driver keeps intermediate text|Claude text before later tools|Claude Code final text" tests/system/channel-connectors-service.test.mjs`
 - 本轮验证通过：`node --test --test-name-pattern "OpenCode structured tool output|OpenCode JSON progress|OpenCode DB fallback" tests/system/channel-connectors-service.test.mjs`
 - 本轮验证通过：`node --test --test-name-pattern "stages attachments|outbound file manifests|outbound IM message manifests|Feishu transport sends markdown|Feishu transport-smoke uploads and sends files|Feishu transport downloads message resources|Feishu transport uploads and sends images or files|Octo transport direct uploads|Octo upload-and-send media|Octo transport preserves outbound upload file names|Octo auto upload falls back|Octo transport smoke uploads and sends media" tests/system/channel-connectors-service.test.mjs`，12/12 通过。
-- 本轮验证通过：`node --test tests/system/channel-connectors-service.test.mjs`，95/95 全部通过。
+- 本轮验证通过：`node --test --test-name-pattern "Codex structured command output|Codex command execution progress|OpenCode structured tool output" tests/system/channel-connectors-service.test.mjs`，3/3 通过。
+- 本轮验证通过：`node --test tests/system/channel-connectors-service.test.mjs`，96/96 全部通过。
 - 本轮文档清理验证以 `git diff --check` 和 stale term 检查为准。
 
 ## 已知边界
@@ -62,7 +64,7 @@
 - Octo/Feishu 群聊和管理能力已有实现继续 best-effort 保留，但新需求默认不继续扩展。
 - 同 session FIFO queue 当前是 daemon 内存队列；Channel daemon 重启会丢失未开始的排队消息，durable queue 尚未实现。
 - Claude Code / OpenCode native compact 已覆盖 driver 层、Octo daemon 私聊入口和 Feishu native-first wiring；长连接已稳定，仍需 Feishu 外部 live `/compact` smoke 证明真实入口一致。
-- 工具流仍需继续打磨：Codex、Claude Code、OpenCode 都必须稳定提取工具名、输入、stdout/stderr、exit/status、真实输出、过程回复和最终回复分类；OpenCode realtime JSONL / SQLite fallback / 结构化 stdout/stderr 已对齐，Claude persistent 过程/最终回复重复已修。
+- 工具流仍需继续打磨：Codex、Claude Code、OpenCode 都必须稳定提取工具名、输入、stdout/stderr、exit/status、真实输出、过程回复和最终回复分类；Codex/OpenCode 结构化 stdout/stderr 已对齐，Claude persistent 过程/最终回复重复已修。
 
 ## 下一步
 

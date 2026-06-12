@@ -10957,6 +10957,59 @@ test("native Channel Connectors process runner maps Codex command execution prog
   assert.equal(result.progressEvents?.length, 4);
 });
 
+test("native Channel Connectors process runner keeps Codex structured command output visible", async () => {
+  const root = makeTempRoot();
+  const progress = [];
+  const stdout = [
+    JSON.stringify({
+      type: "item.completed",
+      item: {
+        type: "command_execution",
+        command: "bash -lc nested",
+        exit_code: 7,
+        output: {
+          stdout: "nested ok\n",
+          stderr: "nested err\n",
+        },
+      },
+    }),
+    JSON.stringify({
+      type: "item.completed",
+      item: {
+        type: "command_execution",
+        command: "bash -lc direct",
+        exit_code: 8,
+        stdout: "direct ok\n",
+        stderr: "direct err\n",
+      },
+    }),
+    "",
+  ].join("\n");
+  const childScript = `process.stdout.write(${JSON.stringify(stdout)});`;
+
+  const result = await defaultChannelConnectorAgentProcessRunner({
+    command: process.execPath,
+    args: ["-e", childScript],
+    cwd: root,
+    stdin: "",
+    env: {},
+    timeoutMs: 1000,
+    agent: "codex",
+    onProgress: (event) => progress.push(event),
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.error, null);
+  assert.equal(progress.length, 2);
+  assert.match(progress[0].text, /exit=7/);
+  assert.match(progress[0].text, /stdout:\nnested ok/);
+  assert.match(progress[0].text, /stderr:\nnested err/);
+  assert.match(progress[1].text, /exit=8/);
+  assert.match(progress[1].text, /stdout:\ndirect ok/);
+  assert.match(progress[1].text, /stderr:\ndirect err/);
+  assert.equal(result.progressEvents?.length, 2);
+});
+
 test("native Channel Connectors process runner maps Codex agent messages before later tools as process progress", async () => {
   const root = makeTempRoot();
   const progress = [];
