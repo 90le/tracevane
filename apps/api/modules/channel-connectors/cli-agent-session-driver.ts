@@ -353,7 +353,6 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
         if (itemType === "text") {
           const text = stringValue(item.text);
           if (text) {
-            if (this.activeTurn) this.activeTurn.replyParts.push(text);
             this.pushProgress(progressEvent({
               type: "assistant",
               rawType,
@@ -459,7 +458,8 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
       this.flushPendingAssistantProgress(terminal ? "final" : "intermediate");
     }
     this.activeTurn.progressEvents.push(event);
-    this.activeTurn.input.onProgress?.(event);
+    const onProgress = this.activeTurn.input.onProgress || this.activeTurn.input.agentTurnRequest?.onProgress;
+    onProgress?.(event);
   }
 
   private flushPendingAssistantProgress(phase: "intermediate" | "final"): void {
@@ -472,8 +472,10 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
     turn.pendingAssistantProgress.length = 0;
     if (!text) return;
     const event = { ...latest, text, phase };
+    if (phase === "final") turn.replyParts.push(text);
     turn.progressEvents.push(event);
-    turn.input.onProgress?.(event);
+    const onProgress = turn.input.onProgress || turn.input.agentTurnRequest?.onProgress;
+    onProgress?.(event);
   }
 
   private finishActive(): void {

@@ -11532,6 +11532,126 @@ test("native Channel Connectors persistent Claude and OpenCode drivers run nativ
   }
 });
 
+test("native Channel Connectors persistent Claude driver keeps intermediate text out of final reply", async () => {
+  const root = makeTempRoot();
+  const workDir = path.join(root, "work");
+  const agentRuntimeDir = path.join(root, "agent-runtime");
+  const fakeBin = path.join(root, "fake-bin");
+  fs.mkdirSync(fakeBin, { recursive: true });
+  fs.mkdirSync(workDir, { recursive: true });
+
+  fs.writeFileSync(path.join(fakeBin, "claude"), [
+    "#!/usr/bin/env node",
+    "const readline = require('node:readline');",
+    "const rl = readline.createInterface({ input: process.stdin });",
+    "function emit(value) { process.stdout.write(JSON.stringify(value) + '\\n'); }",
+    "rl.on('line', (line) => {",
+    "  if (!line.trim()) return;",
+    "  emit({ type: 'system', session_id: 'claude-process-session' });",
+    "  emit({ type: 'assistant', message: { content: [{ type: 'text', text: '先说明一下，我会读取文件。' }] } });",
+    "  emit({ type: 'assistant', message: { content: [{ type: 'tool_use', id: 'toolu_read_1', name: 'Read', input: { file_path: 'TOOLS.md' } }] } });",
+    "  emit({ type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 'toolu_read_1', content: [{ type: 'text', text: 'line 1' }] }] } });",
+    "  emit({ type: 'assistant', message: { content: [{ type: 'text', text: '最终回复。' }] } });",
+    "  emit({ type: 'result', session_id: 'claude-process-session' });",
+    "});",
+    "setInterval(() => {}, 1000);",
+    "",
+  ].join("\n"), { mode: 0o755 });
+
+  const oldPath = process.env.PATH || "";
+  process.env.PATH = `${fakeBin}:${oldPath}`;
+  const pool = new ChannelConnectorAgentSessionDriverPool({
+    factory: createNativeCliSessionDriverFactory({
+      codexFactory: {
+        create() {
+          throw new Error("Codex factory should not be used by this test.");
+        },
+      },
+      requestTimeoutMs: 1000,
+      turnTimeoutMs: 1000,
+    }),
+    idleTimeoutMs: 60_000,
+    maxSessions: 1,
+    fallbackOnCrash: false,
+  });
+  const progress = [];
+  const binding = {
+    id: "octo-claude-process",
+    platform: "octo",
+    accountId: "octo-account",
+    botId: "robot-1",
+    displayName: "Octo Claude Process",
+    enabled: true,
+    allowlist: [],
+    adminUsers: [],
+    metadata: { agentSessionDriver: "persistent" },
+  };
+  const project = {
+    id: "claude-process",
+    name: "Claude Process",
+    agent: "claude-code",
+    model: "gpt-5",
+    workDir,
+    permissionMode: "yolo",
+    gatewayEndpoint: "http://127.0.0.1:18796/v1",
+    gatewayKeyRef: "studio-gateway-client-key",
+    appProfileRef: "claude-code",
+    platformBindings: [binding],
+  };
+  const key = {
+    bindingId: binding.id,
+    projectId: project.id,
+    sessionKey: "dmwork:dm:user-1",
+    agent: project.agent,
+    model: project.model,
+    workDir: project.workDir,
+    permissionMode: project.permissionMode,
+  };
+  try {
+    const result = await pool.runTurn({
+      mode: "persistent",
+      key,
+      messageId: "m-claude-process",
+      agentTurnRequest: {
+        project,
+        binding: { ...binding, agent: project.agent },
+        message: {
+          messageId: "m-claude-process",
+          fromUid: "user-1",
+          channelId: "user-1",
+          channelType: 1,
+          timestamp: Date.now(),
+          payload: { type: 1, content: "please run with process text" },
+        },
+        sessionKey: "dmwork:dm:user-1",
+        gatewayEndpoint: project.gatewayEndpoint,
+        gatewayClientKey: "sk-local",
+        agentRuntimeDir,
+        onProgress: (event) => progress.push(event),
+      },
+      runOneShot: async () => {
+        throw new Error("persistent Claude process reply test must not fall back to one-shot");
+      },
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.replyText, "最终回复。");
+    assert.doesNotMatch(result.replyText || "", /先说明/);
+    const assistantProgress = progress.filter((event) => event.type === "assistant");
+    assert.deepEqual(assistantProgress.map((event) => event.text), ["先说明一下，我会读取文件。", "最终回复。"]);
+    assert.deepEqual(assistantProgress.map((event) => event.phase), ["intermediate", "final"]);
+    assert.equal(isChannelConnectorProcessProgressEvent(assistantProgress[0]), true);
+    assert.equal(isChannelConnectorProcessProgressEvent(assistantProgress[1]), false);
+    const toolResult = progress.find((event) => event.itemType === "tool_result");
+    assert.ok(toolResult);
+    assert.equal(toolResult.toolName, "Read");
+    assert.equal(toolResult.text, "line 1");
+  } finally {
+    await pool.killSession(key, "test-cleanup");
+    process.env.PATH = oldPath;
+  }
+});
+
 test("native Channel Connectors process runner treats OpenCode tool-calls step finish as process boundary", async () => {
   const root = makeTempRoot();
   const progress = [];

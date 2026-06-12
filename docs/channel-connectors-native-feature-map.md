@@ -44,6 +44,7 @@
 - 图片附件可 staging；非视觉模型会被提示不能做视觉推断，存在视觉模型时可按模型能力切换。
 - 同 session FIFO queue、`/stop`、`/new`、`/reset`、`/compact`、`/thinking`、`/process`、`/tools` 已接入。
 - Claude Code / OpenCode persistent native compact 已有真实子进程 driver 回归：Claude 复用同一个 stream-json 常驻进程，OpenCode 通过 `run --session` 续接。
+- Claude Code persistent driver 已修复过程回复污染最终回复，并补进度回调兼容回归。
 - Octo daemon 私聊 `/compact` 已有回归证明会进入 Claude/OpenCode persistent session，不走 Gateway fallback。
 - Feishu daemon 已有 native-first wiring 回归，真实长连接 live smoke 仍待复验。
 - Feishu 卡片进度和 Octo 文本/Markdown 进度已有基础渲染。
