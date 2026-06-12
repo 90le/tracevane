@@ -45,6 +45,9 @@
 - 本轮 live/contract 验证：
   - 用户确认 Feishu 与 Octo 长连接都处于稳定状态，标记完成并进入监控态。
   - 用户确认 Markdown 已验证；自动化复验覆盖 Feishu Markdown、Feishu/Octo 文件和媒体收发 contract。
+  - 真实 CLI thinking smoke：
+    - Claude Code 2.1.86 + `claude-sonnet-4-5` + `--effort max` 在当前 Gateway 下只输出 `text`，未输出 `thinking` item。
+    - OpenCode 1.17.0 + `--thinking`：`gpt-5.4-mini` 未输出 reasoning；`claude-sonnet-4-5` 输出真实 `reasoning` part。
 
 ## 最近验证
 
@@ -73,12 +76,12 @@
 - 同 session FIFO queue 当前是 daemon 内存队列；Channel daemon 重启会丢失未开始的排队消息，durable queue 尚未实现。
 - Claude Code / OpenCode native compact 已覆盖 driver 层、Octo daemon 私聊入口和 Feishu native-first wiring；长连接已稳定，仍需 Feishu 外部 live `/compact` smoke 证明真实入口一致。
 - 工具流仍需继续打磨：Codex、Claude Code、OpenCode 都必须稳定提取工具名、输入、stdout/stderr、exit/status、真实输出、过程回复和最终回复分类；三者结构化 stdout/stderr 已对齐，Claude persistent 过程/最终回复重复已修。
-- 思考流 parser 支持 Codex、Claude Code、OpenCode 原生 thinking/reasoning 事件；Octo 私聊 `/thinking on/off` 已做端到端回归。仍需真实 CLI live smoke 证明 Claude Code/OpenCode 在当前安装版本会实际吐出 thinking/reasoning 事件；没有原生思考事件的 Agent 只能标为不支持，不伪造。
+- 思考流 parser 支持 Codex、Claude Code、OpenCode 原生 thinking/reasoning 事件；Octo 私聊 `/thinking on/off` 已做端到端回归。真实 smoke 证明 OpenCode 会在支持 reasoning 的模型上输出 `reasoning`，Claude Code 2.1.86 当前未输出 `thinking` item；没有原生思考事件的 Agent/模型组合只能标为不支持，不伪造。
 
 ## 下一步
 
 1. 继续稳定 Codex、Claude Code、OpenCode 工具流/回复解析，重点修复空工具结果、工具结果被吞、过程回复/最终回复分类错误。
-2. 做真实 CLI thinking live smoke：验证 Claude Code / OpenCode 当前版本是否实际输出 thinking/reasoning；若不输出，UI/文档标为原生不支持。
+2. 在 Agent/Profile 能力显示里区分“parser 支持”和“当前 Agent/模型 live 输出支持”，避免把 Claude Code 当前无 thinking 误导为可显示。
 3. 做 Feishu live `/compact` smoke，证明长连接真实入口也走 persistent driver 而不是 one-shot 或 Gateway fallback。
 4. 做 Feishu/Octo 私聊文件、图片、权限审批和 `/compact` live smoke 复验；Markdown 已验证，后续只做回归抽查。
 5. 评估 durable queue，避免 daemon 重启丢失未开始消息。
