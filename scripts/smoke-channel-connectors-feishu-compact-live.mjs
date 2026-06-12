@@ -167,13 +167,14 @@ function findLongConnectionInbound(events, input) {
   }) || null;
 }
 
-function findNativeFinished(events, bindingId, sessionKey, messageId, afterMs) {
+function findNativeFinished(events, bindingId, sessionKey, messageId, afterMs, beforeMs = Number.POSITIVE_INFINITY) {
   return events.find((event) => {
     if (event?.eventKind !== "agent.native_compact.finished") return false;
     if (!sameBinding(event, bindingId)) return false;
     if (!sameSession(event, sessionKey)) return false;
     if (!compactMessageMatches(event.messageId, messageId)) return false;
     if (toTime(event.checkedAt) < afterMs) return false;
+    if (toTime(event.checkedAt) > beforeMs) return false;
     return event.ok === true;
   }) || null;
 }
@@ -250,7 +251,8 @@ function buildExplicitProofs(events, options, minTimeMs) {
       fromUid: command.fromUid,
     });
     if (!inbound) continue;
-    const nativeFinished = findNativeFinished(events, options.bindingId, sessionKey, messageId, commandAtMs);
+    const inboundAtMs = toTime(inbound.checkedAt);
+    const nativeFinished = findNativeFinished(events, options.bindingId, sessionKey, messageId, inboundAtMs, commandAtMs + 60_000);
     if (!nativeFinished) continue;
     proofs.push({
       kind: "explicit",

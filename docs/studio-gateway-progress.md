@@ -44,10 +44,12 @@
   - 锁定 `/thinking on/off` 进度显示链路：Octo 私聊端到端验证关闭后不发 reasoning 气泡，重新开启后恢复发送；Feishu/Octo 共用同一进度过滤函数。
   - `/status`、`/current`、Feishu 菜单和前端 Channel Connectors 页面已区分 `thinking` parser 支持与当前 Agent/模型 live 输出观测状态，避免把显示开关误当作 live 能力。
   - 新增 Feishu compact live 证据脚本：从 daemon event log 匹配 `longConnection=true` 的真实 Feishu 入站消息和 `agent.native_compact.finished ok=true`，区分 auto compact 与显式 `/compact`。
+  - 修复 Feishu compact live 脚本：真实 daemon 会先完成 native compact，再写入 `channel.command` 完成事件；脚本已按入站消息到命令完成窗口匹配。
 - 本轮 live/contract 验证：
   - 用户确认 Feishu 与 Octo 长连接都处于稳定状态，标记完成并进入监控态。
   - 用户确认 Markdown 已验证；自动化复验覆盖 Feishu Markdown、Feishu/Octo 文件和媒体收发 contract。
   - Feishu 真实长连接 auto compact 已验证：脚本在 24h 日志内识别 3 条 `action=native`、`longConnection=true`、`nativeOk=true` 证据。
+  - Feishu 显式 `/compact` live 已验证 Codex：`longConnection=true`，`command=compact`，`agent=codex`，`model=glm-5`，`nativeOk=true`，`progressEventCount=4`。
   - 真实 CLI thinking smoke：
     - Claude Code 2.1.86 + `claude-sonnet-4-5` + `--effort max` 在当前 Gateway 下只输出 `text`，未输出 `thinking` item。
     - OpenCode 1.17.0 + `--thinking`：`gpt-5.4-mini` 未输出 reasoning；`claude-sonnet-4-5` 输出真实 `reasoning` part。
@@ -74,6 +76,7 @@
 - 本轮验证通过：`node --test tests/system/channel-connectors-service.test.mjs`，100/100 全部通过。
 - 本轮验证通过：`node --test tests/system/channel-connectors-feishu-compact-live-script.test.mjs`，4/4 通过。
 - 本轮 live 验证通过：`node scripts/smoke-channel-connectors-feishu-compact-live.mjs --mode auto --since-minutes 1440 --json`，识别 3 条 Feishu long-connection native auto compact 证据。
+- 本轮 live 验证通过：`node scripts/smoke-channel-connectors-feishu-compact-live.mjs --mode explicit --since-minutes 30 --json`，识别 1 条 Feishu long-connection Codex 显式 `/compact` native 证据。
 - 本轮文档清理验证以 `git diff --check` 和 stale term 检查为准。
 
 ## 已知边界
@@ -81,13 +84,13 @@
 - Feishu transport 内仍保留一套低层 legacy action helper 和对应直接 transport 回归；它已不再由 Agent prompt、runner、daemon endpoint 或 UI 暴露。后续如继续瘦身，应单独删除这段 Doc/Drive/Wiki/Bitable 直接 API helper，避免和私聊文件/图片 transport 误删混在一起。
 - Octo/Feishu 群聊和管理能力已有实现继续 best-effort 保留，但新需求默认不继续扩展。
 - 同 session FIFO queue 当前是 daemon 内存队列；Channel daemon 重启会丢失未开始的排队消息，durable queue 尚未实现。
-- Claude Code / OpenCode native compact 已覆盖 driver 层、Octo daemon 私聊入口、Feishu native-first wiring 和 Feishu 真实长连接 auto compact；仍需用户显式 `/compact` live smoke 证明 slash 命令入口一致。
+- Claude Code / OpenCode native compact 已覆盖 driver 层、Octo daemon 私聊入口、Feishu native-first wiring 和 Feishu 真实长连接 auto compact；Feishu 显式 `/compact` 已验证 Codex，仍需 Claude Code / OpenCode live smoke。
 - 工具流仍需继续打磨：Codex、Claude Code、OpenCode 都必须稳定提取工具名、输入、stdout/stderr、exit/status、真实输出、过程回复和最终回复分类；三者结构化 stdout/stderr 已对齐，Claude persistent 过程/最终回复重复已修。
 - 思考流 parser 支持 Codex、Claude Code、OpenCode 原生 thinking/reasoning 事件；Octo 私聊 `/thinking on/off` 已做端到端回归；状态/UI 已区分 parser 支持和 live 输出观测。真实 smoke 证明 OpenCode 会在支持 reasoning 的模型上输出 `reasoning`，Claude Code 2.1.86 当前未输出 `thinking` item；没有原生思考事件的 Agent/模型组合只能标为不支持，不伪造。
 
 ## 下一步
 
 1. 继续稳定 Codex、Claude Code、OpenCode 工具流/回复解析，重点修复空工具结果、工具结果被吞、过程回复/最终回复分类错误。
-2. 做 Feishu 显式 `/compact` live smoke，证明 slash 命令真实入口也走 persistent driver 而不是 one-shot 或 Gateway fallback；可用 `scripts/smoke-channel-connectors-feishu-compact-live.mjs --mode explicit --wait --json` 等待用户真实消息。
+2. 做 Feishu 显式 `/compact` live smoke 的 Claude Code / OpenCode 轮次，证明三个 Agent 的 slash 命令真实入口都走 persistent driver 而不是 one-shot 或 Gateway fallback；可用 `scripts/smoke-channel-connectors-feishu-compact-live.mjs --mode explicit --wait --json` 等待用户真实消息。
 3. 做 Feishu/Octo 私聊文件、图片、权限审批和 `/compact` live smoke 复验；Markdown 已验证，后续只做回归抽查。
 4. 评估 durable queue，避免 daemon 重启丢失未开始消息。

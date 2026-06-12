@@ -46,7 +46,7 @@
 - Claude Code / OpenCode persistent native compact 已有真实子进程 driver 回归：Claude 复用同一个 stream-json 常驻进程，OpenCode 通过 `run --session` 续接。
 - Claude Code persistent driver 已修复过程回复污染最终回复，并补进度回调兼容回归。
 - Octo daemon 私聊 `/compact` 已有回归证明会进入 Claude/OpenCode persistent session，不走 Gateway fallback。
-- Feishu daemon 已有 native-first wiring 回归；真实长连接 auto compact 已用 event log smoke 证明进入 Agent-native compact。
+- Feishu daemon 已有 native-first wiring 回归；真实长连接 auto compact 已用 event log smoke 证明进入 Agent-native compact；Codex 显式 `/compact` live 已验证。
 - OpenCode 结构化工具输出已保留 `stdout`、`stderr` 和 `exitCode`，避免 IM 进度显示成空工具结果。
 - Codex 结构化命令输出已保留嵌套或直接 `stdout` / `stderr`，避免命令执行结果被压成单行或空结果。
 - Codex one-shot 与 app-server 已按 CC Go 合同提取 reasoning `summary` / `summary_text` / `content`，空 reasoning 不再显示假思考。
@@ -68,6 +68,6 @@
 ## 下一步
 
 1. 工具流和回复解析：继续复核 Claude/Codex live 差异，修复空工具结果、工具输出丢失、过程回复/最终回复分类错误。
-2. Feishu 显式 `/compact` live smoke。
+2. Feishu 显式 `/compact` live smoke：继续验证 Claude Code / OpenCode。
 3. Feishu/Octo 私聊 live smoke：文件、图片、权限审批、compact；Markdown 做抽查回归。
 4. durable queue 设计与实现。
