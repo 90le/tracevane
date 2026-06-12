@@ -1548,6 +1548,14 @@ function normalizedFeishuBitableAction(value: string): string {
   return normalizedAction(value).replace(/-/g, "_");
 }
 
+function normalizeFeishuAppScope(value: unknown): Record<string, unknown> {
+  const scope = recordFrom(value);
+  return {
+    name: normalizeString(scope.scope_name) || normalizeString(scope.name) || null,
+    type: normalizeString(scope.scope_type) || normalizeString(scope.type) || null,
+  };
+}
+
 function parseFeishuBitableUrl(value: string): { token: string; tableId: string | null; isWiki: boolean } | null {
   try {
     const parsed = new URL(value);
@@ -1728,6 +1736,7 @@ export function feishuChannelActionIsReadOnly(tool: ChannelConnectorFeishuAction
       normalizedFeishuChannelAction(normalized),
     );
   }
+  if (tool === "feishu_app_scopes") return ["list", "scopes"].includes(normalized);
   if (tool === "feishu_doc") return ["read", "list_blocks", "get_block"].includes(normalized);
   if (tool === "feishu_drive") return ["list", "info", "list_comments", "list_comment_replies"].includes(normalized);
   if (tool === "feishu_perm") return normalized === "list";
@@ -2528,6 +2537,23 @@ async function executeFeishuReadOnlyAction(
     statusCode = response.statusCode;
     return response.body;
   };
+  if (request.tool === "feishu_app_scopes") {
+    if (action === "list" || action === "scopes") {
+      const body = await call("GET", "/open-apis/application/v6/scopes");
+      const scopes = arrayFrom(recordFrom(body.data).scopes);
+      const granted = scopes.filter((scope) => Number(recordFrom(scope).grant_status) === 1).map(normalizeFeishuAppScope);
+      const pending = scopes.filter((scope) => Number(recordFrom(scope).grant_status) !== 1).map(normalizeFeishuAppScope);
+      return {
+        data: {
+          granted,
+          pending,
+          summary: `${granted.length} granted, ${pending.length} pending`,
+        },
+        statusCode,
+        requestCount,
+      };
+    }
+  }
   if (request.tool === "feishu_channel") {
     const channelAction = normalizedFeishuChannelAction(action);
     if (channelAction === "read") {

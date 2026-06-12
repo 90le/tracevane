@@ -1329,6 +1329,7 @@ test("native Channel Connectors extracts Feishu action manifests", () => {
       { skill: "wiki", action: "nodes", params: { space_id: "7370955161512345678" } },
       { name: "feishu_perm", action: "list", token: "doc_a", type: "docx" },
       { skill: "im", action: "channel-info", params: { chat_id: "oc_1" } },
+      { skill: "scopes", action: "list" },
       { skill: "bitable", action: "list_records", params: { app_token: "base_a", table_id: "tbl_a" } },
     ]),
     "```",
@@ -1341,6 +1342,7 @@ test("native Channel Connectors extracts Feishu action manifests", () => {
     { tool: "feishu_wiki", action: "nodes", params: { space_id: "7370955161512345678" } },
     { tool: "feishu_perm", action: "list", params: { token: "doc_a", type: "docx" } },
     { tool: "feishu_channel", action: "channel-info", params: { chat_id: "oc_1" } },
+    { tool: "feishu_app_scopes", action: "list", params: {} },
     { tool: "feishu_bitable", action: "list_records", params: { app_token: "base_a", table_id: "tbl_a" } },
   ]);
 
@@ -1679,6 +1681,17 @@ test("native Channel Connectors executes Feishu read-only actions and approval-g
         data: { file_token: parentType === "docx_image" ? "img_token_1" : "file_token_1" },
       }), { status: 200, headers: { "content-type": "application/json" } });
     }
+    if (String(url).endsWith("/open-apis/application/v6/scopes")) {
+      return new Response(JSON.stringify({
+        code: 0,
+        data: {
+          scopes: [
+            { scope_name: "im:message", scope_type: "tenant", grant_status: 1 },
+            { scope_name: "docx:document", scope_type: "tenant", grant_status: 0 },
+          ],
+        },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    }
     return new Response(JSON.stringify({ code: 404, msg: "not mocked" }), { status: 404 });
   };
   try {
@@ -1703,6 +1716,19 @@ test("native Channel Connectors executes Feishu read-only actions and approval-g
       ],
     });
     assert.equal(requests[1].authorization, "Bearer tenant-token");
+
+    const appScopes = await executeFeishuChannelAction(config, {
+      tool: "feishu_app_scopes",
+      action: "list",
+      params: {},
+    }, null);
+    assert.equal(appScopes.ok, true);
+    assert.equal(appScopes.readOnly, true);
+    assert.deepEqual(appScopes.data, {
+      granted: [{ name: "im:message", type: "tenant" }],
+      pending: [{ name: "docx:document", type: "tenant" }],
+      summary: "1 granted, 1 pending",
+    });
 
     const requestCountBeforeMutation = requests.length;
     const mutationWithoutApproval = await executeFeishuChannelAction(config, {
@@ -6802,6 +6828,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   const feishuSkillContext = buildChannelConnectorSkillContext(codexProject, { binding: feishuBinding });
   assert.ok(feishuSkillContext);
   assert.match(feishuSkillContext, /### \/feishu-doc \[platform:feishu\]/);
+  assert.match(feishuSkillContext, /### \/feishu-app-scopes \[platform:feishu\]/);
   assert.match(feishuSkillContext, /### \/feishu-drive \[platform:feishu\]/);
   assert.match(feishuSkillContext, /\/feishu-card: Build Feishu card and message workflows/);
   assert.match(feishuSkillContext, /\/feishu-doc-api: Read, write, and attach files in Feishu documents/);
@@ -6809,6 +6836,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(feishuSkillContext, /Only use the Runtime Action Index entries below/);
   assert.match(feishuSkillContext, /feishu_channel.*channel-info/);
   assert.match(feishuSkillContext, /feishu_channel.*thread-reply/);
+  assert.match(feishuSkillContext, /feishu_app_scopes.*list/);
   assert.match(feishuSkillContext, /feishu_doc.*color_text/);
   assert.match(feishuSkillContext, /feishu_drive.*list_comments/);
   assert.match(feishuSkillContext, /Supported now after Studio IM approval: `create`/);
@@ -6845,6 +6873,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.deepEqual(defaultFeishuPlatformSkills.map((skill) => skill.name), [
     "feishu-messaging",
     "feishu-doc",
+    "feishu-app-scopes",
     "feishu-drive",
     "feishu-perm",
     "feishu-wiki",
@@ -6855,8 +6884,10 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.ok(defaultFeishuContext);
   assert.match(defaultFeishuContext, /### \/feishu-messaging \[platform:feishu\]/);
   assert.match(defaultFeishuContext, /### \/feishu-doc \[platform:feishu\]/);
+  assert.match(defaultFeishuContext, /### \/feishu-app-scopes \[platform:feishu\]/);
   assert.match(defaultFeishuContext, /studio-feishu-actions/);
   assert.match(defaultFeishuContext, /feishu_channel.*channel-list/);
+  assert.match(defaultFeishuContext, /feishu_app_scopes.*list/);
   assert.match(defaultFeishuContext, /Supported now without approval: `read`, `list_blocks`, `get_block`/);
   assert.match(defaultFeishuContext, /Supported now after Studio IM approval: `create`/);
   assert.match(defaultFeishuContext, /feishu_doc.*insert_table_row/);
@@ -6874,6 +6905,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.deepEqual(feishuSurface.skills.filter((skill) => skill.scope === "platform").map((skill) => skill.name), [
     "feishu-messaging",
     "feishu-doc",
+    "feishu-app-scopes",
     "feishu-drive",
     "feishu-perm",
     "feishu-wiki",
@@ -6881,6 +6913,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   ]);
   assert.equal(feishuSurface.skills.every((skill) => skill.scope !== "platform" || skill.source.startsWith("studio://channel-skills/feishu/")), true);
   assert.ok(feishuSurface.skills.find((skill) => skill.name === "feishu-messaging")?.actions?.some((action) => action.tool === "feishu_channel" && action.action === "channel-info"));
+  assert.ok(feishuSurface.skills.find((skill) => skill.name === "feishu-app-scopes")?.actions?.some((action) => action.tool === "feishu_app_scopes" && action.action === "list" && action.approval === "none"));
   assert.ok(feishuSurface.skills.find((skill) => skill.name === "feishu-doc")?.actions?.some((action) => action.action === "color_text"));
   assert.ok(feishuSurface.skills.find((skill) => skill.name === "feishu-drive")?.actions?.some((action) => action.action === "list_comments"));
   assert.ok(feishuSurface.skills.find((skill) => skill.name === "feishu-bitable")?.actions?.some((action) => action.action === "create_record" && action.approval === "required"));

@@ -49,6 +49,10 @@ const feishuChannelActions: ChannelConnectorCommandSurfaceSkillAction[] = [
   action("feishu-channel-reactions", "List Feishu reactions", "studio-feishu-actions", "feishu_channel", "reactions", "none"),
 ];
 
+const feishuAppScopesActions: ChannelConnectorCommandSurfaceSkillAction[] = [
+  action("feishu-app-scopes-list", "List Feishu app scopes", "studio-feishu-actions", "feishu_app_scopes", "list", "none"),
+];
+
 const octoManagementActions: ChannelConnectorCommandSurfaceSkillAction[] = [
   action("octo-list-groups", "List Octo groups", "studio-octo-actions", "octo_management", "list-groups", "none"),
   action("octo-group-info", "Read Octo group info", "studio-octo-actions", "octo_management", "group-info", "none"),
@@ -380,6 +384,27 @@ Media actions use Feishu Drive \`upload_all\`; keep each upload at or below 20MB
 ## Studio Fallback
 
 When a requested media upload is larger than Feishu \`upload_all\` supports, create requested content locally and send it with \`studio-channel-files\`, or send a Feishu Markdown message with \`studio-channel-messages\` summarizing the document changes the user should apply until chunked docx upload is implemented.`,
+  },
+  {
+    platform: "feishu",
+    name: "feishu-app-scopes",
+    runtimeActions: feishuAppScopesActions,
+    markdown: `---
+name: feishu-app-scopes
+description: Feishu application scope diagnostics for Studio-managed channel skills. Activate when Feishu API calls fail with permission errors or the user asks what app permissions are granted.
+---
+
+# Feishu App Scopes Runtime Skill
+
+Studio owns the Feishu app credentials and tenant token. Use \`studio-feishu-actions\` with \`tool:"feishu_app_scopes"\` to list the app's granted and pending scopes through the current Feishu binding. This is read-only and does not require approval.
+
+\`\`\`studio-feishu-actions
+[
+  {"tool":"feishu_app_scopes","action":"list"}
+]
+\`\`\`
+
+The result mirrors the OpenClaw \`feishu_app_scopes\` tool: \`granted\`, \`pending\`, and \`summary\`. Use it to diagnose missing Feishu permissions before telling the user/admin what to grant. Never expose App Secret or tenant token values.`,
   },
   {
     platform: "feishu",

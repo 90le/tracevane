@@ -524,7 +524,7 @@ export function buildChannelConnectorNativeSkillPrompt(skill: ChannelConnectorSk
     "- `studio-channel-files` for files, images, and binary attachments.",
     "- `studio-channel-messages` for IM messages, Octo group/thread mentions, and Feishu text/Markdown/group mention targets.",
     "- `studio-octo-actions` for Studio-owned Octo group/thread/history/voice-context management when the active platform is Octo.",
-    "- `studio-feishu-actions` for Studio-owned Feishu channel/doc/drive/perm/wiki/bitable actions when the active platform is Feishu. Studio executes read-only actions directly and approval-gated mutations only after IM approval.",
+    "- `studio-feishu-actions` for Studio-owned Feishu channel/app-scope/doc/drive/perm/wiki/bitable actions when the active platform is Feishu. Studio executes read-only actions directly and approval-gated mutations only after IM approval.",
     "",
     `Current platform family: ${platform}.`,
     "",
@@ -782,7 +782,7 @@ export function buildChannelConnectorSkillContext(
       ? "For Octo group/thread/history/voice-context management, emit a studio-octo-actions manifest; Studio will execute read-only actions with the active Octo binding and request IM approval before enabled mutations."
       : "",
     platform === "feishu"
-      ? "For Feishu channel/doc/drive/perm/wiki/bitable actions, emit a studio-feishu-actions manifest; Studio will execute read-only actions with the active Feishu binding and request IM approval before enabled mutations. Unsupported content mutations must fall back to studio-channel-files or studio-channel-messages."
+      ? "For Feishu channel/app-scope/doc/drive/perm/wiki/bitable actions, emit a studio-feishu-actions manifest; Studio will execute read-only actions with the active Feishu binding and request IM approval before enabled mutations. Unsupported content mutations must fall back to studio-channel-files or studio-channel-messages."
       : "",
     actionSummary.length ? "[Runtime action summary]" : "",
     ...actionSummary,

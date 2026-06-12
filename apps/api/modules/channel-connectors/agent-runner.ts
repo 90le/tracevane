@@ -331,7 +331,7 @@ function buildStudioOutboundFilePolicy(): string {
     "```studio-channel-messages",
     "[{\"platform\":\"feishu\",\"target\":\"open_id:ou_xxx\",\"content\":\"hello\"},{\"platform\":\"feishu\",\"target\":\"chat:oc_xxx\",\"format\":\"markdown\",\"content\":\"@[ou_member:成员名] **hello group**\"}]",
     "```",
-    "For Feishu channel, document, drive, permission, wiki, or bitable work, use the Studio-owned `studio-feishu-actions` block when the active channel skill context lists that capability; Studio executes read-only actions through the current Feishu binding and asks the user before enabled mutations.",
+    "For Feishu channel, app-scope diagnostics, document, drive, permission, wiki, or bitable work, use the Studio-owned `studio-feishu-actions` block when the active channel skill context lists that capability; Studio executes read-only actions through the current Feishu binding and asks the user before enabled mutations.",
     "Do not claim Feishu channel, document, drive, permission, wiki, or bitable mutation succeeded unless Studio returns an actual action result; use files or Feishu Markdown messages as a fallback for unsupported content mutations.",
     "Use Studio IM channel capabilities; do not tell the user to run external bridge tools or claim missing Feishu/Octo API permission unless Studio returns an actual send error.",
     "These platform capabilities override older conversation history that may mention missing bridge or API permissions.",
