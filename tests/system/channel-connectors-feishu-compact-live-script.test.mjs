@@ -174,6 +174,37 @@ test("Feishu compact live script accepts explicit slash compact evidence", async
   assert.equal(parsed.proofs[0].agent, "claude-code");
 });
 
+test("Feishu compact live script filters explicit slash compact evidence by agent", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-compact-smoke-"));
+  const eventLog = path.join(root, "feishu-events.jsonl");
+  writeJsonl(eventLog, explicitCompactFixture());
+
+  const parsed = await runScript([
+    "--event-log", eventLog,
+    "--mode", "explicit",
+    "--agent", "claude-code",
+    "--since", "2026-06-12T06:00:00.000Z",
+    "--json",
+  ], root);
+
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.agent, "claude-code");
+  assert.equal(parsed.proofCount, 1);
+  assert.equal(parsed.proofs[0].agent, "claude-code");
+
+  const failed = await runScriptFailure([
+    "--event-log", eventLog,
+    "--mode", "explicit",
+    "--agent", "opencode",
+    "--since", "2026-06-12T06:00:00.000Z",
+    "--json",
+  ], root);
+  assert.equal(failed.code, 1);
+  assert.equal(failed.parsed.ok, false);
+  assert.equal(failed.parsed.agent, "opencode");
+  assert.equal(failed.parsed.proofCount, 0);
+});
+
 test("Feishu compact live script does not treat auto compact as explicit slash compact", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-compact-smoke-"));
   const eventLog = path.join(root, "feishu-events.jsonl");

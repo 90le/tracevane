@@ -14,6 +14,7 @@ function parseArgs(argv) {
   const options = {
     eventLog: DEFAULT_EVENT_LOG,
     bindingId: DEFAULT_BINDING_ID,
+    agent: "",
     mode: "any",
     since: "",
     sinceMinutes: DEFAULT_SINCE_MINUTES,
@@ -29,6 +30,8 @@ function parseArgs(argv) {
     else if (arg.startsWith("--event-log=")) options.eventLog = arg.slice("--event-log=".length);
     else if (arg === "--binding") options.bindingId = requireValue(argv, ++index, arg);
     else if (arg.startsWith("--binding=")) options.bindingId = arg.slice("--binding=".length);
+    else if (arg === "--agent") options.agent = requireValue(argv, ++index, arg);
+    else if (arg.startsWith("--agent=")) options.agent = arg.slice("--agent=".length);
     else if (arg === "--mode") options.mode = compactMode(requireValue(argv, ++index, arg));
     else if (arg.startsWith("--mode=")) options.mode = compactMode(arg.slice("--mode=".length));
     else if (arg === "--since") options.since = requireValue(argv, ++index, arg);
@@ -67,6 +70,7 @@ Modes:
 Options:
   --event-log <path>       Event log path. Default: ${DEFAULT_EVENT_LOG}
   --binding <id>           Binding id. Default: ${DEFAULT_BINDING_ID}
+  --agent <name>           Filter by Agent, for example codex, claude-code, opencode.
   --mode <any|explicit|auto>
   --since <iso>            Include events at or after this ISO timestamp.
   --since-minutes <n>      Include recent events. Default: ${DEFAULT_SINCE_MINUTES}.
@@ -281,12 +285,16 @@ function buildResult(options, nowMs = Date.now()) {
   const scopedEvents = events.filter((event) => toTime(event?.checkedAt) >= minTimeMs);
   const autoProofs = options.mode === "explicit" ? [] : buildAutoProofs(scopedEvents, options, minTimeMs);
   const explicitProofs = options.mode === "auto" ? [] : buildExplicitProofs(scopedEvents, options, minTimeMs);
-  const proofs = [...explicitProofs, ...autoProofs].sort((a, b) => toTime(a.compactAt) - toTime(b.compactAt));
+  const agentFilter = normalizeString(options.agent).toLowerCase();
+  const proofs = [...explicitProofs, ...autoProofs]
+    .filter((proof) => !agentFilter || normalizeString(proof.agent).toLowerCase() === agentFilter)
+    .sort((a, b) => toTime(a.compactAt) - toTime(b.compactAt));
   return {
     ok: proofs.length > 0,
     checkedAt: new Date(nowMs).toISOString(),
     mode: options.mode,
     bindingId: options.bindingId,
+    agent: options.agent || null,
     eventLog: options.eventLog,
     since: new Date(minTimeMs).toISOString(),
     eventCount: scopedEvents.length,

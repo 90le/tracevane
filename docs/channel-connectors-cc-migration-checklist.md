@@ -40,7 +40,7 @@
 | P1 | Codex runner | 进行中：结构化 stdout/stderr 回归已补 | `exec/resume`、thread、cwd、permission、tool stream、file manifest、stop/new/reset/compact 按 CC 验收；app-server 仍是 beta |
 | P1 | Claude Code runner | 进行中：native compact、结构化 tool_result 与过程/最终回复回归已补 | stream-json、permission prompt、session resume、tool event、文件/图片输入、native compact/stop live driver |
 | P1 | OpenCode runner | 进行中：parser 已对齐；结构化 stdout/stderr/exitCode 与 native compact 回归已补 | JSON/SQLite fallback、session、tool stream、文件/图片输入、native compact/stop live driver |
-| P1 | Feishu 私聊 | 进行中：长连接 live 稳定；Markdown 已验证；native-first compact wiring、真实长连接 auto compact 和 Codex 显式 `/compact` smoke 已补 | 文件/图片、权限审批、工具流卡片、Claude/OpenCode 显式 `/compact` live smoke |
+| P1 | Feishu 私聊 | 进行中：长连接 live 稳定；Markdown 已验证；native-first compact wiring、真实长连接 auto compact、Codex 和 Claude Code 显式 `/compact` smoke 已补 | 文件/图片、权限审批、工具流卡片、OpenCode 显式 `/compact` live smoke |
 | P1 | Octo 私聊 | 进行中：长连接 live 稳定；Markdown 已验证 | 文件/图片、权限审批、compact live smoke |
 | P1 | 工具/思考/过程显示 | 继续推进：非飞书过程回复标题已移除；Codex reasoning summary、Octo `/thinking` 过滤、OpenCode live reasoning 和 parser/live 能力展示已补 | 三个 Agent 都稳定提取工具名、输入、stdout/stderr、exit/status、思考流、过程回复和最终回复分类 |
 | P1 | 上下文预算与 compact | 继续推进 | resolved model 预算进入 IM session；优先 Agent-native compact，不支持/失败再 Gateway compact |
@@ -72,10 +72,11 @@
 - `node --test tests/system/channel-connectors-feishu-compact-live-script.test.mjs`，4/4 通过。
 - `node scripts/smoke-channel-connectors-feishu-compact-live.mjs --mode auto --since-minutes 1440 --json` 通过，识别 3 条 Feishu long-connection native auto compact 证据。
 - `node scripts/smoke-channel-connectors-feishu-compact-live.mjs --mode explicit --since-minutes 30 --json` 通过，识别 Codex 显式 `/compact` native 证据。
+- `node scripts/smoke-channel-connectors-feishu-compact-live.mjs --mode explicit --agent claude-code --since-minutes 45 --json` 通过，识别 Claude Code 显式 `/compact` native 证据。
 
 ## 下一步
 
 1. 稳定 Codex / Claude Code / OpenCode 工具流和回复解析。
-2. 做 Feishu 显式 `/compact` live smoke：继续验证 Claude Code / OpenCode。
+2. 做 Feishu 显式 `/compact` live smoke：继续验证 OpenCode。
 3. 私聊文件/图片/权限/compact 做 Feishu 与 Octo live smoke；Markdown 后续只做抽查。
 4. 评估 durable queue。
