@@ -261,6 +261,7 @@ function agentResult(input: {
   progressEvents: ChannelConnectorAgentProgressEvent[];
   threadId: string | null;
   resumed: boolean;
+  args?: string[];
 }): ChannelConnectorAgentTurnResult {
   return {
     attempted: true,
@@ -269,7 +270,7 @@ function agentResult(input: {
     agent: "codex",
     model: input.model,
     command: "codex app-server",
-    args: [],
+    args: input.args || [],
     cwd: input.cwd,
     replyText: input.ok ? input.replyText : null,
     stdout: input.replyText || "",
@@ -686,6 +687,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
         progressEvents,
         threadId: this.threadId,
         resumed: true,
+        args: processRequest.args,
       });
     } finally {
       input.signal?.removeEventListener("abort", abortListener);

@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import {
   CodexAppServerSession,
@@ -398,6 +401,58 @@ test("Codex app-server driver starts one thread and reuses it across turns", asy
   assert.deepEqual(assistantProgress.map((event) => event.text), ["reply for m-1", "reply for m-2"]);
   assert.deepEqual(assistantProgress.map((event) => event.phase), ["final", "final"]);
   assert.equal(assistantProgress.some((event) => isChannelConnectorProcessProgressEvent(event)), false);
+});
+
+test("Codex app-server driver forwards image inputs and preserves image args", async () => {
+  const transport = new FakeCodexAppServerTransport();
+  const session = new CodexAppServerSession({
+    sessionId: "session-vision",
+    transport,
+    model: "gpt-5.5",
+    cwd: "/tmp/project",
+    permissionMode: "suggest",
+  });
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-codex-vision-"));
+  const imagePath = path.join(tempDir, "photo.png");
+  fs.writeFileSync(imagePath, Buffer.from("fake-png"));
+  const request = agentTurnRequest({ messageId: "m-vision", content: "识别这张图片" });
+  request.project = { ...request.project, model: "gpt-5.5" };
+  request.modelCapabilities = { vision: true };
+  request.message = {
+    ...request.message,
+    payload: { type: 2, content: "", name: "photo.png" },
+    attachments: [{
+      kind: "image",
+      platform: "feishu",
+      fileName: "photo.png",
+      mimeType: "image/png",
+      localPath: imagePath,
+    }],
+  };
+
+  const result = await session.runTurn({
+    mode: "persistent",
+    key: {
+      bindingId: "octo-codex",
+      projectId: "codex-app-server",
+      sessionKey: "dmwork:dm:user-1",
+      agent: "codex",
+      model: "gpt-5.5",
+      workDir: "/tmp/project",
+    },
+    messageId: "m-vision",
+    agentTurnRequest: request,
+    runOneShot: async () => {
+      throw new Error("one-shot should not run for app-server driver");
+    },
+  });
+
+  const turnStart = transport.messages.find((message) => message.method === "turn/start");
+  assert.equal(result.ok, true);
+  assert.equal(result.args.includes("--image"), true);
+  assert.equal(result.args[result.args.indexOf("--image") + 1], imagePath);
+  assert.deepEqual(turnStart.params.input[1], { type: "localImage", path: imagePath });
+  fs.rmSync(tempDir, { recursive: true, force: true });
 });
 
 test("Codex app-server driver preserves completed markdown and outbound file manifests", async () => {

@@ -1103,10 +1103,10 @@ export function buildChannelConnectorAgentProcessRequest(
         "--skip-git-repo-check",
         ...codexPermissionArgs(project.permissionMode),
         ...(model ? ["--model", model] : []),
-        ...codexConfigArgs,
-        codexThreadId,
         ...codexImageArgs,
+        ...codexConfigArgs,
         "--json",
+        codexThreadId,
         "-",
       ]
       : [

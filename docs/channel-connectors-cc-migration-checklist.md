@@ -1,6 +1,6 @@
 # Channel Connectors CC Migration Checklist
 
-> 更新：2026-06-12
+> 更新：2026-06-13
 > 原则：CC Go 先 1:1 迁移，Studio 再精修。禁止在 CC 已有成熟方案时重新造轮子。
 
 ## 迁移门禁
@@ -37,7 +37,7 @@
 | P0 | CC-first 门禁 | 已完成 | `AGENTS.md` 和本文件记录约束 |
 | P0 | Studio Gateway / Channel daemon supervisor | 已完成 | Studio/OpenClaw 崩溃后 daemon direct endpoint 可继续服务 |
 | P0 | 删除 active platform action layer | 已完成 | Agent prompt/env/UI/daemon endpoint 不再暴露 `studio-channel-skill` 或 platform action；旧 action block 不触发审批/API |
-| P1 | Codex runner | 进行中：结构化 stdout/stderr 回归已补 | `exec/resume`、thread、cwd、permission、tool stream、file manifest、stop/new/reset/compact 按 CC 验收；app-server 仍是 beta |
+| P1 | Codex runner | 进行中：结构化 stdout/stderr、resume 图片参数顺序、app-server 视觉 args 证据已补 | `exec/resume`、thread、cwd、permission、tool stream、file manifest、stop/new/reset/compact 按 CC 验收；app-server 仍是 beta |
 | P1 | Claude Code runner | 进行中：native compact、结构化 tool_result 与过程/最终回复回归已补 | stream-json、permission prompt、session resume、tool event、文件/图片输入、native compact/stop live driver |
 | P1 | OpenCode runner | 进行中：parser 已对齐；结构化 stdout/stderr/exitCode 与 native compact 回归已补 | JSON/SQLite fallback、session、tool stream、文件/图片输入、native compact/stop live driver |
 | P1 | Feishu 私聊 | 进行中：长连接 live 稳定；Markdown、入站文件、native-first compact wiring、真实长连接 auto compact、三 Agent 显式 `/compact` smoke、图片默认非视觉/显式自动切换策略已补 | 图片重发 live、出站文件、权限审批复验 |
@@ -69,6 +69,8 @@
 - `node --test --test-name-pattern "IM commands switch agent|command surface renders text" tests/system/channel-connectors-service.test.mjs`，2/2 通过。
 - `npm run build:web`
 - `node --test --test-name-pattern "agent runner builds gateway-backed Codex turns|visual turns select Gateway vision models|stages attachments|outbound file manifests" tests/system/channel-connectors-service.test.mjs`，4/4 通过。
+- `node --test --test-name-pattern "agent runner builds gateway-backed Codex turns|visual turns select Gateway vision models|daemon registers Octo and opens WuKongIM WebSocket" tests/system/channel-connectors-service.test.mjs`，3/3 通过。
+- `node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，14/14 通过。
 - `node --test --test-name-pattern "daemon registers Octo and opens WuKongIM WebSocket" tests/system/channel-connectors-service.test.mjs`，1/1 通过。
 - `node --test tests/system/channel-connectors-service.test.mjs`，100/100 通过。
 - `node --test tests/system/channel-connectors-feishu-compact-live-script.test.mjs`，4/4 通过。
@@ -82,4 +84,5 @@
 
 1. 稳定 Codex / Claude Code / OpenCode 工具流和回复解析。
 2. 私聊文件/图片/权限/compact 做 Feishu 与 Octo live smoke；Feishu 入站文件已完成，继续 Feishu 图片重发验证、出站文件和 Octo 对应项。
-3. 评估 durable queue。
+3. 补视觉模型失败后回退附件说明的专门系统回归。
+4. 评估 durable queue。

@@ -4683,8 +4683,10 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.ok(resumeRequest);
   assert.deepEqual(resumeRequest.args.slice(0, 2), ["exec", "resume"]);
   assert.equal(resumeRequest.args.includes("--cd"), false);
-  assert.equal(resumeRequest.args.at(-3), "019e9b49-0b62-7132-845a-f19aba1484b7");
-  assert.equal(resumeRequest.args.at(-2), "--json");
+  const resumeThreadIdIndex = resumeRequest.args.indexOf("019e9b49-0b62-7132-845a-f19aba1484b7");
+  assert.notEqual(resumeThreadIdIndex, -1);
+  assert.ok(resumeRequest.args.indexOf("--json") < resumeThreadIdIndex);
+  assert.equal(resumeRequest.args.at(-2), "019e9b49-0b62-7132-845a-f19aba1484b7");
   assert.equal(resumeRequest.args.at(-1), "-");
   assert.equal(resumeRequest.sessionMode, "resume");
   assert.equal(resumeRequest.codexThreadId, "019e9b49-0b62-7132-845a-f19aba1484b7");
@@ -5154,9 +5156,10 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   const resumeImageArgIndex = resumeVisionAttachmentRequest.args.indexOf("--image");
   const resumeThreadArgIndex = resumeVisionAttachmentRequest.args.indexOf("thread-vision");
   assert.notEqual(resumeImageArgIndex, -1);
-  assert.ok(resumeThreadArgIndex < resumeImageArgIndex);
+  assert.ok(resumeImageArgIndex < resumeThreadArgIndex);
   assert.equal(resumeVisionAttachmentRequest.args[resumeImageArgIndex + 1], visionImagePath);
-  assert.equal(resumeVisionAttachmentRequest.args.at(-2), "--json");
+  assert.ok(resumeVisionAttachmentRequest.args.indexOf("--json") < resumeThreadArgIndex);
+  assert.equal(resumeVisionAttachmentRequest.args.at(-2), "thread-vision");
   assert.equal(resumeVisionAttachmentRequest.args.at(-1), "-");
   for (const cleanupPath of resumeVisionAttachmentRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
