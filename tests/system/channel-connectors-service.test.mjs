@@ -153,6 +153,9 @@ import {
   channelConnectorSkillDirs,
   listChannelConnectorPlatformSkills,
 } from "../../dist/apps/api/modules/channel-connectors/skill-registry.js";
+import {
+  STUDIO_CHANNEL_CONNECTOR_PLATFORM_SKILLS,
+} from "../../dist/apps/api/modules/channel-connectors/studio-channel-skills.js";
 
 function makeTempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-connectors-"));
@@ -1423,6 +1426,30 @@ test("native Channel Connectors extracts Octo action manifests", () => {
   assert.equal(invalid.replyText, "bad");
   assert.equal(invalid.actions.length, 0);
   assert.match(invalid.errors.join("\n"), /JSON/);
+});
+
+test("native Channel Connectors built-in runtime actions stay parser-addressable", () => {
+  const actions = STUDIO_CHANNEL_CONNECTOR_PLATFORM_SKILLS.flatMap((skill) => skill.runtimeActions || []);
+  const executableActions = actions.filter((action) =>
+    action.manifest === "studio-octo-actions" || action.manifest === "studio-feishu-actions"
+  );
+  assert.ok(executableActions.length > 20);
+
+  for (const action of executableActions) {
+    const block = [
+      "```" + action.manifest,
+      JSON.stringify([{ tool: action.tool, action: action.action, params: { name: "keep-name" } }]),
+      "```",
+    ].join("\n");
+    const parsed = action.manifest === "studio-octo-actions"
+      ? extractChannelConnectorOctoActions(block)
+      : extractChannelConnectorFeishuActions(block);
+    assert.deepEqual(parsed.errors, [], `${action.manifest}:${action.tool}.${action.action}`);
+    assert.equal(parsed.actions.length, 1, `${action.manifest}:${action.tool}.${action.action}`);
+    assert.equal(parsed.actions[0].tool, action.tool, `${action.manifest}:${action.tool}.${action.action}`);
+    assert.equal(parsed.actions[0].action, action.action, `${action.manifest}:${action.tool}.${action.action}`);
+    assert.equal(parsed.actions[0].params.name, "keep-name", `${action.manifest}:${action.tool}.${action.action}`);
+  }
 });
 
 test("native Channel Connectors executes Feishu read-only actions and approval-gated mutations", async () => {
