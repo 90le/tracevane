@@ -35,6 +35,7 @@
 - Octo runtime skill 已加 admin-plane 边界：Agent prompt/native skill 会说明 User API bot management 与 token retrieval 不属于 runtime，parser 和 command surface 回归会拒绝 `register/heartbeat/upload-credentials/create-bot/bot-token/user-bots` 等敏感 action。
 - 修复 `studio-octo-actions` parser 与 Octo Bot API / `/octo` 命令别名不一致的问题：`space-members/sync-messages/add-group-members/set-group-md/delete-voice-context/createGroup` 等会归一到 Studio 白名单 runtime action；显式 `params` 会原样保留 `name` 等业务字段，避免 create group/thread 类动作丢标题。
 - 修复 `studio-feishu-actions` 显式 `params` 保真：Bitable `create_app/create_field`、Wiki rename、Drive folder 等会用到的 `name` 字段不再被 parser 当作 tool 元字段剥掉。
+- 修复 Octo 群创建紧凑 manifest：`[{"action":"create-group","name":"Agent 协作群","members":"uid"}]` 现在默认映射到 `octo_management.create-group`，不会再把业务 `name` 误判为 tool 并报 “did not include any valid Octo action entries”。
 - 新增内置 runtime action 一致性回归：遍历 Studio 内置 Octo/Feishu platform skills，确保每个 `studio-octo-actions` / `studio-feishu-actions` 白名单动作都能被 parser 地址化，且显式 `params.name` 不丢失。
 - OpenCode channel skill 投影已接入：runner 在隔离 `XDG_CONFIG_HOME/opencode/skills/<skill>/SKILL.md` 写入 Studio runtime 版 skill，并把相对路径写入 `opencode.json.instructions`；OpenCode 不再只依赖单轮 prompt 字符串来理解 Octo/Feishu 平台能力。
 - Feishu 出站消息按 OpenClaw target 合同迁移：`studio-channel-messages` 支持 `chat:oc_xxx`、`open_id:ou_xxx`、`user_id:u_xxx`、`dm:ou_xxx/u_xxx`，支持 `format:"markdown"` 走 Feishu post(md)，群消息内 `@[open_id:显示名]` 会转为 Feishu 原生 `<at user_id="...">`。
@@ -63,7 +64,7 @@
 
 - 通过：`npm run typecheck:api`。
 - 通过：`npm run build:api`。
-- 通过：`node --test --test-name-pattern "extracts Feishu action manifests|extracts Octo action manifests|built-in runtime actions stay parser-addressable" tests/system/channel-connectors-service.test.mjs`，覆盖内置 Octo/Feishu runtime action 白名单与 parser 一致性。
+- 通过：`node --test --test-name-pattern "extracts Feishu action manifests|extracts Octo action manifests|built-in runtime actions stay parser-addressable" tests/system/channel-connectors-service.test.mjs`，覆盖 Octo 无 tool `create-group` 紧凑 manifest、Feishu 顶层 `name` 业务字段、以及内置 runtime action/parser 一致性。
 - 通过：`node --test --test-name-pattern "extracts Feishu action manifests|extracts Octo action manifests" tests/system/channel-connectors-service.test.mjs`，覆盖 Feishu/Octo action manifest parser 显式 `params` 保真。
 - 通过：`node --test --test-name-pattern "extracts Octo action manifests|Octo transport smoke covers Bot API groups" tests/system/channel-connectors-service.test.mjs`，覆盖 Octo runtime action 别名、显式 `params.name` 保真和 Bot API transport 主链路。
 - 通过：`node --test --test-name-pattern "extracts Octo action manifests|native Channel Connectors IM commands switch agent, model, and permission per session" tests/system/channel-connectors-service.test.mjs`，覆盖 Octo User API / token / lifecycle action 不进入 `studio-octo-actions` 和默认 runtime action surface。

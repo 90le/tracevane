@@ -1334,6 +1334,7 @@ test("native Channel Connectors extracts Feishu action manifests", () => {
       { skill: "im", action: "channel-info", params: { chat_id: "oc_1" } },
       { skill: "scopes", action: "list" },
       { skill: "bitable", action: "list_records", params: { app_token: "base_a", table_id: "tbl_a" } },
+      { tool: "feishu_bitable", action: "create_app", name: "Top Level Bitable", folder_token: "fld_top" },
       { skill: "bitable", action: "create_app", params: { name: "Project Tracker", folder_token: "fld_a" } },
       { skill: "bitable", action: "create_field", params: { app_token: "base_a", table_id: "tbl_a", name: "Score", field_type: 2 } },
     ]),
@@ -1349,6 +1350,7 @@ test("native Channel Connectors extracts Feishu action manifests", () => {
     { tool: "feishu_channel", action: "channel-info", params: { chat_id: "oc_1" } },
     { tool: "feishu_app_scopes", action: "list", params: {} },
     { tool: "feishu_bitable", action: "list_records", params: { app_token: "base_a", table_id: "tbl_a" } },
+    { tool: "feishu_bitable", action: "create_app", params: { name: "Top Level Bitable", folder_token: "fld_top" } },
     { tool: "feishu_bitable", action: "create_app", params: { name: "Project Tracker", folder_token: "fld_a" } },
     { tool: "feishu_bitable", action: "create_field", params: { app_token: "base_a", table_id: "tbl_a", name: "Score", field_type: 2 } },
   ]);
@@ -1380,6 +1382,7 @@ test("native Channel Connectors extracts Octo action manifests", () => {
       { skill: "octo", action: "set-group-md", params: { group_no: "g1", content: "# Rules" } },
       { skill: "octo", action: "delete-voice-context", params: {} },
       { skill: "octo", action: "createGroup", params: { name: "New", members: ["u1"] } },
+      { action: "create-group", name: "Agent 协作群", members: "u1,u2" },
     ]),
     "```",
   ].join("\n"));
@@ -1398,6 +1401,7 @@ test("native Channel Connectors extracts Octo action manifests", () => {
     { tool: "octo_management", action: "group-md-update", params: { group_no: "g1", content: "# Rules" } },
     { tool: "octo_management", action: "voice-context-delete", params: {} },
     { tool: "octo_management", action: "create-group", params: { name: "New", members: ["u1"] } },
+    { tool: "octo_management", action: "create-group", params: { name: "Agent 协作群", members: "u1,u2" } },
   ]);
 
   const sensitive = extractChannelConnectorOctoActions([

@@ -67,7 +67,16 @@ function normalizeToolName(value: unknown): ChannelConnectorFeishuActionTool | n
 
 function feishuActionFromValue(value: unknown): ChannelConnectorFeishuActionRequest | null {
   const record = recordFrom(value);
-  const tool = normalizeToolName(record.tool || record.skill || record.name || record.feishuTool || record.feishu_tool);
+  const explicitToolValue = record.tool ?? record.skill ?? record.feishuTool ?? record.feishu_tool;
+  let usedNameAsTool = false;
+  let tool = normalizeToolName(explicitToolValue);
+  if (!tool && explicitToolValue === undefined) {
+    const nameTool = normalizeToolName(record.name);
+    if (nameTool) {
+      tool = nameTool;
+      usedNameAsTool = true;
+    }
+  }
   const action = normalizeString(record.action);
   if (!tool || !action) return null;
   const hasExplicitParams = record.params !== undefined || record.arguments !== undefined || record.args !== undefined;
@@ -76,6 +85,7 @@ function feishuActionFromValue(value: unknown): ChannelConnectorFeishuActionRequ
     : record;
   if (hasExplicitParams) return { tool, action, params: paramsSource };
   const { tool: _tool, skill: _skill, name: _name, feishuTool: _feishuTool, feishu_tool: _feishu_tool, action: _action, params: _params, arguments: _arguments, args: _args, ...params } = paramsSource;
+  if (!usedNameAsTool && record.name !== undefined) params.name = record.name;
   return { tool, action, params };
 }
 

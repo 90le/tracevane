@@ -119,9 +119,8 @@ function normalizeAction(value: unknown): ChannelConnectorOctoManagementAction |
     : null;
 }
 
-function normalizeToolName(value: unknown): "octo_management" | null {
+function normalizeExplicitToolName(value: unknown): "octo_management" | null {
   const normalized = normalizeString(value).toLowerCase().replace(/[-\s]+/g, "_");
-  if (!normalized) return "octo_management";
   return normalized === "octo_management" || normalized === "octo" || normalized === "octo_bot_api"
     ? "octo_management"
     : null;
@@ -129,7 +128,10 @@ function normalizeToolName(value: unknown): "octo_management" | null {
 
 function octoActionFromValue(value: unknown): ChannelConnectorOctoActionRequest | null {
   const record = recordFrom(value);
-  const tool = normalizeToolName(record.tool || record.skill || record.name || record.octoTool || record.octo_tool);
+  const explicitToolValue = record.tool ?? record.skill ?? record.octoTool ?? record.octo_tool;
+  const tool = explicitToolValue !== undefined
+    ? normalizeExplicitToolName(explicitToolValue)
+    : "octo_management";
   const action = normalizeAction(record.action);
   if (!tool || !action) return null;
   const hasExplicitParams = record.params !== undefined || record.arguments !== undefined || record.args !== undefined;
@@ -140,7 +142,6 @@ function octoActionFromValue(value: unknown): ChannelConnectorOctoActionRequest 
   const {
     tool: _tool,
     skill: _skill,
-    name: _name,
     octoTool: _octoTool,
     octo_tool: _octo_tool,
     action: _action,
