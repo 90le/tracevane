@@ -2222,6 +2222,17 @@ test("native Channel Connectors executes Feishu channel actions through Studio r
         },
       });
     }
+    if (urlText.endsWith("/open-apis/im/v1/messages/om_clear/reactions")) {
+      return asJson({
+        code: 0,
+        data: {
+          items: [
+            { reaction_id: "reaction_app_a", reaction_type: { emoji_type: "THUMBSUP" }, operator_type: "app", operator_id: { open_id: "ou_bot" } },
+            { reaction_id: "reaction_user_a", reaction_type: { emoji_type: "SMILE" }, operator_type: "user", operator_id: { open_id: "ou_1" } },
+          ],
+        },
+      });
+    }
     if (urlText.endsWith("/open-apis/im/v1/messages/om_1")) {
       return asJson({
         code: 0,
@@ -2245,11 +2256,20 @@ test("native Channel Connectors executes Feishu channel actions through Studio r
     if (method === "POST" && urlText.endsWith("/open-apis/im/v1/pins")) {
       return asJson({ code: 0, data: { pin: { message_id: "om_sent", chat_id: "oc_1" } } });
     }
+    if (method === "GET" && urlText.endsWith("/open-apis/im/v1/pins?chat_id=oc_1")) {
+      return asJson({ code: 0, data: { items: [{ message_id: "om_pinned", chat_id: "oc_1" }], has_more: false } });
+    }
     if (method === "DELETE" && urlText.endsWith("/open-apis/im/v1/pins/om_sent")) {
       return asJson({ code: 0, data: {} });
     }
     if (method === "POST" && urlText.endsWith("/open-apis/im/v1/messages/om_sent/reactions")) {
       return asJson({ code: 0, data: { reaction_id: "reaction_new" } });
+    }
+    if (method === "DELETE" && (
+      urlText.endsWith("/open-apis/im/v1/messages/om_1/reactions/reaction_1")
+      || urlText.endsWith("/open-apis/im/v1/messages/om_clear/reactions/reaction_app_a")
+    )) {
+      return asJson({ code: 0, data: {} });
     }
     return asJson({ code: 404, msg: "not mocked" }, 404);
   };
@@ -2303,6 +2323,15 @@ test("native Channel Connectors executes Feishu channel actions through Studio r
     }, null);
     assert.equal(reactions.ok, true);
     assert.equal(reactions.data.reactions[0].reaction_id, "reaction_1");
+
+    const listPins = await executeFeishuChannelAction(config, {
+      tool: "feishu_channel",
+      action: "list-pins",
+      params: { chat_id: "oc_1" },
+    }, null);
+    assert.equal(listPins.ok, true);
+    assert.equal(listPins.readOnly, true);
+    assert.equal(listPins.data.pins[0].message_id, "om_pinned");
 
     const requestCountBeforeSend = requests.length;
     const sendWithoutApproval = await executeFeishuChannelAction(config, {
@@ -2372,6 +2401,22 @@ test("native Channel Connectors executes Feishu channel actions through Studio r
     }, null, { allowMutation: true });
     assert.equal(react.ok, true);
     assert.equal(react.data.reaction_id, "reaction_new");
+
+    const reactRemove = await executeFeishuChannelAction(config, {
+      tool: "feishu_channel",
+      action: "react",
+      params: { message_id: "om_1", emoji: "THUMBSUP", remove: true },
+    }, null, { allowMutation: true });
+    assert.equal(reactRemove.ok, true);
+    assert.deepEqual(reactRemove.data.removed, ["reaction_1"]);
+
+    const reactClearAll = await executeFeishuChannelAction(config, {
+      tool: "feishu_channel",
+      action: "react",
+      params: { message_id: "om_clear", clearAll: true },
+    }, null, { allowMutation: true });
+    assert.equal(reactClearAll.ok, true);
+    assert.deepEqual(reactClearAll.data.removed, ["reaction_app_a"]);
   } finally {
     globalThis.fetch = originalFetch;
   }

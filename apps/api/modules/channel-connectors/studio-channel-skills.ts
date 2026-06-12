@@ -305,11 +305,16 @@ Mutation actions: \`send\`, \`thread-reply\`, \`edit\`, \`pin\`, \`unpin\`, \`re
   {"tool":"feishu_channel","action":"channel-info","chat_id":"oc_xxx","include_members":true},
   {"tool":"feishu_channel","action":"member-info","chat_id":"oc_xxx","page_size":50},
   {"tool":"feishu_channel","action":"read","message_id":"om_xxx"},
+  {"tool":"feishu_channel","action":"list-pins","chat_id":"oc_xxx"},
   {"tool":"feishu_channel","action":"send","to":"chat:oc_xxx","format":"markdown","text":"**status** ok"},
   {"tool":"feishu_channel","action":"thread-reply","message_id":"om_xxx","text":"thread reply"},
-  {"tool":"feishu_channel","action":"react","message_id":"om_xxx","emoji":"THUMBSUP"}
+  {"tool":"feishu_channel","action":"react","message_id":"om_xxx","emoji":"THUMBSUP"},
+  {"tool":"feishu_channel","action":"react","message_id":"om_xxx","emoji":"THUMBSUP","remove":true},
+  {"tool":"feishu_channel","action":"react","message_id":"om_xxx","clearAll":true}
 ]
 \`\`\`
+
+\`react\` follows the OpenClaw Feishu channel contract: provide \`emoji\` to add a reaction, \`emoji + remove:true\` to remove this bot's matching reaction, or \`clearAll:true\` to remove this bot's reactions from the message.
 
 ## Runtime Safety
 
