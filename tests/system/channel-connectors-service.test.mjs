@@ -1381,6 +1381,23 @@ test("native Channel Connectors extracts Octo action manifests", () => {
     { tool: "octo_management", action: "message-edit", params: { message_id: "msg-1", content: "updated" } },
   ]);
 
+  const sensitive = extractChannelConnectorOctoActions([
+    "不要暴露管理面。",
+    "```studio-octo-actions",
+    JSON.stringify([
+      { tool: "octo_management", action: "register" },
+      { tool: "octo_management", action: "heartbeat" },
+      { tool: "octo_management", action: "upload-credentials", params: { filename: "secret.zip" } },
+      { tool: "octo_management", action: "create-bot", params: { name: "bot" } },
+      { tool: "octo_management", action: "bot-token", params: { bot_id: "27x_bot" } },
+      { tool: "octo_management", action: "user-bots" },
+    ]),
+    "```",
+  ].join("\n"));
+  assert.equal(sensitive.replyText, "不要暴露管理面。");
+  assert.deepEqual(sensitive.actions, []);
+  assert.match(sensitive.errors.join("\n"), /did not include any valid Octo action entries/);
+
   const invalid = extractChannelConnectorOctoActions([
     "bad",
     "```studio-octo-actions",
@@ -6824,8 +6841,11 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(octoSkillContext, /Send Messages/);
   assert.match(octoSkillContext, /Message History Sync/);
   assert.match(octoSkillContext, /Multi-Bot Coordination/);
+  assert.match(octoSkillContext, /Admin-Plane Boundary/);
+  assert.match(octoSkillContext, /User API bot management endpoints/);
   assert.doesNotMatch(octoSkillContext, /openclaw plugins install/);
   assert.doesNotMatch(octoSkillContext, /Step 1: Register/);
+  assert.doesNotMatch(octoSkillContext, /\/v1\/user\/bots\/:bot_id\/token/);
   assert.match(octoSkillContext, /### \/octo-send \[binding\]/);
   assert.match(octoSkillContext, /Use Studio Octo channel transport for DM, group, thread, and mention work/);
   assert.match(octoSkillContext, /studio-channel-messages/);
@@ -6908,7 +6928,18 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(defaultOctoContext, /octo_management.*file-download-url/);
   assert.match(defaultOctoContext, /octo_management.*message-edit/);
   assert.match(defaultOctoContext, /\/octo create-group/);
+  assert.match(defaultOctoContext, /Admin-Plane Boundary/);
   assert.doesNotMatch(defaultOctoContext, /openclaw plugins install/);
+  assert.doesNotMatch(defaultOctoContext, /\/v1\/user\/bots\/:bot_id\/token/);
+  const octoRuntimeActions = defaultOctoPlatformSkills.flatMap((skill) => skill.runtimeActions || []);
+  assert.ok(octoRuntimeActions.some((action) => action.tool === "octo_management" && action.action === "group-members"));
+  const octoRuntimeActionNames = octoRuntimeActions.map((action) => action.action || action.id);
+  assert.equal(octoRuntimeActionNames.includes("register"), false);
+  assert.equal(octoRuntimeActionNames.includes("heartbeat"), false);
+  assert.equal(octoRuntimeActionNames.includes("upload-credentials"), false);
+  assert.equal(octoRuntimeActionNames.includes("create-bot"), false);
+  assert.equal(octoRuntimeActionNames.includes("bot-token"), false);
+  assert.equal(octoRuntimeActionNames.includes("user-bots"), false);
 
   const defaultFeishuBinding = { ...feishuBinding, metadata: {} };
   const defaultFeishuDirs = channelConnectorSkillDirs(codexProject, { binding: defaultFeishuBinding });

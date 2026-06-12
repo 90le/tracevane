@@ -775,6 +775,9 @@ export function buildChannelConnectorSkillContext(
     platform === "octo"
       ? "Studio native Octo commands available to users: /octo groups, /octo info [group_no], /octo members [group_no], /octo search <keyword>, /octo threads [group_no], /octo thread <short_id> [group_no], /octo thread-members <short_id> [group_no], /octo history [limit], /octo group-md [group_no], /octo thread-md <short_id> [group_no], /octo voice-context, /octo create-group <name> --members uid1,uid2, /octo update-group <group_no> --name <name> --notice <notice>, /octo add-members <group_no> uid1,uid2, /octo remove-members <group_no> uid1,uid2, /octo create-thread <group_no> <name>, /octo delete-thread <short_id> [group_no], /octo join-thread <short_id> [group_no], /octo leave-thread <short_id> [group_no], /octo set-group-md [--group group_no] <markdown>, /octo set-thread-md [--group group_no] [--thread short_id] <markdown>, /octo set-voice-context <text>, /octo delete-voice-context."
       : "",
+    platform === "octo"
+      ? "Octo Admin-Plane Boundary: User API bot management endpoints, user API keys, bot token retrieval, registration, heartbeat, typing, read receipts, event ack, upload credentials, and raw retry flows are Studio admin/daemon responsibilities and are not Agent runtime actions."
+      : "",
     "Use these channel/platform skills only when the user asks for platform-specific IM, file, group, document, or bot API work.",
     "For sending local files back to the user, emit a studio-channel-files manifest; do not call cc-connect or external IM bridge CLIs.",
     "For sending IM messages, emit a studio-channel-messages manifest; Studio will deliver it through the active channel.",

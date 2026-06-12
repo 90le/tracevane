@@ -237,9 +237,13 @@ Studio provides Octo management commands to users and Agent-native context:
 
 Mutating Octo commands require Studio channel management permission. For natural-language user requests, prefer the manifest contracts for outgoing messages/files and mention the matching \`/octo\` command only when the user needs to run a management action.
 
+## Admin-Plane Boundary
+
+Octo User API bot management endpoints such as bot listing, bot creation/deletion, user API keys, and bot token retrieval are Studio admin-plane capabilities, not Agent runtime actions. Agents must not request or expose \`uk_*\` user keys, bot tokens, bot-token retrieval endpoints, or raw registration flows. Ask the user to configure bots in Studio when bot lifecycle management is needed.
+
 ## Runtime Safety
 
-Never expose bot tokens or platform credentials. Do not install plugins or tell the user to configure OpenClaw for this Studio channel. Keep group replies concise and use current channel context, member IDs, and thread IDs exactly as Studio provides them. Studio owns connection lifecycle actions including register, heartbeat, typing, read receipt, event ack, upload credentials, and raw delivery retries; Agents should not emit runtime actions for those lifecycle operations.`,
+Never expose bot tokens or platform credentials. Do not install plugins or tell the user to configure OpenClaw for this Studio channel. Keep group replies concise and use current channel context, member IDs, and thread IDs exactly as Studio provides them. Studio owns connection lifecycle actions including register, heartbeat, typing, read receipt, event ack, upload credentials, raw upload credentials, and raw delivery retries; Agents should not emit runtime actions for those lifecycle operations.`,
   },
   {
     platform: "feishu",

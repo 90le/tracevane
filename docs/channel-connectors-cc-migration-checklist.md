@@ -29,6 +29,8 @@ Octo 专属能力若 CC Go 不完整，参考 `~/.openclaw/extensions/octo`；Fe
 
 当前已记录边界：Octo/Feishu platform skills 不能只复制 OpenClaw/CC skill 文档或注入 prompt。Studio 支持标准是：内置 runtime skill 文档 + `runtimeActions` 白名单 + `studio-channel-messages` / `studio-channel-files` / `studio-octo-actions` / `studio-feishu-actions` 执行器 + service/daemon 回归测试。外部插件 skill 目录只作为迁移参考，未接执行器的能力必须明确失败或 fallback，不能宣称已支持；连接层生命周期动作（register/heartbeat/typing/read-receipt/event-ack/upload credentials/raw retry）归 daemon 自动处理，不暴露给 Agent 随意调用。
 
+当前已记录边界：Octo User API bot management（`/v1/user/bots`、创建/删除 bot、user API key、bot token retrieval）属于 Studio admin-plane，不进入 Agent runtime action。Agent 只能使用 Studio 白名单内的 Bot API runtime actions；bot 生命周期配置后续应在 Studio 管理页实现。
+
 ## 任务清单
 
 | 优先级 | 任务 | CC 对照 | 状态 | 验收 |
