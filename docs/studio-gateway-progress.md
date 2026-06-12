@@ -29,13 +29,19 @@
 - 上一轮代码完成仍保留为当前事实：
   - OpenCode SQLite/DB fallback 已共用 realtime JSONL parser，工具调用/工具结果和最终回复分离。
   - active `studio-channel-skill` 层已从 prompt/env/UI/daemon endpoint 删除。
+- 本轮代码补强：
+  - 新增 Claude Code / OpenCode persistent session driver native compact 回归。
+  - Claude Code 验证同一个 stream-json 常驻进程接收普通 turn 和 `/compact`，不回退 one-shot。
+  - OpenCode 验证 `/compact` 通过 `run --session <id>` 续接 live session，不回退 one-shot。
 
 ## 最近验证
 
 - 上一轮代码验证通过：`npm run typecheck:api`
 - 上一轮代码验证通过：`npm run build:api`
 - 上一轮代码验证通过：`npm run typecheck:web`
-- 上一轮代码验证通过：`node --test tests/system/channel-connectors-service.test.mjs`，90/90 全部通过。
+- 本轮验证通过：`npm run build:api`
+- 本轮验证通过：`node --test --test-name-pattern "persistent Claude and OpenCode drivers run native compact" tests/system/channel-connectors-service.test.mjs`
+- 本轮验证通过：`node --test tests/system/channel-connectors-service.test.mjs`，91/91 全部通过。
 - 本轮文档清理验证以 `git diff --check` 和 stale term 检查为准。
 
 ## 已知边界
@@ -43,12 +49,12 @@
 - Feishu transport 内仍保留一套低层 legacy action helper 和对应直接 transport 回归；它已不再由 Agent prompt、runner、daemon endpoint 或 UI 暴露。后续如继续瘦身，应单独删除这段 Doc/Drive/Wiki/Bitable 直接 API helper，避免和私聊文件/图片 transport 误删混在一起。
 - Octo/Feishu 群聊和管理能力已有实现继续 best-effort 保留，但新需求默认不继续扩展。
 - 同 session FIFO queue 当前是 daemon 内存队列；Channel daemon 重启会丢失未开始的排队消息，durable queue 尚未实现。
-- Claude Code / OpenCode native compact live session driver 已有方向，但仍需继续按 CC Go `AgentSession.Send(CompressCommand())` 合同补齐和验收。
+- Claude Code / OpenCode native compact persistent driver 已有回归覆盖；仍需 daemon/live IM smoke 证明 Feishu/Octo 入口不回退 Gateway。
 - 工具流仍需继续打磨：Codex、Claude Code、OpenCode 都必须稳定提取工具名、输入、stdout/stderr、exit/status、真实输出、过程回复和最终回复分类；OpenCode realtime JSONL 与 SQLite fallback 已对齐，后续重点继续看 Claude/Codex live 差异。
 
 ## 下一步
 
 1. 继续稳定 Codex、Claude Code、OpenCode 工具流/回复解析，重点修复空工具结果、工具结果被吞、过程回复/最终回复分类错误。
-2. 迁移 Claude Code / OpenCode native compact live session driver，按 CC Go 原生 session compact contract 做，不做 one-shot 伪透传。
+2. 做 Claude Code / OpenCode native compact 的 daemon/live IM smoke，证明 Feishu/Octo `/compact` 走 persistent driver 而不是 one-shot 或 Gateway fallback。
 3. 做 Feishu/Octo 私聊文件、图片、Markdown、权限审批和 `/compact` live smoke 复验。
 4. 评估 durable queue，避免 daemon 重启丢失未开始消息。

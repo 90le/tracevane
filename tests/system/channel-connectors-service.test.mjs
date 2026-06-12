@@ -23,6 +23,12 @@ import {
   runChannelConnectorAgentTurn,
 } from "../../dist/apps/api/modules/channel-connectors/agent-runner.js";
 import {
+  ChannelConnectorAgentSessionDriverPool,
+} from "../../dist/apps/api/modules/channel-connectors/agent-session-driver.js";
+import {
+  createNativeCliSessionDriverFactory,
+} from "../../dist/apps/api/modules/channel-connectors/cli-agent-session-driver.js";
+import {
   clearChannelConnectorAgentSessionsForConversation,
   getChannelConnectorAgentSession,
   listChannelConnectorAgentSessionsForConversation,
@@ -11321,6 +11327,208 @@ test("native Channel Connectors OpenCode DB fallback keeps tool results and fina
     assert.match(toolResult.text || "", /output:\nalpha\nbeta/);
   } finally {
     process.env.PATH = oldPath;
+  }
+});
+
+test("native Channel Connectors persistent Claude and OpenCode drivers run native compact in live sessions", async () => {
+  const root = makeTempRoot();
+  const workDir = path.join(root, "work");
+  const agentRuntimeDir = path.join(root, "agent-runtime");
+  const fakeBin = path.join(root, "fake-bin");
+  const capturePath = path.join(root, "native-compact-capture.jsonl");
+  fs.mkdirSync(fakeBin, { recursive: true });
+  fs.mkdirSync(workDir, { recursive: true });
+
+  fs.writeFileSync(path.join(fakeBin, "claude"), [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    "const readline = require('node:readline');",
+    "const rl = readline.createInterface({ input: process.stdin });",
+    "function emit(value) { process.stdout.write(JSON.stringify(value) + '\\n'); }",
+    "function record(value) { fs.appendFileSync(process.env.STUDIO_NATIVE_COMPACT_CAPTURE, JSON.stringify({ cli: 'claude', pid: process.pid, ...value }) + '\\n'); }",
+    "rl.on('line', (line) => {",
+    "  if (!line.trim()) return;",
+    "  const message = JSON.parse(line);",
+    "  const content = message.message && message.message.content;",
+    "  const text = typeof content === 'string' ? content : JSON.stringify(content);",
+    "  record({ argv: process.argv.slice(2), text });",
+    "  emit({ type: 'system', session_id: 'claude-live-session' });",
+    "  if (text.includes('/compact')) {",
+    "    emit({ type: 'result', session_id: 'claude-live-session' });",
+    "    return;",
+    "  }",
+    "  emit({ type: 'assistant', message: { content: [{ type: 'text', text: 'Claude normal reply.' }] } });",
+    "  emit({ type: 'result', result: 'Claude normal reply.', session_id: 'claude-live-session' });",
+    "});",
+    "setInterval(() => {}, 1000);",
+    "",
+  ].join("\n"), { mode: 0o755 });
+
+  fs.writeFileSync(path.join(fakeBin, "opencode"), [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    "const path = require('node:path');",
+    "const args = process.argv.slice(2);",
+    "const dataHome = process.env.XDG_DATA_HOME || '';",
+    "if (dataHome) {",
+    "  fs.mkdirSync(path.join(dataHome, 'opencode'), { recursive: true });",
+    "  fs.writeFileSync(path.join(dataHome, 'opencode', 'opencode.db'), '');",
+    "}",
+    "const prompt = args.includes('--') ? args.slice(args.indexOf('--') + 1).join(' ') : '';",
+    "fs.appendFileSync(process.env.STUDIO_NATIVE_COMPACT_CAPTURE, JSON.stringify({ cli: 'opencode', argv: args, prompt }) + '\\n');",
+    "function emit(value) { process.stdout.write(JSON.stringify(value) + '\\n'); }",
+    "emit({ type: 'step_start', part: { type: 'step-start', sessionID: 'opencode-live-session' } });",
+    "if (!prompt.includes('/compact')) {",
+    "  emit({ type: 'text', messageID: 'opencode-normal', part: { type: 'text', messageID: 'opencode-normal', text: 'OpenCode normal reply.' } });",
+    "}",
+    "emit({ type: 'step_finish', part: { type: 'step-finish', reason: 'stop' } });",
+    "",
+  ].join("\n"), { mode: 0o755 });
+
+  fs.writeFileSync(path.join(fakeBin, "sqlite3"), [
+    "#!/usr/bin/env node",
+    "const query = process.argv[process.argv.length - 1] || '';",
+    "if (query.includes('select id from session')) console.log(JSON.stringify([{ id: 'opencode-live-session' }]));",
+    "else console.log(JSON.stringify([]));",
+    "",
+  ].join("\n"), { mode: 0o755 });
+
+  const oldPath = process.env.PATH || "";
+  const oldCapture = process.env.STUDIO_NATIVE_COMPACT_CAPTURE;
+  process.env.PATH = `${fakeBin}:${oldPath}`;
+  process.env.STUDIO_NATIVE_COMPACT_CAPTURE = capturePath;
+  try {
+    const pool = new ChannelConnectorAgentSessionDriverPool({
+      factory: createNativeCliSessionDriverFactory({
+        codexFactory: {
+          create() {
+            throw new Error("Codex factory should not be used by this test.");
+          },
+        },
+        requestTimeoutMs: 1000,
+        turnTimeoutMs: 1000,
+      }),
+      idleTimeoutMs: 60_000,
+      maxSessions: 4,
+      fallbackOnCrash: false,
+    });
+    let claudeProject = null;
+    let opencodeProject = null;
+    const binding = {
+      id: "octo-native-compact",
+      platform: "octo",
+      accountId: "octo-account",
+      botId: "robot-1",
+      displayName: "Octo Native Compact",
+      enabled: true,
+      allowlist: [],
+      adminUsers: [],
+      metadata: { agentSessionDriver: "persistent" },
+    };
+    const keyFor = (project) => ({
+      bindingId: binding.id,
+      projectId: project.id,
+      sessionKey: "dmwork:dm:user-1",
+      agent: project.agent,
+      model: project.model,
+      workDir: project.workDir,
+      permissionMode: project.permissionMode,
+    });
+    try {
+      const message = (messageId, content) => ({
+        messageId,
+        fromUid: "user-1",
+        channelId: "user-1",
+        channelType: 1,
+        timestamp: Date.now(),
+        payload: { type: 1, content },
+      });
+      const baseProject = {
+        id: "agent-native-compact",
+        name: "Agent Native Compact",
+        agent: "claude-code",
+        model: "gpt-5",
+        workDir,
+        permissionMode: "yolo",
+        gatewayEndpoint: "http://127.0.0.1:18796/v1",
+        gatewayKeyRef: "studio-gateway-client-key",
+        appProfileRef: "agent",
+        platformBindings: [binding],
+      };
+      const runDriverTurn = (project, messageId, content, session = null, nativeCommand = null) => pool.runTurn({
+        mode: "persistent",
+        key: keyFor(project),
+        messageId,
+        agentTurnRequest: {
+          project,
+          binding: { ...binding, agent: project.agent },
+          message: message(messageId, content),
+          sessionKey: "dmwork:dm:user-1",
+          gatewayEndpoint: project.gatewayEndpoint,
+          gatewayClientKey: "sk-local",
+          agentRuntimeDir,
+          session,
+          nativeCommand,
+        },
+        runOneShot: async () => {
+          throw new Error("persistent native compact must not fall back to one-shot in this regression");
+        },
+      });
+
+      claudeProject = { ...baseProject, agent: "claude-code", appProfileRef: "claude-code" };
+      const claudeNormal = await runDriverTurn(claudeProject, "m-claude-normal", "hello claude");
+      assert.equal(claudeNormal.ok, true);
+      assert.equal(claudeNormal.replyText, "Claude normal reply.");
+      assert.equal(claudeNormal.session.agentNativeSessionId, "claude-live-session");
+      const claudeCompact = await runDriverTurn(
+        claudeProject,
+        "m-claude-compact",
+        "/compact",
+        { agentNativeSessionId: claudeNormal.session.agentNativeSessionId },
+        "/compact",
+      );
+      assert.equal(claudeCompact.ok, true);
+      assert.equal(claudeCompact.replyText, "Claude Code compact 已完成。");
+
+      opencodeProject = { ...baseProject, agent: "opencode", appProfileRef: "opencode" };
+      const opencodeNormal = await runDriverTurn(opencodeProject, "m-opencode-normal", "hello opencode");
+      assert.equal(opencodeNormal.ok, true);
+      assert.equal(opencodeNormal.replyText, "OpenCode normal reply.");
+      assert.equal(opencodeNormal.session.agentNativeSessionId, "opencode-live-session");
+      const opencodeCompact = await runDriverTurn(
+        opencodeProject,
+        "m-opencode-compact",
+        "/compact",
+        { agentNativeSessionId: opencodeNormal.session.agentNativeSessionId },
+        "/compact",
+      );
+      assert.equal(opencodeCompact.ok, true);
+      assert.equal(opencodeCompact.replyText, "OpenCode compact 已完成。");
+
+      const capture = fs.readFileSync(capturePath, "utf8")
+        .trim()
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .map((line) => JSON.parse(line));
+      const claudeNormalCapture = capture.find((entry) => entry.cli === "claude" && entry.text.includes("hello claude"));
+      const claudeCompactCapture = capture.find((entry) => entry.cli === "claude" && entry.text.includes("/compact"));
+      assert.ok(claudeNormalCapture);
+      assert.ok(claudeCompactCapture);
+      assert.equal(claudeCompactCapture.pid, claudeNormalCapture.pid);
+      assert.ok(claudeCompactCapture.argv.includes("--input-format"));
+      assert.ok(claudeCompactCapture.argv.includes("stream-json"));
+      const opencodeCompactCapture = capture.find((entry) => entry.cli === "opencode" && entry.prompt.includes("/compact"));
+      assert.ok(opencodeCompactCapture);
+      assert.ok(opencodeCompactCapture.argv.includes("--session"));
+      assert.equal(opencodeCompactCapture.argv[opencodeCompactCapture.argv.indexOf("--session") + 1], "opencode-live-session");
+    } finally {
+      if (claudeProject) await pool.killSession(keyFor(claudeProject), "test-cleanup");
+      if (opencodeProject) await pool.killSession(keyFor(opencodeProject), "test-cleanup");
+    }
+  } finally {
+    process.env.PATH = oldPath;
+    if (oldCapture === undefined) delete process.env.STUDIO_NATIVE_COMPACT_CAPTURE;
+    else process.env.STUDIO_NATIVE_COMPACT_CAPTURE = oldCapture;
   }
 });
 

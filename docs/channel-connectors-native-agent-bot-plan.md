@@ -106,6 +106,7 @@ Octo(dmwork)：
 - Codex app-server 已覆盖真实 Gateway `turn/start`、`/compact`、`turn/interrupt`、approval driver 合同和内部 prompt echo 过滤。
 - Claude Code stream-json 已覆盖普通 turn、Bash tool-use、文件 manifest、视觉附件、compact、stop/cancel 和 tool_result 输出渲染。
 - OpenCode `run --session` 已覆盖普通 turn、文件 manifest、视觉附件、compact、stop/cancel；SQLite fallback 已统一复用 live parser，避免丢工具结果或把过程回复拼进最终回复。
+- Claude Code / OpenCode persistent native compact 已新增真实子进程 driver 回归：Claude 用同一个 stream-json 常驻进程接收 `/compact`，OpenCode 用 `run --session <id>` 续接 `/compact`，均不回退 one-shot。
 
 ## 6. 当前完成
 
@@ -121,7 +122,7 @@ Octo(dmwork)：
 ## 7. 下一步
 
 1. 稳定 Codex、Claude Code、OpenCode 的工具流/回复解析，尤其空工具结果、过程回复和最终回复重复问题。
-2. 完成 Claude Code / OpenCode native compact live session driver 迁移与真实 IM smoke。
+2. 做 Claude Code / OpenCode native compact 的 daemon/live IM smoke。
 3. 补 durable queue / 可恢复队列。
 4. 复验 Feishu/Octo 私聊文件、图片、工具流和审批路径。
 5. 后续路线图：微信/企微、钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE；更多 Agent 如 Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP。

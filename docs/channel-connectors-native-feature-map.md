@@ -43,6 +43,7 @@
 - `studio-channel-messages` 已覆盖私聊出站消息声明，Feishu 支持 open_id/user_id/dm markdown，Octo 支持 human DM 和 best-effort group/thread。
 - 图片附件可 staging；非视觉模型会被提示不能做视觉推断，存在视觉模型时可按模型能力切换。
 - 同 session FIFO queue、`/stop`、`/new`、`/reset`、`/compact`、`/thinking`、`/process`、`/tools` 已接入。
+- Claude Code / OpenCode persistent native compact 已有真实子进程 driver 回归：Claude 复用同一个 stream-json 常驻进程，OpenCode 通过 `run --session` 续接。
 - Feishu 卡片进度和 Octo 文本/Markdown 进度已有基础渲染。
 - 已删除 active platform action layer：runner/env/prompt/daemon endpoint/UI chips 不再暴露 `studio-channel-skill` 或 runtime action。
 - OpenCode realtime JSONL 与 SQLite fallback 已共用进度 parser；DB fallback 会保留本轮工具调用/工具结果，并只把最新 assistant message 作为最终回复。
@@ -56,6 +57,6 @@
 ## 下一步
 
 1. 工具流和回复解析：继续复核 Claude/Codex live 差异，修复空工具结果、工具输出丢失、过程回复/最终回复分类错误。
-2. Claude Code / OpenCode native compact live session driver。
+2. Claude Code / OpenCode native compact daemon/live IM smoke。
 3. Feishu/Octo 私聊 live smoke：文本、Markdown、文件、图片、权限审批、compact。
 4. durable queue 设计与实现。
