@@ -1367,6 +1367,12 @@ test("native Channel Connectors extracts Octo action manifests", () => {
       { skill: "octo", action: "history", params: { channel_id: "g1", channel_type: 2, limit: 20 } },
       { skill: "octo", action: "download-url", params: { file_path: "chat/hello.txt", file_name: "hello.txt" } },
       { skill: "octo", action: "edit-message", params: { message_id: "msg-1", content: "updated" } },
+      { skill: "octo", action: "space-members", params: { keyword: "Alice" } },
+      { skill: "octo", action: "sync-messages", params: { channel_id: "g1", channel_type: 2 } },
+      { skill: "octo", action: "add-group-members", params: { group_no: "g1", members: ["u1"] } },
+      { skill: "octo", action: "set-group-md", params: { group_no: "g1", content: "# Rules" } },
+      { skill: "octo", action: "delete-voice-context", params: {} },
+      { skill: "octo", action: "createGroup", params: { name: "New", members: ["u1"] } },
     ]),
     "```",
   ].join("\n"));
@@ -1379,6 +1385,12 @@ test("native Channel Connectors extracts Octo action manifests", () => {
     { tool: "octo_management", action: "history", params: { channel_id: "g1", channel_type: 2, limit: 20 } },
     { tool: "octo_management", action: "file-download-url", params: { file_path: "chat/hello.txt", file_name: "hello.txt" } },
     { tool: "octo_management", action: "message-edit", params: { message_id: "msg-1", content: "updated" } },
+    { tool: "octo_management", action: "search-members", params: { keyword: "Alice" } },
+    { tool: "octo_management", action: "history", params: { channel_id: "g1", channel_type: 2 } },
+    { tool: "octo_management", action: "add-members", params: { group_no: "g1", members: ["u1"] } },
+    { tool: "octo_management", action: "group-md-update", params: { group_no: "g1", content: "# Rules" } },
+    { tool: "octo_management", action: "voice-context-delete", params: {} },
+    { tool: "octo_management", action: "create-group", params: { name: "New", members: ["u1"] } },
   ]);
 
   const sensitive = extractChannelConnectorOctoActions([

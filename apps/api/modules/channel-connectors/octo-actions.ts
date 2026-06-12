@@ -40,23 +40,49 @@ function normalizeAction(value: unknown): ChannelConnectorOctoManagementAction |
     groups: "list-groups",
     "list-group": "list-groups",
     info: "group-info",
+    group: "group-info",
+    "get-group": "group-info",
+    "group-information": "group-info",
     members: "group-members",
     "list-members": "group-members",
+    "list-group-members": "group-members",
+    "space-members": "search-members",
+    "search-space": "search-members",
+    "search-space-members": "search-members",
+    "list-space-members": "search-members",
+    search: "search-members",
+    creategroup: "create-group",
+    "create-group-chat": "create-group",
+    "update-group-info": "update-group",
+    "add-group-members": "add-members",
+    "remove-group-members": "remove-members",
     "group-md": "group-md-read",
+    "read-group-md": "group-md-read",
     "set-group-md": "group-md-update",
+    "update-group-md": "group-md-update",
     "thread-md": "thread-md-read",
+    "read-thread-md": "thread-md-read",
     "set-thread-md": "thread-md-update",
+    "update-thread-md": "thread-md-update",
     threads: "list-threads",
     thread: "thread-info",
     "get-thread": "thread-info",
     "list-thread-members": "thread-members",
     "voice-context": "voice-context-read",
+    "read-voice-context": "voice-context-read",
     "set-voice-context": "voice-context-update",
+    "update-voice-context": "voice-context-update",
     "delete-voice": "voice-context-delete",
+    "delete-voice-context": "voice-context-delete",
+    "sync-messages": "history",
+    "message-history": "history",
+    "messages-sync": "history",
+    "sync-history": "history",
     download: "file-download-url",
     "download-url": "file-download-url",
     "file-download": "file-download-url",
     "file-url": "file-download-url",
+    "get-file-download-url": "file-download-url",
     edit: "message-edit",
     "edit-message": "message-edit",
   };
@@ -106,9 +132,11 @@ function octoActionFromValue(value: unknown): ChannelConnectorOctoActionRequest 
   const tool = normalizeToolName(record.tool || record.skill || record.name || record.octoTool || record.octo_tool);
   const action = normalizeAction(record.action);
   if (!tool || !action) return null;
-  const paramsSource = record.params !== undefined || record.arguments !== undefined || record.args !== undefined
+  const hasExplicitParams = record.params !== undefined || record.arguments !== undefined || record.args !== undefined;
+  const paramsSource = hasExplicitParams
     ? recordFrom(record.params ?? record.arguments ?? record.args)
     : record;
+  if (hasExplicitParams) return { tool, action, params: paramsSource };
   const {
     tool: _tool,
     skill: _skill,
