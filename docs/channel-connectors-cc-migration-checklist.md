@@ -37,6 +37,7 @@
 | P0 | CC-first 门禁 | 已完成 | `AGENTS.md` 和本文件记录约束 |
 | P0 | Studio Gateway / Channel daemon supervisor | 已完成 | Studio/OpenClaw 崩溃后 daemon direct endpoint 可继续服务 |
 | P0 | 删除 active platform action layer | 已完成 | Agent prompt/env/UI/daemon endpoint 不再暴露 `studio-channel-skill` 或 platform action；旧 action block 不触发审批/API |
+| P0 | 清理 stale native platform skills | 已完成 | Codex 隔离 `codex-home/skills` 会删除历史 Feishu/Octo platform action skill，保留普通自定义 skill |
 | P1 | Codex runner | 进行中：结构化 stdout/stderr、混合 content 工具结果、resume 图片参数顺序、app-server 视觉 args 证据、Gateway Responses->Chat 图片映射、图片 native smoke 已补；视频按 staged file 交给 Agent | `exec/resume`、thread、cwd、permission、tool stream、file manifest、stop/new/reset/compact 按 CC 验收；app-server 仍是 beta |
 | P1 | Claude Code runner | 进行中：native compact、结构化/混合 tool_result、过程/最终回复、图片 native smoke 已补；视频按 staged file 交给 Agent | stream-json、permission prompt、session resume、tool event、文件/图片/视频输入、native compact/stop live driver |
 | P1 | OpenCode runner | 进行中：parser 已对齐；结构化/混合 stdout/stderr/exitCode、native compact、图片 native smoke 已补；视频按 staged file 交给 Agent | JSON/SQLite fallback、session、tool stream、文件/图片/视频输入、native compact/stop live driver |
@@ -114,6 +115,7 @@
 - `node --test tests/system/channel-connectors-persistent-live-script.test.mjs`，1/1 通过。
 - `node --test --test-name-pattern "stops Codex app-server persistent turns|Agent process cancelled|native compact" tests/system/channel-connectors-service.test.mjs`，2/2 通过，覆盖 Codex app-server persistent `/stop`。
 - `node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --platforms octo --require-stop-command --min-runs 1 --limit-runs 5 --json` 通过，识别 Octo `/stop` 命令与同 session cancelled run 的真实 IM 日志证据。
+- `node --test --test-name-pattern "native Channel Connectors agent runner builds gateway-backed Codex turns" tests/system/channel-connectors-service.test.mjs` 通过，覆盖持久 `codex-home/skills` 旧平台 action skill 清理。
 - Feishu 文件消息 `om_x100b6df679c474a4c23ef686549039b` live 通过：`messageType=file`、`attachmentCount=1`、staging 文件存在、history 有附件摘要、Agent 成功读取并回复。
 
 ## 下一步

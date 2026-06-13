@@ -784,6 +784,24 @@ function tomlString(value: string): string {
   return JSON.stringify(value);
 }
 
+const LEGACY_CHANNEL_CONNECTOR_NATIVE_SKILL_NAMES = new Set([
+  "octo_bot_api",
+  "feishu_app_scopes",
+  "feishu_bitable",
+  "feishu_doc",
+  "feishu_drive",
+  "feishu_messaging",
+  "feishu_perm",
+  "feishu_wiki",
+]);
+const LEGACY_CHANNEL_CONNECTOR_NATIVE_SKILL_MARKERS = [
+  "Studio Channel Connector helper projection",
+  "studioChannelConnector",
+  "studio-feishu-actions",
+  "studio-octo-actions",
+  "studio-channel-skill",
+];
+
 function createCodexGatewayHome(input: {
   gatewayEndpoint: string;
   gatewayClientKey: string | null;
@@ -800,6 +818,7 @@ function createCodexGatewayHome(input: {
   } catch {
     // Best-effort hardening; config.toml itself is still written 0600.
   }
+  cleanupLegacyChannelConnectorNativeSkills(codexHome);
   const config = [
     "model_provider = \"studio_gateway\"",
     input.model ? `model = ${tomlString(input.model)}` : "",
@@ -820,6 +839,36 @@ function createCodexGatewayHome(input: {
   const configPath = path.join(codexHome, "config.toml");
   fs.writeFileSync(configPath, config, { encoding: "utf8", mode: 0o600 });
   return { codexHome, cleanupRoot: runtimeDir ? "" : cleanupRoot };
+}
+
+function cleanupLegacyChannelConnectorNativeSkills(codexHome: string): void {
+  const skillsDir = path.join(codexHome, "skills");
+  if (!fs.existsSync(skillsDir)) return;
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(skillsDir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (!entry.isDirectory() || entry.name.startsWith(".")) continue;
+    const skillDir = path.join(skillsDir, entry.name);
+    const skillPath = path.join(skillDir, "SKILL.md");
+    const shouldRemove = LEGACY_CHANNEL_CONNECTOR_NATIVE_SKILL_NAMES.has(entry.name)
+      || skillFileHasAnyMarker(skillPath, LEGACY_CHANNEL_CONNECTOR_NATIVE_SKILL_MARKERS);
+    if (!shouldRemove) continue;
+    fs.rmSync(skillDir, { recursive: true, force: true });
+  }
+}
+
+function skillFileHasAnyMarker(skillPath: string, markers: string[]): boolean {
+  let text = "";
+  try {
+    text = fs.readFileSync(skillPath, "utf8");
+  } catch {
+    return false;
+  }
+  return markers.some((marker) => text.includes(marker));
 }
 
 function createClaudeConfigHome(input: {

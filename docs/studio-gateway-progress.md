@@ -30,6 +30,7 @@
 - 上一轮代码完成仍保留为当前事实：
   - OpenCode SQLite/DB fallback 已共用 realtime JSONL parser，工具调用/工具结果和最终回复分离。
   - active `studio-channel-skill` 层已从 prompt/env/UI/daemon endpoint 删除。
+  - Codex 隔离 `codex-home/skills` 会清理历史生成的 Feishu/Octo platform action skill；当前运行态旧目录已删除，避免 stale YAML 继续导致 Agent 加载失败。
 - 本轮代码补强：
   - 新增 Claude Code / OpenCode persistent session driver native compact 回归。
   - Claude Code 验证同一个 stream-json 常驻进程接收普通 turn 和 `/compact`，不回退 one-shot。
@@ -143,6 +144,7 @@
 - 本轮验证通过：`node --test tests/system/channel-connectors-persistent-live-script.test.mjs`，1/1 通过。
 - 本轮验证通过：`node --test --test-name-pattern "stops Codex app-server persistent turns|Agent process cancelled|native compact" tests/system/channel-connectors-service.test.mjs`，2/2 通过。
 - 本轮 live 验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --platforms octo --require-stop-command --min-runs 1 --limit-runs 5 --json`，识别 Octo `/stop` 命令 `2065665014106066944` 和 cancelled run `2065664678767267840`。
+- 本轮验证通过：`node --test --test-name-pattern "native Channel Connectors agent runner builds gateway-backed Codex turns" tests/system/channel-connectors-service.test.mjs`，覆盖持久 `codex-home/skills` 旧平台 action skill 清理。
 - 本轮文档清理验证以 `git diff --check` 和 stale term 检查为准。
 
 ## 已知边界

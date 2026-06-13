@@ -4480,6 +4480,33 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.doesNotMatch(processRequest.stdin, /studio-feishu-actions/);
   for (const cleanupPath of processRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
+  const persistentRuntimeDir = path.join(root, "persistent-codex-runtime");
+  const persistentSkillsDir = path.join(persistentRuntimeDir, "codex-home", "skills");
+  const staleNamedSkillDir = path.join(persistentSkillsDir, "feishu_app_scopes");
+  const staleMarkerSkillDir = path.join(persistentSkillsDir, "legacy_marker");
+  const customSkillDir = path.join(persistentSkillsDir, "custom_keep");
+  fs.mkdirSync(staleNamedSkillDir, { recursive: true });
+  fs.mkdirSync(staleMarkerSkillDir, { recursive: true });
+  fs.mkdirSync(customSkillDir, { recursive: true });
+  fs.writeFileSync(path.join(staleNamedSkillDir, "SKILL.md"), "---\nname: stale\n---\nstudio-feishu-actions\n", "utf8");
+  fs.writeFileSync(path.join(staleMarkerSkillDir, "SKILL.md"), "---\nname: marker\n---\nStudio Channel Connector helper projection\n", "utf8");
+  fs.writeFileSync(path.join(customSkillDir, "SKILL.md"), "---\nname: custom\n---\n# Custom\n", "utf8");
+  const persistentRequest = buildChannelConnectorAgentProcessRequest({
+    project,
+    binding,
+    message,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    agentRuntimeDir: persistentRuntimeDir,
+  });
+  assert.ok(persistentRequest);
+  assert.equal(persistentRequest.env.CODEX_HOME, path.join(persistentRuntimeDir, "codex-home"));
+  assert.equal(fs.existsSync(staleNamedSkillDir), false);
+  assert.equal(fs.existsSync(staleMarkerSkillDir), false);
+  assert.equal(fs.existsSync(customSkillDir), true);
+  for (const cleanupPath of persistentRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
   const codexReasoningRequest = buildChannelConnectorAgentProcessRequest({
     project: { ...project, reasoningEffort: "high" },
     binding,
