@@ -6552,28 +6552,33 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(help.handled, true);
   assert.equal(help.ok, true);
   assert.match(help.replyText, /^Studio Channel/);
-  assert.match(help.replyText, /普通消息会交给当前 Agent/);
-  assert.match(help.replyText, /`\/status`/);
-  assert.match(help.replyText, /`\/whoami`/);
-  assert.match(help.replyText, /`\/version`/);
-  assert.match(help.replyText, /\/mode/);
-  assert.match(help.replyText, /\/reasoning/);
-  assert.match(help.replyText, /\/thinking/);
-  assert.match(help.replyText, /\/process/);
-  assert.match(help.replyText, /\/tools/);
-  assert.match(help.replyText, /\/quiet/);
-  assert.match(help.replyText, /`\/help session`/);
-  assert.match(help.replyText, /`\/help buffer`/);
-  assert.match(help.replyText, /`\/help commands`/);
-  assert.match(help.replyText, /`\/help native`/);
+  assert.match(help.replyText, /Agent 配置面板/);
+  assert.match(help.replyText, /`\/help agent`/);
+  assert.match(help.replyText, /`\/help model`/);
+  assert.match(help.replyText, /`\/help mode`/);
+  assert.match(help.replyText, /`\/help display`/);
+  assert.match(help.replyText, /`\/help vision`/);
+  assert.match(help.replyText, /`\/help workdir`/);
   assert.match(help.replyText, /`\/compact`/);
   assert.match(help.replyText, /`\/stop`/);
-  assert.match(help.replyText, /`\/native \/help`/);
-  assert.match(help.replyText, /`\/skills`/);
-  assert.match(help.replyText, /\*\*常用命令\*\*/);
-  assert.match(help.replyText, /\*\*分组帮助\*\*/);
-  assert.match(help.replyText, /- `\/help session` - 会话、history、usage、权限批准/);
+  assert.match(help.replyText, /`\/help more`/);
+  assert.match(help.replyText, /\*\*配置\*\*/);
+  assert.match(help.replyText, /\*\*会话动作\*\*/);
+  assert.doesNotMatch(help.replyText, /`\/whoami`/);
+  assert.doesNotMatch(help.replyText, /`\/version`/);
+  assert.doesNotMatch(help.replyText, /`\/native \/help`/);
+  assert.doesNotMatch(help.replyText, /`\/skills`/);
   assert.doesNotMatch(help.replyText, /\| 命令 \| 作用 \|/);
+  const moreHelp = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/help more"),
+  });
+  assert.equal(moreHelp.handled, true);
+  assert.equal(moreHelp.ok, true);
+  assert.match(moreHelp.replyText, /Studio Channel \/ more/);
+  assert.match(moreHelp.replyText, /`\/help session`/);
+  assert.match(moreHelp.replyText, /`\/help commands`/);
+  assert.match(moreHelp.replyText, /`\/help native`/);
   const sessionHelp = await handleChannelConnectorCommand({
     ...baseContext,
     message: message("/help session"),
@@ -8714,26 +8719,31 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.equal(surface.current.visionModel, null);
   assert.equal(surface.current.thinkingSupport.parserLabel, "ready");
   assert.equal(surface.current.thinkingSupport.liveStatus, "model-dependent");
-  assert.match(surface.textFallback, /skills 命令/);
   assert.match(surface.textFallback, /^Studio Channel/);
-  assert.match(surface.textFallback, /\*\*当前会话\*\*/);
-  assert.match(surface.textFallback, /- Agent: codex-main \(codex\)/);
-  assert.match(surface.textFallback, /- Reasoning: default/);
-  assert.match(surface.textFallback, /- Thinking stream: parser=ready \/ live=model-dependent/);
-  assert.match(surface.textFallback, /快捷操作/);
-  assert.match(surface.textFallback, /- `\/status` - 刷新状态:/);
-  assert.match(surface.textFallback, /\*\*配置入口\*\*/);
-  assert.match(surface.textFallback, /- 配置入口: 调当前对话的 Agent、模型、权限、显示、视觉和工作目录。/);
-  assert.match(surface.textFallback, /  - `\/help model` - 模型:/);
-  assert.match(surface.textFallback, /- 更多工具: 查看续接、历史、缓存、自定义命令和 Agent 原生命令。/);
-  assert.match(surface.textFallback, /\*\*文本命令速查\*\*/);
-  assert.match(surface.textFallback, /`\/status`/);
-  assert.match(surface.textFallback, /`\/vision`/);
-  assert.match(surface.textFallback, /`\/native \/help`/);
-  assert.match(surface.textFallback, /`\/native \/compact`/);
+  assert.match(surface.textFallback, /\*\*当前配置\*\*/);
+  assert.match(surface.textFallback, /Agent: codex-main \(codex\)/);
+  assert.match(surface.textFallback, /Model: gpt-5 · Permission: suggest/);
+  assert.doesNotMatch(surface.textFallback, /Reasoning: default/);
+  assert.doesNotMatch(surface.textFallback, /Thinking stream:/);
+  assert.match(surface.textFallback, /\*\*配置\*\*/);
   assert.match(surface.textFallback, /`\/help agent`/);
+  assert.match(surface.textFallback, /`\/help model`/);
+  assert.match(surface.textFallback, /`\/help mode`/);
+  assert.match(surface.textFallback, /`\/help display`/);
   assert.match(surface.textFallback, /`\/help vision`/);
+  assert.match(surface.textFallback, /`\/help workdir`/);
+  assert.match(surface.textFallback, /\*\*会话动作\*\*/);
+  assert.match(surface.textFallback, /`\/new`/);
+  assert.match(surface.textFallback, /`\/compact`/);
+  assert.match(surface.textFallback, /`\/stop`/);
+  assert.match(surface.textFallback, /\*\*更多\*\*/);
+  assert.match(surface.textFallback, /`\/help session`/);
+  assert.match(surface.textFallback, /`\/help commands`/);
+  assert.match(surface.textFallback, /`\/help buffer`/);
   assert.match(surface.textFallback, /`\/help native`/);
+  assert.doesNotMatch(surface.textFallback, /`\/status`/);
+  assert.doesNotMatch(surface.textFallback, /`\/native \/help`/);
+  assert.doesNotMatch(surface.textFallback, /skills 命令/);
   const nativeSection = surface.sections.find((section) => section.id === "native");
   assert.ok(nativeSection);
   assert.equal(nativeSection.actions[0].nativePassthrough, true);
@@ -8748,27 +8758,53 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(raw, /column_set/);
   assert.match(raw, /surface_action_id/);
   assert.match(raw, /surface_action_kind/);
+  assert.match(raw, /当前配置/);
+  assert.match(raw, /配置/);
+  assert.match(raw, /会话动作/);
+  assert.match(raw, /更多/);
+  assert.match(raw, /nav:\/help agent/);
   assert.match(raw, /nav:\/help model/);
+  assert.match(raw, /nav:\/help mode/);
+  assert.match(raw, /nav:\/help display/);
   assert.match(raw, /nav:\/help vision/);
+  assert.match(raw, /nav:\/help workdir/);
+  assert.match(raw, /nav:\/help more/);
+  assert.match(raw, /act:\/new/);
+  assert.match(raw, /act:\/compact/);
+  assert.match(raw, /act:\/stop/);
   assert.match(raw, /session_key/);
-  assert.match(raw, /当前 Agent/);
   assert.match(raw, /操作台/);
-  assert.match(raw, /常用动作/);
-  assert.match(raw, /配置入口/);
-  assert.match(raw, /进度显示/);
-  assert.match(raw, /思考流/);
-  assert.match(raw, /命令\/Skills/);
-  assert.match(raw, /nav:\/help session/);
-  assert.match(raw, /nav:\/help commands/);
-  assert.match(raw, /\/help model/);
-  assert.match(raw, /\/help vision/);
-  assert.match(raw, /\/help display/);
-  assert.match(raw, /\/help commands/);
-  assert.match(raw, /\/help buffer/);
-  assert.match(raw, /新会话/);
+  assert.doesNotMatch(raw, /当前 Agent/);
+  assert.doesNotMatch(raw, /思考流/);
+  assert.doesNotMatch(raw, /命令\/Skills/);
+  assert.doesNotMatch(raw, /nav:\/help session/);
+  assert.doesNotMatch(raw, /nav:\/help commands/);
+  assert.doesNotMatch(raw, /nav:\/help buffer/);
+  assert.doesNotMatch(raw, /nav:\/help native/);
   assert.doesNotMatch(raw, /act:\/reset/);
   assert.doesNotMatch(raw, /\/mode yolo/);
   assert.ok(feishu.elements.some((element) => element.tag === "column_set" && element.flex_mode === "bisect"));
+
+  const moreSurface = buildChannelConnectorCommandSurface({
+    config: runtimeConfig,
+    project: codexProject,
+    binding,
+    sessionKey: "dmwork:dm:admin-1",
+    selectedViewId: "more",
+  });
+  const moreRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(moreSurface));
+  assert.match(moreRaw, /更多/);
+  assert.match(moreRaw, /低频查看、排查和扩展命令/);
+  assert.match(moreRaw, /nav:\/help session/);
+  assert.match(moreRaw, /nav:\/help commands/);
+  assert.match(moreRaw, /nav:\/help buffer/);
+  assert.match(moreRaw, /nav:\/help native/);
+  assert.match(moreRaw, /nav:\/current/);
+  assert.match(moreRaw, /nav:\/list/);
+  assert.match(moreRaw, /nav:\/history/);
+  assert.match(moreRaw, /act:\/usage/);
+  assert.match(moreRaw, /"action":"nav:\/help"/);
+  assert.doesNotMatch(moreRaw, /nav:\/help model/);
 
   const sessionSurface = buildChannelConnectorCommandSurface({
     config: runtimeConfig,
@@ -13452,10 +13488,24 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     assert.equal(commandSurface.body.binding.id, "octo-route");
     assert.equal(commandSurface.body.agentProfile.agent, "opencode");
     assert.equal(commandSurface.body.surface.current.projectId, "opencode-main");
-    assert.match(commandSurface.body.textFallback, /\/native \/help/);
+    assert.doesNotMatch(commandSurface.body.textFallback, /\/native \/help/);
     assert.equal(commandSurface.body.surface.selectedViewId, "model");
     assert.match(JSON.stringify(commandSurface.body.feishuCard), /select_static/);
     assert.match(JSON.stringify(commandSurface.body.feishuCard), /\/model gpt-5\.5/);
+
+    const moreSurface = await requestJson(`${baseUrl}/api/channel-connectors/commands/surface`, {
+      method: "POST",
+      body: {
+        bindingId: "octo-route",
+        sessionKey: "dmwork:dm:route-user",
+        view: "more",
+        renderer: "all",
+      },
+    });
+    assert.equal(moreSurface.status, 200);
+    assert.equal(moreSurface.body.surface.selectedViewId, "more");
+    assert.match(JSON.stringify(moreSurface.body.feishuCard), /nav:\/help native/);
+    assert.match(JSON.stringify(moreSurface.body.feishuCard), /nav:\/help commands/);
 
     const action = await requestJson(`${baseUrl}/api/channel-connectors/commands/action`, {
       method: "POST",

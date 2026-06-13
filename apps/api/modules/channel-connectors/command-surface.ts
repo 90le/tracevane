@@ -77,6 +77,7 @@ type FeishuMenuSectionId = typeof FEISHU_MENU_SECTIONS[number];
 
 const FEISHU_MENU_VIEWS = [
   "help",
+  "more",
   "session",
   "current",
   "sessions",
@@ -176,6 +177,9 @@ const FEISHU_MENU_SECTION_ALIASES: Record<string, FeishuMenuSectionId> = {
 const FEISHU_MENU_VIEW_ALIASES: Record<string, FeishuMenuViewId> = {
   help: "help",
   menu: "help",
+  more: "more",
+  advanced: "more",
+  settings: "more",
   commands: "commands",
   command: "commands",
   cmd: "commands",
@@ -358,7 +362,7 @@ export function channelConnectorCommandSurfaceSectionFromCommand(command: string
   const name = parts[0] || "";
   if (["commands", "command", "cmd", "alias", "aliases"].includes(name.toLowerCase())) return "commands";
   if (["help", "menu", "start"].includes(name.toLowerCase())) {
-    return normalizeChannelConnectorCommandSurfaceSection(parts[1]) || "session";
+    return normalizeChannelConnectorCommandSurfaceSection(parts[1]) || null;
   }
   return normalizeChannelConnectorCommandSurfaceSection(name);
 }
@@ -373,7 +377,10 @@ export function channelConnectorCommandSurfaceViewFromCommand(
   if (!parts.length) return null;
   const name = parts[0]?.toLowerCase() || "";
   if (["commands", "command", "cmd", "alias", "aliases"].includes(name)) return "commands";
-  if (["help", "menu", "start"].includes(name)) return "help";
+  if (["help", "menu", "start"].includes(name)) {
+    return normalizeChannelConnectorCommandSurfaceView(parts[1]) === "more" ? "more" : "help";
+  }
+  if (name === "more" || name === "advanced" || name === "settings") return "more";
   if (name === "whoami" || name === "myid" || name === "version") return "session";
   if (name === "current") return "current";
   if (
@@ -420,31 +427,6 @@ function action(
   };
 }
 
-function markdownTable(rows: Array<[string, string, string?]>): string {
-  const escapeCell = (value: string): string => value.replace(/\|/g, "\\|").replace(/\n/g, " ");
-  const hasThirdColumn = rows.some((row) => normalizeString(row[2]).length > 0);
-  if (!hasThirdColumn) {
-    return [
-      "| 项目 | 内容 |",
-      "| --- | --- |",
-      ...rows.map(([label, value]) => `| ${escapeCell(label)} | ${escapeCell(value)} |`),
-    ].join("\n");
-  }
-  return [
-    "| 命令 | 操作 | 说明 |",
-    "| --- | --- | --- |",
-    ...rows.map(([command, label, description]) => `| ${escapeCell(command)} | ${escapeCell(label)} | ${escapeCell(description || "")} |`),
-  ].join("\n");
-}
-
-function fallbackActionTable(items: readonly ChannelConnectorCommandSurfaceAction[]): string {
-  return markdownTable(items.map((item) => [
-    `\`${item.command}\``,
-    item.label,
-    commandSurfaceItemDescription(item) || "",
-  ]));
-}
-
 function fallbackActionList(items: readonly ChannelConnectorCommandSurfaceAction[]): string {
   return items.map((item) => {
     const description = commandSurfaceItemDescription(item);
@@ -454,15 +436,11 @@ function fallbackActionList(items: readonly ChannelConnectorCommandSurfaceAction
   }).join("\n");
 }
 
-function fallbackCurrentSummary(surface: Omit<ChannelConnectorCommandSurface, "textFallback">): string {
+function compactCurrentSummary(surface: Omit<ChannelConnectorCommandSurface, "textFallback">): string {
   return [
-    `- Agent: ${surface.current.projectId} (${surface.current.agent})`,
-    `- Model: ${surface.current.model || "default"}`,
-    `- Reasoning: ${surface.current.reasoningEffort || "default"}`,
-    `- Permission: ${surface.current.permissionMode}`,
-    `- WorkDir: \`${compactPath(surface.current.workDir)}\``,
-    `- Display: thinking=${surface.current.thinkingMessages ? "on" : "off"} / process=${surface.current.processMessages ? "on" : "off"} / tools=${surface.current.toolMessages ? "on" : "off"}`,
-    `- Thinking stream: ${formatChannelConnectorThinkingSupport(surface.current.thinkingSupport)}`,
+    `Agent: ${surface.current.projectId} (${surface.current.agent})`,
+    `Model: ${surface.current.model || "default"} · Permission: ${surface.current.permissionMode}`,
+    `WorkDir: \`${compactPath(surface.current.workDir)}\``,
   ].join("\n");
 }
 
@@ -470,19 +448,14 @@ function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFa
   const normalizedSurface = surface as ChannelConnectorCommandSurface;
   const selectedSectionId = normalizeChannelConnectorCommandSurfaceSection(surface.selectedSectionId);
   const selectedSection = selectedSectionId ? sectionById(normalizedSurface, selectedSectionId) : null;
-  const quickActions = homeQuickActions(normalizedSurface);
   const lines: string[] = [
     "Studio Channel",
     "",
-    "**当前会话**",
-    fallbackCurrentSummary(surface),
+    "**当前配置**",
+    compactCurrentSummary(surface),
   ];
   if (surface.current.workDirHistory.length) {
     lines.push(`- Previous WorkDir: \`${compactPath(surface.current.workDirHistory[0] || "")}\``);
-  }
-
-  if (quickActions.length) {
-    lines.push("", "**快捷操作**", fallbackActionList(quickActions));
   }
 
   if (selectedSection) {
@@ -495,30 +468,29 @@ function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFa
     }
     lines.push("", "返回主菜单：`/help`");
   } else {
-    lines.push("", "**配置入口**");
-    for (const group of homeMenuSections()) {
-      lines.push(`- ${group.title}: ${group.summary}`);
-      for (const sectionId of group.sectionIds) {
-        lines.push(`  - \`/help ${sectionId}\` - ${FEISHU_MENU_SECTION_LABELS[sectionId]}: ${sectionSummary(sectionId)}`);
-      }
-    }
     lines.push(
       "",
-      "**文本命令速查**",
-      "- `/agent` `/model` `/mode` `/reasoning` - 切换当前 IM session 配置",
-      "- `/vision` - 配置图片输入的自动视觉 fallback 模型",
-      "- `/display` `/thinking` `/process` `/tools` - 控制思考、过程回复和工具显示",
-      "- `/commands` `/alias` `/skills` - 查看可执行命令、别名和 Skill",
+      "**配置**",
+      "- `/help agent` Agent Profile",
+      "- `/help model` 模型",
+      "- `/help mode` 权限 / 推理",
+      "- `/help display` 思考 / 过程 / 工具显示",
+      "- `/help vision` 图片视觉 fallback",
+      "- `/help workdir` 工作目录",
+      "",
+      "**会话动作**",
+      "- `/new` 新会话",
+      "- `/compact` 压缩上下文",
+      "- `/stop` 停止运行",
+      "",
+      "**更多**",
+      "- `/help session` 会话详情、续接、历史、usage",
+      "- `/help commands` 命令 / Skills / 别名",
+      "- `/help buffer` 长回复缓存",
+      "- `/help native` Agent 原生命令",
     );
   }
 
-  lines.push(
-    "",
-    "**原生 Agent**",
-    "- 未被 Studio 占用的 `/xxx` 会透传给当前 Agent；冲突命令用 `/native <命令>`。",
-    "- `/native /help` 查看当前 Agent 原生帮助或 skills 命令。",
-    "- `/native /compact` 只在持久/交互式 runner 支持时执行原生压缩。",
-  );
   return lines.join("\n");
 }
 
@@ -994,6 +966,18 @@ function statusBlock(surface: ChannelConnectorCommandSurface): Record<string, un
   };
 }
 
+function compactConfigBlock(surface: ChannelConnectorCommandSurface): Record<string, unknown> {
+  return {
+    tag: "markdown",
+    content: [
+      "**当前配置**",
+      `${surface.current.projectId} · ${surface.current.agent}`,
+      `${surface.current.model || "default"} · ${surface.current.permissionMode} · reasoning ${surface.current.reasoningEffort || "default"}`,
+      `\`${compactPath(surface.current.workDir)}\``,
+    ].join("\n"),
+  };
+}
+
 function actionRowElement(
   actions: ChannelConnectorCommandSurfaceAction[],
   surface: ChannelConnectorCommandSurface,
@@ -1342,15 +1326,6 @@ function menuActionFromSection(
 
 function homeQuickActions(surface: ChannelConnectorCommandSurface): ChannelConnectorCommandSurfaceAction[] {
   return [
-    menuActionFromSection(surface, "session", "current", action("current", "当前会话", "/current", { actionKind: "nav" }), {
-      label: "当前会话",
-      actionKind: "nav",
-      description: "查看当前 Agent 续接、模型、权限和最近状态。",
-    }),
-    menuActionFromSection(surface, "session", "status", action("status", "刷新状态", "/status"), {
-      label: "刷新状态",
-      description: "刷新并返回当前会话状态。",
-    }),
     menuActionFromSection(surface, "session", "new", action("new", "新会话", "/new", { tone: "primary", requiresAdmin: true }), {
       label: "新会话",
       tone: "primary",
@@ -1369,9 +1344,19 @@ function homeQuickActions(surface: ChannelConnectorCommandSurface): ChannelConne
   ];
 }
 
-function homeSectionActions(groupId: "setup" | "more"): ChannelConnectorCommandSurfaceAction[] {
-  const group = homeMenuSections().find((item) => item.id === groupId);
-  return (group?.sectionIds || []).map((sectionId) => sectionMenuAction(sectionId));
+function homeConfigActions(): ChannelConnectorCommandSurfaceAction[] {
+  return ["agent", "model", "mode", "display", "vision", "workdir"].map((sectionId) => sectionMenuAction(sectionId as FeishuMenuSectionId));
+}
+
+function moreMenuAction(): ChannelConnectorCommandSurfaceAction {
+  return action("more-menu", "更多", "/help more", {
+    actionKind: "nav",
+    description: "会话详情、续接历史、缓存、自定义命令和 Agent 原生命令。",
+  });
+}
+
+function moreSectionActions(): ChannelConnectorCommandSurfaceAction[] {
+  return ["session", "commands", "buffer", "native"].map((sectionId) => sectionMenuAction(sectionId as FeishuMenuSectionId));
 }
 
 function siblingSectionActions(sectionId: FeishuMenuSectionId): ChannelConnectorCommandSurfaceAction[] {
@@ -2219,32 +2204,67 @@ function renderHistoryCard(surface: ChannelConnectorCommandSurface): ChannelConn
   };
 }
 
+function renderMoreMenuCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
+  const elements: Array<Record<string, unknown>> = [
+    compactConfigBlock(surface),
+    {
+      tag: "markdown",
+      content: [
+        "**更多**",
+        "低频查看、排查和扩展命令集中在这里；日常配置回主菜单。",
+      ].join("\n"),
+    },
+  ];
+  pushActionRows(elements, moreSectionActions(), surface, 2, true);
+  elements.push({ tag: "hr" });
+  pushActionRows(elements, [
+    action("current", "当前会话", "/current", { actionKind: "nav" }),
+    action("sessions", "续接列表", "/list", { actionKind: "nav" }),
+    action("history", "历史", "/history", { actionKind: "nav" }),
+    action("usage", "Usage", "/usage"),
+  ], surface, 2, true);
+  pushActionRows(elements, [homeMenuAction()], surface, 1, true);
+  elements.push({
+    tag: "note",
+    elements: [plainText("更多页只放低频入口；Agent、模型、权限、显示、视觉和目录在主菜单配置。")],
+  });
+  return {
+    config: {
+      wide_screen_mode: true,
+    },
+    header: {
+      title: plainText("更多"),
+      template: "wathet",
+    },
+    elements,
+  };
+}
+
 function renderHelpMenuCard(
   surface: ChannelConnectorCommandSurface,
 ): ChannelConnectorFeishuInteractiveCard {
   const selectedSectionId = normalizeChannelConnectorCommandSurfaceSection(surface.selectedSectionId);
-  const elements: Array<Record<string, unknown>> = [statusBlock(surface)];
+  const elements: Array<Record<string, unknown>> = [compactConfigBlock(surface)];
 
   if (!selectedSectionId) {
     elements.push({
       tag: "markdown",
       content: [
-        "**常用动作**",
-        "先处理当前会话；需要调整行为时进入配置页。",
+        "**配置**",
+        "选择当前 IM 会话使用的 Agent、模型、权限、进度显示、视觉和工作目录。",
       ].join("\n"),
     });
-    pushActionRows(elements, homeQuickActions(surface), surface, 2, true);
+    pushActionRows(elements, homeConfigActions(), surface, 2, true);
     elements.push({ tag: "hr" });
-    for (const group of homeMenuSections()) {
-      elements.push({
-        tag: "markdown",
-        content: `**${group.title}**\n${group.summary}`,
-      });
-      pushActionRows(elements, homeSectionActions(group.id), surface, 2, true);
-    }
+    elements.push({
+      tag: "markdown",
+      content: "**会话动作**",
+    });
+    pushActionRows(elements, homeQuickActions(surface), surface, 2, true);
+    pushActionRows(elements, [moreMenuAction()], surface, 1, true);
     elements.push({
       tag: "note",
-      elements: [plainText("未列出的 /xxx 默认透传给 Agent；与 Studio 命令冲突时用 /native <命令>。")],
+      elements: [plainText("低频查看和扩展操作收纳在“更多”里。")],
     });
     return {
       config: {
@@ -2307,29 +2327,31 @@ export function renderChannelConnectorCommandSurfaceFeishu(
   const selectedViewId = normalizeChannelConnectorCommandSurfaceView(surface.selectedViewId) || "help";
   const card = selectedViewId === "agent"
     ? renderAgentPickerCard(surface)
-    : selectedViewId === "session"
-      ? renderSessionCard(surface)
-      : selectedViewId === "current"
-        ? renderCurrentSessionCard(surface)
-        : selectedViewId === "sessions"
-          ? renderSessionListCard(surface)
-          : selectedViewId === "history"
-            ? renderHistoryCard(surface)
-            : selectedViewId === "model"
-              ? renderModelPickerCard(surface)
-              : selectedViewId === "vision"
-                ? renderVisionPickerCard(surface)
-                : selectedViewId === "mode"
-                  ? renderModePickerCard(surface)
-                  : selectedViewId === "display"
-                    ? renderDisplayCard(surface)
-                    : selectedViewId === "buffer"
-                      ? renderBufferCard(surface)
-                      : selectedViewId === "commands"
-                        ? renderCommandsCard(surface)
-                        : selectedViewId === "workdir"
-                          ? renderWorkdirPickerCard(surface)
-                          : renderHelpMenuCard(surface);
+    : selectedViewId === "more"
+      ? renderMoreMenuCard(surface)
+      : selectedViewId === "session"
+        ? renderSessionCard(surface)
+        : selectedViewId === "current"
+          ? renderCurrentSessionCard(surface)
+          : selectedViewId === "sessions"
+            ? renderSessionListCard(surface)
+            : selectedViewId === "history"
+              ? renderHistoryCard(surface)
+              : selectedViewId === "model"
+                ? renderModelPickerCard(surface)
+                : selectedViewId === "vision"
+                  ? renderVisionPickerCard(surface)
+                  : selectedViewId === "mode"
+                    ? renderModePickerCard(surface)
+                    : selectedViewId === "display"
+                      ? renderDisplayCard(surface)
+                      : selectedViewId === "buffer"
+                        ? renderBufferCard(surface)
+                        : selectedViewId === "commands"
+                          ? renderCommandsCard(surface)
+                          : selectedViewId === "workdir"
+                            ? renderWorkdirPickerCard(surface)
+                            : renderHelpMenuCard(surface);
   return notice?.text ? withCommandNotice(card, notice) : card;
 }
 

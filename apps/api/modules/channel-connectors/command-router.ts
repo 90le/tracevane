@@ -1357,7 +1357,7 @@ function isStudioCommand(name: string): boolean {
   return Boolean(matchChannelConnectorCommandPrefix(name));
 }
 
-type CommandHelpSection = "session" | "agent" | "vision" | "display" | "buffer" | "workdir" | "commands" | "native" | "platform";
+type CommandHelpSection = "session" | "agent" | "vision" | "display" | "buffer" | "workdir" | "commands" | "native" | "platform" | "more";
 
 function commandHelpList(rows: Array<[string, string]>): string {
   return rows.map(([command, description]) => `- ${command} - ${description}`).join("\n");
@@ -1366,6 +1366,7 @@ function commandHelpList(rows: Array<[string, string]>): string {
 function commandHelpSectionAlias(value: string | null | undefined): CommandHelpSection | null {
   const target = normalizeString(value).toLowerCase();
   if (!target) return null;
+  if (["more", "advanced", "settings"].includes(target)) return "more";
   if (["session", "sessions", "status", "current", "history", "compact", "stop", "delete", "del", "rm", "whoami", "myid", "version"].includes(target)) {
     return "session";
   }
@@ -1381,6 +1382,21 @@ function commandHelpSectionAlias(value: string | null | undefined): CommandHelpS
 }
 
 function commandHelpSectionText(section: CommandHelpSection): string {
+  if (section === "more") {
+    return [
+      "Studio Channel / more",
+      "",
+      commandHelpList([
+        ["`/help session`", "会话详情、续接、历史、usage、权限批准"],
+        ["`/help commands`", "自定义命令、别名和 Skills"],
+        ["`/help buffer`", "长回复缓存"],
+        ["`/help native`", "Agent 原生命令透传"],
+        ["`/help platform`", "Octo 等 IM 平台低频能力"],
+      ]),
+      "",
+      "返回：`/help`",
+    ].join("\n");
+  }
   if (section === "session") {
     return [
       "Studio Channel / session",
@@ -1539,31 +1555,27 @@ function commandHelpText(section?: string | null): string {
   if (selected) return commandHelpSectionText(selected);
   return [
     "Studio Channel",
-    "普通消息会交给当前 Agent。未被 Studio 占用的 `/xxx` 会自动透传；冲突命令用 `/native <命令>`。",
+    "Agent 配置面板。普通消息会交给当前 Agent。",
     "",
-    "**常用命令**",
+    "**配置**",
     commandHelpList([
-      ["`/status` `/new` `/reset` `/stop` `/compact`", "会话状态、新会话、重置、停止、native-first compact"],
-      ["`/whoami` `/version`", "身份排查和 runtime 版本"],
-      ["`/agent` `/model` `/mode` `/reasoning`", "切换 Agent、模型、权限、推理强度"],
-      ["`/vision`", "配置图片输入的自动视觉 fallback 模型"],
-      ["`/display` `/quiet` `/thinking` `/process` `/tools`", "控制思考、过程回复和工具显示"],
-      ["`/commands` `/alias` `/skills` `/native /help`", "自定义命令、命令别名、Skills、Agent 原生命令"],
-      ["`/octo groups` `/octo members` `/octo search`", "Octo 群和成员查询"],
+      ["`/help agent`", "切换 Agent Profile"],
+      ["`/help model`", "切换模型"],
+      ["`/help mode`", "权限和推理强度"],
+      ["`/help display`", "思考、过程回复和工具显示"],
+      ["`/help vision`", "图片视觉 fallback"],
+      ["`/help workdir`", "工作目录"],
     ]),
     "",
-    "**分组帮助**",
+    "**会话动作**",
     commandHelpList([
-      ["`/help session`", "会话、history、usage、权限批准"],
-      ["`/help agent`", "Agent、模型、权限、推理"],
-      ["`/help vision`", "图片自动视觉 fallback 模型"],
-      ["`/help display`", "思考、过程回复和工具消息"],
-      ["`/help buffer`", "群聊长回复缓存和紧凑显示"],
-      ["`/help workdir`", "工作目录切换"],
-      ["`/help commands`", "自定义命令、别名和 Skills"],
-      ["`/help platform`", "Octo 等 IM 平台能力"],
-      ["`/help native`", "Agent 原生命令透传"],
+      ["`/new`", "新会话"],
+      ["`/compact`", "压缩上下文"],
+      ["`/stop`", "停止运行"],
+      ["`/help more`", "会话详情、历史、缓存、命令和原生命令"],
     ]),
+    "",
+    "未被 Studio 占用的 `/xxx` 会自动透传；冲突命令用 `/native <命令>`。",
   ].join("\n");
 }
 
