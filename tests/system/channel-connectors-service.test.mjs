@@ -8538,7 +8538,7 @@ test("native Channel Connectors command surface loads Gateway models when reques
     assert.equal(surface.surface.current.model, "profile-fallback-model");
     assert.equal(requests.some((request) => request.path === "/v1/models"), true);
     const cardRaw = JSON.stringify(surface.feishuCard);
-    assert.match(cardRaw, /Studio Model/);
+    assert.match(cardRaw, /模型选择/);
     assert.match(cardRaw, /act:\/model gateway-gpt-5/);
     assert.match(cardRaw, /act:\/model gateway-glm-5/);
 
@@ -8549,7 +8549,7 @@ test("native Channel Connectors command surface loads Gateway models when reques
       renderer: "all",
     });
     const visionCardRaw = JSON.stringify(visionSurface.feishuCard);
-    assert.match(visionCardRaw, /Studio Vision/);
+    assert.match(visionCardRaw, /视觉设置/);
     assert.match(visionCardRaw, /act:\/vision model gateway-gpt-5/);
     assert.doesNotMatch(visionCardRaw, /act:\/vision model gateway-glm-5/);
   });
@@ -8721,10 +8721,12 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(surface.textFallback, /- Reasoning: default/);
   assert.match(surface.textFallback, /- Thinking stream: parser=ready \/ live=model-dependent/);
   assert.match(surface.textFallback, /快捷操作/);
-  assert.match(surface.textFallback, /- `\/status` - Status:/);
-  assert.match(surface.textFallback, /\*\*菜单入口\*\*/);
-  assert.match(surface.textFallback, /- 会话: `\/help session`  `\/help buffer`/);
-  assert.match(surface.textFallback, /\*\*常用命令\*\*/);
+  assert.match(surface.textFallback, /- `\/status` - 刷新状态:/);
+  assert.match(surface.textFallback, /\*\*配置入口\*\*/);
+  assert.match(surface.textFallback, /- 配置入口: 调当前对话的 Agent、模型、权限、显示、视觉和工作目录。/);
+  assert.match(surface.textFallback, /  - `\/help model` - 模型:/);
+  assert.match(surface.textFallback, /- 更多工具: 查看续接、历史、缓存、自定义命令和 Agent 原生命令。/);
+  assert.match(surface.textFallback, /\*\*文本命令速查\*\*/);
   assert.match(surface.textFallback, /`\/status`/);
   assert.match(surface.textFallback, /`\/vision`/);
   assert.match(surface.textFallback, /`\/native \/help`/);
@@ -8741,7 +8743,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
 
   const feishu = renderChannelConnectorCommandSurfaceFeishu(surface);
   assert.equal(feishu.config.wide_screen_mode, true);
-  assert.equal(feishu.header.title.content, "Studio Channel Menu");
+  assert.equal(feishu.header.title.content, "Studio Channel 操作台");
   const raw = JSON.stringify(feishu);
   assert.match(raw, /column_set/);
   assert.match(raw, /surface_action_id/);
@@ -8750,11 +8752,12 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(raw, /nav:\/help vision/);
   assert.match(raw, /session_key/);
   assert.match(raw, /当前 Agent/);
-  assert.match(raw, /会话/);
-  assert.match(raw, /配置/);
-  assert.match(raw, /显示/);
+  assert.match(raw, /操作台/);
+  assert.match(raw, /常用动作/);
+  assert.match(raw, /配置入口/);
+  assert.match(raw, /进度显示/);
   assert.match(raw, /思考流/);
-  assert.match(raw, /命令/);
+  assert.match(raw, /命令\/Skills/);
   assert.match(raw, /nav:\/help session/);
   assert.match(raw, /nav:\/help commands/);
   assert.match(raw, /\/help model/);
@@ -8762,7 +8765,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(raw, /\/help display/);
   assert.match(raw, /\/help commands/);
   assert.match(raw, /\/help buffer/);
-  assert.match(raw, /New Session/);
+  assert.match(raw, /新会话/);
   assert.doesNotMatch(raw, /act:\/reset/);
   assert.doesNotMatch(raw, /\/mode yolo/);
   assert.ok(feishu.elements.some((element) => element.tag === "column_set" && element.flex_mode === "bisect"));
@@ -8776,7 +8779,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
     selectedViewId: "session",
   });
   const sessionCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(sessionSurface));
-  assert.match(sessionCardRaw, /Studio Session/);
+  assert.match(sessionCardRaw, /会话控制/);
   assert.match(sessionCardRaw, /act:\/status/);
   assert.match(sessionCardRaw, /act:\/whoami/);
   assert.match(sessionCardRaw, /act:\/version/);
@@ -8802,7 +8805,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
     history: surface.history,
   });
   const currentCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(currentSurface));
-  assert.match(currentCardRaw, /Studio Current Session/);
+  assert.match(currentCardRaw, /当前会话/);
   assert.match(currentCardRaw, /Session name/);
   assert.match(currentCardRaw, /Frontend Fix/);
   assert.match(currentCardRaw, /Thinking stream/);
@@ -8826,7 +8829,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
     history: surface.history,
   });
   const sessionListCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(sessionListSurface));
-  assert.match(sessionListCardRaw, /Studio Agent Sessions/);
+  assert.match(sessionListCardRaw, /会话续接/);
   assert.match(sessionListCardRaw, /Frontend Fix/);
   assert.match(sessionListCardRaw, /codex-main/);
   assert.match(sessionListCardRaw, /session codex-session-1/);
@@ -8849,7 +8852,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
     history: surface.history,
   });
   const historyCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(historySurface));
-  assert.match(historyCardRaw, /Studio Session History/);
+  assert.match(historyCardRaw, /最近历史/);
   assert.match(historyCardRaw, /最近 2 条 IM history/);
   assert.match(historyCardRaw, /\[U\] User/);
   assert.match(historyCardRaw, /\[A\] Assistant/);
@@ -8868,7 +8871,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
     selectedViewId: "agent",
   });
   const agentCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(agentPickerSurface));
-  assert.match(agentCardRaw, /Studio Agent/);
+  assert.match(agentCardRaw, /Agent 选择/);
   assert.match(agentCardRaw, /select_static/);
   assert.match(agentCardRaw, /act:\/agent claude-main/);
   assert.match(agentCardRaw, /nav:\/help agent/);
@@ -8899,7 +8902,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   });
   assert.deepEqual(workdirPickerSurface.current.workDirHistory, [recentWorkDir]);
   const workdirCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(workdirPickerSurface));
-  assert.match(workdirCardRaw, /Studio WorkDir/);
+  assert.match(workdirCardRaw, /工作目录/);
   assert.match(workdirCardRaw, /select_static/);
   assert.match(workdirCardRaw, /最近目录/);
   assert.match(workdirCardRaw, /act:\/dir -/);
@@ -8932,11 +8935,11 @@ test("native Channel Connectors command surface renders text and Feishu card act
     selectedViewId: "commands",
   });
   const commandsCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(commandsSurface));
-  assert.match(commandsCardRaw, /Studio Commands/);
+  assert.match(commandsCardRaw, /命令与 Skills/);
   assert.match(commandsCardRaw, /act:\/daily/);
   assert.match(commandsCardRaw, /act:\/review-code/);
   assert.match(commandsCardRaw, /act:\/release-notes/);
-  assert.match(commandsCardRaw, /List Skills/);
+  assert.match(commandsCardRaw, /Skills 列表/);
   assert.match(commandsCardRaw, /\/commands add <名称> <prompt 模板>/);
   assert.match(commandsCardRaw, /\/commands addexec \[--work-dir <目录>\] <名称> <shell 命令>/);
   assert.match(commandsCardRaw, /nav:\/help commands/);
@@ -8953,6 +8956,10 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(modelHelpRaw, /nav:\/model/);
   assert.match(modelHelpRaw, /模型选择器/);
   assert.match(modelHelpRaw, /"action":"nav:\/help"/);
+  assert.match(modelHelpRaw, /同组入口/);
+  assert.match(modelHelpRaw, /nav:\/help agent/);
+  assert.doesNotMatch(modelHelpRaw, /nav:\/help buffer/);
+  assert.doesNotMatch(modelHelpRaw, /nav:\/help commands/);
   assert.doesNotMatch(modelHelpRaw, /act:\/model gpt-5\.5/);
   assert.match(modelHelpRaw, /act:\/model default/);
   assert.doesNotMatch(modelHelpRaw, /\/mode yolo/);
@@ -8967,7 +8974,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
     selectedViewId: "model",
   });
   const modelCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(modelPickerSurface));
-  assert.match(modelCardRaw, /Studio Model/);
+  assert.match(modelCardRaw, /模型选择/);
   assert.match(modelCardRaw, /select_static/);
   assert.match(modelCardRaw, /act:\/model gpt-5\.5/);
   assert.match(modelCardRaw, /Profile 默认模型/);
@@ -8989,7 +8996,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.equal(visionPickerSurface.current.autoVisionModel, true);
   assert.equal(visionPickerSurface.current.visionModel, "gpt-5.5");
   const visionCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(visionPickerSurface));
-  assert.match(visionCardRaw, /Studio Vision/);
+  assert.match(visionCardRaw, /视觉设置/);
   assert.match(visionCardRaw, /select_static/);
   assert.match(visionCardRaw, /act:\/vision on/);
   assert.match(visionCardRaw, /act:\/vision off/);
@@ -9006,7 +9013,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
     selectedViewId: "mode",
   });
   const modeCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(modePickerSurface));
-  assert.match(modeCardRaw, /Studio Permission/);
+  assert.match(modeCardRaw, /权限与推理/);
   assert.match(modeCardRaw, /select_static/);
   assert.match(modeCardRaw, /act:\/mode yolo/);
   assert.match(modeCardRaw, /act:\/reasoning xhigh/);
@@ -9022,7 +9029,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
     selectedViewId: "display",
   });
   const displayCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(displaySurface));
-  assert.match(displayCardRaw, /Studio Display/);
+  assert.match(displayCardRaw, /进度显示/);
   assert.match(displayCardRaw, /思考流/);
   assert.match(displayCardRaw, /act:\/quiet quiet/);
   assert.match(displayCardRaw, /act:\/thinking on/);
@@ -9066,7 +9073,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
     selectedViewId: "buffer",
   });
   const bufferCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(bufferSurface));
-  assert.match(bufferCardRaw, /Studio Reply Buffer/);
+  assert.match(bufferCardRaw, /长回复缓存/);
   assert.match(bufferCardRaw, /act:\/buffer/);
   assert.match(bufferCardRaw, /act:\/buffer latest/);
   assert.match(bufferCardRaw, /nav:\/help buffer/);
@@ -9686,7 +9693,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(slashMessage.commandAction.commandResult.ok, true);
   assert.equal(slashMessage.commandAction.surface.current.permissionMode, "yolo");
   assert.match(slashMessage.feishuResponse.toast.content, /已切换本会话权限模式/);
-  assert.match(JSON.stringify(slashMessage.feishuResponse.card.data), /Studio Permission/);
+  assert.match(JSON.stringify(slashMessage.feishuResponse.card.data), /权限与推理/);
 
   const slashThreadMessage = await service.dispatchFeishuWebhook({
     schema: "2.0",
@@ -9801,7 +9808,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(slashModelMessage.accepted, true);
   assert.equal(slashModelMessage.commandAction.command, "/model");
   assert.equal(slashModelMessage.commandAction.commandResult.action, "list");
-  assert.match(JSON.stringify(slashModelMessage.feishuResponse.card.data), /Studio Model/);
+  assert.match(JSON.stringify(slashModelMessage.feishuResponse.card.data), /模型选择/);
   assert.match(JSON.stringify(slashModelMessage.feishuResponse.card.data), /select_static/);
 
   const slashNewMessage = await service.dispatchFeishuWebhook({
@@ -10031,7 +10038,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   });
   assert.equal(historyCardAction.accepted, true);
   assert.equal(historyCardAction.commandAction.command, "/history");
-  assert.match(JSON.stringify(historyCardAction.feishuResponse.card.data), /Studio Session History/);
+  assert.match(JSON.stringify(historyCardAction.feishuResponse.card.data), /最近历史/);
   assert.match(JSON.stringify(historyCardAction.feishuResponse.card.data), /历史里的真实用户消息/);
   assert.match(JSON.stringify(historyCardAction.feishuResponse.card.data), /历史里的真实助手回复/);
 
@@ -10096,7 +10103,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(sessionListCardAction.accepted, true);
   assert.equal(sessionListCardAction.commandAction.command, "/list");
   assert.equal(sessionListCardAction.commandAction.commandResult.action, "list");
-  assert.match(JSON.stringify(sessionListCardAction.feishuResponse.card.data), /Studio Agent Sessions/);
+  assert.match(JSON.stringify(sessionListCardAction.feishuResponse.card.data), /会话续接/);
   assert.match(JSON.stringify(sessionListCardAction.feishuResponse.card.data), /feishu-claude/);
   assert.match(JSON.stringify(sessionListCardAction.feishuResponse.card.data), /act:\/switch 1/);
   assert.match(JSON.stringify(sessionListCardAction.feishuResponse.card.data), /delete_mode_form/);
@@ -10161,7 +10168,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(sessionSwitchCardAction.commandAction.surface.current.projectId, "feishu-claude");
   assert.equal(sessionSwitchCardAction.commandAction.surface.current.model, "claude-sonnet");
   assert.match(sessionSwitchCardAction.commandAction.commandResult.replyText, /已切换本 IM 会话 Agent session/);
-  assert.match(JSON.stringify(sessionSwitchCardAction.feishuResponse.card.data), /Studio Agent Sessions/);
+  assert.match(JSON.stringify(sessionSwitchCardAction.feishuResponse.card.data), /会话续接/);
   assert.match(JSON.stringify(sessionSwitchCardAction.feishuResponse.card.data), /"type":"primary"/);
 
   const modelPickerCardAction = await service.dispatchFeishuWebhook({
@@ -10186,7 +10193,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   });
   assert.equal(modelPickerCardAction.accepted, true);
   assert.equal(modelPickerCardAction.commandAction.command, "/model");
-  assert.match(JSON.stringify(modelPickerCardAction.feishuResponse.card.data), /Studio Model/);
+  assert.match(JSON.stringify(modelPickerCardAction.feishuResponse.card.data), /模型选择/);
   assert.match(JSON.stringify(modelPickerCardAction.feishuResponse.card.data), /select_static/);
   assert.match(JSON.stringify(modelPickerCardAction.feishuResponse.card.data), /act:\/model gpt-5/);
 
@@ -10213,7 +10220,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(modeSelectCardAction.accepted, true);
   assert.equal(modeSelectCardAction.commandAction.command, "/mode yolo");
   assert.equal(modeSelectCardAction.commandAction.surface.current.permissionMode, "yolo");
-  assert.match(JSON.stringify(modeSelectCardAction.feishuResponse.card.data), /Studio Permission/);
+  assert.match(JSON.stringify(modeSelectCardAction.feishuResponse.card.data), /权限与推理/);
   assert.match(JSON.stringify(modeSelectCardAction.feishuResponse.card.data), /select_static/);
 
   const agentSelectCardAction = await service.dispatchFeishuWebhook({
@@ -10240,7 +10247,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(agentSelectCardAction.commandAction.command, "/agent feishu-claude");
   assert.equal(agentSelectCardAction.commandAction.surface.current.projectId, "feishu-claude");
   assert.equal(agentSelectCardAction.commandAction.surface.current.agent, "claude-code");
-  assert.match(JSON.stringify(agentSelectCardAction.feishuResponse.card.data), /Studio Agent/);
+  assert.match(JSON.stringify(agentSelectCardAction.feishuResponse.card.data), /Agent 选择/);
   assert.match(JSON.stringify(agentSelectCardAction.feishuResponse.card.data), /select_static/);
 
   const workdirSelectCardAction = await service.dispatchFeishuWebhook({
@@ -10268,7 +10275,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(workdirSelectCardAction.commandAction.commandResult.ok, true);
   assert.match(workdirSelectCardAction.commandAction.commandResult.replyText, /claude-work\/src/);
   assert.equal(workdirSelectCardAction.commandAction.surface.current.workDir, path.join(root, "claude-work", "src"));
-  assert.match(JSON.stringify(workdirSelectCardAction.feishuResponse.card.data), /Studio WorkDir/);
+  assert.match(JSON.stringify(workdirSelectCardAction.feishuResponse.card.data), /工作目录/);
   assert.match(JSON.stringify(workdirSelectCardAction.feishuResponse.card.data), /select_static/);
 
   const backToSessionCardAction = await service.dispatchFeishuWebhook({
@@ -10294,7 +10301,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   });
   assert.equal(backToSessionCardAction.accepted, true);
   assert.equal(backToSessionCardAction.commandAction.command, "/help session");
-  assert.match(JSON.stringify(backToSessionCardAction.feishuResponse.card.data), /New Session/);
+  assert.match(JSON.stringify(backToSessionCardAction.feishuResponse.card.data), /新会话/);
   assert.doesNotMatch(JSON.stringify(backToSessionCardAction.feishuResponse.card.data), /\/model default/);
 });
 
@@ -10476,7 +10483,7 @@ test("native Channel Connectors Feishu transport sends replies and reuses tenant
     assert.equal(requests[7].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
     assert.equal(requests[7].body.msg_type, "interactive");
     const webhookCard = JSON.parse(requests[7].body.content);
-    assert.match(webhookCard.header.title.content, /Studio Session/);
+    assert.match(webhookCard.header.title.content, /会话控制/);
     assert.match(JSON.stringify(webhookCard), /已刷新当前会话状态/);
     assert.doesNotMatch(JSON.stringify(webhookCard), /Studio Channel Status/);
 
@@ -13470,7 +13477,7 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     assert.equal(action.body.command, "/mode yolo");
     assert.equal(action.body.commandResult.ok, true);
     assert.equal(action.body.surface.current.permissionMode, "yolo");
-    assert.match(JSON.stringify(action.body.feishuCard), /Studio Permission/);
+    assert.match(JSON.stringify(action.body.feishuCard), /权限与推理/);
     assert.match(JSON.stringify(action.body.feishuCard), /act:\/mode yolo/);
 
     const displayAction = await requestJson(`${baseUrl}/api/channel-connectors/commands/action`, {
@@ -13494,7 +13501,7 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     assert.equal(displayAction.body.accepted, true);
     assert.equal(displayAction.body.commandResult.ok, true);
     assert.equal(displayAction.body.surface.current.processMessages, false);
-    assert.match(JSON.stringify(displayAction.body.feishuCard), /Studio Display/);
+    assert.match(JSON.stringify(displayAction.body.feishuCard), /进度显示/);
     assert.match(JSON.stringify(displayAction.body.feishuCard), /过程回复：关闭/);
 
     const cardAction = await requestJson(`${baseUrl}/api/channel-connectors/adapters/feishu/card-action`, {
@@ -13528,7 +13535,7 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     assert.equal(botMenu.body.accepted, true);
     assert.equal(botMenu.body.command, "/status");
     assert.match(botMenu.body.commandResult.replyText, /Studio Channel Status/);
-    assert.match(JSON.stringify(botMenu.body.feishuCard), /Studio Session/);
+    assert.match(JSON.stringify(botMenu.body.feishuCard), /会话控制/);
 
     const botMenuNew = await requestJson(`${baseUrl}/api/channel-connectors/adapters/feishu/bot-menu`, {
       method: "POST",

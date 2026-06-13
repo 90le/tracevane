@@ -98,12 +98,12 @@ const FEISHU_MENU_SECTION_LABELS: Record<FeishuMenuSectionId, string> = {
   agent: "Agent",
   model: "模型",
   vision: "视觉",
-  mode: "权限",
-  display: "显示",
+  mode: "权限/推理",
+  display: "进度显示",
   buffer: "缓存",
-  workdir: "目录",
-  commands: "命令",
-  native: "原生",
+  workdir: "工作目录",
+  commands: "命令/Skills",
+  native: "原生命令",
 };
 
 const FEISHU_MENU_SECTION_ALIASES: Record<string, FeishuMenuSectionId> = {
@@ -470,8 +470,7 @@ function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFa
   const normalizedSurface = surface as ChannelConnectorCommandSurface;
   const selectedSectionId = normalizeChannelConnectorCommandSurfaceSection(surface.selectedSectionId);
   const selectedSection = selectedSectionId ? sectionById(normalizedSurface, selectedSectionId) : null;
-  const quickActions = sectionById(surface as ChannelConnectorCommandSurface, "session")?.actions
-    .filter((item) => ["status", "new", "stop", "compact"].includes(item.id)) || [];
+  const quickActions = homeQuickActions(normalizedSurface);
   const lines: string[] = [
     "Studio Channel",
     "",
@@ -490,15 +489,22 @@ function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFa
     lines.push("", `**${selectedSection.title}**`);
     if (selectedSection.summary) lines.push(selectedSection.summary);
     lines.push(fallbackActionList(helpSectionActions(selectedSection, normalizedSurface)));
-    lines.push("", "返回：`/help` 主菜单");
+    const siblings = siblingSectionActions(selectedSection.id as FeishuMenuSectionId);
+    if (siblings.length) {
+      lines.push("", "**同组入口**", fallbackActionList(siblings));
+    }
+    lines.push("", "返回主菜单：`/help`");
   } else {
-    lines.push("", "**菜单入口**");
+    lines.push("", "**配置入口**");
     for (const group of homeMenuSections()) {
-      lines.push(`- ${group.title}: ${group.sectionIds.map((sectionId) => `\`/help ${sectionId}\``).join("  ")}`);
+      lines.push(`- ${group.title}: ${group.summary}`);
+      for (const sectionId of group.sectionIds) {
+        lines.push(`  - \`/help ${sectionId}\` - ${FEISHU_MENU_SECTION_LABELS[sectionId]}: ${sectionSummary(sectionId)}`);
+      }
     }
     lines.push(
       "",
-      "**常用命令**",
+      "**文本命令速查**",
       "- `/agent` `/model` `/mode` `/reasoning` - 切换当前 IM session 配置",
       "- `/vision` - 配置图片输入的自动视觉 fallback 模型",
       "- `/display` `/thinking` `/process` `/tools` - 控制思考、过程回复和工具显示",
@@ -576,21 +582,21 @@ export function buildChannelConnectorCommandSurface(
       title: "Session",
       summary: "当前 IM 会话级控制，不修改全局 Provider/App 配置。",
       actions: [
-        action("status", "Status", "/status"),
+        action("status", "状态", "/status"),
         action("whoami", "Whoami", "/whoami"),
-        action("version", "Version", "/version"),
+        action("version", "版本", "/version"),
         action("usage", "Usage", "/usage"),
-        action("current", "Current Session", "/current", { actionKind: "nav" }),
-        action("sessions", "Agent Sessions", "/list", { actionKind: "nav" }),
-        action("history", "History", "/history", { actionKind: "nav" }),
+        action("current", "当前会话", "/current", { actionKind: "nav" }),
+        action("sessions", "续接列表", "/list", { actionKind: "nav" }),
+        action("history", "历史", "/history", { actionKind: "nav" }),
         action("compact", "智能压缩", "/compact", {
           tone: "primary",
           requiresAdmin: true,
           description: "有 live persistent Agent session 时原生优先；否则 Gateway 兜底",
         }),
-        action("stop", "Stop Run", "/stop", { tone: "danger", requiresAdmin: true }),
-        action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true }),
-        action("reset", "Reset", "/reset", { tone: "danger", requiresAdmin: true }),
+        action("stop", "停止运行", "/stop", { tone: "danger", requiresAdmin: true }),
+        action("new", "新会话", "/new", { tone: "primary", requiresAdmin: true }),
+        action("reset", "重置会话", "/reset", { tone: "danger", requiresAdmin: true }),
       ],
     },
     {
@@ -622,7 +628,7 @@ export function buildChannelConnectorCommandSurface(
             requiresAdmin: true,
           },
         )),
-        action("model-default", "Default Model", "/model default", { requiresAdmin: true }),
+        action("model-default", "Profile 默认模型", "/model default", { requiresAdmin: true }),
       ],
     },
     {
@@ -630,16 +636,16 @@ export function buildChannelConnectorCommandSurface(
       title: "Vision",
       summary: "图片/贴图/视频类输入的自动视觉 fallback，只作用于当前 IM session。",
       actions: [
-        action("vision-status", "Status", "/vision"),
-        action("vision-on", "Auto Vision On", "/vision on", {
+        action("vision-status", "视觉状态", "/vision"),
+        action("vision-on", "开启视觉", "/vision on", {
           tone: autoVisionModel ? "primary" : "default",
           requiresAdmin: true,
         }),
-        action("vision-off", "Auto Vision Off", "/vision off", {
+        action("vision-off", "关闭视觉", "/vision off", {
           tone: autoVisionModel ? "default" : "danger",
           requiresAdmin: true,
         }),
-        action("vision-auto", "Auto Pick Model", "/vision model auto", {
+        action("vision-auto", "自动选择模型", "/vision model auto", {
           tone: autoVisionModel && !visionModel ? "primary" : "default",
           requiresAdmin: true,
         }),
@@ -652,7 +658,7 @@ export function buildChannelConnectorCommandSurface(
             requiresAdmin: true,
           },
         )),
-        action("vision-default", "Binding Default", "/vision default", { requiresAdmin: true }),
+        action("vision-default", "恢复默认", "/vision default", { requiresAdmin: true }),
       ],
     },
     {
@@ -675,10 +681,10 @@ export function buildChannelConnectorCommandSurface(
       title: "Display",
       summary: "控制 IM 中间态消息；最终回复不受影响。",
       actions: [
-        action("display-status", "Status", "/display"),
+        action("display-status", "显示状态", "/display"),
         action(
           "quiet-toggle",
-          quietEnabled ? "Quiet Off" : "Quiet On",
+          quietEnabled ? "恢复显示" : "安静模式",
           quietEnabled ? "/quiet full" : "/quiet quiet",
           {
             tone: quietEnabled ? "primary" : "default",
@@ -686,37 +692,37 @@ export function buildChannelConnectorCommandSurface(
             description: "按 CC /quiet 习惯隐藏或恢复中间态消息",
           },
         ),
-        action("thinking-on", "Thinking On", "/thinking on", {
+        action("thinking-on", "显示思考", "/thinking on", {
           tone: input.control?.thinkingMessages === false ? "default" : "primary",
           requiresAdmin: true,
           description: "显示 Agent 思考过程",
         }),
-        action("thinking-off", "Thinking Off", "/thinking off", {
+        action("thinking-off", "隐藏思考", "/thinking off", {
           tone: input.control?.thinkingMessages === false ? "danger" : "default",
           requiresAdmin: true,
           description: "隐藏 Agent 思考过程",
         }),
-        action("process-on", "Process On", "/process on", {
+        action("process-on", "显示过程", "/process on", {
           tone: input.control?.processMessages === false ? "default" : "primary",
           requiresAdmin: true,
           description: "显示 Agent 过程回复",
         }),
-        action("process-off", "Process Off", "/process off", {
+        action("process-off", "隐藏过程", "/process off", {
           tone: input.control?.processMessages === false ? "danger" : "default",
           requiresAdmin: true,
           description: "隐藏 Agent 过程回复",
         }),
-        action("tools-on", "Tools On", "/tools on", {
+        action("tools-on", "显示工具", "/tools on", {
           tone: input.control?.toolMessages === false ? "default" : "primary",
           requiresAdmin: true,
           description: "显示工具调用和工具结果",
         }),
-        action("tools-off", "Tools Off", "/tools off", {
+        action("tools-off", "隐藏工具", "/tools off", {
           tone: input.control?.toolMessages === false ? "danger" : "default",
           requiresAdmin: true,
           description: "隐藏工具调用和工具结果",
         }),
-        action("display-default", "Default", "/display default", {
+        action("display-default", "恢复默认", "/display default", {
           requiresAdmin: true,
           description: "恢复默认：思考、过程回复和工具消息开启",
         }),
@@ -727,8 +733,8 @@ export function buildChannelConnectorCommandSurface(
       title: "WorkDir",
       summary: "工作目录切换会断开旧 Agent 续接，避免上下文指向错误目录。",
       actions: [
-        action("dir", "Current Dir", "/dir"),
-        action("cd-default", "Default Dir", "/cd default", { requiresAdmin: true }),
+        action("dir", "当前目录", "/dir"),
+        action("cd-default", "默认目录", "/cd default", { requiresAdmin: true }),
       ],
     },
     {
@@ -736,10 +742,10 @@ export function buildChannelConnectorCommandSurface(
       title: "Reply Buffer",
       summary: "群聊长回复的本地缓存；只读取当前 IM session。",
       actions: [
-        action("buffer-list", "Buffer List", "/buffer", {
+        action("buffer-list", "缓存列表", "/buffer", {
           description: "列出本会话最近缓存的长回复",
         }),
-        action("buffer-latest", "Latest Buffer", "/buffer latest", {
+        action("buffer-latest", "最新缓存", "/buffer latest", {
           description: "读取本会话最新缓存的完整回复",
         }),
       ],
@@ -749,15 +755,15 @@ export function buildChannelConnectorCommandSurface(
       title: "Commands",
       summary: "当前 Agent 可用的 config prompt commands、Agent command files 与 Skills。",
       actions: [
-        action("commands-list", "List Commands", "/commands", {
+        action("commands-list", "命令列表", "/commands", {
           actionKind: "nav",
           description: "查看当前 Agent 自定义命令列表和 add/del 用法",
         }),
-        action("aliases-list", "Aliases", "/alias", {
+        action("aliases-list", "别名", "/alias", {
           actionKind: "nav",
           description: "查看当前 binding 命令别名和 add/del 用法",
         }),
-        action("skills-list", "List Skills", "/skills", {
+        action("skills-list", "Skills 列表", "/skills", {
           actionKind: "nav",
           description: "查看当前 Agent 自动发现的 SKILL.md",
         }),
@@ -784,11 +790,11 @@ export function buildChannelConnectorCommandSurface(
       title: "Agent Native",
       summary: "未知 /xxx 自动透传；与 Studio 命令冲突时使用 /native。",
       actions: [
-        action("native-help", "Agent /help", "/native /help", {
+        action("native-help", "Agent 帮助", "/native /help", {
           nativePassthrough: true,
           description: "透传当前 Agent 的原生帮助或 skills 命令入口。",
         }),
-        action("native-compact", "Agent /compact", "/native /compact", {
+        action("native-compact", "Agent 压缩", "/native /compact", {
           nativePassthrough: true,
           description: "尝试 Agent 原生压缩；Codex one-shot 不伪执行交互式 compact。",
         }),
@@ -798,7 +804,7 @@ export function buildChannelConnectorCommandSurface(
 
   const withoutFallback: Omit<ChannelConnectorCommandSurface, "textFallback"> = {
     version: 1,
-    title: "Studio Channel Menu",
+    title: "Studio Channel 操作台",
     selectedSectionId: normalizeChannelConnectorCommandSurfaceSection(input.selectedSectionId) || null,
     selectedViewId: normalizeChannelConnectorCommandSurfaceView(input.selectedViewId) || null,
     current: {
@@ -1246,38 +1252,26 @@ function pushSectionHeading(
   });
 }
 
-function menuTabActions(
-  selectedSectionId: FeishuMenuSectionId,
-): ChannelConnectorCommandSurfaceAction[] {
-  return FEISHU_MENU_SECTIONS.map((sectionId) => action(
-    `menu-${sectionId}`,
-    FEISHU_MENU_SECTION_LABELS[sectionId],
-    `/help ${sectionId}`,
-    {
-      actionKind: "nav",
-      tone: sectionId === selectedSectionId ? "primary" : "default",
-    },
-  ));
-}
-
 function homeMenuAction(): ChannelConnectorCommandSurfaceAction {
-  return action("home-menu", "主菜单", "/help", {
+  return action("home-menu", "回到主菜单", "/help", {
     actionKind: "nav",
   });
 }
 
 function sectionMenuAction(
   sectionId: FeishuMenuSectionId,
-  options: Partial<Omit<ChannelConnectorCommandSurfaceAction, "id" | "label" | "command">> = {},
+  options: Partial<Omit<ChannelConnectorCommandSurfaceAction, "id" | "command">> = {},
 ): ChannelConnectorCommandSurfaceAction {
+  const label = options.label || FEISHU_MENU_SECTION_LABELS[sectionId];
+  const { label: _label, ...rest } = options;
   return action(
     `section-${sectionId}`,
-    FEISHU_MENU_SECTION_LABELS[sectionId],
+    label,
     `/help ${sectionId}`,
     {
       actionKind: "nav",
       description: sectionSummary(sectionId),
-      ...options,
+      ...rest,
     },
   );
 }
@@ -1285,41 +1279,106 @@ function sectionMenuAction(
 function sectionSummary(sectionId: FeishuMenuSectionId): string {
   switch (sectionId) {
     case "session":
-      return "状态、续接列表、新会话、重置当前 IM 会话";
+      return "查看状态、续接列表、历史记录，也可以新建、压缩、停止或重置当前会话。";
     case "agent":
-      return "切换当前会话绑定的 CLI Agent Profile";
+      return "选择当前对话使用的 CLI Agent Profile，例如 Codex、Claude Code 或 OpenCode。";
     case "model":
-      return "从 Studio Gateway 可用模型中选择";
+      return "从 Studio Gateway 可用模型中选择当前会话模型，不改全局默认配置。";
     case "vision":
-      return "配置图片输入的自动视觉 fallback 模型";
+      return "配置图片输入的自动视觉 fallback；默认关闭，需要时再为当前会话开启。";
     case "mode":
-      return "切换当前会话权限模式和推理强度";
+      return "切换工具权限策略和 reasoning effort；高权限模式保持显式选择。";
     case "display":
-      return "思考、过程回复和工具过程显示开关";
+      return "控制思考、过程回复和工具过程是否显示；最终回复不受影响。";
     case "buffer":
-      return "查看群聊长回复的完整缓存";
+      return "查看长回复的完整缓存，适合群聊或超长回复被折叠时使用。";
     case "workdir":
-      return "查看或切换 Agent 工作目录，支持最近目录和返回上一目录";
+      return "查看或切换 Agent 工作目录；切换目录会断开旧 Agent 续接。";
     case "commands":
-      return "列出和执行当前 Agent 的 config/Agent 自定义命令";
+      return "查看 config command、Agent command file、Skill 和命令别名。";
     case "native":
-      return "进入 Agent 原生 slash/skills 命令";
+      return "查看或执行当前 CLI Agent 的原生 slash / skills 命令。";
   }
 }
 
 function homeMenuSections(): Array<{
+  id: "setup" | "more";
   title: string;
+  summary: string;
   sectionIds: FeishuMenuSectionId[];
 }> {
   return [
-    { title: "会话", sectionIds: ["session", "buffer"] },
-    { title: "配置", sectionIds: ["agent", "model", "vision", "mode", "workdir"] },
-    { title: "显示与扩展", sectionIds: ["display", "commands", "native"] },
+    {
+      id: "setup",
+      title: "配置入口",
+      summary: "调当前对话的 Agent、模型、权限、显示、视觉和工作目录。",
+      sectionIds: ["agent", "model", "mode", "display", "vision", "workdir"],
+    },
+    {
+      id: "more",
+      title: "更多工具",
+      summary: "查看续接、历史、缓存、自定义命令和 Agent 原生命令。",
+      sectionIds: ["session", "buffer", "commands", "native"],
+    },
   ];
 }
 
-function homeMenuActions(): ChannelConnectorCommandSurfaceAction[] {
-  return homeMenuSections().flatMap((group) => group.sectionIds.map((sectionId) => sectionMenuAction(sectionId)));
+function menuActionFromSection(
+  surface: ChannelConnectorCommandSurface,
+  sectionId: FeishuMenuSectionId,
+  actionId: string,
+  fallback: ChannelConnectorCommandSurfaceAction,
+  overrides: Partial<Omit<ChannelConnectorCommandSurfaceAction, "id" | "command">> = {},
+): ChannelConnectorCommandSurfaceAction {
+  const source = sectionById(surface, sectionId)?.actions.find((item) => item.id === actionId) || fallback;
+  const { label, description, ...rest } = overrides;
+  return {
+    ...source,
+    ...rest,
+    label: label || source.label,
+    description: description === undefined ? source.description : description,
+  };
+}
+
+function homeQuickActions(surface: ChannelConnectorCommandSurface): ChannelConnectorCommandSurfaceAction[] {
+  return [
+    menuActionFromSection(surface, "session", "current", action("current", "当前会话", "/current", { actionKind: "nav" }), {
+      label: "当前会话",
+      actionKind: "nav",
+      description: "查看当前 Agent 续接、模型、权限和最近状态。",
+    }),
+    menuActionFromSection(surface, "session", "status", action("status", "刷新状态", "/status"), {
+      label: "刷新状态",
+      description: "刷新并返回当前会话状态。",
+    }),
+    menuActionFromSection(surface, "session", "new", action("new", "新会话", "/new", { tone: "primary", requiresAdmin: true }), {
+      label: "新会话",
+      tone: "primary",
+      description: "开启新的 Agent 会话，保留当前配置。",
+    }),
+    menuActionFromSection(surface, "session", "compact", action("compact", "压缩上下文", "/compact", { tone: "primary", requiresAdmin: true }), {
+      label: "压缩上下文",
+      tone: "primary",
+      description: "优先调用 Agent 原生 compact，必要时使用 Gateway 摘要。",
+    }),
+    menuActionFromSection(surface, "session", "stop", action("stop", "停止运行", "/stop", { tone: "danger", requiresAdmin: true }), {
+      label: "停止运行",
+      tone: "danger",
+      description: "停止当前会话正在执行的 Agent run。",
+    }),
+  ];
+}
+
+function homeSectionActions(groupId: "setup" | "more"): ChannelConnectorCommandSurfaceAction[] {
+  const group = homeMenuSections().find((item) => item.id === groupId);
+  return (group?.sectionIds || []).map((sectionId) => sectionMenuAction(sectionId));
+}
+
+function siblingSectionActions(sectionId: FeishuMenuSectionId): ChannelConnectorCommandSurfaceAction[] {
+  const group = homeMenuSections().find((item) => item.sectionIds.includes(sectionId));
+  return (group?.sectionIds || [])
+    .filter((item) => item !== sectionId)
+    .map((item) => sectionMenuAction(item));
 }
 
 function helpSectionActions(
@@ -1462,7 +1521,7 @@ function renderModelPickerCard(surface: ChannelConnectorCommandSurface): Channel
   const section = sectionById(surface, "model");
   const actions = section?.actions || [];
   const resetAction = actions.find((item) => item.id === "model-default")
-    || action("model-default", "Default Model", "/model default", { requiresAdmin: true });
+    || action("model-default", "Profile 默认模型", "/model default", { requiresAdmin: true });
   const modelActions = actions.filter((item) => item.id.startsWith("model-") && item.id !== "model-default");
   const options = [
     { label: "Profile 默认模型", value: actionCommandValue(resetAction) },
@@ -1500,7 +1559,7 @@ function renderModelPickerCard(surface: ChannelConnectorCommandSurface): Channel
       wide_screen_mode: true,
     },
     header: {
-      title: plainText("Studio Model"),
+      title: plainText("模型选择"),
       template: "indigo",
     },
     elements,
@@ -1511,15 +1570,15 @@ function renderVisionPickerCard(surface: ChannelConnectorCommandSurface): Channe
   const section = sectionById(surface, "vision");
   const actions = section?.actions || [];
   const status = actions.find((item) => item.id === "vision-status")
-    || action("vision-status", "Status", "/vision");
+    || action("vision-status", "视觉状态", "/vision");
   const on = actions.find((item) => item.id === "vision-on")
-    || action("vision-on", "Auto Vision On", "/vision on", { requiresAdmin: true });
+    || action("vision-on", "开启视觉", "/vision on", { requiresAdmin: true });
   const off = actions.find((item) => item.id === "vision-off")
-    || action("vision-off", "Auto Vision Off", "/vision off", { requiresAdmin: true });
+    || action("vision-off", "关闭视觉", "/vision off", { requiresAdmin: true });
   const auto = actions.find((item) => item.id === "vision-auto")
-    || action("vision-auto", "Auto Pick Model", "/vision model auto", { requiresAdmin: true });
+    || action("vision-auto", "自动选择模型", "/vision model auto", { requiresAdmin: true });
   const defaults = actions.find((item) => item.id === "vision-default")
-    || action("vision-default", "Binding Default", "/vision default", { requiresAdmin: true });
+    || action("vision-default", "恢复默认", "/vision default", { requiresAdmin: true });
   const modelActions = actions.filter((item) => item.id.startsWith("vision-model-"));
   const options = [
     { label: "Gateway 自动选择", value: actionCommandValue(auto) },
@@ -1565,7 +1624,7 @@ function renderVisionPickerCard(surface: ChannelConnectorCommandSurface): Channe
       wide_screen_mode: true,
     },
     header: {
-      title: plainText("Studio Vision"),
+      title: plainText("视觉设置"),
       template: "turquoise",
     },
     elements,
@@ -1652,7 +1711,7 @@ function renderModePickerCard(surface: ChannelConnectorCommandSurface): ChannelC
       wide_screen_mode: true,
     },
     header: {
-      title: plainText("Studio Permission"),
+      title: plainText("权限与推理"),
       template: "violet",
     },
     elements,
@@ -1702,7 +1761,7 @@ function renderAgentPickerCard(surface: ChannelConnectorCommandSurface): Channel
       wide_screen_mode: true,
     },
     header: {
-      title: plainText("Studio Agent"),
+      title: plainText("Agent 选择"),
       template: "turquoise",
     },
     elements,
@@ -1775,7 +1834,7 @@ function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): Chann
       wide_screen_mode: true,
     },
     header: {
-      title: plainText("Studio WorkDir"),
+      title: plainText("工作目录"),
       template: "green",
     },
     elements,
@@ -1786,23 +1845,23 @@ function renderDisplayCard(surface: ChannelConnectorCommandSurface): ChannelConn
   const section = sectionById(surface, "display");
   const actions = section?.actions || [];
   const displayStatus = actions.find((item) => item.id === "display-status")
-    || action("display-status", "Status", "/display");
+    || action("display-status", "显示状态", "/display");
   const quietToggle = actions.find((item) => item.id === "quiet-toggle")
-    || action("quiet-toggle", "Quiet On", "/quiet quiet", { requiresAdmin: true });
+    || action("quiet-toggle", "安静模式", "/quiet quiet", { requiresAdmin: true });
   const thinkingOn = actions.find((item) => item.id === "thinking-on")
-    || action("thinking-on", "Thinking On", "/thinking on", { requiresAdmin: true });
+    || action("thinking-on", "显示思考", "/thinking on", { requiresAdmin: true });
   const thinkingOff = actions.find((item) => item.id === "thinking-off")
-    || action("thinking-off", "Thinking Off", "/thinking off", { requiresAdmin: true });
+    || action("thinking-off", "隐藏思考", "/thinking off", { requiresAdmin: true });
   const processOn = actions.find((item) => item.id === "process-on")
-    || action("process-on", "Process On", "/process on", { requiresAdmin: true });
+    || action("process-on", "显示过程", "/process on", { requiresAdmin: true });
   const processOff = actions.find((item) => item.id === "process-off")
-    || action("process-off", "Process Off", "/process off", { requiresAdmin: true });
+    || action("process-off", "隐藏过程", "/process off", { requiresAdmin: true });
   const toolsOn = actions.find((item) => item.id === "tools-on")
-    || action("tools-on", "Tools On", "/tools on", { requiresAdmin: true });
+    || action("tools-on", "显示工具", "/tools on", { requiresAdmin: true });
   const toolsOff = actions.find((item) => item.id === "tools-off")
-    || action("tools-off", "Tools Off", "/tools off", { requiresAdmin: true });
+    || action("tools-off", "隐藏工具", "/tools off", { requiresAdmin: true });
   const defaults = actions.find((item) => item.id === "display-default")
-    || action("display-default", "Default", "/display default", { requiresAdmin: true });
+    || action("display-default", "恢复默认", "/display default", { requiresAdmin: true });
   const elements: Array<Record<string, unknown>> = [
     {
       tag: "markdown",
@@ -1829,7 +1888,7 @@ function renderDisplayCard(surface: ChannelConnectorCommandSurface): ChannelConn
       wide_screen_mode: true,
     },
     header: {
-      title: plainText("Studio Display"),
+      title: plainText("进度显示"),
       template: "wathet",
     },
     elements,
@@ -1840,9 +1899,9 @@ function renderBufferCard(surface: ChannelConnectorCommandSurface): ChannelConne
   const section = sectionById(surface, "buffer");
   const actions = section?.actions || [];
   const list = actions.find((item) => item.id === "buffer-list")
-    || action("buffer-list", "Buffer List", "/buffer");
+    || action("buffer-list", "缓存列表", "/buffer");
   const latest = actions.find((item) => item.id === "buffer-latest")
-    || action("buffer-latest", "Latest Buffer", "/buffer latest");
+    || action("buffer-latest", "最新缓存", "/buffer latest");
   const elements: Array<Record<string, unknown>> = [
     {
       tag: "markdown",
@@ -1866,7 +1925,7 @@ function renderBufferCard(surface: ChannelConnectorCommandSurface): ChannelConne
       wide_screen_mode: true,
     },
     header: {
-      title: plainText("Studio Reply Buffer"),
+      title: plainText("长回复缓存"),
       template: "purple",
     },
     elements,
@@ -1877,11 +1936,11 @@ function renderCommandsCard(surface: ChannelConnectorCommandSurface): ChannelCon
   const section = sectionById(surface, "commands");
   const actions = section?.actions || [];
   const list = actions.find((item) => item.id === "commands-list")
-    || action("commands-list", "List Commands", "/commands", { actionKind: "nav" });
+    || action("commands-list", "命令列表", "/commands", { actionKind: "nav" });
   const aliases = actions.find((item) => item.id === "aliases-list")
-    || action("aliases-list", "Aliases", "/alias", { actionKind: "nav" });
+    || action("aliases-list", "别名", "/alias", { actionKind: "nav" });
   const skills = actions.find((item) => item.id === "skills-list")
-    || action("skills-list", "List Skills", "/skills", { actionKind: "nav" });
+    || action("skills-list", "Skills 列表", "/skills", { actionKind: "nav" });
   const commandActions = actions.filter((item) => item.id.startsWith("custom-command-"));
   const skillActions = actions.filter((item) => item.id.startsWith("skill-"));
   const elements: Array<Record<string, unknown>> = [
@@ -1927,7 +1986,7 @@ function renderCommandsCard(surface: ChannelConnectorCommandSurface): ChannelCon
       wide_screen_mode: true,
     },
     header: {
-      title: plainText("Studio Commands"),
+      title: plainText("命令与 Skills"),
       template: "turquoise",
     },
     elements,
@@ -1937,17 +1996,17 @@ function renderCommandsCard(surface: ChannelConnectorCommandSurface): ChannelCon
 function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
   const section = sectionById(surface, "session");
   const actions = section?.actions || [];
-  const status = actions.find((item) => item.id === "status") || action("status", "Status", "/status");
+  const status = actions.find((item) => item.id === "status") || action("status", "状态", "/status");
   const whoami = actions.find((item) => item.id === "whoami") || action("whoami", "Whoami", "/whoami");
-  const version = actions.find((item) => item.id === "version") || action("version", "Version", "/version");
+  const version = actions.find((item) => item.id === "version") || action("version", "版本", "/version");
   const usage = actions.find((item) => item.id === "usage") || action("usage", "Usage", "/usage");
-  const current = actions.find((item) => item.id === "current") || action("current", "Current Session", "/current", { actionKind: "nav" });
-  const sessions = actions.find((item) => item.id === "sessions") || action("sessions", "Agent Sessions", "/list", { actionKind: "nav" });
-  const history = actions.find((item) => item.id === "history") || action("history", "History", "/history", { actionKind: "nav" });
+  const current = actions.find((item) => item.id === "current") || action("current", "当前会话", "/current", { actionKind: "nav" });
+  const sessions = actions.find((item) => item.id === "sessions") || action("sessions", "续接列表", "/list", { actionKind: "nav" });
+  const history = actions.find((item) => item.id === "history") || action("history", "历史", "/history", { actionKind: "nav" });
   const compact = actions.find((item) => item.id === "compact") || action("compact", "智能压缩", "/compact", { tone: "primary", requiresAdmin: true });
-  const stop = actions.find((item) => item.id === "stop") || action("stop", "Stop Run", "/stop", { tone: "danger", requiresAdmin: true });
-  const fresh = actions.find((item) => item.id === "new") || action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true });
-  const reset = actions.find((item) => item.id === "reset") || action("reset", "Reset", "/reset", { tone: "danger", requiresAdmin: true });
+  const stop = actions.find((item) => item.id === "stop") || action("stop", "停止运行", "/stop", { tone: "danger", requiresAdmin: true });
+  const fresh = actions.find((item) => item.id === "new") || action("new", "新会话", "/new", { tone: "primary", requiresAdmin: true });
+  const reset = actions.find((item) => item.id === "reset") || action("reset", "重置会话", "/reset", { tone: "danger", requiresAdmin: true });
   const elements: Array<Record<string, unknown>> = [
     statusBlock(surface),
     {
@@ -1971,7 +2030,7 @@ function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConn
       wide_screen_mode: true,
     },
     header: {
-      title: plainText("Studio Session"),
+      title: plainText("会话控制"),
       template: "blue",
     },
     elements,
@@ -2023,7 +2082,7 @@ function renderCurrentSessionCard(surface: ChannelConnectorCommandSurface): Chan
       wide_screen_mode: true,
     },
     header: {
-      title: plainText("Studio Current Session"),
+      title: plainText("当前会话"),
       template: "turquoise",
     },
     elements,
@@ -2040,7 +2099,7 @@ function renderSessionListCard(surface: ChannelConnectorCommandSurface): Channel
         "**Agent Sessions**",
         "当前 IM session 还没有本地 Agent session。",
         "",
-        "发送普通消息后，Studio 会保存可续接记录；也可以用 New Session 开启新的 Agent 会话。",
+        "发送普通消息后，Studio 会保存可续接记录；也可以用新会话开启新的 Agent 会话。",
       ].join("\n"),
     });
   } else {
@@ -2104,7 +2163,7 @@ function renderSessionListCard(surface: ChannelConnectorCommandSurface): Channel
       wide_screen_mode: true,
     },
     header: {
-      title: plainText("Studio Agent Sessions"),
+      title: plainText("会话续接"),
       template: "turquoise",
     },
     elements,
@@ -2141,7 +2200,7 @@ function renderHistoryCard(surface: ChannelConnectorCommandSurface): ChannelConn
       requiresAdmin: true,
       description: "原生优先；否则摘要本 IM history",
     }),
-    action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true }),
+    action("new", "新会话", "/new", { tone: "primary", requiresAdmin: true }),
   ], surface, 1);
   pushSubcardNavRows(elements, surface, "session");
   elements.push({
@@ -2153,7 +2212,7 @@ function renderHistoryCard(surface: ChannelConnectorCommandSurface): ChannelConn
       wide_screen_mode: true,
     },
     header: {
-      title: plainText("Studio Session History"),
+      title: plainText("最近历史"),
       template: "turquoise",
     },
     elements,
@@ -2167,23 +2226,25 @@ function renderHelpMenuCard(
   const elements: Array<Record<string, unknown>> = [statusBlock(surface)];
 
   if (!selectedSectionId) {
-    const sessionSection = sectionById(surface, "session");
-    const status = sessionSection?.actions.find((item) => item.id === "status") || action("status", "Status", "/status");
-    const fresh = sessionSection?.actions.find((item) => item.id === "new") || action("new", "New Session", "/new", { tone: "primary", requiresAdmin: true });
     elements.push({
       tag: "markdown",
       content: [
-        "**菜单入口**",
-        "会话 / 配置 / 显示与原生",
-        "选择一个区域进入设置页；切换类动作会停留在对应页面并回显结果。",
+        "**常用动作**",
+        "先处理当前会话；需要调整行为时进入配置页。",
       ].join("\n"),
     });
-    pushActionRows(elements, homeMenuActions(), surface, 2, true);
+    pushActionRows(elements, homeQuickActions(surface), surface, 2, true);
     elements.push({ tag: "hr" });
-    pushActionRows(elements, [status, fresh], surface, 2, true);
+    for (const group of homeMenuSections()) {
+      elements.push({
+        tag: "markdown",
+        content: `**${group.title}**\n${group.summary}`,
+      });
+      pushActionRows(elements, homeSectionActions(group.id), surface, 2, true);
+    }
     elements.push({
       tag: "note",
-      elements: [plainText("未列出的 /xxx 默认透传给 Agent；与 Studio 命令冲突时用 /native。")],
+      elements: [plainText("未列出的 /xxx 默认透传给 Agent；与 Studio 命令冲突时用 /native <命令>。")],
     });
     return {
       config: {
@@ -2197,8 +2258,6 @@ function renderHelpMenuCard(
     };
   }
 
-  pushActionRows(elements, menuTabActions(selectedSectionId), surface, 2, true);
-
   const section = sectionById(surface, selectedSectionId);
   if (section) {
     elements.push({ tag: "hr" });
@@ -2210,10 +2269,19 @@ function renderHelpMenuCard(
     }
   }
 
-  pushActionRows(elements, [homeMenuAction()], surface, 1);
+  const siblings = siblingSectionActions(selectedSectionId);
+  if (siblings.length) {
+    elements.push({ tag: "hr" });
+    elements.push({
+      tag: "markdown",
+      content: "**同组入口**",
+    });
+    pushActionRows(elements, siblings, surface, 2, true);
+  }
+  pushActionRows(elements, [homeMenuAction()], surface, 1, true);
   elements.push({
     tag: "note",
-    elements: [plainText("未列出的 /xxx 默认透传给 Agent；需要原生冲突命令时用 /native。")],
+    elements: [plainText("选择类按钮只作用于当前 IM session；全局默认配置在 Studio 页面维护。")],
   });
 
   return {
