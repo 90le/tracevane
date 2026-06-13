@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
@@ -2667,10 +2667,10 @@ test("Octo adapter dry-run dispatch resolves binding, session key, and reply pla
     payload: {
       type: 5,
       name: "clip.mp4",
-      content: "请看视频预览帧是什么颜色",
+      content: "请看这个视频是什么颜色",
       mediaUrl: "https://cdn.example.test/clip.mp4",
     },
-  }), "请看视频预览帧是什么颜色");
+  }), "请看这个视频是什么颜色");
 
   const richTextMessage = await service.dispatchOctoIncoming({
     bindingId: "octo-default",
@@ -5262,123 +5262,72 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.deepEqual(opencodeVisionModelConfig.limit, { context: 200000, output: 8192 });
   assert.equal(opencodeVisionModelConfig.tool_call, true);
 
-  const ffmpegAvailable = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0;
   const videoPath = path.join(workDir, ".studio-agent-attachments", "clip.mp4");
-  if (ffmpegAvailable) {
-    const generatedVideo = spawnSync("ffmpeg", [
-      "-hide_banner",
-      "-loglevel",
-      "error",
-      "-y",
-      "-f",
-      "lavfi",
-      "-i",
-      "color=c=red:s=32x32:d=0.5",
-      "-pix_fmt",
-      "yuv420p",
-      videoPath,
-    ], { stdio: "ignore" });
-    if (generatedVideo.status === 0 && fs.existsSync(videoPath)) {
-      const videoMessage = {
-        ...message,
-        messageId: "m-runner-vision-video",
-        payload: { type: 5, content: "", name: "clip.mp4" },
-        attachments: [{
-          kind: "video",
-          platform: "feishu",
-          fileName: "clip.mp4",
-          mimeType: "video/mp4",
-          localPath: videoPath,
-          durationMs: 500,
-          stagedAt: "2026-06-06T08:00:00.000Z",
-        }],
-      };
+  fs.writeFileSync(videoPath, "fake video bytes");
+  const videoMessage = {
+    ...message,
+    messageId: "m-runner-vision-video",
+    payload: { type: 5, content: "", name: "clip.mp4" },
+    attachments: [{
+      kind: "video",
+      platform: "feishu",
+      fileName: "clip.mp4",
+      mimeType: "video/mp4",
+      localPath: videoPath,
+      durationMs: 500,
+      stagedAt: "2026-06-06T08:00:00.000Z",
+    }],
+  };
 
-      const codexVideoRequest = buildChannelConnectorAgentProcessRequest({
-        project: { ...project, model: "gmn-vision" },
-        binding,
-        message: videoMessage,
-        sessionKey: "dmwork:dm:user-1",
-        gatewayEndpoint: project.gatewayEndpoint,
-        gatewayClientKey: "sk-local",
-        modelCapabilities: { vision: true },
-      });
-      assert.ok(codexVideoRequest);
-      const codexVideoImageArgIndex = codexVideoRequest.args.indexOf("--image");
-      assert.notEqual(codexVideoImageArgIndex, -1);
-      const codexVideoFramePath = codexVideoRequest.args[codexVideoImageArgIndex + 1];
-      assert.equal(path.basename(codexVideoFramePath), "clip.preview.jpg");
-      assert.equal(fs.existsSync(codexVideoFramePath), true);
-      assert.match(codexVideoRequest.stdin, /extracted video preview frame/);
-      assert.match(codexVideoRequest.stdin, /reason only from extracted preview frame/);
-      for (const cleanupPath of codexVideoRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
-      assert.equal(fs.existsSync(codexVideoFramePath), false);
-
-      const claudeVideoRequest = buildChannelConnectorAgentProcessRequest({
-        project: { ...project, agent: "claude-code", model: "claude-sonnet" },
-        binding: { ...binding, agent: "claude-code" },
-        message: videoMessage,
-        sessionKey: "dmwork:dm:user-1",
-        gatewayEndpoint: project.gatewayEndpoint,
-        gatewayClientKey: "sk-local",
-        modelCapabilities: { vision: true },
-      });
-      assert.ok(claudeVideoRequest);
-      const claudeVideoInput = JSON.parse(claudeVideoRequest.stdin);
-      assert.equal(claudeVideoInput.message.content[0].type, "image");
-      assert.equal(claudeVideoInput.message.content[0].source.media_type, "image/jpeg");
-      assert.match(claudeVideoInput.message.content[1].text, /extracted video preview frame/);
-      assert.match(claudeVideoInput.message.content[1].text, /reason only from extracted preview frame/);
-      for (const cleanupPath of claudeVideoRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
-
-      const opencodeVideoRequest = buildChannelConnectorAgentProcessRequest({
-        project: { ...project, agent: "opencode", model: "gmn-vision" },
-        binding: { ...binding, agent: "opencode" },
-        message: videoMessage,
-        sessionKey: "dmwork:dm:user-1",
-        gatewayEndpoint: project.gatewayEndpoint,
-        gatewayClientKey: "sk-local",
-        modelCapabilities: { vision: true },
-      });
-      assert.ok(opencodeVideoRequest);
-      const opencodeVideoFileArgIndex = opencodeVideoRequest.args.indexOf("--file");
-      assert.notEqual(opencodeVideoFileArgIndex, -1);
-      assert.equal(path.basename(opencodeVideoRequest.args[opencodeVideoFileArgIndex + 1]), "clip.preview.jpg");
-      assert.match(opencodeVideoRequest.args.at(-1), /extracted video preview frame/);
-      assert.match(opencodeVideoRequest.args.at(-1), /reason only from extracted preview frame/);
-      for (const cleanupPath of opencodeVideoRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
-    }
-  }
-
-  const badVideoPath = path.join(workDir, ".studio-agent-attachments", "bad-video.mp4");
-  fs.writeFileSync(badVideoPath, "not a real video");
-  const badVideoRequest = buildChannelConnectorAgentProcessRequest({
+  const codexVideoRequest = buildChannelConnectorAgentProcessRequest({
     project: { ...project, model: "gmn-vision" },
     binding,
-    message: {
-      ...message,
-      messageId: "m-runner-bad-video",
-      payload: { type: 5, content: "", name: "bad-video.mp4" },
-      attachments: [{
-        kind: "video",
-        platform: "octo",
-        fileName: "bad-video.mp4",
-        mimeType: "video/mp4",
-        localPath: badVideoPath,
-        stagedAt: "2026-06-06T08:00:00.000Z",
-      }],
-    },
+    message: videoMessage,
     sessionKey: "dmwork:dm:user-1",
     gatewayEndpoint: project.gatewayEndpoint,
     gatewayClientKey: "sk-local",
     modelCapabilities: { vision: true },
   });
-  assert.ok(badVideoRequest);
-  assert.equal(badVideoRequest.args.includes("--image"), false);
-  assert.match(badVideoRequest.stdin, /Studio visual attachment fallback/);
-  assert.match(badVideoRequest.stdin, /could not attach a native image payload/);
-  assert.match(badVideoRequest.stdin, /Do not describe, classify, OCR, or infer visual contents/);
-  for (const cleanupPath of badVideoRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+  assert.ok(codexVideoRequest);
+  assert.equal(codexVideoRequest.args.includes("--image"), false);
+  assert.match(codexVideoRequest.stdin, /\[video: clip\.mp4\]/);
+  assert.match(codexVideoRequest.stdin, new RegExp(videoPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  assert.match(codexVideoRequest.stdin, /Studio does not pre-extract frames or down-convert videos/);
+  assert.doesNotMatch(codexVideoRequest.stdin, /Studio visual attachment fallback/);
+  for (const cleanupPath of codexVideoRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
+  const claudeVideoRequest = buildChannelConnectorAgentProcessRequest({
+    project: { ...project, agent: "claude-code", model: "claude-sonnet" },
+    binding: { ...binding, agent: "claude-code" },
+    message: videoMessage,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    modelCapabilities: { vision: true },
+  });
+  assert.ok(claudeVideoRequest);
+  const claudeVideoInput = JSON.parse(claudeVideoRequest.stdin);
+  assert.equal(typeof claudeVideoInput.message.content, "string");
+  assert.match(claudeVideoInput.message.content, /\[video: clip\.mp4\]/);
+  assert.match(claudeVideoInput.message.content, /Studio does not pre-extract frames or down-convert videos/);
+  assert.doesNotMatch(claudeVideoInput.message.content, /native image content blocks/);
+  for (const cleanupPath of claudeVideoRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
+
+  const opencodeVideoRequest = buildChannelConnectorAgentProcessRequest({
+    project: { ...project, agent: "opencode", model: "gmn-vision" },
+    binding: { ...binding, agent: "opencode" },
+    message: videoMessage,
+    sessionKey: "dmwork:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    modelCapabilities: { vision: true },
+  });
+  assert.ok(opencodeVideoRequest);
+  assert.equal(opencodeVideoRequest.args.includes("--file"), false);
+  assert.match(opencodeVideoRequest.args.at(-1), /\[video: clip\.mp4\]/);
+  assert.match(opencodeVideoRequest.args.at(-1), /Studio does not pre-extract frames or down-convert videos/);
+  assert.doesNotMatch(opencodeVideoRequest.args.at(-1), /native --file arguments/);
+  for (const cleanupPath of opencodeVideoRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const stagedLocalPath = path.join(workDir, ".studio-agent-attachments", "report.txt");
   const stagedAttachmentRequest = buildChannelConnectorAgentProcessRequest({

@@ -131,15 +131,13 @@ type ChannelConnectorVisualInputMode = "none" | "codex-native-image" | "claude-n
 interface ChannelConnectorNativeVisualInput {
   path: string;
   mediaType: string;
-  sourceKind: "image" | "sticker" | "video-frame";
+  sourceKind: "image" | "sticker";
   sourcePath: string;
 }
 
 interface ChannelConnectorNativeVisualInputSet {
   inputs: ChannelConnectorNativeVisualInput[];
   cleanupPaths: string[];
-  extractedVideoFrameCount: number;
-  failedVideoFrameCount: number;
 }
 
 type ClaudeCodeContentPart =
@@ -207,61 +205,9 @@ function fileExists(filePath: string): boolean {
   }
 }
 
-function safeFrameBaseName(attachment: ChannelConnectorInboundAttachment, fallback: string): string {
-  const name = normalizeString(attachment.fileName) || path.basename(normalizeString(attachment.localPath)) || fallback;
-  const base = path.basename(name, path.extname(name)).replace(/[^a-zA-Z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
-  return base || fallback;
-}
-
-function extractVideoPreviewFrame(attachment: ChannelConnectorInboundAttachment, index: number): {
-  input: ChannelConnectorNativeVisualInput | null;
-  cleanupPath: string | null;
-} {
-  const localPath = normalizeString(attachment.localPath);
-  if (!localPath || !fileExists(localPath)) return { input: null, cleanupPath: null };
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-video-frame-"));
-  const framePath = path.join(tmpDir, `${safeFrameBaseName(attachment, `video-${index}`)}.preview.jpg`);
-  const result = spawnSync("ffmpeg", [
-    "-hide_banner",
-    "-loglevel",
-    "error",
-    "-y",
-    "-ss",
-    "0",
-    "-i",
-    localPath,
-    "-frames:v",
-    "1",
-    framePath,
-  ], {
-    stdio: "ignore",
-    timeout: 15_000,
-  });
-  if (result.status !== 0 || result.error || !fileExists(framePath)) {
-    try {
-      fs.rmSync(tmpDir, { recursive: true, force: true });
-    } catch {
-      // Best effort; the caller falls back to text-only attachment policy.
-    }
-    return { input: null, cleanupPath: null };
-  }
-  return {
-    input: {
-      path: framePath,
-      mediaType: "image/jpeg",
-      sourceKind: "video-frame",
-      sourcePath: localPath,
-    },
-    cleanupPath: tmpDir,
-  };
-}
-
 function collectNativeVisualInputs(attachments: ChannelConnectorInboundAttachment[]): ChannelConnectorNativeVisualInputSet {
   const inputs: ChannelConnectorNativeVisualInput[] = [];
-  const cleanupPaths: string[] = [];
   const seen = new Set<string>();
-  let extractedVideoFrameCount = 0;
-  let failedVideoFrameCount = 0;
   for (const attachment of attachments) {
     if (isNativeImageAttachment(attachment)) {
       const localPath = normalizeString(attachment.localPath);
@@ -275,20 +221,8 @@ function collectNativeVisualInputs(attachments: ChannelConnectorInboundAttachmen
       });
       continue;
     }
-    if (!isVideoAttachment(attachment)) continue;
-    const localPath = normalizeString(attachment.localPath);
-    if (!localPath || seen.has(localPath)) continue;
-    seen.add(localPath);
-    const extracted = extractVideoPreviewFrame(attachment, extractedVideoFrameCount + failedVideoFrameCount + 1);
-    if (!extracted.input) {
-      failedVideoFrameCount += 1;
-      continue;
-    }
-    inputs.push(extracted.input);
-    if (extracted.cleanupPath) cleanupPaths.push(extracted.cleanupPath);
-    extractedVideoFrameCount += 1;
   }
-  return { inputs, cleanupPaths, extractedVideoFrameCount, failedVideoFrameCount };
+  return { inputs, cleanupPaths: [] };
 }
 
 function inferImageMimeType(filePath: string, mimeType?: string | null): string {
@@ -405,15 +339,15 @@ function buildUnavailableNativeVisualAttachmentPolicy(
   model: string | null,
   attachments: ChannelConnectorInboundAttachment[],
 ): string | null {
-  const visualCount = attachments.filter(isVisualAttachment).length;
-  if (!visualCount) return null;
+  const imageCount = attachments.filter((attachment) => attachment.kind === "image" || attachment.kind === "sticker").length;
+  if (!imageCount) return null;
   const modelLabel = normalizeString(model) || "当前模型";
   return [
     "[Studio visual attachment fallback]",
-    `The user sent ${visualCount === 1 ? "a visual attachment" : `${visualCount} visual attachments`}; the current model ${modelLabel} may support vision, but Studio could not attach a native image payload for this turn.`,
-    "This can happen when the file was not staged, the attachment is a video/audio-only format, or video preview frame extraction failed.",
+    `The user sent ${imageCount === 1 ? "an image attachment" : `${imageCount} image attachments`}; the current model ${modelLabel} may support vision, but Studio could not attach a native image payload for this turn.`,
+    "This can happen when the image file was not staged locally or the local file was unreadable.",
     "Do not describe, classify, OCR, or infer visual contents from attachment metadata, file names, or local paths.",
-    "You may use the staged local file paths with available local tools to inspect metadata, extract frames, convert formats, or ask the user for a vision-capable retry.",
+    "You may use staged local file paths for non-visual file handling or ask the user for a vision-capable retry.",
     "If the user only sent a visual attachment without a clear non-visual task, reply in Chinese that the file was received but visual inspection was not available for this turn, then ask what they want to do next.",
   ].join("\n");
 }
@@ -553,23 +487,24 @@ function buildAgentInputContent(
     .join("\n");
   const hasLocalPath = attachments.some((attachment) => normalizeString(attachment.localPath));
   const hasVisualAttachment = attachments.some(isVisualAttachment);
+  const hasImageAttachment = attachments.some((attachment) => attachment.kind === "image" || attachment.kind === "sticker");
   const hasVideoAttachment = attachments.some(isVideoAttachment);
   const supportsVision = channelConnectorModelSupportsVision(model || null, binding, modelCapabilities);
   const visualPolicy = hasVisualAttachment && !supportsVision
     ? buildNonVisionVisualAttachmentPolicy(model || null, attachments)
-    : hasVisualAttachment && supportsVision && visualInputMode === "none"
+    : hasImageAttachment && supportsVision && visualInputMode === "none"
       ? buildUnavailableNativeVisualAttachmentPolicy(model || null, attachments)
       : null;
-  const nativeVisualInputLabel = hasVideoAttachment
-    ? "staged image attachments and extracted video preview frame(s)"
-    : "staged image attachments";
   const visualInputText = hasVisualAttachment && visualInputMode === "codex-native-image"
-    ? `Vision-capable Codex runtime received ${nativeVisualInputLabel} through native --image arguments; inspect those attached images for visual tasks. For videos, reason only from extracted preview frame(s) unless you use local file tools for deeper analysis.`
+    ? "Vision-capable Codex runtime received staged image attachments through native --image arguments; inspect those attached images for visual tasks."
     : hasVisualAttachment && visualInputMode === "claude-native-image"
-      ? `Vision-capable Claude Code runtime received ${nativeVisualInputLabel} through native image content blocks; inspect those attached images for visual tasks. For videos, reason only from extracted preview frame(s) unless you use local file tools for deeper analysis.`
+      ? "Vision-capable Claude Code runtime received staged image attachments through native image content blocks; inspect those attached images for visual tasks."
       : hasVisualAttachment && visualInputMode === "opencode-native-file"
-        ? `Vision-capable OpenCode runtime received ${nativeVisualInputLabel} through native --file arguments; inspect those attached images for visual tasks. For videos, reason only from extracted preview frame(s) unless you use local file tools for deeper analysis.`
+        ? "Vision-capable OpenCode runtime received staged image attachments through native --file arguments; inspect those attached images for visual tasks."
         : "";
+  const videoInputText = hasVideoAttachment && supportsVision
+    ? "Video attachments are staged as local files. Studio does not pre-extract frames or down-convert videos; use the local paths above with the Agent's native file/video support or available tools when the task needs video understanding."
+    : "";
   const attachmentText = [
     "[Studio attachment summary]",
     summary,
@@ -580,6 +515,7 @@ function buildAgentInputContent(
       ? "Do not infer visual contents from attachment metadata, file names, or local paths; only describe images/videos if the active Agent runtime can actually inspect the file."
       : "",
     visualInputText,
+    videoInputText,
   ].filter(Boolean).join("\n");
   return [persona, history, groupContext, skills, outboundFilePolicy, visualPolicy, current, attachmentText].filter(Boolean).join("\n\n");
 }
@@ -1152,8 +1088,6 @@ export function buildChannelConnectorAgentProcessRequest(
   const nativeVisualInputs = supportsVision && agentSupportsNativeVisualInput ? collectNativeVisualInputs(attachments) : {
     inputs: [],
     cleanupPaths: [],
-    extractedVideoFrameCount: 0,
-    failedVideoFrameCount: 0,
   };
   const nativeVisualPaths = nativeVisualInputs.inputs.map((input) => input.path);
   const codexNativeImagePaths = project.agent === "codex" ? nativeVisualPaths : [];

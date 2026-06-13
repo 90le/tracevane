@@ -37,9 +37,9 @@
 | P0 | CC-first 门禁 | 已完成 | `AGENTS.md` 和本文件记录约束 |
 | P0 | Studio Gateway / Channel daemon supervisor | 已完成 | Studio/OpenClaw 崩溃后 daemon direct endpoint 可继续服务 |
 | P0 | 删除 active platform action layer | 已完成 | Agent prompt/env/UI/daemon endpoint 不再暴露 `studio-channel-skill` 或 platform action；旧 action block 不触发审批/API |
-| P1 | Codex runner | 进行中：结构化 stdout/stderr、resume 图片参数顺序、app-server 视觉 args 证据、Gateway Responses->Chat 图片映射、图片/视频 native visual smoke 已补 | `exec/resume`、thread、cwd、permission、tool stream、file manifest、stop/new/reset/compact 按 CC 验收；app-server 仍是 beta |
-| P1 | Claude Code runner | 进行中：native compact、结构化 tool_result、过程/最终回复、图片/视频 native visual smoke 已补 | stream-json、permission prompt、session resume、tool event、文件/图片/视频输入、native compact/stop live driver |
-| P1 | OpenCode runner | 进行中：parser 已对齐；结构化 stdout/stderr/exitCode、native compact、图片/视频 native visual smoke 已补 | JSON/SQLite fallback、session、tool stream、文件/图片/视频输入、native compact/stop live driver |
+| P1 | Codex runner | 进行中：结构化 stdout/stderr、resume 图片参数顺序、app-server 视觉 args 证据、Gateway Responses->Chat 图片映射、图片 native smoke 已补；视频按 staged file 交给 Agent | `exec/resume`、thread、cwd、permission、tool stream、file manifest、stop/new/reset/compact 按 CC 验收；app-server 仍是 beta |
+| P1 | Claude Code runner | 进行中：native compact、结构化 tool_result、过程/最终回复、图片 native smoke 已补；视频按 staged file 交给 Agent | stream-json、permission prompt、session resume、tool event、文件/图片/视频输入、native compact/stop live driver |
+| P1 | OpenCode runner | 进行中：parser 已对齐；结构化 stdout/stderr/exitCode、native compact、图片 native smoke 已补；视频按 staged file 交给 Agent | JSON/SQLite fallback、session、tool stream、文件/图片/视频输入、native compact/stop live driver |
 | P1 | Feishu 私聊 | 进行中：长连接 live 稳定；Markdown、入站文件、native-first compact wiring、真实长连接 auto compact、三 Agent 显式 `/compact` smoke、图片/视频 runner 合同已补 | 用户侧图片/视频重发 live、出站文件、权限审批复验 |
 | P1 | Octo 私聊 | 进行中：长连接 live 稳定；Markdown 已验证；图片/视频 runner 合同、媒体 payload 文本保留已补 | 用户侧文件/图片/视频、权限审批、compact live smoke |
 | P1 | 工具/思考/过程显示 | 继续推进：非飞书过程回复标题已移除；Codex reasoning summary、Octo `/thinking` 过滤、OpenCode live reasoning 和 parser/live 能力展示已补 | 三个 Agent 都稳定提取工具名、输入、stdout/stderr、exit/status、思考流、过程回复和最终回复分类 |
@@ -74,9 +74,9 @@
 - `node --test --test-name-pattern "model gateway adapts non-streaming codex responses requests to openai chat providers" tests/system/model-gateway-service.test.mjs`，覆盖 Responses `input_image` 到 Chat `image_url` 映射。
 - 真实 smoke：`/v1/responses` + `gpt-5.4-mini` / `gpt-5.5` 受控三色方块图片识别通过；`codex exec --image` + `gpt-5.4-mini` 同图识别通过。
 - `node --test --test-name-pattern "Octo adapter dry-run dispatch resolves binding, session key, and reply plan" tests/system/channel-connectors-service.test.mjs` 通过，覆盖 Octo 图片/视频 payload 文本保留。
-- `node --test --test-name-pattern "native Channel Connectors agent runner builds gateway-backed Codex turns" tests/system/channel-connectors-service.test.mjs` 通过，覆盖三 Agent 图片输入、非视觉 fallback 和视频抽帧 native input。
+- `node --test --test-name-pattern "native Channel Connectors agent runner builds gateway-backed Codex turns" tests/system/channel-connectors-service.test.mjs` 通过，覆盖三 Agent 图片输入、非视觉 fallback 和视频 staged local file 输入。
 - `node --test --test-name-pattern "image" tests/system/channel-connectors-codex-app-server-driver.test.mjs` 通过。
-- 真实 runner smoke：Codex / Claude Code / OpenCode + `gpt-5.4-mini` 均识别受控三色方块图片成功；三 Agent 均识别红色视频预览帧成功；非视觉 `glm-5` 图片请求不传 native 图片并按附件说明退回。
+- 真实 runner smoke：Codex / Claude Code / OpenCode + `gpt-5.4-mini` 均识别受控三色方块图片成功；非视觉 `glm-5` 图片请求不传 native 图片并按附件说明退回；视频附件不做 Studio 预抽帧，只以 staged local file 进入 Agent。
 - `node --test --test-name-pattern "daemon registers Octo and opens WuKongIM WebSocket" tests/system/channel-connectors-service.test.mjs`，1/1 通过。
 - `node --test tests/system/channel-connectors-service.test.mjs`，100/100 通过。
 - `node --test tests/system/channel-connectors-feishu-compact-live-script.test.mjs`，4/4 通过。

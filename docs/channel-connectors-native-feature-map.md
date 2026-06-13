@@ -44,7 +44,7 @@
 - Feishu 入站文件 live 已验证：长连接文件消息进入本地 staging、history 附件摘要和 Agent CLI 文件读取链路。
 - 图片附件可 staging；非视觉模型默认收到附件说明/本地路径，不做视觉推断。平台 binding 可显式开启自动切视觉模型；切换失败会回退原模型的附件说明模式。
 - Gateway Responses -> Chat-compatible provider 已保留 `input_image` 为 Chat `image_url`；`gpt-5.4-mini` / `gpt-5.5` 受控图片 smoke 和 `codex exec --image` + `gpt-5.4-mini` 已通过。
-- Codex、Claude Code、OpenCode 均已支持 native visual input：图片直接传入 CLI；视频附件抽取预览帧后传入；抽帧失败或非视觉模型退回附件说明，不允许按文件名/路径猜内容。
+- Codex、Claude Code、OpenCode 均已支持图片 native visual input；视频附件按普通 staged local file 交给 Agent，不由 Studio 预抽帧或转图片。
 - Octo 图片/视频 payload 带 `content/caption` 时会保留用户任务文本，避免媒体占位吞掉“请识别/请处理”这类指令。
 - 同 session FIFO queue、`/stop`、`/new`、`/reset`、`/compact`、`/thinking`、`/process`、`/tools` 已接入。
 - Claude Code / OpenCode persistent native compact 已有真实子进程 driver 回归：Claude 复用同一个 stream-json 常驻进程，OpenCode 通过 `run --session` 续接。
