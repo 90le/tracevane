@@ -40,6 +40,7 @@
   - 修复 OpenCode 结构化工具输出解析：`stdout`、`stderr`、`exitCode` 不再被压成空工具结果。
   - 修复 Codex 结构化命令输出解析：嵌套或直接 `stdout` / `stderr` 都会进入工具结果进度。
   - 修复 Claude Code one-shot 与 persistent driver 的结构化 `tool_result` 解析，`stdout` / `stderr` / `exit_code` 会进入工具结果进度。
+  - 加固 Codex / Claude Code / OpenCode 混合 content 工具结果解析：同一个工具结果里普通文本块与结构化 `stdout` / `stderr` / `exit_code` 会同时保留，不再择一丢失。
   - 优化非飞书气泡式进度流：assistant 过程回复不再携带“过程回复”标题，按最终回复同格式发送正文。
   - 补齐 Codex thinking/reasoning 解析：one-shot 和 app-server 都按 CC Go 合同读取 `summary` / `summary_text` / `content`，无文本时不伪造思考进度。
   - 锁定 `/thinking on/off` 进度显示链路：Octo 私聊端到端验证关闭后不发 reasoning 气泡，重新开启后恢复发送；Feishu/Octo 共用同一进度过滤函数。
@@ -85,6 +86,8 @@
 - 本轮验证通过：`node --test --test-name-pattern "stages attachments|outbound file manifests|outbound IM message manifests|Feishu transport sends markdown|Feishu transport-smoke uploads and sends files|Feishu transport downloads message resources|Feishu transport uploads and sends images or files|Octo transport direct uploads|Octo upload-and-send media|Octo transport preserves outbound upload file names|Octo auto upload falls back|Octo transport smoke uploads and sends media" tests/system/channel-connectors-service.test.mjs`，12/12 通过。
 - 本轮验证通过：`node --test --test-name-pattern "Codex structured command output|Codex command execution progress|OpenCode structured tool output" tests/system/channel-connectors-service.test.mjs`，3/3 通过。
 - 本轮验证通过：`node --test --test-name-pattern "Claude structured tool output|persistent Claude driver keeps intermediate text|Claude Code stream-json progress|Claude text before later tools" tests/system/channel-connectors-service.test.mjs`，4/4 通过。
+- 本轮验证通过：`node --test --test-name-pattern "mixed content tool output" tests/system/channel-connectors-service.test.mjs`，覆盖 Codex / Claude Code / OpenCode 混合文本块与结构化工具输出。
+- 本轮验证通过：`node --test --test-name-pattern "(structured tool output|mixed content tool output|final text|JSON progress|agent messages before later tools|stream-json progress|text before later tools|DB fallback keeps tool results|persistent Claude driver keeps intermediate)" tests/system/channel-connectors-service.test.mjs`，10/10 通过。
 - 本轮验证通过：`node --test --test-name-pattern "Octo group process replies before final reply|daemon keeps Feishu dispatcher parity diagnostics" tests/system/channel-connectors-service.test.mjs`，2/2 通过。
 - 本轮验证通过：`node --test --test-name-pattern "Codex reasoning summaries|Codex app-server maps reasoning" tests/system/channel-connectors-service.test.mjs`，2/2 通过。
 - 本轮验证通过：`node --test --test-name-pattern "Codex reasoning summaries|Claude Code stream-json progress|OpenCode JSON progress|thinking display toggles" tests/system/channel-connectors-service.test.mjs`，4/4 通过。
@@ -97,7 +100,7 @@
 - 本轮验证通过：`node --test --test-name-pattern "native Channel Connectors agent runner builds gateway-backed Codex turns" tests/system/channel-connectors-service.test.mjs`，覆盖图片 native 输入、非视觉 fallback、视频 staged local file 输入。
 - 本轮验证通过：`node --test --test-name-pattern "image" tests/system/channel-connectors-codex-app-server-driver.test.mjs`
 - 本轮验证通过：`node --test --test-name-pattern "daemon registers Octo and opens WuKongIM WebSocket" tests/system/channel-connectors-service.test.mjs`，1/1 通过。
-- 本轮验证通过：`node --test tests/system/channel-connectors-service.test.mjs`，100/100 全部通过。
+- 本轮验证通过：`node --test tests/system/channel-connectors-service.test.mjs`，102/102 全部通过。
 - 本轮验证通过：`node --test tests/system/channel-connectors-feishu-compact-live-script.test.mjs`，4/4 通过。
 - 本轮验证通过：`node --test --test-name-pattern "model gateway adapts non-streaming codex responses requests to openai chat providers" tests/system/model-gateway-service.test.mjs`，覆盖 Responses `input_image` 到 Chat `image_url` 映射。
 - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，54/54 通过，覆盖 Provider detect 显式图片元数据保留、名称-only `gpt-5.4-mini` / `claude-opus-4-6` 不自动标记 vision，以及图片 smoke 不污染 provider health/circuit。
@@ -123,12 +126,12 @@
 - Claude Code / OpenCode native compact 已覆盖 driver 层、Octo daemon 私聊入口、Feishu native-first wiring、Feishu 真实长连接 auto compact 和 Feishu 显式 `/compact` 三 Agent live smoke。
 - 图片自动切视觉模型默认关闭；需要在平台 binding 打开。非视觉图片 fallback 已有回归；Feishu/Octo 用户侧图片和视频仍需 live 重发复验。
 - Provider 模型 vision 能力不会再从模型名推断；Chat-compatible provider 即使模型名像 Claude/GPT，也必须由用户显式配置、上游显式能力元数据或图片 smoke 通过后确认标记。
-- 工具流仍需继续打磨：Codex、Claude Code、OpenCode 都必须稳定提取工具名、输入、stdout/stderr、exit/status、真实输出、过程回复和最终回复分类；三者结构化 stdout/stderr 已对齐，Claude persistent 过程/最终回复重复已修。
+- 工具流仍需继续 live 复核：Codex、Claude Code、OpenCode parser 已覆盖结构化 stdout/stderr、混合 content、过程回复和最终回复分类；下一步重点看真实 CLI 输出是否还有未覆盖事件形态。
 - 思考流 parser 支持 Codex、Claude Code、OpenCode 原生 thinking/reasoning 事件；Octo 私聊 `/thinking on/off` 已做端到端回归；状态/UI 已区分 parser 支持和 live 输出观测。真实 smoke 证明 OpenCode 会在支持 reasoning 的模型上输出 `reasoning`，Claude Code 2.1.86 当前未输出 `thinking` item；没有原生思考事件的 Agent/模型组合只能标为不支持，不伪造。
 
 ## 下一步
 
-1. 继续稳定 Codex、Claude Code、OpenCode 工具流/回复解析，重点修复空工具结果、工具结果被吞、过程回复/最终回复分类错误。
+1. 继续用真实 Feishu/Octo live 输出复核 Codex、Claude Code、OpenCode 工具流/回复解析，补齐仍未覆盖的 CLI 事件形态。
 2. 做 Feishu/Octo 私聊文件、图片、视频、权限审批和 `/compact` live smoke 复验；Feishu 入站文件已完成，继续用户侧 IM 图片/视频重发、出站文件和 Octo 对应项。
 3. 触发真实 Feishu 长连接入站排队 + daemon 重启场景，用 live 证据脚本验收 pending replay。
 4. 后续可选 OpenAI Platform 官方端点 proof。

@@ -549,6 +549,8 @@ export function progressTextValue(value: unknown, maxLength = 1200): string {
   }
   const record = recordValue(value);
   if (record) {
+    const commandResult = commandResultProgressText(record, maxLength);
+    if (commandResult) return commandResult;
     const direct = progressTextValue(record.text, maxLength)
       || progressTextValue(record.content, maxLength)
       || progressTextValue(record.output_text, maxLength)
@@ -582,7 +584,7 @@ export function firstProgressTextValue(...values: unknown[]): string {
 export function commandResultProgressText(value: unknown, maxLength = 1200, includeExitCode = true): string {
   if (Array.isArray(value)) {
     const parts = value
-      .map((item) => commandResultProgressText(item, maxLength, includeExitCode))
+      .map((item) => commandResultProgressText(item, maxLength, includeExitCode) || progressTextValue(item, maxLength))
       .filter((item) => item.trim());
     return parts.length ? truncateProgressText(parts.join("\n"), maxLength) : "";
   }

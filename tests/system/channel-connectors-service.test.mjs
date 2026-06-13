@@ -11876,6 +11876,114 @@ test("native Channel Connectors process runner keeps OpenCode structured tool ou
   assert.equal(result.progressEvents?.length, 5);
 });
 
+test("native Channel Connectors process runner keeps mixed content tool output visible across agents", async () => {
+  const root = makeTempRoot();
+  const cases = [
+    {
+      agent: "codex",
+      stdout: [
+        JSON.stringify({
+          type: "item.completed",
+          item: {
+            type: "command_execution",
+            command: "bash -lc mixed",
+            exit_code: 2,
+            output: [
+              { type: "text", text: "codex prelude" },
+              { type: "json", stdout: "codex out\n", stderr: "codex err\n", exit_code: 2 },
+              { type: "text", text: "codex epilogue" },
+            ],
+          },
+        }),
+        "",
+      ].join("\n"),
+      find: (progress) => progress.find((event) => event.type === "tool"),
+      expected: ["codex prelude", "stdout:\ncodex out", "stderr:\ncodex err", "exit_code: 2", "codex epilogue"],
+    },
+    {
+      agent: "claude-code",
+      stdout: [
+        JSON.stringify({
+          type: "assistant",
+          message: {
+            content: [
+              { type: "tool_use", id: "toolu_mixed_1", name: "Bash", input: { command: "bash -lc mixed" } },
+            ],
+          },
+        }),
+        JSON.stringify({
+          type: "user",
+          message: {
+            content: [
+              {
+                type: "tool_result",
+                tool_use_id: "toolu_mixed_1",
+                content: [
+                  { type: "text", text: "claude prelude" },
+                  { type: "json", stdout: "claude out\n", stderr: "claude err\n", exit_code: 3 },
+                  { type: "text", text: "claude epilogue" },
+                ],
+              },
+            ],
+          },
+        }),
+        JSON.stringify({ type: "result", result: "Claude mixed output done." }),
+        "",
+      ].join("\n"),
+      find: (progress) => progress.find((event) => event.itemType === "tool_result"),
+      expected: ["claude prelude", "stdout:\nclaude out", "stderr:\nclaude err", "exit_code: 3", "claude epilogue"],
+    },
+    {
+      agent: "opencode",
+      stdout: [
+        JSON.stringify({
+          type: "tool_use",
+          part: {
+            type: "tool",
+            tool: "bash",
+            state: {
+              status: "completed",
+              input: { command: "bash -lc mixed" },
+              output: [
+                { type: "text", text: "opencode prelude" },
+                { type: "json", stdout: "opencode out\n", stderr: "opencode err\n", exitCode: 4 },
+                { type: "text", text: "opencode epilogue" },
+              ],
+            },
+          },
+        }),
+        JSON.stringify({ type: "step_finish", part: { type: "step-finish", reason: "done" } }),
+        "",
+      ].join("\n"),
+      find: (progress) => progress.find((event) => event.rawType === "tool_result"),
+      expected: ["opencode prelude", "stdout:\nopencode out", "stderr:\nopencode err", "exit_code: 4", "opencode epilogue"],
+    },
+  ];
+
+  for (const item of cases) {
+    const progress = [];
+    const childScript = `process.stdout.write(${JSON.stringify(item.stdout)});`;
+    const result = await defaultChannelConnectorAgentProcessRunner({
+      command: process.execPath,
+      args: ["-e", childScript],
+      cwd: root,
+      stdin: "",
+      env: {},
+      timeoutMs: 1000,
+      agent: item.agent,
+      onProgress: (event) => progress.push(event),
+    });
+
+    assert.equal(result.exitCode, 0, item.agent);
+    assert.equal(result.error, null, item.agent);
+    const toolResult = item.find(progress);
+    assert.ok(toolResult, item.agent);
+    for (const expected of item.expected) {
+      assert.match(toolResult.text || "", new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")), item.agent);
+    }
+  }
+});
+
 test("native Channel Connectors OpenCode DB fallback keeps tool results and final reply separate", async () => {
   const root = makeTempRoot();
   const workDir = path.join(root, "work");
