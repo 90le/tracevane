@@ -163,6 +163,7 @@ Options:
 Examples:
   node scripts/smoke-channel-connectors-agent-run-live.mjs --json
   node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings feishu-live --require-ok --require-reply --require-tool --require-tool-output --json
+  node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --agents opencode --require-agent-coverage --require-ok --require-reply --require-tool --require-tool-output --require-process-reply --min-runs 1 --json
   node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings octo-studio-cc --require-ok --require-inbound-image --require-staged-files --json
   node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings octo-studio-cc --require-ok --require-outbound-message --json
 `);

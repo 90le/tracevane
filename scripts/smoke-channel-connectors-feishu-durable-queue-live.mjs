@@ -89,6 +89,13 @@ Options:
 
 Example live check after creating the restart scenario in Feishu:
   node scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --wait --json
+
+Minimal durable replay scenario:
+  1. Start this script with --mode durable --wait --json.
+  2. Send a long-running Feishu Agent request.
+  3. Before it finishes, send a second Feishu message in the same chat so it queues.
+  4. Restart openclaw-studio-channel-connectors.service before the queued run starts.
+  5. The script passes after pending_replay -> agent.run.finished appears.
 `);
 }
 

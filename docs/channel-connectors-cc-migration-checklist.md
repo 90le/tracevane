@@ -131,3 +131,8 @@
 1. 补齐 OpenCode 真实中间 assistant 过程回复 IM event-log 样本；后续工具流 live smoke 默认带 `--agents codex,claude-code,opencode --require-agent-coverage --require-tool-output`。
 2. Octo 出站文件用户手动验收和自动 `outboundFilesSent` live 证据均已通过；Octo 视频和 Octo 显式 `/compact` 24h 已验收。
 3. durable queue：真实 Feishu IM 里触发长任务排队并重启 daemon，运行 `scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --mode durable --wait --json` 验证 pending/replay 记录与实际回复一致；普通排队只用 `--mode fifo` 证明。
+
+现场触发口径：
+
+- OpenCode 过程回复：先在 IM 中切到 OpenCode，再运行 `node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --agents opencode --require-agent-coverage --require-ok --require-reply --require-tool --require-tool-output --require-process-reply --min-runs 1 --json`，发送要求“每个工具前后都输出一句话”的三步 shell prompt。
+- Feishu durable replay：先运行 `node scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --mode durable --wait --json`，再发送长任务、同 chat 第二条消息、重启 `openclaw-studio-channel-connectors.service`，等待 `pending_replay -> agent.run.finished`。
