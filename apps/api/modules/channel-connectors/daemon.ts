@@ -11897,16 +11897,49 @@ function createFeishuDispatcher(input: {
         rawEventShape: isRecord(data) ? Object.keys(data).slice(0, 12) : [],
       });
       updateFeishuRuntime(config, state, group);
-      dispatchFeishuParsedEventInBackground({
-        config,
-        state,
-        activeRunCancels,
-        group,
-        parsed,
-        rawEvent: data,
-        seenMessages,
-        feishuTimelines,
-      });
+      try {
+        const response = await dispatchFeishuParsedEvent({
+          config,
+          state,
+          activeRunCancels,
+          group,
+          parsed,
+          rawEvent: data,
+          seenMessages,
+          feishuTimelines,
+        });
+        if (response) return response;
+      } catch (error) {
+        appendLog(config.paths.log, "Feishu card action dispatch failed", {
+          groupKey: group.key,
+          eventType: parsed.eventType,
+          eventId: parsed.eventId,
+          messageId: parsed.messageId,
+          error: shortMessage(error),
+        });
+        writeJsonLine(config.paths.feishuEvents, {
+          checkedAt: new Date().toISOString(),
+          adapter: "feishu",
+          eventKind: "card-action.dispatch.failed",
+          eventType: parsed.eventType,
+          eventId: parsed.eventId,
+          accepted: false,
+          skippedReason: "feishu_card_action_dispatch_failed",
+          appId: parsed.appId || group.appId,
+          channelId: parsed.channelId,
+          fromUid: parsed.fromUid,
+          messageId: parsed.messageId,
+          error: shortMessage(error),
+          ...feishuThreadLogFields(parsed),
+        });
+        return {
+          toast: {
+            type: "warning",
+            content: "操作失败，请发送 /help 重新打开菜单。",
+          },
+        };
+      }
+      return undefined;
     },
     "application.bot.menu_v6": async (data: unknown) => {
       const receivedAt = markFeishuDispatcherCallback({

@@ -1,7 +1,7 @@
 # Feishu Long Connection Issue Tracker
 
 > Status: stable / monitored
-> Updated: 2026-06-12
+> Updated: 2026-06-13
 > Scope: Studio native Channel Connectors Feishu long-connection ingress.
 
 This is the single tracker for Feishu "connected but no reply" incidents. New Feishu long-connection fixes must update this file before or with code changes.
@@ -43,7 +43,8 @@ Conclusion: Studio must treat Feishu SDK `connected` as insufficient and manage 
 - Transport stale window defaults to `pingIntervalMs + pongTimeoutMs + 5000`, currently 23000ms.
 - SDK terminal error, long `reconnecting`, pong overdue, or transport stale closes the current cycle and lets the outer OpenClaw-style loop rebuild.
 - Connected-idle, zero-inbound and verified-ingress rebuilds stay disabled by default; idle bot should not churn only because no business message arrived.
-- Handler ACK must be fast. Message receive, bot menu and card action all dispatch business work asynchronously.
+- Handler ACK must be fast. Message receive and bot menu dispatch business work asynchronously.
+- Card action handlers must return the command card/toast as the Feishu callback response when possible; do not fire-and-forget card clicks, or stale cards can surface 108002-style unusable interactions.
 - Feishu `create_time` and per-session waterline skip older redelivery after a newer user message has already been processed.
 - Runtime and health expose SDK state, owner lock, ping/pong, raw event frame counters, dispatcher callback counters, pong overdue and transport stale.
 
@@ -71,6 +72,7 @@ Latest accepted live claim:
 
 - 2026-06-12: user verified Feishu and Octo long connections remain stable.
 - 2026-06-12: user verified Markdown rendering; file/media contract retest is covered in the Channel Connectors system tests.
+- 2026-06-13: card action callback path changed from background dispatch to synchronous callback response; `node --test tests/system/channel-connectors-service.test.mjs` passed 104/104.
 
 ## 6. If It Reappears
 

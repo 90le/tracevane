@@ -8726,12 +8726,12 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.doesNotMatch(surface.textFallback, /Reasoning: default/);
   assert.doesNotMatch(surface.textFallback, /Thinking stream:/);
   assert.match(surface.textFallback, /\*\*配置\*\*/);
-  assert.match(surface.textFallback, /`\/help agent`/);
-  assert.match(surface.textFallback, /`\/help model`/);
-  assert.match(surface.textFallback, /`\/help mode`/);
-  assert.match(surface.textFallback, /`\/help display`/);
-  assert.match(surface.textFallback, /`\/help vision`/);
-  assert.match(surface.textFallback, /`\/help workdir`/);
+  assert.match(surface.textFallback, /`\/agent`/);
+  assert.match(surface.textFallback, /`\/model`/);
+  assert.match(surface.textFallback, /`\/mode`/);
+  assert.match(surface.textFallback, /`\/display`/);
+  assert.match(surface.textFallback, /`\/vision`/);
+  assert.match(surface.textFallback, /`\/dir`/);
   assert.match(surface.textFallback, /\*\*会话动作\*\*/);
   assert.match(surface.textFallback, /`\/new`/);
   assert.match(surface.textFallback, /`\/compact`/);
@@ -8762,13 +8762,19 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(raw, /配置/);
   assert.match(raw, /会话动作/);
   assert.match(raw, /更多/);
-  assert.match(raw, /nav:\/help agent/);
-  assert.match(raw, /nav:\/help model/);
-  assert.match(raw, /nav:\/help mode/);
-  assert.match(raw, /nav:\/help display/);
-  assert.match(raw, /nav:\/help vision/);
-  assert.match(raw, /nav:\/help workdir/);
+  assert.match(raw, /nav:\/agent/);
+  assert.match(raw, /nav:\/model/);
+  assert.match(raw, /nav:\/mode/);
+  assert.match(raw, /nav:\/display/);
+  assert.match(raw, /nav:\/vision/);
+  assert.match(raw, /nav:\/dir/);
   assert.match(raw, /nav:\/help more/);
+  assert.doesNotMatch(raw, /nav:\/help agent/);
+  assert.doesNotMatch(raw, /nav:\/help model/);
+  assert.doesNotMatch(raw, /nav:\/help mode/);
+  assert.doesNotMatch(raw, /nav:\/help display/);
+  assert.doesNotMatch(raw, /nav:\/help vision/);
+  assert.doesNotMatch(raw, /nav:\/help workdir/);
   assert.match(raw, /act:\/new/);
   assert.match(raw, /act:\/compact/);
   assert.match(raw, /act:\/stop/);
@@ -9034,10 +9040,11 @@ test("native Channel Connectors command surface renders text and Feishu card act
   const visionCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(visionPickerSurface));
   assert.match(visionCardRaw, /视觉设置/);
   assert.match(visionCardRaw, /select_static/);
-  assert.match(visionCardRaw, /act:\/vision on/);
   assert.match(visionCardRaw, /act:\/vision off/);
+  assert.doesNotMatch(visionCardRaw, /act:\/vision on/);
   assert.match(visionCardRaw, /act:\/vision model auto/);
   assert.match(visionCardRaw, /act:\/vision model gpt-5\.5/);
+  assert.match(visionCardRaw, /act:\/vision default/);
   assert.match(visionCardRaw, /nav:\/help vision/);
 
   const modePickerSurface = buildChannelConnectorCommandSurface({
@@ -9068,12 +9075,12 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(displayCardRaw, /进度显示/);
   assert.match(displayCardRaw, /思考流/);
   assert.match(displayCardRaw, /act:\/quiet quiet/);
-  assert.match(displayCardRaw, /act:\/thinking on/);
   assert.match(displayCardRaw, /act:\/thinking off/);
-  assert.match(displayCardRaw, /act:\/process on/);
   assert.match(displayCardRaw, /act:\/process off/);
-  assert.match(displayCardRaw, /act:\/tools on/);
   assert.match(displayCardRaw, /act:\/tools off/);
+  assert.doesNotMatch(displayCardRaw, /act:\/thinking on/);
+  assert.doesNotMatch(displayCardRaw, /act:\/process on/);
+  assert.doesNotMatch(displayCardRaw, /act:\/tools on/);
   assert.match(displayCardRaw, /act:\/display default/);
   assert.match(displayCardRaw, /nav:\/help display/);
 
@@ -9099,6 +9106,12 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(groupDisplayCardRaw, /过程回复：关闭/);
   assert.match(groupDisplayCardRaw, /工具消息：关闭/);
   assert.match(groupDisplayCardRaw, /act:\/quiet full/);
+  assert.match(groupDisplayCardRaw, /act:\/thinking on/);
+  assert.match(groupDisplayCardRaw, /act:\/process on/);
+  assert.match(groupDisplayCardRaw, /act:\/tools on/);
+  assert.doesNotMatch(groupDisplayCardRaw, /act:\/thinking off/);
+  assert.doesNotMatch(groupDisplayCardRaw, /act:\/process off/);
+  assert.doesNotMatch(groupDisplayCardRaw, /act:\/tools off/);
 
   const bufferSurface = buildChannelConnectorCommandSurface({
     config: runtimeConfig,
@@ -13315,8 +13328,10 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
     daemonSource.indexOf('"card.action.trigger"'),
     daemonSource.indexOf('"application.bot.menu_v6"'),
   );
-  assert.match(cardActionHandler, /dispatchFeishuParsedEventInBackground/);
-  assert.doesNotMatch(cardActionHandler, /await dispatchFeishuParsedEvent/);
+  assert.match(cardActionHandler, /await dispatchFeishuParsedEvent/);
+  assert.match(cardActionHandler, /return response/);
+  assert.match(cardActionHandler, /Feishu card action dispatch failed/);
+  assert.doesNotMatch(cardActionHandler, /dispatchFeishuParsedEventInBackground/);
   assert.doesNotMatch(cardActionHandler, /return response \|\| undefined/);
   const botMenuHandler = daemonSource.slice(
     daemonSource.indexOf('"application.bot.menu_v6"'),

@@ -471,12 +471,12 @@ function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFa
     lines.push(
       "",
       "**配置**",
-      "- `/help agent` Agent Profile",
-      "- `/help model` 模型",
-      "- `/help mode` 权限 / 推理",
-      "- `/help display` 思考 / 过程 / 工具显示",
-      "- `/help vision` 图片视觉 fallback",
-      "- `/help workdir` 工作目录",
+      "- `/agent` Agent Profile",
+      "- `/model` 模型",
+      "- `/mode` 权限 / 推理",
+      "- `/display` 思考 / 过程 / 工具显示",
+      "- `/vision` 图片视觉 fallback",
+      "- `/dir` 工作目录",
       "",
       "**会话动作**",
       "- `/new` 新会话",
@@ -1260,6 +1260,25 @@ function sectionMenuAction(
   );
 }
 
+function directSectionAction(
+  sectionId: FeishuMenuSectionId,
+  command: string,
+  options: Partial<Omit<ChannelConnectorCommandSurfaceAction, "id" | "command">> = {},
+): ChannelConnectorCommandSurfaceAction {
+  const label = options.label || FEISHU_MENU_SECTION_LABELS[sectionId];
+  const { label: _label, ...rest } = options;
+  return action(
+    `home-${sectionId}`,
+    label,
+    command,
+    {
+      actionKind: "nav",
+      description: sectionSummary(sectionId),
+      ...rest,
+    },
+  );
+}
+
 function sectionSummary(sectionId: FeishuMenuSectionId): string {
   switch (sectionId) {
     case "session":
@@ -1345,7 +1364,14 @@ function homeQuickActions(surface: ChannelConnectorCommandSurface): ChannelConne
 }
 
 function homeConfigActions(): ChannelConnectorCommandSurfaceAction[] {
-  return ["agent", "model", "mode", "display", "vision", "workdir"].map((sectionId) => sectionMenuAction(sectionId as FeishuMenuSectionId));
+  return [
+    directSectionAction("agent", "/agent"),
+    directSectionAction("model", "/model"),
+    directSectionAction("mode", "/mode"),
+    directSectionAction("display", "/display"),
+    directSectionAction("vision", "/vision"),
+    directSectionAction("workdir", "/dir"),
+  ];
 }
 
 function moreMenuAction(): ChannelConnectorCommandSurfaceAction {
@@ -1554,8 +1580,6 @@ function renderModelPickerCard(surface: ChannelConnectorCommandSurface): Channel
 function renderVisionPickerCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
   const section = sectionById(surface, "vision");
   const actions = section?.actions || [];
-  const status = actions.find((item) => item.id === "vision-status")
-    || action("vision-status", "视觉状态", "/vision");
   const on = actions.find((item) => item.id === "vision-on")
     || action("vision-on", "开启视觉", "/vision on", { requiresAdmin: true });
   const off = actions.find((item) => item.id === "vision-off")
@@ -1576,6 +1600,17 @@ function renderVisionPickerCard(surface: ChannelConnectorCommandSurface): Channe
     ? modelActions.find((item) => item.command === `/vision model ${surface.current.visionModel}`)
     : null;
   const initialValue = currentModelAction ? actionCommandValue(currentModelAction) : actionCommandValue(auto);
+  const toggle = surface.current.autoVisionModel
+    ? {
+      ...off,
+      label: "关闭视觉",
+      tone: "default" as const,
+    }
+    : {
+      ...on,
+      label: "开启视觉",
+      tone: "primary" as const,
+    };
   const elements: Array<Record<string, unknown>> = [
     {
       tag: "markdown",
@@ -1589,8 +1624,6 @@ function renderVisionPickerCard(surface: ChannelConnectorCommandSurface): Channe
       ].join("\n"),
     },
   ];
-  pushActionRows(elements, [status, on, off], surface, 3, true);
-  pushActionRows(elements, [auto, defaults], surface, 2, true);
   elements.push(selectStaticElement({
     placeholder: modelActions.length ? "选择视觉模型" : "暂无 vision 模型",
     options,
@@ -1599,6 +1632,7 @@ function renderVisionPickerCard(surface: ChannelConnectorCommandSurface): Channe
     sectionId: "vision",
     viewId: "vision",
   }));
+  pushActionRows(elements, [toggle, defaults], surface, 2, true);
   pushSubcardNavRows(elements, surface, "vision");
   elements.push({
     tag: "note",
@@ -1829,8 +1863,6 @@ function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): Chann
 function renderDisplayCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
   const section = sectionById(surface, "display");
   const actions = section?.actions || [];
-  const displayStatus = actions.find((item) => item.id === "display-status")
-    || action("display-status", "显示状态", "/display");
   const quietToggle = actions.find((item) => item.id === "quiet-toggle")
     || action("quiet-toggle", "安静模式", "/quiet quiet", { requiresAdmin: true });
   const thinkingOn = actions.find((item) => item.id === "thinking-on")
@@ -1847,6 +1879,15 @@ function renderDisplayCard(surface: ChannelConnectorCommandSurface): ChannelConn
     || action("tools-off", "隐藏工具", "/tools off", { requiresAdmin: true });
   const defaults = actions.find((item) => item.id === "display-default")
     || action("display-default", "恢复默认", "/display default", { requiresAdmin: true });
+  const thinkingToggle = surface.current.thinkingMessages
+    ? { ...thinkingOff, label: "隐藏思考" }
+    : { ...thinkingOn, label: "显示思考", tone: "primary" as const };
+  const processToggle = surface.current.processMessages
+    ? { ...processOff, label: "隐藏过程" }
+    : { ...processOn, label: "显示过程", tone: "primary" as const };
+  const toolsToggle = surface.current.toolMessages
+    ? { ...toolsOff, label: "隐藏工具" }
+    : { ...toolsOn, label: "显示工具", tone: "primary" as const };
   const elements: Array<Record<string, unknown>> = [
     {
       tag: "markdown",
@@ -1862,11 +1903,9 @@ function renderDisplayCard(surface: ChannelConnectorCommandSurface): ChannelConn
       ].join("\n"),
     },
   ];
-  pushActionRows(elements, [displayStatus, quietToggle], surface, 2, true);
+  pushActionRows(elements, [thinkingToggle, processToggle], surface, 2, true);
+  pushActionRows(elements, [toolsToggle, quietToggle], surface, 2, true);
   pushActionRows(elements, [defaults], surface, 2, true);
-  pushActionRows(elements, [thinkingOn, thinkingOff], surface, 2, true);
-  pushActionRows(elements, [processOn, processOff], surface, 2, true);
-  pushActionRows(elements, [toolsOn, toolsOff], surface, 2, true);
   pushSubcardNavRows(elements, surface, "display");
   return {
     config: {
