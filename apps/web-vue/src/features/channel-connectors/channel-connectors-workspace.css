@@ -227,6 +227,7 @@
 }
 
 .ccx-runtime-card__head small,
+.ccx-runtime-list-head small,
 .ccx-metric-strip span,
 .ccx-auto-compact-row small,
 .ccx-auto-compact-row span,
@@ -236,7 +237,7 @@
 
 .ccx-metric-strip {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 8px;
 }
 
@@ -250,9 +251,27 @@
 
 .ccx-metric-strip strong,
 .ccx-runtime-card__head strong,
+.ccx-runtime-list-head strong,
 .ccx-auto-compact-row strong,
 .ccx-auto-compact-row span {
   overflow-wrap: anywhere;
+}
+
+.ccx-runtime-list-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-base) 88%, var(--surface-soft));
+  padding: 12px;
+}
+
+.ccx-runtime-list-head > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
 }
 
 .ccx-auto-compact-list {

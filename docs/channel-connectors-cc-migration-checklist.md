@@ -46,7 +46,7 @@
 | P1 | 图片/视觉模型 fallback | 已完成：默认关闭；binding 可设启用和默认视觉模型；IM `/vision` 命令与 Feishu 卡片可临时开启/关闭/指定模型；Gateway catalog 只列健康 vision 模型 | 非视觉当前模型收到图片时按配置切到指定/自动健康视觉模型，失败回退附件说明模式 |
 | P1 | 上下文预算与 compact | 继续推进 | resolved model 预算进入 IM session；优先 Agent-native compact，不支持/失败再 Gateway compact |
 | P1 | 文件/消息收发 | 继续推进 | 私聊入站 staging、出站 manifest、原始文件名、yolo 权限、大文件策略、Feishu/Octo live smoke |
-| P2 | durable queue | 进行中：pending-agent-run store 已接入 Octo/Feishu；Octo daemon restart 回归已通过 | daemon 重启不丢失未开始任务；继续补 Feishu live smoke 和运行态可见性 |
+| P2 | durable queue | 进行中：pending-agent-run store 已接入 Octo/Feishu；daemon/API/UI 运行态可见性已补；Octo daemon restart 回归已通过 | daemon 重启不丢失未开始任务；继续补 Feishu live smoke |
 | P3 | 更多平台 | 路线图 | 微信/企微/钉钉/Telegram/Slack/Discord/QQ/LINE 等只按私聊能力迁移 |
 | P3 | 更多 Agent | 路线图 | Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP 等逐个补 runner 验收 |
 
@@ -80,6 +80,9 @@
 - `node --test --test-name-pattern "IM commands switch agent|visual turns select Gateway vision models|model menus can read live Gateway model lists|command surface renders text" tests/system/channel-connectors-service.test.mjs`，4/4 通过，覆盖 `/vision` 命令、指定视觉模型、Gateway vision 菜单和 Feishu 卡片。
 - 真实 runner smoke：Codex / Claude Code / OpenCode + `gpt-5.4-mini` 均识别受控三色方块图片成功；非视觉 `glm-5` 图片请求不传 native 图片并按附件说明退回；视频附件不做 Studio 预抽帧，只以 staged local file 进入 Agent。
 - `node --test --test-name-pattern "queues same-session|serializes same-session|replays queued Octo Agent turns" tests/system/channel-connectors-service.test.mjs`，3/3 通过，覆盖同 session FIFO 和 Octo 已入队未启动消息的 daemon 重启重放。
+- `node --test --test-name-pattern "replays queued Octo Agent turns" tests/system/channel-connectors-service.test.mjs` 通过，覆盖 daemon `/status` 的 pending queue 记录和 replay 事件。
+- `npm run typecheck:web`
+- `npm run build:web`
 - `node --test --test-name-pattern "daemon registers Octo and opens WuKongIM WebSocket" tests/system/channel-connectors-service.test.mjs`，1/1 通过。
 - `node --test tests/system/channel-connectors-service.test.mjs`，101/101 通过。
 - `node --test tests/system/channel-connectors-feishu-compact-live-script.test.mjs`，4/4 通过。
@@ -94,4 +97,4 @@
 1. 稳定 Codex / Claude Code / OpenCode 工具流和回复解析。
 2. 私聊文件/图片/视频/权限/compact 做 Feishu 与 Octo live smoke；Feishu 入站文件已完成，继续用户侧图片/视频重发、出站文件和 Octo 对应项。
 3. Provider Center 能力测试：图片 smoke 失败时不要自动标记 vision，并提示协议/端点不匹配。
-4. durable queue：补 Feishu live smoke 和运行态 pending/replay 可见性。
+4. durable queue：补 Feishu live smoke，验证 Feishu 长连接重启期间 pending/replay 记录与实际回复一致。

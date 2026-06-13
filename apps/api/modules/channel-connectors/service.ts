@@ -19,6 +19,8 @@ import {
   type ChannelConnectorsDaemonResponse,
   type ChannelConnectorsDaemonRuntimeConfig,
   type ChannelConnectorsDaemonRuntimeAutoCompactRecord,
+  type ChannelConnectorsDaemonRuntimePendingAgentRunEvent,
+  type ChannelConnectorsDaemonRuntimePendingAgentRunRecord,
   type ChannelConnectorsDaemonRuntimeStatus,
   type ChannelConnectorsDaemonTemplate,
   type ChannelConnectorsLogsResponse,
@@ -577,6 +579,12 @@ function runtimeStatusError(checkedAt: string, error: unknown): ChannelConnector
     activeRuns: null,
     agentRuns: null,
     autoCompacts: [],
+    pendingAgentRuns: {
+      count: 0,
+      oldestQueuedAt: null,
+      records: [],
+      recentEvents: [],
+    },
     error: error instanceof Error ? error.message : normalizeString(error, "Channel daemon runtime status unavailable"),
   };
 }
@@ -674,6 +682,105 @@ function normalizeDaemonAutoCompactRecord(value: unknown): ChannelConnectorsDaem
   };
 }
 
+function normalizePendingAgentRunAdapter(value: unknown): "octo" | "feishu" | null {
+  if (value === "octo" || value === "feishu") return value;
+  return null;
+}
+
+function normalizePendingAgentRunEventKind(
+  value: unknown,
+): ChannelConnectorsDaemonRuntimePendingAgentRunEvent["eventKind"] | null {
+  if (
+    value === "channel.agent.pending_replay"
+    || value === "channel.agent.pending_replay_failed"
+    || value === "channel.agent.pending_dropped"
+  ) {
+    return value;
+  }
+  return null;
+}
+
+function normalizeDaemonPendingAgentRunRecord(
+  value: unknown,
+): ChannelConnectorsDaemonRuntimePendingAgentRunRecord | null {
+  if (!isRecord(value)) return null;
+  const adapter = normalizePendingAgentRunAdapter(value.adapter);
+  const id = nullableString(value.id);
+  const bindingId = nullableString(value.bindingId);
+  const projectId = nullableString(value.projectId);
+  const sessionKey = nullableString(value.sessionKey);
+  const messageId = nullableString(value.messageId);
+  const queuedAt = nullableString(value.queuedAt);
+  const updatedAt = nullableString(value.updatedAt);
+  if (!adapter || !id || !bindingId || !projectId || !sessionKey || !messageId || !queuedAt || !updatedAt) return null;
+  return {
+    id,
+    adapter,
+    bindingId,
+    projectId,
+    sessionKey,
+    messageId,
+    queuedAt,
+    updatedAt,
+    attempts: nullableNumber(value.attempts) ?? 0,
+    ageMs: nullableNumber(value.ageMs),
+  };
+}
+
+function normalizeDaemonPendingAgentRunEvent(
+  value: unknown,
+): ChannelConnectorsDaemonRuntimePendingAgentRunEvent | null {
+  if (!isRecord(value)) return null;
+  const eventKind = normalizePendingAgentRunEventKind(value.eventKind);
+  const adapter = normalizePendingAgentRunAdapter(value.adapter);
+  const checkedAt = nullableString(value.checkedAt);
+  const bindingId = nullableString(value.bindingId);
+  if (!eventKind || !adapter || !checkedAt || !bindingId) return null;
+  return {
+    checkedAt,
+    eventKind,
+    adapter,
+    bindingId,
+    projectId: nullableString(value.projectId),
+    sessionKey: nullableString(value.sessionKey),
+    messageId: nullableString(value.messageId),
+    pendingRunId: nullableString(value.pendingRunId),
+    attempt: nullableNumber(value.attempt),
+    queuedAt: nullableString(value.queuedAt),
+    reason: nullableString(value.reason),
+    error: nullableString(value.error),
+  };
+}
+
+function normalizeDaemonPendingAgentRunStatus(
+  value: unknown,
+): ChannelConnectorsDaemonRuntimeStatus["pendingAgentRuns"] {
+  if (!isRecord(value)) {
+    return {
+      count: 0,
+      oldestQueuedAt: null,
+      records: [],
+      recentEvents: [],
+    };
+  }
+  const records = Array.isArray(value.records)
+    ? value.records
+      .map(normalizeDaemonPendingAgentRunRecord)
+      .filter((record): record is ChannelConnectorsDaemonRuntimePendingAgentRunRecord => Boolean(record))
+    : [];
+  const recentEvents = Array.isArray(value.recentEvents)
+    ? value.recentEvents
+      .map(normalizeDaemonPendingAgentRunEvent)
+      .filter((event): event is ChannelConnectorsDaemonRuntimePendingAgentRunEvent => Boolean(event))
+    : [];
+  return {
+    count: nullableNumber(value.count) ?? records.length,
+    oldestQueuedAt: nullableString(value.oldestQueuedAt),
+    records,
+    recentEvents,
+  };
+}
+
 async function requestDaemonRuntimeStatus(checkedAt: string): Promise<ChannelConnectorsDaemonRuntimeStatus> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 1500);
@@ -699,6 +806,7 @@ async function requestDaemonRuntimeStatus(checkedAt: string): Promise<ChannelCon
         .map(normalizeDaemonFeishuConnection)
         .filter((record): record is ChannelConnectorsDaemonRuntimeStatus["feishuConnectionDetails"][number] => Boolean(record))
       : [];
+    const pendingAgentRuns = normalizeDaemonPendingAgentRunStatus(body.pendingAgentRuns);
     return {
       ok: true,
       checkedAt,
@@ -713,6 +821,7 @@ async function requestDaemonRuntimeStatus(checkedAt: string): Promise<ChannelCon
       activeRuns: arrayCount(body.activeRuns),
       agentRuns: arrayCount(body.agentRuns),
       autoCompacts,
+      pendingAgentRuns,
       error: null,
     };
   } catch (error) {

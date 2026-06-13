@@ -170,6 +170,10 @@
                   <span>Agent turns</span>
                   <strong>{{ formatMetric(runtimeStatus?.agentRuns) }}</strong>
                 </div>
+                <div>
+                  <span>{{ text('待恢复', 'Pending') }}</span>
+                  <strong>{{ formatMetric(pendingAgentRunStatus?.count) }}</strong>
+                </div>
               </div>
               <span v-if="runtimeStatus?.error" class="ccx-danger-text">{{ runtimeStatus.error }}</span>
             </div>
@@ -219,6 +223,45 @@
             </div>
             <div v-if="runtimeStatus?.reachable && !autoCompactRecords.length" class="ccx-empty compact">
               {{ text('按模型上下文剩余量触发后，这里会显示 native / fallback / retry 记录。', 'Native, fallback, and retry records appear here after model budget pressure triggers auto compact.') }}
+            </div>
+          </section>
+
+          <section class="ccx-auto-compact-list" aria-label="Pending Agent run queue">
+            <div class="ccx-runtime-list-head">
+              <div>
+                <small>Durable queue</small>
+                <strong>{{ pendingQueueHeadline }}</strong>
+              </div>
+              <StatusPill :label="pendingQueueStatusLabel" :tone="pendingQueueStatusTone" />
+            </div>
+            <div
+              v-for="record in pendingAgentRunRecords"
+              :key="record.id"
+              class="ccx-auto-compact-row skipped"
+            >
+              <div>
+                <small>{{ record.adapter }} · {{ record.bindingId }} · {{ formatDuration(record.ageMs || 0) }}</small>
+                <strong>{{ record.messageId }} · {{ record.projectId }}</strong>
+                <span>{{ record.sessionKey }}</span>
+                <span>{{ text('入队', 'Queued') }} {{ formatTimestamp(record.queuedAt) }} · {{ text('尝试', 'attempts') }} {{ record.attempts }}</span>
+              </div>
+            </div>
+            <div
+              v-for="event in pendingAgentRunEvents"
+              :key="`${event.checkedAt}:${event.pendingRunId}:${event.eventKind}`"
+              class="ccx-auto-compact-row"
+              :class="pendingQueueEventClass(event)"
+            >
+              <div>
+                <small>{{ formatTimestamp(event.checkedAt) }} · {{ event.adapter }} · {{ event.bindingId }}</small>
+                <strong>{{ pendingQueueEventLabel(event) }}{{ event.attempt ? ` · #${event.attempt}` : '' }}</strong>
+                <span>{{ event.messageId || '-' }} · {{ event.sessionKey || '-' }}</span>
+                <span v-if="event.reason">{{ event.reason }}</span>
+                <span v-if="event.error" class="ccx-danger-text">{{ event.error }}</span>
+              </div>
+            </div>
+            <div v-if="runtimeStatus?.reachable && !pendingAgentRunRecords.length && !pendingAgentRunEvents.length" class="ccx-empty compact">
+              {{ text('暂无可恢复队列记录', 'No durable queue records yet') }}
             </div>
           </section>
         </article>
@@ -794,6 +837,9 @@ const runtimeChain = computed(() => status.value?.runtimeChain || [
 const runtimeStatus = computed(() => status.value?.runtime || null);
 const autoCompactRecords = computed(() => (runtimeStatus.value?.autoCompacts || []).slice(0, 6));
 const latestAutoCompact = computed(() => autoCompactRecords.value[0] || null);
+const pendingAgentRunStatus = computed(() => runtimeStatus.value?.pendingAgentRuns || null);
+const pendingAgentRunRecords = computed(() => (pendingAgentRunStatus.value?.records || []).slice(0, 6));
+const pendingAgentRunEvents = computed(() => (pendingAgentRunStatus.value?.recentEvents || []).slice(0, 6));
 
 const runtimeReachableLabel = computed(() => {
   if (!runtimeStatus.value) return text('未知', 'Unknown');
@@ -823,6 +869,30 @@ const autoCompactStatusTone = computed<'neutral' | 'accent' | 'sage' | 'danger'>
   if (latest.ok === false) return 'danger';
   if (latest.action === 'native' || latest.action === 'fallback') return 'sage';
   return 'accent';
+});
+
+const pendingQueueHeadline = computed(() => {
+  const count = pendingAgentRunStatus.value?.count || 0;
+  if (!count) return text('空闲', 'Idle');
+  const oldest = pendingAgentRunStatus.value?.oldestQueuedAt;
+  return oldest
+    ? `${count} · ${formatTimestamp(oldest)}`
+    : String(count);
+});
+
+const pendingQueueStatusLabel = computed(() => {
+  const count = pendingAgentRunStatus.value?.count || 0;
+  if (count > 0) return text('有待恢复', 'Pending');
+  if (pendingAgentRunEvents.value.length > 0) return text('有重放记录', 'Replay log');
+  return text('空闲', 'Idle');
+});
+
+const pendingQueueStatusTone = computed<'neutral' | 'accent' | 'sage' | 'danger'>(() => {
+  const count = pendingAgentRunStatus.value?.count || 0;
+  if (count > 0) return 'accent';
+  if (pendingAgentRunEvents.value.some((event) => event.eventKind === 'channel.agent.pending_replay_failed')) return 'danger';
+  if (pendingAgentRunEvents.value.length > 0) return 'sage';
+  return 'neutral';
 });
 
 const supportedAgents = computed<ChannelConnectorAgentId[]>(() =>
@@ -1030,6 +1100,20 @@ function autoCompactHistoryLine(record: ChannelConnectorsDaemonRuntimeAutoCompac
     parts.push(`${text('清理会话', 'cleared sessions')} ${formatMetric(record.sessionsCleared)}`);
   }
   return parts.join(' · ');
+}
+
+function pendingQueueEventLabel(event: NonNullable<ChannelConnectorsStatusResponse['runtime']['pendingAgentRuns']>['recentEvents'][number]): string {
+  if (event.eventKind === 'channel.agent.pending_replay') return text('重放启动', 'Replay started');
+  if (event.eventKind === 'channel.agent.pending_replay_failed') return text('重放失败', 'Replay failed');
+  return text('已丢弃', 'Dropped');
+}
+
+function pendingQueueEventClass(event: NonNullable<ChannelConnectorsStatusResponse['runtime']['pendingAgentRuns']>['recentEvents'][number]): Record<string, boolean> {
+  return {
+    success: event.eventKind === 'channel.agent.pending_replay',
+    failure: event.eventKind === 'channel.agent.pending_replay_failed',
+    skipped: event.eventKind === 'channel.agent.pending_dropped',
+  };
 }
 
 const platformSmokeOutput = computed(() => {

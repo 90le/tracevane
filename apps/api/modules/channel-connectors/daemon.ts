@@ -772,6 +772,37 @@ interface ChannelDaemonPendingAgentRunStore {
   records: ChannelDaemonPendingAgentRunRecord[];
 }
 
+interface ChannelDaemonPendingAgentRunStatus {
+  count: number;
+  oldestQueuedAt: string | null;
+  records: Array<{
+    id: string;
+    adapter: ChannelDaemonPendingAgentRunAdapter;
+    bindingId: string;
+    projectId: string;
+    sessionKey: string;
+    messageId: string;
+    queuedAt: string;
+    updatedAt: string;
+    attempts: number;
+    ageMs: number | null;
+  }>;
+  recentEvents: Array<{
+    checkedAt: string;
+    eventKind: "channel.agent.pending_replay" | "channel.agent.pending_replay_failed" | "channel.agent.pending_dropped";
+    adapter: ChannelDaemonPendingAgentRunAdapter;
+    bindingId: string;
+    projectId: string | null;
+    sessionKey: string | null;
+    messageId: string | null;
+    pendingRunId: string | null;
+    attempt: number | null;
+    queuedAt: string | null;
+    reason: string | null;
+    error: string | null;
+  }>;
+}
+
 interface ChannelDaemonOctoTimelineEntry {
   bindingId: string;
   channelId: string;
@@ -1193,6 +1224,89 @@ function markPendingAgentRunAttempt(
   store.records[index] = next;
   writePendingAgentRunStore(config, store);
   return next;
+}
+
+function pendingAgentRunEventFromRecord(value: Record<string, unknown>): ChannelDaemonPendingAgentRunStatus["recentEvents"][number] | null {
+  const eventKind = normalizeString(value.eventKind);
+  if (
+    eventKind !== "channel.agent.pending_replay"
+    && eventKind !== "channel.agent.pending_replay_failed"
+    && eventKind !== "channel.agent.pending_dropped"
+  ) {
+    return null;
+  }
+  const adapter = normalizeString(value.adapter);
+  if (adapter !== "octo" && adapter !== "feishu") return null;
+  const checkedAt = normalizeString(value.checkedAt);
+  const bindingId = normalizeString(value.bindingId);
+  if (!checkedAt || !bindingId) return null;
+  const attempt = Number(value.attempt);
+  return {
+    checkedAt,
+    eventKind,
+    adapter,
+    bindingId,
+    projectId: normalizeString(value.projectId) || null,
+    sessionKey: normalizeString(value.sessionKey) || null,
+    messageId: normalizeString(value.messageId) || null,
+    pendingRunId: normalizeString(value.pendingRunId) || null,
+    attempt: Number.isFinite(attempt) ? attempt : null,
+    queuedAt: normalizeString(value.queuedAt) || null,
+    reason: normalizeString(value.reason) || null,
+    error: normalizeString(value.error) || null,
+  };
+}
+
+function readPendingAgentRunEventsFromLog(filePath: string): ChannelDaemonPendingAgentRunStatus["recentEvents"] {
+  const raw = readTextFileTail(filePath, 2 * 1024 * 1024);
+  if (!raw) return [];
+  const events: ChannelDaemonPendingAgentRunStatus["recentEvents"] = [];
+  for (const line of raw.split(/\r?\n/)) {
+    if (!line.trim().startsWith("{")) continue;
+    try {
+      const parsed = JSON.parse(line);
+      if (!isRecord(parsed)) continue;
+      const event = pendingAgentRunEventFromRecord(parsed);
+      if (event) events.push(event);
+    } catch {
+      continue;
+    }
+  }
+  return events;
+}
+
+function summarizePendingAgentRuns(config: ChannelConnectorsDaemonRuntimeConfig): ChannelDaemonPendingAgentRunStatus {
+  const nowMs = Date.now();
+  const records = readPendingAgentRunStore(config).records
+    .slice()
+    .sort((a, b) => Date.parse(a.queuedAt) - Date.parse(b.queuedAt))
+    .map((record) => {
+      const queuedAtMs = Date.parse(record.queuedAt);
+      return {
+        id: record.id,
+        adapter: record.adapter,
+        bindingId: record.bindingId,
+        projectId: record.projectId,
+        sessionKey: record.sessionKey,
+        messageId: record.messageId,
+        queuedAt: record.queuedAt,
+        updatedAt: record.updatedAt,
+        attempts: record.attempts,
+        ageMs: Number.isFinite(queuedAtMs) ? Math.max(0, nowMs - queuedAtMs) : null,
+      };
+    });
+  const recentEvents = [
+    ...readPendingAgentRunEventsFromLog(config.paths.octoEvents),
+    ...readPendingAgentRunEventsFromLog(config.paths.feishuEvents),
+  ]
+    .sort((a, b) => Date.parse(b.checkedAt) - Date.parse(a.checkedAt))
+    .slice(0, 10);
+  return {
+    count: records.length,
+    oldestQueuedAt: records[0]?.queuedAt || null,
+    records: records.slice(0, 20),
+    recentEvents,
+  };
 }
 
 function readTextFileTail(filePath: string, maxBytes: number): string {
@@ -2146,6 +2260,7 @@ function startHttp(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelD
         activeRuns: state.activeRuns,
         agentRuns: state.agentRuns,
         autoCompacts: state.autoCompacts || [],
+        pendingAgentRuns: summarizePendingAgentRuns(config),
       }));
       return;
     }

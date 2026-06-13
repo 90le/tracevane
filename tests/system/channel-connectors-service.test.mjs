@@ -13897,7 +13897,7 @@ test("native Channel Connectors daemon replays queued Octo Agent turns after res
     "process.stdin.on('end', async () => {",
     "  const marker = stdin.includes('second durable turn') ? 'second' : 'first';",
     "  fs.appendFileSync(capture, `${JSON.stringify({ event: 'start', marker, at: Date.now(), stdin })}\\n`);",
-    "  if (marker === 'first') await delay(8000);",
+    "  if (marker === 'first') await delay(30000);",
     "  fs.appendFileSync(capture, `${JSON.stringify({ event: 'end', marker, at: Date.now() })}\\n`);",
     "  process.stdout.write(`${JSON.stringify({ type: 'thread.started', thread_id: `thread-${marker}` })}\\n`);",
     "  process.stdout.write(`${JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: `${marker} done` } })}\\n`);",
@@ -14091,6 +14091,14 @@ test("native Channel Connectors daemon replays queued Octo Agent turns after res
           return store.records?.some?.((record) => record.messageId === "3002") ? store : null;
         }, 5000);
         assert.equal(pending.records.find((record) => record.messageId === "3002").adapter, "octo");
+        const pendingStatus = await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          return response.body?.pendingAgentRuns?.records?.some?.((record) => record.messageId === "3002")
+            ? response.body.pendingAgentRuns
+            : null;
+        }, 5000);
+        assert.equal(pendingStatus.count, 1);
+        assert.equal(pendingStatus.records[0].adapter, "octo");
       } finally {
         await stopDaemon(firstDaemon.child);
       }
@@ -14121,6 +14129,16 @@ test("native Channel Connectors daemon replays queued Octo Agent turns after res
         });
         assert.ok(octoEvents.some((event) => event.eventKind === "channel.agent.pending_replay"
           && event.messageId === "3002"));
+        const replayStatus = await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          return response.body?.pendingAgentRuns?.recentEvents?.some?.((event) => {
+            return event.eventKind === "channel.agent.pending_replay"
+              && event.messageId === "3002";
+          })
+            ? response.body.pendingAgentRuns
+            : null;
+        }, 5000);
+        assert.equal(replayStatus.count, 0);
       } finally {
         await stopDaemon(secondDaemon.child);
       }

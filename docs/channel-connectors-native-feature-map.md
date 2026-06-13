@@ -47,7 +47,7 @@
 - Codex、Claude Code、OpenCode 均已支持图片 native visual input；视频附件按普通 staged local file 交给 Agent，不由 Studio 预抽帧或转图片。
 - Octo 图片/视频 payload 带 `content/caption` 时会保留用户任务文本，避免媒体占位吞掉“请识别/请处理”这类指令。
 - 同 session FIFO queue、`/stop`、`/new`、`/reset`、`/compact`、`/thinking`、`/process`、`/tools` 已接入。
-- 可恢复队列已接入 daemon 内部 pending-agent-run store：同 session 已入队但尚未启动的 Agent 消息会落盘，daemon 重启后按原平台 dispatch 重放；Octo 重启回归已通过，Feishu 共用 replay 入口，仍需 live 复验。
+- 可恢复队列已接入 daemon 内部 pending-agent-run store：同 session 已入队但尚未启动的 Agent 消息会落盘，daemon 重启后按原平台 dispatch 重放；daemon `/status`、API 和 Channel Connectors Runtime 页已展示 pending 数量、待恢复记录和最近 replay/drop/fail 事件；Octo 重启回归已通过，Feishu 共用 replay 入口，仍需 live 复验。
 - Claude Code / OpenCode persistent native compact 已有真实子进程 driver 回归：Claude 复用同一个 stream-json 常驻进程，OpenCode 通过 `run --session` 续接。
 - Claude Code persistent driver 已修复过程回复污染最终回复，并补进度回调兼容回归。
 - Octo daemon 私聊 `/compact` 已有回归证明会进入 Claude/OpenCode persistent session，不走 Gateway fallback。
@@ -76,4 +76,4 @@
 1. 工具流和回复解析：继续复核 Claude/Codex live 差异，修复空工具结果、工具输出丢失、过程回复/最终回复分类错误。
 2. Feishu/Octo 私聊 live smoke：Feishu/Octo 图片与视频重发验证、出站文件、权限审批和 Octo 文件；Markdown 做抽查回归。
 3. Provider Center 能力测试：图片 smoke 失败时不要自动标记 vision，并提示协议/端点不匹配。
-4. durable queue：补 Feishu live smoke，并把 pending 数量/最近 replay 结果展示到运行态状态页。
+4. durable queue：补 Feishu live smoke，确认飞书长连接重启期间未启动任务也能按 pending store 重放。

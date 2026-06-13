@@ -1105,6 +1105,41 @@ export interface ChannelConnectorsDaemonRuntimeFeishuConnectionStatus {
   lastError: string | null;
 }
 
+export interface ChannelConnectorsDaemonRuntimePendingAgentRunRecord {
+  id: string;
+  adapter: "octo" | "feishu";
+  bindingId: string;
+  projectId: string;
+  sessionKey: string;
+  messageId: string;
+  queuedAt: string;
+  updatedAt: string;
+  attempts: number;
+  ageMs: number | null;
+}
+
+export interface ChannelConnectorsDaemonRuntimePendingAgentRunEvent {
+  checkedAt: string;
+  eventKind: "channel.agent.pending_replay" | "channel.agent.pending_replay_failed" | "channel.agent.pending_dropped";
+  adapter: "octo" | "feishu";
+  bindingId: string;
+  projectId: string | null;
+  sessionKey: string | null;
+  messageId: string | null;
+  pendingRunId: string | null;
+  attempt: number | null;
+  queuedAt: string | null;
+  reason: string | null;
+  error: string | null;
+}
+
+export interface ChannelConnectorsDaemonRuntimePendingAgentRunStatus {
+  count: number;
+  oldestQueuedAt: string | null;
+  records: ChannelConnectorsDaemonRuntimePendingAgentRunRecord[];
+  recentEvents: ChannelConnectorsDaemonRuntimePendingAgentRunEvent[];
+}
+
 export interface ChannelConnectorsDaemonRuntimeStatus {
   ok: boolean;
   checkedAt: string;
@@ -1119,6 +1154,7 @@ export interface ChannelConnectorsDaemonRuntimeStatus {
   activeRuns: number | null;
   agentRuns: number | null;
   autoCompacts: ChannelConnectorsDaemonRuntimeAutoCompactRecord[];
+  pendingAgentRuns: ChannelConnectorsDaemonRuntimePendingAgentRunStatus;
   error: string | null;
 }
 
