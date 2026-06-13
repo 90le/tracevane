@@ -1,7 +1,7 @@
 # Channel Connectors / CLI Agent Bot 原生方案
 
-> 状态：Studio 原生 Channel daemon 路线；Feishu/Octo 私聊基础闭环已可用；Agent runner、工具流、文件/图片和 compact 继续加固
-> 更新：2026-06-12
+> 状态：Studio 原生 Channel daemon 路线；Feishu/Octo 私聊闭环已进入 live 抽查；Agent runner 和 durable queue 继续加固
+> 更新：2026-06-13
 > 迁移清单：`channel-connectors-cc-migration-checklist.md`
 
 ## 1. 当前结论
@@ -110,7 +110,7 @@ Octo(dmwork)：
 - OpenCode `run --session` 已覆盖普通 turn、文件 manifest、视觉附件、compact、stop/cancel；SQLite fallback 已统一复用 live parser，结构化 `stdout`/`stderr`/`exitCode` 已保留，避免丢工具结果或把过程回复拼进最终回复。
 - Claude Code / OpenCode persistent native compact 已新增真实子进程 driver 回归：Claude 用同一个 stream-json 常驻进程接收 `/compact`，OpenCode 用 `run --session <id>` 续接 `/compact`，均不回退 one-shot。
 - Octo daemon 私聊 `/compact` 已新增回归：普通消息建立 live session 后，`/compact` 会进入 Claude/OpenCode persistent driver，不走 Gateway fallback。
-- Feishu daemon 已补 native-first wiring 回归：长连接已稳定，派发会先调用 Agent native compact，再允许 Gateway fallback；外部 `/compact` live smoke 仍待复验。
+- Feishu daemon 已补 native-first wiring 回归：长连接已稳定，派发会先调用 Agent native compact，再允许 Gateway fallback；Feishu 显式 `/compact` 24h live 已验证 Codex / Claude Code / OpenCode。
 
 ## 6. 当前完成
 
@@ -124,11 +124,12 @@ Octo(dmwork)：
 - Codex 思考流解析合同已覆盖 one-shot 和 app-server；Octo 私聊 `/thinking` 开关已有端到端回归；状态、菜单和前端能力展示已区分 parser 支持与当前 live 输出观测。真实 CLI smoke 显示 Claude Code 2.1.86 当前不输出 `thinking` item，OpenCode 1.17.0 仅在支持 reasoning 的模型上输出 `reasoning` part。没有 CLI 原生事件时不伪造。
 - allowlist/admin、rate limit、banned words 基础治理。
 - active `studio-channel-skill` 与 platform action 暴露层已删除。
+- Codex / Claude Code / OpenCode direct runner smoke 已证明过程回复、工具输出和最终回复分类正常；真实 IM event-log 中 Codex / Claude Code 已有过程回复样本，OpenCode 仍缺最近 IM 样本。
+- Feishu/Octo 文件、图片、权限审批、出站文件、`/stop`、Octo 显式/自动 compact 已有回归或 24h live 证据。
 
 ## 7. 下一步
 
-1. 稳定 Codex、Claude Code、OpenCode 的工具流/回复解析，尤其空工具结果、过程回复和最终回复重复问题。
-2. 做 Feishu live `/compact` smoke。
-3. 补 durable queue / 可恢复队列。
-4. 复验 Feishu/Octo 私聊文件、图片、工具流和审批路径；Markdown 后续抽查即可。
-5. 后续路线图：微信/企微、钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE；更多 Agent 如 Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP。
+1. 补 OpenCode 真实 IM event-log 中间过程回复样本，用 `--agents ... --require-process-reply` 验收。
+2. 触发真实 Feishu 长连接入站排队 + daemon 重启，用 durable live 脚本验收 pending replay；普通 FIFO 已有 24h 证据。
+3. 继续抽查 Feishu/Octo 私聊文件、图片、工具流和审批路径；Markdown 只做回归抽查。
+4. 后续路线图：微信/企微、钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE；更多 Agent 如 Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP。
