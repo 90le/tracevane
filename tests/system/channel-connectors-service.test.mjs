@@ -7262,6 +7262,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     ["/status", "status"],
     ["/agent", "list"],
     ["/model", "list"],
+    ["/vision", "list"],
     ["/mode", "list"],
     ["/reasoning", "list"],
     ["/dir", "list"],
@@ -7681,6 +7682,41 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     model: "gpt-5.5",
     workDir: codexProject.workDir,
   }), null);
+
+  const visionStatus = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/vision"),
+  });
+  assert.equal(visionStatus.ok, true);
+  assert.equal(visionStatus.action, "list");
+  assert.match(visionStatus.replyText, /自动视觉 fallback：关闭/);
+  assert.match(visionStatus.replyText, /1\. gpt-5\.5/);
+
+  const visionModel = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/vision model 1"),
+  });
+  assert.equal(visionModel.ok, true);
+  assert.equal(visionModel.control.autoVisionModel, true);
+  assert.equal(visionModel.control.visionModel, "gpt-5.5");
+  assert.match(visionModel.replyText, /指定当前会话视觉模型：gpt-5\.5/);
+
+  const visionAuto = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/vision model auto"),
+  });
+  assert.equal(visionAuto.ok, true);
+  assert.equal(visionAuto.control.autoVisionModel, true);
+  assert.equal(visionAuto.control.visionModel, "__studio_auto__");
+  assert.match(visionAuto.replyText, /Gateway 会自动选择健康 vision 模型/);
+
+  const visionDefault = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/vision default"),
+  });
+  assert.equal(visionDefault.ok, true);
+  assert.equal(visionDefault.control.autoVisionModel, null);
+  assert.equal(visionDefault.control.visionModel, null);
 
   const thinkingOff = await handleChannelConnectorCommand({
     ...baseContext,
@@ -8271,6 +8307,30 @@ test("native Channel Connectors visual turns select Gateway vision models from c
   assert.deepEqual(selected.modelCapabilities, { vision: true });
   assert.equal(selected.reason, "current-model-non-vision");
 
+  const configuredVision = await resolveChannelConnectorVisualTurnProject({
+    project,
+    binding: { ...binding, metadata: { autoVisionModel: true, visionModel: "vision-gpt-5.5" } },
+    message: imageMessage,
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    listCatalog: async () => catalog,
+  });
+  assert.equal(configuredVision.switched, true);
+  assert.equal(configuredVision.project.model, "gmn-vision");
+  assert.equal(configuredVision.configuredVisionModel, "vision-gpt-5.5");
+  assert.equal(configuredVision.reason, "configured-vision-model");
+
+  const configuredMissing = await resolveChannelConnectorVisualTurnProject({
+    project,
+    binding: { ...binding, metadata: { autoVisionModel: true, visionModel: "missing-vision" } },
+    message: imageMessage,
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    listCatalog: async () => catalog,
+  });
+  assert.equal(configuredMissing.switched, false);
+  assert.equal(configuredMissing.reason, "configured-vision-model-missing");
+
   const noHealthyVision = await resolveChannelConnectorVisualTurnProject({
     project,
     binding: autoVisionBinding,
@@ -8395,6 +8455,17 @@ test("native Channel Connectors command surface loads Gateway models when reques
     assert.match(cardRaw, /Studio Model/);
     assert.match(cardRaw, /act:\/model gateway-gpt-5/);
     assert.match(cardRaw, /act:\/model gateway-glm-5/);
+
+    const visionSurface = await service.getCommandSurface({
+      bindingId: "feishu-gateway",
+      sessionKey: "feishu:chat:user",
+      view: "vision",
+      renderer: "all",
+    });
+    const visionCardRaw = JSON.stringify(visionSurface.feishuCard);
+    assert.match(visionCardRaw, /Studio Vision/);
+    assert.match(visionCardRaw, /act:\/vision model gateway-gpt-5/);
+    assert.doesNotMatch(visionCardRaw, /act:\/vision model gateway-glm-5/);
   });
 });
 
@@ -8553,6 +8624,8 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.equal(surface.current.thinkingMessages, true);
   assert.equal(surface.current.processMessages, true);
   assert.equal(surface.current.toolMessages, true);
+  assert.equal(surface.current.autoVisionModel, false);
+  assert.equal(surface.current.visionModel, null);
   assert.equal(surface.current.thinkingSupport.parserLabel, "ready");
   assert.equal(surface.current.thinkingSupport.liveStatus, "model-dependent");
   assert.match(surface.textFallback, /skills 命令/);
@@ -8567,9 +8640,11 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(surface.textFallback, /- 会话: `\/help session`  `\/help buffer`/);
   assert.match(surface.textFallback, /\*\*常用命令\*\*/);
   assert.match(surface.textFallback, /`\/status`/);
+  assert.match(surface.textFallback, /`\/vision`/);
   assert.match(surface.textFallback, /`\/native \/help`/);
   assert.match(surface.textFallback, /`\/native \/compact`/);
   assert.match(surface.textFallback, /`\/help agent`/);
+  assert.match(surface.textFallback, /`\/help vision`/);
   assert.match(surface.textFallback, /`\/help native`/);
   const nativeSection = surface.sections.find((section) => section.id === "native");
   assert.ok(nativeSection);
@@ -8586,6 +8661,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(raw, /surface_action_id/);
   assert.match(raw, /surface_action_kind/);
   assert.match(raw, /nav:\/help model/);
+  assert.match(raw, /nav:\/help vision/);
   assert.match(raw, /session_key/);
   assert.match(raw, /当前 Agent/);
   assert.match(raw, /会话/);
@@ -8596,6 +8672,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(raw, /nav:\/help session/);
   assert.match(raw, /nav:\/help commands/);
   assert.match(raw, /\/help model/);
+  assert.match(raw, /\/help vision/);
   assert.match(raw, /\/help display/);
   assert.match(raw, /\/help commands/);
   assert.match(raw, /\/help buffer/);
@@ -8812,6 +8889,27 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(modelCardRaw, /"action":"nav:\/help"/);
   assert.match(modelCardRaw, /initial_option/);
   assert.doesNotMatch(modelCardRaw, /\/mode yolo/);
+
+  const visionPickerSurface = buildChannelConnectorCommandSurface({
+    config: runtimeConfig,
+    project: codexProject,
+    binding: { ...binding, metadata: { autoVisionModel: true, visionModel: "gpt-5.5" } },
+    sessionKey: "dmwork:dm:admin-1",
+    models: ["gpt-5", "gpt-5.5"],
+    visionModels: ["gpt-5.5"],
+    selectedSectionId: "vision",
+    selectedViewId: "vision",
+  });
+  assert.equal(visionPickerSurface.current.autoVisionModel, true);
+  assert.equal(visionPickerSurface.current.visionModel, "gpt-5.5");
+  const visionCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(visionPickerSurface));
+  assert.match(visionCardRaw, /Studio Vision/);
+  assert.match(visionCardRaw, /select_static/);
+  assert.match(visionCardRaw, /act:\/vision on/);
+  assert.match(visionCardRaw, /act:\/vision off/);
+  assert.match(visionCardRaw, /act:\/vision model auto/);
+  assert.match(visionCardRaw, /act:\/vision model gpt-5\.5/);
+  assert.match(visionCardRaw, /nav:\/help vision/);
 
   const modePickerSurface = buildChannelConnectorCommandSurface({
     config: runtimeConfig,

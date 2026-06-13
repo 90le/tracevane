@@ -33,6 +33,15 @@ function metadataBoolean(binding: ChannelConnectorRuntimeBinding, keys: string[]
   return fallback;
 }
 
+function metadataString(binding: ChannelConnectorRuntimeBinding, keys: string[]): string {
+  const metadata = metadataRecord(binding);
+  for (const key of keys) {
+    const normalized = normalizeString(metadata[key]);
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
 export function countChannelConnectorVisualAttachments(message: ChannelConnectorOctoInboundMessage): number {
   return (message.attachments || [])
     .filter((attachment) => attachment.kind === "image" || attachment.kind === "video" || attachment.kind === "sticker")
@@ -74,6 +83,15 @@ function firstVisionGatewayModel(catalog: ChannelConnectorGatewayModel[]): Chann
   return catalog.find((item) => item.features.vision === true && gatewayModelHasHealthyProvider(item)) || null;
 }
 
+function configuredVisionGatewayModel(
+  catalog: ChannelConnectorGatewayModel[],
+  model: string,
+): ChannelConnectorGatewayModel | null {
+  const requested = normalizeString(model);
+  if (!requested) return null;
+  return catalog.find((item) => gatewayModelMatches(item, requested)) || null;
+}
+
 export async function resolveChannelConnectorVisualTurnProject(input: {
   project: ChannelConnectorRuntimeProject;
   binding: ChannelConnectorRuntimeBinding;
@@ -89,6 +107,7 @@ export async function resolveChannelConnectorVisualTurnProject(input: {
   selectedModel: string | null;
   reason: string | null;
   catalogError: string | null;
+  configuredVisionModel: string | null;
 }> {
   const originalModel = normalizeString(input.project.model) || null;
   if (countChannelConnectorVisualAttachments(input.message) === 0) {
@@ -100,6 +119,7 @@ export async function resolveChannelConnectorVisualTurnProject(input: {
       selectedModel: originalModel,
       reason: null,
       catalogError: null,
+      configuredVisionModel: null,
     };
   }
   if (!metadataBoolean(input.binding, [
@@ -116,8 +136,24 @@ export async function resolveChannelConnectorVisualTurnProject(input: {
       selectedModel: originalModel,
       reason: "disabled-by-binding",
       catalogError: null,
+      configuredVisionModel: metadataString(input.binding, [
+        "autoVisionModelId",
+        "auto_vision_model_id",
+        "visionModel",
+        "vision_model",
+        "visualModel",
+        "visual_model",
+      ]) || null,
     };
   }
+  const configuredVisionModel = metadataString(input.binding, [
+    "autoVisionModelId",
+    "auto_vision_model_id",
+    "visionModel",
+    "vision_model",
+    "visualModel",
+    "visual_model",
+  ]) || null;
 
   let catalog: ChannelConnectorGatewayModel[] = [];
   try {
@@ -134,6 +170,7 @@ export async function resolveChannelConnectorVisualTurnProject(input: {
       selectedModel: originalModel,
       reason: "catalog-unavailable",
       catalogError: error instanceof Error ? error.message : String(error),
+      configuredVisionModel,
     };
   }
 
@@ -147,10 +184,53 @@ export async function resolveChannelConnectorVisualTurnProject(input: {
       selectedModel: originalModel,
       reason: "current-model-vision",
       catalogError: null,
+      configuredVisionModel,
     };
   }
 
-  const visionModel = firstVisionGatewayModel(catalog);
+  const configuredModel = configuredVisionModel
+    ? configuredVisionGatewayModel(catalog, configuredVisionModel)
+    : null;
+  if (configuredVisionModel) {
+    if (!configuredModel) {
+      return {
+        project: input.project,
+        modelCapabilities: { vision: currentVision },
+        switched: false,
+        originalModel,
+        selectedModel: originalModel,
+        reason: "configured-vision-model-missing",
+        catalogError: null,
+        configuredVisionModel,
+      };
+    }
+    if (configuredModel.features.vision !== true) {
+      return {
+        project: input.project,
+        modelCapabilities: { vision: currentVision },
+        switched: false,
+        originalModel,
+        selectedModel: originalModel,
+        reason: "configured-vision-model-non-vision",
+        catalogError: null,
+        configuredVisionModel,
+      };
+    }
+    if (!gatewayModelHasHealthyProvider(configuredModel)) {
+      return {
+        project: input.project,
+        modelCapabilities: { vision: currentVision },
+        switched: false,
+        originalModel,
+        selectedModel: originalModel,
+        reason: "configured-vision-model-unhealthy",
+        catalogError: null,
+        configuredVisionModel,
+      };
+    }
+  }
+
+  const visionModel = configuredModel || firstVisionGatewayModel(catalog);
   if (!visionModel) {
     return {
       project: input.project,
@@ -160,6 +240,7 @@ export async function resolveChannelConnectorVisualTurnProject(input: {
       selectedModel: originalModel,
       reason: currentVision === false ? "current-model-non-vision" : "no-vision-model",
       catalogError: null,
+      configuredVisionModel,
     };
   }
 
@@ -172,6 +253,7 @@ export async function resolveChannelConnectorVisualTurnProject(input: {
       selectedModel: originalModel,
       reason: "current-model-vision",
       catalogError: null,
+      configuredVisionModel,
     };
   }
 
@@ -184,7 +266,8 @@ export async function resolveChannelConnectorVisualTurnProject(input: {
     switched: true,
     originalModel,
     selectedModel: visionModel.id,
-    reason: currentVision === false ? "current-model-non-vision" : "current-model-unknown",
+    reason: configuredModel ? "configured-vision-model" : currentVision === false ? "current-model-non-vision" : "current-model-unknown",
     catalogError: null,
+    configuredVisionModel,
   };
 }

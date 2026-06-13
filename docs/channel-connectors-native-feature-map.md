@@ -42,7 +42,7 @@
 - `studio-channel-files` 已覆盖出站文件声明、路径校验、原始文件名、Feishu/Octo 上传和发送。
 - `studio-channel-messages` 已覆盖私聊出站消息声明，Feishu 支持 open_id/user_id/dm markdown，Octo 支持 human DM 和 best-effort group/thread。
 - Feishu 入站文件 live 已验证：长连接文件消息进入本地 staging、history 附件摘要和 Agent CLI 文件读取链路。
-- 图片附件可 staging；非视觉模型默认收到附件说明/本地路径，不做视觉推断。平台 binding 可显式开启自动切视觉模型；切换失败会回退原模型的附件说明模式。
+- 图片附件可 staging；非视觉模型默认收到附件说明/本地路径，不做视觉推断。自动视觉模型默认关闭，平台 binding 可配置启用和默认 fallback 模型；IM 会话可用 `/vision` 菜单/命令临时开启、关闭或指定视觉模型，切换失败会回退原模型的附件说明模式。
 - Gateway Responses -> Chat-compatible provider 已保留 `input_image` 为 Chat `image_url`；`gpt-5.4-mini` / `gpt-5.5` 受控图片 smoke 和 `codex exec --image` + `gpt-5.4-mini` 已通过。
 - Codex、Claude Code、OpenCode 均已支持图片 native visual input；视频附件按普通 staged local file 交给 Agent，不由 Studio 预抽帧或转图片。
 - Octo 图片/视频 payload 带 `content/caption` 时会保留用户任务文本，避免媒体占位吞掉“请识别/请处理”这类指令。

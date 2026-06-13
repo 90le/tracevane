@@ -134,6 +134,7 @@ import {
   formatChannelConnectorOctoManagementReply,
   handleChannelConnectorCommand,
   listChannelConnectorCommandSummaries,
+  listChannelConnectorGatewayModelCatalog,
   listChannelConnectorGatewayModels,
   listChannelConnectorSkillSummaries,
   resolveChannelConnectorBindingCommandAlias,
@@ -1525,6 +1526,27 @@ async function modelsForCommandSurface(input: {
   }
 }
 
+async function visionModelsForCommandSurface(input: {
+  runtimeConfig: ChannelConnectorsDaemonRuntimeConfig;
+  project: ChannelConnectorsDaemonRuntimeConfig["projects"][number];
+  requestedModels?: string[];
+}): Promise<string[]> {
+  const requested = stringList(input.requestedModels);
+  if (requested.length) return requested;
+  try {
+    const catalog = await listChannelConnectorGatewayModelCatalog(
+      input.project.gatewayEndpoint || input.runtimeConfig.gateway.endpoint,
+      resolveChannelConnectorGatewayClientKey(input.runtimeConfig),
+    );
+    return stringList(catalog
+      .filter((model) => model.features.vision === true
+        && ((model.healthyProviderIds || []).length > 0 || (model.openCircuitProviderIds || []).length === 0))
+      .map((model) => model.id));
+  } catch {
+    return [];
+  }
+}
+
 function derivedCommandActionSessionKey(input: {
   sessionKey?: string | null;
   platform: string;
@@ -2159,6 +2181,10 @@ export function createChannelConnectorsService(
       project: resolved.project,
       requestedModels: request.models,
     });
+    const visionModels = await visionModelsForCommandSurface({
+      runtimeConfig,
+      project: resolved.project,
+    });
     const readOnlyState = commandSurfaceReadOnlyState({
       runtimeConfig,
       project: resolved.project,
@@ -2173,6 +2199,7 @@ export function createChannelConnectorsService(
       control,
       sessionKey: request.sessionKey,
       models,
+      visionModels,
       agentSession: readOnlyState.agentSession,
       sessionList: readOnlyState.sessionList,
       history: readOnlyState.history,
@@ -2291,6 +2318,10 @@ export function createChannelConnectorsService(
       project: resolved.project,
       requestedModels: request.models,
     });
+    const commandVisionModels = await visionModelsForCommandSurface({
+      runtimeConfig,
+      project: resolved.project,
+    });
     const gatewayClientKey = resolveChannelConnectorGatewayClientKey(runtimeConfig);
     const commandResult: ChannelConnectorCommandResult = request.dryRun === true
       ? {
@@ -2368,6 +2399,7 @@ export function createChannelConnectorsService(
       control,
       sessionKey,
       models: commandModels,
+      visionModels: commandVisionModels,
       agentSession: readOnlyState.agentSession,
       sessionList: readOnlyState.sessionList,
       history: readOnlyState.history,

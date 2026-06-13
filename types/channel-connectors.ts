@@ -501,6 +501,10 @@ export interface ChannelConnectorCommandSurface {
     thinkingMessages: boolean;
     processMessages: boolean;
     toolMessages: boolean;
+    autoVisionModel: boolean;
+    autoVisionModelSource: "session" | "binding";
+    visionModel: string | null;
+    visionModelSource: "session" | "binding" | "auto";
     thinkingSupport: ChannelConnectorThinkingSupport;
   };
   session: {

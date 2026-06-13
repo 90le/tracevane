@@ -82,6 +82,7 @@ const PERMISSION_MODES: readonly ChannelConnectorPermissionMode[] = [
 ];
 
 const REASONING_EFFORTS: readonly ChannelConnectorReasoningEffort[] = ["low", "medium", "high", "xhigh"];
+const AUTO_VISION_MODEL_SENTINEL = "__studio_auto__";
 
 export interface ChannelConnectorCommandContext {
   config: ChannelConnectorsDaemonRuntimeConfig;
@@ -599,6 +600,7 @@ const STUDIO_COMMAND_MATCH_CANDIDATES: readonly CommandMatchCandidate[] = [
   { id: "history", names: ["history"] },
   { id: "agent", names: ["agent", "agents"] },
   { id: "model", names: ["model", "models"] },
+  { id: "vision", names: ["vision", "visual", "vision-model", "visual-model", "image-model"] },
   { id: "mode", names: ["mode", "permission", "permissions", "yolo"] },
   { id: "approve", names: ["approve", "allow", "yes", "ok"] },
   { id: "deny", names: ["deny", "reject", "no"] },
@@ -1329,7 +1331,7 @@ function isStudioCommand(name: string): boolean {
   return Boolean(matchChannelConnectorCommandPrefix(name));
 }
 
-type CommandHelpSection = "session" | "agent" | "display" | "buffer" | "workdir" | "commands" | "native" | "platform";
+type CommandHelpSection = "session" | "agent" | "vision" | "display" | "buffer" | "workdir" | "commands" | "native" | "platform";
 
 function commandHelpList(rows: Array<[string, string]>): string {
   return rows.map(([command, description]) => `- ${command} - ${description}`).join("\n");
@@ -1342,6 +1344,7 @@ function commandHelpSectionAlias(value: string | null | undefined): CommandHelpS
     return "session";
   }
   if (["agent", "profile", "model", "mode", "reasoning", "permission"].includes(target)) return "agent";
+  if (["vision", "visual", "image", "vision-model", "visual-model", "image-model"].includes(target)) return "vision";
   if (["display", "thinking", "think", "process", "progress", "tools", "tool", "quiet"].includes(target)) return "display";
   if (["buffer", "buffers", "reply-buffer", "reply-buffers"].includes(target)) return "buffer";
   if (["workdir", "dir", "cd", "directory"].includes(target)) return "workdir";
@@ -1407,6 +1410,22 @@ function commandHelpSectionText(section: CommandHelpSection): string {
         ["`/tools <on|off|default>`", "开关本会话工具消息"],
       ]),
       "",
+      "返回：`/help`",
+    ].join("\n");
+  }
+  if (section === "vision") {
+    return [
+      "Studio Channel / vision",
+      "",
+      commandHelpList([
+        ["`/vision`", "查看图片/贴图/视频类输入的自动视觉 fallback 设置"],
+        ["`/vision on` / `/vision off`", "为当前 IM session 开启或关闭自动视觉模型"],
+        ["`/vision default`", "清除当前会话覆盖，回到平台 binding 默认值"],
+        ["`/vision model <序号|模型ID>`", "指定当前会话使用的视觉 fallback 模型"],
+        ["`/vision model auto`", "清除指定模型，开启后由 Gateway 自动选择健康视觉模型"],
+      ]),
+      "",
+      "当前模型本身支持视觉时不会强制切换；只有当前模型不支持/未知且自动视觉开启时才使用 fallback。",
       "返回：`/help`",
     ].join("\n");
   }
@@ -1501,6 +1520,7 @@ function commandHelpText(section?: string | null): string {
       ["`/status` `/new` `/reset` `/stop` `/compact`", "会话状态、新会话、重置、停止、native-first compact"],
       ["`/whoami` `/version`", "身份排查和 runtime 版本"],
       ["`/agent` `/model` `/mode` `/reasoning`", "切换 Agent、模型、权限、推理强度"],
+      ["`/vision`", "配置图片输入的自动视觉 fallback 模型"],
       ["`/display` `/quiet` `/thinking` `/process` `/tools`", "控制思考、过程回复和工具显示"],
       ["`/commands` `/alias` `/skills` `/native /help`", "自定义命令、命令别名、Skills、Agent 原生命令"],
       ["`/octo groups` `/octo members` `/octo search`", "Octo 群和成员查询"],
@@ -1510,6 +1530,7 @@ function commandHelpText(section?: string | null): string {
     commandHelpList([
       ["`/help session`", "会话、history、usage、权限批准"],
       ["`/help agent`", "Agent、模型、权限、推理"],
+      ["`/help vision`", "图片自动视觉 fallback 模型"],
       ["`/help display`", "思考、过程回复和工具消息"],
       ["`/help buffer`", "群聊长回复缓存和紧凑显示"],
       ["`/help workdir`", "工作目录切换"],
@@ -2505,6 +2526,76 @@ function effectiveToggle(value: boolean | null | undefined): boolean {
   return value !== false;
 }
 
+function bindingMetadataRecord(binding: Pick<ChannelConnectorRuntimeBinding, "metadata">): Record<string, unknown> {
+  return isRecord(binding.metadata) ? binding.metadata : {};
+}
+
+function bindingMetadataString(binding: Pick<ChannelConnectorRuntimeBinding, "metadata">, keys: string[]): string {
+  const metadata = bindingMetadataRecord(binding);
+  for (const key of keys) {
+    const value = normalizeString(metadata[key]);
+    if (value) return value;
+  }
+  return "";
+}
+
+function bindingMetadataBoolean(
+  binding: Pick<ChannelConnectorRuntimeBinding, "metadata">,
+  keys: string[],
+  fallback = false,
+): boolean {
+  const metadata = bindingMetadataRecord(binding);
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === "boolean") return value;
+    const normalized = normalizeString(value).toLowerCase();
+    if (["1", "true", "yes", "on", "enable", "enabled"].includes(normalized)) return true;
+    if (["0", "false", "no", "off", "disable", "disabled"].includes(normalized)) return false;
+  }
+  return fallback;
+}
+
+function visionModelFromBindingMetadata(binding: Pick<ChannelConnectorRuntimeBinding, "metadata">): string | null {
+  return bindingMetadataString(binding, [
+    "autoVisionModelId",
+    "auto_vision_model_id",
+    "visionModel",
+    "vision_model",
+    "visualModel",
+    "visual_model",
+  ]) || null;
+}
+
+function bindingAutoVisionModel(binding: Pick<ChannelConnectorRuntimeBinding, "metadata">): boolean {
+  return bindingMetadataBoolean(binding, [
+    "autoVisionModel",
+    "auto_vision_model",
+    "visionAutoModel",
+    "vision_auto_model",
+  ], false);
+}
+
+function effectiveVisionSetting(
+  binding: Pick<ChannelConnectorRuntimeBinding, "metadata">,
+  control: ChannelConnectorSessionControlRecord | null,
+): {
+  enabled: boolean;
+  enabledSource: "session" | "binding";
+  model: string | null;
+  modelSource: "session" | "binding" | "auto";
+} {
+  const bindingEnabled = bindingAutoVisionModel(binding);
+  const bindingModel = visionModelFromBindingMetadata(binding);
+  const sessionVisionModel = control?.visionModel || null;
+  const sessionAutoModel = sessionVisionModel === AUTO_VISION_MODEL_SENTINEL;
+  return {
+    enabled: control?.autoVisionModel ?? bindingEnabled,
+    enabledSource: control?.autoVisionModel === null || control?.autoVisionModel === undefined ? "binding" : "session",
+    model: sessionAutoModel ? null : sessionVisionModel || bindingModel,
+    modelSource: sessionVisionModel ? "session" : bindingModel ? "binding" : "auto",
+  };
+}
+
 function toggleStatusText(
   control: ChannelConnectorSessionControlRecord | null,
 ): string {
@@ -2533,6 +2624,34 @@ function toggleLabel(value: boolean | null): string {
   if (value === true) return "开启";
   if (value === false) return "关闭";
   return "默认开启";
+}
+
+function visionStatusText(input: {
+  binding: ChannelConnectorRuntimeBinding;
+  control: ChannelConnectorSessionControlRecord | null;
+  project: ChannelConnectorRuntimeProject;
+  visionModels: string[];
+}): string {
+  const setting = effectiveVisionSetting(input.binding, input.control);
+  const lines = [
+    "视觉模型设置：",
+    `自动视觉 fallback：${setting.enabled ? "开启" : "关闭"}${setting.enabledSource === "session" ? " (当前会话覆盖)" : " (binding 默认)"}`,
+    `指定视觉模型：${setting.model || "auto"}${setting.modelSource === "session" ? " (当前会话覆盖)" : setting.modelSource === "binding" ? " (binding 默认)" : ""}`,
+    `当前会话模型：${input.project.model || "default"}`,
+    "规则：当前模型本身支持视觉时保持当前模型；只有当前模型不支持/未知且自动视觉开启时才使用 fallback。",
+    "",
+    "可选视觉模型：",
+  ];
+  if (input.visionModels.length) {
+    input.visionModels.forEach((model, index) => {
+      const marker = model === setting.model ? ">" : " ";
+      lines.push(`${marker} ${index + 1}. ${model}`);
+    });
+  } else {
+    lines.push("  暂无 Gateway vision 模型；请先在 Provider/模型能力里标记并 smoke 验证。");
+  }
+  lines.push("", "用法：/vision on|off|default；/vision model <序号|模型ID|auto>。");
+  return lines.join("\n");
 }
 
 type QuietTarget = "toggle" | "quiet" | "compact" | "full" | "status" | "invalid";
@@ -2780,6 +2899,30 @@ async function listModelsForCommand(context: ChannelConnectorCommandContext): Pr
   return uniqueStrings(context.config.projects.map((project) => project.model || "").filter(Boolean));
 }
 
+function gatewayModelHasHealthyProvider(model: ChannelConnectorGatewayModel): boolean {
+  if ((model.healthyProviderIds || []).length > 0) return true;
+  if ((model.openCircuitProviderIds || []).length > 0) return false;
+  return true;
+}
+
+async function listVisionModelsForCommand(context: ChannelConnectorCommandContext): Promise<string[]> {
+  const effectiveControl = getChannelConnectorSessionControl(context.controlsPath, controlsLookup(context));
+  const currentProject = resolveChannelConnectorEffectiveProject(context.config, context.project, effectiveControl);
+  try {
+    const catalog = await (context.listModelCatalog || listChannelConnectorGatewayModelCatalog)(
+      currentProject.gatewayEndpoint || context.config.gateway.endpoint,
+      context.gatewayClientKey,
+    );
+    const models = catalog
+      .filter((model) => model.features.vision === true && gatewayModelHasHealthyProvider(model))
+      .map((model) => model.id);
+    if (models.length) return uniqueStrings(models);
+  } catch {
+    // Fall back to configured profile models below.
+  }
+  return uniqueStrings(context.config.projects.map((project) => project.model || "").filter(Boolean));
+}
+
 function resolveModelTarget(input: string, models: string[]): string | null {
   const target = normalizeString(input);
   if (!target) return null;
@@ -2787,6 +2930,14 @@ function resolveModelTarget(input: string, models: string[]): string | null {
   if (Number.isInteger(index) && index >= 1 && index <= models.length) return models[index - 1] || null;
   const exact = models.find((model) => model.toLowerCase() === target.toLowerCase());
   return exact || target;
+}
+
+function resolveListedModelTarget(input: string, models: string[]): string | null {
+  const target = normalizeString(input);
+  if (!target) return null;
+  const index = Number(target);
+  if (Number.isInteger(index) && index >= 1 && index <= models.length) return models[index - 1] || null;
+  return models.find((model) => model.toLowerCase() === target.toLowerCase()) || null;
 }
 
 async function contextBudgetForCommand(input: {
@@ -2833,6 +2984,7 @@ async function handleStatus(context: ChannelConnectorCommandContext): Promise<Ch
     agent: currentProject.agent,
     model: currentProject.model,
   });
+  const visionSetting = effectiveVisionSetting(context.binding, control);
   const session = getChannelConnectorAgentSession(context.agentSessionsPath, {
     bindingId: context.binding.id,
     projectId: currentProject.id,
@@ -2858,6 +3010,7 @@ async function handleStatus(context: ChannelConnectorCommandContext): Promise<Ch
       `Thinking stream: ${formatChannelConnectorThinkingSupport(thinkingSupport)}`,
       `Process: ${effectiveToggle(control?.processMessages) ? "on" : "off"}`,
       `Tools: ${effectiveToggle(control?.toolMessages) ? "on" : "off"}`,
+      `Vision fallback: ${visionSetting.enabled ? "on" : "off"} · ${visionSetting.model || "auto"}`,
       `Session: ${session ? `${session.turnCount} turns` : "new"}`,
       `Native session: ${session?.agentNativeSessionId || "-"}`,
       `Codex thread: ${session?.codexThreadId || "-"}`,
@@ -2887,6 +3040,7 @@ async function handleCurrent(context: ChannelConnectorCommandContext): Promise<C
     agent: currentProject.agent,
     model: currentProject.model,
   });
+  const visionSetting = effectiveVisionSetting(context.binding, control);
   return {
     handled: true,
     command: "current",
@@ -2907,6 +3061,7 @@ async function handleCurrent(context: ChannelConnectorCommandContext): Promise<C
       `Thinking stream: ${formatChannelConnectorThinkingSupport(thinkingSupport)}`,
       `Process: ${effectiveToggle(control?.processMessages) ? "on" : "off"}`,
       `Tools: ${effectiveToggle(control?.toolMessages) ? "on" : "off"}`,
+      `Vision fallback: ${visionSetting.enabled ? "on" : "off"} · ${visionSetting.model || "auto"}`,
       `Agent session: ${session ? `${session.turnCount} turns` : "not started"}`,
       `Agent session id: ${shortIdentifier(session?.id, 18)}`,
       `Native session: ${session?.agentNativeSessionId || "-"}`,
@@ -3314,6 +3469,7 @@ export async function handleChannelConnectorCommand(
   const mutableCommandName = [
       "agent",
       "model",
+      "vision",
       "name",
       "delete",
       "mode",
@@ -3333,7 +3489,7 @@ export async function handleChannelConnectorCommand(
       "stop",
       "compact",
     ].includes(name);
-  const listOnlyCommand = ["agent", "model", "mode", "reasoning", "dir", "display", "thinking", "process", "tools"].includes(name)
+  const listOnlyCommand = ["agent", "model", "vision", "mode", "reasoning", "dir", "display", "thinking", "process", "tools"].includes(name)
     && args.length === 0;
   const mutating = (mutableCommandName || commandsMutation || aliasMutation) && !listOnlyCommand;
 
@@ -4260,6 +4416,128 @@ export async function handleChannelConnectorCommand(
       ok: true,
       control,
       replyText: shouldReset ? "已恢复本会话默认模型。" : `已切换本会话模型：${target}`,
+      passthroughText: null,
+    };
+  }
+
+  if (name === "vision") {
+    const visionModels = await listVisionModelsForCommand(context);
+    if (args.length === 0) {
+      return {
+        handled: true,
+        command: name,
+        action: "list",
+        ok: true,
+        control: currentControl,
+        replyText: visionStatusText({
+          binding: context.binding,
+          control: currentControl,
+          project: currentProject,
+          visionModels,
+        }),
+        passthroughText: null,
+      };
+    }
+    const rawSubcommand = normalizeString(args[0]).toLowerCase();
+    if (rawSubcommand === "model" || rawSubcommand === "models") {
+      const requested = args.slice(1).join(" ");
+      const shouldClearModel = ["", "auto", "default", "reset", "clear"].includes(requested.toLowerCase());
+      const target = shouldClearModel
+        ? null
+        : resolveListedModelTarget(requested, visionModels) || (visionModels.length ? null : normalizeString(requested));
+      if (!shouldClearModel && !target) {
+        return {
+          handled: true,
+          command: name,
+          action: "set",
+          ok: false,
+          control: currentControl,
+          replyText: "未找到可用视觉模型。用 /vision 查看 Gateway 返回的 vision 模型列表。",
+          passthroughText: null,
+        };
+      }
+      const control = upsertChannelConnectorSessionControl(context.controlsPath, {
+        ...lookup,
+        autoVisionModel: true,
+        visionModel: shouldClearModel ? AUTO_VISION_MODEL_SENTINEL : target,
+        lastCommand: parsed.raw,
+      });
+      return {
+        handled: true,
+        command: name,
+        action: "set",
+        ok: true,
+        control,
+        replyText: shouldClearModel
+          ? "已开启自动视觉 fallback，并清除当前会话指定视觉模型；Gateway 会自动选择健康 vision 模型。"
+          : `已开启自动视觉 fallback，并指定当前会话视觉模型：${target}`,
+        passthroughText: null,
+      };
+    }
+    const toggle = parseToggleTarget(args.join(" "));
+    if (toggle === "status") {
+      return {
+        handled: true,
+        command: name,
+        action: "list",
+        ok: true,
+        control: currentControl,
+        replyText: visionStatusText({
+          binding: context.binding,
+          control: currentControl,
+          project: currentProject,
+          visionModels,
+        }),
+        passthroughText: null,
+      };
+    }
+    if (toggle !== "invalid") {
+      const control = upsertChannelConnectorSessionControl(context.controlsPath, {
+        ...lookup,
+        autoVisionModel: toggle,
+        visionModel: toggle === null ? null : currentControl?.visionModel || null,
+        lastCommand: parsed.raw,
+      });
+      return {
+        handled: true,
+        command: name,
+        action: "set",
+        ok: true,
+        control,
+        replyText: toggle === true
+          ? `已开启当前会话自动视觉 fallback：${control.visionModel && control.visionModel !== AUTO_VISION_MODEL_SENTINEL ? control.visionModel : "auto"}。`
+          : toggle === false
+            ? "已关闭当前会话自动视觉 fallback；图片会交给当前模型或附件说明模式处理。"
+            : "已清除当前会话视觉 fallback 覆盖，回到平台 binding 默认值。",
+        passthroughText: null,
+      };
+    }
+    const requestedModel = args.join(" ");
+    const target = resolveListedModelTarget(requestedModel, visionModels) || (visionModels.length ? null : normalizeString(requestedModel));
+    if (!target) {
+      return {
+        handled: true,
+        command: name,
+        action: "set",
+        ok: false,
+        control: currentControl,
+        replyText: "不支持的 /vision 参数。用法：/vision on|off|default；/vision model <序号|模型ID|auto>。",
+        passthroughText: null,
+      };
+    }
+    const control = upsertChannelConnectorSessionControl(context.controlsPath, {
+      ...lookup,
+      autoVisionModel: true,
+      visionModel: target,
+      lastCommand: parsed.raw,
+    });
+    return {
+      handled: true,
+      command: name,
+      action: "set",
+      ok: true,
+      control,
+      replyText: `已开启自动视觉 fallback，并指定当前会话视觉模型：${target}`,
       passthroughText: null,
     };
   }

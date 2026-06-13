@@ -370,6 +370,10 @@
                 <input v-model="bindingDraft.metadataAutoVisionModel" type="checkbox" />
                 <span>{{ text('图片自动切视觉模型', 'Auto vision model for images') }}</span>
               </label>
+              <label>
+                <span>{{ text('视觉 fallback 模型', 'Vision fallback model') }}</span>
+                <input v-model.trim="bindingDraft.metadataVisionModel" placeholder="gpt-5.4-mini" autocomplete="off" />
+              </label>
               <fieldset v-if="bindingDraft.platform === 'octo'" class="ccx-credential-box">
                 <legend>Octo(dmwork)</legend>
                 <label>
@@ -744,6 +748,7 @@ type BindingDraft = Omit<ChannelConnectorPlatformBinding, 'allowlist' | 'adminUs
   metadataAllowPrivateAttachmentUrls: boolean;
   metadataStageOctoUrlAttachments: boolean;
   metadataAutoVisionModel: boolean;
+  metadataVisionModel: string;
 };
 
 const { text } = useLocalePreference();
@@ -1084,6 +1089,7 @@ function emptyBindingDraft(): BindingDraft {
     metadataAllowPrivateAttachmentUrls: false,
     metadataStageOctoUrlAttachments: true,
     metadataAutoVisionModel: false,
+    metadataVisionModel: '',
   };
 }
 
@@ -1193,6 +1199,7 @@ function selectBinding(binding: ChannelConnectorPlatformBinding): void {
     metadataAllowPrivateAttachmentUrls: metadataBoolean(metadata, ['allowPrivateAttachmentUrls', 'allow_private_attachment_urls', 'allowOctoPrivateAttachmentUrls', 'allow_octo_private_attachment_urls'], false),
     metadataStageOctoUrlAttachments: metadataBoolean(metadata, ['stageOctoUrlAttachments', 'stage_octo_url_attachments', 'stageUrlAttachments', 'stage_url_attachments'], true),
     metadataAutoVisionModel: metadataBoolean(metadata, ['autoVisionModel', 'auto_vision_model', 'visionAutoModel', 'vision_auto_model'], false),
+    metadataVisionModel: metadataString(metadata, ['autoVisionModelId', 'auto_vision_model_id', 'visionModel', 'vision_model', 'visualModel', 'visual_model']),
   };
   platformSmoke.value = null;
 }
@@ -1344,6 +1351,13 @@ function metadataFromBindingDraft(): Record<string, unknown> {
     delete metadata.auto_vision_model;
     delete metadata.visionAutoModel;
     delete metadata.vision_auto_model;
+  }
+  setMetadataString(metadata, 'visionModel', bindingDraft.value.metadataVisionModel);
+  if (!bindingDraft.value.metadataVisionModel.trim()) {
+    delete metadata.autoVisionModelId;
+    delete metadata.auto_vision_model_id;
+    delete metadata.visualModel;
+    delete metadata.visual_model;
   }
   if (bindingDraft.value.platform === 'octo') {
     setMetadataString(metadata, 'botToken', bindingDraft.value.metadataBotToken);

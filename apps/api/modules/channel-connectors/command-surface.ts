@@ -33,6 +33,7 @@ const PERMISSION_MODES: readonly ChannelConnectorPermissionMode[] = [
 ];
 
 const REASONING_EFFORTS: readonly ChannelConnectorReasoningEffort[] = ["low", "medium", "high", "xhigh"];
+const AUTO_VISION_MODEL_SENTINEL = "__studio_auto__";
 
 const PERMISSION_MODE_LABELS: Record<ChannelConnectorPermissionMode, string> = {
   suggest: "建议确认",
@@ -63,6 +64,7 @@ const FEISHU_MENU_SECTIONS = [
   "session",
   "agent",
   "model",
+  "vision",
   "mode",
   "display",
   "buffer",
@@ -81,6 +83,7 @@ const FEISHU_MENU_VIEWS = [
   "history",
   "agent",
   "model",
+  "vision",
   "mode",
   "display",
   "buffer",
@@ -94,6 +97,7 @@ const FEISHU_MENU_SECTION_LABELS: Record<FeishuMenuSectionId, string> = {
   session: "会话",
   agent: "Agent",
   model: "模型",
+  vision: "视觉",
   mode: "权限",
   display: "显示",
   buffer: "缓存",
@@ -130,6 +134,12 @@ const FEISHU_MENU_SECTION_ALIASES: Record<string, FeishuMenuSectionId> = {
   profile: "agent",
   model: "model",
   models: "model",
+  vision: "vision",
+  visual: "vision",
+  image: "vision",
+  "vision-model": "vision",
+  "visual-model": "vision",
+  "image-model": "vision",
   mode: "mode",
   permission: "mode",
   permissions: "mode",
@@ -200,6 +210,13 @@ const FEISHU_MENU_VIEW_ALIASES: Record<string, FeishuMenuViewId> = {
   model: "model",
   models: "model",
   "model-picker": "model",
+  vision: "vision",
+  visual: "vision",
+  image: "vision",
+  "vision-model": "vision",
+  "visual-model": "vision",
+  "image-model": "vision",
+  "vision-picker": "vision",
   mode: "mode",
   permission: "mode",
   permissions: "mode",
@@ -242,6 +259,7 @@ export interface ChannelConnectorCommandSurfaceInput {
   } | null;
   sessionKey?: string | null;
   models?: string[];
+  visionModels?: string[];
   agentSession?: ChannelConnectorCommandSurface["session"];
   sessionList?: ChannelConnectorCommandSurface["sessionList"];
   history?: ChannelConnectorCommandSurface["history"];
@@ -257,6 +275,55 @@ export interface ChannelConnectorCommandSurfaceInput {
 
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function metadataString(binding: Pick<ChannelConnectorRuntimeBinding, "metadata">, keys: string[]): string {
+  const metadata = isRecord(binding.metadata) ? binding.metadata : {};
+  for (const key of keys) {
+    const normalized = normalizeString(metadata[key]);
+    if (normalized) return normalized;
+  }
+  return "";
+}
+
+function metadataBoolean(
+  binding: Pick<ChannelConnectorRuntimeBinding, "metadata">,
+  keys: string[],
+  fallback = false,
+): boolean {
+  const metadata = isRecord(binding.metadata) ? binding.metadata : {};
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === "boolean") return value;
+    const normalized = normalizeString(value).toLowerCase();
+    if (["1", "true", "yes", "on", "enable", "enabled"].includes(normalized)) return true;
+    if (["0", "false", "no", "off", "disable", "disabled"].includes(normalized)) return false;
+  }
+  return fallback;
+}
+
+function bindingVisionModel(binding: Pick<ChannelConnectorRuntimeBinding, "metadata">): string | null {
+  return metadataString(binding, [
+    "autoVisionModelId",
+    "auto_vision_model_id",
+    "visionModel",
+    "vision_model",
+    "visualModel",
+    "visual_model",
+  ]) || null;
+}
+
+function bindingAutoVisionModel(binding: Pick<ChannelConnectorRuntimeBinding, "metadata">): boolean {
+  return metadataBoolean(binding, [
+    "autoVisionModel",
+    "auto_vision_model",
+    "visionAutoModel",
+    "vision_auto_model",
+  ], false);
 }
 
 function uniqueStrings(values: string[]): string[] {
@@ -327,6 +394,7 @@ export function channelConnectorCommandSurfaceViewFromCommand(
   if (["status", "compact", "compress", "new", "reset"].includes(name)) return "session";
   if (name === "agent" || name === "agents") return "agent";
   if (name === "model" || name === "models") return "model";
+  if (["vision", "visual", "image-model", "vision-model", "visual-model"].includes(name)) return "vision";
   if (["mode", "permission", "permissions", "yolo", "reasoning", "effort"].includes(name)) return "mode";
   if (["display", "thinking", "think", "process", "progress", "tools", "tool", "quiet"].includes(name)) return "display";
   if (["buffer", "buffers", "reply-buffer", "reply-buffers"].includes(name)) return "buffer";
@@ -432,6 +500,7 @@ function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFa
       "",
       "**常用命令**",
       "- `/agent` `/model` `/mode` `/reasoning` - 切换当前 IM session 配置",
+      "- `/vision` - 配置图片输入的自动视觉 fallback 模型",
       "- `/display` `/thinking` `/process` `/tools` - 控制思考、过程回复和工具显示",
       "- `/commands` `/alias` `/skills` - 查看可执行命令、别名和 Skill",
     );
@@ -461,6 +530,16 @@ export function buildChannelConnectorCommandSurface(
     ?? input.displayDefaults?.toolMessages
     ?? true;
   const quietEnabled = !thinkingMessages && !processMessages && !toolMessages;
+  const autoVisionModel = input.control?.autoVisionModel ?? bindingAutoVisionModel(input.binding);
+  const rawSessionVisionModel = input.control?.visionModel || null;
+  const sessionAutoVisionModel = rawSessionVisionModel === AUTO_VISION_MODEL_SENTINEL;
+  const visionModel = sessionAutoVisionModel ? null : rawSessionVisionModel || bindingVisionModel(input.binding);
+  const autoVisionModelSource = input.control?.autoVisionModel === null || input.control?.autoVisionModel === undefined
+    ? "binding"
+    : "session";
+  const visionModelSource = rawSessionVisionModel
+    ? "session"
+    : visionModel ? "binding" : "auto";
   const thinkingSupport = resolveChannelConnectorThinkingSupport({
     agent: current.agent,
     model: current.model,
@@ -470,6 +549,7 @@ export function buildChannelConnectorCommandSurface(
     current.model || "",
     ...input.config.projects.map((project) => project.model || ""),
   ]).slice(0, 12);
+  const visionModels = uniqueStrings(input.visionModels || []).slice(0, 12);
   const skills: ChannelConnectorCommandSurfaceSkill[] = (input.skills || []).map((skill) => ({
     name: normalizeString(skill.name),
     displayName: normalizeString(skill.displayName),
@@ -543,6 +623,36 @@ export function buildChannelConnectorCommandSurface(
           },
         )),
         action("model-default", "Default Model", "/model default", { requiresAdmin: true }),
+      ],
+    },
+    {
+      id: "vision",
+      title: "Vision",
+      summary: "图片/贴图/视频类输入的自动视觉 fallback，只作用于当前 IM session。",
+      actions: [
+        action("vision-status", "Status", "/vision"),
+        action("vision-on", "Auto Vision On", "/vision on", {
+          tone: autoVisionModel ? "primary" : "default",
+          requiresAdmin: true,
+        }),
+        action("vision-off", "Auto Vision Off", "/vision off", {
+          tone: autoVisionModel ? "default" : "danger",
+          requiresAdmin: true,
+        }),
+        action("vision-auto", "Auto Pick Model", "/vision model auto", {
+          tone: autoVisionModel && !visionModel ? "primary" : "default",
+          requiresAdmin: true,
+        }),
+        ...visionModels.map((model, index) => action(
+          `vision-model-${model}`,
+          `${index + 1}. ${model}`,
+          `/vision model ${model}`,
+          {
+            tone: model === visionModel ? "primary" : "default",
+            requiresAdmin: true,
+          },
+        )),
+        action("vision-default", "Binding Default", "/vision default", { requiresAdmin: true }),
       ],
     },
     {
@@ -707,6 +817,10 @@ export function buildChannelConnectorCommandSurface(
       thinkingMessages,
       processMessages,
       toolMessages,
+      autoVisionModel,
+      autoVisionModelSource,
+      visionModel,
+      visionModelSource,
       thinkingSupport,
     },
     session: input.agentSession || null,
@@ -1176,6 +1290,8 @@ function sectionSummary(sectionId: FeishuMenuSectionId): string {
       return "切换当前会话绑定的 CLI Agent Profile";
     case "model":
       return "从 Studio Gateway 可用模型中选择";
+    case "vision":
+      return "配置图片输入的自动视觉 fallback 模型";
     case "mode":
       return "切换当前会话权限模式和推理强度";
     case "display":
@@ -1197,7 +1313,7 @@ function homeMenuSections(): Array<{
 }> {
   return [
     { title: "会话", sectionIds: ["session", "buffer"] },
-    { title: "配置", sectionIds: ["agent", "model", "mode", "workdir"] },
+    { title: "配置", sectionIds: ["agent", "model", "vision", "mode", "workdir"] },
     { title: "显示与扩展", sectionIds: ["display", "commands", "native"] },
   ];
 }
@@ -1233,6 +1349,18 @@ function helpSectionActions(
         requiresAdmin: true,
       }),
       ...(reset ? [reset] : []),
+    ];
+  }
+  if (section.id === "vision") {
+    const modelCount = section.actions.filter((item) => item.id.startsWith("vision-model-")).length;
+    return [
+      action("vision-picker", "视觉设置", "/vision", {
+        actionKind: "nav",
+        tone: "primary",
+        description: `${surface.current.autoVisionModel ? "on" : "off"} · ${surface.current.visionModel || "auto"} · ${modelCount} 个 vision 模型`,
+        requiresAdmin: true,
+      }),
+      ...section.actions.filter((item) => ["vision-on", "vision-off", "vision-auto", "vision-default"].includes(item.id)),
     ];
   }
   if (section.id === "mode") {
@@ -1374,6 +1502,71 @@ function renderModelPickerCard(surface: ChannelConnectorCommandSurface): Channel
     header: {
       title: plainText("Studio Model"),
       template: "indigo",
+    },
+    elements,
+  };
+}
+
+function renderVisionPickerCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
+  const section = sectionById(surface, "vision");
+  const actions = section?.actions || [];
+  const status = actions.find((item) => item.id === "vision-status")
+    || action("vision-status", "Status", "/vision");
+  const on = actions.find((item) => item.id === "vision-on")
+    || action("vision-on", "Auto Vision On", "/vision on", { requiresAdmin: true });
+  const off = actions.find((item) => item.id === "vision-off")
+    || action("vision-off", "Auto Vision Off", "/vision off", { requiresAdmin: true });
+  const auto = actions.find((item) => item.id === "vision-auto")
+    || action("vision-auto", "Auto Pick Model", "/vision model auto", { requiresAdmin: true });
+  const defaults = actions.find((item) => item.id === "vision-default")
+    || action("vision-default", "Binding Default", "/vision default", { requiresAdmin: true });
+  const modelActions = actions.filter((item) => item.id.startsWith("vision-model-"));
+  const options = [
+    { label: "Gateway 自动选择", value: actionCommandValue(auto) },
+    ...modelActions.map((item) => ({
+      label: stripListPrefix(item.label),
+      value: actionCommandValue(item),
+    })),
+  ];
+  const currentModelAction = surface.current.visionModel
+    ? modelActions.find((item) => item.command === `/vision model ${surface.current.visionModel}`)
+    : null;
+  const initialValue = currentModelAction ? actionCommandValue(currentModelAction) : actionCommandValue(auto);
+  const elements: Array<Record<string, unknown>> = [
+    {
+      tag: "markdown",
+      content: [
+        "**自动视觉 fallback**",
+        `状态：${surface.current.autoVisionModel ? "开启" : "关闭"} (${surface.current.autoVisionModelSource === "session" ? "当前会话" : "binding 默认"})`,
+        `指定模型：${surface.current.visionModel || "auto"}${surface.current.visionModelSource === "session" ? " (当前会话)" : surface.current.visionModelSource === "binding" ? " (binding 默认)" : ""}`,
+        `当前会话模型：${surface.current.model || "default"}`,
+        "",
+        "当前模型本身支持视觉时会保持当前模型；只有当前模型不支持/未知时才使用 fallback。",
+      ].join("\n"),
+    },
+  ];
+  pushActionRows(elements, [status, on, off], surface, 3, true);
+  pushActionRows(elements, [auto, defaults], surface, 2, true);
+  elements.push(selectStaticElement({
+    placeholder: modelActions.length ? "选择视觉模型" : "暂无 vision 模型",
+    options,
+    initialValue,
+    surface,
+    sectionId: "vision",
+    viewId: "vision",
+  }));
+  pushSubcardNavRows(elements, surface, "vision");
+  elements.push({
+    tag: "note",
+    elements: [plainText("选择只作用于当前 IM session；平台 binding 默认值在 Studio 页面配置。")],
+  });
+  return {
+    config: {
+      wide_screen_mode: true,
+    },
+    header: {
+      title: plainText("Studio Vision"),
+      template: "turquoise",
     },
     elements,
   };
@@ -2056,17 +2249,19 @@ export function renderChannelConnectorCommandSurfaceFeishu(
             ? renderHistoryCard(surface)
             : selectedViewId === "model"
               ? renderModelPickerCard(surface)
-              : selectedViewId === "mode"
-                ? renderModePickerCard(surface)
-                : selectedViewId === "display"
-                  ? renderDisplayCard(surface)
-                  : selectedViewId === "buffer"
-                    ? renderBufferCard(surface)
-                    : selectedViewId === "commands"
-                      ? renderCommandsCard(surface)
-                      : selectedViewId === "workdir"
-                        ? renderWorkdirPickerCard(surface)
-                        : renderHelpMenuCard(surface);
+              : selectedViewId === "vision"
+                ? renderVisionPickerCard(surface)
+                : selectedViewId === "mode"
+                  ? renderModePickerCard(surface)
+                  : selectedViewId === "display"
+                    ? renderDisplayCard(surface)
+                    : selectedViewId === "buffer"
+                      ? renderBufferCard(surface)
+                      : selectedViewId === "commands"
+                        ? renderCommandsCard(surface)
+                        : selectedViewId === "workdir"
+                          ? renderWorkdirPickerCard(surface)
+                          : renderHelpMenuCard(surface);
   return notice?.text ? withCommandNotice(card, notice) : card;
 }
 

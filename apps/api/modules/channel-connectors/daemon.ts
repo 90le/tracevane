@@ -788,6 +788,7 @@ type FeishuProgressCardEntryKind = "info" | "assistant" | "thinking" | "tool_use
 const channelSessionAgentRunQueues: ChannelDaemonSessionRunQueueRegistry = new Map();
 const channelPendingPermissions: ChannelDaemonPendingPermissionRegistry = new Map();
 const channelPermissionApproveAllRunIds = new Set<string>();
+const AUTO_VISION_MODEL_SENTINEL = "__studio_auto__";
 
 interface FeishuProgressCardEntry {
   kind: FeishuProgressCardEntryKind;
@@ -2259,6 +2260,29 @@ function metadataString(binding: ChannelConnectorRuntimeBinding, keys: string[])
     if (value) return value;
   }
   return "";
+}
+
+function bindingWithSessionVisionOverrides(
+  binding: ChannelConnectorRuntimeBinding,
+  control: ChannelConnectorSessionControlRecord | null,
+): ChannelConnectorRuntimeBinding {
+  if (!control || (control.autoVisionModel === null && !control.visionModel)) return binding;
+  const metadata = { ...metadataRecord(binding) };
+  if (control.autoVisionModel !== null) metadata.autoVisionModel = control.autoVisionModel;
+  if (control.visionModel === AUTO_VISION_MODEL_SENTINEL) {
+    delete metadata.autoVisionModelId;
+    delete metadata.auto_vision_model_id;
+    delete metadata.visionModel;
+    delete metadata.vision_model;
+    delete metadata.visualModel;
+    delete metadata.visual_model;
+  } else if (control.visionModel) {
+    metadata.visionModel = control.visionModel;
+  }
+  return {
+    ...binding,
+    metadata,
+  };
 }
 
 function metadataStringList(binding: ChannelConnectorRuntimeBinding, keys: string[]): string[] {
@@ -7470,6 +7494,7 @@ function buildFeishuCommandCard(input: {
   selectedSectionId?: string | null;
   selectedViewId?: string | null;
   models?: string[];
+  visionModels?: string[];
   notice?: {
     title: string;
     text: string;
@@ -7531,6 +7556,7 @@ function buildFeishuCommandCard(input: {
     displayDefaults: input.displayDefaults || null,
     sessionKey: input.sessionKey,
     models: input.models,
+    visionModels: input.visionModels,
     agentSession: session ? {
       started: true,
       turnCount: session.turnCount,
@@ -7579,6 +7605,31 @@ async function gatewayModelsForFeishuCard(input: {
   }
 }
 
+async function gatewayVisionModelsForFeishuCard(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  project: ChannelConnectorRuntimeProject;
+  binding: ChannelConnectorRuntimeBinding;
+  sessionKey: string;
+}): Promise<string[]> {
+  const control = getChannelConnectorSessionControl(sessionControlsPath(input.config), {
+    bindingId: input.binding.id,
+    sessionKey: input.sessionKey,
+  });
+  const current = resolveChannelConnectorEffectiveProject(input.config, input.project, control);
+  try {
+    const catalog = await listChannelConnectorGatewayModelCatalog(
+      current.gatewayEndpoint || input.config.gateway.endpoint,
+      gatewayClientKey(input.config),
+    );
+    return uniqueStrings(catalog
+      .filter((model) => model.features.vision === true
+        && ((model.healthyProviderIds || []).length > 0 || (model.openCircuitProviderIds || []).length === 0))
+      .map((model) => model.id));
+  } catch {
+    return [];
+  }
+}
+
 function feishuMenuSelectionFromParsed(parsed: ChannelConnectorFeishuParsedWebhook): {
   selectedSectionId: string | null;
   selectedViewId: string | null;
@@ -7611,12 +7662,16 @@ async function sendOrPatchFeishuCommandCard(input: {
   } | null;
 }): Promise<ChannelConnectorFeishuTransportResult & { card: ReturnType<typeof buildFeishuCommandCard> }> {
   const selection = feishuMenuSelectionFromParsed(input.parsed);
-  const models = await gatewayModelsForFeishuCard(input);
+  const [models, visionModels] = await Promise.all([
+    gatewayModelsForFeishuCard(input),
+    gatewayVisionModelsForFeishuCard(input),
+  ]);
   const card = buildFeishuCommandCard({
     ...input,
     ...selection,
     displayDefaults: feishuProgressDefaults(input.parsed),
     models,
+    visionModels,
     notice: input.notice || null,
   });
   const cachePath = feishuTokenCachePath(input.config);
@@ -8139,7 +8194,7 @@ async function dispatchOctoMessage(input: {
   const gatewayEndpoint = effectiveProject.gatewayEndpoint || config.gateway.endpoint;
   const modelResolution = await resolveChannelConnectorVisualTurnProject({
     project: effectiveProject,
-    binding,
+    binding: bindingWithSessionVisionOverrides(binding, control),
     message: agentMessage,
     gatewayEndpoint,
     gatewayClientKey: key,
@@ -9693,7 +9748,7 @@ async function dispatchFeishuParsedEvent(input: {
   const gatewayEndpoint = effectiveProject.gatewayEndpoint || config.gateway.endpoint;
   const modelResolution = await resolveChannelConnectorVisualTurnProject({
     project: effectiveProject,
-    binding,
+    binding: bindingWithSessionVisionOverrides(binding, control),
     message: agentMessage,
     gatewayEndpoint,
     gatewayClientKey: key,
