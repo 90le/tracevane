@@ -1,6 +1,6 @@
 # Channel Connectors / CLI Agent Bot 原生方案
 
-> 状态：Studio 原生 Channel daemon 路线；Feishu/Octo 私聊闭环已进入 live 抽查；Agent runner 和 durable queue 继续加固
+> 状态：Studio 原生 Channel daemon 路线；Feishu/Octo 私聊闭环已进入 live 抽查；Agent runner 继续加固，durable queue 已完成 live 验收
 > 更新：2026-06-13
 > 迁移清单：`channel-connectors-cc-migration-checklist.md`
 
@@ -65,7 +65,7 @@ Feishu / Octo(dmwork) / future IM
 - Channel daemon 是独立进程，由 OS/user supervisor 守护。
 - 运行期不依赖 Studio API；Studio 只负责配置、安装、启停、日志和管理面。
 - 同一 binding + IM session 默认 FIFO 排队；普通消息排队，`/stop`、`/status` 等控制命令即时执行。
-- daemon 重启后需要补 durable queue / 可恢复队列，避免未开始消息丢失。
+- daemon 重启后通过 durable queue / 可恢复队列重放未开始消息，避免排队任务丢失。
 
 ## 4. 平台私聊合同
 
@@ -129,6 +129,5 @@ Octo(dmwork)：
 
 ## 7. 下一步
 
-1. 触发真实 Feishu 长连接入站排队 + daemon 重启，用 durable live 脚本验收 pending replay；普通 FIFO 已有 24h 证据。
-2. 继续抽查 Feishu/Octo 私聊文件、图片、工具流、过程回复、思考流和审批路径；Markdown 只做回归抽查。
-3. 后续路线图：微信/企微、钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE；更多 Agent 如 Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP。
+1. 继续抽查 Feishu/Octo 私聊文件、图片、工具流、过程回复、思考流、审批路径和 durable queue 回归；Markdown 只做回归抽查。
+2. 后续路线图：微信/企微、钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE；更多 Agent 如 Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP。

@@ -61,7 +61,7 @@
   - Feishu 权限卡片链路同轮观察通过：文件处理触发 Bash `permission-pending`，用户 `approve-all` 后进入 `permission-allowed-all`，工具结果回到 Agent 流。
   - Feishu 出站文件 24h live 已验证：用户触发 `hello-live.txt` 创建和发送，event log 记录 `outboundFilesSent=1`、`permission-pending -> allowed`、工具输出 `live-ok`。
   - Feishu 权限审批 24h live 已验证：真实链路为 Feishu 进度卡片 `permission-pending/allowed` + 卡片按钮 `channel.command commandAction=permission commandOk=true`；live 脚本已兼容这条真实形态。
-  - Feishu queue live 脚本已区分 `durable`、`fifo`、`any`：24h 日志中已有同进程 FIFO 排队顺序执行证据，默认 durable 模式仍要求 daemon 重启后的 `pending_replay`。
+  - Feishu queue live 脚本已区分 `durable`、`fifo`、`any`：24h 日志已有同进程 FIFO 排队顺序执行证据，真实 IM daemon 重启后 `pending_replay` 已通过。
   - 上下文预算核心已完成：`/status` 会按 Gateway 模型窗口、输出预留、Gateway usage/history estimate 展示剩余窗口和 auto compact threshold；auto compact 已按 native-first、baseline 和 fallback 记录接入。
   - 私聊文件/消息收发核心已完成：入站 staging、出站 file/message manifest、原始文件名、Feishu/Octo 上传发送、Octo COS/STS 大文件路径和 fallback 均有回归；真实 Feishu/Octo 文件/图片/视频和出站文件 live 证据已通过。
   - Octo 入站文件 24h live 已验证：用户侧文件进入 staging，本地路径存在，Agent 可返回路径；Octo 视频真实形态会以 `file` + `.mp4` staged path 出现，live smoke 已按视频类文件识别并验收通过。
@@ -143,7 +143,7 @@
 - 本轮 live 验证通过：`node scripts/smoke-channel-connectors-compact-live.mjs --platform octo --mode explicit --since-minutes 1440 --json`，识别 Octo 24h 内显式 `/compact` native 证据。
 - 本轮验证通过：`node --test tests/system/channel-connectors-feishu-durable-queue-live-script.test.mjs`，6/6 通过，覆盖 durable replay、same-process FIFO 和 any 模式。
 - 本轮 live 验证通过：`node scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --mode fifo --since-minutes 1440 --json`，识别 Feishu 24h 内 FIFO 排队后成功执行证据。
-- 本轮 live 只读检查：默认 durable 模式仍未发现 `pending_replay` 证据；当前 24h 候选是同进程 FIFO，不是 daemon 重启重放。
+- 本轮 live 验证通过：`node scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --mode durable --since-minutes 10 --wait --timeout-ms 600000 --poll-ms 1000 --json`，识别 Feishu queued message 在 daemon 重启后 replay 并完成，`proofCount=1`、`agent=opencode`、`agentOk=true`、`replySent=true`。
 - 本轮 live 验证通过：Feishu 文件消息 `om_x100b6df679c474a4c23ef686549039b`，staging 路径存在，`agent.run.finished agentOk=true replySent=true`。
 - 本轮 live 只读验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --require-ok --require-reply --require-tool --require-tool-output --min-runs 1 --limit-runs 5 --json`，最近 24h 匹配 6 条带可见工具输出的成功 IM run。
 - 本轮 live 只读验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 720 --agents codex,claude-code,opencode --require-agent-coverage --require-ok --require-reply --require-tool --require-tool-output --min-runs 3 --limit-runs 12`，近 12h 三个 Agent 均有成功工具调用和可见工具输出证据。
@@ -165,7 +165,7 @@
 
 - Feishu transport 内仍保留一套低层 legacy action helper 和对应直接 transport 回归；它已不再由 Agent prompt、runner、daemon endpoint 或 UI 暴露。后续如继续瘦身，应单独删除这段 Doc/Drive/Wiki/Bitable 直接 API helper，避免和私聊文件/图片 transport 误删混在一起。
 - Octo/Feishu 群聊和管理能力已有实现继续 best-effort 保留，但新需求默认不继续扩展。
-- 同 session FIFO queue 已有 pending-agent-run store；已入队但未启动的消息会落盘并在 daemon 重启后重放。Octo 重启回归已通过；Feishu 24h live 已证明同进程 FIFO 排队顺序执行，daemon 重启 replay 仍需真实 IM 场景复验。
+- 同 session FIFO queue 已有 pending-agent-run store；已入队但未启动的消息会落盘并在 daemon 重启后重放。Octo 重启回归已通过；Feishu 24h live 已证明同进程 FIFO 排队顺序执行和 daemon 重启 replay。
 - Claude Code / OpenCode native compact 已覆盖 driver 层、Octo daemon 私聊入口、Feishu native-first wiring、Feishu 显式 `/compact` 三 Agent 24h live、Octo auto compact 24h live 和 Octo 显式 `/compact` 24h live。
 - 上下文预算只使用 Gateway/runtime/history 可观测数据；不伪造 Agent CLI 内部精确 prompt 预算。
 - 图片自动切视觉模型默认关闭；需要在平台 binding 打开。非视觉图片 fallback 已有回归；Feishu/Octo 入站文件/图片、Feishu 入站视频、Octo `.mp4` 文件形态视频、Feishu/Octo 出站文件、Feishu/Octo 权限 24h live 已有证据。
@@ -176,6 +176,5 @@
 
 ## 下一步
 
-1. 触发真实 Feishu 长连接入站排队 + daemon 重启场景，用 live 证据脚本验收 pending replay。
-2. 继续抽查 Codex / Claude Code / OpenCode 真实 IM 工具流、过程回复、思考流和审批路径。
-3. 后续可选 OpenAI Platform 官方端点 proof。
+1. 继续抽查 Codex / Claude Code / OpenCode 真实 IM 工具流、过程回复、思考流、审批路径和 durable queue 回归。
+2. 后续可选 OpenAI Platform 官方端点 proof。

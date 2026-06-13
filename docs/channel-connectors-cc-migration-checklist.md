@@ -47,7 +47,7 @@
 | P1 | 图片/视觉模型 fallback | 已完成：默认关闭；binding 可设启用和默认视觉模型；IM `/vision` 命令与 Feishu 卡片可临时开启/关闭/指定模型；Gateway catalog 只列健康 vision 模型 | 非视觉当前模型收到图片时按配置切到指定/自动健康视觉模型，失败回退附件说明模式 |
 | P1 | 上下文预算与 compact | 核心完成：`/status` 展示 resolved model window/reserve/threshold/remaining，auto compact 已按 native-first、baseline 和 fallback 记录接入；Feishu/Octo compact 24h live 已通过 | 后续只做真实抽查；不伪造 Agent 内部 token 预算 |
 | P1 | 文件/消息收发 | 核心完成：私聊入站 staging、出站 file/message manifest、原始文件名、Feishu/Octo 上传发送和 Octo COS/STS 大文件路径已覆盖；Feishu/Octo live 证据已通过 | 后续只做平台大小限制、真实大文件和异常路径抽查 |
-| P2 | durable queue | 进行中：pending-agent-run store 已接入 Octo/Feishu；daemon/API/UI 运行态可见性已补；Octo daemon restart 回归已通过；Feishu live 脚本已区分 durable replay 与 same-process FIFO，Feishu FIFO 24h live 已通过 | daemon 重启不丢失未开始任务；继续触发真实 Feishu IM 重启 replay 场景并跑 live smoke |
+| P2 | durable queue | 已完成：pending-agent-run store 已接入 Octo/Feishu；daemon/API/UI 运行态可见性已补；Octo daemon restart 回归已通过；Feishu same-process FIFO 和 daemon restart replay 均有 live 证据 | 后续仅做回归抽查 |
 | P3 | 更多平台 | 路线图 | 微信/企微/钉钉/Telegram/Slack/Discord/QQ/LINE 等只按私聊能力迁移 |
 | P3 | 更多 Agent | 路线图 | Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP 等逐个补 runner 验收 |
 
@@ -104,7 +104,7 @@
 - `node --test --test-name-pattern "replays queued Octo Agent turns" tests/system/channel-connectors-service.test.mjs` 通过，覆盖 daemon `/status` 的 pending queue 记录和 replay 事件。
 - `node --test tests/system/channel-connectors-feishu-durable-queue-live-script.test.mjs`，6/6 通过，覆盖 Feishu live 证据脚本的 long-connection queued/replay/finished、same-process FIFO 和 any 模式判定。
 - `node scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --mode fifo --since-minutes 1440 --json` 通过，识别 Feishu 24h 内同进程 FIFO 排队后成功执行证据。
-- `node scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --since-minutes 1440 --json` 仍未发现 durable `pending_replay`，当前真实候选是 FIFO 不是重启重放。
+- `node scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --mode durable --since-minutes 10 --wait --timeout-ms 600000 --poll-ms 1000 --json` 通过，识别 Feishu queued message 在 daemon 重启后 replay 并完成：`proofCount=1`、`agent=opencode`、`agentOk=true`、`replySent=true`。
 - `node --test --test-name-pattern "replays queued Octo Agent turns|daemon keeps Feishu dispatcher parity diagnostics" tests/system/channel-connectors-service.test.mjs`，2/2 通过。
 - `npm run typecheck:web`
 - `npm run build:web`
@@ -131,9 +131,9 @@
 
 1. 继续抽查 Codex / Claude Code / OpenCode 真实 IM 工具流、过程回复、思考流和审批路径；工具流 live smoke 默认带 `--agents codex,claude-code,opencode --require-agent-coverage --require-tool-output`。
 2. Octo 出站文件用户手动验收和自动 `outboundFilesSent` live 证据均已通过；Octo 视频和 Octo 显式 `/compact` 24h 已验收。
-3. durable queue：真实 Feishu IM 里触发长任务排队并重启 daemon，运行 `scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --mode durable --wait --json` 验证 pending/replay 记录与实际回复一致；普通排队只用 `--mode fifo` 证明。
+3. durable queue：真实 Feishu daemon restart replay 和普通 FIFO 均已验收，后续只保留回归抽查。
 
 现场触发口径：
 
 - OpenCode 过程回复复验：先在 IM 中切到 OpenCode，再运行 `node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --agents opencode --require-agent-coverage --require-ok --require-reply --require-tool --require-tool-output --require-process-reply --min-runs 1 --json`，发送要求“每个工具前后都输出一句话”的三步 shell prompt。
-- Feishu durable replay：先运行 `node scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --mode durable --wait --json`，再发送长任务、同 chat 第二条消息、重启 `openclaw-studio-channel-connectors.service`，等待 `pending_replay -> agent.run.finished`。
+- Feishu durable replay 复验：先运行 `node scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --mode durable --wait --json`，再发送长任务、同 chat 第二条消息、重启 `openclaw-studio-channel-connectors.service`，等待 `pending_replay -> agent.run.finished`。
