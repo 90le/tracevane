@@ -1602,12 +1602,11 @@ function uniqueStrings(values: string[]): string[] {
 function inferProviderModelCapabilities(modelId: string): Pick<ProviderModelRow, ModelCapabilityId> {
   const normalized = normalizeModelKey(modelId);
   const isEmbeddingLike = /embedding|embed|rerank|tts|speech|audio|image[-_]?gen/.test(normalized);
-  const vision = /vision|vl|gpt-4o|gpt-5\.[45]|gemini|claude|qwen.*vl|glm-4v|grok|pixtral/.test(normalized);
   const reasoning = /gpt-5|^o[134]|claude|gemini|deepseek[-_]?r|reason|thinking|qwq|grok|glm[-_]?5/.test(normalized);
   const tools = !isEmbeddingLike && /gpt|claude|gemini|qwen|deepseek|glm|kimi|grok|tools?/.test(normalized);
   return {
     text: !isEmbeddingLike,
-    vision,
+    vision: false,
     tools,
     reasoning,
     responses: true,

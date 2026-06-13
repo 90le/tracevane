@@ -347,6 +347,8 @@ test("model gateway detects provider protocols without persisting probe secrets"
             endpoints: ["/v1/responses"],
           },
           { id: "model-b", contextWindow: "256000", maxOutputTokens: "16384" },
+          { id: "gpt-5.4-mini" },
+          { id: "claude-opus-4-6" },
           "deepseek-reasoner",
         ],
       }), {
@@ -411,11 +413,17 @@ test("model gateway detects provider protocols without persisting probe secrets"
 
       assert.equal(response.status, 200);
       assert.equal(response.body.ok, true);
-      assert.equal(response.body.models.length, 3);
-      assert.deepEqual(response.body.models.map((model) => model.id), ["model-a", "model-b", "deepseek-reasoner"]);
+      assert.equal(response.body.models.length, 5);
+      assert.deepEqual(response.body.models.map((model) => model.id), [
+        "model-a",
+        "model-b",
+        "gpt-5.4-mini",
+        "claude-opus-4-6",
+        "deepseek-reasoner",
+      ]);
       assert.deepEqual(
         response.body.models.map((model) => [model.contextWindow, model.maxOutputTokens]),
-        [[128000, 8192], [256000, 16384], [64000, 8000]],
+        [[128000, 8192], [256000, 16384], [1050000, 128000], [1000000, 64000], [64000, 8000]],
       );
       assert.deepEqual(response.body.models[0].features, {
         text: true,
@@ -426,6 +434,22 @@ test("model gateway detects provider protocols without persisting probe secrets"
         responses: true,
       });
       assert.deepEqual(response.body.models[2].features, {
+        text: true,
+        streaming: true,
+        tools: true,
+        vision: false,
+        reasoning: true,
+        responses: true,
+      });
+      assert.deepEqual(response.body.models[3].features, {
+        text: true,
+        streaming: true,
+        tools: true,
+        vision: false,
+        reasoning: true,
+        responses: true,
+      });
+      assert.deepEqual(response.body.models[4].features, {
         text: true,
         streaming: true,
         tools: false,

@@ -44,6 +44,7 @@
 - Feishu 入站文件 live 已验证：长连接文件消息进入本地 staging、history 附件摘要和 Agent CLI 文件读取链路。
 - 图片附件可 staging；非视觉模型默认收到附件说明/本地路径，不做视觉推断。自动视觉模型默认关闭，平台 binding 可配置启用和默认 fallback 模型；IM 会话可用 `/vision` 菜单/命令临时开启、关闭或指定视觉模型，切换失败会回退原模型的附件说明模式。
 - Gateway Responses -> Chat-compatible provider 已保留 `input_image` 为 Chat `image_url`；`gpt-5.4-mini` / `gpt-5.5` 受控图片 smoke 和 `codex exec --image` + `gpt-5.4-mini` 已通过。
+- Provider Center 不再按 `gpt-*`、`claude-*` 等模型名自动标记 vision；图片能力只来自用户配置、上游显式能力元数据或后续图片 smoke。
 - Codex、Claude Code、OpenCode 均已支持图片 native visual input；视频附件按普通 staged local file 交给 Agent，不由 Studio 预抽帧或转图片。
 - Octo 图片/视频 payload 带 `content/caption` 时会保留用户任务文本，避免媒体占位吞掉“请识别/请处理”这类指令。
 - 同 session FIFO queue、`/stop`、`/new`、`/reset`、`/compact`、`/thinking`、`/process`、`/tools` 已接入。
@@ -69,11 +70,11 @@
 - Feishu transport 仍有低层 legacy action helper，仅作为未暴露的旧 helper 存在；后续瘦身需单独处理，避免误删私聊文件/图片 transport。
 - 群聊、thread、多 bot、Octo Bot API 管理和 Feishu 文档/群管理能力不再作为当前目标。
 - App-server / persistent session 是 beta；默认 live 仍优先稳定 one-shot runner。
-- Provider 模型 vision 能力必须以配置 + smoke 为准；当前没有 `gpt-5.5-mini`，`claude-opus-4-6` 经 `mlamp` Chat-compatible 图片请求仍失败。
+- Provider 模型 vision 能力必须以配置、上游显式能力元数据或 smoke 为准；当前没有 `gpt-5.5-mini`，`claude-opus-4-6` 经 `mlamp` Chat-compatible 图片请求仍失败。
 
 ## 下一步
 
 1. 工具流和回复解析：继续复核 Claude/Codex live 差异，修复空工具结果、工具输出丢失、过程回复/最终回复分类错误。
 2. Feishu/Octo 私聊 live smoke：Feishu/Octo 图片与视频重发验证、出站文件、权限审批和 Octo 文件；Markdown 做抽查回归。
-3. Provider Center 能力测试：图片 smoke 失败时不要自动标记 vision，并提示协议/端点不匹配。
+3. Provider Center 图片 smoke UI：失败时提示协议/端点不匹配，不写回 vision；成功时再建议写回。
 4. durable queue：触发一次真实 Feishu 长连接入站排队 + daemon 重启场景，用 `scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs` 验证 pending replay。

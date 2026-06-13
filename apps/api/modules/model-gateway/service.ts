@@ -631,13 +631,17 @@ function modelItemHasSignal(signals: string[], patterns: RegExp[]): boolean {
   return signals.some((signal) => patterns.some((pattern) => pattern.test(signal)));
 }
 
-function modelItemBooleanCapability(item: Record<string, unknown>, keys: string[]): boolean | null {
-  const sources = [
+function modelItemCapabilitySources(item: Record<string, unknown>): Record<string, unknown>[] {
+  return [
     item,
     isRecord(item.features) ? item.features : null,
     isRecord(item.capabilities) ? item.capabilities : null,
     isRecord(item.supports) ? item.supports : null,
   ].filter((source): source is Record<string, unknown> => source !== null);
+}
+
+function modelItemBooleanCapability(item: Record<string, unknown>, keys: string[]): boolean | null {
+  const sources = modelItemCapabilitySources(item);
   for (const source of sources) {
     for (const key of keys) {
       if (Object.prototype.hasOwnProperty.call(source, key)) {
@@ -649,13 +653,32 @@ function modelItemBooleanCapability(item: Record<string, unknown>, keys: string[
   return null;
 }
 
+function modelItemExplicitVisionCapability(item: Record<string, unknown>): boolean | null {
+  const explicit = modelItemBooleanCapability(item, ["vision", "image", "imageInput", "image_input", "multimodal"]);
+  if (explicit !== null) return explicit;
+
+  const sources = modelItemCapabilitySources(item);
+  const modalityKeys = [
+    "input_modalities",
+    "inputModalities",
+    "input_modes",
+    "inputModes",
+    "modalities",
+    "supported_modalities",
+    "supportedModalities",
+  ];
+  const modalities = sources.flatMap((source) => modalityKeys.flatMap((key) => collectModelItemSignals(source[key])));
+  return modelItemHasSignal(modalities, [/^image$/, /^vision$/, /^image[_ -]?input$/, /^multimodal$/])
+    ? true
+    : null;
+}
+
 function inferModelFeatures(modelId: string, item?: Record<string, unknown>): ModelGatewayModelFeatures {
   const known = knownModelDefaults(modelId).features || {};
   const signals = item ? collectModelItemSignals(item) : [];
   return compactModelFeatures({
     text: modelItemBooleanCapability(item || {}, ["text", "textInput", "text_input"]) ?? true,
-    vision: modelItemBooleanCapability(item || {}, ["vision", "image", "imageInput", "image_input", "multimodal"])
-      ?? (modelItemHasSignal(signals, [/vision/, /image/, /video/, /multimodal/, /\bvl\b/]) ? true : known.vision),
+    vision: modelItemExplicitVisionCapability(item || {}) ?? false,
     tools: modelItemBooleanCapability(item || {}, ["tools", "toolUse", "tool_use", "functionCalling", "function_calling", "functions"])
       ?? (modelItemHasSignal(signals, [/tool/, /function[_ -]?calling/, /function[_ -]?call/, /code[_ -]?execution/]) ? true : known.tools),
     reasoning: modelItemBooleanCapability(item || {}, ["reasoning", "thinking", "cot", "chainOfThought", "chain_of_thought"])
