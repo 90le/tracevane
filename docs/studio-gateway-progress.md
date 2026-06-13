@@ -62,6 +62,7 @@
   - Feishu 出站文件 24h live 已验证：用户触发 `hello-live.txt` 创建和发送，event log 记录 `outboundFilesSent=1`、`permission-pending -> allowed`、工具输出 `live-ok`。
   - Feishu 权限审批 24h live 已验证：真实链路为 Feishu 进度卡片 `permission-pending/allowed` + 卡片按钮 `channel.command commandAction=permission commandOk=true`；live 脚本已兼容这条真实形态。
   - Feishu queue live 脚本已区分 `durable`、`fifo`、`any`：24h 日志中已有同进程 FIFO 排队顺序执行证据，默认 durable 模式仍要求 daemon 重启后的 `pending_replay`。
+  - 上下文预算核心已完成：`/status` 会按 Gateway 模型窗口、输出预留、Gateway usage/history estimate 展示剩余窗口和 auto compact threshold；auto compact 已按 native-first、baseline 和 fallback 记录接入。
   - Octo 入站文件 24h live 已验证：用户侧文件进入 staging，本地路径存在，Agent 可返回路径；Octo 视频真实形态会以 `file` + `.mp4` staged path 出现，live smoke 已按视频类文件识别并验收通过。
   - Octo 出站文件 24h live 自动事件证据已验证：`octo-studio-cc` 最近成功 run 记录 `outboundFilesDeclared=1`、`outboundFilesResolved=1`、`outboundFilesSent=1`，且无 `outboundFileErrors`。
   - 用户确认 Feishu/Octo 最新手动验收全部通过，包括 Feishu 发文件、权限审批、Octo 收文件并返回路径；本轮已删除 `hello-live.txt` 和 `studio-greeting.txt` 临时文件。
@@ -164,6 +165,7 @@
 - Octo/Feishu 群聊和管理能力已有实现继续 best-effort 保留，但新需求默认不继续扩展。
 - 同 session FIFO queue 已有 pending-agent-run store；已入队但未启动的消息会落盘并在 daemon 重启后重放。Octo 重启回归已通过；Feishu 24h live 已证明同进程 FIFO 排队顺序执行，daemon 重启 replay 仍需真实 IM 场景复验。
 - Claude Code / OpenCode native compact 已覆盖 driver 层、Octo daemon 私聊入口、Feishu native-first wiring、Feishu 显式 `/compact` 三 Agent 24h live、Octo auto compact 24h live 和 Octo 显式 `/compact` 24h live。
+- 上下文预算只使用 Gateway/runtime/history 可观测数据；不伪造 Agent CLI 内部精确 prompt 预算。
 - 图片自动切视觉模型默认关闭；需要在平台 binding 打开。非视觉图片 fallback 已有回归；Feishu/Octo 入站文件/图片、Feishu 入站视频、Octo `.mp4` 文件形态视频、Feishu/Octo 出站文件、Feishu/Octo 权限 24h live 已有证据。
 - Provider 模型 vision 能力不会再从模型名推断；Chat-compatible provider 即使模型名像 Claude/GPT，也必须由用户显式配置、上游显式能力元数据或图片 smoke 通过后确认标记。
 - 工具流仍需继续 live 复核：Codex、Claude Code、OpenCode 近 12h 均已有可见工具输出 live 证据；Codex / Claude Code 已有过程回复真实 IM 证据，OpenCode 已有 direct runner 过程回复证据但仍需补最近 IM event-log 样本。

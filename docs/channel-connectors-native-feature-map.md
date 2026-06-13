@@ -58,6 +58,7 @@
 - Octo daemon 私聊 `/compact` 已有回归证明会进入 Claude/OpenCode persistent session，不走 Gateway fallback。
 - Feishu daemon 已有 native-first wiring 回归；Feishu 显式 `/compact` 24h live 已验证 Codex、Claude Code、OpenCode 均进入 Agent-native compact。
 - 通用 compact live smoke 已覆盖 Feishu 长连接证据和 Octo 自身 event-log 证据；Octo auto compact 和显式 `/compact` 均已有 24h live 证据。
+- 上下文预算核心已接入：`/status` 使用 Gateway `/models` 的 `contextWindow` / `maxOutputTokens` 和 Gateway usage/history estimate 展示剩余窗口、输出预留和 auto compact threshold；auto compact 按 Agent-native first、baseline 和 fallback 记录执行。
 - OpenCode 结构化工具输出已保留 `stdout`、`stderr` 和 `exitCode`，避免 IM 进度显示成空工具结果。
 - Codex 结构化命令输出已保留嵌套或直接 `stdout` / `stderr`，避免命令执行结果被压成单行或空结果。
 - Codex、Claude Code、OpenCode 混合 content 工具结果已加固：普通文本块与结构化 `stdout` / `stderr` / `exit_code` 会同时保留。
