@@ -78,6 +78,7 @@ import {
   listFeishuChatMembers,
   listFeishuThreadMessages,
   removeFeishuMessageReaction,
+  sendFeishuCardMessage,
   sendFeishuPostMessage,
   sendFeishuTextMessage,
   uploadAndSendFeishuMedia,
@@ -743,6 +744,14 @@ async function withMockFeishuServer(task) {
           code: 0,
           msg: "success",
           data: { message_id: "om_sent_1" },
+        }));
+        return;
+      }
+      if (/^\/open-apis\/im\/v1\/messages\/[^/]+\/reply$/.test(req.url || "") && req.method === "POST") {
+        res.end(JSON.stringify({
+          code: 0,
+          msg: "success",
+          data: { message_id: "om_reply_1" },
         }));
         return;
       }
@@ -7918,6 +7927,32 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(compact.replyText, /history: 6 -> 1/);
   assert.match(compact.replyText, /cleared 2/);
 
+  const compactProgressEvents = [];
+  const compactWithProgress = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/compact"),
+    compactConversation: async () => ({
+      ok: true,
+      beforeEntries: 5,
+      afterEntries: 1,
+      sessionsCleared: 1,
+      summaryText: "compact progress summary",
+      error: null,
+    }),
+    onCommandProgress: async (event) => {
+      compactProgressEvents.push(event);
+      return { handled: true, suppressFinalReply: event.type === "completed" };
+    },
+  });
+  assert.equal(compactWithProgress.handled, true);
+  assert.equal(compactWithProgress.ok, true);
+  assert.equal(compactWithProgress.progressHandled, true);
+  assert.equal(compactWithProgress.suppressReply, true);
+  assert.deepEqual(compactProgressEvents.map((event) => event.type), ["started", "completed"]);
+  assert.deepEqual(compactProgressEvents.map((event) => event.commandName), ["compact", "compact"]);
+  assert.equal(compactProgressEvents[0].commandPreview, "/compact");
+  assert.match(compactProgressEvents[1].outputPreview, /Studio compact completed/);
+
   let nativeCompactCalled = false;
   let nativeFallbackCalled = false;
   const nativeCompact = await handleChannelConnectorCommand({
@@ -8030,6 +8065,30 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(nativeCompactForced.ok, true);
   assert.equal(nativeCompactForced.nativeCommand, null);
   assert.match(nativeCompactForced.replyText, /Agent 原生 compact 已完成/);
+
+  const forcedNativeCompactProgressEvents = [];
+  const nativeCompactForcedWithProgress = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/native /compact"),
+    nativeCompactConversation: async () => ({
+      attempted: true,
+      ok: true,
+      fallbackAllowed: false,
+      replyText: "Codex compact 已完成。",
+      error: null,
+    }),
+    onCommandProgress: async (event) => {
+      forcedNativeCompactProgressEvents.push(event);
+      return { handled: true, suppressFinalReply: event.type === "completed" };
+    },
+  });
+  assert.equal(nativeCompactForcedWithProgress.handled, true);
+  assert.equal(nativeCompactForcedWithProgress.ok, true);
+  assert.equal(nativeCompactForcedWithProgress.progressHandled, true);
+  assert.equal(nativeCompactForcedWithProgress.suppressReply, true);
+  assert.deepEqual(forcedNativeCompactProgressEvents.map((event) => event.type), ["started", "completed"]);
+  assert.deepEqual(forcedNativeCompactProgressEvents.map((event) => event.commandName), ["compact", "compact"]);
+  assert.equal(forcedNativeCompactProgressEvents[0].commandPreview, "/native /compact");
 
   const badNative = await handleChannelConnectorCommand({
     ...baseContext,
@@ -10918,6 +10977,51 @@ test("native Channel Connectors Feishu transport splits long text replies", asyn
   });
 });
 
+test("native Channel Connectors Feishu transport can reply to the triggering message", async () => {
+  await withMockFeishuServer(async (apiUrl, requests) => {
+    const root = makeTempRoot();
+    const cachePath = path.join(root, "feishu-token-cache.json");
+    const transport = {
+      apiUrl,
+      appId: "cli_reply_to",
+      appSecret: "test-secret",
+    };
+
+    const text = await sendFeishuTextMessage(transport, {
+      chatId: "oc_chat",
+      replyToMessageId: "om_trigger",
+      content: "reply text",
+    }, cachePath);
+    const post = await sendFeishuPostMessage(transport, {
+      chatId: "oc_chat",
+      replyToMessageId: "om_trigger",
+      content: "**reply post**",
+    }, cachePath);
+    const card = await sendFeishuCardMessage(transport, {
+      chatId: "oc_chat",
+      replyToMessageId: "om_trigger",
+      card: { config: { wide_screen_mode: true }, elements: [] },
+    }, cachePath);
+
+    assert.equal(text.ok, true);
+    assert.equal(text.action, "reply-message");
+    assert.equal(text.messageId, "om_reply_1");
+    assert.equal(post.ok, true);
+    assert.equal(post.action, "reply-post");
+    assert.equal(card.ok, true);
+    assert.equal(card.action, "reply-card");
+    assert.equal(requests[0].path, "/open-apis/auth/v3/tenant_access_token/internal");
+    assert.equal(requests[1].path, "/open-apis/im/v1/messages/om_trigger/reply");
+    assert.equal(requests[1].body.msg_type, "text");
+    assert.equal(JSON.parse(requests[1].body.content).text, "reply text");
+    assert.equal(requests[2].path, "/open-apis/im/v1/messages/om_trigger/reply");
+    assert.equal(requests[2].body.msg_type, "post");
+    assert.equal(requests[3].path, "/open-apis/im/v1/messages/om_trigger/reply");
+    assert.equal(requests[3].body.msg_type, "interactive");
+    assert.equal(requests.every((request) => request.body?.receive_id === undefined), true);
+  });
+});
+
 test("native Channel Connectors Feishu transport resolves bot open_id for group mention gating", async () => {
   await withMockFeishuServer(async (apiUrl, requests) => {
     const root = makeTempRoot();
@@ -11217,6 +11321,14 @@ test("native Channel Connectors Feishu transport manages processing reactions", 
     assert.equal(requests[2].method, "DELETE");
     assert.equal(requests[2].authorization, "Bearer tenant-token-1");
   });
+});
+
+test("native Channel Connectors Feishu command replies use progress reactions and reply-to context", () => {
+  const daemonSource = fs.readFileSync(path.join(process.cwd(), "apps/api/modules/channel-connectors/daemon.ts"), "utf8");
+  assert.match(daemonSource, /shouldStartFeishuCommandTypingReaction/);
+  assert.match(daemonSource, /eventKindPrefix:\s*"channel\.command\.reaction"/);
+  assert.match(daemonSource, /replyToMessageId:\s*messageId/);
+  assert.match(daemonSource, /replyToMessageId:\s*input\.messageId/);
 });
 
 test("native Channel Connectors process runner streams progress events from agent JSONL", async () => {

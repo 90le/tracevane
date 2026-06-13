@@ -874,6 +874,7 @@ interface FeishuProgressCardEntry {
 
 interface FeishuProgressCardState {
   messageId: string | null;
+  replyToMessageId: string | null;
   status: "running" | "completed" | "failed";
   startedAtMs: number;
   updatedAtMs: number;
@@ -1029,7 +1030,7 @@ function formatCommandProgressText(event: ChannelConnectorCommandProgressEvent):
   ].filter(Boolean).join(" · ");
   return renderPlainProgressMessage({
     icon: progressKindIcon(commandProgressIsTerminal(event) ? event.type === "completed" ? "completed" : "failed" : "running"),
-    title: `Shell /${event.commandName}`,
+    title: `Command /${event.commandName}`,
     meta,
     body: [
       `cwd: ${event.workDir}`,
@@ -1058,7 +1059,7 @@ function renderFeishuCommandProgressCard(event: ChannelConnectorCommandProgressE
     header: {
       title: {
         tag: "plain_text",
-        content: `Studio Shell /${event.commandName} · ${commandProgressStatusLabel(event.type)}`,
+        content: `Studio Command /${event.commandName} · ${commandProgressStatusLabel(event.type)}`,
       },
       template: commandProgressCardTemplate(event.type),
     },
@@ -4449,21 +4450,25 @@ async function startFeishuTypingReaction(input: {
   binding: ChannelConnectorRuntimeBinding;
   sessionKey: string;
   messageId: string;
+  eventKindPrefix?: string;
+  commandPreview?: string | null;
 }): Promise<() => Promise<void>> {
   const emojiType = feishuReactionEmoji(input.binding);
   if (!emojiType || !input.messageId) return async () => {};
   const cachePath = feishuTokenCachePath(input.config);
+  const eventKindPrefix = input.eventKindPrefix || "agent.reaction";
   const started = await addFeishuMessageReaction(input.transport, {
     messageId: input.messageId,
     emojiType,
   }, cachePath);
   writeJsonLine(input.config.paths.feishuEvents, {
     checkedAt: new Date().toISOString(),
-    eventKind: "agent.reaction.started",
+    eventKind: `${eventKindPrefix}.started`,
     adapter: "feishu",
     bindingId: input.binding.id,
     sessionKey: input.sessionKey,
     messageId: input.messageId,
+    commandPreview: input.commandPreview || null,
     reactionEmoji: emojiType,
     reactionId: started.reactionId || null,
     reactionOk: started.ok,
@@ -4479,17 +4484,27 @@ async function startFeishuTypingReaction(input: {
     }, cachePath);
     writeJsonLine(input.config.paths.feishuEvents, {
       checkedAt: new Date().toISOString(),
-      eventKind: "agent.reaction.stopped",
+      eventKind: `${eventKindPrefix}.stopped`,
       adapter: "feishu",
       bindingId: input.binding.id,
       sessionKey: input.sessionKey,
       messageId: input.messageId,
+      commandPreview: input.commandPreview || null,
       reactionId,
       reactionOk: stopped.ok,
       reactionError: stopped.error,
       requestCount: stopped.requestCount,
     });
   };
+}
+
+function shouldStartFeishuCommandTypingReaction(
+  parsed: ChannelConnectorFeishuParsedWebhook,
+  content: string,
+): boolean {
+  if (!normalizeString(parsed.messageId)) return false;
+  if (parsed.kind === "card-action" || parsed.kind === "bot-menu") return true;
+  return normalizeString(content).startsWith("/");
 }
 
 function connectionState(
@@ -6620,6 +6635,7 @@ async function sendFeishuPermissionPrompt(input: {
   transport: ChannelConnectorFeishuTransportConfig;
   binding: ChannelConnectorRuntimeBinding;
   chatId: string;
+  replyToMessageId?: string | null;
   request: ChannelConnectorAgentPermissionRequest;
   fallbackText: string;
 }): Promise<ChannelConnectorFeishuTransportResult> {
@@ -6627,12 +6643,14 @@ async function sendFeishuPermissionPrompt(input: {
   if (feishuCardsEnabled(input.binding)) {
     const cardResult = await sendFeishuCardMessage(input.transport, {
       chatId: input.chatId,
+      replyToMessageId: input.replyToMessageId,
       card: renderFeishuPermissionCard(input.request),
     }, cachePath);
     if (cardResult.ok === true) return cardResult;
   }
   return sendFeishuTextMessage(input.transport, {
     chatId: input.chatId,
+    replyToMessageId: input.replyToMessageId,
     content: input.fallbackText,
   }, cachePath);
 }
@@ -6753,6 +6771,7 @@ function createFeishuProgressCardState(): FeishuProgressCardState {
   const startedAtMs = Date.now();
   return {
     messageId: null,
+    replyToMessageId: null,
     status: "running",
     startedAtMs,
     updatedAtMs: startedAtMs,
@@ -7574,6 +7593,7 @@ async function sendOrPatchFeishuProgressCard(input: {
   }
   return sendFeishuCardMessage(input.transport, {
     chatId: input.chatId,
+    replyToMessageId: input.state.replyToMessageId,
     card,
   }, cachePath);
 }
@@ -7584,6 +7604,7 @@ async function sendFeishuFinalReply(input: {
   binding: ChannelConnectorRuntimeBinding;
   project: ChannelConnectorRuntimeProject;
   chatId: string;
+  replyToMessageId?: string | null;
   sessionKey: string;
   replyText: string;
   status: "ok" | "failed";
@@ -7602,6 +7623,7 @@ async function sendFeishuFinalReply(input: {
   if (cardAttempted) {
     const cardResult = await sendFeishuCardMessage(input.transport, {
       chatId: input.chatId,
+      replyToMessageId: input.replyToMessageId,
       card: renderFeishuFinalReplyCard({
         project: input.project,
         replyText: input.replyText,
@@ -7619,6 +7641,7 @@ async function sendFeishuFinalReply(input: {
     }
     const postResult = await sendFeishuPostMessage(input.transport, {
       chatId: input.chatId,
+      replyToMessageId: input.replyToMessageId,
       content: sanitizeFeishuCardMarkdown(input.replyText),
     }, cachePath);
     if (postResult.ok === true) {
@@ -7636,6 +7659,7 @@ async function sendFeishuFinalReply(input: {
     // markdown edge cases; plain text is the last delivery fallback only.
     const textResult = await sendFeishuTextMessage(input.transport, {
       chatId: input.chatId,
+      replyToMessageId: input.replyToMessageId,
       content: input.replyText,
     }, cachePath);
     return {
@@ -7647,6 +7671,7 @@ async function sendFeishuFinalReply(input: {
   }
   const postResult = await sendFeishuPostMessage(input.transport, {
     chatId: input.chatId,
+    replyToMessageId: input.replyToMessageId,
     content: sanitizeFeishuCardMarkdown(input.replyText),
   }, cachePath);
   if (postResult.ok === true) {
@@ -7659,6 +7684,7 @@ async function sendFeishuFinalReply(input: {
   }
   const textResult = await sendFeishuTextMessage(input.transport, {
     chatId: input.chatId,
+    replyToMessageId: input.replyToMessageId,
     content: input.replyText,
   }, cachePath);
   return {
@@ -7966,6 +7992,7 @@ async function sendOrPatchFeishuCommandCard(input: {
   }
   const sent = await sendFeishuCardMessage(input.transport, {
     chatId: normalizeString(input.parsed.channelId),
+    replyToMessageId: normalizeString(input.parsed.messageId),
     card,
   }, cachePath);
   return { ...sent, card };
@@ -9812,99 +9839,119 @@ async function dispatchFeishuParsedEvent(input: {
 
   const message = feishuMessageFromParsed(parsed, content);
   const key = gatewayClientKey(config);
-  const command = await handleChannelConnectorCommand({
-    config,
-    project,
-    binding,
-    message,
-    sessionKey,
-    controlsPath: sessionControlsPath(config),
-    commandAliasesPath: commandAliasesPath(config),
-    customCommandsPath: customCommandsPath(config),
-    agentSessionsPath: agentSessionsPath(config),
-    conversationHistoryPath: conversationHistoryPath(config),
-    replyBuffersPath: replyBufferPath(config),
-    gatewayClientKey: key,
-    hasPendingPermissionRequest: (scope) => hasPendingPermissionForSession(channelPendingPermissions, scope),
-    respondPermissionRequest: (scope) => respondPendingPermissionForSession(channelPendingPermissions, scope),
-    hasPendingQuestionRequest: (scope) => hasPendingQuestionForSession(channelPendingPermissions, scope),
-    respondQuestionRequest: (scope) => respondPendingQuestionForSession(channelPendingPermissions, scope),
-    stopActiveRun: (scope) => stopLatestActiveRunForSession(activeRunCancels, scope),
-    nativeCompactConversation: (scope) => nativeCompactChannelConnectorConversation({
+  const shouldUseCommandTypingReaction = shouldStartFeishuCommandTypingReaction(parsed, content);
+  const stopCommandTypingReaction = shouldUseCommandTypingReaction
+    ? await startFeishuTypingReaction({
       config,
-      state,
-      activeRunCancels,
+      transport,
       binding,
-      sessionKey: scope.sessionKey,
-      project: scope.project,
-      message: scope.message,
-      gatewayClientKey: key,
-    }),
-    compactConversation: (scope) => compactChannelConnectorConversation({
-      config,
-      bindingId: scope.bindingId,
-      sessionKey: scope.sessionKey,
-      project: scope.project,
-      gatewayClientKey: key,
-    }),
-    summarizeUsage: async (scope) => summarizeChannelConnectorUsageFromState(state, {
-      bindingId: scope.bindingId,
-      sessionKey: scope.sessionKey,
-    }),
-    onCommandProgress: (() => {
-      let progressCardMessageId: string | null = null;
-      return async (event: ChannelConnectorCommandProgressEvent): Promise<ChannelConnectorCommandProgressAck> => {
-        let result: ChannelConnectorFeishuTransportResult | null = null;
-        let action = "none";
-        const cachePath = feishuTokenCachePath(config);
-        if (feishuCardsEnabled(binding)) {
-          if (progressCardMessageId) {
-            result = await patchFeishuCardMessage(transport, {
-              messageId: progressCardMessageId,
-              card: renderFeishuCommandProgressCard(event),
-            }, cachePath);
-            action = "patch-command-progress-card";
-          } else {
-            result = await sendFeishuCardMessage(transport, {
-              chatId: parsed.channelId || sessionKey,
-              card: renderFeishuCommandProgressCard(event),
-            }, cachePath);
-            action = "send-command-progress-card";
-            if (result.ok === true && result.messageId) progressCardMessageId = result.messageId;
-          }
-        } else if (event.type === "started") {
-          result = await sendFeishuTextMessage(transport, {
-            chatId: parsed.channelId || sessionKey,
-            content: formatCommandProgressText(event),
-          }, cachePath);
-          action = "send-command-progress-text";
-        }
-        writeJsonLine(config.paths.feishuEvents, {
-          checkedAt: new Date().toISOString(),
-          eventKind: "channel.command.progress",
-          adapter: "feishu",
-          bindingId: binding.id,
-          sessionKey,
-          messageId,
-          channelId: parsed.channelId,
-          chatType: parsed.chatType,
-          fromUid: parsed.fromUid,
-          ...feishuThreadLogFields(parsed),
-          ...commandProgressLogFields(event),
-          progressTransportAction: action,
-          progressReplySent: result?.ok === true,
-          progressReplyMessageId: result?.messageId || null,
-          progressReplyRequestCount: result?.requestCount ?? null,
-          progressReplyError: result?.error || null,
-        });
-        const handled = result?.ok === true;
-        return {
-          handled,
-          suppressFinalReply: handled && feishuCardsEnabled(binding) && commandProgressIsTerminal(event),
-        };
-      };
-    })(),
-  });
+      sessionKey,
+      messageId,
+      eventKindPrefix: "channel.command.reaction",
+      commandPreview: content,
+    })
+    : async () => {};
+  const command = await (async () => {
+    try {
+      return await handleChannelConnectorCommand({
+        config,
+        project,
+        binding,
+        message,
+        sessionKey,
+        controlsPath: sessionControlsPath(config),
+        commandAliasesPath: commandAliasesPath(config),
+        customCommandsPath: customCommandsPath(config),
+        agentSessionsPath: agentSessionsPath(config),
+        conversationHistoryPath: conversationHistoryPath(config),
+        replyBuffersPath: replyBufferPath(config),
+        gatewayClientKey: key,
+        hasPendingPermissionRequest: (scope) => hasPendingPermissionForSession(channelPendingPermissions, scope),
+        respondPermissionRequest: (scope) => respondPendingPermissionForSession(channelPendingPermissions, scope),
+        hasPendingQuestionRequest: (scope) => hasPendingQuestionForSession(channelPendingPermissions, scope),
+        respondQuestionRequest: (scope) => respondPendingQuestionForSession(channelPendingPermissions, scope),
+        stopActiveRun: (scope) => stopLatestActiveRunForSession(activeRunCancels, scope),
+        nativeCompactConversation: (scope) => nativeCompactChannelConnectorConversation({
+          config,
+          state,
+          activeRunCancels,
+          binding,
+          sessionKey: scope.sessionKey,
+          project: scope.project,
+          message: scope.message,
+          gatewayClientKey: key,
+        }),
+        compactConversation: (scope) => compactChannelConnectorConversation({
+          config,
+          bindingId: scope.bindingId,
+          sessionKey: scope.sessionKey,
+          project: scope.project,
+          gatewayClientKey: key,
+        }),
+        summarizeUsage: async (scope) => summarizeChannelConnectorUsageFromState(state, {
+          bindingId: scope.bindingId,
+          sessionKey: scope.sessionKey,
+        }),
+        onCommandProgress: (() => {
+          let progressCardMessageId: string | null = null;
+          return async (event: ChannelConnectorCommandProgressEvent): Promise<ChannelConnectorCommandProgressAck> => {
+            let result: ChannelConnectorFeishuTransportResult | null = null;
+            let action = "none";
+            const cachePath = feishuTokenCachePath(config);
+            if (feishuCardsEnabled(binding)) {
+              if (progressCardMessageId) {
+                result = await patchFeishuCardMessage(transport, {
+                  messageId: progressCardMessageId,
+                  card: renderFeishuCommandProgressCard(event),
+                }, cachePath);
+                action = "patch-command-progress-card";
+              } else {
+                result = await sendFeishuCardMessage(transport, {
+                  chatId: parsed.channelId || sessionKey,
+                  replyToMessageId: messageId,
+                  card: renderFeishuCommandProgressCard(event),
+                }, cachePath);
+                action = "send-command-progress-card";
+                if (result.ok === true && result.messageId) progressCardMessageId = result.messageId;
+              }
+            } else if (event.type === "started") {
+              result = await sendFeishuTextMessage(transport, {
+                chatId: parsed.channelId || sessionKey,
+                replyToMessageId: messageId,
+                content: formatCommandProgressText(event),
+              }, cachePath);
+              action = "send-command-progress-text";
+            }
+            writeJsonLine(config.paths.feishuEvents, {
+              checkedAt: new Date().toISOString(),
+              eventKind: "channel.command.progress",
+              adapter: "feishu",
+              bindingId: binding.id,
+              sessionKey,
+              messageId,
+              channelId: parsed.channelId,
+              chatType: parsed.chatType,
+              fromUid: parsed.fromUid,
+              ...feishuThreadLogFields(parsed),
+              ...commandProgressLogFields(event),
+              progressTransportAction: action,
+              progressReplySent: result?.ok === true,
+              progressReplyMessageId: result?.messageId || null,
+              progressReplyRequestCount: result?.requestCount ?? null,
+              progressReplyError: result?.error || null,
+            });
+            const handled = result?.ok === true;
+            return {
+              handled,
+              suppressFinalReply: handled && feishuCardsEnabled(binding) && commandProgressIsTerminal(event),
+            };
+          };
+        })(),
+      });
+    } finally {
+      await stopCommandTypingReaction();
+    }
+  })();
 
   if (command.handled) {
     let replySent = false;
@@ -9972,6 +10019,7 @@ async function dispatchFeishuParsedEvent(input: {
     if (!replySent && !replyQueued && command.replyText && command.suppressReply !== true) {
       const result = await sendFeishuTextMessage(transport, {
         chatId: parsed.channelId,
+        replyToMessageId: messageId,
         content: command.replyText,
       }, feishuTokenCachePath(config));
       replySent = result.ok === true;
@@ -10251,6 +10299,7 @@ async function dispatchFeishuParsedEvent(input: {
   let firstProgressAtMs: number | null = null;
   let previousProgressAtMs = runStartedAtMs;
   const progressCardState = createFeishuProgressCardState();
+  progressCardState.replyToMessageId = messageId;
   let lastFeishuProgressSentAt = 0;
   let feishuProgressSendCount = 0;
   let feishuProgressFlush: Promise<void> = Promise.resolve();
@@ -10460,6 +10509,7 @@ async function dispatchFeishuParsedEvent(input: {
               transport,
               binding,
               chatId: parsed.channelId || sessionKey,
+              replyToMessageId: messageId,
               request,
               fallbackText: prompt,
             });
@@ -10606,6 +10656,7 @@ async function dispatchFeishuParsedEvent(input: {
                 transport,
                 binding,
                 chatId: parsed.channelId || sessionKey,
+                replyToMessageId: messageId,
                 request,
                 fallbackText: prompt,
               });
@@ -10900,6 +10951,7 @@ async function dispatchFeishuParsedEvent(input: {
       binding,
       project: turnProject,
       chatId: parsed.channelId,
+      replyToMessageId: messageId,
       sessionKey,
       replyText: preparedReply.replyText,
       status: agent.ok === true ? "ok" : "failed",
@@ -10926,6 +10978,7 @@ async function dispatchFeishuParsedEvent(input: {
     if (sentFiles.errors.length > 0) {
       const result = await sendFeishuTextMessage(transport, {
         chatId: parsed.channelId,
+        replyToMessageId: messageId,
         content: `文件发送失败：${sentFiles.errors.join("; ")}`,
       }, feishuTokenCachePath(config));
       replyRequestCount = (replyRequestCount || 0) + result.requestCount;
@@ -10947,6 +11000,7 @@ async function dispatchFeishuParsedEvent(input: {
     if (sentMessages.errors.length > 0) {
       const result = await sendFeishuTextMessage(transport, {
         chatId: parsed.channelId,
+        replyToMessageId: messageId,
         content: `消息发送失败：${sentMessages.errors.join("; ")}`,
       }, feishuTokenCachePath(config));
       replyRequestCount = (replyRequestCount || 0) + result.requestCount;
@@ -11475,6 +11529,7 @@ function sendFeishuCommandTextReplyInBackground(input: {
 }): void {
   void sendFeishuTextMessage(input.transport, {
     chatId: input.parsed.channelId || "",
+    replyToMessageId: input.messageId,
     content: input.content,
   }, feishuTokenCachePath(input.config)).then((result) => {
     writeJsonLine(input.config.paths.feishuEvents, {

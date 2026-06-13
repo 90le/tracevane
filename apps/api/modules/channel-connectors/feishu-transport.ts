@@ -3832,6 +3832,7 @@ export async function sendFeishuTextMessage(
     chatId?: string | null;
     receiveId?: string | null;
     receiveIdType?: FeishuReceiveIdType | null;
+    replyToMessageId?: string | null;
     content: string;
   },
   cachePath?: string | null,
@@ -3839,7 +3840,8 @@ export async function sendFeishuTextMessage(
   let requestCount = 0;
   let tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"] = cachePath ? "miss" : "disabled";
   try {
-    const target = normalizeFeishuReceiveTarget(input);
+    const replyToMessageId = normalizeString(input.replyToMessageId);
+    const target = replyToMessageId ? null : normalizeFeishuReceiveTarget(input);
     if (!normalizeString(input.content)) throw new Error("Feishu message content is required.");
     const chunks = splitChannelConnectorTextChunks(input.content, FEISHU_TEXT_CHUNK_RUNES)
       .filter((chunk) => normalizeString(chunk));
@@ -3850,14 +3852,19 @@ export async function sendFeishuTextMessage(
     const messageIds: string[] = [];
     let statusCode: number | null = null;
     for (const chunk of chunks) {
+      const payload = {
+        msg_type: "text",
+        content: JSON.stringify({ text: chunk }),
+      };
       const response = await feishuJsonRequest(config, {
         method: "POST",
-        path: `/open-apis/im/v1/messages?receive_id_type=${target.receiveIdType}`,
+        path: replyToMessageId
+          ? `/open-apis/im/v1/messages/${encodeURIComponent(replyToMessageId)}/reply`
+          : `/open-apis/im/v1/messages?receive_id_type=${target?.receiveIdType}`,
         token: token.token,
-        payload: {
-          receive_id: target.receiveId,
-          msg_type: "text",
-          content: JSON.stringify({ text: chunk }),
+        payload: replyToMessageId ? payload : {
+          receive_id: target?.receiveId,
+          ...payload,
         },
       });
       requestCount += response.requestCount;
@@ -3869,7 +3876,7 @@ export async function sendFeishuTextMessage(
     return transportResult({
       attempted: true,
       ok: true,
-      action: "send-message",
+      action: replyToMessageId ? "reply-message" : "send-message",
       apiUrl: config.apiUrl,
       statusCode,
       requestCount,
@@ -3882,7 +3889,7 @@ export async function sendFeishuTextMessage(
     return transportResult({
       attempted: true,
       ok: false,
-      action: "send-message",
+      action: normalizeString(input.replyToMessageId) ? "reply-message" : "send-message",
       apiUrl: config.apiUrl,
       statusCode: errorStatusCode(error),
       error: errorMessage(error),
@@ -3898,6 +3905,7 @@ export async function sendFeishuPostMessage(
     chatId?: string | null;
     receiveId?: string | null;
     receiveIdType?: FeishuReceiveIdType | null;
+    replyToMessageId?: string | null;
     content: string;
   },
   cachePath?: string | null,
@@ -3905,7 +3913,8 @@ export async function sendFeishuPostMessage(
   let requestCount = 0;
   let tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"] = cachePath ? "miss" : "disabled";
   try {
-    const target = normalizeFeishuReceiveTarget(input);
+    const replyToMessageId = normalizeString(input.replyToMessageId);
+    const target = replyToMessageId ? null : normalizeFeishuReceiveTarget(input);
     if (!normalizeString(input.content)) throw new Error("Feishu post content is required.");
     const chunks = splitChannelConnectorTextChunks(input.content, FEISHU_TEXT_CHUNK_RUNES)
       .filter((chunk) => normalizeString(chunk));
@@ -3916,18 +3925,23 @@ export async function sendFeishuPostMessage(
     const messageIds: string[] = [];
     let statusCode: number | null = null;
     for (const chunk of chunks) {
+      const payload = {
+        msg_type: "post",
+        content: JSON.stringify({
+          zh_cn: {
+            content: [[{ tag: "md", text: chunk }]],
+          },
+        }),
+      };
       const response = await feishuJsonRequest(config, {
         method: "POST",
-        path: `/open-apis/im/v1/messages?receive_id_type=${target.receiveIdType}`,
+        path: replyToMessageId
+          ? `/open-apis/im/v1/messages/${encodeURIComponent(replyToMessageId)}/reply`
+          : `/open-apis/im/v1/messages?receive_id_type=${target?.receiveIdType}`,
         token: token.token,
-        payload: {
-          receive_id: target.receiveId,
-          msg_type: "post",
-          content: JSON.stringify({
-            zh_cn: {
-              content: [[{ tag: "md", text: chunk }]],
-            },
-          }),
+        payload: replyToMessageId ? payload : {
+          receive_id: target?.receiveId,
+          ...payload,
         },
       });
       requestCount += response.requestCount;
@@ -3939,7 +3953,7 @@ export async function sendFeishuPostMessage(
     return transportResult({
       attempted: true,
       ok: true,
-      action: "send-post",
+      action: replyToMessageId ? "reply-post" : "send-post",
       apiUrl: config.apiUrl,
       statusCode,
       requestCount,
@@ -3952,7 +3966,7 @@ export async function sendFeishuPostMessage(
     return transportResult({
       attempted: true,
       ok: false,
-      action: "send-post",
+      action: normalizeString(input.replyToMessageId) ? "reply-post" : "send-post",
       apiUrl: config.apiUrl,
       statusCode: errorStatusCode(error),
       error: errorMessage(error),
@@ -3965,7 +3979,8 @@ export async function sendFeishuPostMessage(
 export async function sendFeishuCardMessage(
   config: ChannelConnectorFeishuTransportConfig,
   input: {
-    chatId: string;
+    chatId?: string | null;
+    replyToMessageId?: string | null;
     card: ChannelConnectorFeishuInteractiveCard | Record<string, unknown>;
   },
   cachePath?: string | null,
@@ -3973,16 +3988,20 @@ export async function sendFeishuCardMessage(
   let requestCount = 0;
   let tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"] = cachePath ? "miss" : "disabled";
   try {
-    if (!normalizeString(input.chatId)) throw new Error("Feishu chatId is required.");
+    const replyToMessageId = normalizeString(input.replyToMessageId);
+    const chatId = normalizeString(input.chatId);
+    if (!replyToMessageId && !chatId) throw new Error("Feishu chatId is required.");
     const token = await getFeishuTenantToken(config, cachePath);
     requestCount += token.requestCount;
     tokenCache = token.tokenCache;
     const response = await feishuJsonRequest(config, {
       method: "POST",
-      path: "/open-apis/im/v1/messages?receive_id_type=chat_id",
+      path: replyToMessageId
+        ? `/open-apis/im/v1/messages/${encodeURIComponent(replyToMessageId)}/reply`
+        : "/open-apis/im/v1/messages?receive_id_type=chat_id",
       token: token.token,
       payload: {
-        receive_id: input.chatId,
+        ...(replyToMessageId ? {} : { receive_id: chatId }),
         msg_type: "interactive",
         content: JSON.stringify(input.card),
       },
@@ -3992,7 +4011,7 @@ export async function sendFeishuCardMessage(
     return transportResult({
       attempted: true,
       ok: true,
-      action: "send-card",
+      action: replyToMessageId ? "reply-card" : "send-card",
       apiUrl: config.apiUrl,
       statusCode: response.statusCode,
       requestCount,
@@ -4003,7 +4022,7 @@ export async function sendFeishuCardMessage(
     return transportResult({
       attempted: true,
       ok: false,
-      action: "send-card",
+      action: normalizeString(input.replyToMessageId) ? "reply-card" : "send-card",
       apiUrl: config.apiUrl,
       statusCode: errorStatusCode(error),
       error: errorMessage(error),

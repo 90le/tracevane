@@ -72,6 +72,7 @@
 - 真实 CLI thinking smoke：Claude Code 2.1.86 当前未输出 `thinking` item；OpenCode 1.17.0 在 `claude-sonnet-4-5` 上输出 `reasoning` part，在 `gpt-5.4-mini` 上不输出 reasoning。
 - `/status`、`/current`、Feishu 菜单和 Channel Connectors 页面已展示 `thinking` parser/live 支持差异：Codex 为 model-dependent，Claude Code 当前 not observed，OpenCode 按模型区分 observed / not observed / model-dependent。
 - Feishu 卡片进度和 Octo 文本/Markdown 进度已有基础渲染；Markdown 已由用户验证。
+- Feishu 命令/菜单进度已对齐 CC/OpenClaw：处理 reaction 挂在触发消息上，命令卡片/文本回复通过 Feishu reply API 挂回原消息；`/compact`、`/native /compact` 也会输出 started/terminal command progress。
 - 已删除 active platform action layer：runner/env/prompt/daemon endpoint/UI chips 不再暴露 `studio-channel-skill` 或 runtime action。
 - Codex 隔离 `codex-home/skills` 会删除历史生成的 Feishu/Octo platform action skill 目录；当前运行态旧目录已手动清理，避免 stale YAML 被 Codex 加载。
 - OpenCode realtime JSONL 与 SQLite fallback 已共用进度 parser；DB fallback 会保留本轮工具调用/工具结果，并只把最新 assistant message 作为最终回复。

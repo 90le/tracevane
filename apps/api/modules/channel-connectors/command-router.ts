@@ -1006,6 +1006,32 @@ async function runCustomExecCommand(input: {
   });
 }
 
+async function emitBuiltinCommandProgress(input: {
+  context: ChannelConnectorCommandContext;
+  project: ChannelConnectorRuntimeProject;
+  commandName: string;
+  commandPreview: string;
+  startedAt: number;
+  type: ChannelConnectorCommandProgressType;
+  outputPreview?: string | null;
+  error?: string | null;
+}): Promise<ChannelConnectorCommandProgressAck> {
+  if (!input.context.onCommandProgress) return {};
+  return await input.context.onCommandProgress({
+    type: input.type,
+    commandName: input.commandName,
+    commandPreview: bufferPreviewText(input.commandPreview, 500),
+    workDir: input.project.workDir,
+    elapsedMs: Date.now() - input.startedAt,
+    outputPreview: input.outputPreview ? bufferPreviewText(input.outputPreview, 4_000) : null,
+    stdoutPreview: input.outputPreview ? bufferPreviewText(input.outputPreview, 2_000) : null,
+    stderrPreview: null,
+    exitCode: input.type === "completed" ? 0 : input.type === "failed" ? 1 : null,
+    signal: null,
+    error: input.error || null,
+  }) || {};
+}
+
 function customCommandsListText(
   context: Pick<ChannelConnectorCommandContext, "customCommandsPath">,
   project: ChannelConnectorRuntimeProject,
@@ -3684,6 +3710,20 @@ export async function handleChannelConnectorCommand(
           nativeCommand: null,
         };
       }
+      const compactStartedAt = Date.now();
+      let compactProgressHandled = false;
+      let compactSuppressReply = false;
+      const startedAck = await emitBuiltinCommandProgress({
+        context,
+        project: currentProject,
+        commandName: "compact",
+        commandPreview: parsed.raw,
+        startedAt: compactStartedAt,
+        type: "started",
+        outputPreview: "Agent native compact started.",
+      });
+      if (startedAck.handled) compactProgressHandled = true;
+      if (startedAck.suppressFinalReply) compactSuppressReply = true;
       const nativeResult = await context.nativeCompactConversation({
         bindingId: context.binding.id,
         sessionKey: context.sessionKey,
@@ -3691,6 +3731,21 @@ export async function handleChannelConnectorCommand(
         message: context.message,
         command: target,
       });
+      const progressText = nativeResult.attempted && nativeResult.ok
+        ? "Agent native compact completed."
+        : nativeResult.error || "Agent native compact failed.";
+      const finishedAck = await emitBuiltinCommandProgress({
+        context,
+        project: currentProject,
+        commandName: "compact",
+        commandPreview: parsed.raw,
+        startedAt: compactStartedAt,
+        type: nativeResult.attempted && nativeResult.ok ? "completed" : "failed",
+        outputPreview: progressText,
+        error: nativeResult.attempted && nativeResult.ok ? null : progressText,
+      });
+      if (finishedAck.handled) compactProgressHandled = true;
+      if (finishedAck.suppressFinalReply) compactSuppressReply = true;
       if (nativeResult.attempted && nativeResult.ok) {
         return {
           handled: true,
@@ -3704,6 +3759,8 @@ export async function handleChannelConnectorCommand(
           ].filter(Boolean).join("\n"),
           passthroughText: null,
           nativeCommand: null,
+          suppressReply: compactSuppressReply,
+          progressHandled: compactProgressHandled,
         };
       }
       return {
@@ -3719,6 +3776,8 @@ export async function handleChannelConnectorCommand(
         ].filter(Boolean).join("\n"),
         passthroughText: null,
         nativeCommand: null,
+        suppressReply: compactSuppressReply,
+        progressHandled: compactProgressHandled,
       };
     }
     return {
@@ -4842,6 +4901,20 @@ export async function handleChannelConnectorCommand(
   }
 
   if (name === "compact") {
+    const compactStartedAt = Date.now();
+    let compactProgressHandled = false;
+    let compactSuppressReply = false;
+    const startedAck = await emitBuiltinCommandProgress({
+      context,
+      project: currentProject,
+      commandName: name,
+      commandPreview: parsed.raw,
+      startedAt: compactStartedAt,
+      type: "started",
+      outputPreview: "Context compact started.",
+    });
+    if (startedAck.handled) compactProgressHandled = true;
+    if (startedAck.suppressFinalReply) compactSuppressReply = true;
     const nativeResult = context.nativeCompactConversation
       ? await context.nativeCompactConversation({
         bindingId: context.binding.id,
@@ -4852,6 +4925,17 @@ export async function handleChannelConnectorCommand(
       })
       : null;
     if (nativeResult?.attempted && nativeResult.ok) {
+      const finishedAck = await emitBuiltinCommandProgress({
+        context,
+        project: currentProject,
+        commandName: name,
+        commandPreview: parsed.raw,
+        startedAt: compactStartedAt,
+        type: "completed",
+        outputPreview: "Agent native compact completed.",
+      });
+      if (finishedAck.handled) compactProgressHandled = true;
+      if (finishedAck.suppressFinalReply) compactSuppressReply = true;
       return {
         handled: true,
         command: name,
@@ -4863,9 +4947,23 @@ export async function handleChannelConnectorCommand(
           nativeResult.replyText ? bufferPreviewText(nativeResult.replyText, 240) : "",
         ].filter(Boolean).join("\n"),
         passthroughText: null,
+        suppressReply: compactSuppressReply,
+        progressHandled: compactProgressHandled,
       };
     }
     if (nativeResult?.attempted && !nativeResult.fallbackAllowed) {
+      const finishedAck = await emitBuiltinCommandProgress({
+        context,
+        project: currentProject,
+        commandName: name,
+        commandPreview: parsed.raw,
+        startedAt: compactStartedAt,
+        type: "failed",
+        outputPreview: nativeResult.error || "Agent native compact failed.",
+        error: nativeResult.error || "Agent native compact failed.",
+      });
+      if (finishedAck.handled) compactProgressHandled = true;
+      if (finishedAck.suppressFinalReply) compactSuppressReply = true;
       return {
         handled: true,
         command: name,
@@ -4874,19 +4972,36 @@ export async function handleChannelConnectorCommand(
         control: currentControl,
         replyText: nativeResult.error || "Agent 原生 compact 未完成，且当前不允许降级 Studio compact。",
         passthroughText: null,
+        suppressReply: compactSuppressReply,
+        progressHandled: compactProgressHandled,
       };
     }
     if (!context.compactConversation) {
+      const errorText = nativeResult?.error
+        ? `Agent 原生 compact 未完成：${nativeResult.error}\n当前 Channel runtime 未启用 Studio compact contract。`
+        : "当前 Channel runtime 未启用 Studio compact contract。";
+      const finishedAck = await emitBuiltinCommandProgress({
+        context,
+        project: currentProject,
+        commandName: name,
+        commandPreview: parsed.raw,
+        startedAt: compactStartedAt,
+        type: "failed",
+        outputPreview: errorText,
+        error: errorText,
+      });
+      if (finishedAck.handled) compactProgressHandled = true;
+      if (finishedAck.suppressFinalReply) compactSuppressReply = true;
       return {
         handled: true,
         command: name,
         action: "compact",
         ok: false,
         control: currentControl,
-        replyText: nativeResult?.error
-          ? `Agent 原生 compact 未完成：${nativeResult.error}\n当前 Channel runtime 未启用 Studio compact contract。`
-          : "当前 Channel runtime 未启用 Studio compact contract。",
+        replyText: errorText,
         passthroughText: null,
+        suppressReply: compactSuppressReply,
+        progressHandled: compactProgressHandled,
       };
     }
     const result = await context.compactConversation({
@@ -4895,6 +5010,21 @@ export async function handleChannelConnectorCommand(
       project: currentProject,
       command: parsed.raw,
     });
+    const resultText = result.ok
+      ? `Studio compact completed: history ${result.beforeEntries} -> ${result.afterEntries}; sessions cleared ${result.sessionsCleared}.`
+      : result.error || "Studio compact failed.";
+    const finishedAck = await emitBuiltinCommandProgress({
+      context,
+      project: currentProject,
+      commandName: name,
+      commandPreview: parsed.raw,
+      startedAt: compactStartedAt,
+      type: result.ok ? "completed" : "failed",
+      outputPreview: resultText,
+      error: result.ok ? null : resultText,
+    });
+    if (finishedAck.handled) compactProgressHandled = true;
+    if (finishedAck.suppressFinalReply) compactSuppressReply = true;
     return {
       handled: true,
       command: name,
@@ -4913,6 +5043,8 @@ export async function handleChannelConnectorCommand(
         ].filter(Boolean).join("\n")
         : result.error || "当前 IM 会话上下文压缩失败。",
       passthroughText: null,
+      suppressReply: compactSuppressReply,
+      progressHandled: compactProgressHandled,
     };
   }
 
