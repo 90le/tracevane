@@ -91,6 +91,8 @@
 - `node --test --test-name-pattern "agent runner builds gateway-backed Codex turns|visual turns select Gateway vision models|daemon registers Octo and opens WuKongIM WebSocket" tests/system/channel-connectors-service.test.mjs`，3/3 通过。
 - `node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，14/14 通过。
 - `node --test --test-name-pattern "model gateway adapts non-streaming codex responses requests to openai chat providers" tests/system/model-gateway-service.test.mjs`，覆盖 Responses `input_image` 到 Chat `image_url` 映射。
+- `node --test tests/system/model-gateway-service.test.mjs`，54/54 通过，覆盖名称-only 模型不自动 vision、显式图片元数据保留和图片 smoke 不污染 provider health/circuit。
+- `node --test tests/system/studio-web-model-gateway-page.test.mjs` 通过，锁定 Provider Center 图片 smoke UI 合同。
 - 真实 smoke：`/v1/responses` + `gpt-5.4-mini` / `gpt-5.5` 受控三色方块图片识别通过；`codex exec --image` + `gpt-5.4-mini` 同图识别通过。
 - `node --test --test-name-pattern "Octo adapter dry-run dispatch resolves binding, session key, and reply plan" tests/system/channel-connectors-service.test.mjs` 通过，覆盖 Octo 图片/视频 payload 文本保留。
 - `node --test --test-name-pattern "native Channel Connectors agent runner builds gateway-backed Codex turns" tests/system/channel-connectors-service.test.mjs` 通过，覆盖三 Agent 图片输入、非视觉 fallback 和视频 staged local file 输入。
@@ -128,5 +130,4 @@
 
 1. 补齐 OpenCode 真实中间 assistant 过程回复 IM event-log 样本；后续工具流 live smoke 默认带 `--agents codex,claude-code,opencode --require-agent-coverage --require-tool-output`。
 2. Octo 出站文件用户手动验收和自动 `outboundFilesSent` live 证据均已通过；Octo 视频和 Octo 显式 `/compact` 24h 已验收。
-3. Provider Center 能力测试：图片 smoke 失败时不要自动标记 vision，并提示协议/端点不匹配。
-4. durable queue：真实 Feishu IM 里触发长任务排队并重启 daemon，运行 `scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --mode durable --wait --json` 验证 pending/replay 记录与实际回复一致；普通排队只用 `--mode fifo` 证明。
+3. durable queue：真实 Feishu IM 里触发长任务排队并重启 daemon，运行 `scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --mode durable --wait --json` 验证 pending/replay 记录与实际回复一致；普通排队只用 `--mode fifo` 证明。
