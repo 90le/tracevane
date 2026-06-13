@@ -109,7 +109,8 @@
 - `node scripts/smoke-channel-connectors-compact-live.mjs --platform feishu --mode explicit --since-minutes 1440 --json` 通过，识别 Feishu 24h 内三 Agent 显式 `/compact` native 证据。
 - `node scripts/smoke-channel-connectors-compact-live.mjs --platform octo --mode auto --since-minutes 1440 --json` 通过，识别 Octo 24h 内 auto compact native 证据。
 - `node scripts/smoke-channel-connectors-compact-live.mjs --platform octo --mode explicit --since-minutes 1440 --json` 通过，识别 Octo 24h 内显式 `/compact` native 证据。
-- 用户确认 Feishu/Octo 最新手动验收全部通过，包括 Feishu 发文件、权限审批、Octo 收文件并返回路径；`hello-live.txt` 临时文件已删除。
+- 用户确认 Feishu/Octo 最新手动验收全部通过，包括 Feishu 发文件、权限审批、Octo 收文件并返回路径；`hello-live.txt` 和 `studio-greeting.txt` 临时文件已删除。
+- `node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --platforms octo --require-ok --require-reply --require-file --min-runs 1 --limit-runs 5 --json` 通过，识别 Octo 出站文件自动事件证据：`outboundFilesSent=1`。
 - `node --test tests/system/channel-connectors-persistent-live-script.test.mjs`，1/1 通过。
 - `node --test --test-name-pattern "stops Codex app-server persistent turns|Agent process cancelled|native compact" tests/system/channel-connectors-service.test.mjs`，2/2 通过，覆盖 Codex app-server persistent `/stop`。
 - Feishu 文件消息 `om_x100b6df679c474a4c23ef686549039b` live 通过：`messageType=file`、`attachmentCount=1`、staging 文件存在、history 有附件摘要、Agent 成功读取并回复。
@@ -117,6 +118,6 @@
 ## 下一步
 
 1. 用真实 Feishu/Octo live 输出复核 Codex / Claude Code / OpenCode 工具流和回复解析；后续工具流 live smoke 默认带 `--require-tool-output`，继续补未覆盖事件形态。
-2. Octo 出站文件用户已手动确认通过，继续补 `outboundFilesSent` 自动事件证据；Octo 视频和 Octo 显式 `/compact` 24h 已验收。
+2. Octo 出站文件用户手动验收和自动 `outboundFilesSent` live 证据均已通过；Octo 视频和 Octo 显式 `/compact` 24h 已验收。
 3. Provider Center 能力测试：图片 smoke 失败时不要自动标记 vision，并提示协议/端点不匹配。
 4. durable queue：真实 Feishu IM 里触发长任务排队并重启 daemon，运行 `scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --mode durable --wait --json` 验证 pending/replay 记录与实际回复一致；普通排队只用 `--mode fifo` 证明。
