@@ -39,6 +39,13 @@
   letter-spacing: 0;
 }
 
+.mgw-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .mgw-facts {
   display: grid;
   gap: 10px;

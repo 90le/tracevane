@@ -481,6 +481,80 @@ test("model gateway detects provider protocols without persisting probe secrets"
   }
 });
 
+test("model gateway provider vision smoke requires image recognition without opening provider circuit", async () => {
+  const root = makeTempRoot();
+  const service = createModelGatewayService(createStudioConfig(root));
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "vision-chat",
+      name: "Vision Chat",
+      category: "openai-compatible",
+      appScopes: ["openclaw"],
+      baseUrl: "https://vision-chat.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "vision-model",
+        models: [{ id: "vision-model", features: { text: true } }],
+      },
+    },
+    secret: { apiKey: "sk-vision-test-secret" },
+  });
+
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  let responseContent = "red";
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    return new Response(JSON.stringify({
+      id: "chatcmpl-vision",
+      object: "chat.completion",
+      choices: [{ message: { role: "assistant", content: responseContent } }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const passed = await service.testProvider(undefined, "vision-chat", {
+      kind: "vision",
+      routeId: "openai_chat_completions",
+      model: "vision-model",
+    });
+    assert.equal(passed.ok, true);
+    assert.equal(passed.responsePreview, "red");
+    assert.equal(upstreamCalls[0].url, "https://vision-chat.example.test/v1/chat/completions");
+    assert.equal(upstreamCalls[0].authorization, "Bearer sk-vision-test-secret");
+    assert.deepEqual(upstreamCalls[0].body.messages[0].content[0], {
+      type: "text",
+      text: "Identify the dominant color of the attached test image. Reply with one lowercase color word.",
+    });
+    assert.equal(upstreamCalls[0].body.messages[0].content[1].type, "image_url");
+    assert.match(upstreamCalls[0].body.messages[0].content[1].image_url.url, /^data:image\/jpeg;base64,/);
+
+    responseContent = "I cannot inspect the image.";
+    const failed = await service.testProvider(undefined, "vision-chat", {
+      kind: "vision",
+      routeId: "openai_chat_completions",
+      model: "vision-model",
+    });
+    assert.equal(failed.ok, false);
+    assert.equal(failed.error.code, "model_gateway_provider_vision_smoke_failed");
+    assert.match(failed.error.message, /protocol, endpoint, or model/);
+
+    const provider = service.listProviders().providers.find((item) => item.id === "vision-chat");
+    assert.equal(provider.health.consecutiveFailures, 0);
+    assert.equal(provider.health.circuitState, "closed");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model gateway routing contract selects app-scoped providers and preserves provider URL prefixes", () => {
   const root = makeTempRoot();
   const service = createModelGatewayService(createStudioConfig(root));

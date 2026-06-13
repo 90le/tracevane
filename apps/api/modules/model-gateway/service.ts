@@ -135,6 +135,9 @@ const REQUEST_LOG_PREVIEW_CHARS = 1_000;
 const DEFAULT_UNKNOWN_MODEL_CONTEXT_WINDOW = 64_000;
 const DEFAULT_UNKNOWN_MODEL_MAX_OUTPUT_TOKENS = 8_192;
 const CLIENT_AUTH_SECRET_REF = "gateway:client-api-key";
+const MODEL_GATEWAY_VISION_SMOKE_IMAGE_MIME_TYPE = "image/jpeg";
+const MODEL_GATEWAY_VISION_SMOKE_IMAGE_BASE64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAAgACADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD50ooor8MP9UwooooAKKKKACiiigD/2Q==";
+const MODEL_GATEWAY_VISION_SMOKE_PROMPT = "Identify the dominant color of the attached test image. Reply with one lowercase color word.";
 const execFileAsync = promisify(execFile);
 const require = createRequire(import.meta.url);
 const DAEMON_SERVICE_ACTIONS = ["preview", "install", "ensure-running", "start", "stop", "restart", "status"] as const;
@@ -1589,7 +1592,57 @@ function buildProviderTestPayload(
   provider: ModelGatewayProvider,
   model: string,
   input: string,
+  kind: ModelGatewayProviderTestRequest["kind"] = "protocol",
 ): unknown {
+  if (kind === "vision") {
+    const imageUrl = `data:${MODEL_GATEWAY_VISION_SMOKE_IMAGE_MIME_TYPE};base64,${MODEL_GATEWAY_VISION_SMOKE_IMAGE_BASE64}`;
+    if (provider.apiFormat === "openai_responses") {
+      return {
+        model,
+        input: [{
+          role: "user",
+          content: [
+            { type: "input_text", text: MODEL_GATEWAY_VISION_SMOKE_PROMPT },
+            { type: "input_image", image_url: imageUrl },
+          ],
+        }],
+        stream: false,
+        max_output_tokens: 32,
+      };
+    }
+    if (provider.apiFormat === "anthropic_messages") {
+      return {
+        model,
+        max_tokens: 32,
+        messages: [{
+          role: "user",
+          content: [
+            {
+              type: "image",
+              source: {
+                type: "base64",
+                media_type: MODEL_GATEWAY_VISION_SMOKE_IMAGE_MIME_TYPE,
+                data: MODEL_GATEWAY_VISION_SMOKE_IMAGE_BASE64,
+              },
+            },
+            { type: "text", text: MODEL_GATEWAY_VISION_SMOKE_PROMPT },
+          ],
+        }],
+      };
+    }
+    return {
+      model,
+      messages: [{
+        role: "user",
+        content: [
+          { type: "text", text: MODEL_GATEWAY_VISION_SMOKE_PROMPT },
+          { type: "image_url", image_url: { url: imageUrl } },
+        ],
+      }],
+      stream: false,
+      max_tokens: 32,
+    };
+  }
   if (provider.apiFormat === "openai_responses") {
     return {
       model,
@@ -2150,6 +2203,60 @@ function previewText(value: string): string | null {
   return normalized.length > REQUEST_LOG_PREVIEW_CHARS
     ? `${normalized.slice(0, REQUEST_LOG_PREVIEW_CHARS)}...`
     : normalized;
+}
+
+function extractTextFromContentParts(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((part) => {
+    if (typeof part === "string") return [part];
+    if (!isRecord(part)) return [];
+    return [
+      normalizeString(part.text),
+      normalizeString(part.output_text),
+      normalizeString(part.content),
+    ].filter(Boolean);
+  });
+}
+
+function extractProviderTestText(provider: ModelGatewayProvider, responseText: string): string | null {
+  const parsed = parseJsonObjectOrNull(responseText);
+  if (!parsed) return previewText(responseText);
+
+  if (provider.apiFormat === "openai_responses") {
+    const outputText = normalizeString(parsed.output_text);
+    if (outputText) return outputText;
+    if (Array.isArray(parsed.output)) {
+      const texts = parsed.output.flatMap((item) => isRecord(item)
+        ? extractTextFromContentParts(item.content)
+        : []);
+      if (texts.length) return texts.join("\n");
+    }
+  }
+
+  if (provider.apiFormat === "anthropic_messages") {
+    const texts = extractTextFromContentParts(parsed.content);
+    if (texts.length) return texts.join("\n");
+  }
+
+  if (Array.isArray(parsed.choices)) {
+    const texts = parsed.choices.flatMap((choice) => {
+      if (!isRecord(choice)) return [];
+      const message = isRecord(choice.message) ? choice.message : {};
+      return [
+        ...extractTextFromContentParts(message.content),
+        normalizeString(choice.text),
+      ].filter(Boolean);
+    });
+    if (texts.length) return texts.join("\n");
+  }
+
+  return previewText(responseText);
+}
+
+function visionSmokeTextPassed(value: string | null): boolean {
+  const normalized = (value || "").toLowerCase();
+  return /\bred\b/.test(normalized) || /红|紅/.test(normalized);
 }
 
 function extractModelFromJsonText(value: string | undefined): string | null {
@@ -4698,6 +4805,7 @@ export function createModelGatewayService(
     const timeoutMs = typeof payload.timeoutMs === "number"
       ? Math.max(1_000, Math.floor(payload.timeoutMs))
       : provider.network.timeoutMs;
+    const testKind = payload.kind === "vision" ? "vision" : "protocol";
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     const headers = new Headers({ "content-type": "application/json" });
     applyProviderAuth(headers, provider, secret);
@@ -4705,6 +4813,7 @@ export function createModelGatewayService(
       provider,
       model,
       normalizeString(payload.input, "Return the word ok."),
+      testKind,
     ));
     try {
       const response = await fetch(route.upstreamUrl || provider.baseUrl, withProviderNetwork(provider, {
@@ -4715,9 +4824,21 @@ export function createModelGatewayService(
       }));
       const responseText = await response.text();
       const latencyMs = Math.max(0, Date.now() - Date.parse(startedAt));
-      const success = isProviderTestSuccess(response.status, null);
-      const errorMessage = success ? null : `Provider test returned HTTP ${response.status}.`;
-      updateProviderHealth(provider.id, success, latencyMs, errorMessage);
+      const httpSuccess = isProviderTestSuccess(response.status, null);
+      const answerText = testKind === "vision" ? extractProviderTestText(provider, responseText) : null;
+      const success = testKind === "vision"
+        ? httpSuccess && visionSmokeTextPassed(answerText)
+        : httpSuccess;
+      const errorMessage = success
+        ? null
+        : testKind === "vision"
+          ? httpSuccess
+            ? "Vision smoke did not identify the red test image; the selected protocol, endpoint, or model may not accept image input."
+            : `Vision smoke returned HTTP ${response.status}; the selected protocol, endpoint, or model may not accept image input.`
+          : `Provider test returned HTTP ${response.status}.`;
+      if (testKind !== "vision") {
+        updateProviderHealth(provider.id, success, latencyMs, errorMessage);
+      }
       appendRequestLog(requestLogEntry({
         kind: "provider-test",
         startedAt,
@@ -4725,7 +4846,9 @@ export function createModelGatewayService(
         model,
         statusCode: response.status,
         outcome: requestOutcomeFromStatus(response.status, null, success),
-        errorCode: success ? null : "model_gateway_provider_test_failed",
+        errorCode: success ? null : testKind === "vision"
+          ? "model_gateway_provider_vision_smoke_failed"
+          : "model_gateway_provider_test_failed",
         errorMessage,
         usage: success ? extractRuntimeUsage(responseText) : null,
       }));
@@ -4736,16 +4859,22 @@ export function createModelGatewayService(
         statusCode: response.status,
         latencyMs,
         route,
-        responsePreview: previewText(responseText),
+        responsePreview: testKind === "vision"
+          ? answerText || previewText(responseText)
+          : previewText(responseText),
         error: success ? null : {
-          code: "model_gateway_provider_test_failed",
+          code: testKind === "vision"
+            ? "model_gateway_provider_vision_smoke_failed"
+            : "model_gateway_provider_test_failed",
           message: errorMessage || "Provider test failed.",
         },
       };
     } catch (error) {
       const latencyMs = Math.max(0, Date.now() - Date.parse(startedAt));
       const message = error instanceof Error ? error.message : "Provider test request failed.";
-      updateProviderHealth(provider.id, false, latencyMs, message);
+      if (testKind !== "vision") {
+        updateProviderHealth(provider.id, false, latencyMs, message);
+      }
       appendRequestLog(requestLogEntry({
         kind: "provider-test",
         startedAt,
@@ -4753,7 +4882,9 @@ export function createModelGatewayService(
         model,
         statusCode: null,
         outcome: "failure",
-        errorCode: "model_gateway_provider_test_failed",
+        errorCode: testKind === "vision"
+          ? "model_gateway_provider_vision_smoke_failed"
+          : "model_gateway_provider_test_failed",
         errorMessage: message,
       }));
       return {
@@ -4765,7 +4896,9 @@ export function createModelGatewayService(
         route,
         responsePreview: null,
         error: {
-          code: "model_gateway_provider_test_failed",
+          code: testKind === "vision"
+            ? "model_gateway_provider_vision_smoke_failed"
+            : "model_gateway_provider_test_failed",
           message,
         },
       };

@@ -664,9 +664,14 @@
               <p class="eyebrow">Smoke</p>
               <h3>{{ text('协议 smoke', 'Protocol smoke') }}</h3>
             </div>
-            <button type="button" class="primary-button compact-button" :disabled="smokeBusy || !smokeProviderId" @click="runSmoke">
-              {{ smokeBusy ? text('测试中...', 'Testing...') : text('运行 smoke', 'Run smoke') }}
-            </button>
+            <div class="mgw-panel-actions">
+              <button type="button" class="secondary-button compact-button" :disabled="smokeBusy || visionSmokeBusy || !smokeProviderId" @click="runVisionSmoke">
+                {{ visionSmokeBusy ? text('测试中...', 'Testing...') : text('图片 smoke', 'Vision smoke') }}
+              </button>
+              <button type="button" class="primary-button compact-button" :disabled="smokeBusy || visionSmokeBusy || !smokeProviderId" @click="runSmoke">
+                {{ smokeBusy ? text('测试中...', 'Testing...') : text('运行 smoke', 'Run smoke') }}
+              </button>
+            </div>
           </div>
 
           <div class="mgw-smoke-grid">
@@ -701,6 +706,14 @@
               <span>{{ smokeResult.statusCode || '-' }} · {{ smokeResult.latencyMs }} ms · {{ smokeResult.route.upstreamUrl || '-' }}</span>
             </div>
             <pre>{{ smokeResult.responsePreview || smokeResult.error?.message || '-' }}</pre>
+          </div>
+
+          <div v-if="visionSmokeResult" class="mgw-smoke-result" :class="visionSmokeResult.ok ? 'success' : 'failure'">
+            <div>
+              <strong>{{ visionSmokeResult.ok ? text('图片通过', 'Vision passed') : text('图片失败', 'Vision failed') }}</strong>
+              <span>{{ visionSmokeResult.statusCode || '-' }} · {{ visionSmokeResult.latencyMs }} ms · {{ visionSmokeResult.route.upstreamUrl || '-' }}</span>
+            </div>
+            <pre>{{ visionSmokeMessage(visionSmokeResult) }}</pre>
           </div>
 
           <div class="mgw-request-log">
@@ -1038,6 +1051,7 @@ const loaded = ref(false);
 const busy = ref(false);
 const daemonBusy = ref(false);
 const smokeBusy = ref(false);
+const visionSmokeBusy = ref(false);
 const detectBusy = ref(false);
 const activeWorkspaceTab = ref<WorkspaceTabId>('connections');
 const notice = ref<{ kind: 'success' | 'error'; message: string } | null>(null);
@@ -1068,6 +1082,7 @@ const smokeRouteId = ref<ModelGatewayRouteId>('openai_responses');
 const smokeModel = ref('');
 const smokeInput = ref('Reply with GATEWAY_OK');
 const smokeResult = ref<ModelGatewayProviderTestResponse | null>(null);
+const visionSmokeResult = ref<ModelGatewayProviderTestResponse | null>(null);
 const detectResult = ref<ModelGatewayProviderDetectResponse | null>(null);
 const detectOverlayOpen = ref(false);
 const detectError = ref<string | null>(null);
@@ -2540,6 +2555,39 @@ async function runSmoke(): Promise<void> {
   } finally {
     smokeBusy.value = false;
   }
+}
+
+async function runVisionSmoke(): Promise<void> {
+  if (!smokeProviderId.value) return;
+  visionSmokeBusy.value = true;
+  visionSmokeResult.value = null;
+  notice.value = null;
+  try {
+    const response = await testModelGatewayProvider(smokeProviderId.value, {
+      kind: 'vision',
+      routeId: smokeRouteId.value,
+      model: smokeModel.value || selectedSmokeProvider.value?.models.defaultModel || undefined,
+      timeoutMs: 60000,
+    });
+    visionSmokeResult.value = response;
+    await loadRuntimeOnly();
+  } catch (error) {
+    notice.value = {
+      kind: 'error',
+      message: error instanceof Error ? error.message : text('图片 smoke 运行失败', 'Vision smoke failed'),
+    };
+  } finally {
+    visionSmokeBusy.value = false;
+  }
+}
+
+function visionSmokeMessage(result: ModelGatewayProviderTestResponse): string {
+  if (result.ok) {
+    const observed = result.responsePreview ? `\n${result.responsePreview}` : '';
+    return `${text('识别通过。需要启用图片输入时，再到模型能力里勾选“图片”并保存。', 'Vision verified. Enable the Vision capability on this model only if you want image input enabled.')}${observed}`;
+  }
+  return result.error?.message
+    || text('图片能力未通过；不要写回 vision，请检查所选协议、endpoint 或模型。', 'Vision failed; do not write back vision. Check the selected protocol, endpoint, or model.');
 }
 
 async function loadRuntimeOnly(): Promise<void> {

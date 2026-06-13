@@ -9,7 +9,7 @@
 - Gateway daemon 与 Channel daemon 都必须由 OS/user supervisor 守护；Studio / OpenClaw 崩溃时，CLI 与 IM bot 应继续直连本地 daemon。
 - Gateway 对外提供 Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions；`GET /v1/models` 聚合启用 provider，并保留模型别名、模型池、能力标记、上下文窗口和输出预算。
 - Provider Center 支持自定义 provider、启停、模型列表/别名/默认模型、能力勾选、批量模型导入、批量预算/能力应用、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
-- Provider Center 不再按模型名自动标记 vision；图片能力只来自用户配置、上游显式能力元数据或后续图片 smoke 结果。
+- Provider Center 不再按模型名自动标记 vision；图片能力只来自用户配置、上游显式能力元数据或图片 smoke 通过后用户确认写回。
 - App Connections 覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收。
 - Channel Connectors 走 Studio 原生 CLI Agent Bot 路线；当前 live Agent 只暴露 Codex、Claude Code、OpenCode。
 - Feishu/Octo 首期验收已收窄为私聊完整性：文本对话、文件/图片传输、Agent CLI 原生能力、工具流/回复解析、`/compact`、`/stop`、session/model/permission/workdir 切换。
@@ -69,6 +69,7 @@
     - Claude Code 2.1.86 + `claude-sonnet-4-5` + `--effort max` 在当前 Gateway 下只输出 `text`，未输出 `thinking` item。
     - OpenCode 1.17.0 + `--thinking`：`gpt-5.4-mini` 未输出 reasoning；`claude-sonnet-4-5` 输出真实 `reasoning` part。
   - 修复 Provider Center vision 能力推断：后端 detect 和前端“补齐默认能力”不再因为 `gpt-*`、`claude-*`、`gemini` 等模型名自动勾选图片能力；显式 `input_modalities: ["image"]` 仍会保留。
+  - 新增 Provider Center 图片 smoke：使用红色测试图按 provider 原生协议发送图片请求；HTTP 成功但未识别红色也算失败，并提示协议、endpoint 或模型可能不接受图片输入；失败不会写回 vision，也不会打开 provider circuit。
 
 ## 最近验证
 
@@ -99,7 +100,7 @@
 - 本轮验证通过：`node --test tests/system/channel-connectors-service.test.mjs`，100/100 全部通过。
 - 本轮验证通过：`node --test tests/system/channel-connectors-feishu-compact-live-script.test.mjs`，4/4 通过。
 - 本轮验证通过：`node --test --test-name-pattern "model gateway adapts non-streaming codex responses requests to openai chat providers" tests/system/model-gateway-service.test.mjs`，覆盖 Responses `input_image` 到 Chat `image_url` 映射。
-- 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，53/53 通过，覆盖 Provider detect 显式图片元数据保留、名称-only `gpt-5.4-mini` / `claude-opus-4-6` 不自动标记 vision。
+- 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，54/54 通过，覆盖 Provider detect 显式图片元数据保留、名称-only `gpt-5.4-mini` / `claude-opus-4-6` 不自动标记 vision，以及图片 smoke 不污染 provider health/circuit。
 - 本轮验证通过：`npm run typecheck:api`
 - 本轮验证通过：`npm run build:api`
 - 本轮验证通过：`npm run typecheck:web`
@@ -120,7 +121,7 @@
 - 同 session FIFO queue 当前是 daemon 内存队列；Channel daemon 重启会丢失未开始的排队消息，durable queue 尚未实现。
 - Claude Code / OpenCode native compact 已覆盖 driver 层、Octo daemon 私聊入口、Feishu native-first wiring、Feishu 真实长连接 auto compact 和 Feishu 显式 `/compact` 三 Agent live smoke。
 - 图片自动切视觉模型默认关闭；需要在平台 binding 打开。非视觉图片 fallback 已有回归；Feishu/Octo 用户侧图片和视频仍需 live 重发复验。
-- Provider 模型 vision 能力不会再从模型名推断；Chat-compatible provider 即使模型名像 Claude/GPT，也必须由用户显式配置、上游显式能力元数据或后续图片 smoke 标记。
+- Provider 模型 vision 能力不会再从模型名推断；Chat-compatible provider 即使模型名像 Claude/GPT，也必须由用户显式配置、上游显式能力元数据或图片 smoke 通过后确认标记。
 - 工具流仍需继续打磨：Codex、Claude Code、OpenCode 都必须稳定提取工具名、输入、stdout/stderr、exit/status、真实输出、过程回复和最终回复分类；三者结构化 stdout/stderr 已对齐，Claude persistent 过程/最终回复重复已修。
 - 思考流 parser 支持 Codex、Claude Code、OpenCode 原生 thinking/reasoning 事件；Octo 私聊 `/thinking on/off` 已做端到端回归；状态/UI 已区分 parser 支持和 live 输出观测。真实 smoke 证明 OpenCode 会在支持 reasoning 的模型上输出 `reasoning`，Claude Code 2.1.86 当前未输出 `thinking` item；没有原生思考事件的 Agent/模型组合只能标为不支持，不伪造。
 
@@ -128,5 +129,5 @@
 
 1. 继续稳定 Codex、Claude Code、OpenCode 工具流/回复解析，重点修复空工具结果、工具结果被吞、过程回复/最终回复分类错误。
 2. 做 Feishu/Octo 私聊文件、图片、视频、权限审批和 `/compact` live smoke 复验；Feishu 入站文件已完成，继续用户侧 IM 图片/视频重发、出站文件和 Octo 对应项。
-3. 补 Provider Center 图片 smoke UI：失败时提示协议/端点不匹配，不写回 vision；成功时再建议用户写回 vision。
-4. 评估 durable queue，避免 daemon 重启丢失未开始消息。
+3. 评估 durable queue，避免 daemon 重启丢失未开始消息。
+4. 后续可选 OpenAI Platform 官方端点 proof。
