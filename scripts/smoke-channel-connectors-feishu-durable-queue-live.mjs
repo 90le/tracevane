@@ -19,6 +19,7 @@ function parseArgs(argv) {
     sinceMinutes: DEFAULT_SINCE_MINUTES,
     timeoutMs: DEFAULT_TIMEOUT_MS,
     pollMs: DEFAULT_POLL_MS,
+    mode: "durable",
     allowFailedRun: false,
     json: false,
   };
@@ -33,6 +34,8 @@ function parseArgs(argv) {
     else if (arg.startsWith("--binding=")) options.bindingId = arg.slice("--binding=".length);
     else if (arg === "--agent") options.agent = requireValue(argv, ++index, arg);
     else if (arg.startsWith("--agent=")) options.agent = arg.slice("--agent=".length);
+    else if (arg === "--mode") options.mode = queueMode(requireValue(argv, ++index, arg));
+    else if (arg.startsWith("--mode=")) options.mode = queueMode(arg.slice("--mode=".length));
     else if (arg === "--since") options.since = requireValue(argv, ++index, arg);
     else if (arg.startsWith("--since=")) options.since = arg.slice("--since=".length);
     else if (arg === "--since-minutes") options.sinceMinutes = nonNegativeInt(requireValue(argv, ++index, arg), DEFAULT_SINCE_MINUTES);
@@ -73,6 +76,8 @@ Options:
   --event-log <path>       Event log path. Default: ${DEFAULT_EVENT_LOG}
   --binding <id>           Binding id. Default: ${DEFAULT_BINDING_ID}
   --agent <name>           Filter replayed Agent, for example codex, claude-code, opencode.
+  --mode <durable|fifo|any>
+                            durable requires pending_replay; fifo accepts same-process queued drain.
   --since <iso>            Include events at or after this ISO timestamp.
   --since-minutes <n>      Include recent events. Default: ${DEFAULT_SINCE_MINUTES}.
   --wait                   Wait up to 120s for matching evidence.
@@ -91,6 +96,12 @@ function requireValue(argv, index, flag) {
   const value = argv[index];
   if (!value || value.startsWith("--")) throw new Error(`${flag} requires a value`);
   return value;
+}
+
+function queueMode(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["durable", "fifo", "any"].includes(normalized)) return normalized;
+  throw new Error(`Unsupported mode: ${value}`);
 }
 
 function positiveInt(value, fallback) {
@@ -199,6 +210,17 @@ function findRunStarted(events, queued, replay) {
   }) || null;
 }
 
+function findDirectRunStarted(events, queued) {
+  const queuedAtMs = toTime(queued.checkedAt);
+  return events.find((event) => {
+    if (event?.eventKind !== "agent.run.started") return false;
+    if (!sameBinding(event, queued.bindingId)) return false;
+    if (!sameSession(event, queued.sessionKey)) return false;
+    if (!sameMessage(event, queued.messageId)) return false;
+    return eventAfter(event, queuedAtMs);
+  }) || null;
+}
+
 function findRunFinished(events, queued, started, options) {
   const startedAtMs = toTime(started.checkedAt);
   const agentFilter = normalizeString(options.agent).toLowerCase();
@@ -228,53 +250,98 @@ function buildProofs(events, options, minTimeMs) {
       rejected.push(rejection(queued, "missing_long_connection_inbound"));
       continue;
     }
-    const replayFailed = findReplayFailure(events, queued);
-    if (replayFailed) {
-      rejected.push(rejection(queued, "pending_replay_failed", replayFailed.error || replayFailed.reason || null));
-      continue;
-    }
     const replay = findReplay(events, queued);
-    if (!replay) {
-      rejected.push(rejection(queued, "missing_pending_replay"));
+    if (options.mode !== "fifo") {
+      const replayFailed = findReplayFailure(events, queued);
+      if (replayFailed) {
+        rejected.push(rejection(queued, "pending_replay_failed", replayFailed.error || replayFailed.reason || null, "durable"));
+        continue;
+      }
+      if (replay) {
+        const started = findRunStarted(events, queued, replay);
+        if (!started) {
+          rejected.push(rejection(queued, "missing_replayed_run_started", null, "durable"));
+          continue;
+        }
+        const finished = findRunFinished(events, queued, started, options);
+        if (!finished) {
+          rejected.push(rejection(queued, options.allowFailedRun ? "missing_replayed_run_finished" : "missing_successful_replayed_run_finished", null, "durable"));
+          continue;
+        }
+        proofs.push(proofForQueue({
+          kind: "durable",
+          options,
+          queued,
+          inbound,
+          replay,
+          started,
+          finished,
+        }));
+        continue;
+      }
+      if (options.mode === "durable") {
+        rejected.push(rejection(queued, "missing_pending_replay", null, "durable"));
+        continue;
+      }
+    }
+
+    if (options.mode === "durable") continue;
+    if (replay) {
+      rejected.push(rejection(queued, "has_pending_replay_not_fifo", null, "fifo"));
       continue;
     }
-    const started = findRunStarted(events, queued, replay);
+    const started = findDirectRunStarted(events, queued);
     if (!started) {
-      rejected.push(rejection(queued, "missing_replayed_run_started"));
+      rejected.push(rejection(queued, "missing_fifo_run_started", null, "fifo"));
       continue;
     }
     const finished = findRunFinished(events, queued, started, options);
     if (!finished) {
-      rejected.push(rejection(queued, options.allowFailedRun ? "missing_replayed_run_finished" : "missing_successful_replayed_run_finished"));
+      rejected.push(rejection(queued, options.allowFailedRun ? "missing_fifo_run_finished" : "missing_successful_fifo_run_finished", null, "fifo"));
       continue;
     }
-    proofs.push({
-      bindingId: options.bindingId,
-      sessionKey: normalizeString(queued.sessionKey),
-      messageId: normalizeString(queued.messageId),
-      pendingRunId: normalizeString(queued.pendingRunId) || null,
-      inboundAt: inbound.checkedAt || null,
-      queuedAt: queued.checkedAt || null,
-      replayAt: replay.checkedAt || null,
-      startedAt: started.checkedAt || null,
-      finishedAt: finished.checkedAt || null,
-      queuePosition: Number.isFinite(Number(queued.queuePosition)) ? Number(queued.queuePosition) : null,
-      attempt: Number.isFinite(Number(replay.attempt)) ? Number(replay.attempt) : null,
-      agent: normalizeString(finished.agent || started.agent) || null,
-      model: normalizeString(finished.model || started.model) || null,
-      agentOk: finished.agentOk === true || finished.ok === true,
-      agentStatus: normalizeString(finished.agentStatus || finished.status) || null,
-      replySent: finished.replySent === true,
-      progressEventCount: Number.isFinite(Number(finished.progressEventCount)) ? Number(finished.progressEventCount) : null,
-      longConnection: true,
-    });
+    proofs.push(proofForQueue({
+      kind: "fifo",
+      options,
+      queued,
+      inbound,
+      replay: null,
+      started,
+      finished,
+    }));
   }
   proofs.sort((a, b) => toTime(a.finishedAt) - toTime(b.finishedAt));
   return { proofs, rejected };
 }
 
-function rejection(event, reason, detail = null) {
+function proofForQueue(input) {
+  const { kind, options, queued, inbound, replay, started, finished } = input;
   return {
+    kind,
+    bindingId: options.bindingId,
+    sessionKey: normalizeString(queued.sessionKey),
+    messageId: normalizeString(queued.messageId),
+    pendingRunId: normalizeString(queued.pendingRunId) || null,
+    inboundAt: inbound.checkedAt || null,
+    queuedAt: queued.checkedAt || null,
+    replayAt: replay?.checkedAt || null,
+    startedAt: started.checkedAt || null,
+    finishedAt: finished.checkedAt || null,
+    queuePosition: Number.isFinite(Number(queued.queuePosition)) ? Number(queued.queuePosition) : null,
+    attempt: Number.isFinite(Number(replay?.attempt)) ? Number(replay.attempt) : null,
+    agent: normalizeString(finished.agent || started.agent) || null,
+    model: normalizeString(finished.model || started.model) || null,
+    agentOk: finished.agentOk === true || finished.ok === true,
+    agentStatus: normalizeString(finished.agentStatus || finished.status) || null,
+    replySent: finished.replySent === true,
+    progressEventCount: Number.isFinite(Number(finished.progressEventCount)) ? Number(finished.progressEventCount) : null,
+    longConnection: true,
+  };
+}
+
+function rejection(event, reason, detail = null, kind = null) {
+  return {
+    kind,
     bindingId: normalizeString(event?.bindingId) || null,
     sessionKey: normalizeString(event?.sessionKey) || null,
     messageId: normalizeString(event?.messageId) || null,
@@ -293,6 +360,7 @@ function buildResult(options, nowMs = Date.now()) {
   return {
     ok: proofs.length > 0,
     checkedAt: new Date(nowMs).toISOString(),
+    mode: options.mode,
     bindingId: options.bindingId,
     agent: options.agent || null,
     eventLog: options.eventLog,
@@ -304,9 +372,15 @@ function buildResult(options, nowMs = Date.now()) {
     rejected: rejected.slice(-20),
     failures: proofs.length ? [] : [{
       type: "missing_feishu_durable_queue_evidence",
-      message: "No Feishu long-connection queued message was replayed and completed after daemon restart for the selected filters.",
+      message: missingEvidenceMessage(options.mode),
     }],
   };
+}
+
+function missingEvidenceMessage(mode) {
+  if (mode === "fifo") return "No Feishu long-connection queued message drained through same-process FIFO for the selected filters.";
+  if (mode === "any") return "No Feishu long-connection queued message matched durable replay or same-process FIFO evidence for the selected filters.";
+  return "No Feishu long-connection queued message was replayed and completed after daemon restart for the selected filters.";
 }
 
 async function waitForResult(options) {
@@ -328,10 +402,10 @@ function printResult(result, json) {
     console.log(JSON.stringify(result, null, 2));
     return;
   }
-  console.log(`Feishu durable queue live evidence: ${result.ok ? "OK" : "FAIL"}`);
-  console.log(`binding=${result.bindingId} proofs=${result.proofCount} rejected=${result.rejectedCount} since=${result.since}`);
+  console.log(`Feishu queue live evidence: ${result.ok ? "OK" : "FAIL"}`);
+  console.log(`mode=${result.mode} binding=${result.bindingId} proofs=${result.proofCount} rejected=${result.rejectedCount} since=${result.since}`);
   for (const proof of result.proofs) {
-    console.log(`- message=${proof.messageId} queued=${proof.queuedAt} replay=${proof.replayAt} finished=${proof.finishedAt} agent=${proof.agent || "unknown"} model=${proof.model || "unknown"} ok=${proof.agentOk}`);
+    console.log(`- ${proof.kind} message=${proof.messageId} queued=${proof.queuedAt} replay=${proof.replayAt || "none"} finished=${proof.finishedAt} agent=${proof.agent || "unknown"} model=${proof.model || "unknown"} ok=${proof.agentOk}`);
   }
   for (const failure of result.failures) {
     console.log(`- ${failure.type}: ${failure.message}`);

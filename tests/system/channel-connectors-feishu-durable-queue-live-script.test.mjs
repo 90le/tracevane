@@ -110,6 +110,22 @@ function durableQueueFixture(overrides = {}) {
   ];
 }
 
+function fifoQueueFixture(overrides = {}) {
+  const events = durableQueueFixture(overrides);
+  return [
+    events[0],
+    events[1],
+    {
+      ...events[3],
+      checkedAt: "2026-06-13T01:00:02.000Z",
+    },
+    {
+      ...events[4],
+      checkedAt: "2026-06-13T01:00:15.000Z",
+    },
+  ];
+}
+
 test("Feishu durable queue live script accepts replayed long-connection queued turn", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-durable-smoke-"));
   const eventLog = path.join(root, "feishu-events.jsonl");
@@ -146,6 +162,56 @@ test("Feishu durable queue live script rejects queued turn without long-connecti
   assert.equal(failed.code, 1);
   assert.equal(failed.parsed.ok, false);
   assert.equal(failed.parsed.rejected[0].reason, "missing_long_connection_inbound");
+});
+
+test("Feishu durable queue live script accepts same-process FIFO queued turn only in fifo mode", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-durable-smoke-"));
+  const eventLog = path.join(root, "feishu-events.jsonl");
+  writeJsonl(eventLog, fifoQueueFixture());
+
+  const durableFailed = await runScriptFailure([
+    "--event-log", eventLog,
+    "--since", "2026-06-13T00:00:00.000Z",
+    "--json",
+  ], root);
+  assert.equal(durableFailed.code, 1);
+  assert.equal(durableFailed.parsed.mode, "durable");
+  assert.equal(durableFailed.parsed.rejected[0].reason, "missing_pending_replay");
+
+  const parsed = await runScript([
+    "--event-log", eventLog,
+    "--mode", "fifo",
+    "--since", "2026-06-13T00:00:00.000Z",
+    "--json",
+  ], root);
+
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.mode, "fifo");
+  assert.equal(parsed.proofCount, 1);
+  assert.equal(parsed.proofs[0].kind, "fifo");
+  assert.equal(parsed.proofs[0].messageId, "om_queued");
+  assert.equal(parsed.proofs[0].replayAt, null);
+  assert.equal(parsed.proofs[0].agentOk, true);
+});
+
+test("Feishu durable queue live script accepts durable and FIFO evidence in any mode", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-durable-smoke-"));
+  const eventLog = path.join(root, "feishu-events.jsonl");
+  writeJsonl(eventLog, [
+    ...fifoQueueFixture({ messageId: "om_fifo", pendingRunId: "feishu:feishu-live:om_fifo" }),
+    ...durableQueueFixture({ messageId: "om_durable", pendingRunId: "feishu:feishu-live:om_durable" }),
+  ]);
+
+  const parsed = await runScript([
+    "--event-log", eventLog,
+    "--mode", "any",
+    "--since", "2026-06-13T00:00:00.000Z",
+    "--json",
+  ], root);
+
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.mode, "any");
+  assert.deepEqual(parsed.proofs.map((proof) => proof.kind).sort(), ["durable", "fifo"]);
 });
 
 test("Feishu durable queue live script rejects replay failures before false positives", async () => {
