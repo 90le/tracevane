@@ -110,6 +110,8 @@
 - `node scripts/smoke-channel-connectors-compact-live.mjs --platform octo --mode auto --since-minutes 1440 --json` 通过，识别 Octo 24h 内 auto compact native 证据。
 - `node scripts/smoke-channel-connectors-compact-live.mjs --platform octo --mode explicit --since-minutes 1440 --json` 通过，识别 Octo 24h 内显式 `/compact` native 证据。
 - 用户确认 Feishu/Octo 最新手动验收全部通过，包括 Feishu 发文件、权限审批、Octo 收文件并返回路径；`hello-live.txt` 临时文件已删除。
+- `node --test tests/system/channel-connectors-persistent-live-script.test.mjs`，1/1 通过。
+- `node --test --test-name-pattern "stops Codex app-server persistent turns|Agent process cancelled|native compact" tests/system/channel-connectors-service.test.mjs`，2/2 通过，覆盖 Codex app-server persistent `/stop`。
 - Feishu 文件消息 `om_x100b6df679c474a4c23ef686549039b` live 通过：`messageType=file`、`attachmentCount=1`、staging 文件存在、history 有附件摘要、Agent 成功读取并回复。
 
 ## 下一步
