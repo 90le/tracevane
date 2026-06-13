@@ -118,7 +118,7 @@
 
 - Feishu transport 内仍保留一套低层 legacy action helper 和对应直接 transport 回归；它已不再由 Agent prompt、runner、daemon endpoint 或 UI 暴露。后续如继续瘦身，应单独删除这段 Doc/Drive/Wiki/Bitable 直接 API helper，避免和私聊文件/图片 transport 误删混在一起。
 - Octo/Feishu 群聊和管理能力已有实现继续 best-effort 保留，但新需求默认不继续扩展。
-- 同 session FIFO queue 当前是 daemon 内存队列；Channel daemon 重启会丢失未开始的排队消息，durable queue 尚未实现。
+- 同 session FIFO queue 已有 pending-agent-run store；已入队但未启动的消息会落盘并在 daemon 重启后重放。Octo 重启回归已通过；Feishu 共用 replay 入口，仍需真实 IM 排队重启 live 复验。
 - Claude Code / OpenCode native compact 已覆盖 driver 层、Octo daemon 私聊入口、Feishu native-first wiring、Feishu 真实长连接 auto compact 和 Feishu 显式 `/compact` 三 Agent live smoke。
 - 图片自动切视觉模型默认关闭；需要在平台 binding 打开。非视觉图片 fallback 已有回归；Feishu/Octo 用户侧图片和视频仍需 live 重发复验。
 - Provider 模型 vision 能力不会再从模型名推断；Chat-compatible provider 即使模型名像 Claude/GPT，也必须由用户显式配置、上游显式能力元数据或图片 smoke 通过后确认标记。
@@ -129,5 +129,5 @@
 
 1. 继续稳定 Codex、Claude Code、OpenCode 工具流/回复解析，重点修复空工具结果、工具结果被吞、过程回复/最终回复分类错误。
 2. 做 Feishu/Octo 私聊文件、图片、视频、权限审批和 `/compact` live smoke 复验；Feishu 入站文件已完成，继续用户侧 IM 图片/视频重发、出站文件和 Octo 对应项。
-3. 评估 durable queue，避免 daemon 重启丢失未开始消息。
+3. 触发真实 Feishu 长连接入站排队 + daemon 重启场景，用 live 证据脚本验收 pending replay。
 4. 后续可选 OpenAI Platform 官方端点 proof。
