@@ -29,6 +29,9 @@ function parseArgs(argv) {
     requireFile: false,
     requireOutboundMessage: false,
     requireInboundFile: false,
+    requireInboundImage: false,
+    requireInboundVideo: false,
+    requireStagedFiles: false,
     requireVisual: false,
     requireAutoVision: false,
     requireMarkdown: false,
@@ -53,6 +56,9 @@ function parseArgs(argv) {
     else if (arg === "--require-file") options.requireFile = true;
     else if (arg === "--require-outbound-message" || arg === "--require-message") options.requireOutboundMessage = true;
     else if (arg === "--require-inbound-file" || arg === "--require-uploaded-file") options.requireInboundFile = true;
+    else if (arg === "--require-inbound-image" || arg === "--require-image") options.requireInboundImage = true;
+    else if (arg === "--require-inbound-video" || arg === "--require-video") options.requireInboundVideo = true;
+    else if (arg === "--require-staged-files" || arg === "--require-staged-local-files") options.requireStagedFiles = true;
     else if (arg === "--require-visual" || arg === "--require-visual-input") options.requireVisual = true;
     else if (arg === "--require-auto-vision" || arg === "--require-vision-switch") options.requireAutoVision = true;
     else if (arg === "--require-markdown" || arg === "--require-markdown-reply") options.requireMarkdown = true;
@@ -116,6 +122,9 @@ Options:
   --require-outbound-message
                             Require outboundMessagesDeclared>0 and outboundMessagesSent>0.
   --require-inbound-file    Require a user-uploaded file attachment was received/staged.
+  --require-inbound-image   Require an image or sticker attachment was received/staged.
+  --require-inbound-video   Require a video attachment was received/staged.
+  --require-staged-files    Require staged attachment local paths to exist on disk.
   --require-visual          Require inbound visual attachment evidence.
   --require-auto-vision     Require a non-vision model auto-switched to a vision model.
   --require-markdown        Require assistant progress with Markdown-like reply signals.
@@ -139,7 +148,7 @@ Options:
 Examples:
   node scripts/smoke-channel-connectors-agent-run-live.mjs --json
   node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings feishu-live --require-ok --require-reply --require-tool --require-tool-output --json
-  node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings octo-studio-cc --require-ok --require-file --json
+  node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings octo-studio-cc --require-ok --require-inbound-image --require-staged-files --json
   node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings octo-studio-cc --require-ok --require-outbound-message --json
 `);
 }
@@ -280,12 +289,16 @@ function summarizeRun(event, relatedProgress, relatedEvidence, relatedPermission
   const modelSelectionEvents = relatedEvidence.filter((item) => item.eventKind === "agent.model.selected");
   const stagedAttachmentEvents = relatedEvidence.filter((item) => item.eventKind === "agent.attachments.staged");
   const visualInputEvents = relatedEvidence.filter((item) => item.eventKind === "agent.visual.input");
+  const stagedLocalPaths = uniqueStrings(stagedAttachmentEvents.flatMap((item) => arrayStrings(item.localPaths)));
+  const missingStagedLocalPaths = stagedLocalPaths.filter((localPath) => !fs.existsSync(localPath));
   const attachmentKinds = uniqueStrings([
     ...arrayStrings(event.attachmentKinds),
     ...relatedEvidence.flatMap((item) => arrayStrings(item.attachmentKinds)),
   ]);
   const visualAttachmentKinds = attachmentKinds.filter(isVisualAttachmentKind);
   const fileAttachmentCount = attachmentKinds.filter((kind) => kind === "file").length;
+  const imageAttachmentCount = attachmentKinds.filter(isImageAttachmentKind).length;
+  const videoAttachmentCount = attachmentKinds.filter((kind) => kind === "video").length;
   const modelSelection = latestEvent(modelSelectionEvents);
   const autoVisionSwitched = modelSelectionEvents.some((item) => {
     const originalModel = String(item.originalModel || "");
@@ -344,6 +357,8 @@ function summarizeRun(event, relatedProgress, relatedEvidence, relatedPermission
     attachmentKinds,
     visualAttachmentKinds,
     fileAttachmentCount,
+    imageAttachmentCount,
+    videoAttachmentCount,
     visualAttachmentCount: Math.max(
       visualAttachmentKinds.length > 0 ? numberValue(event.attachmentCount) : 0,
       ...modelSelectionEvents.map((item) => numberValue(item.visualAttachmentCount)),
@@ -352,6 +367,9 @@ function summarizeRun(event, relatedProgress, relatedEvidence, relatedPermission
     ),
     attachmentsStagedCount: sumNumbers(stagedAttachmentEvents.map((item) => item.stagedCount)),
     attachmentStagingFailedCount: sumNumbers(stagedAttachmentEvents.map((item) => item.failedCount)),
+    stagedLocalPathCount: stagedLocalPaths.length,
+    stagedLocalPathExistingCount: stagedLocalPaths.length - missingStagedLocalPaths.length,
+    stagedLocalPathMissingCount: missingStagedLocalPaths.length,
     visualInputCount: sumNumbers(visualInputEvents.map((item) => item.imageCount)),
     visualInputModes: uniqueStrings(visualInputEvents.map((item) => String(item.visualInputMode || "")).filter(Boolean)),
     autoVisionSwitched,
@@ -391,6 +409,10 @@ function arrayStrings(value) {
 
 function isVisualAttachmentKind(value) {
   return value === "image" || value === "video" || value === "sticker";
+}
+
+function isImageAttachmentKind(value) {
+  return value === "image" || value === "sticker";
 }
 
 function latestEvent(events) {
@@ -495,6 +517,9 @@ function loadSummary(options, since) {
       requireFile: options.requireFile,
       requireOutboundMessage: options.requireOutboundMessage,
       requireInboundFile: options.requireInboundFile,
+      requireInboundImage: options.requireInboundImage,
+      requireInboundVideo: options.requireInboundVideo,
+      requireStagedFiles: options.requireStagedFiles,
       requireVisual: options.requireVisual,
       requireAutoVision: options.requireAutoVision,
       requireMarkdown: options.requireMarkdown,
@@ -536,6 +561,9 @@ function runSatisfies(run, options) {
   if (options.requireFile && !(run.outboundFilesDeclared > 0 && run.outboundFilesSent > 0 && run.outboundFileErrors.length === 0)) return false;
   if (options.requireOutboundMessage && !(run.outboundMessagesDeclared > 0 && run.outboundMessagesSent > 0)) return false;
   if (options.requireInboundFile && !(run.fileAttachmentCount > 0 && run.attachmentStagingFailedCount === 0)) return false;
+  if (options.requireInboundImage && !(run.imageAttachmentCount > 0 && run.attachmentStagingFailedCount === 0)) return false;
+  if (options.requireInboundVideo && !(run.videoAttachmentCount > 0 && run.attachmentStagingFailedCount === 0)) return false;
+  if (options.requireStagedFiles && !(run.attachmentsStagedCount > 0 && run.stagedLocalPathCount > 0 && run.stagedLocalPathMissingCount === 0 && run.attachmentStagingFailedCount === 0)) return false;
   if (options.requireVisual && !(run.visualAttachmentCount > 0 || run.visualInputCount > 0)) return false;
   if (options.requireAutoVision && run.autoVisionSwitched !== true) return false;
   if (options.requireMarkdown && run.replyMarkdownLikely !== true) return false;
@@ -618,6 +646,17 @@ function strictRunRequirementViolations(run, options) {
       toolProgressCount: run.toolProgressCount,
     });
   }
+  if (options.requireStagedFiles && run.stagedLocalPathCount > 0 && run.stagedLocalPathMissingCount > 0) {
+    violations.push({
+      type: "staged-local-file-missing",
+      adapter: run.adapter,
+      bindingId: run.bindingId,
+      sessionKey: run.sessionKey,
+      messageId: run.messageId,
+      stagedLocalPathCount: run.stagedLocalPathCount,
+      stagedLocalPathMissingCount: run.stagedLocalPathMissingCount,
+    });
+  }
   return violations;
 }
 
@@ -635,13 +674,17 @@ async function waitForSummary(options, since) {
 function printHuman(summary, wait) {
   console.log(`Channel Agent run smoke ${summary.ok ? "passed" : "not satisfied"} since ${summary.since}`);
   console.log(`events=${summary.counts.events} progress=${summary.counts.progressEvents} runs=${summary.counts.finishedRuns} matching=${summary.counts.matchingRuns}/${summary.requirements.minRuns} violations=${summary.counts.requirementViolations}`);
-  for (const run of summary.runs.slice(0, 8)) {
+  const displayedRuns = summary.matchingRuns.length > 0 ? summary.matchingRuns : summary.runs;
+  for (const run of displayedRuns.slice(0, 8)) {
     const marks = [
       run.agentOk === true ? "ok" : run.agentOk === false ? "failed" : "unknown",
       run.replySent === true ? "reply" : "",
       run.outboundFilesSent > 0 ? `files=${run.outboundFilesSent}` : "",
       run.outboundMessagesSent > 0 ? `messages=${run.outboundMessagesSent}` : "",
       run.fileAttachmentCount > 0 ? `inbound-files=${run.fileAttachmentCount}` : "",
+      run.imageAttachmentCount > 0 ? `images=${run.imageAttachmentCount}` : "",
+      run.videoAttachmentCount > 0 ? `videos=${run.videoAttachmentCount}` : "",
+      run.stagedLocalPathCount > 0 ? `staged=${run.stagedLocalPathExistingCount}/${run.stagedLocalPathCount}` : "",
       run.visualAttachmentCount > 0 ? `visual=${run.visualAttachmentCount}` : "",
       run.autoVisionSwitched === true ? `auto-vision=${run.autoVisionOriginalModel}->${run.autoVisionSelectedModel}` : "",
       run.toolProgressCount > 0 ? `tools=${run.toolProgressCount}` : "",

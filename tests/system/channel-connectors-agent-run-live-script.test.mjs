@@ -25,6 +25,14 @@ function writeFixture(root) {
   const stateDir = path.join(root, "state");
   const feishuEvents = path.join(stateDir, "feishu-events.jsonl");
   const octoEvents = path.join(stateDir, "octo-events.jsonl");
+  const attachmentDir = path.join(root, "attachments");
+  const imagePath = path.join(attachmentDir, "red.png");
+  const filePath = path.join(attachmentDir, "report.zip");
+  const videoPath = path.join(attachmentDir, "clip.mp4");
+  fs.mkdirSync(attachmentDir, { recursive: true });
+  fs.writeFileSync(imagePath, "fake image bytes", "utf8");
+  fs.writeFileSync(filePath, "fake zip bytes", "utf8");
+  fs.writeFileSync(videoPath, "fake video bytes", "utf8");
   writeJson(configPath, {
     version: 1,
     paths: {
@@ -92,7 +100,7 @@ function writeFixture(root) {
     visualAttachmentCount: 1,
     stagedCount: 2,
     failedCount: 0,
-    localPaths: ["/tmp/studio/attachments/red.png", "/tmp/studio/attachments/report.zip"],
+    localPaths: [imagePath, filePath],
   });
   appendJsonLine(octoEvents, {
     checkedAt: "2026-06-08T01:00:01.600Z",
@@ -103,7 +111,7 @@ function writeFixture(root) {
     messageId: "octo-message-1",
     visualInputMode: "codex-native-image",
     imageCount: 1,
-    localPaths: ["/tmp/studio/attachments/red.png"],
+    localPaths: [imagePath],
   });
   appendJsonLine(octoEvents, {
     checkedAt: "2026-06-08T01:00:03.000Z",
@@ -289,6 +297,34 @@ function writeFixture(root) {
     replySent: true,
     progressEventCount: 1,
   });
+  appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:08:40.000Z",
+    eventKind: "agent.attachments.staged",
+    adapter: "octo",
+    bindingId: "octo-video-live",
+    sessionKey: "dmwork:dm:user-4",
+    messageId: "octo-message-video",
+    attachmentCount: 1,
+    attachmentKinds: ["video"],
+    visualAttachmentCount: 1,
+    stagedCount: 1,
+    failedCount: 0,
+    localPaths: [videoPath],
+  });
+  appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:08:41.000Z",
+    eventKind: "agent.run.finished",
+    adapter: "octo",
+    bindingId: "octo-video-live",
+    sessionKey: "dmwork:dm:user-4",
+    messageId: "octo-message-video",
+    channelId: "dm:user-4",
+    agentStatus: "completed",
+    agentOk: true,
+    replySent: true,
+    progressEventCount: 1,
+    attachmentCount: 1,
+  });
   appendJsonLine(feishuEvents, {
     checkedAt: "2026-06-08T01:09:00.000Z",
     eventKind: "agent.progress.card",
@@ -339,6 +375,8 @@ test("agent run live smoke script verifies Octo tool, reply, and outbound file e
     "--require-file",
     "--require-outbound-message",
     "--require-inbound-file",
+    "--require-inbound-image",
+    "--require-staged-files",
     "--require-visual",
     "--require-auto-vision",
     "--require-markdown",
@@ -353,7 +391,12 @@ test("agent run live smoke script verifies Octo tool, reply, and outbound file e
   assert.equal(parsed.matchingRuns[0].outboundMessagesSent, 1);
   assert.equal(parsed.matchingRuns[0].outboundMessageRequestCount, 1);
   assert.equal(parsed.matchingRuns[0].fileAttachmentCount, 1);
+  assert.equal(parsed.matchingRuns[0].imageAttachmentCount, 1);
+  assert.equal(parsed.matchingRuns[0].videoAttachmentCount, 0);
   assert.equal(parsed.matchingRuns[0].attachmentsStagedCount, 2);
+  assert.equal(parsed.matchingRuns[0].stagedLocalPathCount, 2);
+  assert.equal(parsed.matchingRuns[0].stagedLocalPathExistingCount, 2);
+  assert.equal(parsed.matchingRuns[0].stagedLocalPathMissingCount, 0);
   assert.equal(parsed.matchingRuns[0].visualAttachmentCount, 1);
   assert.equal(parsed.matchingRuns[0].visualInputCount, 1);
   assert.deepEqual(parsed.matchingRuns[0].visualInputModes, ["codex-native-image"]);
@@ -366,6 +409,48 @@ test("agent run live smoke script verifies Octo tool, reply, and outbound file e
   assert.equal(parsed.matchingRuns[0].finalProgressReplyCount, 0);
   assert.equal(parsed.matchingRuns[0].replyMarkdownLikely, true);
   assert.deepEqual(parsed.matchingRuns[0].markdownSignals.sort(), ["bold", "inline_code", "list"].sort());
+});
+
+test("agent run live smoke script verifies video attachment and staged local files", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
+  const { configPath } = writeFixture(root);
+  const output = await runScript([
+    "--config", configPath,
+    "--since", "2026-06-08T00:00:00.000Z",
+    "--bindings", "octo-video-live",
+    "--require-ok",
+    "--require-reply",
+    "--require-inbound-video",
+    "--require-staged-files",
+    "--json",
+  ], root);
+  const parsed = JSON.parse(output.stdout);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.matchingRuns.length, 1);
+  assert.equal(parsed.matchingRuns[0].videoAttachmentCount, 1);
+  assert.equal(parsed.matchingRuns[0].imageAttachmentCount, 0);
+  assert.equal(parsed.matchingRuns[0].visualAttachmentCount, 1);
+  assert.equal(parsed.matchingRuns[0].stagedLocalPathCount, 1);
+  assert.equal(parsed.matchingRuns[0].stagedLocalPathExistingCount, 1);
+  assert.equal(parsed.matchingRuns[0].stagedLocalPathMissingCount, 0);
+});
+
+test("agent run live smoke human output prints matching attachment runs", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
+  const { configPath } = writeFixture(root);
+  const output = await runScript([
+    "--config", configPath,
+    "--since", "2026-06-08T00:00:00.000Z",
+    "--require-ok",
+    "--require-reply",
+    "--require-inbound-video",
+    "--require-staged-files",
+  ], root);
+  const runLines = output.stdout.split(/\r?\n/).filter((line) => line.startsWith("- "));
+  assert.equal(runLines.length, 1);
+  assert.match(runLines[0], /octo\/octo-video-live/);
+  assert.match(runLines[0], /videos=1/);
+  assert.match(runLines[0], /staged=1\/1/);
 });
 
 test("agent run live smoke script verifies Feishu final card path", async () => {
@@ -437,6 +522,45 @@ test("agent run live smoke script fails when required evidence is missing", asyn
       assert.equal(parsed.ok, false);
       assert.equal(parsed.counts.finishedRuns, 1);
       assert.equal(parsed.counts.matchingRuns, 0);
+      return true;
+    },
+  );
+
+  await assert.rejects(
+    runScript([
+      "--config", configPath,
+      "--since", "2026-06-08T00:00:00.000Z",
+      "--bindings", "octo-live",
+      "--require-inbound-video",
+      "--json",
+    ], root),
+    (error) => {
+      const parsed = JSON.parse(error.stdout);
+      assert.equal(parsed.ok, false);
+      assert.equal(parsed.counts.finishedRuns, 1);
+      assert.equal(parsed.counts.matchingRuns, 0);
+      assert.equal(parsed.runs[0].imageAttachmentCount, 1);
+      assert.equal(parsed.runs[0].videoAttachmentCount, 0);
+      return true;
+    },
+  );
+
+  fs.rmSync(path.join(root, "attachments", "red.png"));
+  await assert.rejects(
+    runScript([
+      "--config", configPath,
+      "--since", "2026-06-08T00:00:00.000Z",
+      "--bindings", "octo-live",
+      "--require-staged-files",
+      "--json",
+    ], root),
+    (error) => {
+      const parsed = JSON.parse(error.stdout);
+      assert.equal(parsed.ok, false);
+      assert.equal(parsed.counts.requirementViolations, 1);
+      assert.equal(parsed.requirementViolations[0].type, "staged-local-file-missing");
+      assert.equal(parsed.runs[0].stagedLocalPathCount, 2);
+      assert.equal(parsed.runs[0].stagedLocalPathMissingCount, 1);
       return true;
     },
   );
