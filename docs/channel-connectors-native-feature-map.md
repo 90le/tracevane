@@ -75,7 +75,7 @@
 - 已删除 active platform action layer：runner/env/prompt/daemon endpoint/UI chips 不再暴露 `studio-channel-skill` 或 runtime action。
 - Codex 隔离 `codex-home/skills` 会删除历史生成的 Feishu/Octo platform action skill 目录；当前运行态旧目录已手动清理，避免 stale YAML 被 Codex 加载。
 - OpenCode realtime JSONL 与 SQLite fallback 已共用进度 parser；DB fallback 会保留本轮工具调用/工具结果，并只把最新 assistant message 作为最终回复。
-- 近 12h live smoke 已证明 Codex、Claude Code、OpenCode 均有成功工具调用和可见工具输出；近 24h `--require-process-reply` 匹配 Codex / Claude Code，OpenCode direct runner 已证明过程回复，但仍需补最近真实 IM event-log 样本。
+- 近 12h live smoke 已证明 Codex、Claude Code、OpenCode 均有成功工具调用和可见工具输出；OpenCode 真实 IM `--require-process-reply` 已补齐，三 Agent 均有真实 IM 过程回复证据。
 
 ## 保留边界
 
@@ -86,6 +86,6 @@
 
 ## 下一步
 
-1. 工具流和回复解析：继续复核真实 Claude/Codex/OpenCode live 差异；工具流 live smoke 默认检查 per-agent `--require-tool-output`，下一步补齐 OpenCode 中间过程回复真实 IM event-log 样本。
+1. 工具流和回复解析：继续抽查真实 Claude/Codex/OpenCode live 差异；工具流 live smoke 默认检查 per-agent `--require-tool-output` 和必要的 `--require-process-reply`。
 2. Feishu/Octo 私聊 live smoke：Feishu compact、Octo compact、Feishu/Octo 出站文件、Feishu/Octo 权限、入站文件/图片/视频已进入 live 验收；继续补仍未覆盖的 CLI 事件形态。
 3. durable queue：触发一次真实 Feishu 长连接入站排队 + daemon 重启场景，用 `scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --mode durable` 验证 pending replay；同进程排队用 `--mode fifo` 单独验收。

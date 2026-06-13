@@ -43,7 +43,7 @@
 | P1 | OpenCode runner | 进行中：parser 已对齐；结构化/混合 stdout/stderr/exitCode、native compact、图片 native smoke 已补；视频按 staged file 交给 Agent | JSON/SQLite fallback、session、tool stream、文件/图片/视频输入、native compact/stop live driver |
 | P1 | Feishu 私聊 | 进行中：长连接 live 稳定；Markdown、入站文件/图片/视频 staged-path live、出站文件 24h live、权限审批 24h live、native-first compact wiring、三 Agent 显式 `/compact` 24h live 已补 | 持续抽查 |
 | P1 | Octo 私聊 | 进行中：长连接 live 稳定；Markdown 已验证；入站文件/图片 staged-path live、入站文件路径返回 24h live、`.mp4` 文件形态视频 24h live、权限 24h live、媒体 payload 文本保留、auto compact 24h live、显式 `/compact` 24h live、出站文件 `outboundFilesSent` live 证据已补 | 继续复核未覆盖 CLI 事件形态 |
-| P1 | 工具/思考/过程显示 | 继续推进：非飞书过程回复标题已移除；结构化/混合工具结果、per-agent live `--require-tool-output`、Codex reasoning summary、Octo `/thinking` 过滤、OpenCode live reasoning 和 parser/live 能力展示已补；Codex/Claude Code 有真实 IM 过程回复证据，OpenCode direct runner 已证明过程回复但仍缺最近 IM 样本 | 三个 Agent 都稳定提取工具名、输入、stdout/stderr、exit/status、思考流、过程回复和最终回复分类；继续复核真实 CLI 新事件形态 |
+| P1 | 工具/思考/过程显示 | 继续推进：非飞书过程回复标题已移除；结构化/混合工具结果、per-agent live `--require-tool-output`、Codex reasoning summary、Octo `/thinking` 过滤、OpenCode live reasoning 和 parser/live 能力展示已补；Codex/Claude Code/OpenCode 均有真实 IM 过程回复证据 | 三个 Agent 都稳定提取工具名、输入、stdout/stderr、exit/status、思考流、过程回复和最终回复分类；继续复核真实 CLI 新事件形态 |
 | P1 | 图片/视觉模型 fallback | 已完成：默认关闭；binding 可设启用和默认视觉模型；IM `/vision` 命令与 Feishu 卡片可临时开启/关闭/指定模型；Gateway catalog 只列健康 vision 模型 | 非视觉当前模型收到图片时按配置切到指定/自动健康视觉模型，失败回退附件说明模式 |
 | P1 | 上下文预算与 compact | 核心完成：`/status` 展示 resolved model window/reserve/threshold/remaining，auto compact 已按 native-first、baseline 和 fallback 记录接入；Feishu/Octo compact 24h live 已通过 | 后续只做真实抽查；不伪造 Agent 内部 token 预算 |
 | P1 | 文件/消息收发 | 核心完成：私聊入站 staging、出站 file/message manifest、原始文件名、Feishu/Octo 上传发送和 Octo COS/STS 大文件路径已覆盖；Feishu/Octo live 证据已通过 | 后续只做平台大小限制、真实大文件和异常路径抽查 |
@@ -69,7 +69,8 @@
 - `node --test --test-name-pattern "(structured tool output|mixed content tool output|final text|JSON progress|agent messages before later tools|stream-json progress|text before later tools|DB fallback keeps tool results|persistent Claude driver keeps intermediate)" tests/system/channel-connectors-service.test.mjs`，10/10 通过。
 - `node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --require-ok --require-reply --require-tool --require-tool-output --min-runs 1 --limit-runs 5 --json` 通过，最近 24h 匹配带可见工具输出的成功 IM run。
 - `node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 720 --agents codex,claude-code,opencode --require-agent-coverage --require-ok --require-reply --require-tool --require-tool-output --min-runs 3 --limit-runs 12` 通过，近 12h 三个 Agent 均有成功工具调用和可见工具输出证据。
-- `node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --agents codex,claude-code,opencode --require-agent-coverage --require-ok --require-reply --require-tool --require-tool-output --require-process-reply --min-runs 3 --limit-runs 0 --json` 未满足，当前匹配 Codex / Claude Code，`requirementViolations=0`；普通最终回复样本只进入 `requirementWarnings` 诊断，OpenCode 真实 IM 中间过程回复样本仍需补齐。
+- `node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --agents codex,claude-code,opencode --require-agent-coverage --require-ok --require-reply --require-tool --require-tool-output --require-process-reply --min-runs 3 --limit-runs 0 --json` 通过，三 Agent 均匹配过程回复证据，`missingAgents=0`、`requirementViolations=0`。
+- `node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --timeout-ms 600000 --poll-ms 1000 --agents opencode --require-agent-coverage --require-ok --require-reply --require-tool --require-tool-output --require-process-reply --min-runs 1 --json` 通过，匹配 Feishu OpenCode 真实 IM run：`assistantIntermediateProgressCount=3`、`toolOutputSignalCount=3`、`latestFeishuProgressCardStatus=completed`。
 - `node scripts/smoke-channel-connectors-agent-runner-direct.mjs --agents codex,claude-code,opencode --json` 通过，三 Agent 均得到 3 条过程回复、3 个可见工具结果和 1 条最终回复。
 - `node scripts/smoke-channel-connectors-agent-runner-direct.mjs --json` 通过，默认 OpenCode direct runner smoke 可单独复验。
 - `node --test tests/system/channel-connectors-agent-runner-direct-script.test.mjs`，2/2 通过。
@@ -128,11 +129,11 @@
 
 ## 下一步
 
-1. 补齐 OpenCode 真实中间 assistant 过程回复 IM event-log 样本；后续工具流 live smoke 默认带 `--agents codex,claude-code,opencode --require-agent-coverage --require-tool-output`。
+1. 继续抽查 Codex / Claude Code / OpenCode 真实 IM 工具流、过程回复、思考流和审批路径；工具流 live smoke 默认带 `--agents codex,claude-code,opencode --require-agent-coverage --require-tool-output`。
 2. Octo 出站文件用户手动验收和自动 `outboundFilesSent` live 证据均已通过；Octo 视频和 Octo 显式 `/compact` 24h 已验收。
 3. durable queue：真实 Feishu IM 里触发长任务排队并重启 daemon，运行 `scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --mode durable --wait --json` 验证 pending/replay 记录与实际回复一致；普通排队只用 `--mode fifo` 证明。
 
 现场触发口径：
 
-- OpenCode 过程回复：先在 IM 中切到 OpenCode，再运行 `node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --agents opencode --require-agent-coverage --require-ok --require-reply --require-tool --require-tool-output --require-process-reply --min-runs 1 --json`，发送要求“每个工具前后都输出一句话”的三步 shell prompt。
+- OpenCode 过程回复复验：先在 IM 中切到 OpenCode，再运行 `node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --agents opencode --require-agent-coverage --require-ok --require-reply --require-tool --require-tool-output --require-process-reply --min-runs 1 --json`，发送要求“每个工具前后都输出一句话”的三步 shell prompt。
 - Feishu durable replay：先运行 `node scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --mode durable --wait --json`，再发送长任务、同 chat 第二条消息、重启 `openclaw-studio-channel-connectors.service`，等待 `pending_replay -> agent.run.finished`。

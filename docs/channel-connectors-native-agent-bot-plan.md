@@ -124,12 +124,11 @@ Octo(dmwork)：
 - Codex 思考流解析合同已覆盖 one-shot 和 app-server；Octo 私聊 `/thinking` 开关已有端到端回归；状态、菜单和前端能力展示已区分 parser 支持与当前 live 输出观测。真实 CLI smoke 显示 Claude Code 2.1.86 当前不输出 `thinking` item，OpenCode 1.17.0 仅在支持 reasoning 的模型上输出 `reasoning` part。没有 CLI 原生事件时不伪造。
 - allowlist/admin、rate limit、banned words 基础治理。
 - active `studio-channel-skill` 与 platform action 暴露层已删除。
-- Codex / Claude Code / OpenCode direct runner smoke 已证明过程回复、工具输出和最终回复分类正常；真实 IM event-log 中 Codex / Claude Code 已有过程回复样本，OpenCode 仍缺最近 IM 样本。
+- Codex / Claude Code / OpenCode direct runner smoke 已证明过程回复、工具输出和最终回复分类正常；真实 IM event-log 中三者均已有过程回复样本。
 - Feishu/Octo 文件、图片、权限审批、出站文件、`/stop`、Octo 显式/自动 compact 已有回归或 24h live 证据。
 
 ## 7. 下一步
 
-1. 补 OpenCode 真实 IM event-log 中间过程回复样本，用 `--agents ... --require-process-reply` 验收。
-2. 触发真实 Feishu 长连接入站排队 + daemon 重启，用 durable live 脚本验收 pending replay；普通 FIFO 已有 24h 证据。
-3. 继续抽查 Feishu/Octo 私聊文件、图片、工具流和审批路径；Markdown 只做回归抽查。
-4. 后续路线图：微信/企微、钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE；更多 Agent 如 Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP。
+1. 触发真实 Feishu 长连接入站排队 + daemon 重启，用 durable live 脚本验收 pending replay；普通 FIFO 已有 24h 证据。
+2. 继续抽查 Feishu/Octo 私聊文件、图片、工具流、过程回复、思考流和审批路径；Markdown 只做回归抽查。
+3. 后续路线图：微信/企微、钉钉、Telegram、Slack、Discord、QQ/QQBot、LINE；更多 Agent 如 Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP。
