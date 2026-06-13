@@ -73,6 +73,7 @@
 - `node scripts/smoke-channel-connectors-agent-runner-direct.mjs --agents codex,claude-code,opencode --json` 通过，三 Agent 均得到 3 条过程回复、3 个可见工具结果和 1 条最终回复。
 - `node scripts/smoke-channel-connectors-agent-runner-direct.mjs --json` 通过，默认 OpenCode direct runner smoke 可单独复验。
 - `node --test tests/system/channel-connectors-agent-runner-direct-script.test.mjs`，2/2 通过。
+- direct runner smoke 默认自动清理隔离 runtime；需要调试时显式传 `--keep-temp`。
 - `node --test tests/system/channel-connectors-agent-run-live-script.test.mjs`，11/11 通过，覆盖 `--agents`、`--require-agent-coverage`、`--require-process-reply`、`--require-tool-output`、`--require-stop-command`、入站图片/视频/文件 staged local path、Octo `.mp4` 作为 `file` 的视频识别、Feishu 卡片审批 command 形态，以及 human 输出只展示匹配 run。
 - `node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --require-ok --require-reply --require-inbound-file --require-staged-files --min-runs 1 --limit-runs 3 --json` 通过，匹配 Feishu/Octo 入站文件且本地 staged 路径存在。
 - `node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --require-ok --require-reply --require-inbound-image --require-staged-files --min-runs 1 --limit-runs 3 --json` 通过，匹配 Feishu/Octo 入站图片且本地 staged 路径存在。

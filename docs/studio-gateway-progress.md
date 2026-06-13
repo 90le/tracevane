@@ -148,6 +148,7 @@
 - 本轮真实 direct runner smoke：OpenCode + Gateway `glm-5` 顺序执行 3 次 shell 工具，得到 `assistantIntermediateCount=3`、`toolOutputCount=6`、`assistantFinalCount=1`，证明 OpenCode parser/direct runner 可输出过程回复和工具结果；剩余缺口是 IM event-log 现场样本。
 - 本轮真实 direct runner smoke：`node scripts/smoke-channel-connectors-agent-runner-direct.mjs --agents codex,claude-code,opencode --json` 通过，Codex / Claude Code / OpenCode 均得到 3 条过程回复、3 个可见工具结果和 1 条最终回复。
 - 本轮验证通过：`node --test tests/system/channel-connectors-agent-runner-direct-script.test.mjs`，锁定 direct runner smoke 是 parser-only proof，不替代 Feishu/Octo event-log 证据。
+- 本轮加固 direct runner smoke 清理策略：默认使用 `/tmp` 隔离 CLI runtime，结束后自动删除；旧 `direct-runner-smoke` 目录已清理。
 - 本轮验证通过：`node --test tests/system/channel-connectors-persistent-live-script.test.mjs`，1/1 通过。
 - 本轮验证通过：`node --test --test-name-pattern "stops Codex app-server persistent turns|Agent process cancelled|native compact" tests/system/channel-connectors-service.test.mjs`，2/2 通过。
 - 本轮 live 验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --platforms octo --require-stop-command --min-runs 1 --limit-runs 5 --json`，识别 Octo `/stop` 命令 `2065665014106066944` 和 cancelled run `2065664678767267840`。

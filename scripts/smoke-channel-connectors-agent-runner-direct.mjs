@@ -26,11 +26,13 @@ function parseArgs(argv) {
     timeoutMs: DEFAULT_TIMEOUT_MS,
     minProcessReplies: DEFAULT_MIN_PROCESS_REPLIES,
     minToolOutputs: DEFAULT_MIN_TOOL_OUTPUTS,
+    keepTemp: false,
     json: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--json") options.json = true;
+    else if (arg === "--keep-temp") options.keepTemp = true;
     else if (arg === "--agents") options.agents = csv(requireValue(argv, ++index, arg));
     else if (arg.startsWith("--agents=")) options.agents = csv(arg.slice("--agents=".length));
     else if (arg === "--model") options.model = requireValue(argv, ++index, arg);
@@ -69,6 +71,7 @@ Options:
   --min-tool-outputs <n>      Required visible tool outputs per agent. Default: ${DEFAULT_MIN_TOOL_OUTPUTS}
   --timeout-ms <n>            Per-agent timeout. Default: ${DEFAULT_TIMEOUT_MS}
   --config <path>             Daemon config path. Default: ${DEFAULT_CONFIG_PATH}
+  --keep-temp                 Keep isolated CLI runtime files for debugging
   --json                      Emit JSON only
   -h, --help                  Show this help
 
@@ -206,7 +209,7 @@ function summarizeProgress(progress) {
   };
 }
 
-async function runAgentSmoke(config, gatewayClientKey, agent, options) {
+async function runAgentSmoke(config, gatewayClientKey, agent, options, runtimeRoot) {
   const progress = [];
   const project = projectForAgent(config, agent, options.model);
   const result = await runChannelConnectorAgentTurn({
@@ -216,7 +219,7 @@ async function runAgentSmoke(config, gatewayClientKey, agent, options) {
     sessionKey: `direct:${agent}:${Date.now()}`,
     gatewayEndpoint: project.gatewayEndpoint,
     gatewayClientKey,
-    agentRuntimeDir: path.join(path.dirname(config.paths?.state || config.paths?.root || os.tmpdir()), "direct-runner-smoke"),
+    agentRuntimeDir: path.join(runtimeRoot, agent),
     onProgress(event) {
       progress.push(event);
     },
@@ -264,9 +267,18 @@ async function main() {
   const config = readJson(options.configPath);
   const gatewayClientKey = resolveChannelConnectorGatewayClientKey(config);
   if (!gatewayClientKey) throw new Error("Studio Gateway client key is missing.");
+  const runtimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-runner-direct-"));
   const results = [];
-  for (const agent of options.agents) {
-    results.push(await runAgentSmoke(config, gatewayClientKey, agent, options));
+  try {
+    for (const agent of options.agents) {
+      results.push(await runAgentSmoke(config, gatewayClientKey, agent, options, runtimeRoot));
+    }
+  } finally {
+    if (!options.keepTemp) {
+      fs.rmSync(runtimeRoot, { recursive: true, force: true });
+    } else if (!options.json) {
+      console.log(`Kept temp runtime: ${runtimeRoot}`);
+    }
   }
   if (options.json) console.log(JSON.stringify({ ok: results.every((result) => result.passed), results }, null, 2));
   else printHuman(results);
