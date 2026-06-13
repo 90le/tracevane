@@ -55,7 +55,8 @@
 - Claude Code / OpenCode persistent native compact 已有真实子进程 driver 回归：Claude 复用同一个 stream-json 常驻进程，OpenCode 通过 `run --session` 续接。
 - Claude Code persistent driver 已修复过程回复污染最终回复，并补进度回调兼容回归。
 - Octo daemon 私聊 `/compact` 已有回归证明会进入 Claude/OpenCode persistent session，不走 Gateway fallback。
-- Feishu daemon 已有 native-first wiring 回归；真实长连接 auto compact 已用 event log smoke 证明进入 Agent-native compact；Codex、Claude Code、OpenCode 显式 `/compact` live 均已验证。
+- Feishu daemon 已有 native-first wiring 回归；Feishu 显式 `/compact` 24h live 已验证 Codex、Claude Code、OpenCode 均进入 Agent-native compact。
+- 通用 compact live smoke 已覆盖 Feishu 长连接证据和 Octo 自身 event-log 证据；Octo auto compact 24h live 已验证，Octo 显式 `/compact` 有 7 天窗口历史 live 证据。
 - OpenCode 结构化工具输出已保留 `stdout`、`stderr` 和 `exitCode`，避免 IM 进度显示成空工具结果。
 - Codex 结构化命令输出已保留嵌套或直接 `stdout` / `stderr`，避免命令执行结果被压成单行或空结果。
 - Codex、Claude Code、OpenCode 混合 content 工具结果已加固：普通文本块与结构化 `stdout` / `stderr` / `exit_code` 会同时保留。
@@ -80,5 +81,5 @@
 ## 下一步
 
 1. 工具流和回复解析：继续复核真实 Claude/Codex/OpenCode live 差异；工具流 live smoke 默认检查 `--require-tool-output`，补齐未覆盖的 CLI 事件形态。
-2. Feishu/Octo 私聊 live smoke：继续 Octo 出站文件 24h 新样本、Octo 视频和 compact 抽查；Feishu 出站文件、Feishu/Octo 权限、入站文件/图片和 Feishu 入站视频已进入 live 验收。
+2. Feishu/Octo 私聊 live smoke：继续 Octo 出站文件 24h 新样本、Octo 视频和 Octo 显式 `/compact` 24h 新样本；Feishu compact、Feishu 出站文件、Feishu/Octo 权限、入站文件/图片、Feishu 入站视频和 Octo auto compact 已进入 live 验收。
 3. durable queue：触发一次真实 Feishu 长连接入站排队 + daemon 重启场景，用 `scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs` 验证 pending replay。
