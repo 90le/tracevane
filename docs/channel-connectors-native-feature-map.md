@@ -42,8 +42,8 @@
 - `studio-channel-files` 已覆盖出站文件声明、路径校验、原始文件名、Feishu/Octo 上传和发送。
 - `studio-channel-messages` 已覆盖私聊出站消息声明，Feishu 支持 open_id/user_id/dm markdown，Octo 支持 human DM 和 best-effort group/thread。
 - Feishu 入站文件 live 已验证：长连接文件消息进入本地 staging、history 附件摘要和 Agent CLI 文件读取链路。
-- Live 附件验收脚本已支持 `--require-inbound-image`、`--require-inbound-video`、`--require-staged-files`；Feishu/Octo 入站文件、Feishu/Octo 入站图片和 Feishu 入站视频均已有 staged 路径存在证据。
-- Feishu 出站文件有 24h live 成功证据；Octo 出站文件仍只有 7 天窗口历史样本，需要当前样本复验。
+- Live 附件验收脚本已支持 `--require-inbound-image`、`--require-inbound-video`、`--require-staged-files`；Feishu/Octo 入站文件、Feishu/Octo 入站图片、Feishu 入站视频和 Octo `.mp4` 文件形态视频均已有 staged 路径存在证据。
+- Feishu 出站文件有 24h live 成功证据；Octo 出站文件用户已手动确认通过，自动 `outboundFilesSent` 事件证据仍需补捕获。
 - Feishu 权限审批和 Octo 权限审批均有 24h live 成功证据；Feishu 真实链路为进度卡片 `permission-pending/allowed` 加卡片按钮 `channel.command commandAction=permission commandOk=true`。
 - 图片附件可 staging；非视觉模型默认收到附件说明/本地路径，不做视觉推断。自动视觉模型默认关闭，平台 binding 可配置启用和默认 fallback 模型；IM 会话可用 `/vision` 菜单/命令临时开启、关闭或指定视觉模型，切换失败会回退原模型的附件说明模式。
 - Gateway Responses -> Chat-compatible provider 已保留 `input_image` 为 Chat `image_url`；`gpt-5.4-mini` / `gpt-5.5` 受控图片 smoke 和 `codex exec --image` + `gpt-5.4-mini` 已通过。
@@ -56,7 +56,7 @@
 - Claude Code persistent driver 已修复过程回复污染最终回复，并补进度回调兼容回归。
 - Octo daemon 私聊 `/compact` 已有回归证明会进入 Claude/OpenCode persistent session，不走 Gateway fallback。
 - Feishu daemon 已有 native-first wiring 回归；Feishu 显式 `/compact` 24h live 已验证 Codex、Claude Code、OpenCode 均进入 Agent-native compact。
-- 通用 compact live smoke 已覆盖 Feishu 长连接证据和 Octo 自身 event-log 证据；Octo auto compact 24h live 已验证，Octo 显式 `/compact` 有 7 天窗口历史 live 证据。
+- 通用 compact live smoke 已覆盖 Feishu 长连接证据和 Octo 自身 event-log 证据；Octo auto compact 和显式 `/compact` 均已有 24h live 证据。
 - OpenCode 结构化工具输出已保留 `stdout`、`stderr` 和 `exitCode`，避免 IM 进度显示成空工具结果。
 - Codex 结构化命令输出已保留嵌套或直接 `stdout` / `stderr`，避免命令执行结果被压成单行或空结果。
 - Codex、Claude Code、OpenCode 混合 content 工具结果已加固：普通文本块与结构化 `stdout` / `stderr` / `exit_code` 会同时保留。
@@ -81,5 +81,5 @@
 ## 下一步
 
 1. 工具流和回复解析：继续复核真实 Claude/Codex/OpenCode live 差异；工具流 live smoke 默认检查 `--require-tool-output`，补齐未覆盖的 CLI 事件形态。
-2. Feishu/Octo 私聊 live smoke：继续 Octo 出站文件 24h 新样本、Octo 视频和 Octo 显式 `/compact` 24h 新样本；Feishu compact、Feishu 出站文件、Feishu/Octo 权限、入站文件/图片、Feishu 入站视频和 Octo auto compact 已进入 live 验收。
+2. Feishu/Octo 私聊 live smoke：继续补 Octo 出站文件 `outboundFilesSent` 自动事件证据；Feishu compact、Octo compact、Feishu 出站文件、Feishu/Octo 权限、入站文件/图片/视频已进入 live 验收。
 3. durable queue：触发一次真实 Feishu 长连接入站排队 + daemon 重启场景，用 `scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --mode durable` 验证 pending replay；同进程排队用 `--mode fifo` 单独验收。

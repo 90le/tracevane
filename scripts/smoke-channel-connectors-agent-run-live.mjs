@@ -295,6 +295,11 @@ function summarizeRun(event, relatedProgress, relatedEvidence, relatedPermission
   const visualInputEvents = relatedEvidence.filter((item) => item.eventKind === "agent.visual.input");
   const stagedLocalPaths = uniqueStrings(stagedAttachmentEvents.flatMap((item) => arrayStrings(item.localPaths)));
   const missingStagedLocalPaths = stagedLocalPaths.filter((localPath) => !fs.existsSync(localPath));
+  const videoLikeStagedPaths = stagedLocalPaths.filter(isVideoLikePath);
+  const videoLikeContentNames = extractVideoLikeNames([
+    String(event.content || ""),
+    ...relatedEvidence.map((item) => String(item.content || item.name || item.fileName || "")),
+  ].join("\n"));
   const attachmentKinds = uniqueStrings([
     ...arrayStrings(event.attachmentKinds),
     ...relatedEvidence.flatMap((item) => arrayStrings(item.attachmentKinds)),
@@ -302,7 +307,11 @@ function summarizeRun(event, relatedProgress, relatedEvidence, relatedPermission
   const visualAttachmentKinds = attachmentKinds.filter(isVisualAttachmentKind);
   const fileAttachmentCount = attachmentKinds.filter((kind) => kind === "file").length;
   const imageAttachmentCount = attachmentKinds.filter(isImageAttachmentKind).length;
-  const videoAttachmentCount = attachmentKinds.filter((kind) => kind === "video").length;
+  const videoAttachmentCount = Math.max(
+    attachmentKinds.filter((kind) => kind === "video").length,
+    videoLikeStagedPaths.length,
+    videoLikeContentNames.length,
+  );
   const modelSelection = latestEvent(modelSelectionEvents);
   const autoVisionSwitched = modelSelectionEvents.some((item) => {
     const originalModel = String(item.originalModel || "");
@@ -421,6 +430,15 @@ function isVisualAttachmentKind(value) {
 
 function isImageAttachmentKind(value) {
   return value === "image" || value === "sticker";
+}
+
+function isVideoLikePath(value) {
+  return /\.(mp4|mov|m4v|webm|mkv|avi|mpeg|mpg|3gp|3gpp|hevc|h265)(?:$|[?#])/i.test(String(value || ""));
+}
+
+function extractVideoLikeNames(value) {
+  const matches = String(value || "").match(/[^\s"'`<>()\[\]{}|]+?\.(?:mp4|mov|m4v|webm|mkv|avi|mpeg|mpg|3gp|3gpp|hevc|h265)\b/gi);
+  return uniqueStrings(matches || []);
 }
 
 function latestEvent(events) {

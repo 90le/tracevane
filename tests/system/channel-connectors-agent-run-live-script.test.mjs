@@ -374,6 +374,36 @@ function writeFixture(root) {
     progressEventCount: 1,
     attachmentCount: 1,
   });
+  appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:08:50.000Z",
+    eventKind: "agent.attachments.staged",
+    adapter: "octo",
+    bindingId: "octo-video-file-live",
+    sessionKey: "dmwork:dm:user-5",
+    messageId: "octo-message-video-file",
+    attachmentCount: 1,
+    attachmentKinds: ["file"],
+    visualAttachmentCount: 0,
+    stagedCount: 1,
+    failedCount: 0,
+    localPaths: [videoPath],
+  });
+  appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:08:51.000Z",
+    eventKind: "agent.run.finished",
+    adapter: "octo",
+    bindingId: "octo-video-file-live",
+    sessionKey: "dmwork:dm:user-5",
+    messageId: "octo-message-video-file",
+    channelId: "dm:user-5",
+    agentStatus: "completed",
+    agentOk: true,
+    replySent: true,
+    progressEventCount: 1,
+    attachmentCount: 1,
+    attachmentKinds: ["file"],
+    content: "[file: clip.mp4]",
+  });
   appendJsonLine(feishuEvents, {
     checkedAt: "2026-06-08T01:09:00.000Z",
     eventKind: "agent.progress.card",
@@ -484,12 +514,36 @@ test("agent run live smoke script verifies video attachment and staged local fil
   assert.equal(parsed.matchingRuns[0].stagedLocalPathMissingCount, 0);
 });
 
+test("agent run live smoke script treats Octo video-like files as inbound video evidence", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
+  const { configPath } = writeFixture(root);
+  const output = await runScript([
+    "--config", configPath,
+    "--since", "2026-06-08T00:00:00.000Z",
+    "--bindings", "octo-video-file-live",
+    "--require-ok",
+    "--require-reply",
+    "--require-inbound-video",
+    "--require-staged-files",
+    "--json",
+  ], root);
+  const parsed = JSON.parse(output.stdout);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.matchingRuns.length, 1);
+  assert.equal(parsed.matchingRuns[0].fileAttachmentCount, 1);
+  assert.equal(parsed.matchingRuns[0].videoAttachmentCount, 1);
+  assert.equal(parsed.matchingRuns[0].visualAttachmentCount, 0);
+  assert.equal(parsed.matchingRuns[0].stagedLocalPathCount, 1);
+  assert.equal(parsed.matchingRuns[0].stagedLocalPathExistingCount, 1);
+});
+
 test("agent run live smoke human output prints matching attachment runs", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
   const { configPath } = writeFixture(root);
   const output = await runScript([
     "--config", configPath,
     "--since", "2026-06-08T00:00:00.000Z",
+    "--bindings", "octo-video-live",
     "--require-ok",
     "--require-reply",
     "--require-inbound-video",
