@@ -659,10 +659,13 @@ function loadSummary(options, since) {
     ...runs.flatMap((run) => strictRunRequirementViolations(run, options)),
     ...stopRequirementViolations(stopProofs, options),
   ];
+  const requirementWarnings = runs.flatMap((run) => runRequirementWarnings(run, options));
   const displayedRuns = options.limitRuns === 0 || options.requireStopCommand ? [] : runs.slice(0, options.limitRuns);
   const displayedMatchingRuns = options.limitRuns === 0 ? [] : matchingRuns.slice(0, options.limitRuns);
   const displayedStopProofs = options.limitRuns === 0 ? [] : stopProofs.slice(0, options.limitRuns);
   const displayedMatchingStopProofs = options.limitRuns === 0 ? [] : matchingStopProofs.slice(0, options.limitRuns);
+  const displayedRequirementViolations = options.limitRuns === 0 ? [] : requirementViolations.slice(0, options.limitRuns);
+  const displayedRequirementWarnings = options.limitRuns === 0 ? [] : requirementWarnings.slice(0, options.limitRuns);
   const requirementCount = options.requireStopCommand ? matchingStopProofs.length : matchingRuns.length;
   const matchingAgents = uniqueStrings((options.requireStopCommand ? matchingStopProofs : matchingRuns).map((item) => String(item.agent || "")).filter(Boolean));
   const missingAgents = options.requireAgentCoverage && options.agents.length > 0
@@ -719,10 +722,12 @@ function loadSummary(options, since) {
       matchingAgents: matchingAgents.length,
       missingAgents: missingAgents.length,
       requirementViolations: requirementViolations.length,
+      requirementWarnings: requirementWarnings.length,
       displayedRuns: displayedRuns.length,
       displayedMatchingRuns: displayedMatchingRuns.length,
     },
-    requirementViolations,
+    requirementViolations: displayedRequirementViolations,
+    requirementWarnings: displayedRequirementWarnings,
     matchingAgents,
     missingAgents,
     runs: displayedRuns,
@@ -839,18 +844,6 @@ function strictRunRequirementViolations(run, options) {
       toolProgressCount: run.toolProgressCount,
     });
   }
-  if (options.requireProcessReply && run.assistantProgressCount > 0 && run.assistantIntermediateProgressCount <= 0) {
-    violations.push({
-      type: "process-reply-missing",
-      adapter: run.adapter,
-      bindingId: run.bindingId,
-      agent: run.agent,
-      sessionKey: run.sessionKey,
-      messageId: run.messageId,
-      assistantProgressCount: run.assistantProgressCount,
-      assistantFinalProgressCount: run.assistantFinalProgressCount,
-    });
-  }
   if (options.requireStagedFiles && run.stagedLocalPathCount > 0 && run.stagedLocalPathMissingCount > 0) {
     violations.push({
       type: "staged-local-file-missing",
@@ -863,6 +856,24 @@ function strictRunRequirementViolations(run, options) {
     });
   }
   return violations;
+}
+
+function runRequirementWarnings(run, options) {
+  if (!agentMatches(run, options)) return [];
+  const warnings = [];
+  if (options.requireProcessReply && run.assistantProgressCount > 0 && run.assistantIntermediateProgressCount <= 0) {
+    warnings.push({
+      type: "process-reply-missing",
+      adapter: run.adapter,
+      bindingId: run.bindingId,
+      agent: run.agent,
+      sessionKey: run.sessionKey,
+      messageId: run.messageId,
+      assistantProgressCount: run.assistantProgressCount,
+      assistantFinalProgressCount: run.assistantFinalProgressCount,
+    });
+  }
+  return warnings;
 }
 
 function stopRequirementViolations(stopProofs, options) {
@@ -893,7 +904,7 @@ async function waitForSummary(options, since) {
 function printHuman(summary, wait) {
   console.log(`Channel Agent run smoke ${summary.ok ? "passed" : "not satisfied"} since ${summary.since}`);
   const matchingCount = summary.requirements.requireStopCommand ? summary.counts.matchingStopProofs : summary.counts.matchingRuns;
-  console.log(`events=${summary.counts.events} progress=${summary.counts.progressEvents} runs=${summary.counts.finishedRuns} matching=${matchingCount}/${summary.requirements.minRuns} agents=${summary.matchingAgents.join(",") || "-"} missing=${summary.missingAgents.join(",") || "-"} stop=${summary.counts.matchingStopProofs}/${summary.counts.stopCommands} violations=${summary.counts.requirementViolations}`);
+  console.log(`events=${summary.counts.events} progress=${summary.counts.progressEvents} runs=${summary.counts.finishedRuns} matching=${matchingCount}/${summary.requirements.minRuns} agents=${summary.matchingAgents.join(",") || "-"} missing=${summary.missingAgents.join(",") || "-"} stop=${summary.counts.matchingStopProofs}/${summary.counts.stopCommands} violations=${summary.counts.requirementViolations} warnings=${summary.counts.requirementWarnings || 0}`);
   if (summary.requirements.requireStopCommand) {
     const displayedStopProofs = summary.matchingStopProofs.length > 0 ? summary.matchingStopProofs : summary.stopProofs;
     for (const proof of displayedStopProofs.slice(0, 8)) {

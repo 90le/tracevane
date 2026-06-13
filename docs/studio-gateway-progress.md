@@ -44,6 +44,7 @@
   - 加固 Codex / Claude Code / OpenCode 混合 content 工具结果解析：同一个工具结果里普通文本块与结构化 `stdout` / `stderr` / `exit_code` 会同时保留，不再择一丢失。
   - 加固真实 IM live 证据脚本：新增 `--require-tool-output`，区分“有工具事件”和“工具结果确实有可见输出”，避免空工具结果被误判通过。
   - 加固真实 IM live 证据脚本：新增 `--agents`、`--require-agent-coverage`、`--require-process-reply`，可按 Codex / Claude Code / OpenCode 分别验证工具输出和过程回复覆盖。
+  - 加固真实 IM live 证据脚本：`--require-process-reply` 下普通最终回复样本只进入 `requirementWarnings` 诊断，不再阻断已有合格过程回复证据；`--limit-runs 0` 会隐藏 warning 明细，只保留计数。
   - 新增真实 direct runner smoke 脚本：`smoke-channel-connectors-agent-runner-direct.mjs` 直接调用 Channel runner，用于验证 CLI parser/runner，不注入 Feishu/Octo 事件。
   - 加固真实 IM 附件验收脚本：新增 `--require-inbound-image`、`--require-inbound-video`、`--require-staged-files`，图片/视频/文件 live smoke 会同时验证附件类型和本地 staged 路径存在。
   - 优化非飞书气泡式进度流：assistant 过程回复不再携带“过程回复”标题，按最终回复同格式发送正文。
@@ -98,7 +99,7 @@
 - 本轮验证通过：`node --test --test-name-pattern "mixed content tool output" tests/system/channel-connectors-service.test.mjs`，覆盖 Codex / Claude Code / OpenCode 混合文本块与结构化工具输出。
 - 本轮验证通过：`node --test --test-name-pattern "(structured tool output|mixed content tool output|final text|JSON progress|agent messages before later tools|stream-json progress|text before later tools|DB fallback keeps tool results|persistent Claude driver keeps intermediate)" tests/system/channel-connectors-service.test.mjs`，10/10 通过。
 - 本轮 live 只读验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --require-ok --require-reply --require-tool --require-tool-output --min-runs 1 --limit-runs 5 --json`，最近 24h 匹配 5 条带可见工具输出的成功 IM run。
-- 本轮验证通过：`node --test tests/system/channel-connectors-agent-run-live-script.test.mjs`，10/10 通过，覆盖 `--require-tool-output`、`--require-stop-command`、入站图片/视频/文件 staged local path、Octo `.mp4` 作为 `file` 的视频识别、Feishu 卡片审批 command 形态，以及 human 输出只展示匹配 run。
+- 本轮验证通过：`node --test tests/system/channel-connectors-agent-run-live-script.test.mjs`，12/12 通过，覆盖 `--require-tool-output`、`--require-process-reply` warning 诊断、`--limit-runs 0` 输出压缩、`--require-stop-command`、入站图片/视频/文件 staged local path、Octo `.mp4` 作为 `file` 的视频识别、Feishu 卡片审批 command 形态，以及 human 输出只展示匹配 run。
 - 本轮 live 只读验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --require-ok --require-reply --require-inbound-file --require-staged-files --min-runs 1 --limit-runs 3 --json`，匹配 Feishu/Octo 入站文件且 staged 路径存在。
 - 本轮 live 只读验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --require-ok --require-reply --require-inbound-image --require-staged-files --min-runs 1 --limit-runs 3 --json`，匹配 Feishu/Octo 入站图片且 staged 路径存在。
 - 本轮 live 只读验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --require-ok --require-reply --require-inbound-video --require-staged-files --min-runs 1 --limit-runs 3 --json`，匹配 Feishu 入站视频且 staged 路径存在。
@@ -144,13 +145,13 @@
 - 本轮 live 验证通过：Feishu 文件消息 `om_x100b6df679c474a4c23ef686549039b`，staging 路径存在，`agent.run.finished agentOk=true replySent=true`。
 - 本轮 live 只读验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --require-ok --require-reply --require-tool --require-tool-output --min-runs 1 --limit-runs 5 --json`，最近 24h 匹配 6 条带可见工具输出的成功 IM run。
 - 本轮 live 只读验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 720 --agents codex,claude-code,opencode --require-agent-coverage --require-ok --require-reply --require-tool --require-tool-output --min-runs 3 --limit-runs 12`，近 12h 三个 Agent 均有成功工具调用和可见工具输出证据。
-- 本轮 live 只读检查：`--require-process-reply` 近 24h 匹配 Codex / Claude Code，OpenCode 仍缺少最近真实 IM 中间 assistant 过程回复样本。
+- 本轮 live 只读检查：`--require-process-reply` 近 24h 匹配 Codex / Claude Code，OpenCode 仍缺少最近真实 IM 中间 assistant 过程回复样本；普通最终回复样本现在只计 `requirementWarnings=30`，不再作为硬失败。
 - 本轮真实 direct runner smoke：OpenCode + Gateway `glm-5` 顺序执行 3 次 shell 工具，得到 `assistantIntermediateCount=3`、`toolOutputCount=6`、`assistantFinalCount=1`，证明 OpenCode parser/direct runner 可输出过程回复和工具结果；剩余缺口是 IM event-log 现场样本。
 - 本轮真实 direct runner smoke：`node scripts/smoke-channel-connectors-agent-runner-direct.mjs --agents codex,claude-code,opencode --json` 通过，Codex / Claude Code / OpenCode 均得到 3 条过程回复、3 个可见工具结果和 1 条最终回复。
 - 本轮验证通过：`node --test tests/system/channel-connectors-agent-runner-direct-script.test.mjs`，锁定 direct runner smoke 是 parser-only proof，不替代 Feishu/Octo event-log 证据。
 - 本轮加固 direct runner smoke 清理策略：默认使用 `/tmp` 隔离 CLI runtime，结束后自动删除；旧 `direct-runner-smoke` 目录已清理。
 - 本轮补齐现场触发入口：live smoke help 和迁移清单现在给出 OpenCode 过程回复等待命令、Feishu durable replay 操作顺序。
-- 本轮验证通过：`node --test tests/system/channel-connectors-agent-run-live-script.test.mjs tests/system/channel-connectors-feishu-durable-queue-live-script.test.mjs`，17/17 通过。
+- 本轮验证通过：`node --test tests/system/channel-connectors-agent-run-live-script.test.mjs tests/system/channel-connectors-feishu-durable-queue-live-script.test.mjs`，18/18 通过。
 - 本轮验证通过：`node --test tests/system/channel-connectors-persistent-live-script.test.mjs`，1/1 通过。
 - 本轮验证通过：`node --test --test-name-pattern "stops Codex app-server persistent turns|Agent process cancelled|native compact" tests/system/channel-connectors-service.test.mjs`，2/2 通过。
 - 本轮 live 验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --platforms octo --require-stop-command --min-runs 1 --limit-runs 5 --json`，识别 Octo `/stop` 命令 `2065665014106066944` 和 cancelled run `2065664678767267840`。

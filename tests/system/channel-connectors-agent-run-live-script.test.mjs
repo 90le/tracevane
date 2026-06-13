@@ -178,6 +178,75 @@ function writeFixture(root) {
     replySent: true,
     progressEventCount: 2,
   });
+  appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:04:00.000Z",
+    eventKind: "agent.progress",
+    adapter: "octo",
+    bindingId: "octo-process-mixed",
+    sessionKey: "dmwork:dm:user-process",
+    messageId: "octo-message-process-good",
+    agent: "codex",
+    progressType: "assistant",
+    phase: "intermediate",
+    rawType: "item/completed",
+    itemType: "agentMessage",
+    text: "先执行检查。",
+  });
+  appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:04:00.500Z",
+    eventKind: "agent.progress",
+    adapter: "octo",
+    bindingId: "octo-process-mixed",
+    sessionKey: "dmwork:dm:user-process",
+    messageId: "octo-message-process-good",
+    agent: "codex",
+    progressType: "tool",
+    rawType: "tool_result",
+    itemType: "bash",
+    text: "tool_result\nstdout:\nprocess-ok\nstderr:\n\nexit_code: 0",
+  });
+  appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:04:01.000Z",
+    eventKind: "agent.run.finished",
+    adapter: "octo",
+    bindingId: "octo-process-mixed",
+    sessionKey: "dmwork:dm:user-process",
+    messageId: "octo-message-process-good",
+    channelId: "dm:user-process",
+    agent: "codex",
+    agentStatus: "completed",
+    agentOk: true,
+    replySent: true,
+    progressEventCount: 2,
+  });
+  appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:04:10.000Z",
+    eventKind: "agent.progress",
+    adapter: "octo",
+    bindingId: "octo-process-mixed",
+    sessionKey: "dmwork:dm:user-process",
+    messageId: "octo-message-process-final-only",
+    agent: "codex",
+    progressType: "assistant",
+    phase: "final",
+    rawType: "item/completed",
+    itemType: "agentMessage",
+    text: "简单对话完成。",
+  });
+  appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:04:11.000Z",
+    eventKind: "agent.run.finished",
+    adapter: "octo",
+    bindingId: "octo-process-mixed",
+    sessionKey: "dmwork:dm:user-process",
+    messageId: "octo-message-process-final-only",
+    channelId: "dm:user-process",
+    agent: "codex",
+    agentStatus: "completed",
+    agentOk: true,
+    replySent: true,
+    progressEventCount: 1,
+  });
   appendJsonLine(feishuEvents, {
     checkedAt: "2026-06-08T01:05:00.000Z",
     eventKind: "agent.progress",
@@ -599,6 +668,54 @@ test("agent run live smoke script verifies per-agent coverage and process replie
   assert.deepEqual(parsed.missingAgents, []);
   assert.equal(parsed.counts.matchingRuns, 2);
   assert.equal(parsed.matchingRuns.every((run) => run.assistantIntermediateProgressCount > 0), true);
+});
+
+test("agent run live smoke script treats final-only assistant replies as process diagnostics", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
+  const { configPath } = writeFixture(root);
+  const output = await runScript([
+    "--config", configPath,
+    "--since", "2026-06-08T00:00:00.000Z",
+    "--bindings", "octo-process-mixed",
+    "--agents", "codex",
+    "--require-agent-coverage",
+    "--require-ok",
+    "--require-reply",
+    "--require-tool",
+    "--require-tool-output",
+    "--require-process-reply",
+    "--min-runs", "1",
+    "--json",
+  ], root);
+  const parsed = JSON.parse(output.stdout);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.counts.requirementViolations, 0);
+  assert.equal(parsed.counts.requirementWarnings, 1);
+  assert.equal(parsed.requirementWarnings[0].type, "process-reply-missing");
+  assert.equal(parsed.requirementWarnings[0].messageId, "octo-message-process-final-only");
+  assert.equal(parsed.matchingRuns.length, 1);
+  assert.equal(parsed.matchingRuns[0].messageId, "octo-message-process-good");
+
+  const compactOutput = await runScript([
+    "--config", configPath,
+    "--since", "2026-06-08T00:00:00.000Z",
+    "--bindings", "octo-process-mixed",
+    "--agents", "codex",
+    "--require-agent-coverage",
+    "--require-ok",
+    "--require-reply",
+    "--require-tool",
+    "--require-tool-output",
+    "--require-process-reply",
+    "--min-runs", "1",
+    "--limit-runs", "0",
+    "--json",
+  ], root);
+  const compactParsed = JSON.parse(compactOutput.stdout);
+  assert.equal(compactParsed.ok, true);
+  assert.equal(compactParsed.counts.requirementWarnings, 1);
+  assert.deepEqual(compactParsed.requirementWarnings, []);
+  assert.deepEqual(compactParsed.matchingRuns, []);
 });
 
 test("agent run live smoke script verifies video attachment and staged local files", async () => {
