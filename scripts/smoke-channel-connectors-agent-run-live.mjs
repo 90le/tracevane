@@ -25,6 +25,7 @@ function parseArgs(argv) {
     requireReply: false,
     requireProgress: false,
     requireTool: false,
+    requireToolOutput: false,
     requireFile: false,
     requireOutboundMessage: false,
     requireInboundFile: false,
@@ -48,6 +49,7 @@ function parseArgs(argv) {
     else if (arg === "--require-reply") options.requireReply = true;
     else if (arg === "--require-progress") options.requireProgress = true;
     else if (arg === "--require-tool") options.requireTool = true;
+    else if (arg === "--require-tool-output") options.requireToolOutput = true;
     else if (arg === "--require-file") options.requireFile = true;
     else if (arg === "--require-outbound-message" || arg === "--require-message") options.requireOutboundMessage = true;
     else if (arg === "--require-inbound-file" || arg === "--require-uploaded-file") options.requireInboundFile = true;
@@ -109,6 +111,7 @@ Options:
   --require-reply           Require replySent=true.
   --require-progress        Require any progress event.
   --require-tool            Require tool progress.
+  --require-tool-output     Require a raw tool-result/completed progress event with visible output text.
   --require-file            Require outboundFilesDeclared>0 and outboundFilesSent>0.
   --require-outbound-message
                             Require outboundMessagesDeclared>0 and outboundMessagesSent>0.
@@ -135,7 +138,7 @@ Options:
 
 Examples:
   node scripts/smoke-channel-connectors-agent-run-live.mjs --json
-  node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings feishu-live --require-ok --require-reply --require-tool --json
+  node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings feishu-live --require-ok --require-reply --require-tool --require-tool-output --json
   node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings octo-studio-cc --require-ok --require-file --json
   node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings octo-studio-cc --require-ok --require-outbound-message --json
 `);
@@ -242,6 +245,7 @@ function summarizeRun(event, relatedProgress, relatedEvidence, relatedPermission
   const transportProgress = relatedProgress.filter((item) => item.eventKind === "agent.progress.reply" || item.eventKind === "agent.progress.card");
   const rawToolProgress = rawProgress.filter((item) => item.progressType === "tool" || item.latestProgress?.type === "tool");
   const transportToolProgress = transportProgress.filter((item) => item.progressType === "tool" || item.latestProgress?.type === "tool");
+  const rawToolOutputProgress = rawProgress.filter(hasVisibleToolOutput);
   const transportActions = uniqueStrings(relatedProgress.map((item) => String(item.transportAction || "")).filter(Boolean));
   const assistantProgress = rawProgress.filter((item) => item.progressType === "assistant" || item.latestProgress?.type === "assistant");
   const finalProgressReplies = transportProgress.filter((item) => {
@@ -322,6 +326,7 @@ function summarizeRun(event, relatedProgress, relatedEvidence, relatedPermission
     permissionResolved: permissionReplyEvents.some(isResolvedPermissionEvent),
     progressTypes,
     toolProgressCount,
+    toolOutputSignalCount: rawToolOutputProgress.length,
     transportToolProgressCount: transportToolProgress.length,
     assistantProgressCount: assistantProgress.length,
     markdownSignalCount: markdownSignals.length,
@@ -486,6 +491,7 @@ function loadSummary(options, since) {
       requireReply: options.requireReply,
       requireProgress: options.requireProgress,
       requireTool: options.requireTool,
+      requireToolOutput: options.requireToolOutput,
       requireFile: options.requireFile,
       requireOutboundMessage: options.requireOutboundMessage,
       requireInboundFile: options.requireInboundFile,
@@ -526,6 +532,7 @@ function runSatisfies(run, options) {
   if (options.requireReply && run.replySent !== true) return false;
   if (options.requireProgress && !(run.progressEventCount > 0 || run.progressLogCount > 0)) return false;
   if (options.requireTool && !(run.toolProgressCount > 0 || run.latestProgressType === "tool")) return false;
+  if (options.requireToolOutput && run.toolOutputSignalCount <= 0) return false;
   if (options.requireFile && !(run.outboundFilesDeclared > 0 && run.outboundFilesSent > 0 && run.outboundFileErrors.length === 0)) return false;
   if (options.requireOutboundMessage && !(run.outboundMessagesDeclared > 0 && run.outboundMessagesSent > 0)) return false;
   if (options.requireInboundFile && !(run.fileAttachmentCount > 0 && run.attachmentStagingFailedCount === 0)) return false;
@@ -601,6 +608,16 @@ function strictRunRequirementViolations(run, options) {
       messageId: run.messageId,
     });
   }
+  if (options.requireToolOutput && run.toolProgressCount > 0 && run.toolOutputSignalCount <= 0) {
+    violations.push({
+      type: "tool-output-missing",
+      adapter: run.adapter,
+      bindingId: run.bindingId,
+      sessionKey: run.sessionKey,
+      messageId: run.messageId,
+      toolProgressCount: run.toolProgressCount,
+    });
+  }
   return violations;
 }
 
@@ -628,6 +645,7 @@ function printHuman(summary, wait) {
       run.visualAttachmentCount > 0 ? `visual=${run.visualAttachmentCount}` : "",
       run.autoVisionSwitched === true ? `auto-vision=${run.autoVisionOriginalModel}->${run.autoVisionSelectedModel}` : "",
       run.toolProgressCount > 0 ? `tools=${run.toolProgressCount}` : "",
+      run.toolOutputSignalCount > 0 ? `tool-output=${run.toolOutputSignalCount}` : "",
       run.permissionPromptCount > 0 ? `permission-prompts=${run.permissionPromptCount}` : "",
       run.permissionStatuses.length > 0 ? `permission-status=${run.permissionStatuses.join(",")}` : "",
       run.feishuPermissionProgressCardCount > 0 ? `permission-card=${run.feishuPermissionProgressCardCount}` : "",
@@ -648,6 +666,36 @@ function isRecoverableToolResultError(event) {
   if (progressType !== "failed" && progressType !== "error") return false;
   return String(event.rawType || event.latestProgress?.rawType || "").toLowerCase() === "user"
     && String(event.itemType || event.latestProgress?.itemType || "").toLowerCase() === "tool_result";
+}
+
+function hasVisibleToolOutput(event) {
+  if (!isToolResultLikeEvent(event)) return false;
+  const text = String(event.text || event.latestProgress?.text || "").trim();
+  if (!text) return false;
+  if (/^(?:tool|工具|bash|read|write|edit)$/i.test(text)) return false;
+  if (/(?:^|\n)\s*_?(?:无输出|no output)_?\s*(?:\n|$)/i.test(text)) return false;
+  if (/(?:stdout|stderr|output|result)\s*:/i.test(text)) return true;
+  const rawType = String(event.rawType || event.latestProgress?.rawType || "").toLowerCase();
+  const itemType = String(event.itemType || event.latestProgress?.itemType || "").toLowerCase();
+  if (rawType === "user" && itemType.includes("tool_result")) return true;
+  if (rawType.includes("tool_result") || itemType.includes("tool_result")) return true;
+  if (rawType.endsWith(".completed") || rawType.endsWith("/completed") || rawType === "item.completed") {
+    return text.split(/\r?\n/).some((line) => line.trim().length > 0 && !/^(?:.+ completed|command=.+|exit=.+|status=.+)$/i.test(line.trim()));
+  }
+  return false;
+}
+
+function isToolResultLikeEvent(event) {
+  const progressType = String(event.progressType || event.latestProgress?.type || "");
+  if (!["tool", "error", "failed"].includes(progressType)) return false;
+  const rawType = String(event.rawType || event.latestProgress?.rawType || "").toLowerCase();
+  const itemType = String(event.itemType || event.latestProgress?.itemType || "").toLowerCase();
+  return rawType.includes("tool_result")
+    || itemType.includes("tool_result")
+    || rawType === "user"
+    || rawType.endsWith(".completed")
+    || rawType.endsWith("/completed")
+    || rawType === "item.completed";
 }
 
 async function main() {

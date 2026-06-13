@@ -42,7 +42,7 @@
 | P1 | OpenCode runner | 进行中：parser 已对齐；结构化/混合 stdout/stderr/exitCode、native compact、图片 native smoke 已补；视频按 staged file 交给 Agent | JSON/SQLite fallback、session、tool stream、文件/图片/视频输入、native compact/stop live driver |
 | P1 | Feishu 私聊 | 进行中：长连接 live 稳定；Markdown、入站文件、native-first compact wiring、真实长连接 auto compact、三 Agent 显式 `/compact` smoke、图片/视频 runner 合同已补 | 用户侧图片/视频重发 live、出站文件、权限审批复验 |
 | P1 | Octo 私聊 | 进行中：长连接 live 稳定；Markdown 已验证；图片/视频 runner 合同、媒体 payload 文本保留已补 | 用户侧文件/图片/视频、权限审批、compact live smoke |
-| P1 | 工具/思考/过程显示 | 继续推进：非飞书过程回复标题已移除；结构化/混合工具结果、Codex reasoning summary、Octo `/thinking` 过滤、OpenCode live reasoning 和 parser/live 能力展示已补 | 三个 Agent 都稳定提取工具名、输入、stdout/stderr、exit/status、思考流、过程回复和最终回复分类；继续复核真实 CLI 新事件形态 |
+| P1 | 工具/思考/过程显示 | 继续推进：非飞书过程回复标题已移除；结构化/混合工具结果、live `--require-tool-output`、Codex reasoning summary、Octo `/thinking` 过滤、OpenCode live reasoning 和 parser/live 能力展示已补 | 三个 Agent 都稳定提取工具名、输入、stdout/stderr、exit/status、思考流、过程回复和最终回复分类；继续复核真实 CLI 新事件形态 |
 | P1 | 图片/视觉模型 fallback | 已完成：默认关闭；binding 可设启用和默认视觉模型；IM `/vision` 命令与 Feishu 卡片可临时开启/关闭/指定模型；Gateway catalog 只列健康 vision 模型 | 非视觉当前模型收到图片时按配置切到指定/自动健康视觉模型，失败回退附件说明模式 |
 | P1 | 上下文预算与 compact | 继续推进 | resolved model 预算进入 IM session；优先 Agent-native compact，不支持/失败再 Gateway compact |
 | P1 | 文件/消息收发 | 继续推进 | 私聊入站 staging、出站 manifest、原始文件名、yolo 权限、大文件策略、Feishu/Octo live smoke |
@@ -66,6 +66,8 @@
 - `node --test --test-name-pattern "Claude structured tool output|persistent Claude driver keeps intermediate text|Claude Code stream-json progress|Claude text before later tools" tests/system/channel-connectors-service.test.mjs`，4/4 通过。
 - `node --test --test-name-pattern "mixed content tool output" tests/system/channel-connectors-service.test.mjs` 通过，覆盖 Codex / Claude Code / OpenCode 混合文本块与结构化工具输出。
 - `node --test --test-name-pattern "(structured tool output|mixed content tool output|final text|JSON progress|agent messages before later tools|stream-json progress|text before later tools|DB fallback keeps tool results|persistent Claude driver keeps intermediate)" tests/system/channel-connectors-service.test.mjs`，10/10 通过。
+- `node --test tests/system/channel-connectors-agent-run-live-script.test.mjs`，5/5 通过，覆盖 `--require-tool-output` 正反向证据。
+- `node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --require-ok --require-reply --require-tool --require-tool-output --min-runs 1 --limit-runs 5 --json` 通过，最近 24h 匹配 5 条带可见工具输出的成功 IM run。
 - `node --test --test-name-pattern "Octo group process replies before final reply|daemon keeps Feishu dispatcher parity diagnostics" tests/system/channel-connectors-service.test.mjs`，2/2 通过。
 - `node --test --test-name-pattern "Codex reasoning summaries|Codex app-server maps reasoning" tests/system/channel-connectors-service.test.mjs`，2/2 通过。
 - `node --test --test-name-pattern "Codex reasoning summaries|Claude Code stream-json progress|OpenCode JSON progress|thinking display toggles" tests/system/channel-connectors-service.test.mjs`，4/4 通过。
@@ -98,7 +100,7 @@
 
 ## 下一步
 
-1. 用真实 Feishu/Octo live 输出复核 Codex / Claude Code / OpenCode 工具流和回复解析，继续补未覆盖事件形态。
+1. 用真实 Feishu/Octo live 输出复核 Codex / Claude Code / OpenCode 工具流和回复解析；后续工具流 live smoke 默认带 `--require-tool-output`，继续补未覆盖事件形态。
 2. 私聊文件/图片/视频/权限/compact 做 Feishu 与 Octo live smoke；Feishu 入站文件已完成，继续用户侧图片/视频重发、出站文件和 Octo 对应项。
 3. Provider Center 能力测试：图片 smoke 失败时不要自动标记 vision，并提示协议/端点不匹配。
 4. durable queue：真实 Feishu IM 里触发长任务排队并重启 daemon，运行 `scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --wait --json` 验证 pending/replay 记录与实际回复一致。

@@ -47,6 +47,18 @@ function writeFixture(root) {
     text: "工具完成：\n\n1. **结果**：`ok`\n2. 文件已准备。",
   });
   appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:00:00.500Z",
+    eventKind: "agent.progress",
+    adapter: "octo",
+    bindingId: "octo-live",
+    sessionKey: "dmwork:dm:user-1",
+    messageId: "octo-message-1",
+    progressType: "tool",
+    rawType: "item.completed",
+    itemType: "command_execution",
+    text: "command_execution completed\ncommand=printf ok\nexit=0\noutput:\nstdout:\nok\nstderr:\nwarn\nexit_code: 0",
+  });
+  appendJsonLine(octoEvents, {
     checkedAt: "2026-06-08T01:00:01.000Z",
     eventKind: "agent.progress.reply",
     adapter: "octo",
@@ -252,6 +264,31 @@ function writeFixture(root) {
     replySent: true,
     progressEventCount: 1,
   });
+  appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:08:30.000Z",
+    eventKind: "agent.progress",
+    adapter: "octo",
+    bindingId: "octo-empty-tool",
+    sessionKey: "dmwork:dm:user-3",
+    messageId: "octo-message-empty-tool",
+    progressType: "tool",
+    rawType: "item.completed",
+    itemType: "command_execution",
+    text: "command_execution completed\ncommand=pwd\nexit=0",
+  });
+  appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:08:31.000Z",
+    eventKind: "agent.run.finished",
+    adapter: "octo",
+    bindingId: "octo-empty-tool",
+    sessionKey: "dmwork:dm:user-3",
+    messageId: "octo-message-empty-tool",
+    channelId: "dm:user-3",
+    agentStatus: "completed",
+    agentOk: true,
+    replySent: true,
+    progressEventCount: 1,
+  });
   appendJsonLine(feishuEvents, {
     checkedAt: "2026-06-08T01:09:00.000Z",
     eventKind: "agent.progress.card",
@@ -298,6 +335,7 @@ test("agent run live smoke script verifies Octo tool, reply, and outbound file e
     "--require-ok",
     "--require-reply",
     "--require-tool",
+    "--require-tool-output",
     "--require-file",
     "--require-outbound-message",
     "--require-inbound-file",
@@ -324,6 +362,7 @@ test("agent run live smoke script verifies Octo tool, reply, and outbound file e
   assert.equal(parsed.matchingRuns[0].autoVisionSelectedModel, "gpt-5.5");
   assert.equal(parsed.matchingRuns[0].autoVisionReason, "current-model-non-vision");
   assert.equal(parsed.matchingRuns[0].toolProgressCount, 1);
+  assert.equal(parsed.matchingRuns[0].toolOutputSignalCount, 1);
   assert.equal(parsed.matchingRuns[0].finalProgressReplyCount, 0);
   assert.equal(parsed.matchingRuns[0].replyMarkdownLikely, true);
   assert.deepEqual(parsed.matchingRuns[0].markdownSignals.sort(), ["bold", "inline_code", "list"].sort());
@@ -432,6 +471,26 @@ test("agent run live smoke script fails when required evidence is missing", asyn
       assert.equal(parsed.ok, false);
       assert.equal(parsed.counts.finishedRuns, 1);
       assert.equal(parsed.counts.matchingRuns, 0);
+      return true;
+    },
+  );
+
+  await assert.rejects(
+    runScript([
+      "--config", configPath,
+      "--since", "2026-06-08T00:00:00.000Z",
+      "--bindings", "octo-empty-tool",
+      "--require-tool",
+      "--require-tool-output",
+      "--json",
+    ], root),
+    (error) => {
+      const parsed = JSON.parse(error.stdout);
+      assert.equal(parsed.ok, false);
+      assert.equal(parsed.counts.requirementViolations, 1);
+      assert.equal(parsed.requirementViolations[0].type, "tool-output-missing");
+      assert.equal(parsed.runs[0].toolProgressCount, 1);
+      assert.equal(parsed.runs[0].toolOutputSignalCount, 0);
       return true;
     },
   );
