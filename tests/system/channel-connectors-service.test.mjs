@@ -13163,6 +13163,11 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /plain text is the last delivery fallback only/);
   assert.match(daemonSource, /function renderFeishuProgressCardEventElements/);
   assert.match(daemonSource, /function feishuProgressCardStatusTag/);
+  assert.match(daemonSource, /function feishuProgressCardEntryLimit/);
+  assert.match(daemonSource, /"feishuProgressCardEntryLimit"/);
+  assert.match(daemonSource, /function trimFeishuProgressCardEntries/);
+  assert.match(daemonSource, /createFeishuProgressCardState\(feishuProgressCardEntryLimit\(binding\)\)/);
+  assert.doesNotMatch(daemonSource, /slice\(-8\)/);
   assert.doesNotMatch(daemonSource, /Studio Progress/);
   assert.doesNotMatch(daemonSource, /Studio Reply/);
   assert.doesNotMatch(daemonSource, /最终回复/);

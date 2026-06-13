@@ -875,6 +875,7 @@ interface FeishuProgressCardEntry {
 interface FeishuProgressCardState {
   messageId: string | null;
   replyToMessageId: string | null;
+  entryLimit: number;
   status: "running" | "completed" | "failed";
   startedAtMs: number;
   updatedAtMs: number;
@@ -2831,6 +2832,17 @@ function feishuPongTimeoutState(group: ChannelDaemonFeishuGroup, nowMs = Date.no
     waitingForMs,
     overdue: pongTimeoutMs > 0 && waitingForPong && waitingForMs >= pongTimeoutMs,
   };
+}
+
+function feishuProgressCardEntryLimit(binding: ChannelConnectorRuntimeBinding): number {
+  return clampNumber(Math.floor(metadataNumber(binding, [
+    "feishuProgressCardEntryLimit",
+    "feishu_progress_card_entry_limit",
+    "progressCardEntryLimit",
+    "progress_card_entry_limit",
+    "progressEntryLimit",
+    "progress_entry_limit",
+  ], 8)), 1, 30);
 }
 
 function feishuTransportStaleState(group: ChannelDaemonFeishuGroup, nowMs = Date.now()): {
@@ -6767,11 +6779,16 @@ function isPermissionApprovalProgressEvent(event: ChannelConnectorAgentProgressE
     || text.includes("can_use_tool");
 }
 
-function createFeishuProgressCardState(): FeishuProgressCardState {
+function trimFeishuProgressCardEntries(cardState: FeishuProgressCardState): void {
+  cardState.entries = cardState.entries.slice(-cardState.entryLimit);
+}
+
+function createFeishuProgressCardState(entryLimit = 8): FeishuProgressCardState {
   const startedAtMs = Date.now();
   return {
     messageId: null,
     replyToMessageId: null,
+    entryLimit: clampNumber(Math.floor(entryLimit), 1, 30),
     status: "running",
     startedAtMs,
     updatedAtMs: startedAtMs,
@@ -6875,7 +6892,7 @@ function pushFeishuProgressCardEvent(
     toolName,
     toolCallId: event.toolCallId,
   });
-  cardState.entries = cardState.entries.slice(-8);
+  trimFeishuProgressCardEntries(cardState);
   cardState.updatedAtMs = Date.now();
   cardState.dirty = true;
   return true;
@@ -6948,7 +6965,7 @@ function upsertFeishuPermissionProgressEntry(
   } else {
     cardState.entries.push(entry);
   }
-  cardState.entries = cardState.entries.slice(-8);
+  trimFeishuProgressCardEntries(cardState);
   cardState.updatedAtMs = Date.now();
   cardState.dirty = true;
   return true;
@@ -6976,7 +6993,7 @@ function ensureFeishuProgressCardFailure(
     rawType: null,
     itemType: null,
   });
-  cardState.entries = cardState.entries.slice(-8);
+  trimFeishuProgressCardEntries(cardState);
   cardState.updatedAtMs = Date.now();
   cardState.dirty = true;
 }
@@ -10298,7 +10315,7 @@ async function dispatchFeishuParsedEvent(input: {
   let latestProgress: ChannelConnectorAgentProgressEvent | null = null;
   let firstProgressAtMs: number | null = null;
   let previousProgressAtMs = runStartedAtMs;
-  const progressCardState = createFeishuProgressCardState();
+  const progressCardState = createFeishuProgressCardState(feishuProgressCardEntryLimit(binding));
   progressCardState.replyToMessageId = messageId;
   let lastFeishuProgressSentAt = 0;
   let feishuProgressSendCount = 0;

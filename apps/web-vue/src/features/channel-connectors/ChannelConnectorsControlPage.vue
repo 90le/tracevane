@@ -462,6 +462,17 @@
                   <span>Chat IDs</span>
                   <textarea v-model="bindingDraft.metadataChatIdsText" rows="2" placeholder="oc_xxx&#10;oc_yyy" />
                 </label>
+                <label>
+                  <span>{{ text('进度卡片条数', 'Progress card limit') }}</span>
+                  <input
+                    v-model.trim="bindingDraft.metadataFeishuProgressCardEntryLimit"
+                    type="number"
+                    min="1"
+                    max="30"
+                    placeholder="8"
+                    autocomplete="off"
+                  />
+                </label>
               </fieldset>
               <label class="ccx-wide-field">
                 <span>{{ text('白名单', 'Allowlist') }}</span>
@@ -787,6 +798,7 @@ type BindingDraft = Omit<ChannelConnectorPlatformBinding, 'allowlist' | 'adminUs
   metadataAppSecret: string;
   metadataVerificationToken: string;
   metadataChatIdsText: string;
+  metadataFeishuProgressCardEntryLimit: string;
   metadataAttachmentMaxBytes: string;
   metadataAllowPrivateAttachmentUrls: boolean;
   metadataStageOctoUrlAttachments: boolean;
@@ -1169,6 +1181,7 @@ function emptyBindingDraft(): BindingDraft {
     metadataAppSecret: '',
     metadataVerificationToken: '',
     metadataChatIdsText: '',
+    metadataFeishuProgressCardEntryLimit: '',
     metadataAttachmentMaxBytes: '',
     metadataAllowPrivateAttachmentUrls: false,
     metadataStageOctoUrlAttachments: true,
@@ -1234,6 +1247,18 @@ function metadataListText(metadata: Record<string, unknown>, keys: string[]): st
   return '';
 }
 
+function metadataIntegerText(metadata: Record<string, unknown>, keys: string[], fallback = ''): string {
+  for (const key of keys) {
+    const value = metadata[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return String(Math.floor(value));
+    if (typeof value === 'string' && value.trim()) {
+      const parsed = Number(value.trim());
+      if (Number.isFinite(parsed)) return String(Math.floor(parsed));
+    }
+  }
+  return fallback;
+}
+
 function cloneNativeConfig(): ChannelConnectorsNativeConfig | null {
   if (!nativeConfig.value) return null;
   return {
@@ -1279,6 +1304,14 @@ function selectBinding(binding: ChannelConnectorPlatformBinding): void {
     metadataAppSecret: metadataString(metadata, ['appSecret', 'app_secret', 'feishuAppSecret', 'feishu_app_secret']),
     metadataVerificationToken: metadataString(metadata, ['verificationToken', 'verification_token', 'feishuVerificationToken', 'feishu_verification_token']),
     metadataChatIdsText: metadataListText(metadata, ['chatIds', 'chat_ids', 'chatId', 'chat_id', 'openChatIds', 'open_chat_ids']),
+    metadataFeishuProgressCardEntryLimit: metadataIntegerText(metadata, [
+      'feishuProgressCardEntryLimit',
+      'feishu_progress_card_entry_limit',
+      'progressCardEntryLimit',
+      'progress_card_entry_limit',
+      'progressEntryLimit',
+      'progress_entry_limit',
+    ]),
     metadataAttachmentMaxBytes: metadataString(metadata, ['attachmentMaxBytes', 'attachment_max_bytes', 'maxAttachmentBytes', 'max_attachment_bytes']),
     metadataAllowPrivateAttachmentUrls: metadataBoolean(metadata, ['allowPrivateAttachmentUrls', 'allow_private_attachment_urls', 'allowOctoPrivateAttachmentUrls', 'allow_octo_private_attachment_urls'], false),
     metadataStageOctoUrlAttachments: metadataBoolean(metadata, ['stageOctoUrlAttachments', 'stage_octo_url_attachments', 'stageUrlAttachments', 'stage_url_attachments'], true),
@@ -1426,6 +1459,26 @@ function setMetadataList(metadata: Record<string, unknown>, key: string, value: 
   else delete metadata[key];
 }
 
+function setMetadataInteger(
+  metadata: Record<string, unknown>,
+  key: string,
+  value: string,
+  minimum: number,
+  maximum: number,
+): void {
+  const normalized = value.trim();
+  if (!normalized) {
+    delete metadata[key];
+    return;
+  }
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) {
+    delete metadata[key];
+    return;
+  }
+  metadata[key] = Math.min(maximum, Math.max(minimum, Math.floor(parsed)));
+}
+
 function metadataFromBindingDraft(): Record<string, unknown> {
   const metadata = cloneMetadata(bindingDraft.value.metadata);
   setMetadataString(metadata, 'apiUrl', bindingDraft.value.metadataApiUrl || defaultApiUrl(bindingDraft.value.platform));
@@ -1456,6 +1509,7 @@ function metadataFromBindingDraft(): Record<string, unknown> {
     setMetadataString(metadata, 'appSecret', bindingDraft.value.metadataAppSecret);
     setMetadataString(metadata, 'verificationToken', bindingDraft.value.metadataVerificationToken);
     setMetadataList(metadata, 'chatIds', bindingDraft.value.metadataChatIdsText);
+    setMetadataInteger(metadata, 'feishuProgressCardEntryLimit', bindingDraft.value.metadataFeishuProgressCardEntryLimit, 1, 30);
     delete metadata.botToken;
     delete metadata.wsUrl;
     delete metadata.stageOctoUrlAttachments;

@@ -70,6 +70,11 @@ test("Channel Connectors page calls only channel connector APIs", () => {
   assert.match(page, /metadataAppSecret/);
   assert.match(page, /metadataVerificationToken/);
   assert.match(page, /metadataChatIdsText/);
+  assert.match(page, /metadataFeishuProgressCardEntryLimit/);
+  assert.match(page, /feishuProgressCardEntryLimit/);
+  assert.match(page, /setMetadataInteger\(metadata,\s*'feishuProgressCardEntryLimit'/);
+  assert.match(page, /min="1"/);
+  assert.match(page, /max="30"/);
   assert.match(page, /runOctoTransportSmoke/);
   assert.match(page, /runFeishuTransportSmoke/);
   assert.match(page, /fetchChannelConnectorAgentSessions/);
