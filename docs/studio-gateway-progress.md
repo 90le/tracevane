@@ -105,6 +105,7 @@
 - 本轮验证通过：`npm run build:api`
 - 本轮验证通过：`npm run typecheck:web`
 - 本轮验证通过：`npm run build:web`
+- 本轮验证通过：`node --test tests/system/studio-web-model-gateway-page.test.mjs`，锁定 Provider Center 图片 smoke UI 合同。
 - 本轮真实 smoke 通过：`/v1/responses` + `gpt-5.4-mini` / `gpt-5.5` 受控三色方块图片识别；`codex exec --image` + `gpt-5.4-mini` 识别同图成功。
 - 本轮真实 runner smoke 通过：Codex / Claude Code / OpenCode + `gpt-5.4-mini` 均识别受控三色方块图片成功；非视觉 `glm-5` 图片请求不传 native 图片并按附件说明退回；视频附件不做 Studio 预抽帧，只以本地文件路径进入 Agent。
 - 本轮 live 验证通过：`node scripts/smoke-channel-connectors-feishu-compact-live.mjs --mode auto --since-minutes 1440 --json`，识别 3 条 Feishu long-connection native auto compact 证据。
