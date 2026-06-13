@@ -58,8 +58,9 @@
   - Feishu 显式 `/compact` live 已验证 OpenCode：`longConnection=true`，`command=compact`，`agent=opencode`，`model=glm-5`，`nativeOk=true`，`progressEventCount=4`。
   - Feishu 入站文件 live 已验证：`messageType=file`、`attachmentCount=1`、本地 staging 文件存在、history 有 `attachmentSummaries`，Claude Code 可读取文件内容并回复。
   - Feishu 权限卡片链路同轮观察通过：文件处理触发 Bash `permission-pending`，用户 `approve-all` 后进入 `permission-allowed-all`，工具结果回到 Agent 流。
-  - 出站文件历史 live 证据仍有效：7 天窗口内 Feishu 与 Octo 均有 `outboundFilesSent=1` 成功 run；最近 24h 没有新的出站文件样本，不能标为本轮当前 live 完成。
-  - 权限审批 live 证据：最近 24h Octo 有 `permission-pending -> allowed` 成功 run；Feishu 最近 24h 没有匹配样本，仍需用户侧重发审批场景复验。
+  - Feishu 出站文件 24h live 已验证：用户触发 `hello-live.txt` 创建和发送，event log 记录 `outboundFilesSent=1`、`permission-pending -> allowed`、工具输出 `live-ok`。
+  - Feishu 权限审批 24h live 已验证：真实链路为 Feishu 进度卡片 `permission-pending/allowed` + 卡片按钮 `channel.command commandAction=permission commandOk=true`；live 脚本已兼容这条真实形态。
+  - Octo 入站文件 24h live 已验证：用户侧文件进入 staging，本地路径存在，Agent 可返回路径；Octo 视频 24h smoke 暂无 `video` 类型样本，继续保留待验收。
   - 图片自动切视觉模型已改为平台 binding 显式 opt-in，默认关闭；开启后若视觉模型链路失败，会回退原模型并以附件说明/本地路径模式继续对话。
   - 排查 Codex 图片识别异常：当前 Feishu 私聊 override 实际为 `/model gpt-5.4-mini`，不是 Claude 4-6；Codex app-server 视觉输入事件之前缺少 args 证据，已补保留。
   - 修复 Codex `exec resume` 图片参数顺序：`--image` / `--json` 等 option 现在固定放在 session id 之前，避免被 CLI 当成 positional prompt。
@@ -93,12 +94,13 @@
 - 本轮验证通过：`node --test --test-name-pattern "mixed content tool output" tests/system/channel-connectors-service.test.mjs`，覆盖 Codex / Claude Code / OpenCode 混合文本块与结构化工具输出。
 - 本轮验证通过：`node --test --test-name-pattern "(structured tool output|mixed content tool output|final text|JSON progress|agent messages before later tools|stream-json progress|text before later tools|DB fallback keeps tool results|persistent Claude driver keeps intermediate)" tests/system/channel-connectors-service.test.mjs`，10/10 通过。
 - 本轮 live 只读验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --require-ok --require-reply --require-tool --require-tool-output --min-runs 1 --limit-runs 5 --json`，最近 24h 匹配 5 条带可见工具输出的成功 IM run。
-- 本轮验证通过：`node --test tests/system/channel-connectors-agent-run-live-script.test.mjs`，7/7 通过，覆盖 `--require-tool-output`、入站图片/视频/文件 staged local path 正反向证据，以及 human 输出只展示匹配 run。
+- 本轮验证通过：`node --test tests/system/channel-connectors-agent-run-live-script.test.mjs`，8/8 通过，覆盖 `--require-tool-output`、入站图片/视频/文件 staged local path、Feishu 卡片审批 command 形态，以及 human 输出只展示匹配 run。
 - 本轮 live 只读验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --require-ok --require-reply --require-inbound-file --require-staged-files --min-runs 1 --limit-runs 3 --json`，匹配 Feishu/Octo 入站文件且 staged 路径存在。
 - 本轮 live 只读验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --require-ok --require-reply --require-inbound-image --require-staged-files --min-runs 1 --limit-runs 3 --json`，匹配 Feishu/Octo 入站图片且 staged 路径存在。
 - 本轮 live 只读验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --require-ok --require-reply --require-inbound-video --require-staged-files --min-runs 1 --limit-runs 3 --json`，匹配 Feishu 入站视频且 staged 路径存在。
-- 本轮 live 只读验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --require-ok --require-permission-prompt --require-permission-resolved --min-runs 1 --limit-runs 3`，匹配 Octo 权限审批通过样本。
-- 本轮 live 只读验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 10080 --require-ok --require-reply --require-file --min-runs 1 --limit-runs 3`，7 天窗口内匹配 Feishu/Octo 出站文件成功样本；24h 窗口无新样本。
+- 本轮 live 只读验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --platforms feishu --require-ok --require-reply --require-file --min-runs 1 --limit-runs 3`，匹配 Feishu 出站文件 24h 成功样本。
+- 本轮 live 只读验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --platforms feishu --require-ok --require-permission-prompt --require-permission-resolved --require-feishu-permission-progress-card --min-runs 1 --limit-runs 3`，匹配 4 条 Feishu 卡片权限审批成功样本。
+- 本轮 live 只读验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --platforms octo --require-ok --require-reply --require-inbound-file --require-staged-files --min-runs 1 --limit-runs 3`，匹配 Octo 入站文件 staged 路径存在样本。
 - 本轮验证通过：`node --test --test-name-pattern "Octo group process replies before final reply|daemon keeps Feishu dispatcher parity diagnostics" tests/system/channel-connectors-service.test.mjs`，2/2 通过。
 - 本轮验证通过：`node --test --test-name-pattern "Codex reasoning summaries|Codex app-server maps reasoning" tests/system/channel-connectors-service.test.mjs`，2/2 通过。
 - 本轮验证通过：`node --test --test-name-pattern "Codex reasoning summaries|Claude Code stream-json progress|OpenCode JSON progress|thinking display toggles" tests/system/channel-connectors-service.test.mjs`，4/4 通过。
@@ -135,7 +137,7 @@
 - Octo/Feishu 群聊和管理能力已有实现继续 best-effort 保留，但新需求默认不继续扩展。
 - 同 session FIFO queue 已有 pending-agent-run store；已入队但未启动的消息会落盘并在 daemon 重启后重放。Octo 重启回归已通过；Feishu 共用 replay 入口，仍需真实 IM 排队重启 live 复验。
 - Claude Code / OpenCode native compact 已覆盖 driver 层、Octo daemon 私聊入口、Feishu native-first wiring、Feishu 真实长连接 auto compact 和 Feishu 显式 `/compact` 三 Agent live smoke。
-- 图片自动切视觉模型默认关闭；需要在平台 binding 打开。非视觉图片 fallback 已有回归；Feishu/Octo 入站文件/图片、Feishu 入站视频 staged live、Octo 权限 24h live 已有证据；出站文件需要新 24h 样本，Feishu 权限和 Octo 视频仍需继续复验。
+- 图片自动切视觉模型默认关闭；需要在平台 binding 打开。非视觉图片 fallback 已有回归；Feishu/Octo 入站文件/图片、Feishu 入站视频、Feishu 出站文件、Feishu/Octo 权限 24h live 已有证据；Octo 视频仍需真实 `video` 类型样本。
 - Provider 模型 vision 能力不会再从模型名推断；Chat-compatible provider 即使模型名像 Claude/GPT，也必须由用户显式配置、上游显式能力元数据或图片 smoke 通过后确认标记。
 - 工具流仍需继续 live 复核：Codex、Claude Code、OpenCode parser 已覆盖结构化 stdout/stderr、混合 content、过程回复、最终回复分类和 live 可见输出证据；下一步重点看真实 CLI 是否还有未覆盖事件形态。
 - 思考流 parser 支持 Codex、Claude Code、OpenCode 原生 thinking/reasoning 事件；Octo 私聊 `/thinking on/off` 已做端到端回归；状态/UI 已区分 parser 支持和 live 输出观测。真实 smoke 证明 OpenCode 会在支持 reasoning 的模型上输出 `reasoning`，Claude Code 2.1.86 当前未输出 `thinking` item；没有原生思考事件的 Agent/模型组合只能标为不支持，不伪造。
@@ -143,6 +145,6 @@
 ## 下一步
 
 1. 继续用真实 Feishu/Octo live 输出复核 Codex、Claude Code、OpenCode 工具流/回复解析，补齐仍未覆盖的 CLI 事件形态。
-2. 做 Feishu/Octo 私聊出站文件 24h 新样本、Feishu 权限审批、Octo 视频和 `/compact` 抽查复验；入站文件/图片、Feishu 入站视频和 Octo 权限已进入 live 验收。
+2. 做 Octo 视频真实样本、Octo 出站文件 24h 新样本和 `/compact` 抽查复验；Feishu 出站文件、Feishu 权限、入站文件/图片、Feishu 入站视频和 Octo 入站文件已进入 live 验收。
 3. 触发真实 Feishu 长连接入站排队 + daemon 重启场景，用 live 证据脚本验收 pending replay。
 4. 后续可选 OpenAI Platform 官方端点 proof。

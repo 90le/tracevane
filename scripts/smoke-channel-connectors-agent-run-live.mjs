@@ -248,7 +248,7 @@ function runKey(event) {
   ].join("\u0000");
 }
 
-function summarizeRun(event, relatedProgress, relatedEvidence, relatedPermissions) {
+function summarizeRun(event, relatedProgress, relatedEvidence, relatedPermissions, relatedCommands = []) {
   const progressTypes = uniqueStrings(relatedProgress.map((item) => String(item.progressType || item.latestProgress?.type || "")).filter(Boolean));
   const rawProgress = relatedProgress.filter((item) => item.eventKind === "agent.progress");
   const transportProgress = relatedProgress.filter((item) => item.eventKind === "agent.progress.reply" || item.eventKind === "agent.progress.card");
@@ -266,16 +266,20 @@ function summarizeRun(event, relatedProgress, relatedEvidence, relatedPermission
   const latestFeishuProgressCard = latestEvent(feishuProgressCards);
   const permissionPromptEvents = relatedPermissions.filter((item) => item.eventKind === "agent.permission.prompt");
   const permissionReplyEvents = relatedPermissions.filter((item) => item.eventKind === "agent.permission.reply");
+  const permissionCommandEvents = relatedCommands.filter((item) => String(item.commandAction || "") === "permission");
+  const permissionApprovedCommandEvents = permissionCommandEvents.filter(isResolvedPermissionCommandEvent);
   const permissionProgressEntries = relatedProgress.filter((item) => {
     return String(item.progressType || item.latestProgress?.type || "") === "permission"
-      || Boolean(item.permissionStatus);
+      || Boolean(item.permissionStatus)
+      || isFeishuPermissionProgressCard(item);
   });
   const feishuPermissionProgressCards = permissionProgressEntries.filter((item) => item.eventKind === "agent.progress.card" && item.adapter === "feishu");
-  const latestPermissionEvent = latestEvent([...relatedPermissions, ...permissionProgressEntries]);
+  const latestPermissionEvent = latestEvent([...relatedPermissions, ...permissionProgressEntries, ...permissionCommandEvents]);
   const permissionStatuses = uniqueStrings([
     ...relatedPermissions,
     ...permissionProgressEntries,
-  ].map((item) => String(item.permissionStatus || "")).filter(Boolean));
+    ...permissionCommandEvents,
+  ].map(permissionStatusFromEvent).filter(Boolean));
   const permissionRequestIds = uniqueStrings([
     ...relatedPermissions,
     ...permissionProgressEntries,
@@ -330,13 +334,17 @@ function summarizeRun(event, relatedProgress, relatedEvidence, relatedPermission
     permissionEventCount: relatedPermissions.length,
     permissionPromptCount: permissionPromptEvents.length,
     permissionReplyCount: permissionReplyEvents.length,
+    permissionCommandCount: permissionCommandEvents.length,
+    permissionApprovalCommandCount: permissionApprovedCommandEvents.length,
     permissionProgressCount: permissionProgressEntries.length,
     feishuPermissionProgressCardCount: feishuPermissionProgressCards.length,
     permissionStatuses,
     permissionRequestIds,
     permissionToolNames,
-    latestPermissionStatus: latestPermissionEvent?.permissionStatus || null,
-    permissionResolved: permissionReplyEvents.some(isResolvedPermissionEvent),
+    latestPermissionStatus: latestPermissionEvent ? permissionStatusFromEvent(latestPermissionEvent) : null,
+    permissionResolved: permissionReplyEvents.some(isResolvedPermissionEvent)
+      || permissionApprovedCommandEvents.length > 0
+      || permissionProgressEntries.some(isResolvedPermissionEvent),
     progressTypes,
     toolProgressCount,
     toolOutputSignalCount: rawToolOutputProgress.length,
@@ -422,7 +430,7 @@ function latestEvent(events) {
 }
 
 function isResolvedPermissionEvent(event) {
-  const status = String(event.permissionStatus || "").toLowerCase();
+  const status = permissionStatusFromEvent(event);
   return status === "allowed"
     || status === "allow"
     || status === "allowed-all"
@@ -435,6 +443,38 @@ function isResolvedPermissionEvent(event) {
     || status === "timeout"
     || status === "expired"
     || status === "failed";
+}
+
+function isResolvedPermissionCommandEvent(event) {
+  if (event.commandOk !== true) return false;
+  const command = String(event.command || "").toLowerCase();
+  return command === "approve"
+    || command === "approve-all"
+    || command === "allow"
+    || command === "allow-all";
+}
+
+function isFeishuPermissionProgressCard(event) {
+  if (event.eventKind !== "agent.progress.card" || event.adapter !== "feishu") return false;
+  const reason = String(event.reason || "").toLowerCase();
+  return reason.includes("permission-");
+}
+
+function permissionStatusFromEvent(event) {
+  const explicit = String(event.permissionStatus || "").trim().toLowerCase();
+  if (explicit) return explicit;
+  const reason = String(event.reason || "").toLowerCase();
+  if (reason.includes("permission-allowed-all")) return "allowed-all";
+  if (reason.includes("permission-allowed")) return "allowed";
+  if (reason.includes("permission-approved")) return "approved";
+  if (reason.includes("permission-pending")) return "pending";
+  if (reason.includes("permission-denied")) return "denied";
+  if (reason.includes("permission-rejected")) return "rejected";
+  if (reason.includes("permission-timed-out")) return "timed-out";
+  if (reason.includes("permission-timeout")) return "timeout";
+  if (reason.includes("permission-failed")) return "failed";
+  if (String(event.commandAction || "") === "permission" && isResolvedPermissionCommandEvent(event)) return "allowed";
+  return "";
 }
 
 function detectMarkdownSignals(text) {
@@ -467,12 +507,16 @@ function loadSummary(options, since) {
       || event.eventKind === "agent.visual.input";
   });
   const permissionEvents = allEvents.filter((event) => event.eventKind === "agent.permission.prompt" || event.eventKind === "agent.permission.reply");
+  const commandEvents = allEvents.filter((event) => event.eventKind === "channel.command" || event.eventKind === "channel.command.reply");
   const progressByRun = new Map();
+  const runKeyByProgressCardMessageId = new Map();
   for (const event of [...progressEvents, ...transportProgressEvents]) {
     const key = runKey(event);
     const bucket = progressByRun.get(key) || [];
     bucket.push(event);
     progressByRun.set(key, bucket);
+    const progressCardMessageId = String(event.progressCardMessageId || "");
+    if (progressCardMessageId) runKeyByProgressCardMessageId.set(progressCardMessageId, key);
   }
   const evidenceByRun = new Map();
   for (const event of evidenceEvents) {
@@ -488,6 +532,13 @@ function loadSummary(options, since) {
     bucket.push(event);
     permissionsByRun.set(key, bucket);
   }
+  const commandsByRun = new Map();
+  for (const event of commandEvents) {
+    const key = runKeyByProgressCardMessageId.get(String(event.messageId || "")) || runKey(event);
+    const bucket = commandsByRun.get(key) || [];
+    bucket.push(event);
+    commandsByRun.set(key, bucket);
+  }
   const runs = allEvents
     .filter((event) => event.eventKind === "agent.run.finished")
     .sort((left, right) => checkedAtMs(right) - checkedAtMs(left))
@@ -496,6 +547,7 @@ function loadSummary(options, since) {
       progressByRun.get(runKey(event)) || [],
       evidenceByRun.get(runKey(event)) || [],
       permissionsByRun.get(runKey(event)) || [],
+      commandsByRun.get(runKey(event)) || [],
     ));
   const matchingRuns = runs.filter((run) => runSatisfies(run, options));
   const requirementViolations = runs.flatMap((run) => strictRunRequirementViolations(run, options));
@@ -540,6 +592,7 @@ function loadSummary(options, since) {
       transportProgressEvents: transportProgressEvents.length,
       evidenceEvents: evidenceEvents.length,
       permissionEvents: permissionEvents.length,
+      commandEvents: commandEvents.length,
       finishedRuns: runs.length,
       matchingRuns: matchingRuns.length,
       requirementViolations: requirementViolations.length,
@@ -576,7 +629,7 @@ function runSatisfies(run, options) {
     if (run.adapter !== "feishu") return false;
     if (run.agentOk === true && run.latestFeishuProgressCardStatus !== "completed") return false;
   }
-  if (options.requirePermissionPrompt && run.permissionPromptCount <= 0) return false;
+  if (options.requirePermissionPrompt && run.permissionPromptCount <= 0 && run.feishuPermissionProgressCardCount <= 0) return false;
   if (options.requirePermissionResolved && run.permissionResolved !== true) return false;
   if (options.requireFeishuPermissionProgressCard) {
     if (run.adapter !== "feishu") return false;
@@ -612,7 +665,11 @@ function strictRunRequirementViolations(run, options) {
       status: run.latestFeishuProgressCardStatus,
     });
   }
-  if (options.requirePermissionResolved && run.permissionPromptCount > 0 && run.permissionResolved !== true) {
+  if (
+    options.requirePermissionResolved
+    && (run.permissionPromptCount > 0 || run.feishuPermissionProgressCardCount > 0 || run.permissionCommandCount > 0)
+    && run.permissionResolved !== true
+  ) {
     violations.push({
       type: "permission-not-resolved",
       adapter: run.adapter,
@@ -620,12 +677,13 @@ function strictRunRequirementViolations(run, options) {
       sessionKey: run.sessionKey,
       messageId: run.messageId,
       statuses: run.permissionStatuses,
+      permissionCommandCount: run.permissionCommandCount,
     });
   }
   if (
     options.requireFeishuPermissionProgressCard
     && run.adapter === "feishu"
-    && run.permissionPromptCount > 0
+    && (run.permissionPromptCount > 0 || run.permissionCommandCount > 0 || run.permissionStatuses.length > 0)
     && run.feishuPermissionProgressCardCount <= 0
   ) {
     violations.push({
@@ -692,6 +750,7 @@ function printHuman(summary, wait) {
       run.permissionPromptCount > 0 ? `permission-prompts=${run.permissionPromptCount}` : "",
       run.permissionStatuses.length > 0 ? `permission-status=${run.permissionStatuses.join(",")}` : "",
       run.feishuPermissionProgressCardCount > 0 ? `permission-card=${run.feishuPermissionProgressCardCount}` : "",
+      run.permissionApprovalCommandCount > 0 ? `permission-approval=${run.permissionApprovalCommandCount}` : "",
       run.finalProgressReplyCount > 0 ? `final-progress-replies=${run.finalProgressReplyCount}` : "",
       run.latestFeishuProgressCardStatus ? `progress-card=${run.latestFeishuProgressCardStatus}` : "",
       run.replyMarkdownLikely === true ? `markdown=${run.markdownSignals.join(",")}` : "",

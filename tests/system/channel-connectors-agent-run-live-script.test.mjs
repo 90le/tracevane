@@ -246,6 +246,55 @@ function writeFixture(root) {
     replyTransportAction: "send-final-card",
     progressEventCount: 1,
   });
+  appendJsonLine(feishuEvents, {
+    checkedAt: "2026-06-08T01:06:00.000Z",
+    eventKind: "agent.progress.card",
+    adapter: "feishu",
+    bindingId: "feishu-card-permission",
+    sessionKey: "feishu:oc_real:ou_real",
+    messageId: "feishu-card-permission-run",
+    progressCardMessageId: "feishu-card-permission-card",
+    progressStatus: "running",
+    reason: "permission-pending",
+    transportAction: "patch-card",
+  });
+  appendJsonLine(feishuEvents, {
+    checkedAt: "2026-06-08T01:06:01.000Z",
+    eventKind: "channel.command",
+    adapter: "feishu",
+    bindingId: "feishu-card-permission",
+    sessionKey: "feishu:oc_real:ou_real",
+    messageId: "feishu-card-permission-card",
+    eventType: "card.action.trigger",
+    command: "approve",
+    commandAction: "permission",
+    commandOk: true,
+  });
+  appendJsonLine(feishuEvents, {
+    checkedAt: "2026-06-08T01:06:02.000Z",
+    eventKind: "agent.progress.card",
+    adapter: "feishu",
+    bindingId: "feishu-card-permission",
+    sessionKey: "feishu:oc_real:ou_real",
+    messageId: "feishu-card-permission-run",
+    progressCardMessageId: "feishu-card-permission-card",
+    progressStatus: "running",
+    reason: "permission-allowed",
+    transportAction: "patch-card",
+  });
+  appendJsonLine(feishuEvents, {
+    checkedAt: "2026-06-08T01:06:03.000Z",
+    eventKind: "agent.run.finished",
+    adapter: "feishu",
+    bindingId: "feishu-card-permission",
+    sessionKey: "feishu:oc_real:ou_real",
+    messageId: "feishu-card-permission-run",
+    channelId: "oc_real",
+    agentStatus: "completed",
+    agentOk: true,
+    replySent: true,
+    progressEventCount: 1,
+  });
   appendJsonLine(octoEvents, {
     checkedAt: "2026-06-08T01:08:00.000Z",
     eventKind: "agent.progress.reply",
@@ -504,6 +553,35 @@ test("agent run live smoke script verifies permission approval evidence", async 
   assert.deepEqual(parsed.matchingRuns[0].permissionStatuses.sort(), ["allowed", "pending"].sort());
   assert.deepEqual(parsed.matchingRuns[0].permissionRequestIds, ["perm-1"]);
   assert.deepEqual(parsed.matchingRuns[0].permissionToolNames, ["Bash"]);
+});
+
+test("agent run live smoke script verifies Feishu card-only permission approval evidence", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
+  const { configPath } = writeFixture(root);
+  const output = await runScript([
+    "--config", configPath,
+    "--since", "2026-06-08T00:00:00.000Z",
+    "--bindings", "feishu-card-permission",
+    "--require-ok",
+    "--require-permission-prompt",
+    "--require-permission-resolved",
+    "--require-feishu-permission-progress-card",
+    "--json",
+  ], root);
+  const parsed = JSON.parse(output.stdout);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.counts.permissionEvents, 0);
+  assert.equal(parsed.counts.commandEvents, 1);
+  assert.equal(parsed.matchingRuns.length, 1);
+  assert.equal(parsed.matchingRuns[0].permissionPromptCount, 0);
+  assert.equal(parsed.matchingRuns[0].permissionReplyCount, 0);
+  assert.equal(parsed.matchingRuns[0].permissionProgressCount, 2);
+  assert.equal(parsed.matchingRuns[0].feishuPermissionProgressCardCount, 2);
+  assert.equal(parsed.matchingRuns[0].permissionCommandCount, 1);
+  assert.equal(parsed.matchingRuns[0].permissionApprovalCommandCount, 1);
+  assert.equal(parsed.matchingRuns[0].permissionResolved, true);
+  assert.equal(parsed.matchingRuns[0].latestPermissionStatus, "allowed");
+  assert.deepEqual(parsed.matchingRuns[0].permissionStatuses.sort(), ["allowed", "pending"].sort());
 });
 
 test("agent run live smoke script fails when required evidence is missing", async () => {

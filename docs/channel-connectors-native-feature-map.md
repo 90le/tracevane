@@ -43,8 +43,8 @@
 - `studio-channel-messages` 已覆盖私聊出站消息声明，Feishu 支持 open_id/user_id/dm markdown，Octo 支持 human DM 和 best-effort group/thread。
 - Feishu 入站文件 live 已验证：长连接文件消息进入本地 staging、history 附件摘要和 Agent CLI 文件读取链路。
 - Live 附件验收脚本已支持 `--require-inbound-image`、`--require-inbound-video`、`--require-staged-files`；Feishu/Octo 入站文件、Feishu/Octo 入站图片和 Feishu 入站视频均已有 staged 路径存在证据。
-- 出站文件有 Feishu/Octo 7 天窗口历史 live 成功证据；最近 24h 没有新出站文件样本，仍需触发当前样本后再标本轮完成。
-- Octo 权限审批有 24h live 成功证据；Feishu 权限审批最近 24h 无匹配样本，仍需用户侧重发场景。
+- Feishu 出站文件有 24h live 成功证据；Octo 出站文件仍只有 7 天窗口历史样本，需要当前样本复验。
+- Feishu 权限审批和 Octo 权限审批均有 24h live 成功证据；Feishu 真实链路为进度卡片 `permission-pending/allowed` 加卡片按钮 `channel.command commandAction=permission commandOk=true`。
 - 图片附件可 staging；非视觉模型默认收到附件说明/本地路径，不做视觉推断。自动视觉模型默认关闭，平台 binding 可配置启用和默认 fallback 模型；IM 会话可用 `/vision` 菜单/命令临时开启、关闭或指定视觉模型，切换失败会回退原模型的附件说明模式。
 - Gateway Responses -> Chat-compatible provider 已保留 `input_image` 为 Chat `image_url`；`gpt-5.4-mini` / `gpt-5.5` 受控图片 smoke 和 `codex exec --image` + `gpt-5.4-mini` 已通过。
 - Provider Center 不再按 `gpt-*`、`claude-*` 等模型名自动标记 vision；图片能力只来自用户配置、上游显式能力元数据或图片 smoke 通过后用户确认写回。
@@ -80,5 +80,5 @@
 ## 下一步
 
 1. 工具流和回复解析：继续复核真实 Claude/Codex/OpenCode live 差异；工具流 live smoke 默认检查 `--require-tool-output`，补齐未覆盖的 CLI 事件形态。
-2. Feishu/Octo 私聊 live smoke：继续出站文件 24h 新样本、Feishu 权限审批、Octo 视频和 compact 抽查；入站文件/图片、Feishu 入站视频和 Octo 权限已进入 live 验收。
+2. Feishu/Octo 私聊 live smoke：继续 Octo 出站文件 24h 新样本、Octo 视频和 compact 抽查；Feishu 出站文件、Feishu/Octo 权限、入站文件/图片和 Feishu 入站视频已进入 live 验收。
 3. durable queue：触发一次真实 Feishu 长连接入站排队 + daemon 重启场景，用 `scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs` 验证 pending replay。
