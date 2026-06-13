@@ -8,6 +8,8 @@ const DEFAULT_CONFIG_PATH = path.join(os.homedir(), ".config/openclaw-studio/cha
 const DEFAULT_TIMEOUT_MS = 180_000;
 const DEFAULT_POLL_MS = 1_000;
 const DEFAULT_SINCE_MINUTES = 30;
+const STOP_CANCEL_BEFORE_MS = 30_000;
+const STOP_CANCEL_AFTER_MS = 120_000;
 
 function parseArgs(argv) {
   const options = {
@@ -41,6 +43,7 @@ function parseArgs(argv) {
     requirePermissionPrompt: false,
     requirePermissionResolved: false,
     requireFeishuPermissionProgressCard: false,
+    requireStopCommand: false,
     json: false,
   };
 
@@ -68,6 +71,7 @@ function parseArgs(argv) {
     else if (arg === "--require-permission-prompt") options.requirePermissionPrompt = true;
     else if (arg === "--require-permission-resolved") options.requirePermissionResolved = true;
     else if (arg === "--require-feishu-permission-progress-card") options.requireFeishuPermissionProgressCard = true;
+    else if (arg === "--require-stop-command" || arg === "--require-stop") options.requireStopCommand = true;
     else if (arg === "--config") options.configPath = requireValue(argv, ++index, arg);
     else if (arg.startsWith("--config=")) options.configPath = arg.slice("--config=".length);
     else if (arg === "--since") options.since = requireValue(argv, ++index, arg);
@@ -139,6 +143,7 @@ Options:
                             Require a resolved agent.permission.reply event.
   --require-feishu-permission-progress-card
                             Require Feishu permission state to be represented in progress card logs.
+  --require-stop-command   Require a successful /stop command and a nearby same-session cancelled Agent run.
   --config <path>           Daemon config path. Default: ${DEFAULT_CONFIG_PATH}
   --timeout-ms <n>          Wait deadline. Default: ${DEFAULT_TIMEOUT_MS}
   --poll-ms <n>             Poll interval. Default: ${DEFAULT_POLL_MS}
@@ -408,6 +413,41 @@ function summarizeRun(event, relatedProgress, relatedEvidence, relatedPermission
   };
 }
 
+function summarizeStopProof(commandEvent, finishedRunEvents) {
+  const commandMs = checkedAtMs(commandEvent);
+  const candidates = finishedRunEvents
+    .filter((runEvent) => {
+      if (!sameChannelSession(commandEvent, runEvent)) return false;
+      if (!isCancelledOrInterruptedRun(runEvent)) return false;
+      const runMs = finishedAtMs(runEvent);
+      return runMs >= commandMs - STOP_CANCEL_BEFORE_MS && runMs <= commandMs + STOP_CANCEL_AFTER_MS;
+    })
+    .sort((left, right) => Math.abs(finishedAtMs(left) - commandMs) - Math.abs(finishedAtMs(right) - commandMs));
+  const stoppedRun = candidates[0] || null;
+  const stoppedRunMs = stoppedRun ? finishedAtMs(stoppedRun) : 0;
+  return {
+    checkedAt: commandEvent.checkedAt || null,
+    adapter: commandEvent.adapter || null,
+    bindingId: commandEvent.bindingId || null,
+    sessionKey: commandEvent.sessionKey || null,
+    channelId: commandEvent.channelId || null,
+    commandMessageId: commandEvent.messageId || null,
+    command: commandEvent.command || null,
+    commandAction: commandEvent.commandAction || null,
+    commandOk: commandEvent.commandOk ?? null,
+    replySent: commandEvent.replySent ?? null,
+    replyRequestCount: numberValue(commandEvent.replyRequestCount),
+    commandElapsedMs: numberValue(commandEvent.commandElapsedMs),
+    cancelledRunFound: Boolean(stoppedRun),
+    stoppedMessageId: stoppedRun?.messageId || null,
+    stoppedCheckedAt: stoppedRun?.checkedAt || null,
+    stoppedFinishedAt: stoppedRun?.finishedAt || stoppedRun?.checkedAt || null,
+    stoppedAgentStatus: stoppedRun?.agentStatus || stoppedRun?.status || null,
+    stoppedAgentError: stoppedRun?.agentError || stoppedRun?.error || null,
+    deltaMs: stoppedRun ? stoppedRunMs - commandMs : null,
+  };
+}
+
 function numberValue(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
@@ -495,6 +535,28 @@ function permissionStatusFromEvent(event) {
   return "";
 }
 
+function isStopCommandEvent(event) {
+  const command = String(event.command || "").trim().replace(/^[/%]+/, "").toLowerCase();
+  return String(event.commandAction || "").toLowerCase() === "stop" || command === "stop";
+}
+
+function sameChannelSession(left, right) {
+  return String(left.adapter || "") === String(right.adapter || "")
+    && String(left.bindingId || "") === String(right.bindingId || "")
+    && String(left.sessionKey || "") === String(right.sessionKey || "");
+}
+
+function finishedAtMs(event) {
+  const parsed = Date.parse(event.finishedAt || event.checkedAt || "");
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isCancelledOrInterruptedRun(event) {
+  const status = String(event.agentStatus || event.status || "").toLowerCase();
+  const error = String(event.agentError || event.error || event.latestProgress?.text || "").toLowerCase();
+  return status.includes("cancel") || error.includes("cancel") || error.includes("interrupt");
+}
+
 function detectMarkdownSignals(text) {
   const signals = [];
   if (!text) return signals;
@@ -526,6 +588,9 @@ function loadSummary(options, since) {
   });
   const permissionEvents = allEvents.filter((event) => event.eventKind === "agent.permission.prompt" || event.eventKind === "agent.permission.reply");
   const commandEvents = allEvents.filter((event) => event.eventKind === "channel.command" || event.eventKind === "channel.command.reply");
+  const finishedRunEvents = allEvents
+    .filter((event) => event.eventKind === "agent.run.finished")
+    .sort((left, right) => checkedAtMs(right) - checkedAtMs(left));
   const progressByRun = new Map();
   const runKeyByProgressCardMessageId = new Map();
   for (const event of [...progressEvents, ...transportProgressEvents]) {
@@ -557,9 +622,7 @@ function loadSummary(options, since) {
     bucket.push(event);
     commandsByRun.set(key, bucket);
   }
-  const runs = allEvents
-    .filter((event) => event.eventKind === "agent.run.finished")
-    .sort((left, right) => checkedAtMs(right) - checkedAtMs(left))
+  const runs = finishedRunEvents
     .map((event) => summarizeRun(
       event,
       progressByRun.get(runKey(event)) || [],
@@ -567,12 +630,23 @@ function loadSummary(options, since) {
       permissionsByRun.get(runKey(event)) || [],
       commandsByRun.get(runKey(event)) || [],
     ));
-  const matchingRuns = runs.filter((run) => runSatisfies(run, options));
-  const requirementViolations = runs.flatMap((run) => strictRunRequirementViolations(run, options));
-  const displayedRuns = options.limitRuns === 0 ? [] : runs.slice(0, options.limitRuns);
+  const stopProofs = commandEvents
+    .filter(isStopCommandEvent)
+    .sort((left, right) => checkedAtMs(right) - checkedAtMs(left))
+    .map((event) => summarizeStopProof(event, finishedRunEvents));
+  const matchingStopProofs = stopProofs.filter((proof) => proof.commandOk === true && proof.cancelledRunFound === true);
+  const matchingRuns = options.requireStopCommand ? [] : runs.filter((run) => runSatisfies(run, options));
+  const requirementViolations = [
+    ...runs.flatMap((run) => strictRunRequirementViolations(run, options)),
+    ...stopRequirementViolations(stopProofs, options),
+  ];
+  const displayedRuns = options.limitRuns === 0 || options.requireStopCommand ? [] : runs.slice(0, options.limitRuns);
   const displayedMatchingRuns = options.limitRuns === 0 ? [] : matchingRuns.slice(0, options.limitRuns);
+  const displayedStopProofs = options.limitRuns === 0 ? [] : stopProofs.slice(0, options.limitRuns);
+  const displayedMatchingStopProofs = options.limitRuns === 0 ? [] : matchingStopProofs.slice(0, options.limitRuns);
+  const requirementCount = options.requireStopCommand ? matchingStopProofs.length : matchingRuns.length;
   return {
-    ok: matchingRuns.length >= options.minRuns && requirementViolations.length === 0,
+    ok: requirementCount >= options.minRuns && requirementViolations.length === 0,
     checkedAt: new Date().toISOString(),
     since: since.toISOString(),
     configPath: options.configPath,
@@ -599,6 +673,7 @@ function loadSummary(options, since) {
       requirePermissionPrompt: options.requirePermissionPrompt,
       requirePermissionResolved: options.requirePermissionResolved,
       requireFeishuPermissionProgressCard: options.requireFeishuPermissionProgressCard,
+      requireStopCommand: options.requireStopCommand,
     },
     filters: {
       bindings: options.bindings,
@@ -611,6 +686,8 @@ function loadSummary(options, since) {
       evidenceEvents: evidenceEvents.length,
       permissionEvents: permissionEvents.length,
       commandEvents: commandEvents.length,
+      stopCommands: stopProofs.length,
+      matchingStopProofs: matchingStopProofs.length,
       finishedRuns: runs.length,
       matchingRuns: matchingRuns.length,
       requirementViolations: requirementViolations.length,
@@ -620,6 +697,8 @@ function loadSummary(options, since) {
     requirementViolations,
     runs: displayedRuns,
     matchingRuns: displayedMatchingRuns,
+    stopProofs: displayedStopProofs,
+    matchingStopProofs: displayedMatchingStopProofs,
   };
 }
 
@@ -736,6 +815,20 @@ function strictRunRequirementViolations(run, options) {
   return violations;
 }
 
+function stopRequirementViolations(stopProofs, options) {
+  if (!options.requireStopCommand) return [];
+  if (stopProofs.some((proof) => proof.commandOk === true && proof.cancelledRunFound === true)) return [];
+  return stopProofs.slice(0, 3).map((proof) => ({
+    type: proof.commandOk === true ? "stop-cancelled-run-missing" : "stop-command-not-ok",
+    adapter: proof.adapter,
+    bindingId: proof.bindingId,
+    sessionKey: proof.sessionKey,
+    commandMessageId: proof.commandMessageId,
+    commandOk: proof.commandOk,
+    cancelledRunFound: proof.cancelledRunFound,
+  }));
+}
+
 async function waitForSummary(options, since) {
   const deadline = Date.now() + options.timeoutMs;
   let latest = loadSummary(options, since);
@@ -749,7 +842,23 @@ async function waitForSummary(options, since) {
 
 function printHuman(summary, wait) {
   console.log(`Channel Agent run smoke ${summary.ok ? "passed" : "not satisfied"} since ${summary.since}`);
-  console.log(`events=${summary.counts.events} progress=${summary.counts.progressEvents} runs=${summary.counts.finishedRuns} matching=${summary.counts.matchingRuns}/${summary.requirements.minRuns} violations=${summary.counts.requirementViolations}`);
+  const matchingCount = summary.requirements.requireStopCommand ? summary.counts.matchingStopProofs : summary.counts.matchingRuns;
+  console.log(`events=${summary.counts.events} progress=${summary.counts.progressEvents} runs=${summary.counts.finishedRuns} matching=${matchingCount}/${summary.requirements.minRuns} stop=${summary.counts.matchingStopProofs}/${summary.counts.stopCommands} violations=${summary.counts.requirementViolations}`);
+  if (summary.requirements.requireStopCommand) {
+    const displayedStopProofs = summary.matchingStopProofs.length > 0 ? summary.matchingStopProofs : summary.stopProofs;
+    for (const proof of displayedStopProofs.slice(0, 8)) {
+      const marks = [
+        proof.commandOk === true ? "command-ok" : "command-failed",
+        proof.cancelledRunFound === true ? "cancelled-run" : "no-cancelled-run",
+        proof.deltaMs !== null ? `delta=${proof.deltaMs}ms` : "",
+      ].filter(Boolean).join(" ");
+      console.log(`- ${proof.adapter}/${proof.bindingId} stop=${proof.commandMessageId} run=${proof.stoppedMessageId || "-"} ${marks}`);
+    }
+    if (wait && !summary.ok) {
+      console.log("Timed out before requirements were satisfied.");
+    }
+    return;
+  }
   const displayedRuns = summary.matchingRuns.length > 0 ? summary.matchingRuns : summary.runs;
   for (const run of displayedRuns.slice(0, 8)) {
     const marks = [

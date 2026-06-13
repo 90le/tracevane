@@ -404,6 +404,46 @@ function writeFixture(root) {
     attachmentKinds: ["file"],
     content: "[file: clip.mp4]",
   });
+  appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:08:59.900Z",
+    eventKind: "agent.progress",
+    adapter: "octo",
+    bindingId: "octo-stop-live",
+    sessionKey: "dmwork:dm:user-stop",
+    messageId: "octo-message-stopped-run",
+    progressType: "failed",
+    rawType: "turn/completed",
+    text: "Codex app-server turn interrupted",
+  });
+  appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:09:00.000Z",
+    eventKind: "channel.command",
+    adapter: "octo",
+    bindingId: "octo-stop-live",
+    sessionKey: "dmwork:dm:user-stop",
+    messageId: "octo-message-stop-command",
+    channelId: "dm:user-stop",
+    command: "stop",
+    commandAction: "stop",
+    commandOk: true,
+    replySent: true,
+    replyRequestCount: 1,
+  });
+  appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:09:00.120Z",
+    eventKind: "agent.run.finished",
+    adapter: "octo",
+    bindingId: "octo-stop-live",
+    sessionKey: "dmwork:dm:user-stop",
+    messageId: "octo-message-stopped-run",
+    channelId: "dm:user-stop",
+    agentStatus: "cancelled",
+    agentOk: false,
+    agentError: "Codex app-server turn interrupted.",
+    replySent: true,
+    progressEventCount: 1,
+    finishedAt: "2026-06-08T01:09:00.120Z",
+  });
   appendJsonLine(feishuEvents, {
     checkedAt: "2026-06-08T01:09:00.000Z",
     eventKind: "agent.progress.card",
@@ -535,6 +575,28 @@ test("agent run live smoke script treats Octo video-like files as inbound video 
   assert.equal(parsed.matchingRuns[0].visualAttachmentCount, 0);
   assert.equal(parsed.matchingRuns[0].stagedLocalPathCount, 1);
   assert.equal(parsed.matchingRuns[0].stagedLocalPathExistingCount, 1);
+});
+
+test("agent run live smoke script verifies stop command evidence by session and time", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
+  const { configPath } = writeFixture(root);
+  const output = await runScript([
+    "--config", configPath,
+    "--since", "2026-06-08T00:00:00.000Z",
+    "--bindings", "octo-stop-live",
+    "--require-stop-command",
+    "--json",
+  ], root);
+  const parsed = JSON.parse(output.stdout);
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.counts.stopCommands, 1);
+  assert.equal(parsed.counts.matchingStopProofs, 1);
+  assert.equal(parsed.matchingStopProofs.length, 1);
+  assert.equal(parsed.matchingStopProofs[0].commandMessageId, "octo-message-stop-command");
+  assert.equal(parsed.matchingStopProofs[0].stoppedMessageId, "octo-message-stopped-run");
+  assert.equal(parsed.matchingStopProofs[0].commandOk, true);
+  assert.equal(parsed.matchingStopProofs[0].cancelledRunFound, true);
+  assert.equal(parsed.matchingStopProofs[0].deltaMs, 120);
 });
 
 test("agent run live smoke human output prints matching attachment runs", async () => {
