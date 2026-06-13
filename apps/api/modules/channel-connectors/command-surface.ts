@@ -557,11 +557,11 @@ export function buildChannelConnectorCommandSurface(
         action("status", "状态", "/status"),
         action("whoami", "Whoami", "/whoami"),
         action("version", "版本", "/version"),
-        action("usage", "Usage", "/usage"),
+        action("usage", "用量", "/usage"),
         action("current", "当前会话", "/current", { actionKind: "nav" }),
         action("sessions", "续接列表", "/list", { actionKind: "nav" }),
         action("history", "历史", "/history", { actionKind: "nav" }),
-        action("compact", "智能压缩", "/compact", {
+        action("compact", "压缩上下文", "/compact", {
           tone: "primary",
           requiresAdmin: true,
           description: "有 live persistent Agent session 时原生优先；否则 Gateway 兜底",
@@ -2005,11 +2005,11 @@ function renderCommandsCard(surface: ChannelConnectorCommandSurface): ChannelCon
 function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
   const section = sectionById(surface, "session");
   const actions = section?.actions || [];
-  const usage = actions.find((item) => item.id === "usage") || action("usage", "Usage", "/usage");
+  const usage = actions.find((item) => item.id === "usage") || action("usage", "用量", "/usage");
   const current = actions.find((item) => item.id === "current") || action("current", "当前会话", "/current", { actionKind: "nav" });
   const sessions = actions.find((item) => item.id === "sessions") || action("sessions", "续接列表", "/list", { actionKind: "nav" });
   const history = actions.find((item) => item.id === "history") || action("history", "历史", "/history", { actionKind: "nav" });
-  const compact = actions.find((item) => item.id === "compact") || action("compact", "智能压缩", "/compact", { tone: "primary", requiresAdmin: true });
+  const compact = actions.find((item) => item.id === "compact") || action("compact", "压缩上下文", "/compact", { tone: "primary", requiresAdmin: true });
   const stop = actions.find((item) => item.id === "stop") || action("stop", "停止运行", "/stop", { tone: "danger", requiresAdmin: true });
   const fresh = actions.find((item) => item.id === "new") || action("new", "新会话", "/new", { tone: "primary", requiresAdmin: true });
   const reset = actions.find((item) => item.id === "reset") || action("reset", "重置会话", "/reset", { tone: "danger", requiresAdmin: true });
@@ -2028,8 +2028,8 @@ function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConn
   pushActionRows(elements, [history, usage], surface, 2, true);
   elements.push({ tag: "hr" });
   elements.push({ tag: "markdown", content: "**控制**" });
-  pushActionRows(elements, [compact, stop], surface, 2, true);
-  pushActionRows(elements, [fresh, reset], surface, 2, true);
+  pushActionRows(elements, [fresh, compact], surface, 2, true);
+  pushActionRows(elements, [stop, reset], surface, 2, true);
   pushSubcardNavRows(elements, surface, "session");
   return {
     config: {
@@ -2080,7 +2080,7 @@ function renderCurrentSessionCard(surface: ChannelConnectorCommandSurface): Chan
     action("status", "刷新状态", "/status"),
     action("sessions", "续接列表", "/list", { actionKind: "nav" }),
     action("history", "查看历史", "/history", { actionKind: "nav" }),
-    action("usage", "Usage", "/usage"),
+    action("usage", "用量", "/usage"),
   ], surface, 1);
   pushSubcardNavRows(elements, surface, "session");
   return {
@@ -2157,7 +2157,7 @@ function renderSessionListCard(surface: ChannelConnectorCommandSurface): Channel
   pushActionRows(elements, [
     action("current", "当前会话", "/current", { actionKind: "nav" }),
     action("history", "历史", "/history", { actionKind: "nav" }),
-    action("usage", "Usage", "/usage"),
+    action("usage", "用量", "/usage"),
   ], surface, 2, true);
   pushSubcardNavRows(elements, surface, "session");
   elements.push({
@@ -2201,7 +2201,7 @@ function renderHistoryCard(surface: ChannelConnectorCommandSurface): ChannelConn
   pushActionRows(elements, [
     action("current", "当前会话", "/current", { actionKind: "nav" }),
     action("sessions", "续接列表", "/list", { actionKind: "nav" }),
-    action("compact", "智能压缩", "/compact", {
+    action("compact", "压缩上下文", "/compact", {
       tone: "primary",
       requiresAdmin: true,
       description: "原生优先；否则摘要本 IM history",
@@ -2242,7 +2242,7 @@ function renderMoreMenuCard(surface: ChannelConnectorCommandSurface): ChannelCon
     action("current", "当前会话", "/current", { actionKind: "nav" }),
     action("sessions", "续接列表", "/list", { actionKind: "nav" }),
     action("history", "历史", "/history", { actionKind: "nav" }),
-    action("usage", "Usage", "/usage"),
+    action("usage", "用量", "/usage"),
   ], surface, 2, true);
   pushActionRows(elements, [homeMenuAction()], surface, 1, true);
   elements.push({

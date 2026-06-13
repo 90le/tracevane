@@ -8829,9 +8829,15 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(sessionCardRaw, /nav:\/list/);
   assert.match(sessionCardRaw, /nav:\/history/);
   assert.match(sessionCardRaw, /act:\/usage/);
+  assert.match(sessionCardRaw, /用量/);
+  assert.match(sessionCardRaw, /压缩上下文/);
+  assert.doesNotMatch(sessionCardRaw, /Usage/);
+  assert.doesNotMatch(sessionCardRaw, /智能压缩/);
   assert.match(sessionCardRaw, /act:\/stop/);
   assert.match(sessionCardRaw, /act:\/new/);
   assert.match(sessionCardRaw, /act:\/reset/);
+  assert.ok(sessionCardRaw.indexOf("act:/new") < sessionCardRaw.indexOf("act:/stop"));
+  assert.ok(sessionCardRaw.indexOf("act:/compact") < sessionCardRaw.indexOf("act:/reset"));
   assert.match(sessionCardRaw, /常用查看和会话控制/);
   assert.match(sessionCardRaw, /低频诊断可直接发送 \/whoami 或 \/version/);
   assert.doesNotMatch(sessionCardRaw, /act:\/status/);
