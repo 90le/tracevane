@@ -62,6 +62,7 @@
 - Codex 结构化命令输出已保留嵌套或直接 `stdout` / `stderr`，避免命令执行结果被压成单行或空结果。
 - Codex、Claude Code、OpenCode 混合 content 工具结果已加固：普通文本块与结构化 `stdout` / `stderr` / `exit_code` 会同时保留。
 - `smoke-channel-connectors-agent-run-live.mjs` 已新增 `--agents`、`--require-agent-coverage`、`--require-tool-output` 和 `--require-process-reply`，真实 IM smoke 可按 Agent 验证工具结果和过程回复，不再只看聚合样本。
+- `smoke-channel-connectors-agent-runner-direct.mjs` 已新增，用于真实 CLI runner/parser 分层验证；三 Agent direct smoke 已证明过程回复、工具输出和最终回复分类正常。
 - Codex one-shot 与 app-server 已按 CC Go 合同提取 reasoning `summary` / `summary_text` / `content`，空 reasoning 不再显示假思考。
 - Claude Code one-shot 与 persistent driver 已保留结构化 `tool_result` 的 `stdout`、`stderr` 和 `exit_code`。
 - 非飞书气泡式进度流的 assistant 过程回复已改为正文直出，不再携带“过程回复”标题。

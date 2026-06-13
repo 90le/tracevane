@@ -45,6 +45,7 @@
     "smoke:model-gateway:live:strict": "npm run build:api && node scripts/smoke-model-gateway-live.mjs --strict",
     "smoke:channel-connectors:persistent-live": "npm run build:api && node scripts/smoke-channel-connectors-persistent-live.mjs",
     "smoke:channel-connectors:agent-sessions": "node scripts/smoke-channel-connectors-agent-sessions.mjs",
+    "smoke:channel-connectors:agent-runner-direct": "npm run build:api && node scripts/smoke-channel-connectors-agent-runner-direct.mjs",
     "smoke:channel-connectors:native-cli-sessions": "npm run build:api && node scripts/smoke-channel-connectors-native-cli-sessions.mjs",
     "smoke:channel-connectors:native-cli-sessions:strict": "npm run build:api && node scripts/smoke-channel-connectors-native-cli-sessions.mjs --strict",
     "smoke:channel-connectors:feishu-long-connection": "node scripts/smoke-channel-connectors-feishu-long-connection.mjs",
