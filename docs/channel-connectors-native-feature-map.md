@@ -41,6 +41,7 @@
 - Octo 长连接按 CC/OpenClaw heartbeat、ACK、reconnect、read receipt 和 COS/STS 文件上传策略推进；2026-06-12 用户 live 验证稳定。
 - `studio-channel-files` 已覆盖出站文件声明、路径校验、原始文件名、Feishu/Octo 上传和发送。
 - `studio-channel-messages` 已覆盖私聊出站消息声明，Feishu 支持 open_id/user_id/dm markdown，Octo 支持 human DM 和 best-effort group/thread。
+- 私聊文件/消息收发核心已完成：入站 staging、出站 manifest、原始文件名、Feishu/Octo 文件/图片上传发送、Octo COS/STS 大文件路径和 multipart fallback 均有回归；后续只抽查真实平台限制。
 - Feishu 入站文件 live 已验证：长连接文件消息进入本地 staging、history 附件摘要和 Agent CLI 文件读取链路。
 - Live 附件验收脚本已支持 `--require-inbound-image`、`--require-inbound-video`、`--require-staged-files`；Feishu/Octo 入站文件、Feishu/Octo 入站图片、Feishu 入站视频和 Octo `.mp4` 文件形态视频均已有 staged 路径存在证据。
 - Feishu/Octo 出站文件均有 24h live 成功证据；Octo 已捕获自动 `outboundFilesSent=1` 事件样本。
