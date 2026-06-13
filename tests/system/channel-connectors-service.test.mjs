@@ -8801,10 +8801,13 @@ test("native Channel Connectors command surface renders text and Feishu card act
   const moreRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(moreSurface));
   assert.match(moreRaw, /更多/);
   assert.match(moreRaw, /低频查看、排查和扩展命令/);
-  assert.match(moreRaw, /nav:\/help session/);
-  assert.match(moreRaw, /nav:\/help commands/);
-  assert.match(moreRaw, /nav:\/help buffer/);
+  assert.match(moreRaw, /nav:\/status/);
+  assert.match(moreRaw, /nav:\/commands/);
+  assert.match(moreRaw, /nav:\/buffer/);
   assert.match(moreRaw, /nav:\/help native/);
+  assert.doesNotMatch(moreRaw, /nav:\/help session/);
+  assert.doesNotMatch(moreRaw, /nav:\/help commands/);
+  assert.doesNotMatch(moreRaw, /nav:\/help buffer/);
   assert.match(moreRaw, /nav:\/current/);
   assert.match(moreRaw, /nav:\/list/);
   assert.match(moreRaw, /nav:\/history/);
@@ -8833,7 +8836,9 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(sessionCardRaw, /act:\/reset/);
   assert.match(sessionCardRaw, /查看当前状态、续接列表、history 和 usage/);
   assert.doesNotMatch(sessionCardRaw, /Status 查看当前 IM session/);
-  assert.match(sessionCardRaw, /nav:\/help session/);
+  assert.match(sessionCardRaw, /nav:\/help more/);
+  assert.match(sessionCardRaw, /"action":"nav:\/help"/);
+  assert.doesNotMatch(sessionCardRaw, /nav:\/help session/);
 
   const currentSurface = buildChannelConnectorCommandSurface({
     config: runtimeConfig,
@@ -8916,7 +8921,9 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(agentCardRaw, /Agent 选择/);
   assert.match(agentCardRaw, /select_static/);
   assert.match(agentCardRaw, /act:\/agent claude-main/);
-  assert.match(agentCardRaw, /nav:\/help agent/);
+  assert.match(agentCardRaw, /nav:\/help more/);
+  assert.match(agentCardRaw, /"action":"nav:\/help"/);
+  assert.doesNotMatch(agentCardRaw, /nav:\/help agent/);
 
   const workdirPickerSurface = buildChannelConnectorCommandSurface({
     config: runtimeConfig,
@@ -8951,7 +8958,9 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(workdirCardRaw, /act:\/dir 1/);
   assert.ok(workdirCardRaw.includes(`act:/cd ${path.join(codexProject.workDir, "src")}`));
   assert.match(workdirCardRaw, /act:\/cd default/);
-  assert.match(workdirCardRaw, /nav:\/help workdir/);
+  assert.match(workdirCardRaw, /nav:\/help more/);
+  assert.match(workdirCardRaw, /"action":"nav:\/help"/);
+  assert.doesNotMatch(workdirCardRaw, /nav:\/help workdir/);
 
   const commandsSurface = buildChannelConnectorCommandSurface({
     config: runtimeConfig,
@@ -8984,7 +8993,9 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(commandsCardRaw, /Skills 列表/);
   assert.match(commandsCardRaw, /\/commands add <名称> <prompt 模板>/);
   assert.match(commandsCardRaw, /\/commands addexec \[--work-dir <目录>\] <名称> <shell 命令>/);
-  assert.match(commandsCardRaw, /nav:\/help commands/);
+  assert.match(commandsCardRaw, /nav:\/help more/);
+  assert.match(commandsCardRaw, /"action":"nav:\/help"/);
+  assert.doesNotMatch(commandsCardRaw, /nav:\/help commands/);
 
   const modelSurface = buildChannelConnectorCommandSurface({
     config: runtimeConfig,
@@ -9020,8 +9031,9 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(modelCardRaw, /select_static/);
   assert.match(modelCardRaw, /act:\/model gpt-5\.5/);
   assert.match(modelCardRaw, /Profile 默认模型/);
-  assert.match(modelCardRaw, /nav:\/help model/);
+  assert.match(modelCardRaw, /nav:\/help more/);
   assert.match(modelCardRaw, /"action":"nav:\/help"/);
+  assert.doesNotMatch(modelCardRaw, /nav:\/help model/);
   assert.match(modelCardRaw, /initial_option/);
   assert.doesNotMatch(modelCardRaw, /\/mode yolo/);
 
@@ -9045,7 +9057,9 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(visionCardRaw, /act:\/vision model auto/);
   assert.match(visionCardRaw, /act:\/vision model gpt-5\.5/);
   assert.match(visionCardRaw, /act:\/vision default/);
-  assert.match(visionCardRaw, /nav:\/help vision/);
+  assert.match(visionCardRaw, /nav:\/help more/);
+  assert.match(visionCardRaw, /"action":"nav:\/help"/);
+  assert.doesNotMatch(visionCardRaw, /nav:\/help vision/);
 
   const modePickerSurface = buildChannelConnectorCommandSurface({
     config: runtimeConfig,
@@ -9061,7 +9075,9 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(modeCardRaw, /act:\/mode yolo/);
   assert.match(modeCardRaw, /act:\/reasoning xhigh/);
   assert.match(modeCardRaw, /选择推理强度/);
-  assert.match(modeCardRaw, /nav:\/help mode/);
+  assert.match(modeCardRaw, /nav:\/help more/);
+  assert.match(modeCardRaw, /"action":"nav:\/help"/);
+  assert.doesNotMatch(modeCardRaw, /nav:\/help mode/);
 
   const displaySurface = buildChannelConnectorCommandSurface({
     config: runtimeConfig,
@@ -9082,7 +9098,9 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.doesNotMatch(displayCardRaw, /act:\/process on/);
   assert.doesNotMatch(displayCardRaw, /act:\/tools on/);
   assert.match(displayCardRaw, /act:\/display default/);
-  assert.match(displayCardRaw, /nav:\/help display/);
+  assert.match(displayCardRaw, /nav:\/help more/);
+  assert.match(displayCardRaw, /"action":"nav:\/help"/);
+  assert.doesNotMatch(displayCardRaw, /nav:\/help display/);
 
   const groupDisplaySurface = buildChannelConnectorCommandSurface({
     config: runtimeConfig,
@@ -9125,7 +9143,9 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(bufferCardRaw, /长回复缓存/);
   assert.match(bufferCardRaw, /act:\/buffer/);
   assert.match(bufferCardRaw, /act:\/buffer latest/);
-  assert.match(bufferCardRaw, /nav:\/help buffer/);
+  assert.match(bufferCardRaw, /nav:\/help more/);
+  assert.match(bufferCardRaw, /"action":"nav:\/help"/);
+  assert.doesNotMatch(bufferCardRaw, /nav:\/help buffer/);
 
   const claudeThinkingSurface = buildChannelConnectorCommandSurface({
     config: runtimeConfig,
@@ -13520,7 +13540,9 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     assert.equal(moreSurface.status, 200);
     assert.equal(moreSurface.body.surface.selectedViewId, "more");
     assert.match(JSON.stringify(moreSurface.body.feishuCard), /nav:\/help native/);
-    assert.match(JSON.stringify(moreSurface.body.feishuCard), /nav:\/help commands/);
+    assert.match(JSON.stringify(moreSurface.body.feishuCard), /nav:\/commands/);
+    assert.match(JSON.stringify(moreSurface.body.feishuCard), /nav:\/buffer/);
+    assert.doesNotMatch(JSON.stringify(moreSurface.body.feishuCard), /nav:\/help commands/);
 
     const action = await requestJson(`${baseUrl}/api/channel-connectors/commands/action`, {
       method: "POST",

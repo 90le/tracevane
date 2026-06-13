@@ -1382,7 +1382,21 @@ function moreMenuAction(): ChannelConnectorCommandSurfaceAction {
 }
 
 function moreSectionActions(): ChannelConnectorCommandSurfaceAction[] {
-  return ["session", "commands", "buffer", "native"].map((sectionId) => sectionMenuAction(sectionId as FeishuMenuSectionId));
+  return [
+    directSectionAction("session", "/status", {
+      label: "会话控制",
+      description: sectionSummary("session"),
+    }),
+    directSectionAction("commands", "/commands", {
+      label: "命令/Skills",
+      description: sectionSummary("commands"),
+    }),
+    directSectionAction("buffer", "/buffer", {
+      label: "缓存",
+      description: sectionSummary("buffer"),
+    }),
+    sectionMenuAction("native"),
+  ];
 }
 
 function siblingSectionActions(sectionId: FeishuMenuSectionId): ChannelConnectorCommandSurfaceAction[] {
@@ -1514,18 +1528,15 @@ function selectStaticElement(input: {
   };
 }
 
-function backToHelpAction(sectionId: FeishuMenuSectionId): ChannelConnectorCommandSurfaceAction {
-  return action(`back-help-${sectionId}`, "返回分组", `/help ${sectionId}`, {
-    actionKind: "nav",
-  });
-}
-
 function pushSubcardNavRows(
   elements: Array<Record<string, unknown>>,
   surface: ChannelConnectorCommandSurface,
   sectionId: FeishuMenuSectionId,
 ): void {
-  pushActionRows(elements, [backToHelpAction(sectionId), homeMenuAction()], surface, 2, true);
+  const actions = sectionId === "session"
+    ? [moreMenuAction(), homeMenuAction()]
+    : [homeMenuAction(), moreMenuAction()];
+  pushActionRows(elements, actions, surface, 2, true);
 }
 
 function renderModelPickerCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
