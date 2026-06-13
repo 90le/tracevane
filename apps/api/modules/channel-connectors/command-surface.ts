@@ -1627,11 +1627,8 @@ function renderVisionPickerCard(surface: ChannelConnectorCommandSurface): Channe
       tag: "markdown",
       content: [
         "**自动视觉 fallback**",
-        `状态：${surface.current.autoVisionModel ? "开启" : "关闭"} (${surface.current.autoVisionModelSource === "session" ? "当前会话" : "binding 默认"})`,
-        `指定模型：${surface.current.visionModel || "auto"}${surface.current.visionModelSource === "session" ? " (当前会话)" : surface.current.visionModelSource === "binding" ? " (binding 默认)" : ""}`,
-        `当前会话模型：${surface.current.model || "default"}`,
-        "",
-        "当前模型本身支持视觉时会保持当前模型；只有当前模型不支持/未知时才使用 fallback。",
+        `${surface.current.autoVisionModel ? "开启" : "关闭"} · ${surface.current.visionModel || "auto"} · 当前模型 ${surface.current.model || "default"}`,
+        `来源：${surface.current.autoVisionModelSource === "session" ? "当前会话" : "binding 默认"} · 可选视觉模型：${modelActions.length || 0} 个`,
       ].join("\n"),
     },
   ];
@@ -1692,26 +1689,13 @@ function renderModePickerCard(surface: ChannelConnectorCommandSurface): ChannelC
     ? reasoningActions.find((item) => item.command === `/reasoning ${currentReasoning}`)
     : reasoningActions[0];
   const initialReasoningValue = currentReasoningAction ? actionCommandValue(currentReasoningAction) : null;
-  const modeLines = modeActions.map((item) => {
-    const active = item.command === `/mode ${current}`;
-    return `${active ? "▶" : "◻"} **${stripListPrefix(item.label)}** — ${item.description || ""}`;
-  });
-  const reasoningLines = [
-    `当前推理强度：${currentReasoning || "default"}`,
-    ...REASONING_EFFORTS.map((effort, index) => {
-      const active = effort === currentReasoning;
-      return `${active ? "▶" : "◻"} ${index + 1}. ${effort}`;
-    }),
-  ];
   const elements: Array<Record<string, unknown>> = [
     {
       tag: "markdown",
       content: [
-        "**权限模式**",
-        modeLines.join("\n"),
-        "",
-        "**推理强度**",
-        reasoningLines.join("\n"),
+        "**当前模式**",
+        `${currentModeAction ? stripListPrefix(currentModeAction.label) : current} · reasoning ${currentReasoning || "default"}`,
+        `可选权限：${modeActions.length || 0} 个 · 可选推理强度：${reasoningActions.length} 个`,
       ].join("\n"),
     },
     selectStaticElement({
@@ -1757,17 +1741,13 @@ function renderAgentPickerCard(surface: ChannelConnectorCommandSurface): Channel
   }));
   const currentAgentAction = agentActions.find((item) => item.command === `/agent ${surface.current.projectId}`);
   const initialValue = currentAgentAction ? actionCommandValue(currentAgentAction) : null;
-  const lines = agentActions.map((item) => {
-    const active = item.command === `/agent ${surface.current.projectId}`;
-    return `${active ? "▶" : "◻"} **${stripListPrefix(item.label)}**${item.description ? ` — ${item.description}` : ""}`;
-  });
   const elements: Array<Record<string, unknown>> = [
     {
       tag: "markdown",
       content: [
-        `**当前 Agent**\n${surface.current.projectId} · ${surface.current.agent}`,
-        "",
-        lines.join("\n") || "没有可切换的 Agent Profile。",
+        "**当前 Agent**",
+        `${surface.current.projectId} · ${surface.current.agent}`,
+        `可选 Profile：${agentActions.length || 0} 个`,
       ].join("\n"),
     },
   ];
@@ -1839,10 +1819,7 @@ function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): Chann
       content: [
         "**当前目录**",
         `\`${workDir}\``,
-        "",
-        history.length ? `**最近目录**\n${history.map((dir, index) => `${index + 1}. \`${compactPath(dir)}\``).join("\n")}` : "**最近目录**\n无",
-        "",
-        children.length ? `**子目录**\n${children.map((name, index) => `${index + 1}. ${name}`).join("\n")}` : "**子目录**\n无可见子目录",
+        `可选项：${options.length} 个 · 最近目录 ${history.length} 个 · 子目录 ${children.length} 个`,
       ].join("\n"),
     },
     selectStaticElement({
@@ -1908,9 +1885,6 @@ function renderDisplayCard(surface: ChannelConnectorCommandSurface): ChannelConn
         `思考流：${formatChannelConnectorThinkingSupport(surface.current.thinkingSupport)}`,
         `过程回复：${surface.current.processMessages ? "开启" : "关闭"}`,
         `工具消息：${surface.current.toolMessages ? "开启" : "关闭"}`,
-        "",
-        "**作用范围**",
-        "只作用于当前 IM session；最终回复仍会正常发送。",
       ].join("\n"),
     },
   ];
@@ -2031,9 +2005,6 @@ function renderCommandsCard(surface: ChannelConnectorCommandSurface): ChannelCon
 function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
   const section = sectionById(surface, "session");
   const actions = section?.actions || [];
-  const status = actions.find((item) => item.id === "status") || action("status", "状态", "/status");
-  const whoami = actions.find((item) => item.id === "whoami") || action("whoami", "Whoami", "/whoami");
-  const version = actions.find((item) => item.id === "version") || action("version", "版本", "/version");
   const usage = actions.find((item) => item.id === "usage") || action("usage", "Usage", "/usage");
   const current = actions.find((item) => item.id === "current") || action("current", "当前会话", "/current", { actionKind: "nav" });
   const sessions = actions.find((item) => item.id === "sessions") || action("sessions", "续接列表", "/list", { actionKind: "nav" });
@@ -2048,15 +2019,15 @@ function renderSessionCard(surface: ChannelConnectorCommandSurface): ChannelConn
       tag: "markdown",
       content: [
         "**会话操作**",
-        "查看当前状态、续接列表、history 和 usage；执行类按钮会在当前会话生效。",
+        "常用查看和会话控制。低频诊断可直接发送 /whoami 或 /version。",
       ].join("\n"),
     },
   ];
+  elements.push({ tag: "markdown", content: "**查看**" });
   pushActionRows(elements, [current, sessions], surface, 2, true);
   pushActionRows(elements, [history, usage], surface, 2, true);
-  pushActionRows(elements, [status, whoami], surface, 2, true);
-  pushActionRows(elements, [version], surface, 2, true);
   elements.push({ tag: "hr" });
+  elements.push({ tag: "markdown", content: "**控制**" });
   pushActionRows(elements, [compact, stop], surface, 2, true);
   pushActionRows(elements, [fresh, reset], surface, 2, true);
   pushSubcardNavRows(elements, surface, "session");
