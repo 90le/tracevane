@@ -49,7 +49,9 @@ function writeFixture(root) {
     bindingId: "octo-live",
     sessionKey: "dmwork:dm:user-1",
     messageId: "octo-message-1",
+    agent: "codex",
     progressType: "assistant",
+    phase: "intermediate",
     rawType: "item/completed",
     itemType: "agentMessage",
     text: "工具完成：\n\n1. **结果**：`ok`\n2. 文件已准备。",
@@ -61,6 +63,7 @@ function writeFixture(root) {
     bindingId: "octo-live",
     sessionKey: "dmwork:dm:user-1",
     messageId: "octo-message-1",
+    agent: "codex",
     progressType: "tool",
     rawType: "item.completed",
     itemType: "command_execution",
@@ -120,6 +123,7 @@ function writeFixture(root) {
     bindingId: "octo-live",
     sessionKey: "dmwork:dm:user-1",
     messageId: "octo-message-1",
+    agent: "codex",
     channelId: "dm:user-1",
     agentStatus: "completed",
     agentOk: true,
@@ -132,6 +136,47 @@ function writeFixture(root) {
     outboundMessagesDeclared: 1,
     outboundMessagesSent: 1,
     outboundMessageRequestCount: 1,
+  });
+  appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:03:00.000Z",
+    eventKind: "agent.progress",
+    adapter: "octo",
+    bindingId: "octo-opencode-live",
+    sessionKey: "dmwork:dm:user-opencode",
+    messageId: "octo-message-opencode",
+    agent: "opencode",
+    progressType: "assistant",
+    phase: "intermediate",
+    rawType: "message_delta",
+    itemType: "assistant",
+    text: "先检查当前目录。",
+  });
+  appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:03:00.500Z",
+    eventKind: "agent.progress",
+    adapter: "octo",
+    bindingId: "octo-opencode-live",
+    sessionKey: "dmwork:dm:user-opencode",
+    messageId: "octo-message-opencode",
+    agent: "opencode",
+    progressType: "tool",
+    rawType: "tool_result",
+    itemType: "bash",
+    text: "tool_result\nstdout:\n/home/binbin/project\nstderr:\n\nexit_code: 0",
+  });
+  appendJsonLine(octoEvents, {
+    checkedAt: "2026-06-08T01:03:01.000Z",
+    eventKind: "agent.run.finished",
+    adapter: "octo",
+    bindingId: "octo-opencode-live",
+    sessionKey: "dmwork:dm:user-opencode",
+    messageId: "octo-message-opencode",
+    channelId: "dm:user-opencode",
+    agent: "opencode",
+    agentStatus: "completed",
+    agentOk: true,
+    replySent: true,
+    progressEventCount: 2,
   });
   appendJsonLine(feishuEvents, {
     checkedAt: "2026-06-08T01:05:00.000Z",
@@ -525,9 +570,35 @@ test("agent run live smoke script verifies Octo tool, reply, and outbound file e
   assert.equal(parsed.matchingRuns[0].autoVisionReason, "current-model-non-vision");
   assert.equal(parsed.matchingRuns[0].toolProgressCount, 1);
   assert.equal(parsed.matchingRuns[0].toolOutputSignalCount, 1);
+  assert.equal(parsed.matchingRuns[0].agent, "codex");
+  assert.equal(parsed.matchingRuns[0].assistantIntermediateProgressCount, 1);
   assert.equal(parsed.matchingRuns[0].finalProgressReplyCount, 0);
   assert.equal(parsed.matchingRuns[0].replyMarkdownLikely, true);
   assert.deepEqual(parsed.matchingRuns[0].markdownSignals.sort(), ["bold", "inline_code", "list"].sort());
+});
+
+test("agent run live smoke script verifies per-agent coverage and process replies", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
+  const { configPath } = writeFixture(root);
+  const output = await runScript([
+    "--config", configPath,
+    "--since", "2026-06-08T00:00:00.000Z",
+    "--bindings", "octo-live,octo-opencode-live",
+    "--agents", "codex,opencode",
+    "--require-agent-coverage",
+    "--require-ok",
+    "--require-reply",
+    "--require-tool",
+    "--require-tool-output",
+    "--require-process-reply",
+    "--json",
+  ], root);
+  const parsed = JSON.parse(output.stdout);
+  assert.equal(parsed.ok, true);
+  assert.deepEqual(parsed.matchingAgents.sort(), ["codex", "opencode"].sort());
+  assert.deepEqual(parsed.missingAgents, []);
+  assert.equal(parsed.counts.matchingRuns, 2);
+  assert.equal(parsed.matchingRuns.every((run) => run.assistantIntermediateProgressCount > 0), true);
 });
 
 test("agent run live smoke script verifies video attachment and staged local files", async () => {

@@ -61,7 +61,7 @@
 - OpenCode 结构化工具输出已保留 `stdout`、`stderr` 和 `exitCode`，避免 IM 进度显示成空工具结果。
 - Codex 结构化命令输出已保留嵌套或直接 `stdout` / `stderr`，避免命令执行结果被压成单行或空结果。
 - Codex、Claude Code、OpenCode 混合 content 工具结果已加固：普通文本块与结构化 `stdout` / `stderr` / `exit_code` 会同时保留。
-- `smoke-channel-connectors-agent-run-live.mjs` 已新增 `--require-tool-output`，真实 IM smoke 可验证工具结果不是空占位。
+- `smoke-channel-connectors-agent-run-live.mjs` 已新增 `--agents`、`--require-agent-coverage`、`--require-tool-output` 和 `--require-process-reply`，真实 IM smoke 可按 Agent 验证工具结果和过程回复，不再只看聚合样本。
 - Codex one-shot 与 app-server 已按 CC Go 合同提取 reasoning `summary` / `summary_text` / `content`，空 reasoning 不再显示假思考。
 - Claude Code one-shot 与 persistent driver 已保留结构化 `tool_result` 的 `stdout`、`stderr` 和 `exit_code`。
 - 非飞书气泡式进度流的 assistant 过程回复已改为正文直出，不再携带“过程回复”标题。
@@ -72,6 +72,7 @@
 - 已删除 active platform action layer：runner/env/prompt/daemon endpoint/UI chips 不再暴露 `studio-channel-skill` 或 runtime action。
 - Codex 隔离 `codex-home/skills` 会删除历史生成的 Feishu/Octo platform action skill 目录；当前运行态旧目录已手动清理，避免 stale YAML 被 Codex 加载。
 - OpenCode realtime JSONL 与 SQLite fallback 已共用进度 parser；DB fallback 会保留本轮工具调用/工具结果，并只把最新 assistant message 作为最终回复。
+- 近 12h live smoke 已证明 Codex、Claude Code、OpenCode 均有成功工具调用和可见工具输出；`--require-process-reply` 当前只匹配 Codex，Claude Code / OpenCode 仍需补真实中间 assistant 事件。
 
 ## 保留边界
 
@@ -82,6 +83,6 @@
 
 ## 下一步
 
-1. 工具流和回复解析：继续复核真实 Claude/Codex/OpenCode live 差异；工具流 live smoke 默认检查 `--require-tool-output`，补齐未覆盖的 CLI 事件形态。
+1. 工具流和回复解析：继续复核真实 Claude/Codex/OpenCode live 差异；工具流 live smoke 默认检查 per-agent `--require-tool-output`，下一步补齐 Claude Code / OpenCode 中间过程回复事件。
 2. Feishu/Octo 私聊 live smoke：Feishu compact、Octo compact、Feishu/Octo 出站文件、Feishu/Octo 权限、入站文件/图片/视频已进入 live 验收；继续补仍未覆盖的 CLI 事件形态。
 3. durable queue：触发一次真实 Feishu 长连接入站排队 + daemon 重启场景，用 `scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --mode durable` 验证 pending replay；同进程排队用 `--mode fifo` 单独验收。

@@ -21,6 +21,7 @@ function parseArgs(argv) {
     pollMs: DEFAULT_POLL_MS,
     bindings: [],
     platforms: [],
+    agents: [],
     minRuns: 1,
     limitRuns: 20,
     requireOk: false,
@@ -28,6 +29,7 @@ function parseArgs(argv) {
     requireProgress: false,
     requireTool: false,
     requireToolOutput: false,
+    requireProcessReply: false,
     requireFile: false,
     requireOutboundMessage: false,
     requireInboundFile: false,
@@ -44,6 +46,7 @@ function parseArgs(argv) {
     requirePermissionResolved: false,
     requireFeishuPermissionProgressCard: false,
     requireStopCommand: false,
+    requireAgentCoverage: false,
     json: false,
   };
 
@@ -56,6 +59,7 @@ function parseArgs(argv) {
     else if (arg === "--require-progress") options.requireProgress = true;
     else if (arg === "--require-tool") options.requireTool = true;
     else if (arg === "--require-tool-output") options.requireToolOutput = true;
+    else if (arg === "--require-process-reply" || arg === "--require-intermediate-reply") options.requireProcessReply = true;
     else if (arg === "--require-file") options.requireFile = true;
     else if (arg === "--require-outbound-message" || arg === "--require-message") options.requireOutboundMessage = true;
     else if (arg === "--require-inbound-file" || arg === "--require-uploaded-file") options.requireInboundFile = true;
@@ -72,6 +76,7 @@ function parseArgs(argv) {
     else if (arg === "--require-permission-resolved") options.requirePermissionResolved = true;
     else if (arg === "--require-feishu-permission-progress-card") options.requireFeishuPermissionProgressCard = true;
     else if (arg === "--require-stop-command" || arg === "--require-stop") options.requireStopCommand = true;
+    else if (arg === "--require-agent-coverage") options.requireAgentCoverage = true;
     else if (arg === "--config") options.configPath = requireValue(argv, ++index, arg);
     else if (arg.startsWith("--config=")) options.configPath = arg.slice("--config=".length);
     else if (arg === "--since") options.since = requireValue(argv, ++index, arg);
@@ -86,6 +91,8 @@ function parseArgs(argv) {
     else if (arg.startsWith("--bindings=")) options.bindings = csv(arg.slice("--bindings=".length));
     else if (arg === "--platforms") options.platforms = csv(requireValue(argv, ++index, arg));
     else if (arg.startsWith("--platforms=")) options.platforms = csv(arg.slice("--platforms=".length));
+    else if (arg === "--agents") options.agents = csv(requireValue(argv, ++index, arg));
+    else if (arg.startsWith("--agents=")) options.agents = csv(arg.slice("--agents=".length));
     else if (arg === "--min-runs") options.minRuns = positiveInt(requireValue(argv, ++index, arg), 1);
     else if (arg.startsWith("--min-runs=")) options.minRuns = positiveInt(arg.slice("--min-runs=".length), 1);
     else if (arg === "--limit-runs") options.limitRuns = nonNegativeInt(requireValue(argv, ++index, arg), 20);
@@ -113,6 +120,7 @@ Options:
   --wait                    Poll until matching runs satisfy requirements.
   --bindings <ids>          Comma-separated binding ids to include.
   --platforms <ids>         feishu,octo filter.
+  --agents <ids>            codex,claude-code,opencode filter.
   --since <iso>             Include events at or after this timestamp.
   --since-minutes <n>       Include recent window. Default: ${DEFAULT_SINCE_MINUTES}; with --wait default is script start unless explicitly set.
   --min-runs <n>            Required matching run count. Default: 1.
@@ -122,6 +130,7 @@ Options:
   --require-progress        Require any progress event.
   --require-tool            Require tool progress.
   --require-tool-output     Require a raw tool-result/completed progress event with visible output text.
+  --require-process-reply   Require an assistant intermediate/process progress reply.
   --require-file            Require outboundFilesDeclared>0 and outboundFilesSent>0.
   --require-outbound-message
                             Require outboundMessagesDeclared>0 and outboundMessagesSent>0.
@@ -144,6 +153,7 @@ Options:
   --require-feishu-permission-progress-card
                             Require Feishu permission state to be represented in progress card logs.
   --require-stop-command   Require a successful /stop command and a nearby same-session cancelled Agent run.
+  --require-agent-coverage  Require every --agents value to have matching evidence.
   --config <path>           Daemon config path. Default: ${DEFAULT_CONFIG_PATH}
   --timeout-ms <n>          Wait deadline. Default: ${DEFAULT_TIMEOUT_MS}
   --poll-ms <n>             Poll interval. Default: ${DEFAULT_POLL_MS}
@@ -254,6 +264,7 @@ function runKey(event) {
 }
 
 function summarizeRun(event, relatedProgress, relatedEvidence, relatedPermissions, relatedCommands = []) {
+  const agent = String(event.agent || relatedProgress.find((item) => item.agent)?.agent || "");
   const progressTypes = uniqueStrings(relatedProgress.map((item) => String(item.progressType || item.latestProgress?.type || "")).filter(Boolean));
   const rawProgress = relatedProgress.filter((item) => item.eventKind === "agent.progress");
   const transportProgress = relatedProgress.filter((item) => item.eventKind === "agent.progress.reply" || item.eventKind === "agent.progress.card");
@@ -262,6 +273,8 @@ function summarizeRun(event, relatedProgress, relatedEvidence, relatedPermission
   const rawToolOutputProgress = rawProgress.filter(hasVisibleToolOutput);
   const transportActions = uniqueStrings(relatedProgress.map((item) => String(item.transportAction || "")).filter(Boolean));
   const assistantProgress = rawProgress.filter((item) => item.progressType === "assistant" || item.latestProgress?.type === "assistant");
+  const assistantIntermediateProgress = assistantProgress.filter((item) => String(item.phase || item.latestProgress?.phase || "") === "intermediate");
+  const assistantFinalProgress = assistantProgress.filter((item) => String(item.phase || item.latestProgress?.phase || "") === "final");
   const finalProgressReplies = transportProgress.filter((item) => {
     return String(item.progressType || item.latestProgress?.type || "") === "assistant"
       && String(item.phase || item.latestProgress?.phase || "") === "final";
@@ -330,6 +343,7 @@ function summarizeRun(event, relatedProgress, relatedEvidence, relatedPermission
     checkedAt: event.checkedAt || null,
     adapter: event.adapter || null,
     bindingId: event.bindingId || null,
+    agent: agent || null,
     sessionKey: event.sessionKey || null,
     messageId: event.messageId || null,
     channelId: event.channelId || null,
@@ -364,6 +378,8 @@ function summarizeRun(event, relatedProgress, relatedEvidence, relatedPermission
     toolOutputSignalCount: rawToolOutputProgress.length,
     transportToolProgressCount: transportToolProgress.length,
     assistantProgressCount: assistantProgress.length,
+    assistantIntermediateProgressCount: assistantIntermediateProgress.length,
+    assistantFinalProgressCount: assistantFinalProgress.length,
     markdownSignalCount: markdownSignals.length,
     markdownSignals,
     replyMarkdownLikely: markdownSignals.length > 0,
@@ -429,6 +445,7 @@ function summarizeStopProof(commandEvent, finishedRunEvents) {
     checkedAt: commandEvent.checkedAt || null,
     adapter: commandEvent.adapter || null,
     bindingId: commandEvent.bindingId || null,
+    agent: stoppedRun?.agent || null,
     sessionKey: commandEvent.sessionKey || null,
     channelId: commandEvent.channelId || null,
     commandMessageId: commandEvent.messageId || null,
@@ -633,7 +650,8 @@ function loadSummary(options, since) {
   const stopProofs = commandEvents
     .filter(isStopCommandEvent)
     .sort((left, right) => checkedAtMs(right) - checkedAtMs(left))
-    .map((event) => summarizeStopProof(event, finishedRunEvents));
+    .map((event) => summarizeStopProof(event, finishedRunEvents))
+    .filter((proof) => agentMatches(proof, options));
   const matchingStopProofs = stopProofs.filter((proof) => proof.commandOk === true && proof.cancelledRunFound === true);
   const matchingRuns = options.requireStopCommand ? [] : runs.filter((run) => runSatisfies(run, options));
   const requirementViolations = [
@@ -645,8 +663,12 @@ function loadSummary(options, since) {
   const displayedStopProofs = options.limitRuns === 0 ? [] : stopProofs.slice(0, options.limitRuns);
   const displayedMatchingStopProofs = options.limitRuns === 0 ? [] : matchingStopProofs.slice(0, options.limitRuns);
   const requirementCount = options.requireStopCommand ? matchingStopProofs.length : matchingRuns.length;
+  const matchingAgents = uniqueStrings((options.requireStopCommand ? matchingStopProofs : matchingRuns).map((item) => String(item.agent || "")).filter(Boolean));
+  const missingAgents = options.requireAgentCoverage && options.agents.length > 0
+    ? options.agents.filter((agent) => !matchingAgents.includes(agent))
+    : [];
   return {
-    ok: requirementCount >= options.minRuns && requirementViolations.length === 0,
+    ok: requirementCount >= options.minRuns && requirementViolations.length === 0 && missingAgents.length === 0,
     checkedAt: new Date().toISOString(),
     since: since.toISOString(),
     configPath: options.configPath,
@@ -658,6 +680,7 @@ function loadSummary(options, since) {
       requireProgress: options.requireProgress,
       requireTool: options.requireTool,
       requireToolOutput: options.requireToolOutput,
+      requireProcessReply: options.requireProcessReply,
       requireFile: options.requireFile,
       requireOutboundMessage: options.requireOutboundMessage,
       requireInboundFile: options.requireInboundFile,
@@ -674,10 +697,12 @@ function loadSummary(options, since) {
       requirePermissionResolved: options.requirePermissionResolved,
       requireFeishuPermissionProgressCard: options.requireFeishuPermissionProgressCard,
       requireStopCommand: options.requireStopCommand,
+      requireAgentCoverage: options.requireAgentCoverage,
     },
     filters: {
       bindings: options.bindings,
       platforms: options.platforms,
+      agents: options.agents,
     },
     counts: {
       events: allEvents.length,
@@ -690,11 +715,15 @@ function loadSummary(options, since) {
       matchingStopProofs: matchingStopProofs.length,
       finishedRuns: runs.length,
       matchingRuns: matchingRuns.length,
+      matchingAgents: matchingAgents.length,
+      missingAgents: missingAgents.length,
       requirementViolations: requirementViolations.length,
       displayedRuns: displayedRuns.length,
       displayedMatchingRuns: displayedMatchingRuns.length,
     },
     requirementViolations,
+    matchingAgents,
+    missingAgents,
     runs: displayedRuns,
     matchingRuns: displayedMatchingRuns,
     stopProofs: displayedStopProofs,
@@ -703,11 +732,13 @@ function loadSummary(options, since) {
 }
 
 function runSatisfies(run, options) {
+  if (!agentMatches(run, options)) return false;
   if (options.requireOk && run.agentOk !== true) return false;
   if (options.requireReply && run.replySent !== true) return false;
   if (options.requireProgress && !(run.progressEventCount > 0 || run.progressLogCount > 0)) return false;
   if (options.requireTool && !(run.toolProgressCount > 0 || run.latestProgressType === "tool")) return false;
   if (options.requireToolOutput && run.toolOutputSignalCount <= 0) return false;
+  if (options.requireProcessReply && run.assistantIntermediateProgressCount <= 0) return false;
   if (options.requireFile && !(run.outboundFilesDeclared > 0 && run.outboundFilesSent > 0 && run.outboundFileErrors.length === 0)) return false;
   if (options.requireOutboundMessage && !(run.outboundMessagesDeclared > 0 && run.outboundMessagesSent > 0)) return false;
   if (options.requireInboundFile && !(run.fileAttachmentCount > 0 && run.attachmentStagingFailedCount === 0)) return false;
@@ -735,7 +766,13 @@ function runSatisfies(run, options) {
   return true;
 }
 
+function agentMatches(item, options) {
+  if (!options.agents.length) return true;
+  return options.agents.includes(String(item.agent || ""));
+}
+
 function strictRunRequirementViolations(run, options) {
+  if (!agentMatches(run, options)) return [];
   const violations = [];
   if (options.requireNoFinalProgressReply && run.finalProgressReplyCount > 0) {
     violations.push({
@@ -801,6 +838,18 @@ function strictRunRequirementViolations(run, options) {
       toolProgressCount: run.toolProgressCount,
     });
   }
+  if (options.requireProcessReply && run.assistantProgressCount > 0 && run.assistantIntermediateProgressCount <= 0) {
+    violations.push({
+      type: "process-reply-missing",
+      adapter: run.adapter,
+      bindingId: run.bindingId,
+      agent: run.agent,
+      sessionKey: run.sessionKey,
+      messageId: run.messageId,
+      assistantProgressCount: run.assistantProgressCount,
+      assistantFinalProgressCount: run.assistantFinalProgressCount,
+    });
+  }
   if (options.requireStagedFiles && run.stagedLocalPathCount > 0 && run.stagedLocalPathMissingCount > 0) {
     violations.push({
       type: "staged-local-file-missing",
@@ -843,7 +892,7 @@ async function waitForSummary(options, since) {
 function printHuman(summary, wait) {
   console.log(`Channel Agent run smoke ${summary.ok ? "passed" : "not satisfied"} since ${summary.since}`);
   const matchingCount = summary.requirements.requireStopCommand ? summary.counts.matchingStopProofs : summary.counts.matchingRuns;
-  console.log(`events=${summary.counts.events} progress=${summary.counts.progressEvents} runs=${summary.counts.finishedRuns} matching=${matchingCount}/${summary.requirements.minRuns} stop=${summary.counts.matchingStopProofs}/${summary.counts.stopCommands} violations=${summary.counts.requirementViolations}`);
+  console.log(`events=${summary.counts.events} progress=${summary.counts.progressEvents} runs=${summary.counts.finishedRuns} matching=${matchingCount}/${summary.requirements.minRuns} agents=${summary.matchingAgents.join(",") || "-"} missing=${summary.missingAgents.join(",") || "-"} stop=${summary.counts.matchingStopProofs}/${summary.counts.stopCommands} violations=${summary.counts.requirementViolations}`);
   if (summary.requirements.requireStopCommand) {
     const displayedStopProofs = summary.matchingStopProofs.length > 0 ? summary.matchingStopProofs : summary.stopProofs;
     for (const proof of displayedStopProofs.slice(0, 8)) {
@@ -863,6 +912,7 @@ function printHuman(summary, wait) {
   for (const run of displayedRuns.slice(0, 8)) {
     const marks = [
       run.agentOk === true ? "ok" : run.agentOk === false ? "failed" : "unknown",
+      run.agent ? `agent=${run.agent}` : "",
       run.replySent === true ? "reply" : "",
       run.outboundFilesSent > 0 ? `files=${run.outboundFilesSent}` : "",
       run.outboundMessagesSent > 0 ? `messages=${run.outboundMessagesSent}` : "",
@@ -874,6 +924,7 @@ function printHuman(summary, wait) {
       run.autoVisionSwitched === true ? `auto-vision=${run.autoVisionOriginalModel}->${run.autoVisionSelectedModel}` : "",
       run.toolProgressCount > 0 ? `tools=${run.toolProgressCount}` : "",
       run.toolOutputSignalCount > 0 ? `tool-output=${run.toolOutputSignalCount}` : "",
+      run.assistantIntermediateProgressCount > 0 ? `process=${run.assistantIntermediateProgressCount}` : "",
       run.permissionPromptCount > 0 ? `permission-prompts=${run.permissionPromptCount}` : "",
       run.permissionStatuses.length > 0 ? `permission-status=${run.permissionStatuses.join(",")}` : "",
       run.feishuPermissionProgressCardCount > 0 ? `permission-card=${run.feishuPermissionProgressCardCount}` : "",

@@ -43,6 +43,7 @@
   - 修复 Claude Code one-shot 与 persistent driver 的结构化 `tool_result` 解析，`stdout` / `stderr` / `exit_code` 会进入工具结果进度。
   - 加固 Codex / Claude Code / OpenCode 混合 content 工具结果解析：同一个工具结果里普通文本块与结构化 `stdout` / `stderr` / `exit_code` 会同时保留，不再择一丢失。
   - 加固真实 IM live 证据脚本：新增 `--require-tool-output`，区分“有工具事件”和“工具结果确实有可见输出”，避免空工具结果被误判通过。
+  - 加固真实 IM live 证据脚本：新增 `--agents`、`--require-agent-coverage`、`--require-process-reply`，可按 Codex / Claude Code / OpenCode 分别验证工具输出和过程回复覆盖。
   - 加固真实 IM 附件验收脚本：新增 `--require-inbound-image`、`--require-inbound-video`、`--require-staged-files`，图片/视频/文件 live smoke 会同时验证附件类型和本地 staged 路径存在。
   - 优化非飞书气泡式进度流：assistant 过程回复不再携带“过程回复”标题，按最终回复同格式发送正文。
   - 补齐 Codex thinking/reasoning 解析：one-shot 和 app-server 都按 CC Go 合同读取 `summary` / `summary_text` / `content`，无文本时不伪造思考进度。
@@ -141,6 +142,8 @@
 - 本轮 live 只读检查：默认 durable 模式仍未发现 `pending_replay` 证据；当前 24h 候选是同进程 FIFO，不是 daemon 重启重放。
 - 本轮 live 验证通过：Feishu 文件消息 `om_x100b6df679c474a4c23ef686549039b`，staging 路径存在，`agent.run.finished agentOk=true replySent=true`。
 - 本轮 live 只读验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --require-ok --require-reply --require-tool --require-tool-output --min-runs 1 --limit-runs 5 --json`，最近 24h 匹配 6 条带可见工具输出的成功 IM run。
+- 本轮 live 只读验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 720 --agents codex,claude-code,opencode --require-agent-coverage --require-ok --require-reply --require-tool --require-tool-output --min-runs 3 --limit-runs 12`，近 12h 三个 Agent 均有成功工具调用和可见工具输出证据。
+- 本轮 live 只读检查：`--require-process-reply` 近 12h 只匹配 Codex，Claude Code / OpenCode 仍缺少真实中间 assistant 过程回复证据；这是下一轮 runner/live 解析补齐项，不再误判为已完成。
 - 本轮验证通过：`node --test tests/system/channel-connectors-persistent-live-script.test.mjs`，1/1 通过。
 - 本轮验证通过：`node --test --test-name-pattern "stops Codex app-server persistent turns|Agent process cancelled|native compact" tests/system/channel-connectors-service.test.mjs`，2/2 通过。
 - 本轮 live 验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --platforms octo --require-stop-command --min-runs 1 --limit-runs 5 --json`，识别 Octo `/stop` 命令 `2065665014106066944` 和 cancelled run `2065664678767267840`。
@@ -155,11 +158,11 @@
 - Claude Code / OpenCode native compact 已覆盖 driver 层、Octo daemon 私聊入口、Feishu native-first wiring、Feishu 显式 `/compact` 三 Agent 24h live、Octo auto compact 24h live 和 Octo 显式 `/compact` 24h live。
 - 图片自动切视觉模型默认关闭；需要在平台 binding 打开。非视觉图片 fallback 已有回归；Feishu/Octo 入站文件/图片、Feishu 入站视频、Octo `.mp4` 文件形态视频、Feishu/Octo 出站文件、Feishu/Octo 权限 24h live 已有证据。
 - Provider 模型 vision 能力不会再从模型名推断；Chat-compatible provider 即使模型名像 Claude/GPT，也必须由用户显式配置、上游显式能力元数据或图片 smoke 通过后确认标记。
-- 工具流仍需继续 live 复核：Codex、Claude Code、OpenCode parser 已覆盖结构化 stdout/stderr、混合 content、过程回复、最终回复分类和 live 可见输出证据；下一步重点看真实 CLI 是否还有未覆盖事件形态。
+- 工具流仍需继续 live 复核：Codex、Claude Code、OpenCode 近 12h 均已有可见工具输出 live 证据；Codex 已有过程回复 live 证据，Claude Code / OpenCode 的真实中间 assistant 过程回复仍需补 runner/live 事件形态。
 - 思考流 parser 支持 Codex、Claude Code、OpenCode 原生 thinking/reasoning 事件；Octo 私聊 `/thinking on/off` 已做端到端回归；状态/UI 已区分 parser 支持和 live 输出观测。真实 smoke 证明 OpenCode 会在支持 reasoning 的模型上输出 `reasoning`，Claude Code 2.1.86 当前未输出 `thinking` item；没有原生思考事件的 Agent/模型组合只能标为不支持，不伪造。
 
 ## 下一步
 
-1. 继续用真实 Feishu/Octo live 输出复核 Codex、Claude Code、OpenCode 工具流/回复解析，补齐仍未覆盖的 CLI 事件形态。
+1. 补齐 Claude Code / OpenCode 真实中间 assistant 过程回复 live 事件形态，并用 `--agents ... --require-agent-coverage --require-process-reply` 验收。
 2. 触发真实 Feishu 长连接入站排队 + daemon 重启场景，用 live 证据脚本验收 pending replay。
 3. 后续可选 OpenAI Platform 官方端点 proof。
