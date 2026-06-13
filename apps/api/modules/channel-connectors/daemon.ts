@@ -325,6 +325,8 @@ const FEISHU_FINAL_REPLY_CARD_MAX_RUNES = 12_000;
 const FEISHU_FINAL_REPLY_PRIVATE_BUFFER_PREVIEW_RUNES = 1_600;
 const DEFAULT_CHANNEL_AGENT_SESSION_REAP_INTERVAL_MS = 60_000;
 const MAX_CHANNEL_AGENT_SESSION_DRIVER_EVENTS = 80;
+const PENDING_AGENT_RUN_MAX_AGE_MS = 24 * 60 * 60_000;
+const PENDING_AGENT_RUN_MAX_RECORDS = 200;
 
 const channelAgentSessionDriverEvents: ChannelConnectorAgentSessionDriverEvent[] = [];
 
@@ -740,6 +742,36 @@ type ChannelDaemonSessionRunQueueRegistry = Map<string, {
   pending: number;
 }>;
 
+type ChannelDaemonPendingAgentRunAdapter = "octo" | "feishu";
+
+interface ChannelDaemonPendingAgentRunReplay {
+  pendingRunId: string;
+  queuedAt: string;
+  attempt: number;
+}
+
+interface ChannelDaemonPendingAgentRunRecord {
+  id: string;
+  adapter: ChannelDaemonPendingAgentRunAdapter;
+  bindingId: string;
+  projectId: string;
+  sessionKey: string;
+  messageId: string;
+  queuedAt: string;
+  updatedAt: string;
+  attempts: number;
+  robotId?: string | null;
+  octoMessage?: ChannelConnectorOctoInboundMessage | null;
+  feishuParsed?: ChannelConnectorFeishuParsedWebhook | null;
+  feishuRawEvent?: unknown;
+}
+
+interface ChannelDaemonPendingAgentRunStore {
+  version: 1;
+  updatedAt: string;
+  records: ChannelDaemonPendingAgentRunRecord[];
+}
+
 interface ChannelDaemonOctoTimelineEntry {
   bindingId: string;
   channelId: string;
@@ -1027,6 +1059,140 @@ function writeJsonFileAtomic(filePath: string, value: unknown): void {
   const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
   fs.writeFileSync(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
   fs.renameSync(tempPath, filePath);
+}
+
+function pendingAgentRunsPath(config: ChannelConnectorsDaemonRuntimeConfig): string {
+  return path.join(config.paths.state, "channel-pending-agent-runs.json");
+}
+
+function pendingAgentRunId(input: {
+  adapter: ChannelDaemonPendingAgentRunAdapter;
+  bindingId: string;
+  messageId: string;
+}): string {
+  return [input.adapter, input.bindingId, input.messageId].map((part) => encodeURIComponent(part)).join("|");
+}
+
+function normalizePendingAgentRunRecord(value: unknown): ChannelDaemonPendingAgentRunRecord | null {
+  if (!isRecord(value)) return null;
+  const adapter = normalizeString(value.adapter);
+  if (adapter !== "octo" && adapter !== "feishu") return null;
+  const bindingId = normalizeString(value.bindingId);
+  const projectId = normalizeString(value.projectId);
+  const sessionKey = normalizeString(value.sessionKey);
+  const messageId = normalizeString(value.messageId);
+  const id = normalizeString(value.id) || pendingAgentRunId({ adapter, bindingId, messageId });
+  if (!bindingId || !projectId || !sessionKey || !messageId || !id) return null;
+  const queuedAt = normalizeString(value.queuedAt) || new Date().toISOString();
+  const updatedAt = normalizeString(value.updatedAt) || queuedAt;
+  const attempts = Number.isFinite(Number(value.attempts)) ? Math.max(0, Math.floor(Number(value.attempts))) : 0;
+  const octoMessage = adapter === "octo" && isRecord(value.octoMessage)
+    ? value.octoMessage as unknown as ChannelConnectorOctoInboundMessage
+    : null;
+  const feishuParsed = adapter === "feishu" && isRecord(value.feishuParsed)
+    ? value.feishuParsed as unknown as ChannelConnectorFeishuParsedWebhook
+    : null;
+  if (adapter === "octo" && !octoMessage) return null;
+  if (adapter === "feishu" && !feishuParsed) return null;
+  return {
+    id,
+    adapter,
+    bindingId,
+    projectId,
+    sessionKey,
+    messageId,
+    queuedAt,
+    updatedAt,
+    attempts,
+    robotId: normalizeString(value.robotId) || null,
+    octoMessage,
+    feishuParsed,
+    feishuRawEvent: value.feishuRawEvent,
+  };
+}
+
+function readPendingAgentRunStore(config: ChannelConnectorsDaemonRuntimeConfig): ChannelDaemonPendingAgentRunStore {
+  const filePath = pendingAgentRunsPath(config);
+  if (!fs.existsSync(filePath)) {
+    return { version: 1, updatedAt: new Date().toISOString(), records: [] };
+  }
+  try {
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    const values = isRecord(raw) && Array.isArray(raw.records) ? raw.records : [];
+    const cutoff = Date.now() - PENDING_AGENT_RUN_MAX_AGE_MS;
+    const records = values
+      .map((item) => normalizePendingAgentRunRecord(item))
+      .filter((item): item is ChannelDaemonPendingAgentRunRecord => {
+        if (!item) return false;
+        const queuedAtMs = Date.parse(item.queuedAt);
+        return !Number.isFinite(queuedAtMs) || queuedAtMs >= cutoff;
+      })
+      .sort((a, b) => Date.parse(a.queuedAt) - Date.parse(b.queuedAt))
+      .slice(-PENDING_AGENT_RUN_MAX_RECORDS);
+    return {
+      version: 1,
+      updatedAt: normalizeString(isRecord(raw) ? raw.updatedAt : null) || new Date().toISOString(),
+      records,
+    };
+  } catch (error) {
+    appendLog(config.paths.log, "Pending Agent run store read failed", { error: shortMessage(error) });
+    return { version: 1, updatedAt: new Date().toISOString(), records: [] };
+  }
+}
+
+function writePendingAgentRunStore(
+  config: ChannelConnectorsDaemonRuntimeConfig,
+  store: ChannelDaemonPendingAgentRunStore,
+): void {
+  const records = store.records
+    .slice()
+    .sort((a, b) => Date.parse(a.queuedAt) - Date.parse(b.queuedAt))
+    .slice(-PENDING_AGENT_RUN_MAX_RECORDS);
+  writeJsonFileAtomic(pendingAgentRunsPath(config), {
+    version: 1,
+    updatedAt: new Date().toISOString(),
+    records,
+  });
+}
+
+function upsertPendingAgentRun(
+  config: ChannelConnectorsDaemonRuntimeConfig,
+  record: ChannelDaemonPendingAgentRunRecord,
+): void {
+  const store = readPendingAgentRunStore(config);
+  const records = store.records.filter((item) => item.id !== record.id);
+  records.push({
+    ...record,
+    updatedAt: new Date().toISOString(),
+  });
+  writePendingAgentRunStore(config, { ...store, records });
+}
+
+function removePendingAgentRun(config: ChannelConnectorsDaemonRuntimeConfig, id: string | null | undefined): boolean {
+  const normalized = normalizeString(id);
+  if (!normalized) return false;
+  const store = readPendingAgentRunStore(config);
+  const records = store.records.filter((item) => item.id !== normalized);
+  if (records.length === store.records.length) return false;
+  writePendingAgentRunStore(config, { ...store, records });
+  return true;
+}
+
+function markPendingAgentRunAttempt(
+  config: ChannelConnectorsDaemonRuntimeConfig,
+  id: string,
+): ChannelDaemonPendingAgentRunRecord | null {
+  const store = readPendingAgentRunStore(config);
+  const index = store.records.findIndex((item) => item.id === id);
+  if (index < 0) return null;
+  const next = {
+    ...store.records[index],
+    attempts: store.records[index].attempts + 1,
+    updatedAt: new Date().toISOString(),
+  };
+  store.records[index] = next;
+  writePendingAgentRunStore(config, store);
+  return next;
 }
 
 function readTextFileTail(filePath: string, maxBytes: number): string {
@@ -7917,10 +8083,13 @@ async function dispatchOctoMessage(input: {
   message: ChannelConnectorOctoInboundMessage;
   seenMessages: Map<string, number>;
   octoTimelines: ChannelDaemonOctoTimelineRegistry;
+  replay?: ChannelDaemonPendingAgentRunReplay | null;
 }): Promise<void> {
   const { config, state, activeRunCancels, project, binding, robotId, seenMessages, octoTimelines } = input;
+  const replay = input.replay || null;
   let message = input.message;
-  if (shouldSkipSeenMessage(seenMessages, message.messageId)) return;
+  if (!replay && shouldSkipSeenMessage(seenMessages, message.messageId)) return;
+  if (replay) seenMessages.set(message.messageId, Date.now());
   recordOctoRealtimeTimeline({
     timelines: octoTimelines,
     binding,
@@ -8239,6 +8408,26 @@ async function dispatchOctoMessage(input: {
     sessionKey,
     parallel: channelSessionParallelAgentRunsEnabled(binding),
     onQueued: async (queuePosition) => {
+      const pendingRunId = replay?.pendingRunId || pendingAgentRunId({
+        adapter: "octo",
+        bindingId: binding.id,
+        messageId: message.messageId,
+      });
+      upsertPendingAgentRun(config, {
+        id: pendingRunId,
+        adapter: "octo",
+        bindingId: binding.id,
+        projectId: project.id,
+        sessionKey,
+        messageId: message.messageId,
+        queuedAt: replay?.queuedAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        attempts: replay?.attempt || 0,
+        robotId,
+        octoMessage: message,
+        feishuParsed: null,
+        feishuRawEvent: null,
+      });
       const activeSessionRun = latestActiveRunForSession(activeRunCancels, { bindingId: binding.id, sessionKey });
       let replySent = false;
       let replyRequestCount: number | null = null;
@@ -8268,6 +8457,7 @@ async function dispatchOctoMessage(input: {
         activeMessageId: activeSessionRun?.entry.messageId || null,
         activeAgent: activeSessionRun?.entry.agent || null,
         activeModel: activeSessionRun?.entry.model || null,
+        pendingRunId,
         replySent,
         replyRequestCount,
         ingressAt,
@@ -8563,6 +8753,11 @@ async function dispatchOctoMessage(input: {
     agent: turnProject.agent,
     model: turnProject.model,
   });
+  removePendingAgentRun(config, replay?.pendingRunId || pendingAgentRunId({
+    adapter: "octo",
+    bindingId: binding.id,
+    messageId: message.messageId,
+  }));
   state.activeRuns = state.activeRuns.slice(0, 20);
   markRuntimeDirty(config, state);
   writeJsonLine(config.paths.octoEvents, {
@@ -9249,8 +9444,10 @@ async function dispatchFeishuParsedEvent(input: {
   rawEvent: unknown;
   seenMessages: Map<string, number>;
   feishuTimelines: ChannelDaemonFeishuTimelineRegistry;
+  replay?: ChannelDaemonPendingAgentRunReplay | null;
 }): Promise<Record<string, unknown> | null> {
   const { config, state, activeRunCancels, group, parsed, rawEvent, seenMessages, feishuTimelines } = input;
+  const replay = input.replay || null;
   const checkedAt = new Date().toISOString();
   const ingressAt = checkedAt;
   const ingressAtMs = isoTimestampMs(ingressAt) ?? Date.now();
@@ -9296,7 +9493,7 @@ async function dispatchFeishuParsedEvent(input: {
   const sessionKey = feishuSessionKey(binding, parsed);
   const messageId = normalizeString(parsed.messageId) || `${parsed.kind}:${parsed.eventId || Date.now()}`;
   const dedupeKey = feishuDedupeKey(group, parsed, binding, messageId);
-  if (dedupeKey && shouldSkipFeishuSeenMessage(config, seenMessages, dedupeKey)) {
+  if (!replay && dedupeKey && shouldSkipFeishuSeenMessage(config, seenMessages, dedupeKey)) {
     writeJsonLine(config.paths.feishuEvents, {
       checkedAt,
       adapter: "feishu",
@@ -9318,6 +9515,7 @@ async function dispatchFeishuParsedEvent(input: {
     });
     return null;
   }
+  if (replay && dedupeKey) seenMessages.set(dedupeKey, Date.now());
 
   if (parsed.kind !== "message" && parsed.kind !== "card-action" && parsed.kind !== "bot-menu") {
     writeJsonLine(config.paths.feishuEvents, {
@@ -9337,7 +9535,7 @@ async function dispatchFeishuParsedEvent(input: {
   }
 
   const staleEvent = feishuStaleEventState(binding, parsed, ingressAtMs);
-  if (staleEvent.stale) {
+  if (!replay && staleEvent.stale) {
     writeJsonLine(config.paths.feishuEvents, {
       checkedAt,
       adapter: "feishu",
@@ -9365,7 +9563,7 @@ async function dispatchFeishuParsedEvent(input: {
   const outOfOrderEvent = sessionKey
     ? feishuOutOfOrderEventState({ seenMessages, binding, sessionKey, parsed })
     : { outOfOrder: false, eventTimeMs: feishuParsedEventTimeMs(parsed), watermarkMs: null };
-  if (outOfOrderEvent.outOfOrder) {
+  if (!replay && outOfOrderEvent.outOfOrder) {
     writeJsonLine(config.paths.feishuEvents, {
       checkedAt,
       adapter: "feishu",
@@ -9792,6 +9990,26 @@ async function dispatchFeishuParsedEvent(input: {
     sessionKey,
     parallel: channelSessionParallelAgentRunsEnabled(binding),
     onQueued: async (queuePosition) => {
+      const pendingRunId = replay?.pendingRunId || pendingAgentRunId({
+        adapter: "feishu",
+        bindingId: binding.id,
+        messageId,
+      });
+      upsertPendingAgentRun(config, {
+        id: pendingRunId,
+        adapter: "feishu",
+        bindingId: binding.id,
+        projectId: project.id,
+        sessionKey,
+        messageId,
+        queuedAt: replay?.queuedAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        attempts: replay?.attempt || 0,
+        robotId: null,
+        octoMessage: null,
+        feishuParsed: parsed,
+        feishuRawEvent: rawEvent,
+      });
       const activeSessionRun = latestActiveRunForSession(activeRunCancels, { bindingId: binding.id, sessionKey });
       const result = await sendFeishuTextMessage(transport, {
         chatId: parsed.channelId || sessionKey,
@@ -9816,6 +10034,7 @@ async function dispatchFeishuParsedEvent(input: {
         activeMessageId: activeSessionRun?.entry.messageId || null,
         activeAgent: activeSessionRun?.entry.agent || null,
         activeModel: activeSessionRun?.entry.model || null,
+        pendingRunId,
         replySent: result.ok === true,
         replyError: result.error,
         replyRequestCount: result.requestCount,
@@ -10009,6 +10228,11 @@ async function dispatchFeishuParsedEvent(input: {
     agent: turnProject.agent,
     model: turnProject.model,
   });
+  removePendingAgentRun(config, replay?.pendingRunId || pendingAgentRunId({
+    adapter: "feishu",
+    bindingId: binding.id,
+    messageId,
+  }));
   state.activeRuns = state.activeRuns.slice(0, 20);
   markRuntimeDirty(config, state);
   writeJsonLine(config.paths.feishuEvents, {
@@ -12142,6 +12366,127 @@ async function startFeishuConnections(
     : null;
 }
 
+function runtimeProjectAndBindingForPendingRun(
+  config: ChannelConnectorsDaemonRuntimeConfig,
+  record: ChannelDaemonPendingAgentRunRecord,
+): { project: ChannelConnectorRuntimeProject; binding: ChannelConnectorRuntimeBinding } | null {
+  const preferredProject = config.projects.find((project) => project.id === record.projectId) || null;
+  const preferredBinding = preferredProject?.platformBindings.find((binding) => binding.id === record.bindingId) || null;
+  if (preferredProject && preferredBinding) return { project: preferredProject, binding: preferredBinding };
+  for (const project of config.projects) {
+    const binding = project.platformBindings.find((candidate) => candidate.id === record.bindingId) || null;
+    if (binding) return { project, binding };
+  }
+  return null;
+}
+
+async function replayPendingAgentRuns(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  state: ChannelDaemonState;
+  activeRunCancels: ChannelDaemonActiveRunCancelRegistry;
+  seenMessages: Map<string, number>;
+  octoTimelines: ChannelDaemonOctoTimelineRegistry;
+  feishuTimelines: ChannelDaemonFeishuTimelineRegistry;
+}): Promise<void> {
+  const { config, state, activeRunCancels, seenMessages, octoTimelines, feishuTimelines } = input;
+  const records = readPendingAgentRunStore(config).records;
+  if (!records.length) return;
+  appendLog(config.paths.log, "Replaying pending Agent runs", { count: records.length });
+  const feishuGroups = records.some((record) => record.adapter === "feishu") ? createFeishuGroups(config) : [];
+  for (const record of records) {
+    const runtime = runtimeProjectAndBindingForPendingRun(config, record);
+    const eventPath = record.adapter === "feishu" ? config.paths.feishuEvents : config.paths.octoEvents;
+    if (!runtime || runtime.binding.enabled === false || runtime.binding.platform !== record.adapter) {
+      removePendingAgentRun(config, record.id);
+      writeJsonLine(eventPath, {
+        checkedAt: new Date().toISOString(),
+        eventKind: "channel.agent.pending_dropped",
+        adapter: record.adapter,
+        bindingId: record.bindingId,
+        projectId: record.projectId,
+        sessionKey: record.sessionKey,
+        messageId: record.messageId,
+        pendingRunId: record.id,
+        reason: runtime ? "binding_disabled_or_platform_changed" : "binding_missing",
+      });
+      continue;
+    }
+    const attempted = markPendingAgentRunAttempt(config, record.id);
+    if (!attempted) continue;
+    const replay: ChannelDaemonPendingAgentRunReplay = {
+      pendingRunId: attempted.id,
+      queuedAt: attempted.queuedAt,
+      attempt: attempted.attempts,
+    };
+    writeJsonLine(eventPath, {
+      checkedAt: new Date().toISOString(),
+      eventKind: "channel.agent.pending_replay",
+      adapter: attempted.adapter,
+      bindingId: attempted.bindingId,
+      projectId: attempted.projectId,
+      sessionKey: attempted.sessionKey,
+      messageId: attempted.messageId,
+      pendingRunId: attempted.id,
+      attempt: attempted.attempts,
+      queuedAt: attempted.queuedAt,
+    });
+    try {
+      if (attempted.adapter === "octo") {
+        if (!attempted.octoMessage) throw new Error("pending_octo_message_missing");
+        await dispatchOctoMessage({
+          config,
+          state,
+          activeRunCancels,
+          project: runtime.project,
+          binding: runtime.binding,
+          robotId: attempted.robotId || null,
+          message: attempted.octoMessage,
+          seenMessages,
+          octoTimelines,
+          replay,
+        });
+      } else {
+        if (!attempted.feishuParsed) throw new Error("pending_feishu_parsed_missing");
+        const group = feishuGroups.find((candidate) =>
+          candidate.refs.some((ref) => ref.binding.id === runtime.binding.id),
+        );
+        if (!group) throw new Error("pending_feishu_group_missing");
+        await dispatchFeishuParsedEvent({
+          config,
+          state,
+          activeRunCancels,
+          group,
+          parsed: attempted.feishuParsed,
+          rawEvent: attempted.feishuRawEvent || attempted.feishuParsed,
+          seenMessages,
+          feishuTimelines,
+          replay,
+        });
+      }
+    } catch (error) {
+      appendLog(config.paths.log, "Pending Agent run replay failed", {
+        adapter: attempted.adapter,
+        bindingId: attempted.bindingId,
+        messageId: attempted.messageId,
+        pendingRunId: attempted.id,
+        error: shortMessage(error),
+      });
+      writeJsonLine(eventPath, {
+        checkedAt: new Date().toISOString(),
+        eventKind: "channel.agent.pending_replay_failed",
+        adapter: attempted.adapter,
+        bindingId: attempted.bindingId,
+        projectId: attempted.projectId,
+        sessionKey: attempted.sessionKey,
+        messageId: attempted.messageId,
+        pendingRunId: attempted.id,
+        attempt: attempted.attempts,
+        error: shortMessage(error),
+      });
+    }
+  }
+}
+
 async function main(): Promise<void> {
   const configPath = configPathFromArgv(process.argv.slice(2));
   const config = readConfig(configPath);
@@ -12162,6 +12507,19 @@ async function main(): Promise<void> {
   const feishuTimelines: ChannelDaemonFeishuTimelineRegistry = new Map();
   const agentSessionReaper = startAgentSessionDriverReaper(config, state);
   let feishuWatchdog: NodeJS.Timeout | null = null;
+
+  void replayPendingAgentRuns({
+    config,
+    state,
+    activeRunCancels,
+    seenMessages,
+    octoTimelines,
+    feishuTimelines,
+  }).catch((error) => {
+    appendLog(config.paths.log, "Pending Agent run replay startup failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  });
 
   void startOctoConnections(config, state, activeRunCancels, sockets, octoRestHeartbeatTimers, seenMessages, octoTimelines).catch((error) => {
     appendLog(config.paths.log, "Octo connection startup failed", {
