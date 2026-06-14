@@ -65,7 +65,7 @@
               >
                 <small>{{ profile.agent }} · {{ profile.permissionMode }}</small>
                 <strong>{{ profile.name || profile.id }}</strong>
-                <span>{{ profile.model || text('默认模型', 'default model') }}</span>
+                <span>{{ profileModelLabel(profile) }}</span>
                 <span>{{ compactPath(profile.workDir) }}</span>
               </button>
             </div>
@@ -798,6 +798,22 @@ function sessionDriverLabel(bindingId: string): string {
     ? status.effectiveMode
     : `${status.requestedMode} -> ${status.effectiveMode}`;
   return `${mode} · ${status.reason}`;
+}
+
+function effectiveModelForProfile(profile: ChannelConnectorAgentProfile): string {
+  const explicit = String(profile.model || '').trim();
+  if (explicit) return explicit;
+  const appId = modelGatewayAppConnectionIdForAgent(profile.agent);
+  const appModel = appId ? String(appConnectionProfile.value?.appModels?.[appId] || '').trim() : '';
+  return appModel || String(appConnectionProfile.value?.model || '').trim();
+}
+
+function profileModelLabel(profile: ChannelConnectorAgentProfile): string {
+  const model = effectiveModelForProfile(profile);
+  if (!model) return text('默认模型', 'default model');
+  return profile.model
+    ? model
+    : text(`继承 ${model}`, `inherits ${model}`);
 }
 
 function addModelOption(target: Set<string>, value: unknown): void {

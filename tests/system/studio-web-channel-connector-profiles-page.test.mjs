@@ -38,6 +38,10 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(page, /appConnections\.value = appConnectionsResponse\.connections/);
   assert.match(page, /collectGatewayProviderModelNames/);
   assert.match(page, /model\.aliases/);
+  assert.match(page, /profileModelLabel\(profile\)/);
+  assert.match(page, /function effectiveModelForProfile/);
+  assert.match(page, /appConnectionProfile\.value\?\.appModels\?\.\[appId\]/);
+  assert.match(page, /inherits \$\{model\}/);
   assert.match(page, /fetchChannelConnectorsNativeConfig/);
   assert.match(page, /saveChannelConnectorsNativeConfig/);
   assert.match(page, /fetchChannelConnectorAgentSessions/);
