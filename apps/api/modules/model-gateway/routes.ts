@@ -3,6 +3,8 @@ import type { StudioRouter } from "../../core/router.js";
 import type {
   ModelGatewayActiveRouteSmokeRequest,
   ModelGatewayClientAuthUpdateRequest,
+  ModelGatewayCodexAccountLoginPollRequest,
+  ModelGatewayCodexAccountLoginStartRequest,
   ModelGatewayDaemonServiceRequest,
   ModelGatewayApplyAppConnectionRequest,
   ModelGatewayRollbackAppConnectionRequest,
@@ -164,6 +166,24 @@ export function registerModelGatewayRoutes(router: StudioRouter): void {
     try {
       const payload = await parseJsonBody<ModelGatewayProviderDetectRequest>(req);
       sendJson(res, 200, await routeCtx.services.modelGateway.detectProvider(req, payload));
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
+  router.post("/api/model-gateway/account-providers/codex/login/start", async (req, res, routeCtx) => {
+    try {
+      const payload = await parseJsonBody<ModelGatewayCodexAccountLoginStartRequest>(req);
+      sendJson(res, 200, await routeCtx.services.modelGateway.startCodexAccountLogin(req, payload));
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
+  router.post("/api/model-gateway/account-providers/codex/login/poll", async (req, res, routeCtx) => {
+    try {
+      const payload = await parseJsonBody<ModelGatewayCodexAccountLoginPollRequest>(req);
+      sendJson(res, 200, await routeCtx.services.modelGateway.pollCodexAccountLogin(req, payload));
     } catch (error) {
       sendModelGatewayError(res, error);
     }

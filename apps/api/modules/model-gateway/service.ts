@@ -5,9 +5,13 @@ import path from "node:path";
 import { execFile, spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { promisify } from "node:util";
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import type { StudioServerConfig } from "../../../../types/api.js";
 import {
+  MODEL_GATEWAY_ACCOUNT_CREDENTIAL_SOURCES,
+  MODEL_GATEWAY_ACCOUNT_PROVIDER_KINDS,
+  MODEL_GATEWAY_ACCOUNT_ROUTING_STRATEGIES,
+  MODEL_GATEWAY_ACCOUNT_STATES,
   MODEL_GATEWAY_API_FORMATS,
   MODEL_GATEWAY_APP_CONNECTION_IDS,
   MODEL_GATEWAY_APP_SCOPES,
@@ -16,11 +20,16 @@ import {
   MODEL_GATEWAY_DEFAULT_HOST,
   MODEL_GATEWAY_DEFAULT_PORT,
   MODEL_GATEWAY_PROVIDER_CATEGORIES,
+  MODEL_GATEWAY_PROVIDER_SOURCE_TYPES,
   MODEL_GATEWAY_REASONING_EFFORT_PARAMS,
   MODEL_GATEWAY_REASONING_EFFORT_VALUE_MODES,
   MODEL_GATEWAY_REASONING_OUTPUT_FORMATS,
   MODEL_GATEWAY_REASONING_THINKING_PARAMS,
   MODEL_GATEWAY_ROUTE_IDS,
+  type ModelGatewayAccountEntry,
+  type ModelGatewayAccountProviderConfig,
+  type ModelGatewayAccountProviderKind,
+  type ModelGatewayAccountProviderRouting,
   type ModelGatewayApiFormat,
   type ModelGatewayActiveRouteStatus,
   type ModelGatewayActiveRouteSmokeRequest,
@@ -37,6 +46,10 @@ import {
   type ModelGatewayClientAuthResponse,
   type ModelGatewayClientAuthUpdateRequest,
   type ModelGatewayClientAuthView,
+  type ModelGatewayCodexAccountLoginPollRequest,
+  type ModelGatewayCodexAccountLoginPollResponse,
+  type ModelGatewayCodexAccountLoginStartRequest,
+  type ModelGatewayCodexAccountLoginStartResponse,
   type ModelGatewayDaemonBootstrapStatus,
   type ModelGatewayDaemonRuntimeMetadata,
   type ModelGatewayDaemonServiceAction,
@@ -64,6 +77,7 @@ import {
   type ModelGatewayModelFeatures,
   type ModelGatewayProviderNetwork,
   type ModelGatewayProviderReasoning,
+  type ModelGatewayProviderSourceType,
   type ModelGatewayProviderTestRequest,
   type ModelGatewayProviderTestResponse,
   type ModelGatewayProviderView,
@@ -138,6 +152,17 @@ const REQUEST_LOG_PREVIEW_CHARS = 1_000;
 const DEFAULT_UNKNOWN_MODEL_CONTEXT_WINDOW = 64_000;
 const DEFAULT_UNKNOWN_MODEL_MAX_OUTPUT_TOKENS = 8_192;
 const CLIENT_AUTH_SECRET_REF = "gateway:client-api-key";
+const CODEX_ACCOUNT_PROVIDER_BASE_URL = "https://chatgpt.com/backend-api/codex";
+const CODEX_ACCOUNT_AUTH_CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
+const CODEX_ACCOUNT_AUTH_TOKEN_URL = "https://auth.openai.com/oauth/token";
+const CODEX_ACCOUNT_DEVICE_USER_CODE_URL = "https://auth.openai.com/api/accounts/deviceauth/usercode";
+const CODEX_ACCOUNT_DEVICE_TOKEN_URL = "https://auth.openai.com/api/accounts/deviceauth/token";
+const CODEX_ACCOUNT_DEVICE_VERIFICATION_URL = "https://auth.openai.com/codex/device";
+const CODEX_ACCOUNT_DEVICE_REDIRECT_URI = "https://auth.openai.com/deviceauth/callback";
+const CODEX_ACCOUNT_DEFAULT_POLL_INTERVAL_SECONDS = 5;
+const CODEX_ACCOUNT_LOGIN_TIMEOUT_MS = 15 * 60_000;
+const CODEX_ACCOUNT_USER_AGENT = "codex_cli_rs/0.133.0 (OpenClaw Studio Gateway; local)";
+const CODEX_ACCOUNT_ORIGINATOR = "codex_cli_rs";
 const MODEL_GATEWAY_VISION_SMOKE_IMAGE_MIME_TYPE = "image/jpeg";
 const MODEL_GATEWAY_VISION_SMOKE_IMAGE_BASE64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAAgACADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD50ooor8MP9UwooooAKKKKACiiigD/2Q==";
 const MODEL_GATEWAY_VISION_SMOKE_PROMPT = "Identify the dominant color of the attached test image. Reply with one lowercase color word.";
@@ -147,6 +172,33 @@ const DAEMON_SERVICE_ACTIONS = ["preview", "install", "ensure-running", "start",
 
 type HeaderMap = http.IncomingHttpHeaders | Record<string, string | string[] | undefined> | Headers;
 type FetchInitWithDispatcher = RequestInit & { dispatcher?: unknown };
+
+type CodexDeviceLoginSession = {
+  loginId: string;
+  providerId: string;
+  providerName: string;
+  setActiveScopes: ModelGatewayAppScope[];
+  deviceAuthId: string;
+  userCode: string;
+  expiresAtMs: number;
+  pollIntervalSeconds: number;
+  createdAt: string;
+};
+
+type CodexTokenBundle = {
+  type: "codex";
+  tokens: {
+    id_token?: string;
+    access_token?: string;
+    refresh_token?: string;
+    account_id?: string;
+  };
+  last_refresh?: string;
+  expires_at?: string;
+  email?: string;
+  plan_type?: string;
+  account_hash?: string;
+};
 
 const ROUTES: Record<ModelGatewayRouteId, {
   paths: string[];
@@ -833,6 +885,94 @@ function normalizeProviderReasoning(value: unknown, fallback?: ModelGatewayProvi
   }
 
   return reasoning;
+}
+
+function normalizeAccountProviderRouting(
+  value: unknown,
+  fallback?: ModelGatewayAccountProviderRouting,
+): ModelGatewayAccountProviderRouting {
+  const source = isRecord(value) ? value : {};
+  const strategy = normalizedMember(
+    source.strategy,
+    MODEL_GATEWAY_ACCOUNT_ROUTING_STRATEGIES,
+  ) || fallback?.strategy || "round-robin";
+  const maxConcurrentPerAccount = firstPositiveInteger(source.maxConcurrentPerAccount, fallback?.maxConcurrentPerAccount);
+  return {
+    strategy,
+    sessionAffinity: typeof source.sessionAffinity === "boolean"
+      ? source.sessionAffinity
+      : fallback?.sessionAffinity ?? true,
+    maxConcurrentPerAccount,
+  };
+}
+
+function normalizeAccountEntry(
+  value: unknown,
+  fallback?: ModelGatewayAccountEntry,
+): ModelGatewayAccountEntry | null {
+  const source = isRecord(value) ? value : {};
+  const stamp = nowIso();
+  const id = normalizeId(source.id, fallback?.id || `account-${Date.now()}`);
+  const authRef = normalizeString(source.authRef, fallback?.authRef || "");
+  if (!id || !authRef) return null;
+  const kind = memberOrDefault<ModelGatewayAccountProviderKind>(
+    source.kind,
+    MODEL_GATEWAY_ACCOUNT_PROVIDER_KINDS,
+    fallback?.kind || "codex",
+  );
+  const credentialSource = memberOrDefault(
+    source.credentialSource,
+    MODEL_GATEWAY_ACCOUNT_CREDENTIAL_SOURCES,
+    fallback?.credentialSource || "unknown",
+  );
+  const state = memberOrDefault(
+    source.state,
+    MODEL_GATEWAY_ACCOUNT_STATES,
+    source.enabled === false ? "disabled" : fallback?.enabled === false ? "disabled" : "ready",
+  );
+  return {
+    id,
+    kind,
+    enabled: state === "disabled" ? false : typeof source.enabled === "boolean" ? source.enabled : fallback?.enabled ?? true,
+    authRef,
+    credentialSource,
+    accountHash: normalizeString(source.accountHash, fallback?.accountHash || "") || null,
+    emailMasked: normalizeString(source.emailMasked, fallback?.emailMasked || "") || null,
+    plan: normalizeString(source.plan, fallback?.plan || "") || null,
+    expiresAt: normalizeString(source.expiresAt, fallback?.expiresAt || "") || null,
+    lastCheckedAt: normalizeString(source.lastCheckedAt, fallback?.lastCheckedAt || "") || null,
+    lastSuccessAt: normalizeString(source.lastSuccessAt, fallback?.lastSuccessAt || "") || null,
+    lastError: normalizeString(source.lastError, fallback?.lastError || "") || null,
+    cooldownUntil: normalizeString(source.cooldownUntil, fallback?.cooldownUntil || "") || null,
+    proxyUrl: normalizeString(source.proxyUrl, fallback?.proxyUrl || "") || null,
+    createdAt: normalizeString(source.createdAt, fallback?.createdAt || stamp),
+    updatedAt: normalizeString(source.updatedAt, fallback?.updatedAt || stamp),
+  };
+}
+
+function normalizeAccountProviderConfig(
+  value: unknown,
+  fallback?: ModelGatewayAccountProviderConfig | null,
+): ModelGatewayAccountProviderConfig | null {
+  if (value === null) return null;
+  const source = isRecord(value) ? value : {};
+  if (!Object.keys(source).length && !fallback) return null;
+  const kind = memberOrDefault<ModelGatewayAccountProviderKind>(
+    source.kind,
+    MODEL_GATEWAY_ACCOUNT_PROVIDER_KINDS,
+    fallback?.kind || "codex",
+  );
+  const fallbackAccounts = new Map((fallback?.accounts || []).map((account) => [account.id, account]));
+  const accounts = Array.isArray(source.accounts)
+    ? source.accounts
+      .map((item) => normalizeAccountEntry(item, isRecord(item) ? fallbackAccounts.get(normalizeId(item.id, "")) : undefined))
+      .filter((account): account is ModelGatewayAccountEntry => account !== null)
+    : fallback?.accounts || [];
+  return {
+    kind,
+    routing: normalizeAccountProviderRouting(source.routing, fallback?.routing),
+    accounts,
+  };
 }
 
 function normalizeEndpointProfile(
@@ -1536,6 +1676,14 @@ function normalizeProvider(input: ModelGatewayProviderInput, fallback?: ModelGat
     priority: typeof input.failover?.priority === "number" ? Math.floor(input.failover.priority) : fallback?.failover.priority ?? 100,
     maxRetries: typeof input.failover?.maxRetries === "number" ? Math.max(0, Math.floor(input.failover.maxRetries)) : fallback?.failover.maxRetries ?? 1,
   };
+  const sourceType = memberOrDefault<ModelGatewayProviderSourceType>(
+    input.sourceType,
+    MODEL_GATEWAY_PROVIDER_SOURCE_TYPES,
+    fallback?.sourceType || "api-key",
+  );
+  const accountProvider = sourceType === "account-backed"
+    ? normalizeAccountProviderConfig(input.accountProvider, fallback?.accountProvider || null)
+    : null;
   const endpointProfiles = normalizeEndpointProfiles(input.endpointProfiles, fallback?.endpointProfiles, {
     id,
     appScopes,
@@ -1558,6 +1706,7 @@ function normalizeProvider(input: ModelGatewayProviderInput, fallback?: ModelGat
       MODEL_GATEWAY_PROVIDER_CATEGORIES,
       fallback?.category || "custom",
     ),
+    sourceType,
     appScopes,
     baseUrl,
     apiKeyRef,
@@ -1570,6 +1719,7 @@ function normalizeProvider(input: ModelGatewayProviderInput, fallback?: ModelGat
     network,
     health: normalizeHealth(input.health, fallback?.health),
     failover,
+    accountProvider,
     projectRefs: normalizeStringArray(input.projectRefs || fallback?.projectRefs),
     metadata: isRecord(input.metadata) ? input.metadata : fallback?.metadata || {},
     createdAt: fallback?.createdAt || stamp,
@@ -1593,6 +1743,161 @@ function maskSecret(value: string): { masked: string; length: number } {
 
 function isManagedProxyPlaceholderSecret(value: string | null): boolean {
   return value?.trim() === "PROXY_MANAGED";
+}
+
+function parseJsonObject(value: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return isRecord(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function base64UrlDecodeJson(value: string): Record<string, unknown> | null {
+  try {
+    const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+    const decoded = Buffer.from(padded, "base64").toString("utf8");
+    return parseJsonObject(decoded);
+  } catch {
+    return null;
+  }
+}
+
+function parseJwtPayload(token: string): Record<string, unknown> | null {
+  const parts = token.split(".");
+  if (parts.length !== 3 || !parts[1]) return null;
+  return base64UrlDecodeJson(parts[1]);
+}
+
+function sha256Short(value: string): string {
+  return createHash("sha256").update(value).digest("hex").slice(0, 12);
+}
+
+function maskEmail(value: string): string | null {
+  const email = value.trim();
+  if (!email) return null;
+  const [name, domain] = email.split("@");
+  if (!name || !domain) return maskSecret(email).masked;
+  const visible = name.length <= 2 ? name.slice(0, 1) : `${name.slice(0, 2)}${"*".repeat(Math.min(4, Math.max(1, name.length - 2)))}`;
+  return `${visible}@${domain}`;
+}
+
+function codexAuthInfoFromJwt(idToken: string): {
+  email: string;
+  accountId: string;
+  plan: string;
+  expiresAt: string | null;
+} {
+  const payload = parseJwtPayload(idToken) || {};
+  const authInfo = isRecord(payload["https://api.openai.com/auth"])
+    ? payload["https://api.openai.com/auth"] as Record<string, unknown>
+    : {};
+  const exp = typeof payload.exp === "number" ? payload.exp : null;
+  return {
+    email: normalizeString(payload.email),
+    accountId: normalizeString(authInfo.chatgpt_account_id),
+    plan: normalizeString(authInfo.chatgpt_plan_type),
+    expiresAt: exp ? new Date(exp * 1000).toISOString() : null,
+  };
+}
+
+function normalizeCodexTokenBundle(value: unknown): CodexTokenBundle | null {
+  const source = typeof value === "string" ? parseJsonObject(value) : isRecord(value) ? value : null;
+  if (!source) return null;
+  const tokens = isRecord(source.tokens)
+    ? source.tokens
+    : isRecord(source.token_data)
+      ? source.token_data
+      : source;
+  const idToken = normalizeString(tokens.id_token || source.id_token);
+  const accessToken = normalizeString(tokens.access_token || source.access_token);
+  const refreshToken = normalizeString(tokens.refresh_token || source.refresh_token);
+  const authInfo = idToken ? codexAuthInfoFromJwt(idToken) : { email: "", accountId: "", plan: "", expiresAt: null };
+  const accountId = normalizeString(tokens.account_id || source.account_id || authInfo.accountId);
+  const email = normalizeString(source.email || tokens.email || authInfo.email);
+  const plan = normalizeString(source.plan_type || source.plan || tokens.plan_type || authInfo.plan);
+  const expiresAt = normalizeString(source.expires_at || source.expired || tokens.expired || authInfo.expiresAt || "");
+  if (!accessToken && !refreshToken && !idToken) return null;
+  return {
+    type: "codex",
+    tokens: {
+      ...(idToken ? { id_token: idToken } : {}),
+      ...(accessToken ? { access_token: accessToken } : {}),
+      ...(refreshToken ? { refresh_token: refreshToken } : {}),
+      ...(accountId ? { account_id: accountId } : {}),
+    },
+    last_refresh: normalizeString(source.last_refresh) || nowIso(),
+    ...(expiresAt ? { expires_at: expiresAt } : {}),
+    ...(email ? { email } : {}),
+    ...(plan ? { plan_type: plan } : {}),
+    ...(accountId ? { account_hash: sha256Short(accountId) } : {}),
+  };
+}
+
+function codexAccountFromTokenBundle(
+  id: string,
+  authRef: string,
+  bundle: CodexTokenBundle,
+  credentialSource: ModelGatewayAccountEntry["credentialSource"],
+  fallback?: ModelGatewayAccountEntry,
+): ModelGatewayAccountEntry {
+  const stamp = nowIso();
+  const accountId = normalizeString(bundle.tokens.account_id);
+  const accountHash = normalizeString(bundle.account_hash) || (accountId ? sha256Short(accountId) : null);
+  return {
+    id,
+    kind: "codex",
+    enabled: fallback?.enabled ?? true,
+    authRef,
+    credentialSource,
+    accountHash,
+    emailMasked: maskEmail(normalizeString(bundle.email)) || fallback?.emailMasked || null,
+    plan: normalizeString(bundle.plan_type, fallback?.plan || "") || null,
+    expiresAt: normalizeString(bundle.expires_at, fallback?.expiresAt || "") || null,
+    lastCheckedAt: stamp,
+    lastSuccessAt: stamp,
+    lastError: null,
+    cooldownUntil: null,
+    proxyUrl: fallback?.proxyUrl || null,
+    createdAt: fallback?.createdAt || stamp,
+    updatedAt: stamp,
+  };
+}
+
+function codexAccountDefaultModels(): ModelGatewayProviderModelCatalog {
+  const models: ModelGatewayProviderModel[] = [
+    {
+      id: "gpt-5.5",
+      aliases: ["gpt5.5"],
+      contextWindow: 1_050_000,
+      maxOutputTokens: 128_000,
+      features: { text: true, streaming: true, tools: true, vision: true, reasoning: true, responses: true },
+    },
+    {
+      id: "gpt-5.5-mini",
+      aliases: ["gpt5.5-mini"],
+      contextWindow: 1_050_000,
+      maxOutputTokens: 128_000,
+      features: { text: true, streaming: true, tools: true, vision: true, reasoning: true, responses: true },
+    },
+    {
+      id: "gpt-5",
+      contextWindow: 400_000,
+      maxOutputTokens: 128_000,
+      features: { text: true, streaming: true, tools: true, vision: true, reasoning: true, responses: true },
+    },
+  ];
+  return {
+    defaultModel: models[0]?.id || null,
+    models,
+    aliases: {},
+  };
+}
+
+function codexAccountProviderName(account: ModelGatewayAccountEntry, fallback = "Codex Account"): string {
+  const suffix = [account.emailMasked, account.plan].filter(Boolean).join(" · ");
+  return suffix ? `${fallback} (${suffix})` : fallback;
 }
 
 function readHeader(headers: HeaderMap | undefined, key: string): string {
@@ -1744,6 +2049,7 @@ function effectiveProviderForEndpointProfile(
     network: endpointProfile.network,
     health: endpointProfile.health,
     failover: endpointProfile.failover,
+    accountProvider: provider.accountProvider,
     metadata: {
       ...provider.metadata,
       ...endpointProfile.metadata,
@@ -2259,6 +2565,18 @@ function applyProviderAuth(headers: Headers, provider: ModelGatewayProvider, sec
 
   if (provider.authStrategy === "none") return;
   if (!secret) return;
+
+  if (provider.sourceType === "account-backed" && provider.accountProvider?.kind === "codex") {
+    const bundle = normalizeCodexTokenBundle(secret);
+    const token = normalizeString(bundle?.tokens.access_token);
+    if (!token) return;
+    headers.set("authorization", `Bearer ${token}`);
+    const accountId = normalizeString(bundle?.tokens.account_id);
+    if (accountId) headers.set("chatgpt-account-id", accountId);
+    if (!headers.get("originator")) headers.set("originator", CODEX_ACCOUNT_ORIGINATOR);
+    if (!headers.get("user-agent")) headers.set("user-agent", CODEX_ACCOUNT_USER_AGENT);
+    return;
+  }
 
   if (provider.authStrategy === "anthropic_api_key") {
     headers.set("x-api-key", secret);
@@ -2923,6 +3241,8 @@ export interface ModelGatewayService {
   getDaemonService(): ModelGatewayDaemonServiceResponse;
   manageDaemonService(req: http.IncomingMessage | undefined, payload?: ModelGatewayDaemonServiceRequest): Promise<ModelGatewayDaemonServiceResponse>;
   detectProvider(req: http.IncomingMessage | undefined, payload?: ModelGatewayProviderDetectRequest): Promise<ModelGatewayProviderDetectResponse>;
+  startCodexAccountLogin(req: http.IncomingMessage | undefined, payload?: ModelGatewayCodexAccountLoginStartRequest): Promise<ModelGatewayCodexAccountLoginStartResponse>;
+  pollCodexAccountLogin(req: http.IncomingMessage | undefined, payload?: ModelGatewayCodexAccountLoginPollRequest): Promise<ModelGatewayCodexAccountLoginPollResponse>;
   upsertProvider(req: http.IncomingMessage | undefined, payload: ModelGatewayUpsertProviderRequest): ModelGatewayProviderView;
   deleteProvider(req: http.IncomingMessage | undefined, providerId: string): ModelGatewayProvidersResponse;
   setActiveProvider(req: http.IncomingMessage | undefined, payload: ModelGatewaySetActiveProviderRequest): ModelGatewayProvidersResponse;
@@ -2955,6 +3275,7 @@ export function createModelGatewayService(
   const homeDir = options.homeDir || os.homedir();
   const listenerHost = options.listener?.host || MODEL_GATEWAY_DEFAULT_HOST;
   const listenerPort = options.listener?.port || MODEL_GATEWAY_DEFAULT_PORT;
+  const codexDeviceLoginSessions = new Map<string, CodexDeviceLoginSession>();
 
   async function runDaemonServiceCommand(command: ModelGatewayDaemonServiceCommand): Promise<ModelGatewayDaemonServiceCommandResult> {
     return options.daemonServiceCommandRunner
@@ -3872,6 +4193,276 @@ export function createModelGatewayService(
         ],
       }),
     });
+  }
+
+  async function startCodexAccountLogin(
+    req: http.IncomingMessage | undefined,
+    payload: ModelGatewayCodexAccountLoginStartRequest = {},
+  ): Promise<ModelGatewayCodexAccountLoginStartResponse> {
+    requireManagement(req);
+    const response = await fetch(CODEX_ACCOUNT_DEVICE_USER_CODE_URL, {
+      method: "POST",
+      headers: {
+        "accept": "application/json",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ client_id: CODEX_ACCOUNT_AUTH_CLIENT_ID }),
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_codex_login_start_failed",
+        `Codex login start failed with HTTP ${response.status}: ${text.slice(0, 300) || response.statusText}`,
+        502,
+      );
+    }
+    const body = parseJsonObject(text) || {};
+    const deviceAuthId = normalizeString(body.device_auth_id);
+    const userCode = normalizeString(body.user_code || body.usercode);
+    if (!deviceAuthId || !userCode) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_codex_login_start_invalid",
+        "Codex login start response did not include device auth id and user code.",
+        502,
+      );
+    }
+    const loginId = randomUUID();
+    const pollInterval = firstPositiveInteger(body.interval) || CODEX_ACCOUNT_DEFAULT_POLL_INTERVAL_SECONDS;
+    const expiresAtMs = Date.now() + CODEX_ACCOUNT_LOGIN_TIMEOUT_MS;
+    const setActiveScopes = normalizeExplicitAppScopes(payload.setActiveScopes);
+    codexDeviceLoginSessions.set(loginId, {
+      loginId,
+      providerId: normalizeId(payload.providerId, "codex-account"),
+      providerName: normalizeString(payload.providerName, "Codex Account"),
+      setActiveScopes: setActiveScopes.length ? setActiveScopes : [...MODEL_GATEWAY_APP_SCOPES],
+      deviceAuthId,
+      userCode,
+      expiresAtMs,
+      pollIntervalSeconds: pollInterval,
+      createdAt: nowIso(),
+    });
+    return {
+      ok: true,
+      loginId,
+      verificationUrl: CODEX_ACCOUNT_DEVICE_VERIFICATION_URL,
+      userCode,
+      expiresAt: new Date(expiresAtMs).toISOString(),
+      pollIntervalSeconds: pollInterval,
+    };
+  }
+
+  async function pollCodexDeviceAuthorization(
+    session: CodexDeviceLoginSession,
+  ): Promise<{ authorizationCode: string; codeVerifier: string; codeChallenge: string } | null> {
+    const response = await fetch(CODEX_ACCOUNT_DEVICE_TOKEN_URL, {
+      method: "POST",
+      headers: {
+        "accept": "application/json",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        device_auth_id: session.deviceAuthId,
+        user_code: session.userCode,
+      }),
+    });
+    const text = await response.text();
+    if (response.status === 403 || response.status === 404) return null;
+    if (!response.ok) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_codex_login_poll_failed",
+        `Codex login poll failed with HTTP ${response.status}: ${text.slice(0, 300) || response.statusText}`,
+        502,
+      );
+    }
+    const body = parseJsonObject(text) || {};
+    const authorizationCode = normalizeString(body.authorization_code);
+    const codeVerifier = normalizeString(body.code_verifier);
+    const codeChallenge = normalizeString(body.code_challenge);
+    if (!authorizationCode || !codeVerifier || !codeChallenge) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_codex_login_poll_invalid",
+        "Codex login poll response did not include the authorization code and PKCE verifier.",
+        502,
+      );
+    }
+    return { authorizationCode, codeVerifier, codeChallenge };
+  }
+
+  async function exchangeCodexAuthorizationCode(
+    authorizationCode: string,
+    codeVerifier: string,
+  ): Promise<CodexTokenBundle> {
+    const form = new URLSearchParams({
+      grant_type: "authorization_code",
+      client_id: CODEX_ACCOUNT_AUTH_CLIENT_ID,
+      code: authorizationCode,
+      redirect_uri: CODEX_ACCOUNT_DEVICE_REDIRECT_URI,
+      code_verifier: codeVerifier,
+    });
+    const response = await fetch(CODEX_ACCOUNT_AUTH_TOKEN_URL, {
+      method: "POST",
+      headers: {
+        "accept": "application/json",
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: form.toString(),
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_codex_token_exchange_failed",
+        `Codex token exchange failed with HTTP ${response.status}: ${text.slice(0, 300) || response.statusText}`,
+        502,
+      );
+    }
+    const body = parseJsonObject(text) || {};
+    const idToken = normalizeString(body.id_token);
+    const accessToken = normalizeString(body.access_token);
+    const refreshToken = normalizeString(body.refresh_token);
+    const authInfo = idToken ? codexAuthInfoFromJwt(idToken) : { email: "", accountId: "", plan: "", expiresAt: null };
+    const expiresIn = firstPositiveInteger(body.expires_in);
+    const bundle = normalizeCodexTokenBundle({
+      type: "codex",
+      tokens: {
+        id_token: idToken,
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        account_id: authInfo.accountId,
+      },
+      email: authInfo.email,
+      plan_type: authInfo.plan,
+      expires_at: expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : authInfo.expiresAt,
+      last_refresh: nowIso(),
+    });
+    if (!bundle?.tokens.access_token || !bundle.tokens.refresh_token) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_codex_token_exchange_invalid",
+        "Codex token exchange did not return usable access and refresh tokens.",
+        502,
+      );
+    }
+    return bundle;
+  }
+
+  function persistCodexAccountProvider(
+    session: CodexDeviceLoginSession,
+    bundle: CodexTokenBundle,
+  ): ModelGatewayProviderView {
+    const registry = readRegistry();
+    const accountId = normalizeString(bundle.tokens.account_id) || normalizeString(bundle.email) || session.loginId;
+    const accountHash = normalizeString(bundle.account_hash) || sha256Short(accountId);
+    const providerId = normalizeId(session.providerId, `codex-account-${accountHash}`);
+    const existing = findProvider(registry, providerId);
+    const authRef = `provider:${providerId}:account:${accountHash}:codex-token`;
+    const account = codexAccountFromTokenBundle(
+      `codex-${accountHash}`,
+      authRef,
+      { ...bundle, account_hash: accountHash },
+      "codex-device-auth",
+      existing?.accountProvider?.accounts.find((item) => item.id === `codex-${accountHash}`),
+    );
+    const existingAccounts = existing?.accountProvider?.accounts.filter((item) => item.id !== account.id) || [];
+    const nextAccounts = [...existingAccounts, account];
+    const provider = normalizeProvider({
+      ...(existing || {}),
+      id: providerId,
+      name: existing?.name || codexAccountProviderName(account, session.providerName),
+      enabled: true,
+      category: "official",
+      sourceType: "account-backed",
+      appScopes: existing?.appScopes?.length ? existing.appScopes : [...MODEL_GATEWAY_APP_SCOPES],
+      baseUrl: CODEX_ACCOUNT_PROVIDER_BASE_URL,
+      apiKeyRef: authRef,
+      apiFormat: "openai_responses",
+      authStrategy: "oauth_proxy",
+      models: existing?.models?.models?.length ? existing.models : codexAccountDefaultModels(),
+      endpoints: {
+        ...(existing?.endpoints || {}),
+        openai_responses: "/responses",
+        openai_responses_compact: "/responses/compact",
+      },
+      endpointProfiles: existing?.endpointProfiles || [],
+      network: existing?.network || {},
+      health: existing?.health || {},
+      failover: existing?.failover || { enabled: true, priority: 20, maxRetries: 1 },
+      accountProvider: {
+        kind: "codex",
+        routing: existing?.accountProvider?.routing || {
+          strategy: "round-robin",
+          sessionAffinity: true,
+          maxConcurrentPerAccount: null,
+        },
+        accounts: nextAccounts,
+      },
+      metadata: {
+        ...(existing?.metadata || {}),
+        importedFrom: "codex-device-login",
+        website: "https://chatgpt.com",
+        notes: "User-owned Codex/ChatGPT account-backed provider. Credentials stay in the local Studio Gateway secret store.",
+      },
+    }, existing || undefined);
+    const index = registry.providers.findIndex((item) => item.id === provider.id);
+    if (index >= 0) registry.providers[index] = provider;
+    else registry.providers.push(provider);
+    for (const scope of session.setActiveScopes) {
+      if (provider.appScopes.includes(scope)) registry.activeProviders[scope] = provider.id;
+    }
+    writeRegistry(registry);
+    setSecretValue(authRef, JSON.stringify(bundle));
+    return toProviderView(provider);
+  }
+
+  async function pollCodexAccountLogin(
+    req: http.IncomingMessage | undefined,
+    payload: ModelGatewayCodexAccountLoginPollRequest = { loginId: "" },
+  ): Promise<ModelGatewayCodexAccountLoginPollResponse> {
+    requireManagement(req);
+    const loginId = normalizeString(payload.loginId);
+    const session = loginId ? codexDeviceLoginSessions.get(loginId) : null;
+    if (!session) {
+      return {
+        ok: true,
+        status: "failed",
+        message: "Codex login session was not found. Start login again.",
+        provider: null,
+      };
+    }
+    if (Date.now() > session.expiresAtMs) {
+      codexDeviceLoginSessions.delete(loginId);
+      return {
+        ok: true,
+        status: "expired",
+        message: "Codex login session expired. Start login again.",
+        provider: null,
+      };
+    }
+    try {
+      const authorization = await pollCodexDeviceAuthorization(session);
+      if (!authorization) {
+        return {
+          ok: true,
+          status: "pending",
+          message: "Waiting for the user to approve Codex device login.",
+          provider: null,
+        };
+      }
+      const bundle = await exchangeCodexAuthorizationCode(authorization.authorizationCode, authorization.codeVerifier);
+      const provider = persistCodexAccountProvider(session, bundle);
+      codexDeviceLoginSessions.delete(loginId);
+      return {
+        ok: true,
+        status: "completed",
+        message: "Codex account login completed and provider was created.",
+        provider,
+      };
+    } catch (error) {
+      if (isModelGatewayServiceError(error)) throw error;
+      throw new ModelGatewayServiceError(
+        "model_gateway_codex_login_failed",
+        error instanceof Error ? error.message : "Codex account login failed.",
+        502,
+      );
+    }
   }
 
   async function detectProvider(
@@ -6164,6 +6755,8 @@ export function createModelGatewayService(
     getDaemonService,
     manageDaemonService,
     detectProvider,
+    startCodexAccountLogin,
+    pollCodexAccountLogin,
     upsertProvider,
     deleteProvider,
     setActiveProvider,

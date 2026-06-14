@@ -171,6 +171,11 @@ function parseSseEvents(raw) {
     });
 }
 
+function fakeJwt(payload) {
+  const encode = (value) => Buffer.from(JSON.stringify(value)).toString("base64url");
+  return `${encode({ alg: "none", typ: "JWT" })}.${encode(payload)}.signature`;
+}
+
 async function waitFor(predicate, timeoutMs = 3000) {
   const deadline = Date.now() + timeoutMs;
   let lastError = null;
@@ -259,6 +264,160 @@ test("model gateway registry stores provider secrets separately and masks views"
   assert.ok(!JSON.stringify(listed).includes("sk-test-secret-123456"));
   assert.equal(listed.activeProviders.codex, "openai-main");
   assert.equal(listed.activeProviders.openclaw, "openai-main");
+});
+
+test("model gateway starts Codex account login and creates an account-backed provider", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const idToken = fakeJwt({
+    email: "coder@example.com",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct_codex_123",
+      chatgpt_plan_type: "plus",
+    },
+  });
+
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const target = new URL(String(url));
+    const headers = init.headers instanceof Headers ? init.headers : new Headers(init.headers || {});
+
+    if (String(url) === "https://auth.openai.com/api/accounts/deviceauth/usercode") {
+      return new Response(JSON.stringify({
+        device_auth_id: "device-123",
+        user_code: "ABCD-EFGH",
+        interval: 1,
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (String(url) === "https://auth.openai.com/api/accounts/deviceauth/token") {
+      assert.equal(JSON.parse(String(init.body)).device_auth_id, "device-123");
+      return new Response(JSON.stringify({
+        authorization_code: "auth-code-123",
+        code_verifier: "verifier-123",
+        code_challenge: "challenge-123",
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (String(url) === "https://auth.openai.com/oauth/token") {
+      const form = new URLSearchParams(String(init.body));
+      assert.equal(form.get("grant_type"), "authorization_code");
+      assert.equal(form.get("code"), "auth-code-123");
+      assert.equal(form.get("code_verifier"), "verifier-123");
+      return new Response(JSON.stringify({
+        access_token: "codex-access-token",
+        refresh_token: "codex-refresh-token",
+        id_token: idToken,
+        expires_in: 3600,
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (target.hostname === "chatgpt.com" && target.pathname === "/backend-api/codex/responses") {
+      upstreamCalls.push({
+        url: String(url),
+        authorization: headers.get("authorization"),
+        accountId: headers.get("chatgpt-account-id"),
+        originator: headers.get("originator"),
+        userAgent: headers.get("user-agent"),
+        body: JSON.parse(String(init.body || "{}")),
+      });
+      return new Response(JSON.stringify({
+        id: "resp_codex_account",
+        object: "response",
+        status: "completed",
+        output: [{
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "ok" }],
+        }],
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    return new Response("unexpected", { status: 500 });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const start = await requestJson(`${baseUrl}/api/model-gateway/account-providers/codex/login/start`, {
+        method: "POST",
+        body: {
+          providerId: "codex-owned",
+          providerName: "My Codex",
+          setActiveScopes: ["codex", "claude-code", "opencode", "openclaw"],
+        },
+      });
+      assert.equal(start.status, 200);
+      assert.equal(start.body.ok, true);
+      assert.equal(start.body.userCode, "ABCD-EFGH");
+      assert.equal(start.body.verificationUrl, "https://auth.openai.com/codex/device");
+
+      const poll = await requestJson(`${baseUrl}/api/model-gateway/account-providers/codex/login/poll`, {
+        method: "POST",
+        body: { loginId: start.body.loginId },
+      });
+      assert.equal(poll.status, 200);
+      assert.equal(poll.body.status, "completed");
+      assert.equal(poll.body.provider.id, "codex-owned");
+      assert.equal(poll.body.provider.sourceType, "account-backed");
+      assert.equal(poll.body.provider.apiFormat, "openai_responses");
+      assert.equal(poll.body.provider.authStrategy, "oauth_proxy");
+      assert.equal(poll.body.provider.baseUrl, "https://chatgpt.com/backend-api/codex");
+      assert.equal(poll.body.provider.secret.hasSecret, true);
+      assert.equal(poll.body.provider.accountProvider.kind, "codex");
+      assert.equal(poll.body.provider.accountProvider.accounts.length, 1);
+      assert.equal(poll.body.provider.accountProvider.accounts[0].emailMasked, "co***@example.com");
+      assert.equal(poll.body.provider.accountProvider.accounts[0].plan, "plus");
+      assert.deepEqual(poll.body.provider.models.models.map((model) => model.id), ["gpt-5.5", "gpt-5.5-mini", "gpt-5"]);
+
+      const providers = await requestJson(`${baseUrl}/api/model-gateway/providers`);
+      assert.equal(providers.body.activeProviders.codex, "codex-owned");
+      assert.equal(providers.body.activeProviders["claude-code"], "codex-owned");
+
+      const registryRaw = fs.readFileSync(paths.registry, "utf8");
+      const secretsRaw = fs.readFileSync(paths.secrets, "utf8");
+      assert.ok(!registryRaw.includes("codex-access-token"));
+      assert.ok(!registryRaw.includes("codex-refresh-token"));
+      assert.ok(secretsRaw.includes("codex-access-token"));
+      assert.ok(secretsRaw.includes("codex-refresh-token"));
+      assert.equal(fs.statSync(paths.secrets).mode & 0o777, 0o600);
+
+      const response = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.5",
+          input: "hello",
+        },
+      });
+      assert.equal(response.status, 200);
+      assert.equal(response.body.id, "resp_codex_account");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://chatgpt.com/backend-api/codex/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer codex-access-token");
+  assert.equal(upstreamCalls[0].accountId, "acct_codex_123");
+  assert.equal(upstreamCalls[0].originator, "codex_cli_rs");
+  assert.match(upstreamCalls[0].userAgent, /^codex_cli_rs/);
 });
 
 test("model gateway refuses managed auth placeholders before upstream forwarding", async () => {

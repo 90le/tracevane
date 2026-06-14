@@ -577,6 +577,64 @@
   align-items: start;
 }
 
+.mgw-account-login-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  margin: 12px 0 14px;
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-base) 88%, var(--surface-soft));
+  padding: 14px;
+}
+
+.mgw-account-login-card__main {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mgw-account-login-card__main h4,
+.mgw-account-login-card__main p {
+  margin: 0;
+}
+
+.mgw-account-login-card__main p,
+.mgw-account-login-session small {
+  color: var(--mono-ink-2);
+  line-height: 1.5;
+}
+
+.mgw-account-login-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.mgw-account-login-session,
+.mgw-account-login-provider {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: var(--control-bg);
+  padding: 10px;
+}
+
+.mgw-account-login-session strong {
+  font-size: 1.1rem;
+  letter-spacing: 0.08em;
+}
+
+.mgw-account-login-session a {
+  min-width: 0;
+  color: var(--mono-accent);
+  overflow-wrap: anywhere;
+}
+
 .mgw-provider-list {
   display: grid;
   gap: 8px;
@@ -1295,6 +1353,14 @@
 }
 
 @media (max-width: 760px) {
+  .mgw-account-login-card {
+    grid-template-columns: 1fr;
+  }
+
+  .mgw-account-login-card__actions {
+    justify-content: flex-start;
+  }
+
   .mgw-form-grid,
   .mgw-profile-grid,
   .mgw-smoke-grid,

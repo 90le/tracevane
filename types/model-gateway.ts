@@ -30,6 +30,52 @@ export const MODEL_GATEWAY_PROVIDER_CATEGORIES = [
 
 export type ModelGatewayProviderCategory = (typeof MODEL_GATEWAY_PROVIDER_CATEGORIES)[number];
 
+export const MODEL_GATEWAY_PROVIDER_SOURCE_TYPES = [
+  "api-key",
+  "account-backed",
+  "external-relay",
+] as const;
+
+export type ModelGatewayProviderSourceType = (typeof MODEL_GATEWAY_PROVIDER_SOURCE_TYPES)[number];
+
+export const MODEL_GATEWAY_ACCOUNT_PROVIDER_KINDS = [
+  "codex",
+  "chatgpt",
+  "claude-code",
+  "gemini-cli",
+  "custom",
+] as const;
+
+export type ModelGatewayAccountProviderKind = (typeof MODEL_GATEWAY_ACCOUNT_PROVIDER_KINDS)[number];
+
+export const MODEL_GATEWAY_ACCOUNT_CREDENTIAL_SOURCES = [
+  "codex-device-auth",
+  "codex-browser-auth",
+  "codex-auth-json",
+  "manual-token-ref",
+  "unknown",
+] as const;
+
+export type ModelGatewayAccountCredentialSource = (typeof MODEL_GATEWAY_ACCOUNT_CREDENTIAL_SOURCES)[number];
+
+export const MODEL_GATEWAY_ACCOUNT_STATES = [
+  "ready",
+  "needs-login",
+  "refreshing",
+  "cooldown",
+  "disabled",
+  "error",
+] as const;
+
+export type ModelGatewayAccountState = (typeof MODEL_GATEWAY_ACCOUNT_STATES)[number];
+
+export const MODEL_GATEWAY_ACCOUNT_ROUTING_STRATEGIES = [
+  "round-robin",
+  "fill-first",
+] as const;
+
+export type ModelGatewayAccountRoutingStrategy = (typeof MODEL_GATEWAY_ACCOUNT_ROUTING_STRATEGIES)[number];
+
 export const MODEL_GATEWAY_API_FORMATS = [
   "openai_chat",
   "openai_responses",
@@ -166,6 +212,37 @@ export interface ModelGatewayProviderReasoning {
   outputFormat?: ModelGatewayReasoningOutputFormat;
 }
 
+export interface ModelGatewayAccountEntry {
+  id: string;
+  kind: ModelGatewayAccountProviderKind;
+  enabled: boolean;
+  authRef: string;
+  credentialSource: ModelGatewayAccountCredentialSource;
+  accountHash: string | null;
+  emailMasked: string | null;
+  plan: string | null;
+  expiresAt: string | null;
+  lastCheckedAt: string | null;
+  lastSuccessAt: string | null;
+  lastError: string | null;
+  cooldownUntil: string | null;
+  proxyUrl: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ModelGatewayAccountProviderRouting {
+  strategy: ModelGatewayAccountRoutingStrategy;
+  sessionAffinity: boolean;
+  maxConcurrentPerAccount: number | null;
+}
+
+export interface ModelGatewayAccountProviderConfig {
+  kind: ModelGatewayAccountProviderKind;
+  routing: ModelGatewayAccountProviderRouting;
+  accounts: ModelGatewayAccountEntry[];
+}
+
 export interface ModelGatewayProviderEndpointProfile {
   id: string;
   name: string;
@@ -191,6 +268,7 @@ export interface ModelGatewayProvider {
   name: string;
   enabled: boolean;
   category: ModelGatewayProviderCategory;
+  sourceType: ModelGatewayProviderSourceType;
   appScopes: ModelGatewayAppScope[];
   baseUrl: string;
   apiKeyRef: string | null;
@@ -203,6 +281,7 @@ export interface ModelGatewayProvider {
   network: ModelGatewayProviderNetwork;
   health: ModelGatewayProviderHealth;
   failover: ModelGatewayProviderFailover;
+  accountProvider: ModelGatewayAccountProviderConfig | null;
   projectRefs: string[];
   metadata: ModelGatewayProviderMetadata;
   createdAt: string;
@@ -486,6 +565,7 @@ export interface ModelGatewayProviderInput {
   name?: string;
   enabled?: boolean;
   category?: ModelGatewayProviderCategory;
+  sourceType?: ModelGatewayProviderSourceType;
   appScopes?: ModelGatewayAppScope[];
   baseUrl?: string;
   apiKeyRef?: string | null;
@@ -498,6 +578,7 @@ export interface ModelGatewayProviderInput {
   network?: Partial<ModelGatewayProviderNetwork>;
   health?: Partial<ModelGatewayProviderHealth>;
   failover?: Partial<ModelGatewayProviderFailover>;
+  accountProvider?: Partial<ModelGatewayAccountProviderConfig> | null;
   projectRefs?: string[];
   metadata?: ModelGatewayProviderMetadata;
 }
@@ -528,6 +609,32 @@ export interface ModelGatewayUpsertProviderRequest {
     apiKey?: string | null;
   };
   setActiveScopes?: ModelGatewayAppScope[];
+}
+
+export interface ModelGatewayCodexAccountLoginStartRequest {
+  providerId?: string;
+  providerName?: string;
+  setActiveScopes?: ModelGatewayAppScope[];
+}
+
+export interface ModelGatewayCodexAccountLoginStartResponse {
+  ok: true;
+  loginId: string;
+  verificationUrl: string;
+  userCode: string;
+  expiresAt: string;
+  pollIntervalSeconds: number;
+}
+
+export interface ModelGatewayCodexAccountLoginPollRequest {
+  loginId: string;
+}
+
+export interface ModelGatewayCodexAccountLoginPollResponse {
+  ok: true;
+  status: "pending" | "completed" | "expired" | "failed";
+  message: string | null;
+  provider: ModelGatewayProviderView | null;
 }
 
 export interface ModelGatewaySetProviderSecretRequest {

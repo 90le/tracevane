@@ -2,6 +2,10 @@ import type {
   ModelGatewayActiveRouteSmokeRequest,
   ModelGatewayClientAuthResponse,
   ModelGatewayClientAuthUpdateRequest,
+  ModelGatewayCodexAccountLoginPollRequest,
+  ModelGatewayCodexAccountLoginPollResponse,
+  ModelGatewayCodexAccountLoginStartRequest,
+  ModelGatewayCodexAccountLoginStartResponse,
   ModelGatewayDaemonServiceAction,
   ModelGatewayDaemonServiceRequest,
   ModelGatewayDaemonServiceResponse,
@@ -121,6 +125,24 @@ export function fetchModelGatewayProviders(): Promise<ModelGatewayProvidersRespo
 
 export function detectModelGatewayProvider(payload: ModelGatewayProviderDetectRequest): Promise<ModelGatewayProviderDetectResponse> {
   return requestJson<ModelGatewayProviderDetectResponse>('/api/model-gateway/detect-provider', jsonBody(payload));
+}
+
+export function startModelGatewayCodexAccountLogin(
+  payload: ModelGatewayCodexAccountLoginStartRequest = {},
+): Promise<ModelGatewayCodexAccountLoginStartResponse> {
+  return requestJson<ModelGatewayCodexAccountLoginStartResponse>(
+    '/api/model-gateway/account-providers/codex/login/start',
+    jsonBody(payload),
+  );
+}
+
+export function pollModelGatewayCodexAccountLogin(
+  payload: ModelGatewayCodexAccountLoginPollRequest,
+): Promise<ModelGatewayCodexAccountLoginPollResponse> {
+  return requestJson<ModelGatewayCodexAccountLoginPollResponse>(
+    '/api/model-gateway/account-providers/codex/login/poll',
+    jsonBody(payload),
+  );
 }
 
 export function upsertModelGatewayProvider(payload: ModelGatewayUpsertProviderRequest): Promise<{

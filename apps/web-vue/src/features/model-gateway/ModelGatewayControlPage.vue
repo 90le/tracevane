@@ -437,6 +437,48 @@
             {{ text('这里只选择上游原生协议。自定义服务商也是三种协议之一；不确定时先填 Base URL 和 API Key，再点识别配置。', 'Choose the upstream native protocol here. Custom providers still use one of the three protocols; if unsure, enter Base URL and API key, then detect the configuration.') }}
           </p>
 
+          <section class="mgw-account-login-card">
+            <div class="mgw-account-login-card__main">
+              <div>
+                <p class="eyebrow">Account provider</p>
+                <h4>{{ text('登录 Codex / GPT 账户', 'Sign in to Codex / GPT account') }}</h4>
+              </div>
+              <p>
+                {{ text('在这里登录自己的 Codex/ChatGPT 账户，Studio Gateway 会自动创建本地账户型 provider；客户端仍只使用统一 Gateway key。', 'Sign in with your own Codex/ChatGPT account here. Studio Gateway creates a local account-backed provider automatically; clients still use the single Gateway key.') }}
+              </p>
+              <div v-if="codexLoginStart" class="mgw-account-login-session">
+                <span>{{ text('验证码', 'Code') }}</span>
+                <strong>{{ codexLoginStart.userCode }}</strong>
+                <a :href="codexLoginStart.verificationUrl" target="_blank" rel="noreferrer">
+                  {{ codexLoginStart.verificationUrl }}
+                </a>
+                <small>{{ codexLoginStatusText }}</small>
+              </div>
+              <div v-if="codexLoginProviderSummary" class="mgw-account-login-provider">
+                <strong>{{ codexLoginProviderSummary }}</strong>
+              </div>
+            </div>
+            <div class="mgw-account-login-card__actions">
+              <button
+                type="button"
+                class="primary-button compact-button"
+                :disabled="codexLoginBusy"
+                @click="startCodexAccountLoginFlow"
+              >
+                {{ codexLoginBusy ? text('登录中...', 'Signing in...') : text('登录 Codex 账户', 'Sign in Codex') }}
+              </button>
+              <button
+                v-if="codexLoginStart"
+                type="button"
+                class="secondary-button compact-button"
+                :disabled="codexLoginBusy"
+                @click="pollCodexAccountLoginOnce"
+              >
+                {{ text('检查登录', 'Check login') }}
+              </button>
+            </div>
+          </section>
+
           <div class="mgw-provider-grid">
             <section class="mgw-provider-list" :aria-label="text('Provider 列表', 'Provider list')">
               <button
@@ -988,7 +1030,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onActivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { Plus, Trash2, X } from '@lucide/vue';
 import { MODEL_GATEWAY_APP_CONNECTION_IDS } from '../../../../../types/model-gateway';
@@ -1001,6 +1043,8 @@ import type {
   ModelGatewayAppScope,
   ModelGatewayAuthStrategy,
   ModelGatewayClientAuthView,
+  ModelGatewayCodexAccountLoginPollResponse,
+  ModelGatewayCodexAccountLoginStartResponse,
   ModelGatewayDaemonServiceAction,
   ModelGatewayDaemonServiceResponse,
   ModelGatewayProviderDetectProtocolResult,
@@ -1035,9 +1079,11 @@ import {
   fetchModelGatewayRuntime,
   fetchModelGatewayStatus,
   manageModelGatewayDaemonService,
+  pollModelGatewayCodexAccountLogin,
   rollbackModelGatewayAppConnection,
   setModelGatewayActiveProvider,
   smokeModelGatewayActiveRoute,
+  startModelGatewayCodexAccountLogin,
   testModelGatewayProvider,
   updateModelGatewayAppConnectionProfile,
   updateModelGatewayClientAuth,
@@ -1310,6 +1356,10 @@ const detectResult = ref<ModelGatewayProviderDetectResponse | null>(null);
 const detectOverlayOpen = ref(false);
 const detectError = ref<string | null>(null);
 const appliedProtocolKey = ref('');
+const codexLoginBusy = ref(false);
+const codexLoginStart = ref<ModelGatewayCodexAccountLoginStartResponse | null>(null);
+const codexLoginPoll = ref<ModelGatewayCodexAccountLoginPollResponse | null>(null);
+let codexLoginTimer: ReturnType<typeof window.setTimeout> | null = null;
 
 const draft = reactive<ProviderDraft>(createEmptyDraft());
 const modelBulk = reactive<ProviderModelBulkDraft>(createModelBulkDraft());
@@ -1392,6 +1442,27 @@ const detectStatusDetail = computed(() => {
     ? text(`${detectResult.value.models.length} 个模型`, `${detectResult.value.models.length} models`)
     : text('模型需手动填写', 'Model needs manual entry');
   return `${modelText} · ${formatTimestamp(detectResult.value.checkedAt)}`;
+});
+
+const codexLoginStatusText = computed(() => {
+  if (!codexLoginStart.value) return text('尚未开始登录。', 'Login not started.');
+  if (!codexLoginPoll.value) {
+    return text('请在打开的官方页面输入验证码，Studio 会自动检查授权结果。', 'Enter the code on the opened official page; Studio will check authorization automatically.');
+  }
+  if (codexLoginPoll.value.status === 'completed') return text('登录完成，已创建账户型 provider。', 'Login completed; account-backed provider created.');
+  if (codexLoginPoll.value.status === 'pending') return text('等待官方页面确认授权。', 'Waiting for approval on the official page.');
+  if (codexLoginPoll.value.status === 'expired') return text('登录已过期，请重新开始。', 'Login expired; start again.');
+  return codexLoginPoll.value.message || text('登录失败，请重新开始。', 'Login failed; start again.');
+});
+
+const codexLoginProviderSummary = computed(() => {
+  const provider = codexLoginPoll.value?.provider;
+  if (!provider) return '';
+  const account = provider.accountProvider?.accounts?.[0];
+  const accountText = [account?.emailMasked, account?.plan].filter(Boolean).join(' · ');
+  return accountText
+    ? `${provider.name} · ${accountText}`
+    : provider.name;
 });
 
 const detectSteps = computed<DetectStep[]>(() => {
@@ -2527,6 +2598,91 @@ async function detectProviderConfig(): Promise<void> {
   }
 }
 
+function clearCodexLoginTimer(): void {
+  if (!codexLoginTimer) return;
+  window.clearTimeout(codexLoginTimer);
+  codexLoginTimer = null;
+}
+
+function scheduleCodexLoginPoll(): void {
+  clearCodexLoginTimer();
+  const intervalSeconds = Math.max(1, codexLoginStart.value?.pollIntervalSeconds || 5);
+  codexLoginTimer = window.setTimeout(() => {
+    void pollCodexAccountLoginOnce(true);
+  }, intervalSeconds * 1000);
+}
+
+async function startCodexAccountLoginFlow(): Promise<void> {
+  codexLoginBusy.value = true;
+  clearCodexLoginTimer();
+  codexLoginPoll.value = null;
+  try {
+    const response = await startModelGatewayCodexAccountLogin({
+      providerId: 'codex-account',
+      providerName: 'Codex Account',
+      setActiveScopes: ['codex', 'claude-code', 'opencode', 'openclaw'],
+    });
+    codexLoginStart.value = response;
+    try {
+      window.open(response.verificationUrl, '_blank', 'noopener,noreferrer');
+    } catch {
+      // Browser popup blockers are fine; the card shows the URL and code.
+    }
+    notice.value = {
+      kind: 'success',
+      message: text('Codex 登录已开始，请在官方页面输入验证码。', 'Codex login started. Enter the code on the official page.'),
+    };
+    scheduleCodexLoginPoll();
+  } catch (error) {
+    notice.value = {
+      kind: 'error',
+      message: error instanceof Error ? error.message : text('Codex 登录启动失败', 'Failed to start Codex login'),
+    };
+  } finally {
+    codexLoginBusy.value = false;
+  }
+}
+
+async function pollCodexAccountLoginOnce(auto = false): Promise<void> {
+  if (!codexLoginStart.value) return;
+  codexLoginBusy.value = true;
+  try {
+    const response = await pollModelGatewayCodexAccountLogin({
+      loginId: codexLoginStart.value.loginId,
+    });
+    codexLoginPoll.value = response;
+    if (response.status === 'pending') {
+      if (auto) scheduleCodexLoginPoll();
+      return;
+    }
+    clearCodexLoginTimer();
+    if (response.status === 'completed' && response.provider) {
+      const providersResponse = await fetchModelGatewayProviders();
+      applyProviderResponse(providersResponse);
+      editProvider(response.provider);
+      smokeProviderId.value = response.provider.id;
+      smokeModel.value = response.provider.models.defaultModel || response.provider.models.models[0]?.id || '';
+      notice.value = {
+        kind: 'success',
+        message: text('Codex 账户已接入 Gateway provider。', 'Codex account connected as a Gateway provider.'),
+      };
+      return;
+    }
+    notice.value = {
+      kind: 'error',
+      message: response.message || text('Codex 登录未完成，请重新开始。', 'Codex login did not complete. Start again.'),
+    };
+  } catch (error) {
+    if (auto) scheduleCodexLoginPoll();
+    notice.value = {
+      kind: 'error',
+      message: error instanceof Error ? error.message : text('Codex 登录检查失败', 'Failed to check Codex login'),
+    };
+  } finally {
+    codexLoginBusy.value = false;
+  }
+}
+
 async function loadAll(): Promise<void> {
   loading.value = true;
   notice.value = null;
@@ -3122,4 +3278,5 @@ watch(
 
 onMounted(loadAll);
 onActivated(loadAll);
+onUnmounted(clearCodexLoginTimer);
 </script>
