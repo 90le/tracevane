@@ -19,6 +19,7 @@
 - `studio-channel-files` 和 `studio-channel-messages` 是保留的 Agent 出站声明合同；文件/消息实际发送仍由 Studio native transport 执行。
 - Feishu/Octo 长连接已由用户 live 验证稳定；Feishu 专项跟踪进入 monitored 状态，任意假在线反馈先写入 `docs/feishu-long-connection-issue-tracker.md` 并对照 OpenClaw/CC 实现排查。
 - Channel 侧 `/usage` / token 统计不再继续建设；模型消耗后续统一到 Gateway usage/模型消耗页。
+- Agents 工作台新增 CLI 子页作为后续系统前端重构入口：编辑 CLI Profile 时直接读取 Gateway 可用模型目录，同时展示 IM 绑定、持久会话和运行记录摘要；Channel Connectors 保留为 daemon/platform 运维页。
 
 ## 本轮完成
 
@@ -28,6 +29,9 @@
 - Channel Connectors 模型菜单：
   - Feishu / command surface 的模型选择不再把 Gateway 聚合模型静默截断到 12 个。
   - 模型/视觉模型选择器保留 Gateway 全量选择能力，极端超过 100 个时显示已展示/总数并允许 `/model <模型ID>` 手动切换。
+- Agent CLI 前端：
+  - 新增 `/agents/:agentId/cli`，把 CLI Profile 编辑、Gateway 模型选择、IM binding 摘要、持久会话和事件记录聚合到 Agent 工作台。
+  - CLI Profile 模型下拉来自 Gateway App Connections 的 `availableModels`，同时合并启用 provider 的模型 ID / alias 和当前 OpenClaw Agent 模型列表，避免 `glm-5.2[1m]` 这类官方别名丢失。
 - 清理并压缩 `docs/`：
   - 新增 `docs/README.md` 作为文档索引和维护规则。
   - 压缩 Gateway、Channel Connectors、Feishu、Chat、富消息、渲染、PRD、架构和当前进展文档。
@@ -96,7 +100,9 @@
 ## 最近验证
 
 - 本轮验证通过：`npm run typecheck:api`
+- 本轮验证通过：`npm run typecheck:web`
 - 本轮验证通过：`npm run build:api`
+- 本轮验证通过：`node --test tests/system/studio-web-agent-cli-page.test.mjs`
 - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，54/54 通过，覆盖 `glm-5.2` / `glm-5.2[1m]` 1M context 推断。
 - 本轮验证通过：`node --test tests/system/channel-connectors-service.test.mjs`，104/104 通过，覆盖 Gateway 模型列表超过 12 个时 Feishu/命令模型菜单仍显示后续模型。
 - 上一轮代码验证通过：`npm run typecheck:api`

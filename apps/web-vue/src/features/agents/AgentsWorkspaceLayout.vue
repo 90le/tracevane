@@ -375,7 +375,7 @@ import '../operate/operate-workspace.css';
 import './agents-workspace.css';
 import '../../shared/styles/studio-workbench.css';
 import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue';
-import { BookOpen, Braces, Link2, MessageSquare, SlidersHorizontal, X } from '@lucide/vue';
+import { BookOpen, Braces, Link2, MessageSquare, SlidersHorizontal, Terminal, X } from '@lucide/vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
 import type { AgentCreatePayload, AgentDetailPayload, AgentsSummaryPayload } from '../../../../../types/agents';
 import type { ConfigSummaryPayload } from '../../../../../types/config';
@@ -444,10 +444,11 @@ const activeOverlay = computed(() => {
   return typeof value === 'string' ? value : '';
 });
 
-type AgentTaskSection = 'overview' | 'docs' | 'bindings' | 'sessions' | 'runtime';
+type AgentTaskSection = 'overview' | 'cli' | 'docs' | 'bindings' | 'sessions' | 'runtime';
 
 const activeTaskSection = computed<AgentTaskSection>(() => {
   if (/\/docs$/.test(route.path)) return 'docs';
+  if (/\/cli$/.test(route.path)) return 'cli';
   if (/\/bindings$/.test(route.path)) return 'bindings';
   if (/\/sessions$/.test(route.path)) return 'sessions';
   if (/\/advanced$/.test(route.path)) return 'runtime';
@@ -456,6 +457,7 @@ const activeTaskSection = computed<AgentTaskSection>(() => {
 
 const taskNavItems = computed(() => [
   { value: 'overview' as const, label: text('概览', 'Overview'), icon: SlidersHorizontal },
+  { value: 'cli' as const, label: 'CLI', icon: Terminal },
   { value: 'docs' as const, label: text('人设', 'Persona'), icon: BookOpen },
   { value: 'bindings' as const, label: text('路由', 'Routing'), icon: Link2 },
   { value: 'sessions' as const, label: text('会话', 'Sessions'), icon: MessageSquare },
@@ -698,6 +700,7 @@ function parseOptionalJsonObject(label: string, value: string): Record<string, u
 function buildAgentPath(agentId: string, section: AgentTaskSection = activeTaskSection.value): string {
   const encoded = encodeURIComponent(agentId);
   if (section === 'docs') return `/agents/${encoded}/docs`;
+  if (section === 'cli') return `/agents/${encoded}/cli`;
   if (section === 'bindings') return `/agents/${encoded}/bindings`;
   if (section === 'sessions') return `/agents/${encoded}/sessions`;
   if (section === 'runtime') return `/agents/${encoded}/advanced`;
