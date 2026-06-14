@@ -64,6 +64,8 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(page, /ccx-agent-profile-app-facts/);
   assert.match(page, /selectedAppConnection\?\.target\.path/);
   assert.match(page, /selectedAppConnection\?\.lastBackupPath/);
+  assert.match(page, /selectedAppConnection\?\.preview\?\.content/);
+  assert.match(page, /selectedAppConnection\.preview\.content/);
   assert.match(page, /selectedAppConnectionIssues/);
   assert.match(page, /canApplySelectedAppConnection/);
   assert.match(page, /selectedAppConnectionApplyDisabledReason/);
@@ -149,6 +151,8 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(styles, /\.ccx-agent-profile-app-facts/);
   assert.match(styles, /\.ccx-agent-profile-app-issues/);
   assert.match(styles, /\.ccx-agent-profile-app-actions/);
+  assert.match(styles, /\.ccx-agent-profile-app-preview/);
+  assert.match(styles, /white-space: pre-wrap/);
   assert.match(styles, /\.ccx-agent-profile-binding-main/);
   assert.match(styles, /\.ccx-agent-profile-requested-list/);
   assert.match(styles, /\.ccx-agent-profile-requested-row/);

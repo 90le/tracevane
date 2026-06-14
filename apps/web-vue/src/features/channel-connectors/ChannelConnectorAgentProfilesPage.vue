@@ -250,6 +250,10 @@
                       <div v-if="selectedAppConnectionIssues.length" class="ccx-agent-profile-app-issues">
                         <span v-for="issue in selectedAppConnectionIssues" :key="issue">{{ issue }}</span>
                       </div>
+                      <details v-if="selectedAppConnection?.preview?.content" class="ccx-agent-profile-app-preview">
+                        <summary>{{ text('预览配置', 'Preview config') }}</summary>
+                        <pre>{{ selectedAppConnection.preview.content }}</pre>
+                      </details>
                       <div class="ccx-agent-profile-app-actions">
                         <button
                           type="button"

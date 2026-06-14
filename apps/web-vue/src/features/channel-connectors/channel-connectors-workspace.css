@@ -234,6 +234,30 @@
   gap: 8px;
 }
 
+.ccx-agent-profile-app-preview {
+  min-width: 0;
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: var(--surface-base);
+}
+
+.ccx-agent-profile-app-preview > summary {
+  min-height: 36px;
+  padding: 8px 10px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ccx-agent-profile-app-preview pre {
+  max-height: 220px;
+  margin: 0;
+  border-top: 1px solid var(--mono-line);
+  padding: 10px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 .ccx-agent-profile-binding-row,
 .ccx-agent-profile-session-row,
 .ccx-agent-profile-event-row {
