@@ -53,6 +53,18 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(page, /Budget source/);
   assert.match(page, /Context window/);
   assert.match(page, /Auto compact/);
+  assert.match(page, /模型网关|Model Gateway/);
+  assert.match(page, /打开配置|Open config/);
+  assert.match(page, /事件筛选|Event filter/);
+  assert.match(page, /停止全部|Stop all/);
+  assert.match(page, /duplicateProfile/);
+  assert.match(page, /deleteProfile/);
+  assert.match(page, /canDeleteSelectedProfile/);
+  assert.match(page, /deleteProfileDisabledReason/);
+  assert.match(page, /allRelatedSessionEvents/);
+  assert.match(page, /eventFilterOptions/);
+  assert.match(page, /killActiveSessions/);
+  assert.match(page, /openModelGateway/);
   assert.match(page, /appConnectionProfile/);
   assert.match(page, /gatewayModelBudgetIndex/);
   assert.match(page, /deriveAutoCompactTokenLimit/);
@@ -64,6 +76,9 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(styles, /\.ccx-agent-profile-config-section/);
   assert.match(styles, /\.ccx-agent-profile-budget-strip/);
   assert.match(styles, /\.ccx-agent-profile-select-row/);
+  assert.match(styles, /\.ccx-agent-profile-editor-actions/);
+  assert.match(styles, /\.ccx-agent-profile-session-toolbar/);
+  assert.match(styles, /\.ccx-field-button/);
   assert.doesNotMatch(styles, /\.agents-cli-/);
   assert.match(connectorsPage, /to="\/channel-connectors\/profiles"/);
   assert.match(connectorsPage, /Profile 工作台|Profile workspace/);

@@ -102,10 +102,26 @@
                 <p class="eyebrow">Run Profile</p>
                 <h3>{{ text('运行配置', 'Runtime profile') }}</h3>
               </div>
-              <button type="button" class="secondary-button compact-button" :disabled="saving || !profileDraft.id" @click="setDefaultProfile">
-                <Star :size="16" />
-                {{ text('设为默认', 'Set default') }}
-              </button>
+              <div class="ccx-platform-actions ccx-agent-profile-editor-actions">
+                <button type="button" class="secondary-button compact-button" :disabled="saving || !profileDraft.id" @click="duplicateProfile">
+                  <Copy :size="16" />
+                  {{ text('复制', 'Duplicate') }}
+                </button>
+                <button type="button" class="secondary-button compact-button" :disabled="saving || !profileDraft.id" @click="setDefaultProfile">
+                  <Star :size="16" />
+                  {{ text('设为默认', 'Set default') }}
+                </button>
+                <button
+                  type="button"
+                  class="secondary-button compact-button ccx-danger-button"
+                  :disabled="saving || !canDeleteSelectedProfile"
+                  :title="deleteProfileDisabledReason"
+                  @click="deleteProfile"
+                >
+                  <Trash2 :size="16" />
+                  {{ text('删除', 'Delete') }}
+                </button>
+              </div>
             </header>
 
             <dl class="ccx-facts ccx-agent-profile-facts">
@@ -163,6 +179,13 @@
                       :placeholder="text('跟随默认模型', 'Inherit default model')"
                     />
                     <span class="field-hint">{{ text('模型列表来自 Studio Gateway 的可用模型目录。', 'The model list is read from the Studio Gateway catalog.') }}</span>
+                  </div>
+                  <div class="form-field">
+                    <label class="form-label">{{ text('模型网关', 'Model Gateway') }}</label>
+                    <button type="button" class="secondary-button compact-button ccx-icon-button ccx-field-button" @click="openModelGateway">
+                      <ExternalLink :size="16" />
+                      {{ text('打开配置', 'Open config') }}
+                    </button>
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('推理强度', 'Reasoning effort') }}</label>
@@ -223,10 +246,21 @@
                 <p class="eyebrow">Sessions</p>
                 <h3>{{ text('会话与记录', 'Sessions and records') }}</h3>
               </div>
-              <button type="button" class="secondary-button compact-button" :disabled="sessionBusy" @click="refreshSessions">
-                <RefreshCw :size="16" />
-                {{ text('刷新会话', 'Refresh sessions') }}
-              </button>
+              <div class="ccx-platform-actions">
+                <button type="button" class="secondary-button compact-button" :disabled="sessionBusy" @click="refreshSessions">
+                  <RefreshCw :size="16" />
+                  {{ text('刷新', 'Refresh') }}
+                </button>
+                <button
+                  type="button"
+                  class="secondary-button compact-button ccx-danger-button"
+                  :disabled="sessionBusy || !activeSessions.length"
+                  @click="killActiveSessions"
+                >
+                  <Square :size="16" />
+                  {{ text('停止全部', 'Stop all') }}
+                </button>
+              </div>
             </header>
 
             <dl class="ccx-metric-strip ccx-agent-profile-session-metrics">
@@ -240,13 +274,21 @@
               </div>
               <div>
                 <dt>{{ text('事件', 'Events') }}</dt>
-                <dd>{{ relatedSessionEvents.length }}</dd>
+                <dd>{{ allRelatedSessionEvents.length }}</dd>
               </div>
               <div>
                 <dt>{{ text('空闲超时', 'Idle timeout') }}</dt>
                 <dd>{{ agentSessions ? formatDuration(agentSessions.policy.idleTimeoutMs) : '-' }}</dd>
               </div>
             </dl>
+
+            <div class="ccx-agent-profile-session-toolbar">
+              <label class="form-field">
+                <span class="form-label">{{ text('事件筛选', 'Event filter') }}</span>
+                <StudioSelect v-model="eventFilter" :options="eventFilterOptions" />
+              </label>
+              <span>{{ text(`当前显示 ${relatedSessionEvents.length} 条`, `Showing ${relatedSessionEvents.length} events`) }}</span>
+            </div>
 
             <div v-if="activeSessions.length" class="ccx-list">
               <article v-for="session in activeSessions" :key="session.poolKey" class="ccx-list-row ccx-agent-profile-session-row">
@@ -295,7 +337,7 @@
 import './channel-connectors-workspace.css';
 import { computed, onActivated, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ExternalLink, Plus, RefreshCw, Save, Square, Star } from '@lucide/vue';
+import { Copy, ExternalLink, Plus, RefreshCw, Save, Square, Star, Trash2 } from '@lucide/vue';
 import type {
   ChannelConnectorAgentId,
   ChannelConnectorAgentProfile,
@@ -347,6 +389,7 @@ const gatewayModels = ref<string[]>([]);
 const gatewayModelBudgetIndex = ref<Record<string, GatewayModelBudget>>({});
 const selectedProfileId = ref('');
 const reasoningEffortDraft = ref('');
+const eventFilter = ref('all');
 const loading = ref(false);
 const loaded = ref(false);
 const saving = ref(false);
@@ -464,13 +507,46 @@ const requestedSessions = computed(() => {
   );
 });
 
-const relatedSessionEvents = computed(() => {
+const allRelatedSessionEvents = computed(() => {
   const bindingIds = relatedBindingIds.value;
   return (agentSessions.value?.recentEvents || []).filter((event) =>
     event.projectId === profileDraft.id
     || bindingIds.has(event.bindingId)
     || Boolean(profileDraft.workDir && event.workDir === profileDraft.workDir),
-  ).slice(0, 8);
+  );
+});
+
+const eventFilterOptions = computed(() => {
+  const types = Array.from(new Set(allRelatedSessionEvents.value.map((event) => event.type))).sort();
+  return [
+    { value: 'all', label: text('全部事件', 'All events') },
+    { value: 'failures', label: text('失败事件', 'Failures') },
+    ...types.map((type) => ({ value: type, label: type })),
+  ];
+});
+
+const relatedSessionEvents = computed(() => {
+  const filtered = allRelatedSessionEvents.value.filter((event) => {
+    if (eventFilter.value === 'all') return true;
+    if (eventFilter.value === 'failures') return Boolean(event.error) || event.type === 'turn.failed';
+    return event.type === eventFilter.value;
+  });
+  return filtered.slice(0, 8);
+});
+
+const canDeleteSelectedProfile = computed(() =>
+  Boolean(profileDraft.id)
+  && profiles.value.length > 1
+  && relatedBindings.value.length === 0
+  && activeSessions.value.length === 0,
+);
+
+const deleteProfileDisabledReason = computed(() => {
+  if (!profileDraft.id) return text('先选择 Profile', 'Select a profile first');
+  if (profiles.value.length <= 1) return text('至少保留一个 Profile', 'Keep at least one profile');
+  if (relatedBindings.value.length > 0) return text('先迁移或删除 IM 绑定', 'Move or delete IM bindings first');
+  if (activeSessions.value.length > 0) return text('先停止活动会话', 'Stop active sessions first');
+  return '';
 });
 
 function setNotice(message: string, tone: NoticeTone = 'success'): void {
@@ -656,6 +732,7 @@ function selectProfile(profile: ChannelConnectorAgentProfile): void {
   profileDraft.gatewayKeyRef = 'studio-gateway-client-key';
   profileDraft.appProfileRef = profile.appProfileRef || 'default';
   reasoningEffortDraft.value = profile.reasoningEffort || '';
+  eventFilter.value = 'all';
 }
 
 function bestProfileForRoute(): ChannelConnectorAgentProfile | null {
@@ -699,6 +776,82 @@ function newProfile(): void {
     gatewayKeyRef: 'studio-gateway-client-key',
     appProfileRef: base?.appProfileRef || 'default',
   });
+}
+
+function uniqueProfileId(baseId: string, existingIds = new Set(profiles.value.map((profile) => profile.id))): string {
+  const normalizedBase = baseId
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    || 'cli-profile';
+  let nextId = normalizedBase;
+  let suffix = 2;
+  while (existingIds.has(nextId)) {
+    nextId = `${normalizedBase}-${suffix}`;
+    suffix += 1;
+  }
+  return nextId;
+}
+
+async function duplicateProfile(): Promise<void> {
+  const config = cloneNativeConfig();
+  if (!config) return;
+  const source = profileFromDraft();
+  if (!source.id || !source.workDir) {
+    setNotice(text('复制前需要有效的 Profile ID 和工作目录。', 'A valid Profile ID and work directory are required before duplicating.'), 'error');
+    return;
+  }
+  const existingIds = new Set(config.agentProfiles.map((profile) => profile.id));
+  const nextId = uniqueProfileId(`${source.id}-copy`, existingIds);
+  const nextProfile: ChannelConnectorAgentProfile = {
+    ...source,
+    id: nextId,
+    name: `${source.name || source.id} Copy`,
+  };
+  saving.value = true;
+  errorMessage.value = '';
+  noticeMessage.value = '';
+  try {
+    config.agentProfiles.push(nextProfile);
+    nativeConfig.value = await saveChannelConnectorsNativeConfig({ config });
+    selectProfile(nextProfile);
+    setNotice(text('CLI Profile 副本已创建。', 'CLI profile duplicate created.'));
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : text('复制 CLI Profile 失败。', 'Failed to duplicate CLI profile.');
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function deleteProfile(): Promise<void> {
+  const config = cloneNativeConfig();
+  if (!config) return;
+  if (!canDeleteSelectedProfile.value) {
+    setNotice(deleteProfileDisabledReason.value || text('当前 Profile 暂不能删除。', 'This profile cannot be deleted yet.'), 'error');
+    return;
+  }
+  const profileId = profileDraft.id;
+  const confirmed = window.confirm(text(`删除 CLI Profile "${profileId}"？`, `Delete CLI profile "${profileId}"?`));
+  if (!confirmed) return;
+  saving.value = true;
+  errorMessage.value = '';
+  noticeMessage.value = '';
+  try {
+    config.agentProfiles = config.agentProfiles.filter((profile) => profile.id !== profileId);
+    if (config.defaultAgentProfileId === profileId || !config.agentProfiles.some((profile) => profile.id === config.defaultAgentProfileId)) {
+      config.defaultAgentProfileId = config.agentProfiles[0]?.id || '';
+    }
+    nativeConfig.value = await saveChannelConnectorsNativeConfig({ config });
+    const nextProfile = config.agentProfiles.find((profile) => profile.id === config.defaultAgentProfileId) || config.agentProfiles[0];
+    if (nextProfile) selectProfile(nextProfile);
+    else newProfile();
+    setNotice(text('CLI Profile 已删除。', 'CLI profile deleted.'));
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : text('删除 CLI Profile 失败。', 'Failed to delete CLI profile.');
+  } finally {
+    saving.value = false;
+  }
 }
 
 async function saveProfile(): Promise<void> {
@@ -781,8 +934,39 @@ async function killSession(poolKey: string): Promise<void> {
   }
 }
 
+async function killActiveSessions(): Promise<void> {
+  const sessions = [...activeSessions.value];
+  if (!sessions.length) {
+    setNotice(text('当前 Profile 没有活动会话。', 'This profile has no active sessions.'), 'error');
+    return;
+  }
+  sessionBusy.value = true;
+  errorMessage.value = '';
+  noticeMessage.value = '';
+  try {
+    let latestStatus: ChannelConnectorAgentSessionDriverStatusResponse | null = null;
+    for (const session of sessions) {
+      latestStatus = await manageChannelConnectorAgentSessions({
+        action: 'kill',
+        poolKey: session.poolKey,
+        reason: 'channel-connectors-profile-stop-all',
+      });
+    }
+    agentSessions.value = latestStatus || await fetchChannelConnectorAgentSessions();
+    setNotice(text(`已请求停止 ${sessions.length} 个 CLI 会话。`, `${sessions.length} CLI sessions stop requested.`));
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : text('批量停止 CLI 会话失败。', 'Failed to stop CLI sessions.');
+  } finally {
+    sessionBusy.value = false;
+  }
+}
+
 function openChannelConnectors(): void {
   void router.push('/channel-connectors');
+}
+
+function openModelGateway(): void {
+  void router.push('/model-gateway');
 }
 
 async function loadAll(): Promise<void> {
