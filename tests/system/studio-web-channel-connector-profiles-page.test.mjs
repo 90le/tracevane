@@ -111,6 +111,8 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(styles, /\.ccx-agent-profile-session-toolbar/);
   assert.match(styles, /\.ccx-field-button/);
   assert.doesNotMatch(styles, /\.agents-cli-/);
-  assert.match(connectorsPage, /to="\/channel-connectors\/profiles"/);
+  assert.match(connectorsPage, /profileWorkspaceRoute/);
+  assert.match(connectorsPage, /path:\s*'\/channel-connectors\/profiles'/);
+  assert.match(connectorsPage, /query:\s*profileId \? \{ profileId \} : \{\}/);
   assert.match(connectorsPage, /Profile 工作台|Profile workspace/);
 });

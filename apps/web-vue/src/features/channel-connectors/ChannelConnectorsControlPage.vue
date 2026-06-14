@@ -279,7 +279,7 @@
               <h3>{{ text('CLI Profile 快改', 'CLI profile quick edit') }}</h3>
             </div>
             <div class="ccx-platform-actions">
-              <RouterLink class="secondary-button compact-button ccx-icon-button ccx-icon-link" to="/channel-connectors/profiles">
+              <RouterLink class="secondary-button compact-button ccx-icon-button ccx-icon-link" :to="profileWorkspaceRoute">
                 <ExternalLink :size="16" />
                 {{ text('Profile 工作台', 'Profile workspace') }}
               </RouterLink>
@@ -855,6 +855,14 @@ const routeProfileId = computed(() => {
 const routeBindingId = computed(() => {
   const value = route.query.bindingId;
   return typeof value === 'string' ? value : '';
+});
+
+const profileWorkspaceRoute = computed(() => {
+  const profileId = profileDraft.value.id.trim();
+  return {
+    path: '/channel-connectors/profiles',
+    query: profileId ? { profileId } : {},
+  };
 });
 
 const runtimeChain = computed(() => status.value?.runtimeChain || [

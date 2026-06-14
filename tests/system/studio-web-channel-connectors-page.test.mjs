@@ -61,6 +61,8 @@ test("Channel Connectors page calls only channel connector APIs", () => {
   assert.match(page, /Runtime/);
   assert.match(page, /Profiles/);
   assert.match(page, /\/channel-connectors\/profiles/);
+  assert.match(page, /profileWorkspaceRoute/);
+  assert.match(page, /query:\s*profileId \? \{ profileId \} : \{\}/);
   assert.match(page, /useRoute/);
   assert.match(page, /routeProfileId/);
   assert.match(page, /routeBindingId/);
