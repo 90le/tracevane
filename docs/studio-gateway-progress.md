@@ -111,6 +111,7 @@
 - 本轮验证通过：`node --test tests/system/studio-web-agent-cli-page.test.mjs`
 - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，56/56 通过，覆盖 `glm-5.2` / `glm-5.2[1m]` 预算推断、endpoint profile 原生协议优选、endpoint health 回退和响应头。
 - 本轮验证通过：`node --test tests/system/studio-web-model-gateway-page.test.mjs tests/system/studio-web-agent-cli-page.test.mjs`，5/5 通过，覆盖 Provider Center endpoint profile 展示和 Agent CLI 模型目录读取。
+- 本轮本机 live smoke 通过：Gateway `glm-5.2` 三协议入口均可用，`/v1/chat/completions` 走 `glm/coding-chat`，`/v1/messages` 走 `glm/coding-anthropic`，`/v1/responses` 走 `glm/coding-chat` 转换。
 - 本轮验证通过：`node --test tests/system/channel-connectors-service.test.mjs`，104/104 通过，覆盖 Gateway 模型列表超过 12 个时 Feishu/命令模型菜单仍显示后续模型。
 - 上一轮代码验证通过：`npm run typecheck:api`
 - 上一轮代码验证通过：`npm run build:api`
