@@ -322,7 +322,13 @@
           </section>
 
           <div class="mgw-app-grid">
-            <section v-for="connection in appConnections" :key="connection.id" class="mgw-app-card">
+            <section
+              v-for="connection in appConnections"
+              :id="`mgw-app-${connection.id}`"
+              :key="connection.id"
+              class="mgw-app-card"
+              :class="{ active: routeAppConnectionId === connection.id }"
+            >
               <div class="mgw-app-card__head">
                 <div>
                   <strong>{{ connection.label }}</strong>
@@ -983,6 +989,7 @@
 
 <script setup lang="ts">
 import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { Plus, Trash2, X } from '@lucide/vue';
 import { MODEL_GATEWAY_APP_CONNECTION_IDS } from '../../../../../types/model-gateway';
 import type {
@@ -1155,6 +1162,7 @@ type AppConnectionBudgetDraft = {
   maxOutputTokens: string;
 };
 
+const route = useRoute();
 const { text } = useLocalePreference();
 
 const appScopeOptions: Array<{ id: ModelGatewayAppScope; zh: string; en: string }> = [
@@ -1275,6 +1283,20 @@ const activeProviders = ref<Partial<Record<ModelGatewayAppScope, string>>>({});
 const activeRouteStatuses = ref<ModelGatewayActiveRouteStatus[]>([]);
 const activeRouteAlerts = ref<string[]>([]);
 const activeRouteSmokeBusy = ref<Partial<Record<ModelGatewayAppScope, boolean>>>({});
+
+const routeWorkspaceTab = computed<WorkspaceTabId | null>(() => {
+  const value = route.query.tab;
+  if (value === 'connections' || value === 'providers' || value === 'smoke') return value;
+  return null;
+});
+
+const routeAppConnectionId = computed<ModelGatewayAppConnectionId | null>(() => {
+  const value = route.query.app;
+  if (typeof value !== 'string') return null;
+  return MODEL_GATEWAY_APP_CONNECTION_IDS.includes(value as ModelGatewayAppConnectionId)
+    ? value as ModelGatewayAppConnectionId
+    : null;
+});
 const activeRouteSmokeResults = ref<Partial<Record<ModelGatewayAppScope, ModelGatewayProviderTestResponse | null>>>({});
 const endpointSmokeBusy = ref<Record<string, boolean>>({});
 const endpointSmokeResults = ref<Record<string, ModelGatewayProviderTestResponse | null>>({});
@@ -1582,6 +1604,14 @@ function appConnectionStateTone(connection: ModelGatewayAppConnection): 'neutral
   if (connection.configured) return 'sage';
   if (!connection.canApply) return 'danger';
   return 'accent';
+}
+
+function applyRouteWorkspaceSelection(): void {
+  if (routeWorkspaceTab.value) {
+    activeWorkspaceTab.value = routeWorkspaceTab.value;
+    return;
+  }
+  if (routeAppConnectionId.value) activeWorkspaceTab.value = 'connections';
 }
 
 function isAppConnectionBusy(appId: ModelGatewayAppConnectionId): boolean {
@@ -2519,6 +2549,7 @@ async function loadAll(): Promise<void> {
     applyProviderResponse(nextProviders);
     applyAppConnectionModelBudget(false);
     ensureSelectedProvider();
+    applyRouteWorkspaceSelection();
     loaded.value = true;
   } catch (error) {
     notice.value = {
@@ -3081,6 +3112,13 @@ watch(selectedSmokeProvider, (provider) => {
 watch(() => appConnectionProfile.model, () => {
   applyAppConnectionModelBudget(false);
 });
+
+watch(
+  () => [route.query.tab, route.query.app],
+  () => {
+    applyRouteWorkspaceSelection();
+  },
+);
 
 onMounted(loadAll);
 onActivated(loadAll);

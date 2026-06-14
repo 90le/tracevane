@@ -1176,7 +1176,11 @@ function openBindingConfig(binding: ChannelConnectorPlatformBinding): void {
 }
 
 function openModelGateway(): void {
-  void router.push('/model-gateway');
+  const appId = selectedAppConnectionId.value;
+  void router.push({
+    path: '/model-gateway',
+    query: appId ? { tab: 'connections', app: appId } : { tab: 'connections' },
+  });
 }
 
 async function loadAll(): Promise<void> {

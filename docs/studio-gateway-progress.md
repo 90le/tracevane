@@ -12,7 +12,7 @@
 - Provider Center 表单已按连接、端点路由、密钥识别、模型目录、高级覆盖、可用范围分区；PC/平板/手机均按同一配置流程降级展示。
 - Gateway Provider 支持 endpoint profiles；同一 provider/模型可按客户端协议优选原生 endpoint，并在 endpoint 级 health/circuit 下回退。
 - Provider Center 不再按模型名自动标记 vision；图片能力只来自用户配置、上游显式能力元数据或图片 smoke 通过后用户确认写回。
-- App Connections 覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收。
+- App Connections 覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收；Model Gateway 支持 `tab/app` deep-link 直达并高亮指定 CLI App Connection。
 - BigModel/GLM 本地模型目录已加入 `glm-5.2`，按 1M context / 128K output 预算；Gateway 内置推断同时识别 `glm-5.2` 与官方 1M 后缀别名 `glm-5.2[1m]`。
 - Channel Connectors 走 Studio 原生 CLI Agent Bot 路线；当前 live Agent 只暴露 Codex、Claude Code、OpenCode。
 - Feishu/Octo 首期验收已收窄为私聊完整性：文本对话、文件/图片传输、Agent CLI 原生能力、工具流/回复解析、`/compact`、`/stop`、session/model/permission/workdir 切换。
@@ -50,6 +50,7 @@
   - Profile 编辑流补齐真实重命名语义：保存或设默认时按原始 Profile ID 替换，并自动迁移相关 IM binding；重复 ID、缺少工作目录或缺少 ID 会阻止保存，未保存状态可撤销。
   - Profile effective model 顺序改为 `Profile model > Gateway app-specific model > Gateway default model`；页面展示当前 CLI App Connection 的协议、endpoint、配置状态和 resolved model，`App Profile` 改为受控 `default` 选择并保留既有自定义值。
   - Profile 工作台的 IM binding 行新增直达配置入口；`/channel-connectors?bindingId=...&profileId=...` 会打开 Platforms tab 并选中对应 binding，`profileId` 入口会打开 Profiles tab。
+  - Profile 工作台的“模型网关”入口会带 `tab=connections&app=<cli>` 打开 Model Gateway，并定位当前 Profile 对应的 CLI App Connection。
 - 清理并压缩 `docs/`：
   - 新增 `docs/README.md` 作为文档索引和维护规则。
   - 压缩 Gateway、Channel Connectors、Feishu、Chat、富消息、渲染、PRD、架构和当前进展文档。
@@ -124,6 +125,7 @@
 - 本轮验证通过：`npm run build:api`
 - 本轮浏览器验证通过：Python Playwright 打开 `http://127.0.0.1:5176/channel-connectors/profiles`，在 1440/900/390 宽度下无横向溢出，Profile 复制/删除、模型网关、停止全部和事件筛选控件均渲染；打开旧 `http://127.0.0.1:5176/agents/main/cli` 不再渲染 CLI Profile 管理。
 - 本轮浏览器验证通过：Profile 页当前渲染 2 个 IM binding 配置入口；打开 `/channel-connectors?bindingId=feishu-live&profileId=feishu-codex` 会显示 Platforms tab，并选中 `Feishu Live` / `Feishu Codex`，无横向溢出。
+- 本轮浏览器验证通过：打开 `/model-gateway?tab=connections&app=codex` 会显示 App Connections，并在桌面/手机高亮 `Codex CLI` 卡片，无横向溢出。
 - 本轮浏览器验证通过：Profile 页面在 1440/900/390 宽度下渲染 CLI App connection 与 App Profile 受控选择，无横向溢出。
 - 本轮浏览器交互验证通过：无保存修改 Profile ID 会显示未保存状态，撤销会还原原 ID；输入已有 Profile ID 会显示冲突并禁用保存，未改写真实配置。
 - 本轮 dev 进程已重启：前端 `http://127.0.0.1:5176`、后端 `http://127.0.0.1:3761`；Gateway daemon 与 Channel daemon 均为 `active/enabled`。

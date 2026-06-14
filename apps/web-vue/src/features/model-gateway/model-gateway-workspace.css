@@ -478,6 +478,11 @@
   padding: 12px;
 }
 
+.mgw-app-card.active {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--mono-line));
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface-base));
+}
+
 .mgw-app-card__head,
 .mgw-app-actions {
   display: flex;

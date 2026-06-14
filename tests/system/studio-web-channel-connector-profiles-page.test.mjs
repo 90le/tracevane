@@ -91,6 +91,8 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(page, /eventFilterOptions/);
   assert.match(page, /killActiveSessions/);
   assert.match(page, /openModelGateway/);
+  assert.match(page, /path:\s*'\/model-gateway'/);
+  assert.match(page, /query:\s*appId \? \{ tab: 'connections', app: appId \} : \{ tab: 'connections' \}/);
   assert.match(page, /appConnectionProfile/);
   assert.match(page, /gatewayModelBudgetIndex/);
   assert.match(page, /deriveAutoCompactTokenLimit/);

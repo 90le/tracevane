@@ -122,6 +122,11 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "activeWorkspaceTab",
     "mgw-workspace-tabs",
     "mgw-workspace-panel",
+    "useRoute",
+    "routeWorkspaceTab",
+    "routeAppConnectionId",
+    "applyRouteWorkspaceSelection",
+    "mgw-app-${connection.id}",
     "Apply config",
     "Preview config",
     "appConnections",
@@ -243,6 +248,7 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
   assert.match(css, /\.mgw-secret-output code\s*\{[^}]*overflow-wrap:\s*anywhere/s);
   assert.match(css, /\.mgw-workspace-tabs\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
   assert.match(css, /\.mgw-workspace-tab\s*\{[^}]*overflow-wrap:\s*anywhere/s);
+  assert.match(css, /\.mgw-app-card\.active\s*\{/);
   assert.match(css, /\.mgw-panel-actions\s*\{[^}]*flex-wrap:\s*wrap/s);
   assert.match(css, /\.mgw-app-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
   assert.match(css, /\.mgw-app-preview pre\s*\{[^}]*overflow-wrap:\s*anywhere/s);
