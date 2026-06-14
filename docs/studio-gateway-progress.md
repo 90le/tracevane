@@ -242,6 +242,7 @@
 - 本轮验证通过：`node scripts/smoke-channel-connectors-native-cli-sessions.mjs --apps claude-code,opencode --json`，isolated real CLI session 覆盖 Claude Code / OpenCode 的 normal turn、file manifest、native visual input、native compact 和 stop/cancel；该脚本不污染真实 HOME/runtime。
 - 本轮验证通过：`node --test --test-name-pattern "stops Codex app-server persistent turns|Agent process cancelled|native compact" tests/system/channel-connectors-service.test.mjs`，覆盖 Codex app-server persistent `/stop` 和 Claude/OpenCode native compact driver。
 - 本轮验证通过：`node scripts/smoke-channel-connectors-command-live.mjs --recent-sessions --probe --commands /status,/model,/mode,/dir,/compact --json`，Feishu/Octo 最近 session 均能 dry-run 解析模型、权限、工作目录和 compact 命令；probe 不发送平台消息、不修改状态，不替代真实 IM live。
+- 本轮验证通过：`node scripts/smoke-channel-connectors-feishu-long-connection.mjs --json`，70 秒采样内 Feishu 长连接 `connected=true`、`sdkConnected=true`、ping/pong 正常、`transportStale=false`、`violations=0`；当前 runtime 同时显示 Octo connection 为 1、pending queue 为 0。
 - 本轮文档清理验证以 `git diff --check` 和 stale term 检查为准。
 
 ## 已知边界
