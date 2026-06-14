@@ -350,154 +350,14 @@
               </button>
             </div>
           </div>
-          <div class="ccx-split">
-            <form class="ccx-form" @submit.prevent="saveBindingDraft">
-              <label>
-                <span>Binding ID</span>
-                <input v-model.trim="bindingDraft.id" autocomplete="off" />
-              </label>
-              <label>
-                <span>{{ text('平台', 'Platform') }}</span>
-                <select v-model="bindingDraft.platform">
-                  <option v-for="platform in supportedPlatforms" :key="platform" :value="platform">{{ platform }}</option>
-                </select>
-              </label>
-              <label>
-                <span>{{ text('账号', 'Account') }}</span>
-                <input v-model.trim="bindingDraft.accountId" autocomplete="off" />
-              </label>
-              <label>
-                <span>Bot ID</span>
-                <input v-model.trim="bindingDraft.botId" autocomplete="off" />
-              </label>
-              <label>
-                <span>{{ text('显示名', 'Display name') }}</span>
-                <input v-model.trim="bindingDraft.displayName" autocomplete="off" />
-              </label>
-              <label>
-                <span>Agent Profile</span>
-                <select v-model="bindingDraft.agentProfileId">
-                  <option v-for="profile in nativeConfig?.config.agentProfiles || []" :key="profile.id" :value="profile.id">
-                    {{ profile.name }}
-                  </option>
-                </select>
-              </label>
-              <label class="ccx-check-field">
-                <input v-model="bindingDraft.enabled" type="checkbox" />
-                <span>{{ text('启用', 'Enabled') }}</span>
-              </label>
-              <label class="ccx-check-field">
-                <input v-model="bindingDraft.metadataAutoVisionModel" type="checkbox" />
-                <span>{{ text('图片自动切视觉模型', 'Auto vision model for images') }}</span>
-              </label>
-              <label>
-                <span>{{ text('视觉 fallback 模型', 'Vision fallback model') }}</span>
-                <input v-model.trim="bindingDraft.metadataVisionModel" placeholder="gpt-5.4-mini" autocomplete="off" />
-              </label>
-              <fieldset v-if="bindingDraft.platform === 'octo'" class="ccx-credential-box">
-                <legend>Octo(dmwork)</legend>
-                <label>
-                  <span>API Server</span>
-                  <input v-model.trim="bindingDraft.metadataApiUrl" placeholder="https://im.deepminer.com.cn/api" autocomplete="off" />
-                </label>
-                <label>
-                  <span>Bot Token</span>
-                  <input v-model.trim="bindingDraft.metadataBotToken" type="password" autocomplete="off" />
-                </label>
-                <label class="ccx-wide-field">
-                  <span>WS URL</span>
-                  <input v-model.trim="bindingDraft.metadataWsUrl" autocomplete="off" />
-                </label>
-                <label>
-                  <span>{{ text('附件上限', 'Attachment max') }}</span>
-                  <input v-model.trim="bindingDraft.metadataAttachmentMaxBytes" placeholder="128mb" autocomplete="off" />
-                </label>
-                <label class="ccx-check-field">
-                  <input v-model="bindingDraft.metadataStageOctoUrlAttachments" type="checkbox" />
-                  <span>Stage URL attachments</span>
-                </label>
-                <label class="ccx-check-field">
-                  <input v-model="bindingDraft.metadataAllowPrivateAttachmentUrls" type="checkbox" />
-                  <span>Private attachment URLs</span>
-                </label>
-              </fieldset>
-              <fieldset v-else-if="bindingDraft.platform === 'feishu'" class="ccx-credential-box">
-                <legend>{{ text('飞书', 'Feishu') }}</legend>
-                <label>
-                  <span>API URL</span>
-                  <input v-model.trim="bindingDraft.metadataApiUrl" placeholder="https://open.feishu.cn" autocomplete="off" />
-                </label>
-                <label>
-                  <span>App Secret</span>
-                  <input v-model.trim="bindingDraft.metadataAppSecret" type="password" autocomplete="off" />
-                </label>
-                <label class="ccx-wide-field">
-                  <span>Verification Token</span>
-                  <input v-model.trim="bindingDraft.metadataVerificationToken" type="password" autocomplete="off" />
-                </label>
-                <label class="ccx-wide-field">
-                  <span>Chat IDs</span>
-                  <textarea v-model="bindingDraft.metadataChatIdsText" rows="2" placeholder="oc_xxx&#10;oc_yyy" />
-                </label>
-                <label>
-                  <span>{{ text('进度卡片条数', 'Progress card limit') }}</span>
-                  <input
-                    v-model.trim="bindingDraft.metadataFeishuProgressCardEntryLimit"
-                    type="number"
-                    min="1"
-                    max="30"
-                    placeholder="8"
-                    autocomplete="off"
-                  />
-                </label>
-              </fieldset>
-              <label class="ccx-wide-field">
-                <span>{{ text('白名单', 'Allowlist') }}</span>
-                <textarea v-model="bindingDraft.allowlistText" rows="3" placeholder="user-a&#10;user-b" />
-              </label>
-              <label class="ccx-wide-field">
-                <span>{{ text('管理员', 'Admins') }}</span>
-                <textarea v-model="bindingDraft.adminUsersText" rows="3" placeholder="admin-a&#10;admin-b" />
-              </label>
-              <label class="ccx-wide-field">
-                <span>{{ text('禁用命令', 'Disabled commands') }}</span>
-                <textarea v-model="bindingDraft.disabledCommandsText" rows="3" placeholder="whoami&#10;daily&#10;*" />
-              </label>
-              <div class="ccx-form-actions">
-                <button type="submit" class="primary-button compact-button ccx-icon-button" :disabled="savingConfig">
-                  <Save :size="16" />
-                  {{ savingConfig ? text('保存中...', 'Saving...') : text('保存绑定', 'Save binding') }}
-                </button>
-                <button
-                  v-if="bindingDraft.platform === 'octo' || bindingDraft.platform === 'feishu'"
-                  type="button"
-                  class="secondary-button compact-button ccx-icon-button"
-                  :disabled="savingConfig || platformSmokeBusy"
-                  @click="testBindingDraft"
-                >
-                  <Activity :size="16" />
-                  {{ platformSmokeBusy ? text('测试中...', 'Testing...') : text('测试连接', 'Test') }}
-                </button>
-                <button
-                  type="button"
-                  class="secondary-button compact-button ccx-icon-button"
-                  :disabled="savingConfig || !bindingExists"
-                  @click="deleteBindingDraft"
-                >
-                  <Trash2 :size="16" />
-                  {{ text('删除', 'Delete') }}
-                </button>
-              </div>
-              <div v-if="platformSmoke" class="ccx-output ccx-platform-smoke" :class="{ failure: platformSmoke.transport.ok !== true }">
-                <div class="ccx-output__head">
-                  <strong>{{ platformSmoke.adapter }} {{ platformSmoke.transport.action }}</strong>
-                  <span>{{ formatTimestamp(platformSmoke.checkedAt) }}</span>
+          <div class="ccx-binding-workspace">
+            <aside class="ccx-binding-list" aria-label="Channel bindings">
+              <div class="ccx-runtime-list-head">
+                <div>
+                  <small>{{ text('已绑定渠道', 'Configured bindings') }}</small>
+                  <strong>{{ bindingCount }}</strong>
                 </div>
-                <pre>{{ platformSmokeOutput }}</pre>
               </div>
-            </form>
-
-            <div class="ccx-list">
               <button
                 v-for="binding in nativeConfig?.config.platformBindings || []"
                 :key="binding.id"
@@ -513,7 +373,184 @@
               <div v-if="!(nativeConfig?.config.platformBindings || []).length" class="ccx-empty compact">
                 {{ text('暂无平台绑定', 'No platform bindings') }}
               </div>
-            </div>
+            </aside>
+
+            <form class="ccx-binding-editor" @submit.prevent="saveBindingDraft">
+              <div class="ccx-binding-toolbar">
+                <div>
+                  <small>{{ bindingDraft.platform }} · {{ bindingDraft.enabled ? text('启用', 'Enabled') : text('停用', 'Disabled') }}</small>
+                  <strong>{{ bindingDraft.displayName || bindingDraft.id || text('新渠道绑定', 'New binding') }}</strong>
+                </div>
+                <div class="ccx-form-actions">
+                  <button type="submit" class="primary-button compact-button ccx-icon-button" :disabled="savingConfig">
+                    <Save :size="16" />
+                    {{ savingConfig ? text('保存中...', 'Saving...') : text('保存绑定', 'Save binding') }}
+                  </button>
+                  <button
+                    v-if="bindingDraft.platform === 'octo' || bindingDraft.platform === 'feishu'"
+                    type="button"
+                    class="secondary-button compact-button ccx-icon-button"
+                    :disabled="savingConfig || platformSmokeBusy"
+                    @click="testBindingDraft"
+                  >
+                    <Activity :size="16" />
+                    {{ platformSmokeBusy ? text('测试中...', 'Testing...') : text('测试连接', 'Test') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary-button compact-button ccx-icon-button"
+                    :disabled="savingConfig || !bindingExists"
+                    @click="deleteBindingDraft"
+                  >
+                    <Trash2 :size="16" />
+                    {{ text('删除', 'Delete') }}
+                  </button>
+                </div>
+              </div>
+
+              <div v-if="platformSmoke" class="ccx-output ccx-platform-smoke" :class="{ failure: platformSmoke.transport.ok !== true }">
+                <div class="ccx-output__head">
+                  <strong>{{ platformSmoke.adapter }} {{ platformSmoke.transport.action }}</strong>
+                  <span>{{ formatTimestamp(platformSmoke.checkedAt) }}</span>
+                </div>
+                <pre>{{ platformSmokeOutput }}</pre>
+              </div>
+
+              <section class="ccx-binding-section" aria-labelledby="ccx-binding-identity-title">
+                <h4 id="ccx-binding-identity-title">{{ text('身份与路由', 'Identity and routing') }}</h4>
+                <div class="ccx-form ccx-binding-grid">
+                  <label>
+                    <span>Binding ID</span>
+                    <input v-model.trim="bindingDraft.id" autocomplete="off" />
+                  </label>
+                  <label>
+                    <span>{{ text('平台', 'Platform') }}</span>
+                    <select v-model="bindingDraft.platform">
+                      <option v-for="platform in supportedPlatforms" :key="platform" :value="platform">{{ platform }}</option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>{{ text('显示名', 'Display name') }}</span>
+                    <input v-model.trim="bindingDraft.displayName" autocomplete="off" />
+                  </label>
+                  <label>
+                    <span>Agent Profile</span>
+                    <select v-model="bindingDraft.agentProfileId">
+                      <option v-for="profile in nativeConfig?.config.agentProfiles || []" :key="profile.id" :value="profile.id">
+                        {{ profile.name }}
+                      </option>
+                    </select>
+                  </label>
+                  <label>
+                    <span>{{ text('账号', 'Account') }}</span>
+                    <input v-model.trim="bindingDraft.accountId" autocomplete="off" />
+                  </label>
+                  <label>
+                    <span>Bot ID</span>
+                    <input v-model.trim="bindingDraft.botId" autocomplete="off" />
+                  </label>
+                  <label class="ccx-check-field">
+                    <input v-model="bindingDraft.enabled" type="checkbox" />
+                    <span>{{ text('启用', 'Enabled') }}</span>
+                  </label>
+                </div>
+              </section>
+
+              <section class="ccx-binding-section" aria-labelledby="ccx-binding-connection-title">
+                <h4 id="ccx-binding-connection-title">{{ text('平台连接', 'Platform connection') }}</h4>
+                <div v-if="bindingDraft.platform === 'octo'" class="ccx-form ccx-binding-grid">
+                  <label>
+                    <span>API Server</span>
+                    <input v-model.trim="bindingDraft.metadataApiUrl" placeholder="https://im.deepminer.com.cn/api" autocomplete="off" />
+                  </label>
+                  <label>
+                    <span>Bot Token</span>
+                    <input v-model.trim="bindingDraft.metadataBotToken" type="password" autocomplete="off" />
+                  </label>
+                  <label class="ccx-wide-field">
+                    <span>WS URL</span>
+                    <input v-model.trim="bindingDraft.metadataWsUrl" autocomplete="off" />
+                  </label>
+                </div>
+                <div v-else-if="bindingDraft.platform === 'feishu'" class="ccx-form ccx-binding-grid">
+                  <label>
+                    <span>API URL</span>
+                    <input v-model.trim="bindingDraft.metadataApiUrl" placeholder="https://open.feishu.cn" autocomplete="off" />
+                  </label>
+                  <label>
+                    <span>App Secret</span>
+                    <input v-model.trim="bindingDraft.metadataAppSecret" type="password" autocomplete="off" />
+                  </label>
+                  <label class="ccx-wide-field">
+                    <span>Verification Token</span>
+                    <input v-model.trim="bindingDraft.metadataVerificationToken" type="password" autocomplete="off" />
+                  </label>
+                  <label class="ccx-wide-field">
+                    <span>Chat IDs</span>
+                    <textarea v-model="bindingDraft.metadataChatIdsText" rows="2" placeholder="oc_xxx&#10;oc_yyy" />
+                  </label>
+                </div>
+                <div v-else class="ccx-empty compact">
+                  {{ text('当前平台暂无专用连接字段', 'No platform-specific connection fields') }}
+                </div>
+              </section>
+
+              <section class="ccx-binding-section" aria-labelledby="ccx-binding-media-title">
+                <h4 id="ccx-binding-media-title">{{ text('消息与附件', 'Messages and attachments') }}</h4>
+                <div class="ccx-form ccx-binding-grid">
+                  <label class="ccx-check-field">
+                    <input v-model="bindingDraft.metadataAutoVisionModel" type="checkbox" />
+                    <span>{{ text('图片自动切视觉模型', 'Auto vision model for images') }}</span>
+                  </label>
+                  <label>
+                    <span>{{ text('视觉 fallback 模型', 'Vision fallback model') }}</span>
+                    <input v-model.trim="bindingDraft.metadataVisionModel" placeholder="gpt-5.4-mini" autocomplete="off" />
+                  </label>
+                  <label v-if="bindingDraft.platform === 'octo'">
+                    <span>{{ text('附件上限', 'Attachment max') }}</span>
+                    <input v-model.trim="bindingDraft.metadataAttachmentMaxBytes" placeholder="128mb" autocomplete="off" />
+                  </label>
+                  <label v-if="bindingDraft.platform === 'octo'" class="ccx-check-field">
+                    <input v-model="bindingDraft.metadataStageOctoUrlAttachments" type="checkbox" />
+                    <span>Stage URL attachments</span>
+                  </label>
+                  <label v-if="bindingDraft.platform === 'octo'" class="ccx-check-field">
+                    <input v-model="bindingDraft.metadataAllowPrivateAttachmentUrls" type="checkbox" />
+                    <span>Private attachment URLs</span>
+                  </label>
+                  <label v-if="bindingDraft.platform === 'feishu'">
+                    <span>{{ text('进度卡片条数', 'Progress card limit') }}</span>
+                    <input
+                      v-model.trim="bindingDraft.metadataFeishuProgressCardEntryLimit"
+                      type="number"
+                      min="1"
+                      max="30"
+                      placeholder="8"
+                      autocomplete="off"
+                    />
+                  </label>
+                </div>
+              </section>
+
+              <section class="ccx-binding-section" aria-labelledby="ccx-binding-access-title">
+                <h4 id="ccx-binding-access-title">{{ text('访问控制', 'Access control') }}</h4>
+                <div class="ccx-form ccx-binding-grid">
+                  <label class="ccx-wide-field">
+                    <span>{{ text('白名单', 'Allowlist') }}</span>
+                    <textarea v-model="bindingDraft.allowlistText" rows="3" placeholder="user-a&#10;user-b" />
+                  </label>
+                  <label class="ccx-wide-field">
+                    <span>{{ text('管理员', 'Admins') }}</span>
+                    <textarea v-model="bindingDraft.adminUsersText" rows="3" placeholder="admin-a&#10;admin-b" />
+                  </label>
+                  <label class="ccx-wide-field">
+                    <span>{{ text('禁用命令', 'Disabled commands') }}</span>
+                    <textarea v-model="bindingDraft.disabledCommandsText" rows="3" placeholder="whoami&#10;daily&#10;*" />
+                  </label>
+                </div>
+              </section>
+
+            </form>
           </div>
         </article>
 

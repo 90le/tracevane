@@ -55,6 +55,7 @@
 - Channel Connectors 主配置页第一批重构：
   - 主 Tab 改为 Overview / Bindings / Runtime / Sessions；去掉左侧 daemon 侧栏、内嵌 Profile 快改和 Skills 管理。
   - 概览面板保留 daemon service 操作、Profile 工作台入口、绑定摘要和会话队列入口；`bindingId/profileId` query 会打开 Bindings 并选中对应 binding。
+  - Bindings 工作区改为左侧绑定列表 + 右侧分区编辑器，字段按身份路由、平台连接、消息附件、访问控制分组，保存/测试/删除集中在编辑器顶部。
   - 移动端对 Header 操作、面板操作和概览卡片做纵向降级，避免窄屏操作区溢出。
 - 清理并压缩 `docs/`：
   - 新增 `docs/README.md` 作为文档索引和维护规则。
@@ -133,6 +134,7 @@
 - 本轮验证通过：`npm run build:api`
 - 本轮浏览器验证通过：Python Playwright 打开 `http://127.0.0.1:5176/channel-connectors/profiles`，在 1440/900/390 宽度下无横向溢出，Profile 复制/删除、模型网关、停止全部和事件筛选控件均渲染；打开旧 `http://127.0.0.1:5176/agents/main/cli` 不再渲染 CLI Profile 管理。
 - 本轮浏览器验证通过：Profile 页当前渲染 2 个 IM binding 配置入口；打开 `/channel-connectors?bindingId=feishu-live&profileId=feishu-codex` 会进入 Bindings 工作区，并选中 `Feishu Live` / `Feishu Codex`，无横向溢出。
+- 本轮浏览器验证通过：Headless Chrome 打开 `/channel-connectors?bindingId=feishu-live&profileId=feishu-codex`，桌面/390px 截图和 CDP `scrollWidth === clientWidth` 均通过，Bindings 列表 + 分区编辑器无横向溢出。
 - 本轮浏览器验证通过：从 `/channel-connectors?profileId=feishu-codex` 点击 Profile 工作台会进入 `/channel-connectors/profiles?profileId=feishu-codex`，并选中 `Feishu Codex`。
 - 本轮浏览器验证通过：`/channel-connectors/profiles?profileId=feishu-codex` 当前 8 条 session event 均渲染“绑定”入口和 agent/model/session/message/workdir trace；当前 live 样本 active session 为 0，桌面/手机无横向溢出；active session trace 与失败态由源码测试覆盖。
 - 本轮浏览器验证通过：`/channel-connectors/profiles?profileId=feishu-codex` 当前 2 条 requested persistent binding 均渲染“绑定”入口，桌面/手机无横向溢出。
