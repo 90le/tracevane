@@ -243,6 +243,7 @@
 - 本轮验证通过：`node --test --test-name-pattern "stops Codex app-server persistent turns|Agent process cancelled|native compact" tests/system/channel-connectors-service.test.mjs`，覆盖 Codex app-server persistent `/stop` 和 Claude/OpenCode native compact driver。
 - 本轮验证通过：`node scripts/smoke-channel-connectors-command-live.mjs --recent-sessions --probe --commands /status,/model,/mode,/dir,/compact --json`，Feishu/Octo 最近 session 均能 dry-run 解析模型、权限、工作目录和 compact 命令；probe 不发送平台消息、不修改状态，不替代真实 IM live。
 - 本轮验证通过：`node scripts/smoke-channel-connectors-feishu-long-connection.mjs --json`，70 秒采样内 Feishu 长连接 `connected=true`、`sdkConnected=true`、ping/pong 正常、`transportStale=false`、`violations=0`；当前 runtime 同时显示 Octo connection 为 1、pending queue 为 0。
+- 本轮新增闭环验收入口：`node scripts/smoke-channel-connectors-profile-closure.mjs --json` 会一次性跑三 Agent live run、Feishu 显式 `/compact`、Octo 显式 `/compact`、入站图片 staged-path 四个真实 IM gate；`--plan --json` 会输出缺口触发口径。脚本明确不把 dry-run/probe/direct-runner 当成真实 IM proof。
 - 本轮文档清理验证以 `git diff --check` 和 stale term 检查为准。
 
 ## 已知边界
@@ -261,5 +262,5 @@
 ## 下一步
 
 1. 继续抽查 Codex / Claude Code / OpenCode 真实 IM 工具流、过程回复、思考流、审批路径和 durable queue 回归。
-2. 当前 Profile/App Connection goal 的自动化证据已覆盖 Profile 保存/apply/rollback、session 管理 endpoint、isolated native stop/compact 和命令 dry-run；仍需最新 Feishu/Octo 真实 IM event-log 刷新，尤其 Codex/OpenCode 24h per-agent run、Feishu/Octo 显式 `/compact` 和入站图片证据。
+2. 当前 Profile/App Connection goal 的自动化证据已覆盖 Profile 保存/apply/rollback、session 管理 endpoint、isolated native stop/compact 和命令 dry-run；关闭 goal 前统一运行 `node scripts/smoke-channel-connectors-profile-closure.mjs --json`，需要四个真实 IM gate 全部通过。
 3. 后续可选 OpenAI Platform 官方端点 proof。
