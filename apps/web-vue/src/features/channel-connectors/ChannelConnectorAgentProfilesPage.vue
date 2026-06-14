@@ -384,6 +384,24 @@
                   <strong>{{ session.model || text('默认模型', 'default model') }}</strong>
                   <p>{{ session.agent }} · {{ session.bindingId }} · {{ session.permissionMode || '-' }}</p>
                   <p>{{ compactPath(session.workDir) }}</p>
+                  <dl class="ccx-agent-profile-session-trace">
+                    <div>
+                      <dt>Profile</dt>
+                      <dd>{{ session.projectId || '-' }}</dd>
+                    </div>
+                    <div>
+                      <dt>Session</dt>
+                      <dd>{{ session.sessionKey || '-' }}</dd>
+                    </div>
+                    <div>
+                      <dt>Pool</dt>
+                      <dd>{{ session.poolKey || '-' }}</dd>
+                    </div>
+                    <div>
+                      <dt>{{ text('轮次 / 空闲', 'Turns / idle') }}</dt>
+                      <dd>{{ session.turnCount }} · {{ formatDuration(session.idleMs) }}</dd>
+                    </div>
+                  </dl>
                 </div>
                 <div>
                   <span>{{ text('运行中', 'running') }} {{ session.running }}</span>

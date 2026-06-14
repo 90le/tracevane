@@ -261,26 +261,30 @@
   background: color-mix(in srgb, var(--danger) 5%, var(--surface-base));
 }
 
-.ccx-agent-profile-event-trace {
+.ccx-agent-profile-event-trace,
+.ccx-agent-profile-session-trace {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px 8px;
   margin: 2px 0 0;
 }
 
-.ccx-agent-profile-event-trace > div {
+.ccx-agent-profile-event-trace > div,
+.ccx-agent-profile-session-trace > div {
   display: grid;
   gap: 1px;
   min-width: 0;
 }
 
-.ccx-agent-profile-event-trace dt {
+.ccx-agent-profile-event-trace dt,
+.ccx-agent-profile-session-trace dt {
   color: var(--mono-ink-2);
   font-size: 0.72rem;
   line-height: 1.3;
 }
 
-.ccx-agent-profile-event-trace dd {
+.ccx-agent-profile-event-trace dd,
+.ccx-agent-profile-session-trace dd {
   min-width: 0;
   margin: 0;
   font-size: 0.78rem;
@@ -923,7 +927,8 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .ccx-agent-profile-event-trace {
+  .ccx-agent-profile-event-trace,
+  .ccx-agent-profile-session-trace {
     grid-template-columns: minmax(0, 1fr);
   }
 

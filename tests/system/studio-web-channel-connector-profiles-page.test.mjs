@@ -90,6 +90,12 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(page, /session\.effectiveMode/);
   assert.match(page, /session\.requestedMode/);
   assert.match(page, /session\.reason/);
+  assert.match(page, /ccx-agent-profile-session-trace/);
+  assert.match(page, /session\.projectId/);
+  assert.match(page, /session\.sessionKey/);
+  assert.match(page, /session\.poolKey/);
+  assert.match(page, /session\.turnCount/);
+  assert.match(page, /formatDuration\(session\.idleMs\)/);
   assert.match(page, /openBindingConfigById\(session\.bindingId\)/);
   assert.match(page, /停止全部|Stop all/);
   assert.match(page, /撤销|Discard/);
@@ -135,6 +141,7 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(styles, /\.ccx-agent-profile-requested-list/);
   assert.match(styles, /\.ccx-agent-profile-requested-row/);
   assert.match(styles, /\.ccx-agent-profile-linked-row/);
+  assert.match(styles, /\.ccx-agent-profile-session-trace/);
   assert.match(styles, /\.ccx-agent-profile-event-row\.danger/);
   assert.match(styles, /\.ccx-agent-profile-event-trace/);
   assert.match(styles, /\.ccx-agent-profile-row-actions/);
