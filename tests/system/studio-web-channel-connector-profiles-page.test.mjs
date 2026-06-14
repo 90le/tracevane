@@ -34,7 +34,8 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
 
   assert.match(page, /fetchModelGatewayAppConnections/);
   assert.match(page, /fetchModelGatewayProviders/);
-  assert.match(page, /appConnections\.availableModels/);
+  assert.match(page, /appConnectionsResponse\.availableModels/);
+  assert.match(page, /appConnections\.value = appConnectionsResponse\.connections/);
   assert.match(page, /collectGatewayProviderModelNames/);
   assert.match(page, /model\.aliases/);
   assert.match(page, /fetchChannelConnectorsNativeConfig/);
@@ -53,6 +54,14 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(page, /Budget source/);
   assert.match(page, /Context window/);
   assert.match(page, /Auto compact/);
+  assert.match(page, /CLI App 连接|CLI App connection/);
+  assert.match(page, /selectedAppConnection/);
+  assert.match(page, /selectedAppConnectionModel/);
+  assert.match(page, /selectedEffectiveModel = computed/);
+  assert.match(page, /profileDraft\.model \|\| selectedAppConnectionModel\.value \|\| appConnectionProfile\.value\?\.model/);
+  assert.match(page, /modelGatewayAppConnectionIdForAgent/);
+  assert.match(page, /appProfileOptions/);
+  assert.match(page, /default · Gateway App Connections/);
   assert.match(page, /模型网关|Model Gateway/);
   assert.match(page, /打开配置|Open config/);
   assert.match(page, /事件筛选|Event filter/);
@@ -87,6 +96,7 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(styles, /\.ccx-agent-profile-activity/);
   assert.match(styles, /\.ccx-agent-profile-config-section/);
   assert.match(styles, /\.ccx-agent-profile-budget-strip/);
+  assert.match(styles, /\.ccx-agent-profile-app-connection/);
   assert.match(styles, /\.ccx-agent-profile-select-row/);
   assert.match(styles, /\.ccx-agent-profile-editor-actions/);
   assert.match(styles, /\.ccx-agent-profile-edit-state/);

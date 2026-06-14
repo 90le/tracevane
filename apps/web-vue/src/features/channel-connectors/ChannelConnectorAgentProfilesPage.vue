@@ -222,6 +222,16 @@
                     <label class="form-label">{{ text('预算来源', 'Budget source') }}</label>
                     <input class="form-input" :value="selectedBudgetSourceLabel" readonly />
                   </div>
+                  <div class="form-field form-field-full">
+                    <label class="form-label">{{ text('CLI App 连接', 'CLI App connection') }}</label>
+                    <div class="ccx-agent-profile-app-connection">
+                      <div>
+                        <strong>{{ selectedAppConnection?.label || profileDraft.agent }}</strong>
+                        <span>{{ selectedAppConnectionState }}</span>
+                      </div>
+                      <p>{{ selectedAppConnectionDetail }}</p>
+                    </div>
+                  </div>
                 </div>
                 <dl class="ccx-metric-strip ccx-agent-profile-budget-strip">
                   <div>
@@ -258,7 +268,8 @@
                   </div>
                   <div class="form-field">
                     <label class="form-label">App Profile</label>
-                    <input v-model.trim="profileDraft.appProfileRef" class="form-input" autocomplete="off" />
+                    <StudioSelect v-model="profileDraft.appProfileRef" :options="appProfileOptions" />
+                    <span class="field-hint">{{ text('当前 Gateway 只提供 default App Connection Profile；已有自定义值会保留为兼容选项。', 'Gateway currently exposes only the default App Connection Profile; existing custom values are kept as compatibility options.') }}</span>
                   </div>
                 </div>
               </section>
@@ -375,6 +386,8 @@ import type {
   ChannelConnectorsStatusResponse,
 } from '../../../../../types/channel-connectors';
 import type {
+  ModelGatewayAppConnection,
+  ModelGatewayAppConnectionId,
   ModelGatewayAppConnectionProfile,
   ModelGatewayProviderModel,
   ModelGatewayProviderView,
@@ -412,6 +425,7 @@ const nativeConfig = ref<ChannelConnectorsNativeConfigResponse | null>(null);
 const status = ref<ChannelConnectorsStatusResponse | null>(null);
 const agentSessions = ref<ChannelConnectorAgentSessionDriverStatusResponse | null>(null);
 const appConnectionProfile = ref<ModelGatewayAppConnectionProfile | null>(null);
+const appConnections = ref<ModelGatewayAppConnection[]>([]);
 const gatewayModels = ref<string[]>([]);
 const gatewayModelBudgetIndex = ref<Record<string, GatewayModelBudget>>({});
 const selectedProfileId = ref('');
@@ -462,6 +476,13 @@ const reasoningOptions = computed(() => [
   { value: 'xhigh', label: 'xhigh' },
 ]);
 
+const appProfileOptions = computed(() => {
+  const options = [{ value: 'default', label: text('default · Gateway App Connections', 'default · Gateway App Connections') }];
+  const current = profileDraft.appProfileRef.trim();
+  if (current && current !== 'default') options.push({ value: current, label: text(`${current} · 保留值`, `${current} · existing value`) });
+  return options;
+});
+
 const modelOptions = computed(() => {
   const models = new Set<string>();
   for (const model of gatewayModels.value) {
@@ -475,8 +496,24 @@ const modelOptions = computed(() => {
   ];
 });
 
+const selectedAppConnectionId = computed<ModelGatewayAppConnectionId | null>(() =>
+  modelGatewayAppConnectionIdForAgent(profileDraft.agent),
+);
+
+const selectedAppConnection = computed(() => {
+  const appId = selectedAppConnectionId.value;
+  if (!appId) return null;
+  return appConnections.value.find((connection) => connection.id === appId) || null;
+});
+
+const selectedAppConnectionModel = computed(() => {
+  const appId = selectedAppConnectionId.value;
+  if (!appId) return '';
+  return String(appConnectionProfile.value?.appModels?.[appId] || selectedAppConnection.value?.model || '').trim();
+});
+
 const selectedEffectiveModel = computed(() => {
-  return String(profileDraft.model || appConnectionProfile.value?.model || '').trim();
+  return String(profileDraft.model || selectedAppConnectionModel.value || appConnectionProfile.value?.model || '').trim();
 });
 
 const selectedModelBudget = computed(() => findGatewayModelBudget(selectedEffectiveModel.value));
@@ -511,6 +548,21 @@ const compactRatioLabel = computed(() => {
   const limit = resolvedAutoCompactTokenLimit.value;
   if (!context || !limit) return text('等待 Gateway 预算', 'waiting for Gateway budget');
   return `${Math.round((limit / context) * 100)}%`;
+});
+
+const selectedAppConnectionState = computed(() => {
+  const connection = selectedAppConnection.value;
+  if (!connection) return text('未找到 Gateway app connection', 'Gateway app connection not found');
+  if (connection.configured) return text('已应用配置', 'Applied');
+  if (connection.canApply) return text('可应用', 'Ready to apply');
+  return text('需要先完善 Gateway 配置', 'Gateway configuration required');
+});
+
+const selectedAppConnectionDetail = computed(() => {
+  const connection = selectedAppConnection.value;
+  const model = selectedEffectiveModel.value || text('默认模型', 'default model');
+  if (!connection) return text(`模型 ${model}`, `Model ${model}`);
+  return `${connection.protocol} · ${connection.endpoint} · ${model}`;
 });
 
 const selectedProfileLookupIds = computed(() => {
@@ -684,6 +736,11 @@ function mergeBudgetMinimum(current: number | null, next: number | null | undefi
 
 function normalizeBudgetLookup(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function modelGatewayAppConnectionIdForAgent(agent: ChannelConnectorAgentId): ModelGatewayAppConnectionId | null {
+  if (agent === 'codex' || agent === 'claude-code' || agent === 'opencode') return agent;
+  return null;
 }
 
 function findGatewayModelBudget(modelId: string): GatewayModelBudget | null {
@@ -1116,20 +1173,22 @@ async function loadAll(): Promise<void> {
     let gatewayModelCatalog: string[] = [];
     let gatewayBudgetCatalog: Record<string, GatewayModelBudget> = {};
     try {
-      const [appConnections, providers] = await Promise.all([
+      const [appConnectionsResponse, providers] = await Promise.all([
         fetchModelGatewayAppConnections(),
         fetchModelGatewayProviders(),
       ]);
       const providerCatalog = collectGatewayProviderModelNames(providers.providers || []);
       gatewayModelCatalog = [
-        ...(appConnections.availableModels || []),
+        ...(appConnectionsResponse.availableModels || []),
         ...providerCatalog.models,
       ];
       gatewayBudgetCatalog = providerCatalog.budgets;
-      appConnectionProfile.value = appConnections.profile;
+      appConnectionProfile.value = appConnectionsResponse.profile;
+      appConnections.value = appConnectionsResponse.connections || [];
     } catch {
       setNotice(text('Gateway 模型目录暂不可用，模型下拉只保留当前 Profile 值。', 'Gateway model catalog is unavailable; the model picker only keeps the current profile value.'), 'error');
       appConnectionProfile.value = null;
+      appConnections.value = [];
     }
     nativeConfig.value = nextNativeConfig;
     status.value = nextStatus;

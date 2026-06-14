@@ -147,6 +147,41 @@
   overflow-wrap: anywhere;
 }
 
+.ccx-agent-profile-app-connection {
+  display: grid;
+  gap: 6px;
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-base) 92%, var(--surface-soft));
+  padding: 10px 12px;
+}
+
+.ccx-agent-profile-app-connection > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.ccx-agent-profile-app-connection strong,
+.ccx-agent-profile-app-connection span,
+.ccx-agent-profile-app-connection p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ccx-agent-profile-app-connection span,
+.ccx-agent-profile-app-connection p {
+  color: var(--mono-ink-2);
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.ccx-agent-profile-app-connection p {
+  margin: 0;
+}
+
 .ccx-agent-profile-binding-row,
 .ccx-agent-profile-session-row,
 .ccx-agent-profile-event-row {
