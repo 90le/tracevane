@@ -557,6 +557,30 @@
 }
 
 @media (max-width: 720px) {
+  .agents-workspace-head {
+    grid-template-columns: 4px minmax(0, 1fr);
+    align-items: start;
+    row-gap: 12px;
+  }
+
+  .agents-workspace-head .page-actions {
+    grid-column: 2;
+    justify-content: flex-start;
+    min-width: 0;
+    padding-left: 14px;
+  }
+
+  .agents-workspace-head .page-actions > button {
+    flex: 1 1 140px;
+    min-width: 0;
+  }
+
+  .agents-workspace-head .page-title,
+  .agents-workspace-head .page-copy {
+    overflow-wrap: normal;
+    word-break: normal;
+  }
+
   .agents-stage-panel,
   .agents-docs-nav {
     padding-left: 10px;
@@ -1433,7 +1457,7 @@ html[data-theme="light"] .agents-summary-pill {
 
 .agents-cli-layout {
   display: grid;
-  grid-template-columns: minmax(250px, 0.58fr) minmax(0, 1.18fr);
+  grid-template-columns: minmax(260px, 0.72fr) minmax(430px, 1.22fr) minmax(300px, 0.82fr);
   gap: 0;
   overflow: hidden;
   border: 1px solid var(--line);
@@ -1441,14 +1465,26 @@ html[data-theme="light"] .agents-summary-pill {
   background: var(--surface-base);
 }
 
-.agents-cli-profile-list,
-.agents-cli-binding-panel {
+.agents-cli-rail,
+.agents-cli-main,
+.agents-cli-activity {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+}
+
+.agents-cli-rail,
+.agents-cli-main {
   border-right: 1px solid var(--line);
 }
 
-.agents-cli-profile-list,
-.agents-cli-editor {
+.agents-cli-rail .agents-profile-panel,
+.agents-cli-rail .agents-data-panel {
   border-bottom: 1px solid var(--line);
+}
+
+.agents-cli-rail .agents-data-panel:last-child {
+  border-bottom: 0;
 }
 
 .agents-cli-profile-list__rows {
@@ -1496,22 +1532,80 @@ html[data-theme="light"] .agents-summary-pill {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.agents-cli-editor-sections {
+  display: grid;
+  gap: 12px;
+}
+
+.agents-cli-config-section {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--line) 82%, transparent);
+  border-radius: 10px;
+  background: var(--surface-base);
+  padding: 14px;
+}
+
+.agents-cli-config-section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  min-width: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 78%, transparent);
+  padding-bottom: 10px;
+}
+
+.agents-cli-config-section__head h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+.agents-cli-config-section__head span {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
 .agents-cli-session-metrics {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
+.agents-cli-budget-strip {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.agents-cli-budget-strip div {
+  align-content: start;
+}
+
+.agents-cli-budget-strip span {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 .agents-cli-binding-row,
 .agents-cli-session-row {
-  grid-template-columns: minmax(0, 1.1fr) minmax(180px, 0.72fr) auto;
+  grid-template-columns: 1fr;
+  align-items: start;
 }
 
 .agents-cli-binding-row > strong {
-  justify-self: end;
-  white-space: nowrap;
+  justify-self: start;
+  white-space: normal;
 }
 
 .agents-cli-session-row button {
-  justify-self: end;
+  justify-self: start;
 }
 
 .agents-cli-danger {
@@ -1561,13 +1655,17 @@ html[data-theme="light"] .agents-summary-pill {
   }
 
   .agents-cli-layout {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(260px, 0.72fr) minmax(0, 1.28fr);
+  }
+
+  .agents-cli-activity {
+    grid-column: 1 / -1;
+    border-top: 1px solid var(--line);
   }
 
   .agents-profile-panel,
   .agents-session-panel,
-  .agents-cli-profile-list,
-  .agents-cli-binding-panel {
+  .agents-cli-main {
     border-right: 0;
   }
 
@@ -1577,10 +1675,29 @@ html[data-theme="light"] .agents-summary-pill {
 }
 
 @media (max-width: 760px) {
+  .agents-cli-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .agents-cli-rail,
+  .agents-cli-main {
+    border-right: 0;
+  }
+
+  .agents-cli-main,
+  .agents-cli-activity {
+    border-top: 1px solid var(--line);
+  }
+
   .agents-profile-panel__head,
   .agents-runtime-panel__head,
-  .agents-data-panel__head {
+  .agents-data-panel__head,
+  .agents-cli-config-section__head {
     display: grid;
+  }
+
+  .agents-cli-config-section__head span {
+    text-align: left;
   }
 
   .agents-fact-grid,
@@ -1588,6 +1705,7 @@ html[data-theme="light"] .agents-summary-pill {
   .agents-metric-strip--three,
   .agents-cli-facts,
   .agents-cli-session-metrics,
+  .agents-cli-budget-strip,
   .agents-runtime-grid,
   .agents-compact-list-row,
   .agents-cli-binding-row,
