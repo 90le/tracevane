@@ -1614,24 +1614,35 @@ function renderVisionPickerCard(surface: ChannelConnectorCommandSurface): Channe
   const toggle = surface.current.autoVisionModel
     ? {
       ...off,
-      label: "关闭视觉",
+      label: "关闭自动视觉",
       tone: "default" as const,
     }
     : {
       ...on,
-      label: "开启视觉",
+      label: "开启自动视觉",
       tone: "primary" as const,
     };
+  const defaultAction = {
+    ...defaults,
+    label: "恢复默认设置",
+  };
+  const currentVisionModel = surface.current.visionModel || "Gateway 自动选择";
   const elements: Array<Record<string, unknown>> = [
     {
       tag: "markdown",
       content: [
-        "**自动视觉 fallback**",
-        `${surface.current.autoVisionModel ? "开启" : "关闭"} · ${surface.current.visionModel || "auto"} · 当前模型 ${surface.current.model || "default"}`,
-        `来源：${surface.current.autoVisionModelSource === "session" ? "当前会话" : "binding 默认"} · 可选视觉模型：${modelActions.length || 0} 个`,
+        "**当前视觉**",
+        `自动切换：${surface.current.autoVisionModel ? "开启" : "关闭"}`,
+        `视觉模型：${currentVisionModel}`,
+        `来源：${surface.current.autoVisionModelSource === "session" ? "当前会话" : "binding 默认"}`,
+        `当前对话模型：${surface.current.model || "default"}`,
       ].join("\n"),
     },
   ];
+  elements.push({
+    tag: "markdown",
+    content: `**视觉模型**\n图片输入 fallback 可用模型：${modelActions.length || 0} 个`,
+  });
   elements.push(selectStaticElement({
     placeholder: modelActions.length ? "选择视觉模型" : "暂无 vision 模型",
     options,
@@ -1640,7 +1651,11 @@ function renderVisionPickerCard(surface: ChannelConnectorCommandSurface): Channe
     sectionId: "vision",
     viewId: "vision",
   }));
-  pushActionRows(elements, [toggle, defaults], surface, 2, true);
+  elements.push({
+    tag: "markdown",
+    content: "**自动切换**\n开启后仅在图片输入时使用视觉 fallback；失败会回退附件说明。",
+  });
+  pushActionRows(elements, [toggle, defaultAction], surface, 2, true);
   pushSubcardNavRows(elements, surface, "vision");
   elements.push({
     tag: "note",

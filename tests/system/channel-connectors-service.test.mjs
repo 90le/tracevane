@@ -8555,6 +8555,8 @@ test("native Channel Connectors command surface loads Gateway models when reques
     });
     const visionCardRaw = JSON.stringify(visionSurface.feishuCard);
     assert.match(visionCardRaw, /视觉设置/);
+    assert.match(visionCardRaw, /当前视觉/);
+    assert.match(visionCardRaw, /视觉模型/);
     assert.match(visionCardRaw, /act:\/vision model gateway-gpt-5/);
     assert.doesNotMatch(visionCardRaw, /act:\/vision model gateway-glm-5/);
   });
@@ -9059,6 +9061,16 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.equal(visionPickerSurface.current.visionModel, "gpt-5.5");
   const visionCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(visionPickerSurface));
   assert.match(visionCardRaw, /视觉设置/);
+  assert.match(visionCardRaw, /当前视觉/);
+  assert.match(visionCardRaw, /自动切换：开启/);
+  assert.match(visionCardRaw, /视觉模型：gpt-5\.5/);
+  assert.match(visionCardRaw, /来源：binding 默认/);
+  assert.match(visionCardRaw, /当前对话模型：gpt-5/);
+  assert.match(visionCardRaw, /图片输入 fallback 可用模型：1 个/);
+  assert.match(visionCardRaw, /自动切换/);
+  assert.match(visionCardRaw, /关闭自动视觉/);
+  assert.match(visionCardRaw, /恢复默认设置/);
+  assert.match(visionCardRaw, /失败会回退附件说明/);
   assert.match(visionCardRaw, /select_static/);
   assert.match(visionCardRaw, /act:\/vision off/);
   assert.doesNotMatch(visionCardRaw, /act:\/vision on/);
