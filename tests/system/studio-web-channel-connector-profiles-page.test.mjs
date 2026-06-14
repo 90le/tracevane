@@ -50,10 +50,14 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(page, /Gateway Endpoint/);
   assert.match(page, /IM Bindings/);
   assert.match(page, /Sessions and records/);
+  assert.match(page, /ccx-agent-profile-summary/);
+  assert.match(page, /Current profile|当前 Profile/);
+  assert.match(page, /Edit state|编辑状态/);
   assert.match(page, /ccx-agent-profile-rail/);
   assert.match(page, /ccx-agent-profile-main/);
   assert.match(page, /ccx-agent-profile-activity/);
   assert.match(page, /ccx-agent-profile-config-section/);
+  assert.match(page, /ccx-agent-profile-app-section/);
   assert.match(page, /Model and context/);
   assert.match(page, /Budget source/);
   assert.match(page, /Context window/);
@@ -152,6 +156,7 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(page, /deriveAutoCompactTokenLimit/);
   assert.doesNotMatch(page, /fetchAgentDetail|fetchAgentsSummary|AgentDetailPayload/);
   assert.match(styles, /\.ccx-agent-profile-layout/);
+  assert.match(styles, /\.ccx-agent-profile-summary/);
   assert.match(styles, /\.ccx-agent-profile-rail/);
   assert.match(styles, /\.ccx-agent-profile-main/);
   assert.match(styles, /\.ccx-agent-profile-activity/);
@@ -176,8 +181,9 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(styles, /\.ccx-agent-profile-editor-actions/);
   assert.match(styles, /\.ccx-agent-profile-edit-state/);
   assert.match(styles, /\.ccx-agent-profile-session-toolbar/);
-  assert.match(styles, /grid-template-columns: minmax\(160px, 220px\) minmax\(160px, 220px\) minmax\(110px, 150px\) minmax\(0, 1fr\)/);
+  assert.match(styles, /\.ccx-agent-profile-session-toolbar > span/);
   assert.match(styles, /\.ccx-field-button/);
+  assert.doesNotMatch(styles, /\.ccx-agent-profile-facts/);
   assert.doesNotMatch(styles, /\.agents-cli-/);
   assert.match(connectorsPage, /profileWorkspaceRoute/);
   assert.match(connectorsPage, /path:\s*'\/channel-connectors\/profiles'/);

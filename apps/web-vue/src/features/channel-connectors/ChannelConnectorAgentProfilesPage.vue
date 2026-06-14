@@ -40,6 +40,42 @@
     <div v-if="loading && !loaded" class="empty-inline">{{ text('正在读取 Channel Connectors Profile 配置...', 'Loading Channel Connectors profile configuration...') }}</div>
 
     <template v-else>
+      <section class="ccx-agent-profile-summary" aria-label="Selected CLI Profile summary">
+        <article>
+          <small>{{ text('当前 Profile', 'Current profile') }}</small>
+          <strong>{{ profileDraft.name || profileDraft.id || '-' }}</strong>
+          <span>{{ profileDraft.agent }} · {{ profileDraft.permissionMode }}</span>
+        </article>
+        <article>
+          <small>{{ text('模型', 'Model') }}</small>
+          <strong>{{ selectedEffectiveModel || text('继承默认', 'inherit default') }}</strong>
+          <span>{{ selectedBudgetSourceLabel }}</span>
+        </article>
+        <article>
+          <small>{{ text('绑定', 'Bindings') }}</small>
+          <strong>{{ relatedBindings.length }}</strong>
+          <span>{{ nativeConfig?.config.defaultAgentProfileId === selectedProfileId ? text('默认 Profile', 'default profile') : text('非默认', 'not default') }}</span>
+        </article>
+        <article>
+          <small>{{ text('会话', 'Sessions') }}</small>
+          <strong>{{ activeSessions.length }}</strong>
+          <span>{{ requestedSessions.length }} {{ text('个持久绑定请求', 'persistent requests') }}</span>
+        </article>
+        <article :class="{ warning: hasUnsavedProfileChanges || profileIdConflict }">
+          <small>{{ text('编辑状态', 'Edit state') }}</small>
+          <strong>
+            {{
+              profileIdConflict
+                ? text('ID 冲突', 'ID conflict')
+                : hasUnsavedProfileChanges
+                  ? text('未保存', 'Unsaved')
+                  : text('已同步', 'Synced')
+            }}
+          </strong>
+          <span>{{ canSaveProfile ? text('可保存', 'ready to save') : saveProfileDisabledReason }}</span>
+        </article>
+      </section>
+
       <section class="ccx-agent-profile-layout">
         <aside class="ccx-agent-profile-rail">
           <article class="ccx-panel ccx-agent-profile-list">
@@ -152,21 +188,6 @@
               </div>
             </header>
 
-            <dl class="ccx-facts ccx-agent-profile-facts">
-              <div>
-                <dt>{{ text('默认 Profile', 'Default profile') }}</dt>
-                <dd>{{ nativeConfig?.config.defaultAgentProfileId || '-' }}</dd>
-              </div>
-              <div>
-                <dt>{{ text('Gateway 模型', 'Gateway models') }}</dt>
-                <dd>{{ modelOptionsCount }}</dd>
-              </div>
-              <div>
-                <dt>{{ text('绑定', 'Bindings') }}</dt>
-                <dd>{{ relatedBindings.length }}</dd>
-              </div>
-            </dl>
-
             <div
               v-if="hasUnsavedProfileChanges || profileIdConflict"
               class="ccx-agent-profile-edit-state"
@@ -240,53 +261,6 @@
                     <label class="form-label">{{ text('预算来源', 'Budget source') }}</label>
                     <input class="form-input" :value="selectedBudgetSourceLabel" readonly />
                   </div>
-                  <div class="form-field form-field-full">
-                    <label class="form-label">{{ text('CLI App 连接', 'CLI App connection') }}</label>
-                    <div class="ccx-agent-profile-app-connection">
-                      <div>
-                        <strong>{{ selectedAppConnection?.label || profileDraft.agent }}</strong>
-                        <span>{{ selectedAppConnectionState }}</span>
-                      </div>
-                      <p>{{ selectedAppConnectionDetail }}</p>
-                      <dl class="ccx-agent-profile-app-facts">
-                        <div>
-                          <dt>{{ text('配置文件', 'Config file') }}</dt>
-                          <dd>{{ selectedAppConnection?.target.path || '-' }}</dd>
-                        </div>
-                        <div>
-                          <dt>{{ text('最近备份', 'Latest backup') }}</dt>
-                          <dd>{{ selectedAppConnection?.lastBackupPath || '-' }}</dd>
-                        </div>
-                        <div>
-                          <dt>{{ text('启动提示', 'Launch hint') }}</dt>
-                          <dd>{{ selectedAppConnection?.launchHint || '-' }}</dd>
-                        </div>
-                      </dl>
-                      <div v-if="selectedAppConnectionIssues.length" class="ccx-agent-profile-app-issues">
-                        <span v-for="issue in selectedAppConnectionIssues" :key="issue">{{ issue }}</span>
-                      </div>
-                      <details v-if="selectedAppConnection?.preview?.content" class="ccx-agent-profile-app-preview">
-                        <summary>{{ text('预览配置', 'Preview config') }}</summary>
-                        <pre>{{ selectedAppConnection.preview.content }}</pre>
-                      </details>
-                      <div class="ccx-agent-profile-app-actions">
-                        <button
-                          type="button"
-                          class="primary-button compact-button ccx-icon-button ccx-field-button"
-                          :disabled="appConnectionApplyBusy || !canApplySelectedAppConnection"
-                          :title="selectedAppConnectionApplyDisabledReason"
-                          @click="applySelectedAppConnection"
-                        >
-                          <Save :size="16" />
-                          {{ appConnectionApplyBusy ? text('应用中...', 'Applying...') : text('应用到 CLI', 'Apply to CLI') }}
-                        </button>
-                        <button type="button" class="secondary-button compact-button ccx-icon-button ccx-field-button" @click="openModelGateway">
-                          <ExternalLink :size="16" />
-                          {{ text('App 连接', 'App connection') }}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
                 </div>
                 <dl class="ccx-metric-strip ccx-agent-profile-budget-strip">
                   <div>
@@ -305,6 +279,57 @@
                     <span>{{ compactRatioLabel }}</span>
                   </div>
                 </dl>
+              </section>
+
+              <section class="ccx-agent-profile-config-section ccx-agent-profile-app-section">
+                <div class="ccx-agent-profile-config-section__head">
+                  <h4>{{ text('CLI App 连接', 'CLI App connection') }}</h4>
+                  <span>{{ text('把当前 Profile 的模型、上下文和权限写入对应 CLI。', 'Apply this profile model, context, and permission settings to the selected CLI.') }}</span>
+                </div>
+                <div class="ccx-agent-profile-app-connection">
+                  <div>
+                    <strong>{{ selectedAppConnection?.label || profileDraft.agent }}</strong>
+                    <span>{{ selectedAppConnectionState }}</span>
+                  </div>
+                  <p>{{ selectedAppConnectionDetail }}</p>
+                  <dl class="ccx-agent-profile-app-facts">
+                    <div>
+                      <dt>{{ text('配置文件', 'Config file') }}</dt>
+                      <dd>{{ selectedAppConnection?.target.path || '-' }}</dd>
+                    </div>
+                    <div>
+                      <dt>{{ text('最近备份', 'Latest backup') }}</dt>
+                      <dd>{{ selectedAppConnection?.lastBackupPath || '-' }}</dd>
+                    </div>
+                    <div>
+                      <dt>{{ text('启动提示', 'Launch hint') }}</dt>
+                      <dd>{{ selectedAppConnection?.launchHint || '-' }}</dd>
+                    </div>
+                  </dl>
+                  <div v-if="selectedAppConnectionIssues.length" class="ccx-agent-profile-app-issues">
+                    <span v-for="issue in selectedAppConnectionIssues" :key="issue">{{ issue }}</span>
+                  </div>
+                  <details v-if="selectedAppConnection?.preview?.content" class="ccx-agent-profile-app-preview">
+                    <summary>{{ text('预览配置', 'Preview config') }}</summary>
+                    <pre>{{ selectedAppConnection.preview.content }}</pre>
+                  </details>
+                  <div class="ccx-agent-profile-app-actions">
+                    <button
+                      type="button"
+                      class="primary-button compact-button ccx-icon-button ccx-field-button"
+                      :disabled="appConnectionApplyBusy || !canApplySelectedAppConnection"
+                      :title="selectedAppConnectionApplyDisabledReason"
+                      @click="applySelectedAppConnection"
+                    >
+                      <Save :size="16" />
+                      {{ appConnectionApplyBusy ? text('应用中...', 'Applying...') : text('应用到 CLI', 'Apply to CLI') }}
+                    </button>
+                    <button type="button" class="secondary-button compact-button ccx-icon-button ccx-field-button" @click="openModelGateway">
+                      <ExternalLink :size="16" />
+                      {{ text('App 连接', 'App connection') }}
+                    </button>
+                  </div>
+                </div>
               </section>
 
               <section class="ccx-agent-profile-config-section">

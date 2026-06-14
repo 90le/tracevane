@@ -34,6 +34,41 @@ section.page-shell.channel-connectors-page {
   align-items: center;
 }
 
+.ccx-agent-profile-summary {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) repeat(4, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.ccx-agent-profile-summary article {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+  min-width: 0;
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-base) 86%, var(--surface-soft));
+  padding: 10px 12px;
+}
+
+.ccx-agent-profile-summary article.warning {
+  border-color: color-mix(in srgb, var(--warning) 42%, var(--mono-line));
+  background: color-mix(in srgb, var(--warning) 7%, var(--surface-base));
+}
+
+.ccx-agent-profile-summary small,
+.ccx-agent-profile-summary span {
+  min-width: 0;
+  color: var(--mono-ink-2);
+  overflow-wrap: anywhere;
+}
+
+.ccx-agent-profile-summary strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .ccx-agent-profile-layout {
   display: grid;
   grid-template-columns: minmax(260px, 0.72fr) minmax(430px, 1.22fr) minmax(300px, 0.82fr);
@@ -50,10 +85,6 @@ section.page-shell.channel-connectors-page {
   align-content: start;
   min-width: 0;
   gap: 12px;
-}
-
-.ccx-agent-profile-facts {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .ccx-agent-profile-select-row {
@@ -365,7 +396,7 @@ section.page-shell.channel-connectors-page {
 
 .ccx-agent-profile-session-toolbar {
   display: grid;
-  grid-template-columns: minmax(160px, 220px) minmax(160px, 220px) minmax(110px, 150px) minmax(0, 1fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   align-items: end;
   margin-bottom: 12px;
@@ -376,6 +407,7 @@ section.page-shell.channel-connectors-page {
 }
 
 .ccx-agent-profile-session-toolbar > span {
+  grid-column: 1 / -1;
   color: var(--mono-ink-2);
   font-size: 0.82rem;
   line-height: 1.45;
@@ -1027,6 +1059,10 @@ section.page-shell.channel-connectors-page {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .ccx-agent-profile-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .ccx-action-menu {
     left: 0;
     right: auto;
@@ -1040,7 +1076,6 @@ section.page-shell.channel-connectors-page {
   .ccx-form,
   .ccx-credential-box,
   .ccx-profile-form-grid,
-  .ccx-agent-profile-facts,
   .ccx-agent-profile-budget-strip,
   .ccx-agent-profile-session-metrics,
   .ccx-agent-profile-session-toolbar {
@@ -1100,17 +1135,20 @@ section.page-shell.channel-connectors-page {
 }
 
 @media (max-width: 560px) {
-  section.page-shell.channel-connectors-page {
+  section.page-shell.channel-connectors-page,
+  section.page-shell.channel-connectors-profile-page {
     width: calc(100vw - 56px);
     max-width: calc(100vw - 56px);
   }
 
-  .channel-connectors-page .page-header-row {
+  .channel-connectors-page .page-header-row,
+  .channel-connectors-profile-page .page-header-row {
     grid-template-columns: 4px minmax(0, 1fr);
     row-gap: 12px;
   }
 
-  .channel-connectors-page .page-actions {
+  .channel-connectors-page .page-actions,
+  .channel-connectors-profile-page .page-actions {
     grid-column: 2;
     width: 100%;
     min-width: 0;
@@ -1118,12 +1156,14 @@ section.page-shell.channel-connectors-page {
     padding-left: 14px;
   }
 
-  .channel-connectors-page .page-actions > * {
+  .channel-connectors-page .page-actions > *,
+  .channel-connectors-profile-page .page-actions > * {
     flex: 1 1 100%;
     min-width: 0;
   }
 
   .channel-connectors-page .page-actions .ccx-icon-button,
+  .channel-connectors-profile-page .page-actions .ccx-icon-button,
   .ccx-platform-actions .ccx-icon-button,
   .ccx-overview-actions .ccx-icon-button {
     white-space: nowrap;
@@ -1155,6 +1195,10 @@ section.page-shell.channel-connectors-page {
   .ccx-overview-card > div:first-child {
     display: grid;
     gap: 6px;
+  }
+
+  .ccx-agent-profile-summary {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .ccx-tabs {
