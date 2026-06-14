@@ -202,129 +202,145 @@
               <h3>{{ text('运行链路', 'Runtime chain') }}</h3>
             </div>
           </div>
-          <div class="ccx-chain">
-            <div v-for="(item, index) in runtimeChain" :key="item" class="ccx-chain-row">
-              <span>{{ index + 1 }}</span>
-              <strong>{{ item }}</strong>
+
+          <div class="ccx-runtime-workspace">
+            <div class="ccx-runtime-stack">
+              <section class="ccx-runtime-card" aria-label="Channel daemon snapshot">
+                <div class="ccx-runtime-card__head">
+                  <div>
+                    <small>Daemon snapshot</small>
+                    <strong>{{ runtimeStatus?.implementation || 'studio-native' }}</strong>
+                  </div>
+                  <StatusPill :label="runtimeReachableLabel" :tone="runtimeReachableTone" />
+                </div>
+                <div class="ccx-metric-strip">
+                  <div>
+                    <span>PID</span>
+                    <strong>{{ formatMetric(runtimeStatus?.pid) }}</strong>
+                  </div>
+                  <div>
+                    <span>{{ text('活动任务', 'Active runs') }}</span>
+                    <strong>{{ formatMetric(runtimeStatus?.activeRuns) }}</strong>
+                  </div>
+                  <div>
+                    <span>Agent turns</span>
+                    <strong>{{ formatMetric(runtimeStatus?.agentRuns) }}</strong>
+                  </div>
+                  <div>
+                    <span>{{ text('待恢复', 'Pending') }}</span>
+                    <strong>{{ formatMetric(pendingAgentRunStatus?.count) }}</strong>
+                  </div>
+                </div>
+                <span v-if="runtimeStatus?.error" class="ccx-danger-text">{{ runtimeStatus.error }}</span>
+              </section>
+
+              <section class="ccx-runtime-card" aria-label="Runtime chain">
+                <div class="ccx-runtime-card__head">
+                  <div>
+                    <small>{{ text('消息路径', 'Message path') }}</small>
+                    <strong>{{ text('端到端链路', 'End-to-end route') }}</strong>
+                  </div>
+                </div>
+                <div class="ccx-chain">
+                  <div v-for="(item, index) in runtimeChain" :key="item" class="ccx-chain-row">
+                    <span>{{ index + 1 }}</span>
+                    <strong>{{ item }}</strong>
+                  </div>
+                </div>
+              </section>
+            </div>
+
+            <div class="ccx-runtime-stack">
+              <section class="ccx-runtime-card" aria-label="Recent auto compact records">
+                <div class="ccx-runtime-card__head">
+                  <div>
+                    <small>Auto compact</small>
+                    <strong>{{ autoCompactHeadline }}</strong>
+                  </div>
+                  <StatusPill :label="autoCompactStatusLabel" :tone="autoCompactStatusTone" />
+                </div>
+
+                <div v-if="latestAutoCompact" class="ccx-metric-strip">
+                  <div>
+                    <span>{{ text('有效使用', 'Effective used') }}</span>
+                    <strong>{{ formatTokens(latestAutoCompact.effectiveUsedTokens) }}</strong>
+                  </div>
+                  <div>
+                    <span>{{ text('触发阈值', 'Threshold') }}</span>
+                    <strong>{{ formatTokens(latestAutoCompact.autoCompactTokenLimit) }}</strong>
+                  </div>
+                  <div>
+                    <span>{{ text('剩余', 'Remaining') }}</span>
+                    <strong>{{ formatTokens(latestAutoCompact.remainingTokens) }}</strong>
+                  </div>
+                </div>
+                <span v-else class="ccx-muted">{{ text('暂无自动压缩记录', 'No auto compact records yet') }}</span>
+
+                <div class="ccx-runtime-row-list">
+                  <div
+                    v-for="record in autoCompactRecords"
+                    :key="`${record.checkedAt}:${record.bindingId}:${record.messageId}:${record.action}`"
+                    class="ccx-auto-compact-row"
+                    :class="autoCompactRowClass(record)"
+                  >
+                    <div>
+                      <small>{{ formatTimestamp(record.checkedAt) }} · {{ record.bindingId }} · {{ record.agent }}</small>
+                      <strong>{{ autoCompactActionLabel(record) }} · {{ autoCompactReasonLabel(record.reason) }}</strong>
+                      <span>{{ record.model || 'default model' }} · {{ autoCompactBudgetLine(record) }}</span>
+                      <span v-if="autoCompactHistoryLine(record)">{{ autoCompactHistoryLine(record) }}</span>
+                      <span v-if="record.cooldownUntil">{{ text('重试窗口', 'Retry window') }} {{ formatTimestamp(record.cooldownUntil) }}</span>
+                      <span v-if="record.summaryPreview">{{ record.summaryPreview }}</span>
+                      <span v-if="record.error" class="ccx-danger-text">{{ record.error }}</span>
+                    </div>
+                  </div>
+                  <div v-if="runtimeStatus?.reachable && !autoCompactRecords.length" class="ccx-empty compact">
+                    {{ text('暂无 auto compact 记录', 'No auto compact records') }}
+                  </div>
+                </div>
+              </section>
+
+              <section class="ccx-runtime-card" aria-label="Pending Agent run queue">
+                <div class="ccx-runtime-card__head">
+                  <div>
+                    <small>Durable queue</small>
+                    <strong>{{ pendingQueueHeadline }}</strong>
+                  </div>
+                  <StatusPill :label="pendingQueueStatusLabel" :tone="pendingQueueStatusTone" />
+                </div>
+                <div class="ccx-runtime-row-list">
+                  <div
+                    v-for="record in pendingAgentRunRecords"
+                    :key="record.id"
+                    class="ccx-auto-compact-row skipped"
+                  >
+                    <div>
+                      <small>{{ record.adapter }} · {{ record.bindingId }} · {{ formatDuration(record.ageMs || 0) }}</small>
+                      <strong>{{ record.messageId }} · {{ record.projectId }}</strong>
+                      <span>{{ record.sessionKey }}</span>
+                      <span>{{ text('入队', 'Queued') }} {{ formatTimestamp(record.queuedAt) }} · {{ text('尝试', 'attempts') }} {{ record.attempts }}</span>
+                    </div>
+                  </div>
+                  <div
+                    v-for="event in pendingAgentRunEvents"
+                    :key="`${event.checkedAt}:${event.pendingRunId}:${event.eventKind}`"
+                    class="ccx-auto-compact-row"
+                    :class="pendingQueueEventClass(event)"
+                  >
+                    <div>
+                      <small>{{ formatTimestamp(event.checkedAt) }} · {{ event.adapter }} · {{ event.bindingId }}</small>
+                      <strong>{{ pendingQueueEventLabel(event) }}{{ event.attempt ? ` · #${event.attempt}` : '' }}</strong>
+                      <span>{{ event.messageId || '-' }} · {{ event.sessionKey || '-' }}</span>
+                      <span v-if="event.reason">{{ event.reason }}</span>
+                      <span v-if="event.error" class="ccx-danger-text">{{ event.error }}</span>
+                    </div>
+                  </div>
+                  <div v-if="runtimeStatus?.reachable && !pendingAgentRunRecords.length && !pendingAgentRunEvents.length" class="ccx-empty compact">
+                    {{ text('暂无可恢复队列记录', 'No durable queue records yet') }}
+                  </div>
+                </div>
+              </section>
             </div>
           </div>
-
-          <section class="ccx-runtime-grid" aria-label="Channel runtime status">
-            <div class="ccx-runtime-card">
-              <div class="ccx-runtime-card__head">
-                <div>
-                  <small>Daemon snapshot</small>
-                  <strong>{{ runtimeStatus?.implementation || 'studio-native' }}</strong>
-                </div>
-                <StatusPill :label="runtimeReachableLabel" :tone="runtimeReachableTone" />
-              </div>
-              <div class="ccx-metric-strip">
-                <div>
-                  <span>PID</span>
-                  <strong>{{ formatMetric(runtimeStatus?.pid) }}</strong>
-                </div>
-                <div>
-                  <span>{{ text('活动任务', 'Active runs') }}</span>
-                  <strong>{{ formatMetric(runtimeStatus?.activeRuns) }}</strong>
-                </div>
-                <div>
-                  <span>Agent turns</span>
-                  <strong>{{ formatMetric(runtimeStatus?.agentRuns) }}</strong>
-                </div>
-                <div>
-                  <span>{{ text('待恢复', 'Pending') }}</span>
-                  <strong>{{ formatMetric(pendingAgentRunStatus?.count) }}</strong>
-                </div>
-              </div>
-              <span v-if="runtimeStatus?.error" class="ccx-danger-text">{{ runtimeStatus.error }}</span>
-            </div>
-
-            <div class="ccx-runtime-card">
-              <div class="ccx-runtime-card__head">
-                <div>
-                  <small>Auto compact</small>
-                  <strong>{{ autoCompactHeadline }}</strong>
-                </div>
-                <StatusPill :label="autoCompactStatusLabel" :tone="autoCompactStatusTone" />
-              </div>
-              <div v-if="latestAutoCompact" class="ccx-metric-strip">
-                <div>
-                  <span>{{ text('有效使用', 'Effective used') }}</span>
-                  <strong>{{ formatTokens(latestAutoCompact.effectiveUsedTokens) }}</strong>
-                </div>
-                <div>
-                  <span>{{ text('触发阈值', 'Threshold') }}</span>
-                  <strong>{{ formatTokens(latestAutoCompact.autoCompactTokenLimit) }}</strong>
-                </div>
-                <div>
-                  <span>{{ text('剩余', 'Remaining') }}</span>
-                  <strong>{{ formatTokens(latestAutoCompact.remainingTokens) }}</strong>
-                </div>
-              </div>
-              <span v-else class="ccx-muted">{{ text('暂无自动压缩记录', 'No auto compact records yet') }}</span>
-            </div>
-          </section>
-
-          <section class="ccx-auto-compact-list" aria-label="Recent auto compact records">
-            <div
-              v-for="record in autoCompactRecords"
-              :key="`${record.checkedAt}:${record.bindingId}:${record.messageId}:${record.action}`"
-              class="ccx-auto-compact-row"
-              :class="autoCompactRowClass(record)"
-            >
-              <div>
-                <small>{{ formatTimestamp(record.checkedAt) }} · {{ record.bindingId }} · {{ record.agent }}</small>
-                <strong>{{ autoCompactActionLabel(record) }} · {{ autoCompactReasonLabel(record.reason) }}</strong>
-                <span>{{ record.model || 'default model' }} · {{ autoCompactBudgetLine(record) }}</span>
-                <span v-if="autoCompactHistoryLine(record)">{{ autoCompactHistoryLine(record) }}</span>
-                <span v-if="record.cooldownUntil">{{ text('重试窗口', 'Retry window') }} {{ formatTimestamp(record.cooldownUntil) }}</span>
-                <span v-if="record.summaryPreview">{{ record.summaryPreview }}</span>
-                <span v-if="record.error" class="ccx-danger-text">{{ record.error }}</span>
-              </div>
-            </div>
-            <div v-if="runtimeStatus?.reachable && !autoCompactRecords.length" class="ccx-empty compact">
-              {{ text('按模型上下文剩余量触发后，这里会显示 native / fallback / retry 记录。', 'Native, fallback, and retry records appear here after model budget pressure triggers auto compact.') }}
-            </div>
-          </section>
-
-          <section class="ccx-auto-compact-list" aria-label="Pending Agent run queue">
-            <div class="ccx-runtime-list-head">
-              <div>
-                <small>Durable queue</small>
-                <strong>{{ pendingQueueHeadline }}</strong>
-              </div>
-              <StatusPill :label="pendingQueueStatusLabel" :tone="pendingQueueStatusTone" />
-            </div>
-            <div
-              v-for="record in pendingAgentRunRecords"
-              :key="record.id"
-              class="ccx-auto-compact-row skipped"
-            >
-              <div>
-                <small>{{ record.adapter }} · {{ record.bindingId }} · {{ formatDuration(record.ageMs || 0) }}</small>
-                <strong>{{ record.messageId }} · {{ record.projectId }}</strong>
-                <span>{{ record.sessionKey }}</span>
-                <span>{{ text('入队', 'Queued') }} {{ formatTimestamp(record.queuedAt) }} · {{ text('尝试', 'attempts') }} {{ record.attempts }}</span>
-              </div>
-            </div>
-            <div
-              v-for="event in pendingAgentRunEvents"
-              :key="`${event.checkedAt}:${event.pendingRunId}:${event.eventKind}`"
-              class="ccx-auto-compact-row"
-              :class="pendingQueueEventClass(event)"
-            >
-              <div>
-                <small>{{ formatTimestamp(event.checkedAt) }} · {{ event.adapter }} · {{ event.bindingId }}</small>
-                <strong>{{ pendingQueueEventLabel(event) }}{{ event.attempt ? ` · #${event.attempt}` : '' }}</strong>
-                <span>{{ event.messageId || '-' }} · {{ event.sessionKey || '-' }}</span>
-                <span v-if="event.reason">{{ event.reason }}</span>
-                <span v-if="event.error" class="ccx-danger-text">{{ event.error }}</span>
-              </div>
-            </div>
-            <div v-if="runtimeStatus?.reachable && !pendingAgentRunRecords.length && !pendingAgentRunEvents.length" class="ccx-empty compact">
-              {{ text('暂无可恢复队列记录', 'No durable queue records yet') }}
-            </div>
-          </section>
         </article>
 
         <article
@@ -582,101 +598,143 @@
             </div>
           </div>
 
-          <section class="ccx-session-grid" aria-label="Agent session driver status">
-            <div class="ccx-facts">
-              <div>
-                <span>{{ text('持久绑定', 'Persistent bindings') }}</span>
-                <strong>{{ agentSessions?.requestedPersistentBindings.length ?? '-' }}</strong>
-              </div>
-              <div>
-                <span>{{ text('活动会话', 'Active sessions') }}</span>
-                <strong>{{ activeAgentSessions.length }}</strong>
-              </div>
-              <div>
-                <span>{{ text('空闲超时', 'Idle timeout') }}</span>
-                <strong>{{ agentSessions ? formatDuration(agentSessions.policy.idleTimeoutMs) : '-' }}</strong>
-              </div>
-              <div>
-                <span>{{ text('会话上限', 'Session limit') }}</span>
-                <strong>{{ agentSessions?.policy.maxSessions ?? '-' }}</strong>
-              </div>
-              <div>
-                <span>{{ text('最近事件', 'Recent events') }}</span>
-                <strong>{{ agentSessions?.recentEvents.length ?? '-' }}</strong>
-              </div>
-            </div>
+          <div class="ccx-session-workspace">
+            <aside class="ccx-session-stack" aria-label="Session driver summary">
+              <section class="ccx-session-card">
+                <div class="ccx-runtime-card__head">
+                  <div>
+                    <small>{{ text('会话策略', 'Session policy') }}</small>
+                    <strong>{{ text('持久会话驱动', 'Persistent session driver') }}</strong>
+                  </div>
+                </div>
+                <div class="ccx-facts">
+                  <div>
+                    <span>{{ text('持久绑定', 'Persistent bindings') }}</span>
+                    <strong>{{ agentSessions?.requestedPersistentBindings.length ?? '-' }}</strong>
+                  </div>
+                  <div>
+                    <span>{{ text('活动会话', 'Active sessions') }}</span>
+                    <strong>{{ activeAgentSessions.length }}</strong>
+                  </div>
+                  <div>
+                    <span>{{ text('空闲超时', 'Idle timeout') }}</span>
+                    <strong>{{ agentSessions ? formatDuration(agentSessions.policy.idleTimeoutMs) : '-' }}</strong>
+                  </div>
+                  <div>
+                    <span>{{ text('会话上限', 'Session limit') }}</span>
+                    <strong>{{ agentSessions?.policy.maxSessions ?? '-' }}</strong>
+                  </div>
+                  <div>
+                    <span>{{ text('最近事件', 'Recent events') }}</span>
+                    <strong>{{ agentSessions?.recentEvents.length ?? '-' }}</strong>
+                  </div>
+                </div>
+              </section>
 
-            <div class="ccx-list">
-              <div
-                v-for="binding in agentSessions?.requestedPersistentBindings || []"
-                :key="`${binding.bindingId}:${binding.projectId}`"
-                class="ccx-list-row"
-              >
-                <small>{{ binding.platform }} · {{ binding.agent }} · {{ binding.effectiveMode }}</small>
-                <strong>{{ binding.bindingId }}</strong>
-                <span>{{ binding.model || 'default model' }} · {{ binding.reason }}</span>
+              <section class="ccx-session-card">
+                <div class="ccx-runtime-card__head">
+                  <div>
+                    <small>{{ text('绑定请求', 'Requested bindings') }}</small>
+                    <strong>{{ agentSessions?.requestedPersistentBindings.length ?? 0 }}</strong>
+                  </div>
+                </div>
+                <div class="ccx-card-list">
+                  <div
+                    v-for="binding in agentSessions?.requestedPersistentBindings || []"
+                    :key="`${binding.bindingId}:${binding.projectId}`"
+                    class="ccx-list-row"
+                  >
+                    <small>{{ binding.platform }} · {{ binding.agent }} · {{ binding.effectiveMode }}</small>
+                    <strong>{{ binding.bindingId }}</strong>
+                    <span>{{ binding.model || 'default model' }} · {{ binding.reason }}</span>
+                  </div>
+                  <div v-if="agentSessions && !agentSessions.requestedPersistentBindings.length" class="ccx-empty compact">
+                    {{ text('暂无持久会话绑定', 'No persistent session bindings') }}
+                  </div>
+                </div>
+              </section>
+            </aside>
+
+            <div class="ccx-session-stack">
+              <section class="ccx-session-card">
+                <div class="ccx-runtime-card__head">
+                  <div>
+                    <small>{{ text('运行中', 'Running') }}</small>
+                    <strong>{{ text('活动会话', 'Active sessions') }} · {{ activeAgentSessions.length }}</strong>
+                  </div>
+                </div>
+                <div v-if="activeAgentSessions.length" class="ccx-card-list">
+                  <div v-for="session in activeAgentSessions" :key="session.poolKey" class="ccx-list-row ccx-session-row">
+                    <div>
+                      <small>{{ session.agent }} · {{ session.bindingId }} · {{ session.permissionMode || 'default permission' }} · {{ text('运行中', 'running') }} {{ session.running }}</small>
+                      <strong>{{ session.model || 'default model' }}</strong>
+                      <span>{{ session.workDir }}</span>
+                      <span :class="{ 'ccx-danger-text': sessionChannelHealth(session).danger }">{{ sessionChannelHealth(session).label }}</span>
+                      <span>{{ text('最近使用', 'Last used') }} {{ formatTimestamp(session.lastUsedAt) }} · {{ text('空闲', 'Idle') }} {{ formatDuration(session.idleMs) }}</span>
+                      <span v-if="session.lastError" class="ccx-danger-text">{{ session.lastError }}</span>
+                    </div>
+                    <button
+                      type="button"
+                      class="secondary-button compact-button ccx-icon-button ccx-danger-button"
+                      :disabled="agentSessionBusy"
+                      @click="killAgentSession(session.poolKey)"
+                    >
+                      <Square :size="16" />
+                      {{ text('停止', 'Stop') }}
+                    </button>
+                  </div>
+                </div>
+                <div v-else class="ccx-empty compact">
+                  {{ text('暂无活动持久会话', 'No active persistent sessions') }}
+                </div>
+              </section>
+
+              <section class="ccx-session-card">
+                <div class="ccx-runtime-card__head">
+                  <div>
+                    <small>{{ text('最近事件', 'Recent events') }}</small>
+                    <strong>{{ recentAgentSessionEvents.length }}</strong>
+                  </div>
+                </div>
+                <div v-if="recentAgentSessionEvents.length" class="ccx-event-list">
+                  <div
+                    v-for="event in recentAgentSessionEvents"
+                    :key="`${event.checkedAt}:${event.type}:${event.poolKey}:${event.messageId || ''}`"
+                    class="ccx-list-row ccx-event-row"
+                    :class="{ danger: isAgentSessionEventFailure(event.type) }"
+                  >
+                    <small>{{ formatTimestamp(event.checkedAt) }} · {{ event.bindingId }} · {{ event.agent }}</small>
+                    <strong>{{ agentSessionEventLabel(event.type) }}</strong>
+                    <span>{{ event.sessionKey }}{{ event.messageId ? ` · ${event.messageId}` : '' }}</span>
+                    <span v-if="event.reason || event.error" :class="{ 'ccx-danger-text': Boolean(event.error) }">
+                      {{ [event.reason, event.error].filter(Boolean).join(' · ') }}
+                    </span>
+                  </div>
+                </div>
+                <div v-else-if="agentSessions" class="ccx-empty compact">
+                  {{ text('暂无持久会话事件', 'No persistent session events') }}
+                </div>
+              </section>
+
+              <div v-if="agentSessionResult" class="ccx-output" :class="{ failure: Boolean(agentSessionResult.killed?.requested && !agentSessionResult.killed.killed) }">
+                <div class="ccx-output__head">
+                  <strong>{{ agentSessionResultTitle }}</strong>
+                  <span>{{ formatTimestamp(agentSessionResult.checkedAt) }}</span>
+                </div>
+                <pre>{{ agentSessionResultOutput }}</pre>
               </div>
-              <div v-if="agentSessions && !agentSessions.requestedPersistentBindings.length" class="ccx-empty compact">
-                {{ text('暂无持久会话绑定', 'No persistent session bindings') }}
-              </div>
-            </div>
-          </section>
 
-          <div v-if="activeAgentSessions.length" class="ccx-session-list">
-            <div v-for="session in activeAgentSessions" :key="session.poolKey" class="ccx-list-row ccx-session-row">
-              <div>
-                <small>{{ session.agent }} · {{ session.bindingId }} · {{ session.permissionMode || 'default permission' }} · {{ text('运行中', 'running') }} {{ session.running }}</small>
-                <strong>{{ session.model || 'default model' }}</strong>
-                <span>{{ session.workDir }}</span>
-                <span :class="{ 'ccx-danger-text': sessionChannelHealth(session).danger }">{{ sessionChannelHealth(session).label }}</span>
-                <span>{{ text('最近使用', 'Last used') }} {{ formatTimestamp(session.lastUsedAt) }} · {{ text('空闲', 'Idle') }} {{ formatDuration(session.idleMs) }}</span>
-                <span v-if="session.lastError" class="ccx-danger-text">{{ session.lastError }}</span>
-              </div>
-              <button
-                type="button"
-                class="secondary-button compact-button ccx-icon-button ccx-danger-button"
-                :disabled="agentSessionBusy"
-                @click="killAgentSession(session.poolKey)"
-              >
-                <Square :size="16" />
-                {{ text('停止', 'Stop') }}
-              </button>
+              <details class="ccx-session-card ccx-log-card" :open="!activeAgentSessions.length && !recentAgentSessionEvents.length">
+                <summary>
+                  <span>{{ text('Channel daemon 日志', 'Channel daemon log') }}</span>
+                  <small>{{ logText ? text('点击展开/收起', 'Toggle details') : text('暂无日志', 'No logs') }}</small>
+                </summary>
+                <pre v-if="logText" class="ccx-log">{{ logText }}</pre>
+                <div v-else class="ccx-empty compact">
+                  {{ text('暂无 Channel daemon 日志', 'No Channel daemon logs yet') }}
+                </div>
+              </details>
             </div>
-          </div>
-          <div v-else class="ccx-empty compact">
-            {{ text('暂无活动持久会话', 'No active persistent sessions') }}
-          </div>
-
-          <div v-if="recentAgentSessionEvents.length" class="ccx-event-list">
-            <div
-              v-for="event in recentAgentSessionEvents"
-              :key="`${event.checkedAt}:${event.type}:${event.poolKey}:${event.messageId || ''}`"
-              class="ccx-list-row ccx-event-row"
-              :class="{ danger: isAgentSessionEventFailure(event.type) }"
-            >
-              <small>{{ formatTimestamp(event.checkedAt) }} · {{ event.bindingId }} · {{ event.agent }}</small>
-              <strong>{{ agentSessionEventLabel(event.type) }}</strong>
-              <span>{{ event.sessionKey }}{{ event.messageId ? ` · ${event.messageId}` : '' }}</span>
-              <span v-if="event.reason || event.error" :class="{ 'ccx-danger-text': Boolean(event.error) }">
-                {{ [event.reason, event.error].filter(Boolean).join(' · ') }}
-              </span>
-            </div>
-          </div>
-          <div v-else-if="agentSessions" class="ccx-empty compact">
-            {{ text('暂无持久会话事件', 'No persistent session events') }}
-          </div>
-
-          <div v-if="agentSessionResult" class="ccx-output" :class="{ failure: Boolean(agentSessionResult.killed?.requested && !agentSessionResult.killed.killed) }">
-            <div class="ccx-output__head">
-              <strong>{{ agentSessionResultTitle }}</strong>
-              <span>{{ formatTimestamp(agentSessionResult.checkedAt) }}</span>
-            </div>
-            <pre>{{ agentSessionResultOutput }}</pre>
-          </div>
-
-          <pre v-if="logText" class="ccx-log">{{ logText }}</pre>
-          <div v-else class="ccx-empty">
-            {{ text('暂无 Channel daemon 日志', 'No Channel daemon logs yet') }}
           </div>
         </article>
       </main>

@@ -73,6 +73,10 @@ test("Channel Connectors page calls only channel connector APIs", () => {
   assert.match(page, /activeTab\.value = 'bindings'/);
   assert.match(page, /Channel operations|渠道运营概览/);
   assert.match(page, /Profile workspace|Profile 工作台/);
+  assert.match(page, /ccx-runtime-workspace/);
+  assert.match(page, /ccx-session-workspace/);
+  assert.match(page, /Channel daemon log|Channel daemon 日志/);
+  assert.match(page, /Persistent session driver|持久会话驱动/);
   assert.match(page, /ccx-binding-workspace/);
   assert.match(page, /Identity and routing|身份与路由/);
   assert.match(page, /Platform connection|平台连接/);

@@ -444,6 +444,8 @@ section.page-shell.channel-connectors-page {
 
 .ccx-facts strong,
 .ccx-list-row strong,
+.ccx-list-row small,
+.ccx-list-row span,
 .ccx-output pre {
   min-width: 0;
   overflow-wrap: anywhere;
@@ -627,14 +629,27 @@ section.page-shell.channel-connectors-page {
   gap: 8px;
 }
 
-.ccx-runtime-grid {
+.ccx-runtime-workspace,
+.ccx-session-workspace {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: minmax(240px, 0.72fr) minmax(0, 1.28fr);
+  gap: 14px;
   margin-top: 14px;
+  align-items: start;
+}
+
+.ccx-runtime-stack,
+.ccx-session-stack,
+.ccx-runtime-row-list,
+.ccx-card-list {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
 }
 
 .ccx-runtime-card,
+.ccx-session-card,
 .ccx-auto-compact-row {
   border: 1px solid var(--mono-line);
   border-radius: 8px;
@@ -642,7 +657,8 @@ section.page-shell.channel-connectors-page {
   padding: 12px;
 }
 
-.ccx-runtime-card {
+.ccx-runtime-card,
+.ccx-session-card {
   display: grid;
   gap: 10px;
   min-width: 0;
@@ -709,12 +725,6 @@ section.page-shell.channel-connectors-page {
   min-width: 0;
 }
 
-.ccx-auto-compact-list {
-  display: grid;
-  gap: 8px;
-  margin-top: 12px;
-}
-
 .ccx-auto-compact-row {
   display: grid;
   gap: 4px;
@@ -759,114 +769,23 @@ section.page-shell.channel-connectors-page {
 .ccx-list {
   display: grid;
   gap: 8px;
-}
-
-.ccx-session-grid {
-  display: grid;
-  grid-template-columns: minmax(220px, 0.8fr) minmax(260px, 1.2fr);
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.ccx-session-list {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-
-.ccx-skill-summary {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.ccx-skill-summary > div {
-  display: grid;
-  gap: 4px;
   min-width: 0;
-  border: 1px solid var(--mono-line);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--surface-base) 84%, var(--surface-soft));
-  padding: 10px 12px;
-}
-
-.ccx-skill-summary span,
-.ccx-skill-card small,
-.ccx-skill-card span,
-.ccx-skill-card code {
-  color: var(--mono-ink-2);
-}
-
-.ccx-skill-summary strong,
-.ccx-skill-card strong,
-.ccx-skill-card span,
-.ccx-skill-card code {
-  overflow-wrap: anywhere;
-}
-
-.ccx-skill-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.ccx-skill-card {
-  display: grid;
-  gap: 5px;
-  min-width: 0;
-  border: 1px solid var(--mono-line);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--surface-base) 84%, var(--surface-soft));
-  padding: 12px;
-}
-
-.ccx-skill-card code {
-  font-size: 0.78rem;
-  white-space: pre-wrap;
-}
-
-.ccx-skill-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 4px;
-}
-
-.ccx-skill-action-count,
-.ccx-skill-action-chip {
-  display: inline-flex;
-  align-items: center;
-  max-width: 100%;
-  border: 1px solid color-mix(in srgb, var(--brand-cyan) 20%, var(--mono-line));
-  border-radius: 999px;
-  padding: 2px 8px;
-  font-size: 0.74rem;
-  line-height: 1.5;
-  background: color-mix(in srgb, var(--surface-base) 70%, var(--brand-cyan) 8%);
-  overflow-wrap: anywhere;
-}
-
-.ccx-skill-action-count {
-  font-weight: 650;
-  color: var(--brand-cyan);
-}
-
-.ccx-skill-action-chip.required {
-  color: var(--danger);
-  background: color-mix(in srgb, var(--surface-base) 80%, var(--danger) 8%);
-  border-color: color-mix(in srgb, var(--danger) 24%, var(--mono-line));
 }
 
 .ccx-event-list {
   display: grid;
   gap: 8px;
-  margin-bottom: 12px;
+  min-width: 0;
 }
 
 .ccx-session-row {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
+}
+
+.ccx-list-row {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .ccx-event-row.danger {
@@ -1071,6 +990,27 @@ section.page-shell.channel-connectors-page {
   white-space: pre-wrap;
 }
 
+.ccx-log-card summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.ccx-log-card summary span {
+  font-weight: 700;
+}
+
+.ccx-log-card summary small {
+  color: var(--mono-ink-2);
+}
+
+.ccx-log-card .ccx-log,
+.ccx-log-card .ccx-empty {
+  margin-top: 10px;
+}
+
 .ccx-empty {
   display: grid;
   min-height: 180px;
@@ -1094,11 +1034,9 @@ section.page-shell.channel-connectors-page {
 
   .ccx-split,
   .ccx-binding-workspace,
-  .ccx-session-grid,
-  .ccx-runtime-grid,
+  .ccx-session-workspace,
+  .ccx-runtime-workspace,
   .ccx-overview-grid,
-  .ccx-skill-summary,
-  .ccx-skill-grid,
   .ccx-form,
   .ccx-credential-box,
   .ccx-profile-form-grid,
@@ -1220,12 +1158,12 @@ section.page-shell.channel-connectors-page {
   }
 
   .ccx-tabs {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    padding-bottom: 2px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .ccx-tabs .surface-tab {
-    flex: 0 0 auto;
+    justify-content: center;
+    width: 100%;
   }
 }
