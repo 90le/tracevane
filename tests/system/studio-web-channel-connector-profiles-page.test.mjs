@@ -128,6 +128,8 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(page, /previousProfileId/);
   assert.match(page, /binding\.agentProfileId = profile\.id/);
   assert.match(page, /allRelatedSessionEvents/);
+  assert.match(page, /eventBindingFilterOptions/);
+  assert.match(page, /eventBindingFilter\.value !== 'all'/);
   assert.match(page, /eventFilterOptions/);
   assert.match(page, /eventLimitOptions/);
   assert.match(page, /filteredRelatedSessionEvents/);
@@ -170,7 +172,7 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(styles, /\.ccx-agent-profile-editor-actions/);
   assert.match(styles, /\.ccx-agent-profile-edit-state/);
   assert.match(styles, /\.ccx-agent-profile-session-toolbar/);
-  assert.match(styles, /grid-template-columns: minmax\(180px, 240px\) minmax\(120px, 160px\) minmax\(0, 1fr\)/);
+  assert.match(styles, /grid-template-columns: minmax\(160px, 220px\) minmax\(160px, 220px\) minmax\(110px, 150px\) minmax\(0, 1fr\)/);
   assert.match(styles, /\.ccx-field-button/);
   assert.doesNotMatch(styles, /\.agents-cli-/);
   assert.match(connectorsPage, /profileWorkspaceRoute/);

@@ -366,6 +366,10 @@
 
             <div class="ccx-agent-profile-session-toolbar">
               <label class="form-field">
+                <span class="form-label">Binding</span>
+                <StudioSelect v-model="eventBindingFilter" :options="eventBindingFilterOptions" />
+              </label>
+              <label class="form-field">
                 <span class="form-label">{{ text('事件筛选', 'Event filter') }}</span>
                 <StudioSelect v-model="eventFilter" :options="eventFilterOptions" />
               </label>
@@ -571,6 +575,7 @@ const gatewayModels = ref<string[]>([]);
 const gatewayModelBudgetIndex = ref<Record<string, GatewayModelBudget>>({});
 const selectedProfileId = ref('');
 const reasoningEffortDraft = ref('');
+const eventBindingFilter = ref('all');
 const eventFilter = ref('all');
 const eventLimit = ref('8');
 const loading = ref(false);
@@ -767,6 +772,20 @@ const allRelatedSessionEvents = computed(() => {
   );
 });
 
+const eventBindingFilterOptions = computed(() => {
+  const options = new Map<string, string>();
+  for (const binding of relatedBindings.value) {
+    options.set(binding.id, binding.displayName || binding.id);
+  }
+  for (const event of allRelatedSessionEvents.value) {
+    if (event.bindingId && !options.has(event.bindingId)) options.set(event.bindingId, event.bindingId);
+  }
+  return [
+    { value: 'all', label: text('全部绑定', 'All bindings') },
+    ...Array.from(options.entries()).map(([value, label]) => ({ value, label })),
+  ];
+});
+
 const eventFilterOptions = computed(() => {
   const types = Array.from(new Set(allRelatedSessionEvents.value.map((event) => event.type))).sort();
   return [
@@ -784,6 +803,7 @@ const eventLimitOptions = computed(() => [
 
 const filteredRelatedSessionEvents = computed(() =>
   allRelatedSessionEvents.value.filter((event) => {
+    if (eventBindingFilter.value !== 'all' && event.bindingId !== eventBindingFilter.value) return false;
     if (eventFilter.value === 'all') return true;
     if (eventFilter.value === 'failures') return Boolean(event.error) || event.type === 'turn.failed';
     return event.type === eventFilter.value;
@@ -1101,6 +1121,7 @@ function selectProfile(profile: ChannelConnectorAgentProfile): void {
   profileDraft.gatewayKeyRef = 'studio-gateway-client-key';
   profileDraft.appProfileRef = profile.appProfileRef || 'default';
   reasoningEffortDraft.value = profile.reasoningEffort || '';
+  eventBindingFilter.value = 'all';
   eventFilter.value = 'all';
   eventLimit.value = '8';
 }
@@ -1483,6 +1504,14 @@ async function loadAll(): Promise<void> {
     loading.value = false;
   }
 }
+
+watch(
+  eventBindingFilterOptions,
+  (options) => {
+    if (options.some((option) => option.value === eventBindingFilter.value)) return;
+    eventBindingFilter.value = 'all';
+  },
+);
 
 watch(
   () => route.query.profileId,
