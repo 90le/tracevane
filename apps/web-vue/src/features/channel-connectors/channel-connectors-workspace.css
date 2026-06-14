@@ -1,11 +1,19 @@
-.channel-connectors-page {
+section.page-shell.channel-connectors-page {
   display: flex;
   flex-direction: column;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.channel-connectors-page *,
+.channel-connectors-page *::before,
+.channel-connectors-page *::after {
+  box-sizing: border-box;
 }
 
 .ccx-layout {
   display: grid;
-  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 16px;
   align-items: start;
 }
@@ -557,6 +565,63 @@
   min-height: 420px;
 }
 
+.ccx-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ccx-overview-card {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-base) 84%, var(--surface-soft));
+  padding: 12px;
+}
+
+.ccx-overview-card > div:first-child {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ccx-overview-card small,
+.ccx-overview-card p {
+  color: var(--mono-ink-2);
+}
+
+.ccx-overview-card strong,
+.ccx-overview-card p {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ccx-overview-card p {
+  min-height: 2.7em;
+  margin: 0;
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.ccx-overview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.ccx-overview-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
 .ccx-chain {
   display: grid;
   gap: 8px;
@@ -962,6 +1027,7 @@
   .ccx-split,
   .ccx-session-grid,
   .ccx-runtime-grid,
+  .ccx-overview-grid,
   .ccx-skill-summary,
   .ccx-skill-grid,
   .ccx-form,
@@ -1015,5 +1081,74 @@
 
   .ccx-agent-profile-requested-row .ccx-agent-profile-row-actions {
     width: 100%;
+  }
+}
+
+@media (max-width: 560px) {
+  section.page-shell.channel-connectors-page {
+    width: calc(100vw - 56px);
+    max-width: calc(100vw - 56px);
+  }
+
+  .channel-connectors-page .page-header-row {
+    grid-template-columns: 4px minmax(0, 1fr);
+    row-gap: 12px;
+  }
+
+  .channel-connectors-page .page-actions {
+    grid-column: 2;
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
+    padding-left: 14px;
+  }
+
+  .channel-connectors-page .page-actions > * {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .channel-connectors-page .page-actions .ccx-icon-button,
+  .ccx-platform-actions .ccx-icon-button,
+  .ccx-overview-actions .ccx-icon-button {
+    white-space: nowrap;
+  }
+
+  .ccx-panel-head {
+    display: grid;
+  }
+
+  .ccx-platform-actions,
+  .ccx-overview-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .ccx-platform-actions > .compact-button,
+  .ccx-overview-actions > .compact-button,
+  .ccx-overview-actions > .secondary-button,
+  .ccx-overview-actions > .primary-button,
+  .ccx-overview-actions > .ccx-action-more {
+    flex: 1 1 100%;
+    min-width: 0;
+  }
+
+  .ccx-action-more > summary {
+    width: 100%;
+  }
+
+  .ccx-overview-card > div:first-child {
+    display: grid;
+    gap: 6px;
+  }
+
+  .ccx-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 2px;
+  }
+
+  .ccx-tabs .surface-tab {
+    flex: 0 0 auto;
   }
 }

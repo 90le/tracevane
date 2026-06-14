@@ -6,6 +6,10 @@
         <h2 class="page-title">{{ text('渠道连接', 'Channel Connectors') }}</h2>
       </div>
       <div class="page-actions">
+        <RouterLink class="secondary-button ccx-icon-button ccx-icon-link" :to="profileWorkspaceRoute">
+          <ExternalLink :size="16" />
+          {{ text('Profile 工作台', 'Profile workspace') }}
+        </RouterLink>
         <button type="button" class="secondary-button ccx-icon-button" :disabled="loading" @click="loadAll">
           <RefreshCw :size="16" />
           {{ loading ? text('刷新中...', 'Refreshing...') : text('刷新', 'Refresh') }}
@@ -21,94 +25,6 @@
     </div>
 
     <section class="ccx-layout">
-      <aside class="ccx-rail">
-        <article class="ccx-panel">
-          <div class="ccx-panel-head">
-            <div>
-              <p class="eyebrow">Runtime</p>
-              <h3>Channel daemon</h3>
-            </div>
-            <StatusPill :label="daemonStateLabel" :tone="daemonStateTone" />
-          </div>
-
-          <div class="ccx-facts">
-            <div>
-              <span>{{ text('Service', 'Service') }}</span>
-              <strong>{{ service?.plan.serviceName || '-' }}</strong>
-            </div>
-            <div>
-              <span>{{ text('Supervisor', 'Supervisor') }}</span>
-              <strong>{{ service?.plan.supervisor || '-' }}</strong>
-            </div>
-            <div>
-              <span>{{ text('配置', 'Config') }}</span>
-              <strong>{{ configPreview?.configPath || '-' }}</strong>
-            </div>
-            <div>
-              <span>{{ text('日志', 'Log') }}</span>
-              <strong>{{ logs?.logFile || '-' }}</strong>
-            </div>
-          </div>
-
-          <div class="ccx-action-row">
-            <button
-              type="button"
-              class="primary-button compact-button ccx-icon-button"
-              :disabled="busy"
-              @click="runServiceAction('ensure-running')"
-            >
-              <Power :size="16" />
-              {{ busy ? text('执行中...', 'Running...') : text('确保运行', 'Ensure') }}
-            </button>
-            <button
-              type="button"
-              class="secondary-button compact-button ccx-icon-button"
-              :disabled="busy"
-              @click="runServiceAction('status')"
-            >
-              <Activity :size="16" />
-              {{ text('状态', 'Status') }}
-            </button>
-            <details class="ccx-action-more">
-              <summary class="secondary-button compact-button ccx-icon-button">
-                <MoreHorizontal :size="16" />
-                {{ text('操作', 'Actions') }}
-              </summary>
-              <div class="ccx-action-menu">
-                <button type="button" :disabled="busy" @click="previewService">
-                  <FileText :size="15" />
-                  {{ text('预览配置', 'Preview config') }}
-                </button>
-                <button type="button" :disabled="busy" @click="runServiceAction('install')">
-                  <Download :size="15" />
-                  {{ text('安装/启用', 'Install / enable') }}
-                </button>
-                <button type="button" :disabled="busy" @click="runServiceAction('start')">
-                  <Play :size="15" />
-                  {{ text('启动', 'Start') }}
-                </button>
-                <button type="button" :disabled="busy" @click="runServiceAction('restart')">
-                  <RotateCw :size="15" />
-                  {{ text('重启', 'Restart') }}
-                </button>
-                <button type="button" :disabled="busy" @click="runServiceAction('stop')">
-                  <Square :size="15" />
-                  {{ text('停止', 'Stop') }}
-                </button>
-              </div>
-            </details>
-          </div>
-
-          <div v-if="actionResult" class="ccx-output" :class="{ failure: !actionResult.ok }">
-            <div class="ccx-output__head">
-              <strong>{{ actionTitle }}</strong>
-              <span>{{ formatTimestamp(actionResult.checkedAt) }}</span>
-            </div>
-            <pre>{{ actionOutput }}</pre>
-          </div>
-        </article>
-      </aside>
-
       <main class="ccx-main">
         <nav class="ccx-tabs" role="tablist" aria-label="Channel Connectors workspace">
           <button
@@ -127,6 +43,151 @@
             {{ text(tab.zh, tab.en) }}
           </button>
         </nav>
+
+        <article
+          v-show="activeTab === 'overview'"
+          id="ccx-panel-overview"
+          class="ccx-panel ccx-workspace-panel"
+          role="tabpanel"
+          aria-labelledby="ccx-tab-overview"
+        >
+          <div class="ccx-panel-head">
+            <div>
+              <p class="eyebrow">Overview</p>
+              <h3>{{ text('渠道运营概览', 'Channel operations') }}</h3>
+            </div>
+            <div class="ccx-platform-actions">
+              <button type="button" class="secondary-button compact-button ccx-icon-button" @click="activeTab = 'bindings'">
+                <Plus :size="16" />
+                {{ text('添加渠道', 'Add channel') }}
+              </button>
+              <button type="button" class="secondary-button compact-button ccx-icon-button" @click="activeTab = 'runtime'">
+                <Activity :size="16" />
+                {{ text('运行状态', 'Runtime') }}
+              </button>
+            </div>
+          </div>
+
+          <section class="ccx-overview-grid" aria-label="Channel Connectors overview">
+            <article class="ccx-overview-card">
+              <div>
+                <small>Daemon</small>
+                <strong>{{ daemonStateLabel }}</strong>
+              </div>
+              <StatusPill :label="daemonStateLabel" :tone="daemonStateTone" />
+              <p>{{ service?.plan.serviceName || '-' }}</p>
+              <div class="ccx-overview-actions">
+                <button type="button" class="primary-button compact-button ccx-icon-button" :disabled="busy" @click="runServiceAction('ensure-running')">
+                  <Power :size="16" />
+                  {{ text('确保运行', 'Ensure running') }}
+                </button>
+                <button type="button" class="secondary-button compact-button ccx-icon-button" :disabled="busy" @click="runServiceAction('status')">
+                  <Activity :size="16" />
+                  {{ text('状态', 'Status') }}
+                </button>
+                <details class="ccx-action-more">
+                  <summary class="secondary-button compact-button ccx-icon-button">
+                    <MoreHorizontal :size="16" />
+                    {{ text('更多', 'More') }}
+                  </summary>
+                  <div class="ccx-action-menu">
+                    <button type="button" :disabled="busy" @click="previewService">
+                      <FileText :size="15" />
+                      {{ text('预览配置', 'Preview config') }}
+                    </button>
+                    <button type="button" :disabled="busy" @click="runServiceAction('install')">
+                      <Download :size="15" />
+                      {{ text('安装/启用', 'Install / enable') }}
+                    </button>
+                    <button type="button" :disabled="busy" @click="runServiceAction('start')">
+                      <Play :size="15" />
+                      {{ text('启动', 'Start') }}
+                    </button>
+                    <button type="button" :disabled="busy" @click="runServiceAction('restart')">
+                      <RotateCw :size="15" />
+                      {{ text('重启', 'Restart') }}
+                    </button>
+                    <button type="button" :disabled="busy" @click="runServiceAction('stop')">
+                      <Square :size="15" />
+                      {{ text('停止', 'Stop') }}
+                    </button>
+                  </div>
+                </details>
+              </div>
+            </article>
+
+            <article class="ccx-overview-card">
+              <div>
+                <small>CLI Profiles</small>
+                <strong>{{ profileCount }}</strong>
+              </div>
+              <p>{{ defaultProfileSummary }}</p>
+              <RouterLink class="secondary-button compact-button ccx-icon-button ccx-icon-link" :to="profileWorkspaceRoute">
+                <ExternalLink :size="16" />
+                {{ text('管理 Profile', 'Manage profiles') }}
+              </RouterLink>
+            </article>
+
+            <article class="ccx-overview-card">
+              <div>
+                <small>{{ text('渠道绑定', 'Bindings') }}</small>
+                <strong>{{ bindingCount }}</strong>
+              </div>
+              <p>{{ bindingSummary }}</p>
+              <button type="button" class="secondary-button compact-button ccx-icon-button" @click="activeTab = 'bindings'">
+                <Plus :size="16" />
+                {{ text('配置渠道', 'Configure bindings') }}
+              </button>
+            </article>
+
+            <article class="ccx-overview-card">
+              <div>
+                <small>{{ text('会话与队列', 'Sessions and queue') }}</small>
+                <strong>{{ activeAgentSessions.length }}</strong>
+              </div>
+              <p>{{ queueSummary }}</p>
+              <button type="button" class="secondary-button compact-button ccx-icon-button" @click="activeTab = 'sessions'">
+                <FileText :size="16" />
+                {{ text('查看日志', 'Open logs') }}
+              </button>
+            </article>
+          </section>
+
+          <section class="ccx-overview-list" aria-label="Platform binding overview">
+            <div class="ccx-runtime-list-head">
+              <div>
+                <small>{{ text('已绑定渠道', 'Configured bindings') }}</small>
+                <strong>{{ bindingCount }}</strong>
+              </div>
+              <button type="button" class="secondary-button compact-button ccx-icon-button" @click="activeTab = 'bindings'">
+                <Plus :size="16" />
+                {{ text('新增/编辑', 'Add or edit') }}
+              </button>
+            </div>
+            <button
+              v-for="binding in overviewBindings"
+              :key="binding.id"
+              type="button"
+              class="ccx-select-row"
+              @click="openBinding(binding)"
+            >
+              <small>{{ binding.platform }} · {{ binding.enabled ? text('启用', 'Enabled') : text('停用', 'Disabled') }}</small>
+              <strong>{{ binding.displayName }}</strong>
+              <span>{{ binding.accountId }}{{ binding.botId ? ` / ${binding.botId}` : '' }} -> {{ binding.agentProfileId }}</span>
+            </button>
+            <div v-if="!overviewBindings.length" class="ccx-empty compact">
+              {{ text('还没有渠道绑定。先添加 Octo 或飞书，再绑定到 CLI Profile。', 'No channel bindings yet. Add Octo or Feishu, then bind it to a CLI Profile.') }}
+            </div>
+          </section>
+
+          <div v-if="actionResult" class="ccx-output" :class="{ failure: !actionResult.ok }">
+            <div class="ccx-output__head">
+              <strong>{{ actionTitle }}</strong>
+              <span>{{ formatTimestamp(actionResult.checkedAt) }}</span>
+            </div>
+            <pre>{{ actionOutput }}</pre>
+          </div>
+        </article>
 
         <article
           v-show="activeTab === 'runtime'"
@@ -267,106 +328,16 @@
         </article>
 
         <article
-          v-show="activeTab === 'projects'"
-          id="ccx-panel-projects"
+          v-show="activeTab === 'bindings'"
+          id="ccx-panel-bindings"
           class="ccx-panel ccx-workspace-panel"
           role="tabpanel"
-          aria-labelledby="ccx-tab-projects"
+          aria-labelledby="ccx-tab-bindings"
         >
           <div class="ccx-panel-head">
             <div>
-              <p class="eyebrow">CLI Profiles</p>
-              <h3>{{ text('CLI Profile 快改', 'CLI profile quick edit') }}</h3>
-            </div>
-            <div class="ccx-platform-actions">
-              <RouterLink class="secondary-button compact-button ccx-icon-button ccx-icon-link" :to="profileWorkspaceRoute">
-                <ExternalLink :size="16" />
-                {{ text('Profile 工作台', 'Profile workspace') }}
-              </RouterLink>
-              <button type="button" class="secondary-button compact-button ccx-icon-button" @click="newProfileDraft">
-                <Plus :size="16" />
-                {{ text('新建', 'New') }}
-              </button>
-            </div>
-          </div>
-          <div class="ccx-split">
-            <form class="ccx-form" @submit.prevent="saveProfileDraft">
-              <label>
-                <span>Profile ID</span>
-                <input v-model.trim="profileDraft.id" autocomplete="off" />
-              </label>
-              <label>
-                <span>{{ text('名称', 'Name') }}</span>
-                <input v-model.trim="profileDraft.name" autocomplete="off" />
-              </label>
-              <label>
-                <span>Agent</span>
-                <select v-model="profileDraft.agent">
-                  <option v-for="agent in supportedAgents" :key="agent" :value="agent">{{ agent }}</option>
-                </select>
-              </label>
-              <label>
-                <span>{{ text('模型', 'Model') }}</span>
-                <input v-model.trim="profileDraft.model" placeholder="gpt-5" autocomplete="off" />
-              </label>
-              <label class="ccx-wide-field">
-                <span>{{ text('工作目录', 'Work directory') }}</span>
-                <input v-model.trim="profileDraft.workDir" autocomplete="off" />
-              </label>
-              <label>
-                <span>{{ text('权限', 'Permission') }}</span>
-                <select v-model="profileDraft.permissionMode">
-                  <option v-for="mode in permissionModes" :key="mode" :value="mode">{{ mode }}</option>
-                </select>
-              </label>
-              <label>
-                <span>App Profile</span>
-                <input v-model.trim="profileDraft.appProfileRef" autocomplete="off" />
-              </label>
-              <label class="ccx-wide-field">
-                <span>Gateway</span>
-                <input v-model.trim="profileDraft.gatewayEndpoint" autocomplete="off" />
-              </label>
-              <div class="ccx-form-actions">
-                <button type="submit" class="primary-button compact-button ccx-icon-button" :disabled="savingConfig">
-                  <Save :size="16" />
-                  {{ savingConfig ? text('保存中...', 'Saving...') : text('保存 Profile', 'Save profile') }}
-                </button>
-                <button type="button" class="secondary-button compact-button ccx-icon-button" :disabled="savingConfig" @click="setDefaultProfile">
-                  <Star :size="16" />
-                  {{ text('设为默认', 'Set default') }}
-                </button>
-              </div>
-            </form>
-
-            <div class="ccx-list">
-              <button
-                v-for="profile in nativeConfig?.config.agentProfiles || []"
-                :key="profile.id"
-                type="button"
-                class="ccx-select-row"
-                :class="{ active: profileDraft.id === profile.id }"
-                @click="selectProfile(profile)"
-              >
-                <small>{{ profile.agent }} · {{ profile.permissionMode }}</small>
-                <strong>{{ profile.name }}</strong>
-                <span>{{ profile.model || 'default model' }} · {{ profile.workDir }}</span>
-              </button>
-            </div>
-          </div>
-        </article>
-
-        <article
-          v-show="activeTab === 'platforms'"
-          id="ccx-panel-platforms"
-          class="ccx-panel ccx-workspace-panel"
-          role="tabpanel"
-          aria-labelledby="ccx-tab-platforms"
-        >
-          <div class="ccx-panel-head">
-            <div>
-              <p class="eyebrow">Platforms</p>
-              <h3>{{ text('平台绑定', 'Platform bindings') }}</h3>
+              <p class="eyebrow">Bindings</p>
+              <h3>{{ text('渠道绑定', 'Channel bindings') }}</h3>
             </div>
             <div class="ccx-platform-actions">
               <button type="button" class="secondary-button compact-button ccx-icon-button" @click="newBindingDraft('octo')">
@@ -547,64 +518,6 @@
         </article>
 
         <article
-          v-show="activeTab === 'skills'"
-          id="ccx-panel-skills"
-          class="ccx-panel ccx-workspace-panel"
-          role="tabpanel"
-          aria-labelledby="ccx-tab-skills"
-        >
-          <div class="ccx-panel-head">
-            <div>
-              <p class="eyebrow">Skills</p>
-              <h3>{{ text('渠道 Skills', 'Channel skills') }}</h3>
-            </div>
-            <button type="button" class="secondary-button compact-button ccx-icon-button" :disabled="skillSurfaceBusy" @click="refreshSkillSurface()">
-              <RefreshCw :size="16" />
-              {{ skillSurfaceBusy ? text('刷新中...', 'Refreshing...') : text('刷新', 'Refresh') }}
-            </button>
-          </div>
-
-          <section class="ccx-skill-summary" aria-label="Channel skill summary">
-            <div>
-              <span>{{ text('当前绑定', 'Binding') }}</span>
-              <strong>{{ bindingDraft.id || '-' }}</strong>
-            </div>
-            <div>
-              <span>Agent</span>
-              <strong>{{ commandSurface?.current.agent || selectedBindingProfile?.agent || '-' }}</strong>
-            </div>
-            <div>
-              <span>Thinking parser</span>
-              <strong>{{ commandSurface?.current.thinkingSupport.parserLabel || '-' }}</strong>
-            </div>
-            <div>
-              <span>Thinking live</span>
-              <strong>{{ commandSurface?.current.thinkingSupport.liveLabel || '-' }}</strong>
-            </div>
-            <div>
-              <span>{{ text('Studio 内置', 'Studio built-in') }}</span>
-              <strong>{{ platformSkillCount }}</strong>
-            </div>
-            <div>
-              <span>{{ text('显式扩展', 'Custom') }}</span>
-              <strong>{{ bindingSkillCount }}</strong>
-            </div>
-          </section>
-
-          <div v-if="channelSkills.length" class="ccx-skill-grid">
-            <article v-for="skill in channelSkills" :key="`${skill.scope}:${skill.platform || ''}:${skill.name}:${skill.source}`" class="ccx-skill-card">
-              <small>{{ skillScopeLabel(skill) }}</small>
-              <strong>/{{ skill.name }}</strong>
-              <span>{{ skill.description || skill.displayName || text('无描述', 'No description') }}</span>
-              <code>{{ skill.source }}</code>
-            </article>
-          </div>
-          <div v-else class="ccx-empty">
-            {{ text('当前绑定暂无 Studio 可用渠道 Skill', 'No channel skills are available for the selected binding') }}
-          </div>
-        </article>
-
-        <article
           v-show="activeTab === 'sessions'"
           id="ccx-panel-sessions"
           class="ccx-panel ccx-workspace-panel"
@@ -750,19 +663,13 @@ import {
   RotateCw,
   Save,
   Square,
-  Star,
   Trash2,
 } from '@lucide/vue';
 import type {
-  ChannelConnectorAgentId,
-  ChannelConnectorAgentProfile,
   ChannelConnectorAgentSessionDriverStatusResponse,
   ChannelConnectorAgentSessionRuntimeStatus,
-  ChannelConnectorCommandSurface,
-  ChannelConnectorCommandSurfaceSkill,
   ChannelConnectorFeishuTransportSmokeResponse,
   ChannelConnectorOctoTransportSmokeResponse,
-  ChannelConnectorPermissionMode,
   ChannelConnectorPlatformBinding,
   ChannelConnectorPlatformId,
   ChannelConnectorsDaemonAction,
@@ -785,7 +692,6 @@ import {
   fetchChannelConnectorsStatus,
   manageChannelConnectorAgentSessions,
   manageChannelConnectorsDaemonService,
-  previewChannelConnectorCommandSurface,
   runFeishuTransportSmoke,
   runOctoTransportSmoke,
   saveChannelConnectorsNativeConfig,
@@ -794,7 +700,7 @@ import './channel-connectors-workspace.css';
 
 defineOptions({ name: 'ChannelConnectorsControlPage' });
 
-type WorkspaceTab = 'runtime' | 'projects' | 'platforms' | 'skills' | 'sessions';
+type WorkspaceTab = 'overview' | 'bindings' | 'runtime' | 'sessions';
 type BindingDraft = Omit<ChannelConnectorPlatformBinding, 'allowlist' | 'adminUsers' | 'disabledCommands' | 'metadata'> & {
   allowlistText: string;
   adminUsersText: string;
@@ -817,18 +723,17 @@ type BindingDraft = Omit<ChannelConnectorPlatformBinding, 'allowlist' | 'adminUs
 const route = useRoute();
 const { text } = useLocalePreference();
 const tabs: Array<{ id: WorkspaceTab; zh: string; en: string }> = [
-  { id: 'runtime', zh: '运行', en: 'Runtime' },
-  { id: 'projects', zh: 'Profiles', en: 'Profiles' },
-  { id: 'platforms', zh: '平台', en: 'Platforms' },
-  { id: 'skills', zh: 'Skills', en: 'Skills' },
-  { id: 'sessions', zh: '会话', en: 'Sessions' },
+  { id: 'overview', zh: '概览', en: 'Overview' },
+  { id: 'bindings', zh: '渠道绑定', en: 'Bindings' },
+  { id: 'runtime', zh: '运行状态', en: 'Runtime' },
+  { id: 'sessions', zh: '会话日志', en: 'Sessions' },
 ];
 
 const loading = ref(false);
 const busy = ref(false);
 const savingConfig = ref(false);
 const loaded = ref(false);
-const activeTab = ref<WorkspaceTab>('runtime');
+const activeTab = ref<WorkspaceTab>('overview');
 const status = ref<ChannelConnectorsStatusResponse | null>(null);
 const service = ref<ChannelConnectorsDaemonResponse | null>(null);
 const nativeConfig = ref<ChannelConnectorsNativeConfigResponse | null>(null);
@@ -838,13 +743,10 @@ const actionResult = ref<ChannelConnectorsDaemonResponse | null>(null);
 const agentSessions = ref<ChannelConnectorAgentSessionDriverStatusResponse | null>(null);
 const agentSessionResult = ref<ChannelConnectorAgentSessionDriverStatusResponse | null>(null);
 const agentSessionBusy = ref(false);
-const commandSurface = ref<ChannelConnectorCommandSurface | null>(null);
-const skillSurfaceBusy = ref(false);
 const platformSmoke = ref<ChannelConnectorOctoTransportSmokeResponse | ChannelConnectorFeishuTransportSmokeResponse | null>(null);
 const platformSmokeBusy = ref(false);
 const notice = ref<{ kind: 'success' | 'error'; message: string } | null>(null);
 
-const profileDraft = ref<ChannelConnectorAgentProfile>(emptyProfileDraft());
 const bindingDraft = ref<BindingDraft>(emptyBindingDraft());
 
 const routeProfileId = computed(() => {
@@ -858,7 +760,11 @@ const routeBindingId = computed(() => {
 });
 
 const profileWorkspaceRoute = computed(() => {
-  const profileId = profileDraft.value.id.trim();
+  const profileId = routeProfileId.value
+    || bindingDraft.value.agentProfileId
+    || nativeConfig.value?.config.defaultAgentProfileId
+    || nativeConfig.value?.config.agentProfiles[0]?.id
+    || '';
   return {
     path: '/channel-connectors/profiles',
     query: profileId ? { profileId } : {},
@@ -934,36 +840,38 @@ const pendingQueueStatusTone = computed<'neutral' | 'accent' | 'sage' | 'danger'
   return 'neutral';
 });
 
-const supportedAgents = computed<ChannelConnectorAgentId[]>(() =>
-  nativeConfig.value?.supportedAgents || status.value?.bindingPolicy.supportedAgents || ['codex', 'claude-code', 'opencode'] as ChannelConnectorAgentId[],
-);
-
 const supportedPlatforms = computed<ChannelConnectorPlatformId[]>(() =>
   nativeConfig.value?.supportedPlatforms || status.value?.bindingPolicy.supportedPlatforms || ['octo', 'feishu', 'wechat', 'wecom'] as ChannelConnectorPlatformId[],
-);
-
-const permissionModes = computed<ChannelConnectorPermissionMode[]>(() =>
-  nativeConfig.value?.permissionModes || ['suggest', 'read-only', 'auto-edit', 'full-auto', 'plan', 'yolo'] as ChannelConnectorPermissionMode[],
 );
 
 const bindingExists = computed(() =>
   (nativeConfig.value?.config.platformBindings || []).some((binding) => binding.id === bindingDraft.value.id),
 );
 
-const selectedBindingProfile = computed(() => {
-  const profileId = bindingDraft.value.agentProfileId;
-  return (nativeConfig.value?.config.agentProfiles || []).find((profile) => profile.id === profileId) || null;
+const platformBindings = computed(() => nativeConfig.value?.config.platformBindings || []);
+const agentProfiles = computed(() => nativeConfig.value?.config.agentProfiles || []);
+const profileCount = computed(() => agentProfiles.value.length);
+const bindingCount = computed(() => platformBindings.value.length);
+const overviewBindings = computed(() => platformBindings.value.slice(0, 6));
+const defaultProfileSummary = computed(() => {
+  const config = nativeConfig.value?.config;
+  const profile = agentProfiles.value.find((item) => item.id === config?.defaultAgentProfileId) || agentProfiles.value[0];
+  if (!profile) return text('尚未配置 CLI Profile', 'No CLI Profile configured');
+  return `${profile.name} · ${profile.agent} · ${profile.model || text('默认模型', 'default model')}`;
 });
-
-const channelSkills = computed(() => commandSurface.value?.skills || []);
-
-const platformSkillCount = computed(() =>
-  channelSkills.value.filter((skill) => skill.scope === 'platform').length,
-);
-
-const bindingSkillCount = computed(() =>
-  channelSkills.value.filter((skill) => skill.scope === 'binding').length,
-);
+const bindingSummary = computed(() => {
+  if (!platformBindings.value.length) return text('尚未绑定 IM 渠道', 'No IM channel bound');
+  const enabled = platformBindings.value.filter((binding) => binding.enabled).length;
+  const platforms = [...new Set(platformBindings.value.map((binding) => binding.platform))].join(', ');
+  return `${enabled}/${platformBindings.value.length} ${text('启用', 'enabled')} · ${platforms}`;
+});
+const queueSummary = computed(() => {
+  const pending = pendingAgentRunStatus.value?.count || 0;
+  const events = pendingAgentRunEvents.value.length;
+  return pending
+    ? `${pending} ${text('条待恢复消息', 'pending runs')}`
+    : `${events} ${text('条最近队列事件', 'recent queue events')}`;
+});
 
 const daemonStateLabel = computed(() => {
   if (!service.value) return text('未知', 'Unknown');
@@ -1175,20 +1083,6 @@ const platformSmokeOutput = computed(() => {
 
 const logText = computed(() => (logs.value?.lines || []).join('\n'));
 
-function emptyProfileDraft(): ChannelConnectorAgentProfile {
-  return {
-    id: 'default-codex',
-    name: 'Default Codex',
-    agent: 'codex',
-    model: '',
-    workDir: '',
-    permissionMode: 'suggest',
-    gatewayEndpoint: 'http://127.0.0.1:18796/v1',
-    gatewayKeyRef: 'studio-gateway-client-key',
-    appProfileRef: 'default',
-  };
-}
-
 function emptyBindingDraft(): BindingDraft {
   return {
     id: '',
@@ -1304,13 +1198,6 @@ function cloneNativeConfig(): ChannelConnectorsNativeConfig | null {
   };
 }
 
-function selectProfile(profile: ChannelConnectorAgentProfile): void {
-  profileDraft.value = {
-    ...profile,
-    model: profile.model || '',
-  };
-}
-
 function selectBinding(binding: ChannelConnectorPlatformBinding): void {
   const metadata = cloneMetadata(binding.metadata);
   bindingDraft.value = {
@@ -1350,19 +1237,12 @@ function selectBinding(binding: ChannelConnectorPlatformBinding): void {
 
 function selectBindingFromUi(binding: ChannelConnectorPlatformBinding): void {
   selectBinding(binding);
-  void refreshSkillSurface({ silent: true });
+  activeTab.value = 'bindings';
 }
 
-function newProfileDraft(): void {
-  const profiles = nativeConfig.value?.config.agentProfiles || [];
-  const base = profiles[0] || emptyProfileDraft();
-  const nextNumber = profiles.length + 1;
-  profileDraft.value = {
-    ...base,
-    id: `profile-${nextNumber}`,
-    name: `Agent Profile ${nextNumber}`,
-    model: '',
-  };
+function openBinding(binding: ChannelConnectorPlatformBinding): void {
+  selectBinding(binding);
+  activeTab.value = 'bindings';
 }
 
 function newBindingDraft(platform: ChannelConnectorPlatformId = 'octo'): void {
@@ -1377,7 +1257,7 @@ function newBindingDraft(platform: ChannelConnectorPlatformId = 'octo'): void {
     metadataApiUrl: defaultApiUrl(platform),
   };
   platformSmoke.value = null;
-  commandSurface.value = null;
+  activeTab.value = 'bindings';
 }
 
 function hydrateConfigDrafts(): void {
@@ -1385,14 +1265,9 @@ function hydrateConfigDrafts(): void {
   if (!config) return;
 
   const selectedBinding = config.platformBindings.find((binding) => binding.id === routeBindingId.value)
+    || config.platformBindings.find((binding) => binding.agentProfileId === routeProfileId.value)
     || config.platformBindings.find((binding) => binding.id === bindingDraft.value.id)
     || config.platformBindings[0];
-  const selectedProfile = config.agentProfiles.find((profile) => profile.id === routeProfileId.value)
-    || config.agentProfiles.find((profile) => profile.id === selectedBinding?.agentProfileId)
-    || config.agentProfiles.find((profile) => profile.id === profileDraft.value.id)
-    || config.agentProfiles.find((profile) => profile.id === config.defaultAgentProfileId)
-    || config.agentProfiles[0];
-  if (selectedProfile) selectProfile(selectedProfile);
 
   if (selectedBinding) {
     selectBinding(selectedBinding);
@@ -1400,8 +1275,7 @@ function hydrateConfigDrafts(): void {
     newBindingDraft();
   }
 
-  if (routeBindingId.value) activeTab.value = 'platforms';
-  else if (routeProfileId.value) activeTab.value = 'projects';
+  if (routeBindingId.value || routeProfileId.value) activeTab.value = 'bindings';
 }
 
 async function persistNativeConfig(config: ChannelConnectorsNativeConfig, message: string): Promise<void> {
@@ -1412,54 +1286,12 @@ async function persistNativeConfig(config: ChannelConnectorsNativeConfig, messag
     nativeConfig.value = saved;
     configPreview.value = await fetchChannelConnectorsDaemonConfig();
     hydrateConfigDrafts();
-    void refreshSkillSurface({ silent: true });
     notice.value = { kind: 'success', message };
   } catch (error) {
     reportError(error, text('保存 Channel Connectors 配置失败', 'Failed to save Channel Connectors config'));
   } finally {
     savingConfig.value = false;
   }
-}
-
-function profileFromDraft(): ChannelConnectorAgentProfile {
-  return {
-    ...profileDraft.value,
-    id: profileDraft.value.id.trim(),
-    name: profileDraft.value.name.trim() || profileDraft.value.id.trim(),
-    model: profileDraft.value.model ? profileDraft.value.model.trim() : null,
-    workDir: profileDraft.value.workDir.trim(),
-    gatewayEndpoint: profileDraft.value.gatewayEndpoint.trim() || 'http://127.0.0.1:18796/v1',
-    gatewayKeyRef: 'studio-gateway-client-key',
-    appProfileRef: profileDraft.value.appProfileRef.trim() || 'default',
-  };
-}
-
-async function saveProfileDraft(): Promise<void> {
-  const config = cloneNativeConfig();
-  if (!config) return;
-  const profile = profileFromDraft();
-  if (!profile.id || !profile.workDir) {
-    notice.value = { kind: 'error', message: text('Profile ID 和工作目录必填', 'Profile ID and work directory are required') };
-    return;
-  }
-  const index = config.agentProfiles.findIndex((item) => item.id === profile.id);
-  if (index >= 0) config.agentProfiles.splice(index, 1, profile);
-  else config.agentProfiles.push(profile);
-  if (!config.agentProfiles.some((item) => item.id === config.defaultAgentProfileId)) {
-    config.defaultAgentProfileId = profile.id;
-  }
-  await persistNativeConfig(config, text('Profile 已保存', 'Profile saved'));
-}
-
-async function setDefaultProfile(): Promise<void> {
-  const config = cloneNativeConfig();
-  if (!config) return;
-  const profile = profileFromDraft();
-  const index = config.agentProfiles.findIndex((item) => item.id === profile.id);
-  if (index >= 0) config.agentProfiles.splice(index, 1, profile);
-  else config.agentProfiles.push(profile);
-  config.defaultAgentProfileId = profile.id;
-  await persistNativeConfig(config, text('默认 Profile 已更新', 'Default profile updated'));
 }
 
 function bindingFromDraft(): ChannelConnectorPlatformBinding {
@@ -1615,37 +1447,6 @@ async function testBindingDraft(): Promise<void> {
   }
 }
 
-function skillScopeLabel(skill: ChannelConnectorCommandSurfaceSkill): string {
-  if (skill.scope === 'platform') return skill.platform ? `studio · ${skill.platform}` : 'studio';
-  if (skill.scope === 'binding') return text('显式扩展', 'custom binding');
-  return 'agent';
-}
-
-async function refreshSkillSurface(options: { silent?: boolean } = {}): Promise<void> {
-  const bindingId = bindingDraft.value.id.trim();
-  if (!bindingId) {
-    commandSurface.value = null;
-    return;
-  }
-  skillSurfaceBusy.value = true;
-  if (!options.silent) notice.value = null;
-  try {
-    const result = await previewChannelConnectorCommandSurface({
-      bindingId,
-      renderer: 'text',
-    });
-    commandSurface.value = result.surface;
-    if (!options.silent) {
-      notice.value = { kind: 'success', message: text('渠道 Skills 已刷新', 'Channel skills refreshed') };
-    }
-  } catch (error) {
-    commandSurface.value = null;
-    if (!options.silent) reportError(error, text('刷新渠道 Skills 失败', 'Failed to refresh channel skills'));
-  } finally {
-    skillSurfaceBusy.value = false;
-  }
-}
-
 function formatTimestamp(value: string): string {
   try {
     return new Date(value).toLocaleString();
@@ -1762,7 +1563,6 @@ async function loadAll(): Promise<void> {
     configPreview.value = nextConfig;
     logs.value = nextLogs;
     hydrateConfigDrafts();
-    void refreshSkillSurface({ silent: true });
     loaded.value = true;
     void refreshAgentSessions({ silent: true });
   } catch (error) {
@@ -1806,7 +1606,6 @@ async function runServiceAction(action: ChannelConnectorsDaemonAction): Promise<
     };
     await refreshLogs();
     await refreshAgentSessions({ silent: true });
-    await refreshSkillSurface({ silent: true });
     await refreshStatusSnapshot();
   } catch (error) {
     reportError(error, text('操作失败', 'Action failed'));
@@ -1824,7 +1623,6 @@ watch(
   () => {
     if (!nativeConfig.value) return;
     hydrateConfigDrafts();
-    void refreshSkillSurface({ silent: true });
   },
 );
 </script>

@@ -58,8 +58,10 @@ test("Channel Connectors page calls only channel connector APIs", () => {
     assert.match(api, new RegExp(endpoint.replace(/\//g, "\\/")));
   }
 
+  assert.match(page, /Overview/);
+  assert.match(page, /Bindings/);
   assert.match(page, /Runtime/);
-  assert.match(page, /Profiles/);
+  assert.match(page, /Sessions/);
   assert.match(page, /\/channel-connectors\/profiles/);
   assert.match(page, /profileWorkspaceRoute/);
   assert.match(page, /query:\s*profileId \? \{ profileId \} : \{\}/);
@@ -67,13 +69,10 @@ test("Channel Connectors page calls only channel connector APIs", () => {
   assert.match(page, /routeProfileId/);
   assert.match(page, /routeBindingId/);
   assert.match(page, /binding\.id === routeBindingId\.value/);
-  assert.match(page, /profile\.id === selectedBinding\?\.agentProfileId/);
-  assert.match(page, /activeTab\.value = 'platforms'/);
-  assert.match(page, /activeTab\.value = 'projects'/);
-  assert.match(page, /Platforms/);
-  assert.match(page, /Sessions/);
-  assert.match(page, /Channel daemon/);
-  assert.match(page, /Work directory|工作目录/);
+  assert.match(page, /binding\.agentProfileId === routeProfileId\.value/);
+  assert.match(page, /activeTab\.value = 'bindings'/);
+  assert.match(page, /Channel operations|渠道运营概览/);
+  assert.match(page, /Profile workspace|Profile 工作台/);
   assert.match(page, /Agent Profile/);
   assert.match(page, /metadataFromBindingDraft/);
   assert.match(page, /metadataBotToken/);
@@ -101,8 +100,10 @@ test("Channel Connectors page calls only channel connector APIs", () => {
   assert.match(page, /autoCompactBudgetLine/);
   assert.match(page, /Test|测试连接/);
   assert.match(page, /Reap idle|清理空闲/);
-  assert.match(page, /Save profile|保存 Profile/);
   assert.match(page, /Save binding|保存绑定/);
+  assert.doesNotMatch(page, /CLI Profile 快改|CLI profile quick edit/);
+  assert.doesNotMatch(page, /Save profile|保存 Profile/);
+  assert.doesNotMatch(page, /渠道 Skills|Channel skills/);
   assert.match(page, /wechat/);
   assert.doesNotMatch(page, /\/api\/model-gateway/);
   assert.doesNotMatch(page, /cc-connect|CC Bridge/);
