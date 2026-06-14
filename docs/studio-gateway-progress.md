@@ -1,6 +1,6 @@
 # Studio Gateway / Channel Connectors 进度
 
-> 更新：2026-06-14
+> 更新：2026-06-15
 > 规则：只记录当前事实、本轮完成、验证、边界和下一步；历史细节看 git commit。
 
 ## 当前事实
@@ -11,6 +11,7 @@
 - Provider Center 支持自定义 provider、启停、模型名称/别名/默认模型、能力勾选、批量模型导入、批量预算/能力应用、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
 - Provider Center 表单已按连接、端点路由、密钥识别、模型目录、高级覆盖、可用范围分区；PC/平板/手机均按同一配置流程降级展示。
 - Gateway Provider 支持 endpoint profiles；同一 provider/模型可按客户端协议优选原生 endpoint，并在 endpoint 级 health/circuit 下回退。
+- GPT/ChatGPT account 与 Codex account 已确认进入 Gateway 下一阶段目标：作为 account-backed provider 管理登录、账户池、刷新、sticky/failover、quota/cooldown 和三协议导出，不恢复旧 CPA / Codex Stack。
 - Provider Center 不再按模型名自动标记 vision；图片能力只来自用户配置、上游显式能力元数据或图片 smoke 通过后用户确认写回。
 - App Connections 覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收；Model Gateway 支持 `tab/app` deep-link 直达并高亮指定 CLI App Connection。
 - BigModel/GLM 本地模型目录已加入 `glm-5.2`，按 1M context / 128K output 预算；Gateway 内置推断同时识别 `glm-5.2` 与官方 1M 后缀别名 `glm-5.2[1m]`。
@@ -27,6 +28,9 @@
 
 ## 本轮完成
 
+- 调研 Sub2API、CLIProxyAPI、CodexProapi 和 Codex 官方认证文档，提炼到 `docs/studio-gateway-account-provider-plan.md`。
+- 更新 Gateway 目标：新增 Account-backed provider 阶段，覆盖 GPT/ChatGPT/Codex 账户登录转本地三协议 API。
+- 明确边界：不做网页 cookie 抓取、不恢复旧 CPA 页面、不做公共账号共享/转售；首期走官方 Codex 登录/device auth/本机 `auth.json` 或 keyring。
 - Provider Center 前端收口：
   - 模型目录的可见身份字段只保留“模型名称”和“别名”，不再暴露“显示名”三段式配置。
   - 批量导入格式改为 `model-id | alias1,alias2`；保存时不再从表格写入 `model.label`。
@@ -269,6 +273,6 @@
 
 ## 下一步
 
-1. Profile/App Connection goal 已完成关闭验收；后续只保留回归抽查，不再作为阻断项。
-2. 继续抽查 Codex / Claude Code / OpenCode 真实 IM 工具流、过程回复、思考流和审批路径；工具流 live smoke 默认带 `--agents codex,claude-code,opencode --require-agent-coverage --require-tool-output`。
-3. 后续可选 OpenAI Platform 官方端点 proof。
+1. 实现 account-backed provider schema：账户、账户池、secret/keyring ref、redaction、provider source type、runtime 状态和 route decision 合同。
+2. 先做 Codex account provider：隔离 `CODEX_HOME` 导入/检测 `auth.json`，账户健康、模型目录、Responses non-stream/stream smoke。
+3. 再补三协议 adapter、session affinity、cooldown/failover、usage/account hash 和 Provider Center 账户页。

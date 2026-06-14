@@ -1,6 +1,6 @@
 # OpenClaw Studio Docs Index
 
-> 更新：2026-06-12
+> 更新：2026-06-15
 > 规则：`docs/` 只保存当前目标、边界、合同和少量专项追踪；历史过程看 git commit，不再把每轮实现追加成流水账。
 
 ## 当前主线
@@ -10,6 +10,7 @@
 - `当前进展.md`：当前可用能力、验证状态和下一步。
 - `studio-gateway-goal.md`：Studio Gateway 的稳定目标、协议矩阵、daemon 生命周期和 App Connections 验收。
 - `studio-gateway-progress.md`：Gateway 与 Channel Connectors 的最新进度快照。
+- `studio-gateway-account-provider-plan.md`：GPT/ChatGPT/Codex 账户型 provider 调研、边界和验收。
 - `channel-connectors-native-agent-bot-plan.md`：Channel Connectors / CLI Agent Bot 原生方案。
 - `channel-connectors-cc-migration-checklist.md`：CC Go 迁移门禁和任务清单。
 - `channel-connectors-native-feature-map.md`：CC/OpenClaw/OCTO 能力到 Studio 的映射。
