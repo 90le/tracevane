@@ -9079,6 +9079,11 @@ test("native Channel Connectors command surface renders text and Feishu card act
   });
   const modeCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(modePickerSurface));
   assert.match(modeCardRaw, /权限与推理/);
+  assert.match(modeCardRaw, /当前设置/);
+  assert.match(modeCardRaw, /权限模式：建议确认/);
+  assert.match(modeCardRaw, /推理强度：Profile 默认推理强度/);
+  assert.match(modeCardRaw, /高权限模式保持显式选择/);
+  assert.match(modeCardRaw, /切换后会断开旧 Agent 续接/);
   assert.match(modeCardRaw, /select_static/);
   assert.match(modeCardRaw, /act:\/mode yolo/);
   assert.match(modeCardRaw, /act:\/reasoning xhigh/);

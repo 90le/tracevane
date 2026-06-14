@@ -1689,14 +1689,20 @@ function renderModePickerCard(surface: ChannelConnectorCommandSurface): ChannelC
     ? reasoningActions.find((item) => item.command === `/reasoning ${currentReasoning}`)
     : reasoningActions[0];
   const initialReasoningValue = currentReasoningAction ? actionCommandValue(currentReasoningAction) : null;
+  const currentPermissionLabel = currentModeAction ? stripListPrefix(currentModeAction.label) : current;
+  const currentReasoningLabel = currentReasoningAction ? stripListPrefix(currentReasoningAction.label) : "Profile 默认推理强度";
   const elements: Array<Record<string, unknown>> = [
     {
       tag: "markdown",
       content: [
-        "**当前模式**",
-        `${currentModeAction ? stripListPrefix(currentModeAction.label) : current} · reasoning ${currentReasoning || "default"}`,
-        `可选权限：${modeActions.length || 0} 个 · 可选推理强度：${reasoningActions.length} 个`,
+        "**当前设置**",
+        `权限模式：${currentPermissionLabel}`,
+        `推理强度：${currentReasoningLabel}`,
       ].join("\n"),
+    },
+    {
+      tag: "markdown",
+      content: `**权限模式**\n${modeActions.length || 0} 个可选模式 · 高权限模式保持显式选择`,
     },
     selectStaticElement({
       placeholder: "选择权限模式",
@@ -1706,6 +1712,10 @@ function renderModePickerCard(surface: ChannelConnectorCommandSurface): ChannelC
       sectionId: "mode",
       viewId: "mode",
     }),
+    {
+      tag: "markdown",
+      content: `**推理强度**\n${reasoningActions.length} 个可选强度 · 切换后会断开旧 Agent 续接`,
+    },
     selectStaticElement({
       placeholder: "选择推理强度",
       options: reasoningOptions,
