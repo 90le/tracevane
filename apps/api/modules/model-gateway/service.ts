@@ -5011,30 +5011,45 @@ export function createModelGatewayService(
       throw new ModelGatewayServiceError("model_gateway_provider_not_found", `Model Gateway provider '${providerId}' was not found.`, 404);
     }
 
+    const endpointProfileId = normalizeString(payload.endpointProfileId || "");
+    const endpointProfile = endpointProfileId
+      ? provider.endpointProfiles.find((profile) => profile.id === endpointProfileId) || null
+      : null;
+    if (endpointProfileId && !endpointProfile) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_endpoint_profile_not_found",
+        `Model Gateway endpoint profile '${endpointProfileId}' was not found on provider '${providerId}'.`,
+        404,
+      );
+    }
+
+    const effectiveProvider = effectiveProviderForEndpointProfile(provider, endpointProfile);
     const routeId = MODEL_GATEWAY_ROUTE_IDS.includes(payload.routeId as ModelGatewayRouteId)
       ? payload.routeId as ModelGatewayRouteId
-      : defaultTestRouteId(provider);
+      : defaultTestRouteId(effectiveProvider);
     if (!routeId) {
       throw new ModelGatewayServiceError(
         "model_gateway_provider_test_unsupported",
-        `Provider '${providerId}' uses ${provider.apiFormat}, which does not yet have a Phase 1 test route.`,
+        `Provider '${providerId}' uses ${effectiveProvider.apiFormat}, which does not yet have a Phase 1 test route.`,
         400,
       );
     }
     const requestedScope = MODEL_GATEWAY_APP_SCOPES.includes(payload.appScope as ModelGatewayAppScope)
       ? payload.appScope as ModelGatewayAppScope
       : ROUTES[routeId].appScope;
-    if (!provider.appScopes.includes(requestedScope)) {
+    if (!effectiveProvider.appScopes.includes(requestedScope)) {
       throw new ModelGatewayServiceError(
         "model_gateway_provider_scope_mismatch",
-        `Model Gateway provider '${providerId}' is not available for ${requestedScope}.`,
+        endpointProfile
+          ? `Model Gateway endpoint profile '${endpointProfile.id}' is not available for ${requestedScope}.`
+          : `Model Gateway provider '${providerId}' is not available for ${requestedScope}.`,
         400,
       );
     }
 
-    const route = buildProviderRouteDecision(provider, routeId, requestedScope);
+    const route = buildProviderRouteDecision(effectiveProvider, routeId, requestedScope, null, endpointProfile);
     const startedAt = nowIso();
-    const model = normalizeString(payload.model, provider.models.defaultModel || provider.models.models[0]?.id || "test-model");
+    const model = normalizeString(payload.model, effectiveProvider.models.defaultModel || effectiveProvider.models.models[0]?.id || "test-model");
     if (route.mode === "adapter-required") {
       const errorMessage = route.reason || "Provider test requires an adapter that is not implemented yet.";
       appendRequestLog(requestLogEntry({
@@ -5062,8 +5077,8 @@ export function createModelGatewayService(
       };
     }
 
-    const secret = readProviderSecret(provider);
-    if (provider.authStrategy !== "none" && (!secret || isManagedProxyPlaceholderSecret(secret))) {
+    const secret = readProviderSecret(effectiveProvider);
+    if (effectiveProvider.authStrategy !== "none" && (!secret || isManagedProxyPlaceholderSecret(secret))) {
       const placeholder = isManagedProxyPlaceholderSecret(secret);
       const errorCode = placeholder
         ? "model_gateway_provider_secret_placeholder"
@@ -5081,7 +5096,7 @@ export function createModelGatewayService(
         errorCode,
         errorMessage,
       }));
-      updateProviderHealth(provider.id, false, null, errorMessage);
+      updateProviderHealth(provider.id, false, null, errorMessage, endpointProfile?.id || null);
       return {
         ok: false,
         providerId,
@@ -5100,19 +5115,19 @@ export function createModelGatewayService(
     const controller = new AbortController();
     const timeoutMs = typeof payload.timeoutMs === "number"
       ? Math.max(1_000, Math.floor(payload.timeoutMs))
-      : provider.network.timeoutMs;
+      : effectiveProvider.network.timeoutMs;
     const testKind = payload.kind === "vision" ? "vision" : "protocol";
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     const headers = new Headers({ "content-type": "application/json" });
-    applyProviderAuth(headers, provider, secret);
+    applyProviderAuth(headers, effectiveProvider, secret);
     const requestBody = JSON.stringify(buildProviderTestPayload(
-      provider,
+      effectiveProvider,
       model,
       normalizeString(payload.input, "Return the word ok."),
       testKind,
     ));
     try {
-      const response = await fetch(route.upstreamUrl || provider.baseUrl, withProviderNetwork(provider, {
+      const response = await fetch(route.upstreamUrl || effectiveProvider.baseUrl, withProviderNetwork(effectiveProvider, {
         method: "POST",
         headers,
         body: requestBody,
@@ -5121,7 +5136,7 @@ export function createModelGatewayService(
       const responseText = await response.text();
       const latencyMs = Math.max(0, Date.now() - Date.parse(startedAt));
       const httpSuccess = isProviderTestSuccess(response.status, null);
-      const answerText = testKind === "vision" ? extractProviderTestText(provider, responseText) : null;
+      const answerText = testKind === "vision" ? extractProviderTestText(effectiveProvider, responseText) : null;
       const success = testKind === "vision"
         ? httpSuccess && visionSmokeTextPassed(answerText)
         : httpSuccess;
@@ -5133,7 +5148,7 @@ export function createModelGatewayService(
             : `Vision smoke returned HTTP ${response.status}; the selected protocol, endpoint, or model may not accept image input.`
           : `Provider test returned HTTP ${response.status}.`;
       if (testKind !== "vision") {
-        updateProviderHealth(provider.id, success, latencyMs, errorMessage);
+        updateProviderHealth(provider.id, success, latencyMs, errorMessage, endpointProfile?.id || null);
       }
       appendRequestLog(requestLogEntry({
         kind: "provider-test",
@@ -5169,7 +5184,7 @@ export function createModelGatewayService(
       const latencyMs = Math.max(0, Date.now() - Date.parse(startedAt));
       const message = error instanceof Error ? error.message : "Provider test request failed.";
       if (testKind !== "vision") {
-        updateProviderHealth(provider.id, false, latencyMs, message);
+        updateProviderHealth(provider.id, false, latencyMs, message, endpointProfile?.id || null);
       }
       appendRequestLog(requestLogEntry({
         kind: "provider-test",

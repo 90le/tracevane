@@ -629,55 +629,129 @@
 
 .mgw-endpoint-profile-list {
   display: grid;
-  gap: 8px;
+  gap: 10px;
   border: 1px solid var(--mono-line);
   border-radius: 8px;
   padding: 10px;
   background: var(--control-bg);
 }
 
-.mgw-endpoint-profile-list__head {
+.mgw-endpoint-profile-list__head,
+.mgw-endpoint-profile-actions,
+.mgw-endpoint-row-actions,
+.mgw-endpoint-scopes {
   display: flex;
-  align-items: baseline;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.mgw-endpoint-profile-list__head {
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
 }
 
+.mgw-endpoint-profile-list__head > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
 .mgw-endpoint-profile-list__head small {
   color: var(--mono-muted);
+  overflow-wrap: anywhere;
+}
+
+.mgw-endpoint-profile-actions {
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.mgw-endpoint-profile-empty {
+  border: 1px dashed var(--mono-line);
+  border-radius: 8px;
+  color: var(--mono-ink-2);
+  padding: 12px;
+  overflow-wrap: anywhere;
 }
 
 .mgw-endpoint-profile-grid {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 
 .mgw-endpoint-profile {
   display: grid;
-  grid-template-columns: minmax(130px, 0.8fr) minmax(0, 1.6fr) auto;
+  grid-template-columns: minmax(90px, 0.42fr) repeat(4, minmax(120px, 1fr));
   gap: 10px;
-  align-items: center;
-  min-height: 54px;
+  align-items: end;
+  min-width: 0;
   border: 1px solid var(--mono-line);
   border-radius: 8px;
-  padding: 8px;
+  padding: 10px;
   background: var(--panel-bg);
 }
 
-.mgw-endpoint-profile span {
-  display: grid;
-  gap: 3px;
+.mgw-endpoint-profile.disabled {
+  opacity: 0.72;
+}
+
+.mgw-endpoint-toggle {
+  justify-content: center;
+  min-height: 40px;
+}
+
+.mgw-endpoint-profile .form-field {
   min-width: 0;
 }
 
-.mgw-endpoint-profile small {
-  color: var(--mono-muted);
+.mgw-endpoint-profile .form-input {
+  min-width: 0;
 }
 
-.mgw-endpoint-profile code {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.mgw-endpoint-profile .form-field-wide {
+  grid-column: span 2;
+}
+
+.mgw-endpoint-scopes {
+  grid-column: span 3;
+  align-items: center;
+  gap: 8px;
+}
+
+.mgw-endpoint-row-actions {
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.mgw-endpoint-smoke-result {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.84rem;
+}
+
+.mgw-endpoint-smoke-result.success {
+  border-color: color-mix(in srgb, var(--success) 40%, var(--mono-line));
+  background: color-mix(in srgb, var(--success) 5%, var(--surface-base));
+}
+
+.mgw-endpoint-smoke-result.failure {
+  border-color: color-mix(in srgb, var(--danger) 44%, var(--mono-line));
+  background: color-mix(in srgb, var(--danger) 6%, var(--surface-base));
+}
+
+.mgw-endpoint-smoke-result span {
+  min-width: 0;
+  color: var(--mono-ink-2);
+  overflow-wrap: anywhere;
 }
 
 .mgw-model-list-input {
@@ -1176,8 +1250,14 @@
   .mgw-detect-target,
   .mgw-detect-protocol,
   .mgw-model-table__head,
-  .mgw-model-row {
+  .mgw-model-row,
+  .mgw-endpoint-profile {
     grid-template-columns: 1fr;
+  }
+
+  .mgw-endpoint-profile .form-field-wide,
+  .mgw-endpoint-scopes {
+    grid-column: auto;
   }
 
   .mgw-model-table__head {

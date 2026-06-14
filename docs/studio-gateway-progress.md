@@ -31,6 +31,7 @@
   - Provider schema 新增 endpoint profile，保留旧 provider 单 endpoint 兼容；endpoint profile 可继承 provider 模型和 key，也可独立配置 baseUrl、协议、auth、route override、priority、health/circuit。
   - 路由选择展开 provider endpoint profiles，按客户端协议原生匹配优先，再按 provider/profile priority 和 health/circuit 选择；响应与 runtime log 记录 endpoint profile。
   - `/v1/models`、Agent CLI 模型下拉和 BigModel live smoke 均改为识别 endpoint profile 模型来源。
+  - Provider Center 已可编辑 endpoint profiles：添加/删除端点、协议/auth/Base URL/priority/scope/route override、detect 结果同步和 endpoint 级 smoke。
   - 本机 `glm` provider 已配置 BigModel Coding Chat `https://open.bigmodel.cn/api/coding/paas/v4` 和 Coding Anthropic `https://open.bigmodel.cn/api/anthropic` 两个 endpoint profile，共用现有 GLM key。
 - Channel Connectors 模型菜单：
   - Feishu / command surface 的模型选择不再把 Gateway 聚合模型静默截断到 12 个。
@@ -109,9 +110,10 @@
 - 本轮验证通过：`npm run typecheck:web`
 - 本轮验证通过：`npm run build:api`
 - 本轮验证通过：`node --test tests/system/studio-web-agent-cli-page.test.mjs`
-- 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，56/56 通过，覆盖 `glm-5.2` / `glm-5.2[1m]` 预算推断、endpoint profile 原生协议优选、endpoint health 回退和响应头。
-- 本轮验证通过：`node --test tests/system/studio-web-model-gateway-page.test.mjs tests/system/studio-web-agent-cli-page.test.mjs`，5/5 通过，覆盖 Provider Center endpoint profile 展示和 Agent CLI 模型目录读取。
+- 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，57/57 通过，覆盖 `glm-5.2` / `glm-5.2[1m]` 预算推断、endpoint profile 原生协议优选、endpoint health 回退、响应头和 endpoint 级 smoke。
+- 本轮验证通过：`node --test tests/system/studio-web-model-gateway-page.test.mjs tests/system/studio-web-agent-cli-page.test.mjs`，5/5 通过，覆盖 Provider Center endpoint profile 编辑和 Agent CLI 模型目录读取。
 - 本轮本机 live smoke 通过：Gateway `glm-5.2` 三协议入口均可用，`/v1/chat/completions` 走 `glm/coding-chat`，`/v1/messages` 走 `glm/coding-anthropic`，`/v1/responses` 走 `glm/coding-chat` 转换。
+- 本轮本机 endpoint smoke 通过：Provider Center 后端 smoke API 指定 `glm/coding-chat` 与 `glm/coding-anthropic` 均返回 200，并命中各自 upstream。
 - 本轮验证通过：`node --test tests/system/channel-connectors-service.test.mjs`，104/104 通过，覆盖 Gateway 模型列表超过 12 个时 Feishu/命令模型菜单仍显示后续模型。
 - 上一轮代码验证通过：`npm run typecheck:api`
 - 上一轮代码验证通过：`npm run build:api`

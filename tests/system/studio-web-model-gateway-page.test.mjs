@@ -193,8 +193,19 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "inferProviderModelCapabilities",
     "daemonActionResult",
     "Endpoint profiles",
-    "selectedProviderEndpointProfiles",
+    "gateway-endpoint-profile-editor",
+    "endpointRows",
+    "endpointRowsToInputs",
+    "addEndpointProfileRow",
+    "removeEndpointProfileRow",
+    "mergeDetectedEndpointProfiles",
+    "smokeEndpointProfile",
+    "endpointProfileId",
+    "Sync endpoint profiles",
+    "Endpoint smoke passed",
     "mgw-endpoint-profile-list",
+    "mgw-endpoint-profile-actions",
+    "mgw-endpoint-smoke-result",
   ]) {
     assert.match(page, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
@@ -236,6 +247,7 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
   assert.match(css, /\.mgw-model-batch\s*\{[^}]*border:\s*1px solid var\(--mono-line\)/s);
   assert.match(css, /\.mgw-model-batch__body\s*\{[^}]*display:\s*grid/s);
   assert.match(css, /\.mgw-model-batch__actions,\s*\.mgw-model-batch__bulk,\s*\.mgw-model-batch__capabilities\s*\{[^}]*flex-wrap:\s*wrap/s);
-  assert.match(css, /\.mgw-endpoint-profile\s*\{[^}]*grid-template-columns:\s*minmax\(130px,\s*0\.8fr\)\s+minmax\(0,\s*1\.6fr\)\s+auto/s);
-  assert.match(css, /\.mgw-endpoint-profile code\s*\{[^}]*text-overflow:\s*ellipsis/s);
+  assert.match(css, /\.mgw-endpoint-profile\s*\{[^}]*grid-template-columns:\s*minmax\(90px,\s*0\.42fr\)\s+repeat\(4,\s*minmax\(120px,\s*1fr\)\)/s);
+  assert.match(css, /\.mgw-endpoint-profile \.form-field-wide\s*\{[^}]*grid-column:\s*span 2/s);
+  assert.match(css, /\.mgw-endpoint-smoke-result span\s*\{[^}]*overflow-wrap:\s*anywhere/s);
 });

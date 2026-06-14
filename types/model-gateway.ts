@@ -649,6 +649,7 @@ export interface ModelGatewaySetActiveProviderRequest {
 export interface ModelGatewayProviderTestRequest {
   kind?: "protocol" | "vision";
   routeId?: ModelGatewayRouteId;
+  endpointProfileId?: string;
   appScope?: ModelGatewayAppScope;
   model?: string;
   input?: string;

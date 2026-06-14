@@ -494,29 +494,105 @@
                   <input v-model.trim="draft.baseUrl" class="form-input" placeholder="https://api.example.com/v1" />
                   <span class="field-hint">{{ text('这里是上游 API 前缀，Gateway 不会自动追加 /v1。', 'This is the upstream API prefix; Gateway will not append /v1 automatically.') }}</span>
                 </label>
-                <div v-if="selectedProviderEndpointProfiles.length" class="mgw-endpoint-profile-list form-field-full">
+                <div class="mgw-endpoint-profile-list form-field-full" data-testid="gateway-endpoint-profile-editor">
                   <div class="mgw-endpoint-profile-list__head">
-                    <span class="form-label">{{ text('Endpoint profiles', 'Endpoint profiles') }}</span>
-                    <small>{{ text('同一模型会按客户端协议、健康状态和优先级自动选端点。', 'The same model is routed by client protocol, health, and priority.') }}</small>
+                    <span>
+                      <span class="form-label">{{ text('Endpoint profiles', 'Endpoint profiles') }}</span>
+                      <small>{{ text('同一 Provider 可挂多个协议端点；客户端会优先命中原生协议，并按 endpoint 健康状态回退。', 'One provider can own multiple protocol endpoints; clients prefer native protocol and fall back by endpoint health.') }}</small>
+                    </span>
+                    <div class="mgw-endpoint-profile-actions">
+                      <button type="button" class="secondary-button compact-button" @click="addEndpointProfileRow()">
+                        <Plus class="mgw-button-icon" />
+                        <span>{{ text('添加端点', 'Add endpoint') }}</span>
+                      </button>
+                      <button
+                        type="button"
+                        class="secondary-button compact-button"
+                        :disabled="!detectSupportedProtocols.length"
+                        @click="mergeDetectedEndpointProfiles"
+                      >
+                        {{ text('用识别结果生成', 'Use detect result') }}
+                      </button>
+                    </div>
                   </div>
-                  <div class="mgw-endpoint-profile-grid">
+                  <div v-if="!draft.endpointRows.length" class="mgw-endpoint-profile-empty">
+                    {{ text('默认使用上面的单端点配置；需要同一服务商多协议、多端点或回退时再添加 endpoint profile。', 'The single endpoint above is used by default; add endpoint profiles for multi-protocol, multi-endpoint, or fallback routing.') }}
+                  </div>
+                  <div v-else class="mgw-endpoint-profile-grid">
                     <div
-                      v-for="profile in selectedProviderEndpointProfiles"
-                      :key="profile.id"
+                      v-for="(profile, index) in draft.endpointRows"
+                      :key="profile.key"
                       class="mgw-endpoint-profile"
+                      :class="{ disabled: !profile.enabled }"
                     >
-                      <span>
-                        <strong>{{ profile.name }}</strong>
-                        <small>{{ profile.id }} · {{ apiFormatLabel(profile.apiFormat) }}</small>
-                      </span>
-                      <span>
-                        <code>{{ profile.baseUrl }}</code>
-                        <small>{{ profile.appScopes.join(', ') }}</small>
-                      </span>
-                      <StatusPill
-                        :label="profile.enabled ? (profile.health.circuitState === 'open' ? text('熔断', 'Open') : text('可用', 'Ready')) : text('停用', 'Disabled')"
-                        :tone="profile.enabled ? (profile.health.circuitState === 'open' ? 'danger' : 'sage') : 'neutral'"
-                      />
+                      <label class="mgw-check mgw-endpoint-toggle">
+                        <input v-model="profile.enabled" type="checkbox" />
+                        <span>{{ profile.enabled ? text('启用', 'On') : text('停用', 'Off') }}</span>
+                      </label>
+                      <label class="form-field">
+                        <span class="form-label">{{ text('端点 ID', 'Endpoint ID') }}</span>
+                        <input v-model.trim="profile.id" class="form-input" placeholder="coding-chat" />
+                      </label>
+                      <label class="form-field">
+                        <span class="form-label">{{ text('名称', 'Name') }}</span>
+                        <input v-model.trim="profile.name" class="form-input" placeholder="Coding Chat" />
+                      </label>
+                      <label class="form-field">
+                        <span class="form-label">{{ text('原生协议', 'Native protocol') }}</span>
+                        <select v-model="profile.apiFormat" class="form-input" @change="updateEndpointProtocol(profile)">
+                          <option v-for="format in apiFormatOptions" :key="`endpoint-${profile.key}-${format.id}`" :value="format.id">{{ format.label }}</option>
+                        </select>
+                      </label>
+                      <label class="form-field">
+                        <span class="form-label">{{ text('认证', 'Auth') }}</span>
+                        <select v-model="profile.authStrategy" class="form-input">
+                          <option v-for="strategy in authStrategyOptions" :key="`endpoint-${profile.key}-${strategy.id}`" :value="strategy.id">{{ strategy.label }}</option>
+                        </select>
+                      </label>
+                      <label class="form-field form-field-wide">
+                        <span class="form-label">Base URL</span>
+                        <input v-model.trim="profile.baseUrl" class="form-input" placeholder="https://api.example.com/v1" />
+                      </label>
+                      <label class="form-field">
+                        <span class="form-label">{{ text('优先级', 'Priority') }}</span>
+                        <input v-model.number="profile.priority" class="form-input" type="number" min="0" step="1" />
+                      </label>
+                      <label class="form-field">
+                        <span class="form-label">{{ text('Anthropic 路径', 'Anthropic path') }}</span>
+                        <input v-model.trim="profile.anthropicEndpoint" class="form-input" placeholder="/v1/messages" />
+                      </label>
+                      <label class="form-field">
+                        <span class="form-label">{{ text('Compact 路径', 'Compact path') }}</span>
+                        <input v-model.trim="profile.compactEndpoint" class="form-input" placeholder="/v1/responses/compact" />
+                      </label>
+                      <div class="mgw-endpoint-scopes">
+                        <span class="form-label">{{ text('范围', 'Scopes') }}</span>
+                        <label v-for="scope in appScopeOptions" :key="`endpoint-${profile.key}-${scope.id}`" class="mgw-check">
+                          <input v-model="profile.appScopes[scope.id]" type="checkbox" />
+                          <span>{{ text(scope.zh, scope.en) }}</span>
+                        </label>
+                      </div>
+                      <div class="mgw-endpoint-row-actions">
+                        <button
+                          type="button"
+                          class="secondary-button compact-button"
+                          :disabled="!endpointProfilesCanSmoke || !profile.id.trim() || endpointSmokeBusy[profile.id]"
+                          @click="smokeEndpointProfile(profile)"
+                        >
+                          {{ endpointSmokeBusy[profile.id] ? text('测试中...', 'Testing...') : text('测试端点', 'Smoke') }}
+                        </button>
+                        <button type="button" class="mgw-icon-button" :aria-label="text('删除端点', 'Remove endpoint')" @click="removeEndpointProfileRow(index)">
+                          <Trash2 class="mgw-icon-button__icon" />
+                        </button>
+                      </div>
+                      <div
+                        v-if="endpointSmokeResults[profile.id]"
+                        class="mgw-endpoint-smoke-result"
+                        :class="endpointSmokeResults[profile.id]?.ok ? 'success' : 'failure'"
+                      >
+                        <strong>{{ endpointSmokeResults[profile.id]?.ok ? text('通过', 'Passed') : text('失败', 'Failed') }}</strong>
+                        <span>{{ endpointSmokeResults[profile.id]?.statusCode || '-' }} · {{ endpointSmokeResults[profile.id]?.latencyMs }} ms · {{ endpointSmokeResults[profile.id]?.route.upstreamUrl || '-' }}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -827,6 +903,14 @@
             <button type="button" class="secondary-button compact-button" :disabled="detectBusy" @click="closeDetectOverlay">
               {{ text('关闭', 'Close') }}
             </button>
+            <button
+              type="button"
+              class="secondary-button compact-button"
+              :disabled="detectBusy || !detectSupportedProtocols.length"
+              @click="mergeDetectedEndpointProfiles"
+            >
+              {{ text('同步 endpoint profiles', 'Sync endpoint profiles') }}
+            </button>
             <button type="button" class="primary-button compact-button" :disabled="detectBusy || !draft.baseUrl.trim()" @click="detectProviderConfig">
               {{ detectBusy ? text('识别中...', 'Detecting...') : text('重新识别', 'Detect again') }}
             </button>
@@ -855,7 +939,11 @@ import type {
   ModelGatewayProviderDetectProtocolResult,
   ModelGatewayProviderDetectResponse,
   ModelGatewayProviderCategory,
+  ModelGatewayProviderEndpointProfileInput,
   ModelGatewayProviderInput,
+  ModelGatewayProviderModelCatalog,
+  ModelGatewayProviderNetwork,
+  ModelGatewayProviderReasoning,
   ModelGatewayProviderModel,
   ModelGatewayProviderTestResponse,
   ModelGatewayProviderView,
@@ -911,6 +999,7 @@ type ProviderDraft = {
   proxyUrl: string;
   noProxy: string;
   appScopes: Record<ModelGatewayAppScope, boolean>;
+  endpointRows: EndpointProfileRow[];
 };
 
 type ModelCapabilityId = 'text' | 'vision' | 'tools' | 'reasoning' | 'responses' | 'streaming';
@@ -939,6 +1028,30 @@ type ProviderModelBulkDraft = {
   reasoning: boolean;
   responses: boolean;
   streaming: boolean;
+};
+
+type EndpointProfileRow = {
+  key: string;
+  id: string;
+  name: string;
+  enabled: boolean;
+  baseUrl: string;
+  apiFormat: ModelGatewayApiFormat;
+  authStrategy: ModelGatewayAuthStrategy;
+  priority: number;
+  anthropicEndpoint: string;
+  compactEndpoint: string;
+  appScopes: Record<ModelGatewayAppScope, boolean>;
+  inherited: {
+    apiKeyRef?: string | null;
+    models?: Partial<ModelGatewayProviderModelCatalog> | null;
+    reasoning?: ModelGatewayProviderReasoning | Record<string, unknown>;
+    network?: Partial<ModelGatewayProviderNetwork>;
+    health?: ModelGatewayProviderEndpointProfileInput['health'];
+    metadata?: ModelGatewayProviderEndpointProfileInput['metadata'];
+    createdAt?: string;
+    updatedAt?: string;
+  };
 };
 
 type ProtocolTemplate = {
@@ -1103,6 +1216,8 @@ const activeRouteStatuses = ref<ModelGatewayActiveRouteStatus[]>([]);
 const activeRouteAlerts = ref<string[]>([]);
 const activeRouteSmokeBusy = ref<Partial<Record<ModelGatewayAppScope, boolean>>>({});
 const activeRouteSmokeResults = ref<Partial<Record<ModelGatewayAppScope, ModelGatewayProviderTestResponse | null>>>({});
+const endpointSmokeBusy = ref<Record<string, boolean>>({});
+const endpointSmokeResults = ref<Record<string, ModelGatewayProviderTestResponse | null>>({});
 const smokeProviderId = ref('');
 const smokeRouteId = ref<ModelGatewayRouteId>('openai_responses');
 const smokeModel = ref('');
@@ -1117,8 +1232,8 @@ const appliedProtocolKey = ref('');
 const draft = reactive<ProviderDraft>(createEmptyDraft());
 const modelBulk = reactive<ProviderModelBulkDraft>(createModelBulkDraft());
 
-const selectedProviderEndpointProfiles = computed(() =>
-  providers.value.find((provider) => provider.id === draft.id)?.endpointProfiles || [],
+const endpointProfilesCanSmoke = computed(() =>
+  Boolean(draft.id.trim() && providerExists(draft.id.trim())),
 );
 
 const runtimeEntries = computed<ModelGatewayRuntimeRequestLogEntry[]>(() =>
@@ -1164,9 +1279,7 @@ const draftDefaultModelOptions = computed(() => uniqueStrings([
 const selectedSmokeProviderModelIds = computed(() => {
   const provider = selectedSmokeProvider.value;
   if (!provider) return [];
-  const listed = provider.models.models.map((model) => model.id).filter(Boolean);
-  const fallback = provider.models.defaultModel ? [provider.models.defaultModel] : [];
-  return uniqueStrings([...fallback, ...listed]);
+  return uniqueStrings(providerCatalogModels(provider).map((model) => model.id));
 });
 
 const detectSupportedProtocols = computed(() =>
@@ -1520,6 +1633,198 @@ function createEmptyScopes(enabled = true): Record<ModelGatewayAppScope, boolean
   };
 }
 
+function scopesRecordFromList(scopes: ModelGatewayAppScope[] | undefined): Record<ModelGatewayAppScope, boolean> {
+  const next = createEmptyScopes(false);
+  for (const scope of scopes || []) {
+    next[scope] = true;
+  }
+  return next;
+}
+
+function defaultAuthForApiFormat(format: ModelGatewayApiFormat): ModelGatewayAuthStrategy {
+  return format === 'anthropic_messages' ? 'anthropic_api_key' : 'bearer';
+}
+
+function defaultRouteForApiFormat(format: ModelGatewayApiFormat): ModelGatewayRouteId {
+  if (format === 'anthropic_messages') return 'anthropic_messages';
+  if (format === 'openai_responses') return 'openai_responses';
+  return 'openai_chat_completions';
+}
+
+function endpointProfileBaseId(format: ModelGatewayApiFormat): string {
+  if (format === 'anthropic_messages') return 'anthropic';
+  if (format === 'openai_responses') return 'responses';
+  return 'chat';
+}
+
+function endpointProfileName(format: ModelGatewayApiFormat): string {
+  if (format === 'anthropic_messages') return 'Anthropic Messages';
+  if (format === 'openai_responses') return 'OpenAI Responses';
+  return 'OpenAI Chat';
+}
+
+function nextUniqueEndpointProfileId(baseId: string, exceptKey = ''): string {
+  const normalizedBase = baseId.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'endpoint';
+  const existing = new Set(
+    draft.endpointRows
+      .filter((row) => row.key !== exceptKey)
+      .map((row) => row.id.trim())
+      .filter(Boolean),
+  );
+  if (!existing.has(normalizedBase)) return normalizedBase;
+  for (let index = 2; index < 1000; index += 1) {
+    const candidate = `${normalizedBase}-${index}`;
+    if (!existing.has(candidate)) return candidate;
+  }
+  return `${normalizedBase}-${Date.now()}`;
+}
+
+function createEndpointProfileRow(
+  profile?: ModelGatewayProviderView['endpointProfiles'][number],
+  seed: Partial<EndpointProfileRow> = {},
+): EndpointProfileRow {
+  const apiFormat = seed.apiFormat || profile?.apiFormat || draft.apiFormat;
+  const id = seed.id || profile?.id || nextUniqueEndpointProfileId(endpointProfileBaseId(apiFormat));
+  const endpoints = profile?.endpoints || {};
+  return {
+    key: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    id,
+    name: seed.name || profile?.name || endpointProfileName(apiFormat),
+    enabled: seed.enabled ?? profile?.enabled ?? true,
+    baseUrl: seed.baseUrl || profile?.baseUrl || draft.baseUrl,
+    apiFormat,
+    authStrategy: seed.authStrategy || profile?.authStrategy || defaultAuthForApiFormat(apiFormat),
+    priority: typeof seed.priority === 'number'
+      ? seed.priority
+      : typeof profile?.failover.priority === 'number'
+        ? profile.failover.priority
+        : Math.max(1, Number.isFinite(draft.priority) ? Math.floor(draft.priority) : 100),
+    anthropicEndpoint: seed.anthropicEndpoint || endpoints.anthropic_messages || '',
+    compactEndpoint: seed.compactEndpoint || endpoints.openai_responses_compact || '',
+    appScopes: seed.appScopes || scopesRecordFromList(profile?.appScopes || selectedScopes()),
+    inherited: profile
+      ? {
+        apiKeyRef: profile.apiKeyRef,
+        models: profile.models,
+        reasoning: profile.reasoning,
+        network: profile.network,
+        health: profile.health,
+        metadata: profile.metadata,
+        createdAt: profile.createdAt,
+        updatedAt: profile.updatedAt,
+      }
+      : {},
+  };
+}
+
+function endpointRowScopes(row: EndpointProfileRow): ModelGatewayAppScope[] {
+  const scopes = appScopeOptions
+    .filter((scope) => row.appScopes[scope.id])
+    .map((scope) => scope.id);
+  return scopes.length ? scopes : selectedScopes();
+}
+
+function buildEndpointOverridesForRow(row: EndpointProfileRow): Partial<Record<ModelGatewayRouteId, string>> {
+  const endpoints: Partial<Record<ModelGatewayRouteId, string>> = {};
+  if (row.anthropicEndpoint.trim()) endpoints.anthropic_messages = row.anthropicEndpoint.trim();
+  if (row.compactEndpoint.trim()) endpoints.openai_responses_compact = row.compactEndpoint.trim();
+  return endpoints;
+}
+
+function endpointRowsToInputs(rows: EndpointProfileRow[]): ModelGatewayProviderEndpointProfileInput[] {
+  return rows
+    .map((row) => {
+      const id = row.id.trim();
+      const baseUrl = row.baseUrl.trim();
+      if (!id || !baseUrl) return null;
+      return {
+        ...row.inherited,
+        id,
+        name: row.name.trim() || id,
+        enabled: row.enabled,
+        appScopes: endpointRowScopes(row),
+        baseUrl,
+        apiFormat: row.apiFormat,
+        authStrategy: row.authStrategy,
+        endpoints: buildEndpointOverridesForRow(row),
+        failover: {
+          enabled: true,
+          priority: Number.isFinite(row.priority) ? Math.max(0, Math.floor(row.priority)) : 100,
+          maxRetries: 1,
+        },
+      } satisfies ModelGatewayProviderEndpointProfileInput;
+    })
+    .filter((profile): profile is ModelGatewayProviderEndpointProfileInput => profile !== null);
+}
+
+function addEndpointProfileRow(seed: Partial<EndpointProfileRow> = {}): void {
+  const row = createEndpointProfileRow(undefined, {
+    id: seed.id || nextUniqueEndpointProfileId(endpointProfileBaseId(seed.apiFormat || draft.apiFormat)),
+    name: seed.name,
+    baseUrl: seed.baseUrl || draft.baseUrl,
+    apiFormat: seed.apiFormat || draft.apiFormat,
+    authStrategy: seed.authStrategy || defaultAuthForApiFormat(seed.apiFormat || draft.apiFormat),
+    priority: seed.priority ?? Math.max(1, draft.endpointRows.length + 1),
+    appScopes: seed.appScopes || scopesRecordFromList(selectedScopes()),
+    anthropicEndpoint: seed.anthropicEndpoint,
+    compactEndpoint: seed.compactEndpoint,
+  });
+  draft.endpointRows.push(row);
+}
+
+function removeEndpointProfileRow(index: number): void {
+  const row = draft.endpointRows[index];
+  draft.endpointRows.splice(index, 1);
+  if (row?.id) {
+    const next = { ...endpointSmokeResults.value };
+    delete next[row.id];
+    endpointSmokeResults.value = next;
+  }
+}
+
+function updateEndpointProtocol(row: EndpointProfileRow): void {
+  row.authStrategy = defaultAuthForApiFormat(row.apiFormat);
+  if (!row.name.trim() || apiFormatOptions.some((option) => option.label === row.name.trim())) {
+    row.name = endpointProfileName(row.apiFormat);
+  }
+  if (!row.id.trim()) {
+    row.id = nextUniqueEndpointProfileId(endpointProfileBaseId(row.apiFormat), row.key);
+  }
+}
+
+function mergeDetectedEndpointProfiles(): void {
+  const supported = detectSupportedProtocols.value;
+  if (!supported.length) {
+    notice.value = { kind: 'error', message: text('没有可生成 endpoint 的可用协议。', 'No supported protocol can be turned into endpoints.') };
+    return;
+  }
+  let changed = 0;
+  for (const [index, protocol] of supported.entries()) {
+    const id = nextUniqueEndpointProfileId(endpointProfileBaseId(protocol.apiFormat));
+    const existing = draft.endpointRows.find((row) => row.apiFormat === protocol.apiFormat && row.baseUrl.trim() === draft.baseUrl.trim());
+    const target = existing || createEndpointProfileRow(undefined, {
+      id,
+      name: endpointProfileName(protocol.apiFormat),
+      baseUrl: draft.baseUrl.trim(),
+      apiFormat: protocol.apiFormat,
+      authStrategy: protocol.authStrategy,
+      priority: index + 1,
+      appScopes: scopesRecordFromList(protocol.apiFormat === 'anthropic_messages' ? ['claude-code'] : selectedScopes()),
+    });
+    target.enabled = true;
+    target.apiFormat = protocol.apiFormat;
+    target.authStrategy = protocol.authStrategy;
+    target.baseUrl = draft.baseUrl.trim();
+    target.priority = existing ? target.priority : index + 1;
+    if (!existing) draft.endpointRows.push(target);
+    changed += 1;
+  }
+  notice.value = {
+    kind: 'success',
+    message: text(`已同步 ${changed} 个 endpoint profile。`, `${changed} endpoint profiles synced.`),
+  };
+}
+
 function createEmptyDraft(): ProviderDraft {
   return {
     templateId: '',
@@ -1540,6 +1845,7 @@ function createEmptyDraft(): ProviderDraft {
     proxyUrl: '',
     noProxy: '',
     appScopes: createEmptyScopes(true),
+    endpointRows: [],
   };
 }
 
@@ -1559,6 +1865,7 @@ function createModelBulkDraft(): ProviderModelBulkDraft {
 function resetDraft(): void {
   Object.assign(draft, createEmptyDraft());
   Object.assign(modelBulk, createModelBulkDraft());
+  endpointSmokeResults.value = {};
 }
 
 function applyProtocolTemplate(template: ProtocolTemplate): void {
@@ -1605,10 +1912,12 @@ function editProvider(provider: ModelGatewayProviderView): void {
     appScopes: Object.fromEntries(
       appScopeOptions.map((scope) => [scope.id, provider.appScopes.includes(scope.id)]),
     ) as Record<ModelGatewayAppScope, boolean>,
+    endpointRows: provider.endpointProfiles.map(createEndpointProfileRow),
   });
   smokeProviderId.value = provider.id;
   smokeModel.value = draft.defaultModel;
   Object.assign(modelBulk, createModelBulkDraft());
+  endpointSmokeResults.value = {};
 }
 
 function providerExists(providerId: string): boolean {
@@ -1877,6 +2186,22 @@ function appConnectionModelOptionLabel(modelId: string): string {
   return budget ? `${modelId}${label} · ${budget}` : `${modelId}${label}`;
 }
 
+function catalogModels(catalog: ModelGatewayProviderModelCatalog | null | undefined): ModelGatewayProviderModel[] {
+  if (!catalog) return [];
+  const models = [...(catalog.models || [])];
+  if (catalog.defaultModel && !models.some((model) => model.id === catalog.defaultModel)) {
+    models.unshift({ id: catalog.defaultModel });
+  }
+  return models;
+}
+
+function providerCatalogModels(provider: ModelGatewayProviderView): ModelGatewayProviderModel[] {
+  return [
+    ...catalogModels(provider.models),
+    ...provider.endpointProfiles.flatMap((profile) => catalogModels(profile.models)),
+  ];
+}
+
 function appConnectionModelMetadata(modelId: string): { label: string | null; contextWindow: number | null; maxOutputTokens: number | null } {
   const key = normalizeModelKey(modelId);
   const result: { label: string | null; contextWindow: number | null; maxOutputTokens: number | null } = {
@@ -1886,12 +2211,7 @@ function appConnectionModelMetadata(modelId: string): { label: string | null; co
   };
 
   for (const provider of providers.value.filter((item) => item.enabled)) {
-    const providerModels = provider.models.models.length
-      ? provider.models.models
-      : provider.models.defaultModel
-        ? [{ id: provider.models.defaultModel } as ModelGatewayProviderModel]
-        : [];
-    for (const model of providerModels) {
+    for (const model of providerCatalogModels(provider)) {
       const aliases = model.aliases || [];
       const matches = normalizeModelKey(model.id) === key || aliases.some((alias) => normalizeModelKey(alias) === key);
       if (!matches) continue;
@@ -2409,6 +2729,7 @@ async function saveProvider(): Promise<void> {
       aliases: {},
     },
     endpoints: buildEndpointOverrides(),
+    endpointProfiles: endpointRowsToInputs(draft.endpointRows),
     network: {
       proxyUrl: draft.proxyUrl.trim() || null,
       noProxy: parseNoProxy(draft.noProxy),
@@ -2584,6 +2905,53 @@ async function runSmoke(): Promise<void> {
     };
   } finally {
     smokeBusy.value = false;
+  }
+}
+
+async function smokeEndpointProfile(profile: EndpointProfileRow): Promise<void> {
+  const providerId = draft.id.trim();
+  const endpointProfileId = profile.id.trim();
+  if (!providerId || !endpointProfileId) return;
+  endpointSmokeBusy.value = {
+    ...endpointSmokeBusy.value,
+    [endpointProfileId]: true,
+  };
+  endpointSmokeResults.value = {
+    ...endpointSmokeResults.value,
+    [endpointProfileId]: null,
+  };
+  notice.value = null;
+  try {
+    const response = await testModelGatewayProvider(providerId, {
+      endpointProfileId,
+      routeId: defaultRouteForApiFormat(profile.apiFormat),
+      model: draft.defaultModel.trim() || draftModelIds.value[0] || undefined,
+      input: smokeInput.value || 'Reply with GATEWAY_OK',
+      timeoutMs: 60000,
+    });
+    endpointSmokeResults.value = {
+      ...endpointSmokeResults.value,
+      [endpointProfileId]: response,
+    };
+    smokeProviderId.value = providerId;
+    smokeRouteId.value = defaultRouteForApiFormat(profile.apiFormat);
+    smokeModel.value = draft.defaultModel || smokeModel.value;
+    smokeResult.value = response;
+    await loadRuntimeOnly();
+    notice.value = {
+      kind: response.ok ? 'success' : 'error',
+      message: response.ok ? text('Endpoint smoke 通过', 'Endpoint smoke passed') : text('Endpoint smoke 失败', 'Endpoint smoke failed'),
+    };
+  } catch (error) {
+    notice.value = {
+      kind: 'error',
+      message: error instanceof Error ? error.message : text('Endpoint smoke 失败', 'Endpoint smoke failed'),
+    };
+  } finally {
+    endpointSmokeBusy.value = {
+      ...endpointSmokeBusy.value,
+      [endpointProfileId]: false,
+    };
   }
 }
 

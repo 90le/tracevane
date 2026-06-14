@@ -925,6 +925,78 @@ test("model gateway forwards through endpoint profiles and updates endpoint heal
   assert.equal(endpoint?.health.circuitState, "closed");
 });
 
+test("model gateway provider smoke can target a specific endpoint profile", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createModelGatewayService(config);
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "glm",
+      name: "GLM",
+      appScopes: ["codex", "claude-code", "opencode", "openclaw"],
+      baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "glm-5.2",
+        models: [{ id: "glm-5.2" }],
+      },
+      endpointProfiles: [{
+        id: "coding-anthropic",
+        name: "Coding Anthropic",
+        appScopes: ["claude-code"],
+        baseUrl: "https://open.bigmodel.cn/api/anthropic",
+        apiFormat: "anthropic_messages",
+        authStrategy: "anthropic_api_key",
+        endpoints: { anthropic_messages: "/v1/messages" },
+        failover: { priority: 1 },
+      }],
+    },
+    secret: { apiKey: "sk-endpoint-profile-smoke" },
+  });
+
+  const originalFetch = globalThis.fetch;
+  let seenUrl = "";
+  let seenApiKey = "";
+  globalThis.fetch = async (url, init = {}) => {
+    seenUrl = String(url);
+    const headers = init.headers instanceof Headers ? init.headers : new Headers(init.headers || {});
+    seenApiKey = headers.get("x-api-key") || "";
+    return new Response(JSON.stringify({
+      id: "msg_endpoint_smoke",
+      type: "message",
+      role: "assistant",
+      content: [{ type: "text", text: "ok" }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    const result = await service.testProvider(undefined, "glm", {
+      endpointProfileId: "coding-anthropic",
+      routeId: "anthropic_messages",
+      model: "glm-5.2",
+      input: "Reply ok",
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.route.endpointProfile?.id, "coding-anthropic");
+    assert.equal(result.route.upstreamUrl, "https://open.bigmodel.cn/api/anthropic/v1/messages");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(seenUrl, "https://open.bigmodel.cn/api/anthropic/v1/messages");
+  assert.equal(seenApiKey, "sk-endpoint-profile-smoke");
+  const listed = service.listProviders();
+  const glm = listed.providers.find((provider) => provider.id === "glm");
+  const endpoint = glm?.endpointProfiles.find((profile) => profile.id === "coding-anthropic");
+  assert.equal(glm?.health.lastSuccessAt, null);
+  assert.ok(endpoint?.health.lastSuccessAt);
+});
+
 test("model gateway probes open circuit provider after retry window for requested model", () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
