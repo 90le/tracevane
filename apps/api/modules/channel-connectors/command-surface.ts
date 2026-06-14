@@ -34,6 +34,7 @@ const PERMISSION_MODES: readonly ChannelConnectorPermissionMode[] = [
 
 const REASONING_EFFORTS: readonly ChannelConnectorReasoningEffort[] = ["low", "medium", "high", "xhigh"];
 const AUTO_VISION_MODEL_SENTINEL = "__studio_auto__";
+const FEISHU_MODEL_SELECT_OPTION_LIMIT = 100;
 
 const PERMISSION_MODE_LABELS: Record<ChannelConnectorPermissionMode, string> = {
   suggest: "建议确认",
@@ -598,12 +599,14 @@ export function buildChannelConnectorCommandSurface(
     agent: current.agent,
     model: current.model,
   });
-  const models = uniqueStrings([
+  const modelCatalog = uniqueStrings([
     ...(input.models || []),
     current.model || "",
     ...input.config.projects.map((project) => project.model || ""),
-  ]).slice(0, 12);
-  const visionModels = uniqueStrings(input.visionModels || []).slice(0, 12);
+  ]);
+  const visionModelCatalog = uniqueStrings(input.visionModels || []);
+  const models = modelCatalog.slice(0, FEISHU_MODEL_SELECT_OPTION_LIMIT);
+  const visionModels = visionModelCatalog.slice(0, FEISHU_MODEL_SELECT_OPTION_LIMIT);
   const skills: ChannelConnectorCommandSurfaceSkill[] = (input.skills || []).map((skill) => ({
     name: normalizeString(skill.name),
     displayName: normalizeString(skill.displayName),
@@ -891,6 +894,10 @@ export function buildChannelConnectorCommandSurface(
       visionModel,
       visionModelSource,
       thinkingSupport,
+      modelCount: modelCatalog.length,
+      modelOptionCount: models.length,
+      visionModelCount: visionModelCatalog.length,
+      visionModelOptionCount: visionModels.length,
     },
     session: input.agentSession || null,
     sessionList: (input.sessionList || []).slice(0, 20),
@@ -1654,7 +1661,15 @@ function renderModelPickerCard(surface: ChannelConnectorCommandSurface): Channel
   const elements: Array<Record<string, unknown>> = [
     {
       tag: "markdown",
-      content: `**当前模型**\n${current}\n\n**可选模型**\n${modelActions.length || 0} 个`,
+      content: [
+        "**当前模型**",
+        current,
+        "",
+        "**可选模型**",
+        surface.current.modelOptionCount === surface.current.modelCount
+          ? `${surface.current.modelCount || 0} 个`
+          : `${surface.current.modelOptionCount || 0}/${surface.current.modelCount || 0} 个，超出部分可用 /model <模型ID> 切换`,
+      ].join("\n"),
     },
     selectStaticElement({
       placeholder: "选择模型",
@@ -1735,7 +1750,12 @@ function renderVisionPickerCard(surface: ChannelConnectorCommandSurface): Channe
   ];
   elements.push({
     tag: "markdown",
-    content: `**视觉模型**\n图片输入 fallback 可用模型：${modelActions.length || 0} 个`,
+    content: [
+      "**视觉模型**",
+      surface.current.visionModelOptionCount === surface.current.visionModelCount
+        ? `图片输入 fallback 可用模型：${surface.current.visionModelCount || 0} 个`
+        : `图片输入 fallback 可用模型：${surface.current.visionModelOptionCount || 0}/${surface.current.visionModelCount || 0} 个`,
+    ].join("\n"),
   });
   elements.push(selectStaticElement({
     placeholder: modelActions.length ? "选择视觉模型" : "暂无 vision 模型",

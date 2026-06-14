@@ -511,6 +511,10 @@ export interface ChannelConnectorCommandSurface {
     visionModel: string | null;
     visionModelSource: "session" | "binding" | "auto";
     thinkingSupport: ChannelConnectorThinkingSupport;
+    modelCount: number;
+    modelOptionCount: number;
+    visionModelCount: number;
+    visionModelOptionCount: number;
   };
   session: {
     started: boolean;

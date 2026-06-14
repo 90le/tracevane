@@ -1,6 +1,6 @@
 # Studio Gateway / Channel Connectors 进度
 
-> 更新：2026-06-13
+> 更新：2026-06-14
 > 规则：只记录当前事实、本轮完成、验证、边界和下一步；历史细节看 git commit。
 
 ## 当前事实
@@ -11,6 +11,7 @@
 - Provider Center 支持自定义 provider、启停、模型列表/别名/默认模型、能力勾选、批量模型导入、批量预算/能力应用、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
 - Provider Center 不再按模型名自动标记 vision；图片能力只来自用户配置、上游显式能力元数据或图片 smoke 通过后用户确认写回。
 - App Connections 覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收。
+- BigModel/GLM 本地模型目录已加入 `glm-5.2`，按 1M context / 128K output 预算；Gateway 内置推断同时识别 `glm-5.2` 与官方 1M 后缀别名 `glm-5.2[1m]`。
 - Channel Connectors 走 Studio 原生 CLI Agent Bot 路线；当前 live Agent 只暴露 Codex、Claude Code、OpenCode。
 - Feishu/Octo 首期验收已收窄为私聊完整性：文本对话、文件/图片传输、Agent CLI 原生能力、工具流/回复解析、`/compact`、`/stop`、session/model/permission/workdir 切换。
 - 已实现的群聊、thread、多 bot、GROUP.md/THREAD.md、Octo 管理命令和 Feishu 群上下文仅保留 best-effort；不再作为当前主线或发布前阻断项。
@@ -21,6 +22,12 @@
 
 ## 本轮完成
 
+- Gateway 模型预算：
+  - `knownModelDefaults` 为 `glm-5.2` / `glm-5.2[1m]` 固定 1M context、128K output、tools/reasoning/text/streaming/responses；不默认 vision。
+  - 当前本地 GLM provider 模型目录加入 `glm-5.2`，并添加 `glm-5.2[1m]` alias。
+- Channel Connectors 模型菜单：
+  - Feishu / command surface 的模型选择不再把 Gateway 聚合模型静默截断到 12 个。
+  - 模型/视觉模型选择器保留 Gateway 全量选择能力，极端超过 100 个时显示已展示/总数并允许 `/model <模型ID>` 手动切换。
 - 清理并压缩 `docs/`：
   - 新增 `docs/README.md` 作为文档索引和维护规则。
   - 压缩 Gateway、Channel Connectors、Feishu、Chat、富消息、渲染、PRD、架构和当前进展文档。
@@ -88,6 +95,10 @@
 
 ## 最近验证
 
+- 本轮验证通过：`npm run typecheck:api`
+- 本轮验证通过：`npm run build:api`
+- 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，54/54 通过，覆盖 `glm-5.2` / `glm-5.2[1m]` 1M context 推断。
+- 本轮验证通过：`node --test tests/system/channel-connectors-service.test.mjs`，104/104 通过，覆盖 Gateway 模型列表超过 12 个时 Feishu/命令模型菜单仍显示后续模型。
 - 上一轮代码验证通过：`npm run typecheck:api`
 - 上一轮代码验证通过：`npm run build:api`
 - 上一轮代码验证通过：`npm run typecheck:web`

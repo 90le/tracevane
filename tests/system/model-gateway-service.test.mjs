@@ -348,6 +348,8 @@ test("model gateway detects provider protocols without persisting probe secrets"
           },
           { id: "model-b", contextWindow: "256000", maxOutputTokens: "16384" },
           { id: "gpt-5.4-mini" },
+          { id: "glm-5.2" },
+          { id: "glm-5.2[1m]" },
           { id: "claude-opus-4-6" },
           "deepseek-reasoner",
         ],
@@ -413,17 +415,19 @@ test("model gateway detects provider protocols without persisting probe secrets"
 
       assert.equal(response.status, 200);
       assert.equal(response.body.ok, true);
-      assert.equal(response.body.models.length, 5);
+      assert.equal(response.body.models.length, 7);
       assert.deepEqual(response.body.models.map((model) => model.id), [
         "model-a",
         "model-b",
         "gpt-5.4-mini",
+        "glm-5.2",
+        "glm-5.2[1m]",
         "claude-opus-4-6",
         "deepseek-reasoner",
       ]);
       assert.deepEqual(
         response.body.models.map((model) => [model.contextWindow, model.maxOutputTokens]),
-        [[128000, 8192], [256000, 16384], [1050000, 128000], [1000000, 64000], [64000, 8000]],
+        [[128000, 8192], [256000, 16384], [1050000, 128000], [1000000, 128000], [1000000, 128000], [1000000, 64000], [64000, 8000]],
       );
       assert.deepEqual(response.body.models[0].features, {
         text: true,
@@ -450,6 +454,22 @@ test("model gateway detects provider protocols without persisting probe secrets"
         responses: true,
       });
       assert.deepEqual(response.body.models[4].features, {
+        text: true,
+        streaming: true,
+        tools: true,
+        vision: false,
+        reasoning: true,
+        responses: true,
+      });
+      assert.deepEqual(response.body.models[5].features, {
+        text: true,
+        streaming: true,
+        tools: true,
+        vision: false,
+        reasoning: true,
+        responses: true,
+      });
+      assert.deepEqual(response.body.models[6].features, {
         text: true,
         streaming: true,
         tools: false,

@@ -403,6 +403,18 @@ async function withMockGatewayModelsServer(task) {
         data: [
           { id: "gateway-gpt-5", object: "model", aliases: ["vision-main"], features: { text: true, vision: true, tools: true } },
           { id: "gateway-glm-5", object: "model", features: { text: true, vision: false } },
+          { id: "gateway-model-03", object: "model", features: { text: true, vision: false } },
+          { id: "gateway-model-04", object: "model", features: { text: true, vision: false } },
+          { id: "gateway-model-05", object: "model", features: { text: true, vision: false } },
+          { id: "gateway-model-06", object: "model", features: { text: true, vision: false } },
+          { id: "gateway-model-07", object: "model", features: { text: true, vision: false } },
+          { id: "gateway-model-08", object: "model", features: { text: true, vision: false } },
+          { id: "gateway-model-09", object: "model", features: { text: true, vision: false } },
+          { id: "gateway-model-10", object: "model", features: { text: true, vision: false } },
+          { id: "gateway-model-11", object: "model", features: { text: true, vision: false } },
+          { id: "gateway-model-12", object: "model", features: { text: true, vision: false } },
+          { id: "gateway-model-13", object: "model", features: { text: true, vision: false } },
+          { id: "gateway-model-14", object: "model", features: { text: true, vision: false } },
           { id: "gateway-gpt-5", object: "model", features: { vision: true } },
         ],
       }));
@@ -8391,7 +8403,10 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
 test("native Channel Connectors model menus can read live Gateway model lists", async () => {
   await withMockGatewayModelsServer(async ({ baseUrl, requests }) => {
     const models = await listChannelConnectorGatewayModels(`${baseUrl}/v1`, "studio-client-key");
-    assert.deepEqual(models, ["gateway-gpt-5", "gateway-glm-5"]);
+    assert.equal(models.length, 14);
+    assert.deepEqual(models.slice(0, 2), ["gateway-gpt-5", "gateway-glm-5"]);
+    assert.equal(models.includes("gateway-model-13"), true);
+    assert.equal(models.includes("gateway-model-14"), true);
     assert.equal(requests.length, 1);
     assert.equal(requests[0].method, "GET");
     assert.equal(requests[0].path, "/v1/models");
@@ -8620,6 +8635,8 @@ test("native Channel Connectors command surface loads Gateway models when reques
     assert.match(cardRaw, /模型选择/);
     assert.match(cardRaw, /act:\/model gateway-gpt-5/);
     assert.match(cardRaw, /act:\/model gateway-glm-5/);
+    assert.match(cardRaw, /act:\/model gateway-model-13/);
+    assert.match(cardRaw, /act:\/model gateway-model-14/);
 
     const visionSurface = await service.getCommandSurface({
       bindingId: "feishu-gateway",

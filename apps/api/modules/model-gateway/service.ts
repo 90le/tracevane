@@ -585,6 +585,13 @@ function knownModelDefaults(modelId: string): Partial<ModelGatewayProviderModel>
       features: { ...features, tools: !isReasoner, reasoning: isReasoner, vision: false },
     };
   }
+  if (modelNameMatches(modelId, [/^glm[-_]?5\.2(?:$|[-_:/\s\[])/])) {
+    return {
+      contextWindow: 1_000_000,
+      maxOutputTokens: 128_000,
+      features: { ...features, vision: modelNameMatches(modelId, [/vl/, /vision/, /v$/]), tools: true, reasoning: true },
+    };
+  }
   if (modelNameMatches(modelId, [/^glm[-_]?5/, /^glm[-_]?4\.[56]/])) {
     return {
       contextWindow: 200_000,
