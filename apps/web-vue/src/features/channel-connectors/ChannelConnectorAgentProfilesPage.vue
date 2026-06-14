@@ -369,7 +369,11 @@
                 <span class="form-label">{{ text('事件筛选', 'Event filter') }}</span>
                 <StudioSelect v-model="eventFilter" :options="eventFilterOptions" />
               </label>
-              <span>{{ text(`当前显示 ${relatedSessionEvents.length} 条`, `Showing ${relatedSessionEvents.length} events`) }}</span>
+              <label class="form-field">
+                <span class="form-label">{{ text('显示数量', 'Show') }}</span>
+                <StudioSelect v-model="eventLimit" :options="eventLimitOptions" />
+              </label>
+              <span>{{ relatedSessionEventCountLabel }}</span>
             </div>
 
             <div v-if="requestedSessions.length" class="ccx-list ccx-agent-profile-requested-list">
@@ -568,6 +572,7 @@ const gatewayModelBudgetIndex = ref<Record<string, GatewayModelBudget>>({});
 const selectedProfileId = ref('');
 const reasoningEffortDraft = ref('');
 const eventFilter = ref('all');
+const eventLimit = ref('8');
 const loading = ref(false);
 const loaded = ref(false);
 const saving = ref(false);
@@ -771,14 +776,33 @@ const eventFilterOptions = computed(() => {
   ];
 });
 
-const relatedSessionEvents = computed(() => {
-  const filtered = allRelatedSessionEvents.value.filter((event) => {
+const eventLimitOptions = computed(() => [
+  { value: '8', label: '8' },
+  { value: '20', label: '20' },
+  { value: '50', label: '50' },
+]);
+
+const filteredRelatedSessionEvents = computed(() =>
+  allRelatedSessionEvents.value.filter((event) => {
     if (eventFilter.value === 'all') return true;
     if (eventFilter.value === 'failures') return Boolean(event.error) || event.type === 'turn.failed';
     return event.type === eventFilter.value;
-  });
-  return filtered.slice(0, 8);
+  }),
+);
+
+const relatedSessionEventLimit = computed(() => {
+  const value = Number(eventLimit.value);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : 8;
 });
+
+const relatedSessionEvents = computed(() => filteredRelatedSessionEvents.value.slice(0, relatedSessionEventLimit.value));
+
+const relatedSessionEventCountLabel = computed(() =>
+  text(
+    `当前显示 ${relatedSessionEvents.value.length} / ${filteredRelatedSessionEvents.value.length} 条`,
+    `Showing ${relatedSessionEvents.value.length} / ${filteredRelatedSessionEvents.value.length} events`,
+  ),
+);
 
 const canDeleteSelectedProfile = computed(() =>
   Boolean(profileDraft.id)
@@ -1078,6 +1102,7 @@ function selectProfile(profile: ChannelConnectorAgentProfile): void {
   profileDraft.appProfileRef = profile.appProfileRef || 'default';
   reasoningEffortDraft.value = profile.reasoningEffort || '';
   eventFilter.value = 'all';
+  eventLimit.value = '8';
 }
 
 function bestProfileForRoute(): ChannelConnectorAgentProfile | null {

@@ -49,7 +49,7 @@
   - Profile 工作台补齐复制、删除保护、设为默认、模型网关跳转、事件筛选和当前 Profile 活动会话批量停止；删除会阻止仅剩一个 Profile、仍有 IM 绑定或活动 session 的情况。
   - Profile 编辑流补齐真实重命名语义：保存或设默认时按原始 Profile ID 替换，并自动迁移相关 IM binding；重复 ID、缺少工作目录或缺少 ID 会阻止保存，未保存状态可撤销。
   - Profile effective model 顺序改为 `Profile model > Gateway app-specific model > Gateway default model`；Profile 列表会显示继承后的 effective model，页面展示当前 CLI App Connection 的协议、endpoint、配置状态、resolved model、目标配置文件、最近备份、启动提示、阻断原因和脱敏 preview，并可把当前 Profile 的模型/预算/推理配置直接应用到对应 CLI App；`App Profile` 改为受控 `default` 选择并保留既有自定义值。
-  - Profile 工作台的 IM binding 摘要会展示启停、连接健康和 session driver requested/effective mode；active session 行展示 profile/session/pool/turns/idle trace；session event 行展示 agent/model/session/message/workdir trace，并对失败事件做 danger 标记；IM binding、requested persistent binding、活动 session 和 session event 行都可直达绑定配置；`/channel-connectors?bindingId=...&profileId=...` 会打开 Platforms tab 并选中对应 binding，`profileId` 入口会打开 Profiles tab；主配置页返回 Profile 工作台会保留当前 `profileId`。
+  - Profile 工作台的 IM binding 摘要会展示启停、连接健康和 session driver requested/effective mode；active session 行展示 profile/session/pool/turns/idle trace；session event 行展示 agent/model/session/message/workdir trace，并对失败事件做 danger 标记；事件列表支持 8/20/50 显示数量；IM binding、requested persistent binding、活动 session 和 session event 行都可直达绑定配置；`/channel-connectors?bindingId=...&profileId=...` 会打开 Platforms tab 并选中对应 binding，`profileId` 入口会打开 Profiles tab；主配置页返回 Profile 工作台会保留当前 `profileId`。
   - Profile 工作台的“模型网关”和 CLI App Connection 卡片入口都会带 `tab=connections&app=<cli>` 打开 Model Gateway，并定位当前 Profile 对应的 CLI App Connection。
 - 清理并压缩 `docs/`：
   - 新增 `docs/README.md` 作为文档索引和维护规则。
@@ -118,7 +118,7 @@
 
 ## 最近验证
 
-- 本轮验证通过：`node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs tests/system/studio-web-channel-connectors-page.test.mjs`，覆盖 Channel Connectors 独立 Profile 工作台、Gateway 预算索引、Profile 复制/删除/事件筛选/批量停止控件、Profile ID 重命名迁移绑定合同、App Connection effective model / apply / preview 合同、IM binding deep-link 选中合同、Agents 旧 CLI 路由删除和 Channel Connectors 独立导航。
+- 本轮验证通过：`node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs tests/system/studio-web-channel-connectors-page.test.mjs`，覆盖 Channel Connectors 独立 Profile 工作台、Gateway 预算索引、Profile 复制/删除/事件筛选/事件数量/批量停止控件、Profile ID 重命名迁移绑定合同、App Connection effective model / apply / preview 合同、IM binding deep-link 选中合同、Agents 旧 CLI 路由删除和 Channel Connectors 独立导航。
 - 本轮验证通过：`npm run typecheck:web`
 - 本轮验证通过：`npm run typecheck:api`
 - 本轮验证通过：`npm run build:web`
