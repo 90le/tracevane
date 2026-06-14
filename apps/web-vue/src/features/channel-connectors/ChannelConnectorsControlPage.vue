@@ -275,13 +275,19 @@
         >
           <div class="ccx-panel-head">
             <div>
-              <p class="eyebrow">Projects</p>
-              <h3>{{ text('项目与 Agent', 'Projects and agents') }}</h3>
+              <p class="eyebrow">CLI Profiles</p>
+              <h3>{{ text('CLI Profile 快改', 'CLI profile quick edit') }}</h3>
             </div>
-            <button type="button" class="secondary-button compact-button ccx-icon-button" @click="newProfileDraft">
-              <Plus :size="16" />
-              {{ text('新建', 'New') }}
-            </button>
+            <div class="ccx-platform-actions">
+              <RouterLink class="secondary-button compact-button ccx-icon-button ccx-icon-link" to="/channel-connectors/profiles">
+                <ExternalLink :size="16" />
+                {{ text('Profile 工作台', 'Profile workspace') }}
+              </RouterLink>
+              <button type="button" class="secondary-button compact-button ccx-icon-button" @click="newProfileDraft">
+                <Plus :size="16" />
+                {{ text('新建', 'New') }}
+              </button>
+            </div>
           </div>
           <div class="ccx-split">
             <form class="ccx-form" @submit.prevent="saveProfileDraft">
@@ -733,6 +739,7 @@ import { computed, onMounted, ref } from 'vue';
 import {
   Activity,
   Download,
+  ExternalLink,
   FileText,
   MoreHorizontal,
   Play,
@@ -809,7 +816,7 @@ type BindingDraft = Omit<ChannelConnectorPlatformBinding, 'allowlist' | 'adminUs
 const { text } = useLocalePreference();
 const tabs: Array<{ id: WorkspaceTab; zh: string; en: string }> = [
   { id: 'runtime', zh: '运行', en: 'Runtime' },
-  { id: 'projects', zh: '项目', en: 'Projects' },
+  { id: 'projects', zh: 'Profiles', en: 'Profiles' },
   { id: 'platforms', zh: '平台', en: 'Platforms' },
   { id: 'skills', zh: 'Skills', en: 'Skills' },
   { id: 'sessions', zh: '会话', en: 'Sessions' },

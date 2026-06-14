@@ -59,7 +59,8 @@ test("Channel Connectors page calls only channel connector APIs", () => {
   }
 
   assert.match(page, /Runtime/);
-  assert.match(page, /Projects/);
+  assert.match(page, /Profiles/);
+  assert.match(page, /\/channel-connectors\/profiles/);
   assert.match(page, /Platforms/);
   assert.match(page, /Sessions/);
   assert.match(page, /Channel daemon/);

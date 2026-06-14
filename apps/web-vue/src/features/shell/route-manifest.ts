@@ -17,11 +17,12 @@ const DreamingView = () => import("../../views/DreamingView.vue");
 const ChatShellPage = () => import("../chat/ChatShellPage.vue");
 const AgentsControlPage = () => import("../agents/AgentsControlPage.vue");
 import { encodeChatSessionRef, isChatSessionRef } from "../chat/session-ref";
-const AgentCliPage = () => import("../agents/AgentCliPage.vue");
 const AgentDocsPage = () => import("../agents/AgentDocsPage.vue");
 const AgentBindingsPage = () => import("../agents/AgentBindingsPage.vue");
 const AgentAdvancedPage = () => import("../agents/AgentAdvancedPage.vue");
 const AgentSessionsPage = () => import("../agents/AgentSessionsPage.vue");
+const ChannelConnectorAgentProfilesPage = () =>
+  import("../channel-connectors/ChannelConnectorAgentProfilesPage.vue");
 const ChannelsControlPage = () => import("../channels/ChannelsControlPage.vue");
 const ChannelProviderSettingsPage = () =>
   import("../channels/ChannelProviderSettingsPage.vue");
@@ -222,7 +223,6 @@ const coreRouteChunkLoaders: RouteChunkLoader[] = [
   DashboardView,
   AgentsView,
   AgentsControlPage,
-  AgentCliPage,
   AgentDocsPage,
   AgentBindingsPage,
   AgentAdvancedPage,
@@ -230,6 +230,7 @@ const coreRouteChunkLoaders: RouteChunkLoader[] = [
   ChannelsView,
   ChannelsControlPage,
   ChannelConnectorsView,
+  ChannelConnectorAgentProfilesPage,
   ModelGatewayView,
   ChannelProviderSettingsPage,
   ChannelAccountDetailPage,
@@ -287,7 +288,6 @@ export const shellRoutes: RouteRecordRaw[] = [
     children: [
       { path: "", component: AgentsControlPage },
       { path: ":agentId", component: AgentsControlPage },
-      { path: ":agentId/cli", component: AgentCliPage },
       { path: ":agentId/docs", component: AgentDocsPage },
       { path: ":agentId/bindings", component: AgentBindingsPage },
       { path: ":agentId/sessions", component: AgentSessionsPage },
@@ -350,6 +350,10 @@ export const shellRoutes: RouteRecordRaw[] = [
   {
     path: "/channel-connectors",
     component: ChannelConnectorsView,
+  },
+  {
+    path: "/channel-connectors/profiles",
+    component: ChannelConnectorAgentProfilesPage,
   },
   {
     path: "/model-gateway",

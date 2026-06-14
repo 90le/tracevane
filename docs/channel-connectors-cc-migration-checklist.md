@@ -29,7 +29,7 @@
 - Agent prompt/skills 只保留私聊消息、文件/图片附件、工作目录、权限、compact 和 Agent CLI 原生命令说明。
 - 出站附件和私聊消息仍由 Studio native transport 执行；Agent 只声明 `studio-channel-files` / `studio-channel-messages`。
 - 产品未发布前不为旧实验命令/字段做兼容负担；已取消的工作流不再保留 UI 入口。
-- 前端信息架构：Channel Connectors 页面保留 daemon/platform 运维；Agent CLI Profile 的高频配置、Gateway 模型选择、绑定摘要和会话记录进入 `/agents/:agentId/cli`。
+- 前端信息架构：Channel Connectors 页面承载 daemon/platform 运维和 CLI Profile 管理；Agent CLI Profile 的高频配置、Gateway 模型选择、绑定摘要和会话记录进入 `/channel-connectors/profiles`，不得挂回 OpenClaw Agents 子页。
 
 ## 任务清单
 
@@ -46,7 +46,7 @@
 | P1 | Octo 私聊 | 进行中：长连接 live 稳定；Markdown 已验证；入站文件/图片 staged-path live、入站文件路径返回 24h live、`.mp4` 文件形态视频 24h live、权限 24h live、媒体 payload 文本保留、auto compact 24h live、显式 `/compact` 24h live、出站文件 `outboundFilesSent` live 证据已补 | 继续复核未覆盖 CLI 事件形态 |
 | P1 | 工具/思考/过程显示 | 继续推进：非飞书过程回复标题已移除；结构化/混合工具结果、per-agent live `--require-tool-output`、Codex reasoning summary、Octo `/thinking` 过滤、OpenCode live reasoning 和 parser/live 能力展示已补；Codex/Claude Code/OpenCode 均有真实 IM 过程回复证据 | 三个 Agent 都稳定提取工具名、输入、stdout/stderr、exit/status、思考流、过程回复和最终回复分类；继续复核真实 CLI 新事件形态 |
 | P1 | 图片/视觉模型 fallback | 已完成：默认关闭；binding 可设启用和默认视觉模型；IM `/vision` 命令与 Feishu 卡片可临时开启/关闭/指定模型；Gateway catalog 只列健康 vision 模型 | 非视觉当前模型收到图片时按配置切到指定/自动健康视觉模型，失败回退附件说明模式 |
-| P1 | Agent CLI 前端管理面 | 进行中：`/agents/:agentId/cli` 已重排为三栏工作台，Profile 模型选择读取 Gateway 全量模型和 alias，并展示上下文窗口、输出预算、auto compact 阈值、IM 绑定、持久会话和事件记录 | 后续继续补更细的 CLI app 配置、记录筛选和真实编辑流 |
+| P1 | Channel Connectors CLI Profile 管理面 | 进行中：`/channel-connectors/profiles` 已作为独立工作台承接 Profile、Gateway 模型、上下文预算、IM 绑定、持久会话和事件记录；`/agents/:agentId/cli` 已删除 | 后续继续补更细的 CLI app 配置、记录筛选和真实编辑流 |
 | P1 | 上下文预算与 compact | 核心完成：`/status` 展示 resolved model window/reserve/threshold/remaining，auto compact 已按 native-first、baseline 和 fallback 记录接入；Feishu/Octo compact 24h live 已通过 | 后续只做真实抽查；不伪造 Agent 内部 token 预算 |
 | P1 | 文件/消息收发 | 核心完成：私聊入站 staging、出站 file/message manifest、原始文件名、Feishu/Octo 上传发送和 Octo COS/STS 大文件路径已覆盖；Feishu/Octo live 证据已通过 | 后续只做平台大小限制、真实大文件和异常路径抽查 |
 | P2 | durable queue | 已完成：pending-agent-run store 已接入 Octo/Feishu；daemon/API/UI 运行态可见性已补；Octo daemon restart 回归已通过；Feishu same-process FIFO 和 daemon restart replay 均有 live 证据 | 后续仅做回归抽查 |
@@ -117,8 +117,8 @@
 - `node --test --test-name-pattern "replays queued Octo Agent turns|daemon keeps Feishu dispatcher parity diagnostics" tests/system/channel-connectors-service.test.mjs`，2/2 通过。
 - `npm run typecheck:web`
 - `npm run build:web`
-- `node --test tests/system/studio-web-agent-cli-page.test.mjs`，2/2 通过，覆盖 Agent CLI 三栏布局、Gateway 预算索引和 auto compact 展示。
-- Python Playwright：`/agents/main/cli` 在 1440/900/390 宽度下无横向溢出；手机端标题/说明不再竖排断字，CLI 模型与上下文配置区可见。
+- `node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs`，覆盖 Channel Connectors Profile 三栏布局、Gateway 预算索引、auto compact 展示和 Agents 旧 CLI 路由删除。
+- Python Playwright 验证目标更新为 `/channel-connectors/profiles`，确保独立 Profile 工作台在 1440/900/390 宽度下无横向溢出。
 - `node --test --test-name-pattern "daemon registers Octo and opens WuKongIM WebSocket" tests/system/channel-connectors-service.test.mjs`，1/1 通过。
 - `node --test tests/system/channel-connectors-service.test.mjs`，104/104 通过。
 - `node --test tests/system/channel-connectors-feishu-compact-live-script.test.mjs`，5/5 通过。

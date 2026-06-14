@@ -1,0 +1,70 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import test from "node:test";
+
+const rootDir = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
+
+function read(relativePath) {
+  return fs.readFileSync(path.join(rootDir, relativePath), "utf8");
+}
+
+test("Channel Connector profiles page is wired outside OpenClaw Agents", () => {
+  const routeManifest = read("apps/web-vue/src/features/shell/route-manifest.ts");
+  const layout = read("apps/web-vue/src/features/agents/AgentsWorkspaceLayout.vue");
+  const agentsIndex = read("apps/web-vue/src/features/agents/index.ts");
+  const channelIndex = read("apps/web-vue/src/features/channel-connectors/index.ts");
+
+  assert.match(routeManifest, /const ChannelConnectorAgentProfilesPage = \(\) =>\s*import\("\.\.\/channel-connectors\/ChannelConnectorAgentProfilesPage\.vue"\)/);
+  assert.match(routeManifest, /ChannelConnectorAgentProfilesPage,/);
+  assert.match(routeManifest, /path:\s*"\/channel-connectors\/profiles",\s*component:\s*ChannelConnectorAgentProfilesPage/);
+  assert.doesNotMatch(routeManifest, /AgentCliPage/);
+  assert.doesNotMatch(routeManifest, /path:\s*":agentId\/cli"/);
+  assert.doesNotMatch(layout, /type AgentTaskSection = 'overview' \| 'cli'/);
+  assert.doesNotMatch(layout, /label:\s*'CLI'/);
+  assert.doesNotMatch(layout, /\/agents\/\$\{encoded\}\/cli/);
+  assert.doesNotMatch(agentsIndex, /AgentCliPage/);
+  assert.match(channelIndex, /ChannelConnectorAgentProfilesPage/);
+});
+
+test("Channel Connector profiles page edits profiles using Gateway model catalog", () => {
+  const page = read("apps/web-vue/src/features/channel-connectors/ChannelConnectorAgentProfilesPage.vue");
+  const styles = read("apps/web-vue/src/features/channel-connectors/channel-connectors-workspace.css");
+  const connectorsPage = read("apps/web-vue/src/features/channel-connectors/ChannelConnectorsControlPage.vue");
+
+  assert.match(page, /fetchModelGatewayAppConnections/);
+  assert.match(page, /fetchModelGatewayProviders/);
+  assert.match(page, /appConnections\.availableModels/);
+  assert.match(page, /collectGatewayProviderModelNames/);
+  assert.match(page, /model\.aliases/);
+  assert.match(page, /fetchChannelConnectorsNativeConfig/);
+  assert.match(page, /saveChannelConnectorsNativeConfig/);
+  assert.match(page, /fetchChannelConnectorAgentSessions/);
+  assert.match(page, /manageChannelConnectorAgentSessions/);
+  assert.match(page, /CLI Profile 管理/);
+  assert.match(page, /Gateway Endpoint/);
+  assert.match(page, /IM Bindings/);
+  assert.match(page, /Sessions and records/);
+  assert.match(page, /ccx-agent-profile-rail/);
+  assert.match(page, /ccx-agent-profile-main/);
+  assert.match(page, /ccx-agent-profile-activity/);
+  assert.match(page, /ccx-agent-profile-config-section/);
+  assert.match(page, /Model and context/);
+  assert.match(page, /Budget source/);
+  assert.match(page, /Context window/);
+  assert.match(page, /Auto compact/);
+  assert.match(page, /appConnectionProfile/);
+  assert.match(page, /gatewayModelBudgetIndex/);
+  assert.match(page, /deriveAutoCompactTokenLimit/);
+  assert.doesNotMatch(page, /fetchAgentDetail|fetchAgentsSummary|AgentDetailPayload/);
+  assert.match(styles, /\.ccx-agent-profile-layout/);
+  assert.match(styles, /\.ccx-agent-profile-rail/);
+  assert.match(styles, /\.ccx-agent-profile-main/);
+  assert.match(styles, /\.ccx-agent-profile-activity/);
+  assert.match(styles, /\.ccx-agent-profile-config-section/);
+  assert.match(styles, /\.ccx-agent-profile-budget-strip/);
+  assert.match(styles, /\.ccx-agent-profile-select-row/);
+  assert.doesNotMatch(styles, /\.agents-cli-/);
+  assert.match(connectorsPage, /to="\/channel-connectors\/profiles"/);
+  assert.match(connectorsPage, /Profile 工作台|Profile workspace/);
+});

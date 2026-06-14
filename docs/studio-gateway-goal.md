@@ -73,11 +73,12 @@ App Connections 管理 Codex、Claude Code、OpenCode、OpenClaw 的配置检测
 - 写入前备份原配置；失败可 rollback。
 - Codex 真实测试必须隔离 `CODEX_HOME`，避免污染当前 Codex 任务进程。
 
-Agent CLI 前端管理必须从用户视角组织：
+Channel Connectors / CLI Profile 前端管理必须从用户视角组织：
 
-- Gateway / Provider Center 负责模型和协议，Channel Connectors 负责 daemon 与平台运维，Agents 工作台负责 CLI Profile、模型、目录、权限、绑定摘要和会话记录。
+- Gateway / Provider Center 负责模型和协议，Channel Connectors 负责 daemon、平台运维、CLI Profile、模型、目录、权限、绑定摘要和会话记录。
+- OpenClaw Agent 管理不承载 Studio Gateway / IM / CLI Profile 主线；长期目标是 Studio 自建 Gateway + Channel Connectors 可脱离 OpenClaw 独立运行。
 - CLI Profile 的模型选择必须来自 Gateway 可用模型目录，不允许只显示局部或历史模型列表。
-- 高频配置在 Agent CLI 页面可编辑；低频平台凭证仍留在 Channel Connectors。
+- 高频 Profile 配置在 `/channel-connectors/profiles` 可编辑；低频平台凭证仍留在 Channel Connectors 平台配置页。
 
 ## 6. Channel Connectors 边界
 

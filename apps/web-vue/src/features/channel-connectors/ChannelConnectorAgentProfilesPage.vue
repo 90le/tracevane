@@ -1,13 +1,17 @@
 <template>
-  <section v-if="agentId" class="agents-stage-view agents-cli-page">
-    <div class="agents-stage-task-head operate-stage-task-head">
+  <section class="page-shell channel-connectors-profile-page ccx-agent-profile-page">
+    <header class="page-header-row ccx-agent-profile-head">
       <div>
-        <p class="eyebrow">{{ agentId }}</p>
-        <h3>{{ text('CLI Agent', 'CLI Agent') }}</h3>
-        <p>{{ text('集中管理 Codex、Claude Code、OpenCode 的运行 Profile、Gateway 模型、IM 绑定和持久会话。', 'Manage Codex, Claude Code, and OpenCode runtime profiles, Gateway models, IM bindings, and persistent sessions in one place.') }}</p>
+        <p class="eyebrow">Channel Connectors</p>
+        <h2 class="page-title">{{ text('CLI Profile 管理', 'CLI Profile management') }}</h2>
+        <p class="page-copy">{{ text('集中管理 Studio 原生 CLI Agent Bot 的 Profile、Gateway 模型、IM 绑定和持久会话；不依赖 OpenClaw Agent 管理。', 'Manage Studio-native CLI Agent Bot profiles, Gateway models, IM bindings, and persistent sessions without depending on OpenClaw Agent management.') }}</p>
       </div>
 
       <div class="page-actions">
+        <button type="button" class="secondary-button compact-button" @click="openChannelConnectors">
+          <ExternalLink :size="16" />
+          {{ text('渠道连接', 'Channel Connectors') }}
+        </button>
         <button type="button" class="secondary-button compact-button" :disabled="loading" @click="loadAll">
           <RefreshCw :size="16" />
           {{ loading ? text('刷新中...', 'Refreshing...') : text('刷新', 'Refresh') }}
@@ -17,19 +21,19 @@
           {{ saving ? text('保存中...', 'Saving...') : text('保存 Profile', 'Save profile') }}
         </button>
       </div>
-    </div>
+    </header>
 
     <div v-if="noticeMessage" class="status-banner" :class="noticeTone === 'error' ? 'status-banner-error' : 'status-banner-success'">
       {{ noticeMessage }}
     </div>
     <div v-if="errorMessage" class="status-banner status-banner-error">{{ errorMessage }}</div>
-    <div v-if="loading && !loaded" class="empty-inline">{{ text('正在读取 CLI Agent 配置...', 'Loading CLI Agent configuration...') }}</div>
+    <div v-if="loading && !loaded" class="empty-inline">{{ text('正在读取 Channel Connectors Profile 配置...', 'Loading Channel Connectors profile configuration...') }}</div>
 
     <template v-else>
-      <section class="agents-cli-layout">
-        <aside class="agents-cli-rail">
-          <article class="agents-profile-panel agents-cli-profile-list">
-            <header class="agents-profile-panel__head">
+      <section class="ccx-agent-profile-layout">
+        <aside class="ccx-agent-profile-rail">
+          <article class="ccx-panel ccx-agent-profile-list">
+            <header class="ccx-panel-head">
               <div>
                 <p class="eyebrow">Profiles</p>
                 <h3>{{ text('CLI Profiles', 'CLI profiles') }}</h3>
@@ -40,12 +44,12 @@
               </button>
             </header>
 
-            <div v-if="profiles.length" class="agents-compact-list agents-cli-profile-list__rows">
+            <div v-if="profiles.length" class="ccx-list ccx-agent-profile-list__rows">
               <button
                 v-for="profile in profiles"
                 :key="profile.id"
                 type="button"
-                class="agents-cli-select-row"
+                class="ccx-select-row ccx-agent-profile-select-row"
                 :class="{ active: profile.id === selectedProfileId }"
                 @click="selectProfile(profile)"
               >
@@ -56,12 +60,12 @@
               </button>
             </div>
             <div v-else class="empty-inline">
-              {{ text('还没有 CLI Profile。可以基于当前 Agent 创建一个。', 'No CLI profiles yet. Create one from the current agent.') }}
+              {{ text('还没有 CLI Profile。先创建一个 Studio Channel Profile。', 'No CLI profiles yet. Create a Studio Channel profile first.') }}
             </div>
           </article>
 
-          <article class="agents-data-panel agents-cli-binding-panel">
-            <header class="agents-data-panel__head">
+          <article class="ccx-panel ccx-agent-profile-binding-panel">
+            <header class="ccx-panel-head">
               <div>
                 <p class="eyebrow">IM Bindings</p>
                 <h3>{{ text('渠道绑定', 'Channel bindings') }}</h3>
@@ -72,8 +76,8 @@
               </button>
             </header>
 
-            <div v-if="relatedBindings.length" class="agents-compact-list">
-              <article v-for="binding in relatedBindings" :key="binding.id" class="agents-compact-list-row agents-cli-binding-row">
+            <div v-if="relatedBindings.length" class="ccx-list">
+              <article v-for="binding in relatedBindings" :key="binding.id" class="ccx-list-row ccx-agent-profile-binding-row">
                 <div>
                   <strong>{{ binding.displayName || binding.id }}</strong>
                   <p>{{ binding.platform }} · {{ binding.accountId }}{{ binding.botId ? ` / ${binding.botId}` : '' }}</p>
@@ -91,9 +95,9 @@
           </article>
         </aside>
 
-        <main class="agents-cli-main">
-          <article class="agents-runtime-panel agents-cli-editor">
-            <header class="agents-runtime-panel__head">
+        <main class="ccx-agent-profile-main">
+          <article class="ccx-panel ccx-agent-profile-editor">
+            <header class="ccx-panel-head">
               <div>
                 <p class="eyebrow">Run Profile</p>
                 <h3>{{ text('运行配置', 'Runtime profile') }}</h3>
@@ -104,7 +108,7 @@
               </button>
             </header>
 
-            <dl class="agents-fact-grid agents-cli-facts">
+            <dl class="ccx-facts ccx-agent-profile-facts">
               <div>
                 <dt>{{ text('默认 Profile', 'Default profile') }}</dt>
                 <dd>{{ nativeConfig?.config.defaultAgentProfileId || '-' }}</dd>
@@ -119,13 +123,13 @@
               </div>
             </dl>
 
-            <div class="agents-cli-editor-sections">
-              <section class="agents-cli-config-section">
-                <div class="agents-cli-config-section__head">
+            <div class="ccx-agent-profile-editor-sections">
+              <section class="ccx-agent-profile-config-section">
+                <div class="ccx-agent-profile-config-section__head">
                   <h4>{{ text('身份与权限', 'Identity and permission') }}</h4>
                   <span>{{ text('决定这个 Profile 调用哪个 CLI Agent，以及默认执行权限。', 'Choose which CLI Agent this profile runs and its default permission mode.') }}</span>
                 </div>
-                <div class="agents-form-grid">
+                <div class="ccx-profile-form-grid">
                   <div class="form-field">
                     <label class="form-label">Profile ID</label>
                     <input v-model.trim="profileDraft.id" class="form-input" autocomplete="off" />
@@ -145,12 +149,12 @@
                 </div>
               </section>
 
-              <section class="agents-cli-config-section">
-                <div class="agents-cli-config-section__head">
+              <section class="ccx-agent-profile-config-section">
+                <div class="ccx-agent-profile-config-section__head">
                   <h4>{{ text('模型与上下文', 'Model and context') }}</h4>
                   <span>{{ text('模型来自 Gateway；上下文预算用于判断 compact 阈值。', 'Models come from Gateway; context budget is used to reason about compact thresholds.') }}</span>
                 </div>
-                <div class="agents-form-grid">
+                <div class="ccx-profile-form-grid">
                   <div class="form-field form-field-full">
                     <label class="form-label">{{ text('模型', 'Model') }}</label>
                     <StudioSelect
@@ -169,7 +173,7 @@
                     <input class="form-input" :value="selectedBudgetSourceLabel" readonly />
                   </div>
                 </div>
-                <dl class="agents-metric-strip agents-cli-budget-strip">
+                <dl class="ccx-metric-strip ccx-agent-profile-budget-strip">
                   <div>
                     <dt>{{ text('上下文窗口', 'Context window') }}</dt>
                     <dd>{{ formatTokenBudget(resolvedContextWindow) }}</dd>
@@ -188,12 +192,12 @@
                 </dl>
               </section>
 
-              <section class="agents-cli-config-section">
-                <div class="agents-cli-config-section__head">
+              <section class="ccx-agent-profile-config-section">
+                <div class="ccx-agent-profile-config-section__head">
                   <h4>{{ text('目录与连接', 'Directory and connection') }}</h4>
                   <span>{{ text('工作目录影响 Agent 会话隔离；Gateway Endpoint 供 CLI 直连本地 daemon。', 'Work directory isolates Agent sessions; Gateway Endpoint lets CLIs connect to the local daemon.') }}</span>
                 </div>
-                <div class="agents-form-grid">
+                <div class="ccx-profile-form-grid">
                   <div class="form-field form-field-full">
                     <label class="form-label">{{ text('工作目录', 'Work directory') }}</label>
                     <input v-model.trim="profileDraft.workDir" class="form-input" autocomplete="off" />
@@ -212,9 +216,9 @@
           </article>
         </main>
 
-        <aside class="agents-cli-activity">
-          <article class="agents-data-panel agents-cli-session-panel">
-            <header class="agents-data-panel__head">
+        <aside class="ccx-agent-profile-activity">
+          <article class="ccx-panel ccx-agent-profile-session-panel">
+            <header class="ccx-panel-head">
               <div>
                 <p class="eyebrow">Sessions</p>
                 <h3>{{ text('会话与记录', 'Sessions and records') }}</h3>
@@ -225,7 +229,7 @@
               </button>
             </header>
 
-            <dl class="agents-metric-strip agents-cli-session-metrics">
+            <dl class="ccx-metric-strip ccx-agent-profile-session-metrics">
               <div>
                 <dt>{{ text('请求持久化', 'Requested') }}</dt>
                 <dd>{{ requestedSessions.length }}</dd>
@@ -244,8 +248,8 @@
               </div>
             </dl>
 
-            <div v-if="activeSessions.length" class="agents-compact-list">
-              <article v-for="session in activeSessions" :key="session.poolKey" class="agents-compact-list-row agents-cli-session-row">
+            <div v-if="activeSessions.length" class="ccx-list">
+              <article v-for="session in activeSessions" :key="session.poolKey" class="ccx-list-row ccx-agent-profile-session-row">
                 <div>
                   <strong>{{ session.model || text('默认模型', 'default model') }}</strong>
                   <p>{{ session.agent }} · {{ session.bindingId }} · {{ session.permissionMode || '-' }}</p>
@@ -254,7 +258,7 @@
                 <div>
                   <span>{{ text('运行中', 'running') }} {{ session.running }}</span>
                   <span>{{ text('最近使用', 'Last used') }} {{ formatTimestamp(session.lastUsedAt) }}</span>
-                  <span v-if="session.lastError" class="agents-cli-danger">{{ session.lastError }}</span>
+                  <span v-if="session.lastError" class="ccx-danger-text">{{ session.lastError }}</span>
                 </div>
                 <button
                   type="button"
@@ -271,11 +275,11 @@
               {{ text('当前 Profile 没有活动持久会话。', 'No active persistent session for this profile.') }}
             </div>
 
-            <div v-if="relatedSessionEvents.length" class="agents-cli-events">
-              <article v-for="event in relatedSessionEvents" :key="`${event.checkedAt}:${event.type}:${event.poolKey}:${event.messageId || ''}`" class="agents-cli-event-row">
+            <div v-if="relatedSessionEvents.length" class="ccx-event-list ccx-agent-profile-events">
+              <article v-for="event in relatedSessionEvents" :key="`${event.checkedAt}:${event.type}:${event.poolKey}:${event.messageId || ''}`" class="ccx-list-row ccx-agent-profile-event-row">
                 <small>{{ formatTimestamp(event.checkedAt) }} · {{ event.bindingId }}</small>
                 <strong>{{ event.type }}</strong>
-                <span v-if="event.reason || event.error" :class="{ 'agents-cli-danger': Boolean(event.error) }">
+                <span v-if="event.reason || event.error" :class="{ 'ccx-danger-text': Boolean(event.error) }">
                   {{ [event.reason, event.error].filter(Boolean).join(' · ') }}
                 </span>
               </article>
@@ -288,10 +292,10 @@
 </template>
 
 <script setup lang="ts">
+import './channel-connectors-workspace.css';
 import { computed, onActivated, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ExternalLink, Plus, RefreshCw, Save, Square, Star } from '@lucide/vue';
-import type { AgentDetailPayload } from '../../../../../types/agents';
 import type {
   ChannelConnectorAgentId,
   ChannelConnectorAgentProfile,
@@ -314,11 +318,10 @@ import {
   fetchChannelConnectorsStatus,
   manageChannelConnectorAgentSessions,
   saveChannelConnectorsNativeConfig,
-} from '../channel-connectors/api';
+} from './api';
 import { fetchModelGatewayAppConnections, fetchModelGatewayProviders } from '../model-gateway/api';
-import { fetchAgentDetail, fetchAgentsSummary } from './api';
 
-defineOptions({ name: 'AgentCliPage' });
+defineOptions({ name: 'ChannelConnectorAgentProfilesPage' });
 
 type NoticeTone = 'success' | 'error';
 type GatewayModelBudget = {
@@ -332,8 +335,10 @@ const route = useRoute();
 const router = useRouter();
 const { text } = useLocalePreference();
 
-const agentId = computed(() => String(route.params.agentId || ''));
-const detail = ref<AgentDetailPayload | null>(null);
+const routeProfileId = computed(() => {
+  const value = route.query.profileId;
+  return typeof value === 'string' ? value : '';
+});
 const nativeConfig = ref<ChannelConnectorsNativeConfigResponse | null>(null);
 const status = ref<ChannelConnectorsStatusResponse | null>(null);
 const agentSessions = ref<ChannelConnectorAgentSessionDriverStatusResponse | null>(null);
@@ -645,7 +650,7 @@ function selectProfile(profile: ChannelConnectorAgentProfile): void {
   profileDraft.name = profile.name || profile.id;
   profileDraft.agent = profile.agent;
   profileDraft.model = profile.model || '';
-  profileDraft.workDir = profile.workDir || detail.value?.agent.workspace || '';
+  profileDraft.workDir = profile.workDir || '';
   profileDraft.permissionMode = profile.permissionMode || 'suggest';
   profileDraft.gatewayEndpoint = profile.gatewayEndpoint || 'http://127.0.0.1:18796/v1';
   profileDraft.gatewayKeyRef = 'studio-gateway-client-key';
@@ -653,24 +658,14 @@ function selectProfile(profile: ChannelConnectorAgentProfile): void {
   reasoningEffortDraft.value = profile.reasoningEffort || '';
 }
 
-function bestProfileForCurrentAgent(): ChannelConnectorAgentProfile | null {
+function bestProfileForRoute(): ChannelConnectorAgentProfile | null {
   const items = profiles.value;
   if (!items.length) return null;
-  const currentId = agentId.value.toLowerCase();
-  const currentWorkspace = detail.value?.agent.workspace || '';
+  const requestedId = routeProfileId.value;
   const defaultId = nativeConfig.value?.config.defaultAgentProfileId || '';
-  return [...items].sort((left, right) => scoreProfile(right) - scoreProfile(left))[0] || items.find((profile) => profile.id === defaultId) || items[0];
-
-  function scoreProfile(profile: ChannelConnectorAgentProfile): number {
-    const id = profile.id.toLowerCase();
-    const name = profile.name.toLowerCase();
-    let score = 0;
-    if (id === currentId) score += 100;
-    if (id.includes(currentId) || name.includes(currentId)) score += 35;
-    if (profile.workDir && currentWorkspace && profile.workDir === currentWorkspace) score += 15;
-    if (profile.id === defaultId) score += 10;
-    return score;
-  }
+  return items.find((profile) => profile.id === requestedId)
+    || items.find((profile) => profile.id === defaultId)
+    || items[0];
 }
 
 function selectInitialProfile(): void {
@@ -679,30 +674,30 @@ function selectInitialProfile(): void {
     selectProfile(existing);
     return;
   }
-  const best = bestProfileForCurrentAgent();
+  const best = bestProfileForRoute();
   if (best) selectProfile(best);
   else newProfile();
 }
 
 function newProfile(): void {
-  const baseId = agentId.value || 'agent';
+  const base = profiles.value[0] || null;
   const existing = new Set(profiles.value.map((profile) => profile.id));
-  let id = `${baseId}-cli`;
+  let id = 'cli-profile';
   let suffix = 2;
   while (existing.has(id)) {
-    id = `${baseId}-cli-${suffix}`;
+    id = `cli-profile-${suffix}`;
     suffix += 1;
   }
   selectProfile({
     id,
-    name: `${detail.value?.agent.identity.name || detail.value?.agent.name || baseId} CLI`,
-    agent: 'codex',
+    name: `CLI Profile ${suffix === 2 ? 1 : suffix - 1}`,
+    agent: base?.agent || 'codex',
     model: '',
-    workDir: detail.value?.agent.workspace || '',
-    permissionMode: 'suggest',
-    gatewayEndpoint: 'http://127.0.0.1:18796/v1',
+    workDir: base?.workDir || '',
+    permissionMode: base?.permissionMode || 'suggest',
+    gatewayEndpoint: base?.gatewayEndpoint || 'http://127.0.0.1:18796/v1',
     gatewayKeyRef: 'studio-gateway-client-key',
-    appProfileRef: 'default',
+    appProfileRef: base?.appProfileRef || 'default',
   });
 }
 
@@ -776,7 +771,7 @@ async function killSession(poolKey: string): Promise<void> {
     agentSessions.value = await manageChannelConnectorAgentSessions({
       action: 'kill',
       poolKey,
-      reason: 'agent-cli-page-stop',
+      reason: 'channel-connectors-profile-stop',
     });
     setNotice(text('已请求停止 CLI 会话。', 'CLI session stop requested.'));
   } catch (error) {
@@ -791,14 +786,11 @@ function openChannelConnectors(): void {
 }
 
 async function loadAll(): Promise<void> {
-  if (!agentId.value) return;
   loading.value = true;
   errorMessage.value = '';
   noticeMessage.value = '';
   try {
-    const [nextDetail, agentsSummary, nextNativeConfig, nextStatus, nextSessions] = await Promise.all([
-      fetchAgentDetail(agentId.value),
-      fetchAgentsSummary(),
+    const [nextNativeConfig, nextStatus, nextSessions] = await Promise.all([
       fetchChannelConnectorsNativeConfig(),
       fetchChannelConnectorsStatus(),
       fetchChannelConnectorAgentSessions(),
@@ -818,40 +810,35 @@ async function loadAll(): Promise<void> {
       gatewayBudgetCatalog = providerCatalog.budgets;
       appConnectionProfile.value = appConnections.profile;
     } catch {
-      setNotice(text('Gateway 模型目录暂不可用，已使用 Agent 本地模型列表。', 'Gateway model catalog is unavailable; using the local Agent model list.'), 'error');
+      setNotice(text('Gateway 模型目录暂不可用，模型下拉只保留当前 Profile 值。', 'Gateway model catalog is unavailable; the model picker only keeps the current profile value.'), 'error');
       appConnectionProfile.value = null;
     }
-    detail.value = nextDetail;
     nativeConfig.value = nextNativeConfig;
     status.value = nextStatus;
     agentSessions.value = nextSessions;
     gatewayModelBudgetIndex.value = gatewayBudgetCatalog;
-    gatewayModels.value = Array.from(new Set([
-      ...gatewayModelCatalog,
-      ...(agentsSummary.availableModels || []),
-    ].map((model) => String(model || '').trim()).filter(Boolean)));
+    gatewayModels.value = Array.from(new Set(gatewayModelCatalog.map((model) => String(model || '').trim()).filter(Boolean)));
     selectInitialProfile();
     loaded.value = true;
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : text('读取 CLI Agent 配置失败。', 'Failed to load CLI Agent configuration.');
+    errorMessage.value = error instanceof Error ? error.message : text('读取 Channel Connectors Profile 配置失败。', 'Failed to load Channel Connectors profile configuration.');
   } finally {
     loading.value = false;
   }
 }
 
 watch(
-  () => route.params.agentId,
+  () => route.query.profileId,
   async () => {
     loaded.value = false;
     selectedProfileId.value = '';
-    if (!agentId.value) return;
     await loadAll();
   },
   { immediate: true },
 );
 
 onActivated(async () => {
-  if (!agentId.value || loading.value || saving.value) return;
+  if (loading.value || saving.value) return;
   await loadAll();
 });
 </script>
