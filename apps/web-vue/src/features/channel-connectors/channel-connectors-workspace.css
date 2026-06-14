@@ -285,6 +285,11 @@
   justify-self: end;
 }
 
+.ccx-agent-profile-binding-row.active {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--mono-line));
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface-base));
+}
+
 .ccx-agent-profile-linked-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

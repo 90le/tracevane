@@ -110,6 +110,9 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(page, /session\.turnCount/);
   assert.match(page, /formatDuration\(session\.idleMs\)/);
   assert.match(page, /openBindingConfigById\(session\.bindingId\)/);
+  assert.match(page, /focusBindingEvents\(binding\)/);
+  assert.match(page, /eventBindingFilter === binding\.id/);
+  assert.match(page, /function focusBindingEvents\(binding: ChannelConnectorPlatformBinding\)/);
   assert.match(page, /停止全部|Stop all/);
   assert.match(page, /撤销|Discard/);
   assert.match(page, /duplicateProfile/);
@@ -161,6 +164,7 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(styles, /\.ccx-agent-profile-app-preview/);
   assert.match(styles, /white-space: pre-wrap/);
   assert.match(styles, /\.ccx-agent-profile-binding-main/);
+  assert.match(styles, /\.ccx-agent-profile-binding-row\.active/);
   assert.match(styles, /\.ccx-agent-profile-requested-list/);
   assert.match(styles, /\.ccx-agent-profile-requested-row/);
   assert.match(styles, /\.ccx-agent-profile-linked-row/);

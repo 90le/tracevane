@@ -87,16 +87,27 @@
             </header>
 
             <div v-if="relatedBindings.length" class="ccx-list">
-              <article v-for="binding in relatedBindings" :key="binding.id" class="ccx-list-row ccx-agent-profile-binding-row">
+              <article
+                v-for="binding in relatedBindings"
+                :key="binding.id"
+                class="ccx-list-row ccx-agent-profile-binding-row"
+                :class="{ active: eventBindingFilter === binding.id }"
+              >
                 <div class="ccx-agent-profile-binding-main">
                   <div>
                     <strong>{{ binding.displayName || binding.id }}</strong>
                     <p>{{ binding.platform }} · {{ binding.accountId }}{{ binding.botId ? ` / ${binding.botId}` : '' }}</p>
                   </div>
-                  <button type="button" class="secondary-button compact-button" @click="openBindingConfig(binding)">
-                    <ExternalLink :size="16" />
-                    {{ text('配置', 'Config') }}
-                  </button>
+                  <div class="ccx-agent-profile-row-actions">
+                    <button type="button" class="secondary-button compact-button" @click="focusBindingEvents(binding)">
+                      <ListFilter :size="16" />
+                      {{ text('事件', 'Events') }}
+                    </button>
+                    <button type="button" class="secondary-button compact-button" @click="openBindingConfig(binding)">
+                      <ExternalLink :size="16" />
+                      {{ text('配置', 'Config') }}
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <span>{{ binding.enabled ? text('启用', 'Enabled') : text('停用', 'Disabled') }}</span>
@@ -519,7 +530,7 @@
 import './channel-connectors-workspace.css';
 import { computed, onActivated, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { Copy, ExternalLink, Plus, RefreshCw, RotateCcw, Save, Square, Star, Trash2 } from '@lucide/vue';
+import { Copy, ExternalLink, ListFilter, Plus, RefreshCw, RotateCcw, Save, Square, Star, Trash2 } from '@lucide/vue';
 import type {
   ChannelConnectorAgentId,
   ChannelConnectorAgentProfile,
@@ -1441,6 +1452,12 @@ function openBindingConfig(binding: ChannelConnectorPlatformBinding): void {
     bindingId: binding.id,
     profileId: binding.agentProfileId || selectedProfileId.value || profileDraft.id,
   });
+}
+
+function focusBindingEvents(binding: ChannelConnectorPlatformBinding): void {
+  eventBindingFilter.value = binding.id;
+  eventFilter.value = 'all';
+  eventLimit.value = '8';
 }
 
 function openBindingConfigById(bindingId: string): void {
