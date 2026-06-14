@@ -382,6 +382,7 @@ test("model gateway starts Codex account login and creates an account-backed pro
       assert.equal(poll.body.provider.secret.hasSecret, true);
       assert.equal(poll.body.provider.accountProvider.kind, "codex");
       assert.equal(poll.body.provider.accountProvider.accounts.length, 1);
+      assert.equal(poll.body.provider.accountProvider.accounts[0].state, "ready");
       assert.equal(poll.body.provider.accountProvider.accounts[0].emailMasked, "co***@example.com");
       assert.equal(poll.body.provider.accountProvider.accounts[0].plan, "plus");
       assert.deepEqual(poll.body.provider.models.models.map((model) => model.id), ["gpt-5.5", "gpt-5.5-mini", "gpt-5"]);
@@ -418,6 +419,307 @@ test("model gateway starts Codex account login and creates an account-backed pro
   assert.equal(upstreamCalls[0].accountId, "acct_codex_123");
   assert.equal(upstreamCalls[0].originator, "codex_cli_rs");
   assert.match(upstreamCalls[0].userAgent, /^codex_cli_rs/);
+});
+
+test("model gateway refreshes expiring Codex account tokens before forwarding", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const authRef = "provider:codex-refresh:account:abc:codex-token";
+  const expiredIdToken = fakeJwt({
+    email: "refresh@example.com",
+    exp: Math.floor(Date.now() / 1000) - 60,
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct_refresh",
+      chatgpt_plan_type: "plus",
+    },
+  });
+  const refreshedIdToken = fakeJwt({
+    email: "refresh@example.com",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct_refresh",
+      chatgpt_plan_type: "plus",
+    },
+  });
+
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  const refreshCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const target = new URL(String(url));
+    const headers = init.headers instanceof Headers ? init.headers : new Headers(init.headers || {});
+
+    if (String(url) === "https://auth.openai.com/oauth/token") {
+      const form = new URLSearchParams(String(init.body));
+      refreshCalls.push({
+        grantType: form.get("grant_type"),
+        clientId: form.get("client_id"),
+        refreshToken: form.get("refresh_token"),
+        scope: form.get("scope"),
+      });
+      return new Response(JSON.stringify({
+        access_token: "codex-new-access-token",
+        refresh_token: "codex-new-refresh-token",
+        id_token: refreshedIdToken,
+        expires_in: 3600,
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (target.hostname === "chatgpt.com" && target.pathname === "/backend-api/codex/responses") {
+      upstreamCalls.push({
+        authorization: headers.get("authorization"),
+        accountId: headers.get("chatgpt-account-id"),
+        body: JSON.parse(String(init.body || "{}")),
+      });
+      return new Response(JSON.stringify({
+        id: "resp_codex_refresh",
+        object: "response",
+        status: "completed",
+        output: [{
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "ok" }],
+        }],
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    return new Response("unexpected", { status: 500 });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const upsert = await requestJson(`${baseUrl}/api/model-gateway/providers`, {
+        method: "POST",
+        body: {
+          provider: {
+            id: "codex-refresh",
+            name: "Codex Refresh",
+            enabled: true,
+            category: "official",
+            sourceType: "account-backed",
+            appScopes: ["codex"],
+            baseUrl: "https://chatgpt.com/backend-api/codex",
+            apiKeyRef: authRef,
+            apiFormat: "openai_responses",
+            authStrategy: "oauth_proxy",
+            models: {
+              defaultModel: "gpt-5.5",
+              models: [{ id: "gpt-5.5" }],
+              aliases: {},
+            },
+            endpoints: {
+              openai_responses: "/responses",
+              openai_responses_compact: "/responses/compact",
+            },
+            accountProvider: {
+              kind: "codex",
+              routing: {
+                strategy: "round-robin",
+                sessionAffinity: true,
+                maxConcurrentPerAccount: null,
+              },
+              accounts: [{
+                id: "codex-abc",
+                kind: "codex",
+                enabled: true,
+                state: "ready",
+                authRef,
+                credentialSource: "codex-device-auth",
+                accountHash: "abc",
+                emailMasked: "re***@example.com",
+                plan: "plus",
+                expiresAt: new Date(Date.now() - 60_000).toISOString(),
+              }],
+            },
+          },
+          secret: {
+            apiKey: JSON.stringify({
+              type: "codex",
+              tokens: {
+                id_token: expiredIdToken,
+                access_token: "codex-old-access-token",
+                refresh_token: "codex-old-refresh-token",
+                account_id: "acct_refresh",
+              },
+              email: "refresh@example.com",
+              plan_type: "plus",
+              expires_at: new Date(Date.now() - 60_000).toISOString(),
+            }),
+          },
+          setActiveScopes: ["codex"],
+        },
+      });
+      assert.equal(upsert.status, 200);
+
+      const response = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.5",
+          input: "hello",
+        },
+      });
+      assert.equal(response.status, 200);
+      assert.equal(response.body.id, "resp_codex_refresh");
+
+      const providers = await requestJson(`${baseUrl}/api/model-gateway/providers`);
+      const provider = providers.body.providers.find((item) => item.id === "codex-refresh");
+      assert.ok(provider);
+      const account = provider.accountProvider.accounts[0];
+      assert.equal(account.state, "ready");
+      assert.equal(account.lastError, null);
+      assert.ok(Date.parse(account.expiresAt) > Date.now());
+
+      const secretsRaw = fs.readFileSync(paths.secrets, "utf8");
+      assert.ok(secretsRaw.includes("codex-new-access-token"));
+      assert.ok(secretsRaw.includes("codex-new-refresh-token"));
+      assert.ok(!secretsRaw.includes("codex-old-access-token"));
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(refreshCalls, [{
+    grantType: "refresh_token",
+    clientId: "app_EMoamEEZ73f0CkXaXp7hrann",
+    refreshToken: "codex-old-refresh-token",
+    scope: "openid profile email",
+  }]);
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].authorization, "Bearer codex-new-access-token");
+  assert.equal(upstreamCalls[0].accountId, "acct_refresh");
+});
+
+test("model gateway marks Codex accounts as needs-login when token refresh is rejected", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const authRef = "provider:codex-refresh-fail:account:def:codex-token";
+  const expiredIdToken = fakeJwt({
+    email: "expired@example.com",
+    exp: Math.floor(Date.now() / 1000) - 60,
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct_expired",
+      chatgpt_plan_type: "plus",
+    },
+  });
+
+  const originalFetch = globalThis.fetch;
+  let upstreamCalled = false;
+  globalThis.fetch = async (url, init = {}) => {
+    const target = new URL(String(url));
+    if (String(url) === "https://auth.openai.com/oauth/token") {
+      const form = new URLSearchParams(String(init.body));
+      assert.equal(form.get("grant_type"), "refresh_token");
+      return new Response(JSON.stringify({
+        error: "invalid_grant",
+        code: "refresh_token_reused",
+      }), {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (target.hostname === "chatgpt.com") {
+      upstreamCalled = true;
+    }
+    return new Response("unexpected", { status: 500 });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const upsert = await requestJson(`${baseUrl}/api/model-gateway/providers`, {
+        method: "POST",
+        body: {
+          provider: {
+            id: "codex-refresh-fail",
+            name: "Codex Refresh Fail",
+            enabled: true,
+            category: "official",
+            sourceType: "account-backed",
+            appScopes: ["codex"],
+            baseUrl: "https://chatgpt.com/backend-api/codex",
+            apiKeyRef: authRef,
+            apiFormat: "openai_responses",
+            authStrategy: "oauth_proxy",
+            models: {
+              defaultModel: "gpt-5.5",
+              models: [{ id: "gpt-5.5" }],
+              aliases: {},
+            },
+            endpoints: {
+              openai_responses: "/responses",
+            },
+            accountProvider: {
+              kind: "codex",
+              routing: {
+                strategy: "round-robin",
+                sessionAffinity: true,
+                maxConcurrentPerAccount: null,
+              },
+              accounts: [{
+                id: "codex-def",
+                kind: "codex",
+                enabled: true,
+                state: "ready",
+                authRef,
+                credentialSource: "codex-device-auth",
+                accountHash: "def",
+                emailMasked: "ex***@example.com",
+                plan: "plus",
+                expiresAt: new Date(Date.now() - 60_000).toISOString(),
+              }],
+            },
+          },
+          secret: {
+            apiKey: JSON.stringify({
+              type: "codex",
+              tokens: {
+                id_token: expiredIdToken,
+                access_token: "codex-expired-access-token",
+                refresh_token: "codex-expired-refresh-token",
+                account_id: "acct_expired",
+              },
+              email: "expired@example.com",
+              plan_type: "plus",
+              expires_at: new Date(Date.now() - 60_000).toISOString(),
+            }),
+          },
+          setActiveScopes: ["codex"],
+        },
+      });
+      assert.equal(upsert.status, 200);
+
+      const response = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.5",
+          input: "hello",
+        },
+      });
+      assert.equal(response.status, 401);
+      assert.equal(response.body.error.code, "model_gateway_account_refresh_auth_failed");
+
+      const providers = await requestJson(`${baseUrl}/api/model-gateway/providers`);
+      const provider = providers.body.providers.find((item) => item.id === "codex-refresh-fail");
+      assert.ok(provider);
+      const account = provider.accountProvider.accounts[0];
+      assert.equal(account.state, "needs-login");
+      assert.match(account.lastError, /refresh_token_reused/);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalled, false);
 });
 
 test("model gateway refuses managed auth placeholders before upstream forwarding", async () => {

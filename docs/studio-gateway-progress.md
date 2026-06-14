@@ -36,8 +36,10 @@
   - API 新增 Codex device login start/poll；登录完成后创建 Codex account-backed provider、写入本地 secret store，并可设置 active routing。
   - Provider Center 新增“登录 Codex/GPT 账户”入口，显示验证码、官方授权链接、轮询状态和创建后的 provider 摘要。
   - Account-backed Codex 转发会从 secret store 取 token，注入 `Authorization`、`Chatgpt-Account-Id`、`Originator` 和 Codex user-agent；普通客户端仍只使用 Gateway key。
+  - Account entry 新增显式 `state`；路由会跳过 disabled / needs-login / error / 未过期 cooldown 的 Codex account。
+  - Codex account 请求前会在过期前 5 分钟自动 refresh；成功后更新 secret store 和 account health，auth refresh 失败进入 `needs-login`，其它 refresh 失败进入短 cooldown。
   - 本轮验证通过：`npm run typecheck:api`、`npm run build:api`、`npm run typecheck:web`、`npm run build:web`。
-  - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，58/58 通过，覆盖 Codex account login、secret redaction、active routing、Codex headers 转发和既有三协议矩阵无回归。
+  - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，60/60 通过，覆盖 Codex account login、refresh、refresh auth failure、secret redaction、active routing、Codex headers 转发和既有三协议矩阵无回归。
 - Provider Center 前端收口：
   - 模型目录的可见身份字段只保留“模型名称”和“别名”，不再暴露“显示名”三段式配置。
   - 批量导入格式改为 `model-id | alias1,alias2`；保存时不再从表格写入 `model.label`。
@@ -280,6 +282,6 @@
 
 ## 下一步
 
-1. 完成 Codex account provider token refresh、账户健康、auth cooldown、禁用/刷新操作和 account-level runtime log。
-2. 补账户池调度：round-robin、fill-first、session affinity、per-account concurrency、failover 和 sticky 切换日志。
+1. 补 Provider Center account 操作：账户表、手动刷新、禁用/启用、re-login、cooldown/last error 可视化。
+2. 补账户池调度：持久 round-robin、fill-first、session affinity、per-account concurrency、failover 和 sticky 切换日志。
 3. 跑真实 Codex/GPT account live smoke：Responses non-stream/stream/compact、Chat adapter、Anthropic Messages adapter，并确认 `/v1/models` 和 App Connections 使用统一 Gateway key。

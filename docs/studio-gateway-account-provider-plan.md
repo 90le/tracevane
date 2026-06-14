@@ -52,7 +52,7 @@ Account-backed provider 对外仍暴露：
 - 账户登录：Provider Center 直接点击登录 Codex/GPT 账户，打开官方授权页，轮询完成后自动创建本地 account-backed provider。
 - 辅助导入：本机 `auth.json` / keyring / 隔离 `CODEX_HOME` 只用于迁移和修复，不要求用户重复登录后再手动导入。
 - 账户存储：OS keyring 优先，文件模式必须 `0600`，runtime 只保存 token ref、account hash、email mask、plan type、expiresAt。
-- 账户刷新：后台 refresh worker，刷新失败进入 auth cooldown，不阻塞其它账户。
+- 账户刷新：请求前自动 refresh，后续补后台 refresh worker；刷新失败进入 needs-login 或 cooldown，不阻塞其它账户。
 - 账户池：round-robin、fill-first、session-affinity、per-account concurrency、per-account proxy/direct。
 - 模型目录：账户 provider 自带模型 catalog，支持 alias/fork/excluded models，和现有 `/v1/models` 聚合合并。
 - Codex headers：保留 Codex 需要的 `Session_id`、`X-Codex-*`、`Chatgpt-Account-Id`、user-agent defaults；反代部署时提醒保留 underscore headers。

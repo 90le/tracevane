@@ -161,6 +161,8 @@ const CODEX_ACCOUNT_DEVICE_VERIFICATION_URL = "https://auth.openai.com/codex/dev
 const CODEX_ACCOUNT_DEVICE_REDIRECT_URI = "https://auth.openai.com/deviceauth/callback";
 const CODEX_ACCOUNT_DEFAULT_POLL_INTERVAL_SECONDS = 5;
 const CODEX_ACCOUNT_LOGIN_TIMEOUT_MS = 15 * 60_000;
+const CODEX_ACCOUNT_REFRESH_WINDOW_MS = 5 * 60_000;
+const CODEX_ACCOUNT_AUTH_COOLDOWN_MS = 5 * 60_000;
 const CODEX_ACCOUNT_USER_AGENT = "codex_cli_rs/0.133.0 (OpenClaw Studio Gateway; local)";
 const CODEX_ACCOUNT_ORIGINATOR = "codex_cli_rs";
 const MODEL_GATEWAY_VISION_SMOKE_IMAGE_MIME_TYPE = "image/jpeg";
@@ -934,6 +936,7 @@ function normalizeAccountEntry(
     id,
     kind,
     enabled: state === "disabled" ? false : typeof source.enabled === "boolean" ? source.enabled : fallback?.enabled ?? true,
+    state,
     authRef,
     credentialSource,
     accountHash: normalizeString(source.accountHash, fallback?.accountHash || "") || null,
@@ -1802,6 +1805,13 @@ function codexAuthInfoFromJwt(idToken: string): {
   };
 }
 
+function parseIsoTimestampMs(value: string | null | undefined): number | null {
+  const raw = normalizeString(value || "");
+  if (!raw) return null;
+  const timestamp = Date.parse(raw);
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
 function normalizeCodexTokenBundle(value: unknown): CodexTokenBundle | null {
   const source = typeof value === "string" ? parseJsonObject(value) : isRecord(value) ? value : null;
   if (!source) return null;
@@ -1835,6 +1845,19 @@ function normalizeCodexTokenBundle(value: unknown): CodexTokenBundle | null {
   };
 }
 
+function codexTokenBundleExpiresAtMs(bundle: CodexTokenBundle): number | null {
+  return parseIsoTimestampMs(bundle.expires_at)
+    || (bundle.tokens.id_token ? parseIsoTimestampMs(codexAuthInfoFromJwt(bundle.tokens.id_token).expiresAt) : null);
+}
+
+function codexTokenBundleNeedsRefresh(bundle: CodexTokenBundle, nowMs = Date.now()): boolean {
+  if (!normalizeString(bundle.tokens.refresh_token)) return false;
+  if (!normalizeString(bundle.tokens.access_token)) return true;
+  const expiresAtMs = codexTokenBundleExpiresAtMs(bundle);
+  if (!expiresAtMs) return false;
+  return expiresAtMs - nowMs <= CODEX_ACCOUNT_REFRESH_WINDOW_MS;
+}
+
 function codexAccountFromTokenBundle(
   id: string,
   authRef: string,
@@ -1849,6 +1872,7 @@ function codexAccountFromTokenBundle(
     id,
     kind: "codex",
     enabled: fallback?.enabled ?? true,
+    state: "ready",
     authRef,
     credentialSource,
     accountHash,
@@ -3276,6 +3300,8 @@ export function createModelGatewayService(
   const listenerHost = options.listener?.host || MODEL_GATEWAY_DEFAULT_HOST;
   const listenerPort = options.listener?.port || MODEL_GATEWAY_DEFAULT_PORT;
   const codexDeviceLoginSessions = new Map<string, CodexDeviceLoginSession>();
+  const codexAccountRefreshes = new Map<string, Promise<string>>();
+  const codexAccountRoutingCursors = new Map<string, number>();
 
   async function runDaemonServiceCommand(command: ModelGatewayDaemonServiceCommand): Promise<ModelGatewayDaemonServiceCommandResult> {
     return options.daemonServiceCommandRunner
@@ -3524,7 +3550,22 @@ export function createModelGatewayService(
     return registry.providers
       .filter((provider) => provider.enabled)
       .filter((provider) => provider.appScopes.includes(appScope))
+      .filter((provider) => providerHasUsableAccounts(provider))
       .sort((left, right) => left.failover.priority - right.failover.priority || left.name.localeCompare(right.name));
+  }
+
+  function providerHasUsableAccounts(provider: ModelGatewayProvider): boolean {
+    if (provider.sourceType !== "account-backed") return true;
+    if (provider.accountProvider?.kind !== "codex") return true;
+    return provider.accountProvider.accounts.some((account) => accountAvailableForRouting(account));
+  }
+
+  function accountAvailableForRouting(account: ModelGatewayAccountEntry, nowMs = Date.now()): boolean {
+    if (!account.enabled || account.state === "disabled" || account.state === "needs-login" || account.state === "error") {
+      return false;
+    }
+    const cooldownUntilMs = parseIsoTimestampMs(account.cooldownUntil);
+    return !cooldownUntilMs || cooldownUntilMs <= nowMs;
   }
 
   type RouteProviderCandidate = {
@@ -3709,11 +3750,204 @@ export function createModelGatewayService(
       };
   }
 
+  type ProviderSecretResolution = {
+    secret: string | null;
+    account: ModelGatewayAccountEntry | null;
+  };
+
   function readProviderSecret(provider: ModelGatewayProvider): string | null {
     if (provider.authStrategy === "none") return null;
     const ref = provider.apiKeyRef;
     if (!ref) return null;
     return readSecrets().secrets[ref]?.value || null;
+  }
+
+  function selectProviderAccount(provider: ModelGatewayProvider): ModelGatewayAccountEntry | null {
+    if (provider.sourceType !== "account-backed" || provider.accountProvider?.kind !== "codex") return null;
+    const accounts = provider.accountProvider.accounts.filter((account) => accountAvailableForRouting(account));
+    if (!accounts.length) return null;
+    const explicit = provider.apiKeyRef
+      ? accounts.find((account) => account.authRef === provider.apiKeyRef)
+      : null;
+    if (explicit) return explicit;
+    if (provider.accountProvider.routing.strategy === "fill-first") return accounts[0] || null;
+    const cursorKey = `${provider.id}:codex`;
+    const cursor = codexAccountRoutingCursors.get(cursorKey) || 0;
+    codexAccountRoutingCursors.set(cursorKey, cursor + 1);
+    return accounts[Math.max(0, cursor % accounts.length)] || accounts[0] || null;
+  }
+
+  function updateProviderAccount(
+    providerId: string,
+    accountId: string,
+    patch: Partial<ModelGatewayAccountEntry>,
+  ): void {
+    const registry = readRegistry();
+    const provider = findProvider(registry, providerId);
+    if (!provider?.accountProvider) return;
+    const account = provider.accountProvider.accounts.find((item) => item.id === accountId);
+    if (!account) return;
+    Object.assign(account, patch, { updatedAt: nowIso() });
+    provider.updatedAt = nowIso();
+    writeRegistry(registry);
+  }
+
+  function markCodexAccountReady(providerId: string, accountId: string, patch: Partial<ModelGatewayAccountEntry> = {}): void {
+    updateProviderAccount(providerId, accountId, {
+      ...patch,
+      state: "ready",
+      lastCheckedAt: nowIso(),
+      lastSuccessAt: nowIso(),
+      lastError: null,
+      cooldownUntil: null,
+    });
+  }
+
+  function markCodexAccountNeedsLogin(providerId: string, accountId: string, message: string): void {
+    updateProviderAccount(providerId, accountId, {
+      state: "needs-login",
+      lastCheckedAt: nowIso(),
+      lastError: message,
+      cooldownUntil: null,
+    });
+  }
+
+  function markCodexAccountCooldown(providerId: string, accountId: string, message: string): void {
+    updateProviderAccount(providerId, accountId, {
+      state: "cooldown",
+      lastCheckedAt: nowIso(),
+      lastError: message,
+      cooldownUntil: new Date(Date.now() + CODEX_ACCOUNT_AUTH_COOLDOWN_MS).toISOString(),
+    });
+  }
+
+  function codexRefreshFailureIsAuth(statusCode: number, bodyText: string): boolean {
+    const normalized = bodyText.toLowerCase();
+    return statusCode === 400 || statusCode === 401 || statusCode === 403
+      || normalized.includes("invalid_grant")
+      || normalized.includes("refresh_token_reused");
+  }
+
+  async function refreshCodexTokenBundle(bundle: CodexTokenBundle): Promise<CodexTokenBundle> {
+    const refreshToken = normalizeString(bundle.tokens.refresh_token);
+    if (!refreshToken) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_account_refresh_missing",
+        "Codex account refresh token is missing. Sign in again from Provider Center.",
+        401,
+      );
+    }
+    const form = new URLSearchParams({
+      grant_type: "refresh_token",
+      client_id: CODEX_ACCOUNT_AUTH_CLIENT_ID,
+      refresh_token: refreshToken,
+      scope: "openid profile email",
+    });
+    const response = await fetch(CODEX_ACCOUNT_AUTH_TOKEN_URL, {
+      method: "POST",
+      headers: {
+        "accept": "application/json",
+        "content-type": "application/x-www-form-urlencoded",
+        "user-agent": CODEX_ACCOUNT_USER_AGENT,
+      },
+      body: form.toString(),
+    });
+    const text = await response.text();
+    if (!response.ok) {
+      throw new ModelGatewayServiceError(
+        codexRefreshFailureIsAuth(response.status, text)
+          ? "model_gateway_account_refresh_auth_failed"
+          : "model_gateway_account_refresh_failed",
+        `Codex account token refresh failed with HTTP ${response.status}: ${text.slice(0, 300) || response.statusText}`,
+        codexRefreshFailureIsAuth(response.status, text) ? 401 : 502,
+      );
+    }
+    const body = parseJsonObject(text) || {};
+    const idToken = normalizeString(body.id_token || bundle.tokens.id_token);
+    const accessToken = normalizeString(body.access_token);
+    const nextRefreshToken = normalizeString(body.refresh_token || bundle.tokens.refresh_token);
+    const authInfo = idToken ? codexAuthInfoFromJwt(idToken) : { email: "", accountId: "", plan: "", expiresAt: null };
+    const expiresIn = firstPositiveInteger(body.expires_in);
+    const next = normalizeCodexTokenBundle({
+      type: "codex",
+      tokens: {
+        id_token: idToken,
+        access_token: accessToken,
+        refresh_token: nextRefreshToken,
+        account_id: normalizeString(authInfo.accountId || bundle.tokens.account_id),
+      },
+      email: normalizeString(authInfo.email || bundle.email),
+      plan_type: normalizeString(authInfo.plan || bundle.plan_type),
+      expires_at: expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : authInfo.expiresAt || bundle.expires_at,
+      last_refresh: nowIso(),
+    });
+    if (!next?.tokens.access_token || !next.tokens.refresh_token) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_account_refresh_invalid",
+        "Codex account token refresh did not return usable access and refresh tokens.",
+        502,
+      );
+    }
+    return next;
+  }
+
+  async function resolveProviderSecret(provider: ModelGatewayProvider): Promise<ProviderSecretResolution> {
+    if (provider.authStrategy === "none") return { secret: null, account: null };
+    if (provider.sourceType !== "account-backed" || provider.accountProvider?.kind !== "codex") {
+      return { secret: readProviderSecret(provider), account: null };
+    }
+    const account = selectProviderAccount(provider);
+    if (!account) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_account_unavailable",
+        `Provider '${provider.id}' has no ready Codex account. Sign in again or wait for cooldown to expire.`,
+        503,
+      );
+    }
+    const secret = readSecrets().secrets[account.authRef]?.value || "";
+    const bundle = normalizeCodexTokenBundle(secret);
+    if (!bundle) {
+      markCodexAccountNeedsLogin(provider.id, account.id, "Codex account token is missing or invalid.");
+      throw new ModelGatewayServiceError(
+        "model_gateway_account_auth_missing",
+        `Provider '${provider.id}' account '${account.id}' requires sign-in before requests can be forwarded.`,
+        401,
+      );
+    }
+    if (!codexTokenBundleNeedsRefresh(bundle)) {
+      return { secret, account };
+    }
+    const refreshKey = account.authRef;
+    let refreshPromise = codexAccountRefreshes.get(refreshKey);
+    if (!refreshPromise) {
+      updateProviderAccount(provider.id, account.id, {
+        state: "refreshing",
+        lastCheckedAt: nowIso(),
+        lastError: null,
+      });
+      refreshPromise = (async () => {
+        try {
+          const refreshed = await refreshCodexTokenBundle(bundle);
+          const serialized = JSON.stringify(refreshed);
+          setSecretValue(account.authRef, serialized);
+          const updatedAccount = codexAccountFromTokenBundle(account.id, account.authRef, refreshed, account.credentialSource, account);
+          markCodexAccountReady(provider.id, account.id, updatedAccount);
+          return serialized;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Codex account token refresh failed.";
+          if (isModelGatewayServiceError(error) && error.statusCode === 401) {
+            markCodexAccountNeedsLogin(provider.id, account.id, message);
+          } else {
+            markCodexAccountCooldown(provider.id, account.id, message);
+          }
+          throw error;
+        } finally {
+          codexAccountRefreshes.delete(refreshKey);
+        }
+      })();
+      codexAccountRefreshes.set(refreshKey, refreshPromise);
+    }
+    return { secret: await refreshPromise, account };
   }
 
   function setSecretValue(ref: string, value: string | null): void {
@@ -5668,7 +5902,43 @@ export function createModelGatewayService(
       };
     }
 
-    const secret = readProviderSecret(effectiveProvider);
+    let secretResolution: ProviderSecretResolution;
+    try {
+      secretResolution = await resolveProviderSecret(effectiveProvider);
+    } catch (error) {
+      const authError = isModelGatewayServiceError(error)
+        ? error
+        : new ModelGatewayServiceError(
+          "model_gateway_account_auth_failed",
+          error instanceof Error ? error.message : "Model Gateway account authentication failed.",
+          502,
+        );
+      appendRequestLog(requestLogEntry({
+        kind: "provider-test",
+        startedAt,
+        route,
+        model,
+        statusCode: authError.statusCode,
+        outcome: "failure",
+        errorCode: authError.code,
+        errorMessage: authError.message,
+      }));
+      updateProviderHealth(provider.id, false, null, authError.message, endpointProfile?.id || null);
+      return {
+        ok: false,
+        providerId,
+        checkedAt: nowIso(),
+        statusCode: authError.statusCode,
+        latencyMs: 0,
+        route,
+        responsePreview: null,
+        error: {
+          code: authError.code,
+          message: authError.message,
+        },
+      };
+    }
+    const secret = secretResolution.secret;
     if (effectiveProvider.authStrategy !== "none" && (!secret || isManagedProxyPlaceholderSecret(secret))) {
       const placeholder = isManagedProxyPlaceholderSecret(secret);
       const errorCode = placeholder
@@ -6009,11 +6279,17 @@ export function createModelGatewayService(
     }
     const provider = effectiveProviderForEndpointProfile(ownerProvider, endpointProfile);
     const selectedEndpointProfileId = endpointProfile?.id || null;
+    let selectedAccountForRequest: ModelGatewayAccountEntry | null = null;
     const updateSelectedProviderHealth = (
       success: boolean,
       latencyMs: number | null,
       errorMessage: string | null,
-    ) => updateProviderHealth(provider.id, success, latencyMs, errorMessage, selectedEndpointProfileId);
+    ) => {
+      updateProviderHealth(provider.id, success, latencyMs, errorMessage, selectedEndpointProfileId);
+      if (success && selectedAccountForRequest) {
+        markCodexAccountReady(provider.id, selectedAccountForRequest.id);
+      }
+    };
     const setSelectedProviderHeaders = () => {
       res.setHeader("X-OpenClaw-Model-Gateway-Provider", provider.id);
       if (selectedEndpointProfileId) {
@@ -6056,7 +6332,39 @@ export function createModelGatewayService(
       return;
     }
 
-    const secret = readProviderSecret(provider);
+    let secretResolution: ProviderSecretResolution;
+    try {
+      secretResolution = await resolveProviderSecret(provider);
+    } catch (error) {
+      const authError = isModelGatewayServiceError(error)
+        ? error
+        : new ModelGatewayServiceError(
+          "model_gateway_account_auth_failed",
+          error instanceof Error ? error.message : "Model Gateway account authentication failed.",
+          502,
+        );
+      updateSelectedProviderHealth(false, null, authError.message);
+      appendRequestLog(requestLogEntry({
+        kind: "gateway-request",
+        startedAt,
+        route: decision,
+        model: requestModel,
+        statusCode: authError.statusCode,
+        outcome: "failure",
+        errorCode: authError.code,
+        errorMessage: authError.message,
+      }));
+      sendJson(res, authError.statusCode, {
+        error: {
+          code: authError.code,
+          message: authError.message,
+          decision,
+        },
+      });
+      return;
+    }
+    const secret = secretResolution.secret;
+    selectedAccountForRequest = secretResolution.account;
     const resolvedModel = decision.model?.resolved || null;
     if (resolvedModel && resolvedModel !== requestModel) {
       bodyText = replaceModelInJsonText(bodyText, resolvedModel);

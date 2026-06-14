@@ -216,6 +216,7 @@ export interface ModelGatewayAccountEntry {
   id: string;
   kind: ModelGatewayAccountProviderKind;
   enabled: boolean;
+  state: ModelGatewayAccountState;
   authRef: string;
   credentialSource: ModelGatewayAccountCredentialSource;
   accountHash: string | null;
