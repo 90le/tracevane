@@ -334,6 +334,35 @@
               <span>{{ text(`当前显示 ${relatedSessionEvents.length} 条`, `Showing ${relatedSessionEvents.length} events`) }}</span>
             </div>
 
+            <div v-if="requestedSessions.length" class="ccx-list ccx-agent-profile-requested-list">
+              <article
+                v-for="session in requestedSessions"
+                :key="`${session.platform}:${session.bindingId}:${session.accountId}:${session.botId || ''}`"
+                class="ccx-list-row ccx-agent-profile-session-row ccx-agent-profile-requested-row"
+              >
+                <div>
+                  <small>{{ session.platform }} · {{ session.bindingId }}</small>
+                  <strong>{{ session.agent }} · {{ session.effectiveMode }}</strong>
+                  <p>{{ session.model || text('默认模型', 'default model') }}</p>
+                </div>
+                <div>
+                  <span>{{ text('请求', 'Requested') }} {{ session.requestedMode }}</span>
+                  <span>{{ text('生效', 'Effective') }} {{ session.effectiveMode }}</span>
+                  <span>{{ session.reason }}</span>
+                </div>
+                <div class="ccx-agent-profile-row-actions">
+                  <button
+                    type="button"
+                    class="secondary-button compact-button"
+                    @click="openBindingConfigById(session.bindingId)"
+                  >
+                    <ExternalLink :size="15" />
+                    {{ text('绑定', 'Binding') }}
+                  </button>
+                </div>
+              </article>
+            </div>
+
             <div v-if="activeSessions.length" class="ccx-list">
               <article v-for="session in activeSessions" :key="session.poolKey" class="ccx-list-row ccx-agent-profile-session-row">
                 <div>

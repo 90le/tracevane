@@ -49,7 +49,7 @@
   - Profile 工作台补齐复制、删除保护、设为默认、模型网关跳转、事件筛选和当前 Profile 活动会话批量停止；删除会阻止仅剩一个 Profile、仍有 IM 绑定或活动 session 的情况。
   - Profile 编辑流补齐真实重命名语义：保存或设默认时按原始 Profile ID 替换，并自动迁移相关 IM binding；重复 ID、缺少工作目录或缺少 ID 会阻止保存，未保存状态可撤销。
   - Profile effective model 顺序改为 `Profile model > Gateway app-specific model > Gateway default model`；页面展示当前 CLI App Connection 的协议、endpoint、配置状态和 resolved model，`App Profile` 改为受控 `default` 选择并保留既有自定义值。
-  - Profile 工作台的 IM binding、活动 session 和 session event 行都可直达绑定配置；`/channel-connectors?bindingId=...&profileId=...` 会打开 Platforms tab 并选中对应 binding，`profileId` 入口会打开 Profiles tab；主配置页返回 Profile 工作台会保留当前 `profileId`。
+  - Profile 工作台的 IM binding、requested persistent binding、活动 session 和 session event 行都可直达绑定配置；`/channel-connectors?bindingId=...&profileId=...` 会打开 Platforms tab 并选中对应 binding，`profileId` 入口会打开 Profiles tab；主配置页返回 Profile 工作台会保留当前 `profileId`。
   - Profile 工作台的“模型网关”入口会带 `tab=connections&app=<cli>` 打开 Model Gateway，并定位当前 Profile 对应的 CLI App Connection。
 - 清理并压缩 `docs/`：
   - 新增 `docs/README.md` 作为文档索引和维护规则。
@@ -127,6 +127,7 @@
 - 本轮浏览器验证通过：Profile 页当前渲染 2 个 IM binding 配置入口；打开 `/channel-connectors?bindingId=feishu-live&profileId=feishu-codex` 会显示 Platforms tab，并选中 `Feishu Live` / `Feishu Codex`，无横向溢出。
 - 本轮浏览器验证通过：从 `/channel-connectors?profileId=feishu-codex` 点击 Profile 工作台会进入 `/channel-connectors/profiles?profileId=feishu-codex`，并选中 `Feishu Codex`。
 - 本轮浏览器验证通过：`/channel-connectors/profiles?profileId=feishu-codex` 当前 8 条 session event 均渲染“绑定”入口；桌面/手机无横向溢出。
+- 本轮浏览器验证通过：`/channel-connectors/profiles?profileId=feishu-codex` 当前 2 条 requested persistent binding 均渲染“绑定”入口，桌面/手机无横向溢出。
 - 本轮浏览器验证通过：打开 `/model-gateway?tab=connections&app=codex` 会显示 App Connections，并在桌面/手机高亮 `Codex CLI` 卡片，无横向溢出。
 - 本轮浏览器验证通过：Profile 页面在 1440/900/390 宽度下渲染 CLI App connection 与 App Profile 受控选择，无横向溢出。
 - 本轮浏览器交互验证通过：无保存修改 Profile ID 会显示未保存状态，撤销会还原原 ID；输入已有 Profile ID 会显示冲突并禁用保存，未改写真实配置。

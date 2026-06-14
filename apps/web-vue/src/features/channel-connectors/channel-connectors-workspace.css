@@ -189,6 +189,15 @@
   align-items: start;
 }
 
+.ccx-agent-profile-requested-list {
+  margin-bottom: 12px;
+}
+
+.ccx-agent-profile-requested-row {
+  border-color: color-mix(in srgb, var(--accent) 24%, var(--mono-line));
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface-base));
+}
+
 .ccx-agent-profile-binding-main {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -875,5 +884,9 @@
   .ccx-agent-profile-binding-main .compact-button,
   .ccx-agent-profile-linked-row .compact-button {
     justify-self: start;
+  }
+
+  .ccx-agent-profile-requested-row .ccx-agent-profile-row-actions {
+    width: 100%;
   }
 }
