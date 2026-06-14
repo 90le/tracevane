@@ -615,6 +615,69 @@
   gap: 14px;
 }
 
+.mgw-provider-form-sections {
+  display: grid;
+  gap: 12px;
+}
+
+.mgw-config-section {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-base) 90%, var(--surface-soft));
+  padding: 12px;
+}
+
+.mgw-config-section__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  border-bottom: 1px solid var(--mono-line);
+  padding-bottom: 9px;
+}
+
+.mgw-config-section__head h4 {
+  margin: 0;
+  color: var(--mono-ink);
+  font-size: 0.94rem;
+  letter-spacing: 0;
+}
+
+.mgw-config-section__head span {
+  min-width: 0;
+  color: var(--mono-ink-2);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.mgw-scope-section {
+  margin-top: 0;
+}
+
+.mgw-model-cell {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mgw-model-cell__label {
+  display: none;
+  color: var(--mono-ink-2);
+  font-size: 0.76rem;
+  line-height: 1.2;
+}
+
+.mgw-model-cell .form-input {
+  min-width: 0;
+  width: 100%;
+}
+
 .mgw-form-grid,
 .mgw-smoke-grid {
   display: grid;
@@ -826,9 +889,8 @@
 .mgw-model-row {
   display: grid;
   grid-template-columns:
-    minmax(150px, 1fr)
-    minmax(110px, 0.75fr)
-    minmax(130px, 0.85fr)
+    minmax(170px, 1.15fr)
+    minmax(150px, 0.9fr)
     minmax(96px, 0.5fr)
     minmax(88px, 0.5fr)
     minmax(240px, 1.45fr)
@@ -1246,6 +1308,15 @@
     text-align: left;
   }
 
+  .mgw-config-section__head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .mgw-config-section__head span {
+    text-align: left;
+  }
+
   .mgw-detect-card,
   .mgw-detect-target,
   .mgw-detect-protocol,
@@ -1266,6 +1337,10 @@
 
   .mgw-model-row {
     gap: 10px;
+  }
+
+  .mgw-model-cell__label {
+    display: block;
   }
 
   .mgw-model-remove {

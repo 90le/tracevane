@@ -456,7 +456,13 @@
             </section>
 
             <form class="mgw-provider-form" @submit.prevent="saveProvider">
-              <div class="mgw-form-grid">
+              <div class="mgw-provider-form-sections">
+                <section class="mgw-config-section">
+                  <div class="mgw-config-section__head">
+                    <h4>{{ text('基础连接', 'Connection') }}</h4>
+                    <span>{{ text('服务商身份、协议、主端点和路由优先级。', 'Provider identity, native protocol, primary endpoint, and routing priority.') }}</span>
+                  </div>
+                  <div class="mgw-form-grid">
                 <label class="form-field">
                   <span class="form-label">{{ text('Provider ID', 'Provider ID') }}</span>
                   <input v-model.trim="draft.id" class="form-input" placeholder="my-provider" />
@@ -494,6 +500,14 @@
                   <input v-model.trim="draft.baseUrl" class="form-input" placeholder="https://api.example.com/v1" />
                   <span class="field-hint">{{ text('这里是上游 API 前缀，Gateway 不会自动追加 /v1。', 'This is the upstream API prefix; Gateway will not append /v1 automatically.') }}</span>
                 </label>
+                  </div>
+                </section>
+
+                <section class="mgw-config-section">
+                  <div class="mgw-config-section__head">
+                    <h4>{{ text('端点路由', 'Endpoint routing') }}</h4>
+                    <span>{{ text('一个 Provider 下管理多个协议端点和回退顺序。', 'Manage multiple protocol endpoints and fallback order under one provider.') }}</span>
+                  </div>
                 <div class="mgw-endpoint-profile-list form-field-full" data-testid="gateway-endpoint-profile-editor">
                   <div class="mgw-endpoint-profile-list__head">
                     <span>
@@ -596,6 +610,14 @@
                     </div>
                   </div>
                 </div>
+                </section>
+
+                <section class="mgw-config-section">
+                  <div class="mgw-config-section__head">
+                    <h4>{{ text('密钥与识别', 'Key and detect') }}</h4>
+                    <span>{{ text('保存上游密钥，或自动识别协议与模型。', 'Save the upstream key or detect protocols and models.') }}</span>
+                  </div>
+                  <div class="mgw-form-grid">
                 <label class="form-field">
                   <span class="form-label">API Key</span>
                   <input v-model="draft.apiKey" class="form-input" type="password" :placeholder="secretPlaceholder" />
@@ -615,6 +637,15 @@
                     </button>
                   </div>
                 </div>
+                  </div>
+                </section>
+
+                <section class="mgw-config-section">
+                  <div class="mgw-config-section__head">
+                    <h4>{{ text('模型目录', 'Model catalog') }}</h4>
+                    <span>{{ text('只维护模型名称和别名；预算和能力可批量补齐。', 'Maintain model names and aliases; budgets and capabilities can be filled in bulk.') }}</span>
+                  </div>
+                  <div class="mgw-form-grid">
                 <label class="form-field">
                   <span class="form-label">{{ text('默认模型', 'Default model') }}</span>
                   <select v-if="draftDefaultModelOptions.length" v-model="draft.defaultModel" class="form-input">
@@ -640,7 +671,7 @@
                           v-model="draft.modelListText"
                           class="form-input mgw-model-list-input"
                           rows="4"
-                          placeholder="model-id | Display name | alias1,alias2&#10;model-b | Model B | b1,b2"
+                          placeholder="model-id | alias1,alias2&#10;model-b | b1,b2"
                         />
                       </label>
                       <div class="mgw-model-batch__actions">
@@ -680,8 +711,7 @@
                   </details>
                   <div class="mgw-model-table" data-testid="gateway-model-capability-list">
                     <div class="mgw-model-table__head">
-                      <span>{{ text('模型 ID', 'Model ID') }}</span>
-                      <span>{{ text('显示名', 'Display name') }}</span>
+                      <span>{{ text('模型名称', 'Model name') }}</span>
                       <span>{{ text('别名', 'Aliases') }}</span>
                       <span>{{ text('上下文', 'Context') }}</span>
                       <span>{{ text('输出', 'Output') }}</span>
@@ -692,16 +722,30 @@
                       {{ text('添加模型，或先填写 Base URL / Key 后点击识别配置。', 'Add a model, or enter Base URL / key and detect the config first.') }}
                     </div>
                     <div v-for="(model, index) in draft.modelRows" :key="model.key" class="mgw-model-row">
-                      <input v-model.trim="model.id" class="form-input" placeholder="gpt-5.5" @blur="syncDefaultModelWithList" />
-                      <input v-model.trim="model.label" class="form-input" :placeholder="text('可选', 'Optional')" />
-                      <input v-model.trim="model.aliases" class="form-input" placeholder="alias1, alias2" />
-                      <input v-model.trim="model.contextWindow" class="form-input" inputmode="numeric" placeholder="128000" />
-                      <input v-model.trim="model.maxOutputTokens" class="form-input" inputmode="numeric" placeholder="8192" />
-                      <div class="mgw-model-capabilities" :aria-label="text('模型能力', 'Model capabilities')">
-                        <label v-for="capability in modelCapabilityOptions" :key="capability.id" class="mgw-model-capability">
-                          <input v-model="model[capability.id]" type="checkbox" />
-                          <span>{{ text(capability.zh, capability.en) }}</span>
-                        </label>
+                      <label class="mgw-model-cell">
+                        <span class="mgw-model-cell__label">{{ text('模型名称', 'Model name') }}</span>
+                        <input v-model.trim="model.id" class="form-input" placeholder="gpt-5.5" @blur="syncDefaultModelWithList" />
+                      </label>
+                      <label class="mgw-model-cell">
+                        <span class="mgw-model-cell__label">{{ text('别名', 'Aliases') }}</span>
+                        <input v-model.trim="model.aliases" class="form-input" placeholder="alias1, alias2" />
+                      </label>
+                      <label class="mgw-model-cell">
+                        <span class="mgw-model-cell__label">{{ text('上下文', 'Context') }}</span>
+                        <input v-model.trim="model.contextWindow" class="form-input" inputmode="numeric" placeholder="128000" />
+                      </label>
+                      <label class="mgw-model-cell">
+                        <span class="mgw-model-cell__label">{{ text('输出', 'Output') }}</span>
+                        <input v-model.trim="model.maxOutputTokens" class="form-input" inputmode="numeric" placeholder="8192" />
+                      </label>
+                      <div class="mgw-model-cell mgw-model-cell--capabilities">
+                        <span class="mgw-model-cell__label">{{ text('能力', 'Capabilities') }}</span>
+                        <div class="mgw-model-capabilities" :aria-label="text('模型能力', 'Model capabilities')">
+                          <label v-for="capability in modelCapabilityOptions" :key="capability.id" class="mgw-model-capability">
+                            <input v-model="model[capability.id]" type="checkbox" />
+                            <span>{{ text(capability.zh, capability.en) }}</span>
+                          </label>
+                        </div>
                       </div>
                       <button
                         type="button"
@@ -714,8 +758,17 @@
                       </button>
                     </div>
                   </div>
-                  <span class="field-hint">{{ text('同一 Provider 内模型 ID 和别名不能重复；不同 Provider 允许同名模型，用于优先级和负载切换。', 'Model IDs and aliases must be unique inside one provider; different providers may share model names for priority and failover routing.') }}</span>
+                  <span class="field-hint">{{ text('同一 Provider 内模型名称和别名不能重复；不同 Provider 允许同名模型，用于优先级和负载切换。', 'Model names and aliases must be unique inside one provider; different providers may share model names for priority and failover routing.') }}</span>
                 </div>
+                  </div>
+                </section>
+
+                <section class="mgw-config-section">
+                  <div class="mgw-config-section__head">
+                    <h4>{{ text('高级覆盖', 'Advanced overrides') }}</h4>
+                    <span>{{ text('只在服务商路径或网络环境特殊时配置。', 'Use only for special provider paths or network environments.') }}</span>
+                  </div>
+                  <div class="mgw-form-grid">
                 <label class="form-field">
                   <span class="form-label">{{ text('Anthropic endpoint override', 'Anthropic endpoint override') }}</span>
                   <input v-model.trim="draft.anthropicEndpoint" class="form-input" placeholder="/messages" />
@@ -732,15 +785,22 @@
                   <span class="form-label">NO_PROXY</span>
                   <input v-model.trim="draft.noProxy" class="form-input" placeholder="localhost,127.0.0.1" />
                 </label>
+                  </div>
+                </section>
               </div>
 
-              <div class="mgw-scope-picker">
-                <span class="form-label">{{ text('可用范围', 'Available scopes') }}</span>
-                <label v-for="scope in appScopeOptions" :key="scope.id" class="mgw-check">
-                  <input v-model="draft.appScopes[scope.id]" type="checkbox" />
-                  <span>{{ text(scope.zh, scope.en) }}</span>
-                </label>
-              </div>
+              <section class="mgw-config-section mgw-scope-section">
+                <div class="mgw-config-section__head">
+                  <h4>{{ text('可用范围', 'Available scopes') }}</h4>
+                  <span>{{ text('选择哪些客户端可以使用这个 Provider。', 'Choose which clients can use this provider.') }}</span>
+                </div>
+                <div class="mgw-scope-picker">
+                  <label v-for="scope in appScopeOptions" :key="scope.id" class="mgw-check">
+                    <input v-model="draft.appScopes[scope.id]" type="checkbox" />
+                    <span>{{ text(scope.zh, scope.en) }}</span>
+                  </label>
+                </div>
+              </section>
 
               <div class="mgw-button-row mgw-form-actions">
                 <button type="submit" class="primary-button" :disabled="busy || !canSaveProvider">
@@ -2016,13 +2076,12 @@ function parseModelLines(value: string): ModelGatewayProviderModel[] {
     const parts = trimmed.includes('|')
       ? trimmed.split('|').map((part) => part.trim())
       : trimmed.split(',').map((part) => part.trim());
-    const [rawId, rawLabel, ...aliasParts] = parts;
+    const [rawId, ...aliasParts] = parts;
     const rawAliases = aliasParts.join(',');
     const id = rawId || '';
     if (!id) continue;
     models.push({
       id,
-      ...(rawLabel ? { label: rawLabel } : {}),
       ...(rawAliases ? { aliases: parseNoProxy(rawAliases) } : {}),
     });
   }
@@ -2041,7 +2100,6 @@ function modelRowsToModels(rows: ProviderModelRow[]): ModelGatewayProviderModel[
       const aliases = parseNoProxy(row.aliases);
       return {
         id,
-        ...(row.label.trim() ? { label: row.label.trim() } : {}),
         ...(parsePositiveDraftInteger(row.contextWindow) ? { contextWindow: parsePositiveDraftInteger(row.contextWindow) } : {}),
         ...(parsePositiveDraftInteger(row.maxOutputTokens) ? { maxOutputTokens: parsePositiveDraftInteger(row.maxOutputTokens) } : {}),
         ...(aliases.length ? { aliases } : {}),
@@ -2164,8 +2222,7 @@ function parseModelList(value: string): string[] {
 
 function formatModelLine(model: ModelGatewayProviderModel): string {
   const aliases = model.aliases?.length ? model.aliases.join(',') : '';
-  if (aliases) return `${model.id} | ${model.label || ''} | ${aliases}`;
-  if (model.label) return `${model.id} | ${model.label}`;
+  if (aliases) return `${model.id} | ${aliases}`;
   return model.id;
 }
 

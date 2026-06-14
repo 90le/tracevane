@@ -163,15 +163,14 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "addDraftModelRow",
     "removeDraftModelRow",
     "createProviderModelRow",
-    "模型 ID",
-    "显示名",
+    "模型名称",
     "别名",
     "上下文",
     "输出",
     "文字",
     "图片",
     "推理",
-    "同一 Provider 内模型 ID 和别名不能重复",
+    "同一 Provider 内模型名称和别名不能重复",
     "Provider status",
     "Routing priority",
     "Lower numbers win",
@@ -206,6 +205,13 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "mgw-endpoint-profile-list",
     "mgw-endpoint-profile-actions",
     "mgw-endpoint-smoke-result",
+    "mgw-provider-form-sections",
+    "mgw-config-section",
+    "基础连接",
+    "端点路由",
+    "密钥与识别",
+    "模型目录",
+    "高级覆盖",
   ]) {
     assert.match(page, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
@@ -228,6 +234,8 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
   assert.doesNotMatch(page, /运行矩阵与组件明细/);
   assert.doesNotMatch(page, /安装修复/);
   assert.doesNotMatch(page, /label:\s*'Custom'/);
+  assert.doesNotMatch(page, /显示名/);
+  assert.doesNotMatch(page, /Display name/);
 
   assert.match(css, /\.mgw-detect-card\s*\{[^}]*grid-column:\s*1 \/ -1/s);
   assert.match(css, /\.mgw-detect-card__main strong,\s*\.mgw-detect-card__main small\s*\{[^}]*overflow-wrap:\s*break-word/s);
@@ -240,8 +248,13 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
   assert.match(css, /\.mgw-app-preview pre\s*\{[^}]*overflow-wrap:\s*anywhere/s);
   assert.match(css, /\.mgw-profile-budget-bar\s*\{[^}]*display:\s*flex/s);
   assert.match(css, /\.mgw-profile-budget-bar span\s*\{[^}]*overflow-wrap:\s*anywhere/s);
-  assert.match(css, /\.mgw-model-table__head,\s*\.mgw-model-row\s*\{[^}]*grid-template-columns:[^}]*minmax\(150px,\s*1fr\)[^}]*minmax\(96px,\s*0\.5fr\)[^}]*minmax\(88px,\s*0\.5fr\)/s);
-  assert.match(css, /\.mgw-model-row > \.form-input\s*\{[^}]*min-width:\s*0/s);
+  assert.match(css, /\.mgw-provider-form-sections\s*\{[^}]*display:\s*grid/s);
+  assert.match(css, /\.mgw-config-section\s*\{[^}]*border:\s*1px solid var\(--mono-line\)/s);
+  assert.match(css, /\.mgw-config-section__head span\s*\{[^}]*overflow-wrap:\s*anywhere/s);
+  assert.match(css, /\.mgw-model-table__head,\s*\.mgw-model-row\s*\{[^}]*grid-template-columns:[^}]*minmax\(170px,\s*1\.15fr\)[^}]*minmax\(150px,\s*0\.9fr\)[^}]*minmax\(96px,\s*0\.5fr\)[^}]*minmax\(88px,\s*0\.5fr\)/s);
+  assert.match(css, /\.mgw-model-cell \.form-input\s*\{[^}]*min-width:\s*0/s);
+  assert.match(css, /\.mgw-model-cell__label\s*\{[^}]*display:\s*none/s);
+  assert.match(css, /@media \(max-width:\s*760px\)[\s\S]*\.mgw-model-cell__label\s*\{[^}]*display:\s*block/s);
   assert.match(css, /\.mgw-model-capabilities\s*\{[^}]*flex-wrap:\s*wrap/s);
   assert.match(css, /\.mgw-model-capability\s*\{[^}]*white-space:\s*nowrap/s);
   assert.match(css, /\.mgw-model-batch\s*\{[^}]*border:\s*1px solid var\(--mono-line\)/s);

@@ -8,7 +8,8 @@
 - Studio Gateway 是唯一正式模型中转目标；旧 Codex Stack / CPA / Compact 生产前后端已删除。
 - Gateway daemon 与 Channel daemon 都必须由 OS/user supervisor 守护；Studio / OpenClaw 崩溃时，CLI 与 IM bot 应继续直连本地 daemon。
 - Gateway 对外提供 Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions；`GET /v1/models` 聚合启用 provider，并保留模型别名、模型池、能力标记、上下文窗口和输出预算。
-- Provider Center 支持自定义 provider、启停、模型列表/别名/默认模型、能力勾选、批量模型导入、批量预算/能力应用、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
+- Provider Center 支持自定义 provider、启停、模型名称/别名/默认模型、能力勾选、批量模型导入、批量预算/能力应用、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
+- Provider Center 表单已按连接、端点路由、密钥识别、模型目录、高级覆盖、可用范围分区；PC/平板/手机均按同一配置流程降级展示。
 - Gateway Provider 支持 endpoint profiles；同一 provider/模型可按客户端协议优选原生 endpoint，并在 endpoint 级 health/circuit 下回退。
 - Provider Center 不再按模型名自动标记 vision；图片能力只来自用户配置、上游显式能力元数据或图片 smoke 通过后用户确认写回。
 - App Connections 覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收。
@@ -24,6 +25,10 @@
 
 ## 本轮完成
 
+- Provider Center 前端收口：
+  - 模型目录的可见身份字段只保留“模型名称”和“别名”，不再暴露“显示名”三段式配置。
+  - 批量导入格式改为 `model-id | alias1,alias2`；保存时不再从表格写入 `model.label`。
+  - Provider 编辑表单按配置任务分区；手机端模型行显示字段标签，避免窄屏只能靠 placeholder 判断字段。
 - Gateway 模型预算：
   - `knownModelDefaults` 为 `glm-5.2` / `glm-5.2[1m]` 固定 1M context、128K output、tools/reasoning/text/streaming/responses；不默认 vision。
   - 当前本地 GLM provider 模型目录加入 `glm-5.2`，并添加 `glm-5.2[1m]` alias。
@@ -106,12 +111,14 @@
 
 ## 最近验证
 
-- 本轮验证通过：`npm run typecheck:api`
+- 本轮验证通过：`node --test tests/system/studio-web-model-gateway-page.test.mjs tests/system/studio-web-agent-cli-page.test.mjs`，5/5 通过，覆盖 Provider Center 分区布局、模型名称/别名二段式配置和 Agent CLI 模型目录读取。
 - 本轮验证通过：`npm run typecheck:web`
+- 本轮验证通过：`npm run typecheck:api`
+- 本轮验证通过：`npm run build:web`
+- 本轮浏览器验证通过：Python Playwright 打开 `http://127.0.0.1:5176/model-gateway`，在 1440/900/390 宽度下进入 Provider configuration，无页面横向溢出；手机端模型行字段标签可见。
 - 本轮验证通过：`npm run build:api`
 - 本轮验证通过：`node --test tests/system/studio-web-agent-cli-page.test.mjs`
 - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，57/57 通过，覆盖 `glm-5.2` / `glm-5.2[1m]` 预算推断、endpoint profile 原生协议优选、endpoint health 回退、响应头和 endpoint 级 smoke。
-- 本轮验证通过：`node --test tests/system/studio-web-model-gateway-page.test.mjs tests/system/studio-web-agent-cli-page.test.mjs`，5/5 通过，覆盖 Provider Center endpoint profile 编辑和 Agent CLI 模型目录读取。
 - 本轮本机 live smoke 通过：Gateway `glm-5.2` 三协议入口均可用，`/v1/chat/completions` 走 `glm/coding-chat`，`/v1/messages` 走 `glm/coding-anthropic`，`/v1/responses` 走 `glm/coding-chat` 转换。
 - 本轮本机 endpoint smoke 通过：Provider Center 后端 smoke API 指定 `glm/coding-chat` 与 `glm/coding-anthropic` 均返回 200，并命中各自 upstream。
 - 本轮验证通过：`node --test tests/system/channel-connectors-service.test.mjs`，104/104 通过，覆盖 Gateway 模型列表超过 12 个时 Feishu/命令模型菜单仍显示后续模型。
