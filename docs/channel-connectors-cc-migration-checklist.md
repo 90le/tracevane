@@ -41,7 +41,7 @@
 | P1 | Codex runner | 进行中：结构化 stdout/stderr、混合 content 工具结果、resume 图片参数顺序、app-server 视觉 args 证据、Gateway Responses->Chat 图片映射、图片 native smoke 已补；视频按 staged file 交给 Agent | `exec/resume`、thread、cwd、permission、tool stream、file manifest、stop/new/reset/compact 按 CC 验收；app-server 仍是 beta |
 | P1 | Claude Code runner | 进行中：native compact、结构化/混合 tool_result、过程/最终回复、图片 native smoke 已补；视频按 staged file 交给 Agent | stream-json、permission prompt、session resume、tool event、文件/图片/视频输入、native compact/stop live driver |
 | P1 | OpenCode runner | 进行中：parser 已对齐；结构化/混合 stdout/stderr/exitCode、native compact、图片 native smoke 已补；视频按 staged file 交给 Agent | JSON/SQLite fallback、session、tool stream、文件/图片/视频输入、native compact/stop live driver |
-| P1 | Feishu 私聊 | 进行中：长连接 live 稳定；Markdown、入站文件/图片/视频 staged-path live、出站文件 24h live、权限审批 24h live、命令 reaction + reply-to、compact command progress、进度卡条数可在卡片内设置、工作目录快捷切换、主卡/更多页直达真实配置页、配置页分区和单按钮切换、卡片 action 同步 callback response、native-first compact wiring、三 Agent 显式 `/compact` 24h live 已补 | 持续抽查 |
+| P1 | Feishu 私聊 | 进行中：长连接 live 稳定；Markdown、入站文件/图片/视频 staged-path live、出站文件 24h live、权限审批 24h live、命令 reaction + reply-to、compact command progress、进度卡条数可在卡片内设置、工作目录快捷切换/分页/搜索、主卡/更多页直达真实配置页、配置页分区和单按钮切换、卡片 action 同步 callback response、native-first compact wiring、三 Agent 显式 `/compact` 24h live 已补 | 持续抽查 |
 | P1 | Octo 私聊 | 进行中：长连接 live 稳定；Markdown 已验证；入站文件/图片 staged-path live、入站文件路径返回 24h live、`.mp4` 文件形态视频 24h live、权限 24h live、媒体 payload 文本保留、auto compact 24h live、显式 `/compact` 24h live、出站文件 `outboundFilesSent` live 证据已补 | 继续复核未覆盖 CLI 事件形态 |
 | P1 | 工具/思考/过程显示 | 继续推进：非飞书过程回复标题已移除；结构化/混合工具结果、per-agent live `--require-tool-output`、Codex reasoning summary、Octo `/thinking` 过滤、OpenCode live reasoning 和 parser/live 能力展示已补；Codex/Claude Code/OpenCode 均有真实 IM 过程回复证据 | 三个 Agent 都稳定提取工具名、输入、stdout/stderr、exit/status、思考流、过程回复和最终回复分类；继续复核真实 CLI 新事件形态 |
 | P1 | 图片/视觉模型 fallback | 已完成：默认关闭；binding 可设启用和默认视觉模型；IM `/vision` 命令与 Feishu 卡片可临时开启/关闭/指定模型；Gateway catalog 只列健康 vision 模型 | 非视觉当前模型收到图片时按配置切到指定/自动健康视觉模型，失败回退附件说明模式 |
@@ -55,7 +55,7 @@
 
 - `npm run typecheck:api`
 - `npm run build:api`
-- `node --test tests/system/channel-connectors-service.test.mjs`，104/104 通过，覆盖 Feishu `/help` 菜单、进度卡条数卡片内设置、工作目录快捷切换、配置页分区/单按钮切换、会话动作和 card action 同步 callback response。
+- `node --test tests/system/channel-connectors-service.test.mjs`，104/104 通过，覆盖 Feishu `/help` 菜单、进度卡条数卡片内设置、工作目录快捷切换/分页/搜索、配置页分区/单按钮切换、会话动作和 card action 同步 callback response。
 - `node --test tests/system/channel-connectors-command-live-script.test.mjs`，8/8 通过。
 - `npm run typecheck:web`
 - `node --test --test-name-pattern "OpenCode DB fallback|OpenCode JSON progress|OpenCode tool-calls|Claude Code stream-json progress|Claude text before later tools|Codex command execution progress|Codex agent messages before later tools" tests/system/channel-connectors-service.test.mjs`，7/7 通过。

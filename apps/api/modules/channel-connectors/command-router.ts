@@ -2529,36 +2529,73 @@ function resolveWorkDirTargetWithHistory(
   return resolveWorkDirTarget(target, currentWorkDir);
 }
 
+const WORKDIR_CHILD_PAGE_SIZE = 10;
+const WORKDIR_CHILD_SCAN_LIMIT = 500;
+
 function listChildDirectories(workDir: string): string[] {
   try {
     return fs.readdirSync(workDir, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
       .map((entry) => entry.name)
       .sort((a, b) => a.localeCompare(b))
-      .slice(0, 20);
+      .slice(0, WORKDIR_CHILD_SCAN_LIMIT);
   } catch {
     return [];
   }
 }
 
+function parseWorkDirPage(value: string | undefined): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(1, Math.floor(parsed)) : 1;
+}
+
+function parseWorkDirListingRequest(args: string[]): { page: number; search: string | null } | null {
+  const first = normalizeString(args[0]).toLowerCase();
+  if (!args.length || ["help", "usage", "?"].includes(first)) return { page: 1, search: null };
+  if (first === "page") return { page: parseWorkDirPage(args[1]), search: null };
+  if (first === "find" || first === "search") {
+    const rest = args.slice(1);
+    const pageIndex = rest.findIndex((part) => normalizeString(part).toLowerCase() === "page");
+    const searchParts = pageIndex >= 0 ? rest.slice(0, pageIndex) : rest;
+    const search = normalizeString(searchParts.join(" ")) || null;
+    return {
+      page: pageIndex >= 0 ? parseWorkDirPage(rest[pageIndex + 1]) : 1,
+      search,
+    };
+  }
+  return null;
+}
+
 function directoryInfoText(
   project: ChannelConnectorRuntimeProject,
   control: ChannelConnectorSessionControlRecord | null,
+  options: { page?: number; search?: string | null } = {},
 ): string {
-  const children = listChildDirectories(project.workDir);
+  const allChildren = listChildDirectories(project.workDir);
+  const search = normalizeString(options.search).toLowerCase();
+  const filteredChildren = search
+    ? allChildren.filter((name) => name.toLowerCase().includes(search))
+    : allChildren;
+  const pageCount = Math.max(1, Math.ceil(filteredChildren.length / WORKDIR_CHILD_PAGE_SIZE));
+  const page = Math.min(pageCount, Math.max(1, Math.floor(options.page || 1)));
+  const pageStart = (page - 1) * WORKDIR_CHILD_PAGE_SIZE;
+  const children = filteredChildren.slice(pageStart, pageStart + WORKDIR_CHILD_PAGE_SIZE);
   const history = normalizeWorkDirHistory(control)
     .filter((item) => path.resolve(item) !== path.resolve(project.workDir))
     .slice(0, 10);
   const lines = [`当前工作目录：${project.workDir}`];
+  lines.push(`子目录：${allChildren.length} 个${search ? `；搜索「${options.search}」命中 ${filteredChildren.length} 个` : ""}；第 ${page}/${pageCount} 页`);
   if (history.length) {
     lines.push("", "最近目录：");
     history.forEach((name, index) => lines.push(`${index + 1}. ${name}`));
   }
   if (children.length) {
-    lines.push("", "子目录：");
-    children.forEach((name, index) => lines.push(`${index + 1}. ${name}`));
+    lines.push("", "当前页子目录：");
+    children.forEach((name) => lines.push(`- ${name} -> /cd ${path.resolve(project.workDir, name)}`));
+  } else if (search) {
+    lines.push("", "当前搜索没有匹配的子目录。");
   }
-  lines.push("", "用法：/dir <路径|序号|->；/cd <路径|default>。序号优先选择最近目录，历史为空时选择子目录。");
+  lines.push("", "用法：/dir <路径|序号|->；/cd <路径|default>；/dir page <页码>；/dir find <关键字>。序号优先选择最近目录，历史为空时选择子目录。");
   return lines.join("\n");
 }
 
@@ -3538,6 +3575,7 @@ export async function handleChannelConnectorCommand(
   const name = parsedStudioName || parsed.name;
   const args = parsed.args;
   const rawCommandsSubcommand = normalizeString(args[0]).toLowerCase();
+  const dirListingRequest = name === "dir" ? parseWorkDirListingRequest(args) : null;
   const commandsMutation = name === "commands"
     && args.length > 0
     && !(rawCommandsSubcommand === "ls" || matchChannelConnectorSubCommand(rawCommandsSubcommand, ["list"]) === "list");
@@ -3569,8 +3607,9 @@ export async function handleChannelConnectorCommand(
       "stop",
       "compact",
     ].includes(name);
-  const listOnlyCommand = ["agent", "model", "vision", "mode", "reasoning", "dir", "display", "thinking", "process", "tools"].includes(name)
-    && args.length === 0;
+  const listOnlyCommand = (["agent", "model", "vision", "mode", "reasoning", "display", "thinking", "process", "tools"].includes(name)
+    && args.length === 0)
+    || dirListingRequest !== null;
   const mutating = (mutableCommandName || commandsMutation || aliasMutation) && !listOnlyCommand;
 
   if (mutating && !canManageSession(context.binding, context.message)) {
@@ -4745,17 +4784,15 @@ export async function handleChannelConnectorCommand(
 
   if (name === "dir") {
     const requestedDir = args.join(" ");
-    if (
-      (args.length === 0)
-      || ["help", "usage", "?"].includes(normalizeString(requestedDir).toLowerCase())
-    ) {
+    const listing = parseWorkDirListingRequest(args);
+    if (listing) {
       return {
         handled: true,
         command: name,
         action: "list",
         ok: true,
         control: currentControl,
-        replyText: directoryInfoText(currentProject, currentControl),
+        replyText: directoryInfoText(currentProject, currentControl, listing),
         passthroughText: null,
       };
     }

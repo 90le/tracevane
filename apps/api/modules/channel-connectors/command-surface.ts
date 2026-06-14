@@ -275,6 +275,16 @@ export interface ChannelConnectorCommandSurfaceInput {
   skills?: ChannelConnectorCommandSurfaceSkill[];
   selectedSectionId?: string | null;
   selectedViewId?: string | null;
+  workDirPage?: number | null;
+  workDirSearch?: string | null;
+}
+
+const WORKDIR_CHILD_PAGE_SIZE = 10;
+const WORKDIR_CHILD_SCAN_LIMIT = 500;
+
+export interface ChannelConnectorWorkdirSurfaceState {
+  page: number;
+  search: string | null;
 }
 
 function normalizeString(value: unknown): string {
@@ -325,6 +335,39 @@ function metadataNumber(
 
 function clampInteger(value: number, minimum: number, maximum: number): number {
   return Math.min(maximum, Math.max(minimum, Math.floor(value)));
+}
+
+function normalizePage(value: unknown): number {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? Math.max(1, Math.floor(parsed)) : 1;
+}
+
+function normalizedWorkdirSearch(value: unknown): string | null {
+  const normalized = normalizeString(value);
+  return normalized ? normalized : null;
+}
+
+export function channelConnectorWorkdirSurfaceStateFromCommand(
+  command: string | null | undefined,
+): ChannelConnectorWorkdirSurfaceState {
+  const normalized = normalizeString(command);
+  if (!normalized) return { page: 1, search: null };
+  const parts = normalized.replace(/^[/%]+/, "").split(/\s+/).filter(Boolean);
+  const name = parts[0]?.toLowerCase() || "";
+  if (!["dir", "cd", "chdir", "workdir", "pwd"].includes(name)) return { page: 1, search: null };
+  const subcommand = parts[1]?.toLowerCase() || "";
+  if (subcommand === "page") return { page: normalizePage(parts[2]), search: null };
+  if (subcommand === "find" || subcommand === "search") {
+    const rest = parts.slice(2);
+    const pageIndex = rest.findIndex((part) => part.toLowerCase() === "page");
+    const searchParts = pageIndex >= 0 ? rest.slice(0, pageIndex) : rest;
+    const page = pageIndex >= 0 ? normalizePage(rest[pageIndex + 1]) : 1;
+    return {
+      page,
+      search: normalizedWorkdirSearch(searchParts.join(" ")),
+    };
+  }
+  return { page: 1, search: null };
 }
 
 function bindingFeishuProgressCardEntryLimit(binding: Pick<ChannelConnectorRuntimeBinding, "metadata">): number {
@@ -524,6 +567,13 @@ export function buildChannelConnectorCommandSurface(
   input: ChannelConnectorCommandSurfaceInput,
 ): ChannelConnectorCommandSurface {
   const current = resolveChannelConnectorEffectiveProject(input.config, input.project, input.control || null);
+  const workDirChildren = listChildDirectoryNames(current.workDir);
+  const workDirSearch = normalizedWorkdirSearch(input.workDirSearch);
+  const workDirFilteredChildCount = workDirSearch
+    ? workDirChildren.filter((name) => name.toLowerCase().includes(workDirSearch.toLowerCase())).length
+    : workDirChildren.length;
+  const workDirChildPageCount = Math.max(1, Math.ceil(workDirFilteredChildCount / WORKDIR_CHILD_PAGE_SIZE));
+  const workDirPage = clampInteger(normalizePage(input.workDirPage), 1, workDirChildPageCount);
   const thinkingMessages = input.control?.thinkingMessages
     ?? input.displayDefaults?.thinkingMessages
     ?? true;
@@ -828,6 +878,10 @@ export function buildChannelConnectorCommandSurface(
         .map((item) => path.resolve(item))
         .filter((item) => item !== path.resolve(current.workDir))
         .slice(0, 10),
+      workDirPage,
+      workDirSearch,
+      workDirChildCount: workDirChildren.length,
+      workDirChildPageCount,
       thinkingMessages,
       processMessages,
       toolMessages,
@@ -926,10 +980,14 @@ function listChildDirectoryNames(workDir: string): string[] {
       .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
       .map((entry) => entry.name)
       .sort((a, b) => a.localeCompare(b))
-      .slice(0, 20);
+      .slice(0, WORKDIR_CHILD_SCAN_LIMIT);
   } catch {
     return [];
   }
+}
+
+function workdirPageCommand(search: string | null, page: number): string {
+  return search ? `/dir find ${search} page ${page}` : `/dir page ${page}`;
 }
 
 function stripListPrefix(value: string): string {
@@ -1497,13 +1555,12 @@ function helpSectionActions(
     ];
   }
   if (section.id === "workdir") {
-    const childCount = listChildDirectoryNames(surface.current.workDir).length;
     const historyCount = surface.current.workDirHistory.length;
     return [
       action("workdir-picker", "目录选择器", "/dir", {
         actionKind: "nav",
         tone: "primary",
-        description: `${compactPath(surface.current.workDir)} · ${historyCount} 个最近目录 · ${childCount} 个子目录`,
+        description: `${compactPath(surface.current.workDir)} · ${historyCount} 个最近目录 · ${surface.current.workDirChildCount} 个子目录`,
         requiresAdmin: true,
       }),
     ];
@@ -1842,7 +1899,15 @@ function renderAgentPickerCard(surface: ChannelConnectorCommandSurface): Channel
 
 function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): ChannelConnectorFeishuInteractiveCard {
   const workDir = surface.current.workDir;
-  const children = listChildDirectoryNames(workDir);
+  const search = surface.current.workDirSearch;
+  const allChildren = listChildDirectoryNames(workDir);
+  const filteredChildren = search
+    ? allChildren.filter((name) => name.toLowerCase().includes(search.toLowerCase()))
+    : allChildren;
+  const pageCount = Math.max(1, Math.ceil(filteredChildren.length / WORKDIR_CHILD_PAGE_SIZE));
+  const page = clampInteger(surface.current.workDirPage || 1, 1, pageCount);
+  const pageStart = (page - 1) * WORKDIR_CHILD_PAGE_SIZE;
+  const children = filteredChildren.slice(pageStart, pageStart + WORKDIR_CHILD_PAGE_SIZE);
   const history = surface.current.workDirHistory
     .filter((item) => path.resolve(item) !== path.resolve(workDir))
     .slice(0, 10);
@@ -1859,6 +1924,15 @@ function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): Chann
   const home = process.env.HOME || process.env.USERPROFILE || "";
   const homeAction = home
     ? action("workdir-home", "Home", `/cd ${home}`, { requiresAdmin: true })
+    : null;
+  const clearSearchAction = search
+    ? action("workdir-clear-search", "清除搜索", "/dir", { actionKind: "nav" })
+    : null;
+  const prevPageAction = page > 1
+    ? action("workdir-page-prev", "上一页", workdirPageCommand(search, page - 1), { actionKind: "nav" })
+    : null;
+  const nextPageAction = page < pageCount
+    ? action("workdir-page-next", "下一页", workdirPageCommand(search, page + 1), { actionKind: "nav" })
     : null;
   const options = [
     { label: "Profile 默认目录", value: actionCommandValue(defaultAction) },
@@ -1881,8 +1955,8 @@ function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): Chann
     ...children.map((name, index) => {
       const target = path.resolve(workDir, name);
       return {
-        label: `${index + 1}. ${name}`,
-        value: actionCommandValue(action(`workdir-child-${index + 1}`, name, `/cd ${target}`, { requiresAdmin: true })),
+        label: `${pageStart + index + 1}. ${name}`,
+        value: actionCommandValue(action(`workdir-child-${pageStart + index + 1}`, name, `/cd ${target}`, { requiresAdmin: true })),
       };
     }),
   ];
@@ -1892,7 +1966,7 @@ function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): Chann
       content: [
         "**当前目录**",
         `\`${workDir}\``,
-        `可选项：${options.length} 个 · 最近目录 ${history.length} 个 · 子目录 ${children.length} 个`,
+        `最近目录 ${history.length} 个 · 子目录 ${allChildren.length} 个${search ? ` · 搜索 ${search} 命中 ${filteredChildren.length} 个` : ""}`,
       ].join("\n"),
     },
   ];
@@ -1905,6 +1979,17 @@ function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): Chann
     [defaultAction, previousAction, parentAction, homeAction].filter((item): item is ChannelConnectorCommandSurfaceAction => Boolean(item)),
     surface,
     2,
+    true,
+  );
+  elements.push({
+    tag: "markdown",
+    content: `**子目录**\n第 ${page}/${pageCount} 页 · 本页 ${children.length} 个${search ? ` · 搜索：${search}` : ""}`,
+  });
+  pushActionRows(
+    elements,
+    [prevPageAction, nextPageAction, clearSearchAction].filter((item): item is ChannelConnectorCommandSurfaceAction => Boolean(item)),
+    surface,
+    3,
     true,
   );
   if (options.length) {
@@ -1920,7 +2005,7 @@ function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): Chann
   pushSubcardNavRows(elements, surface, "workdir");
   elements.push({
     tag: "note",
-    elements: [plainText("手输 /dir /abs/path、/dir ~/repo 或 /dir ./src；切换目录会断开旧 Agent 续接。")],
+    elements: [plainText("搜索：/dir find src；分页：/dir page 2；路径：/dir /abs/path、/dir ~/repo 或 /dir ./src。切换目录会断开旧 Agent 续接。")],
   });
   return {
     config: {

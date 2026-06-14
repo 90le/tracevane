@@ -169,6 +169,7 @@ import {
   buildChannelConnectorCommandSurface,
   channelConnectorCommandSurfaceSectionFromCommand,
   channelConnectorCommandSurfaceViewFromCommand,
+  channelConnectorWorkdirSurfaceStateFromCommand,
   extractChannelConnectorCommandFromActionValue,
   extractChannelConnectorSurfaceActionPayload,
   normalizeChannelConnectorCommandSurfaceSection,
@@ -7870,6 +7871,8 @@ function buildFeishuCommandCard(input: {
   displayDefaults?: ChannelConnectorProgressDefaults | null;
   selectedSectionId?: string | null;
   selectedViewId?: string | null;
+  workDirPage?: number | null;
+  workDirSearch?: string | null;
   models?: string[];
   visionModels?: string[];
   notice?: {
@@ -7957,6 +7960,8 @@ function buildFeishuCommandCard(input: {
     skills,
     selectedSectionId: input.selectedSectionId,
     selectedViewId: input.selectedViewId,
+    workDirPage: input.workDirPage,
+    workDirSearch: input.workDirSearch,
   });
   return renderChannelConnectorCommandSurfaceFeishu(surface, input.notice || null);
 }
@@ -8010,8 +8015,11 @@ async function gatewayVisionModelsForFeishuCard(input: {
 function feishuMenuSelectionFromParsed(parsed: ChannelConnectorFeishuParsedWebhook): {
   selectedSectionId: string | null;
   selectedViewId: string | null;
+  workDirPage: number;
+  workDirSearch: string | null;
 } {
   const actionPayload = extractChannelConnectorSurfaceActionPayload(parsed.actionValue);
+  const workdirState = channelConnectorWorkdirSurfaceStateFromCommand(actionPayload.command || parsed.text);
   const selectedSectionId = actionPayload.targetSectionId
     || channelConnectorCommandSurfaceSectionFromCommand(actionPayload.command)
     || channelConnectorCommandSurfaceSectionFromCommand(parsed.text)
@@ -8022,7 +8030,7 @@ function feishuMenuSelectionFromParsed(parsed: ChannelConnectorFeishuParsedWebho
     || channelConnectorCommandSurfaceViewFromCommand(parsed.text)
     || normalizeChannelConnectorCommandSurfaceView(parsed.eventKey)
     || null;
-  return { selectedSectionId, selectedViewId };
+  return { selectedSectionId, selectedViewId, workDirPage: workdirState.page, workDirSearch: workdirState.search };
 }
 
 async function sendOrPatchFeishuCommandCard(input: {

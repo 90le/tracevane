@@ -6382,6 +6382,9 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     "utf8",
   );
   fs.mkdirSync(path.join(claudeProject.workDir, "src"), { recursive: true });
+  for (let index = 1; index <= 24; index += 1) {
+    fs.mkdirSync(path.join(claudeProject.workDir, "src", `z-page-${String(index).padStart(2, "0")}`), { recursive: true });
+  }
   fs.mkdirSync(path.join(claudeProject.workDir, ".claude", "commands"), { recursive: true });
   fs.mkdirSync(path.join(claudeProject.workDir, ".claude", "skills", "triage"), { recursive: true });
   fs.writeFileSync(
@@ -8176,7 +8179,28 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(dir.ok, true);
   assert.match(dir.replyText, /当前工作目录/);
   assert.match(dir.replyText, /最近目录/);
+  assert.match(dir.replyText, /第 1\/3 页/);
   assert.match(dir.replyText, /\/dir <路径\|序号\|->/);
+
+  const dirPage = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/dir page 2"),
+  });
+  assert.equal(dirPage.ok, true);
+  assert.equal(dirPage.action, "list");
+  assert.match(dirPage.replyText, /第 2\/3 页/);
+  assert.match(dirPage.replyText, /z-page-11/);
+  assert.match(dirPage.replyText, /\/dir page <页码>/);
+  assert.equal(dirPage.control.workDir, path.join(claudeProject.workDir, "src"));
+
+  const dirFind = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/dir find z-page-24"),
+  });
+  assert.equal(dirFind.ok, true);
+  assert.equal(dirFind.action, "list");
+  assert.match(dirFind.replyText, /搜索「z-page-24」命中 1 个/);
+  assert.match(dirFind.replyText, /z-page-24/);
 
   const control = getChannelConnectorSessionControl(controlsPath, {
     bindingId: binding.id,
@@ -8607,6 +8631,9 @@ test("native Channel Connectors command surface renders text and Feishu card act
   };
   fs.mkdirSync(path.join(codexProject.workDir, "src"), { recursive: true });
   fs.mkdirSync(path.join(codexProject.workDir, "packages"), { recursive: true });
+  for (let index = 1; index <= 24; index += 1) {
+    fs.mkdirSync(path.join(codexProject.workDir, `z-page-${String(index).padStart(2, "0")}`), { recursive: true });
+  }
   fs.mkdirSync(path.join(claudeProject.workDir, "src"), { recursive: true });
   const recentWorkDir = path.join(root, "recent-work");
   fs.mkdirSync(recentWorkDir, { recursive: true });
@@ -8976,10 +9003,16 @@ test("native Channel Connectors command surface renders text and Feishu card act
     selectedViewId: "workdir",
   });
   assert.deepEqual(workdirPickerSurface.current.workDirHistory, [recentWorkDir]);
+  assert.equal(workdirPickerSurface.current.workDirPage, 1);
+  assert.equal(workdirPickerSurface.current.workDirSearch, null);
+  assert.equal(workdirPickerSurface.current.workDirChildCount, 26);
+  assert.equal(workdirPickerSurface.current.workDirChildPageCount, 3);
   const workdirCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(workdirPickerSurface));
   assert.match(workdirCardRaw, /工作目录/);
   assert.match(workdirCardRaw, /select_static/);
   assert.match(workdirCardRaw, /快捷切换/);
+  assert.match(workdirCardRaw, /第 1\/3 页/);
+  assert.match(workdirCardRaw, /nav:\/dir page 2/);
   assert.match(workdirCardRaw, /更多目录/);
   assert.match(workdirCardRaw, /最近目录/);
   assert.match(workdirCardRaw, /act:\/dir -/);
@@ -8990,6 +9023,38 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(workdirCardRaw, /nav:\/help more/);
   assert.match(workdirCardRaw, /"action":"nav:\/help"/);
   assert.doesNotMatch(workdirCardRaw, /nav:\/help workdir/);
+
+  const workdirPageSurface = buildChannelConnectorCommandSurface({
+    config: runtimeConfig,
+    project: codexProject,
+    binding,
+    sessionKey: "dmwork:dm:admin-1",
+    selectedSectionId: "workdir",
+    selectedViewId: "workdir",
+    workDirPage: 2,
+  });
+  assert.equal(workdirPageSurface.current.workDirPage, 2);
+  const workdirPageRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(workdirPageSurface));
+  assert.match(workdirPageRaw, /第 2\/3 页/);
+  assert.match(workdirPageRaw, /nav:\/dir page 1/);
+  assert.match(workdirPageRaw, /nav:\/dir page 3/);
+  assert.match(workdirPageRaw, /z-page-09/);
+
+  const workdirSearchSurface = buildChannelConnectorCommandSurface({
+    config: runtimeConfig,
+    project: codexProject,
+    binding,
+    sessionKey: "dmwork:dm:admin-1",
+    selectedSectionId: "workdir",
+    selectedViewId: "workdir",
+    workDirSearch: "z-page-24",
+  });
+  assert.equal(workdirSearchSurface.current.workDirSearch, "z-page-24");
+  assert.equal(workdirSearchSurface.current.workDirChildPageCount, 1);
+  const workdirSearchRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(workdirSearchSurface));
+  assert.match(workdirSearchRaw, /搜索：z-page-24/);
+  assert.match(workdirSearchRaw, /清除搜索/);
+  assert.match(workdirSearchRaw, /z-page-24/);
 
   const commandsSurface = buildChannelConnectorCommandSurface({
     config: runtimeConfig,
@@ -9342,6 +9407,9 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   });
   fs.mkdirSync(path.join(root, "codex-work", "src"), { recursive: true });
   fs.mkdirSync(path.join(root, "claude-work", "src"), { recursive: true });
+  for (let index = 1; index <= 24; index += 1) {
+    fs.mkdirSync(path.join(root, "claude-work", `z-page-${String(index).padStart(2, "0")}`), { recursive: true });
+  }
   const initial = service.getNativeConfig().config;
   service.saveNativeConfig({
     config: {
@@ -10406,6 +10474,35 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.equal(agentSelectCardAction.commandAction.surface.current.agent, "claude-code");
   assert.match(JSON.stringify(agentSelectCardAction.feishuResponse.card.data), /Agent 选择/);
   assert.match(JSON.stringify(agentSelectCardAction.feishuResponse.card.data), /select_static/);
+
+  const workdirPageCardAction = await service.dispatchFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "card.action.trigger",
+      app_id: "cli_test",
+      event_id: "evt_card_workdir_page",
+      token: "verify-token",
+    },
+    event: {
+      operator: { open_id: "ou_admin" },
+      context: { open_chat_id: "oc_chat", open_message_id: "om_card_3" },
+      action: {
+        value: {
+          action: "nav:/dir page 2",
+          command: "/dir page 2",
+          binding_id: "feishu-main",
+        },
+      },
+    },
+  });
+  assert.equal(workdirPageCardAction.accepted, true);
+  assert.equal(workdirPageCardAction.commandAction.command, "/dir page 2");
+  assert.equal(workdirPageCardAction.commandAction.commandResult.action, "list");
+  assert.equal(workdirPageCardAction.commandAction.surface.current.workDirPage, 2);
+  assert.equal(workdirPageCardAction.commandAction.surface.current.workDirChildPageCount, 3);
+  assert.match(JSON.stringify(workdirPageCardAction.feishuResponse.card.data), /工作目录/);
+  assert.match(JSON.stringify(workdirPageCardAction.feishuResponse.card.data), /第 2\/3 页/);
+  assert.match(JSON.stringify(workdirPageCardAction.feishuResponse.card.data), /z-page-10/);
 
   const workdirSelectCardAction = await service.dispatchFeishuWebhook({
     schema: "2.0",

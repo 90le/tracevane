@@ -498,6 +498,10 @@ export interface ChannelConnectorCommandSurface {
     permissionMode: ChannelConnectorPermissionMode;
     workDir: string;
     workDirHistory: string[];
+    workDirPage: number;
+    workDirSearch: string | null;
+    workDirChildCount: number;
+    workDirChildPageCount: number;
     thinkingMessages: boolean;
     processMessages: boolean;
     toolMessages: boolean;

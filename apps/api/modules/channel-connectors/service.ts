@@ -107,6 +107,7 @@ import {
   buildChannelConnectorCommandSurface,
   channelConnectorCommandSurfaceSectionFromCommand,
   channelConnectorCommandSurfaceViewFromCommand,
+  channelConnectorWorkdirSurfaceStateFromCommand,
   extractChannelConnectorSurfaceActionPayload,
   normalizeChannelConnectorCommandSurfaceSection,
   normalizeChannelConnectorCommandSurfaceView,
@@ -2534,6 +2535,7 @@ export function createChannelConnectorsService(
       || normalizeChannelConnectorCommandSurfaceView(request.view)
       || normalizeChannelConnectorCommandSurfaceView(request.eventKey)
       || null;
+    const workdirSurfaceState = channelConnectorWorkdirSurfaceStateFromCommand(command);
     const control = getChannelConnectorSessionControl(controlsPath, {
       bindingId: effectiveResolved.binding.id,
       sessionKey,
@@ -2560,6 +2562,8 @@ export function createChannelConnectorsService(
       skills: readOnlyState.skills,
       selectedSectionId,
       selectedViewId,
+      workDirPage: workdirSurfaceState.page,
+      workDirSearch: workdirSurfaceState.search,
     });
 
     return {
