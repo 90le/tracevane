@@ -246,6 +246,10 @@
                           <dt>{{ text('最近备份', 'Latest backup') }}</dt>
                           <dd>{{ selectedAppConnection?.lastBackupPath || '-' }}</dd>
                         </div>
+                        <div>
+                          <dt>{{ text('启动提示', 'Launch hint') }}</dt>
+                          <dd>{{ selectedAppConnection?.launchHint || '-' }}</dd>
+                        </div>
                       </dl>
                       <div v-if="selectedAppConnectionIssues.length" class="ccx-agent-profile-app-issues">
                         <span v-for="issue in selectedAppConnectionIssues" :key="issue">{{ issue }}</span>

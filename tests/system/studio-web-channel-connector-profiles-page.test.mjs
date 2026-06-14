@@ -64,6 +64,7 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(page, /ccx-agent-profile-app-facts/);
   assert.match(page, /selectedAppConnection\?\.target\.path/);
   assert.match(page, /selectedAppConnection\?\.lastBackupPath/);
+  assert.match(page, /selectedAppConnection\?\.launchHint/);
   assert.match(page, /selectedAppConnection\?\.preview\?\.content/);
   assert.match(page, /selectedAppConnection\.preview\.content/);
   assert.match(page, /selectedAppConnectionIssues/);
