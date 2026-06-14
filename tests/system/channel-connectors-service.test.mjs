@@ -8172,6 +8172,38 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(cdHistory.control.workDir, path.join(claudeProject.workDir, "src"));
   assert.deepEqual(cdHistory.control.workDirHistory, [claudeProject.workDir]);
 
+  const cdParent = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/dir parent"),
+  });
+  assert.equal(cdParent.ok, true);
+  assert.equal(cdParent.control.workDir, null);
+  assert.deepEqual(cdParent.control.workDirHistory, [path.join(claudeProject.workDir, "src")]);
+
+  const cdRecent = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/dir recent 1"),
+  });
+  assert.equal(cdRecent.ok, true);
+  assert.equal(cdRecent.control.workDir, path.join(claudeProject.workDir, "src"));
+  assert.deepEqual(cdRecent.control.workDirHistory, [claudeProject.workDir]);
+
+  const cdChild = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/dir child 2"),
+  });
+  assert.equal(cdChild.ok, true);
+  assert.equal(cdChild.control.workDir, path.join(claudeProject.workDir, "src", "z-page-02"));
+  assert.deepEqual(cdChild.control.workDirHistory, [path.join(claudeProject.workDir, "src"), claudeProject.workDir]);
+
+  const cdUp = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/dir up"),
+  });
+  assert.equal(cdUp.ok, true);
+  assert.equal(cdUp.control.workDir, path.join(claudeProject.workDir, "src"));
+  assert.deepEqual(cdUp.control.workDirHistory, [path.join(claudeProject.workDir, "src", "z-page-02"), claudeProject.workDir]);
+
   const dir = await handleChannelConnectorCommand({
     ...baseContext,
     message: message("/dir"),
@@ -8181,6 +8213,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(dir.replyText, /最近目录/);
   assert.match(dir.replyText, /第 1\/3 页/);
   assert.match(dir.replyText, /\/dir <路径\|序号\|->/);
+  assert.match(dir.replyText, /\/dir parent/);
+  assert.match(dir.replyText, /\/dir child <序号>/);
 
   const dirPage = await handleChannelConnectorCommand({
     ...baseContext,

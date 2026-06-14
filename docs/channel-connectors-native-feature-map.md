@@ -74,7 +74,7 @@
 - Feishu 卡片进度和 Octo 文本/Markdown 进度已有基础渲染；Markdown 已由用户验证。
 - Feishu 命令/菜单进度已对齐 CC/OpenClaw：处理 reaction 挂在触发消息上，命令卡片/文本回复通过 Feishu reply API 挂回原消息；`/compact`、`/native /compact` 也会输出 started/terminal command progress。
 - Feishu Agent 进度卡最近动态条数由 binding metadata `feishuProgressCardEntryLimit` 控制，默认 8，运行时限制 1-30；`/display progress <1-30|default>` 和 Feishu 进度显示卡片均可设置。
-- Feishu 菜单命令面已改为清爽二级配置架构：主卡片直达 Agent、模型、权限/推理、进度显示、视觉、工作目录六个配置页；工作目录页提供 Profile 默认、上一目录、上级目录、Home 快捷按钮、最近目录直达列表、子目录分页直达列表和 `/dir find` 搜索；文本 `/help` 复用同一结构。
+- Feishu 菜单命令面已改为清爽二级配置架构：主卡片直达 Agent、模型、权限/推理、进度显示、视觉、工作目录六个配置页；工作目录页提供 Profile 默认、上一目录、上级目录、Home 快捷按钮、最近目录直达列表、子目录分页直达列表和 `/dir find` 搜索；纯文本渠道支持 `/dir home|parent|recent N|child N`；文本 `/help` 复用同一结构。
 - Feishu 长连接 card action 不再 fire-and-forget：卡片点击会同步返回 callback response/card/toast，普通消息和 bot menu 仍保持后台异步，避免交互卡片过一段时间后触发 108002 类不可用体验。
 - 已删除 active platform action layer：runner/env/prompt/daemon endpoint/UI chips 不再暴露 `studio-channel-skill` 或 runtime action。
 - Codex 隔离 `codex-home/skills` 会删除历史生成的 Feishu/Octo platform action skill 目录；当前运行态旧目录已手动清理，避免 stale YAML 被 Codex 加载。

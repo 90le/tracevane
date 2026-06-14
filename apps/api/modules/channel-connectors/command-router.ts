@@ -2521,7 +2521,26 @@ function resolveWorkDirTargetWithHistory(
 ): string | null {
   const target = normalizeString(input);
   if (!target) return null;
-  if (target === "-") return history[0] || null;
+  const normalized = target.toLowerCase();
+  const parts = target.split(/\s+/).filter(Boolean);
+  const first = parts[0]?.toLowerCase() || "";
+  const second = parts[1] || "";
+  if (target === "-" || normalized === "previous" || normalized === "prev" || normalized === "back") return history[0] || null;
+  if (normalized === "home" || normalized === "~") return os.homedir();
+  if (normalized === "parent" || normalized === "up" || normalized === "..") return path.dirname(currentWorkDir);
+  if (first === "recent" || first === "history") {
+    const index = Number(second || "1");
+    if (Number.isInteger(index) && index >= 1 && index <= history.length) return history[index - 1] || null;
+    return null;
+  }
+  if (first === "child" || first === "subdir" || first === "children") {
+    const index = Number(second || "1");
+    if (Number.isInteger(index) && index >= 1) {
+      const child = listChildDirectories(currentWorkDir)[index - 1];
+      if (child) return path.resolve(currentWorkDir, child);
+    }
+    return null;
+  }
   const index = Number(target);
   if (Number.isInteger(index) && index >= 1 && index <= history.length) {
     return history[index - 1] || null;
@@ -2595,7 +2614,7 @@ function directoryInfoText(
   } else if (search) {
     lines.push("", "当前搜索没有匹配的子目录。");
   }
-  lines.push("", "用法：/dir <路径|序号|->；/cd <路径|default>；/dir page <页码>；/dir find <关键字>。序号优先选择最近目录，历史为空时选择子目录。");
+  lines.push("", "用法：/dir <路径|序号|->；/cd <路径|default>；/dir home；/dir parent；/dir recent <序号>；/dir child <序号>；/dir page <页码>；/dir find <关键字>。序号优先选择最近目录，历史为空时选择子目录。");
   return lines.join("\n");
 }
 
