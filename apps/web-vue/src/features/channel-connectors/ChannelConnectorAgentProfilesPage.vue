@@ -416,101 +416,146 @@
               <span>{{ relatedSessionEventCountLabel }}</span>
             </div>
 
-            <div v-if="requestedSessions.length" class="ccx-list ccx-agent-profile-requested-list">
-              <article
-                v-for="session in requestedSessions"
-                :key="`${session.platform}:${session.bindingId}:${session.accountId}:${session.botId || ''}`"
-                class="ccx-list-row ccx-agent-profile-session-row ccx-agent-profile-requested-row"
-              >
-                <div>
-                  <small>{{ session.platform }} · {{ session.bindingId }}</small>
-                  <strong>{{ session.agent }} · {{ session.effectiveMode }}</strong>
-                  <p>{{ session.model || text('默认模型', 'default model') }}</p>
-                </div>
-                <div>
-                  <span>{{ text('请求', 'Requested') }} {{ session.requestedMode }}</span>
-                  <span>{{ text('生效', 'Effective') }} {{ session.effectiveMode }}</span>
-                  <span>{{ session.reason }}</span>
-                </div>
-                <div class="ccx-agent-profile-row-actions">
-                  <button
-                    type="button"
-                    class="secondary-button compact-button"
-                    @click="openBindingConfigById(session.bindingId)"
-                  >
-                    <ExternalLink :size="15" />
-                    {{ text('绑定', 'Binding') }}
-                  </button>
-                </div>
-              </article>
-            </div>
-
-            <div v-if="activeSessions.length" class="ccx-list">
-              <article v-for="session in activeSessions" :key="session.poolKey" class="ccx-list-row ccx-agent-profile-session-row">
-                <div>
-                  <strong>{{ session.model || text('默认模型', 'default model') }}</strong>
-                  <p>{{ session.agent }} · {{ session.bindingId }} · {{ session.permissionMode || '-' }}</p>
-                  <p>{{ compactPath(session.workDir) }}</p>
-                  <dl class="ccx-agent-profile-session-trace">
-                    <div>
-                      <dt>Profile</dt>
-                      <dd>{{ session.projectId || '-' }}</dd>
-                    </div>
-                    <div>
-                      <dt>Session</dt>
-                      <dd>{{ session.sessionKey || '-' }}</dd>
-                    </div>
-                    <div>
-                      <dt>Pool</dt>
-                      <dd>{{ session.poolKey || '-' }}</dd>
-                    </div>
-                    <div>
-                      <dt>{{ text('轮次 / 空闲', 'Turns / idle') }}</dt>
-                      <dd>{{ session.turnCount }} · {{ formatDuration(session.idleMs) }}</dd>
-                    </div>
-                  </dl>
-                </div>
-                <div>
-                  <span>{{ text('运行中', 'running') }} {{ session.running }}</span>
-                  <span>{{ text('最近使用', 'Last used') }} {{ formatTimestamp(session.lastUsedAt) }}</span>
-                  <span v-if="session.lastError" class="ccx-danger-text">{{ session.lastError }}</span>
-                </div>
-                <div class="ccx-agent-profile-row-actions">
-                  <button
-                    type="button"
-                    class="secondary-button compact-button"
-                    @click="openBindingConfigById(session.bindingId)"
-                  >
-                    <ExternalLink :size="15" />
-                    {{ text('绑定', 'Binding') }}
-                  </button>
-                  <button
-                    type="button"
-                    class="secondary-button compact-button"
-                    :disabled="sessionBusy"
-                    @click="killSession(session.poolKey)"
-                  >
-                    <Square :size="15" />
-                    {{ text('停止', 'Stop') }}
-                  </button>
-                </div>
-              </article>
-            </div>
-            <div v-else class="empty-inline">
-              {{ text('当前 Profile 没有活动持久会话。', 'No active persistent session for this profile.') }}
-            </div>
-
-            <div v-if="relatedSessionEvents.length" class="ccx-event-list ccx-agent-profile-events">
-              <article
-                v-for="event in relatedSessionEvents"
-                :key="`${event.checkedAt}:${event.type}:${event.poolKey}:${event.messageId || ''}`"
-                class="ccx-list-row ccx-agent-profile-event-row"
-                :class="{ danger: Boolean(event.error) }"
-              >
-                <div class="ccx-agent-profile-linked-row">
+            <section v-if="requestedSessions.length" class="ccx-agent-profile-activity-section">
+              <div class="ccx-agent-profile-activity-section__head">
+                <h4>{{ text('持久请求', 'Persistent requests') }}</h4>
+                <span>{{ requestedSessions.length }}</span>
+              </div>
+              <div class="ccx-list ccx-agent-profile-requested-list">
+                <article
+                  v-for="session in requestedSessions"
+                  :key="`${session.platform}:${session.bindingId}:${session.accountId}:${session.botId || ''}`"
+                  class="ccx-list-row ccx-agent-profile-session-row ccx-agent-profile-requested-row"
+                >
                   <div>
-                    <small>{{ formatTimestamp(event.checkedAt) }} · {{ event.bindingId }}</small>
-                    <strong>{{ event.type }}</strong>
+                    <small>{{ session.platform }} · {{ session.bindingId }}</small>
+                    <strong>{{ session.agent }} · {{ session.effectiveMode }}</strong>
+                    <p>{{ session.model || text('默认模型', 'default model') }}</p>
+                  </div>
+                  <div class="ccx-agent-profile-row-pills">
+                    <span>{{ text('请求', 'Requested') }} {{ session.requestedMode }}</span>
+                    <span>{{ text('生效', 'Effective') }} {{ session.effectiveMode }}</span>
+                    <span>{{ session.reason }}</span>
+                  </div>
+                  <div class="ccx-agent-profile-row-actions">
+                    <button
+                      type="button"
+                      class="secondary-button compact-button"
+                      @click="openBindingConfigById(session.bindingId)"
+                    >
+                      <ExternalLink :size="15" />
+                      {{ text('绑定', 'Binding') }}
+                    </button>
+                  </div>
+                </article>
+              </div>
+            </section>
+
+            <section class="ccx-agent-profile-activity-section">
+              <div class="ccx-agent-profile-activity-section__head">
+                <h4>{{ text('活动会话', 'Active sessions') }}</h4>
+                <span>{{ activeSessions.length }}</span>
+              </div>
+              <div v-if="activeSessions.length" class="ccx-list">
+                <article v-for="session in activeSessions" :key="session.poolKey" class="ccx-list-row ccx-agent-profile-session-row">
+                  <div>
+                    <strong>{{ session.model || text('默认模型', 'default model') }}</strong>
+                    <p>{{ session.agent }} · {{ session.bindingId }} · {{ session.permissionMode || '-' }}</p>
+                    <p>{{ compactPath(session.workDir) }}</p>
+                    <details class="ccx-agent-profile-trace-details">
+                      <summary>{{ text('会话 Trace', 'Session trace') }}</summary>
+                      <dl class="ccx-agent-profile-session-trace">
+                        <div>
+                          <dt>Profile</dt>
+                          <dd>{{ session.projectId || '-' }}</dd>
+                        </div>
+                        <div>
+                          <dt>Session</dt>
+                          <dd>{{ session.sessionKey || '-' }}</dd>
+                        </div>
+                        <div>
+                          <dt>Pool</dt>
+                          <dd>{{ session.poolKey || '-' }}</dd>
+                        </div>
+                        <div>
+                          <dt>{{ text('轮次 / 空闲', 'Turns / idle') }}</dt>
+                          <dd>{{ session.turnCount }} · {{ formatDuration(session.idleMs) }}</dd>
+                        </div>
+                      </dl>
+                    </details>
+                  </div>
+                  <div class="ccx-agent-profile-row-pills">
+                    <span>{{ text('运行中', 'running') }} {{ session.running }}</span>
+                    <span>{{ text('最近使用', 'Last used') }} {{ formatTimestamp(session.lastUsedAt) }}</span>
+                    <span v-if="session.lastError" class="ccx-danger-text">{{ session.lastError }}</span>
+                  </div>
+                  <div class="ccx-agent-profile-row-actions">
+                    <button
+                      type="button"
+                      class="secondary-button compact-button"
+                      @click="openBindingConfigById(session.bindingId)"
+                    >
+                      <ExternalLink :size="15" />
+                      {{ text('绑定', 'Binding') }}
+                    </button>
+                    <button
+                      type="button"
+                      class="secondary-button compact-button"
+                      :disabled="sessionBusy"
+                      @click="killSession(session.poolKey)"
+                    >
+                      <Square :size="15" />
+                      {{ text('停止', 'Stop') }}
+                    </button>
+                  </div>
+                </article>
+              </div>
+              <div v-else class="empty-inline">
+                {{ text('当前 Profile 没有活动持久会话。', 'No active persistent session for this profile.') }}
+              </div>
+            </section>
+
+            <section class="ccx-agent-profile-activity-section">
+              <div class="ccx-agent-profile-activity-section__head">
+                <h4>{{ text('事件日志', 'Event log') }}</h4>
+                <span>{{ relatedSessionEventCountLabel }}</span>
+              </div>
+              <div v-if="relatedSessionEvents.length" class="ccx-event-list ccx-agent-profile-events">
+                <article
+                  v-for="event in relatedSessionEvents"
+                  :key="`${event.checkedAt}:${event.type}:${event.poolKey}:${event.messageId || ''}`"
+                  class="ccx-list-row ccx-agent-profile-event-row"
+                  :class="{ danger: Boolean(event.error) }"
+                >
+                  <div class="ccx-agent-profile-event-summary">
+                    <div>
+                      <small>{{ formatTimestamp(event.checkedAt) }} · {{ event.bindingId }}</small>
+                      <strong>{{ event.type }}</strong>
+                      <span>{{ event.agent }} · {{ event.model || text('默认模型', 'default model') }}</span>
+                    </div>
+                    <div class="ccx-agent-profile-event-side">
+                      <span class="ccx-agent-profile-event-badge" :class="{ danger: Boolean(event.error) }">
+                        {{ event.error ? text('失败', 'Failed') : (event.reason || text('已记录', 'Recorded')) }}
+                      </span>
+                      <button
+                        type="button"
+                        class="secondary-button compact-button"
+                        @click="openBindingConfigById(event.bindingId)"
+                      >
+                        <ExternalLink :size="15" />
+                        {{ text('绑定', 'Binding') }}
+                      </button>
+                    </div>
+                  </div>
+                  <details class="ccx-agent-profile-trace-details">
+                    <summary>{{ text('Trace 明细', 'Trace details') }}</summary>
+                    <p
+                      v-if="event.reason || event.error"
+                      class="ccx-agent-profile-event-message"
+                      :class="{ 'ccx-danger-text': Boolean(event.error) }"
+                    >
+                      {{ [event.reason, event.error].filter(Boolean).join(' · ') }}
+                    </p>
                     <dl class="ccx-agent-profile-event-trace">
                       <div>
                         <dt>Agent</dt>
@@ -529,21 +574,10 @@
                         <dd>{{ compactPath(event.workDir) }}</dd>
                       </div>
                     </dl>
-                    <span v-if="event.reason || event.error" :class="{ 'ccx-danger-text': Boolean(event.error) }">
-                      {{ [event.reason, event.error].filter(Boolean).join(' · ') }}
-                    </span>
-                  </div>
-                  <button
-                    type="button"
-                    class="secondary-button compact-button"
-                    @click="openBindingConfigById(event.bindingId)"
-                  >
-                    <ExternalLink :size="15" />
-                    {{ text('绑定', 'Binding') }}
-                  </button>
-                </div>
-              </article>
-            </div>
+                  </details>
+                </article>
+              </div>
+            </section>
           </article>
         </aside>
       </section>

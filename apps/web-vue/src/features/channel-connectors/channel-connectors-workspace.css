@@ -304,8 +304,48 @@ section.page-shell.channel-connectors-page {
   align-items: start;
 }
 
+.ccx-agent-profile-session-row > div:first-child {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
 .ccx-agent-profile-requested-list {
   margin-bottom: 12px;
+}
+
+.ccx-agent-profile-activity-section {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.ccx-agent-profile-session-toolbar + .ccx-agent-profile-activity-section {
+  margin-top: 0;
+}
+
+.ccx-agent-profile-activity-section__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+  padding: 0 2px;
+}
+
+.ccx-agent-profile-activity-section__head h4 {
+  margin: 0;
+  color: var(--mono-ink);
+  font-size: 0.92rem;
+  letter-spacing: 0;
+}
+
+.ccx-agent-profile-activity-section__head span {
+  min-width: 0;
+  color: var(--mono-ink-2);
+  font-size: 0.78rem;
+  overflow-wrap: anywhere;
+  text-align: right;
 }
 
 .ccx-agent-profile-requested-row {
@@ -329,26 +369,116 @@ section.page-shell.channel-connectors-page {
   background: color-mix(in srgb, var(--accent) 6%, var(--surface-base));
 }
 
-.ccx-agent-profile-linked-row {
+.ccx-agent-profile-event-row.danger {
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--mono-line));
+  background: color-mix(in srgb, var(--danger) 5%, var(--surface-base));
+}
+
+.ccx-agent-profile-row-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ccx-agent-profile-row-pills span {
+  min-width: 0;
+  border: 1px solid var(--mono-line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface-base) 88%, var(--surface-soft));
+  color: var(--mono-ink-2);
+  font-size: 0.76rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  padding: 4px 6px;
+}
+
+.ccx-agent-profile-event-summary {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
   align-items: start;
-}
-
-.ccx-agent-profile-linked-row > div {
-  display: grid;
-  gap: 4px;
   min-width: 0;
 }
 
-.ccx-agent-profile-linked-row .compact-button {
-  justify-self: end;
+.ccx-agent-profile-event-summary > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
 }
 
-.ccx-agent-profile-event-row.danger {
+.ccx-agent-profile-event-summary > div > span {
+  min-width: 0;
+  color: var(--mono-ink-2);
+  font-size: 0.8rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.ccx-agent-profile-event-side {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ccx-agent-profile-event-badge {
+  max-width: 150px;
+  border: 1px solid color-mix(in srgb, var(--success) 32%, var(--mono-line));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--success) 7%, var(--surface-base));
+  color: color-mix(in srgb, var(--success) 78%, var(--mono-ink));
+  font-size: 0.74rem;
+  font-weight: 680;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  padding: 4px 6px;
+}
+
+.ccx-agent-profile-event-badge.danger {
   border-color: color-mix(in srgb, var(--danger) 40%, var(--mono-line));
-  background: color-mix(in srgb, var(--danger) 5%, var(--surface-base));
+  background: color-mix(in srgb, var(--danger) 7%, var(--surface-base));
+  color: var(--danger);
+}
+
+.ccx-agent-profile-trace-details {
+  min-width: 0;
+  margin-top: 8px;
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-base) 92%, var(--surface-soft));
+}
+
+.ccx-agent-profile-trace-details > summary {
+  min-height: 34px;
+  padding: 8px 10px;
+  color: var(--mono-ink-2);
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 620;
+  list-style: none;
+  user-select: none;
+}
+
+.ccx-agent-profile-event-message {
+  margin: 10px 10px 0;
+  color: var(--mono-ink-2);
+  font-size: 0.78rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.ccx-agent-profile-trace-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ccx-agent-profile-trace-details[open] > summary {
+  border-bottom: 1px solid var(--mono-line);
+}
+
+.ccx-agent-profile-trace-details .ccx-agent-profile-event-trace,
+.ccx-agent-profile-trace-details .ccx-agent-profile-session-trace {
+  padding: 10px;
 }
 
 .ccx-agent-profile-event-trace,
@@ -1111,13 +1241,16 @@ section.page-shell.channel-connectors-page {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .ccx-agent-profile-binding-main,
-  .ccx-agent-profile-linked-row {
+  .ccx-agent-profile-binding-main {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .ccx-agent-profile-binding-main .compact-button,
-  .ccx-agent-profile-linked-row .compact-button {
+  .ccx-agent-profile-binding-main .compact-button {
+    justify-self: start;
+  }
+
+  .ccx-agent-profile-event-badge {
+    max-width: 100%;
     justify-self: start;
   }
 
