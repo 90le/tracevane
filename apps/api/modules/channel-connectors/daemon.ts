@@ -3230,6 +3230,7 @@ async function runChannelConnectorAgentTurnWithSessionDriver(input: {
   sessionKey: string;
   messageId: string;
   request: Parameters<typeof runChannelConnectorAgentTurn>[0];
+  fallbackOnCrash?: boolean;
 }): Promise<ChannelConnectorAgentTurnResult> {
   const mode = effectiveAgentSessionDriverMode({
     binding: input.binding,
@@ -3250,6 +3251,7 @@ async function runChannelConnectorAgentTurnWithSessionDriver(input: {
     agentTurnRequest: request,
     signal: request.signal || null,
     onProgress: request.onProgress,
+    fallbackOnCrash: input.fallbackOnCrash,
     runOneShot: () => runChannelConnectorAgentTurn(request),
   });
   const first = await run(input.request);
@@ -3577,6 +3579,7 @@ async function nativeCompactChannelConnectorConversation(input: {
           codexThreadId: currentSession?.codexThreadId || null,
         },
       },
+      fallbackOnCrash: false,
     });
     if (result.session.agentNativeSessionId || result.session.codexThreadId) {
       upsertChannelConnectorAgentSession(agentSessionsPath(input.config), {
@@ -3634,6 +3637,29 @@ async function nativeCompactChannelConnectorConversation(input: {
       replyText: null,
       error: shortMessage(error),
     };
+  }
+}
+
+async function nativeCompactChannelConnectorConversationWithSessionQueue(
+  input: Parameters<typeof nativeCompactChannelConnectorConversation>[0],
+): ReturnType<typeof nativeCompactChannelConnectorConversation> {
+  const lease = await acquireChannelSessionAgentRun(channelSessionAgentRunQueues, {
+    bindingId: input.binding.id,
+    sessionKey: input.sessionKey,
+    parallel: false,
+    onQueueTimeout: (error) => {
+      appendLog(input.config.paths.log, "Native compact session queue timeout", {
+        bindingId: input.binding.id,
+        sessionKey: input.sessionKey,
+        messageId: input.message.messageId,
+        error: shortMessage(error),
+      });
+    },
+  });
+  try {
+    return await nativeCompactChannelConnectorConversation(input);
+  } finally {
+    lease.release();
   }
 }
 
@@ -8418,7 +8444,7 @@ async function dispatchOctoMessage(input: {
     hasPendingQuestionRequest: (scope) => hasPendingQuestionForSession(channelPendingPermissions, scope),
     respondQuestionRequest: (scope) => respondPendingQuestionForSession(channelPendingPermissions, scope),
     stopActiveRun: (scope) => stopLatestActiveRunForSession(activeRunCancels, scope),
-    nativeCompactConversation: (scope) => nativeCompactChannelConnectorConversation({
+    nativeCompactConversation: (scope) => nativeCompactChannelConnectorConversationWithSessionQueue({
       config,
       state,
       activeRunCancels,
@@ -9950,7 +9976,7 @@ async function dispatchFeishuParsedEvent(input: {
         hasPendingQuestionRequest: (scope) => hasPendingQuestionForSession(channelPendingPermissions, scope),
         respondQuestionRequest: (scope) => respondPendingQuestionForSession(channelPendingPermissions, scope),
         stopActiveRun: (scope) => stopLatestActiveRunForSession(activeRunCancels, scope),
-        nativeCompactConversation: (scope) => nativeCompactChannelConnectorConversation({
+        nativeCompactConversation: (scope) => nativeCompactChannelConnectorConversationWithSessionQueue({
           config,
           state,
           activeRunCancels,

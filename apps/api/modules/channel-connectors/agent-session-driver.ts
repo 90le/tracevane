@@ -24,6 +24,7 @@ export interface ChannelConnectorAgentSessionDriverTurnInput {
   agentTurnRequest?: ChannelConnectorAgentTurnRequest | null;
   signal?: AbortSignal | null;
   onProgress?: (event: ChannelConnectorAgentProgressEvent) => void;
+  fallbackOnCrash?: boolean;
   runOneShot: () => Promise<ChannelConnectorAgentTurnResult>;
 }
 
@@ -220,6 +221,17 @@ export class ChannelConnectorAgentSessionDriverPool {
         error: null,
       });
     }
+    if (entry.running > 0) {
+      const message = "Persistent Agent session already has an active turn.";
+      entry.lastError = message;
+      this.emit("turn.failed", entry, {
+        sessionId: entry.session.id,
+        messageId: input.messageId,
+        reason: "session-busy",
+        error: message,
+      });
+      throw new Error(message);
+    }
 
     const abortListener = (): void => {
       void entry?.session.stop?.("signal-aborted");
@@ -255,7 +267,7 @@ export class ChannelConnectorAgentSessionDriverPool {
         error: message,
       });
       await this.disposeEntry(entry, "driver-error", "session.disposed");
-      if (!this.fallbackOnCrash || input.signal?.aborted) throw error;
+      if (input.fallbackOnCrash === false || !this.fallbackOnCrash || input.signal?.aborted) throw error;
       this.emit("turn.fallback", null, {
         key: input.key,
         poolKey,

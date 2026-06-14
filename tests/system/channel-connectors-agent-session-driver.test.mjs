@@ -231,6 +231,123 @@ test("Channel Connectors persistent session driver falls back to one-shot after 
   assert.deepEqual(pool.status(), []);
 });
 
+test("Channel Connectors persistent session driver rejects concurrent turns without disposing the active session", async () => {
+  const events = [];
+  let disposeCount = 0;
+  let fallbackCount = 0;
+  let releaseFirst;
+  let markFirstStarted;
+  const firstRelease = new Promise((resolve) => {
+    releaseFirst = resolve;
+  });
+  const firstStarted = new Promise((resolve) => {
+    markFirstStarted = resolve;
+  });
+  const pool = createChannelConnectorAgentSessionDriverPool({
+    nowMs: () => Date.parse("2026-06-07T10:01:30.000Z"),
+    onEvent: (event) => events.push(event),
+    factory: {
+      create: () => ({
+        id: "busy-session",
+        runTurn: async (input) => {
+          if (input.messageId === "m-1") {
+            markFirstStarted();
+            await firstRelease;
+            return completedResult("first completed");
+          }
+          return completedResult("unexpected second");
+        },
+        dispose: () => {
+          disposeCount += 1;
+        },
+      }),
+    },
+  });
+
+  const first = pool.runTurn({
+    mode: "persistent",
+    key: baseKey,
+    messageId: "m-1",
+    runOneShot: async () => {
+      fallbackCount += 1;
+      return completedResult("fallback");
+    },
+  });
+  await firstStarted;
+
+  await assert.rejects(
+    pool.runTurn({
+      mode: "persistent",
+      key: baseKey,
+      messageId: "m-2",
+      runOneShot: async () => {
+        fallbackCount += 1;
+        return completedResult("fallback");
+      },
+    }),
+    /already has an active turn/,
+  );
+  releaseFirst();
+  const firstResult = await first;
+
+  assert.equal(firstResult.replyText, "first completed");
+  assert.equal(disposeCount, 0);
+  assert.equal(fallbackCount, 0);
+  assert.equal(pool.status()[0].sessionId, "busy-session");
+  assert.deepEqual(events.map((event) => `${event.type}:${event.reason || ""}`), [
+    "session.created:",
+    "turn.started:",
+    "turn.failed:session-busy",
+    "turn.finished:completed",
+  ]);
+});
+
+test("Channel Connectors persistent session driver can disable one-shot crash fallback per turn", async () => {
+  const events = [];
+  let fallbackCount = 0;
+  let disposeReason = null;
+  const pool = createChannelConnectorAgentSessionDriverPool({
+    nowMs: () => Date.parse("2026-06-07T10:01:45.000Z"),
+    onEvent: (event) => events.push(event),
+    factory: {
+      create: () => ({
+        id: "native-compact-session",
+        runTurn: async () => {
+          throw new Error("native compact driver crashed");
+        },
+        dispose: (reason) => {
+          disposeReason = reason;
+        },
+      }),
+    },
+  });
+
+  await assert.rejects(
+    pool.runTurn({
+      mode: "persistent",
+      key: baseKey,
+      messageId: "m-native-compact",
+      fallbackOnCrash: false,
+      runOneShot: async () => {
+        fallbackCount += 1;
+        return completedResult("fallback");
+      },
+    }),
+    /native compact driver crashed/,
+  );
+
+  assert.equal(fallbackCount, 0);
+  assert.equal(disposeReason, "driver-error");
+  assert.deepEqual(events.map((event) => event.type), [
+    "session.created",
+    "turn.started",
+    "turn.failed",
+    "session.disposed",
+  ]);
+  assert.equal(events.some((event) => event.type === "turn.fallback"), false);
+  assert.deepEqual(pool.status(), []);
+});
+
 test("Channel Connectors persistent session driver isolates users, sessions, models, and permissions", async () => {
   let now = Date.parse("2026-06-07T10:01:30.000Z");
   const created = [];
@@ -599,7 +716,7 @@ test("Channel Connectors native CLI session driver recovers OpenCode output from
     assert.equal(result.replyText, "opencode db ok");
     assert.equal(result.session.agentNativeSessionId, "opencode-db-session");
     assert.match(result.stdout, /opencode db ok/);
-    assert.equal(result.progress.eventCount, 2);
+    assert.equal(result.progress.eventCount, 3);
   } finally {
     process.env.PATH = originalPath;
     if (originalHome === undefined) delete process.env.HOME;
@@ -702,7 +819,7 @@ test("Channel Connectors native CLI session driver keeps Claude stream-json proc
     assert.equal(captures.filter((item) => item.argv).length, 1);
     const stdinMessages = captures.filter((item) => item.stdin).map((item) => item.stdin);
     assert.equal(stdinMessages.length, 2);
-    assert.match(stdinMessages[0], /^hello\b/);
+    assert.match(stdinMessages[0], /\[Current IM message - respond to this ONLY\]\s*hello/);
     assert.equal(stdinMessages[1], "/compact");
   } finally {
     process.env.PATH = originalPath;

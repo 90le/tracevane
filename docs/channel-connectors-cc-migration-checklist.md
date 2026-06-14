@@ -30,6 +30,7 @@
 - 出站附件和私聊消息仍由 Studio native transport 执行；Agent 只声明 `studio-channel-files` / `studio-channel-messages`。
 - 产品未发布前不为旧实验命令/字段做兼容负担；已取消的工作流不再保留 UI 入口。
 - 前端信息架构：`/channel-connectors` 只承载渠道运营概览、渠道绑定、daemon/runtime 和会话日志；Agent CLI Profile 的高频配置、Gateway 模型选择、绑定摘要、Profile 操作和会话记录进入独立 `/channel-connectors/profiles`，不得挂回 OpenClaw Agents 子页，也不得作为主页面内嵌快改子页。
+- Profile/App Connection 关闭验收以真实 IM event log 为准；修复后必须重新采集 Feishu OpenCode 过程回复和 Feishu 显式 `/compact` native 成功证据，不能复用修复前失败或 prompt 不匹配的样本。
 
 ## 任务清单
 
@@ -48,7 +49,7 @@
 | P1 | 图片/视觉模型 fallback | 已完成：默认关闭；binding 可设启用和默认视觉模型；IM `/vision` 命令与 Feishu 卡片可临时开启/关闭/指定模型；Gateway catalog 只列健康 vision 模型 | 非视觉当前模型收到图片时按配置切到指定/自动健康视觉模型，失败回退附件说明模式 |
 | P1 | Channel Connectors CLI Profile 管理面 | 进行中：`/channel-connectors/profiles` 已作为独立工作台承接 Profile、Gateway 模型、上下文预算、IM 绑定、持久会话和事件记录；顶部 Profile 摘要条、独立 CLI App Connection 区、右侧 Activity 三段式会话/事件日志、默认折叠 trace、Profile 复制、删除保护、设为默认、模型网关 App Connection deep-link、CLI App Connection config target/backup/launch hint 摘要、脱敏 preview、当前 CLI App 直接 apply、Profile 列表 effective model、IM binding requested/effective session driver 摘要、active session trace、session event trace/失败标记、IM binding/requested persistent binding/session/event deep-link、binding 行事件过滤快捷入口、事件按 binding/type 筛选和 8/20/50 显示数量、当前 Profile 活动 session 批量停止、未保存撤销、Profile ID 重命名绑定迁移、App Connection effective model 展示、Agent 切换时清理 stale App Profile ref、Profile Apply-to-CLI 不改 Gateway 全局默认模型已补；`/agents/:agentId/cli` 已删除 | 真实保存/事件筛选/Claude Code apply+rollback 已验收；仍需最新 IM event-log 覆盖刷新 |
 | P1 | Channel Connectors 主配置页信息架构 | 进行中：主页面已收敛为 Overview / Bindings / Runtime / Sessions 四个同级工作区；Bindings 已改为左侧绑定列表 + 右侧分区编辑器；Runtime 已改为 daemon/链路 + compact/queue 双列工作台；Sessions 已改为策略/绑定 + 活动会话/事件双列工作台，原始日志默认折叠；内嵌 Profile 快改和 Skills 管理已移除 | 后续继续精修 Profile 工作台细节，避免再次形成子页面套子页面 |
-| P1 | 上下文预算与 compact | 核心完成：`/status` 展示 resolved model window/reserve/threshold/remaining，auto compact 已按 native-first、baseline 和 fallback 记录接入；Feishu/Octo compact 24h live 已通过 | 后续只做真实抽查；不伪造 Agent 内部 token 预算 |
+| P1 | 上下文预算与 compact | 核心完成：`/status` 展示 resolved model window/reserve/threshold/remaining，auto compact 已按 native-first、baseline 和 fallback 记录接入；显式 `/compact` 命令已进入 session FIFO，native compact 禁止 one-shot crash fallback | 需补 post-fix Feishu 显式 `/compact` native live；不伪造 Agent 内部 token 预算 |
 | P1 | 文件/消息收发 | 核心完成：私聊入站 staging、出站 file/message manifest、原始文件名、Feishu/Octo 上传发送和 Octo COS/STS 大文件路径已覆盖；Feishu/Octo live 证据已通过 | 后续只做平台大小限制、真实大文件和异常路径抽查 |
 | P2 | durable queue | 已完成：pending-agent-run store 已接入 Octo/Feishu；daemon/API/UI 运行态可见性已补；Octo daemon restart 回归已通过；Feishu same-process FIFO 和 daemon restart replay 均有 live 证据 | 后续仅做回归抽查 |
 | P3 | 更多平台 | 路线图 | 微信/企微/钉钉/Telegram/Slack/Discord/QQ/LINE 等只按私聊能力迁移 |
@@ -58,6 +59,9 @@
 
 - `node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs tests/system/studio-web-channel-connectors-page.test.mjs`，5/5 通过，覆盖 Profile 工作台 requested persistent binding/session/event deep-link、当前 CLI App Connection apply/preview 入口、binding 行事件过滤快捷入口、会话事件 binding/type 筛选和显示数量控制。
 - `node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs` 通过，覆盖 Agent 切换清理 stale App Profile ref、新建 Profile 默认 `default` App Profile、Profile Apply-to-CLI 不改 Gateway 全局默认模型。
+- `npm run typecheck:api`
+- `npm run build:api`
+- `node --test tests/system/channel-connectors-agent-session-driver.test.mjs tests/system/channel-connectors-compact-live-script.test.mjs tests/system/channel-connectors-profile-closure-script.test.mjs`，19/19 通过，覆盖 persistent session busy guard、native compact 禁用 one-shot crash fallback、显式 compact 关闭 gate 合同。
 - Python Playwright 真实交互通过：`/channel-connectors/profiles?profileId=claude` 点击“应用到 CLI”，验证 `profile.model` 保持 `null`、`appModels["claude-code"]` 被应用、Claude Code rollback 成功，App Connection profile 在 finally 中恢复原值。
 - `node scripts/smoke-channel-connectors-agent-sessions.mjs --json` 通过，daemon session 管理 endpoint reachable，Feishu/Octo binding 均为 effective persistent，当前 active session 为 0。
 - `node scripts/smoke-channel-connectors-native-cli-sessions.mjs --apps claude-code,opencode --json` 通过，isolated real CLI session 覆盖 Claude Code / OpenCode normal turn、file manifest、native visual input、native compact 和 stop/cancel，不污染真实 HOME/runtime。
