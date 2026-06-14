@@ -1886,21 +1886,35 @@ function renderDisplayCard(surface: ChannelConnectorCommandSurface): ChannelConn
   const toolsToggle = surface.current.toolMessages
     ? { ...toolsOff, label: "隐藏工具" }
     : { ...toolsOn, label: "显示工具", tone: "primary" as const };
+  const quietEnabled = !surface.current.thinkingMessages && !surface.current.processMessages && !surface.current.toolMessages;
+  const quietAction = {
+    ...quietToggle,
+    label: quietEnabled ? "恢复完整显示" : "一键安静",
+    tone: quietEnabled ? "primary" as const : "default" as const,
+  };
   const elements: Array<Record<string, unknown>> = [
     {
       tag: "markdown",
       content: [
-        "**当前显示设置**",
-        `思考消息：${surface.current.thinkingMessages ? "开启" : "关闭"}`,
+        "**当前显示**",
+        `思考：${surface.current.thinkingMessages ? "开启" : "关闭"}`,
+        `过程：${surface.current.processMessages ? "开启" : "关闭"}`,
+        `工具：${surface.current.toolMessages ? "开启" : "关闭"}`,
         `思考流：${formatChannelConnectorThinkingSupport(surface.current.thinkingSupport)}`,
-        `过程回复：${surface.current.processMessages ? "开启" : "关闭"}`,
-        `工具消息：${surface.current.toolMessages ? "开启" : "关闭"}`,
       ].join("\n"),
     },
   ];
+  elements.push({
+    tag: "markdown",
+    content: "**单项开关**\n分别控制思考、过程回复和工具过程。",
+  });
   pushActionRows(elements, [thinkingToggle, processToggle], surface, 2, true);
-  pushActionRows(elements, [toolsToggle, quietToggle], surface, 2, true);
-  pushActionRows(elements, [defaults], surface, 2, true);
+  pushActionRows(elements, [toolsToggle], surface, 2, true);
+  elements.push({
+    tag: "markdown",
+    content: "**一键模式**\n快速隐藏或恢复全部中间态；最终回复不受影响。",
+  });
+  pushActionRows(elements, [quietAction, defaults], surface, 2, true);
   pushSubcardNavRows(elements, surface, "display");
   return {
     config: {
