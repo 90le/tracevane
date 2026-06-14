@@ -54,6 +54,8 @@
   - Profile 工作台的 IM binding 摘要会展示启停、连接健康和 session driver requested/effective mode；active session 行展示 profile/session/pool/turns/idle trace；session event 行展示 agent/model/session/message/workdir trace，并对失败事件做 danger 标记；binding 行可一键过滤右侧事件，事件列表支持按 binding/type 筛选和 8/20/50 显示数量；IM binding、requested persistent binding、活动 session 和 session event 行都可直达绑定配置；`/channel-connectors?bindingId=...&profileId=...` 会打开 Bindings 工作区并选中对应 binding；主配置页返回 Profile 工作台会保留当前 `profileId`。
   - Profile 工作台的“模型网关”和 CLI App Connection 卡片入口都会带 `tab=connections&app=<cli>` 打开 Model Gateway，并定位当前 Profile 对应的 CLI App Connection；CLI App Connection 已从模型表单拆成独立配置区。
   - Profile 右侧 Activity 区已收敛为持久请求、活动会话、事件日志三段；session/event trace 默认折叠，事件行保留状态 badge 与绑定入口，手机端日志不再被长 session/message ID 拉高。
+  - Profile 工作台真实交互补强：切换 CLI Agent 时会清理继承来的旧 `App Profile` 引用，新建 Profile 不再继承源 Profile 的 stale `appProfileRef`；从 Profile 页“应用到 CLI”只更新对应 App 的模型槽位，不再把当前 Profile 模型写成 Gateway App Connections 的全局默认模型。
+  - Profile/App Connection 真实 smoke 已覆盖：事件按 binding/type 筛选、临时 Profile 新建保存/恢复、Claude Code App Connection 页面 apply、CLI rollback、Gateway App Connection profile 恢复；当前保存合同仍保持 `default` App Profile 与既有自定义 ref 兼容。
 - Channel Connectors 主配置页第一批重构：
   - 主 Tab 改为 Overview / Bindings / Runtime / Sessions；去掉左侧 daemon 侧栏、内嵌 Profile 快改和 Skills 管理。
   - 概览面板保留 daemon service 操作、Profile 工作台入口、绑定摘要和会话队列入口；`bindingId/profileId` query 会打开 Bindings 并选中对应 binding。
@@ -234,6 +236,8 @@
 - 本轮验证通过：`node --test --test-name-pattern "stops Codex app-server persistent turns|Agent process cancelled|native compact" tests/system/channel-connectors-service.test.mjs`，2/2 通过。
 - 本轮 live 验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --platforms octo --require-stop-command --min-runs 1 --limit-runs 5 --json`，识别 Octo `/stop` 命令 `2065665014106066944` 和 cancelled run `2065664678767267840`。
 - 本轮验证通过：`node --test --test-name-pattern "native Channel Connectors agent runner builds gateway-backed Codex turns" tests/system/channel-connectors-service.test.mjs`，覆盖持久 `codex-home/skills` 旧平台 action skill 清理。
+- 本轮验证通过：`node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs`，覆盖 Profile 页 Agent 切换时重置 stale App Profile ref、新建 Profile 默认 `default` App Profile、Profile Apply-to-CLI 不改 Gateway 全局默认模型。
+- 本轮浏览器交互验证通过：Python Playwright 打开 `/channel-connectors/profiles?profileId=claude`，点击“应用到 CLI”，确认 `profile.model` 保持 `null`、`appModels["claude-code"]` 被应用、Claude Code rollback 成功，并在 finally 中恢复 App Connection profile 原值。
 - 本轮文档清理验证以 `git diff --check` 和 stale term 检查为准。
 
 ## 已知边界
@@ -252,4 +256,5 @@
 ## 下一步
 
 1. 继续抽查 Codex / Claude Code / OpenCode 真实 IM 工具流、过程回复、思考流、审批路径和 durable queue 回归。
-2. 后续可选 OpenAI Platform 官方端点 proof。
+2. 当前 Profile/App Connection goal 仍需最新 IM event-log 刷新：direct runner 已通过，但新一轮 24h Feishu/Octo per-agent live 覆盖需要真实消息触发后再关闭 goal。
+3. 后续可选 OpenAI Platform 官方端点 proof。

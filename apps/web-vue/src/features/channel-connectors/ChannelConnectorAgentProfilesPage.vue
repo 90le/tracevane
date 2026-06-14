@@ -222,7 +222,7 @@
                   </div>
                   <div class="form-field">
                     <label class="form-label">CLI Agent</label>
-                    <StudioSelect v-model="profileDraft.agent" :options="agentOptions" />
+                    <StudioSelect :model-value="profileDraft.agent" :options="agentOptions" @update:model-value="setProfileAgent" />
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('权限', 'Permission') }}</label>
@@ -1008,6 +1008,29 @@ function profileModelLabel(profile: ChannelConnectorAgentProfile): string {
     : text(`继承 ${model}`, `inherits ${model}`);
 }
 
+function legacyAppProfileRefsForAgent(agent: ChannelConnectorAgentId | string): Set<string> {
+  const refs = new Set(['', 'default']);
+  const appConnectionId = modelGatewayAppConnectionIdForAgent(agent as ChannelConnectorAgentId);
+  if (appConnectionId) refs.add(appConnectionId);
+  if (agent === 'codex') refs.add('codex');
+  if (agent === 'claude-code') {
+    refs.add('claude');
+    refs.add('claude-code');
+  }
+  if (agent === 'opencode') refs.add('opencode');
+  return refs;
+}
+
+function setProfileAgent(agent: string): void {
+  const nextAgent = agent as ChannelConnectorAgentId;
+  const previousAgent = profileDraft.agent;
+  const currentAppProfileRef = profileDraft.appProfileRef.trim();
+  profileDraft.agent = nextAgent;
+  if (legacyAppProfileRefsForAgent(previousAgent).has(currentAppProfileRef)) {
+    profileDraft.appProfileRef = 'default';
+  }
+}
+
 function addModelOption(target: Set<string>, value: unknown): void {
   const normalized = String(value || '').trim();
   if (normalized) target.add(normalized);
@@ -1162,7 +1185,7 @@ function currentAppConnectionProfilePatch(appId: ModelGatewayAppConnectionId): M
   const current = appConnectionProfile.value;
   const effectiveModel = selectedEffectiveModel.value || null;
   return {
-    model: current?.model || effectiveModel,
+    model: current?.model || null,
     appModels: {
       ...(current?.appModels || {}),
       [appId]: effectiveModel,
@@ -1235,7 +1258,7 @@ function newProfile(): void {
     permissionMode: base?.permissionMode || 'suggest',
     gatewayEndpoint: base?.gatewayEndpoint || 'http://127.0.0.1:18796/v1',
     gatewayKeyRef: 'studio-gateway-client-key',
-    appProfileRef: base?.appProfileRef || 'default',
+    appProfileRef: 'default',
   });
 }
 

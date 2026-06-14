@@ -78,6 +78,7 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(page, /applyModelGatewayAppConnection/);
   assert.match(page, /currentAppConnectionProfilePatch/);
   assert.match(page, /const effectiveModel = selectedEffectiveModel\.value \|\| null/);
+  assert.match(page, /model: current\?\.model \|\| null/);
   assert.match(page, /\[appId\]: effectiveModel/);
   assert.match(page, /refreshAppConnectionCatalog/);
   assert.match(page, /应用到 CLI|Apply to CLI/);
@@ -87,6 +88,11 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(page, /modelGatewayAppConnectionIdForAgent/);
   assert.match(page, /appProfileOptions/);
   assert.match(page, /default · Gateway App Connections/);
+  assert.match(page, /@update:model-value="setProfileAgent"/);
+  assert.match(page, /function setProfileAgent\(agent: string\)/);
+  assert.match(page, /function legacyAppProfileRefsForAgent/);
+  assert.match(page, /legacyAppProfileRefsForAgent\(previousAgent\)\.has\(currentAppProfileRef\)/);
+  assert.match(page, /profileDraft\.appProfileRef = 'default'/);
   assert.match(page, /模型网关|Model Gateway/);
   assert.match(page, /打开配置|Open config/);
   assert.match(page, /openBindingConfig/);
