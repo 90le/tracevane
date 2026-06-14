@@ -8,7 +8,7 @@
       </div>
 
       <div class="page-actions">
-        <button type="button" class="secondary-button compact-button" @click="openChannelConnectors">
+        <button type="button" class="secondary-button compact-button" @click="openChannelConnectors()">
           <ExternalLink :size="16" />
           {{ text('渠道连接', 'Channel Connectors') }}
         </button>
@@ -80,7 +80,7 @@
                 <p class="eyebrow">IM Bindings</p>
                 <h3>{{ text('渠道绑定', 'Channel bindings') }}</h3>
               </div>
-              <button type="button" class="secondary-button compact-button" @click="openChannelConnectors">
+              <button type="button" class="secondary-button compact-button" @click="openSelectedProfileConfig">
                 <ExternalLink :size="16" />
                 {{ text('完整配置', 'Full config') }}
               </button>
@@ -88,9 +88,15 @@
 
             <div v-if="relatedBindings.length" class="ccx-list">
               <article v-for="binding in relatedBindings" :key="binding.id" class="ccx-list-row ccx-agent-profile-binding-row">
-                <div>
-                  <strong>{{ binding.displayName || binding.id }}</strong>
-                  <p>{{ binding.platform }} · {{ binding.accountId }}{{ binding.botId ? ` / ${binding.botId}` : '' }}</p>
+                <div class="ccx-agent-profile-binding-main">
+                  <div>
+                    <strong>{{ binding.displayName || binding.id }}</strong>
+                    <p>{{ binding.platform }} · {{ binding.accountId }}{{ binding.botId ? ` / ${binding.botId}` : '' }}</p>
+                  </div>
+                  <button type="button" class="secondary-button compact-button" @click="openBindingConfig(binding)">
+                    <ExternalLink :size="16" />
+                    {{ text('配置', 'Config') }}
+                  </button>
                 </div>
                 <div>
                   <span>{{ binding.enabled ? text('启用', 'Enabled') : text('停用', 'Disabled') }}</span>
@@ -381,6 +387,7 @@ import type {
   ChannelConnectorAgentProfile,
   ChannelConnectorAgentSessionDriverStatusResponse,
   ChannelConnectorPermissionMode,
+  ChannelConnectorPlatformBinding,
   ChannelConnectorsNativeConfig,
   ChannelConnectorsNativeConfigResponse,
   ChannelConnectorsStatusResponse,
@@ -1152,8 +1159,20 @@ async function killActiveSessions(): Promise<void> {
   }
 }
 
-function openChannelConnectors(): void {
-  void router.push('/channel-connectors');
+function openChannelConnectors(query: Record<string, string> = {}): void {
+  void router.push({ path: '/channel-connectors', query });
+}
+
+function openSelectedProfileConfig(): void {
+  const profileId = selectedProfileId.value || profileDraft.id;
+  openChannelConnectors(profileId ? { profileId } : {});
+}
+
+function openBindingConfig(binding: ChannelConnectorPlatformBinding): void {
+  openChannelConnectors({
+    bindingId: binding.id,
+    profileId: binding.agentProfileId || selectedProfileId.value || profileDraft.id,
+  });
 }
 
 function openModelGateway(): void {

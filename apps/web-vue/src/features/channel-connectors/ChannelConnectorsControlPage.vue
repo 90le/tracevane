@@ -735,7 +735,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import {
   Activity,
   Download,
@@ -813,6 +814,7 @@ type BindingDraft = Omit<ChannelConnectorPlatformBinding, 'allowlist' | 'adminUs
   metadataVisionModel: string;
 };
 
+const route = useRoute();
 const { text } = useLocalePreference();
 const tabs: Array<{ id: WorkspaceTab; zh: string; en: string }> = [
   { id: 'runtime', zh: '运行', en: 'Runtime' },
@@ -844,6 +846,16 @@ const notice = ref<{ kind: 'success' | 'error'; message: string } | null>(null);
 
 const profileDraft = ref<ChannelConnectorAgentProfile>(emptyProfileDraft());
 const bindingDraft = ref<BindingDraft>(emptyBindingDraft());
+
+const routeProfileId = computed(() => {
+  const value = route.query.profileId;
+  return typeof value === 'string' ? value : '';
+});
+
+const routeBindingId = computed(() => {
+  const value = route.query.bindingId;
+  return typeof value === 'string' ? value : '';
+});
 
 const runtimeChain = computed(() => status.value?.runtimeChain || [
   'IM channel',
@@ -1363,18 +1375,25 @@ function newBindingDraft(platform: ChannelConnectorPlatformId = 'octo'): void {
 function hydrateConfigDrafts(): void {
   const config = nativeConfig.value?.config;
   if (!config) return;
-  const selectedProfile = config.agentProfiles.find((profile) => profile.id === profileDraft.value.id)
+
+  const selectedBinding = config.platformBindings.find((binding) => binding.id === routeBindingId.value)
+    || config.platformBindings.find((binding) => binding.id === bindingDraft.value.id)
+    || config.platformBindings[0];
+  const selectedProfile = config.agentProfiles.find((profile) => profile.id === routeProfileId.value)
+    || config.agentProfiles.find((profile) => profile.id === selectedBinding?.agentProfileId)
+    || config.agentProfiles.find((profile) => profile.id === profileDraft.value.id)
     || config.agentProfiles.find((profile) => profile.id === config.defaultAgentProfileId)
     || config.agentProfiles[0];
   if (selectedProfile) selectProfile(selectedProfile);
 
-  const selectedBinding = config.platformBindings.find((binding) => binding.id === bindingDraft.value.id)
-    || config.platformBindings[0];
   if (selectedBinding) {
     selectBinding(selectedBinding);
   } else {
     newBindingDraft();
   }
+
+  if (routeBindingId.value) activeTab.value = 'platforms';
+  else if (routeProfileId.value) activeTab.value = 'projects';
 }
 
 async function persistNativeConfig(config: ChannelConnectorsNativeConfig, message: string): Promise<void> {
@@ -1791,4 +1810,13 @@ async function runServiceAction(action: ChannelConnectorsDaemonAction): Promise<
 onMounted(() => {
   void loadAll();
 });
+
+watch(
+  () => [route.query.profileId, route.query.bindingId],
+  () => {
+    if (!nativeConfig.value) return;
+    hydrateConfigDrafts();
+    void refreshSkillSurface({ silent: true });
+  },
+);
 </script>

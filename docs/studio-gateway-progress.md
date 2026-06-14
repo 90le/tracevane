@@ -21,7 +21,7 @@
 - `studio-channel-files` 和 `studio-channel-messages` 是保留的 Agent 出站声明合同；文件/消息实际发送仍由 Studio native transport 执行。
 - Feishu/Octo 长连接已由用户 live 验证稳定；Feishu 专项跟踪进入 monitored 状态，任意假在线反馈先写入 `docs/feishu-long-connection-issue-tracker.md` 并对照 OpenClaw/CC 实现排查。
 - Channel 侧 `/usage` / token 统计不再继续建设；模型消耗后续统一到 Gateway usage/模型消耗页。
-- CLI Profile 管理属于 Studio 原生 Channel Connectors，不属于 OpenClaw Agent 管理；独立页为 `/channel-connectors/profiles`，直接读取 Gateway 可用模型目录和上下文预算，管理 Profile、IM 绑定摘要、运行配置、持久会话和事件记录。
+- CLI Profile 管理属于 Studio 原生 Channel Connectors，不属于 OpenClaw Agent 管理；独立页为 `/channel-connectors/profiles`，直接读取 Gateway 可用模型目录和上下文预算，管理 Profile、IM 绑定摘要、运行配置、持久会话和事件记录；IM 绑定摘要可 deep-link 到完整 Channel Connectors 配置并自动选中 binding/profile。
 
 ## 本轮完成
 
@@ -49,6 +49,7 @@
   - Profile 工作台补齐复制、删除保护、设为默认、模型网关跳转、事件筛选和当前 Profile 活动会话批量停止；删除会阻止仅剩一个 Profile、仍有 IM 绑定或活动 session 的情况。
   - Profile 编辑流补齐真实重命名语义：保存或设默认时按原始 Profile ID 替换，并自动迁移相关 IM binding；重复 ID、缺少工作目录或缺少 ID 会阻止保存，未保存状态可撤销。
   - Profile effective model 顺序改为 `Profile model > Gateway app-specific model > Gateway default model`；页面展示当前 CLI App Connection 的协议、endpoint、配置状态和 resolved model，`App Profile` 改为受控 `default` 选择并保留既有自定义值。
+  - Profile 工作台的 IM binding 行新增直达配置入口；`/channel-connectors?bindingId=...&profileId=...` 会打开 Platforms tab 并选中对应 binding，`profileId` 入口会打开 Profiles tab。
 - 清理并压缩 `docs/`：
   - 新增 `docs/README.md` 作为文档索引和维护规则。
   - 压缩 Gateway、Channel Connectors、Feishu、Chat、富消息、渲染、PRD、架构和当前进展文档。
@@ -116,12 +117,13 @@
 
 ## 最近验证
 
-- 本轮验证通过：`node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs tests/system/studio-web-channel-connectors-page.test.mjs`，覆盖 Channel Connectors 独立 Profile 工作台、Gateway 预算索引、Profile 复制/删除/事件筛选/批量停止控件、Profile ID 重命名迁移绑定合同、App Connection effective model 合同、Agents 旧 CLI 路由删除和 Channel Connectors 独立导航。
+- 本轮验证通过：`node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs tests/system/studio-web-channel-connectors-page.test.mjs`，覆盖 Channel Connectors 独立 Profile 工作台、Gateway 预算索引、Profile 复制/删除/事件筛选/批量停止控件、Profile ID 重命名迁移绑定合同、App Connection effective model 合同、IM binding deep-link 选中合同、Agents 旧 CLI 路由删除和 Channel Connectors 独立导航。
 - 本轮验证通过：`npm run typecheck:web`
 - 本轮验证通过：`npm run typecheck:api`
 - 本轮验证通过：`npm run build:web`
 - 本轮验证通过：`npm run build:api`
 - 本轮浏览器验证通过：Python Playwright 打开 `http://127.0.0.1:5176/channel-connectors/profiles`，在 1440/900/390 宽度下无横向溢出，Profile 复制/删除、模型网关、停止全部和事件筛选控件均渲染；打开旧 `http://127.0.0.1:5176/agents/main/cli` 不再渲染 CLI Profile 管理。
+- 本轮浏览器验证通过：Profile 页当前渲染 2 个 IM binding 配置入口；打开 `/channel-connectors?bindingId=feishu-live&profileId=feishu-codex` 会显示 Platforms tab，并选中 `Feishu Live` / `Feishu Codex`，无横向溢出。
 - 本轮浏览器验证通过：Profile 页面在 1440/900/390 宽度下渲染 CLI App connection 与 App Profile 受控选择，无横向溢出。
 - 本轮浏览器交互验证通过：无保存修改 Profile ID 会显示未保存状态，撤销会还原原 ID；输入已有 Profile ID 会显示冲突并禁用保存，未改写真实配置。
 - 本轮 dev 进程已重启：前端 `http://127.0.0.1:5176`、后端 `http://127.0.0.1:3761`；Gateway daemon 与 Channel daemon 均为 `active/enabled`。
