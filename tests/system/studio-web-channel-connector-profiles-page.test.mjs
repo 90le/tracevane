@@ -64,6 +64,16 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(page, /ccx-agent-profile-app-facts/);
   assert.match(page, /selectedAppConnection\?\.target\.path/);
   assert.match(page, /selectedAppConnection\?\.lastBackupPath/);
+  assert.match(page, /selectedAppConnectionIssues/);
+  assert.match(page, /canApplySelectedAppConnection/);
+  assert.match(page, /selectedAppConnectionApplyDisabledReason/);
+  assert.match(page, /applySelectedAppConnection/);
+  assert.match(page, /applyModelGatewayAppConnection/);
+  assert.match(page, /currentAppConnectionProfilePatch/);
+  assert.match(page, /const effectiveModel = selectedEffectiveModel\.value \|\| null/);
+  assert.match(page, /\[appId\]: effectiveModel/);
+  assert.match(page, /refreshAppConnectionCatalog/);
+  assert.match(page, /应用到 CLI|Apply to CLI/);
   assert.match(page, /App 连接|App connection/);
   assert.match(page, /selectedEffectiveModel = computed/);
   assert.match(page, /profileDraft\.model \|\| selectedAppConnectionModel\.value \|\| appConnectionProfile\.value\?\.model/);
@@ -137,6 +147,8 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(styles, /\.ccx-agent-profile-budget-strip/);
   assert.match(styles, /\.ccx-agent-profile-app-connection/);
   assert.match(styles, /\.ccx-agent-profile-app-facts/);
+  assert.match(styles, /\.ccx-agent-profile-app-issues/);
+  assert.match(styles, /\.ccx-agent-profile-app-actions/);
   assert.match(styles, /\.ccx-agent-profile-binding-main/);
   assert.match(styles, /\.ccx-agent-profile-requested-list/);
   assert.match(styles, /\.ccx-agent-profile-requested-row/);

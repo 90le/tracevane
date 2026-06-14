@@ -156,7 +156,7 @@
   padding: 10px 12px;
 }
 
-.ccx-agent-profile-app-connection > div {
+.ccx-agent-profile-app-connection > div:first-child {
   display: flex;
   flex-wrap: wrap;
   gap: 6px 10px;
@@ -210,6 +210,28 @@
   font-weight: 650;
   line-height: 1.4;
   overflow-wrap: anywhere;
+}
+
+.ccx-agent-profile-app-issues {
+  display: grid;
+  gap: 6px;
+}
+
+.ccx-agent-profile-app-issues span {
+  border: 1px solid color-mix(in srgb, var(--danger) 28%, var(--mono-line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 5%, var(--surface-base));
+  color: var(--danger);
+  font-size: 0.78rem;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  padding: 6px 8px;
+}
+
+.ccx-agent-profile-app-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .ccx-agent-profile-binding-row,

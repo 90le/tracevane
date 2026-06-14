@@ -247,10 +247,25 @@
                           <dd>{{ selectedAppConnection?.lastBackupPath || '-' }}</dd>
                         </div>
                       </dl>
-                      <button type="button" class="secondary-button compact-button ccx-icon-button ccx-field-button" @click="openModelGateway">
-                        <ExternalLink :size="16" />
-                        {{ text('App 连接', 'App connection') }}
-                      </button>
+                      <div v-if="selectedAppConnectionIssues.length" class="ccx-agent-profile-app-issues">
+                        <span v-for="issue in selectedAppConnectionIssues" :key="issue">{{ issue }}</span>
+                      </div>
+                      <div class="ccx-agent-profile-app-actions">
+                        <button
+                          type="button"
+                          class="primary-button compact-button ccx-icon-button ccx-field-button"
+                          :disabled="appConnectionApplyBusy || !canApplySelectedAppConnection"
+                          :title="selectedAppConnectionApplyDisabledReason"
+                          @click="applySelectedAppConnection"
+                        >
+                          <Save :size="16" />
+                          {{ appConnectionApplyBusy ? text('应用中...', 'Applying...') : text('应用到 CLI', 'Apply to CLI') }}
+                        </button>
+                        <button type="button" class="secondary-button compact-button ccx-icon-button ccx-field-button" @click="openModelGateway">
+                          <ExternalLink :size="16" />
+                          {{ text('App 连接', 'App connection') }}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -515,7 +530,7 @@ import {
   manageChannelConnectorAgentSessions,
   saveChannelConnectorsNativeConfig,
 } from './api';
-import { fetchModelGatewayAppConnections, fetchModelGatewayProviders } from '../model-gateway/api';
+import { applyModelGatewayAppConnection, fetchModelGatewayAppConnections, fetchModelGatewayProviders } from '../model-gateway/api';
 
 defineOptions({ name: 'ChannelConnectorAgentProfilesPage' });
 
@@ -549,6 +564,7 @@ const loading = ref(false);
 const loaded = ref(false);
 const saving = ref(false);
 const sessionBusy = ref(false);
+const appConnectionApplyBusy = ref(false);
 const errorMessage = ref('');
 const noticeMessage = ref('');
 const noticeTone = ref<NoticeTone>('success');
@@ -670,6 +686,19 @@ const selectedAppConnectionState = computed(() => {
   if (connection.configured) return text('已应用配置', 'Applied');
   if (connection.canApply) return text('可应用', 'Ready to apply');
   return text('需要先完善 Gateway 配置', 'Gateway configuration required');
+});
+
+const selectedAppConnectionIssues = computed(() => selectedAppConnection.value?.issues || []);
+
+const canApplySelectedAppConnection = computed(() =>
+  Boolean(selectedAppConnectionId.value && selectedAppConnection.value?.canApply),
+);
+
+const selectedAppConnectionApplyDisabledReason = computed(() => {
+  if (!selectedAppConnectionId.value) return text('当前 Agent 暂不支持 App Connection', 'This agent does not support App Connection yet');
+  if (!selectedAppConnection.value) return text('未找到 Gateway App Connection', 'Gateway App Connection not found');
+  if (selectedAppConnectionIssues.value.length) return selectedAppConnectionIssues.value.join(' ');
+  return '';
 });
 
 const selectedAppConnectionDetail = computed(() => {
@@ -1007,6 +1036,27 @@ function profileFromDraft(): ChannelConnectorAgentProfile {
   };
 }
 
+function currentAppConnectionProfilePatch(appId: ModelGatewayAppConnectionId): ModelGatewayAppConnectionProfile {
+  const current = appConnectionProfile.value;
+  const effectiveModel = selectedEffectiveModel.value || null;
+  return {
+    model: current?.model || effectiveModel,
+    appModels: {
+      ...(current?.appModels || {}),
+      [appId]: effectiveModel,
+    },
+    contextWindow: resolvedContextWindow.value,
+    autoCompactTokenLimit: resolvedAutoCompactTokenLimit.value,
+    maxOutputTokens: resolvedMaxOutputTokens.value,
+    reasoningEffort: reasoningEffortDraft.value || current?.reasoningEffort || null,
+    protocolOptions: current?.protocolOptions || {
+      codexResponsesWebsockets: false,
+      codexResponsesWebsocketsV2: false,
+      codexRequestCompression: false,
+    },
+  };
+}
+
 function selectProfile(profile: ChannelConnectorAgentProfile): void {
   selectedProfileId.value = profile.id;
   profileDraft.id = profile.id;
@@ -1288,6 +1338,38 @@ async function killActiveSessions(): Promise<void> {
     errorMessage.value = error instanceof Error ? error.message : text('批量停止 CLI 会话失败。', 'Failed to stop CLI sessions.');
   } finally {
     sessionBusy.value = false;
+  }
+}
+
+async function refreshAppConnectionCatalog(): Promise<void> {
+  const response = await fetchModelGatewayAppConnections();
+  appConnectionProfile.value = response.profile;
+  appConnections.value = response.connections || [];
+  gatewayModels.value = Array.from(new Set([
+    ...gatewayModels.value,
+    ...(response.availableModels || []),
+  ].map((model) => String(model || '').trim()).filter(Boolean)));
+}
+
+async function applySelectedAppConnection(): Promise<void> {
+  const appId = selectedAppConnectionId.value;
+  if (!appId || !canApplySelectedAppConnection.value) {
+    setNotice(selectedAppConnectionApplyDisabledReason.value || text('当前 App Connection 不可应用。', 'Current App Connection cannot be applied.'), 'error');
+    return;
+  }
+  appConnectionApplyBusy.value = true;
+  errorMessage.value = '';
+  noticeMessage.value = '';
+  try {
+    const result = await applyModelGatewayAppConnection(appId, currentAppConnectionProfilePatch(appId));
+    await refreshAppConnectionCatalog();
+    setNotice(result.backupPath
+      ? text('CLI App 配置已应用，原文件已备份。', 'CLI app config applied; existing file was backed up.')
+      : text('CLI App 配置已应用。', 'CLI app config applied.'));
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : text('应用 CLI App 配置失败。', 'Failed to apply CLI app config.');
+  } finally {
+    appConnectionApplyBusy.value = false;
   }
 }
 
