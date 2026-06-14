@@ -237,6 +237,20 @@
                         <span>{{ selectedAppConnectionState }}</span>
                       </div>
                       <p>{{ selectedAppConnectionDetail }}</p>
+                      <dl class="ccx-agent-profile-app-facts">
+                        <div>
+                          <dt>{{ text('配置文件', 'Config file') }}</dt>
+                          <dd>{{ selectedAppConnection?.target.path || '-' }}</dd>
+                        </div>
+                        <div>
+                          <dt>{{ text('最近备份', 'Latest backup') }}</dt>
+                          <dd>{{ selectedAppConnection?.lastBackupPath || '-' }}</dd>
+                        </div>
+                      </dl>
+                      <button type="button" class="secondary-button compact-button ccx-icon-button ccx-field-button" @click="openModelGateway">
+                        <ExternalLink :size="16" />
+                        {{ text('App 连接', 'App connection') }}
+                      </button>
                     </div>
                   </div>
                 </div>
