@@ -638,6 +638,23 @@ export interface ModelGatewayCodexAccountLoginPollResponse {
   provider: ModelGatewayProviderView | null;
 }
 
+export interface ModelGatewayProviderAccountUpdateRequest {
+  enabled?: boolean;
+}
+
+export interface ModelGatewayProviderAccountUpdateResponse {
+  ok: true;
+  provider: ModelGatewayProviderView;
+  account: ModelGatewayAccountEntry;
+}
+
+export interface ModelGatewayProviderAccountRefreshResponse {
+  ok: true;
+  provider: ModelGatewayProviderView;
+  account: ModelGatewayAccountEntry;
+  refreshed: true;
+}
+
 export interface ModelGatewaySetProviderSecretRequest {
   apiKey: string | null;
 }

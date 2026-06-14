@@ -635,6 +635,85 @@
   overflow-wrap: anywhere;
 }
 
+.mgw-account-login-session .mgw-account-login-open {
+  width: fit-content;
+  color: var(--mono-ink);
+  text-decoration: none;
+}
+
+.mgw-account-table {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.mgw-account-row {
+  display: grid;
+  grid-template-columns: minmax(160px, 1fr) auto;
+  gap: 10px 14px;
+  min-width: 0;
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: var(--control-bg);
+  padding: 10px;
+}
+
+.mgw-account-row__main {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.mgw-account-row__main strong,
+.mgw-account-row__main small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mgw-account-row__main small,
+.mgw-account-row__meta dt {
+  color: var(--mono-ink-2);
+}
+
+.mgw-account-row__meta {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin: 0;
+}
+
+.mgw-account-row__meta div {
+  min-width: 0;
+}
+
+.mgw-account-row__meta dt,
+.mgw-account-row__meta dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.mgw-account-row__meta dt {
+  font-size: 0.75rem;
+}
+
+.mgw-account-row__meta dd {
+  color: var(--mono-ink);
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.mgw-account-row__error dd {
+  color: var(--mono-danger);
+}
+
+.mgw-account-row__actions {
+  display: flex;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .mgw-provider-list {
   display: grid;
   gap: 8px;
@@ -1359,6 +1438,11 @@
 
   .mgw-account-login-card__actions {
     justify-content: flex-start;
+  }
+
+  .mgw-account-row,
+  .mgw-account-row__meta {
+    grid-template-columns: 1fr;
   }
 
   .mgw-form-grid,

@@ -12,6 +12,7 @@
 - Provider Center 表单已按连接、端点路由、密钥识别、模型目录、高级覆盖、可用范围分区；PC/平板/手机均按同一配置流程降级展示。
 - Gateway Provider 支持 endpoint profiles；同一 provider/模型可按客户端协议优选原生 endpoint，并在 endpoint 级 health/circuit 下回退。
 - GPT/ChatGPT account 与 Codex account 进入 Gateway Phase D2：Provider Center 页面直接登录官方账户并自动创建 account-backed provider；后续补账户池、刷新、sticky/failover、quota/cooldown 和三协议导出，不恢复旧 CPA / Codex Stack。
+- Codex account-backed provider 已支持页面登录、请求前自动 refresh、手动 refresh、账户启用/停用和重新登录入口；客户端仍只使用统一 Gateway endpoint + Gateway key。
 - Provider Center 不再按模型名自动标记 vision；图片能力只来自用户配置、上游显式能力元数据或图片 smoke 通过后用户确认写回。
 - App Connections 覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收；Model Gateway 支持 `tab/app` deep-link 直达并高亮指定 CLI App Connection。
 - BigModel/GLM 本地模型目录已加入 `glm-5.2`，按 1M context / 128K output 预算；Gateway 内置推断同时识别 `glm-5.2` 与官方 1M 后缀别名 `glm-5.2[1m]`。
@@ -38,8 +39,11 @@
   - Account-backed Codex 转发会从 secret store 取 token，注入 `Authorization`、`Chatgpt-Account-Id`、`Originator` 和 Codex user-agent；普通客户端仍只使用 Gateway key。
   - Account entry 新增显式 `state`；路由会跳过 disabled / needs-login / error / 未过期 cooldown 的 Codex account。
   - Codex account 请求前会在过期前 5 分钟自动 refresh；成功后更新 secret store 和 account health，auth refresh 失败进入 `needs-login`，其它 refresh 失败进入短 cooldown。
+  - Provider account API 新增账户启用/停用和手动 refresh；手动 refresh 与请求时自动 refresh 共享 in-flight refresh map，避免 token 竞态。
+  - Provider Center 选中 account-backed provider 时显示账户状态表，可查看 mask 邮箱、plan、过期时间、最近成功、错误/cooldown，并可刷新 token、启停账户或重新登录。
+  - Provider Center Codex 登录入口避免移动端弹窗拦截：点击后在当前页面生成验证码和“打开官方授权页”按钮，不再自动打开空白页；Codex device auth start/poll/exchange/refresh 会使用账户代理或环境代理。
   - 本轮验证通过：`npm run typecheck:api`、`npm run build:api`、`npm run typecheck:web`、`npm run build:web`。
-  - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，60/60 通过，覆盖 Codex account login、refresh、refresh auth failure、secret redaction、active routing、Codex headers 转发和既有三协议矩阵无回归。
+  - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，61/61 通过，覆盖 Codex account login、自动 refresh、手动 refresh、账户禁用路由跳过、refresh auth failure、secret redaction、active routing、Codex headers 转发和既有三协议矩阵无回归。
 - Provider Center 前端收口：
   - 模型目录的可见身份字段只保留“模型名称”和“别名”，不再暴露“显示名”三段式配置。
   - 批量导入格式改为 `model-id | alias1,alias2`；保存时不再从表格写入 `model.label`。
@@ -178,6 +182,8 @@
 - 本轮验证通过：`node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs`
 - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，57/57 通过，覆盖 `glm-5.2` / `glm-5.2[1m]` 预算推断、endpoint profile 原生协议优选、endpoint health 回退、响应头和 endpoint 级 smoke。
 - 本轮本机 live smoke 通过：Gateway `glm-5.2` 三协议入口均可用，`/v1/chat/completions` 走 `glm/coding-chat`，`/v1/messages` 走 `glm/coding-anthropic`，`/v1/responses` 走 `glm/coding-chat` 转换。
+- 本轮验证通过：Codex account login start 经 `http://127.0.0.1:5176/api/model-gateway/account-providers/codex/login/start` 返回 200、验证码和官方授权 URL；同一请求确认走环境代理，避免 auth.openai.com 直连返回地区 403。
+- 本轮浏览器验证通过：Python Playwright 以 390px 移动视口打开 `/model-gateway`，切到 Provider configuration 后点击 `Sign in Codex`，页面不跳 404、不白屏，显示验证码和 `https://auth.openai.com/codex/device` 授权按钮。
 - 本轮本机 endpoint smoke 通过：Provider Center 后端 smoke API 指定 `glm/coding-chat` 与 `glm/coding-anthropic` 均返回 200，并命中各自 upstream。
 - 本轮验证通过：`node --test tests/system/channel-connectors-service.test.mjs`，104/104 通过，覆盖 Gateway 模型列表超过 12 个时 Feishu/命令模型菜单仍显示后续模型。
 - 上一轮代码验证通过：`npm run typecheck:api`

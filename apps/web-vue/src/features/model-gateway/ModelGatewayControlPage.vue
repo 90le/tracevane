@@ -452,6 +452,14 @@
                 <a :href="codexLoginStart.verificationUrl" target="_blank" rel="noreferrer">
                   {{ codexLoginStart.verificationUrl }}
                 </a>
+                <a
+                  class="secondary-button compact-button mgw-account-login-open"
+                  :href="codexLoginStart.verificationUrl"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {{ text('打开官方授权页', 'Open authorization page') }}
+                </a>
                 <small>{{ codexLoginStatusText }}</small>
               </div>
               <div v-if="codexLoginProviderSummary" class="mgw-account-login-provider">
@@ -463,7 +471,7 @@
                 type="button"
                 class="primary-button compact-button"
                 :disabled="codexLoginBusy"
-                @click="startCodexAccountLoginFlow"
+                @click="startCodexAccountLoginFlow()"
               >
                 {{ codexLoginBusy ? text('登录中...', 'Signing in...') : text('登录 Codex 账户', 'Sign in Codex') }}
               </button>
@@ -548,6 +556,71 @@
                   <input v-model.trim="draft.baseUrl" class="form-input" placeholder="https://api.example.com/v1" />
                   <span class="field-hint">{{ text('这里是上游 API 前缀，Gateway 不会自动追加 /v1。', 'This is the upstream API prefix; Gateway will not append /v1 automatically.') }}</span>
                 </label>
+                  </div>
+                </section>
+
+                <section v-if="selectedProviderAccounts.length" class="mgw-config-section">
+                  <div class="mgw-config-section__head">
+                    <h4>{{ text('账户状态', 'Accounts') }}</h4>
+                    <span>{{ text('本地账户型 provider 的启停与 token 刷新。', 'Enable, disable, and refresh local account-backed providers.') }}</span>
+                  </div>
+                  <div class="mgw-account-table">
+                    <div
+                      v-for="account in selectedProviderAccounts"
+                      :key="account.id"
+                      class="mgw-account-row"
+                    >
+                      <div class="mgw-account-row__main">
+                        <strong>{{ account.emailMasked || account.accountHash || account.id }}</strong>
+                        <small>{{ account.plan || account.kind }} · {{ account.credentialSource }}</small>
+                      </div>
+                      <StatusPill :label="accountStateLabel(account)" :tone="accountStateTone(account)" />
+                      <dl class="mgw-account-row__meta">
+                        <div>
+                          <dt>{{ text('过期', 'Expires') }}</dt>
+                          <dd>{{ formatTimestamp(account.expiresAt || '') }}</dd>
+                        </div>
+                        <div>
+                          <dt>{{ text('上次成功', 'Last success') }}</dt>
+                          <dd>{{ formatTimestamp(account.lastSuccessAt || '') }}</dd>
+                        </div>
+                        <div v-if="account.cooldownUntil">
+                          <dt>{{ text('冷却至', 'Cooldown') }}</dt>
+                          <dd>{{ formatTimestamp(account.cooldownUntil) }}</dd>
+                        </div>
+                        <div v-if="account.lastError" class="mgw-account-row__error">
+                          <dt>{{ text('错误', 'Error') }}</dt>
+                          <dd>{{ account.lastError }}</dd>
+                        </div>
+                      </dl>
+                      <div class="mgw-account-row__actions">
+                        <button
+                          type="button"
+                          class="secondary-button compact-button"
+                          :disabled="isAccountBusy(account, 'refresh') || !account.enabled || account.state === 'disabled'"
+                          @click="refreshProviderAccountNow(account)"
+                        >
+                          {{ isAccountBusy(account, 'refresh') ? text('刷新中...', 'Refreshing...') : text('刷新 token', 'Refresh token') }}
+                        </button>
+                        <button
+                          type="button"
+                          class="secondary-button compact-button"
+                          :disabled="isAccountBusy(account, 'toggle')"
+                          @click="toggleProviderAccount(account)"
+                        >
+                          {{ account.enabled && account.state !== 'disabled' ? text('停用', 'Disable') : text('启用', 'Enable') }}
+                        </button>
+                        <button
+                          v-if="selectedProviderView"
+                          type="button"
+                          class="secondary-button compact-button"
+                          :disabled="codexLoginBusy"
+                          @click="startCodexAccountLoginFlow({ providerId: selectedProviderView.id, providerName: selectedProviderView.name })"
+                        >
+                          {{ text('重新登录', 'Sign in again') }}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </section>
 
@@ -1035,6 +1108,7 @@ import { useRoute } from 'vue-router';
 import { Plus, Trash2, X } from '@lucide/vue';
 import { MODEL_GATEWAY_APP_CONNECTION_IDS } from '../../../../../types/model-gateway';
 import type {
+  ModelGatewayAccountEntry,
   ModelGatewayApiFormat,
   ModelGatewayActiveRouteStatus,
   ModelGatewayAppConnection,
@@ -1080,11 +1154,13 @@ import {
   fetchModelGatewayStatus,
   manageModelGatewayDaemonService,
   pollModelGatewayCodexAccountLogin,
+  refreshModelGatewayProviderAccount,
   rollbackModelGatewayAppConnection,
   setModelGatewayActiveProvider,
   smokeModelGatewayActiveRoute,
   startModelGatewayCodexAccountLogin,
   testModelGatewayProvider,
+  updateModelGatewayProviderAccount,
   updateModelGatewayAppConnectionProfile,
   updateModelGatewayClientAuth,
   upsertModelGatewayProvider,
@@ -1325,6 +1401,7 @@ const appConnectionProfileBusy = ref(false);
 const appConnectionApplyAllBusy = ref(false);
 const lastAutoAppConnectionBudget = ref<AppConnectionBudgetDraft | null>(null);
 const providers = ref<ModelGatewayProviderView[]>([]);
+const accountBusy = ref<Record<string, boolean>>({});
 const activeProviders = ref<Partial<Record<ModelGatewayAppScope, string>>>({});
 const activeRouteStatuses = ref<ModelGatewayActiveRouteStatus[]>([]);
 const activeRouteAlerts = ref<string[]>([]);
@@ -1363,6 +1440,13 @@ let codexLoginTimer: ReturnType<typeof window.setTimeout> | null = null;
 
 const draft = reactive<ProviderDraft>(createEmptyDraft());
 const modelBulk = reactive<ProviderModelBulkDraft>(createModelBulkDraft());
+
+const selectedProviderView = computed(() =>
+  providers.value.find((provider) => provider.id === draft.id) || null,
+);
+const selectedProviderAccounts = computed<ModelGatewayAccountEntry[]>(() =>
+  selectedProviderView.value?.accountProvider?.accounts || [],
+);
 
 const endpointProfilesCanSmoke = computed(() =>
   Boolean(draft.id.trim() && providerExists(draft.id.trim())),
@@ -1694,6 +1778,39 @@ function applyProviderResponse(response: ModelGatewayProvidersResponse): void {
   activeProviders.value = response.activeProviders;
   activeRouteStatuses.value = response.activeRoutes;
   activeRouteAlerts.value = response.activeRouteAlerts;
+}
+
+function applyProviderView(provider: ModelGatewayProviderView): void {
+  const index = providers.value.findIndex((entry) => entry.id === provider.id);
+  if (index >= 0) {
+    providers.value.splice(index, 1, provider);
+    return;
+  }
+  providers.value = [...providers.value, provider];
+}
+
+function accountActionKey(account: ModelGatewayAccountEntry, action: string): string {
+  return `${draft.id}:${account.id}:${action}`;
+}
+
+function isAccountBusy(account: ModelGatewayAccountEntry, action: string): boolean {
+  return accountBusy.value[accountActionKey(account, action)] === true;
+}
+
+function accountStateLabel(account: ModelGatewayAccountEntry): string {
+  if (!account.enabled || account.state === 'disabled') return text('停用', 'Disabled');
+  if (account.state === 'ready') return text('可用', 'Ready');
+  if (account.state === 'refreshing') return text('刷新中', 'Refreshing');
+  if (account.state === 'needs-login') return text('需登录', 'Needs login');
+  if (account.state === 'cooldown') return text('冷却中', 'Cooldown');
+  return text('异常', 'Error');
+}
+
+function accountStateTone(account: ModelGatewayAccountEntry): 'neutral' | 'accent' | 'sage' | 'danger' {
+  if (!account.enabled || account.state === 'disabled') return 'neutral';
+  if (account.state === 'ready') return 'sage';
+  if (account.state === 'refreshing' || account.state === 'cooldown') return 'accent';
+  return 'danger';
 }
 
 function activeRouteStatusForScope(scope: ModelGatewayAppScope): ModelGatewayActiveRouteStatus | null {
@@ -2598,6 +2715,55 @@ async function detectProviderConfig(): Promise<void> {
   }
 }
 
+async function refreshProviderAccountNow(account: ModelGatewayAccountEntry): Promise<void> {
+  const provider = selectedProviderView.value;
+  if (!provider) return;
+  const key = accountActionKey(account, 'refresh');
+  accountBusy.value = { ...accountBusy.value, [key]: true };
+  try {
+    const response = await refreshModelGatewayProviderAccount(provider.id, account.id);
+    applyProviderView(response.provider);
+    notice.value = {
+      kind: 'success',
+      message: text('账户 token 已刷新。', 'Account token refreshed.'),
+    };
+  } catch (error) {
+    notice.value = {
+      kind: 'error',
+      message: error instanceof Error ? error.message : text('账户刷新失败', 'Failed to refresh account'),
+    };
+  } finally {
+    accountBusy.value = { ...accountBusy.value, [key]: false };
+  }
+}
+
+async function toggleProviderAccount(account: ModelGatewayAccountEntry): Promise<void> {
+  const provider = selectedProviderView.value;
+  if (!provider) return;
+  const nextEnabled = !account.enabled || account.state === 'disabled';
+  const key = accountActionKey(account, 'toggle');
+  accountBusy.value = { ...accountBusy.value, [key]: true };
+  try {
+    const response = await updateModelGatewayProviderAccount(provider.id, account.id, {
+      enabled: nextEnabled,
+    });
+    applyProviderView(response.provider);
+    notice.value = {
+      kind: 'success',
+      message: nextEnabled
+        ? text('账户已启用。', 'Account enabled.')
+        : text('账户已停用，路由会跳过它。', 'Account disabled; routing will skip it.'),
+    };
+  } catch (error) {
+    notice.value = {
+      kind: 'error',
+      message: error instanceof Error ? error.message : text('账户状态更新失败', 'Failed to update account'),
+    };
+  } finally {
+    accountBusy.value = { ...accountBusy.value, [key]: false };
+  }
+}
+
 function clearCodexLoginTimer(): void {
   if (!codexLoginTimer) return;
   window.clearTimeout(codexLoginTimer);
@@ -2612,25 +2778,20 @@ function scheduleCodexLoginPoll(): void {
   }, intervalSeconds * 1000);
 }
 
-async function startCodexAccountLoginFlow(): Promise<void> {
+async function startCodexAccountLoginFlow(options: { providerId?: string; providerName?: string } = {}): Promise<void> {
   codexLoginBusy.value = true;
   clearCodexLoginTimer();
   codexLoginPoll.value = null;
   try {
     const response = await startModelGatewayCodexAccountLogin({
-      providerId: 'codex-account',
-      providerName: 'Codex Account',
+      providerId: options.providerId || 'codex-account',
+      providerName: options.providerName || 'Codex Account',
       setActiveScopes: ['codex', 'claude-code', 'opencode', 'openclaw'],
     });
     codexLoginStart.value = response;
-    try {
-      window.open(response.verificationUrl, '_blank', 'noopener,noreferrer');
-    } catch {
-      // Browser popup blockers are fine; the card shows the URL and code.
-    }
     notice.value = {
       kind: 'success',
-      message: text('Codex 登录已开始，请在官方页面输入验证码。', 'Codex login started. Enter the code on the official page.'),
+      message: text('Codex 登录已开始，请点击卡片里的官方授权按钮并输入验证码。', 'Codex login started. Use the authorization button in the card and enter the code.'),
     };
     scheduleCodexLoginPoll();
   } catch (error) {

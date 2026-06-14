@@ -8,6 +8,7 @@ import type {
   ModelGatewayDaemonServiceRequest,
   ModelGatewayApplyAppConnectionRequest,
   ModelGatewayRollbackAppConnectionRequest,
+  ModelGatewayProviderAccountUpdateRequest,
   ModelGatewayProviderDetectRequest,
   ModelGatewayProviderTestRequest,
   ModelGatewaySetActiveProviderRequest,
@@ -214,6 +215,31 @@ export function registerModelGatewayRoutes(router: StudioRouter): void {
           },
         }),
       });
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
+  router.post("/api/model-gateway/providers/:providerId/accounts/:accountId", async (req, res, routeCtx, params) => {
+    try {
+      const payload = await parseJsonBody<ModelGatewayProviderAccountUpdateRequest>(req);
+      sendJson(
+        res,
+        200,
+        routeCtx.services.modelGateway.updateProviderAccount(req, params.providerId, params.accountId, payload),
+      );
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
+  router.post("/api/model-gateway/providers/:providerId/accounts/:accountId/refresh", async (req, res, routeCtx, params) => {
+    try {
+      sendJson(
+        res,
+        200,
+        await routeCtx.services.modelGateway.refreshProviderAccount(req, params.providerId, params.accountId),
+      );
     } catch (error) {
       sendModelGatewayError(res, error);
     }

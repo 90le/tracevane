@@ -16,6 +16,9 @@ import type {
   ModelGatewayApplyAppConnectionResponse,
   ModelGatewayRollbackAppConnectionResponse,
   ModelGatewayUpdateAppConnectionProfileResponse,
+  ModelGatewayProviderAccountRefreshResponse,
+  ModelGatewayProviderAccountUpdateRequest,
+  ModelGatewayProviderAccountUpdateResponse,
   ModelGatewayProviderDetectRequest,
   ModelGatewayProviderDetectResponse,
   ModelGatewayProviderView,
@@ -142,6 +145,27 @@ export function pollModelGatewayCodexAccountLogin(
   return requestJson<ModelGatewayCodexAccountLoginPollResponse>(
     '/api/model-gateway/account-providers/codex/login/poll',
     jsonBody(payload),
+  );
+}
+
+export function updateModelGatewayProviderAccount(
+  providerId: string,
+  accountId: string,
+  payload: ModelGatewayProviderAccountUpdateRequest,
+): Promise<ModelGatewayProviderAccountUpdateResponse> {
+  return requestJson<ModelGatewayProviderAccountUpdateResponse>(
+    `/api/model-gateway/providers/${encodeURIComponent(providerId)}/accounts/${encodeURIComponent(accountId)}`,
+    jsonBody(payload),
+  );
+}
+
+export function refreshModelGatewayProviderAccount(
+  providerId: string,
+  accountId: string,
+): Promise<ModelGatewayProviderAccountRefreshResponse> {
+  return requestJson<ModelGatewayProviderAccountRefreshResponse>(
+    `/api/model-gateway/providers/${encodeURIComponent(providerId)}/accounts/${encodeURIComponent(accountId)}/refresh`,
+    jsonBody({}),
   );
 }
 

@@ -142,6 +142,6 @@ Feishu / Octo(dmwork) / future IM
 | Phase B2 | 完成核心，持续加固 | cc-switch 级 SSE/tool/history/usage/reasoning/error 成熟度；BigModel 与 GMN smoke 已覆盖主要格子 |
 | Phase C | 完成 | 删除 Codex Stack 前后端、资源和旧测试入口 |
 | Phase D | 完成核心 | Gateway 服务与配置面、Provider Center、Active routing、模型池、协议/模型自动识别、daemon 生命周期 |
-| Phase D2 | 进行中 | GPT/ChatGPT/Codex account-backed provider：页面登录、账户池、刷新、sticky/failover、quota/cooldown、三协议导出 |
+| Phase D2 | 进行中 | GPT/ChatGPT/Codex account-backed provider：页面登录、账户刷新/启停已完成核心；继续补账户池 sticky/failover、quota/cooldown、三协议 live 导出 |
 | Phase E | 完成核心 | Codex、Claude Code、OpenCode、OpenClaw App Connections preview/apply/profile/rollback |
 | Phase F | 进行中 | Channel Connectors 私聊完整闭环、Agent runner、文件/图片、工具流、compact、durable queue |

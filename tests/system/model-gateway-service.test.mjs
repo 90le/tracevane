@@ -598,6 +598,202 @@ test("model gateway refreshes expiring Codex account tokens before forwarding", 
   assert.equal(upstreamCalls[0].accountId, "acct_refresh");
 });
 
+test("model gateway manages Codex account enablement and manual refresh", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const paths = resolveModelGatewayPaths(config);
+  const authRef = "provider:codex-manage:account:ghi:codex-token";
+  const oldIdToken = fakeJwt({
+    email: "manage@example.com",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct_manage",
+      chatgpt_plan_type: "plus",
+    },
+  });
+  const refreshedIdToken = fakeJwt({
+    email: "manage@example.com",
+    exp: Math.floor(Date.now() / 1000) + 7200,
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct_manage",
+      chatgpt_plan_type: "pro",
+    },
+  });
+
+  const originalFetch = globalThis.fetch;
+  const refreshCalls = [];
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const target = new URL(String(url));
+    const headers = init.headers instanceof Headers ? init.headers : new Headers(init.headers || {});
+
+    if (String(url) === "https://auth.openai.com/oauth/token") {
+      const form = new URLSearchParams(String(init.body));
+      refreshCalls.push({
+        grantType: form.get("grant_type"),
+        refreshToken: form.get("refresh_token"),
+      });
+      return new Response(JSON.stringify({
+        access_token: "codex-manage-new-access",
+        refresh_token: "codex-manage-new-refresh",
+        id_token: refreshedIdToken,
+        expires_in: 7200,
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    if (target.hostname === "chatgpt.com" && target.pathname === "/backend-api/codex/responses") {
+      upstreamCalls.push({
+        authorization: headers.get("authorization"),
+        accountId: headers.get("chatgpt-account-id"),
+      });
+      return new Response(JSON.stringify({
+        id: "resp_codex_manage",
+        object: "response",
+        status: "completed",
+        output: [{
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "ok" }],
+        }],
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+
+    return new Response("unexpected", { status: 500 });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const upsert = await requestJson(`${baseUrl}/api/model-gateway/providers`, {
+        method: "POST",
+        body: {
+          provider: {
+            id: "codex-manage",
+            name: "Codex Manage",
+            enabled: true,
+            category: "official",
+            sourceType: "account-backed",
+            appScopes: ["codex"],
+            baseUrl: "https://chatgpt.com/backend-api/codex",
+            apiKeyRef: authRef,
+            apiFormat: "openai_responses",
+            authStrategy: "oauth_proxy",
+            models: {
+              defaultModel: "gpt-5.5",
+              models: [{ id: "gpt-5.5" }],
+              aliases: {},
+            },
+            endpoints: {
+              openai_responses: "/responses",
+            },
+            accountProvider: {
+              kind: "codex",
+              routing: {
+                strategy: "round-robin",
+                sessionAffinity: true,
+                maxConcurrentPerAccount: null,
+              },
+              accounts: [{
+                id: "codex-ghi",
+                kind: "codex",
+                enabled: true,
+                state: "ready",
+                authRef,
+                credentialSource: "codex-device-auth",
+                accountHash: "ghi",
+                emailMasked: "ma***@example.com",
+                plan: "plus",
+                expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+              }],
+            },
+          },
+          secret: {
+            apiKey: JSON.stringify({
+              type: "codex",
+              tokens: {
+                id_token: oldIdToken,
+                access_token: "codex-manage-old-access",
+                refresh_token: "codex-manage-old-refresh",
+                account_id: "acct_manage",
+              },
+              email: "manage@example.com",
+              plan_type: "plus",
+              expires_at: new Date(Date.now() + 3600_000).toISOString(),
+            }),
+          },
+          setActiveScopes: ["codex"],
+        },
+      });
+      assert.equal(upsert.status, 200);
+
+      const disabled = await requestJson(`${baseUrl}/api/model-gateway/providers/codex-manage/accounts/codex-ghi`, {
+        method: "POST",
+        body: { enabled: false },
+      });
+      assert.equal(disabled.status, 200);
+      assert.equal(disabled.body.account.enabled, false);
+      assert.equal(disabled.body.account.state, "disabled");
+
+      const unavailable = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.5",
+          input: "hello",
+        },
+      });
+      assert.equal(unavailable.status, 503);
+      assert.equal(upstreamCalls.length, 0);
+
+      const enabled = await requestJson(`${baseUrl}/api/model-gateway/providers/codex-manage/accounts/codex-ghi`, {
+        method: "POST",
+        body: { enabled: true },
+      });
+      assert.equal(enabled.status, 200);
+      assert.equal(enabled.body.account.enabled, true);
+      assert.equal(enabled.body.account.state, "ready");
+
+      const refreshed = await requestJson(`${baseUrl}/api/model-gateway/providers/codex-manage/accounts/codex-ghi/refresh`, {
+        method: "POST",
+      });
+      assert.equal(refreshed.status, 200);
+      assert.equal(refreshed.body.refreshed, true);
+      assert.equal(refreshed.body.account.state, "ready");
+      assert.equal(refreshed.body.account.plan, "pro");
+
+      const response = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.5",
+          input: "hello",
+        },
+      });
+      assert.equal(response.status, 200);
+      assert.equal(response.body.id, "resp_codex_manage");
+
+      const secretsRaw = fs.readFileSync(paths.secrets, "utf8");
+      assert.ok(secretsRaw.includes("codex-manage-new-access"));
+      assert.ok(!secretsRaw.includes("codex-manage-old-access"));
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(refreshCalls, [{
+    grantType: "refresh_token",
+    refreshToken: "codex-manage-old-refresh",
+  }]);
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].authorization, "Bearer codex-manage-new-access");
+  assert.equal(upstreamCalls[0].accountId, "acct_manage");
+});
+
 test("model gateway marks Codex accounts as needs-login when token refresh is rejected", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
