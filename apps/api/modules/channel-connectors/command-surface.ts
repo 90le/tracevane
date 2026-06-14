@@ -310,6 +310,32 @@ function metadataBoolean(
   return fallback;
 }
 
+function metadataNumber(
+  binding: Pick<ChannelConnectorRuntimeBinding, "metadata">,
+  keys: string[],
+  fallback: number,
+): number {
+  const metadata = isRecord(binding.metadata) ? binding.metadata : {};
+  for (const key of keys) {
+    const value = Number(metadata[key]);
+    if (Number.isFinite(value)) return value;
+  }
+  return fallback;
+}
+
+function clampInteger(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, Math.floor(value)));
+}
+
+function bindingFeishuProgressCardEntryLimit(binding: Pick<ChannelConnectorRuntimeBinding, "metadata">): number {
+  return clampInteger(metadataNumber(binding, [
+    "feishuProgressCardEntryLimit",
+    "feishu_progress_card_entry_limit",
+    "progressCardEntryLimit",
+    "progress_card_entry_limit",
+  ], 8), 1, 30);
+}
+
 function bindingVisionModel(binding: Pick<ChannelConnectorRuntimeBinding, "metadata">): string | null {
   return metadataString(binding, [
     "autoVisionModelId",
@@ -694,6 +720,16 @@ export function buildChannelConnectorCommandSurface(
           requiresAdmin: true,
           description: "隐藏工具调用和工具结果",
         }),
+        ...[6, 8, 12, 16].map((limit) => action(
+          `display-progress-${limit}`,
+          `${limit} 条`,
+          `/display progress ${limit}`,
+          {
+            tone: bindingFeishuProgressCardEntryLimit(input.binding) === limit ? "primary" : "default",
+            requiresAdmin: true,
+            description: "设置 Feishu 进度卡最近动态条数",
+          },
+        )),
         action("display-default", "恢复默认", "/display default", {
           requiresAdmin: true,
           description: "恢复默认：思考、过程回复和工具消息开启",
@@ -795,6 +831,7 @@ export function buildChannelConnectorCommandSurface(
       thinkingMessages,
       processMessages,
       toolMessages,
+      feishuProgressCardEntryLimit: bindingFeishuProgressCardEntryLimit(input.binding),
       autoVisionModel,
       autoVisionModelSource,
       visionModel,
@@ -1816,6 +1853,13 @@ function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): Chann
     ? action("workdir-previous", "上一目录", "/dir -", { requiresAdmin: true })
     : null;
   const parent = path.dirname(workDir);
+  const parentAction = parent && parent !== workDir
+    ? action("workdir-parent", "上级目录", `/cd ${parent}`, { requiresAdmin: true })
+    : null;
+  const home = process.env.HOME || process.env.USERPROFILE || "";
+  const homeAction = home
+    ? action("workdir-home", "Home", `/cd ${home}`, { requiresAdmin: true })
+    : null;
   const options = [
     { label: "Profile 默认目录", value: actionCommandValue(defaultAction) },
     ...(previousAction ? [{
@@ -1826,9 +1870,13 @@ function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): Chann
       label: `最近 ${index + 1}. ${compactPath(dir)}`,
       value: actionCommandValue(action(`workdir-history-${index + 1}`, dir, `/dir ${index + 1}`, { requiresAdmin: true })),
     })),
-    ...(parent && parent !== workDir ? [{
+    ...(parentAction ? [{
       label: `上级目录 · ${compactPath(parent)}`,
-      value: actionCommandValue(action("workdir-parent", "上级目录", `/cd ${parent}`, { requiresAdmin: true })),
+      value: actionCommandValue(parentAction),
+    }] : []),
+    ...(homeAction ? [{
+      label: `Home · ${compactPath(home)}`,
+      value: actionCommandValue(homeAction),
     }] : []),
     ...children.map((name, index) => {
       const target = path.resolve(workDir, name);
@@ -1847,19 +1895,32 @@ function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): Chann
         `可选项：${options.length} 个 · 最近目录 ${history.length} 个 · 子目录 ${children.length} 个`,
       ].join("\n"),
     },
-    selectStaticElement({
-      placeholder: "切换工作目录",
+  ];
+  elements.push({
+    tag: "markdown",
+    content: "**快捷切换**\n高频目录直接点击；更多最近目录和子目录在下拉中选择。",
+  });
+  pushActionRows(
+    elements,
+    [defaultAction, previousAction, parentAction, homeAction].filter((item): item is ChannelConnectorCommandSurfaceAction => Boolean(item)),
+    surface,
+    2,
+    true,
+  );
+  if (options.length) {
+    elements.push(selectStaticElement({
+      placeholder: "更多目录",
       options,
       initialValue: null,
       surface,
       sectionId: "workdir",
       viewId: "workdir",
-    }),
-  ];
+    }));
+  }
   pushSubcardNavRows(elements, surface, "workdir");
   elements.push({
     tag: "note",
-    elements: [plainText("切换目录会断开旧 Agent 续接；/dir - 返回上一目录，/dir <序号> 优先选择最近目录。")],
+    elements: [plainText("手输 /dir /abs/path、/dir ~/repo 或 /dir ./src；切换目录会断开旧 Agent 续接。")],
   });
   return {
     config: {
@@ -1892,6 +1953,9 @@ function renderDisplayCard(surface: ChannelConnectorCommandSurface): ChannelConn
     || action("tools-off", "隐藏工具", "/tools off", { requiresAdmin: true });
   const defaults = actions.find((item) => item.id === "display-default")
     || action("display-default", "恢复默认", "/display default", { requiresAdmin: true });
+  const progressLimitActions = [6, 8, 12, 16].map((limit) =>
+    actions.find((item) => item.id === `display-progress-${limit}`)
+    || action(`display-progress-${limit}`, `${limit} 条`, `/display progress ${limit}`, { requiresAdmin: true }));
   const thinkingToggle = surface.current.thinkingMessages
     ? { ...thinkingOff, label: "隐藏思考" }
     : { ...thinkingOn, label: "显示思考", tone: "primary" as const };
@@ -1915,6 +1979,7 @@ function renderDisplayCard(surface: ChannelConnectorCommandSurface): ChannelConn
         `思考：${surface.current.thinkingMessages ? "开启" : "关闭"}`,
         `过程：${surface.current.processMessages ? "开启" : "关闭"}`,
         `工具：${surface.current.toolMessages ? "开启" : "关闭"}`,
+        `进度卡最近动态：${surface.current.feishuProgressCardEntryLimit} 条`,
         `思考流：${formatChannelConnectorThinkingSupport(surface.current.thinkingSupport)}`,
       ].join("\n"),
     },
@@ -1930,6 +1995,11 @@ function renderDisplayCard(surface: ChannelConnectorCommandSurface): ChannelConn
     content: "**一键模式**\n快速隐藏或恢复全部中间态；最终回复不受影响。",
   });
   pushActionRows(elements, [quietAction, defaults], surface, 2, true);
+  elements.push({
+    tag: "markdown",
+    content: "**进度卡动态**\n控制 Feishu 单张进度卡保留的最近动态数量。",
+  });
+  pushActionRows(elements, progressLimitActions, surface, 4, true);
   pushSubcardNavRows(elements, surface, "display");
   return {
     config: {

@@ -556,6 +556,34 @@ function writeNativeConfig(
   return normalized;
 }
 
+function applyChannelConnectorBindingMetadataPatch(
+  config: StudioServerConfig,
+  paths: ChannelConnectorsPaths,
+  nativeConfig: ChannelConnectorsNativeConfig,
+  bindingId: string,
+  patch: Record<string, unknown> | null | undefined,
+  now: Date,
+): ChannelConnectorsNativeConfig {
+  if (!patch || !Object.keys(patch).length) return nativeConfig;
+  let changed = false;
+  const platformBindings = nativeConfig.platformBindings.map((binding) => {
+    if (binding.id !== bindingId) return binding;
+    changed = true;
+    return {
+      ...binding,
+      metadata: {
+        ...(isRecord(binding.metadata) ? binding.metadata : {}),
+        ...patch,
+      },
+    };
+  });
+  if (!changed) return nativeConfig;
+  return writeNativeConfig(config, paths, {
+    ...nativeConfig,
+    platformBindings,
+  }, now);
+}
+
 function daemonEntryPath(config: StudioServerConfig): string {
   return path.join(config.projectRoot, "dist", "apps", "api", "modules", "channel-connectors", "daemon.js");
 }
@@ -2481,6 +2509,22 @@ export function createChannelConnectorsService(
           members: [],
         },
       });
+    const effectiveNativeConfig = request.dryRun === true || commandResult.ok === false
+      ? nativeConfig
+      : applyChannelConnectorBindingMetadataPatch(
+        config,
+        resolvedPaths,
+        nativeConfig,
+        resolved.binding.id,
+        commandResult.bindingMetadataPatch,
+        now(),
+      );
+    const effectiveRuntimeConfig = effectiveNativeConfig === nativeConfig
+      ? runtimeConfig
+      : buildRuntimeConfig(effectiveNativeConfig, resolvedPaths);
+    const effectiveResolved = effectiveNativeConfig === nativeConfig
+      ? resolved
+      : resolveRuntimeBindingById(effectiveNativeConfig, effectiveRuntimeConfig, bindingId) || resolved;
     const selectedSectionId = parsedAction.targetSectionId
       || channelConnectorCommandSurfaceSectionFromCommand(command)
       || normalizeChannelConnectorCommandSurfaceSection(request.eventKey)
@@ -2491,20 +2535,20 @@ export function createChannelConnectorsService(
       || normalizeChannelConnectorCommandSurfaceView(request.eventKey)
       || null;
     const control = getChannelConnectorSessionControl(controlsPath, {
-      bindingId: resolved.binding.id,
+      bindingId: effectiveResolved.binding.id,
       sessionKey,
     });
     const readOnlyState = commandSurfaceReadOnlyState({
-      runtimeConfig,
-      project: resolved.project,
-      binding: resolved.runtimeBinding,
+      runtimeConfig: effectiveRuntimeConfig,
+      project: effectiveResolved.project,
+      binding: effectiveResolved.runtimeBinding,
       control,
       sessionKey,
     });
     const surface = buildChannelConnectorCommandSurface({
-      config: runtimeConfig,
-      project: resolved.project,
-      binding: resolved.runtimeBinding,
+      config: effectiveRuntimeConfig,
+      project: effectiveResolved.project,
+      binding: effectiveResolved.runtimeBinding,
       control,
       sessionKey,
       models: commandModels,
@@ -2523,8 +2567,8 @@ export function createChannelConnectorsService(
       checkedAt,
       accepted: true,
       skippedReason: null,
-      binding: resolved.binding,
-      agentProfile: resolved.agentProfile,
+      binding: effectiveResolved.binding,
+      agentProfile: effectiveResolved.agentProfile,
       sessionKey,
       command,
       commandResult: {

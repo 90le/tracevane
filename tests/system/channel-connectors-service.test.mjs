@@ -6606,6 +6606,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(displayHelp.replyText, /Studio Channel \/ display\n\n- `\/display` - /);
   assert.doesNotMatch(displayHelp.replyText, /\| 命令 \| 作用 \|/);
   assert.ok(displayHelp.replyText.includes("`/quiet [quiet|compact|full]`"));
+  assert.ok(displayHelp.replyText.includes("`/display progress <1-30|default>`"));
   assert.doesNotMatch(displayHelp.replyText, /`\/buffer <id\|前缀\|latest>`/);
   const bufferHelp = await handleChannelConnectorCommand({
     ...baseContext,
@@ -7798,6 +7799,21 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(displayDefault.control.processMessages, null);
   assert.equal(displayDefault.control.toolMessages, null);
 
+  const displayProgress = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/display progress 12"),
+  });
+  assert.equal(displayProgress.ok, true);
+  assert.deepEqual(displayProgress.bindingMetadataPatch, { feishuProgressCardEntryLimit: 12 });
+  assert.match(displayProgress.replyText, /12 条/);
+
+  const displayProgressInvalid = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/display progress 31"),
+  });
+  assert.equal(displayProgressInvalid.ok, false);
+  assert.match(displayProgressInvalid.replyText, /1-30/);
+
   const quietOn = await handleChannelConnectorCommand({
     ...baseContext,
     message: message("/quiet"),
@@ -8963,11 +8979,14 @@ test("native Channel Connectors command surface renders text and Feishu card act
   const workdirCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(workdirPickerSurface));
   assert.match(workdirCardRaw, /工作目录/);
   assert.match(workdirCardRaw, /select_static/);
+  assert.match(workdirCardRaw, /快捷切换/);
+  assert.match(workdirCardRaw, /更多目录/);
   assert.match(workdirCardRaw, /最近目录/);
   assert.match(workdirCardRaw, /act:\/dir -/);
   assert.match(workdirCardRaw, /act:\/dir 1/);
   assert.ok(workdirCardRaw.includes(`act:/cd ${path.join(codexProject.workDir, "src")}`));
   assert.match(workdirCardRaw, /act:\/cd default/);
+  assert.match(workdirCardRaw, /\/dir ~\/repo/);
   assert.match(workdirCardRaw, /nav:\/help more/);
   assert.match(workdirCardRaw, /"action":"nav:\/help"/);
   assert.doesNotMatch(workdirCardRaw, /nav:\/help workdir/);
@@ -9112,15 +9131,18 @@ test("native Channel Connectors command surface renders text and Feishu card act
     selectedSectionId: "display",
     selectedViewId: "display",
   });
+  assert.equal(displaySurface.current.feishuProgressCardEntryLimit, 8);
   const displayCardRaw = JSON.stringify(renderChannelConnectorCommandSurfaceFeishu(displaySurface));
   assert.match(displayCardRaw, /进度显示/);
   assert.match(displayCardRaw, /当前显示/);
   assert.match(displayCardRaw, /思考：开启/);
   assert.match(displayCardRaw, /过程：开启/);
   assert.match(displayCardRaw, /工具：开启/);
+  assert.match(displayCardRaw, /进度卡最近动态：8 条/);
   assert.match(displayCardRaw, /思考流/);
   assert.match(displayCardRaw, /单项开关/);
   assert.match(displayCardRaw, /一键模式/);
+  assert.match(displayCardRaw, /进度卡动态/);
   assert.match(displayCardRaw, /一键安静/);
   assert.match(displayCardRaw, /act:\/quiet quiet/);
   assert.match(displayCardRaw, /act:\/thinking off/);
@@ -9129,6 +9151,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.doesNotMatch(displayCardRaw, /act:\/thinking on/);
   assert.doesNotMatch(displayCardRaw, /act:\/process on/);
   assert.doesNotMatch(displayCardRaw, /act:\/tools on/);
+  assert.match(displayCardRaw, /act:\/display progress 12/);
   assert.match(displayCardRaw, /act:\/display default/);
   assert.match(displayCardRaw, /nav:\/help more/);
   assert.match(displayCardRaw, /"action":"nav:\/help"/);
@@ -10298,6 +10321,38 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   assert.match(JSON.stringify(modelPickerCardAction.feishuResponse.card.data), /模型选择/);
   assert.match(JSON.stringify(modelPickerCardAction.feishuResponse.card.data), /select_static/);
   assert.match(JSON.stringify(modelPickerCardAction.feishuResponse.card.data), /act:\/model gpt-5/);
+
+  const displayProgressCardAction = await service.dispatchFeishuWebhook({
+    schema: "2.0",
+    header: {
+      event_type: "card.action.trigger",
+      app_id: "cli_test",
+      event_id: "evt_card_display_progress",
+      token: "verify-token",
+    },
+    event: {
+      operator: { open_id: "ou_admin" },
+      context: { open_chat_id: "oc_chat", open_message_id: "om_card_3" },
+      action: {
+        option: "act:/display progress 12",
+        value: {
+          binding_id: "feishu-main",
+          surface_view_id: "display",
+        },
+      },
+    },
+  });
+  assert.equal(displayProgressCardAction.accepted, true);
+  assert.equal(displayProgressCardAction.commandAction.command, "/display progress 12");
+  assert.equal(displayProgressCardAction.commandAction.commandResult.ok, true);
+  assert.equal(displayProgressCardAction.commandAction.surface.current.feishuProgressCardEntryLimit, 12);
+  assert.match(JSON.stringify(displayProgressCardAction.feishuResponse.card.data), /进度卡最近动态：12 条/);
+  assert.equal(
+    service.getNativeConfig().config.platformBindings
+      .find((candidate) => candidate.id === "feishu-main")
+      .metadata.feishuProgressCardEntryLimit,
+    12,
+  );
 
   const modeSelectCardAction = await service.dispatchFeishuWebhook({
     schema: "2.0",
@@ -13274,6 +13329,9 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /function feishuProgressCardStatusTag/);
   assert.match(daemonSource, /function feishuProgressCardEntryLimit/);
   assert.match(daemonSource, /"feishuProgressCardEntryLimit"/);
+  assert.match(daemonSource, /function persistChannelConnectorBindingMetadataPatch/);
+  assert.match(daemonSource, /nativeChannelConnectorsConfigPath/);
+  assert.match(daemonSource, /applyChannelConnectorBindingMetadataPatchInMemory\(config, binding, command\.bindingMetadataPatch\)/);
   assert.match(daemonSource, /function trimFeishuProgressCardEntries/);
   assert.match(daemonSource, /createFeishuProgressCardState\(feishuProgressCardEntryLimit\(binding\)\)/);
   assert.doesNotMatch(daemonSource, /slice\(-8\)/);

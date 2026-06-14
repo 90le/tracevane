@@ -324,6 +324,7 @@ export interface ChannelConnectorCommandResult {
   ok: boolean | null;
   replyText: string | null;
   control: ChannelConnectorSessionControlRecord | null;
+  bindingMetadataPatch?: Record<string, unknown> | null;
   passthroughText?: string | null;
   nativeCommand?: string | null;
   suppressReply?: boolean;
@@ -1450,6 +1451,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
         ["`/thinking <on|off|default>`", "开关本会话思考消息"],
         ["`/process <on|off|default>`", "开关本会话过程回复"],
         ["`/tools <on|off|default>`", "开关本会话工具消息"],
+        ["`/display progress <1-30|default>`", "设置 Feishu 进度卡最近动态条数"],
       ]),
       "",
       "返回：`/help`",
@@ -1491,7 +1493,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
       "",
       commandHelpList([
         ["`/dir`", "查看当前工作目录、最近目录和子目录"],
-        ["`/dir <路径|序号|->`", "切换目录；序号优先选最近目录，`-` 返回上一目录"],
+        ["`/dir <路径|序号|->`", "切换目录；支持绝对路径、`~`、相对路径；序号优先选最近目录，`-` 返回上一目录"],
         ["`/cd <路径|default>`", "`/dir` 的兼容别名"],
       ]),
       "",
@@ -2593,6 +2595,43 @@ function bindingMetadataBoolean(
   return fallback;
 }
 
+function bindingMetadataNumber(
+  binding: Pick<ChannelConnectorRuntimeBinding, "metadata">,
+  keys: string[],
+  fallback: number,
+): number {
+  const metadata = bindingMetadataRecord(binding);
+  for (const key of keys) {
+    const value = Number(metadata[key]);
+    if (Number.isFinite(value)) return value;
+  }
+  return fallback;
+}
+
+function clampInteger(value: number, minimum: number, maximum: number): number {
+  return Math.min(maximum, Math.max(minimum, Math.floor(value)));
+}
+
+function feishuProgressCardEntryLimit(binding: Pick<ChannelConnectorRuntimeBinding, "metadata">): number {
+  return clampInteger(bindingMetadataNumber(binding, [
+    "feishuProgressCardEntryLimit",
+    "feishu_progress_card_entry_limit",
+    "progressCardEntryLimit",
+    "progress_card_entry_limit",
+  ], 8), 1, 30);
+}
+
+function parseFeishuProgressCardEntryLimit(value: string): number | "default" | "status" | "invalid" {
+  const normalized = normalizeString(value).toLowerCase();
+  if (!normalized || ["status", "current", "list"].includes(normalized)) return "status";
+  if (["default", "reset", "profile", "inherit"].includes(normalized)) return "default";
+  const numberValue = Number(normalized);
+  if (!Number.isFinite(numberValue)) return "invalid";
+  const integerValue = Math.floor(numberValue);
+  if (integerValue < 1 || integerValue > 30) return "invalid";
+  return integerValue;
+}
+
 function visionModelFromBindingMetadata(binding: Pick<ChannelConnectorRuntimeBinding, "metadata">): string | null {
   return bindingMetadataString(binding, [
     "autoVisionModelId",
@@ -2635,17 +2674,20 @@ function effectiveVisionSetting(
 }
 
 function toggleStatusText(
+  binding: Pick<ChannelConnectorRuntimeBinding, "metadata">,
   control: ChannelConnectorSessionControlRecord | null,
 ): string {
   const thinking = effectiveToggle(control?.thinkingMessages);
   const process = effectiveToggle(control?.processMessages);
   const tools = effectiveToggle(control?.toolMessages);
+  const progressLimit = feishuProgressCardEntryLimit(binding);
   return [
     "显示设置：",
     `思考消息：${thinking ? "开启" : "关闭"}${control?.thinkingMessages === null || control?.thinkingMessages === undefined ? " (默认)" : ""}`,
     `过程回复：${process ? "开启" : "关闭"}${control?.processMessages === null || control?.processMessages === undefined ? " (默认)" : ""}`,
     `工具消息：${tools ? "开启" : "关闭"}${control?.toolMessages === null || control?.toolMessages === undefined ? " (默认)" : ""}`,
-    "用法：/quiet 隐藏/恢复中间态；/thinking <on|off|default>；/process <on|off|default>；/tools <on|off|default>；/display default 恢复默认。",
+    `Feishu 进度卡最近动态：${progressLimit} 条`,
+    "用法：/quiet 隐藏/恢复中间态；/thinking <on|off|default>；/process <on|off|default>；/tools <on|off|default>；/display progress <1-30|default>；/display default 恢复默认。",
   ].join("\n");
 }
 
@@ -4788,7 +4830,7 @@ export async function handleChannelConnectorCommand(
         action: "list",
         ok: true,
         control: currentControl,
-        replyText: toggleStatusText(currentControl),
+        replyText: toggleStatusText(context.binding, currentControl),
         passthroughText: null,
       };
     }
@@ -4825,6 +4867,44 @@ export async function handleChannelConnectorCommand(
   }
 
   if (name === "display" || name === "thinking" || name === "process" || name === "tools") {
+    if (name === "display" && ["progress", "limit", "entries", "entry-limit"].includes(normalizeString(args[0]).toLowerCase())) {
+      const target = parseFeishuProgressCardEntryLimit(args.slice(1).join(" "));
+      if (target === "status") {
+        return {
+          handled: true,
+          command: name,
+          action: "list",
+          ok: true,
+          control: currentControl,
+          replyText: toggleStatusText(context.binding, currentControl),
+          passthroughText: null,
+        };
+      }
+      if (target === "invalid") {
+        return {
+          handled: true,
+          command: name,
+          action: "set",
+          ok: false,
+          control: currentControl,
+          replyText: "不支持的进度卡数量。用法：/display progress <1-30|default>。",
+          passthroughText: null,
+        };
+      }
+      const nextLimit = target === "default" ? 8 : target;
+      return {
+        handled: true,
+        command: name,
+        action: "set",
+        ok: true,
+        control: currentControl,
+        bindingMetadataPatch: { feishuProgressCardEntryLimit: nextLimit },
+        replyText: target === "default"
+          ? "已恢复 Feishu 进度卡最近动态数量：8 条。"
+          : `已设置 Feishu 进度卡最近动态数量：${nextLimit} 条。`,
+        passthroughText: null,
+      };
+    }
     const target = parseToggleTarget(args.join(" "));
     if (target === "status") {
       return {
@@ -4833,7 +4913,7 @@ export async function handleChannelConnectorCommand(
         action: "list",
         ok: true,
         control: currentControl,
-        replyText: toggleStatusText(currentControl),
+        replyText: toggleStatusText(context.binding, currentControl),
         passthroughText: null,
       };
     }

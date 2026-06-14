@@ -1,6 +1,6 @@
 # Channel Connectors Native Feature Map
 
-> 更新：2026-06-13
+> 更新：2026-06-14
 > 目的：把 CC/OpenClaw 参考能力映射到 Studio 原生实现，避免回到托管 cc-connect 或旧 Codex Stack。
 
 ## 参考范围
@@ -73,8 +73,8 @@
 - `/status`、`/current`、Feishu 菜单和 Channel Connectors 页面已展示 `thinking` parser/live 支持差异：Codex 为 model-dependent，Claude Code 当前 not observed，OpenCode 按模型区分 observed / not observed / model-dependent。
 - Feishu 卡片进度和 Octo 文本/Markdown 进度已有基础渲染；Markdown 已由用户验证。
 - Feishu 命令/菜单进度已对齐 CC/OpenClaw：处理 reaction 挂在触发消息上，命令卡片/文本回复通过 Feishu reply API 挂回原消息；`/compact`、`/native /compact` 也会输出 started/terminal command progress。
-- Feishu Agent 进度卡最近动态条数由 binding metadata `feishuProgressCardEntryLimit` 控制，默认 8，运行时限制 1-30。
-- Feishu 菜单命令面已改为清爽二级配置架构：主卡片直达 Agent、模型、权限/推理、进度显示、视觉、工作目录六个配置页，只保留 `/new`、`/compact`、`/stop` 和“更多”；更多页直达会话控制、命令/Skills、缓存真实页，只有 Agent 原生命令保留说明页；配置子页底部不再返回 `/help xxx` 中间分组，只保留主菜单/更多导航；Agent/权限/目录页不再重复列出下拉选项；权限/推理页拆成当前设置、权限模式和推理强度三个区块；进度显示页拆成当前显示、单项开关和一键模式三个区块；视觉设置页拆成当前视觉、视觉模型和自动切换三个区块；会话控制页不再放 status/whoami/version 低频按钮；会话卡片使用中文“用量/压缩上下文”并把危险动作置底；视觉/显示页使用单按钮切换当前状态；文本 `/help` 复用同一结构。
+- Feishu Agent 进度卡最近动态条数由 binding metadata `feishuProgressCardEntryLimit` 控制，默认 8，运行时限制 1-30；`/display progress <1-30|default>` 和 Feishu 进度显示卡片均可设置。
+- Feishu 菜单命令面已改为清爽二级配置架构：主卡片直达 Agent、模型、权限/推理、进度显示、视觉、工作目录六个配置页，只保留 `/new`、`/compact`、`/stop` 和“更多”；更多页直达会话控制、命令/Skills、缓存真实页；配置子页只保留主菜单/更多导航；权限/推理、进度显示、视觉设置均已分区；工作目录页提供 Profile 默认、上一目录、上级目录、Home 快捷按钮和更多目录下拉；文本 `/help` 复用同一结构。
 - Feishu 长连接 card action 不再 fire-and-forget：卡片点击会同步返回 callback response/card/toast，普通消息和 bot menu 仍保持后台异步，避免交互卡片过一段时间后触发 108002 类不可用体验。
 - 已删除 active platform action layer：runner/env/prompt/daemon endpoint/UI chips 不再暴露 `studio-channel-skill` 或 runtime action。
 - Codex 隔离 `codex-home/skills` 会删除历史生成的 Feishu/Octo platform action skill 目录；当前运行态旧目录已手动清理，避免 stale YAML 被 Codex 加载。

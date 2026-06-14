@@ -501,6 +501,7 @@ export interface ChannelConnectorCommandSurface {
     thinkingMessages: boolean;
     processMessages: boolean;
     toolMessages: boolean;
+    feishuProgressCardEntryLimit: number;
     autoVisionModel: boolean;
     autoVisionModelSource: "session" | "binding";
     visionModel: string | null;

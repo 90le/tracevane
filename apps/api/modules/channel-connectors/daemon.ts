@@ -853,6 +853,19 @@ const channelPendingPermissions: ChannelDaemonPendingPermissionRegistry = new Ma
 const channelPermissionApproveAllRunIds = new Set<string>();
 const AUTO_VISION_MODEL_SENTINEL = "__studio_auto__";
 
+function applyChannelConnectorBindingMetadataPatchInMemory(
+  config: ChannelConnectorsDaemonRuntimeConfig,
+  binding: ChannelConnectorRuntimeBinding,
+  patch: Record<string, unknown> | null | undefined,
+): void {
+  if (!patch || !Object.keys(patch).length) return;
+  binding.metadata = {
+    ...(isRecord(binding.metadata) ? binding.metadata : {}),
+    ...patch,
+  };
+  persistChannelConnectorBindingMetadataPatch(config, binding.id, patch);
+}
+
 interface FeishuProgressCardEntry {
   kind: FeishuProgressCardEntryKind;
   title: string;
@@ -1092,6 +1105,46 @@ function writeJsonFileAtomic(filePath: string, value: unknown): void {
   const tempPath = `${filePath}.tmp-${process.pid}-${Date.now()}`;
   fs.writeFileSync(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
   fs.renameSync(tempPath, filePath);
+}
+
+function nativeChannelConnectorsConfigPath(config: ChannelConnectorsDaemonRuntimeConfig): string {
+  return path.resolve(config.paths.root, "..", "config.json");
+}
+
+function persistChannelConnectorBindingMetadataPatch(
+  config: ChannelConnectorsDaemonRuntimeConfig,
+  bindingId: string,
+  patch: Record<string, unknown>,
+): void {
+  const filePath = nativeChannelConnectorsConfigPath(config);
+  try {
+    if (!fs.existsSync(filePath)) return;
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf8")) as unknown;
+    if (!isRecord(raw) || !Array.isArray(raw.platformBindings)) return;
+    let changed = false;
+    const platformBindings = raw.platformBindings.map((candidate) => {
+      if (!isRecord(candidate) || candidate.id !== bindingId) return candidate;
+      changed = true;
+      return {
+        ...candidate,
+        metadata: {
+          ...(isRecord(candidate.metadata) ? candidate.metadata : {}),
+          ...patch,
+        },
+      };
+    });
+    if (!changed) return;
+    writeJsonFileAtomic(filePath, {
+      ...raw,
+      updatedAt: new Date().toISOString(),
+      platformBindings,
+    });
+  } catch (error) {
+    appendLog(config.paths.log, "Channel binding metadata patch persist failed", {
+      bindingId,
+      error: shortMessage(error),
+    });
+  }
 }
 
 function pendingAgentRunsPath(config: ChannelConnectorsDaemonRuntimeConfig): string {
@@ -8406,6 +8459,7 @@ async function dispatchOctoMessage(input: {
       return { handled: progressReplySent };
     },
   });
+  if (command.ok !== false) applyChannelConnectorBindingMetadataPatchInMemory(config, binding, command.bindingMetadataPatch);
   if (command.handled) {
     let replySent = false;
     let replyRequestCount: number | null = null;
@@ -9969,6 +10023,8 @@ async function dispatchFeishuParsedEvent(input: {
       await stopCommandTypingReaction();
     }
   })();
+
+  if (command.ok !== false) applyChannelConnectorBindingMetadataPatchInMemory(config, binding, command.bindingMetadataPatch);
 
   if (command.handled) {
     let replySent = false;
