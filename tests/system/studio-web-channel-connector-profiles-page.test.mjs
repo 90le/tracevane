@@ -67,6 +67,9 @@ test("Channel Connector profiles page edits profiles using Gateway model catalog
   assert.match(page, /openBindingConfig/);
   assert.match(page, /bindingId:\s*binding\.id/);
   assert.match(page, /profileId:\s*binding\.agentProfileId/);
+  assert.match(page, /sessionDriverLabel\(binding\.id\)/);
+  assert.match(page, /function sessionDriverLabel/);
+  assert.match(page, /agentSessions\.value\?\.bindings\.find/);
   assert.match(page, /openBindingConfigById/);
   assert.match(page, /openBindingConfigById\(session\.bindingId\)/);
   assert.match(page, /openBindingConfigById\(event\.bindingId\)/);

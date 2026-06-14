@@ -101,6 +101,7 @@
                 <div>
                   <span>{{ binding.enabled ? text('启用', 'Enabled') : text('停用', 'Disabled') }}</span>
                   <span>{{ bindingHealthLabel(binding.id) }}</span>
+                  <span>{{ sessionDriverLabel(binding.id) }}</span>
                 </div>
                 <strong>{{ binding.agentProfileId }}</strong>
               </article>
@@ -774,6 +775,15 @@ function bindingHealthLabel(bindingId: string): string {
     return text('飞书异常', 'Feishu unhealthy');
   }
   return text('未连接状态', 'No connection status');
+}
+
+function sessionDriverLabel(bindingId: string): string {
+  const status = agentSessions.value?.bindings.find((item) => item.bindingId === bindingId);
+  if (!status) return text('会话模式未知', 'Session mode unknown');
+  const mode = status.requestedMode === status.effectiveMode
+    ? status.effectiveMode
+    : `${status.requestedMode} -> ${status.effectiveMode}`;
+  return `${mode} · ${status.reason}`;
 }
 
 function addModelOption(target: Set<string>, value: unknown): void {
