@@ -1934,15 +1934,36 @@ function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): Chann
   const nextPageAction = page < pageCount
     ? action("workdir-page-next", "下一页", workdirPageCommand(search, page + 1), { actionKind: "nav" })
     : null;
+  const historyActions = history.map((dir, index) => action(
+    `workdir-history-${index + 1}`,
+    `最近 ${index + 1} · ${compactPath(dir)}`,
+    `/dir ${index + 1}`,
+    {
+      description: dir,
+      requiresAdmin: true,
+    },
+  ));
+  const childActions = children.map((name, index) => {
+    const target = path.resolve(workDir, name);
+    return action(
+      `workdir-child-${pageStart + index + 1}`,
+      `子目录 ${pageStart + index + 1} · ${name}`,
+      `/cd ${target}`,
+      {
+        description: compactPath(target),
+        requiresAdmin: true,
+      },
+    );
+  });
   const options = [
     { label: "Profile 默认目录", value: actionCommandValue(defaultAction) },
     ...(previousAction ? [{
       label: `上一目录 · ${compactPath(history[0] || "")}`,
       value: actionCommandValue(previousAction),
     }] : []),
-    ...history.map((dir, index) => ({
-      label: `最近 ${index + 1}. ${compactPath(dir)}`,
-      value: actionCommandValue(action(`workdir-history-${index + 1}`, dir, `/dir ${index + 1}`, { requiresAdmin: true })),
+    ...historyActions.map((item) => ({
+      label: item.label,
+      value: actionCommandValue(item),
     })),
     ...(parentAction ? [{
       label: `上级目录 · ${compactPath(parent)}`,
@@ -1952,13 +1973,10 @@ function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): Chann
       label: `Home · ${compactPath(home)}`,
       value: actionCommandValue(homeAction),
     }] : []),
-    ...children.map((name, index) => {
-      const target = path.resolve(workDir, name);
-      return {
-        label: `${pageStart + index + 1}. ${name}`,
-        value: actionCommandValue(action(`workdir-child-${pageStart + index + 1}`, name, `/cd ${target}`, { requiresAdmin: true })),
-      };
-    }),
+    ...childActions.map((item) => ({
+      label: item.label,
+      value: actionCommandValue(item),
+    })),
   ];
   const elements: Array<Record<string, unknown>> = [
     {
@@ -1972,7 +1990,7 @@ function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): Chann
   ];
   elements.push({
     tag: "markdown",
-    content: "**快捷切换**\n高频目录直接点击；更多最近目录和子目录在下拉中选择。",
+    content: "**快捷切换**",
   });
   pushActionRows(
     elements,
@@ -1981,6 +1999,15 @@ function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): Chann
     2,
     true,
   );
+  if (historyActions.length) {
+    elements.push({
+      tag: "markdown",
+      content: `**最近目录**\n显示前 ${Math.min(4, historyActions.length)}/${historyActions.length} 个；完整列表在下拉中。`,
+    });
+    historyActions.slice(0, 4).forEach((item) => {
+      elements.push(listItemElement(item, surface, { actionLabel: "切换" }));
+    });
+  }
   elements.push({
     tag: "markdown",
     content: `**子目录**\n第 ${page}/${pageCount} 页 · 本页 ${children.length} 个${search ? ` · 搜索：${search}` : ""}`,
@@ -1992,6 +2019,16 @@ function renderWorkdirPickerCard(surface: ChannelConnectorCommandSurface): Chann
     3,
     true,
   );
+  if (childActions.length) {
+    childActions.forEach((item) => {
+      elements.push(listItemElement(item, surface, { actionLabel: "进入" }));
+    });
+  } else {
+    elements.push({
+      tag: "markdown",
+      content: search ? "没有匹配的子目录。" : "当前目录没有可显示的子目录。",
+    });
+  }
   if (options.length) {
     elements.push(selectStaticElement({
       placeholder: "更多目录",

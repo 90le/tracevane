@@ -9011,6 +9011,9 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.match(workdirCardRaw, /工作目录/);
   assert.match(workdirCardRaw, /select_static/);
   assert.match(workdirCardRaw, /快捷切换/);
+  assert.match(workdirCardRaw, /最近 1/);
+  assert.match(workdirCardRaw, /切换/);
+  assert.match(workdirCardRaw, /进入/);
   assert.match(workdirCardRaw, /第 1\/3 页/);
   assert.match(workdirCardRaw, /nav:\/dir page 2/);
   assert.match(workdirCardRaw, /更多目录/);
