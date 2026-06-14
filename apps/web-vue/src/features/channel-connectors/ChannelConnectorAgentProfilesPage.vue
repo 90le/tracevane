@@ -16,7 +16,17 @@
           <RefreshCw :size="16" />
           {{ loading ? text('刷新中...', 'Refreshing...') : text('刷新', 'Refresh') }}
         </button>
-        <button type="button" class="primary-button compact-button" :disabled="saving || loading" @click="saveProfile">
+        <button type="button" class="secondary-button compact-button" :disabled="saving || loading || !hasUnsavedProfileChanges" @click="discardProfileChanges">
+          <RotateCcw :size="16" />
+          {{ text('撤销', 'Discard') }}
+        </button>
+        <button
+          type="button"
+          class="primary-button compact-button"
+          :disabled="saving || loading || !canSaveProfile"
+          :title="saveProfileDisabledReason"
+          @click="saveProfile"
+        >
           <Save :size="16" />
           {{ saving ? text('保存中...', 'Saving...') : text('保存 Profile', 'Save profile') }}
         </button>
@@ -138,6 +148,23 @@
                 <dd>{{ relatedBindings.length }}</dd>
               </div>
             </dl>
+
+            <div
+              v-if="hasUnsavedProfileChanges || profileIdConflict"
+              class="ccx-agent-profile-edit-state"
+              :class="{ warning: profileIdConflict }"
+            >
+              <strong>{{ profileIdConflict ? text('Profile ID 已存在', 'Profile ID already exists') : text('有未保存更改', 'Unsaved changes') }}</strong>
+              <span>
+                {{
+                  profileIdConflict
+                    ? text('换一个唯一 ID 后再保存。', 'Use a unique ID before saving.')
+                    : profileIdChanged
+                      ? text('保存后会迁移当前 Profile 的 IM 绑定。', 'Saving will migrate this Profile IM bindings.')
+                      : text('保存或撤销当前编辑。', 'Save or discard the current edit.')
+                }}
+              </span>
+            </div>
 
             <div class="ccx-agent-profile-editor-sections">
               <section class="ccx-agent-profile-config-section">
@@ -337,7 +364,7 @@
 import './channel-connectors-workspace.css';
 import { computed, onActivated, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { Copy, ExternalLink, Plus, RefreshCw, Save, Square, Star, Trash2 } from '@lucide/vue';
+import { Copy, ExternalLink, Plus, RefreshCw, RotateCcw, Save, Square, Star, Trash2 } from '@lucide/vue';
 import type {
   ChannelConnectorAgentId,
   ChannelConnectorAgentProfile,
@@ -413,6 +440,9 @@ const profileDraft = reactive<ChannelConnectorAgentProfile>({
 const profiles = computed(() => nativeConfig.value?.config.agentProfiles || []);
 const bindings = computed(() => nativeConfig.value?.config.platformBindings || []);
 const modelOptionsCount = computed(() => Math.max(0, modelOptions.value.length - 1));
+const selectedProfileFromConfig = computed(() =>
+  profiles.value.find((profile) => profile.id === selectedProfileId.value) || null,
+);
 
 const agentOptions = computed(() => {
   const agents = nativeConfig.value?.supportedAgents || (['codex', 'claude-code', 'opencode'] as ChannelConnectorAgentId[]);
@@ -483,16 +513,27 @@ const compactRatioLabel = computed(() => {
   return `${Math.round((limit / context) * 100)}%`;
 });
 
-const relatedBindings = computed(() =>
-  bindings.value.filter((binding) => binding.agentProfileId === profileDraft.id),
-);
+const selectedProfileLookupIds = computed(() => {
+  const ids = new Set<string>();
+  const selectedId = selectedProfileId.value.trim();
+  const draftId = profileDraft.id.trim();
+  if (selectedId) ids.add(selectedId);
+  if (draftId) ids.add(draftId);
+  return ids;
+});
+
+const relatedBindings = computed(() => {
+  const profileIds = selectedProfileLookupIds.value;
+  return bindings.value.filter((binding) => profileIds.has(binding.agentProfileId));
+});
 
 const relatedBindingIds = computed(() => new Set(relatedBindings.value.map((binding) => binding.id)));
 
 const activeSessions = computed(() => {
   const bindingIds = relatedBindingIds.value;
+  const profileIds = selectedProfileLookupIds.value;
   return (agentSessions.value?.activeSessions || []).filter((session) =>
-    session.projectId === profileDraft.id
+    profileIds.has(session.projectId)
     || bindingIds.has(session.bindingId)
     || Boolean(profileDraft.workDir && session.workDir === profileDraft.workDir),
   );
@@ -500,8 +541,9 @@ const activeSessions = computed(() => {
 
 const requestedSessions = computed(() => {
   const bindingIds = relatedBindingIds.value;
+  const profileIds = selectedProfileLookupIds.value;
   return (agentSessions.value?.requestedPersistentBindings || []).filter((session) =>
-    session.projectId === profileDraft.id
+    profileIds.has(session.projectId)
     || bindingIds.has(session.bindingId)
     || Boolean(profileDraft.workDir && session.workDir === profileDraft.workDir),
   );
@@ -509,8 +551,9 @@ const requestedSessions = computed(() => {
 
 const allRelatedSessionEvents = computed(() => {
   const bindingIds = relatedBindingIds.value;
+  const profileIds = selectedProfileLookupIds.value;
   return (agentSessions.value?.recentEvents || []).filter((event) =>
-    event.projectId === profileDraft.id
+    profileIds.has(event.projectId)
     || bindingIds.has(event.bindingId)
     || Boolean(profileDraft.workDir && event.workDir === profileDraft.workDir),
   );
@@ -536,6 +579,7 @@ const relatedSessionEvents = computed(() => {
 
 const canDeleteSelectedProfile = computed(() =>
   Boolean(profileDraft.id)
+  && !hasUnsavedProfileChanges.value
   && profiles.value.length > 1
   && relatedBindings.value.length === 0
   && activeSessions.value.length === 0,
@@ -543,9 +587,41 @@ const canDeleteSelectedProfile = computed(() =>
 
 const deleteProfileDisabledReason = computed(() => {
   if (!profileDraft.id) return text('先选择 Profile', 'Select a profile first');
+  if (hasUnsavedProfileChanges.value) return text('先保存或撤销当前编辑', 'Save or discard the current edit first');
   if (profiles.value.length <= 1) return text('至少保留一个 Profile', 'Keep at least one profile');
   if (relatedBindings.value.length > 0) return text('先迁移或删除 IM 绑定', 'Move or delete IM bindings first');
   if (activeSessions.value.length > 0) return text('先停止活动会话', 'Stop active sessions first');
+  return '';
+});
+
+const profileIdConflict = computed(() => {
+  const id = profileDraft.id.trim();
+  if (!id) return false;
+  return profiles.value.some((profile) => profile.id === id && profile.id !== selectedProfileId.value);
+});
+
+const profileIdChanged = computed(() =>
+  Boolean(selectedProfileFromConfig.value && profileDraft.id.trim() && profileDraft.id.trim() !== selectedProfileId.value),
+);
+
+const hasUnsavedProfileChanges = computed(() => {
+  const original = selectedProfileFromConfig.value;
+  const draft = normalizeProfileForCompare(profileFromDraft());
+  if (!original) {
+    return Boolean(draft.id || draft.name || draft.model || draft.workDir);
+  }
+  return JSON.stringify(normalizeProfileForCompare(original)) !== JSON.stringify(draft);
+});
+
+const canSaveProfile = computed(() =>
+  Boolean(profileDraft.id.trim() && profileDraft.workDir.trim())
+  && !profileIdConflict.value,
+);
+
+const saveProfileDisabledReason = computed(() => {
+  if (!profileDraft.id.trim()) return text('Profile ID 必填', 'Profile ID is required');
+  if (!profileDraft.workDir.trim()) return text('工作目录必填', 'Work directory is required');
+  if (profileIdConflict.value) return text('Profile ID 已存在', 'Profile ID already exists');
   return '';
 });
 
@@ -635,6 +711,21 @@ function formatTokenBudget(value: number | null): string {
   }
   if (value >= 1000) return `${Math.round(value / 1000)}k`;
   return String(value);
+}
+
+function normalizeProfileForCompare(profile: ChannelConnectorAgentProfile): ChannelConnectorAgentProfile {
+  const id = profile.id.trim();
+  return {
+    ...profile,
+    id,
+    name: profile.name.trim() || id,
+    model: profile.model ? profile.model.trim() : null,
+    reasoningEffort: profile.reasoningEffort || null,
+    workDir: profile.workDir.trim(),
+    gatewayEndpoint: profile.gatewayEndpoint.trim() || 'http://127.0.0.1:18796/v1',
+    gatewayKeyRef: 'studio-gateway-client-key',
+    appProfileRef: profile.appProfileRef.trim() || 'default',
+  };
 }
 
 function collectGatewayProviderModelNames(providers: ModelGatewayProviderView[]): { models: string[]; budgets: Record<string, GatewayModelBudget> } {
@@ -778,6 +869,17 @@ function newProfile(): void {
   });
 }
 
+function discardProfileChanges(): void {
+  const original = selectedProfileFromConfig.value;
+  if (original) {
+    selectProfile(original);
+    setNotice(text('已撤销当前 Profile 编辑。', 'Profile edits discarded.'));
+    return;
+  }
+  selectInitialProfile();
+  setNotice(text('已撤销新建 Profile。', 'New Profile draft discarded.'));
+}
+
 function uniqueProfileId(baseId: string, existingIds = new Set(profiles.value.map((profile) => profile.id))): string {
   const normalizedBase = baseId
     .trim()
@@ -831,7 +933,7 @@ async function deleteProfile(): Promise<void> {
     setNotice(deleteProfileDisabledReason.value || text('当前 Profile 暂不能删除。', 'This profile cannot be deleted yet.'), 'error');
     return;
   }
-  const profileId = profileDraft.id;
+  const profileId = selectedProfileId.value || profileDraft.id;
   const confirmed = window.confirm(text(`删除 CLI Profile "${profileId}"？`, `Delete CLI profile "${profileId}"?`));
   if (!confirmed) return;
   saving.value = true;
@@ -858,23 +960,20 @@ async function saveProfile(): Promise<void> {
   const config = cloneNativeConfig();
   if (!config) return;
   const profile = profileFromDraft();
-  if (!profile.id || !profile.workDir) {
-    setNotice(text('Profile ID 和工作目录必填。', 'Profile ID and work directory are required.'), 'error');
+  if (!canSaveProfile.value) {
+    setNotice(saveProfileDisabledReason.value || text('Profile 配置不可保存。', 'Profile configuration cannot be saved.'), 'error');
     return;
   }
   saving.value = true;
   errorMessage.value = '';
   noticeMessage.value = '';
   try {
-    const index = config.agentProfiles.findIndex((item) => item.id === profile.id);
-    if (index >= 0) config.agentProfiles.splice(index, 1, profile);
-    else config.agentProfiles.push(profile);
-    if (!config.defaultAgentProfileId || !config.agentProfiles.some((item) => item.id === config.defaultAgentProfileId)) {
-      config.defaultAgentProfileId = profile.id;
-    }
+    const migratedBindings = persistProfileDraftToConfig(config, profile, false);
     nativeConfig.value = await saveChannelConnectorsNativeConfig({ config });
     selectProfile(profile);
-    setNotice(text('CLI Profile 已保存。', 'CLI profile saved.'));
+    setNotice(migratedBindings > 0
+      ? text(`CLI Profile 已保存，并迁移 ${migratedBindings} 个 IM 绑定。`, `CLI profile saved and ${migratedBindings} IM bindings migrated.`)
+      : text('CLI Profile 已保存。', 'CLI profile saved.'));
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : text('保存 CLI Profile 失败。', 'Failed to save CLI profile.');
   } finally {
@@ -886,22 +985,57 @@ async function setDefaultProfile(): Promise<void> {
   const config = cloneNativeConfig();
   if (!config) return;
   const profile = profileFromDraft();
+  if (!canSaveProfile.value) {
+    setNotice(saveProfileDisabledReason.value || text('Profile 配置不可保存。', 'Profile configuration cannot be saved.'), 'error');
+    return;
+  }
   saving.value = true;
   errorMessage.value = '';
   noticeMessage.value = '';
   try {
-    const index = config.agentProfiles.findIndex((item) => item.id === profile.id);
-    if (index >= 0) config.agentProfiles.splice(index, 1, profile);
-    else config.agentProfiles.push(profile);
-    config.defaultAgentProfileId = profile.id;
+    const migratedBindings = persistProfileDraftToConfig(config, profile, true);
     nativeConfig.value = await saveChannelConnectorsNativeConfig({ config });
     selectProfile(profile);
-    setNotice(text('默认 CLI Profile 已更新。', 'Default CLI profile updated.'));
+    setNotice(migratedBindings > 0
+      ? text(`默认 CLI Profile 已更新，并迁移 ${migratedBindings} 个 IM 绑定。`, `Default CLI profile updated and ${migratedBindings} IM bindings migrated.`)
+      : text('默认 CLI Profile 已更新。', 'Default CLI profile updated.'));
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : text('更新默认 CLI Profile 失败。', 'Failed to update default CLI profile.');
   } finally {
     saving.value = false;
   }
+}
+
+function persistProfileDraftToConfig(config: ChannelConnectorsNativeConfig, profile: ChannelConnectorAgentProfile, makeDefault: boolean): number {
+  const previousProfileId = selectedProfileId.value;
+  const previousIndex = previousProfileId
+    ? config.agentProfiles.findIndex((item) => item.id === previousProfileId)
+    : -1;
+  const currentIndex = config.agentProfiles.findIndex((item) => item.id === profile.id);
+  if (previousIndex >= 0) {
+    config.agentProfiles.splice(previousIndex, 1, profile);
+  } else if (currentIndex >= 0) {
+    config.agentProfiles.splice(currentIndex, 1, profile);
+  } else {
+    config.agentProfiles.push(profile);
+  }
+
+  let migratedBindings = 0;
+  if (previousProfileId && previousProfileId !== profile.id) {
+    for (const binding of config.platformBindings) {
+      if (binding.agentProfileId !== previousProfileId) continue;
+      binding.agentProfileId = profile.id;
+      migratedBindings += 1;
+    }
+    if (config.defaultAgentProfileId === previousProfileId) {
+      config.defaultAgentProfileId = profile.id;
+    }
+  }
+
+  if (makeDefault || !config.defaultAgentProfileId || !config.agentProfiles.some((item) => item.id === config.defaultAgentProfileId)) {
+    config.defaultAgentProfileId = profile.id;
+  }
+  return migratedBindings;
 }
 
 async function refreshSessions(): Promise<void> {

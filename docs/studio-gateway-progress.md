@@ -47,6 +47,7 @@
   - 运行配置分区为身份与权限、模型与上下文、目录与连接；模型下拉来自 Gateway App Connections 的 `availableModels`，同时合并启用 provider 的模型 ID / alias。
   - CLI Profile 会根据 Gateway provider catalog 和 App Connections profile 展示上下文窗口、输出预算、auto compact 阈值和预算来源；不改后端保存合同。
   - Profile 工作台补齐复制、删除保护、设为默认、模型网关跳转、事件筛选和当前 Profile 活动会话批量停止；删除会阻止仅剩一个 Profile、仍有 IM 绑定或活动 session 的情况。
+  - Profile 编辑流补齐真实重命名语义：保存或设默认时按原始 Profile ID 替换，并自动迁移相关 IM binding；重复 ID、缺少工作目录或缺少 ID 会阻止保存，未保存状态可撤销。
 - 清理并压缩 `docs/`：
   - 新增 `docs/README.md` 作为文档索引和维护规则。
   - 压缩 Gateway、Channel Connectors、Feishu、Chat、富消息、渲染、PRD、架构和当前进展文档。
@@ -114,12 +115,13 @@
 
 ## 最近验证
 
-- 本轮验证通过：`node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs tests/system/studio-web-channel-connectors-page.test.mjs`，覆盖 Channel Connectors 独立 Profile 工作台、Gateway 预算索引、Profile 复制/删除/事件筛选/批量停止控件、Agents 旧 CLI 路由删除和 Channel Connectors 独立导航。
+- 本轮验证通过：`node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs tests/system/studio-web-channel-connectors-page.test.mjs`，覆盖 Channel Connectors 独立 Profile 工作台、Gateway 预算索引、Profile 复制/删除/事件筛选/批量停止控件、Profile ID 重命名迁移绑定合同、Agents 旧 CLI 路由删除和 Channel Connectors 独立导航。
 - 本轮验证通过：`npm run typecheck:web`
 - 本轮验证通过：`npm run typecheck:api`
 - 本轮验证通过：`npm run build:web`
 - 本轮验证通过：`npm run build:api`
 - 本轮浏览器验证通过：Python Playwright 打开 `http://127.0.0.1:5176/channel-connectors/profiles`，在 1440/900/390 宽度下无横向溢出，Profile 复制/删除、模型网关、停止全部和事件筛选控件均渲染；打开旧 `http://127.0.0.1:5176/agents/main/cli` 不再渲染 CLI Profile 管理。
+- 本轮浏览器交互验证通过：无保存修改 Profile ID 会显示未保存状态，撤销会还原原 ID；输入已有 Profile ID 会显示冲突并禁用保存，未改写真实配置。
 - 本轮 dev 进程已重启：前端 `http://127.0.0.1:5176`、后端 `http://127.0.0.1:3761`；Gateway daemon 与 Channel daemon 均为 `active/enabled`。
 - 本轮浏览器验证通过：Python Playwright 打开 `http://127.0.0.1:5176/model-gateway`，在 1440/900/390 宽度下进入 Provider configuration，无页面横向溢出；手机端模型行字段标签可见。
 - 本轮验证通过：`npm run build:api`
