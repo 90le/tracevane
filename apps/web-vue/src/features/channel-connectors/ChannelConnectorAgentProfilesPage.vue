@@ -416,11 +416,34 @@
             </div>
 
             <div v-if="relatedSessionEvents.length" class="ccx-event-list ccx-agent-profile-events">
-              <article v-for="event in relatedSessionEvents" :key="`${event.checkedAt}:${event.type}:${event.poolKey}:${event.messageId || ''}`" class="ccx-list-row ccx-agent-profile-event-row">
+              <article
+                v-for="event in relatedSessionEvents"
+                :key="`${event.checkedAt}:${event.type}:${event.poolKey}:${event.messageId || ''}`"
+                class="ccx-list-row ccx-agent-profile-event-row"
+                :class="{ danger: Boolean(event.error) }"
+              >
                 <div class="ccx-agent-profile-linked-row">
                   <div>
                     <small>{{ formatTimestamp(event.checkedAt) }} · {{ event.bindingId }}</small>
                     <strong>{{ event.type }}</strong>
+                    <dl class="ccx-agent-profile-event-trace">
+                      <div>
+                        <dt>Agent</dt>
+                        <dd>{{ event.agent }} · {{ event.model || text('默认模型', 'default model') }}</dd>
+                      </div>
+                      <div>
+                        <dt>Session</dt>
+                        <dd>{{ event.sessionKey || '-' }}</dd>
+                      </div>
+                      <div>
+                        <dt>Message</dt>
+                        <dd>{{ event.messageId || '-' }}</dd>
+                      </div>
+                      <div>
+                        <dt>Workdir</dt>
+                        <dd>{{ compactPath(event.workDir) }}</dd>
+                      </div>
+                    </dl>
                     <span v-if="event.reason || event.error" :class="{ 'ccx-danger-text': Boolean(event.error) }">
                       {{ [event.reason, event.error].filter(Boolean).join(' · ') }}
                     </span>

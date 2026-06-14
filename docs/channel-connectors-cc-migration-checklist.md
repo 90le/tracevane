@@ -46,7 +46,7 @@
 | P1 | Octo 私聊 | 进行中：长连接 live 稳定；Markdown 已验证；入站文件/图片 staged-path live、入站文件路径返回 24h live、`.mp4` 文件形态视频 24h live、权限 24h live、媒体 payload 文本保留、auto compact 24h live、显式 `/compact` 24h live、出站文件 `outboundFilesSent` live 证据已补 | 继续复核未覆盖 CLI 事件形态 |
 | P1 | 工具/思考/过程显示 | 继续推进：非飞书过程回复标题已移除；结构化/混合工具结果、per-agent live `--require-tool-output`、Codex reasoning summary、Octo `/thinking` 过滤、OpenCode live reasoning 和 parser/live 能力展示已补；Codex/Claude Code/OpenCode 均有真实 IM 过程回复证据 | 三个 Agent 都稳定提取工具名、输入、stdout/stderr、exit/status、思考流、过程回复和最终回复分类；继续复核真实 CLI 新事件形态 |
 | P1 | 图片/视觉模型 fallback | 已完成：默认关闭；binding 可设启用和默认视觉模型；IM `/vision` 命令与 Feishu 卡片可临时开启/关闭/指定模型；Gateway catalog 只列健康 vision 模型 | 非视觉当前模型收到图片时按配置切到指定/自动健康视觉模型，失败回退附件说明模式 |
-| P1 | Channel Connectors CLI Profile 管理面 | 进行中：`/channel-connectors/profiles` 已作为独立工作台承接 Profile、Gateway 模型、上下文预算、IM 绑定、持久会话和事件记录；Profile 复制、删除保护、设为默认、模型网关 App Connection deep-link、CLI App Connection config target/backup 摘要、Profile 列表 effective model、IM binding requested/effective session driver 摘要、IM binding/requested persistent binding/session/event deep-link、事件筛选、当前 Profile 活动 session 批量停止、未保存撤销、Profile ID 重命名绑定迁移和 App Connection effective model 展示已补；`/agents/:agentId/cli` 已删除 | 后续继续补更细的 CLI app 配置和浏览器交互验收 |
+| P1 | Channel Connectors CLI Profile 管理面 | 进行中：`/channel-connectors/profiles` 已作为独立工作台承接 Profile、Gateway 模型、上下文预算、IM 绑定、持久会话和事件记录；Profile 复制、删除保护、设为默认、模型网关 App Connection deep-link、CLI App Connection config target/backup 摘要、Profile 列表 effective model、IM binding requested/effective session driver 摘要、session event trace/失败标记、IM binding/requested persistent binding/session/event deep-link、事件筛选、当前 Profile 活动 session 批量停止、未保存撤销、Profile ID 重命名绑定迁移和 App Connection effective model 展示已补；`/agents/:agentId/cli` 已删除 | 后续继续补更细的 CLI app 配置和浏览器交互验收 |
 | P1 | 上下文预算与 compact | 核心完成：`/status` 展示 resolved model window/reserve/threshold/remaining，auto compact 已按 native-first、baseline 和 fallback 记录接入；Feishu/Octo compact 24h live 已通过 | 后续只做真实抽查；不伪造 Agent 内部 token 预算 |
 | P1 | 文件/消息收发 | 核心完成：私聊入站 staging、出站 file/message manifest、原始文件名、Feishu/Octo 上传发送和 Octo COS/STS 大文件路径已覆盖；Feishu/Octo live 证据已通过 | 后续只做平台大小限制、真实大文件和异常路径抽查 |
 | P2 | durable queue | 已完成：pending-agent-run store 已接入 Octo/Feishu；daemon/API/UI 运行态可见性已补；Octo daemon restart 回归已通过；Feishu same-process FIFO 和 daemon restart replay 均有 live 证据 | 后续仅做回归抽查 |
@@ -56,7 +56,7 @@
 ## 最近代码验证
 
 - `node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs tests/system/studio-web-channel-connectors-page.test.mjs`，5/5 通过，覆盖 Profile 工作台 requested persistent binding/session/event deep-link。
-- Python Playwright 验证 `/channel-connectors/profiles?profileId=feishu-codex`，1440/390 宽度下 Profile 列表显示 resolved model 标签，2 条 IM binding 摘要均展示 session driver mode/reason，CLI App Connection 卡片显示配置文件/最近备份/App 连接入口，2 条 requested persistent binding 和 8 条 session event 均有“绑定”入口且无横向溢出。
+- Python Playwright 验证 `/channel-connectors/profiles?profileId=feishu-codex`，1440/390 宽度下 Profile 列表显示 resolved model 标签，2 条 IM binding 摘要均展示 session driver mode/reason，CLI App Connection 卡片显示配置文件/最近备份/App 连接入口，2 条 requested persistent binding 和 8 条 session event 均有“绑定”入口，8 条 session event 均渲染 agent/model/session/message/workdir trace，当前 live 样本无横向溢出。
 - `npm run typecheck:api`
 - `npm run build:api`
 - `node --test tests/system/channel-connectors-service.test.mjs`，104/104 通过，覆盖 Feishu `/help` 菜单、进度卡条数卡片内设置、工作目录快捷切换/分页/搜索、配置页分区/单按钮切换、会话动作和 card action 同步 callback response。
