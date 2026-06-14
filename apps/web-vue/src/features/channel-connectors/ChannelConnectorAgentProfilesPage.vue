@@ -346,15 +346,25 @@
                   <span>{{ text('最近使用', 'Last used') }} {{ formatTimestamp(session.lastUsedAt) }}</span>
                   <span v-if="session.lastError" class="ccx-danger-text">{{ session.lastError }}</span>
                 </div>
-                <button
-                  type="button"
-                  class="secondary-button compact-button"
-                  :disabled="sessionBusy"
-                  @click="killSession(session.poolKey)"
-                >
-                  <Square :size="15" />
-                  {{ text('停止', 'Stop') }}
-                </button>
+                <div class="ccx-agent-profile-row-actions">
+                  <button
+                    type="button"
+                    class="secondary-button compact-button"
+                    @click="openBindingConfigById(session.bindingId)"
+                  >
+                    <ExternalLink :size="15" />
+                    {{ text('绑定', 'Binding') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary-button compact-button"
+                    :disabled="sessionBusy"
+                    @click="killSession(session.poolKey)"
+                  >
+                    <Square :size="15" />
+                    {{ text('停止', 'Stop') }}
+                  </button>
+                </div>
               </article>
             </div>
             <div v-else class="empty-inline">
@@ -363,11 +373,23 @@
 
             <div v-if="relatedSessionEvents.length" class="ccx-event-list ccx-agent-profile-events">
               <article v-for="event in relatedSessionEvents" :key="`${event.checkedAt}:${event.type}:${event.poolKey}:${event.messageId || ''}`" class="ccx-list-row ccx-agent-profile-event-row">
-                <small>{{ formatTimestamp(event.checkedAt) }} · {{ event.bindingId }}</small>
-                <strong>{{ event.type }}</strong>
-                <span v-if="event.reason || event.error" :class="{ 'ccx-danger-text': Boolean(event.error) }">
-                  {{ [event.reason, event.error].filter(Boolean).join(' · ') }}
-                </span>
+                <div class="ccx-agent-profile-linked-row">
+                  <div>
+                    <small>{{ formatTimestamp(event.checkedAt) }} · {{ event.bindingId }}</small>
+                    <strong>{{ event.type }}</strong>
+                    <span v-if="event.reason || event.error" :class="{ 'ccx-danger-text': Boolean(event.error) }">
+                      {{ [event.reason, event.error].filter(Boolean).join(' · ') }}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    class="secondary-button compact-button"
+                    @click="openBindingConfigById(event.bindingId)"
+                  >
+                    <ExternalLink :size="15" />
+                    {{ text('绑定', 'Binding') }}
+                  </button>
+                </div>
               </article>
             </div>
           </article>
@@ -1172,6 +1194,16 @@ function openBindingConfig(binding: ChannelConnectorPlatformBinding): void {
   openChannelConnectors({
     bindingId: binding.id,
     profileId: binding.agentProfileId || selectedProfileId.value || profileDraft.id,
+  });
+}
+
+function openBindingConfigById(bindingId: string): void {
+  const normalized = String(bindingId || '').trim();
+  if (!normalized) return;
+  const binding = bindings.value.find((item) => item.id === normalized);
+  openChannelConnectors({
+    bindingId: normalized,
+    profileId: binding?.agentProfileId || selectedProfileId.value || profileDraft.id,
   });
 }
 

@@ -200,7 +200,31 @@
   justify-self: end;
 }
 
-.ccx-agent-profile-session-row button {
+.ccx-agent-profile-linked-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.ccx-agent-profile-linked-row > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.ccx-agent-profile-linked-row .compact-button {
+  justify-self: end;
+}
+
+.ccx-agent-profile-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ccx-agent-profile-session-row button,
+.ccx-agent-profile-row-actions {
   justify-self: start;
 }
 
@@ -843,11 +867,13 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .ccx-agent-profile-binding-main {
+  .ccx-agent-profile-binding-main,
+  .ccx-agent-profile-linked-row {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .ccx-agent-profile-binding-main .compact-button {
+  .ccx-agent-profile-binding-main .compact-button,
+  .ccx-agent-profile-linked-row .compact-button {
     justify-self: start;
   }
 }
