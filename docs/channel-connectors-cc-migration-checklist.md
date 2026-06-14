@@ -59,6 +59,9 @@
 - `node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs tests/system/studio-web-channel-connectors-page.test.mjs`，5/5 通过，覆盖 Profile 工作台 requested persistent binding/session/event deep-link、当前 CLI App Connection apply/preview 入口、binding 行事件过滤快捷入口、会话事件 binding/type 筛选和显示数量控制。
 - `node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs` 通过，覆盖 Agent 切换清理 stale App Profile ref、新建 Profile 默认 `default` App Profile、Profile Apply-to-CLI 不改 Gateway 全局默认模型。
 - Python Playwright 真实交互通过：`/channel-connectors/profiles?profileId=claude` 点击“应用到 CLI”，验证 `profile.model` 保持 `null`、`appModels["claude-code"]` 被应用、Claude Code rollback 成功，App Connection profile 在 finally 中恢复原值。
+- `node scripts/smoke-channel-connectors-agent-sessions.mjs --json` 通过，daemon session 管理 endpoint reachable，Feishu/Octo binding 均为 effective persistent，当前 active session 为 0。
+- `node scripts/smoke-channel-connectors-native-cli-sessions.mjs --apps claude-code,opencode --json` 通过，isolated real CLI session 覆盖 Claude Code / OpenCode normal turn、file manifest、native visual input、native compact 和 stop/cancel，不污染真实 HOME/runtime。
+- `node scripts/smoke-channel-connectors-command-live.mjs --recent-sessions --probe --commands /status,/model,/mode,/dir,/compact --json` 通过，Feishu/Octo 最近 session 可 dry-run 解析模型、权限、工作目录和 compact 命令；probe 不发送平台消息、不修改状态，不替代真实 IM live。
 - `npm run typecheck:web`、`npm run build:web` 通过；`node --test tests/system/studio-web-channel-connectors-page.test.mjs tests/system/studio-web-channel-connector-profiles-page.test.mjs`，5/5 通过，锁定 Channel Connectors 主页面新四区结构、不再内嵌 Profile 快改/Skills 管理，以及 Profile 独立工作台路由。
 - Headless Chrome 验证 `/channel-connectors` 桌面/窄屏截图；CDP 读取 `documentElement.scrollWidth === clientWidth`，主页面无水平滚动。
 - Headless Chrome 验证 `/channel-connectors?bindingId=feishu-live&profileId=feishu-codex` 桌面/390px 截图；CDP 读取 `documentElement.scrollWidth === clientWidth`，Bindings 分区编辑器无水平滚动。

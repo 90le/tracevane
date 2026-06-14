@@ -238,6 +238,10 @@
 - 本轮验证通过：`node --test --test-name-pattern "native Channel Connectors agent runner builds gateway-backed Codex turns" tests/system/channel-connectors-service.test.mjs`，覆盖持久 `codex-home/skills` 旧平台 action skill 清理。
 - 本轮验证通过：`node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs`，覆盖 Profile 页 Agent 切换时重置 stale App Profile ref、新建 Profile 默认 `default` App Profile、Profile Apply-to-CLI 不改 Gateway 全局默认模型。
 - 本轮浏览器交互验证通过：Python Playwright 打开 `/channel-connectors/profiles?profileId=claude`，点击“应用到 CLI”，确认 `profile.model` 保持 `null`、`appModels["claude-code"]` 被应用、Claude Code rollback 成功，并在 finally 中恢复 App Connection profile 原值。
+- 本轮验证通过：`node scripts/smoke-channel-connectors-agent-sessions.mjs --json`，daemon session 管理 endpoint reachable，`feishu-live` / `octo-studio-cc` 均为 requested/effective persistent，当前 active session 为 0。
+- 本轮验证通过：`node scripts/smoke-channel-connectors-native-cli-sessions.mjs --apps claude-code,opencode --json`，isolated real CLI session 覆盖 Claude Code / OpenCode 的 normal turn、file manifest、native visual input、native compact 和 stop/cancel；该脚本不污染真实 HOME/runtime。
+- 本轮验证通过：`node --test --test-name-pattern "stops Codex app-server persistent turns|Agent process cancelled|native compact" tests/system/channel-connectors-service.test.mjs`，覆盖 Codex app-server persistent `/stop` 和 Claude/OpenCode native compact driver。
+- 本轮验证通过：`node scripts/smoke-channel-connectors-command-live.mjs --recent-sessions --probe --commands /status,/model,/mode,/dir,/compact --json`，Feishu/Octo 最近 session 均能 dry-run 解析模型、权限、工作目录和 compact 命令；probe 不发送平台消息、不修改状态，不替代真实 IM live。
 - 本轮文档清理验证以 `git diff --check` 和 stale term 检查为准。
 
 ## 已知边界
@@ -256,5 +260,5 @@
 ## 下一步
 
 1. 继续抽查 Codex / Claude Code / OpenCode 真实 IM 工具流、过程回复、思考流、审批路径和 durable queue 回归。
-2. 当前 Profile/App Connection goal 仍需最新 IM event-log 刷新：direct runner 已通过，但新一轮 24h Feishu/Octo per-agent live 覆盖需要真实消息触发后再关闭 goal。
+2. 当前 Profile/App Connection goal 的自动化证据已覆盖 Profile 保存/apply/rollback、session 管理 endpoint、isolated native stop/compact 和命令 dry-run；仍需最新 Feishu/Octo 真实 IM event-log 刷新，尤其 Codex/OpenCode 24h per-agent run、Feishu/Octo 显式 `/compact` 和入站图片证据。
 3. 后续可选 OpenAI Platform 官方端点 proof。
