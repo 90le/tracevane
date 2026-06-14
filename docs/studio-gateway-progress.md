@@ -20,7 +20,7 @@
 - Channel prompt 只描述私聊文件、私聊消息、工作目录、权限、compact 和 Agent CLI 原生命令；不再引导 Agent 调用平台扩展 action。
 - `studio-channel-files` 和 `studio-channel-messages` 是保留的 Agent 出站声明合同；文件/消息实际发送仍由 Studio native transport 执行。
 - Feishu/Octo 长连接已由用户 live 验证稳定；Feishu 专项跟踪进入 monitored 状态，任意假在线反馈先写入 `docs/feishu-long-connection-issue-tracker.md` 并对照 OpenClaw/CC 实现排查。
-- Profile/App Connection 关闭验收必须跑真实 IM gate：三 Agent 工具流+过程回复、Feishu 显式 `/compact`、Octo 显式 `/compact`、入站图片 staged path。当前 post-fix 还缺 Feishu 新入站的 OpenCode 过程回复样本和 Feishu `/compact` 原生成功样本。
+- Profile/App Connection 关闭验收必须跑真实 IM gate：三 Agent 工具流+过程回复、Feishu 显式 `/compact`、Octo 显式 `/compact`、入站图片 staged path。当前四项 gate 已全绿，可作为本轮关闭证据。
 - Channel 侧 `/usage` / token 统计不再继续建设；模型消耗后续统一到 Gateway usage/模型消耗页。
 - CLI Profile 管理属于 Studio 原生 Channel Connectors，不属于 OpenClaw Agent 管理；独立页为 `/channel-connectors/profiles`，直接读取 Gateway 可用模型目录和上下文预算，管理 Profile、IM 绑定摘要、运行配置、持久会话和事件记录；IM 绑定摘要可 deep-link 到完整 Channel Connectors 配置并自动选中 binding/profile。
 - Channel Connectors 主配置页已收敛为概览、渠道绑定、运行状态、会话日志四个同级工作区；不再内嵌 CLI Profile 快改或 Skills 管理，Profile 只进入独立工作台。
@@ -100,7 +100,7 @@
   - 本轮验证通过：`npm run build:api`
   - 本轮验证通过：`node --test tests/system/channel-connectors-agent-session-driver.test.mjs tests/system/channel-connectors-compact-live-script.test.mjs tests/system/channel-connectors-profile-closure-script.test.mjs`，19/19 通过，覆盖 persistent session busy guard、不 dispose 活跃 session、native compact 禁用 one-shot crash fallback、Claude/OpenCode compact driver 和 closure gate 脚本合同。
   - 本轮已重启 `openclaw-studio-channel-connectors.service`；服务 active/running，Feishu long connection connected/sdkConnected，ping/pong 正常，`transportStale=false`。
-  - 本轮闭环 live gate 尚未全绿：修复后 daemon 重启以来 Feishu `receivedMessages=0`；旧 Feishu `/compact` 样本发生在修复前并因 one-shot fallback 失败；现有 OpenCode live 样本有工具输出但 prompt 未要求工具间过程回复，因此严格 `--require-process-reply` 仍缺 OpenCode post-fix 证据。
+  - 本轮闭环 live gate 已全绿：用户补发 Feishu OpenCode 三步工具流和标准 `/compact` 后，`node scripts/smoke-channel-connectors-profile-closure.mjs --json` 通过；四项 gate 覆盖三 Agent live run、Feishu 显式 `/compact`、Octo 显式 `/compact` 和入站图片 staged path。
   - 用户确认 Feishu 与 Octo 长连接都处于稳定状态，标记完成并进入监控态。
   - 用户确认 Markdown 已验证；自动化复验覆盖 Feishu Markdown、Feishu/Octo 文件和媒体收发 contract。
   - Feishu 显式 `/compact` 24h live 已验证 Codex / Claude Code / OpenCode，均为 `longConnection=true`、`commandOk=true`、`nativeOk=true`。
@@ -251,6 +251,7 @@
 - 本轮验证通过：`node scripts/smoke-channel-connectors-command-live.mjs --recent-sessions --probe --commands /status,/model,/mode,/dir,/compact --json`，Feishu/Octo 最近 session 均能 dry-run 解析模型、权限、工作目录和 compact 命令；probe 不发送平台消息、不修改状态，不替代真实 IM live。
 - 本轮验证通过：`node scripts/smoke-channel-connectors-feishu-long-connection.mjs --json`，70 秒采样内 Feishu 长连接 `connected=true`、`sdkConnected=true`、ping/pong 正常、`transportStale=false`、`violations=0`；当前 runtime 同时显示 Octo connection 为 1、pending queue 为 0。
 - 本轮新增闭环验收入口：`node scripts/smoke-channel-connectors-profile-closure.mjs --json` 会一次性跑三 Agent live run、Feishu 显式 `/compact`、Octo 显式 `/compact`、入站图片 staged-path 四个真实 IM gate；`--plan --json` 会输出缺口触发口径。脚本明确不把 dry-run/probe/direct-runner 当成真实 IM proof。
+- 本轮闭环验收通过：`node scripts/smoke-channel-connectors-profile-closure.mjs --json` 返回 `ok=true`；`three-agent-live-run`、`feishu-explicit-compact`、`octo-explicit-compact`、`inbound-image` 四个 gate 全部通过。
 - 本轮文档清理验证以 `git diff --check` 和 stale term 检查为准。
 
 ## 已知边界
@@ -268,6 +269,6 @@
 
 ## 下一步
 
-1. 先补 Profile closure 的两条 post-fix Feishu live 证据：`/agent opencode` 后发送“三步 shell 工具 + 每次工具后先回复一句”的 prompt；完成后同一 Feishu 私聊发送 `/compact`。
-2. 当前 Profile/App Connection goal 的自动化证据已覆盖 Profile 保存/apply/rollback、session 管理 endpoint、isolated native stop/compact 和命令 dry-run；关闭 goal 前统一运行 `node scripts/smoke-channel-connectors-profile-closure.mjs --json`，需要四个真实 IM gate 全部通过。
+1. Profile/App Connection goal 已完成关闭验收；后续只保留回归抽查，不再作为阻断项。
+2. 继续抽查 Codex / Claude Code / OpenCode 真实 IM 工具流、过程回复、思考流和审批路径；工具流 live smoke 默认带 `--agents codex,claude-code,opencode --require-agent-coverage --require-tool-output`。
 3. 后续可选 OpenAI Platform 官方端点 proof。

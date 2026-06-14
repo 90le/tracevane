@@ -30,7 +30,7 @@
 - 出站附件和私聊消息仍由 Studio native transport 执行；Agent 只声明 `studio-channel-files` / `studio-channel-messages`。
 - 产品未发布前不为旧实验命令/字段做兼容负担；已取消的工作流不再保留 UI 入口。
 - 前端信息架构：`/channel-connectors` 只承载渠道运营概览、渠道绑定、daemon/runtime 和会话日志；Agent CLI Profile 的高频配置、Gateway 模型选择、绑定摘要、Profile 操作和会话记录进入独立 `/channel-connectors/profiles`，不得挂回 OpenClaw Agents 子页，也不得作为主页面内嵌快改子页。
-- Profile/App Connection 关闭验收以真实 IM event log 为准；修复后必须重新采集 Feishu OpenCode 过程回复和 Feishu 显式 `/compact` native 成功证据，不能复用修复前失败或 prompt 不匹配的样本。
+- Profile/App Connection 关闭验收以真实 IM event log 为准；本轮已重新采集 Feishu OpenCode 过程回复和 Feishu 显式 `/compact` native 成功证据，并通过统一 closure gate。
 
 ## 任务清单
 
@@ -47,9 +47,9 @@
 | P1 | Octo 私聊 | 进行中：长连接 live 稳定；Markdown 已验证；入站文件/图片 staged-path live、入站文件路径返回 24h live、`.mp4` 文件形态视频 24h live、权限 24h live、媒体 payload 文本保留、auto compact 24h live、显式 `/compact` 24h live、出站文件 `outboundFilesSent` live 证据已补 | 继续复核未覆盖 CLI 事件形态 |
 | P1 | 工具/思考/过程显示 | 继续推进：非飞书过程回复标题已移除；结构化/混合工具结果、per-agent live `--require-tool-output`、Codex reasoning summary、Octo `/thinking` 过滤、OpenCode live reasoning 和 parser/live 能力展示已补；Codex/Claude Code/OpenCode 均有真实 IM 过程回复证据 | 三个 Agent 都稳定提取工具名、输入、stdout/stderr、exit/status、思考流、过程回复和最终回复分类；继续复核真实 CLI 新事件形态 |
 | P1 | 图片/视觉模型 fallback | 已完成：默认关闭；binding 可设启用和默认视觉模型；IM `/vision` 命令与 Feishu 卡片可临时开启/关闭/指定模型；Gateway catalog 只列健康 vision 模型 | 非视觉当前模型收到图片时按配置切到指定/自动健康视觉模型，失败回退附件说明模式 |
-| P1 | Channel Connectors CLI Profile 管理面 | 进行中：`/channel-connectors/profiles` 已作为独立工作台承接 Profile、Gateway 模型、上下文预算、IM 绑定、持久会话和事件记录；顶部 Profile 摘要条、独立 CLI App Connection 区、右侧 Activity 三段式会话/事件日志、默认折叠 trace、Profile 复制、删除保护、设为默认、模型网关 App Connection deep-link、CLI App Connection config target/backup/launch hint 摘要、脱敏 preview、当前 CLI App 直接 apply、Profile 列表 effective model、IM binding requested/effective session driver 摘要、active session trace、session event trace/失败标记、IM binding/requested persistent binding/session/event deep-link、binding 行事件过滤快捷入口、事件按 binding/type 筛选和 8/20/50 显示数量、当前 Profile 活动 session 批量停止、未保存撤销、Profile ID 重命名绑定迁移、App Connection effective model 展示、Agent 切换时清理 stale App Profile ref、Profile Apply-to-CLI 不改 Gateway 全局默认模型已补；`/agents/:agentId/cli` 已删除 | 真实保存/事件筛选/Claude Code apply+rollback 已验收；仍需最新 IM event-log 覆盖刷新 |
+| P1 | Channel Connectors CLI Profile 管理面 | 已完成本轮关闭验收：`/channel-connectors/profiles` 已作为独立工作台承接 Profile、Gateway 模型、上下文预算、IM 绑定、持久会话和事件记录；顶部 Profile 摘要条、独立 CLI App Connection 区、右侧 Activity 三段式会话/事件日志、默认折叠 trace、Profile 复制、删除保护、设为默认、模型网关 App Connection deep-link、CLI App Connection config target/backup/launch hint 摘要、脱敏 preview、当前 CLI App 直接 apply、Profile 列表 effective model、IM binding requested/effective session driver 摘要、active session trace、session event trace/失败标记、IM binding/requested persistent binding/session/event deep-link、binding 行事件过滤快捷入口、事件按 binding/type 筛选和 8/20/50 显示数量、当前 Profile 活动 session 批量停止、未保存撤销、Profile ID 重命名绑定迁移、App Connection effective model 展示、Agent 切换时清理 stale App Profile ref、Profile Apply-to-CLI 不改 Gateway 全局默认模型已补；`/agents/:agentId/cli` 已删除 | 真实保存/事件筛选/Claude Code apply+rollback、三 Agent live run、Feishu/Octo compact 和入站图片 gate 已验收 |
 | P1 | Channel Connectors 主配置页信息架构 | 进行中：主页面已收敛为 Overview / Bindings / Runtime / Sessions 四个同级工作区；Bindings 已改为左侧绑定列表 + 右侧分区编辑器；Runtime 已改为 daemon/链路 + compact/queue 双列工作台；Sessions 已改为策略/绑定 + 活动会话/事件双列工作台，原始日志默认折叠；内嵌 Profile 快改和 Skills 管理已移除 | 后续继续精修 Profile 工作台细节，避免再次形成子页面套子页面 |
-| P1 | 上下文预算与 compact | 核心完成：`/status` 展示 resolved model window/reserve/threshold/remaining，auto compact 已按 native-first、baseline 和 fallback 记录接入；显式 `/compact` 命令已进入 session FIFO，native compact 禁止 one-shot crash fallback | 需补 post-fix Feishu 显式 `/compact` native live；不伪造 Agent 内部 token 预算 |
+| P1 | 上下文预算与 compact | 核心完成：`/status` 展示 resolved model window/reserve/threshold/remaining，auto compact 已按 native-first、baseline 和 fallback 记录接入；显式 `/compact` 命令已进入 session FIFO，native compact 禁止 one-shot crash fallback | post-fix Feishu 显式 `/compact` native live 已通过；不伪造 Agent 内部 token 预算 |
 | P1 | 文件/消息收发 | 核心完成：私聊入站 staging、出站 file/message manifest、原始文件名、Feishu/Octo 上传发送和 Octo COS/STS 大文件路径已覆盖；Feishu/Octo live 证据已通过 | 后续只做平台大小限制、真实大文件和异常路径抽查 |
 | P2 | durable queue | 已完成：pending-agent-run store 已接入 Octo/Feishu；daemon/API/UI 运行态可见性已补；Octo daemon restart 回归已通过；Feishu same-process FIFO 和 daemon restart replay 均有 live 证据 | 后续仅做回归抽查 |
 | P3 | 更多平台 | 路线图 | 微信/企微/钉钉/Telegram/Slack/Discord/QQ/LINE 等只按私聊能力迁移 |
@@ -68,6 +68,7 @@
 - `node scripts/smoke-channel-connectors-command-live.mjs --recent-sessions --probe --commands /status,/model,/mode,/dir,/compact --json` 通过，Feishu/Octo 最近 session 可 dry-run 解析模型、权限、工作目录和 compact 命令；probe 不发送平台消息、不修改状态，不替代真实 IM live。
 - `node scripts/smoke-channel-connectors-feishu-long-connection.mjs --json` 通过，70 秒采样内 Feishu 长连接 connected/sdkConnected，ping/pong 正常，`transportStale=false`，`violations=0`；runtime 同时显示 Octo connection 为 1、pending queue 为 0。
 - `node scripts/smoke-channel-connectors-profile-closure.mjs --plan --json` 通过，闭环验收入口会统一检查三 Agent live run、Feishu 显式 `/compact`、Octo 显式 `/compact`、入站图片 staged-path 四个真实 IM gate，并输出缺口触发口径。
+- `node scripts/smoke-channel-connectors-profile-closure.mjs --json` 通过，`three-agent-live-run`、`feishu-explicit-compact`、`octo-explicit-compact`、`inbound-image` 四个真实 IM gate 全绿。
 - `npm run typecheck:web`、`npm run build:web` 通过；`node --test tests/system/studio-web-channel-connectors-page.test.mjs tests/system/studio-web-channel-connector-profiles-page.test.mjs`，5/5 通过，锁定 Channel Connectors 主页面新四区结构、不再内嵌 Profile 快改/Skills 管理，以及 Profile 独立工作台路由。
 - Headless Chrome 验证 `/channel-connectors` 桌面/窄屏截图；CDP 读取 `documentElement.scrollWidth === clientWidth`，主页面无水平滚动。
 - Headless Chrome 验证 `/channel-connectors?bindingId=feishu-live&profileId=feishu-codex` 桌面/390px 截图；CDP 读取 `documentElement.scrollWidth === clientWidth`，Bindings 分区编辑器无水平滚动。
