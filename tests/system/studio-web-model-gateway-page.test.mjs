@@ -192,6 +192,9 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "补齐空白预算/能力",
     "inferProviderModelCapabilities",
     "daemonActionResult",
+    "Endpoint profiles",
+    "selectedProviderEndpointProfiles",
+    "mgw-endpoint-profile-list",
   ]) {
     assert.match(page, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
@@ -233,4 +236,6 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
   assert.match(css, /\.mgw-model-batch\s*\{[^}]*border:\s*1px solid var\(--mono-line\)/s);
   assert.match(css, /\.mgw-model-batch__body\s*\{[^}]*display:\s*grid/s);
   assert.match(css, /\.mgw-model-batch__actions,\s*\.mgw-model-batch__bulk,\s*\.mgw-model-batch__capabilities\s*\{[^}]*flex-wrap:\s*wrap/s);
+  assert.match(css, /\.mgw-endpoint-profile\s*\{[^}]*grid-template-columns:\s*minmax\(130px,\s*0\.8fr\)\s+minmax\(0,\s*1\.6fr\)\s+auto/s);
+  assert.match(css, /\.mgw-endpoint-profile code\s*\{[^}]*text-overflow:\s*ellipsis/s);
 });

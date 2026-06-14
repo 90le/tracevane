@@ -166,6 +166,26 @@ export interface ModelGatewayProviderReasoning {
   outputFormat?: ModelGatewayReasoningOutputFormat;
 }
 
+export interface ModelGatewayProviderEndpointProfile {
+  id: string;
+  name: string;
+  enabled: boolean;
+  appScopes: ModelGatewayAppScope[];
+  baseUrl: string;
+  apiKeyRef: string | null;
+  apiFormat: ModelGatewayApiFormat;
+  authStrategy: ModelGatewayAuthStrategy;
+  models: ModelGatewayProviderModelCatalog | null;
+  reasoning: ModelGatewayProviderReasoning;
+  endpoints: Partial<Record<ModelGatewayRouteId, string>>;
+  network: ModelGatewayProviderNetwork;
+  health: ModelGatewayProviderHealth;
+  failover: ModelGatewayProviderFailover;
+  metadata: ModelGatewayProviderMetadata;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface ModelGatewayProvider {
   id: string;
   name: string;
@@ -179,6 +199,7 @@ export interface ModelGatewayProvider {
   models: ModelGatewayProviderModelCatalog;
   reasoning: ModelGatewayProviderReasoning;
   endpoints: Partial<Record<ModelGatewayRouteId, string>>;
+  endpointProfiles: ModelGatewayProviderEndpointProfile[];
   network: ModelGatewayProviderNetwork;
   health: ModelGatewayProviderHealth;
   failover: ModelGatewayProviderFailover;
@@ -272,6 +293,8 @@ export interface ModelGatewayRuntimeRequestLogEntry {
   appScope: ModelGatewayAppScope | null;
   providerId: string | null;
   providerName: string | null;
+  endpointProfileId?: string | null;
+  endpointProfileName?: string | null;
   model: string | null;
   method: string;
   requestedPath: string;
@@ -471,11 +494,32 @@ export interface ModelGatewayProviderInput {
   models?: Partial<ModelGatewayProviderModelCatalog>;
   reasoning?: ModelGatewayProviderReasoning | Record<string, unknown>;
   endpoints?: Partial<Record<ModelGatewayRouteId, string>>;
+  endpointProfiles?: ModelGatewayProviderEndpointProfileInput[];
   network?: Partial<ModelGatewayProviderNetwork>;
   health?: Partial<ModelGatewayProviderHealth>;
   failover?: Partial<ModelGatewayProviderFailover>;
   projectRefs?: string[];
   metadata?: ModelGatewayProviderMetadata;
+}
+
+export interface ModelGatewayProviderEndpointProfileInput {
+  id?: string;
+  name?: string;
+  enabled?: boolean;
+  appScopes?: ModelGatewayAppScope[];
+  baseUrl?: string;
+  apiKeyRef?: string | null;
+  apiFormat?: ModelGatewayApiFormat;
+  authStrategy?: ModelGatewayAuthStrategy;
+  models?: Partial<ModelGatewayProviderModelCatalog> | null;
+  reasoning?: ModelGatewayProviderReasoning | Record<string, unknown>;
+  endpoints?: Partial<Record<ModelGatewayRouteId, string>>;
+  network?: Partial<ModelGatewayProviderNetwork>;
+  health?: Partial<ModelGatewayProviderHealth>;
+  failover?: Partial<ModelGatewayProviderFailover>;
+  metadata?: ModelGatewayProviderMetadata;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ModelGatewayUpsertProviderRequest {
@@ -773,6 +817,7 @@ export interface ModelGatewayRouteDecision {
   appScope: ModelGatewayAppScope | null;
   mode: ModelGatewayRouteMode;
   provider: Pick<ModelGatewayProvider, "id" | "name" | "apiFormat" | "authStrategy" | "baseUrl"> | null;
+  endpointProfile: Pick<ModelGatewayProviderEndpointProfile, "id" | "name" | "apiFormat" | "authStrategy" | "baseUrl"> | null;
   model: {
     requested: string | null;
     resolved: string | null;

@@ -9,6 +9,7 @@
 - Gateway daemon 与 Channel daemon 都必须由 OS/user supervisor 守护；Studio / OpenClaw 崩溃时，CLI 与 IM bot 应继续直连本地 daemon。
 - Gateway 对外提供 Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions；`GET /v1/models` 聚合启用 provider，并保留模型别名、模型池、能力标记、上下文窗口和输出预算。
 - Provider Center 支持自定义 provider、启停、模型列表/别名/默认模型、能力勾选、批量模型导入、批量预算/能力应用、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
+- Gateway Provider 支持 endpoint profiles；同一 provider/模型可按客户端协议优选原生 endpoint，并在 endpoint 级 health/circuit 下回退。
 - Provider Center 不再按模型名自动标记 vision；图片能力只来自用户配置、上游显式能力元数据或图片 smoke 通过后用户确认写回。
 - App Connections 覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收。
 - BigModel/GLM 本地模型目录已加入 `glm-5.2`，按 1M context / 128K output 预算；Gateway 内置推断同时识别 `glm-5.2` 与官方 1M 后缀别名 `glm-5.2[1m]`。
@@ -26,6 +27,11 @@
 - Gateway 模型预算：
   - `knownModelDefaults` 为 `glm-5.2` / `glm-5.2[1m]` 固定 1M context、128K output、tools/reasoning/text/streaming/responses；不默认 vision。
   - 当前本地 GLM provider 模型目录加入 `glm-5.2`，并添加 `glm-5.2[1m]` alias。
+- Gateway endpoint profiles：
+  - Provider schema 新增 endpoint profile，保留旧 provider 单 endpoint 兼容；endpoint profile 可继承 provider 模型和 key，也可独立配置 baseUrl、协议、auth、route override、priority、health/circuit。
+  - 路由选择展开 provider endpoint profiles，按客户端协议原生匹配优先，再按 provider/profile priority 和 health/circuit 选择；响应与 runtime log 记录 endpoint profile。
+  - `/v1/models`、Agent CLI 模型下拉和 BigModel live smoke 均改为识别 endpoint profile 模型来源。
+  - 本机 `glm` provider 已配置 BigModel Coding Chat `https://open.bigmodel.cn/api/coding/paas/v4` 和 Coding Anthropic `https://open.bigmodel.cn/api/anthropic` 两个 endpoint profile，共用现有 GLM key。
 - Channel Connectors 模型菜单：
   - Feishu / command surface 的模型选择不再把 Gateway 聚合模型静默截断到 12 个。
   - 模型/视觉模型选择器保留 Gateway 全量选择能力，极端超过 100 个时显示已展示/总数并允许 `/model <模型ID>` 手动切换。
@@ -103,7 +109,8 @@
 - 本轮验证通过：`npm run typecheck:web`
 - 本轮验证通过：`npm run build:api`
 - 本轮验证通过：`node --test tests/system/studio-web-agent-cli-page.test.mjs`
-- 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，54/54 通过，覆盖 `glm-5.2` / `glm-5.2[1m]` 1M context 推断。
+- 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，56/56 通过，覆盖 `glm-5.2` / `glm-5.2[1m]` 预算推断、endpoint profile 原生协议优选、endpoint health 回退和响应头。
+- 本轮验证通过：`node --test tests/system/studio-web-model-gateway-page.test.mjs tests/system/studio-web-agent-cli-page.test.mjs`，5/5 通过，覆盖 Provider Center endpoint profile 展示和 Agent CLI 模型目录读取。
 - 本轮验证通过：`node --test tests/system/channel-connectors-service.test.mjs`，104/104 通过，覆盖 Gateway 模型列表超过 12 个时 Feishu/命令模型菜单仍显示后续模型。
 - 上一轮代码验证通过：`npm run typecheck:api`
 - 上一轮代码验证通过：`npm run build:api`

@@ -124,48 +124,52 @@ async function createLiveContext(root, liveConfig) {
   service.updateClientAuth(undefined, { apiKey: LOCAL_GATEWAY_KEY });
 
   if (liveConfig.bigmodel.apiKey) {
+    const bigmodelModels = Array.from(new Set([
+      liveConfig.bigmodel.chatModel,
+      liveConfig.bigmodel.anthropicModel,
+    ].filter(Boolean))).map((model) => ({
+      id: model,
+      features: { streaming: true, tools: true },
+    }));
     service.upsertProvider(undefined, {
       provider: {
-        id: "live-bigmodel-chat",
-        name: "Live BigModel Chat",
+        id: "live-bigmodel",
+        name: "Live BigModel",
         enabled: true,
-        appScopes: ["codex", "openclaw"],
+        appScopes: ["codex", "openclaw", "claude-code"],
         baseUrl: liveConfig.bigmodel.chatBaseUrl,
         apiFormat: "openai_chat",
         authStrategy: "bearer",
         models: {
           defaultModel: liveConfig.bigmodel.chatModel,
-          models: [{
-            id: liveConfig.bigmodel.chatModel,
-            features: { streaming: true, tools: true },
-          }],
+          models: bigmodelModels,
         },
+        endpointProfiles: [
+          {
+            id: "coding-chat",
+            name: "Coding Chat",
+            appScopes: ["codex", "openclaw", "claude-code"],
+            baseUrl: liveConfig.bigmodel.chatBaseUrl,
+            apiFormat: "openai_chat",
+            authStrategy: "bearer",
+            failover: { priority: 1 },
+          },
+          {
+            id: "coding-anthropic",
+            name: "Coding Anthropic",
+            appScopes: ["claude-code"],
+            baseUrl: liveConfig.bigmodel.anthropicBaseUrl,
+            apiFormat: "anthropic_messages",
+            authStrategy: "anthropic_api_key",
+            endpoints: {
+              anthropic_messages: liveConfig.bigmodel.anthropicMessagesPath,
+            },
+            failover: { priority: 2 },
+          },
+        ],
       },
       secret: { apiKey: liveConfig.bigmodel.apiKey },
-      setActiveScopes: ["codex", "openclaw"],
-    });
-    service.upsertProvider(undefined, {
-      provider: {
-        id: "live-bigmodel-anthropic",
-        name: "Live BigModel Anthropic",
-        enabled: true,
-        appScopes: ["claude-code"],
-        baseUrl: liveConfig.bigmodel.anthropicBaseUrl,
-        apiFormat: "anthropic_messages",
-        authStrategy: "anthropic_api_key",
-        endpoints: {
-          anthropic_messages: liveConfig.bigmodel.anthropicMessagesPath,
-        },
-        models: {
-          defaultModel: liveConfig.bigmodel.anthropicModel,
-          models: [{
-            id: liveConfig.bigmodel.anthropicModel,
-            features: { streaming: true, tools: true },
-          }],
-        },
-      },
-      secret: { apiKey: liveConfig.bigmodel.apiKey },
-      setActiveScopes: ["claude-code"],
+      setActiveScopes: ["codex", "openclaw", "claude-code"],
     });
   }
 

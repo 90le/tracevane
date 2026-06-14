@@ -766,6 +766,165 @@ test("model gateway model pools allow cross-provider duplicates but reject provi
   assert.match(decision.reason || "", /missing-model/);
 });
 
+test("model gateway endpoint profiles prefer native protocol and fall back by endpoint health", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createModelGatewayService(config);
+
+  const provider = {
+    id: "glm",
+    name: "GLM",
+    appScopes: ["codex", "claude-code", "opencode", "openclaw"],
+    baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
+    apiFormat: "openai_chat",
+    authStrategy: "bearer",
+    models: {
+      defaultModel: "glm-5.2",
+      models: [{ id: "glm-5.2", aliases: ["glm-5.2[1m]"] }],
+    },
+    endpointProfiles: [
+      {
+        id: "coding-chat",
+        name: "Coding Chat",
+        appScopes: ["codex", "claude-code", "opencode", "openclaw"],
+        baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
+        apiFormat: "openai_chat",
+        authStrategy: "bearer",
+        failover: { priority: 1 },
+      },
+      {
+        id: "coding-anthropic",
+        name: "Coding Anthropic",
+        appScopes: ["claude-code"],
+        baseUrl: "https://open.bigmodel.cn/api/anthropic",
+        apiFormat: "anthropic_messages",
+        authStrategy: "anthropic_api_key",
+        endpoints: { anthropic_messages: "/v1/messages" },
+        failover: { priority: 2 },
+      },
+    ],
+  };
+
+  service.upsertProvider(undefined, {
+    provider,
+    setActiveScopes: ["codex", "claude-code", "opencode", "openclaw"],
+  });
+
+  const claude = service.resolveRouteDecision("POST", "/v1/messages", {}, "glm-5.2[1m]");
+  assert.equal(claude.provider?.id, "glm");
+  assert.equal(claude.endpointProfile?.id, "coding-anthropic");
+  assert.equal(claude.mode, "passthrough");
+  assert.equal(claude.model?.resolved, "glm-5.2");
+  assert.equal(claude.upstreamUrl, "https://open.bigmodel.cn/api/anthropic/v1/messages");
+
+  const codex = service.resolveRouteDecision("POST", "/v1/responses", {}, "glm-5.2");
+  assert.equal(codex.provider?.id, "glm");
+  assert.equal(codex.endpointProfile?.id, "coding-chat");
+  assert.equal(codex.mode, "adapter-required");
+  assert.equal(codex.upstreamUrl, "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions");
+
+  const chat = service.resolveRouteDecision("POST", "/v1/chat/completions", {}, "glm-5.2");
+  assert.equal(chat.endpointProfile?.id, "coding-chat");
+  assert.equal(chat.mode, "passthrough");
+
+  service.upsertProvider(undefined, {
+    provider: {
+      ...provider,
+      endpointProfiles: [
+        provider.endpointProfiles[0],
+        {
+          ...provider.endpointProfiles[1],
+          health: {
+            circuitState: "open",
+            lastFailureAt: new Date().toISOString(),
+            lastError: "timeout",
+            consecutiveFailures: 3,
+          },
+        },
+      ],
+    },
+  });
+
+  const fallback = service.resolveRouteDecision("POST", "/v1/messages", {}, "glm-5.2");
+  assert.equal(fallback.endpointProfile?.id, "coding-chat");
+  assert.equal(fallback.mode, "adapter-required");
+  assert.match(fallback.failoverReason || "", /coding-anthropic.*fallback 'glm\/coding-chat'/);
+});
+
+test("model gateway forwards through endpoint profiles and updates endpoint health", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.updateClientAuth(undefined, { apiKey: "sk-local-endpoint-profile" });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "glm",
+      name: "GLM",
+      appScopes: ["openclaw"],
+      baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "glm-5.2",
+        models: [{ id: "glm-5.2" }],
+      },
+      endpointProfiles: [{
+        id: "coding-chat",
+        name: "Coding Chat",
+        appScopes: ["openclaw"],
+        baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
+        apiFormat: "openai_chat",
+        authStrategy: "bearer",
+        failover: { priority: 1 },
+      }],
+    },
+    secret: { apiKey: "sk-upstream-endpoint-profile" },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const originalFetch = globalThis.fetch;
+  let seenUrl = "";
+  let seenAuth = "";
+  globalThis.fetch = async (url, init = {}) => {
+    seenUrl = String(url);
+    seenAuth = init.headers instanceof Headers ? init.headers.get("authorization") || "" : "";
+    return new Response(JSON.stringify({
+      id: "chatcmpl_endpoint_profile",
+      choices: [{ message: { role: "assistant", content: "ok" } }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(createStudioRequestHandler(ctx), async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: { authorization: "Bearer sk-local-endpoint-profile" },
+        body: {
+          model: "glm-5.2",
+          messages: [{ role: "user", content: "hello" }],
+        },
+      });
+      assert.equal(chat.status, 200);
+      assert.equal(chat.headers["x-openclaw-model-gateway-provider"], "glm");
+      assert.equal(chat.headers["x-openclaw-model-gateway-endpoint"], "coding-chat");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(seenUrl, "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions");
+  assert.equal(seenAuth, "Bearer sk-upstream-endpoint-profile");
+  const listed = ctx.services.modelGateway.listProviders();
+  const glm = listed.providers.find((provider) => provider.id === "glm");
+  const endpoint = glm?.endpointProfiles.find((profile) => profile.id === "coding-chat");
+  assert.equal(glm?.health.lastSuccessAt, null);
+  assert.ok(endpoint?.health.lastSuccessAt);
+  assert.equal(endpoint?.health.circuitState, "closed");
+});
+
 test("model gateway probes open circuit provider after retry window for requested model", () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

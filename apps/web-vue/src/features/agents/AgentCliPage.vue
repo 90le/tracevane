@@ -413,16 +413,23 @@ function addModelOption(target: Set<string>, value: unknown): void {
 
 function collectGatewayProviderModelNames(providers: ModelGatewayProviderView[]): string[] {
   const names = new Set<string>();
-  for (const provider of providers) {
-    if (!provider.enabled) continue;
-    addModelOption(names, provider.models.defaultModel);
-    for (const model of provider.models.models || []) {
+  const collectCatalog = (catalog: ModelGatewayProviderView['models'] | null | undefined) => {
+    if (!catalog) return;
+    addModelOption(names, catalog.defaultModel);
+    for (const model of catalog.models || []) {
       addModelOption(names, model.id);
       for (const alias of model.aliases || []) addModelOption(names, alias);
     }
-    for (const [alias, target] of Object.entries(provider.models.aliases || {})) {
+    for (const [alias, target] of Object.entries(catalog.aliases || {})) {
       addModelOption(names, alias);
       addModelOption(names, target);
+    }
+  };
+  for (const provider of providers) {
+    if (!provider.enabled) continue;
+    collectCatalog(provider.models);
+    for (const endpointProfile of provider.endpointProfiles || []) {
+      if (endpointProfile.enabled) collectCatalog(endpointProfile.models);
     }
   }
   return Array.from(names);

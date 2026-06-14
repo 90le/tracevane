@@ -443,7 +443,7 @@
               >
                 <span class="mgw-provider-card__main">
                   <strong>{{ provider.name }}</strong>
-                  <small>{{ apiFormatLabel(provider.apiFormat) }} / {{ provider.models.defaultModel || '-' }}</small>
+                  <small>{{ provider.endpointProfiles.length ? `${provider.endpointProfiles.length} endpoints` : apiFormatLabel(provider.apiFormat) }} / {{ provider.models.defaultModel || '-' }}</small>
                 </span>
                 <span class="mgw-provider-card__meta">
                   <StatusPill :label="provider.enabled ? text('启用', 'Enabled') : text('停用', 'Disabled')" :tone="provider.enabled ? 'sage' : 'neutral'" />
@@ -494,6 +494,32 @@
                   <input v-model.trim="draft.baseUrl" class="form-input" placeholder="https://api.example.com/v1" />
                   <span class="field-hint">{{ text('这里是上游 API 前缀，Gateway 不会自动追加 /v1。', 'This is the upstream API prefix; Gateway will not append /v1 automatically.') }}</span>
                 </label>
+                <div v-if="selectedProviderEndpointProfiles.length" class="mgw-endpoint-profile-list form-field-full">
+                  <div class="mgw-endpoint-profile-list__head">
+                    <span class="form-label">{{ text('Endpoint profiles', 'Endpoint profiles') }}</span>
+                    <small>{{ text('同一模型会按客户端协议、健康状态和优先级自动选端点。', 'The same model is routed by client protocol, health, and priority.') }}</small>
+                  </div>
+                  <div class="mgw-endpoint-profile-grid">
+                    <div
+                      v-for="profile in selectedProviderEndpointProfiles"
+                      :key="profile.id"
+                      class="mgw-endpoint-profile"
+                    >
+                      <span>
+                        <strong>{{ profile.name }}</strong>
+                        <small>{{ profile.id }} · {{ apiFormatLabel(profile.apiFormat) }}</small>
+                      </span>
+                      <span>
+                        <code>{{ profile.baseUrl }}</code>
+                        <small>{{ profile.appScopes.join(', ') }}</small>
+                      </span>
+                      <StatusPill
+                        :label="profile.enabled ? (profile.health.circuitState === 'open' ? text('熔断', 'Open') : text('可用', 'Ready')) : text('停用', 'Disabled')"
+                        :tone="profile.enabled ? (profile.health.circuitState === 'open' ? 'danger' : 'sage') : 'neutral'"
+                      />
+                    </div>
+                  </div>
+                </div>
                 <label class="form-field">
                   <span class="form-label">API Key</span>
                   <input v-model="draft.apiKey" class="form-input" type="password" :placeholder="secretPlaceholder" />
@@ -1090,6 +1116,10 @@ const appliedProtocolKey = ref('');
 
 const draft = reactive<ProviderDraft>(createEmptyDraft());
 const modelBulk = reactive<ProviderModelBulkDraft>(createModelBulkDraft());
+
+const selectedProviderEndpointProfiles = computed(() =>
+  providers.value.find((provider) => provider.id === draft.id)?.endpointProfiles || [],
+);
 
 const runtimeEntries = computed<ModelGatewayRuntimeRequestLogEntry[]>(() =>
   [...(runtime.value?.runtime.requestLog || [])].reverse().slice(0, 8),
