@@ -62,7 +62,8 @@
   - 新增 `scripts/smoke-model-gateway-account-media.mjs`：默认低成本验证 `/v1/models` 媒体 catalog、image edits route 结构化错误、Codex account audio unsupported；显式 `--run-image-generation` 才触发 `gpt-image-2` 生图。
   - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，71/71 通过，覆盖 Codex account login/provider smoke、account pool sticky/concurrency/runtime persistence/accountRouting 诊断、Claude tool history `fc_*` Responses 规范、Active route 客户端工具合同、OpenCode App Connection `reasoning:false`、Chat tools reasoning 清理、Codex account audio unsupported、自动 refresh、手动 refresh、账户禁用路由跳过、refresh auth failure、secret redaction、active routing、Codex headers 转发、Codex Responses SSE 聚合、Codex Images bridge、OpenAI-compatible image edits/audio multipart passthrough 和既有三协议矩阵无回归。
   - 真实 media smoke 通过：`node scripts/smoke-model-gateway-account-media.mjs --json` 返回 `ok=true`；临时将 `openclaw` active provider 切到 `codex-account` 后，`node scripts/smoke-model-gateway-account-media.mjs --json --require-image-generation` 返回 `codex-image-generation: passed`、provider=`codex-account`、imageCount=1、hasUsage=true；验证后已恢复 `openclaw=glm`。当前 `gpt-image-2` image edits 由 `mlamp` 返回结构化 `invalid_image_file`，Codex account image edits/audio transcription/speech 均为结构化 unsupported。
-  - 真实 OpenCode `gpt-5.5` smoke 通过：用户级 OpenCode 配置已重新 apply，`opencode run --model studio-gateway/gpt-5.5` 成功调用 shell tool 输出 `OPENCODE_TOOL_OK` 并最终返回 `OPENCODE_DONE`，不再报 `Function tools with reasoning_effort are not supported...`。
+  - 真实 Claude Code `gpt-5.5` smoke 通过：`ANTHROPIC_BASE_URL=http://127.0.0.1:18796` + 本地 Gateway key 下，`claude --bare --print --model gpt-5.5 --tools ""` 返回 `CLAUDE_CLI_GATEWAY_OK`；同轮直接 `/v1/messages` smoke 返回 `CLAUDE_GATEWAY_OK`，确认 `function_call.id` 的 `fc_*` 规范不再触发上游 400。
+  - 真实 OpenCode `gpt-5.5` smoke 通过：用户级 OpenCode 配置已重新 apply，`opencode --pure run --model studio-gateway/gpt-5.5` 成功调用 shell tool 输出 `OPENCODE_TOOL_OK` 并最终返回 `OPENCODE_DONE`，不再报 `Function tools with reasoning_effort are not supported...`。
 - Provider Center 前端收口：
   - 模型目录的可见身份字段只保留“模型名称”和“别名”，不再暴露“显示名”三段式配置。
   - 批量导入格式改为 `model-id | alias1,alias2`；保存时不再从表格写入 `model.label`。
@@ -304,7 +305,7 @@
 - Provider 模型 vision 能力不会再从模型名推断；Chat-compatible provider 即使模型名像 Claude/GPT，也必须由用户显式配置、上游显式能力元数据或图片 smoke 通过后确认标记。
 - 工具流仍需继续 live 抽查：Codex、Claude Code、OpenCode 近 12h 均已有可见工具输出 live 证据，且三者均有过程回复真实 IM 证据。
 - 思考流 parser 支持 Codex、Claude Code、OpenCode 原生 thinking/reasoning 事件；Octo 私聊 `/thinking on/off` 已做端到端回归；状态/UI 已区分 parser 支持和 live 输出观测。真实 smoke 证明 OpenCode 会在支持 reasoning 的模型上输出 `reasoning`，Claude Code 2.1.86 当前未输出 `thinking` item；没有原生思考事件的 Agent/模型组合只能标为不支持，不伪造。
-- Codex account live smoke 已确认：`/v1/models` 由 Studio Gateway daemon 返回聚合模型，account catalog 不再暴露 `gpt-5.5-mini` / `gpt-5`；`gpt-5.5` 覆盖 Responses non-stream、Responses stream、Chat Completions adapter、Anthropic Messages adapter、Responses compact、Provider smoke 和 OpenCode Chat tools smoke，均通过统一 Gateway key；`gpt-image-2` Images generation 已强制命中 `codex-account` 并返回图片。Realtime/WebSocket、Codex account 音频真实上游能力和 image/audio 计费 usage 精细映射仍是后续项；`/v1/images/edits` 已对 OpenAI-compatible provider passthrough，对 Codex account 明确报不支持。
+- Codex account live smoke 已确认：`/v1/models` 由 Studio Gateway daemon 返回聚合模型，account catalog 不再暴露 `gpt-5.5-mini` / `gpt-5`；`gpt-5.5` 覆盖 Responses non-stream、Responses stream、Chat Completions adapter、Anthropic Messages adapter、Responses compact、Provider smoke、Claude Code CLI 和 OpenCode Chat tools smoke，均通过统一 Gateway key；`gpt-image-2` Images generation 已强制命中 `codex-account` 并返回图片。Realtime/WebSocket、Codex account 音频真实上游能力和 image/audio 计费 usage 精细映射仍是后续项；`/v1/images/edits` 已对 OpenAI-compatible provider passthrough，对 Codex account 明确报不支持。
 
 ## 下一步
 
