@@ -11,9 +11,9 @@
 - Provider Center 支持自定义 provider、启停、模型名称/别名/默认模型、能力勾选、批量模型导入、批量预算/能力应用、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
 - Provider Center 表单已按连接、端点路由、密钥识别、模型目录、高级覆盖、可用范围分区；PC/平板/手机均按同一配置流程降级展示。
 - Gateway Provider 支持 endpoint profiles；同一 provider/模型可按客户端协议优选原生 endpoint，并在 endpoint 级 health/circuit 下回退。
-- GPT/ChatGPT account 与 Codex account 进入 Gateway Phase D2：Provider Center 页面直接登录官方账户并自动创建 account-backed provider；账户池 sticky、per-account concurrency 和 runtime cursor/affinity 持久化已有闭环，后续补 quota/cooldown 和三协议 live 导出，不恢复旧 CPA / Codex Stack。
+- GPT/ChatGPT account 与 Codex account 进入 Gateway Phase D2：Provider Center 页面直接登录官方账户并自动创建 account-backed provider；账户池 sticky、per-account concurrency、runtime cursor/affinity 持久化和 Codex account `gpt-image-2` Images generation live smoke 已闭环，后续补 quota/cooldown 和更多账户型 provider，不恢复旧 CPA / Codex Stack。
 - Codex account-backed provider 已支持页面登录、请求前自动 refresh、手动 refresh、账户启用/停用和重新登录入口；客户端仍只使用统一 Gateway endpoint + Gateway key。
-- Codex account-backed provider 已扩展受控本地模型 catalog：`gpt-5.5`、`gpt-5.4`、`gpt-5.4-mini`、`gpt-5.3-codex`、`gpt-image-2`、transcribe/tts/audio/realtime 类模型进入 `/v1/models`，并携带 text/image/audio 能力标记；旧生成的 `gpt-5.5-mini` 和 ChatGPT Codex account 不支持的 `gpt-5` 不再作为账户模型暴露。
+- Codex account-backed provider 已扩展受控本地模型 catalog：`gpt-5.5`、`gpt-5.4`、`gpt-5.4-mini`、`gpt-5.3-codex`、`gpt-image-2`、transcribe/tts/audio/realtime 类模型进入 `/v1/models`，并携带 text/image/audio 能力标记；旧生成的 `gpt-5.5-mini` 和 ChatGPT Codex account 不支持的 `gpt-5` 不再作为账户模型暴露；Codex account REST audio 目前只做结构化 unsupported，不透传到 ChatGPT backend HTML 错误。
 - Provider Center 不再按模型名自动标记 vision；图片能力只来自用户配置、上游显式能力元数据或图片 smoke 通过后用户确认写回。
 - App Connections 覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收；Model Gateway 支持 `tab/app` deep-link 直达并高亮指定 CLI App Connection。
 - BigModel/GLM 本地模型目录已加入 `glm-5.2`，按 1M context / 128K output 预算；Gateway 内置推断同时识别 `glm-5.2` 与官方 1M 后缀别名 `glm-5.2[1m]`。
@@ -48,7 +48,7 @@
   - Codex account `/v1/responses` 请求体对齐 CLIProxyAPI：字符串 `input` 会转换成 Codex message list，强制上游 `stream:true`、`store:false`、`parallel_tool_calls:true`、`include:["reasoning.encrypted_content"]`，并删除 Codex upstream 不支持的 token/采样/context/user 等字段；客户端非流式响应由上游 SSE `response.completed` 聚合回 JSON。
   - systemd/launchd Gateway daemon service template 会继承当前 Studio 进程的代理环境；account-backed Codex upstream/auth 请求也会使用账户代理、provider 代理或环境代理，避免 daemon 下直连失败。
   - Gateway 新增 OpenAI Images `/v1/images/generations`、`/v1/images/edits` 和 OpenAI Audio `/v1/audio/transcriptions`、`/v1/audio/translations`、`/v1/audio/speech` 路由合同；Provider Center 可编辑生图、音频输入、音频输出能力。
-  - Codex account 的 Images generation 参考 Sub2API / CLIProxyAPI：对外接 OpenAI Images API，对上游桥接到 Codex `/responses` 的 `image_generation` tool，并把 Responses/SSE 输出重建为 Images API 响应。
+  - Codex account 的 Images generation 参考 Sub2API / CLIProxyAPI：对外接 OpenAI Images API，对上游桥接到 Codex `/responses` 的 `image_generation` tool，并把 Responses/SSE 输出重建为 Images API 响应；支持 `response.output` 与 `response.output_item.done` 两种图片结果位置，透传 upstream `response.failed/error`，缺失图片时返回带输出类型/文本预览的诊断。
   - OpenAI-compatible Images edits 保持 multipart/binary 原样 passthrough；Codex account image edits 不伪装支持，返回明确 `model_gateway_codex_account_image_edits_unsupported`。
   - OpenAI-compatible 音频端点保持 multipart/binary 原样 passthrough，不再把音频请求体当 UTF-8 字符串重写；Codex account 音频目录已暴露，但 REST `/v1/audio/*` 不再透传到 Codex backend 返回 HTML 403，统一返回结构化 `model_gateway_codex_account_audio_unsupported`。
   - 本轮验证通过：`npm run typecheck:api`、`npm run build:api`、`npm run typecheck:web`、`npm run build:web`。
@@ -59,7 +59,7 @@
   - Gateway Chat-compatible upstream 新增 `tools + reasoning_effort` 清理：OpenAI Chat Completions 请求只要带 function tools，就会删除 `reasoning_effort` / `reasoningEffort` 后再转发，避免 `gpt-5.5 + tools + /v1/chat/completions` 触发上游不兼容错误；无工具请求不受影响。
   - 新增 `scripts/smoke-model-gateway-account-media.mjs`：默认低成本验证 `/v1/models` 媒体 catalog、image edits route 结构化错误、Codex account audio unsupported；显式 `--run-image-generation` 才触发 `gpt-image-2` 生图。
   - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，68/68 通过，覆盖 Codex account login/provider smoke、account pool sticky/concurrency/runtime persistence、Active route 客户端工具合同、OpenCode App Connection `reasoning:false`、Chat tools reasoning 清理、Codex account audio unsupported、自动 refresh、手动 refresh、账户禁用路由跳过、refresh auth failure、secret redaction、active routing、Codex headers 转发、Codex Responses SSE 聚合、Codex Images bridge、OpenAI-compatible image edits/audio multipart passthrough 和既有三协议矩阵无回归。
-  - 真实低成本 media smoke 通过：`node scripts/smoke-model-gateway-account-media.mjs --json` 返回 `ok=true`；当前 `gpt-image-2` image edits 由 `mlamp` 返回结构化 `invalid_image_file`，Codex account audio transcription/speech 均为结构化 501。
+  - 真实 media smoke 通过：`node scripts/smoke-model-gateway-account-media.mjs --json` 返回 `ok=true`；临时将 `openclaw` active provider 切到 `codex-account` 后，`node scripts/smoke-model-gateway-account-media.mjs --json --require-image-generation` 返回 `codex-image-generation: passed`、provider=`codex-account`、imageCount=1、hasUsage=true；验证后已恢复 `openclaw=glm`。当前 `gpt-image-2` image edits 由 `mlamp` 返回结构化 `invalid_image_file`，Codex account image edits/audio transcription/speech 均为结构化 unsupported。
   - 真实 OpenCode `gpt-5.5` smoke 通过：用户级 OpenCode 配置已重新 apply，`opencode run --model studio-gateway/gpt-5.5` 成功调用 shell tool 输出 `OPENCODE_TOOL_OK` 并最终返回 `OPENCODE_DONE`，不再报 `Function tools with reasoning_effort are not supported...`。
 - Provider Center 前端收口：
   - 模型目录的可见身份字段只保留“模型名称”和“别名”，不再暴露“显示名”三段式配置。

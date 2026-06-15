@@ -356,8 +356,18 @@ test("model gateway starts Codex account login and creates an account-backed pro
         body: requestBody,
       });
       if (requestBody.tools?.[0]?.type === "image_generation") {
+        const imageItem = {
+          type: "image_generation_call",
+          result: "BASE64_IMAGE",
+          output_format: "png",
+          size: "1024x1024",
+          quality: "low",
+          revised_prompt: "red square",
+        };
         return new Response([
-          "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_image\",\"created_at\":1710000001,\"output\":[{\"type\":\"image_generation_call\",\"result\":\"BASE64_IMAGE\",\"output_format\":\"png\",\"size\":\"1024x1024\",\"quality\":\"low\",\"revised_prompt\":\"red square\"}],\"tool_usage\":{\"image_gen\":{\"input_tokens\":7,\"output_tokens\":11,\"total_tokens\":18}}}}",
+          `data: ${JSON.stringify({ type: "response.output_item.done", output_index: 0, item: imageItem })}`,
+          "",
+          "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_image\",\"status\":\"completed\",\"created_at\":1710000001,\"output\":[],\"tool_usage\":{\"image_gen\":{\"input_tokens\":7,\"output_tokens\":11,\"total_tokens\":18}}}}",
           "",
           "data: [DONE]",
           "",
@@ -536,7 +546,7 @@ test("model gateway starts Codex account login and creates an account-backed pro
           response_format: "b64_json",
         },
       });
-      assert.equal(image.status, 200);
+      assert.equal(image.status, 200, JSON.stringify(image.body));
       assert.equal(image.body.created, 1710000001);
       assert.equal(image.body.data[0].b64_json, "BASE64_IMAGE");
       assert.equal(image.body.data[0].revised_prompt, "red square");

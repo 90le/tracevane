@@ -3550,6 +3550,10 @@ function buildCodexAccountImageGenerationRequest(
     const value = normalizeString(parsed[field]);
     if (value) tool[field] = value;
   }
+  const style = normalizeString(parsed.style);
+  if (style) tool.style = style;
+  const n = positiveIntegerOrNull(parsed.n);
+  if (n !== null && n > 1) tool.n = n;
   for (const field of ["output_compression", "partial_images"] as const) {
     const value = positiveIntegerOrNull(parsed[field]);
     if (value !== null) tool[field] = value;
@@ -3676,6 +3680,92 @@ function mimeTypeFromImageOutputFormat(value: unknown): string {
   return "image/png";
 }
 
+function imagesApiEntryFromResponsesItem(
+  item: unknown,
+  responseFormat: string,
+): { entry: Record<string, unknown>; meta: Record<string, unknown> } | null {
+  if (!isRecord(item) || item.type !== "image_generation_call") return null;
+  const result = normalizeString(item.result);
+  if (!result) return null;
+  const outputFormat = normalizeString(item.output_format);
+  const entry: Record<string, unknown> = {};
+  if (responseFormat === "url") {
+    entry.url = `data:${mimeTypeFromImageOutputFormat(outputFormat)};base64,${result}`;
+  } else {
+    entry.b64_json = result;
+  }
+  const revisedPrompt = normalizeString(item.revised_prompt);
+  if (revisedPrompt) entry.revised_prompt = revisedPrompt;
+  return { entry, meta: item };
+}
+
+function collectImagesApiEntriesFromResponsesOutput(
+  output: unknown[],
+  responseFormat: string,
+): { data: Record<string, unknown>[]; firstMeta: Record<string, unknown> | null } {
+  const data: Record<string, unknown>[] = [];
+  let firstMeta: Record<string, unknown> | null = null;
+  for (const item of output) {
+    const extracted = imagesApiEntryFromResponsesItem(item, responseFormat);
+    if (!extracted) continue;
+    data.push(extracted.entry);
+    if (!firstMeta) firstMeta = extracted.meta;
+  }
+  return { data, firstMeta };
+}
+
+function responseOutputTypeSummary(output: unknown[]): string {
+  const types = output
+    .map((item) => isRecord(item) ? normalizeString(item.type, "unknown") : typeof item)
+    .filter(Boolean);
+  return types.length ? Array.from(new Set(types)).join(",") : "empty";
+}
+
+function responseOutputTextPreview(output: unknown[]): string | null {
+  const texts: string[] = [];
+  for (const item of output) {
+    if (!isRecord(item)) continue;
+    const content = Array.isArray(item.content) ? item.content : [];
+    for (const part of content) {
+      if (!isRecord(part)) continue;
+      const text = normalizeString(part.text) || normalizeString(part.output_text);
+      if (text) texts.push(text);
+    }
+  }
+  return texts.length ? previewText(texts.join(" ")) : null;
+}
+
+function imagesUpstreamErrorFromPayload(candidate: unknown): ModelGatewayServiceError | null {
+  if (!isRecord(candidate)) return null;
+  const type = normalizeString(candidate.type);
+  let errorObj: Record<string, unknown> | null = null;
+  if (type === "error" && isRecord(candidate.error)) {
+    errorObj = candidate.error;
+  } else if (type === "response.failed" && isRecord(candidate.response) && isRecord(candidate.response.error)) {
+    errorObj = candidate.response.error;
+  } else if (isRecord(candidate.response)
+    && normalizeString(candidate.response.status) === "failed"
+    && isRecord(candidate.response.error)) {
+    errorObj = candidate.response.error;
+  } else if (isRecord(candidate.error)) {
+    errorObj = candidate.error;
+  }
+  if (!errorObj) return null;
+  const upstreamCode = normalizeErrorScalar(errorObj.code) || "upstream_error";
+  const upstreamType = normalizeErrorScalar(errorObj.type) || "upstream_error";
+  const message = normalizeErrorScalar(errorObj.message)
+    || normalizeErrorScalar(candidate.message)
+    || "Codex account upstream image generation request failed.";
+  const statusCode = upstreamCode === "moderation_blocked" || upstreamType === "image_generation_user_error"
+    ? 400
+    : 502;
+  return new ModelGatewayServiceError(
+    upstreamCode === "upstream_error" ? "model_gateway_images_upstream_failed" : upstreamCode,
+    message,
+    statusCode,
+  );
+}
+
 function buildImagesApiResponseFromResponsesText(
   responseText: string,
   responseFormat: string,
@@ -3685,31 +3775,36 @@ function buildImagesApiResponseFromResponsesText(
   if (direct) candidates.push(direct);
   candidates.push(...extractJsonPayloadsFromSseText(responseText));
 
+  let createdAt = Math.floor(Date.now() / 1000);
+  let usage: unknown = null;
+  let firstCompletedResponse: Record<string, unknown> | null = null;
+  const outputItemDoneItems: unknown[] = [];
+  const outputSummaries: string[] = [];
+  const textPreviews: string[] = [];
+
   for (const candidate of candidates) {
     if (!isRecord(candidate)) continue;
-    const response = isRecord(candidate.response) ? candidate.response : candidate;
-    const output = Array.isArray(response.output) ? response.output : [];
-    const data: Record<string, unknown>[] = [];
-    let firstMeta: Record<string, unknown> | null = null;
-    for (const item of output) {
-      if (!isRecord(item) || item.type !== "image_generation_call") continue;
-      const result = normalizeString(item.result);
-      if (!result) continue;
-      const entry: Record<string, unknown> = {};
-      const outputFormat = normalizeString(item.output_format);
-      if (responseFormat === "url") {
-        entry.url = `data:${mimeTypeFromImageOutputFormat(outputFormat)};base64,${result}`;
-      } else {
-        entry.b64_json = result;
-      }
-      const revisedPrompt = normalizeString(item.revised_prompt);
-      if (revisedPrompt) entry.revised_prompt = revisedPrompt;
-      data.push(entry);
-      if (!firstMeta) firstMeta = item;
+    const upstreamError = imagesUpstreamErrorFromPayload(candidate);
+    if (upstreamError) throw upstreamError;
+    if (candidate.type === "response.output_item.done" && isRecord(candidate.item)) {
+      outputItemDoneItems.push(candidate.item);
+      continue;
     }
+    const response = isRecord(candidate.response) ? candidate.response : candidate;
+    const responseCreatedAt = positiveIntegerOrNull(response.created_at);
+    if (responseCreatedAt !== null) createdAt = responseCreatedAt;
+    if (isRecord(response.tool_usage) && isRecord(response.tool_usage.image_gen)) usage = response.tool_usage.image_gen;
+    const output = Array.isArray(response.output) ? response.output : [];
+    if (candidate.type === "response.completed" || response.status === "completed") {
+      firstCompletedResponse ||= response;
+    }
+    outputSummaries.push(responseOutputTypeSummary(output));
+    const textPreview = responseOutputTextPreview(output);
+    if (textPreview) textPreviews.push(textPreview);
+    const { data, firstMeta } = collectImagesApiEntriesFromResponsesOutput(output, responseFormat);
     if (!data.length) continue;
     const result: Record<string, unknown> = {
-      created: positiveIntegerOrNull(response.created_at) ?? Math.floor(Date.now() / 1000),
+      created: createdAt,
       data,
     };
     if (firstMeta) {
@@ -3718,15 +3813,40 @@ function buildImagesApiResponseFromResponsesText(
         if (value) result[field] = value;
       }
     }
-    if (isRecord(response.tool_usage) && isRecord(response.tool_usage.image_gen)) {
-      result.usage = response.tool_usage.image_gen;
-    }
+    if (usage) result.usage = usage;
     return result;
   }
 
+  if (outputItemDoneItems.length) {
+    const { data, firstMeta } = collectImagesApiEntriesFromResponsesOutput(outputItemDoneItems, responseFormat);
+    if (data.length) {
+      const result: Record<string, unknown> = { created: createdAt, data };
+      if (firstMeta) {
+        for (const field of ["background", "output_format", "quality", "size"] as const) {
+          const value = normalizeString(firstMeta[field]);
+          if (value) result[field] = value;
+        }
+      }
+      if (usage) result.usage = usage;
+      return result;
+    }
+  }
+
+  const completedOutput = Array.isArray(firstCompletedResponse?.output) ? firstCompletedResponse.output : [];
+  const status = normalizeString(firstCompletedResponse?.status);
+  const outputTypes = outputSummaries.length
+    ? Array.from(new Set(outputSummaries)).join(";")
+    : responseOutputTypeSummary(completedOutput);
+  const preview = textPreviews[0] || responseOutputTextPreview(completedOutput);
+  const suffix = [
+    status ? `status=${status}` : "",
+    `output_types=${outputTypes}`,
+    preview ? `text=${preview}` : "",
+  ].filter(Boolean).join("; ");
+
   throw new ModelGatewayServiceError(
     "model_gateway_images_output_missing",
-    "Upstream completed without an image_generation_call result.",
+    `Upstream completed without an image_generation_call result.${suffix ? ` ${suffix}` : ""}`,
     502,
   );
 }

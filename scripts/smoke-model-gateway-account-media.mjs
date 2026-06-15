@@ -274,12 +274,16 @@ async function probeImageGeneration(options, key) {
   if (result.status >= 200 && result.status < 300 && imageCount > 0) {
     return status("codex-image-generation", "passed", {
       statusCode: result.status,
+      provider: result.headers.get("x-openclaw-model-gateway-provider"),
+      account: result.headers.get("x-openclaw-model-gateway-account"),
       imageCount,
       hasUsage: Boolean(result.body?.usage),
     });
   }
   return status("codex-image-generation", options.requireImageGeneration ? "failed" : "unsupported", {
     statusCode: result.status,
+    provider: result.headers.get("x-openclaw-model-gateway-provider"),
+    account: result.headers.get("x-openclaw-model-gateway-account"),
     imageCount,
     error: errorPreview(result),
   });

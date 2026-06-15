@@ -1,13 +1,13 @@
 # Studio Gateway Account Provider Plan
 
-> 状态：Phase D2 核心实现中
+> 状态：Phase D2 核心能力已进入 live 验证
 > 更新：2026-06-15
 > 目的：把 GPT / ChatGPT / Codex 账户接入 Studio Gateway，形成用户本机账户池到三协议 API 的正式能力。
 
 ## 参考来源
 
-- CLIProxyAPI：`/tmp/studio-gateway-research-cliproxyapi`，参考 OAuth 登录、账户池、round-robin、session-affinity、Codex headers、token refresh、usage plugin、Images/Audio model registry 和 media endpoint 处理。
-- Sub2API：`/tmp/studio-gateway-research-sub2api`，参考账号调度、sticky session、并发槽、账号冷却、usage queue、管理面分层、模型价格/上下文 catalog 和 Codex Images bridge。
+- CLIProxyAPI：`/tmp/studio-gateway-research-cliproxyapi`（当前 `f33bc56`），参考 OAuth 登录、账户池、round-robin、session-affinity、Codex headers、token refresh、usage plugin、Images/Audio model registry 和 media endpoint 处理。
+- Sub2API：`/tmp/studio-gateway-research-sub2api`（当前 `e34ad2b`），参考账号调度、sticky session、并发槽、账号冷却、usage queue、管理面分层、模型价格/上下文 catalog 和 Codex Images bridge。
 - Codex 官方认证文档：ChatGPT/Codex device auth、browser auth、`~/.codex/auth.json` / keyring 存储。
 - codexProapi GitHub 页面：参考 Codex 账户池、token auto-refresh、round-robin/failover、账户状态面板。
 - 既有 Gateway 协议成熟度参考仍是 `/tmp/cc-switch-src`。
@@ -62,8 +62,8 @@ Account-backed provider 对外仍暴露：
 - 模型目录：账户 provider 使用受控 catalog，支持 alias/fork/excluded models，和现有 `/v1/models` 聚合合并；Codex account 首批对齐 CLIProxyAPI Codex client catalog，不暴露历史误生成或 live 证明不支持的模型 slug。
 - Codex Responses 转换：Codex account `/v1/responses` 不能按普通 OpenAI Responses 原样透传；必须按 Codex upstream 合同把字符串 `input` 转 message list，强制上游 streaming，并清理 upstream 不接受的 token/采样/context/user 参数，非流式客户端响应再由 SSE 聚合回 JSON。
 - 媒体模型：账户 provider catalog 必须区分 text、vision、image generation、audio input、audio output；`gpt-image-2`、transcribe、tts、audio、realtime 类模型不能被当成普通文本模型。
-- 图片桥接：Codex account 对外兼容 OpenAI Images generation；上游优先走 Codex `/responses` + `image_generation` tool，并把 Responses/SSE 输出转成 Images API 响应。OpenAI-compatible image edits 必须 multipart/binary passthrough；Codex account image edits 在没有真实上游合同前明确报不支持。
-- 音频路由：OpenAI-compatible provider 的音频 REST 端点必须 multipart/binary passthrough；Codex account 音频能力需真实上游验证后再进入完成态。
+- 图片桥接：Codex account 对外兼容 OpenAI Images generation；上游走 Codex `/responses` + `image_generation` tool，并把 Responses/SSE 输出转成 Images API 响应。实现必须支持 `response.output`、`response.output_item.done`、partial-image 未来扩展点和 upstream `response.failed/error` 诊断。OpenAI-compatible image edits 必须 multipart/binary passthrough；Codex account image edits 在没有真实上游合同前明确报不支持。
+- 音频路由：OpenAI-compatible provider 的音频 REST 端点必须 multipart/binary passthrough；Codex account 音频模型可出现在 catalog，但 REST `/v1/audio/*` 当前明确返回结构化 unsupported，直到有真实 Codex backend 音频合同再转完成。
 - Codex headers：保留 Codex 需要的 `Session_id`、`X-Codex-*`、`Chatgpt-Account-Id`、user-agent defaults；反代部署时提醒保留 underscore headers。
 - usage：按 gateway key、provider、account hash、model、alias、route、status、latency、TTFT、usage tokens 记录；Channel 侧不重复做 token 产品化。
 - UI：Provider Center 增加 Account providers 工作区，支持页面登录、账户状态表、刷新、禁用、健康；后续补 quota、代理、模型 alias、sticky/cooldown 策略。
@@ -73,7 +73,7 @@ Account-backed provider 对外仍暴露：
 - 无真实 token 的单元测试覆盖 account schema、redaction、auth storage、route decision、sticky/failover/cooldown、model list merge。
 - 页面登录 smoke 验证 Codex 账户自动创建 provider、Provider smoke 和普通请求；隔离 `CODEX_HOME` 只用于辅助迁移验证，不污染当前 Codex CLI。
 - 真实 live smoke 至少覆盖 Codex account：Responses non-stream、Responses stream、Responses compact、Chat-compatible adapter、Anthropic Messages adapter。
-- Media smoke：`scripts/smoke-model-gateway-account-media.mjs` 低成本验证 catalog、image edits route 和 Codex account audio unsupported；Codex account Images generation 需要显式 `--run-image-generation`，且必须确认路由实际命中 `codex-account` 后才能记为 account proof。OpenAI-compatible image edits 和音频 transcription 用 multipart 文件验证请求体不被 Gateway 改写。
+- Media smoke：`scripts/smoke-model-gateway-account-media.mjs` 低成本验证 catalog、image edits route 和 Codex account audio unsupported；Codex account Images generation 需要显式 `--run-image-generation`，且必须确认路由实际命中 `codex-account` 后才能记为 account proof。2026-06-15 已强制 `openclaw=codex-account` 跑通 `--require-image-generation`，`gpt-image-2` 返回 1 张图和 usage；OpenAI-compatible image edits 和音频 transcription 用 multipart 文件验证请求体不被 Gateway 改写。
 - UI smoke 覆盖账户登录向导、账户表、禁用/刷新、模型别名和 redaction。
 - `runtime.json` 不出现 access token、refresh token、auth.json 原文。
 
