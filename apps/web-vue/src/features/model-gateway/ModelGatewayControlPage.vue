@@ -814,10 +814,20 @@
                 <div class="form-field form-field-full">
                   <div class="mgw-model-list-head">
                     <span class="form-label">{{ text('模型列表', 'Model list') }}</span>
-                    <button type="button" class="secondary-button compact-button" @click="addDraftModelRow">
-                      <Plus class="mgw-button-icon" />
-                      <span>{{ text('添加模型', 'Add model') }}</span>
-                    </button>
+                    <div class="mgw-model-list-actions">
+                      <button
+                        type="button"
+                        class="secondary-button compact-button"
+                        :disabled="modelCatalogRefreshBusy || detectBusy || !draft.baseUrl.trim()"
+                        @click="refreshModelCatalogFromProvider"
+                      >
+                        {{ modelCatalogRefreshBusy ? text('刷新中...', 'Refreshing...') : text('刷新目录', 'Refresh catalog') }}
+                      </button>
+                      <button type="button" class="secondary-button compact-button" @click="addDraftModelRow">
+                        <Plus class="mgw-button-icon" />
+                        <span>{{ text('添加模型', 'Add model') }}</span>
+                      </button>
+                    </div>
                   </div>
                   <details class="mgw-model-batch">
                     <summary>{{ text('批量导入 / 能力预算', 'Bulk import / capabilities') }}</summary>
@@ -1523,6 +1533,7 @@ const detectResult = ref<ModelGatewayProviderDetectResponse | null>(null);
 const detectOverlayOpen = ref(false);
 const detectError = ref<string | null>(null);
 const appliedProtocolKey = ref('');
+const modelCatalogRefreshBusy = ref(false);
 const codexLoginBusy = ref(false);
 const codexLoginStart = ref<ModelGatewayCodexAccountLoginStartResponse | null>(null);
 const codexLoginPoll = ref<ModelGatewayCodexAccountLoginPollResponse | null>(null);
@@ -2594,6 +2605,83 @@ function modelRowsToModels(rows: ProviderModelRow[]): ModelGatewayProviderModel[
     .filter((model): model is ModelGatewayProviderModel => model !== null);
 }
 
+function modelRowAliases(row: ProviderModelRow): string[] {
+  return parseNoProxy(row.aliases);
+}
+
+function modelRowIdentityKeys(row: ProviderModelRow): string[] {
+  return uniqueStrings([
+    row.id,
+    ...modelRowAliases(row),
+  ].map(normalizeModelKey));
+}
+
+function mergeDetectedModelIntoRow(row: ProviderModelRow, model: ModelGatewayProviderModel): boolean {
+  let changed = false;
+  if (!row.label && model.label) {
+    row.label = model.label;
+    changed = true;
+  }
+  if (!row.contextWindow) {
+    const budget = model.contextWindow || inferAppConnectionBudget(model.id).contextWindow;
+    if (budget) {
+      row.contextWindow = String(budget);
+      changed = true;
+    }
+  }
+  if (!row.maxOutputTokens) {
+    const budget = model.maxOutputTokens || inferAppConnectionBudget(model.id).maxOutputTokens;
+    if (budget) {
+      row.maxOutputTokens = String(budget);
+      changed = true;
+    }
+  }
+  if (providerModelRowHasDefaultCapabilities(row)) {
+    Object.assign(row, model.features ? defaultProviderModelCapabilities(model) : inferProviderModelCapabilities(model.id));
+    changed = true;
+  }
+  const aliases = modelRowAliases(row);
+  const normalizedAliases = new Set(aliases.map(normalizeModelKey));
+  for (const alias of model.aliases || []) {
+    const normalized = normalizeModelKey(alias);
+    if (!normalized || normalized === normalizeModelKey(row.id) || normalizedAliases.has(normalized)) continue;
+    aliases.push(alias);
+    normalizedAliases.add(normalized);
+    changed = true;
+  }
+  if (changed) {
+    row.aliases = aliases.join(', ');
+  }
+  return changed;
+}
+
+function mergeDetectedModels(models: ModelGatewayProviderModel[]): { added: number; updated: number; kept: number } {
+  let added = 0;
+  let updated = 0;
+  let kept = 0;
+  for (const model of models) {
+    const modelKey = normalizeModelKey(model.id);
+    if (!modelKey) continue;
+    const existing = draft.modelRows.find((row) => modelRowIdentityKeys(row).includes(modelKey));
+    if (!existing) {
+      draft.modelRows.push(createProviderModelRow(model, { inferMissing: true }));
+      added += 1;
+      continue;
+    }
+    if (mergeDetectedModelIntoRow(existing, model)) {
+      updated += 1;
+    } else {
+      kept += 1;
+    }
+  }
+  syncDefaultModelWithList();
+  syncModelTextFromRows();
+  if (!smokeModel.value) {
+    smokeModel.value = draft.defaultModel;
+  }
+  return { added, updated, kept };
+}
+
 function syncModelTextFromRows(): void {
   draft.modelListText = modelRowsToModels(draft.modelRows).map(formatModelLine).join('\n');
 }
@@ -2879,14 +2967,7 @@ function syncDefaultModelWithList(): void {
 
 function applyDetectedModels(models: ModelGatewayProviderModel[]): void {
   if (!models.length) return;
-  draft.modelRows = models.map(createProviderModelRow);
-  draft.modelListText = models.map(formatModelLine).join('\n');
-  if (!draft.defaultModel.trim()) {
-    draft.defaultModel = models[0]?.id || '';
-  }
-  if (!smokeModel.value) {
-    smokeModel.value = draft.defaultModel;
-  }
+  mergeDetectedModels(models);
 }
 
 function protocolKey(protocol: ModelGatewayProviderDetectProtocolResult): string {
@@ -2975,6 +3056,48 @@ async function detectProviderConfig(): Promise<void> {
     };
   } finally {
     detectBusy.value = false;
+  }
+}
+
+async function refreshModelCatalogFromProvider(): Promise<void> {
+  if (!draft.baseUrl.trim()) {
+    notice.value = { kind: 'error', message: text('先填写 Base URL。', 'Enter Base URL first.') };
+    return;
+  }
+  modelCatalogRefreshBusy.value = true;
+  notice.value = null;
+  try {
+    const response = await detectModelGatewayProvider({
+      baseUrl: draft.baseUrl.trim(),
+      apiKey: draft.apiKey.trim() || null,
+      model: draft.defaultModel.trim() || draftModelIds.value[0] || undefined,
+      timeoutMs: 20000,
+    });
+    detectResult.value = response;
+    detectError.value = null;
+    if (!response.models.length) {
+      notice.value = {
+        kind: 'error',
+        message: text('未从上游读取到模型目录，保留当前配置。', 'No upstream model catalog was found; current config was kept.'),
+      };
+      return;
+    }
+    const result = mergeDetectedModels(response.models);
+    notice.value = {
+      kind: 'success',
+      message: text(
+        `模型目录已刷新：新增 ${result.added}，补齐 ${result.updated}，保留 ${result.kept}。`,
+        `Model catalog refreshed: ${result.added} added, ${result.updated} filled, ${result.kept} kept.`,
+      ),
+    };
+  } catch (error) {
+    detectError.value = error instanceof Error ? error.message : text('模型目录刷新失败', 'Model catalog refresh failed');
+    notice.value = {
+      kind: 'error',
+      message: detectError.value,
+    };
+  } finally {
+    modelCatalogRefreshBusy.value = false;
   }
 }
 

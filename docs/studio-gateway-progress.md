@@ -8,7 +8,7 @@
 - Studio Gateway 是唯一正式模型中转目标；旧 Codex Stack / CPA / Compact 生产前后端已删除。
 - Gateway daemon 与 Channel daemon 都必须由 OS/user supervisor 守护；Studio / OpenClaw 崩溃时，CLI 与 IM bot 应继续直连本地 daemon。
 - Gateway 对外提供 Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions；`GET /v1/models` 聚合启用 provider，并保留模型别名、模型池、能力标记、上下文窗口和输出预算。
-- Provider Center 支持自定义 provider、启停、模型名称/别名/默认模型、能力勾选、批量模型导入、批量预算/能力应用、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
+- Provider Center 支持自定义 provider、启停、模型名称/别名/默认模型、能力勾选、批量模型导入、模型目录刷新合并、批量预算/能力应用、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
 - Provider Center 表单已按连接、端点路由、密钥识别、模型目录、高级覆盖、可用范围分区；PC/平板/手机均按同一配置流程降级展示。
 - Gateway Provider 支持 endpoint profiles；同一 provider/模型可按客户端协议优选原生 endpoint，并在 endpoint 级 health/circuit 下回退。
 - GPT/ChatGPT account 与 Codex account 进入 Gateway Phase D2：Provider Center 页面直接登录官方账户并自动创建 account-backed provider；账户池 sticky、per-account concurrency、runtime cursor/affinity 持久化、upstream quota/cooldown、per-account proxy/direct 和 Codex account `gpt-image-2` Images generation live smoke 已闭环，后续补更多账户型 provider，不恢复旧 CPA / Codex Stack。
@@ -68,6 +68,7 @@
   - 真实 media smoke 通过：`node scripts/smoke-model-gateway-account-media.mjs --json` 返回 `ok=true`；临时将 `openclaw` active provider 切到 `codex-account` 后，`node scripts/smoke-model-gateway-account-media.mjs --json --require-image-generation` 返回 `codex-image-generation: passed`、provider=`codex-account`、imageCount=1、hasUsage=true；验证后已恢复 `openclaw=glm`。当前 `gpt-image-2` image edits 由 `mlamp` 返回结构化 `invalid_image_file`，Codex account image edits/audio transcription/speech 均为结构化 unsupported。
   - 真实 Claude Code `gpt-5.5` smoke 通过：`ANTHROPIC_BASE_URL=http://127.0.0.1:18796` + 本地 Gateway key 下，`claude --bare --print --model gpt-5.5 --tools ""` 返回 `CLAUDE_CLI_GATEWAY_OK`；同轮直接 `/v1/messages` smoke 返回 `CLAUDE_GATEWAY_OK`，确认 `function_call.id` 的 `fc_*` 规范不再触发上游 400。
   - 真实 OpenCode `gpt-5.5` smoke 通过：用户级 OpenCode 配置已重新 apply，`opencode --pure run --model studio-gateway/gpt-5.5` 成功调用 shell tool 输出 `OPENCODE_TOOL_OK` 并最终返回 `OPENCODE_DONE`，不再报 `Function tools with reasoning_effort are not supported...`。
+  - Provider Center 模型目录新增“刷新目录”：复用现有 detect-provider 读取上游 `/models`，只合并新增模型并补齐空白预算/能力，不覆盖用户已有别名、能力、预算或默认模型；“识别配置”内的模型应用也改为同一合并语义。
 - Provider Center 前端收口：
   - 模型目录的可见身份字段只保留“模型名称”和“别名”，不再暴露“显示名”三段式配置。
   - 批量导入格式改为 `model-id | alias1,alias2`；保存时不再从表格写入 `model.label`。
@@ -314,5 +315,5 @@
 ## 下一步
 
 1. 继续补账户池高级策略：账号池策略调参和 Provider Center accountRouting 更深层排障字段。
-2. 继续参考 Sub2API / CLIProxyAPI 补模型目录刷新、媒体模型状态和 Codex account image edits 可行性验证。
+2. 继续参考 Sub2API / CLIProxyAPI 补媒体模型状态和 Codex account image edits 可行性验证。
 3. 继续把 runtime usage summary 扩展成长期 usage 账本和模型消耗页。

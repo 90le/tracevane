@@ -984,6 +984,14 @@
   margin-bottom: 8px;
 }
 
+.mgw-model-list-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 0;
+}
+
 .mgw-model-batch {
   margin-bottom: 10px;
   border: 1px solid var(--mono-line);

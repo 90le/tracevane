@@ -59,7 +59,7 @@ Account-backed provider 对外仍暴露：
 - 账户存储：OS keyring 优先，文件模式必须 `0600`，runtime 只保存 token ref、account hash、email mask、plan type、expiresAt。
 - 账户刷新：请求前自动 refresh；Provider Center 支持手动 refresh、启用、停用和重新登录。后续补后台 refresh worker；刷新失败进入 needs-login 或 cooldown，不阻塞其它账户。
 - 账户池：round-robin/fill-first、session-affinity、per-account concurrency、HTTP 401/403 needs-login、HTTP 429 或 quota/rate/capacity upstream cooldown、started stream failure 旁路解析、cooldown 手动清除、per-account proxy/direct、过期 cooldown 首次重试标记、跨 daemon cursor/affinity 持久化和 runtime/UI accountRouting 诊断已有基础实现；后续补 sticky/cooldown 策略调参。
-- 模型目录：账户 provider 使用受控 catalog，支持 alias/fork/excluded models，和现有 `/v1/models` 聚合合并；Codex account 首批对齐 CLIProxyAPI Codex client catalog，不暴露历史误生成或 live 证明不支持的模型 slug。
+- 模型目录：账户 provider 使用受控 catalog，API-key provider 可在 Provider Center 从上游 `/models` 刷新并合并目录；刷新只新增模型和补齐空白预算/能力，不覆盖用户已有 alias、能力、预算或默认模型。Codex account 首批对齐 CLIProxyAPI Codex client catalog，不暴露历史误生成或 live 证明不支持的模型 slug。
 - Codex Responses 转换：Codex account `/v1/responses` 不能按普通 OpenAI Responses 原样透传；必须按 Codex upstream 合同把字符串 `input` 转 message list，强制上游 streaming，并清理 upstream 不接受的 token/采样/context/user 参数，非流式客户端响应再由 SSE 聚合回 JSON；工具历史的 Responses `function_call.id` 必须是 `fc_*`，`call_id` 才保留 Claude/Chat 的 `call_*`。
 - 媒体模型：账户 provider catalog 必须区分 text、vision、image generation、audio input、audio output；`gpt-image-2`、transcribe、tts、audio、realtime 类模型不能被当成普通文本模型。
 - 图片桥接：Codex account 对外兼容 OpenAI Images generation；上游走 Codex `/responses` + `image_generation` tool，并把 Responses/SSE 输出转成 Images API 响应。实现必须支持 `response.output`、`response.output_item.done`、partial-image 未来扩展点和 upstream `response.failed/error` 诊断。OpenAI-compatible image edits 必须 multipart/binary passthrough；Codex account image edits 在没有真实上游合同前明确报不支持。
