@@ -1520,6 +1520,9 @@ function accountRoutingSummary(routing: ModelGatewayAccountRoutingDiagnostics): 
   const reason = routing.failureReason
     ? text(`失败 ${routing.failureReason}`, `failure ${routing.failureReason}`)
     : routing.selectedReason || text('已选择', 'selected');
+  const retry = routing.selectedWasCooldownRetry
+    ? text('冷却后重试', 'cooldown retry')
+    : null;
   const sticky = !routing.sessionAffinity
     ? text('sticky 关闭', 'sticky off')
     : routing.affinityHit
@@ -1536,7 +1539,7 @@ function accountRoutingSummary(routing: ModelGatewayAccountRoutingDiagnostics): 
   const skippedSummary = skipped
     ? Object.entries(skipped).map(([key, count]) => `${key} ${count}`).join(', ')
     : text('无跳过', 'no skips');
-  return `${selected} · ${reason} · ${sticky} · ${skippedSummary}`;
+  return [selected, reason, retry, sticky, skippedSummary].filter(Boolean).join(' · ');
 }
 
 const appConnectionModelOptions = computed<AppConnectionModelOption[]>(() =>

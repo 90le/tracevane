@@ -1821,6 +1821,8 @@ function normalizeRuntimeAccountRoutingDiagnostics(value: unknown): ModelGateway
     affinityHit: value.affinityHit === true,
     selectedAccountId: normalizeString(value.selectedAccountId) || null,
     selectedReason: normalizeString(value.selectedReason) || null,
+    selectedWasCooldownRetry: value.selectedWasCooldownRetry === true,
+    selectedCooldownUntil: normalizeString(value.selectedCooldownUntil) || null,
     failureReason: normalizeString(value.failureReason) || null,
     cursorBefore: numberOrNull(value.cursorBefore),
     cursorAfter: numberOrNull(value.cursorAfter),
@@ -5118,6 +5120,13 @@ export function createModelGatewayService(
     if (provider.sourceType !== "account-backed" || !provider.accountProvider) return null;
     const selectedAccountId = details.selectedAccount?.id || null;
     const nowMs = Date.now();
+    const selectedCooldownUntilMs = parseIsoTimestampMs(details.selectedAccount?.cooldownUntil);
+    const selectedWasCooldownRetry = Boolean(
+      details.selectedAccount
+      && details.selectedAccount.state === "cooldown"
+      && selectedCooldownUntilMs
+      && selectedCooldownUntilMs <= nowMs,
+    );
     return {
       providerId: provider.id,
       kind: provider.accountProvider.kind,
@@ -5127,6 +5136,10 @@ export function createModelGatewayService(
       affinityHit: details.affinityHit,
       selectedAccountId,
       selectedReason: details.selectedReason,
+      selectedWasCooldownRetry,
+      selectedCooldownUntil: selectedWasCooldownRetry
+        ? details.selectedAccount?.cooldownUntil || null
+        : null,
       failureReason: details.failureReason,
       cursorBefore: details.cursorBefore,
       cursorAfter: details.cursorAfter,

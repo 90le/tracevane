@@ -997,6 +997,8 @@ export interface ModelGatewayAccountRoutingDiagnostics {
   affinityHit: boolean;
   selectedAccountId: string | null;
   selectedReason: string | null;
+  selectedWasCooldownRetry: boolean;
+  selectedCooldownUntil: string | null;
   failureReason: string | null;
   cursorBefore: number | null;
   cursorAfter: number | null;

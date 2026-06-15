@@ -1247,6 +1247,158 @@ test("model gateway puts Codex accounts into cooldown on upstream quota failures
   }
 });
 
+test("model gateway marks expired Codex account cooldown retries in runtime diagnostics", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const authRef = "provider:codex-cooldown-retry:account:a:codex-token";
+  const idToken = fakeJwt({
+    email: "retry@example.com",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct_retry",
+      chatgpt_plan_type: "plus",
+    },
+  });
+  const tokenBundle = JSON.stringify({
+    type: "codex",
+    tokens: {
+      id_token: idToken,
+      access_token: "codex-retry-access",
+      refresh_token: "codex-retry-refresh",
+      account_id: "acct_retry",
+    },
+    expires_at: new Date(Date.now() + 3600_000).toISOString(),
+  });
+  const expiredCooldown = new Date(Date.now() - 5_000).toISOString();
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-cooldown-retry",
+      name: "Codex Cooldown Retry",
+      enabled: true,
+      category: "official",
+      sourceType: "account-backed",
+      appScopes: ["codex"],
+      baseUrl: "https://chatgpt.com/backend-api/codex",
+      apiKeyRef: null,
+      apiFormat: "openai_responses",
+      authStrategy: "oauth_proxy",
+      models: {
+        defaultModel: "gpt-5.5",
+        models: [{ id: "gpt-5.5" }],
+        aliases: {},
+      },
+      endpoints: {
+        openai_responses: "/responses",
+      },
+      accountProvider: {
+        kind: "codex",
+        routing: {
+          strategy: "round-robin",
+          sessionAffinity: true,
+          maxConcurrentPerAccount: 1,
+        },
+        accounts: [{
+          id: "codex-retry-a",
+          kind: "codex",
+          enabled: true,
+          state: "cooldown",
+          authRef,
+          credentialSource: "codex-device-auth",
+          accountHash: "retry-a",
+          emailMasked: "re***@example.com",
+          plan: "plus",
+          lastError: "quota exceeded",
+          cooldownUntil: expiredCooldown,
+          expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        }],
+      },
+    },
+    setActiveScopes: ["codex"],
+  });
+  const stamp = new Date().toISOString();
+  fs.mkdirSync(path.dirname(paths.secrets), { recursive: true });
+  fs.writeFileSync(paths.secrets, `${JSON.stringify({
+    version: 1,
+    updatedAt: stamp,
+    secrets: {
+      [authRef]: {
+        value: tokenBundle,
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+    },
+  }, null, 2)}\n`, { mode: 0o600 });
+
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const target = new URL(String(url));
+    const headers = init.headers instanceof Headers ? init.headers : new Headers(init.headers || {});
+    if (target.hostname === "chatgpt.com" && target.pathname === "/backend-api/codex/responses") {
+      upstreamCalls.push({
+        accountId: headers.get("chatgpt-account-id"),
+        body: JSON.parse(String(init.body || "{}")),
+      });
+      return new Response([
+        `data: ${JSON.stringify({
+          type: "response.completed",
+          response: {
+            id: "resp_cooldown_retry",
+            object: "response",
+            status: "completed",
+            output: [{
+              type: "message",
+              role: "assistant",
+              content: [{ type: "output_text", text: "retry ok" }],
+            }],
+          },
+        })}`,
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n"), {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
+    return new Response("unexpected", { status: 500 });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const result = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: { model: "gpt-5.5", input: "retry after cooldown" },
+      });
+      assert.equal(result.status, 200);
+      assert.equal(upstreamCalls.length, 1);
+      assert.equal(upstreamCalls[0].accountId, "acct_retry");
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      const entry = runtime.body.runtime.requestLog.find((item) => item.routeId === "openai_responses");
+      assert.ok(entry);
+      assert.equal(entry.outcome, "success");
+      assert.equal(entry.accountId, "codex-retry-a");
+      assert.equal(entry.accountRouting.selectedAccountId, "codex-retry-a");
+      assert.equal(entry.accountRouting.selectedWasCooldownRetry, true);
+      assert.equal(entry.accountRouting.selectedCooldownUntil, expiredCooldown);
+      assert.equal(entry.accountRouting.selectedReason, "round-robin");
+
+      const providers = await requestJson(`${baseUrl}/api/model-gateway/providers`);
+      const provider = providers.body.providers.find((item) => item.id === "codex-cooldown-retry");
+      const account = provider.accountProvider.accounts[0];
+      assert.equal(account.state, "ready");
+      assert.equal(account.cooldownUntil, null);
+      assert.equal(account.lastError, null);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model gateway cools Codex accounts when streaming passthrough emits response.failed", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

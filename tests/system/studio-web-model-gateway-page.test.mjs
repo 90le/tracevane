@@ -184,6 +184,8 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "Save proxy",
     "Direct",
     "accountRoutingSummary",
+    "selectedWasCooldownRetry",
+    "冷却后重试",
     "sticky 命中",
     "mgw-log-row__account",
     "modelListText",
