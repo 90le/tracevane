@@ -166,6 +166,8 @@ const CODEX_ACCOUNT_DEFAULT_POLL_INTERVAL_SECONDS = 5;
 const CODEX_ACCOUNT_LOGIN_TIMEOUT_MS = 15 * 60_000;
 const CODEX_ACCOUNT_REFRESH_WINDOW_MS = 5 * 60_000;
 const CODEX_ACCOUNT_AUTH_COOLDOWN_MS = 5 * 60_000;
+const CODEX_ACCOUNT_UPSTREAM_COOLDOWN_MS = 5 * 60_000;
+const CODEX_ACCOUNT_UPSTREAM_RETRY_AFTER_MAX_MS = 30 * 60_000;
 const CODEX_ACCOUNT_USER_AGENT = "codex_cli_rs/0.133.0 (OpenClaw Studio Gateway; local)";
 const CODEX_ACCOUNT_ORIGINATOR = "codex_cli_rs";
 const CODEX_ACCOUNT_IMAGE_GENERATION_MAIN_MODEL = "gpt-5.4-mini";
@@ -5099,13 +5101,93 @@ export function createModelGatewayService(
     });
   }
 
-  function markCodexAccountCooldown(providerId: string, accountId: string, message: string): void {
+  function markCodexAccountCooldown(
+    providerId: string,
+    accountId: string,
+    message: string,
+    cooldownMs = CODEX_ACCOUNT_AUTH_COOLDOWN_MS,
+  ): void {
     patchProviderAccountEntry(providerId, accountId, {
       state: "cooldown",
       lastCheckedAt: nowIso(),
       lastError: message,
-      cooldownUntil: new Date(Date.now() + CODEX_ACCOUNT_AUTH_COOLDOWN_MS).toISOString(),
+      cooldownUntil: new Date(Date.now() + cooldownMs).toISOString(),
     });
+  }
+
+  function retryAfterMs(headers: Headers | null | undefined): number | null {
+    const raw = normalizeString(headers?.get("retry-after"));
+    if (!raw) return null;
+    const seconds = Number(raw);
+    if (Number.isFinite(seconds) && seconds > 0) {
+      return Math.min(Math.floor(seconds * 1000), CODEX_ACCOUNT_UPSTREAM_RETRY_AFTER_MAX_MS);
+    }
+    const timestamp = Date.parse(raw);
+    if (!Number.isFinite(timestamp)) return null;
+    return Math.min(
+      Math.max(0, timestamp - Date.now()),
+      CODEX_ACCOUNT_UPSTREAM_RETRY_AFTER_MAX_MS,
+    );
+  }
+
+  function codexAccountUpstreamErrorDisposition(
+    statusCode: number,
+    error: { message?: string; type?: string; code?: string } | null | undefined,
+    headers?: Headers | null,
+  ): { state: "needs-login" | "cooldown"; message: string; cooldownMs?: number } | null {
+    const message = normalizeErrorScalar(error?.message) || `Codex account upstream returned HTTP ${statusCode}.`;
+    const code = normalizeErrorScalar(error?.code).toLowerCase();
+    const type = normalizeErrorScalar(error?.type).toLowerCase();
+    const haystack = `${message} ${code} ${type}`.toLowerCase();
+    if (
+      statusCode === 401
+      || statusCode === 403
+      || haystack.includes("invalid_token")
+      || haystack.includes("invalid_api_key")
+      || haystack.includes("authentication")
+      || haystack.includes("unauthorized")
+      || haystack.includes("forbidden")
+    ) {
+      return { state: "needs-login", message };
+    }
+    if (
+      statusCode === 429
+      || haystack.includes("rate_limit")
+      || haystack.includes("rate limit")
+      || haystack.includes("quota")
+      || haystack.includes("too many requests")
+      || haystack.includes("capacity")
+      || haystack.includes("overloaded")
+    ) {
+      return {
+        state: "cooldown",
+        message,
+        cooldownMs: retryAfterMs(headers) ?? CODEX_ACCOUNT_UPSTREAM_COOLDOWN_MS,
+      };
+    }
+    return null;
+  }
+
+  function updateCodexAccountAfterUpstreamFailure(
+    provider: ModelGatewayProvider,
+    account: ModelGatewayAccountEntry | null,
+    statusCode: number,
+    error: { message?: string; type?: string; code?: string } | null | undefined,
+    headers?: Headers | null,
+  ): void {
+    if (!account || provider.sourceType !== "account-backed" || provider.accountProvider?.kind !== "codex") return;
+    const disposition = codexAccountUpstreamErrorDisposition(statusCode, error, headers);
+    if (!disposition) return;
+    if (disposition.state === "needs-login") {
+      markCodexAccountNeedsLogin(provider.id, account.id, disposition.message);
+      return;
+    }
+    markCodexAccountCooldown(
+      provider.id,
+      account.id,
+      disposition.message,
+      disposition.cooldownMs ?? CODEX_ACCOUNT_UPSTREAM_COOLDOWN_MS,
+    );
   }
 
   function codexRefreshFailureIsAuth(statusCode: number, bodyText: string): boolean {
@@ -8466,8 +8548,16 @@ export function createModelGatewayService(
           useCodexResponsesChatAdapter
           || useCodexResponsesAnthropicAdapter
           || useCodexAccountImageGenerationAdapter
+          || useCodexAccountResponsesClientStreamingPassthrough
           || useCodexAccountResponsesNonStreamingAdapter
         ) {
+          updateCodexAccountAfterUpstreamFailure(
+            provider,
+            selectedAccountForRequest,
+            upstream.status,
+            normalizedError.error,
+            upstream.headers,
+          );
           updateSelectedProviderHealth(healthSuccess, latencyMs, normalizedError.error.message);
           appendRequestLog(requestLogEntry({
             kind: "gateway-request",
@@ -8496,6 +8586,12 @@ export function createModelGatewayService(
               error instanceof Error ? error.message : "Codex account Responses adapter could not parse upstream SSE.",
               502,
             );
+          updateCodexAccountAfterUpstreamFailure(
+            provider,
+            selectedAccountForRequest,
+            adapterError.statusCode,
+            { code: adapterError.code, message: adapterError.message, type: adapterError.code },
+          );
           updateSelectedProviderHealth(false, latencyMs, adapterError.message);
           appendRequestLog(requestLogEntry({
             kind: "gateway-request",
@@ -8550,6 +8646,12 @@ export function createModelGatewayService(
               error instanceof Error ? error.message : "OpenAI Images adapter could not parse the Responses image output.",
               502,
             );
+          updateCodexAccountAfterUpstreamFailure(
+            provider,
+            selectedAccountForRequest,
+            adapterError.statusCode,
+            { code: adapterError.code, message: adapterError.message, type: adapterError.code },
+          );
           updateSelectedProviderHealth(false, latencyMs, adapterError.message);
           appendRequestLog(requestLogEntry({
             kind: "gateway-request",

@@ -1090,6 +1090,140 @@ test("model gateway account pool preserves session affinity and enforces per-acc
   }
 });
 
+test("model gateway puts Codex accounts into cooldown on upstream quota failures", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const authRef = "provider:codex-quota:account:a:codex-token";
+  const idToken = fakeJwt({
+    email: "quota@example.com",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct_quota",
+      chatgpt_plan_type: "plus",
+    },
+  });
+  const tokenBundle = JSON.stringify({
+    type: "codex",
+    tokens: {
+      id_token: idToken,
+      access_token: "codex-quota-access",
+      refresh_token: "codex-quota-refresh",
+      account_id: "acct_quota",
+    },
+    expires_at: new Date(Date.now() + 3600_000).toISOString(),
+  });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-quota",
+      name: "Codex Quota",
+      enabled: true,
+      category: "official",
+      sourceType: "account-backed",
+      appScopes: ["codex"],
+      baseUrl: "https://chatgpt.com/backend-api/codex",
+      apiKeyRef: null,
+      apiFormat: "openai_responses",
+      authStrategy: "oauth_proxy",
+      models: {
+        defaultModel: "gpt-5.5",
+        models: [{ id: "gpt-5.5" }],
+        aliases: {},
+      },
+      endpoints: {
+        openai_responses: "/responses",
+      },
+      accountProvider: {
+        kind: "codex",
+        routing: {
+          strategy: "round-robin",
+          sessionAffinity: true,
+          maxConcurrentPerAccount: 1,
+        },
+        accounts: [{
+          id: "codex-quota-a",
+          kind: "codex",
+          enabled: true,
+          state: "ready",
+          authRef,
+          credentialSource: "codex-device-auth",
+          accountHash: "quota-a",
+          emailMasked: "qu***@example.com",
+          plan: "plus",
+          expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        }],
+      },
+    },
+    setActiveScopes: ["codex"],
+  });
+  const stamp = new Date().toISOString();
+  fs.mkdirSync(path.dirname(paths.secrets), { recursive: true });
+  fs.writeFileSync(paths.secrets, `${JSON.stringify({
+    version: 1,
+    updatedAt: stamp,
+    secrets: {
+      [authRef]: {
+        value: tokenBundle,
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+    },
+  }, null, 2)}\n`, { mode: 0o600 });
+
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const target = new URL(String(url));
+    if (target.hostname === "chatgpt.com" && target.pathname === "/backend-api/codex/responses") {
+      upstreamCalls.push(JSON.parse(String(init.body || "{}")));
+      return new Response(JSON.stringify({
+        error: {
+          message: "quota exceeded",
+          type: "rate_limit_error",
+          code: "rate_limit_exceeded",
+        },
+      }), {
+        status: 429,
+        headers: {
+          "content-type": "application/json",
+          "retry-after": "120",
+        },
+      });
+    }
+    return new Response("unexpected", { status: 500 });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const first = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: { model: "gpt-5.5", input: "first quota hit" },
+      });
+      assert.equal(first.status, 429);
+      assert.equal(first.body.error.code, "rate_limit_exceeded");
+      assert.equal(upstreamCalls.length, 1);
+
+      const providers = await requestJson(`${baseUrl}/api/model-gateway/providers`);
+      const provider = providers.body.providers.find((item) => item.id === "codex-quota");
+      const account = provider.accountProvider.accounts[0];
+      assert.equal(account.state, "cooldown");
+      assert.equal(account.lastError, "quota exceeded");
+      assert.ok(Date.parse(account.cooldownUntil) > Date.now() + 30_000);
+
+      const second = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: { model: "gpt-5.5", input: "should not hit upstream" },
+      });
+      assert.equal(second.status, 503);
+      assert.equal(upstreamCalls.length, 1);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model gateway account pool persists routing affinity across service restart", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
