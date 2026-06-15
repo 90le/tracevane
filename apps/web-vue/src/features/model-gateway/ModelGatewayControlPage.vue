@@ -1108,9 +1108,27 @@
                 </option>
               </select>
             </label>
+            <label class="form-field">
+              <span class="form-label">{{ text('账号', 'Account') }}</span>
+              <input v-model.trim="usageAccountFilter" class="form-input" placeholder="account id / hash" />
+            </label>
+            <label class="form-field">
+              <span class="form-label">{{ text('每页', 'Page size') }}</span>
+              <select v-model.number="usagePageSize" class="form-input">
+                <option v-for="size in usagePageSizeOptions" :key="size" :value="size">{{ size }}</option>
+              </select>
+            </label>
             <div class="mgw-usage-controls__meta">
               <strong>{{ usageFilteredWindowLabel }}</strong>
               <small>{{ usageLedgerWindowLabel }}</small>
+              <div class="mgw-usage-pager">
+                <button type="button" class="secondary-button compact-button" :disabled="usageBusy || !canPageUsageBackward" @click="pageUsageLedger(-1)">
+                  {{ text('上一页', 'Previous') }}
+                </button>
+                <button type="button" class="secondary-button compact-button" :disabled="usageBusy || !canPageUsageForward" @click="pageUsageLedger(1)">
+                  {{ text('下一页', 'Next') }}
+                </button>
+              </div>
             </div>
           </section>
 
@@ -1791,6 +1809,7 @@ const usageSourceFilterOptions: Array<{ id: UsageSourceFilterId; zh: string; en:
   { id: 'api-key', zh: 'API-key provider', en: 'API-key provider' },
   { id: 'failure', zh: '失败请求', en: 'Failures' },
 ];
+const usagePageSizeOptions = [50, 100, 250, 500];
 
 const accountRoutingStrategyOptions: Array<{ id: ModelGatewayAccountRoutingStrategy; zh: string; en: string }> = [
   { id: 'round-robin', zh: '轮转', en: 'Round robin' },
@@ -1871,6 +1890,9 @@ const usageTimeRange = ref<UsageTimeRangeId>('all');
 const usageSourceFilter = ref<UsageSourceFilterId>('all');
 const usageProviderFilter = ref('');
 const usageModelFilter = ref('');
+const usageAccountFilter = ref('');
+const usagePageSize = ref(100);
+const usagePageOffset = ref(0);
 const daemonService = ref<ModelGatewayDaemonServiceResponse | null>(null);
 const daemonActionResult = ref<ModelGatewayDaemonServiceResponse | null>(null);
 const clientAuth = ref<ModelGatewayClientAuthView | null>(null);
@@ -2000,10 +2022,10 @@ const usageModelFilterOptions = computed(() => {
   return models.sort((left, right) => left.localeCompare(right));
 });
 const usageFilteredEntries = computed<ModelGatewayRuntimeRequestLogEntry[]>(() =>
-  usageRawEntries.value.filter((entry) => usageEntryMatchesFilters(entry)),
+  usageLedger.value ? usageRawEntries.value : usageRawEntries.value.filter((entry) => usageEntryMatchesFilters(entry)),
 );
 const usageSummary = computed<ModelGatewayRuntimeUsageSummary>(() =>
-  summarizeUsageEntries(usageFilteredEntries.value),
+  usageLedger.value?.usageSummary || summarizeUsageEntries(usageFilteredEntries.value),
 );
 const usageProviderBuckets = computed<ModelGatewayRuntimeUsageSummaryBucket[]>(() =>
   usageSummary.value.byProvider,
@@ -2025,17 +2047,23 @@ const usageRecentEntries = computed<ModelGatewayRuntimeRequestLogEntry[]>(() =>
 const usageLedgerWindowLabel = computed(() => {
   const ledger = usageLedger.value;
   if (!ledger) return text('正在读取账本窗口', 'Reading ledger window');
+  const total = ledger.totalEntryCount ?? ledger.entryCount;
+  const matched = ledger.matchedEntryCount ?? ledger.entryCount;
   return text(
-    `${formatCompactNumber(ledger.entryCount)} 条记录 · 最近 ${formatCompactNumber(ledger.entries.length)} 条窗口${ledger.truncated ? ' · 已截断' : ''}`,
-    `${formatCompactNumber(ledger.entryCount)} entries · latest ${formatCompactNumber(ledger.entries.length)} window${ledger.truncated ? ' · truncated' : ''}`,
+    `${formatCompactNumber(matched)} 条匹配 · 账本窗口 ${formatCompactNumber(total)}${ledger.truncated ? ' · 已截断' : ''}`,
+    `${formatCompactNumber(matched)} matched · ${formatCompactNumber(total)} ledger window${ledger.truncated ? ' · truncated' : ''}`,
   );
 });
 const usageFilteredWindowLabel = computed(() =>
-  text(
-    `当前筛选 ${formatCompactNumber(usageFilteredEntries.value.length)} / ${formatCompactNumber(usageRawEntries.value.length)} 条`,
-    `${formatCompactNumber(usageFilteredEntries.value.length)} / ${formatCompactNumber(usageRawEntries.value.length)} entries in current filter`,
-  ),
+  usageLedger.value
+    ? usagePageLabel(usageLedger.value)
+    : text(
+      `当前筛选 ${formatCompactNumber(usageFilteredEntries.value.length)} / ${formatCompactNumber(usageRawEntries.value.length)} 条`,
+      `${formatCompactNumber(usageFilteredEntries.value.length)} / ${formatCompactNumber(usageRawEntries.value.length)} entries in current filter`,
+    ),
 );
+const canPageUsageBackward = computed(() => (usageLedger.value?.offset || 0) > 0);
+const canPageUsageForward = computed(() => usageLedger.value?.hasMore === true);
 const canExportUsage = computed(() => usageFilteredEntries.value.length > 0);
 const usageSummaryCards = computed(() => {
   const summary = usageSummary.value;
@@ -2066,6 +2094,12 @@ const usageSummaryCards = computed(() => {
       meta: usageCostMeta(usageCostEstimate.value),
     },
     {
+      id: 'latency',
+      label: text('延迟', 'Latency'),
+      value: formatLatencyMs(summary.latency.p95Ms),
+      meta: latencySummaryMeta(summary.latency),
+    },
+    {
       id: 'latest',
       label: text('最近请求', 'Latest request'),
       value: summary.latestRequestAt ? formatTimestamp(summary.latestRequestAt) : '-',
@@ -2077,6 +2111,16 @@ const usageSummaryCards = computed(() => {
 function usageEntryTime(entry: ModelGatewayRuntimeRequestLogEntry): number {
   const time = Date.parse(entry.finishedAt || entry.startedAt || '');
   return Number.isNaN(time) ? 0 : time;
+}
+
+function usagePageLabel(ledger: ModelGatewayUsageLedgerResponse): string {
+  const matched = ledger.matchedEntryCount ?? ledger.entryCount;
+  const from = matched > 0 ? ledger.offset + 1 : 0;
+  const to = Math.min(matched, ledger.offset + ledger.entries.length);
+  return text(
+    `当前页 ${formatCompactNumber(from)}-${formatCompactNumber(to)} / ${formatCompactNumber(matched)} 条`,
+    `page ${formatCompactNumber(from)}-${formatCompactNumber(to)} / ${formatCompactNumber(matched)} entries`,
+  );
 }
 
 function usageTimeRangeCutoff(range: UsageTimeRangeId): number | null {
@@ -2217,6 +2261,42 @@ function addUsage(target: ModelGatewayRuntimeUsage, usage: ModelGatewayRuntimeUs
   target.audioOutputRequests += usage.audioOutputRequests || 0;
 }
 
+function emptyLatencySummary(): ModelGatewayRuntimeUsageSummary['latency'] {
+  return {
+    requestCount: 0,
+    averageMs: null,
+    minMs: null,
+    p50Ms: null,
+    p95Ms: null,
+    p99Ms: null,
+    maxMs: null,
+  };
+}
+
+function percentileLatency(sorted: number[], percentile: number): number | null {
+  if (!sorted.length) return null;
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((percentile / 100) * sorted.length) - 1));
+  return sorted[index];
+}
+
+function summarizeLatency(entries: ModelGatewayRuntimeRequestLogEntry[]): ModelGatewayRuntimeUsageSummary['latency'] {
+  const durations = entries
+    .map((entry) => Number.isFinite(entry.durationMs) ? Math.max(0, Math.floor(entry.durationMs)) : null)
+    .filter((value): value is number => value !== null)
+    .sort((left, right) => left - right);
+  if (!durations.length) return emptyLatencySummary();
+  const total = durations.reduce((sum, value) => sum + value, 0);
+  return {
+    requestCount: durations.length,
+    averageMs: Math.round(total / durations.length),
+    minMs: durations[0],
+    p50Ms: percentileLatency(durations, 50),
+    p95Ms: percentileLatency(durations, 95),
+    p99Ms: percentileLatency(durations, 99),
+    maxMs: durations[durations.length - 1],
+  };
+}
+
 function createUsageBucket(
   key: string,
   label: string,
@@ -2273,6 +2353,7 @@ function summarizeUsageEntries(entries: ModelGatewayRuntimeRequestLogEntry[]): M
     meteredRequestCount: 0,
     latestRequestAt: null,
     usage: createEmptyRuntimeUsage(),
+    latency: summarizeLatency(entries),
     byProvider: [],
     byModel: [],
     byAccount: [],
@@ -3958,6 +4039,19 @@ function formatCompactNumber(value: number): string {
   return String(value);
 }
 
+function formatLatencyMs(value: number | null | undefined): string {
+  if (value === null || value === undefined) return '-';
+  return `${formatCompactNumber(value)} ms`;
+}
+
+function latencySummaryMeta(latency: ModelGatewayRuntimeUsageSummary['latency']): string {
+  return [
+    `p50 ${formatLatencyMs(latency.p50Ms)}`,
+    `avg ${formatLatencyMs(latency.averageMs)}`,
+    `max ${formatLatencyMs(latency.maxMs)}`,
+  ].join(' · ');
+}
+
 function normalizedDraftModels(): { defaultModel: string | null; models: ModelGatewayProviderModel[] } {
   let listed = modelRowsToModels(draft.modelRows);
   if (!listed.length && draft.modelListText.trim()) {
@@ -4337,7 +4431,7 @@ async function loadAll(): Promise<void> {
       fetchModelGatewayStatus(),
       fetchModelGatewayProviders(),
       fetchModelGatewayRuntime(),
-      fetchModelGatewayUsageLedger(),
+      fetchModelGatewayUsageLedger(usageLedgerQueryPayload()),
       fetchModelGatewayDaemonService(),
       fetchModelGatewayClientAuth(),
       fetchModelGatewayAppConnections(),
@@ -4369,7 +4463,7 @@ async function refreshUsageLedger(): Promise<void> {
   usageBusy.value = true;
   notice.value = null;
   try {
-    usageLedger.value = await fetchModelGatewayUsageLedger();
+    usageLedger.value = await fetchModelGatewayUsageLedger(usageLedgerQueryPayload());
   } catch (error) {
     notice.value = {
       kind: 'error',
@@ -4378,6 +4472,29 @@ async function refreshUsageLedger(): Promise<void> {
   } finally {
     usageBusy.value = false;
   }
+}
+
+function usageLedgerQueryPayload() {
+  return {
+    limit: usagePageSize.value,
+    offset: usagePageOffset.value,
+    timeRange: usageTimeRange.value,
+    source: usageSourceFilter.value,
+    providerId: usageProviderFilter.value || null,
+    model: usageModelFilter.value || null,
+    account: usageAccountFilter.value || null,
+  };
+}
+
+function pageUsageLedger(direction: -1 | 1): void {
+  const current = usageLedger.value;
+  const nextOffset = direction < 0
+    ? Math.max(0, usagePageOffset.value - usagePageSize.value)
+    : usagePageOffset.value + usagePageSize.value;
+  const matched = current?.matchedEntryCount ?? current?.entryCount ?? 0;
+  if (direction > 0 && nextOffset >= matched) return;
+  usagePageOffset.value = nextOffset;
+  void refreshUsageLedger();
 }
 
 async function refreshAppConnections(): Promise<void> {
@@ -4916,7 +5033,7 @@ async function loadRuntimeOnly(): Promise<void> {
   try {
     const [nextRuntime, nextUsageLedger] = await Promise.all([
       fetchModelGatewayRuntime(),
-      fetchModelGatewayUsageLedger(),
+      fetchModelGatewayUsageLedger(usageLedgerQueryPayload()),
     ]);
     runtime.value = nextRuntime;
     usageLedger.value = nextUsageLedger;
@@ -4953,6 +5070,21 @@ watch(selectedSmokeProvider, (provider) => {
 watch(() => appConnectionProfile.model, () => {
   applyAppConnectionModelBudget(false);
 });
+
+watch(
+  () => [
+    usageTimeRange.value,
+    usageSourceFilter.value,
+    usageProviderFilter.value,
+    usageModelFilter.value,
+    usageAccountFilter.value,
+    usagePageSize.value,
+  ],
+  () => {
+    usagePageOffset.value = 0;
+    if (loaded.value) void refreshUsageLedger();
+  },
+);
 
 watch(
   () => [route.query.tab, route.query.app],

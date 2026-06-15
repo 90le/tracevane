@@ -94,8 +94,10 @@ import {
   type ModelGatewayRuntimeResponse,
   type ModelGatewayRuntimeState,
   type ModelGatewayRuntimeUsage,
+  type ModelGatewayRuntimeLatencySummary,
   type ModelGatewayRuntimeUsageSummary,
   type ModelGatewayRuntimeUsageSummaryBucket,
+  type ModelGatewayUsageLedgerQuery,
   type ModelGatewayUsageLedgerResponse,
   type ModelGatewayRouteDecision,
   type ModelGatewayRouteId,
@@ -155,8 +157,10 @@ const DEFAULT_STREAMING_FIRST_BYTE_TIMEOUT_MS = 30_000;
 const DEFAULT_STREAMING_IDLE_TIMEOUT_MS = 120_000;
 const MODEL_GATEWAY_CIRCUIT_OPEN_RETRY_MS = 60_000;
 const MAX_RUNTIME_REQUEST_LOG_ENTRIES = 200;
-const MAX_USAGE_LEDGER_READ_ENTRIES = 5_000;
-const MAX_USAGE_LEDGER_READ_BYTES = 4 * 1024 * 1024;
+const DEFAULT_USAGE_LEDGER_PAGE_LIMIT = 100;
+const MAX_USAGE_LEDGER_PAGE_LIMIT = 500;
+const MAX_USAGE_LEDGER_READ_ENTRIES = 20_000;
+const MAX_USAGE_LEDGER_READ_BYTES = 16 * 1024 * 1024;
 const REQUEST_LOG_PREVIEW_CHARS = 1_000;
 const DEFAULT_UNKNOWN_MODEL_CONTEXT_WINDOW = 64_000;
 const DEFAULT_UNKNOWN_MODEL_MAX_OUTPUT_TOKENS = 8_192;
@@ -519,6 +523,42 @@ function addRuntimeUsage(target: ModelGatewayRuntimeUsage, value: ModelGatewayRu
   target.audioOutputRequests += value.audioOutputRequests;
 }
 
+function emptyRuntimeLatencySummary(): ModelGatewayRuntimeLatencySummary {
+  return {
+    requestCount: 0,
+    averageMs: null,
+    minMs: null,
+    p50Ms: null,
+    p95Ms: null,
+    p99Ms: null,
+    maxMs: null,
+  };
+}
+
+function percentileValue(sortedValues: number[], percentile: number): number | null {
+  if (!sortedValues.length) return null;
+  const index = Math.min(sortedValues.length - 1, Math.max(0, Math.ceil((percentile / 100) * sortedValues.length) - 1));
+  return sortedValues[index];
+}
+
+function summarizeRuntimeLatency(requestLog: ModelGatewayRuntimeRequestLogEntry[]): ModelGatewayRuntimeLatencySummary {
+  const durations = requestLog
+    .map((entry) => Number.isFinite(entry.durationMs) ? Math.max(0, Math.floor(entry.durationMs)) : null)
+    .filter((value): value is number => value !== null)
+    .sort((left, right) => left - right);
+  if (!durations.length) return emptyRuntimeLatencySummary();
+  const total = durations.reduce((sum, value) => sum + value, 0);
+  return {
+    requestCount: durations.length,
+    averageMs: Math.round(total / durations.length),
+    minMs: durations[0],
+    p50Ms: percentileValue(durations, 50),
+    p95Ms: percentileValue(durations, 95),
+    p99Ms: percentileValue(durations, 99),
+    maxMs: durations[durations.length - 1],
+  };
+}
+
 function createRuntimeUsageBucket(
   key: string,
   label: string,
@@ -545,6 +585,7 @@ function summarizeRuntimeUsage(requestLog: ModelGatewayRuntimeRequestLogEntry[])
     meteredRequestCount: 0,
     latestRequestAt: requestLog[requestLog.length - 1]?.finishedAt || null,
     usage: zeroRuntimeUsage(),
+    latency: summarizeRuntimeLatency(requestLog),
     byProvider: [],
     byModel: [],
     byAccount: [],
@@ -4667,7 +4708,7 @@ export interface ModelGatewayService {
   rollbackAppConnection(req: http.IncomingMessage | undefined, payload?: ModelGatewayRollbackAppConnectionRequest): ModelGatewayRollbackAppConnectionResponse;
   listGatewayModels(req?: http.IncomingMessage): ModelGatewayModelListResponse;
   getRuntime(): ModelGatewayRuntimeResponse;
-  getUsageLedger(): ModelGatewayUsageLedgerResponse;
+  getUsageLedger(query?: ModelGatewayUsageLedgerQuery): ModelGatewayUsageLedgerResponse;
   getDaemonService(): ModelGatewayDaemonServiceResponse;
   manageDaemonService(req: http.IncomingMessage | undefined, payload?: ModelGatewayDaemonServiceRequest): Promise<ModelGatewayDaemonServiceResponse>;
   detectProvider(req: http.IncomingMessage | undefined, payload?: ModelGatewayProviderDetectRequest): Promise<ModelGatewayProviderDetectResponse>;
@@ -4924,6 +4965,83 @@ export function createModelGatewayService(
     } finally {
       fs.closeSync(fd);
     }
+  }
+
+  type NormalizedUsageLedgerQuery = {
+    limit: number;
+    offset: number;
+    timeRange: "24h" | "7d" | "30d" | "all";
+    source: "all" | "account-backed" | "api-key" | "failure";
+    providerId: string | null;
+    model: string | null;
+    account: string | null;
+    outcome: ModelGatewayRuntimeRequestOutcome | "all";
+  };
+
+  function normalizeUsageLedgerQuery(query: ModelGatewayUsageLedgerQuery | undefined): NormalizedUsageLedgerQuery {
+    const limitValue = numberOrNull(query?.limit);
+    const offsetValue = numberOrNull(query?.offset);
+    const timeRange = ["24h", "7d", "30d", "all"].includes(query?.timeRange as string)
+      ? query?.timeRange as NormalizedUsageLedgerQuery["timeRange"]
+      : "all";
+    const source = ["all", "account-backed", "api-key", "failure"].includes(query?.source as string)
+      ? query?.source as NormalizedUsageLedgerQuery["source"]
+      : "all";
+    const outcome = ["success", "failure", "adapter-required", "missing-provider", "all"].includes(query?.outcome as string)
+      ? query?.outcome as NormalizedUsageLedgerQuery["outcome"]
+      : "all";
+    return {
+      limit: Math.min(MAX_USAGE_LEDGER_PAGE_LIMIT, Math.max(1, Math.floor(limitValue || DEFAULT_USAGE_LEDGER_PAGE_LIMIT))),
+      offset: Math.max(0, Math.floor(offsetValue || 0)),
+      timeRange,
+      source,
+      providerId: normalizeString(query?.providerId) || null,
+      model: normalizeString(query?.model) || null,
+      account: normalizeString(query?.account) || null,
+      outcome,
+    };
+  }
+
+  function usageLedgerTimeRangeCutoff(range: NormalizedUsageLedgerQuery["timeRange"]): number | null {
+    const day = 24 * 60 * 60 * 1000;
+    if (range === "24h") return Date.now() - day;
+    if (range === "7d") return Date.now() - (7 * day);
+    if (range === "30d") return Date.now() - (30 * day);
+    return null;
+  }
+
+  function usageLedgerEntryTime(entry: ModelGatewayRuntimeRequestLogEntry): number {
+    const value = Date.parse(entry.finishedAt || entry.startedAt || "");
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  function usageLedgerEntryMatchesQuery(
+    entry: ModelGatewayRuntimeRequestLogEntry,
+    query: NormalizedUsageLedgerQuery,
+    providerSources: Map<string, ModelGatewayProviderSourceType>,
+  ): boolean {
+    const cutoff = usageLedgerTimeRangeCutoff(query.timeRange);
+    if (cutoff !== null && usageLedgerEntryTime(entry) < cutoff) return false;
+    if (query.providerId && (entry.providerId || "unknown-provider") !== query.providerId) return false;
+    if (query.model && entry.model !== query.model) return false;
+    if (query.account) {
+      const account = query.account.toLowerCase();
+      const entryAccount = [
+        entry.accountId || "",
+        entry.accountHash || "",
+      ].map((value) => value.toLowerCase());
+      if (!entryAccount.includes(account)) return false;
+    }
+    if (query.outcome !== "all" && entry.outcome !== query.outcome) return false;
+    if (query.source === "failure") return entry.outcome !== "success";
+    if (query.source === "account-backed") {
+      return Boolean(entry.accountId || entry.accountHash)
+        || providerSources.get(entry.providerId || "") === "account-backed";
+    }
+    if (query.source === "api-key") {
+      return providerSources.get(entry.providerId || "") === "api-key";
+    }
+    return true;
   }
 
   function appendRequestLog(entry: ModelGatewayRuntimeRequestLogEntry): void {
@@ -6254,13 +6372,36 @@ export function createModelGatewayService(
     };
   }
 
-  function getUsageLedger(): ModelGatewayUsageLedgerResponse {
-    const { entries, truncated } = readUsageLedgerEntries();
+  function getUsageLedger(query?: ModelGatewayUsageLedgerQuery): ModelGatewayUsageLedgerResponse {
+    const normalizedQuery = normalizeUsageLedgerQuery(query);
+    const { entries: readableEntries, truncated } = readUsageLedgerEntries();
+    const registry = readRegistry();
+    const providerSources = new Map(registry.providers.map((provider) => [provider.id, provider.sourceType]));
+    const filteredEntries = readableEntries
+      .filter((entry) => usageLedgerEntryMatchesQuery(entry, normalizedQuery, providerSources))
+      .sort((left, right) => usageLedgerEntryTime(right) - usageLedgerEntryTime(left));
+    const entries = filteredEntries.slice(
+      normalizedQuery.offset,
+      normalizedQuery.offset + normalizedQuery.limit,
+    );
     return {
       ok: true,
       entries,
-      usageSummary: summarizeRuntimeUsage(entries),
-      entryCount: entries.length,
+      usageSummary: summarizeRuntimeUsage(filteredEntries),
+      entryCount: filteredEntries.length,
+      totalEntryCount: readableEntries.length,
+      matchedEntryCount: filteredEntries.length,
+      offset: normalizedQuery.offset,
+      limit: normalizedQuery.limit,
+      hasMore: normalizedQuery.offset + entries.length < filteredEntries.length,
+      query: {
+        timeRange: normalizedQuery.timeRange,
+        source: normalizedQuery.source,
+        providerId: normalizedQuery.providerId,
+        model: normalizedQuery.model,
+        account: normalizedQuery.account,
+        outcome: normalizedQuery.outcome,
+      },
       readLimit: MAX_USAGE_LEDGER_READ_ENTRIES,
       truncated,
       paths: {

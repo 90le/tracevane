@@ -29,6 +29,7 @@ import type {
   ModelGatewaySetActiveProviderRequest,
   ModelGatewayStatusResponse,
   ModelGatewayUpsertProviderRequest,
+  ModelGatewayUsageLedgerQuery,
   ModelGatewayUsageLedgerResponse,
 } from '../../../../../types/model-gateway';
 import { fetchStudioResponse, requestJson } from '../../shared/api';
@@ -66,8 +67,14 @@ export function fetchModelGatewayRuntime(): Promise<ModelGatewayRuntimeResponse>
   return requestJson<ModelGatewayRuntimeResponse>('/api/model-gateway/runtime');
 }
 
-export function fetchModelGatewayUsageLedger(): Promise<ModelGatewayUsageLedgerResponse> {
-  return requestJson<ModelGatewayUsageLedgerResponse>('/api/model-gateway/usage');
+export function fetchModelGatewayUsageLedger(query: ModelGatewayUsageLedgerQuery = {}): Promise<ModelGatewayUsageLedgerResponse> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) {
+    if (value === null || value === undefined || value === '') continue;
+    params.set(key, String(value));
+  }
+  const suffix = params.toString() ? `?${params.toString()}` : '';
+  return requestJson<ModelGatewayUsageLedgerResponse>(`/api/model-gateway/usage${suffix}`);
 }
 
 export function fetchModelGatewayClientAuth(): Promise<ModelGatewayClientAuthResponse> {

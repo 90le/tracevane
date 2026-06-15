@@ -285,6 +285,157 @@ test("model gateway registry stores provider secrets separately and masks views"
   assert.equal(listed.activeProviders.openclaw, "openai-main");
 });
 
+test("model gateway usage ledger supports paged filtered latency queries", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const service = createModelGatewayService(config);
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "usage-p1",
+      name: "Usage P1",
+      category: "openai-compatible",
+      appScopes: ["codex"],
+      baseUrl: "https://usage-p1.example/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: { defaultModel: "model-a", models: [{ id: "model-a" }, { id: "model-b" }] },
+    },
+  });
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "usage-p2",
+      name: "Usage P2",
+      category: "openai-compatible",
+      appScopes: ["codex"],
+      baseUrl: "https://usage-p2.example/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: { defaultModel: "model-c", models: [{ id: "model-c" }] },
+    },
+  });
+
+  const now = Date.now();
+  const entry = (overrides) => ({
+    id: overrides.id,
+    kind: "gateway-request",
+    startedAt: new Date(overrides.time - overrides.durationMs).toISOString(),
+    finishedAt: new Date(overrides.time).toISOString(),
+    durationMs: overrides.durationMs,
+    routeId: "openai_chat_completions",
+    appScope: "codex",
+    providerId: overrides.providerId,
+    providerName: overrides.providerName,
+    accountId: overrides.accountId || null,
+    accountHash: overrides.accountHash || null,
+    accountRouting: null,
+    endpointProfileId: null,
+    endpointProfileName: null,
+    model: overrides.model,
+    method: "POST",
+    requestedPath: "/v1/chat/completions",
+    upstreamUrl: null,
+    statusCode: overrides.statusCode,
+    outcome: overrides.outcome,
+    errorCode: null,
+    errorMessage: null,
+    usage: overrides.usage || null,
+  });
+  const entries = [
+    entry({
+      id: "old-p2",
+      time: now - (40 * 24 * 60 * 60 * 1000),
+      durationMs: 500,
+      providerId: "usage-p2",
+      providerName: "Usage P2",
+      model: "model-c",
+      statusCode: 200,
+      outcome: "success",
+    }),
+    entry({
+      id: "p1-a",
+      time: now - 10_000,
+      durationMs: 100,
+      providerId: "usage-p1",
+      providerName: "Usage P1",
+      accountId: "account-a",
+      accountHash: "hash-a",
+      model: "model-a",
+      statusCode: 200,
+      outcome: "success",
+      usage: {
+        inputTokens: 10,
+        outputTokens: 5,
+        totalTokens: 15,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        imageGenerationRequests: 0,
+        imagesGenerated: 0,
+        imageEditRequests: 0,
+        audioInputRequests: 0,
+        audioOutputRequests: 0,
+      },
+    }),
+    entry({
+      id: "p1-b",
+      time: now - 5_000,
+      durationMs: 250,
+      providerId: "usage-p1",
+      providerName: "Usage P1",
+      model: "model-b",
+      statusCode: 500,
+      outcome: "failure",
+    }),
+  ];
+  fs.mkdirSync(path.dirname(paths.usageLedger), { recursive: true });
+  fs.writeFileSync(paths.usageLedger, `${entries.map((item) => JSON.stringify(item)).join("\n")}\n`, { mode: 0o600 });
+
+  const firstPage = service.getUsageLedger({
+    limit: 1,
+    offset: 0,
+    timeRange: "24h",
+    source: "api-key",
+    providerId: "usage-p1",
+  });
+  assert.equal(firstPage.totalEntryCount, 3);
+  assert.equal(firstPage.matchedEntryCount, 2);
+  assert.equal(firstPage.entryCount, 2);
+  assert.equal(firstPage.entries.length, 1);
+  assert.equal(firstPage.entries[0].id, "p1-b");
+  assert.equal(firstPage.hasMore, true);
+  assert.equal(firstPage.usageSummary.requestCount, 2);
+  assert.equal(firstPage.usageSummary.meteredRequestCount, 1);
+  assert.equal(firstPage.usageSummary.usage.totalTokens, 15);
+  assert.deepEqual(firstPage.usageSummary.latency, {
+    requestCount: 2,
+    averageMs: 175,
+    minMs: 100,
+    p50Ms: 100,
+    p95Ms: 250,
+    p99Ms: 250,
+    maxMs: 250,
+  });
+
+  const secondPage = service.getUsageLedger({
+    limit: 1,
+    offset: 1,
+    timeRange: "24h",
+    source: "api-key",
+    providerId: "usage-p1",
+  });
+  assert.equal(secondPage.entries.length, 1);
+  assert.equal(secondPage.entries[0].id, "p1-a");
+  assert.equal(secondPage.hasMore, false);
+
+  const accountPage = service.getUsageLedger({ account: "hash-a", limit: 10 });
+  assert.equal(accountPage.matchedEntryCount, 1);
+  assert.equal(accountPage.entries[0].accountId, "account-a");
+
+  const failures = service.getUsageLedger({ source: "failure", limit: 10 });
+  assert.equal(failures.matchedEntryCount, 1);
+  assert.equal(failures.entries[0].outcome, "failure");
+});
+
 test("model gateway starts Codex account login and creates an account-backed provider", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

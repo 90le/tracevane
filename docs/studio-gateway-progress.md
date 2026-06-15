@@ -15,7 +15,7 @@
 - Codex account-backed provider 已支持页面登录、请求前自动 refresh、手动 refresh、账户启用/停用和重新登录入口；客户端仍只使用统一 Gateway endpoint + Gateway key。
 - Codex account-backed provider 已扩展受控本地模型 catalog：`gpt-5.5`、`gpt-5.4`、`gpt-5.4-mini`、`gpt-5.3-codex`、`gpt-image-2`、transcribe/tts/audio/realtime 类模型进入 `/v1/models`，并携带 text/image/audio 能力标记；旧生成的 `gpt-5.5-mini` 和 ChatGPT Codex account 不支持的 `gpt-5` 不再作为账户模型暴露；Codex account REST audio 目前只做结构化 unsupported，不透传到 ChatGPT backend HTML 错误。
 - Codex account upstream 返回 HTTP 401/403 会把账户标为 `needs-login`；HTTP 429 或明确 quota/rate/capacity/overloaded 错误会把账户标为 `cooldown` 并尊重 `Retry-After`，后续路由会跳过该账户直到冷却结束；started streaming passthrough 内的 `response.failed/error` 也会旁路解析并回写账户状态；runtime log 和 Provider Center 最近请求会显示账号池策略、sticky 命中、选择原因、池容量计数、跳过原因、busy/cooldown 来源和 cooldown 到期后的首次重试；Provider Center 可手动清除 cooldown、配置账号级 proxy/direct，并编辑 round-robin/fill-first、sticky session 和单账号并发。
-- Gateway `/api/model-gateway/runtime` 与 `/api/model-gateway/status` 已从脱敏 request log 派生 usage summary，按 provider/model/account 聚合 request count、metered request count、tokens、image/audio 媒体单位和最近请求时间；`/api/model-gateway/usage` 读取本地 `usage-ledger.jsonl` 的长期脱敏账本窗口，Provider Center “模型消耗”页已统一展示账号登录 provider 与普通 API-key provider 的消耗，并支持时间范围、来源、provider、模型筛选和当前筛选 CSV 导出。
+- Gateway `/api/model-gateway/runtime` 与 `/api/model-gateway/status` 已从脱敏 request log 派生 usage summary，按 provider/model/account 聚合 request count、metered request count、tokens、image/audio 媒体单位、延迟分位和最近请求时间；`/api/model-gateway/usage` 读取本地 `usage-ledger.jsonl` 的长期脱敏账本窗口，支持服务端时间范围、来源、provider、模型、账号、outcome 筛选和分页；Provider Center “模型消耗”页已统一展示账号登录 provider 与普通 API-key provider 的消耗，并支持当前查询 CSV 导出。
 - Provider 模型目录支持可选 schema 化价格字段；Provider Center “模型消耗”页会按当前筛选和用户配置价格估算成本并导出 CSV。该值是本地估算，不等同供应商账单。
 - Provider Center Smoke / 日志页已显示媒体模型状态，按启用 provider catalog 统计图片理解、生图、音频输入、音频输出和 realtime 模型。
 - Provider Center 不再按模型名自动标记 vision；图片能力只来自用户配置、上游显式能力元数据或图片 smoke 通过后用户确认写回。
@@ -64,6 +64,7 @@
   - Provider Center 新增“模型消耗”工作区：直接读取 `/api/model-gateway/usage`，展示总请求、计费请求、tokens、媒体单位、按 provider/model/account 聚合和最近消耗记录；普通 API-key provider 不进入账号桶，但会在 Provider 消耗和最近记录里标记为 `API-key provider`。
   - 模型消耗页补齐筛选与导出：可按最近 24h / 7d / 30d / 全部账本窗口、账号 provider / API-key provider / 失败请求、provider 和模型筛选；总览、provider/model/account 聚合与最近记录都会按当前筛选重新计算，CSV 导出只包含当前筛选结果。
   - 模型消耗页补齐本地价格估算：模型目录可配置 currency、input/output/cache、image/audio 单价；前端按 usage ledger 当前筛选估算 provider/model/account/recent entry 成本，并把 estimated_cost 写入 CSV。
+  - Usage ledger 查询补齐服务端分页和延迟指标：`/api/model-gateway/usage` 支持 `limit/offset/timeRange/source/providerId/model/account/outcome`，返回 `totalEntryCount/matchedEntryCount/hasMore/query` 和 latency average/p50/p95/p99/max；Provider Center 用服务端查询驱动账号过滤、页大小和上一页/下一页。TTFT 仍需 streaming first-byte 埋点后再接入。
   - Provider Center 最近请求补齐 accountRouting 操作面：支持全部/账号池/失败/冷却重试筛选，单条请求可展开查看 provider、选中账号、原因、sticky、cursor 和 skipped accounts 明细。
   - Provider Center 账户状态区补齐账号池策略配置：可编辑 round-robin / fill-first、Sticky session 和单账号并发；保存 provider 时只更新 routing，保留现有账户和 token refs。
   - Provider Center 最近请求补齐账号池容量诊断：runtime/UI 直接显示 total、ready、capacity available、busy、cooldown、needs-login 计数，不再只靠 skipped accounts 反推。
@@ -223,6 +224,13 @@
 - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，72/72 通过，覆盖 provider pricing schema 规范化、账号 provider、媒体端点、account pool、active route smoke、三协议矩阵和既有适配回归。
 - 本轮验证通过：`npm run build:web`
 - 本轮 live 验证通过：重启 dev 与 `openclaw-studio-model-gateway.service` 后，`/api/model-gateway/usage` 返回 6 条账本窗口和 usageSummary；带本地 Gateway key 请求 daemon `GET /v1/models` 返回 37 个模型。
+- 本轮验证通过：`npm run typecheck:api`
+- 本轮验证通过：`npm run typecheck:web`
+- 本轮验证通过：`node --test tests/system/studio-web-model-gateway-page.test.mjs`
+- 本轮验证通过：`npm run build:api`
+- 本轮验证通过：`npm run build:web`
+- 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，73/73 通过，覆盖 usage ledger 服务端分页/筛选/latency summary 和既有三协议/account/media 回归。
+- 本轮 live 验证通过：`/api/model-gateway/usage?limit=2&offset=0&timeRange=all` 返回 `matchedEntryCount=6`、`hasMore=true` 和 latency p50/p95；`source=failure` 返回 2 条非 success 记录；`limit=1&offset=1` 返回分页结果。
 - 本轮验证通过：`node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs`
 - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，57/57 通过，覆盖 `glm-5.2` / `glm-5.2[1m]` 预算推断、endpoint profile 原生协议优选、endpoint health 回退、响应头和 endpoint 级 smoke。
 - 本轮本机 live smoke 通过：Gateway `glm-5.2` 三协议入口均可用，`/v1/chat/completions` 走 `glm/coding-chat`，`/v1/messages` 走 `glm/coding-anthropic`，`/v1/responses` 走 `glm/coding-chat` 转换。

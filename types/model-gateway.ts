@@ -408,9 +408,20 @@ export interface ModelGatewayRuntimeUsageSummary {
   meteredRequestCount: number;
   latestRequestAt: string | null;
   usage: ModelGatewayRuntimeUsage;
+  latency: ModelGatewayRuntimeLatencySummary;
   byProvider: ModelGatewayRuntimeUsageSummaryBucket[];
   byModel: ModelGatewayRuntimeUsageSummaryBucket[];
   byAccount: ModelGatewayRuntimeUsageSummaryBucket[];
+}
+
+export interface ModelGatewayRuntimeLatencySummary {
+  requestCount: number;
+  averageMs: number | null;
+  minMs: number | null;
+  p50Ms: number | null;
+  p95Ms: number | null;
+  p99Ms: number | null;
+  maxMs: number | null;
 }
 
 export interface ModelGatewayRuntimeRequestLogEntry {
@@ -437,6 +448,20 @@ export interface ModelGatewayRuntimeRequestLogEntry {
   errorCode: string | null;
   errorMessage: string | null;
   usage: ModelGatewayRuntimeUsage | null;
+}
+
+export type ModelGatewayUsageLedgerTimeRange = "24h" | "7d" | "30d" | "all";
+export type ModelGatewayUsageLedgerSourceFilter = "all" | "account-backed" | "api-key" | "failure";
+
+export interface ModelGatewayUsageLedgerQuery {
+  limit?: number | string | null;
+  offset?: number | string | null;
+  timeRange?: ModelGatewayUsageLedgerTimeRange | string | null;
+  source?: ModelGatewayUsageLedgerSourceFilter | string | null;
+  providerId?: string | null;
+  model?: string | null;
+  account?: string | null;
+  outcome?: ModelGatewayRuntimeRequestOutcome | "all" | string | null;
 }
 
 export interface ModelGatewayRuntimeState {
@@ -1008,6 +1033,17 @@ export interface ModelGatewayUsageLedgerResponse {
   entries: ModelGatewayRuntimeRequestLogEntry[];
   usageSummary: ModelGatewayRuntimeUsageSummary;
   entryCount: number;
+  totalEntryCount: number;
+  matchedEntryCount: number;
+  offset: number;
+  limit: number;
+  hasMore: boolean;
+  query: Required<Pick<ModelGatewayUsageLedgerQuery, "timeRange" | "source">> & {
+    providerId: string | null;
+    model: string | null;
+    account: string | null;
+    outcome: ModelGatewayRuntimeRequestOutcome | "all";
+  };
   readLimit: number;
   truncated: boolean;
   paths: {
