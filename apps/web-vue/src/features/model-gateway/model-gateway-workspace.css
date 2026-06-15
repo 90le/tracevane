@@ -913,6 +913,38 @@
   margin-bottom: 14px;
 }
 
+.mgw-usage-controls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  align-items: end;
+  margin-bottom: 14px;
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-base) 88%, var(--surface-soft));
+  padding: 12px;
+}
+
+.mgw-usage-controls .form-field {
+  min-width: 0;
+}
+
+.mgw-usage-controls__meta {
+  display: grid;
+  grid-column: 1 / -1;
+  gap: 3px;
+  min-width: 0;
+  border-top: 1px solid var(--mono-line);
+  color: var(--mono-ink-2);
+  padding-top: 10px;
+}
+
+.mgw-usage-controls__meta strong,
+.mgw-usage-controls__meta small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .mgw-usage-summary-card,
 .mgw-usage-section,
 .mgw-usage-row,
@@ -1827,6 +1859,7 @@
   .mgw-profile-grid,
   .mgw-smoke-grid,
   .mgw-media-status__grid,
+  .mgw-usage-controls,
   .mgw-usage-summary-grid,
   .mgw-usage-row,
   .mgw-usage-metrics,

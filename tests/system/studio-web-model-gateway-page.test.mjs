@@ -125,6 +125,11 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "Model usage",
     "fetchModelGatewayUsageLedger",
     "usageLedger",
+    "usageTimeRange",
+    "usageSourceFilter",
+    "usageProviderFilter",
+    "usageModelFilter",
+    "usageFilteredEntries",
     "usageSummaryCards",
     "usageProviderBuckets",
     "usageModelBuckets",
@@ -135,7 +140,15 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "usageLedgerWindowLabel",
     "usageEntryAccountLabel",
     "usageMediaLabel",
+    "downloadGatewayUsageCsv",
+    "usageCsvRows",
+    "导出 CSV",
+    "时间范围",
+    "来源",
+    "全部 Provider",
+    "全部模型",
     "mgw-usage-summary-grid",
+    "mgw-usage-controls",
     "mgw-usage-section-grid",
     "mgw-usage-entry-list",
     "Smoke / Logs",
@@ -316,6 +329,8 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
   assert.match(css, /\.mgw-app-card\.active\s*\{/);
   assert.match(css, /\.mgw-panel-actions\s*\{[^}]*flex-wrap:\s*wrap/s);
   assert.match(css, /\.mgw-app-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
+  assert.match(css, /\.mgw-usage-controls\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/s);
+  assert.match(css, /\.mgw-usage-controls__meta strong,\s*\.mgw-usage-controls__meta small\s*\{[^}]*overflow-wrap:\s*anywhere/s);
   assert.match(css, /\.mgw-usage-summary-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/s);
   assert.match(css, /\.mgw-usage-row\s*\{[^}]*grid-template-columns:\s*minmax\(150px,\s*0\.65fr\)\s+minmax\(0,\s*1\.35fr\)/s);
   assert.match(css, /\.mgw-usage-entry summary\s*\{[^}]*grid-template-columns:[^}]*84px[^}]*minmax\(0,\s*0\.75fr\)[^}]*minmax\(0,\s*1\.2fr\)/s);

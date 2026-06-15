@@ -1018,14 +1018,60 @@
               <p class="eyebrow">Usage</p>
               <h3>{{ text('模型消耗', 'Model usage') }}</h3>
             </div>
-            <button type="button" class="secondary-button compact-button" :disabled="usageBusy" @click="refreshUsageLedger">
-              {{ usageBusy ? text('刷新中...', 'Refreshing...') : text('刷新消耗', 'Refresh usage') }}
-            </button>
+            <div class="mgw-panel-actions">
+              <button type="button" class="secondary-button compact-button" :disabled="!canExportUsage" @click="downloadGatewayUsageCsv">
+                {{ text('导出 CSV', 'Export CSV') }}
+              </button>
+              <button type="button" class="secondary-button compact-button" :disabled="usageBusy" @click="refreshUsageLedger">
+                {{ usageBusy ? text('刷新中...', 'Refreshing...') : text('刷新消耗', 'Refresh usage') }}
+              </button>
+            </div>
           </div>
 
           <p class="mgw-note mgw-usage-note">
             {{ text('统计来自本地脱敏 usage ledger，覆盖账号登录 provider 和普通 API-key provider；不会读取或展示上游密钥。', 'Stats come from the local redacted usage ledger and cover account-backed providers plus regular API-key providers; upstream secrets are never read or shown.') }}
           </p>
+
+          <section class="mgw-usage-controls" aria-label="Usage filters">
+            <label class="form-field">
+              <span class="form-label">{{ text('时间范围', 'Time range') }}</span>
+              <select v-model="usageTimeRange" class="form-input">
+                <option v-for="option in usageTimeRangeOptions" :key="option.id" :value="option.id">
+                  {{ text(option.zh, option.en) }}
+                </option>
+              </select>
+            </label>
+            <label class="form-field">
+              <span class="form-label">{{ text('来源', 'Source') }}</span>
+              <select v-model="usageSourceFilter" class="form-input">
+                <option v-for="option in usageSourceFilterOptions" :key="option.id" :value="option.id">
+                  {{ text(option.zh, option.en) }}
+                </option>
+              </select>
+            </label>
+            <label class="form-field">
+              <span class="form-label">Provider</span>
+              <select v-model="usageProviderFilter" class="form-input">
+                <option value="">{{ text('全部 Provider', 'All providers') }}</option>
+                <option v-for="provider in usageProviderFilterOptions" :key="provider.id" :value="provider.id">
+                  {{ provider.label }}
+                </option>
+              </select>
+            </label>
+            <label class="form-field">
+              <span class="form-label">{{ text('模型', 'Model') }}</span>
+              <select v-model="usageModelFilter" class="form-input">
+                <option value="">{{ text('全部模型', 'All models') }}</option>
+                <option v-for="model in usageModelFilterOptions" :key="model" :value="model">
+                  {{ model }}
+                </option>
+              </select>
+            </label>
+            <div class="mgw-usage-controls__meta">
+              <strong>{{ usageFilteredWindowLabel }}</strong>
+              <small>{{ usageLedgerWindowLabel }}</small>
+            </div>
+          </section>
 
           <section class="mgw-usage-summary-grid" aria-label="Gateway usage summary">
             <div v-for="card in usageSummaryCards" :key="card.id" class="mgw-usage-summary-card">
@@ -1575,6 +1621,8 @@ type DetectStep = {
 
 type WorkspaceTabId = 'connections' | 'providers' | 'usage' | 'smoke';
 type RuntimeLogFilterId = 'all' | 'account-routing' | 'failure' | 'cooldown-retry';
+type UsageTimeRangeId = '24h' | '7d' | '30d' | 'all';
+type UsageSourceFilterId = 'all' | 'account-backed' | 'api-key' | 'failure';
 
 type AppConnectionProfileDraft = {
   model: string;
@@ -1656,6 +1704,18 @@ const runtimeLogFilterOptions: Array<{ id: RuntimeLogFilterId; zh: string; en: s
   { id: 'failure', zh: '失败', en: 'Failures' },
   { id: 'cooldown-retry', zh: '冷却重试', en: 'Cooldown retry' },
 ];
+const usageTimeRangeOptions: Array<{ id: UsageTimeRangeId; zh: string; en: string }> = [
+  { id: '24h', zh: '最近 24 小时', en: 'Last 24h' },
+  { id: '7d', zh: '最近 7 天', en: 'Last 7d' },
+  { id: '30d', zh: '最近 30 天', en: 'Last 30d' },
+  { id: 'all', zh: '全部账本窗口', en: 'Full ledger window' },
+];
+const usageSourceFilterOptions: Array<{ id: UsageSourceFilterId; zh: string; en: string }> = [
+  { id: 'all', zh: '全部来源', en: 'All sources' },
+  { id: 'account-backed', zh: '账号 provider', en: 'Account-backed' },
+  { id: 'api-key', zh: 'API-key provider', en: 'API-key provider' },
+  { id: 'failure', zh: '失败请求', en: 'Failures' },
+];
 
 const accountRoutingStrategyOptions: Array<{ id: ModelGatewayAccountRoutingStrategy; zh: string; en: string }> = [
   { id: 'round-robin', zh: '轮转', en: 'Round robin' },
@@ -1732,6 +1792,10 @@ const status = ref<ModelGatewayStatusResponse | null>(null);
 const runtime = ref<ModelGatewayRuntimeResponse | null>(null);
 const usageLedger = ref<ModelGatewayUsageLedgerResponse | null>(null);
 const usageBusy = ref(false);
+const usageTimeRange = ref<UsageTimeRangeId>('all');
+const usageSourceFilter = ref<UsageSourceFilterId>('all');
+const usageProviderFilter = ref('');
+const usageModelFilter = ref('');
 const daemonService = ref<ModelGatewayDaemonServiceResponse | null>(null);
 const daemonActionResult = ref<ModelGatewayDaemonServiceResponse | null>(null);
 const clientAuth = ref<ModelGatewayClientAuthView | null>(null);
@@ -1843,21 +1907,41 @@ const runtimeMediaUsageLabel = computed(() => {
   return parts.join(' · ');
 });
 
-const usageSummary = computed<ModelGatewayRuntimeUsageSummary | null>(() =>
-  usageLedger.value?.usageSummary || runtimeUsageSummary.value,
+const usageRawEntries = computed<ModelGatewayRuntimeRequestLogEntry[]>(() =>
+  [...(usageLedger.value?.entries || runtime.value?.runtime.requestLog || [])],
+);
+const usageProviderFilterOptions = computed(() => {
+  const seen = new Map<string, string>();
+  for (const entry of usageRawEntries.value) {
+    const key = entry.providerId || 'unknown-provider';
+    seen.set(key, entry.providerName || entry.providerId || text('未知 provider', 'Unknown provider'));
+  }
+  return [...seen.entries()]
+    .map(([id, label]) => ({ id, label }))
+    .sort((left, right) => left.label.localeCompare(right.label));
+});
+const usageModelFilterOptions = computed(() => {
+  const models = uniqueStrings(usageRawEntries.value.map((entry) => entry.model || '').filter(Boolean));
+  return models.sort((left, right) => left.localeCompare(right));
+});
+const usageFilteredEntries = computed<ModelGatewayRuntimeRequestLogEntry[]>(() =>
+  usageRawEntries.value.filter((entry) => usageEntryMatchesFilters(entry)),
+);
+const usageSummary = computed<ModelGatewayRuntimeUsageSummary>(() =>
+  summarizeUsageEntries(usageFilteredEntries.value),
 );
 const usageProviderBuckets = computed<ModelGatewayRuntimeUsageSummaryBucket[]>(() =>
-  usageSummary.value?.byProvider || [],
+  usageSummary.value.byProvider,
 );
 const usageModelBuckets = computed<ModelGatewayRuntimeUsageSummaryBucket[]>(() =>
-  usageSummary.value?.byModel || [],
+  usageSummary.value.byModel,
 );
 const usageAccountBuckets = computed<ModelGatewayRuntimeUsageSummaryBucket[]>(() =>
-  usageSummary.value?.byAccount || [],
+  usageSummary.value.byAccount,
 );
 const usageRecentEntries = computed<ModelGatewayRuntimeRequestLogEntry[]>(() =>
-  [...(usageLedger.value?.entries || runtime.value?.runtime.requestLog || [])]
-    .reverse()
+  [...usageFilteredEntries.value]
+    .sort((left, right) => usageEntryTime(right) - usageEntryTime(left))
     .slice(0, 24),
 );
 const usageLedgerWindowLabel = computed(() => {
@@ -1868,15 +1952,22 @@ const usageLedgerWindowLabel = computed(() => {
     `${formatCompactNumber(ledger.entryCount)} entries · latest ${formatCompactNumber(ledger.entries.length)} window${ledger.truncated ? ' · truncated' : ''}`,
   );
 });
+const usageFilteredWindowLabel = computed(() =>
+  text(
+    `当前筛选 ${formatCompactNumber(usageFilteredEntries.value.length)} / ${formatCompactNumber(usageRawEntries.value.length)} 条`,
+    `${formatCompactNumber(usageFilteredEntries.value.length)} / ${formatCompactNumber(usageRawEntries.value.length)} entries in current filter`,
+  ),
+);
+const canExportUsage = computed(() => usageFilteredEntries.value.length > 0);
 const usageSummaryCards = computed(() => {
   const summary = usageSummary.value;
-  const usage = summary?.usage || null;
+  const usage = summary.usage;
   return [
     {
       id: 'requests',
       label: text('请求', 'Requests'),
-      value: formatCompactNumber(summary?.requestCount || 0),
-      meta: text(`计费用 ${formatCompactNumber(summary?.meteredRequestCount || 0)}`, `${formatCompactNumber(summary?.meteredRequestCount || 0)} metered`),
+      value: formatCompactNumber(summary.requestCount),
+      meta: text(`计费用 ${formatCompactNumber(summary.meteredRequestCount)}`, `${formatCompactNumber(summary.meteredRequestCount)} metered`),
     },
     {
       id: 'tokens',
@@ -1893,11 +1984,167 @@ const usageSummaryCards = computed(() => {
     {
       id: 'latest',
       label: text('最近请求', 'Latest request'),
-      value: summary?.latestRequestAt ? formatTimestamp(summary.latestRequestAt) : '-',
-      meta: usageLedgerWindowLabel.value,
+      value: summary.latestRequestAt ? formatTimestamp(summary.latestRequestAt) : '-',
+      meta: usageFilteredWindowLabel.value,
     },
   ];
 });
+
+function usageEntryTime(entry: ModelGatewayRuntimeRequestLogEntry): number {
+  const time = Date.parse(entry.finishedAt || entry.startedAt || '');
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function usageTimeRangeCutoff(range: UsageTimeRangeId): number | null {
+  const day = 24 * 60 * 60 * 1000;
+  if (range === '24h') return Date.now() - day;
+  if (range === '7d') return Date.now() - (7 * day);
+  if (range === '30d') return Date.now() - (30 * day);
+  return null;
+}
+
+function usageEntryIsAccountBacked(entry: ModelGatewayRuntimeRequestLogEntry): boolean {
+  return Boolean(entry.accountId || entry.accountHash) || providerSourceForId(entry.providerId) === 'account-backed';
+}
+
+function usageEntryMatchesFilters(entry: ModelGatewayRuntimeRequestLogEntry): boolean {
+  const cutoff = usageTimeRangeCutoff(usageTimeRange.value);
+  if (cutoff !== null && usageEntryTime(entry) < cutoff) return false;
+  if (usageProviderFilter.value && (entry.providerId || 'unknown-provider') !== usageProviderFilter.value) return false;
+  if (usageModelFilter.value && entry.model !== usageModelFilter.value) return false;
+  if (usageSourceFilter.value === 'failure') return entry.outcome !== 'success';
+  if (usageSourceFilter.value === 'account-backed') return usageEntryIsAccountBacked(entry);
+  if (usageSourceFilter.value === 'api-key') return providerSourceForId(entry.providerId) === 'api-key';
+  return true;
+}
+
+function createEmptyRuntimeUsage(): ModelGatewayRuntimeUsage {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+    imageGenerationRequests: 0,
+    imagesGenerated: 0,
+    imageEditRequests: 0,
+    audioInputRequests: 0,
+    audioOutputRequests: 0,
+  };
+}
+
+function addUsage(target: ModelGatewayRuntimeUsage, usage: ModelGatewayRuntimeUsage | null | undefined): void {
+  if (!usage) return;
+  target.inputTokens += usage.inputTokens || 0;
+  target.outputTokens += usage.outputTokens || 0;
+  target.totalTokens += usage.totalTokens || 0;
+  target.cacheReadTokens += usage.cacheReadTokens || 0;
+  target.cacheCreationTokens += usage.cacheCreationTokens || 0;
+  target.imageGenerationRequests += usage.imageGenerationRequests || 0;
+  target.imagesGenerated += usage.imagesGenerated || 0;
+  target.imageEditRequests += usage.imageEditRequests || 0;
+  target.audioInputRequests += usage.audioInputRequests || 0;
+  target.audioOutputRequests += usage.audioOutputRequests || 0;
+}
+
+function createUsageBucket(
+  key: string,
+  label: string,
+  entry: ModelGatewayRuntimeRequestLogEntry,
+): ModelGatewayRuntimeUsageSummaryBucket {
+  return {
+    key,
+    label,
+    providerId: entry.providerId,
+    providerName: entry.providerName,
+    accountId: entry.accountId || null,
+    accountHash: entry.accountHash || null,
+    model: entry.model,
+    requestCount: 0,
+    meteredRequestCount: 0,
+    latestRequestAt: null,
+    usage: createEmptyRuntimeUsage(),
+  };
+}
+
+function addUsageBucketEntry(
+  map: Map<string, ModelGatewayRuntimeUsageSummaryBucket>,
+  key: string,
+  label: string,
+  entry: ModelGatewayRuntimeRequestLogEntry,
+): void {
+  let bucket = map.get(key);
+  if (!bucket) {
+    bucket = createUsageBucket(key, label, entry);
+    map.set(key, bucket);
+  } else {
+    if (bucket.providerId !== entry.providerId) {
+      bucket.providerId = null;
+      bucket.providerName = text('多 provider', 'multi-provider');
+    }
+    if ((bucket.accountHash || bucket.accountId) !== (entry.accountHash || entry.accountId || null)) {
+      bucket.accountId = null;
+      bucket.accountHash = null;
+    }
+  }
+  bucket.requestCount += 1;
+  if (!bucket.latestRequestAt || usageEntryTime(entry) >= Date.parse(bucket.latestRequestAt)) {
+    bucket.latestRequestAt = entry.finishedAt;
+  }
+  if (entry.usage) {
+    bucket.meteredRequestCount += 1;
+    addUsage(bucket.usage, entry.usage);
+  }
+}
+
+function summarizeUsageEntries(entries: ModelGatewayRuntimeRequestLogEntry[]): ModelGatewayRuntimeUsageSummary {
+  const summary: ModelGatewayRuntimeUsageSummary = {
+    requestCount: entries.length,
+    meteredRequestCount: 0,
+    latestRequestAt: null,
+    usage: createEmptyRuntimeUsage(),
+    byProvider: [],
+    byModel: [],
+    byAccount: [],
+  };
+  const providersMap = new Map<string, ModelGatewayRuntimeUsageSummaryBucket>();
+  const modelsMap = new Map<string, ModelGatewayRuntimeUsageSummaryBucket>();
+  const accountsMap = new Map<string, ModelGatewayRuntimeUsageSummaryBucket>();
+
+  for (const entry of entries) {
+    if (!summary.latestRequestAt || usageEntryTime(entry) >= Date.parse(summary.latestRequestAt)) {
+      summary.latestRequestAt = entry.finishedAt;
+    }
+    if (entry.usage) {
+      summary.meteredRequestCount += 1;
+      addUsage(summary.usage, entry.usage);
+    }
+    const providerKey = entry.providerId || 'unknown-provider';
+    addUsageBucketEntry(providersMap, providerKey, entry.providerName || entry.providerId || 'unknown provider', entry);
+    const modelKey = entry.model || 'unknown-model';
+    addUsageBucketEntry(modelsMap, modelKey, entry.model || 'unknown model', entry);
+    if (entry.accountId || entry.accountHash) {
+      const accountKey = `${providerKey}:${entry.accountHash || entry.accountId || 'unknown-account'}`;
+      addUsageBucketEntry(accountsMap, accountKey, entry.accountId || entry.accountHash || 'unknown account', entry);
+    }
+  }
+
+  const ordered = (map: Map<string, ModelGatewayRuntimeUsageSummaryBucket>) => (
+    [...map.values()]
+      .sort((left, right) => (
+        right.usage.totalTokens - left.usage.totalTokens
+        || right.meteredRequestCount - left.meteredRequestCount
+        || right.requestCount - left.requestCount
+        || left.label.localeCompare(right.label)
+      ))
+      .slice(0, 24)
+  );
+
+  summary.byProvider = ordered(providersMap);
+  summary.byModel = ordered(modelsMap);
+  summary.byAccount = ordered(accountsMap);
+  return summary;
+}
 
 function providerSourceForId(providerId: string | null | undefined): ModelGatewayProviderSourceType | null {
   if (!providerId) return null;
@@ -1985,6 +2232,92 @@ function usageEntryAccountLabel(entry: ModelGatewayRuntimeRequestLogEntry): stri
   return providerSourceForId(entry.providerId) === 'account-backed'
     ? text('账号未记录', 'account not recorded')
     : 'API-key provider';
+}
+
+function csvCell(value: unknown): string {
+  const raw = value === null || value === undefined ? '' : String(value);
+  return /[",\n\r]/.test(raw) ? `"${raw.replace(/"/g, '""')}"` : raw;
+}
+
+function usageCsvSource(entry: ModelGatewayRuntimeRequestLogEntry): string {
+  if (usageEntryIsAccountBacked(entry)) return 'account-backed';
+  return providerSourceForId(entry.providerId) || 'unknown';
+}
+
+function usageCsvRows(): string[][] {
+  return usageFilteredEntries.value
+    .slice()
+    .sort((left, right) => usageEntryTime(left) - usageEntryTime(right))
+    .map((entry) => [
+      entry.finishedAt,
+      entry.outcome,
+      usageCsvSource(entry),
+      entry.providerId || '',
+      entry.providerName || '',
+      entry.accountId || '',
+      entry.accountHash || '',
+      entry.model || '',
+      entry.routeId || '',
+      entry.method,
+      entry.requestedPath,
+      entry.statusCode ?? '',
+      entry.durationMs,
+      entry.usage?.inputTokens || 0,
+      entry.usage?.outputTokens || 0,
+      entry.usage?.totalTokens || 0,
+      entry.usage?.cacheReadTokens || 0,
+      entry.usage?.cacheCreationTokens || 0,
+      entry.usage?.imageGenerationRequests || 0,
+      entry.usage?.imagesGenerated || 0,
+      entry.usage?.imageEditRequests || 0,
+      entry.usage?.audioInputRequests || 0,
+      entry.usage?.audioOutputRequests || 0,
+      entry.errorCode || '',
+      entry.errorMessage || '',
+    ].map((value) => String(value)));
+}
+
+function downloadGatewayUsageCsv(): void {
+  if (!canExportUsage.value) return;
+  const header = [
+    'finished_at',
+    'outcome',
+    'source',
+    'provider_id',
+    'provider_name',
+    'account_id',
+    'account_hash',
+    'model',
+    'route_id',
+    'method',
+    'requested_path',
+    'status_code',
+    'duration_ms',
+    'input_tokens',
+    'output_tokens',
+    'total_tokens',
+    'cache_read_tokens',
+    'cache_creation_tokens',
+    'image_generation_requests',
+    'images_generated',
+    'image_edit_requests',
+    'audio_input_requests',
+    'audio_output_requests',
+    'error_code',
+    'error_message',
+  ];
+  const csv = [header, ...usageCsvRows()]
+    .map((row) => row.map(csvCell).join(','))
+    .join('\n');
+  const blob = new Blob([`${csv}\n`], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = `studio-gateway-usage-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 function accountRoutingSummary(routing: ModelGatewayAccountRoutingDiagnostics): string {
