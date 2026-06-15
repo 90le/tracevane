@@ -568,6 +568,41 @@ test("model gateway starts Codex account login and creates an account-backed pro
       });
       assert.equal(edit.status, 501);
       assert.equal(JSON.parse(edit.body).error.code, "model_gateway_codex_account_image_edits_unsupported");
+
+      const audioBoundary = "----studio-codex-audio-boundary";
+      const audioBody = Buffer.from([
+        `--${audioBoundary}`,
+        'Content-Disposition: form-data; name="model"',
+        "",
+        "gpt-4o-mini-transcribe",
+        `--${audioBoundary}`,
+        'Content-Disposition: form-data; name="file"; filename="sample.wav"',
+        "Content-Type: audio/wav",
+        "",
+        "RIFF\u0024\u0000\u0000\u0000WAVEfmt ",
+        `--${audioBoundary}--`,
+        "",
+      ].join("\r\n"), "latin1");
+      const audio = await requestRaw(`${baseUrl}/v1/audio/transcriptions`, {
+        method: "POST",
+        rawBody: audioBody,
+        headers: {
+          "content-type": `multipart/form-data; boundary=${audioBoundary}`,
+        },
+      });
+      assert.equal(audio.status, 501);
+      assert.equal(JSON.parse(audio.body).error.code, "model_gateway_codex_account_audio_unsupported");
+
+      const speech = await requestJson(`${baseUrl}/v1/audio/speech`, {
+        method: "POST",
+        body: {
+          model: "gpt-4o-mini-tts",
+          voice: "alloy",
+          input: "hello",
+        },
+      });
+      assert.equal(speech.status, 501);
+      assert.equal(speech.body.error.code, "model_gateway_codex_account_audio_unsupported");
     });
   } finally {
     globalThis.fetch = originalFetch;

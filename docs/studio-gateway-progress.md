@@ -50,14 +50,16 @@
   - Gateway 新增 OpenAI Images `/v1/images/generations`、`/v1/images/edits` 和 OpenAI Audio `/v1/audio/transcriptions`、`/v1/audio/translations`、`/v1/audio/speech` 路由合同；Provider Center 可编辑生图、音频输入、音频输出能力。
   - Codex account 的 Images generation 参考 Sub2API / CLIProxyAPI：对外接 OpenAI Images API，对上游桥接到 Codex `/responses` 的 `image_generation` tool，并把 Responses/SSE 输出重建为 Images API 响应。
   - OpenAI-compatible Images edits 保持 multipart/binary 原样 passthrough；Codex account image edits 不伪装支持，返回明确 `model_gateway_codex_account_image_edits_unsupported`。
-  - OpenAI-compatible 音频端点保持 multipart/binary 原样 passthrough，不再把音频请求体当 UTF-8 字符串重写；Codex account 音频目录已暴露，但账户音频 upstream 能力仍需真实 entitlement smoke 后才能标为完成。
+  - OpenAI-compatible 音频端点保持 multipart/binary 原样 passthrough，不再把音频请求体当 UTF-8 字符串重写；Codex account 音频目录已暴露，但 REST `/v1/audio/*` 不再透传到 Codex backend 返回 HTML 403，统一返回结构化 `model_gateway_codex_account_audio_unsupported`。
   - 本轮验证通过：`npm run typecheck:api`、`npm run build:api`、`npm run typecheck:web`、`npm run build:web`。
   - Account pool 调度完成：支持 session affinity、round-robin/fill-first、per-account concurrency、busy 429、runtime log accountId/accountHash，并将 Codex account cursor/affinity 写入 runtime，daemon 重启后同 session 保持账号，新 session 延续轮转。
   - Active route smoke 改为客户端真实形态：Claude Code / OpenCode 会带最小 tools schema，响应必须按客户端协议解析出 `GATEWAY_OK`；固定 provider 的 endpoint fallback 优先同 provider，避免 `glm` Claude 路由直接跳到外部 provider。
   - Codex account provider smoke 复用账号请求归一化、账号 header 和代理网络，不再绕开正式 Gateway Codex account 链路导致 false negative。
   - OpenCode Gateway runner 不再给 Gateway 模型声明 `reasoning:true`、注入 `--variant` 或传 `--thinking`；App Connections 生成的 OpenCode 模型也显式 `reasoning:false`，避免用户级 `~/.config/opencode/opencode.json` 继续让 OpenCode 发 `reasoning_effort`。
   - Gateway Chat-compatible upstream 新增 `tools + reasoning_effort` 清理：OpenAI Chat Completions 请求只要带 function tools，就会删除 `reasoning_effort` / `reasoningEffort` 后再转发，避免 `gpt-5.5 + tools + /v1/chat/completions` 触发上游不兼容错误；无工具请求不受影响。
-  - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，68/68 通过，覆盖 Codex account login/provider smoke、account pool sticky/concurrency/runtime persistence、Active route 客户端工具合同、OpenCode App Connection `reasoning:false`、Chat tools reasoning 清理、自动 refresh、手动 refresh、账户禁用路由跳过、refresh auth failure、secret redaction、active routing、Codex headers 转发、Codex Responses SSE 聚合、Codex Images bridge、OpenAI-compatible image edits/audio multipart passthrough 和既有三协议矩阵无回归。
+  - 新增 `scripts/smoke-model-gateway-account-media.mjs`：默认低成本验证 `/v1/models` 媒体 catalog、image edits route 结构化错误、Codex account audio unsupported；显式 `--run-image-generation` 才触发 `gpt-image-2` 生图。
+  - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，68/68 通过，覆盖 Codex account login/provider smoke、account pool sticky/concurrency/runtime persistence、Active route 客户端工具合同、OpenCode App Connection `reasoning:false`、Chat tools reasoning 清理、Codex account audio unsupported、自动 refresh、手动 refresh、账户禁用路由跳过、refresh auth failure、secret redaction、active routing、Codex headers 转发、Codex Responses SSE 聚合、Codex Images bridge、OpenAI-compatible image edits/audio multipart passthrough 和既有三协议矩阵无回归。
+  - 真实低成本 media smoke 通过：`node scripts/smoke-model-gateway-account-media.mjs --json` 返回 `ok=true`；当前 `gpt-image-2` image edits 由 `mlamp` 返回结构化 `invalid_image_file`，Codex account audio transcription/speech 均为结构化 501。
   - 真实 OpenCode `gpt-5.5` smoke 通过：用户级 OpenCode 配置已重新 apply，`opencode run --model studio-gateway/gpt-5.5` 成功调用 shell tool 输出 `OPENCODE_TOOL_OK` 并最终返回 `OPENCODE_DONE`，不再报 `Function tools with reasoning_effort are not supported...`。
 - Provider Center 前端收口：
   - 模型目录的可见身份字段只保留“模型名称”和“别名”，不再暴露“显示名”三段式配置。
@@ -304,6 +306,6 @@
 
 ## 下一步
 
-1. 补 Codex account Images generation live smoke、音频真实 upstream 能力和 realtime/WebSocket 可行性验证；不支持项继续明确报错。
+1. 补 Codex account Images generation live smoke：当前同名 `gpt-image-2` 默认会按 provider 优先级选中 `mlamp`，需要临时强制 active provider 为 `codex-account` 并在完成后恢复，避免把 provider proof 记错。
 2. 补账户池高级策略：quota/cooldown、sticky failover 可解释日志和 per-account proxy/direct UI。
 3. 继续参考 Sub2API / CLIProxyAPI 补 usage 归集、模型目录刷新、媒体模型状态和 Codex account image edits 可行性验证。

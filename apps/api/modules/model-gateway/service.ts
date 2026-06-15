@@ -7694,6 +7694,11 @@ export function createModelGatewayService(
       && isCodexAccountBackedProvider(provider);
     const useCodexAccountImageEditsUnsupported = decision.routeId === "openai_images_edits"
       && isCodexAccountBackedProvider(provider);
+    const useCodexAccountAudioUnsupported = (
+      decision.routeId === "openai_audio_transcriptions"
+      || decision.routeId === "openai_audio_translations"
+      || decision.routeId === "openai_audio_speech"
+    ) && isCodexAccountBackedProvider(provider);
     const useCodexAccountResponsesUpstream = isCodexAccountBackedProvider(provider)
       && normalizePathname(decision.upstreamUrl || decision.upstreamPath || "").endsWith("/responses");
     if (
@@ -7740,6 +7745,27 @@ export function createModelGatewayService(
       sendJson(res, 501, {
         error: {
           code: "model_gateway_codex_account_image_edits_unsupported",
+          message,
+          decision,
+        },
+      });
+      return;
+    }
+    if (useCodexAccountAudioUnsupported) {
+      const message = "Codex account REST audio routes are not exposed by the Codex backend yet; use an OpenAI-compatible audio provider for /v1/audio/*.";
+      appendRequestLog(requestLogEntry({
+        kind: "gateway-request",
+        startedAt,
+        route: decision,
+        model: requestModel,
+        statusCode: 501,
+        outcome: "adapter-required",
+        errorCode: "model_gateway_codex_account_audio_unsupported",
+        errorMessage: message,
+      }));
+      sendJson(res, 501, {
+        error: {
+          code: "model_gateway_codex_account_audio_unsupported",
           message,
           decision,
         },
