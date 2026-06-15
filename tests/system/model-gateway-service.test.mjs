@@ -577,7 +577,11 @@ test("model gateway starts Codex account login and creates an account-backed pro
         },
       });
       assert.equal(edit.status, 501);
-      assert.equal(JSON.parse(edit.body).error.code, "model_gateway_codex_account_image_edits_unsupported");
+      const editError = JSON.parse(edit.body).error;
+      assert.equal(editError.code, "model_gateway_codex_account_image_edits_unsupported");
+      assert.equal(editError.details.feasibility, "blocked-no-codex-image-edit-action-contract");
+      assert.match(editError.details.reference, /Sub2API\/CLIProxyAPI/);
+      assert.ok(editError.details.alternatives.some((item) => item.includes("/v1/images/generations")));
 
       const audioBoundary = "----studio-codex-audio-boundary";
       const audioBody = Buffer.from([

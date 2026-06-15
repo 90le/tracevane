@@ -52,7 +52,7 @@
   - systemd/launchd Gateway daemon service template 会继承当前 Studio 进程的代理环境；account-backed Codex upstream/auth 请求也会使用账户代理、provider 代理或环境代理，避免 daemon 下直连失败。
   - Gateway 新增 OpenAI Images `/v1/images/generations`、`/v1/images/edits` 和 OpenAI Audio `/v1/audio/transcriptions`、`/v1/audio/translations`、`/v1/audio/speech` 路由合同；Provider Center 可编辑生图、音频输入、音频输出能力。
   - Codex account 的 Images generation 参考 Sub2API / CLIProxyAPI：对外接 OpenAI Images API，对上游桥接到 Codex `/responses` 的 `image_generation` tool，并把 Responses/SSE 输出重建为 Images API 响应；支持 `response.output` 与 `response.output_item.done` 两种图片结果位置，透传 upstream `response.failed/error`，缺失图片时返回带输出类型/文本预览的诊断。
-  - OpenAI-compatible Images edits 保持 multipart/binary 原样 passthrough；Codex account image edits 不伪装支持，返回明确 `model_gateway_codex_account_image_edits_unsupported`。
+  - OpenAI-compatible Images edits 保持 multipart/binary 原样 passthrough；Codex account image edits 不伪装支持，返回明确 `model_gateway_codex_account_image_edits_unsupported`，并携带可行性结论、参考来源和替代路径。
   - OpenAI-compatible 音频端点保持 multipart/binary 原样 passthrough，不再把音频请求体当 UTF-8 字符串重写；Codex account 音频目录已暴露，但 REST `/v1/audio/*` 不再透传到 Codex backend 返回 HTML 403，统一返回结构化 `model_gateway_codex_account_audio_unsupported`。
   - 本轮验证通过：`npm run typecheck:api`、`npm run build:api`、`npm run typecheck:web`、`npm run build:web`。
   - Account pool 调度完成：支持 session affinity、round-robin/fill-first、per-account concurrency、busy 429、HTTP 非 2xx 与 started streaming `response.failed/error` 的 upstream quota/rate/capacity cooldown、cooldown 手动清除、per-account proxy/direct、runtime log accountId/accountHash/accountRouting，并将 Codex account cursor/affinity 写入 runtime，daemon 重启后同 session 保持账号，新 session 延续轮转；Provider Center 最近请求可直接查看 sticky/selected/skipped 摘要。
@@ -62,6 +62,7 @@
   - Provider Center 账户状态区补齐账号池策略配置：可编辑 round-robin / fill-first、Sticky session 和单账号并发；保存 provider 时只更新 routing，保留现有账户和 token refs。
   - Provider Center Smoke / 日志页新增媒体模型状态摘要：直接读取已启用 provider 的 catalog 能力标记，显示 Vision、Image gen、Audio in/out 和 Realtime 计数与示例模型。
   - 本轮低成本 media smoke 通过：`node scripts/smoke-model-gateway-account-media.mjs --json` 返回 `ok=true`，`/v1/models` 有 `gpt-image-2` 生图、11 个音频模型、3 个 realtime 模型；image edits 命中 `mlamp` 并返回结构化 `invalid_image_file`；Codex account audio 仍为预期结构化 unsupported。
+  - Codex account image edits 可行性结论已落到错误 envelope：Sub2API / CLIProxyAPI 均可参考 Codex `/responses + image_generation` 生图桥接，但没有可复用的 Codex account image edit action 合同；Gateway 继续明确 501，并提示走 OpenAI-compatible image edits 或 Codex `/v1/images/generations`。
   - Active route smoke 改为客户端真实形态：Claude Code / OpenCode 会带最小 tools schema，响应必须按客户端协议解析出 `GATEWAY_OK`；固定 provider 的 endpoint fallback 优先同 provider，避免 `glm` Claude 路由直接跳到外部 provider。
   - Codex account provider smoke 复用账号请求归一化、账号 header 和代理网络，不再绕开正式 Gateway Codex account 链路导致 false negative。
   - OpenCode Gateway runner 不再给 Gateway 模型声明 `reasoning:true`、注入 `--variant` 或传 `--thinking`；App Connections 生成的 OpenCode 模型也显式 `reasoning:false`，避免用户级 `~/.config/opencode/opencode.json` 继续让 OpenCode 发 `reasoning_effort`。
@@ -319,5 +320,5 @@
 ## 下一步
 
 1. 继续补账户池高级策略：Provider Center accountRouting 更深层排障字段和策略 live smoke。
-2. 继续参考 Sub2API / CLIProxyAPI 补 Codex account image edits 可行性验证和 media usage 精细映射。
+2. 继续参考 Sub2API / CLIProxyAPI 补 media usage 精细映射。
 3. 继续把 runtime usage summary 扩展成长期 usage 账本和模型消耗页。
