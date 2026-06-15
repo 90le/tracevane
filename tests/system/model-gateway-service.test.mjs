@@ -115,7 +115,9 @@ function requestJson(url, options = {}) {
 }
 
 function requestRaw(url, options = {}) {
-  const body = options.body === undefined ? null : JSON.stringify(options.body);
+  const body = options.rawBody === undefined
+    ? options.body === undefined ? null : JSON.stringify(options.body)
+    : Buffer.isBuffer(options.rawBody) ? options.rawBody : Buffer.from(String(options.rawBody), "utf8");
   const target = new URL(url);
   return new Promise((resolve, reject) => {
     const req = http.request({
@@ -124,7 +126,8 @@ function requestRaw(url, options = {}) {
       path: `${target.pathname}${target.search}`,
       method: options.method || "GET",
       headers: {
-        ...(body ? { "content-type": "application/json", "content-length": Buffer.byteLength(body) } : {}),
+        ...(body && options.rawBody === undefined ? { "content-type": "application/json" } : {}),
+        ...(body ? { "content-length": Buffer.byteLength(body) } : {}),
         ...(options.headers || {}),
       },
     }, (res) => {
@@ -282,6 +285,20 @@ test("model gateway starts Codex account login and creates an account-backed pro
   });
 
   const originalFetch = globalThis.fetch;
+  const previousProxyEnv = {
+    HTTPS_PROXY: process.env.HTTPS_PROXY,
+    HTTP_PROXY: process.env.HTTP_PROXY,
+    ALL_PROXY: process.env.ALL_PROXY,
+    https_proxy: process.env.https_proxy,
+    http_proxy: process.env.http_proxy,
+    all_proxy: process.env.all_proxy,
+  };
+  process.env.HTTPS_PROXY = "http://127.0.0.1:18080";
+  delete process.env.HTTP_PROXY;
+  delete process.env.ALL_PROXY;
+  delete process.env.https_proxy;
+  delete process.env.http_proxy;
+  delete process.env.all_proxy;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
     const target = new URL(String(url));
@@ -327,22 +344,73 @@ test("model gateway starts Codex account login and creates an account-backed pro
     }
 
     if (target.hostname === "chatgpt.com" && target.pathname === "/backend-api/codex/responses") {
+      const requestBody = JSON.parse(String(init.body || "{}"));
       upstreamCalls.push({
         url: String(url),
         authorization: headers.get("authorization"),
         accountId: headers.get("chatgpt-account-id"),
         originator: headers.get("originator"),
         userAgent: headers.get("user-agent"),
+        accept: headers.get("accept"),
+        dispatcher: Boolean(init.dispatcher),
+        body: requestBody,
+      });
+      if (requestBody.tools?.[0]?.type === "image_generation") {
+        return new Response([
+          "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_image\",\"created_at\":1710000001,\"output\":[{\"type\":\"image_generation_call\",\"result\":\"BASE64_IMAGE\",\"output_format\":\"png\",\"size\":\"1024x1024\",\"quality\":\"low\",\"revised_prompt\":\"red square\"}],\"tool_usage\":{\"image_gen\":{\"input_tokens\":7,\"output_tokens\":11,\"total_tokens\":18}}}}",
+          "",
+          "data: [DONE]",
+          "",
+        ].join("\n"), {
+          status: 200,
+          headers: { "content-type": "text/event-stream" },
+        });
+      }
+      const outputItem = {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "ok" }],
+        };
+      return new Response([
+        `data: ${JSON.stringify({ type: "response.output_item.done", output_index: 0, item: outputItem })}`,
+        "",
+        `data: ${JSON.stringify({
+          type: "response.completed",
+          response: {
+            id: "resp_codex_account",
+            object: "response",
+            status: "completed",
+            output: [],
+            usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+          },
+        })}`,
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n"), {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
+
+    if (target.hostname === "chatgpt.com" && target.pathname === "/backend-api/codex/compact") {
+      upstreamCalls.push({
+        url: String(url),
+        authorization: headers.get("authorization"),
+        accountId: headers.get("chatgpt-account-id"),
+        originator: headers.get("originator"),
+        userAgent: headers.get("user-agent"),
+        dispatcher: Boolean(init.dispatcher),
         body: JSON.parse(String(init.body || "{}")),
       });
       return new Response(JSON.stringify({
-        id: "resp_codex_account",
+        id: "resp_codex_compact",
         object: "response",
         status: "completed",
         output: [{
           type: "message",
           role: "assistant",
-          content: [{ type: "output_text", text: "ok" }],
+          content: [{ type: "output_text", text: "compact summary" }],
         }],
       }), {
         status: 200,
@@ -385,7 +453,34 @@ test("model gateway starts Codex account login and creates an account-backed pro
       assert.equal(poll.body.provider.accountProvider.accounts[0].state, "ready");
       assert.equal(poll.body.provider.accountProvider.accounts[0].emailMasked, "co***@example.com");
       assert.equal(poll.body.provider.accountProvider.accounts[0].plan, "plus");
-      assert.deepEqual(poll.body.provider.models.models.map((model) => model.id), ["gpt-5.5", "gpt-5.5-mini", "gpt-5"]);
+      assert.deepEqual(poll.body.provider.models.models.map((model) => model.id), [
+        "gpt-5.5",
+        "gpt-5.4",
+        "gpt-5.4-mini",
+        "gpt-5.3-codex",
+        "gpt-image-2",
+        "gpt-4o-transcribe",
+        "gpt-4o-mini-transcribe",
+        "gpt-4o-mini-tts",
+        "tts-1",
+        "tts-1-hd",
+        "whisper-1",
+        "gpt-audio",
+        "gpt-audio-1.5",
+        "gpt-realtime",
+        "gpt-realtime-1.5",
+        "gpt-realtime-2",
+      ]);
+      const imageModel = poll.body.provider.models.models.find((model) => model.id === "gpt-image-2");
+      assert.equal(imageModel.features.imageGeneration, true);
+      assert.equal(imageModel.features.text, false);
+      const transcribeModel = poll.body.provider.models.models.find((model) => model.id === "gpt-4o-transcribe");
+      assert.equal(transcribeModel.features.audioInput, true);
+      assert.equal(transcribeModel.features.audioOutput, false);
+      const audioModel = poll.body.provider.models.models.find((model) => model.id === "gpt-audio");
+      assert.equal(audioModel.features.audioInput, true);
+      assert.equal(audioModel.features.audioOutput, true);
+      assert.equal(poll.body.provider.endpoints.openai_responses_compact, "/compact");
 
       const providers = await requestJson(`${baseUrl}/api/model-gateway/providers`);
       assert.equal(providers.body.activeProviders.codex, "codex-owned");
@@ -408,17 +503,186 @@ test("model gateway starts Codex account login and creates an account-backed pro
       });
       assert.equal(response.status, 200);
       assert.equal(response.body.id, "resp_codex_account");
+      assert.equal(response.body.output[0].content[0].text, "ok");
+      assert.equal(response.body.usage.total_tokens, 2);
+
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.5",
+          messages: [{ role: "user", content: "hello" }],
+        },
+      });
+      assert.equal(chat.status, 200);
+      assert.equal(chat.body.choices[0].message.content, "ok");
+
+      const compact = await requestJson(`${baseUrl}/v1/responses/compact`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.5",
+          input: "summarize",
+        },
+      });
+      assert.equal(compact.status, 200);
+      assert.equal(compact.body.id, "resp_codex_compact");
+
+      const image = await requestJson(`${baseUrl}/v1/images/generations`, {
+        method: "POST",
+        body: {
+          model: "gpt-image-2",
+          prompt: "draw a red square",
+          size: "1024x1024",
+          quality: "low",
+          response_format: "b64_json",
+        },
+      });
+      assert.equal(image.status, 200);
+      assert.equal(image.body.created, 1710000001);
+      assert.equal(image.body.data[0].b64_json, "BASE64_IMAGE");
+      assert.equal(image.body.data[0].revised_prompt, "red square");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(previousProxyEnv)) {
+      if (typeof value === "string") process.env[key] = value;
+      else delete process.env[key];
+    }
+  }
+
+  assert.equal(upstreamCalls.length, 4);
+  assert.equal(upstreamCalls[0].url, "https://chatgpt.com/backend-api/codex/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer codex-access-token");
+  assert.equal(upstreamCalls[0].accountId, "acct_codex_123");
+  assert.equal(upstreamCalls[0].originator, "codex_cli_rs");
+  assert.equal(upstreamCalls[0].dispatcher, true);
+  assert.equal(upstreamCalls[0].body.instructions, "");
+  assert.equal(upstreamCalls[0].body.stream, true);
+  assert.equal(upstreamCalls[0].body.store, false);
+  assert.equal(upstreamCalls[0].body.parallel_tool_calls, true);
+  assert.deepEqual(upstreamCalls[0].body.include, ["reasoning.encrypted_content"]);
+  assert.deepEqual(upstreamCalls[0].body.input, [{
+    type: "message",
+    role: "user",
+    content: [{ type: "input_text", text: "hello" }],
+  }]);
+  assert.equal(upstreamCalls[0].accept, "text/event-stream");
+  assert.equal(upstreamCalls[1].url, "https://chatgpt.com/backend-api/codex/responses");
+  assert.equal(upstreamCalls[1].body.store, false);
+  assert.equal(upstreamCalls[1].body.parallel_tool_calls, true);
+  assert.equal(upstreamCalls[1].body.stream, true);
+  assert.equal(upstreamCalls[2].url, "https://chatgpt.com/backend-api/codex/compact");
+  assert.equal(upstreamCalls[2].body.model, "gpt-5.5");
+  assert.equal(upstreamCalls[2].dispatcher, true);
+  assert.equal(upstreamCalls[2].body.instructions, "");
+  assert.equal(upstreamCalls[3].url, "https://chatgpt.com/backend-api/codex/responses");
+  assert.equal(upstreamCalls[3].body.model, "gpt-5.4-mini");
+  assert.equal(upstreamCalls[3].body.tools[0].type, "image_generation");
+  assert.equal(upstreamCalls[3].body.tools[0].model, "gpt-image-2");
+  assert.equal(upstreamCalls[3].body.tools[0].size, "1024x1024");
+  assert.equal(upstreamCalls[3].body.tool_choice.type, "image_generation");
+  assert.equal(upstreamCalls[3].dispatcher, true);
+  assert.match(upstreamCalls[0].userAgent, /^codex_cli_rs/);
+});
+
+test("model gateway forwards OpenAI audio multipart requests without rewriting binary bodies", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "audio-provider",
+      name: "Audio Provider",
+      appScopes: ["openclaw"],
+      baseUrl: "https://audio.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "gpt-4o-transcribe",
+        models: [{
+          id: "gpt-4o-transcribe",
+          features: {
+            text: false,
+            streaming: false,
+            tools: false,
+            vision: false,
+            reasoning: false,
+            responses: false,
+            audioInput: true,
+            audioOutput: false,
+          },
+        }],
+      },
+    },
+    secret: {
+      apiKey: "sk-audio-secret",
+    },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const boundary = "----studio-audio-boundary";
+  const multipartBody = Buffer.from([
+    `--${boundary}`,
+    'Content-Disposition: form-data; name="model"',
+    "",
+    "gpt-4o-transcribe",
+    `--${boundary}`,
+    'Content-Disposition: form-data; name="file"; filename="voice.wav"',
+    "Content-Type: audio/wav",
+    "",
+    "RIFF\u0000\u0001studio-binary",
+    `--${boundary}--`,
+    "",
+  ].join("\r\n"), "latin1");
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const body = Buffer.isBuffer(init.body)
+      ? init.body
+      : ArrayBuffer.isView(init.body)
+        ? Buffer.from(init.body.buffer, init.body.byteOffset, init.body.byteLength)
+      : Buffer.from(String(init.body || ""), "latin1");
+    const headers = init.headers instanceof Headers ? init.headers : new Headers(init.headers || {});
+    upstreamCalls.push({
+      url: String(url),
+      authorization: headers.get("authorization"),
+      contentType: headers.get("content-type"),
+      body,
+    });
+    return new Response(JSON.stringify({ text: "audio ok" }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestRaw(`${baseUrl}/v1/audio/transcriptions`, {
+        method: "POST",
+        rawBody: multipartBody,
+        headers: {
+          "content-type": `multipart/form-data; boundary=${boundary}`,
+        },
+      });
+      assert.equal(response.status, 200);
+      assert.equal(JSON.parse(response.body).text, "audio ok");
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.equal(runtime.status, 200);
+      assert.equal(runtime.body.runtime.requestLog[0].routeId, "openai_audio_transcriptions");
+      assert.equal(runtime.body.runtime.requestLog[0].model, "gpt-4o-transcribe");
+      assert.equal(runtime.body.runtime.requestLog[0].upstreamUrl, "https://audio.example.test/v1/audio/transcriptions");
     });
   } finally {
     globalThis.fetch = originalFetch;
   }
 
   assert.equal(upstreamCalls.length, 1);
-  assert.equal(upstreamCalls[0].url, "https://chatgpt.com/backend-api/codex/responses");
-  assert.equal(upstreamCalls[0].authorization, "Bearer codex-access-token");
-  assert.equal(upstreamCalls[0].accountId, "acct_codex_123");
-  assert.equal(upstreamCalls[0].originator, "codex_cli_rs");
-  assert.match(upstreamCalls[0].userAgent, /^codex_cli_rs/);
+  assert.equal(upstreamCalls[0].url, "https://audio.example.test/v1/audio/transcriptions");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-audio-secret");
+  assert.equal(upstreamCalls[0].contentType, `multipart/form-data; boundary=${boundary}`);
+  assert.deepEqual(upstreamCalls[0].body, multipartBody);
 });
 
 test("model gateway refreshes expiring Codex account tokens before forwarding", async () => {
@@ -2743,6 +3007,41 @@ test("model gateway daemon service management exposes templates and guarded inst
     assert.equal(startPreview.body.commandsRun.length, 0);
     assert.ok(startPreview.body.plan.selectedTemplate.commands.start.length >= 1);
   });
+});
+
+test("model gateway daemon service templates inherit proxy environment for supervised daemons", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const previous = {
+    HTTPS_PROXY: process.env.HTTPS_PROXY,
+    NO_PROXY: process.env.NO_PROXY,
+    https_proxy: process.env.https_proxy,
+    no_proxy: process.env.no_proxy,
+  };
+  process.env.HTTPS_PROXY = "http://127.0.0.1:18080";
+  process.env.NO_PROXY = "localhost,127.0.0.1,::1";
+  delete process.env.https_proxy;
+  delete process.env.no_proxy;
+  try {
+    const service = createModelGatewayService(config);
+    const plan = (await service.manageDaemonService(undefined, {
+      action: "status",
+      runCommands: false,
+    })).plan;
+    const systemd = plan.templates.find((item) => item.supervisor === "systemd-user");
+    const launchd = plan.templates.find((item) => item.supervisor === "launchd-user");
+    assert.ok(systemd);
+    assert.ok(launchd);
+    assert.match(systemd.template, /^Environment="HTTPS_PROXY=http:\/\/127\.0\.0\.1:18080"$/m);
+    assert.match(systemd.template, /^Environment="NO_PROXY=localhost,127\.0\.0\.1,::1"$/m);
+    assert.match(launchd.template, /<key>HTTPS_PROXY<\/key>\n    <string>http:\/\/127\.0\.0\.1:18080<\/string>/);
+    assert.match(launchd.template, /<key>NO_PROXY<\/key>\n    <string>localhost,127\.0\.0\.1,::1<\/string>/);
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      if (typeof value === "string") process.env[key] = value;
+      else delete process.env[key];
+    }
+  }
 });
 
 test("model gateway daemon service management executes selected supervisor commands when requested", async () => {

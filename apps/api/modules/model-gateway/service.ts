@@ -168,6 +168,7 @@ const CODEX_ACCOUNT_REFRESH_WINDOW_MS = 5 * 60_000;
 const CODEX_ACCOUNT_AUTH_COOLDOWN_MS = 5 * 60_000;
 const CODEX_ACCOUNT_USER_AGENT = "codex_cli_rs/0.133.0 (OpenClaw Studio Gateway; local)";
 const CODEX_ACCOUNT_ORIGINATOR = "codex_cli_rs";
+const CODEX_ACCOUNT_IMAGE_GENERATION_MAIN_MODEL = "gpt-5.4-mini";
 const MODEL_GATEWAY_VISION_SMOKE_IMAGE_MIME_TYPE = "image/jpeg";
 const MODEL_GATEWAY_VISION_SMOKE_IMAGE_BASE64 = "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wAARCAAgACADASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD50ooor8MP9UwooooAKKKKACiiigD/2Q==";
 const MODEL_GATEWAY_VISION_SMOKE_PROMPT = "Identify the dominant color of the attached test image. Reply with one lowercase color word.";
@@ -224,6 +225,26 @@ const ROUTES: Record<ModelGatewayRouteId, {
     paths: ["/v1/responses/compact"],
     appScope: "codex",
     protocol: "openai_responses",
+  },
+  openai_images_generations: {
+    paths: ["/v1/images/generations"],
+    appScope: "openclaw",
+    protocol: "openai_responses",
+  },
+  openai_audio_transcriptions: {
+    paths: ["/v1/audio/transcriptions"],
+    appScope: "openclaw",
+    protocol: "openai_chat",
+  },
+  openai_audio_translations: {
+    paths: ["/v1/audio/translations"],
+    appScope: "openclaw",
+    protocol: "openai_chat",
+  },
+  openai_audio_speech: {
+    paths: ["/v1/audio/speech"],
+    appScope: "openclaw",
+    protocol: "openai_chat",
   },
   anthropic_messages: {
     paths: ["/v1/messages", "/claude/v1/messages"],
@@ -451,14 +472,17 @@ function normalizeModelCatalog(value: unknown, fallback?: ModelGatewayProviderMo
         contextWindow: typeof model.contextWindow === "number" ? model.contextWindow : null,
         maxOutputTokens: typeof model.maxOutputTokens === "number" ? model.maxOutputTokens : null,
         aliases: normalizeStringArray(model.aliases),
-        features: isRecord(model.features) ? {
+        features: isRecord(model.features) ? compactModelFeatures({
           text: typeof model.features.text === "boolean" ? model.features.text : undefined,
           streaming: typeof model.features.streaming === "boolean" ? model.features.streaming : undefined,
           tools: typeof model.features.tools === "boolean" ? model.features.tools : undefined,
           vision: typeof model.features.vision === "boolean" ? model.features.vision : undefined,
           reasoning: typeof model.features.reasoning === "boolean" ? model.features.reasoning : undefined,
           responses: typeof model.features.responses === "boolean" ? model.features.responses : undefined,
-        } : undefined,
+          imageGeneration: typeof model.features.imageGeneration === "boolean" ? model.features.imageGeneration : undefined,
+          audioInput: typeof model.features.audioInput === "boolean" ? model.features.audioInput : undefined,
+          audioOutput: typeof model.features.audioOutput === "boolean" ? model.features.audioOutput : undefined,
+        }) : undefined,
       }))
       .filter((model) => model.id)
     : fallback?.models || [];
@@ -547,6 +571,9 @@ const MODEL_GATEWAY_MODEL_FEATURE_KEYS = [
   "vision",
   "reasoning",
   "responses",
+  "imageGeneration",
+  "audioInput",
+  "audioOutput",
 ] as const;
 
 function mergeModelFeatures(target: ModelGatewayModelFeatures, source?: ModelGatewayModelFeatures): void {
@@ -562,11 +589,15 @@ function mergeModelFeatures(target: ModelGatewayModelFeatures, source?: ModelGat
 }
 
 function compactModelFeatures(features: ModelGatewayModelFeatures): ModelGatewayModelFeatures {
-  return Object.fromEntries(
+  const compacted = Object.fromEntries(
     MODEL_GATEWAY_MODEL_FEATURE_KEYS
       .filter((key) => typeof features[key] === "boolean")
       .map((key) => [key, features[key]]),
   ) as ModelGatewayModelFeatures;
+  if (compacted.imageGeneration === true) {
+    compacted.text = false;
+  }
+  return compacted;
 }
 
 function modelNameMatches(modelId: string, patterns: RegExp[]): boolean {
@@ -580,6 +611,78 @@ function knownModelDefaults(modelId: string): Partial<ModelGatewayProviderModel>
     streaming: true,
     responses: true,
   };
+
+  if (modelNameMatches(modelId, [/^gpt-image-\d+(?:\b|-|_|\.)/, /^image-\d+(?:\b|-|_|\.)/, /^dall-e(?:\b|-|_|\.)/])) {
+    return {
+      features: {
+        text: false,
+        streaming: false,
+        tools: false,
+        vision: true,
+        reasoning: false,
+        responses: true,
+        imageGeneration: true,
+      },
+    };
+  }
+  if (modelNameMatches(modelId, [/^(?:gpt-4o(?:-mini)?-)?transcribe(?:\b|-|_|\.)/, /^whisper(?:\b|-|_|\.)/, /^gpt-4o(?:-mini)?-transcribe(?:\b|-|_|\.)/])) {
+    return {
+      contextWindow: 16_000,
+      maxOutputTokens: 2_000,
+      features: {
+        text: false,
+        streaming: false,
+        tools: false,
+        vision: false,
+        reasoning: false,
+        responses: false,
+        audioInput: true,
+        audioOutput: false,
+      },
+    };
+  }
+  if (modelNameMatches(modelId, [/^tts(?:\b|-|_|\.)/, /^gpt-4o(?:-mini)?-tts(?:\b|-|_|\.)/])) {
+    return {
+      features: {
+        text: true,
+        streaming: false,
+        tools: false,
+        vision: false,
+        reasoning: false,
+        responses: false,
+        audioInput: false,
+        audioOutput: true,
+      },
+    };
+  }
+  if (modelNameMatches(modelId, [/^gpt-audio(?:\b|-|_|\.)/])) {
+    return {
+      contextWindow: 128_000,
+      maxOutputTokens: 16_384,
+      features: {
+        ...features,
+        vision: false,
+        tools: true,
+        reasoning: false,
+        audioInput: true,
+        audioOutput: true,
+      },
+    };
+  }
+  if (modelNameMatches(modelId, [/^gpt-realtime(?:\b|-|_|\.)/])) {
+    return {
+      contextWindow: 32_000,
+      maxOutputTokens: 4_096,
+      features: {
+        ...features,
+        vision: true,
+        tools: true,
+        reasoning: modelNameMatches(modelId, [/realtime-2/]),
+        audioInput: true,
+        audioOutput: true,
+      },
+    };
+  }
 
   if (modelNameMatches(modelId, [/^gpt-5\.(?:4|5)(?:\b|-|_)/, /^gpt-5\.(?:4|5)$/])) {
     return {
@@ -743,12 +846,63 @@ function modelItemExplicitVisionCapability(item: Record<string, unknown>): boole
     : null;
 }
 
+function modelItemExplicitImageGenerationCapability(item: Record<string, unknown>, modelId: string, signals: string[]): boolean | null {
+  const explicit = modelItemBooleanCapability(item, [
+    "imageGeneration",
+    "image_generation",
+    "imageOutput",
+    "image_output",
+    "textToImage",
+    "text_to_image",
+  ]);
+  if (explicit !== null) return explicit;
+  return modelNameMatches(modelId, [/^gpt-image-\d+(?:\b|-|_|\.)/, /^image-\d+(?:\b|-|_|\.)/, /^dall-e(?:\b|-|_|\.)/])
+    || modelItemHasSignal(signals, [/image[_ -]?generation/, /text[_ -]?to[_ -]?image/, /^image[_ -]?output$/])
+    ? true
+    : null;
+}
+
+function modelItemExplicitAudioCapability(
+  item: Record<string, unknown>,
+  keys: string[],
+  signals: string[],
+  direction: "input" | "output",
+): boolean | null {
+  const explicit = modelItemBooleanCapability(item, keys);
+  if (explicit !== null) return explicit;
+
+  const sources = modelItemCapabilitySources(item);
+  const modalityKeys = direction === "output"
+    ? [
+      "output_modalities",
+      "outputModalities",
+      "supported_output_modalities",
+      "supportedOutputModalities",
+    ]
+    : [
+      "input_modalities",
+      "inputModalities",
+      "supported_modalities",
+      "supportedModalities",
+      "modalities",
+  ];
+  const modalities = sources.flatMap((source) => modalityKeys.flatMap((key) => collectModelItemSignals(source[key])));
+  const haystack = direction === "output" ? modalities : [...signals, ...modalities];
+  return modelItemHasSignal(haystack, [/^audio$/, /audio[_ -]?(?:input|output)/])
+    ? true
+    : null;
+}
+
 function inferModelFeatures(modelId: string, item?: Record<string, unknown>): ModelGatewayModelFeatures {
   const known = knownModelDefaults(modelId).features || {};
   const signals = item ? collectModelItemSignals(item) : [];
+  const imageGeneration = modelItemExplicitImageGenerationCapability(item || {}, modelId, signals) ?? known.imageGeneration;
+  const audioInput = modelItemExplicitAudioCapability(item || {}, ["audioInput", "audio_input", "supports_audio_input"], signals, "input") ?? known.audioInput;
+  const audioOutput = modelItemExplicitAudioCapability(item || {}, ["audioOutput", "audio_output", "supports_audio_output"], signals, "output") ?? known.audioOutput;
   return compactModelFeatures({
-    text: modelItemBooleanCapability(item || {}, ["text", "textInput", "text_input"]) ?? true,
-    vision: modelItemExplicitVisionCapability(item || {}) ?? false,
+    text: modelItemBooleanCapability(item || {}, ["text", "textInput", "text_input"])
+      ?? (imageGeneration ? false : true),
+    vision: modelItemExplicitVisionCapability(item || {}) ?? (imageGeneration ? true : false),
     tools: modelItemBooleanCapability(item || {}, ["tools", "toolUse", "tool_use", "functionCalling", "function_calling", "functions"])
       ?? (modelItemHasSignal(signals, [/tool/, /function[_ -]?calling/, /function[_ -]?call/, /code[_ -]?execution/]) ? true : known.tools),
     reasoning: modelItemBooleanCapability(item || {}, ["reasoning", "thinking", "cot", "chainOfThought", "chain_of_thought"])
@@ -759,6 +913,9 @@ function inferModelFeatures(modelId: string, item?: Record<string, unknown>): Mo
     streaming: modelItemBooleanCapability(item || {}, ["streaming", "stream"])
       ?? (modelItemHasSignal(signals, [/stream/, /streaming/]) ? true : known.streaming)
       ?? true,
+    imageGeneration: imageGeneration === true ? true : undefined,
+    audioInput: audioInput === true ? true : known.audioInput,
+    audioOutput: audioOutput === true ? true : known.audioOutput,
   });
 }
 
@@ -1902,17 +2059,212 @@ function codexAccountDefaultModels(): ModelGatewayProviderModelCatalog {
       features: { text: true, streaming: true, tools: true, vision: true, reasoning: true, responses: true },
     },
     {
-      id: "gpt-5.5-mini",
-      aliases: ["gpt5.5-mini"],
+      id: "gpt-5.4",
+      aliases: ["gpt5.4"],
       contextWindow: 1_050_000,
       maxOutputTokens: 128_000,
       features: { text: true, streaming: true, tools: true, vision: true, reasoning: true, responses: true },
     },
     {
-      id: "gpt-5",
-      contextWindow: 400_000,
+      id: "gpt-5.4-mini",
+      aliases: ["gpt5.4-mini"],
+      contextWindow: 272_000,
       maxOutputTokens: 128_000,
       features: { text: true, streaming: true, tools: true, vision: true, reasoning: true, responses: true },
+    },
+    {
+      id: "gpt-5.3-codex",
+      aliases: ["gpt5.3-codex", "gpt-5.3-codex-spark"],
+      contextWindow: 272_000,
+      maxOutputTokens: 128_000,
+      features: { text: true, streaming: true, tools: true, vision: false, reasoning: true, responses: true },
+    },
+    {
+      id: "gpt-image-2",
+      label: "GPT Image 2",
+      aliases: ["image-2", "gptimage2", "gpt-image-2-2026-04-21"],
+      features: {
+        text: false,
+        streaming: false,
+        tools: false,
+        vision: true,
+        reasoning: false,
+        responses: true,
+        imageGeneration: true,
+      },
+    },
+    {
+      id: "gpt-4o-transcribe",
+      label: "GPT-4o Transcribe",
+      aliases: ["transcribe", "gpt-4o-transcribe-diarize"],
+      contextWindow: 16_000,
+      maxOutputTokens: 2_000,
+      features: {
+        text: false,
+        streaming: false,
+        tools: false,
+        vision: false,
+        reasoning: false,
+        responses: false,
+        audioInput: true,
+        audioOutput: false,
+      },
+    },
+    {
+      id: "gpt-4o-mini-transcribe",
+      label: "GPT-4o mini Transcribe",
+      aliases: ["mini-transcribe"],
+      contextWindow: 16_000,
+      maxOutputTokens: 2_000,
+      features: {
+        text: false,
+        streaming: false,
+        tools: false,
+        vision: false,
+        reasoning: false,
+        responses: false,
+        audioInput: true,
+        audioOutput: false,
+      },
+    },
+    {
+      id: "gpt-4o-mini-tts",
+      label: "GPT-4o mini TTS",
+      aliases: ["speech"],
+      features: {
+        text: true,
+        streaming: false,
+        tools: false,
+        vision: false,
+        reasoning: false,
+        responses: false,
+        audioInput: false,
+        audioOutput: true,
+      },
+    },
+    {
+      id: "tts-1",
+      label: "TTS 1",
+      features: {
+        text: true,
+        streaming: false,
+        tools: false,
+        vision: false,
+        reasoning: false,
+        responses: false,
+        audioInput: false,
+        audioOutput: true,
+      },
+    },
+    {
+      id: "tts-1-hd",
+      label: "TTS 1 HD",
+      features: {
+        text: true,
+        streaming: false,
+        tools: false,
+        vision: false,
+        reasoning: false,
+        responses: false,
+        audioInput: false,
+        audioOutput: true,
+      },
+    },
+    {
+      id: "whisper-1",
+      label: "Whisper 1",
+      features: {
+        text: false,
+        streaming: false,
+        tools: false,
+        vision: false,
+        reasoning: false,
+        responses: false,
+        audioInput: true,
+        audioOutput: false,
+      },
+    },
+    {
+      id: "gpt-audio",
+      label: "GPT Audio",
+      contextWindow: 128_000,
+      maxOutputTokens: 16_384,
+      features: {
+        text: true,
+        streaming: true,
+        tools: true,
+        vision: false,
+        reasoning: false,
+        responses: true,
+        audioInput: true,
+        audioOutput: true,
+      },
+    },
+    {
+      id: "gpt-audio-1.5",
+      label: "GPT Audio 1.5",
+      aliases: ["audio-1.5"],
+      contextWindow: 128_000,
+      maxOutputTokens: 16_384,
+      features: {
+        text: true,
+        streaming: true,
+        tools: true,
+        vision: false,
+        reasoning: false,
+        responses: true,
+        audioInput: true,
+        audioOutput: true,
+      },
+    },
+    {
+      id: "gpt-realtime",
+      label: "GPT Realtime",
+      contextWindow: 32_000,
+      maxOutputTokens: 4_096,
+      features: {
+        text: true,
+        streaming: true,
+        tools: true,
+        vision: true,
+        reasoning: false,
+        responses: true,
+        audioInput: true,
+        audioOutput: true,
+      },
+    },
+    {
+      id: "gpt-realtime-1.5",
+      label: "GPT Realtime 1.5",
+      contextWindow: 32_000,
+      maxOutputTokens: 4_096,
+      features: {
+        text: true,
+        streaming: true,
+        tools: true,
+        vision: true,
+        reasoning: false,
+        responses: true,
+        audioInput: true,
+        audioOutput: true,
+      },
+    },
+    {
+      id: "gpt-realtime-2",
+      label: "GPT Realtime 2",
+      aliases: ["realtime-2"],
+      contextWindow: 32_000,
+      maxOutputTokens: 4_096,
+      features: {
+        text: true,
+        streaming: true,
+        tools: true,
+        vision: true,
+        reasoning: true,
+        responses: true,
+        audioInput: true,
+        audioOutput: true,
+      },
     },
   ];
   return {
@@ -1920,6 +2272,79 @@ function codexAccountDefaultModels(): ModelGatewayProviderModelCatalog {
     models,
     aliases: {},
   };
+}
+
+function mergeModelCatalogWithDefaults(
+  catalog: ModelGatewayProviderModelCatalog | undefined,
+  defaults: ModelGatewayProviderModelCatalog,
+): ModelGatewayProviderModelCatalog {
+  const source = catalog || { defaultModel: null, models: [], aliases: {} };
+  const modelsByKey = new Map<string, ModelGatewayProviderModel>();
+  for (const model of source.models || []) {
+    const key = normalizeModelLookupKey(model.id);
+    if (key) modelsByKey.set(key, { ...model, aliases: [...(model.aliases || [])] });
+  }
+  for (const defaultModel of defaults.models || []) {
+    const key = normalizeModelLookupKey(defaultModel.id);
+    if (!key) continue;
+    const existing = modelsByKey.get(key);
+    if (!existing) {
+      modelsByKey.set(key, {
+        ...defaultModel,
+        aliases: [...(defaultModel.aliases || [])],
+        features: defaultModel.features ? { ...defaultModel.features } : undefined,
+      });
+      continue;
+    }
+    const aliases = [
+      ...(defaultModel.aliases || []),
+      ...(existing.aliases || []),
+    ].filter((alias, index, list) => alias && list.indexOf(alias) === index);
+    modelsByKey.set(key, {
+      ...defaultModel,
+      ...existing,
+      label: existing.label || defaultModel.label,
+      contextWindow: positiveIntegerOrNull(existing.contextWindow) ?? positiveIntegerOrNull(defaultModel.contextWindow),
+      maxOutputTokens: positiveIntegerOrNull(existing.maxOutputTokens) ?? positiveIntegerOrNull(defaultModel.maxOutputTokens),
+      aliases,
+      features: compactModelFeatures({
+        ...(defaultModel.features || {}),
+        ...(existing.features || {}),
+      }),
+    });
+  }
+  return {
+    defaultModel: normalizeString(source.defaultModel || defaults.defaultModel || "") || null,
+    models: [...modelsByKey.values()],
+    aliases: {
+      ...(defaults.aliases || {}),
+      ...(source.aliases || {}),
+    },
+  };
+}
+
+function mergeManagedModelCatalogWithDefaults(
+  catalog: ModelGatewayProviderModelCatalog | undefined,
+  defaults: ModelGatewayProviderModelCatalog,
+): ModelGatewayProviderModelCatalog {
+  const defaultKeys = new Set((defaults.models || []).map((model) => normalizeModelLookupKey(model.id)).filter(Boolean));
+  const source = catalog
+    ? {
+      ...catalog,
+      defaultModel: defaultKeys.has(normalizeModelLookupKey(catalog.defaultModel || ""))
+        ? catalog.defaultModel
+        : defaults.defaultModel,
+      models: (catalog.models || []).filter((model) => defaultKeys.has(normalizeModelLookupKey(model.id))),
+      aliases: Object.fromEntries(
+        Object.entries(catalog.aliases || {}).filter(([, modelId]) => defaultKeys.has(normalizeModelLookupKey(modelId))),
+      ),
+    }
+    : undefined;
+  return mergeModelCatalogWithDefaults(source, defaults);
+}
+
+function isCodexAccountBackedProvider(provider: ModelGatewayProvider): boolean {
+  return provider.sourceType === "account-backed" && provider.accountProvider?.kind === "codex";
 }
 
 function codexAccountProviderName(account: ModelGatewayAccountEntry, fallback = "Codex Account"): string {
@@ -1983,8 +2408,16 @@ function endpointForRoute(routeId: ModelGatewayRouteId, provider: ModelGatewayPr
   }
   if (routeId === "openai_responses_compact") {
     if (provider.apiFormat === "anthropic_messages") return "/messages";
+    if (isCodexAccountBackedProvider(provider)) return "/compact";
     return provider.apiFormat === "openai_chat" ? "/chat/completions" : "/responses/compact";
   }
+  if (routeId === "openai_images_generations") {
+    if (isCodexAccountBackedProvider(provider)) return "/responses";
+    return "/images/generations";
+  }
+  if (routeId === "openai_audio_transcriptions") return "/audio/transcriptions";
+  if (routeId === "openai_audio_translations") return "/audio/translations";
+  if (routeId === "openai_audio_speech") return "/audio/speech";
   if (routeId === "anthropic_messages") {
     if (provider.apiFormat === "openai_chat") return "/chat/completions";
     if (provider.apiFormat === "openai_responses") return "/responses";
@@ -2002,6 +2435,16 @@ function routeMode(routeId: ModelGatewayRouteId, provider: ModelGatewayProvider)
   }
   if (routeId === "openai_responses_compact") {
     return provider.apiFormat === "openai_responses" ? "passthrough" : "adapter-required";
+  }
+  if (routeId === "openai_images_generations") {
+    return provider.apiFormat === "anthropic_messages" ? "adapter-required" : "passthrough";
+  }
+  if (
+    routeId === "openai_audio_transcriptions"
+    || routeId === "openai_audio_translations"
+    || routeId === "openai_audio_speech"
+  ) {
+    return provider.apiFormat === "anthropic_messages" ? "adapter-required" : "passthrough";
   }
   if (routeId === "anthropic_messages") {
     return provider.apiFormat === "anthropic_messages" ? "passthrough" : "adapter-required";
@@ -2092,6 +2535,13 @@ function providerEndpointProfilesForRouting(
 }
 
 function routeProtocolPenalty(provider: ModelGatewayProvider, routeId: ModelGatewayRouteId): number {
+  if (
+    routeId === "openai_audio_transcriptions"
+    || routeId === "openai_audio_translations"
+    || routeId === "openai_audio_speech"
+  ) {
+    return provider.apiFormat === "anthropic_messages" ? 10 : 0;
+  }
   return ROUTES[routeId].protocol === provider.apiFormat ? 0 : 10;
 }
 
@@ -2660,6 +3110,22 @@ function withProviderNetwork(provider: ModelGatewayProvider, init: RequestInit):
   return withProxyNetwork(provider.network.proxyUrl, init, `provider '${provider.id}'`);
 }
 
+function withGatewayUpstreamNetwork(
+  provider: ModelGatewayProvider,
+  init: RequestInit,
+  targetUrl: string,
+  account?: ModelGatewayAccountEntry | null,
+): FetchInitWithDispatcher {
+  if (isCodexAccountBackedProvider(provider)) {
+    return withProxyNetwork(
+      account?.proxyUrl || provider.network.proxyUrl || modelGatewayEnvProxyUrl(targetUrl),
+      init,
+      account ? `Codex account '${account.id}' upstream request` : `provider '${provider.id}' upstream request`,
+    );
+  }
+  return withProviderNetwork(provider, init);
+}
+
 function withCodexAccountAuthNetwork(
   init: RequestInit,
   targetUrl: string,
@@ -2712,6 +3178,7 @@ function normalizeAdaptedUpstreamError(
   const error = isRecord(parsed.error) ? parsed.error : null;
   const baseResp = isRecord(parsed.base_resp) ? parsed.base_resp : null;
   const message = normalizeErrorScalar(error?.message)
+    || normalizeErrorScalar(parsed.detail)
     || normalizeErrorScalar(parsed.message)
     || normalizeErrorScalar(parsed.msg)
     || normalizeErrorScalar(parsed.error)
@@ -2823,6 +3290,55 @@ function extractModelFromJsonText(value: string | undefined): string | null {
   }
 }
 
+function requestContentType(req: http.IncomingMessage): string {
+  const value = req.headers["content-type"];
+  return Array.isArray(value) ? normalizeString(value[0]).toLowerCase() : normalizeString(value).toLowerCase();
+}
+
+function requestBodyIsJson(req: http.IncomingMessage): boolean {
+  const contentType = requestContentType(req);
+  return !contentType || contentType.includes("json") || contentType.endsWith("+json");
+}
+
+function extractModelFromUrlEncodedBody(body: Buffer): string | null {
+  try {
+    return normalizeString(new URLSearchParams(body.toString("utf8")).get("model")) || null;
+  } catch {
+    return null;
+  }
+}
+
+function extractMultipartField(body: Buffer, fieldName: string): string | null {
+  const preview = body.subarray(0, Math.min(body.byteLength, 1_048_576)).toString("latin1");
+  const boundary = /^--([^\r\n]+)/.exec(preview)?.[1];
+  const parts = boundary ? preview.split(`--${boundary}`) : [preview];
+  const escapedName = fieldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const dispositionPattern = new RegExp(`content-disposition:[^\\r\\n]*name="${escapedName}"(?:;|\\s|$)`, "i");
+  for (const part of parts) {
+    if (!dispositionPattern.test(part)) continue;
+    const separator = part.includes("\r\n\r\n") ? "\r\n\r\n" : "\n\n";
+    const bodyStart = part.indexOf(separator);
+    if (bodyStart < 0) continue;
+    return normalizeString(part.slice(bodyStart + separator.length).replace(/\r?\n$/, "")) || null;
+  }
+  return null;
+}
+
+function extractModelFromRequestBody(req: http.IncomingMessage, body: Buffer): string | null {
+  if (!body.byteLength) return null;
+  const contentType = requestContentType(req);
+  if (!contentType || contentType.includes("json") || contentType.endsWith("+json")) {
+    return extractModelFromJsonText(body.toString("utf8"));
+  }
+  if (contentType.includes("application/x-www-form-urlencoded")) {
+    return extractModelFromUrlEncodedBody(body);
+  }
+  if (contentType.includes("multipart/form-data")) {
+    return extractMultipartField(body, "model");
+  }
+  return null;
+}
+
 function replaceModelInJsonText(value: string | undefined, model: string | null): string | undefined {
   const resolvedModel = normalizeString(model || "");
   if (!value || !resolvedModel) return value;
@@ -2836,6 +3352,339 @@ function replaceModelInJsonText(value: string | undefined, model: string | null)
   } catch {
     return value;
   }
+}
+
+function normalizeCodexAccountInstructionsInJsonText(value: string | undefined): string | undefined {
+  if (!value) return value;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!isRecord(parsed)) return value;
+    if (typeof parsed.instructions === "string") return value;
+    return JSON.stringify({
+      ...parsed,
+      instructions: "",
+    });
+  } catch {
+    return value;
+  }
+}
+
+function codexAccountInputMessageFromText(text: string): Record<string, unknown> {
+  return {
+    type: "message",
+    role: "user",
+    content: [{ type: "input_text", text }],
+  };
+}
+
+function normalizeCodexAccountBuiltinToolType(value: unknown): string | null {
+  const type = normalizeString(value);
+  if (type === "web_search_preview" || type === "web_search_preview_2025_03_11") return "web_search";
+  return null;
+}
+
+function normalizeCodexAccountBuiltinToolAtPath(source: unknown): unknown {
+  if (!isRecord(source)) return source;
+  const normalizedType = normalizeCodexAccountBuiltinToolType(source.type);
+  if (!normalizedType) return source;
+  return {
+    ...source,
+    type: normalizedType,
+  };
+}
+
+function normalizeCodexAccountResponsesRequestInJsonText(value: string | undefined): string | undefined {
+  if (!value) return value;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!isRecord(parsed)) return value;
+    const next: Record<string, unknown> = { ...parsed };
+
+    if (typeof next.instructions !== "string") next.instructions = "";
+    if (typeof next.input === "string") {
+      next.input = [codexAccountInputMessageFromText(next.input)];
+    }
+    if (Array.isArray(next.input)) {
+      next.input = next.input.map((item) => {
+        if (!isRecord(item)) return item;
+        if (item.role === "system") return { ...item, role: "developer" };
+        return item;
+      });
+    }
+
+    next.stream = true;
+    next.store = false;
+    next.parallel_tool_calls = true;
+    const include = Array.isArray(next.include)
+      ? next.include.map((item) => normalizeString(item)).filter(Boolean)
+      : [];
+    if (!include.includes("reasoning.encrypted_content")) include.push("reasoning.encrypted_content");
+    next.include = include;
+
+    for (const field of [
+      "max_output_tokens",
+      "max_completion_tokens",
+      "temperature",
+      "top_p",
+      "truncation",
+      "context_management",
+      "user",
+      "previous_response_id",
+      "prompt_cache_retention",
+      "safety_identifier",
+      "stream_options",
+    ] as const) {
+      delete next[field];
+    }
+    if (normalizeString(next.service_tier) !== "priority") delete next.service_tier;
+
+    if (Array.isArray(next.tools)) {
+      next.tools = next.tools.map(normalizeCodexAccountBuiltinToolAtPath);
+    }
+    if (isRecord(next.tool_choice)) {
+      const toolChoice: Record<string, unknown> = { ...next.tool_choice };
+      const normalizedType = normalizeCodexAccountBuiltinToolType(toolChoice.type);
+      if (normalizedType) toolChoice.type = normalizedType;
+      if (Array.isArray(toolChoice.tools)) {
+        toolChoice.tools = toolChoice.tools.map(normalizeCodexAccountBuiltinToolAtPath);
+      }
+      next.tool_choice = toolChoice;
+    }
+
+    return JSON.stringify(next);
+  } catch {
+    return value;
+  }
+}
+
+function codexAccountRequestWantsStream(value: string | undefined): boolean {
+  if (!value) return false;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return isRecord(parsed) && parsed.stream === true;
+  } catch {
+    return false;
+  }
+}
+
+type CodexAccountImageGenerationPreparedRequest = {
+  bodyText: string;
+  imageModel: string;
+  responseFormat: string;
+  clientStream: boolean;
+};
+
+function buildCodexAccountImageGenerationRequest(
+  bodyText: string | undefined,
+  provider: ModelGatewayProvider,
+): CodexAccountImageGenerationPreparedRequest {
+  const parsed = parseJsonObjectOrNull(bodyText || "");
+  if (!parsed) {
+    throw new ModelGatewayServiceError(
+      "model_gateway_images_invalid_request",
+      "OpenAI Images generation request body must be a JSON object.",
+      400,
+    );
+  }
+  const imageModel = normalizeString(parsed.model) || "gpt-image-2";
+  const prompt = normalizeString(parsed.prompt);
+  if (!prompt) {
+    throw new ModelGatewayServiceError(
+      "model_gateway_images_prompt_required",
+      "OpenAI Images generation request requires a non-empty prompt.",
+      400,
+    );
+  }
+  const metadata = isRecord(provider.metadata) ? provider.metadata : {};
+  const mainModel = normalizeString(metadata.imageGenerationMainModel, CODEX_ACCOUNT_IMAGE_GENERATION_MAIN_MODEL);
+  const tool: Record<string, unknown> = {
+    type: "image_generation",
+    action: "generate",
+    model: imageModel,
+  };
+  for (const field of ["size", "quality", "background", "output_format", "moderation"] as const) {
+    const value = normalizeString(parsed[field]);
+    if (value) tool[field] = value;
+  }
+  for (const field of ["output_compression", "partial_images"] as const) {
+    const value = positiveIntegerOrNull(parsed[field]);
+    if (value !== null) tool[field] = value;
+  }
+  const responsesRequest = {
+    instructions: "",
+    stream: true,
+    reasoning: { effort: "medium", summary: "auto" },
+    parallel_tool_calls: true,
+    include: ["reasoning.encrypted_content"],
+    model: mainModel,
+    store: false,
+    tool_choice: { type: "image_generation" },
+    input: [{
+      type: "message",
+      role: "user",
+      content: [{ type: "input_text", text: prompt }],
+    }],
+    tools: [tool],
+  };
+  return {
+    bodyText: JSON.stringify(responsesRequest),
+    imageModel,
+    responseFormat: normalizeString(parsed.response_format, "b64_json").toLowerCase(),
+    clientStream: parsed.stream === true,
+  };
+}
+
+function extractJsonPayloadsFromSseText(value: string): unknown[] {
+  const payloads: unknown[] = [];
+  for (const frame of value.split(/\r?\n\r?\n/)) {
+    const dataLines = frame
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice("data:".length).trim())
+      .filter((line) => line && line !== "[DONE]");
+    if (!dataLines.length) continue;
+    try {
+      payloads.push(JSON.parse(dataLines.join("\n")) as unknown);
+    } catch {
+      // Keepalive or debug SSE frames are irrelevant; the completed frame carries the result.
+    }
+  }
+  return payloads;
+}
+
+function buildCodexAccountResponsesJsonFromSseText(responseText: string): Record<string, unknown> {
+  const direct = parseJsonObjectOrNull(responseText);
+  if (direct) return direct;
+
+  const payloads = extractJsonPayloadsFromSseText(responseText);
+  const outputByIndex = new Map<number, unknown>();
+  const outputFallback: unknown[] = [];
+  let completedResponse: Record<string, unknown> | null = null;
+  for (const payload of payloads) {
+    if (!isRecord(payload)) continue;
+    if (payload.error !== undefined) {
+      throw new ModelGatewayServiceError(
+        "model_gateway_codex_account_stream_error",
+        normalizeString(isRecord(payload.error) ? payload.error.message : payload.error, "Codex account stream returned an error."),
+        502,
+      );
+    }
+    const type = normalizeString(payload.type);
+    if (type === "response.output_item.done" && isRecord(payload.item)) {
+      const outputIndex = typeof payload.output_index === "number" && Number.isFinite(payload.output_index)
+        ? Math.max(0, Math.floor(payload.output_index))
+        : null;
+      if (outputIndex !== null) outputByIndex.set(outputIndex, payload.item);
+      else outputFallback.push(payload.item);
+      continue;
+    }
+    if (type === "response.completed" && isRecord(payload.response)) {
+      completedResponse = { ...payload.response };
+    }
+  }
+
+  if (!completedResponse) {
+    throw new ModelGatewayServiceError(
+      "model_gateway_codex_account_response_missing",
+      "Codex account upstream stream ended without response.completed.",
+      502,
+    );
+  }
+
+  const output = Array.isArray(completedResponse.output) ? completedResponse.output : [];
+  if (!output.length && (outputByIndex.size || outputFallback.length)) {
+    const patchedOutput: unknown[] = [];
+    for (const index of [...outputByIndex.keys()].sort((a, b) => a - b)) {
+      patchedOutput.push(outputByIndex.get(index));
+    }
+    patchedOutput.push(...outputFallback);
+    completedResponse.output = patchedOutput;
+  }
+  return completedResponse;
+}
+
+function parseOpenAIResponsesUpstreamBody(
+  responseText: string,
+  options: { codexAccountSse: boolean },
+): unknown {
+  return options.codexAccountSse
+    ? buildCodexAccountResponsesJsonFromSseText(responseText)
+    : JSON.parse(responseText) as unknown;
+}
+
+async function pipeReadableStreamToServerResponse(
+  stream: ReadableStream<Uint8Array>,
+  res: http.ServerResponse,
+): Promise<void> {
+  const reader = stream.getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) return;
+    if (value?.byteLength) res.write(Buffer.from(value));
+  }
+}
+
+function mimeTypeFromImageOutputFormat(value: unknown): string {
+  const normalized = normalizeString(value).toLowerCase();
+  if (normalized === "jpg" || normalized === "jpeg") return "image/jpeg";
+  if (normalized === "webp") return "image/webp";
+  return "image/png";
+}
+
+function buildImagesApiResponseFromResponsesText(
+  responseText: string,
+  responseFormat: string,
+): Record<string, unknown> {
+  const candidates: unknown[] = [];
+  const direct = parseJsonObjectOrNull(responseText);
+  if (direct) candidates.push(direct);
+  candidates.push(...extractJsonPayloadsFromSseText(responseText));
+
+  for (const candidate of candidates) {
+    if (!isRecord(candidate)) continue;
+    const response = isRecord(candidate.response) ? candidate.response : candidate;
+    const output = Array.isArray(response.output) ? response.output : [];
+    const data: Record<string, unknown>[] = [];
+    let firstMeta: Record<string, unknown> | null = null;
+    for (const item of output) {
+      if (!isRecord(item) || item.type !== "image_generation_call") continue;
+      const result = normalizeString(item.result);
+      if (!result) continue;
+      const entry: Record<string, unknown> = {};
+      const outputFormat = normalizeString(item.output_format);
+      if (responseFormat === "url") {
+        entry.url = `data:${mimeTypeFromImageOutputFormat(outputFormat)};base64,${result}`;
+      } else {
+        entry.b64_json = result;
+      }
+      const revisedPrompt = normalizeString(item.revised_prompt);
+      if (revisedPrompt) entry.revised_prompt = revisedPrompt;
+      data.push(entry);
+      if (!firstMeta) firstMeta = item;
+    }
+    if (!data.length) continue;
+    const result: Record<string, unknown> = {
+      created: positiveIntegerOrNull(response.created_at) ?? Math.floor(Date.now() / 1000),
+      data,
+    };
+    if (firstMeta) {
+      for (const field of ["background", "output_format", "quality", "size"] as const) {
+        const value = normalizeString(firstMeta[field]);
+        if (value) result[field] = value;
+      }
+    }
+    if (isRecord(response.tool_usage) && isRecord(response.tool_usage.image_gen)) {
+      result.usage = response.tool_usage.image_gen;
+    }
+    return result;
+  }
+
+  throw new ModelGatewayServiceError(
+    "model_gateway_images_output_missing",
+    "Upstream completed without an image_generation_call result.",
+    502,
+  );
 }
 
 function isProviderHealthSuccess(statusCode: number | null, errorCode: string | null): boolean {
@@ -3367,6 +4216,45 @@ export function createModelGatewayService(
               provider as ModelGatewayProviderInput,
               provider as unknown as ModelGatewayProvider,
             );
+            const rawApiKeyRef = normalizeString(provider.apiKeyRef);
+            const rawMetadata = isRecord(provider.metadata) ? provider.metadata : {};
+            const codexAccountHint = rawApiKeyRef.includes(":codex-token")
+              || normalizeString(rawMetadata.importedFrom) === "codex-device-login";
+            if (!isCodexAccountBackedProvider(normalized) && codexAccountHint && rawApiKeyRef) {
+              const bundle = normalizeCodexTokenBundle(readSecrets().secrets[rawApiKeyRef]?.value || "");
+              const accountId = normalizeString(bundle?.tokens.account_id)
+                || normalizeString(bundle?.email)
+                || rawApiKeyRef;
+              const accountHash = normalizeString(bundle?.account_hash) || sha256Short(accountId);
+              const account = bundle
+                ? codexAccountFromTokenBundle(
+                  `codex-${accountHash}`,
+                  rawApiKeyRef,
+                  { ...bundle, account_hash: accountHash },
+                  "codex-device-auth",
+                  undefined,
+                )
+                : null;
+              normalized.sourceType = "account-backed";
+              normalized.authStrategy = "oauth_proxy";
+              normalized.accountProvider = {
+                kind: "codex",
+                routing: {
+                  strategy: "round-robin",
+                  sessionAffinity: true,
+                  maxConcurrentPerAccount: null,
+                },
+                accounts: account ? [account] : [],
+              };
+            }
+            if (isCodexAccountBackedProvider(normalized)) {
+              normalized.models = mergeManagedModelCatalogWithDefaults(normalized.models, codexAccountDefaultModels());
+              normalized.endpoints = {
+                ...normalized.endpoints,
+                openai_responses: normalized.endpoints.openai_responses || "/responses",
+                openai_responses_compact: normalized.endpoints.openai_responses_compact || "/compact",
+              };
+            }
             normalized.createdAt = normalizeString(provider.createdAt, normalized.createdAt);
             normalized.updatedAt = normalizeString(provider.updatedAt, normalized.updatedAt);
             return [normalized];
@@ -3537,10 +4425,7 @@ export function createModelGatewayService(
       acceptedHeaders: ["Authorization: Bearer <gateway-key>", "x-api-key: <gateway-key>"],
       protectedRoutes: [
         "/v1/models",
-        ...ROUTES.openai_chat_completions.paths,
-        ...ROUTES.openai_responses.paths,
-        ...ROUTES.openai_responses_compact.paths,
-        ...ROUTES.anthropic_messages.paths,
+        ...Object.values(ROUTES).flatMap((route) => route.paths),
       ],
     };
   }
@@ -4244,6 +5129,10 @@ export function createModelGatewayService(
         openaiChatCompletions: ROUTES.openai_chat_completions.paths,
         openaiResponses: ROUTES.openai_responses.paths,
         openaiResponsesCompact: ROUTES.openai_responses_compact.paths,
+        openaiImagesGenerations: ROUTES.openai_images_generations.paths,
+        openaiAudioTranscriptions: ROUTES.openai_audio_transcriptions.paths,
+        openaiAudioTranslations: ROUTES.openai_audio_translations.paths,
+        openaiAudioSpeech: ROUTES.openai_audio_speech.paths,
         anthropicMessages: ROUTES.anthropic_messages.paths,
       },
       registry: {
@@ -4788,11 +5677,11 @@ export function createModelGatewayService(
       apiKeyRef: authRef,
       apiFormat: "openai_responses",
       authStrategy: "oauth_proxy",
-      models: existing?.models?.models?.length ? existing.models : codexAccountDefaultModels(),
+      models: mergeManagedModelCatalogWithDefaults(existing?.models, codexAccountDefaultModels()),
       endpoints: {
         ...(existing?.endpoints || {}),
         openai_responses: "/responses",
-        openai_responses_compact: "/responses/compact",
+        openai_responses_compact: "/compact",
       },
       endpointProfiles: existing?.endpointProfiles || [],
       network: existing?.network || {},
@@ -6387,8 +7276,9 @@ export function createModelGatewayService(
       return;
     }
     const body = await readRequestBody(req);
-    let bodyText = body.byteLength ? body.toString("utf8") : undefined;
-    const requestModel = extractModelFromJsonText(bodyText);
+    let bodyText = requestBodyIsJson(req) && body.byteLength ? body.toString("utf8") : undefined;
+    const upstreamBodyBuffer = body.byteLength ? new Uint8Array(body) : undefined;
+    const requestModel = extractModelFromRequestBody(req, body);
     const decision = resolveRouteDecision(req.method || "GET", req.url || "/", req.headers, requestModel);
     if (decision.mode === "unsupported") {
       appendRequestLog(requestLogEntry({
@@ -6482,6 +7372,10 @@ export function createModelGatewayService(
     const useChatResponsesAdapter = isChatToOpenAIResponsesAdapterTarget(decision);
     const useAnthropicMessagesChatProviderAdapter = isAnthropicMessagesToChatAdapterTarget(decision);
     const useAnthropicMessagesResponsesProviderAdapter = isAnthropicMessagesToOpenAIResponsesAdapterTarget(decision);
+    const useCodexAccountImageGenerationAdapter = decision.routeId === "openai_images_generations"
+      && isCodexAccountBackedProvider(provider);
+    const useCodexAccountResponsesUpstream = isCodexAccountBackedProvider(provider)
+      && normalizePathname(decision.upstreamUrl || decision.upstreamPath || "").endsWith("/responses");
     if (
       decision.mode === "adapter-required"
       && !useCodexResponsesChatAdapter
@@ -6490,6 +7384,7 @@ export function createModelGatewayService(
       && !useChatResponsesAdapter
       && !useAnthropicMessagesChatProviderAdapter
       && !useAnthropicMessagesResponsesProviderAdapter
+      && !useCodexAccountImageGenerationAdapter
     ) {
       appendRequestLog(requestLogEntry({
         kind: "gateway-request",
@@ -6549,6 +7444,12 @@ export function createModelGatewayService(
       bodyText = replaceModelInJsonText(bodyText, resolvedModel);
     }
     const useCodexResponsesStreamingAdapter = useCodexResponsesChatAdapter && isCodexResponsesStreamingRequest(bodyText);
+    const useCodexAccountResponsesClientStreamingPassthrough = decision.routeId === "openai_responses"
+      && useCodexAccountResponsesUpstream
+      && codexAccountRequestWantsStream(bodyText);
+    const useCodexAccountResponsesNonStreamingAdapter = decision.routeId === "openai_responses"
+      && isCodexAccountBackedProvider(provider)
+      && !codexAccountRequestWantsStream(bodyText);
     let useChatResponsesStreamingAdapter = false;
     let useAnthropicMessagesChatStreamingAdapter = false;
     let useCodexResponsesAnthropicStreamingAdapter = false;
@@ -6588,7 +7489,41 @@ export function createModelGatewayService(
     let upstreamBodyText = bodyText;
     let codexHistoryRecordBodyText = bodyText;
     let requestModelForLog = resolvedModel || requestModel;
-    if (useChatResponsesAdapter) {
+    let codexImageGenerationRequest: CodexAccountImageGenerationPreparedRequest | null = null;
+    if (useCodexAccountImageGenerationAdapter) {
+      try {
+        codexImageGenerationRequest = buildCodexAccountImageGenerationRequest(bodyText, provider);
+        upstreamBodyText = codexImageGenerationRequest.bodyText;
+        requestModelForLog = codexImageGenerationRequest.imageModel;
+        headers.set("content-type", "application/json");
+      } catch (error) {
+        const adapterError = isModelGatewayServiceError(error)
+          ? error
+          : new ModelGatewayServiceError(
+            "model_gateway_images_adapter_failed",
+            error instanceof Error ? error.message : "OpenAI Images generation adapter failed.",
+            500,
+          );
+        appendRequestLog(requestLogEntry({
+          kind: "gateway-request",
+          startedAt,
+          route: decision,
+          model: requestModel,
+          statusCode: adapterError.statusCode,
+          outcome: "failure",
+          errorCode: adapterError.code,
+          errorMessage: adapterError.message,
+        }));
+        sendJson(res, adapterError.statusCode, {
+          error: {
+            code: adapterError.code,
+            message: adapterError.message,
+            decision,
+          },
+        });
+        return;
+      }
+    } else if (useChatResponsesAdapter) {
       try {
         const adapted = adaptChatCompletionRequestToResponses(bodyText, { allowStreaming: true });
         upstreamBodyText = JSON.stringify(adapted.responsesRequest);
@@ -6801,13 +7736,22 @@ export function createModelGatewayService(
     if (sanitizedOpenAIChat.removedFields.length) {
       headers.set("content-type", "application/json");
     }
+    if (isCodexAccountBackedProvider(provider)) {
+      if (useCodexAccountResponsesUpstream) {
+        upstreamBodyText = normalizeCodexAccountResponsesRequestInJsonText(upstreamBodyText);
+        headers.set("content-type", "application/json");
+        headers.set("accept", "text/event-stream");
+      } else {
+        upstreamBodyText = normalizeCodexAccountInstructionsInJsonText(upstreamBodyText);
+      }
+    }
 
     try {
-      const upstream = await fetch(decision.upstreamUrl, withProviderNetwork(provider, {
+      const upstream = await fetch(decision.upstreamUrl, withGatewayUpstreamNetwork(provider, {
         method: req.method || "POST",
         headers,
-        body: upstreamBodyText,
-      }));
+        body: upstreamBodyText !== undefined ? upstreamBodyText : upstreamBodyBuffer,
+      }, decision.upstreamUrl, selectedAccountForRequest));
       const latencyMs = Math.max(0, Date.now() - Date.parse(startedAt));
       const healthSuccess = isProviderHealthSuccess(upstream.status, null);
       const errorMessage = healthSuccess ? null : `Upstream returned HTTP ${upstream.status}.`;
@@ -6940,6 +7884,76 @@ export function createModelGatewayService(
         return;
       }
 
+      if (useCodexAccountResponsesClientStreamingPassthrough && upstream.status >= 200 && upstream.status < 300) {
+        if (!upstream.body) {
+          const message = "Codex account Responses upstream did not return a readable stream.";
+          updateSelectedProviderHealth(false, latencyMs, message);
+          appendRequestLog(requestLogEntry({
+            kind: "gateway-request",
+            startedAt,
+            route: decision,
+            model: requestModelForLog,
+            statusCode: 502,
+            outcome: "failure",
+            errorCode: "model_gateway_codex_account_stream_body_missing",
+            errorMessage: message,
+          }));
+          sendJson(res, 502, {
+            error: {
+              code: "model_gateway_codex_account_stream_body_missing",
+              message,
+              decision,
+            },
+          });
+          return;
+        }
+        setCorsHeaders(res);
+        res.statusCode = upstream.status;
+        res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+        res.setHeader("Cache-Control", "no-cache");
+        res.setHeader("Connection", "keep-alive");
+        setSelectedProviderHeaders();
+        try {
+          await pipeReadableStreamToServerResponse(upstream.body, res);
+          updateSelectedProviderHealth(true, latencyMs, null);
+          appendRequestLog(requestLogEntry({
+            kind: "gateway-request",
+            startedAt,
+            route: decision,
+            model: requestModelForLog,
+            statusCode: upstream.status,
+            outcome: "success",
+            errorCode: null,
+            errorMessage: null,
+          }));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Codex account Responses stream passthrough failed.";
+          updateSelectedProviderHealth(false, latencyMs, message);
+          appendRequestLog(requestLogEntry({
+            kind: "gateway-request",
+            startedAt,
+            route: decision,
+            model: requestModelForLog,
+            statusCode: 502,
+            outcome: "failure",
+            errorCode: "model_gateway_codex_account_stream_failed",
+            errorMessage: message,
+          }));
+          if (!res.headersSent) {
+            sendJson(res, 502, {
+              error: {
+                code: "model_gateway_codex_account_stream_failed",
+                message,
+                decision,
+              },
+            });
+          }
+        } finally {
+          if (!res.writableEnded) res.end();
+        }
+        return;
+      }
+
       const responseText = await upstream.text();
       const responseBody = Buffer.from(responseText);
       if (upstream.status < 200 || upstream.status >= 300) {
@@ -6948,7 +7962,12 @@ export function createModelGatewayService(
           upstream.status,
           errorMessage || `Upstream returned HTTP ${upstream.status}.`,
         );
-        if (useCodexResponsesChatAdapter || useCodexResponsesAnthropicAdapter) {
+        if (
+          useCodexResponsesChatAdapter
+          || useCodexResponsesAnthropicAdapter
+          || useCodexAccountImageGenerationAdapter
+          || useCodexAccountResponsesNonStreamingAdapter
+        ) {
           updateSelectedProviderHealth(healthSuccess, latencyMs, normalizedError.error.message);
           appendRequestLog(requestLogEntry({
             kind: "gateway-request",
@@ -6965,10 +7984,115 @@ export function createModelGatewayService(
           return;
         }
       }
+      if (useCodexAccountResponsesNonStreamingAdapter && upstream.status >= 200 && upstream.status < 300) {
+        let adaptedResponse: Record<string, unknown>;
+        try {
+          adaptedResponse = buildCodexAccountResponsesJsonFromSseText(responseText);
+        } catch (error) {
+          const adapterError = isModelGatewayServiceError(error)
+            ? error
+            : new ModelGatewayServiceError(
+              "model_gateway_codex_account_response_invalid",
+              error instanceof Error ? error.message : "Codex account Responses adapter could not parse upstream SSE.",
+              502,
+            );
+          updateSelectedProviderHealth(false, latencyMs, adapterError.message);
+          appendRequestLog(requestLogEntry({
+            kind: "gateway-request",
+            startedAt,
+            route: decision,
+            model: requestModelForLog,
+            statusCode: adapterError.statusCode,
+            outcome: "failure",
+            errorCode: adapterError.code,
+            errorMessage: adapterError.message,
+          }));
+          sendJson(res, adapterError.statusCode, {
+            error: {
+              code: adapterError.code,
+              message: adapterError.message,
+              decision,
+            },
+          });
+          return;
+        }
+        updateSelectedProviderHealth(true, latencyMs, null);
+        codexHistory.recordResponse(adaptedResponse, {
+          requestBodyText: codexHistoryRecordBodyText,
+        });
+        appendRequestLog(requestLogEntry({
+          kind: "gateway-request",
+          startedAt,
+          route: decision,
+          model: requestModelForLog,
+          statusCode: upstream.status,
+          outcome: "success",
+          errorCode: null,
+          errorMessage: null,
+          usage: extractRuntimeUsage(adaptedResponse),
+        }));
+        setSelectedProviderHeaders();
+        sendJson(res, upstream.status, adaptedResponse);
+        return;
+      }
+      if (useCodexAccountImageGenerationAdapter && upstream.status >= 200 && upstream.status < 300) {
+        let adaptedResponse: Record<string, unknown>;
+        try {
+          adaptedResponse = buildImagesApiResponseFromResponsesText(
+            responseText,
+            codexImageGenerationRequest?.responseFormat || "b64_json",
+          );
+        } catch (error) {
+          const adapterError = isModelGatewayServiceError(error)
+            ? error
+            : new ModelGatewayServiceError(
+              "model_gateway_images_response_invalid",
+              error instanceof Error ? error.message : "OpenAI Images adapter could not parse the Responses image output.",
+              502,
+            );
+          updateSelectedProviderHealth(false, latencyMs, adapterError.message);
+          appendRequestLog(requestLogEntry({
+            kind: "gateway-request",
+            startedAt,
+            route: decision,
+            model: requestModelForLog,
+            statusCode: adapterError.statusCode,
+            outcome: "failure",
+            errorCode: adapterError.code,
+            errorMessage: adapterError.message,
+          }));
+          sendJson(res, adapterError.statusCode, {
+            error: {
+              code: adapterError.code,
+              message: adapterError.message,
+              decision,
+            },
+          });
+          return;
+        }
+        updateSelectedProviderHealth(true, latencyMs, null);
+        appendRequestLog(requestLogEntry({
+          kind: "gateway-request",
+          startedAt,
+          route: decision,
+          model: requestModelForLog,
+          statusCode: upstream.status,
+          outcome: "success",
+          errorCode: null,
+          errorMessage: null,
+          usage: extractRuntimeUsage(adaptedResponse),
+        }));
+        setSelectedProviderHeaders();
+        sendJson(res, upstream.status, adaptedResponse);
+        return;
+      }
       if (useChatResponsesAdapter && upstream.status >= 200 && upstream.status < 300) {
         let adaptedResponse: Record<string, unknown>;
         try {
-          adaptedResponse = adaptResponsesToChatCompletion(JSON.parse(responseText) as unknown, requestModelForLog);
+          adaptedResponse = adaptResponsesToChatCompletion(
+            parseOpenAIResponsesUpstreamBody(responseText, { codexAccountSse: useCodexAccountResponsesUpstream }),
+            requestModelForLog,
+          );
         } catch (error) {
           const adapterError = error instanceof OpenAIResponsesChatAdapterError
             ? error
@@ -7076,7 +8200,9 @@ export function createModelGatewayService(
       ) {
         let adaptedResponse: Record<string, unknown>;
         try {
-          const upstreamJson = JSON.parse(responseText) as unknown;
+          const upstreamJson = parseOpenAIResponsesUpstreamBody(responseText, {
+            codexAccountSse: useCodexAccountResponsesUpstream && useAnthropicMessagesResponsesProviderAdapter,
+          });
           const chatCompletion = useAnthropicMessagesResponsesProviderAdapter
             ? adaptResponsesToChatCompletion(upstreamJson, requestModelForLog)
             : upstreamJson;

@@ -319,6 +319,22 @@ export function registerModelGatewayRoutes(router: StudioRouter): void {
     await routeCtx.services.modelGateway.handleGatewayRequest(req, res);
   });
 
+  router.post("/v1/images/generations", async (req, res, routeCtx) => {
+    await routeCtx.services.modelGateway.handleGatewayRequest(req, res);
+  });
+
+  router.post("/v1/audio/transcriptions", async (req, res, routeCtx) => {
+    await routeCtx.services.modelGateway.handleGatewayRequest(req, res);
+  });
+
+  router.post("/v1/audio/translations", async (req, res, routeCtx) => {
+    await routeCtx.services.modelGateway.handleGatewayRequest(req, res);
+  });
+
+  router.post("/v1/audio/speech", async (req, res, routeCtx) => {
+    await routeCtx.services.modelGateway.handleGatewayRequest(req, res);
+  });
+
   router.post("/v1/messages", async (req, res, routeCtx) => {
     await routeCtx.services.modelGateway.handleGatewayRequest(req, res);
   });

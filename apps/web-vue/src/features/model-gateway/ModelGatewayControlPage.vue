@@ -1191,7 +1191,7 @@ type ProviderDraft = {
   endpointRows: EndpointProfileRow[];
 };
 
-type ModelCapabilityId = 'text' | 'vision' | 'tools' | 'reasoning' | 'responses' | 'streaming';
+type ModelCapabilityId = 'text' | 'vision' | 'imageGeneration' | 'audioInput' | 'audioOutput' | 'tools' | 'reasoning' | 'responses' | 'streaming';
 
 type ProviderModelRow = {
   key: string;
@@ -1202,6 +1202,9 @@ type ProviderModelRow = {
   maxOutputTokens: string;
   text: boolean;
   vision: boolean;
+  imageGeneration: boolean;
+  audioInput: boolean;
+  audioOutput: boolean;
   tools: boolean;
   reasoning: boolean;
   responses: boolean;
@@ -1213,6 +1216,9 @@ type ProviderModelBulkDraft = {
   maxOutputTokens: string;
   text: boolean;
   vision: boolean;
+  imageGeneration: boolean;
+  audioInput: boolean;
+  audioOutput: boolean;
   tools: boolean;
   reasoning: boolean;
   responses: boolean;
@@ -1312,6 +1318,10 @@ const routeOptions: Array<{ id: ModelGatewayRouteId; label: string }> = [
   { id: 'openai_chat_completions', label: 'OpenAI Chat Completions' },
   { id: 'openai_responses', label: 'OpenAI Responses' },
   { id: 'openai_responses_compact', label: 'OpenAI Responses compact' },
+  { id: 'openai_images_generations', label: 'OpenAI Images generation' },
+  { id: 'openai_audio_transcriptions', label: 'OpenAI Audio transcription' },
+  { id: 'openai_audio_translations', label: 'OpenAI Audio translation' },
+  { id: 'openai_audio_speech', label: 'OpenAI Audio speech' },
   { id: 'anthropic_messages', label: 'Anthropic Messages' },
 ];
 
@@ -1324,6 +1334,9 @@ const workspaceTabs: Array<{ id: WorkspaceTabId; zh: string; en: string }> = [
 const modelCapabilityOptions: Array<{ id: ModelCapabilityId; zh: string; en: string }> = [
   { id: 'text', zh: '文字', en: 'Text' },
   { id: 'vision', zh: '图片', en: 'Vision' },
+  { id: 'imageGeneration', zh: '生图', en: 'Image gen' },
+  { id: 'audioInput', zh: '音频输入', en: 'Audio in' },
+  { id: 'audioOutput', zh: '音频输出', en: 'Audio out' },
   { id: 'tools', zh: '工具', en: 'Tools' },
   { id: 'reasoning', zh: '推理', en: 'Reasoning' },
   { id: 'responses', zh: 'Responses', en: 'Responses' },
@@ -2133,6 +2146,9 @@ function createModelBulkDraft(): ProviderModelBulkDraft {
     maxOutputTokens: '',
     text: true,
     vision: false,
+    imageGeneration: false,
+    audioInput: false,
+    audioOutput: false,
     tools: false,
     reasoning: false,
     responses: true,
@@ -2233,16 +2249,23 @@ function uniqueStrings(values: string[]): string[] {
 
 function inferProviderModelCapabilities(modelId: string): Pick<ProviderModelRow, ModelCapabilityId> {
   const normalized = normalizeModelKey(modelId);
-  const isEmbeddingLike = /embedding|embed|rerank|tts|speech|audio|image[-_]?gen/.test(normalized);
+  const imageGeneration = /^gpt-image|^image-\d|dall-e|image[-_]?gen/.test(normalized);
+  const audioInput = /transcribe|whisper|gpt-audio|realtime/.test(normalized);
+  const audioOutput = /tts|speech|gpt-audio|realtime/.test(normalized);
+  const isEmbeddingLike = /embedding|embed|rerank/.test(normalized);
+  const isMediaOnly = imageGeneration || (/transcribe|whisper/.test(normalized) && !audioOutput);
   const reasoning = /gpt-5|^o[134]|claude|gemini|deepseek[-_]?r|reason|thinking|qwq|grok|glm[-_]?5/.test(normalized);
-  const tools = !isEmbeddingLike && /gpt|claude|gemini|qwen|deepseek|glm|kimi|grok|tools?/.test(normalized);
+  const tools = !isEmbeddingLike && !isMediaOnly && /gpt|claude|gemini|qwen|deepseek|glm|kimi|grok|tools?/.test(normalized);
   return {
-    text: !isEmbeddingLike,
-    vision: false,
+    text: !isEmbeddingLike && !imageGeneration && !/transcribe|whisper/.test(normalized),
+    vision: imageGeneration,
+    imageGeneration,
+    audioInput,
+    audioOutput,
     tools,
     reasoning,
-    responses: true,
-    streaming: !isEmbeddingLike,
+    responses: !isMediaOnly,
+    streaming: !isEmbeddingLike && !imageGeneration && !/transcribe|whisper|tts|speech/.test(normalized),
   };
 }
 
@@ -2250,6 +2273,9 @@ function defaultProviderModelCapabilities(model?: ModelGatewayProviderModel): Pi
   return {
     text: model?.features?.text ?? true,
     vision: model?.features?.vision ?? false,
+    imageGeneration: model?.features?.imageGeneration ?? false,
+    audioInput: model?.features?.audioInput ?? false,
+    audioOutput: model?.features?.audioOutput ?? false,
     tools: model?.features?.tools ?? false,
     reasoning: model?.features?.reasoning ?? false,
     responses: model?.features?.responses ?? true,
@@ -2260,6 +2286,9 @@ function defaultProviderModelCapabilities(model?: ModelGatewayProviderModel): Pi
 function providerModelRowHasDefaultCapabilities(row: ProviderModelRow): boolean {
   return row.text === true
     && row.vision === false
+    && row.imageGeneration === false
+    && row.audioInput === false
+    && row.audioOutput === false
     && row.tools === false
     && row.reasoning === false
     && row.responses === true
@@ -2324,6 +2353,9 @@ function modelRowsToModels(rows: ProviderModelRow[]): ModelGatewayProviderModel[
         features: {
           text: row.text,
           vision: row.vision,
+          imageGeneration: row.imageGeneration,
+          audioInput: row.audioInput,
+          audioOutput: row.audioOutput,
           tools: row.tools,
           reasoning: row.reasoning,
           responses: row.responses,
@@ -2593,6 +2625,9 @@ function normalizedDraftModels(): { defaultModel: string | null; models: ModelGa
       features: {
         text: true,
         vision: false,
+        imageGeneration: false,
+        audioInput: false,
+        audioOutput: false,
         tools: false,
         reasoning: false,
         responses: true,

@@ -60,6 +60,9 @@ GPT / ChatGPT / Codex 账户接入是 Gateway 下一阶段目标，参考 `docs/
 - `~/.codex/auth.json` / keyring / 隔离 `CODEX_HOME` 只作为检测、迁移或故障恢复辅助路径，不要求用户重复登录后再手动导入。
 - 账户凭据和普通 provider API key 分开存储，只保存 token ref、账户 hash、email mask、plan、过期时间和健康状态。
 - Account provider 必须同样导出 Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions。
+- Codex account 的 OpenAI Responses 外观必须经过 Codex upstream 兼容转换，不能把普通 Responses payload 直接透传给 ChatGPT Codex 后端。
+- Account provider 的模型目录必须覆盖文本、图片生成、音频输入、音频输出和实时类模型能力；媒体模型不能混作普通文本模型。
+- Codex account 对外兼容 OpenAI Images generation，内部可通过 Codex Responses `image_generation` tool bridge；音频 REST 能力按 provider 原生支持程度 passthrough 或明确报错。
 - 账户池支持 round-robin、fill-first、session affinity、per-account concurrency、per-account proxy/direct、quota/cooldown 和手动禁用。
 - 任何 auth failure、quota exceeded、rate limited、capacity error 都必须进入可解释 runtime log 和 UI 状态，不能静默换账号或伪成功。
 
@@ -126,6 +129,7 @@ Feishu / Octo(dmwork) / future IM
 ## 7. 验收
 
 - Gateway daemon 支持 `/v1/chat/completions`、`/v1/responses`、`/v1/responses/compact`、`/v1/messages` 及 streaming 变体。
+- Gateway daemon 支持 OpenAI Images `/v1/images/generations` 与 OpenAI Audio REST routes；未支持的 image edits、realtime/WebSocket 或 account upstream 能力必须明确报错。
 - Anthropic-compatible、OpenAI Chat-compatible、OpenAI Responses-native provider 均有真实 provider smoke；OpenAI Platform 官方端点作为后续可选 vendor proof。
 - Claude Code / Claude CLI 可通过 `/v1/messages` 完成普通对话、流式对话和 summary/compact 类请求。
 - Codex 可通过 `/v1/responses` 与 `/v1/responses/compact` 完成普通对话、流式对话和 compact 链路。

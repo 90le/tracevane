@@ -132,6 +132,10 @@ export const MODEL_GATEWAY_ROUTE_IDS = [
   "openai_chat_completions",
   "openai_responses",
   "openai_responses_compact",
+  "openai_images_generations",
+  "openai_audio_transcriptions",
+  "openai_audio_translations",
+  "openai_audio_speech",
   "anthropic_messages",
 ] as const;
 
@@ -161,6 +165,9 @@ export interface ModelGatewayModelFeatures {
   vision?: boolean;
   reasoning?: boolean;
   responses?: boolean;
+  imageGeneration?: boolean;
+  audioInput?: boolean;
+  audioOutput?: boolean;
 }
 
 export interface ModelGatewayProviderModelCatalog {
@@ -903,6 +910,10 @@ export interface ModelGatewayStatusResponse {
     openaiChatCompletions: string[];
     openaiResponses: string[];
     openaiResponsesCompact: string[];
+    openaiImagesGenerations: string[];
+    openaiAudioTranscriptions: string[];
+    openaiAudioTranslations: string[];
+    openaiAudioSpeech: string[];
     anthropicMessages: string[];
   };
   registry: {

@@ -41,6 +41,21 @@ function escapeXml(value: string): string {
     .replace(/'/g, "&apos;");
 }
 
+function inheritedProxyEnvironment(): Array<[string, string]> {
+  return [
+    "HTTP_PROXY",
+    "HTTPS_PROXY",
+    "ALL_PROXY",
+    "NO_PROXY",
+    "http_proxy",
+    "https_proxy",
+    "all_proxy",
+    "no_proxy",
+  ]
+    .map((key) => [key, process.env[key] || ""] as [string, string])
+    .filter(([, value]) => value.trim());
+}
+
 function command(label: string, commandName: string, args: string[]): ModelGatewayDaemonServiceCommand {
   return { label, command: commandName, args };
 }
@@ -54,6 +69,7 @@ function buildSystemdTemplate(options: {
   daemonEntry: string;
   projectRoot: string;
   openclawRoot: string;
+  proxyEnv: Array<[string, string]>;
 }): string {
   return [
     "[Unit]",
@@ -65,6 +81,7 @@ function buildSystemdTemplate(options: {
     `WorkingDirectory=${escapeSystemdPath(options.projectRoot)}`,
     `Environment=${quoteSystemdValue(`OPENCLAW_STATE_DIR=${options.openclawRoot}`)}`,
     `Environment=${quoteSystemdValue("MODEL_GATEWAY_SUPERVISOR=systemd-user")}`,
+    ...options.proxyEnv.map(([key, value]) => `Environment=${quoteSystemdValue(`${key}=${value}`)}`),
     `ExecStart=${quoteSystemdValue(options.nodePath)} ${quoteSystemdValue(options.daemonEntry)}`,
     "Restart=always",
     "RestartSec=2",
@@ -80,7 +97,12 @@ function buildLaunchdTemplate(options: {
   daemonEntry: string;
   projectRoot: string;
   openclawRoot: string;
+  proxyEnv: Array<[string, string]>;
 }): string {
+  const proxyLines = options.proxyEnv.flatMap(([key, value]) => [
+    `    <key>${escapeXml(key)}</key>`,
+    `    <string>${escapeXml(value)}</string>`,
+  ]);
   return [
     "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
     "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">",
@@ -99,6 +121,7 @@ function buildLaunchdTemplate(options: {
     "  <dict>",
     "    <key>OPENCLAW_STATE_DIR</key>",
     `    <string>${escapeXml(options.openclawRoot)}</string>`,
+    ...proxyLines,
     "  </dict>",
     "  <key>RunAtLoad</key>",
     "  <true/>",
@@ -115,6 +138,7 @@ function buildWindowsTaskTemplate(options: {
   daemonEntry: string;
   projectRoot: string;
   openclawRoot: string;
+  proxyEnv: Array<[string, string]>;
 }): string {
   return [
     "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
@@ -207,6 +231,7 @@ function templateFor(
     daemonEntry: string;
     projectRoot: string;
     openclawRoot: string;
+    proxyEnv: Array<[string, string]>;
   },
 ): ModelGatewayDaemonServiceTemplate {
   const template = supervisor === "systemd-user"
@@ -237,6 +262,7 @@ export function createModelGatewayDaemonServicePlan(config: StudioServerConfig):
     daemonEntry,
     projectRoot: config.projectRoot,
     openclawRoot: config.openclawRoot,
+    proxyEnv: inheritedProxyEnvironment(),
   };
   const templates = [
     templateFor(
