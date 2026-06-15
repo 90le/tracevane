@@ -57,6 +57,7 @@
   - Account pool 调度完成：支持 session affinity、round-robin/fill-first、per-account concurrency、busy 429、HTTP 非 2xx 与 started streaming `response.failed/error` 的 upstream quota/rate/capacity cooldown、cooldown 手动清除、per-account proxy/direct、runtime log accountId/accountHash/accountRouting，并将 Codex account cursor/affinity 写入 runtime，daemon 重启后同 session 保持账号，新 session 延续轮转；Provider Center 最近请求可直接查看 sticky/selected/skipped 摘要。
   - Account pool 可观察性补齐 cooldown retry：过期 cooldown 账户被重新选中时，runtime log `accountRouting` 会记录 `selectedWasCooldownRetry` 与原 `selectedCooldownUntil`，Provider Center 最近请求显示“冷却后重试”；成功后账户恢复 `ready`。
   - Gateway usage summary 初版：`status.runtime.usageSummary` 与 `runtime.usageSummary` 从 request log 聚合总 tokens、provider/model/account top buckets；Provider Center Runtime 侧栏显示请求数 / tokens，为后续模型消耗页提供稳定合同。
+  - Provider Center 最近请求补齐 accountRouting 操作面：支持全部/账号池/失败/冷却重试筛选，单条请求可展开查看 provider、选中账号、原因、sticky、cursor 和 skipped accounts 明细。
   - Active route smoke 改为客户端真实形态：Claude Code / OpenCode 会带最小 tools schema，响应必须按客户端协议解析出 `GATEWAY_OK`；固定 provider 的 endpoint fallback 优先同 provider，避免 `glm` Claude 路由直接跳到外部 provider。
   - Codex account provider smoke 复用账号请求归一化、账号 header 和代理网络，不再绕开正式 Gateway Codex account 链路导致 false negative。
   - OpenCode Gateway runner 不再给 Gateway 模型声明 `reasoning:true`、注入 `--variant` 或传 `--thinking`；App Connections 生成的 OpenCode 模型也显式 `reasoning:false`，避免用户级 `~/.config/opencode/opencode.json` 继续让 OpenCode 发 `reasoning_effort`。
@@ -312,6 +313,6 @@
 
 ## 下一步
 
-1. 继续补账户池高级策略：账户池策略调参、Provider Center accountRouting 展开明细和筛选。
+1. 继续补账户池高级策略：账号池策略调参和 Provider Center accountRouting 更深层排障字段。
 2. 继续参考 Sub2API / CLIProxyAPI 补模型目录刷新、媒体模型状态和 Codex account image edits 可行性验证。
 3. 继续把 runtime usage summary 扩展成长期 usage 账本和模型消耗页。

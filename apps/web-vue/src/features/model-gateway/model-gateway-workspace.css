@@ -1209,16 +1209,56 @@
 
 .mgw-log-head {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
+  flex-wrap: wrap;
+}
+
+.mgw-log-head > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.mgw-log-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mgw-log-filters button {
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-base) 88%, var(--surface-soft));
+  color: var(--mono-ink-2);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 6px 9px;
+}
+
+.mgw-log-filters button.active {
+  border-color: color-mix(in srgb, var(--mono-accent) 45%, var(--mono-line));
+  background: color-mix(in srgb, var(--mono-accent) 10%, var(--surface-base));
+  color: var(--mono-accent);
 }
 
 .mgw-log-row {
+  padding: 9px 10px;
+}
+
+.mgw-log-row__summary {
   display: grid;
-  grid-template-columns: 88px minmax(0, 0.8fr) minmax(0, 1.4fr);
+  grid-template-columns: 88px minmax(0, 0.8fr) minmax(0, 1.4fr) auto;
   gap: 10px;
   align-items: center;
-  padding: 9px 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.mgw-log-row__summary::-webkit-details-marker {
+  display: none;
 }
 
 .mgw-log-row__body {
@@ -1233,6 +1273,47 @@
 
 .mgw-log-row__account {
   color: var(--mono-accent);
+}
+
+.mgw-log-row__toggle {
+  color: var(--mono-ink-2);
+  font-weight: 800;
+  justify-self: end;
+  white-space: nowrap;
+}
+
+.mgw-log-row[open] .mgw-log-row__toggle {
+  color: var(--mono-accent);
+}
+
+.mgw-log-routing-detail {
+  display: grid;
+  gap: 6px;
+  margin-top: 9px;
+  border-top: 1px solid var(--mono-line);
+  padding-top: 9px;
+}
+
+.mgw-log-routing-detail > div {
+  display: grid;
+  grid-template-columns: minmax(88px, 0.4fr) minmax(0, 1.6fr);
+  gap: 10px;
+}
+
+.mgw-log-routing-detail span {
+  color: var(--mono-ink-2);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.mgw-log-routing-detail strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mgw-log-routing-detail.muted {
+  color: var(--mono-ink-2);
+  font-size: 0.9rem;
 }
 
 .mgw-log-row.success {
@@ -1477,7 +1558,8 @@
   .mgw-smoke-grid,
   .mgw-workspace-tabs,
   .mgw-route-row,
-  .mgw-log-row {
+  .mgw-log-row__summary,
+  .mgw-log-routing-detail > div {
     grid-template-columns: 1fr;
   }
 

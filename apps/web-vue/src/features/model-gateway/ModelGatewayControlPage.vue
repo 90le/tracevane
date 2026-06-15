@@ -1037,10 +1037,24 @@
 
           <div class="mgw-request-log">
             <div class="mgw-log-head">
-              <strong>{{ text('最近请求', 'Recent requests') }}</strong>
-              <span>{{ runtime?.runtime.updatedAt ? formatTimestamp(runtime.runtime.updatedAt) : '-' }}</span>
+              <div>
+                <strong>{{ text('最近请求', 'Recent requests') }}</strong>
+                <span>{{ runtime?.runtime.updatedAt ? formatTimestamp(runtime.runtime.updatedAt) : '-' }}</span>
+              </div>
+              <div class="mgw-log-filters" role="group" :aria-label="text('请求日志筛选', 'Request log filters')">
+                <button
+                  v-for="option in runtimeLogFilterOptions"
+                  :key="option.id"
+                  type="button"
+                  :class="{ active: runtimeLogFilter === option.id }"
+                  @click="runtimeLogFilter = option.id"
+                >
+                  {{ text(option.zh, option.en) }}
+                </button>
+              </div>
             </div>
-            <div v-for="entry in runtimeEntries" :key="entry.id" class="mgw-log-row" :class="entry.outcome">
+            <details v-for="entry in runtimeEntries" :key="entry.id" class="mgw-log-row" :class="entry.outcome">
+              <summary class="mgw-log-row__summary">
               <span>{{ entry.outcome }}</span>
               <strong>{{ entry.providerName || entry.providerId || '-' }}</strong>
               <div class="mgw-log-row__body">
@@ -1049,9 +1063,20 @@
                   {{ accountRoutingSummary(entry.accountRouting) }}
                 </small>
               </div>
-            </div>
+              <small class="mgw-log-row__toggle">{{ text('详情', 'Details') }}</small>
+              </summary>
+              <div v-if="entry.accountRouting" class="mgw-log-routing-detail">
+                <div v-for="item in accountRoutingDetailRows(entry.accountRouting)" :key="item.key">
+                  <span>{{ item.label }}</span>
+                  <strong>{{ item.value }}</strong>
+                </div>
+              </div>
+              <div v-else class="mgw-log-routing-detail muted">
+                {{ text('此请求没有账号池诊断。', 'This request has no account pool diagnostics.') }}
+              </div>
+            </details>
             <div v-if="!runtimeEntries.length" class="mgw-empty">
-              {{ text('暂无请求记录。', 'No request log yet.') }}
+              {{ runtimeLogFilter === 'all' ? text('暂无请求记录。', 'No request log yet.') : text('当前筛选没有请求记录。', 'No request log matches the current filter.') }}
             </div>
           </div>
         </article>
@@ -1307,6 +1332,7 @@ type DetectStep = {
 };
 
 type WorkspaceTabId = 'connections' | 'providers' | 'smoke';
+type RuntimeLogFilterId = 'all' | 'account-routing' | 'failure' | 'cooldown-retry';
 
 type AppConnectionProfileDraft = {
   model: string;
@@ -1372,6 +1398,12 @@ const workspaceTabs: Array<{ id: WorkspaceTabId; zh: string; en: string }> = [
   { id: 'connections', zh: '客户端接入', en: 'Client connections' },
   { id: 'providers', zh: 'Provider 配置', en: 'Provider configuration' },
   { id: 'smoke', zh: 'Smoke / 日志', en: 'Smoke / Logs' },
+];
+const runtimeLogFilterOptions: Array<{ id: RuntimeLogFilterId; zh: string; en: string }> = [
+  { id: 'all', zh: '全部', en: 'All' },
+  { id: 'account-routing', zh: '账号池', en: 'Account pool' },
+  { id: 'failure', zh: '失败', en: 'Failures' },
+  { id: 'cooldown-retry', zh: '冷却重试', en: 'Cooldown retry' },
 ];
 
 const modelCapabilityOptions: Array<{ id: ModelCapabilityId; zh: string; en: string }> = [
@@ -1486,6 +1518,7 @@ const smokeModel = ref('');
 const smokeInput = ref('Reply with GATEWAY_OK');
 const smokeResult = ref<ModelGatewayProviderTestResponse | null>(null);
 const visionSmokeResult = ref<ModelGatewayProviderTestResponse | null>(null);
+const runtimeLogFilter = ref<RuntimeLogFilterId>('all');
 const detectResult = ref<ModelGatewayProviderDetectResponse | null>(null);
 const detectOverlayOpen = ref(false);
 const detectError = ref<string | null>(null);
@@ -1509,8 +1542,19 @@ const endpointProfilesCanSmoke = computed(() =>
   Boolean(draft.id.trim() && providerExists(draft.id.trim())),
 );
 
+function runtimeLogEntryMatchesFilter(entry: ModelGatewayRuntimeRequestLogEntry, filter: RuntimeLogFilterId): boolean {
+  if (filter === 'all') return true;
+  if (filter === 'account-routing') return Boolean(entry.accountRouting);
+  if (filter === 'failure') return entry.outcome !== 'success';
+  if (filter === 'cooldown-retry') return entry.accountRouting?.selectedWasCooldownRetry === true;
+  return true;
+}
+
 const runtimeEntries = computed<ModelGatewayRuntimeRequestLogEntry[]>(() =>
-  [...(runtime.value?.runtime.requestLog || [])].reverse().slice(0, 8),
+  [...(runtime.value?.runtime.requestLog || [])]
+    .reverse()
+    .filter((entry) => runtimeLogEntryMatchesFilter(entry, runtimeLogFilter.value))
+    .slice(0, 12),
 );
 const runtimeUsageSummary = computed(() =>
   runtime.value?.usageSummary || status.value?.runtime.usageSummary || null,
@@ -1548,6 +1592,74 @@ function accountRoutingSummary(routing: ModelGatewayAccountRoutingDiagnostics): 
     ? Object.entries(skipped).map(([key, count]) => `${key} ${count}`).join(', ')
     : text('无跳过', 'no skips');
   return [selected, reason, retry, sticky, skippedSummary].filter(Boolean).join(' · ');
+}
+
+function accountRoutingDetailRows(routing: ModelGatewayAccountRoutingDiagnostics): Array<{ key: string; label: string; value: string }> {
+  const rows: Array<{ key: string; label: string; value: string }> = [
+    {
+      key: 'provider',
+      label: text('Provider', 'Provider'),
+      value: `${routing.providerId} · ${routing.kind} · ${routing.strategy}`,
+    },
+    {
+      key: 'selected',
+      label: text('选中账号', 'Selected account'),
+      value: routing.selectedAccountId || text('未选中', 'none'),
+    },
+    {
+      key: 'reason',
+      label: text('原因', 'Reason'),
+      value: routing.failureReason || routing.selectedReason || text('已选择', 'selected'),
+    },
+    {
+      key: 'sticky',
+      label: text('Sticky', 'Sticky'),
+      value: routing.sessionAffinity
+        ? routing.affinityHit
+          ? text('命中', 'hit')
+          : routing.affinityKeyHash
+            ? text(`绑定 ${routing.affinityKeyHash}`, `bound ${routing.affinityKeyHash}`)
+            : text('无会话键', 'no session key')
+        : text('关闭', 'off'),
+    },
+  ];
+  if (routing.selectedWasCooldownRetry) {
+    rows.push({
+      key: 'cooldown-retry',
+      label: text('冷却重试', 'Cooldown retry'),
+      value: routing.selectedCooldownUntil
+        ? formatTimestamp(routing.selectedCooldownUntil)
+        : text('是', 'yes'),
+    });
+  }
+  if (routing.cursorBefore !== null || routing.cursorAfter !== null) {
+    rows.push({
+      key: 'cursor',
+      label: text('游标', 'Cursor'),
+      value: `${routing.cursorBefore ?? '-'} -> ${routing.cursorAfter ?? '-'}`,
+    });
+  }
+  for (const [index, item] of routing.skipped.entries()) {
+    rows.push({
+      key: `skip-${index}-${item.accountId}`,
+      label: index === 0 ? text('跳过账号', 'Skipped accounts') : '',
+      value: [
+        item.accountId,
+        item.reason,
+        item.state,
+        item.cooldownUntil ? formatTimestamp(item.cooldownUntil) : null,
+        item.capacityLimit ? `${item.inFlight}/${item.capacityLimit}` : item.inFlight ? `${item.inFlight}` : null,
+      ].filter(Boolean).join(' · '),
+    });
+  }
+  if (!routing.skipped.length) {
+    rows.push({
+      key: 'skip-none',
+      label: text('跳过账号', 'Skipped accounts'),
+      value: text('无', 'none'),
+    });
+  }
+  return rows;
 }
 
 const appConnectionModelOptions = computed<AppConnectionModelOption[]>(() =>
