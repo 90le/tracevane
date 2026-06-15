@@ -323,6 +323,10 @@ export function registerModelGatewayRoutes(router: StudioRouter): void {
     await routeCtx.services.modelGateway.handleGatewayRequest(req, res);
   });
 
+  router.post("/v1/images/edits", async (req, res, routeCtx) => {
+    await routeCtx.services.modelGateway.handleGatewayRequest(req, res);
+  });
+
   router.post("/v1/audio/transcriptions", async (req, res, routeCtx) => {
     await routeCtx.services.modelGateway.handleGatewayRequest(req, res);
   });

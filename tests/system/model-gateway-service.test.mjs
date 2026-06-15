@@ -540,6 +540,34 @@ test("model gateway starts Codex account login and creates an account-backed pro
       assert.equal(image.body.created, 1710000001);
       assert.equal(image.body.data[0].b64_json, "BASE64_IMAGE");
       assert.equal(image.body.data[0].revised_prompt, "red square");
+
+      const editBoundary = "----studio-codex-image-edit-boundary";
+      const editBody = Buffer.from([
+        `--${editBoundary}`,
+        'Content-Disposition: form-data; name="model"',
+        "",
+        "gpt-image-2",
+        `--${editBoundary}`,
+        'Content-Disposition: form-data; name="prompt"',
+        "",
+        "make the square blue",
+        `--${editBoundary}`,
+        'Content-Disposition: form-data; name="image"; filename="square.png"',
+        "Content-Type: image/png",
+        "",
+        "PNG\u0000studio-image",
+        `--${editBoundary}--`,
+        "",
+      ].join("\r\n"), "latin1");
+      const edit = await requestRaw(`${baseUrl}/v1/images/edits`, {
+        method: "POST",
+        rawBody: editBody,
+        headers: {
+          "content-type": `multipart/form-data; boundary=${editBoundary}`,
+        },
+      });
+      assert.equal(edit.status, 501);
+      assert.equal(JSON.parse(edit.body).error.code, "model_gateway_codex_account_image_edits_unsupported");
     });
   } finally {
     globalThis.fetch = originalFetch;
@@ -582,6 +610,113 @@ test("model gateway starts Codex account login and creates an account-backed pro
   assert.equal(upstreamCalls[3].body.tool_choice.type, "image_generation");
   assert.equal(upstreamCalls[3].dispatcher, true);
   assert.match(upstreamCalls[0].userAgent, /^codex_cli_rs/);
+});
+
+test("model gateway forwards OpenAI image edit multipart requests without rewriting binary bodies", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "image-provider",
+      name: "Image Provider",
+      appScopes: ["openclaw"],
+      baseUrl: "https://image.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "gpt-image-2",
+        models: [{
+          id: "gpt-image-2",
+          features: {
+            text: false,
+            streaming: false,
+            tools: false,
+            vision: true,
+            reasoning: false,
+            responses: false,
+            imageGeneration: true,
+          },
+        }],
+      },
+    },
+    secret: {
+      apiKey: "sk-image-secret",
+    },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const boundary = "----studio-image-edit-boundary";
+  const multipartBody = Buffer.from([
+    `--${boundary}`,
+    'Content-Disposition: form-data; name="model"',
+    "",
+    "gpt-image-2",
+    `--${boundary}`,
+    'Content-Disposition: form-data; name="prompt"',
+    "",
+    "replace the background",
+    `--${boundary}`,
+    'Content-Disposition: form-data; name="image"; filename="source.png"',
+    "Content-Type: image/png",
+    "",
+    "PNG\u0000\u0001studio-binary-image",
+    `--${boundary}--`,
+    "",
+  ].join("\r\n"), "latin1");
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const body = Buffer.isBuffer(init.body)
+      ? init.body
+      : ArrayBuffer.isView(init.body)
+        ? Buffer.from(init.body.buffer, init.body.byteOffset, init.body.byteLength)
+      : Buffer.from(String(init.body || ""), "latin1");
+    const headers = init.headers instanceof Headers ? init.headers : new Headers(init.headers || {});
+    upstreamCalls.push({
+      url: String(url),
+      authorization: headers.get("authorization"),
+      contentType: headers.get("content-type"),
+      body,
+    });
+    return new Response(JSON.stringify({ created: 1710000002, data: [{ b64_json: "EDITED_IMAGE" }] }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestRaw(`${baseUrl}/v1/images/edits`, {
+        method: "POST",
+        rawBody: multipartBody,
+        headers: {
+          "content-type": `multipart/form-data; boundary=${boundary}`,
+        },
+      });
+      assert.equal(response.status, 200);
+      assert.equal(JSON.parse(response.body).data[0].b64_json, "EDITED_IMAGE");
+
+      const status = await requestJson(`${baseUrl}/api/model-gateway/status`);
+      assert.deepEqual(status.body.capabilities.openaiImagesEdits, ["/v1/images/edits"]);
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.equal(runtime.status, 200);
+      assert.equal(runtime.body.runtime.requestLog[0].routeId, "openai_images_edits");
+      assert.equal(runtime.body.runtime.requestLog[0].model, "gpt-image-2");
+      assert.equal(runtime.body.runtime.requestLog[0].upstreamUrl, "https://image.example.test/v1/images/edits");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://image.example.test/v1/images/edits");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-image-secret");
+  assert.equal(upstreamCalls[0].contentType, `multipart/form-data; boundary=${boundary}`);
+  assert.deepEqual(upstreamCalls[0].body, multipartBody);
 });
 
 test("model gateway forwards OpenAI audio multipart requests without rewriting binary bodies", async () => {

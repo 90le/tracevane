@@ -1319,6 +1319,7 @@ const routeOptions: Array<{ id: ModelGatewayRouteId; label: string }> = [
   { id: 'openai_responses', label: 'OpenAI Responses' },
   { id: 'openai_responses_compact', label: 'OpenAI Responses compact' },
   { id: 'openai_images_generations', label: 'OpenAI Images generation' },
+  { id: 'openai_images_edits', label: 'OpenAI Images edit' },
   { id: 'openai_audio_transcriptions', label: 'OpenAI Audio transcription' },
   { id: 'openai_audio_translations', label: 'OpenAI Audio translation' },
   { id: 'openai_audio_speech', label: 'OpenAI Audio speech' },

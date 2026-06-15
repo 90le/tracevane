@@ -133,6 +133,7 @@ export const MODEL_GATEWAY_ROUTE_IDS = [
   "openai_responses",
   "openai_responses_compact",
   "openai_images_generations",
+  "openai_images_edits",
   "openai_audio_transcriptions",
   "openai_audio_translations",
   "openai_audio_speech",
@@ -911,6 +912,7 @@ export interface ModelGatewayStatusResponse {
     openaiResponses: string[];
     openaiResponsesCompact: string[];
     openaiImagesGenerations: string[];
+    openaiImagesEdits: string[];
     openaiAudioTranscriptions: string[];
     openaiAudioTranslations: string[];
     openaiAudioSpeech: string[];

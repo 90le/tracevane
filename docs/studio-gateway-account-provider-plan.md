@@ -38,6 +38,7 @@ Account-backed provider 对外仍暴露：
 - `/v1/responses/compact`
 - `/v1/messages`
 - `/v1/images/generations`
+- `/v1/images/edits`
 - `/v1/audio/transcriptions`
 - `/v1/audio/translations`
 - `/v1/audio/speech`
@@ -61,7 +62,7 @@ Account-backed provider 对外仍暴露：
 - 模型目录：账户 provider 使用受控 catalog，支持 alias/fork/excluded models，和现有 `/v1/models` 聚合合并；Codex account 首批对齐 CLIProxyAPI Codex client catalog，不暴露历史误生成或 live 证明不支持的模型 slug。
 - Codex Responses 转换：Codex account `/v1/responses` 不能按普通 OpenAI Responses 原样透传；必须按 Codex upstream 合同把字符串 `input` 转 message list，强制上游 streaming，并清理 upstream 不接受的 token/采样/context/user 参数，非流式客户端响应再由 SSE 聚合回 JSON。
 - 媒体模型：账户 provider catalog 必须区分 text、vision、image generation、audio input、audio output；`gpt-image-2`、transcribe、tts、audio、realtime 类模型不能被当成普通文本模型。
-- 图片桥接：Codex account 对外兼容 OpenAI Images generation；上游优先走 Codex `/responses` + `image_generation` tool，并把 Responses/SSE 输出转成 Images API 响应。
+- 图片桥接：Codex account 对外兼容 OpenAI Images generation；上游优先走 Codex `/responses` + `image_generation` tool，并把 Responses/SSE 输出转成 Images API 响应。OpenAI-compatible image edits 必须 multipart/binary passthrough；Codex account image edits 在没有真实上游合同前明确报不支持。
 - 音频路由：OpenAI-compatible provider 的音频 REST 端点必须 multipart/binary passthrough；Codex account 音频能力需真实上游验证后再进入完成态。
 - Codex headers：保留 Codex 需要的 `Session_id`、`X-Codex-*`、`Chatgpt-Account-Id`、user-agent defaults；反代部署时提醒保留 underscore headers。
 - usage：按 gateway key、provider、account hash、model、alias、route、status、latency、TTFT、usage tokens 记录；Channel 侧不重复做 token 产品化。
@@ -72,7 +73,7 @@ Account-backed provider 对外仍暴露：
 - 无真实 token 的单元测试覆盖 account schema、redaction、auth storage、route decision、sticky/failover/cooldown、model list merge。
 - 页面登录 smoke 验证 Codex 账户自动创建 provider 和普通请求；隔离 `CODEX_HOME` 只用于辅助迁移验证，不污染当前 Codex CLI。
 - 真实 live smoke 至少覆盖 Codex account：Responses non-stream、Responses stream、Responses compact、Chat-compatible adapter、Anthropic Messages adapter。
-- Media smoke：Codex account Images generation 至少有真实生图或 upstream entitlement 失败证据；OpenAI-compatible 音频 transcription 用 multipart 文件验证请求体不被 Gateway 改写。
+- Media smoke：Codex account Images generation 至少有真实生图或 upstream entitlement 失败证据；OpenAI-compatible image edits 和音频 transcription 用 multipart 文件验证请求体不被 Gateway 改写。
 - UI smoke 覆盖账户登录向导、账户表、禁用/刷新、模型别名和 redaction。
 - `runtime.json` 不出现 access token、refresh token、auth.json 原文。
 

@@ -231,6 +231,11 @@ const ROUTES: Record<ModelGatewayRouteId, {
     appScope: "openclaw",
     protocol: "openai_responses",
   },
+  openai_images_edits: {
+    paths: ["/v1/images/edits"],
+    appScope: "openclaw",
+    protocol: "openai_responses",
+  },
   openai_audio_transcriptions: {
     paths: ["/v1/audio/transcriptions"],
     appScope: "openclaw",
@@ -2415,6 +2420,7 @@ function endpointForRoute(routeId: ModelGatewayRouteId, provider: ModelGatewayPr
     if (isCodexAccountBackedProvider(provider)) return "/responses";
     return "/images/generations";
   }
+  if (routeId === "openai_images_edits") return "/images/edits";
   if (routeId === "openai_audio_transcriptions") return "/audio/transcriptions";
   if (routeId === "openai_audio_translations") return "/audio/translations";
   if (routeId === "openai_audio_speech") return "/audio/speech";
@@ -2436,7 +2442,7 @@ function routeMode(routeId: ModelGatewayRouteId, provider: ModelGatewayProvider)
   if (routeId === "openai_responses_compact") {
     return provider.apiFormat === "openai_responses" ? "passthrough" : "adapter-required";
   }
-  if (routeId === "openai_images_generations") {
+  if (routeId === "openai_images_generations" || routeId === "openai_images_edits") {
     return provider.apiFormat === "anthropic_messages" ? "adapter-required" : "passthrough";
   }
   if (
@@ -2536,7 +2542,9 @@ function providerEndpointProfilesForRouting(
 
 function routeProtocolPenalty(provider: ModelGatewayProvider, routeId: ModelGatewayRouteId): number {
   if (
-    routeId === "openai_audio_transcriptions"
+    routeId === "openai_images_generations"
+    || routeId === "openai_images_edits"
+    || routeId === "openai_audio_transcriptions"
     || routeId === "openai_audio_translations"
     || routeId === "openai_audio_speech"
   ) {
@@ -5130,6 +5138,7 @@ export function createModelGatewayService(
         openaiResponses: ROUTES.openai_responses.paths,
         openaiResponsesCompact: ROUTES.openai_responses_compact.paths,
         openaiImagesGenerations: ROUTES.openai_images_generations.paths,
+        openaiImagesEdits: ROUTES.openai_images_edits.paths,
         openaiAudioTranscriptions: ROUTES.openai_audio_transcriptions.paths,
         openaiAudioTranslations: ROUTES.openai_audio_translations.paths,
         openaiAudioSpeech: ROUTES.openai_audio_speech.paths,
@@ -7374,6 +7383,8 @@ export function createModelGatewayService(
     const useAnthropicMessagesResponsesProviderAdapter = isAnthropicMessagesToOpenAIResponsesAdapterTarget(decision);
     const useCodexAccountImageGenerationAdapter = decision.routeId === "openai_images_generations"
       && isCodexAccountBackedProvider(provider);
+    const useCodexAccountImageEditsUnsupported = decision.routeId === "openai_images_edits"
+      && isCodexAccountBackedProvider(provider);
     const useCodexAccountResponsesUpstream = isCodexAccountBackedProvider(provider)
       && normalizePathname(decision.upstreamUrl || decision.upstreamPath || "").endsWith("/responses");
     if (
@@ -7400,6 +7411,27 @@ export function createModelGatewayService(
         error: {
           code: "model_gateway_adapter_required",
           message: decision.reason,
+          decision,
+        },
+      });
+      return;
+    }
+    if (useCodexAccountImageEditsUnsupported) {
+      const message = "Codex account image edits are not exposed by the Codex Responses image_generation bridge yet; use an OpenAI-compatible image provider for /v1/images/edits.";
+      appendRequestLog(requestLogEntry({
+        kind: "gateway-request",
+        startedAt,
+        route: decision,
+        model: requestModel,
+        statusCode: 501,
+        outcome: "adapter-required",
+        errorCode: "model_gateway_codex_account_image_edits_unsupported",
+        errorMessage: message,
+      }));
+      sendJson(res, 501, {
+        error: {
+          code: "model_gateway_codex_account_image_edits_unsupported",
+          message,
           decision,
         },
       });

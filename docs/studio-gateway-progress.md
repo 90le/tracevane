@@ -47,11 +47,12 @@
   - Codex account 默认模型目录对齐 CLIProxyAPI Codex client catalog：`gpt-5.5` / `gpt-5.4` / `gpt-5.4-mini` / `gpt-5.3-codex`、`gpt-image-2` 及 image alias、`gpt-4o-transcribe` / `gpt-4o-mini-transcribe`、`gpt-4o-mini-tts` / `tts-*`、`gpt-audio*`、`gpt-realtime*`；读取旧 provider 时会过滤不再受控的历史默认项。
   - Codex account `/v1/responses` 请求体对齐 CLIProxyAPI：字符串 `input` 会转换成 Codex message list，强制上游 `stream:true`、`store:false`、`parallel_tool_calls:true`、`include:["reasoning.encrypted_content"]`，并删除 Codex upstream 不支持的 token/采样/context/user 等字段；客户端非流式响应由上游 SSE `response.completed` 聚合回 JSON。
   - systemd/launchd Gateway daemon service template 会继承当前 Studio 进程的代理环境；account-backed Codex upstream/auth 请求也会使用账户代理、provider 代理或环境代理，避免 daemon 下直连失败。
-  - Gateway 新增 OpenAI Images `/v1/images/generations` 和 OpenAI Audio `/v1/audio/transcriptions`、`/v1/audio/translations`、`/v1/audio/speech` 路由合同；Provider Center 可编辑生图、音频输入、音频输出能力。
+  - Gateway 新增 OpenAI Images `/v1/images/generations`、`/v1/images/edits` 和 OpenAI Audio `/v1/audio/transcriptions`、`/v1/audio/translations`、`/v1/audio/speech` 路由合同；Provider Center 可编辑生图、音频输入、音频输出能力。
   - Codex account 的 Images generation 参考 Sub2API / CLIProxyAPI：对外接 OpenAI Images API，对上游桥接到 Codex `/responses` 的 `image_generation` tool，并把 Responses/SSE 输出重建为 Images API 响应。
+  - OpenAI-compatible Images edits 保持 multipart/binary 原样 passthrough；Codex account image edits 不伪装支持，返回明确 `model_gateway_codex_account_image_edits_unsupported`。
   - OpenAI-compatible 音频端点保持 multipart/binary 原样 passthrough，不再把音频请求体当 UTF-8 字符串重写；Codex account 音频目录已暴露，但账户音频 upstream 能力仍需真实 entitlement smoke 后才能标为完成。
   - 本轮验证通过：`npm run typecheck:api`、`npm run build:api`、`npm run typecheck:web`、`npm run build:web`。
-  - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，63/63 通过，覆盖 Codex account login、自动 refresh、手动 refresh、账户禁用路由跳过、refresh auth failure、secret redaction、active routing、Codex headers 转发、Codex Responses SSE 聚合、Codex Images bridge、OpenAI-compatible audio multipart passthrough 和既有三协议矩阵无回归。
+  - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，64/64 通过，覆盖 Codex account login、自动 refresh、手动 refresh、账户禁用路由跳过、refresh auth failure、secret redaction、active routing、Codex headers 转发、Codex Responses SSE 聚合、Codex Images bridge、OpenAI-compatible image edits/audio multipart passthrough 和既有三协议矩阵无回归。
 - Provider Center 前端收口：
   - 模型目录的可见身份字段只保留“模型名称”和“别名”，不再暴露“显示名”三段式配置。
   - 批量导入格式改为 `model-id | alias1,alias2`；保存时不再从表格写入 `model.label`。
@@ -293,11 +294,11 @@
 - Provider 模型 vision 能力不会再从模型名推断；Chat-compatible provider 即使模型名像 Claude/GPT，也必须由用户显式配置、上游显式能力元数据或图片 smoke 通过后确认标记。
 - 工具流仍需继续 live 抽查：Codex、Claude Code、OpenCode 近 12h 均已有可见工具输出 live 证据，且三者均有过程回复真实 IM 证据。
 - 思考流 parser 支持 Codex、Claude Code、OpenCode 原生 thinking/reasoning 事件；Octo 私聊 `/thinking on/off` 已做端到端回归；状态/UI 已区分 parser 支持和 live 输出观测。真实 smoke 证明 OpenCode 会在支持 reasoning 的模型上输出 `reasoning`，Claude Code 2.1.86 当前未输出 `thinking` item；没有原生思考事件的 Agent/模型组合只能标为不支持，不伪造。
-- Codex account live smoke 已确认：`/v1/models` 由 Studio Gateway daemon 返回 39 个聚合模型，account catalog 不再暴露 `gpt-5.5-mini` / `gpt-5`；`gpt-5.5` 覆盖 Responses non-stream、Responses stream、Chat Completions adapter、Anthropic Messages adapter 和 Responses compact，均通过统一 Gateway key 返回 `pong`。`/v1/images/edits`、Realtime/WebSocket、Codex account 音频真实上游能力和 image/audio 计费 usage 精细映射仍是后续项。
+- Codex account live smoke 已确认：`/v1/models` 由 Studio Gateway daemon 返回 39 个聚合模型，account catalog 不再暴露 `gpt-5.5-mini` / `gpt-5`；`gpt-5.5` 覆盖 Responses non-stream、Responses stream、Chat Completions adapter、Anthropic Messages adapter 和 Responses compact，均通过统一 Gateway key 返回 `pong`。Realtime/WebSocket、Codex account 音频真实上游能力和 image/audio 计费 usage 精细映射仍是后续项；`/v1/images/edits` 已对 OpenAI-compatible provider passthrough，对 Codex account 明确报不支持。
 
 ## 下一步
 
 1. 跑真实 Codex account live smoke：Responses non-stream/stream/compact、Chat adapter、Anthropic Messages adapter、Images generation，并确认 `/v1/models` 和 App Connections 使用统一 Gateway key。
 2. 验证账户音频真实 upstream 能力；若 Codex account 不提供原生音频 REST，则只保留 OpenAI-compatible provider passthrough，并在 UI 标注来源。
 3. 补账户池调度：持久 round-robin、fill-first、session affinity、per-account concurrency、failover、sticky 切换日志、quota/cooldown。
-4. 继续参考 Sub2API / CLIProxyAPI 补 image edits、realtime/audio WebSocket、usage 归集和模型目录刷新。
+4. 继续参考 Sub2API / CLIProxyAPI 补 realtime/audio WebSocket、usage 归集、模型目录刷新和 Codex account image edits 可行性验证。
