@@ -1928,6 +1928,12 @@ function normalizeRuntimeAccountRoutingDiagnostics(value: unknown): ModelGateway
     selectedWasCooldownRetry: value.selectedWasCooldownRetry === true,
     selectedCooldownUntil: normalizeString(value.selectedCooldownUntil) || null,
     failureReason: normalizeString(value.failureReason) || null,
+    accountCount: numberOrNull(value.accountCount) || 0,
+    readyCount: numberOrNull(value.readyCount) || 0,
+    capacityAvailableCount: numberOrNull(value.capacityAvailableCount) || 0,
+    busyCount: numberOrNull(value.busyCount) || 0,
+    cooldownCount: numberOrNull(value.cooldownCount) || 0,
+    needsLoginCount: numberOrNull(value.needsLoginCount) || 0,
     cursorBefore: numberOrNull(value.cursorBefore),
     cursorAfter: numberOrNull(value.cursorAfter),
     skipped,
@@ -5231,6 +5237,15 @@ export function createModelGatewayService(
       && selectedCooldownUntilMs
       && selectedCooldownUntilMs <= nowMs,
     );
+    const accountCount = provider.accountProvider.accounts.length;
+    const readyAccounts = provider.accountProvider.accounts.filter((account) => accountAvailableForRouting(account));
+    const capacityAvailableCount = readyAccounts.filter((account) => accountHasCapacity(provider, account)).length;
+    const busyCount = readyAccounts.filter((account) => !accountHasCapacity(provider, account)).length;
+    const cooldownCount = provider.accountProvider.accounts.filter((account) => {
+      const cooldownUntilMs = parseIsoTimestampMs(account.cooldownUntil);
+      return Boolean(cooldownUntilMs && cooldownUntilMs > nowMs);
+    }).length;
+    const needsLoginCount = provider.accountProvider.accounts.filter((account) => account.state === "needs-login").length;
     return {
       providerId: provider.id,
       kind: provider.accountProvider.kind,
@@ -5245,6 +5260,12 @@ export function createModelGatewayService(
         ? details.selectedAccount?.cooldownUntil || null
         : null,
       failureReason: details.failureReason,
+      accountCount,
+      readyCount: readyAccounts.length,
+      capacityAvailableCount,
+      busyCount,
+      cooldownCount,
+      needsLoginCount,
       cursorBefore: details.cursorBefore,
       cursorAfter: details.cursorAfter,
       skipped: provider.accountProvider.accounts.flatMap((account) => {

@@ -1026,6 +1026,12 @@ export interface ModelGatewayAccountRoutingDiagnostics {
   selectedWasCooldownRetry: boolean;
   selectedCooldownUntil: string | null;
   failureReason: string | null;
+  accountCount: number;
+  readyCount: number;
+  capacityAvailableCount: number;
+  busyCount: number;
+  cooldownCount: number;
+  needsLoginCount: number;
   cursorBefore: number | null;
   cursorAfter: number | null;
   skipped: ModelGatewayAccountRoutingSkip[];

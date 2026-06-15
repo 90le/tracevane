@@ -1675,6 +1675,17 @@ function accountRoutingDetailRows(routing: ModelGatewayAccountRoutingDiagnostics
       value: routing.failureReason || routing.selectedReason || text('已选择', 'selected'),
     },
     {
+      key: 'pool',
+      label: text('池状态', 'Pool'),
+      value: [
+        text(`可路由 ${routing.readyCount}/${routing.accountCount}`, `ready ${routing.readyCount}/${routing.accountCount}`),
+        text(`有容量 ${routing.capacityAvailableCount}`, `capacity ${routing.capacityAvailableCount}`),
+        routing.busyCount ? text(`忙碌 ${routing.busyCount}`, `busy ${routing.busyCount}`) : '',
+        routing.cooldownCount ? text(`冷却 ${routing.cooldownCount}`, `cooldown ${routing.cooldownCount}`) : '',
+        routing.needsLoginCount ? text(`需登录 ${routing.needsLoginCount}`, `needs login ${routing.needsLoginCount}`) : '',
+      ].filter(Boolean).join(' · '),
+    },
+    {
       key: 'sticky',
       label: text('Sticky', 'Sticky'),
       value: routing.sessionAffinity

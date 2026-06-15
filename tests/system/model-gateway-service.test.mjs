@@ -1103,6 +1103,10 @@ test("model gateway account pool preserves session affinity and enforces per-acc
       );
       assert.ok(busyEntry);
       assert.equal(busyEntry.accountRouting.failureReason, "busy");
+      assert.equal(busyEntry.accountRouting.accountCount, 2);
+      assert.equal(busyEntry.accountRouting.readyCount, 2);
+      assert.equal(busyEntry.accountRouting.capacityAvailableCount, 0);
+      assert.equal(busyEntry.accountRouting.busyCount, 2);
       assert.deepEqual(
         busyEntry.accountRouting.skipped.map((item) => [item.accountId, item.reason, item.inFlight, item.capacityLimit]),
         [
@@ -1390,6 +1394,10 @@ test("model gateway marks expired Codex account cooldown retries in runtime diag
       assert.equal(entry.accountRouting.selectedWasCooldownRetry, true);
       assert.equal(entry.accountRouting.selectedCooldownUntil, expiredCooldown);
       assert.equal(entry.accountRouting.selectedReason, "round-robin");
+      assert.equal(entry.accountRouting.accountCount, 1);
+      assert.equal(entry.accountRouting.readyCount, 1);
+      assert.equal(entry.accountRouting.capacityAvailableCount, 1);
+      assert.equal(entry.accountRouting.cooldownCount, 0);
 
       const providers = await requestJson(`${baseUrl}/api/model-gateway/providers`);
       const provider = providers.body.providers.find((item) => item.id === "codex-cooldown-retry");
