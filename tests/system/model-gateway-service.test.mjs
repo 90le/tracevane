@@ -1827,12 +1827,14 @@ test("model gateway manages Codex account enablement and manual refresh", async 
                 id: "codex-ghi",
                 kind: "codex",
                 enabled: true,
-                state: "ready",
                 authRef,
                 credentialSource: "codex-device-auth",
                 accountHash: "ghi",
                 emailMasked: "ma***@example.com",
                 plan: "plus",
+                state: "cooldown",
+                lastError: "quota exceeded",
+                cooldownUntil: new Date(Date.now() + 300_000).toISOString(),
                 expiresAt: new Date(Date.now() + 3600_000).toISOString(),
               }],
             },
@@ -1855,6 +1857,26 @@ test("model gateway manages Codex account enablement and manual refresh", async 
         },
       });
       assert.equal(upsert.status, 200);
+
+      const retried = await requestJson(`${baseUrl}/api/model-gateway/providers/codex-manage/accounts/codex-ghi`, {
+        method: "POST",
+        body: {
+          clearCooldown: true,
+          proxyUrl: "http://127.0.0.1:9911",
+        },
+      });
+      assert.equal(retried.status, 200);
+      assert.equal(retried.body.account.state, "ready");
+      assert.equal(retried.body.account.lastError, null);
+      assert.equal(retried.body.account.cooldownUntil, null);
+      assert.equal(retried.body.account.proxyUrl, "http://127.0.0.1:9911");
+
+      const direct = await requestJson(`${baseUrl}/api/model-gateway/providers/codex-manage/accounts/codex-ghi`, {
+        method: "POST",
+        body: { proxyUrl: null },
+      });
+      assert.equal(direct.status, 200);
+      assert.equal(direct.body.account.proxyUrl, null);
 
       const disabled = await requestJson(`${baseUrl}/api/model-gateway/providers/codex-manage/accounts/codex-ghi`, {
         method: "POST",

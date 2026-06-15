@@ -654,6 +654,8 @@ export interface ModelGatewayCodexAccountLoginPollResponse {
 
 export interface ModelGatewayProviderAccountUpdateRequest {
   enabled?: boolean;
+  proxyUrl?: string | null;
+  clearCooldown?: boolean;
 }
 
 export interface ModelGatewayProviderAccountUpdateResponse {

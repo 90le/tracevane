@@ -58,7 +58,7 @@ Account-backed provider 对外仍暴露：
 - 辅助导入：本机 `auth.json` / keyring / 隔离 `CODEX_HOME` 只用于迁移和修复，不要求用户重复登录后再手动导入。
 - 账户存储：OS keyring 优先，文件模式必须 `0600`，runtime 只保存 token ref、account hash、email mask、plan type、expiresAt。
 - 账户刷新：请求前自动 refresh；Provider Center 支持手动 refresh、启用、停用和重新登录。后续补后台 refresh worker；刷新失败进入 needs-login 或 cooldown，不阻塞其它账户。
-- 账户池：round-robin/fill-first、session-affinity、per-account concurrency、HTTP 401/403 needs-login、HTTP 429 或 quota/rate/capacity upstream cooldown、跨 daemon cursor/affinity 持久化已有基础实现；后续补 per-account proxy/direct UI、cooldown 手动重试和 started stream failure 旁路解析。
+- 账户池：round-robin/fill-first、session-affinity、per-account concurrency、HTTP 401/403 needs-login、HTTP 429 或 quota/rate/capacity upstream cooldown、cooldown 手动清除、per-account proxy/direct、跨 daemon cursor/affinity 持久化已有基础实现；后续补 sticky/cooldown 策略调参和 started stream failure 旁路解析。
 - 模型目录：账户 provider 使用受控 catalog，支持 alias/fork/excluded models，和现有 `/v1/models` 聚合合并；Codex account 首批对齐 CLIProxyAPI Codex client catalog，不暴露历史误生成或 live 证明不支持的模型 slug。
 - Codex Responses 转换：Codex account `/v1/responses` 不能按普通 OpenAI Responses 原样透传；必须按 Codex upstream 合同把字符串 `input` 转 message list，强制上游 streaming，并清理 upstream 不接受的 token/采样/context/user 参数，非流式客户端响应再由 SSE 聚合回 JSON。
 - 媒体模型：账户 provider catalog 必须区分 text、vision、image generation、audio input、audio output；`gpt-image-2`、transcribe、tts、audio、realtime 类模型不能被当成普通文本模型。
@@ -66,7 +66,7 @@ Account-backed provider 对外仍暴露：
 - 音频路由：OpenAI-compatible provider 的音频 REST 端点必须 multipart/binary passthrough；Codex account 音频模型可出现在 catalog，但 REST `/v1/audio/*` 当前明确返回结构化 unsupported，直到有真实 Codex backend 音频合同再转完成。
 - Codex headers：保留 Codex 需要的 `Session_id`、`X-Codex-*`、`Chatgpt-Account-Id`、user-agent defaults；反代部署时提醒保留 underscore headers。
 - usage：按 gateway key、provider、account hash、model、alias、route、status、latency、TTFT、usage tokens 记录；Channel 侧不重复做 token 产品化。
-- UI：Provider Center 增加 Account providers 工作区，支持页面登录、账户状态表、刷新、禁用、健康；后续补代理、模型 alias、sticky/cooldown 策略调参和手动清除 cooldown 入口。
+- UI：Provider Center 增加 Account providers 工作区，支持页面登录、账户状态表、刷新、禁用、清除 cooldown、账号代理/直连和健康；后续补模型 alias、sticky/cooldown 策略调参。
 
 ## 验收
 

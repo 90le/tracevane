@@ -611,6 +611,15 @@
                           {{ account.enabled && account.state !== 'disabled' ? text('停用', 'Disable') : text('启用', 'Enable') }}
                         </button>
                         <button
+                          v-if="account.cooldownUntil || account.state === 'cooldown'"
+                          type="button"
+                          class="secondary-button compact-button"
+                          :disabled="isAccountBusy(account, 'clear-cooldown') || !account.enabled || account.state === 'disabled'"
+                          @click="clearProviderAccountCooldown(account)"
+                        >
+                          {{ isAccountBusy(account, 'clear-cooldown') ? text('清除中...', 'Clearing...') : text('清除冷却', 'Clear cooldown') }}
+                        </button>
+                        <button
                           v-if="selectedProviderView"
                           type="button"
                           class="secondary-button compact-button"
@@ -618,6 +627,33 @@
                           @click="startCodexAccountLoginFlow({ providerId: selectedProviderView.id, providerName: selectedProviderView.name })"
                         >
                           {{ text('重新登录', 'Sign in again') }}
+                        </button>
+                      </div>
+                      <div class="mgw-account-row__proxy">
+                        <label class="form-field">
+                          <span class="form-label">{{ text('账号代理', 'Account proxy') }}</span>
+                          <input
+                            class="form-input"
+                            :value="accountProxyDraftValue(account)"
+                            placeholder="http://127.0.0.1:7890"
+                            @input="updateAccountProxyDraft(account, $event)"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          class="secondary-button compact-button"
+                          :disabled="isAccountBusy(account, 'proxy') || !isAccountProxyDirty(account)"
+                          @click="saveProviderAccountProxyDraft(account)"
+                        >
+                          {{ isAccountBusy(account, 'proxy') ? text('保存中...', 'Saving...') : text('保存代理', 'Save proxy') }}
+                        </button>
+                        <button
+                          type="button"
+                          class="secondary-button compact-button"
+                          :disabled="isAccountBusy(account, 'proxy') || (!account.proxyUrl && !accountProxyDraftValue(account).trim())"
+                          @click="clearProviderAccountProxy(account)"
+                        >
+                          {{ text('直连', 'Direct') }}
                         </button>
                       </div>
                     </div>
@@ -1416,6 +1452,7 @@ const appConnectionApplyAllBusy = ref(false);
 const lastAutoAppConnectionBudget = ref<AppConnectionBudgetDraft | null>(null);
 const providers = ref<ModelGatewayProviderView[]>([]);
 const accountBusy = ref<Record<string, boolean>>({});
+const accountProxyDrafts = ref<Record<string, string>>({});
 const activeProviders = ref<Partial<Record<ModelGatewayAppScope, string>>>({});
 const activeRouteStatuses = ref<ModelGatewayActiveRouteStatus[]>([]);
 const activeRouteAlerts = ref<string[]>([]);
@@ -1792,19 +1829,54 @@ function applyProviderResponse(response: ModelGatewayProvidersResponse): void {
   activeProviders.value = response.activeProviders;
   activeRouteStatuses.value = response.activeRoutes;
   activeRouteAlerts.value = response.activeRouteAlerts;
+  syncAccountProxyDrafts();
 }
 
 function applyProviderView(provider: ModelGatewayProviderView): void {
   const index = providers.value.findIndex((entry) => entry.id === provider.id);
   if (index >= 0) {
     providers.value.splice(index, 1, provider);
+    syncAccountProxyDrafts();
     return;
   }
   providers.value = [...providers.value, provider];
+  syncAccountProxyDrafts();
 }
 
 function accountActionKey(account: ModelGatewayAccountEntry, action: string): string {
   return `${draft.id}:${account.id}:${action}`;
+}
+
+function accountProxyKey(account: ModelGatewayAccountEntry): string {
+  return `${selectedProviderView.value?.id || draft.id}:${account.id}:proxy`;
+}
+
+function syncAccountProxyDrafts(): void {
+  const next: Record<string, string> = {};
+  for (const provider of providers.value) {
+    for (const account of provider.accountProvider?.accounts || []) {
+      const key = `${provider.id}:${account.id}:proxy`;
+      next[key] = account.proxyUrl || '';
+    }
+  }
+  accountProxyDrafts.value = next;
+}
+
+function accountProxyDraftValue(account: ModelGatewayAccountEntry): string {
+  const key = accountProxyKey(account);
+  return accountProxyDrafts.value[key] ?? account.proxyUrl ?? '';
+}
+
+function updateAccountProxyDraft(account: ModelGatewayAccountEntry, event: Event): void {
+  const input = event.target as HTMLInputElement | null;
+  accountProxyDrafts.value = {
+    ...accountProxyDrafts.value,
+    [accountProxyKey(account)]: input?.value || '',
+  };
+}
+
+function isAccountProxyDirty(account: ModelGatewayAccountEntry): boolean {
+  return accountProxyDraftValue(account).trim() !== (account.proxyUrl || '');
 }
 
 function isAccountBusy(account: ModelGatewayAccountEntry, action: string): boolean {
@@ -2798,6 +2870,72 @@ async function toggleProviderAccount(account: ModelGatewayAccountEntry): Promise
   } finally {
     accountBusy.value = { ...accountBusy.value, [key]: false };
   }
+}
+
+async function clearProviderAccountCooldown(account: ModelGatewayAccountEntry): Promise<void> {
+  const provider = selectedProviderView.value;
+  if (!provider) return;
+  const key = accountActionKey(account, 'clear-cooldown');
+  accountBusy.value = { ...accountBusy.value, [key]: true };
+  try {
+    const response = await updateModelGatewayProviderAccount(provider.id, account.id, {
+      clearCooldown: true,
+    });
+    applyProviderView(response.provider);
+    notice.value = {
+      kind: 'success',
+      message: text('账户冷却已清除；下一次路由会重新尝试该账户。', 'Account cooldown cleared; routing will retry this account on the next request.'),
+    };
+  } catch (error) {
+    notice.value = {
+      kind: 'error',
+      message: error instanceof Error ? error.message : text('清除账户冷却失败', 'Failed to clear account cooldown'),
+    };
+  } finally {
+    accountBusy.value = { ...accountBusy.value, [key]: false };
+  }
+}
+
+async function saveProviderAccountProxy(account: ModelGatewayAccountEntry, proxyUrl: string | null): Promise<void> {
+  const provider = selectedProviderView.value;
+  if (!provider) return;
+  const key = accountActionKey(account, 'proxy');
+  accountBusy.value = { ...accountBusy.value, [key]: true };
+  try {
+    const response = await updateModelGatewayProviderAccount(provider.id, account.id, {
+      proxyUrl,
+    });
+    applyProviderView(response.provider);
+    accountProxyDrafts.value = {
+      ...accountProxyDrafts.value,
+      [accountProxyKey(response.account)]: response.account.proxyUrl || '',
+    };
+    notice.value = {
+      kind: 'success',
+      message: response.account.proxyUrl
+        ? text('账户代理已保存。', 'Account proxy saved.')
+        : text('账户已切回直连/继承 provider。', 'Account switched back to direct/provider fallback.'),
+    };
+  } catch (error) {
+    notice.value = {
+      kind: 'error',
+      message: error instanceof Error ? error.message : text('账户代理保存失败', 'Failed to save account proxy'),
+    };
+  } finally {
+    accountBusy.value = { ...accountBusy.value, [key]: false };
+  }
+}
+
+async function saveProviderAccountProxyDraft(account: ModelGatewayAccountEntry): Promise<void> {
+  await saveProviderAccountProxy(account, accountProxyDraftValue(account).trim() || null);
+}
+
+async function clearProviderAccountProxy(account: ModelGatewayAccountEntry): Promise<void> {
+  accountProxyDrafts.value = {
+    ...accountProxyDrafts.value,
+    [accountProxyKey(account)]: '',
+  };
+  await saveProviderAccountProxy(account, null);
 }
 
 function clearCodexLoginTimer(): void {

@@ -714,6 +714,18 @@
   gap: 8px;
 }
 
+.mgw-account-row__proxy {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  gap: 8px;
+  align-items: end;
+}
+
+.mgw-account-row__proxy .form-field {
+  min-width: 0;
+}
+
 .mgw-provider-list {
   display: grid;
   gap: 8px;
@@ -1441,7 +1453,8 @@
   }
 
   .mgw-account-row,
-  .mgw-account-row__meta {
+  .mgw-account-row__meta,
+  .mgw-account-row__proxy {
     grid-template-columns: 1fr;
   }
 

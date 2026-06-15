@@ -5357,6 +5357,22 @@ export function createModelGatewayService(
     writeSecrets(secrets);
   }
 
+  function normalizeAccountProxyUrl(value: string | null | undefined): string | null {
+    const proxyUrl = normalizeString(value);
+    if (!proxyUrl) return null;
+    try {
+      const protocol = new URL(proxyUrl).protocol.toLowerCase();
+      if (protocol === "http:" || protocol === "https:" || protocol.startsWith("socks")) return proxyUrl;
+    } catch {
+      // Re-throw below with a stable Gateway error envelope.
+    }
+    throw new ModelGatewayServiceError(
+      "model_gateway_provider_account_proxy_invalid",
+      "Account proxy URL must be a valid http, https, or socks URL.",
+      400,
+    );
+  }
+
   function updateProviderAccount(
     req: http.IncomingMessage | undefined,
     providerId: string,
@@ -5377,6 +5393,15 @@ export function createModelGatewayService(
       account.cooldownUntil = payload.enabled ? account.cooldownUntil : null;
       account.lastCheckedAt = stamp;
       account.lastError = payload.enabled ? account.lastError : null;
+    }
+    if ("proxyUrl" in payload) {
+      account.proxyUrl = normalizeAccountProxyUrl(payload.proxyUrl);
+    }
+    if (payload.clearCooldown === true) {
+      account.cooldownUntil = null;
+      if (account.state === "cooldown") account.state = "ready";
+      if (account.state === "ready") account.lastError = null;
+      account.lastCheckedAt = stamp;
     }
     account.updatedAt = stamp;
     provider.updatedAt = stamp;
