@@ -1319,7 +1319,6 @@ export function buildChannelConnectorAgentProcessRequest(
       ...(opencodeHome.cliModel ? ["--model", opencodeHome.cliModel] : []),
       "--dir",
       cwd,
-      "--thinking",
       ...opencodeImageArgs,
       "--",
       content,

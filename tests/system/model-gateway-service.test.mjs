@@ -3056,6 +3056,13 @@ test("model gateway app connections preview and apply client config files with r
   assert.deepEqual(Object.keys(opencodeConfig.provider["studio-gateway"].models).sort(), ["gpt-alt", "gpt-main"]);
   assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-main"].contextWindow, 200000);
   assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-main"].maxOutputTokens, 8192);
+  assert.deepEqual(opencodeConfig.provider["studio-gateway"].models["gpt-main"].limit, {
+    context: 200000,
+    output: 8192,
+  });
+  assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-main"].tool_call, true);
+  assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-main"].reasoning, false);
+  assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-main"].temperature, true);
   assert.equal(opencodeConfig.studioGateway, undefined);
 
   service.applyAppConnection(undefined, { appId: "openclaw" });
@@ -8107,6 +8114,15 @@ test("model gateway routes expose status/providers and forward chat passthrough"
           model: "route-test-model",
           messages: [{ role: "user", content: "hello" }],
           metadata: { trace: "strict-chat-provider" },
+          reasoning_effort: "high",
+          reasoningEffort: "high",
+          tools: [{
+            type: "function",
+            function: {
+              name: "lookup",
+              parameters: { type: "object", properties: {} },
+            },
+          }],
         },
       });
       assert.equal(chat.status, 200);
@@ -8159,8 +8175,17 @@ test("model gateway routes expose status/providers and forward chat passthrough"
   assert.deepEqual(JSON.parse(upstreamCalls[1].body), {
     model: "route-test-model",
     messages: [{ role: "user", content: "hello" }],
+    tools: [{
+      type: "function",
+      function: {
+        name: "lookup",
+        parameters: { type: "object", properties: {} },
+      },
+    }],
   });
   assert.equal("metadata" in JSON.parse(upstreamCalls[1].body), false);
+  assert.equal("reasoning_effort" in JSON.parse(upstreamCalls[1].body), false);
+  assert.equal("reasoningEffort" in JSON.parse(upstreamCalls[1].body), false);
 });
 
 test("model gateway can opt into openai chat metadata passthrough for compatible providers", async () => {

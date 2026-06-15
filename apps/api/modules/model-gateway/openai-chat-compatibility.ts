@@ -10,6 +10,7 @@ export interface OpenAIChatCompatibilityResult {
 }
 
 const STRICT_CHAT_INCOMPATIBLE_FIELDS = ["metadata"] as const;
+const TOOL_REASONING_INCOMPATIBLE_FIELDS = ["reasoning_effort", "reasoningEffort"] as const;
 
 export function sanitizeOpenAIChatUpstreamBody(
   bodyText: string | undefined,
@@ -34,11 +35,25 @@ export function sanitizeOpenAIChatUpstreamBody(
       removedFields.push(field);
     }
   }
+  if (hasFunctionTools(sanitized.tools)) {
+    for (const field of TOOL_REASONING_INCOMPATIBLE_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(sanitized, field)) {
+        delete sanitized[field];
+        removedFields.push(field);
+      }
+    }
+  }
 
   return {
     bodyText: removedFields.length ? JSON.stringify(sanitized) : bodyText,
     removedFields,
   };
+}
+
+function hasFunctionTools(value: unknown): boolean {
+  return Array.isArray(value) && value.some((tool) =>
+    isRecord(tool) && (tool.type === "function" || isRecord(tool.function))
+  );
 }
 
 function isRecord(value: unknown): value is JsonRecord {

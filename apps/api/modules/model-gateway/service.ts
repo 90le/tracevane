@@ -4047,9 +4047,17 @@ function buildOpenCodeConfig(source: string | null, targetPath: string, options:
     ...(options.profile.model ? [options.profile.model] : []),
   ]));
   const models = Object.fromEntries(modelCatalogIds.map((id) => [id, {
+    id,
     name: id,
     ...(options.profile.contextWindow ? { contextWindow: options.profile.contextWindow } : {}),
     ...(options.profile.maxOutputTokens ? { maxOutputTokens: options.profile.maxOutputTokens } : {}),
+    limit: {
+      ...(options.profile.contextWindow ? { context: options.profile.contextWindow } : {}),
+      ...(options.profile.maxOutputTokens ? { output: options.profile.maxOutputTokens } : {}),
+    },
+    tool_call: true,
+    reasoning: false,
+    temperature: true,
   }]));
   return {
     error: null,

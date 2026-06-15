@@ -330,6 +330,20 @@ function chatResponseText(body) {
 }
 
 function respondChatCompletions(res, body) {
+  if (
+    Array.isArray(body.tools)
+    && body.tools.length > 0
+    && (body.reasoning_effort !== undefined || body.reasoningEffort !== undefined)
+  ) {
+    sendJson(res, 400, {
+      error: {
+        message: "Function tools with reasoning_effort are not supported for gpt-5.5 in /v1/chat/completions. Please use /v1/responses instead.",
+        type: "invalid_request_error",
+        code: "unsupported_parameter",
+      },
+    });
+    return;
+  }
   if (requestText(body).includes("OPENCODE_STOP_SMOKE")) {
     sendNeverCompletingResponse(res);
     return;
@@ -409,7 +423,7 @@ function writeOpenCodeConfig(homeDir, endpoint) {
               output: 8192,
             },
             tool_call: true,
-            reasoning: true,
+            reasoning: false,
             temperature: true,
             attachment: true,
             modalities: {

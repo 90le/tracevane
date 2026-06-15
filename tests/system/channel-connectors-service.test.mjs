@@ -4951,7 +4951,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   const opencodeModelArgIndex = opencodeRequest.args.indexOf("--model");
   assert.notEqual(opencodeModelArgIndex, -1);
   assert.equal(opencodeRequest.args[opencodeModelArgIndex + 1], "studio-gateway/gpt-5");
-  assert.equal(opencodeRequest.args.includes("--thinking"), true);
+  assert.equal(opencodeRequest.args.includes("--thinking"), false);
   assert.equal(opencodeRequest.args.includes("--variant"), false);
   assert.equal(opencodeRequest.args.includes("high"), false);
   assert.match(opencodeRequest.env.XDG_CONFIG_HOME, /studio-channel-opencode-/);

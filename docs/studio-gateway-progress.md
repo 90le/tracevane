@@ -55,8 +55,10 @@
   - Account pool 调度完成：支持 session affinity、round-robin/fill-first、per-account concurrency、busy 429、runtime log accountId/accountHash，并将 Codex account cursor/affinity 写入 runtime，daemon 重启后同 session 保持账号，新 session 延续轮转。
   - Active route smoke 改为客户端真实形态：Claude Code / OpenCode 会带最小 tools schema，响应必须按客户端协议解析出 `GATEWAY_OK`；固定 provider 的 endpoint fallback 优先同 provider，避免 `glm` Claude 路由直接跳到外部 provider。
   - Codex account provider smoke 复用账号请求归一化、账号 header 和代理网络，不再绕开正式 Gateway Codex account 链路导致 false negative。
-  - OpenCode Gateway runner 不再给 OpenAI-compatible Gateway 模型声明 `reasoning:true` 或注入 `--variant`，避免 `gpt-5.5 + tools + /v1/chat/completions` 触发 `reasoning_effort` 不兼容错误。
-  - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，68/68 通过，覆盖 Codex account login/provider smoke、account pool sticky/concurrency/runtime persistence、Active route 客户端工具合同、自动 refresh、手动 refresh、账户禁用路由跳过、refresh auth failure、secret redaction、active routing、Codex headers 转发、Codex Responses SSE 聚合、Codex Images bridge、OpenAI-compatible image edits/audio multipart passthrough 和既有三协议矩阵无回归。
+  - OpenCode Gateway runner 不再给 Gateway 模型声明 `reasoning:true`、注入 `--variant` 或传 `--thinking`；App Connections 生成的 OpenCode 模型也显式 `reasoning:false`，避免用户级 `~/.config/opencode/opencode.json` 继续让 OpenCode 发 `reasoning_effort`。
+  - Gateway Chat-compatible upstream 新增 `tools + reasoning_effort` 清理：OpenAI Chat Completions 请求只要带 function tools，就会删除 `reasoning_effort` / `reasoningEffort` 后再转发，避免 `gpt-5.5 + tools + /v1/chat/completions` 触发上游不兼容错误；无工具请求不受影响。
+  - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，68/68 通过，覆盖 Codex account login/provider smoke、account pool sticky/concurrency/runtime persistence、Active route 客户端工具合同、OpenCode App Connection `reasoning:false`、Chat tools reasoning 清理、自动 refresh、手动 refresh、账户禁用路由跳过、refresh auth failure、secret redaction、active routing、Codex headers 转发、Codex Responses SSE 聚合、Codex Images bridge、OpenAI-compatible image edits/audio multipart passthrough 和既有三协议矩阵无回归。
+  - 真实 OpenCode `gpt-5.5` smoke 通过：用户级 OpenCode 配置已重新 apply，`opencode run --model studio-gateway/gpt-5.5` 成功调用 shell tool 输出 `OPENCODE_TOOL_OK` 并最终返回 `OPENCODE_DONE`，不再报 `Function tools with reasoning_effort are not supported...`。
 - Provider Center 前端收口：
   - 模型目录的可见身份字段只保留“模型名称”和“别名”，不再暴露“显示名”三段式配置。
   - 批量导入格式改为 `model-id | alias1,alias2`；保存时不再从表格写入 `model.label`。

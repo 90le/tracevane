@@ -157,6 +157,7 @@
 - `node --test --test-name-pattern "stops Codex app-server persistent turns|Agent process cancelled|native compact" tests/system/channel-connectors-service.test.mjs`，2/2 通过，覆盖 Codex app-server persistent `/stop`。
 - `node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --platforms octo --require-stop-command --min-runs 1 --limit-runs 5 --json` 通过，识别 Octo `/stop` 命令与同 session cancelled run 的真实 IM 日志证据。
 - `node --test --test-name-pattern "native Channel Connectors agent runner builds gateway-backed Codex turns" tests/system/channel-connectors-service.test.mjs` 通过，覆盖持久 `codex-home/skills` 旧平台 action skill 清理。
+- OpenCode `gpt-5.5` Gateway 回归：runner 不再传 `--thinking`，App Connection 生成 `reasoning:false`，真实 `opencode run --model studio-gateway/gpt-5.5` 工具调用通过；Gateway Chat 兼容层会清理 `tools + reasoning_effort`。
 - Feishu 文件消息 `om_x100b6df679c474a4c23ef686549039b` live 通过：`messageType=file`、`attachmentCount=1`、staging 文件存在、history 有附件摘要、Agent 成功读取并回复。
 
 ## 下一步
