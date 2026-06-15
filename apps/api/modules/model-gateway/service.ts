@@ -30,6 +30,7 @@ import {
   type ModelGatewayAccountProviderConfig,
   type ModelGatewayAccountProviderKind,
   type ModelGatewayAccountProviderRouting,
+  type ModelGatewayAccountRoutingDiagnostics,
   type ModelGatewayApiFormat,
   type ModelGatewayActiveRouteStatus,
   type ModelGatewayActiveRouteSmokeRequest,
@@ -278,6 +279,7 @@ export class ModelGatewayServiceError extends Error {
     readonly code: string,
     message: string,
     readonly statusCode = 400,
+    readonly details: Record<string, unknown> | null = null,
   ) {
     super(message);
     this.name = "ModelGatewayServiceError";
@@ -1779,6 +1781,53 @@ function summarizeDaemonServiceManager(
   };
 }
 
+function normalizeRuntimeAccountRoutingDiagnostics(value: unknown): ModelGatewayAccountRoutingDiagnostics | null {
+  if (!isRecord(value)) return null;
+  const providerId = normalizeString(value.providerId);
+  if (!providerId) return null;
+  const kind = MODEL_GATEWAY_ACCOUNT_PROVIDER_KINDS.includes(value.kind as ModelGatewayAccountProviderKind)
+    ? value.kind as ModelGatewayAccountProviderKind
+    : "codex";
+  const strategy = MODEL_GATEWAY_ACCOUNT_ROUTING_STRATEGIES.includes(value.strategy as ModelGatewayAccountRoutingDiagnostics["strategy"])
+    ? value.strategy as ModelGatewayAccountRoutingDiagnostics["strategy"]
+    : "round-robin";
+  const skipped = Array.isArray(value.skipped)
+    ? value.skipped
+      .filter(isRecord)
+      .map((item) => {
+        const accountId = normalizeString(item.accountId);
+        if (!accountId) return null;
+        const state = MODEL_GATEWAY_ACCOUNT_STATES.includes(item.state as ModelGatewayAccountEntry["state"])
+          ? item.state as ModelGatewayAccountEntry["state"]
+          : "error";
+        return {
+          accountId,
+          accountHash: normalizeString(item.accountHash) || null,
+          state,
+          reason: normalizeString(item.reason, "unknown"),
+          cooldownUntil: normalizeString(item.cooldownUntil) || null,
+          inFlight: numberOrNull(item.inFlight) || 0,
+          capacityLimit: numberOrNull(item.capacityLimit),
+        };
+      })
+      .filter((item): item is ModelGatewayAccountRoutingDiagnostics["skipped"][number] => item !== null)
+    : [];
+  return {
+    providerId,
+    kind,
+    strategy,
+    sessionAffinity: typeof value.sessionAffinity === "boolean" ? value.sessionAffinity : true,
+    affinityKeyHash: normalizeString(value.affinityKeyHash) || null,
+    affinityHit: value.affinityHit === true,
+    selectedAccountId: normalizeString(value.selectedAccountId) || null,
+    selectedReason: normalizeString(value.selectedReason) || null,
+    failureReason: normalizeString(value.failureReason) || null,
+    cursorBefore: numberOrNull(value.cursorBefore),
+    cursorAfter: numberOrNull(value.cursorAfter),
+    skipped,
+  };
+}
+
 function normalizeRuntimeLogEntry(value: unknown): ModelGatewayRuntimeRequestLogEntry | null {
   if (!isRecord(value)) return null;
   const startedAt = normalizeString(value.startedAt);
@@ -1810,6 +1859,7 @@ function normalizeRuntimeLogEntry(value: unknown): ModelGatewayRuntimeRequestLog
     endpointProfileName: normalizeString(value.endpointProfileName) || null,
     accountId: normalizeString(value.accountId) || null,
     accountHash: normalizeString(value.accountHash) || null,
+    accountRouting: normalizeRuntimeAccountRoutingDiagnostics(value.accountRouting),
     model: normalizeString(value.model) || null,
     method: normalizeString(value.method, "POST").toUpperCase(),
     requestedPath: normalizeString(value.requestedPath, "/"),
@@ -3423,6 +3473,30 @@ function codexAccountInputMessageFromText(text: string): Record<string, unknown>
   };
 }
 
+function codexAccountFunctionCallItemId(callId: string): string {
+  return callId.startsWith("fc") ? callId : `fc_${callId}`;
+}
+
+function codexAccountCallIdFromFunctionCallItem(source: Record<string, unknown>): string {
+  const callId = normalizeString(source.call_id);
+  if (callId) return callId;
+  const itemId = normalizeString(source.id);
+  return itemId.startsWith("fc_") ? itemId.slice(3) : itemId;
+}
+
+function normalizeCodexAccountResponsesInputItem(source: unknown): unknown {
+  if (!isRecord(source)) return source;
+  if (source.role === "system") return { ...source, role: "developer" };
+  if (source.type !== "function_call") return source;
+  const callId = codexAccountCallIdFromFunctionCallItem(source);
+  if (!callId) return source;
+  return {
+    ...source,
+    id: codexAccountFunctionCallItemId(callId),
+    call_id: callId,
+  };
+}
+
 function normalizeCodexAccountBuiltinToolType(value: unknown): string | null {
   const type = normalizeString(value);
   if (type === "web_search_preview" || type === "web_search_preview_2025_03_11") return "web_search";
@@ -3451,11 +3525,7 @@ function normalizeCodexAccountResponsesRequestInJsonText(value: string | undefin
       next.input = [codexAccountInputMessageFromText(next.input)];
     }
     if (Array.isArray(next.input)) {
-      next.input = next.input.map((item) => {
-        if (!isRecord(item)) return item;
-        if (item.role === "system") return { ...item, role: "developer" };
-        return item;
-      });
+      next.input = next.input.map(normalizeCodexAccountResponsesInputItem);
     }
 
     next.stream = true;
@@ -3973,6 +4043,7 @@ function requestLogEntry(options: {
     providerName: options.route.provider?.name || null,
     accountId: options.route.account?.id || null,
     accountHash: options.route.account?.accountHash || null,
+    accountRouting: options.route.accountRouting || null,
     endpointProfileId: options.route.endpointProfile?.id || null,
     endpointProfileName: options.route.endpointProfile?.name || null,
     model: options.model,
@@ -4970,6 +5041,7 @@ export function createModelGatewayService(
   type ProviderSecretResolution = {
     secret: string | null;
     account: ModelGatewayAccountEntry | null;
+    accountRouting: ModelGatewayAccountRoutingDiagnostics | null;
     releaseAccount: (() => void) | null;
   };
 
@@ -4985,6 +5057,7 @@ export function createModelGatewayService(
     account: ModelGatewayAccountEntry | null;
     reason: "none-ready" | "busy" | null;
     affinityKey: string | null;
+    diagnostics: ModelGatewayAccountRoutingDiagnostics | null;
   };
 
   function readProviderSecret(provider: ModelGatewayProvider): string | null {
@@ -5008,6 +5081,69 @@ export function createModelGatewayService(
     if (!limit) return true;
     const key = codexAccountInFlightKey(provider.id, account.id);
     return (codexAccountInFlight.get(key) || 0) < limit;
+  }
+
+  function accountInFlight(provider: ModelGatewayProvider, account: ModelGatewayAccountEntry): number {
+    return codexAccountInFlight.get(codexAccountInFlightKey(provider.id, account.id)) || 0;
+  }
+
+  function accountRoutingSkipReason(
+    provider: ModelGatewayProvider,
+    account: ModelGatewayAccountEntry,
+    selectedAccountId: string | null,
+    nowMs = Date.now(),
+  ): string | null {
+    if (selectedAccountId && account.id === selectedAccountId) return null;
+    if (!account.enabled || account.state === "disabled") return "disabled";
+    if (account.state === "needs-login") return "needs-login";
+    if (account.state === "error") return "error";
+    const cooldownUntilMs = parseIsoTimestampMs(account.cooldownUntil);
+    if (cooldownUntilMs && cooldownUntilMs > nowMs) return "cooldown";
+    if (!accountHasCapacity(provider, account)) return "busy";
+    return selectedAccountId ? "not-selected" : "ready";
+  }
+
+  function accountRoutingDiagnostics(
+    provider: ModelGatewayProvider,
+    details: {
+      affinityKey: string | null;
+      affinityHit: boolean;
+      selectedAccount: ModelGatewayAccountEntry | null;
+      selectedReason: string | null;
+      failureReason: string | null;
+      cursorBefore: number | null;
+      cursorAfter: number | null;
+    },
+  ): ModelGatewayAccountRoutingDiagnostics | null {
+    if (provider.sourceType !== "account-backed" || !provider.accountProvider) return null;
+    const selectedAccountId = details.selectedAccount?.id || null;
+    const nowMs = Date.now();
+    return {
+      providerId: provider.id,
+      kind: provider.accountProvider.kind,
+      strategy: provider.accountProvider.routing.strategy,
+      sessionAffinity: provider.accountProvider.routing.sessionAffinity,
+      affinityKeyHash: details.affinityKey ? sha256Short(details.affinityKey) : null,
+      affinityHit: details.affinityHit,
+      selectedAccountId,
+      selectedReason: details.selectedReason,
+      failureReason: details.failureReason,
+      cursorBefore: details.cursorBefore,
+      cursorAfter: details.cursorAfter,
+      skipped: provider.accountProvider.accounts.flatMap((account) => {
+        const reason = accountRoutingSkipReason(provider, account, selectedAccountId, nowMs);
+        if (!reason) return [];
+        return [{
+          accountId: account.id,
+          accountHash: account.accountHash,
+          state: account.state,
+          reason,
+          cooldownUntil: account.cooldownUntil,
+          inFlight: accountInFlight(provider, account),
+          capacityLimit: accountCapacityLimit(provider),
+        }];
+      }),
+    };
   }
 
   function hydrateCodexAccountRoutingFromRuntime(): void {
@@ -5094,28 +5230,100 @@ export function createModelGatewayService(
     context?: CodexAccountSelectionContext,
   ): CodexAccountSelection {
     if (provider.sourceType !== "account-backed" || provider.accountProvider?.kind !== "codex") {
-      return { account: null, reason: null, affinityKey: null };
+      return { account: null, reason: null, affinityKey: null, diagnostics: null };
     }
     hydrateCodexAccountRoutingFromRuntime();
+    const diagnostics = (details: Parameters<typeof accountRoutingDiagnostics>[1]) => accountRoutingDiagnostics(provider, details);
     const accounts = provider.accountProvider.accounts.filter((account) => accountAvailableForRouting(account));
-    if (!accounts.length) return { account: null, reason: "none-ready", affinityKey: null };
     const affinityKey = codexAccountAffinityKey(provider, context);
+    if (!accounts.length) {
+      return {
+        account: null,
+        reason: "none-ready",
+        affinityKey,
+        diagnostics: diagnostics({
+          affinityKey,
+          affinityHit: false,
+          selectedAccount: null,
+          selectedReason: null,
+          failureReason: "none-ready",
+          cursorBefore: null,
+          cursorAfter: null,
+        }),
+      };
+    }
     const explicit = provider.apiKeyRef
       ? accounts.find((account) => account.authRef === provider.apiKeyRef)
       : null;
     if (explicit) {
       return accountHasCapacity(provider, explicit)
-        ? { account: explicit, reason: null, affinityKey }
-        : { account: null, reason: "busy", affinityKey };
+        ? {
+          account: explicit,
+          reason: null,
+          affinityKey,
+          diagnostics: diagnostics({
+            affinityKey,
+            affinityHit: false,
+            selectedAccount: explicit,
+            selectedReason: "explicit-active-account",
+            failureReason: null,
+            cursorBefore: null,
+            cursorAfter: null,
+          }),
+        }
+        : {
+          account: null,
+          reason: "busy",
+          affinityKey,
+          diagnostics: diagnostics({
+            affinityKey,
+            affinityHit: false,
+            selectedAccount: null,
+            selectedReason: null,
+            failureReason: "busy",
+            cursorBefore: null,
+            cursorAfter: null,
+          }),
+        };
     }
     const accountsWithCapacity = accounts.filter((account) => accountHasCapacity(provider, account));
-    if (!accountsWithCapacity.length) return { account: null, reason: "busy", affinityKey };
+    if (!accountsWithCapacity.length) {
+      return {
+        account: null,
+        reason: "busy",
+        affinityKey,
+        diagnostics: diagnostics({
+          affinityKey,
+          affinityHit: false,
+          selectedAccount: null,
+          selectedReason: null,
+          failureReason: "busy",
+          cursorBefore: null,
+          cursorAfter: null,
+        }),
+      };
+    }
     if (affinityKey) {
       const stickyAccountId = codexAccountAffinities.get(affinityKey);
       const stickyAccount = stickyAccountId
         ? accountsWithCapacity.find((account) => account.id === stickyAccountId) || null
         : null;
-      if (stickyAccount) return { account: stickyAccount, reason: null, affinityKey };
+      if (stickyAccount) {
+        return {
+          account: stickyAccount,
+          reason: null,
+          affinityKey,
+          diagnostics: diagnostics({
+            affinityKey,
+            affinityHit: true,
+            selectedAccount: stickyAccount,
+            selectedReason: "sticky-affinity",
+            failureReason: null,
+            cursorBefore: null,
+            cursorAfter: null,
+          }),
+        };
+      }
     }
     if (provider.accountProvider.routing.strategy === "fill-first") {
       const account = accountsWithCapacity[0] || null;
@@ -5123,15 +5331,46 @@ export function createModelGatewayService(
         codexAccountAffinities.set(affinityKey, account.id);
         persistCodexAccountRoutingToRuntime();
       }
-      return { account, reason: account ? null : "busy", affinityKey };
+      return {
+        account,
+        reason: account ? null : "busy",
+        affinityKey,
+        diagnostics: diagnostics({
+          affinityKey,
+          affinityHit: false,
+          selectedAccount: account,
+          selectedReason: account ? "fill-first" : null,
+          failureReason: account ? null : "busy",
+          cursorBefore: null,
+          cursorAfter: null,
+        }),
+      };
     }
     const cursorKey = `${provider.id}:codex`;
     const cursor = codexAccountRoutingCursors.get(cursorKey) || 0;
-    codexAccountRoutingCursors.set(cursorKey, cursor + 1);
+    const cursorAfter = cursor + 1;
+    codexAccountRoutingCursors.set(cursorKey, cursorAfter);
     const account = accountsWithCapacity[Math.max(0, cursor % accountsWithCapacity.length)] || accountsWithCapacity[0] || null;
     if (account && affinityKey) codexAccountAffinities.set(affinityKey, account.id);
     persistCodexAccountRoutingToRuntime();
-    return { account, reason: account ? null : "busy", affinityKey };
+    return {
+      account,
+      reason: account ? null : "busy",
+      affinityKey,
+      diagnostics: diagnostics({
+        affinityKey,
+        affinityHit: false,
+        selectedAccount: account,
+        selectedReason: account ? "round-robin" : null,
+        failureReason: account ? null : "busy",
+        cursorBefore: cursor,
+        cursorAfter,
+      }),
+    };
+  }
+
+  function accountRoutingFromServiceError(error: ModelGatewayServiceError): ModelGatewayAccountRoutingDiagnostics | null {
+    return normalizeRuntimeAccountRoutingDiagnostics(error.details?.accountRouting);
   }
 
   function patchProviderAccountEntry(
@@ -5336,9 +5575,19 @@ export function createModelGatewayService(
     context?: CodexAccountSelectionContext,
     options: { reserveAccount?: boolean } = {},
   ): Promise<ProviderSecretResolution> {
-    if (provider.authStrategy === "none") return { secret: null, account: null, releaseAccount: null };
+    if (provider.authStrategy === "none") return {
+      secret: null,
+      account: null,
+      accountRouting: null,
+      releaseAccount: null,
+    };
     if (provider.sourceType !== "account-backed" || provider.accountProvider?.kind !== "codex") {
-      return { secret: readProviderSecret(provider), account: null, releaseAccount: null };
+      return {
+        secret: readProviderSecret(provider),
+        account: null,
+        accountRouting: null,
+        releaseAccount: null,
+      };
     }
     const selection = selectProviderAccount(provider, context);
     const account = selection.account;
@@ -5348,62 +5597,80 @@ export function createModelGatewayService(
           "model_gateway_account_pool_busy",
           `Provider '${provider.id}' Codex account pool is at its per-account concurrency limit.`,
           429,
+          { accountRouting: selection.diagnostics },
         );
       }
       throw new ModelGatewayServiceError(
         "model_gateway_account_unavailable",
         `Provider '${provider.id}' has no ready Codex account. Sign in again or wait for cooldown to expire.`,
         503,
+        { accountRouting: selection.diagnostics },
       );
     }
     const releaseAccount = options.reserveAccount ? reserveProviderAccount(provider, account) : null;
     try {
-    const secret = readSecrets().secrets[account.authRef]?.value || "";
-    const bundle = normalizeCodexTokenBundle(secret);
-    if (!bundle) {
-      markCodexAccountNeedsLogin(provider.id, account.id, "Codex account token is missing or invalid.");
-      throw new ModelGatewayServiceError(
-        "model_gateway_account_auth_missing",
-        `Provider '${provider.id}' account '${account.id}' requires sign-in before requests can be forwarded.`,
-        401,
-      );
-    }
-    if (!codexTokenBundleNeedsRefresh(bundle)) {
-      return { secret, account, releaseAccount };
-    }
-    const refreshKey = account.authRef;
-    let refreshPromise = codexAccountRefreshes.get(refreshKey);
-    if (!refreshPromise) {
-      patchProviderAccountEntry(provider.id, account.id, {
-        state: "refreshing",
-        lastCheckedAt: nowIso(),
-        lastError: null,
-      });
-      refreshPromise = (async () => {
-        try {
-          const refreshed = await refreshCodexTokenBundle(bundle, account);
-          const serialized = JSON.stringify(refreshed);
-          setSecretValue(account.authRef, serialized);
-          const updatedAccount = codexAccountFromTokenBundle(account.id, account.authRef, refreshed, account.credentialSource, account);
-          markCodexAccountReady(provider.id, account.id, updatedAccount);
-          return serialized;
-        } catch (error) {
-          const message = error instanceof Error ? error.message : "Codex account token refresh failed.";
-          if (isModelGatewayServiceError(error) && error.statusCode === 401) {
-            markCodexAccountNeedsLogin(provider.id, account.id, message);
-          } else {
-            markCodexAccountCooldown(provider.id, account.id, message);
+      const secret = readSecrets().secrets[account.authRef]?.value || "";
+      const bundle = normalizeCodexTokenBundle(secret);
+      if (!bundle) {
+        markCodexAccountNeedsLogin(provider.id, account.id, "Codex account token is missing or invalid.");
+        throw new ModelGatewayServiceError(
+          "model_gateway_account_auth_missing",
+          `Provider '${provider.id}' account '${account.id}' requires sign-in before requests can be forwarded.`,
+          401,
+          { accountRouting: selection.diagnostics },
+        );
+      }
+      if (!codexTokenBundleNeedsRefresh(bundle)) {
+        return {
+          secret,
+          account,
+          accountRouting: selection.diagnostics,
+          releaseAccount,
+        };
+      }
+      const refreshKey = account.authRef;
+      let refreshPromise = codexAccountRefreshes.get(refreshKey);
+      if (!refreshPromise) {
+        patchProviderAccountEntry(provider.id, account.id, {
+          state: "refreshing",
+          lastCheckedAt: nowIso(),
+          lastError: null,
+        });
+        refreshPromise = (async () => {
+          try {
+            const refreshed = await refreshCodexTokenBundle(bundle, account);
+            const serialized = JSON.stringify(refreshed);
+            setSecretValue(account.authRef, serialized);
+            const updatedAccount = codexAccountFromTokenBundle(account.id, account.authRef, refreshed, account.credentialSource, account);
+            markCodexAccountReady(provider.id, account.id, updatedAccount);
+            return serialized;
+          } catch (error) {
+            const message = error instanceof Error ? error.message : "Codex account token refresh failed.";
+            if (isModelGatewayServiceError(error) && error.statusCode === 401) {
+              markCodexAccountNeedsLogin(provider.id, account.id, message);
+            } else {
+              markCodexAccountCooldown(provider.id, account.id, message);
+            }
+            throw error;
+          } finally {
+            codexAccountRefreshes.delete(refreshKey);
           }
-          throw error;
-        } finally {
-          codexAccountRefreshes.delete(refreshKey);
-        }
-      })();
-      codexAccountRefreshes.set(refreshKey, refreshPromise);
-    }
-      return { secret: await refreshPromise, account, releaseAccount };
+        })();
+        codexAccountRefreshes.set(refreshKey, refreshPromise);
+      }
+      return {
+        secret: await refreshPromise,
+        account,
+        accountRouting: selection.diagnostics,
+        releaseAccount,
+      };
     } catch (error) {
       releaseAccount?.();
+      if (isModelGatewayServiceError(error) && !accountRoutingFromServiceError(error)) {
+        throw new ModelGatewayServiceError(error.code, error.message, error.statusCode, {
+          accountRouting: selection.diagnostics,
+        });
+      }
       throw error;
     }
   }
@@ -7575,6 +7842,7 @@ export function createModelGatewayService(
           error instanceof Error ? error.message : "Model Gateway account authentication failed.",
           502,
         );
+      route.accountRouting = accountRoutingFromServiceError(authError);
       appendRequestLog(requestLogEntry({
         kind: "provider-test",
         startedAt,
@@ -7601,6 +7869,7 @@ export function createModelGatewayService(
       };
     }
     const secret = secretResolution.secret;
+    route.accountRouting = secretResolution.accountRouting;
     const selectedAccountForTest = secretResolution.account;
     if (selectedAccountForTest) {
       route.account = {
@@ -8085,6 +8354,7 @@ export function createModelGatewayService(
           error instanceof Error ? error.message : "Model Gateway account authentication failed.",
           502,
         );
+      decision.accountRouting = accountRoutingFromServiceError(authError);
       updateSelectedProviderHealth(false, null, authError.message);
       appendRequestLog(requestLogEntry({
         kind: "gateway-request",
@@ -8106,6 +8376,7 @@ export function createModelGatewayService(
       return;
     }
     const secret = secretResolution.secret;
+    decision.accountRouting = secretResolution.accountRouting;
     selectedAccountForRequest = secretResolution.account;
     bindReleaseToResponse(res, secretResolution.releaseAccount);
     if (selectedAccountForRequest) {

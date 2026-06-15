@@ -383,6 +383,7 @@ export interface ModelGatewayRuntimeRequestLogEntry {
   providerName: string | null;
   accountId?: string | null;
   accountHash?: string | null;
+  accountRouting?: ModelGatewayAccountRoutingDiagnostics | null;
   endpointProfileId?: string | null;
   endpointProfileName?: string | null;
   model: string | null;
@@ -966,6 +967,7 @@ export interface ModelGatewayRouteDecision {
   provider: Pick<ModelGatewayProvider, "id" | "name" | "apiFormat" | "authStrategy" | "baseUrl"> | null;
   endpointProfile: Pick<ModelGatewayProviderEndpointProfile, "id" | "name" | "apiFormat" | "authStrategy" | "baseUrl"> | null;
   account?: Pick<ModelGatewayAccountEntry, "id" | "accountHash"> | null;
+  accountRouting?: ModelGatewayAccountRoutingDiagnostics | null;
   model: {
     requested: string | null;
     resolved: string | null;
@@ -974,4 +976,29 @@ export interface ModelGatewayRouteDecision {
   upstreamUrl: string | null;
   reason: string | null;
   failoverReason: string | null;
+}
+
+export interface ModelGatewayAccountRoutingSkip {
+  accountId: string;
+  accountHash: string | null;
+  state: ModelGatewayAccountState;
+  reason: string;
+  cooldownUntil: string | null;
+  inFlight: number;
+  capacityLimit: number | null;
+}
+
+export interface ModelGatewayAccountRoutingDiagnostics {
+  providerId: string;
+  kind: ModelGatewayAccountProviderKind;
+  strategy: ModelGatewayAccountRoutingStrategy;
+  sessionAffinity: boolean;
+  affinityKeyHash: string | null;
+  affinityHit: boolean;
+  selectedAccountId: string | null;
+  selectedReason: string | null;
+  failureReason: string | null;
+  cursorBefore: number | null;
+  cursorAfter: number | null;
+  skipped: ModelGatewayAccountRoutingSkip[];
 }

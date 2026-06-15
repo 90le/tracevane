@@ -1083,6 +1083,29 @@ test("model gateway account pool preserves session affinity and enforces per-acc
         .map((entry) => entry.accountId);
       assert.ok(accountIds.includes("codex-a"));
       assert.ok(accountIds.includes("codex-b"));
+      const accountRoutingEntries = runtime.body.runtime.requestLog
+        .filter((entry) => entry.routeId === "openai_responses" && entry.accountRouting);
+      assert.ok(accountRoutingEntries.some((entry) =>
+        entry.accountRouting.selectedReason === "round-robin"
+        && entry.accountRouting.cursorBefore === 0
+        && entry.accountRouting.cursorAfter === 1,
+      ));
+      assert.ok(accountRoutingEntries.some((entry) =>
+        entry.accountRouting.selectedReason === "sticky-affinity"
+        && entry.accountRouting.affinityHit === true,
+      ));
+      const busyEntry = runtime.body.runtime.requestLog.find((entry) =>
+        entry.errorCode === "model_gateway_account_pool_busy"
+      );
+      assert.ok(busyEntry);
+      assert.equal(busyEntry.accountRouting.failureReason, "busy");
+      assert.deepEqual(
+        busyEntry.accountRouting.skipped.map((item) => [item.accountId, item.reason, item.inFlight, item.capacityLimit]),
+        [
+          ["codex-a", "busy", 1, 1],
+          ["codex-b", "busy", 1, 1],
+        ],
+      );
     });
   } finally {
     for (const resolve of pendingResolvers.splice(0)) resolve();
@@ -5461,10 +5484,10 @@ test("model gateway protocol matrix forwards native openai responses and guards 
     input: [
       { role: "user", content: [{ type: "input_text", text: "chat please" }] },
       { role: "assistant", content: [{ type: "output_text", text: "I will save a note." }] },
-      {
-        type: "function_call",
-        id: "call_note",
-        call_id: "call_note",
+	      {
+	        type: "function_call",
+	        id: "fc_call_note",
+	        call_id: "call_note",
         status: "completed",
         name: "save_note",
         arguments: "{\"note\":\"draft\"}",
@@ -6309,6 +6332,141 @@ test("model gateway adapts chat completions through native anthropic messages pr
     messages: [{ role: "user", content: "stream please" }],
     stream: true,
   });
+});
+
+test("model gateway maps Claude tool history to Responses fc item ids", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "claude-to-responses-tools",
+      name: "Claude to Responses Tools",
+      appScopes: ["claude-code"],
+      baseUrl: "https://claude-to-responses.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-claude-responses-tools-secret",
+    },
+    setActiveScopes: ["claude-code"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      contentType: init.headers instanceof Headers ? init.headers.get("content-type") : null,
+      body: String(init.body || ""),
+    });
+    return new Response(JSON.stringify({
+      id: "resp_claude_tool_history",
+      object: "response",
+      status: "completed",
+      model: "gpt-5.5",
+      output: [{
+        type: "message",
+        role: "assistant",
+        content: [{ type: "output_text", text: "Tool result accepted." }],
+      }],
+      usage: {
+        input_tokens: 12,
+        output_tokens: 4,
+        total_tokens: 16,
+      },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const messages = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-5.5",
+          max_tokens: 512,
+          messages: [
+            {
+              role: "user",
+              content: "Use the lookup tool.",
+            },
+            {
+              role: "assistant",
+              content: [{
+                type: "tool_use",
+                id: "call_L9xIoU51YrLBlMT2msasvJZY",
+                name: "lookup",
+                input: { query: "docs" },
+              }],
+            },
+            {
+              role: "user",
+              content: [{
+                type: "tool_result",
+                tool_use_id: "call_L9xIoU51YrLBlMT2msasvJZY",
+                content: "done",
+              }],
+            },
+            {
+              role: "user",
+              content: "Continue.",
+            },
+          ],
+          tools: [{
+            name: "lookup",
+            input_schema: { type: "object" },
+          }],
+        },
+      });
+
+      assert.equal(messages.status, 200);
+      assert.equal(messages.headers["x-openclaw-model-gateway-provider"], "claude-to-responses-tools");
+      assert.equal(messages.body.content[0].text, "Tool result accepted.");
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.equal(runtime.status, 200);
+      assert.equal(runtime.body.runtime.requestLog[0].routeId, "anthropic_messages");
+      assert.equal(runtime.body.runtime.requestLog[0].outcome, "success");
+      assert.ok(!JSON.stringify(runtime.body).includes("sk-claude-responses-tools-secret"));
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://claude-to-responses.example.test/v1/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-claude-responses-tools-secret");
+  const responsesBody = JSON.parse(upstreamCalls[0].body);
+  assert.deepEqual(responsesBody.input, [
+    {
+      role: "user",
+      content: [{ type: "input_text", text: "Use the lookup tool." }],
+    },
+    {
+      type: "function_call",
+      id: "fc_call_L9xIoU51YrLBlMT2msasvJZY",
+      call_id: "call_L9xIoU51YrLBlMT2msasvJZY",
+      status: "completed",
+      name: "lookup",
+      arguments: "{\"query\":\"docs\"}",
+    },
+    {
+      type: "function_call_output",
+      call_id: "call_L9xIoU51YrLBlMT2msasvJZY",
+      output: "done",
+    },
+    {
+      role: "user",
+      content: [{ type: "input_text", text: "Continue." }],
+    },
+  ]);
 });
 
 test("model gateway adapts non-streaming codex responses requests to openai chat providers", async () => {

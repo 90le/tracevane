@@ -1221,6 +1221,20 @@
   padding: 9px 10px;
 }
 
+.mgw-log-row__body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mgw-log-row__body small {
+  overflow-wrap: anywhere;
+}
+
+.mgw-log-row__account {
+  color: var(--mono-accent);
+}
+
 .mgw-log-row.success {
   border-color: color-mix(in srgb, var(--success) 34%, var(--mono-line));
 }

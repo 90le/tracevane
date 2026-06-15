@@ -266,15 +266,19 @@ function mapChatToolCallToResponsesFunctionCall(toolCall: unknown): JsonRecord |
   const fn = isRecord(toolCall.function) ? toolCall.function : {};
   const name = stringOrNull(fn.name);
   if (!name) return null;
-  const id = stringOrNull(toolCall.id) || `call_${Date.now().toString(36)}`;
+  const callId = stringOrNull(toolCall.id) || `call_${Date.now().toString(36)}`;
   return {
     type: "function_call",
-    id,
-    call_id: id,
+    id: responsesFunctionCallItemId(callId),
+    call_id: callId,
     status: "completed",
     name,
     arguments: typeof fn.arguments === "string" ? fn.arguments : JSON.stringify(fn.arguments ?? {}),
   };
+}
+
+function responsesFunctionCallItemId(callId: string): string {
+  return callId.startsWith("fc") ? callId : `fc_${callId}`;
 }
 
 function mapResponsesFunctionCallToChatToolCall(item: unknown): JsonRecord | null {

@@ -1043,7 +1043,12 @@
             <div v-for="entry in runtimeEntries" :key="entry.id" class="mgw-log-row" :class="entry.outcome">
               <span>{{ entry.outcome }}</span>
               <strong>{{ entry.providerName || entry.providerId || '-' }}</strong>
-              <small>{{ entry.requestedPath }} · {{ entry.model || '-' }} · {{ entry.durationMs }} ms</small>
+              <div class="mgw-log-row__body">
+                <small>{{ entry.requestedPath }} · {{ entry.model || '-' }} · {{ entry.durationMs }} ms</small>
+                <small v-if="entry.accountRouting" class="mgw-log-row__account">
+                  {{ accountRoutingSummary(entry.accountRouting) }}
+                </small>
+              </div>
             </div>
             <div v-if="!runtimeEntries.length" class="mgw-empty">
               {{ text('暂无请求记录。', 'No request log yet.') }}
@@ -1145,6 +1150,7 @@ import { Plus, Trash2, X } from '@lucide/vue';
 import { MODEL_GATEWAY_APP_CONNECTION_IDS } from '../../../../../types/model-gateway';
 import type {
   ModelGatewayAccountEntry,
+  ModelGatewayAccountRoutingDiagnostics,
   ModelGatewayApiFormat,
   ModelGatewayActiveRouteStatus,
   ModelGatewayAppConnection,
@@ -1506,6 +1512,32 @@ const endpointProfilesCanSmoke = computed(() =>
 const runtimeEntries = computed<ModelGatewayRuntimeRequestLogEntry[]>(() =>
   [...(runtime.value?.runtime.requestLog || [])].reverse().slice(0, 8),
 );
+
+function accountRoutingSummary(routing: ModelGatewayAccountRoutingDiagnostics): string {
+  const selected = routing.selectedAccountId
+    ? text(`账号 ${routing.selectedAccountId}`, `account ${routing.selectedAccountId}`)
+    : text('未选中账号', 'no account selected');
+  const reason = routing.failureReason
+    ? text(`失败 ${routing.failureReason}`, `failure ${routing.failureReason}`)
+    : routing.selectedReason || text('已选择', 'selected');
+  const sticky = !routing.sessionAffinity
+    ? text('sticky 关闭', 'sticky off')
+    : routing.affinityHit
+      ? text('sticky 命中', 'sticky hit')
+      : routing.affinityKeyHash
+        ? text('sticky 绑定', 'sticky bound')
+        : text('sticky 无键', 'sticky no key');
+  const skipped = routing.skipped.length
+    ? routing.skipped.reduce<Record<string, number>>((acc, item) => {
+      acc[item.reason] = (acc[item.reason] || 0) + 1;
+      return acc;
+    }, {})
+    : null;
+  const skippedSummary = skipped
+    ? Object.entries(skipped).map(([key, count]) => `${key} ${count}`).join(', ')
+    : text('无跳过', 'no skips');
+  return `${selected} · ${reason} · ${sticky} · ${skippedSummary}`;
+}
 
 const appConnectionModelOptions = computed<AppConnectionModelOption[]>(() =>
   appConnectionAvailableModels.value.map((model) => ({
