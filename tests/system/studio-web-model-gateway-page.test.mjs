@@ -142,6 +142,18 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "usageMediaLabel",
     "downloadGatewayUsageCsv",
     "usageCsvRows",
+    "usageCostEstimate",
+    "estimateUsageCost",
+    "formatUsageCostEstimate",
+    "usageBucketCostEstimate",
+    "pricingForUsageEntry",
+    "modelRowPricing",
+    "modelPricingSummary",
+    "pricingCurrency",
+    "inputPricePer1M",
+    "estimated_cost",
+    "估算成本",
+    "价格未配置",
     "导出 CSV",
     "时间范围",
     "来源",
@@ -151,6 +163,8 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "mgw-usage-controls",
     "mgw-usage-section-grid",
     "mgw-usage-entry-list",
+    "mgw-model-pricing",
+    "mgw-model-pricing__grid",
     "Smoke / Logs",
     "workspaceTabs",
     "activeWorkspaceTab",
@@ -331,7 +345,7 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
   assert.match(css, /\.mgw-app-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
   assert.match(css, /\.mgw-usage-controls\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/s);
   assert.match(css, /\.mgw-usage-controls__meta strong,\s*\.mgw-usage-controls__meta small\s*\{[^}]*overflow-wrap:\s*anywhere/s);
-  assert.match(css, /\.mgw-usage-summary-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/s);
+  assert.match(css, /\.mgw-usage-summary-grid\s*\{[^}]*grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/s);
   assert.match(css, /\.mgw-usage-row\s*\{[^}]*grid-template-columns:\s*minmax\(150px,\s*0\.65fr\)\s+minmax\(0,\s*1\.35fr\)/s);
   assert.match(css, /\.mgw-usage-entry summary\s*\{[^}]*grid-template-columns:[^}]*84px[^}]*minmax\(0,\s*0\.75fr\)[^}]*minmax\(0,\s*1\.2fr\)/s);
   assert.match(css, /\.mgw-usage-entry__detail strong\s*\{[^}]*overflow-wrap:\s*anywhere/s);
@@ -342,6 +356,8 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
   assert.match(css, /\.mgw-config-section\s*\{[^}]*border:\s*1px solid var\(--mono-line\)/s);
   assert.match(css, /\.mgw-config-section__head span\s*\{[^}]*overflow-wrap:\s*anywhere/s);
   assert.match(css, /\.mgw-model-table__head,\s*\.mgw-model-row\s*\{[^}]*grid-template-columns:[^}]*minmax\(170px,\s*1\.15fr\)[^}]*minmax\(150px,\s*0\.9fr\)[^}]*minmax\(96px,\s*0\.5fr\)[^}]*minmax\(88px,\s*0\.5fr\)/s);
+  assert.match(css, /\.mgw-model-pricing\s*\{[^}]*grid-column:\s*1 \/ -1/s);
+  assert.match(css, /\.mgw-model-pricing__grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/s);
   assert.match(css, /\.mgw-model-cell \.form-input\s*\{[^}]*min-width:\s*0/s);
   assert.match(css, /\.mgw-model-cell__label\s*\{[^}]*display:\s*none/s);
   assert.match(css, /@media \(max-width:\s*760px\)[\s\S]*\.mgw-model-cell__label\s*\{[^}]*display:\s*block/s);

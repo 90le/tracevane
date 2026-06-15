@@ -948,6 +948,47 @@
                       >
                         <Trash2 class="mgw-icon-button__icon" />
                       </button>
+                      <details class="mgw-model-pricing">
+                        <summary>{{ modelPricingSummary(model) }}</summary>
+                        <div class="mgw-model-pricing__grid">
+                          <label class="form-field">
+                            <span class="form-label">{{ text('币种', 'Currency') }}</span>
+                            <input v-model.trim="model.pricingCurrency" class="form-input" placeholder="USD" />
+                          </label>
+                          <label class="form-field">
+                            <span class="form-label">{{ text('输入 / 1M', 'Input / 1M') }}</span>
+                            <input v-model.trim="model.inputPricePer1M" class="form-input" inputmode="decimal" placeholder="0" />
+                          </label>
+                          <label class="form-field">
+                            <span class="form-label">{{ text('输出 / 1M', 'Output / 1M') }}</span>
+                            <input v-model.trim="model.outputPricePer1M" class="form-input" inputmode="decimal" placeholder="0" />
+                          </label>
+                          <label class="form-field">
+                            <span class="form-label">{{ text('缓存读 / 1M', 'Cache read / 1M') }}</span>
+                            <input v-model.trim="model.cacheReadPricePer1M" class="form-input" inputmode="decimal" placeholder="0" />
+                          </label>
+                          <label class="form-field">
+                            <span class="form-label">{{ text('缓存写 / 1M', 'Cache write / 1M') }}</span>
+                            <input v-model.trim="model.cacheCreationPricePer1M" class="form-input" inputmode="decimal" placeholder="0" />
+                          </label>
+                          <label class="form-field">
+                            <span class="form-label">{{ text('生图 / 张', 'Image / output') }}</span>
+                            <input v-model.trim="model.imageGenerationPrice" class="form-input" inputmode="decimal" placeholder="0" />
+                          </label>
+                          <label class="form-field">
+                            <span class="form-label">{{ text('修图 / 次', 'Edit / request') }}</span>
+                            <input v-model.trim="model.imageEditPrice" class="form-input" inputmode="decimal" placeholder="0" />
+                          </label>
+                          <label class="form-field">
+                            <span class="form-label">{{ text('音频输入 / 次', 'Audio in / request') }}</span>
+                            <input v-model.trim="model.audioInputPrice" class="form-input" inputmode="decimal" placeholder="0" />
+                          </label>
+                          <label class="form-field">
+                            <span class="form-label">{{ text('音频输出 / 次', 'Audio out / request') }}</span>
+                            <input v-model.trim="model.audioOutputPrice" class="form-input" inputmode="decimal" placeholder="0" />
+                          </label>
+                        </div>
+                      </details>
                     </div>
                   </div>
                   <span class="field-hint">{{ text('同一 Provider 内模型名称和别名不能重复；不同 Provider 允许同名模型，用于优先级和负载切换。', 'Model names and aliases must be unique inside one provider; different providers may share model names for priority and failover routing.') }}</span>
@@ -1107,6 +1148,10 @@
                       <dd>{{ usageMediaLabel(bucket.usage) || '-' }}</dd>
                     </div>
                     <div>
+                      <dt>{{ text('估算成本', 'Estimated cost') }}</dt>
+                      <dd>{{ formatUsageCostEstimate(usageBucketCostEstimate(bucket, 'provider')) }}</dd>
+                    </div>
+                    <div>
                       <dt>{{ text('最近', 'Latest') }}</dt>
                       <dd>{{ bucket.latestRequestAt ? formatTimestamp(bucket.latestRequestAt) : '-' }}</dd>
                     </div>
@@ -1146,6 +1191,10 @@
                       <dt>{{ text('媒体', 'Media') }}</dt>
                       <dd>{{ usageMediaLabel(bucket.usage) || '-' }}</dd>
                     </div>
+                    <div>
+                      <dt>{{ text('估算成本', 'Estimated cost') }}</dt>
+                      <dd>{{ formatUsageCostEstimate(usageBucketCostEstimate(bucket, 'model')) }}</dd>
+                    </div>
                   </dl>
                 </div>
                 <div v-if="!usageModelBuckets.length" class="mgw-empty">
@@ -1178,6 +1227,10 @@
                   <div>
                     <dt>{{ text('计费用', 'Metered') }}</dt>
                     <dd>{{ formatCompactNumber(bucket.meteredRequestCount) }}</dd>
+                  </div>
+                  <div>
+                    <dt>{{ text('估算成本', 'Estimated cost') }}</dt>
+                    <dd>{{ formatUsageCostEstimate(usageBucketCostEstimate(bucket, 'account')) }}</dd>
                   </div>
                   <div>
                     <dt>{{ text('最近', 'Latest') }}</dt>
@@ -1221,6 +1274,10 @@
                   <div>
                     <span>{{ text('媒体', 'Media') }}</span>
                     <strong>{{ entry.usage ? usageMediaLabel(entry.usage) || '-' : '-' }}</strong>
+                  </div>
+                  <div>
+                    <span>{{ text('估算成本', 'Estimated cost') }}</span>
+                    <strong>{{ formatUsageCostEstimate(estimateUsageCost([entry])) }}</strong>
                   </div>
                   <div v-if="entry.errorCode || entry.errorMessage">
                     <span>{{ text('错误', 'Error') }}</span>
@@ -1476,6 +1533,7 @@ import type {
   ModelGatewayProviderNetwork,
   ModelGatewayProviderReasoning,
   ModelGatewayProviderModel,
+  ModelGatewayProviderModelPricing,
   ModelGatewayProviderTestResponse,
   ModelGatewayProviderView,
   ModelGatewayProvidersResponse,
@@ -1555,6 +1613,15 @@ type ProviderModelRow = {
   aliases: string;
   contextWindow: string;
   maxOutputTokens: string;
+  pricingCurrency: string;
+  inputPricePer1M: string;
+  outputPricePer1M: string;
+  cacheReadPricePer1M: string;
+  cacheCreationPricePer1M: string;
+  imageGenerationPrice: string;
+  imageEditPrice: string;
+  audioInputPrice: string;
+  audioOutputPrice: string;
   text: boolean;
   vision: boolean;
   imageGeneration: boolean;
@@ -1564,6 +1631,14 @@ type ProviderModelRow = {
   reasoning: boolean;
   responses: boolean;
   streaming: boolean;
+};
+
+type UsageCostEstimate = {
+  amount: number;
+  currency: string | null;
+  pricedEntryCount: number;
+  unpricedEntryCount: number;
+  mixedCurrency: boolean;
 };
 
 type ProviderModelBulkDraft = {
@@ -1939,6 +2014,9 @@ const usageModelBuckets = computed<ModelGatewayRuntimeUsageSummaryBucket[]>(() =
 const usageAccountBuckets = computed<ModelGatewayRuntimeUsageSummaryBucket[]>(() =>
   usageSummary.value.byAccount,
 );
+const usageCostEstimate = computed<UsageCostEstimate>(() =>
+  estimateUsageCost(usageFilteredEntries.value),
+);
 const usageRecentEntries = computed<ModelGatewayRuntimeRequestLogEntry[]>(() =>
   [...usageFilteredEntries.value]
     .sort((left, right) => usageEntryTime(right) - usageEntryTime(left))
@@ -1982,6 +2060,12 @@ const usageSummaryCards = computed(() => {
       meta: usageMediaLabel(usage) || text('暂无媒体用量', 'No media usage'),
     },
     {
+      id: 'cost',
+      label: text('估算成本', 'Estimated cost'),
+      value: formatUsageCostEstimate(usageCostEstimate.value),
+      meta: usageCostMeta(usageCostEstimate.value),
+    },
+    {
       id: 'latest',
       label: text('最近请求', 'Latest request'),
       value: summary.latestRequestAt ? formatTimestamp(summary.latestRequestAt) : '-',
@@ -2016,6 +2100,92 @@ function usageEntryMatchesFilters(entry: ModelGatewayRuntimeRequestLogEntry): bo
   if (usageSourceFilter.value === 'account-backed') return usageEntryIsAccountBacked(entry);
   if (usageSourceFilter.value === 'api-key') return providerSourceForId(entry.providerId) === 'api-key';
   return true;
+}
+
+function entriesForUsageBucket(
+  bucket: ModelGatewayRuntimeUsageSummaryBucket,
+  kind: 'provider' | 'model' | 'account',
+): ModelGatewayRuntimeRequestLogEntry[] {
+  return usageFilteredEntries.value.filter((entry) => {
+    const providerKey = entry.providerId || 'unknown-provider';
+    if (kind === 'provider') return providerKey === bucket.key;
+    if (kind === 'model') return (entry.model || 'unknown-model') === bucket.key;
+    return `${providerKey}:${entry.accountHash || entry.accountId || 'unknown-account'}` === bucket.key;
+  });
+}
+
+function modelMatchesUsage(model: ModelGatewayProviderModel, requestedModel: string | null | undefined): boolean {
+  const key = normalizeModelKey(requestedModel || '');
+  if (!key) return false;
+  return normalizeModelKey(model.id) === key
+    || (model.aliases || []).some((alias) => normalizeModelKey(alias) === key);
+}
+
+function pricingForUsageEntry(entry: ModelGatewayRuntimeRequestLogEntry): ModelGatewayProviderModelPricing | null {
+  if (!entry.providerId || !entry.model) return null;
+  const provider = providers.value.find((item) => item.id === entry.providerId);
+  if (!provider) return null;
+  return providerCatalogModels(provider).find((model) => modelMatchesUsage(model, entry.model))?.pricing || null;
+}
+
+function emptyCostEstimate(): UsageCostEstimate {
+  return {
+    amount: 0,
+    currency: null,
+    pricedEntryCount: 0,
+    unpricedEntryCount: 0,
+    mixedCurrency: false,
+  };
+}
+
+function estimateUsageCost(entries: ModelGatewayRuntimeRequestLogEntry[]): UsageCostEstimate {
+  const estimate = emptyCostEstimate();
+  for (const entry of entries) {
+    const usage = entry.usage;
+    const pricing = pricingForUsageEntry(entry);
+    if (!usage || !pricing) {
+      estimate.unpricedEntryCount += 1;
+      continue;
+    }
+    const currency = (pricing.currency || 'USD').trim().toUpperCase() || 'USD';
+    if (!estimate.currency) {
+      estimate.currency = currency;
+    } else if (estimate.currency !== currency) {
+      estimate.mixedCurrency = true;
+    }
+    estimate.amount += ((usage.inputTokens || 0) / 1_000_000) * (pricing.inputPer1M || 0);
+    estimate.amount += ((usage.outputTokens || 0) / 1_000_000) * (pricing.outputPer1M || 0);
+    estimate.amount += ((usage.cacheReadTokens || 0) / 1_000_000) * (pricing.cacheReadPer1M ?? pricing.inputPer1M ?? 0);
+    estimate.amount += ((usage.cacheCreationTokens || 0) / 1_000_000) * (pricing.cacheCreationPer1M ?? pricing.inputPer1M ?? 0);
+    estimate.amount += (usage.imagesGenerated || 0) * (pricing.imageGenerationPerImage || 0);
+    estimate.amount += (usage.imageEditRequests || 0) * (pricing.imageEditPerRequest || 0);
+    estimate.amount += (usage.audioInputRequests || 0) * (pricing.audioInputPerRequest || 0);
+    estimate.amount += (usage.audioOutputRequests || 0) * (pricing.audioOutputPerRequest || 0);
+    estimate.pricedEntryCount += 1;
+  }
+  return estimate;
+}
+
+function usageBucketCostEstimate(
+  bucket: ModelGatewayRuntimeUsageSummaryBucket,
+  kind: 'provider' | 'model' | 'account',
+): UsageCostEstimate {
+  return estimateUsageCost(entriesForUsageBucket(bucket, kind));
+}
+
+function formatUsageCostEstimate(estimate: UsageCostEstimate): string {
+  if (!estimate.pricedEntryCount) return text('未配置价格', 'Pricing not set');
+  const amount = estimate.amount;
+  const formatted = amount >= 1 ? amount.toFixed(2) : amount.toFixed(4);
+  if (estimate.mixedCurrency) return text(`混合币种 ${formatted}`, `mixed currency ${formatted}`);
+  return `${estimate.currency || 'USD'} ${formatted}`;
+}
+
+function usageCostMeta(estimate: UsageCostEstimate): string {
+  return text(
+    `已计价 ${formatCompactNumber(estimate.pricedEntryCount)} · 未配置 ${formatCompactNumber(estimate.unpricedEntryCount)}`,
+    `${formatCompactNumber(estimate.pricedEntryCount)} priced · ${formatCompactNumber(estimate.unpricedEntryCount)} unpriced`,
+  );
 }
 
 function createEmptyRuntimeUsage(): ModelGatewayRuntimeUsage {
@@ -2248,33 +2418,39 @@ function usageCsvRows(): string[][] {
   return usageFilteredEntries.value
     .slice()
     .sort((left, right) => usageEntryTime(left) - usageEntryTime(right))
-    .map((entry) => [
-      entry.finishedAt,
-      entry.outcome,
-      usageCsvSource(entry),
-      entry.providerId || '',
-      entry.providerName || '',
-      entry.accountId || '',
-      entry.accountHash || '',
-      entry.model || '',
-      entry.routeId || '',
-      entry.method,
-      entry.requestedPath,
-      entry.statusCode ?? '',
-      entry.durationMs,
-      entry.usage?.inputTokens || 0,
-      entry.usage?.outputTokens || 0,
-      entry.usage?.totalTokens || 0,
-      entry.usage?.cacheReadTokens || 0,
-      entry.usage?.cacheCreationTokens || 0,
-      entry.usage?.imageGenerationRequests || 0,
-      entry.usage?.imagesGenerated || 0,
-      entry.usage?.imageEditRequests || 0,
-      entry.usage?.audioInputRequests || 0,
-      entry.usage?.audioOutputRequests || 0,
-      entry.errorCode || '',
-      entry.errorMessage || '',
-    ].map((value) => String(value)));
+    .map((entry) => {
+      const estimate = estimateUsageCost([entry]);
+      return [
+        entry.finishedAt,
+        entry.outcome,
+        usageCsvSource(entry),
+        entry.providerId || '',
+        entry.providerName || '',
+        entry.accountId || '',
+        entry.accountHash || '',
+        entry.model || '',
+        entry.routeId || '',
+        entry.method,
+        entry.requestedPath,
+        entry.statusCode ?? '',
+        entry.durationMs,
+        entry.usage?.inputTokens || 0,
+        entry.usage?.outputTokens || 0,
+        entry.usage?.totalTokens || 0,
+        entry.usage?.cacheReadTokens || 0,
+        entry.usage?.cacheCreationTokens || 0,
+        entry.usage?.imageGenerationRequests || 0,
+        entry.usage?.imagesGenerated || 0,
+        entry.usage?.imageEditRequests || 0,
+        entry.usage?.audioInputRequests || 0,
+        entry.usage?.audioOutputRequests || 0,
+        estimate.currency || '',
+        estimate.pricedEntryCount ? estimate.amount.toFixed(8) : '',
+        estimate.pricedEntryCount ? 'priced' : 'unpriced',
+        entry.errorCode || '',
+        entry.errorMessage || '',
+      ].map((value) => String(value));
+    });
 }
 
 function downloadGatewayUsageCsv(): void {
@@ -2303,6 +2479,9 @@ function downloadGatewayUsageCsv(): void {
     'image_edit_requests',
     'audio_input_requests',
     'audio_output_requests',
+    'estimated_cost_currency',
+    'estimated_cost',
+    'pricing_status',
     'error_code',
     'error_message',
   ];
@@ -2905,6 +3084,13 @@ function parsePositiveDraftInteger(value: string): number | null {
   return Math.floor(numeric);
 }
 
+function parseNonNegativeDraftNumber(value: string): number | null {
+  if (!value.trim()) return null;
+  const numeric = Number(value.trim());
+  if (!Number.isFinite(numeric) || numeric < 0) return null;
+  return numeric;
+}
+
 function appConnectionProfilePayload(): ModelGatewayAppConnectionProfile {
   return {
     model: appConnectionProfile.model.trim() || null,
@@ -3330,6 +3516,15 @@ function createProviderModelRow(
     aliases: model?.aliases?.join(', ') || '',
     contextWindow: model?.contextWindow ? String(model.contextWindow) : inferredBudget.contextWindow ? String(inferredBudget.contextWindow) : '',
     maxOutputTokens: model?.maxOutputTokens ? String(model.maxOutputTokens) : inferredBudget.maxOutputTokens ? String(inferredBudget.maxOutputTokens) : '',
+    pricingCurrency: model?.pricing?.currency || 'USD',
+    inputPricePer1M: model?.pricing?.inputPer1M !== null && model?.pricing?.inputPer1M !== undefined ? String(model.pricing.inputPer1M) : '',
+    outputPricePer1M: model?.pricing?.outputPer1M !== null && model?.pricing?.outputPer1M !== undefined ? String(model.pricing.outputPer1M) : '',
+    cacheReadPricePer1M: model?.pricing?.cacheReadPer1M !== null && model?.pricing?.cacheReadPer1M !== undefined ? String(model.pricing.cacheReadPer1M) : '',
+    cacheCreationPricePer1M: model?.pricing?.cacheCreationPer1M !== null && model?.pricing?.cacheCreationPer1M !== undefined ? String(model.pricing.cacheCreationPer1M) : '',
+    imageGenerationPrice: model?.pricing?.imageGenerationPerImage !== null && model?.pricing?.imageGenerationPerImage !== undefined ? String(model.pricing.imageGenerationPerImage) : '',
+    imageEditPrice: model?.pricing?.imageEditPerRequest !== null && model?.pricing?.imageEditPerRequest !== undefined ? String(model.pricing.imageEditPerRequest) : '',
+    audioInputPrice: model?.pricing?.audioInputPerRequest !== null && model?.pricing?.audioInputPerRequest !== undefined ? String(model.pricing.audioInputPerRequest) : '',
+    audioOutputPrice: model?.pricing?.audioOutputPerRequest !== null && model?.pricing?.audioOutputPerRequest !== undefined ? String(model.pricing.audioOutputPerRequest) : '',
     ...capabilities,
   };
 }
@@ -3364,11 +3559,13 @@ function modelRowsToModels(rows: ProviderModelRow[]): ModelGatewayProviderModel[
       const id = row.id.trim();
       if (!id) return null;
       const aliases = parseNoProxy(row.aliases);
+      const pricing = modelRowPricing(row);
       return {
         id,
         ...(parsePositiveDraftInteger(row.contextWindow) ? { contextWindow: parsePositiveDraftInteger(row.contextWindow) } : {}),
         ...(parsePositiveDraftInteger(row.maxOutputTokens) ? { maxOutputTokens: parsePositiveDraftInteger(row.maxOutputTokens) } : {}),
         ...(aliases.length ? { aliases } : {}),
+        ...(pricing ? { pricing } : {}),
         features: {
           text: row.text,
           vision: row.vision,
@@ -3383,6 +3580,45 @@ function modelRowsToModels(rows: ProviderModelRow[]): ModelGatewayProviderModel[
       } satisfies ModelGatewayProviderModel;
     })
     .filter((model): model is ModelGatewayProviderModel => model !== null);
+}
+
+function modelRowPricing(row: ProviderModelRow): ModelGatewayProviderModelPricing | undefined {
+  const values: ModelGatewayProviderModelPricing = {};
+  const currency = row.pricingCurrency.trim().toUpperCase();
+  const assign = (key: keyof ModelGatewayProviderModelPricing, value: string) => {
+    if (key === 'currency') return;
+    const numeric = parseNonNegativeDraftNumber(value);
+    if (numeric !== null) values[key] = numeric;
+  };
+  assign('inputPer1M', row.inputPricePer1M);
+  assign('outputPer1M', row.outputPricePer1M);
+  assign('cacheReadPer1M', row.cacheReadPricePer1M);
+  assign('cacheCreationPer1M', row.cacheCreationPricePer1M);
+  assign('imageGenerationPerImage', row.imageGenerationPrice);
+  assign('imageEditPerRequest', row.imageEditPrice);
+  assign('audioInputPerRequest', row.audioInputPrice);
+  assign('audioOutputPerRequest', row.audioOutputPrice);
+  if (!Object.keys(values).length) return undefined;
+  values.currency = currency || 'USD';
+  return values;
+}
+
+function modelPricingSummary(row: ProviderModelRow): string {
+  const pricing = modelRowPricing(row);
+  if (!pricing) return text('价格未配置', 'Pricing not set');
+  const currency = pricing.currency || 'USD';
+  const parts = [
+    pricing.inputPer1M !== undefined && pricing.inputPer1M !== null
+      ? text(`输入 ${pricing.inputPer1M}/1M`, `input ${pricing.inputPer1M}/1M`)
+      : '',
+    pricing.outputPer1M !== undefined && pricing.outputPer1M !== null
+      ? text(`输出 ${pricing.outputPer1M}/1M`, `output ${pricing.outputPer1M}/1M`)
+      : '',
+    pricing.imageGenerationPerImage !== undefined && pricing.imageGenerationPerImage !== null
+      ? text(`生图 ${pricing.imageGenerationPerImage}/张`, `image ${pricing.imageGenerationPerImage}/output`)
+      : '',
+  ].filter(Boolean);
+  return [text('价格', 'Pricing'), currency, parts.join(' · ')].filter(Boolean).join(' · ');
 }
 
 function modelRowAliases(row: ProviderModelRow): string[] {

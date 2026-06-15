@@ -644,6 +644,33 @@ function normalizeEndpointMap(value: unknown): Partial<Record<ModelGatewayRouteI
   return endpoints;
 }
 
+function normalizeModelPricing(value: unknown): ModelGatewayProviderModel["pricing"] | undefined {
+  if (!isRecord(value)) return undefined;
+  const numberField = (key: string): number | null | undefined => {
+    const raw = value[key];
+    if (raw === null) return null;
+    if (typeof raw !== "number" || !Number.isFinite(raw) || raw < 0) return undefined;
+    return raw;
+  };
+  const pricing: NonNullable<ModelGatewayProviderModel["pricing"]> = {};
+  const currency = normalizeString(value.currency).toUpperCase();
+  if (currency) pricing.currency = currency.slice(0, 8);
+  for (const key of [
+    "inputPer1M",
+    "outputPer1M",
+    "cacheReadPer1M",
+    "cacheCreationPer1M",
+    "imageGenerationPerImage",
+    "imageEditPerRequest",
+    "audioInputPerRequest",
+    "audioOutputPerRequest",
+  ] as const) {
+    const normalized = numberField(key);
+    if (normalized !== undefined) pricing[key] = normalized;
+  }
+  return Object.keys(pricing).length ? pricing : undefined;
+}
+
 function normalizeModelCatalog(value: unknown, fallback?: ModelGatewayProviderModelCatalog): ModelGatewayProviderModelCatalog {
   const source = isRecord(value) ? value : {};
   const models = Array.isArray(source.models)
@@ -666,6 +693,7 @@ function normalizeModelCatalog(value: unknown, fallback?: ModelGatewayProviderMo
           audioInput: typeof model.features.audioInput === "boolean" ? model.features.audioInput : undefined,
           audioOutput: typeof model.features.audioOutput === "boolean" ? model.features.audioOutput : undefined,
         }) : undefined,
+        pricing: normalizeModelPricing(model.pricing),
       }))
       .filter((model) => model.id)
     : fallback?.models || [];

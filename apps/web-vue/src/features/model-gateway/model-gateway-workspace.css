@@ -908,7 +908,7 @@
 
 .mgw-usage-summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 14px;
 }
@@ -1366,6 +1366,30 @@
 .mgw-model-row {
   border-top: 1px solid var(--mono-line);
   padding: 10px;
+}
+
+.mgw-model-pricing {
+  grid-column: 1 / -1;
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-base) 86%, var(--surface-soft));
+  padding: 9px 10px;
+}
+
+.mgw-model-pricing > summary {
+  color: var(--mono-ink-2);
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 800;
+  list-style-position: inside;
+  overflow-wrap: anywhere;
+}
+
+.mgw-model-pricing__grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .mgw-model-row > .form-input {
@@ -1861,6 +1885,7 @@
   .mgw-media-status__grid,
   .mgw-usage-controls,
   .mgw-usage-summary-grid,
+  .mgw-model-pricing__grid,
   .mgw-usage-row,
   .mgw-usage-metrics,
   .mgw-usage-entry summary,

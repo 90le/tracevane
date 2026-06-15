@@ -157,6 +157,19 @@ export interface ModelGatewayProviderModel {
   maxOutputTokens?: number | null;
   aliases?: string[];
   features?: ModelGatewayModelFeatures;
+  pricing?: ModelGatewayProviderModelPricing;
+}
+
+export interface ModelGatewayProviderModelPricing {
+  currency?: string;
+  inputPer1M?: number | null;
+  outputPer1M?: number | null;
+  cacheReadPer1M?: number | null;
+  cacheCreationPer1M?: number | null;
+  imageGenerationPerImage?: number | null;
+  imageEditPerRequest?: number | null;
+  audioInputPerRequest?: number | null;
+  audioOutputPerRequest?: number | null;
 }
 
 export interface ModelGatewayModelFeatures {
