@@ -61,6 +61,7 @@
   - Provider Center 最近请求补齐 accountRouting 操作面：支持全部/账号池/失败/冷却重试筛选，单条请求可展开查看 provider、选中账号、原因、sticky、cursor 和 skipped accounts 明细。
   - Provider Center 账户状态区补齐账号池策略配置：可编辑 round-robin / fill-first、Sticky session 和单账号并发；保存 provider 时只更新 routing，保留现有账户和 token refs。
   - Provider Center 最近请求补齐账号池容量诊断：runtime/UI 直接显示 total、ready、capacity available、busy、cooldown、needs-login 计数，不再只靠 skipped accounts 反推。
+  - 新增 `scripts/smoke-model-gateway-account-pool.mjs`：对真实 Gateway daemon 验证 active account-backed provider、`/v1/responses`、runtime accountRouting 池计数、sticky session；当本机有 2 个以上可路由账号时自动扩展 round-robin 多账号验证。
   - Provider Center Smoke / 日志页新增媒体模型状态摘要：直接读取已启用 provider 的 catalog 能力标记，显示 Vision、Image gen、Audio in/out 和 Realtime 计数与示例模型。
   - 本轮低成本 media smoke 通过：`node scripts/smoke-model-gateway-account-media.mjs --json` 返回 `ok=true`，`/v1/models` 有 `gpt-image-2` 生图、11 个音频模型、3 个 realtime 模型；image edits 命中 `mlamp` 并返回结构化 `invalid_image_file`；Codex account audio 仍为预期结构化 unsupported。
   - Codex account image edits 可行性结论已落到错误 envelope：Sub2API / CLIProxyAPI 均可参考 Codex `/responses + image_generation` 生图桥接，但没有可复用的 Codex account image edit action 合同；Gateway 继续明确 501，并提示走 OpenAI-compatible image edits 或 Codex `/v1/images/generations`。
@@ -317,9 +318,10 @@
 - 工具流仍需继续 live 抽查：Codex、Claude Code、OpenCode 近 12h 均已有可见工具输出 live 证据，且三者均有过程回复真实 IM 证据。
 - 思考流 parser 支持 Codex、Claude Code、OpenCode 原生 thinking/reasoning 事件；Octo 私聊 `/thinking on/off` 已做端到端回归；状态/UI 已区分 parser 支持和 live 输出观测。真实 smoke 证明 OpenCode 会在支持 reasoning 的模型上输出 `reasoning`，Claude Code 2.1.86 当前未输出 `thinking` item；没有原生思考事件的 Agent/模型组合只能标为不支持，不伪造。
 - Codex account live smoke 已确认：`/v1/models` 由 Studio Gateway daemon 返回聚合模型，account catalog 不再暴露 `gpt-5.5-mini` / `gpt-5`；`gpt-5.5` 覆盖 Responses non-stream、Responses stream、Chat Completions adapter、Anthropic Messages adapter、Responses compact、Provider smoke、Claude Code CLI 和 OpenCode Chat tools smoke，均通过统一 Gateway key；`gpt-image-2` Images generation 已强制命中 `codex-account` 并返回图片。Realtime/WebSocket、Codex account 音频真实上游能力和 image/audio 计费 usage 精细映射仍是后续项；`/v1/images/edits` 已对 OpenAI-compatible provider passthrough，对 Codex account 明确报不支持。
+- Account pool live smoke 已确认当前单账号基础链路：active `codex-account`、`gpt-5.5` `/v1/responses`、runtime pool count 诊断和 sticky session 均通过；本机目前只有 1 个 ready Codex account，多账号 round-robin/fill-first 仍需第二个账户后验证。
 
 ## 下一步
 
-1. 继续补账户池高级策略 live smoke：多账号 round-robin/fill-first、sticky failover、busy/cooldown 真实链路抽查。
+1. 等本机补第二个 ready Codex account 后跑 `node scripts/smoke-model-gateway-account-pool.mjs --require-multi-account --json`，验证多账号 round-robin/fill-first、sticky failover、busy/cooldown 真实链路。
 2. 继续参考 Sub2API / CLIProxyAPI 补 media usage 精细映射。
 3. 继续把 runtime usage summary 扩展成长期 usage 账本和模型消耗页。
