@@ -1224,6 +1224,153 @@ test("model gateway puts Codex accounts into cooldown on upstream quota failures
   }
 });
 
+test("model gateway cools Codex accounts when streaming passthrough emits response.failed", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const authRef = "provider:codex-stream-quota:account:a:codex-token";
+  const idToken = fakeJwt({
+    email: "stream-quota@example.com",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct_stream_quota",
+      chatgpt_plan_type: "plus",
+    },
+  });
+  const tokenBundle = JSON.stringify({
+    type: "codex",
+    tokens: {
+      id_token: idToken,
+      access_token: "codex-stream-quota-access",
+      refresh_token: "codex-stream-quota-refresh",
+      account_id: "acct_stream_quota",
+    },
+    expires_at: new Date(Date.now() + 3600_000).toISOString(),
+  });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-stream-quota",
+      name: "Codex Stream Quota",
+      enabled: true,
+      category: "official",
+      sourceType: "account-backed",
+      appScopes: ["codex"],
+      baseUrl: "https://chatgpt.com/backend-api/codex",
+      apiKeyRef: null,
+      apiFormat: "openai_responses",
+      authStrategy: "oauth_proxy",
+      models: {
+        defaultModel: "gpt-5.5",
+        models: [{ id: "gpt-5.5" }],
+        aliases: {},
+      },
+      endpoints: {
+        openai_responses: "/responses",
+      },
+      accountProvider: {
+        kind: "codex",
+        routing: {
+          strategy: "round-robin",
+          sessionAffinity: true,
+          maxConcurrentPerAccount: 1,
+        },
+        accounts: [{
+          id: "codex-stream-quota-a",
+          kind: "codex",
+          enabled: true,
+          state: "ready",
+          authRef,
+          credentialSource: "codex-device-auth",
+          accountHash: "stream-quota-a",
+          emailMasked: "st***@example.com",
+          plan: "plus",
+          expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        }],
+      },
+    },
+    setActiveScopes: ["codex"],
+  });
+  const stamp = new Date().toISOString();
+  fs.mkdirSync(path.dirname(paths.secrets), { recursive: true });
+  fs.writeFileSync(paths.secrets, `${JSON.stringify({
+    version: 1,
+    updatedAt: stamp,
+    secrets: {
+      [authRef]: {
+        value: tokenBundle,
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+    },
+  }, null, 2)}\n`, { mode: 0o600 });
+
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const target = new URL(String(url));
+    if (target.hostname === "chatgpt.com" && target.pathname === "/backend-api/codex/responses") {
+      upstreamCalls.push(JSON.parse(String(init.body || "{}")));
+      const upstreamSse = [
+        "event: response.created",
+        "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_stream_quota\",\"object\":\"response\",\"status\":\"in_progress\",\"model\":\"gpt-5.5\",\"output\":[],\"usage\":null}}",
+        "",
+        "event: response.output_text.delta",
+        "data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}",
+        "",
+        "event: response.failed",
+        "data: {\"type\":\"response.failed\",\"response\":{\"id\":\"resp_stream_quota\",\"error\":{\"message\":\"quota exceeded\",\"type\":\"rate_limit_error\",\"code\":\"rate_limit_exceeded\"}}}",
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n");
+      return new Response(upstreamSse, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream",
+          "retry-after": "180",
+        },
+      });
+    }
+    return new Response("unexpected", { status: 500 });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const first = await requestRaw(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: { model: "gpt-5.5", input: "stream quota hit", stream: true },
+      });
+      assert.equal(first.status, 200);
+      const events = parseSseEvents(first.body);
+      assert.equal(events.find((item) => item.event === "response.output_text.delta").data.delta, "partial");
+      assert.equal(events.find((item) => item.event === "response.failed").data.response.error.code, "rate_limit_exceeded");
+      assert.equal(upstreamCalls.length, 1);
+
+      const providers = await requestJson(`${baseUrl}/api/model-gateway/providers`);
+      const provider = providers.body.providers.find((item) => item.id === "codex-stream-quota");
+      const account = provider.accountProvider.accounts[0];
+      assert.equal(account.state, "cooldown");
+      assert.equal(account.lastError, "quota exceeded");
+      assert.ok(Date.parse(account.cooldownUntil) > Date.now() + 30_000);
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.equal(runtime.body.runtime.requestLog[0].outcome, "failure");
+      assert.equal(runtime.body.runtime.requestLog[0].errorCode, "rate_limit_exceeded");
+
+      const second = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: { model: "gpt-5.5", input: "should not hit upstream", stream: true },
+      });
+      assert.equal(second.status, 503);
+      assert.equal(upstreamCalls.length, 1);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model gateway account pool persists routing affinity across service restart", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

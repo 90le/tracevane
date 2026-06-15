@@ -3603,6 +3603,34 @@ function extractJsonPayloadsFromSseText(value: string): unknown[] {
   return payloads;
 }
 
+function nextSseFrameBoundary(value: string): { index: number; length: number } | null {
+  const crlf = value.indexOf("\r\n\r\n");
+  const lf = value.indexOf("\n\n");
+  if (crlf < 0 && lf < 0) return null;
+  if (crlf >= 0 && (lf < 0 || crlf <= lf)) return { index: crlf, length: 4 };
+  return { index: lf, length: 2 };
+}
+
+function consumeSseJsonPayloads(
+  buffer: string,
+  onJsonPayload: (payload: unknown) => void,
+  flush = false,
+): string {
+  let rest = buffer;
+  for (;;) {
+    const boundary = nextSseFrameBoundary(rest);
+    if (!boundary) break;
+    const frame = rest.slice(0, boundary.index);
+    rest = rest.slice(boundary.index + boundary.length);
+    for (const payload of extractJsonPayloadsFromSseText(`${frame}\n\n`)) onJsonPayload(payload);
+  }
+  if (flush && rest.trim()) {
+    for (const payload of extractJsonPayloadsFromSseText(`${rest}\n\n`)) onJsonPayload(payload);
+    return "";
+  }
+  return rest;
+}
+
 function buildCodexAccountResponsesJsonFromSseText(responseText: string): Record<string, unknown> {
   const direct = parseJsonObjectOrNull(responseText);
   if (direct) return direct;
@@ -3666,12 +3694,28 @@ function parseOpenAIResponsesUpstreamBody(
 async function pipeReadableStreamToServerResponse(
   stream: ReadableStream<Uint8Array>,
   res: http.ServerResponse,
+  options: { onJsonPayload?: (payload: unknown) => void } = {},
 ): Promise<void> {
   const reader = stream.getReader();
+  const decoder = options.onJsonPayload ? new TextDecoder() : null;
+  let sseBuffer = "";
   for (;;) {
     const { done, value } = await reader.read();
-    if (done) return;
-    if (value?.byteLength) res.write(Buffer.from(value));
+    if (done) {
+      if (options.onJsonPayload && decoder) {
+        sseBuffer += decoder.decode();
+        sseBuffer = consumeSseJsonPayloads(sseBuffer, options.onJsonPayload, true);
+      }
+      return;
+    }
+    if (value?.byteLength) {
+      const chunk = Buffer.from(value);
+      res.write(chunk);
+      if (options.onJsonPayload && decoder) {
+        sseBuffer += decoder.decode(value, { stream: true });
+        sseBuffer = consumeSseJsonPayloads(sseBuffer, options.onJsonPayload);
+      }
+    }
   }
 }
 
@@ -3766,6 +3810,30 @@ function imagesUpstreamErrorFromPayload(candidate: unknown): ModelGatewayService
     message,
     statusCode,
   );
+}
+
+function responsesStreamErrorFromPayload(candidate: unknown): { message: string; type: string; code: string } | null {
+  if (!isRecord(candidate)) return null;
+  const eventType = normalizeString(candidate.type);
+  let errorObj: Record<string, unknown> | null = null;
+  if (eventType === "error" && isRecord(candidate.error)) {
+    errorObj = candidate.error;
+  } else if (eventType === "response.failed" && isRecord(candidate.response) && isRecord(candidate.response.error)) {
+    errorObj = candidate.response.error;
+  } else if (isRecord(candidate.response)
+    && normalizeString(candidate.response.status) === "failed"
+    && isRecord(candidate.response.error)) {
+    errorObj = candidate.response.error;
+  } else if (isRecord(candidate.error)) {
+    errorObj = candidate.error;
+  }
+  if (!errorObj) return null;
+  const message = normalizeErrorScalar(errorObj.message)
+    || normalizeErrorScalar(candidate.message)
+    || "Responses stream returned an upstream error.";
+  const type = normalizeErrorScalar(errorObj.type) || normalizeErrorScalar(candidate.type) || "upstream_error";
+  const code = normalizeErrorScalar(errorObj.code) || type;
+  return { message, type, code };
 }
 
 function buildImagesApiResponseFromResponsesText(
@@ -8520,18 +8588,34 @@ export function createModelGatewayService(
         res.setHeader("Cache-Control", "no-cache");
         res.setHeader("Connection", "keep-alive");
         setSelectedProviderHeaders();
+        const streamUpstreamError: { current: { message: string; type: string; code: string } | null } = { current: null };
         try {
-          await pipeReadableStreamToServerResponse(upstream.body, res);
-          updateSelectedProviderHealth(true, latencyMs, null);
+          await pipeReadableStreamToServerResponse(upstream.body, res, {
+            onJsonPayload: (payload) => {
+              if (streamUpstreamError.current) return;
+              const error = responsesStreamErrorFromPayload(payload);
+              if (!error) return;
+              streamUpstreamError.current = error;
+              updateCodexAccountAfterUpstreamFailure(
+                provider,
+                selectedAccountForRequest,
+                upstream.status,
+                error,
+                upstream.headers,
+              );
+            },
+          });
+          const observedStreamError = streamUpstreamError.current;
+          updateSelectedProviderHealth(!observedStreamError, latencyMs, observedStreamError?.message || null);
           appendRequestLog(requestLogEntry({
             kind: "gateway-request",
             startedAt,
             route: decision,
             model: requestModelForLog,
             statusCode: upstream.status,
-            outcome: "success",
-            errorCode: null,
-            errorMessage: null,
+            outcome: observedStreamError ? "failure" : "success",
+            errorCode: observedStreamError?.code || null,
+            errorMessage: observedStreamError?.message || null,
           }));
         } catch (error) {
           const message = error instanceof Error ? error.message : "Codex account Responses stream passthrough failed.";

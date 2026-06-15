@@ -14,7 +14,7 @@
 - GPT/ChatGPT account 与 Codex account 进入 Gateway Phase D2：Provider Center 页面直接登录官方账户并自动创建 account-backed provider；账户池 sticky、per-account concurrency、runtime cursor/affinity 持久化、upstream quota/cooldown、per-account proxy/direct 和 Codex account `gpt-image-2` Images generation live smoke 已闭环，后续补更多账户型 provider，不恢复旧 CPA / Codex Stack。
 - Codex account-backed provider 已支持页面登录、请求前自动 refresh、手动 refresh、账户启用/停用和重新登录入口；客户端仍只使用统一 Gateway endpoint + Gateway key。
 - Codex account-backed provider 已扩展受控本地模型 catalog：`gpt-5.5`、`gpt-5.4`、`gpt-5.4-mini`、`gpt-5.3-codex`、`gpt-image-2`、transcribe/tts/audio/realtime 类模型进入 `/v1/models`，并携带 text/image/audio 能力标记；旧生成的 `gpt-5.5-mini` 和 ChatGPT Codex account 不支持的 `gpt-5` 不再作为账户模型暴露；Codex account REST audio 目前只做结构化 unsupported，不透传到 ChatGPT backend HTML 错误。
-- Codex account upstream 返回 HTTP 401/403 会把账户标为 `needs-login`；HTTP 429 或明确 quota/rate/capacity/overloaded 错误会把账户标为 `cooldown` 并尊重 `Retry-After`，后续路由会跳过该账户直到冷却结束；Provider Center 可手动清除 cooldown 并配置账号级 proxy/direct。
+- Codex account upstream 返回 HTTP 401/403 会把账户标为 `needs-login`；HTTP 429 或明确 quota/rate/capacity/overloaded 错误会把账户标为 `cooldown` 并尊重 `Retry-After`，后续路由会跳过该账户直到冷却结束；started streaming passthrough 内的 `response.failed/error` 也会旁路解析并回写账户状态；Provider Center 可手动清除 cooldown 并配置账号级 proxy/direct。
 - Provider Center 不再按模型名自动标记 vision；图片能力只来自用户配置、上游显式能力元数据或图片 smoke 通过后用户确认写回。
 - App Connections 覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收；Model Gateway 支持 `tab/app` deep-link 直达并高亮指定 CLI App Connection。
 - BigModel/GLM 本地模型目录已加入 `glm-5.2`，按 1M context / 128K output 预算；Gateway 内置推断同时识别 `glm-5.2` 与官方 1M 后缀别名 `glm-5.2[1m]`。
@@ -53,7 +53,7 @@
   - OpenAI-compatible Images edits 保持 multipart/binary 原样 passthrough；Codex account image edits 不伪装支持，返回明确 `model_gateway_codex_account_image_edits_unsupported`。
   - OpenAI-compatible 音频端点保持 multipart/binary 原样 passthrough，不再把音频请求体当 UTF-8 字符串重写；Codex account 音频目录已暴露，但 REST `/v1/audio/*` 不再透传到 Codex backend 返回 HTML 403，统一返回结构化 `model_gateway_codex_account_audio_unsupported`。
   - 本轮验证通过：`npm run typecheck:api`、`npm run build:api`、`npm run typecheck:web`、`npm run build:web`。
-  - Account pool 调度完成：支持 session affinity、round-robin/fill-first、per-account concurrency、busy 429、upstream quota/rate/capacity cooldown、cooldown 手动清除、per-account proxy/direct、runtime log accountId/accountHash，并将 Codex account cursor/affinity 写入 runtime，daemon 重启后同 session 保持账号，新 session 延续轮转。
+  - Account pool 调度完成：支持 session affinity、round-robin/fill-first、per-account concurrency、busy 429、HTTP 非 2xx 与 started streaming `response.failed/error` 的 upstream quota/rate/capacity cooldown、cooldown 手动清除、per-account proxy/direct、runtime log accountId/accountHash，并将 Codex account cursor/affinity 写入 runtime，daemon 重启后同 session 保持账号，新 session 延续轮转。
   - Active route smoke 改为客户端真实形态：Claude Code / OpenCode 会带最小 tools schema，响应必须按客户端协议解析出 `GATEWAY_OK`；固定 provider 的 endpoint fallback 优先同 provider，避免 `glm` Claude 路由直接跳到外部 provider。
   - Codex account provider smoke 复用账号请求归一化、账号 header 和代理网络，不再绕开正式 Gateway Codex account 链路导致 false negative。
   - OpenCode Gateway runner 不再给 Gateway 模型声明 `reasoning:true`、注入 `--variant` 或传 `--thinking`；App Connections 生成的 OpenCode 模型也显式 `reasoning:false`，避免用户级 `~/.config/opencode/opencode.json` 继续让 OpenCode 发 `reasoning_effort`。
@@ -309,4 +309,4 @@
 
 1. 继续补账户池高级策略：sticky failover 可解释日志、账户池策略调参和 cooldown 重试结果展示。
 2. 继续参考 Sub2API / CLIProxyAPI 补 usage 归集、模型目录刷新、媒体模型状态和 Codex account image edits 可行性验证。
-3. 评估 Codex account streaming passthrough 中 started `response.failed` 的账户级 cooldown 旁路解析，避免只在 HTTP 非 2xx 上回写账户状态。
+3. 继续补 Gateway 管理页对 account pool 决策、sticky 命中和 cooldown 触发来源的可视化。
