@@ -550,6 +550,7 @@ test("model gateway starts Codex account login and creates an account-backed pro
       assert.equal(image.body.created, 1710000001);
       assert.equal(image.body.data[0].b64_json, "BASE64_IMAGE");
       assert.equal(image.body.data[0].revised_prompt, "red square");
+      assert.deepEqual(image.body.usage, { input_tokens: 7, output_tokens: 11, total_tokens: 18 });
 
       const editBoundary = "----studio-codex-image-edit-boundary";
       const editBody = Buffer.from([
@@ -617,6 +618,24 @@ test("model gateway starts Codex account login and creates an account-backed pro
       });
       assert.equal(speech.status, 501);
       assert.equal(speech.body.error.code, "model_gateway_codex_account_audio_unsupported");
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      const imageEntry = runtime.body.runtime.requestLog.find((entry) => entry.routeId === "openai_images_generations");
+      assert.ok(imageEntry);
+      assert.deepEqual(imageEntry.usage, {
+        inputTokens: 7,
+        outputTokens: 11,
+        totalTokens: 18,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        imageGenerationRequests: 1,
+        imagesGenerated: 1,
+        imageEditRequests: 0,
+        audioInputRequests: 0,
+        audioOutputRequests: 0,
+      });
+      assert.equal(runtime.body.usageSummary.usage.imageGenerationRequests, 1);
+      assert.equal(runtime.body.usageSummary.usage.imagesGenerated, 1);
     });
   } finally {
     globalThis.fetch = originalFetch;
@@ -756,6 +775,10 @@ test("model gateway forwards OpenAI image edit multipart requests without rewrit
       assert.equal(runtime.body.runtime.requestLog[0].routeId, "openai_images_edits");
       assert.equal(runtime.body.runtime.requestLog[0].model, "gpt-image-2");
       assert.equal(runtime.body.runtime.requestLog[0].upstreamUrl, "https://image.example.test/v1/images/edits");
+      assert.equal(runtime.body.runtime.requestLog[0].usage.imageEditRequests, 1);
+      assert.equal(runtime.body.runtime.requestLog[0].usage.imagesGenerated, 1);
+      assert.equal(runtime.body.usageSummary.usage.imageEditRequests, 1);
+      assert.equal(runtime.body.usageSummary.usage.imagesGenerated, 1);
     });
   } finally {
     globalThis.fetch = originalFetch;
@@ -857,6 +880,8 @@ test("model gateway forwards OpenAI audio multipart requests without rewriting b
       assert.equal(runtime.body.runtime.requestLog[0].routeId, "openai_audio_transcriptions");
       assert.equal(runtime.body.runtime.requestLog[0].model, "gpt-4o-transcribe");
       assert.equal(runtime.body.runtime.requestLog[0].upstreamUrl, "https://audio.example.test/v1/audio/transcriptions");
+      assert.equal(runtime.body.runtime.requestLog[0].usage.audioInputRequests, 1);
+      assert.equal(runtime.body.usageSummary.usage.audioInputRequests, 1);
     });
   } finally {
     globalThis.fetch = originalFetch;
@@ -5040,6 +5065,11 @@ test("model gateway daemon writes runtime metadata and serves cli routes", async
       totalTokens: 5,
       cacheReadTokens: 1,
       cacheCreationTokens: 0,
+      imageGenerationRequests: 0,
+      imagesGenerated: 0,
+      imageEditRequests: 0,
+      audioInputRequests: 0,
+      audioOutputRequests: 0,
     });
     assert.equal(runtime.body.usageSummary.requestCount, 1);
     assert.equal(runtime.body.usageSummary.meteredRequestCount, 1);
@@ -6771,6 +6801,11 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
         totalTokens: 14,
         cacheReadTokens: 0,
         cacheCreationTokens: 0,
+        imageGenerationRequests: 0,
+        imagesGenerated: 0,
+        imageEditRequests: 0,
+        audioInputRequests: 0,
+        audioOutputRequests: 0,
       });
       assert.ok(!JSON.stringify(runtime.body).includes("sk-codex-adapter-secret"));
     });
@@ -7145,6 +7180,11 @@ test("model gateway adapts streaming chat sse to codex responses sse", async () 
         totalTokens: 9,
         cacheReadTokens: 0,
         cacheCreationTokens: 0,
+        imageGenerationRequests: 0,
+        imagesGenerated: 0,
+        imageEditRequests: 0,
+        audioInputRequests: 0,
+        audioOutputRequests: 0,
       });
       assert.ok(!JSON.stringify(runtime.body).includes("sk-codex-stream-secret"));
     });

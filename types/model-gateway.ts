@@ -369,6 +369,11 @@ export interface ModelGatewayRuntimeUsage {
   totalTokens: number;
   cacheReadTokens: number;
   cacheCreationTokens: number;
+  imageGenerationRequests: number;
+  imagesGenerated: number;
+  imageEditRequests: number;
+  audioInputRequests: number;
+  audioOutputRequests: number;
 }
 
 export interface ModelGatewayRuntimeUsageSummaryBucket {

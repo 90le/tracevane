@@ -398,6 +398,11 @@ function normalizeRuntimeUsage(value: unknown): ModelGatewayRuntimeUsage | null 
     outputDetails.cache_creation_tokens,
     completionDetails.cache_creation_tokens,
   );
+  const imageGenerationRequests = firstNumber(value.image_generation_requests, value.imageGenerationRequests);
+  const imagesGenerated = firstNumber(value.images_generated, value.imagesGenerated, value.image_count, value.imageCount);
+  const imageEditRequests = firstNumber(value.image_edit_requests, value.imageEditRequests);
+  const audioInputRequests = firstNumber(value.audio_input_requests, value.audioInputRequests);
+  const audioOutputRequests = firstNumber(value.audio_output_requests, value.audioOutputRequests);
   const explicitTotalTokens = firstNumber(value.total_tokens, value.totalTokens);
   const totalTokens = explicitTotalTokens ?? ((inputTokens ?? 0) + (outputTokens ?? 0));
   const hasUsageSignal = [
@@ -406,6 +411,11 @@ function normalizeRuntimeUsage(value: unknown): ModelGatewayRuntimeUsage | null 
     explicitTotalTokens,
     cacheReadTokens,
     cacheCreationTokens,
+    imageGenerationRequests,
+    imagesGenerated,
+    imageEditRequests,
+    audioInputRequests,
+    audioOutputRequests,
   ].some((item) => item !== null);
   if (!hasUsageSignal) return null;
   return {
@@ -414,6 +424,11 @@ function normalizeRuntimeUsage(value: unknown): ModelGatewayRuntimeUsage | null 
     totalTokens,
     cacheReadTokens: cacheReadTokens ?? 0,
     cacheCreationTokens: cacheCreationTokens ?? 0,
+    imageGenerationRequests: imageGenerationRequests ?? 0,
+    imagesGenerated: imagesGenerated ?? 0,
+    imageEditRequests: imageEditRequests ?? 0,
+    audioInputRequests: audioInputRequests ?? 0,
+    audioOutputRequests: audioOutputRequests ?? 0,
   };
 }
 
@@ -430,6 +445,46 @@ function extractRuntimeUsage(value: unknown): ModelGatewayRuntimeUsage | null {
   return normalizeRuntimeUsage(raw.usage) || normalizeRuntimeUsage(raw);
 }
 
+function parseUsagePayload(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function countImagesApiData(value: unknown): number {
+  const raw = parseUsagePayload(value);
+  if (!isRecord(raw) || !Array.isArray(raw.data)) return 0;
+  return raw.data.filter((item) =>
+    isRecord(item)
+    && (normalizeString(item.b64_json) || normalizeString(item.url))
+  ).length;
+}
+
+function runtimeUsageForRoute(routeId: ModelGatewayRouteId | null, value: unknown): ModelGatewayRuntimeUsage | null {
+  const extracted = extractRuntimeUsage(value);
+  const usage = extracted ? { ...extracted } : zeroRuntimeUsage();
+  let hasMediaSignal = false;
+  if (routeId === "openai_images_generations") {
+    usage.imageGenerationRequests += 1;
+    usage.imagesGenerated += countImagesApiData(value);
+    hasMediaSignal = true;
+  } else if (routeId === "openai_images_edits") {
+    usage.imageEditRequests += 1;
+    usage.imagesGenerated += countImagesApiData(value);
+    hasMediaSignal = true;
+  } else if (routeId === "openai_audio_transcriptions" || routeId === "openai_audio_translations") {
+    usage.audioInputRequests += 1;
+    hasMediaSignal = true;
+  } else if (routeId === "openai_audio_speech") {
+    usage.audioOutputRequests += 1;
+    hasMediaSignal = true;
+  }
+  return extracted || hasMediaSignal ? usage : null;
+}
+
 function zeroRuntimeUsage(): ModelGatewayRuntimeUsage {
   return {
     inputTokens: 0,
@@ -437,6 +492,11 @@ function zeroRuntimeUsage(): ModelGatewayRuntimeUsage {
     totalTokens: 0,
     cacheReadTokens: 0,
     cacheCreationTokens: 0,
+    imageGenerationRequests: 0,
+    imagesGenerated: 0,
+    imageEditRequests: 0,
+    audioInputRequests: 0,
+    audioOutputRequests: 0,
   };
 }
 
@@ -447,6 +507,11 @@ function addRuntimeUsage(target: ModelGatewayRuntimeUsage, value: ModelGatewayRu
   target.totalTokens += value.totalTokens;
   target.cacheReadTokens += value.cacheReadTokens;
   target.cacheCreationTokens += value.cacheCreationTokens;
+  target.imageGenerationRequests += value.imageGenerationRequests;
+  target.imagesGenerated += value.imagesGenerated;
+  target.imageEditRequests += value.imageEditRequests;
+  target.audioInputRequests += value.audioInputRequests;
+  target.audioOutputRequests += value.audioOutputRequests;
 }
 
 function createRuntimeUsageBucket(
@@ -8111,7 +8176,7 @@ export function createModelGatewayService(
           ? "model_gateway_provider_vision_smoke_failed"
           : "model_gateway_provider_test_failed",
         errorMessage,
-        usage: success ? extractRuntimeUsage(responseText) : null,
+        usage: success ? runtimeUsageForRoute(routeId, responseText) : null,
       }));
       return {
         ok: success,
@@ -8951,7 +9016,7 @@ export function createModelGatewayService(
             outcome: "success",
             errorCode: null,
             errorMessage: null,
-            usage: extractRuntimeUsage(streamingResult),
+            usage: runtimeUsageForRoute(decision.routeId, streamingResult),
           }));
         } catch (error) {
           const message = error instanceof Error ? error.message : streamingAdapter.adapterFailedMessage;
@@ -9156,7 +9221,7 @@ export function createModelGatewayService(
           outcome: "success",
           errorCode: null,
           errorMessage: null,
-          usage: extractRuntimeUsage(adaptedResponse),
+          usage: runtimeUsageForRoute(decision.routeId, adaptedResponse),
         }));
         setSelectedProviderHeaders();
         sendJson(res, upstream.status, adaptedResponse);
@@ -9213,7 +9278,7 @@ export function createModelGatewayService(
           outcome: "success",
           errorCode: null,
           errorMessage: null,
-          usage: extractRuntimeUsage(adaptedResponse),
+          usage: runtimeUsageForRoute(decision.routeId, adaptedResponse),
         }));
         setSelectedProviderHeaders();
         sendJson(res, upstream.status, adaptedResponse);
@@ -9264,7 +9329,7 @@ export function createModelGatewayService(
           outcome: "success",
           errorCode: null,
           errorMessage: null,
-          usage: extractRuntimeUsage(adaptedResponse),
+          usage: runtimeUsageForRoute(decision.routeId, adaptedResponse),
         }));
         setSelectedProviderHeaders();
         sendJson(res, upstream.status, adaptedResponse);
@@ -9320,7 +9385,7 @@ export function createModelGatewayService(
           outcome: "success",
           errorCode: null,
           errorMessage: null,
-          usage: extractRuntimeUsage(adaptedResponse),
+          usage: runtimeUsageForRoute(decision.routeId, adaptedResponse),
         }));
         setSelectedProviderHeaders();
         sendJson(res, upstream.status, adaptedResponse);
@@ -9382,7 +9447,7 @@ export function createModelGatewayService(
           outcome: "success",
           errorCode: null,
           errorMessage: null,
-          usage: extractRuntimeUsage(adaptedResponse),
+          usage: runtimeUsageForRoute(decision.routeId, adaptedResponse),
         }));
         setSelectedProviderHeaders();
         sendJson(res, upstream.status, adaptedResponse);
@@ -9433,7 +9498,7 @@ export function createModelGatewayService(
           outcome: "success",
           errorCode: null,
           errorMessage: null,
-          usage: extractRuntimeUsage(adaptedResponse),
+          usage: runtimeUsageForRoute(decision.routeId, adaptedResponse),
         }));
         setSelectedProviderHeaders();
         sendJson(res, upstream.status, adaptedResponse);
@@ -9450,7 +9515,9 @@ export function createModelGatewayService(
         outcome: requestOutcomeFromStatus(upstream.status, null, healthSuccess),
         errorCode: healthSuccess ? null : "model_gateway_upstream_status",
         errorMessage,
-        usage: healthSuccess ? extractRuntimeUsage(responseText) : null,
+        usage: upstream.status >= 200 && upstream.status < 300
+          ? runtimeUsageForRoute(decision.routeId, responseText)
+          : null,
       }));
       setCorsHeaders(res);
       res.statusCode = upstream.status;

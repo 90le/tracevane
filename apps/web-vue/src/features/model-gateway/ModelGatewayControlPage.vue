@@ -50,6 +50,10 @@
               <span>{{ text('请求 / Tokens', 'Requests / tokens') }}</span>
               <strong>{{ runtimeUsageLabel }}</strong>
             </div>
+            <div v-if="runtimeMediaUsageLabel">
+              <span>{{ text('媒体用量', 'Media usage') }}</span>
+              <strong>{{ runtimeMediaUsageLabel }}</strong>
+            </div>
           </div>
 
           <div class="mgw-runtime-actions">
@@ -1626,6 +1630,25 @@ const runtimeUsageLabel = computed(() => {
   const summary = runtimeUsageSummary.value;
   if (!summary) return `${runtimeEntries.value.length} / 0`;
   return `${formatCompactNumber(summary.requestCount)} / ${formatCompactNumber(summary.usage.totalTokens)}`;
+});
+const runtimeMediaUsageLabel = computed(() => {
+  const usage = runtimeUsageSummary.value?.usage;
+  if (!usage) return '';
+  const parts = [
+    usage.imageGenerationRequests || usage.imagesGenerated
+      ? text(`生图 ${formatCompactNumber(usage.imagesGenerated)} / ${formatCompactNumber(usage.imageGenerationRequests)}`, `image gen ${formatCompactNumber(usage.imagesGenerated)} / ${formatCompactNumber(usage.imageGenerationRequests)}`)
+      : '',
+    usage.imageEditRequests
+      ? text(`修图 ${formatCompactNumber(usage.imageEditRequests)}`, `edits ${formatCompactNumber(usage.imageEditRequests)}`)
+      : '',
+    usage.audioInputRequests
+      ? text(`音频输入 ${formatCompactNumber(usage.audioInputRequests)}`, `audio in ${formatCompactNumber(usage.audioInputRequests)}`)
+      : '',
+    usage.audioOutputRequests
+      ? text(`音频输出 ${formatCompactNumber(usage.audioOutputRequests)}`, `audio out ${formatCompactNumber(usage.audioOutputRequests)}`)
+      : '',
+  ].filter(Boolean);
+  return parts.join(' · ');
 });
 
 function accountRoutingSummary(routing: ModelGatewayAccountRoutingDiagnostics): string {
