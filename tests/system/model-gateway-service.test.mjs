@@ -5086,8 +5086,19 @@ test("model gateway daemon writes runtime metadata and serves cli routes", async
 
     const statusAfterRequest = await requestJson(`${daemon.getBaseUrl()}/api/model-gateway/status`);
     assert.equal(statusAfterRequest.status, 200);
+    assert.equal(statusAfterRequest.body.registry.paths.usageLedger, paths.usageLedger);
     assert.equal(statusAfterRequest.body.runtime.usageSummary.requestCount, 1);
     assert.equal(statusAfterRequest.body.runtime.usageSummary.usage.totalTokens, 5);
+
+    const usageLedger = await requestJson(`${daemon.getBaseUrl()}/api/model-gateway/usage`);
+    assert.equal(usageLedger.status, 200);
+    assert.equal(usageLedger.body.entryCount, 1);
+    assert.equal(usageLedger.body.entries[0].routeId, "openai_chat_completions");
+    assert.equal(usageLedger.body.usageSummary.requestCount, 1);
+    assert.equal(usageLedger.body.usageSummary.usage.totalTokens, 5);
+    assert.equal(usageLedger.body.paths.ledger, paths.usageLedger);
+    assert.equal(fs.existsSync(paths.usageLedger), true);
+    assert.ok(!JSON.stringify(usageLedger.body).includes("sk-daemon-secret-123456"));
   } finally {
     globalThis.fetch = originalFetch;
     await daemon.stop();

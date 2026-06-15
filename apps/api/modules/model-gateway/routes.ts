@@ -63,6 +63,14 @@ export function registerModelGatewayRoutes(router: StudioRouter): void {
     }
   });
 
+  router.get("/api/model-gateway/usage", (_req, res, routeCtx) => {
+    try {
+      sendJson(res, 200, routeCtx.services.modelGateway.getUsageLedger());
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
   router.get("/api/model-gateway/client-auth", (_req, res, routeCtx) => {
     try {
       sendJson(res, 200, routeCtx.services.modelGateway.getClientAuth());

@@ -964,6 +964,7 @@ export interface ModelGatewayStatusResponse {
       registry: string;
       secrets: string;
       runtime: string;
+      usageLedger: string;
     };
   };
   runtime: {
@@ -986,6 +987,18 @@ export interface ModelGatewayRuntimeResponse {
   paths: {
     runtime: string;
     logs: string;
+  };
+}
+
+export interface ModelGatewayUsageLedgerResponse {
+  ok: true;
+  entries: ModelGatewayRuntimeRequestLogEntry[];
+  usageSummary: ModelGatewayRuntimeUsageSummary;
+  entryCount: number;
+  readLimit: number;
+  truncated: boolean;
+  paths: {
+    ledger: string;
   };
 }
 

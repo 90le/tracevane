@@ -96,6 +96,7 @@ import {
   type ModelGatewayRuntimeUsage,
   type ModelGatewayRuntimeUsageSummary,
   type ModelGatewayRuntimeUsageSummaryBucket,
+  type ModelGatewayUsageLedgerResponse,
   type ModelGatewayRouteDecision,
   type ModelGatewayRouteId,
   type ModelGatewayRouteMode,
@@ -154,6 +155,8 @@ const DEFAULT_STREAMING_FIRST_BYTE_TIMEOUT_MS = 30_000;
 const DEFAULT_STREAMING_IDLE_TIMEOUT_MS = 120_000;
 const MODEL_GATEWAY_CIRCUIT_OPEN_RETRY_MS = 60_000;
 const MAX_RUNTIME_REQUEST_LOG_ENTRIES = 200;
+const MAX_USAGE_LEDGER_READ_ENTRIES = 5_000;
+const MAX_USAGE_LEDGER_READ_BYTES = 4 * 1024 * 1024;
 const REQUEST_LOG_PREVIEW_CHARS = 1_000;
 const DEFAULT_UNKNOWN_MODEL_CONTEXT_WINDOW = 64_000;
 const DEFAULT_UNKNOWN_MODEL_MAX_OUTPUT_TOKENS = 8_192;
@@ -268,6 +271,7 @@ export interface ModelGatewayPaths {
   registry: string;
   secrets: string;
   runtime: string;
+  usageLedger: string;
   daemonRuntime: string;
   daemonPid: string;
   portLock: string;
@@ -307,6 +311,7 @@ export function resolveModelGatewayPaths(config: StudioServerConfig): ModelGatew
     registry: path.join(root, "providers.json"),
     secrets: path.join(root, "secrets.json"),
     runtime: path.join(root, "runtime.json"),
+    usageLedger: path.join(root, "usage-ledger.jsonl"),
     daemonRuntime: path.join(root, "daemon-runtime.json"),
     daemonPid: path.join(root, "daemon.pid"),
     portLock: path.join(root, "gateway-port.lock"),
@@ -4634,6 +4639,7 @@ export interface ModelGatewayService {
   rollbackAppConnection(req: http.IncomingMessage | undefined, payload?: ModelGatewayRollbackAppConnectionRequest): ModelGatewayRollbackAppConnectionResponse;
   listGatewayModels(req?: http.IncomingMessage): ModelGatewayModelListResponse;
   getRuntime(): ModelGatewayRuntimeResponse;
+  getUsageLedger(): ModelGatewayUsageLedgerResponse;
   getDaemonService(): ModelGatewayDaemonServiceResponse;
   manageDaemonService(req: http.IncomingMessage | undefined, payload?: ModelGatewayDaemonServiceRequest): Promise<ModelGatewayDaemonServiceResponse>;
   detectProvider(req: http.IncomingMessage | undefined, payload?: ModelGatewayProviderDetectRequest): Promise<ModelGatewayProviderDetectResponse>;
@@ -4836,10 +4842,67 @@ export function createModelGatewayService(
     });
   }
 
+  function appendUsageLedgerEntry(entry: ModelGatewayRuntimeRequestLogEntry): void {
+    const normalized = normalizeRuntimeLogEntry(entry);
+    if (!normalized) return;
+    fs.mkdirSync(path.dirname(paths.usageLedger), { recursive: true });
+    fs.appendFileSync(paths.usageLedger, `${JSON.stringify(normalized)}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+      flag: "a",
+    });
+    try {
+      fs.chmodSync(paths.usageLedger, 0o600);
+    } catch {
+      // Best effort for filesystems that do not support chmod.
+    }
+  }
+
+  function readUsageLedgerEntries(limit = MAX_USAGE_LEDGER_READ_ENTRIES): {
+    entries: ModelGatewayRuntimeRequestLogEntry[];
+    truncated: boolean;
+  } {
+    if (!fs.existsSync(paths.usageLedger)) return { entries: [], truncated: false };
+    const stat = fs.statSync(paths.usageLedger);
+    if (!stat.isFile() || stat.size <= 0) return { entries: [], truncated: false };
+    const bytesToRead = Math.min(stat.size, MAX_USAGE_LEDGER_READ_BYTES);
+    const fd = fs.openSync(paths.usageLedger, "r");
+    try {
+      const buffer = Buffer.alloc(bytesToRead);
+      fs.readSync(fd, buffer, 0, bytesToRead, stat.size - bytesToRead);
+      let text = buffer.toString("utf8");
+      if (bytesToRead < stat.size) {
+        const firstNewline = text.indexOf("\n");
+        text = firstNewline >= 0 ? text.slice(firstNewline + 1) : "";
+      }
+      const lines = text
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean);
+      const selectedLines = lines.slice(-Math.max(1, Math.floor(limit)));
+      const entries = selectedLines.flatMap((line) => {
+        try {
+          const parsed = JSON.parse(line) as unknown;
+          const normalized = normalizeRuntimeLogEntry(parsed);
+          return normalized ? [normalized] : [];
+        } catch {
+          return [];
+        }
+      });
+      return {
+        entries,
+        truncated: bytesToRead < stat.size || selectedLines.length < lines.length,
+      };
+    } finally {
+      fs.closeSync(fd);
+    }
+  }
+
   function appendRequestLog(entry: ModelGatewayRuntimeRequestLogEntry): void {
     const runtime = readRuntime();
     runtime.requestLog.push(entry);
     writeRuntime(runtime);
+    appendUsageLedgerEntry(entry);
   }
 
   function updateProviderHealth(
@@ -6133,6 +6196,7 @@ export function createModelGatewayService(
           registry: paths.registry,
           secrets: paths.secrets,
           runtime: paths.runtime,
+          usageLedger: paths.usageLedger,
         },
       },
       runtime: {
@@ -6158,6 +6222,21 @@ export function createModelGatewayService(
       paths: {
         runtime: paths.runtime,
         logs: paths.logs,
+      },
+    };
+  }
+
+  function getUsageLedger(): ModelGatewayUsageLedgerResponse {
+    const { entries, truncated } = readUsageLedgerEntries();
+    return {
+      ok: true,
+      entries,
+      usageSummary: summarizeRuntimeUsage(entries),
+      entryCount: entries.length,
+      readLimit: MAX_USAGE_LEDGER_READ_ENTRIES,
+      truncated,
+      paths: {
+        ledger: paths.usageLedger,
       },
     };
   }
@@ -9565,6 +9644,7 @@ export function createModelGatewayService(
     rollbackAppConnection,
     listGatewayModels,
     getRuntime,
+    getUsageLedger,
     getDaemonService,
     manageDaemonService,
     detectProvider,
