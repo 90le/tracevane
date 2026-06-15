@@ -647,6 +647,14 @@
   min-width: 0;
 }
 
+.mgw-account-routing-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+  min-width: 0;
+}
+
 .mgw-account-row {
   display: grid;
   grid-template-columns: minmax(160px, 1fr) auto;
@@ -1556,6 +1564,7 @@
   }
 
   .mgw-account-row,
+  .mgw-account-routing-grid,
   .mgw-account-row__meta,
   .mgw-account-row__proxy {
     grid-template-columns: 1fr;

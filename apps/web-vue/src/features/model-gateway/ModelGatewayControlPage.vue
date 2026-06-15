@@ -564,6 +564,27 @@
                     <h4>{{ text('账户状态', 'Accounts') }}</h4>
                     <span>{{ text('本地账户型 provider 的启停与 token 刷新。', 'Enable, disable, and refresh local account-backed providers.') }}</span>
                   </div>
+                  <div class="mgw-account-routing-grid">
+                    <label class="form-field">
+                      <span class="form-label">{{ text('账号池策略', 'Account strategy') }}</span>
+                      <select v-model="draft.accountRoutingStrategy" class="form-input">
+                        <option v-for="strategy in accountRoutingStrategyOptions" :key="strategy.id" :value="strategy.id">
+                          {{ text(strategy.zh, strategy.en) }}
+                        </option>
+                      </select>
+                    </label>
+                    <label class="form-field mgw-switch-field">
+                      <span>
+                        <span class="form-label">Sticky session</span>
+                        <strong>{{ draft.accountSessionAffinity ? text('开启', 'On') : text('关闭', 'Off') }}</strong>
+                      </span>
+                      <input v-model="draft.accountSessionAffinity" type="checkbox" />
+                    </label>
+                    <label class="form-field">
+                      <span class="form-label">{{ text('单账号并发', 'Per-account concurrency') }}</span>
+                      <input v-model.trim="draft.accountMaxConcurrentPerAccount" class="form-input" inputmode="numeric" placeholder="auto" />
+                    </label>
+                  </div>
                   <div class="mgw-account-table">
                     <div
                       v-for="account in selectedProviderAccounts"
@@ -1182,10 +1203,11 @@
 import { computed, onActivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { Plus, Trash2, X } from '@lucide/vue';
-import { MODEL_GATEWAY_APP_CONNECTION_IDS } from '../../../../../types/model-gateway';
+import { MODEL_GATEWAY_ACCOUNT_ROUTING_STRATEGIES, MODEL_GATEWAY_APP_CONNECTION_IDS } from '../../../../../types/model-gateway';
 import type {
   ModelGatewayAccountEntry,
   ModelGatewayAccountRoutingDiagnostics,
+  ModelGatewayAccountRoutingStrategy,
   ModelGatewayApiFormat,
   ModelGatewayActiveRouteStatus,
   ModelGatewayAppConnection,
@@ -1266,6 +1288,9 @@ type ProviderDraft = {
   noProxy: string;
   appScopes: Record<ModelGatewayAppScope, boolean>;
   endpointRows: EndpointProfileRow[];
+  accountRoutingStrategy: ModelGatewayAccountRoutingStrategy;
+  accountSessionAffinity: boolean;
+  accountMaxConcurrentPerAccount: string;
 };
 
 type ModelCapabilityId = 'text' | 'vision' | 'imageGeneration' | 'audioInput' | 'audioOutput' | 'tools' | 'reasoning' | 'responses' | 'streaming';
@@ -1414,6 +1439,11 @@ const runtimeLogFilterOptions: Array<{ id: RuntimeLogFilterId; zh: string; en: s
   { id: 'account-routing', zh: '账号池', en: 'Account pool' },
   { id: 'failure', zh: '失败', en: 'Failures' },
   { id: 'cooldown-retry', zh: '冷却重试', en: 'Cooldown retry' },
+];
+
+const accountRoutingStrategyOptions: Array<{ id: ModelGatewayAccountRoutingStrategy; zh: string; en: string }> = [
+  { id: 'round-robin', zh: '轮转', en: 'Round robin' },
+  { id: 'fill-first', zh: '填满优先', en: 'Fill first' },
 ];
 
 const modelCapabilityOptions: Array<{ id: ModelCapabilityId; zh: string; en: string }> = [
@@ -2376,6 +2406,9 @@ function createEmptyDraft(): ProviderDraft {
     noProxy: '',
     appScopes: createEmptyScopes(true),
     endpointRows: [],
+    accountRoutingStrategy: 'round-robin',
+    accountSessionAffinity: true,
+    accountMaxConcurrentPerAccount: '',
   };
 }
 
@@ -2446,6 +2479,11 @@ function editProvider(provider: ModelGatewayProviderView): void {
       appScopeOptions.map((scope) => [scope.id, provider.appScopes.includes(scope.id)]),
     ) as Record<ModelGatewayAppScope, boolean>,
     endpointRows: provider.endpointProfiles.map(createEndpointProfileRow),
+    accountRoutingStrategy: provider.accountProvider?.routing.strategy || 'round-robin',
+    accountSessionAffinity: provider.accountProvider?.routing.sessionAffinity ?? true,
+    accountMaxConcurrentPerAccount: provider.accountProvider?.routing.maxConcurrentPerAccount
+      ? String(provider.accountProvider.routing.maxConcurrentPerAccount)
+      : '',
   });
   smokeProviderId.value = provider.id;
   smokeModel.value = draft.defaultModel;
@@ -3566,6 +3604,8 @@ async function saveProvider(): Promise<void> {
   busy.value = true;
   notice.value = null;
   const models = normalizedDraftModels();
+  const selectedAccountProvider = selectedProviderView.value?.accountProvider || null;
+  const accountMaxConcurrentPerAccount = parsePositiveDraftInteger(draft.accountMaxConcurrentPerAccount);
   const provider: ModelGatewayProviderInput = {
     id: draft.id.trim(),
     name: draft.name.trim(),
@@ -3591,6 +3631,21 @@ async function saveProvider(): Promise<void> {
       proxyUrl: draft.proxyUrl.trim() || null,
       noProxy: parseNoProxy(draft.noProxy),
     },
+    ...(selectedAccountProvider
+      ? {
+        sourceType: 'account-backed',
+        accountProvider: {
+          kind: selectedAccountProvider.kind,
+          routing: {
+            strategy: MODEL_GATEWAY_ACCOUNT_ROUTING_STRATEGIES.includes(draft.accountRoutingStrategy)
+              ? draft.accountRoutingStrategy
+              : 'round-robin',
+            sessionAffinity: draft.accountSessionAffinity,
+            maxConcurrentPerAccount: accountMaxConcurrentPerAccount,
+          },
+        },
+      }
+      : {}),
     metadata: {
       importedFrom: draft.templateId || undefined,
     },
