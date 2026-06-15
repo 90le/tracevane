@@ -381,6 +381,8 @@ export interface ModelGatewayRuntimeRequestLogEntry {
   appScope: ModelGatewayAppScope | null;
   providerId: string | null;
   providerName: string | null;
+  accountId?: string | null;
+  accountHash?: string | null;
   endpointProfileId?: string | null;
   endpointProfileName?: string | null;
   model: string | null;
@@ -957,6 +959,7 @@ export interface ModelGatewayRouteDecision {
   mode: ModelGatewayRouteMode;
   provider: Pick<ModelGatewayProvider, "id" | "name" | "apiFormat" | "authStrategy" | "baseUrl"> | null;
   endpointProfile: Pick<ModelGatewayProviderEndpointProfile, "id" | "name" | "apiFormat" | "authStrategy" | "baseUrl"> | null;
+  account?: Pick<ModelGatewayAccountEntry, "id" | "accountHash"> | null;
   model: {
     requested: string | null;
     resolved: string | null;

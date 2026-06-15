@@ -820,6 +820,231 @@ test("model gateway forwards OpenAI audio multipart requests without rewriting b
   assert.deepEqual(upstreamCalls[0].body, multipartBody);
 });
 
+test("model gateway account pool preserves session affinity and enforces per-account concurrency", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const authRefA = "provider:codex-pool:account:a:codex-token";
+  const authRefB = "provider:codex-pool:account:b:codex-token";
+  const idTokenA = fakeJwt({
+    email: "pool-a@example.com",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct_pool_a",
+      chatgpt_plan_type: "plus",
+    },
+  });
+  const idTokenB = fakeJwt({
+    email: "pool-b@example.com",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct_pool_b",
+      chatgpt_plan_type: "plus",
+    },
+  });
+  const tokenBundle = (idToken, accessToken, refreshToken, accountId) => JSON.stringify({
+    type: "codex",
+    tokens: {
+      id_token: idToken,
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      account_id: accountId,
+    },
+    expires_at: new Date(Date.now() + 3600_000).toISOString(),
+  });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-pool",
+      name: "Codex Pool",
+      enabled: true,
+      category: "official",
+      sourceType: "account-backed",
+      appScopes: ["codex"],
+      baseUrl: "https://chatgpt.com/backend-api/codex",
+      apiKeyRef: null,
+      apiFormat: "openai_responses",
+      authStrategy: "oauth_proxy",
+      models: {
+        defaultModel: "gpt-5.5",
+        models: [{ id: "gpt-5.5" }],
+        aliases: {},
+      },
+      endpoints: {
+        openai_responses: "/responses",
+      },
+      accountProvider: {
+        kind: "codex",
+        routing: {
+          strategy: "round-robin",
+          sessionAffinity: true,
+          maxConcurrentPerAccount: 1,
+        },
+        accounts: [{
+          id: "codex-a",
+          kind: "codex",
+          enabled: true,
+          state: "ready",
+          authRef: authRefA,
+          credentialSource: "codex-device-auth",
+          accountHash: "a",
+          emailMasked: "po***@example.com",
+          plan: "plus",
+          expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        }, {
+          id: "codex-b",
+          kind: "codex",
+          enabled: true,
+          state: "ready",
+          authRef: authRefB,
+          credentialSource: "codex-device-auth",
+          accountHash: "b",
+          emailMasked: "po***@example.com",
+          plan: "plus",
+          expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        }],
+      },
+    },
+    setActiveScopes: ["codex"],
+  });
+  const stamp = new Date().toISOString();
+  fs.mkdirSync(path.dirname(paths.secrets), { recursive: true });
+  fs.writeFileSync(paths.secrets, `${JSON.stringify({
+    version: 1,
+    updatedAt: stamp,
+    secrets: {
+      [authRefA]: {
+        value: tokenBundle(idTokenA, "codex-pool-access-a", "codex-pool-refresh-a", "acct_pool_a"),
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+      [authRefB]: {
+        value: tokenBundle(idTokenB, "codex-pool-access-b", "codex-pool-refresh-b", "acct_pool_b"),
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+    },
+  }, null, 2)}\n`, { mode: 0o600 });
+
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  const pendingResolvers = [];
+  const sseResponse = (id, text = "ok") => [
+    `data: ${JSON.stringify({
+      type: "response.completed",
+      response: {
+        id,
+        object: "response",
+        status: "completed",
+        output: [{
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text }],
+        }],
+      },
+    })}`,
+    "",
+    "data: [DONE]",
+    "",
+  ].join("\n");
+  globalThis.fetch = async (url, init = {}) => {
+    const target = new URL(String(url));
+    const headers = init.headers instanceof Headers ? init.headers : new Headers(init.headers || {});
+    if (target.hostname === "chatgpt.com" && target.pathname === "/backend-api/codex/responses") {
+      const requestBody = JSON.parse(String(init.body || "{}"));
+      const text = requestBody.input?.[0]?.content?.[0]?.text || "";
+      upstreamCalls.push({
+        accountId: headers.get("chatgpt-account-id"),
+        authorization: headers.get("authorization"),
+        text,
+      });
+      if (String(text).startsWith("hold")) {
+        return await new Promise((resolve) => {
+          pendingResolvers.push(() => resolve(new Response(sseResponse(`resp_${text}`), {
+            status: 200,
+            headers: { "content-type": "text/event-stream" },
+          })));
+        });
+      }
+      return new Response(sseResponse(`resp_${upstreamCalls.length}`), {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
+    return new Response("unexpected", { status: 500 });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const alpha1 = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-session-id": "alpha" },
+        body: { model: "gpt-5.5", input: "alpha one" },
+      });
+      const alpha2 = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-session-id": "alpha" },
+        body: { model: "gpt-5.5", input: "alpha two" },
+      });
+      const beta = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-session-id": "beta" },
+        body: { model: "gpt-5.5", input: "beta one" },
+      });
+      assert.equal(alpha1.status, 200);
+      assert.equal(alpha2.status, 200);
+      assert.equal(beta.status, 200);
+      assert.equal(upstreamCalls[1].accountId, upstreamCalls[0].accountId);
+      assert.notEqual(upstreamCalls[2].accountId, upstreamCalls[0].accountId);
+      assert.equal(alpha1.headers["x-openclaw-model-gateway-account"], alpha2.headers["x-openclaw-model-gateway-account"]);
+
+      const holdA = requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-session-id": "hold-a" },
+        body: { model: "gpt-5.5", input: "hold one" },
+      });
+      const holdB = requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-session-id": "hold-b" },
+        body: { model: "gpt-5.5", input: "hold two" },
+      });
+      await waitFor(() => upstreamCalls.filter((call) => String(call.text).startsWith("hold")).length === 2);
+
+      const busy = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-session-id": "hold-c" },
+        body: { model: "gpt-5.5", input: "hold three" },
+      });
+      assert.equal(busy.status, 429);
+      assert.equal(busy.body.error.code, "model_gateway_account_pool_busy");
+      assert.equal(upstreamCalls.filter((call) => call.text === "hold three").length, 0);
+
+      for (const resolve of pendingResolvers.splice(0)) resolve();
+      const [heldA, heldB] = await Promise.all([holdA, holdB]);
+      assert.equal(heldA.status, 200);
+      assert.equal(heldB.status, 200);
+
+      const afterRelease = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-session-id": "hold-c" },
+        body: { model: "gpt-5.5", input: "after release" },
+      });
+      assert.equal(afterRelease.status, 200);
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      const accountIds = runtime.body.runtime.requestLog
+        .filter((entry) => entry.routeId === "openai_responses" && entry.accountId)
+        .map((entry) => entry.accountId);
+      assert.ok(accountIds.includes("codex-a"));
+      assert.ok(accountIds.includes("codex-b"));
+    });
+  } finally {
+    for (const resolve of pendingResolvers.splice(0)) resolve();
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model gateway refreshes expiring Codex account tokens before forwarding", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

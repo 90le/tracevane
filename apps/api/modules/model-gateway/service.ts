@@ -1802,6 +1802,8 @@ function normalizeRuntimeLogEntry(value: unknown): ModelGatewayRuntimeRequestLog
     providerName: normalizeString(value.providerName) || null,
     endpointProfileId: normalizeString(value.endpointProfileId) || null,
     endpointProfileName: normalizeString(value.endpointProfileName) || null,
+    accountId: normalizeString(value.accountId) || null,
+    accountHash: normalizeString(value.accountHash) || null,
     model: normalizeString(value.model) || null,
     method: normalizeString(value.method, "POST").toUpperCase(),
     requestedPath: normalizeString(value.requestedPath, "/"),
@@ -3745,6 +3747,8 @@ function requestLogEntry(options: {
     appScope: options.route.appScope,
     providerId: options.route.provider?.id || null,
     providerName: options.route.provider?.name || null,
+    accountId: options.route.account?.id || null,
+    accountHash: options.route.account?.accountHash || null,
     endpointProfileId: options.route.endpointProfile?.id || null,
     endpointProfileName: options.route.endpointProfile?.name || null,
     model: options.model,
@@ -4192,6 +4196,8 @@ export function createModelGatewayService(
   const codexDeviceLoginSessions = new Map<string, CodexDeviceLoginSession>();
   const codexAccountRefreshes = new Map<string, Promise<string>>();
   const codexAccountRoutingCursors = new Map<string, number>();
+  const codexAccountAffinities = new Map<string, string>();
+  const codexAccountInFlight = new Map<string, number>();
 
   async function runDaemonServiceCommand(command: ModelGatewayDaemonServiceCommand): Promise<ModelGatewayDaemonServiceCommandResult> {
     return options.daemonServiceCommandRunner
@@ -4723,6 +4729,21 @@ export function createModelGatewayService(
   type ProviderSecretResolution = {
     secret: string | null;
     account: ModelGatewayAccountEntry | null;
+    releaseAccount: (() => void) | null;
+  };
+
+  type CodexAccountSelectionContext = {
+    headers?: HeaderMap;
+    bodyText?: string;
+    routeId?: ModelGatewayRouteId | null;
+    requestedPath?: string | null;
+    requestedModel?: string | null;
+  };
+
+  type CodexAccountSelection = {
+    account: ModelGatewayAccountEntry | null;
+    reason: "none-ready" | "busy" | null;
+    affinityKey: string | null;
   };
 
   function readProviderSecret(provider: ModelGatewayProvider): string | null {
@@ -4732,19 +4753,116 @@ export function createModelGatewayService(
     return readSecrets().secrets[ref]?.value || null;
   }
 
-  function selectProviderAccount(provider: ModelGatewayProvider): ModelGatewayAccountEntry | null {
-    if (provider.sourceType !== "account-backed" || provider.accountProvider?.kind !== "codex") return null;
+  function codexAccountInFlightKey(providerId: string, accountId: string): string {
+    return `${providerId}:${accountId}`;
+  }
+
+  function accountCapacityLimit(provider: ModelGatewayProvider): number | null {
+    const value = provider.accountProvider?.routing.maxConcurrentPerAccount;
+    return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : null;
+  }
+
+  function accountHasCapacity(provider: ModelGatewayProvider, account: ModelGatewayAccountEntry): boolean {
+    const limit = accountCapacityLimit(provider);
+    if (!limit) return true;
+    const key = codexAccountInFlightKey(provider.id, account.id);
+    return (codexAccountInFlight.get(key) || 0) < limit;
+  }
+
+  function reserveProviderAccount(provider: ModelGatewayProvider, account: ModelGatewayAccountEntry): () => void {
+    const key = codexAccountInFlightKey(provider.id, account.id);
+    codexAccountInFlight.set(key, (codexAccountInFlight.get(key) || 0) + 1);
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      const next = (codexAccountInFlight.get(key) || 0) - 1;
+      if (next > 0) codexAccountInFlight.set(key, next);
+      else codexAccountInFlight.delete(key);
+    };
+  }
+
+  function bindReleaseToResponse(res: http.ServerResponse, release: (() => void) | null): void {
+    if (!release) return;
+    let released = false;
+    const done = () => {
+      if (released) return;
+      released = true;
+      release();
+    };
+    res.once("finish", done);
+    res.once("close", done);
+  }
+
+  function stickyValueFromBodyText(bodyText: string | undefined): string {
+    const body = parseJsonObjectOrNull(bodyText || "");
+    if (!body) return "";
+    const metadata = isRecord(body.metadata) ? body.metadata : {};
+    return normalizeString(metadata.user_id)
+      || normalizeString(metadata.session_id)
+      || normalizeString(metadata.conversation_id)
+      || normalizeString(metadata.thread_id)
+      || normalizeString(body.conversation_id)
+      || normalizeString(body.session_id)
+      || normalizeString(body.previous_response_id)
+      || normalizeString(body.user);
+  }
+
+  function codexAccountAffinityKey(
+    provider: ModelGatewayProvider,
+    context?: CodexAccountSelectionContext,
+  ): string | null {
+    if (provider.accountProvider?.routing.sessionAffinity === false) return null;
+    const headerValue = normalizeString(readHeader(context?.headers, "x-studio-session-id"))
+      || normalizeString(readHeader(context?.headers, "x-session-id"))
+      || normalizeString(readHeader(context?.headers, "session_id"))
+      || normalizeString(readHeader(context?.headers, "x-client-request-id"))
+      || normalizeString(readHeader(context?.headers, "x-codex-session-id"))
+      || normalizeString(readHeader(context?.headers, "x-conversation-id"))
+      || normalizeString(readHeader(context?.headers, "conversation_id"));
+    const bodyValue = stickyValueFromBodyText(context?.bodyText);
+    const value = headerValue || bodyValue;
+    return value ? `${provider.id}:codex:${sha256Short(value)}` : null;
+  }
+
+  function selectProviderAccount(
+    provider: ModelGatewayProvider,
+    context?: CodexAccountSelectionContext,
+  ): CodexAccountSelection {
+    if (provider.sourceType !== "account-backed" || provider.accountProvider?.kind !== "codex") {
+      return { account: null, reason: null, affinityKey: null };
+    }
     const accounts = provider.accountProvider.accounts.filter((account) => accountAvailableForRouting(account));
-    if (!accounts.length) return null;
+    if (!accounts.length) return { account: null, reason: "none-ready", affinityKey: null };
+    const affinityKey = codexAccountAffinityKey(provider, context);
     const explicit = provider.apiKeyRef
       ? accounts.find((account) => account.authRef === provider.apiKeyRef)
       : null;
-    if (explicit) return explicit;
-    if (provider.accountProvider.routing.strategy === "fill-first") return accounts[0] || null;
+    if (explicit) {
+      return accountHasCapacity(provider, explicit)
+        ? { account: explicit, reason: null, affinityKey }
+        : { account: null, reason: "busy", affinityKey };
+    }
+    const accountsWithCapacity = accounts.filter((account) => accountHasCapacity(provider, account));
+    if (!accountsWithCapacity.length) return { account: null, reason: "busy", affinityKey };
+    if (affinityKey) {
+      const stickyAccountId = codexAccountAffinities.get(affinityKey);
+      const stickyAccount = stickyAccountId
+        ? accountsWithCapacity.find((account) => account.id === stickyAccountId) || null
+        : null;
+      if (stickyAccount) return { account: stickyAccount, reason: null, affinityKey };
+    }
+    if (provider.accountProvider.routing.strategy === "fill-first") {
+      const account = accountsWithCapacity[0] || null;
+      if (account && affinityKey) codexAccountAffinities.set(affinityKey, account.id);
+      return { account, reason: account ? null : "busy", affinityKey };
+    }
     const cursorKey = `${provider.id}:codex`;
     const cursor = codexAccountRoutingCursors.get(cursorKey) || 0;
     codexAccountRoutingCursors.set(cursorKey, cursor + 1);
-    return accounts[Math.max(0, cursor % accounts.length)] || accounts[0] || null;
+    const account = accountsWithCapacity[Math.max(0, cursor % accountsWithCapacity.length)] || accountsWithCapacity[0] || null;
+    if (account && affinityKey) codexAccountAffinities.set(affinityKey, account.id);
+    return { account, reason: account ? null : "busy", affinityKey };
   }
 
   function patchProviderAccountEntry(
@@ -4864,19 +4982,33 @@ export function createModelGatewayService(
     return next;
   }
 
-  async function resolveProviderSecret(provider: ModelGatewayProvider): Promise<ProviderSecretResolution> {
-    if (provider.authStrategy === "none") return { secret: null, account: null };
+  async function resolveProviderSecret(
+    provider: ModelGatewayProvider,
+    context?: CodexAccountSelectionContext,
+    options: { reserveAccount?: boolean } = {},
+  ): Promise<ProviderSecretResolution> {
+    if (provider.authStrategy === "none") return { secret: null, account: null, releaseAccount: null };
     if (provider.sourceType !== "account-backed" || provider.accountProvider?.kind !== "codex") {
-      return { secret: readProviderSecret(provider), account: null };
+      return { secret: readProviderSecret(provider), account: null, releaseAccount: null };
     }
-    const account = selectProviderAccount(provider);
+    const selection = selectProviderAccount(provider, context);
+    const account = selection.account;
     if (!account) {
+      if (selection.reason === "busy") {
+        throw new ModelGatewayServiceError(
+          "model_gateway_account_pool_busy",
+          `Provider '${provider.id}' Codex account pool is at its per-account concurrency limit.`,
+          429,
+        );
+      }
       throw new ModelGatewayServiceError(
         "model_gateway_account_unavailable",
         `Provider '${provider.id}' has no ready Codex account. Sign in again or wait for cooldown to expire.`,
         503,
       );
     }
+    const releaseAccount = options.reserveAccount ? reserveProviderAccount(provider, account) : null;
+    try {
     const secret = readSecrets().secrets[account.authRef]?.value || "";
     const bundle = normalizeCodexTokenBundle(secret);
     if (!bundle) {
@@ -4888,7 +5020,7 @@ export function createModelGatewayService(
       );
     }
     if (!codexTokenBundleNeedsRefresh(bundle)) {
-      return { secret, account };
+      return { secret, account, releaseAccount };
     }
     const refreshKey = account.authRef;
     let refreshPromise = codexAccountRefreshes.get(refreshKey);
@@ -4920,7 +5052,11 @@ export function createModelGatewayService(
       })();
       codexAccountRefreshes.set(refreshKey, refreshPromise);
     }
-    return { secret: await refreshPromise, account };
+      return { secret: await refreshPromise, account, releaseAccount };
+    } catch (error) {
+      releaseAccount?.();
+      throw error;
+    }
   }
 
   function setSecretValue(ref: string, value: string | null): void {
@@ -7370,6 +7506,9 @@ export function createModelGatewayService(
     };
     const setSelectedProviderHeaders = () => {
       res.setHeader("X-OpenClaw-Model-Gateway-Provider", provider.id);
+      if (selectedAccountForRequest) {
+        res.setHeader("X-OpenClaw-Model-Gateway-Account", selectedAccountForRequest.id);
+      }
       if (selectedEndpointProfileId) {
         res.setHeader("X-OpenClaw-Model-Gateway-Endpoint", selectedEndpointProfileId);
       }
@@ -7440,7 +7579,13 @@ export function createModelGatewayService(
 
     let secretResolution: ProviderSecretResolution;
     try {
-      secretResolution = await resolveProviderSecret(provider);
+      secretResolution = await resolveProviderSecret(provider, {
+        headers: req.headers,
+        bodyText,
+        routeId: decision.routeId,
+        requestedPath: decision.requestedPath,
+        requestedModel: requestModel,
+      }, { reserveAccount: true });
     } catch (error) {
       const authError = isModelGatewayServiceError(error)
         ? error
@@ -7471,6 +7616,13 @@ export function createModelGatewayService(
     }
     const secret = secretResolution.secret;
     selectedAccountForRequest = secretResolution.account;
+    bindReleaseToResponse(res, secretResolution.releaseAccount);
+    if (selectedAccountForRequest) {
+      decision.account = {
+        id: selectedAccountForRequest.id,
+        accountHash: selectedAccountForRequest.accountHash,
+      };
+    }
     const resolvedModel = decision.model?.resolved || null;
     if (resolvedModel && resolvedModel !== requestModel) {
       bodyText = replaceModelInJsonText(bodyText, resolvedModel);
