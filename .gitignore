@@ -26,6 +26,7 @@ graphify-out/
 *.pid
 __pycache__/
 *.pyc
+.imagegen-venv/
 
 # Local planning notes
 findings.md
