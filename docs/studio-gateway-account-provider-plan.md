@@ -66,7 +66,7 @@ Account-backed provider 对外仍暴露：
 - 音频路由：OpenAI-compatible provider 的音频 REST 端点必须 multipart/binary passthrough；Codex account 音频模型可出现在 catalog，但 REST `/v1/audio/*` 当前明确返回结构化 unsupported，直到有真实 Codex backend 音频合同再转完成。
 - Codex headers：保留 Codex 需要的 `Session_id`、`X-Codex-*`、`Chatgpt-Account-Id`、user-agent defaults；反代部署时提醒保留 underscore headers。
 - usage：`status/runtime` 已有基于 request log 的 provider/model/account 聚合 summary；后续长期账本再按 gateway key、provider、account hash、model、alias、route、status、latency、TTFT、usage tokens 记录。Channel 侧不重复做 token 产品化。
-- UI：Provider Center 增加 Account providers 工作区，支持页面登录、账户状态表、刷新、禁用、清除 cooldown、账号代理/直连、账号池策略和健康；后续补模型 alias 与策略 live smoke。
+- UI：Provider Center 增加 Account providers 工作区，支持页面登录、账户状态表、刷新、禁用、清除 cooldown、账号代理/直连、账号池策略、媒体模型状态和健康；后续补模型 alias 与策略 live smoke。
 
 ## 验收
 

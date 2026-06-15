@@ -1050,6 +1050,20 @@
             </label>
           </div>
 
+          <section class="mgw-media-status" aria-label="Gateway media model status">
+            <div class="mgw-media-status__head">
+              <strong>{{ text('媒体模型状态', 'Media model status') }}</strong>
+              <small>{{ text('来自已启用 Provider 的模型能力标记。', 'Based on capability flags from enabled providers.') }}</small>
+            </div>
+            <div class="mgw-media-status__grid">
+              <div v-for="bucket in mediaCatalogBuckets" :key="bucket.id" class="mgw-media-status__item">
+                <span>{{ text(bucket.zh, bucket.en) }}</span>
+                <strong>{{ bucket.count }}</strong>
+                <small>{{ bucket.preview || '-' }}</small>
+              </div>
+            </div>
+          </section>
+
           <div v-if="smokeResult" class="mgw-smoke-result" :class="smokeResult.ok ? 'success' : 'failure'">
             <div>
               <strong>{{ smokeResult.ok ? text('通过', 'Passed') : text('失败', 'Failed') }}</strong>
@@ -1391,6 +1405,14 @@ type AppConnectionBudgetDraft = {
   contextWindow: string;
   autoCompactTokenLimit: string;
   maxOutputTokens: string;
+};
+
+type MediaCatalogBucket = {
+  id: string;
+  zh: string;
+  en: string;
+  count: number;
+  preview: string;
 };
 
 const route = useRoute();
@@ -1743,6 +1765,23 @@ const selectedSmokeProviderModelIds = computed(() => {
   const provider = selectedSmokeProvider.value;
   if (!provider) return [];
   return uniqueStrings(providerCatalogModels(provider).map((model) => model.id));
+});
+
+const enabledProviderCatalogModels = computed<ModelGatewayProviderModel[]>(() =>
+  providers.value
+    .filter((provider) => provider.enabled)
+    .flatMap((provider) => providerCatalogModels(provider)),
+);
+
+const mediaCatalogBuckets = computed<MediaCatalogBucket[]>(() => {
+  const models = enabledProviderCatalogModels.value;
+  return [
+    mediaCatalogBucket('vision', '图片理解', 'Vision', models, (model) => model.features?.vision === true),
+    mediaCatalogBucket('image-generation', '生图', 'Image gen', models, (model) => model.features?.imageGeneration === true),
+    mediaCatalogBucket('audio-input', '音频输入', 'Audio in', models, (model) => model.features?.audioInput === true),
+    mediaCatalogBucket('audio-output', '音频输出', 'Audio out', models, (model) => model.features?.audioOutput === true),
+    mediaCatalogBucket('realtime', 'Realtime', 'Realtime', models, (model) => /^gpt-realtime/i.test(model.id)),
+  ];
 });
 
 const detectSupportedProtocols = computed(() =>
@@ -2910,6 +2949,23 @@ function mergeModelBudget(current: number | null, next: unknown): number | null 
   const normalized = typeof next === 'number' && Number.isFinite(next) && next > 0 ? Math.floor(next) : null;
   if (!normalized) return current;
   return current === null ? normalized : Math.min(current, normalized);
+}
+
+function mediaCatalogBucket(
+  id: string,
+  zh: string,
+  en: string,
+  models: ModelGatewayProviderModel[],
+  predicate: (model: ModelGatewayProviderModel) => boolean,
+): MediaCatalogBucket {
+  const ids = uniqueStrings(models.filter(predicate).map((model) => model.id));
+  return {
+    id,
+    zh,
+    en,
+    count: ids.length,
+    preview: ids.slice(0, 3).join(', '),
+  };
 }
 
 function deriveAppConnectionCompactLimit(contextWindow: number | null, maxOutputTokens: number | null): number | null {
