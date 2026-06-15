@@ -4952,8 +4952,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.notEqual(opencodeModelArgIndex, -1);
   assert.equal(opencodeRequest.args[opencodeModelArgIndex + 1], "studio-gateway/gpt-5");
   assert.equal(opencodeRequest.args.includes("--thinking"), true);
-  assert.equal(opencodeRequest.args.includes("--variant"), true);
-  assert.equal(opencodeRequest.args.includes("high"), true);
+  assert.equal(opencodeRequest.args.includes("--variant"), false);
+  assert.equal(opencodeRequest.args.includes("high"), false);
   assert.match(opencodeRequest.env.XDG_CONFIG_HOME, /studio-channel-opencode-/);
   assert.match(opencodeRequest.env.XDG_DATA_HOME, /studio-channel-opencode-/);
   const opencodeConfigPath = path.join(opencodeRequest.env.XDG_CONFIG_HOME, "opencode", "opencode.json");
@@ -4962,6 +4962,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(opencodeConfig.provider["studio-gateway"].options.baseURL, project.gatewayEndpoint);
   assert.equal(opencodeConfig.provider["studio-gateway"].options.apiKey, "sk-local");
   assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-5"].name, "gpt-5");
+  assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-5"].reasoning, false);
   assert.equal("instructions" in opencodeConfig, false);
   assert.equal(fs.statSync(opencodeConfigPath).mode & 0o777, 0o600);
   const opencodeNativeSkillPath = path.join(opencodeRequest.env.XDG_CONFIG_HOME, "opencode", "skills", "octo_bot_api", "SKILL.md");

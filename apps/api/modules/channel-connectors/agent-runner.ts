@@ -945,7 +945,7 @@ function createOpenCodeGatewayHome(input: {
           output: 8192,
         },
         tool_call: true,
-        reasoning: true,
+        reasoning: false,
         temperature: true,
         ...(input.supportsVision ? {
           attachment: true,
@@ -1317,7 +1317,6 @@ export function buildChannelConnectorAgentProcessRequest(
       "json",
       ...(opencodeSessionId ? ["--session", opencodeSessionId] : []),
       ...(opencodeHome.cliModel ? ["--model", opencodeHome.cliModel] : []),
-      ...(reasoningEffort ? ["--variant", reasoningEffort] : []),
       "--dir",
       cwd,
       "--thinking",

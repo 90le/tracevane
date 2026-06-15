@@ -400,6 +400,10 @@ export interface ModelGatewayRuntimeState {
   version: 1;
   updatedAt: string;
   requestLog: ModelGatewayRuntimeRequestLogEntry[];
+  accountRouting: {
+    codexCursors: Record<string, number>;
+    codexAffinities: Record<string, string>;
+  };
 }
 
 export type ModelGatewaySupervisorKind =

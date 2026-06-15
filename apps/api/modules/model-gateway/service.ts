@@ -1418,6 +1418,10 @@ function createEmptyRuntime(updatedAt = nowIso()): ModelGatewayRuntimeState {
     version: 1,
     updatedAt,
     requestLog: [],
+    accountRouting: {
+      codexCursors: {},
+      codexAffinities: {},
+    },
   };
 }
 
@@ -1813,6 +1817,36 @@ function normalizeRuntimeLogEntry(value: unknown): ModelGatewayRuntimeRequestLog
     errorCode: normalizeString(value.errorCode) || null,
     errorMessage: normalizeString(value.errorMessage) || null,
     usage: normalizeRuntimeUsage(value.usage),
+  };
+}
+
+function normalizeRuntimeAccountRouting(value: unknown): ModelGatewayRuntimeState["accountRouting"] {
+  const raw = isRecord(value) ? value : {};
+  const codexCursors: Record<string, number> = {};
+  const rawCursors = isRecord(raw.codexCursors) ? raw.codexCursors : {};
+  for (const [key, cursorValue] of Object.entries(rawCursors)) {
+    const normalizedKey = normalizeString(key);
+    const numberValue = typeof cursorValue === "number"
+      ? cursorValue
+      : typeof cursorValue === "string"
+        ? Number(cursorValue)
+        : Number.NaN;
+    if (!normalizedKey || !Number.isFinite(numberValue)) continue;
+    codexCursors[normalizedKey] = Math.max(0, Math.floor(numberValue));
+  }
+
+  const codexAffinities: Record<string, string> = {};
+  const rawAffinities = isRecord(raw.codexAffinities) ? raw.codexAffinities : {};
+  for (const [key, accountIdValue] of Object.entries(rawAffinities)) {
+    const normalizedKey = normalizeString(key);
+    const accountId = normalizeString(accountIdValue);
+    if (!normalizedKey || !accountId) continue;
+    codexAffinities[normalizedKey] = accountId;
+  }
+
+  return {
+    codexCursors,
+    codexAffinities,
   };
 }
 
@@ -4198,6 +4232,7 @@ export function createModelGatewayService(
   const codexAccountRoutingCursors = new Map<string, number>();
   const codexAccountAffinities = new Map<string, string>();
   const codexAccountInFlight = new Map<string, number>();
+  let codexAccountRoutingLoaded = false;
 
   async function runDaemonServiceCommand(command: ModelGatewayDaemonServiceCommand): Promise<ModelGatewayDaemonServiceCommandResult> {
     return options.daemonServiceCommandRunner
@@ -4342,6 +4377,7 @@ export function createModelGatewayService(
       version: 1,
       updatedAt: normalizeString(raw.updatedAt, nowIso()),
       requestLog,
+      accountRouting: normalizeRuntimeAccountRouting(raw.accountRouting),
     };
   }
 
@@ -4350,6 +4386,7 @@ export function createModelGatewayService(
       version: 1,
       updatedAt: nowIso(),
       requestLog: runtime.requestLog.slice(-MAX_RUNTIME_REQUEST_LOG_ENTRIES),
+      accountRouting: normalizeRuntimeAccountRouting(runtime.accountRouting),
     });
   }
 
@@ -4677,11 +4714,14 @@ export function createModelGatewayService(
         return selected(activeCandidate, null);
       }
       if (activeCandidate) {
-        const fallback = candidates
-          .find((item) => (
+        const fallbackCandidates = candidates
+          .filter((item) => (
             (item.provider.id !== activeCandidate.provider.id || item.endpointProfile?.id !== activeCandidate.endpointProfile?.id)
             && healthyCandidate(item)
-          )) || null;
+          ));
+        const fallback = fallbackCandidates.find((item) => item.provider.id === activeCandidate.provider.id)
+          || fallbackCandidates[0]
+          || null;
         if (fallback) {
           const activeEndpoint = activeCandidate.endpointProfile ? `/${activeCandidate.endpointProfile.id}` : "";
           const fallbackEndpoint = fallback.endpointProfile ? `/${fallback.endpointProfile.id}` : "";
@@ -4693,11 +4733,14 @@ export function createModelGatewayService(
         if (retryCandidate(activeCandidate)) {
           return selected(activeCandidate, retryReason(activeCandidate));
         }
-        const retryFallback = candidates
-          .find((item) => (
+        const retryFallbackCandidates = candidates
+          .filter((item) => (
             (item.provider.id !== activeCandidate.provider.id || item.endpointProfile?.id !== activeCandidate.endpointProfile?.id)
             && retryCandidate(item)
-          )) || null;
+          ));
+        const retryFallback = retryFallbackCandidates.find((item) => item.provider.id === activeCandidate.provider.id)
+          || retryFallbackCandidates[0]
+          || null;
         return retryFallback
           ? selected(retryFallback, retryReason(retryFallback))
           : {
@@ -4769,6 +4812,29 @@ export function createModelGatewayService(
     return (codexAccountInFlight.get(key) || 0) < limit;
   }
 
+  function hydrateCodexAccountRoutingFromRuntime(): void {
+    if (codexAccountRoutingLoaded) return;
+    codexAccountRoutingLoaded = true;
+    const routing = readRuntime().accountRouting;
+    codexAccountRoutingCursors.clear();
+    codexAccountAffinities.clear();
+    for (const [key, value] of Object.entries(routing.codexCursors)) {
+      codexAccountRoutingCursors.set(key, value);
+    }
+    for (const [key, value] of Object.entries(routing.codexAffinities)) {
+      codexAccountAffinities.set(key, value);
+    }
+  }
+
+  function persistCodexAccountRoutingToRuntime(): void {
+    const runtime = readRuntime();
+    runtime.accountRouting = {
+      codexCursors: Object.fromEntries(codexAccountRoutingCursors.entries()),
+      codexAffinities: Object.fromEntries(codexAccountAffinities.entries()),
+    };
+    writeRuntime(runtime);
+  }
+
   function reserveProviderAccount(provider: ModelGatewayProvider, account: ModelGatewayAccountEntry): () => void {
     const key = codexAccountInFlightKey(provider.id, account.id);
     codexAccountInFlight.set(key, (codexAccountInFlight.get(key) || 0) + 1);
@@ -4832,6 +4898,7 @@ export function createModelGatewayService(
     if (provider.sourceType !== "account-backed" || provider.accountProvider?.kind !== "codex") {
       return { account: null, reason: null, affinityKey: null };
     }
+    hydrateCodexAccountRoutingFromRuntime();
     const accounts = provider.accountProvider.accounts.filter((account) => accountAvailableForRouting(account));
     if (!accounts.length) return { account: null, reason: "none-ready", affinityKey: null };
     const affinityKey = codexAccountAffinityKey(provider, context);
@@ -4854,7 +4921,10 @@ export function createModelGatewayService(
     }
     if (provider.accountProvider.routing.strategy === "fill-first") {
       const account = accountsWithCapacity[0] || null;
-      if (account && affinityKey) codexAccountAffinities.set(affinityKey, account.id);
+      if (account && affinityKey) {
+        codexAccountAffinities.set(affinityKey, account.id);
+        persistCodexAccountRoutingToRuntime();
+      }
       return { account, reason: account ? null : "busy", affinityKey };
     }
     const cursorKey = `${provider.id}:codex`;
@@ -4862,6 +4932,7 @@ export function createModelGatewayService(
     codexAccountRoutingCursors.set(cursorKey, cursor + 1);
     const account = accountsWithCapacity[Math.max(0, cursor % accountsWithCapacity.length)] || accountsWithCapacity[0] || null;
     if (account && affinityKey) codexAccountAffinities.set(affinityKey, account.id);
+    persistCodexAccountRoutingToRuntime();
     return { account, reason: account ? null : "busy", affinityKey };
   }
 
@@ -6886,21 +6957,68 @@ export function createModelGatewayService(
     return toProviderView(provider);
   }
 
-  function buildGatewayRouteSmokePayload(routeId: ModelGatewayRouteId, model: string, input: string): Record<string, unknown> {
+  function gatewaySmokeToolForChat(): Record<string, unknown> {
+    return {
+      type: "function",
+      function: {
+        name: "gateway_smoke_tool",
+        description: "A no-op tool used only to verify client tool schema compatibility.",
+        parameters: {
+          type: "object",
+          properties: {
+            value: { type: "string" },
+          },
+          required: ["value"],
+          additionalProperties: false,
+        },
+      },
+    };
+  }
+
+  function gatewaySmokeToolForAnthropic(): Record<string, unknown> {
+    return {
+      name: "gateway_smoke_tool",
+      description: "A no-op tool used only to verify Claude Code tool schema compatibility.",
+      input_schema: {
+        type: "object",
+        properties: {
+          value: { type: "string" },
+        },
+        required: ["value"],
+        additionalProperties: false,
+      },
+    };
+  }
+
+  function buildGatewayRouteSmokePayload(
+    scope: ModelGatewayAppScope,
+    routeId: ModelGatewayRouteId,
+    model: string,
+    input: string,
+  ): Record<string, unknown> {
+    const prompt = `${input}\nDo not call tools. Reply with exactly GATEWAY_OK.`;
     if (routeId === "anthropic_messages") {
       return {
         model,
-        max_tokens: 96,
+        max_tokens: 256,
         stream: false,
-        messages: [{ role: "user", content: input }],
+        messages: [{ role: "user", content: prompt }],
+        ...(scope === "claude-code" ? {
+          tools: [gatewaySmokeToolForAnthropic()],
+          tool_choice: { type: "auto" },
+        } : {}),
       };
     }
     if (routeId === "openai_chat_completions") {
       return {
         model,
-        max_tokens: 96,
+        max_tokens: 256,
         stream: false,
-        messages: [{ role: "user", content: input }],
+        messages: [{ role: "user", content: prompt }],
+        ...(scope === "opencode" ? {
+          tools: [gatewaySmokeToolForChat()],
+          tool_choice: "auto",
+        } : {}),
       };
     }
     if (routeId === "openai_responses_compact") {
@@ -6909,19 +7027,42 @@ export function createModelGatewayService(
         input: [
           {
             role: "user",
-            content: [{ type: "input_text", text: input }],
+            content: [{ type: "input_text", text: prompt }],
           },
         ],
         stream: false,
-        max_output_tokens: 96,
+        max_output_tokens: 256,
       };
     }
     return {
       model,
-      input,
+      input: prompt,
       stream: false,
-      max_output_tokens: 96,
+      max_output_tokens: 256,
     };
+  }
+
+  function extractGatewayRouteSmokeText(routeId: ModelGatewayRouteId, responseText: string): string {
+    const parsed = parseJsonObjectOrNull(responseText);
+    if (!parsed) return previewText(responseText) || "";
+    if (routeId === "anthropic_messages") {
+      return extractTextFromContentParts(parsed.content).join("\n");
+    }
+    if (routeId === "openai_chat_completions") {
+      if (!Array.isArray(parsed.choices)) return "";
+      return parsed.choices
+        .flatMap((choice) => {
+          if (!isRecord(choice)) return [];
+          const message = isRecord(choice.message) ? choice.message : {};
+          return [
+            ...extractTextFromContentParts(message.content),
+            normalizeString(message.reasoning_content),
+            normalizeString(choice.text),
+          ].filter(Boolean);
+        })
+        .join("\n");
+    }
+    return extractProviderTestText({ apiFormat: "openai_responses" } as ModelGatewayProvider, responseText) || "";
   }
 
   async function testActiveRoute(
@@ -6995,6 +7136,7 @@ export function createModelGatewayService(
         method: "POST",
         headers,
         body: JSON.stringify(buildGatewayRouteSmokePayload(
+          scope,
           routeId,
           effectiveModel,
           normalizeString(payload.input, "Reply with GATEWAY_OK"),
@@ -7003,7 +7145,9 @@ export function createModelGatewayService(
       });
       const responseText = await response.text();
       const latencyMs = Math.max(0, Date.now() - Date.parse(startedAt));
-      const success = response.status >= 200 && response.status < 300;
+      const responseTextContent = extractGatewayRouteSmokeText(routeId, responseText);
+      const contentMatched = /\bGATEWAY_OK\b/.test(responseTextContent);
+      const success = response.status >= 200 && response.status < 300 && contentMatched;
       const responseProviderId = normalizeString(response.headers.get("x-openclaw-model-gateway-provider")) || providerId;
       return {
         ok: success,
@@ -7015,7 +7159,9 @@ export function createModelGatewayService(
         responsePreview: previewText(responseText),
         error: success ? null : {
           code: "model_gateway_active_route_smoke_failed",
-          message: `Active route smoke returned HTTP ${response.status}.`,
+          message: response.status >= 200 && response.status < 300
+            ? "Active route smoke did not return GATEWAY_OK in the client protocol response."
+            : `Active route smoke returned HTTP ${response.status}.`,
         },
       };
     } catch (error) {
@@ -7152,6 +7298,13 @@ export function createModelGatewayService(
       };
     }
     const secret = secretResolution.secret;
+    const selectedAccountForTest = secretResolution.account;
+    if (selectedAccountForTest) {
+      route.account = {
+        id: selectedAccountForTest.id,
+        accountHash: selectedAccountForTest.accountHash,
+      };
+    }
     if (effectiveProvider.authStrategy !== "none" && (!secret || isManagedProxyPlaceholderSecret(secret))) {
       const placeholder = isManagedProxyPlaceholderSecret(secret);
       const errorCode = placeholder
@@ -7194,19 +7347,28 @@ export function createModelGatewayService(
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     const headers = new Headers({ "content-type": "application/json" });
     applyProviderAuth(headers, effectiveProvider, secret);
-    const requestBody = JSON.stringify(buildProviderTestPayload(
+    let requestBody = JSON.stringify(buildProviderTestPayload(
       effectiveProvider,
       model,
       normalizeString(payload.input, "Return the word ok."),
       testKind,
     ));
+    if (
+      testKind !== "vision"
+      && isCodexAccountBackedProvider(effectiveProvider)
+      && normalizePathname(route.upstreamUrl || route.upstreamPath || "").endsWith("/responses")
+    ) {
+      requestBody = normalizeCodexAccountResponsesRequestInJsonText(requestBody) || requestBody;
+      headers.set("accept", "text/event-stream");
+    }
     try {
-      const response = await fetch(route.upstreamUrl || effectiveProvider.baseUrl, withProviderNetwork(effectiveProvider, {
+      const upstreamUrl = route.upstreamUrl || effectiveProvider.baseUrl;
+      const response = await fetch(upstreamUrl, withGatewayUpstreamNetwork(effectiveProvider, {
         method: "POST",
         headers,
         body: requestBody,
         signal: controller.signal,
-      }));
+      }, upstreamUrl, selectedAccountForTest));
       const responseText = await response.text();
       const latencyMs = Math.max(0, Date.now() - Date.parse(startedAt));
       const httpSuccess = isProviderTestSuccess(response.status, null);

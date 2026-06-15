@@ -11,7 +11,7 @@
 - Provider Center 支持自定义 provider、启停、模型名称/别名/默认模型、能力勾选、批量模型导入、批量预算/能力应用、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
 - Provider Center 表单已按连接、端点路由、密钥识别、模型目录、高级覆盖、可用范围分区；PC/平板/手机均按同一配置流程降级展示。
 - Gateway Provider 支持 endpoint profiles；同一 provider/模型可按客户端协议优选原生 endpoint，并在 endpoint 级 health/circuit 下回退。
-- GPT/ChatGPT account 与 Codex account 进入 Gateway Phase D2：Provider Center 页面直接登录官方账户并自动创建 account-backed provider；账户池 sticky 和 per-account concurrency 已有基础闭环，后续补持久策略、quota/cooldown 和三协议 live 导出，不恢复旧 CPA / Codex Stack。
+- GPT/ChatGPT account 与 Codex account 进入 Gateway Phase D2：Provider Center 页面直接登录官方账户并自动创建 account-backed provider；账户池 sticky、per-account concurrency 和 runtime cursor/affinity 持久化已有闭环，后续补 quota/cooldown 和三协议 live 导出，不恢复旧 CPA / Codex Stack。
 - Codex account-backed provider 已支持页面登录、请求前自动 refresh、手动 refresh、账户启用/停用和重新登录入口；客户端仍只使用统一 Gateway endpoint + Gateway key。
 - Codex account-backed provider 已扩展受控本地模型 catalog：`gpt-5.5`、`gpt-5.4`、`gpt-5.4-mini`、`gpt-5.3-codex`、`gpt-image-2`、transcribe/tts/audio/realtime 类模型进入 `/v1/models`，并携带 text/image/audio 能力标记；旧生成的 `gpt-5.5-mini` 和 ChatGPT Codex account 不支持的 `gpt-5` 不再作为账户模型暴露。
 - Provider Center 不再按模型名自动标记 vision；图片能力只来自用户配置、上游显式能力元数据或图片 smoke 通过后用户确认写回。
@@ -52,8 +52,11 @@
   - OpenAI-compatible Images edits 保持 multipart/binary 原样 passthrough；Codex account image edits 不伪装支持，返回明确 `model_gateway_codex_account_image_edits_unsupported`。
   - OpenAI-compatible 音频端点保持 multipart/binary 原样 passthrough，不再把音频请求体当 UTF-8 字符串重写；Codex account 音频目录已暴露，但账户音频 upstream 能力仍需真实 entitlement smoke 后才能标为完成。
   - 本轮验证通过：`npm run typecheck:api`、`npm run build:api`、`npm run typecheck:web`、`npm run build:web`。
-  - Account pool 基础调度完成：支持 session affinity、round-robin/fill-first 选择、per-account concurrency 限制、busy 429 和 runtime log accountId/accountHash。
-  - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，65/65 通过，覆盖 Codex account login、account pool sticky/concurrency、自动 refresh、手动 refresh、账户禁用路由跳过、refresh auth failure、secret redaction、active routing、Codex headers 转发、Codex Responses SSE 聚合、Codex Images bridge、OpenAI-compatible image edits/audio multipart passthrough 和既有三协议矩阵无回归。
+  - Account pool 调度完成：支持 session affinity、round-robin/fill-first、per-account concurrency、busy 429、runtime log accountId/accountHash，并将 Codex account cursor/affinity 写入 runtime，daemon 重启后同 session 保持账号，新 session 延续轮转。
+  - Active route smoke 改为客户端真实形态：Claude Code / OpenCode 会带最小 tools schema，响应必须按客户端协议解析出 `GATEWAY_OK`；固定 provider 的 endpoint fallback 优先同 provider，避免 `glm` Claude 路由直接跳到外部 provider。
+  - Codex account provider smoke 复用账号请求归一化、账号 header 和代理网络，不再绕开正式 Gateway Codex account 链路导致 false negative。
+  - OpenCode Gateway runner 不再给 OpenAI-compatible Gateway 模型声明 `reasoning:true` 或注入 `--variant`，避免 `gpt-5.5 + tools + /v1/chat/completions` 触发 `reasoning_effort` 不兼容错误。
+  - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，68/68 通过，覆盖 Codex account login/provider smoke、account pool sticky/concurrency/runtime persistence、Active route 客户端工具合同、自动 refresh、手动 refresh、账户禁用路由跳过、refresh auth failure、secret redaction、active routing、Codex headers 转发、Codex Responses SSE 聚合、Codex Images bridge、OpenAI-compatible image edits/audio multipart passthrough 和既有三协议矩阵无回归。
 - Provider Center 前端收口：
   - 模型目录的可见身份字段只保留“模型名称”和“别名”，不再暴露“显示名”三段式配置。
   - 批量导入格式改为 `model-id | alias1,alias2`；保存时不再从表格写入 `model.label`。
@@ -295,11 +298,10 @@
 - Provider 模型 vision 能力不会再从模型名推断；Chat-compatible provider 即使模型名像 Claude/GPT，也必须由用户显式配置、上游显式能力元数据或图片 smoke 通过后确认标记。
 - 工具流仍需继续 live 抽查：Codex、Claude Code、OpenCode 近 12h 均已有可见工具输出 live 证据，且三者均有过程回复真实 IM 证据。
 - 思考流 parser 支持 Codex、Claude Code、OpenCode 原生 thinking/reasoning 事件；Octo 私聊 `/thinking on/off` 已做端到端回归；状态/UI 已区分 parser 支持和 live 输出观测。真实 smoke 证明 OpenCode 会在支持 reasoning 的模型上输出 `reasoning`，Claude Code 2.1.86 当前未输出 `thinking` item；没有原生思考事件的 Agent/模型组合只能标为不支持，不伪造。
-- Codex account live smoke 已确认：`/v1/models` 由 Studio Gateway daemon 返回 39 个聚合模型，account catalog 不再暴露 `gpt-5.5-mini` / `gpt-5`；`gpt-5.5` 覆盖 Responses non-stream、Responses stream、Chat Completions adapter、Anthropic Messages adapter 和 Responses compact，均通过统一 Gateway key 返回 `pong`。Realtime/WebSocket、Codex account 音频真实上游能力和 image/audio 计费 usage 精细映射仍是后续项；`/v1/images/edits` 已对 OpenAI-compatible provider passthrough，对 Codex account 明确报不支持。
+- Codex account live smoke 已确认：`/v1/models` 由 Studio Gateway daemon 返回聚合模型，account catalog 不再暴露 `gpt-5.5-mini` / `gpt-5`；`gpt-5.5` 覆盖 Responses non-stream、Responses stream、Chat Completions adapter、Anthropic Messages adapter、Responses compact、Provider smoke 和 OpenCode Chat tools smoke，均通过统一 Gateway key。Realtime/WebSocket、Codex account 音频真实上游能力和 image/audio 计费 usage 精细映射仍是后续项；`/v1/images/edits` 已对 OpenAI-compatible provider passthrough，对 Codex account 明确报不支持。
 
 ## 下一步
 
-1. 跑真实 Codex account live smoke：Responses non-stream/stream/compact、Chat adapter、Anthropic Messages adapter、Images generation，并确认 `/v1/models` 和 App Connections 使用统一 Gateway key。
-2. 验证账户音频真实 upstream 能力；若 Codex account 不提供原生音频 REST，则只保留 OpenAI-compatible provider passthrough，并在 UI 标注来源。
-3. 补账户池持久化与高级策略：跨 daemon 重启保留 round-robin/sticky 状态、quota/cooldown、sticky failover 可解释日志和 per-account proxy UI。
-4. 继续参考 Sub2API / CLIProxyAPI 补 realtime/audio WebSocket、usage 归集、模型目录刷新和 Codex account image edits 可行性验证。
+1. 补 Codex account Images generation live smoke、音频真实 upstream 能力和 realtime/WebSocket 可行性验证；不支持项继续明确报错。
+2. 补账户池高级策略：quota/cooldown、sticky failover 可解释日志和 per-account proxy/direct UI。
+3. 继续参考 Sub2API / CLIProxyAPI 补 usage 归集、模型目录刷新、媒体模型状态和 Codex account image edits 可行性验证。

@@ -1045,6 +1045,326 @@ test("model gateway account pool preserves session affinity and enforces per-acc
   }
 });
 
+test("model gateway account pool persists routing affinity across service restart", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const authRefA = "provider:codex-persist:account:a:codex-token";
+  const authRefB = "provider:codex-persist:account:b:codex-token";
+  const idTokenA = fakeJwt({
+    email: "persist-a@example.com",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct_persist_a",
+      chatgpt_plan_type: "plus",
+    },
+  });
+  const idTokenB = fakeJwt({
+    email: "persist-b@example.com",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct_persist_b",
+      chatgpt_plan_type: "plus",
+    },
+  });
+  const tokenBundle = (idToken, accessToken, refreshToken, accountId) => JSON.stringify({
+    type: "codex",
+    tokens: {
+      id_token: idToken,
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      account_id: accountId,
+    },
+    expires_at: new Date(Date.now() + 3600_000).toISOString(),
+  });
+
+  const setupContext = () => createStudioContext({ config, logger: createLogger() });
+  setupContext().services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-persist",
+      name: "Codex Persist",
+      enabled: true,
+      category: "official",
+      sourceType: "account-backed",
+      appScopes: ["codex"],
+      baseUrl: "https://chatgpt.com/backend-api/codex",
+      apiKeyRef: null,
+      apiFormat: "openai_responses",
+      authStrategy: "oauth_proxy",
+      models: {
+        defaultModel: "gpt-5.5",
+        models: [{ id: "gpt-5.5" }],
+        aliases: {},
+      },
+      endpoints: {
+        openai_responses: "/responses",
+      },
+      accountProvider: {
+        kind: "codex",
+        routing: {
+          strategy: "round-robin",
+          sessionAffinity: true,
+          maxConcurrentPerAccount: null,
+        },
+        accounts: [{
+          id: "codex-a",
+          kind: "codex",
+          enabled: true,
+          state: "ready",
+          authRef: authRefA,
+          credentialSource: "codex-device-auth",
+          accountHash: "a",
+          emailMasked: "pe***@example.com",
+          plan: "plus",
+          expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        }, {
+          id: "codex-b",
+          kind: "codex",
+          enabled: true,
+          state: "ready",
+          authRef: authRefB,
+          credentialSource: "codex-device-auth",
+          accountHash: "b",
+          emailMasked: "pe***@example.com",
+          plan: "plus",
+          expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        }],
+      },
+    },
+    setActiveScopes: ["codex"],
+  });
+  const stamp = new Date().toISOString();
+  fs.mkdirSync(path.dirname(paths.secrets), { recursive: true });
+  fs.writeFileSync(paths.secrets, `${JSON.stringify({
+    version: 1,
+    updatedAt: stamp,
+    secrets: {
+      [authRefA]: {
+        value: tokenBundle(idTokenA, "codex-persist-access-a", "codex-persist-refresh-a", "acct_persist_a"),
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+      [authRefB]: {
+        value: tokenBundle(idTokenB, "codex-persist-access-b", "codex-persist-refresh-b", "acct_persist_b"),
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+    },
+  }, null, 2)}\n`, { mode: 0o600 });
+
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  const sseResponse = (id) => [
+    `data: ${JSON.stringify({
+      type: "response.completed",
+      response: {
+        id,
+        object: "response",
+        status: "completed",
+        output: [{
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "ok" }],
+        }],
+      },
+    })}`,
+    "",
+    "data: [DONE]",
+    "",
+  ].join("\n");
+  globalThis.fetch = async (url, init = {}) => {
+    const target = new URL(String(url));
+    const headers = init.headers instanceof Headers ? init.headers : new Headers(init.headers || {});
+    if (target.hostname === "chatgpt.com" && target.pathname === "/backend-api/codex/responses") {
+      upstreamCalls.push({
+        accountId: headers.get("chatgpt-account-id"),
+        authorization: headers.get("authorization"),
+      });
+      return new Response(sseResponse(`resp_persist_${upstreamCalls.length}`), {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
+    return new Response("unexpected", { status: 500 });
+  };
+
+  try {
+    await withServer(createStudioRequestHandler(setupContext(), { stripBasePath: "" }), async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-session-id": "persist-alpha" },
+        body: { model: "gpt-5.5", input: "first alpha" },
+      });
+      assert.equal(response.status, 200);
+    });
+    assert.equal(upstreamCalls[0].accountId, "acct_persist_a");
+    const runtimeAfterFirst = JSON.parse(fs.readFileSync(paths.runtime, "utf8"));
+    assert.ok(Object.values(runtimeAfterFirst.accountRouting.codexAffinities).includes("codex-a"));
+
+    await withServer(createStudioRequestHandler(setupContext(), { stripBasePath: "" }), async (baseUrl) => {
+      const sameSession = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-session-id": "persist-alpha" },
+        body: { model: "gpt-5.5", input: "second alpha after restart" },
+      });
+      const newSession = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        headers: { "x-session-id": "persist-beta" },
+        body: { model: "gpt-5.5", input: "first beta after restart" },
+      });
+      assert.equal(sameSession.status, 200);
+      assert.equal(newSession.status, 200);
+    });
+    assert.equal(upstreamCalls[1].accountId, "acct_persist_a");
+    assert.equal(upstreamCalls[2].accountId, "acct_persist_b");
+    const runtimeAfterRestart = JSON.parse(fs.readFileSync(paths.runtime, "utf8"));
+    assert.ok(Object.values(runtimeAfterRestart.accountRouting.codexAffinities).includes("codex-a"));
+    assert.ok(Object.values(runtimeAfterRestart.accountRouting.codexAffinities).includes("codex-b"));
+    assert.ok(Object.values(runtimeAfterRestart.accountRouting.codexCursors).some((value) => value >= 2));
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("model gateway Codex account provider smoke uses account request normalization", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const service = createModelGatewayService(config);
+  const authRef = "provider:codex-smoke:account:a:codex-token";
+  const idToken = fakeJwt({
+    email: "smoke@example.com",
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    "https://api.openai.com/auth": {
+      chatgpt_account_id: "acct_smoke",
+      chatgpt_plan_type: "pro",
+    },
+  });
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "codex-smoke",
+      name: "Codex Smoke",
+      enabled: true,
+      category: "official",
+      sourceType: "account-backed",
+      appScopes: ["codex", "opencode"],
+      baseUrl: "https://chatgpt.com/backend-api/codex",
+      apiKeyRef: null,
+      apiFormat: "openai_responses",
+      authStrategy: "oauth_proxy",
+      models: {
+        defaultModel: "gpt-5.5",
+        models: [{ id: "gpt-5.5" }],
+        aliases: {},
+      },
+      endpoints: {
+        openai_responses: "/responses",
+        openai_responses_compact: "/compact",
+      },
+      accountProvider: {
+        kind: "codex",
+        routing: {
+          strategy: "round-robin",
+          sessionAffinity: true,
+          maxConcurrentPerAccount: null,
+        },
+        accounts: [{
+          id: "codex-smoke-a",
+          kind: "codex",
+          enabled: true,
+          state: "ready",
+          authRef,
+          credentialSource: "codex-device-auth",
+          accountHash: "smoke-a",
+          emailMasked: "sm***@example.com",
+          plan: "pro",
+          expiresAt: new Date(Date.now() + 3600_000).toISOString(),
+        }],
+      },
+    },
+    setActiveScopes: ["codex", "opencode"],
+  });
+  const stamp = new Date().toISOString();
+  fs.mkdirSync(path.dirname(paths.secrets), { recursive: true });
+  fs.writeFileSync(paths.secrets, `${JSON.stringify({
+    version: 1,
+    updatedAt: stamp,
+    secrets: {
+      [authRef]: {
+        value: JSON.stringify({
+          type: "codex",
+          tokens: {
+            id_token: idToken,
+            access_token: "codex-smoke-access",
+            refresh_token: "codex-smoke-refresh",
+            account_id: "acct_smoke",
+          },
+          expires_at: new Date(Date.now() + 3600_000).toISOString(),
+        }),
+        createdAt: stamp,
+        updatedAt: stamp,
+      },
+    },
+  }, null, 2)}\n`, { mode: 0o600 });
+
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const headers = init.headers instanceof Headers ? init.headers : new Headers(init.headers || {});
+    upstreamCalls.push({
+      url: String(url),
+      authorization: headers.get("authorization"),
+      accountId: headers.get("chatgpt-account-id"),
+      accept: headers.get("accept"),
+      body: JSON.parse(String(init.body || "{}")),
+    });
+    return new Response([
+      `data: ${JSON.stringify({
+        type: "response.completed",
+        response: {
+          id: "resp_provider_smoke",
+          object: "response",
+          status: "completed",
+          output: [{
+            type: "message",
+            role: "assistant",
+            content: [{ type: "output_text", text: "ok" }],
+          }],
+        },
+      })}`,
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n"), {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    const result = await service.testProvider(undefined, "codex-smoke", {
+      routeId: "openai_responses",
+      model: "gpt-5.5",
+      input: "Return ok.",
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.statusCode, 200);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://chatgpt.com/backend-api/codex/responses");
+  assert.equal(upstreamCalls[0].authorization, "Bearer codex-smoke-access");
+  assert.equal(upstreamCalls[0].accountId, "acct_smoke");
+  assert.equal(upstreamCalls[0].accept, "text/event-stream");
+  assert.equal(upstreamCalls[0].body.model, "gpt-5.5");
+  assert.equal(upstreamCalls[0].body.stream, true);
+  assert.equal(upstreamCalls[0].body.store, false);
+  assert.deepEqual(upstreamCalls[0].body.include, ["reasoning.encrypted_content"]);
+  assert.equal(Array.isArray(upstreamCalls[0].body.input), true);
+});
+
 test("model gateway refreshes expiring Codex account tokens before forwarding", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
@@ -3194,8 +3514,109 @@ test("model gateway active route smoke uses the client protocol endpoint", async
     assert.equal(seenHeaders.authorization, "Bearer sk-local-route-smoke");
     assert.equal(seenHeaders["x-studio-app-scope"], "codex");
     assert.equal(seenBody.model, "gpt-route");
-    assert.equal(seenBody.input, "Reply with GATEWAY_OK");
-    assert.equal(seenBody.max_output_tokens, 96);
+    assert.match(seenBody.input, /GATEWAY_OK/);
+    assert.equal(seenBody.max_output_tokens, 256);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("model gateway active route smoke uses Claude and OpenCode client tool contracts", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createModelGatewayService(config);
+  service.updateClientAuth(undefined, { apiKey: "sk-local-client-contract-smoke" });
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "claude-chat",
+      name: "Claude Chat Adapter",
+      appScopes: ["claude-code"],
+      baseUrl: "https://chat.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "glm-5.2",
+        models: [{ id: "glm-5.2" }],
+      },
+    },
+    secret: { apiKey: "sk-upstream-claude-contract" },
+    setActiveScopes: ["claude-code"],
+  });
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "opencode-responses",
+      name: "OpenCode Responses Adapter",
+      appScopes: ["opencode"],
+      baseUrl: "https://responses.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "gpt-5.5",
+        models: [{ id: "gpt-5.5" }],
+      },
+    },
+    secret: { apiKey: "sk-upstream-opencode-contract" },
+    setActiveScopes: ["opencode"],
+  });
+
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const body = JSON.parse(String(init.body || "{}"));
+    calls.push({ url: String(url), body });
+    if (String(url).endsWith("/v1/messages")) {
+      return new Response(JSON.stringify({
+        id: "msg_route_smoke",
+        type: "message",
+        role: "assistant",
+        model: "glm-5.2",
+        content: [{ type: "text", text: "GATEWAY_OK" }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }), {
+        status: 200,
+        headers: {
+          "content-type": "application/json",
+          "x-openclaw-model-gateway-provider": "claude-chat",
+        },
+      });
+    }
+    return new Response(JSON.stringify({
+      id: "chatcmpl_route_smoke",
+      object: "chat.completion",
+      choices: [{
+        message: { role: "assistant", content: "GATEWAY_OK" },
+        finish_reason: "stop",
+      }],
+    }), {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+        "x-openclaw-model-gateway-provider": "opencode-responses",
+      },
+    });
+  };
+
+  try {
+    const claude = await service.testActiveRoute(undefined, {
+      scope: "claude-code",
+      model: "glm-5.2",
+    });
+    const opencode = await service.testActiveRoute(undefined, {
+      scope: "opencode",
+      model: "gpt-5.5",
+    });
+    assert.equal(claude.ok, true);
+    assert.equal(opencode.ok, true);
+    assert.equal(calls[0].body.model, "glm-5.2");
+    assert.ok(Array.isArray(calls[0].body.tools));
+    assert.equal(calls[0].body.tools[0].name, "gateway_smoke_tool");
+    assert.deepEqual(calls[0].body.tool_choice, { type: "auto" });
+    assert.equal(calls[1].body.model, "gpt-5.5");
+    assert.ok(Array.isArray(calls[1].body.tools));
+    assert.equal(calls[1].body.tools[0].function.name, "gateway_smoke_tool");
+    assert.equal(calls[1].body.tool_choice, "auto");
+    assert.equal("reasoning_effort" in calls[1].body, false);
   } finally {
     globalThis.fetch = originalFetch;
   }
