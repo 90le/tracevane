@@ -29,6 +29,7 @@ import type {
   ModelGatewaySetActiveProviderRequest,
   ModelGatewayStatusResponse,
   ModelGatewayUpsertProviderRequest,
+  ModelGatewayUsageLedgerResponse,
 } from '../../../../../types/model-gateway';
 import { fetchStudioResponse, requestJson } from '../../shared/api';
 
@@ -63,6 +64,10 @@ export function fetchModelGatewayStatus(): Promise<ModelGatewayStatusResponse> {
 
 export function fetchModelGatewayRuntime(): Promise<ModelGatewayRuntimeResponse> {
   return requestJson<ModelGatewayRuntimeResponse>('/api/model-gateway/runtime');
+}
+
+export function fetchModelGatewayUsageLedger(): Promise<ModelGatewayUsageLedgerResponse> {
+  return requestJson<ModelGatewayUsageLedgerResponse>('/api/model-gateway/usage');
 }
 
 export function fetchModelGatewayClientAuth(): Promise<ModelGatewayClientAuthResponse> {

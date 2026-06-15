@@ -42,6 +42,7 @@ test("Studio Gateway page uses the new model-gateway API contract", () => {
   for (const requiredPath of [
     "/api/model-gateway/status",
     "/api/model-gateway/runtime",
+    "/api/model-gateway/usage",
     "/api/model-gateway/client-auth",
     "/api/model-gateway/app-connections",
     "/api/model-gateway/app-connections/profile",
@@ -120,6 +121,23 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "Codex advanced",
     "Request compression",
     "Provider configuration",
+    "模型消耗",
+    "Model usage",
+    "fetchModelGatewayUsageLedger",
+    "usageLedger",
+    "usageSummaryCards",
+    "usageProviderBuckets",
+    "usageModelBuckets",
+    "usageAccountBuckets",
+    "usageRecentEntries",
+    "API-key provider",
+    "Account-backed provider",
+    "usageLedgerWindowLabel",
+    "usageEntryAccountLabel",
+    "usageMediaLabel",
+    "mgw-usage-summary-grid",
+    "mgw-usage-section-grid",
+    "mgw-usage-entry-list",
     "Smoke / Logs",
     "workspaceTabs",
     "activeWorkspaceTab",
@@ -293,11 +311,15 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
   assert.match(css, /\.mgw-detect-card__main strong,\s*\.mgw-detect-card__main small\s*\{[^}]*overflow-wrap:\s*break-word/s);
   assert.match(css, /\.mgw-detect-card__main strong,\s*\.mgw-detect-card__main small\s*\{[^}]*word-break:\s*normal/s);
   assert.match(css, /\.mgw-secret-output code\s*\{[^}]*overflow-wrap:\s*anywhere/s);
-  assert.match(css, /\.mgw-workspace-tabs\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
+  assert.match(css, /\.mgw-workspace-tabs\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/s);
   assert.match(css, /\.mgw-workspace-tab\s*\{[^}]*overflow-wrap:\s*anywhere/s);
   assert.match(css, /\.mgw-app-card\.active\s*\{/);
   assert.match(css, /\.mgw-panel-actions\s*\{[^}]*flex-wrap:\s*wrap/s);
   assert.match(css, /\.mgw-app-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
+  assert.match(css, /\.mgw-usage-summary-grid\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/s);
+  assert.match(css, /\.mgw-usage-row\s*\{[^}]*grid-template-columns:\s*minmax\(150px,\s*0\.65fr\)\s+minmax\(0,\s*1\.35fr\)/s);
+  assert.match(css, /\.mgw-usage-entry summary\s*\{[^}]*grid-template-columns:[^}]*84px[^}]*minmax\(0,\s*0\.75fr\)[^}]*minmax\(0,\s*1\.2fr\)/s);
+  assert.match(css, /\.mgw-usage-entry__detail strong\s*\{[^}]*overflow-wrap:\s*anywhere/s);
   assert.match(css, /\.mgw-app-preview pre\s*\{[^}]*overflow-wrap:\s*anywhere/s);
   assert.match(css, /\.mgw-profile-budget-bar\s*\{[^}]*display:\s*flex/s);
   assert.match(css, /\.mgw-profile-budget-bar span\s*\{[^}]*overflow-wrap:\s*anywhere/s);
