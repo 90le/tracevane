@@ -94,6 +94,8 @@ import {
   type ModelGatewayRuntimeResponse,
   type ModelGatewayRuntimeState,
   type ModelGatewayRuntimeUsage,
+  type ModelGatewayRuntimeUsageSummary,
+  type ModelGatewayRuntimeUsageSummaryBucket,
   type ModelGatewayRouteDecision,
   type ModelGatewayRouteId,
   type ModelGatewayRouteMode,
@@ -426,6 +428,108 @@ function extractRuntimeUsage(value: unknown): ModelGatewayRuntimeUsage | null {
   }
   if (!isRecord(raw)) return null;
   return normalizeRuntimeUsage(raw.usage) || normalizeRuntimeUsage(raw);
+}
+
+function zeroRuntimeUsage(): ModelGatewayRuntimeUsage {
+  return {
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    cacheReadTokens: 0,
+    cacheCreationTokens: 0,
+  };
+}
+
+function addRuntimeUsage(target: ModelGatewayRuntimeUsage, value: ModelGatewayRuntimeUsage | null | undefined): void {
+  if (!value) return;
+  target.inputTokens += value.inputTokens;
+  target.outputTokens += value.outputTokens;
+  target.totalTokens += value.totalTokens;
+  target.cacheReadTokens += value.cacheReadTokens;
+  target.cacheCreationTokens += value.cacheCreationTokens;
+}
+
+function createRuntimeUsageBucket(
+  key: string,
+  label: string,
+  entry: ModelGatewayRuntimeRequestLogEntry,
+): ModelGatewayRuntimeUsageSummaryBucket {
+  return {
+    key,
+    label,
+    providerId: entry.providerId,
+    providerName: entry.providerName,
+    accountId: entry.accountId || null,
+    accountHash: entry.accountHash || null,
+    model: entry.model,
+    requestCount: 0,
+    meteredRequestCount: 0,
+    latestRequestAt: null,
+    usage: zeroRuntimeUsage(),
+  };
+}
+
+function summarizeRuntimeUsage(requestLog: ModelGatewayRuntimeRequestLogEntry[]): ModelGatewayRuntimeUsageSummary {
+  const summary: ModelGatewayRuntimeUsageSummary = {
+    requestCount: requestLog.length,
+    meteredRequestCount: 0,
+    latestRequestAt: requestLog[requestLog.length - 1]?.finishedAt || null,
+    usage: zeroRuntimeUsage(),
+    byProvider: [],
+    byModel: [],
+    byAccount: [],
+  };
+  const providers = new Map<string, ModelGatewayRuntimeUsageSummaryBucket>();
+  const models = new Map<string, ModelGatewayRuntimeUsageSummaryBucket>();
+  const accounts = new Map<string, ModelGatewayRuntimeUsageSummaryBucket>();
+  const bucket = (
+    map: Map<string, ModelGatewayRuntimeUsageSummaryBucket>,
+    key: string,
+    label: string,
+    entry: ModelGatewayRuntimeRequestLogEntry,
+  ) => {
+    let existing = map.get(key);
+    if (!existing) {
+      existing = createRuntimeUsageBucket(key, label, entry);
+      map.set(key, existing);
+    }
+    existing.requestCount += 1;
+    existing.latestRequestAt = entry.finishedAt;
+    if (entry.usage) {
+      existing.meteredRequestCount += 1;
+      addRuntimeUsage(existing.usage, entry.usage);
+    }
+  };
+
+  for (const entry of requestLog) {
+    if (entry.usage) {
+      summary.meteredRequestCount += 1;
+      addRuntimeUsage(summary.usage, entry.usage);
+    }
+    const providerKey = entry.providerId || "unknown-provider";
+    bucket(providers, providerKey, entry.providerName || entry.providerId || "unknown provider", entry);
+    const modelKey = `${providerKey}:${entry.model || "unknown-model"}`;
+    bucket(models, modelKey, entry.model || "unknown model", entry);
+    if (entry.accountId || entry.accountHash) {
+      const accountKey = `${providerKey}:${entry.accountHash || entry.accountId || "unknown-account"}`;
+      bucket(accounts, accountKey, entry.accountId || entry.accountHash || "unknown account", entry);
+    }
+  }
+
+  const ordered = (map: Map<string, ModelGatewayRuntimeUsageSummaryBucket>) => (
+    [...map.values()]
+      .sort((left, right) => (
+        right.usage.totalTokens - left.usage.totalTokens
+        || right.meteredRequestCount - left.meteredRequestCount
+        || right.requestCount - left.requestCount
+        || left.label.localeCompare(right.label)
+      ))
+      .slice(0, 12)
+  );
+  summary.byProvider = ordered(providers);
+  summary.byModel = ordered(models);
+  summary.byAccount = ordered(accounts);
+  return summary;
 }
 
 function normalizeId(value: unknown, fallback: string): string {
@@ -5912,6 +6016,7 @@ export function createModelGatewayService(
     const runtime = readRuntime();
     const openCircuits = registry.providers.filter((provider) => provider.health.circuitState === "open").length;
     const latestRequestAt = runtime.requestLog[runtime.requestLog.length - 1]?.finishedAt || null;
+    const usageSummary = summarizeRuntimeUsage(runtime.requestLog);
     return {
       ok: true,
       checkedAt: nowIso(),
@@ -5947,6 +6052,7 @@ export function createModelGatewayService(
       runtime: {
         requestLogSize: runtime.requestLog.length,
         latestRequestAt,
+        usageSummary,
       },
       lifecycle: getLifecycleStatus(),
       healthSummary: {
@@ -5958,9 +6064,11 @@ export function createModelGatewayService(
   }
 
   function getRuntime(): ModelGatewayRuntimeResponse {
+    const runtime = readRuntime();
     return {
       ok: true,
-      runtime: readRuntime(),
+      runtime,
+      usageSummary: summarizeRuntimeUsage(runtime.requestLog),
       paths: {
         runtime: paths.runtime,
         logs: paths.logs,

@@ -371,6 +371,30 @@ export interface ModelGatewayRuntimeUsage {
   cacheCreationTokens: number;
 }
 
+export interface ModelGatewayRuntimeUsageSummaryBucket {
+  key: string;
+  label: string;
+  providerId: string | null;
+  providerName: string | null;
+  accountId: string | null;
+  accountHash: string | null;
+  model: string | null;
+  requestCount: number;
+  meteredRequestCount: number;
+  latestRequestAt: string | null;
+  usage: ModelGatewayRuntimeUsage;
+}
+
+export interface ModelGatewayRuntimeUsageSummary {
+  requestCount: number;
+  meteredRequestCount: number;
+  latestRequestAt: string | null;
+  usage: ModelGatewayRuntimeUsage;
+  byProvider: ModelGatewayRuntimeUsageSummaryBucket[];
+  byModel: ModelGatewayRuntimeUsageSummaryBucket[];
+  byAccount: ModelGatewayRuntimeUsageSummaryBucket[];
+}
+
 export interface ModelGatewayRuntimeRequestLogEntry {
   id: string;
   kind: ModelGatewayRuntimeRequestKind;
@@ -940,6 +964,7 @@ export interface ModelGatewayStatusResponse {
   runtime: {
     requestLogSize: number;
     latestRequestAt: string | null;
+    usageSummary: ModelGatewayRuntimeUsageSummary;
   };
   lifecycle: ModelGatewayLifecycleStatus;
   healthSummary: {
@@ -952,6 +977,7 @@ export interface ModelGatewayStatusResponse {
 export interface ModelGatewayRuntimeResponse {
   ok: true;
   runtime: ModelGatewayRuntimeState;
+  usageSummary: ModelGatewayRuntimeUsageSummary;
   paths: {
     runtime: string;
     logs: string;

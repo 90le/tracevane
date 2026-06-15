@@ -5029,7 +5029,23 @@ test("model gateway daemon writes runtime metadata and serves cli routes", async
       cacheReadTokens: 1,
       cacheCreationTokens: 0,
     });
+    assert.equal(runtime.body.usageSummary.requestCount, 1);
+    assert.equal(runtime.body.usageSummary.meteredRequestCount, 1);
+    assert.equal(runtime.body.usageSummary.usage.totalTokens, 5);
+    assert.deepEqual(
+      runtime.body.usageSummary.byProvider.map((item) => [item.key, item.requestCount, item.usage.totalTokens]),
+      [["daemon-chat", 1, 5]],
+    );
+    assert.deepEqual(
+      runtime.body.usageSummary.byModel.map((item) => [item.label, item.requestCount, item.usage.totalTokens]),
+      [["daemon-model", 1, 5]],
+    );
     assert.ok(!JSON.stringify(runtime.body).includes("sk-daemon-secret-123456"));
+
+    const statusAfterRequest = await requestJson(`${daemon.getBaseUrl()}/api/model-gateway/status`);
+    assert.equal(statusAfterRequest.status, 200);
+    assert.equal(statusAfterRequest.body.runtime.usageSummary.requestCount, 1);
+    assert.equal(statusAfterRequest.body.runtime.usageSummary.usage.totalTokens, 5);
   } finally {
     globalThis.fetch = originalFetch;
     await daemon.stop();

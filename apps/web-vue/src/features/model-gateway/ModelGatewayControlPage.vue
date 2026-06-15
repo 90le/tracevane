@@ -47,8 +47,8 @@
               <strong>{{ daemonTemplateStateLabel(daemonService) }}</strong>
             </div>
             <div>
-              <span>{{ text('请求日志', 'Request log') }}</span>
-              <strong>{{ runtimeEntries.length }}</strong>
+              <span>{{ text('请求 / Tokens', 'Requests / tokens') }}</span>
+              <strong>{{ runtimeUsageLabel }}</strong>
             </div>
           </div>
 
@@ -1512,6 +1512,14 @@ const endpointProfilesCanSmoke = computed(() =>
 const runtimeEntries = computed<ModelGatewayRuntimeRequestLogEntry[]>(() =>
   [...(runtime.value?.runtime.requestLog || [])].reverse().slice(0, 8),
 );
+const runtimeUsageSummary = computed(() =>
+  runtime.value?.usageSummary || status.value?.runtime.usageSummary || null,
+);
+const runtimeUsageLabel = computed(() => {
+  const summary = runtimeUsageSummary.value;
+  if (!summary) return `${runtimeEntries.value.length} / 0`;
+  return `${formatCompactNumber(summary.requestCount)} / ${formatCompactNumber(summary.usage.totalTokens)}`;
+});
 
 function accountRoutingSummary(routing: ModelGatewayAccountRoutingDiagnostics): string {
   const selected = routing.selectedAccountId
