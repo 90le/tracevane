@@ -3306,6 +3306,97 @@ test("model gateway endpoint profiles prefer native protocol and fall back by en
   assert.match(fallback.failoverReason || "", /coding-anthropic.*fallback 'glm\/coding-chat'/);
 });
 
+test("model gateway endpoint profiles prefer same-provider model endpoint fallback", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createModelGatewayService(config);
+
+  const provider = {
+    id: "glm",
+    name: "GLM",
+    appScopes: ["openclaw"],
+    baseUrl: "https://open.bigmodel.cn/api/coding/paas/v4",
+    apiFormat: "openai_chat",
+    authStrategy: "bearer",
+    failover: { priority: 10 },
+    models: {
+      defaultModel: "glm-5.2",
+      models: [{ id: "glm-5.2" }],
+    },
+    endpointProfiles: [
+      {
+        id: "coding-chat-fast",
+        name: "Coding Chat Fast",
+        appScopes: ["openclaw"],
+        baseUrl: "https://fast.example.test/v1",
+        apiFormat: "openai_chat",
+        authStrategy: "bearer",
+        failover: { priority: 1 },
+      },
+      {
+        id: "coding-chat-backup",
+        name: "Coding Chat Backup",
+        appScopes: ["openclaw"],
+        baseUrl: "https://backup.example.test/v1",
+        apiFormat: "openai_chat",
+        authStrategy: "bearer",
+        failover: { priority: 20 },
+      },
+    ],
+  };
+
+  service.upsertProvider(undefined, {
+    provider,
+    setActiveScopes: ["openclaw"],
+  });
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "external-fast",
+      name: "External Fast",
+      appScopes: ["openclaw"],
+      baseUrl: "https://external.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      failover: { priority: 1 },
+      models: {
+        defaultModel: "glm-5.2",
+        models: [{ id: "glm-5.2" }],
+      },
+    },
+  });
+
+  const primary = service.resolveRouteDecision("POST", "/v1/chat/completions", {}, "glm-5.2");
+  assert.equal(primary.provider?.id, "glm");
+  assert.equal(primary.endpointProfile?.id, "coding-chat-fast");
+  assert.equal(primary.mode, "passthrough");
+  assert.equal(primary.upstreamUrl, "https://fast.example.test/v1/chat/completions");
+
+  service.upsertProvider(undefined, {
+    provider: {
+      ...provider,
+      endpointProfiles: [
+        {
+          ...provider.endpointProfiles[0],
+          health: {
+            circuitState: "open",
+            lastFailureAt: new Date().toISOString(),
+            lastError: "timeout",
+            consecutiveFailures: 3,
+          },
+        },
+        provider.endpointProfiles[1],
+      ],
+    },
+  });
+
+  const fallback = service.resolveRouteDecision("POST", "/v1/chat/completions", {}, "glm-5.2");
+  assert.equal(fallback.provider?.id, "glm");
+  assert.equal(fallback.endpointProfile?.id, "coding-chat-backup");
+  assert.equal(fallback.mode, "passthrough");
+  assert.equal(fallback.upstreamUrl, "https://backup.example.test/v1/chat/completions");
+  assert.match(fallback.failoverReason || "", /glm\/coding-chat-fast.*fallback 'glm\/coding-chat-backup'/);
+});
+
 test("model gateway forwards through endpoint profiles and updates endpoint health", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
