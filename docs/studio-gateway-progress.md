@@ -352,6 +352,5 @@
 
 ## 下一步
 
-1. 收口模型消耗页：保留本地 usage ledger、按日索引、成本估算和 CSV 导出；不做供应商账单导入或对账。
-2. 继续加固 Gateway 稳定性：endpoint profile fallback、同模型多端点优先级、协议优选/回退和错误 envelope regression。
-3. 后续若要支持 Codex account Realtime/WebSocket，必须按 CLIProxyAPI 的完整 state machine 迁移并通过 WS live smoke；音频同理，只有拿到真实上游合同后才移除结构化 unsupported。
+1. 继续加固 Gateway 稳定性：endpoint profile fallback、同模型多端点优先级、协议优选/回退和错误 envelope regression。
+2. 后续若要支持 Codex account Realtime/WebSocket，必须按 CLIProxyAPI 的完整 state machine 迁移并通过 WS live smoke；音频同理，只有拿到真实上游合同后才移除结构化 unsupported。
