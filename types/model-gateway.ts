@@ -442,6 +442,7 @@ export interface ModelGatewayRuntimeRequestLogEntry {
   accountId?: string | null;
   accountHash?: string | null;
   accountRouting?: ModelGatewayAccountRoutingDiagnostics | null;
+  clientKeyHash?: string | null;
   endpointProfileId?: string | null;
   endpointProfileName?: string | null;
   model: string | null;
@@ -466,6 +467,8 @@ export interface ModelGatewayUsageLedgerQuery {
   providerId?: string | null;
   model?: string | null;
   account?: string | null;
+  gatewayKey?: string | null;
+  gatewayKeyHash?: string | null;
   outcome?: ModelGatewayRuntimeRequestOutcome | "all" | string | null;
 }
 
@@ -1047,6 +1050,7 @@ export interface ModelGatewayUsageLedgerResponse {
     providerId: string | null;
     model: string | null;
     account: string | null;
+    gatewayKeyHash: string | null;
     outcome: ModelGatewayRuntimeRequestOutcome | "all";
   };
   readLimit: number;
@@ -1066,6 +1070,7 @@ export interface ModelGatewayRouteDecision {
   endpointProfile: Pick<ModelGatewayProviderEndpointProfile, "id" | "name" | "apiFormat" | "authStrategy" | "baseUrl"> | null;
   account?: Pick<ModelGatewayAccountEntry, "id" | "accountHash"> | null;
   accountRouting?: ModelGatewayAccountRoutingDiagnostics | null;
+  clientKeyHash?: string | null;
   model: {
     requested: string | null;
     resolved: string | null;

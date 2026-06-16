@@ -5,6 +5,7 @@ import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import { createHash } from "node:crypto";
 
 import {
   createStudioContext,
@@ -179,6 +180,10 @@ function fakeJwt(payload) {
   return `${encode({ alg: "none", typ: "JWT" })}.${encode(payload)}.signature`;
 }
 
+function sha256Short(value) {
+  return createHash("sha256").update(value).digest("hex").slice(0, 12);
+}
+
 async function waitFor(predicate, timeoutMs = 3000) {
   const deadline = Date.now() + timeoutMs;
   let lastError = null;
@@ -330,6 +335,7 @@ test("model gateway usage ledger supports paged filtered latency queries", () =>
     accountId: overrides.accountId || null,
     accountHash: overrides.accountHash || null,
     accountRouting: null,
+    clientKeyHash: overrides.clientKeyHash || null,
     endpointProfileId: null,
     endpointProfileName: null,
     model: overrides.model,
@@ -342,6 +348,8 @@ test("model gateway usage ledger supports paged filtered latency queries", () =>
     errorMessage: null,
     usage: overrides.usage || null,
   });
+  const clientKeyHashA = sha256Short("sk-usage-client-a");
+  const clientKeyHashB = sha256Short("sk-usage-client-b");
   const entries = [
     entry({
       id: "old-p2",
@@ -363,6 +371,7 @@ test("model gateway usage ledger supports paged filtered latency queries", () =>
       providerName: "Usage P1",
       accountId: "account-a",
       accountHash: "hash-a",
+      clientKeyHash: clientKeyHashA,
       model: "model-a",
       statusCode: 200,
       outcome: "success",
@@ -386,6 +395,7 @@ test("model gateway usage ledger supports paged filtered latency queries", () =>
       firstByteMs: 90,
       providerId: "usage-p1",
       providerName: "Usage P1",
+      clientKeyHash: clientKeyHashB,
       model: "model-b",
       statusCode: 500,
       outcome: "failure",
@@ -443,6 +453,17 @@ test("model gateway usage ledger supports paged filtered latency queries", () =>
   const accountPage = service.getUsageLedger({ account: "hash-a", limit: 10 });
   assert.equal(accountPage.matchedEntryCount, 1);
   assert.equal(accountPage.entries[0].accountId, "account-a");
+
+  const gatewayKeyPage = service.getUsageLedger({ gatewayKey: "sk-usage-client-a", limit: 10 });
+  assert.equal(gatewayKeyPage.matchedEntryCount, 1);
+  assert.equal(gatewayKeyPage.entries[0].id, "p1-a");
+  assert.equal(gatewayKeyPage.query.gatewayKeyHash, clientKeyHashA);
+  assert.ok(!JSON.stringify(gatewayKeyPage).includes("sk-usage-client-a"));
+
+  const gatewayKeyHashPage = service.getUsageLedger({ gatewayKeyHash: clientKeyHashB, limit: 10 });
+  assert.equal(gatewayKeyHashPage.matchedEntryCount, 1);
+  assert.equal(gatewayKeyHashPage.entries[0].id, "p1-b");
+  assert.equal(gatewayKeyHashPage.query.gatewayKeyHash, clientKeyHashB);
 
   const failures = service.getUsageLedger({ source: "failure", limit: 10 });
   assert.equal(failures.matchedEntryCount, 1);
@@ -3592,6 +3613,20 @@ test("model gateway client key protects client endpoints and stays separate from
       });
       assert.equal(chat.status, 200);
       assert.deepEqual(chat.body, { id: "chatcmpl_client_auth", ok: true });
+
+      const localClientOneHash = sha256Short("sk-local-client-one");
+      const usageByGatewayKey = await requestJson(`${baseUrl}/api/model-gateway/usage?gatewayKey=sk-local-client-one&limit=20`);
+      assert.equal(usageByGatewayKey.status, 200);
+      assert.equal(usageByGatewayKey.body.query.gatewayKeyHash, localClientOneHash);
+      assert.ok(usageByGatewayKey.body.matchedEntryCount >= 1);
+      assert.ok(usageByGatewayKey.body.entries.some((entry) => entry.model === "auth-model" && entry.outcome === "success"));
+      assert.ok(usageByGatewayKey.body.entries.every((entry) => entry.clientKeyHash === localClientOneHash));
+      assert.ok(!JSON.stringify(usageByGatewayKey.body).includes("sk-local-client-one"));
+
+      const usageByGatewayKeyHash = await requestJson(`${baseUrl}/api/model-gateway/usage?gatewayKeyHash=${localClientOneHash}&limit=20`);
+      assert.equal(usageByGatewayKeyHash.status, 200);
+      assert.equal(usageByGatewayKeyHash.body.query.gatewayKeyHash, localClientOneHash);
+      assert.equal(usageByGatewayKeyHash.body.matchedEntryCount, usageByGatewayKey.body.matchedEntryCount);
 
       const rotateKey = await requestJson(`${baseUrl}/api/model-gateway/client-auth`, {
         method: "POST",

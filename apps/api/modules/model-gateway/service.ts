@@ -1652,6 +1652,11 @@ function clientAuthCandidates(req: http.IncomingMessage): string[] {
   return [bearer || "", apiKey || ""].filter(Boolean);
 }
 
+function gatewayClientKeyHashFromRequest(req: http.IncomingMessage): string | null {
+  const candidate = clientAuthCandidates(req)[0] || "";
+  return candidate ? sha256Short(candidate) : null;
+}
+
 function createEmptyRegistry(updatedAt = nowIso()): ModelGatewayRegistryState {
   return {
     version: 1,
@@ -2129,6 +2134,7 @@ function normalizeRuntimeLogEntry(value: unknown): ModelGatewayRuntimeRequestLog
     accountId: normalizeString(value.accountId) || null,
     accountHash: normalizeString(value.accountHash) || null,
     accountRouting: normalizeRuntimeAccountRoutingDiagnostics(value.accountRouting),
+    clientKeyHash: normalizeString(value.clientKeyHash) || null,
     model: normalizeString(value.model) || null,
     method: normalizeString(value.method, "POST").toUpperCase(),
     requestedPath: normalizeString(value.requestedPath, "/"),
@@ -4351,6 +4357,7 @@ function requestLogEntry(options: {
     accountId: options.route.account?.id || null,
     accountHash: options.route.account?.accountHash || null,
     accountRouting: options.route.accountRouting || null,
+    clientKeyHash: options.route.clientKeyHash || null,
     endpointProfileId: options.route.endpointProfile?.id || null,
     endpointProfileName: options.route.endpointProfile?.name || null,
     model: options.model,
@@ -5031,6 +5038,7 @@ export function createModelGatewayService(
     providerId: string | null;
     model: string | null;
     account: string | null;
+    gatewayKeyHash: string | null;
     outcome: ModelGatewayRuntimeRequestOutcome | "all";
   };
 
@@ -5046,6 +5054,8 @@ export function createModelGatewayService(
     const outcome = ["success", "failure", "adapter-required", "missing-provider", "all"].includes(query?.outcome as string)
       ? query?.outcome as NormalizedUsageLedgerQuery["outcome"]
       : "all";
+    const gatewayKey = normalizeString(query?.gatewayKey);
+    const gatewayKeyHash = normalizeString(query?.gatewayKeyHash) || (gatewayKey ? sha256Short(gatewayKey) : "");
     return {
       limit: Math.min(MAX_USAGE_LEDGER_PAGE_LIMIT, Math.max(1, Math.floor(limitValue || DEFAULT_USAGE_LEDGER_PAGE_LIMIT))),
       offset: Math.max(0, Math.floor(offsetValue || 0)),
@@ -5054,6 +5064,7 @@ export function createModelGatewayService(
       providerId: normalizeString(query?.providerId) || null,
       model: normalizeString(query?.model) || null,
       account: normalizeString(query?.account) || null,
+      gatewayKeyHash: gatewayKeyHash || null,
       outcome,
     };
   }
@@ -5088,6 +5099,7 @@ export function createModelGatewayService(
       ].map((value) => value.toLowerCase());
       if (!entryAccount.includes(account)) return false;
     }
+    if (query.gatewayKeyHash && entry.clientKeyHash !== query.gatewayKeyHash) return false;
     if (query.outcome !== "all" && entry.outcome !== query.outcome) return false;
     if (query.source === "failure") return entry.outcome !== "success";
     if (query.source === "account-backed") {
@@ -6456,6 +6468,7 @@ export function createModelGatewayService(
         providerId: normalizedQuery.providerId,
         model: normalizedQuery.model,
         account: normalizedQuery.account,
+        gatewayKeyHash: normalizedQuery.gatewayKeyHash,
         outcome: normalizedQuery.outcome,
       },
       readLimit: MAX_USAGE_LEDGER_READ_ENTRIES,
@@ -8629,6 +8642,7 @@ export function createModelGatewayService(
 
   async function handleGatewayRequest(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const startedAt = nowIso();
+    const clientKeyHash = gatewayClientKeyHashFromRequest(req);
     try {
       requireGatewayClient(req);
     } catch (error) {
@@ -8646,6 +8660,7 @@ export function createModelGatewayService(
           mode: "unsupported",
           provider: null,
           endpointProfile: null,
+          clientKeyHash,
           model: null,
           upstreamPath: null,
           upstreamUrl: null,
@@ -8671,7 +8686,10 @@ export function createModelGatewayService(
     let bodyText = requestBodyIsJson(req) && body.byteLength ? body.toString("utf8") : undefined;
     const upstreamBodyBuffer = body.byteLength ? new Uint8Array(body) : undefined;
     const requestModel = extractModelFromRequestBody(req, body);
-    const decision = resolveRouteDecision(req.method || "GET", req.url || "/", req.headers, requestModel);
+    const decision: ModelGatewayRouteDecision = {
+      ...resolveRouteDecision(req.method || "GET", req.url || "/", req.headers, requestModel),
+      clientKeyHash,
+    };
     if (decision.mode === "unsupported") {
       appendRequestLog(requestLogEntry({
         kind: "gateway-request",

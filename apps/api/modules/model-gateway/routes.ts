@@ -75,6 +75,8 @@ export function registerModelGatewayRoutes(router: StudioRouter): void {
         providerId: url.searchParams.get("providerId"),
         model: url.searchParams.get("model"),
         account: url.searchParams.get("account"),
+        gatewayKey: url.searchParams.get("gatewayKey"),
+        gatewayKeyHash: url.searchParams.get("gatewayKeyHash"),
         outcome: url.searchParams.get("outcome"),
       };
       sendJson(res, 200, routeCtx.services.modelGateway.getUsageLedger(query));
