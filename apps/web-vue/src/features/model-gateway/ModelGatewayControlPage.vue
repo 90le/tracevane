@@ -180,6 +180,12 @@
                     :tone="activeRouteStateTone(activeRouteStatusForScope(scope.id))"
                   />
                   <small>{{ activeRouteStatusForScope(scope.id)?.message || '-' }}</small>
+                  <small
+                    v-if="activeRouteTargetLine(activeRouteStatusForScope(scope.id))"
+                    :title="activeRouteStatusForScope(scope.id)?.upstreamUrl || undefined"
+                  >
+                    {{ activeRouteTargetLine(activeRouteStatusForScope(scope.id)) }}
+                  </small>
                 </div>
                 <div v-if="activeRouteSmokeResultForScope(scope.id)" class="mgw-route-smoke" :class="activeRouteSmokeResultForScope(scope.id)?.ok ? 'success' : 'failure'">
                   <small>
@@ -3377,6 +3383,18 @@ function activeRouteStateTone(route: ModelGatewayActiveRouteStatus | null): 'neu
   if (route.state === 'auto') return 'accent';
   if (route.state === 'fallback') return 'neutral';
   return 'danger';
+}
+
+function activeRouteTargetLine(route: ModelGatewayActiveRouteStatus | null): string {
+  if (!route?.resolvedProviderName) return '';
+  const target = route.resolvedEndpointProfileName
+    ? `${route.resolvedProviderName} / ${route.resolvedEndpointProfileName}`
+    : route.resolvedProviderName;
+  return [
+    target,
+    route.resolvedApiFormat,
+    route.routeMode,
+  ].filter(Boolean).join(' · ');
 }
 
 function activeRouteSmokeResultForScope(scope: ModelGatewayAppScope): ModelGatewayProviderTestResponse | null {

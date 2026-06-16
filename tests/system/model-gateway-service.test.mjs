@@ -3370,6 +3370,16 @@ test("model gateway endpoint profiles prefer same-provider model endpoint fallba
   assert.equal(primary.endpointProfile?.id, "coding-chat-fast");
   assert.equal(primary.mode, "passthrough");
   assert.equal(primary.upstreamUrl, "https://fast.example.test/v1/chat/completions");
+  let listed = service.listProviders();
+  let route = listed.activeRoutes.find((item) => item.scope === "openclaw");
+  assert.equal(route?.state, "fixed");
+  assert.equal(route?.resolvedProviderId, "glm");
+  assert.equal(route?.resolvedEndpointProfileId, "coding-chat-fast");
+  assert.equal(route?.resolvedEndpointProfileName, "Coding Chat Fast");
+  assert.equal(route?.resolvedApiFormat, "openai_chat");
+  assert.equal(route?.routeMode, "passthrough");
+  assert.equal(route?.upstreamUrl, "https://fast.example.test/v1/chat/completions");
+  assert.match(route?.message || "", /via endpoint 'Coding Chat Fast'/);
 
   service.upsertProvider(undefined, {
     provider: {
@@ -3395,6 +3405,18 @@ test("model gateway endpoint profiles prefer same-provider model endpoint fallba
   assert.equal(fallback.mode, "passthrough");
   assert.equal(fallback.upstreamUrl, "https://backup.example.test/v1/chat/completions");
   assert.match(fallback.failoverReason || "", /glm\/coding-chat-fast.*fallback 'glm\/coding-chat-backup'/);
+
+  listed = service.listProviders();
+  route = listed.activeRoutes.find((item) => item.scope === "openclaw");
+  assert.equal(route?.state, "fallback");
+  assert.equal(route?.selectedProviderId, "glm");
+  assert.equal(route?.resolvedProviderId, "glm");
+  assert.equal(route?.resolvedEndpointProfileId, "coding-chat-backup");
+  assert.equal(route?.resolvedEndpointProfileName, "Coding Chat Backup");
+  assert.equal(route?.resolvedApiFormat, "openai_chat");
+  assert.equal(route?.routeMode, "passthrough");
+  assert.equal(route?.upstreamUrl, "https://backup.example.test/v1/chat/completions");
+  assert.match(route?.warning || "", /glm\/coding-chat-fast.*fallback 'glm\/coding-chat-backup'/);
 });
 
 test("model gateway forwards through endpoint profiles and updates endpoint health", async () => {

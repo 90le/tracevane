@@ -980,8 +980,14 @@ export interface ModelGatewayActiveRouteStatus {
   selectedProviderId: string | null;
   resolvedProviderId: string | null;
   resolvedProviderName: string | null;
+  resolvedEndpointProfileId: string | null;
+  resolvedEndpointProfileName: string | null;
   resolvedModel: string | null;
   routeId: ModelGatewayRouteId;
+  routeMode: ModelGatewayRouteMode | null;
+  resolvedApiFormat: ModelGatewayApiFormat | null;
+  resolvedBaseUrl: string | null;
+  upstreamUrl: string | null;
   state: ModelGatewayActiveRouteState;
   message: string;
   warning: string | null;

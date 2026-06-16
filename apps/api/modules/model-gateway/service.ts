@@ -7367,14 +7367,28 @@ export function createModelGatewayService(
         || effectiveProvider?.models.defaultModel
         || effectiveProvider?.models.models[0]?.id
         || null;
+      const routeModeValue = effectiveProvider ? routeMode(routeId, effectiveProvider) : null;
+      const upstreamPath = effectiveProvider ? endpointForRoute(routeId, effectiveProvider) : null;
+      const upstreamUrl = effectiveProvider && upstreamPath ? joinBaseUrl(effectiveProvider.baseUrl, upstreamPath) : null;
+      const endpointProfileId = selection.endpointProfile?.id || null;
+      const endpointProfileName = selection.endpointProfile?.name || null;
+      const resolvedRouteTarget = endpointProfileName
+        ? `${resolvedProvider?.name || endpointProfileName} / ${endpointProfileName}`
+        : resolvedProvider?.name || "";
       if (!resolvedProvider) {
         return {
           scope,
           selectedProviderId,
           resolvedProviderId: null,
           resolvedProviderName: null,
+          resolvedEndpointProfileId: null,
+          resolvedEndpointProfileName: null,
           resolvedModel,
           routeId,
+          routeMode: null,
+          resolvedApiFormat: null,
+          resolvedBaseUrl: null,
+          upstreamUrl: null,
           state: "missing",
           message: `No available Model Gateway provider is available for ${scope}.`,
           warning: `No available Model Gateway provider is available for ${scope}.`,
@@ -7388,8 +7402,14 @@ export function createModelGatewayService(
           selectedProviderId,
           resolvedProviderId: resolvedProvider.id,
           resolvedProviderName: resolvedProvider.name,
+          resolvedEndpointProfileId: endpointProfileId,
+          resolvedEndpointProfileName: endpointProfileName,
           resolvedModel,
           routeId,
+          routeMode: routeModeValue,
+          resolvedApiFormat: effectiveProvider?.apiFormat || null,
+          resolvedBaseUrl: effectiveProvider?.baseUrl || null,
+          upstreamUrl,
           state: "fallback",
           message: warning,
           warning,
@@ -7401,10 +7421,18 @@ export function createModelGatewayService(
           selectedProviderId,
           resolvedProviderId: resolvedProvider.id,
           resolvedProviderName: resolvedProvider.name,
+          resolvedEndpointProfileId: endpointProfileId,
+          resolvedEndpointProfileName: endpointProfileName,
           resolvedModel,
           routeId,
+          routeMode: routeModeValue,
+          resolvedApiFormat: effectiveProvider?.apiFormat || null,
+          resolvedBaseUrl: effectiveProvider?.baseUrl || null,
+          upstreamUrl,
           state: "fixed",
-          message: `Fixed to '${resolvedProvider.name}'.`,
+          message: endpointProfileName
+            ? `Fixed to '${resolvedProvider.name}' via endpoint '${endpointProfileName}'.`
+            : `Fixed to '${resolvedProvider.name}'.`,
           warning: null,
         };
       }
@@ -7413,10 +7441,18 @@ export function createModelGatewayService(
         selectedProviderId,
         resolvedProviderId: resolvedProvider.id,
         resolvedProviderName: resolvedProvider.name,
+        resolvedEndpointProfileId: endpointProfileId,
+        resolvedEndpointProfileName: endpointProfileName,
         resolvedModel,
         routeId,
+        routeMode: routeModeValue,
+        resolvedApiFormat: effectiveProvider?.apiFormat || null,
+        resolvedBaseUrl: effectiveProvider?.baseUrl || null,
+        upstreamUrl,
         state: "auto",
-        message: `Auto resolves to '${resolvedProvider.name}'.`,
+        message: endpointProfileName
+          ? `Auto resolves to '${resolvedRouteTarget}'.`
+          : `Auto resolves to '${resolvedProvider.name}'.`,
         warning: null,
       };
     });
