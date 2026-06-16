@@ -16,7 +16,7 @@
 - Codex account-backed provider 已扩展受控本地模型 catalog：`gpt-5.5`、`gpt-5.4`、`gpt-5.4-mini`、`gpt-5.3-codex`、`gpt-image-2`、transcribe/tts/audio/realtime 类模型进入 `/v1/models`，并携带 text/image/audio 能力标记；旧生成的 `gpt-5.5-mini` 和 ChatGPT Codex account 不支持的 `gpt-5` 不再作为账户模型暴露；Codex account REST audio 目前只做结构化 unsupported，不透传到 ChatGPT backend HTML 错误。
 - Codex account upstream 返回 HTTP 401/403 会把账户标为 `needs-login`；HTTP 429 或明确 quota/rate/capacity/overloaded 错误会把账户标为 `cooldown` 并尊重 `Retry-After`，后续路由会跳过该账户直到冷却结束；started streaming passthrough 内的 `response.failed/error` 也会旁路解析并回写账户状态；runtime log 和 Provider Center 最近请求会显示账号池策略、sticky 命中、选择原因、池容量计数、跳过原因、busy/cooldown 来源和 cooldown 到期后的首次重试；Provider Center 可手动清除 cooldown、配置账号级 proxy/direct，并编辑 round-robin/fill-first、sticky session 和单账号并发。
 - Gateway `/api/model-gateway/runtime` 与 `/api/model-gateway/status` 已从脱敏 request log 派生 usage summary，按 provider/model/account 聚合 request count、metered request count、tokens、image/audio 媒体单位、延迟分位、首字节/TTFT 分位和最近请求时间；`/api/model-gateway/usage` 读取本地 `usage-ledger.jsonl` 的最近 20000 条 / 16MB 脱敏账本窗口，支持服务端时间范围、来源、provider、canonical 模型、账号、Gateway key hash、outcome 筛选和分页，并返回读取窗口元数据与按日 archive index；Provider Center “模型消耗”页已统一展示账号登录 provider 与普通 API-key provider 的消耗，支持 Gateway key/hash 筛选、日桶归档窗口和当前查询 CSV 导出。
-- Provider 模型目录支持可选 schema 化价格字段；Provider Center “模型消耗”页会按当前筛选和用户配置价格估算成本，拆分 token/cache/image/audio 成本分量并导出 CSV。该值是本地估算，不等同供应商账单。
+- Provider 模型目录支持可选 schema 化价格字段；Provider Center “模型消耗”页会按当前筛选和用户配置价格估算成本，拆分 token/cache/image/audio 成本分量并导出 CSV。该值只用于 Studio 本地统计和决策参考，不作为上游扣费凭据。
 - Provider Center Smoke / 日志页已显示媒体模型状态，按启用 provider catalog 统计图片理解、生图、音频输入、音频输出和 realtime 模型。
 - Provider Center 不再按模型名自动标记 vision；图片能力只来自用户配置、上游显式能力元数据或图片 smoke 通过后用户确认写回。
 - App Connections 覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收；Model Gateway 支持 `tab/app` deep-link 直达并高亮指定 CLI App Connection。
@@ -62,12 +62,12 @@
   - Account pool 可观察性补齐 cooldown retry：过期 cooldown 账户被重新选中时，runtime log `accountRouting` 会记录 `selectedWasCooldownRetry` 与原 `selectedCooldownUntil`，Provider Center 最近请求显示“冷却后重试”；成功后账户恢复 `ready`。
   - Gateway usage summary 初版：`status.runtime.usageSummary` 与 `runtime.usageSummary` 从 request log 聚合总 tokens、provider/model/account top buckets；Provider Center Runtime 侧栏显示请求数 / tokens，为后续模型消耗页提供稳定合同。
   - Gateway usage summary 补齐媒体单位：runtime usage schema 新增 image generation request、images generated、image edit request、audio input request、audio output request；Codex account Images bridge、OpenAI-compatible image edits 和 audio passthrough 会写入对应单位，Provider Center Runtime 侧栏在有媒体用量时显示摘要。
-  - Gateway usage ledger 初版：每条 request log 同步追加到本地 `usage-ledger.jsonl`，新增 `/api/model-gateway/usage` 返回最近 20000 条 / 16MB 的脱敏账本窗口、窗口元数据和同一 usage summary；当前用于长期统计底座，账单级对账和归档索引仍待补。
+  - Gateway usage ledger 初版：每条 request log 同步追加到本地 `usage-ledger.jsonl`，新增 `/api/model-gateway/usage` 返回最近 20000 条 / 16MB 的脱敏消耗窗口、窗口元数据和同一 usage summary；当前用于本地长期统计底座。
   - Usage ledger 窗口可观察性：`/api/model-gateway/usage` 返回 `readLimit/readByteLimit/readBytes/ledgerSizeBytes/truncated`；Provider Center 在账本被截断时显示读取窗口，避免把窗口误读成全量账本。
   - Provider Center 新增“模型消耗”工作区：直接读取 `/api/model-gateway/usage`，展示总请求、计费请求、tokens、媒体单位、按 provider/model/account 聚合和最近消耗记录；普通 API-key provider 不进入账号桶，但会在 Provider 消耗和最近记录里标记为 `API-key provider`。
   - 模型消耗页补齐筛选与导出：可按最近 24h / 7d / 30d / 全部账本窗口、账号 provider / API-key provider / 失败请求、provider 和模型筛选；总览、provider/model/account 聚合与最近记录都会按当前筛选重新计算，CSV 导出只包含当前筛选结果。
   - 模型消耗页补齐本地价格估算：模型目录可配置 currency、input/output/cache、image/audio 单价；前端按 usage ledger 当前筛选估算 provider/model/account/recent entry 成本，拆分 token/cache/image/audio 分量，并把 estimated_cost 与分量列写入 CSV。
-  - Usage ledger 归档索引初版：`/api/model-gateway/usage` 会对当前服务端筛选后的账本窗口生成按日 `archiveIndex`，包含每天请求数、成功/失败、计费用、tokens、媒体单位和起止时间；Provider Center “模型消耗”页展示归档窗口与最近 14 个日期桶，为后续按日归档文件和供应商账单对账留合同。
+  - Usage ledger 按日索引初版：`/api/model-gateway/usage` 会对当前服务端筛选后的消耗窗口生成按日 `archiveIndex`，包含每天请求数、成功/失败、计费用、tokens、媒体单位和起止时间；Provider Center “模型消耗”页展示按日窗口与最近 14 个日期桶，作为本地趋势查看和异常定位入口。
   - Usage ledger 查询补齐服务端分页、Gateway key hash 和延迟指标：`/api/model-gateway/usage` 支持 `limit/offset/timeRange/source/providerId/model/account/gatewayKey/gatewayKeyHash/outcome`，响应只回显 `gatewayKeyHash`，返回 `totalEntryCount/matchedEntryCount/hasMore/query`、latency average/p50/p95/p99/max 和首字节/TTFT 分位；Provider Center 用服务端查询驱动账号过滤、页大小、上一页/下一页和 TTFT p95 展示。旧账本记录没有 `firstByteMs` 时只进入总耗时统计。
   - Provider Center 模型消耗页补齐 Gateway key/hash 筛选：输入本地 Gateway key 时只发给后端换算 hash，输入 12 位 hash 时直接筛选；最近记录和 CSV 只展示 `clientKeyHash`，不展示明文 key。
   - 模型消耗归并 provider catalog alias：usage summary、服务端 `model` 筛选、Provider Center 模型桶、成本估算和 CSV 均按 canonical model id 统计；单条 request log 保留原始请求模型，最近记录会显示归并模型。
@@ -347,10 +347,10 @@
 - 工具流仍需继续 live 抽查：Codex、Claude Code、OpenCode 近 12h 均已有可见工具输出 live 证据，且三者均有过程回复真实 IM 证据。
 - 思考流 parser 支持 Codex、Claude Code、OpenCode 原生 thinking/reasoning 事件；Octo 私聊 `/thinking on/off` 已做端到端回归；状态/UI 已区分 parser 支持和 live 输出观测。真实 smoke 证明 OpenCode 会在支持 reasoning 的模型上输出 `reasoning`，Claude Code 2.1.86 当前未输出 `thinking` item；没有原生思考事件的 Agent/模型组合只能标为不支持，不伪造。
 - Codex account live smoke 已确认：`/v1/models` 由 Studio Gateway daemon 返回聚合模型，account catalog 不再暴露 `gpt-5.5-mini` / `gpt-5`；`gpt-5.5` 覆盖 Responses non-stream、Responses stream、Chat Completions adapter、Anthropic Messages adapter、Responses compact、Provider smoke、Claude Code CLI 和 OpenCode Chat tools smoke，均通过统一 Gateway key；`gpt-image-2` Images generation 已强制命中 `codex-account` 并返回图片。Realtime/WebSocket、Codex account 音频真实上游能力和 image/audio 计费 usage 精细映射仍是后续项；`/v1/images/edits` 已对 OpenAI-compatible provider passthrough，对 Codex account 明确报不支持。
-- Account pool live smoke 已确认当前单账号基础链路：active `codex-account`、`gpt-5.5` `/v1/responses`、runtime pool count 诊断和 sticky session 均通过；本机目前只有 1 个 ready Codex account，多账号 round-robin/fill-first 仍需第二个账户后验证。
+- Account pool live smoke 已确认当前单账号基础链路：active `codex-account`、`gpt-5.5` `/v1/responses`、runtime pool count 诊断和 sticky session 均通过；多账号 round-robin/fill-first 不是当前发布前目标，暂不继续推进。
 
 ## 下一步
 
-1. 等本机补第二个 ready Codex account 后跑 `node scripts/smoke-model-gateway-account-pool.mjs --require-multi-account --json`，验证多账号 round-robin/fill-first、sticky failover、busy/cooldown 真实链路。
-2. 继续把模型消耗页补成完整计费视图：供应商账单导入、按日归档文件和差异对账。
-3. 继续补 Codex account Realtime/WebSocket 和音频真实上游能力调查。
+1. 收口模型消耗页：保留本地 usage ledger、按日索引、成本估算和 CSV 导出；不做供应商账单导入或对账。
+2. 继续调查 Codex account Realtime/WebSocket 和音频真实上游能力；能稳定支持就接入，不能稳定支持就保留结构化 unsupported。
+3. 继续加固 Gateway 稳定性：endpoint profile fallback、同模型多端点优先级、协议优选/回退和错误 envelope regression。
