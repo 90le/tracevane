@@ -98,6 +98,8 @@ import {
   type ModelGatewayRuntimeLatencySummary,
   type ModelGatewayRuntimeUsageSummary,
   type ModelGatewayRuntimeUsageSummaryBucket,
+  type ModelGatewayUsageArchiveBucket,
+  type ModelGatewayUsageArchiveIndex,
   type ModelGatewayUsageLedgerQuery,
   type ModelGatewayUsageLedgerResponse,
   type ModelGatewayRouteDecision,
@@ -5158,6 +5160,70 @@ export function createModelGatewayService(
     return Number.isFinite(value) ? value : 0;
   }
 
+  function usageLedgerDayPeriod(entry: ModelGatewayRuntimeRequestLogEntry): string {
+    const time = usageLedgerEntryTime(entry);
+    if (!time) return "unknown";
+    return new Date(time).toISOString().slice(0, 10);
+  }
+
+  function createUsageArchiveBucket(period: string): ModelGatewayUsageArchiveBucket {
+    return {
+      period,
+      entryCount: 0,
+      successCount: 0,
+      failureCount: 0,
+      meteredRequestCount: 0,
+      firstRequestAt: null,
+      latestRequestAt: null,
+      usage: zeroRuntimeUsage(),
+    };
+  }
+
+  function summarizeUsageArchiveIndex(
+    entries: ModelGatewayRuntimeRequestLogEntry[],
+    readWindowOnly: boolean,
+  ): ModelGatewayUsageArchiveIndex {
+    const buckets = new Map<string, ModelGatewayUsageArchiveBucket>();
+    for (const entry of entries) {
+      const period = usageLedgerDayPeriod(entry);
+      let bucket = buckets.get(period);
+      if (!bucket) {
+        bucket = createUsageArchiveBucket(period);
+        buckets.set(period, bucket);
+      }
+      bucket.entryCount += 1;
+      if (entry.outcome === "success") {
+        bucket.successCount += 1;
+      } else {
+        bucket.failureCount += 1;
+      }
+      if (entry.usage) {
+        bucket.meteredRequestCount += 1;
+        addRuntimeUsage(bucket.usage, entry.usage);
+      }
+      const finishedAt = entry.finishedAt || entry.startedAt || null;
+      const finishedTime = usageLedgerEntryTime(entry);
+      if (finishedAt) {
+        if (!bucket.firstRequestAt || finishedTime < Date.parse(bucket.firstRequestAt)) {
+          bucket.firstRequestAt = finishedAt;
+        }
+        if (!bucket.latestRequestAt || finishedTime > Date.parse(bucket.latestRequestAt)) {
+          bucket.latestRequestAt = finishedAt;
+        }
+      }
+    }
+    const orderedBuckets = [...buckets.values()]
+      .sort((left, right) => right.period.localeCompare(left.period));
+    return {
+      granularity: "day",
+      bucketCount: orderedBuckets.length,
+      oldestPeriod: orderedBuckets[orderedBuckets.length - 1]?.period || null,
+      latestPeriod: orderedBuckets[0]?.period || null,
+      readWindowOnly,
+      buckets: orderedBuckets,
+    };
+  }
+
   function usageLedgerEntryMatchesQuery(
     entry: ModelGatewayRuntimeRequestLogEntry,
     query: NormalizedUsageLedgerQuery,
@@ -6540,6 +6606,7 @@ export function createModelGatewayService(
       ok: true,
       entries,
       usageSummary: summarizeRuntimeUsage(filteredEntries, modelBucketForEntry),
+      archiveIndex: summarizeUsageArchiveIndex(filteredEntries, truncated),
       entryCount: filteredEntries.length,
       totalEntryCount: readableEntries.length,
       matchedEntryCount: filteredEntries.length,

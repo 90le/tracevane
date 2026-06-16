@@ -443,6 +443,19 @@ test("model gateway usage ledger supports paged filtered latency queries", () =>
       maxMs: 90,
     },
   });
+  const latestPeriod = new Date(now).toISOString().slice(0, 10);
+  assert.equal(firstPage.archiveIndex.granularity, "day");
+  assert.equal(firstPage.archiveIndex.bucketCount, 1);
+  assert.equal(firstPage.archiveIndex.latestPeriod, latestPeriod);
+  assert.equal(firstPage.archiveIndex.oldestPeriod, latestPeriod);
+  assert.equal(firstPage.archiveIndex.readWindowOnly, false);
+  assert.equal(firstPage.archiveIndex.buckets.length, 1);
+  assert.equal(firstPage.archiveIndex.buckets[0].period, latestPeriod);
+  assert.equal(firstPage.archiveIndex.buckets[0].entryCount, 2);
+  assert.equal(firstPage.archiveIndex.buckets[0].successCount, 1);
+  assert.equal(firstPage.archiveIndex.buckets[0].failureCount, 1);
+  assert.equal(firstPage.archiveIndex.buckets[0].meteredRequestCount, 1);
+  assert.equal(firstPage.archiveIndex.buckets[0].usage.totalTokens, 15);
 
   const secondPage = service.getUsageLedger({
     limit: 1,

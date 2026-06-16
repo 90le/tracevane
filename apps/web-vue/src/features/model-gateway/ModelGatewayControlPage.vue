@@ -1144,6 +1144,42 @@
             </div>
           </section>
 
+          <section class="mgw-usage-section mgw-usage-archive">
+            <div class="mgw-usage-section__head">
+              <strong>{{ text('账本归档窗口', 'Ledger archive window') }}</strong>
+              <small>{{ usageArchiveWindowLabel }}</small>
+            </div>
+            <div class="mgw-usage-bucket-list">
+              <div v-for="bucket in usageArchiveBuckets" :key="`archive-${bucket.period}`" class="mgw-usage-row">
+                <div class="mgw-usage-row__main">
+                  <strong>{{ bucket.period }}</strong>
+                  <small>{{ usageArchiveBucketMeta(bucket) }}</small>
+                </div>
+                <dl class="mgw-usage-metrics">
+                  <div>
+                    <dt>{{ text('请求', 'Requests') }}</dt>
+                    <dd>{{ formatCompactNumber(bucket.entryCount) }}</dd>
+                  </div>
+                  <div>
+                    <dt>Tokens</dt>
+                    <dd>{{ formatCompactNumber(bucket.usage.totalTokens) }}</dd>
+                  </div>
+                  <div>
+                    <dt>{{ text('媒体', 'Media') }}</dt>
+                    <dd>{{ usageMediaLabel(bucket.usage) || '-' }}</dd>
+                  </div>
+                  <div>
+                    <dt>{{ text('最近', 'Latest') }}</dt>
+                    <dd>{{ bucket.latestRequestAt ? formatTimestamp(bucket.latestRequestAt) : '-' }}</dd>
+                  </div>
+                </dl>
+              </div>
+              <div v-if="!usageArchiveBuckets.length" class="mgw-empty">
+                {{ text('暂无归档窗口。', 'No archive window yet.') }}
+              </div>
+            </div>
+          </section>
+
           <div class="mgw-usage-section-grid">
             <section class="mgw-usage-section">
               <div class="mgw-usage-section__head">
@@ -1576,6 +1612,7 @@ import type {
   ModelGatewayRuntimeUsageSummaryBucket,
   ModelGatewayStatusResponse,
   ModelGatewayUpsertProviderRequest,
+  ModelGatewayUsageArchiveBucket,
   ModelGatewayUsageLedgerResponse,
 } from '../../../../../types/model-gateway';
 import StatusPill from '../../components/StatusPill.vue';
@@ -1826,6 +1863,7 @@ const usageSourceFilterOptions: Array<{ id: UsageSourceFilterId; zh: string; en:
   { id: 'failure', zh: '失败请求', en: 'Failures' },
 ];
 const usagePageSizeOptions = [50, 100, 250, 500];
+const usageArchiveBucketDisplayLimit = 14;
 
 const accountRoutingStrategyOptions: Array<{ id: ModelGatewayAccountRoutingStrategy; zh: string; en: string }> = [
   { id: 'round-robin', zh: '轮转', en: 'Round robin' },
@@ -2056,6 +2094,10 @@ const usageAccountBuckets = computed<ModelGatewayRuntimeUsageSummaryBucket[]>(()
 const usageCostEstimate = computed<UsageCostEstimate>(() =>
   estimateUsageCost(usageFilteredEntries.value),
 );
+const usageArchiveIndex = computed(() => usageLedger.value?.archiveIndex || null);
+const usageArchiveBuckets = computed<ModelGatewayUsageArchiveBucket[]>(() =>
+  (usageArchiveIndex.value?.buckets || []).slice(0, usageArchiveBucketDisplayLimit),
+);
 const usageRecentEntries = computed<ModelGatewayRuntimeRequestLogEntry[]>(() =>
   [...usageFilteredEntries.value]
     .sort((left, right) => usageEntryTime(right) - usageEntryTime(left))
@@ -2085,6 +2127,21 @@ const usageFilteredWindowLabel = computed(() =>
       `${formatCompactNumber(usageFilteredEntries.value.length)} / ${formatCompactNumber(usageRawEntries.value.length)} entries in current filter`,
     ),
 );
+const usageArchiveWindowLabel = computed(() => {
+  const index = usageArchiveIndex.value;
+  if (!index || !index.bucketCount) return text('暂无可归档账本窗口', 'No archiveable ledger window');
+  const range = index.oldestPeriod && index.latestPeriod && index.oldestPeriod !== index.latestPeriod
+    ? `${index.oldestPeriod} - ${index.latestPeriod}`
+    : index.latestPeriod || '-';
+  const truncated = index.readWindowOnly
+    ? text(' · 当前为截断读取窗口', ' · current read window is truncated')
+    : '';
+  const shown = Math.min(index.bucketCount, usageArchiveBucketDisplayLimit);
+  return text(
+    `${range} · ${formatCompactNumber(index.bucketCount)} 天 · 显示最近 ${formatCompactNumber(shown)} 天${truncated}`,
+    `${range} · ${formatCompactNumber(index.bucketCount)} days · showing latest ${formatCompactNumber(shown)} days${truncated}`,
+  );
+});
 const canPageUsageBackward = computed(() => (usageLedger.value?.offset || 0) > 0);
 const canPageUsageForward = computed(() => usageLedger.value?.hasMore === true);
 const canExportUsage = computed(() => usageFilteredEntries.value.length > 0);
@@ -2117,6 +2174,12 @@ const usageSummaryCards = computed(() => {
       meta: usageCostMeta(usageCostEstimate.value),
     },
     {
+      id: 'archive',
+      label: text('归档窗口', 'Archive window'),
+      value: usageArchiveIndex.value?.bucketCount ? formatCompactNumber(usageArchiveIndex.value.bucketCount) : '-',
+      meta: usageArchiveWindowLabel.value,
+    },
+    {
       id: 'latency',
       label: text('延迟', 'Latency'),
       value: formatLatencyMs(summary.latency.p95Ms),
@@ -2143,6 +2206,13 @@ function usagePageLabel(ledger: ModelGatewayUsageLedgerResponse): string {
   return text(
     `当前页 ${formatCompactNumber(from)}-${formatCompactNumber(to)} / ${formatCompactNumber(matched)} 条`,
     `page ${formatCompactNumber(from)}-${formatCompactNumber(to)} / ${formatCompactNumber(matched)} entries`,
+  );
+}
+
+function usageArchiveBucketMeta(bucket: ModelGatewayUsageArchiveBucket): string {
+  return text(
+    `成功 ${formatCompactNumber(bucket.successCount)} · 失败 ${formatCompactNumber(bucket.failureCount)} · 计费用 ${formatCompactNumber(bucket.meteredRequestCount)}`,
+    `${formatCompactNumber(bucket.successCount)} success · ${formatCompactNumber(bucket.failureCount)} failed · ${formatCompactNumber(bucket.meteredRequestCount)} metered`,
   );
 }
 

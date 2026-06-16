@@ -472,6 +472,26 @@ export interface ModelGatewayUsageLedgerQuery {
   outcome?: ModelGatewayRuntimeRequestOutcome | "all" | string | null;
 }
 
+export interface ModelGatewayUsageArchiveBucket {
+  period: string;
+  entryCount: number;
+  successCount: number;
+  failureCount: number;
+  meteredRequestCount: number;
+  firstRequestAt: string | null;
+  latestRequestAt: string | null;
+  usage: ModelGatewayRuntimeUsage;
+}
+
+export interface ModelGatewayUsageArchiveIndex {
+  granularity: "day";
+  bucketCount: number;
+  oldestPeriod: string | null;
+  latestPeriod: string | null;
+  readWindowOnly: boolean;
+  buckets: ModelGatewayUsageArchiveBucket[];
+}
+
 export interface ModelGatewayRuntimeState {
   version: 1;
   updatedAt: string;
@@ -1040,6 +1060,7 @@ export interface ModelGatewayUsageLedgerResponse {
   ok: true;
   entries: ModelGatewayRuntimeRequestLogEntry[];
   usageSummary: ModelGatewayRuntimeUsageSummary;
+  archiveIndex: ModelGatewayUsageArchiveIndex;
   entryCount: number;
   totalEntryCount: number;
   matchedEntryCount: number;
