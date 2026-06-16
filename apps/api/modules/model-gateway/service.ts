@@ -98,9 +98,7 @@ import {
   type ModelGatewayRuntimeLatencySummary,
   type ModelGatewayRuntimeUsageSummary,
   type ModelGatewayRuntimeUsageSummaryBucket,
-  type ModelGatewayUsageArchiveBucket,
-  type ModelGatewayUsageArchiveIndex,
-  type ModelGatewayUsageLedgerQuery,
+  type ModelGatewayModelUsageRow,
   type ModelGatewayUsageLedgerResponse,
   type ModelGatewayRouteDecision,
   type ModelGatewayRouteId,
@@ -160,8 +158,6 @@ const DEFAULT_STREAMING_FIRST_BYTE_TIMEOUT_MS = 30_000;
 const DEFAULT_STREAMING_IDLE_TIMEOUT_MS = 120_000;
 const MODEL_GATEWAY_CIRCUIT_OPEN_RETRY_MS = 60_000;
 const MAX_RUNTIME_REQUEST_LOG_ENTRIES = 200;
-const DEFAULT_USAGE_LEDGER_PAGE_LIMIT = 100;
-const MAX_USAGE_LEDGER_PAGE_LIMIT = 500;
 const MAX_USAGE_LEDGER_READ_ENTRIES = 20_000;
 const MAX_USAGE_LEDGER_READ_BYTES = 16 * 1024 * 1024;
 const REQUEST_LOG_PREVIEW_CHARS = 1_000;
@@ -886,19 +882,6 @@ function createRuntimeUsageModelResolver(registry: ModelGatewayRegistryState): R
       model: model || null,
     };
   };
-}
-
-function runtimeUsageEntryMatchesModel(
-  entry: ModelGatewayRuntimeRequestLogEntry,
-  requestedModel: string,
-  modelBucketForEntry: RuntimeUsageModelResolver,
-): boolean {
-  const requestedKey = normalizeModelLookupKey(requestedModel);
-  if (!requestedKey) return true;
-  const rawKey = normalizeModelLookupKey(entry.model || "");
-  const modelBucket = modelBucketForEntry(entry);
-  const canonicalKey = normalizeModelLookupKey(modelBucket.model || modelBucket.key || "");
-  return requestedKey === rawKey || requestedKey === canonicalKey;
 }
 
 const MODEL_GATEWAY_MODEL_FEATURE_KEYS = [
@@ -4847,7 +4830,7 @@ export interface ModelGatewayService {
   rollbackAppConnection(req: http.IncomingMessage | undefined, payload?: ModelGatewayRollbackAppConnectionRequest): ModelGatewayRollbackAppConnectionResponse;
   listGatewayModels(req?: http.IncomingMessage): ModelGatewayModelListResponse;
   getRuntime(): ModelGatewayRuntimeResponse;
-  getUsageLedger(query?: ModelGatewayUsageLedgerQuery): ModelGatewayUsageLedgerResponse;
+  getUsageLedger(): ModelGatewayUsageLedgerResponse;
   getDaemonService(): ModelGatewayDaemonServiceResponse;
   manageDaemonService(req: http.IncomingMessage | undefined, payload?: ModelGatewayDaemonServiceRequest): Promise<ModelGatewayDaemonServiceResponse>;
   detectProvider(req: http.IncomingMessage | undefined, payload?: ModelGatewayProviderDetectRequest): Promise<ModelGatewayProviderDetectResponse>;
@@ -5114,151 +5097,65 @@ export function createModelGatewayService(
     }
   }
 
-  type NormalizedUsageLedgerQuery = {
-    limit: number;
-    offset: number;
-    timeRange: "24h" | "7d" | "30d" | "all";
-    source: "all" | "account-backed" | "api-key" | "failure";
-    providerId: string | null;
-    model: string | null;
-    account: string | null;
-    gatewayKeyHash: string | null;
-    outcome: ModelGatewayRuntimeRequestOutcome | "all";
-  };
-
-  function normalizeUsageLedgerQuery(query: ModelGatewayUsageLedgerQuery | undefined): NormalizedUsageLedgerQuery {
-    const limitValue = numberOrNull(query?.limit);
-    const offsetValue = numberOrNull(query?.offset);
-    const timeRange = ["24h", "7d", "30d", "all"].includes(query?.timeRange as string)
-      ? query?.timeRange as NormalizedUsageLedgerQuery["timeRange"]
-      : "all";
-    const source = ["all", "account-backed", "api-key", "failure"].includes(query?.source as string)
-      ? query?.source as NormalizedUsageLedgerQuery["source"]
-      : "all";
-    const outcome = ["success", "failure", "adapter-required", "missing-provider", "all"].includes(query?.outcome as string)
-      ? query?.outcome as NormalizedUsageLedgerQuery["outcome"]
-      : "all";
-    const gatewayKey = normalizeString(query?.gatewayKey);
-    const gatewayKeyHash = normalizeString(query?.gatewayKeyHash) || (gatewayKey ? sha256Short(gatewayKey) : "");
-    return {
-      limit: Math.min(MAX_USAGE_LEDGER_PAGE_LIMIT, Math.max(1, Math.floor(limitValue || DEFAULT_USAGE_LEDGER_PAGE_LIMIT))),
-      offset: Math.max(0, Math.floor(offsetValue || 0)),
-      timeRange,
-      source,
-      providerId: normalizeString(query?.providerId) || null,
-      model: normalizeString(query?.model) || null,
-      account: normalizeString(query?.account) || null,
-      gatewayKeyHash: gatewayKeyHash || null,
-      outcome,
-    };
-  }
-
-  function usageLedgerTimeRangeCutoff(range: NormalizedUsageLedgerQuery["timeRange"]): number | null {
-    const day = 24 * 60 * 60 * 1000;
-    if (range === "24h") return Date.now() - day;
-    if (range === "7d") return Date.now() - (7 * day);
-    if (range === "30d") return Date.now() - (30 * day);
-    return null;
-  }
-
   function usageLedgerEntryTime(entry: ModelGatewayRuntimeRequestLogEntry): number {
     const value = Date.parse(entry.finishedAt || entry.startedAt || "");
     return Number.isFinite(value) ? value : 0;
   }
 
-  function usageLedgerDayPeriod(entry: ModelGatewayRuntimeRequestLogEntry): string {
-    const time = usageLedgerEntryTime(entry);
-    if (!time) return "unknown";
-    return new Date(time).toISOString().slice(0, 10);
-  }
-
-  function createUsageArchiveBucket(period: string): ModelGatewayUsageArchiveBucket {
-    return {
-      period,
-      entryCount: 0,
-      successCount: 0,
-      failureCount: 0,
-      meteredRequestCount: 0,
-      firstRequestAt: null,
-      latestRequestAt: null,
-      usage: zeroRuntimeUsage(),
-    };
-  }
-
-  function summarizeUsageArchiveIndex(
+  function summarizeUsageLedgerModels(
     entries: ModelGatewayRuntimeRequestLogEntry[],
-    readWindowOnly: boolean,
-  ): ModelGatewayUsageArchiveIndex {
-    const buckets = new Map<string, ModelGatewayUsageArchiveBucket>();
-    for (const entry of entries) {
-      const period = usageLedgerDayPeriod(entry);
-      let bucket = buckets.get(period);
-      if (!bucket) {
-        bucket = createUsageArchiveBucket(period);
-        buckets.set(period, bucket);
-      }
-      bucket.entryCount += 1;
-      if (entry.outcome === "success") {
-        bucket.successCount += 1;
-      } else {
-        bucket.failureCount += 1;
-      }
-      if (entry.usage) {
-        bucket.meteredRequestCount += 1;
-        addRuntimeUsage(bucket.usage, entry.usage);
-      }
-      const finishedAt = entry.finishedAt || entry.startedAt || null;
-      const finishedTime = usageLedgerEntryTime(entry);
-      if (finishedAt) {
-        if (!bucket.firstRequestAt || finishedTime < Date.parse(bucket.firstRequestAt)) {
-          bucket.firstRequestAt = finishedAt;
-        }
-        if (!bucket.latestRequestAt || finishedTime > Date.parse(bucket.latestRequestAt)) {
-          bucket.latestRequestAt = finishedAt;
-        }
-      }
-    }
-    const orderedBuckets = [...buckets.values()]
-      .sort((left, right) => right.period.localeCompare(left.period));
-    return {
-      granularity: "day",
-      bucketCount: orderedBuckets.length,
-      oldestPeriod: orderedBuckets[orderedBuckets.length - 1]?.period || null,
-      latestPeriod: orderedBuckets[0]?.period || null,
-      readWindowOnly,
-      buckets: orderedBuckets,
-    };
-  }
-
-  function usageLedgerEntryMatchesQuery(
-    entry: ModelGatewayRuntimeRequestLogEntry,
-    query: NormalizedUsageLedgerQuery,
-    providerSources: Map<string, ModelGatewayProviderSourceType>,
     modelBucketForEntry: RuntimeUsageModelResolver,
-  ): boolean {
-    const cutoff = usageLedgerTimeRangeCutoff(query.timeRange);
-    if (cutoff !== null && usageLedgerEntryTime(entry) < cutoff) return false;
-    if (query.providerId && (entry.providerId || "unknown-provider") !== query.providerId) return false;
-    if (query.model && !runtimeUsageEntryMatchesModel(entry, query.model, modelBucketForEntry)) return false;
-    if (query.account) {
-      const account = query.account.toLowerCase();
-      const entryAccount = [
-        entry.accountId || "",
-        entry.accountHash || "",
-      ].map((value) => value.toLowerCase());
-      if (!entryAccount.includes(account)) return false;
+  ): Pick<ModelGatewayUsageLedgerResponse, "totals" | "models"> {
+    const totals: ModelGatewayUsageLedgerResponse["totals"] = {
+      requestCount: entries.length,
+      meteredRequestCount: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+    };
+    const models = new Map<string, ModelGatewayModelUsageRow>();
+    for (const entry of entries) {
+      const bucket = modelBucketForEntry(entry);
+      let row = models.get(bucket.key);
+      if (!row) {
+        row = {
+          model: bucket.label || bucket.key || "unknown model",
+          requestCount: 0,
+          meteredRequestCount: 0,
+          inputTokens: 0,
+          outputTokens: 0,
+          totalTokens: 0,
+          latestRequestAt: null,
+        };
+        models.set(bucket.key, row);
+      }
+      row.requestCount += 1;
+      const finishedAt = entry.finishedAt || entry.startedAt || null;
+      if (finishedAt && (!row.latestRequestAt || usageLedgerEntryTime(entry) >= Date.parse(row.latestRequestAt))) {
+        row.latestRequestAt = finishedAt;
+      }
+
+      if (entry.usage) {
+        row.meteredRequestCount += 1;
+        row.inputTokens += entry.usage.inputTokens || 0;
+        row.outputTokens += entry.usage.outputTokens || 0;
+        row.totalTokens += entry.usage.totalTokens || 0;
+        totals.meteredRequestCount += 1;
+        totals.inputTokens += entry.usage.inputTokens || 0;
+        totals.outputTokens += entry.usage.outputTokens || 0;
+        totals.totalTokens += entry.usage.totalTokens || 0;
+      }
     }
-    if (query.gatewayKeyHash && entry.clientKeyHash !== query.gatewayKeyHash) return false;
-    if (query.outcome !== "all" && entry.outcome !== query.outcome) return false;
-    if (query.source === "failure") return entry.outcome !== "success";
-    if (query.source === "account-backed") {
-      return Boolean(entry.accountId || entry.accountHash)
-        || providerSources.get(entry.providerId || "") === "account-backed";
-    }
-    if (query.source === "api-key") {
-      return providerSources.get(entry.providerId || "") === "api-key";
-    }
-    return true;
+
+    return {
+      totals,
+      models: [...models.values()].sort((left, right) => (
+        right.totalTokens - left.totalTokens
+        || right.meteredRequestCount - left.meteredRequestCount
+        || right.requestCount - left.requestCount
+        || left.model.localeCompare(right.model)
+      )),
+    };
   }
 
   function appendRequestLog(entry: ModelGatewayRuntimeRequestLogEntry): void {
@@ -6590,8 +6487,7 @@ export function createModelGatewayService(
     };
   }
 
-  function getUsageLedger(query?: ModelGatewayUsageLedgerQuery): ModelGatewayUsageLedgerResponse {
-    const normalizedQuery = normalizeUsageLedgerQuery(query);
+  function getUsageLedger(): ModelGatewayUsageLedgerResponse {
     const {
       entries: readableEntries,
       truncated,
@@ -6599,40 +6495,21 @@ export function createModelGatewayService(
       totalBytes,
     } = readUsageLedgerEntries();
     const registry = readRegistry();
-    const providerSources = new Map(registry.providers.map((provider) => [provider.id, provider.sourceType]));
     const modelBucketForEntry = createRuntimeUsageModelResolver(registry);
-    const filteredEntries = readableEntries
-      .filter((entry) => usageLedgerEntryMatchesQuery(entry, normalizedQuery, providerSources, modelBucketForEntry))
-      .sort((left, right) => usageLedgerEntryTime(right) - usageLedgerEntryTime(left));
-    const entries = filteredEntries.slice(
-      normalizedQuery.offset,
-      normalizedQuery.offset + normalizedQuery.limit,
-    );
+    const summary = summarizeUsageLedgerModels(readableEntries, modelBucketForEntry);
     return {
       ok: true,
-      entries,
-      usageSummary: summarizeRuntimeUsage(filteredEntries, modelBucketForEntry),
-      archiveIndex: summarizeUsageArchiveIndex(filteredEntries, truncated),
-      entryCount: filteredEntries.length,
-      totalEntryCount: readableEntries.length,
-      matchedEntryCount: filteredEntries.length,
-      offset: normalizedQuery.offset,
-      limit: normalizedQuery.limit,
-      hasMore: normalizedQuery.offset + entries.length < filteredEntries.length,
-      query: {
-        timeRange: normalizedQuery.timeRange,
-        source: normalizedQuery.source,
-        providerId: normalizedQuery.providerId,
-        model: normalizedQuery.model,
-        account: normalizedQuery.account,
-        gatewayKeyHash: normalizedQuery.gatewayKeyHash,
-        outcome: normalizedQuery.outcome,
+      checkedAt: nowIso(),
+      totals: summary.totals,
+      models: summary.models,
+      readWindow: {
+        entryCount: readableEntries.length,
+        readLimit: MAX_USAGE_LEDGER_READ_ENTRIES,
+        readByteLimit: MAX_USAGE_LEDGER_READ_BYTES,
+        readBytes,
+        ledgerSizeBytes: totalBytes,
+        truncated,
       },
-      readLimit: MAX_USAGE_LEDGER_READ_ENTRIES,
-      readByteLimit: MAX_USAGE_LEDGER_READ_BYTES,
-      readBytes,
-      ledgerSizeBytes: totalBytes,
-      truncated,
       paths: {
         ledger: paths.usageLedger,
       },

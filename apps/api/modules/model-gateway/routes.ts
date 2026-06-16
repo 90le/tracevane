@@ -15,7 +15,6 @@ import type {
   ModelGatewaySetProviderSecretRequest,
   ModelGatewayUpdateAppConnectionProfileRequest,
   ModelGatewayUpsertProviderRequest,
-  ModelGatewayUsageLedgerQuery,
 } from "../../../../types/model-gateway.js";
 import { sendModelGatewayRealtimeUnsupported } from "./realtime.js";
 import { isModelGatewayServiceError } from "./service.js";
@@ -65,22 +64,9 @@ export function registerModelGatewayRoutes(router: StudioRouter): void {
     }
   });
 
-  router.get("/api/model-gateway/usage", (req, res, routeCtx) => {
+  router.get("/api/model-gateway/usage", (_req, res, routeCtx) => {
     try {
-      const url = new URL(req.url || "/", `http://${req.headers.host || "127.0.0.1"}`);
-      const query: ModelGatewayUsageLedgerQuery = {
-        limit: url.searchParams.get("limit"),
-        offset: url.searchParams.get("offset"),
-        timeRange: url.searchParams.get("timeRange"),
-        source: url.searchParams.get("source"),
-        providerId: url.searchParams.get("providerId"),
-        model: url.searchParams.get("model"),
-        account: url.searchParams.get("account"),
-        gatewayKey: url.searchParams.get("gatewayKey"),
-        gatewayKeyHash: url.searchParams.get("gatewayKeyHash"),
-        outcome: url.searchParams.get("outcome"),
-      };
-      sendJson(res, 200, routeCtx.services.modelGateway.getUsageLedger(query));
+      sendJson(res, 200, routeCtx.services.modelGateway.getUsageLedger());
     } catch (error) {
       sendModelGatewayError(res, error);
     }

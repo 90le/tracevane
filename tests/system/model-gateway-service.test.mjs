@@ -320,7 +320,7 @@ test("model gateway registry stores provider secrets separately and masks views"
   assert.equal(listed.activeProviders.openclaw, "openai-main");
 });
 
-test("model gateway usage ledger supports paged filtered latency queries", () => {
+test("model gateway usage ledger summarizes every model by requests and tokens", () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   const paths = resolveModelGatewayPaths(config);
@@ -378,8 +378,6 @@ test("model gateway usage ledger supports paged filtered latency queries", () =>
     errorMessage: null,
     usage: overrides.usage || null,
   });
-  const clientKeyHashA = sha256Short("sk-usage-client-a");
-  const clientKeyHashB = sha256Short("sk-usage-client-b");
   const entries = [
     entry({
       id: "old-p2",
@@ -401,7 +399,7 @@ test("model gateway usage ledger supports paged filtered latency queries", () =>
       providerName: "Usage P1",
       accountId: "account-a",
       accountHash: "hash-a",
-      clientKeyHash: clientKeyHashA,
+      clientKeyHash: sha256Short("sk-usage-client-a"),
       model: "alias-a",
       statusCode: 200,
       outcome: "success",
@@ -425,109 +423,80 @@ test("model gateway usage ledger supports paged filtered latency queries", () =>
       firstByteMs: 90,
       providerId: "usage-p1",
       providerName: "Usage P1",
-      clientKeyHash: clientKeyHashB,
+      clientKeyHash: sha256Short("sk-usage-client-b"),
       model: "model-b",
       statusCode: 500,
       outcome: "failure",
     }),
+    ...Array.from({ length: 15 }, (_, index) => entry({
+      id: `extra-${index + 1}`,
+      time: now - (20_000 + index),
+      durationMs: 50,
+      firstByteMs: 20,
+      providerId: "usage-p2",
+      providerName: "Usage P2",
+      model: `model-extra-${index + 1}`,
+      statusCode: 200,
+      outcome: "success",
+      usage: {
+        inputTokens: index + 1,
+        outputTokens: 0,
+        totalTokens: index + 1,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+        imageGenerationRequests: 0,
+        imagesGenerated: 0,
+        imageEditRequests: 0,
+        audioInputRequests: 0,
+        audioOutputRequests: 0,
+      },
+    })),
   ];
   fs.mkdirSync(path.dirname(paths.usageLedger), { recursive: true });
   fs.writeFileSync(paths.usageLedger, `${entries.map((item) => JSON.stringify(item)).join("\n")}\n`, { mode: 0o600 });
 
-  const firstPage = service.getUsageLedger({
-    limit: 1,
-    offset: 0,
-    timeRange: "24h",
-    source: "api-key",
-    providerId: "usage-p1",
-  });
-  assert.equal(firstPage.totalEntryCount, 3);
-  assert.equal(firstPage.matchedEntryCount, 2);
-  assert.equal(firstPage.entryCount, 2);
-  assert.equal(firstPage.readLimit, 20_000);
-  assert.equal(firstPage.readByteLimit, 16 * 1024 * 1024);
-  assert.ok(firstPage.readBytes > 0);
-  assert.equal(firstPage.ledgerSizeBytes, firstPage.readBytes);
-  assert.equal(firstPage.truncated, false);
-  assert.equal(firstPage.entries.length, 1);
-  assert.equal(firstPage.entries[0].id, "p1-b");
-  assert.equal(firstPage.hasMore, true);
-  assert.equal(firstPage.usageSummary.requestCount, 2);
-  assert.equal(firstPage.usageSummary.meteredRequestCount, 1);
-  assert.equal(firstPage.usageSummary.usage.totalTokens, 15);
-  assert.deepEqual(firstPage.usageSummary.latency, {
-    requestCount: 2,
-    averageMs: 175,
-    minMs: 100,
-    p50Ms: 100,
-    p95Ms: 250,
-    p99Ms: 250,
-    maxMs: 250,
-    firstByte: {
-      requestCount: 2,
-      averageMs: 60,
-      minMs: 30,
-      p50Ms: 30,
-      p95Ms: 90,
-      p99Ms: 90,
-      maxMs: 90,
-    },
-  });
-  const latestPeriod = new Date(now).toISOString().slice(0, 10);
-  assert.equal(firstPage.archiveIndex.granularity, "day");
-  assert.equal(firstPage.archiveIndex.bucketCount, 1);
-  assert.equal(firstPage.archiveIndex.latestPeriod, latestPeriod);
-  assert.equal(firstPage.archiveIndex.oldestPeriod, latestPeriod);
-  assert.equal(firstPage.archiveIndex.readWindowOnly, false);
-  assert.equal(firstPage.archiveIndex.buckets.length, 1);
-  assert.equal(firstPage.archiveIndex.buckets[0].period, latestPeriod);
-  assert.equal(firstPage.archiveIndex.buckets[0].entryCount, 2);
-  assert.equal(firstPage.archiveIndex.buckets[0].successCount, 1);
-  assert.equal(firstPage.archiveIndex.buckets[0].failureCount, 1);
-  assert.equal(firstPage.archiveIndex.buckets[0].meteredRequestCount, 1);
-  assert.equal(firstPage.archiveIndex.buckets[0].usage.totalTokens, 15);
+  const usage = service.getUsageLedger();
+  assert.equal(usage.ok, true);
+  assert.match(usage.checkedAt, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(usage.readWindow.entryCount, entries.length);
+  assert.equal(usage.readWindow.readLimit, 20_000);
+  assert.equal(usage.readWindow.readByteLimit, 16 * 1024 * 1024);
+  assert.ok(usage.readWindow.readBytes > 0);
+  assert.equal(usage.readWindow.ledgerSizeBytes, usage.readWindow.readBytes);
+  assert.equal(usage.readWindow.truncated, false);
+  assert.equal(usage.totals.requestCount, entries.length);
+  assert.equal(usage.totals.meteredRequestCount, 16);
+  assert.equal(usage.totals.inputTokens, 130);
+  assert.equal(usage.totals.outputTokens, 5);
+  assert.equal(usage.totals.totalTokens, 135);
+  assert.equal(usage.models.length, 18);
 
-  const secondPage = service.getUsageLedger({
-    limit: 1,
-    offset: 1,
-    timeRange: "24h",
-    source: "api-key",
-    providerId: "usage-p1",
-  });
-  assert.equal(secondPage.entries.length, 1);
-  assert.equal(secondPage.entries[0].id, "p1-a");
-  assert.equal(secondPage.hasMore, false);
-
-  const accountPage = service.getUsageLedger({ account: "hash-a", limit: 10 });
-  assert.equal(accountPage.matchedEntryCount, 1);
-  assert.equal(accountPage.entries[0].accountId, "account-a");
-
-  const canonicalModelPage = service.getUsageLedger({ model: "model-a", limit: 10 });
-  assert.equal(canonicalModelPage.matchedEntryCount, 1);
-  assert.equal(canonicalModelPage.entries[0].model, "alias-a");
+  const byModel = new Map(usage.models.map((item) => [item.model, item]));
   assert.deepEqual(
-    canonicalModelPage.usageSummary.byModel.map((item) => [item.key, item.label, item.model, item.requestCount, item.usage.totalTokens]),
-    [["model-a", "model-a", "model-a", 1, 15]],
+    {
+      requestCount: byModel.get("model-a")?.requestCount,
+      meteredRequestCount: byModel.get("model-a")?.meteredRequestCount,
+      inputTokens: byModel.get("model-a")?.inputTokens,
+      outputTokens: byModel.get("model-a")?.outputTokens,
+      totalTokens: byModel.get("model-a")?.totalTokens,
+    },
+    {
+      requestCount: 1,
+      meteredRequestCount: 1,
+      inputTokens: 10,
+      outputTokens: 5,
+      totalTokens: 15,
+    },
   );
-
-  const aliasModelPage = service.getUsageLedger({ model: "alias-a", limit: 10 });
-  assert.equal(aliasModelPage.matchedEntryCount, 1);
-  assert.equal(aliasModelPage.usageSummary.byModel[0].key, "model-a");
-
-  const gatewayKeyPage = service.getUsageLedger({ gatewayKey: "sk-usage-client-a", limit: 10 });
-  assert.equal(gatewayKeyPage.matchedEntryCount, 1);
-  assert.equal(gatewayKeyPage.entries[0].id, "p1-a");
-  assert.equal(gatewayKeyPage.query.gatewayKeyHash, clientKeyHashA);
-  assert.ok(!JSON.stringify(gatewayKeyPage).includes("sk-usage-client-a"));
-
-  const gatewayKeyHashPage = service.getUsageLedger({ gatewayKeyHash: clientKeyHashB, limit: 10 });
-  assert.equal(gatewayKeyHashPage.matchedEntryCount, 1);
-  assert.equal(gatewayKeyHashPage.entries[0].id, "p1-b");
-  assert.equal(gatewayKeyHashPage.query.gatewayKeyHash, clientKeyHashB);
-
-  const failures = service.getUsageLedger({ source: "failure", limit: 10 });
-  assert.equal(failures.matchedEntryCount, 1);
-  assert.equal(failures.entries[0].outcome, "failure");
+  assert.equal(byModel.get("model-b")?.requestCount, 1);
+  assert.equal(byModel.get("model-b")?.totalTokens, 0);
+  assert.equal(byModel.get("model-c")?.requestCount, 1);
+  assert.equal(byModel.get("model-c")?.totalTokens, 0);
+  assert.equal(byModel.get("model-extra-15")?.totalTokens, 15);
+  assert.ok(!JSON.stringify(usage).includes("sk-usage-client-a"));
+  assert.equal("entries" in usage, false);
+  assert.equal("archiveIndex" in usage, false);
+  assert.equal("query" in usage, false);
 });
 
 test("model gateway starts Codex account login and creates an account-backed provider", async () => {
@@ -3820,19 +3789,17 @@ test("model gateway client key protects client endpoints and stays separate from
       assert.equal(chat.status, 200);
       assert.deepEqual(chat.body, { id: "chatcmpl_client_auth", ok: true });
 
-      const localClientOneHash = sha256Short("sk-local-client-one");
       const usageByGatewayKey = await requestJson(`${baseUrl}/api/model-gateway/usage?gatewayKey=sk-local-client-one&limit=20`);
       assert.equal(usageByGatewayKey.status, 200);
-      assert.equal(usageByGatewayKey.body.query.gatewayKeyHash, localClientOneHash);
-      assert.ok(usageByGatewayKey.body.matchedEntryCount >= 1);
-      assert.ok(usageByGatewayKey.body.entries.some((entry) => entry.model === "auth-model" && entry.outcome === "success"));
-      assert.ok(usageByGatewayKey.body.entries.every((entry) => entry.clientKeyHash === localClientOneHash));
+      assert.ok(usageByGatewayKey.body.totals.requestCount >= 1);
+      assert.ok(usageByGatewayKey.body.models.some((model) => model.model === "auth-model" && model.requestCount >= 1));
       assert.ok(!JSON.stringify(usageByGatewayKey.body).includes("sk-local-client-one"));
+      assert.equal("query" in usageByGatewayKey.body, false);
+      assert.equal("entries" in usageByGatewayKey.body, false);
 
-      const usageByGatewayKeyHash = await requestJson(`${baseUrl}/api/model-gateway/usage?gatewayKeyHash=${localClientOneHash}&limit=20`);
+      const usageByGatewayKeyHash = await requestJson(`${baseUrl}/api/model-gateway/usage?gatewayKeyHash=${sha256Short("sk-local-client-one")}&limit=20`);
       assert.equal(usageByGatewayKeyHash.status, 200);
-      assert.equal(usageByGatewayKeyHash.body.query.gatewayKeyHash, localClientOneHash);
-      assert.equal(usageByGatewayKeyHash.body.matchedEntryCount, usageByGatewayKey.body.matchedEntryCount);
+      assert.deepEqual(usageByGatewayKeyHash.body.models, usageByGatewayKey.body.models);
 
       const rotateKey = await requestJson(`${baseUrl}/api/model-gateway/client-auth`, {
         method: "POST",
@@ -5530,15 +5497,17 @@ test("model gateway daemon writes runtime metadata and serves cli routes", async
 
     const usageLedger = await requestJson(`${daemon.getBaseUrl()}/api/model-gateway/usage`);
     assert.equal(usageLedger.status, 200);
-    assert.equal(usageLedger.body.entryCount, 1);
-    assert.equal(usageLedger.body.entries[0].routeId, "openai_chat_completions");
-    assert.ok(Number.isInteger(usageLedger.body.entries[0].firstByteMs));
-    assert.equal(usageLedger.body.usageSummary.requestCount, 1);
-    assert.equal(usageLedger.body.usageSummary.usage.totalTokens, 5);
-    assert.equal(usageLedger.body.usageSummary.latency.firstByte.requestCount, 1);
+    assert.equal(usageLedger.body.readWindow.entryCount, 1);
+    assert.equal(usageLedger.body.totals.requestCount, 1);
+    assert.equal(usageLedger.body.totals.totalTokens, 5);
+    assert.deepEqual(
+      usageLedger.body.models.map((model) => [model.model, model.requestCount, model.totalTokens]),
+      [["daemon-model", 1, 5]],
+    );
     assert.equal(usageLedger.body.paths.ledger, paths.usageLedger);
     assert.equal(fs.existsSync(paths.usageLedger), true);
     assert.ok(!JSON.stringify(usageLedger.body).includes("sk-daemon-secret-123456"));
+    assert.equal("entries" in usageLedger.body, false);
   } finally {
     globalThis.fetch = originalFetch;
     await daemon.stop();

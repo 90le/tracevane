@@ -456,40 +456,14 @@ export interface ModelGatewayRuntimeRequestLogEntry {
   usage: ModelGatewayRuntimeUsage | null;
 }
 
-export type ModelGatewayUsageLedgerTimeRange = "24h" | "7d" | "30d" | "all";
-export type ModelGatewayUsageLedgerSourceFilter = "all" | "account-backed" | "api-key" | "failure";
-
-export interface ModelGatewayUsageLedgerQuery {
-  limit?: number | string | null;
-  offset?: number | string | null;
-  timeRange?: ModelGatewayUsageLedgerTimeRange | string | null;
-  source?: ModelGatewayUsageLedgerSourceFilter | string | null;
-  providerId?: string | null;
-  model?: string | null;
-  account?: string | null;
-  gatewayKey?: string | null;
-  gatewayKeyHash?: string | null;
-  outcome?: ModelGatewayRuntimeRequestOutcome | "all" | string | null;
-}
-
-export interface ModelGatewayUsageArchiveBucket {
-  period: string;
-  entryCount: number;
-  successCount: number;
-  failureCount: number;
+export interface ModelGatewayModelUsageRow {
+  model: string;
+  requestCount: number;
   meteredRequestCount: number;
-  firstRequestAt: string | null;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
   latestRequestAt: string | null;
-  usage: ModelGatewayRuntimeUsage;
-}
-
-export interface ModelGatewayUsageArchiveIndex {
-  granularity: "day";
-  bucketCount: number;
-  oldestPeriod: string | null;
-  latestPeriod: string | null;
-  readWindowOnly: boolean;
-  buckets: ModelGatewayUsageArchiveBucket[];
 }
 
 export interface ModelGatewayRuntimeState {
@@ -1064,27 +1038,23 @@ export interface ModelGatewayRuntimeResponse {
 
 export interface ModelGatewayUsageLedgerResponse {
   ok: true;
-  entries: ModelGatewayRuntimeRequestLogEntry[];
-  usageSummary: ModelGatewayRuntimeUsageSummary;
-  archiveIndex: ModelGatewayUsageArchiveIndex;
-  entryCount: number;
-  totalEntryCount: number;
-  matchedEntryCount: number;
-  offset: number;
-  limit: number;
-  hasMore: boolean;
-  query: Required<Pick<ModelGatewayUsageLedgerQuery, "timeRange" | "source">> & {
-    providerId: string | null;
-    model: string | null;
-    account: string | null;
-    gatewayKeyHash: string | null;
-    outcome: ModelGatewayRuntimeRequestOutcome | "all";
+  checkedAt: string;
+  totals: {
+    requestCount: number;
+    meteredRequestCount: number;
+    inputTokens: number;
+    outputTokens: number;
+    totalTokens: number;
   };
-  readLimit: number;
-  readByteLimit: number;
-  readBytes: number;
-  ledgerSizeBytes: number;
-  truncated: boolean;
+  models: ModelGatewayModelUsageRow[];
+  readWindow: {
+    entryCount: number;
+    readLimit: number;
+    readByteLimit: number;
+    readBytes: number;
+    ledgerSizeBytes: number;
+    truncated: boolean;
+  };
   paths: {
     ledger: string;
   };

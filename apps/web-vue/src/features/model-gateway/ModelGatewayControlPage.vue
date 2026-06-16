@@ -50,10 +50,6 @@
               <span>{{ text('请求 / Tokens', 'Requests / tokens') }}</span>
               <strong>{{ runtimeUsageLabel }}</strong>
             </div>
-            <div v-if="runtimeMediaUsageLabel">
-              <span>{{ text('媒体用量', 'Media usage') }}</span>
-              <strong>{{ runtimeMediaUsageLabel }}</strong>
-            </div>
           </div>
 
           <div class="mgw-runtime-actions">
@@ -1072,9 +1068,6 @@
               <h3>{{ text('模型消耗', 'Model usage') }}</h3>
             </div>
             <div class="mgw-panel-actions">
-              <button type="button" class="secondary-button compact-button" :disabled="!canExportUsage" @click="downloadGatewayUsageCsv">
-                {{ text('导出 CSV', 'Export CSV') }}
-              </button>
               <button type="button" class="secondary-button compact-button" :disabled="usageBusy" @click="refreshUsageLedger">
                 {{ usageBusy ? text('刷新中...', 'Refreshing...') : text('刷新消耗', 'Refresh usage') }}
               </button>
@@ -1082,292 +1075,58 @@
           </div>
 
           <p class="mgw-note mgw-usage-note">
-            {{ text('统计来自本地脱敏 usage ledger，覆盖账号登录 provider 和普通 API-key provider；不会读取或展示上游密钥。', 'Stats come from the local redacted usage ledger and cover account-backed providers plus regular API-key providers; upstream secrets are never read or shown.') }}
+            {{ text('只统计本地脱敏 usage ledger 中每个模型的请求次数和 token 消耗。', 'Only per-model request counts and token usage are shown from the local redacted usage ledger.') }}
           </p>
 
-          <section class="mgw-usage-controls" aria-label="Usage filters">
-            <label class="form-field">
-              <span class="form-label">{{ text('时间范围', 'Time range') }}</span>
-              <select v-model="usageTimeRange" class="form-input">
-                <option v-for="option in usageTimeRangeOptions" :key="option.id" :value="option.id">
-                  {{ text(option.zh, option.en) }}
-                </option>
-              </select>
-            </label>
-            <label class="form-field">
-              <span class="form-label">{{ text('来源', 'Source') }}</span>
-              <select v-model="usageSourceFilter" class="form-input">
-                <option v-for="option in usageSourceFilterOptions" :key="option.id" :value="option.id">
-                  {{ text(option.zh, option.en) }}
-                </option>
-              </select>
-            </label>
-            <label class="form-field">
-              <span class="form-label">Provider</span>
-              <select v-model="usageProviderFilter" class="form-input">
-                <option value="">{{ text('全部 Provider', 'All providers') }}</option>
-                <option v-for="provider in usageProviderFilterOptions" :key="provider.id" :value="provider.id">
-                  {{ provider.label }}
-                </option>
-              </select>
-            </label>
-            <label class="form-field">
-              <span class="form-label">{{ text('模型', 'Model') }}</span>
-              <select v-model="usageModelFilter" class="form-input">
-                <option value="">{{ text('全部模型', 'All models') }}</option>
-                <option v-for="model in usageModelFilterOptions" :key="model" :value="model">
-                  {{ model }}
-                </option>
-              </select>
-            </label>
-            <label class="form-field">
-              <span class="form-label">{{ text('账号', 'Account') }}</span>
-              <input v-model.trim="usageAccountFilter" class="form-input" placeholder="account id / hash" />
-            </label>
-            <label class="form-field mgw-usage-key-field">
-              <span class="form-label">Gateway key/hash</span>
-              <input v-model.trim="usageGatewayKeyFilter" class="form-input" placeholder="sk-... / 12-char hash" />
-            </label>
-            <label class="form-field">
-              <span class="form-label">{{ text('每页', 'Page size') }}</span>
-              <select v-model.number="usagePageSize" class="form-input">
-                <option v-for="size in usagePageSizeOptions" :key="size" :value="size">{{ size }}</option>
-              </select>
-            </label>
-            <div class="mgw-usage-controls__meta">
-              <strong>{{ usageFilteredWindowLabel }}</strong>
-              <small>{{ usageLedgerWindowLabel }}</small>
-              <div class="mgw-usage-pager">
-                <button type="button" class="secondary-button compact-button" :disabled="usageBusy || !canPageUsageBackward" @click="pageUsageLedger(-1)">
-                  {{ text('上一页', 'Previous') }}
-                </button>
-                <button type="button" class="secondary-button compact-button" :disabled="usageBusy || !canPageUsageForward" @click="pageUsageLedger(1)">
-                  {{ text('下一页', 'Next') }}
-                </button>
-              </div>
+          <section class="mgw-usage-overview" aria-label="Gateway usage totals">
+            <div class="mgw-usage-total-card">
+              <span>{{ text('模型数', 'Models') }}</span>
+              <strong>{{ formatCompactNumber(usageModelRows.length) }}</strong>
+            </div>
+            <div class="mgw-usage-total-card">
+              <span>{{ text('请求次数', 'Requests') }}</span>
+              <strong>{{ formatCompactNumber(usageTotals.requestCount) }}</strong>
+            </div>
+            <div class="mgw-usage-total-card">
+              <span>{{ text('Token 消耗', 'Token usage') }}</span>
+              <strong>{{ formatCompactNumber(usageTotals.totalTokens) }}</strong>
             </div>
           </section>
 
-          <section class="mgw-usage-summary-grid" aria-label="Gateway usage summary">
-            <div v-for="card in usageSummaryCards" :key="card.id" class="mgw-usage-summary-card">
-              <span>{{ card.label }}</span>
-              <strong>{{ card.value }}</strong>
-              <small>{{ card.meta }}</small>
+          <section class="mgw-model-usage-chart" aria-label="Model token chart">
+            <div v-for="row in usageModelRows" :key="`usage-chart-${row.model}`" class="mgw-model-usage-bar">
+              <div class="mgw-model-usage-bar__label">
+                <strong>{{ row.model }}</strong>
+                <span>{{ formatCompactNumber(row.requestCount) }} {{ text('次', 'requests') }}</span>
+              </div>
+              <div class="mgw-model-usage-bar__track" aria-hidden="true">
+                <span :style="{ width: modelTokenBarWidth(row) }"></span>
+              </div>
+              <strong>{{ formatCompactNumber(row.totalTokens) }}</strong>
+            </div>
+            <div v-if="!usageModelRows.length" class="mgw-empty">
+              {{ text('暂无模型消耗记录。', 'No model usage yet.') }}
             </div>
           </section>
 
-          <section class="mgw-usage-section mgw-usage-archive">
-            <div class="mgw-usage-section__head">
-              <strong>{{ text('账本归档窗口', 'Ledger archive window') }}</strong>
-              <small>{{ usageArchiveWindowLabel }}</small>
-            </div>
-            <div class="mgw-usage-bucket-list">
-              <div v-for="bucket in usageArchiveBuckets" :key="`archive-${bucket.period}`" class="mgw-usage-row">
-                <div class="mgw-usage-row__main">
-                  <strong>{{ bucket.period }}</strong>
-                  <small>{{ usageArchiveBucketMeta(bucket) }}</small>
-                </div>
-                <dl class="mgw-usage-metrics">
-                  <div>
-                    <dt>{{ text('请求', 'Requests') }}</dt>
-                    <dd>{{ formatCompactNumber(bucket.entryCount) }}</dd>
-                  </div>
-                  <div>
-                    <dt>Tokens</dt>
-                    <dd>{{ formatCompactNumber(bucket.usage.totalTokens) }}</dd>
-                  </div>
-                  <div>
-                    <dt>{{ text('媒体', 'Media') }}</dt>
-                    <dd>{{ usageMediaLabel(bucket.usage) || '-' }}</dd>
-                  </div>
-                  <div>
-                    <dt>{{ text('最近', 'Latest') }}</dt>
-                    <dd>{{ bucket.latestRequestAt ? formatTimestamp(bucket.latestRequestAt) : '-' }}</dd>
-                  </div>
-                </dl>
-              </div>
-              <div v-if="!usageArchiveBuckets.length" class="mgw-empty">
-                {{ text('暂无归档窗口。', 'No archive window yet.') }}
-              </div>
-            </div>
-          </section>
-
-          <div class="mgw-usage-section-grid">
-            <section class="mgw-usage-section">
-              <div class="mgw-usage-section__head">
-                <strong>{{ text('Provider 消耗', 'Provider usage') }}</strong>
-                <small>{{ text('账号 provider 与 API-key provider 统一统计。', 'Account-backed and API-key providers share this view.') }}</small>
-              </div>
-              <div class="mgw-usage-bucket-list">
-                <div v-for="bucket in usageProviderBuckets" :key="`provider-${bucket.key}`" class="mgw-usage-row">
-                  <div class="mgw-usage-row__main">
-                    <strong>{{ usageBucketTitle(bucket) }}</strong>
-                    <small>{{ usageBucketMeta(bucket, 'provider') }}</small>
-                  </div>
-                  <dl class="mgw-usage-metrics">
-                    <div>
-                      <dt>{{ text('请求', 'Requests') }}</dt>
-                      <dd>{{ formatCompactNumber(bucket.requestCount) }}</dd>
-                    </div>
-                    <div>
-                      <dt>Tokens</dt>
-                      <dd>{{ formatCompactNumber(bucket.usage.totalTokens) }}</dd>
-                    </div>
-                    <div>
-                      <dt>{{ text('媒体', 'Media') }}</dt>
-                      <dd>{{ usageMediaLabel(bucket.usage) || '-' }}</dd>
-                    </div>
-                    <div>
-                      <dt>{{ text('估算成本', 'Estimated cost') }}</dt>
-                      <dd>{{ formatUsageCostEstimate(usageBucketCostEstimate(bucket, 'provider')) }}</dd>
-                    </div>
-                    <div>
-                      <dt>{{ text('最近', 'Latest') }}</dt>
-                      <dd>{{ bucket.latestRequestAt ? formatTimestamp(bucket.latestRequestAt) : '-' }}</dd>
-                    </div>
-                  </dl>
-                </div>
-                <div v-if="!usageProviderBuckets.length" class="mgw-empty">
-                  {{ text('暂无 Provider 消耗记录。', 'No provider usage yet.') }}
-                </div>
-              </div>
-            </section>
-
-            <section class="mgw-usage-section">
-              <div class="mgw-usage-section__head">
-                <strong>{{ text('模型消耗', 'Model usage') }}</strong>
-                <small>{{ text('同名模型跨 Provider 会自然汇总。', 'Shared model names across providers are naturally aggregated.') }}</small>
-              </div>
-              <div class="mgw-usage-bucket-list">
-                <div v-for="bucket in usageModelBuckets" :key="`model-${bucket.key}`" class="mgw-usage-row">
-                  <div class="mgw-usage-row__main">
-                    <strong>{{ usageBucketTitle(bucket) }}</strong>
-                    <small>{{ usageBucketMeta(bucket, 'model') }}</small>
-                  </div>
-                  <dl class="mgw-usage-metrics">
-                    <div>
-                      <dt>{{ text('请求', 'Requests') }}</dt>
-                      <dd>{{ formatCompactNumber(bucket.requestCount) }}</dd>
-                    </div>
-                    <div>
-                      <dt>Tokens</dt>
-                      <dd>{{ formatCompactNumber(bucket.usage.totalTokens) }}</dd>
-                    </div>
-                    <div>
-                      <dt>{{ text('明细', 'Breakdown') }}</dt>
-                      <dd>{{ usageTokenLabel(bucket.usage) }}</dd>
-                    </div>
-                    <div>
-                      <dt>{{ text('媒体', 'Media') }}</dt>
-                      <dd>{{ usageMediaLabel(bucket.usage) || '-' }}</dd>
-                    </div>
-                    <div>
-                      <dt>{{ text('估算成本', 'Estimated cost') }}</dt>
-                      <dd>{{ formatUsageCostEstimate(usageBucketCostEstimate(bucket, 'model')) }}</dd>
-                    </div>
-                  </dl>
-                </div>
-                <div v-if="!usageModelBuckets.length" class="mgw-empty">
-                  {{ text('暂无模型消耗记录。', 'No model usage yet.') }}
-                </div>
-              </div>
-            </section>
+          <div class="mgw-model-usage-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>{{ text('模型', 'Model') }}</th>
+                  <th>{{ text('请求次数', 'Requests') }}</th>
+                  <th>{{ text('Token 消耗', 'Token usage') }}</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in usageModelRows" :key="`usage-row-${row.model}`">
+                  <td>{{ row.model }}</td>
+                  <td>{{ formatCompactNumber(row.requestCount) }}</td>
+                  <td>{{ formatCompactNumber(row.totalTokens) }}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-
-          <section class="mgw-usage-section">
-            <div class="mgw-usage-section__head">
-              <strong>{{ text('账号消耗', 'Account usage') }}</strong>
-              <small>{{ text('仅账号登录 provider 会进入这里；普通 API-key provider 已在 Provider 消耗里统计。', 'Only account-backed providers appear here; regular API-key providers are already counted under Provider usage.') }}</small>
-            </div>
-            <div class="mgw-usage-bucket-list">
-              <div v-for="bucket in usageAccountBuckets" :key="`account-${bucket.key}`" class="mgw-usage-row">
-                <div class="mgw-usage-row__main">
-                  <strong>{{ usageBucketTitle(bucket) }}</strong>
-                  <small>{{ usageBucketMeta(bucket, 'account') }}</small>
-                </div>
-                <dl class="mgw-usage-metrics">
-                  <div>
-                    <dt>{{ text('请求', 'Requests') }}</dt>
-                    <dd>{{ formatCompactNumber(bucket.requestCount) }}</dd>
-                  </div>
-                  <div>
-                    <dt>Tokens</dt>
-                    <dd>{{ formatCompactNumber(bucket.usage.totalTokens) }}</dd>
-                  </div>
-                  <div>
-                    <dt>{{ text('计费用', 'Metered') }}</dt>
-                    <dd>{{ formatCompactNumber(bucket.meteredRequestCount) }}</dd>
-                  </div>
-                  <div>
-                    <dt>{{ text('估算成本', 'Estimated cost') }}</dt>
-                    <dd>{{ formatUsageCostEstimate(usageBucketCostEstimate(bucket, 'account')) }}</dd>
-                  </div>
-                  <div>
-                    <dt>{{ text('最近', 'Latest') }}</dt>
-                    <dd>{{ bucket.latestRequestAt ? formatTimestamp(bucket.latestRequestAt) : '-' }}</dd>
-                  </div>
-                </dl>
-              </div>
-              <div v-if="!usageAccountBuckets.length" class="mgw-empty">
-                {{ text('暂无账号消耗记录；如果只配置了 API-key provider，这是正常的。', 'No account usage yet; this is expected when only API-key providers are configured.') }}
-              </div>
-            </div>
-          </section>
-
-          <section class="mgw-usage-section">
-            <div class="mgw-usage-section__head">
-              <strong>{{ text('最近消耗记录', 'Recent usage entries') }}</strong>
-              <small>{{ usageLedgerWindowLabel }}</small>
-            </div>
-            <div class="mgw-usage-entry-list">
-              <details v-for="entry in usageRecentEntries" :key="entry.id" class="mgw-usage-entry" :class="entry.outcome">
-                <summary>
-                  <span>{{ entry.outcome }}</span>
-                  <strong>{{ usageEntryProviderLabel(entry) }}</strong>
-                  <small>{{ usageRouteLabel(entry.routeId) }} · {{ entry.model || '-' }}</small>
-                  <small>{{ usageEntryAccountLabel(entry) }}</small>
-                  <small>{{ formatTimestamp(entry.finishedAt) }} · {{ formatCompactNumber(entry.durationMs) }} ms</small>
-                </summary>
-                <div class="mgw-usage-entry__detail">
-                  <div>
-                    <span>{{ text('路径', 'Path') }}</span>
-                    <strong>{{ entry.requestedPath }}</strong>
-                  </div>
-                  <div>
-                    <span>Endpoint</span>
-                    <strong>{{ entry.upstreamUrl || '-' }}</strong>
-                  </div>
-                  <div>
-                    <span>Tokens</span>
-                    <strong>{{ entry.usage ? usageTokenLabel(entry.usage) : '-' }}</strong>
-                  </div>
-                  <div v-if="usageEntryCanonicalModelLabel(entry)">
-                    <span>{{ text('归并模型', 'Canonical model') }}</span>
-                    <strong>{{ usageEntryCanonicalModelLabel(entry) }}</strong>
-                  </div>
-                  <div>
-                    <span>{{ text('媒体', 'Media') }}</span>
-                    <strong>{{ entry.usage ? usageMediaLabel(entry.usage) || '-' : '-' }}</strong>
-                  </div>
-                  <div>
-                    <span>{{ text('估算成本', 'Estimated cost') }}</span>
-                    <strong>{{ formatUsageCostEstimate(estimateUsageCost([entry])) }}</strong>
-                  </div>
-                  <div v-if="entry.clientKeyHash">
-                    <span>Gateway key</span>
-                    <strong>{{ entry.clientKeyHash }}</strong>
-                  </div>
-                  <div v-if="entry.errorCode || entry.errorMessage">
-                    <span>{{ text('错误', 'Error') }}</span>
-                    <strong>{{ [entry.errorCode, entry.errorMessage].filter(Boolean).join(' · ') }}</strong>
-                  </div>
-                </div>
-              </details>
-              <div v-if="!usageRecentEntries.length" class="mgw-empty">
-                {{ text('暂无消耗记录。', 'No usage entries yet.') }}
-              </div>
-            </div>
-          </section>
         </article>
 
         <article
@@ -1607,6 +1366,7 @@ import type {
   ModelGatewayProviderCategory,
   ModelGatewayProviderEndpointProfileInput,
   ModelGatewayProviderInput,
+  ModelGatewayModelUsageRow,
   ModelGatewayProviderModelCatalog,
   ModelGatewayProviderNetwork,
   ModelGatewayProviderReasoning,
@@ -1615,16 +1375,11 @@ import type {
   ModelGatewayProviderTestResponse,
   ModelGatewayProviderView,
   ModelGatewayProvidersResponse,
-  ModelGatewayProviderSourceType,
   ModelGatewayRouteId,
   ModelGatewayRuntimeRequestLogEntry,
   ModelGatewayRuntimeResponse,
-  ModelGatewayRuntimeUsage,
-  ModelGatewayRuntimeUsageSummary,
-  ModelGatewayRuntimeUsageSummaryBucket,
   ModelGatewayStatusResponse,
   ModelGatewayUpsertProviderRequest,
-  ModelGatewayUsageArchiveBucket,
   ModelGatewayUsageLedgerResponse,
 } from '../../../../../types/model-gateway';
 import StatusPill from '../../components/StatusPill.vue';
@@ -1712,18 +1467,6 @@ type ProviderModelRow = {
   streaming: boolean;
 };
 
-type UsageCostEstimate = {
-  amount: number;
-  tokenAmount: number;
-  cacheAmount: number;
-  imageAmount: number;
-  audioAmount: number;
-  currency: string | null;
-  pricedEntryCount: number;
-  unpricedEntryCount: number;
-  mixedCurrency: boolean;
-};
-
 type ProviderModelBulkDraft = {
   contextWindow: string;
   maxOutputTokens: string;
@@ -1779,8 +1522,6 @@ type DetectStep = {
 
 type WorkspaceTabId = 'connections' | 'providers' | 'usage' | 'smoke';
 type RuntimeLogFilterId = 'all' | 'account-routing' | 'failure' | 'cooldown-retry';
-type UsageTimeRangeId = '24h' | '7d' | '30d' | 'all';
-type UsageSourceFilterId = 'all' | 'account-backed' | 'api-key' | 'failure';
 
 type AppConnectionProfileDraft = {
   model: string;
@@ -1862,21 +1603,6 @@ const runtimeLogFilterOptions: Array<{ id: RuntimeLogFilterId; zh: string; en: s
   { id: 'failure', zh: '失败', en: 'Failures' },
   { id: 'cooldown-retry', zh: '冷却重试', en: 'Cooldown retry' },
 ];
-const usageTimeRangeOptions: Array<{ id: UsageTimeRangeId; zh: string; en: string }> = [
-  { id: '24h', zh: '最近 24 小时', en: 'Last 24h' },
-  { id: '7d', zh: '最近 7 天', en: 'Last 7d' },
-  { id: '30d', zh: '最近 30 天', en: 'Last 30d' },
-  { id: 'all', zh: '全部账本窗口', en: 'Full ledger window' },
-];
-const usageSourceFilterOptions: Array<{ id: UsageSourceFilterId; zh: string; en: string }> = [
-  { id: 'all', zh: '全部来源', en: 'All sources' },
-  { id: 'account-backed', zh: '账号 provider', en: 'Account-backed' },
-  { id: 'api-key', zh: 'API-key provider', en: 'API-key provider' },
-  { id: 'failure', zh: '失败请求', en: 'Failures' },
-];
-const usagePageSizeOptions = [50, 100, 250, 500];
-const usageArchiveBucketDisplayLimit = 14;
-
 const accountRoutingStrategyOptions: Array<{ id: ModelGatewayAccountRoutingStrategy; zh: string; en: string }> = [
   { id: 'round-robin', zh: '轮转', en: 'Round robin' },
   { id: 'fill-first', zh: '填满优先', en: 'Fill first' },
@@ -1952,14 +1678,6 @@ const status = ref<ModelGatewayStatusResponse | null>(null);
 const runtime = ref<ModelGatewayRuntimeResponse | null>(null);
 const usageLedger = ref<ModelGatewayUsageLedgerResponse | null>(null);
 const usageBusy = ref(false);
-const usageTimeRange = ref<UsageTimeRangeId>('all');
-const usageSourceFilter = ref<UsageSourceFilterId>('all');
-const usageProviderFilter = ref('');
-const usageModelFilter = ref('');
-const usageAccountFilter = ref('');
-const usageGatewayKeyFilter = ref('');
-const usagePageSize = ref(100);
-const usagePageOffset = ref(0);
 const daemonService = ref<ModelGatewayDaemonServiceResponse | null>(null);
 const daemonActionResult = ref<ModelGatewayDaemonServiceResponse | null>(null);
 const clientAuth = ref<ModelGatewayClientAuthView | null>(null);
@@ -2051,807 +1769,22 @@ const runtimeUsageLabel = computed(() => {
   if (!summary) return `${runtimeEntries.value.length} / 0`;
   return `${formatCompactNumber(summary.requestCount)} / ${formatCompactNumber(summary.usage.totalTokens)}`;
 });
-const runtimeMediaUsageLabel = computed(() => {
-  const usage = runtimeUsageSummary.value?.usage;
-  if (!usage) return '';
-  const parts = [
-    usage.imageGenerationRequests || usage.imagesGenerated
-      ? text(`生图 ${formatCompactNumber(usage.imagesGenerated)} / ${formatCompactNumber(usage.imageGenerationRequests)}`, `image gen ${formatCompactNumber(usage.imagesGenerated)} / ${formatCompactNumber(usage.imageGenerationRequests)}`)
-      : '',
-    usage.imageEditRequests
-      ? text(`修图 ${formatCompactNumber(usage.imageEditRequests)}`, `edits ${formatCompactNumber(usage.imageEditRequests)}`)
-      : '',
-    usage.audioInputRequests
-      ? text(`音频输入 ${formatCompactNumber(usage.audioInputRequests)}`, `audio in ${formatCompactNumber(usage.audioInputRequests)}`)
-      : '',
-    usage.audioOutputRequests
-      ? text(`音频输出 ${formatCompactNumber(usage.audioOutputRequests)}`, `audio out ${formatCompactNumber(usage.audioOutputRequests)}`)
-      : '',
-  ].filter(Boolean);
-  return parts.join(' · ');
+const usageTotals = computed(() => usageLedger.value?.totals || {
+  requestCount: 0,
+  meteredRequestCount: 0,
+  inputTokens: 0,
+  outputTokens: 0,
+  totalTokens: 0,
 });
-
-const usageRawEntries = computed<ModelGatewayRuntimeRequestLogEntry[]>(() =>
-  [...(usageLedger.value?.entries || runtime.value?.runtime.requestLog || [])],
+const usageModelRows = computed<ModelGatewayModelUsageRow[]>(() => usageLedger.value?.models || []);
+const usageMaxModelTokens = computed(() =>
+  Math.max(0, ...usageModelRows.value.map((row) => row.totalTokens)),
 );
-const usageProviderFilterOptions = computed(() => {
-  const seen = new Map<string, string>();
-  for (const entry of usageRawEntries.value) {
-    const key = entry.providerId || 'unknown-provider';
-    seen.set(key, entry.providerName || entry.providerId || text('未知 provider', 'Unknown provider'));
-  }
-  return [...seen.entries()]
-    .map(([id, label]) => ({ id, label }))
-    .sort((left, right) => left.label.localeCompare(right.label));
-});
-const usageModelFilterOptions = computed(() => {
-  const models = uniqueStrings(usageRawEntries.value.map((entry) => usageEntryCanonicalModel(entry) || '').filter(Boolean));
-  return models.sort((left, right) => left.localeCompare(right));
-});
-const usageFilteredEntries = computed<ModelGatewayRuntimeRequestLogEntry[]>(() =>
-  usageLedger.value ? usageRawEntries.value : usageRawEntries.value.filter((entry) => usageEntryMatchesFilters(entry)),
-);
-const usageSummary = computed<ModelGatewayRuntimeUsageSummary>(() =>
-  usageLedger.value?.usageSummary || summarizeUsageEntries(usageFilteredEntries.value),
-);
-const usageProviderBuckets = computed<ModelGatewayRuntimeUsageSummaryBucket[]>(() =>
-  usageSummary.value.byProvider,
-);
-const usageModelBuckets = computed<ModelGatewayRuntimeUsageSummaryBucket[]>(() =>
-  usageSummary.value.byModel,
-);
-const usageAccountBuckets = computed<ModelGatewayRuntimeUsageSummaryBucket[]>(() =>
-  usageSummary.value.byAccount,
-);
-const usageCostEstimate = computed<UsageCostEstimate>(() =>
-  estimateUsageCost(usageFilteredEntries.value),
-);
-const usageArchiveIndex = computed(() => usageLedger.value?.archiveIndex || null);
-const usageArchiveBuckets = computed<ModelGatewayUsageArchiveBucket[]>(() =>
-  (usageArchiveIndex.value?.buckets || []).slice(0, usageArchiveBucketDisplayLimit),
-);
-const usageRecentEntries = computed<ModelGatewayRuntimeRequestLogEntry[]>(() =>
-  [...usageFilteredEntries.value]
-    .sort((left, right) => usageEntryTime(right) - usageEntryTime(left))
-    .slice(0, 24),
-);
-const usageLedgerWindowLabel = computed(() => {
-  const ledger = usageLedger.value;
-  if (!ledger) return text('正在读取账本窗口', 'Reading ledger window');
-  const total = ledger.totalEntryCount ?? ledger.entryCount;
-  const matched = ledger.matchedEntryCount ?? ledger.entryCount;
-  const truncated = ledger.truncated
-    ? text(
-      ` · 已截断 · 窗口 ${formatCompactNumber(ledger.readLimit || 0)} 条 / ${formatBytes(ledger.readBytes || 0)}`,
-      ` · truncated · window ${formatCompactNumber(ledger.readLimit || 0)} entries / ${formatBytes(ledger.readBytes || 0)}`,
-    )
-    : '';
-  return text(
-    `${formatCompactNumber(matched)} 条匹配 · 账本窗口 ${formatCompactNumber(total)}${truncated}`,
-    `${formatCompactNumber(matched)} matched · ${formatCompactNumber(total)} ledger window${truncated}`,
-  );
-});
-const usageFilteredWindowLabel = computed(() =>
-  usageLedger.value
-    ? usagePageLabel(usageLedger.value)
-    : text(
-      `当前筛选 ${formatCompactNumber(usageFilteredEntries.value.length)} / ${formatCompactNumber(usageRawEntries.value.length)} 条`,
-      `${formatCompactNumber(usageFilteredEntries.value.length)} / ${formatCompactNumber(usageRawEntries.value.length)} entries in current filter`,
-    ),
-);
-const usageArchiveWindowLabel = computed(() => {
-  const index = usageArchiveIndex.value;
-  if (!index || !index.bucketCount) return text('暂无可归档账本窗口', 'No archiveable ledger window');
-  const range = index.oldestPeriod && index.latestPeriod && index.oldestPeriod !== index.latestPeriod
-    ? `${index.oldestPeriod} - ${index.latestPeriod}`
-    : index.latestPeriod || '-';
-  const truncated = index.readWindowOnly
-    ? text(' · 当前为截断读取窗口', ' · current read window is truncated')
-    : '';
-  const shown = Math.min(index.bucketCount, usageArchiveBucketDisplayLimit);
-  return text(
-    `${range} · ${formatCompactNumber(index.bucketCount)} 天 · 显示最近 ${formatCompactNumber(shown)} 天${truncated}`,
-    `${range} · ${formatCompactNumber(index.bucketCount)} days · showing latest ${formatCompactNumber(shown)} days${truncated}`,
-  );
-});
-const canPageUsageBackward = computed(() => (usageLedger.value?.offset || 0) > 0);
-const canPageUsageForward = computed(() => usageLedger.value?.hasMore === true);
-const canExportUsage = computed(() => usageFilteredEntries.value.length > 0);
-const usageSummaryCards = computed(() => {
-  const summary = usageSummary.value;
-  const usage = summary.usage;
-  return [
-    {
-      id: 'requests',
-      label: text('请求', 'Requests'),
-      value: formatCompactNumber(summary.requestCount),
-      meta: text(`计费用 ${formatCompactNumber(summary.meteredRequestCount)}`, `${formatCompactNumber(summary.meteredRequestCount)} metered`),
-    },
-    {
-      id: 'tokens',
-      label: 'Tokens',
-      value: formatCompactNumber(usage?.totalTokens || 0),
-      meta: usageTokenLabel(usage),
-    },
-    {
-      id: 'media',
-      label: text('媒体单位', 'Media units'),
-      value: usageMediaUnitCount(usage),
-      meta: usageMediaLabel(usage) || text('暂无媒体用量', 'No media usage'),
-    },
-    {
-      id: 'cost',
-      label: text('估算成本', 'Estimated cost'),
-      value: formatUsageCostEstimate(usageCostEstimate.value),
-      meta: usageCostMeta(usageCostEstimate.value),
-    },
-    {
-      id: 'archive',
-      label: text('归档窗口', 'Archive window'),
-      value: usageArchiveIndex.value?.bucketCount ? formatCompactNumber(usageArchiveIndex.value.bucketCount) : '-',
-      meta: usageArchiveWindowLabel.value,
-    },
-    {
-      id: 'latency',
-      label: text('延迟', 'Latency'),
-      value: formatLatencyMs(summary.latency.p95Ms),
-      meta: latencySummaryMeta(summary.latency),
-    },
-    {
-      id: 'latest',
-      label: text('最近请求', 'Latest request'),
-      value: summary.latestRequestAt ? formatTimestamp(summary.latestRequestAt) : '-',
-      meta: usageFilteredWindowLabel.value,
-    },
-  ];
-});
 
-function usageEntryTime(entry: ModelGatewayRuntimeRequestLogEntry): number {
-  const time = Date.parse(entry.finishedAt || entry.startedAt || '');
-  return Number.isNaN(time) ? 0 : time;
-}
-
-function usagePageLabel(ledger: ModelGatewayUsageLedgerResponse): string {
-  const matched = ledger.matchedEntryCount ?? ledger.entryCount;
-  const from = matched > 0 ? ledger.offset + 1 : 0;
-  const to = Math.min(matched, ledger.offset + ledger.entries.length);
-  return text(
-    `当前页 ${formatCompactNumber(from)}-${formatCompactNumber(to)} / ${formatCompactNumber(matched)} 条`,
-    `page ${formatCompactNumber(from)}-${formatCompactNumber(to)} / ${formatCompactNumber(matched)} entries`,
-  );
-}
-
-function usageArchiveBucketMeta(bucket: ModelGatewayUsageArchiveBucket): string {
-  return text(
-    `成功 ${formatCompactNumber(bucket.successCount)} · 失败 ${formatCompactNumber(bucket.failureCount)} · 计费用 ${formatCompactNumber(bucket.meteredRequestCount)}`,
-    `${formatCompactNumber(bucket.successCount)} success · ${formatCompactNumber(bucket.failureCount)} failed · ${formatCompactNumber(bucket.meteredRequestCount)} metered`,
-  );
-}
-
-function usageTimeRangeCutoff(range: UsageTimeRangeId): number | null {
-  const day = 24 * 60 * 60 * 1000;
-  if (range === '24h') return Date.now() - day;
-  if (range === '7d') return Date.now() - (7 * day);
-  if (range === '30d') return Date.now() - (30 * day);
-  return null;
-}
-
-function usageEntryIsAccountBacked(entry: ModelGatewayRuntimeRequestLogEntry): boolean {
-  return Boolean(entry.accountId || entry.accountHash) || providerSourceForId(entry.providerId) === 'account-backed';
-}
-
-function normalizedUsageGatewayKeyFilter(): string {
-  return usageGatewayKeyFilter.value.trim();
-}
-
-function usageGatewayKeyHashFilter(): string | null {
-  const value = normalizedUsageGatewayKeyFilter();
-  return /^[a-f0-9]{12}$/i.test(value) ? value.toLowerCase() : null;
-}
-
-function usageGatewayKeyPlainFilter(): string | null {
-  const value = normalizedUsageGatewayKeyFilter();
-  return value && !usageGatewayKeyHashFilter() ? value : null;
-}
-
-function usageEntryMatchesFilters(entry: ModelGatewayRuntimeRequestLogEntry): boolean {
-  const cutoff = usageTimeRangeCutoff(usageTimeRange.value);
-  const clientKeyHash = usageGatewayKeyHashFilter();
-  if (cutoff !== null && usageEntryTime(entry) < cutoff) return false;
-  if (usageProviderFilter.value && (entry.providerId || 'unknown-provider') !== usageProviderFilter.value) return false;
-  if (usageModelFilter.value && !usageEntryMatchesModelFilter(entry, usageModelFilter.value)) return false;
-  if (clientKeyHash && entry.clientKeyHash !== clientKeyHash) return false;
-  if (usageGatewayKeyFilter.value && !clientKeyHash) return false;
-  if (usageSourceFilter.value === 'failure') return entry.outcome !== 'success';
-  if (usageSourceFilter.value === 'account-backed') return usageEntryIsAccountBacked(entry);
-  if (usageSourceFilter.value === 'api-key') return providerSourceForId(entry.providerId) === 'api-key';
-  return true;
-}
-
-function entriesForUsageBucket(
-  bucket: ModelGatewayRuntimeUsageSummaryBucket,
-  kind: 'provider' | 'model' | 'account',
-): ModelGatewayRuntimeRequestLogEntry[] {
-  return usageFilteredEntries.value.filter((entry) => {
-    const providerKey = entry.providerId || 'unknown-provider';
-    if (kind === 'provider') return providerKey === bucket.key;
-    if (kind === 'model') return (usageEntryCanonicalModel(entry) || 'unknown-model') === bucket.key
-      || (entry.providerId ? `${entry.providerId}:${usageEntryCanonicalModel(entry) || 'unknown-model'}` : '') === bucket.key;
-    return `${providerKey}:${entry.accountHash || entry.accountId || 'unknown-account'}` === bucket.key;
-  });
-}
-
-function modelMatchesUsage(model: ModelGatewayProviderModel, requestedModel: string | null | undefined): boolean {
-  const key = normalizeModelKey(requestedModel || '');
-  if (!key) return false;
-  return normalizeModelKey(model.id) === key
-    || (model.aliases || []).some((alias) => normalizeModelKey(alias) === key);
-}
-
-function catalogModelAliases(catalog: ModelGatewayProviderModelCatalog | null | undefined): Record<string, string> {
-  return catalog?.aliases || {};
-}
-
-function providerModelCatalogs(provider: ModelGatewayProviderView): Array<ModelGatewayProviderModelCatalog | null | undefined> {
-  return [
-    provider.models,
-    ...provider.endpointProfiles.map((profile) => profile.models),
-  ];
-}
-
-function canonicalModelFromCatalog(
-  catalog: ModelGatewayProviderModelCatalog | null | undefined,
-  requestedModel: string,
-): string | null {
-  const key = normalizeModelKey(requestedModel);
-  if (!key) return null;
-  for (const model of catalogModels(catalog)) {
-    if (modelMatchesUsage(model, requestedModel)) return model.id;
-  }
-  for (const [alias, modelId] of Object.entries(catalogModelAliases(catalog))) {
-    if (normalizeModelKey(alias) === key) return modelId;
-  }
-  const defaultModel = catalog?.defaultModel || '';
-  return normalizeModelKey(defaultModel) === key ? defaultModel : null;
-}
-
-function canonicalModelForProvider(provider: ModelGatewayProviderView, requestedModel: string | null | undefined): string | null {
-  const requested = requestedModel || '';
-  for (const catalog of providerModelCatalogs(provider)) {
-    const canonical = canonicalModelFromCatalog(catalog, requested);
-    if (canonical) return canonical;
-  }
-  return null;
-}
-
-function usageEntryCanonicalModel(entry: ModelGatewayRuntimeRequestLogEntry): string | null {
-  if (!entry.model) return null;
-  const provider = entry.providerId ? providers.value.find((item) => item.id === entry.providerId) : null;
-  return provider ? canonicalModelForProvider(provider, entry.model) || entry.model : entry.model;
-}
-
-function usageEntryMatchesModelFilter(entry: ModelGatewayRuntimeRequestLogEntry, requestedModel: string): boolean {
-  const requestedKey = normalizeModelKey(requestedModel);
-  if (!requestedKey) return true;
-  return normalizeModelKey(entry.model || '') === requestedKey
-    || normalizeModelKey(usageEntryCanonicalModel(entry) || '') === requestedKey;
-}
-
-function pricingForUsageEntry(entry: ModelGatewayRuntimeRequestLogEntry): ModelGatewayProviderModelPricing | null {
-  if (!entry.providerId || !entry.model) return null;
-  const provider = providers.value.find((item) => item.id === entry.providerId);
-  if (!provider) return null;
-  const canonicalModel = usageEntryCanonicalModel(entry);
-  return providerCatalogModels(provider).find((model) => modelMatchesUsage(model, canonicalModel || entry.model))?.pricing || null;
-}
-
-function usageEntryCanonicalModelLabel(entry: ModelGatewayRuntimeRequestLogEntry): string | null {
-  const canonical = usageEntryCanonicalModel(entry);
-  if (!canonical || !entry.model || normalizeModelKey(canonical) === normalizeModelKey(entry.model)) return null;
-  return canonical;
-}
-
-function emptyCostEstimate(): UsageCostEstimate {
-  return {
-    amount: 0,
-    tokenAmount: 0,
-    cacheAmount: 0,
-    imageAmount: 0,
-    audioAmount: 0,
-    currency: null,
-    pricedEntryCount: 0,
-    unpricedEntryCount: 0,
-    mixedCurrency: false,
-  };
-}
-
-function estimateUsageCost(entries: ModelGatewayRuntimeRequestLogEntry[]): UsageCostEstimate {
-  const estimate = emptyCostEstimate();
-  for (const entry of entries) {
-    const usage = entry.usage;
-    const pricing = pricingForUsageEntry(entry);
-    if (!usage || !pricing) {
-      estimate.unpricedEntryCount += 1;
-      continue;
-    }
-    const currency = (pricing.currency || 'USD').trim().toUpperCase() || 'USD';
-    if (!estimate.currency) {
-      estimate.currency = currency;
-    } else if (estimate.currency !== currency) {
-      estimate.mixedCurrency = true;
-    }
-    const tokenAmount = ((usage.inputTokens || 0) / 1_000_000) * (pricing.inputPer1M || 0)
-      + ((usage.outputTokens || 0) / 1_000_000) * (pricing.outputPer1M || 0);
-    const cacheAmount = ((usage.cacheReadTokens || 0) / 1_000_000) * (pricing.cacheReadPer1M ?? pricing.inputPer1M ?? 0)
-      + ((usage.cacheCreationTokens || 0) / 1_000_000) * (pricing.cacheCreationPer1M ?? pricing.inputPer1M ?? 0);
-    const imageAmount = (usage.imagesGenerated || 0) * (pricing.imageGenerationPerImage || 0)
-      + (usage.imageEditRequests || 0) * (pricing.imageEditPerRequest || 0);
-    const audioAmount = (usage.audioInputRequests || 0) * (pricing.audioInputPerRequest || 0)
-      + (usage.audioOutputRequests || 0) * (pricing.audioOutputPerRequest || 0);
-    estimate.tokenAmount += tokenAmount;
-    estimate.cacheAmount += cacheAmount;
-    estimate.imageAmount += imageAmount;
-    estimate.audioAmount += audioAmount;
-    estimate.amount += tokenAmount + cacheAmount + imageAmount + audioAmount;
-    estimate.pricedEntryCount += 1;
-  }
-  return estimate;
-}
-
-function usageBucketCostEstimate(
-  bucket: ModelGatewayRuntimeUsageSummaryBucket,
-  kind: 'provider' | 'model' | 'account',
-): UsageCostEstimate {
-  return estimateUsageCost(entriesForUsageBucket(bucket, kind));
-}
-
-function formatUsageCostEstimate(estimate: UsageCostEstimate): string {
-  if (!estimate.pricedEntryCount) return text('未配置价格', 'Pricing not set');
-  const amount = estimate.amount;
-  const formatted = amount >= 1 ? amount.toFixed(2) : amount.toFixed(4);
-  if (estimate.mixedCurrency) return text(`混合币种 ${formatted}`, `mixed currency ${formatted}`);
-  return `${estimate.currency || 'USD'} ${formatted}`;
-}
-
-function usageCostMeta(estimate: UsageCostEstimate): string {
-  const breakdown = usageCostBreakdownLabel(estimate);
-  const priced = text(
-    `已计价 ${formatCompactNumber(estimate.pricedEntryCount)} · 未配置 ${formatCompactNumber(estimate.unpricedEntryCount)}`,
-    `${formatCompactNumber(estimate.pricedEntryCount)} priced · ${formatCompactNumber(estimate.unpricedEntryCount)} unpriced`,
-  );
-  return breakdown ? `${priced} · ${breakdown}` : priced;
-}
-
-function usageCostBreakdownLabel(estimate: UsageCostEstimate): string {
-  if (!estimate.pricedEntryCount) return '';
-  const parts = [
-    estimate.tokenAmount ? `token ${formatUsageCostPart(estimate, estimate.tokenAmount)}` : '',
-    estimate.cacheAmount ? `cache ${formatUsageCostPart(estimate, estimate.cacheAmount)}` : '',
-    estimate.imageAmount ? `image ${formatUsageCostPart(estimate, estimate.imageAmount)}` : '',
-    estimate.audioAmount ? `audio ${formatUsageCostPart(estimate, estimate.audioAmount)}` : '',
-  ].filter(Boolean);
-  return parts.join(' / ');
-}
-
-function formatUsageCostPart(estimate: UsageCostEstimate, amount: number): string {
-  const formatted = amount >= 1 ? amount.toFixed(2) : amount.toFixed(4);
-  return estimate.mixedCurrency ? formatted : `${estimate.currency || 'USD'} ${formatted}`;
-}
-
-function usageCostPricingStatus(estimate: UsageCostEstimate): string {
-  if (!estimate.pricedEntryCount) return 'unpriced';
-  if (estimate.unpricedEntryCount) return 'partial';
-  return 'priced';
-}
-
-function usageCostAmountCell(estimate: UsageCostEstimate, amount: number): string {
-  return estimate.pricedEntryCount ? amount.toFixed(8) : '';
-}
-
-function usageCostTotalCell(estimate: UsageCostEstimate): string {
-  return usageCostAmountCell(estimate, estimate.amount);
-}
-
-function usageCostTokenCell(estimate: UsageCostEstimate): string {
-  return usageCostAmountCell(estimate, estimate.tokenAmount);
-}
-
-function usageCostCacheCell(estimate: UsageCostEstimate): string {
-  return usageCostAmountCell(estimate, estimate.cacheAmount);
-}
-
-function usageCostImageCell(estimate: UsageCostEstimate): string {
-  return usageCostAmountCell(estimate, estimate.imageAmount);
-}
-
-function usageCostAudioCell(estimate: UsageCostEstimate): string {
-  return usageCostAmountCell(estimate, estimate.audioAmount);
-}
-
-function usageCostBreakdownCell(estimate: UsageCostEstimate): string {
-  if (!estimate.pricedEntryCount) return '';
-  return [
-    estimate.tokenAmount ? `token=${usageCostTokenCell(estimate)}` : '',
-    estimate.cacheAmount ? `cache=${usageCostCacheCell(estimate)}` : '',
-    estimate.imageAmount ? `image=${usageCostImageCell(estimate)}` : '',
-    estimate.audioAmount ? `audio=${usageCostAudioCell(estimate)}` : '',
-  ].filter(Boolean).join(';');
-}
-
-function createEmptyRuntimeUsage(): ModelGatewayRuntimeUsage {
-  return {
-    inputTokens: 0,
-    outputTokens: 0,
-    totalTokens: 0,
-    cacheReadTokens: 0,
-    cacheCreationTokens: 0,
-    imageGenerationRequests: 0,
-    imagesGenerated: 0,
-    imageEditRequests: 0,
-    audioInputRequests: 0,
-    audioOutputRequests: 0,
-  };
-}
-
-function addUsage(target: ModelGatewayRuntimeUsage, usage: ModelGatewayRuntimeUsage | null | undefined): void {
-  if (!usage) return;
-  target.inputTokens += usage.inputTokens || 0;
-  target.outputTokens += usage.outputTokens || 0;
-  target.totalTokens += usage.totalTokens || 0;
-  target.cacheReadTokens += usage.cacheReadTokens || 0;
-  target.cacheCreationTokens += usage.cacheCreationTokens || 0;
-  target.imageGenerationRequests += usage.imageGenerationRequests || 0;
-  target.imagesGenerated += usage.imagesGenerated || 0;
-  target.imageEditRequests += usage.imageEditRequests || 0;
-  target.audioInputRequests += usage.audioInputRequests || 0;
-  target.audioOutputRequests += usage.audioOutputRequests || 0;
-}
-
-function emptyLatencyDistribution(): ModelGatewayRuntimeUsageSummary['latency']['firstByte'] {
-  return {
-    requestCount: 0,
-    averageMs: null,
-    minMs: null,
-    p50Ms: null,
-    p95Ms: null,
-    p99Ms: null,
-    maxMs: null,
-  };
-}
-
-function emptyLatencySummary(): ModelGatewayRuntimeUsageSummary['latency'] {
-  return {
-    ...emptyLatencyDistribution(),
-    firstByte: emptyLatencyDistribution(),
-  };
-}
-
-function percentileLatency(sorted: number[], percentile: number): number | null {
-  if (!sorted.length) return null;
-  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((percentile / 100) * sorted.length) - 1));
-  return sorted[index];
-}
-
-function summarizeLatencyDistribution(values: Array<number | null | undefined>): ModelGatewayRuntimeUsageSummary['latency']['firstByte'] {
-  const durations = values
-    .map((value) => typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : null)
-    .filter((value): value is number => value !== null)
-    .sort((left, right) => left - right);
-  if (!durations.length) return emptyLatencyDistribution();
-  const total = durations.reduce((sum, value) => sum + value, 0);
-  return {
-    requestCount: durations.length,
-    averageMs: Math.round(total / durations.length),
-    minMs: durations[0],
-    p50Ms: percentileLatency(durations, 50),
-    p95Ms: percentileLatency(durations, 95),
-    p99Ms: percentileLatency(durations, 99),
-    maxMs: durations[durations.length - 1],
-  };
-}
-
-function summarizeLatency(entries: ModelGatewayRuntimeRequestLogEntry[]): ModelGatewayRuntimeUsageSummary['latency'] {
-  return {
-    ...summarizeLatencyDistribution(entries.map((entry) => entry.durationMs)),
-    firstByte: summarizeLatencyDistribution(entries.map((entry) => entry.firstByteMs)),
-  };
-}
-
-function createUsageBucket(
-  key: string,
-  label: string,
-  entry: ModelGatewayRuntimeRequestLogEntry,
-): ModelGatewayRuntimeUsageSummaryBucket {
-  return {
-    key,
-    label,
-    providerId: entry.providerId,
-    providerName: entry.providerName,
-    accountId: entry.accountId || null,
-    accountHash: entry.accountHash || null,
-    model: entry.model,
-    requestCount: 0,
-    meteredRequestCount: 0,
-    latestRequestAt: null,
-    usage: createEmptyRuntimeUsage(),
-  };
-}
-
-function addUsageBucketEntry(
-  map: Map<string, ModelGatewayRuntimeUsageSummaryBucket>,
-  key: string,
-  label: string,
-  entry: ModelGatewayRuntimeRequestLogEntry,
-): void {
-  let bucket = map.get(key);
-  if (!bucket) {
-    bucket = createUsageBucket(key, label, entry);
-    map.set(key, bucket);
-  } else {
-    if (bucket.providerId !== entry.providerId) {
-      bucket.providerId = null;
-      bucket.providerName = text('多 provider', 'multi-provider');
-    }
-    if ((bucket.accountHash || bucket.accountId) !== (entry.accountHash || entry.accountId || null)) {
-      bucket.accountId = null;
-      bucket.accountHash = null;
-    }
-  }
-  bucket.requestCount += 1;
-  if (!bucket.latestRequestAt || usageEntryTime(entry) >= Date.parse(bucket.latestRequestAt)) {
-    bucket.latestRequestAt = entry.finishedAt;
-  }
-  if (entry.usage) {
-    bucket.meteredRequestCount += 1;
-    addUsage(bucket.usage, entry.usage);
-  }
-}
-
-function summarizeUsageEntries(entries: ModelGatewayRuntimeRequestLogEntry[]): ModelGatewayRuntimeUsageSummary {
-  const summary: ModelGatewayRuntimeUsageSummary = {
-    requestCount: entries.length,
-    meteredRequestCount: 0,
-    latestRequestAt: null,
-    usage: createEmptyRuntimeUsage(),
-    latency: summarizeLatency(entries),
-    byProvider: [],
-    byModel: [],
-    byAccount: [],
-  };
-  const providersMap = new Map<string, ModelGatewayRuntimeUsageSummaryBucket>();
-  const modelsMap = new Map<string, ModelGatewayRuntimeUsageSummaryBucket>();
-  const accountsMap = new Map<string, ModelGatewayRuntimeUsageSummaryBucket>();
-
-  for (const entry of entries) {
-    if (!summary.latestRequestAt || usageEntryTime(entry) >= Date.parse(summary.latestRequestAt)) {
-      summary.latestRequestAt = entry.finishedAt;
-    }
-    if (entry.usage) {
-      summary.meteredRequestCount += 1;
-      addUsage(summary.usage, entry.usage);
-    }
-    const providerKey = entry.providerId || 'unknown-provider';
-    addUsageBucketEntry(providersMap, providerKey, entry.providerName || entry.providerId || 'unknown provider', entry);
-    const modelKey = usageEntryCanonicalModel(entry) || 'unknown-model';
-    addUsageBucketEntry(modelsMap, modelKey, modelKey === 'unknown-model' ? 'unknown model' : modelKey, entry);
-    if (entry.accountId || entry.accountHash) {
-      const accountKey = `${providerKey}:${entry.accountHash || entry.accountId || 'unknown-account'}`;
-      addUsageBucketEntry(accountsMap, accountKey, entry.accountId || entry.accountHash || 'unknown account', entry);
-    }
-  }
-
-  const ordered = (map: Map<string, ModelGatewayRuntimeUsageSummaryBucket>) => (
-    [...map.values()]
-      .sort((left, right) => (
-        right.usage.totalTokens - left.usage.totalTokens
-        || right.meteredRequestCount - left.meteredRequestCount
-        || right.requestCount - left.requestCount
-        || left.label.localeCompare(right.label)
-      ))
-      .slice(0, 24)
-  );
-
-  summary.byProvider = ordered(providersMap);
-  summary.byModel = ordered(modelsMap);
-  summary.byAccount = ordered(accountsMap);
-  return summary;
-}
-
-function providerSourceForId(providerId: string | null | undefined): ModelGatewayProviderSourceType | null {
-  if (!providerId) return null;
-  return providers.value.find((provider) => provider.id === providerId)?.sourceType || null;
-}
-
-function providerSourceLabel(providerId: string | null | undefined): string {
-  const source = providerSourceForId(providerId);
-  if (source === 'account-backed') return text('账号 provider', 'Account-backed provider');
-  if (source === 'external-relay') return text('外部中继 provider', 'External relay provider');
-  if (source === 'api-key') return 'API-key provider';
-  return text('未知来源', 'Unknown source');
-}
-
-function usageBucketTitle(bucket: ModelGatewayRuntimeUsageSummaryBucket): string {
-  return bucket.label || bucket.key || '-';
-}
-
-function usageBucketMeta(bucket: ModelGatewayRuntimeUsageSummaryBucket, kind: 'provider' | 'model' | 'account'): string {
-  if (kind === 'provider') {
-    return [bucket.providerId, providerSourceLabel(bucket.providerId)].filter(Boolean).join(' · ');
-  }
-  if (kind === 'model') {
-    return [bucket.model || '-', bucket.providerName || bucket.providerId || text('多 provider', 'multi-provider')].join(' · ');
-  }
-  return [
-    bucket.accountId || bucket.accountHash || text('未知账号', 'unknown account'),
-    bucket.providerName || bucket.providerId || '-',
-  ].join(' · ');
-}
-
-function usageTokenLabel(usage: ModelGatewayRuntimeUsage | null | undefined): string {
-  if (!usage) return text('输入 0 · 输出 0', 'input 0 · output 0');
-  const cache = usage.cacheReadTokens || usage.cacheCreationTokens
-    ? text(`缓存 ${formatCompactNumber(usage.cacheReadTokens + usage.cacheCreationTokens)}`, `cache ${formatCompactNumber(usage.cacheReadTokens + usage.cacheCreationTokens)}`)
-    : '';
-  return [
-    text(`输入 ${formatCompactNumber(usage.inputTokens)}`, `input ${formatCompactNumber(usage.inputTokens)}`),
-    text(`输出 ${formatCompactNumber(usage.outputTokens)}`, `output ${formatCompactNumber(usage.outputTokens)}`),
-    cache,
-  ].filter(Boolean).join(' · ');
-}
-
-function usageMediaUnitCount(usage: ModelGatewayRuntimeUsage | null | undefined): string {
-  if (!usage) return '0';
-  return formatCompactNumber(
-    usage.imagesGenerated
-      + usage.imageEditRequests
-      + usage.audioInputRequests
-      + usage.audioOutputRequests,
-  );
-}
-
-function usageMediaLabel(usage: ModelGatewayRuntimeUsage | null | undefined): string {
-  if (!usage) return '';
-  const parts = [
-    usage.imageGenerationRequests || usage.imagesGenerated
-      ? text(`生图 ${formatCompactNumber(usage.imagesGenerated)} / ${formatCompactNumber(usage.imageGenerationRequests)}`, `image gen ${formatCompactNumber(usage.imagesGenerated)} / ${formatCompactNumber(usage.imageGenerationRequests)}`)
-      : '',
-    usage.imageEditRequests
-      ? text(`修图 ${formatCompactNumber(usage.imageEditRequests)}`, `edits ${formatCompactNumber(usage.imageEditRequests)}`)
-      : '',
-    usage.audioInputRequests
-      ? text(`音频输入 ${formatCompactNumber(usage.audioInputRequests)}`, `audio in ${formatCompactNumber(usage.audioInputRequests)}`)
-      : '',
-    usage.audioOutputRequests
-      ? text(`音频输出 ${formatCompactNumber(usage.audioOutputRequests)}`, `audio out ${formatCompactNumber(usage.audioOutputRequests)}`)
-      : '',
-  ].filter(Boolean);
-  return parts.join(' · ');
-}
-
-function usageRouteLabel(routeId: ModelGatewayRouteId | null): string {
-  if (!routeId) return '-';
-  return routeOptions.find((route) => route.id === routeId)?.label || routeId;
-}
-
-function usageEntryProviderLabel(entry: ModelGatewayRuntimeRequestLogEntry): string {
-  return entry.providerName || entry.providerId || '-';
-}
-
-function usageEntryAccountLabel(entry: ModelGatewayRuntimeRequestLogEntry): string {
-  if (entry.accountId) return text(`账号 ${entry.accountId}`, `account ${entry.accountId}`);
-  if (entry.accountHash) return text(`账号 ${entry.accountHash}`, `account ${entry.accountHash}`);
-  return providerSourceForId(entry.providerId) === 'account-backed'
-    ? text('账号未记录', 'account not recorded')
-    : 'API-key provider';
-}
-
-function csvCell(value: unknown): string {
-  const raw = value === null || value === undefined ? '' : String(value);
-  return /[",\n\r]/.test(raw) ? `"${raw.replace(/"/g, '""')}"` : raw;
-}
-
-function usageCsvSource(entry: ModelGatewayRuntimeRequestLogEntry): string {
-  if (usageEntryIsAccountBacked(entry)) return 'account-backed';
-  return providerSourceForId(entry.providerId) || 'unknown';
-}
-
-function usageCsvRows(): string[][] {
-  return usageFilteredEntries.value
-    .slice()
-    .sort((left, right) => usageEntryTime(left) - usageEntryTime(right))
-    .map((entry) => {
-      const estimate = estimateUsageCost([entry]);
-      return [
-        entry.finishedAt,
-        entry.outcome,
-        usageCsvSource(entry),
-        entry.providerId || '',
-        entry.providerName || '',
-        entry.accountId || '',
-        entry.accountHash || '',
-        entry.clientKeyHash || '',
-        usageEntryCanonicalModel(entry) || '',
-        entry.model || '',
-        entry.routeId || '',
-        entry.method,
-        entry.requestedPath,
-        entry.statusCode ?? '',
-        entry.durationMs,
-        entry.usage?.inputTokens || 0,
-        entry.usage?.outputTokens || 0,
-        entry.usage?.totalTokens || 0,
-        entry.usage?.cacheReadTokens || 0,
-        entry.usage?.cacheCreationTokens || 0,
-        entry.usage?.imageGenerationRequests || 0,
-        entry.usage?.imagesGenerated || 0,
-        entry.usage?.imageEditRequests || 0,
-        entry.usage?.audioInputRequests || 0,
-        entry.usage?.audioOutputRequests || 0,
-        estimate.currency || '',
-        usageCostTotalCell(estimate),
-        usageCostTokenCell(estimate),
-        usageCostCacheCell(estimate),
-        usageCostImageCell(estimate),
-        usageCostAudioCell(estimate),
-        usageCostBreakdownCell(estimate),
-        usageCostPricingStatus(estimate),
-        entry.errorCode || '',
-        entry.errorMessage || '',
-      ].map((value) => String(value));
-    });
-}
-
-function downloadGatewayUsageCsv(): void {
-  if (!canExportUsage.value) return;
-  const header = [
-    'finished_at',
-    'outcome',
-    'source',
-    'provider_id',
-    'provider_name',
-    'account_id',
-    'account_hash',
-    'client_key_hash',
-    'canonical_model',
-    'model',
-    'route_id',
-    'method',
-    'requested_path',
-    'status_code',
-    'duration_ms',
-    'input_tokens',
-    'output_tokens',
-    'total_tokens',
-    'cache_read_tokens',
-    'cache_creation_tokens',
-    'image_generation_requests',
-    'images_generated',
-    'image_edit_requests',
-    'audio_input_requests',
-    'audio_output_requests',
-    'estimated_cost_currency',
-    'estimated_cost',
-    'estimated_token_cost',
-    'estimated_cache_cost',
-    'estimated_image_cost',
-    'estimated_audio_cost',
-    'estimated_cost_breakdown',
-    'pricing_status',
-    'error_code',
-    'error_message',
-  ];
-  const csv = [header, ...usageCsvRows()]
-    .map((row) => row.map(csvCell).join(','))
-    .join('\n');
-  const blob = new Blob([`${csv}\n`], { type: 'text/csv;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = `studio-gateway-usage-${new Date().toISOString().slice(0, 10)}.csv`;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
+function modelTokenBarWidth(row: ModelGatewayModelUsageRow): string {
+  const max = usageMaxModelTokens.value;
+  if (max <= 0 || row.totalTokens <= 0) return '0%';
+  return `${Math.max(3, Math.round((row.totalTokens / max) * 100))}%`;
 }
 
 function accountRoutingSummary(routing: ModelGatewayAccountRoutingDiagnostics): string {
@@ -4337,28 +3270,6 @@ function formatCompactNumber(value: number): string {
   return String(value);
 }
 
-function formatBytes(value: number): string {
-  if (!Number.isFinite(value) || value <= 0) return '0 B';
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / 1024 / 1024).toFixed(1)} MB`;
-}
-
-function formatLatencyMs(value: number | null | undefined): string {
-  if (value === null || value === undefined) return '-';
-  return `${formatCompactNumber(value)} ms`;
-}
-
-function latencySummaryMeta(latency: ModelGatewayRuntimeUsageSummary['latency']): string {
-  const firstByte = latency.firstByte || emptyLatencyDistribution();
-  return [
-    `p50 ${formatLatencyMs(latency.p50Ms)}`,
-    `TTFT p95 ${formatLatencyMs(firstByte.p95Ms)}`,
-    `avg ${formatLatencyMs(latency.averageMs)}`,
-    `max ${formatLatencyMs(latency.maxMs)}`,
-  ].join(' · ');
-}
-
 function normalizedDraftModels(): { defaultModel: string | null; models: ModelGatewayProviderModel[] } {
   let listed = modelRowsToModels(draft.modelRows);
   if (!listed.length && draft.modelListText.trim()) {
@@ -4738,7 +3649,7 @@ async function loadAll(): Promise<void> {
       fetchModelGatewayStatus(),
       fetchModelGatewayProviders(),
       fetchModelGatewayRuntime(),
-      fetchModelGatewayUsageLedger(usageLedgerQueryPayload()),
+      fetchModelGatewayUsageLedger(),
       fetchModelGatewayDaemonService(),
       fetchModelGatewayClientAuth(),
       fetchModelGatewayAppConnections(),
@@ -4770,7 +3681,7 @@ async function refreshUsageLedger(): Promise<void> {
   usageBusy.value = true;
   notice.value = null;
   try {
-    usageLedger.value = await fetchModelGatewayUsageLedger(usageLedgerQueryPayload());
+    usageLedger.value = await fetchModelGatewayUsageLedger();
   } catch (error) {
     notice.value = {
       kind: 'error',
@@ -4779,32 +3690,6 @@ async function refreshUsageLedger(): Promise<void> {
   } finally {
     usageBusy.value = false;
   }
-}
-
-function usageLedgerQueryPayload() {
-  const gatewayKey = usageGatewayKeyPlainFilter();
-  return {
-    limit: usagePageSize.value,
-    offset: usagePageOffset.value,
-    timeRange: usageTimeRange.value,
-    source: usageSourceFilter.value,
-    providerId: usageProviderFilter.value || null,
-    model: usageModelFilter.value || null,
-    account: usageAccountFilter.value || null,
-    gatewayKey,
-    gatewayKeyHash: gatewayKey ? null : usageGatewayKeyHashFilter(),
-  };
-}
-
-function pageUsageLedger(direction: -1 | 1): void {
-  const current = usageLedger.value;
-  const nextOffset = direction < 0
-    ? Math.max(0, usagePageOffset.value - usagePageSize.value)
-    : usagePageOffset.value + usagePageSize.value;
-  const matched = current?.matchedEntryCount ?? current?.entryCount ?? 0;
-  if (direction > 0 && nextOffset >= matched) return;
-  usagePageOffset.value = nextOffset;
-  void refreshUsageLedger();
 }
 
 async function refreshAppConnections(): Promise<void> {
@@ -5343,7 +4228,7 @@ async function loadRuntimeOnly(): Promise<void> {
   try {
     const [nextRuntime, nextUsageLedger] = await Promise.all([
       fetchModelGatewayRuntime(),
-      fetchModelGatewayUsageLedger(usageLedgerQueryPayload()),
+      fetchModelGatewayUsageLedger(),
     ]);
     runtime.value = nextRuntime;
     usageLedger.value = nextUsageLedger;
@@ -5380,22 +4265,6 @@ watch(selectedSmokeProvider, (provider) => {
 watch(() => appConnectionProfile.model, () => {
   applyAppConnectionModelBudget(false);
 });
-
-watch(
-  () => [
-    usageTimeRange.value,
-    usageSourceFilter.value,
-    usageProviderFilter.value,
-    usageModelFilter.value,
-    usageAccountFilter.value,
-    usageGatewayKeyFilter.value,
-    usagePageSize.value,
-  ],
-  () => {
-    usagePageOffset.value = 0;
-    if (loaded.value) void refreshUsageLedger();
-  },
-);
 
 watch(
   () => [route.query.tab, route.query.app],
