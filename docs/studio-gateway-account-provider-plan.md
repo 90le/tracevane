@@ -1,7 +1,7 @@
 # Studio Gateway Account Provider Plan
 
 > 状态：Phase D2 核心能力已进入 live 验证
-> 更新：2026-06-15
+> 更新：2026-06-16
 > 目的：把 GPT / ChatGPT / Codex 账户接入 Studio Gateway，形成用户本机账户池到三协议 API 的正式能力。
 
 ## 参考来源
@@ -42,6 +42,7 @@ Account-backed provider 对外仍暴露：
 - `/v1/audio/transcriptions`
 - `/v1/audio/translations`
 - `/v1/audio/speech`
+- `/v1/responses/ws` / `/v1/realtime` 当前只返回结构化 unsupported，直到完整 Realtime/WebSocket bridge 通过测试
 
 路由规则：
 
@@ -63,7 +64,7 @@ Account-backed provider 对外仍暴露：
 - Codex Responses 转换：Codex account `/v1/responses` 不能按普通 OpenAI Responses 原样透传；必须按 Codex upstream 合同把字符串 `input` 转 message list，强制上游 streaming，并清理 upstream 不接受的 token/采样/context/user 参数，非流式客户端响应再由 SSE 聚合回 JSON；工具历史的 Responses `function_call.id` 必须是 `fc_*`，`call_id` 才保留 Claude/Chat 的 `call_*`。
 - 媒体模型：账户 provider catalog 必须区分 text、vision、image generation、audio input、audio output；`gpt-image-2`、transcribe、tts、audio、realtime 类模型不能被当成普通文本模型。
 - 图片桥接：Codex account 对外兼容 OpenAI Images generation；上游走 Codex `/responses` + `image_generation` tool，并把 Responses/SSE 输出转成 Images API 响应。实现必须支持 `response.output`、`response.output_item.done`、partial-image 未来扩展点和 upstream `response.failed/error` 诊断。OpenAI-compatible image edits 必须 multipart/binary passthrough；Codex account image edits 在没有真实上游合同前明确报不支持，错误 envelope 会说明 Sub2API / CLIProxyAPI 只有生图桥接参考、没有可复用 edits bridge，并给出替代路径。
-- 音频路由：OpenAI-compatible provider 的音频 REST 端点必须 multipart/binary passthrough；Codex account 音频模型可出现在 catalog，但 REST `/v1/audio/*` 当前明确返回结构化 unsupported，直到有真实 Codex backend 音频合同再转完成。
+- 音频/Realtime 路由：OpenAI-compatible provider 的音频 REST 端点必须 multipart/binary passthrough；Codex account 音频与 realtime 模型可出现在 catalog，但 REST `/v1/audio/*`、`/v1/responses/ws` 和 `/v1/realtime` 当前明确返回结构化 unsupported。CLIProxyAPI 的 Responses WebSocket 是完整 state machine，不做半截 passthrough；只有拿到真实 Codex backend 音频合同或完整迁移 WS state machine 并通过 live smoke 后，才移除 unsupported。
 - Codex headers：保留 Codex 需要的 `Session_id`、`X-Codex-*`、`Chatgpt-Account-Id`、user-agent defaults；反代部署时提醒保留 underscore headers。
 - usage：`status/runtime` 已有基于 request log 的 provider/model/account 聚合 summary，并记录 tokens、image generation、images generated、image edits、audio input/output request、latency 分位和首字节/TTFT 分位；`/api/model-gateway/usage` 已读取本地 `usage-ledger.jsonl` 最近 20000 条 / 16MB 的长期脱敏消耗窗口并返回窗口元数据和按日 archive index，Provider Center 模型消耗页已统一展示 account-backed provider 和普通 API-key provider，并支持服务端时间/来源/provider/canonical model/account/Gateway key hash/outcome 筛选、分页、TTFT p95、日桶窗口、schema 化模型价格估算和当前查询 CSV 导出。成本估算已拆分 token/cache/image/audio 分量；模型 alias 会按 provider catalog 归并到 canonical id，单条 request log 保留原始请求模型；UI 可输入本地 Gateway key 或 12 位 hash 筛选，但响应和导出只回显 key hash，不暴露本地 Gateway key 明文。模型消耗后续只保留本地 usage ledger、按日索引、成本估算和 CSV，不做供应商账单导入或对账；Channel 侧不重复做 token 产品化。
 - UI：Provider Center 增加 Account providers 工作区，支持页面登录、账户状态表、刷新、禁用、清除 cooldown、账号代理/直连、账号池策略、媒体模型状态和健康；后续补模型 alias 与策略 live smoke。
@@ -84,3 +85,4 @@ Account-backed provider 对外仍暴露：
 - 不做公共 SaaS 计费、转售、账号共享市场。
 - 不把 ChatGPT 网页 cookie、第三方成品号或手工复制 refresh token 作为默认路径。
 - 不在 App Connections 写入账户 token；客户端只看 Studio Gateway endpoint + Gateway key。
+- 不把 Realtime/WebSocket 做成无状态伪转发；没有完整 state machine 和 live smoke 前保持结构化 unsupported。

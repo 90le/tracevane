@@ -13,6 +13,7 @@ import {
 import { sendJson, sendNoContent, setCorsHeaders } from "../../core/http.js";
 import type { StudioApiContext } from "../../core/context.js";
 import { StudioRouter } from "../../core/router.js";
+import { handleModelGatewayRealtimeUnsupportedUpgrade } from "./realtime.js";
 import { registerModelGatewayRoutes } from "./routes.js";
 import {
   createModelGatewayService,
@@ -245,6 +246,12 @@ export function createModelGatewayDaemon(
             message,
           });
         });
+      });
+      server.on("upgrade", (req, socket, head) => {
+        const handled = handleModelGatewayRealtimeUnsupportedUpgrade(req, socket, head);
+        if (!handled) {
+          try { socket.destroy(); } catch {}
+        }
       });
 
       try {

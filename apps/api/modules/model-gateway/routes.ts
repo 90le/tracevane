@@ -17,6 +17,7 @@ import type {
   ModelGatewayUpsertProviderRequest,
   ModelGatewayUsageLedgerQuery,
 } from "../../../../types/model-gateway.js";
+import { sendModelGatewayRealtimeUnsupported } from "./realtime.js";
 import { isModelGatewayServiceError } from "./service.js";
 
 function sendModelGatewayError(res: Parameters<typeof sendJson>[0], error: unknown): void {
@@ -339,6 +340,22 @@ export function registerModelGatewayRoutes(router: StudioRouter): void {
 
   router.post("/v1/responses/compact", async (req, res, routeCtx) => {
     await routeCtx.services.modelGateway.handleGatewayRequest(req, res);
+  });
+
+  router.get("/v1/responses/ws", (_req, res) => {
+    sendModelGatewayRealtimeUnsupported(res);
+  });
+
+  router.post("/v1/responses/ws", (_req, res) => {
+    sendModelGatewayRealtimeUnsupported(res);
+  });
+
+  router.get("/v1/realtime", (_req, res) => {
+    sendModelGatewayRealtimeUnsupported(res);
+  });
+
+  router.post("/v1/realtime", (_req, res) => {
+    sendModelGatewayRealtimeUnsupported(res);
   });
 
   router.post("/v1/images/generations", async (req, res, routeCtx) => {

@@ -6,10 +6,12 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { WebSocket } from "ws";
 
 import {
   createStudioContext,
   createStudioRequestHandler,
+  createStudioUpgradeHandler,
 } from "../../dist/apps/api/index.js";
 import {
   createModelGatewayService,
@@ -82,6 +84,34 @@ async function startHttpServer(handler) {
       server.close((error) => error ? reject(error) : resolve());
     }),
   };
+}
+
+async function withStudioServer(ctx, task) {
+  const requestHandler = createStudioRequestHandler(ctx);
+  const upgradeHandler = createStudioUpgradeHandler(ctx);
+  const server = http.createServer(async (req, res) => {
+    const handled = await requestHandler(req, res);
+    if (!handled && !res.writableEnded) {
+      res.statusCode = 404;
+      res.end("not found");
+    }
+  });
+  server.on("upgrade", (req, socket, head) => {
+    upgradeHandler(req, socket, head);
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  assert.ok(address && typeof address === "object");
+  try {
+    await task(`http://127.0.0.1:${address.port}`);
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
 }
 
 function requestJson(url, options = {}) {
@@ -850,6 +880,14 @@ test("model gateway starts Codex account login and creates an account-backed pro
       assert.equal(speech.status, 501);
       assert.equal(speech.body.error.code, "model_gateway_codex_account_audio_unsupported");
 
+      const wsHttp = await requestJson(`${baseUrl}/v1/responses/ws`);
+      assert.equal(wsHttp.status, 501);
+      assert.equal(wsHttp.body.error.code, "model_gateway_codex_account_realtime_unsupported");
+
+      const realtimeHttp = await requestJson(`${baseUrl}/v1/realtime`);
+      assert.equal(realtimeHttp.status, 501);
+      assert.equal(realtimeHttp.body.error.code, "model_gateway_codex_account_realtime_unsupported");
+
       const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
       const imageEntry = runtime.body.runtime.requestLog.find((entry) => entry.routeId === "openai_images_generations");
       assert.ok(imageEntry);
@@ -909,6 +947,31 @@ test("model gateway starts Codex account login and creates an account-backed pro
   assert.equal(upstreamCalls[3].body.tool_choice.type, "image_generation");
   assert.equal(upstreamCalls[3].dispatcher, true);
   assert.match(upstreamCalls[0].userAgent, /^codex_cli_rs/);
+});
+
+test("model gateway returns structured unsupported for Codex account realtime websocket routes", async () => {
+  const root = makeTempRoot();
+  const ctx = createStudioContext({
+    config: createStudioConfig(root),
+    logger: createLogger(),
+  });
+
+  await withStudioServer(ctx, async (baseUrl) => {
+    const wsUrl = `ws${baseUrl.slice("http".length)}/v1/responses/ws`;
+    const payload = await new Promise((resolve, reject) => {
+      const ws = new WebSocket(wsUrl, {
+        headers: { authorization: "Bearer sk-studio-smoke-local" },
+      });
+      ws.once("message", (raw) => {
+        resolve(JSON.parse(Buffer.from(raw).toString("utf8")));
+        ws.close();
+      });
+      ws.once("error", reject);
+    });
+    assert.equal(payload.type, "error");
+    assert.equal(payload.error.code, "model_gateway_codex_account_realtime_unsupported");
+    assert.match(payload.error.details.reference, /CLIProxyAPI/);
+  });
 });
 
 test("model gateway forwards OpenAI image edit multipart requests without rewriting binary bodies", async () => {

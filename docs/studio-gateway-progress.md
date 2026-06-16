@@ -13,7 +13,7 @@
 - Gateway Provider 支持 endpoint profiles；同一 provider/模型可按客户端协议优选原生 endpoint，并在 endpoint 级 health/circuit 下回退。
 - GPT/ChatGPT account 与 Codex account 进入 Gateway Phase D2：Provider Center 页面直接登录官方账户并自动创建 account-backed provider；账户池 sticky、per-account concurrency、runtime cursor/affinity 持久化、upstream quota/cooldown、per-account proxy/direct 和 Codex account `gpt-image-2` Images generation live smoke 已闭环，后续补更多账户型 provider，不恢复旧 CPA / Codex Stack。
 - Codex account-backed provider 已支持页面登录、请求前自动 refresh、手动 refresh、账户启用/停用和重新登录入口；客户端仍只使用统一 Gateway endpoint + Gateway key。
-- Codex account-backed provider 已扩展受控本地模型 catalog：`gpt-5.5`、`gpt-5.4`、`gpt-5.4-mini`、`gpt-5.3-codex`、`gpt-image-2`、transcribe/tts/audio/realtime 类模型进入 `/v1/models`，并携带 text/image/audio 能力标记；旧生成的 `gpt-5.5-mini` 和 ChatGPT Codex account 不支持的 `gpt-5` 不再作为账户模型暴露；Codex account REST audio 目前只做结构化 unsupported，不透传到 ChatGPT backend HTML 错误。
+- Codex account-backed provider 已扩展受控本地模型 catalog：`gpt-5.5`、`gpt-5.4`、`gpt-5.4-mini`、`gpt-5.3-codex`、`gpt-image-2`、transcribe/tts/audio/realtime 类模型进入 `/v1/models`，并携带 text/image/audio 能力标记；旧生成的 `gpt-5.5-mini` 和 ChatGPT Codex account 不支持的 `gpt-5` 不再作为账户模型暴露；Codex account REST audio 与 Realtime/WebSocket 目前只做结构化 unsupported，不透传到 ChatGPT backend HTML 错误，也不让 WS 客户端悬挂。
 - Codex account upstream 返回 HTTP 401/403 会把账户标为 `needs-login`；HTTP 429 或明确 quota/rate/capacity/overloaded 错误会把账户标为 `cooldown` 并尊重 `Retry-After`，后续路由会跳过该账户直到冷却结束；started streaming passthrough 内的 `response.failed/error` 也会旁路解析并回写账户状态；runtime log 和 Provider Center 最近请求会显示账号池策略、sticky 命中、选择原因、池容量计数、跳过原因、busy/cooldown 来源和 cooldown 到期后的首次重试；Provider Center 可手动清除 cooldown、配置账号级 proxy/direct，并编辑 round-robin/fill-first、sticky session 和单账号并发。
 - Gateway `/api/model-gateway/runtime` 与 `/api/model-gateway/status` 已从脱敏 request log 派生 usage summary，按 provider/model/account 聚合 request count、metered request count、tokens、image/audio 媒体单位、延迟分位、首字节/TTFT 分位和最近请求时间；`/api/model-gateway/usage` 读取本地 `usage-ledger.jsonl` 的最近 20000 条 / 16MB 脱敏账本窗口，支持服务端时间范围、来源、provider、canonical 模型、账号、Gateway key hash、outcome 筛选和分页，并返回读取窗口元数据与按日 archive index；Provider Center “模型消耗”页已统一展示账号登录 provider 与普通 API-key provider 的消耗，支持 Gateway key/hash 筛选、日桶归档窗口和当前查询 CSV 导出。
 - Provider 模型目录支持可选 schema 化价格字段；Provider Center “模型消耗”页会按当前筛选和用户配置价格估算成本，拆分 token/cache/image/audio 成本分量并导出 CSV。该值只用于 Studio 本地统计和决策参考，不作为上游扣费凭据。
@@ -57,6 +57,7 @@
   - Codex account 的 Images generation 参考 Sub2API / CLIProxyAPI：对外接 OpenAI Images API，对上游桥接到 Codex `/responses` 的 `image_generation` tool，并把 Responses/SSE 输出重建为 Images API 响应；支持 `response.output` 与 `response.output_item.done` 两种图片结果位置，透传 upstream `response.failed/error`，缺失图片时返回带输出类型/文本预览的诊断。
   - OpenAI-compatible Images edits 保持 multipart/binary 原样 passthrough；Codex account image edits 不伪装支持，返回明确 `model_gateway_codex_account_image_edits_unsupported`，并携带可行性结论、参考来源和替代路径。
   - OpenAI-compatible 音频端点保持 multipart/binary 原样 passthrough，不再把音频请求体当 UTF-8 字符串重写；Codex account 音频目录已暴露，但 REST `/v1/audio/*` 不再透传到 Codex backend 返回 HTML 403，统一返回结构化 `model_gateway_codex_account_audio_unsupported`。
+  - Codex account Realtime/WebSocket 调查收口：CLIProxyAPI 的 `/v1/responses/ws` 不是简单 upstream passthrough，而是完整维护 Responses WebSocket turn state、tool cache、compact replay 和账号 websocket 能力选择；Studio 在未完整迁移前不半实现，`GET/POST /v1/responses/ws`、`GET/POST /v1/realtime` 和同路径 WebSocket upgrade 统一返回结构化 `model_gateway_codex_account_realtime_unsupported`。
   - 本轮验证通过：`npm run typecheck:api`、`npm run build:api`、`npm run typecheck:web`、`npm run build:web`。
   - Account pool 调度完成：支持 session affinity、round-robin/fill-first、per-account concurrency、busy 429、HTTP 非 2xx 与 started streaming `response.failed/error` 的 upstream quota/rate/capacity cooldown、cooldown 手动清除、per-account proxy/direct、runtime log accountId/accountHash/accountRouting，并将 Codex account cursor/affinity 写入 runtime，daemon 重启后同 session 保持账号，新 session 延续轮转；Provider Center 最近请求可直接查看 sticky/selected/skipped 摘要。
   - Account pool 可观察性补齐 cooldown retry：过期 cooldown 账户被重新选中时，runtime log `accountRouting` 会记录 `selectedWasCooldownRetry` 与原 `selectedCooldownUntil`，Provider Center 最近请求显示“冷却后重试”；成功后账户恢复 `ready`。
@@ -346,11 +347,11 @@
 - Provider 模型 vision 能力不会再从模型名推断；Chat-compatible provider 即使模型名像 Claude/GPT，也必须由用户显式配置、上游显式能力元数据或图片 smoke 通过后确认标记。
 - 工具流仍需继续 live 抽查：Codex、Claude Code、OpenCode 近 12h 均已有可见工具输出 live 证据，且三者均有过程回复真实 IM 证据。
 - 思考流 parser 支持 Codex、Claude Code、OpenCode 原生 thinking/reasoning 事件；Octo 私聊 `/thinking on/off` 已做端到端回归；状态/UI 已区分 parser 支持和 live 输出观测。真实 smoke 证明 OpenCode 会在支持 reasoning 的模型上输出 `reasoning`，Claude Code 2.1.86 当前未输出 `thinking` item；没有原生思考事件的 Agent/模型组合只能标为不支持，不伪造。
-- Codex account live smoke 已确认：`/v1/models` 由 Studio Gateway daemon 返回聚合模型，account catalog 不再暴露 `gpt-5.5-mini` / `gpt-5`；`gpt-5.5` 覆盖 Responses non-stream、Responses stream、Chat Completions adapter、Anthropic Messages adapter、Responses compact、Provider smoke、Claude Code CLI 和 OpenCode Chat tools smoke，均通过统一 Gateway key；`gpt-image-2` Images generation 已强制命中 `codex-account` 并返回图片。Realtime/WebSocket、Codex account 音频真实上游能力和 image/audio 计费 usage 精细映射仍是后续项；`/v1/images/edits` 已对 OpenAI-compatible provider passthrough，对 Codex account 明确报不支持。
+- Codex account live smoke 已确认：`/v1/models` 由 Studio Gateway daemon 返回聚合模型，account catalog 不再暴露 `gpt-5.5-mini` / `gpt-5`；`gpt-5.5` 覆盖 Responses non-stream、Responses stream、Chat Completions adapter、Anthropic Messages adapter、Responses compact、Provider smoke、Claude Code CLI 和 OpenCode Chat tools smoke，均通过统一 Gateway key；`gpt-image-2` Images generation 已强制命中 `codex-account` 并返回图片。Codex account REST audio、Realtime/WebSocket 和 image/audio 计费 usage 精细映射仍是后续项；`/v1/images/edits` 已对 OpenAI-compatible provider passthrough，对 Codex account 明确报不支持。
 - Account pool live smoke 已确认当前单账号基础链路：active `codex-account`、`gpt-5.5` `/v1/responses`、runtime pool count 诊断和 sticky session 均通过；多账号 round-robin/fill-first 不是当前发布前目标，暂不继续推进。
 
 ## 下一步
 
 1. 收口模型消耗页：保留本地 usage ledger、按日索引、成本估算和 CSV 导出；不做供应商账单导入或对账。
-2. 继续调查 Codex account Realtime/WebSocket 和音频真实上游能力；能稳定支持就接入，不能稳定支持就保留结构化 unsupported。
-3. 继续加固 Gateway 稳定性：endpoint profile fallback、同模型多端点优先级、协议优选/回退和错误 envelope regression。
+2. 继续加固 Gateway 稳定性：endpoint profile fallback、同模型多端点优先级、协议优选/回退和错误 envelope regression。
+3. 后续若要支持 Codex account Realtime/WebSocket，必须按 CLIProxyAPI 的完整 state machine 迁移并通过 WS live smoke；音频同理，只有拿到真实上游合同后才移除结构化 unsupported。

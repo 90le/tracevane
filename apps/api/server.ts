@@ -23,6 +23,7 @@ import { registerCronRoutes } from './modules/cron/routes.js';
 import { registerDashboardRoutes } from './modules/dashboard/routes.js';
 import { registerFilesRoutes } from './modules/files/routes.js';
 import { registerGitRoutes } from './modules/git/routes.js';
+import { handleModelGatewayRealtimeUnsupportedUpgrade } from './modules/model-gateway/realtime.js';
 import { registerModelGatewayRoutes } from './modules/model-gateway/routes.js';
 import { registerOpenClawRecoveryRoutes } from './modules/openclaw-recovery/routes.js';
 import { registerPluginsRoutes } from './modules/plugins/routes.js';
@@ -173,7 +174,8 @@ export function createStudioUpgradeHandler(
   ): boolean {
     normalizeRequestPath(req, { stripBasePath: options.stripBasePath });
 
-    const handled = ctx.services.chat.handleUpgrade(req, socket, head)
+    const handled = handleModelGatewayRealtimeUnsupportedUpgrade(req, socket, head)
+      || ctx.services.chat.handleUpgrade(req, socket, head)
       || ctx.services.terminal.handleUpgrade(req, socket, head);
     if (!handled) {
       try { socket.destroy(); } catch {}
