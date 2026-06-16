@@ -192,6 +192,12 @@
                     {{ activeRouteSmokeResultForScope(scope.id)?.ok ? text('Smoke 通过', 'Smoke passed') : text('Smoke 失败', 'Smoke failed') }}
                     · {{ activeRouteSmokeResultForScope(scope.id)?.latencyMs }} ms
                   </small>
+                  <small
+                    v-if="activeRouteSmokeTargetLine(activeRouteSmokeResultForScope(scope.id))"
+                    :title="activeRouteSmokeResultForScope(scope.id)?.route.upstreamUrl || undefined"
+                  >
+                    {{ activeRouteSmokeTargetLine(activeRouteSmokeResultForScope(scope.id)) }}
+                  </small>
                 </div>
                 <button
                   type="button"
@@ -3394,6 +3400,18 @@ function activeRouteTargetLine(route: ModelGatewayActiveRouteStatus | null): str
     target,
     route.resolvedApiFormat,
     route.routeMode,
+  ].filter(Boolean).join(' · ');
+}
+
+function activeRouteSmokeTargetLine(result: ModelGatewayProviderTestResponse | null): string {
+  if (!result?.route.provider) return '';
+  const target = result.route.endpointProfile
+    ? `${result.route.provider.name} / ${result.route.endpointProfile.name}`
+    : result.route.provider.name || result.providerId;
+  return [
+    target,
+    result.route.provider.apiFormat,
+    result.route.mode,
   ].filter(Boolean).join(' · ');
 }
 

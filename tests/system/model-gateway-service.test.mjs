@@ -4462,6 +4462,15 @@ test("model gateway active route smoke uses the client protocol endpoint", async
         defaultModel: "gpt-route",
         models: [{ id: "gpt-route" }],
       },
+      endpointProfiles: [{
+        id: "route-chat-fast",
+        name: "Route Chat Fast",
+        appScopes: ["codex"],
+        baseUrl: "https://route-chat-fast.example.test/v1",
+        apiFormat: "openai_chat",
+        authStrategy: "bearer",
+        failover: { priority: 1 },
+      }],
     },
     secret: { apiKey: "sk-upstream-route-smoke" },
     setActiveScopes: ["codex"],
@@ -4485,6 +4494,7 @@ test("model gateway active route smoke uses the client protocol endpoint", async
       headers: {
         "content-type": "application/json",
         "x-openclaw-model-gateway-provider": "route-chat",
+        "x-openclaw-model-gateway-endpoint": "route-chat-fast",
       },
     });
   };
@@ -4498,6 +4508,9 @@ test("model gateway active route smoke uses the client protocol endpoint", async
     assert.equal(result.ok, true);
     assert.equal(result.providerId, "route-chat");
     assert.equal(result.route.mode, "adapter-required");
+    assert.equal(result.route.endpointProfile?.id, "route-chat-fast");
+    assert.equal(result.route.endpointProfile?.name, "Route Chat Fast");
+    assert.equal(result.route.upstreamUrl, "https://route-chat-fast.example.test/v1/chat/completions");
     assert.match(seenUrl, /\/v1\/responses$/);
     assert.equal(seenHeaders.authorization, "Bearer sk-local-route-smoke");
     assert.equal(seenHeaders["x-studio-app-scope"], "codex");
