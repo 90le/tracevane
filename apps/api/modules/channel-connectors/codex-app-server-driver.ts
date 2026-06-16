@@ -245,9 +245,13 @@ function compactWaitTimeoutMs(requestTimeoutMs: number): number {
   return Math.max(requestTimeoutMs, 60_000);
 }
 
+const DEFAULT_TURN_IDLE_TIMEOUT_MS = 180_000;
+const APPROVAL_WAIT_IDLE_TIMEOUT_MS = 5 * 60_000 + 15_000;
+const POST_APPROVAL_TOOL_IDLE_TIMEOUT_MS = 10 * 60_000;
+
 function turnWaitTimeoutMs(requestTimeoutMs: number, turnTimeoutMs: number | null): number {
   if (turnTimeoutMs !== null) return Math.max(1, turnTimeoutMs);
-  return Math.max(requestTimeoutMs, 10 * 60_000);
+  return Math.max(requestTimeoutMs, DEFAULT_TURN_IDLE_TIMEOUT_MS);
 }
 
 function agentResult(input: {
@@ -366,6 +370,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
   private threadId: string | null = null;
   private activeTurnId: string | null = null;
   private activeTurnInput: ChannelConnectorAgentSessionDriverTurnInput | null = null;
+  private activeTurnHeartbeat: ((reason?: string) => void) | null = null;
   private activeTurnCompleted: ((message: Record<string, unknown>) => void) | null = null;
   private pendingStopReason: string | null = null;
 
@@ -590,17 +595,26 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
         let settled = false;
         let timeout: NodeJS.Timeout | null = null;
         const timeoutMs = turnWaitTimeoutMs(this.requestTimeoutMs, this.turnTimeoutMs);
+        let longToolGraceUntil = 0;
         const done = (error?: Error): void => {
           if (settled) return;
           settled = true;
           if (timeout) clearTimeout(timeout);
+          this.activeTurnHeartbeat = null;
           this.activeTurnCompleted = null;
           if (error) reject(error);
           else resolve();
         };
-        const armTurnIdleTimeout = (): void => {
+        const armTurnIdleTimeout = (reason?: string): void => {
           if (settled) return;
           if (timeout) clearTimeout(timeout);
+          const reasonKey = normalizeString(reason);
+          if (reasonKey === "approval-resolved") longToolGraceUntil = Date.now() + POST_APPROVAL_TOOL_IDLE_TIMEOUT_MS;
+          const timeoutForReason = this.pendingApprovals.size > 0 || reasonKey.endsWith("/requestApproval")
+            ? Math.max(timeoutMs, APPROVAL_WAIT_IDLE_TIMEOUT_MS)
+            : longToolGraceUntil > Date.now()
+              ? Math.max(timeoutMs, longToolGraceUntil - Date.now())
+              : timeoutMs;
           timeout = setTimeout(() => {
             if (settled) return;
             terminalStatus = "failed";
@@ -613,12 +627,13 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
             }
             void this.stop("turn-timeout");
             done(new Error(terminalError));
-          }, timeoutMs);
+          }, timeoutForReason);
         };
         armTurnIdleTimeout();
+        this.activeTurnHeartbeat = armTurnIdleTimeout;
         this.activeTurnCompleted = (message) => {
-          armTurnIdleTimeout();
           const method = normalizeString(message.method);
+          armTurnIdleTimeout(method);
           const params = isRecord(message.params) ? message.params : {};
           if (method === "item/agentMessage/delta") {
             const delta = stringValue(params.delta);
@@ -703,6 +718,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
       });
     } finally {
       input.signal?.removeEventListener("abort", abortListener);
+      this.activeTurnHeartbeat = null;
       this.activeTurnCompleted = null;
       this.activeTurnId = null;
       this.activeTurnInput = null;
@@ -794,6 +810,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
     const hasId = Object.prototype.hasOwnProperty.call(message, "id");
     const method = normalizeString(message.method);
     if (hasId && method) {
+      this.activeTurnHeartbeat?.(method);
       void this.handleServerRequest(message.id, method, isRecord(message.params) ? message.params : {});
       return;
     }
@@ -916,6 +933,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
           clearTimeout(entry.timeout);
           this.pendingApprovals.delete(requestKey);
         }
+        this.activeTurnHeartbeat?.(decision.behavior === "allow" ? "approval-resolved" : "approval-denied");
         resolve(decision);
       };
       const timeout = setTimeout(() => {
@@ -923,6 +941,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
       }, 5 * 60_000);
       timeout.unref();
       this.pendingApprovals.set(requestKey, { resolve: finish, timeout });
+      this.activeTurnHeartbeat?.(request.subtype);
 
       const automatic = codexAutomaticPermissionDecision(this.permissionMode, request);
       if (automatic) {
@@ -950,6 +969,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
       clearTimeout(entry.timeout);
       entry.resolve({ behavior: "deny", message });
     }
+    this.activeTurnHeartbeat?.("approval-denied");
   }
 }
 

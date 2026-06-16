@@ -817,6 +817,57 @@ test("Codex app-server driver answers command approval requests through the perm
   assert.equal(result.replyText, "command approved");
 });
 
+test("Codex app-server driver keeps approved tool turns alive past short idle windows", async () => {
+  const transport = new FakeCodexAppServerTransport();
+  transport.completeTurns = false;
+  const session = new CodexAppServerSession({
+    sessionId: "session-command-approval-idle",
+    transport,
+    model: "gpt-5.5",
+    cwd: "/tmp/project",
+    permissionMode: "suggest",
+    turnTimeoutMs: 20,
+  });
+
+  const run = session.runTurn({
+    mode: "persistent",
+    key: {
+      bindingId: "octo-codex",
+      projectId: "codex-app-server",
+      sessionKey: "dmwork:dm:user-1",
+      agent: "codex",
+      model: "gpt-5.5",
+      workDir: "/tmp/project",
+    },
+    messageId: "m-command-approval-idle",
+    agentTurnRequest: {
+      ...agentTurnRequest({ messageId: "m-command-approval-idle", model: "gpt-5.5" }),
+      resolvePermission: async (request) => ({ behavior: "allow", updatedInput: request.input }),
+    },
+    runOneShot: async () => {
+      throw new Error("one-shot should not run for app-server driver");
+    },
+  });
+
+  await waitFor(() => transport.messages.find((message) => message.method === "turn/start"));
+  transport.emit({
+    id: "approval-command-idle-1",
+    method: "item/commandExecution/requestApproval",
+    params: {
+      command: "sleep 1 && echo ok",
+      cwd: "/tmp/project",
+    },
+  });
+  await waitFor(() => transport.messages.find((message) => message.id === "approval-command-idle-1" && message.result));
+  await sleep(60);
+  assert.equal(transport.messages.filter((message) => message.method === "turn/interrupt").length, 0);
+
+  emitCodexTurnReply(transport, { text: "approved tool finished" });
+  const result = await run;
+  assert.equal(result.ok, true);
+  assert.equal(result.replyText, "approved tool finished");
+});
+
 test("Codex app-server driver answers file-change approval denial", async () => {
   const transport = new FakeCodexAppServerTransport();
   transport.completeTurns = false;
