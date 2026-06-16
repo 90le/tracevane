@@ -9110,6 +9110,89 @@ test("model gateway normalizes non-json passthrough upstream errors", async () =
   }
 });
 
+test("model gateway normalizes endpoint profile passthrough upstream errors", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "html-error-profile-provider",
+      name: "HTML Error Profile Provider",
+      appScopes: ["openclaw"],
+      baseUrl: "https://unused-root.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "html-profile-model",
+        models: [{ id: "html-profile-model" }],
+      },
+      endpointProfiles: [{
+        id: "chat-html-profile",
+        name: "Chat HTML Profile",
+        appScopes: ["openclaw"],
+        baseUrl: "https://html-profile.example.test/v1",
+        apiFormat: "openai_chat",
+        authStrategy: "bearer",
+        failover: { priority: 1 },
+      }],
+    },
+    secret: {
+      apiKey: "sk-html-profile-secret",
+    },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  let seenUrl = "";
+  globalThis.fetch = async (url) => {
+    seenUrl = String(url);
+    return new Response("<html><body>Endpoint profile failed</body></html>", {
+      status: 502,
+      headers: { "content-type": "text/html; charset=utf-8" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "html-profile-model",
+          messages: [{ role: "user", content: "hello" }],
+        },
+      });
+
+      assert.equal(chat.status, 502);
+      assert.equal(chat.headers["content-type"], "application/json; charset=utf-8");
+      assert.equal(chat.headers["x-openclaw-model-gateway-provider"], "html-error-profile-provider");
+      assert.equal(chat.headers["x-openclaw-model-gateway-endpoint"], "chat-html-profile");
+      assert.equal(chat.body.error.type, "upstream_error");
+      assert.equal(chat.body.error.code, "upstream_http_502");
+      assert.match(chat.body.error.message, /Endpoint profile failed/);
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.equal(runtime.status, 200);
+      assert.equal(runtime.body.runtime.requestLog[0].outcome, "failure");
+      assert.equal(runtime.body.runtime.requestLog[0].providerId, "html-error-profile-provider");
+      assert.equal(runtime.body.runtime.requestLog[0].endpointProfileId, "chat-html-profile");
+      assert.equal(runtime.body.runtime.requestLog[0].upstreamUrl, "https://html-profile.example.test/v1/chat/completions");
+      assert.equal(runtime.body.runtime.requestLog[0].errorCode, "upstream_http_502");
+      assert.match(runtime.body.runtime.requestLog[0].errorMessage, /Endpoint profile failed/);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(seenUrl, "https://html-profile.example.test/v1/chat/completions");
+  const listed = ctx.services.modelGateway.listProviders();
+  const provider = listed.providers.find((item) => item.id === "html-error-profile-provider");
+  const endpoint = provider?.endpointProfiles.find((profile) => profile.id === "chat-html-profile");
+  assert.equal(provider?.health.lastFailureAt, null);
+  assert.ok(endpoint?.health.lastFailureAt);
+  assert.match(endpoint?.health.lastError || "", /Endpoint profile failed/);
+});
+
 test("model gateway restores codex tool-call history for follow-up chat adapter requests", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
