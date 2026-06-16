@@ -256,6 +256,10 @@ async function waitFor(assertion, timeoutMs = 1000) {
   throw new Error("Timed out waiting for condition.");
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function emitCodexTurnReply(transport, input = {}) {
   const turnId = input.turnId || "turn-1";
   const text = input.text || "approval finished";
@@ -961,6 +965,91 @@ test("Codex app-server driver stop sends turn interrupt for active turn", async 
   assert.equal(transport.messages.find((message) => message.method === "turn/interrupt").params.turnId, "turn-1");
 });
 
+test("Codex app-server driver treats turn timeout as an idle timeout", async () => {
+  const transport = new FakeCodexAppServerTransport();
+  transport.completeTurns = false;
+  const session = new CodexAppServerSession({
+    sessionId: "session-turn-idle-timeout",
+    transport,
+    model: "gpt-5.5",
+    cwd: "/tmp/project",
+    permissionMode: "suggest",
+    turnTimeoutMs: 35,
+  });
+  const progress = [];
+
+  const run = session.runTurn({
+    mode: "persistent",
+    key: {
+      bindingId: "octo-codex",
+      projectId: "codex-app-server",
+      sessionKey: "dmwork:dm:user-1",
+      agent: "codex",
+      model: "gpt-5.5",
+      workDir: "/tmp/project",
+    },
+    messageId: "m-turn-idle-timeout",
+    agentTurnRequest: agentTurnRequest({ messageId: "m-turn-idle-timeout", model: "gpt-5.5" }),
+    onProgress: (event) => progress.push(event),
+    runOneShot: async () => {
+      throw new Error("one-shot should not run for app-server driver");
+    },
+  });
+
+  await waitFor(() => transport.messages.find((message) => message.method === "turn/start"));
+  await sleep(0);
+  transport.emit({
+    method: "turn/started",
+    params: {
+      threadId: transport.nextThreadId,
+      turn: { id: "turn-1", status: "running" },
+    },
+  });
+  await sleep(25);
+  transport.emit({
+    method: "item/completed",
+    params: {
+      threadId: transport.nextThreadId,
+      turnId: "turn-1",
+      item: {
+        type: "agentMessage",
+        id: "agent-1",
+        text: "long turn is still working",
+      },
+    },
+  });
+  await sleep(25);
+  transport.emit({
+    method: "item/completed",
+    params: {
+      threadId: transport.nextThreadId,
+      turnId: "turn-1",
+      item: {
+        type: "commandExecution",
+        id: "tool-1",
+        command: "printf ok",
+        exitCode: 0,
+        aggregatedOutput: "ok",
+      },
+    },
+  });
+  await sleep(25);
+  transport.emit({
+    method: "turn/completed",
+    params: {
+      threadId: transport.nextThreadId,
+      turn: { id: "turn-1", status: "completed" },
+    },
+  });
+
+  const result = await run;
+  assert.equal(result.ok, true);
+  assert.equal(result.replyText, "long turn is still working");
+  assert.equal(transport.messages.filter((message) => message.method === "turn/interrupt").length, 0);
+  assert.equal(progress.some((event) => event.rawType === "turn/timeout"), false);
+  assert.ok(progress.some((event) => event.type === "tool" && /output:\nok/.test(event.text)));
+});
+
 test("Codex app-server driver times out unfinished turns and sends interrupt", async () => {
   const transport = new FakeCodexAppServerTransport();
   transport.emitTurnCompleted = false;
@@ -993,7 +1082,7 @@ test("Codex app-server driver times out unfinished turns and sends interrupt", a
         throw new Error("one-shot fallback is owned by the outer session pool");
       },
     }),
-    /timed out waiting for completion/,
+    /timed out/,
   );
 
   await new Promise((resolve) => setTimeout(resolve, 0));

@@ -13442,6 +13442,8 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /function renderPlainProgressEntry/);
   assert.match(daemonSource, /function renderPlainProgressMessage/);
   assert.match(daemonSource, /function isRecoverableToolResultErrorProgressEvent/);
+  assert.match(daemonSource, /Tool and step failures are often recoverable; the final agent result owns card terminal state/);
+  assert.doesNotMatch(daemonSource, /if \(kind === "error"\) \{\s*cardState\.status = "failed";/);
   assert.match(daemonSource, /event\.type !== "failed" && event\.type !== "error"/);
   assert.match(daemonSource, /normalizeString\(event\.rawType\)\.toLowerCase\(\) === "user"/);
   assert.match(daemonSource, /normalizeString\(event\.itemType\)\.toLowerCase\(\) === "tool_result"/);

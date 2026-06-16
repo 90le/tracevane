@@ -322,6 +322,7 @@ test("model gateway usage ledger supports paged filtered latency queries", () =>
     startedAt: new Date(overrides.time - overrides.durationMs).toISOString(),
     finishedAt: new Date(overrides.time).toISOString(),
     durationMs: overrides.durationMs,
+    firstByteMs: overrides.firstByteMs ?? null,
     routeId: "openai_chat_completions",
     appScope: "codex",
     providerId: overrides.providerId,
@@ -346,6 +347,7 @@ test("model gateway usage ledger supports paged filtered latency queries", () =>
       id: "old-p2",
       time: now - (40 * 24 * 60 * 60 * 1000),
       durationMs: 500,
+      firstByteMs: 400,
       providerId: "usage-p2",
       providerName: "Usage P2",
       model: "model-c",
@@ -356,6 +358,7 @@ test("model gateway usage ledger supports paged filtered latency queries", () =>
       id: "p1-a",
       time: now - 10_000,
       durationMs: 100,
+      firstByteMs: 30,
       providerId: "usage-p1",
       providerName: "Usage P1",
       accountId: "account-a",
@@ -380,6 +383,7 @@ test("model gateway usage ledger supports paged filtered latency queries", () =>
       id: "p1-b",
       time: now - 5_000,
       durationMs: 250,
+      firstByteMs: 90,
       providerId: "usage-p1",
       providerName: "Usage P1",
       model: "model-b",
@@ -414,6 +418,15 @@ test("model gateway usage ledger supports paged filtered latency queries", () =>
     p95Ms: 250,
     p99Ms: 250,
     maxMs: 250,
+    firstByte: {
+      requestCount: 2,
+      averageMs: 60,
+      minMs: 30,
+      p50Ms: 30,
+      p95Ms: 90,
+      p99Ms: 90,
+      maxMs: 90,
+    },
   });
 
   const secondPage = service.getUsageLedger({
@@ -5226,6 +5239,8 @@ test("model gateway daemon writes runtime metadata and serves cli routes", async
     assert.equal(runtime.body.runtime.requestLog.length, 1);
     assert.equal(runtime.body.runtime.requestLog[0].routeId, "openai_chat_completions");
     assert.equal(runtime.body.runtime.requestLog[0].outcome, "success");
+    assert.ok(Number.isInteger(runtime.body.runtime.requestLog[0].firstByteMs));
+    assert.ok(runtime.body.runtime.requestLog[0].firstByteMs >= 0);
     assert.deepEqual(runtime.body.runtime.requestLog[0].usage, {
       inputTokens: 3,
       outputTokens: 2,
@@ -5241,6 +5256,8 @@ test("model gateway daemon writes runtime metadata and serves cli routes", async
     assert.equal(runtime.body.usageSummary.requestCount, 1);
     assert.equal(runtime.body.usageSummary.meteredRequestCount, 1);
     assert.equal(runtime.body.usageSummary.usage.totalTokens, 5);
+    assert.equal(runtime.body.usageSummary.latency.firstByte.requestCount, 1);
+    assert.ok(Number.isInteger(runtime.body.usageSummary.latency.firstByte.p95Ms));
     assert.deepEqual(
       runtime.body.usageSummary.byProvider.map((item) => [item.key, item.requestCount, item.usage.totalTokens]),
       [["daemon-chat", 1, 5]],
@@ -5261,8 +5278,10 @@ test("model gateway daemon writes runtime metadata and serves cli routes", async
     assert.equal(usageLedger.status, 200);
     assert.equal(usageLedger.body.entryCount, 1);
     assert.equal(usageLedger.body.entries[0].routeId, "openai_chat_completions");
+    assert.ok(Number.isInteger(usageLedger.body.entries[0].firstByteMs));
     assert.equal(usageLedger.body.usageSummary.requestCount, 1);
     assert.equal(usageLedger.body.usageSummary.usage.totalTokens, 5);
+    assert.equal(usageLedger.body.usageSummary.latency.firstByte.requestCount, 1);
     assert.equal(usageLedger.body.paths.ledger, paths.usageLedger);
     assert.equal(fs.existsSync(paths.usageLedger), true);
     assert.ok(!JSON.stringify(usageLedger.body).includes("sk-daemon-secret-123456"));

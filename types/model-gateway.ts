@@ -414,7 +414,7 @@ export interface ModelGatewayRuntimeUsageSummary {
   byAccount: ModelGatewayRuntimeUsageSummaryBucket[];
 }
 
-export interface ModelGatewayRuntimeLatencySummary {
+export interface ModelGatewayRuntimeLatencyDistribution {
   requestCount: number;
   averageMs: number | null;
   minMs: number | null;
@@ -424,12 +424,17 @@ export interface ModelGatewayRuntimeLatencySummary {
   maxMs: number | null;
 }
 
+export interface ModelGatewayRuntimeLatencySummary extends ModelGatewayRuntimeLatencyDistribution {
+  firstByte: ModelGatewayRuntimeLatencyDistribution;
+}
+
 export interface ModelGatewayRuntimeRequestLogEntry {
   id: string;
   kind: ModelGatewayRuntimeRequestKind;
   startedAt: string;
   finishedAt: string;
   durationMs: number;
+  firstByteMs: number | null;
   routeId: ModelGatewayRouteId | null;
   appScope: ModelGatewayAppScope | null;
   providerId: string | null;

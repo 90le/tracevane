@@ -337,6 +337,7 @@ const channelAgentSessionDriverPool = createChannelConnectorAgentSessionDriverPo
   onEvent: recordChannelAgentSessionDriverEvent,
   factory: createNativeCliSessionDriverFactory({
     codexFactory: createCodexAppServerSessionDriverFactory({
+      turnTimeoutMs: optionalPositiveIntegerEnv("STUDIO_CODEX_APP_SERVER_TURN_IDLE_TIMEOUT_MS"),
       transportFactory: ({ sessionId, key, agentTurnRequest }) => {
         const processRequest = agentTurnRequest
           ? buildChannelConnectorAgentProcessRequest(agentTurnRequest)
@@ -6956,7 +6957,7 @@ function pushFeishuProgressCardEvent(
   if (kind === "error" && cardState.latestError === text) return false;
   cardState.seenFingerprints.add(fingerprint);
   if (kind === "error") {
-    cardState.status = "failed";
+    // Tool and step failures are often recoverable; the final agent result owns card terminal state.
     cardState.latestError = text;
   } else if (event.type === "completed" && cardState.status !== "failed") {
     cardState.status = "completed";

@@ -2261,7 +2261,7 @@ function addUsage(target: ModelGatewayRuntimeUsage, usage: ModelGatewayRuntimeUs
   target.audioOutputRequests += usage.audioOutputRequests || 0;
 }
 
-function emptyLatencySummary(): ModelGatewayRuntimeUsageSummary['latency'] {
+function emptyLatencyDistribution(): ModelGatewayRuntimeUsageSummary['latency']['firstByte'] {
   return {
     requestCount: 0,
     averageMs: null,
@@ -2273,18 +2273,25 @@ function emptyLatencySummary(): ModelGatewayRuntimeUsageSummary['latency'] {
   };
 }
 
+function emptyLatencySummary(): ModelGatewayRuntimeUsageSummary['latency'] {
+  return {
+    ...emptyLatencyDistribution(),
+    firstByte: emptyLatencyDistribution(),
+  };
+}
+
 function percentileLatency(sorted: number[], percentile: number): number | null {
   if (!sorted.length) return null;
   const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((percentile / 100) * sorted.length) - 1));
   return sorted[index];
 }
 
-function summarizeLatency(entries: ModelGatewayRuntimeRequestLogEntry[]): ModelGatewayRuntimeUsageSummary['latency'] {
-  const durations = entries
-    .map((entry) => Number.isFinite(entry.durationMs) ? Math.max(0, Math.floor(entry.durationMs)) : null)
+function summarizeLatencyDistribution(values: Array<number | null | undefined>): ModelGatewayRuntimeUsageSummary['latency']['firstByte'] {
+  const durations = values
+    .map((value) => typeof value === 'number' && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : null)
     .filter((value): value is number => value !== null)
     .sort((left, right) => left - right);
-  if (!durations.length) return emptyLatencySummary();
+  if (!durations.length) return emptyLatencyDistribution();
   const total = durations.reduce((sum, value) => sum + value, 0);
   return {
     requestCount: durations.length,
@@ -2294,6 +2301,13 @@ function summarizeLatency(entries: ModelGatewayRuntimeRequestLogEntry[]): ModelG
     p95Ms: percentileLatency(durations, 95),
     p99Ms: percentileLatency(durations, 99),
     maxMs: durations[durations.length - 1],
+  };
+}
+
+function summarizeLatency(entries: ModelGatewayRuntimeRequestLogEntry[]): ModelGatewayRuntimeUsageSummary['latency'] {
+  return {
+    ...summarizeLatencyDistribution(entries.map((entry) => entry.durationMs)),
+    firstByte: summarizeLatencyDistribution(entries.map((entry) => entry.firstByteMs)),
   };
 }
 
@@ -4045,8 +4059,10 @@ function formatLatencyMs(value: number | null | undefined): string {
 }
 
 function latencySummaryMeta(latency: ModelGatewayRuntimeUsageSummary['latency']): string {
+  const firstByte = latency.firstByte || emptyLatencyDistribution();
   return [
     `p50 ${formatLatencyMs(latency.p50Ms)}`,
+    `TTFT p95 ${formatLatencyMs(firstByte.p95Ms)}`,
     `avg ${formatLatencyMs(latency.averageMs)}`,
     `max ${formatLatencyMs(latency.maxMs)}`,
   ].join(' · ');

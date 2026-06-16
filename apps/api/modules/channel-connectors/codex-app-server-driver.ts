@@ -589,6 +589,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
       await new Promise<void>((resolve, reject) => {
         let settled = false;
         let timeout: NodeJS.Timeout | null = null;
+        const timeoutMs = turnWaitTimeoutMs(this.requestTimeoutMs, this.turnTimeoutMs);
         const done = (error?: Error): void => {
           if (settled) return;
           settled = true;
@@ -597,17 +598,24 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
           if (error) reject(error);
           else resolve();
         };
-        timeout = setTimeout(() => {
-          terminalStatus = "failed";
-          terminalError = completedAgentMessageText || replyText
-            ? "Codex app-server turn timed out waiting for completion after assistant output. The app-server may be waiting for tool approval or a missing completion event."
-            : "Codex app-server turn timed out waiting for completion.";
-          const event = progressEvent({ type: "failed", rawType: "turn/timeout", text: terminalError });
-          emitProgress(event);
-          void this.stop("turn-timeout");
-          done(new Error(terminalError));
-        }, turnWaitTimeoutMs(this.requestTimeoutMs, this.turnTimeoutMs));
+        const armTurnIdleTimeout = (): void => {
+          if (settled) return;
+          if (timeout) clearTimeout(timeout);
+          timeout = setTimeout(() => {
+            if (settled) return;
+            terminalStatus = "failed";
+            terminalError = completedAgentMessageText || replyText
+              ? "Codex app-server turn timed out after the last assistant/tool event. The app-server may be waiting for tool approval or a missing completion event."
+              : "Codex app-server turn timed out waiting for progress.";
+            const event = progressEvent({ type: "failed", rawType: "turn/timeout", text: terminalError });
+            emitProgress(event);
+            void this.stop("turn-timeout");
+            done(new Error(terminalError));
+          }, timeoutMs);
+        };
+        armTurnIdleTimeout();
         this.activeTurnCompleted = (message) => {
+          armTurnIdleTimeout();
           const method = normalizeString(message.method);
           const params = isRecord(message.params) ? message.params : {};
           if (method === "item/agentMessage/delta") {

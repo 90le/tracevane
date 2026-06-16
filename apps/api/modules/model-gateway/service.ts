@@ -94,6 +94,7 @@ import {
   type ModelGatewayRuntimeResponse,
   type ModelGatewayRuntimeState,
   type ModelGatewayRuntimeUsage,
+  type ModelGatewayRuntimeLatencyDistribution,
   type ModelGatewayRuntimeLatencySummary,
   type ModelGatewayRuntimeUsageSummary,
   type ModelGatewayRuntimeUsageSummaryBucket,
@@ -523,7 +524,7 @@ function addRuntimeUsage(target: ModelGatewayRuntimeUsage, value: ModelGatewayRu
   target.audioOutputRequests += value.audioOutputRequests;
 }
 
-function emptyRuntimeLatencySummary(): ModelGatewayRuntimeLatencySummary {
+function emptyRuntimeLatencyDistribution(): ModelGatewayRuntimeLatencyDistribution {
   return {
     requestCount: 0,
     averageMs: null,
@@ -535,18 +536,25 @@ function emptyRuntimeLatencySummary(): ModelGatewayRuntimeLatencySummary {
   };
 }
 
+function emptyRuntimeLatencySummary(): ModelGatewayRuntimeLatencySummary {
+  return {
+    ...emptyRuntimeLatencyDistribution(),
+    firstByte: emptyRuntimeLatencyDistribution(),
+  };
+}
+
 function percentileValue(sortedValues: number[], percentile: number): number | null {
   if (!sortedValues.length) return null;
   const index = Math.min(sortedValues.length - 1, Math.max(0, Math.ceil((percentile / 100) * sortedValues.length) - 1));
   return sortedValues[index];
 }
 
-function summarizeRuntimeLatency(requestLog: ModelGatewayRuntimeRequestLogEntry[]): ModelGatewayRuntimeLatencySummary {
-  const durations = requestLog
-    .map((entry) => Number.isFinite(entry.durationMs) ? Math.max(0, Math.floor(entry.durationMs)) : null)
+function summarizeRuntimeLatencyDistribution(values: Array<number | null | undefined>): ModelGatewayRuntimeLatencyDistribution {
+  const durations = values
+    .map((value) => typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : null)
     .filter((value): value is number => value !== null)
     .sort((left, right) => left - right);
-  if (!durations.length) return emptyRuntimeLatencySummary();
+  if (!durations.length) return emptyRuntimeLatencyDistribution();
   const total = durations.reduce((sum, value) => sum + value, 0);
   return {
     requestCount: durations.length,
@@ -556,6 +564,13 @@ function summarizeRuntimeLatency(requestLog: ModelGatewayRuntimeRequestLogEntry[
     p95Ms: percentileValue(durations, 95),
     p99Ms: percentileValue(durations, 99),
     maxMs: durations[durations.length - 1],
+  };
+}
+
+function summarizeRuntimeLatency(requestLog: ModelGatewayRuntimeRequestLogEntry[]): ModelGatewayRuntimeLatencySummary {
+  return {
+    ...summarizeRuntimeLatencyDistribution(requestLog.map((entry) => entry.durationMs)),
+    firstByte: summarizeRuntimeLatencyDistribution(requestLog.map((entry) => entry.firstByteMs)),
   };
 }
 
@@ -2102,6 +2117,9 @@ function normalizeRuntimeLogEntry(value: unknown): ModelGatewayRuntimeRequestLog
     startedAt,
     finishedAt,
     durationMs: typeof value.durationMs === "number" ? Math.max(0, Math.floor(value.durationMs)) : 0,
+    firstByteMs: typeof value.firstByteMs === "number" && Number.isFinite(value.firstByteMs)
+      ? Math.max(0, Math.floor(value.firstByteMs))
+      : null,
     routeId,
     appScope,
     providerId: normalizeString(value.providerId) || null,
@@ -4012,14 +4030,43 @@ function parseOpenAIResponsesUpstreamBody(
     : JSON.parse(responseText) as unknown;
 }
 
+function observeReadableStreamFirstChunk(
+  stream: ReadableStream<Uint8Array>,
+  onFirstChunk: () => void,
+): ReadableStream<Uint8Array> {
+  let observed = false;
+  const reader = stream.getReader();
+  return new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      const { done, value } = await reader.read();
+      if (done) {
+        controller.close();
+        return;
+      }
+      if (value?.byteLength && !observed) {
+        observed = true;
+        onFirstChunk();
+      }
+      if (value) controller.enqueue(value);
+    },
+    async cancel(reason) {
+      await reader.cancel(reason);
+    },
+  });
+}
+
 async function pipeReadableStreamToServerResponse(
   stream: ReadableStream<Uint8Array>,
   res: http.ServerResponse,
-  options: { onJsonPayload?: (payload: unknown) => void } = {},
+  options: {
+    onFirstChunk?: () => void;
+    onJsonPayload?: (payload: unknown) => void;
+  } = {},
 ): Promise<void> {
   const reader = stream.getReader();
   const decoder = options.onJsonPayload ? new TextDecoder() : null;
   let sseBuffer = "";
+  let firstChunkObserved = false;
   for (;;) {
     const { done, value } = await reader.read();
     if (done) {
@@ -4030,6 +4077,10 @@ async function pipeReadableStreamToServerResponse(
       return;
     }
     if (value?.byteLength) {
+      if (!firstChunkObserved) {
+        firstChunkObserved = true;
+        options.onFirstChunk?.();
+      }
       const chunk = Buffer.from(value);
       res.write(chunk);
       if (options.onJsonPayload && decoder) {
@@ -4276,18 +4327,23 @@ function requestLogEntry(options: {
   model: string | null;
   statusCode: number | null;
   outcome: ModelGatewayRuntimeRequestOutcome;
+  firstByteMs?: number | null;
   errorCode?: string | null;
   errorMessage?: string | null;
   usage?: ModelGatewayRuntimeUsage | null;
 }): ModelGatewayRuntimeRequestLogEntry {
   const finishedAt = nowIso();
   const durationMs = Math.max(0, Date.parse(finishedAt) - Date.parse(options.startedAt));
+  const firstByteMs = typeof options.firstByteMs === "number" && Number.isFinite(options.firstByteMs)
+    ? Math.max(0, Math.floor(options.firstByteMs))
+    : null;
   return {
     id: randomUUID(),
     kind: options.kind,
     startedAt: options.startedAt,
     finishedAt,
     durationMs,
+    firstByteMs,
     routeId: options.route.routeId,
     appScope: options.route.appScope,
     providerId: options.route.provider?.id || null,
@@ -8398,6 +8454,7 @@ export function createModelGatewayService(
       }, upstreamUrl, selectedAccountForTest));
       const responseText = await response.text();
       const latencyMs = Math.max(0, Date.now() - Date.parse(startedAt));
+      const firstByteMs = latencyMs;
       const httpSuccess = isProviderTestSuccess(response.status, null);
       const answerText = testKind === "vision" ? extractProviderTestText(effectiveProvider, responseText) : null;
       const success = testKind === "vision"
@@ -8420,6 +8477,7 @@ export function createModelGatewayService(
         model,
         statusCode: response.status,
         outcome: requestOutcomeFromStatus(response.status, null, success),
+        firstByteMs,
         errorCode: success ? null : testKind === "vision"
           ? "model_gateway_provider_vision_smoke_failed"
           : "model_gateway_provider_test_failed",
@@ -9162,7 +9220,13 @@ export function createModelGatewayService(
         headers,
         body: upstreamBodyText !== undefined ? upstreamBodyText : upstreamBodyBuffer,
       }, decision.upstreamUrl, selectedAccountForRequest));
-      const latencyMs = Math.max(0, Date.now() - Date.parse(startedAt));
+      const responseHeaderMs = Math.max(0, Date.now() - Date.parse(startedAt));
+      let firstByteMs: number | null = null;
+      const markFirstByte = () => {
+        if (firstByteMs === null) firstByteMs = Math.max(0, Date.now() - Date.parse(startedAt));
+      };
+      const firstByteMsForLog = () => firstByteMs ?? responseHeaderMs;
+      const latencyMs = responseHeaderMs;
       const healthSuccess = isProviderHealthSuccess(upstream.status, null);
       const errorMessage = healthSuccess ? null : `Upstream returned HTTP ${upstream.status}.`;
       const streamingAdapter = useCodexResponsesStreamingAdapter
@@ -9225,6 +9289,7 @@ export function createModelGatewayService(
             model: requestModelForLog,
             statusCode: 502,
             outcome: "failure",
+            firstByteMs: firstByteMsForLog(),
             errorCode: streamingAdapter.bodyMissingCode,
             errorMessage: message,
           }));
@@ -9244,7 +9309,8 @@ export function createModelGatewayService(
         res.setHeader("Connection", "keep-alive");
         setSelectedProviderHeaders();
         try {
-          const streamingResult = await streamingAdapter.write(upstream.body, res, requestModelForLog);
+          const streamingBody = observeReadableStreamFirstChunk(upstream.body, markFirstByte);
+          const streamingResult = await streamingAdapter.write(streamingBody, res, requestModelForLog);
           if ((useCodexResponsesStreamingAdapter || useCodexResponsesAnthropicStreamingAdapter) && isRecord(streamingResult)) {
             const responseId = normalizeString(streamingResult.responseId) || normalizeString(streamingResult.id);
             codexHistory.recordResponse({
@@ -9262,6 +9328,7 @@ export function createModelGatewayService(
             model: requestModelForLog,
             statusCode: upstream.status,
             outcome: "success",
+            firstByteMs: firstByteMsForLog(),
             errorCode: null,
             errorMessage: null,
             usage: runtimeUsageForRoute(decision.routeId, streamingResult),
@@ -9276,6 +9343,7 @@ export function createModelGatewayService(
             model: requestModelForLog,
             statusCode: 502,
             outcome: "failure",
+            firstByteMs: firstByteMsForLog(),
             errorCode: streamingAdapter.adapterFailedCode,
             errorMessage: message,
           }));
@@ -9305,6 +9373,7 @@ export function createModelGatewayService(
             model: requestModelForLog,
             statusCode: 502,
             outcome: "failure",
+            firstByteMs: firstByteMsForLog(),
             errorCode: "model_gateway_codex_account_stream_body_missing",
             errorMessage: message,
           }));
@@ -9326,6 +9395,7 @@ export function createModelGatewayService(
         const streamUpstreamError: { current: { message: string; type: string; code: string } | null } = { current: null };
         try {
           await pipeReadableStreamToServerResponse(upstream.body, res, {
+            onFirstChunk: markFirstByte,
             onJsonPayload: (payload) => {
               if (streamUpstreamError.current) return;
               const error = responsesStreamErrorFromPayload(payload);
@@ -9349,6 +9419,7 @@ export function createModelGatewayService(
             model: requestModelForLog,
             statusCode: upstream.status,
             outcome: observedStreamError ? "failure" : "success",
+            firstByteMs: firstByteMsForLog(),
             errorCode: observedStreamError?.code || null,
             errorMessage: observedStreamError?.message || null,
           }));
@@ -9362,6 +9433,7 @@ export function createModelGatewayService(
             model: requestModelForLog,
             statusCode: 502,
             outcome: "failure",
+            firstByteMs: firstByteMsForLog(),
             errorCode: "model_gateway_codex_account_stream_failed",
             errorMessage: message,
           }));
@@ -9410,6 +9482,7 @@ export function createModelGatewayService(
             model: requestModelForLog,
             statusCode: upstream.status,
             outcome: requestOutcomeFromStatus(upstream.status, null, healthSuccess),
+            firstByteMs: firstByteMsForLog(),
             errorCode: String(normalizedError.error.code || "model_gateway_upstream_status"),
             errorMessage: normalizedError.error.message,
           }));
@@ -9444,6 +9517,7 @@ export function createModelGatewayService(
             model: requestModelForLog,
             statusCode: adapterError.statusCode,
             outcome: "failure",
+            firstByteMs: firstByteMsForLog(),
             errorCode: adapterError.code,
             errorMessage: adapterError.message,
           }));
@@ -9467,6 +9541,7 @@ export function createModelGatewayService(
           model: requestModelForLog,
           statusCode: upstream.status,
           outcome: "success",
+          firstByteMs: firstByteMsForLog(),
           errorCode: null,
           errorMessage: null,
           usage: runtimeUsageForRoute(decision.routeId, adaptedResponse),
@@ -9504,6 +9579,7 @@ export function createModelGatewayService(
             model: requestModelForLog,
             statusCode: adapterError.statusCode,
             outcome: "failure",
+            firstByteMs: firstByteMsForLog(),
             errorCode: adapterError.code,
             errorMessage: adapterError.message,
           }));
@@ -9524,6 +9600,7 @@ export function createModelGatewayService(
           model: requestModelForLog,
           statusCode: upstream.status,
           outcome: "success",
+          firstByteMs: firstByteMsForLog(),
           errorCode: null,
           errorMessage: null,
           usage: runtimeUsageForRoute(decision.routeId, adaptedResponse),
@@ -9555,6 +9632,7 @@ export function createModelGatewayService(
             model: requestModelForLog,
             statusCode: adapterError.statusCode,
             outcome: "failure",
+            firstByteMs: firstByteMsForLog(),
             errorCode: adapterError.code,
             errorMessage: adapterError.message,
           }));
@@ -9575,6 +9653,7 @@ export function createModelGatewayService(
           model: requestModelForLog,
           statusCode: upstream.status,
           outcome: "success",
+          firstByteMs: firstByteMsForLog(),
           errorCode: null,
           errorMessage: null,
           usage: runtimeUsageForRoute(decision.routeId, adaptedResponse),
@@ -9606,6 +9685,7 @@ export function createModelGatewayService(
             model: requestModelForLog,
             statusCode: adapterError.statusCode,
             outcome: "failure",
+            firstByteMs: firstByteMsForLog(),
             errorCode: adapterError.code,
             errorMessage: adapterError.message,
           }));
@@ -9631,6 +9711,7 @@ export function createModelGatewayService(
           model: requestModelForLog,
           statusCode: upstream.status,
           outcome: "success",
+          firstByteMs: firstByteMsForLog(),
           errorCode: null,
           errorMessage: null,
           usage: runtimeUsageForRoute(decision.routeId, adaptedResponse),
@@ -9673,6 +9754,7 @@ export function createModelGatewayService(
             model: requestModelForLog,
             statusCode: adapterError.statusCode,
             outcome: "failure",
+            firstByteMs: firstByteMsForLog(),
             errorCode: adapterError.code,
             errorMessage: adapterError.message,
           }));
@@ -9693,6 +9775,7 @@ export function createModelGatewayService(
           model: requestModelForLog,
           statusCode: upstream.status,
           outcome: "success",
+          firstByteMs: firstByteMsForLog(),
           errorCode: null,
           errorMessage: null,
           usage: runtimeUsageForRoute(decision.routeId, adaptedResponse),
@@ -9721,6 +9804,7 @@ export function createModelGatewayService(
             model: requestModelForLog,
             statusCode: adapterError.statusCode,
             outcome: "failure",
+            firstByteMs: firstByteMsForLog(),
             errorCode: adapterError.code,
             errorMessage: adapterError.message,
           }));
@@ -9744,6 +9828,7 @@ export function createModelGatewayService(
           model: requestModelForLog,
           statusCode: upstream.status,
           outcome: "success",
+          firstByteMs: firstByteMsForLog(),
           errorCode: null,
           errorMessage: null,
           usage: runtimeUsageForRoute(decision.routeId, adaptedResponse),
@@ -9761,6 +9846,7 @@ export function createModelGatewayService(
         model: requestModelForLog,
         statusCode: upstream.status,
         outcome: requestOutcomeFromStatus(upstream.status, null, healthSuccess),
+        firstByteMs: firstByteMsForLog(),
         errorCode: healthSuccess ? null : "model_gateway_upstream_status",
         errorMessage,
         usage: upstream.status >= 200 && upstream.status < 300
