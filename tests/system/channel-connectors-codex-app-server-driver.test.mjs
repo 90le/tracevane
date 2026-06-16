@@ -1050,6 +1050,45 @@ test("Codex app-server driver treats turn timeout as an idle timeout", async () 
   assert.ok(progress.some((event) => event.type === "tool" && /output:\nok/.test(event.text)));
 });
 
+test("Codex app-server driver suppresses timeout progress when fallback can continue", async () => {
+  const transport = new FakeCodexAppServerTransport();
+  transport.completeTurns = false;
+  const session = new CodexAppServerSession({
+    sessionId: "session-turn-timeout-fallback",
+    transport,
+    model: "gpt-5.5",
+    cwd: "/tmp/project",
+    permissionMode: "suggest",
+    turnTimeoutMs: 5,
+  });
+  const progress = [];
+
+  await assert.rejects(
+    session.runTurn({
+      mode: "persistent",
+      key: {
+        bindingId: "feishu-codex",
+        projectId: "codex-app-server",
+        sessionKey: "feishu:dm:user-1",
+        agent: "codex",
+        model: "gpt-5.5",
+        workDir: "/tmp/project",
+      },
+      messageId: "m-turn-timeout-fallback",
+      agentTurnRequest: agentTurnRequest({ messageId: "m-turn-timeout-fallback", model: "gpt-5.5" }),
+      onProgress: (event) => progress.push(event),
+      runOneShot: async () => {
+        throw new Error("one-shot fallback is owned by the outer session pool");
+      },
+    }),
+    /timed out/,
+  );
+
+  await sleep(0);
+  assert.equal(transport.messages.filter((message) => message.method === "turn/interrupt").length, 1);
+  assert.equal(progress.some((event) => event.rawType === "turn/timeout"), false);
+});
+
 test("Codex app-server driver times out unfinished turns and sends interrupt", async () => {
   const transport = new FakeCodexAppServerTransport();
   transport.emitTurnCompleted = false;
@@ -1077,6 +1116,7 @@ test("Codex app-server driver times out unfinished turns and sends interrupt", a
       },
       messageId: "m-turn-timeout",
       agentTurnRequest: agentTurnRequest({ messageId: "m-turn-timeout" }),
+      fallbackOnCrash: false,
       onProgress: (event) => progress.push(event),
       runOneShot: async () => {
         throw new Error("one-shot fallback is owned by the outer session pool");

@@ -247,7 +247,7 @@ function compactWaitTimeoutMs(requestTimeoutMs: number): number {
 
 function turnWaitTimeoutMs(requestTimeoutMs: number, turnTimeoutMs: number | null): number {
   if (turnTimeoutMs !== null) return Math.max(1, turnTimeoutMs);
-  return Math.max(requestTimeoutMs, 120_000);
+  return Math.max(requestTimeoutMs, 10 * 60_000);
 }
 
 function agentResult(input: {
@@ -607,8 +607,10 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
             terminalError = completedAgentMessageText || replyText
               ? "Codex app-server turn timed out after the last assistant/tool event. The app-server may be waiting for tool approval or a missing completion event."
               : "Codex app-server turn timed out waiting for progress.";
-            const event = progressEvent({ type: "failed", rawType: "turn/timeout", text: terminalError });
-            emitProgress(event);
+            if (input.fallbackOnCrash === false) {
+              const event = progressEvent({ type: "failed", rawType: "turn/timeout", text: terminalError });
+              emitProgress(event);
+            }
             void this.stop("turn-timeout");
             done(new Error(terminalError));
           }, timeoutMs);

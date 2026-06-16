@@ -28,7 +28,7 @@
 - `studio-channel-files` 和 `studio-channel-messages` 是保留的 Agent 出站声明合同；文件/消息实际发送仍由 Studio native transport 执行。
 - Feishu/Octo 长连接已由用户 live 验证稳定；Feishu 专项跟踪进入 monitored 状态，任意假在线反馈先写入 `docs/feishu-long-connection-issue-tracker.md` 并对照 OpenClaw/CC 实现排查。
 - Profile/App Connection 关闭验收必须跑真实 IM gate：三 Agent 工具流+过程回复、Feishu 显式 `/compact`、Octo 显式 `/compact`、入站图片 staged path。当前四项 gate 已全绿，可作为本轮关闭证据。
-- Codex app-server persistent turn 超时语义已改为空闲超时：总回答时间可超过阈值，只要持续有 app-server 事件、工具事件或输出就不会被误杀；默认空闲阈值 120s，可用 `STUDIO_CODEX_APP_SERVER_TURN_IDLE_TIMEOUT_MS` 调整。
+- Codex app-server persistent turn 超时语义已改为空闲超时：总回答时间可超过阈值，只要持续有 app-server 事件、工具事件或输出就不会被误杀；默认空闲阈值 10 分钟，可用 `STUDIO_CODEX_APP_SERVER_TURN_IDLE_TIMEOUT_MS` 调整；fallback 恢复型 `turn/timeout` 不再进入 Feishu/Octo 用户进度流。
 - Feishu 进度卡片终态只由最终 Agent run 结果决定；中间工具/步骤错误会显示为过程条目并继续更新，不再提前显示“本过程卡片已停止更新”。
 - Channel 侧 `/usage` / token 统计不再继续建设；模型消耗已统一到 Gateway usage/Provider Center 模型消耗页。
 - CLI Profile 管理属于 Studio 原生 Channel Connectors，不属于 OpenClaw Agent 管理；独立页为 `/channel-connectors/profiles`，直接读取 Gateway 可用模型目录和上下文预算，管理 Profile、IM 绑定摘要、运行配置、持久会话和事件记录；IM 绑定摘要可 deep-link 到完整 Channel Connectors 配置并自动选中 binding/profile。
@@ -235,7 +235,7 @@
 - 本轮 live 验证通过：`/api/model-gateway/usage?limit=2&offset=0&timeRange=all` 返回 `matchedEntryCount=6`、`hasMore=true` 和 latency p50/p95；`source=failure` 返回 2 条非 success 记录；`limit=1&offset=1` 返回分页结果。
 - 本轮验证通过：`node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs`
 - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，57/57 通过，覆盖 `glm-5.2` / `glm-5.2[1m]` 预算推断、endpoint profile 原生协议优选、endpoint health 回退、响应头和 endpoint 级 smoke。
-- 本轮验证通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，15/15 通过，覆盖 Codex app-server turn 空闲超时语义和真正卡死 interrupt。
+- 本轮验证通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，16/16 通过，覆盖 Codex app-server turn 空闲超时、fallback 恢复时不发用户 timeout 进度和真正卡死 interrupt。
 - 本轮验证通过：`node --test --test-name-pattern "native Channel Connectors daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`，覆盖 Feishu 进度卡片中间错误不再提前终止。
 - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，73/73 通过；`node --test tests/system/studio-web-model-gateway-page.test.mjs`，3/3 通过；`npm run build:api`、`npm run typecheck:web` 通过。
 - 本轮本机 live smoke 通过：Gateway `glm-5.2` 三协议入口均可用，`/v1/chat/completions` 走 `glm/coding-chat`，`/v1/messages` 走 `glm/coding-anthropic`，`/v1/responses` 走 `glm/coding-chat` 转换。

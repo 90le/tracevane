@@ -6843,8 +6843,9 @@ function shouldSendChannelProgressEvent(
 }
 
 function isVisibleChannelProgressEvent(event: ChannelConnectorAgentProgressEvent): boolean {
-  if (event.type !== "running") return true;
   const rawType = normalizeString(event.rawType).toLowerCase();
+  if (rawType === "turn/timeout") return false;
+  if (event.type !== "running") return true;
   const text = normalizeString(event.text).toLowerCase();
   if (rawType === "turn.started" || rawType === "turn/started") return false;
   if (text === "codex turn started" || text === "codex app-server turn started") return false;
