@@ -578,6 +578,7 @@ function createRuntimeUsageBucket(
   key: string,
   label: string,
   entry: ModelGatewayRuntimeRequestLogEntry,
+  model: string | null = entry.model,
 ): ModelGatewayRuntimeUsageSummaryBucket {
   return {
     key,
@@ -586,7 +587,7 @@ function createRuntimeUsageBucket(
     providerName: entry.providerName,
     accountId: entry.accountId || null,
     accountHash: entry.accountHash || null,
-    model: entry.model,
+    model,
     requestCount: 0,
     meteredRequestCount: 0,
     latestRequestAt: null,
@@ -594,7 +595,27 @@ function createRuntimeUsageBucket(
   };
 }
 
-function summarizeRuntimeUsage(requestLog: ModelGatewayRuntimeRequestLogEntry[]): ModelGatewayRuntimeUsageSummary {
+interface RuntimeUsageModelBucket {
+  key: string;
+  label: string;
+  model: string | null;
+}
+
+type RuntimeUsageModelResolver = (entry: ModelGatewayRuntimeRequestLogEntry) => RuntimeUsageModelBucket;
+
+function defaultRuntimeUsageModelBucket(entry: ModelGatewayRuntimeRequestLogEntry): RuntimeUsageModelBucket {
+  const model = normalizeString(entry.model || "") || null;
+  return {
+    key: model || "unknown-model",
+    label: model || "unknown model",
+    model,
+  };
+}
+
+function summarizeRuntimeUsage(
+  requestLog: ModelGatewayRuntimeRequestLogEntry[],
+  modelBucketForEntry: RuntimeUsageModelResolver = defaultRuntimeUsageModelBucket,
+): ModelGatewayRuntimeUsageSummary {
   const summary: ModelGatewayRuntimeUsageSummary = {
     requestCount: requestLog.length,
     meteredRequestCount: 0,
@@ -613,11 +634,24 @@ function summarizeRuntimeUsage(requestLog: ModelGatewayRuntimeRequestLogEntry[])
     key: string,
     label: string,
     entry: ModelGatewayRuntimeRequestLogEntry,
+    model: string | null = entry.model,
   ) => {
     let existing = map.get(key);
     if (!existing) {
-      existing = createRuntimeUsageBucket(key, label, entry);
+      existing = createRuntimeUsageBucket(key, label, entry, model);
       map.set(key, existing);
+    } else {
+      if (existing.providerId !== entry.providerId) {
+        existing.providerId = null;
+        existing.providerName = "multi-provider";
+      }
+      if ((existing.accountHash || existing.accountId) !== (entry.accountHash || entry.accountId || null)) {
+        existing.accountId = null;
+        existing.accountHash = null;
+      }
+      if (existing.model !== model) {
+        existing.model = null;
+      }
     }
     existing.requestCount += 1;
     existing.latestRequestAt = entry.finishedAt;
@@ -634,8 +668,8 @@ function summarizeRuntimeUsage(requestLog: ModelGatewayRuntimeRequestLogEntry[])
     }
     const providerKey = entry.providerId || "unknown-provider";
     bucket(providers, providerKey, entry.providerName || entry.providerId || "unknown provider", entry);
-    const modelKey = `${providerKey}:${entry.model || "unknown-model"}`;
-    bucket(models, modelKey, entry.model || "unknown model", entry);
+    const modelBucket = modelBucketForEntry(entry);
+    bucket(models, modelBucket.key, modelBucket.label, entry, modelBucket.model);
     if (entry.accountId || entry.accountHash) {
       const accountKey = `${providerKey}:${entry.accountHash || entry.accountId || "unknown-account"}`;
       bucket(accounts, accountKey, entry.accountId || entry.accountHash || "unknown account", entry);
@@ -810,25 +844,59 @@ function mergeModelBudgetMinimum(current: number | null, next: unknown): number 
 
 function providerModelLookupEntries(provider: ModelGatewayProvider): Map<string, string> {
   const entries = new Map<string, string>();
-  for (const model of provider.models.models) {
-    const modelId = normalizeString(model.id);
-    if (!modelId) continue;
-    entries.set(normalizeModelLookupKey(modelId), modelId);
-    for (const alias of model.aliases || []) {
-      const key = normalizeModelLookupKey(alias);
-      if (key) entries.set(key, modelId);
+  const addCatalog = (catalog: ModelGatewayProviderModelCatalog | null | undefined) => {
+    if (!catalog) return;
+    for (const model of catalog.models) {
+      const modelId = normalizeString(model.id);
+      if (!modelId) continue;
+      entries.set(normalizeModelLookupKey(modelId), modelId);
+      for (const alias of model.aliases || []) {
+        const key = normalizeModelLookupKey(alias);
+        if (key) entries.set(key, modelId);
+      }
     }
-  }
-  for (const [alias, modelId] of Object.entries(provider.models.aliases || {})) {
-    const key = normalizeModelLookupKey(alias);
-    const target = normalizeString(modelId);
-    if (key && target) entries.set(key, target);
-  }
-  const defaultModel = normalizeString(provider.models.defaultModel || "");
-  if (defaultModel && !entries.has(normalizeModelLookupKey(defaultModel))) {
-    entries.set(normalizeModelLookupKey(defaultModel), defaultModel);
-  }
+    for (const [alias, modelId] of Object.entries(catalog.aliases || {})) {
+      const key = normalizeModelLookupKey(alias);
+      const target = normalizeString(modelId);
+      if (key && target) entries.set(key, target);
+    }
+    const defaultModel = normalizeString(catalog.defaultModel || "");
+    if (defaultModel && !entries.has(normalizeModelLookupKey(defaultModel))) {
+      entries.set(normalizeModelLookupKey(defaultModel), defaultModel);
+    }
+  };
+  addCatalog(provider.models);
+  for (const profile of provider.endpointProfiles) addCatalog(profile.models);
   return entries;
+}
+
+function createRuntimeUsageModelResolver(registry: ModelGatewayRegistryState): RuntimeUsageModelResolver {
+  const lookups = new Map(registry.providers.map((provider) => [provider.id, providerModelLookupEntries(provider)]));
+  return (entry) => {
+    const requestedModel = normalizeString(entry.model || "");
+    const lookup = entry.providerId ? lookups.get(entry.providerId) : null;
+    const model = requestedModel && lookup
+      ? lookup.get(normalizeModelLookupKey(requestedModel)) || requestedModel
+      : requestedModel;
+    return {
+      key: model || "unknown-model",
+      label: model || "unknown model",
+      model: model || null,
+    };
+  };
+}
+
+function runtimeUsageEntryMatchesModel(
+  entry: ModelGatewayRuntimeRequestLogEntry,
+  requestedModel: string,
+  modelBucketForEntry: RuntimeUsageModelResolver,
+): boolean {
+  const requestedKey = normalizeModelLookupKey(requestedModel);
+  if (!requestedKey) return true;
+  const rawKey = normalizeModelLookupKey(entry.model || "");
+  const modelBucket = modelBucketForEntry(entry);
+  const canonicalKey = normalizeModelLookupKey(modelBucket.model || modelBucket.key || "");
+  return requestedKey === rawKey || requestedKey === canonicalKey;
 }
 
 const MODEL_GATEWAY_MODEL_FEATURE_KEYS = [
@@ -5086,11 +5154,12 @@ export function createModelGatewayService(
     entry: ModelGatewayRuntimeRequestLogEntry,
     query: NormalizedUsageLedgerQuery,
     providerSources: Map<string, ModelGatewayProviderSourceType>,
+    modelBucketForEntry: RuntimeUsageModelResolver,
   ): boolean {
     const cutoff = usageLedgerTimeRangeCutoff(query.timeRange);
     if (cutoff !== null && usageLedgerEntryTime(entry) < cutoff) return false;
     if (query.providerId && (entry.providerId || "unknown-provider") !== query.providerId) return false;
-    if (query.model && entry.model !== query.model) return false;
+    if (query.model && !runtimeUsageEntryMatchesModel(entry, query.model, modelBucketForEntry)) return false;
     if (query.account) {
       const account = query.account.toLowerCase();
       const entryAccount = [
@@ -6379,7 +6448,7 @@ export function createModelGatewayService(
     const runtime = readRuntime();
     const openCircuits = registry.providers.filter((provider) => provider.health.circuitState === "open").length;
     const latestRequestAt = runtime.requestLog[runtime.requestLog.length - 1]?.finishedAt || null;
-    const usageSummary = summarizeRuntimeUsage(runtime.requestLog);
+    const usageSummary = summarizeRuntimeUsage(runtime.requestLog, createRuntimeUsageModelResolver(registry));
     return {
       ok: true,
       checkedAt: nowIso(),
@@ -6429,10 +6498,11 @@ export function createModelGatewayService(
 
   function getRuntime(): ModelGatewayRuntimeResponse {
     const runtime = readRuntime();
+    const registry = readRegistry();
     return {
       ok: true,
       runtime,
-      usageSummary: summarizeRuntimeUsage(runtime.requestLog),
+      usageSummary: summarizeRuntimeUsage(runtime.requestLog, createRuntimeUsageModelResolver(registry)),
       paths: {
         runtime: paths.runtime,
         logs: paths.logs,
@@ -6445,8 +6515,9 @@ export function createModelGatewayService(
     const { entries: readableEntries, truncated } = readUsageLedgerEntries();
     const registry = readRegistry();
     const providerSources = new Map(registry.providers.map((provider) => [provider.id, provider.sourceType]));
+    const modelBucketForEntry = createRuntimeUsageModelResolver(registry);
     const filteredEntries = readableEntries
-      .filter((entry) => usageLedgerEntryMatchesQuery(entry, normalizedQuery, providerSources))
+      .filter((entry) => usageLedgerEntryMatchesQuery(entry, normalizedQuery, providerSources, modelBucketForEntry))
       .sort((left, right) => usageLedgerEntryTime(right) - usageLedgerEntryTime(left));
     const entries = filteredEntries.slice(
       normalizedQuery.offset,
@@ -6455,7 +6526,7 @@ export function createModelGatewayService(
     return {
       ok: true,
       entries,
-      usageSummary: summarizeRuntimeUsage(filteredEntries),
+      usageSummary: summarizeRuntimeUsage(filteredEntries, modelBucketForEntry),
       entryCount: filteredEntries.length,
       totalEntryCount: readableEntries.length,
       matchedEntryCount: filteredEntries.length,

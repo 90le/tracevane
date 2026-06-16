@@ -304,7 +304,7 @@ test("model gateway usage ledger supports paged filtered latency queries", () =>
       baseUrl: "https://usage-p1.example/v1",
       apiFormat: "openai_chat",
       authStrategy: "bearer",
-      models: { defaultModel: "model-a", models: [{ id: "model-a" }, { id: "model-b" }] },
+      models: { defaultModel: "model-a", models: [{ id: "model-a", aliases: ["alias-a"] }, { id: "model-b" }] },
     },
   });
   service.upsertProvider(undefined, {
@@ -372,7 +372,7 @@ test("model gateway usage ledger supports paged filtered latency queries", () =>
       accountId: "account-a",
       accountHash: "hash-a",
       clientKeyHash: clientKeyHashA,
-      model: "model-a",
+      model: "alias-a",
       statusCode: 200,
       outcome: "success",
       usage: {
@@ -453,6 +453,18 @@ test("model gateway usage ledger supports paged filtered latency queries", () =>
   const accountPage = service.getUsageLedger({ account: "hash-a", limit: 10 });
   assert.equal(accountPage.matchedEntryCount, 1);
   assert.equal(accountPage.entries[0].accountId, "account-a");
+
+  const canonicalModelPage = service.getUsageLedger({ model: "model-a", limit: 10 });
+  assert.equal(canonicalModelPage.matchedEntryCount, 1);
+  assert.equal(canonicalModelPage.entries[0].model, "alias-a");
+  assert.deepEqual(
+    canonicalModelPage.usageSummary.byModel.map((item) => [item.key, item.label, item.model, item.requestCount, item.usage.totalTokens]),
+    [["model-a", "model-a", "model-a", 1, 15]],
+  );
+
+  const aliasModelPage = service.getUsageLedger({ model: "alias-a", limit: 10 });
+  assert.equal(aliasModelPage.matchedEntryCount, 1);
+  assert.equal(aliasModelPage.usageSummary.byModel[0].key, "model-a");
 
   const gatewayKeyPage = service.getUsageLedger({ gatewayKey: "sk-usage-client-a", limit: 10 });
   assert.equal(gatewayKeyPage.matchedEntryCount, 1);

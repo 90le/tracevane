@@ -1293,6 +1293,10 @@
                     <span>Tokens</span>
                     <strong>{{ entry.usage ? usageTokenLabel(entry.usage) : '-' }}</strong>
                   </div>
+                  <div v-if="usageEntryCanonicalModelLabel(entry)">
+                    <span>{{ text('归并模型', 'Canonical model') }}</span>
+                    <strong>{{ usageEntryCanonicalModelLabel(entry) }}</strong>
+                  </div>
                   <div>
                     <span>{{ text('媒体', 'Media') }}</span>
                     <strong>{{ entry.usage ? usageMediaLabel(entry.usage) || '-' : '-' }}</strong>
@@ -2027,7 +2031,7 @@ const usageProviderFilterOptions = computed(() => {
     .sort((left, right) => left.label.localeCompare(right.label));
 });
 const usageModelFilterOptions = computed(() => {
-  const models = uniqueStrings(usageRawEntries.value.map((entry) => entry.model || '').filter(Boolean));
+  const models = uniqueStrings(usageRawEntries.value.map((entry) => usageEntryCanonicalModel(entry) || '').filter(Boolean));
   return models.sort((left, right) => left.localeCompare(right));
 });
 const usageFilteredEntries = computed<ModelGatewayRuntimeRequestLogEntry[]>(() =>
@@ -2163,7 +2167,7 @@ function usageEntryMatchesFilters(entry: ModelGatewayRuntimeRequestLogEntry): bo
   const clientKeyHash = usageGatewayKeyHashFilter();
   if (cutoff !== null && usageEntryTime(entry) < cutoff) return false;
   if (usageProviderFilter.value && (entry.providerId || 'unknown-provider') !== usageProviderFilter.value) return false;
-  if (usageModelFilter.value && entry.model !== usageModelFilter.value) return false;
+  if (usageModelFilter.value && !usageEntryMatchesModelFilter(entry, usageModelFilter.value)) return false;
   if (clientKeyHash && entry.clientKeyHash !== clientKeyHash) return false;
   if (usageGatewayKeyFilter.value && !clientKeyHash) return false;
   if (usageSourceFilter.value === 'failure') return entry.outcome !== 'success';
@@ -2179,7 +2183,8 @@ function entriesForUsageBucket(
   return usageFilteredEntries.value.filter((entry) => {
     const providerKey = entry.providerId || 'unknown-provider';
     if (kind === 'provider') return providerKey === bucket.key;
-    if (kind === 'model') return (entry.model || 'unknown-model') === bucket.key;
+    if (kind === 'model') return (usageEntryCanonicalModel(entry) || 'unknown-model') === bucket.key
+      || (entry.providerId ? `${entry.providerId}:${usageEntryCanonicalModel(entry) || 'unknown-model'}` : '') === bucket.key;
     return `${providerKey}:${entry.accountHash || entry.accountId || 'unknown-account'}` === bucket.key;
   });
 }
@@ -2191,11 +2196,67 @@ function modelMatchesUsage(model: ModelGatewayProviderModel, requestedModel: str
     || (model.aliases || []).some((alias) => normalizeModelKey(alias) === key);
 }
 
+function catalogModelAliases(catalog: ModelGatewayProviderModelCatalog | null | undefined): Record<string, string> {
+  return catalog?.aliases || {};
+}
+
+function providerModelCatalogs(provider: ModelGatewayProviderView): Array<ModelGatewayProviderModelCatalog | null | undefined> {
+  return [
+    provider.models,
+    ...provider.endpointProfiles.map((profile) => profile.models),
+  ];
+}
+
+function canonicalModelFromCatalog(
+  catalog: ModelGatewayProviderModelCatalog | null | undefined,
+  requestedModel: string,
+): string | null {
+  const key = normalizeModelKey(requestedModel);
+  if (!key) return null;
+  for (const model of catalogModels(catalog)) {
+    if (modelMatchesUsage(model, requestedModel)) return model.id;
+  }
+  for (const [alias, modelId] of Object.entries(catalogModelAliases(catalog))) {
+    if (normalizeModelKey(alias) === key) return modelId;
+  }
+  const defaultModel = catalog?.defaultModel || '';
+  return normalizeModelKey(defaultModel) === key ? defaultModel : null;
+}
+
+function canonicalModelForProvider(provider: ModelGatewayProviderView, requestedModel: string | null | undefined): string | null {
+  const requested = requestedModel || '';
+  for (const catalog of providerModelCatalogs(provider)) {
+    const canonical = canonicalModelFromCatalog(catalog, requested);
+    if (canonical) return canonical;
+  }
+  return null;
+}
+
+function usageEntryCanonicalModel(entry: ModelGatewayRuntimeRequestLogEntry): string | null {
+  if (!entry.model) return null;
+  const provider = entry.providerId ? providers.value.find((item) => item.id === entry.providerId) : null;
+  return provider ? canonicalModelForProvider(provider, entry.model) || entry.model : entry.model;
+}
+
+function usageEntryMatchesModelFilter(entry: ModelGatewayRuntimeRequestLogEntry, requestedModel: string): boolean {
+  const requestedKey = normalizeModelKey(requestedModel);
+  if (!requestedKey) return true;
+  return normalizeModelKey(entry.model || '') === requestedKey
+    || normalizeModelKey(usageEntryCanonicalModel(entry) || '') === requestedKey;
+}
+
 function pricingForUsageEntry(entry: ModelGatewayRuntimeRequestLogEntry): ModelGatewayProviderModelPricing | null {
   if (!entry.providerId || !entry.model) return null;
   const provider = providers.value.find((item) => item.id === entry.providerId);
   if (!provider) return null;
-  return providerCatalogModels(provider).find((model) => modelMatchesUsage(model, entry.model))?.pricing || null;
+  const canonicalModel = usageEntryCanonicalModel(entry);
+  return providerCatalogModels(provider).find((model) => modelMatchesUsage(model, canonicalModel || entry.model))?.pricing || null;
+}
+
+function usageEntryCanonicalModelLabel(entry: ModelGatewayRuntimeRequestLogEntry): string | null {
+  const canonical = usageEntryCanonicalModel(entry);
+  if (!canonical || !entry.model || normalizeModelKey(canonical) === normalizeModelKey(entry.model)) return null;
+  return canonical;
 }
 
 function emptyCostEstimate(): UsageCostEstimate {
@@ -2412,8 +2473,8 @@ function summarizeUsageEntries(entries: ModelGatewayRuntimeRequestLogEntry[]): M
     }
     const providerKey = entry.providerId || 'unknown-provider';
     addUsageBucketEntry(providersMap, providerKey, entry.providerName || entry.providerId || 'unknown provider', entry);
-    const modelKey = entry.model || 'unknown-model';
-    addUsageBucketEntry(modelsMap, modelKey, entry.model || 'unknown model', entry);
+    const modelKey = usageEntryCanonicalModel(entry) || 'unknown-model';
+    addUsageBucketEntry(modelsMap, modelKey, modelKey === 'unknown-model' ? 'unknown model' : modelKey, entry);
     if (entry.accountId || entry.accountHash) {
       const accountKey = `${providerKey}:${entry.accountHash || entry.accountId || 'unknown-account'}`;
       addUsageBucketEntry(accountsMap, accountKey, entry.accountId || entry.accountHash || 'unknown account', entry);
@@ -2550,6 +2611,7 @@ function usageCsvRows(): string[][] {
         entry.accountId || '',
         entry.accountHash || '',
         entry.clientKeyHash || '',
+        usageEntryCanonicalModel(entry) || '',
         entry.model || '',
         entry.routeId || '',
         entry.method,
@@ -2586,6 +2648,7 @@ function downloadGatewayUsageCsv(): void {
     'account_id',
     'account_hash',
     'client_key_hash',
+    'canonical_model',
     'model',
     'route_id',
     'method',
