@@ -3643,6 +3643,12 @@ function normalizeAdaptedUpstreamError(
   };
 }
 
+function shouldNormalizePassthroughUpstreamError(upstreamHeaders: Headers, responseText: string): boolean {
+  const contentType = normalizeString(upstreamHeaders.get("content-type")).toLowerCase();
+  if (contentType.includes("json") || contentType.includes("text/event-stream")) return false;
+  return !parseJsonObjectOrNull(responseText);
+}
+
 function normalizeErrorScalar(value: unknown): string {
   if (typeof value === "string") return value.trim();
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
@@ -9646,6 +9652,23 @@ export function createModelGatewayService(
             normalizedError.error,
             upstream.headers,
           );
+          updateSelectedProviderHealth(healthSuccess, latencyMs, normalizedError.error.message);
+          appendRequestLog(requestLogEntry({
+            kind: "gateway-request",
+            startedAt,
+            route: decision,
+            model: requestModelForLog,
+            statusCode: upstream.status,
+            outcome: requestOutcomeFromStatus(upstream.status, null, healthSuccess),
+            firstByteMs: firstByteMsForLog(),
+            errorCode: String(normalizedError.error.code || "model_gateway_upstream_status"),
+            errorMessage: normalizedError.error.message,
+          }));
+          setSelectedProviderHeaders();
+          sendJson(res, upstream.status, normalizedError);
+          return;
+        }
+        if (shouldNormalizePassthroughUpstreamError(upstream.headers, responseText)) {
           updateSelectedProviderHealth(healthSuccess, latencyMs, normalizedError.error.message);
           appendRequestLog(requestLogEntry({
             kind: "gateway-request",

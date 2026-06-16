@@ -9017,6 +9017,64 @@ test("model gateway normalizes upstream chat errors for codex responses clients"
   }
 });
 
+test("model gateway normalizes non-json passthrough upstream errors", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "html-error-provider",
+      name: "HTML Error Provider",
+      appScopes: ["openclaw"],
+      baseUrl: "https://html-error.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "html-error-model",
+        models: [{ id: "html-error-model" }],
+      },
+    },
+    secret: {
+      apiKey: "sk-html-error-secret",
+    },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response("<html><body>Bad gateway from upstream</body></html>", {
+    status: 502,
+    headers: { "content-type": "text/html; charset=utf-8" },
+  });
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "html-error-model",
+          messages: [{ role: "user", content: "hello" }],
+        },
+      });
+
+      assert.equal(chat.status, 502);
+      assert.equal(chat.headers["content-type"], "application/json; charset=utf-8");
+      assert.equal(chat.headers["x-openclaw-model-gateway-provider"], "html-error-provider");
+      assert.equal(chat.body.error.type, "upstream_error");
+      assert.equal(chat.body.error.code, "upstream_http_502");
+      assert.match(chat.body.error.message, /Bad gateway from upstream/);
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.equal(runtime.status, 200);
+      assert.equal(runtime.body.runtime.requestLog[0].outcome, "failure");
+      assert.equal(runtime.body.runtime.requestLog[0].errorCode, "upstream_http_502");
+      assert.match(runtime.body.runtime.requestLog[0].errorMessage, /Bad gateway from upstream/);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model gateway restores codex tool-call history for follow-up chat adapter requests", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
