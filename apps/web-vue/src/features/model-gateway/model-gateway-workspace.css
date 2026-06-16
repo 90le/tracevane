@@ -929,6 +929,10 @@
   min-width: 0;
 }
 
+.mgw-usage-controls .mgw-usage-key-field {
+  grid-column: span 2;
+}
+
 .mgw-usage-controls__meta {
   display: grid;
   grid-column: 1 / -1;
@@ -1907,6 +1911,10 @@
   .mgw-usage-section__head {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .mgw-usage-controls .mgw-usage-key-field {
+    grid-column: auto;
   }
 
   .mgw-usage-section__head small {

@@ -1112,6 +1112,10 @@
               <span class="form-label">{{ text('账号', 'Account') }}</span>
               <input v-model.trim="usageAccountFilter" class="form-input" placeholder="account id / hash" />
             </label>
+            <label class="form-field mgw-usage-key-field">
+              <span class="form-label">Gateway key/hash</span>
+              <input v-model.trim="usageGatewayKeyFilter" class="form-input" placeholder="sk-... / 12-char hash" />
+            </label>
             <label class="form-field">
               <span class="form-label">{{ text('每页', 'Page size') }}</span>
               <select v-model.number="usagePageSize" class="form-input">
@@ -1296,6 +1300,10 @@
                   <div>
                     <span>{{ text('估算成本', 'Estimated cost') }}</span>
                     <strong>{{ formatUsageCostEstimate(estimateUsageCost([entry])) }}</strong>
+                  </div>
+                  <div v-if="entry.clientKeyHash">
+                    <span>Gateway key</span>
+                    <strong>{{ entry.clientKeyHash }}</strong>
                   </div>
                   <div v-if="entry.errorCode || entry.errorMessage">
                     <span>{{ text('错误', 'Error') }}</span>
@@ -1891,6 +1899,7 @@ const usageSourceFilter = ref<UsageSourceFilterId>('all');
 const usageProviderFilter = ref('');
 const usageModelFilter = ref('');
 const usageAccountFilter = ref('');
+const usageGatewayKeyFilter = ref('');
 const usagePageSize = ref(100);
 const usagePageOffset = ref(0);
 const daemonService = ref<ModelGatewayDaemonServiceResponse | null>(null);
@@ -2135,11 +2144,28 @@ function usageEntryIsAccountBacked(entry: ModelGatewayRuntimeRequestLogEntry): b
   return Boolean(entry.accountId || entry.accountHash) || providerSourceForId(entry.providerId) === 'account-backed';
 }
 
+function normalizedUsageGatewayKeyFilter(): string {
+  return usageGatewayKeyFilter.value.trim();
+}
+
+function usageGatewayKeyHashFilter(): string | null {
+  const value = normalizedUsageGatewayKeyFilter();
+  return /^[a-f0-9]{12}$/i.test(value) ? value.toLowerCase() : null;
+}
+
+function usageGatewayKeyPlainFilter(): string | null {
+  const value = normalizedUsageGatewayKeyFilter();
+  return value && !usageGatewayKeyHashFilter() ? value : null;
+}
+
 function usageEntryMatchesFilters(entry: ModelGatewayRuntimeRequestLogEntry): boolean {
   const cutoff = usageTimeRangeCutoff(usageTimeRange.value);
+  const clientKeyHash = usageGatewayKeyHashFilter();
   if (cutoff !== null && usageEntryTime(entry) < cutoff) return false;
   if (usageProviderFilter.value && (entry.providerId || 'unknown-provider') !== usageProviderFilter.value) return false;
   if (usageModelFilter.value && entry.model !== usageModelFilter.value) return false;
+  if (clientKeyHash && entry.clientKeyHash !== clientKeyHash) return false;
+  if (usageGatewayKeyFilter.value && !clientKeyHash) return false;
   if (usageSourceFilter.value === 'failure') return entry.outcome !== 'success';
   if (usageSourceFilter.value === 'account-backed') return usageEntryIsAccountBacked(entry);
   if (usageSourceFilter.value === 'api-key') return providerSourceForId(entry.providerId) === 'api-key';
@@ -2523,6 +2549,7 @@ function usageCsvRows(): string[][] {
         entry.providerName || '',
         entry.accountId || '',
         entry.accountHash || '',
+        entry.clientKeyHash || '',
         entry.model || '',
         entry.routeId || '',
         entry.method,
@@ -2558,6 +2585,7 @@ function downloadGatewayUsageCsv(): void {
     'provider_name',
     'account_id',
     'account_hash',
+    'client_key_hash',
     'model',
     'route_id',
     'method',
@@ -4491,6 +4519,7 @@ async function refreshUsageLedger(): Promise<void> {
 }
 
 function usageLedgerQueryPayload() {
+  const gatewayKey = usageGatewayKeyPlainFilter();
   return {
     limit: usagePageSize.value,
     offset: usagePageOffset.value,
@@ -4499,6 +4528,8 @@ function usageLedgerQueryPayload() {
     providerId: usageProviderFilter.value || null,
     model: usageModelFilter.value || null,
     account: usageAccountFilter.value || null,
+    gatewayKey,
+    gatewayKeyHash: gatewayKey ? null : usageGatewayKeyHashFilter(),
   };
 }
 
@@ -5094,6 +5125,7 @@ watch(
     usageProviderFilter.value,
     usageModelFilter.value,
     usageAccountFilter.value,
+    usageGatewayKeyFilter.value,
     usagePageSize.value,
   ],
   () => {
