@@ -1054,6 +1054,9 @@ export interface ModelGatewayUsageLedgerResponse {
     outcome: ModelGatewayRuntimeRequestOutcome | "all";
   };
   readLimit: number;
+  readByteLimit: number;
+  readBytes: number;
+  ledgerSizeBytes: number;
   truncated: boolean;
   paths: {
     ledger: string;

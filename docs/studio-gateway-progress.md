@@ -15,7 +15,7 @@
 - Codex account-backed provider 已支持页面登录、请求前自动 refresh、手动 refresh、账户启用/停用和重新登录入口；客户端仍只使用统一 Gateway endpoint + Gateway key。
 - Codex account-backed provider 已扩展受控本地模型 catalog：`gpt-5.5`、`gpt-5.4`、`gpt-5.4-mini`、`gpt-5.3-codex`、`gpt-image-2`、transcribe/tts/audio/realtime 类模型进入 `/v1/models`，并携带 text/image/audio 能力标记；旧生成的 `gpt-5.5-mini` 和 ChatGPT Codex account 不支持的 `gpt-5` 不再作为账户模型暴露；Codex account REST audio 目前只做结构化 unsupported，不透传到 ChatGPT backend HTML 错误。
 - Codex account upstream 返回 HTTP 401/403 会把账户标为 `needs-login`；HTTP 429 或明确 quota/rate/capacity/overloaded 错误会把账户标为 `cooldown` 并尊重 `Retry-After`，后续路由会跳过该账户直到冷却结束；started streaming passthrough 内的 `response.failed/error` 也会旁路解析并回写账户状态；runtime log 和 Provider Center 最近请求会显示账号池策略、sticky 命中、选择原因、池容量计数、跳过原因、busy/cooldown 来源和 cooldown 到期后的首次重试；Provider Center 可手动清除 cooldown、配置账号级 proxy/direct，并编辑 round-robin/fill-first、sticky session 和单账号并发。
-- Gateway `/api/model-gateway/runtime` 与 `/api/model-gateway/status` 已从脱敏 request log 派生 usage summary，按 provider/model/account 聚合 request count、metered request count、tokens、image/audio 媒体单位、延迟分位、首字节/TTFT 分位和最近请求时间；`/api/model-gateway/usage` 读取本地 `usage-ledger.jsonl` 的长期脱敏账本窗口，支持服务端时间范围、来源、provider、canonical 模型、账号、Gateway key hash、outcome 筛选和分页；Provider Center “模型消耗”页已统一展示账号登录 provider 与普通 API-key provider 的消耗，支持 Gateway key/hash 筛选和当前查询 CSV 导出。
+- Gateway `/api/model-gateway/runtime` 与 `/api/model-gateway/status` 已从脱敏 request log 派生 usage summary，按 provider/model/account 聚合 request count、metered request count、tokens、image/audio 媒体单位、延迟分位、首字节/TTFT 分位和最近请求时间；`/api/model-gateway/usage` 读取本地 `usage-ledger.jsonl` 的最近 20000 条 / 16MB 脱敏账本窗口，支持服务端时间范围、来源、provider、canonical 模型、账号、Gateway key hash、outcome 筛选和分页，并返回读取窗口元数据；Provider Center “模型消耗”页已统一展示账号登录 provider 与普通 API-key provider 的消耗，支持 Gateway key/hash 筛选和当前查询 CSV 导出。
 - Provider 模型目录支持可选 schema 化价格字段；Provider Center “模型消耗”页会按当前筛选和用户配置价格估算成本并导出 CSV。该值是本地估算，不等同供应商账单。
 - Provider Center Smoke / 日志页已显示媒体模型状态，按启用 provider catalog 统计图片理解、生图、音频输入、音频输出和 realtime 模型。
 - Provider Center 不再按模型名自动标记 vision；图片能力只来自用户配置、上游显式能力元数据或图片 smoke 通过后用户确认写回。
@@ -62,7 +62,8 @@
   - Account pool 可观察性补齐 cooldown retry：过期 cooldown 账户被重新选中时，runtime log `accountRouting` 会记录 `selectedWasCooldownRetry` 与原 `selectedCooldownUntil`，Provider Center 最近请求显示“冷却后重试”；成功后账户恢复 `ready`。
   - Gateway usage summary 初版：`status.runtime.usageSummary` 与 `runtime.usageSummary` 从 request log 聚合总 tokens、provider/model/account top buckets；Provider Center Runtime 侧栏显示请求数 / tokens，为后续模型消耗页提供稳定合同。
   - Gateway usage summary 补齐媒体单位：runtime usage schema 新增 image generation request、images generated、image edit request、audio input request、audio output request；Codex account Images bridge、OpenAI-compatible image edits 和 audio passthrough 会写入对应单位，Provider Center Runtime 侧栏在有媒体用量时显示摘要。
-  - Gateway usage ledger 初版：每条 request log 同步追加到本地 `usage-ledger.jsonl`，新增 `/api/model-gateway/usage` 返回最近 5000 条 / 4MB 的脱敏账本窗口和同一 usage summary；当前用于长期统计底座，账单级对账和长期分页仍待补。
+  - Gateway usage ledger 初版：每条 request log 同步追加到本地 `usage-ledger.jsonl`，新增 `/api/model-gateway/usage` 返回最近 20000 条 / 16MB 的脱敏账本窗口、窗口元数据和同一 usage summary；当前用于长期统计底座，账单级对账和归档索引仍待补。
+  - Usage ledger 窗口可观察性：`/api/model-gateway/usage` 返回 `readLimit/readByteLimit/readBytes/ledgerSizeBytes/truncated`；Provider Center 在账本被截断时显示读取窗口，避免把窗口误读成全量账本。
   - Provider Center 新增“模型消耗”工作区：直接读取 `/api/model-gateway/usage`，展示总请求、计费请求、tokens、媒体单位、按 provider/model/account 聚合和最近消耗记录；普通 API-key provider 不进入账号桶，但会在 Provider 消耗和最近记录里标记为 `API-key provider`。
   - 模型消耗页补齐筛选与导出：可按最近 24h / 7d / 30d / 全部账本窗口、账号 provider / API-key provider / 失败请求、provider 和模型筛选；总览、provider/model/account 聚合与最近记录都会按当前筛选重新计算，CSV 导出只包含当前筛选结果。
   - 模型消耗页补齐本地价格估算：模型目录可配置 currency、input/output/cache、image/audio 单价；前端按 usage ledger 当前筛选估算 provider/model/account/recent entry 成本，并把 estimated_cost 写入 CSV。
@@ -350,5 +351,5 @@
 ## 下一步
 
 1. 等本机补第二个 ready Codex account 后跑 `node scripts/smoke-model-gateway-account-pool.mjs --require-multi-account --json`，验证多账号 round-robin/fill-first、sticky failover、busy/cooldown 真实链路。
-2. 继续把模型消耗页补成完整计费视图：账单级对账、长期账本查询/归档和更细的媒体单位价格口径。
+2. 继续把模型消耗页补成完整计费视图：账单级对账、归档索引和更细的媒体单位价格口径。
 3. 继续补 Codex account Realtime/WebSocket 和音频真实上游能力调查。

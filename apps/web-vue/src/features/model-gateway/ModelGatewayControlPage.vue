@@ -2062,9 +2062,15 @@ const usageLedgerWindowLabel = computed(() => {
   if (!ledger) return text('正在读取账本窗口', 'Reading ledger window');
   const total = ledger.totalEntryCount ?? ledger.entryCount;
   const matched = ledger.matchedEntryCount ?? ledger.entryCount;
+  const truncated = ledger.truncated
+    ? text(
+      ` · 已截断 · 窗口 ${formatCompactNumber(ledger.readLimit || 0)} 条 / ${formatBytes(ledger.readBytes || 0)}`,
+      ` · truncated · window ${formatCompactNumber(ledger.readLimit || 0)} entries / ${formatBytes(ledger.readBytes || 0)}`,
+    )
+    : '';
   return text(
-    `${formatCompactNumber(matched)} 条匹配 · 账本窗口 ${formatCompactNumber(total)}${ledger.truncated ? ' · 已截断' : ''}`,
-    `${formatCompactNumber(matched)} matched · ${formatCompactNumber(total)} ledger window${ledger.truncated ? ' · truncated' : ''}`,
+    `${formatCompactNumber(matched)} 条匹配 · 账本窗口 ${formatCompactNumber(total)}${truncated}`,
+    `${formatCompactNumber(matched)} matched · ${formatCompactNumber(total)} ledger window${truncated}`,
   );
 });
 const usageFilteredWindowLabel = computed(() =>
@@ -4142,6 +4148,13 @@ function formatCompactNumber(value: number): string {
   if (value >= 1_000_000) return `${Number((value / 1_000_000).toFixed(1))}m`;
   if (value >= 1_000) return `${Number((value / 1_000).toFixed(1))}k`;
   return String(value);
+}
+
+function formatBytes(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return '0 B';
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
 function formatLatencyMs(value: number | null | undefined): string {

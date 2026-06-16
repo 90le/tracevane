@@ -5061,10 +5061,16 @@ export function createModelGatewayService(
   function readUsageLedgerEntries(limit = MAX_USAGE_LEDGER_READ_ENTRIES): {
     entries: ModelGatewayRuntimeRequestLogEntry[];
     truncated: boolean;
+    readBytes: number;
+    totalBytes: number;
   } {
-    if (!fs.existsSync(paths.usageLedger)) return { entries: [], truncated: false };
+    if (!fs.existsSync(paths.usageLedger)) {
+      return { entries: [], truncated: false, readBytes: 0, totalBytes: 0 };
+    }
     const stat = fs.statSync(paths.usageLedger);
-    if (!stat.isFile() || stat.size <= 0) return { entries: [], truncated: false };
+    if (!stat.isFile() || stat.size <= 0) {
+      return { entries: [], truncated: false, readBytes: 0, totalBytes: stat.size || 0 };
+    }
     const bytesToRead = Math.min(stat.size, MAX_USAGE_LEDGER_READ_BYTES);
     const fd = fs.openSync(paths.usageLedger, "r");
     try {
@@ -5092,6 +5098,8 @@ export function createModelGatewayService(
       return {
         entries,
         truncated: bytesToRead < stat.size || selectedLines.length < lines.length,
+        readBytes: bytesToRead,
+        totalBytes: stat.size,
       };
     } finally {
       fs.closeSync(fd);
@@ -6512,7 +6520,12 @@ export function createModelGatewayService(
 
   function getUsageLedger(query?: ModelGatewayUsageLedgerQuery): ModelGatewayUsageLedgerResponse {
     const normalizedQuery = normalizeUsageLedgerQuery(query);
-    const { entries: readableEntries, truncated } = readUsageLedgerEntries();
+    const {
+      entries: readableEntries,
+      truncated,
+      readBytes,
+      totalBytes,
+    } = readUsageLedgerEntries();
     const registry = readRegistry();
     const providerSources = new Map(registry.providers.map((provider) => [provider.id, provider.sourceType]));
     const modelBucketForEntry = createRuntimeUsageModelResolver(registry);
@@ -6543,6 +6556,9 @@ export function createModelGatewayService(
         outcome: normalizedQuery.outcome,
       },
       readLimit: MAX_USAGE_LEDGER_READ_ENTRIES,
+      readByteLimit: MAX_USAGE_LEDGER_READ_BYTES,
+      readBytes,
+      ledgerSizeBytes: totalBytes,
       truncated,
       paths: {
         ledger: paths.usageLedger,

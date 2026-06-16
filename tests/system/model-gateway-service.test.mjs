@@ -414,6 +414,11 @@ test("model gateway usage ledger supports paged filtered latency queries", () =>
   assert.equal(firstPage.totalEntryCount, 3);
   assert.equal(firstPage.matchedEntryCount, 2);
   assert.equal(firstPage.entryCount, 2);
+  assert.equal(firstPage.readLimit, 20_000);
+  assert.equal(firstPage.readByteLimit, 16 * 1024 * 1024);
+  assert.ok(firstPage.readBytes > 0);
+  assert.equal(firstPage.ledgerSizeBytes, firstPage.readBytes);
+  assert.equal(firstPage.truncated, false);
   assert.equal(firstPage.entries.length, 1);
   assert.equal(firstPage.entries[0].id, "p1-b");
   assert.equal(firstPage.hasMore, true);
