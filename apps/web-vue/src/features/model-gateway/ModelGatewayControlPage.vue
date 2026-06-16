@@ -1665,6 +1665,10 @@ type ProviderModelRow = {
 
 type UsageCostEstimate = {
   amount: number;
+  tokenAmount: number;
+  cacheAmount: number;
+  imageAmount: number;
+  audioAmount: number;
   currency: string | null;
   pricedEntryCount: number;
   unpricedEntryCount: number;
@@ -2268,6 +2272,10 @@ function usageEntryCanonicalModelLabel(entry: ModelGatewayRuntimeRequestLogEntry
 function emptyCostEstimate(): UsageCostEstimate {
   return {
     amount: 0,
+    tokenAmount: 0,
+    cacheAmount: 0,
+    imageAmount: 0,
+    audioAmount: 0,
     currency: null,
     pricedEntryCount: 0,
     unpricedEntryCount: 0,
@@ -2290,14 +2298,19 @@ function estimateUsageCost(entries: ModelGatewayRuntimeRequestLogEntry[]): Usage
     } else if (estimate.currency !== currency) {
       estimate.mixedCurrency = true;
     }
-    estimate.amount += ((usage.inputTokens || 0) / 1_000_000) * (pricing.inputPer1M || 0);
-    estimate.amount += ((usage.outputTokens || 0) / 1_000_000) * (pricing.outputPer1M || 0);
-    estimate.amount += ((usage.cacheReadTokens || 0) / 1_000_000) * (pricing.cacheReadPer1M ?? pricing.inputPer1M ?? 0);
-    estimate.amount += ((usage.cacheCreationTokens || 0) / 1_000_000) * (pricing.cacheCreationPer1M ?? pricing.inputPer1M ?? 0);
-    estimate.amount += (usage.imagesGenerated || 0) * (pricing.imageGenerationPerImage || 0);
-    estimate.amount += (usage.imageEditRequests || 0) * (pricing.imageEditPerRequest || 0);
-    estimate.amount += (usage.audioInputRequests || 0) * (pricing.audioInputPerRequest || 0);
-    estimate.amount += (usage.audioOutputRequests || 0) * (pricing.audioOutputPerRequest || 0);
+    const tokenAmount = ((usage.inputTokens || 0) / 1_000_000) * (pricing.inputPer1M || 0)
+      + ((usage.outputTokens || 0) / 1_000_000) * (pricing.outputPer1M || 0);
+    const cacheAmount = ((usage.cacheReadTokens || 0) / 1_000_000) * (pricing.cacheReadPer1M ?? pricing.inputPer1M ?? 0)
+      + ((usage.cacheCreationTokens || 0) / 1_000_000) * (pricing.cacheCreationPer1M ?? pricing.inputPer1M ?? 0);
+    const imageAmount = (usage.imagesGenerated || 0) * (pricing.imageGenerationPerImage || 0)
+      + (usage.imageEditRequests || 0) * (pricing.imageEditPerRequest || 0);
+    const audioAmount = (usage.audioInputRequests || 0) * (pricing.audioInputPerRequest || 0)
+      + (usage.audioOutputRequests || 0) * (pricing.audioOutputPerRequest || 0);
+    estimate.tokenAmount += tokenAmount;
+    estimate.cacheAmount += cacheAmount;
+    estimate.imageAmount += imageAmount;
+    estimate.audioAmount += audioAmount;
+    estimate.amount += tokenAmount + cacheAmount + imageAmount + audioAmount;
     estimate.pricedEntryCount += 1;
   }
   return estimate;
@@ -2319,10 +2332,68 @@ function formatUsageCostEstimate(estimate: UsageCostEstimate): string {
 }
 
 function usageCostMeta(estimate: UsageCostEstimate): string {
-  return text(
+  const breakdown = usageCostBreakdownLabel(estimate);
+  const priced = text(
     `已计价 ${formatCompactNumber(estimate.pricedEntryCount)} · 未配置 ${formatCompactNumber(estimate.unpricedEntryCount)}`,
     `${formatCompactNumber(estimate.pricedEntryCount)} priced · ${formatCompactNumber(estimate.unpricedEntryCount)} unpriced`,
   );
+  return breakdown ? `${priced} · ${breakdown}` : priced;
+}
+
+function usageCostBreakdownLabel(estimate: UsageCostEstimate): string {
+  if (!estimate.pricedEntryCount) return '';
+  const parts = [
+    estimate.tokenAmount ? `token ${formatUsageCostPart(estimate, estimate.tokenAmount)}` : '',
+    estimate.cacheAmount ? `cache ${formatUsageCostPart(estimate, estimate.cacheAmount)}` : '',
+    estimate.imageAmount ? `image ${formatUsageCostPart(estimate, estimate.imageAmount)}` : '',
+    estimate.audioAmount ? `audio ${formatUsageCostPart(estimate, estimate.audioAmount)}` : '',
+  ].filter(Boolean);
+  return parts.join(' / ');
+}
+
+function formatUsageCostPart(estimate: UsageCostEstimate, amount: number): string {
+  const formatted = amount >= 1 ? amount.toFixed(2) : amount.toFixed(4);
+  return estimate.mixedCurrency ? formatted : `${estimate.currency || 'USD'} ${formatted}`;
+}
+
+function usageCostPricingStatus(estimate: UsageCostEstimate): string {
+  if (!estimate.pricedEntryCount) return 'unpriced';
+  if (estimate.unpricedEntryCount) return 'partial';
+  return 'priced';
+}
+
+function usageCostAmountCell(estimate: UsageCostEstimate, amount: number): string {
+  return estimate.pricedEntryCount ? amount.toFixed(8) : '';
+}
+
+function usageCostTotalCell(estimate: UsageCostEstimate): string {
+  return usageCostAmountCell(estimate, estimate.amount);
+}
+
+function usageCostTokenCell(estimate: UsageCostEstimate): string {
+  return usageCostAmountCell(estimate, estimate.tokenAmount);
+}
+
+function usageCostCacheCell(estimate: UsageCostEstimate): string {
+  return usageCostAmountCell(estimate, estimate.cacheAmount);
+}
+
+function usageCostImageCell(estimate: UsageCostEstimate): string {
+  return usageCostAmountCell(estimate, estimate.imageAmount);
+}
+
+function usageCostAudioCell(estimate: UsageCostEstimate): string {
+  return usageCostAmountCell(estimate, estimate.audioAmount);
+}
+
+function usageCostBreakdownCell(estimate: UsageCostEstimate): string {
+  if (!estimate.pricedEntryCount) return '';
+  return [
+    estimate.tokenAmount ? `token=${usageCostTokenCell(estimate)}` : '',
+    estimate.cacheAmount ? `cache=${usageCostCacheCell(estimate)}` : '',
+    estimate.imageAmount ? `image=${usageCostImageCell(estimate)}` : '',
+    estimate.audioAmount ? `audio=${usageCostAudioCell(estimate)}` : '',
+  ].filter(Boolean).join(';');
 }
 
 function createEmptyRuntimeUsage(): ModelGatewayRuntimeUsage {
@@ -2635,8 +2706,13 @@ function usageCsvRows(): string[][] {
         entry.usage?.audioInputRequests || 0,
         entry.usage?.audioOutputRequests || 0,
         estimate.currency || '',
-        estimate.pricedEntryCount ? estimate.amount.toFixed(8) : '',
-        estimate.pricedEntryCount ? 'priced' : 'unpriced',
+        usageCostTotalCell(estimate),
+        usageCostTokenCell(estimate),
+        usageCostCacheCell(estimate),
+        usageCostImageCell(estimate),
+        usageCostAudioCell(estimate),
+        usageCostBreakdownCell(estimate),
+        usageCostPricingStatus(estimate),
         entry.errorCode || '',
         entry.errorMessage || '',
       ].map((value) => String(value));
@@ -2673,6 +2749,11 @@ function downloadGatewayUsageCsv(): void {
     'audio_output_requests',
     'estimated_cost_currency',
     'estimated_cost',
+    'estimated_token_cost',
+    'estimated_cache_cost',
+    'estimated_image_cost',
+    'estimated_audio_cost',
+    'estimated_cost_breakdown',
     'pricing_status',
     'error_code',
     'error_message',
