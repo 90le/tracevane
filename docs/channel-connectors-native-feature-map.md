@@ -1,6 +1,6 @@
 # Channel Connectors Native Feature Map
 
-> 更新：2026-06-14
+> 更新：2026-06-16
 > 目的：把 CC/OpenClaw 参考能力映射到 Studio 原生实现，避免回到托管 cc-connect 或旧 Codex Stack。
 
 ## 参考范围
@@ -53,6 +53,7 @@
 - Octo 图片/视频 payload 带 `content/caption` 时会保留用户任务文本，避免媒体占位吞掉“请识别/请处理”这类指令。
 - 同 session FIFO queue、`/stop`、`/new`、`/reset`、`/compact`、`/thinking`、`/process`、`/tools` 已接入。
 - `/stop` 自动回归已覆盖 Codex app-server persistent turn 取消；live smoke 已支持 `--require-stop-command`，按同 session 和时间关联不同 messageId 的 stop 命令与 cancelled run。
+- Codex app-server persistent turn 已改为分层 idle：普通静默默认 3 分钟，审批请求刷新 idle，等待 IM 审批按审批窗口处理，批准工具后才给长工具执行窗口；fallback 恢复型 `turn/timeout` 不进入用户进度流，真正卡死仍会 interrupt。
 - 可恢复队列已接入 daemon 内部 pending-agent-run store：同 session 已入队但尚未启动的 Agent 消息会落盘，daemon 重启后按原平台 dispatch 重放；daemon `/status`、API 和 Channel Connectors Runtime 页已展示 pending 数量、待恢复记录和最近 replay/drop/fail 事件；Octo 重启回归已通过；Feishu 24h live 已证明同进程 FIFO 排队顺序执行和 daemon 重启 replay。
 - Claude Code / OpenCode persistent native compact 已有真实子进程 driver 回归：Claude 复用同一个 stream-json 常驻进程，OpenCode 通过 `run --session` 续接。
 - Claude Code persistent driver 已修复过程回复污染最终回复，并补进度回调兼容回归。
@@ -90,6 +91,6 @@
 
 ## 下一步
 
-1. 工具流和回复解析：继续抽查真实 Claude/Codex/OpenCode live 差异；工具流 live smoke 默认检查 per-agent `--require-tool-output` 和必要的 `--require-process-reply`。
-2. Feishu/Octo 私聊 live smoke：Feishu compact、Octo compact、Feishu/Octo 出站文件、Feishu/Octo 权限、入站文件/图片/视频已进入 live 验收；继续补仍未覆盖的 CLI 事件形态。
-3. durable queue：Feishu daemon restart replay 和同进程 FIFO 均已验收，后续只做回归抽查。
+1. Channel Connectors 主链路进入 monitored/回归抽查；真实 IM、CLI 或 smoke 暴露新事件形态时再补 parser/driver。
+2. 当前不扩展群聊、platform action 或管理类 API；更多平台/Agent 只按私聊能力路线图推进。
+3. 新开发优先转向 Studio Gateway 可选官方 OpenAI proof、更多账户型 provider 和 Chat typed contract 收口。
