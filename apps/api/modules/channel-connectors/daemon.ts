@@ -528,6 +528,10 @@ interface ChannelDaemonFeishuGroup {
   recycleCurrentClient: ((reason: string) => void) | null;
 }
 
+type ChannelDaemonRunLifecycleStatus = "running" | "delivering";
+
+type ChannelDaemonReplyDeliveryStatus = "not_required" | "delivered" | "failed";
+
 interface ChannelDaemonState {
   version: 1;
   pid: number;
@@ -552,7 +556,8 @@ interface ChannelDaemonState {
     messageId: string;
     agent: string;
     model: string | null;
-    status: "running";
+    status: ChannelDaemonRunLifecycleStatus;
+    deliveryStartedAt?: string | null;
     sessionResumed: boolean;
     agentNativeSessionId: string | null;
     codexThreadId: string | null;
@@ -591,6 +596,8 @@ interface ChannelDaemonState {
     replyOriginalRunes?: number | null;
     replyPreviewRunes?: number | null;
     replySent?: boolean;
+    replyError?: string | null;
+    replyDeliveryStatus?: ChannelDaemonReplyDeliveryStatus;
     replyRequestCount?: number | null;
     outboundFilesDeclared?: number;
     outboundFilesResolved?: number;
@@ -676,6 +683,8 @@ interface ChannelDaemonAgentSessionDriverState {
 interface ChannelDaemonActiveRunCancelEntry {
   controller: AbortController;
   startedAt: string;
+  status: ChannelDaemonRunLifecycleStatus;
+  deliveryStartedAt?: string | null;
   bindingId: string;
   sessionKey: string;
   messageId: string;
@@ -746,6 +755,7 @@ interface ChannelDaemonSessionRunGuardEntry {
   agent: string;
   model: string | null;
   startedAt: string;
+  status: ChannelDaemonRunLifecycleStatus;
 }
 
 type ChannelDaemonSessionRunGuardRegistry = Map<string, ChannelDaemonSessionRunGuardEntry>;
@@ -1718,6 +1728,16 @@ function stopLatestActiveRunForSession(
     };
   }
   const { runId, entry } = activeRun;
+  if (entry.status === "delivering") {
+    return {
+      stopped: false,
+      runId,
+      messageId: entry.messageId,
+      agent: entry.agent,
+      model: entry.model,
+      error: "当前 Agent 已完成，正在投递最终回复；无需停止，请稍等投递结果。",
+    };
+  }
   if (entry.controller.signal.aborted) {
     return {
       stopped: false,
@@ -2192,6 +2212,7 @@ async function acquireChannelSessionAgentRun(
     agent: input.agent,
     model: input.model,
     startedAt: new Date().toISOString(),
+    status: "running",
   };
   if (input.parallel) {
     return {
@@ -2655,6 +2676,38 @@ function updateActiveRunAgentModel(input: {
     activeCancel.agent = input.agent;
     activeCancel.model = input.model;
   }
+}
+
+function markActiveRunDelivering(input: {
+  state: ChannelDaemonState;
+  activeRunCancels: ChannelDaemonActiveRunCancelRegistry;
+  activeRunId: string;
+  sessionRun: ChannelDaemonSessionRunGuardEntry;
+}): void {
+  const now = new Date().toISOString();
+  const activeRun = input.state.activeRuns.find((run) => run.id === input.activeRunId);
+  if (activeRun) {
+    activeRun.status = "delivering";
+    activeRun.updatedAt = now;
+    activeRun.deliveryStartedAt = now;
+  }
+  const activeCancel = input.activeRunCancels.get(input.activeRunId);
+  if (activeCancel) {
+    activeCancel.status = "delivering";
+    activeCancel.deliveryStartedAt = now;
+  }
+  input.sessionRun.status = "delivering";
+}
+
+function cleanupActiveRunLifecycle(input: {
+  state: ChannelDaemonState;
+  activeRunCancels: ChannelDaemonActiveRunCancelRegistry;
+  activeRunId: string;
+  sessionRunLease: ChannelDaemonSessionRunLease;
+}): void {
+  input.activeRunCancels.delete(input.activeRunId);
+  input.state.activeRuns = input.state.activeRuns.filter((run) => run.id !== input.activeRunId);
+  input.sessionRunLease.release();
 }
 
 function channelSessionParallelAgentRunsEnabled(binding: ChannelConnectorRuntimeBinding): boolean {
@@ -3159,13 +3212,18 @@ function appendOutboundFileErrors(replyText: string, errors: string[]): string {
 }
 
 function rejectedBusyAgentRunReply(input: {
-  activeRun: Pick<ChannelDaemonActiveRunCancelEntry, "messageId" | "agent" | "model" | "startedAt"> | null;
+  activeRun: Pick<ChannelDaemonActiveRunCancelEntry, "messageId" | "agent" | "model" | "startedAt" | "status"> | null;
 }): string {
   const entry = input.activeRun;
   const target = entry ? [entry.agent, entry.model].filter(Boolean).join(" / ") : "";
+  const delivering = entry?.status === "delivering";
   return [
-    "上一条任务还没有结束，本条消息不会进入队列，也不会自动处理。",
-    "请先发送 `/stop`（或 `/cancel`）停止当前任务；收到停止结果后，再重新发送新消息。",
+    delivering
+      ? "上一条任务已完成，最终回复仍在投递中；本条消息不会进入队列，也不会自动处理。"
+      : "上一条任务还没有结束，本条消息不会进入队列，也不会自动处理。",
+    delivering
+      ? "请等待最终回复投递结果后，再重新发送新消息。"
+      : "请先发送 `/stop`（或 `/cancel`）停止当前任务；收到停止结果后，再重新发送新消息。",
     "如果只是查看状态，可以发送 `/status`。",
     target ? `当前任务：${target}` : "",
     entry ? `当前消息：${shortMessage(entry.messageId, 80)}` : "",
@@ -4553,6 +4611,33 @@ async function startFeishuTypingReaction(input: {
       requestCount: stopped.requestCount,
     });
   };
+}
+
+async function stopFeishuTypingReactionSafely(input: {
+  config: ChannelConnectorsDaemonRuntimeConfig;
+  binding: ChannelConnectorRuntimeBinding;
+  sessionKey: string;
+  messageId: string;
+  stop: () => Promise<void>;
+  eventKindPrefix?: string;
+  commandPreview?: string | null;
+}): Promise<void> {
+  try {
+    await input.stop();
+  } catch (error) {
+    writeJsonLine(input.config.paths.feishuEvents, {
+      checkedAt: new Date().toISOString(),
+      eventKind: `${input.eventKindPrefix || "agent.reaction"}.stop_failed`,
+      adapter: "feishu",
+      bindingId: input.binding.id,
+      sessionKey: input.sessionKey,
+      messageId: input.messageId,
+      commandPreview: input.commandPreview || null,
+      reactionOk: false,
+      reactionError: shortMessage(error),
+      requestCount: null,
+    });
+  }
 }
 
 function shouldStartFeishuCommandTypingReaction(
@@ -7042,6 +7127,36 @@ function ensureFeishuProgressCardFailure(
   cardState.dirty = true;
 }
 
+function ensureFeishuProgressCardDeliveryFailure(
+  cardState: FeishuProgressCardState,
+  error: string | null,
+): void {
+  const statusChanged = cardState.status !== "failed";
+  cardState.status = "failed";
+  const text = shortMessage(error || "Agent 已完成，但最终回复投递失败。", 520);
+  if (statusChanged) {
+    cardState.updatedAtMs = Date.now();
+    cardState.dirty = true;
+  }
+  if (!text || cardState.latestError === text) return;
+  const fingerprint = `error:delivery:${text}`;
+  if (cardState.seenFingerprints.has(fingerprint)) return;
+  cardState.latestError = text;
+  cardState.seenFingerprints.add(fingerprint);
+  cardState.entries.push({
+    kind: "error",
+    title: "回复投递失败",
+    text,
+    checkedAt: new Date().toISOString(),
+    fingerprint,
+    rawType: "reply/delivery-failed",
+    itemType: null,
+  });
+  trimFeishuProgressCardEntries(cardState);
+  cardState.updatedAtMs = Date.now();
+  cardState.dirty = true;
+}
+
 function completeFeishuProgressCard(cardState: FeishuProgressCardState): void {
   cardState.status = "completed";
   cardState.updatedAtMs = Date.now();
@@ -8934,6 +9049,8 @@ async function dispatchOctoMessage(input: {
   activeRunCancels.set(activeRunId, {
     controller: abortController,
     startedAt: runStartedAt,
+    status: "running",
+    deliveryStartedAt: null,
     bindingId: binding.id,
     sessionKey,
     messageId: message.messageId,
@@ -9298,17 +9415,21 @@ async function dispatchOctoMessage(input: {
     };
   } finally {
     stopTypingPulse();
-    activeRunCancels.delete(activeRunId);
     clearPendingPermissionsForRun(channelPendingPermissions, activeRunId);
-    state.activeRuns = state.activeRuns.filter((run) => run.id !== activeRunId);
-    sessionRunLease.release();
+    markActiveRunDelivering({
+      state,
+      activeRunCancels,
+      activeRunId,
+      sessionRun: sessionRunLease.activeRun,
+    });
     markRuntimeDirty(config, state);
   }
-  if (agent.progress.eventCount > progressEventCount) {
-    progressEventCount = agent.progress.eventCount;
-    latestProgress = agent.progress.latest;
-  }
-  await octoProgressFlush;
+  try {
+    if (agent.progress.eventCount > progressEventCount) {
+      progressEventCount = agent.progress.eventCount;
+      latestProgress = agent.progress.latest;
+    }
+    await octoProgressFlush;
   const codexImagePaths = codexNativeImageArgPaths(agent.args);
   if (codexImagePaths.length > 0) {
     writeJsonLine(config.paths.octoEvents, {
@@ -9424,6 +9545,7 @@ async function dispatchOctoMessage(input: {
   let replyOriginalRunes: number | null = null;
   let replyPreviewRunes: number | null = null;
   let replyRequestCount: number | null = null;
+  let replyError: string | null = null;
   let outboundFileSentCount = 0;
   let outboundFileRequestCount = 0;
   let outboundMessageSentCount = 0;
@@ -9452,6 +9574,7 @@ async function dispatchOctoMessage(input: {
       const result = await sendOctoTextReply(transport, replyPlan);
       replySent = result.ok === true;
       replyRequestCount = result.requestCount;
+      if (!result.ok) replyError = result.error || "Octo final reply delivery failed.";
     }
   }
   if (transport && agent.ok === true && outboundReply.files.length > 0) {
@@ -9470,6 +9593,8 @@ async function dispatchOctoMessage(input: {
       if (replyPlan) {
         const result = await sendOctoTextReply(transport, replyPlan);
         replyRequestCount = (replyRequestCount || 0) + result.requestCount;
+        if (result.ok) replySent = true;
+        if (!result.ok) replyError = result.error || replyError || "Octo outbound file error notice delivery failed.";
       }
     }
   }
@@ -9489,6 +9614,8 @@ async function dispatchOctoMessage(input: {
       if (replyPlan) {
         const result = await sendOctoTextReply(transport, replyPlan);
         replyRequestCount = (replyRequestCount || 0) + result.requestCount;
+        if (result.ok) replySent = true;
+        if (!result.ok) replyError = result.error || replyError || "Octo outbound message error notice delivery failed.";
       }
     }
   }
@@ -9498,7 +9625,18 @@ async function dispatchOctoMessage(input: {
       const result = await sendOctoTextReply(transport, replyPlan);
       replySent = result.ok === true;
       replyRequestCount = result.requestCount;
+      if (!result.ok) replyError = result.error || "Octo failure reply delivery failed.";
     }
+  }
+  const octoDeliveryExpected = Boolean(
+    (agent.ok === true && (outboundReplyText || outboundReply.files.length > 0 || outboundReply.messages.length > 0 || outboundReply.errors.length > 0))
+      || agent.ok === false,
+  );
+  const replyDeliveryStatus: ChannelDaemonReplyDeliveryStatus = !octoDeliveryExpected
+    ? "not_required"
+    : replySent && !replyError ? "delivered" : "failed";
+  if (replyDeliveryStatus === "failed" && !replyError) {
+    replyError = transport ? "Octo final reply delivery failed." : "Octo transport unavailable for final reply delivery.";
   }
   const agentRunStatusRecord = state.agentRuns.find((item) => {
     return item.bindingId === binding.id
@@ -9513,6 +9651,8 @@ async function dispatchOctoMessage(input: {
       replyOriginalRunes,
       replyPreviewRunes,
       replySent,
+      replyError,
+      replyDeliveryStatus,
       replyRequestCount,
       outboundFilesDeclared: outboundReply.declaredCount,
       outboundFilesResolved: outboundReply.files.length,
@@ -9577,6 +9717,8 @@ async function dispatchOctoMessage(input: {
     replyOriginalRunes,
     replyPreviewRunes,
     replySent,
+    replyError,
+    replyDeliveryStatus,
     replyRequestCount,
     octoLastAnsweredMessageSeq: updatedOctoHistoryCutoff?.lastAnsweredMessageSeq || null,
     outboundFilesDeclared: outboundReply.declaredCount,
@@ -9601,6 +9743,15 @@ async function dispatchOctoMessage(input: {
       : elapsedMsSince(latestProgressAtMs, finishedAtMs),
   });
   markRuntimeDirty(config, state);
+  } finally {
+    cleanupActiveRunLifecycle({
+      state,
+      activeRunCancels,
+      activeRunId,
+      sessionRunLease,
+    });
+    markRuntimeDirty(config, state);
+  }
 }
 
 function feishuContentFromParsed(parsed: ChannelConnectorFeishuParsedWebhook): string {
@@ -9990,7 +10141,15 @@ async function dispatchFeishuParsedEvent(input: {
         })(),
       });
     } finally {
-      await stopCommandTypingReaction();
+      await stopFeishuTypingReactionSafely({
+        config,
+        binding,
+        sessionKey,
+        messageId,
+        stop: stopCommandTypingReaction,
+        eventKindPrefix: "channel.command.reaction",
+        commandPreview: content,
+      });
     }
   })();
 
@@ -10406,6 +10565,8 @@ async function dispatchFeishuParsedEvent(input: {
   activeRunCancels.set(activeRunId, {
     controller: abortController,
     startedAt: runStartedAt,
+    status: "running",
+    deliveryStartedAt: null,
     bindingId: binding.id,
     sessionKey,
     messageId,
@@ -10783,26 +10944,36 @@ async function dispatchFeishuParsedEvent(input: {
       },
     };
   } finally {
-    await stopTypingReaction();
-    activeRunCancels.delete(activeRunId);
+    await stopFeishuTypingReactionSafely({
+      config,
+      binding,
+      sessionKey,
+      messageId,
+      stop: stopTypingReaction,
+    });
     clearPendingPermissionsForRun(channelPendingPermissions, activeRunId);
-    state.activeRuns = state.activeRuns.filter((run) => run.id !== activeRunId);
-    sessionRunLease.release();
+    markActiveRunDelivering({
+      state,
+      activeRunCancels,
+      activeRunId,
+      sessionRun: sessionRunLease.activeRun,
+    });
     markRuntimeDirty(config, state);
   }
-  if (agent.progress.eventCount > progressEventCount) {
-    progressEventCount = agent.progress.eventCount;
-    latestProgress = agent.progress.latest;
-  }
-  if (progressCardState.messageId || progressCardState.entries.length > 0) {
-    if (agent.ok === false) {
-      ensureFeishuProgressCardFailure(progressCardState, agent.error, agent.status);
-    } else if (agent.ok === true) {
-      completeFeishuProgressCard(progressCardState);
+  try {
+    if (agent.progress.eventCount > progressEventCount) {
+      progressEventCount = agent.progress.eventCount;
+      latestProgress = agent.progress.latest;
     }
-    queueFeishuProgressFlush(true, "final");
-    await feishuProgressFlush;
-  }
+    if (progressCardState.messageId || progressCardState.entries.length > 0) {
+      if (agent.ok === false) {
+        ensureFeishuProgressCardFailure(progressCardState, agent.error, agent.status);
+      } else if (agent.ok === true) {
+        completeFeishuProgressCard(progressCardState);
+      }
+      queueFeishuProgressFlush(true, "final");
+      await feishuProgressFlush;
+    }
   const codexImagePaths = codexNativeImageArgPaths(agent.args);
   if (codexImagePaths.length > 0) {
     writeJsonLine(config.paths.feishuEvents, {
@@ -11002,6 +11173,8 @@ async function dispatchFeishuParsedEvent(input: {
         content: `文件发送失败：${sentFiles.errors.join("; ")}`,
       }, feishuTokenCachePath(config));
       replyRequestCount = (replyRequestCount || 0) + result.requestCount;
+      if (result.ok) replySent = true;
+      if (!result.ok) replyError = result.error || replyError || "Feishu outbound file error notice delivery failed.";
     }
   }
   if (agent.ok === true && outboundReply.messages.length > 0) {
@@ -11024,7 +11197,52 @@ async function dispatchFeishuParsedEvent(input: {
         content: `消息发送失败：${sentMessages.errors.join("; ")}`,
       }, feishuTokenCachePath(config));
       replyRequestCount = (replyRequestCount || 0) + result.requestCount;
+      if (result.ok) replySent = true;
+      if (!result.ok) replyError = result.error || replyError || "Feishu outbound message error notice delivery failed.";
     }
+  }
+  const feishuDeliveryExpected = Boolean(
+    (agent.ok === true && (outboundReplyText || outboundReply.files.length > 0 || outboundReply.messages.length > 0 || outboundReply.errors.length > 0))
+      || (agent.ok === false && !progressCardState.messageId),
+  );
+  const replyDeliveryStatus: ChannelDaemonReplyDeliveryStatus = !feishuDeliveryExpected
+    ? "not_required"
+    : replySent && !replyError ? "delivered" : "failed";
+  if (replyDeliveryStatus === "failed" && !replyError) {
+    replyError = "Feishu final reply delivery failed.";
+  }
+  if (agent.ok === true && replyDeliveryStatus === "failed" && progressCardState.messageId) {
+    ensureFeishuProgressCardDeliveryFailure(progressCardState, replyError || outboundFileErrors.join("; "));
+    queueFeishuProgressFlush(true, "reply-delivery-failed");
+    await feishuProgressFlush;
+  }
+  const agentRunStatusRecord = state.agentRuns.find((item) => {
+    return item.bindingId === binding.id
+      && item.sessionKey === sessionKey
+      && item.messageId === messageId
+      && item.startedAt === runStartedAt;
+  });
+  if (agentRunStatusRecord) {
+    Object.assign(agentRunStatusRecord, {
+      replyBuffered,
+      replyBufferId,
+      replyOriginalRunes,
+      replyPreviewRunes,
+      replySent,
+      replyError,
+      replyDeliveryStatus,
+      replyRequestCount,
+      outboundFilesDeclared: outboundReply.declaredCount,
+      outboundFilesResolved: outboundReply.files.length,
+      outboundFilesSent: outboundFileSentCount,
+      outboundFileRequestCount,
+      outboundFileMaxBytes: describeByteSizeLimit(outboundReply.maxBytes),
+      outboundMessagesDeclared: outboundReply.declaredMessageCount,
+      outboundMessagesSent: outboundMessageSentCount,
+      outboundMessageRequestCount,
+      outboundMessageNativeMentionIds,
+      outboundFileErrors,
+    });
   }
 
   const finishedAt = new Date().toISOString();
@@ -11058,6 +11276,7 @@ async function dispatchFeishuParsedEvent(input: {
     replyPreviewRunes,
     replySent,
     replyError,
+    replyDeliveryStatus,
     replyTransportAction,
     replyRequestCount,
     replyCardAttempted,
@@ -11091,6 +11310,15 @@ async function dispatchFeishuParsedEvent(input: {
     rawEventShape: isRecord(rawEvent) ? Object.keys(rawEvent).slice(0, 12) : [],
   });
   markRuntimeDirty(config, state);
+  } finally {
+    cleanupActiveRunLifecycle({
+      state,
+      activeRunCancels,
+      activeRunId,
+      sessionRunLease,
+    });
+    markRuntimeDirty(config, state);
+  }
   return null;
 }
 

@@ -31,6 +31,7 @@
 - 产品未发布前不为旧实验命令/字段做兼容负担；已取消的工作流不再保留 UI 入口。
 - 前端信息架构：`/channel-connectors` 只承载渠道运营概览、渠道绑定、daemon/runtime 和会话日志；Agent CLI Profile 的高频配置、Gateway 模型选择、绑定摘要、Profile 操作和会话记录进入独立 `/channel-connectors/profiles`，不得挂回 OpenClaw Agents 子页，也不得作为主页面内嵌快改子页。
 - Profile/App Connection 关闭验收以真实 IM event log 为准；本轮已重新采集 Feishu OpenCode 过程回复和 Feishu 显式 `/compact` native 成功证据，并通过统一 closure gate。
+- IM Agent active run 不再只表示 Agent 进程执行中；Agent 返回后会进入 `delivering`，最终回复/出站文件/出站消息投递完成才释放 session guard。投递阶段 `/stop` 必须提示“正在投递最终回复”而不是“无正在运行的 Agent”，普通新消息仍按 busy guard 拒绝。Feishu/Octo finished event 记录 `replyDeliveryStatus` / `replyError`；Feishu 成功 Agent 但最终回复全失败时会尝试把进度卡补为 `reply/delivery-failed`。
 
 ## 任务清单
 
@@ -59,7 +60,8 @@
 
 - `npm run typecheck:api`
 - `npm run build:api`
-- `node --test tests/system/channel-connectors-agent-session-driver.test.mjs tests/system/channel-connectors-service.test.mjs`，136/136 通过，覆盖终态 grace、取消 race、未知 CLI 协议降级、无最终回复兼容提示、Claude persistent error subtype/unknown event、Codex app-server 同 tick 终态通知缓冲、unknown terminal status、transport close settle 和 Feishu 进度卡终态 dirty 合同。
+- `node --test --test-name-pattern "(IM commands switch agent|rejects same-session|does not persist or replay busy|Feishu command and Agent progress|daemon runs Codex app-server|daemon stops Codex app-server|daemon keeps Feishu dispatcher|daemon owns Feishu long-connection ingress|Octo group process replies|daemon enriches Octo group turns)" tests/system/channel-connectors-service.test.mjs`，10/10 通过，覆盖投递期 `/stop` 文案、busy guard、Feishu/Octo daemon 主路径、Codex app-server 完成/停止和 Feishu 长连接静态合同。
+- `node --test tests/system/channel-connectors-agent-session-driver.test.mjs tests/system/channel-connectors-service.test.mjs`，136/136 通过，覆盖终态 grace、取消 race、未知 CLI 协议降级、无最终回复兼容提示、Claude persistent error subtype/unknown event、Codex app-server 同 tick 终态通知缓冲、unknown terminal status、transport close settle、Feishu 进度卡终态 dirty、Agent `running -> delivering -> cleanup` 生命周期、投递期 `/stop` 文案和 `replyDeliveryStatus` 合同。
 - `npm run smoke:channel-connectors:agent-heartbeat-local -- --json`，16/16 通过；`node --test tests/system/channel-connectors-agent-heartbeat-local-script.test.mjs`，2/2 通过。
 - `node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs tests/system/studio-web-channel-connectors-page.test.mjs`，5/5 通过，覆盖 Profile 工作台 requested persistent binding/session/event deep-link、当前 CLI App Connection apply/preview 入口、binding 行事件过滤快捷入口、会话事件 binding/type 筛选和显示数量控制。
 - `node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs` 通过，覆盖 Agent 切换清理 stale App Profile ref、新建 Profile 默认 `default` App Profile、Profile Apply-to-CLI 不改 Gateway 全局默认模型。

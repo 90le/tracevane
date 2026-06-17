@@ -7428,6 +7428,24 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(noActiveRun.ok, false);
   assert.match(noActiveRun.replyText, /没有正在运行的 Agent/);
 
+  const deliveringRun = await handleChannelConnectorCommand({
+    ...baseContext,
+    message: message("/stop"),
+    stopActiveRun: () => ({
+      stopped: false,
+      runId: "run-delivering",
+      messageId: "msg-delivering",
+      agent: "codex",
+      model: "gpt-5.4",
+      error: "当前 Agent 已完成，正在投递最终回复；无需停止，请稍等投递结果。",
+    }),
+  });
+  assert.equal(deliveringRun.handled, true);
+  assert.equal(deliveringRun.action, "stop");
+  assert.equal(deliveringRun.ok, false);
+  assert.match(deliveringRun.replyText, /正在投递最终回复/);
+  assert.doesNotMatch(deliveringRun.replyText, /没有正在运行的 Agent/);
+
   let permissionAction = null;
   const approvedPermission = await handleChannelConnectorCommand({
     ...baseContext,
@@ -14421,7 +14439,7 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.doesNotMatch(daemonSource, /slice\(-8\)/);
   assert.doesNotMatch(daemonSource, /Studio Progress/);
   assert.doesNotMatch(daemonSource, /Studio Reply/);
-  assert.doesNotMatch(daemonSource, /最终回复/);
+  assert.doesNotMatch(daemonSource, /title:\s*"最终回复"/);
   assert.match(daemonSource, /send-final-card/);
   assert.match(daemonSource, /send-final-text-after-card/);
   assert.match(daemonSource, /replyCardAttempted/);
@@ -14490,7 +14508,20 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /const activeRunCancels = new Map\(\)/);
   assert.match(daemonSource, /for \(const entry of activeRunCancels\.values\(\)\)\s*entry\.controller\.abort\(\)/);
   assert.match(daemonSource, /activeRunCancels\.set\(activeRunId/);
-  assert.match(daemonSource, /activeRunCancels\.delete\(activeRunId\)/);
+  assert.match(daemonSource, /function cleanupActiveRunLifecycle/);
+  assert.match(daemonSource, /input\.activeRunCancels\.delete\(input\.activeRunId\)/);
+  assert.match(daemonSource, /cleanupActiveRunLifecycle\(\{\s*state,\s*activeRunCancels,\s*activeRunId,\s*sessionRunLease,/);
+  assert.match(daemonSource, /status:\s*"running"/);
+  assert.match(daemonSource, /status\s*=\s*"delivering"/);
+  assert.match(daemonSource, /deliveryStartedAt\s*=\s*now/);
+  assert.match(daemonSource, /function markActiveRunDelivering/);
+  assert.match(daemonSource, /entry\.status === "delivering"/);
+  assert.match(daemonSource, /正在投递最终回复/);
+  assert.match(daemonSource, /replyDeliveryStatus/);
+  assert.match(daemonSource, /function ensureFeishuProgressCardDeliveryFailure/);
+  assert.match(daemonSource, /function stopFeishuTypingReactionSafely/);
+  assert.match(daemonSource, /agent\.reaction"\}\.stop_failed/);
+  assert.match(daemonSource, /rawType:\s*"reply\/delivery-failed"/);
   assert.match(daemonSource, /signal:\s*abortController\.signal/);
   assert.match(daemonSource, /sendFeishuCommandTextReplyInBackground/);
   assert.match(daemonSource, /replyTransportAction\s*=\s*"send-message-async"/);

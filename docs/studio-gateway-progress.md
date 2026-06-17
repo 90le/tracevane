@@ -32,6 +32,7 @@
 - Codex / Claude Code / OpenCode native CLI runner 不再用固定墙钟总时长判断失败；对三类 IM Agent 统一改为 CLI 心跳超时，stdout/stderr 中的 `Working (... esc to interrupt)`、`Imagining...` 等 liveness 刷新会继续延长等待，只有 CLI 停止输出心跳才返回 `process/heartbeat-timeout` 并终止，避免 Feishu/Octo IM 长任务仍在工作时被误杀成 `Agent process timed out.`；权威终态失败事件不会再被 exit 0 误判为完成，权威终态完成事件后 CLI 进程若悬挂会在 grace 后收尾；本地回归已覆盖 stdout、stderr CR-only TUI、idleTimeout 替代总超时、静默 timeout 和非 runtime Agent 旧超时边界。
 - CLI heartbeat 风险评估：单纯“有 stdout/stderr”只能证明 CLI 仍有 liveness，不能证明模型/工具有真实进展；因此 runner 新增 `process/heartbeat-stall` 诊断层，持续只有 TUI 心跳但没有结构化进展时写入 progress/event log 和 active run 状态。该诊断是 `running` 非终态，不刷新 heartbeat timeout，后续重复诊断按 2x/4x/8x 退避并封顶 15 分钟，也默认不发到 Feishu/Octo 过程消息，避免自我续命、日志风暴和 IM 刷屏。
 - Feishu 进度卡片终态只由最终 Agent run 结果决定；中间工具/步骤错误和过程 `completed` 事件都只作为过程判据，不会提前把卡片切成完成或失败。
+- IM Agent 生命周期已拆分 Agent 执行和最终回复投递：active run 会从 `running` 进入 `delivering`，最终投递完成后才释放同 session guard；投递阶段 `/stop` 会提示“Agent 已完成，正在投递最终回复”，普通新消息仍按 busy guard 拒绝但文案说明是在等待最终投递。Feishu/Octo `agent.run.finished` 与 runtime `agentRuns` 会记录 `replyDeliveryStatus`（`not_required` / `delivered` / `failed`）和 `replyError`；成功 Agent 但 Feishu 最终回复全失败时，会把进度卡补一条“回复投递失败”终态错误。
 - Channel 侧 `/usage` / token 统计不再继续建设；模型消耗已统一到 Gateway usage/Provider Center 模型消耗页。
 - CLI Profile 管理属于 Studio 原生 Channel Connectors，不属于 OpenClaw Agent 管理；独立页为 `/channel-connectors/profiles`，直接读取 Gateway 可用模型目录和上下文预算，管理 Profile、IM 绑定摘要、运行配置、持久会话和事件记录；IM 绑定摘要可 deep-link 到完整 Channel Connectors 配置并自动选中 binding/profile。
 - Channel Connectors 主配置页已收敛为概览、渠道绑定、运行状态、会话日志四个同级工作区；不再内嵌 CLI Profile 快改或 Skills 管理，Profile 只进入独立工作台。
@@ -53,9 +54,13 @@
   - Claude persistent 对未知结构化事件同样写入 bounded `protocol/unknown-event`；OpenCode persistent 仍走 one-shot runner，因此继承同一逻辑。
 - 已解决：Feishu 进度卡失败状态可能不刷新。
   - 最终失败会把进度卡状态切到 failed 并标记 dirty，即使失败文本已作为过程错误出现，也会刷新卡片终态。
-- 已缓解：最终 IM 投递失败。
-  - 当前 Feishu final reply 仍按 card -> post -> text fallback，并在 `agent.run.finished` 写入 `replySent` / `replyError` / `replyTransportAction`；平台全链路不可用时无法保证用户可见，只能靠事件日志和后续重试/人工排查。
-  - 后续若要进一步收敛，需要增加 `reply delivering/delivered/failed` 运行态，并在成功 agent 但 final delivery 全失败时把进度卡补丁为“回复投递失败”。
+- 已解决：最终 IM 投递阶段与 Agent 执行阶段混淆。
+  - Agent 进程返回后 active run 不会立即消失，而是先标记为 `delivering`；最终回复、出站文件、出站私聊消息或失败说明投递结束后才清理 active run 和 session guard。
+  - `/stop` 遇到 `delivering` 不再误报“没有正在运行的 Agent”，普通新消息也不会误入下一轮，而是提示上一轮已完成但最终回复仍在投递。
+  - `agent.run.finished` / runtime `agentRuns` 写入 `replyDeliveryStatus` 与 `replyError`；Feishu 成功 Agent 但最终回复投递全失败时，会尝试把进度卡改成 failed 并追加 `reply/delivery-failed`。
+  - 出站文件/消息成功、文件/消息失败说明成功发送，都会计入投递成功判据；Feishu reaction 停止失败只写 `*.reaction.stop_failed` 诊断，不再阻断投递和生命周期清理。
+- 已缓解：平台全链路不可达时用户可能仍看不到最终说明。
+  - Feishu final reply 仍按 card -> post -> text fallback，Octo/Feishu transport 自身有请求超时；但如果平台发消息、patch 卡片和后续重试通道同时不可用，本地只能保留 `replyDeliveryStatus=failed`、`replyError` 和事件日志，无法保证用户端可见。
 - 已缓解：TUI 心跳长期存在但没有真实结构化进展。
   - `process/heartbeat-stall` 继续只作为非终态诊断，退避写入事件/状态，不发 IM 刷屏、不刷新 heartbeat timeout；无法从 CLI 外部完美证明模型内部是否“真进展”，但不会因为持续 TUI 文案而永久静默。
 
@@ -199,6 +204,7 @@
   - Feishu 出站文件 24h live 已验证：用户触发 `hello-live.txt` 创建和发送，event log 记录 `outboundFilesSent=1`、`permission-pending -> allowed`、工具输出 `live-ok`。
   - Feishu 权限审批 24h live 已验证：真实链路为 Feishu 进度卡片 `permission-pending/allowed` + 卡片按钮 `channel.command commandAction=permission commandOk=true`；live 脚本已兼容这条真实形态。
   - IM busy guard 已取代 Feishu/Octo 普通消息 queue：同 binding + IM session 已有任务时，后续普通消息直接提示 `/stop`/`/cancel` 后重发，不入队、不落 pending store、不 daemon 重启 replay；legacy Feishu queue live 脚本名已改为检查 `channel.agent.rejected_busy`。
+  - IM Agent 最终投递生命周期补强：Agent 返回后 active run 会进入 `delivering`，最终投递结束才释放同 session；`/stop` 在投递阶段提示等待最终回复，不再误报无任务；普通新消息在投递阶段继续 busy 拒绝；Feishu/Octo finished event 和 runtime agentRuns 记录 `replyDeliveryStatus` / `replyError`；Feishu 成功 Agent 但最终投递失败会把进度卡补为“回复投递失败”；Feishu reaction stop 失败不再阻断生命周期清理。
   - 上下文预算核心已完成：`/status` 会按 Gateway 模型窗口、输出预留、Gateway usage/history estimate 展示剩余窗口和 auto compact threshold；auto compact 已按 native-first、baseline 和 fallback 记录接入。
   - 私聊文件/消息收发核心已完成：入站 staging、出站 file/message manifest、原始文件名、Feishu/Octo 上传发送、Octo COS/STS 大文件路径和 fallback 均有回归；真实 Feishu/Octo 文件/图片/视频和出站文件 live 证据已通过。
   - Octo 入站文件 24h live 已验证：用户侧文件进入 staging，本地路径存在，Agent 可返回路径；Octo 视频真实形态会以 `file` + `.mp4` staged path 出现，live smoke 已按视频类文件识别并验收通过。
@@ -227,7 +233,7 @@
 
 - 本轮验证通过：`npm run typecheck:api`
 - 本轮验证通过：`npm run build:api`
-- 本轮验证通过：`node --test tests/system/channel-connectors-agent-session-driver.test.mjs tests/system/channel-connectors-service.test.mjs`，136/136 通过，覆盖 one-shot runner 终态 grace、取消 race、未知 CLI 协议降级、无最终回复兼容提示、Claude persistent error subtype/unknown event、Codex app-server 同 tick 终态通知缓冲、未知 terminal status、transport close settle、Feishu 进度卡终态 dirty 合同，以及既有 daemon/session/Feishu/Octo 回归。
+- 本轮验证通过：`node --test tests/system/channel-connectors-agent-session-driver.test.mjs tests/system/channel-connectors-service.test.mjs`，136/136 通过，覆盖 one-shot runner 终态 grace、取消 race、未知 CLI 协议降级、无最终回复兼容提示、Claude persistent error subtype/unknown event、Codex app-server 同 tick 终态通知缓冲、未知 terminal status、transport close settle、Feishu 进度卡终态 dirty、Agent `running -> delivering -> cleanup` 生命周期、投递期 `/stop` 文案和 `replyDeliveryStatus` 记录，以及既有 daemon/session/Feishu/Octo 回归。
 - 本轮验证通过：`npm run smoke:channel-connectors:agent-heartbeat-local -- --json`，16/16 通过，覆盖 Codex / Claude Code / OpenCode 的 stderr CR TUI heartbeat、stdout heartbeat、idle timeout 替代总 timeout、heartbeat-only stall 诊断、静默 heartbeat timeout，以及非 runtime agent 固定 timeout 边界。
 - 本轮验证通过：`node --test tests/system/channel-connectors-agent-heartbeat-local-script.test.mjs`，2/2 通过，覆盖 heartbeat smoke 脚本本地证明边界与完整 synthetic matrix。
 - 本轮验证通过：`node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs tests/system/studio-web-channel-connectors-page.test.mjs`，覆盖 Channel Connectors 独立 Profile 工作台、Gateway 预算索引、Profile 复制/删除/binding 行事件快捷过滤/事件 binding/type 筛选/事件数量/批量停止控件、Profile ID 重命名迁移绑定合同、App Connection effective model / apply / preview 合同、IM binding deep-link 选中合同、Agents 旧 CLI 路由删除和 Channel Connectors 独立导航。
