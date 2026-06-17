@@ -11727,62 +11727,92 @@ test("native Channel Connectors process runner cancels active child processes", 
   assert.equal(result.progressEvents?.[0]?.type, "running");
 });
 
-test("native Channel Connectors process runner keeps Codex alive while Working heartbeat updates", async () => {
-  const root = makeTempRoot();
-  const progress = [];
-  const childScript = [
-    "let tick = 0;",
-    "process.stderr.write('\\r• Working (0s • esc to interrupt)');",
-    "const interval = setInterval(() => {",
-    "  tick += 1;",
-    "  process.stderr.write(`\\r• Working (${tick}s • esc to interrupt)`);",
-    "  if (tick >= 4) {",
-    "    clearInterval(interval);",
-    "    process.stdout.write(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'heartbeat kept alive'}})+'\\n');",
-    "    process.stdout.write(JSON.stringify({type:'turn.completed'})+'\\n');",
-    "  }",
-    "}, 50);",
-  ].join("");
+test("native Channel Connectors process runner keeps CLI agents alive while TUI heartbeat updates", async () => {
+  const cases = [
+    {
+      agent: "codex",
+      heartbeat: "• Working",
+      completionLines: [
+        JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "codex heartbeat kept alive" } }),
+        JSON.stringify({ type: "turn.completed" }),
+      ],
+    },
+    {
+      agent: "claude-code",
+      heartbeat: "✻ Imagining…",
+      completionLines: [
+        JSON.stringify({ type: "result", result: "claude heartbeat kept alive", session_id: "claude-heartbeat" }),
+      ],
+    },
+    {
+      agent: "opencode",
+      heartbeat: "✻ Imagining…",
+      completionLines: [
+        JSON.stringify({ type: "text", part: { type: "text", text: "opencode heartbeat kept alive" } }),
+        JSON.stringify({ type: "step_finish", part: { type: "step-finish", reason: "stop" } }),
+      ],
+    },
+  ];
 
-  const result = await defaultChannelConnectorAgentProcessRunner({
-    command: process.execPath,
-    args: ["-e", childScript],
-    cwd: root,
-    stdin: "",
-    env: {},
-    timeoutMs: 120,
-    agent: "codex",
-    onProgress: (event) => progress.push(event),
-  });
+  for (const item of cases) {
+    const root = makeTempRoot();
+    const progress = [];
+    const completion = item.completionLines.map((line) => `process.stdout.write(${JSON.stringify(`${line}\n`)});`).join("");
+    const childScript = [
+      "let tick = 0;",
+      `process.stderr.write(${JSON.stringify(`\r${item.heartbeat} (0s)\n........ esc interrupt\n`)});`,
+      "const interval = setInterval(() => {",
+      "  tick += 1;",
+      `  process.stderr.write(${JSON.stringify(`\r${item.heartbeat} (`)} + tick + ${JSON.stringify("s)\n........ esc interrupt\n")});`,
+      "  if (tick >= 4) {",
+      "    clearInterval(interval);",
+      completion,
+      "  }",
+      "}, 50);",
+    ].join("");
 
-  assert.equal(result.exitCode, 0);
-  assert.equal(result.timedOut, false);
-  assert.equal(result.error, null);
-  assert.match(result.stderr, /Working/);
-  assert.ok(result.durationMs >= 120);
-  assert.equal(progress.some((event) => event.rawType === "process/heartbeat-timeout"), false);
-  assert.equal(progress.at(-1)?.type, "completed");
+    const result = await defaultChannelConnectorAgentProcessRunner({
+      command: process.execPath,
+      args: ["-e", childScript],
+      cwd: root,
+      stdin: "",
+      env: {},
+      timeoutMs: 120,
+      agent: item.agent,
+      onProgress: (event) => progress.push(event),
+    });
+
+    assert.equal(result.exitCode, 0, item.agent);
+    assert.equal(result.timedOut, false, item.agent);
+    assert.equal(result.error, null, item.agent);
+    assert.match(result.stderr, /Working|Imagining|esc interrupt/, item.agent);
+    assert.ok(result.durationMs >= 120, item.agent);
+    assert.equal(progress.some((event) => event.rawType === "process/heartbeat-timeout"), false, item.agent);
+    assert.equal(progress.at(-1)?.type, "completed", item.agent);
+  }
 });
 
-test("native Channel Connectors process runner reports Codex heartbeat timeout only after liveness stops", async () => {
-  const root = makeTempRoot();
-  const progress = [];
-  const childScript = "setInterval(() => {}, 1000);";
+test("native Channel Connectors process runner reports heartbeat timeout only after liveness stops", async () => {
+  for (const agent of ["codex", "claude-code", "opencode"]) {
+    const root = makeTempRoot();
+    const progress = [];
+    const childScript = "setInterval(() => {}, 1000);";
 
-  const result = await defaultChannelConnectorAgentProcessRunner({
-    command: process.execPath,
-    args: ["-e", childScript],
-    cwd: root,
-    stdin: "",
-    env: {},
-    timeoutMs: 50,
-    agent: "codex",
-    onProgress: (event) => progress.push(event),
-  });
+    const result = await defaultChannelConnectorAgentProcessRunner({
+      command: process.execPath,
+      args: ["-e", childScript],
+      cwd: root,
+      stdin: "",
+      env: {},
+      timeoutMs: 50,
+      agent,
+      onProgress: (event) => progress.push(event),
+    });
 
-  assert.equal(result.timedOut, true);
-  assert.match(result.error, /heartbeat timed out/);
-  assert.equal(progress.some((event) => event.rawType === "process/heartbeat-timeout" && event.type === "failed"), true);
+    assert.equal(result.timedOut, true, agent);
+    assert.match(result.error, /heartbeat timed out/, agent);
+    assert.equal(progress.some((event) => event.rawType === "process/heartbeat-timeout" && event.type === "failed"), true, agent);
+  }
 });
 
 test("native Channel Connectors process runner maps Codex command execution progress", async () => {

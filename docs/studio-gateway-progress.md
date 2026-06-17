@@ -29,7 +29,7 @@
 - Feishu/Octo 长连接已由用户 live 验证稳定；Feishu 专项跟踪进入 monitored 状态，任意假在线反馈先写入 `docs/feishu-long-connection-issue-tracker.md` 并对照 OpenClaw/CC 实现排查。
 - Profile/App Connection 关闭验收必须跑真实 IM gate：三 Agent 工具流+过程回复、Feishu 显式 `/compact`、Octo 显式 `/compact`、入站图片 staged path。当前四项 gate 已全绿，可作为本轮关闭证据。
 - Codex app-server persistent turn 超时语义已改为空闲超时：总回答时间可超过阈值，只要持续有 app-server 事件、审批请求、工具事件或输出就不会被误杀；普通静默默认 3 分钟，可用 `STUDIO_CODEX_APP_SERVER_TURN_IDLE_TIMEOUT_MS` 调整；等待 IM 审批会覆盖到审批窗口，批准工具后才给长工具执行窗口；fallback 恢复型 `turn/timeout` 不再进入 Feishu/Octo 用户进度流。
-- Codex one-shot `codex exec --json` runner 不再用固定墙钟总时长判断失败；对 Codex 改为 CLI 心跳超时，stdout/stderr 中的 `Working (... esc to interrupt)` 等 liveness 刷新会继续延长等待，只有 Codex 停止输出心跳才返回 `process/heartbeat-timeout` 并终止，避免 Feishu IM 长任务仍在工作时被误杀成 `Agent process timed out.`。
+- Codex / Claude Code / OpenCode native CLI runner 不再用固定墙钟总时长判断失败；对三类 IM Agent 统一改为 CLI 心跳超时，stdout/stderr 中的 `Working (... esc to interrupt)`、`Imagining...` 等 liveness 刷新会继续延长等待，只有 CLI 停止输出心跳才返回 `process/heartbeat-timeout` 并终止，避免 Feishu/Octo IM 长任务仍在工作时被误杀成 `Agent process timed out.`。
 - Feishu 进度卡片终态只由最终 Agent run 结果决定；中间工具/步骤错误会显示为过程条目并继续更新，不再提前显示“本过程卡片已停止更新”。
 - Channel 侧 `/usage` / token 统计不再继续建设；模型消耗已统一到 Gateway usage/Provider Center 模型消耗页。
 - CLI Profile 管理属于 Studio 原生 Channel Connectors，不属于 OpenClaw Agent 管理；独立页为 `/channel-connectors/profiles`，直接读取 Gateway 可用模型目录和上下文预算，管理 Profile、IM 绑定摘要、运行配置、持久会话和事件记录；IM 绑定摘要可 deep-link 到完整 Channel Connectors 配置并自动选中 binding/profile。
@@ -89,7 +89,7 @@
   - 真实 Claude Code `gpt-5.5` smoke 通过：`ANTHROPIC_BASE_URL=http://127.0.0.1:18796` + 本地 Gateway key 下，`claude --bare --print --model gpt-5.5 --tools ""` 返回 `CLAUDE_CLI_GATEWAY_OK`；同轮直接 `/v1/messages` smoke 返回 `CLAUDE_GATEWAY_OK`，确认 `function_call.id` 的 `fc_*` 规范不再触发上游 400。
   - 真实 OpenCode `gpt-5.5` smoke 通过：用户级 OpenCode 配置已重新 apply，`opencode --pure run --model studio-gateway/gpt-5.5` 成功调用 shell tool 输出 `OPENCODE_TOOL_OK` 并最终返回 `OPENCODE_DONE`，不再报 `Function tools with reasoning_effort are not supported...`。
   - Provider Center 模型目录新增“刷新目录”：复用现有 detect-provider 读取上游 `/models`，只合并新增模型并补齐空白预算/能力，不覆盖用户已有别名、能力、预算或默认模型；“识别配置”内的模型应用也改为同一合并语义。
-  - Feishu IM Codex 卡顿误判修复：Codex one-shot 进程 runner 将 stdout/stderr 作为 CLI liveness heartbeat，`Working (... esc to interrupt)` 状态刷新会续期等待；完全静默时返回可解释 `Agent process heartbeat timed out...`，并发出 `process/heartbeat-timeout` 失败进度。
+  - Feishu/Octo IM native CLI 卡顿误判修复：Codex / Claude Code / OpenCode 进程 runner 将 stdout/stderr 作为 CLI liveness heartbeat，`Working (... esc to interrupt)`、`Imagining...` 等状态刷新会续期等待；完全静默时返回可解释 `Agent process heartbeat timed out...`，并发出 `process/heartbeat-timeout` 失败进度。
 - Provider Center 前端收口：
   - 模型目录的可见身份字段只保留“模型名称”和“别名”，不再暴露“显示名”三段式配置。
   - 批量导入格式改为 `model-id | alias1,alias2`；保存时不再从表格写入 `model.label`。
@@ -235,7 +235,7 @@
 - 本轮验证通过：`node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs`
 - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，57/57 通过，覆盖 `glm-5.2` / `glm-5.2[1m]` 预算推断、endpoint profile 原生协议优选、endpoint health 回退、响应头和 endpoint 级 smoke。
 - 本轮验证通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，17/17 通过，覆盖 Codex app-server turn 空闲超时、审批/批准工具刷新 idle、fallback 恢复时不发用户 timeout 进度和真正卡死 interrupt。
-- 本轮验证通过：`node --test --test-name-pattern "native Channel Connectors process runner" tests/system/channel-connectors-service.test.mjs`，20/20 通过，覆盖 Codex `Working` 心跳续期、静默 heartbeat timeout、Codex/Claude/OpenCode 工具流和权限处理。
+- 本轮验证通过：`node --test --test-name-pattern "native Channel Connectors process runner" tests/system/channel-connectors-service.test.mjs`，20/20 通过，覆盖 Codex / Claude Code / OpenCode TUI 心跳续期、静默 heartbeat timeout、三 Agent 工具流和权限处理。
 - 本轮 live 验证通过：`node scripts/smoke-model-gateway-account-pool.mjs --json --strict --timeout-ms 240000`，单账号 Codex account provider / `gpt-5.5` Responses / accountRouting / sticky 通过，多账号策略按可选 skip 记录。
 - 本轮 live active route smoke 通过：Codex / Claude Code / OpenCode 均命中 `codex-account` + `gpt-5.5`，OpenClaw 命中 `glm` + `coding-chat` endpoint，四个 scope 均返回 `GATEWAY_OK`。
 - 本轮验证通过：`node --test --test-name-pattern "native Channel Connectors daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`，覆盖 Feishu 进度卡片中间错误不再提前终止。

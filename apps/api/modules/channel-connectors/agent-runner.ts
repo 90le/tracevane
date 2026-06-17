@@ -1933,7 +1933,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
       stdio: ["pipe", "pipe", "pipe"],
     });
     const isClaudeCode = request.agent === "claude-code";
-    const usesHeartbeatTimeout = request.agent === "codex";
+    const usesHeartbeatTimeout = request.agent === "codex" || request.agent === "claude-code" || request.agent === "opencode";
     const heartbeatTimeoutMs = typeof request.idleTimeoutMs === "number" && Number.isFinite(request.idleTimeoutMs)
       ? Math.max(0, Math.floor(request.idleTimeoutMs))
       : request.timeoutMs;
