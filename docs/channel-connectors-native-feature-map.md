@@ -54,6 +54,7 @@
 - 同 session FIFO queue、`/stop`、`/new`、`/reset`、`/compact`、`/thinking`、`/process`、`/tools` 已接入。
 - `/stop` 自动回归已覆盖 Codex app-server persistent turn 取消；live smoke 已支持 `--require-stop-command`，按同 session 和时间关联不同 messageId 的 stop 命令与 cancelled run。
 - Codex app-server persistent turn 已改为分层 idle：普通静默默认 3 分钟，审批请求刷新 idle，等待 IM 审批按审批窗口处理，批准工具后才给长工具执行窗口；fallback 恢复型 `turn/timeout` 不进入用户进度流，真正卡死仍会 interrupt。
+- Codex one-shot `codex exec --json` runner 已从固定墙钟总超时改为 CLI 心跳超时：stdout/stderr 中的 `Working (... esc to interrupt)` 等 liveness 刷新会续期等待，只有心跳停止才返回 `process/heartbeat-timeout` 并终止，避免 Feishu IM 长任务仍在工作时被误判为 `Agent process timed out.`。
 - 可恢复队列已接入 daemon 内部 pending-agent-run store：同 session 已入队但尚未启动的 Agent 消息会落盘，daemon 重启后按原平台 dispatch 重放；daemon `/status`、API 和 Channel Connectors Runtime 页已展示 pending 数量、待恢复记录和最近 replay/drop/fail 事件；Octo 重启回归已通过；Feishu 24h live 已证明同进程 FIFO 排队顺序执行和 daemon 重启 replay。
 - Claude Code / OpenCode persistent native compact 已有真实子进程 driver 回归：Claude 复用同一个 stream-json 常驻进程，OpenCode 通过 `run --session` 续接。
 - Claude Code persistent driver 已修复过程回复污染最终回复，并补进度回调兼容回归。

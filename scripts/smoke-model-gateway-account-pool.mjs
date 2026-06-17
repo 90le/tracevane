@@ -62,7 +62,7 @@ Options:
   --app-scope <id>              default: ${DEFAULT_APP_SCOPE}
   --model <id>                  default: active account provider default model
   --require-multi-account       fail when fewer than 2 routeable accounts exist
-  --strict                      fail on skipped probes
+  --strict                      fail on failed probes and non-optional skipped probes
   --timeout-ms <n>              per-request timeout
   --json                        machine-readable output
   -h, --help                    Show this help
@@ -429,6 +429,10 @@ function stringOrNull(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function isOptionalSkippedProbe(probe, options) {
+  return probe?.id === "multi-account-strategy" && options.requireMultiAccount !== true;
+}
+
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const key = readGatewayKey();
@@ -468,8 +472,9 @@ async function main() {
   }
   const failed = probes.filter((probe) => probe.status === "failed");
   const skipped = probes.filter((probe) => probe.status === "skipped");
+  const blockingSkipped = skipped.filter((probe) => !isOptionalSkippedProbe(probe, options));
   const result = {
-    ok: failed.length === 0 && (!options.strict || skipped.length === 0),
+    ok: failed.length === 0 && (!options.strict || blockingSkipped.length === 0),
     endpoint: options.endpoint,
     appScope: options.appScope,
     model: options.model || null,

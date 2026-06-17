@@ -11727,6 +11727,64 @@ test("native Channel Connectors process runner cancels active child processes", 
   assert.equal(result.progressEvents?.[0]?.type, "running");
 });
 
+test("native Channel Connectors process runner keeps Codex alive while Working heartbeat updates", async () => {
+  const root = makeTempRoot();
+  const progress = [];
+  const childScript = [
+    "let tick = 0;",
+    "process.stderr.write('\\r• Working (0s • esc to interrupt)');",
+    "const interval = setInterval(() => {",
+    "  tick += 1;",
+    "  process.stderr.write(`\\r• Working (${tick}s • esc to interrupt)`);",
+    "  if (tick >= 4) {",
+    "    clearInterval(interval);",
+    "    process.stdout.write(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'heartbeat kept alive'}})+'\\n');",
+    "    process.stdout.write(JSON.stringify({type:'turn.completed'})+'\\n');",
+    "  }",
+    "}, 50);",
+  ].join("");
+
+  const result = await defaultChannelConnectorAgentProcessRunner({
+    command: process.execPath,
+    args: ["-e", childScript],
+    cwd: root,
+    stdin: "",
+    env: {},
+    timeoutMs: 120,
+    agent: "codex",
+    onProgress: (event) => progress.push(event),
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.timedOut, false);
+  assert.equal(result.error, null);
+  assert.match(result.stderr, /Working/);
+  assert.ok(result.durationMs >= 120);
+  assert.equal(progress.some((event) => event.rawType === "process/heartbeat-timeout"), false);
+  assert.equal(progress.at(-1)?.type, "completed");
+});
+
+test("native Channel Connectors process runner reports Codex heartbeat timeout only after liveness stops", async () => {
+  const root = makeTempRoot();
+  const progress = [];
+  const childScript = "setInterval(() => {}, 1000);";
+
+  const result = await defaultChannelConnectorAgentProcessRunner({
+    command: process.execPath,
+    args: ["-e", childScript],
+    cwd: root,
+    stdin: "",
+    env: {},
+    timeoutMs: 50,
+    agent: "codex",
+    onProgress: (event) => progress.push(event),
+  });
+
+  assert.equal(result.timedOut, true);
+  assert.match(result.error, /heartbeat timed out/);
+  assert.equal(progress.some((event) => event.rawType === "process/heartbeat-timeout" && event.type === "failed"), true);
+});
+
 test("native Channel Connectors process runner maps Codex command execution progress", async () => {
   const root = makeTempRoot();
   const progress = [];

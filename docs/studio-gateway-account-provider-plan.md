@@ -1,7 +1,7 @@
 # Studio Gateway Account Provider Plan
 
 > 状态：Phase D2 核心能力已进入 live 验证
-> 更新：2026-06-16
+> 更新：2026-06-17
 > 目的：把 GPT / ChatGPT / Codex 账户接入 Studio Gateway，形成用户本机账户池到三协议 API 的正式能力。
 
 ## 参考来源
@@ -73,7 +73,7 @@ Account-backed provider 对外仍暴露：
 
 - 无真实 token 的单元测试覆盖 account schema、redaction、auth storage、route decision、sticky/failover/cooldown、model list merge。
 - 页面登录 smoke 验证 Codex 账户自动创建 provider、Provider smoke 和普通请求；隔离 `CODEX_HOME` 只用于辅助迁移验证，不污染当前 Codex CLI。
-- Account pool smoke：`scripts/smoke-model-gateway-account-pool.mjs` 验证真实 daemon active account provider、Responses 请求、runtime accountRouting 池计数和 sticky session；有 2 个以上 ready account 时扩展验证 round-robin，多账号强制验收使用 `--require-multi-account`。
+- Account pool smoke：`scripts/smoke-model-gateway-account-pool.mjs` 验证真实 daemon active account provider、Responses 请求、runtime accountRouting 池计数和 sticky session；单个 ready account 即可完成默认验收，有 2 个以上 ready account 时扩展验证 round-robin，多账号强制验收必须显式使用 `--require-multi-account`。
 - 真实 live smoke 至少覆盖 Codex account：Responses non-stream、Responses stream、Responses compact、Chat-compatible adapter、Anthropic Messages adapter、Claude Code CLI 和 OpenCode tools。
 - Media smoke：`scripts/smoke-model-gateway-account-media.mjs` 低成本验证 catalog、image edits route 和 Codex account audio unsupported；Codex account Images generation 需要显式 `--run-image-generation`，且必须确认路由实际命中 `codex-account` 后才能记为 account proof。2026-06-15 已强制 `openclaw=codex-account` 跑通 `--require-image-generation`，`gpt-image-2` 返回 1 张图和 usage；OpenAI-compatible image edits 和音频 transcription 用 multipart 文件验证请求体不被 Gateway 改写。
 - UI smoke 覆盖账户登录向导、账户表、禁用/刷新、模型别名和 redaction。

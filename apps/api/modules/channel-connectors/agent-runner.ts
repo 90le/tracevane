@@ -23,6 +23,7 @@ export interface ChannelConnectorAgentProcessRequest {
   stdin: string;
   env: Record<string, string>;
   timeoutMs: number;
+  idleTimeoutMs?: number | null;
   nativeCommand?: string | null;
   signal?: AbortSignal | null;
   cleanupPaths?: string[];
@@ -155,6 +156,27 @@ function nowIso(): string {
 function truncateText(value: string, maxLength = 400): string {
   const normalized = value.trim();
   return normalized.length > maxLength ? `${normalized.slice(0, maxLength - 1)}...` : normalized;
+}
+
+function agentProcessHeartbeatTimeoutMessage(input: {
+  agent: ChannelConnectorAgentId;
+  timeoutMs: number;
+  lastActivityReason: string;
+  lastActivityAtMs: number;
+  startedAtMs: number;
+}): string {
+  const seconds = Math.max(1, Math.round(input.timeoutMs / 1000));
+  const elapsedSeconds = Math.max(0, Math.round((Date.now() - input.startedAtMs) / 1000));
+  const lastActivitySeconds = Math.max(0, Math.round((Date.now() - input.lastActivityAtMs) / 1000));
+  const since = input.lastActivityReason === "process-start"
+    ? "since process start"
+    : `since last ${input.lastActivityReason}`;
+  return [
+    `Agent process heartbeat timed out after ${seconds}s without stdout/stderr ${since}.`,
+    `${input.agent} may be stalled in the CLI, Gateway request, adapter, or upstream network path.`,
+    `Studio terminated it after ${elapsedSeconds}s because the CLI stopped emitting liveness output.`,
+    input.lastActivityReason === "process-start" ? "" : `Last activity was ${lastActivitySeconds}s ago.`,
+  ].filter(Boolean).join(" ");
 }
 
 export function truncateProgressText(value: string, maxLength = 1200): string {
@@ -1911,6 +1933,10 @@ export async function defaultChannelConnectorAgentProcessRunner(
       stdio: ["pipe", "pipe", "pipe"],
     });
     const isClaudeCode = request.agent === "claude-code";
+    const usesHeartbeatTimeout = request.agent === "codex";
+    const heartbeatTimeoutMs = typeof request.idleTimeoutMs === "number" && Number.isFinite(request.idleTimeoutMs)
+      ? Math.max(0, Math.floor(request.idleTimeoutMs))
+      : request.timeoutMs;
     const progressParser = createProgressLineParser(request.agent);
     let stdout = "";
     let stderr = "";
@@ -1918,8 +1944,16 @@ export async function defaultChannelConnectorAgentProcessRunner(
     const progressEvents: ChannelConnectorAgentProgressEvent[] = [];
     let settled = false;
     let timedOut = false;
+    let timeoutErrorMessage: string | null = null;
     let cancelled = false;
     let stdinClosed = false;
+    let lastActivityAtMs = startedAt;
+    let lastActivityReason = "process-start";
+    let timeout: NodeJS.Timeout | null = null;
+    const emitProgress = (event: ChannelConnectorAgentProgressEvent): void => {
+      progressEvents.push(event);
+      request.onProgress?.(event);
+    };
     const closeStdin = (): void => {
       if (stdinClosed || child.stdin.destroyed) return;
       stdinClosed = true;
@@ -1960,13 +1994,42 @@ export async function defaultChannelConnectorAgentProcessRunner(
       terminateChild();
     };
     request.signal?.addEventListener("abort", abortListener, { once: true });
-    const timeout = setTimeout(() => {
-      timedOut = true;
-      terminateChild();
-    }, request.timeoutMs);
+    const armTimeout = (): void => {
+      if (timeout) clearTimeout(timeout);
+      if (settled) return;
+      if (usesHeartbeatTimeout && heartbeatTimeoutMs <= 0) return;
+      const timeoutMs = usesHeartbeatTimeout ? heartbeatTimeoutMs : request.timeoutMs;
+      timeout = setTimeout(() => {
+        timedOut = true;
+        timeoutErrorMessage = usesHeartbeatTimeout
+          ? agentProcessHeartbeatTimeoutMessage({
+            agent: request.agent,
+            timeoutMs,
+            lastActivityReason,
+            lastActivityAtMs,
+            startedAtMs: startedAt,
+          })
+          : "Agent process timed out.";
+        if (usesHeartbeatTimeout) {
+          emitProgress(progressEvent({
+            type: "failed",
+            rawType: "process/heartbeat-timeout",
+            text: timeoutErrorMessage,
+          }));
+        }
+        terminateChild();
+      }, timeoutMs);
+    };
+    const markActivity = (reason: string): void => {
+      if (!usesHeartbeatTimeout) return;
+      lastActivityAtMs = Date.now();
+      lastActivityReason = reason;
+      armTimeout();
+    };
+    armTimeout();
     const settle = (): void => {
       settled = true;
-      clearTimeout(timeout);
+      if (timeout) clearTimeout(timeout);
       request.signal?.removeEventListener("abort", abortListener);
     };
 
@@ -1976,19 +2039,20 @@ export async function defaultChannelConnectorAgentProcessRunner(
       stderr += `\nstdin error: ${error.message}`;
     });
     child.stdout.on("data", (chunk) => {
+      markActivity("stdout");
       stdout += chunk;
       stdoutLineBuffer += chunk;
       const lines = stdoutLineBuffer.split(/\r?\n/);
       stdoutLineBuffer = lines.pop() || "";
       for (const line of lines) {
         for (const event of progressParser.parse(line)) {
-          progressEvents.push(event);
-          request.onProgress?.(event);
+          emitProgress(event);
         }
         if (isClaudeCode) void handleClaudeCodeLine(line);
       }
     });
     child.stderr.on("data", (chunk) => {
+      markActivity("stderr");
       stderr += chunk;
     });
     child.on("error", (error) => {
@@ -2011,12 +2075,10 @@ export async function defaultChannelConnectorAgentProcessRunner(
       if (settled) return;
       settle();
       for (const trailingEvent of progressParser.parse(stdoutLineBuffer)) {
-        progressEvents.push(trailingEvent);
-        request.onProgress?.(trailingEvent);
+        emitProgress(trailingEvent);
       }
       for (const trailingEvent of progressParser.flushFinal()) {
-        progressEvents.push(trailingEvent);
-        request.onProgress?.(trailingEvent);
+        emitProgress(trailingEvent);
       }
       if (isClaudeCode && stdoutLineBuffer) void handleClaudeCodeLine(stdoutLineBuffer);
       cleanupChannelConnectorAgentProcessRequest(request);
@@ -2030,7 +2092,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
         cancelled,
         error: cancelled
           ? "Agent process cancelled."
-          : timedOut ? "Agent process timed out." : null,
+          : timedOut ? timeoutErrorMessage || "Agent process timed out." : null,
         progressEvents,
       });
     });
