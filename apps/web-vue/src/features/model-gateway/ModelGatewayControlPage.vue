@@ -5,7 +5,7 @@
         <p class="eyebrow">Studio Gateway</p>
         <h2 class="page-title">{{ text('模型网关', 'Model Gateway') }}</h2>
         <p class="page-copy">
-          {{ text('统一管理本地 Gateway daemon、provider、路由和 smoke，供 Codex、Claude Code、OpenCode、OpenClaw 等客户端接入。', 'Manage the local Gateway daemon, providers, routing, and smoke checks for Codex, Claude Code, OpenCode, OpenClaw, and other clients.') }}
+          {{ text('统一管理本地 Gateway daemon、服务商、客户端接入、模型消耗和 smoke 检查。', 'Manage the local Gateway daemon, providers, client connections, model usage, and smoke checks.') }}
         </p>
       </div>
       <div class="page-actions">
@@ -23,7 +23,32 @@
     </div>
 
     <section class="mgw-layout">
-      <aside class="mgw-runtime-rail">
+      <main class="mgw-main">
+        <nav class="mgw-workspace-tabs" role="tablist" aria-label="Model Gateway workspace">
+          <button
+            v-for="tab in workspaceTabs"
+            :id="`mgw-tab-${tab.id}`"
+            :key="tab.id"
+            type="button"
+            role="tab"
+            class="surface-tab mgw-workspace-tab"
+            :class="{ active: activeWorkspaceTab === tab.id }"
+            :aria-selected="activeWorkspaceTab === tab.id"
+            :aria-controls="`mgw-panel-${tab.id}`"
+            :tabindex="activeWorkspaceTab === tab.id ? 0 : -1"
+            @click="activeWorkspaceTab = tab.id"
+          >
+            {{ text(tab.zh, tab.en) }}
+          </button>
+        </nav>
+
+        <div
+          v-show="activeWorkspaceTab === 'overview'"
+          id="mgw-panel-overview"
+          class="mgw-overview-stack"
+          role="tabpanel"
+          aria-labelledby="mgw-tab-overview"
+        >
         <article class="mgw-panel mgw-runtime-panel">
           <div class="mgw-panel-head">
             <div>
@@ -148,89 +173,7 @@
             <code>{{ clientAuthReveal }}</code>
           </div>
         </article>
-
-        <article class="mgw-panel">
-          <div class="mgw-panel-head">
-            <div>
-              <p class="eyebrow">Routes</p>
-              <h3>{{ text('Active routing', 'Active routing') }}</h3>
-            </div>
-          </div>
-
-          <div class="mgw-route-list">
-            <section v-for="scope in appScopeOptions" :key="scope.id" class="mgw-route-row">
-              <span>
-                <strong>{{ text(scope.zh, scope.en) }}</strong>
-                <small>{{ scopeHint(scope.id) }}</small>
-              </span>
-              <div class="mgw-route-control">
-                <select class="form-input" :value="activeProviderForScope(scope.id)" :disabled="busy" @change="updateActiveProvider(scope.id, $event)">
-                  <option value="">{{ text('自动选择 / 未设置', 'Auto / unset') }}</option>
-                  <option v-for="provider in providersForScope(scope.id)" :key="provider.id" :value="provider.id">
-                    {{ provider.name }}
-                  </option>
-                </select>
-                <div class="mgw-route-state">
-                  <StatusPill
-                    :label="activeRouteStateLabel(activeRouteStatusForScope(scope.id))"
-                    :tone="activeRouteStateTone(activeRouteStatusForScope(scope.id))"
-                  />
-                  <small>{{ activeRouteStatusForScope(scope.id)?.message || '-' }}</small>
-                  <small
-                    v-if="activeRouteTargetLine(activeRouteStatusForScope(scope.id))"
-                    :title="activeRouteStatusForScope(scope.id)?.upstreamUrl || undefined"
-                  >
-                    {{ activeRouteTargetLine(activeRouteStatusForScope(scope.id)) }}
-                  </small>
-                </div>
-                <div v-if="activeRouteSmokeResultForScope(scope.id)" class="mgw-route-smoke" :class="activeRouteSmokeResultForScope(scope.id)?.ok ? 'success' : 'failure'">
-                  <small>
-                    {{ activeRouteSmokeResultForScope(scope.id)?.ok ? text('Smoke 通过', 'Smoke passed') : text('Smoke 失败', 'Smoke failed') }}
-                    · {{ activeRouteSmokeResultForScope(scope.id)?.latencyMs }} ms
-                  </small>
-                  <small
-                    v-if="activeRouteSmokeTargetLine(activeRouteSmokeResultForScope(scope.id))"
-                    :title="activeRouteSmokeResultForScope(scope.id)?.route.upstreamUrl || undefined"
-                  >
-                    {{ activeRouteSmokeTargetLine(activeRouteSmokeResultForScope(scope.id)) }}
-                  </small>
-                </div>
-                <button
-                  type="button"
-                  class="secondary-button compact-button"
-                  :disabled="isActiveRouteSmokeBusy(scope.id) || !activeRouteStatusForScope(scope.id)?.resolvedProviderId"
-                  @click="runActiveRouteSmoke(scope.id)"
-                >
-                  {{ isActiveRouteSmokeBusy(scope.id) ? text('验证中...', 'Checking...') : text('验证', 'Smoke') }}
-                </button>
-              </div>
-            </section>
-          </div>
-
-          <div v-if="activeRouteAlerts.length" class="mgw-route-alerts">
-            <span v-for="alert in activeRouteAlerts" :key="alert">{{ alert }}</span>
-          </div>
-        </article>
-      </aside>
-
-      <main class="mgw-main">
-        <nav class="mgw-workspace-tabs" role="tablist" aria-label="Model Gateway workspace">
-          <button
-            v-for="tab in workspaceTabs"
-            :id="`mgw-tab-${tab.id}`"
-            :key="tab.id"
-            type="button"
-            role="tab"
-            class="surface-tab mgw-workspace-tab"
-            :class="{ active: activeWorkspaceTab === tab.id }"
-            :aria-selected="activeWorkspaceTab === tab.id"
-            :aria-controls="`mgw-panel-${tab.id}`"
-            :tabindex="activeWorkspaceTab === tab.id ? 0 : -1"
-            @click="activeWorkspaceTab = tab.id"
-          >
-            {{ text(tab.zh, tab.en) }}
-          </button>
-        </nav>
+        </div>
 
         <article
           v-show="activeWorkspaceTab === 'connections'"
@@ -425,38 +368,27 @@
         >
           <div class="mgw-panel-head">
             <div>
-              <p class="eyebrow">Provider Center</p>
-              <h3>{{ text('Provider 配置', 'Provider configuration') }}</h3>
+              <p class="eyebrow">{{ text('服务商中心', 'Provider Center') }}</p>
+              <h3>{{ text('服务商', 'Providers') }}</h3>
             </div>
-            <button type="button" class="secondary-button compact-button" @click="resetDraft">
-              {{ text('新建', 'New') }}
+            <button type="button" class="primary-button compact-button" @click="openProviderCreateDialog">
+              <Plus class="mgw-button-icon" aria-hidden="true" />
+              <span>{{ text('新建服务商', 'New provider') }}</span>
             </button>
           </div>
 
-          <div class="mgw-template-strip" aria-label="Native protocol templates">
-            <button
-              v-for="template in protocolTemplates"
-              :key="template.id"
-              type="button"
-              class="surface-tab"
-              :class="{ active: draft.templateId === template.id }"
-              @click="applyProtocolTemplate(template)"
-            >
-              {{ template.label }}
-            </button>
-          </div>
           <p class="mgw-note mgw-template-note">
-            {{ text('这里只选择上游原生协议。自定义服务商也是三种协议之一；不确定时先填 Base URL 和 API Key，再点识别配置。', 'Choose the upstream native protocol here. Custom providers still use one of the three protocols; if unsure, enter Base URL and API key, then detect the configuration.') }}
+            {{ text('这里仅保留服务商列表和一个新建入口；创建类型和详细配置都在弹层里完成。', 'This page keeps only the provider list and one creation entry; type selection and detailed settings live in the dialog.') }}
           </p>
 
-          <section class="mgw-account-login-card">
+          <section v-if="codexLoginStart || codexLoginProviderSummary" class="mgw-account-login-card">
             <div class="mgw-account-login-card__main">
               <div>
-                <p class="eyebrow">Account provider</p>
+                <p class="eyebrow">{{ text('账户服务商', 'Account provider') }}</p>
                 <h4>{{ text('登录 Codex / GPT 账户', 'Sign in to Codex / GPT account') }}</h4>
               </div>
               <p>
-                {{ text('在这里登录自己的 Codex/ChatGPT 账户，Studio Gateway 会自动创建本地账户型 provider；客户端仍只使用统一 Gateway key。', 'Sign in with your own Codex/ChatGPT account here. Studio Gateway creates a local account-backed provider automatically; clients still use the single Gateway key.') }}
+                {{ text('登录自己的 Codex/ChatGPT 账户后，Studio Gateway 会自动创建本地账户型服务商；客户端仍只使用统一 Gateway key。', 'Sign in with your own Codex/ChatGPT account here. Studio Gateway creates a local account-backed provider automatically; clients still use the single Gateway key.') }}
               </p>
               <div v-if="codexLoginStart" class="mgw-account-login-session">
                 <span>{{ text('验证码', 'Code') }}</span>
@@ -500,9 +432,24 @@
           </section>
 
           <div class="mgw-provider-grid">
-            <section class="mgw-provider-list" :aria-label="text('Provider 列表', 'Provider list')">
+            <section class="mgw-provider-list" :aria-label="text('服务商列表', 'Provider list')">
+              <div class="mgw-provider-list-toolbar">
+                <label class="form-field">
+                  <span class="form-label">{{ text('查找服务商', 'Find provider') }}</span>
+                  <input v-model.trim="providerSearch" class="form-input" :placeholder="text('名称、ID 或模型', 'Name, ID, or model')" />
+                </label>
+                <label class="form-field">
+                  <span class="form-label">{{ text('筛选', 'Filter') }}</span>
+                  <select v-model="providerFilter" class="form-input">
+                    <option value="all">{{ text('全部', 'All') }}</option>
+                    <option value="enabled">{{ text('启用', 'Enabled') }}</option>
+                    <option value="account">{{ text('账户型', 'Account') }}</option>
+                    <option value="needs-attention">{{ text('需处理', 'Needs attention') }}</option>
+                  </select>
+                </label>
+              </div>
               <button
-                v-for="provider in providers"
+                v-for="provider in filteredProviders"
                 :key="provider.id"
                 type="button"
                 class="mgw-provider-card"
@@ -519,83 +466,172 @@
                 </span>
               </button>
               <div v-if="!providers.length" class="mgw-empty">
-                {{ text('还没有 provider。选择原生协议模板，填入自己的 Base URL、模型和密钥后保存。', 'No provider yet. Pick a native protocol template, enter your own base URL, models, and key, then save.') }}
+                {{ text('还没有服务商。点击“新建服务商”开始配置。', 'No provider yet. Click New provider to start.') }}
+              </div>
+              <div v-else-if="!filteredProviders.length" class="mgw-empty">
+                {{ text('没有符合筛选的服务商。', 'No provider matches this filter.') }}
               </div>
             </section>
 
-            <form class="mgw-provider-form" @submit.prevent="saveProvider">
-              <div class="mgw-provider-form-sections">
-                <section class="mgw-config-section">
-                  <div class="mgw-config-section__head">
-                    <h4>{{ text('基础连接', 'Connection') }}</h4>
-                    <span>{{ text('服务商身份、协议、主端点和路由优先级。', 'Provider identity, native protocol, primary endpoint, and routing priority.') }}</span>
+            <div
+              v-if="providerEditorOpen"
+              class="mgw-provider-editor-overlay"
+              role="presentation"
+              @click.self="closeProviderEditor"
+            >
+              <section
+                class="mgw-provider-editor-shell"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="mgw-provider-editor-title"
+              >
+                <header class="mgw-provider-editor-head">
+                  <div>
+                    <p class="eyebrow">{{ text('服务商配置', 'Provider setup') }}</p>
+                    <h3 id="mgw-provider-editor-title">{{ providerEditorTitle }}</h3>
                   </div>
-                  <div class="mgw-form-grid">
-                <label class="form-field">
-                  <span class="form-label">{{ text('Provider ID', 'Provider ID') }}</span>
-                  <input v-model.trim="draft.id" class="form-input" placeholder="my-provider" />
-                </label>
-                <label class="form-field">
-                  <span class="form-label">{{ text('名称', 'Name') }}</span>
-                  <input v-model.trim="draft.name" class="form-input" placeholder="My Provider" />
-                </label>
-                <label class="form-field">
-                  <span class="form-label">{{ text('原生协议', 'Native protocol') }}</span>
-                  <select v-model="draft.apiFormat" class="form-input">
-                    <option v-for="format in apiFormatOptions" :key="format.id" :value="format.id">{{ format.label }}</option>
-                  </select>
-                </label>
-                <label class="form-field">
-                  <span class="form-label">{{ text('认证方式', 'Auth') }}</span>
-                  <select v-model="draft.authStrategy" class="form-input">
-                    <option v-for="strategy in authStrategyOptions" :key="strategy.id" :value="strategy.id">{{ strategy.label }}</option>
-                  </select>
-                </label>
-                <label class="form-field mgw-switch-field">
-                  <span>
-                    <span class="form-label">{{ text('Provider 状态', 'Provider status') }}</span>
-                    <strong>{{ draft.enabled ? text('启用', 'Enabled') : text('停用', 'Disabled') }}</strong>
-                  </span>
-                  <input v-model="draft.enabled" type="checkbox" />
-                </label>
-                <label class="form-field">
-                  <span class="form-label">{{ text('路由优先级', 'Routing priority') }}</span>
-                  <input v-model.number="draft.priority" class="form-input" type="number" min="0" step="1" />
-                  <span class="field-hint">{{ text('数字越小越优先；同模型跨 Provider 时按优先级自动选择和切换。', 'Lower numbers win; providers sharing the same model are selected and switched by priority.') }}</span>
-                </label>
-                <label class="form-field form-field-full">
-                  <span class="form-label">Base URL</span>
-                  <input v-model.trim="draft.baseUrl" class="form-input" placeholder="https://api.example.com/v1" />
-                  <span class="field-hint">{{ text('这里是上游 API 前缀，Gateway 不会自动追加 /v1。', 'This is the upstream API prefix; Gateway will not append /v1 automatically.') }}</span>
-                </label>
+                  <button type="button" class="mgw-icon-button" :aria-label="text('关闭', 'Close')" @click="closeProviderEditor">
+                    <X class="mgw-icon-button__icon" aria-hidden="true" />
+                  </button>
+                </header>
+
+                <div v-if="!selectedProviderView" class="mgw-provider-kind-panel">
+                  <div class="mgw-provider-kind-panel__head">
+                    <strong>{{ text('选择创建类型', 'Choose provider type') }}</strong>
+                    <span>{{ text('先选接入方式，再填写对应配置。', 'Choose the connection method first, then fill only the relevant fields.') }}</span>
+                  </div>
+                  <div class="mgw-provider-kind-options" role="radiogroup" :aria-label="text('服务商类型', 'Provider type')">
+                    <label
+                      v-for="option in providerCreateKindOptions"
+                      :key="option.id"
+                      class="mgw-provider-kind-option"
+                      :class="{ active: providerCreateKind === option.id }"
+                    >
+                      <input
+                        type="radio"
+                        name="provider-create-kind"
+                        :value="option.id"
+                        :checked="providerCreateKind === option.id"
+                        @change="selectProviderCreateKind(option.id)"
+                      />
+                      <span>
+                        <strong>{{ text(option.zh, option.en) }}</strong>
+                        <small>{{ text(option.descriptionZh, option.descriptionEn) }}</small>
+                      </span>
+                    </label>
+                  </div>
+                </div>
+
+                <section v-if="providerCreateKind === 'account' && !selectedProviderView" class="mgw-provider-account-create">
+                  <div class="mgw-config-section__head">
+                    <h4>{{ text('账户登录', 'Account sign-in') }}</h4>
+                    <span>{{ text('适合直接使用自己的 Codex / GPT 账号。Studio 会创建账户型服务商，客户端仍只使用统一 Gateway key。', 'Use your own Codex / GPT account. Studio creates an account-backed provider while clients keep using the single Gateway key.') }}</span>
+                  </div>
+                  <div v-if="codexLoginStart" class="mgw-account-login-session">
+                    <span>{{ text('验证码', 'Code') }}</span>
+                    <strong>{{ codexLoginStart.userCode }}</strong>
+                    <a :href="codexLoginStart.verificationUrl" target="_blank" rel="noreferrer">
+                      {{ codexLoginStart.verificationUrl }}
+                    </a>
+                    <a
+                      class="secondary-button compact-button mgw-account-login-open"
+                      :href="codexLoginStart.verificationUrl"
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {{ text('打开官方授权页', 'Open authorization page') }}
+                    </a>
+                    <small>{{ codexLoginStatusText }}</small>
+                  </div>
+                  <div v-if="codexLoginProviderSummary" class="mgw-account-login-provider">
+                    <strong>{{ codexLoginProviderSummary }}</strong>
+                  </div>
+                  <div class="mgw-provider-account-create__actions">
+                    <button
+                      type="button"
+                      class="primary-button compact-button"
+                      :disabled="codexLoginBusy"
+                      @click="startCodexAccountLoginFlow()"
+                    >
+                      {{ codexLoginBusy ? text('登录中...', 'Signing in...') : text('开始登录', 'Start sign-in') }}
+                    </button>
+                    <button
+                      v-if="codexLoginStart"
+                      type="button"
+                      class="secondary-button compact-button"
+                      :disabled="codexLoginBusy"
+                      @click="pollCodexAccountLoginOnce"
+                    >
+                      {{ text('检查登录', 'Check login') }}
+                    </button>
+                  </div>
+                </section>
+
+            <form v-else class="mgw-provider-form" @submit.prevent="saveProvider">
+              <div class="mgw-provider-form-sections">
+                <section class="mgw-config-section mgw-provider-basic-section">
+                  <div class="mgw-config-section__head">
+                    <h4>{{ text('基础配置', 'Basic setup') }}</h4>
+                    <span>{{ selectedProviderIsAccount ? text('账户型服务商只需要维护名称、启停和账号状态。', 'Account-backed providers only need name, enabled state, and account status.') : text('常用配置只保留名称、上游地址、密钥和协议。', 'Common setup keeps only name, upstream URL, key, and protocol.') }}</span>
+                  </div>
+                  <div class="mgw-form-grid mgw-provider-basic-grid">
+                    <label class="form-field">
+                      <span class="form-label">{{ text('服务商名称', 'Provider name') }}</span>
+                      <input v-model.trim="draft.name" class="form-input" :placeholder="text('例如：主力模型服务', 'Example: Primary model service')" />
+                    </label>
+                    <label class="form-field mgw-switch-field">
+                      <span>
+                        <span class="form-label">{{ text('状态', 'Status') }}</span>
+                        <strong>{{ draft.enabled ? text('启用', 'Enabled') : text('停用', 'Disabled') }}</strong>
+                      </span>
+                      <input v-model="draft.enabled" type="checkbox" />
+                    </label>
+                    <template v-if="!selectedProviderIsAccount">
+                      <label class="form-field form-field-full">
+                        <span class="form-label">{{ text('上游地址', 'Base URL') }}</span>
+                        <input v-model.trim="draft.baseUrl" class="form-input" placeholder="https://api.example.com/v1" />
+                        <span class="field-hint">{{ text('填写上游 API 前缀；Gateway 不会自动追加 /v1。', 'Enter the upstream API prefix; Gateway will not append /v1 automatically.') }}</span>
+                      </label>
+                      <label class="form-field">
+                        <span class="form-label">{{ text('密钥', 'API Key') }}</span>
+                        <input v-model="draft.apiKey" class="form-input" type="password" :placeholder="secretPlaceholder" />
+                      </label>
+                      <label class="form-field">
+                        <span class="form-label">{{ text('协议', 'Protocol') }}</span>
+                        <select v-model="draft.apiFormat" class="form-input">
+                          <option v-for="format in apiFormatOptions" :key="format.id" :value="format.id">{{ format.label }}</option>
+                        </select>
+                      </label>
+                      <div class="mgw-detect-card">
+                        <div class="mgw-detect-card__main">
+                          <span class="form-label">{{ text('连接检测', 'Connection check') }}</span>
+                          <strong>{{ detectStatusTitle }}</strong>
+                          <small>{{ detectStatusDetail }}</small>
+                        </div>
+                        <div class="mgw-detect-card__actions">
+                          <button type="button" class="primary-button compact-button" :disabled="detectBusy || !draft.baseUrl.trim()" @click="detectProviderConfig">
+                            {{ detectBusy ? text('识别中...', 'Detecting...') : text('识别配置', 'Detect config') }}
+                          </button>
+                          <button v-if="detectResult" type="button" class="secondary-button compact-button" @click="openDetectOverlay">
+                            {{ text('查看结果', 'View result') }}
+                          </button>
+                        </div>
+                      </div>
+                    </template>
+                    <details class="mgw-provider-advanced mgw-provider-id-details">
+                      <summary>{{ text('高级标识', 'Advanced identity') }}</summary>
+                      <label class="form-field">
+                        <span class="form-label">{{ text('服务商 ID', 'Provider ID') }}</span>
+                        <input v-model.trim="draft.id" class="form-input" placeholder="my-provider" />
+                      </label>
+                    </details>
                   </div>
                 </section>
 
                 <section v-if="selectedProviderAccounts.length" class="mgw-config-section">
                   <div class="mgw-config-section__head">
                     <h4>{{ text('账户状态', 'Accounts') }}</h4>
-                    <span>{{ text('本地账户型 provider 的启停与 token 刷新。', 'Enable, disable, and refresh local account-backed providers.') }}</span>
-                  </div>
-                  <div class="mgw-account-routing-grid">
-                    <label class="form-field">
-                      <span class="form-label">{{ text('账号池策略', 'Account strategy') }}</span>
-                      <select v-model="draft.accountRoutingStrategy" class="form-input">
-                        <option v-for="strategy in accountRoutingStrategyOptions" :key="strategy.id" :value="strategy.id">
-                          {{ text(strategy.zh, strategy.en) }}
-                        </option>
-                      </select>
-                    </label>
-                    <label class="form-field mgw-switch-field">
-                      <span>
-                        <span class="form-label">Sticky session</span>
-                        <strong>{{ draft.accountSessionAffinity ? text('开启', 'On') : text('关闭', 'Off') }}</strong>
-                      </span>
-                      <input v-model="draft.accountSessionAffinity" type="checkbox" />
-                    </label>
-                    <label class="form-field">
-                      <span class="form-label">{{ text('单账号并发', 'Per-account concurrency') }}</span>
-                      <input v-model.trim="draft.accountMaxConcurrentPerAccount" class="form-input" inputmode="numeric" placeholder="auto" />
-                    </label>
+                    <span>{{ text('账户型服务商只显示账号健康、刷新和重新登录。', 'Account-backed providers show account health, refresh, and re-login actions only.') }}</span>
                   </div>
                   <div class="mgw-account-table">
                     <div
@@ -662,47 +698,76 @@
                           {{ text('重新登录', 'Sign in again') }}
                         </button>
                       </div>
-                      <div class="mgw-account-row__proxy">
-                        <label class="form-field">
-                          <span class="form-label">{{ text('账号代理', 'Account proxy') }}</span>
-                          <input
-                            class="form-input"
-                            :value="accountProxyDraftValue(account)"
-                            placeholder="http://127.0.0.1:7890"
-                            @input="updateAccountProxyDraft(account, $event)"
-                          />
-                        </label>
-                        <button
-                          type="button"
-                          class="secondary-button compact-button"
-                          :disabled="isAccountBusy(account, 'proxy') || !isAccountProxyDirty(account)"
-                          @click="saveProviderAccountProxyDraft(account)"
-                        >
-                          {{ isAccountBusy(account, 'proxy') ? text('保存中...', 'Saving...') : text('保存代理', 'Save proxy') }}
-                        </button>
-                        <button
-                          type="button"
-                          class="secondary-button compact-button"
-                          :disabled="isAccountBusy(account, 'proxy') || (!account.proxyUrl && !accountProxyDraftValue(account).trim())"
-                          @click="clearProviderAccountProxy(account)"
-                        >
-                          {{ text('直连', 'Direct') }}
-                        </button>
-                      </div>
+                      <details class="mgw-account-row__advanced">
+                        <summary>{{ text('账号高级', 'Account advanced') }}</summary>
+                        <div class="mgw-account-row__proxy">
+                          <label class="form-field">
+                            <span class="form-label">{{ text('账号代理', 'Account proxy') }}</span>
+                            <input
+                              class="form-input"
+                              :value="accountProxyDraftValue(account)"
+                              placeholder="http://127.0.0.1:7890"
+                              @input="updateAccountProxyDraft(account, $event)"
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            class="secondary-button compact-button"
+                            :disabled="isAccountBusy(account, 'proxy') || !isAccountProxyDirty(account)"
+                            @click="saveProviderAccountProxyDraft(account)"
+                          >
+                            {{ isAccountBusy(account, 'proxy') ? text('保存中...', 'Saving...') : text('保存代理', 'Save proxy') }}
+                          </button>
+                          <button
+                            type="button"
+                            class="secondary-button compact-button"
+                            :disabled="isAccountBusy(account, 'proxy') || (!account.proxyUrl && !accountProxyDraftValue(account).trim())"
+                            @click="clearProviderAccountProxy(account)"
+                          >
+                            {{ text('直连', 'Direct') }}
+                          </button>
+                        </div>
+                      </details>
                     </div>
                   </div>
+                  <details class="mgw-provider-advanced">
+                    <summary>{{ text('账号池高级', 'Account pool advanced') }}</summary>
+                    <div class="mgw-account-routing-grid">
+                      <label class="form-field">
+                        <span class="form-label">{{ text('账号池策略', 'Account strategy') }}</span>
+                        <select v-model="draft.accountRoutingStrategy" class="form-input">
+                          <option v-for="strategy in accountRoutingStrategyOptions" :key="strategy.id" :value="strategy.id">
+                            {{ text(strategy.zh, strategy.en) }}
+                          </option>
+                        </select>
+                      </label>
+                      <label class="form-field mgw-switch-field">
+                        <span>
+                          <span class="form-label">Sticky session</span>
+                          <strong>{{ draft.accountSessionAffinity ? text('开启', 'On') : text('关闭', 'Off') }}</strong>
+                        </span>
+                        <input v-model="draft.accountSessionAffinity" type="checkbox" />
+                      </label>
+                      <label class="form-field">
+                        <span class="form-label">{{ text('单账号并发', 'Per-account concurrency') }}</span>
+                        <input v-model.trim="draft.accountMaxConcurrentPerAccount" class="form-input" inputmode="numeric" placeholder="auto" />
+                      </label>
+                    </div>
+                  </details>
                 </section>
 
-                <section class="mgw-config-section">
-                  <div class="mgw-config-section__head">
-                    <h4>{{ text('端点路由', 'Endpoint routing') }}</h4>
-                    <span>{{ text('一个 Provider 下管理多个协议端点和回退顺序。', 'Manage multiple protocol endpoints and fallback order under one provider.') }}</span>
-                  </div>
+                <details class="mgw-config-section mgw-provider-advanced">
+                  <summary>{{ text('多端点 / 多协议', 'Multi-endpoint / multi-protocol') }}</summary>
+                  <div class="mgw-provider-advanced__body">
+                    <div class="mgw-config-section__head">
+                      <h4>{{ text('端点路由', 'Endpoint routing') }}</h4>
+                      <span>{{ text('一个服务商下管理多个协议端点和回退顺序。', 'Manage multiple protocol endpoints and fallback order under one provider.') }}</span>
+                    </div>
                 <div class="mgw-endpoint-profile-list form-field-full" data-testid="gateway-endpoint-profile-editor">
                   <div class="mgw-endpoint-profile-list__head">
                     <span>
                       <span class="form-label">{{ text('Endpoint profiles', 'Endpoint profiles') }}</span>
-                      <small>{{ text('同一 Provider 可挂多个协议端点；客户端会优先命中原生协议，并按 endpoint 健康状态回退。', 'One provider can own multiple protocol endpoints; clients prefer native protocol and fall back by endpoint health.') }}</small>
+                      <small>{{ text('同一服务商可挂多个协议端点；客户端会优先命中原生协议，并按 endpoint 健康状态回退。', 'One provider can own multiple protocol endpoints; clients prefer native protocol and fall back by endpoint health.') }}</small>
                     </span>
                     <div class="mgw-endpoint-profile-actions">
                       <button type="button" class="secondary-button compact-button" @click="addEndpointProfileRow()">
@@ -799,41 +864,14 @@
                       </div>
                     </div>
                   </div>
-                </div>
-                </section>
+                  </div>
+                  </div>
+                </details>
 
                 <section class="mgw-config-section">
                   <div class="mgw-config-section__head">
-                    <h4>{{ text('密钥与识别', 'Key and detect') }}</h4>
-                    <span>{{ text('保存上游密钥，或自动识别协议与模型。', 'Save the upstream key or detect protocols and models.') }}</span>
-                  </div>
-                  <div class="mgw-form-grid">
-                <label class="form-field">
-                  <span class="form-label">API Key</span>
-                  <input v-model="draft.apiKey" class="form-input" type="password" :placeholder="secretPlaceholder" />
-                </label>
-                <div class="mgw-detect-card">
-                  <div class="mgw-detect-card__main">
-                    <span class="form-label">{{ text('连接检测', 'Connection check') }}</span>
-                    <strong>{{ detectStatusTitle }}</strong>
-                    <small>{{ detectStatusDetail }}</small>
-                  </div>
-                  <div class="mgw-detect-card__actions">
-                    <button type="button" class="primary-button compact-button" :disabled="detectBusy || !draft.baseUrl.trim()" @click="detectProviderConfig">
-                      {{ detectBusy ? text('识别中...', 'Detecting...') : text('识别配置', 'Detect config') }}
-                    </button>
-                    <button v-if="detectResult" type="button" class="secondary-button compact-button" @click="openDetectOverlay">
-                      {{ text('查看结果', 'View result') }}
-                    </button>
-                  </div>
-                </div>
-                  </div>
-                </section>
-
-                <section class="mgw-config-section">
-                  <div class="mgw-config-section__head">
-                    <h4>{{ text('模型目录', 'Model catalog') }}</h4>
-                    <span>{{ text('只维护模型名称和别名；预算和能力可批量补齐。', 'Maintain model names and aliases; budgets and capabilities can be filled in bulk.') }}</span>
+                    <h4>{{ text('模型', 'Models') }}</h4>
+                    <span>{{ text('先填默认模型；需要更多模型时再添加列表、预算和能力。', 'Set the default model first; add the list, budgets, and capabilities only when needed.') }}</span>
                   </div>
                   <div class="mgw-form-grid">
                 <label class="form-field">
@@ -999,17 +1037,30 @@
                       </details>
                     </div>
                   </div>
-                  <span class="field-hint">{{ text('同一 Provider 内模型名称和别名不能重复；不同 Provider 允许同名模型，用于优先级和负载切换。', 'Model names and aliases must be unique inside one provider; different providers may share model names for priority and failover routing.') }}</span>
+                  <span class="field-hint">{{ text('同一服务商内模型名称和别名不能重复；不同服务商允许同名模型，用于优先级和负载切换。', 'Model names and aliases must be unique inside one provider; different providers may share model names for priority and failover routing.') }}</span>
                 </div>
                   </div>
                 </section>
 
-                <section class="mgw-config-section">
-                  <div class="mgw-config-section__head">
-                    <h4>{{ text('高级覆盖', 'Advanced overrides') }}</h4>
-                    <span>{{ text('只在服务商路径或网络环境特殊时配置。', 'Use only for special provider paths or network environments.') }}</span>
-                  </div>
+                <details class="mgw-config-section mgw-provider-advanced">
+                  <summary>{{ text('高级连接', 'Advanced connection') }}</summary>
+                  <div class="mgw-provider-advanced__body">
+                    <div class="mgw-config-section__head">
+                      <h4>{{ text('高级覆盖', 'Advanced overrides') }}</h4>
+                      <span>{{ text('只在服务商路径、认证方式或网络环境特殊时配置。', 'Use only for special provider paths, auth, or network environments.') }}</span>
+                    </div>
                   <div class="mgw-form-grid">
+                <label class="form-field">
+                  <span class="form-label">{{ text('认证方式', 'Auth') }}</span>
+                  <select v-model="draft.authStrategy" class="form-input">
+                    <option v-for="strategy in authStrategyOptions" :key="strategy.id" :value="strategy.id">{{ strategy.label }}</option>
+                  </select>
+                </label>
+                <label class="form-field">
+                  <span class="form-label">{{ text('路由优先级', 'Routing priority') }}</span>
+                  <input v-model.number="draft.priority" class="form-input" type="number" min="0" step="1" />
+                  <span class="field-hint">{{ text('数字越小越优先；同模型跨服务商时按优先级自动选择。', 'Lower numbers win when providers share a model.') }}</span>
+                </label>
                 <label class="form-field">
                   <span class="form-label">{{ text('Anthropic endpoint override', 'Anthropic endpoint override') }}</span>
                   <input v-model.trim="draft.anthropicEndpoint" class="form-input" placeholder="/messages" />
@@ -1027,31 +1078,42 @@
                   <input v-model.trim="draft.noProxy" class="form-input" placeholder="localhost,127.0.0.1" />
                 </label>
                   </div>
-                </section>
+                  </div>
+                </details>
               </div>
 
               <section class="mgw-config-section mgw-scope-section">
                 <div class="mgw-config-section__head">
-                  <h4>{{ text('可用范围', 'Available scopes') }}</h4>
-                  <span>{{ text('选择哪些客户端可以使用这个 Provider。', 'Choose which clients can use this provider.') }}</span>
+                  <h4>{{ text('使用范围与检查', 'Scopes & health') }}</h4>
+                  <span>{{ text('选择客户端范围；保存后可直接检查服务商是否可用。', 'Choose client scopes; after saving, check whether this provider works.') }}</span>
                 </div>
-                <div class="mgw-scope-picker">
-                  <label v-for="scope in appScopeOptions" :key="scope.id" class="mgw-check">
-                    <input v-model="draft.appScopes[scope.id]" type="checkbox" />
-                    <span>{{ text(scope.zh, scope.en) }}</span>
-                  </label>
+                <div class="mgw-provider-final-grid">
+                  <div class="mgw-scope-picker">
+                    <label v-for="scope in appScopeOptions" :key="scope.id" class="mgw-check">
+                      <input v-model="draft.appScopes[scope.id]" type="checkbox" />
+                      <span>{{ text(scope.zh, scope.en) }}</span>
+                    </label>
+                  </div>
+                  <div class="mgw-provider-health-row">
+                    <button type="button" class="secondary-button compact-button" :disabled="smokeBusy || !providerExists(draft.id)" @click="runProviderSmokeFromDraft">
+                      {{ smokeBusy ? text('测试中...', 'Testing...') : text('测试当前服务商', 'Test current provider') }}
+                    </button>
+                    <span>{{ providerHealthSummary }}</span>
+                  </div>
                 </div>
               </section>
 
               <div class="mgw-button-row mgw-form-actions">
                 <button type="submit" class="primary-button" :disabled="busy || !canSaveProvider">
-                  {{ busy ? text('保存中...', 'Saving...') : text('保存 Provider', 'Save provider') }}
+                  {{ busy ? text('保存中...', 'Saving...') : text('保存服务商', 'Save provider') }}
                 </button>
                 <button v-if="draft.id && providerExists(draft.id)" type="button" class="danger-link" :disabled="busy" @click="removeProvider(draft.id)">
                   {{ text('删除', 'Delete') }}
                 </button>
               </div>
             </form>
+              </section>
+            </div>
           </div>
         </article>
 
@@ -1130,16 +1192,16 @@
         </article>
 
         <article
-          v-show="activeWorkspaceTab === 'smoke'"
-          id="mgw-panel-smoke"
+          v-show="activeWorkspaceTab === 'checks'"
+          id="mgw-panel-checks"
           class="mgw-panel mgw-workspace-panel"
           role="tabpanel"
-          aria-labelledby="mgw-tab-smoke"
+          aria-labelledby="mgw-tab-checks"
         >
           <div class="mgw-panel-head">
             <div>
-              <p class="eyebrow">Smoke</p>
-              <h3>{{ text('协议 smoke', 'Protocol smoke') }}</h3>
+              <p class="eyebrow">Checks</p>
+              <h3>{{ text('检查与日志', 'Checks & Logs') }}</h3>
             </div>
             <div class="mgw-panel-actions">
               <button type="button" class="secondary-button compact-button" :disabled="smokeBusy || visionSmokeBusy || !smokeProviderId" @click="runVisionSmoke">
@@ -1153,7 +1215,7 @@
 
           <div class="mgw-smoke-grid">
             <label class="form-field">
-              <span class="form-label">Provider</span>
+              <span class="form-label">{{ text('服务商', 'Provider') }}</span>
               <select v-model="smokeProviderId" class="form-input">
                 <option v-for="provider in providers" :key="provider.id" :value="provider.id">{{ provider.name }}</option>
               </select>
@@ -1180,7 +1242,7 @@
           <section class="mgw-media-status" aria-label="Gateway media model status">
             <div class="mgw-media-status__head">
               <strong>{{ text('媒体模型状态', 'Media model status') }}</strong>
-              <small>{{ text('来自已启用 Provider 的模型能力标记。', 'Based on capability flags from enabled providers.') }}</small>
+              <small>{{ text('来自已启用服务商的模型能力标记。', 'Based on capability flags from enabled providers.') }}</small>
             </div>
             <div class="mgw-media-status__grid">
               <div v-for="bucket in mediaCatalogBuckets" :key="bucket.id" class="mgw-media-status__item">
@@ -1260,7 +1322,7 @@
         <section class="mgw-detect-popover" role="dialog" aria-modal="true" aria-labelledby="mgw-detect-title">
           <header class="mgw-detect-popover__head">
             <div>
-              <p class="eyebrow">{{ text('Provider Detect', 'Provider Detect') }}</p>
+              <p class="eyebrow">{{ text('服务商识别', 'Provider Detect') }}</p>
               <h3 id="mgw-detect-title">{{ text('识别协议与模型', 'Detect protocol and models') }}</h3>
             </div>
             <button type="button" class="mgw-icon-button" :aria-label="text('关闭', 'Close')" @click="closeDetectOverlay">
@@ -1350,7 +1412,6 @@ import type {
   ModelGatewayAccountRoutingDiagnostics,
   ModelGatewayAccountRoutingStrategy,
   ModelGatewayApiFormat,
-  ModelGatewayActiveRouteStatus,
   ModelGatewayAppConnection,
   ModelGatewayAppConnectionId,
   ModelGatewayAppConnectionProfile,
@@ -1400,8 +1461,6 @@ import {
   pollModelGatewayCodexAccountLogin,
   refreshModelGatewayProviderAccount,
   rollbackModelGatewayAppConnection,
-  setModelGatewayActiveProvider,
-  smokeModelGatewayActiveRoute,
   startModelGatewayCodexAccountLogin,
   testModelGatewayProvider,
   updateModelGatewayProviderAccount,
@@ -1520,8 +1579,18 @@ type DetectStep = {
   status: DetectStepStatus;
 };
 
-type WorkspaceTabId = 'connections' | 'providers' | 'usage' | 'smoke';
+type WorkspaceTabId = 'overview' | 'providers' | 'connections' | 'usage' | 'checks';
 type RuntimeLogFilterId = 'all' | 'account-routing' | 'failure' | 'cooldown-retry';
+type ProviderCreateKind = 'api-key' | 'account' | 'relay';
+type ProviderFilterId = 'all' | 'enabled' | 'account' | 'needs-attention';
+
+type ProviderCreateKindOption = {
+  id: ProviderCreateKind;
+  zh: string;
+  en: string;
+  descriptionZh: string;
+  descriptionEn: string;
+};
 
 type AppConnectionProfileDraft = {
   model: string;
@@ -1592,10 +1661,11 @@ const routeOptions: Array<{ id: ModelGatewayRouteId; label: string }> = [
 ];
 
 const workspaceTabs: Array<{ id: WorkspaceTabId; zh: string; en: string }> = [
+  { id: 'overview', zh: 'Overview', en: 'Overview' },
+  { id: 'providers', zh: 'Providers', en: 'Providers' },
   { id: 'connections', zh: '客户端接入', en: 'Client connections' },
-  { id: 'providers', zh: 'Provider 配置', en: 'Provider configuration' },
   { id: 'usage', zh: '模型消耗', en: 'Usage' },
-  { id: 'smoke', zh: 'Smoke / 日志', en: 'Smoke / Logs' },
+  { id: 'checks', zh: '检查与日志', en: 'Checks & Logs' },
 ];
 const runtimeLogFilterOptions: Array<{ id: RuntimeLogFilterId; zh: string; en: string }> = [
   { id: 'all', zh: '全部', en: 'All' },
@@ -1606,6 +1676,30 @@ const runtimeLogFilterOptions: Array<{ id: RuntimeLogFilterId; zh: string; en: s
 const accountRoutingStrategyOptions: Array<{ id: ModelGatewayAccountRoutingStrategy; zh: string; en: string }> = [
   { id: 'round-robin', zh: '轮转', en: 'Round robin' },
   { id: 'fill-first', zh: '填满优先', en: 'Fill first' },
+];
+
+const providerCreateKindOptions: ProviderCreateKindOption[] = [
+  {
+    id: 'api-key',
+    zh: 'API Key 接入',
+    en: 'API key',
+    descriptionZh: '填写上游地址、密钥和模型，适合大多数兼容服务。',
+    descriptionEn: 'Use an upstream URL, key, and models for most compatible services.',
+  },
+  {
+    id: 'account',
+    zh: '账户登录',
+    en: 'Account sign-in',
+    descriptionZh: '登录 Codex / GPT 账号，由 Gateway 自动创建账户型服务商。',
+    descriptionEn: 'Sign in to Codex / GPT; Gateway creates the account-backed provider.',
+  },
+  {
+    id: 'relay',
+    zh: '中继服务',
+    en: 'Relay',
+    descriptionZh: '接入自建中继或转发服务，默认使用 OpenAI Chat 协议。',
+    descriptionEn: 'Connect a self-hosted relay or forwarding service; OpenAI Chat is the default.',
+  },
 ];
 
 const modelCapabilityOptions: Array<{ id: ModelCapabilityId; zh: string; en: string }> = [
@@ -1672,7 +1766,7 @@ const daemonBusy = ref(false);
 const smokeBusy = ref(false);
 const visionSmokeBusy = ref(false);
 const detectBusy = ref(false);
-const activeWorkspaceTab = ref<WorkspaceTabId>('connections');
+const activeWorkspaceTab = ref<WorkspaceTabId>('overview');
 const notice = ref<{ kind: 'success' | 'error'; message: string } | null>(null);
 const status = ref<ModelGatewayStatusResponse | null>(null);
 const runtime = ref<ModelGatewayRuntimeResponse | null>(null);
@@ -1693,16 +1787,18 @@ const appConnectionProfileBusy = ref(false);
 const appConnectionApplyAllBusy = ref(false);
 const lastAutoAppConnectionBudget = ref<AppConnectionBudgetDraft | null>(null);
 const providers = ref<ModelGatewayProviderView[]>([]);
+const providerCreateKind = ref<ProviderCreateKind>('api-key');
+const providerEditorOpen = ref(false);
+const providerSearch = ref('');
+const providerFilter = ref<ProviderFilterId>('all');
 const accountBusy = ref<Record<string, boolean>>({});
 const accountProxyDrafts = ref<Record<string, string>>({});
 const activeProviders = ref<Partial<Record<ModelGatewayAppScope, string>>>({});
-const activeRouteStatuses = ref<ModelGatewayActiveRouteStatus[]>([]);
-const activeRouteAlerts = ref<string[]>([]);
-const activeRouteSmokeBusy = ref<Partial<Record<ModelGatewayAppScope, boolean>>>({});
 
 const routeWorkspaceTab = computed<WorkspaceTabId | null>(() => {
   const value = route.query.tab;
-  if (value === 'connections' || value === 'providers' || value === 'usage' || value === 'smoke') return value;
+  if (value === 'overview' || value === 'connections' || value === 'providers' || value === 'usage' || value === 'checks') return value;
+  if (value === 'smoke') return 'checks';
   return null;
 });
 
@@ -1713,7 +1809,6 @@ const routeAppConnectionId = computed<ModelGatewayAppConnectionId | null>(() => 
     ? value as ModelGatewayAppConnectionId
     : null;
 });
-const activeRouteSmokeResults = ref<Partial<Record<ModelGatewayAppScope, ModelGatewayProviderTestResponse | null>>>({});
 const endpointSmokeBusy = ref<Record<string, boolean>>({});
 const endpointSmokeResults = ref<Record<string, ModelGatewayProviderTestResponse | null>>({});
 const smokeProviderId = ref('');
@@ -1739,9 +1834,30 @@ const modelBulk = reactive<ProviderModelBulkDraft>(createModelBulkDraft());
 const selectedProviderView = computed(() =>
   providers.value.find((provider) => provider.id === draft.id) || null,
 );
+const selectedProviderIsAccount = computed(() =>
+  Boolean(selectedProviderView.value?.accountProvider),
+);
 const selectedProviderAccounts = computed<ModelGatewayAccountEntry[]>(() =>
   selectedProviderView.value?.accountProvider?.accounts || [],
 );
+
+const filteredProviders = computed<ModelGatewayProviderView[]>(() => {
+  const query = normalizeModelKey(providerSearch.value);
+  return providers.value.filter((provider) => {
+    if (providerFilter.value === 'enabled' && !provider.enabled) return false;
+    if (providerFilter.value === 'account' && !provider.accountProvider) return false;
+    if (providerFilter.value === 'needs-attention') {
+      const hasAccountIssue = provider.accountProvider?.accounts.some((account) =>
+        account.enabled && account.state !== 'ready' && account.state !== 'refreshing',
+      ) ?? false;
+      const lacksSecret = !provider.accountProvider && !provider.secret?.hasSecret;
+      if (provider.enabled && !hasAccountIssue && !lacksSecret) return false;
+    }
+    if (!query) return true;
+    const modelText = providerCatalogModels(provider).map((model) => model.id).join(' ');
+    return normalizeModelKey(`${provider.id} ${provider.name} ${modelText}`).includes(query);
+  });
+});
 
 const endpointProfilesCanSmoke = computed(() =>
   Boolean(draft.id.trim() && providerExists(draft.id.trim())),
@@ -1924,6 +2040,25 @@ const appConnectionBudgetSummary = computed(() => {
 const selectedSmokeProvider = computed(() =>
   providers.value.find((provider) => provider.id === smokeProviderId.value) || null,
 );
+
+const providerHealthSummary = computed(() => {
+  if (!draft.id.trim() || !providerExists(draft.id.trim())) {
+    return text('先保存服务商，再运行检查。', 'Save the provider before running a check.');
+  }
+  if (!smokeResult.value || smokeResult.value.providerId !== draft.id.trim()) {
+    return text('尚未检查当前服务商。', 'Current provider has not been checked yet.');
+  }
+  return smokeResult.value.ok
+    ? text(`最近通过 · ${smokeResult.value.latencyMs} ms`, `Last passed · ${smokeResult.value.latencyMs} ms`)
+    : text('最近失败，请查看检查与日志。', 'Last check failed; see Checks & Logs.');
+});
+
+const providerEditorTitle = computed(() => {
+  if (selectedProviderView.value) return selectedProviderView.value.name || draft.name || draft.id;
+  if (providerCreateKind.value === 'relay') return text('新建中继服务商', 'New relay provider');
+  if (providerCreateKind.value === 'account') return text('新建账户服务商', 'New account provider');
+  return text('新建服务商', 'New provider');
+});
 
 const draftModelIds = computed(() => modelRowsToModels(draft.modelRows).map((model) => model.id));
 const draftDefaultModelOptions = computed(() => uniqueStrings([
@@ -2194,7 +2329,9 @@ const daemonActionOutput = computed(() => {
   return [commandOutput, bootstrapOutput].filter(Boolean).join('\n\n').trim();
 });
 
-const canSaveProvider = computed(() => Boolean(draft.id.trim() && draft.name.trim() && draft.baseUrl.trim()));
+const canSaveProvider = computed(() =>
+  Boolean(draft.id.trim() && draft.name.trim() && (selectedProviderIsAccount.value || draft.baseUrl.trim())),
+);
 const canApplyAllAppConnections = computed(() =>
   appConnections.value.length > 0 && appConnections.value.every((connection) => connection.canApply),
 );
@@ -2232,8 +2369,6 @@ function isAppConnectionBusy(appId: ModelGatewayAppConnectionId): boolean {
 function applyProviderResponse(response: ModelGatewayProvidersResponse): void {
   providers.value = response.providers;
   activeProviders.value = response.activeProviders;
-  activeRouteStatuses.value = response.activeRoutes;
-  activeRouteAlerts.value = response.activeRouteAlerts;
   syncAccountProxyDrafts();
 }
 
@@ -2302,58 +2437,6 @@ function accountStateTone(account: ModelGatewayAccountEntry): 'neutral' | 'accen
   if (account.state === 'ready') return 'sage';
   if (account.state === 'refreshing' || account.state === 'cooldown') return 'accent';
   return 'danger';
-}
-
-function activeRouteStatusForScope(scope: ModelGatewayAppScope): ModelGatewayActiveRouteStatus | null {
-  return activeRouteStatuses.value.find((route) => route.scope === scope) || null;
-}
-
-function activeRouteStateLabel(route: ModelGatewayActiveRouteStatus | null): string {
-  if (!route) return text('未知', 'Unknown');
-  if (route.state === 'fixed') return text('固定', 'Fixed');
-  if (route.state === 'auto') return text('自动', 'Auto');
-  if (route.state === 'fallback') return text('回退', 'Fallback');
-  return text('缺失', 'Missing');
-}
-
-function activeRouteStateTone(route: ModelGatewayActiveRouteStatus | null): 'neutral' | 'accent' | 'sage' | 'danger' {
-  if (!route) return 'neutral';
-  if (route.state === 'fixed') return 'sage';
-  if (route.state === 'auto') return 'accent';
-  if (route.state === 'fallback') return 'neutral';
-  return 'danger';
-}
-
-function activeRouteTargetLine(route: ModelGatewayActiveRouteStatus | null): string {
-  if (!route?.resolvedProviderName) return '';
-  const target = route.resolvedEndpointProfileName
-    ? `${route.resolvedProviderName} / ${route.resolvedEndpointProfileName}`
-    : route.resolvedProviderName;
-  return [
-    target,
-    route.resolvedApiFormat,
-    route.routeMode,
-  ].filter(Boolean).join(' · ');
-}
-
-function activeRouteSmokeTargetLine(result: ModelGatewayProviderTestResponse | null): string {
-  if (!result?.route.provider) return '';
-  const target = result.route.endpointProfile
-    ? `${result.route.provider.name} / ${result.route.endpointProfile.name}`
-    : result.route.provider.name || result.providerId;
-  return [
-    target,
-    result.route.provider.apiFormat,
-    result.route.mode,
-  ].filter(Boolean).join(' · ');
-}
-
-function activeRouteSmokeResultForScope(scope: ModelGatewayAppScope): ModelGatewayProviderTestResponse | null {
-  return activeRouteSmokeResults.value[scope] || null;
-}
-
-function isActiveRouteSmokeBusy(scope: ModelGatewayAppScope): boolean {
-  return activeRouteSmokeBusy.value[scope] === true;
 }
 
 function createEmptyAppConnectionProfileDraft(): AppConnectionProfileDraft {
@@ -2672,6 +2755,21 @@ function resetDraft(): void {
   Object.assign(draft, createEmptyDraft());
   Object.assign(modelBulk, createModelBulkDraft());
   endpointSmokeResults.value = {};
+  providerCreateKind.value = 'api-key';
+}
+
+function nextProviderDraftId(kind: ProviderCreateKind): string {
+  const base = kind === 'relay'
+    ? 'relay-provider'
+    : kind === 'account'
+      ? 'account-provider'
+      : 'api-key-provider';
+  if (!providerExists(base)) return base;
+  for (let index = 2; index < 1000; index += 1) {
+    const candidate = `${base}-${index}`;
+    if (!providerExists(candidate)) return candidate;
+  }
+  return `${base}-${Date.now()}`;
 }
 
 function applyProtocolTemplate(template: ProtocolTemplate): void {
@@ -2690,7 +2788,57 @@ function applyProtocolTemplate(template: ProtocolTemplate): void {
   syncDefaultModelWithList();
 }
 
+function openProviderCreateDialog(): void {
+  selectProviderCreateKind('api-key');
+  providerEditorOpen.value = true;
+}
+
+function selectProviderCreateKind(kind: ProviderCreateKind): void {
+  providerCreateKind.value = kind;
+  detectResult.value = null;
+  detectError.value = null;
+  appliedProtocolKey.value = '';
+  if (kind === 'account') {
+    Object.assign(draft, createEmptyDraft(), {
+      id: nextProviderDraftId('account'),
+      name: text('Codex 账户服务商', 'Codex account provider'),
+      enabled: true,
+      appScopes: createEmptyScopes(true),
+    });
+    Object.assign(modelBulk, createModelBulkDraft());
+    endpointSmokeResults.value = {};
+    providerEditorOpen.value = true;
+    return;
+  }
+  if (kind === 'relay') {
+    Object.assign(draft, createEmptyDraft(), {
+      templateId: 'compatible-relay',
+      id: nextProviderDraftId('relay'),
+      category: 'custom',
+      apiFormat: 'openai_chat',
+      authStrategy: 'bearer',
+      enabled: true,
+      apiKey: '',
+      appScopes: createEmptyScopes(true),
+    });
+    Object.assign(modelBulk, createModelBulkDraft());
+    endpointSmokeResults.value = {};
+    providerEditorOpen.value = true;
+    return;
+  }
+  const template = protocolTemplates.find((entry) => entry.id === 'openai-chat') || protocolTemplates[0];
+  applyProtocolTemplate(template);
+  draft.id = nextProviderDraftId('api-key');
+  providerCreateKind.value = 'api-key';
+  providerEditorOpen.value = true;
+}
+
 function editProvider(provider: ModelGatewayProviderView): void {
+  providerCreateKind.value = provider.accountProvider
+    ? 'account'
+    : provider.sourceType === 'external-relay'
+      ? 'relay'
+      : 'api-key';
   Object.assign(draft, createEmptyDraft(), {
     templateId: '',
     id: provider.id,
@@ -2729,6 +2877,11 @@ function editProvider(provider: ModelGatewayProviderView): void {
   smokeModel.value = draft.defaultModel;
   Object.assign(modelBulk, createModelBulkDraft());
   endpointSmokeResults.value = {};
+  providerEditorOpen.value = true;
+}
+
+function closeProviderEditor(): void {
+  providerEditorOpen.value = false;
 }
 
 function providerExists(providerId: string): boolean {
@@ -3423,7 +3576,7 @@ async function refreshModelCatalogFromProvider(): Promise<void> {
     if (!response.models.length) {
       notice.value = {
         kind: 'error',
-        message: text('未从上游读取到模型目录，保留当前配置。', 'No upstream model catalog was found; current config was kept.'),
+        message: text('未从上游读取到模型列表，保留当前配置。', 'No upstream model list was found; current config was kept.'),
       };
       return;
     }
@@ -3431,12 +3584,12 @@ async function refreshModelCatalogFromProvider(): Promise<void> {
     notice.value = {
       kind: 'success',
       message: text(
-        `模型目录已刷新：新增 ${result.added}，补齐 ${result.updated}，保留 ${result.kept}。`,
-        `Model catalog refreshed: ${result.added} added, ${result.updated} filled, ${result.kept} kept.`,
+        `模型列表已刷新：新增 ${result.added}，补齐 ${result.updated}，保留 ${result.kept}。`,
+        `Model list refreshed: ${result.added} added, ${result.updated} filled, ${result.kept} kept.`,
       ),
     };
   } catch (error) {
-    detectError.value = error instanceof Error ? error.message : text('模型目录刷新失败', 'Model catalog refresh failed');
+    detectError.value = error instanceof Error ? error.message : text('模型列表刷新失败', 'Model list refresh failed');
     notice.value = {
       kind: 'error',
       message: detectError.value,
@@ -3935,6 +4088,11 @@ async function saveProvider(): Promise<void> {
     name: draft.name.trim(),
     enabled: draft.enabled,
     category: draft.category,
+    sourceType: selectedAccountProvider
+      ? 'account-backed'
+      : providerCreateKind.value === 'relay'
+        ? 'external-relay'
+        : 'api-key',
     appScopes: selectedScopes(),
     baseUrl: draft.baseUrl.trim(),
     apiFormat: draft.apiFormat,
@@ -3981,28 +4139,20 @@ async function saveProvider(): Promise<void> {
   try {
     await upsertModelGatewayProvider(payload);
     const response = await fetchModelGatewayProviders();
-    const previousActiveProviders = { ...activeProviders.value };
     applyProviderResponse(response);
     smokeProviderId.value = provider.id || smokeProviderId.value;
     smokeModel.value = models.defaultModel || smokeModel.value;
     draft.apiKey = '';
     await refreshAppConnections();
-    const clearedScopes = appScopeOptions
-      .map((scope) => scope.id)
-      .filter((scope) => previousActiveProviders[scope] === provider.id && activeProviders.value[scope] !== provider.id);
     notice.value = {
       kind: 'success',
-      message: clearedScopes.length
-        ? text(
-          `Provider 已保存；已从 ${clearedScopes.join(', ')} 的固定路由移除并回到自动选择。`,
-          `Provider saved; fixed routing was removed for ${clearedScopes.join(', ')} and now uses Auto.`,
-        )
-        : text('Provider 已保存', 'Provider saved'),
+      message: text('服务商已保存', 'Provider saved'),
     };
+    providerEditorOpen.value = false;
   } catch (error) {
     notice.value = {
       kind: 'error',
-      message: error instanceof Error ? error.message : text('Provider 保存失败', 'Provider save failed'),
+      message: error instanceof Error ? error.message : text('服务商保存失败', 'Provider save failed'),
     };
   } finally {
     busy.value = false;
@@ -4011,112 +4161,26 @@ async function saveProvider(): Promise<void> {
 
 async function removeProvider(providerId: string): Promise<void> {
   if (!providerId) return;
-  if (!window.confirm(text(`删除 provider ${providerId}？`, `Delete provider ${providerId}?`))) return;
+  if (!window.confirm(text(`删除服务商 ${providerId}？`, `Delete provider ${providerId}?`))) return;
   busy.value = true;
   try {
     const response = await deleteModelGatewayProvider(providerId);
     applyProviderResponse(response);
     resetDraft();
+    providerEditorOpen.value = false;
     ensureSelectedProvider();
     await refreshAppConnections();
     notice.value = {
       kind: 'success',
-      message: text('Provider 已删除', 'Provider deleted'),
+      message: text('服务商已删除', 'Provider deleted'),
     };
   } catch (error) {
     notice.value = {
       kind: 'error',
-      message: error instanceof Error ? error.message : text('Provider 删除失败', 'Provider delete failed'),
+      message: error instanceof Error ? error.message : text('服务商删除失败', 'Provider delete failed'),
     };
   } finally {
     busy.value = false;
-  }
-}
-
-function activeProviderForScope(scope: ModelGatewayAppScope): string {
-  return activeProviders.value[scope] || '';
-}
-
-function providersForScope(scope: ModelGatewayAppScope): ModelGatewayProviderView[] {
-  return providers.value.filter((provider) => provider.enabled && provider.appScopes.includes(scope));
-}
-
-async function updateActiveProvider(scope: ModelGatewayAppScope, event: Event): Promise<void> {
-  const providerId = (event.target as HTMLSelectElement).value || null;
-  busy.value = true;
-  notice.value = null;
-  try {
-    const response = await setModelGatewayActiveProvider({ scope, providerId });
-    applyProviderResponse(response);
-    await refreshAppConnections();
-    notice.value = {
-      kind: 'success',
-      message: text('路由已更新', 'Route updated'),
-    };
-    await runActiveRouteSmoke(scope, { quiet: true });
-  } catch (error) {
-    notice.value = {
-      kind: 'error',
-      message: error instanceof Error ? error.message : text('路由更新失败', 'Route update failed'),
-    };
-  } finally {
-    busy.value = false;
-  }
-}
-
-async function runActiveRouteSmoke(
-  scope: ModelGatewayAppScope,
-  options: { quiet?: boolean } = {},
-): Promise<void> {
-  const route = activeRouteStatusForScope(scope);
-  if (!route?.resolvedProviderId) return;
-  activeRouteSmokeBusy.value = {
-    ...activeRouteSmokeBusy.value,
-    [scope]: true,
-  };
-  activeRouteSmokeResults.value = {
-    ...activeRouteSmokeResults.value,
-    [scope]: null,
-  };
-  if (!options.quiet) notice.value = null;
-  try {
-    const response = await smokeModelGatewayActiveRoute({
-      scope,
-      model: route.resolvedModel || undefined,
-      input: 'Reply with GATEWAY_OK',
-      timeoutMs: 60000,
-    });
-    activeRouteSmokeResults.value = {
-      ...activeRouteSmokeResults.value,
-      [scope]: response,
-    };
-    smokeProviderId.value = route.resolvedProviderId;
-    smokeRouteId.value = route.routeId;
-    smokeModel.value = route.resolvedModel || smokeModel.value;
-    smokeResult.value = response;
-    await loadRuntimeOnly();
-    if (!options.quiet) {
-      notice.value = {
-        kind: response.ok ? 'success' : 'error',
-        message: response.ok ? text('路由 smoke 通过', 'Route smoke passed') : text('路由 smoke 失败', 'Route smoke failed'),
-      };
-    }
-  } catch (error) {
-    activeRouteSmokeResults.value = {
-      ...activeRouteSmokeResults.value,
-      [scope]: null,
-    };
-    if (!options.quiet) {
-      notice.value = {
-        kind: 'error',
-        message: error instanceof Error ? error.message : text('路由 smoke 失败', 'Route smoke failed'),
-      };
-    }
-  } finally {
-    activeRouteSmokeBusy.value = {
-      ...activeRouteSmokeBusy.value,
-      [scope]: false,
-    };
   }
 }
 
@@ -4142,6 +4206,15 @@ async function runSmoke(): Promise<void> {
   } finally {
     smokeBusy.value = false;
   }
+}
+
+async function runProviderSmokeFromDraft(): Promise<void> {
+  const providerId = draft.id.trim();
+  if (!providerId || !providerExists(providerId)) return;
+  smokeProviderId.value = providerId;
+  smokeRouteId.value = defaultRouteForApiFormat(draft.apiFormat);
+  smokeModel.value = draft.defaultModel.trim() || draftModelIds.value[0] || smokeModel.value;
+  await runSmoke();
 }
 
 async function smokeEndpointProfile(profile: EndpointProfileRow): Promise<void> {
@@ -4239,13 +4312,6 @@ async function loadRuntimeOnly(): Promise<void> {
 
 function apiFormatLabel(format: ModelGatewayApiFormat): string {
   return apiFormatOptions.find((item) => item.id === format)?.label || format;
-}
-
-function scopeHint(scope: ModelGatewayAppScope): string {
-  if (scope === 'codex') return '/v1/responses';
-  if (scope === 'claude-code') return '/v1/messages';
-  if (scope === 'opencode') return '/v1/chat/completions';
-  return '/v1/chat/completions';
 }
 
 function formatTimestamp(value: string): string {

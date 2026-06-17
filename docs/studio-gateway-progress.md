@@ -10,6 +10,7 @@
 - Gateway 对外提供 Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions；`GET /v1/models` 聚合启用 provider，并保留模型别名、模型池、能力标记、上下文窗口和输出预算。
 - Provider Center 支持自定义 provider、启停、模型名称/别名/默认模型、能力勾选、批量模型导入、模型目录刷新合并、批量预算/能力应用、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
 - Provider Center 表单已按连接、端点路由、密钥识别、模型目录、高级覆盖、可用范围分区；PC/平板/手机均按同一配置流程降级展示。
+- Provider Center 前端已改为列表优先：Providers 页面只保留一个“新建服务商”入口和服务商列表；新建时在弹层内选择 API Key 接入 / 账户登录 / 中继服务，详细配置进入弹层表单，服务商 ID、端点、多协议、账号池和高级连接默认降级到折叠区，避免主页面继续堆积配置。
 - Gateway Provider 支持 endpoint profiles；同一 provider/模型可按客户端协议优选原生 endpoint，并在 endpoint 级 health/circuit 下回退。
 - GPT/ChatGPT account 与 Codex account 进入 Gateway Phase D2：Provider Center 页面直接登录官方账户并自动创建 account-backed provider；账户池 sticky、per-account concurrency、runtime cursor/affinity 持久化、upstream quota/cooldown、per-account proxy/direct 和 Codex account `gpt-image-2` Images generation live smoke 已闭环，后续补更多账户型 provider，不恢复已停止演进的旧模型链路。
 - Codex account-backed provider 已支持页面登录、请求前自动 refresh、手动 refresh、账户启用/停用和重新登录入口；客户端仍只使用统一 Gateway endpoint + Gateway key。
@@ -142,6 +143,10 @@
   - 按本轮要求先不跑渠道 live，新增 `scripts/smoke-channel-connectors-agent-heartbeat-local.mjs` 和 npm 入口 `smoke:channel-connectors:agent-heartbeat-local`；该本地矩阵用合成 Node 子进程验证 Codex / Claude Code / OpenCode 的 stderr CR-only TUI、stdout 心跳、async child-task idle grace、heartbeat-only stall 诊断、idleTimeout 替代总超时、静默 heartbeat timeout，以及 Gemini 等非 runtime Agent 仍走旧固定超时。
   - 进一步降低 heartbeat 策略风险：runner 区分 CLI liveness 与结构化进展，持续只有心跳时发出 `process/heartbeat-stall` 诊断；诊断不会终止任务、不会重置 heartbeat timeout，重复诊断退避节流，默认不推送到 IM 过程消息，只作为 event log / active run 判据。终态判定补齐双向防误判：失败终态事件覆盖 exit 0，完成终态事件后 lingering CLI 只在 grace 后收尾。
 - Provider Center 前端收口：
+  - Providers 页面删除主页面三张创建卡片，改成单一“新建服务商”入口；弹层顶部选择创建类型，账户登录类型不会自动发起授权，必须用户在弹层里点击“开始登录”。
+  - Provider 编辑弹层合并“身份/连接”为“基础配置”，只常驻名称、启停、上游地址、密钥和协议；服务商 ID、高级端点/多协议、账号池和高级连接默认折叠；使用范围与健康检查合并为一个分区。
+  - 前端中文模式下 Providers 相关标题和动作统一改成“服务商”；英文模式仍保留 Provider 文案。
+  - 已移除 Providers 主页面的 Active routing 前端入口和 route smoke UI；协议 smoke 与日志保留在“检查与日志”页。
   - 模型目录的可见身份字段只保留“模型名称”和“别名”，不再暴露“显示名”三段式配置。
   - 批量导入格式改为 `model-id | alias1,alias2`；保存时不再从表格写入 `model.label`。
   - Provider 编辑表单按配置任务分区；手机端模型行显示字段标签，避免窄屏只能靠 placeholder 判断字段。

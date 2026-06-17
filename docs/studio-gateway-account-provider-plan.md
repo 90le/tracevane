@@ -66,7 +66,7 @@ Account-backed provider 对外仍暴露：
 - 音频/Realtime 路由：OpenAI-compatible provider 的音频 REST 端点必须 multipart/binary passthrough；Codex account 音频与 realtime 模型可出现在 catalog，但 REST `/v1/audio/*`、`/v1/responses/ws` 和 `/v1/realtime` 当前明确返回结构化 unsupported。Realtime/WebSocket 只有拿到官方或直接验证的完整 turn state、tool cache、history replay、错误和 close 语义，并通过 live smoke 后，才移除 unsupported。
 - Codex headers：保留 Codex 需要的 `Session_id`、`X-Codex-*`、`Chatgpt-Account-Id`、user-agent defaults；反代部署时提醒保留 underscore headers。
 - usage：`status/runtime` 保留内部 request log summary；`/api/model-gateway/usage` 只返回本地 `usage-ledger.jsonl` 读取窗口内的 `totals`、全量 `models[]` 和 `readWindow`。Provider Center 模型消耗页只做每个模型请求次数和 token 图表/表格；不做供应商账单导入、provider/account 维度对账、成本估算、筛选、归档、CSV 或最近明细。模型 alias 由 Gateway 按 provider catalog 归并，Channel 侧不重复做 token 产品化。
-- UI：Provider Center 增加 Account providers 工作区，支持页面登录、账户状态表、刷新、禁用、清除 cooldown、账号代理/直连、账号池策略、媒体模型状态和健康；后续补模型 alias 与策略 live smoke。
+- UI：Provider Center 已收敛为服务商列表优先；新建服务商时在弹层内选择 API Key 接入 / 账户登录 / 中继服务。账户登录不会由主页面按钮自动触发，必须用户在弹层里明确点击开始登录；账户状态表、刷新、禁用、清除 cooldown、账号代理/直连、账号池策略、媒体模型状态和健康继续保留在编辑弹层与检查页中。后续补模型 alias 与策略 live smoke。
 
 ## 验收
 
@@ -75,7 +75,7 @@ Account-backed provider 对外仍暴露：
 - Account pool smoke：`scripts/smoke-model-gateway-account-pool.mjs` 验证真实 daemon active account provider、Responses 请求、runtime accountRouting 池计数和 sticky session；单个 ready account 即可完成默认验收，有 2 个以上 ready account 时扩展验证 round-robin，多账号强制验收必须显式使用 `--require-multi-account`。
 - 真实 live smoke 至少覆盖 Codex account：Responses non-stream、Responses stream、Responses compact、Chat-compatible adapter、Anthropic Messages adapter、Claude Code CLI 和 OpenCode tools。
 - Media smoke：`scripts/smoke-model-gateway-account-media.mjs` 低成本验证 catalog、image edits route 和 Codex account audio unsupported；Codex account Images generation 需要显式 `--run-image-generation`，且必须确认路由实际命中 `codex-account` 后才能记为 account proof。2026-06-15 已强制 `openclaw=codex-account` 跑通 `--require-image-generation`，`gpt-image-2` 返回 1 张图和 usage；OpenAI-compatible image edits 和音频 transcription 用 multipart 文件验证请求体不被 Gateway 改写。
-- UI smoke 覆盖账户登录向导、账户表、禁用/刷新、模型别名和 redaction。
+- UI smoke 覆盖单入口新建服务商、弹层类型选择、账户登录向导不自动触发授权、账户表、禁用/刷新、模型别名和 redaction。
 - `runtime.json` 不出现 access token、refresh token、auth.json 原文。
 
 ## 不做

@@ -50,10 +50,15 @@ test("Studio Gateway page uses the new model-gateway API contract", () => {
     "/api/model-gateway/daemon-service",
     "/api/model-gateway/detect-provider",
     "/api/model-gateway/providers",
+  ]) {
+    assert.match(source, new RegExp(requiredPath.replace(/\//g, "\\/")));
+  }
+
+  for (const removedPath of [
     "/api/model-gateway/active-provider",
     "/api/model-gateway/active-route-smoke",
   ]) {
-    assert.match(source, new RegExp(requiredPath.replace(/\//g, "\\/")));
+    assert.doesNotMatch(source, new RegExp(removedPath.replace(/\//g, "\\/")));
   }
 
   assert.match(source, /providers\/\$?\{?encodeURIComponent\(providerId\)\}?\/test/);
@@ -80,14 +85,37 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "Anthropic Messages",
     "OpenAI Responses",
     "Provider Center",
-    "Active routing",
-    "activeRouteStatuses",
-    "activeRouteAlerts",
-    "runActiveRouteSmoke",
-    "smokeModelGatewayActiveRoute",
-    "Route smoke passed",
-    "Route smoke failed",
-    "Protocol smoke",
+    "Providers",
+    "服务商中心",
+    "新建服务商",
+    "选择创建类型",
+    "API Key 接入",
+    "账户登录",
+    "中继服务",
+    "providerCreateKind",
+    "providerCreateKindOptions",
+    "providerEditorOpen",
+    "providerEditorTitle",
+    "providerSearch",
+    "providerFilter",
+    "filteredProviders",
+    "selectedProviderIsAccount",
+    "openProviderCreateDialog",
+    "selectProviderCreateKind",
+    "closeProviderEditor",
+    "providerHealthSummary",
+    "runProviderSmokeFromDraft",
+    "mgw-provider-kind-panel",
+    "mgw-provider-kind-options",
+    "mgw-provider-kind-option",
+    "mgw-provider-list-toolbar",
+    "mgw-provider-editor-overlay",
+    "mgw-provider-editor-shell",
+    "mgw-provider-editor-head",
+    "role=\"dialog\"",
+    "mgw-provider-health-row",
+    "mgw-provider-advanced",
+    "Checks & Logs",
     "Vision smoke",
     "runVisionSmoke",
     "visionSmokeResult",
@@ -120,7 +148,6 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "应用模型预算",
     "Codex advanced",
     "Request compression",
-    "Provider configuration",
     "模型消耗",
     "Model usage",
     "fetchModelGatewayUsageLedger",
@@ -142,7 +169,7 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "价格未配置",
     "mgw-model-pricing",
     "mgw-model-pricing__grid",
-    "Smoke / Logs",
+    "检查与日志",
     "workspaceTabs",
     "activeWorkspaceTab",
     "mgw-workspace-tabs",
@@ -200,8 +227,8 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "文字",
     "图片",
     "推理",
-    "同一 Provider 内模型名称和别名不能重复",
-    "Provider status",
+    "同一服务商内模型名称和别名不能重复",
+    "服务商名称",
     "Routing priority",
     "Lower numbers win",
     "Clear cooldown",
@@ -274,10 +301,15 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "mgw-endpoint-smoke-result",
     "mgw-provider-form-sections",
     "mgw-config-section",
-    "基础连接",
+    "基础配置",
+    "常用配置只保留名称、上游地址、密钥和协议。",
+    "服务商 ID",
+    "模型",
+    "使用范围与检查",
+    "多端点 / 多协议",
+    "高级连接",
+    "账号池高级",
     "端点路由",
-    "密钥与识别",
-    "模型目录",
     "高级覆盖",
   ]) {
     assert.match(page, new RegExp(expected.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
@@ -359,15 +391,71 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     assert.doesNotMatch(page, new RegExp(removedUsageSurface.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
 
+  for (const removedRoutingSurface of [
+    "Active routing",
+    "activeRouteStatuses",
+    "activeRouteAlerts",
+    "runActiveRouteSmoke",
+    "smokeModelGatewayActiveRoute",
+    "Route smoke passed",
+    "Route smoke failed",
+    "startProviderCreate",
+    "mgw-create-type-grid",
+    "mgw-create-type-card",
+    "API Key Provider",
+    "Account Provider",
+    "Compatible Relay",
+    "Protocol smoke",
+    "Provider configuration",
+    "Smoke / Logs",
+    "Provider 是谁",
+    "怎么连接",
+    "有哪些模型",
+    "给谁用",
+    "h4>{{ text('是否可用'",
+    "基础连接",
+    "密钥与识别",
+    "模型目录",
+    "mgw-route-row",
+    "mgw-route-list",
+    "mgw-route-alerts",
+  ]) {
+    assert.doesNotMatch(page, new RegExp(removedRoutingSurface.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+
+  for (const removedRoutingCss of [
+    "mgw-route-row",
+    "mgw-route-list",
+    "mgw-route-alerts",
+    "mgw-create-type-grid",
+    "mgw-create-type-card",
+    "grid-template-columns: minmax(280px, 360px) minmax(0, 1fr)",
+    "grid-template-columns: minmax(240px, 320px) minmax(0, 1fr)",
+  ]) {
+    assert.doesNotMatch(css, new RegExp(removedRoutingCss.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+
   assert.match(css, /\.mgw-detect-card\s*\{[^}]*grid-column:\s*1 \/ -1/s);
   assert.match(css, /\.mgw-detect-card__main strong,\s*\.mgw-detect-card__main small\s*\{[^}]*overflow-wrap:\s*break-word/s);
   assert.match(css, /\.mgw-detect-card__main strong,\s*\.mgw-detect-card__main small\s*\{[^}]*word-break:\s*normal/s);
   assert.match(css, /\.mgw-secret-output code\s*\{[^}]*overflow-wrap:\s*anywhere/s);
-  assert.match(css, /\.mgw-workspace-tabs\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/s);
+  assert.match(css, /\.mgw-layout\s*\{[^}]*display:\s*block/s);
+  assert.match(css, /\.mgw-overview-stack\s*\{[^}]*display:\s*grid/s);
+  assert.match(css, /\.mgw-provider-kind-options\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
+  assert.match(css, /\.mgw-provider-kind-option\s*\{[^}]*grid-template-columns:\s*auto minmax\(0,\s*1fr\)/s);
+  assert.match(css, /\.mgw-provider-account-create\s*\{[^}]*overflow:\s*auto/s);
+  assert.match(css, /\.mgw-provider-editor-overlay\s*\{[^}]*position:\s*fixed/s);
+  assert.match(css, /\.mgw-provider-editor-overlay\s*\{[^}]*place-items:\s*center/s);
+  assert.match(css, /\.mgw-provider-editor-shell\s*\{[^}]*max-height:\s*calc\(100vh - 48px\)/s);
+  assert.match(css, /\.mgw-provider-editor-shell \.mgw-provider-form\s*\{[^}]*overflow:\s*auto/s);
+  assert.match(css, /\.mgw-provider-editor-shell \.mgw-form-actions\s*\{[^}]*position:\s*static/s);
+  assert.match(css, /\.mgw-workspace-tabs\s*\{[^}]*grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/s);
   assert.match(css, /\.mgw-workspace-tab\s*\{[^}]*overflow-wrap:\s*anywhere/s);
   assert.match(css, /\.mgw-app-card\.active\s*\{/);
   assert.match(css, /\.mgw-panel-actions\s*\{[^}]*flex-wrap:\s*wrap/s);
-  assert.match(css, /\.mgw-app-grid\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
+  assert.match(css, /\.mgw-app-grid\s*\{[^}]*grid-template-columns:\s*1fr/s);
+  assert.match(css, /\.mgw-provider-grid\s*\{[^}]*grid-template-columns:\s*1fr/s);
+  assert.match(css, /\.mgw-provider-list-toolbar\s*\{[^}]*grid-template-columns:\s*minmax\(180px,\s*1fr\)\s+minmax\(140px,\s*220px\)/s);
   assert.match(css, /\.mgw-usage-overview\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
   assert.match(css, /\.mgw-model-usage-bar\s*\{[^}]*grid-template-columns:\s*minmax\(160px,\s*0\.6fr\)\s+minmax\(0,\s*1\.4fr\)\s+minmax\(72px,\s*auto\)/s);
   assert.match(css, /\.mgw-model-usage-bar__track span\s*\{[^}]*background:\s*var\(--accent\)/s);
@@ -376,6 +464,10 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
   assert.match(css, /\.mgw-profile-budget-bar\s*\{[^}]*display:\s*flex/s);
   assert.match(css, /\.mgw-profile-budget-bar span\s*\{[^}]*overflow-wrap:\s*anywhere/s);
   assert.match(css, /\.mgw-provider-form-sections\s*\{[^}]*display:\s*grid/s);
+  assert.match(css, /\.mgw-provider-id-details\s*\{[^}]*grid-column:\s*1 \/ -1/s);
+  assert.match(css, /\.mgw-provider-final-grid\s*\{[^}]*grid-template-columns:\s*minmax\(220px,\s*0\.7fr\)\s+minmax\(0,\s*1\.3fr\)/s);
+  assert.match(css, /\.mgw-provider-advanced > summary,\s*\.mgw-account-row__advanced > summary\s*\{[^}]*cursor:\s*pointer/s);
+  assert.match(css, /\.mgw-provider-health-row\s*\{[^}]*flex-wrap:\s*wrap/s);
   assert.match(css, /\.mgw-config-section\s*\{[^}]*border:\s*1px solid var\(--mono-line\)/s);
   assert.match(css, /\.mgw-config-section__head span\s*\{[^}]*overflow-wrap:\s*anywhere/s);
   assert.match(css, /\.mgw-model-table__head,\s*\.mgw-model-row\s*\{[^}]*grid-template-columns:[^}]*minmax\(170px,\s*1\.15fr\)[^}]*minmax\(150px,\s*0\.9fr\)[^}]*minmax\(96px,\s*0\.5fr\)[^}]*minmax\(88px,\s*0\.5fr\)/s);
