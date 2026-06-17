@@ -11894,6 +11894,75 @@ test("native Channel Connectors process runner uses idle timeout instead of tota
   }
 });
 
+test("native Channel Connectors process runner reports heartbeat-only stalls without killing active CLI agents", async () => {
+  for (const agent of ["codex", "claude-code", "opencode"]) {
+    const root = makeTempRoot();
+    const progress = [];
+    const completion = localHeartbeatCompletionScript(agent, `${agent} heartbeat-only stall diagnosed`);
+    const childScript = [
+      "let tick = 0;",
+      "const interval = setInterval(() => {",
+      "  tick += 1;",
+      "  process.stderr.write(`\\rTUI heartbeat ${tick}`);",
+      "  if (tick >= 7) {",
+      "    clearInterval(interval);",
+      completion,
+      "  }",
+      "}, 40);",
+    ].join("");
+
+    const result = await defaultChannelConnectorAgentProcessRunner({
+      command: process.execPath,
+      args: ["-e", childScript],
+      cwd: root,
+      stdin: "",
+      env: {},
+      timeoutMs: 120,
+      heartbeatStallMs: 90,
+      agent,
+      onProgress: (event) => progress.push(event),
+    });
+
+    const stallEvents = progress.filter((event) => event.rawType === "process/heartbeat-stall");
+    assert.equal(result.exitCode, 0, agent);
+    assert.equal(result.timedOut, false, agent);
+    assert.equal(result.error, null, agent);
+    assert.ok(stallEvents.length >= 1, agent);
+    assert.equal(stallEvents.every((event) => event.type === "running"), true, agent);
+    assert.match(stallEvents[0].text || "", /without structured progress/, agent);
+    assert.equal(progress.some((event) => event.rawType === "process/heartbeat-timeout"), false, agent);
+    assert.equal(progress.at(-1)?.type, "completed", agent);
+  }
+});
+
+test("native Channel Connectors process runner stall diagnostics do not refresh heartbeat timeout", async () => {
+  for (const agent of ["codex", "claude-code", "opencode"]) {
+    const root = makeTempRoot();
+    const progress = [];
+    const childScript = [
+      "process.stderr.write('\\rTUI heartbeat before stall');",
+      "setInterval(() => {}, 1000);",
+    ].join("");
+
+    const result = await defaultChannelConnectorAgentProcessRunner({
+      command: process.execPath,
+      args: ["-e", childScript],
+      cwd: root,
+      stdin: "",
+      env: {},
+      timeoutMs: 180,
+      heartbeatStallMs: 60,
+      agent,
+      onProgress: (event) => progress.push(event),
+    });
+
+    assert.equal(result.timedOut, true, agent);
+    assert.match(result.error, /since last stderr/, agent);
+    assert.equal(progress.some((event) => event.rawType === "process/heartbeat-stall" && event.type === "running"), true, agent);
+    assert.equal(progress.some((event) => event.rawType === "process/heartbeat-timeout" && event.type === "failed"), true, agent);
+  }
+});
+
 test("native Channel Connectors process runner reports heartbeat timeout only after liveness stops", async () => {
   for (const agent of ["codex", "claude-code", "opencode"]) {
     const root = makeTempRoot();

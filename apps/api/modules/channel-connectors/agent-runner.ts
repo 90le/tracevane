@@ -24,6 +24,7 @@ export interface ChannelConnectorAgentProcessRequest {
   env: Record<string, string>;
   timeoutMs: number;
   idleTimeoutMs?: number | null;
+  heartbeatStallMs?: number | null;
   nativeCommand?: string | null;
   signal?: AbortSignal | null;
   cleanupPaths?: string[];
@@ -176,6 +177,31 @@ function agentProcessHeartbeatTimeoutMessage(input: {
     `${input.agent} may be stalled in the CLI, Gateway request, adapter, or upstream network path.`,
     `Studio terminated it after ${elapsedSeconds}s because the CLI stopped emitting liveness output.`,
     input.lastActivityReason === "process-start" ? "" : `Last activity was ${lastActivitySeconds}s ago.`,
+  ].filter(Boolean).join(" ");
+}
+
+function agentProcessHeartbeatStallMessage(input: {
+  agent: ChannelConnectorAgentId;
+  stallMs: number;
+  lastActivityReason: string;
+  lastActivityAtMs: number;
+  lastProgressReason: string;
+  lastProgressAtMs: number;
+  startedAtMs: number;
+  noticeCount: number;
+}): string {
+  const seconds = Math.max(1, Math.round(input.stallMs / 1000));
+  const elapsedSeconds = Math.max(0, Math.round((Date.now() - input.startedAtMs) / 1000));
+  const lastActivitySeconds = Math.max(0, Math.round((Date.now() - input.lastActivityAtMs) / 1000));
+  const lastProgressSeconds = Math.max(0, Math.round((Date.now() - input.lastProgressAtMs) / 1000));
+  const progressSince = input.lastProgressReason === "process-start"
+    ? "since process start"
+    : `since last structured progress (${input.lastProgressReason})`;
+  return [
+    `Agent process has emitted stdout/stderr heartbeat for ${seconds}s without structured progress ${progressSince}.`,
+    `${input.agent} is still alive at the CLI layer, but Studio has only liveness output to observe.`,
+    `Elapsed=${elapsedSeconds}s, last heartbeat=${lastActivitySeconds}s ago via ${input.lastActivityReason}, last progress=${lastProgressSeconds}s ago.`,
+    input.noticeCount > 1 ? `Heartbeat-only notice #${input.noticeCount}.` : "",
   ].filter(Boolean).join(" ");
 }
 
@@ -1937,6 +1963,11 @@ export async function defaultChannelConnectorAgentProcessRunner(
     const heartbeatTimeoutMs = typeof request.idleTimeoutMs === "number" && Number.isFinite(request.idleTimeoutMs)
       ? Math.max(0, Math.floor(request.idleTimeoutMs))
       : request.timeoutMs;
+    const heartbeatStallMs = usesHeartbeatTimeout
+      ? typeof request.heartbeatStallMs === "number" && Number.isFinite(request.heartbeatStallMs)
+        ? Math.max(0, Math.floor(request.heartbeatStallMs))
+        : Math.max(60_000, Math.min(heartbeatTimeoutMs > 0 ? heartbeatTimeoutMs : 5 * 60_000, 5 * 60_000))
+      : 0;
     const progressParser = createProgressLineParser(request.agent);
     let stdout = "";
     let stderr = "";
@@ -1949,8 +1980,28 @@ export async function defaultChannelConnectorAgentProcessRunner(
     let stdinClosed = false;
     let lastActivityAtMs = startedAt;
     let lastActivityReason = "process-start";
+    let lastProgressAtMs = startedAt;
+    let lastProgressReason = "process-start";
+    let heartbeatOnlyNoticeCount = 0;
     let timeout: NodeJS.Timeout | null = null;
+    let stallTimeout: NodeJS.Timeout | null = null;
+    const progressReason = (event: ChannelConnectorAgentProgressEvent): string => {
+      return normalizeString(event.rawType)
+        || normalizeString(event.itemType)
+        || normalizeString(event.type)
+        || "progress";
+    };
+    const isHeartbeatDiagnosticProgress = (event: ChannelConnectorAgentProgressEvent): boolean => {
+      const rawType = normalizeString(event.rawType);
+      return rawType === "process/heartbeat-timeout" || rawType === "process/heartbeat-stall";
+    };
     const emitProgress = (event: ChannelConnectorAgentProgressEvent): void => {
+      if (usesHeartbeatTimeout && !isHeartbeatDiagnosticProgress(event)) {
+        lastProgressAtMs = Date.now();
+        lastProgressReason = progressReason(event);
+        heartbeatOnlyNoticeCount = 0;
+        armStallTimeout();
+      }
       progressEvents.push(event);
       request.onProgress?.(event);
     };
@@ -2020,6 +2071,35 @@ export async function defaultChannelConnectorAgentProcessRunner(
         terminateChild();
       }, timeoutMs);
     };
+    const armStallTimeout = (): void => {
+      if (stallTimeout) clearTimeout(stallTimeout);
+      if (!usesHeartbeatTimeout || heartbeatStallMs <= 0 || settled) return;
+      stallTimeout = setTimeout(() => {
+        if (settled) return;
+        const nowMs = Date.now();
+        const heartbeatSinceProgress = lastActivityAtMs > lastProgressAtMs;
+        const heartbeatIsRecent = nowMs - lastActivityAtMs <= heartbeatStallMs;
+        const progressQuietLongEnough = nowMs - lastProgressAtMs >= heartbeatStallMs;
+        if (heartbeatSinceProgress && heartbeatIsRecent && progressQuietLongEnough) {
+          heartbeatOnlyNoticeCount += 1;
+          emitProgress(progressEvent({
+            type: "running",
+            rawType: "process/heartbeat-stall",
+            text: agentProcessHeartbeatStallMessage({
+              agent: request.agent,
+              stallMs: heartbeatStallMs,
+              lastActivityReason,
+              lastActivityAtMs,
+              lastProgressReason,
+              lastProgressAtMs,
+              startedAtMs: startedAt,
+              noticeCount: heartbeatOnlyNoticeCount,
+            }),
+          }));
+        }
+        armStallTimeout();
+      }, heartbeatStallMs);
+    };
     const markActivity = (reason: string): void => {
       if (!usesHeartbeatTimeout) return;
       lastActivityAtMs = Date.now();
@@ -2027,9 +2107,11 @@ export async function defaultChannelConnectorAgentProcessRunner(
       armTimeout();
     };
     armTimeout();
+    armStallTimeout();
     const settle = (): void => {
       settled = true;
       if (timeout) clearTimeout(timeout);
+      if (stallTimeout) clearTimeout(stallTimeout);
       request.signal?.removeEventListener("abort", abortListener);
     };
 

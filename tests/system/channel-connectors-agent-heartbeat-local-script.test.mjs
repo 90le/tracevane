@@ -17,6 +17,7 @@ test("local heartbeat smoke script documents local-only proof boundary", async (
   assert.match(stdout, /local-only Channel Connectors process-runner heartbeat matrix/);
   assert.match(stdout, /synthetic child Node processes/);
   assert.match(stdout, /real IM channels, Gateway requests/);
+  assert.match(stdout, /heartbeat-only CLI output emits process\/heartbeat-stall diagnostics/);
   assert.match(stdout, /non-runtime agents still use the fixed process timeout/);
 });
 
@@ -29,11 +30,12 @@ test("local heartbeat smoke script runs the full synthetic heartbeat matrix", as
   const result = JSON.parse(stdout);
 
   assert.equal(result.ok, true);
-  assert.equal(result.total, 13);
-  assert.equal(result.passed, 13);
+  assert.equal(result.total, 16);
+  assert.equal(result.passed, 16);
   assert.equal(result.failed, 0);
   assert.equal(result.results.some((item) => item.name === "codex:stderr-cr-tui-heartbeat"), true);
   assert.equal(result.results.some((item) => item.name === "claude-code:stdout-heartbeat"), true);
+  assert.equal(result.results.some((item) => item.name === "opencode:heartbeat-only-stall-diagnostic"), true);
   assert.equal(result.results.some((item) => item.name === "opencode:silent-heartbeat-timeout"), true);
   assert.equal(result.results.some((item) => item.name === "gemini:fixed-timeout-unchanged"), true);
 });

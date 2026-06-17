@@ -38,6 +38,7 @@ or Codex/Claude/OpenCode binaries.
 Checks:
   - Codex / Claude Code / OpenCode stderr CR-only TUI heartbeat keeps runs alive
   - Codex / Claude Code / OpenCode stdout activity keeps runs alive
+  - heartbeat-only CLI output emits process/heartbeat-stall diagnostics
   - idleTimeoutMs replaces the old total timeout for CLI heartbeat agents
   - silent CLI agents fail with process/heartbeat-timeout
   - non-runtime agents still use the fixed process timeout
@@ -113,6 +114,21 @@ function hangScript() {
   return "setInterval(() => {}, 1000);";
 }
 
+function heartbeatOnlyStallScript(agent) {
+  const completion = completionScript(agent, `${agent} heartbeat-only stall diagnosed`);
+  return [
+    "let tick = 0;",
+    "const interval = setInterval(() => {",
+    "  tick += 1;",
+    "  process.stderr.write(`\\rTUI heartbeat ${tick}`);",
+    "  if (tick >= 7) {",
+    "    clearInterval(interval);",
+    completion,
+    "  }",
+    "}, 40);",
+  ].join("");
+}
+
 function nonRuntimeActivityScript() {
   return [
     "let tick = 0;",
@@ -145,6 +161,15 @@ function assertHeartbeatTimeout(result, progress, label) {
   }
 }
 
+function assertHeartbeatStall(result, progress, label) {
+  assertAlive(result, progress, label, 90);
+  const stallEvents = progress.filter((event) => event.rawType === "process/heartbeat-stall");
+  if (!stallEvents.length) throw new Error(`${label}: expected process/heartbeat-stall progress event`);
+  if (!stallEvents.every((event) => event.type === "running")) {
+    throw new Error(`${label}: heartbeat stall diagnostics must be non-terminal running events`);
+  }
+}
+
 function assertFixedTimeout(result, progress, label) {
   if (!result.timedOut) throw new Error(`${label}: expected fixed process timeout`);
   if (result.error !== "Agent process timed out.") throw new Error(`${label}: expected legacy timeout error, got ${result.error || "null"}`);
@@ -165,6 +190,7 @@ async function runCase(input, options) {
       env: {},
       timeoutMs: input.timeoutMs,
       idleTimeoutMs: input.idleTimeoutMs,
+      heartbeatStallMs: input.heartbeatStallMs,
       agent: input.agent,
       onProgress: (event) => progress.push(event),
     });
@@ -224,6 +250,14 @@ function buildCases() {
       idleTimeoutMs: 220,
       script: delayedCompletionScript(agent, `${agent} idle timeout replaced total timeout`, 110),
       assertResult: (result, progress, label) => assertAlive(result, progress, label, 40),
+    });
+    cases.push({
+      name: `${agent}:heartbeat-only-stall-diagnostic`,
+      agent,
+      timeoutMs: 120,
+      heartbeatStallMs: 90,
+      script: heartbeatOnlyStallScript(agent),
+      assertResult: assertHeartbeatStall,
     });
     cases.push({
       name: `${agent}:silent-heartbeat-timeout`,
