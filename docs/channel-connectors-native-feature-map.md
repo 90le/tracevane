@@ -79,6 +79,7 @@
 - Feishu 菜单命令面已改为清爽二级配置架构：主卡片直达 Agent、模型、权限/推理、进度显示、视觉、工作目录六个配置页；工作目录页提供 Profile 默认、上一目录、上级目录、Home 快捷按钮、最近目录直达列表、子目录分页直达列表和 `/dir find` 搜索；纯文本渠道支持 `/dir home|parent|recent N|child N`；文本 `/help` 复用同一结构。
 - Feishu 长连接 card action 不再 fire-and-forget：卡片点击会同步返回 callback response/card/toast，普通消息和 bot menu 仍保持后台异步，避免交互卡片过一段时间后触发 108002 类不可用体验。
 - 已删除 active platform action layer：runner/env/prompt/daemon endpoint/UI chips 不再暴露 `studio-channel-skill` 或 runtime action。
+- Feishu transport 未暴露的 `studio-feishu-actions` / Docx / Drive / Wiki / Bitable 直接 action helper 已删除；daemon 只保留旧 code fence 剥除作为兼容防污染。
 - Codex 隔离 `codex-home/skills` 会删除历史生成的 Feishu/Octo platform action skill 目录；当前运行态旧目录已手动清理，避免 stale YAML 被 Codex 加载。
 - OpenCode realtime JSONL 与 SQLite fallback 已共用进度 parser；DB fallback 会保留本轮工具调用/工具结果，并只把最新 assistant message 作为最终回复。
 - 近 12h live smoke 已证明 Codex、Claude Code、OpenCode 均有成功工具调用和可见工具输出；OpenCode 真实 IM `--require-process-reply` 已补齐，三 Agent 均有真实 IM 过程回复证据。
@@ -87,7 +88,7 @@
 
 ## 保留边界
 
-- Feishu transport 仍有低层 legacy action helper，仅作为未暴露的旧 helper 存在；后续瘦身需单独处理，避免误删私聊文件/图片 transport。
+- Feishu transport 只保留私聊消息、文件/图片、reaction、成员/线程读取等主链路能力；Docx / Drive / Wiki / Bitable 直接 action helper 已删除。
 - 群聊、thread、多 bot、Octo Bot API 管理和 Feishu 文档/群管理能力不再作为当前目标。
 - one-shot/TUI runner 是兼容 fallback，不再是 Codex / Claude Code / OpenCode 的默认 live 路径；继续保留 heartbeat/stall/async 保护，用于显式 opt-out、persistent crash fallback 和尚未支持 persistent 的 Agent。
 - Provider 模型 vision 能力必须以配置、上游显式能力元数据或图片 smoke 为准；当前没有 `gpt-5.5-mini`，`claude-opus-4-6` 经 `mlamp` Chat-compatible 图片请求仍失败。

@@ -405,11 +405,12 @@
 - 本轮 Gateway 本地回归通过：`node --test --test-name-pattern "endpoint profile adapter upstream errors|endpoint profile passthrough upstream errors|endpoint profiles prefer native protocol" tests/system/model-gateway-service.test.mjs`，3/3 通过；覆盖 endpoint profile 原生协议优选、passthrough HTML 错误归属和 `/v1/messages -> OpenAI chat endpoint profile` adapter 错误归属。
 - 本轮 Channel 本地回归通过：`node --test --test-name-pattern "Feishu transport manages processing reactions|Feishu transport reports reaction stop failures|daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`，3/3 通过；覆盖 Feishu reaction 成功路径、reaction stop failure 非抛错返回和 daemon lifecycle/投递失败源码合同。
 - 本轮 Channel async TUI 本地回归通过：`node --test --test-name-pattern "async child-task waits alive|async child-task waits after grace stops|local heartbeat smoke script" tests/system/channel-connectors-service.test.mjs tests/system/channel-connectors-agent-heartbeat-local-script.test.mjs`，4/4 通过；`node scripts/smoke-channel-connectors-agent-heartbeat-local.mjs --json`，19/19 通过；覆盖 Claude 真实 `◯ deep-research ... ↓ tokens` TUI、Codex subagents 和 OpenCode parallel tasks 的 `process/async-task` 非终态进度。
+- 本轮 Channel 清理：Feishu transport 未暴露的 `studio-feishu-actions` / Docx / Drive / Wiki / Bitable 直接 action helper 和对应 direct-action 回归已删除；daemon 仍保留旧 code fence 剥除，避免历史 Agent 输出污染最终回复。
 - 本轮文档清理验证以 `git diff --check` 和 stale term 检查为准。
 
 ## 已知边界
 
-- Feishu transport 内仍保留一套低层 legacy action helper 和对应直接 transport 回归；它已不再由 Agent prompt、runner、daemon endpoint 或 UI 暴露。后续如继续瘦身，应单独删除这段 Doc/Drive/Wiki/Bitable 直接 API helper，避免和私聊文件/图片 transport 误删混在一起。
+- Feishu transport 已删除未暴露的低层 legacy action helper；当前只保留私聊消息、文件/图片、reaction、成员/线程读取等主链路 transport，以及旧 `studio-feishu-actions` code fence 剥除兼容。
 - Octo/Feishu 群聊和管理能力已有实现继续 best-effort 保留，但新需求默认不继续扩展。
 - 同 session FIFO/durable queue 已废弃为历史能力：pending-agent-run store 只用于升级时清空遗留记录；当前同 session busy 消息直接拒绝并提示 `/stop`/`/cancel`，不会自动执行。
 - Claude Code / OpenCode native compact 已覆盖 driver 层、Octo daemon 私聊入口、Feishu native-first wiring、Feishu 显式 `/compact` 三 Agent 24h live、Octo auto compact 24h live 和 Octo 显式 `/compact` 24h live。

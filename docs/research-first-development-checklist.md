@@ -63,6 +63,7 @@
 | P1 | Gateway unsupported 合同 | 进行中 | 未验证的 image edits、audio、Realtime/WebSocket 返回结构化 unsupported，错误说明当前缺少稳定合同和替代路径 |
 | P1 | Gateway endpoint profile 回归 | 已补本地回归 | 原生协议优选、passthrough 错误归属和 adapter-required 错误归属均锁定 endpoint profile |
 | P1 | Channel final delivery / reaction 回归 | 已补本地回归 | Feishu reaction stop failure 可观测但不阻断生命周期；Feishu 投递失败落卡路径保持源码回归 |
+| P1 | Channel legacy action helper 清理 | 已完成本轮 | Feishu transport 删除未暴露 Docx/Drive/Wiki/Bitable 直接 action helper，只保留旧 code fence 剥除 |
 | P1 | 真实外部核验记录 | 持续 | 每次新增 provider、SDK、协议、Channel、Agent 或 UI 行为前更新目标/进度/专项文档 |
 
 ## 最近验证
@@ -73,3 +74,4 @@
 - 2026-06-17：核验 Git `gitignore` 官方文档，确认所有开发者都应忽略的本地工作区产物应写入仓库 `.gitignore`。
 - 2026-06-17：本轮按用户要求先不跑渠道 live；本地补 Gateway endpoint profile passthrough/adapter 错误归属回归，以及 Feishu reaction stop failure/daemon delivery failure 源码合同回归。
 - 2026-06-17：重新核验 Codex app-server、Claude Code Agent SDK / TypeScript SDK、OpenCode CLI / SDK 官方文档；本地补真实 Claude `◯ deep-research ... ↓ tokens`、Codex subagents、OpenCode parallel tasks 的 async child-task TUI 回归，确认优先结构化 driver，TUI 只作 bounded fallback。
+- 2026-06-17：核验 Feishu 官方开放平台 Docs/API、官方 Node SDK 和官方 OpenClaw Lark 插件安全边界；本地删除 Studio 未暴露的 Feishu direct action helper，保留私聊 transport 主链路和旧 code fence 剥除。
