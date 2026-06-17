@@ -1,6 +1,7 @@
 <!-- components/AppShell.vue -->
 <script setup lang="ts">
 import GlobalNav from '@/components/nav/GlobalNav.vue';
+import CommandPalette from '@/features/command-palette/CommandPalette.vue';
 import { useUiStore } from '@/stores/ui-store';
 
 const ui = useUiStore();
@@ -13,6 +14,7 @@ const ui = useUiStore();
       <RouterView />
     </main>
     <button class="app-shell__theme" :title="ui.theme === 'dark' ? '切浅色' : '切深色'" @click="ui.toggleTheme(); ui.applyTheme()">◐</button>
+    <CommandPalette />
   </div>
 </template>
 
