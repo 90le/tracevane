@@ -33,6 +33,9 @@
 - CLI heartbeat 风险评估：单纯“有 stdout/stderr”只能证明 CLI 仍有 liveness，不能证明模型/工具有真实进展；因此 runner 新增 `process/heartbeat-stall` 诊断层，持续只有 TUI 心跳但没有结构化进展时写入 progress/event log 和 active run 状态。该诊断是 `running` 非终态，不刷新 heartbeat timeout，后续重复诊断按 2x/4x/8x 退避并封顶 15 分钟，也默认不发到 Feishu/Octo 过程消息，避免自我续命、日志风暴和 IM 刷屏。
 - Feishu 进度卡片终态只由最终 Agent run 结果决定；中间工具/步骤错误和过程 `completed` 事件都只作为过程判据，不会提前把卡片切成完成或失败。
 - IM Agent 生命周期已拆分 Agent 执行和最终回复投递：active run 会从 `running` 进入 `delivering`，最终投递完成后才释放同 session guard；投递阶段 `/stop` 会提示“Agent 已完成，正在投递最终回复”，普通新消息仍按 busy guard 拒绝但文案说明是在等待最终投递。Feishu/Octo `agent.run.finished` 与 runtime `agentRuns` 会记录 `replyDeliveryStatus`（`not_required` / `delivered` / `failed`）和 `replyError`；成功 Agent 但 Feishu 最终回复全失败时，会把进度卡补一条“回复投递失败”终态错误。
+- IM Agent active run 现在会在拿到同 session lease 后立即写入 runtime 和 cancel registry，再执行模型路由、auto compact、历史拉取和附件 staging；preflight 任一步抛错会写 `agent.run.preflight_failed` 并一次性释放 active run / session guard，避免“任务不可见但 session 被占住”的隐藏卡死。native auto compact 会忽略同一个 messageId 的 preflight active run，但仍拒绝其它消息的并发 compact。
+- IM Agent 投递后处理异常会额外写 `agent.run.delivery_failed`，busy 拒绝事件会带 `activeStatus=running|delivering`；Octo 群历史 cutoff 只在 `replyDeliveryStatus=delivered` 时推进，旧日志恢复仍兼容没有该字段但 `replySent=true` 的历史事件。
+- Feishu 失败态进度卡终态 patch 如果失败，会回退发送失败文本，不再把这类轮次记成 `not_required`；finished event/runtime 会记录 `progressCardFinalDelivered` 与 `progressCardFinalError`，便于区分 Agent 失败、最终回复失败和进度卡终态失败。
 - Channel 侧 `/usage` / token 统计不再继续建设；模型消耗已统一到 Gateway usage/Provider Center 模型消耗页。
 - CLI Profile 管理属于 Studio 原生 Channel Connectors，不属于 OpenClaw Agent 管理；独立页为 `/channel-connectors/profiles`，直接读取 Gateway 可用模型目录和上下文预算，管理 Profile、IM 绑定摘要、运行配置、持久会话和事件记录；IM 绑定摘要可 deep-link 到完整 Channel Connectors 配置并自动选中 binding/profile。
 - Channel Connectors 主配置页已收敛为概览、渠道绑定、运行状态、会话日志四个同级工作区；不再内嵌 CLI Profile 快改或 Skills 管理，Profile 只进入独立工作台。
@@ -54,11 +57,17 @@
   - Claude persistent 对未知结构化事件同样写入 bounded `protocol/unknown-event`；OpenCode persistent 仍走 one-shot runner，因此继承同一逻辑。
 - 已解决：Feishu 进度卡失败状态可能不刷新。
   - 最终失败会把进度卡状态切到 failed 并标记 dirty，即使失败文本已作为过程错误出现，也会刷新卡片终态。
+  - 失败态终态卡片 patch 失败会触发文本失败回复兜底，并记录 `progressCardFinalDelivered=false` / `progressCardFinalError`，避免用户端只看到长期 running 卡片、本地却记为 `not_required`。
 - 已解决：最终 IM 投递阶段与 Agent 执行阶段混淆。
   - Agent 进程返回后 active run 不会立即消失，而是先标记为 `delivering`；最终回复、出站文件、出站私聊消息或失败说明投递结束后才清理 active run 和 session guard。
   - `/stop` 遇到 `delivering` 不再误报“没有正在运行的 Agent”，普通新消息也不会误入下一轮，而是提示上一轮已完成但最终回复仍在投递。
   - `agent.run.finished` / runtime `agentRuns` 写入 `replyDeliveryStatus` 与 `replyError`；Feishu 成功 Agent 但最终回复投递全失败时，会尝试把进度卡改成 failed 并追加 `reply/delivery-failed`。
   - 出站文件/消息成功、文件/消息失败说明成功发送，都会计入投递成功判据；Feishu reaction 停止失败只写 `*.reaction.stop_failed` 诊断，不再阻断投递和生命周期清理。
+- 已解决：拿到 session lease 后、真正 Agent 执行前的隐藏占用窗口。
+  - Feishu/Octo 都在 lease 成功后立即写 active run，并用 `agent.run.preflight_failed` 外层兜底释放；模型路由、auto compact、历史上下文和附件 staging 失败不会留下不可见 busy guard。
+  - auto compact 作为当前消息 preflight 的一部分时可复用当前 active run；只有其它 messageId 的 active run 才继续阻断 compact，避免提前注册 active run 后自我阻塞 persistent native compact。
+- 已解决：Octo 群历史 cutoff 可能在最终回复未完整投递时提前推进。
+  - `lastAnsweredMessageSeq` 只在 `replyDeliveryStatus=delivered` 时更新；恢复旧 event log 时只对没有 `replyDeliveryStatus` 的历史事件回退使用 `replySent=true`。
 - 已缓解：平台全链路不可达时用户可能仍看不到最终说明。
   - Feishu final reply 仍按 card -> post -> text fallback，Octo/Feishu transport 自身有请求超时；但如果平台发消息、patch 卡片和后续重试通道同时不可用，本地只能保留 `replyDeliveryStatus=failed`、`replyError` 和事件日志，无法保证用户端可见。
 - 已缓解：TUI 心跳长期存在但没有真实结构化进展。
@@ -205,6 +214,7 @@
   - Feishu 权限审批 24h live 已验证：真实链路为 Feishu 进度卡片 `permission-pending/allowed` + 卡片按钮 `channel.command commandAction=permission commandOk=true`；live 脚本已兼容这条真实形态。
   - IM busy guard 已取代 Feishu/Octo 普通消息 queue：同 binding + IM session 已有任务时，后续普通消息直接提示 `/stop`/`/cancel` 后重发，不入队、不落 pending store、不 daemon 重启 replay；legacy Feishu queue live 脚本名已改为检查 `channel.agent.rejected_busy`。
   - IM Agent 最终投递生命周期补强：Agent 返回后 active run 会进入 `delivering`，最终投递结束才释放同 session；`/stop` 在投递阶段提示等待最终回复，不再误报无任务；普通新消息在投递阶段继续 busy 拒绝；Feishu/Octo finished event 和 runtime agentRuns 记录 `replyDeliveryStatus` / `replyError`；Feishu 成功 Agent 但最终投递失败会把进度卡补为“回复投递失败”；Feishu reaction stop 失败不再阻断生命周期清理。
+  - IM Agent hidden lifecycle gap 已补：active run 在 session lease 后立即可见；preflight 失败写 `agent.run.preflight_failed` 并释放 guard；投递异常写 `agent.run.delivery_failed`；busy 拒绝事件记录 `activeStatus`；Feishu 失败态进度卡终态 patch 失败会文本兜底；Octo 群历史 cutoff 改为 delivered-only。
   - 上下文预算核心已完成：`/status` 会按 Gateway 模型窗口、输出预留、Gateway usage/history estimate 展示剩余窗口和 auto compact threshold；auto compact 已按 native-first、baseline 和 fallback 记录接入。
   - 私聊文件/消息收发核心已完成：入站 staging、出站 file/message manifest、原始文件名、Feishu/Octo 上传发送、Octo COS/STS 大文件路径和 fallback 均有回归；真实 Feishu/Octo 文件/图片/视频和出站文件 live 证据已通过。
   - Octo 入站文件 24h live 已验证：用户侧文件进入 staging，本地路径存在，Agent 可返回路径；Octo 视频真实形态会以 `file` + `.mp4` staged path 出现，live smoke 已按视频类文件识别并验收通过。
@@ -233,7 +243,7 @@
 
 - 本轮验证通过：`npm run typecheck:api`
 - 本轮验证通过：`npm run build:api`
-- 本轮验证通过：`node --test tests/system/channel-connectors-agent-session-driver.test.mjs tests/system/channel-connectors-service.test.mjs`，136/136 通过，覆盖 one-shot runner 终态 grace、取消 race、未知 CLI 协议降级、无最终回复兼容提示、Claude persistent error subtype/unknown event、Codex app-server 同 tick 终态通知缓冲、未知 terminal status、transport close settle、Feishu 进度卡终态 dirty、Agent `running -> delivering -> cleanup` 生命周期、投递期 `/stop` 文案和 `replyDeliveryStatus` 记录，以及既有 daemon/session/Feishu/Octo 回归。
+- 本轮验证通过：`node --test tests/system/channel-connectors-agent-session-driver.test.mjs tests/system/channel-connectors-service.test.mjs`，137/137 通过，覆盖 one-shot runner 终态 grace、取消 race、未知 CLI 协议降级、无最终回复兼容提示、Claude persistent error subtype/unknown event、Codex app-server 同 tick 终态通知缓冲、未知 terminal status、transport close settle、Feishu 进度卡终态 dirty、Agent `running -> delivering -> cleanup` 生命周期、投递期 `/stop` 文案、`replyDeliveryStatus` 记录、preflight cleanup、同消息 native compact 豁免和既有 daemon/session/Feishu/Octo 回归。
 - 本轮验证通过：`npm run smoke:channel-connectors:agent-heartbeat-local -- --json`，16/16 通过，覆盖 Codex / Claude Code / OpenCode 的 stderr CR TUI heartbeat、stdout heartbeat、idle timeout 替代总 timeout、heartbeat-only stall 诊断、静默 heartbeat timeout，以及非 runtime agent 固定 timeout 边界。
 - 本轮验证通过：`node --test tests/system/channel-connectors-agent-heartbeat-local-script.test.mjs`，2/2 通过，覆盖 heartbeat smoke 脚本本地证明边界与完整 synthetic matrix。
 - 本轮验证通过：`node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs tests/system/studio-web-channel-connectors-page.test.mjs`，覆盖 Channel Connectors 独立 Profile 工作台、Gateway 预算索引、Profile 复制/删除/binding 行事件快捷过滤/事件 binding/type 筛选/事件数量/批量停止控件、Profile ID 重命名迁移绑定合同、App Connection effective model / apply / preview 合同、IM binding deep-link 选中合同、Agents 旧 CLI 路由删除和 Channel Connectors 独立导航。

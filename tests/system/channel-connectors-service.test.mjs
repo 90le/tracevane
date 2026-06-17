@@ -14510,15 +14510,27 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /activeRunCancels\.set\(activeRunId/);
   assert.match(daemonSource, /function cleanupActiveRunLifecycle/);
   assert.match(daemonSource, /input\.activeRunCancels\.delete\(input\.activeRunId\)/);
+  assert.match(daemonSource, /cleanupActiveRunLifecycleOnce/);
   assert.match(daemonSource, /cleanupActiveRunLifecycle\(\{\s*state,\s*activeRunCancels,\s*activeRunId,\s*sessionRunLease,/);
+  assert.match(daemonSource, /eventKind:\s*"agent\.run\.preflight_failed"/);
   assert.match(daemonSource, /status:\s*"running"/);
   assert.match(daemonSource, /status\s*=\s*"delivering"/);
   assert.match(daemonSource, /deliveryStartedAt\s*=\s*now/);
   assert.match(daemonSource, /function markActiveRunDelivering/);
+  assert.match(daemonSource, /function markAgentRunDeliveryFailure/);
+  assert.match(daemonSource, /record\.replyDeliveryStatus \|\|= "failed"/);
   assert.match(daemonSource, /entry\.status === "delivering"/);
   assert.match(daemonSource, /正在投递最终回复/);
   assert.match(daemonSource, /replyDeliveryStatus/);
+  assert.match(daemonSource, /replyDeliveryStatus === "delivered" && isOctoGroupChannel\(message\.channelType\)/);
+  assert.match(daemonSource, /const delivered = replyDeliveryStatus[\s\S]{0,160}: event\.replySent === true/);
+  assert.doesNotMatch(daemonSource, /agent\.ok === true && replySent && isOctoGroupChannel\(message\.channelType\)/);
+  assert.match(daemonSource, /eventKind:\s*"agent\.run\.delivery_failed"/);
+  assert.match(daemonSource, /eventKind:\s*"agent\.run\.delivery_failed_card_failed"/);
   assert.match(daemonSource, /function ensureFeishuProgressCardDeliveryFailure/);
+  assert.match(daemonSource, /feishuFinalProgressCardDelivered/);
+  assert.match(daemonSource, /failedAgentNeedsTextReply[\s\S]{0,140}feishuFinalProgressCardDelivered === false/);
+  assert.match(daemonSource, /progressCardFinalDelivered:\s*feishuFinalProgressCardDelivered/);
   assert.match(daemonSource, /function stopFeishuTypingReactionSafely/);
   assert.match(daemonSource, /agent\.reaction"\}\.stop_failed/);
   assert.match(daemonSource, /rawType:\s*"reply\/delivery-failed"/);
@@ -14589,6 +14601,8 @@ test("native Channel Connectors daemon keeps Feishu compact native-first before 
     daemonSource.indexOf("async function nativeCompactChannelConnectorConversation"),
     daemonSource.indexOf("interface GatewayRuntimeLogEntryForUsage"),
   );
+  assert.match(nativeCompact, /currentMessageOwnsActiveRun/);
+  assert.match(nativeCompact, /activeRun\.entry\.messageId\) === normalizeString\(input\.message\.messageId\)/);
   assert.match(nativeCompact, /input\.binding\.platform === "feishu"\s*\?\s*input\.config\.paths\.feishuEvents\s*:\s*input\.config\.paths\.octoEvents/);
   assert.match(nativeCompact, /eventKind:\s*"agent\.native_compact\.finished"/);
   assert.match(nativeCompact, /eventKind:\s*"agent\.native_compact\.failed"/);
@@ -15408,6 +15422,278 @@ test("native Channel Connectors daemon rejects same-session Octo Agent turns whi
         }));
         assert.equal(octoEvents.some((event) => event.eventKind === "channel.agent.queued"), false);
       } finally {
+        child.kill("SIGTERM");
+        await new Promise((resolve) => {
+          child.once("exit", resolve);
+          setTimeout(resolve, 1000);
+        });
+      }
+
+      assert.equal(stderr.trim(), "");
+    });
+  } finally {
+    await new Promise((resolve, reject) => {
+      wss.close((error) => error ? reject(error) : resolve());
+    });
+  }
+});
+
+test("native Channel Connectors daemon keeps Octo sessions busy while final reply is delivering", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createChannelConnectorsService(config, {
+    now: () => new Date("2026-06-06T08:00:00.000Z"),
+  });
+  const fakeBin = path.join(root, "fake-bin");
+  const capturePath = path.join(root, "codex-delivering-guard-capture.jsonl");
+  fs.mkdirSync(fakeBin, { recursive: true });
+  const fakeCodexPath = path.join(fakeBin, "codex");
+  fs.writeFileSync(fakeCodexPath, [
+    "#!/usr/bin/env node",
+    "const fs = require('fs');",
+    "let stdin = '';",
+    "process.stdin.on('data', (chunk) => { stdin += chunk.toString('utf8'); });",
+    "process.stdin.on('end', () => {",
+    "  fs.appendFileSync(process.env.STUDIO_TEST_CODEX_CAPTURE, `${JSON.stringify({ event: 'start', at: Date.now(), stdin })}\\n`);",
+    "  process.stdout.write('{\"type\":\"thread.started\",\"thread_id\":\"thread-delivery\"}\\n');",
+    "  process.stdout.write(`${JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'delivery final reply' } })}\\n`);",
+    "  process.stdout.write('{\"type\":\"turn.completed\"}\\n');",
+    "});",
+    "",
+  ].join("\n"), { mode: 0o755 });
+
+  const wsConnects = [];
+  let sendInbound = null;
+  const wss = new WebSocketServer({ host: "127.0.0.1", port: 0 });
+  await new Promise((resolve, reject) => {
+    wss.once("listening", resolve);
+    wss.once("error", reject);
+  });
+  const wsAddress = wss.address();
+  assert.ok(wsAddress && typeof wsAddress === "object");
+  const wsUrl = `ws://127.0.0.1:${wsAddress.port}/ws`;
+  wss.on("connection", (socket) => {
+    let connected = false;
+    socket.on("message", (data) => {
+      if (connected) return;
+      const packet = decodeOctoConnectPacket(Buffer.isBuffer(data) ? data : Buffer.from(data));
+      connected = true;
+      wsConnects.push(packet);
+      const serverKey = createOctoX25519KeyPair();
+      const salt = "beadfeed12345678";
+      socket.send(encodeOctoConnackPacket({
+        serverPublicKeyBase64: serverKey.publicKeyBase64,
+        salt,
+      }));
+      sendInbound = (messageId, messageSeq, content) => {
+        if (socket.readyState !== 1) return;
+        socket.send(encodeOctoRecvPacket({
+          serverPrivateKey: serverKey.privateKey,
+          clientPublicKeyBase64: packet.clientPublicKeyBase64,
+          salt,
+          messageId,
+          messageSeq,
+          fromUid: "delivery-user",
+          channelId: "delivery-user",
+          channelType: 1,
+          payload: {
+            type: 1,
+            content,
+          },
+        }));
+      };
+      setTimeout(() => sendInbound?.(2101, 1, "first delivery turn"), 50);
+    });
+  });
+
+  try {
+    const requests = [];
+    let releaseFinalReply = null;
+    let resolveFinalReplyStarted = null;
+    let finalReplyHasStarted = false;
+    const finalReplyStarted = new Promise((resolve) => {
+      resolveFinalReplyStarted = resolve;
+    });
+    const finalReplyRelease = new Promise((resolve) => {
+      releaseFinalReply = resolve;
+    });
+    await withServer(async (req, res) => {
+      const chunks = [];
+      req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
+      await new Promise((resolve) => req.on("end", resolve));
+      const bodyRaw = Buffer.concat(chunks).toString("utf8");
+      const body = bodyRaw ? JSON.parse(bodyRaw) : {};
+      requests.push({
+        method: req.method,
+        path: req.url,
+        authorization: req.headers.authorization,
+        body,
+      });
+      res.setHeader("content-type", "application/json");
+      if (req.url === "/v1/models") {
+        res.end(JSON.stringify({
+          object: "list",
+          data: [
+            { id: "gpt-5", object: "model", features: { text: true } },
+          ],
+        }));
+        return true;
+      }
+      if (req.url?.startsWith("/v1/bot/register")) {
+        res.end(JSON.stringify({ robot_id: "robot-delivery", im_token: "im-token-delivery", ws_url: wsUrl }));
+        return true;
+      }
+      if (req.url === "/v1/bot/sendMessage") {
+        const content = body?.payload?.content || "";
+        if (content.includes("delivery final reply")) {
+          finalReplyHasStarted = true;
+          resolveFinalReplyStarted?.();
+          await finalReplyRelease;
+        }
+        res.end(JSON.stringify({ ok: true, message_id: `octo-delivery-${requests.length}` }));
+        return true;
+      }
+      if (req.url === "/v1/bot/typing" || req.url === "/v1/bot/heartbeat") {
+        res.end(JSON.stringify({ ok: true }));
+        return true;
+      }
+      return false;
+    }, async (apiUrl) => {
+      const initial = service.getNativeConfig().config;
+      service.saveNativeConfig({
+        config: {
+          ...initial,
+          agentProfiles: [
+            {
+              id: "codex-delivery-guard",
+              name: "Codex Delivery Guard",
+              agent: "codex",
+              model: "gpt-5",
+              workDir: config.projectRoot,
+              permissionMode: "suggest",
+              gatewayEndpoint: `${apiUrl}/v1`,
+              gatewayKeyRef: "studio-gateway-client-key",
+              appProfileRef: "codex",
+            },
+          ],
+          defaultAgentProfileId: "codex-delivery-guard",
+          platformBindings: [
+            {
+              id: "octo-delivery-guard",
+              platform: "octo",
+              accountId: "octo-account",
+              botId: null,
+              displayName: "Octo Delivery Guard",
+              agentProfileId: "codex-delivery-guard",
+              enabled: true,
+              allowlist: [],
+              adminUsers: [],
+              metadata: {
+                apiUrl,
+                botToken: "test-token",
+                wsUrl,
+                octoHeartbeatMs: 30_000,
+                octoPongTimeoutMs: 10_000,
+                octoReconnectMs: 3_000,
+                octoReconnectJitterMs: 0,
+              },
+            },
+          ],
+        },
+      });
+
+      const runtimeConfig = service.getDaemonConfig().config;
+      runtimeConfig.management.port = await findFreePort();
+      const configPath = path.join(root, "daemon-delivery-guard-config.json");
+      fs.mkdirSync(path.dirname(runtimeConfig.paths.log), { recursive: true });
+      fs.writeFileSync(configPath, JSON.stringify(runtimeConfig, null, 2), "utf8");
+
+      const daemonEntry = path.resolve("dist/apps/api/modules/channel-connectors/daemon.js");
+      const child = spawn(process.execPath, [daemonEntry, "--config", configPath], {
+        cwd: path.resolve("."),
+        env: {
+          ...process.env,
+          PATH: `${fakeBin}:${process.env.PATH || ""}`,
+          STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+          STUDIO_TEST_CODEX_CAPTURE: capturePath,
+        },
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stderr = "";
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk.toString("utf8");
+      });
+
+      try {
+        const connectedStatus = await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const connected = response.body?.octoConnections?.find?.((item) => item.bindingId === "octo-delivery-guard" && item.connected);
+          return connected ? response.body : null;
+        }, 5000);
+        assert.equal(connectedStatus.ok, true);
+        assert.equal(wsConnects.length, 1);
+        assert.ok(sendInbound);
+
+        await waitFor(() => finalReplyHasStarted || null, 5000);
+        await finalReplyStarted;
+        const deliveringStatus = await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const activeRun = response.body?.activeRuns?.find?.((item) => item.messageId === "2101");
+          return activeRun?.status === "delivering" ? response.body : null;
+        }, 5000);
+        const deliveringRun = deliveringStatus.activeRuns.find((item) => item.messageId === "2101");
+        assert.equal(deliveringRun.status, "delivering");
+        assert.ok(deliveringRun.deliveryStartedAt);
+
+        sendInbound(2102, 2, "/stop");
+        sendInbound(2103, 3, "second message during delivery");
+
+        await waitFor(() => {
+          const contents = requests
+            .filter((request) => request.path === "/v1/bot/sendMessage")
+            .map((request) => request.body?.payload?.content || "")
+            .join("\n");
+          return /正在投递最终回复/.test(contents) && /最终回复仍在投递中/.test(contents) ? contents : null;
+        }, 5000);
+
+        releaseFinalReply?.();
+        const finalStatus = await waitFor(async () => {
+          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
+          const run = response.body?.agentRuns?.find?.((item) => item.messageId === "2101" && item.replyDeliveryStatus === "delivered");
+          const active = response.body?.activeRuns?.some?.((item) => item.messageId === "2101");
+          return run && !active ? response.body : null;
+        }, 10_000);
+        assert.equal(finalStatus.ok, true);
+        assert.equal(finalStatus.agentRuns.some((item) => item.messageId === "2102"), false);
+        assert.equal(finalStatus.agentRuns.some((item) => item.messageId === "2103"), false);
+
+        const capture = fs.readFileSync(capturePath, "utf8").trim().split(/\r?\n/).filter(Boolean).map((line) => JSON.parse(line));
+        assert.equal(capture.length, 1);
+        assert.match(capture[0].stdin, /first delivery turn/);
+        assert.doesNotMatch(capture[0].stdin, /second message during delivery/);
+
+        const replyContents = requests
+          .filter((request) => request.path === "/v1/bot/sendMessage")
+          .map((request) => request.body?.payload?.content || "")
+          .join("\n");
+        assert.match(replyContents, /delivery final reply/);
+        assert.match(replyContents, /正在投递最终回复/);
+        assert.match(replyContents, /最终回复仍在投递中/);
+
+        const octoEvents = await waitForJsonLines(runtimeConfig.paths.octoEvents, (events) => {
+          return events.some((event) => {
+            return event.eventKind === "channel.agent.rejected_busy"
+              && event.messageId === "2103"
+              && event.activeStatus === "delivering";
+          }) && events.some((event) => {
+            return event.eventKind === "agent.run.finished"
+              && event.messageId === "2101"
+              && event.replyDeliveryStatus === "delivered";
+          });
+        }, 8000);
+        assert.equal(octoEvents.some((event) => event.eventKind === "channel.agent.queued"), false);
+      } finally {
+        releaseFinalReply?.();
         child.kill("SIGTERM");
         await new Promise((resolve) => {
           child.once("exit", resolve);
@@ -17039,7 +17325,8 @@ test("native Channel Connectors daemon runs Codex app-server when persistent ses
           const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
           const run = response.body?.agentRuns?.find?.((item) => item.messageId === "3001" && item.ok);
           const session = response.body?.agentSessionDriver?.activeSessions?.find?.((item) => item.bindingId === "octo-persistent");
-          return run && session ? response.body : null;
+          const active = response.body?.activeRuns?.some?.((item) => item.messageId === "3001");
+          return run && session && !active ? response.body : null;
         }, 10_000);
         assert.equal(status.agentSessionDriver.requestedPersistentBindings[0].effectiveMode, "persistent");
         assert.equal(status.agentSessionDriver.policy.idleTimeoutMs, 1500);
