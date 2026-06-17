@@ -46,3 +46,6 @@ release/
 *.zip
 .gstack/
 .omx/
+
+# worktrees
+.claude/worktrees/
