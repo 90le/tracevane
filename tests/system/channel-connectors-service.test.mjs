@@ -11963,6 +11963,43 @@ test("native Channel Connectors process runner stall diagnostics do not refresh 
   }
 });
 
+test("native Channel Connectors process runner backs off repeated heartbeat-only diagnostics", async () => {
+  const root = makeTempRoot();
+  const progress = [];
+  const childScript = [
+    "let tick = 0;",
+    "const interval = setInterval(() => {",
+    "  tick += 1;",
+    "  process.stderr.write(`\\rTUI heartbeat ${tick}`);",
+    "  if (tick >= 16) {",
+    "    clearInterval(interval);",
+    localHeartbeatCompletionScript("codex", "codex heartbeat stall diagnostics backed off"),
+    "  }",
+    "}, 30);",
+  ].join("");
+
+  const result = await defaultChannelConnectorAgentProcessRunner({
+    command: process.execPath,
+    args: ["-e", childScript],
+    cwd: root,
+    stdin: "",
+    env: {},
+    timeoutMs: 90,
+    heartbeatStallMs: 60,
+    agent: "codex",
+    onProgress: (event) => progress.push(event),
+  });
+
+  const stallEvents = progress.filter((event) => event.rawType === "process/heartbeat-stall");
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.timedOut, false);
+  assert.ok(result.durationMs >= 400);
+  assert.ok(stallEvents.length >= 2);
+  assert.ok(stallEvents.length <= 4, `expected backed-off stall diagnostics, got ${stallEvents.length}`);
+  assert.match(stallEvents.at(-1)?.text || "", /Heartbeat-only notice #/);
+  assert.equal(progress.at(-1)?.type, "completed");
+});
+
 test("native Channel Connectors process runner reports heartbeat timeout only after liveness stops", async () => {
   for (const agent of ["codex", "claude-code", "opencode"]) {
     const root = makeTempRoot();

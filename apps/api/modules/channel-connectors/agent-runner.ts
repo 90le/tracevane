@@ -205,6 +205,12 @@ function agentProcessHeartbeatStallMessage(input: {
   ].filter(Boolean).join(" ");
 }
 
+function heartbeatStallDelayMs(baseMs: number, noticeCount: number): number {
+  if (baseMs <= 0) return 0;
+  const multiplier = Math.min(8, Math.max(1, 2 ** Math.max(0, noticeCount)));
+  return Math.min(15 * 60_000, baseMs * multiplier);
+}
+
 export function truncateProgressText(value: string, maxLength = 1200): string {
   return value.length > maxLength ? `${value.slice(0, maxLength - 1)}...` : value;
 }
@@ -2074,6 +2080,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
     const armStallTimeout = (): void => {
       if (stallTimeout) clearTimeout(stallTimeout);
       if (!usesHeartbeatTimeout || heartbeatStallMs <= 0 || settled) return;
+      const stallDelayMs = heartbeatStallDelayMs(heartbeatStallMs, heartbeatOnlyNoticeCount);
       stallTimeout = setTimeout(() => {
         if (settled) return;
         const nowMs = Date.now();
@@ -2098,7 +2105,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
           }));
         }
         armStallTimeout();
-      }, heartbeatStallMs);
+      }, stallDelayMs);
     };
     const markActivity = (reason: string): void => {
       if (!usesHeartbeatTimeout) return;
