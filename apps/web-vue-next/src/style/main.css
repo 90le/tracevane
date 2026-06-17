@@ -1,0 +1,30 @@
+@import 'tailwindcss';
+@import './tokens.css';
+
+/* Tailwind v4 CSS-first 配置：把 token 映射成 theme */
+@theme {
+  --color-accent: var(--accent);
+  --color-surface: var(--surface-desktop);
+  --color-panel: var(--material-thick);
+  --radius-panel: var(--radius-panel);
+  --radius-card: var(--radius-card);
+}
+
+/* cascade layer：让 utility 能覆盖 token（守则 §3） */
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  html,
+  body {
+    height: 100%;
+    margin: 0;
+  }
+  body {
+    background: var(--surface-desktop);
+    background-image: var(--ambient-1), var(--ambient-2);
+    color: var(--text-primary);
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'PingFang SC', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}

@@ -1,0 +1,86 @@
+/* OpenClaw Studio 设计 token —— 材质派。唯一 token 源头。
+   依据 docs/界面设计守则.md §3-5。禁止在组件里写魔法值。 */
+
+:root,
+[data-theme='dark'] {
+  /* 系统色（§5） */
+  --sys-blue: #0a84ff;
+  --sys-green: #30d158;
+  --sys-orange: #ff9f0a;
+  --sys-red: #ff453a;
+  --sys-teal: #64d2ff;
+  --sys-purple: #bf5af2;
+
+  /* 底 + 材质（§3）—— graphite 黑底，毛玻璃从桌面透出 */
+  --surface-desktop: #000000;
+  --material-thin: rgba(38, 38, 42, 0.55);     /* 侧栏、检视器 */
+  --material-thick: rgba(28, 28, 30, 0.72);    /* 主舞台、输入区 */
+  --material-floating: rgba(48, 48, 52, 0.92); /* 卡片、弹层、菜单 */
+  --material-sidebar: rgba(28, 28, 30, 0.6);
+
+  /* 文字四档（§5） */
+  --text-primary: #f5f5f7;
+  --text-secondary: #a8a8ad;
+  --text-tertiary: #74747a;
+  --text-quaternary: #48484c;
+
+  /* 发丝线 + 填充（§5） */
+  --hairline: rgba(255, 255, 255, 0.08);
+  --hairline-strong: rgba(255, 255, 255, 0.14);
+  --fill: rgba(120, 120, 128, 0.18);
+  --fill-strong: rgba(120, 120, 128, 0.3);
+
+  /* 材质模糊量级（§3） */
+  --blur-thin: saturate(180%) blur(30px);
+  --blur-thick: saturate(180%) blur(40px);
+  --blur-floating: saturate(200%) blur(24px);
+
+  /* 圆角层次（§4）—— 材料越浮越大 */
+  --radius-control: 8px;
+  --radius-panel: 12px;
+  --radius-card: 14px;
+  --radius-floating: 16px;
+  --radius-pill: 980px;
+
+  /* 阴影三档（§4）—— 多层柔和 elevation */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.28), 0 0 0 0.5px var(--hairline);
+  --shadow-2: 0 4px 12px rgba(0, 0, 0, 0.32), 0 1px 3px rgba(0, 0, 0, 0.4), 0 0 0 0.5px var(--hairline);
+  --shadow-3: 0 14px 36px rgba(0, 0, 0, 0.48), 0 4px 12px rgba(0, 0, 0, 0.36), 0 0 0 0.5px var(--hairline);
+
+  /* 桌面环境光晕（§3，毛玻璃透出处） */
+  --ambient-1: radial-gradient(circle at 12% 16%, color-mix(in srgb, var(--sys-blue) 16%, transparent), transparent 42%);
+  --ambient-2: radial-gradient(circle at 88% 84%, color-mix(in srgb, var(--sys-teal) 10%, transparent), transparent 42%);
+
+  /* accent 派生 */
+  --accent: var(--sys-blue);
+  --accent-soft: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+[data-theme='light'] {
+  --surface-desktop: #ececee;
+  --material-thin: rgba(248, 248, 250, 0.72);
+  --material-thick: rgba(255, 255, 255, 0.82);
+  --material-floating: rgba(255, 255, 255, 0.96);
+  --material-sidebar: rgba(244, 244, 246, 0.72);
+
+  --text-primary: #1d1d1f;
+  --text-secondary: #5a5a60;
+  --text-tertiary: #86868d;
+  --text-quaternary: #aeaeb2;
+
+  --hairline: rgba(0, 0, 0, 0.1);
+  --hairline-strong: rgba(0, 0, 0, 0.18);
+  --fill: rgba(120, 120, 128, 0.12);
+  --fill-strong: rgba(120, 120, 128, 0.24);
+
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.08), 0 0 0 0.5px var(--hairline);
+  --shadow-2: 0 4px 14px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08), 0 0 0 0.5px var(--hairline);
+  --shadow-3: 0 14px 40px rgba(0, 0, 0, 0.16), 0 4px 12px rgba(0, 0, 0, 0.1), 0 0 0 0.5px var(--hairline);
+
+  --sys-blue: #007aff;
+  --accent: var(--sys-blue);
+  --accent-soft: color-mix(in srgb, var(--accent) 20%, transparent);
+
+  --ambient-1: radial-gradient(circle at 12% 16%, color-mix(in srgb, var(--sys-blue) 12%, transparent), transparent 42%);
+  --ambient-2: radial-gradient(circle at 88% 84%, color-mix(in srgb, var(--sys-teal) 8%, transparent), transparent 42%);
+}
