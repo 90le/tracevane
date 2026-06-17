@@ -6,12 +6,13 @@
 import { ref } from 'vue';
 import ResourceExplorer from './components/ResourceExplorer.vue';
 import GitPanel from './components/GitPanel.vue';
+import SearchPanel from './components/SearchPanel.vue';
 import CodePreview from './components/CodePreview.vue';
 import TerminalPanel from './components/TerminalPanel.vue';
 import { useFilesStore } from './files-store';
 import type { FileEntrySummary } from '../../../../../types/files';
 
-type SideView = 'explorer' | 'git';
+type SideView = 'explorer' | 'git' | 'search';
 
 const sideView = ref<SideView>('explorer');
 const files = useFilesStore();
@@ -30,14 +31,15 @@ async function openFile(entry: FileEntrySummary) {
       <div class="ide__brand">◉</div>
       <button class="ide__act" :class="{ 'ide__act--on': sideView === 'explorer' }" title="资源管理器" @click="sideView = 'explorer'">☶</button>
       <button class="ide__act" :class="{ 'ide__act--on': sideView === 'git' }" title="源代码管理" @click="sideView = 'git'">⎇</button>
-      <button class="ide__act" title="搜索" disabled>⌕</button>
+      <button class="ide__act" :class="{ 'ide__act--on': sideView === 'search' }" title="搜索" @click="sideView = 'search'">⌕</button>
       <button class="ide__act" title="会话历史" disabled>◷</button>
     </nav>
 
-    <!-- 侧面板：资源管理器 / Git 切换 -->
+    <!-- 侧面板：资源管理器 / Git / 搜索 切换 -->
     <aside class="ide__side">
       <ResourceExplorer v-show="sideView === 'explorer'" @open-file="openFile" />
       <GitPanel v-show="sideView === 'git'" />
+      <SearchPanel v-show="sideView === 'search'" />
     </aside>
 
     <!-- 编辑器区 + 终端面板 -->
