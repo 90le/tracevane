@@ -9162,6 +9162,93 @@ test("model gateway normalizes endpoint profile passthrough upstream errors", as
   assert.match(endpoint?.health.lastError || "", /Endpoint profile failed/);
 });
 
+test("model gateway normalizes endpoint profile adapter upstream errors", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "adapter-error-profile-provider",
+      name: "Adapter Error Profile Provider",
+      appScopes: ["claude-code"],
+      baseUrl: "https://unused-adapter-root.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "adapter-profile-model",
+        models: [{ id: "adapter-profile-model" }],
+      },
+      endpointProfiles: [{
+        id: "anthropic-chat-profile",
+        name: "Anthropic Chat Profile",
+        appScopes: ["claude-code"],
+        baseUrl: "https://adapter-profile.example.test/v1",
+        apiFormat: "openai_chat",
+        authStrategy: "bearer",
+        failover: { priority: 1 },
+      }],
+    },
+    secret: {
+      apiKey: "sk-adapter-profile-secret",
+    },
+    setActiveScopes: ["claude-code"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  let seenUrl = "";
+  globalThis.fetch = async (url) => {
+    seenUrl = String(url);
+    return new Response("<html><body>Adapter endpoint profile failed</body></html>", {
+      status: 503,
+      headers: { "content-type": "text/html; charset=utf-8" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const messages = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "adapter-profile-model",
+          max_tokens: 64,
+          messages: [{ role: "user", content: "hello" }],
+        },
+      });
+
+      assert.equal(messages.status, 503);
+      assert.equal(messages.headers["content-type"], "application/json; charset=utf-8");
+      assert.equal(messages.headers["x-openclaw-model-gateway-provider"], "adapter-error-profile-provider");
+      assert.equal(messages.headers["x-openclaw-model-gateway-endpoint"], "anthropic-chat-profile");
+      assert.equal(messages.body.error.type, "upstream_error");
+      assert.equal(messages.body.error.code, "upstream_http_503");
+      assert.match(messages.body.error.message, /Adapter endpoint profile failed/);
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.equal(runtime.status, 200);
+      assert.equal(runtime.body.runtime.requestLog[0].outcome, "failure");
+      assert.equal(runtime.body.runtime.requestLog[0].routeId, "anthropic_messages");
+      assert.equal(runtime.body.runtime.requestLog[0].requestedPath, "/v1/messages");
+      assert.equal(runtime.body.runtime.requestLog[0].providerId, "adapter-error-profile-provider");
+      assert.equal(runtime.body.runtime.requestLog[0].endpointProfileId, "anthropic-chat-profile");
+      assert.equal(runtime.body.runtime.requestLog[0].upstreamUrl, "https://adapter-profile.example.test/v1/chat/completions");
+      assert.equal(runtime.body.runtime.requestLog[0].errorCode, "upstream_http_503");
+      assert.match(runtime.body.runtime.requestLog[0].errorMessage, /Adapter endpoint profile failed/);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(seenUrl, "https://adapter-profile.example.test/v1/chat/completions");
+  const listed = ctx.services.modelGateway.listProviders();
+  const provider = listed.providers.find((item) => item.id === "adapter-error-profile-provider");
+  const endpoint = provider?.endpointProfiles.find((profile) => profile.id === "anthropic-chat-profile");
+  assert.equal(provider?.health.lastFailureAt, null);
+  assert.ok(endpoint?.health.lastFailureAt);
+  assert.match(endpoint?.health.lastError || "", /Adapter endpoint profile failed/);
+});
+
 test("model gateway restores codex tool-call history for follow-up chat adapter requests", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

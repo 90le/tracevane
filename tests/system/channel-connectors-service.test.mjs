@@ -11657,6 +11657,77 @@ test("native Channel Connectors Feishu transport manages processing reactions", 
   });
 });
 
+test("native Channel Connectors Feishu transport reports reaction stop failures without throwing", async () => {
+  const requests = [];
+  await withServer(async (req, res) => {
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk))));
+    await new Promise((resolve) => req.on("end", resolve));
+    const bodyRaw = Buffer.concat(chunks).toString("utf8");
+    requests.push({
+      method: req.method,
+      path: req.url,
+      authorization: req.headers.authorization,
+      body: bodyRaw ? JSON.parse(bodyRaw) : null,
+    });
+    res.setHeader("content-type", "application/json");
+    if (req.url === "/open-apis/auth/v3/tenant_access_token/internal" && req.method === "POST") {
+      res.end(JSON.stringify({
+        code: 0,
+        msg: "success",
+        tenant_access_token: "tenant-token-1",
+        expire: 7200,
+      }));
+      return true;
+    }
+    if (req.url === "/open-apis/im/v1/messages/om_processing/reactions" && req.method === "POST") {
+      res.end(JSON.stringify({
+        code: 0,
+        msg: "success",
+        data: { reaction_id: "reaction-1" },
+      }));
+      return true;
+    }
+    if (req.url === "/open-apis/im/v1/messages/om_processing/reactions/reaction-1" && req.method === "DELETE") {
+      res.statusCode = 400;
+      res.end(JSON.stringify({
+        code: 400,
+        msg: "reaction delete rejected",
+      }));
+      return true;
+    }
+    return false;
+  }, async (apiUrl) => {
+    const root = makeTempRoot();
+    const cachePath = path.join(root, "feishu-token-cache.json");
+    const transport = {
+      apiUrl,
+      appId: "cli_react_fail",
+      appSecret: "test-secret",
+    };
+
+    const added = await addFeishuMessageReaction(transport, {
+      messageId: "om_processing",
+      emojiType: "OnIt",
+    }, cachePath);
+    assert.equal(added.ok, true);
+    assert.equal(added.reactionId, "reaction-1");
+
+    const removed = await removeFeishuMessageReaction(transport, {
+      messageId: "om_processing",
+      reactionId: "reaction-1",
+    }, cachePath);
+    assert.equal(removed.ok, false);
+    assert.equal(removed.action, "remove-reaction");
+    assert.equal(removed.statusCode, 400);
+    assert.equal(removed.tokenCache, "hit");
+    assert.match(removed.error || "", /reaction delete rejected/);
+    assert.equal(requests.length, 3);
+    assert.equal(requests[2].method, "DELETE");
+    assert.equal(requests[2].authorization, "Bearer tenant-token-1");
+  });
+});
+
 test("native Channel Connectors Feishu command replies use progress reactions and reply-to context", () => {
   const daemonSource = fs.readFileSync(path.join(process.cwd(), "apps/api/modules/channel-connectors/daemon.ts"), "utf8");
   assert.match(daemonSource, /shouldStartFeishuCommandTypingReaction/);
@@ -14611,6 +14682,21 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /progressCardFinalDelivered:\s*feishuFinalProgressCardDelivered/);
   assert.match(daemonSource, /function stopFeishuTypingReactionSafely/);
   assert.match(daemonSource, /agent\.reaction"\}\.stop_failed/);
+  const feishuReactionStopBlock = daemonSource.slice(
+    daemonSource.indexOf("function startFeishuTypingReaction"),
+    daemonSource.indexOf("function stopFeishuTypingReactionSafely"),
+  );
+  assert.match(feishuReactionStopBlock, /stopped\.ok !== true/);
+  assert.match(feishuReactionStopBlock, /\.stop_failed/);
+  const feishuDeliveryStart = daemonSource.indexOf("const feishuDeliveryExpected");
+  const feishuDeliveryFailureBlock = daemonSource.slice(
+    feishuDeliveryStart,
+    daemonSource.indexOf('eventKind: "agent.run.finished"', feishuDeliveryStart),
+  );
+  assert.match(feishuDeliveryFailureBlock, /replyDeliveryStatus === "failed"/);
+  assert.match(feishuDeliveryFailureBlock, /ensureFeishuProgressCardDeliveryFailure/);
+  assert.match(feishuDeliveryFailureBlock, /queueFeishuProgressFlush\(true,\s*"reply-delivery-failed"\)/);
+  assert.match(feishuDeliveryFailureBlock, /await feishuProgressFlush/);
   assert.match(daemonSource, /rawType:\s*"reply\/delivery-failed"/);
   assert.match(daemonSource, /signal:\s*abortController\.signal/);
   assert.match(daemonSource, /sendFeishuCommandTextReplyInBackground/);

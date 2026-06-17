@@ -4645,6 +4645,21 @@ async function startFeishuTypingReaction(input: {
       reactionError: stopped.error,
       requestCount: stopped.requestCount,
     });
+    if (stopped.ok !== true) {
+      writeJsonLine(input.config.paths.feishuEvents, {
+        checkedAt: new Date().toISOString(),
+        eventKind: `${eventKindPrefix}.stop_failed`,
+        adapter: "feishu",
+        bindingId: input.binding.id,
+        sessionKey: input.sessionKey,
+        messageId: input.messageId,
+        commandPreview: input.commandPreview || null,
+        reactionId,
+        reactionOk: false,
+        reactionError: stopped.error || "Feishu reaction stop failed.",
+        requestCount: stopped.requestCount,
+      });
+    }
   };
 }
 

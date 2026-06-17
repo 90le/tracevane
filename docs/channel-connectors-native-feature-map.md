@@ -74,7 +74,7 @@
 - 真实 CLI thinking smoke：Claude Code 2.1.86 当前未输出 `thinking` item；OpenCode 1.17.0 在 `claude-sonnet-4-5` 上输出 `reasoning` part，在 `gpt-5.4-mini` 上不输出 reasoning。
 - `/status`、`/current`、Feishu 菜单和 Channel Connectors 页面已展示 `thinking` parser/live 支持差异：Codex 为 model-dependent，Claude Code 当前 not observed，OpenCode 按模型区分 observed / not observed / model-dependent。
 - Feishu 卡片进度和 Octo 文本/Markdown 进度已有基础渲染；Markdown 已由用户验证。
-- Feishu 命令/菜单进度按当前 IM 命令合同维护：处理 reaction 挂在触发消息上，命令卡片/文本回复通过 Feishu reply API 挂回原消息；`/compact`、`/native /compact` 也会输出 started/terminal command progress。
+- Feishu 命令/菜单进度按当前 IM 命令合同维护：处理 reaction 挂在触发消息上，命令卡片/文本回复通过 Feishu reply API 挂回原消息；`/compact`、`/native /compact` 也会输出 started/terminal command progress；reaction 停止失败会写 `*.reaction.stop_failed` 诊断，不阻断最终回复投递或 active run 清理。
 - Feishu Agent 进度卡最近动态条数由 binding metadata `feishuProgressCardEntryLimit` 控制，默认 8，运行时限制 1-30；`/display progress <1-30|default>` 和 Feishu 进度显示卡片均可设置。
 - Feishu 菜单命令面已改为清爽二级配置架构：主卡片直达 Agent、模型、权限/推理、进度显示、视觉、工作目录六个配置页；工作目录页提供 Profile 默认、上一目录、上级目录、Home 快捷按钮、最近目录直达列表、子目录分页直达列表和 `/dir find` 搜索；纯文本渠道支持 `/dir home|parent|recent N|child N`；文本 `/help` 复用同一结构。
 - Feishu 长连接 card action 不再 fire-and-forget：卡片点击会同步返回 callback response/card/toast，普通消息和 bot menu 仍保持后台异步，避免交互卡片过一段时间后触发 108002 类不可用体验。
@@ -82,6 +82,7 @@
 - Codex 隔离 `codex-home/skills` 会删除历史生成的 Feishu/Octo platform action skill 目录；当前运行态旧目录已手动清理，避免 stale YAML 被 Codex 加载。
 - OpenCode realtime JSONL 与 SQLite fallback 已共用进度 parser；DB fallback 会保留本轮工具调用/工具结果，并只把最新 assistant message 作为最终回复。
 - 近 12h live smoke 已证明 Codex、Claude Code、OpenCode 均有成功工具调用和可见工具输出；OpenCode 真实 IM `--require-process-reply` 已补齐，三 Agent 均有真实 IM 过程回复证据。
+- 本轮本地回归补齐 Feishu reaction 停止失败底层路径：`removeFeishuMessageReaction` 对 API 失败返回 `ok=false` 而不抛出，daemon 额外写显式 `stop_failed`，并继续依赖最终回复投递状态释放 lifecycle。
 
 ## 保留边界
 
