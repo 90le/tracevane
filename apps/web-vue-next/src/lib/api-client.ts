@@ -7,6 +7,7 @@ export {
   getApiBase,
   getWebSocketBasePath,
   joinApiPath,
+  requestJson,
   resolveStudioAuthorizationHeader,
   withStudioAuthorization,
 } from '@web-vue/shared/api';
