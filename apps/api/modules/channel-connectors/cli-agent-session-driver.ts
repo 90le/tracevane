@@ -34,6 +34,7 @@ interface PendingClaudeTurn {
   completedText: string | null;
   resultText: string | null;
   pendingAssistantProgress: ChannelConnectorAgentProgressEvent[];
+  unknownStructuredProgress: Set<string>;
   terminalStatus: ChannelConnectorAgentTurnResult["status"];
   terminalError: string | null;
   timeout: NodeJS.Timeout;
@@ -94,6 +95,23 @@ function joinAssistantProgressText(parts: string[]): string {
 
 function firstText(...values: unknown[]): string {
   return firstProgressTextValue(...values);
+}
+
+function claudeResultIsFailed(raw: Record<string, unknown>): boolean {
+  const subtype = normalizeString(raw.subtype).toLowerCase();
+  return raw.is_error === true || subtype === "error" || subtype.includes("error") || subtype.includes("fail");
+}
+
+function unknownStructuredProgressSignature(raw: Record<string, unknown>): { key: string; text: string } | null {
+  const rawType = normalizeString(raw.type) || "unknown";
+  if (rawType === "system" || rawType === "unknown") return null;
+  const message = isRecord(raw.message) ? raw.message : null;
+  const content = Array.isArray(message?.content) ? message.content.filter(isRecord) : [];
+  const itemType = content.map((item) => normalizeString(item.type)).filter(Boolean).join("+");
+  return {
+    key: [rawType, itemType].filter(Boolean).join(":"),
+    text: `Claude Code emitted an unrecognized structured progress event (${[rawType, itemType].filter(Boolean).join("/")}); Studio is running in CLI compatibility mode.`,
+  };
 }
 
 function compactCommand(command: string | null | undefined): boolean {
@@ -178,7 +196,10 @@ function agentResult(input: {
   const compactOkText = input.nativeCommand && compactCommand(input.nativeCommand) && input.ok
     ? `${input.agent === "opencode" ? "OpenCode" : "Claude Code"} compact 已完成。`
     : null;
-  const replyText = input.ok ? (input.replyText || compactOkText) : null;
+  const compatibilityText = input.ok && input.progressEvents.some((event) => event.rawType === "protocol/unknown-event")
+    ? `${input.agent === "opencode" ? "OpenCode" : "Claude Code"} 进程已成功结束，但 Studio 没能从当前 CLI 事件格式解析出最终回复。请查看事件日志中的 protocol/unknown-event；当前任务没有继续等待。`
+    : null;
+  const replyText = input.ok ? (input.replyText || compactOkText || compatibilityText) : null;
   return {
     attempted: true,
     ok: input.ok,
@@ -289,6 +310,7 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
         completedText: null,
         resultText: null,
         pendingAssistantProgress: [],
+        unknownStructuredProgress: new Set(),
         terminalStatus: "completed",
         terminalError: null,
         timeout,
@@ -421,7 +443,7 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
     if (rawType === "result") {
       const sessionId = normalizeString(raw.session_id);
       if (sessionId) this.sessionId = sessionId;
-      const failed = raw.is_error === true || normalizeString(raw.subtype).toLowerCase() === "error";
+      const failed = claudeResultIsFailed(raw);
       const text = firstText(raw.result, raw.error, raw.message);
       if (this.activeTurn) {
         this.activeTurn.resultText = text || this.activeTurn.resultText;
@@ -434,7 +456,9 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
         text: text || (failed ? "Claude Code turn failed" : "Claude Code turn completed"),
       }));
       this.finishActive();
+      return;
     }
+    this.pushUnknownStructuredProgress(raw);
   }
 
   private async handlePermissionRequest(raw: Record<string, unknown>): Promise<void> {
@@ -519,6 +543,20 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
       progressEvents: turn.progressEvents,
       sessionId: this.sessionId,
       resumed: true,
+    }));
+  }
+
+  private pushUnknownStructuredProgress(raw: Record<string, unknown>): void {
+    const turn = this.activeTurn;
+    if (!turn) return;
+    const unknown = unknownStructuredProgressSignature(raw);
+    if (!unknown || turn.unknownStructuredProgress.has(unknown.key) || turn.unknownStructuredProgress.size >= 5) return;
+    turn.unknownStructuredProgress.add(unknown.key);
+    this.pushProgress(progressEvent({
+      type: "event",
+      rawType: "protocol/unknown-event",
+      itemType: unknown.key,
+      text: unknown.text,
     }));
   }
 

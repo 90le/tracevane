@@ -11680,6 +11680,87 @@ test("native Channel Connectors process runner streams progress events from agen
   assert.equal(result.progressEvents?.length, 2);
 });
 
+test("native Channel Connectors process runner reports unknown structured protocol events without hanging", async () => {
+  const root = makeTempRoot();
+  const progress = [];
+  const result = await defaultChannelConnectorAgentProcessRunner({
+    command: process.execPath,
+    args: ["-e", `process.stdout.write(${JSON.stringify(`${JSON.stringify({ type: "turn.finished", status: "done" })}\n`)});`],
+    cwd: root,
+    stdin: "",
+    env: {},
+    timeoutMs: 1000,
+    agent: "codex",
+    onProgress: (event) => progress.push(event),
+  });
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.error, null);
+  const unknown = progress.find((event) => event.rawType === "protocol/unknown-event");
+  assert.ok(unknown);
+  assert.match(unknown.text || "", /compatibility mode/);
+});
+
+test("native Channel Connectors agent turn sends a compatibility reply when CLI output has no final text", async () => {
+  const root = makeTempRoot();
+  const workDir = path.join(root, "work");
+  fs.mkdirSync(workDir, { recursive: true });
+  const project = {
+    id: "codex-compat",
+    name: "Codex compatibility",
+    workDir,
+    agent: "codex",
+    model: "gpt-5",
+    permissionMode: "auto-edit",
+    gatewayEndpoint: "http://127.0.0.1:18796/v1",
+    gatewayKeyRef: "studio-gateway-client-key",
+    appProfileRef: "codex",
+    platformBindings: [],
+  };
+  const binding = {
+    id: "octo-codex-compat",
+    platform: "octo",
+    accountId: "octo-account",
+    botId: "robot-1",
+    displayName: "Octo Codex Compatibility",
+    agent: "codex",
+    enabled: true,
+    allowlist: [],
+    adminUsers: [],
+    metadata: {},
+  };
+  const message = {
+    messageId: "m-codex-compat",
+    fromUid: "user-1",
+    channelId: "user-1",
+    channelType: 1,
+    payload: { type: 1, content: "run upgraded cli" },
+  };
+  const result = await runChannelConnectorAgentTurn({
+    project,
+    binding,
+    message,
+    sessionKey: "octo:dm:user-1",
+    gatewayEndpoint: project.gatewayEndpoint,
+    gatewayClientKey: "sk-local",
+    processRunner: async () => ({
+      exitCode: 0,
+      signal: null,
+      stdout: `${JSON.stringify({ type: "turn.finished", status: "done" })}\n`,
+      stderr: "",
+      durationMs: 10,
+      timedOut: false,
+      cancelled: false,
+      error: null,
+    }),
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.status, "completed");
+  assert.match(result.replyText || "", /没能.*解析.*最终回复/);
+  assert.equal(result.progress.latest?.rawType, "protocol/unknown-event");
+});
+
 test("native Channel Connectors process progress only includes intermediate assistant text", () => {
   const base = {
     checkedAt: new Date(0).toISOString(),
@@ -12095,6 +12176,62 @@ test("native Channel Connectors process runner exits lingering CLIs after author
   }
 });
 
+test("native Channel Connectors process runner lets cancellation win during terminal grace", async () => {
+  const cases = [
+    {
+      agent: "codex",
+      lines: [
+        JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "codex done before cancel" } }),
+        JSON.stringify({ type: "turn.completed" }),
+      ],
+    },
+    {
+      agent: "claude-code",
+      lines: [
+        JSON.stringify({ type: "result", result: "claude done before cancel", session_id: "claude-cancel-grace" }),
+      ],
+    },
+    {
+      agent: "opencode",
+      lines: [
+        JSON.stringify({ type: "text", part: { type: "text", text: "opencode done before cancel" } }),
+        JSON.stringify({ type: "step_finish", part: { type: "step-finish", reason: "stop" } }),
+      ],
+    },
+  ];
+
+  for (const item of cases) {
+    const root = makeTempRoot();
+    const controller = new AbortController();
+    const progress = [];
+    const childScript = [
+      ...item.lines.map((line) => `process.stdout.write(${JSON.stringify(`${line}\n`)});`),
+      "setInterval(() => {}, 1000);",
+    ].join("");
+    const resultPromise = defaultChannelConnectorAgentProcessRunner({
+      command: process.execPath,
+      args: ["-e", childScript],
+      cwd: root,
+      stdin: "",
+      env: {},
+      timeoutMs: 1000,
+      terminalProgressGraceMs: 200,
+      signal: controller.signal,
+      agent: item.agent,
+      onProgress: (event) => {
+        progress.push(event);
+        if (event.type === "completed") setTimeout(() => controller.abort(), 10);
+      },
+    });
+    const result = await resultPromise;
+
+    assert.equal(result.cancelled, true, item.agent);
+    assert.equal(result.timedOut, false, item.agent);
+    assert.equal(result.error, "Agent process cancelled.", item.agent);
+    assert.equal(progress.some((event) => event.type === "completed"), true, item.agent);
+  }
+});
+
 test("native Channel Connectors process runner reports heartbeat timeout only after liveness stops", async () => {
   for (const agent of ["codex", "claude-code", "opencode"]) {
     const root = makeTempRoot();
@@ -12429,6 +12566,334 @@ test("native Channel Connectors Codex app-server maps reasoning summaries withou
   assert.deepEqual(reasoning.map((event) => event.text), ["先规划。\n再执行。", "content 兜底。"]);
   assert.equal(progress.some((event) => event.text === "reasoning"), false);
   assert.equal(result.progress.eventCount, progress.length);
+});
+
+test("native Channel Connectors Codex app-server does not drop terminal events emitted with the turn response", async () => {
+  const root = makeTempRoot();
+  const progress = [];
+  class ImmediateTerminalTransport {
+    callbacks = [];
+    closeCallbacks = [];
+    send(message) {
+      if (message.method === "initialize") {
+        this.emit({ id: message.id, result: { userAgent: "fake-codex-app-server" } });
+        return;
+      }
+      if (message.method === "initialized") return;
+      if (message.method === "thread/start") {
+        this.emit({ id: message.id, result: { thread: { id: "thread-immediate" } } });
+        return;
+      }
+      if (message.method === "turn/start") {
+        const turnId = "turn-immediate";
+        this.emit({ id: message.id, result: { turn: { id: turnId, status: "running" } } });
+        this.emit({ method: "item/agentMessage/delta", params: { threadId: "thread-immediate", turnId, delta: "immediate ok" } });
+        this.emit({ method: "turn/completed", params: { threadId: "thread-immediate", turn: { id: turnId, status: "completed" } } });
+        return;
+      }
+      this.emit({ id: message.id, error: { code: -32601, message: `unexpected ${message.method}` } });
+    }
+    close() {
+      for (const callback of this.closeCallbacks) callback(null);
+    }
+    onMessage(callback) {
+      this.callbacks.push(callback);
+    }
+    onClose(callback) {
+      this.closeCallbacks.push(callback);
+    }
+    emit(message) {
+      for (const callback of this.callbacks) callback(message);
+    }
+  }
+  const project = {
+    id: "codex-app-server-immediate",
+    name: "Codex App Server Immediate",
+    agent: "codex",
+    model: "gpt-5",
+    workDir: root,
+    permissionMode: "yolo",
+    gatewayEndpoint: "http://127.0.0.1:18796/v1",
+    gatewayKeyRef: "studio-gateway-client-key",
+    appProfileRef: "codex",
+    platformBindings: [],
+  };
+  const binding = {
+    id: "octo-codex-immediate",
+    platform: "octo",
+    accountId: "octo-account",
+    botId: "robot-1",
+    displayName: "Octo Codex Immediate",
+    enabled: true,
+    allowlist: [],
+    adminUsers: [],
+    metadata: { agentSessionDriver: "persistent" },
+  };
+  const session = new CodexAppServerSession({
+    transport: new ImmediateTerminalTransport(),
+    sessionId: "codex-app-server:immediate",
+    model: "gpt-5",
+    cwd: root,
+    permissionMode: "yolo",
+    requestTimeoutMs: 1000,
+    turnTimeoutMs: 200,
+  });
+
+  const result = await session.runTurn({
+    mode: "persistent",
+    key: {
+      bindingId: binding.id,
+      projectId: project.id,
+      sessionKey: "octo:dm:user-1",
+      agent: "codex",
+      model: "gpt-5",
+      workDir: root,
+      permissionMode: "yolo",
+    },
+    messageId: "m-codex-app-immediate",
+    agentTurnRequest: {
+      project,
+      binding,
+      message: {
+        messageId: "m-codex-app-immediate",
+        fromUid: "user-1",
+        channelId: "user-1",
+        channelType: 1,
+        timestamp: Date.now(),
+        payload: { type: 1, content: "finish immediately" },
+      },
+      sessionKey: "octo:dm:user-1",
+      gatewayEndpoint: project.gatewayEndpoint,
+      gatewayClientKey: "sk-local",
+      agentRuntimeDir: root,
+    },
+    onProgress: (event) => progress.push(event),
+    runOneShot: async () => {
+      throw new Error("Codex app-server immediate terminal test must not fall back to one-shot");
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.replyText, "immediate ok");
+  assert.equal(progress.some((event) => event.rawType === "turn/completed"), true);
+});
+
+test("native Channel Connectors Codex app-server rejects unknown terminal statuses", async () => {
+  const root = makeTempRoot();
+  class UnknownStatusTransport {
+    callbacks = [];
+    closeCallbacks = [];
+    send(message) {
+      if (message.method === "initialize") {
+        this.emit({ id: message.id, result: { userAgent: "fake-codex-app-server" } });
+        return;
+      }
+      if (message.method === "initialized") return;
+      if (message.method === "thread/start") {
+        this.emit({ id: message.id, result: { thread: { id: "thread-unknown-status" } } });
+        return;
+      }
+      if (message.method === "turn/start") {
+        const turnId = "turn-unknown-status";
+        this.emit({ id: message.id, result: { turn: { id: turnId, status: "running" } } });
+        setTimeout(() => {
+          this.emit({ method: "item/agentMessage/delta", params: { threadId: "thread-unknown-status", turnId, delta: "partial" } });
+          this.emit({ method: "turn/completed", params: { threadId: "thread-unknown-status", turn: { id: turnId, status: "mystery" } } });
+        }, 0);
+        return;
+      }
+      this.emit({ id: message.id, error: { code: -32601, message: `unexpected ${message.method}` } });
+    }
+    close() {
+      for (const callback of this.closeCallbacks) callback(null);
+    }
+    onMessage(callback) {
+      this.callbacks.push(callback);
+    }
+    onClose(callback) {
+      this.closeCallbacks.push(callback);
+    }
+    emit(message) {
+      for (const callback of this.callbacks) callback(message);
+    }
+  }
+  const project = {
+    id: "codex-app-server-unknown-status",
+    name: "Codex App Server Unknown Status",
+    agent: "codex",
+    model: "gpt-5",
+    workDir: root,
+    permissionMode: "yolo",
+    gatewayEndpoint: "http://127.0.0.1:18796/v1",
+    gatewayKeyRef: "studio-gateway-client-key",
+    appProfileRef: "codex",
+    platformBindings: [],
+  };
+  const binding = {
+    id: "octo-codex-unknown-status",
+    platform: "octo",
+    accountId: "octo-account",
+    botId: "robot-1",
+    displayName: "Octo Codex Unknown Status",
+    enabled: true,
+    allowlist: [],
+    adminUsers: [],
+    metadata: { agentSessionDriver: "persistent" },
+  };
+  const session = new CodexAppServerSession({
+    transport: new UnknownStatusTransport(),
+    sessionId: "codex-app-server:unknown-status",
+    model: "gpt-5",
+    cwd: root,
+    permissionMode: "yolo",
+    requestTimeoutMs: 1000,
+    turnTimeoutMs: 1000,
+  });
+
+  await assert.rejects(
+    () => session.runTurn({
+      mode: "persistent",
+      key: {
+        bindingId: binding.id,
+        projectId: project.id,
+        sessionKey: "octo:dm:user-1",
+        agent: "codex",
+        model: "gpt-5",
+        workDir: root,
+        permissionMode: "yolo",
+      },
+      messageId: "m-codex-app-unknown-status",
+      agentTurnRequest: {
+        project,
+        binding,
+        message: {
+          messageId: "m-codex-app-unknown-status",
+          fromUid: "user-1",
+          channelId: "user-1",
+          channelType: 1,
+          timestamp: Date.now(),
+          payload: { type: 1, content: "unknown status" },
+        },
+        sessionKey: "octo:dm:user-1",
+        gatewayEndpoint: project.gatewayEndpoint,
+        gatewayClientKey: "sk-local",
+        agentRuntimeDir: root,
+      },
+      runOneShot: async () => {
+        throw new Error("Codex app-server unknown status test must not fall back to one-shot");
+      },
+    }),
+    /unknown terminal status "mystery"/,
+  );
+});
+
+test("native Channel Connectors Codex app-server settles active turns when transport closes", async () => {
+  const root = makeTempRoot();
+  class ClosingTransport {
+    callbacks = [];
+    closeCallbacks = [];
+    send(message) {
+      if (message.method === "initialize") {
+        this.emit({ id: message.id, result: { userAgent: "fake-codex-app-server" } });
+        return;
+      }
+      if (message.method === "initialized") return;
+      if (message.method === "thread/start") {
+        this.emit({ id: message.id, result: { thread: { id: "thread-closing" } } });
+        return;
+      }
+      if (message.method === "turn/start") {
+        this.emit({ id: message.id, result: { turn: { id: "turn-closing", status: "running" } } });
+        setTimeout(() => {
+          for (const callback of this.closeCallbacks) callback(null);
+        }, 0);
+        return;
+      }
+      this.emit({ id: message.id, error: { code: -32601, message: `unexpected ${message.method}` } });
+    }
+    close() {
+      for (const callback of this.closeCallbacks) callback(null);
+    }
+    onMessage(callback) {
+      this.callbacks.push(callback);
+    }
+    onClose(callback) {
+      this.closeCallbacks.push(callback);
+    }
+    emit(message) {
+      for (const callback of this.callbacks) callback(message);
+    }
+  }
+  const project = {
+    id: "codex-app-server-closing",
+    name: "Codex App Server Closing",
+    agent: "codex",
+    model: "gpt-5",
+    workDir: root,
+    permissionMode: "yolo",
+    gatewayEndpoint: "http://127.0.0.1:18796/v1",
+    gatewayKeyRef: "studio-gateway-client-key",
+    appProfileRef: "codex",
+    platformBindings: [],
+  };
+  const binding = {
+    id: "octo-codex-closing",
+    platform: "octo",
+    accountId: "octo-account",
+    botId: "robot-1",
+    displayName: "Octo Codex Closing",
+    enabled: true,
+    allowlist: [],
+    adminUsers: [],
+    metadata: { agentSessionDriver: "persistent" },
+  };
+  const session = new CodexAppServerSession({
+    transport: new ClosingTransport(),
+    sessionId: "codex-app-server:closing",
+    model: "gpt-5",
+    cwd: root,
+    permissionMode: "yolo",
+    requestTimeoutMs: 1000,
+    turnTimeoutMs: 1000,
+  });
+  const started = Date.now();
+
+  await assert.rejects(
+    () => session.runTurn({
+      mode: "persistent",
+      key: {
+        bindingId: binding.id,
+        projectId: project.id,
+        sessionKey: "octo:dm:user-1",
+        agent: "codex",
+        model: "gpt-5",
+        workDir: root,
+        permissionMode: "yolo",
+      },
+      messageId: "m-codex-app-closing",
+      agentTurnRequest: {
+        project,
+        binding,
+        message: {
+          messageId: "m-codex-app-closing",
+          fromUid: "user-1",
+          channelId: "user-1",
+          channelType: 1,
+          timestamp: Date.now(),
+          payload: { type: 1, content: "close during turn" },
+        },
+        sessionKey: "octo:dm:user-1",
+        gatewayEndpoint: project.gatewayEndpoint,
+        gatewayClientKey: "sk-local",
+        agentRuntimeDir: root,
+      },
+      runOneShot: async () => {
+        throw new Error("Codex app-server closing test must not fall back to one-shot");
+      },
+    }),
+    /connection closed/,
+  );
+  assert.ok(Date.now() - started < 500);
 });
 
 test("native Channel Connectors process runner maps Codex agent messages before later tools as process progress", async () => {
@@ -13907,6 +14372,12 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   );
   assert.match(pushFeishuProgressCardEventBlock, /if \(event\.type === "completed"\)\s*return false;/);
   assert.doesNotMatch(pushFeishuProgressCardEventBlock, /cardState\.status\s*=\s*"completed"/);
+  const ensureFeishuProgressCardFailureBlock = daemonSource.slice(
+    daemonSource.indexOf("function ensureFeishuProgressCardFailure"),
+    daemonSource.indexOf("function completeFeishuProgressCard"),
+  );
+  assert.match(ensureFeishuProgressCardFailureBlock, /const statusChanged = cardState\.status !== "failed";/);
+  assert.match(ensureFeishuProgressCardFailureBlock, /if \(statusChanged\)[\s\S]{0,100}cardState\.dirty = true;/);
   assert.match(daemonSource, /if \(kind === "assistant"\)[\s\S]{0,40}return "💬";/);
   assert.match(daemonSource, /if \(event\.type === "assistant"\)[\s\S]{0,80}return shortMessage\(event\.text,\s*900\)/);
   assert.match(daemonSource, /isChannelConnectorProcessProgressEvent/);

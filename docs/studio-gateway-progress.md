@@ -36,6 +36,29 @@
 - CLI Profile 管理属于 Studio 原生 Channel Connectors，不属于 OpenClaw Agent 管理；独立页为 `/channel-connectors/profiles`，直接读取 Gateway 可用模型目录和上下文预算，管理 Profile、IM 绑定摘要、运行配置、持久会话和事件记录；IM 绑定摘要可 deep-link 到完整 Channel Connectors 配置并自动选中 binding/profile。
 - Channel Connectors 主配置页已收敛为概览、渠道绑定、运行状态、会话日志四个同级工作区；不再内嵌 CLI Profile 快改或 Skills 管理，Profile 只进入独立工作台。
 
+## 本轮风险清单（IM Agent 终态 / 等待）
+
+- 已解决：任务没有结束却误认为结束。
+  - one-shot Codex / Claude Code / OpenCode 只把各自权威终态事件当终态；普通过程 `completed` 不终止 Feishu 进度卡。
+  - 权威失败事件即使进程 exit 0 也会返回失败；Claude persistent 的 `error_during_execution` / error-like subtype 也按失败处理。
+  - Codex app-server 的 `turn/completed.status` 改为 allowlist：只有明确成功状态或已有最终 assistant 文本的缺省状态才算成功；未知状态按协议兼容失败处理。
+- 已解决：任务已经结束却误认为还在等待。
+  - one-shot 权威成功终态后若 CLI 进程悬挂，会在 terminal grace 后收尾；终态 grace 期间用户取消仍然由取消获胜。
+  - Codex app-server 会缓冲 `turn/start` 响应同 tick 到达的 `turn/completed`，避免终态通知丢失后等 idle timeout。
+  - Codex app-server transport 在 active turn 中关闭或 dispose 会立即 settle，不再等 turn idle timeout。
+  - Codex app-server 支持 `thread/status/changed idle` 作为已有 assistant 输出后的完成信号，兼容 CC app-server idle 形态。
+- 已解决：CLI 事件格式升级导致不可见降级。
+  - one-shot runner 对未知结构化 JSON、malformed JSON、Codex/Claude/OpenCode 未识别专有事件写入 bounded `protocol/unknown-event` 内部进度；该诊断不刷新 heartbeat/stall，不会自我续命。
+  - CLI 进程 exit 0 但没有可解析最终回复时，IM 返回兼容提示，不再把协议 JSON 原文当用户回复，也不再静默无回复。
+  - Claude persistent 对未知结构化事件同样写入 bounded `protocol/unknown-event`；OpenCode persistent 仍走 one-shot runner，因此继承同一逻辑。
+- 已解决：Feishu 进度卡失败状态可能不刷新。
+  - 最终失败会把进度卡状态切到 failed 并标记 dirty，即使失败文本已作为过程错误出现，也会刷新卡片终态。
+- 已缓解：最终 IM 投递失败。
+  - 当前 Feishu final reply 仍按 card -> post -> text fallback，并在 `agent.run.finished` 写入 `replySent` / `replyError` / `replyTransportAction`；平台全链路不可用时无法保证用户可见，只能靠事件日志和后续重试/人工排查。
+  - 后续若要进一步收敛，需要增加 `reply delivering/delivered/failed` 运行态，并在成功 agent 但 final delivery 全失败时把进度卡补丁为“回复投递失败”。
+- 已缓解：TUI 心跳长期存在但没有真实结构化进展。
+  - `process/heartbeat-stall` 继续只作为非终态诊断，退避写入事件/状态，不发 IM 刷屏、不刷新 heartbeat timeout；无法从 CLI 外部完美证明模型内部是否“真进展”，但不会因为持续 TUI 文案而永久静默。
+
 ## 本轮完成
 
 - 调研 Sub2API、CLIProxyAPI、CodexProapi 和 Codex 官方认证文档，提炼到 `docs/studio-gateway-account-provider-plan.md`；本地参考副本固定为 `/tmp/studio-gateway-research-sub2api` 与 `/tmp/studio-gateway-research-cliproxyapi`。
@@ -202,6 +225,11 @@
 
 ## 最近验证
 
+- 本轮验证通过：`npm run typecheck:api`
+- 本轮验证通过：`npm run build:api`
+- 本轮验证通过：`node --test tests/system/channel-connectors-agent-session-driver.test.mjs tests/system/channel-connectors-service.test.mjs`，136/136 通过，覆盖 one-shot runner 终态 grace、取消 race、未知 CLI 协议降级、无最终回复兼容提示、Claude persistent error subtype/unknown event、Codex app-server 同 tick 终态通知缓冲、未知 terminal status、transport close settle、Feishu 进度卡终态 dirty 合同，以及既有 daemon/session/Feishu/Octo 回归。
+- 本轮验证通过：`npm run smoke:channel-connectors:agent-heartbeat-local -- --json`，16/16 通过，覆盖 Codex / Claude Code / OpenCode 的 stderr CR TUI heartbeat、stdout heartbeat、idle timeout 替代总 timeout、heartbeat-only stall 诊断、静默 heartbeat timeout，以及非 runtime agent 固定 timeout 边界。
+- 本轮验证通过：`node --test tests/system/channel-connectors-agent-heartbeat-local-script.test.mjs`，2/2 通过，覆盖 heartbeat smoke 脚本本地证明边界与完整 synthetic matrix。
 - 本轮验证通过：`node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs tests/system/studio-web-channel-connectors-page.test.mjs`，覆盖 Channel Connectors 独立 Profile 工作台、Gateway 预算索引、Profile 复制/删除/binding 行事件快捷过滤/事件 binding/type 筛选/事件数量/批量停止控件、Profile ID 重命名迁移绑定合同、App Connection effective model / apply / preview 合同、IM binding deep-link 选中合同、Agents 旧 CLI 路由删除和 Channel Connectors 独立导航。
 - 本轮验证通过：`node --test tests/system/studio-web-channel-connectors-page.test.mjs tests/system/studio-web-channel-connector-profiles-page.test.mjs`，5/5 通过，覆盖 Channel Connectors 主页面四区结构、旧 Profile 快改/Skills 管理入口移除和 Profile 独立工作台入口。
 - 本轮验证通过：`npm run typecheck:web`

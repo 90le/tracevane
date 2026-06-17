@@ -1856,6 +1856,82 @@ function parseProgressLineEvents(agent: ChannelConnectorAgentId, line: string): 
   }
 }
 
+function unknownStructuredProgressSignature(line: string): { key: string; text: string } | null {
+  const trimmed = line.trim();
+  if (!trimmed || !trimmed.startsWith("{")) return null;
+  let raw: Record<string, unknown> | null = null;
+  try {
+    raw = recordValue(JSON.parse(trimmed));
+  } catch {
+    return { key: "parse-error", text: "Agent emitted malformed structured progress JSON; Studio ignored that line." };
+  }
+  if (!raw) return null;
+  const rawType = normalizeString(raw.type)
+    || normalizeString(raw.event)
+    || normalizeString(raw.method)
+    || "unknown";
+  const item = recordValue(raw.item);
+  const part = recordValue(raw.part);
+  const params = recordValue(raw.params);
+  const paramItem = recordValue(params?.item);
+  const itemType = normalizeString(item?.type)
+    || normalizeString(part?.type)
+    || normalizeString(paramItem?.type)
+    || "";
+  if (rawType === "system" || rawType === "unknown") return null;
+  if ((rawType === "item.started" || rawType === "item.completed") && (itemType === "user_message" || itemType === "userMessage")) {
+    return null;
+  }
+  return {
+    key: [rawType, itemType].filter(Boolean).join(":"),
+    text: `Agent emitted an unrecognized structured progress event (${[rawType, itemType].filter(Boolean).join("/")}); Studio is running in CLI compatibility mode.`,
+  };
+}
+
+function isSpecializedProtocolEvent(
+  agent: ChannelConnectorAgentId,
+  event: ChannelConnectorAgentProgressEvent,
+): boolean {
+  const rawType = normalizeString(event.rawType);
+  const itemType = normalizeString(event.itemType);
+  if (!rawType || rawType === "protocol/unknown-event") return true;
+  if (agent === "codex") {
+    return rawType === "thread.started"
+      || rawType === "turn.started"
+      || rawType === "turn.completed"
+      || rawType === "turn.failed"
+      || rawType === "error"
+      || rawType === "item.started"
+      || rawType === "item.completed";
+  }
+  if (agent === "claude-code") {
+    return rawType === "system"
+      || rawType === "assistant"
+      || rawType === "user"
+      || rawType === "result"
+      || rawType === "control_request";
+  }
+  if (agent === "opencode") {
+    return rawType === "step_start"
+      || rawType === "text"
+      || rawType === "reasoning"
+      || rawType === "tool_use"
+      || rawType === "tool_result"
+      || rawType === "step_finish"
+      || rawType === "error"
+      || itemType === "step-start"
+      || itemType === "text"
+      || itemType === "reasoning"
+      || itemType === "tool"
+      || itemType === "tool-use"
+      || itemType === "tool_use"
+      || itemType === "tool-result"
+      || itemType === "tool_result"
+      || itemType === "step-finish";
+  }
+  return true;
+}
+
 function isBufferedAssistantText(event: ChannelConnectorAgentProgressEvent): boolean {
   return event.type === "assistant" && event.phase === "final" && Boolean(normalizeString(event.text));
 }
@@ -1908,6 +1984,7 @@ function createProgressLineParser(agent: ChannelConnectorAgentId): {
   const bufferAssistantText = agent === "codex" || agent === "claude-code" || agent === "opencode";
   const pendingAssistantText: ChannelConnectorAgentProgressEvent[] = [];
   const pendingToolNamesById = new Map<string, string>();
+  const unknownStructuredProgress = new Set<string>();
   let latestToolName: string | null = null;
   const flushAssistantText = (phase: "intermediate" | "final"): ChannelConnectorAgentProgressEvent[] => {
     if (!pendingAssistantText.length) return [];
@@ -1934,7 +2011,20 @@ function createProgressLineParser(agent: ChannelConnectorAgentId): {
   };
   return {
     parse: (line: string): ChannelConnectorAgentProgressEvent[] => {
-      const events = parseProgressLineEvents(agent, line);
+      let events = parseProgressLineEvents(agent, line);
+      const genericUnknown = events.length === 1 && !isSpecializedProtocolEvent(agent, events[0]);
+      if (!events.length || genericUnknown) {
+        const unknown = unknownStructuredProgressSignature(line);
+        if (unknown && !unknownStructuredProgress.has(unknown.key) && unknownStructuredProgress.size < 5) {
+          unknownStructuredProgress.add(unknown.key);
+          events = [progressEvent({
+            type: "event",
+            rawType: "protocol/unknown-event",
+            itemType: unknown.key,
+            text: unknown.text,
+          })];
+        }
+      }
       if (!bufferAssistantText) return events;
       const output: ChannelConnectorAgentProgressEvent[] = [];
       for (const rawEvent of events) {
@@ -2036,7 +2126,8 @@ export async function defaultChannelConnectorAgentProcessRunner(
       const rawType = normalizeString(event.rawType);
       return rawType === "process/heartbeat-timeout"
         || rawType === "process/heartbeat-stall"
-        || rawType === "process/terminal-grace-exit";
+        || rawType === "process/terminal-grace-exit"
+        || rawType === "protocol/unknown-event";
     };
     const armTerminalProgressGrace = (event: ChannelConnectorAgentProgressEvent): void => {
       if (!usesHeartbeatTimeout || terminalProgressGraceMs <= 0 || settled) return;
@@ -2444,6 +2535,18 @@ function extractReplyText(stdout: string, agent: ChannelConnectorAgentId | null 
   const content = jsonTexts.filter((item) => item.kind === "content").map((item) => item.text).filter((item) => item.trim());
   if (content.length) return joinJsonReplyTextParts(content);
   const plain = stdout.trim();
+  if (plain) {
+    const lines = plain.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const allStructuredJson = lines.length > 0 && lines.every((line) => {
+      if (!line.startsWith("{")) return false;
+      try {
+        return Boolean(recordValue(JSON.parse(line)));
+      } catch {
+        return false;
+      }
+    });
+    if (allStructuredJson) return null;
+  }
   return plain || null;
 }
 
@@ -2689,6 +2792,15 @@ function fallbackTurnSession(session: ChannelConnectorAgentTurnRequest["session"
   };
 }
 
+function agentNoFinalReplyMessage(
+  agent: ChannelConnectorAgentId,
+  progressEvents: ChannelConnectorAgentProgressEvent[],
+): string | null {
+  if (!progressEvents.some((event) => event.rawType === "protocol/unknown-event")) return null;
+  const agentName = agent === "claude-code" ? "Claude Code" : agent === "opencode" ? "OpenCode" : agent === "codex" ? "Codex" : agent;
+  return `${agentName} 进程已成功结束，但 Studio 没能从当前 CLI 事件格式解析出最终回复。请查看事件日志中的 protocol/unknown-event；当前任务没有继续等待。`;
+}
+
 export async function runChannelConnectorAgentTurn(
   request: ChannelConnectorAgentTurnRequest,
 ): Promise<ChannelConnectorAgentTurnResult> {
@@ -2837,7 +2949,8 @@ export async function runChannelConnectorAgentTurn(
     for (const event of openCodeFallback.progressEvents) request.onProgress(event);
   }
   const latestProgress = progressEvents.length ? progressEvents[progressEvents.length - 1] : null;
-  const replyText = openCodeFallback?.replyText || extractReplyText(effectiveStdout, request.project.agent) || null;
+  const parsedReplyText = openCodeFallback?.replyText || extractReplyText(effectiveStdout, request.project.agent) || null;
+  const replyText = parsedReplyText || (ok ? agentNoFinalReplyMessage(request.project.agent, progressEvents) : null);
   return {
     attempted: true,
     ok,

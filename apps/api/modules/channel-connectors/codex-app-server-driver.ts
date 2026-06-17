@@ -58,6 +58,13 @@ interface PendingApproval {
   timeout: NodeJS.Timeout;
 }
 
+interface CodexAppServerTerminalStatus {
+  status: ChannelConnectorAgentTurnResult["status"];
+  ok: boolean;
+  text: string;
+  error: string | null;
+}
+
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -241,6 +248,52 @@ function compactCommand(command: string | null | undefined): boolean {
   return normalizeString(command).toLowerCase() === "/compact";
 }
 
+function codexAppServerErrorText(turn: Record<string, unknown>, fallback: string): string {
+  const error = isRecord(turn.error)
+    ? normalizeString(turn.error.message) || normalizeString(turn.error.error)
+    : normalizeString(turn.error);
+  return error || fallback;
+}
+
+function codexAppServerTerminalStatus(
+  turn: Record<string, unknown>,
+  context: string,
+  options: { allowImplicitSuccess?: boolean } = {},
+): CodexAppServerTerminalStatus {
+  const status = normalizeString(turn.status).toLowerCase();
+  if (!status) {
+    if (turn.error) {
+      const error = codexAppServerErrorText(turn, `${context} failed.`);
+      return { status: "failed", ok: false, text: `${context} failed`, error };
+    }
+    if (options.allowImplicitSuccess === true) {
+      return { status: "completed", ok: true, text: `${context} completed`, error: null };
+    }
+    return {
+      status: "failed",
+      ok: false,
+      text: `${context} missing terminal status`,
+      error: `${context} returned turn/completed without a status or final assistant message; Studio treated it as a protocol compatibility failure.`,
+    };
+  }
+  if (["completed", "succeeded", "success", "ok", "done"].includes(status)) {
+    return { status: "completed", ok: true, text: `${context} ${status}`, error: null };
+  }
+  if (["cancelled", "canceled", "interrupted"].includes(status)) {
+    return { status: "cancelled", ok: false, text: `${context} ${status}`, error: codexAppServerErrorText(turn, `${context} ${status}.`) };
+  }
+  if (["failed", "error"].includes(status) || turn.error) {
+    const error = codexAppServerErrorText(turn, `${context} ${status || "failed"}.`);
+    return { status: "failed", ok: false, text: `${context} ${status || "failed"}`, error };
+  }
+  return {
+    status: "failed",
+    ok: false,
+    text: `${context} unknown status ${status}`,
+    error: `${context} returned unknown terminal status "${status}"; Studio treated it as a protocol compatibility failure.`,
+  };
+}
+
 function compactWaitTimeoutMs(requestTimeoutMs: number): number {
   return Math.max(requestTimeoutMs, 60_000);
 }
@@ -268,6 +321,10 @@ function agentResult(input: {
   resumed: boolean;
   args?: string[];
 }): ChannelConnectorAgentTurnResult {
+  const compatibilityText = input.ok && input.progressEvents.some((event) => event.rawType === "protocol/unknown-event")
+    ? "Codex app-server 进程已成功结束，但 Studio 没能从当前 app-server 事件格式解析出最终回复。请查看事件日志中的 protocol/unknown-event；当前任务没有继续等待。"
+    : null;
+  const noReplyText = input.ok ? (input.replyText || compatibilityText || "Codex app-server 已完成，但没有返回最终回复。当前任务没有继续等待。") : null;
   return {
     attempted: true,
     ok: input.ok,
@@ -277,8 +334,8 @@ function agentResult(input: {
     command: "codex app-server",
     args: input.args || [],
     cwd: input.cwd,
-    replyText: input.ok ? input.replyText : null,
-    stdout: input.replyText || "",
+    replyText: noReplyText,
+    stdout: noReplyText || "",
     stderr: "",
     exitCode: input.ok ? 0 : 1,
     durationMs: input.durationMs,
@@ -372,6 +429,8 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
   private activeTurnInput: ChannelConnectorAgentSessionDriverTurnInput | null = null;
   private activeTurnHeartbeat: ((reason?: string) => void) | null = null;
   private activeTurnCompleted: ((message: Record<string, unknown>) => void) | null = null;
+  private activeTurnFailure: ((error: Error) => void) | null = null;
+  private pendingActiveTurnNotifications: Record<string, unknown>[] = [];
   private pendingStopReason: string | null = null;
 
   constructor(options: CodexAppServerSessionOptions) {
@@ -388,7 +447,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
       : null;
     this.transport.onMessage((message) => this.handleMessage(message));
     this.transport.onClose((error) => {
-      if (!error && this.pending.size === 0 && this.pendingApprovals.size === 0) return;
+      if (!error && this.pending.size === 0 && this.pendingApprovals.size === 0 && !this.activeTurnFailure) return;
       const closeError = error || new Error("Codex app-server connection closed.");
       for (const pending of this.pending.values()) {
         clearTimeout(pending.timeout);
@@ -396,7 +455,14 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
       }
       this.pending.clear();
       this.denyPendingApprovals(closeError.message);
+      this.failActiveTurn(closeError);
     });
+  }
+
+  private failActiveTurn(error: Error): void {
+    const fail = this.activeTurnFailure;
+    if (!fail) return;
+    fail(error);
   }
 
   async runTurn(input: ChannelConnectorAgentSessionDriverTurnInput): Promise<ChannelConnectorAgentTurnResult> {
@@ -426,9 +492,11 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
           settled = true;
           if (timeout) clearTimeout(timeout);
           this.activeTurnCompleted = null;
+          this.activeTurnFailure = null;
           if (error) reject(error);
           else resolve();
         };
+        this.activeTurnFailure = (error) => done(error);
         completeCompact = done;
         timeout = setTimeout(() => {
           done(new Error("Codex app-server compact timed out."));
@@ -484,17 +552,17 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
           const completedTurnId = normalizeString(turn.id) || normalizeString(params.turnId);
           if (compactTurnId && completedTurnId && completedTurnId !== compactTurnId) return;
           if (!compactTurnId && !sawContextCompaction) return;
-          const status = normalizeString(turn.status) || "completed";
-          const failed = status === "failed" || status === "cancelled" || status === "interrupted";
-          const error = isRecord(turn.error) ? normalizeString(turn.error.message) : normalizeString(turn.error);
+          const terminal = codexAppServerTerminalStatus(turn, "Codex app-server compact", {
+            allowImplicitSuccess: sawContextCompaction,
+          });
           const event = progressEvent({
-            type: failed ? "failed" : "completed",
+            type: terminal.ok ? "completed" : "failed",
             rawType: method,
             itemType: "contextCompaction",
-            text: `Codex app-server compact ${status}`,
+            text: terminal.text,
           });
           pushEvent(event);
-          if (failed) done(new Error(error || `Codex app-server compact ${status}.`));
+          if (!terminal.ok) done(new Error(terminal.error || terminal.text));
           else done();
         };
       });
@@ -508,6 +576,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
       } finally {
         if (!settled) completeCompact(new Error("Codex app-server compact cancelled."));
         this.activeTurnCompleted = null;
+        this.activeTurnFailure = null;
       }
       return agentResult({
         messageId: input.messageId,
@@ -596,15 +665,18 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
         let timeout: NodeJS.Timeout | null = null;
         const timeoutMs = turnWaitTimeoutMs(this.requestTimeoutMs, this.turnTimeoutMs);
         let longToolGraceUntil = 0;
+        const unknownProgressKeys = new Set<string>();
         const done = (error?: Error): void => {
           if (settled) return;
           settled = true;
           if (timeout) clearTimeout(timeout);
           this.activeTurnHeartbeat = null;
           this.activeTurnCompleted = null;
+          this.activeTurnFailure = null;
           if (error) reject(error);
           else resolve();
         };
+        this.activeTurnFailure = (error) => done(error);
         const armTurnIdleTimeout = (reason?: string): void => {
           if (settled) return;
           if (timeout) clearTimeout(timeout);
@@ -631,6 +703,17 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
         };
         armTurnIdleTimeout();
         this.activeTurnHeartbeat = armTurnIdleTimeout;
+        const emitUnknownProgress = (method: string): void => {
+          if (!method || !/^(turn|task|agent)\//.test(method)) return;
+          if (unknownProgressKeys.has(method) || unknownProgressKeys.size >= 5) return;
+          unknownProgressKeys.add(method);
+          emitProgress(progressEvent({
+            type: "event",
+            rawType: "protocol/unknown-event",
+            itemType: method,
+            text: `Codex app-server emitted an unrecognized active-turn event (${method}); Studio is running in compatibility mode.`,
+          }));
+        };
         this.activeTurnCompleted = (message) => {
           const method = normalizeString(message.method);
           armTurnIdleTimeout(method);
@@ -679,28 +762,42 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
             emitProgress(event);
             return;
           }
-          if (method !== "turn/completed") return;
-          const completedTurn = isRecord(params.turn) ? params.turn : {};
-          const status = normalizeString(completedTurn.status);
-          const cancelled = status === "cancelled" || status === "interrupted";
-          const event = progressEvent({
-            type: status === "failed" || cancelled ? "failed" : "completed",
-            rawType: method,
-            text: `Codex app-server turn ${status || "completed"}`,
-          });
-          emitProgress(event);
-          if (status === "failed") {
-            terminalStatus = "failed";
-            terminalError = "Codex app-server turn failed.";
-            done(new Error(terminalError));
+          if (method === "thread/status/changed") {
+            const status = isRecord(params.status) ? params.status : {};
+            const statusType = normalizeString(status.type) || normalizeString(params.type) || normalizeString(params.status);
+            if (statusType === "idle" && (completedAgentMessageText || replyText)) {
+              const event = progressEvent({ type: "completed", rawType: method, text: "Codex app-server thread idle" });
+              emitProgress(event);
+              done();
+            }
             return;
           }
-          if (cancelled) {
-            terminalStatus = "cancelled";
-            terminalError = `Codex app-server turn ${status}.`;
+          if (method !== "turn/completed") {
+            emitUnknownProgress(method);
+            return;
+          }
+          const completedTurn = isRecord(params.turn) ? params.turn : {};
+          const terminal = codexAppServerTerminalStatus(completedTurn, "Codex app-server turn", {
+            allowImplicitSuccess: Boolean(completedAgentMessageText || replyText),
+          });
+          const event = progressEvent({
+            type: terminal.ok ? "completed" : "failed",
+            rawType: method,
+            text: terminal.text,
+          });
+          emitProgress(event);
+          if (!terminal.ok) {
+            terminalStatus = terminal.status;
+            terminalError = terminal.error;
+            if (terminal.status === "failed") {
+              done(new Error(terminalError || terminal.text));
+              return;
+            }
           }
           done();
         };
+        const pendingNotifications = this.pendingActiveTurnNotifications.splice(0);
+        for (const message of pendingNotifications) this.activeTurnCompleted(message);
       });
       return agentResult({
         messageId: input.messageId,
@@ -720,8 +817,10 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
       input.signal?.removeEventListener("abort", abortListener);
       this.activeTurnHeartbeat = null;
       this.activeTurnCompleted = null;
+      this.activeTurnFailure = null;
       this.activeTurnId = null;
       this.activeTurnInput = null;
+      this.pendingActiveTurnNotifications = [];
       this.pendingStopReason = null;
       cleanupChannelConnectorAgentProcessRequest(processRequest);
     }
@@ -743,6 +842,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
   }
 
   dispose(reason: string): void {
+    this.failActiveTurn(new Error(`Codex app-server session disposed: ${reason || "dispose"}`));
     for (const pending of this.pending.values()) {
       clearTimeout(pending.timeout);
       pending.reject(new Error(`Codex app-server session disposed: ${reason || "dispose"}`));
@@ -827,7 +927,13 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
       pending.resolve(isRecord(message.result) ? message.result : {});
       return;
     }
-    this.activeTurnCompleted?.(message);
+    if (this.activeTurnCompleted) {
+      this.activeTurnCompleted(message);
+      return;
+    }
+    if (this.activeTurnInput && method) {
+      this.pendingActiveTurnNotifications.push(message);
+    }
   }
 
   private async handleServerRequest(

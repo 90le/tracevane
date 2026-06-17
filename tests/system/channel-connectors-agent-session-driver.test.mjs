@@ -827,6 +827,125 @@ test("Channel Connectors native CLI session driver keeps Claude stream-json proc
   }
 });
 
+test("Channel Connectors Claude persistent session treats error subtypes as failed", async () => {
+  const root = makeTempRoot();
+  const fakeBin = path.join(root, "bin");
+  writeExecutable(path.join(fakeBin, "claude"), [
+    "#!/usr/bin/env node",
+    "const readline = require('readline');",
+    "function emit(value) { process.stdout.write(JSON.stringify(value) + '\\n'); }",
+    "emit({ type: 'system', session_id: 'claude-error-session' });",
+    "const rl = readline.createInterface({ input: process.stdin });",
+    "rl.on('line', (line) => {",
+    "  if (!line.trim()) return;",
+    "  emit({ type: 'result', subtype: 'error_during_execution', result: 'tool crashed', session_id: 'claude-error-session' });",
+    "});",
+    "setInterval(() => {}, 1000);",
+  ]);
+
+  const originalPath = process.env.PATH || "";
+  process.env.PATH = `${fakeBin}:${originalPath}`;
+  try {
+    const factory = createNativeCliSessionDriverFactory({
+      codexFactory: {
+        create: () => {
+          throw new Error("codex factory should not be used");
+        },
+      },
+      turnTimeoutMs: 1000,
+    });
+    const key = { ...baseKey, agent: "claude-code", model: "sonnet", workDir: root };
+    const session = await factory.create({
+      key,
+      poolKey: channelConnectorAgentSessionDriverPoolKey(key),
+      turnInput: {
+        mode: "persistent",
+        key,
+        messageId: "claude-error-message",
+        agentTurnRequest: baseTurnRequest(root, "claude-code"),
+        runOneShot: async () => completedResult("unused"),
+      },
+    });
+    const result = await session.runTurn({
+      mode: "persistent",
+      key,
+      messageId: "claude-error-message",
+      agentTurnRequest: baseTurnRequest(root, "claude-code"),
+      runOneShot: async () => {
+        throw new Error("one-shot fallback should not run");
+      },
+    });
+    session.dispose("test-complete");
+
+    assert.equal(result.ok, false);
+    assert.equal(result.status, "failed");
+    assert.match(result.error || "", /tool crashed/);
+  } finally {
+    process.env.PATH = originalPath;
+  }
+});
+
+test("Channel Connectors Claude persistent session reports unknown structured events", async () => {
+  const root = makeTempRoot();
+  const fakeBin = path.join(root, "bin");
+  writeExecutable(path.join(fakeBin, "claude"), [
+    "#!/usr/bin/env node",
+    "const readline = require('readline');",
+    "function emit(value) { process.stdout.write(JSON.stringify(value) + '\\n'); }",
+    "emit({ type: 'system', session_id: 'claude-unknown-session' });",
+    "const rl = readline.createInterface({ input: process.stdin });",
+    "rl.on('line', (line) => {",
+    "  if (!line.trim()) return;",
+    "  emit({ type: 'assistant_delta_v2', message: { content: [{ type: 'text', text: 'new format text' }] } });",
+    "  emit({ type: 'result', result: 'ok', session_id: 'claude-unknown-session' });",
+    "});",
+    "setInterval(() => {}, 1000);",
+  ]);
+
+  const originalPath = process.env.PATH || "";
+  process.env.PATH = `${fakeBin}:${originalPath}`;
+  try {
+    const factory = createNativeCliSessionDriverFactory({
+      codexFactory: {
+        create: () => {
+          throw new Error("codex factory should not be used");
+        },
+      },
+      turnTimeoutMs: 1000,
+    });
+    const key = { ...baseKey, agent: "claude-code", model: "sonnet", workDir: root };
+    const session = await factory.create({
+      key,
+      poolKey: channelConnectorAgentSessionDriverPoolKey(key),
+      turnInput: {
+        mode: "persistent",
+        key,
+        messageId: "claude-unknown-message",
+        agentTurnRequest: baseTurnRequest(root, "claude-code"),
+        runOneShot: async () => completedResult("unused"),
+      },
+    });
+    const progress = [];
+    const result = await session.runTurn({
+      mode: "persistent",
+      key,
+      messageId: "claude-unknown-message",
+      agentTurnRequest: baseTurnRequest(root, "claude-code"),
+      onProgress: (event) => progress.push(event),
+      runOneShot: async () => {
+        throw new Error("one-shot fallback should not run");
+      },
+    });
+    session.dispose("test-complete");
+
+    assert.equal(result.ok, true);
+    assert.equal(result.replyText, "ok");
+    assert.equal(progress.some((event) => event.rawType === "protocol/unknown-event"), true);
+  } finally {
+    process.env.PATH = originalPath;
+  }
+});
+
 test("Channel Connectors Claude persistent session stop resolves the active turn as cancelled", async () => {
   const root = makeTempRoot();
   const fakeBin = path.join(root, "bin");

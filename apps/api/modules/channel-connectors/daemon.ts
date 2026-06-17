@@ -7015,7 +7015,12 @@ function ensureFeishuProgressCardFailure(
   error: string | null,
   status: ChannelConnectorAgentTurnResult["status"] = "failed",
 ): void {
+  const statusChanged = cardState.status !== "failed";
   cardState.status = "failed";
+  if (statusChanged) {
+    cardState.updatedAtMs = Date.now();
+    cardState.dirty = true;
+  }
   const stopped = status === "cancelled";
   const text = shortMessage(error || (stopped ? "用户已请求停止当前运行。" : "Agent 运行失败"), 520);
   if (!text || cardState.latestError === text) return;
