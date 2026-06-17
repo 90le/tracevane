@@ -857,7 +857,7 @@ export function buildChannelConnectorCommandSurface(
         }),
         action("native-compact", "Agent 压缩", "/native /compact", {
           nativePassthrough: true,
-          description: "尝试 Agent 原生压缩；Codex one-shot 不伪执行交互式 compact。",
+          description: "尝试 Agent 原生压缩；one-shot 兼容路径不伪执行交互式 compact。",
         }),
       ],
     },
@@ -1288,7 +1288,7 @@ function commandSurfaceItemDescription(item: ChannelConnectorCommandSurfaceActio
     case "native-help":
       return "打开当前 CLI Agent 的原生帮助或 skills 命令";
     case "native-compact":
-      return "尝试当前 CLI Agent 原生 compact；Codex one-shot 不伪执行";
+      return "尝试当前 CLI Agent 原生 compact；one-shot 兼容路径不伪执行";
     case "aliases-list":
       return "查看或管理当前 binding 命令别名";
     case "model-default":

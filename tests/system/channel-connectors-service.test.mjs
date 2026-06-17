@@ -6653,7 +6653,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(nativeHelp.ok, true);
   assert.match(nativeHelp.replyText, /Studio Channel \/ native/);
   assert.match(nativeHelp.replyText, /`\/native \/compact`/);
-  assert.match(nativeHelp.replyText, /Codex one-shot/);
+  assert.match(nativeHelp.replyText, /one-shot 兼容路径/);
   assert.doesNotMatch(nativeHelp.replyText, /`\/commands add <名称> <prompt 模板>`/);
   assert.doesNotMatch(nativeHelp.replyText, /\| 命令 \| 作用 \|/);
   assert.equal(parseChannelConnectorCommand("%help")?.name, "help");
@@ -15117,18 +15117,16 @@ test("native Channel Connectors daemon entry exposes health and writes runtime",
   runtimeConfig.management.port = await findFreePort();
   assert.ok(runtimeConfig.projects[0]);
   runtimeConfig.projects[0].platformBindings.push({
-    id: "octo-persistent-status",
+    id: "octo-default-persistent-status",
     platform: "octo",
     accountId: "octo-account",
     botId: null,
-    displayName: "Octo Persistent Status",
+    displayName: "Octo Default Persistent Status",
     agent: runtimeConfig.projects[0].agent,
     enabled: true,
     allowlist: [],
     adminUsers: [],
-    metadata: {
-      agentSessionDriver: "persistent",
-    },
+    metadata: {},
   });
   const configPath = path.join(root, "daemon-config.json");
   fs.mkdirSync(path.dirname(runtimeConfig.paths.log), { recursive: true });
@@ -15152,7 +15150,7 @@ test("native Channel Connectors daemon entry exposes health and writes runtime",
     assert.equal(health.ok, true);
     const status = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
     assert.equal(status.status, 200);
-    assert.equal(status.body.agentSessionDriver.defaultMode, "one-shot");
+    assert.equal(status.body.agentSessionDriver.defaultMode, "persistent");
     assert.equal(status.body.agentSessionDriver.implementation, "native-cli-session-drivers");
     assert.equal(status.body.agentSessionDriver.persistentDriverReady, true);
     assert.equal(status.body.agentSessionDriver.policy.idleTimeoutMs, 600000);
@@ -15162,7 +15160,7 @@ test("native Channel Connectors daemon entry exposes health and writes runtime",
     assert.equal(status.body.agentSessionDriver.requestedPersistentBindings.length, 1);
     assert.equal(status.body.agentSessionDriver.requestedPersistentBindings[0].requestedMode, "persistent");
     assert.equal(status.body.agentSessionDriver.requestedPersistentBindings[0].effectiveMode, "persistent");
-    assert.equal(status.body.agentSessionDriver.requestedPersistentBindings[0].reason, "codex-app-server-experimental");
+    assert.equal(status.body.agentSessionDriver.requestedPersistentBindings[0].reason, "codex-app-server");
     const runtime = await waitForJsonFile(runtimeConfig.paths.runtime);
     assert.equal(runtime.agentSessionDriver.requestedPersistentBindings.length, 1);
     assert.equal(runtime.agentSessionDriver.requestedPersistentBindings[0].effectiveMode, "persistent");
@@ -15416,6 +15414,7 @@ test("native Channel Connectors daemon rejects same-session Octo Agent turns whi
                 apiUrl,
                 botToken: "test-token",
                 wsUrl,
+                agentSessionDriver: "one-shot",
                 octoHeartbeatMs: 30_000,
                 octoPongTimeoutMs: 10_000,
                 octoReconnectMs: 3_000,
@@ -15670,6 +15669,7 @@ test("native Channel Connectors daemon keeps Octo sessions busy while final repl
                 apiUrl,
                 botToken: "test-token",
                 wsUrl,
+                agentSessionDriver: "one-shot",
                 octoHeartbeatMs: 30_000,
                 octoPongTimeoutMs: 10_000,
                 octoReconnectMs: 3_000,
@@ -16174,6 +16174,7 @@ test("native Channel Connectors daemon applies thinking display toggles to Octo 
                 apiUrl,
                 botToken: "test-token",
                 wsUrl,
+                agentSessionDriver: "one-shot",
                 octoReconnectJitterMs: 0,
               },
             },
@@ -16442,6 +16443,7 @@ test("native Channel Connectors daemon ignores legacy Octo action manifests in p
                 apiUrl,
                 botToken: "test-token",
                 wsUrl,
+                agentSessionDriver: "one-shot",
                 octoHeartbeatMs: 30_000,
                 octoPongTimeoutMs: 10_000,
                 octoReconnectMs: 3_000,
@@ -17015,6 +17017,7 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
                 apiUrl,
                 botToken: "test-token",
                 wsUrl,
+                agentSessionDriver: "one-shot",
                 allowPrivateAttachmentUrls: true,
                 attachmentMaxBytes: 1024,
                 octoHistorySyncLimit: 20,
@@ -17174,7 +17177,7 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
   }
 });
 
-test("native Channel Connectors daemon runs Codex app-server when persistent session metadata is enabled", async () => {
+test("native Channel Connectors daemon runs Codex app-server by default", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   const service = createChannelConnectorsService(config, {
@@ -17359,7 +17362,6 @@ test("native Channel Connectors daemon runs Codex app-server when persistent ses
                 apiUrl,
                 botToken: "test-token",
                 wsUrl,
-                agentSessionDriver: "persistent",
                 octoReconnectJitterMs: 0,
               },
             },
@@ -17406,7 +17408,10 @@ test("native Channel Connectors daemon runs Codex app-server when persistent ses
           const active = response.body?.activeRuns?.some?.((item) => item.messageId === "3001");
           return run && session && !active ? response.body : null;
         }, 10_000);
+        assert.equal(status.agentSessionDriver.defaultMode, "persistent");
+        assert.equal(status.agentSessionDriver.requestedPersistentBindings[0].requestedMode, "persistent");
         assert.equal(status.agentSessionDriver.requestedPersistentBindings[0].effectiveMode, "persistent");
+        assert.equal(status.agentSessionDriver.requestedPersistentBindings[0].reason, "codex-app-server");
         assert.equal(status.agentSessionDriver.policy.idleTimeoutMs, 1500);
         assert.equal(status.agentSessionDriver.policy.maxSessions, 3);
         assert.equal(status.agentSessionDriver.activeSessions[0].sessionId.includes("codex-app-server:"), true);
@@ -18712,6 +18717,7 @@ test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSock
                 apiUrl,
                 botToken: "test-token",
                 wsUrl,
+                agentSessionDriver: "one-shot",
                 autoVisionModel: true,
                 allowPrivateAttachmentUrls: true,
                 attachmentMaxBytes: 1024,

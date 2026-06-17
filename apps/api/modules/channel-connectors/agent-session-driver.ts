@@ -169,7 +169,7 @@ export function resolveChannelConnectorAgentSessionDriverMode(
       return "one-shot";
     }
   }
-  return "one-shot";
+  return "persistent";
 }
 
 export class ChannelConnectorAgentSessionDriverPool {
@@ -201,7 +201,30 @@ export class ChannelConnectorAgentSessionDriverPool {
     if (!entry) {
       await this.reapIdle();
       await this.trimToCapacity();
-      const session = await this.factory.create({ key: input.key, poolKey, turnInput: input });
+      let session: ChannelConnectorAgentSessionDriverSession;
+      try {
+        session = await this.factory.create({ key: input.key, poolKey, turnInput: input });
+      } catch (error) {
+        const message = shortError(error);
+        this.emit("turn.failed", null, {
+          key: input.key,
+          poolKey,
+          sessionId: null,
+          messageId: input.messageId,
+          reason: "driver-create-error",
+          error: message,
+        });
+        if (!this.shouldRunOneShotFallback(input)) throw error;
+        this.emit("turn.fallback", null, {
+          key: input.key,
+          poolKey,
+          sessionId: null,
+          messageId: input.messageId,
+          reason: "driver-create-error",
+          error: message,
+        });
+        return input.runOneShot();
+      }
       const now = this.nowMs();
       entry = {
         poolKey,
@@ -267,7 +290,7 @@ export class ChannelConnectorAgentSessionDriverPool {
         error: message,
       });
       await this.disposeEntry(entry, "driver-error", "session.disposed");
-      if (input.fallbackOnCrash === false || !this.fallbackOnCrash || input.signal?.aborted) throw error;
+      if (!this.shouldRunOneShotFallback(input)) throw error;
       this.emit("turn.fallback", null, {
         key: input.key,
         poolKey,
@@ -383,6 +406,10 @@ export class ChannelConnectorAgentSessionDriverPool {
         error: shortError(error),
       });
     }
+  }
+
+  private shouldRunOneShotFallback(input: ChannelConnectorAgentSessionDriverTurnInput): boolean {
+    return input.fallbackOnCrash !== false && this.fallbackOnCrash && !input.signal?.aborted;
   }
 
   private emit(

@@ -53,8 +53,9 @@
 - Octo 图片/视频 payload 带 `content/caption` 时会保留用户任务文本，避免媒体占位吞掉“请识别/请处理”这类指令。
 - 同 session busy guard、`/stop`、`/new`、`/reset`、`/compact`、`/thinking`、`/process`、`/tools` 已接入；普通消息 busy 时不入队，提示先 `/stop`/`/cancel` 后重发。
 - `/stop` 自动回归已覆盖 Codex app-server persistent turn 取消；live smoke 已支持 `--require-stop-command`，按同 session 和时间关联不同 messageId 的 stop 命令与 cancelled run。
+- IM Agent session driver 默认已切到结构化 persistent：Codex 走 app-server，Claude Code 走 stream-json 常驻进程，OpenCode 走 `run --session`；显式 `agentSessionDriver/session_driver/persistentSession=false|one-shot|off` 可回退 one-shot，persistent 创建或执行失败会记录事件并按命令策略降级。
 - Codex app-server persistent turn 已改为分层 idle：普通静默默认 3 分钟，审批请求刷新 idle，等待 IM 审批按审批窗口处理，批准工具后才给长工具执行窗口；fallback 恢复型 `turn/timeout` 不进入用户进度流，真正卡死仍会 interrupt。
-- Codex / Claude Code / OpenCode native CLI runner 已从固定墙钟总超时改为 CLI 心跳超时：stdout/stderr 中的 `Working (... esc to interrupt)`、`Imagining...` 等 liveness 刷新会续期等待，只有心跳停止才返回 `process/heartbeat-timeout` 并终止，避免 Feishu/Octo IM 长任务仍在工作时被误判为 `Agent process timed out.`；持续只有 TUI 心跳但没有结构化进展时会记录 `process/heartbeat-stall` 非终态诊断，该诊断不刷新 timeout、重复诊断退避节流、默认不推送到 IM 过程消息；权威失败终态覆盖 exit 0，权威完成终态后 lingering CLI grace 收尾；本地 heartbeat smoke 已覆盖 stderr CR-only TUI、stdout 活动、heartbeat-only stall、idleTimeout 替代总超时、静默 timeout 和非 runtime Agent 固定超时。
+- Codex / Claude Code / OpenCode one-shot 兼容 runner 已从固定墙钟总超时改为 CLI 心跳超时：stdout/stderr 中的 `Working (... esc to interrupt)`、`Imagining...` 等 liveness 刷新会续期等待，只有心跳停止才返回 `process/heartbeat-timeout` 并终止，避免 fallback/opt-out 长任务仍在工作时被误判为 `Agent process timed out.`；持续只有 TUI 心跳但没有结构化进展时会记录 `process/heartbeat-stall` 非终态诊断，该诊断不刷新 timeout、重复诊断退避节流、默认不推送到 IM 过程消息；权威失败终态覆盖 exit 0，权威完成终态后 lingering CLI grace 收尾；本地 heartbeat smoke 已覆盖 stderr CR-only TUI、stdout 活动、heartbeat-only stall、idleTimeout 替代总超时、静默 timeout 和非 runtime Agent 固定超时。
 - 可恢复队列已废弃为历史能力：daemon 启动会将遗留 pending-agent-run store 标记 `pending_dropped` 并清空；daemon `/status`、API 和 Channel Connectors Runtime 页只展示 legacy pending 清理状态，不再把普通 IM 消息落盘或重放。
 - Claude Code / OpenCode persistent native compact 已有真实子进程 driver 回归：Claude 复用同一个 stream-json 常驻进程，OpenCode 通过 `run --session` 续接。
 - Claude Code persistent driver 已修复过程回复污染最终回复，并补进度回调兼容回归。
@@ -67,7 +68,7 @@
 - Codex、Claude Code、OpenCode 混合 content 工具结果已加固：普通文本块与结构化 `stdout` / `stderr` / `exit_code` 会同时保留。
 - `smoke-channel-connectors-agent-run-live.mjs` 已新增 `--agents`、`--require-agent-coverage`、`--require-tool-output` 和 `--require-process-reply`，真实 IM smoke 可按 Agent 验证工具结果和过程回复；普通最终回复样本只作为 process warning 诊断，不阻断已有合格过程回复证据。
 - `smoke-channel-connectors-agent-runner-direct.mjs` 已新增，用于真实 CLI runner/parser 分层验证；三 Agent direct smoke 已证明过程回复、工具输出和最终回复分类正常。
-- Codex one-shot 与 app-server 已按 CC Go 合同提取 reasoning `summary` / `summary_text` / `content`，空 reasoning 不再显示假思考。
+- Codex 的 one-shot fallback 与 app-server 已按 CC Go 合同提取 reasoning `summary` / `summary_text` / `content`，空 reasoning 不再显示假思考。
 - Claude Code one-shot 与 persistent driver 已保留结构化 `tool_result` 的 `stdout`、`stderr` 和 `exit_code`。
 - 非飞书气泡式进度流的 assistant 过程回复已改为正文直出，不再携带“过程回复”标题。
 - Octo 私聊已验证 `/thinking off` 会隐藏 reasoning 进度，`/thinking on` 会恢复 reasoning 气泡；Feishu/Octo 使用同一进度过滤函数。
@@ -87,7 +88,7 @@
 
 - Feishu transport 仍有低层 legacy action helper，仅作为未暴露的旧 helper 存在；后续瘦身需单独处理，避免误删私聊文件/图片 transport。
 - 群聊、thread、多 bot、Octo Bot API 管理和 Feishu 文档/群管理能力不再作为当前目标。
-- App-server / persistent session 是 beta；默认 live 仍优先稳定 one-shot runner。
+- one-shot/TUI runner 是兼容 fallback，不再是 Codex / Claude Code / OpenCode 的默认 live 路径；继续保留 heartbeat/stall/async 保护，用于显式 opt-out、persistent crash fallback 和尚未支持 persistent 的 Agent。
 - Provider 模型 vision 能力必须以配置、上游显式能力元数据或图片 smoke 为准；当前没有 `gpt-5.5-mini`，`claude-opus-4-6` 经 `mlamp` Chat-compatible 图片请求仍失败。
 
 ## 下一步

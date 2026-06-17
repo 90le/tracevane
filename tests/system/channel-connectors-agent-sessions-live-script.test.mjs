@@ -15,7 +15,7 @@ function sessionPayload(overrides = {}) {
   return {
     ok: true,
     checkedAt: "2026-06-07T00:00:00.000Z",
-    defaultMode: "one-shot",
+    defaultMode: "persistent",
     implementation: "native-cli-session-drivers",
     persistentDriverReady: true,
     policy: {
@@ -34,7 +34,7 @@ function sessionPayload(overrides = {}) {
         model: "gpt-5.4-mini",
         requestedMode: "persistent",
         effectiveMode: "persistent",
-        reason: "codex-app-server-experimental",
+        reason: "codex-app-server",
       },
     ],
     bindings: [],

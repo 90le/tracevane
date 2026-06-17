@@ -28,8 +28,9 @@
 - `studio-channel-files` 和 `studio-channel-messages` 是保留的 Agent 出站声明合同；文件/消息实际发送仍由 Studio native transport 执行。
 - Feishu/Octo 长连接已由用户 live 验证稳定；Feishu 专项跟踪进入 monitored 状态，任意假在线反馈先写入 `docs/feishu-long-connection-issue-tracker.md` 并对照 OpenClaw/CC 实现排查。
 - Profile/App Connection 关闭验收必须跑真实 IM gate：三 Agent 工具流+过程回复、Feishu 显式 `/compact`、Octo 显式 `/compact`、入站图片 staged path。当前四项 gate 已全绿，可作为本轮关闭证据。
+- IM Agent session driver 默认已切到结构化 persistent：Codex 使用 app-server 事件、Claude Code 使用 stream-json 常驻进程、OpenCode 使用 `run --session` 续接。`agentSessionDriver/session_driver/persistentSession=false|one-shot|off` 仍可显式回退；persistent 创建或执行崩溃会记录 `turn.failed` / `turn.fallback` 后降级 one-shot，保证结构化驱动不可用时 IM 不会不可用。
 - Codex app-server persistent turn 超时语义已改为空闲超时：总回答时间可超过阈值，只要持续有 app-server 事件、审批请求、工具事件或输出就不会被误杀；普通静默默认 3 分钟，可用 `STUDIO_CODEX_APP_SERVER_TURN_IDLE_TIMEOUT_MS` 调整；等待 IM 审批会覆盖到审批窗口，批准工具后才给长工具执行窗口；fallback 恢复型 `turn/timeout` 不再进入 Feishu/Octo 用户进度流。
-- Codex / Claude Code / OpenCode native CLI runner 不再用固定墙钟总时长判断失败；对三类 IM Agent 统一改为 CLI 心跳超时，stdout/stderr 中的 `Working (... esc to interrupt)`、`Imagining...` 等 liveness 刷新会继续延长等待，只有 CLI 停止输出心跳才返回 `process/heartbeat-timeout` 并终止，避免 Feishu/Octo IM 长任务仍在工作时被误杀成 `Agent process timed out.`；Claude `deep-research ... 3/18 agents done`、Codex/OpenCode 子 agent/并行任务等待等 TUI 状态会升级为 `process/async-task` 非终态进度，并在主窗口静止时使用有限 async idle grace（默认 45 分钟，可用 `STUDIO_CHANNEL_AGENT_ASYNC_TASK_IDLE_GRACE_MS` 调整）；权威终态失败事件不会再被 exit 0 误判为完成，权威终态完成事件后 CLI 进程若悬挂会在 grace 后收尾；本地回归已覆盖 stdout、stderr CR-only TUI、async child-task idle grace、idleTimeout 替代总超时、静默 timeout 和非 runtime Agent 旧超时边界。
+- Codex / Claude Code / OpenCode one-shot 兼容 runner 不再用固定墙钟总时长判断失败；显式 opt-out、persistent fallback 或不支持 persistent 的 Agent 才进入该路径。该路径统一使用 CLI 心跳超时，stdout/stderr 中的 `Working (... esc to interrupt)`、`Imagining...` 等 liveness 刷新会继续延长等待，只有 CLI 停止输出心跳才返回 `process/heartbeat-timeout` 并终止；Claude `deep-research ... 3/18 agents done`、Codex/OpenCode 子 agent/并行任务等待等 TUI 状态会升级为 `process/async-task` 非终态进度，并在主窗口静止时使用有限 async idle grace（默认 45 分钟，可用 `STUDIO_CHANNEL_AGENT_ASYNC_TASK_IDLE_GRACE_MS` 调整）；权威终态失败事件不会再被 exit 0 误判为完成，权威终态完成事件后 CLI 进程若悬挂会在 grace 后收尾；本地回归已覆盖 stdout、stderr CR-only TUI、async child-task idle grace、idleTimeout 替代总超时、静默 timeout 和非 runtime Agent 旧超时边界。
 - CLI heartbeat 风险评估：单纯“有 stdout/stderr”只能证明 CLI 仍有 liveness，不能证明模型/工具有真实进展；因此 runner 新增 `process/heartbeat-stall` 诊断层，持续只有 TUI 心跳但没有结构化进展时写入 progress/event log 和 active run 状态。该诊断是 `running` 非终态，不刷新 heartbeat timeout，后续重复诊断按 2x/4x/8x 退避并封顶 15 分钟，也默认不发到 Feishu/Octo 过程消息，避免自我续命、日志风暴和 IM 刷屏。
 - Feishu 进度卡片终态只由最终 Agent run 结果决定；中间工具/步骤错误和过程 `completed` 事件都只作为过程判据，不会提前把卡片切成完成或失败。
 - IM Agent 生命周期已拆分 Agent 执行和最终回复投递：active run 会从 `running` 进入 `delivering`，最终投递完成后才释放同 session guard；投递阶段 `/stop` 会提示“Agent 已完成，正在投递最终回复”，普通新消息仍按 busy guard 拒绝但文案说明是在等待最终投递。Feishu/Octo `agent.run.finished` 与 runtime `agentRuns` 会记录 `replyDeliveryStatus`（`not_required` / `delivered` / `failed`）和 `replyError`；成功 Agent 但 Feishu 最终回复全失败时，会把进度卡补一条“回复投递失败”终态错误。
@@ -43,6 +44,7 @@
 ## 本轮风险清单（IM Agent 终态 / 等待）
 
 - 已解决：任务没有结束却误认为结束。
+  - 默认链路优先使用 Codex app-server、Claude stream-json、OpenCode session 的结构化终态和 session 状态，不再把 TUI 文案作为 Codex/Claude/OpenCode 主判断源。
   - one-shot Codex / Claude Code / OpenCode 只把各自权威终态事件当终态；普通过程 `completed` 不终止 Feishu 进度卡。
   - 权威失败事件即使进程 exit 0 也会返回失败；Claude persistent 的 `error_during_execution` / error-like subtype 也按失败处理。
   - Codex app-server 的 `turn/completed.status` 改为 allowlist：只有明确成功状态或已有最终 assistant 文本的缺省状态才算成功；未知状态按协议兼容失败处理。
@@ -52,9 +54,12 @@
   - Codex app-server transport 在 active turn 中关闭或 dispose 会立即 settle，不再等 turn idle timeout。
   - Codex app-server 支持 `thread/status/changed idle` 作为已有 assistant 输出后的完成信号，兼容 CC app-server idle 形态。
 - 已解决：CLI 事件格式升级导致不可见降级。
+  - Codex/Claude/OpenCode 默认走结构化 persistent driver；CLI/TUI 事件格式升级优先影响 one-shot fallback，不再影响三类 IM Agent 的默认终态判断。
   - one-shot runner 对未知结构化 JSON、malformed JSON、Codex/Claude/OpenCode 未识别专有事件写入 bounded `protocol/unknown-event` 内部进度；该诊断不刷新 heartbeat/stall，不会自我续命。
   - CLI 进程 exit 0 但没有可解析最终回复时，IM 返回兼容提示，不再把协议 JSON 原文当用户回复，也不再静默无回复。
   - Claude persistent 对未知结构化事件同样写入 bounded `protocol/unknown-event`；OpenCode persistent 仍走 one-shot runner，因此继承同一逻辑。
+- 已解决：persistent 驱动不可用导致链路不可用。
+  - session pool 在创建阶段和执行阶段都记录失败事件；允许 fallback 的普通 Agent turn 会自动降级 one-shot，native compact 等不允许 fallback 的命令仍按失败返回，避免伪执行。
 - 已解决：Feishu 进度卡失败状态可能不刷新。
   - 最终失败会把进度卡状态切到 failed 并标记 dirty，即使失败文本已作为过程错误出现，也会刷新卡片终态。
   - 失败态终态卡片 patch 失败会触发文本失败回复兜底，并记录 `progressCardFinalDelivered=false` / `progressCardFinalError`，避免用户端只看到长期 running 卡片、本地却记为 `not_required`。
@@ -78,6 +83,9 @@
 
 ## 本轮完成
 
+- Channel Connectors IM Agent 默认链路从 one-shot/TUI 兼容 runner 切到结构化 persistent session；Codex/Claude Code/OpenCode 默认分别使用 app-server、stream-json 常驻进程和 `run --session`，显式 metadata 可退回 one-shot。
+- persistent session pool 补齐创建阶段失败回退：driver 创建失败会写 `turn.failed:driver-create-error` 与 `turn.fallback:driver-create-error`，再执行 one-shot fallback；执行阶段 crash 继续 dispose session 后 fallback。
+- daemon `/status` / `/agent-sessions` / runtime 的 `agentSessionDriver.defaultMode` 改为 `persistent`，Codex reason 从旧 experimental 命名收口为 `codex-app-server`。
 - 调研 Sub2API、CLIProxyAPI、CodexProapi 和 Codex 官方认证文档，提炼到 `docs/studio-gateway-account-provider-plan.md`；本地参考副本固定为 `/tmp/studio-gateway-research-sub2api` 与 `/tmp/studio-gateway-research-cliproxyapi`。
 - 旧 CPA user service `cpa-compact-proxy.service` 已停止、取消自启并删除 unit；18796 端口由 `openclaw-studio-model-gateway.service` 接管。
 - 更新 Gateway 目标：Account-backed provider 默认走 Provider Center 页面登录，授权完成后自动写入本地 provider 和 secret store；不要求用户手动导入 `auth.json`。
@@ -244,9 +252,15 @@
 
 ## 最近验证
 
+- 本轮验证通过：`node --test tests/system/channel-connectors-agent-session-driver.test.mjs`，覆盖默认 persistent、显式 one-shot opt-out、persistent 创建失败 fallback、执行 crash fallback、busy guard、stop/kill/reap 和 Claude/OpenCode persistent driver。
+- 本轮验证通过：`node --test --test-name-pattern "daemon entry exposes health and writes runtime|IM commands switch agent|runs Codex app-server by default|falls back to one-shot when Codex app-server crashes|stops Codex app-server persistent turns|routes Claude and OpenCode compact" tests/system/channel-connectors-service.test.mjs`，覆盖 daemon status 默认 persistent、native 文案、Codex/Claude/OpenCode persistent IM 路由和 fallback/stop。
+- 本轮验证通过：`node --test tests/system/channel-connectors-service.test.mjs`，124/124 通过，覆盖默认 persistent、显式 one-shot fixture、busy/delivery guard、process runner、Feishu/Octo daemon、Codex app-server、Claude/OpenCode persistent compact、fallback 和 stop。
+- 本轮验证通过：`node --test tests/system/channel-connectors-agent-sessions-live-script.test.mjs`，3/3 通过，覆盖 session status smoke 脚本在 `defaultMode=persistent` / `reason=codex-app-server` 下的摘要、reap 和 kill 行为。
 - 本轮验证通过：`npm run typecheck:api`
 - 本轮验证通过：`npm run build:api`
-- 本轮验证通过：`node --test tests/system/channel-connectors-agent-session-driver.test.mjs tests/system/channel-connectors-service.test.mjs`，139/139 通过，覆盖 one-shot runner 终态 grace、取消 race、未知 CLI 协议降级、无最终回复兼容提示、async child-task idle grace / grace 后 timeout、Claude persistent error subtype/unknown event、Codex app-server 同 tick 终态通知缓冲、未知 terminal status、transport close settle、Feishu 进度卡终态 dirty、Agent `running -> delivering -> cleanup` 生命周期、投递期 `/stop` 文案、`replyDeliveryStatus` 记录、preflight cleanup、同消息 native compact 豁免和既有 daemon/session/Feishu/Octo 回归。
+- 本轮验证通过：`npm run typecheck:web`
+- 本轮验证通过：`npm run build:web`
+- 本轮运行态验证通过：已重启 `openclaw-studio-channel-connectors.service`；`/agent-sessions` 返回 `defaultMode=persistent`，当前 `feishu-live` 与 `octo-studio-cc` 均为 `requestedMode/effectiveMode=persistent`、`reason=codex-app-server`；`/status` 显示 Feishu `connected/sdkConnected=true` 且 `transportStale=false`，Octo connected。
 - 本轮验证通过：`npm run smoke:channel-connectors:agent-heartbeat-local -- --json`，19/19 通过，覆盖 Codex / Claude Code / OpenCode 的 stderr CR TUI heartbeat、stdout heartbeat、async child-task idle grace、idle timeout 替代总 timeout、heartbeat-only stall 诊断、静默 heartbeat timeout，以及非 runtime agent 固定 timeout 边界。
 - 本轮验证通过：`node --test tests/system/channel-connectors-agent-heartbeat-local-script.test.mjs`，2/2 通过，覆盖 heartbeat smoke 脚本本地证明边界与完整 synthetic matrix。
 - 本轮验证通过：`node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs tests/system/studio-web-channel-connectors-page.test.mjs`，覆盖 Channel Connectors 独立 Profile 工作台、Gateway 预算索引、Profile 复制/删除/binding 行事件快捷过滤/事件 binding/type 筛选/事件数量/批量停止控件、Profile ID 重命名迁移绑定合同、App Connection effective model / apply / preview 合同、IM binding deep-link 选中合同、Agents 旧 CLI 路由删除和 Channel Connectors 独立导航。

@@ -48,7 +48,7 @@ Feishu / Octo(dmwork) / future IM
 1. 先迁移 CC/OpenClaw contract：输入输出、session key、文件 staging/send、菜单命令、进度事件、错误 envelope、权限语义和重试策略。
 2. 再做 Studio 化精修。
 3. 若不采用参考方案，必须写明原因、测试证据和回退方式。
-4. Codex `app-server` / persistent session 仍是 beta，未达到 one-shot `exec/resume` 路径同等稳定性前不得成为 live 默认。
+4. Codex / Claude Code / OpenCode 默认使用结构化 persistent driver；one-shot `exec/resume` / TUI runner 只作为显式 opt-out、persistent crash fallback 或未支持 Agent 的兼容路径。新 Agent 若要成为默认路径，必须先补齐结构化事件、session、stop/compact、fallback 和回归证据。
 
 ## 3. Runtime 与持久化
 
@@ -96,8 +96,8 @@ Octo(dmwork)：
 
 必须支持：
 
-- one-shot 路径稳定可用。
-- persistent/live driver 逐 Agent 验收后再扩大默认范围。
+- persistent/live driver 是默认路径，必须优先使用结构化事件判断运行中、完成、失败和 stop/compact。
+- one-shot 路径稳定可用，作为显式 opt-out 和 persistent fallback。
 - 工具调用、工具输入、stdout/stderr、工具结果、过程回复、最终回复分类正确，不出现空工具流或最终回复重复进过程流。
 - `/native <命令>` 作为显式原生命令入口；未知 slash 可按 CC Go 语义提示并进入 Agent。
 - `/compact` 优先 Agent-native compact/compress；不支持或失败时才走 Studio/Gateway compact。
@@ -108,6 +108,7 @@ Octo(dmwork)：
 - Codex app-server 已覆盖真实 Gateway `turn/start`、`/compact`、`turn/interrupt`、approval driver 合同、内部 prompt echo 过滤、结构化 stdout/stderr 工具结果解析和 reasoning summary/content 思考流解析。
 - Claude Code stream-json 已覆盖普通 turn、Bash tool-use、文件 manifest、视觉附件、compact、stop/cancel、结构化 tool_result 输出渲染，并修复 persistent 过程回复污染最终回复。
 - OpenCode `run --session` 已覆盖普通 turn、文件 manifest、视觉附件、compact、stop/cancel；SQLite fallback 已统一复用 live parser，结构化 `stdout`/`stderr`/`exitCode` 已保留，避免丢工具结果或把过程回复拼进最终回复。
+- session driver 默认模式已从 one-shot 切到 persistent；daemon status/runtime 会显示 `defaultMode=persistent`，Codex reason 为 `codex-app-server`，绑定 metadata 可显式回退 one-shot。
 - Claude Code / OpenCode persistent native compact 已新增真实子进程 driver 回归：Claude 用同一个 stream-json 常驻进程接收 `/compact`，OpenCode 用 `run --session <id>` 续接 `/compact`，均不回退 one-shot。
 - Octo daemon 私聊 `/compact` 已新增回归：普通消息建立 live session 后，`/compact` 会进入 Claude/OpenCode persistent driver，不走 Gateway fallback。
 - Feishu daemon 已补 native-first wiring 回归：长连接已稳定，派发会先调用 Agent native compact，再允许 Gateway fallback；Feishu 显式 `/compact` 24h live 已验证 Codex / Claude Code / OpenCode。

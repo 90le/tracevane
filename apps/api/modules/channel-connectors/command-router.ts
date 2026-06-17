@@ -1544,7 +1544,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
     "",
     commandHelpList([
       ["`/native /help`", "查看当前 Agent 原生帮助或 skills 命令"],
-      ["`/native /compact`", "尝试 CLI Agent 原生压缩；仅持久/交互式 runner 支持，Codex one-shot 会拒绝伪执行"],
+      ["`/native /compact`", "尝试 CLI Agent 原生压缩；仅持久/交互式 runner 支持，one-shot 兼容路径会拒绝伪执行"],
       ["`/native <原生命令>`", "强制透传给当前 Agent"],
     ]),
     "",

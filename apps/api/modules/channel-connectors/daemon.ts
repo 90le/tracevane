@@ -664,11 +664,11 @@ interface ChannelDaemonAgentSessionDriverBindingState {
   model: string | null;
   requestedMode: "one-shot" | "persistent";
   effectiveMode: "one-shot" | "persistent";
-  reason: "default" | "codex-app-server-experimental" | "claude-code-stream-json" | "opencode-run-session" | "unsupported-agent";
+  reason: "default" | "codex-app-server" | "claude-code-stream-json" | "opencode-run-session" | "unsupported-agent";
 }
 
 interface ChannelDaemonAgentSessionDriverState {
-  defaultMode: "one-shot";
+  defaultMode: "persistent";
   implementation: "native-cli-session-drivers";
   persistentDriverReady: true;
   policy: {
@@ -1564,7 +1564,7 @@ function effectiveAgentSessionDriverMode(input: {
   return {
     requestedMode,
     effectiveMode: "persistent",
-    reason: "codex-app-server-experimental",
+    reason: "codex-app-server",
   };
 }
 
@@ -1597,7 +1597,7 @@ function buildAgentSessionDriverState(
     });
   });
   return {
-    defaultMode: "one-shot",
+    defaultMode: "persistent",
     implementation: "native-cli-session-drivers",
     persistentDriverReady: true,
     policy: channelAgentSessionDriverPool.policy(),

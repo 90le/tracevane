@@ -231,6 +231,44 @@ test("Channel Connectors persistent session driver falls back to one-shot after 
   assert.deepEqual(pool.status(), []);
 });
 
+test("Channel Connectors persistent session driver falls back to one-shot after driver creation failure", async () => {
+  const events = [];
+  let fallbackCount = 0;
+  const pool = createChannelConnectorAgentSessionDriverPool({
+    nowMs: () => Date.parse("2026-06-07T10:01:15.000Z"),
+    onEvent: (event) => events.push(event),
+    factory: {
+      create: () => {
+        throw new Error("persistent driver unavailable");
+      },
+    },
+  });
+
+  const result = await pool.runTurn({
+    mode: "persistent",
+    key: baseKey,
+    messageId: "m-create-fail",
+    runOneShot: async () => {
+      fallbackCount += 1;
+      return completedResult("one-shot fallback after create failure", {
+        session: {
+          resumed: false,
+          codexThreadId: "thread-create-fallback",
+        },
+      });
+    },
+  });
+
+  assert.equal(result.replyText, "one-shot fallback after create failure");
+  assert.equal(fallbackCount, 1);
+  assert.deepEqual(events.map((event) => `${event.type}:${event.reason || ""}`), [
+    "turn.failed:driver-create-error",
+    "turn.fallback:driver-create-error",
+  ]);
+  assert.match(events.find((event) => event.type === "turn.failed").error, /persistent driver unavailable/);
+  assert.deepEqual(pool.status(), []);
+});
+
 test("Channel Connectors persistent session driver rejects concurrent turns without disposing the active session", async () => {
   const events = [];
   let disposeCount = 0;
@@ -538,10 +576,12 @@ test("Channel Connectors persistent session driver supports stop, kill, and idle
   assert.deepEqual(pool.status(), []);
 });
 
-test("Channel Connectors session driver mode stays one-shot unless metadata explicitly enables persistence", () => {
-  assert.equal(resolveChannelConnectorAgentSessionDriverMode(undefined), "one-shot");
+test("Channel Connectors session driver mode defaults to persistence while preserving one-shot opt-out", () => {
+  assert.equal(resolveChannelConnectorAgentSessionDriverMode(undefined), "persistent");
+  assert.equal(resolveChannelConnectorAgentSessionDriverMode({}), "persistent");
   assert.equal(resolveChannelConnectorAgentSessionDriverMode({ session_driver: "one-shot" }), "one-shot");
   assert.equal(resolveChannelConnectorAgentSessionDriverMode({ persistentSession: false }), "one-shot");
+  assert.equal(resolveChannelConnectorAgentSessionDriverMode({ agentSessionDriver: "off" }), "one-shot");
   assert.equal(resolveChannelConnectorAgentSessionDriverMode({ agentSessionDriver: "persistent" }), "persistent");
   assert.equal(resolveChannelConnectorAgentSessionDriverMode({ persistent_agent_session: true }), "persistent");
 });
