@@ -1,23 +1,25 @@
 <!-- features/terminal/TerminalIDE.vue
-     终端 IDE —— MVP 骨架。五区布局：
-     活动栏 | 资源管理器 | 编辑器区(文件预览) | (底部)终端面板
+     终端 IDE —— 活动栏切换视图：资源管理器 / Git。
+     布局：活动栏 | 侧面板(资源/Git) | 编辑器区(文件预览) | (底部)终端面板。
      材质退后：信息极密集，实色为主，圆角收紧到 10px（守则 §1/§9）。 -->
 <script setup lang="ts">
 import { ref } from 'vue';
 import ResourceExplorer from './components/ResourceExplorer.vue';
+import GitPanel from './components/GitPanel.vue';
 import CodePreview from './components/CodePreview.vue';
 import TerminalPanel from './components/TerminalPanel.vue';
 import { useFilesStore } from './files-store';
 import type { FileEntrySummary } from '../../../../../types/files';
 
+type SideView = 'explorer' | 'git';
+
+const sideView = ref<SideView>('explorer');
 const files = useFilesStore();
-const openedFile = ref<FileEntrySummary | null>(null);
 
 async function openFile(entry: FileEntrySummary) {
   if (entry.kind !== 'file') return;
-  openedFile.value = entry;
-  const rootId = files.summary?.defaultRootId || '';
-  if (rootId) await files.readFile(rootId, entry.path);
+  const rootId = files.summary?.defaultRootId || 'project-root';
+  await files.readFile(rootId, entry.path);
 }
 </script>
 
@@ -26,18 +28,19 @@ async function openFile(entry: FileEntrySummary) {
     <!-- 活动栏 -->
     <nav class="ide__activity">
       <div class="ide__brand">◉</div>
-      <button class="ide__act ide__act--on" title="资源管理器">☶</button>
-      <button class="ide__act" title="搜索">⌕</button>
-      <button class="ide__act" title="源代码管理">⎇</button>
-      <button class="ide__act" title="会话历史">◷</button>
+      <button class="ide__act" :class="{ 'ide__act--on': sideView === 'explorer' }" title="资源管理器" @click="sideView = 'explorer'">☶</button>
+      <button class="ide__act" :class="{ 'ide__act--on': sideView === 'git' }" title="源代码管理" @click="sideView = 'git'">⎇</button>
+      <button class="ide__act" title="搜索" disabled>⌕</button>
+      <button class="ide__act" title="会话历史" disabled>◷</button>
     </nav>
 
-    <!-- 资源管理器 -->
-    <aside class="ide__explorer">
-      <ResourceExplorer @open-file="openFile" />
+    <!-- 侧面板：资源管理器 / Git 切换 -->
+    <aside class="ide__side">
+      <ResourceExplorer v-show="sideView === 'explorer'" @open-file="openFile" />
+      <GitPanel v-show="sideView === 'git'" />
     </aside>
 
-    <!-- 编辑器区 + 终端面板（纵向分割） -->
+    <!-- 编辑器区 + 终端面板 -->
     <main class="ide__main">
       <section class="ide__editor">
         <CodePreview />
@@ -59,7 +62,6 @@ async function openFile(entry: FileEntrySummary) {
   overflow: hidden;
 }
 
-/* 活动栏 */
 .ide__activity {
   display: flex;
   flex-direction: column;
@@ -96,14 +98,18 @@ async function openFile(entry: FileEntrySummary) {
   color: var(--text-tertiary);
   font-size: 15px;
   cursor: pointer;
+  position: relative;
 }
-.ide__act:hover {
+.ide__act:hover:not(:disabled) {
   background: var(--fill);
   color: var(--text-secondary);
 }
+.ide__act:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
 .ide__act--on {
   color: var(--text-primary);
-  position: relative;
 }
 .ide__act--on::before {
   content: '';
@@ -116,8 +122,7 @@ async function openFile(entry: FileEntrySummary) {
   background: var(--accent);
 }
 
-/* 资源管理器 */
-.ide__explorer {
+.ide__side {
   background: var(--material-sidebar);
   backdrop-filter: var(--blur-thin);
   -webkit-backdrop-filter: var(--blur-thin);
@@ -128,7 +133,6 @@ async function openFile(entry: FileEntrySummary) {
   min-width: 0;
 }
 
-/* 主区：编辑器(上) + 终端(下) */
 .ide__main {
   display: grid;
   grid-template-rows: 1fr 220px;
