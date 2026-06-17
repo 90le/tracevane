@@ -25,6 +25,7 @@ export interface ChannelConnectorAgentProcessRequest {
   timeoutMs: number;
   idleTimeoutMs?: number | null;
   heartbeatStallMs?: number | null;
+  terminalProgressGraceMs?: number | null;
   nativeCommand?: string | null;
   signal?: AbortSignal | null;
   cleanupPaths?: string[];
@@ -209,6 +210,19 @@ function heartbeatStallDelayMs(baseMs: number, noticeCount: number): number {
   if (baseMs <= 0) return 0;
   const multiplier = Math.min(8, Math.max(1, 2 ** Math.max(0, noticeCount)));
   return Math.min(15 * 60_000, baseMs * multiplier);
+}
+
+function agentProcessTerminalGraceMessage(input: {
+  agent: ChannelConnectorAgentId;
+  graceMs: number;
+  terminalRawType: string | null;
+}): string {
+  const seconds = Math.max(1, Math.round(input.graceMs / 1000));
+  return [
+    `${input.agent} emitted terminal progress but the CLI process did not exit within ${seconds}s.`,
+    "Studio terminated the lingering process and will use the terminal progress result.",
+    input.terminalRawType ? `terminal=${input.terminalRawType}` : "",
+  ].filter(Boolean).join(" ");
 }
 
 export function truncateProgressText(value: string, maxLength = 1200): string {
@@ -1850,6 +1864,19 @@ function isTerminalProgressEvent(event: ChannelConnectorAgentProgressEvent): boo
   return event.type === "completed" || event.type === "failed" || event.type === "error";
 }
 
+function isAuthoritativeTerminalProgressEvent(
+  agent: ChannelConnectorAgentId,
+  event: ChannelConnectorAgentProgressEvent,
+): boolean {
+  if (!isTerminalProgressEvent(event)) return false;
+  const rawType = normalizeString(event.rawType).toLowerCase();
+  const itemType = normalizeString(event.itemType).toLowerCase();
+  if (agent === "codex") return rawType === "turn.completed" || rawType === "turn.failed" || rawType === "error";
+  if (agent === "claude-code") return rawType === "result";
+  if (agent === "opencode") return rawType === "step_finish" || itemType === "step-finish" || rawType === "error";
+  return false;
+}
+
 function isToolUseProgressEvent(event: ChannelConnectorAgentProgressEvent): boolean {
   if (event.type !== "tool") return false;
   const rawType = normalizeString(event.rawType).toLowerCase();
@@ -1974,6 +2001,11 @@ export async function defaultChannelConnectorAgentProcessRunner(
         ? Math.max(0, Math.floor(request.heartbeatStallMs))
         : Math.max(60_000, Math.min(heartbeatTimeoutMs > 0 ? heartbeatTimeoutMs : 5 * 60_000, 5 * 60_000))
       : 0;
+    const terminalProgressGraceMs = usesHeartbeatTimeout
+      ? typeof request.terminalProgressGraceMs === "number" && Number.isFinite(request.terminalProgressGraceMs)
+        ? Math.max(0, Math.floor(request.terminalProgressGraceMs))
+        : 5_000
+      : 0;
     const progressParser = createProgressLineParser(request.agent);
     let stdout = "";
     let stderr = "";
@@ -1989,8 +2021,11 @@ export async function defaultChannelConnectorAgentProcessRunner(
     let lastProgressAtMs = startedAt;
     let lastProgressReason = "process-start";
     let heartbeatOnlyNoticeCount = 0;
+    let terminalProgressEvent: ChannelConnectorAgentProgressEvent | null = null;
+    let terminalProgressForcedExit = false;
     let timeout: NodeJS.Timeout | null = null;
     let stallTimeout: NodeJS.Timeout | null = null;
+    let terminalGraceTimeout: NodeJS.Timeout | null = null;
     const progressReason = (event: ChannelConnectorAgentProgressEvent): string => {
       return normalizeString(event.rawType)
         || normalizeString(event.itemType)
@@ -1999,7 +2034,34 @@ export async function defaultChannelConnectorAgentProcessRunner(
     };
     const isHeartbeatDiagnosticProgress = (event: ChannelConnectorAgentProgressEvent): boolean => {
       const rawType = normalizeString(event.rawType);
-      return rawType === "process/heartbeat-timeout" || rawType === "process/heartbeat-stall";
+      return rawType === "process/heartbeat-timeout"
+        || rawType === "process/heartbeat-stall"
+        || rawType === "process/terminal-grace-exit";
+    };
+    const armTerminalProgressGrace = (event: ChannelConnectorAgentProgressEvent): void => {
+      if (!usesHeartbeatTimeout || terminalProgressGraceMs <= 0 || settled) return;
+      if (terminalProgressEvent) {
+        if (terminalProgressEvent.type === "completed" && (event.type === "failed" || event.type === "error")) {
+          terminalProgressEvent = event;
+        }
+        return;
+      }
+      terminalProgressEvent = event;
+      terminalGraceTimeout = setTimeout(() => {
+        if (settled) return;
+        terminalProgressForcedExit = true;
+        emitProgress(progressEvent({
+          type: "event",
+          rawType: "process/terminal-grace-exit",
+          text: agentProcessTerminalGraceMessage({
+            agent: request.agent,
+            graceMs: terminalProgressGraceMs,
+            terminalRawType: event.rawType,
+          }),
+        }));
+        terminateChild();
+      }, terminalProgressGraceMs);
+      terminalGraceTimeout.unref();
     };
     const emitProgress = (event: ChannelConnectorAgentProgressEvent): void => {
       if (usesHeartbeatTimeout && !isHeartbeatDiagnosticProgress(event)) {
@@ -2010,6 +2072,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
       }
       progressEvents.push(event);
       request.onProgress?.(event);
+      if (isAuthoritativeTerminalProgressEvent(request.agent, event)) armTerminalProgressGrace(event);
     };
     const closeStdin = (): void => {
       if (stdinClosed || child.stdin.destroyed) return;
@@ -2119,6 +2182,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
       settled = true;
       if (timeout) clearTimeout(timeout);
       if (stallTimeout) clearTimeout(stallTimeout);
+      if (terminalGraceTimeout) clearTimeout(terminalGraceTimeout);
       request.signal?.removeEventListener("abort", abortListener);
     };
 
@@ -2171,8 +2235,14 @@ export async function defaultChannelConnectorAgentProcessRunner(
       }
       if (isClaudeCode && stdoutLineBuffer) void handleClaudeCodeLine(stdoutLineBuffer);
       cleanupChannelConnectorAgentProcessRequest(request);
+      const terminalProgressFailed = terminalProgressEvent
+        ? terminalProgressEvent.type === "failed" || terminalProgressEvent.type === "error"
+        : false;
+      const effectiveExitCode = terminalProgressForcedExit && terminalProgressEvent?.type === "completed"
+        ? 0
+        : exitCode;
       resolve({
-        exitCode,
+        exitCode: effectiveExitCode,
         signal,
         stdout,
         stderr,
@@ -2181,7 +2251,9 @@ export async function defaultChannelConnectorAgentProcessRunner(
         cancelled,
         error: cancelled
           ? "Agent process cancelled."
-          : timedOut ? timeoutErrorMessage || "Agent process timed out." : null,
+          : timedOut ? timeoutErrorMessage || "Agent process timed out."
+            : terminalProgressFailed ? terminalProgressEvent?.text || "Agent process reported a terminal failure."
+              : null,
         progressEvents,
       });
     });

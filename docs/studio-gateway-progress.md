@@ -29,9 +29,9 @@
 - Feishu/Octo 长连接已由用户 live 验证稳定；Feishu 专项跟踪进入 monitored 状态，任意假在线反馈先写入 `docs/feishu-long-connection-issue-tracker.md` 并对照 OpenClaw/CC 实现排查。
 - Profile/App Connection 关闭验收必须跑真实 IM gate：三 Agent 工具流+过程回复、Feishu 显式 `/compact`、Octo 显式 `/compact`、入站图片 staged path。当前四项 gate 已全绿，可作为本轮关闭证据。
 - Codex app-server persistent turn 超时语义已改为空闲超时：总回答时间可超过阈值，只要持续有 app-server 事件、审批请求、工具事件或输出就不会被误杀；普通静默默认 3 分钟，可用 `STUDIO_CODEX_APP_SERVER_TURN_IDLE_TIMEOUT_MS` 调整；等待 IM 审批会覆盖到审批窗口，批准工具后才给长工具执行窗口；fallback 恢复型 `turn/timeout` 不再进入 Feishu/Octo 用户进度流。
-- Codex / Claude Code / OpenCode native CLI runner 不再用固定墙钟总时长判断失败；对三类 IM Agent 统一改为 CLI 心跳超时，stdout/stderr 中的 `Working (... esc to interrupt)`、`Imagining...` 等 liveness 刷新会继续延长等待，只有 CLI 停止输出心跳才返回 `process/heartbeat-timeout` 并终止，避免 Feishu/Octo IM 长任务仍在工作时被误杀成 `Agent process timed out.`；本地回归已覆盖 stdout、stderr CR-only TUI、idleTimeout 替代总超时、静默 timeout 和非 runtime Agent 旧超时边界。
+- Codex / Claude Code / OpenCode native CLI runner 不再用固定墙钟总时长判断失败；对三类 IM Agent 统一改为 CLI 心跳超时，stdout/stderr 中的 `Working (... esc to interrupt)`、`Imagining...` 等 liveness 刷新会继续延长等待，只有 CLI 停止输出心跳才返回 `process/heartbeat-timeout` 并终止，避免 Feishu/Octo IM 长任务仍在工作时被误杀成 `Agent process timed out.`；权威终态失败事件不会再被 exit 0 误判为完成，权威终态完成事件后 CLI 进程若悬挂会在 grace 后收尾；本地回归已覆盖 stdout、stderr CR-only TUI、idleTimeout 替代总超时、静默 timeout 和非 runtime Agent 旧超时边界。
 - CLI heartbeat 风险评估：单纯“有 stdout/stderr”只能证明 CLI 仍有 liveness，不能证明模型/工具有真实进展；因此 runner 新增 `process/heartbeat-stall` 诊断层，持续只有 TUI 心跳但没有结构化进展时写入 progress/event log 和 active run 状态。该诊断是 `running` 非终态，不刷新 heartbeat timeout，后续重复诊断按 2x/4x/8x 退避并封顶 15 分钟，也默认不发到 Feishu/Octo 过程消息，避免自我续命、日志风暴和 IM 刷屏。
-- Feishu 进度卡片终态只由最终 Agent run 结果决定；中间工具/步骤错误会显示为过程条目并继续更新，不再提前显示“本过程卡片已停止更新”。
+- Feishu 进度卡片终态只由最终 Agent run 结果决定；中间工具/步骤错误和过程 `completed` 事件都只作为过程判据，不会提前把卡片切成完成或失败。
 - Channel 侧 `/usage` / token 统计不再继续建设；模型消耗已统一到 Gateway usage/Provider Center 模型消耗页。
 - CLI Profile 管理属于 Studio 原生 Channel Connectors，不属于 OpenClaw Agent 管理；独立页为 `/channel-connectors/profiles`，直接读取 Gateway 可用模型目录和上下文预算，管理 Profile、IM 绑定摘要、运行配置、持久会话和事件记录；IM 绑定摘要可 deep-link 到完整 Channel Connectors 配置并自动选中 binding/profile。
 - Channel Connectors 主配置页已收敛为概览、渠道绑定、运行状态、会话日志四个同级工作区；不再内嵌 CLI Profile 快改或 Skills 管理，Profile 只进入独立工作台。
@@ -92,7 +92,7 @@
   - Provider Center 模型目录新增“刷新目录”：复用现有 detect-provider 读取上游 `/models`，只合并新增模型并补齐空白预算/能力，不覆盖用户已有别名、能力、预算或默认模型；“识别配置”内的模型应用也改为同一合并语义。
   - Feishu/Octo IM native CLI 卡顿误判修复：Codex / Claude Code / OpenCode 进程 runner 将 stdout/stderr 作为 CLI liveness heartbeat，`Working (... esc to interrupt)`、`Imagining...` 等状态刷新会续期等待；完全静默时返回可解释 `Agent process heartbeat timed out...`，并发出 `process/heartbeat-timeout` 失败进度。
   - 按本轮要求先不跑渠道 live，新增 `scripts/smoke-channel-connectors-agent-heartbeat-local.mjs` 和 npm 入口 `smoke:channel-connectors:agent-heartbeat-local`；该本地矩阵用合成 Node 子进程验证 Codex / Claude Code / OpenCode 的 stderr CR-only TUI、stdout 心跳、heartbeat-only stall 诊断、idleTimeout 替代总超时、静默 heartbeat timeout，以及 Gemini 等非 runtime Agent 仍走旧固定超时。
-  - 进一步降低 heartbeat 策略风险：runner 区分 CLI liveness 与结构化进展，持续只有心跳时发出 `process/heartbeat-stall` 诊断；诊断不会终止任务、不会重置 heartbeat timeout，重复诊断退避节流，默认不推送到 IM 过程消息，只作为 event log / active run 判据。
+  - 进一步降低 heartbeat 策略风险：runner 区分 CLI liveness 与结构化进展，持续只有心跳时发出 `process/heartbeat-stall` 诊断；诊断不会终止任务、不会重置 heartbeat timeout，重复诊断退避节流，默认不推送到 IM 过程消息，只作为 event log / active run 判据。终态判定补齐双向防误判：失败终态事件覆盖 exit 0，完成终态事件后 lingering CLI 只在 grace 后收尾。
 - Provider Center 前端收口：
   - 模型目录的可见身份字段只保留“模型名称”和“别名”，不再暴露“显示名”三段式配置。
   - 批量导入格式改为 `model-id | alias1,alias2`；保存时不再从表格写入 `model.label`。
@@ -238,7 +238,7 @@
 - 本轮验证通过：`node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs`
 - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，57/57 通过，覆盖 `glm-5.2` / `glm-5.2[1m]` 预算推断、endpoint profile 原生协议优选、endpoint health 回退、响应头和 endpoint 级 smoke。
 - 本轮验证通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，17/17 通过，覆盖 Codex app-server turn 空闲超时、审批/批准工具刷新 idle、fallback 恢复时不发用户 timeout 进度和真正卡死 interrupt。
-- 本轮验证通过：`node --test --test-name-pattern "native Channel Connectors process runner" tests/system/channel-connectors-service.test.mjs`，27/27 通过，覆盖 Codex / Claude Code / OpenCode TUI 心跳续期、stdout 心跳、CR-only TUI 刷新、heartbeat-only stall 诊断、stall 诊断不刷新 timeout、重复 stall 诊断退避节流、idleTimeout 替代总超时、静默 heartbeat timeout、最后活动流诊断、非 runtime Agent 固定 timeout、三 Agent 工具流和权限处理。
+- 本轮验证通过：`node --test --test-name-pattern "native Channel Connectors process runner" tests/system/channel-connectors-service.test.mjs`，29/29 通过，覆盖 Codex / Claude Code / OpenCode TUI 心跳续期、stdout 心跳、CR-only TUI 刷新、heartbeat-only stall 诊断、stall 诊断不刷新 timeout、重复 stall 诊断退避节流、权威失败终态覆盖 exit 0、权威完成终态后 lingering CLI grace 收尾、idleTimeout 替代总超时、静默 heartbeat timeout、最后活动流诊断、非 runtime Agent 固定 timeout、三 Agent 工具流和权限处理。
 - 本轮本地验证通过：`node scripts/smoke-channel-connectors-agent-heartbeat-local.mjs --json`，16/16 通过；`npm run smoke:channel-connectors:agent-heartbeat-local -- --json`，16/16 通过。
 - 本轮验证通过：`node --test tests/system/channel-connectors-agent-heartbeat-local-script.test.mjs`，2/2 通过，覆盖本地 heartbeat smoke 的帮助文本和完整合成矩阵。
 - 本轮 live 验证通过：`node scripts/smoke-model-gateway-account-pool.mjs --json --strict --timeout-ms 240000`，单账号 Codex account provider / `gpt-5.5` Responses / accountRouting / sticky 通过，多账号策略按可选 skip 记录。

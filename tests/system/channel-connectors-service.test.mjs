@@ -12000,6 +12000,101 @@ test("native Channel Connectors process runner backs off repeated heartbeat-only
   assert.equal(progress.at(-1)?.type, "completed");
 });
 
+test("native Channel Connectors process runner treats authoritative terminal failures as failed even with exit zero", async () => {
+  const cases = [
+    {
+      agent: "codex",
+      line: JSON.stringify({ type: "turn.failed", error: { message: "codex terminal failed" } }),
+      expected: /codex terminal failed/,
+    },
+    {
+      agent: "claude-code",
+      line: JSON.stringify({ type: "result", is_error: true, result: "claude terminal failed" }),
+      expected: /claude terminal failed/,
+    },
+    {
+      agent: "opencode",
+      line: JSON.stringify({ type: "error", message: "opencode terminal failed" }),
+      expected: /opencode terminal failed/,
+    },
+  ];
+
+  for (const item of cases) {
+    const root = makeTempRoot();
+    const progress = [];
+    const childScript = `process.stdout.write(${JSON.stringify(`${item.line}\n`)});`;
+
+    const result = await defaultChannelConnectorAgentProcessRunner({
+      command: process.execPath,
+      args: ["-e", childScript],
+      cwd: root,
+      stdin: "",
+      env: {},
+      timeoutMs: 500,
+      agent: item.agent,
+      onProgress: (event) => progress.push(event),
+    });
+
+    assert.equal(result.exitCode, 0, item.agent);
+    assert.equal(result.timedOut, false, item.agent);
+    assert.match(result.error || "", item.expected, item.agent);
+    assert.equal(progress.some((event) => event.type === "failed" || event.type === "error"), true, item.agent);
+  }
+});
+
+test("native Channel Connectors process runner exits lingering CLIs after authoritative terminal completion", async () => {
+  const cases = [
+    {
+      agent: "codex",
+      lines: [
+        JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "codex terminal done" } }),
+        JSON.stringify({ type: "turn.completed" }),
+      ],
+    },
+    {
+      agent: "claude-code",
+      lines: [
+        JSON.stringify({ type: "result", result: "claude terminal done", session_id: "claude-terminal-grace" }),
+      ],
+    },
+    {
+      agent: "opencode",
+      lines: [
+        JSON.stringify({ type: "text", part: { type: "text", text: "opencode terminal done" } }),
+        JSON.stringify({ type: "step_finish", part: { type: "step-finish", reason: "stop" } }),
+      ],
+    },
+  ];
+
+  for (const item of cases) {
+    const root = makeTempRoot();
+    const progress = [];
+    const childScript = [
+      ...item.lines.map((line) => `process.stdout.write(${JSON.stringify(`${line}\n`)});`),
+      "setInterval(() => {}, 1000);",
+    ].join("");
+
+    const result = await defaultChannelConnectorAgentProcessRunner({
+      command: process.execPath,
+      args: ["-e", childScript],
+      cwd: root,
+      stdin: "",
+      env: {},
+      timeoutMs: 1000,
+      terminalProgressGraceMs: 60,
+      agent: item.agent,
+      onProgress: (event) => progress.push(event),
+    });
+
+    assert.equal(result.exitCode, 0, item.agent);
+    assert.equal(result.timedOut, false, item.agent);
+    assert.equal(result.error, null, item.agent);
+    assert.ok(result.durationMs < 700, item.agent);
+    assert.equal(progress.some((event) => event.rawType === "process/terminal-grace-exit"), true, item.agent);
+    assert.equal(progress.some((event) => event.type === "completed"), true, item.agent);
+  }
+});
+
 test("native Channel Connectors process runner reports heartbeat timeout only after liveness stops", async () => {
   for (const agent of ["codex", "claude-code", "opencode"]) {
     const root = makeTempRoot();
@@ -13806,6 +13901,12 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /normalizeString\(event\.rawType\)\.toLowerCase\(\) === "user"/);
   assert.match(daemonSource, /normalizeString\(event\.itemType\)\.toLowerCase\(\) === "tool_result"/);
   assert.match(daemonSource, /kind === "tool_result" && isRecoverableToolResultErrorProgressEvent\(event\)/);
+  const pushFeishuProgressCardEventBlock = daemonSource.slice(
+    daemonSource.indexOf("function pushFeishuProgressCardEvent"),
+    daemonSource.indexOf("function permissionProgressStatusLabel"),
+  );
+  assert.match(pushFeishuProgressCardEventBlock, /if \(event\.type === "completed"\)\s*return false;/);
+  assert.doesNotMatch(pushFeishuProgressCardEventBlock, /cardState\.status\s*=\s*"completed"/);
   assert.match(daemonSource, /if \(kind === "assistant"\)[\s\S]{0,40}return "💬";/);
   assert.match(daemonSource, /if \(event\.type === "assistant"\)[\s\S]{0,80}return shortMessage\(event\.text,\s*900\)/);
   assert.match(daemonSource, /isChannelConnectorProcessProgressEvent/);
