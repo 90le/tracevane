@@ -25,6 +25,7 @@ export interface ChannelConnectorAgentProcessRequest {
   timeoutMs: number;
   idleTimeoutMs?: number | null;
   heartbeatStallMs?: number | null;
+  asyncTaskIdleGraceMs?: number | null;
   terminalProgressGraceMs?: number | null;
   nativeCommand?: string | null;
   signal?: AbortSignal | null;
@@ -166,10 +167,19 @@ function agentProcessHeartbeatTimeoutMessage(input: {
   lastActivityReason: string;
   lastActivityAtMs: number;
   startedAtMs: number;
+  lastAsyncTaskAtMs?: number | null;
+  lastAsyncTaskText?: string | null;
+  asyncTaskGraceMs?: number | null;
 }): string {
   const seconds = Math.max(1, Math.round(input.timeoutMs / 1000));
   const elapsedSeconds = Math.max(0, Math.round((Date.now() - input.startedAtMs) / 1000));
   const lastActivitySeconds = Math.max(0, Math.round((Date.now() - input.lastActivityAtMs) / 1000));
+  const lastAsyncTaskSeconds = input.lastAsyncTaskAtMs
+    ? Math.max(0, Math.round((Date.now() - input.lastAsyncTaskAtMs) / 1000))
+    : null;
+  const asyncTaskGraceSeconds = input.asyncTaskGraceMs
+    ? Math.max(1, Math.round(input.asyncTaskGraceMs / 1000))
+    : null;
   const since = input.lastActivityReason === "process-start"
     ? "since process start"
     : `since last ${input.lastActivityReason}`;
@@ -177,6 +187,12 @@ function agentProcessHeartbeatTimeoutMessage(input: {
     `Agent process heartbeat timed out after ${seconds}s without stdout/stderr ${since}.`,
     `${input.agent} may be stalled in the CLI, Gateway request, adapter, or upstream network path.`,
     `Studio terminated it after ${elapsedSeconds}s because the CLI stopped emitting liveness output.`,
+    input.lastAsyncTaskAtMs
+      ? `Last observed async child-task status was ${lastAsyncTaskSeconds}s ago: ${truncateText(input.lastAsyncTaskText || "", 240)}`
+      : "",
+    asyncTaskGraceSeconds
+      ? `Studio used a bounded async-task idle grace of ${asyncTaskGraceSeconds}s.`
+      : "",
     input.lastActivityReason === "process-start" ? "" : `Last activity was ${lastActivitySeconds}s ago.`,
   ].filter(Boolean).join(" ");
 }
@@ -210,6 +226,58 @@ function heartbeatStallDelayMs(baseMs: number, noticeCount: number): number {
   if (baseMs <= 0) return 0;
   const multiplier = Math.min(8, Math.max(1, 2 ** Math.max(0, noticeCount)));
   return Math.min(15 * 60_000, baseMs * multiplier);
+}
+
+const DEFAULT_ASYNC_TASK_IDLE_GRACE_MS = 45 * 60_000;
+const ASYNC_TASK_PROGRESS_MIN_INTERVAL_MS = 60_000;
+
+function optionalPositiveIntegerEnv(name: string): number | null {
+  const raw = normalizeString(process.env[name]);
+  if (!raw) return null;
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? Math.floor(value) : null;
+}
+
+function stripAnsiControl(value: string): string {
+  return value
+    .replace(/\u001b\][^\u0007]*(?:\u0007|\u001b\\)/g, "")
+    .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
+    .replace(/\u001b[=>]/g, "");
+}
+
+function processOutputStatusFrames(chunk: string): string[] {
+  return stripAnsiControl(chunk)
+    .split(/[\r\n]+/)
+    .map((frame) => frame.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").trim())
+    .filter(Boolean);
+}
+
+function asyncTaskStatusFingerprint(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\b\d+\s*h(?:ours?)?\s*\d+\s*m(?:in(?:ute)?s?)?\s*\d+\s*s(?:ec(?:ond)?s?)?\b/g, "<elapsed>")
+    .replace(/\b\d+\s*h(?:ours?)?\s*\d+\s*m(?:in(?:ute)?s?)?\b/g, "<elapsed>")
+    .replace(/\b\d+\s*m(?:in(?:ute)?s?)?\s*\d+\s*s(?:ec(?:ond)?s?)?\b/g, "<elapsed>")
+    .replace(/\b\d+\s*s(?:ec(?:ond)?s?)?\b/g, "<elapsed>")
+    .replace(/[↓↑]\s*\d+(?:\.\d+)?\s*[km]?\s*tokens?\b/g, "<tokens>")
+    .replace(/\b\d+(?:\.\d+)?\s*[km]?\s*tokens?\b/g, "<tokens>")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function asyncTaskStatusText(frame: string): string | null {
+  const text = normalizeString(frame);
+  if (!text || text.startsWith("{")) return null;
+  const lower = text.toLowerCase();
+  const fraction = /\b\d+\s*\/\s*\d+\b/.test(lower);
+  const workerWord = /\b(?:agents?|subagents?|sub-agents?|workers?|tasks?|jobs?)\b/.test(lower);
+  const doneWord = /\b(?:done|complete|completed|finished|running|active|remaining|pending)\b/.test(lower);
+  const asyncKeyword = /\b(?:deep[- ]research|subagent|sub-agent|child\s+(?:agent|task)|fan[- ]?out|harness|parallel)\b/.test(lower);
+  const waitingMany = /\b(?:waiting|running|active)\b.*\b\d+\b.*\b(?:agents?|subagents?|sub-agents?|workers?|tasks?|jobs?)\b/.test(lower);
+  if ((fraction && workerWord && doneWord) || (fraction && asyncKeyword) || (asyncKeyword && waitingMany)) {
+    return text;
+  }
+  return null;
 }
 
 function agentProcessTerminalGraceMessage(input: {
@@ -2091,6 +2159,11 @@ export async function defaultChannelConnectorAgentProcessRunner(
         ? Math.max(0, Math.floor(request.heartbeatStallMs))
         : Math.max(60_000, Math.min(heartbeatTimeoutMs > 0 ? heartbeatTimeoutMs : 5 * 60_000, 5 * 60_000))
       : 0;
+    const asyncTaskIdleGraceMs = usesHeartbeatTimeout
+      ? typeof request.asyncTaskIdleGraceMs === "number" && Number.isFinite(request.asyncTaskIdleGraceMs)
+        ? Math.max(0, Math.floor(request.asyncTaskIdleGraceMs))
+        : optionalPositiveIntegerEnv("STUDIO_CHANNEL_AGENT_ASYNC_TASK_IDLE_GRACE_MS") || DEFAULT_ASYNC_TASK_IDLE_GRACE_MS
+      : 0;
     const terminalProgressGraceMs = usesHeartbeatTimeout
       ? typeof request.terminalProgressGraceMs === "number" && Number.isFinite(request.terminalProgressGraceMs)
         ? Math.max(0, Math.floor(request.terminalProgressGraceMs))
@@ -2110,6 +2183,10 @@ export async function defaultChannelConnectorAgentProcessRunner(
     let lastActivityReason = "process-start";
     let lastProgressAtMs = startedAt;
     let lastProgressReason = "process-start";
+    let lastAsyncTaskAtMs = 0;
+    let lastAsyncTaskText: string | null = null;
+    let lastAsyncTaskFingerprint: string | null = null;
+    let lastAsyncTaskProgressEmittedAtMs = 0;
     let heartbeatOnlyNoticeCount = 0;
     let terminalProgressEvent: ChannelConnectorAgentProgressEvent | null = null;
     let terminalProgressForcedExit = false;
@@ -2128,6 +2205,19 @@ export async function defaultChannelConnectorAgentProcessRunner(
         || rawType === "process/heartbeat-stall"
         || rawType === "process/terminal-grace-exit"
         || rawType === "protocol/unknown-event";
+    };
+    const isAsyncTaskProgress = (event: ChannelConnectorAgentProgressEvent): boolean => {
+      return normalizeString(event.rawType) === "process/async-task";
+    };
+    const asyncTaskGraceActive = (): boolean => {
+      return usesHeartbeatTimeout
+        && asyncTaskIdleGraceMs > heartbeatTimeoutMs
+        && lastAsyncTaskAtMs > 0
+        && lastAsyncTaskAtMs >= lastProgressAtMs;
+    };
+    const activeHeartbeatTimeoutMs = (): number => {
+      if (!usesHeartbeatTimeout) return request.timeoutMs;
+      return asyncTaskGraceActive() ? asyncTaskIdleGraceMs : heartbeatTimeoutMs;
     };
     const armTerminalProgressGrace = (event: ChannelConnectorAgentProgressEvent): void => {
       if (!usesHeartbeatTimeout || terminalProgressGraceMs <= 0 || settled) return;
@@ -2156,9 +2246,18 @@ export async function defaultChannelConnectorAgentProcessRunner(
     };
     const emitProgress = (event: ChannelConnectorAgentProgressEvent): void => {
       if (usesHeartbeatTimeout && !isHeartbeatDiagnosticProgress(event)) {
-        lastProgressAtMs = Date.now();
+        const nowMs = Date.now();
+        lastProgressAtMs = nowMs;
         lastProgressReason = progressReason(event);
+        if (isAsyncTaskProgress(event)) {
+          lastAsyncTaskAtMs = nowMs;
+          lastAsyncTaskText = normalizeString(event.text) || null;
+        } else {
+          lastAsyncTaskAtMs = 0;
+          lastAsyncTaskText = null;
+        }
         heartbeatOnlyNoticeCount = 0;
+        armTimeout();
         armStallTimeout();
       }
       progressEvents.push(event);
@@ -2209,7 +2308,8 @@ export async function defaultChannelConnectorAgentProcessRunner(
       if (timeout) clearTimeout(timeout);
       if (settled) return;
       if (usesHeartbeatTimeout && heartbeatTimeoutMs <= 0) return;
-      const timeoutMs = usesHeartbeatTimeout ? heartbeatTimeoutMs : request.timeoutMs;
+      const timeoutMs = activeHeartbeatTimeoutMs();
+      const usingAsyncTaskGrace = asyncTaskGraceActive();
       timeout = setTimeout(() => {
         timedOut = true;
         timeoutErrorMessage = usesHeartbeatTimeout
@@ -2219,6 +2319,9 @@ export async function defaultChannelConnectorAgentProcessRunner(
             lastActivityReason,
             lastActivityAtMs,
             startedAtMs: startedAt,
+            lastAsyncTaskAtMs: usingAsyncTaskGrace ? lastAsyncTaskAtMs : null,
+            lastAsyncTaskText: usingAsyncTaskGrace ? lastAsyncTaskText : null,
+            asyncTaskGraceMs: usingAsyncTaskGrace ? asyncTaskIdleGraceMs : null,
           })
           : "Agent process timed out.";
         if (usesHeartbeatTimeout) {
@@ -2267,6 +2370,29 @@ export async function defaultChannelConnectorAgentProcessRunner(
       lastActivityReason = reason;
       armTimeout();
     };
+    const maybeEmitAsyncTaskProgress = (chunk: string): void => {
+      if (!usesHeartbeatTimeout || settled) return;
+      for (const frame of processOutputStatusFrames(chunk)) {
+        const statusText = asyncTaskStatusText(frame);
+        if (!statusText) continue;
+        const fingerprint = asyncTaskStatusFingerprint(statusText);
+        const nowMs = Date.now();
+        if (
+          fingerprint === lastAsyncTaskFingerprint
+          && nowMs - lastAsyncTaskProgressEmittedAtMs < ASYNC_TASK_PROGRESS_MIN_INTERVAL_MS
+        ) {
+          continue;
+        }
+        lastAsyncTaskFingerprint = fingerprint;
+        lastAsyncTaskProgressEmittedAtMs = nowMs;
+        emitProgress(progressEvent({
+          type: "running",
+          rawType: "process/async-task",
+          itemType: "tui-status",
+          text: `CLI async child-task progress: ${statusText}`,
+        }));
+      }
+    };
     armTimeout();
     armStallTimeout();
     const settle = (): void => {
@@ -2285,6 +2411,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
     child.stdout.on("data", (chunk) => {
       markActivity("stdout");
       stdout += chunk;
+      maybeEmitAsyncTaskProgress(chunk);
       stdoutLineBuffer += chunk;
       const lines = stdoutLineBuffer.split(/\r?\n/);
       stdoutLineBuffer = lines.pop() || "";
@@ -2298,6 +2425,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
     child.stderr.on("data", (chunk) => {
       markActivity("stderr");
       stderr += chunk;
+      maybeEmitAsyncTaskProgress(chunk);
     });
     child.on("error", (error) => {
       if (settled) return;

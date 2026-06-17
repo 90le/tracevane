@@ -38,6 +38,7 @@ or Codex/Claude/OpenCode binaries.
 Checks:
   - Codex / Claude Code / OpenCode stderr CR-only TUI heartbeat keeps runs alive
   - Codex / Claude Code / OpenCode stdout activity keeps runs alive
+  - Codex / Claude Code / OpenCode async child-task TUI status uses bounded idle grace
   - heartbeat-only CLI output emits process/heartbeat-stall diagnostics
   - idleTimeoutMs replaces the old total timeout for CLI heartbeat agents
   - silent CLI agents fail with process/heartbeat-timeout
@@ -129,6 +130,16 @@ function heartbeatOnlyStallScript(agent) {
   ].join("");
 }
 
+function asyncTaskStatusScript(agent) {
+  const completion = completionScript(agent, `${agent} async child task grace kept alive`);
+  return [
+    "process.stderr.write('\\rdeep-research harness - fan-out workers 3/18 agents done · 4m 53s · down 15.9k tokens');",
+    "setTimeout(() => {",
+    completion,
+    "}, 150);",
+  ].join("");
+}
+
 function nonRuntimeActivityScript() {
   return [
     "let tick = 0;",
@@ -170,6 +181,18 @@ function assertHeartbeatStall(result, progress, label) {
   }
 }
 
+function assertAsyncTaskGrace(result, progress, label) {
+  assertAlive(result, progress, label, 55);
+  const asyncTaskEvents = progress.filter((event) => event.rawType === "process/async-task");
+  if (!asyncTaskEvents.length) throw new Error(`${label}: expected process/async-task progress event`);
+  if (!asyncTaskEvents.every((event) => event.type === "running")) {
+    throw new Error(`${label}: async child-task diagnostics must be non-terminal running events`);
+  }
+  if (progress.some((event) => event.rawType === "process/heartbeat-timeout")) {
+    throw new Error(`${label}: emitted process/heartbeat-timeout during async child-task grace`);
+  }
+}
+
 function assertFixedTimeout(result, progress, label) {
   if (!result.timedOut) throw new Error(`${label}: expected fixed process timeout`);
   if (result.error !== "Agent process timed out.") throw new Error(`${label}: expected legacy timeout error, got ${result.error || "null"}`);
@@ -191,6 +214,7 @@ async function runCase(input, options) {
       timeoutMs: input.timeoutMs,
       idleTimeoutMs: input.idleTimeoutMs,
       heartbeatStallMs: input.heartbeatStallMs,
+      asyncTaskIdleGraceMs: input.asyncTaskIdleGraceMs,
       agent: input.agent,
       onProgress: (event) => progress.push(event),
     });
@@ -258,6 +282,14 @@ function buildCases() {
       heartbeatStallMs: 90,
       script: heartbeatOnlyStallScript(agent),
       assertResult: assertHeartbeatStall,
+    });
+    cases.push({
+      name: `${agent}:async-child-task-idle-grace`,
+      agent,
+      timeoutMs: 55,
+      asyncTaskIdleGraceMs: 260,
+      script: asyncTaskStatusScript(agent),
+      assertResult: assertAsyncTaskGrace,
     });
     cases.push({
       name: `${agent}:silent-heartbeat-timeout`,

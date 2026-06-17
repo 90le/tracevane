@@ -6919,7 +6919,11 @@ function shouldSendChannelProgressEvent(
     return isChannelConnectorProcessProgressEvent(event)
       && channelConnectorProcessMessagesEnabled(control, defaults);
   }
-  if (event.type === "running" || event.type === "completed" || event.type === "event") return false;
+  if (event.type === "running") {
+    return normalizeString(event.rawType).toLowerCase() === "process/async-task"
+      && channelConnectorProcessMessagesEnabled(control, defaults);
+  }
+  if (event.type === "completed" || event.type === "event") return false;
   if (event.type === "reasoning") return channelConnectorThinkingMessagesEnabled(control, defaults);
   if (event.type === "tool") return channelConnectorToolMessagesEnabled(control, defaults);
   if (!channelConnectorProcessMessagesEnabled(control, defaults)) return false;

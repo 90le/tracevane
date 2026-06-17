@@ -11961,6 +11961,84 @@ test("native Channel Connectors process runner accepts stdout and CR-only TUI fr
   }
 });
 
+test("native Channel Connectors process runner keeps async child-task waits alive with bounded grace", async () => {
+  const cases = [
+    {
+      agent: "codex",
+      status: "codex subagents: 3/18 agents done · 4m 53s · down 15.9k tokens",
+    },
+    {
+      agent: "claude-code",
+      status: "deep-research  Deep research harness - fan-out web searches... 3/18 agents done · 4m 53s · down 15.9k tokens",
+    },
+    {
+      agent: "opencode",
+      status: "opencode parallel tasks: 2/7 tasks running · 1m 12s · down 4.2k tokens",
+    },
+  ];
+
+  for (const item of cases) {
+    const root = makeTempRoot();
+    const progress = [];
+    const completion = localHeartbeatCompletionScript(item.agent, `${item.agent} async child task completed`);
+    const childScript = [
+      `process.stderr.write(${JSON.stringify(`\r${item.status}`)});`,
+      "setTimeout(() => {",
+      completion,
+      "}, 150);",
+    ].join("");
+
+    const result = await defaultChannelConnectorAgentProcessRunner({
+      command: process.execPath,
+      args: ["-e", childScript],
+      cwd: root,
+      stdin: "",
+      env: {},
+      timeoutMs: 55,
+      asyncTaskIdleGraceMs: 260,
+      agent: item.agent,
+      onProgress: (event) => progress.push(event),
+    });
+
+    assert.equal(result.exitCode, 0, item.agent);
+    assert.equal(result.timedOut, false, item.agent);
+    assert.equal(result.error, null, item.agent);
+    assert.ok(result.durationMs >= 55, item.agent);
+    assert.equal(progress.some((event) => event.rawType === "process/async-task" && event.type === "running"), true, item.agent);
+    assert.equal(progress.some((event) => event.rawType === "process/heartbeat-timeout"), false, item.agent);
+    assert.equal(progress.at(-1)?.type, "completed", item.agent);
+  }
+});
+
+test("native Channel Connectors process runner times out async child-task waits after grace stops", async () => {
+  for (const agent of ["codex", "claude-code", "opencode"]) {
+    const root = makeTempRoot();
+    const progress = [];
+    const childScript = [
+      "process.stderr.write('\\rdeep-research harness - fan-out workers · 3/18 agents done · 4m 53s');",
+      "setInterval(() => {}, 1000);",
+    ].join("");
+
+    const result = await defaultChannelConnectorAgentProcessRunner({
+      command: process.execPath,
+      args: ["-e", childScript],
+      cwd: root,
+      stdin: "",
+      env: {},
+      timeoutMs: 80,
+      asyncTaskIdleGraceMs: 180,
+      agent,
+      onProgress: (event) => progress.push(event),
+    });
+
+    assert.equal(result.timedOut, true, agent);
+    assert.ok(result.durationMs >= 160, agent);
+    assert.match(result.error, /async child-task status/, agent);
+    assert.equal(progress.some((event) => event.rawType === "process/async-task" && event.type === "running"), true, agent);
+    assert.equal(progress.some((event) => event.rawType === "process/heartbeat-timeout" && event.type === "failed"), true, agent);
+  }
+});
+
 test("native Channel Connectors process runner uses idle timeout instead of total timeout for CLI heartbeats", async () => {
   for (const agent of ["codex", "claude-code", "opencode"]) {
     const root = makeTempRoot();
