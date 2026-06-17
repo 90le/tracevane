@@ -21,13 +21,20 @@ Avoid:
 
 - card walls
 - equal-weight two-column or three-column information dumps
+- stuffing every feature into one main screen — see the layering rules below
 - repeated headers, metadata strips, ribbons, and action rows
 - long route introductions explaining implementation
 - first-screen diagnostics that are not the current task
-- decorative gradients, glow, glass, oversized radius, and heavy shadows
+- decorative decoration with no informational purpose
 - placeholder actions or menus that do not perform real work
 
 The goal is not "everything must be rows." The goal is lower cognitive load.
+
+### Visual direction (2026-06 update)
+
+The visual language is **macOS Material**: layered translucency, restrained rounded corners, soft elevation shadows, refined typographic rhythm — borrowing the polish of macOS Tahoe / Liquid Glass. The governing rule is unchanged: **aesthetics serve clarity, decoration serves information.** Decoration recedes on information-dense surfaces (terminals, tables, logs, code editors): less blur, tighter corners, lower shadows there. Sparse surfaces (dashboards, empty states) may let material and shadow breathe more.
+
+> Authoritative detail lives in `docs/界面设计守则.md` (Chinese, the active design constitution). This DESIGN.md defines page shapes and layout templates; when they conflict on material/decoration, the constitution wins.
 
 ## Page Shapes
 

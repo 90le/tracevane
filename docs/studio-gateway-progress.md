@@ -11,6 +11,7 @@
 - Provider Center 支持自定义 provider、启停、模型名称/别名/默认模型、能力勾选、批量模型导入、模型目录刷新合并、批量预算/能力应用、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
 - Provider Center 表单已按连接、端点路由、密钥识别、模型目录、高级覆盖、可用范围分区；PC/平板/手机均按同一配置流程降级展示。
 - Provider Center 前端已改为列表优先：Providers 页面只保留一个“新建服务商”入口和服务商列表；新建时在弹层内选择 API Key 接入 / 账户登录 / 中继服务，详细配置进入弹层表单，服务商 ID、端点、多协议、账号池和高级连接默认降级到折叠区，避免主页面继续堆积配置。
+- Model Gateway Overview 已改为状态摘要 + 工作区入口行：主屏只展示 daemon endpoint、运行状态、Gateway key 状态、请求/token 摘要和 Providers / Client connections / Model usage / Checks 快速入口；Gateway key 编辑进入弹层，不在 Overview 常驻敏感表单。
 - Gateway Provider 支持 endpoint profiles；同一 provider/模型可按客户端协议优选原生 endpoint，并在 endpoint 级 health/circuit 下回退。
 - GPT/ChatGPT account 与 Codex account 进入 Gateway Phase D2：Provider Center 页面直接登录官方账户并自动创建 account-backed provider；账户池 sticky、per-account concurrency、runtime cursor/affinity 持久化、upstream quota/cooldown、per-account proxy/direct 和 Codex account `gpt-image-2` Images generation live smoke 已闭环，后续补更多账户型 provider，不恢复已停止演进的旧模型链路。
 - Codex account-backed provider 已支持页面登录、请求前自动 refresh、手动 refresh、账户启用/停用和重新登录入口；客户端仍只使用统一 Gateway endpoint + Gateway key。
@@ -20,7 +21,7 @@
 - Provider 模型目录仍可保存价格字段用于模型 catalog，但模型消耗页不再使用价格字段估算成本；所有模型消耗统计统一以 Gateway 本地 ledger 的模型请求数和 token 为准。
 - Provider Center Smoke / 日志页已显示媒体模型状态，按启用 provider catalog 统计图片理解、生图、音频输入、音频输出和 realtime 模型。
 - Provider Center 不再按模型名自动标记 vision；图片能力只来自用户配置、上游显式能力元数据或图片 smoke 通过后用户确认写回。
-- App Connections 覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收；Model Gateway 支持 `tab/app` deep-link 直达并高亮指定 CLI App Connection。
+- App Connections 覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收；Model Gateway 支持 `tab/app` deep-link 直达并打开指定 CLI App Connection。前端已改为连接摘要 + 客户端列表，Profile 编辑和单客户端 preview/apply/rollback 进入弹层；主屏不再常驻四个客户端配置卡片。
 - BigModel/GLM 本地模型目录已加入 `glm-5.2`，按 1M context / 128K output 预算；Gateway 内置推断同时识别 `glm-5.2` 与官方 1M 后缀别名 `glm-5.2[1m]`。
 - Channel Connectors 走 Studio 原生 CLI Agent Bot 路线；当前 live Agent 只暴露 Codex、Claude Code、OpenCode。
 - Feishu/Octo 首期验收已收窄为私聊完整性：文本对话、文件/图片传输、Agent CLI 原生能力、工具流/回复解析、`/compact`、`/stop`、session/model/permission/workdir 切换。
@@ -41,6 +42,7 @@
 - Channel 侧 `/usage` / token 统计不再继续建设；模型消耗已统一到 Gateway usage/Provider Center 模型消耗页。
 - CLI Profile 管理属于 Studio 原生 Channel Connectors，不属于 OpenClaw Agent 管理；独立页为 `/channel-connectors/profiles`，直接读取 Gateway 可用模型目录和上下文预算，管理 Profile、IM 绑定摘要、运行配置、持久会话和事件记录；IM 绑定摘要可 deep-link 到完整 Channel Connectors 配置并自动选中 binding/profile。
 - Channel Connectors 主配置页已收敛为概览、渠道绑定、运行状态、会话日志四个同级工作区；不再内嵌 CLI Profile 快改或 Skills 管理，Profile 只进入独立工作台。
+- Model Gateway 和 Channel Connectors 互相保留明确入口：Gateway Client connections 可进入 Channel Connectors Profile 工作台；Channel Connectors 概览可进入 Gateway Client connections。两边仍是独立产品域，不共享 API 调用或嵌套页面。
 
 ## 本轮风险清单（IM Agent 终态 / 等待）
 

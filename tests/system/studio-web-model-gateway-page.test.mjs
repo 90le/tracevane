@@ -124,9 +124,21 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "Ensure running",
     "More actions",
     "Gateway key",
+    "编辑 Gateway key",
+    "Edit Gateway key",
+    "clientAuthEditorOpen",
+    "openClientAuthEditor",
+    "closeClientAuthEditor",
     "请求 / Tokens",
     "runtimeUsageSummary",
     "runtimeUsageLabel",
+    "mgw-overview-panel",
+    "mgw-overview-summary",
+    "mgw-overview-metrics",
+    "mgw-overview-nav",
+    "mgw-overview-nav-row",
+    "mgw-overview-dialog-shell",
+    "mgw-overview-dialog-body",
     "App Connections",
     "Client connections",
     "Connection profile",
@@ -179,6 +191,19 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "routeAppConnectionId",
     "applyRouteWorkspaceSelection",
     "mgw-app-${connection.id}",
+    "Profile 工作台",
+    "Profile workspace",
+    "appConnectionProfileEditorOpen",
+    "appConnectionDetailOpen",
+    "selectedAppConnectionId",
+    "selectedAppConnection",
+    "configuredAppConnectionCount",
+    "blockedAppConnectionCount",
+    "appConnectionDisplayModel",
+    "openAppConnectionProfileEditor",
+    "closeAppConnectionProfileEditor",
+    "openAppConnectionDetail",
+    "closeAppConnectionDetail",
     "Apply config",
     "Preview config",
     "appConnections",
@@ -190,9 +215,17 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     "refreshAppConnections",
     "applyAppConnectionConfig",
     "rollbackAppConnectionConfig",
-    "mgw-app-card",
+    "mgw-connection-summary",
+    "mgw-connection-summary__metrics",
+    "mgw-connection-summary__actions",
+    "mgw-app-list",
+    "mgw-app-row",
+    "mgw-app-row__model",
+    "mgw-app-row__budget",
+    "mgw-connection-dialog-shell",
+    "mgw-connection-dialog-body",
+    "mgw-app-detail-facts",
     "mgw-app-preview",
-    "mgw-connection-profile",
     "mgw-profile-grid",
     "Client auth",
     "Save key",
@@ -423,6 +456,28 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
     assert.doesNotMatch(page, new RegExp(removedRoutingSurface.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
 
+  for (const removedConnectionSurface of [
+    "mgw-app-card",
+    "mgw-app-grid",
+    "mgw-app-facts",
+    "mgw-app-actions",
+    "mgw-connection-profile",
+    "mgw-connection-profile__head",
+    "mgw-connection-profile__actions",
+  ]) {
+    assert.doesNotMatch(page, new RegExp(removedConnectionSurface.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.doesNotMatch(css, new RegExp(removedConnectionSurface.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+
+  for (const removedOverviewSurface of [
+    "mgw-runtime-actions",
+    "mgw-client-key-form",
+    "mgw-client-key-actions",
+  ]) {
+    assert.doesNotMatch(page, new RegExp(removedOverviewSurface.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.doesNotMatch(css, new RegExp(removedOverviewSurface.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+
   for (const removedRoutingCss of [
     "mgw-route-row",
     "mgw-route-list",
@@ -441,6 +496,10 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
   assert.match(css, /\.mgw-secret-output code\s*\{[^}]*overflow-wrap:\s*anywhere/s);
   assert.match(css, /\.mgw-layout\s*\{[^}]*display:\s*block/s);
   assert.match(css, /\.mgw-overview-stack\s*\{[^}]*display:\s*grid/s);
+  assert.match(css, /\.mgw-overview-summary\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto\s+minmax\(220px,\s*auto\)/s);
+  assert.match(css, /\.mgw-overview-metrics\s*\{[^}]*grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\)/s);
+  assert.match(css, /\.mgw-overview-nav-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto/s);
+  assert.match(css, /\.mgw-overview-dialog-body\s*\{[^}]*overflow:\s*auto/s);
   assert.match(css, /\.mgw-provider-kind-options\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
   assert.match(css, /\.mgw-provider-kind-option\s*\{[^}]*grid-template-columns:\s*auto minmax\(0,\s*1fr\)/s);
   assert.match(css, /\.mgw-provider-account-create\s*\{[^}]*overflow:\s*auto/s);
@@ -451,9 +510,13 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
   assert.match(css, /\.mgw-provider-editor-shell \.mgw-form-actions\s*\{[^}]*position:\s*static/s);
   assert.match(css, /\.mgw-workspace-tabs\s*\{[^}]*grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/s);
   assert.match(css, /\.mgw-workspace-tab\s*\{[^}]*overflow-wrap:\s*anywhere/s);
-  assert.match(css, /\.mgw-app-card\.active\s*\{/);
   assert.match(css, /\.mgw-panel-actions\s*\{[^}]*flex-wrap:\s*wrap/s);
-  assert.match(css, /\.mgw-app-grid\s*\{[^}]*grid-template-columns:\s*1fr/s);
+  assert.match(css, /\.mgw-connection-summary\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.2fr\)\s+minmax\(280px,\s*0\.9fr\)\s+auto/s);
+  assert.match(css, /\.mgw-connection-summary__metrics\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
+  assert.match(css, /\.mgw-app-row\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1\.15fr\)\s+minmax\(140px,\s*0\.8fr\)\s+minmax\(150px,\s*0\.8fr\)\s+auto/s);
+  assert.match(css, /\.mgw-app-row:hover,\s*\.mgw-app-row\.active\s*\{/);
+  assert.match(css, /\.mgw-connection-dialog-body\s*\{[^}]*overflow:\s*auto/s);
+  assert.match(css, /\.mgw-app-detail-facts\s*\{[^}]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/s);
   assert.match(css, /\.mgw-provider-grid\s*\{[^}]*grid-template-columns:\s*1fr/s);
   assert.match(css, /\.mgw-provider-list-toolbar\s*\{[^}]*grid-template-columns:\s*minmax\(180px,\s*1fr\)\s+minmax\(140px,\s*220px\)/s);
   assert.match(css, /\.mgw-usage-overview\s*\{[^}]*grid-template-columns:\s*repeat\(3,\s*minmax\(0,\s*1fr\)\)/s);
@@ -463,6 +526,8 @@ test("Studio Gateway page keeps provider configuration user-owned", () => {
   assert.match(css, /\.mgw-app-preview pre\s*\{[^}]*overflow-wrap:\s*anywhere/s);
   assert.match(css, /\.mgw-profile-budget-bar\s*\{[^}]*display:\s*flex/s);
   assert.match(css, /\.mgw-profile-budget-bar span\s*\{[^}]*overflow-wrap:\s*anywhere/s);
+  assert.match(css, /@media \(max-width:\s*760px\)[\s\S]*\.mgw-overview-summary,\s*\.mgw-overview-metrics,\s*\.mgw-overview-nav-row[\s\S]*grid-template-columns:\s*1fr/s);
+  assert.match(css, /@media \(max-width:\s*760px\)[\s\S]*\.mgw-connection-summary,\s*\.mgw-connection-summary__metrics,\s*\.mgw-app-row,\s*\.mgw-app-detail-facts[\s\S]*grid-template-columns:\s*1fr/s);
   assert.match(css, /\.mgw-provider-form-sections\s*\{[^}]*display:\s*grid/s);
   assert.match(css, /\.mgw-provider-id-details\s*\{[^}]*grid-column:\s*1 \/ -1/s);
   assert.match(css, /\.mgw-provider-final-grid\s*\{[^}]*grid-template-columns:\s*minmax\(220px,\s*0\.7fr\)\s+minmax\(0,\s*1\.3fr\)/s);

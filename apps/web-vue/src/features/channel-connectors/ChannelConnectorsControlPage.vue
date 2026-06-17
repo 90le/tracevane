@@ -6,6 +6,10 @@
         <h2 class="page-title">{{ text('渠道连接', 'Channel Connectors') }}</h2>
       </div>
       <div class="page-actions">
+        <RouterLink class="secondary-button ccx-icon-button ccx-icon-link" :to="{ path: '/model-gateway', query: { tab: 'connections' } }">
+          <ExternalLink :size="16" />
+          {{ text('网关接入', 'Gateway connections') }}
+        </RouterLink>
         <RouterLink class="secondary-button ccx-icon-button ccx-icon-link" :to="profileWorkspaceRoute">
           <ExternalLink :size="16" />
           {{ text('Profile 工作台', 'Profile workspace') }}
@@ -122,10 +126,16 @@
                 <strong>{{ profileCount }}</strong>
               </div>
               <p>{{ defaultProfileSummary }}</p>
-              <RouterLink class="secondary-button compact-button ccx-icon-button ccx-icon-link" :to="profileWorkspaceRoute">
-                <ExternalLink :size="16" />
-                {{ text('管理 Profile', 'Manage profiles') }}
-              </RouterLink>
+              <div class="ccx-overview-actions">
+                <RouterLink class="secondary-button compact-button ccx-icon-button ccx-icon-link" :to="profileWorkspaceRoute">
+                  <ExternalLink :size="16" />
+                  {{ text('管理 Profile', 'Manage profiles') }}
+                </RouterLink>
+                <RouterLink class="secondary-button compact-button ccx-icon-button ccx-icon-link" :to="{ path: '/model-gateway', query: { tab: 'connections' } }">
+                  <ExternalLink :size="16" />
+                  {{ text('网关接入', 'Gateway connections') }}
+                </RouterLink>
+              </div>
             </article>
 
             <article class="ccx-overview-card">

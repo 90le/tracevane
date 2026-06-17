@@ -49,130 +49,178 @@
           role="tabpanel"
           aria-labelledby="mgw-tab-overview"
         >
-        <article class="mgw-panel mgw-runtime-panel">
-          <div class="mgw-panel-head">
-            <div>
-              <p class="eyebrow">Runtime</p>
-              <h3>{{ text('Gateway daemon', 'Gateway daemon') }}</h3>
-            </div>
-            <StatusPill :label="daemonStateLabel" :tone="daemonStateTone" />
-          </div>
-
-          <div class="mgw-facts">
-            <div>
-              <span>{{ text('CLI Endpoint', 'CLI Endpoint') }}</span>
-              <strong>{{ preferredEndpoint }}</strong>
-            </div>
-            <div>
-              <span>{{ text('Supervisor', 'Supervisor') }}</span>
-              <strong>{{ supervisorLabel }}</strong>
-            </div>
-            <div>
-              <span>{{ text('服务模板', 'Service template') }}</span>
-              <strong>{{ daemonTemplateStateLabel(daemonService) }}</strong>
-            </div>
-            <div>
-              <span>{{ text('请求 / Tokens', 'Requests / tokens') }}</span>
-              <strong>{{ runtimeUsageLabel }}</strong>
-            </div>
-          </div>
-
-          <div class="mgw-runtime-actions">
-            <button type="button" class="primary-button compact-button" :disabled="daemonBusy" @click="runDaemonAction('ensure-running')">
-              {{ daemonBusy ? text('执行中...', 'Running...') : text('确保运行', 'Ensure running') }}
-            </button>
-            <button type="button" class="secondary-button compact-button" :disabled="daemonBusy" @click="runDaemonAction('status')">
-              {{ daemonBusy ? text('执行中...', 'Running...') : text('状态', 'Status') }}
-            </button>
-            <details class="mgw-runtime-more">
-              <summary class="secondary-button compact-button">
-                {{ text('更多操作', 'More actions') }}
-              </summary>
-              <div class="mgw-runtime-menu">
-                <button type="button" :disabled="daemonBusy" @click="runDaemonAction('preview')">
-                  {{ text('预览 service', 'Preview service') }}
-                </button>
-                <button type="button" :disabled="daemonBusy" @click="runDaemonAction('install')">
-                  {{ text('重新安装/启用自启动', 'Reinstall / enable autostart') }}
-                </button>
-                <button type="button" :disabled="daemonBusy" @click="runDaemonAction('start')">
-                  {{ text('启动守护服务', 'Start supervised service') }}
-                </button>
-                <button type="button" :disabled="daemonBusy" @click="runDaemonAction('restart')">
-                  {{ text('重启守护服务', 'Restart supervised service') }}
-                </button>
-                <button type="button" :disabled="daemonBusy" @click="runDaemonAction('stop')">
-                  {{ text('停止守护服务', 'Stop supervised service') }}
-                </button>
+          <article class="mgw-panel mgw-overview-panel">
+            <div class="mgw-overview-summary">
+              <div class="mgw-overview-summary__main">
+                <p class="eyebrow">Runtime</p>
+                <h3>{{ text('Gateway daemon', 'Gateway daemon') }}</h3>
+                <strong>{{ preferredEndpoint }}</strong>
+                <small>
+                  {{ text('正式稳定性依赖 OS/user supervisor；Studio 或 OpenClaw 崩溃时，客户端应继续直连 daemon endpoint。', 'Production stability depends on the OS/user supervisor; clients should keep using the daemon endpoint if Studio or OpenClaw crashes.') }}
+                </small>
               </div>
-            </details>
-          </div>
-
-          <div v-if="daemonActionResult" class="mgw-daemon-output" :class="{ failure: daemonActionHasFailure }">
-            <div class="mgw-daemon-output__head">
-              <strong>{{ daemonActionTitle }}</strong>
-              <span>{{ formatTimestamp(daemonActionResult.checkedAt) }}</span>
+              <div class="mgw-overview-statuses">
+                <StatusPill :label="daemonStateLabel" :tone="daemonStateTone" />
+                <StatusPill :label="clientAuthStateLabel" :tone="clientAuthStateTone" />
+              </div>
+              <div class="mgw-overview-actions">
+                <button type="button" class="primary-button compact-button" :disabled="daemonBusy" @click="runDaemonAction('ensure-running')">
+                  {{ daemonBusy ? text('执行中...', 'Running...') : text('确保运行', 'Ensure running') }}
+                </button>
+                <button type="button" class="secondary-button compact-button" :disabled="daemonBusy" @click="runDaemonAction('status')">
+                  {{ daemonBusy ? text('执行中...', 'Running...') : text('状态', 'Status') }}
+                </button>
+                <button type="button" class="secondary-button compact-button" @click="openClientAuthEditor">
+                  {{ text('编辑 Gateway key', 'Edit Gateway key') }}
+                </button>
+                <details class="mgw-runtime-more">
+                  <summary class="secondary-button compact-button">
+                    {{ text('更多操作', 'More actions') }}
+                  </summary>
+                  <div class="mgw-runtime-menu">
+                    <button type="button" :disabled="daemonBusy" @click="runDaemonAction('preview')">
+                      {{ text('预览 service', 'Preview service') }}
+                    </button>
+                    <button type="button" :disabled="daemonBusy" @click="runDaemonAction('install')">
+                      {{ text('重新安装/启用自启动', 'Reinstall / enable autostart') }}
+                    </button>
+                    <button type="button" :disabled="daemonBusy" @click="runDaemonAction('start')">
+                      {{ text('启动守护服务', 'Start supervised service') }}
+                    </button>
+                    <button type="button" :disabled="daemonBusy" @click="runDaemonAction('restart')">
+                      {{ text('重启守护服务', 'Restart supervised service') }}
+                    </button>
+                    <button type="button" :disabled="daemonBusy" @click="runDaemonAction('stop')">
+                      {{ text('停止守护服务', 'Stop supervised service') }}
+                    </button>
+                  </div>
+                </details>
+              </div>
             </div>
-            <div class="mgw-daemon-output__grid">
-              <span>{{ text('模板', 'Template') }}: {{ daemonTemplateStateLabel(daemonActionResult) }}</span>
-              <span>{{ text('服务', 'Service') }}: {{ daemonActionResult.installed ? text('已安装', 'Installed') : text('未安装', 'Not installed') }}</span>
-              <span>{{ text('Supervisor', 'Supervisor') }}: {{ daemonActionResult.serviceManager.checked ? serviceManagerLabel : text('未执行命令', 'No command run') }}</span>
-              <span>{{ text('Bootstrap', 'Bootstrap') }}: {{ bootstrapLabel }}</span>
+
+            <div class="mgw-overview-metrics">
+              <div>
+                <span>{{ text('Supervisor', 'Supervisor') }}</span>
+                <strong>{{ supervisorLabel }}</strong>
+              </div>
+              <div>
+                <span>{{ text('服务模板', 'Service template') }}</span>
+                <strong>{{ daemonTemplateStateLabel(daemonService) }}</strong>
+              </div>
+              <div>
+                <span>{{ text('Gateway key', 'Gateway key') }}</span>
+                <strong>{{ clientAuth?.secret.hasSecret ? clientAuth.secret.masked : text('未设置', 'Not set') }}</strong>
+              </div>
+              <div>
+                <span>{{ text('请求 / Tokens', 'Requests / tokens') }}</span>
+                <strong>{{ runtimeUsageLabel }}</strong>
+              </div>
             </div>
-            <pre v-if="daemonActionOutput">{{ daemonActionOutput }}</pre>
-            <pre v-else-if="daemonActionResult.action === 'preview'">{{ daemonActionResult.plan.selectedTemplate.configPath }}</pre>
-          </div>
 
-          <p class="mgw-note">
-            {{ text('正式稳定性依赖 OS/user supervisor；Studio 或 OpenClaw 崩溃时，客户端应继续直连 daemon endpoint。', 'Production stability depends on the OS/user supervisor; clients should keep using the daemon endpoint if Studio or OpenClaw crashes.') }}
-          </p>
-        </article>
-
-        <article class="mgw-panel">
-          <div class="mgw-panel-head">
-            <div>
-              <p class="eyebrow">Client auth</p>
-              <h3>{{ text('Gateway key', 'Gateway key') }}</h3>
-            </div>
-            <StatusPill :label="clientAuthStateLabel" :tone="clientAuthStateTone" />
-          </div>
-
-          <div class="mgw-client-key-state">
-            <span>{{ text('当前 key', 'Current key') }}</span>
-            <strong>{{ clientAuth?.secret.hasSecret ? clientAuth.secret.masked : text('未设置', 'Not set') }}</strong>
-            <small>{{ text('客户端可用 Authorization Bearer 或 x-api-key；该 key 不会转发给上游。', 'Clients may use Authorization Bearer or x-api-key; this key is never forwarded upstream.') }}</small>
-          </div>
-
-          <form class="mgw-client-key-form" @submit.prevent="saveClientKey">
-            <label class="form-field mgw-switch-field">
-              <span>
-                <span class="form-label">{{ text('鉴权状态', 'Auth state') }}</span>
-                <strong>{{ clientAuthEnabled ? text('启用', 'Enabled') : text('停用', 'Disabled') }}</strong>
-              </span>
-              <input v-model="clientAuthEnabled" type="checkbox" />
-            </label>
-            <label class="form-field">
-              <span class="form-label">{{ text('新 Gateway key', 'New Gateway key') }}</span>
-              <input v-model="clientKeyDraft" class="form-input" type="password" :placeholder="clientKeyPlaceholder" />
-            </label>
-            <div class="mgw-client-key-actions">
-              <button type="submit" class="primary-button compact-button" :disabled="clientAuthBusy">
-                {{ clientAuthBusy ? text('保存中...', 'Saving...') : text('保存 key', 'Save key') }}
+            <section class="mgw-overview-nav" aria-label="Model Gateway overview links">
+              <button type="button" class="mgw-overview-nav-row" @click="activeWorkspaceTab = 'providers'">
+                <span>
+                  <strong>{{ text('服务商', 'Providers') }}</strong>
+                  <small>{{ text('模型与上游协议配置', 'Model and upstream protocol configuration') }}</small>
+                </span>
+                <em>{{ formatCompactNumber(providers.length) }}</em>
               </button>
-              <button type="button" class="secondary-button compact-button" :disabled="clientAuthBusy" @click="generateClientKey">
-                {{ text('生成新 key', 'Generate key') }}
+              <button type="button" class="mgw-overview-nav-row" @click="activeWorkspaceTab = 'connections'">
+                <span>
+                  <strong>{{ text('客户端接入', 'Client connections') }}</strong>
+                  <small>{{ text('Codex、Claude Code、OpenCode 与 OpenClaw 配置', 'Codex, Claude Code, OpenCode, and OpenClaw config') }}</small>
+                </span>
+                <em>{{ configuredAppConnectionCount }} / {{ appConnections.length }}</em>
               </button>
-              <button type="button" class="secondary-button compact-button" :disabled="clientAuthBusy || !clientAuth?.enabled" @click="disableClientKey">
-                {{ text('停用鉴权', 'Disable auth') }}
+              <button type="button" class="mgw-overview-nav-row" @click="activeWorkspaceTab = 'usage'">
+                <span>
+                  <strong>{{ text('模型消耗', 'Model usage') }}</strong>
+                  <small>{{ text('按模型统计请求次数和 token', 'Requests and tokens grouped by model') }}</small>
+                </span>
+                <em>{{ formatCompactNumber(usageModelRows.length) }}</em>
               </button>
-            </div>
-          </form>
+              <button type="button" class="mgw-overview-nav-row" @click="activeWorkspaceTab = 'checks'">
+                <span>
+                  <strong>{{ text('检查与日志', 'Checks & Logs') }}</strong>
+                  <small>{{ text('连接检测、smoke 和 runtime log', 'Connection checks, smoke, and runtime logs') }}</small>
+                </span>
+                <em>{{ runtime?.logs?.length || 0 }}</em>
+              </button>
+            </section>
 
-          <div v-if="clientAuthReveal" class="mgw-secret-output">
-            <span>{{ text('本次返回的新 key', 'New key returned this time') }}</span>
-            <code>{{ clientAuthReveal }}</code>
+            <div v-if="daemonActionResult" class="mgw-daemon-output" :class="{ failure: daemonActionHasFailure }">
+              <div class="mgw-daemon-output__head">
+                <strong>{{ daemonActionTitle }}</strong>
+                <span>{{ formatTimestamp(daemonActionResult.checkedAt) }}</span>
+              </div>
+              <div class="mgw-daemon-output__grid">
+                <span>{{ text('模板', 'Template') }}: {{ daemonTemplateStateLabel(daemonActionResult) }}</span>
+                <span>{{ text('服务', 'Service') }}: {{ daemonActionResult.installed ? text('已安装', 'Installed') : text('未安装', 'Not installed') }}</span>
+                <span>{{ text('Supervisor', 'Supervisor') }}: {{ daemonActionResult.serviceManager.checked ? serviceManagerLabel : text('未执行命令', 'No command run') }}</span>
+                <span>{{ text('Bootstrap', 'Bootstrap') }}: {{ bootstrapLabel }}</span>
+              </div>
+              <pre v-if="daemonActionOutput">{{ daemonActionOutput }}</pre>
+              <pre v-else-if="daemonActionResult.action === 'preview'">{{ daemonActionResult.plan.selectedTemplate.configPath }}</pre>
+            </div>
+          </article>
+
+          <div
+            v-if="clientAuthEditorOpen"
+            class="mgw-provider-editor-overlay mgw-overview-dialog-overlay"
+            role="presentation"
+            @click.self="closeClientAuthEditor"
+          >
+            <section
+              class="mgw-provider-editor-shell mgw-overview-dialog-shell"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="mgw-client-auth-dialog-title"
+            >
+              <header class="mgw-provider-editor-head">
+                <div>
+                  <p class="eyebrow">Client auth</p>
+                  <h3 id="mgw-client-auth-dialog-title">{{ text('Gateway key', 'Gateway key') }}</h3>
+                </div>
+                <button type="button" class="mgw-icon-button" :aria-label="text('关闭', 'Close')" @click="closeClientAuthEditor">
+                  <X class="mgw-icon-button__icon" aria-hidden="true" />
+                </button>
+              </header>
+
+              <form class="mgw-overview-dialog-body" @submit.prevent="saveClientKey">
+                <div class="mgw-client-key-state">
+                  <span>{{ text('当前 key', 'Current key') }}</span>
+                  <strong>{{ clientAuth?.secret.hasSecret ? clientAuth.secret.masked : text('未设置', 'Not set') }}</strong>
+                  <small>{{ text('客户端可用 Authorization Bearer 或 x-api-key；该 key 不会转发给上游。', 'Clients may use Authorization Bearer or x-api-key; this key is never forwarded upstream.') }}</small>
+                </div>
+                <label class="form-field mgw-switch-field">
+                  <span>
+                    <span class="form-label">{{ text('鉴权状态', 'Auth state') }}</span>
+                    <strong>{{ clientAuthEnabled ? text('启用', 'Enabled') : text('停用', 'Disabled') }}</strong>
+                  </span>
+                  <input v-model="clientAuthEnabled" type="checkbox" />
+                </label>
+                <label class="form-field">
+                  <span class="form-label">{{ text('新 Gateway key', 'New Gateway key') }}</span>
+                  <input v-model="clientKeyDraft" class="form-input" type="password" :placeholder="clientKeyPlaceholder" />
+                </label>
+                <div v-if="clientAuthReveal" class="mgw-secret-output">
+                  <span>{{ text('本次返回的新 key', 'New key returned this time') }}</span>
+                  <code>{{ clientAuthReveal }}</code>
+                </div>
+                <div class="mgw-button-row mgw-form-actions">
+                  <button type="submit" class="primary-button" :disabled="clientAuthBusy">
+                    {{ clientAuthBusy ? text('保存中...', 'Saving...') : text('保存 key', 'Save key') }}
+                  </button>
+                  <button type="button" class="secondary-button" :disabled="clientAuthBusy" @click="generateClientKey">
+                    {{ text('生成新 key', 'Generate key') }}
+                  </button>
+                  <button type="button" class="secondary-button" :disabled="clientAuthBusy || !clientAuth?.enabled" @click="disableClientKey">
+                    {{ text('停用鉴权', 'Disable auth') }}
+                  </button>
+                </div>
+              </form>
+            </section>
           </div>
-        </article>
         </div>
 
         <article
@@ -187,175 +235,279 @@
               <p class="eyebrow">App Connections</p>
               <h3>{{ text('客户端接入', 'Client connections') }}</h3>
             </div>
-            <button type="button" class="secondary-button compact-button" :disabled="loading" @click="refreshAppConnections">
-              {{ text('刷新', 'Refresh') }}
-            </button>
-          </div>
-
-          <section class="mgw-connection-profile">
-            <div class="mgw-connection-profile__head">
-              <div>
-                <strong>{{ text('连接 Profile', 'Connection profile') }}</strong>
-                <small>{{ text('统一写入 Codex、Claude Code、OpenCode、OpenClaw 的模型和运行偏好。', 'Write the same model and runtime preferences into Codex, Claude Code, OpenCode, and OpenClaw.') }}</small>
-              </div>
-              <div class="mgw-connection-profile__actions">
-                <button
-                  type="button"
-                  class="secondary-button compact-button"
-                  :disabled="appConnectionProfileBusy"
-                  @click="saveAppConnectionProfile"
-                >
-                  {{ appConnectionProfileBusy ? text('保存中...', 'Saving...') : text('保存 Profile', 'Save profile') }}
-                </button>
-                <button
-                  type="button"
-                  class="primary-button compact-button"
-                  :disabled="!canApplyAllAppConnections || appConnectionApplyAllBusy"
-                  @click="applyAllAppConnectionConfigs"
-                >
-                  {{ appConnectionApplyAllBusy ? text('应用中...', 'Applying...') : text('应用到全部', 'Apply all') }}
-                </button>
-              </div>
-            </div>
-
-            <div class="mgw-profile-grid">
-              <label class="form-field form-field-full">
-                <span class="form-label">{{ text('默认模型', 'Default model') }}</span>
-                <select v-if="appConnectionModelOptions.length" v-model="appConnectionProfile.model" class="form-input">
-                  <option value="">{{ text('选择模型', 'Select a model') }}</option>
-                  <option v-for="model in appConnectionModelOptions" :key="model.id" :value="model.id">{{ model.label }}</option>
-                </select>
-                <input v-else v-model.trim="appConnectionProfile.model" class="form-input" :placeholder="text('手动填写模型 ID', 'Enter model ID')" />
-              </label>
-              <label class="form-field">
-                <span class="form-label">{{ text('上下文大小', 'Context window') }}</span>
-                <input v-model.trim="appConnectionProfile.contextWindow" class="form-input" inputmode="numeric" placeholder="128000" />
-              </label>
-              <label class="form-field">
-                <span class="form-label">{{ text('Compact 阈值', 'Compact limit') }}</span>
-                <input v-model.trim="appConnectionProfile.autoCompactTokenLimit" class="form-input" inputmode="numeric" placeholder="100000" />
-              </label>
-              <label class="form-field">
-                <span class="form-label">{{ text('最大输出', 'Max output') }}</span>
-                <input v-model.trim="appConnectionProfile.maxOutputTokens" class="form-input" inputmode="numeric" placeholder="8192" />
-              </label>
-              <label class="form-field">
-                <span class="form-label">{{ text('推理强度', 'Reasoning') }}</span>
-                <input v-model.trim="appConnectionProfile.reasoningEffort" class="form-input" placeholder="high" />
-              </label>
-            </div>
-
-            <div class="mgw-profile-budget-bar">
-              <span>{{ appConnectionBudgetSummary }}</span>
-              <button
-                type="button"
-                class="secondary-button compact-button"
-                :disabled="!canApplyAppConnectionModelBudget"
-                @click="applyAppConnectionModelBudget(true)"
-              >
-                {{ text('应用模型预算', 'Use model budget') }}
+            <div class="mgw-panel-actions">
+              <RouterLink class="secondary-button compact-button" :to="{ path: '/channel-connectors/profiles' }">
+                {{ text('Profile 工作台', 'Profile workspace') }}
+              </RouterLink>
+              <button type="button" class="secondary-button compact-button" :disabled="loading" @click="refreshAppConnections">
+                {{ text('刷新', 'Refresh') }}
               </button>
             </div>
+          </div>
 
-            <details class="mgw-profile-advanced">
-              <summary>{{ text('Codex 高级', 'Codex advanced') }}</summary>
-              <div class="mgw-profile-toggles">
-                <label class="mgw-check">
-                  <input v-model="appConnectionProfile.codexResponsesWebsockets" type="checkbox" />
-                  <span>WebSocket</span>
-                </label>
-                <label class="mgw-check">
-                  <input v-model="appConnectionProfile.codexResponsesWebsocketsV2" type="checkbox" />
-                  <span>WebSocket v2</span>
-                </label>
-                <label class="mgw-check">
-                  <input v-model="appConnectionProfile.codexRequestCompression" type="checkbox" />
-                  <span>{{ text('请求压缩', 'Request compression') }}</span>
-                </label>
+          <section class="mgw-connection-summary" aria-label="Client connection summary">
+            <div class="mgw-connection-summary__main">
+              <span>{{ text('连接 Profile', 'Connection profile') }}</span>
+              <strong>{{ appConnectionProfile.model || text('未选择默认模型', 'No default model selected') }}</strong>
+              <small>{{ appConnectionBudgetSummary }}</small>
+            </div>
+            <div class="mgw-connection-summary__metrics">
+              <div>
+                <span>{{ text('客户端', 'Clients') }}</span>
+                <strong>{{ appConnections.length }}</strong>
               </div>
-            </details>
+              <div>
+                <span>{{ text('已配置', 'Configured') }}</span>
+                <strong>{{ configuredAppConnectionCount }}</strong>
+              </div>
+              <div>
+                <span>{{ text('待处理', 'Blocked') }}</span>
+                <strong>{{ blockedAppConnectionCount }}</strong>
+              </div>
+            </div>
+            <div class="mgw-connection-summary__actions">
+              <button type="button" class="primary-button compact-button" @click="openAppConnectionProfileEditor">
+                {{ text('编辑 Profile', 'Edit profile') }}
+              </button>
+            </div>
           </section>
 
-          <div class="mgw-app-grid">
-            <section
+          <section class="mgw-app-list" aria-label="Client connection list">
+            <button
               v-for="connection in appConnections"
               :id="`mgw-app-${connection.id}`"
               :key="connection.id"
-              class="mgw-app-card"
-              :class="{ active: routeAppConnectionId === connection.id }"
+              type="button"
+              class="mgw-app-row"
+              :class="{ active: selectedAppConnectionId === connection.id || routeAppConnectionId === connection.id }"
+              @click="openAppConnectionDetail(connection)"
             >
-              <div class="mgw-app-card__head">
-                <div>
-                  <strong>{{ connection.label }}</strong>
-                  <small>{{ apiFormatLabel(connection.protocol) }} · {{ connection.appScope }}</small>
-                </div>
-                <StatusPill :label="appConnectionStateLabel(connection)" :tone="appConnectionStateTone(connection)" />
-              </div>
-
-              <div class="mgw-app-facts">
-                <div>
-                  <span>Endpoint</span>
-                  <strong>{{ connection.endpoint }}</strong>
-                </div>
-                <div>
-                  <span>{{ text('配置文件', 'Config file') }}</span>
-                  <strong>{{ connection.target.path }}</strong>
-                </div>
-                <div>
-                  <span>{{ text('Profile 模型', 'Profile model') }}</span>
-                  <strong>{{ connection.model || '-' }}</strong>
-                </div>
-                <div>
-                  <span>{{ text('有效预算', 'Effective budget') }}</span>
-                  <strong>{{ appConnectionBudgetLabel(connection.model || appConnectionProfile.model) }}</strong>
-                </div>
-                <div>
-                  <span>{{ text('最近备份', 'Latest backup') }}</span>
-                  <strong>{{ connection.lastBackupPath || '-' }}</strong>
-                </div>
-              </div>
-
-              <div v-if="connection.issues.length" class="mgw-app-issues">
-                <span v-for="issue in connection.issues" :key="issue">{{ issue }}</span>
-              </div>
-
-              <label class="form-field mgw-app-model-field">
-                <span class="form-label">{{ text('App 模型', 'App model') }}</span>
-                <select v-if="appConnectionModelOptions.length" v-model="appConnectionProfile.appModels[connection.id]" class="form-input">
-                  <option value="">{{ text('使用默认模型', 'Use default model') }}</option>
-                  <option v-for="model in appConnectionModelOptions" :key="`${connection.id}-${model.id}`" :value="model.id">{{ model.label }}</option>
-                </select>
-                <input v-else v-model.trim="appConnectionProfile.appModels[connection.id]" class="form-input" :placeholder="text('留空使用默认模型', 'Use default model')" />
-              </label>
-
-              <details class="mgw-app-preview">
-                <summary>{{ text('预览配置', 'Preview config') }}</summary>
-                <pre>{{ connection.preview.content }}</pre>
-              </details>
-
-              <div class="mgw-app-actions">
-                <button
-                  type="button"
-                  class="primary-button compact-button"
-                  :disabled="!connection.canApply || isAppConnectionBusy(connection.id)"
-                  @click="applyAppConnectionConfig(connection.id)"
-                >
-                  {{ isAppConnectionBusy(connection.id) ? text('应用中...', 'Applying...') : text('应用配置', 'Apply config') }}
-                </button>
-                <button
-                  type="button"
-                  class="secondary-button compact-button"
-                  :disabled="!connection.canRollback || isAppConnectionBusy(connection.id)"
-                  @click="rollbackAppConnectionConfig(connection.id)"
-                >
-                  {{ text('回滚', 'Rollback') }}
-                </button>
-                <span v-if="connection.launchHint">{{ connection.launchHint }}</span>
-              </div>
-            </section>
+              <span class="mgw-app-row__main">
+                <strong>{{ connection.label }}</strong>
+                <small>{{ apiFormatLabel(connection.protocol) }} · {{ connection.appScope }}</small>
+              </span>
+              <span class="mgw-app-row__model">
+                <small>{{ text('模型', 'Model') }}</small>
+                <strong>{{ appConnectionDisplayModel(connection) }}</strong>
+              </span>
+              <span class="mgw-app-row__budget">
+                <small>{{ text('预算', 'Budget') }}</small>
+                <strong>{{ appConnectionBudgetLabel(connection.model || appConnectionProfile.model) }}</strong>
+              </span>
+              <StatusPill :label="appConnectionStateLabel(connection)" :tone="appConnectionStateTone(connection)" />
+            </button>
             <div v-if="loaded && !appConnections.length" class="mgw-empty">
               {{ text('还没有可管理的客户端连接。', 'No manageable client connections yet.') }}
             </div>
+          </section>
+
+          <div
+            v-if="appConnectionProfileEditorOpen"
+            class="mgw-provider-editor-overlay mgw-connection-dialog-overlay"
+            role="presentation"
+            @click.self="closeAppConnectionProfileEditor"
+          >
+            <section
+              class="mgw-provider-editor-shell mgw-connection-dialog-shell"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="mgw-app-profile-dialog-title"
+            >
+              <header class="mgw-provider-editor-head">
+                <div>
+                  <p class="eyebrow">{{ text('客户端接入', 'Client connections') }}</p>
+                  <h3 id="mgw-app-profile-dialog-title">{{ text('连接 Profile', 'Connection profile') }}</h3>
+                </div>
+                <button type="button" class="mgw-icon-button" :aria-label="text('关闭', 'Close')" @click="closeAppConnectionProfileEditor">
+                  <X class="mgw-icon-button__icon" aria-hidden="true" />
+                </button>
+              </header>
+
+              <form class="mgw-connection-dialog-body" @submit.prevent="saveAppConnectionProfile">
+                <section class="mgw-config-section">
+                  <div class="mgw-config-section__head">
+                    <h4>{{ text('默认运行配置', 'Default runtime') }}</h4>
+                    <span>{{ text('统一写入 Codex、Claude Code、OpenCode、OpenClaw 的模型和运行偏好。', 'Write the same model and runtime preferences into Codex, Claude Code, OpenCode, and OpenClaw.') }}</span>
+                  </div>
+                  <div class="mgw-profile-grid">
+                    <label class="form-field form-field-full">
+                      <span class="form-label">{{ text('默认模型', 'Default model') }}</span>
+                      <select v-if="appConnectionModelOptions.length" v-model="appConnectionProfile.model" class="form-input">
+                        <option value="">{{ text('选择模型', 'Select a model') }}</option>
+                        <option v-for="model in appConnectionModelOptions" :key="model.id" :value="model.id">{{ model.label }}</option>
+                      </select>
+                      <input v-else v-model.trim="appConnectionProfile.model" class="form-input" :placeholder="text('手动填写模型 ID', 'Enter model ID')" />
+                    </label>
+                    <label class="form-field">
+                      <span class="form-label">{{ text('上下文大小', 'Context window') }}</span>
+                      <input v-model.trim="appConnectionProfile.contextWindow" class="form-input" inputmode="numeric" placeholder="128000" />
+                    </label>
+                    <label class="form-field">
+                      <span class="form-label">{{ text('Compact 阈值', 'Compact limit') }}</span>
+                      <input v-model.trim="appConnectionProfile.autoCompactTokenLimit" class="form-input" inputmode="numeric" placeholder="100000" />
+                    </label>
+                    <label class="form-field">
+                      <span class="form-label">{{ text('最大输出', 'Max output') }}</span>
+                      <input v-model.trim="appConnectionProfile.maxOutputTokens" class="form-input" inputmode="numeric" placeholder="8192" />
+                    </label>
+                    <label class="form-field">
+                      <span class="form-label">{{ text('推理强度', 'Reasoning') }}</span>
+                      <input v-model.trim="appConnectionProfile.reasoningEffort" class="form-input" placeholder="high" />
+                    </label>
+                  </div>
+                </section>
+
+                <div class="mgw-profile-budget-bar">
+                  <span>{{ appConnectionBudgetSummary }}</span>
+                  <button
+                    type="button"
+                    class="secondary-button compact-button"
+                    :disabled="!canApplyAppConnectionModelBudget"
+                    @click="applyAppConnectionModelBudget(true)"
+                  >
+                    {{ text('应用模型预算', 'Use model budget') }}
+                  </button>
+                </div>
+
+                <details class="mgw-profile-advanced">
+                  <summary>{{ text('Codex 高级', 'Codex advanced') }}</summary>
+                  <div class="mgw-profile-toggles">
+                    <label class="mgw-check">
+                      <input v-model="appConnectionProfile.codexResponsesWebsockets" type="checkbox" />
+                      <span>WebSocket</span>
+                    </label>
+                    <label class="mgw-check">
+                      <input v-model="appConnectionProfile.codexResponsesWebsocketsV2" type="checkbox" />
+                      <span>WebSocket v2</span>
+                    </label>
+                    <label class="mgw-check">
+                      <input v-model="appConnectionProfile.codexRequestCompression" type="checkbox" />
+                      <span>{{ text('请求压缩', 'Request compression') }}</span>
+                    </label>
+                  </div>
+                </details>
+
+                <div class="mgw-button-row mgw-form-actions">
+                  <button type="submit" class="primary-button" :disabled="appConnectionProfileBusy">
+                    {{ appConnectionProfileBusy ? text('保存中...', 'Saving...') : text('保存 Profile', 'Save profile') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary-button"
+                    :disabled="!canApplyAllAppConnections || appConnectionApplyAllBusy"
+                    @click="applyAllAppConnectionConfigs"
+                  >
+                    {{ appConnectionApplyAllBusy ? text('应用中...', 'Applying...') : text('应用到全部', 'Apply all') }}
+                  </button>
+                </div>
+              </form>
+            </section>
+          </div>
+
+          <div
+            v-if="appConnectionDetailOpen && selectedAppConnection"
+            class="mgw-provider-editor-overlay mgw-connection-dialog-overlay"
+            role="presentation"
+            @click.self="closeAppConnectionDetail"
+          >
+            <section
+              class="mgw-provider-editor-shell mgw-connection-dialog-shell"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="mgw-app-detail-dialog-title"
+            >
+              <header class="mgw-provider-editor-head">
+                <div>
+                  <p class="eyebrow">{{ text('客户端配置', 'Client config') }}</p>
+                  <h3 id="mgw-app-detail-dialog-title">{{ selectedAppConnection.label }}</h3>
+                </div>
+                <button type="button" class="mgw-icon-button" :aria-label="text('关闭', 'Close')" @click="closeAppConnectionDetail">
+                  <X class="mgw-icon-button__icon" aria-hidden="true" />
+                </button>
+              </header>
+
+              <div class="mgw-connection-dialog-body">
+                <section class="mgw-config-section">
+                  <div class="mgw-config-section__head">
+                    <h4>{{ text('连接状态', 'Connection status') }}</h4>
+                    <StatusPill :label="appConnectionStateLabel(selectedAppConnection)" :tone="appConnectionStateTone(selectedAppConnection)" />
+                  </div>
+                  <div class="mgw-app-detail-facts">
+                    <div>
+                      <span>Endpoint</span>
+                      <strong>{{ selectedAppConnection.endpoint }}</strong>
+                    </div>
+                    <div>
+                      <span>{{ text('配置文件', 'Config file') }}</span>
+                      <strong>{{ selectedAppConnection.target.path }}</strong>
+                    </div>
+                    <div>
+                      <span>{{ text('Profile 模型', 'Profile model') }}</span>
+                      <strong>{{ selectedAppConnection.model || '-' }}</strong>
+                    </div>
+                    <div>
+                      <span>{{ text('有效预算', 'Effective budget') }}</span>
+                      <strong>{{ appConnectionBudgetLabel(selectedAppConnection.model || appConnectionProfile.model) }}</strong>
+                    </div>
+                    <div>
+                      <span>{{ text('最近备份', 'Latest backup') }}</span>
+                      <strong>{{ selectedAppConnection.lastBackupPath || '-' }}</strong>
+                    </div>
+                  </div>
+                  <div v-if="selectedAppConnection.issues.length" class="mgw-app-issues">
+                    <span v-for="issue in selectedAppConnection.issues" :key="issue">{{ issue }}</span>
+                  </div>
+                </section>
+
+                <section class="mgw-config-section">
+                  <div class="mgw-config-section__head">
+                    <h4>{{ text('App 模型', 'App model') }}</h4>
+                    <span>{{ text('留空时使用连接 Profile 的默认模型。', 'Leave empty to use the default model from the connection profile.') }}</span>
+                  </div>
+                  <label class="form-field mgw-app-model-field">
+                    <span class="form-label">{{ text('模型覆盖', 'Model override') }}</span>
+                    <select v-if="appConnectionModelOptions.length" v-model="appConnectionProfile.appModels[selectedAppConnection.id]" class="form-input">
+                      <option value="">{{ text('使用默认模型', 'Use default model') }}</option>
+                      <option v-for="model in appConnectionModelOptions" :key="`${selectedAppConnection.id}-${model.id}`" :value="model.id">{{ model.label }}</option>
+                    </select>
+                    <input v-else v-model.trim="appConnectionProfile.appModels[selectedAppConnection.id]" class="form-input" :placeholder="text('留空使用默认模型', 'Use default model')" />
+                  </label>
+                </section>
+
+                <details class="mgw-app-preview">
+                  <summary>{{ text('预览配置', 'Preview config') }}</summary>
+                  <pre>{{ selectedAppConnection.preview.content }}</pre>
+                </details>
+
+                <div class="mgw-button-row mgw-form-actions">
+                  <button
+                    type="button"
+                    class="secondary-button"
+                    :disabled="appConnectionProfileBusy"
+                    @click="saveAppConnectionProfile"
+                  >
+                    {{ appConnectionProfileBusy ? text('保存中...', 'Saving...') : text('保存 Profile', 'Save profile') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="primary-button"
+                    :disabled="!selectedAppConnection.canApply || isAppConnectionBusy(selectedAppConnection.id)"
+                    @click="applyAppConnectionConfig(selectedAppConnection.id)"
+                  >
+                    {{ isAppConnectionBusy(selectedAppConnection.id) ? text('应用中...', 'Applying...') : text('应用配置', 'Apply config') }}
+                  </button>
+                  <button
+                    type="button"
+                    class="secondary-button"
+                    :disabled="!selectedAppConnection.canRollback || isAppConnectionBusy(selectedAppConnection.id)"
+                    @click="rollbackAppConnectionConfig(selectedAppConnection.id)"
+                  >
+                    {{ text('回滚', 'Rollback') }}
+                  </button>
+                  <span v-if="selectedAppConnection.launchHint">{{ selectedAppConnection.launchHint }}</span>
+                </div>
+              </div>
+            </section>
           </div>
         </article>
 
@@ -1779,12 +1931,16 @@ const clientAuthBusy = ref(false);
 const clientAuthEnabled = ref(false);
 const clientKeyDraft = ref('');
 const clientAuthReveal = ref('');
+const clientAuthEditorOpen = ref(false);
 const appConnections = ref<ModelGatewayAppConnection[]>([]);
 const appConnectionBusy = ref<Partial<Record<ModelGatewayAppConnectionId, boolean>>>({});
 const appConnectionProfile = reactive<AppConnectionProfileDraft>(createEmptyAppConnectionProfileDraft());
 const appConnectionAvailableModels = ref<string[]>([]);
 const appConnectionProfileBusy = ref(false);
 const appConnectionApplyAllBusy = ref(false);
+const appConnectionProfileEditorOpen = ref(false);
+const appConnectionDetailOpen = ref(false);
+const selectedAppConnectionId = ref<ModelGatewayAppConnectionId | ''>('');
 const lastAutoAppConnectionBudget = ref<AppConnectionBudgetDraft | null>(null);
 const providers = ref<ModelGatewayProviderView[]>([]);
 const providerCreateKind = ref<ProviderCreateKind>('api-key');
@@ -2020,6 +2176,18 @@ const appConnectionModelOptions = computed<AppConnectionModelOption[]>(() =>
 
 const selectedAppConnectionBudget = computed(() =>
   appConnectionBudgetDraftForModel(appConnectionProfile.model),
+);
+
+const configuredAppConnectionCount = computed(() =>
+  appConnections.value.filter((connection) => connection.configured).length,
+);
+
+const blockedAppConnectionCount = computed(() =>
+  appConnections.value.filter((connection) => !connection.canApply).length,
+);
+
+const selectedAppConnection = computed(() =>
+  appConnections.value.find((connection) => connection.id === selectedAppConnectionId.value) || null,
 );
 
 const canApplyAppConnectionModelBudget = computed(() =>
@@ -2354,12 +2522,56 @@ function appConnectionStateTone(connection: ModelGatewayAppConnection): 'neutral
   return 'accent';
 }
 
+function appConnectionDisplayModel(connection: ModelGatewayAppConnection): string {
+  return appConnectionProfile.appModels[connection.id]
+    || connection.model
+    || appConnectionProfile.model
+    || '-';
+}
+
 function applyRouteWorkspaceSelection(): void {
-  if (routeWorkspaceTab.value) {
-    activeWorkspaceTab.value = routeWorkspaceTab.value;
+  if (routeAppConnectionId.value) {
+    activeWorkspaceTab.value = 'connections';
+    selectedAppConnectionId.value = routeAppConnectionId.value;
+    if (appConnections.value.some((connection) => connection.id === routeAppConnectionId.value)) {
+      appConnectionDetailOpen.value = true;
+    }
     return;
   }
-  if (routeAppConnectionId.value) activeWorkspaceTab.value = 'connections';
+  if (routeWorkspaceTab.value) {
+    activeWorkspaceTab.value = routeWorkspaceTab.value;
+  }
+}
+
+function openAppConnectionProfileEditor(): void {
+  appConnectionProfileEditorOpen.value = true;
+}
+
+function closeAppConnectionProfileEditor(): void {
+  appConnectionProfileEditorOpen.value = false;
+}
+
+function openAppConnectionDetail(connection: ModelGatewayAppConnection): void {
+  selectedAppConnectionId.value = connection.id;
+  appConnectionDetailOpen.value = true;
+}
+
+function closeAppConnectionDetail(): void {
+  appConnectionDetailOpen.value = false;
+}
+
+function openClientAuthEditor(): void {
+  clientAuthEnabled.value = Boolean(clientAuth.value?.enabled);
+  clientKeyDraft.value = '';
+  clientAuthReveal.value = '';
+  clientAuthEditorOpen.value = true;
+}
+
+function closeClientAuthEditor(): void {
+  clientAuthEnabled.value = Boolean(clientAuth.value?.enabled);
+  clientKeyDraft.value = '';
+  clientAuthReveal.value = '';
+  clientAuthEditorOpen.value = false;
 }
 
 function isAppConnectionBusy(appId: ModelGatewayAppConnectionId): boolean {

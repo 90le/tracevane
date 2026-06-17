@@ -87,6 +87,7 @@ App Connections 管理 Codex、Claude Code、OpenCode、OpenClaw 的配置检测
 - 一键切换 App profile：模型、上下文窗口、compact 阈值、max output、reasoning/effort 和必要兼容参数。
 - 写入前备份原配置；失败可 rollback。
 - Codex 真实测试必须隔离 `CODEX_HOME`，避免污染当前 Codex 任务进程。
+- UI 主屏必须保持摘要 + 客户端列表；Profile 编辑、单客户端 preview/apply/rollback 和敏感 key 编辑进入弹层，不把所有字段常驻堆在 Overview 或 Client connections 主屏。
 
 Channel Connectors / CLI Profile 前端管理必须从用户视角组织：
 

@@ -33,7 +33,9 @@ test("Channel Connectors page is not mounted through Model Gateway", () => {
   const gatewayPage = fs.readFileSync(gatewayPagePath, "utf8");
 
   assert.match(view, /ChannelConnectorsControlPage/);
-  assert.doesNotMatch(page, /model-gateway|ModelGateway/i);
+  assert.match(page, /path:\s*'\/model-gateway'/);
+  assert.match(page, /query:\s*\{\s*tab:\s*'connections'\s*\}/);
+  assert.doesNotMatch(page, /ModelGatewayControlPage|fetchModelGateway|\/api\/model-gateway/);
   assert.doesNotMatch(api, /model-gateway|ModelGateway/i);
   assert.doesNotMatch(gatewayView, /ChannelConnectors/);
   assert.doesNotMatch(gatewayPage, /ChannelConnectors|Channel daemon/);
@@ -73,6 +75,9 @@ test("Channel Connectors page calls only channel connector APIs", () => {
   assert.match(page, /activeTab\.value = 'bindings'/);
   assert.match(page, /Channel operations|渠道运营概览/);
   assert.match(page, /Profile workspace|Profile 工作台/);
+  assert.match(page, /Gateway connections|网关接入/);
+  assert.match(page, /path:\s*'\/model-gateway'/);
+  assert.match(page, /query:\s*\{\s*tab:\s*'connections'\s*\}/);
   assert.match(page, /ccx-runtime-workspace/);
   assert.match(page, /ccx-session-workspace/);
   assert.match(page, /Channel daemon log|Channel daemon 日志/);

@@ -20,6 +20,142 @@
   min-width: 0;
 }
 
+.mgw-overview-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.mgw-overview-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(220px, auto);
+  gap: 14px;
+  align-items: start;
+  border: 1px solid color-mix(in srgb, var(--mono-accent) 24%, var(--mono-line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--mono-accent) 4%, var(--surface-base));
+  padding: 14px;
+}
+
+.mgw-overview-summary__main {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.mgw-overview-summary__main h3 {
+  margin: 0;
+  font-size: 1.08rem;
+  letter-spacing: 0;
+}
+
+.mgw-overview-summary__main strong,
+.mgw-overview-summary__main small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mgw-overview-summary__main small {
+  color: var(--mono-ink-2);
+  line-height: 1.55;
+}
+
+.mgw-overview-statuses,
+.mgw-overview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mgw-overview-statuses {
+  justify-content: flex-start;
+}
+
+.mgw-overview-actions {
+  justify-content: flex-end;
+}
+
+.mgw-overview-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.mgw-overview-metrics > div,
+.mgw-overview-nav-row {
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface-base) 84%, var(--surface-soft));
+}
+
+.mgw-overview-metrics > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+}
+
+.mgw-overview-metrics span,
+.mgw-overview-nav-row small {
+  color: var(--mono-ink-2);
+}
+
+.mgw-overview-metrics strong,
+.mgw-overview-nav-row strong,
+.mgw-overview-nav-row small,
+.mgw-overview-nav-row em {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mgw-overview-nav {
+  display: grid;
+  gap: 8px;
+}
+
+.mgw-overview-nav-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  min-height: 64px;
+  color: var(--mono-ink);
+  padding: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mgw-overview-nav-row:hover {
+  border-color: color-mix(in srgb, var(--accent) 38%, var(--mono-line));
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface-base));
+}
+
+.mgw-overview-nav-row > span {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mgw-overview-nav-row em {
+  justify-self: end;
+  color: var(--mono-ink);
+  font-style: normal;
+  font-weight: 700;
+}
+
+.mgw-overview-dialog-shell {
+  width: min(720px, calc(100vw - 48px));
+}
+
+.mgw-overview-dialog-body {
+  display: grid;
+  flex: 1 1 auto;
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
 .mgw-panel {
   border: 1px solid var(--mono-line);
   border-radius: 10px;
@@ -157,14 +293,6 @@
   accent-color: var(--accent);
 }
 
-.mgw-runtime-actions {
-  position: relative;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-}
-
 .mgw-runtime-more {
   position: relative;
 }
@@ -236,18 +364,6 @@
   overflow-wrap: anywhere;
 }
 
-.mgw-client-key-form {
-  display: grid;
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.mgw-client-key-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 .mgw-secret-output {
   display: grid;
   gap: 6px;
@@ -297,46 +413,64 @@
   min-width: 0;
 }
 
-.mgw-connection-profile {
+.mgw-connection-summary {
   display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.9fr) auto;
   gap: 12px;
-  margin-bottom: 14px;
+  align-items: stretch;
+  margin-bottom: 12px;
   border: 1px solid color-mix(in srgb, var(--mono-accent) 24%, var(--mono-line));
   border-radius: 8px;
   background: color-mix(in srgb, var(--mono-accent) 4%, var(--surface-base));
   padding: 12px;
 }
 
-.mgw-connection-profile__head,
-.mgw-connection-profile__actions,
+.mgw-connection-summary__main,
+.mgw-connection-summary__metrics > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.mgw-connection-summary__main span,
+.mgw-connection-summary__metrics span {
+  color: var(--mono-ink-2);
+  font-size: 0.78rem;
+}
+
+.mgw-connection-summary__main strong,
+.mgw-connection-summary__main small,
+.mgw-connection-summary__metrics strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mgw-connection-summary__main small {
+  color: var(--mono-ink-2);
+}
+
+.mgw-connection-summary__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.mgw-connection-summary__metrics > div {
+  border: 1px solid var(--mono-line);
+  border-radius: 8px;
+  background: var(--surface-base);
+  padding: 8px 10px;
+}
+
+.mgw-connection-summary__actions,
 .mgw-profile-toggles {
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
 }
 
-.mgw-connection-profile__head {
-  align-items: flex-start;
-  justify-content: space-between;
-}
-
-.mgw-connection-profile__head > div:first-child {
-  display: grid;
-  gap: 4px;
-  min-width: 0;
-}
-
-.mgw-connection-profile__head strong,
-.mgw-connection-profile__head small {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.mgw-connection-profile__head small {
-  color: var(--mono-ink-2);
-}
-
-.mgw-connection-profile__actions {
+.mgw-connection-summary__actions {
+  align-items: center;
   justify-content: flex-end;
 }
 
@@ -389,61 +523,76 @@
   margin-top: 8px;
 }
 
-.mgw-app-grid {
+.mgw-app-list {
   display: grid;
-  grid-template-columns: 1fr;
-  gap: 12px;
+  gap: 8px;
 }
 
-.mgw-app-card {
+.mgw-app-row {
   display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(140px, 0.8fr) minmax(150px, 0.8fr) auto;
   gap: 12px;
+  align-items: center;
+  width: 100%;
+  min-height: 72px;
   min-width: 0;
   border: 1px solid var(--mono-line);
   border-radius: 8px;
   background: color-mix(in srgb, var(--surface-base) 88%, var(--surface-soft));
+  color: var(--mono-ink);
   padding: 12px;
+  text-align: left;
+  cursor: pointer;
 }
 
-.mgw-app-card.active {
+.mgw-app-row:hover,
+.mgw-app-row.active {
   border-color: color-mix(in srgb, var(--accent) 42%, var(--mono-line));
   background: color-mix(in srgb, var(--accent) 5%, var(--surface-base));
 }
 
-.mgw-app-card__head,
-.mgw-app-actions {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.mgw-app-card__head > div {
+.mgw-app-row__main,
+.mgw-app-row__model,
+.mgw-app-row__budget {
   display: grid;
   gap: 4px;
   min-width: 0;
 }
 
-.mgw-app-card__head strong,
-.mgw-app-card__head small,
-.mgw-app-facts strong,
-.mgw-app-actions span {
+.mgw-app-row strong,
+.mgw-app-row small,
+.mgw-app-detail-facts strong,
+.mgw-form-actions span {
   min-width: 0;
   overflow-wrap: anywhere;
 }
 
-.mgw-app-card__head small,
-.mgw-app-facts span,
-.mgw-app-actions span {
+.mgw-app-row small,
+.mgw-app-detail-facts span,
+.mgw-form-actions span {
   color: var(--mono-ink-2);
 }
 
-.mgw-app-facts {
+.mgw-connection-dialog-shell {
+  width: min(1040px, calc(100vw - 48px));
+}
+
+.mgw-connection-dialog-body {
   display: grid;
+  flex: 1 1 auto;
+  gap: 12px;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+}
+
+.mgw-app-detail-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
-.mgw-app-facts > div {
+.mgw-app-detail-facts > div {
   display: grid;
   gap: 3px;
   border: 1px solid var(--mono-line);
@@ -491,10 +640,6 @@
   overflow: auto;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-}
-
-.mgw-app-actions {
-  flex-wrap: wrap;
 }
 
 .mgw-provider-grid {
@@ -1872,6 +2017,14 @@
     max-height: calc(100vh - 16px);
   }
 
+  .mgw-connection-dialog-shell {
+    width: calc(100vw - 16px);
+  }
+
+  .mgw-overview-dialog-shell {
+    width: calc(100vw - 16px);
+  }
+
   .mgw-account-login-card {
     grid-template-columns: 1fr;
   }
@@ -1888,6 +2041,13 @@
   }
 
   .mgw-form-grid,
+  .mgw-overview-summary,
+  .mgw-overview-metrics,
+  .mgw-overview-nav-row,
+  .mgw-connection-summary,
+  .mgw-connection-summary__metrics,
+  .mgw-app-row,
+  .mgw-app-detail-facts,
   .mgw-provider-kind-options,
   .mgw-provider-final-grid,
   .mgw-provider-list-toolbar,
@@ -1958,7 +2118,7 @@
 
   .mgw-detect-card__actions,
   .mgw-detect-popover__foot,
-  .mgw-runtime-actions {
+  .mgw-overview-actions {
     justify-content: flex-start;
   }
 
