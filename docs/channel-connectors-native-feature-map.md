@@ -54,7 +54,7 @@
 - `/stop` 自动回归已覆盖 Codex app-server persistent turn 取消；live smoke 已支持 `--require-stop-command`，按同 session 和时间关联不同 messageId 的 stop 命令与 cancelled run。
 - IM Agent session driver 默认已切到结构化 persistent：Codex 走 app-server，Claude Code 走 stream-json 常驻进程，OpenCode 走 `run --session`；显式 `agentSessionDriver/session_driver/persistentSession=false|one-shot|off` 可回退 one-shot，persistent 创建或执行失败会记录事件并按命令策略降级。
 - Codex app-server persistent turn 已改为分层 idle：普通静默默认 3 分钟，审批请求刷新 idle，等待 IM 审批按审批窗口处理，批准工具后才给长工具执行窗口；fallback 恢复型 `turn/timeout` 不进入用户进度流，真正卡死仍会 interrupt。
-- Codex / Claude Code / OpenCode one-shot 兼容 runner 已从固定墙钟总超时改为 CLI 心跳超时：stdout/stderr 中的 `Working (... esc to interrupt)`、`Imagining...` 等 liveness 刷新会续期等待，只有心跳停止才返回 `process/heartbeat-timeout` 并终止，避免 fallback/opt-out 长任务仍在工作时被误判为 `Agent process timed out.`；持续只有 TUI 心跳但没有结构化进展时会记录 `process/heartbeat-stall` 非终态诊断，该诊断不刷新 timeout、重复诊断退避节流、默认不推送到 IM 过程消息；权威失败终态覆盖 exit 0，权威完成终态后 lingering CLI grace 收尾；本地 heartbeat smoke 已覆盖 stderr CR-only TUI、stdout 活动、heartbeat-only stall、idleTimeout 替代总超时、静默 timeout 和非 runtime Agent 固定超时。
+- Codex / Claude Code / OpenCode one-shot 兼容 runner 已从固定墙钟总超时改为 CLI 心跳超时：stdout/stderr 中的 `Working (... esc to interrupt)`、`Imagining...` 等 liveness 刷新会续期等待，只有心跳停止才返回 `process/heartbeat-timeout` 并终止，避免 fallback/opt-out 长任务仍在工作时被误判为 `Agent process timed out.`；持续只有 TUI 心跳但没有结构化进展时会记录 `process/heartbeat-stall` 非终态诊断，该诊断不刷新 timeout、重复诊断退避节流、默认不推送到 IM 过程消息；Claude `◯ deep-research ... 3/18 agents done · ↓ tokens`、Codex subagents 和 OpenCode parallel tasks 会记录 `process/async-task` 非终态进度并使用 bounded async idle grace；权威失败终态覆盖 exit 0，权威完成终态后 lingering CLI grace 收尾；本地 heartbeat smoke 已覆盖 stderr CR-only TUI、stdout 活动、真实 Unicode async child-task、heartbeat-only stall、idleTimeout 替代总超时、静默 timeout 和非 runtime Agent 固定超时。
 - 可恢复队列已废弃为历史能力：daemon 启动会将遗留 pending-agent-run store 标记 `pending_dropped` 并清空；daemon `/status`、API 和 Channel Connectors Runtime 页只展示 legacy pending 清理状态，不再把普通 IM 消息落盘或重放。
 - Claude Code / OpenCode persistent native compact 已有真实子进程 driver 回归：Claude 复用同一个 stream-json 常驻进程，OpenCode 通过 `run --session` 续接。
 - Claude Code persistent driver 已修复过程回复污染最终回复，并补进度回调兼容回归。
@@ -83,6 +83,7 @@
 - OpenCode realtime JSONL 与 SQLite fallback 已共用进度 parser；DB fallback 会保留本轮工具调用/工具结果，并只把最新 assistant message 作为最终回复。
 - 近 12h live smoke 已证明 Codex、Claude Code、OpenCode 均有成功工具调用和可见工具输出；OpenCode 真实 IM `--require-process-reply` 已补齐，三 Agent 均有真实 IM 过程回复证据。
 - 本轮本地回归补齐 Feishu reaction 停止失败底层路径：`removeFeishuMessageReaction` 对 API 失败返回 `ok=false` 而不抛出，daemon 额外写显式 `stop_failed`，并继续依赖最终回复投递状态释放 lifecycle。
+- 本轮本地回归补齐真实 Claude async 子任务 TUI：`◯ deep-research  Deep research harness — fan-out web searches… 3/18 agents done · 4m 53s · ↓ 15.9k tokens` 会被识别为 `process/async-task`，不会按静止主窗口误判为失败。
 
 ## 保留边界
 

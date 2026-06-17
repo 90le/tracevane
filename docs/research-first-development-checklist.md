@@ -72,3 +72,4 @@
 - 2026-06-17：核验 OpenCode 官方 CLI / SDK 文档，确认 `--format json`、headless server、session API 和 SDK types 是优先于 TUI 文本的结构化路径。
 - 2026-06-17：核验 Git `gitignore` 官方文档，确认所有开发者都应忽略的本地工作区产物应写入仓库 `.gitignore`。
 - 2026-06-17：本轮按用户要求先不跑渠道 live；本地补 Gateway endpoint profile passthrough/adapter 错误归属回归，以及 Feishu reaction stop failure/daemon delivery failure 源码合同回归。
+- 2026-06-17：重新核验 Codex app-server、Claude Code Agent SDK / TypeScript SDK、OpenCode CLI / SDK 官方文档；本地补真实 Claude `◯ deep-research ... ↓ tokens`、Codex subagents、OpenCode parallel tasks 的 async child-task TUI 回归，确认优先结构化 driver，TUI 只作 bounded fallback。

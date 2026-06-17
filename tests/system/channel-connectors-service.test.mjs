@@ -12040,7 +12040,7 @@ test("native Channel Connectors process runner keeps async child-task waits aliv
     },
     {
       agent: "claude-code",
-      status: "deep-research  Deep research harness - fan-out web searches... 3/18 agents done · 4m 53s · down 15.9k tokens",
+      status: "◯ deep-research  Deep research harness — fan-out web searches… 3/18 agents done · 4m 53s · ↓ 15.9k tokens",
     },
     {
       agent: "opencode",
@@ -12075,7 +12075,10 @@ test("native Channel Connectors process runner keeps async child-task waits aliv
     assert.equal(result.timedOut, false, item.agent);
     assert.equal(result.error, null, item.agent);
     assert.ok(result.durationMs >= 55, item.agent);
-    assert.equal(progress.some((event) => event.rawType === "process/async-task" && event.type === "running"), true, item.agent);
+    const asyncTaskEvent = progress.find((event) => event.rawType === "process/async-task" && event.type === "running");
+    assert.ok(asyncTaskEvent, item.agent);
+    assert.match(asyncTaskEvent.text || "", /CLI async child-task progress:/, item.agent);
+    assert.match(asyncTaskEvent.text || "", /3\/18 agents done|2\/7 tasks running/, item.agent);
     assert.equal(progress.some((event) => event.rawType === "process/heartbeat-timeout"), false, item.agent);
     assert.equal(progress.at(-1)?.type, "completed", item.agent);
   }

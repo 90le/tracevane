@@ -132,8 +132,13 @@ function heartbeatOnlyStallScript(agent) {
 
 function asyncTaskStatusScript(agent) {
   const completion = completionScript(agent, `${agent} async child task grace kept alive`);
+  const status = agent === "claude-code"
+    ? "◯ deep-research  Deep research harness — fan-out web searches… 3/18 agents done · 4m 53s · ↓ 15.9k tokens"
+    : agent === "opencode"
+      ? "opencode parallel tasks: 2/7 tasks running · 1m 12s · ↓ 4.2k tokens"
+      : "codex subagents: 3/18 agents done · 4m 53s · ↓ 15.9k tokens";
   return [
-    "process.stderr.write('\\rdeep-research harness - fan-out workers 3/18 agents done · 4m 53s · down 15.9k tokens');",
+    `process.stderr.write(${JSON.stringify(`\r${status}`)});`,
     "setTimeout(() => {",
     completion,
     "}, 150);",
