@@ -29,7 +29,7 @@
 | Platforms | dmwork/feishu/更多 IM | 当前只做 Octo/Feishu 私聊；更多平台按私聊能力迁移 | 进行中 |
 | Agents | Codex、Claude Code、OpenCode、更多 Agent | 当前只做三个已有 runner；更多 Agent 路线图 | 进行中 |
 | Messages | text/image/file/voice/progress/reply | 私聊 incoming/reply/attachment/file/image/Markdown renderer | 进行中 |
-| Sessions | session key、续接、重置、workdir、切 Agent/model/mode | Studio session store、override、queue、stop、compact | 进行中 |
+| Sessions | session key、续接、重置、workdir、切 Agent/model/mode | Studio session store、override、busy guard、stop、compact | 进行中 |
 | Governance | allowlist/admin/rate/banned/run_as | policy + audit | 基础完成 |
 | Commands | slash/native/menu/card | 私聊命令、未知 slash 透传、Feishu 卡片、Octo Markdown fallback | 进行中 |
 
@@ -51,11 +51,11 @@
 - Provider Center 不再按 `gpt-*`、`claude-*` 等模型名自动标记 vision；图片能力只来自用户配置、上游显式能力元数据或图片 smoke 通过后用户确认写回。
 - Codex、Claude Code、OpenCode 均已支持图片 native visual input；视频附件按普通 staged local file 交给 Agent，不由 Studio 预抽帧或转图片。
 - Octo 图片/视频 payload 带 `content/caption` 时会保留用户任务文本，避免媒体占位吞掉“请识别/请处理”这类指令。
-- 同 session FIFO queue、`/stop`、`/new`、`/reset`、`/compact`、`/thinking`、`/process`、`/tools` 已接入。
+- 同 session busy guard、`/stop`、`/new`、`/reset`、`/compact`、`/thinking`、`/process`、`/tools` 已接入；普通消息 busy 时不入队，提示先 `/stop`/`/cancel` 后重发。
 - `/stop` 自动回归已覆盖 Codex app-server persistent turn 取消；live smoke 已支持 `--require-stop-command`，按同 session 和时间关联不同 messageId 的 stop 命令与 cancelled run。
 - Codex app-server persistent turn 已改为分层 idle：普通静默默认 3 分钟，审批请求刷新 idle，等待 IM 审批按审批窗口处理，批准工具后才给长工具执行窗口；fallback 恢复型 `turn/timeout` 不进入用户进度流，真正卡死仍会 interrupt。
 - Codex / Claude Code / OpenCode native CLI runner 已从固定墙钟总超时改为 CLI 心跳超时：stdout/stderr 中的 `Working (... esc to interrupt)`、`Imagining...` 等 liveness 刷新会续期等待，只有心跳停止才返回 `process/heartbeat-timeout` 并终止，避免 Feishu/Octo IM 长任务仍在工作时被误判为 `Agent process timed out.`；持续只有 TUI 心跳但没有结构化进展时会记录 `process/heartbeat-stall` 非终态诊断，该诊断不刷新 timeout、重复诊断退避节流、默认不推送到 IM 过程消息；本地 heartbeat smoke 已覆盖 stderr CR-only TUI、stdout 活动、heartbeat-only stall、idleTimeout 替代总超时、静默 timeout 和非 runtime Agent 固定超时。
-- 可恢复队列已接入 daemon 内部 pending-agent-run store：同 session 已入队但尚未启动的 Agent 消息会落盘，daemon 重启后按原平台 dispatch 重放；daemon `/status`、API 和 Channel Connectors Runtime 页已展示 pending 数量、待恢复记录和最近 replay/drop/fail 事件；Octo 重启回归已通过；Feishu 24h live 已证明同进程 FIFO 排队顺序执行和 daemon 重启 replay。
+- 可恢复队列已废弃为历史能力：daemon 启动会将遗留 pending-agent-run store 标记 `pending_dropped` 并清空；daemon `/status`、API 和 Channel Connectors Runtime 页只展示 legacy pending 清理状态，不再把普通 IM 消息落盘或重放。
 - Claude Code / OpenCode persistent native compact 已有真实子进程 driver 回归：Claude 复用同一个 stream-json 常驻进程，OpenCode 通过 `run --session` 续接。
 - Claude Code persistent driver 已修复过程回复污染最终回复，并补进度回调兼容回归。
 - Octo daemon 私聊 `/compact` 已有回归证明会进入 Claude/OpenCode persistent session，不走 Gateway fallback。

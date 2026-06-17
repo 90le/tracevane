@@ -19,23 +19,22 @@ function parseArgs(argv) {
     sinceMinutes: DEFAULT_SINCE_MINUTES,
     timeoutMs: DEFAULT_TIMEOUT_MS,
     pollMs: DEFAULT_POLL_MS,
-    mode: "durable",
-    allowFailedRun: false,
+    mode: "busy-reject",
     json: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--json") options.json = true;
-    else if (arg === "--allow-failed-run") options.allowFailedRun = true;
+    else if (arg === "--allow-failed-run") continue;
     else if (arg === "--event-log") options.eventLog = requireValue(argv, ++index, arg);
     else if (arg.startsWith("--event-log=")) options.eventLog = arg.slice("--event-log=".length);
     else if (arg === "--binding") options.bindingId = requireValue(argv, ++index, arg);
     else if (arg.startsWith("--binding=")) options.bindingId = arg.slice("--binding=".length);
     else if (arg === "--agent") options.agent = requireValue(argv, ++index, arg);
     else if (arg.startsWith("--agent=")) options.agent = arg.slice("--agent=".length);
-    else if (arg === "--mode") options.mode = queueMode(requireValue(argv, ++index, arg));
-    else if (arg.startsWith("--mode=")) options.mode = queueMode(arg.slice("--mode=".length));
+    else if (arg === "--mode") options.mode = busyMode(requireValue(argv, ++index, arg));
+    else if (arg.startsWith("--mode=")) options.mode = busyMode(arg.slice("--mode=".length));
     else if (arg === "--since") options.since = requireValue(argv, ++index, arg);
     else if (arg.startsWith("--since=")) options.since = arg.slice("--since=".length);
     else if (arg === "--since-minutes") options.sinceMinutes = nonNegativeInt(requireValue(argv, ++index, arg), DEFAULT_SINCE_MINUTES);
@@ -60,42 +59,38 @@ function parseArgs(argv) {
 function printHelp() {
   console.log(`Usage: node scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs [options]
 
-Read-only Feishu durable queue live evidence check. The script does not send
-Feishu messages. It scans the daemon Feishu event log and requires one real
-long-connection message that was queued while another Agent run was active,
-then replayed after daemon restart and completed.
+Read-only Feishu busy-guard live evidence check. The script name is kept as a
+legacy alias; IM task queues are intentionally disabled. It scans the daemon
+Feishu event log and requires one real long-connection message rejected while
+another Agent run was active.
 
 Required evidence for one message:
   1. eventKind=message with longConnection=true
-  2. eventKind=channel.agent.queued
-  3. eventKind=channel.agent.pending_replay
-  4. eventKind=agent.run.started
-  5. eventKind=agent.run.finished
+  2. eventKind=channel.agent.rejected_busy
+  3. no later eventKind=agent.run.started for the rejected message
 
 Options:
   --event-log <path>       Event log path. Default: ${DEFAULT_EVENT_LOG}
   --binding <id>           Binding id. Default: ${DEFAULT_BINDING_ID}
-  --agent <name>           Filter replayed Agent, for example codex, claude-code, opencode.
-  --mode <durable|fifo|any>
-                            durable requires pending_replay; fifo accepts same-process queued drain.
+  --agent <name>           Filter active Agent, for example codex, claude-code, opencode.
+  --mode <busy-reject|durable|fifo|any>
+                            Legacy queue modes are accepted as aliases for busy-reject.
   --since <iso>            Include events at or after this ISO timestamp.
   --since-minutes <n>      Include recent events. Default: ${DEFAULT_SINCE_MINUTES}.
   --wait                   Wait up to 120s for matching evidence.
   --timeout-ms <n>         Wait duration. Default: ${DEFAULT_TIMEOUT_MS}.
   --poll-ms <n>            Poll interval while waiting. Default: ${DEFAULT_POLL_MS}.
-  --allow-failed-run       Accept replay proof even if the final Agent run failed.
   --json                   Emit JSON only.
   -h, --help               Show this help.
 
-Example live check after creating the restart scenario in Feishu:
+Example live check:
   node scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --wait --json
 
-Minimal durable replay scenario:
-  1. Start this script with --mode durable --wait --json.
+Minimal busy-reject scenario:
+  1. Start this script with --wait --json.
   2. Send a long-running Feishu Agent request.
-  3. Before it finishes, send a second Feishu message in the same chat so it queues.
-  4. Restart openclaw-studio-channel-connectors.service before the queued run starts.
-  5. The script passes after pending_replay -> agent.run.finished appears.
+  3. Before it finishes, send a second Feishu message in the same chat.
+  4. The second message should be rejected with a /stop hint, not queued.
 `);
 }
 
@@ -105,9 +100,9 @@ function requireValue(argv, index, flag) {
   return value;
 }
 
-function queueMode(value) {
+function busyMode(value) {
   const normalized = String(value || "").trim().toLowerCase();
-  if (["durable", "fifo", "any"].includes(normalized)) return normalized;
+  if (["busy-reject", "reject", "durable", "fifo", "any"].includes(normalized)) return "busy-reject";
   throw new Error(`Unsupported mode: ${value}`);
 }
 
@@ -164,195 +159,93 @@ function sameMessage(event, messageId) {
   return normalizeString(event?.messageId) === normalizeString(messageId);
 }
 
-function runOk(event, options) {
-  if (options.allowFailedRun) return true;
-  return event?.agentOk === true || event?.ok === true || normalizeString(event?.agentStatus || event?.status) === "completed";
-}
-
 function eventAfter(event, afterMs) {
   return toTime(event?.checkedAt) >= afterMs;
 }
 
-function findLongConnectionInbound(events, queued) {
+function findLongConnectionInbound(events, rejected) {
   return events.find((event) => {
     if (event?.eventKind !== "message") return false;
     if (event?.longConnection !== true) return false;
-    if (!sameMessage(event, queued.messageId)) return false;
-    if (queued.channelId && normalizeString(event.channelId) !== normalizeString(queued.channelId)) return false;
-    if (queued.fromUid && normalizeString(event.fromUid) !== normalizeString(queued.fromUid)) return false;
+    if (!sameMessage(event, rejected.messageId)) return false;
+    if (rejected.channelId && normalizeString(event.channelId) !== normalizeString(rejected.channelId)) return false;
+    if (rejected.fromUid && normalizeString(event.fromUid) !== normalizeString(rejected.fromUid)) return false;
     return true;
   }) || null;
 }
 
-function findReplayFailure(events, queued) {
-  return events.find((event) => {
-    if (event?.eventKind !== "channel.agent.pending_replay_failed") return false;
-    if (!sameBinding(event, queued.bindingId)) return false;
-    if (!sameSession(event, queued.sessionKey)) return false;
-    if (!sameMessage(event, queued.messageId)) return false;
-    if (queued.pendingRunId && normalizeString(event.pendingRunId) !== normalizeString(queued.pendingRunId)) return false;
-    return eventAfter(event, toTime(queued.checkedAt));
-  }) || null;
-}
-
-function findReplay(events, queued) {
-  return events.find((event) => {
-    if (event?.eventKind !== "channel.agent.pending_replay") return false;
-    if (!sameBinding(event, queued.bindingId)) return false;
-    if (!sameSession(event, queued.sessionKey)) return false;
-    if (!sameMessage(event, queued.messageId)) return false;
-    if (queued.pendingRunId && normalizeString(event.pendingRunId) !== normalizeString(queued.pendingRunId)) return false;
-    return eventAfter(event, toTime(queued.checkedAt));
-  }) || null;
-}
-
-function findRunStarted(events, queued, replay) {
-  const replayAtMs = toTime(replay.checkedAt);
+function findRejectedRunStarted(events, rejected) {
+  const rejectedAtMs = toTime(rejected.checkedAt);
   return events.find((event) => {
     if (event?.eventKind !== "agent.run.started") return false;
-    if (!sameBinding(event, queued.bindingId)) return false;
-    if (!sameSession(event, queued.sessionKey)) return false;
-    if (!sameMessage(event, queued.messageId)) return false;
-    return eventAfter(event, replayAtMs);
+    if (!sameBinding(event, rejected.bindingId)) return false;
+    if (!sameSession(event, rejected.sessionKey)) return false;
+    if (!sameMessage(event, rejected.messageId)) return false;
+    return eventAfter(event, rejectedAtMs);
   }) || null;
 }
 
-function findDirectRunStarted(events, queued) {
-  const queuedAtMs = toTime(queued.checkedAt);
-  return events.find((event) => {
-    if (event?.eventKind !== "agent.run.started") return false;
-    if (!sameBinding(event, queued.bindingId)) return false;
-    if (!sameSession(event, queued.sessionKey)) return false;
-    if (!sameMessage(event, queued.messageId)) return false;
-    return eventAfter(event, queuedAtMs);
-  }) || null;
-}
-
-function findRunFinished(events, queued, started, options) {
-  const startedAtMs = toTime(started.checkedAt);
+function activeAgentMatches(rejected, options) {
   const agentFilter = normalizeString(options.agent).toLowerCase();
-  return events.find((event) => {
-    if (event?.eventKind !== "agent.run.finished") return false;
-    if (!sameBinding(event, queued.bindingId)) return false;
-    if (!sameSession(event, queued.sessionKey)) return false;
-    if (!sameMessage(event, queued.messageId)) return false;
-    if (!eventAfter(event, startedAtMs)) return false;
-    if (agentFilter && normalizeString(event.agent).toLowerCase() !== agentFilter) return false;
-    return runOk(event, options);
-  }) || null;
+  if (!agentFilter) return true;
+  return normalizeString(rejected.activeAgent || rejected.agent).toLowerCase() === agentFilter;
 }
 
 function buildProofs(events, options, minTimeMs) {
-  const queuedEvents = events.filter((event) => {
-    return event?.eventKind === "channel.agent.queued"
+  const rejectedEvents = events.filter((event) => {
+    return event?.eventKind === "channel.agent.rejected_busy"
       && event?.adapter === "feishu"
       && sameBinding(event, options.bindingId)
       && toTime(event.checkedAt) >= minTimeMs;
   });
   const proofs = [];
   const rejected = [];
-  for (const queued of queuedEvents) {
-    const inbound = findLongConnectionInbound(events, queued);
+  for (const item of rejectedEvents) {
+    const inbound = findLongConnectionInbound(events, item);
     if (!inbound) {
-      rejected.push(rejection(queued, "missing_long_connection_inbound"));
+      rejected.push(rejection(item, "missing_long_connection_inbound"));
       continue;
     }
-    const replay = findReplay(events, queued);
-    if (options.mode !== "fifo") {
-      const replayFailed = findReplayFailure(events, queued);
-      if (replayFailed) {
-        rejected.push(rejection(queued, "pending_replay_failed", replayFailed.error || replayFailed.reason || null, "durable"));
-        continue;
-      }
-      if (replay) {
-        const started = findRunStarted(events, queued, replay);
-        if (!started) {
-          rejected.push(rejection(queued, "missing_replayed_run_started", null, "durable"));
-          continue;
-        }
-        const finished = findRunFinished(events, queued, started, options);
-        if (!finished) {
-          rejected.push(rejection(queued, options.allowFailedRun ? "missing_replayed_run_finished" : "missing_successful_replayed_run_finished", null, "durable"));
-          continue;
-        }
-        proofs.push(proofForQueue({
-          kind: "durable",
-          options,
-          queued,
-          inbound,
-          replay,
-          started,
-          finished,
-        }));
-        continue;
-      }
-      if (options.mode === "durable") {
-        rejected.push(rejection(queued, "missing_pending_replay", null, "durable"));
-        continue;
-      }
-    }
-
-    if (options.mode === "durable") continue;
-    if (replay) {
-      rejected.push(rejection(queued, "has_pending_replay_not_fifo", null, "fifo"));
+    if (!activeAgentMatches(item, options)) {
+      rejected.push(rejection(item, "active_agent_filter_mismatch"));
       continue;
     }
-    const started = findDirectRunStarted(events, queued);
-    if (!started) {
-      rejected.push(rejection(queued, "missing_fifo_run_started", null, "fifo"));
+    const started = findRejectedRunStarted(events, item);
+    if (started) {
+      rejected.push(rejection(item, "rejected_message_started", started.checkedAt || null));
       continue;
     }
-    const finished = findRunFinished(events, queued, started, options);
-    if (!finished) {
-      rejected.push(rejection(queued, options.allowFailedRun ? "missing_fifo_run_finished" : "missing_successful_fifo_run_finished", null, "fifo"));
-      continue;
-    }
-    proofs.push(proofForQueue({
-      kind: "fifo",
-      options,
-      queued,
-      inbound,
-      replay: null,
-      started,
-      finished,
-    }));
+    proofs.push(proofForBusyReject({ options, rejected: item, inbound }));
   }
-  proofs.sort((a, b) => toTime(a.finishedAt) - toTime(b.finishedAt));
+  proofs.sort((a, b) => toTime(a.rejectedAt) - toTime(b.rejectedAt));
   return { proofs, rejected };
 }
 
-function proofForQueue(input) {
-  const { kind, options, queued, inbound, replay, started, finished } = input;
+function proofForBusyReject(input) {
+  const { options, rejected, inbound } = input;
   return {
-    kind,
+    kind: "busy-reject",
     bindingId: options.bindingId,
-    sessionKey: normalizeString(queued.sessionKey),
-    messageId: normalizeString(queued.messageId),
-    pendingRunId: normalizeString(queued.pendingRunId) || null,
+    sessionKey: normalizeString(rejected.sessionKey),
+    messageId: normalizeString(rejected.messageId),
     inboundAt: inbound.checkedAt || null,
-    queuedAt: queued.checkedAt || null,
-    replayAt: replay?.checkedAt || null,
-    startedAt: started.checkedAt || null,
-    finishedAt: finished.checkedAt || null,
-    queuePosition: Number.isFinite(Number(queued.queuePosition)) ? Number(queued.queuePosition) : null,
-    attempt: Number.isFinite(Number(replay?.attempt)) ? Number(replay.attempt) : null,
-    agent: normalizeString(finished.agent || started.agent) || null,
-    model: normalizeString(finished.model || started.model) || null,
-    agentOk: finished.agentOk === true || finished.ok === true,
-    agentStatus: normalizeString(finished.agentStatus || finished.status) || null,
-    replySent: finished.replySent === true,
-    progressEventCount: Number.isFinite(Number(finished.progressEventCount)) ? Number(finished.progressEventCount) : null,
+    rejectedAt: rejected.checkedAt || null,
+    activeRunId: normalizeString(rejected.activeRunId) || null,
+    activeMessageId: normalizeString(rejected.activeMessageId) || null,
+    activeAgent: normalizeString(rejected.activeAgent) || null,
+    activeModel: normalizeString(rejected.activeModel) || null,
+    activeStartedAt: normalizeString(rejected.activeStartedAt) || null,
+    replySent: rejected.replySent === true,
     longConnection: true,
   };
 }
 
-function rejection(event, reason, detail = null, kind = null) {
+function rejection(event, reason, detail = null) {
   return {
-    kind,
+    kind: "busy-reject",
     bindingId: normalizeString(event?.bindingId) || null,
     sessionKey: normalizeString(event?.sessionKey) || null,
     messageId: normalizeString(event?.messageId) || null,
-    pendingRunId: normalizeString(event?.pendingRunId) || null,
     reason,
     detail,
     checkedAt: event?.checkedAt || null,
@@ -378,16 +271,10 @@ function buildResult(options, nowMs = Date.now()) {
     proofs,
     rejected: rejected.slice(-20),
     failures: proofs.length ? [] : [{
-      type: "missing_feishu_durable_queue_evidence",
-      message: missingEvidenceMessage(options.mode),
+      type: "missing_feishu_busy_reject_evidence",
+      message: "No Feishu long-connection message was rejected by the IM busy guard for the selected filters.",
     }],
   };
-}
-
-function missingEvidenceMessage(mode) {
-  if (mode === "fifo") return "No Feishu long-connection queued message drained through same-process FIFO for the selected filters.";
-  if (mode === "any") return "No Feishu long-connection queued message matched durable replay or same-process FIFO evidence for the selected filters.";
-  return "No Feishu long-connection queued message was replayed and completed after daemon restart for the selected filters.";
 }
 
 async function waitForResult(options) {
@@ -409,10 +296,10 @@ function printResult(result, json) {
     console.log(JSON.stringify(result, null, 2));
     return;
   }
-  console.log(`Feishu queue live evidence: ${result.ok ? "OK" : "FAIL"}`);
+  console.log(`Feishu busy-guard live evidence: ${result.ok ? "OK" : "FAIL"}`);
   console.log(`mode=${result.mode} binding=${result.bindingId} proofs=${result.proofCount} rejected=${result.rejectedCount} since=${result.since}`);
   for (const proof of result.proofs) {
-    console.log(`- ${proof.kind} message=${proof.messageId} queued=${proof.queuedAt} replay=${proof.replayAt || "none"} finished=${proof.finishedAt} agent=${proof.agent || "unknown"} model=${proof.model || "unknown"} ok=${proof.agentOk}`);
+    console.log(`- ${proof.kind} message=${proof.messageId} rejected=${proof.rejectedAt} active=${proof.activeAgent || "unknown"}/${proof.activeModel || "unknown"} replySent=${proof.replySent}`);
   }
   for (const failure of result.failures) {
     console.log(`- ${failure.type}: ${failure.message}`);

@@ -38,14 +38,18 @@ async function runScriptFailure(args, root) {
   throw new Error("expected script to fail");
 }
 
-function durableQueueFixture(overrides = {}) {
+function busyRejectFixture(overrides = {}) {
   const base = {
     bindingId: "feishu-live",
     sessionKey: "feishu:oc_private:ou_user",
-    messageId: "om_queued",
-    pendingRunId: "feishu:feishu-live:om_queued",
+    messageId: "om_busy",
     channelId: "oc_private",
     fromUid: "ou_user",
+    activeRunId: "feishu-live:om_active",
+    activeMessageId: "om_active",
+    activeAgent: "codex",
+    activeModel: "glm-5",
+    activeStartedAt: "2026-06-13T00:59:50.000Z",
   };
   const input = { ...base, ...overrides };
   return [
@@ -62,74 +66,26 @@ function durableQueueFixture(overrides = {}) {
     {
       checkedAt: "2026-06-13T01:00:01.000Z",
       adapter: "feishu",
-      eventKind: "channel.agent.queued",
+      eventKind: "channel.agent.rejected_busy",
       bindingId: input.bindingId,
       sessionKey: input.sessionKey,
       messageId: input.messageId,
       channelId: input.channelId,
       fromUid: input.fromUid,
-      pendingRunId: input.pendingRunId,
-      queuePosition: 1,
+      activeRunId: input.activeRunId,
+      activeMessageId: input.activeMessageId,
+      activeAgent: input.activeAgent,
+      activeModel: input.activeModel,
+      activeStartedAt: input.activeStartedAt,
       replySent: true,
-    },
-    {
-      checkedAt: "2026-06-13T01:00:30.000Z",
-      adapter: "feishu",
-      eventKind: "channel.agent.pending_replay",
-      bindingId: input.bindingId,
-      sessionKey: input.sessionKey,
-      messageId: input.messageId,
-      pendingRunId: input.pendingRunId,
-      attempt: 1,
-      queuedAt: "2026-06-13T01:00:01.000Z",
-    },
-    {
-      checkedAt: "2026-06-13T01:00:31.000Z",
-      adapter: "feishu",
-      eventKind: "agent.run.started",
-      bindingId: input.bindingId,
-      sessionKey: input.sessionKey,
-      messageId: input.messageId,
-      agent: "codex",
-      model: "glm-5",
-    },
-    {
-      checkedAt: "2026-06-13T01:00:45.000Z",
-      adapter: "feishu",
-      eventKind: "agent.run.finished",
-      bindingId: input.bindingId,
-      sessionKey: input.sessionKey,
-      messageId: input.messageId,
-      agent: "codex",
-      model: "glm-5",
-      agentOk: true,
-      agentStatus: "completed",
-      replySent: true,
-      progressEventCount: 3,
     },
   ];
 }
 
-function fifoQueueFixture(overrides = {}) {
-  const events = durableQueueFixture(overrides);
-  return [
-    events[0],
-    events[1],
-    {
-      ...events[3],
-      checkedAt: "2026-06-13T01:00:02.000Z",
-    },
-    {
-      ...events[4],
-      checkedAt: "2026-06-13T01:00:15.000Z",
-    },
-  ];
-}
-
-test("Feishu durable queue live script accepts replayed long-connection queued turn", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-durable-smoke-"));
+test("Feishu busy-guard live script accepts rejected long-connection turn", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-busy-smoke-"));
   const eventLog = path.join(root, "feishu-events.jsonl");
-  writeJsonl(eventLog, durableQueueFixture());
+  writeJsonl(eventLog, busyRejectFixture());
 
   const parsed = await runScript([
     "--event-log", eventLog,
@@ -139,17 +95,17 @@ test("Feishu durable queue live script accepts replayed long-connection queued t
 
   assert.equal(parsed.ok, true);
   assert.equal(parsed.proofCount, 1);
-  assert.equal(parsed.proofs[0].messageId, "om_queued");
-  assert.equal(parsed.proofs[0].pendingRunId, "feishu:feishu-live:om_queued");
-  assert.equal(parsed.proofs[0].longConnection, true);
-  assert.equal(parsed.proofs[0].agent, "codex");
-  assert.equal(parsed.proofs[0].agentOk, true);
+  assert.equal(parsed.proofs[0].kind, "busy-reject");
+  assert.equal(parsed.proofs[0].messageId, "om_busy");
+  assert.equal(parsed.proofs[0].activeMessageId, "om_active");
+  assert.equal(parsed.proofs[0].activeAgent, "codex");
+  assert.equal(parsed.proofs[0].replySent, true);
 });
 
-test("Feishu durable queue live script rejects queued turn without long-connection ingress", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-durable-smoke-"));
+test("Feishu busy-guard live script rejects proof without long-connection ingress", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-busy-smoke-"));
   const eventLog = path.join(root, "feishu-events.jsonl");
-  const events = durableQueueFixture();
+  const events = busyRejectFixture();
   events[0] = { ...events[0], longConnection: false };
   writeJsonl(eventLog, events);
 
@@ -164,71 +120,22 @@ test("Feishu durable queue live script rejects queued turn without long-connecti
   assert.equal(failed.parsed.rejected[0].reason, "missing_long_connection_inbound");
 });
 
-test("Feishu durable queue live script accepts same-process FIFO queued turn only in fifo mode", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-durable-smoke-"));
-  const eventLog = path.join(root, "feishu-events.jsonl");
-  writeJsonl(eventLog, fifoQueueFixture());
-
-  const durableFailed = await runScriptFailure([
-    "--event-log", eventLog,
-    "--since", "2026-06-13T00:00:00.000Z",
-    "--json",
-  ], root);
-  assert.equal(durableFailed.code, 1);
-  assert.equal(durableFailed.parsed.mode, "durable");
-  assert.equal(durableFailed.parsed.rejected[0].reason, "missing_pending_replay");
-
-  const parsed = await runScript([
-    "--event-log", eventLog,
-    "--mode", "fifo",
-    "--since", "2026-06-13T00:00:00.000Z",
-    "--json",
-  ], root);
-
-  assert.equal(parsed.ok, true);
-  assert.equal(parsed.mode, "fifo");
-  assert.equal(parsed.proofCount, 1);
-  assert.equal(parsed.proofs[0].kind, "fifo");
-  assert.equal(parsed.proofs[0].messageId, "om_queued");
-  assert.equal(parsed.proofs[0].replayAt, null);
-  assert.equal(parsed.proofs[0].agentOk, true);
-});
-
-test("Feishu durable queue live script accepts durable and FIFO evidence in any mode", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-durable-smoke-"));
+test("Feishu busy-guard live script rejects proof if rejected message later starts", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-busy-smoke-"));
   const eventLog = path.join(root, "feishu-events.jsonl");
   writeJsonl(eventLog, [
-    ...fifoQueueFixture({ messageId: "om_fifo", pendingRunId: "feishu:feishu-live:om_fifo" }),
-    ...durableQueueFixture({ messageId: "om_durable", pendingRunId: "feishu:feishu-live:om_durable" }),
+    ...busyRejectFixture(),
+    {
+      checkedAt: "2026-06-13T01:00:02.000Z",
+      adapter: "feishu",
+      eventKind: "agent.run.started",
+      bindingId: "feishu-live",
+      sessionKey: "feishu:oc_private:ou_user",
+      messageId: "om_busy",
+      agent: "codex",
+      model: "glm-5",
+    },
   ]);
-
-  const parsed = await runScript([
-    "--event-log", eventLog,
-    "--mode", "any",
-    "--since", "2026-06-13T00:00:00.000Z",
-    "--json",
-  ], root);
-
-  assert.equal(parsed.ok, true);
-  assert.equal(parsed.mode, "any");
-  assert.deepEqual(parsed.proofs.map((proof) => proof.kind).sort(), ["durable", "fifo"]);
-});
-
-test("Feishu durable queue live script rejects replay failures before false positives", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-durable-smoke-"));
-  const eventLog = path.join(root, "feishu-events.jsonl");
-  const events = durableQueueFixture();
-  events.splice(3, 0, {
-    checkedAt: "2026-06-13T01:00:30.500Z",
-    adapter: "feishu",
-    eventKind: "channel.agent.pending_replay_failed",
-    bindingId: "feishu-live",
-    sessionKey: "feishu:oc_private:ou_user",
-    messageId: "om_queued",
-    pendingRunId: "feishu:feishu-live:om_queued",
-    error: "pending_feishu_group_missing",
-  });
-  writeJsonl(eventLog, events);
 
   const failed = await runScriptFailure([
     "--event-log", eventLog,
@@ -237,15 +144,30 @@ test("Feishu durable queue live script rejects replay failures before false posi
   ], root);
 
   assert.equal(failed.code, 1);
-  assert.equal(failed.parsed.ok, false);
-  assert.equal(failed.parsed.rejected[0].reason, "pending_replay_failed");
-  assert.equal(failed.parsed.rejected[0].detail, "pending_feishu_group_missing");
+  assert.equal(failed.parsed.rejected[0].reason, "rejected_message_started");
 });
 
-test("Feishu durable queue live script filters replay proof by Agent", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-durable-smoke-"));
+test("Feishu busy-guard live script accepts legacy queue mode as busy-reject alias", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-busy-smoke-"));
   const eventLog = path.join(root, "feishu-events.jsonl");
-  writeJsonl(eventLog, durableQueueFixture());
+  writeJsonl(eventLog, busyRejectFixture());
+
+  const parsed = await runScript([
+    "--event-log", eventLog,
+    "--mode", "durable",
+    "--since", "2026-06-13T00:00:00.000Z",
+    "--json",
+  ], root);
+
+  assert.equal(parsed.ok, true);
+  assert.equal(parsed.mode, "busy-reject");
+  assert.equal(parsed.proofs[0].messageId, "om_busy");
+});
+
+test("Feishu busy-guard live script filters rejected proof by active Agent", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-busy-smoke-"));
+  const eventLog = path.join(root, "feishu-events.jsonl");
+  writeJsonl(eventLog, busyRejectFixture());
 
   const failed = await runScriptFailure([
     "--event-log", eventLog,
@@ -262,5 +184,5 @@ test("Feishu durable queue live script filters replay proof by Agent", async () 
     "--json",
   ], root);
   assert.equal(parsed.ok, true);
-  assert.equal(parsed.proofs[0].agent, "codex");
+  assert.equal(parsed.proofs[0].activeAgent, "codex");
 });

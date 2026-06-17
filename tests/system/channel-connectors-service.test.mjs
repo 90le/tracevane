@@ -14543,7 +14543,7 @@ test("native Channel Connectors daemon keeps Feishu dispatcher parity diagnostic
   assert.match(daemonSource, /p2p_chat\.created_v1/);
 });
 
-test("native Channel Connectors daemon queues same-session messages while an Agent run is active", () => {
+test("native Channel Connectors daemon rejects same-session messages while an Agent run is active", () => {
   const daemonSource = fs.readFileSync(
     path.resolve("apps/api/modules/channel-connectors/daemon.ts"),
     "utf8",
@@ -14558,23 +14558,23 @@ test("native Channel Connectors daemon queues same-session messages while an Age
   assert.match(daemonSource, /effectiveAgentSessionDriverMode/);
   assert.match(daemonSource, /runChannelConnectorAgentTurnWithSessionDriver\(\{/);
   assert.match(daemonSource, /permissionMode:\s*input\.project\.permissionMode/);
-  assert.match(daemonSource, /channelSessionAgentRunQueues/);
-  assert.match(daemonSource, /function queuedAgentRunReply/);
-  assert.match(daemonSource, /本条已加入队列/);
-  assert.match(daemonSource, /eventKind:\s*"channel\.agent\.queued"/);
-  assert.match(daemonSource, /需要中断当前任务可以发送 `\/stop`/);
+  assert.match(daemonSource, /channelSessionAgentRunGuards/);
+  assert.match(daemonSource, /function rejectedBusyAgentRunReply/);
+  assert.match(daemonSource, /本条消息不会进入队列/);
+  assert.match(daemonSource, /eventKind:\s*"channel\.agent\.rejected_busy"/);
+  assert.match(daemonSource, /先发送 `\/stop`/);
   assert.match(daemonSource, /channelSessionParallelAgentRunsEnabled/);
   assert.match(daemonSource, /"allow_session_parallel_runs"/);
 });
 
-test("native Channel Connectors daemon serializes same-session Octo Agent turns", async () => {
+test("native Channel Connectors daemon rejects same-session Octo Agent turns while busy", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
   const fakeBin = path.join(root, "fake-bin");
-  const capturePath = path.join(root, "codex-queue-capture.jsonl");
+  const capturePath = path.join(root, "codex-busy-guard-capture.jsonl");
   fs.mkdirSync(fakeBin, { recursive: true });
   const fakeCodexPath = path.join(fakeBin, "codex");
   fs.writeFileSync(fakeCodexPath, [
@@ -14584,7 +14584,7 @@ test("native Channel Connectors daemon serializes same-session Octo Agent turns"
     "let stdin = '';",
     "process.stdin.on('data', (chunk) => { stdin += chunk.toString('utf8'); });",
     "process.stdin.on('end', async () => {",
-    "  const marker = stdin.includes('second queued turn') ? 'second' : 'first';",
+    "  const marker = stdin.includes('second busy turn') ? 'second' : 'first';",
     "  fs.appendFileSync(process.env.STUDIO_TEST_CODEX_CAPTURE, `${JSON.stringify({ event: 'start', marker, at: Date.now(), stdin })}\\n`);",
     "  if (marker === 'first') await delay(650);",
     "  fs.appendFileSync(process.env.STUDIO_TEST_CODEX_CAPTURE, `${JSON.stringify({ event: 'end', marker, at: Date.now() })}\\n`);",
@@ -14633,7 +14633,7 @@ test("native Channel Connectors daemon serializes same-session Octo Agent turns"
             channelType: 1,
             payload: {
               type: 1,
-              content: "first queued turn",
+              content: "first busy turn",
             },
           }));
           socket.send(encodeOctoRecvPacket({
@@ -14647,7 +14647,7 @@ test("native Channel Connectors daemon serializes same-session Octo Agent turns"
             channelType: 1,
             payload: {
               type: 1,
-              content: "second queued turn",
+              content: "second busy turn",
             },
           }));
         }, 50);
@@ -14694,8 +14694,8 @@ test("native Channel Connectors daemon serializes same-session Octo Agent turns"
           ...initial,
           agentProfiles: [
             {
-              id: "codex-queue",
-              name: "Codex Queue",
+              id: "codex-busy-guard",
+              name: "Codex Busy Guard",
               agent: "codex",
               model: "gpt-5",
               workDir: config.projectRoot,
@@ -14705,15 +14705,15 @@ test("native Channel Connectors daemon serializes same-session Octo Agent turns"
               appProfileRef: "codex",
             },
           ],
-          defaultAgentProfileId: "codex-queue",
+          defaultAgentProfileId: "codex-busy-guard",
           platformBindings: [
             {
-              id: "octo-queue",
+              id: "octo-busy-guard",
               platform: "octo",
               accountId: "octo-account",
               botId: null,
-              displayName: "Octo Queue",
-              agentProfileId: "codex-queue",
+              displayName: "Octo Busy Guard",
+              agentProfileId: "codex-busy-guard",
               enabled: true,
               allowlist: [],
               adminUsers: [],
@@ -14733,7 +14733,7 @@ test("native Channel Connectors daemon serializes same-session Octo Agent turns"
 
       const runtimeConfig = service.getDaemonConfig().config;
       runtimeConfig.management.port = await findFreePort();
-      const configPath = path.join(root, "daemon-queue-config.json");
+      const configPath = path.join(root, "daemon-busy-guard-config.json");
       fs.mkdirSync(path.dirname(runtimeConfig.paths.log), { recursive: true });
       fs.writeFileSync(configPath, JSON.stringify(runtimeConfig, null, 2), "utf8");
 
@@ -14756,7 +14756,7 @@ test("native Channel Connectors daemon serializes same-session Octo Agent turns"
       try {
         const connectedStatus = await waitFor(async () => {
           const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
-          const connected = response.body?.octoConnections?.find?.((item) => item.bindingId === "octo-queue" && item.connected);
+          const connected = response.body?.octoConnections?.find?.((item) => item.bindingId === "octo-busy-guard" && item.connected);
           return connected ? response.body : null;
         }, 5000);
         assert.equal(connectedStatus.ok, true);
@@ -14765,46 +14765,45 @@ test("native Channel Connectors daemon serializes same-session Octo Agent turns"
         const capture = await waitFor(() => {
           if (!fs.existsSync(capturePath)) return null;
           const lines = fs.readFileSync(capturePath, "utf8").trim().split(/\r?\n/).filter(Boolean);
-          if (lines.length < 4) return null;
+          if (lines.length < 2) return null;
           return lines.map((line) => JSON.parse(line));
         }, 5000);
         const starts = capture.filter((item) => item.event === "start");
         const ends = capture.filter((item) => item.event === "end");
-        assert.deepEqual(starts.map((item) => item.marker), ["first", "second"]);
-        assert.deepEqual(ends.map((item) => item.marker), ["first", "second"]);
-        assert.ok(
-          starts[1].at >= ends[0].at,
-          `second turn started before first turn ended: ${JSON.stringify(capture)}`,
-        );
-        assert.match(starts[0].stdin, /first queued turn/);
-        assert.match(starts[1].stdin, /second queued turn/);
+        assert.deepEqual(starts.map((item) => item.marker), ["first"]);
+        assert.deepEqual(ends.map((item) => item.marker), ["first"]);
+        assert.match(starts[0].stdin, /first busy turn/);
+        assert.doesNotMatch(starts[0].stdin, /second busy turn/);
 
         const finalStatus = await waitFor(async () => {
           const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
           const first = response.body?.agentRuns?.find?.((item) => item.messageId === "2001" && item.ok);
-          const second = response.body?.agentRuns?.find?.((item) => item.messageId === "2002" && item.ok);
-          return first && second ? response.body : null;
+          return first ? response.body : null;
         }, 10_000);
         assert.equal(finalStatus.ok, true);
+        assert.equal(finalStatus.pendingAgentRuns.count, 0);
+        assert.equal(finalStatus.agentRuns.some((item) => item.messageId === "2002"), false);
         const replyContents = requests
           .filter((request) => request.path === "/v1/bot/sendMessage")
           .map((request) => request.body?.payload?.content || "")
           .join("\n");
-        assert.match(replyContents, /本条已加入队列/);
+        assert.match(replyContents, /本条消息不会进入队列/);
+        assert.match(replyContents, /\/stop/);
         assert.match(replyContents, /first done/);
-        assert.match(replyContents, /second done/);
+        assert.doesNotMatch(replyContents, /second done/);
         const octoEvents = await waitForJsonLines(runtimeConfig.paths.octoEvents, (events) => {
           return events.some((event) => {
-            return event.eventKind === "channel.agent.queued"
+            return event.eventKind === "channel.agent.rejected_busy"
               && event.messageId === "2002"
               && event.sessionKey === "dmwork:dm:queue-user";
           });
         });
         assert.ok(octoEvents.some((event) => {
-          return event.eventKind === "channel.agent.queued"
+          return event.eventKind === "channel.agent.rejected_busy"
             && event.messageId === "2002"
             && event.sessionKey === "dmwork:dm:queue-user";
         }));
+        assert.equal(octoEvents.some((event) => event.eventKind === "channel.agent.queued"), false);
       } finally {
         child.kill("SIGTERM");
         await new Promise((resolve) => {
@@ -14822,7 +14821,7 @@ test("native Channel Connectors daemon serializes same-session Octo Agent turns"
   }
 });
 
-test("native Channel Connectors daemon replays queued Octo Agent turns after restart", async () => {
+test("native Channel Connectors daemon does not persist or replay busy Octo Agent turns", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   const service = createChannelConnectorsService(config, {
@@ -15034,64 +15033,35 @@ test("native Channel Connectors daemon replays queued Octo Agent turns after res
         assert.equal(connectedStatus.ok, true);
         assert.equal(wsConnects.length, 1);
 
-        const pending = await waitFor(() => {
-          if (!fs.existsSync(pendingPath)) return null;
-          const store = JSON.parse(fs.readFileSync(pendingPath, "utf8"));
-          return store.records?.some?.((record) => record.messageId === "3002") ? store : null;
-        }, 5000);
-        assert.equal(pending.records.find((record) => record.messageId === "3002").adapter, "octo");
+        const octoEvents = await waitForJsonLines(runtimeConfig.paths.octoEvents, (events) => {
+          return events.some((event) => event.eventKind === "channel.agent.rejected_busy"
+            && event.messageId === "3002");
+        });
+        assert.ok(octoEvents.some((event) => event.eventKind === "channel.agent.rejected_busy"
+          && event.messageId === "3002"));
+        assert.equal(octoEvents.some((event) => event.eventKind === "channel.agent.queued"), false);
         const pendingStatus = await waitFor(async () => {
           const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
-          return response.body?.pendingAgentRuns?.records?.some?.((record) => record.messageId === "3002")
-            ? response.body.pendingAgentRuns
-            : null;
+          return response.body?.pendingAgentRuns || null;
         }, 5000);
-        assert.equal(pendingStatus.count, 1);
-        assert.equal(pendingStatus.records[0].adapter, "octo");
+        assert.equal(pendingStatus.count, 0);
+        if (fs.existsSync(pendingPath)) {
+          const store = JSON.parse(fs.readFileSync(pendingPath, "utf8"));
+          assert.deepEqual(store.records || [], []);
+        }
       } finally {
         await stopDaemon(firstDaemon.child);
       }
       assert.equal(firstDaemon.stderr().trim(), "");
-
-      const secondDaemon = startDaemon();
-      try {
-        const capture = await waitFor(() => {
-          if (!fs.existsSync(capturePath)) return null;
-          const lines = fs.readFileSync(capturePath, "utf8").trim().split(/\r?\n/).filter(Boolean);
-          const events = lines.map((line) => JSON.parse(line));
-          return events.some((event) => event.event === "start" && event.marker === "second") ? events : null;
-        }, 10_000);
+      if (fs.existsSync(capturePath)) {
+        const capture = fs.readFileSync(capturePath, "utf8")
+          .trim()
+          .split(/\r?\n/)
+          .filter(Boolean)
+          .map((line) => JSON.parse(line));
         const starts = capture.filter((item) => item.event === "start");
-        assert.equal(starts.some((item) => item.marker === "second"), true);
-        assert.match(starts.find((item) => item.marker === "second").stdin, /second durable turn/);
-
-        await waitFor(() => {
-          if (!fs.existsSync(pendingPath)) return {};
-          const store = JSON.parse(fs.readFileSync(pendingPath, "utf8"));
-          return store.records?.some?.((record) => record.messageId === "3002") ? null : store;
-        }, 5000);
-        const octoEvents = await waitForJsonLines(runtimeConfig.paths.octoEvents, (events) => {
-          return events.some((event) => event.eventKind === "channel.agent.pending_replay"
-            && event.messageId === "3002")
-            && events.some((event) => event.eventKind === "agent.run.started"
-              && event.messageId === "3002");
-        });
-        assert.ok(octoEvents.some((event) => event.eventKind === "channel.agent.pending_replay"
-          && event.messageId === "3002"));
-        const replayStatus = await waitFor(async () => {
-          const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
-          return response.body?.pendingAgentRuns?.recentEvents?.some?.((event) => {
-            return event.eventKind === "channel.agent.pending_replay"
-              && event.messageId === "3002";
-          })
-            ? response.body.pendingAgentRuns
-            : null;
-        }, 5000);
-        assert.equal(replayStatus.count, 0);
-      } finally {
-        await stopDaemon(secondDaemon.child);
+        assert.equal(starts.some((item) => item.marker === "second"), false);
       }
-      assert.equal(secondDaemon.stderr().trim(), "");
       assert.equal(inboundSent, true);
     });
   } finally {

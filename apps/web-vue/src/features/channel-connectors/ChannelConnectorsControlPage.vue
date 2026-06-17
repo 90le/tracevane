@@ -142,7 +142,7 @@
 
             <article class="ccx-overview-card">
               <div>
-                <small>{{ text('会话与队列', 'Sessions and queue') }}</small>
+                <small>{{ text('会话与防重复', 'Sessions and busy guard') }}</small>
                 <strong>{{ activeAgentSessions.length }}</strong>
               </div>
               <p>{{ queueSummary }}</p>
@@ -227,7 +227,7 @@
                     <strong>{{ formatMetric(runtimeStatus?.agentRuns) }}</strong>
                   </div>
                   <div>
-                    <span>{{ text('待恢复', 'Pending') }}</span>
+                    <span>{{ text('遗留待清理', 'Legacy pending') }}</span>
                     <strong>{{ formatMetric(pendingAgentRunStatus?.count) }}</strong>
                   </div>
                 </div>
@@ -299,10 +299,10 @@
                 </div>
               </section>
 
-              <section class="ccx-runtime-card" aria-label="Pending Agent run queue">
+              <section class="ccx-runtime-card" aria-label="IM busy guard">
                 <div class="ccx-runtime-card__head">
                   <div>
-                    <small>Durable queue</small>
+                    <small>Busy guard</small>
                     <strong>{{ pendingQueueHeadline }}</strong>
                   </div>
                   <StatusPill :label="pendingQueueStatusLabel" :tone="pendingQueueStatusTone" />
@@ -317,7 +317,7 @@
                       <small>{{ record.adapter }} · {{ record.bindingId }} · {{ formatDuration(record.ageMs || 0) }}</small>
                       <strong>{{ record.messageId }} · {{ record.projectId }}</strong>
                       <span>{{ record.sessionKey }}</span>
-                      <span>{{ text('入队', 'Queued') }} {{ formatTimestamp(record.queuedAt) }} · {{ text('尝试', 'attempts') }} {{ record.attempts }}</span>
+                      <span>{{ text('遗留入队', 'Legacy queued') }} {{ formatTimestamp(record.queuedAt) }} · {{ text('尝试', 'attempts') }} {{ record.attempts }}</span>
                     </div>
                   </div>
                   <div
@@ -335,7 +335,7 @@
                     </div>
                   </div>
                   <div v-if="runtimeStatus?.reachable && !pendingAgentRunRecords.length && !pendingAgentRunEvents.length" class="ccx-empty compact">
-                    {{ text('暂无可恢复队列记录', 'No durable queue records yet') }}
+                    {{ text('暂无 busy guard 清理记录', 'No busy guard cleanup records yet') }}
                   </div>
                 </div>
               </section>
@@ -913,17 +913,17 @@ const autoCompactStatusTone = computed<'neutral' | 'accent' | 'sage' | 'danger'>
 
 const pendingQueueHeadline = computed(() => {
   const count = pendingAgentRunStatus.value?.count || 0;
-  if (!count) return text('空闲', 'Idle');
+  if (!count) return text('Busy guard 空闲', 'Busy guard idle');
   const oldest = pendingAgentRunStatus.value?.oldestQueuedAt;
   return oldest
-    ? `${count} · ${formatTimestamp(oldest)}`
-    : String(count);
+    ? `${text('遗留', 'Legacy')} ${count} · ${formatTimestamp(oldest)}`
+    : `${text('遗留', 'Legacy')} ${count}`;
 });
 
 const pendingQueueStatusLabel = computed(() => {
   const count = pendingAgentRunStatus.value?.count || 0;
-  if (count > 0) return text('有待恢复', 'Pending');
-  if (pendingAgentRunEvents.value.length > 0) return text('有重放记录', 'Replay log');
+  if (count > 0) return text('遗留待清理', 'Legacy pending');
+  if (pendingAgentRunEvents.value.length > 0) return text('有清理记录', 'Cleanup log');
   return text('空闲', 'Idle');
 });
 
@@ -964,8 +964,8 @@ const queueSummary = computed(() => {
   const pending = pendingAgentRunStatus.value?.count || 0;
   const events = pendingAgentRunEvents.value.length;
   return pending
-    ? `${pending} ${text('条待恢复消息', 'pending runs')}`
-    : `${events} ${text('条最近队列事件', 'recent queue events')}`;
+    ? `${pending} ${text('条遗留待清理消息', 'legacy pending runs')}`
+    : `${events} ${text('条防重复清理事件', 'busy guard cleanup events')}`;
 });
 
 const daemonStateLabel = computed(() => {
@@ -1145,9 +1145,9 @@ function autoCompactHistoryLine(record: ChannelConnectorsDaemonRuntimeAutoCompac
 }
 
 function pendingQueueEventLabel(event: NonNullable<ChannelConnectorsStatusResponse['runtime']['pendingAgentRuns']>['recentEvents'][number]): string {
-  if (event.eventKind === 'channel.agent.pending_replay') return text('重放启动', 'Replay started');
-  if (event.eventKind === 'channel.agent.pending_replay_failed') return text('重放失败', 'Replay failed');
-  return text('已丢弃', 'Dropped');
+  if (event.eventKind === 'channel.agent.pending_replay') return text('历史重放启动', 'Legacy replay started');
+  if (event.eventKind === 'channel.agent.pending_replay_failed') return text('历史重放失败', 'Legacy replay failed');
+  return text('遗留消息已丢弃', 'Legacy message dropped');
 }
 
 function pendingQueueEventClass(event: NonNullable<ChannelConnectorsStatusResponse['runtime']['pendingAgentRuns']>['recentEvents'][number]): Record<string, boolean> {

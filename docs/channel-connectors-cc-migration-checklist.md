@@ -48,10 +48,10 @@
 | P1 | 工具/思考/过程显示 | 继续推进：非飞书过程回复标题已移除；结构化/混合工具结果、per-agent live `--require-tool-output`、Codex reasoning summary、Octo `/thinking` 过滤、OpenCode live reasoning 和 parser/live 能力展示已补；Codex/Claude Code/OpenCode 均有真实 IM 过程回复证据 | 三个 Agent 都稳定提取工具名、输入、stdout/stderr、exit/status、思考流、过程回复和最终回复分类；继续复核真实 CLI 新事件形态 |
 | P1 | 图片/视觉模型 fallback | 已完成：默认关闭；binding 可设启用和默认视觉模型；IM `/vision` 命令与 Feishu 卡片可临时开启/关闭/指定模型；Gateway catalog 只列健康 vision 模型 | 非视觉当前模型收到图片时按配置切到指定/自动健康视觉模型，失败回退附件说明模式 |
 | P1 | Channel Connectors CLI Profile 管理面 | 已完成本轮关闭验收：`/channel-connectors/profiles` 已作为独立工作台承接 Profile、Gateway 模型、上下文预算、IM 绑定、持久会话和事件记录；顶部 Profile 摘要条、独立 CLI App Connection 区、右侧 Activity 三段式会话/事件日志、默认折叠 trace、Profile 复制、删除保护、设为默认、模型网关 App Connection deep-link、CLI App Connection config target/backup/launch hint 摘要、脱敏 preview、当前 CLI App 直接 apply、Profile 列表 effective model、IM binding requested/effective session driver 摘要、active session trace、session event trace/失败标记、IM binding/requested persistent binding/session/event deep-link、binding 行事件过滤快捷入口、事件按 binding/type 筛选和 8/20/50 显示数量、当前 Profile 活动 session 批量停止、未保存撤销、Profile ID 重命名绑定迁移、App Connection effective model 展示、Agent 切换时清理 stale App Profile ref、Profile Apply-to-CLI 不改 Gateway 全局默认模型已补；`/agents/:agentId/cli` 已删除 | 真实保存/事件筛选/Claude Code apply+rollback、三 Agent live run、Feishu/Octo compact 和入站图片 gate 已验收 |
-| P1 | Channel Connectors 主配置页信息架构 | 进行中：主页面已收敛为 Overview / Bindings / Runtime / Sessions 四个同级工作区；Bindings 已改为左侧绑定列表 + 右侧分区编辑器；Runtime 已改为 daemon/链路 + compact/queue 双列工作台；Sessions 已改为策略/绑定 + 活动会话/事件双列工作台，原始日志默认折叠；内嵌 Profile 快改和 Skills 管理已移除 | 后续继续精修 Profile 工作台细节，避免再次形成子页面套子页面 |
-| P1 | 上下文预算与 compact | 核心完成：`/status` 展示 resolved model window/reserve/threshold/remaining，auto compact 已按 native-first、baseline 和 fallback 记录接入；显式 `/compact` 命令已进入 session FIFO，native compact 禁止 one-shot crash fallback | post-fix Feishu 显式 `/compact` native live 已通过；不伪造 Agent 内部 token 预算 |
+| P1 | Channel Connectors 主配置页信息架构 | 进行中：主页面已收敛为 Overview / Bindings / Runtime / Sessions 四个同级工作区；Bindings 已改为左侧绑定列表 + 右侧分区编辑器；Runtime 已改为 daemon/链路 + compact/busy guard 双列工作台；Sessions 已改为策略/绑定 + 活动会话/事件双列工作台，原始日志默认折叠；内嵌 Profile 快改和 Skills 管理已移除 | 后续继续精修 Profile 工作台细节，避免再次形成子页面套子页面 |
+| P1 | 上下文预算与 compact | 核心完成：`/status` 展示 resolved model window/reserve/threshold/remaining，auto compact 已按 native-first、baseline 和 fallback 记录接入；显式 `/compact` 使用同 session guard，busy 时拒绝而不是排队；native compact 禁止 one-shot crash fallback | post-fix Feishu 显式 `/compact` native live 已通过；不伪造 Agent 内部 token 预算 |
 | P1 | 文件/消息收发 | 核心完成：私聊入站 staging、出站 file/message manifest、原始文件名、Feishu/Octo 上传发送和 Octo COS/STS 大文件路径已覆盖；Feishu/Octo live 证据已通过 | 后续只做平台大小限制、真实大文件和异常路径抽查 |
-| P2 | durable queue | 已完成：pending-agent-run store 已接入 Octo/Feishu；daemon/API/UI 运行态可见性已补；Octo daemon restart 回归已通过；Feishu same-process FIFO 和 daemon restart replay 均有 live 证据 | 后续仅做回归抽查 |
+| P2 | IM busy guard（有意偏离 CC queue） | 已完成本轮改向：CC Go 有 per-session FIFO/durable queue，但 Studio IM 普通消息按用户需求不排队；同 binding + IM session 已有任务时直接回复 busy guard，提示 `/stop`/`/cancel` 后重发；历史 pending-agent-run store 启动即标记 `pending_dropped` 并清空 | 回归需证明 busy 消息未进入 runner、未落 pending store、不会 daemon 重启 replay |
 | P3 | 更多平台 | 路线图 | 微信/企微/钉钉/Telegram/Slack/Discord/QQ/LINE 等只按私聊能力迁移 |
 | P3 | 更多 Agent | 路线图 | Gemini、Kimi、Cursor、Qoder、iFlow、Devin、ACP 等逐个补 runner 验收 |
 
@@ -66,7 +66,7 @@
 - `node scripts/smoke-channel-connectors-agent-sessions.mjs --json` 通过，daemon session 管理 endpoint reachable，Feishu/Octo binding 均为 effective persistent，当前 active session 为 0。
 - `node scripts/smoke-channel-connectors-native-cli-sessions.mjs --apps claude-code,opencode --json` 通过，isolated real CLI session 覆盖 Claude Code / OpenCode normal turn、file manifest、native visual input、native compact 和 stop/cancel，不污染真实 HOME/runtime。
 - `node scripts/smoke-channel-connectors-command-live.mjs --recent-sessions --probe --commands /status,/model,/mode,/dir,/compact --json` 通过，Feishu/Octo 最近 session 可 dry-run 解析模型、权限、工作目录和 compact 命令；probe 不发送平台消息、不修改状态，不替代真实 IM live。
-- `node scripts/smoke-channel-connectors-feishu-long-connection.mjs --json` 通过，70 秒采样内 Feishu 长连接 connected/sdkConnected，ping/pong 正常，`transportStale=false`，`violations=0`；runtime 同时显示 Octo connection 为 1、pending queue 为 0。
+- `node scripts/smoke-channel-connectors-feishu-long-connection.mjs --json` 通过，70 秒采样内 Feishu 长连接 connected/sdkConnected，ping/pong 正常，`transportStale=false`，`violations=0`；runtime 同时显示 Octo connection 为 1、legacy pending 为 0。
 - `node scripts/smoke-channel-connectors-profile-closure.mjs --plan --json` 通过，闭环验收入口会统一检查三 Agent live run、Feishu 显式 `/compact`、Octo 显式 `/compact`、入站图片 staged-path 四个真实 IM gate，并输出缺口触发口径。
 - `node scripts/smoke-channel-connectors-profile-closure.mjs --json` 通过，`three-agent-live-run`、`feishu-explicit-compact`、`octo-explicit-compact`、`inbound-image` 四个真实 IM gate 全绿。
 - `node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，17/17 通过，覆盖 Codex app-server 空闲超时、审批/批准工具刷新 idle、fallback 恢复时不发用户 timeout 进度和真正卡死 interrupt。
@@ -130,17 +130,14 @@
 - `node --test --test-name-pattern "image" tests/system/channel-connectors-codex-app-server-driver.test.mjs` 通过。
 - `node --test --test-name-pattern "IM commands switch agent|visual turns select Gateway vision models|model menus can read live Gateway model lists|command surface renders text" tests/system/channel-connectors-service.test.mjs`，4/4 通过，覆盖 `/vision` 命令、指定视觉模型、Gateway vision 菜单和 Feishu 卡片。
 - 真实 runner smoke：Codex / Claude Code / OpenCode + `gpt-5.4-mini` 均识别受控三色方块图片成功；非视觉 `glm-5` 图片请求不传 native 图片并按附件说明退回；视频附件不做 Studio 预抽帧，只以 staged local file 进入 Agent。
-- `node --test --test-name-pattern "queues same-session|serializes same-session|replays queued Octo Agent turns" tests/system/channel-connectors-service.test.mjs`，3/3 通过，覆盖同 session FIFO 和 Octo 已入队未启动消息的 daemon 重启重放。
-- `node --test --test-name-pattern "replays queued Octo Agent turns" tests/system/channel-connectors-service.test.mjs` 通过，覆盖 daemon `/status` 的 pending queue 记录和 replay 事件。
-- `node --test tests/system/channel-connectors-feishu-durable-queue-live-script.test.mjs`，6/6 通过，覆盖 Feishu live 证据脚本的 long-connection queued/replay/finished、same-process FIFO 和 any 模式判定。
-- `node scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --mode fifo --since-minutes 1440 --json` 通过，识别 Feishu 24h 内同进程 FIFO 排队后成功执行证据。
-- `node scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --mode durable --since-minutes 10 --wait --timeout-ms 600000 --poll-ms 1000 --json` 通过，识别 Feishu queued message 在 daemon 重启后 replay 并完成：`proofCount=1`、`agent=opencode`、`agentOk=true`、`replySent=true`。
+- `node --test --test-name-pattern "rejects same-session|does not persist or replay busy Octo Agent turns" tests/system/channel-connectors-service.test.mjs` 通过，覆盖同 session busy guard、第二条 Octo 消息不进 runner、pending store 为空且 daemon 重启不会 replay。
+- `node --test tests/system/channel-connectors-feishu-durable-queue-live-script.test.mjs` 通过，覆盖 legacy 脚本名下的 Feishu busy guard 证据：`channel.agent.rejected_busy`、缺失长连接入站、被拒消息不应启动、legacy `--mode durable` 作为 busy-reject alias。
 - `node --test --test-name-pattern "IM commands switch|Feishu transport can reply|Feishu command replies use progress reactions|daemon keeps Feishu compact native-first" tests/system/channel-connectors-service.test.mjs`，4/4 通过，覆盖 Feishu reply-to、命令 reaction 和 compact command progress。
 - `node --test tests/system/channel-connectors-command-live-script.test.mjs`，8/8 通过，覆盖命令进度日志和 Feishu command progress card patch。
 - `node --test --test-name-pattern "progress|Channel Connectors page calls" tests/system/channel-connectors-service.test.mjs tests/system/studio-web-channel-connectors-page.test.mjs`，13/13 通过，覆盖 Feishu 进度卡条数配置和前端保存字段。
 - `node --test --test-name-pattern "command surface renders text and Feishu card actions" tests/system/channel-connectors-service.test.mjs` 通过，锁定 Feishu 主菜单清爽配置面板、低频功能二级“更多”页、子页主菜单/更多导航和文本 `/help` 排版。
 - `node --test --test-name-pattern "IM commands switch|slash compact works|Feishu command replies use progress reactions|daemon keeps Feishu compact native-first" tests/system/channel-connectors-service.test.mjs`，4/4 通过。
-- `node --test --test-name-pattern "replays queued Octo Agent turns|daemon keeps Feishu dispatcher parity diagnostics" tests/system/channel-connectors-service.test.mjs`，2/2 通过。
+- `node --test --test-name-pattern "does not persist or replay busy Octo Agent turns|daemon keeps Feishu dispatcher parity diagnostics" tests/system/channel-connectors-service.test.mjs`，2/2 通过。
 - `npm run typecheck:web`
 - `npm run build:web`
 - `node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs`，覆盖 Channel Connectors Profile 三栏布局、Gateway 预算索引、auto compact 展示和 Agents 旧 CLI 路由删除。
@@ -169,9 +166,9 @@
 
 1. 继续抽查 Codex / Claude Code / OpenCode 真实 IM 工具流、过程回复、思考流和审批路径；工具流 live smoke 默认带 `--agents codex,claude-code,opencode --require-agent-coverage --require-tool-output`。
 2. Octo 出站文件用户手动验收和自动 `outboundFilesSent` live 证据均已通过；Octo 视频和 Octo 显式 `/compact` 24h 已验收。
-3. durable queue：真实 Feishu daemon restart replay 和普通 FIFO 均已验收，后续只保留回归抽查。
+3. IM busy guard：真实 Feishu/Octo 后续只保留 busy 拒绝抽查；不再验收 FIFO/durable replay。
 
 现场触发口径：
 
 - OpenCode 过程回复复验：先在 IM 中切到 OpenCode，再运行 `node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --agents opencode --require-agent-coverage --require-ok --require-reply --require-tool --require-tool-output --require-process-reply --min-runs 1 --json`，发送要求“每个工具前后都输出一句话”的三步 shell prompt。
-- Feishu durable replay 复验：先运行 `node scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --mode durable --wait --json`，再发送长任务、同 chat 第二条消息、重启 `openclaw-studio-channel-connectors.service`，等待 `pending_replay -> agent.run.finished`。
+- Feishu busy guard 复验：先运行 `node scripts/smoke-channel-connectors-feishu-durable-queue-live.mjs --wait --json`，再发送长任务、同 chat 第二条消息；期望第二条出现 `channel.agent.rejected_busy`，并且没有该 messageId 的 `agent.run.started`。
