@@ -28,7 +28,7 @@ export function modelGatewayRealtimeUnsupportedPayload(): Record<string, unknown
         providerType: "codex-account",
         feasibility: "blocked-no-stable-codex-account-realtime-contract",
         reference:
-          "CLIProxyAPI implements a full Responses WebSocket state machine; Studio keeps this route explicit unsupported until that contract is ported and tested.",
+          "No official or directly verified Codex account Realtime/WebSocket contract is available for Studio Gateway yet; this route stays explicit unsupported until a full turn-state contract is verified and tested.",
         alternatives: [
           "Use /v1/responses for Codex account text and tool workflows.",
           "Use /v1/chat/completions or /v1/messages through Gateway protocol conversion.",

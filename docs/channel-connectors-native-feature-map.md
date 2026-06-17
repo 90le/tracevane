@@ -1,16 +1,15 @@
-# Channel Connectors Native Feature Map
+# Channel Connectors Native Capability Map
 
-> 更新：2026-06-16
-> 目的：把 CC/OpenClaw 参考能力映射到 Studio 原生实现，避免回到托管 cc-connect 或旧 Codex Stack。
+> 更新：2026-06-17
+> 目的：记录 Channel Connectors 当前原生能力、边界、验证方式和后续开工前的 research-first 要求。
 
-## 参考范围
+## 核验范围
 
-- CC 二开源码：`release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`
-- Feishu 最新 OpenClaw 参考：`/home/binbin/.openclaw/projects/openclaw/latest/extensions/feishu`
-- Octo 插件参考：`~/.openclaw/extensions/octo`
-- Octo Bot API skill：`~/.openclaw/extensions/octo/skills/octo-bot-api/SKILL.md`
+- Feishu/Lark、OpenCode、Claude Code、OpenAI Codex、Octo/WuKongIM 或目标平台的官方文档、API、SDK、CLI help 和 changelog。
+- 活跃 GitHub 仓库、issues、discussions、release notes 和社区故障报告。
+- Studio 当前 daemon、session、secret、file staging、UI 和测试边界。
 - Feishu 长连接专项：`docs/feishu-long-connection-issue-tracker.md`
-- Gateway 协议转换参考：`/tmp/cc-switch-src`
+- 通用开工门禁：`docs/research-first-development-checklist.md`
 
 ## 当前产品边界
 
@@ -22,11 +21,11 @@
 
 ## 原生映射
 
-| 域 | CC/OpenClaw 能力 | Studio 原生目标 | 状态 |
+| 域 | 能力 | Studio 原生目标 | 状态 |
 | --- | --- | --- | --- |
 | Runtime | daemon、日志、health/status | `openclaw-studio-channel-connectors.service`，Studio/OpenClaw 崩溃后继续在线 | 已接入，继续 live 验证 |
 | Config | project/platform/agent options | Agent Profile、workDir、model、permission、Gateway key ref、platform binding | 已完成 |
-| Platforms | dmwork/feishu/更多 IM | 当前只做 Octo/Feishu 私聊；更多平台按私聊能力迁移 | 进行中 |
+| Platforms | dmwork/feishu/更多 IM | 当前只做 Octo/Feishu 私聊；更多平台按私聊能力和当前外部合同逐个验证 | 进行中 |
 | Agents | Codex、Claude Code、OpenCode、更多 Agent | 当前只做三个已有 runner；更多 Agent 路线图 | 进行中 |
 | Messages | text/image/file/voice/progress/reply | 私聊 incoming/reply/attachment/file/image/Markdown renderer | 进行中 |
 | Sessions | session key、续接、重置、workdir、切 Agent/model/mode | Studio session store、override、busy guard、stop、compact | 进行中 |
@@ -38,7 +37,7 @@
 - Octo/Feishu daemon、binding、credential metadata、status、health 和基础治理已接入。
 - Codex、Claude Code、OpenCode runner 已接入 Gateway-first 配置和 IM session override。
 - Feishu 长连接按官方 SDK、同 App owner lock、fast ACK、ping/pong proof、transport stale 和水位线策略推进；2026-06-12 用户 live 验证稳定。
-- Octo 长连接按 CC/OpenClaw heartbeat、ACK、reconnect、read receipt 和 COS/STS 文件上传策略推进；2026-06-12 用户 live 验证稳定。
+- Octo 长连接按当前 WuKongIM/API 核验、heartbeat、ACK、reconnect、read receipt 和 COS/STS 文件上传策略推进；2026-06-12 用户 live 验证稳定。
 - `studio-channel-files` 已覆盖出站文件声明、路径校验、原始文件名、Feishu/Octo 上传和发送。
 - `studio-channel-messages` 已覆盖私聊出站消息声明，Feishu 支持 open_id/user_id/dm markdown，Octo 支持 human DM 和 best-effort group/thread。
 - 私聊文件/消息收发核心已完成：入站 staging、出站 manifest、原始文件名、Feishu/Octo 文件/图片上传发送、Octo COS/STS 大文件路径和 multipart fallback 均有回归；后续只抽查真实平台限制。
@@ -68,14 +67,14 @@
 - Codex、Claude Code、OpenCode 混合 content 工具结果已加固：普通文本块与结构化 `stdout` / `stderr` / `exit_code` 会同时保留。
 - `smoke-channel-connectors-agent-run-live.mjs` 已新增 `--agents`、`--require-agent-coverage`、`--require-tool-output` 和 `--require-process-reply`，真实 IM smoke 可按 Agent 验证工具结果和过程回复；普通最终回复样本只作为 process warning 诊断，不阻断已有合格过程回复证据。
 - `smoke-channel-connectors-agent-runner-direct.mjs` 已新增，用于真实 CLI runner/parser 分层验证；三 Agent direct smoke 已证明过程回复、工具输出和最终回复分类正常。
-- Codex 的 one-shot fallback 与 app-server 已按 CC Go 合同提取 reasoning `summary` / `summary_text` / `content`，空 reasoning 不再显示假思考。
+- Codex 的 one-shot fallback 与 app-server 已按当前结构化事件和 live parser 证据提取 reasoning `summary` / `summary_text` / `content`，空 reasoning 不再显示假思考。
 - Claude Code one-shot 与 persistent driver 已保留结构化 `tool_result` 的 `stdout`、`stderr` 和 `exit_code`。
 - 非飞书气泡式进度流的 assistant 过程回复已改为正文直出，不再携带“过程回复”标题。
 - Octo 私聊已验证 `/thinking off` 会隐藏 reasoning 进度，`/thinking on` 会恢复 reasoning 气泡；Feishu/Octo 使用同一进度过滤函数。
 - 真实 CLI thinking smoke：Claude Code 2.1.86 当前未输出 `thinking` item；OpenCode 1.17.0 在 `claude-sonnet-4-5` 上输出 `reasoning` part，在 `gpt-5.4-mini` 上不输出 reasoning。
 - `/status`、`/current`、Feishu 菜单和 Channel Connectors 页面已展示 `thinking` parser/live 支持差异：Codex 为 model-dependent，Claude Code 当前 not observed，OpenCode 按模型区分 observed / not observed / model-dependent。
 - Feishu 卡片进度和 Octo 文本/Markdown 进度已有基础渲染；Markdown 已由用户验证。
-- Feishu 命令/菜单进度已对齐 CC/OpenClaw：处理 reaction 挂在触发消息上，命令卡片/文本回复通过 Feishu reply API 挂回原消息；`/compact`、`/native /compact` 也会输出 started/terminal command progress。
+- Feishu 命令/菜单进度按当前 IM 命令合同维护：处理 reaction 挂在触发消息上，命令卡片/文本回复通过 Feishu reply API 挂回原消息；`/compact`、`/native /compact` 也会输出 started/terminal command progress。
 - Feishu Agent 进度卡最近动态条数由 binding metadata `feishuProgressCardEntryLimit` 控制，默认 8，运行时限制 1-30；`/display progress <1-30|default>` 和 Feishu 进度显示卡片均可设置。
 - Feishu 菜单命令面已改为清爽二级配置架构：主卡片直达 Agent、模型、权限/推理、进度显示、视觉、工作目录六个配置页；工作目录页提供 Profile 默认、上一目录、上级目录、Home 快捷按钮、最近目录直达列表、子目录分页直达列表和 `/dir find` 搜索；纯文本渠道支持 `/dir home|parent|recent N|child N`；文本 `/help` 复用同一结构。
 - Feishu 长连接 card action 不再 fire-and-forget：卡片点击会同步返回 callback response/card/toast，普通消息和 bot menu 仍保持后台异步，避免交互卡片过一段时间后触发 108002 类不可用体验。

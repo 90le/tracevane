@@ -21,6 +21,7 @@ apps/web-vue/components.d.ts
 .cache/
 .worktrees/
 .superpowers/
+.meta-kim/
 graphify-out/
 *.log
 *.pid

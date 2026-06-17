@@ -1,6 +1,6 @@
 # OpenClaw Studio Docs Index
 
-> 更新：2026-06-15
+> 更新：2026-06-17
 > 规则：`docs/` 只保存当前目标、边界、合同和少量专项追踪；历史过程看 git commit，不再把每轮实现追加成流水账。
 
 ## 当前主线
@@ -12,8 +12,8 @@
 - `studio-gateway-progress.md`：Gateway 与 Channel Connectors 的最新进度快照。
 - `studio-gateway-account-provider-plan.md`：GPT/ChatGPT/Codex 账户型 provider 调研、边界和验收。
 - `channel-connectors-native-agent-bot-plan.md`：Channel Connectors / CLI Agent Bot 原生方案。
-- `channel-connectors-cc-migration-checklist.md`：CC Go 迁移门禁和任务清单。
-- `channel-connectors-native-feature-map.md`：CC/OpenClaw/OCTO 能力到 Studio 的映射。
+- `research-first-development-checklist.md`：开工前外部核验门禁、风险清单和任务清单。
+- `channel-connectors-native-feature-map.md`：Channel Connectors 当前能力、边界和验证摘要。
 
 ## 专项追踪
 
@@ -37,5 +37,5 @@
 1. 目标文档只写稳定目标和验收，不写每轮日志。
 2. 进度文档只保留当前事实、最近验证、边界和下一步。
 3. 已废弃方向必须明确标记为“停止扩展”或“归档”，不要继续追加半成品方案。
-4. Channel Connectors 新功能必须先对照 CC Go / OpenClaw / Octo 插件，再迁移到 Studio。
+4. Gateway、Channel Connectors、CLI Agent、Provider、SDK/API 和 UI 行为变更必须先完成官方/API/SDK/GitHub/社区核验，并把结论写入对应目标、进度或专项文档。
 5. 文档里不得写入真实 API key、token、tenant access token 或用户私有凭据。

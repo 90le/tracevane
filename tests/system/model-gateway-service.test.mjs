@@ -811,7 +811,7 @@ test("model gateway starts Codex account login and creates an account-backed pro
       const editError = JSON.parse(edit.body).error;
       assert.equal(editError.code, "model_gateway_codex_account_image_edits_unsupported");
       assert.equal(editError.details.feasibility, "blocked-no-codex-image-edit-action-contract");
-      assert.match(editError.details.reference, /Sub2API\/CLIProxyAPI/);
+      assert.match(editError.details.reference, /no stable Codex account image edit action contract/);
       assert.ok(editError.details.alternatives.some((item) => item.includes("/v1/images/generations")));
 
       const audioBoundary = "----studio-codex-audio-boundary";
@@ -939,7 +939,7 @@ test("model gateway returns structured unsupported for Codex account realtime we
     });
     assert.equal(payload.type, "error");
     assert.equal(payload.error.code, "model_gateway_codex_account_realtime_unsupported");
-    assert.match(payload.error.details.reference, /CLIProxyAPI/);
+    assert.match(payload.error.details.reference, /No official or directly verified Codex account Realtime\/WebSocket contract/);
   });
 });
 
@@ -8127,7 +8127,7 @@ test("model gateway records streamed codex tool-call history for follow-up chat 
   ]);
 });
 
-test("model gateway adapts inline codex tool-result history with cc-switch-compatible chat shape", async () => {
+test("model gateway adapts inline codex tool-result history with gateway-compatible chat shape", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   const ctx = createStudioContext({ config, logger: createLogger() });

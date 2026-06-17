@@ -1,22 +1,20 @@
 # Feishu Long Connection Issue Tracker
 
 > Status: stable / monitored
-> Updated: 2026-06-13
+> Updated: 2026-06-17
 > Scope: Studio native Channel Connectors Feishu long-connection ingress.
 
 This is the single tracker for Feishu "connected but no reply" incidents. New Feishu long-connection fixes must update this file before or with code changes.
 
 ## 1. References
 
-- CC Go: `release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source/platform/feishu`
-- Latest OpenClaw local source: `/home/binbin/.openclaw/projects/openclaw/latest/extensions/feishu`
-- OpenClaw Feishu lifecycle files checked: `extensions/feishu/src/client.ts`, `extensions/feishu/src/monitor.transport.ts`
 - SDK: OpenClaw uses `@larksuiteoapi/node-sdk@1.66.0`; Studio currently uses `@larksuiteoapi/node-sdk@1.66.1`
 - Feishu official docs:
   - `https://open.feishu.cn/document/server-side-sdk/nodejs-sdk/preparation-before-development`
   - `https://open.feishu.cn/document/server-side-sdk/nodejs-sdk/handling-events`
   - `https://open.feishu.cn/document/server-side-sdk/nodejs-sdk/handling-callbacks`
 - Lark Node SDK issues checked: reconnect timer leak, `WSClient.start()` early resolve.
+- Future fixes must recheck official Feishu/Lark SDK docs, SDK release notes, GitHub issues/discussions, community failure reports, current Studio runtime logs, and live connection evidence before changing behavior.
 
 ## 2. Current Diagnosis
 
@@ -84,4 +82,4 @@ Collect these first, then patch:
 - Whether Octo still replies immediately.
 - Whether manual daemon restart immediately restores Feishu.
 
-Then compare with CC Go/OpenClaw source before designing new behavior.
+Then update this tracker with the current official/API/SDK/GitHub/community evidence, Studio runtime evidence, selected fix, rejected options and verification plan before designing new behavior.

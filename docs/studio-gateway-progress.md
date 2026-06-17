@@ -5,13 +5,13 @@
 
 ## 当前事实
 
-- Studio Gateway 是唯一正式模型中转目标；旧 Codex Stack / CPA / Compact 生产前后端已删除。
+- Studio Gateway 是唯一正式模型中转目标；已停止演进的旧模型链路生产前后端已删除。
 - Gateway daemon 与 Channel daemon 都必须由 OS/user supervisor 守护；Studio / OpenClaw 崩溃时，CLI 与 IM bot 应继续直连本地 daemon。
 - Gateway 对外提供 Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions；`GET /v1/models` 聚合启用 provider，并保留模型别名、模型池、能力标记、上下文窗口和输出预算。
 - Provider Center 支持自定义 provider、启停、模型名称/别名/默认模型、能力勾选、批量模型导入、模型目录刷新合并、批量预算/能力应用、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
 - Provider Center 表单已按连接、端点路由、密钥识别、模型目录、高级覆盖、可用范围分区；PC/平板/手机均按同一配置流程降级展示。
 - Gateway Provider 支持 endpoint profiles；同一 provider/模型可按客户端协议优选原生 endpoint，并在 endpoint 级 health/circuit 下回退。
-- GPT/ChatGPT account 与 Codex account 进入 Gateway Phase D2：Provider Center 页面直接登录官方账户并自动创建 account-backed provider；账户池 sticky、per-account concurrency、runtime cursor/affinity 持久化、upstream quota/cooldown、per-account proxy/direct 和 Codex account `gpt-image-2` Images generation live smoke 已闭环，后续补更多账户型 provider，不恢复旧 CPA / Codex Stack。
+- GPT/ChatGPT account 与 Codex account 进入 Gateway Phase D2：Provider Center 页面直接登录官方账户并自动创建 account-backed provider；账户池 sticky、per-account concurrency、runtime cursor/affinity 持久化、upstream quota/cooldown、per-account proxy/direct 和 Codex account `gpt-image-2` Images generation live smoke 已闭环，后续补更多账户型 provider，不恢复已停止演进的旧模型链路。
 - Codex account-backed provider 已支持页面登录、请求前自动 refresh、手动 refresh、账户启用/停用和重新登录入口；客户端仍只使用统一 Gateway endpoint + Gateway key。
 - Codex account-backed provider 已扩展受控本地模型 catalog：`gpt-5.5`、`gpt-5.4`、`gpt-5.4-mini`、`gpt-5.3-codex`、`gpt-image-2`、transcribe/tts/audio/realtime 类模型进入 `/v1/models`，并携带 text/image/audio 能力标记；旧生成的 `gpt-5.5-mini` 和 ChatGPT Codex account 不支持的 `gpt-5` 不再作为账户模型暴露；Codex account REST audio 与 Realtime/WebSocket 目前只做结构化 unsupported，不透传到 ChatGPT backend HTML 错误，也不让 WS 客户端悬挂。
 - Codex account upstream 返回 HTTP 401/403 会把账户标为 `needs-login`；HTTP 429 或明确 quota/rate/capacity/overloaded 错误会把账户标为 `cooldown` 并尊重 `Retry-After`，后续路由会跳过该账户直到冷却结束；started streaming passthrough 内的 `response.failed/error` 也会旁路解析并回写账户状态；runtime log 和 Provider Center 最近请求会显示账号池策略、sticky 命中、选择原因、池容量计数、跳过原因、busy/cooldown 来源和 cooldown 到期后的首次重试；Provider Center 可手动清除 cooldown、配置账号级 proxy/direct，并编辑 round-robin/fill-first、sticky session 和单账号并发。
@@ -26,7 +26,7 @@
 - 已实现的群聊、thread、多 bot、GROUP.md/THREAD.md、Octo 管理命令和 Feishu 群上下文仅保留 best-effort；不再作为当前主线或发布前阻断项。
 - Channel prompt 只描述私聊文件、私聊消息、工作目录、权限、compact 和 Agent CLI 原生命令；不再引导 Agent 调用平台扩展 action。
 - `studio-channel-files` 和 `studio-channel-messages` 是保留的 Agent 出站声明合同；文件/消息实际发送仍由 Studio native transport 执行。
-- Feishu/Octo 长连接已由用户 live 验证稳定；Feishu 专项跟踪进入 monitored 状态，任意假在线反馈先写入 `docs/feishu-long-connection-issue-tracker.md` 并对照 OpenClaw/CC 实现排查。
+- Feishu/Octo 长连接已由用户 live 验证稳定；Feishu 专项跟踪进入 monitored 状态，任意假在线反馈先写入 `docs/feishu-long-connection-issue-tracker.md`，并先核验官方 SDK、GitHub/community 故障报告、当前 runtime/log 和 live 连接证据。
 - Profile/App Connection 关闭验收必须跑真实 IM gate：三 Agent 工具流+过程回复、Feishu 显式 `/compact`、Octo 显式 `/compact`、入站图片 staged path。当前四项 gate 已全绿，可作为本轮关闭证据。
 - IM Agent session driver 默认已切到结构化 persistent：Codex 使用 app-server 事件、Claude Code 使用 stream-json 常驻进程、OpenCode 使用 `run --session` 续接。`agentSessionDriver/session_driver/persistentSession=false|one-shot|off` 仍可显式回退；persistent 创建或执行崩溃会记录 `turn.failed` / `turn.fallback` 后降级 one-shot，保证结构化驱动不可用时 IM 不会不可用。
 - Codex app-server persistent turn 超时语义已改为空闲超时：总回答时间可超过阈值，只要持续有 app-server 事件、审批请求、工具事件或输出就不会被误杀；普通静默默认 3 分钟，可用 `STUDIO_CODEX_APP_SERVER_TURN_IDLE_TIMEOUT_MS` 调整；等待 IM 审批会覆盖到审批窗口，批准工具后才给长工具执行窗口；fallback 恢复型 `turn/timeout` 不再进入 Feishu/Octo 用户进度流。
@@ -86,10 +86,10 @@
 - Channel Connectors IM Agent 默认链路从 one-shot/TUI 兼容 runner 切到结构化 persistent session；Codex/Claude Code/OpenCode 默认分别使用 app-server、stream-json 常驻进程和 `run --session`，显式 metadata 可退回 one-shot。
 - persistent session pool 补齐创建阶段失败回退：driver 创建失败会写 `turn.failed:driver-create-error` 与 `turn.fallback:driver-create-error`，再执行 one-shot fallback；执行阶段 crash 继续 dispose session 后 fallback。
 - daemon `/status` / `/agent-sessions` / runtime 的 `agentSessionDriver.defaultMode` 改为 `persistent`，Codex reason 从旧 experimental 命名收口为 `codex-app-server`。
-- 调研 Sub2API、CLIProxyAPI、CodexProapi 和 Codex 官方认证文档，提炼到 `docs/studio-gateway-account-provider-plan.md`；本地参考副本固定为 `/tmp/studio-gateway-research-sub2api` 与 `/tmp/studio-gateway-research-cliproxyapi`。
-- 旧 CPA user service `cpa-compact-proxy.service` 已停止、取消自启并删除 unit；18796 端口由 `openclaw-studio-model-gateway.service` 接管。
+- 按 research-first 门禁重写账户型 provider 计划：账户登录、模型目录、媒体、Realtime/WebSocket 和 SDK/CLI 事件格式变更前，必须先核验官方文档、API/spec、SDK/CLI help、changelog、活跃 GitHub issues/discussions 和社区故障报告；第三方项目和旧快照只作为归档背景。
+- 旧模型代理 user service 已停止、取消自启并删除 unit；18796 端口由 `openclaw-studio-model-gateway.service` 接管。
 - 更新 Gateway 目标：Account-backed provider 默认走 Provider Center 页面登录，授权完成后自动写入本地 provider 和 secret store；不要求用户手动导入 `auth.json`。
-- 明确边界：不做网页 cookie 抓取、不恢复旧 CPA 页面、不做公共账号共享/转售；`auth.json` / keyring / 隔离 `CODEX_HOME` 只作为迁移和修复辅助路径。
+- 明确边界：不做网页 cookie 抓取、不恢复旧模型链路页面、不做公共账号共享/转售；`auth.json` / keyring / 隔离 `CODEX_HOME` 只作为迁移和修复辅助路径。
 - Gateway account provider 初版：
   - Provider schema 新增 `sourceType`、`accountProvider`、账户条目、账户路由和 credential source。
   - API 新增 Codex device login start/poll；登录完成后创建 Codex account-backed provider、写入本地 secret store，并可设置 active routing。
@@ -100,14 +100,14 @@
   - Provider account API 新增账户启用/停用和手动 refresh；手动 refresh 与请求时自动 refresh 共享 in-flight refresh map，避免 token 竞态。
   - Provider Center 选中 account-backed provider 时显示账户状态表，可查看 mask 邮箱、plan、过期时间、最近成功、错误/cooldown，并可刷新 token、启停账户、清除 cooldown、配置账号级 proxy/direct 或重新登录。
   - Provider Center Codex 登录入口避免移动端弹窗拦截：点击后在当前页面生成验证码和“打开官方授权页”按钮，不再自动打开空白页；Codex device auth start/poll/exchange/refresh 会使用账户代理或环境代理。
-  - Codex account 默认模型目录对齐 CLIProxyAPI Codex client catalog：`gpt-5.5` / `gpt-5.4` / `gpt-5.4-mini` / `gpt-5.3-codex`、`gpt-image-2` 及 image alias、`gpt-4o-transcribe` / `gpt-4o-mini-transcribe`、`gpt-4o-mini-tts` / `tts-*`、`gpt-audio*`、`gpt-realtime*`；读取旧 provider 时会过滤不再受控的历史默认项。
-  - Codex account `/v1/responses` 请求体对齐 CLIProxyAPI：字符串 `input` 会转换成 Codex message list，强制上游 `stream:true`、`store:false`、`parallel_tool_calls:true`、`include:["reasoning.encrypted_content"]`，并删除 Codex upstream 不支持的 token/采样/context/user 等字段；客户端非流式响应由上游 SSE `response.completed` 聚合回 JSON。
+  - Codex account 默认模型目录只暴露当前官方/CLI/live smoke 已验证的受控 catalog：`gpt-5.5` / `gpt-5.4` / `gpt-5.4-mini` / `gpt-5.3-codex`、`gpt-image-2` 及 image alias、`gpt-4o-transcribe` / `gpt-4o-mini-transcribe`、`gpt-4o-mini-tts` / `tts-*`、`gpt-audio*`、`gpt-realtime*`；读取旧 provider 时会过滤不再受控的历史默认项。
+  - Codex account `/v1/responses` 请求体按当前 Codex upstream 合同归一：字符串 `input` 会转换成 Codex message list，强制上游 `stream:true`、`store:false`、`parallel_tool_calls:true`、`include:["reasoning.encrypted_content"]`，并删除 Codex upstream 不支持的 token/采样/context/user 等字段；客户端非流式响应由上游 SSE `response.completed` 聚合回 JSON。
   - systemd/launchd Gateway daemon service template 会继承当前 Studio 进程的代理环境；account-backed Codex upstream/auth 请求也会使用账户代理、provider 代理或环境代理，避免 daemon 下直连失败。
   - Gateway 新增 OpenAI Images `/v1/images/generations`、`/v1/images/edits` 和 OpenAI Audio `/v1/audio/transcriptions`、`/v1/audio/translations`、`/v1/audio/speech` 路由合同；Provider Center 可编辑生图、音频输入、音频输出能力。
-  - Codex account 的 Images generation 参考 Sub2API / CLIProxyAPI：对外接 OpenAI Images API，对上游桥接到 Codex `/responses` 的 `image_generation` tool，并把 Responses/SSE 输出重建为 Images API 响应；支持 `response.output` 与 `response.output_item.done` 两种图片结果位置，透传 upstream `response.failed/error`，缺失图片时返回带输出类型/文本预览的诊断。
+  - Codex account 的 Images generation 按当前 live smoke 和 Codex `/responses` + `image_generation` tool 合同桥接：对外接 OpenAI Images API，并把 Responses/SSE 输出重建为 Images API 响应；支持 `response.output` 与 `response.output_item.done` 两种图片结果位置，透传 upstream `response.failed/error`，缺失图片时返回带输出类型/文本预览的诊断。
   - OpenAI-compatible Images edits 保持 multipart/binary 原样 passthrough；Codex account image edits 不伪装支持，返回明确 `model_gateway_codex_account_image_edits_unsupported`，并携带可行性结论、参考来源和替代路径。
   - OpenAI-compatible 音频端点保持 multipart/binary 原样 passthrough，不再把音频请求体当 UTF-8 字符串重写；Codex account 音频目录已暴露，但 REST `/v1/audio/*` 不再透传到 Codex backend 返回 HTML 403，统一返回结构化 `model_gateway_codex_account_audio_unsupported`。
-  - Codex account Realtime/WebSocket 调查收口：CLIProxyAPI 的 `/v1/responses/ws` 不是简单 upstream passthrough，而是完整维护 Responses WebSocket turn state、tool cache、compact replay 和账号 websocket 能力选择；Studio 在未完整迁移前不半实现，`GET/POST /v1/responses/ws`、`GET/POST /v1/realtime` 和同路径 WebSocket upgrade 统一返回结构化 `model_gateway_codex_account_realtime_unsupported`。
+  - Codex account Realtime/WebSocket 调查收口：当前没有官方或直接验证的完整 turn state、tool cache、history replay、错误和 close 语义；Studio 不做半截 passthrough，`GET/POST /v1/responses/ws`、`GET/POST /v1/realtime` 和同路径 WebSocket upgrade 统一返回结构化 `model_gateway_codex_account_realtime_unsupported`。
   - 本轮验证通过：`npm run typecheck:api`、`npm run build:api`、`npm run typecheck:web`、`npm run build:web`。
   - Account pool 调度完成：支持 session affinity、round-robin/fill-first、per-account concurrency、busy 429、HTTP 非 2xx 与 started streaming `response.failed/error` 的 upstream quota/rate/capacity cooldown、cooldown 手动清除、per-account proxy/direct、runtime log accountId/accountHash/accountRouting，并将 Codex account cursor/affinity 写入 runtime，daemon 重启后同 session 保持账号，新 session 延续轮转；Provider Center 最近请求可直接查看 sticky/selected/skipped 摘要。
   - Account pool 可观察性补齐 cooldown retry：过期 cooldown 账户被重新选中时，runtime log `accountRouting` 会记录 `selectedWasCooldownRetry` 与原 `selectedCooldownUntil`，Provider Center 最近请求显示“冷却后重试”；成功后账户恢复 `ready`。
@@ -121,7 +121,7 @@
   - Account pool smoke 严格模式已按“单账号可验收”收口：`multi-account-strategy` 只有在显式传 `--require-multi-account` 时才成为阻断项，默认一个可路由账号通过 provider / Responses / accountRouting / sticky 即可。
   - Provider Center Smoke / 日志页新增媒体模型状态摘要：直接读取已启用 provider 的 catalog 能力标记，显示 Vision、Image gen、Audio in/out 和 Realtime 计数与示例模型。
   - 本轮低成本 media smoke 通过：`node scripts/smoke-model-gateway-account-media.mjs --json` 返回 `ok=true`，`/v1/models` 有 `gpt-image-2` 生图、11 个音频模型、3 个 realtime 模型；image edits 命中 `mlamp` 并返回结构化 `invalid_image_file`；Codex account audio 仍为预期结构化 unsupported。
-  - Codex account image edits 可行性结论已落到错误 envelope：Sub2API / CLIProxyAPI 均可参考 Codex `/responses + image_generation` 生图桥接，但没有可复用的 Codex account image edit action 合同；Gateway 继续明确 501，并提示走 OpenAI-compatible image edits 或 Codex `/v1/images/generations`。
+  - Codex account image edits 可行性结论已落到错误 envelope：当前没有官方或直接验证的 Codex account image edit action 合同；Gateway 继续明确 501，并提示走 OpenAI-compatible image edits 或 Codex `/v1/images/generations`。
   - Active route smoke 改为客户端真实形态：Claude Code / OpenCode 会带最小 tools schema，响应必须按客户端协议解析出 `GATEWAY_OK`；固定 provider 的 endpoint fallback 优先同 provider，避免 `glm` Claude 路由直接跳到外部 provider。
   - Codex account provider smoke 复用账号请求归一化、账号 header 和代理网络，不再绕开正式 Gateway Codex account 链路导致 false negative。
   - OpenCode Gateway runner 不再给 Gateway 模型声明 `reasoning:true`、注入 `--variant` 或传 `--thinking`；App Connections 生成的 OpenCode 模型也显式 `reasoning:false`，避免用户级 `~/.config/opencode/opencode.json` 继续让 OpenCode 发 `reasoning_effort`。
@@ -205,7 +205,7 @@
   - 新增真实 direct runner smoke 脚本：`smoke-channel-connectors-agent-runner-direct.mjs` 直接调用 Channel runner，用于验证 CLI parser/runner，不注入 Feishu/Octo 事件。
   - 加固真实 IM 附件验收脚本：新增 `--require-inbound-image`、`--require-inbound-video`、`--require-staged-files`，图片/视频/文件 live smoke 会同时验证附件类型和本地 staged 路径存在。
   - 优化非飞书气泡式进度流：assistant 过程回复不再携带“过程回复”标题，按最终回复同格式发送正文。
-  - 补齐 Codex thinking/reasoning 解析：one-shot 和 app-server 都按 CC Go 合同读取 `summary` / `summary_text` / `content`，无文本时不伪造思考进度。
+  - 补齐 Codex thinking/reasoning 解析：one-shot 和 app-server 都按当前结构化事件和 live parser 证据读取 `summary` / `summary_text` / `content`，无文本时不伪造思考进度。
   - 锁定 `/thinking on/off` 进度显示链路：Octo 私聊端到端验证关闭后不发 reasoning 气泡，重新开启后恢复发送；Feishu/Octo 共用同一进度过滤函数。
   - `/status`、`/current`、Feishu 菜单和前端 Channel Connectors 页面已区分 `thinking` parser 支持与当前 Agent/模型 live 输出观测状态，避免把显示开关误当作 live 能力。
   - 新增通用 compact live 证据脚本：Feishu 仍要求 `longConnection=true` 入站证据；Octo 按自身 event log 的 `threshold/channel.command -> native_compact.finished -> auto_compact.finished(action=native)` 关联验收。
@@ -231,7 +231,7 @@
   - Octo 入站文件 24h live 已验证：用户侧文件进入 staging，本地路径存在，Agent 可返回路径；Octo 视频真实形态会以 `file` + `.mp4` staged path 出现，live smoke 已按视频类文件识别并验收通过。
   - Octo 出站文件 24h live 自动事件证据已验证：`octo-studio-cc` 最近成功 run 记录 `outboundFilesDeclared=1`、`outboundFilesResolved=1`、`outboundFilesSent=1`，且无 `outboundFileErrors`。
   - 用户确认 Feishu/Octo 最新手动验收全部通过，包括 Feishu 发文件、权限审批、Octo 收文件并返回路径；本轮已删除 `hello-live.txt` 和 `studio-greeting.txt` 临时文件。
-  - Feishu 命令/菜单进度对齐 CC/OpenClaw：命令执行会在触发消息上显示处理 reaction，卡片/文本回复通过 Feishu reply API 挂到原消息；`/compact` 和 `/native /compact` 内置命令也会发 started/terminal progress。
+  - Feishu 命令/菜单进度按当前 IM 命令合同维护：命令执行会在触发消息上显示处理 reaction，卡片/文本回复通过 Feishu reply API 挂到原消息；`/compact` 和 `/native /compact` 内置命令也会发 started/terminal progress。
   - Feishu Agent 进度卡动态条数已可配置：binding metadata `feishuProgressCardEntryLimit` 控制最近动态数量，默认 8，运行时限制 1-30。
   - `/stop` 自动回归和真实日志 smoke 已验证：脚本按同 session + 时间窗口关联 stop 命令和 cancelled run，兼容两者 messageId 不同的真实 IM 形态。
   - 图片自动切视觉模型已改为平台 binding 显式 opt-in，默认关闭；开启后若视觉模型链路失败，会回退原模型并以附件说明/本地路径模式继续对话。
@@ -415,4 +415,4 @@
 ## 下一步
 
 1. 继续加固 Gateway 稳定性：endpoint profile fallback、同模型多端点优先级、协议优选/回退和错误 envelope regression。
-2. 后续若要支持 Codex account Realtime/WebSocket，必须按 CLIProxyAPI 的完整 state machine 迁移并通过 WS live smoke；音频同理，只有拿到真实上游合同后才移除结构化 unsupported。
+2. 后续若要支持 Codex account Realtime/WebSocket，必须先拿到官方或直接验证的完整 turn state、tool cache、history replay、错误和 close 语义，并通过 WS live smoke；音频同理，只有拿到真实上游合同后才移除结构化 unsupported。

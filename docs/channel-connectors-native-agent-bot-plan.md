@@ -1,8 +1,8 @@
 # Channel Connectors / CLI Agent Bot 原生方案
 
 > 状态：Studio 原生 Channel daemon 路线；Feishu/Octo 私聊闭环已进入 live 抽查；Agent runner 继续加固；IM busy guard 已取代普通消息排队
-> 更新：2026-06-13
-> 迁移清单：`channel-connectors-cc-migration-checklist.md`
+> 更新：2026-06-17
+> 开工门禁：`research-first-development-checklist.md`
 
 ## 1. 当前结论
 
@@ -34,21 +34,15 @@ Feishu / Octo(dmwork) / future IM
 
 已实现的群聊/thread/多 bot 能力保留 best-effort，但不再作为当前发布目标或下一步阻断项。
 
-## 2. 迁移门禁
+## 2. Research-First 门禁
 
-任何 Channel Connectors、Agent runner、菜单、卡片、进度、文件、会话、权限或 IM 命令功能开工前必须先定位成熟参考：
+任何 Channel Connectors、Agent runner、菜单、卡片、进度、文件、会话、权限或 IM 命令功能开工前必须先完成当前外部核验：
 
-- CC Go：`release/openclaw-studio-0.1.70/resources/codex-stack/cc-connect-source`
-- OpenClaw Feishu：`/home/binbin/.openclaw/projects/openclaw/latest/extensions/feishu`
-- OpenClaw Octo 插件：`/home/binbin/.openclaw/extensions/octo`
-- Octo Bot API skill：`/home/binbin/.openclaw/extensions/octo/skills/octo-bot-api/SKILL.md`
-
-规则：
-
-1. 先迁移 CC/OpenClaw contract：输入输出、session key、文件 staging/send、菜单命令、进度事件、错误 envelope、权限语义和重试策略。
-2. 再做 Studio 化精修。
-3. 若不采用参考方案，必须写明原因、测试证据和回退方式。
-4. Codex / Claude Code / OpenCode 默认使用结构化 persistent driver；one-shot `exec/resume` / TUI runner 只作为显式 opt-out、persistent crash fallback 或未支持 Agent 的兼容路径。新 Agent 若要成为默认路径，必须先补齐结构化事件、session、stop/compact、fallback 和回归证据。
+1. 官方优先：Feishu/Lark、OpenCode、Claude Code、OpenAI Codex、Octo/WuKongIM 或目标平台的官方文档、API、SDK、CLI help、changelog。
+2. GitHub 与社区补充：活跃仓库、issues、discussions、release notes 和社区故障报告，用来发现事件格式升级、SDK bug、运维风险和未解决问题。
+3. 本地边界对比：只在确认 Studio daemon、session、secret、file staging、UI 和测试边界能承载后实现。
+4. 文档记录：把来源、日期、稳定合同、拒绝方案、风险和验证计划写入本文件、`studio-gateway-progress.md` 或专项 tracker。
+5. Codex / Claude Code / OpenCode 默认使用结构化 persistent driver；one-shot `exec/resume` / TUI runner 只作为显式 opt-out、persistent crash fallback 或未支持 Agent 的兼容路径。新 Agent 若要成为默认路径，必须先补齐结构化事件、session、stop/compact、fallback 和回归证据。
 
 ## 3. Runtime 与持久化
 
@@ -79,7 +73,7 @@ Feishu：
 
 Octo(dmwork)：
 
-- WuKongIM 长连接参考 CC Go：heartbeat、PONG timeout、RECVACK、messageId 去重、抖动重连和 REST heartbeat。
+- WuKongIM 长连接按当前官方/API 核验和 live smoke 证据维护：heartbeat、PONG timeout、RECVACK、messageId 去重、抖动重连和 REST heartbeat。
 - 长连接已由用户 live 验证稳定，后续进入监控态。
 - 文件发送优先 STS + COS PUT 直传；旧 multipart 上传只作为兼容回退。
 - accountId 需要按 OpenClaw Octo v1.0.15 的 mixed-case 归一规则处理。
@@ -99,7 +93,7 @@ Octo(dmwork)：
 - persistent/live driver 是默认路径，必须优先使用结构化事件判断运行中、完成、失败和 stop/compact。
 - one-shot 路径稳定可用，作为显式 opt-out 和 persistent fallback。
 - 工具调用、工具输入、stdout/stderr、工具结果、过程回复、最终回复分类正确，不出现空工具流或最终回复重复进过程流。
-- `/native <命令>` 作为显式原生命令入口；未知 slash 可按 CC Go 语义提示并进入 Agent。
+- `/native <命令>` 作为显式原生命令入口；未知 slash 需要按当前 IM 命令合同提示并进入 Agent。
 - `/compact` 优先 Agent-native compact/compress；不支持或失败时才走 Studio/Gateway compact。
 - `/stop` 必须真实终止当前 binding + IM session 的 active runner。
 

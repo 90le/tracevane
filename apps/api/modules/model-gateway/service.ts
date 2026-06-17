@@ -8917,7 +8917,7 @@ export function createModelGatewayService(
           details: {
             providerType: "codex-account",
             feasibility: "blocked-no-codex-image-edit-action-contract",
-            reference: "Sub2API/CLIProxyAPI expose Codex image_generation via Responses; no reusable Codex account image edits bridge is available.",
+            reference: "Current verified Codex account contract supports image generation via Responses, but no stable Codex account image edit action contract has been verified.",
             alternatives: [
               "Use an OpenAI-compatible provider for /v1/images/edits.",
               "Use /v1/images/generations with gpt-image-2 for Codex account image generation.",
