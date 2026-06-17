@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@web-vue/shared': fileURLToPath(new URL('../web-vue/src/shared', import.meta.url)),
     },
   },
   test: {
