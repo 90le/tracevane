@@ -62,6 +62,16 @@ test("recovery daemon separates lightweight probes from heavy repair commands", 
   assert.match(repairSource, /REPAIR_LOCK_STALE_MS/);
   assert.match(repairSource, /repairLockLooksStale/);
   assert.match(repairSource, /process\.kill\(pid, 0\)/);
+  assert.match(repairSource, /repairOpenClawGatewayAuthSecretRefDrift/);
+  assert.match(repairSource, /pruneDeprecatedOpenClawPluginResidue/);
+  assert.match(repairSource, /runLocalRuntimeConfigDriftRepairLayer/);
+  assert.match(repairSource, /restartOpenClawGatewayForRepair/);
+  assert.match(repairSource, /\["gateway", "restart", "--safe"\]/);
+  assert.match(repairSource, /createRuntimeSidecarBackups/);
+  assert.match(repairSource, /restoreRuntimeSidecarBackup/);
+  assert.match(repairSource, /OPENCLAW_GATEWAY_TOKEN/);
+  assert.match(repairSource, /OPENCLAW_DISCORD_BOT_TOKEN/);
+  assert.match(repairSource, /DEPRECATED_OPENCLAW_PLUGIN_IDS/);
   assert.match(daemonSource, /\/backups/);
   assert.match(daemonSource, /\/restore-backup/);
   assert.doesNotMatch(daemonSource, /openclaw", \["doctor"/);

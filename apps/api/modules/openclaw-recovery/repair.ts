@@ -8,6 +8,10 @@ import type {
   OpenClawRecoveryPolicy,
   OpenClawRecoveryTrigger,
 } from "../../../../types/openclaw-recovery.js";
+import {
+  resolveSecretInputString,
+  type OpenClawSecretRef,
+} from "../../core/secret-ref.js";
 import { readOpenClawConfig, writeJsonFile } from "../../core/state.js";
 import { repairSystemBootstrap } from "../system/bootstrap.js";
 import { ensureOpenClawCliAvailable } from "./cli-bootstrap.js";
@@ -49,6 +53,17 @@ interface OpenClawDoctorFinding extends OpenClawConfigValidationIssue {
 
 const REPAIR_ALREADY_RUNNING_ERROR = "Recovery repair is already running";
 const REPAIR_LOCK_STALE_MS = 30 * 60 * 1000;
+const GATEWAY_AUTH_ENV_KEY = "OPENCLAW_GATEWAY_TOKEN";
+const DISCORD_BOT_TOKEN_ENV_KEY = "OPENCLAW_DISCORD_BOT_TOKEN";
+const CANONICAL_GATEWAY_AUTH_REF: OpenClawSecretRef = {
+  source: "env",
+  provider: "default",
+  id: GATEWAY_AUTH_ENV_KEY,
+};
+const DEPRECATED_OPENCLAW_PLUGIN_IDS = new Set(["acpx", "discord"]);
+const RUNTIME_BACKUP_ENV_LABEL = "env";
+const RUNTIME_BACKUP_SYSTEMD_ENV_LABEL = "gateway-systemd-env";
+const RUNTIME_BACKUP_STUDIO_LOCAL_SECRETS_LABEL = "studio-local-secrets";
 
 export interface StudioWebBundleInspection {
   ok: boolean;
@@ -68,7 +83,64 @@ export function createOpenClawConfigBackup(config: StudioServerConfig): string |
     `openclaw-${compactTimestamp()}.json`,
   );
   fs.copyFileSync(config.openclawConfigFile, backupPath);
+  createRuntimeSidecarBackups(config, backupPath);
   return backupPath;
+}
+
+function runtimeSidecarBackupPath(configBackupPath: string, label: string): string {
+  const parsed = path.parse(configBackupPath);
+  return path.join(parsed.dir, `${parsed.name}.${label}${parsed.ext}`);
+}
+
+function studioLocalSecretFilePath(openclawConfig: Record<string, unknown>): string {
+  const providers = isRecord(openclawConfig.secrets)
+    && isRecord(openclawConfig.secrets.providers)
+    ? openclawConfig.secrets.providers
+    : {};
+  const provider = isRecord(providers["studio-local"]) ? providers["studio-local"] : null;
+  const filePath = typeof provider?.path === "string" ? provider.path.trim() : "";
+  if (!filePath || provider?.source !== "file" || provider?.mode !== "json") return "";
+  return filePath;
+}
+
+function createRuntimeSidecarBackups(
+  config: StudioServerConfig,
+  configBackupPath: string,
+): void {
+  const openclawConfig = readOpenClawConfig(config);
+  const targets = [
+    {
+      label: RUNTIME_BACKUP_ENV_LABEL,
+      path: path.join(config.openclawRoot, ".env"),
+    },
+    {
+      label: RUNTIME_BACKUP_SYSTEMD_ENV_LABEL,
+      path: path.join(config.openclawRoot, "gateway.systemd.env"),
+    },
+    {
+      label: RUNTIME_BACKUP_STUDIO_LOCAL_SECRETS_LABEL,
+      path: studioLocalSecretFilePath(openclawConfig),
+    },
+  ];
+  for (const target of targets) {
+    if (!target.path || !fs.existsSync(target.path)) continue;
+    fs.copyFileSync(
+      target.path,
+      runtimeSidecarBackupPath(configBackupPath, target.label),
+    );
+  }
+}
+
+function restoreRuntimeSidecarBackup(
+  sourceBackupPath: string,
+  destinationPath: string,
+  label: string,
+): void {
+  if (!destinationPath) return;
+  const sidecarBackupPath = runtimeSidecarBackupPath(sourceBackupPath, label);
+  if (!fs.existsSync(sidecarBackupPath)) return;
+  fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+  fs.copyFileSync(sidecarBackupPath, destinationPath);
 }
 
 function normalizeIssuePath(issue: OpenClawConfigValidationIssue): string {
@@ -161,6 +233,291 @@ function normalizeStringList(value: unknown): string[] {
   return Array.isArray(value)
     ? value.map((item) => String(item || "").trim()).filter(Boolean)
     : [];
+}
+
+function normalizeString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function unquoteEnvValue(value: string): string {
+  const trimmed = value.trim();
+  if ((trimmed.startsWith("\"") && trimmed.endsWith("\""))
+    || (trimmed.startsWith("'") && trimmed.endsWith("'"))) {
+    return trimmed.slice(1, -1);
+  }
+  return trimmed;
+}
+
+function parseEnvAssignment(line: string): { key: string; value: string } | null {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith("#")) return null;
+  const body = trimmed.startsWith("export ") ? trimmed.slice("export ".length).trim() : trimmed;
+  const separator = body.indexOf("=");
+  if (separator <= 0) return null;
+  const key = body.slice(0, separator).trim();
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key)) return null;
+  return {
+    key,
+    value: unquoteEnvValue(body.slice(separator + 1)),
+  };
+}
+
+function readEnvFileValue(filePath: string, key: string): string {
+  try {
+    const lines = fs.readFileSync(filePath, "utf8").split(/\r?\n/);
+    for (const line of lines) {
+      const assignment = parseEnvAssignment(line);
+      if (assignment?.key === key) return assignment.value.trim();
+    }
+  } catch {
+    return "";
+  }
+  return "";
+}
+
+function serializeEnvValue(value: string): string {
+  return value.replace(/\r?\n/g, "").trim();
+}
+
+function rewriteOpenClawEnvFile(
+  filePath: string,
+  options: {
+    label: string;
+    gatewayAuthToken: string;
+    removeKeys: string[];
+  },
+): string[] {
+  const original = fs.existsSync(filePath)
+    ? fs.readFileSync(filePath, "utf8")
+    : "";
+  const inputLines = original ? original.split(/\r?\n/) : [];
+  if (inputLines.at(-1) === "") inputLines.pop();
+
+  const outputLines: string[] = [];
+  const changedKeys: string[] = [];
+  let gatewayWritten = false;
+  let gatewayChanged = false;
+  let removedDiscordToken = false;
+  const removeKeySet = new Set(options.removeKeys);
+
+  for (const line of inputLines) {
+    const assignment = parseEnvAssignment(line);
+    if (assignment && removeKeySet.has(assignment.key)) {
+      removedDiscordToken = true;
+      continue;
+    }
+    if (assignment?.key === GATEWAY_AUTH_ENV_KEY) {
+      if (gatewayWritten) {
+        gatewayChanged = true;
+        continue;
+      }
+      const nextLine = `${GATEWAY_AUTH_ENV_KEY}=${serializeEnvValue(options.gatewayAuthToken)}`;
+      outputLines.push(nextLine);
+      gatewayWritten = true;
+      if (assignment.value !== options.gatewayAuthToken || line !== nextLine) {
+        gatewayChanged = true;
+      }
+      continue;
+    }
+    outputLines.push(line);
+  }
+
+  if (options.gatewayAuthToken && !gatewayWritten) {
+    outputLines.push(`${GATEWAY_AUTH_ENV_KEY}=${serializeEnvValue(options.gatewayAuthToken)}`);
+    gatewayChanged = true;
+  }
+
+  if (gatewayChanged || removedDiscordToken) {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, `${outputLines.join("\n")}\n`, "utf8");
+  }
+  if (gatewayChanged) changedKeys.push(`${options.label}.${GATEWAY_AUTH_ENV_KEY}`);
+  if (removedDiscordToken) changedKeys.push(`${options.label}.${DISCORD_BOT_TOKEN_ENV_KEY}`);
+  return changedKeys;
+}
+
+function readStudioLocalGatewayAuthToken(openclawConfig: Record<string, unknown>): string {
+  const filePath = studioLocalSecretFilePath(openclawConfig);
+  if (!filePath) return "";
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as unknown;
+    return isRecord(parsed) && typeof parsed.gatewayAuthToken === "string"
+      ? parsed.gatewayAuthToken.trim()
+      : "";
+  } catch {
+    return "";
+  }
+}
+
+function removeStudioLocalGatewayAuthToken(openclawConfig: Record<string, unknown>): boolean {
+  const filePath = studioLocalSecretFilePath(openclawConfig);
+  if (!filePath) return false;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as unknown;
+    if (!isRecord(parsed) || !Object.prototype.hasOwnProperty.call(parsed, "gatewayAuthToken")) {
+      return false;
+    }
+    delete parsed.gatewayAuthToken;
+    writeJsonFile(filePath, parsed);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function gatewayAuthTokenCandidate(
+  config: StudioServerConfig,
+  openclawConfig: Record<string, unknown>,
+): string {
+  const envPath = path.join(config.openclawRoot, ".env");
+  const systemdEnvPath = path.join(config.openclawRoot, "gateway.systemd.env");
+  const tokenInput = isRecord(openclawConfig.gateway)
+    && isRecord(openclawConfig.gateway.auth)
+    ? openclawConfig.gateway.auth.token
+    : undefined;
+  return [
+    resolveSecretInputString(openclawConfig, tokenInput, { envFilePath: envPath }),
+    readEnvFileValue(envPath, GATEWAY_AUTH_ENV_KEY),
+    readEnvFileValue(systemdEnvPath, GATEWAY_AUTH_ENV_KEY),
+    readStudioLocalGatewayAuthToken(openclawConfig),
+  ].map((candidate) => candidate.trim()).find(Boolean) || "";
+}
+
+function canonicalGatewayAuthRefEquals(value: unknown): boolean {
+  return isRecord(value)
+    && value.source === CANONICAL_GATEWAY_AUTH_REF.source
+    && value.provider === CANONICAL_GATEWAY_AUTH_REF.provider
+    && value.id === CANONICAL_GATEWAY_AUTH_REF.id
+    && Object.keys(value).length === 3;
+}
+
+export function repairOpenClawGatewayAuthSecretRefDrift(
+  config: StudioServerConfig,
+): string[] {
+  const openclawConfig = readOpenClawConfig(config);
+  const changedKeys: string[] = [];
+  const token = gatewayAuthTokenCandidate(config, openclawConfig);
+  const envPath = path.join(config.openclawRoot, ".env");
+  const systemdEnvPath = path.join(config.openclawRoot, "gateway.systemd.env");
+
+  if (token) {
+    openclawConfig.gateway = isRecord(openclawConfig.gateway) ? openclawConfig.gateway : {};
+    openclawConfig.gateway.auth = isRecord(openclawConfig.gateway.auth)
+      ? openclawConfig.gateway.auth
+      : {};
+    if (!canonicalGatewayAuthRefEquals(openclawConfig.gateway.auth.token)) {
+      openclawConfig.gateway.auth.token = { ...CANONICAL_GATEWAY_AUTH_REF };
+      changedKeys.push("gateway.auth.token");
+    }
+  }
+
+  const envChangedKeys = [
+    ...rewriteOpenClawEnvFile(envPath, {
+      label: "env",
+      gatewayAuthToken: token,
+      removeKeys: [DISCORD_BOT_TOKEN_ENV_KEY],
+    }),
+    ...rewriteOpenClawEnvFile(systemdEnvPath, {
+      label: "gateway.systemd.env",
+      gatewayAuthToken: token,
+      removeKeys: [DISCORD_BOT_TOKEN_ENV_KEY],
+    }),
+  ];
+  changedKeys.push(...envChangedKeys);
+
+  if (token && removeStudioLocalGatewayAuthToken(openclawConfig)) {
+    changedKeys.push("secrets.providers.studio-local.gatewayAuthToken");
+  }
+  if (changedKeys.includes("gateway.auth.token")) {
+    writeJsonFile(config.openclawConfigFile, openclawConfig);
+  }
+  return [...new Set(changedKeys)];
+}
+
+function bindingReferencesDeprecatedOpenClawPlugin(binding: unknown): boolean {
+  if (!isRecord(binding)) return false;
+  const match = isRecord(binding.match) ? binding.match : {};
+  const acp = isRecord(binding.acp) ? binding.acp : {};
+  const channel = normalizeString(match.channel);
+  const backend = normalizeString(acp.backend || binding.backend);
+  return DEPRECATED_OPENCLAW_PLUGIN_IDS.has(channel)
+    || DEPRECATED_OPENCLAW_PLUGIN_IDS.has(backend);
+}
+
+function archiveLegacyOpenClawPluginInstallIndex(config: StudioServerConfig): string[] {
+  const indexPath = path.join(config.openclawRoot, "plugins", "installs.json");
+  if (!fs.existsSync(indexPath)) return [];
+  let raw = "";
+  try {
+    raw = fs.readFileSync(indexPath, "utf8");
+  } catch {
+    return [];
+  }
+  if (!/"(?:acpx|discord)"/i.test(raw)) {
+    return [];
+  }
+  const backupDir = path.join(config.openclawRoot, "plugins", "legacy-backups");
+  fs.mkdirSync(backupDir, { recursive: true });
+  const backupPath = path.join(
+    backupDir,
+    `installs-${compactTimestamp()}.json.bak`,
+  );
+  fs.renameSync(indexPath, backupPath);
+  return ["plugins.installs.legacyIndex"];
+}
+
+export function pruneDeprecatedOpenClawPluginResidue(
+  config: StudioServerConfig,
+): string[] {
+  const openclawConfig = readOpenClawConfig(config);
+  const changedKeys: string[] = [];
+  let configChanged = false;
+
+  const plugins = isRecord(openclawConfig.plugins) ? openclawConfig.plugins : {};
+  if (Array.isArray(plugins.allow)) {
+    const before = normalizeStringList(plugins.allow);
+    const after = before.filter((pluginId) => !DEPRECATED_OPENCLAW_PLUGIN_IDS.has(pluginId));
+    if (after.length !== before.length) {
+      plugins.allow = after;
+      openclawConfig.plugins = plugins;
+      configChanged = true;
+      changedKeys.push("plugins.allow");
+    }
+  }
+
+  if (isRecord(plugins.entries)) {
+    for (const pluginId of DEPRECATED_OPENCLAW_PLUGIN_IDS) {
+      if (!Object.prototype.hasOwnProperty.call(plugins.entries, pluginId)) continue;
+      delete plugins.entries[pluginId];
+      configChanged = true;
+      changedKeys.push(`plugins.entries.${pluginId}`);
+    }
+  }
+
+  const channels = isRecord(openclawConfig.channels) ? openclawConfig.channels : {};
+  if (Object.prototype.hasOwnProperty.call(channels, "discord")) {
+    delete channels.discord;
+    openclawConfig.channels = channels;
+    configChanged = true;
+    changedKeys.push("channels.discord");
+  }
+
+  if (Array.isArray(openclawConfig.bindings)) {
+    const before = openclawConfig.bindings.length;
+    openclawConfig.bindings = openclawConfig.bindings.filter(
+      (binding: unknown) => !bindingReferencesDeprecatedOpenClawPlugin(binding),
+    );
+    if (openclawConfig.bindings.length !== before) {
+      configChanged = true;
+      changedKeys.push("bindings.deprecatedPlugin");
+    }
+  }
+
+  if (configChanged) {
+    writeJsonFile(config.openclawConfigFile, openclawConfig);
+  }
+  changedKeys.push(...archiveLegacyOpenClawPluginInstallIndex(config));
+  return [...new Set(changedKeys)];
 }
 
 function pluginIdFromFinding(finding: OpenClawDoctorFinding): string {
@@ -503,6 +860,13 @@ async function runPluginRepairLayer(
   return [...new Set(changedKeys)];
 }
 
+function runLocalRuntimeConfigDriftRepairLayer(config: StudioServerConfig): string[] {
+  return [
+    ...repairOpenClawGatewayAuthSecretRefDrift(config),
+    ...pruneDeprecatedOpenClawPluginResidue(config),
+  ];
+}
+
 async function runStudioWebBundleRepairLayer(
   config: StudioServerConfig,
   policy: OpenClawRecoveryPolicy,
@@ -597,6 +961,37 @@ function commandErrorSummary(commandResult: OpenClawRecoveryCommandSnapshot): st
     commandResult.stderr,
     commandResult.stdout,
   ].filter(Boolean).join("\n").trim().slice(0, 800);
+}
+
+function commandLooksLikeUnsupportedSafeRestart(
+  commandResult: OpenClawRecoveryCommandSnapshot,
+): boolean {
+  const text = `${commandResult.error}\n${commandResult.stderr}\n${commandResult.stdout}`;
+  return /unknown option|unrecognized option|invalid option|unexpected argument/i.test(text)
+    && /--safe|safe/i.test(text);
+}
+
+async function restartOpenClawGatewayForRepair(
+  commands: OpenClawRecoveryCommandSnapshot[],
+  timeoutMs: number,
+): Promise<OpenClawRecoveryCommandSnapshot> {
+  const safeRestart = await runCommand(
+    "openclaw",
+    ["gateway", "restart", "--safe"],
+    timeoutMs,
+  );
+  commands.push(safeRestart);
+  if (safeRestart.ok || !commandLooksLikeUnsupportedSafeRestart(safeRestart)) {
+    return safeRestart;
+  }
+
+  const legacyRestart = await runCommand(
+    "openclaw",
+    ["gateway", "restart"],
+    timeoutMs,
+  );
+  commands.push(legacyRestart);
+  return legacyRestart;
 }
 
 function gatewayDeepProbeSummary(
@@ -932,6 +1327,7 @@ export async function runOpenClawRecoveryRepair(
     changedKeys.push(...await runDynamicConfigValidationRepair(config, commands));
     const bootstrap = repairSystemBootstrap(config);
     if (bootstrap.changed) changedKeys.push(...bootstrap.changedKeys);
+    changedKeys.push(...runLocalRuntimeConfigDriftRepairLayer(config));
     changedKeys.push(...await runPluginRepairLayer(config, commands));
     const studioWebBundle = await runStudioWebBundleRepairLayer(
       config,
@@ -965,7 +1361,7 @@ export async function runOpenClawRecoveryRepair(
       error = commandErrorSummary(finalValidation) || "OpenClaw config is still invalid after repair";
       rollbackReason = "config_validation_failed";
     } else {
-      commands.push(await runCommand("openclaw", ["gateway", "restart"], 20_000));
+      await restartOpenClawGatewayForRepair(commands, 20_000);
       let deepProbe = await probeGatewayControlPlane(config, options.policy);
       ok = deepProbe.ok;
       if (!ok) {
@@ -1010,7 +1406,7 @@ export async function runOpenClawRecoveryRepair(
               },
             }),
           );
-          commands.push(await runCommand("openclaw", ["gateway", "restart"], 20_000));
+          await restartOpenClawGatewayForRepair(commands, 20_000);
           deepProbe = await probeGatewayControlPlane(config, options.policy);
           ok = deepProbe.ok;
         } else if (takeover.snapshot.listeners.length > 0 || takeover.error) {
@@ -1189,6 +1585,7 @@ export async function runOpenClawRecoveryConfigRepair(
     changedKeys.push(...await runDynamicConfigValidationRepair(config, commands));
     const bootstrap = repairSystemBootstrap(config);
     if (bootstrap.changed) changedKeys.push(...bootstrap.changedKeys);
+    changedKeys.push(...runLocalRuntimeConfigDriftRepairLayer(config));
 
     const finalValidation = await runCommand(
       "openclaw",
@@ -1201,8 +1598,7 @@ export async function runOpenClawRecoveryConfigRepair(
       error = commandErrorSummary(finalValidation) || "OpenClaw config is still invalid after config repair";
       rollbackReason = "config_validation_failed";
     } else {
-      const restart = await runCommand("openclaw", ["gateway", "restart"], 20_000);
-      commands.push(restart);
+      const restart = await restartOpenClawGatewayForRepair(commands, 20_000);
       ok = restart.ok;
       if (!ok) {
         error = commandErrorSummary(restart) || "OpenClaw config is valid but gateway restart failed";
@@ -1292,4 +1688,20 @@ export function restoreOpenClawRecoveryBackup(
   backupPath: string,
 ): void {
   fs.copyFileSync(backupPath, config.openclawConfigFile);
+  const restoredConfig = readOpenClawConfig(config);
+  restoreRuntimeSidecarBackup(
+    backupPath,
+    path.join(config.openclawRoot, ".env"),
+    RUNTIME_BACKUP_ENV_LABEL,
+  );
+  restoreRuntimeSidecarBackup(
+    backupPath,
+    path.join(config.openclawRoot, "gateway.systemd.env"),
+    RUNTIME_BACKUP_SYSTEMD_ENV_LABEL,
+  );
+  restoreRuntimeSidecarBackup(
+    backupPath,
+    studioLocalSecretFilePath(restoredConfig),
+    RUNTIME_BACKUP_STUDIO_LOCAL_SECRETS_LABEL,
+  );
 }

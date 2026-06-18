@@ -26,9 +26,12 @@ import {
 import {
   createOpenClawConfigBackup,
   inspectStudioWebBundle,
+  pruneDeprecatedOpenClawPluginResidue,
   pruneMissingOpenClawPluginLoadPaths,
   pruneInvalidOpenClawConfigFromValidation,
+  repairOpenClawGatewayAuthSecretRefDrift,
   repairOpenClawPluginConfigFromFindings,
+  restoreOpenClawRecoveryBackup,
 } from "../../dist/apps/api/modules/openclaw-recovery/repair.js";
 import { createOpenClawRecoveryService } from "../../dist/apps/api/modules/openclaw-recovery/service.js";
 import {
@@ -178,6 +181,83 @@ test("recovery repair creates backups before pruning dynamic validation paths", 
 
   const backup = JSON.parse(fs.readFileSync(backupPath, "utf8"));
   assert.equal(backup.agents.defaults.llm, "legacy-bad-key");
+});
+
+test("recovery backups restore runtime env sidecars with openclaw config", () => {
+  const config = makeConfig();
+  const secretPath = path.join(config.openclawRoot, "studio-local-secrets.json");
+  const openclawConfig = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
+  openclawConfig.secrets = {
+    providers: {
+      "studio-local": {
+        source: "file",
+        path: secretPath,
+        mode: "json",
+      },
+    },
+  };
+  fs.writeFileSync(
+    config.openclawConfigFile,
+    `${JSON.stringify(openclawConfig, null, 2)}\n`,
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(config.openclawRoot, ".env"),
+    "OPENCLAW_GATEWAY_TOKEN=before-env\n",
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(config.openclawRoot, "gateway.systemd.env"),
+    "OPENCLAW_GATEWAY_TOKEN=before-systemd\n",
+    "utf8",
+  );
+  fs.writeFileSync(
+    secretPath,
+    `${JSON.stringify({ gatewayAuthToken: "before-secret", keep: true }, null, 2)}\n`,
+    "utf8",
+  );
+
+  const backupPath = createOpenClawConfigBackup(config);
+  const mutated = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
+  mutated.gateway = { auth: { token: "after-config" } };
+  fs.writeFileSync(
+    config.openclawConfigFile,
+    `${JSON.stringify(mutated, null, 2)}\n`,
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(config.openclawRoot, ".env"),
+    "OPENCLAW_GATEWAY_TOKEN=after-env\n",
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(config.openclawRoot, "gateway.systemd.env"),
+    "OPENCLAW_GATEWAY_TOKEN=after-systemd\n",
+    "utf8",
+  );
+  fs.writeFileSync(
+    secretPath,
+    `${JSON.stringify({ gatewayAuthToken: "after-secret", keep: false }, null, 2)}\n`,
+    "utf8",
+  );
+
+  restoreOpenClawRecoveryBackup(config, backupPath);
+
+  const restored = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
+  const restoredSecret = JSON.parse(fs.readFileSync(secretPath, "utf8"));
+  assert.equal(restored.agents.defaults.llm, "legacy-bad-key");
+  assert.equal(
+    fs.readFileSync(path.join(config.openclawRoot, ".env"), "utf8"),
+    "OPENCLAW_GATEWAY_TOKEN=before-env\n",
+  );
+  assert.equal(
+    fs.readFileSync(path.join(config.openclawRoot, "gateway.systemd.env"), "utf8"),
+    "OPENCLAW_GATEWAY_TOKEN=before-systemd\n",
+  );
+  assert.deepEqual(restoredSecret, {
+    gatewayAuthToken: "before-secret",
+    keep: true,
+  });
 });
 
 test("gateway deep probe validates the Studio control route without breaking light probe", async () => {
@@ -376,6 +456,207 @@ test("plugin repair disables bad entries and removes missing absolute load paths
   assert.equal(repaired.plugins.entries.alpha.enabled, false);
   assert.equal(repaired.plugins.entries.studio.enabled, true);
   assert.deepEqual(repaired.plugins.load.paths, [config.projectRoot]);
+});
+
+test("recovery repair migrates gateway auth token to env SecretRef and syncs runtime env files", () => {
+  const config = makeConfig();
+  const secretPath = path.join(config.openclawRoot, "studio-local-secrets.json");
+  fs.writeFileSync(
+    config.openclawConfigFile,
+    `${JSON.stringify(
+      {
+        gateway: {
+          auth: {
+            mode: "token",
+            token: "plain-token-123",
+          },
+        },
+        secrets: {
+          providers: {
+            "studio-local": {
+              source: "file",
+              path: secretPath,
+              mode: "json",
+            },
+          },
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+  fs.writeFileSync(
+    secretPath,
+    `${JSON.stringify({ gatewayAuthToken: "stale-secret", keep: "yes" }, null, 2)}\n`,
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(config.openclawRoot, ".env"),
+    "OTHER=1\nOPENCLAW_GATEWAY_TOKEN=stale-env\nOPENCLAW_DISCORD_BOT_TOKEN=discord\n",
+    "utf8",
+  );
+  fs.writeFileSync(
+    path.join(config.openclawRoot, "gateway.systemd.env"),
+    "OPENCLAW_GATEWAY_TOKEN=stale-systemd\nOPENCLAW_DISCORD_BOT_TOKEN=discord\n",
+    "utf8",
+  );
+
+  const changedKeys = repairOpenClawGatewayAuthSecretRefDrift(config);
+  const repaired = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
+  const env = fs.readFileSync(path.join(config.openclawRoot, ".env"), "utf8");
+  const systemdEnv = fs.readFileSync(
+    path.join(config.openclawRoot, "gateway.systemd.env"),
+    "utf8",
+  );
+  const secrets = JSON.parse(fs.readFileSync(secretPath, "utf8"));
+
+  assert.ok(changedKeys.includes("gateway.auth.token"));
+  assert.ok(changedKeys.includes("env.OPENCLAW_GATEWAY_TOKEN"));
+  assert.ok(changedKeys.includes("gateway.systemd.env.OPENCLAW_GATEWAY_TOKEN"));
+  assert.ok(changedKeys.includes("env.OPENCLAW_DISCORD_BOT_TOKEN"));
+  assert.ok(changedKeys.includes("gateway.systemd.env.OPENCLAW_DISCORD_BOT_TOKEN"));
+  assert.ok(changedKeys.includes("secrets.providers.studio-local.gatewayAuthToken"));
+  assert.deepEqual(repaired.gateway.auth.token, {
+    source: "env",
+    provider: "default",
+    id: "OPENCLAW_GATEWAY_TOKEN",
+  });
+  assert.match(env, /OPENCLAW_GATEWAY_TOKEN=plain-token-123/);
+  assert.match(systemdEnv, /OPENCLAW_GATEWAY_TOKEN=plain-token-123/);
+  assert.doesNotMatch(env, /OPENCLAW_DISCORD_BOT_TOKEN/);
+  assert.doesNotMatch(systemdEnv, /OPENCLAW_DISCORD_BOT_TOKEN/);
+  assert.equal(secrets.gatewayAuthToken, undefined);
+  assert.equal(secrets.keep, "yes");
+});
+
+test("recovery repair prunes deprecated OpenClaw plugin residue conservatively", () => {
+  const config = makeConfig();
+  fs.writeFileSync(
+    config.openclawConfigFile,
+    `${JSON.stringify(
+      {
+        plugins: {
+          allow: ["studio", "discord", "acpx", "codex"],
+          entries: {
+            studio: { enabled: true },
+            discord: { enabled: true },
+            acpx: { enabled: true },
+            codex: { enabled: true },
+          },
+        },
+        channels: {
+          discord: { enabled: true },
+          feishu: { enabled: true },
+        },
+        bindings: [
+          {
+            agentId: "main",
+            match: { channel: "discord" },
+          },
+          {
+            type: "acp",
+            agentId: "main",
+            match: { channel: "feishu" },
+            acp: { backend: "acpx" },
+          },
+          {
+            type: "acp",
+            agentId: "main",
+            match: { channel: "feishu" },
+            acp: { backend: "codex" },
+          },
+        ],
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+  const pluginDir = path.join(config.openclawRoot, "plugins");
+  fs.mkdirSync(pluginDir, { recursive: true });
+  fs.writeFileSync(
+    path.join(pluginDir, "installs.json"),
+    `${JSON.stringify(
+      {
+        hostContractVersion: "0.1.70",
+        installs: {
+          discord: { version: "0.1.70" },
+          codex: { version: "2026.6.8" },
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+
+  const changedKeys = pruneDeprecatedOpenClawPluginResidue(config);
+  const repaired = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
+  const backups = fs.readdirSync(path.join(pluginDir, "legacy-backups"));
+
+  assert.ok(changedKeys.includes("plugins.allow"));
+  assert.ok(changedKeys.includes("plugins.entries.discord"));
+  assert.ok(changedKeys.includes("plugins.entries.acpx"));
+  assert.ok(changedKeys.includes("channels.discord"));
+  assert.ok(changedKeys.includes("bindings.deprecatedPlugin"));
+  assert.ok(changedKeys.includes("plugins.installs.legacyIndex"));
+  assert.deepEqual(repaired.plugins.allow, ["studio", "codex"]);
+  assert.equal(repaired.plugins.entries.studio.enabled, true);
+  assert.equal(repaired.plugins.entries.codex.enabled, true);
+  assert.equal(repaired.plugins.entries.discord, undefined);
+  assert.equal(repaired.plugins.entries.acpx, undefined);
+  assert.equal(repaired.channels.discord, undefined);
+  assert.equal(repaired.channels.feishu.enabled, true);
+  assert.equal(repaired.bindings.length, 1);
+  assert.equal(repaired.bindings[0].acp.backend, "codex");
+  assert.equal(fs.existsSync(path.join(pluginDir, "installs.json")), false);
+  assert.equal(backups.length, 1);
+  assert.match(backups[0], /^installs-.*\.json\.bak$/);
+});
+
+test("recovery keeps current plugin install index when no deprecated plugin residue is present", () => {
+  const config = makeConfig();
+  fs.writeFileSync(
+    config.openclawConfigFile,
+    `${JSON.stringify(
+      {
+        plugins: {
+          allow: ["studio", "codex"],
+          entries: {
+            studio: { enabled: true },
+            codex: { enabled: true },
+          },
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+  const pluginDir = path.join(config.openclawRoot, "plugins");
+  fs.mkdirSync(pluginDir, { recursive: true });
+  const installIndex = path.join(pluginDir, "installs.json");
+  fs.writeFileSync(
+    installIndex,
+    `${JSON.stringify(
+      {
+        hostContractVersion: "2026.6.8",
+        installs: {
+          codex: { version: "2026.6.8" },
+        },
+      },
+      null,
+      2,
+    )}\n`,
+    "utf8",
+  );
+
+  const changedKeys = pruneDeprecatedOpenClawPluginResidue(config);
+
+  assert.deepEqual(changedKeys, []);
+  assert.equal(fs.existsSync(installIndex), true);
+  assert.equal(fs.existsSync(path.join(pluginDir, "legacy-backups")), false);
 });
 
 test("CLI bootstrap restores openclaw from install manifest when PATH entry is missing", async () => {

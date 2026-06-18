@@ -1,7 +1,7 @@
 # OpenClaw 自愈守护进程目标
 
 > 状态：核心实现已完成；独立专项，非当前 Gateway/Channel 主线
-> 更新：2026-06-12
+> 更新：2026-06-18
 > 文档规则：只保留目标、边界、架构和验收；进度写到 `openclaw-recovery-daemon-progress.md`。
 
 ## 1. 目标
@@ -13,8 +13,11 @@ OpenClaw Recovery Daemon 是独立守护进程。Studio 健康时负责安装、
 - 健康循环只做本机轻量探测，不频繁 spawn OpenClaw CLI。
 - 持续失败超过阈值后才进入修复流程。
 - 修复前备份 `openclaw.json`。
+- 修复前备份 `openclaw.json` 以及会被本轮修复触碰的 runtime sidecar：`.env`、`gateway.systemd.env`、`studio-local` secret 文件。
 - 根据 `openclaw config validate --json` 的 issue path 动态删除安全域里的违规字段。
 - 保留插件 config、provider params、channel 扩展字段和用户插件源码目录。
+- 对已确认废弃的插件/渠道残留做保守清理，只处理 `acpx` / `discord` 这类已废弃 residue，不扩大到任意第三方插件源码。
+- Gateway auth token 收敛到 SecretRef/env 单一权威来源，避免明文配置、`.env`、systemd env 和本地 secret 文件互相漂移。
 - 修复历史和配置备份支持分页浏览。
 - `/system/recovery` 提供手动配置修复、事件、备份和 daemon service 管理。
 - daemon 修复不依赖 Studio API/UI 存活。
@@ -49,14 +52,16 @@ OpenClaw Recovery Daemon 是独立守护进程。Studio 健康时负责安装、
 - 修复前创建配置备份。
 - 配置 prune 从 OpenClaw validation issue 动态获取路径。
 - 插件层优先禁用坏 entry 或移除缺失绝对 path，不删除插件源码目录。
-- Studio web bundle 缺失时可受控执行 `npm run build:web` 重建。
+- 低优先级：Studio 插件 `/studio` 控制面静态资源缺失时可受控执行 `npm run build:web` 重建；该项只保证 OpenClaw 托管 Studio UI 可打开，不作为 OpenClaw 本体配置修复的核心验收。
 - Gateway 修复后深探测端口和 Studio 控制 UI 路径。
 - Gateway 服务托管修复优先使用 OpenClaw CLI 的 gateway status/install/start/restart。
 - 回滚层在修复后配置仍无效或流程异常时恢复本次修复前备份。
+- 回滚层同时恢复 runtime sidecar，避免 SecretRef/env 修了一半后留下不一致 token。
+- Gateway 重启优先使用 `openclaw gateway restart --safe`，旧 CLI 不支持时才回退普通 restart。
 - Recovery events/backups 支持分页 payload。
 
 ## 5. 剩余工作
 
 - 在 Linux/macOS/Windows 目标 supervisor 上做 install/start/restart smoke。
-- 用真实 CLI 缺失、包损坏、gateway service 损坏和 dist 损坏样本验证兜底。
+- 用真实 CLI 缺失、包损坏、gateway service 损坏样本验证兜底；另以低优先级验证 Studio 插件 `/studio` 控制面静态资源缺失样本。
 - 若 fallback 控制面变成正式用户工作流，再补发现入口和 token 展示 UX。
