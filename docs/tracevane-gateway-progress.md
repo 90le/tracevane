@@ -429,6 +429,7 @@
 - 本轮当前会话救援：当前已打开 Codex TUI 的默认 cwd 属于进程内上下文，无法在不重启 TUI 的情况下直接改写；因此在扩展目录下保留一个 filesystem rescue alias，`pwd -P` 解析到 `/home/binbin/.openclaw/extensions/tracevane`，避免 PreToolUse 在旧 cwd 不存在时直接失败。真实配置、服务和历史 metadata 仍以 Tracevane 新目录为准。
 - 本轮 legacy runtime 归档迁移：`~/.openclaw/tracevane/legacy-runtime-archive-20260618/chat.sqlite` 与 durable mirror SQLite 归档已按文本列迁移旧项目路径/旧服务名，FTS 重建、`VACUUM` 后 `PRAGMA integrity_check` 均为 `ok`。
 - 本轮验证通过：`npm run typecheck:api`、`npm run typecheck:web`、`npm run build:api`、`npm run build:web`、`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`、`node --test --test-name-pattern "daemon service plan|Channel Connectors daemon service|serviceName|Codex app-server" tests/system/channel-connectors-service.test.mjs`，以及 live `/api/channel-connectors/daemon/service` 返回 `serviceName=tracevane-channel-connectors.service`。
+- 本轮 Git metadata 收口：本地 `.git/config` 的 `core.hooksPath` 已从 retired project absolute path 改为 `.git/hooks`，避免目录迁移后 hooks 继续指向旧路径；本地 `.git/description` 已改为 `Tracevane`。当前 checkout 没有配置 git remote，因此没有可在本地直接改名的远程仓库 URL。
 
 ## 已知边界
 
