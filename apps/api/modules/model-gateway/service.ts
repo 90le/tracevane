@@ -2984,6 +2984,36 @@ function healthCircuitRetryReady(health: ModelGatewayProviderHealth, nowMs = Dat
   return nowMs - lastFailureMs >= MODEL_GATEWAY_CIRCUIT_OPEN_RETRY_MS;
 }
 
+function enabledEndpointProfiles(provider: ModelGatewayProvider): ModelGatewayProviderEndpointProfile[] {
+  return provider.endpointProfiles.filter((profile) => profile.enabled);
+}
+
+function healthIsDegraded(health: ModelGatewayProviderHealth): boolean {
+  return Boolean(health.lastFailureAt || health.retryAfterUntil || health.circuitState !== "closed");
+}
+
+function providerHasHealthyRoutingSurface(provider: ModelGatewayProvider): boolean {
+  if (!provider.enabled) return false;
+  const endpointProfiles = enabledEndpointProfiles(provider);
+  if (endpointProfiles.length) {
+    return endpointProfiles.some((profile) => profile.health.circuitState === "closed");
+  }
+  return provider.health.circuitState === "closed";
+}
+
+function providerHasDegradedHealth(provider: ModelGatewayProvider): boolean {
+  return healthIsDegraded(provider.health)
+    || enabledEndpointProfiles(provider).some((profile) => healthIsDegraded(profile.health));
+}
+
+function providerOpenCircuitCount(provider: ModelGatewayProvider): number {
+  const providerCircuit = provider.health.circuitState === "open" ? 1 : 0;
+  const endpointCircuits = enabledEndpointProfiles(provider)
+    .filter((profile) => profile.health.circuitState === "open")
+    .length;
+  return providerCircuit + endpointCircuits;
+}
+
 function buildProviderTestPayload(
   provider: ModelGatewayProvider,
   model: string,
@@ -6451,7 +6481,7 @@ export function createModelGatewayService(
   function getStatus(): ModelGatewayStatusResponse {
     const registry = readRegistry();
     const runtime = readRuntime();
-    const openCircuits = registry.providers.filter((provider) => provider.health.circuitState === "open").length;
+    const openCircuits = registry.providers.reduce((sum, provider) => sum + providerOpenCircuitCount(provider), 0);
     const latestRequestAt = runtime.requestLog[runtime.requestLog.length - 1]?.finishedAt || null;
     const usageSummary = summarizeRuntimeUsage(runtime.requestLog, createRuntimeUsageModelResolver(registry));
     return {
@@ -6494,8 +6524,8 @@ export function createModelGatewayService(
       },
       lifecycle: getLifecycleStatus(),
       healthSummary: {
-        okProviders: registry.providers.filter((provider) => provider.enabled && provider.health.circuitState === "closed").length,
-        degradedProviders: registry.providers.filter((provider) => provider.health.lastFailureAt || provider.health.circuitState !== "closed").length,
+        okProviders: registry.providers.filter((provider) => providerHasHealthyRoutingSurface(provider)).length,
+        degradedProviders: registry.providers.filter((provider) => providerHasDegradedHealth(provider)).length,
         openCircuits,
       },
     };

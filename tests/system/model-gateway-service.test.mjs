@@ -3396,6 +3396,31 @@ test("model gateway endpoint profiles prefer same-provider model endpoint fallba
   assert.equal(route?.routeMode, "passthrough");
   assert.equal(route?.upstreamUrl, "https://backup.example.test/v1/chat/completions");
   assert.match(route?.warning || "", /glm\/coding-chat-fast.*fallback 'glm\/coding-chat-backup'/);
+
+  let status = service.getStatus();
+  assert.equal(status.healthSummary.openCircuits, 1);
+  assert.equal(status.healthSummary.degradedProviders, 1);
+  assert.equal(status.healthSummary.okProviders, 2);
+
+  service.upsertProvider(undefined, {
+    provider: {
+      ...provider,
+      endpointProfiles: provider.endpointProfiles.map((profile) => ({
+        ...profile,
+        health: {
+          circuitState: "open",
+          lastFailureAt: new Date().toISOString(),
+          lastError: "timeout",
+          consecutiveFailures: 3,
+        },
+      })),
+    },
+  });
+
+  status = service.getStatus();
+  assert.equal(status.healthSummary.openCircuits, 2);
+  assert.equal(status.healthSummary.degradedProviders, 1);
+  assert.equal(status.healthSummary.okProviders, 1);
 });
 
 test("model gateway forwards through endpoint profiles and updates endpoint health", async () => {

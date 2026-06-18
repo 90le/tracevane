@@ -13,6 +13,7 @@
 - Provider Center 前端已改为列表优先：Providers 页面只保留一个“新建服务商”入口和服务商列表；新建时在弹层内选择 API Key 接入 / 账户登录 / 中继服务，详细配置进入弹层表单，服务商 ID、端点、多协议、账号池和高级连接默认降级到折叠区，避免主页面继续堆积配置。
 - Model Gateway Overview 已改为状态摘要 + 工作区入口行：主屏只展示 daemon endpoint、运行状态、Gateway key 状态、请求/token 摘要和 Providers / Client connections / Model usage / Checks 快速入口；Gateway key 编辑进入弹层，不在 Overview 常驻敏感表单。
 - Gateway Provider 支持 endpoint profiles；同一 provider/模型可按客户端协议优选原生 endpoint，并在 endpoint 级 health/circuit 下回退；passthrough 和 adapter-required 路径的非 JSON 上游错误都会归因到命中的 endpoint profile。
+- Gateway status health summary 已纳入 endpoint profile health：同一 provider 内任一启用 endpoint circuit open 会计入 `openCircuits` 和 `degradedProviders`；如果一个 provider 的所有启用 endpoint 都 open，则不再把该 provider 计入 `okProviders`，避免 Overview/状态 API 掩盖真实路由降级。
 - Gateway 普通 API-key provider 的 HTTP 429 / quota / rate-limit 错误会保留上游 JSON 错误码到 runtime log；带 `Retry-After` 的失败会写入 provider/endpoint `health.retryAfterUntil` 并立即打开 circuit，在到期前优先走 fallback，避免固定 60 秒窗口内反复打同一个受限 provider。
 - GPT/ChatGPT account 与 Codex account 进入 Gateway Phase D2：Provider Center 页面直接登录官方账户并自动创建 account-backed provider；账户池 sticky、per-account concurrency、runtime cursor/affinity 持久化、upstream quota/cooldown、per-account proxy/direct 和 Codex account `gpt-image-2` Images generation live smoke 已闭环，后续补更多账户型 provider，不恢复已停止演进的旧模型链路。
 - Codex account-backed provider 已支持页面登录、请求前自动 refresh、手动 refresh、账户启用/停用和重新登录入口；客户端仍只使用统一 Gateway endpoint + Gateway key。
@@ -134,6 +135,7 @@
   - Gateway endpoint profile 稳定性补强：新增同 provider / 同模型 / 多 endpoint 回归，锁定按 endpoint priority 优选 primary endpoint，并在 primary endpoint circuit open 时优先回退同 provider backup endpoint，而不是跳到外部 provider。
   - Gateway started streaming adapter 失败不再误记成功：上游流已经开始后发出的 `event:error` / `response.failed` 仍按目标客户端协议写出失败事件，但 service 会同步记录 runtime `failure`、更新 provider/endpoint health；连续失败会打开 circuit，下一次请求按已有 failover 选择 backup provider。Codex account adapter 流失败同时参与 quota/rate/capacity cooldown。
   - Gateway provider Retry-After 收口：普通 passthrough JSON 错误会把上游 `error.code` 写入 runtime；HTTP 429 / `Retry-After` 会立即打开 provider/endpoint circuit 并持久化 `retryAfterUntil`，route selection 在到期前不 probe，已有 backup 时直接回退。
+  - Gateway status endpoint health 收口：`/api/model-gateway/status` 的 `healthSummary` 不再只看 provider 根级 health；endpoint profile circuit open 会进入 `openCircuits/degradedProviders`，全部 endpoint open 的 provider 不再显示为 ok，避免状态页与实际 route fallback 不一致。
   - Active routing 可观测性补齐：`/api/model-gateway/providers` 的 `activeRoutes` 现在返回实际 resolved endpoint profile、apiFormat、routeMode、baseUrl 和 upstreamUrl；Provider Center Active routing 行同步显示当前真实 provider/endpoint/协议/模式，固定、自动和回退状态与 route decision 保持一致。
   - Active route smoke 可观测性补齐：Provider Center 的 route smoke 结果显示 smoke 时刻的 provider/endpoint/apiFormat/mode，并用 upstreamUrl 作为 hover 诊断；回归锁定 smoke route decision 会携带 endpoint profile 和 upstreamUrl。
   - Gateway passthrough 错误 envelope 补强：普通 OpenAI-compatible provider 返回非 JSON / 非 SSE 的 HTTP 错误时，Gateway 会转换为结构化 `upstream_http_*` JSON error，并写入 runtime log；上游本身返回 JSON 错误时继续保留原样。

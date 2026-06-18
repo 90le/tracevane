@@ -52,6 +52,7 @@
 | 多账户复杂度误伤单账户 | 默认单账户可用；多账户 round-robin/sticky/concurrency 只作为增强，不作为基础 smoke 前提 |
 | Gateway 已开始的流式请求中途失败却被记为成功 | SSE adapter 必须把已写给客户端的 `error` / `response.failed` 同步反馈给 service，runtime 记 `failure`，health/circuit 可触发 fallback，Codex account quota/rate/capacity 可进入 cooldown |
 | Gateway 忽略上游 Retry-After 继续打受限 provider | 普通 provider 和 endpoint health 持久化 `retryAfterUntil`；带 Retry-After 的失败立即打开 circuit，到期前不 probe，优先 fallback |
+| Endpoint profile 已降级但状态摘要仍显示健康 | `/api/model-gateway/status` 必须把启用 endpoint profile 的 health/circuit 纳入 `healthSummary`；全部 endpoint open 的 provider 不计入 `okProviders` |
 | 用户等待无反馈 | IM 返回结构化状态：running、waiting-for-permission、delivering、failed、unsupported、fallback，不把内部诊断伪装成最终回复 |
 
 ## 当前任务清单
@@ -66,6 +67,7 @@
 | P1 | Gateway endpoint profile 回归 | 已补本地回归 | 原生协议优选、passthrough 错误归属和 adapter-required 错误归属均锁定 endpoint profile |
 | P1 | Gateway started streaming failure 收口 | 已补本地回归 | 已开始的 SSE adapter 失败会保持客户端失败事件，同时更新 runtime failure、provider health、circuit 和 fallback |
 | P1 | Gateway Retry-After / circuit 收口 | 已补本地回归 | 普通 provider 429 保留上游错误码，Retry-After 写入 health 并阻止到期前 probe |
+| P1 | Gateway endpoint health summary 收口 | 已补本地回归 | endpoint profile circuit 纳入 status healthSummary，全部 endpoint open 的 provider 不再算 ok |
 | P1 | Channel final delivery / reaction 回归 | 已补本地回归 | Feishu reaction stop failure 可观测但不阻断生命周期；Feishu 投递失败落卡路径保持源码回归 |
 | P1 | Channel legacy action helper 清理 | 已完成本轮 | Feishu transport 删除未暴露 Docx/Drive/Wiki/Bitable 直接 action helper，只保留旧 code fence 剥除 |
 | P1 | 真实外部核验记录 | 持续 | 每次新增 provider、SDK、协议、Channel、Agent 或 UI 行为前更新目标/进度/专项文档 |
@@ -85,3 +87,4 @@
 - 2026-06-18：核验 OpenAI Codex 官方 Advanced Configuration：`https://developers.openai.com/codex/config-advanced#oss-mode-local-providers` 是用户粘贴缺失后的正确入口；custom model providers / `openai_base_url` / `wire_api="responses"` 对 Studio Gateway 生成 Codex CLI 配置有帮助，`--oss` 主要面向 Ollama/LM Studio 本地 provider，不替代 Gateway 三协议适配测试。
 - 2026-06-18：将“GLM 两种上游原生协议 + Codex 登录账户官方 Responses”整理为发布级协议矩阵，并新增 `scripts/smoke-model-gateway-protocol-matrix.mjs`；真实执行证明 GLM `coding-anthropic`、GLM `coding-chat`、`codex-account` 三项主流协议 proof 均通过，验证后 activeProviders 恢复为空。
 - 2026-06-18：核验 OpenAI rate-limit 指南（`https://developers.openai.com/cookbook/examples/how_to_handle_rate_limits`）、Anthropic 错误文档（`https://docs.anthropic.com/en/api/errors` / `https://platform.claude.com/docs/en/api/errors`）、OpenAI Node `Retry-After` 讨论（`https://github.com/openai/openai-node/issues/1108`、`https://github.com/openai/openai-node/issues/1477`）和 Claude Code / community rate-limit 失败报告（例如 `https://github.com/anthropics/claude-code/issues/64030`、`https://github.com/vercel/ai/issues/5018`）；结论是 Gateway 不应对 rate/quota/capacity 失败做盲目同路由立即重试，而应保留上游错误、尊重 cooldown/Retry-After、更新 health/circuit 并允许 fallback。本地补 started streaming adapter failure 和 Retry-After 回归：已开始的 Chat/Responses/Anthropic SSE adapter 失败仍向客户端写协议内失败事件，同时 runtime 记 `failure`，provider 连续失败打开 circuit，下一次请求路由到 backup provider；普通 provider 429 会保留上游错误码、写入 `health.retryAfterUntil`，到期前不 probe。
+- 2026-06-18：本地补 Gateway endpoint health summary 回归；同 provider 多 endpoint fallback 后，`/api/model-gateway/status` 会显示 endpoint `openCircuits/degradedProviders`，全部启用 endpoint open 时 provider 不再计入 `okProviders`，避免 Overview/状态 API 掩盖真实路由不可用。
