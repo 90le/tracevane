@@ -130,6 +130,7 @@ const MESSAGES_EXTRA_KEYS = new Set([
   "statusReactions",
   "suppressToolErrors",
   "tts",
+  "usageTemplate",
   "visibleReplies",
 ]);
 const TOOLS_EXTRA_KEYS = new Set([
@@ -173,7 +174,6 @@ const GATEWAY_SCHEMA_KEYS = new Set([
   "tailscale",
   "tools",
   "trustedProxies",
-  "webchat",
   ...GATEWAY_EXTRA_KEYS,
 ]);
 const ACP_SCHEMA_KEYS = new Set([
@@ -262,6 +262,7 @@ const ROOT_SCHEMA_KEYS = new Set([
   "talk",
   "tools",
   "transcripts",
+  "tui",
   "ui",
   "update",
   "web",
@@ -289,6 +290,7 @@ const OPENCLAW_EXTRA_DOMAIN_KEYS = new Set([
   "surfaces",
   "talk",
   "transcripts",
+  "tui",
   "ui",
   "update",
   "web",
@@ -1100,7 +1102,7 @@ function buildSummary(
       profile: String(openclawConfig.tools?.profile || "full").trim(),
       elevatedEnabled: openclawConfig.tools?.elevated?.enabled !== false,
       execHost: String(openclawConfig.tools?.exec?.host || "auto").trim(),
-      execMode: String(openclawConfig.tools?.exec?.mode || "auto").trim(),
+      execMode: String(openclawConfig.tools?.exec?.mode || "").trim(),
       execNode: String(openclawConfig.tools?.exec?.node || "").trim(),
       execAsk: String(openclawConfig.tools?.exec?.ask || "off").trim(),
       execSecurity: String(
@@ -1280,15 +1282,6 @@ function buildGatewaySummary(
         ? {
             allow: normalizeStringList(gw.tools.allow),
             deny: normalizeStringList(gw.tools.deny),
-          }
-        : undefined,
-    webchat:
-      gw.webchat && typeof gw.webchat === "object"
-        ? {
-            chatHistoryMaxChars:
-              gw.webchat.chatHistoryMaxChars != null
-                ? normalizeNumber(gw.webchat.chatHistoryMaxChars, 0, 1)
-                : null,
           }
         : undefined,
     handshakeTimeoutMs:
@@ -2465,21 +2458,25 @@ function applyConfigUpdate(
     payload.tools.execHost,
     openclawConfig.tools.exec.host || "auto",
   );
-  openclawConfig.tools.exec.mode = normalizeString(
-    payload.tools.execMode,
-    openclawConfig.tools.exec.mode || "auto",
-  );
+  const execMode = normalizeString(payload.tools.execMode);
+  if (execMode) {
+    openclawConfig.tools.exec.mode = execMode;
+    delete openclawConfig.tools.exec.ask;
+    delete openclawConfig.tools.exec.security;
+  } else {
+    delete openclawConfig.tools.exec.mode;
+    openclawConfig.tools.exec.ask = normalizeString(
+      payload.tools.execAsk,
+      openclawConfig.tools.exec.ask || "off",
+    );
+    openclawConfig.tools.exec.security = normalizeString(
+      payload.tools.execSecurity,
+      openclawConfig.tools.exec.security || "full",
+    );
+  }
   openclawConfig.tools.exec.node = normalizeString(
     payload.tools.execNode,
     openclawConfig.tools.exec.node || "",
-  );
-  openclawConfig.tools.exec.ask = normalizeString(
-    payload.tools.execAsk,
-    openclawConfig.tools.exec.ask || "off",
-  );
-  openclawConfig.tools.exec.security = normalizeString(
-    payload.tools.execSecurity,
-    openclawConfig.tools.exec.security || "full",
   );
   openclawConfig.tools.exec.timeoutSec = normalizeNumber(
     payload.tools.execTimeoutSec,
@@ -2754,18 +2751,6 @@ function applyConfigUpdate(
       if ((pg as Record<string, any>).tools.deny != null)
         gw.tools.deny = normalizeStringList(
           (pg as Record<string, any>).tools.deny,
-        );
-    }
-    if (
-      (pg as Record<string, unknown>).webchat &&
-      typeof (pg as Record<string, unknown>).webchat === "object"
-    ) {
-      gw.webchat = gw.webchat || {};
-      if ((pg as Record<string, any>).webchat.chatHistoryMaxChars != null)
-        gw.webchat.chatHistoryMaxChars = normalizeNumber(
-          (pg as Record<string, any>).webchat.chatHistoryMaxChars,
-          gw.webchat.chatHistoryMaxChars || 200000,
-          1,
         );
     }
     if (Object.hasOwn(pg as Record<string, unknown>, "handshakeTimeoutMs")) {

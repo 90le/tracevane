@@ -1160,7 +1160,6 @@ test("config summary and save cover current low-frequency schema domains", () =>
       profile: "minimal",
       exec: {
         host: "auto",
-        mode: "ask",
         ask: "always",
         security: "allowlist",
       },
@@ -1180,12 +1179,14 @@ test("config summary and save cover current low-frequency schema domains", () =>
       messagePrefix: "@oc",
       groupChat: { mentionRequired: true },
       tts: { enabled: false },
+      usageTemplate: { enabled: true, template: "Tokens: {{tokens}}" },
       unsupportedMessagesKey: true,
     },
     gateway: {
       remote: { enabled: true },
       tls: { enabled: true },
       nodes: { local: { url: "http://127.0.0.1:31879" } },
+      webchat: { chatHistoryMaxChars: 200000 },
       unsupportedGatewayKey: true,
     },
     acp: {
@@ -1209,7 +1210,7 @@ test("config summary and save cover current low-frequency schema domains", () =>
     byProvider: { telegram: ["exec"] },
   });
   assert.equal(summary.tools.execHost, "auto");
-  assert.equal(summary.tools.execMode, "ask");
+  assert.equal(summary.tools.execMode, "");
   assert.equal(summary.tools.execAsk, "always");
   assert.equal(summary.tools.execSecurity, "allowlist");
   assert.deepEqual(summary.session.extra, {
@@ -1221,6 +1222,7 @@ test("config summary and save cover current low-frequency schema domains", () =>
     groupChat: { mentionRequired: true },
     messagePrefix: "@oc",
     tts: { enabled: false },
+    usageTemplate: { enabled: true, template: "Tokens: {{tokens}}" },
   });
   assert.deepEqual(summary.gateway.extra, {
     nodes: { local: { url: "http://127.0.0.1:31879" } },
@@ -1259,6 +1261,7 @@ test("config summary and save cover current low-frequency schema domains", () =>
       extra: {
         visibleReplies: 4,
         suppressToolErrors: true,
+        usageTemplate: { enabled: false, template: "Usage hidden" },
         unsupportedFutureKey: true,
       },
     },
@@ -1292,8 +1295,8 @@ test("config summary and save cover current low-frequency schema domains", () =>
   assert.deepEqual(nextConfig.tools.web, { enabled: false });
   assert.equal(nextConfig.tools.exec.host, "auto");
   assert.equal(nextConfig.tools.exec.mode, "full");
-  assert.equal(nextConfig.tools.exec.ask, "off");
-  assert.equal(nextConfig.tools.exec.security, "full");
+  assert.equal(nextConfig.tools.exec.ask, undefined);
+  assert.equal(nextConfig.tools.exec.security, undefined);
   assert.equal(nextConfig.tools.allow, undefined);
   assert.equal(nextConfig.tools.extra, undefined);
   assert.equal(nextConfig.tools.unsupportedToolsKey, undefined);
@@ -1304,11 +1307,16 @@ test("config summary and save cover current low-frequency schema domains", () =>
   assert.equal(nextConfig.session.unsupportedSessionKey, undefined);
   assert.equal(nextConfig.messages.visibleReplies, 4);
   assert.equal(nextConfig.messages.suppressToolErrors, true);
+  assert.deepEqual(nextConfig.messages.usageTemplate, {
+    enabled: false,
+    template: "Usage hidden",
+  });
   assert.equal(nextConfig.messages.messagePrefix, undefined);
   assert.equal(nextConfig.messages.unsupportedMessagesKey, undefined);
   assert.deepEqual(nextConfig.gateway.http, { cors: true });
   assert.deepEqual(nextConfig.gateway.reload, { enabled: true });
   assert.equal(nextConfig.gateway.remote, undefined);
+  assert.equal(nextConfig.gateway.webchat, undefined);
   assert.equal(nextConfig.gateway.unsupportedGatewayKey, undefined);
   assert.deepEqual(nextConfig.acp.runtime, { idleMs: 2000 });
   assert.deepEqual(nextConfig.acp.stream, { enabled: false });
@@ -1317,6 +1325,40 @@ test("config summary and save cover current low-frequency schema domains", () =>
   assert.equal(nextConfig.commands.useAccessGroups, true);
   assert.equal(nextConfig.commands.unsupportedCommandsKey, undefined);
   assert.equal(nextConfig.commands.unsupportedFutureKey, undefined);
+});
+
+test("config save preserves legacy exec security and ask without inventing exec mode", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    tools: {
+      exec: {
+        host: "auto",
+        ask: "off",
+        security: "full",
+        timeoutSec: 45,
+      },
+    },
+  });
+
+  const service = createConfigService(config);
+  const summary = service.getSummary();
+  assert.equal(summary.tools.execMode, "");
+  assert.equal(summary.tools.execAsk, "off");
+  assert.equal(summary.tools.execSecurity, "full");
+
+  service.saveConfig({
+    ...buildPayload(summary),
+    tools: summary.tools,
+  });
+
+  const nextConfig = JSON.parse(
+    fs.readFileSync(config.openclawConfigFile, "utf8"),
+  );
+  assert.equal(nextConfig.tools.exec.mode, undefined);
+  assert.equal(nextConfig.tools.exec.ask, "off");
+  assert.equal(nextConfig.tools.exec.security, "full");
+  assert.equal(nextConfig.tools.exec.timeoutSec, 45);
 });
 
 test("config summary and save cover unmodeled OpenClaw top-level schema domains", () => {
@@ -1338,6 +1380,11 @@ test("config summary and save cover unmodeled OpenClaw top-level schema domains"
     },
     talk: {
       provider: "openai",
+    },
+    tui: {
+      footer: {
+        showRemoteHost: true,
+      },
     },
     unknownHistoricalRoot: {
       stale: true,
@@ -1365,6 +1412,11 @@ test("config summary and save cover unmodeled OpenClaw top-level schema domains"
     talk: {
       provider: "openai",
     },
+    tui: {
+      footer: {
+        showRemoteHost: true,
+      },
+    },
   });
 
   service.saveConfig({
@@ -1380,6 +1432,11 @@ test("config summary and save cover unmodeled OpenClaw top-level schema domains"
         },
         update: {
           channel: "stable",
+        },
+        tui: {
+          footer: {
+            showRemoteHost: false,
+          },
         },
         unsupportedFutureDomain: {
           enabled: true,
@@ -1397,6 +1454,11 @@ test("config summary and save cover unmodeled OpenClaw top-level schema domains"
     proxyUrl: "http://127.0.0.1:8080",
   });
   assert.deepEqual(nextConfig.update, { channel: "stable" });
+  assert.deepEqual(nextConfig.tui, {
+    footer: {
+      showRemoteHost: false,
+    },
+  });
   assert.equal(nextConfig.diagnostics, undefined);
   assert.equal(nextConfig.env, undefined);
   assert.equal(nextConfig.talk, undefined);

@@ -221,9 +221,6 @@ export interface ConfigSummaryPayload {
       allow: string[];
       deny: string[];
     };
-    webchat?: {
-      chatHistoryMaxChars: number | null;
-    };
     handshakeTimeoutMs?: number | null;
     channelHealthCheckMinutes?: number | null;
     channelStaleEventThresholdMinutes?: number | null;
