@@ -29,6 +29,7 @@ OpenClaw Recovery Daemon 是独立守护进程。Studio 健康时负责安装、
 - `/system` 是轻量系统总览，不恢复宽泛 diagnostics 默认面。
 - `/api/system/diagnostics` 可保留为手动深诊断端点，但不能进入默认渲染、轮询或事件热路径。
 - npm 重装只按 recovery install manifest 受控恢复同一记录包，不做盲目 latest 更新。
+- Agent `models.json` / SQLite auth profile 明文 key 不由 Recovery 自动改写；这类凭据迁移必须走 OpenClaw secrets 官方交互/计划能力，避免破坏 agent auth 存储。
 
 ## 3. 架构
 
@@ -55,6 +56,8 @@ OpenClaw Recovery Daemon 是独立守护进程。Studio 健康时负责安装、
 - 低优先级：Studio 插件 `/studio` 控制面静态资源缺失时可受控执行 `npm run build:web` 重建；该项只保证 OpenClaw 托管 Studio UI 可打开，不作为 OpenClaw 本体配置修复的核心验收。
 - Gateway 修复后深探测端口和 Studio 控制 UI 路径。
 - Gateway 服务托管修复优先使用 OpenClaw CLI 的 gateway status/install/start/restart。
+- Gateway service 修复或重启后要 bounded wait 到控制面真正 ready，避免 systemd `active` 但 Gateway 仍启动中时误判失败。
+- CLI recovery shim 必须按 manifest 入口类型执行：JS/MJS 才用 Node，shell/native wrapper 直接 exec。
 - 回滚层在修复后配置仍无效或流程异常时恢复本次修复前备份。
 - 回滚层同时恢复 runtime sidecar，避免 SecretRef/env 修了一半后留下不一致 token。
 - Gateway 重启优先使用 `openclaw gateway restart --safe`，旧 CLI 不支持时才回退普通 restart。
@@ -62,6 +65,6 @@ OpenClaw Recovery Daemon 是独立守护进程。Studio 健康时负责安装、
 
 ## 5. 剩余工作
 
-- 在 Linux/macOS/Windows 目标 supervisor 上做 install/start/restart smoke。
-- 用真实 CLI 缺失、包损坏、gateway service 损坏样本验证兜底；另以低优先级验证 Studio 插件 `/studio` 控制面静态资源缺失样本。
+- macOS launchd、Windows scheduled task/service install/start/restart smoke。
+- 低优先级验证 Studio 插件 `/studio` 控制面静态资源缺失样本。
 - 若 fallback 控制面变成正式用户工作流，再补发现入口和 token 展示 UX。

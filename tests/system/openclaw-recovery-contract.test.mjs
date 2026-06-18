@@ -66,6 +66,7 @@ test("recovery daemon separates lightweight probes from heavy repair commands", 
   assert.match(repairSource, /pruneDeprecatedOpenClawPluginResidue/);
   assert.match(repairSource, /runLocalRuntimeConfigDriftRepairLayer/);
   assert.match(repairSource, /restartOpenClawGatewayForRepair/);
+  assert.match(repairSource, /waitForGatewayControlPlane/);
   assert.match(repairSource, /\["gateway", "restart", "--safe"\]/);
   assert.match(repairSource, /createRuntimeSidecarBackups/);
   assert.match(repairSource, /restoreRuntimeSidecarBackup/);

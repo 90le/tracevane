@@ -227,12 +227,15 @@ export function createOpenClawCliShim(
   if (!manifest.cliRealPath || !fs.existsSync(manifest.cliRealPath)) return "";
   const paths = resolveOpenClawRecoveryPaths(config);
   fs.mkdirSync(paths.binDir, { recursive: true });
+  const targetUsesNode = /\.(c?js|mjs)$/i.test(manifest.cliRealPath);
   if (process.platform === "win32") {
     fs.writeFileSync(
       paths.cliShimPath,
       [
         "@echo off",
-        `"${manifest.nodePath || process.execPath}" "${manifest.cliRealPath}" %*`,
+        targetUsesNode
+          ? `"${manifest.nodePath || process.execPath}" "${manifest.cliRealPath}" %*`
+          : `"${manifest.cliRealPath}" %*`,
         "",
       ].join("\r\n"),
       "utf8",
@@ -242,7 +245,9 @@ export function createOpenClawCliShim(
       paths.cliShimPath,
       [
         "#!/bin/sh",
-        `exec "${manifest.nodePath || process.execPath}" "${manifest.cliRealPath}" "$@"`,
+        targetUsesNode
+          ? `exec "${manifest.nodePath || process.execPath}" "${manifest.cliRealPath}" "$@"`
+          : `exec "${manifest.cliRealPath}" "$@"`,
         "",
       ].join("\n"),
       { encoding: "utf8", mode: 0o755 },

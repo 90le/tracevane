@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import http from "node:http";
 import os from "node:os";
@@ -7,6 +8,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  createOpenClawCliShim,
   ensureOpenClawCliAvailable,
   writeOpenClawRecoveryInstallManifest,
 } from "../../dist/apps/api/modules/openclaw-recovery/cli-bootstrap.js";
@@ -700,6 +702,38 @@ test("CLI bootstrap restores openclaw from install manifest when PATH entry is m
   } finally {
     process.env.PATH = originalPath;
   }
+});
+
+test("CLI bootstrap shim executes shell wrapper manifests directly", () => {
+  if (process.platform === "win32") return;
+  const config = makeConfig();
+  const fakeCli = path.join(config.projectRoot, "fake-openclaw");
+  fs.writeFileSync(
+    fakeCli,
+    "#!/bin/sh\necho 'OpenClaw 2099.2.0 (fake-shell)'\n",
+    { encoding: "utf8", mode: 0o755 },
+  );
+  fs.chmodSync(fakeCli, 0o755);
+
+  const shimPath = createOpenClawCliShim(config, {
+    version: 1,
+    updatedAt: "2026-06-05T00:00:00.000Z",
+    cliPath: fakeCli,
+    cliRealPath: fakeCli,
+    cliVersion: "2099.2.0",
+    nodePath: process.execPath,
+    packageManager: "npm",
+    packageName: "openclaw",
+    packageSpec: "openclaw@2099.2.0",
+    npmPrefix: "",
+    installKind: "path",
+    projectRoot: config.projectRoot,
+  });
+
+  const output = execFileSync(shimPath, ["--version"], { encoding: "utf8" });
+
+  assert.match(output, /OpenClaw 2099\.2\.0/);
+  assert.doesNotMatch(fs.readFileSync(shimPath, "utf8"), new RegExp(process.execPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });
 
 test("gateway runtime discovery parses listeners and only trusts OpenClaw gateway processes", () => {

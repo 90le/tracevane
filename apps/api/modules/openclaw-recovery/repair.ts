@@ -1013,6 +1013,20 @@ async function probeGatewayControlPlane(
   });
 }
 
+async function waitForGatewayControlPlane(
+  config: StudioServerConfig,
+  policy: OpenClawRecoveryPolicy,
+  maxWaitMs: number,
+): Promise<OpenClawGatewayDeepProbeResult> {
+  const deadline = Date.now() + Math.max(policy.probeTimeoutMs, maxWaitMs);
+  let latest = await probeGatewayControlPlane(config, policy);
+  while (!latest.ok && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    latest = await probeGatewayControlPlane(config, policy);
+  }
+  return latest;
+}
+
 function appendGatewayDeepProbeFailedEvent(
   config: StudioServerConfig,
   probe: OpenClawGatewayDeepProbeResult,
@@ -1362,7 +1376,7 @@ export async function runOpenClawRecoveryRepair(
       rollbackReason = "config_validation_failed";
     } else {
       await restartOpenClawGatewayForRepair(commands, 20_000);
-      let deepProbe = await probeGatewayControlPlane(config, options.policy);
+      let deepProbe = await waitForGatewayControlPlane(config, options.policy, 20_000);
       ok = deepProbe.ok;
       if (!ok) {
         appendGatewayDeepProbeFailedEvent(config, deepProbe);
@@ -1376,7 +1390,11 @@ export async function runOpenClawRecoveryRepair(
           error = serviceRepair.error;
         }
         if (serviceRepair.repaired) {
-          deepProbe = await probeGatewayControlPlane(config, options.policy);
+          deepProbe = await waitForGatewayControlPlane(
+            config,
+            options.policy,
+            options.policy.gatewayServiceRepairTimeoutMs,
+          );
           ok = deepProbe.ok;
         }
       }
@@ -1407,7 +1425,7 @@ export async function runOpenClawRecoveryRepair(
             }),
           );
           await restartOpenClawGatewayForRepair(commands, 20_000);
-          deepProbe = await probeGatewayControlPlane(config, options.policy);
+          deepProbe = await waitForGatewayControlPlane(config, options.policy, 20_000);
           ok = deepProbe.ok;
         } else if (takeover.snapshot.listeners.length > 0 || takeover.error) {
           appendRecoveryEvent(
