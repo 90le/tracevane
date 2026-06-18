@@ -5,7 +5,6 @@
     "channels",
     "skills",
     "files",
-    "plugins",
     "cron"
   ],
   "webViews": [
@@ -35,11 +34,6 @@
       "file": "apps/web-vue/src/views/FilesView.vue"
     },
     {
-      "domainId": "plugins",
-      "routePath": "/plugins",
-      "file": "apps/web-vue/src/views/PluginsView.vue"
-    },
-    {
       "domainId": "cron",
       "routePath": "/cron",
       "file": "apps/web-vue/src/views/CronView.vue"
@@ -65,10 +59,6 @@
     {
       "domainId": "files",
       "dir": "apps/api/modules/files"
-    },
-    {
-      "domainId": "plugins",
-      "dir": "apps/api/modules/config"
     },
     {
       "domainId": "cron",
@@ -124,13 +114,6 @@
       "testPattern": "studio-web-files-*.test.mjs",
       "matchedFiles": [
         "tests/system/studio-web-files-workspace.test.mjs"
-      ]
-    },
-    {
-      "domainId": "plugins",
-      "testPattern": "studio-web-plugins-*.test.mjs",
-      "matchedFiles": [
-        "tests/system/studio-web-plugins-workspace.test.mjs"
       ]
     },
     {

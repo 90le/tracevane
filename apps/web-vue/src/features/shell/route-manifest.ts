@@ -7,13 +7,11 @@ const ChannelsView = () => import("../../views/ChannelsView.vue");
 const ChannelConnectorsView = () => import("../../views/ChannelConnectorsView.vue");
 const SkillsView = () => import("../../views/SkillsView.vue");
 const FilesView = () => import("../../views/FilesView.vue");
-const PluginsView = () => import("../../views/PluginsView.vue");
 const ModelGatewayView = () => import("../../views/ModelGatewayView.vue");
 const CronView = () => import("../../views/CronView.vue");
 const TerminalView = () => import("../../views/TerminalView.vue");
 const ConfigView = () => import("../../views/ConfigView.vue");
 const SystemView = () => import("../../views/SystemView.vue");
-const DreamingView = () => import("../../views/DreamingView.vue");
 const ChatShellPage = () => import("../chat/ChatShellPage.vue");
 const AgentsControlPage = () => import("../agents/AgentsControlPage.vue");
 import { encodeChatSessionRef, isChatSessionRef } from "../chat/session-ref";
@@ -50,7 +48,6 @@ export type ShellNavItem = {
   icon:
     | "dashboard"
     | "agents"
-    | "dreaming"
     | "chat"
     | "channels"
     | "channel-connectors"
@@ -58,7 +55,6 @@ export type ShellNavItem = {
     | "cron"
     | "skills"
     | "files"
-    | "plugins"
     | "terminal"
     | "config"
     | "system";
@@ -68,7 +64,7 @@ export type ShellNavItem = {
 };
 
 export type ShellNavGroup = {
-  key: "overview" | "operations" | "management" | "system";
+  key: "overview" | "operations" | "management";
   titleZh: string;
   titleEn: string;
   items: ShellNavItem[];
@@ -194,27 +190,6 @@ export const shellNavGroups: ShellNavGroup[] = [
         labelZh: "系统配置",
         labelEn: "Config",
       },
-      {
-        key: "plugins",
-        to: "/plugins",
-        icon: "plugins",
-        labelZh: "插件管理",
-        labelEn: "Plugins",
-      },
-    ],
-  },
-  {
-    key: "system",
-    titleZh: "系统",
-    titleEn: "System",
-    items: [
-      {
-        key: "dreaming",
-        to: "/dreaming",
-        icon: "dreaming",
-        labelZh: "梦境记忆",
-        labelEn: "Dreaming",
-      },
     ],
   },
 ];
@@ -238,13 +213,11 @@ const coreRouteChunkLoaders: RouteChunkLoader[] = [
   ChannelPairingPage,
   ChannelBindingsPage,
   SkillsView,
-  PluginsView,
   CronView,
   ConfigView,
   SystemView,
   SystemRecoveryPage,
   SystemEventCenterPage,
-  DreamingView,
 ];
 
 const extendedRouteChunkLoaders: RouteChunkLoader[] = [
@@ -368,16 +341,8 @@ export const shellRoutes: RouteRecordRaw[] = [
     component: FilesView,
   },
   {
-    path: "/plugins",
-    component: PluginsView,
-  },
-  {
     path: "/cron",
     component: CronView,
-  },
-  {
-    path: "/dreaming",
-    component: DreamingView,
   },
   {
     path: "/terminal",

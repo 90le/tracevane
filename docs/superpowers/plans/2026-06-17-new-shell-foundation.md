@@ -518,15 +518,13 @@ export const navGroups: NavGroup[] = [
       { key: 'gateway', to: '/model-gateway', label: '模型网关', icon: 'Globe' },
       { key: 'cron', to: '/cron', label: '定时任务', icon: 'Clock' },
       { key: 'config', to: '/config', label: '系统配置', icon: 'Settings' },
-      { key: 'plugins', to: '/plugins', label: '插件管理', icon: 'Puzzle' },
     ],
   },
   {
     key: 'system',
     title: '系统',
     items: [
-      { key: 'system', to: '/system', label: '系统', icon: 'ShieldCheck' },
-      { key: 'dreaming', to: '/dreaming', label: '梦境记忆', icon: 'Moon' },
+      { key: 'system', to: '/system', label: '系统状态', icon: 'ShieldCheck' },
     ],
   },
 ];

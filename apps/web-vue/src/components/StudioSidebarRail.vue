@@ -165,10 +165,8 @@ type ShellNavIconName =
   | 'channels'
   | 'gateway'
   | 'cron'
-  | 'dreaming'
   | 'skills'
   | 'files'
-  | 'plugins'
   | 'terminal'
   | 'config'
   | 'system';

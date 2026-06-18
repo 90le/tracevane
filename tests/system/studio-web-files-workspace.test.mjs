@@ -26,7 +26,6 @@ const filesWorkspaceCss = read("apps/web-vue/src/features/files/files-workspace.
 const filesApi = read("apps/web-vue/src/features/files/api.ts");
 const filesRoutes = read("apps/api/modules/files/routes.ts");
 const filesService = read("apps/api/modules/files/service.ts");
-const pluginsService = read("apps/api/modules/plugins/service.ts");
 const skillsService = read("apps/api/modules/skills/service.ts");
 const webPackage = JSON.parse(read("apps/web-vue/package.json"));
 const main = read("apps/web-vue/src/main.ts");
@@ -310,6 +309,5 @@ test("files api and server routes cover browse, tree, read, search, mutate, uplo
   assert.match(filesService, /runPythonTarExtract/);
   assert.match(filesService, /unsupported archive entry/);
   assert.doesNotMatch(filesService, /MAX_UPLOAD_FILE_BYTES|is too large; limit is/);
-  assert.doesNotMatch(pluginsService, /UPLOAD_PLUGIN_ARCHIVE_MAX_BYTES|is too large; limit is/);
   assert.doesNotMatch(skillsService, /UPLOAD_ARCHIVE_MAX_BYTES|is too large; limit is/);
 });

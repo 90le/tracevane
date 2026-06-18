@@ -26,7 +26,6 @@ import { registerGitRoutes } from './modules/git/routes.js';
 import { handleModelGatewayRealtimeUnsupportedUpgrade } from './modules/model-gateway/realtime.js';
 import { registerModelGatewayRoutes } from './modules/model-gateway/routes.js';
 import { registerOpenClawRecoveryRoutes } from './modules/openclaw-recovery/routes.js';
-import { registerPluginsRoutes } from './modules/plugins/routes.js';
 import { registerSkillsRoutes } from './modules/skills/routes.js';
 import { registerSystemRoutes } from './modules/system/routes.js';
 import { registerTerminalRoutes } from './modules/terminal/routes.js';
@@ -52,7 +51,6 @@ export function createStudioRouter(ctx: StudioApiContext): StudioRouter {
   registerOpenClawRecoveryRoutes(router);
   registerConfigRoutes(router, ctx);
   registerCronRoutes(router, ctx);
-  registerPluginsRoutes(router, ctx);
   registerSkillsRoutes(router, ctx);
   registerTerminalRoutes(router, ctx);
   registerSystemRoutes(router, ctx);

@@ -18,7 +18,6 @@ const channelsWorkspace = read("apps/web-vue/src/features/channels/workspace.ts"
 const channelsWorkspaceLayout = read("apps/web-vue/src/features/channels/ChannelsWorkspaceLayout.vue");
 const dashboardSummary = read("apps/web-vue/src/features/dashboard/use-dashboard-summary.ts");
 const skillsControlPage = read("apps/web-vue/src/features/skills/SkillsControlPage.vue");
-const pluginsControlPage = read("apps/web-vue/src/features/plugins/PluginsControlPage.vue");
 const cronControlPage = read("apps/web-vue/src/features/cron/CronControlPage.vue");
 const systemControlPage = read("apps/web-vue/src/features/system/SystemControlPage.vue");
 const configEditorPage = read("apps/web-vue/src/features/config/ConfigEditorPage.vue");
@@ -99,13 +98,6 @@ test("cached skills page cancels marketplace debounce and ignores stale route re
   assert.match(skillsControlPage, /const payload = await fetchSkillsSummary\(refresh\);[\s\S]*?if \(!isSkillsRouteActive\.value\) return;[\s\S]*?summary\.value = payload;/);
   assert.match(skillsControlPage, /const payload = await fetchMarketplaceSkills[\s\S]*?if \(!isSkillsRouteActive\.value\) return;[\s\S]*?marketplace\.value = payload;/);
   assert.match(skillsControlPage, /marketSearchTimer = window\.setTimeout\(\(\) => \{[\s\S]*?isSkillsRouteActive\.value && mode\.value === 'marketplace'/);
-});
-
-test("cached plugins page does not hydrate stale summary after leaving plugins", () => {
-  assert.match(pluginsControlPage, /const isPluginsRouteActive = computed/);
-  assert.match(pluginsControlPage, /route\.path === '\/plugins' \|\| route\.path\.startsWith\('\/plugins\/'\)/);
-  assert.match(pluginsControlPage, /const payload = await fetchPluginsSummary\(\);[\s\S]*?if \(!isPluginsRouteActive\.value\) return;[\s\S]*?hydrate\(payload\);/);
-  assert.match(pluginsControlPage, /onActivated\(activatePluginsPage\)/);
 });
 
 test("cached cron page does not apply stale summary or detail responses after leaving cron", () => {

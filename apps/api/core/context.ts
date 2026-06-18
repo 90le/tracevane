@@ -11,7 +11,6 @@ import type { FilesService } from '../modules/files/service.js';
 import type { GitService } from '../modules/git/service.js';
 import type { ModelGatewayService } from '../modules/model-gateway/service.js';
 import type { OpenClawRecoveryService } from '../modules/openclaw-recovery/service.js';
-import type { PluginsService } from '../modules/plugins/service.js';
 import type { SkillsService } from '../modules/skills/service.js';
 import type { SystemService } from '../modules/system/service.js';
 import type { TerminalService } from '../modules/terminal/service.js';
@@ -28,7 +27,6 @@ export interface StudioServices {
   git: GitService;
   modelGateway: ModelGatewayService;
   openclawRecovery: OpenClawRecoveryService;
-  plugins: PluginsService;
   skills: SkillsService;
   system: SystemService;
   terminal: TerminalService;

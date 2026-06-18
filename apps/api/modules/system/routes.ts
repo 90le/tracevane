@@ -1,7 +1,6 @@
 import { parseJsonBody, sendJson } from "../../core/http.js";
 import type { StudioApiContext } from "../../core/context.js";
 import type { StudioRouter } from "../../core/router.js";
-import type { DreamingToggleRequest } from "../../../../types/dreaming.js";
 import type {
   SystemDeviceTrustApproveRequest,
   SystemStudioUpgradeRequest,
@@ -30,84 +29,6 @@ export function registerSystemRoutes(
     }
     return Math.floor(raw);
   }
-
-  router.get("/api/system/dreaming", async (_req, res, routeCtx) => {
-    sendJson(res, 200, await routeCtx.services.system.getDreaming());
-  });
-
-  router.get("/api/system/dreaming/diary", async (_req, res, routeCtx) => {
-    sendJson(res, 200, await routeCtx.services.system.getDreamingDiary());
-  });
-
-  router.get(
-    "/api/system/dreaming/compatibility",
-    async (_req, res, routeCtx) => {
-      sendJson(
-        res,
-        200,
-        await routeCtx.services.system.getDreamingMemoryCompatibility(),
-      );
-    },
-  );
-
-  router.post(
-    "/api/system/dreaming/compatibility/apply",
-    async (_req, res, routeCtx) => {
-      sendJson(
-        res,
-        200,
-        await routeCtx.services.system.applyDreamingMemoryCompatibility(),
-      );
-    },
-  );
-
-  router.get(
-    "/api/system/dreaming/rem-harness",
-    async (_req, res, routeCtx) => {
-      sendJson(
-        res,
-        200,
-        await routeCtx.services.system.getDreamingRemHarnessPreview(),
-      );
-    },
-  );
-
-  router.post("/api/system/dreaming/backfill", async (_req, res, routeCtx) => {
-    sendJson(res, 200, await routeCtx.services.system.backfillDreamingDiary());
-  });
-
-  router.post(
-    "/api/system/dreaming/reset-diary",
-    async (_req, res, routeCtx) => {
-      sendJson(res, 200, await routeCtx.services.system.resetDreamingDiary());
-    },
-  );
-
-  router.post(
-    "/api/system/dreaming/clear-grounded",
-    async (_req, res, routeCtx) => {
-      sendJson(
-        res,
-        200,
-        await routeCtx.services.system.resetGroundedShortTerm(),
-      );
-    },
-  );
-
-  router.post("/api/system/dreaming/repair", async (_req, res, routeCtx) => {
-    sendJson(res, 200, await routeCtx.services.system.repairDreaming());
-  });
-
-  router.post("/api/system/dreaming/toggle", async (req, res, routeCtx) => {
-    const payload = await parseJsonBody<DreamingToggleRequest>(req);
-    sendJson(
-      res,
-      200,
-      await routeCtx.services.system.toggleDreaming(
-        payload || { enabled: false },
-      ),
-    );
-  });
 
   router.get("/api/system/health", async (_req, res, routeCtx) => {
     sendJson(res, 200, await routeCtx.services.system.getHealth());

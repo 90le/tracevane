@@ -9,7 +9,6 @@ import { createAgentsService } from "../../dist/apps/api/modules/agents/service.
 import { createChannelsService } from "../../dist/apps/api/modules/channels/service.js";
 import { createConfigService } from "../../dist/apps/api/modules/config/service.js";
 import { createModelGatewayService } from "../../dist/apps/api/modules/model-gateway/service.js";
-import { createPluginsService } from "../../dist/apps/api/modules/plugins/service.js";
 
 function makeTempRoot() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "studio-openclaw-config-web-"));
@@ -204,12 +203,6 @@ test(
       comment: "Schema validation smoke",
     });
     validateOpenClawConfig(config.openclawConfigFile, "Channels binding save");
-
-    const pluginService = createPluginsService(config);
-    pluginService.togglePlugin("studio", false);
-    validateOpenClawConfig(config.openclawConfigFile, "Plugins toggle save");
-    pluginService.togglePlugin("studio", true);
-    validateOpenClawConfig(config.openclawConfigFile, "Plugins re-enable save");
 
     const agentService = createAgentsService(config);
     agentService.createAgent({

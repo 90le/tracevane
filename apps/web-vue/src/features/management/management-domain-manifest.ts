@@ -4,7 +4,6 @@ export type ManagementDomainId =
   | "channels"
   | "skills"
   | "files"
-  | "plugins"
   | "cron";
 
 export interface ManagementDomainDefinition {
@@ -65,14 +64,6 @@ export const MANAGEMENT_DOMAIN_MANIFEST: ReadonlyArray<ManagementDomainDefinitio
       webView: "FilesView.vue",
       apiModule: "files",
       testPattern: "studio-web-files-*.test.mjs",
-    },
-    {
-      id: "plugins",
-      label: "插件",
-      routePath: "/plugins",
-      webView: "PluginsView.vue",
-      apiModule: "config",
-      testPattern: "studio-web-plugins-*.test.mjs",
     },
     {
       id: "cron",

@@ -24,13 +24,14 @@ const manifestSource = fs.readFileSync(
   "utf8",
 );
 
-test("management domain manifest covers config agents channels skills plugins cron", () => {
+test("management domain manifest covers config agents channels skills files cron", () => {
   assert.match(manifestSource, /id:\s*["']config["']/);
   assert.match(manifestSource, /id:\s*["']agents["']/);
   assert.match(manifestSource, /id:\s*["']channels["']/);
   assert.match(manifestSource, /id:\s*["']skills["']/);
-  assert.match(manifestSource, /id:\s*["']plugins["']/);
+  assert.match(manifestSource, /id:\s*["']files["']/);
   assert.match(manifestSource, /id:\s*["']cron["']/);
+  assert.doesNotMatch(manifestSource, /id:\s*["']plugins["']/);
 });
 
 test("management domain manifest exports a machine readable coverage seed", () => {
@@ -40,13 +41,13 @@ test("management domain manifest exports a machine readable coverage seed", () =
   assert.match(manifestSource, /testPattern/);
 });
 
-test("all six management views consume the shared manifest in runtime wiring", () => {
+test("all active management views consume the shared manifest in runtime wiring", () => {
   const views = [
     ["ConfigView.vue", "config"],
     ["AgentsView.vue", "agents"],
     ["ChannelsView.vue", "channels"],
     ["SkillsView.vue", "skills"],
-    ["PluginsView.vue", "plugins"],
+    ["FilesView.vue", "files"],
     ["CronView.vue", "cron"],
   ];
 
@@ -68,13 +69,6 @@ test("skills coverage seed points at concrete skills workspace tests", () => {
   assert.match(
     manifestSource,
     /id:\s*["']skills["'][\s\S]*testPattern:\s*["']studio-web-skills-\*\.test\.mjs["']/,
-  );
-});
-
-test("plugins coverage seed points at concrete plugins workspace tests", () => {
-  assert.match(
-    manifestSource,
-    /id:\s*["']plugins["'][\s\S]*testPattern:\s*["']studio-web-plugins-\*\.test\.mjs["']/,
   );
 });
 

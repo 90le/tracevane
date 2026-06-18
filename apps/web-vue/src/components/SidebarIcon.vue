@@ -19,7 +19,6 @@ import {
   Gauge,
   LayoutDashboard,
   MessageSquareText,
-  MoonStar,
   PlugZap,
   RadioTower,
   SlidersHorizontal,
@@ -36,10 +35,8 @@ const props = defineProps<{
     | "channel-connectors"
     | "gateway"
     | "cron"
-    | "dreaming"
     | "skills"
     | "files"
-    | "plugins"
     | "terminal"
     | "config"
     | "system";
@@ -53,10 +50,8 @@ const iconByName = {
   "channel-connectors": RadioTower,
   gateway: PlugZap,
   cron: CalendarClock,
-  dreaming: MoonStar,
   skills: Compass,
   files: Folder,
-  plugins: PlugZap,
   terminal: TerminalSquare,
   config: SlidersHorizontal,
   system: Gauge,

@@ -10,10 +10,6 @@ import type {
 } from '../../../../types/system.js';
 import { readOpenClawConfig, writeJsonFile } from '../../core/state.js';
 import { hasConfiguredSecretInput } from '../../core/secret-ref.js';
-import {
-  applySafeDreamingBootstrapRepair,
-  inspectDreamingConfig,
-} from './dreaming-shared.js';
 
 const SUPPORTED_BINDS = new Set(['auto', 'loopback', 'lan', 'tailnet', 'custom']);
 const NON_DOCKER_SANDBOX_BACKENDS = new Set(['ssh', 'openshell']);
@@ -135,8 +131,6 @@ function buildBootstrapChecks(config: StudioServerConfig, openclawConfig: Record
       .filter(Boolean)
     : [];
   const defaultSandboxNeedsDocker = !dockerAvailable && sandboxNeedsDocker(defaultSandbox);
-  const dreaming = inspectDreamingConfig(openclawConfig);
-
   return [
     {
       id: 'plugin-entry',
@@ -228,23 +222,6 @@ function buildBootstrapChecks(config: StudioServerConfig, openclawConfig: Record
         : 'Studio 会把旧值修正成 loopback，避免新版本 gateway restart 因遗留别名失败。',
       detected: true,
       fixable: true,
-    },
-    {
-      id: 'dreaming-memory-slot',
-      label: 'Dreaming memory slot',
-      level: dreaming.issues.length === 0 ? 'ok' : dreaming.bootstrapRepairable ? 'error' : 'warn',
-      summary: dreaming.issues.length === 0
-        ? 'Dreaming / memory slot configuration is internally consistent'
-        : dreaming.issues[0] || 'Dreaming configuration needs attention',
-      detail: dreaming.issues.length === 0
-        ? (
-          dreaming.slotDisabled
-            ? 'Dreaming is currently disabled or not pinned to an active memory slot.'
-            : `Active memory slot: ${dreaming.slotValue}.`
-        )
-        : dreaming.notes.join(' '),
-      detected: true,
-      fixable: dreaming.bootstrapRepairable,
     },
     {
       id: 'sandbox-runtime',
@@ -390,11 +367,6 @@ function applyBootstrapFixes(config: StudioServerConfig): { changed: boolean; ch
         changedKeys.push(`agents.list.${agentId || '<unknown>'}.sandbox.mode`);
       }
     }
-  }
-
-  const dreamingRepair = applySafeDreamingBootstrapRepair(openclawConfig);
-  if (dreamingRepair.changed) {
-    changedKeys.push(...dreamingRepair.changedKeys);
   }
 
   if (changedKeys.length > 0) {

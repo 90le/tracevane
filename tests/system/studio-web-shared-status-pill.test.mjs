@@ -17,10 +17,6 @@ const terminalConsolePage = fs.readFileSync(
   path.join(rootDir, 'apps/web-vue/src/features/terminal/TerminalConsolePage.vue'),
   'utf8',
 );
-const pluginsControlPage = fs.readFileSync(
-  path.join(rootDir, 'apps/web-vue/src/features/plugins/PluginsControlPage.vue'),
-  'utf8',
-);
 
 test('shared status pill keeps CSS ownership centralized', () => {
   assert.match(statusPill, /import '\.\/status-pill\.css';/);
@@ -59,13 +55,10 @@ test('shared status pill keeps DuoYuan solid status surfaces', () => {
 
 test('shared status pill replaces hand-written app status markup', () => {
   assert.match(skillsControlPage, /import StatusPill from '..\/..\/components\/StatusPill\.vue';/);
-  assert.match(pluginsControlPage, /import StatusPill from '..\/..\/components\/StatusPill\.vue';/);
   assert.doesNotMatch(terminalConsolePage, /import StatusPill/);
   assert.doesNotMatch(terminalConsolePage, /<StatusPill/);
   assert.doesNotMatch(skillsControlPage, /class="status-pill"/);
   assert.doesNotMatch(terminalConsolePage, /class="status-pill"/);
-  assert.doesNotMatch(pluginsControlPage, /plugins-status-pill/);
   assert.match(skillsControlPage, /:tone="skillTone\(skill\.status\)"/);
   assert.doesNotMatch(terminalConsolePage, /:tone="connected \? 'sage' : 'neutral'"/);
-  assert.match(pluginsControlPage, /:tone="pluginStatusTone\(entry\.status\)"/);
 });

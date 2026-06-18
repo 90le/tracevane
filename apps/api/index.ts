@@ -18,7 +18,6 @@ import { createFilesService } from './modules/files/service.js';
 import { createGitService } from './modules/git/service.js';
 import { createModelGatewayService, type ModelGatewayServiceOptions } from './modules/model-gateway/service.js';
 import { createOpenClawRecoveryService } from './modules/openclaw-recovery/service.js';
-import { createPluginsService } from './modules/plugins/service.js';
 import { createSkillsService } from './modules/skills/service.js';
 import { createSystemService } from './modules/system/service.js';
 import { createTerminalService } from './modules/terminal/service.js';
@@ -41,7 +40,6 @@ export function createStudioContext(options: CreateStudioContextOptions): Studio
   const channels = createChannelsService(options.config);
   const config = createConfigService(options.config);
   const cron = createCronService(options.config);
-  const plugins = createPluginsService(options.config);
   const skills = createSkillsService(options.config);
   const terminal = createTerminalService({
     config: options.config,
@@ -78,7 +76,6 @@ export function createStudioContext(options: CreateStudioContextOptions): Studio
     git,
     modelGateway,
     openclawRecovery,
-    plugins,
     skills,
     system,
     terminal,

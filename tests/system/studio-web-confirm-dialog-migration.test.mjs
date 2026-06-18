@@ -21,8 +21,6 @@ const migrationTargets = [
   "apps/web-vue/src/features/agents/AgentBindingsPage.vue",
   "apps/web-vue/src/features/agents/AgentSessionsPage.vue",
   "apps/web-vue/src/features/cron/CronControlPage.vue",
-  "apps/web-vue/src/features/dreaming/DreamingControlPage.vue",
-  "apps/web-vue/src/features/system/SystemControlPage.vue",
   "apps/web-vue/src/features/chat/ChatShellPage.vue",
 ];
 
@@ -35,8 +33,6 @@ const composableTargets = [
   "apps/web-vue/src/features/agents/AgentBindingsPage.vue",
   "apps/web-vue/src/features/agents/AgentSessionsPage.vue",
   "apps/web-vue/src/features/cron/CronControlPage.vue",
-  "apps/web-vue/src/features/dreaming/DreamingControlPage.vue",
-  "apps/web-vue/src/features/system/SystemControlPage.vue",
   "apps/web-vue/src/features/chat/ChatShellPage.vue",
 ];
 

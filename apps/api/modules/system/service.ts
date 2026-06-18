@@ -6,17 +6,6 @@ import { execFile, spawn, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
 import type { StudioServerConfig } from "../../../../types/api.js";
 import type {
-  DreamingActionResponse,
-  DreamingDiaryPayload,
-  DreamingMemoryCompatibilityApplyResponse,
-  DreamingMemoryCompatibilityPayload,
-  DreamingRemHarnessPayload,
-  DreamingRepairResponse,
-  DreamingSnapshotPayload,
-  DreamingToggleRequest,
-  DreamingToggleResponse,
-} from "../../../../types/dreaming.js";
-import type {
   SystemBootstrapPayload,
   SystemBootstrapRepairResponse,
   SystemDeviceTrustApproveRequest,
@@ -40,18 +29,6 @@ import type {
   SystemRuntimeSummaryPayload,
   SystemTerminalActionSuggestion,
 } from "../../../../types/system.js";
-import {
-  applyDreamingMemoryCompatibility,
-  backfillDreamingDiary,
-  fetchDreamingDiary,
-  fetchDreamingMemoryCompatibility,
-  fetchDreamingRemHarnessPreview,
-  fetchDreamingSnapshot,
-  repairDreamingConfig,
-  resetDreamingDiary,
-  resetGroundedShortTerm,
-  toggleDreaming as applyDreamingToggle,
-} from "./dreaming-service.js";
 import { readJsonFile, readOpenClawConfig } from "../../core/state.js";
 import {
   applySafeStudioBootstrapDefaults,
@@ -702,18 +679,6 @@ async function queryStudioRelease(
 }
 
 export interface SystemService {
-  getDreaming(): Promise<DreamingSnapshotPayload>;
-  getDreamingDiary(): Promise<DreamingDiaryPayload>;
-  getDreamingMemoryCompatibility(): Promise<DreamingMemoryCompatibilityPayload>;
-  applyDreamingMemoryCompatibility(): Promise<DreamingMemoryCompatibilityApplyResponse>;
-  getDreamingRemHarnessPreview(): Promise<DreamingRemHarnessPayload>;
-  backfillDreamingDiary(): Promise<DreamingActionResponse>;
-  resetDreamingDiary(): Promise<DreamingActionResponse>;
-  resetGroundedShortTerm(): Promise<DreamingActionResponse>;
-  repairDreaming(): Promise<DreamingRepairResponse>;
-  toggleDreaming(
-    payload: DreamingToggleRequest,
-  ): Promise<DreamingToggleResponse>;
   getHealth(): Promise<SystemHealthPayload>;
   getDiagnostics(): Promise<SystemDiagnosticsPayload>;
   getBootstrap(): Promise<SystemBootstrapPayload>;
@@ -1025,48 +990,6 @@ export function createSystemService(
   }
 
   return {
-    async getDreaming(): Promise<DreamingSnapshotPayload> {
-      return fetchDreamingSnapshot(config);
-    },
-
-    async getDreamingDiary(): Promise<DreamingDiaryPayload> {
-      return fetchDreamingDiary(config);
-    },
-
-    async getDreamingMemoryCompatibility(): Promise<DreamingMemoryCompatibilityPayload> {
-      return fetchDreamingMemoryCompatibility(config);
-    },
-
-    async applyDreamingMemoryCompatibility(): Promise<DreamingMemoryCompatibilityApplyResponse> {
-      return applyDreamingMemoryCompatibility(config);
-    },
-
-    async getDreamingRemHarnessPreview(): Promise<DreamingRemHarnessPayload> {
-      return fetchDreamingRemHarnessPreview(config);
-    },
-
-    async backfillDreamingDiary(): Promise<DreamingActionResponse> {
-      return backfillDreamingDiary(config);
-    },
-
-    async resetDreamingDiary(): Promise<DreamingActionResponse> {
-      return resetDreamingDiary(config);
-    },
-
-    async resetGroundedShortTerm(): Promise<DreamingActionResponse> {
-      return resetGroundedShortTerm(config);
-    },
-
-    async repairDreaming(): Promise<DreamingRepairResponse> {
-      return repairDreamingConfig(config);
-    },
-
-    async toggleDreaming(
-      payload: DreamingToggleRequest,
-    ): Promise<DreamingToggleResponse> {
-      return applyDreamingToggle(config, payload);
-    },
-
     async getHealth(): Promise<SystemHealthPayload> {
       const gatewayConnected = await checkGatewayConnection(config.gatewayPort);
       const host = buildHostSnapshot();

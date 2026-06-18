@@ -171,37 +171,3 @@ test('bootstrap repair disables docker sandbox defaults when docker is unavailab
     process.env.PATH = originalPath;
   }
 });
-
-test('bootstrap repair fixes half-enabled dreaming by selecting memory-core', () => {
-  const root = makeTempRoot();
-  const config = createConfig(root);
-  writeJson(config.openclawConfigFile, {
-    plugins: {
-      slots: {
-        memory: 'none',
-      },
-      entries: {
-        'memory-core': {
-          enabled: false,
-          config: {
-            dreaming: {
-              enabled: true,
-            },
-          },
-        },
-      },
-    },
-  });
-
-  const snapshot = getSystemBootstrapSnapshot(config, false);
-  assert.ok(snapshot.checks.some((check) => check.id === 'dreaming-memory-slot' && check.level === 'error'));
-
-  const repaired = repairSystemBootstrap(config);
-  const nextConfig = JSON.parse(fs.readFileSync(config.openclawConfigFile, 'utf8'));
-
-  assert.equal(repaired.changed, true);
-  assert.ok(repaired.changedKeys.includes('plugins.slots.memory'));
-  assert.ok(repaired.changedKeys.includes('plugins.entries.memory-core.enabled'));
-  assert.equal(nextConfig.plugins.slots.memory, 'memory-core');
-  assert.equal(nextConfig.plugins.entries['memory-core'].enabled, true);
-});
