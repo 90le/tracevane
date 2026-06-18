@@ -15,6 +15,7 @@
 
 - `tracevane-gateway-goal.md` / `tracevane-gateway-progress.md` - Gateway stability, provider protocol matrix and App Connections.
 - `tracevane-gateway-account-provider-plan.md` - account-style provider research and proof boundaries.
+- `workspace-ide-goal.md` - IDE-grade local edit/run/preview/AI/diff workspace goal.
 - `channel-connectors-native-agent-bot-plan.md` - native IM to CLI Agent runtime.
 - `channel-connectors-native-feature-map.md` - Channel Connectors capability map.
 - `feishu-long-connection-issue-tracker.md` / `feishu-channel-connectors-fix-plan.md` - Feishu stability history while still useful for regressions.
