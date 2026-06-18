@@ -1,41 +1,43 @@
-# OpenClaw Studio Docs Index
+# Studio Docs Index
 
-> 更新：2026-06-17
-> 规则：`docs/` 只保存当前目标、边界、合同和少量专项追踪；历史过程看 git commit，不再把每轮实现追加成流水账。
+> Updated: 2026-06-18
+> Rule: docs describe current intent, boundaries and contracts. Historical implementation detail belongs in git history.
 
-## 当前主线
+## Authoritative Entry
 
-- `产品需求.md`：Studio 产品范围和当前优先级。
-- `系统架构.md`：前后端模块、运行时守护进程和持久化边界。
-- `当前进展.md`：当前可用能力、验证状态和下一步。
-- `studio-gateway-goal.md`：Studio Gateway 的稳定目标、协议矩阵、daemon 生命周期和 App Connections 验收。
-- `studio-gateway-progress.md`：Gateway 与 Channel Connectors 的最新进度快照。
-- `studio-gateway-account-provider-plan.md`：GPT/ChatGPT/Codex 账户型 provider 调研、边界和验收。
-- `channel-connectors-native-agent-bot-plan.md`：Channel Connectors / CLI Agent Bot 原生方案。
-- `research-first-development-checklist.md`：开工前外部核验门禁、风险清单和任务清单。
-- `channel-connectors-native-feature-map.md`：Channel Connectors 当前能力、边界和验证摘要。
+- `product-strategy-reset-plan.md` - product reset, market boundary, naming gate and implementation phases.
+- `产品需求.md` - current PRD for the Studio AI Workbench direction.
+- `系统架构.md` - frontend, API, daemon, store and runtime boundaries.
+- `当前进展.md` - compact current snapshot, open work and verification baseline.
+- `research-first-development-checklist.md` - mandatory research-first and naming checks before implementation.
 
-## 专项追踪
+## Active Tracks
 
-- `feishu-long-connection-issue-tracker.md`：飞书长连接“假在线/不回复”专项。
-- `feishu-channel-connectors-fix-plan.md`：2026-06-10 飞书稳定性 9 项修复归档。
-- `openclaw-recovery-daemon-goal.md` / `openclaw-recovery-daemon-progress.md`：OpenClaw 自愈守护进程目标和进度。
+- `studio-gateway-goal.md` / `studio-gateway-progress.md` - Gateway stability, provider protocol matrix and App Connections.
+- `studio-gateway-account-provider-plan.md` - account-style provider research and proof boundaries.
+- `channel-connectors-native-agent-bot-plan.md` - native IM to CLI Agent runtime.
+- `channel-connectors-native-feature-map.md` - Channel Connectors capability map.
+- `feishu-long-connection-issue-tracker.md` / `feishu-channel-connectors-fix-plan.md` - Feishu stability history while still useful for regressions.
+- `openclaw-recovery-daemon-goal.md` / `openclaw-recovery-daemon-progress.md` - OpenClaw recovery guard.
 
-## Chat 与渲染参考
+## Contract References
 
-- `聊天设计方案.md`：Studio Chat 当前架构结论。
-- `聊天契约.md`：Studio Chat typed API / stream contract。
-- `聊天会话策略.md`：Chat session 分类、写入和投递规则。
-- `聊天开放门槛.md`：Chat 开放条件。
-- `富消息使用说明.md`：Markdown / `studio_delivery` / 文件引用使用规则。
-- `混合渲染方案.md`：Markdown/HTML/SVG 混合渲染策略。
-- `chat-official-parity.md`：官方 Chat 集成 manifest/package 边界。
-- `界面设计守则.md`：Studio UI 设计约束。
+- `聊天契约.md`
+- `聊天会话策略.md`
+- `聊天开放门槛.md`
+- `聊天设计方案.md`
+- `混合渲染方案.md`
+- `富消息使用说明.md`
+- `chat-official-parity.md`
+- `界面设计守则.md`
 
-## 维护规则
+These are reference documents. They should not redefine product positioning away from `product-strategy-reset-plan.md`.
 
-1. 目标文档只写稳定目标和验收，不写每轮日志。
-2. 进度文档只保留当前事实、最近验证、边界和下一步。
-3. 已废弃方向必须明确标记为“停止扩展”或“归档”，不要继续追加半成品方案。
-4. Gateway、Channel Connectors、CLI Agent、Provider、SDK/API 和 UI 行为变更必须先完成官方/API/SDK/GitHub/社区核验，并把结论写入对应目标、进度或专项文档。
-5. 文档里不得写入真实 API key、token、tenant access token 或用户私有凭据。
+## Cleanup Policy
+
+1. Do not add long round-by-round logs to evergreen docs.
+2. Do not present Dreaming or Studio Plugins management as active scope.
+3. Do not add a new feature plan before official/API/SDK/GitHub/community research is recorded.
+4. Do not use market-crowded product names without the naming gate.
+5. Keep prototypes, handoff prompts and visual experiments out of the current docs index unless they are the active review target.
+6. Prefer deleting or archiving stale docs over maintaining parallel contradictory plans.

@@ -1,94 +1,61 @@
-# OpenClaw Studio
+# Studio AI Workbench
 
-OpenClaw Studio 是一个基于 OpenClaw 插件系统的 Web 管理控制台扩展。
+> Historical repository name: `OpenClaw Studio`
+> Current product direction: local-first AI Agent control workbench
 
-当前项目已从早期恢复阶段进入“管理域稳定 + Chat Runtime 活跃 + 文档重新对齐”的状态。
+This project is no longer framed as a generic OpenClaw management console. It is evolving into a local-first workbench for running, connecting, observing and recovering AI Agent workflows across OpenClaw, Codex, Claude Code, OpenCode, IM channels and model providers.
 
-## 当前阶段
+OpenClaw remains a supported runtime. It is not the full product boundary.
 
-当前以以下领域为正式范围：
+## Current Core
 
-- `agents`
-- `channels`
-- `skills`
-- `cron`
-- `terminal`
-- `config`
-- `chat`
-- `model-gateway`
-- `system`
+- Model Gateway: provider routing, protocol adapters, endpoint profiles, App Connections and usage.
+- Channel Connectors: Feishu/Octo private chat to CLI Agent workflows, files, progress, permissions and busy guard.
+- CLI Agent Workbench: Codex, Claude Code, OpenCode and OpenClaw runtime profiles.
+- System Guard / Recovery: OpenClaw config compatibility, service repair, daemon health and secret audit support.
+- Chat / Files / Dashboard: kept as Studio-specific workbench surfaces, not generic clones of official Web UIs.
 
-当前仍待继续推进：
+## Retired Scope
 
-- `dashboard`
-- `dreaming`
-- `files`
-- `plugins`
+- Dreaming / memory management page and BFF.
+- Studio Plugins management page and BFF.
+- Old broad Gateway usage surface with provider/account/key archives, pagination, CSV and cost estimation.
+- Third-party migration-first plans as implementation authority.
 
-当前暂缓：
+## Documentation Entry
 
-- `room`
-- `workflow`
+Start here:
 
-## 文档入口
+1. [docs/product-strategy-reset-plan.md](docs/product-strategy-reset-plan.md)
+2. [docs/产品需求.md](docs/产品需求.md)
+3. [docs/系统架构.md](docs/系统架构.md)
+4. [docs/当前进展.md](docs/当前进展.md)
+5. [docs/research-first-development-checklist.md](docs/research-first-development-checklist.md)
 
-当前以这 6 份中文文档为主线：
+Active track docs:
 
-1. [docs/产品需求.md](docs/产品需求.md)
-2. [docs/系统架构.md](docs/系统架构.md)
-3. [docs/当前进展.md](docs/当前进展.md)
-4. [docs/聊天设计方案.md](docs/聊天设计方案.md)
-5. [docs/聊天契约.md](docs/聊天契约.md)
-6. [docs/混合渲染方案.md](docs/混合渲染方案.md)
-
-补充文档：
-
-- [docs/聊天会话策略.md](docs/聊天会话策略.md)
-- [docs/聊天开放门槛.md](docs/聊天开放门槛.md)
-- [docs/界面设计守则.md](docs/界面设计守则.md)
-- [docs/富消息使用说明.md](docs/富消息使用说明.md)
-- [docs/chat-official-parity.md](docs/chat-official-parity.md)
 - [docs/studio-gateway-goal.md](docs/studio-gateway-goal.md)
 - [docs/studio-gateway-progress.md](docs/studio-gateway-progress.md)
-- [docs/channel-connectors-cc-bridge-plan.md](docs/channel-connectors-cc-bridge-plan.md)
+- [docs/channel-connectors-native-agent-bot-plan.md](docs/channel-connectors-native-agent-bot-plan.md)
+- [docs/openclaw-recovery-daemon-goal.md](docs/openclaw-recovery-daemon-goal.md)
+- [docs/openclaw-recovery-daemon-progress.md](docs/openclaw-recovery-daemon-progress.md)
 
-## 目录结构
-
-```text
-openclaw-studio/
-  apps/
-    api/
-    web-vue/
-  docs/
-  lib/
-  resources/
-  scripts/
-  tests/
-  types/
-  index.ts
-  openclaw.plugin.json
-  package.json
-  tsconfig.json
-```
-
-## 开发命令
+## Development
 
 ```bash
 npm install
-npm run build
-npm run dev:web
-npm run dev:api
+npm run typecheck:api
+npm run typecheck:web
+npm run build:api
+npm run build:web
 npm run dev:restart
-npm run typecheck
-npm run test:chat
-npm run test:chat:web
-npm run test:system
 ```
 
-## 说明
+Dev defaults:
 
-- `npm run dev:web` 使用 Vite 开发服务器（默认 `http://127.0.0.1:5176`），并在 dev 中间件里挂载 Studio API。
-- `npm run dev:api` 会先编译后端，再启动独立 Studio API。
-- `npm run test:chat` 已包含 chat 后端主测试与 `test:chat:web`。
-- `npm run test:chat:web` 覆盖 markdown rendering、chat runtime view model、session list view model、slash commands 等前端 contract 回归。
-- `chat` 前端正文渲染已从旧 `marked` 补丁链路迁移为 `unified + remark + rehype` 主链，并补有最小回归测试覆盖 raw HTML / 混排 / fenced html/svg/mermaid 场景。
+- Web: `http://127.0.0.1:5176`
+- API: `http://127.0.0.1:3761`
+
+## Working Rule
+
+Gateway, Channel Connectors, CLI Agent, provider, SDK/API, protocol and user-visible behavior changes must begin with current official/API/SDK/GitHub/community research. If a contract cannot be verified, the feature must remain explicitly unsupported instead of silently half-working.

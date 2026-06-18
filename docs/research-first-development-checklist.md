@@ -15,6 +15,26 @@
 6. 写入文档：在目标、进度或专项文档记录核验日期、来源、稳定结论、拒绝方案、风险和验证计划。
 7. 再实现：没有当前合同或真实 smoke 证据的能力保持结构化 unsupported，不做半截 passthrough 或伪成功。
 
+## 产品命名门禁
+
+产品更名、公开命名、包名、域名、菜单品牌名或对外文档品牌名进入实现前必须完成：
+
+1. 精确短语查重：web、GitHub、npm、PyPI、Docker Hub、浏览器扩展市场、VS Code Marketplace。
+2. 近似短语查重：大小写、连字符、空格、复数、`AI` / `Agent` / `Studio` / `Ops` 等常见后缀组合。
+3. 域名预检：至少检查 `.com`、`.dev`、`.ai` 和一个中性备用域。
+4. 商标预检：公开发布前检查目标市场商标库；普通 web search 不能当法律结论。
+5. 冲突记录：把拒绝名称、拒绝原因和来源写入 `docs/product-strategy-reset-plan.md`。
+6. 分批落地：最终名称确认前，代码包名和插件元数据保持现状；不要只改一半 UI/文档造成双品牌混乱。
+
+初始禁止直接采用的高风险名称族：
+
+- `AgentOps Studio`
+- `Agent Studio` / `AI Agent Studio`
+- `Agent Nexus` / `Nexus`
+- `Relay Studio`
+- `Agent Harbor`
+- `Runplane` / `Workplane` / `ThreadRail` / `Lattice Ops` / `AgentWard`
+
 ## 资料优先级
 
 | 优先级 | 来源 | 用途 |
@@ -62,6 +82,8 @@
 | P0 | Research-first 门禁 | 已完成 | `AGENTS.md` 和本文件记录开工前外部核验、文档记录和 unsupported 策略 |
 | P0 | `.meta-kim/` 工作区状态 | 已完成 | `.gitignore` 忽略 `.meta-kim/`，避免本地运行态进入提交 |
 | P0 | 用户可见第三方引用清理 | 已完成本轮 | 文档和 unsupported 错误不再把旧第三方项目作为实现依据 |
+| P0 | 产品战略重置文档 | 已完成本轮 | `product-strategy-reset-plan.md`、PRD、架构、进展和 README 改为 Studio AI Workbench 方向 |
+| P0 | 产品命名门禁 | 已完成本轮 | 本文件和战略重置文档记录查重流程、禁止直接采用的高风险名称族和分批落地规则 |
 | P1 | Agent session 判断稳定性 | 进行中 | Codex/Claude Code/OpenCode 默认 persistent；one-shot fallback 覆盖 heartbeat、async child task、idle timeout、unknown event 和终态 race |
 | P1 | Gateway unsupported 合同 | 进行中 | 未验证的 image edits、audio、Realtime/WebSocket 返回结构化 unsupported，错误说明当前缺少稳定合同和替代路径 |
 | P1 | Gateway endpoint profile 回归 | 已补本地回归 | 原生协议优选、passthrough 错误归属和 adapter-required 错误归属均锁定 endpoint profile |
@@ -91,3 +113,4 @@
 - 2026-06-18：核验 OpenClaw 官方 Gateway security/secrets、Gateway runbook、Gateway CLI restart `--safe`、plugins uninstall/manage 文档，以及本机 `openclaw gateway restart --help`；结论是 Recovery 应收敛 Gateway token 到 SecretRef/env 单一来源、清理废弃插件 allow/entry/index 残留、配置修复后优先 safe restart，并在修复前备份 runtime sidecar。本地补 Recovery 回归：SecretRef/env sync、Discord token 移除、`studio-local.gatewayAuthToken` 清理、`acpx`/`discord` residue 清理、legacy install index 归档、sidecar 回滚和 safe restart 合同。
 - 2026-06-18：按用户要求制造真实 OpenClaw Recovery 损坏样本：破坏 Linux systemd Gateway service `ExecStart` 后，Recovery full repair 成功 reinstall/start 并等到 RPC ready；删除全局包 `openclaw.mjs` 后，Recovery 通过 install manifest 执行 `npm install -g openclaw@2026.6.8` 恢复 CLI。本轮因此修复 Gateway service repair 后过早 deep probe 的误判，以及 CLI shim 对 shell wrapper 的执行方式。
 - 2026-06-18：核验 OpenClaw secrets 官方 CLI：`audit` 是只读扫描，`configure` 是交互式 helper，非交互 `--plan-out` 在当前环境需要 TTY。实际 audit 仍有 28 个 BigModel 明文 key finding 和 1 个 OpenAI OAuth legacy residue；已将 agent `models.json` 权限收紧到 `0600`，但明文迁移不由 Recovery 自动改写，后续应走官方交互式 SecretRef 迁移。
+- 2026-06-18：核验 OpenClaw 官方 Web UI、Open WebUI、LibreChat、Dify、n8n、Microsoft Copilot Studio、Oracle AI Agent Studio、Langfuse、Codex CLI、Claude Code、OpenCode，以及 `AgentOps Studio`、`Agent Studio`、`Agent Nexus`、`Relay Studio`、`Agent Harbor`、`Runplane`、`Workplane` 等名称占用情况；结论是 Studio 应避免 generic OpenClaw 管理控制台、generic chat UI、generic agent builder 和拥挤命名族，产品名暂不定稿，先采用命名门禁。
