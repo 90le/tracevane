@@ -413,6 +413,7 @@
   - 临时将 `codex` / `claude-code` / `opencode` / `openclaw` active provider 指向 ready 的单账号 `codex-account` 后，`node scripts/smoke-model-gateway-account-pool.mjs --json --strict --timeout-ms 240000` 通过：1 个 ready account、Responses 请求、accountRouting 和 sticky 均通过，多账号策略按可选 skip 记录；随后 `active-route-smoke` 覆盖 `gpt-5.5` 的 Codex Responses、Claude Anthropic adapter 和 OpenCode Chat adapter，全部返回 `GATEWAY_OK`；验证后 activeProviders 已恢复为空。
   - `node scripts/smoke-model-gateway-live.mjs --providers bigmodel-chat,bigmodel-anthropic,gmn-responses --request-timeout-ms 90000 --timeout-ms 300000` 非 strict 执行，当前环境缺少 BigModel / GMN key，三个 live provider proof 均为 skipped，不作为失败。
 - 本轮 GLM provider smoke：核验智谱官方 GLM Coding Plan 文档，确认 Coding Plan 使用专属 `https://open.bigmodel.cn/api/coding/paas/v4` endpoint，GLM-5.2 为 1M context / 128K output，官方切换模型文档覆盖 Claude Code。临时将 `codex` / `claude-code` / `opencode` / `openclaw` active provider 指向本机 enabled `glm` 后，`active-route-smoke` 覆盖 `glm-5.2` 的 Codex Responses、Claude Anthropic Messages 和 OpenCode Chat Completions 三协议，全部返回 `GATEWAY_OK`；Codex 命中 `coding-chat` 的 Responses->Chat adapter，Claude 命中 `coding-anthropic` 原生 Anthropic endpoint，OpenCode 命中 `coding-chat` 原生 Chat endpoint；验证后 activeProviders 已恢复为空。
+- 本轮补齐可重复 provider smoke 入口：新增 `scripts/smoke-model-gateway-active-routes.mjs` 和系统测试，统一执行“读取原 activeProviders -> 临时激活 provider -> Codex/Claude Code/OpenCode active-route-smoke -> finally 恢复 -> 再读 `/providers` 校验恢复一致性”。本机执行 `node scripts/smoke-model-gateway-active-routes.mjs --provider glm --model glm-5.2 --scopes codex,claude-code,opencode --json` 通过，`restoreFailures=[]`、`restoreMismatches=[]`，复查 `/providers` 后 `activeProviders={}`。后续声明 provider 三协议覆盖前优先使用该脚本；GMN 本轮仍不能标记已验证，因配置侧 provider-test 返回上游 Cloudflare 502。
 - 本轮文档清理验证以 `git diff --check` 和 stale term 检查为准。
 
 ## 已知边界
@@ -432,5 +433,5 @@
 
 ## 下一步
 
-1. 继续加固 Gateway 稳定性：Codex account 单账号、GLM 三协议和 endpoint profile fallback 已有本地/真实 smoke；下一步只补 GMN 或其它缺 key provider 的可验证 proof，以及新暴露事件/错误形态的回归。
+1. 继续加固 Gateway 稳定性：Codex account 单账号、GLM 三协议和 endpoint profile fallback 已有本地/真实 smoke；新增 provider proof 先跑 `smoke-model-gateway-active-routes.mjs`，下一步只补 GMN 或其它缺 key provider 的可验证 proof，以及新暴露事件/错误形态的回归。
 2. 后续若要支持 Codex account Realtime/WebSocket，必须先拿到官方或直接验证的完整 turn state、tool cache、history replay、错误和 close 语义，并通过 WS live smoke；音频同理，只有拿到真实上游合同后才移除结构化 unsupported。
