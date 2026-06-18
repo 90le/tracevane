@@ -3772,6 +3772,152 @@ test("model gateway respects Retry-After when opening provider circuits", async 
   assert.equal(upstreamCalls[1].authorization, "Bearer sk-retry-after-backup");
 });
 
+test("model gateway respects Retry-After when opening endpoint profile circuits", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "retry-after-endpoints",
+      name: "Retry After Endpoints",
+      appScopes: ["openclaw"],
+      baseUrl: "https://retry-after-root.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "retry-after-model",
+        models: [{ id: "retry-after-model" }],
+      },
+      endpointProfiles: [
+        {
+          id: "primary-chat",
+          name: "Primary Chat",
+          appScopes: ["openclaw"],
+          baseUrl: "https://retry-after-endpoint-primary.example.test/v1",
+          apiFormat: "openai_chat",
+          authStrategy: "bearer",
+          failover: { priority: 1 },
+        },
+        {
+          id: "backup-chat",
+          name: "Backup Chat",
+          appScopes: ["openclaw"],
+          baseUrl: "https://retry-after-endpoint-backup.example.test/v1",
+          apiFormat: "openai_chat",
+          authStrategy: "bearer",
+          failover: { priority: 2 },
+        },
+      ],
+      failover: { priority: 1 },
+    },
+    secret: { apiKey: "sk-retry-after-endpoint" },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+    });
+    if (String(url).startsWith("https://retry-after-endpoint-primary.example.test")) {
+      return new Response(JSON.stringify({
+        error: {
+          message: "endpoint rate limited",
+          type: "rate_limit_error",
+          code: "rate_limit_exceeded",
+        },
+      }), {
+        status: 429,
+        headers: {
+          "content-type": "application/json",
+          "retry-after": "90",
+        },
+      });
+    }
+    return new Response(JSON.stringify({
+      id: "chatcmpl_retry_after_endpoint_backup",
+      choices: [{ message: { role: "assistant", content: "endpoint backup ok" } }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const first = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "retry-after-model",
+          messages: [{ role: "user", content: "hit primary endpoint" }],
+        },
+      });
+      assert.equal(first.status, 429);
+      assert.equal(first.headers["x-openclaw-model-gateway-provider"], "retry-after-endpoints");
+      assert.equal(first.headers["x-openclaw-model-gateway-endpoint"], "primary-chat");
+
+      let providers = await requestJson(`${baseUrl}/api/model-gateway/providers`);
+      let provider = providers.body.providers.find((item) => item.id === "retry-after-endpoints");
+      let primary = provider.endpointProfiles.find((item) => item.id === "primary-chat");
+      let backup = provider.endpointProfiles.find((item) => item.id === "backup-chat");
+      assert.equal(primary.health.consecutiveFailures, 1);
+      assert.equal(primary.health.circuitState, "open");
+      assert.ok(Date.parse(primary.health.retryAfterUntil) > Date.now() + 30_000);
+      assert.equal(backup.health.circuitState, "closed");
+
+      let status = await requestJson(`${baseUrl}/api/model-gateway/status`);
+      assert.equal(status.body.healthSummary.openCircuits, 1);
+      assert.equal(status.body.healthSummary.degradedProviders, 1);
+      assert.equal(status.body.healthSummary.okProviders, 1);
+
+      const second = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "retry-after-model",
+          messages: [{ role: "user", content: "fallback endpoint please" }],
+        },
+      });
+      assert.equal(second.status, 200);
+      assert.equal(second.headers["x-openclaw-model-gateway-provider"], "retry-after-endpoints");
+      assert.equal(second.headers["x-openclaw-model-gateway-endpoint"], "backup-chat");
+      assert.equal(second.body.choices[0].message.content, "endpoint backup ok");
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [
+        entry.providerId,
+        entry.endpointProfileId,
+        entry.statusCode,
+        entry.outcome,
+        entry.errorCode,
+      ]), [
+        ["retry-after-endpoints", "primary-chat", 429, "failure", "rate_limit_exceeded"],
+        ["retry-after-endpoints", "backup-chat", 200, "success", null],
+      ]);
+
+      providers = await requestJson(`${baseUrl}/api/model-gateway/providers`);
+      provider = providers.body.providers.find((item) => item.id === "retry-after-endpoints");
+      primary = provider.endpointProfiles.find((item) => item.id === "primary-chat");
+      backup = provider.endpointProfiles.find((item) => item.id === "backup-chat");
+      assert.equal(primary.health.circuitState, "open");
+      assert.equal(backup.health.circuitState, "closed");
+      assert.equal(backup.health.consecutiveFailures, 0);
+      assert.ok(backup.health.lastSuccessAt);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(upstreamCalls.map((item) => item.url), [
+    "https://retry-after-endpoint-primary.example.test/v1/chat/completions",
+    "https://retry-after-endpoint-backup.example.test/v1/chat/completions",
+  ]);
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-retry-after-endpoint");
+  assert.equal(upstreamCalls[1].authorization, "Bearer sk-retry-after-endpoint");
+});
+
 test("model gateway does not probe open circuits until Retry-After expires", () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
