@@ -44,6 +44,7 @@
     "smoke:model-gateway:live": "npm run build:api && node scripts/smoke-model-gateway-live.mjs",
     "smoke:model-gateway:live:strict": "npm run build:api && node scripts/smoke-model-gateway-live.mjs --strict",
     "smoke:model-gateway:active-routes": "node scripts/smoke-model-gateway-active-routes.mjs",
+    "smoke:model-gateway:protocol-matrix": "node scripts/smoke-model-gateway-protocol-matrix.mjs",
     "smoke:model-gateway:account-pool": "node scripts/smoke-model-gateway-account-pool.mjs",
     "smoke:channel-connectors:persistent-live": "npm run build:api && node scripts/smoke-channel-connectors-persistent-live.mjs",
     "smoke:channel-connectors:agent-sessions": "node scripts/smoke-channel-connectors-agent-sessions.mjs",

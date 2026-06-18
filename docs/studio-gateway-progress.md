@@ -416,6 +416,7 @@
 - 本轮补齐可重复 provider smoke 入口：新增 `scripts/smoke-model-gateway-active-routes.mjs` 和系统测试，统一执行“读取原 activeProviders -> 必要时临时启用 provider -> 临时激活 provider -> Codex/Claude Code/OpenCode active-route-smoke -> finally 恢复 enabled 与 activeProviders -> 再读 `/providers` 校验恢复一致性”。本机执行 `node scripts/smoke-model-gateway-active-routes.mjs --provider glm --model glm-5.2 --scopes codex,claude-code,opencode --expect-endpoints codex=coding-chat,claude-code=coding-anthropic,opencode=coding-chat --expect-routes codex=openai_responses,claude-code=anthropic_messages,opencode=openai_chat_completions --expect-api-formats codex=openai_chat,claude-code=anthropic_messages,opencode=openai_chat --json` 通过，明确断言 GLM `coding-chat` 与 `coding-anthropic` 两个 endpoint profile 都被命中；复查 `/providers` 后 `activeProviders={}`。
 - 本轮 GMN live proof：按“测试时可临时启用”策略执行 `node scripts/smoke-model-gateway-active-routes.mjs --provider gmn --model gpt-5.4 --scopes codex,claude-code,opencode --temporary-enable --expect-routes codex=openai_responses,claude-code=anthropic_messages,opencode=openai_chat_completions --json --timeout-ms 90000`，三协议均返回 `GATEWAY_OK`；Codex 走 Responses passthrough，Claude Code / OpenCode 走 Responses adapter；脚本最后恢复 `gmn.enabled=false`，复查 `/providers` 后 `activeProviders={}`。
 - 本轮 Codex 官方配置核验：修正用户粘贴缺失的网址为 `https://developers.openai.com/codex/config-advanced#oss-mode-local-providers`；官方 Advanced Configuration 说明 custom model providers、`openai_base_url`、`wire_api="responses"` 和 `--oss` 本地 provider。结论：该文档对 Studio Gateway 的 Codex CLI 配置生成/回归有帮助，尤其是将 Codex 指向 Gateway Responses 入口；但不能替代 Gateway 对 Claude Code / OpenCode 的协议适配和 active route smoke。
+- 本轮主流协议矩阵 smoke：新增 `scripts/smoke-model-gateway-protocol-matrix.mjs`，将用户确认的覆盖口径固化为可执行 proof：GLM `coding-anthropic` 代表 Anthropic Messages / Claude Code，GLM `coding-chat` 代表 OpenAI Chat-compatible / OpenCode，`codex-account` 代表 Codex 官方账户型 Responses。真实执行 `npm run smoke:model-gateway:protocol-matrix -- --json --timeout-ms 240000` 通过，三项 proof 均为 `ok=true`，复查 `/providers` 后 `activeProviders={}`、`gmn.enabled=false`。
 - 本轮文档清理验证以 `git diff --check` 和 stale term 检查为准。
 
 ## 已知边界
@@ -435,5 +436,5 @@
 
 ## 下一步
 
-1. 继续加固 Gateway 稳定性：Codex account 单账号、GLM 三协议和 endpoint profile fallback 已有本地/真实 smoke；新增 provider proof 先跑 `smoke-model-gateway-active-routes.mjs`，下一步只补 GMN 或其它缺 key provider 的可验证 proof，以及新暴露事件/错误形态的回归。
+1. 继续加固 Gateway 稳定性：发布级主流协议矩阵已由 `smoke-model-gateway-protocol-matrix.mjs` 覆盖；新增 provider proof 先跑 `smoke-model-gateway-active-routes.mjs`，涉及主流客户端覆盖声明时再跑 protocol matrix。下一步转向新暴露事件/错误形态、Codex account 媒体/realtime unsupported 边界和 provider 失败恢复回归。
 2. 后续若要支持 Codex account Realtime/WebSocket，必须先拿到官方或直接验证的完整 turn state、tool cache、history replay、错误和 close 语义，并通过 WS live smoke；音频同理，只有拿到真实上游合同后才移除结构化 unsupported。
