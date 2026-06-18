@@ -1783,3 +1783,80 @@ test("config patch accepts sparse plugin payloads without dropping unrelated plu
   assert.equal(nextConfig.models.providers.demo.apiKey, "secret-demo");
   assert.equal(getStudioChatGlobalHostManagementExecEnabled(), true);
 });
+
+test("config save preserves gateway auth SecretRefs", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const tokenRef = {
+    source: "file",
+    provider: "studio-local",
+    id: "/gatewayAuthToken",
+  };
+  writeJson(config.openclawConfigFile, {
+    gateway: {
+      auth: {
+        mode: "token",
+        token: tokenRef,
+      },
+    },
+    secrets: {
+      providers: {
+        "studio-local": {
+          source: "file",
+          path: path.join(root, "secrets.json"),
+          mode: "json",
+        },
+      },
+    },
+  });
+
+  const service = createConfigService(config);
+  const summary = service.getSummary();
+  assert.equal(summary.gateway.auth.hasToken, true);
+
+  const response = service.saveConfig(buildPayload(summary));
+  const nextConfig = JSON.parse(
+    fs.readFileSync(config.openclawConfigFile, "utf8"),
+  );
+
+  assert.equal(response.success, true);
+  assert.deepEqual(nextConfig.gateway.auth.token, tokenRef);
+});
+
+test("config save accepts gateway auth SecretRef payloads", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  writeJson(config.openclawConfigFile, {
+    gateway: {
+      auth: {
+        mode: "token",
+      },
+    },
+  });
+
+  const service = createConfigService(config);
+  const summary = service.getSummary();
+  service.saveConfig({
+    ...buildPayload(summary),
+    gateway: {
+      ...summary.gateway,
+      auth: {
+        ...summary.gateway.auth,
+        token: {
+          source: "env",
+          provider: "default",
+          id: "OPENCLAW_GATEWAY_TOKEN",
+        },
+      },
+    },
+  });
+
+  const nextConfig = JSON.parse(
+    fs.readFileSync(config.openclawConfigFile, "utf8"),
+  );
+  assert.deepEqual(nextConfig.gateway.auth.token, {
+    source: "env",
+    provider: "default",
+    id: "OPENCLAW_GATEWAY_TOKEN",
+  });
+});

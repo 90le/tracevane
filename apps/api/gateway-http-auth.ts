@@ -2,6 +2,7 @@ import type http from 'node:http';
 import type { StudioServerConfig } from '../../types/api.js';
 import { sendJson, sendText } from './core/http.js';
 import { readOpenClawConfig } from './core/state.js';
+import { hasConfiguredSecretInput, resolveSecretInputString } from './core/secret-ref.js';
 
 type GatewayHttpAuthShape = {
   mode?: unknown;
@@ -113,15 +114,22 @@ function readPresentedSecrets(req: http.IncomingMessage): string[] {
 function readExpectedSecrets(config: StudioServerConfig): {
   mode: string;
   secrets: string[];
+  configured: boolean;
 } {
-  const openclawConfig = readOpenClawConfig(config) as { gateway?: { auth?: GatewayHttpAuthShape } };
+  const openclawConfig = readOpenClawConfig(config) as Record<string, any> & { gateway?: { auth?: GatewayHttpAuthShape } };
   const auth = openclawConfig.gateway?.auth || {};
   const mode = typeof auth.mode === 'string' ? auth.mode.trim() : '';
+  const configured = hasConfiguredSecretInput(auth.token)
+    || hasConfiguredSecretInput(auth.password);
   const secrets = [
-    typeof auth.token === 'string' ? auth.token.trim() : '',
-    typeof auth.password === 'string' ? auth.password.trim() : '',
+    resolveSecretInputString(openclawConfig, auth.token, {
+      envFilePath: `${config.openclawRoot}/.env`,
+    }),
+    resolveSecretInputString(openclawConfig, auth.password, {
+      envFilePath: `${config.openclawRoot}/.env`,
+    }),
   ].filter(Boolean);
-  return { mode, secrets };
+  return { mode, secrets, configured };
 }
 
 function isHtmlNavigation(req: http.IncomingMessage): boolean {
@@ -140,9 +148,9 @@ export function isStudioGatewayHttpAuthorized(
   if (isPublicGatewayAssetRequest(config, req)) {
     return true;
   }
-  const { mode, secrets } = readExpectedSecrets(config);
+  const { mode, secrets, configured } = readExpectedSecrets(config);
   if (!mode || mode === 'none' || secrets.length === 0) {
-    return true;
+    return !configured;
   }
   const presentedSecrets = readPresentedSecrets(req);
   if (!presentedSecrets.length) {
@@ -194,8 +202,9 @@ export function syncStudioGatewayHttpAuthCookie(
   req: http.IncomingMessage,
   res: http.ServerResponse,
 ): void {
-  const { mode, secrets } = readExpectedSecrets(config);
+  const { mode, secrets, configured } = readExpectedSecrets(config);
   if (!mode || mode === 'none' || secrets.length === 0) {
+    if (configured) return;
     return;
   }
   const presentedSecret = readPresentedNavigationSecret(req);

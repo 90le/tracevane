@@ -20,6 +20,19 @@ function createConfigWithGatewayAuth(auth) {
   });
 }
 
+function createConfigWithOpenClawConfig(openclawConfig) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-gateway-http-auth-'));
+  const openclawConfigFile = path.join(root, 'openclaw.json');
+  fs.writeFileSync(openclawConfigFile, JSON.stringify(openclawConfig, null, 2));
+  return {
+    config: createStandaloneStudioConfig({
+      openclawRoot: root,
+      openclawConfigFile,
+    }),
+    root,
+  };
+}
+
 function createRequest(url, authorization, cookie) {
   return {
     method: 'GET',
@@ -97,4 +110,109 @@ test('gateway HTTP auth allows static asset requests without a token so nested r
     isStudioGatewayHttpAuthorized(config, createRequest('/studio/assets/index.js')),
     true,
   );
+});
+
+test('gateway HTTP auth resolves env SecretRef tokens', () => {
+  const oldToken = process.env.STUDIO_TEST_GATEWAY_HTTP_TOKEN;
+  process.env.STUDIO_TEST_GATEWAY_HTTP_TOKEN = 'secretref-token';
+  try {
+    const config = createConfigWithGatewayAuth({
+      mode: 'token',
+      token: {
+        source: 'env',
+        provider: 'default',
+        id: 'STUDIO_TEST_GATEWAY_HTTP_TOKEN',
+      },
+    });
+    assert.equal(
+      isStudioGatewayHttpAuthorized(config, createRequest('/studio/', 'Bearer secretref-token')),
+      true,
+    );
+  } finally {
+    if (oldToken == null) delete process.env.STUDIO_TEST_GATEWAY_HTTP_TOKEN;
+    else process.env.STUDIO_TEST_GATEWAY_HTTP_TOKEN = oldToken;
+  }
+});
+
+test('gateway HTTP auth rejects unresolved configured SecretRefs', () => {
+  const oldToken = process.env.STUDIO_TEST_MISSING_GATEWAY_HTTP_TOKEN;
+  delete process.env.STUDIO_TEST_MISSING_GATEWAY_HTTP_TOKEN;
+  try {
+    const config = createConfigWithGatewayAuth({
+      mode: 'token',
+      token: {
+        source: 'env',
+        provider: 'default',
+        id: 'STUDIO_TEST_MISSING_GATEWAY_HTTP_TOKEN',
+      },
+    });
+    assert.equal(isStudioGatewayHttpAuthorized(config, createRequest('/studio/')), false);
+    assert.equal(
+      isStudioGatewayHttpAuthorized(config, createRequest('/studio/', 'Bearer anything')),
+      false,
+    );
+  } finally {
+    if (oldToken == null) delete process.env.STUDIO_TEST_MISSING_GATEWAY_HTTP_TOKEN;
+    else process.env.STUDIO_TEST_MISSING_GATEWAY_HTTP_TOKEN = oldToken;
+  }
+});
+
+test('gateway HTTP auth resolves file SecretRef tokens', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-gateway-http-auth-file-secretref-'));
+  const secretFile = path.join(root, 'secrets.json');
+  fs.writeFileSync(secretFile, JSON.stringify({ gatewayAuthToken: 'file-secret-token' }, null, 2));
+  const { config } = createConfigWithOpenClawConfig({
+    secrets: {
+      providers: {
+        'studio-local': {
+          source: 'file',
+          path: secretFile,
+          mode: 'json',
+        },
+      },
+    },
+    gateway: {
+      auth: {
+        mode: 'token',
+        token: {
+          source: 'file',
+          provider: 'studio-local',
+          id: '/gatewayAuthToken',
+        },
+      },
+    },
+  });
+
+  assert.equal(
+    isStudioGatewayHttpAuthorized(config, createRequest('/studio/', 'Bearer file-secret-token')),
+    true,
+  );
+});
+
+test('gateway HTTP auth resolves env SecretRefs from the OpenClaw env file', () => {
+  const oldToken = process.env.STUDIO_TEST_GATEWAY_HTTP_ENV_FILE_TOKEN;
+  delete process.env.STUDIO_TEST_GATEWAY_HTTP_ENV_FILE_TOKEN;
+  try {
+    const { config, root } = createConfigWithOpenClawConfig({
+      gateway: {
+        auth: {
+          mode: 'token',
+          token: {
+            source: 'env',
+            provider: 'default',
+            id: 'STUDIO_TEST_GATEWAY_HTTP_ENV_FILE_TOKEN',
+          },
+        },
+      },
+    });
+    fs.writeFileSync(path.join(root, '.env'), 'STUDIO_TEST_GATEWAY_HTTP_ENV_FILE_TOKEN=http-env-file-token\n');
+
+    assert.equal(
+      isStudioGatewayHttpAuthorized(config, createRequest('/studio/', 'Bearer http-env-file-token')),
+      true,
+    );
+  } finally {
+    if (oldToken == null) delete process.env.STUDIO_TEST_GATEWAY_HTTP_ENV_FILE_TOKEN;
+    else process.env.STUDIO_TEST_GATEWAY_HTTP_ENV_FILE_TOKEN = oldToken;
+  }
 });

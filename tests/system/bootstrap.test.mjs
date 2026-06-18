@@ -52,6 +52,27 @@ test('bootstrap snapshot reports missing critical config on fresh state', () => 
   assert.ok(snapshot.checks.some((check) => check.id === 'gateway-auth-token' && check.level === 'error'));
 });
 
+test('bootstrap treats configured gateway auth SecretRefs as present', () => {
+  const root = makeTempRoot();
+  const config = createConfig(root);
+  writeJson(config.openclawConfigFile, {
+    gateway: {
+      auth: {
+        mode: 'token',
+        token: {
+          source: 'env',
+          provider: 'default',
+          id: 'OPENCLAW_GATEWAY_TOKEN',
+        },
+      },
+    },
+  });
+
+  const snapshot = getSystemBootstrapSnapshot(config, false);
+
+  assert.ok(snapshot.checks.some((check) => check.id === 'gateway-auth-token' && check.level === 'ok'));
+});
+
 test('bootstrap repair writes safe defaults without clobbering existing config', () => {
   const root = makeTempRoot();
   const config = createConfig(root);

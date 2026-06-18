@@ -20,6 +20,10 @@ import {
   readOpenClawConfig,
   writeJsonFile,
 } from "../../core/state.js";
+import {
+  cloneOpenClawSecretRef,
+  hasConfiguredSecretInput,
+} from "../../core/secret-ref.js";
 import { diffConfigAuditChanges } from "./config-audit-diff.js";
 import { buildConfigAuditEvents } from "./config-audit-events.js";
 import { createSystemEventWriter } from "../system/event-writer.js";
@@ -1232,9 +1236,9 @@ function buildGatewaySummary(
     customBindHost: normalizeString(gw.customBindHost) || undefined,
     auth: {
       mode: normalizeString(auth.mode, "token"),
-      hasToken: typeof auth.token === "string" && auth.token.trim().length > 0,
+      hasToken: hasConfiguredSecretInput(auth.token),
       hasPassword:
-        typeof auth.password === "string" && auth.password.trim().length > 0,
+        hasConfiguredSecretInput(auth.password),
       allowTailscale: auth.allowTailscale !== false,
       trustedProxy:
         auth.trustedProxy && typeof auth.trustedProxy === "object"
@@ -2605,18 +2609,18 @@ function applyConfigUpdate(
       if (pg.auth.mode != null)
         gw.auth.mode = normalizeString(pg.auth.mode, gw.auth.mode || "token");
       if ((pg.auth as Record<string, unknown>).token != null) {
-        const token = normalizeString(
-          (pg.auth as Record<string, unknown>).token,
-          "",
-        );
-        if (token) gw.auth.token = token;
+        const tokenInput = (pg.auth as Record<string, unknown>).token;
+        const tokenRef = cloneOpenClawSecretRef(tokenInput);
+        const token = normalizeString(tokenInput, "");
+        if (tokenRef) gw.auth.token = tokenRef;
+        else if (token) gw.auth.token = token;
       }
       if ((pg.auth as Record<string, unknown>).password != null) {
-        const password = normalizeString(
-          (pg.auth as Record<string, unknown>).password,
-          "",
-        );
-        if (password) gw.auth.password = password;
+        const passwordInput = (pg.auth as Record<string, unknown>).password;
+        const passwordRef = cloneOpenClawSecretRef(passwordInput);
+        const password = normalizeString(passwordInput, "");
+        if (passwordRef) gw.auth.password = passwordRef;
+        else if (password) gw.auth.password = password;
       }
       if ((pg.auth as Record<string, unknown>).allowTailscale != null) {
         gw.auth.allowTailscale =

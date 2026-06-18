@@ -7,6 +7,7 @@ import { createRequire } from "node:module";
 import { promisify } from "node:util";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import type { StudioServerConfig } from "../../../../types/api.js";
+import { hasConfiguredSecretInput } from "../../core/secret-ref.js";
 import {
   MODEL_GATEWAY_ACCOUNT_CREDENTIAL_SOURCES,
   MODEL_GATEWAY_ACCOUNT_PROVIDER_KINDS,
@@ -3460,7 +3461,7 @@ function hasConfiguredGatewayAuth(config: StudioServerConfig): boolean {
   const openclaw = readJsonFile<Record<string, any>>(config.openclawConfigFile, {});
   const auth = isRecord(openclaw.gateway) && isRecord(openclaw.gateway.auth) ? openclaw.gateway.auth : {};
   const mode = normalizeString(auth.mode);
-  const secrets = [normalizeString(auth.token), normalizeString(auth.password)].filter(Boolean);
+  const secrets = [auth.token, auth.password].filter(hasConfiguredSecretInput);
   return Boolean(mode && mode !== "none" && secrets.length);
 }
 

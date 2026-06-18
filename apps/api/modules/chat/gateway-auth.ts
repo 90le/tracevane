@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import path from 'node:path';
 import type { StudioServerConfig } from '../../../../types/api.js';
 import { readJsonFile, readOpenClawConfig } from '../../core/state.js';
+import { resolveSecretInputString } from '../../core/secret-ref.js';
 import { ChatServiceError, buildChatError } from './errors.js';
 import { normalizeString } from './shared.js';
 
@@ -97,7 +98,11 @@ export function buildGatewaySignaturePayload(
 
 export function loadGatewayAuthContext(config: StudioServerConfig): GatewayAuthContext {
   const openclawConfig = readOpenClawConfig(config);
-  const gatewayToken = normalizeString(openclawConfig.gateway?.auth?.token);
+  const gatewayToken = resolveSecretInputString(
+    openclawConfig,
+    openclawConfig.gateway?.auth?.token,
+    { envFilePath: path.join(config.openclawRoot, '.env') },
+  );
   if (!gatewayToken) {
     throw new ChatServiceError(503, buildChatError('auth_failure', 'Gateway token is not configured for Studio backend adapter.'));
   }

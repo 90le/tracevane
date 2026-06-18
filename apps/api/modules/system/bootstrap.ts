@@ -9,6 +9,7 @@ import type {
   SystemBootstrapRepairResponse,
 } from '../../../../types/system.js';
 import { readOpenClawConfig, writeJsonFile } from '../../core/state.js';
+import { hasConfiguredSecretInput } from '../../core/secret-ref.js';
 import {
   applySafeDreamingBootstrapRepair,
   inspectDreamingConfig,
@@ -111,7 +112,7 @@ function buildBootstrapChecks(config: StudioServerConfig, openclawConfig: Record
   const allowedOrigins = normalizeStringList(gatewayControlUi.allowedOrigins);
   const expectedOrigins = buildExpectedLocalOrigins(Number(gateway.port) || config.gatewayPort);
   const missingOrigins = expectedOrigins.filter((origin) => !allowedOrigins.includes(origin));
-  const hasGatewayToken = authMode !== 'token' || Boolean(normalizeString(gatewayAuth.token));
+  const hasGatewayToken = authMode !== 'token' || hasConfiguredSecretInput(gatewayAuth.token);
   const pluginEntryEnabled = pluginEntries.studio?.enabled !== false;
   const studioInstallRecordOk = !isBadStudioInstallRecord(config, pluginInstalls.studio);
   const allowlistSatisfied = pluginAllow.length === 0 || pluginAllow.includes('studio');
@@ -355,7 +356,7 @@ function applyBootstrapFixes(config: StudioServerConfig): { changed: boolean; ch
     openclawConfig.gateway.auth.mode = authMode;
     changedKeys.push('gateway.auth.mode');
   }
-  if (authMode === 'token' && !normalizeString(openclawConfig.gateway.auth.token)) {
+  if (authMode === 'token' && !hasConfiguredSecretInput(openclawConfig.gateway.auth.token)) {
     openclawConfig.gateway.auth.token = crypto.randomBytes(24).toString('base64url');
     changedKeys.push('gateway.auth.token');
   }

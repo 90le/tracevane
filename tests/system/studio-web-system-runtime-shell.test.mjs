@@ -94,6 +94,7 @@ test('system feature CSS keeps the shared workbench styling local', () => {
 
 test('system routes and api expose overview, recovery, and event history separately', () => {
   assert.match(routeManifest, /import\("\.\.\/system\/SystemRecoveryPage\.vue"\)/);
+  assert.match(routeManifest, /to:\s*"\/system"[\s\S]*?labelZh:\s*"系统状态"[\s\S]*?labelEn:\s*"System Status"/);
   assert.match(routeManifest, /path:\s*"\/system\/recovery"/);
   assert.match(routeManifest, /path:\s*"\/system\/events"/);
   assert.match(routeManifest, /path:\s*"\/system"/);

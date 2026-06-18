@@ -49,3 +49,148 @@ test('gateway auth context requests full operator scopes even when persisted dev
   assert.ok(auth.scopes.includes('operator.write'));
   assert.ok(auth.scopes.includes('operator.admin'));
 });
+
+test('gateway auth context resolves env SecretRef tokens', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-gateway-auth-context-secretref-'));
+  const oldToken = process.env.STUDIO_TEST_GATEWAY_TOKEN;
+  process.env.STUDIO_TEST_GATEWAY_TOKEN = 'shared-secretref-token';
+  try {
+    writeJson(path.join(root, 'openclaw.json'), {
+      gateway: {
+        auth: {
+          token: {
+            source: 'env',
+            provider: 'default',
+            id: 'STUDIO_TEST_GATEWAY_TOKEN',
+          },
+        },
+      },
+    });
+    writeJson(path.join(root, 'identity', 'device-auth.json'), {
+      deviceId: 'device-1',
+      tokens: {
+        operator: {
+          scopes: ['operator.read'],
+        },
+      },
+    });
+    writeJson(path.join(root, 'identity', 'device.json'), {
+      privateKeyPem: '-----BEGIN PRIVATE KEY-----\\nmock\\n-----END PRIVATE KEY-----',
+    });
+    writeJson(path.join(root, 'devices', 'paired.json'), {
+      'device-1': {
+        publicKey: 'mock-public-key',
+      },
+    });
+
+    const config = createStandaloneStudioConfig({
+      openclawRoot: root,
+      openclawConfigFile: path.join(root, 'openclaw.json'),
+    });
+    const auth = loadGatewayAuthContext(config);
+
+    assert.equal(auth.gatewayToken, 'shared-secretref-token');
+  } finally {
+    if (oldToken == null) delete process.env.STUDIO_TEST_GATEWAY_TOKEN;
+    else process.env.STUDIO_TEST_GATEWAY_TOKEN = oldToken;
+  }
+});
+
+test('gateway auth context resolves file SecretRef tokens', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-gateway-auth-context-file-secretref-'));
+  const secretFile = path.join(root, 'secrets.json');
+  writeJson(secretFile, {
+    gatewayAuthToken: 'shared-file-secretref-token',
+  });
+  writeJson(path.join(root, 'openclaw.json'), {
+    secrets: {
+      providers: {
+        'studio-local': {
+          source: 'file',
+          path: secretFile,
+          mode: 'json',
+        },
+      },
+    },
+    gateway: {
+      auth: {
+        token: {
+          source: 'file',
+          provider: 'studio-local',
+          id: '/gatewayAuthToken',
+        },
+      },
+    },
+  });
+  writeJson(path.join(root, 'identity', 'device-auth.json'), {
+    deviceId: 'device-1',
+    tokens: {
+      operator: {
+        scopes: ['operator.read'],
+      },
+    },
+  });
+  writeJson(path.join(root, 'identity', 'device.json'), {
+    privateKeyPem: '-----BEGIN PRIVATE KEY-----\\nmock\\n-----END PRIVATE KEY-----',
+  });
+  writeJson(path.join(root, 'devices', 'paired.json'), {
+    'device-1': {
+      publicKey: 'mock-public-key',
+    },
+  });
+
+  const config = createStandaloneStudioConfig({
+    openclawRoot: root,
+    openclawConfigFile: path.join(root, 'openclaw.json'),
+  });
+  const auth = loadGatewayAuthContext(config);
+
+  assert.equal(auth.gatewayToken, 'shared-file-secretref-token');
+});
+
+test('gateway auth context resolves env SecretRefs from the OpenClaw env file', () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-gateway-auth-context-env-file-secretref-'));
+  const oldToken = process.env.STUDIO_TEST_GATEWAY_ENV_FILE_TOKEN;
+  delete process.env.STUDIO_TEST_GATEWAY_ENV_FILE_TOKEN;
+  try {
+    fs.writeFileSync(path.join(root, '.env'), 'STUDIO_TEST_GATEWAY_ENV_FILE_TOKEN=shared-env-file-token\n');
+    writeJson(path.join(root, 'openclaw.json'), {
+      gateway: {
+        auth: {
+          token: {
+            source: 'env',
+            provider: 'default',
+            id: 'STUDIO_TEST_GATEWAY_ENV_FILE_TOKEN',
+          },
+        },
+      },
+    });
+    writeJson(path.join(root, 'identity', 'device-auth.json'), {
+      deviceId: 'device-1',
+      tokens: {
+        operator: {
+          scopes: ['operator.read'],
+        },
+      },
+    });
+    writeJson(path.join(root, 'identity', 'device.json'), {
+      privateKeyPem: '-----BEGIN PRIVATE KEY-----\\nmock\\n-----END PRIVATE KEY-----',
+    });
+    writeJson(path.join(root, 'devices', 'paired.json'), {
+      'device-1': {
+        publicKey: 'mock-public-key',
+      },
+    });
+
+    const config = createStandaloneStudioConfig({
+      openclawRoot: root,
+      openclawConfigFile: path.join(root, 'openclaw.json'),
+    });
+    const auth = loadGatewayAuthContext(config);
+
+    assert.equal(auth.gatewayToken, 'shared-env-file-token');
+  } finally {
+    if (oldToken == null) delete process.env.STUDIO_TEST_GATEWAY_ENV_FILE_TOKEN;
+    else process.env.STUDIO_TEST_GATEWAY_ENV_FILE_TOKEN = oldToken;
+  }
+});
