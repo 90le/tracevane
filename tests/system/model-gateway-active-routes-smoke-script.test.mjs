@@ -30,6 +30,7 @@ function sendJson(res, statusCode, body) {
 async function startMockGateway(options = {}) {
   const requests = [];
   const activeProviders = { ...(options.activeProviders || { codex: "old-codex" }) };
+  let providerEnabled = options.providerEnabled !== false;
   const server = http.createServer(async (req, res) => {
     const rawBody = await readRequestBody(req);
     let body = {};
@@ -57,7 +58,7 @@ async function startMockGateway(options = {}) {
           {
             id: "glm",
             name: "GLM",
-            enabled: options.providerEnabled !== false,
+            enabled: providerEnabled,
             sourceType: "api-key",
             apiFormat: "openai_chat",
             appScopes: options.appScopes || ["codex", "claude-code", "opencode"],
@@ -69,6 +70,18 @@ async function startMockGateway(options = {}) {
           },
         ],
       });
+      return;
+    }
+    if (req.method === "PUT" && url.pathname === "/api/model-gateway/providers/glm") {
+      if (typeof body.provider?.enabled === "boolean") {
+        providerEnabled = body.provider.enabled;
+        if (!providerEnabled) {
+          for (const scope of Object.keys(activeProviders)) {
+            if (activeProviders[scope] === "glm") delete activeProviders[scope];
+          }
+        }
+      }
+      sendJson(res, 200, { ok: true, provider: { id: "glm", enabled: providerEnabled } });
       return;
     }
     if (req.method === "POST" && url.pathname === "/api/model-gateway/active-provider") {
@@ -95,7 +108,11 @@ async function startMockGateway(options = {}) {
         ok: true,
         providerId: "glm",
         route: {
-          routeId: body.scope === "claude-code" ? "anthropic_messages" : "openai_chat_completions",
+          routeId: body.scope === "codex"
+            ? "openai_responses"
+            : body.scope === "claude-code"
+              ? "anthropic_messages"
+              : "openai_chat_completions",
           mode: "passthrough",
           endpointProfile: { id: body.scope === "claude-code" ? "coding-anthropic" : "coding-chat" },
           provider: { apiFormat: body.scope === "claude-code" ? "anthropic_messages" : "openai_chat" },
@@ -119,6 +136,7 @@ async function startMockGateway(options = {}) {
     endpoint: `http://127.0.0.1:${address.port}`,
     activeProviders,
     requests,
+    getProviderEnabled: () => providerEnabled,
     close: () => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
   };
 }
@@ -143,11 +161,15 @@ test("model gateway active route smoke restores active providers after success",
       "--provider", "glm",
       "--model", "glm-5.2",
       "--scopes", "codex,claude-code,opencode",
+      "--expect-endpoints", "codex=coding-chat,claude-code=coding-anthropic,opencode=coding-chat",
+      "--expect-routes", "codex=openai_responses,claude-code=anthropic_messages,opencode=openai_chat_completions",
+      "--expect-api-formats", "codex=openai_chat,claude-code=anthropic_messages,opencode=openai_chat",
       "--json",
     ]);
     assert.equal(parsed.ok, true);
     assert.deepEqual(parsed.preflightFailures, []);
     assert.deepEqual(parsed.preflightWarnings, []);
+    assert.deepEqual(parsed.expectationFailures, []);
     assert.deepEqual(parsed.routeSmokes.map((probe) => [probe.scope, probe.ok, probe.endpointProfile]), [
       ["codex", true, "coding-chat"],
       ["claude-code", true, "coding-anthropic"],
@@ -189,7 +211,7 @@ test("model gateway active route smoke reports disabled provider without mutatin
         assert.deepEqual(parsed.preflightFailures, [
           {
             code: "model_gateway_provider_disabled",
-            message: "Provider 'glm' is disabled; enable it before running active route smoke.",
+            message: "Provider 'glm' is disabled; pass --temporary-enable to enable it only for this smoke.",
           },
         ]);
         assert.deepEqual(parsed.routeSmokes, []);
@@ -199,6 +221,38 @@ test("model gateway active route smoke reports disabled provider without mutatin
     );
     assert.equal(gateway.requests.filter((request) => request.path === "/api/model-gateway/active-provider").length, 0);
     assert.deepEqual(gateway.activeProviders, { codex: "old-codex" });
+  } finally {
+    await gateway.close();
+  }
+});
+
+test("model gateway active route smoke can temporarily enable a provider and restore it", async () => {
+  const gateway = await startMockGateway({ providerEnabled: false });
+  try {
+    const parsed = await runScript([
+      "--endpoint", gateway.endpoint,
+      "--provider", "glm",
+      "--model", "glm-5.2",
+      "--scopes", "codex,claude-code",
+      "--temporary-enable",
+      "--expect-endpoints", "codex=coding-chat,claude-code=coding-anthropic",
+      "--json",
+    ]);
+    assert.equal(parsed.ok, true);
+    assert.deepEqual(parsed.preflightFailures, []);
+    assert.equal(parsed.temporaryEnable.attempted, true);
+    assert.equal(parsed.temporaryEnable.originalEnabled, false);
+    assert.equal(parsed.temporaryEnable.enabled, true);
+    assert.equal(parsed.temporaryEnable.restoredEnabled, false);
+    assert.deepEqual(parsed.preflightWarnings.map((warning) => warning.code), [
+      "model_gateway_provider_temporarily_enabled",
+    ]);
+    assert.deepEqual(parsed.expectationFailures, []);
+    assert.deepEqual(parsed.restoredActiveProviders, { codex: "old-codex" });
+    assert.equal(gateway.getProviderEnabled(), false);
+    assert.deepEqual(gateway.requests
+      .filter((request) => request.method === "PUT" && request.path === "/api/model-gateway/providers/glm")
+      .map((request) => request.body.provider.enabled), [true, false]);
   } finally {
     await gateway.close();
   }

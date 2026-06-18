@@ -17,6 +17,10 @@ function parseArgs(argv) {
     scopes: DEFAULT_SCOPES,
     timeoutMs: DEFAULT_TIMEOUT_MS,
     input: DEFAULT_INPUT,
+    temporaryEnable: false,
+    expectEndpoints: {},
+    expectRoutes: {},
+    expectApiFormats: {},
     json: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
@@ -33,6 +37,13 @@ function parseArgs(argv) {
     else if (arg.startsWith("--timeout-ms=")) options.timeoutMs = positiveInt(arg.slice("--timeout-ms=".length), DEFAULT_TIMEOUT_MS);
     else if (arg === "--input") options.input = argv[++index] || options.input;
     else if (arg.startsWith("--input=")) options.input = arg.slice("--input=".length);
+    else if (arg === "--temporary-enable") options.temporaryEnable = true;
+    else if (arg === "--expect-endpoints") options.expectEndpoints = parseScopeMap(argv[++index] || "");
+    else if (arg.startsWith("--expect-endpoints=")) options.expectEndpoints = parseScopeMap(arg.slice("--expect-endpoints=".length));
+    else if (arg === "--expect-routes") options.expectRoutes = parseScopeMap(argv[++index] || "");
+    else if (arg.startsWith("--expect-routes=")) options.expectRoutes = parseScopeMap(arg.slice("--expect-routes=".length));
+    else if (arg === "--expect-api-formats") options.expectApiFormats = parseScopeMap(argv[++index] || "");
+    else if (arg.startsWith("--expect-api-formats=")) options.expectApiFormats = parseScopeMap(arg.slice("--expect-api-formats=".length));
     else if (arg === "--json") options.json = true;
     else if (arg === "--help" || arg === "-h") {
       printHelp();
@@ -52,6 +63,17 @@ function parseArgs(argv) {
 
 function parseCsv(value) {
   return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function parseScopeMap(value) {
+  const entries = {};
+  for (const item of parseCsv(value)) {
+    const [scope, ...rest] = item.split("=");
+    const key = (scope || "").trim();
+    const expected = rest.join("=").trim();
+    if (key && expected) entries[key] = expected;
+  }
+  return entries;
 }
 
 function positiveInt(value, fallback) {
@@ -74,6 +96,13 @@ Options:
   --scopes <csv>     default: ${DEFAULT_SCOPES.join(",")}
   --timeout-ms <n>   active-route-smoke timeout
   --input <text>     prompt sent to active-route-smoke
+  --temporary-enable enable a disabled provider for the smoke, then restore it
+  --expect-endpoints <scope=id,...>
+                    fail when a scope uses a different endpoint profile
+  --expect-routes <scope=id,...>
+                    fail when a scope uses a different route id
+  --expect-api-formats <scope=id,...>
+                    fail when a scope uses a different upstream API format
   --json             machine-readable output
   -h, --help         Show this help
 
@@ -168,9 +197,18 @@ function createResult(options, provider, originalActiveProviders) {
     scopes: options.scopes,
     checkedAt: new Date().toISOString(),
     originalActiveProviders,
+    temporaryEnable: {
+      requested: Boolean(options.temporaryEnable),
+      attempted: false,
+      originalEnabled: provider ? Boolean(provider.enabled) : null,
+      enabled: provider ? Boolean(provider.enabled) : false,
+      restoredEnabled: null,
+      error: null,
+    },
     preflightFailures: [],
     preflightWarnings: [],
     routeSmokes: [],
+    expectationFailures: [],
     setupFailures: [],
     restoredActiveProviders: null,
     restoreFailures: [],
@@ -187,10 +225,17 @@ function addProviderPreflight(result, options, provider) {
     return;
   }
   if (!provider.enabled) {
-    result.preflightFailures.push({
-      code: "model_gateway_provider_disabled",
-      message: `Provider '${provider.id}' is disabled; enable it before running active route smoke.`,
-    });
+    if (options.temporaryEnable) {
+      result.preflightWarnings.push({
+        code: "model_gateway_provider_temporarily_enabled",
+        message: `Provider '${provider.id}' is disabled and will be temporarily enabled for this smoke.`,
+      });
+    } else {
+      result.preflightFailures.push({
+        code: "model_gateway_provider_disabled",
+        message: `Provider '${provider.id}' is disabled; pass --temporary-enable to enable it only for this smoke.`,
+      });
+    }
   }
   const appScopes = new Set(provider.appScopes || []);
   for (const scope of options.scopes) {
@@ -216,6 +261,46 @@ function addProviderPreflight(result, options, provider) {
   }
 }
 
+function addExpectationFailures(result, options) {
+  const checks = [
+    {
+      field: "endpointProfile",
+      expectedByScope: options.expectEndpoints,
+      actual: (smoke) => smoke.endpointProfile || "",
+      code: "model_gateway_endpoint_expectation_failed",
+    },
+    {
+      field: "routeId",
+      expectedByScope: options.expectRoutes,
+      actual: (smoke) => smoke.routeId || "",
+      code: "model_gateway_route_expectation_failed",
+    },
+    {
+      field: "apiFormat",
+      expectedByScope: options.expectApiFormats,
+      actual: (smoke) => smoke.apiFormat || "",
+      code: "model_gateway_api_format_expectation_failed",
+    },
+  ];
+  for (const smoke of result.routeSmokes) {
+    for (const check of checks) {
+      const expected = check.expectedByScope[smoke.scope];
+      if (!expected) continue;
+      const actual = check.actual(smoke);
+      if (actual !== expected) {
+        result.expectationFailures.push({
+          code: check.code,
+          scope: smoke.scope,
+          field: check.field,
+          expected,
+          actual,
+          message: `${smoke.scope} expected ${check.field} '${expected}' but used '${actual || "(none)"}'.`,
+        });
+      }
+    }
+  }
+}
+
 async function setActiveProvider(options, key, scope, providerId) {
   const result = await requestJson(options.endpoint, key, "/api/model-gateway/active-provider", {
     method: "POST",
@@ -225,6 +310,18 @@ async function setActiveProvider(options, key, scope, providerId) {
   if (result.status < 200 || result.status >= 300) {
     throw new Error(`Set active provider for ${scope} failed with HTTP ${result.status}: ${preview(result.text)}`);
   }
+}
+
+async function updateProviderEnabled(options, key, providerId, enabled) {
+  const result = await requestJson(options.endpoint, key, `/api/model-gateway/providers/${encodeURIComponent(providerId)}`, {
+    method: "PUT",
+    body: JSON.stringify({ provider: { enabled } }),
+    timeoutMs: options.timeoutMs,
+  });
+  if (result.status < 200 || result.status >= 300) {
+    throw new Error(`Set provider ${providerId} enabled=${enabled} failed with HTTP ${result.status}: ${preview(result.text)}`);
+  }
+  return result.body?.provider || null;
 }
 
 async function runActiveRouteSmoke(options, key, scope) {
@@ -307,6 +404,10 @@ function printResult(result, json) {
     console.log("Setup failures:");
     for (const failure of result.setupFailures) console.log(`- ${failure.scope}: ${failure.error}`);
   }
+  if (result.expectationFailures.length) {
+    console.log("Expectation failures:");
+    for (const failure of result.expectationFailures) console.log(`- ${failure.scope}: ${failure.message}`);
+  }
   if (result.restoreFailures.length) {
     console.log("Restore failures:");
     for (const failure of result.restoreFailures) console.log(`- ${failure.scope}: ${failure.error}`);
@@ -324,8 +425,28 @@ async function main() {
   const key = readGatewayKey();
   const before = await fetchProviders(options, key);
   const originalActiveProviders = { ...(before.activeProviders || {}) };
-  const provider = providerSummary(before, options.providerId);
+  let provider = providerSummary(before, options.providerId);
   const result = createResult(options, provider, originalActiveProviders);
+  if (provider && !provider.enabled && options.temporaryEnable) {
+    result.temporaryEnable.attempted = true;
+    result.preflightWarnings.push({
+      code: "model_gateway_provider_temporarily_enabled",
+      message: `Provider '${provider.id}' is disabled and will be temporarily enabled for this smoke.`,
+    });
+    try {
+      await updateProviderEnabled(options, key, provider.id, true);
+      const enabledProviders = await fetchProviders(options, key);
+      provider = providerSummary(enabledProviders, options.providerId);
+      result.provider = provider;
+      result.temporaryEnable.enabled = Boolean(provider?.enabled);
+    } catch (error) {
+      result.temporaryEnable.error = error instanceof Error ? error.message : String(error);
+      result.preflightFailures.push({
+        code: "model_gateway_provider_temporary_enable_failed",
+        message: result.temporaryEnable.error,
+      });
+    }
+  }
   addProviderPreflight(result, options, provider);
 
   try {
@@ -344,6 +465,7 @@ async function main() {
         for (const scope of options.scopes) {
           result.routeSmokes.push(await runActiveRouteSmoke(options, key, scope));
         }
+        addExpectationFailures(result, options);
       }
     }
   } finally {
@@ -357,6 +479,21 @@ async function main() {
             error: error instanceof Error ? error.message : String(error),
           });
         }
+      }
+    }
+    if (result.temporaryEnable.attempted && result.temporaryEnable.originalEnabled === false) {
+      try {
+        await updateProviderEnabled(options, key, options.providerId, false);
+        const restoredProviders = await fetchProviders(options, key);
+        const restoredProvider = providerSummary(restoredProviders, options.providerId);
+        result.temporaryEnable.restoredEnabled = restoredProvider ? Boolean(restoredProvider.enabled) : null;
+      } catch (error) {
+        result.temporaryEnable.restoredEnabled = null;
+        result.temporaryEnable.error = error instanceof Error ? error.message : String(error);
+        result.restoreFailures.push({
+          scope: "*",
+          error: result.temporaryEnable.error,
+        });
       }
     }
     try {
@@ -380,6 +517,7 @@ async function main() {
   result.ok = result.routeSmokes.length === options.scopes.length
     && result.preflightFailures.length === 0
     && result.routeSmokes.every((item) => item.ok)
+    && result.expectationFailures.length === 0
     && result.setupFailures.length === 0
     && result.restoreFailures.length === 0
     && result.restoreMismatches.length === 0;
