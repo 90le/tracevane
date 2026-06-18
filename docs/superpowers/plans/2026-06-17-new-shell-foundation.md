@@ -1,4 +1,4 @@
-# OpenClaw Studio 新壳地基 Implementation Plan
+# Tracevane 新壳地基 Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -73,7 +73,7 @@ apps/web-vue-next/
 
 ```json
 {
-  "name": "openclaw-studio-web-next",
+  "name": "tracevane-web-next",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -160,7 +160,7 @@ export default defineConfig({
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>OpenClaw Studio</title>
+    <title>Tracevane</title>
   </head>
   <body>
     <div id="app"></div>
@@ -194,7 +194,7 @@ git commit -m "feat(web-next): scaffold parallel frontend workspace"
 - [ ] **Step 1: 创建 tokens.css（深色默认 + 浅色）**
 
 ```css
-/* OpenClaw Studio 设计 token —— 材质派。唯一 token 源头。
+/* Tracevane 设计 token —— 材质派。唯一 token 源头。
    依据 docs/界面设计守则.md §3-5。禁止在组件里写魔法值。 */
 
 :root,
@@ -981,7 +981,7 @@ const ui = useUiStore();
   <nav :class="['global-nav', { collapsed: ui.navCollapsed }]">
     <div class="global-nav__top">
       <div class="global-nav__brand">◉</div>
-      <span v-if="!ui.navCollapsed" class="global-nav__brandname">OpenClaw Studio</span>
+      <span v-if="!ui.navCollapsed" class="global-nav__brandname">Tracevane</span>
       <button class="global-nav__collapse" :title="ui.navCollapsed ? '展开' : '收起'" @click="ui.toggleNav()">«</button>
     </div>
 

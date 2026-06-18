@@ -11,7 +11,7 @@ import {
 } from '../../dist/apps/api/gateway-http-auth.js';
 
 function createConfigWithGatewayAuth(auth) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-gateway-http-auth-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-gateway-http-auth-'));
   const openclawConfigFile = path.join(root, 'openclaw.json');
   fs.writeFileSync(openclawConfigFile, JSON.stringify({ gateway: { auth } }, null, 2));
   return createStandaloneStudioConfig({
@@ -21,7 +21,7 @@ function createConfigWithGatewayAuth(auth) {
 }
 
 function createConfigWithOpenClawConfig(openclawConfig) {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-gateway-http-auth-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-gateway-http-auth-'));
   const openclawConfigFile = path.join(root, 'openclaw.json');
   fs.writeFileSync(openclawConfigFile, JSON.stringify(openclawConfig, null, 2));
   return {
@@ -86,7 +86,7 @@ test('gateway HTTP auth rejects missing or wrong shared secrets when gateway aut
 test('gateway HTTP auth accepts persisted auth cookie for later top-level reloads', () => {
   const config = createConfigWithGatewayAuth({ mode: 'token', token: 'secret-token' });
   assert.equal(
-    isStudioGatewayHttpAuthorized(config, createRequest('/studio/chat/s/agent:main', undefined, 'openclaw_studio_gateway_auth=secret-token')),
+    isStudioGatewayHttpAuthorized(config, createRequest('/studio/chat/s/agent:main', undefined, 'openclaw_tracevane_gateway_auth=secret-token')),
     true,
   );
 });
@@ -98,7 +98,7 @@ test('gateway HTTP auth sync stores an HttpOnly cookie after a valid token navig
   syncStudioGatewayHttpAuthCookie(config, req, res);
   const cookie = res.getHeader('Set-Cookie');
   assert.equal(typeof cookie, 'string');
-  assert.match(cookie, /openclaw_studio_gateway_auth=secret-token/);
+  assert.match(cookie, /openclaw_tracevane_gateway_auth=secret-token/);
   assert.match(cookie, /HttpOnly/);
   assert.match(cookie, /SameSite=Lax/);
   assert.match(cookie, /Path=\/studio/);
@@ -158,7 +158,7 @@ test('gateway HTTP auth rejects unresolved configured SecretRefs', () => {
 });
 
 test('gateway HTTP auth resolves file SecretRef tokens', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-gateway-http-auth-file-secretref-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-gateway-http-auth-file-secretref-'));
   const secretFile = path.join(root, 'secrets.json');
   fs.writeFileSync(secretFile, JSON.stringify({ gatewayAuthToken: 'file-secret-token' }, null, 2));
   const { config } = createConfigWithOpenClawConfig({

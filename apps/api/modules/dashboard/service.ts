@@ -44,8 +44,8 @@ const dashboardText = {
     en: "System config",
   },
   domainConfigReadyNote: {
-    zh: "当前设备的基础配置已通过 Studio 自检。",
-    en: "Studio checks passed for the current device baseline.",
+    zh: "当前设备的基础配置已通过 Tracevane 自检。",
+    en: "Tracevane checks passed for the current device baseline.",
   },
   domainConfigPendingNote: (errors: number, warnings: number) => ({
     zh: `仍有 ${errors} 个错误和 ${warnings} 个警告需要处理。`,
@@ -112,8 +112,8 @@ const dashboardText = {
     en: `Latest system event: ${title}`,
   }),
   domainSystemUpgradeNote: (latestVersion: string, status: string) => ({
-    zh: `检测到 Studio ${latestVersion} 可升级，当前升级状态 ${status}。`,
-    en: `Studio ${latestVersion} is available; current upgrade status is ${status}.`,
+    zh: `检测到 Tracevane ${latestVersion} 可升级，当前升级状态 ${status}。`,
+    en: `Tracevane ${latestVersion} is available; current upgrade status is ${status}.`,
   }),
   domainSystemSummaryNote: {
     zh: "健康、升级、设备信任与系统事件摘要均已并入系统首页。",

@@ -24,7 +24,7 @@ const baseKey = {
 };
 
 function makeTempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-driver-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-channel-driver-"));
 }
 
 function writeExecutable(filePath, lines) {

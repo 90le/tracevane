@@ -58,7 +58,7 @@ test('recovery page owns daemon controls, events, and backups', () => {
   assert.match(systemRecoveryPage, /allowCliReinstall/);
   assert.match(systemRecoveryPage, /Gateway 服务托管/);
   assert.match(systemRecoveryPage, /allowGatewayServiceRepair/);
-  assert.match(systemRecoveryPage, /Studio 静态包重建/);
+  assert.match(systemRecoveryPage, /Tracevane 静态包重建/);
   assert.match(systemRecoveryPage, /allowStudioWebRebuild/);
   assert.match(systemRecoveryPage, /Gateway 进程接管/);
   assert.match(systemRecoveryPage, /allowGatewayProcessTakeover/);

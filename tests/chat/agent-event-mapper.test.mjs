@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 
 import { mapGatewayAgentEventPayload } from '../../dist/apps/api/modules/chat/agent-event-mapper.js';
 
-test('maps lifecycle agent event into Studio contract', () => {
+test('maps lifecycle agent event into Tracevane contract', () => {
   const mapped = mapGatewayAgentEventPayload({
     sessionKey: 'agent:main:webchat:direct:studio-1',
     payload: {
@@ -19,7 +19,7 @@ test('maps lifecycle agent event into Studio contract', () => {
   assert.equal(mapped?.runId, 'run-1');
 });
 
-test('maps tool start and result events into Studio contract', () => {
+test('maps tool start and result events into Tracevane contract', () => {
   const start = mapGatewayAgentEventPayload({
     sessionKey: 'agent:main:webchat:direct:studio-1',
     payload: {
@@ -61,7 +61,7 @@ test('maps tool start and result events into Studio contract', () => {
   assert.ok(result?.tool.resultPreview?.includes('healthy'));
 });
 
-test('maps assistant stream preview into Studio contract', () => {
+test('maps assistant stream preview into Tracevane contract', () => {
   const mapped = mapGatewayAgentEventPayload({
     sessionKey: 'agent:main:webchat:direct:studio-1',
     payload: {
@@ -81,7 +81,7 @@ test('maps assistant stream preview into Studio contract', () => {
   assert.equal(mapped?.deltaText, 'world');
 });
 
-test('maps assistant delta-only stream into Studio contract', () => {
+test('maps assistant delta-only stream into Tracevane contract', () => {
   const mapped = mapGatewayAgentEventPayload({
     sessionKey: 'agent:main:webchat:direct:studio-1',
     payload: {

@@ -156,10 +156,10 @@ export function getDeviceTrustSnapshot(config: StudioServerConfig): SystemDevice
   const helper = readHelperStatus(config, pending);
   const notes: string[] = [];
   if (helper.pendingRepair) {
-    notes.push('Studio helper 正在请求更高 operator 权限，已可由 Studio 本地自动或手动批准。');
+    notes.push('Tracevane helper 正在请求更高 operator 权限，已可由 Tracevane 本地自动或手动批准。');
   }
   if (!helper.paired) {
-    notes.push('Studio helper 当前还没有稳定的 paired 记录，Chat/Terminal 后端桥可能退化。');
+    notes.push('Tracevane helper 当前还没有稳定的 paired 记录，Chat/Terminal 后端桥可能退化。');
   }
   if (helper.storedScopes.length > 0 && helper.approvedScopes.length > 0) {
     const missing = helper.approvedScopes.filter((scope) => !helper.storedScopes.includes(scope));
@@ -168,7 +168,7 @@ export function getDeviceTrustSnapshot(config: StudioServerConfig): SystemDevice
     }
   }
   if (helper.canSyncLocalToken && !helper.tokenInSync) {
-    notes.push('本机 Studio helper 的 device-auth token 与 paired.json 中最新 operator token 不一致，部分本地工具可能会触发 pairing required 或异常断开。');
+    notes.push('本机 Tracevane helper 的 device-auth token 与 paired.json 中最新 operator token 不一致，部分本地工具可能会触发 pairing required 或异常断开。');
   }
   if (helper.metadataRepairPending) {
     notes.push(`本机 helper 当前存在 metadata repair pending：paired deviceFamily=${helper.pairedDeviceFamily || '<none>'}，当前 repair 请求 deviceFamily=${helper.pendingDeviceFamily || '<none>'}。这通常说明宿主内建 CLI / gateway-client 分支仍未携带完整 device metadata。`);

@@ -82,7 +82,7 @@
               <span class="system-action-row__index">03</span>
               <span class="system-action-row__copy">
                 <strong>{{ text('系统配置', 'System Config') }}</strong>
-                <span>{{ text('查看本地配置和 Studio 传输模式', 'Review local config and Studio transport mode') }}</span>
+                <span>{{ text('查看本地配置和 Tracevane 传输模式', 'Review local config and Tracevane transport mode') }}</span>
               </span>
               <span class="system-action-row__verb">{{ text('打开', 'Open') }}</span>
             </button>

@@ -19,8 +19,8 @@
             <span>
               {{
                 text(
-                  '这里展示当前会话在 Studio 前端已知的运行态、连接态和控制开关，便于在不离开 chat 的情况下快速判断状态。',
-                  'This shows the runtime, connectivity, and control state currently known to Studio so you can inspect the chat state without leaving the conversation.',
+                  '这里展示当前会话在 Tracevane 前端已知的运行态、连接态和控制开关，便于在不离开 chat 的情况下快速判断状态。',
+                  'This shows the runtime, connectivity, and control state currently known to Tracevane so you can inspect the chat state without leaving the conversation.',
                 )
               }}
             </span>

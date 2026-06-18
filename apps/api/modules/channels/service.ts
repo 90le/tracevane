@@ -1101,7 +1101,7 @@ function validateChannelType(channelType: string): string {
     throw new ChannelServiceError(400, 'invalid_channel_type', 'Channel type is required');
   }
   if (RESERVED_CHANNEL_KEYS.has(normalized)) {
-    throw new ChannelServiceError(400, 'unsupported_channel_type', `Channel '${normalized}' is reserved by Studio`);
+    throw new ChannelServiceError(400, 'unsupported_channel_type', `Channel '${normalized}' is reserved by Tracevane`);
   }
   return normalized;
 }

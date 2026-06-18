@@ -17,11 +17,11 @@ const activeRoutesScript = path.join(repoRoot, "scripts/smoke-model-gateway-acti
 
 function parseArgs(argv) {
   const options = {
-    endpoint: process.env.STUDIO_GATEWAY_ENDPOINT || DEFAULT_ENDPOINT,
-    glmProvider: process.env.STUDIO_GATEWAY_PROTOCOL_GLM_PROVIDER || DEFAULT_GLM_PROVIDER,
-    glmModel: process.env.STUDIO_GATEWAY_PROTOCOL_GLM_MODEL || DEFAULT_GLM_MODEL,
-    codexProvider: process.env.STUDIO_GATEWAY_PROTOCOL_CODEX_PROVIDER || DEFAULT_CODEX_PROVIDER,
-    codexModel: process.env.STUDIO_GATEWAY_PROTOCOL_CODEX_MODEL || DEFAULT_CODEX_MODEL,
+    endpoint: process.env.TRACEVANE_GATEWAY_ENDPOINT || process.env.STUDIO_GATEWAY_ENDPOINT || DEFAULT_ENDPOINT,
+    glmProvider: process.env.TRACEVANE_GATEWAY_PROTOCOL_GLM_PROVIDER || process.env.STUDIO_GATEWAY_PROTOCOL_GLM_PROVIDER || DEFAULT_GLM_PROVIDER,
+    glmModel: process.env.TRACEVANE_GATEWAY_PROTOCOL_GLM_MODEL || process.env.STUDIO_GATEWAY_PROTOCOL_GLM_MODEL || DEFAULT_GLM_MODEL,
+    codexProvider: process.env.TRACEVANE_GATEWAY_PROTOCOL_CODEX_PROVIDER || process.env.STUDIO_GATEWAY_PROTOCOL_CODEX_PROVIDER || DEFAULT_CODEX_PROVIDER,
+    codexModel: process.env.TRACEVANE_GATEWAY_PROTOCOL_CODEX_MODEL || process.env.STUDIO_GATEWAY_PROTOCOL_CODEX_MODEL || DEFAULT_CODEX_MODEL,
     timeoutMs: DEFAULT_TIMEOUT_MS,
     json: false,
   };

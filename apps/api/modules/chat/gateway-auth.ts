@@ -14,7 +14,7 @@ export interface GatewayAuthContext {
   scopes: string[];
 }
 
-export const STUDIO_GATEWAY_CAPS = ['tool-events'] as const;
+export const TRACEVANE_GATEWAY_CAPS = ['tool-events'] as const;
 const DEFAULT_OPERATOR_SCOPES = [
   'operator.admin',
   'operator.approvals',
@@ -104,7 +104,7 @@ export function loadGatewayAuthContext(config: StudioServerConfig): GatewayAuthC
     { envFilePath: path.join(config.openclawRoot, '.env') },
   );
   if (!gatewayToken) {
-    throw new ChatServiceError(503, buildChatError('auth_failure', 'Gateway token is not configured for Studio backend adapter.'));
+    throw new ChatServiceError(503, buildChatError('auth_failure', 'Gateway token is not configured for Tracevane backend adapter.'));
   }
 
   const deviceAuth = readJsonFile<Record<string, any>>(path.join(config.openclawRoot, 'identity', 'device-auth.json'), {});
@@ -123,7 +123,7 @@ export function loadGatewayAuthContext(config: StudioServerConfig): GatewayAuthC
   ]));
 
   if (!deviceId || !privateKeyPem || !publicKey) {
-    throw new ChatServiceError(503, buildChatError('auth_failure', 'Studio backend device identity is not fully configured.'));
+    throw new ChatServiceError(503, buildChatError('auth_failure', 'Tracevane backend device identity is not fully configured.'));
   }
 
   return {
@@ -172,7 +172,7 @@ export function buildGatewayConnectRequest(params: {
         deviceFamily: 'server',
         mode: 'backend',
       },
-      caps: [...STUDIO_GATEWAY_CAPS],
+      caps: [...TRACEVANE_GATEWAY_CAPS],
       role: params.role,
       scopes: params.scopes,
       auth: {

@@ -45,7 +45,7 @@ test('studio plugin registers studio_delivery tool', () => {
   assert.equal(registeredHooks[2]?.opts?.priority, 100);
 });
 
-test('studio_delivery only appears in Studio-managed webchat sessions', () => {
+test('studio_delivery only appears in Tracevane-managed webchat sessions', () => {
   assert.ok(resolveStudioDeliveryTool({
     sessionKey: 'agent:main:webchat:direct:studio-test',
     messageChannel: 'webchat',
@@ -333,7 +333,7 @@ test('studio_delivery execute fails explicitly when text intent is dropped durin
   );
 });
 
-test('studio_delivery description explicitly forbids message and path output for Studio returns', () => {
+test('studio_delivery description explicitly forbids message and path output for Tracevane returns', () => {
   const tool = resolveStudioDeliveryTool({
     sessionKey: 'agent:main:webchat:direct:studio-test',
     messageChannel: 'webchat',
@@ -356,7 +356,7 @@ test('studio_delivery description explicitly forbids message and path output for
   assert.match(tool.description, /inline-chip/i);
 });
 
-test('studio plugin injects Studio delivery guidance and blocks current-session message misuse', () => {
+test('studio plugin injects Tracevane delivery guidance and blocks current-session message misuse', () => {
   const registeredHooks = [];
 
   studioPlugin.register({
@@ -417,7 +417,7 @@ test('studio plugin injects Studio delivery guidance and blocks current-session 
       },
       { sessionKey: 'agent:main:webchat:direct:studio-test', channelId: 'webchat' },
     );
-    assert.equal(blockedManagementTool?.block, true, `${toolName} should be blocked in Studio webchat`);
+    assert.equal(blockedManagementTool?.block, true, `${toolName} should be blocked in Tracevane webchat`);
     assert.match(blockedManagementTool?.blockReason || '', /studio webchat private chat/i);
   }
 

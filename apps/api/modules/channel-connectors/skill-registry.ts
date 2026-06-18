@@ -415,7 +415,7 @@ export function buildChannelConnectorNativeSkillPrompt(skill: ChannelConnectorSk
   const platform = normalizeString(skill.platform) || "unknown";
   const displayName = normalizeString(skill.displayName) || skill.name;
   const description = normalizeString(skill.description)
-    || `${displayName} Studio Channel Connector helper skill`;
+    || `${displayName} Tracevane Channel Connector helper skill`;
   const runtimePrompt = selectRuntimeSkillPromptForContext(skill);
   return [
     "---",
@@ -431,13 +431,13 @@ export function buildChannelConnectorNativeSkillPrompt(skill: ChannelConnectorSk
     "",
     `# ${displayName}`,
     "",
-    "This is a Studio Channel Connector helper projection.",
+    "This is a Tracevane Channel Connector helper projection.",
     "",
-    "Studio owns channel credentials, transport, file upload, and message delivery. Do not run external bridge CLIs, plugin setup flows, curl registration flows, or platform API action manifests from the Agent.",
+    "Tracevane owns channel credentials, transport, file upload, and message delivery. Do not run external bridge CLIs, plugin setup flows, curl registration flows, or platform API action manifests from the Agent.",
     "",
-    "Use Studio native manifests only for private IM delivery artifacts:",
-    "- `studio-channel-files` for files, images, and binary attachments.",
-    "- `studio-channel-messages` for private IM messages to known recipients.",
+    "Use Tracevane native manifests only for private IM delivery artifacts:",
+    "- `tracevane-channel-files` for files, images, and binary attachments.",
+    "- `tracevane-channel-messages` for private IM messages to known recipients.",
     "",
     `Current platform family: ${platform}.`,
     "",
@@ -604,7 +604,7 @@ export function buildChannelConnectorSkillContext(
   const platform = normalizeString(binding.platform) || "unknown";
   const excerpts = channelSkillContextExcerpts(skills);
   const lines = [
-    "[Studio IM channel helper skills]",
+    "[Tracevane IM channel helper skills]",
     `Current IM platform: ${platform}.`,
     "Configured binding skills in this binding:",
     ...skills.slice(0, CHANNEL_SKILL_CONTEXT_MAX_LISTED).map((skill) => {
@@ -612,7 +612,7 @@ export function buildChannelConnectorSkillContext(
       return `- /${skill.name}${description ? `: ${description}` : ""}`;
     }),
     "",
-    "Studio only exposes private IM transport to the Agent here: files/images through `studio-channel-files`, private messages through `studio-channel-messages`, and normal Agent CLI tools/commands.",
+    "Tracevane only exposes private IM transport to the Agent here: files/images through `tracevane-channel-files`, private messages through `tracevane-channel-messages`, and normal Agent CLI tools/commands.",
     "Do not emit platform API action manifests, raw Feishu/Octo API calls, or external bridge CLI calls.",
     "Use these helper excerpts only as operating guidance for private IM conversations and attachments.",
     excerpts.length ? "[Helper skill instruction excerpts]" : "",
@@ -632,8 +632,8 @@ export function buildChannelConnectorSkillPrompt(skill: ChannelConnectorSkill, a
   }
   lines.push(
     "",
-    "## Studio Channel Boundary:",
-    "Use only private IM manifests (`studio-channel-files` / `studio-channel-messages`) and normal Agent CLI tools. Do not use platform action manifests, raw Feishu/Octo APIs, or external bridge CLIs.",
+    "## Tracevane Channel Boundary:",
+    "Use only private IM manifests (`tracevane-channel-files` / `tracevane-channel-messages`) and normal Agent CLI tools. Do not use platform action manifests, raw Feishu/Octo APIs, or external bridge CLIs.",
     "",
     "## Skill Instructions:",
     skill.prompt,
@@ -641,6 +641,6 @@ export function buildChannelConnectorSkillPrompt(skill: ChannelConnectorSkill, a
   if (args.length > 0) {
     lines.push("", "## User Arguments:", args.join(" "));
   }
-  lines.push("", "Please follow the skill instructions above within the Studio Channel boundary.");
+  lines.push("", "Please follow the skill instructions above within the Tracevane Channel boundary.");
   return lines.join("\n");
 }

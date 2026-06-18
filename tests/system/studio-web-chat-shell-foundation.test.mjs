@@ -1243,7 +1243,7 @@ test("mobile action sheet keeps secondary actions compact instead of oversized s
   );
 });
 
-test("session Exec enable flow uses a Studio dialog instead of the browser confirm popup", () => {
+test("session Exec enable flow uses a Tracevane dialog instead of the browser confirm popup", () => {
   assert.match(chatShellPage, /hostManagementExecConfirmOpen/);
   assert.match(chatShellPage, /pendingHostManagementExecValue/);
   assert.match(chatShellPage, /confirmSessionHostManagementExec/);

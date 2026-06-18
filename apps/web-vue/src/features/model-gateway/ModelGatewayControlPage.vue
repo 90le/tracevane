@@ -2,7 +2,7 @@
   <section class="page-shell model-gateway-page">
     <header class="page-header-row">
       <div>
-        <p class="eyebrow">Studio Gateway</p>
+        <p class="eyebrow">Tracevane Gateway</p>
         <h2 class="page-title">{{ text('模型网关', 'Model Gateway') }}</h2>
         <p class="page-copy">
           {{ text('统一管理本地 Gateway daemon、服务商、客户端接入、模型消耗和 smoke 检查。', 'Manage the local Gateway daemon, providers, client connections, model usage, and smoke checks.') }}
@@ -19,7 +19,7 @@
       {{ notice.message }}
     </div>
     <div v-else-if="loading && !loaded" class="status-banner">
-      {{ text('正在加载 Studio Gateway 状态...', 'Loading Studio Gateway state...') }}
+      {{ text('正在加载 Tracevane Gateway 状态...', 'Loading Tracevane Gateway state...') }}
     </div>
 
     <section class="mgw-layout">
@@ -56,7 +56,7 @@
                 <h3>{{ text('Gateway daemon', 'Gateway daemon') }}</h3>
                 <strong>{{ preferredEndpoint }}</strong>
                 <small>
-                  {{ text('正式稳定性依赖 OS/user supervisor；Studio 或 OpenClaw 崩溃时，客户端应继续直连 daemon endpoint。', 'Production stability depends on the OS/user supervisor; clients should keep using the daemon endpoint if Studio or OpenClaw crashes.') }}
+                  {{ text('正式稳定性依赖 OS/user supervisor；Tracevane 或 OpenClaw 崩溃时，客户端应继续直连 daemon endpoint。', 'Production stability depends on the OS/user supervisor; clients should keep using the daemon endpoint if Tracevane or OpenClaw crashes.') }}
                 </small>
               </div>
               <div class="mgw-overview-statuses">
@@ -540,7 +540,7 @@
                 <h4>{{ text('登录 Codex / GPT 账户', 'Sign in to Codex / GPT account') }}</h4>
               </div>
               <p>
-                {{ text('登录自己的 Codex/ChatGPT 账户后，Studio Gateway 会自动创建本地账户型服务商；客户端仍只使用统一 Gateway key。', 'Sign in with your own Codex/ChatGPT account here. Studio Gateway creates a local account-backed provider automatically; clients still use the single Gateway key.') }}
+                {{ text('登录自己的 Codex/ChatGPT 账户后，Tracevane Gateway 会自动创建本地账户型服务商；客户端仍只使用统一 Gateway key。', 'Sign in with your own Codex/ChatGPT account here. Tracevane Gateway creates a local account-backed provider automatically; clients still use the single Gateway key.') }}
               </p>
               <div v-if="codexLoginStart" class="mgw-account-login-session">
                 <span>{{ text('验证码', 'Code') }}</span>
@@ -677,7 +677,7 @@
                 <section v-if="providerCreateKind === 'account' && !selectedProviderView" class="mgw-provider-account-create">
                   <div class="mgw-config-section__head">
                     <h4>{{ text('账户登录', 'Account sign-in') }}</h4>
-                    <span>{{ text('适合直接使用自己的 Codex / GPT 账号。Studio 会创建账户型服务商，客户端仍只使用统一 Gateway key。', 'Use your own Codex / GPT account. Studio creates an account-backed provider while clients keep using the single Gateway key.') }}</span>
+                    <span>{{ text('适合直接使用自己的 Codex / GPT 账号。Tracevane 会创建账户型服务商，客户端仍只使用统一 Gateway key。', 'Use your own Codex / GPT account. Tracevane creates an account-backed provider while clients keep using the single Gateway key.') }}</span>
                   </div>
                   <div v-if="codexLoginStart" class="mgw-account-login-session">
                     <span>{{ text('验证码', 'Code') }}</span>
@@ -2290,7 +2290,7 @@ const detectStatusDetail = computed(() => {
 const codexLoginStatusText = computed(() => {
   if (!codexLoginStart.value) return text('尚未开始登录。', 'Login not started.');
   if (!codexLoginPoll.value) {
-    return text('请在打开的官方页面输入验证码，Studio 会自动检查授权结果。', 'Enter the code on the opened official page; Studio will check authorization automatically.');
+    return text('请在打开的官方页面输入验证码，Tracevane 会自动检查授权结果。', 'Enter the code on the opened official page; Tracevane will check authorization automatically.');
   }
   if (codexLoginPoll.value.status === 'completed') return text('登录完成，已创建账户型 provider。', 'Login completed; account-backed provider created.');
   if (codexLoginPoll.value.status === 'pending') return text('等待官方页面确认授权。', 'Waiting for approval on the official page.');
@@ -4035,7 +4035,7 @@ async function loadAll(): Promise<void> {
   } catch (error) {
     notice.value = {
       kind: 'error',
-      message: error instanceof Error ? error.message : text('加载 Studio Gateway 失败', 'Failed to load Studio Gateway'),
+      message: error instanceof Error ? error.message : text('加载 Tracevane Gateway 失败', 'Failed to load Tracevane Gateway'),
     };
   } finally {
     loading.value = false;

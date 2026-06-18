@@ -410,7 +410,7 @@ function sessionRowMemoKey(session: ChatSessionRow, observed = false): unknown[]
 
 function sessionSourceLabel(session: ChatSessionRow): string {
   if (session.source.source === 'studio') {
-    return text('Studio', 'Studio');
+    return text('Tracevane', 'Tracevane');
   }
   if (session.source.source === 'system') {
     return text('系统', 'System');

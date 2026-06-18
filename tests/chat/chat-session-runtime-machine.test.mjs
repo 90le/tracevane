@@ -1396,7 +1396,7 @@ test('buildChatRuntimeSummary prefers live runtime and returns expected conversa
       agentId: 'main',
       sessionId: 'session-1',
       kind: 'studio_managed',
-      label: 'Studio chat · main',
+      label: 'Tracevane chat · main',
       derivedTitle: null,
       lastMessagePreview: null,
       updatedAt: '2026-04-09T16:00:10.000Z',

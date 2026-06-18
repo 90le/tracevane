@@ -176,7 +176,7 @@
               <div class="form-field">
                 <label class="form-label">{{ text('心跳周期', 'Heartbeat interval') }}</label>
                 <input v-model="draft.heartbeatEvery" class="form-input" :disabled="draft.heartbeatMode !== 'enabled'" placeholder="30m" />
-                <span class="field-hint">{{ text('例如 10m / 30m / 1h。启用但留空时保存为 30m。', 'For example 10m / 30m / 1h. If enabled and empty, Studio saves 30m.') }}</span>
+                <span class="field-hint">{{ text('例如 10m / 30m / 1h。启用但留空时保存为 30m。', 'For example 10m / 30m / 1h. If enabled and empty, Tracevane saves 30m.') }}</span>
               </div>
             </div>
           </section>

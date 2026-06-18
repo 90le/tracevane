@@ -2222,7 +2222,7 @@ function buildFontPreviewSrcdoc(fontUrl: string, title: string, dark: boolean): 
     '<main class="wrap">',
     `<div class="meta"><span class="badge">${escapeHtmlText(text('字体预览', 'Font preview'))}</span><strong>${escapeHtmlText(title)}</strong></div>`,
     '<section class="sample">',
-    '<h1>OpenClaw Studio</h1>',
+    '<h1>Tracevane</h1>',
     '<p>快速预览字体：Aa Bb Cc 0123456789</p>',
     '<p>中文字体样张：资源管理器、终端、工作区、代码预览。</p>',
     '<div class="grid">',

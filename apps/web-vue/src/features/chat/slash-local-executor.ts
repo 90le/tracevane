@@ -1123,12 +1123,12 @@ async function executeContext(
       phase: 'completed',
       detail: pair(
         [
-          'Studio Chat /context 会显示当前 surface 上能确定的上下文摘要。',
+          'Tracevane Chat /context 会显示当前 surface 上能确定的上下文摘要。',
           '支持：/context、/context list、/context detail、/context json。',
           '这里展示的是当前会话、消息数量、待发送队列、活跃 run、子代理与 usage 概览，不伪造宿主内部精确 prompt 预算。',
         ].join('\n'),
         [
-          'Studio Chat /context shows the context that this surface can determine locally.',
+          'Tracevane Chat /context shows the context that this surface can determine locally.',
           'Supported: /context, /context list, /context detail, /context json.',
           'It covers the current session, visible messages, queued sends, active run, subagents, and usage summary without faking the host-only prompt budget report.',
         ].join('\n'),
@@ -1205,7 +1205,7 @@ async function executeContext(
       phase: 'completed',
       detail: pair(
         [
-          'Studio 上下文（本地摘要）',
+          'Tracevane 上下文（本地摘要）',
           `会话：${label} (${sessionKey})`,
           `Agent：${agentId}`,
           `状态：${formatTaskStatus(normalizeString(current?.status), 'zh')}`,
@@ -1231,10 +1231,10 @@ async function executeContext(
           subagents.length
             ? `子代理 ${subagents.length} 个：${previewZh.join('、')}${subagents.length > previewZh.length ? ` 等 ${subagents.length} 个` : ''}`
             : '子代理：无',
-          '说明：这是 Studio 当前 surface 可见上下文摘要，不是宿主内部精确 prompt 预算报告。',
+          '说明：这是 Tracevane 当前 surface 可见上下文摘要，不是宿主内部精确 prompt 预算报告。',
         ].filter(Boolean).join('\n'),
         [
-          'Studio context (local summary)',
+          'Tracevane context (local summary)',
           `Session: ${label} (${sessionKey})`,
           `Agent: ${agentId}`,
           `Status: ${status}`,
@@ -1260,7 +1260,7 @@ async function executeContext(
           subagents.length
             ? `Subagents (${subagents.length}): ${previewEn.join(', ')}${subagents.length > previewEn.length ? ` and ${subagents.length - previewEn.length} more` : ''}`
             : 'Subagents: none',
-          'Note: this is the Studio surface context summary, not the host-only exact prompt budget report.',
+          'Note: this is the Tracevane surface context summary, not the host-only exact prompt budget report.',
         ].filter(Boolean).join('\n'),
       ),
     };
@@ -1269,8 +1269,8 @@ async function executeContext(
   return {
     phase: 'completed',
     detail: pair(
-      `Studio 上下文：会话 ${label}；${messageCount != null ? `可见消息 ${messageCount} 条；` : ''}${queueLength != null ? `待发送 ${queueLength} 条；` : ''}${activeRunId ? `活跃 run=${activeRunId}；` : ''}${subagents.length ? `子代理 ${subagents.length} 个；` : ''}${usageZh ? `Token ${usageZh}。` : '可用详细信息见 /context detail。'}`,
-      `Studio context: session ${label}; ${messageCount != null ? `${messageCount} visible messages; ` : ''}${queueLength != null ? `${queueLength} queued sends; ` : ''}${activeRunId ? `active run=${activeRunId}; ` : ''}${subagents.length ? `${subagents.length} subagents; ` : ''}${usageEn ? `tokens ${usageEn}.` : 'Use /context detail for more.'}`,
+      `Tracevane 上下文：会话 ${label}；${messageCount != null ? `可见消息 ${messageCount} 条；` : ''}${queueLength != null ? `待发送 ${queueLength} 条；` : ''}${activeRunId ? `活跃 run=${activeRunId}；` : ''}${subagents.length ? `子代理 ${subagents.length} 个；` : ''}${usageZh ? `Token ${usageZh}。` : '可用详细信息见 /context detail。'}`,
+      `Tracevane context: session ${label}; ${messageCount != null ? `${messageCount} visible messages; ` : ''}${queueLength != null ? `${queueLength} queued sends; ` : ''}${activeRunId ? `active run=${activeRunId}; ` : ''}${subagents.length ? `${subagents.length} subagents; ` : ''}${usageEn ? `tokens ${usageEn}.` : 'Use /context detail for more.'}`,
     ),
   };
 }
@@ -2041,7 +2041,7 @@ async function executeExec(
       phase: 'completed',
       detail: pair(
         `当前暂无法直接查询 exec 默认项。可直接设置：${EXEC_OPTIONS_HINT_ZH}。`,
-        `Studio cannot currently read the live exec defaults here. Set them directly with ${EXEC_OPTIONS_HINT_EN}.`,
+        `Tracevane cannot currently read the live exec defaults here. Set them directly with ${EXEC_OPTIONS_HINT_EN}.`,
       ),
     };
   }
@@ -2341,12 +2341,12 @@ async function executeQueue(
     detail: pair(
       [
         queueCount != null ? `当前待发送队列 ${queueCount} 条。` : '当前未暴露实时队列长度。',
-        'Studio 当前只在这里提供队列摘要与提示。',
+        'Tracevane 当前只在这里提供队列摘要与提示。',
         '如果你需要真正修改宿主 queue mode / debounce / cap / drop，请继续发送完整 /queue 参数给宿主处理。',
       ].join(' '),
       [
         queueCount != null ? `Current queued sends: ${queueCount}.` : 'The live queue length is not exposed here right now.',
-        'Studio currently provides a local queue summary only.',
+        'Tracevane currently provides a local queue summary only.',
         'If you need to change the host queue mode, debounce, cap, or drop policy, keep sending the full /queue arguments to the host.',
       ].join(' '),
     ),
@@ -2421,14 +2421,14 @@ async function executeAllowlist(
       phase: 'completed',
       detail: pair(
         [
-          'Studio Chat /allowlist 默认管理当前 Agent 的 exec allowlist。',
+          'Tracevane Chat /allowlist 默认管理当前 Agent 的 exec allowlist。',
           `支持：${ALLOWLIST_USAGE_HINT_ZH}。`,
           '如果你要使用 dm/group/channel/account/config/store 这类频道 allowlist 语义，会继续回退宿主 /allowlist。',
         ].join('\n'),
         [
-          'Studio Chat /allowlist manages the current agent exec allowlist by default.',
+          'Tracevane Chat /allowlist manages the current agent exec allowlist by default.',
           `Supported locally: ${ALLOWLIST_USAGE_HINT_EN}.`,
-          'If you need dm/group/channel/account/config/store channel allowlist semantics, Studio will fall back to the host /allowlist command.',
+          'If you need dm/group/channel/account/config/store channel allowlist semantics, Tracevane will fall back to the host /allowlist command.',
         ].join('\n'),
       ),
     };
@@ -2701,8 +2701,8 @@ async function executeWhoami(
   return {
     phase: 'completed',
     detail: pair(
-      `Studio Chat 当前不暴露真实频道 sender id。当前仅能确认会话 key=${sessionKey}${agentId ? `，agent=${agentId}` : ''}。如果你需要真实 sender id，请在对应频道 surface 中使用 /whoami。`,
-      `Studio Chat does not expose a real channel sender id here. The available local identity is session key=${sessionKey}${agentId ? `, agent=${agentId}` : ''}. If you need the real sender id, run /whoami on the actual channel surface.`,
+      `Tracevane Chat 当前不暴露真实频道 sender id。当前仅能确认会话 key=${sessionKey}${agentId ? `，agent=${agentId}` : ''}。如果你需要真实 sender id，请在对应频道 surface 中使用 /whoami。`,
+      `Tracevane Chat does not expose a real channel sender id here. The available local identity is session key=${sessionKey}${agentId ? `, agent=${agentId}` : ''}. If you need the real sender id, run /whoami on the actual channel surface.`,
     ),
   };
 }
@@ -2730,12 +2730,12 @@ async function executeSessionCommand(
     detail: pair(
       [
         summary.zh,
-        'Studio Chat 直连会话不使用线程绑定的 /session idle|max-age 语义。',
+        'Tracevane Chat 直连会话不使用线程绑定的 /session idle|max-age 语义。',
         '请改用 /new、/reset，或使用专用命令 /model /think /verbose /reasoning /usage /elevated /send /activation。',
       ].join(' '),
       [
         summary.en,
-        'Studio Chat direct sessions do not use the thread-binding /session idle|max-age semantics.',
+        'Tracevane Chat direct sessions do not use the thread-binding /session idle|max-age semantics.',
         'Use /new, /reset, or the dedicated commands /model /think /verbose /reasoning /usage /elevated /send /activation instead.',
       ].join(' '),
     ),
@@ -2756,8 +2756,8 @@ async function executeAcp(
     return {
       phase: 'completed',
       detail: pair(
-        'Studio 当前本地支持 /acp status 和 /acp sessions 摘要。其它 ACP 动作仍会回退给宿主处理。',
-        'Studio currently supports local summaries for /acp status and /acp sessions. Other ACP actions still fall back to the host.',
+        'Tracevane 当前本地支持 /acp status 和 /acp sessions 摘要。其它 ACP 动作仍会回退给宿主处理。',
+        'Tracevane currently supports local summaries for /acp status and /acp sessions. Other ACP actions still fall back to the host.',
       ),
     };
   }
@@ -2771,8 +2771,8 @@ async function executeAcp(
     return {
       phase: 'completed',
       detail: pair(
-        `当前 Studio 视角下没有可见的 ACP 会话。当前普通会话摘要：${buildStudioSessionSummary(sessionKey, resolveCurrentSession(sessions, sessionKey), context).zh}`,
-        `No visible ACP sessions were found from the current Studio view. Current direct-session summary: ${buildStudioSessionSummary(sessionKey, resolveCurrentSession(sessions, sessionKey), context).en}`,
+        `当前 Tracevane 视角下没有可见的 ACP 会话。当前普通会话摘要：${buildStudioSessionSummary(sessionKey, resolveCurrentSession(sessions, sessionKey), context).zh}`,
+        `No visible ACP sessions were found from the current Tracevane view. Current direct-session summary: ${buildStudioSessionSummary(sessionKey, resolveCurrentSession(sessions, sessionKey), context).en}`,
       ),
     };
   }
@@ -2831,8 +2831,8 @@ async function executeDebug(
   return {
     phase: 'completed',
     detail: pair(
-      `当前 Studio 调试摘要：transport=${transportMode}，surface=${exposureKind}，实时链路${realtime.zh}；可见 debug 键：${debugKeys.join('、') || '无'}。若要执行 /debug set|unset|reset，仍会回退宿主处理。`,
-      `Current Studio debug summary: transport=${transportMode}, surface=${exposureKind}, realtime ${realtime.en}; visible debug keys: ${debugKeys.join(', ') || 'none'}. /debug set|unset|reset still falls back to the host.`,
+      `当前 Tracevane 调试摘要：transport=${transportMode}，surface=${exposureKind}，实时链路${realtime.zh}；可见 debug 键：${debugKeys.join('、') || '无'}。若要执行 /debug set|unset|reset，仍会回退宿主处理。`,
+      `Current Tracevane debug summary: transport=${transportMode}, surface=${exposureKind}, realtime ${realtime.en}; visible debug keys: ${debugKeys.join(', ') || 'none'}. /debug set|unset|reset still falls back to the host.`,
     ),
   };
 }
@@ -2843,8 +2843,8 @@ async function executeFocusCommand(
   return {
     phase: 'completed',
     detail: pair(
-      `Studio Chat 不通过 /focus 做线程绑定；当前已经直接停留在会话 ${sessionKey}。如需切换目标，请直接在左侧会话列表中选择。`,
-      `Studio Chat does not use /focus for thread binding; you are already working directly in session ${sessionKey}. Switch targets from the left session list instead.`,
+      `Tracevane Chat 不通过 /focus 做线程绑定；当前已经直接停留在会话 ${sessionKey}。如需切换目标，请直接在左侧会话列表中选择。`,
+      `Tracevane Chat does not use /focus for thread binding; you are already working directly in session ${sessionKey}. Switch targets from the left session list instead.`,
     ),
   };
 }
@@ -2855,8 +2855,8 @@ async function executeUnfocusCommand(
   return {
     phase: 'completed',
     detail: pair(
-      `Studio Chat 没有可清除的线程绑定；当前会话仍是 ${sessionKey}。如需离开当前上下文，请切换会话或直接 /new。`,
-      `Studio Chat does not keep a thread binding to clear here; the current session is still ${sessionKey}. Switch sessions or use /new to leave this context.`,
+      `Tracevane Chat 没有可清除的线程绑定；当前会话仍是 ${sessionKey}。如需离开当前上下文，请切换会话或直接 /new。`,
+      `Tracevane Chat does not keep a thread binding to clear here; the current session is still ${sessionKey}. Switch sessions or use /new to leave this context.`,
     ),
   };
 }

@@ -14,12 +14,12 @@
                 <h2 class="sr-only">{{ text('工具栏导航', 'Tool navigation') }}</h2>
               </DialogTitle>
               <DialogDescription as-child>
-                <p class="sr-only">{{ text('打开 OpenClaw Studio 的全局导航、命令入口和版本状态。', 'Open the global navigation, command entry, and version status for OpenClaw Studio.') }}</p>
+                <p class="sr-only">{{ text('打开 Tracevane 的全局导航、命令入口和版本状态。', 'Open the global navigation, command entry, and version status for Tracevane.') }}</p>
               </DialogDescription>
               <StudioSidebarRail
                 :is-mobile="true"
                 :sidebar-collapsed="false"
-                :subtitle="text('管理控制台', 'Management Console')"
+                :subtitle="text('本地 Agent 控制台', 'Local Agent Control')"
                 :docs-label="text('官方文档', 'Official docs')"
                 :command-label="text('命令面板', 'Command palette')"
                 :nav-groups="navGroups"
@@ -51,7 +51,7 @@
         <StudioSidebarRail
           :is-mobile="false"
           :sidebar-collapsed="sidebarCollapsed"
-          :subtitle="text('管理控制台', 'Management Console')"
+          :subtitle="text('本地 Agent 控制台', 'Local Agent Control')"
           :docs-label="text('官方文档', 'Official docs')"
           :command-label="text('命令面板', 'Command palette')"
           :nav-groups="navGroups"
@@ -187,7 +187,7 @@ const activeNavGroup = computed(() => navGroups.value.find((group) =>
 const activeNavItem = computed(() => activeNavGroup.value?.items.find((item) =>
   route.path === item.to || route.path.startsWith(`${item.to}/`),
 ));
-const activeNavGroupTitle = computed(() => activeNavGroup.value?.title || text('Studio', 'Studio'));
+const activeNavGroupTitle = computed(() => activeNavGroup.value?.title || text('Tracevane', 'Tracevane'));
 
 const isChatSurface = computed(() => route.path === '/chat' || route.path.startsWith('/chat/'));
 const isTerminalSurface = computed(() => route.path === '/terminal' || route.path.startsWith('/terminal/'));

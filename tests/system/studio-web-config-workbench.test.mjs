@@ -235,7 +235,7 @@ test('config workbench exposes current command and exec gates', () => {
 test('config workbench exposes schema-backed OpenClaw top-level domains', () => {
   assert.match(configWorkspaceSections, /"openclaw-domains"/);
   assert.match(configWorkspaceSections, /OpenClaw Domains/);
-  assert.match(configWorkspaceSections, /Low-frequency schema domains not modeled by dedicated Studio tabs/);
+  assert.match(configWorkspaceSections, /Low-frequency schema domains not modeled by dedicated Tracevane tabs/);
   assert.match(configWorkspaceSections, /未单独建模的低频 schema 顶层域/);
   assert.match(configEditorPage, /ids: \['logging', 'openclaw-domains'\]/);
   assert.match(configEditorPage, /case 'openclaw-domains'/);

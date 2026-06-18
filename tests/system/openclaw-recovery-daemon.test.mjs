@@ -108,7 +108,7 @@ function makeConfig() {
   );
   return {
     pluginId: "studio",
-    pluginName: "OpenClaw Studio",
+    pluginName: "Tracevane",
     version: "0.1.70",
     port: 3760,
     autoStart: false,
@@ -262,7 +262,7 @@ test("recovery backups restore runtime env sidecars with openclaw config", () =>
   });
 });
 
-test("gateway deep probe validates the Studio control route without breaking light probe", async () => {
+test("gateway deep probe validates the Tracevane control route without breaking light probe", async () => {
   const { server, port } = await listenProbeServer((request, response) => {
     if (request.url === "/studio") {
       response.writeHead(401);

@@ -86,7 +86,7 @@ def session_row() -> dict[str, object]:
             "source": "studio",
             "channel": "webchat",
             "surface": "studio-chat",
-            "originLabel": "Studio Chat",
+            "originLabel": "Tracevane Chat",
         },
         "deliveryContext": {
             "channel": "webchat",

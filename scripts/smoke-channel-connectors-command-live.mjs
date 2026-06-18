@@ -116,7 +116,7 @@ function parseArgs(argv) {
 function printHelp() {
   console.log(`Usage: node scripts/smoke-channel-connectors-command-live.mjs [options]
 
-Plans or probes Channel Connector slash commands against the live Studio backend.
+Plans or probes Channel Connector slash commands against the live Tracevane backend.
 Default mode is a no-side-effect dry-run plan. Use --probe to POST dry-run adapter
 requests. Use --apply to send real channel replies through configured transports.
 
@@ -143,7 +143,7 @@ Options:
   --since-minutes <n>     Include recent command progress window. Default: ${DEFAULT_SINCE_MINUTES}.
   --timeout-ms <n>        Wait deadline for --wait-command-progress. Default: ${DEFAULT_PROGRESS_TIMEOUT_MS}.
   --poll-ms <n>           Wait poll interval. Default: ${DEFAULT_PROGRESS_POLL_MS}.
-  --base-url <url>        Studio API base. Default: ${DEFAULT_BASE_URL}
+  --base-url <url>        Tracevane API base. Default: ${DEFAULT_BASE_URL}
   --config <path>         Native Channel config. Default: ${DEFAULT_CONFIG_PATH}
   --state-dir <path>      Daemon state dir. Default: ${DEFAULT_STATE_DIR}
   --probe                 POST adapter dry-run requests; no transport send.

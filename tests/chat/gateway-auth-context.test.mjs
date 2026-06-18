@@ -13,7 +13,7 @@ function writeJson(file, value) {
 }
 
 test('gateway auth context requests full operator scopes even when persisted device auth is read-only', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-gateway-auth-context-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-gateway-auth-context-'));
   writeJson(path.join(root, 'openclaw.json'), {
     gateway: {
       auth: {
@@ -51,7 +51,7 @@ test('gateway auth context requests full operator scopes even when persisted dev
 });
 
 test('gateway auth context resolves env SecretRef tokens', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-gateway-auth-context-secretref-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-gateway-auth-context-secretref-'));
   const oldToken = process.env.STUDIO_TEST_GATEWAY_TOKEN;
   process.env.STUDIO_TEST_GATEWAY_TOKEN = 'shared-secretref-token';
   try {
@@ -97,7 +97,7 @@ test('gateway auth context resolves env SecretRef tokens', () => {
 });
 
 test('gateway auth context resolves file SecretRef tokens', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-gateway-auth-context-file-secretref-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-gateway-auth-context-file-secretref-'));
   const secretFile = path.join(root, 'secrets.json');
   writeJson(secretFile, {
     gatewayAuthToken: 'shared-file-secretref-token',
@@ -149,7 +149,7 @@ test('gateway auth context resolves file SecretRef tokens', () => {
 });
 
 test('gateway auth context resolves env SecretRefs from the OpenClaw env file', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-gateway-auth-context-env-file-secretref-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-gateway-auth-context-env-file-secretref-'));
   const oldToken = process.env.STUDIO_TEST_GATEWAY_ENV_FILE_TOKEN;
   delete process.env.STUDIO_TEST_GATEWAY_ENV_FILE_TOKEN;
   try {

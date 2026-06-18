@@ -23,7 +23,7 @@ function sendModelGatewayError(res: Parameters<typeof sendJson>[0], error: unkno
   if (isModelGatewayServiceError(error)) {
     const shape = error.toShape();
     if (shape.statusCode === 401) {
-      res.setHeader("WWW-Authenticate", "Bearer realm=\"Studio Gateway\"");
+      res.setHeader("WWW-Authenticate", "Bearer realm=\"Tracevane Gateway\"");
     }
     sendJson(res, shape.statusCode, {
       error: shape.code,

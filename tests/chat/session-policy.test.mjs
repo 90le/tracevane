@@ -18,7 +18,7 @@ test('observed_external remains read-only', () => {
 });
 
 test('studio registry restore preserves sessionId', () => {
-  const created = buildStudioManagedSessionRow('main', 'Studio chat · main', true);
+  const created = buildStudioManagedSessionRow('main', 'Tracevane chat · main', true);
   assert.ok(created.sessionId);
 
   const restored = buildStudioManagedRowFromRegistry({

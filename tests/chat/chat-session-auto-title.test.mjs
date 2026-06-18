@@ -18,7 +18,7 @@ function createStudioSession(overrides = {}) {
     agentId: 'frontend',
     sessionId: 'sess-1',
     kind: 'studio_managed',
-    label: 'Studio chat · frontend',
+    label: 'Tracevane chat · frontend',
     derivedTitle: 'Sender (untrusted metadata): ```json {"label":"cli"} ```',
     lastMessagePreview: null,
     updatedAt: '2026-03-27T08:00:00.000Z',
@@ -32,7 +32,7 @@ function createStudioSession(overrides = {}) {
       source: 'studio',
       channel: 'webchat',
       surface: 'direct',
-      originLabel: 'Studio managed',
+      originLabel: 'Tracevane managed',
     },
     deliveryContext: {
       channel: 'webchat',
@@ -92,11 +92,11 @@ test('deriveAutoSessionLabelFromMessages skips weak greetings and uses the first
   const label = deriveAutoSessionLabelFromMessages([
     createMessage('user', 'hi'),
     createMessage('assistant', 'hi~'),
-    createMessage('user', '请帮我分析 OpenClaw Studio chat 标题更新机制，并评估可行性'),
-    createMessage('assistant', '我先看 Studio chat 私聊链路。'),
+    createMessage('user', '请帮我分析 Tracevane chat 标题更新机制，并评估可行性'),
+    createMessage('assistant', '我先看 Tracevane chat 私聊链路。'),
   ]);
 
-  assert.equal(label, 'OpenClaw Studio chat 标题更新机制');
+  assert.equal(label, 'Tracevane chat 标题更新机制');
 });
 
 test('applyDerivedAutoLabelToSessionRow stores autoLabel for studio-managed sessions only', () => {
@@ -112,7 +112,7 @@ test('applyDerivedAutoLabelToSessionRow stores autoLabel for studio-managed sess
 
 test('deriveChatSessionTitle keeps the default studio label before autoLabel exists', () => {
   const title = deriveChatSessionTitle(createStudioSession(), 'frontend');
-  assert.equal(title, 'Studio chat · frontend');
+  assert.equal(title, 'Tracevane chat · frontend');
 });
 
 test('deriveChatSessionTitle prefers autoLabel, and manual rename stays highest priority', () => {

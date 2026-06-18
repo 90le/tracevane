@@ -319,7 +319,7 @@ done' _ $root_q $log_q $pid_q $command_q"
   printf -v "$output_var" '%s' "$pid"
 }
 
-echo "Refreshing OpenClaw Studio dev processes"
+echo "Refreshing Tracevane dev processes"
 
 stop_pid_file_process "$BACKEND_PID_FILE" "backend"
 stop_pid_file_process "$FRONTEND_PID_FILE" "frontend"
@@ -355,7 +355,7 @@ STUDIO_WEB_PORT=$FRONTEND_PORT
 EOF
 
 echo
-echo "OpenClaw Studio dev processes are ready"
+echo "Tracevane dev processes are ready"
 echo "Frontend: http://127.0.0.1:${FRONTEND_PORT} (pid=${frontend_pid})"
 echo "Backend:  http://127.0.0.1:${BACKEND_PORT} (pid=${backend_pid})"
 echo "Frontend log: ${FRONTEND_LOG_FILE}"

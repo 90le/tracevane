@@ -1,8 +1,8 @@
-# Studio Gateway Account Provider Plan
+# Tracevane Gateway Account Provider Plan
 
 > 状态：Phase D2 核心能力已进入 live 验证
 > 更新：2026-06-18
-> 目的：把 GPT / ChatGPT / Codex 账户接入 Studio Gateway，形成用户本机账户池到三协议 API 的正式能力。
+> 目的：把 GPT / ChatGPT / Codex 账户接入 Tracevane Gateway，形成用户本机账户池到三协议 API 的正式能力。
 
 ## 当前核验门禁
 
@@ -13,7 +13,7 @@
 
 ## 边界
 
-- 这是 Studio Gateway 新账户型 provider，不是恢复已停止演进的旧模型链路。
+- 这是 Tracevane Gateway 新账户型 provider，不是恢复已停止演进的旧模型链路。
 - 只支持用户本机、用户自有账号授权；不设计共享售卖、第三方账号导入市场、公共代理池。
 - 凭据不写入普通 provider key 字段，不在 UI、日志、测试输出中回显。
 - ChatGPT/GPT 账户不做网页 cookie 抓取或通用网页反代；首期由 Gateway Provider 页面直接发起官方 device/browser auth。
@@ -21,7 +21,7 @@
 
 ## 目标形态
 
-Studio Gateway provider 分三类来源：
+Tracevane Gateway provider 分三类来源：
 
 | 来源 | 例子 | 目标 |
 | --- | --- | --- |
@@ -64,7 +64,7 @@ Account-backed provider 对外仍暴露：
 - Codex Responses 转换：Codex account `/v1/responses` 不能按普通 OpenAI Responses 原样透传；必须按 Codex upstream 合同把字符串 `input` 转 message list，强制上游 streaming，并清理 upstream 不接受的 token/采样/context/user 参数，非流式客户端响应再由 SSE 聚合回 JSON；工具历史的 Responses `function_call.id` 必须是 `fc_*`，`call_id` 才保留 Claude/Chat 的 `call_*`。
 - 媒体模型：账户 provider catalog 必须区分 text、vision、image generation、audio input、audio output；`gpt-image-2`、transcribe、tts、audio、realtime 类模型不能被当成普通文本模型。
 - 图片桥接：Codex account 对外兼容 OpenAI Images generation；上游走 Codex `/responses` + `image_generation` tool，并把 Responses/SSE 输出转成 Images API 响应。实现必须支持 `response.output`、`response.output_item.done`、partial-image 未来扩展点和 upstream `response.failed/error` 诊断。OpenAI-compatible image edits 必须 multipart/binary passthrough；Codex account image edits 在没有真实上游 action 合同前明确报不支持，错误 envelope 说明当前缺少稳定的 Codex account image edit contract，并给出替代路径。
-- 音频/Realtime 路由：OpenAI-compatible provider 的音频 REST 端点必须 multipart/binary passthrough；Codex account 音频与 realtime 模型可出现在 catalog，但 REST `/v1/audio/*`、`/v1/responses/ws` 和 `/v1/realtime` 当前明确返回结构化 unsupported。OpenAI 官方已有 request-based audio、Realtime WebSocket 和 Responses WebSocket mode，但 Studio Gateway 对 Codex account backend 仍缺完整 turn state、tool cache、history replay、错误和 close 语义；Realtime/WebSocket 只有拿到官方或直接验证合同并通过 WS live smoke 后，才移除 unsupported。当前 Gateway 不提供无状态 WS 伪转发；需要 realtime 时先直连官方/OpenAI-compatible realtime endpoint。
+- 音频/Realtime 路由：OpenAI-compatible provider 的音频 REST 端点必须 multipart/binary passthrough；Codex account 音频与 realtime 模型可出现在 catalog，但 REST `/v1/audio/*`、`/v1/responses/ws` 和 `/v1/realtime` 当前明确返回结构化 unsupported。OpenAI 官方已有 request-based audio、Realtime WebSocket 和 Responses WebSocket mode，但 Tracevane Gateway 对 Codex account backend 仍缺完整 turn state、tool cache、history replay、错误和 close 语义；Realtime/WebSocket 只有拿到官方或直接验证合同并通过 WS live smoke 后，才移除 unsupported。当前 Gateway 不提供无状态 WS 伪转发；需要 realtime 时先直连官方/OpenAI-compatible realtime endpoint。
 - Codex headers：保留 Codex 需要的 `Session_id`、`X-Codex-*`、`Chatgpt-Account-Id`、user-agent defaults；反代部署时提醒保留 underscore headers。
 - usage：`status/runtime` 保留内部 request log summary；`/api/model-gateway/usage` 只返回本地 `usage-ledger.jsonl` 读取窗口内的 `totals`、全量 `models[]` 和 `readWindow`。Provider Center 模型消耗页只做每个模型请求次数和 token 图表/表格；不做供应商账单导入、provider/account 维度对账、成本估算、筛选、归档、CSV 或最近明细。模型 alias 由 Gateway 按 provider catalog 归并，Channel 侧不重复做 token 产品化。
 - UI：Provider Center 已收敛为服务商列表优先；新建服务商时在弹层内选择 API Key 接入 / 账户登录 / 中继服务。账户登录不会由主页面按钮自动触发，必须用户在弹层里明确点击开始登录；账户状态表、刷新、禁用、清除 cooldown、账号代理/直连、账号池策略、媒体模型状态和健康继续保留在编辑弹层与检查页中。后续补模型 alias 与策略 live smoke。
@@ -84,5 +84,5 @@ Account-backed provider 对外仍暴露：
 - 不恢复旧模型链路页面、安装页或诊断页。
 - 不做公共 SaaS 计费、转售、账号共享市场。
 - 不把 ChatGPT 网页 cookie、第三方成品号或手工复制 refresh token 作为默认路径。
-- 不在 App Connections 写入账户 token；客户端只看 Studio Gateway endpoint + Gateway key。
+- 不在 App Connections 写入账户 token；客户端只看 Tracevane Gateway endpoint + Gateway key。
 - 不把 Realtime/WebSocket 做成无状态伪转发；没有完整 state machine 和 live smoke 前保持结构化 unsupported。

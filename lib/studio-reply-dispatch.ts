@@ -174,10 +174,10 @@ export async function maybeHandleStudioReplyDispatch(
     : [];
   let queuedFinal = false;
   for (const payload of finalReplies) {
-    // Studio-managed webchat already receives the canonical assistant message
+    // Tracevane-managed webchat already receives the canonical assistant message
     // through transcript/canonical-stream projection. Re-queueing plain-text
     // final replies here produces gateway-injected duplicate assistant rows in
-    // both host chat and Studio history, so only delivery-only payloads keep
+    // both host chat and Tracevane history, so only delivery-only payloads keep
     // using the final-reply dispatcher.
     if (!shouldQueueStudioFinalReply(payload)) {
       continue;

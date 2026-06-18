@@ -61,8 +61,8 @@ function buildGatewayMethodError(message: string, code = 'BAD_REQUEST') {
 
 const studioPlugin = {
   id: 'studio',
-  name: 'OpenClaw Studio',
-  description: 'OpenClaw Studio 管理控制台扩展，当前阶段聚焦配置、技能、终端、频道、定时任务和 Agent 管理。',
+  name: 'Tracevane',
+  description: 'Tracevane 本地 AI Agent 控制工作台，聚焦 Gateway、Channel Connectors、CLI Agent 和运行态自愈。',
   kind: 'ui' as const,
   configSchema: {
     type: 'object',

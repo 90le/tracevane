@@ -96,7 +96,7 @@ test('deriveOrganizerRootSessions excludes sessions that belong to child folders
         source: 'studio',
         channel: 'webchat',
         surface: 'studio-chat',
-        originLabel: 'Studio managed',
+        originLabel: 'Tracevane managed',
       },
       deliveryContext: {
         channel: 'webchat',
@@ -198,7 +198,7 @@ test('built-in archived organizer entry is stable and summarizes archived sessio
         source: 'studio',
         channel: 'webchat',
         surface: 'studio-chat',
-        originLabel: 'Studio managed',
+        originLabel: 'Tracevane managed',
       },
       deliveryContext: {
         channel: 'webchat',

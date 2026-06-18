@@ -22,7 +22,7 @@ function writeJson(file, value) {
 function createStudioConfig(root) {
   return {
     pluginId: "studio",
-    pluginName: "OpenClaw Studio",
+    pluginName: "Tracevane",
     version: "0.1.0",
     port: 3760,
     autoStart: true,
@@ -1656,7 +1656,7 @@ test("config save preserves third-party provider and model extension fields", ()
   });
 });
 
-test("config save persists and applies the global Studio host-management exec switch", () => {
+test("config save persists and applies the global Tracevane host-management exec switch", () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {

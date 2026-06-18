@@ -1,6 +1,6 @@
-# OpenClaw Studio Design Contract
+# Tracevane Design Contract
 
-OpenClaw Studio is a light operations workbench for terminals, files, agents, routing, repair, and system control. It should feel clean, flat, fast, and obvious: users see the current object, current state, and next action without reading long explanations or scanning a wall of cards.
+Tracevane is a light operations workbench for terminals, files, agents, routing, repair, and system control. It should feel clean, flat, fast, and obvious: users see the current object, current state, and next action without reading long explanations or scanning a wall of cards.
 
 Terminal and Files are the current reference examples because they are clear and tool-focused. They are not templates to copy everywhere. Other pages should translate the same discipline: fewer boxes, tighter hierarchy, real controls near the object they affect, and advanced detail folded until needed.
 

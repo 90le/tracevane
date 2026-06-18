@@ -887,8 +887,8 @@ async function runStudioWebBundleRepairLayer(
       createRecoveryEvent({
         kind: "studio_web_bundle_rebuild_skipped",
         severity: "warning",
-        title: "Studio 静态包重建已跳过",
-        summary: `Studio web bundle is incomplete: ${inspection.missing.join(", ")}.`,
+        title: "Tracevane 静态包重建已跳过",
+        summary: `Tracevane web bundle is incomplete: ${inspection.missing.join(", ")}.`,
         status: "skipped",
         details,
       }),
@@ -899,13 +899,13 @@ async function runStudioWebBundleRepairLayer(
   const packagePath = path.join(config.projectRoot, "package.json");
   const webPackagePath = path.join(config.projectRoot, "apps", "web-vue", "package.json");
   if (!fs.existsSync(packagePath) || !fs.existsSync(webPackagePath)) {
-    const error = "Studio source package is missing; web bundle cannot be rebuilt automatically";
+    const error = "Tracevane source package is missing; web bundle cannot be rebuilt automatically";
     appendRecoveryEvent(
       config,
       createRecoveryEvent({
         kind: "studio_web_bundle_rebuild_failed",
         severity: "error",
-        title: "Studio 静态包重建失败",
+        title: "Tracevane 静态包重建失败",
         summary: error,
         status: "failed",
         details,
@@ -925,13 +925,13 @@ async function runStudioWebBundleRepairLayer(
   if (!rebuild.ok || !nextInspection.ok) {
     const error =
       commandErrorSummary(rebuild) ||
-      `Studio web bundle is still incomplete: ${nextInspection.missing.join(", ")}.`;
+      `Tracevane web bundle is still incomplete: ${nextInspection.missing.join(", ")}.`;
     appendRecoveryEvent(
       config,
       createRecoveryEvent({
         kind: "studio_web_bundle_rebuild_failed",
         severity: "error",
-        title: "Studio 静态包重建失败",
+        title: "Tracevane 静态包重建失败",
         summary: error,
         status: "failed",
         details: { ...details, nextInspection },
@@ -946,8 +946,8 @@ async function runStudioWebBundleRepairLayer(
     createRecoveryEvent({
       kind: "studio_web_bundle_rebuild_succeeded",
       severity: "success",
-      title: "Studio 静态包已重建",
-      summary: `Rebuilt Studio web bundle with ${nextInspection.assetCount} JS/CSS asset(s).`,
+      title: "Tracevane 静态包已重建",
+      summary: `Rebuilt Tracevane web bundle with ${nextInspection.assetCount} JS/CSS asset(s).`,
       status: "succeeded",
       details: { ...details, nextInspection },
     }),

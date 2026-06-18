@@ -35,7 +35,7 @@ function writeFixture(root) {
         workDir: path.join(root, "work"),
         permissionMode: "suggest",
         gatewayEndpoint: "http://127.0.0.1:18796/v1",
-        gatewayKeyRef: "studio-gateway-client-key",
+        gatewayKeyRef: "tracevane-gateway-client-key",
         appProfileRef: "codex",
       },
     ],

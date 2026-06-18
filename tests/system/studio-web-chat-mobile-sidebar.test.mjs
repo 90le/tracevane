@@ -206,7 +206,7 @@ test("mobile session filter sheet keeps a compact density pass instead of oversi
   );
 });
 
-test("agent filter uses Studio-owned option buttons instead of native select dropdowns", () => {
+test("agent filter uses Tracevane-owned option buttons instead of native select dropdowns", () => {
   assert.doesNotMatch(sessionFilterBar, /<select[\s>]/);
   assert.doesNotMatch(
     sessionFilterBar,

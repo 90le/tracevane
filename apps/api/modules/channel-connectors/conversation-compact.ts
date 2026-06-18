@@ -99,7 +99,7 @@ export function channelConnectorCompactHistoryPrompt(input: {
   history: ReturnType<typeof getChannelConnectorConversationHistory>;
 }): string {
   const lines = [
-    "Summarize this Studio IM conversation for future CLI Agent context.",
+    "Summarize this Tracevane IM conversation for future CLI Agent context.",
     "Keep user goals, decisions, constraints, important files/directories, errors, tool results, and unresolved next steps.",
     "Do not invent facts. Keep it concise but operational.",
     "",
@@ -223,7 +223,7 @@ export async function compactChannelConnectorConversation(
       afterEntries: history.length,
       sessionsCleared: 0,
       summaryText: null,
-      error: `Studio compact 失败：${shortMessage(error)}`,
+      error: `Tracevane compact 失败：${shortMessage(error)}`,
     };
   }
 }

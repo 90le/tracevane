@@ -1,4 +1,4 @@
-export const CHANNEL_CONNECTORS_DAEMON_SERVICE_NAME = "openclaw-studio-channel-connectors.service";
+export const CHANNEL_CONNECTORS_DAEMON_SERVICE_NAME = "openclaw-tracevane-channel-connectors.service";
 
 export type ChannelConnectorsPhase = "native-daemon-f1" | "native-config-f2";
 
@@ -430,7 +430,7 @@ export interface ChannelConnectorOctoDispatchResponse {
     model: string | null;
     workDir: string | null;
     gatewayEndpoint: string | null;
-    gatewayKeyRef: "studio-gateway-client-key" | null;
+    gatewayKeyRef: "tracevane-gateway-client-key" | null;
   };
   commandAction?: ChannelConnectorCommandActionResponse | null;
   transport: ChannelConnectorOctoTransportResult;
@@ -771,7 +771,7 @@ export interface ChannelConnectorFeishuWebhookResponse {
     model: string | null;
     workDir: string | null;
     gatewayEndpoint: string | null;
-    gatewayKeyRef: "studio-gateway-client-key" | null;
+    gatewayKeyRef: "tracevane-gateway-client-key" | null;
   };
   transport: ChannelConnectorFeishuTransportResult;
   feishuResponse: Record<string, unknown> | null;
@@ -836,7 +836,7 @@ export interface ChannelConnectorsDaemonRuntimeConfig {
   };
   gateway: {
     endpoint: string;
-    clientKeyRef: "studio-gateway-client-key";
+    clientKeyRef: "tracevane-gateway-client-key";
   };
   projects: Array<{
     id: string;
@@ -847,7 +847,7 @@ export interface ChannelConnectorsDaemonRuntimeConfig {
     reasoningEffort?: ChannelConnectorReasoningEffort | null;
     permissionMode: ChannelConnectorPermissionMode;
     gatewayEndpoint: string;
-    gatewayKeyRef: "studio-gateway-client-key";
+    gatewayKeyRef: "tracevane-gateway-client-key";
     appProfileRef: string;
     platformBindings: Array<{
       id: string;
@@ -874,7 +874,7 @@ export interface ChannelConnectorAgentProfile {
   workDir: string;
   permissionMode: ChannelConnectorPermissionMode;
   gatewayEndpoint: string;
-  gatewayKeyRef: "studio-gateway-client-key";
+  gatewayKeyRef: "tracevane-gateway-client-key";
   appProfileRef: string;
 }
 
@@ -1216,7 +1216,7 @@ export interface ChannelConnectorsStatusResponse {
   lifecycle: {
     studioRuntimeDependency: false;
     openclawRuntimeDependency: false;
-    modelRelayOwner: "studio-gateway-daemon";
+    modelRelayOwner: "tracevane-gateway-daemon";
     channelDaemonOwner: "studio-native-channel-daemon";
   };
   service: ChannelConnectorsDaemonResponse;

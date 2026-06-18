@@ -73,7 +73,7 @@ function buildSystemdTemplate(options: {
 }): string {
   return [
     "[Unit]",
-    "Description=OpenClaw Studio Model Gateway",
+    "Description=Tracevane Model Gateway",
     "After=network-online.target",
     "",
     "[Service]",
@@ -144,7 +144,7 @@ function buildWindowsTaskTemplate(options: {
     "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
     "<Task version=\"1.4\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">",
     "  <RegistrationInfo>",
-    "    <Description>OpenClaw Studio Model Gateway</Description>",
+    "    <Description>Tracevane Model Gateway</Description>",
     "  </RegistrationInfo>",
     "  <Triggers>",
     "    <LogonTrigger>",
@@ -280,7 +280,7 @@ export function createModelGatewayDaemonServicePlan(config: StudioServerConfig):
     templateFor(
       "scheduled-task",
       "windows",
-      path.join(home, "AppData", "Roaming", "OpenClaw", "Studio", `${WINDOWS_TASK_NAME}.xml`),
+      path.join(home, "AppData", "Roaming", "OpenClaw", "Tracevane", `${WINDOWS_TASK_NAME}.xml`),
       common,
     ),
   ];

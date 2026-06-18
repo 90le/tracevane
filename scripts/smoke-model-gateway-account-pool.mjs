@@ -10,9 +10,9 @@ const DEFAULT_APP_SCOPE = "codex";
 
 function parseArgs(argv) {
   const options = {
-    endpoint: process.env.STUDIO_GATEWAY_ENDPOINT || DEFAULT_ENDPOINT,
-    appScope: process.env.STUDIO_GATEWAY_APP_SCOPE || DEFAULT_APP_SCOPE,
-    model: process.env.STUDIO_GATEWAY_ACCOUNT_POOL_MODEL || "",
+    endpoint: process.env.TRACEVANE_GATEWAY_ENDPOINT || process.env.STUDIO_GATEWAY_ENDPOINT || DEFAULT_ENDPOINT,
+    appScope: process.env.TRACEVANE_GATEWAY_APP_SCOPE || process.env.STUDIO_GATEWAY_APP_SCOPE || DEFAULT_APP_SCOPE,
+    model: process.env.TRACEVANE_GATEWAY_ACCOUNT_POOL_MODEL || process.env.STUDIO_GATEWAY_ACCOUNT_POOL_MODEL || "",
     json: false,
     strict: false,
     requireMultiAccount: false,
@@ -47,7 +47,7 @@ function parseArgs(argv) {
 function printHelp() {
   console.log(`Usage: node scripts/smoke-model-gateway-account-pool.mjs [options]
 
-Runs a real account-backed provider smoke against the local Studio Gateway daemon.
+Runs a real account-backed provider smoke against the local Tracevane Gateway daemon.
 
 Default checks:
   - current active provider for the selected app scope is account-backed
@@ -68,7 +68,7 @@ Options:
   -h, --help                    Show this help
 
 Auth:
-  STUDIO_GATEWAY_CLIENT_KEY is preferred. If omitted, the script reads
+  TRACEVANE_GATEWAY_CLIENT_KEY is preferred. If omitted, the script reads
   ~/.openclaw/studio/model-gateway/secrets.json locally.`);
 }
 
@@ -78,7 +78,7 @@ function positiveInt(value, fallback) {
 }
 
 function readGatewayKey() {
-  const envKey = process.env.STUDIO_GATEWAY_CLIENT_KEY || process.env.MODEL_GATEWAY_CLIENT_KEY;
+  const envKey = process.env.TRACEVANE_GATEWAY_CLIENT_KEY || process.env.STUDIO_GATEWAY_CLIENT_KEY || process.env.MODEL_GATEWAY_CLIENT_KEY;
   if (envKey?.trim()) return envKey.trim();
   const filePath = path.join(os.homedir(), ".openclaw/studio/model-gateway/secrets.json");
   try {
@@ -437,7 +437,7 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   const key = readGatewayKey();
   if (!key) {
-    throw new Error("Missing Gateway client key. Set STUDIO_GATEWAY_CLIENT_KEY or save a local Gateway key.");
+    throw new Error("Missing Gateway client key. Set TRACEVANE_GATEWAY_CLIENT_KEY or save a local Gateway key.");
   }
   const probes = [];
   const providers = await fetchProviders(options);
@@ -484,7 +484,7 @@ async function main() {
   if (options.json) {
     console.log(JSON.stringify(result, null, 2));
   } else {
-    console.log(`${result.ok ? "OK" : "FAIL"} Studio Gateway account pool smoke`);
+    console.log(`${result.ok ? "OK" : "FAIL"} Tracevane Gateway account pool smoke`);
     for (const probe of probes) {
       console.log(`- ${probe.id}: ${probe.status}`);
       if (probe.reason) console.log(`  ${probe.reason}`);

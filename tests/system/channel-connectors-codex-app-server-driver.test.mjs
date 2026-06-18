@@ -53,7 +53,7 @@ class FakeCodexAppServerTransport {
           turns: [],
         },
         model: "gpt-5",
-        modelProvider: "studio_gateway",
+        modelProvider: "tracevane_gateway",
         cwd: "/tmp/project",
       });
       return;
@@ -308,7 +308,7 @@ const project = {
   workDir: "/tmp/project",
   permissionMode: "suggest",
   gatewayEndpoint: "http://127.0.0.1:18796/v1",
-  gatewayKeyRef: "studio-gateway-client-key",
+  gatewayKeyRef: "tracevane-gateway-client-key",
   appProfileRef: "codex",
   platformBindings: [],
 };
@@ -463,14 +463,14 @@ test("Codex app-server driver preserves completed markdown and outbound file man
   const transport = new FakeCodexAppServerTransport();
   transport.deltaChunks = [
     "给你发一个TOOLS.md文件，里面是小丘的角色分工图和工具使用规范：",
-    "```studio-channel-files",
+    "```tracevane-channel-files",
     "[{\"path\":\"workspace/TOOLS.md\",\"name\":\"TOOLS.md\",\"caption\":\"小丘角色分工与工具规范\"}]",
     "```",
   ];
   transport.completedText = [
     "给你发一个 TOOLS.md 文件，里面是小丘的角色分工图和工具使用规范：",
     "",
-    "```studio-channel-files",
+    "```tracevane-channel-files",
     "[{\"path\":\"workspace/TOOLS.md\",\"name\":\"TOOLS.md\",\"caption\":\"小丘角色分工与工具规范\"}]",
     "```",
   ].join("\n");
@@ -503,7 +503,7 @@ test("Codex app-server driver preserves completed markdown and outbound file man
 
   assert.equal(result.ok, true);
   assert.equal(result.replyText, transport.completedText);
-  assert.match(result.replyText, /：\n\n```studio-channel-files\n\[/);
+  assert.match(result.replyText, /：\n\n```tracevane-channel-files\n\[/);
   assert.equal(progress.some((event) => event.rawType === "item/agentMessage/delta"), false);
   const assistantProgress = progress.filter((event) => event.type === "assistant");
   assert.equal(assistantProgress.length, 1);

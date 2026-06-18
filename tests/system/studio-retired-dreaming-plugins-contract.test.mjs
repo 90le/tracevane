@@ -14,7 +14,7 @@ function exists(relativePath) {
   return fs.existsSync(path.join(rootDir, relativePath));
 }
 
-test("Studio shell no longer exposes Dreaming memory or Plugins management routes", () => {
+test("Tracevane shell no longer exposes Dreaming memory or Plugins management routes", () => {
   const routeManifest = read("apps/web-vue/src/features/shell/route-manifest.ts");
   const sidebarRail = read("apps/web-vue/src/components/StudioSidebarRail.vue");
   const sidebarIcon = read("apps/web-vue/src/components/SidebarIcon.vue");
@@ -29,7 +29,7 @@ test("Studio shell no longer exposes Dreaming memory or Plugins management route
   assert.doesNotMatch(managementManifest, /"plugins"|PluginsView\.vue|studio-web-plugins-\*\.test\.mjs/);
 });
 
-test("Studio backend no longer registers Dreaming memory or Plugins management APIs", () => {
+test("Tracevane backend no longer registers Dreaming memory or Plugins management APIs", () => {
   const apiIndex = read("apps/api/index.ts");
   const server = read("apps/api/server.ts");
   const context = read("apps/api/core/context.ts");

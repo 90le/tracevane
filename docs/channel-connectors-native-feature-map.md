@@ -16,14 +16,14 @@
 - 当前只继续推进 Feishu/Octo 私聊完整性。
 - 当前 live Agent 只暴露 Codex、Claude Code、OpenCode。
 - 私聊保留：文本、文件、图片、Agent CLI 原生能力、工具流、过程回复、compact、stop、session/model/permission/workdir 切换。
-- 不再继续扩展：`studio-channel-skill`、platform runtime action index、`studio-octo-actions`、`studio-feishu-actions`、文档/群/管理类 platform action。
+- 不再继续扩展：`tracevane-channel-skill`、platform runtime action index、`studio-octo-actions`、`studio-feishu-actions`、文档/群/管理类 platform action。
 - 已实现的群聊、thread、多 bot、GROUP.md/THREAD.md、群上下文和低频管理命令只保留 best-effort。
 
 ## 原生映射
 
 | 域 | 能力 | Studio 原生目标 | 状态 |
 | --- | --- | --- | --- |
-| Runtime | daemon、日志、health/status | `openclaw-studio-channel-connectors.service`，Studio/OpenClaw 崩溃后继续在线 | 已接入，继续 live 验证 |
+| Runtime | daemon、日志、health/status | `openclaw-tracevane-channel-connectors.service`，Studio/OpenClaw 崩溃后继续在线 | 已接入，继续 live 验证 |
 | Config | project/platform/agent options | Agent Profile、workDir、model、permission、Gateway key ref、platform binding | 已完成 |
 | Platforms | dmwork/feishu/更多 IM | 当前只做 Octo/Feishu 私聊；更多平台按私聊能力和当前外部合同逐个验证 | 进行中 |
 | Agents | Codex、Claude Code、OpenCode、更多 Agent | 当前只做三个已有 runner；更多 Agent 路线图 | 进行中 |
@@ -38,8 +38,8 @@
 - Codex、Claude Code、OpenCode runner 已接入 Gateway-first 配置和 IM session override。
 - Feishu 长连接按官方 SDK、同 App owner lock、fast ACK、ping/pong proof、transport stale 和水位线策略推进；2026-06-12 用户 live 验证稳定。
 - Octo 长连接按当前 WuKongIM/API 核验、heartbeat、ACK、reconnect、read receipt 和 COS/STS 文件上传策略推进；2026-06-12 用户 live 验证稳定。
-- `studio-channel-files` 已覆盖出站文件声明、路径校验、原始文件名、Feishu/Octo 上传和发送。
-- `studio-channel-messages` 已覆盖私聊出站消息声明，Feishu 支持 open_id/user_id/dm markdown，Octo 支持 human DM 和 best-effort group/thread。
+- `tracevane-channel-files` 已覆盖出站文件声明、路径校验、原始文件名、Feishu/Octo 上传和发送。
+- `tracevane-channel-messages` 已覆盖私聊出站消息声明，Feishu 支持 open_id/user_id/dm markdown，Octo 支持 human DM 和 best-effort group/thread。
 - 私聊文件/消息收发核心已完成：入站 staging、出站 manifest、原始文件名、Feishu/Octo 文件/图片上传发送、Octo COS/STS 大文件路径和 multipart fallback 均有回归；后续只抽查真实平台限制。
 - Feishu 入站文件 live 已验证：长连接文件消息进入本地 staging、history 附件摘要和 Agent CLI 文件读取链路。
 - Live 附件验收脚本已支持 `--require-inbound-image`、`--require-inbound-video`、`--require-staged-files`；Feishu/Octo 入站文件、Feishu/Octo 入站图片、Feishu 入站视频和 Octo `.mp4` 文件形态视频均已有 staged 路径存在证据。
@@ -78,7 +78,7 @@
 - Feishu Agent 进度卡最近动态条数由 binding metadata `feishuProgressCardEntryLimit` 控制，默认 8，运行时限制 1-30；`/display progress <1-30|default>` 和 Feishu 进度显示卡片均可设置。
 - Feishu 菜单命令面已改为清爽二级配置架构：主卡片直达 Agent、模型、权限/推理、进度显示、视觉、工作目录六个配置页；工作目录页提供 Profile 默认、上一目录、上级目录、Home 快捷按钮、最近目录直达列表、子目录分页直达列表和 `/dir find` 搜索；纯文本渠道支持 `/dir home|parent|recent N|child N`；文本 `/help` 复用同一结构。
 - Feishu 长连接 card action 不再 fire-and-forget：卡片点击会同步返回 callback response/card/toast，普通消息和 bot menu 仍保持后台异步，避免交互卡片过一段时间后触发 108002 类不可用体验。
-- 已删除 active platform action layer：runner/env/prompt/daemon endpoint/UI chips 不再暴露 `studio-channel-skill` 或 runtime action。
+- 已删除 active platform action layer：runner/env/prompt/daemon endpoint/UI chips 不再暴露 `tracevane-channel-skill` 或 runtime action。
 - Feishu transport 未暴露的 `studio-feishu-actions` / Docx / Drive / Wiki / Bitable 直接 action helper 已删除；daemon 只保留旧 code fence 剥除作为兼容防污染。
 - Codex 隔离 `codex-home/skills` 会删除历史生成的 Feishu/Octo platform action skill 目录；当前运行态旧目录已手动清理，避免 stale YAML 被 Codex 加载。
 - OpenCode realtime JSONL 与 SQLite fallback 已共用进度 parser；DB fallback 会保留本轮工具调用/工具结果，并只把最新 assistant message 作为最终回复。
@@ -97,4 +97,4 @@
 
 1. Channel Connectors 主链路进入 monitored/回归抽查；真实 IM、CLI 或 smoke 暴露新事件形态时再补 parser/driver。
 2. 当前不扩展群聊、platform action 或管理类 API；更多平台/Agent 只按私聊能力路线图推进。
-3. 新开发优先转向 Studio Gateway 可选官方 OpenAI proof、更多账户型 provider 和 Chat typed contract 收口。
+3. 新开发优先转向 Tracevane Gateway 可选官方 OpenAI proof、更多账户型 provider 和 Chat typed contract 收口。

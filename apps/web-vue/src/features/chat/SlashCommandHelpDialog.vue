@@ -11,7 +11,7 @@
           <span class="sr-only">{{ text('斜杠命令', 'Slash commands') }}</span>
         </DialogTitle>
         <DialogDescription as-child>
-          <span class="sr-only">{{ text('查看并插入 Studio Chat 支持的斜杠命令。', 'Review and insert slash commands supported by Studio Chat.') }}</span>
+          <span class="sr-only">{{ text('查看并插入 Tracevane Chat 支持的斜杠命令。', 'Review and insert slash commands supported by Tracevane Chat.') }}</span>
         </DialogDescription>
         <header class="chat-slash-help-head">
           <div class="chat-slash-help-copy">
@@ -19,8 +19,8 @@
             <span>
               {{
                 text(
-                  '这里汇总 Studio Chat 当前可识别的 slash 命令。点击任一命令可直接插入到输入框。',
-                  'This lists the slash commands currently recognized by Studio Chat. Click a command to insert it into the composer.',
+                  '这里汇总 Tracevane Chat 当前可识别的 slash 命令。点击任一命令可直接插入到输入框。',
+                  'This lists the slash commands currently recognized by Tracevane Chat. Click a command to insert it into the composer.',
                 )
               }}
             </span>
@@ -53,7 +53,7 @@
           <div class="chat-slash-help-legend">
             <span class="chat-slash-help-badge local">{{ text('本地', 'Local') }}</span>
             <span class="chat-slash-help-legend-text">
-              {{ text('直接由 Studio 处理', 'Handled directly by Studio') }}
+              {{ text('直接由 Tracevane 处理', 'Handled directly by Tracevane') }}
             </span>
             <span class="chat-slash-help-badge send">{{ text('发送', 'Send') }}</span>
             <span class="chat-slash-help-legend-text">

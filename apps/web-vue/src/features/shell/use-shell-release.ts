@@ -344,7 +344,7 @@ export function useShellRelease(buildVersion: string) {
 
     const target = studioRelease.value.latestVersion || "";
     const confirmed = await confirm({
-      title: text("确认升级 Studio", "Confirm Studio upgrade"),
+      title: text("确认升级 Tracevane", "Confirm Tracevane upgrade"),
       message: text(
         `确认升级到 v${target}？升级期间 Gateway 可能会重启。`,
         `Upgrade to v${target}? Gateway may restart during upgrade.`,

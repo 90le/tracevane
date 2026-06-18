@@ -36,6 +36,9 @@ function readGatewayClientKeyFromFile(filePath) {
 
 function readGatewayClientKey() {
   const envKey = envValue(
+    "TRACEVANE_CODEX_APP_SERVER_LIVE_GATEWAY_KEY",
+    "TRACEVANE_GATEWAY_API_KEY",
+    "OPENCLAW_TRACEVANE_GATEWAY_API_KEY",
     "STUDIO_CODEX_APP_SERVER_LIVE_GATEWAY_KEY",
     "STUDIO_GATEWAY_API_KEY",
     "OPENCLAW_STUDIO_GATEWAY_API_KEY",
@@ -55,18 +58,24 @@ function readGatewayClientKey() {
 
 function liveGatewayConfig() {
   return {
-    endpoint: envValue("STUDIO_CODEX_APP_SERVER_LIVE_GATEWAY_ENDPOINT", "STUDIO_GATEWAY_ENDPOINT")
+    endpoint: envValue(
+      "TRACEVANE_CODEX_APP_SERVER_LIVE_GATEWAY_ENDPOINT",
+      "TRACEVANE_GATEWAY_ENDPOINT",
+      "STUDIO_CODEX_APP_SERVER_LIVE_GATEWAY_ENDPOINT",
+      "STUDIO_GATEWAY_ENDPOINT",
+    )
       || "http://127.0.0.1:18796/v1",
     key: readGatewayClientKey(),
-    model: envValue("STUDIO_CODEX_APP_SERVER_LIVE_MODEL") || "gpt-5.4-mini",
-    cwd: envValue("STUDIO_CODEX_APP_SERVER_LIVE_CWD") || process.cwd(),
+    model: envValue("TRACEVANE_CODEX_APP_SERVER_LIVE_MODEL", "STUDIO_CODEX_APP_SERVER_LIVE_MODEL") || "gpt-5.4-mini",
+    cwd: envValue("TRACEVANE_CODEX_APP_SERVER_LIVE_CWD", "STUDIO_CODEX_APP_SERVER_LIVE_CWD") || process.cwd(),
   };
 }
 
 function liveSkip(flagName) {
-  if (process.env[flagName] !== "1") return `set ${flagName}=1 to run this live Codex app-server smoke`;
+  const legacyFlagName = flagName.replace(/^TRACEVANE_/, "STUDIO_");
+  if (process.env[flagName] !== "1" && process.env[legacyFlagName] !== "1") return `set ${flagName}=1 to run this live Codex app-server smoke`;
   const config = liveGatewayConfig();
-  if (!config.key) return "local Studio Gateway client key is unavailable";
+  if (!config.key) return "local Tracevane Gateway client key is unavailable";
   return false;
 }
 
@@ -74,14 +83,14 @@ function prepareCodexHome(input) {
   fs.rmSync(input.codexHome, { recursive: true, force: true });
   fs.mkdirSync(input.codexHome, { recursive: true, mode: 0o700 });
   const config = [
-    "model_provider = \"studio_gateway\"",
+    "model_provider = \"tracevane_gateway\"",
     `model = ${tomlString(input.model)}`,
     "model_reasoning_effort = \"low\"",
     "responses_websockets = false",
     "responses_websockets_v2 = false",
     "",
-    "[model_providers.studio_gateway]",
-    "name = \"OpenClaw Studio Gateway\"",
+    "[model_providers.tracevane_gateway]",
+    "name = \"Tracevane Gateway\"",
     `base_url = ${tomlString(input.endpoint)}`,
     "wire_api = \"responses\"",
     "supports_websockets = false",
@@ -167,7 +176,7 @@ function liveAgentTurnRequest(input) {
     workDir: input.cwd,
     permissionMode: input.permissionMode || "read-only",
     gatewayEndpoint: input.endpoint,
-    gatewayKeyRef: "studio-gateway-client-key",
+    gatewayKeyRef: "tracevane-gateway-client-key",
     appProfileRef: "codex",
     platformBindings: [],
   };
@@ -206,8 +215,8 @@ function liveAgentTurnRequest(input) {
 async function initializeThread(input) {
   const initialize = await request(input.transport, "initialize", {
     clientInfo: {
-      name: "openclaw-studio-channel-connectors-live-smoke",
-      title: "OpenClaw Studio Channel Connectors Live Smoke",
+      name: "openclaw-tracevane-channel-connectors-live-smoke",
+      title: "Tracevane Channel Connectors Live Smoke",
       version: "0",
     },
     capabilities: {
@@ -225,7 +234,7 @@ async function initializeThread(input) {
     cwd: input.cwd,
     approvalPolicy: "never",
     sandbox: "read-only",
-    serviceName: "openclaw-studio-channel-connectors-live-smoke",
+    serviceName: "openclaw-tracevane-channel-connectors-live-smoke",
     ephemeral: true,
     threadSource: "user",
   });
@@ -271,15 +280,16 @@ async function runExactReplyTurn(input) {
   return turnId;
 }
 
-test("live Codex app-server accepts Studio persistent-session handshake", {
-  skip: process.env.STUDIO_CODEX_APP_SERVER_LIVE === "1"
+test("live Codex app-server accepts Tracevane persistent-session handshake", {
+  skip: process.env.TRACEVANE_CODEX_APP_SERVER_LIVE === "1" || process.env.STUDIO_CODEX_APP_SERVER_LIVE === "1"
     ? false
-    : "set STUDIO_CODEX_APP_SERVER_LIVE=1 to run against the local codex binary",
+    : "set TRACEVANE_CODEX_APP_SERVER_LIVE=1 to run against the local codex binary",
 }, async () => {
-  const codexHome = process.env.STUDIO_CODEX_APP_SERVER_LIVE_HOME
+  const codexHome = process.env.TRACEVANE_CODEX_APP_SERVER_LIVE_HOME
+    || process.env.STUDIO_CODEX_APP_SERVER_LIVE_HOME
     || "/tmp/openclaw-studio-codex-appserver-live-home";
   fs.mkdirSync(codexHome, { recursive: true });
-  const cwd = process.env.STUDIO_CODEX_APP_SERVER_LIVE_CWD || process.cwd();
+  const cwd = process.env.TRACEVANE_CODEX_APP_SERVER_LIVE_CWD || process.env.STUDIO_CODEX_APP_SERVER_LIVE_CWD || process.cwd();
   const transport = new JsonLineCodexAppServerTransport({
     cwd,
     env: {
@@ -290,8 +300,8 @@ test("live Codex app-server accepts Studio persistent-session handshake", {
   try {
     const initialize = await request(transport, "initialize", {
       clientInfo: {
-        name: "openclaw-studio-channel-connectors-live-smoke",
-        title: "OpenClaw Studio Channel Connectors Live Smoke",
+        name: "openclaw-tracevane-channel-connectors-live-smoke",
+        title: "Tracevane Channel Connectors Live Smoke",
         version: "0",
       },
       capabilities: {
@@ -305,11 +315,11 @@ test("live Codex app-server accepts Studio persistent-session handshake", {
 
     transport.send({ method: "initialized" });
     const thread = await request(transport, "thread/start", {
-      model: process.env.STUDIO_CODEX_APP_SERVER_LIVE_MODEL || "gpt-5",
+      model: process.env.TRACEVANE_CODEX_APP_SERVER_LIVE_MODEL || process.env.STUDIO_CODEX_APP_SERVER_LIVE_MODEL || "gpt-5",
       cwd,
       approvalPolicy: "never",
       sandbox: "read-only",
-      serviceName: "openclaw-studio-channel-connectors-live-smoke",
+      serviceName: "openclaw-tracevane-channel-connectors-live-smoke",
       ephemeral: true,
       threadSource: "user",
     });
@@ -322,11 +332,11 @@ test("live Codex app-server accepts Studio persistent-session handshake", {
   }
 });
 
-test("live Codex app-server completes a real turn through Studio Gateway", {
-  skip: liveSkip("STUDIO_CODEX_APP_SERVER_LIVE_TURN"),
+test("live Codex app-server completes a real turn through Tracevane Gateway", {
+  skip: liveSkip("TRACEVANE_CODEX_APP_SERVER_LIVE_TURN"),
 }, async () => {
   const config = liveGatewayConfig();
-  const codexHome = envValue("STUDIO_CODEX_APP_SERVER_LIVE_TURN_HOME")
+  const codexHome = envValue("TRACEVANE_CODEX_APP_SERVER_LIVE_TURN_HOME", "STUDIO_CODEX_APP_SERVER_LIVE_TURN_HOME")
     || "/tmp/openclaw-studio-codex-appserver-live-turn-test-home";
   prepareCodexHome({ codexHome, ...config });
   const transport = new JsonLineCodexAppServerTransport({
@@ -352,11 +362,11 @@ test("live Codex app-server completes a real turn through Studio Gateway", {
   }
 });
 
-test("live Codex app-server completes native compact through Studio Gateway", {
-  skip: liveSkip("STUDIO_CODEX_APP_SERVER_LIVE_COMPACT"),
+test("live Codex app-server completes native compact through Tracevane Gateway", {
+  skip: liveSkip("TRACEVANE_CODEX_APP_SERVER_LIVE_COMPACT"),
 }, async () => {
   const config = liveGatewayConfig();
-  const codexHome = envValue("STUDIO_CODEX_APP_SERVER_LIVE_COMPACT_HOME")
+  const codexHome = envValue("TRACEVANE_CODEX_APP_SERVER_LIVE_COMPACT_HOME", "STUDIO_CODEX_APP_SERVER_LIVE_COMPACT_HOME")
     || "/tmp/openclaw-studio-codex-appserver-live-compact-test-home";
   prepareCodexHome({ codexHome, ...config });
   const transport = new JsonLineCodexAppServerTransport({
@@ -398,11 +408,11 @@ test("live Codex app-server completes native compact through Studio Gateway", {
   }
 });
 
-test("live Codex app-server interrupts an active Studio Gateway turn", {
-  skip: liveSkip("STUDIO_CODEX_APP_SERVER_LIVE_INTERRUPT"),
+test("live Codex app-server interrupts an active Tracevane Gateway turn", {
+  skip: liveSkip("TRACEVANE_CODEX_APP_SERVER_LIVE_INTERRUPT"),
 }, async () => {
   const config = liveGatewayConfig();
-  const codexHome = envValue("STUDIO_CODEX_APP_SERVER_LIVE_INTERRUPT_HOME")
+  const codexHome = envValue("TRACEVANE_CODEX_APP_SERVER_LIVE_INTERRUPT_HOME", "STUDIO_CODEX_APP_SERVER_LIVE_INTERRUPT_HOME")
     || "/tmp/openclaw-studio-codex-appserver-live-interrupt-test-home";
   prepareCodexHome({ codexHome, ...config });
   const transport = new JsonLineCodexAppServerTransport({

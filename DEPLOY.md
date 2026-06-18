@@ -1,4 +1,4 @@
-# OpenClaw Studio 客户安装说明
+# Tracevane 客户安装说明
 
 ## 1. 适用范围
 
@@ -14,13 +14,13 @@
 1. `standalone` 模式是当前正式可交付模式
 2. `Gateway 单端口模式` 的核心链路已经完成，但当前技术形态已收敛为：
    - `terminal` 继续走扩展侧 `gateway-rpc`
-   - `chat` 走 `Studio backend helper + HTTP/SSE`
-   - `device trust` 由 Studio 自己管理 helper pairing / approve
-   - helper 本机 `device-auth.json` token cache 漂移由 Studio 检测并可修复
+   - `chat` 走 `Tracevane backend helper + HTTP/SSE`
+   - `device trust` 由 Tracevane 自己管理 helper pairing / approve
+   - helper 本机 `device-auth.json` token cache 漂移由 Tracevane 检测并可修复
 3. 本地 `OpenClaw 2026.4.5` 环境下，核心后端 durability 已验证通过
 4. 但在客户现场验证完成前，**仍只能作为预览/受限场景测试模式**
-5. Studio 已新增 bootstrap / 引导能力
-   - 新安装或配置不一致时，可由 Studio 自己补齐最低可用配置
+5. Tracevane 已新增 bootstrap / 引导能力
+   - 新安装或配置不一致时，可由 Tracevane 自己补齐最低可用配置
    - System 页已提供“应用推荐初始化”
 6. System 页入口已调整为更直接可见
    - 侧边栏名称已统一为“系统诊断”
@@ -34,14 +34,14 @@
    - 当前前端已按运行时自动处理，无需客户手工改链接
 9. Config 页已开始按真实 OpenClaw 2026.4.5 schema 对齐
    - Gateway / Browser 关键字段已对齐并通过保存回写验证
-   - Studio 保存插件加载路径时已统一写入 `plugins.load.paths`
+   - Tracevane 保存插件加载路径时已统一写入 `plugins.load.paths`
    - 旧配置中的 `browser.ssrfPolicy.allowPrivateNetwork` 会被兼容读取，并在保存时迁移到新字段
 10. Agents 页已开始按真实 OpenClaw 2026.4.8 agent schema 对齐
    - 已补齐默认运行字段：`thinkingDefault / verboseDefault / reasoningDefault / fastModeDefault`
    - 已补齐 `identity.theme`
    - 已新增高级字段编辑区，支持 `systemPromptOverride / skills / sandbox / tools / memorySearch / humanDelay / heartbeat / groupChat / subagents / params`
    - 已新增只读 `Raw Config Snapshot`，便于客户直接核对宿主原始 agent 配置
-   - 已修复对象型 `agent.model` 在 Studio 保存时可能被误删的问题
+   - 已修复对象型 `agent.model` 在 Tracevane 保存时可能被误删的问题
 11. Agents 页已补齐旧数据兼容兜底
    - 历史缓存或旧接口缺失 `editor.skills` 时，不再导致前端 `join` 报错
 12. Config 页已继续补齐 `agents.defaults` 的高价值字段
@@ -115,7 +115,7 @@
    - 安装脚本会在安装阶段自动检测 Docker 并落盘安全默认值，避免客户再额外执行修复脚本
 30. 已补齐默认 Agent 回退
    - 当宿主没有显式 `agents.list` 时，`/agents` 与 `/channels` 不再显示空 Agent 集合
-   - Studio 会回退暴露默认 Agent（`main`），并支持后续编辑 materialize 到 `agents.list`
+   - Tracevane 会回退暴露默认 Agent（`main`），并支持后续编辑 materialize 到 `agents.list`
 31. 已修复配置保存后宿主校验失败导致的网关重启异常
    - `models.providers.*` 保存时会自动保证 `baseUrl` 非空、`models` 为数组
    - 对缺失 provider 配置会自动补默认占位 `baseUrl`
@@ -124,10 +124,10 @@
 补充：
 
 1. 如果单口环境里看到类似 `pairing required`、`gateway closed (1006/1008)` 的工具错误，不一定是聊天主链路故障。
-2. 更常见的原因是本机 Studio helper 的 `paired.json` 已经升级到更高 operator token，但 `identity/device-auth.json` 仍缓存旧 token。
-3. 当前 Studio 已内置检测与修复入口，System 页可直接执行 helper token cache 修复。
+2. 更常见的原因是本机 Tracevane helper 的 `paired.json` 已经升级到更高 operator token，但 `identity/device-auth.json` 仍缓存旧 token。
+3. 当前 Tracevane 已内置检测与修复入口，System 页可直接执行 helper token cache 修复。
 4. 另一类 `pairing required` 来自宿主内建 CLI / tool 的 `metadata-upgrade`。
-5. 如果日志里出现 `claimedDeviceFamily=<none> pinnedDeviceFamily=server`，说明是宿主内建 `callGateway()` 分支没有带完整 `deviceFamily`，不是 Studio Chat/Terminal 主链路本身坏掉。
+5. 如果日志里出现 `claimedDeviceFamily=<none> pinnedDeviceFamily=server`，说明是宿主内建 `callGateway()` 分支没有带完整 `deviceFamily`，不是 Tracevane Chat/Terminal 主链路本身坏掉。
 
 ## 1.1 单口模式的准确定义
 
@@ -135,7 +135,7 @@
 
 1. 客户**外网**只能开放 `OpenClaw` 的启动端口
 2. 设备**内网 / 本机回环**不受这个限制
-3. Studio 的 `3760` 可以继续在设备内部存在
+3. Tracevane 的 `3760` 可以继续在设备内部存在
 4. 目标是让外部用户通过一个开放端口，获得接近直接访问 `3760` 的功能体验
 
 这不等于：
@@ -161,7 +161,7 @@
 原因有两层：
 
 1. 当前 `openclaw-studio` 在自身 `package.json` 中已经明确声明：`minHostVersion >= 2026.3.23`
-2. 虽然从 npm 包导出检查来看，`2026.3.13` 已经带有 `openclaw/plugin-sdk` 和当前插件用到的基础注册面，但当前版本的 Studio 还没有对 `2026.3.13` 做正式兼容验证
+2. 虽然从 npm 包导出检查来看，`2026.3.13` 已经带有 `openclaw/plugin-sdk` 和当前插件用到的基础注册面，但当前版本的 Tracevane 还没有对 `2026.3.13` 做正式兼容验证
 
 因此，**客户如果还是 `2026.3.13`，当前不要直接按正式交付方案安装**。
 
@@ -192,7 +192,7 @@ openclaw --version
 
 要求输出版本 **不低于 `2026.4.8`**。
 
-如果客户当前版本较低，建议直接升级到最新稳定版本，例如 `2026.4.8`，再继续安装 Studio。
+如果客户当前版本较低，建议直接升级到最新稳定版本，例如 `2026.4.8`，再继续安装 Tracevane。
 
 推荐升级命令：
 
@@ -226,7 +226,7 @@ chmod +x /tmp/install-openclaw-studio.sh
 脚本会自动：
 
 1. 升级 OpenClaw 到要求版本
-2. 下载并解压 Studio 发布包
+2. 下载并解压 Tracevane 发布包
 3. 自动修正旧发布包的入口元数据
 4. 安装依赖并重建 `node-pty`
 5. 写入 `plugins.entries.studio / plugins.load.paths / transport`
@@ -317,7 +317,7 @@ http://HOST:3760/
 
 ### 步骤 7：首次打开后建议检查 System 页
 
-首次进入 Studio 后，建议打开：
+首次进入 Tracevane 后，建议打开：
 
 ```bash
 /system
@@ -349,7 +349,7 @@ env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u al
    - 如果显示 `需处理`，先执行“应用推荐初始化”
 2. `设备信任`
    - 如果 helper token cache 漂移，直接执行修复
-   - 如果显示 metadata repair pending，则说明宿主内建 CLI / tool 仍可能报 `pairing required`，但 Studio 自己的 Chat/Terminal 主链路不受这个问题直接阻断
+   - 如果显示 metadata repair pending，则说明宿主内建 CLI / tool 仍可能报 `pairing required`，但 Tracevane 自己的 Chat/Terminal 主链路不受这个问题直接阻断
 
 ## 5. 当前推荐配置
 
@@ -454,7 +454,7 @@ env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u al
 
 ## 6. 故障排查
 
-### 6.1 Studio 页面打不开
+### 6.1 Tracevane 页面打不开
 
 检查端口监听：
 
@@ -492,12 +492,12 @@ ls ~/.openclaw/extensions/openclaw-studio/
 
 ### 6.4 客户机器是 `2026.3.13`
 
-这是**当前未正式支持的版本**，不是 Studio 配置问题。
+这是**当前未正式支持的版本**，不是 Tracevane 配置问题。
 
 当前正确处理方式：
 
 1. 优先升级 OpenClaw 到 `2026.3.28`
-2. 再安装当前版本的 Studio
+2. 再安装当前版本的 Tracevane
 
 ## 7. 自行打包
 
@@ -518,7 +518,7 @@ cd openclaw-studio
 
 截至 2026-04-08，请对客户统一使用下面这套口径：
 
-1. 当前正式支持的 OpenClaw Studio 版本要求：`OpenClaw >= 2026.3.23`
+1. 当前正式支持的 Tracevane 版本要求：`OpenClaw >= 2026.3.23`
 2. 当前正式支持的部署方式：`standalone :3760`
 3. 当前推荐客户升级目标：`2026.3.28`
 4. `2026.3.13` 当前未正式支持，需单独评估兼容性
@@ -547,4 +547,4 @@ cd openclaw-studio
 6. 在无可用 `systemd/launchd/schtasks` 用户会话时，自动降级为 `openclaw gateway run --force` 后台启动，不再硬依赖 service 安装。
 7. 健康检查支持 `curl`/`wget` 双通道。
 
-> 目标：新机器配置不一致、旧安装残留、无 systemd、无 docker 等环境下，也能尽量自动拉起可用 Studio，避免把宿主配置写坏。
+> 目标：新机器配置不一致、旧安装残留、无 systemd、无 docker 等环境下，也能尽量自动拉起可用 Tracevane，避免把宿主配置写坏。

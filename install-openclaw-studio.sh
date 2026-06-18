@@ -14,7 +14,7 @@ fi
 if [[ -n "${STUDIO_PACKAGE_URL:-}" ]]; then
   PACKAGE_URL_EXPLICIT=1
 fi
-if [[ -n "${STUDIO_GATEWAY_BIND:-}" ]]; then
+if [[ -n "${TRACEVANE_GATEWAY_BIND:-${STUDIO_GATEWAY_BIND:-}}" ]]; then
   GATEWAY_BIND_EXPLICIT=1
 fi
 if [[ -n "${OPENCLAW_MIN_VERSION:-}" ]]; then
@@ -26,8 +26,8 @@ STUDIO_SITE_BASE="${STUDIO_SITE_BASE:-https://studio.90le.cn}"
 STUDIO_PACKAGE_URL="${STUDIO_PACKAGE_URL:-}"
 STUDIO_MODE="${STUDIO_MODE:-standalone}"
 STUDIO_API_PORT="${STUDIO_API_PORT:-3760}"
-STUDIO_GATEWAY_BASE_PATH="${STUDIO_GATEWAY_BASE_PATH:-/studio}"
-STUDIO_GATEWAY_BIND="${STUDIO_GATEWAY_BIND:-lan}"
+TRACEVANE_GATEWAY_BASE_PATH="${TRACEVANE_GATEWAY_BASE_PATH:-${STUDIO_GATEWAY_BASE_PATH:-/studio}}"
+TRACEVANE_GATEWAY_BIND="${TRACEVANE_GATEWAY_BIND:-${STUDIO_GATEWAY_BIND:-lan}}"
 STUDIO_EXTENSIONS_DIR="${STUDIO_EXTENSIONS_DIR:-${HOME}/.openclaw/extensions}"
 OPENCLAW_HOME_DIR="${OPENCLAW_HOME_DIR:-${HOME}/.openclaw}"
 OPENCLAW_CONFIG_FILE="${OPENCLAW_CONFIG_PATH:-${OPENCLAW_HOME_DIR}/openclaw.json}"
@@ -88,7 +88,7 @@ die() {
 
 usage() {
   cat <<'EOF'
-OpenClaw Studio 一键安装脚本
+Tracevane 一键安装脚本
 
 用法:
   bash install-openclaw-studio.sh [--mode standalone|gateway] [options]
@@ -192,6 +192,7 @@ resolve_remote_release_metadata() {
   local manifest_body
   local parsed
   for manifest_url in \
+    "${STUDIO_SITE_BASE}/tracevane-latest.json" \
     "${STUDIO_SITE_BASE}/openclaw-studio-latest.json" \
     "${STUDIO_SITE_BASE}/studio-version.json" \
     "${STUDIO_SITE_BASE}/version.json"
@@ -265,7 +266,7 @@ resolve_requested_release() {
     if [[ -n "${remote_package_url}" ]]; then
       STUDIO_PACKAGE_URL="${remote_package_url}"
     else
-      STUDIO_PACKAGE_URL="${STUDIO_SITE_BASE}/openclaw-studio-${STUDIO_VERSION}.tar.gz"
+      STUDIO_PACKAGE_URL="${STUDIO_SITE_BASE}/tracevane-${STUDIO_VERSION}.tar.gz"
     fi
   fi
 
@@ -304,7 +305,7 @@ can_manage_gateway_service() {
 
 start_gateway_fallback() {
   local log_dir="${OPENCLAW_HOME_DIR}/logs"
-  local log_file="${log_dir}/studio-gateway-fallback.log"
+  local log_file="${log_dir}/tracevane-gateway-fallback.log"
   mkdir -p "${log_dir}"
   log "检测到当前环境无法管理用户级服务，改为后台拉起 Gateway（日志: ${log_file}）"
   if [[ "${DRY_RUN}" -eq 1 ]]; then
@@ -562,11 +563,11 @@ parse_args() {
         shift 2
         ;;
       --base-path)
-        STUDIO_GATEWAY_BASE_PATH="${2:-}"
+        TRACEVANE_GATEWAY_BASE_PATH="${2:-}"
         shift 2
         ;;
       --gateway-bind)
-        STUDIO_GATEWAY_BIND="${2:-}"
+        TRACEVANE_GATEWAY_BIND="${2:-}"
         GATEWAY_BIND_EXPLICIT=1
         shift 2
         ;;
@@ -603,7 +604,7 @@ trap 'handle_install_error "$LINENO" "$?"' ERR
 
 resolve_requested_release
 
-STUDIO_GATEWAY_BASE_PATH="$(normalize_base_path "${STUDIO_GATEWAY_BASE_PATH}")"
+TRACEVANE_GATEWAY_BASE_PATH="$(normalize_base_path "${TRACEVANE_GATEWAY_BASE_PATH}")"
 
 case "${STUDIO_MODE}" in
   standalone|gateway) ;;
@@ -661,7 +662,7 @@ if [[ "${DRY_RUN}" -eq 0 ]]; then
   fi
 fi
 
-ARCHIVE_PATH="${TMP_DIR}/openclaw-studio.tar.gz"
+ARCHIVE_PATH="${TMP_DIR}/tracevane.tar.gz"
 log "下载安装包: ${STUDIO_PACKAGE_URL}"
 download_file "${STUDIO_PACKAGE_URL}" "${ARCHIVE_PATH}"
 
@@ -669,11 +670,11 @@ log "解压安装包"
 run_cmd tar -xzf "${ARCHIVE_PATH}" -C "${TMP_DIR}"
 
 if [[ "${DRY_RUN}" -eq 1 ]]; then
-  PACKAGE_DIR="${TMP_DIR}/openclaw-studio-${STUDIO_VERSION}"
+  PACKAGE_DIR="${TMP_DIR}/tracevane-${STUDIO_VERSION}"
 else
-  PACKAGE_DIR="$(find "${TMP_DIR}" -maxdepth 1 -mindepth 1 -type d -name 'openclaw-studio-*' | head -n1)"
+  PACKAGE_DIR="$(find "${TMP_DIR}" -maxdepth 1 -mindepth 1 \( -name 'tracevane-*' -o -name 'openclaw-studio-*' \) | head -n1)"
 fi
-[[ -n "${PACKAGE_DIR}" ]] || die "未在安装包中找到 openclaw-studio-* 目录"
+[[ -n "${PACKAGE_DIR}" ]] || die "未在安装包中找到 tracevane-* 或 openclaw-studio-* 目录"
 
 BACKUP_STAMP="$(date +%Y%m%d%H%M%S)"
 cleanup_stale_extension_backup() {
@@ -778,7 +779,7 @@ else
   if command -v docker >/dev/null 2>&1; then
     HAS_DOCKER=1
   fi
-  node - "${OPENCLAW_CONFIG_FILE}" "${INSTALL_DIR}" "${STUDIO_MODE}" "${STUDIO_API_PORT}" "${STUDIO_GATEWAY_BASE_PATH}" "${HAS_DOCKER}" "${STUDIO_GATEWAY_BIND}" "${GATEWAY_BIND_EXPLICIT}" <<'NODE'
+  node - "${OPENCLAW_CONFIG_FILE}" "${INSTALL_DIR}" "${STUDIO_MODE}" "${STUDIO_API_PORT}" "${TRACEVANE_GATEWAY_BASE_PATH}" "${HAS_DOCKER}" "${TRACEVANE_GATEWAY_BIND}" "${GATEWAY_BIND_EXPLICIT}" <<'NODE'
 const fs = require('node:fs');
 const path = require('node:path');
 
@@ -1052,8 +1053,8 @@ if [[ "${STUDIO_MODE}" == "standalone" ]]; then
   ACCESS_URL="http://HOST:${STUDIO_API_PORT}/"
   STANDALONE_HEALTH_URL=""
 else
-  HEALTH_URL="http://127.0.0.1:${GATEWAY_PORT}${STUDIO_GATEWAY_BASE_PATH}/api/system/health"
-  ACCESS_URL="http://HOST:${GATEWAY_PORT}${STUDIO_GATEWAY_BASE_PATH}/"
+  HEALTH_URL="http://127.0.0.1:${GATEWAY_PORT}${TRACEVANE_GATEWAY_BASE_PATH}/api/system/health"
+  ACCESS_URL="http://HOST:${GATEWAY_PORT}${TRACEVANE_GATEWAY_BASE_PATH}/"
   STANDALONE_HEALTH_URL="http://127.0.0.1:${STUDIO_API_PORT}/api/system/health"
   if [[ "${GATEWAY_AUTH_MODE}" == "token" && -n "${GATEWAY_TOKEN}" ]]; then
     HEALTH_URL="${HEALTH_URL}?token=${GATEWAY_TOKEN}"
@@ -1078,7 +1079,7 @@ if [[ -n "${STANDALONE_HEALTH_URL}" ]]; then
 fi
 
 printf '\n'
-printf '=== OpenClaw Studio 安装完成 ===\n'
+printf '=== Tracevane 安装完成 ===\n'
 printf 'Studio 版本: %s\n' "${STUDIO_VERSION}"
 printf 'OpenClaw 版本: %s\n' "${CURRENT_OPENCLAW_VERSION}"
 printf '安装模式: %s\n' "${STUDIO_MODE}"
@@ -1088,7 +1089,7 @@ if [[ "${STUDIO_MODE}" == "standalone" ]]; then
   printf 'API 端口: %s\n' "${STUDIO_API_PORT}"
 else
   printf 'Gateway 端口: %s\n' "${GATEWAY_PORT}"
-  printf 'Gateway Base Path: %s\n' "${STUDIO_GATEWAY_BASE_PATH}"
+  printf 'Gateway Base Path: %s\n' "${TRACEVANE_GATEWAY_BASE_PATH}"
   printf 'Standalone 回退端口: %s\n' "${STUDIO_API_PORT}"
 fi
 printf '访问地址: %s\n' "${ACCESS_URL}"

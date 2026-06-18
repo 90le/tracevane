@@ -61,7 +61,7 @@ export function deriveAgentIdFromSessionKey(sessionKey: string): string {
 }
 
 export function buildDefaultSessionLabel(agentId: string): string {
-  return `Studio chat · ${agentId}`;
+  return `Tracevane chat · ${agentId}`;
 }
 
 export function buildRuntimeState(
@@ -113,7 +113,7 @@ export function buildStudioManagedSessionRow(agentId: string, label: string, gat
       source: 'studio',
       channel: CHAT_POLICY_DEFAULTS.defaultChannel,
       surface: CHAT_POLICY_DEFAULTS.defaultSurface,
-      originLabel: 'Studio managed',
+      originLabel: 'Tracevane managed',
     },
     deliveryContext: {
       channel: CHAT_POLICY_DEFAULTS.defaultChannel,
@@ -144,7 +144,7 @@ export function buildStudioManagedRowFromRegistry(
       source: 'studio',
       channel: CHAT_POLICY_DEFAULTS.defaultChannel,
       surface: CHAT_POLICY_DEFAULTS.defaultSurface,
-      originLabel: 'Studio managed',
+      originLabel: 'Tracevane managed',
     },
     deliveryContext: {
       channel: CHAT_POLICY_DEFAULTS.defaultChannel,

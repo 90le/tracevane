@@ -74,7 +74,7 @@ function buildSystemdTemplate(options: {
 }): string {
   return [
     "[Unit]",
-    "Description=OpenClaw Studio Recovery Daemon",
+    "Description=Tracevane Recovery Daemon",
     "After=network-online.target",
     "",
     "[Service]",
@@ -136,7 +136,7 @@ function buildWindowsTaskTemplate(options: {
     "<?xml version=\"1.0\" encoding=\"UTF-8\"?>",
     "<Task version=\"1.4\" xmlns=\"http://schemas.microsoft.com/windows/2004/02/mit/task\">",
     "  <RegistrationInfo>",
-    "    <Description>OpenClaw Studio Recovery Daemon</Description>",
+    "    <Description>Tracevane Recovery Daemon</Description>",
     "  </RegistrationInfo>",
     "  <Triggers><LogonTrigger><Enabled>true</Enabled></LogonTrigger></Triggers>",
     "  <Principals><Principal id=\"Author\"><LogonType>InteractiveToken</LogonType><RunLevel>LeastPrivilege</RunLevel></Principal></Principals>",
@@ -263,7 +263,7 @@ export function createOpenClawRecoveryDaemonServicePlan(
     templateFor(
       "scheduled-task",
       "win32",
-      path.join(home, "AppData", "Roaming", "OpenClaw", "Studio", `${WINDOWS_TASK_NAME}.xml`),
+      path.join(home, "AppData", "Roaming", "OpenClaw", "Tracevane", `${WINDOWS_TASK_NAME}.xml`),
       common,
     ),
   ];
@@ -289,7 +289,7 @@ export function createOpenClawRecoveryDaemonServicePlan(
     templates,
     notes: [
       "Install writes only the selected user-service template unless runCommands is true.",
-      "The daemon repairs OpenClaw from outside the OpenClaw gateway and Studio process lifecycle.",
+      "The daemon repairs OpenClaw from outside the OpenClaw gateway and Tracevane process lifecycle.",
       "Healthy monitoring uses loopback probes and defers CLI diagnostics until sustained failure or manual action.",
     ],
   };

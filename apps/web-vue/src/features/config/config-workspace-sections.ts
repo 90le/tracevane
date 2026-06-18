@@ -93,7 +93,7 @@ export const DEFAULT_CONFIG_WORKSPACE_SECTIONS = [
     id: "openclaw-domains",
     icon: "openclaw-domains",
     label: "OpenClaw Domains",
-    copy: "Low-frequency schema domains not modeled by dedicated Studio tabs",
+    copy: "Low-frequency schema domains not modeled by dedicated Tracevane tabs",
   },
 ] as const satisfies ReadonlyArray<ConfigWorkspaceSection>;
 

@@ -5,7 +5,7 @@
         <p class="eyebrow">Recovery</p>
         <h2 class="page-title">{{ text('OpenClaw 自愈', 'OpenClaw Recovery') }}</h2>
         <p class="page-copy">
-          {{ text('守护进程独立于单口入口运行；Studio 健康时只负责管理和查看。', 'The daemon runs outside the single-port entry; Studio only manages and inspects it while healthy.') }}
+          {{ text('守护进程独立于单口入口运行；Tracevane 健康时只负责管理和查看。', 'The daemon runs outside the single-port entry; Tracevane only manages and inspects it while healthy.') }}
         </p>
       </div>
       <div class="page-actions">
@@ -123,7 +123,7 @@
             <div class="system-section-head">
               <div>
                 <h3>{{ text('守护进程服务', 'Daemon Service') }}</h3>
-                <p>{{ text('Studio 负责安装和启停，恢复循环由独立用户服务持有。', 'Studio installs and controls it; the independent user service owns the recovery loop.') }}</p>
+                <p>{{ text('Tracevane 负责安装和启停，恢复循环由独立用户服务持有。', 'Tracevane installs and controls it; the independent user service owns the recovery loop.') }}</p>
               </div>
               <div class="system-inline-actions">
                 <button type="button" class="secondary-button compact-button" :disabled="serviceBusy" @click="applyServiceAction(servicePrimaryAction)">
@@ -218,7 +218,7 @@
                 <strong>{{ formatDuration(recovery.policy.gatewayServiceRepairTimeoutMs) }}</strong>
               </div>
               <div class="system-overview-item">
-                <span>{{ text('Studio 静态包重建', 'Studio Bundle Rebuild') }}</span>
+                <span>{{ text('Tracevane 静态包重建', 'Tracevane Bundle Rebuild') }}</span>
                 <strong>{{ recovery.policy.allowStudioWebRebuild ? text('允许', 'Allowed') : text('禁用', 'Disabled') }}</strong>
               </div>
               <div class="system-overview-item">

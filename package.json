@@ -1,7 +1,7 @@
 {
-  "name": "@binbin/studio",
+  "name": "@binbin/tracevane",
   "version": "0.1.70",
-  "description": "OpenClaw Studio - Management Console Recovery",
+  "description": "Tracevane - Local AI Agent Control Workbench",
   "private": true,
   "type": "module",
   "main": "dist/index.js",

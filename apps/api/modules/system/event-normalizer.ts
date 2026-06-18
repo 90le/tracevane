@@ -83,7 +83,7 @@ function buildEvent(
         category: "operations",
         severity: ok ? "info" : "error",
         occurredAt,
-        title: ok ? "Studio 升级任务已启动" : "Studio 升级任务启动失败",
+        title: ok ? "Tracevane 升级任务已启动" : "Tracevane 升级任务启动失败",
         summary: ok
           ? "后端已接受升级请求并开始执行。"
           : "升级请求未能启动，请检查安装脚本与环境。",

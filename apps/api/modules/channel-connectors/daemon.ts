@@ -257,20 +257,20 @@ const MAX_FEISHU_RECONNECTING_RECYCLE_MS = 60_000;
 const FEISHU_WS_RECONNECT_EXHAUSTED_RE = /^WebSocket reconnect exhausted after \d+ attempts?/;
 const FEISHU_WS_AUTORECONNECT_DISABLED_ERROR = "WebSocket connect failed and autoReconnect is disabled";
 // Feishu long connection delivery is cluster-mode rather than broadcast. CC Go
-// avoids random delivery loss by using one app_id owner and fan-out; Studio also
+// avoids random delivery loss by using one app_id owner and fan-out; Tracevane also
 // keeps one OS-user owner. OpenClaw's current TypeScript Feishu plugin recreates
-// a fresh SDK WSClient after terminal SDK errors and backs off 1s..30s. Studio
+// a fresh SDK WSClient after terminal SDK errors and backs off 1s..30s. Tracevane
 // copies that lifecycle shape. OpenClaw historically passes an upper-case
 // FEISHU_WS_CONFIG shape that the installed Lark SDK does not treat as the
-// client-side lower-case `pingTimeout` watchdog. Real Studio and upstream issue
+// client-side lower-case `pingTimeout` watchdog. Real Tracevane and upstream issue
 // evidence showed that this leaves half-open sockets falsely connected until
-// manual restart. Studio therefore arms the SDK lower-case watchdog, clamps the
+// manual restart. Tracevane therefore arms the SDK lower-case watchdog, clamps the
 // SDK's internal ping interval to a 10s Agent-facing default, and keeps a short
 // outer ping/control-frame fallback for runtime visibility and recovery.
 // If the SDK has already entered `reconnecting` and stays there for too long,
-// Studio still recycles that same current client through the OpenClaw-style
+// Tracevane still recycles that same current client through the OpenClaw-style
 // outer loop. A connected socket is not enough for Feishu: long-connection
-// delivery is cluster-mode, so Studio records real event frames separately from
+// delivery is cluster-mode, so Tracevane records real event frames separately from
 // transport health. Lack of business events during idle time must not rebuild a
 // healthy ping/pong connection.
 const DEFAULT_FEISHU_CONNECTED_IDLE_RENEW_MS = 0;
@@ -337,7 +337,10 @@ const channelAgentSessionDriverPool = createChannelConnectorAgentSessionDriverPo
   onEvent: recordChannelAgentSessionDriverEvent,
   factory: createNativeCliSessionDriverFactory({
     codexFactory: createCodexAppServerSessionDriverFactory({
-      turnTimeoutMs: optionalPositiveIntegerEnv("STUDIO_CODEX_APP_SERVER_TURN_IDLE_TIMEOUT_MS"),
+      turnTimeoutMs: optionalPositiveIntegerEnv(
+        "TRACEVANE_CODEX_APP_SERVER_TURN_IDLE_TIMEOUT_MS",
+        "STUDIO_CODEX_APP_SERVER_TURN_IDLE_TIMEOUT_MS",
+      ),
       transportFactory: ({ sessionId, key, agentTurnRequest }) => {
         const processRequest = agentTurnRequest
           ? buildChannelConnectorAgentProcessRequest(agentTurnRequest)
@@ -1094,7 +1097,7 @@ function renderFeishuCommandProgressCard(event: ChannelConnectorCommandProgressE
     header: {
       title: {
         tag: "plain_text",
-        content: `Studio Command /${event.commandName} · ${commandProgressStatusLabel(event.type)}`,
+        content: `Tracevane Command /${event.commandName} · ${commandProgressStatusLabel(event.type)}`,
       },
       template: commandProgressCardTemplate(event.type),
     },
@@ -2390,8 +2393,8 @@ function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function optionalPositiveIntegerEnv(name: string): number | undefined {
-  const value = normalizeString(process.env[name]);
+function optionalPositiveIntegerEnv(...names: string[]): number | undefined {
+  const value = normalizeString(names.map((name) => process.env[name]).find((item) => normalizeString(item)));
   if (!value) return undefined;
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
@@ -3164,7 +3167,7 @@ function stripLegacyPlatformActionBlocks(replyText: string): { replyText: string
   const stripped = replyText.replace(
     /```[ \t]*(studio-feishu-actions|studio-octo-actions)[^\r\n]*\r?\n[\s\S]*?```/gi,
     (_match, blockName: string) => {
-      errors.push(`${String(blockName)} is no longer supported in Studio private IM mode.`);
+      errors.push(`${String(blockName)} is no longer supported in Tracevane private IM mode.`);
       return "";
     },
   ).replace(/\n{3,}/g, "\n\n").trim();
@@ -3220,13 +3223,13 @@ function outboundFilesHistoryText(input: {
 }): string {
   const parts = [input.replyText];
   if (input.files.length) {
-    parts.push(`[Studio outbound files: ${input.files.map((file) => `${file.fileName} (${file.size} bytes)`).join(", ")}]`);
+    parts.push(`[Tracevane outbound files: ${input.files.map((file) => `${file.fileName} (${file.size} bytes)`).join(", ")}]`);
   }
   if (input.messages.length) {
-    parts.push(`[Studio outbound messages: ${input.messages.map((message) => `${message.platform || "current"}:${message.chatId || message.channelId}`).join(", ")}]`);
+    parts.push(`[Tracevane outbound messages: ${input.messages.map((message) => `${message.platform || "current"}:${message.chatId || message.channelId}`).join(", ")}]`);
   }
   if (input.errors.length) {
-    parts.push(`[Studio outbound errors: ${input.errors.join("; ")}]`);
+    parts.push(`[Tracevane outbound errors: ${input.errors.join("; ")}]`);
   }
   return parts.filter(Boolean).join("\n\n");
 }
@@ -4335,7 +4338,7 @@ async function maybeAutoCompactChannelConnectorConversation(input: {
     summaryPreview: autoCompactSummaryPreview(fallbackResult.summaryText),
     error: fallbackResult.ok
       ? null
-      : fallbackResult.error || nativeResult.error || "Studio compact fallback failed.",
+      : fallbackResult.error || nativeResult.error || "Tracevane compact fallback failed.",
     cooldownStartedAt: fallbackCooldownStartedAt,
     cooldownUntil: fallbackCooldownUntil,
   };
@@ -5468,7 +5471,7 @@ function renderFeishuRealtimeTimelineContext(input: {
   const droppedCount = contextEntries.length - budgetedEntries.length;
   return [
     "[Feishu realtime local group timeline]",
-    "Messages were observed by this Studio daemon in real time, including group messages that did not @mention this bot and therefore did not trigger a reply.",
+    "Messages were observed by this Tracevane daemon in real time, including group messages that did not @mention this bot and therefore did not trigger a reply.",
     "Use this as short-term collaboration context when Feishu group history APIs are not synced. Do not re-answer older messages unless the current user asks.",
     "If the current user asks whether another member or bot replied, inspect entries here before saying you cannot see the reply.",
     `History budget: ${budgetedEntries.length}/${contextEntries.length} messages included, max ${messageMaxRunes} chars per message, max ${input.totalMaxRunes} chars total.${droppedCount ? ` Dropped ${droppedCount} older messages due to budget.` : ""}`,
@@ -6060,8 +6063,8 @@ function renderOctoSyncedHistoryContext(input: {
   })), null, 2);
   const sections = [
     "[Octo Bot API recent channel timeline]",
-    "Messages are chronological and may include humans, this Studio bot (senderType=self-bot), and other bots.",
-    "Messages are segmented by the last successful Studio bot reply. Treat the previous context section as already answered; use the new section for collaborator replies and fresh context.",
+    "Messages are chronological and may include humans, this Tracevane bot (senderType=self-bot), and other bots.",
+    "Messages are segmented by the last successful Tracevane bot reply. Treat the previous context section as already answered; use the new section for collaborator replies and fresh context.",
     "If the current user asks whether another bot replied, inspect senderType=bot entries here before saying you cannot see the reply.",
     lastAnsweredMessageSeq ? `Last answered messageSeq: ${lastAnsweredMessageSeq}.` : "No last answered messageSeq is known yet; all entries below are fresh context.",
     `History budget: ${budgetedEntries.length}/${contextEntries.length} messages included, max ${messageMaxRunes} chars per message, max ${input.totalMaxRunes} chars total.${droppedCount ? ` Dropped ${droppedCount} older messages due to budget.` : ""}`,
@@ -6076,7 +6079,7 @@ function renderOctoSyncedHistoryContext(input: {
   }
   if (segmented.fresh.length) {
     sections.push(
-      "[Octo channel messages since your last Studio reply - context only, do NOT re-answer unless asked]",
+      "[Octo channel messages since your last Tracevane reply - context only, do NOT re-answer unless asked]",
       "```json",
       formatEntries(segmented.fresh),
       "```",
@@ -6148,8 +6151,8 @@ function renderOctoRealtimeTimelineContext(input: {
   const segmented = segmentOctoHistoryEntries(budgetedEntries, input.lastAnsweredMessageSeq || null);
   const sections = [
     "[Octo realtime local channel timeline]",
-    "Messages were observed by this Studio daemon in real time, including messages that did not @mention this bot and therefore did not trigger a reply.",
-    "Use this as short-term collaboration context when Bot API history is delayed or missing. Entries are segmented by the last successful Studio bot reply when known.",
+    "Messages were observed by this Tracevane daemon in real time, including messages that did not @mention this bot and therefore did not trigger a reply.",
+    "Use this as short-term collaboration context when Bot API history is delayed or missing. Entries are segmented by the last successful Tracevane bot reply when known.",
     "If the current user asks whether another bot replied, inspect senderType=bot entries here before saying you cannot see the reply.",
     positiveMessageSeq(input.lastAnsweredMessageSeq) ? `Last answered messageSeq: ${positiveMessageSeq(input.lastAnsweredMessageSeq)}.` : "No last answered messageSeq is known yet; all entries below are fresh context.",
     `History budget: ${budgetedEntries.length}/${contextEntries.length} messages included, max ${messageMaxRunes} chars per message, max ${input.totalMaxRunes} chars total.${droppedCount ? ` Dropped ${droppedCount} older messages due to budget.` : ""}`,
@@ -6172,7 +6175,7 @@ function renderOctoRealtimeTimelineContext(input: {
   }
   if (segmented.fresh.length) {
     sections.push(
-      "[Octo realtime messages since your last Studio reply - context only, do NOT re-answer unless asked]",
+      "[Octo realtime messages since your last Tracevane reply - context only, do NOT re-answer unless asked]",
       "```json",
       formatEntries(segmented.fresh),
       "```",
@@ -6316,7 +6319,7 @@ function renderOctoMdContext(input: {
   const content = octoMdContentFromData(input.data);
   if (!content) return null;
   const trimmed = content.length > input.maxChars
-    ? `${content.slice(0, Math.max(0, input.maxChars))}\n\n[Studio truncated Octo ${input.kind} context]`
+    ? `${content.slice(0, Math.max(0, input.maxChars))}\n\n[Tracevane truncated Octo ${input.kind} context]`
     : content;
   const record = isRecord(input.data) ? input.data : {};
   const version = normalizeString(record.version);
@@ -6325,7 +6328,7 @@ function renderOctoMdContext(input: {
     input.shortId
       ? `Scope: group=${input.groupNo} thread=${input.shortId}${version ? ` version=${version}` : ""}.`
       : `Scope: group=${input.groupNo}${version ? ` version=${version}` : ""}.`,
-    "These are native Octo channel instructions. Follow them unless they conflict with higher-priority Studio/system/developer instructions.",
+    "These are native Octo channel instructions. Follow them unless they conflict with higher-priority Tracevane/system/developer instructions.",
     "```md",
     trimmed,
     "```",
@@ -6773,7 +6776,7 @@ function renderFeishuPermissionCard(request: ChannelConnectorAgentPermissionRequ
     header: {
       title: {
         tag: "plain_text",
-        content: "Studio Agent 工具权限确认",
+        content: "Tracevane Agent 工具权限确认",
       },
       template: "orange",
     },
@@ -7713,7 +7716,7 @@ function renderFeishuProgressCard(input: {
     header: {
       title: {
         tag: "plain_text",
-        content: `${statusIcon} Studio ${input.project.agent} · ${feishuProgressCardStatusText(input.state.status)}`,
+        content: `${statusIcon} Tracevane ${input.project.agent} · ${feishuProgressCardStatusText(input.state.status)}`,
       },
       template: feishuProgressCardTemplate(input.state.status),
     },
@@ -13102,7 +13105,7 @@ async function main(): Promise<void> {
   ensureDir(config.paths.state);
   const state = createDaemonState(config);
   flushRuntime(config, state);
-  appendLog(config.paths.log, "Studio native Channel Connectors daemon started");
+  appendLog(config.paths.log, "Tracevane native Channel Connectors daemon started");
   const server = startHttp(config, state);
   const sockets: OctoWukongSocket[] = [];
   const octoRestHeartbeatTimers: NodeJS.Timeout[] = [];
@@ -13144,7 +13147,7 @@ async function main(): Promise<void> {
   })();
 
   const stop = () => {
-    appendLog(config.paths.log, "Studio native Channel Connectors daemon stopping");
+    appendLog(config.paths.log, "Tracevane native Channel Connectors daemon stopping");
     if (feishuWatchdog) clearInterval(feishuWatchdog);
     if (agentSessionReaper) clearInterval(agentSessionReaper);
     for (const entry of activeRunCancels.values()) entry.controller.abort();

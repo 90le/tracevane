@@ -243,7 +243,7 @@ async function startFakeGateway() {
     port,
     async waitForStudioConnection() {
       await waitFor(() => {
-        assert.ok(bridgeSocket, 'expected Studio gateway bridge connection');
+        assert.ok(bridgeSocket, 'expected Tracevane gateway bridge connection');
       });
     },
     async waitForSessionEventSubscription() {
@@ -330,7 +330,7 @@ async function startFakeGateway() {
       }
     },
     sendAgentEvent(payload) {
-      assert.ok(bridgeSocket, 'expected Studio gateway bridge connection');
+      assert.ok(bridgeSocket, 'expected Tracevane gateway bridge connection');
       bridgeSocket.send(JSON.stringify({
         type: 'event',
         event: 'agent',
@@ -338,7 +338,7 @@ async function startFakeGateway() {
       }));
     },
     sendSessionToolEvent(payload) {
-      assert.ok(bridgeSocket, 'expected Studio gateway bridge connection');
+      assert.ok(bridgeSocket, 'expected Tracevane gateway bridge connection');
       bridgeSocket.send(JSON.stringify({
         type: 'event',
         event: 'session.tool',
@@ -346,7 +346,7 @@ async function startFakeGateway() {
       }));
     },
     sendChatEvent(payload) {
-      assert.ok(bridgeSocket, 'expected Studio gateway bridge connection');
+      assert.ok(bridgeSocket, 'expected Tracevane gateway bridge connection');
       bridgeSocket.send(JSON.stringify({
         type: 'event',
         event: 'chat',
@@ -354,7 +354,7 @@ async function startFakeGateway() {
       }));
     },
     sendChatSideResult(payload) {
-      assert.ok(bridgeSocket, 'expected Studio gateway bridge connection');
+      assert.ok(bridgeSocket, 'expected Tracevane gateway bridge connection');
       bridgeSocket.send(JSON.stringify({
         type: 'event',
         event: 'chat.side_result',

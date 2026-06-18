@@ -24,7 +24,7 @@ const routeManifestPath = path.join(
   "apps/web-vue/src/features/shell/route-manifest.ts",
 );
 
-test("Studio Gateway page is mounted as a first-class shell route", () => {
+test("Tracevane Gateway page is mounted as a first-class shell route", () => {
   const manifest = fs.readFileSync(routeManifestPath, "utf8");
 
   assert.match(manifest, /key:\s*"model-gateway"/);
@@ -34,7 +34,7 @@ test("Studio Gateway page is mounted as a first-class shell route", () => {
   assert.match(manifest, /path:\s*"\/model-gateway"/);
 });
 
-test("Studio Gateway page uses the new model-gateway API contract", () => {
+test("Tracevane Gateway page uses the new model-gateway API contract", () => {
   const page = fs.readFileSync(pagePath, "utf8");
   const api = fs.readFileSync(apiPath, "utf8");
   const source = `${page}\n${api}`;
@@ -66,7 +66,7 @@ test("Studio Gateway page uses the new model-gateway API contract", () => {
   assert.match(source, /Gateway will not append \/v1 automatically/);
 });
 
-test("Studio Gateway page keeps provider configuration user-owned", () => {
+test("Tracevane Gateway page keeps provider configuration user-owned", () => {
   const page = fs.readFileSync(pagePath, "utf8");
   const css = fs.readFileSync(cssPath, "utf8");
   const legacyInitialism = ["C", "P", "A"].join("");

@@ -33,13 +33,13 @@ function syncConfig(reason) {
 
   if (changed) {
     console.info(
-      `[openclaw-studio-api] ${reason}: gateway port ${previousGatewayPort} -> ${nextGatewayPort}`
+      `[tracevane-api] ${reason}: gateway port ${previousGatewayPort} -> ${nextGatewayPort}`
     );
     return;
   }
 
   console.info(
-    `[openclaw-studio-api] ${reason}: gateway port ${nextGatewayPort}`
+    `[tracevane-api] ${reason}: gateway port ${nextGatewayPort}`
   );
 }
 
@@ -54,7 +54,7 @@ function watchOpenClawConfig() {
     });
   } catch (error) {
     console.warn(
-      '[openclaw-studio-api] failed to watch openclaw.json:',
+      '[tracevane-api] failed to watch openclaw.json:',
       error instanceof Error ? error.message : String(error)
     );
   }
@@ -64,7 +64,7 @@ async function shutdown(signal) {
   if (shuttingDown) return;
   shuttingDown = true;
 
-  console.info(`[openclaw-studio-api] received ${signal}, shutting down`);
+  console.info(`[tracevane-api] received ${signal}, shutting down`);
 
   if (configWatcher) {
     configWatcher.close();
@@ -76,7 +76,7 @@ async function shutdown(signal) {
     process.exit(0);
   } catch (error) {
     console.error(
-      '[openclaw-studio-api] shutdown failed:',
+      '[tracevane-api] shutdown failed:',
       error instanceof Error ? error.stack || error.message : String(error)
     );
     process.exit(1);
@@ -92,12 +92,12 @@ process.on('SIGTERM', () => {
 });
 
 process.on('uncaughtException', (error) => {
-  console.error('[openclaw-studio-api] uncaught exception:', error);
+  console.error('[tracevane-api] uncaught exception:', error);
   void shutdown('uncaughtException');
 });
 
 process.on('unhandledRejection', (error) => {
-  console.error('[openclaw-studio-api] unhandled rejection:', error);
+  console.error('[tracevane-api] unhandled rejection:', error);
   void shutdown('unhandledRejection');
 });
 
@@ -105,6 +105,6 @@ syncConfig('startup');
 watchOpenClawConfig();
 await server.start();
 
-console.info(`[openclaw-studio-api] standalone server ready at http://127.0.0.1:${config.port}`);
+console.info(`[tracevane-api] standalone server ready at http://127.0.0.1:${config.port}`);
 
 await new Promise(() => {});

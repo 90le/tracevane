@@ -8,7 +8,7 @@ import sqlite3
 
 
 SESSION_KEY = os.environ.get("CHAT_HEAVY_SESSION_KEY", "").strip()
-GATEWAY_TOKEN = os.environ.get("STUDIO_GATEWAY_TOKEN", "").strip()
+GATEWAY_TOKEN = (os.environ.get("TRACEVANE_GATEWAY_TOKEN") or os.environ.get("STUDIO_GATEWAY_TOKEN") or "").strip()
 SCREENSHOT = Path("/tmp/openclaw-studio-chat-session-rail-smoke.png")
 
 

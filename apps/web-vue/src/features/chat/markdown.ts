@@ -975,7 +975,7 @@ function renderSvgPreviewBlock(source: string, interactive: boolean): string {
 }
 
 // ---------------------------------------------------------------------------
-// Studio markdown media resolution and rendering
+// Tracevane markdown media resolution and rendering
 // ---------------------------------------------------------------------------
 
 function chipBadge(kind: 'image' | 'video' | 'file'): string {

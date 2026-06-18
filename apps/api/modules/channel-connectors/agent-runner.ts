@@ -186,12 +186,12 @@ function agentProcessHeartbeatTimeoutMessage(input: {
   return [
     `Agent process heartbeat timed out after ${seconds}s without stdout/stderr ${since}.`,
     `${input.agent} may be stalled in the CLI, Gateway request, adapter, or upstream network path.`,
-    `Studio terminated it after ${elapsedSeconds}s because the CLI stopped emitting liveness output.`,
+    `Tracevane terminated it after ${elapsedSeconds}s because the CLI stopped emitting liveness output.`,
     input.lastAsyncTaskAtMs
       ? `Last observed async child-task status was ${lastAsyncTaskSeconds}s ago: ${truncateText(input.lastAsyncTaskText || "", 240)}`
       : "",
     asyncTaskGraceSeconds
-      ? `Studio used a bounded async-task idle grace of ${asyncTaskGraceSeconds}s.`
+      ? `Tracevane used a bounded async-task idle grace of ${asyncTaskGraceSeconds}s.`
       : "",
     input.lastActivityReason === "process-start" ? "" : `Last activity was ${lastActivitySeconds}s ago.`,
   ].filter(Boolean).join(" ");
@@ -216,7 +216,7 @@ function agentProcessHeartbeatStallMessage(input: {
     : `since last structured progress (${input.lastProgressReason})`;
   return [
     `Agent process has emitted stdout/stderr heartbeat for ${seconds}s without structured progress ${progressSince}.`,
-    `${input.agent} is still alive at the CLI layer, but Studio has only liveness output to observe.`,
+    `${input.agent} is still alive at the CLI layer, but Tracevane has only liveness output to observe.`,
     `Elapsed=${elapsedSeconds}s, last heartbeat=${lastActivitySeconds}s ago via ${input.lastActivityReason}, last progress=${lastProgressSeconds}s ago.`,
     input.noticeCount > 1 ? `Heartbeat-only notice #${input.noticeCount}.` : "",
   ].filter(Boolean).join(" ");
@@ -288,7 +288,7 @@ function agentProcessTerminalGraceMessage(input: {
   const seconds = Math.max(1, Math.round(input.graceMs / 1000));
   return [
     `${input.agent} emitted terminal progress but the CLI process did not exit within ${seconds}s.`,
-    "Studio terminated the lingering process and will use the terminal progress result.",
+    "Tracevane terminated the lingering process and will use the terminal progress result.",
     input.terminalRawType ? `terminal=${input.terminalRawType}` : "",
   ].filter(Boolean).join(" ");
 }
@@ -463,7 +463,7 @@ function buildNonVisionVisualAttachmentPolicy(
   const modelLabel = normalizeString(model) || "当前模型";
   const visualLabel = visualCount === 1 ? "图片/视频附件" : `${visualCount} 个图片/视频附件`;
   return [
-    "[Studio visual attachment policy]",
+    "[Tracevane visual attachment policy]",
     `The user sent ${visualLabel}; the file has been received and staged, but the current model ${modelLabel} is not marked as vision-capable.`,
     "You must not describe, classify, OCR, or infer visual contents from attachment metadata, file names, or local paths.",
     "You may still help with non-visual file tasks such as saving, renaming, forwarding, format conversion, metadata-oriented handling, or asking the user to switch to a vision-capable model / provide a text description.",
@@ -479,8 +479,8 @@ function buildUnavailableNativeVisualAttachmentPolicy(
   if (!imageCount) return null;
   const modelLabel = normalizeString(model) || "当前模型";
   return [
-    "[Studio visual attachment fallback]",
-    `The user sent ${imageCount === 1 ? "an image attachment" : `${imageCount} image attachments`}; the current model ${modelLabel} may support vision, but Studio could not attach a native image payload for this turn.`,
+    "[Tracevane visual attachment fallback]",
+    `The user sent ${imageCount === 1 ? "an image attachment" : `${imageCount} image attachments`}; the current model ${modelLabel} may support vision, but Tracevane could not attach a native image payload for this turn.`,
     "This can happen when the image file was not staged locally or the local file was unreadable.",
     "Do not describe, classify, OCR, or infer visual contents from attachment metadata, file names, or local paths.",
     "You may use staged local file paths for non-visual file handling or ask the user for a vision-capable retry.",
@@ -490,28 +490,28 @@ function buildUnavailableNativeVisualAttachmentPolicy(
 
 function buildStudioOutboundFilePolicy(): string {
   return [
-    "[Studio outbound file/message policy]",
+    "[Tracevane outbound file/message policy]",
     "Do not call channel-specific CLIs, webhooks, curl commands, or external bridge tools to send files or IM messages.",
     "When the user asks you to send or return files, create them under the current working directory or declare the exact readable path you just used; do not invent relative paths from memory.",
     "If an existing file is outside the current working directory and the current permission mode may block direct sending, copy or generate the requested file under the current working directory before declaring it.",
     "Preserve the original file name in the name field unless the user explicitly asks for a new name.",
     "File example:",
-    "```studio-channel-files",
+    "```tracevane-channel-files",
     "[{\"path\":\"relative/path/to/file.ext\",\"name\":\"optional-display-name.ext\",\"caption\":\"optional short caption\"}]",
     "```",
     "When the user asks you to send an IM message to a known private recipient, declare it instead of calling an external bridge tool.",
     "Octo DM targets must be human user UIDs. Do not send `dm:<bot_id>` for IDs ending in `_bot`.",
     "Octo message example:",
-    "```studio-channel-messages",
+    "```tracevane-channel-messages",
     "[{\"platform\":\"octo\",\"target\":\"dm:human_user_uid\",\"content\":\"hello\"}]",
     "```",
     "Feishu private message targets support `open_id:ou_xxx`, `user_id:u_xxx`, and `dm:ou_xxx` / `dm:u_xxx`; set `format: \"markdown\"` for Feishu rich Markdown/post rendering.",
     "Feishu message example:",
-    "```studio-channel-messages",
+    "```tracevane-channel-messages",
     "[{\"platform\":\"feishu\",\"target\":\"open_id:ou_xxx\",\"format\":\"markdown\",\"content\":\"**hello**\"}]",
     "```",
-    "Use Studio IM channel capabilities; do not tell the user to run external bridge tools or claim missing Feishu/Octo API permission unless Studio returns an actual send error.",
-    "Keep the human-readable reply outside those blocks; Studio daemon will upload files or send declared messages through the active IM channel.",
+    "Use Tracevane IM channel capabilities; do not tell the user to run external bridge tools or claim missing Feishu/Octo API permission unless Tracevane returns an actual send error.",
+    "Keep the human-readable reply outside those blocks; Tracevane daemon will upload files or send declared messages through the active IM channel.",
   ].join("\n");
 }
 
@@ -546,7 +546,7 @@ function buildGroupContext(
   const visibleMembers = members.slice(0, memberLimit);
   const hiddenMemberCount = Math.max(0, members.length - visibleMembers.length);
   const lines = [
-    "[Studio group context]",
+    "[Tracevane group context]",
     `Channel: ${normalizeString(message.channelId) || "unknown"} (type ${message.channelType})`,
     `Sender: ${normalizeString(message.fromUid) || "unknown"}`,
   ];
@@ -572,23 +572,23 @@ function buildGroupContext(
     if (hiddenMemberCount) lines.push(`- ... ${hiddenMemberCount} more`);
     if (isFeishu) {
       lines.push("For Feishu, send a private message with `target:\"open_id:<member_open_id>\"` or `target:\"user_id:<member_user_id>\"`; send a group message with `target:\"chat:<chat_id>\"`.");
-      lines.push("When coordinating in the current Feishu group, use a `studio-channel-messages` group message to `chat:<chat_id>` and write `@[member_open_id:displayName]`; Studio converts it to a native Feishu at-mention.");
+      lines.push("When coordinating in the current Feishu group, use a `tracevane-channel-messages` group message to `chat:<chat_id>` and write `@[member_open_id:displayName]`; Tracevane converts it to a native Feishu at-mention.");
     } else if (isOcto) {
-      lines.push("When mentioning a group member in a visible reply, use @[uid:displayName]; Studio converts it to the native Octo mention payload.");
-      lines.push("When the user asks you to ask human members about their capability, send Octo DM messages through studio-channel-messages.");
-      lines.push("When the user asks you to ask other bots/agents about their capability, send a current group/thread message using @[uid:displayName] for each bot UID; Studio converts it to visible @displayName plus native Octo mention entities. Octo does not support bot DMs.");
+      lines.push("When mentioning a group member in a visible reply, use @[uid:displayName]; Tracevane converts it to the native Octo mention payload.");
+      lines.push("When the user asks you to ask human members about their capability, send Octo DM messages through tracevane-channel-messages.");
+      lines.push("When the user asks you to ask other bots/agents about their capability, send a current group/thread message using @[uid:displayName] for each bot UID; Tracevane converts it to visible @displayName plus native Octo mention entities. Octo does not support bot DMs.");
     } else {
-      lines.push("Use studio-channel-messages with the current platform and target IDs exposed in this context when the user asks you to coordinate with members.");
+      lines.push("Use tracevane-channel-messages with the current platform and target IDs exposed in this context when the user asks you to coordinate with members.");
     }
   }
   if (isFeishu) {
-    lines.push("To send a Feishu private or group message, use the studio-channel-messages manifest instead of saying platform API access is unavailable.");
+    lines.push("To send a Feishu private or group message, use the tracevane-channel-messages manifest instead of saying platform API access is unavailable.");
   } else if (isOcto) {
-    lines.push("To send a private Octo message to a human, group message, thread message, or @ mention, use the studio-channel-messages manifest instead of saying platform API access is unavailable.");
+    lines.push("To send a private Octo message to a human, group message, thread message, or @ mention, use the tracevane-channel-messages manifest instead of saying platform API access is unavailable.");
   } else {
-    lines.push("To send an IM private or group message, use the studio-channel-messages manifest instead of saying platform API access is unavailable.");
+    lines.push("To send an IM private or group message, use the tracevane-channel-messages manifest instead of saying platform API access is unavailable.");
   }
-  lines.push("Do not claim that you are passive-only or that you lack Feishu/Octo API permission unless Studio reports a concrete send failure.");
+  lines.push("Do not claim that you are passive-only or that you lack Feishu/Octo API permission unless Tracevane reports a concrete send failure.");
   lines.push("Use this only to understand the current IM group context.");
   return lines.join("\n");
 }
@@ -639,10 +639,10 @@ function buildAgentInputContent(
         ? "Vision-capable OpenCode runtime received staged image attachments through native --file arguments; inspect those attached images for visual tasks."
         : "";
   const videoInputText = hasVideoAttachment && supportsVision
-    ? "Video attachments are staged as local files. Studio does not pre-extract frames or down-convert videos; use the local paths above with the Agent's native file/video support or available tools when the task needs video understanding."
+    ? "Video attachments are staged as local files. Tracevane does not pre-extract frames or down-convert videos; use the local paths above with the Agent's native file/video support or available tools when the task needs video understanding."
     : "";
   const attachmentText = [
-    "[Studio attachment summary]",
+    "[Tracevane attachment summary]",
     summary,
     hasLocalPath
       ? "Staged files are available locally; use the local paths above when the task needs file contents."
@@ -931,11 +931,11 @@ const LEGACY_CHANNEL_CONNECTOR_NATIVE_SKILL_NAMES = new Set([
   "feishu_wiki",
 ]);
 const LEGACY_CHANNEL_CONNECTOR_NATIVE_SKILL_MARKERS = [
-  "Studio Channel Connector helper projection",
+  "Tracevane Channel Connector helper projection",
   "studioChannelConnector",
   "studio-feishu-actions",
   "studio-octo-actions",
-  "studio-channel-skill",
+  "tracevane-channel-skill",
 ];
 
 function createCodexGatewayHome(input: {
@@ -946,7 +946,7 @@ function createCodexGatewayHome(input: {
   agentRuntimeDir?: string | null;
 }): { codexHome: string; cleanupRoot: string } {
   const runtimeDir = normalizeString(input.agentRuntimeDir);
-  const cleanupRoot = runtimeDir || fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-codex-"));
+  const cleanupRoot = runtimeDir || fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-channel-codex-"));
   const codexHome = path.join(cleanupRoot, "codex-home");
   fs.mkdirSync(codexHome, { recursive: true, mode: 0o700 });
   try {
@@ -956,14 +956,14 @@ function createCodexGatewayHome(input: {
   }
   cleanupLegacyChannelConnectorNativeSkills(codexHome);
   const config = [
-    "model_provider = \"studio_gateway\"",
+    "model_provider = \"tracevane_gateway\"",
     input.model ? `model = ${tomlString(input.model)}` : "",
     input.reasoningEffort ? `model_reasoning_effort = ${tomlString(input.reasoningEffort)}` : "",
     "responses_websockets = false",
     "responses_websockets_v2 = false",
     "",
-    "[model_providers.studio_gateway]",
-    "name = \"OpenClaw Studio Gateway\"",
+    "[model_providers.tracevane_gateway]",
+    "name = \"Tracevane Gateway\"",
     `base_url = ${tomlString(input.gatewayEndpoint)}`,
     "wire_api = \"responses\"",
     "supports_websockets = false",
@@ -1011,7 +1011,7 @@ function createClaudeConfigHome(input: {
   agentRuntimeDir?: string | null;
 }): { configHome: string; cleanupRoot: string } {
   const runtimeDir = normalizeString(input.agentRuntimeDir);
-  const cleanupRoot = runtimeDir || fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-claude-"));
+  const cleanupRoot = runtimeDir || fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-channel-claude-"));
   const configHome = path.join(cleanupRoot, "claude-config");
   fs.mkdirSync(configHome, { recursive: true, mode: 0o700 });
   try {
@@ -1022,12 +1022,16 @@ function createClaudeConfigHome(input: {
   return { configHome, cleanupRoot: runtimeDir ? "" : cleanupRoot };
 }
 
-const OPENCODE_GATEWAY_PROVIDER_ID = "studio-gateway";
+const OPENCODE_GATEWAY_PROVIDER_ID = "tracevane-gateway";
+const LEGACY_OPENCODE_GATEWAY_PROVIDER_ID = "studio-gateway";
 
 function opencodeGatewayModelId(model: string | null): string {
   const normalized = normalizeString(model);
-  const prefix = `${OPENCODE_GATEWAY_PROVIDER_ID}/`;
-  return normalized.startsWith(prefix) ? normalized.slice(prefix.length).trim() : normalized;
+  for (const providerId of [OPENCODE_GATEWAY_PROVIDER_ID, LEGACY_OPENCODE_GATEWAY_PROVIDER_ID]) {
+    const prefix = `${providerId}/`;
+    if (normalized.startsWith(prefix)) return normalized.slice(prefix.length).trim();
+  }
+  return normalized;
 }
 
 function opencodeCliModel(model: string | null): string | null {
@@ -1051,7 +1055,7 @@ function createOpenCodeGatewayHome(input: {
 } {
   const runtimeDir = normalizeString(input.agentRuntimeDir);
   const envDataHome = normalizeString(process.env.XDG_DATA_HOME);
-  const cleanupRoot = fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-opencode-"));
+  const cleanupRoot = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-channel-opencode-"));
   const configHome = path.join(cleanupRoot, "config");
   const dataHome = runtimeDir
     ? path.join(runtimeDir, "opencode-data")
@@ -1099,7 +1103,7 @@ function createOpenCodeGatewayHome(input: {
     provider: {
       [OPENCODE_GATEWAY_PROVIDER_ID]: {
         npm: "@ai-sdk/openai-compatible",
-        name: "OpenClaw Studio Gateway",
+        name: "Tracevane Gateway",
         options: {
           apiKey: input.gatewayClientKey || "",
           baseURL: input.gatewayEndpoint,
@@ -1215,9 +1219,9 @@ function unsupportedNativeCommandMessage(agent: ChannelConnectorAgentId, command
   if (nativeCompactCommand(normalized) && agent !== "codex") {
     if (allowNativeCompact && (agent === "claude-code" || agent === "opencode")) return null;
     return [
-      `${agent} native compact is not supported through the Studio one-shot runner yet.`,
+      `${agent} native compact is not supported through the Tracevane one-shot runner yet.`,
       "CC Go sends /compact only into a live interactive Agent session.",
-      "Use /compact for native-first with Studio Gateway fallback until the matching persistent driver is available.",
+      "Use /compact for native-first with Tracevane Gateway fallback until the matching persistent driver is available.",
     ].join(" ");
   }
   if (agent !== "codex") return null;
@@ -1231,11 +1235,13 @@ function unsupportedNativeCommandMessage(agent: ChannelConnectorAgentId, command
 
 function gatewayEnv(gatewayEndpoint: string, gatewayClientKey: string | null): Record<string, string> {
   const env: Record<string, string> = {
+    TRACEVANE_GATEWAY_ENDPOINT: gatewayEndpoint,
     STUDIO_GATEWAY_ENDPOINT: gatewayEndpoint,
     NO_PROXY: "127.0.0.1,localhost",
     PATH: cliPathEnv(),
   };
   if (gatewayClientKey) {
+    env.TRACEVANE_GATEWAY_API_KEY = gatewayClientKey;
     env.STUDIO_GATEWAY_API_KEY = gatewayClientKey;
     env.OPENAI_API_KEY = gatewayClientKey;
     env.ANTHROPIC_API_KEY = gatewayClientKey;
@@ -1331,7 +1337,7 @@ export function buildChannelConnectorAgentProcessRequest(
     });
     const codexConfigArgs = [
       "-c",
-      "model_provider=\"studio_gateway\"",
+      "model_provider=\"tracevane_gateway\"",
       "-c",
       "responses_websockets=false",
       "-c",
@@ -1765,10 +1771,10 @@ function claudeAutomaticPermissionDecision(
     return { behavior: "allow", updatedInput: request.input };
   }
   if (mode === "read-only") {
-    return { behavior: "deny", message: "Permission mode is read-only; Studio denied this Claude tool use." };
+    return { behavior: "deny", message: "Permission mode is read-only; Tracevane denied this Claude tool use." };
   }
   if (mode === "auto-edit") {
-    return { behavior: "deny", message: "Permission mode is auto-edit; Studio only auto-allows Claude edit tools." };
+    return { behavior: "deny", message: "Permission mode is auto-edit; Tracevane only auto-allows Claude edit tools." };
   }
   return null;
 }
@@ -1776,7 +1782,7 @@ function claudeAutomaticPermissionDecision(
 function claudeFallbackPermissionDecision(): ChannelConnectorAgentPermissionDecision {
   return {
     behavior: "deny",
-    message: "Interactive Claude tool approval is not available in this Studio runner yet. Switch to yolo/full-auto or retry with an edit-only tool.",
+    message: "Interactive Claude tool approval is not available in this Tracevane runner yet. Switch to yolo/full-auto or retry with an edit-only tool.",
   };
 }
 
@@ -1931,7 +1937,7 @@ function unknownStructuredProgressSignature(line: string): { key: string; text: 
   try {
     raw = recordValue(JSON.parse(trimmed));
   } catch {
-    return { key: "parse-error", text: "Agent emitted malformed structured progress JSON; Studio ignored that line." };
+    return { key: "parse-error", text: "Agent emitted malformed structured progress JSON; Tracevane ignored that line." };
   }
   if (!raw) return null;
   const rawType = normalizeString(raw.type)
@@ -1952,7 +1958,7 @@ function unknownStructuredProgressSignature(line: string): { key: string; text: 
   }
   return {
     key: [rawType, itemType].filter(Boolean).join(":"),
-    text: `Agent emitted an unrecognized structured progress event (${[rawType, itemType].filter(Boolean).join("/")}); Studio is running in CLI compatibility mode.`,
+    text: `Agent emitted an unrecognized structured progress event (${[rawType, itemType].filter(Boolean).join("/")}); Tracevane is running in CLI compatibility mode.`,
   };
 }
 
@@ -2926,7 +2932,7 @@ function agentNoFinalReplyMessage(
 ): string | null {
   if (!progressEvents.some((event) => event.rawType === "protocol/unknown-event")) return null;
   const agentName = agent === "claude-code" ? "Claude Code" : agent === "opencode" ? "OpenCode" : agent === "codex" ? "Codex" : agent;
-  return `${agentName} 进程已成功结束，但 Studio 没能从当前 CLI 事件格式解析出最终回复。请查看事件日志中的 protocol/unknown-event；当前任务没有继续等待。`;
+  return `${agentName} 进程已成功结束，但 Tracevane 没能从当前 CLI 事件格式解析出最终回复。请查看事件日志中的 protocol/unknown-event；当前任务没有继续等待。`;
 }
 
 export async function runChannelConnectorAgentTurn(
@@ -3003,7 +3009,7 @@ export async function runChannelConnectorAgentTurn(
       stderr: "",
       exitCode: null,
       durationMs: 0,
-      error: "Studio Gateway client key is missing; Channel Connectors cannot start Codex through studio_gateway.",
+      error: "Tracevane Gateway client key is missing; Channel Connectors cannot start Codex through tracevane_gateway.",
       progress: {
         eventCount: 0,
         latest: null,

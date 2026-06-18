@@ -190,7 +190,7 @@ test('composer remove attachment prunes every inline reference', () => {
   assert.equal(document.some((node) => node.type === 'resource-ref'), false);
 });
 
-test('composer serialization keeps inline resource order and explicit Studio refs', () => {
+test('composer serialization keeps inline resource order and explicit Tracevane refs', () => {
   const markdown = serializeComposerDocumentToMarkdown([
     { type: 'text', id: 'text-1', text: '请参考 ' },
     { type: 'resource-ref', id: 'ref-1', attachmentId: 'img-1', display: 'inline-image' },

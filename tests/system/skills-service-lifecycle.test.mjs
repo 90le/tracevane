@@ -61,7 +61,7 @@ with zipfile.ZipFile(zip_path, "w") as zf:
 function createConfig(root) {
   return {
     pluginId: "studio",
-    pluginName: "OpenClaw Studio",
+    pluginName: "Tracevane",
     version: "0.1.0",
     port: 3760,
     autoStart: true,

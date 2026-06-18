@@ -28,7 +28,7 @@ function createStudioConfig(root) {
   fs.mkdirSync(openclawRoot, { recursive: true });
   return {
     pluginId: "studio",
-    pluginName: "OpenClaw Studio",
+    pluginName: "Tracevane",
     version: "0.1.0",
     port: 3760,
     autoStart: true,
@@ -4265,7 +4265,7 @@ test("model gateway app connections preview and apply client config files with r
   assert.equal(JSON.stringify(preview).includes("sk-local-app-connection"), false);
   assert.equal(JSON.stringify(preview).includes("sk-existing-opencode-secret"), false);
   assert.equal(JSON.stringify(preview).includes("existing-openclaw-token"), false);
-  assert.equal(JSON.stringify(preview).includes("<STUDIO_GATEWAY_KEY>"), true);
+  assert.equal(JSON.stringify(preview).includes("<TRACEVANE_GATEWAY_KEY>"), true);
   assert.equal(preview.connections.find((connection) => connection.id === "claude-code")?.endpoint, "http://127.0.0.1:18796");
 
   const profileUpdate = service.updateAppConnectionProfile(undefined, {
@@ -4320,13 +4320,13 @@ test("model gateway app connections preview and apply client config files with r
   assert.equal(codex.connection.canRollback, true);
   assert.ok(codex.backupPath && fs.existsSync(codex.backupPath));
   const codexConfig = fs.readFileSync(codexPath, "utf8");
-  assert.match(codexConfig, /model_provider = "studio_gateway"/);
+  assert.match(codexConfig, /model_provider = "tracevane_gateway"/);
   assert.match(codexConfig, /model = "gpt-alt"/);
   assert.match(codexConfig, /model_reasoning_effort = "high"/);
   assert.match(codexConfig, /model_context_window = 200000/);
   assert.match(codexConfig, /model_auto_compact_token_limit = 150000/);
   assert.match(codexConfig, /enable_request_compression = true/);
-  assert.match(codexConfig, /\[model_providers\.studio_gateway\]/);
+  assert.match(codexConfig, /\[model_providers\.tracevane_gateway\]/);
   assert.match(codexConfig, /base_url = "http:\/\/127\.0\.0\.1:18796\/v1"/);
   assert.match(codexConfig, /supports_websockets = true/);
   assert.match(codexConfig, /responses_websockets_v2 = true/);
@@ -4352,36 +4352,36 @@ test("model gateway app connections preview and apply client config files with r
 
   service.applyAppConnection(undefined, { appId: "opencode" });
   const opencodeConfig = JSON.parse(fs.readFileSync(opencodePath, "utf8"));
-  assert.equal(opencodeConfig.model, "studio-gateway/gpt-alt");
+  assert.equal(opencodeConfig.model, "tracevane-gateway/gpt-alt");
   assert.equal(opencodeConfig.provider.existing.options.apiKey, "sk-existing-opencode-secret");
-  assert.equal(opencodeConfig.provider["studio-gateway"].npm, "@ai-sdk/openai-compatible");
-  assert.equal(opencodeConfig.provider["studio-gateway"].name, "OpenClaw Studio Gateway");
-  assert.equal(opencodeConfig.provider["studio-gateway"].options.baseURL, "http://127.0.0.1:18796/v1");
-  assert.equal(opencodeConfig.provider["studio-gateway"].options.apiKey, "sk-local-app-connection");
-  assert.equal(opencodeConfig.provider["studio-gateway"].options.setCacheKey, true);
-  assert.deepEqual(Object.keys(opencodeConfig.provider["studio-gateway"].models).sort(), ["gpt-alt", "gpt-main"]);
-  assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-main"].contextWindow, 200000);
-  assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-main"].maxOutputTokens, 8192);
-  assert.deepEqual(opencodeConfig.provider["studio-gateway"].models["gpt-main"].limit, {
+  assert.equal(opencodeConfig.provider["tracevane-gateway"].npm, "@ai-sdk/openai-compatible");
+  assert.equal(opencodeConfig.provider["tracevane-gateway"].name, "Tracevane Gateway");
+  assert.equal(opencodeConfig.provider["tracevane-gateway"].options.baseURL, "http://127.0.0.1:18796/v1");
+  assert.equal(opencodeConfig.provider["tracevane-gateway"].options.apiKey, "sk-local-app-connection");
+  assert.equal(opencodeConfig.provider["tracevane-gateway"].options.setCacheKey, true);
+  assert.deepEqual(Object.keys(opencodeConfig.provider["tracevane-gateway"].models).sort(), ["gpt-alt", "gpt-main"]);
+  assert.equal(opencodeConfig.provider["tracevane-gateway"].models["gpt-main"].contextWindow, 200000);
+  assert.equal(opencodeConfig.provider["tracevane-gateway"].models["gpt-main"].maxOutputTokens, 8192);
+  assert.deepEqual(opencodeConfig.provider["tracevane-gateway"].models["gpt-main"].limit, {
     context: 200000,
     output: 8192,
   });
-  assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-main"].tool_call, true);
-  assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-main"].reasoning, false);
-  assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-main"].temperature, true);
+  assert.equal(opencodeConfig.provider["tracevane-gateway"].models["gpt-main"].tool_call, true);
+  assert.equal(opencodeConfig.provider["tracevane-gateway"].models["gpt-main"].reasoning, false);
+  assert.equal(opencodeConfig.provider["tracevane-gateway"].models["gpt-main"].temperature, true);
   assert.equal(opencodeConfig.studioGateway, undefined);
 
   service.applyAppConnection(undefined, { appId: "openclaw" });
   const openclawConfig = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
   assert.equal(openclawConfig.models.providers.existing.api, "openai-completions");
   assert.equal(openclawConfig.gateway.auth.token, "existing-openclaw-token");
-  assert.equal(openclawConfig.models.providers["studio-gateway"].api, "openai-completions");
-  assert.equal(openclawConfig.models.providers["studio-gateway"].baseUrl, "http://127.0.0.1:18796/v1");
-  assert.equal(openclawConfig.models.providers["studio-gateway"].apiKey, "sk-local-app-connection");
-  assert.deepEqual(openclawConfig.models.providers["studio-gateway"].models.map((model) => model.id), ["gpt-main", "gpt-alt"]);
-  assert.equal(openclawConfig.models.providers["studio-gateway"].models[0].contextWindow, 200000);
-  assert.equal(openclawConfig.models.providers["studio-gateway"].models[0].maxTokens, 8192);
-  assert.equal(openclawConfig.agents.defaults.model.primary, "studio-gateway/gpt-main");
+  assert.equal(openclawConfig.models.providers["tracevane-gateway"].api, "openai-completions");
+  assert.equal(openclawConfig.models.providers["tracevane-gateway"].baseUrl, "http://127.0.0.1:18796/v1");
+  assert.equal(openclawConfig.models.providers["tracevane-gateway"].apiKey, "sk-local-app-connection");
+  assert.deepEqual(openclawConfig.models.providers["tracevane-gateway"].models.map((model) => model.id), ["gpt-main", "gpt-alt"]);
+  assert.equal(openclawConfig.models.providers["tracevane-gateway"].models[0].contextWindow, 200000);
+  assert.equal(openclawConfig.models.providers["tracevane-gateway"].models[0].maxTokens, 8192);
+  assert.equal(openclawConfig.agents.defaults.model.primary, "tracevane-gateway/gpt-main");
   assert.equal(openclawConfig.agents.defaults.thinkingDefault, "high");
   assert.equal(openclawConfig.studioGateway, undefined);
 
@@ -4453,9 +4453,9 @@ test("model gateway app connections resolve budgets from each selected app model
 
   service.applyAppConnection(undefined, { appId: "opencode" });
   const opencodeConfig = JSON.parse(fs.readFileSync(opencodePath, "utf8"));
-  assert.equal(opencodeConfig.model, "studio-gateway/small");
-  assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-small"].contextWindow, 64000);
-  assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-small"].maxOutputTokens, 8192);
+  assert.equal(opencodeConfig.model, "tracevane-gateway/small");
+  assert.equal(opencodeConfig.provider["tracevane-gateway"].models["gpt-small"].contextWindow, 64000);
+  assert.equal(opencodeConfig.provider["tracevane-gateway"].models["gpt-small"].maxOutputTokens, 8192);
 });
 
 test("model gateway app connections apply through HTTP routes against an isolated home", async () => {
@@ -4543,7 +4543,7 @@ test("model gateway app connections apply through HTTP routes against an isolate
     assert.equal(JSON.stringify(preview.body).includes("sk-upstream-isolated"), false);
     assert.equal(JSON.stringify(preview.body).includes("sk-keep-opencode"), false);
     assert.equal(JSON.stringify(preview.body).includes("keep-openclaw"), false);
-    assert.equal(JSON.stringify(preview.body).includes("<STUDIO_GATEWAY_KEY>"), true);
+    assert.equal(JSON.stringify(preview.body).includes("<TRACEVANE_GATEWAY_KEY>"), true);
 
     const applyAll = await requestJson(`${baseUrl}/api/model-gateway/app-connections/apply`, {
       method: "POST",
@@ -4566,18 +4566,18 @@ test("model gateway app connections apply through HTTP routes against an isolate
     assert.equal(claudeConfig.env.ANTHROPIC_MODEL, "model-a");
 
     const opencodeConfig = JSON.parse(fs.readFileSync(opencodePath, "utf8"));
-    assert.equal(opencodeConfig.model, "studio-gateway/alias-b");
+    assert.equal(opencodeConfig.model, "tracevane-gateway/alias-b");
     assert.equal(opencodeConfig.provider.keep.options.apiKey, "sk-keep-opencode");
-    assert.equal(opencodeConfig.provider["studio-gateway"].options.baseURL, "http://127.0.0.1:18796/v1");
-    assert.equal(opencodeConfig.provider["studio-gateway"].options.apiKey, "sk-local-isolated");
-    assert.deepEqual(Object.keys(opencodeConfig.provider["studio-gateway"].models).sort(), ["alias-b", "model-a", "model-b"]);
+    assert.equal(opencodeConfig.provider["tracevane-gateway"].options.baseURL, "http://127.0.0.1:18796/v1");
+    assert.equal(opencodeConfig.provider["tracevane-gateway"].options.apiKey, "sk-local-isolated");
+    assert.deepEqual(Object.keys(opencodeConfig.provider["tracevane-gateway"].models).sort(), ["alias-b", "model-a", "model-b"]);
 
     const openclawConfig = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
     assert.equal(openclawConfig.gateway.auth.token, "keep-openclaw");
     assert.equal(openclawConfig.models.providers.keep.api, "openai-completions");
-    assert.equal(openclawConfig.models.providers["studio-gateway"].baseUrl, "http://127.0.0.1:18796/v1");
-    assert.equal(openclawConfig.models.providers["studio-gateway"].apiKey, "sk-local-isolated");
-    assert.equal(openclawConfig.agents.defaults.model.primary, "studio-gateway/model-a");
+    assert.equal(openclawConfig.models.providers["tracevane-gateway"].baseUrl, "http://127.0.0.1:18796/v1");
+    assert.equal(openclawConfig.models.providers["tracevane-gateway"].apiKey, "sk-local-isolated");
+    assert.equal(openclawConfig.agents.defaults.model.primary, "tracevane-gateway/model-a");
 
     const configured = await requestJson(`${baseUrl}/api/model-gateway/app-connections`);
     assert.equal(configured.status, 200);
@@ -4603,7 +4603,7 @@ test("model gateway app connections apply through HTTP routes against an isolate
     const restoredOpenClawConfig = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
     assert.equal(restoredOpenClawConfig.gateway.auth.token, "keep-openclaw");
     assert.equal(restoredOpenClawConfig.models.providers.keep.api, "openai-completions");
-    assert.equal(restoredOpenClawConfig.models.providers["studio-gateway"], undefined);
+    assert.equal(restoredOpenClawConfig.models.providers["tracevane-gateway"], undefined);
   });
 });
 
@@ -5885,7 +5885,7 @@ test("model gateway daemon writes runtime metadata and serves cli routes", async
   });
 });
 
-test("model gateway child daemon keeps serving after Studio API listener shuts down", async () => {
+test("model gateway child daemon keeps serving after Tracevane API listener shuts down", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   const paths = resolveModelGatewayPaths(config);

@@ -30,7 +30,7 @@ const skillsService = read("apps/api/modules/skills/service.ts");
 const webPackage = JSON.parse(read("apps/web-vue/package.json"));
 const main = read("apps/web-vue/src/main.ts");
 
-test("files route and management domain are wired into Studio shell", () => {
+test("files route and management domain are wired into Tracevane shell", () => {
   assert.match(routeManifest, /const FilesView = \(\) => import\("\.\.\/\.\.\/views\/FilesView\.vue"\)/);
   assert.match(routeManifest, /path:\s*"\/files"/);
   assert.match(routeManifest, /key:\s*"files"/);
@@ -41,7 +41,7 @@ test("files route and management domain are wired into Studio shell", () => {
   assert.match(filesView, /getManagementDomainEntry\("files"\)/);
 });
 
-test("files workspace is a native Studio workbench instead of a retired vendor adapter", () => {
+test("files workspace is a native Tracevane workbench instead of a retired vendor adapter", () => {
   assert.doesNotMatch(filesControlPage, retiredVendorPattern);
   assert.doesNotMatch(filesWorkspaceCss, retiredVendorPattern);
   assert.doesNotMatch(main, retiredVendorPattern);

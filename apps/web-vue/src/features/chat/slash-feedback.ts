@@ -54,13 +54,13 @@ function describeCompactFeedback(
       ? {
         tone: 'info',
         title: '已发送 /compact',
-        detail: feedback.detail || 'Studio 已收到命令，等待宿主开始执行上下文压缩。',
+        detail: feedback.detail || 'Tracevane 已收到命令，等待宿主开始执行上下文压缩。',
         commandText,
       }
       : {
         tone: 'info',
         title: 'Sent /compact',
-        detail: feedback.detail || 'Studio accepted the command and is waiting for the host to begin compaction.',
+        detail: feedback.detail || 'Tracevane accepted the command and is waiting for the host to begin compaction.',
         commandText,
       };
   }
@@ -138,13 +138,13 @@ function describeSteerFeedback(
       ? {
         tone: 'info',
         title: '已发送 /steer',
-        detail: feedback.detail || 'Studio 已把引导消息发给当前运行，等待宿主继续执行。',
+        detail: feedback.detail || 'Tracevane 已把引导消息发给当前运行，等待宿主继续执行。',
         commandText,
       }
       : {
         tone: 'info',
         title: 'Sent /steer',
-        detail: feedback.detail || 'Studio sent the steer message and is waiting for the host to continue the current run.',
+        detail: feedback.detail || 'Tracevane sent the steer message and is waiting for the host to continue the current run.',
         commandText,
       };
   }
@@ -222,13 +222,13 @@ function describeRedirectFeedback(
       ? {
         tone: 'info',
         title: '已发送 /redirect',
-        detail: feedback.detail || 'Studio 已请求宿主中止当前运行并开始新的执行。',
+        detail: feedback.detail || 'Tracevane 已请求宿主中止当前运行并开始新的执行。',
         commandText,
       }
       : {
         tone: 'info',
         title: 'Sent /redirect',
-        detail: feedback.detail || 'Studio asked the host to stop the current run and start a new one.',
+        detail: feedback.detail || 'Tracevane asked the host to stop the current run and start a new one.',
         commandText,
       };
   }
@@ -306,13 +306,13 @@ function describeBtwFeedback(
       ? {
         tone: 'info',
         title: '已发送 /btw',
-        detail: feedback.detail || 'Studio 已收到侧问，等待宿主给出不进入未来上下文的临时回答。',
+        detail: feedback.detail || 'Tracevane 已收到侧问，等待宿主给出不进入未来上下文的临时回答。',
         commandText,
       }
       : {
         tone: 'info',
         title: 'Sent /btw',
-        detail: feedback.detail || 'Studio accepted the side question and is waiting for the host to answer it without affecting future context.',
+        detail: feedback.detail || 'Tracevane accepted the side question and is waiting for the host to answer it without affecting future context.',
         commandText,
       };
   }
@@ -451,13 +451,13 @@ export function describeStudioSlashExecutionFeedback(
       ? {
         tone: 'info',
         title: `已发送 ${commandName}`,
-        detail: feedback.detail || 'Studio 已收到命令，等待宿主开始执行。',
+        detail: feedback.detail || 'Tracevane 已收到命令，等待宿主开始执行。',
         commandText,
       }
       : {
         tone: 'info',
         title: `Sent ${commandName}`,
-        detail: feedback.detail || 'Studio accepted the command and is waiting for the host to start it.',
+        detail: feedback.detail || 'Tracevane accepted the command and is waiting for the host to start it.',
         commandText,
       };
   }
@@ -473,7 +473,7 @@ export function describeStudioSlashExecutionFeedback(
       : {
         tone: 'info',
         title: `Running ${commandName}`,
-        detail: feedback.detail || 'The command is running and Studio is waiting for the host result.',
+        detail: feedback.detail || 'The command is running and Tracevane is waiting for the host result.',
         commandText,
       };
   }

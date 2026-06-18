@@ -20,7 +20,7 @@ function createPayload() {
   return {
     checkedAt: "2026-04-18T00:00:00.000Z",
     server: {
-      name: "OpenClaw Studio",
+      name: "Tracevane",
       version: "0.1.21",
       port: 3760,
       pid: 123,

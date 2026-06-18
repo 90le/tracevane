@@ -303,7 +303,7 @@ export function renderChannelConnectorConversationHistoryContext(
   const visible = entries.slice(-CHANNEL_CONNECTOR_HISTORY_CONTEXT_LIMIT);
   if (!visible.length) return null;
   const lines = [
-    "[Studio IM history context - previous turns only]",
+    "[Tracevane IM history context - previous turns only]",
     visible.some((entry) => entry.status === "compact-summary")
       ? "Compact summaries and previous messages in this IM session before the current turn:"
       : "Previous messages in this IM session before the current turn:",

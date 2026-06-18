@@ -14,21 +14,21 @@ export function createStudioDeliveryTool() {
   return {
     name: 'studio_delivery',
     description: [
-      'Fallback Studio-only final delivery tool for the current Studio WebChat session.',
-      'Prefer assistant Markdown rich replies first for ordinary Studio returns, using explicit refs like workspace:, uploads:, or studio-file: plus studio: display hints.',
+      'Fallback Tracevane-only final delivery tool for the current Tracevane WebChat session.',
+      'Prefer assistant Markdown rich replies first for ordinary Tracevane returns, using explicit refs like workspace:, uploads:, or studio-file: plus studio: display hints.',
       'Prefer portable workspace: or uploads: refs for newly created workspace/upload files; use studio-file: mainly for explicit local-file compatibility when no workspace/upload ref can express the file.',
-      'These refs describe user-facing rendering. Files that the user uploads for model reading are delivered by Studio as structured fileRefs/attachments and should not be flattened into bare path text.',
-      'Raw HTML rich replies are also supported for ordinary Studio returns when you need mixed HTML layout, details/summary, inline SVG, or HTML-based resource composition without structured fallback blocks.',
-      'When Markdown is awkward, prefer direct assistant raw HTML with explicit refs in <img>, <video>, <source>, <a>, or similar tags, using title="studio:break-image" or data-studio-display="break-image" style hints so Studio upgrades the HTML into its rich media/card rendering.',
+      'These refs describe user-facing rendering. Files that the user uploads for model reading are delivered by Tracevane as structured fileRefs/attachments and should not be flattened into bare path text.',
+      'Raw HTML rich replies are also supported for ordinary Tracevane returns when you need mixed HTML layout, details/summary, inline SVG, or HTML-based resource composition without structured fallback blocks.',
+      'When Markdown is awkward, prefer direct assistant raw HTML with explicit refs in <img>, <video>, <source>, <a>, or similar tags, using title="studio:break-image" or data-studio-display="break-image" style hints so Tracevane upgrades the HTML into its rich media/card rendering.',
       'Use studio_delivery only when assistant Markdown cannot express the final reply reliably enough.',
-      'Do not use message for current-session Studio delivery.',
+      'Do not use message for current-session Tracevane delivery.',
       'Pure text replies may still answer directly as assistant text.',
       'Do not output file paths, local paths, raw MEDIA text, or fallback attachment syntax in assistant messages.',
       'Primary Markdown examples: [Diagram](workspace:diagram.png "studio:break-image"), [Demo](uploads:demo.mp4 "studio:break-video"), [Package](studio-file:./report.pdf "studio:card"), [Attachment](studio-file:./report.pdf "studio:inline-chip").',
       'Primary raw HTML examples: <img src="workspace:diagram.png" title="studio:break-image" alt="Diagram">, <video src="uploads:demo.mp4" title="studio:break-video"></video>, <a href="studio-file:./report.pdf" title="studio:card">Package</a>, <img src="workspace:thumb.png" data-studio-display="inline-image" alt="Thumb">.',
-      'Raw HTML rich replies may also place explicit Markdown-style Studio refs inside HTML containers such as <details>...</details> when that mixed format is clearer.',
+      'Raw HTML rich replies may also place explicit Markdown-style Tracevane refs inside HTML containers such as <details>...</details> when that mixed format is clearer.',
       'Use version 1 only for legacy ordered text/resource cards. Prefer version 2 for paragraph segments, break-image, break-video, break-chip, inline-image, inline-video, inline-chip, and card blocks when you need the fallback path.',
-      'Default Studio rich replies should prefer break-image, break-video, and break-chip so media/files appear on their own lines inside the paragraph flow.',
+      'Default Tracevane rich replies should prefer break-image, break-video, and break-chip so media/files appear on their own lines inside the paragraph flow.',
       'Use inline-image, inline-video, and inline-chip only when you explicitly need sentence-level inline references.',
       'Fallback worked example 1 (default rich message with line breaks): version=2, blocks=[{type:"paragraph",segments:[{type:"text",text:"Here is the summary."},{type:"resource",resourceId:"img-1",display:"break-image"},{type:"text",text:"Download the package below."},{type:"resource",resourceId:"file-1",display:"break-chip"},{type:"text",text:"Watch the demo after that."},{type:"resource",resourceId:"video-1",display:"break-video"}]}], resources=[{id:"img-1",kind:"image",fileName:"diagram.png",filePath:"./diagram.png"},{id:"file-1",kind:"file",fileName:"report.pdf",filePath:"./report.pdf"},{id:"video-1",kind:"video",fileName:"demo.mp4",filePath:"./demo.mp4"}].',
       'Fallback worked example 2 (true inline reference): version=2, blocks=[{type:"paragraph",segments:[{type:"text",text:"Compare "},{type:"resource",resourceId:"img-1",display:"inline-image"},{type:"text",text:" with "},{type:"resource",resourceId:"file-1",display:"inline-chip"},{type:"text",text:" in the same sentence."}]}], resources=[{id:"img-1",kind:"image",fileName:"diagram.png",filePath:"./diagram.png"},{id:"file-1",kind:"file",fileName:"report.pdf",filePath:"./report.pdf"}].',
@@ -44,7 +44,7 @@ export function createStudioDeliveryTool() {
         },
         blocks: {
           type: 'array',
-          description: 'Ordered Studio message blocks for the current Studio chat. Version 1 accepts legacy text/resource cards. Version 2 accepts paragraph blocks with ordered text/resource segments plus card resources. Default rich replies should prefer break-image/break-video/break-chip; use inline-* only for true sentence-level inline references.',
+          description: 'Ordered Tracevane message blocks for the current Tracevane chat. Version 1 accepts legacy text/resource cards. Version 2 accepts paragraph blocks with ordered text/resource segments plus card resources. Default rich replies should prefer break-image/break-video/break-chip; use inline-* only for true sentence-level inline references.',
           items: {
             oneOf: [
               {
@@ -118,7 +118,7 @@ export function createStudioDeliveryTool() {
         },
         resources: {
           type: 'array',
-          description: 'Resources referenced by blocks[].resourceId and paragraph.segments[].resourceId. Use these structured resource fields instead of message text or raw file paths when returning files/media into the current Studio chat.',
+          description: 'Resources referenced by blocks[].resourceId and paragraph.segments[].resourceId. Use these structured resource fields instead of message text or raw file paths when returning files/media into the current Tracevane chat.',
           items: {
             type: 'object',
             additionalProperties: false,

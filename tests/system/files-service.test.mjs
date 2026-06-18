@@ -69,7 +69,7 @@ test("files service discovers safe roots and browses directories", () => {
   const root = makeTempRoot();
   const config = makeConfig(root);
   writeFile(path.join(config.projectRoot, "src", "main.ts"), "console.log('hi')\n");
-  writeFile(path.join(config.projectRoot, "README.md"), "# Studio\n");
+  writeFile(path.join(config.projectRoot, "README.md"), "# Tracevane\n");
   writeFile(path.join(config.projectRoot, "alpha.txt"), "alpha\n");
   writeFile(path.join(config.projectRoot, "beta.txt"), "beta\n");
   writeFile(path.join(config.projectRoot, "gamma.txt"), "gamma\n");

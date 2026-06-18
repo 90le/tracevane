@@ -20,11 +20,11 @@ OpenClaw Recovery Daemon 是独立守护进程。Studio 健康时负责安装、
 - Gateway auth token 收敛到 SecretRef/env 单一权威来源，避免明文配置、`.env`、systemd env 和本地 secret 文件互相漂移。
 - 修复历史和配置备份支持分页浏览。
 - `/system/recovery` 提供手动配置修复、事件、备份和 daemon service 管理。
-- daemon 修复不依赖 Studio API/UI 存活。
+- daemon 修复不依赖 Tracevane API/UI 存活。
 
 ## 2. 边界
 
-- 自愈不属于 Studio Gateway。
+- 自愈不属于 Tracevane Gateway。
 - 自愈不属于 Channel Connectors。
 - `/system` 是轻量系统总览，不恢复宽泛 diagnostics 默认面。
 - `/api/system/diagnostics` 可保留为手动深诊断端点，但不能进入默认渲染、轮询或事件热路径。
@@ -53,7 +53,7 @@ OpenClaw Recovery Daemon 是独立守护进程。Studio 健康时负责安装、
 - 修复前创建配置备份。
 - 配置 prune 从 OpenClaw validation issue 动态获取路径。
 - 插件层优先禁用坏 entry 或移除缺失绝对 path，不删除插件源码目录。
-- 低优先级：Studio 插件 `/studio` 控制面静态资源缺失时可受控执行 `npm run build:web` 重建；该项只保证 OpenClaw 托管 Studio UI 可打开，不作为 OpenClaw 本体配置修复的核心验收。
+- 低优先级：Studio 插件 `/studio` 控制面静态资源缺失时可受控执行 `npm run build:web` 重建；该项只保证 OpenClaw 托管 Tracevane UI 可打开，不作为 OpenClaw 本体配置修复的核心验收。
 - Gateway 修复后深探测端口和 Studio 控制 UI 路径。
 - Gateway 服务托管修复优先使用 OpenClaw CLI 的 gateway status/install/start/restart。
 - Gateway service 修复或重启后要 bounded wait 到控制面真正 ready，避免 systemd `active` 但 Gateway 仍启动中时误判失败。

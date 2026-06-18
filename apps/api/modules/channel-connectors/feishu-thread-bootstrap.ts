@@ -166,7 +166,7 @@ function renderFeishuThreadBootstrapContext(input: {
 }): string {
   return [
     "[Feishu thread bootstrap]",
-    "Fetched from Feishu message/thread APIs because this is the first Studio Agent turn for the current topic/thread session.",
+    "Fetched from Feishu message/thread APIs because this is the first Tracevane Agent turn for the current topic/thread session.",
     "Use this as topic context only. Do not re-answer older messages unless the current user asks; the current message follows later.",
     `Session: ${input.sessionKey}`,
     `Thread: ${input.threadId}${input.rootMessageId ? ` root=${input.rootMessageId}` : ""}`,

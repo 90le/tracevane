@@ -31,7 +31,7 @@ export function resolveChannelConnectorThinkingSupport(input: {
       parserLabel: "ready",
       liveStatus: "not-observed",
       liveLabel: "not observed",
-      liveNote: "Claude Code 2.1.86 through Studio Gateway did not emit a native thinking item in live smoke.",
+      liveNote: "Claude Code 2.1.86 through Tracevane Gateway did not emit a native thinking item in live smoke.",
     };
   }
   if (input.agent === "opencode") {

@@ -2581,7 +2581,7 @@ export function createSkillsService(config: StudioServerConfig): SkillsService {
       }
 
       if (skill.sourceCategory === "bundled") {
-        throw new Error(`Bundled skill ${slug} cannot be updated from Studio`);
+        throw new Error(`Bundled skill ${slug} cannot be updated from Tracevane`);
       }
 
       const downloadUrl = resolveMarketplaceDownloadUrl(sourceId, slug);
@@ -2634,7 +2634,7 @@ export function createSkillsService(config: StudioServerConfig): SkillsService {
         slug,
         sourceId: null,
         output: `Removed ${slug} from ${removedPaths.join(", ")}`,
-        note: "已同步清理该技能的 Studio 配置项。",
+        note: "已同步清理该技能的 Tracevane 配置项。",
         affectedPath: removedPaths[0] || null,
         requiresNewSession: true,
       };

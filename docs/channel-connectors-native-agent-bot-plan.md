@@ -10,23 +10,23 @@ Studio 不走短期托管 `cc-connect` 方案。Channel Connectors 直接做成 
 
 ```text
 Feishu / Octo(dmwork) / future IM
-  -> Studio native Channel daemon
+  -> Tracevane native Channel daemon
   -> local CLI Agent bot (Codex / Claude Code / OpenCode)
-  -> Studio Gateway daemon
+  -> Tracevane Gateway daemon
   -> upstream provider
 ```
 
 首期目标收窄为 **私聊完整闭环**：
 
 - 私聊文本、图片、文件传输。
-- Agent CLI 原生能力和少量 Studio 会话控制命令。
+- Agent CLI 原生能力和少量 Tracevane 会话控制命令。
 - 工具流、思考流、过程回复、最终回复分类稳定。
 - `/stop`、`/new`、`/reset`、`/compact`、模型/目录/权限/显示开关可用。
 - Studio / OpenClaw 崩溃时，Channel daemon 与 Gateway daemon 仍可继续服务。
 
 不再继续扩展：
 
-- active `studio-channel-skill`
+- active `tracevane-channel-skill`
 - `studio-octo-actions` / `studio-feishu-actions`
 - 平台 runtime action index
 - Feishu/Octo 文档、群、管理类 API 工具层
@@ -40,13 +40,13 @@ Feishu / Octo(dmwork) / future IM
 
 1. 官方优先：Feishu/Lark、OpenCode、Claude Code、OpenAI Codex、Octo/WuKongIM 或目标平台的官方文档、API、SDK、CLI help、changelog。
 2. GitHub 与社区补充：活跃仓库、issues、discussions、release notes 和社区故障报告，用来发现事件格式升级、SDK bug、运维风险和未解决问题。
-3. 本地边界对比：只在确认 Studio daemon、session、secret、file staging、UI 和测试边界能承载后实现。
-4. 文档记录：把来源、日期、稳定合同、拒绝方案、风险和验证计划写入本文件、`studio-gateway-progress.md` 或专项 tracker。
+3. 本地边界对比：只在确认 Tracevane daemon、session、secret、file staging、UI 和测试边界能承载后实现。
+4. 文档记录：把来源、日期、稳定合同、拒绝方案、风险和验证计划写入本文件、`tracevane-gateway-progress.md` 或专项 tracker。
 5. Codex / Claude Code / OpenCode 默认使用结构化 persistent driver；one-shot `exec/resume` / TUI runner 只作为显式 opt-out、persistent crash fallback 或未支持 Agent 的兼容路径。新 Agent 若要成为默认路径，必须先补齐结构化事件、session、stop/compact、fallback 和回归证据。
 
 ## 3. Runtime 与持久化
 
-- service：`openclaw-studio-channel-connectors.service`
+- service：`openclaw-tracevane-channel-connectors.service`
 - config：`~/.config/openclaw-studio/channel-connectors/config.json`
 - daemon config：`~/.config/openclaw-studio/channel-connectors/daemon/config.json`
 - state：`~/.config/openclaw-studio/channel-connectors/daemon/state`
@@ -57,7 +57,7 @@ Feishu / Octo(dmwork) / future IM
 守护要求：
 
 - Channel daemon 是独立进程，由 OS/user supervisor 守护。
-- 运行期不依赖 Studio API；Studio 只负责配置、安装、启停、日志和管理面。
+- 运行期不依赖 Tracevane API；Tracevane 只负责配置、安装、启停、日志和管理面。
 - 同一 binding + IM session 同时只接受一个普通 Agent 任务；已有任务未结束时，新的普通 IM 消息直接回复 busy guard 提示，不入队、不落盘、不自动重放。
 - `/stop` / `/cancel` / `/status` 等控制命令仍即时执行；用户需先用 `/stop` 或 `/cancel` 结束当前任务，再重新发送新消息。
 
@@ -81,7 +81,7 @@ Octo(dmwork)：
 通用：
 
 - 入站附件先 staging 到受控目录，再交给 Agent。
-- 出站文件由 Agent 输出 `studio-channel-files` manifest，daemon 校验路径和权限后按平台上传发送。
+- 出站文件由 Agent 输出 `tracevane-channel-files` manifest，daemon 校验路径和权限后按平台上传发送。
 - 私聊默认显示思考、过程回复和工具过程；非飞书气泡式渠道的过程回复按最终回复同格式发送正文，不加“过程回复”标题；群聊中间过程只保留 best-effort。
 
 ## 5. Agent Runner 合同
@@ -118,7 +118,7 @@ Octo(dmwork)：
 - 私聊工具流、思考流、过程回复显示开关。
 - Codex 思考流解析合同已覆盖 one-shot 和 app-server；Octo 私聊 `/thinking` 开关已有端到端回归；状态、菜单和前端能力展示已区分 parser 支持与当前 live 输出观测。真实 CLI smoke 显示 Claude Code 2.1.86 当前不输出 `thinking` item，OpenCode 1.17.0 仅在支持 reasoning 的模型上输出 `reasoning` part。没有 CLI 原生事件时不伪造。
 - allowlist/admin、rate limit、banned words 基础治理。
-- active `studio-channel-skill` 与 platform action 暴露层已删除。
+- active `tracevane-channel-skill` 与 platform action 暴露层已删除。
 - Codex / Claude Code / OpenCode direct runner smoke 已证明过程回复、工具输出和最终回复分类正常；真实 IM event-log 中三者均已有过程回复样本。
 - Feishu/Octo 文件、图片、权限审批、出站文件、`/stop`、Octo 显式/自动 compact 已有回归或 24h live 证据。
 

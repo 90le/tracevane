@@ -1,7 +1,7 @@
 {
   "id": "studio",
-  "name": "OpenClaw Studio",
-  "description": "OpenClaw Studio 管理控制台扩展，当前阶段聚焦配置、技能、终端、频道、定时任务和 Agent 管理。",
+  "name": "Tracevane",
+  "description": "Tracevane 本地 AI Agent 控制工作台，聚焦 Gateway、Channel Connectors、CLI Agent 和运行态自愈。",
   "version": "0.1.21",
   "homepage": "https://github.com/binbin/openclaw-studio",
   "activation": {
@@ -21,16 +21,16 @@
       "apiPort": {
         "type": "number",
         "default": 3760,
-        "description": "Studio API 服务端口"
+        "description": "Tracevane API 服务端口"
       },
       "autoStart": {
         "type": "boolean",
         "default": true,
-        "description": "是否自动启动 Studio API 服务"
+        "description": "是否自动启动 Tracevane API 服务"
       },
       "transport": {
         "type": "object",
-        "description": "Studio 暴露模式配置。默认同时保留 standalone 和 gateway 单口入口；只有显式关闭时才禁用对应入口。",
+        "description": "Tracevane 暴露模式配置。默认同时保留 standalone 和 gateway 单口入口；只有显式关闭时才禁用对应入口。",
         "properties": {
           "preferredMode": {
             "type": "string",
@@ -39,7 +39,7 @@
               "gateway"
             ],
             "default": "standalone",
-            "description": "Studio UI 优先展示和升级时继承的主入口模式"
+            "description": "Tracevane UI 优先展示和升级时继承的主入口模式"
           },
           "standalone": {
             "type": "object",
@@ -52,7 +52,7 @@
               "port": {
                 "type": "number",
                 "default": 3760,
-                "description": "standalone 模式使用的 Studio 端口"
+                "description": "standalone 模式使用的 Tracevane 端口"
               }
             }
           },
@@ -67,7 +67,7 @@
               "basePath": {
                 "type": "string",
                 "default": "/studio",
-                "description": "gateway 模式下的 Studio 基础路径"
+                "description": "gateway 模式下的 Tracevane 基础路径"
               }
             }
           }
@@ -79,7 +79,7 @@
           "allowHostManagementExecInStudioChat": {
             "type": "boolean",
             "default": false,
-            "description": "是否允许在 Studio Chat 中执行宿主机管理命令"
+            "description": "是否允许在 Tracevane Chat 中执行宿主机管理命令"
           }
         }
       }
@@ -88,7 +88,7 @@
   "uiHints": {
     "__root__": {
       "label": "基础运行设置",
-      "help": "优先调整 Studio 的启动和暴露方式；更细的链路配置在高级字段内。",
+      "help": "优先调整 Tracevane 的启动和暴露方式；更细的链路配置在高级字段内。",
       "order": -10
     },
     "apiPort": {
@@ -100,7 +100,7 @@
     },
     "autoStart": {
       "label": "自动启动 API",
-      "help": "启用后宿主加载插件时会自动拉起 Studio API 服务。",
+      "help": "启用后宿主加载插件时会自动拉起 Tracevane API 服务。",
       "order": 20,
       "group": "__root__"
     },
@@ -152,7 +152,7 @@
       "help": "高风险调试开关，仅在本地受控环境下开启。",
       "group": "advanced-chat",
       "groupLabel": "Chat Runtime",
-      "groupHelp": "这些能力会直接影响 Studio Chat 可执行的宿主动作。",
+      "groupHelp": "这些能力会直接影响 Tracevane Chat 可执行的宿主动作。",
       "groupOrder": 90,
       "order": 10,
       "advanced": true

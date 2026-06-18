@@ -30,7 +30,7 @@ function createSession(key, agentId, overrides = {}) {
       source: 'studio',
       channel: 'webchat',
       surface: 'studio-chat',
-      originLabel: 'Studio managed',
+      originLabel: 'Tracevane managed',
     },
     deliveryContext: {
       channel: 'webchat',
@@ -79,19 +79,19 @@ test('deriveSessionAgentOptions deduplicates and sorts visible agent labels', ()
 });
 
 test('session filter helpers normalize search text and honor agent boundary', () => {
-  const query = normalizeSessionFilterQuery('  Studio OPS  ');
+  const query = normalizeSessionFilterQuery('  Tracevane OPS  ');
   assert.equal(query, 'studio ops');
   assert.equal(sessionMatchesListFilter({
     selectedAgentId: 'alpha',
     sessionAgentId: 'beta',
     normalizedQuery: query,
-    searchableText: 'Studio OPS',
+    searchableText: 'Tracevane OPS',
   }), false);
   assert.equal(sessionMatchesListFilter({
     selectedAgentId: 'all',
     sessionAgentId: 'beta',
     normalizedQuery: query,
-    searchableText: 'Studio OPS',
+    searchableText: 'Tracevane OPS',
   }), true);
 });
 

@@ -519,7 +519,7 @@ function buildTextFallback(surface: Omit<ChannelConnectorCommandSurface, "textFa
   const selectedSectionId = normalizeChannelConnectorCommandSurfaceSection(surface.selectedSectionId);
   const selectedSection = selectedSectionId ? sectionById(normalizedSurface, selectedSectionId) : null;
   const lines: string[] = [
-    "Studio Channel",
+    "Tracevane Channel",
     "",
     "**当前配置**",
     compactCurrentSummary(surface),
@@ -849,7 +849,7 @@ export function buildChannelConnectorCommandSurface(
     {
       id: "native",
       title: "Agent Native",
-      summary: "未知 /xxx 自动透传；与 Studio 命令冲突时使用 /native。",
+      summary: "未知 /xxx 自动透传；与 Tracevane 命令冲突时使用 /native。",
       actions: [
         action("native-help", "Agent 帮助", "/native /help", {
           nativePassthrough: true,
@@ -865,7 +865,7 @@ export function buildChannelConnectorCommandSurface(
 
   const withoutFallback: Omit<ChannelConnectorCommandSurface, "textFallback"> = {
     version: 1,
-    title: "Studio Channel 操作台",
+    title: "Tracevane Channel 操作台",
     selectedSectionId: normalizeChannelConnectorCommandSurfaceSection(input.selectedSectionId) || null,
     selectedViewId: normalizeChannelConnectorCommandSurfaceView(input.selectedViewId) || null,
     current: {
@@ -1262,7 +1262,7 @@ function commandSurfaceItemDescription(item: ChannelConnectorCommandSurfaceActio
     case "whoami":
       return "查看当前 IM 用户、频道和 session id";
     case "version":
-      return "查看 Studio Channel runtime 版本和当前 binding";
+      return "查看 Tracevane Channel runtime 版本和当前 binding";
     case "current":
       return "查看当前 IM session、Agent 续接和最近状态";
     case "sessions":
@@ -1388,7 +1388,7 @@ function sectionSummary(sectionId: FeishuMenuSectionId): string {
     case "agent":
       return "选择当前对话使用的 CLI Agent Profile，例如 Codex、Claude Code 或 OpenCode。";
     case "model":
-      return "从 Studio Gateway 可用模型中选择当前会话模型，不改全局默认配置。";
+      return "从 Tracevane Gateway 可用模型中选择当前会话模型，不改全局默认配置。";
     case "vision":
       return "配置图片输入的自动视觉 fallback；默认关闭，需要时再为当前会话开启。";
     case "mode":
@@ -1773,7 +1773,7 @@ function renderVisionPickerCard(surface: ChannelConnectorCommandSurface): Channe
   pushSubcardNavRows(elements, surface, "vision");
   elements.push({
     tag: "note",
-    elements: [plainText("选择只作用于当前 IM session；平台 binding 默认值在 Studio 页面配置。")],
+    elements: [plainText("选择只作用于当前 IM session；平台 binding 默认值在 Tracevane 页面配置。")],
   });
   return {
     config: {
@@ -2167,7 +2167,7 @@ function renderBufferCard(surface: ChannelConnectorCommandSurface): ChannelConne
       tag: "markdown",
       content: [
         "**Reply Buffer**",
-        "群聊长回复会保存在 Studio 本地，只在群里发送预览和 buffer id。",
+        "群聊长回复会保存在 Tracevane 本地，只在群里发送预览和 buffer id。",
         "",
         "**读取范围**",
         "只读取当前 binding 和当前 IM session 的缓存。",
@@ -2239,7 +2239,7 @@ function renderCommandsCard(surface: ChannelConnectorCommandSurface): ChannelCon
   pushSubcardNavRows(elements, surface, "commands");
   elements.push({
     tag: "note",
-    elements: [plainText("优先级：Studio 内置命令 > config command > Agent command file > Skill > 原生透传。")],
+    elements: [plainText("优先级：Tracevane 内置命令 > config command > Agent command file > Skill > 原生透传。")],
   });
   return {
     config: {
@@ -2356,7 +2356,7 @@ function renderSessionListCard(surface: ChannelConnectorCommandSurface): Channel
         "**Agent Sessions**",
         "当前 IM session 还没有本地 Agent session。",
         "",
-        "发送普通消息后，Studio 会保存可续接记录；也可以用新会话开启新的 Agent 会话。",
+        "发送普通消息后，Tracevane 会保存可续接记录；也可以用新会话开启新的 Agent 会话。",
       ].join("\n"),
     });
   } else {
@@ -2413,7 +2413,7 @@ function renderSessionListCard(surface: ChannelConnectorCommandSurface): Channel
   pushSubcardNavRows(elements, surface, "session");
   elements.push({
     tag: "note",
-    elements: [plainText("列表来自 Studio 本地 Agent session store；/switch <序号|sessionId前缀> 只切换当前 IM session。")],
+    elements: [plainText("列表来自 Tracevane 本地 Agent session store；/switch <序号|sessionId前缀> 只切换当前 IM session。")],
   });
   return {
     config: {
@@ -2462,7 +2462,7 @@ function renderHistoryCard(surface: ChannelConnectorCommandSurface): ChannelConn
   pushSubcardNavRows(elements, surface, "session");
   elements.push({
     tag: "note",
-    elements: [plainText("History 来自 Studio 本地 IM session store；/new 和 /reset 会清理当前会话 history。")],
+    elements: [plainText("History 来自 Tracevane 本地 IM session store；/new 和 /reset 会清理当前会话 history。")],
   });
   return {
     config: {
@@ -2573,7 +2573,7 @@ function renderHelpMenuCard(
   pushActionRows(elements, [homeMenuAction()], surface, 1, true);
   elements.push({
     tag: "note",
-    elements: [plainText("选择类按钮只作用于当前 IM session；全局默认配置在 Studio 页面维护。")],
+    elements: [plainText("选择类按钮只作用于当前 IM session；全局默认配置在 Tracevane 页面维护。")],
   });
 
   return {
@@ -2644,7 +2644,7 @@ function withCommandNotice(
   const text = truncateNoticeText(notice.text);
   const template = notice.ok === false ? "red" : notice.ok === null ? "yellow" : "green";
   const header = card.header || {
-    title: plainText("Studio Channel Menu"),
+    title: plainText("Tracevane Channel Menu"),
     template: "blue",
   };
   return {

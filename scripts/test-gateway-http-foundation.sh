@@ -106,7 +106,7 @@ echo "[3/3] verify standalone port is not exposed"
 if curl -sf "http://127.0.0.1:3760/api/system/health" >/dev/null 2>&1; then
   echo "  note: port 3760 is reachable in this machine; standalone may be provided by another process"
 else
-  echo "  ok: no Studio standalone endpoint from this test instance"
+  echo "  ok: no Tracevane standalone endpoint from this test instance"
 fi
 
 echo ""

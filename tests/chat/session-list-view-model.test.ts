@@ -27,7 +27,7 @@ function createSession(key: string): ChatSessionRow {
       source: 'studio',
       channel: 'webchat',
       surface: 'studio-chat',
-      originLabel: 'Studio',
+      originLabel: 'Tracevane',
     },
     deliveryContext: {
       channel: 'webchat',

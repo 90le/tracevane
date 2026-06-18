@@ -972,14 +972,14 @@ const hostManagementExecToggleTitle = computed(() => {
   }
   if (!props.globalHostManagementExecEnabled) {
     return text(
-      '全局开关未开启。前往 Config > 沙盒与安全，打开“允许在 Studio Chat 中启用宿主管理 Exec”。',
-      'The global switch is off. Go to Config > Sandbox & Security and enable “Allow host-management Exec in Studio Chat”.',
+      '全局开关未开启。前往 Config > 沙盒与安全，打开“允许在 Tracevane Chat 中启用宿主管理 Exec”。',
+      'The global switch is off. Go to Config > Sandbox & Security and enable “Allow host-management Exec in Tracevane Chat”.',
     );
   }
   return props.sessionHostManagementExecEnabled
     ? text(
-      '当前会话已允许宿主管理 Exec；刷新保留，Studio 重启后失效。',
-      'Host-management Exec is enabled for this chat; it survives refresh and resets after Studio restarts.',
+      '当前会话已允许宿主管理 Exec；刷新保留，Tracevane 重启后失效。',
+      'Host-management Exec is enabled for this chat; it survives refresh and resets after Tracevane restarts.',
     )
     : text(
       '点击为当前会话开启宿主管理 Exec。',

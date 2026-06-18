@@ -79,9 +79,9 @@ function printHelp() {
 Read-only Feishu long-connection soak for the native Channel Connectors daemon.
 The script does not send IM messages. By default it watches the live runtime for
 70 seconds, crossing the old 30s zero-inbound failure window, and fails on the
-  Studio-side rebuild patterns that previously made Feishu unstable. The default
+  Tracevane-side rebuild patterns that previously made Feishu unstable. The default
   Feishu contract arms the Lark SDK lower-case pingTimeout watchdog and also
-  records the SDK's application-level ping/pong frames so Studio can surface and
+  records the SDK's application-level ping/pong frames so Tracevane can surface and
   recover false-connected sockets.
 
 Options:
@@ -436,7 +436,7 @@ function logViolations(events, options) {
         type: event.type,
         key: event.key,
         timestamp: event.timestamp,
-        message: "Studio zero-inbound watchdog rebuilt the Feishu socket during the checked window.",
+        message: "Tracevane zero-inbound watchdog rebuilt the Feishu socket during the checked window.",
         line: event.line,
       });
     }
@@ -445,7 +445,7 @@ function logViolations(events, options) {
         type: event.type,
         key: event.key,
         timestamp: event.timestamp,
-        message: "Studio ingress-unverified renewal rebuilt the Feishu socket during the checked window.",
+        message: "Tracevane ingress-unverified renewal rebuilt the Feishu socket during the checked window.",
         line: event.line,
       });
     }
@@ -454,7 +454,7 @@ function logViolations(events, options) {
         type: event.type,
         key: event.key,
         timestamp: event.timestamp,
-        message: "Studio connected-idle watchdog rebuilt the Feishu socket during the checked window.",
+        message: "Tracevane connected-idle watchdog rebuilt the Feishu socket during the checked window.",
         line: event.line,
       });
     }
@@ -463,7 +463,7 @@ function logViolations(events, options) {
         type: event.type,
         key: event.key,
         timestamp: event.timestamp,
-        message: "Studio verified-ingress renewal rebuilt the Feishu socket during the checked window.",
+        message: "Tracevane verified-ingress renewal rebuilt the Feishu socket during the checked window.",
         line: event.line,
       });
     }
@@ -472,7 +472,7 @@ function logViolations(events, options) {
         type: event.type,
         key: event.key,
         timestamp: event.timestamp,
-        message: "Studio daemon watchdog restarted the Feishu socket during the checked window.",
+        message: "Tracevane daemon watchdog restarted the Feishu socket during the checked window.",
         line: event.line,
       });
     }
@@ -481,7 +481,7 @@ function logViolations(events, options) {
         type: event.type,
         key: event.key,
         timestamp: event.timestamp,
-        message: "Feishu SDK received an event that Studio's dispatcher did not handle.",
+        message: "Feishu SDK received an event that Tracevane's dispatcher did not handle.",
         line: event.line,
       });
     }
@@ -499,7 +499,7 @@ function logViolations(events, options) {
         type: event.type,
         key: event.key,
         timestamp: event.timestamp,
-        message: "Feishu SDK failed while invoking Studio's event dispatcher.",
+        message: "Feishu SDK failed while invoking Tracevane's event dispatcher.",
         line: event.line,
       });
     }

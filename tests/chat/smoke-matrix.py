@@ -300,7 +300,7 @@ def warm_chat_surface(base_url: str = "http://127.0.0.1:5176") -> dict[str, obje
         try:
             with urllib.request.urlopen(f"{base_url}/chat", timeout=10) as response:
                 body = response.read(2048).decode("utf-8", errors="replace")
-                if response.status < 400 and "OpenClaw Studio" in body:
+                if response.status < 400 and "Tracevane" in body:
                     return {
                         "name": "chat-surface-warmup",
                         "category": "preflight",
@@ -321,7 +321,7 @@ def warm_chat_surface(base_url: str = "http://127.0.0.1:5176") -> dict[str, obje
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run the Studio Chat smoke matrix.")
+    parser = argparse.ArgumentParser(description="Run the Tracevane Chat smoke matrix.")
     parser.add_argument(
         "--profile",
         choices=("core", "full"),

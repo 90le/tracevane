@@ -72,7 +72,7 @@ function buildCandidateApiBases(): string[] {
   }
 
   if (import.meta.env.DEV && window.location.port === '5176') {
-    // The Vite dev server already mounts the Studio API middleware locally.
+    // The Vite dev server already mounts the Tracevane API middleware locally.
     // Probing :3760 in parallel creates split-brain state when an unrelated
     // standalone API is also running on the same machine.
     return [''];
@@ -144,7 +144,7 @@ async function resolveApiBase(): Promise<string> {
     try {
       return await Promise.any(probeTasks);
     } catch {
-      throw new Error('无法连接 Studio API，请确认 Gateway 插件服务或本地开发 API 已启动');
+      throw new Error('无法连接 Tracevane API，请确认 Gateway 插件服务或本地开发 API 已启动');
     }
   })();
 

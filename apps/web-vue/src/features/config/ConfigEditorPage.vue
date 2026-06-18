@@ -144,7 +144,7 @@
                 <article class="config-core-baseline__item">
                   <span>{{ text('推荐思考级别', 'Recommended thinking') }}</span>
                   <strong>{{ text('High', 'High') }}</strong>
-                  <p>{{ text('多数 Studio 工作流先用高思考级别，再按成本调低。', 'Start most Studio workflows at high thinking, then dial down only when cost matters.') }}</p>
+                  <p>{{ text('多数 Tracevane 工作流先用高思考级别，再按成本调低。', 'Start most Tracevane workflows at high thinking, then dial down only when cost matters.') }}</p>
                 </article>
                 <article class="config-core-baseline__item">
                   <span>{{ text('推荐并发', 'Recommended concurrency') }}</span>
@@ -220,7 +220,7 @@
                   <label class="form-field">
                     <span class="form-label">{{ text('心跳周期', 'Heartbeat interval') }}</span>
                     <input v-model="form.defaults.heartbeatEvery" class="form-input" :disabled="form.defaults.heartbeatMode !== 'enabled'" placeholder="30m" />
-                    <span class="field-hint">{{ text('例如 10m / 30m / 1h。启用但留空时保存为 30m。', 'For example 10m / 30m / 1h. If enabled and empty, Studio saves 30m.') }}</span>
+                    <span class="field-hint">{{ text('例如 10m / 30m / 1h。启用但留空时保存为 30m。', 'For example 10m / 30m / 1h. If enabled and empty, Tracevane saves 30m.') }}</span>
                   </label>
                 </div>
               </section>
@@ -674,14 +674,14 @@
             <section class="config-subsection is-risk config-subsection-spotlight">
               <div class="config-subsection-head">
                 <div class="config-spotlight-heading">
-                  <h4>{{ text('Studio Chat 宿主管理 Exec', 'Studio Chat host-management Exec') }}</h4>
+                  <h4>{{ text('Tracevane Chat 宿主管理 Exec', 'Tracevane Chat host-management Exec') }}</h4>
                   <span class="config-spotlight-badge">{{ text('高风险开关', 'High-impact switch') }}</span>
                 </div>
                 <p>
                   {{
                     text(
-                      '这是 Studio Chat 私聊面里最敏感的执行能力开关。打开后，用户才能在 chat 页面临时放行 `openclaw / systemctl / service / kill` 一类宿主管理命令。',
-                      'This is the most sensitive execution switch in Studio Chat. When enabled, users can temporarily allow host-management commands such as `openclaw`, `systemctl`, `service`, and `kill` inside chat sessions.',
+                      '这是 Tracevane Chat 私聊面里最敏感的执行能力开关。打开后，用户才能在 chat 页面临时放行 `openclaw / systemctl / service / kill` 一类宿主管理命令。',
+                      'This is the most sensitive execution switch in Tracevane Chat. When enabled, users can temporarily allow host-management commands such as `openclaw`, `systemctl`, `service`, and `kill` inside chat sessions.',
                     )
                   }}
                 </p>
@@ -690,12 +690,12 @@
               <label class="option-row config-spotlight-toggle">
                 <input v-model="form.studioChat.allowHostManagementExecInStudioChat" class="form-checkbox" type="checkbox" />
                 <div>
-                  <strong>{{ text('允许在 Studio Chat 中启用宿主管理 Exec', 'Allow host-management Exec in Studio Chat') }}</strong>
+                  <strong>{{ text('允许在 Tracevane Chat 中启用宿主管理 Exec', 'Allow host-management Exec in Tracevane Chat') }}</strong>
                   <span>
                     {{
                       text(
-                        '作用：允许 chat 页出现“本会话宿主管理 Exec”临时开关。配置方式：默认关闭；仅在需要通过 Studio 直接排障宿主时开启。',
-                        'Purpose: allows the chat page to expose the per-session “Host-management Exec” switch. How to configure: keep it off by default and enable it only when Studio must troubleshoot the host directly.',
+                        '作用：允许 chat 页出现“本会话宿主管理 Exec”临时开关。配置方式：默认关闭；仅在需要通过 Tracevane 直接排障宿主时开启。',
+                        'Purpose: allows the chat page to expose the per-session “Host-management Exec” switch. How to configure: keep it off by default and enable it only when Tracevane must troubleshoot the host directly.',
                       )
                     }}
                   </span>
@@ -705,8 +705,8 @@
               <div class="field-hint">
                 {{
                   text(
-                    '该开关只决定 Studio Chat 是否“允许启用”宿主管理 Exec；真正放行仍需要用户在具体会话里再次手动开启。',
-                    'This switch only decides whether Studio Chat is allowed to expose host-management Exec. Actual execution still requires the user to enable it again inside a specific chat session.',
+                    '该开关只决定 Tracevane Chat 是否“允许启用”宿主管理 Exec；真正放行仍需要用户在具体会话里再次手动开启。',
+                    'This switch only decides whether Tracevane Chat is allowed to expose host-management Exec. Actual execution still requires the user to enable it again inside a specific chat session.',
                   )
                 }}
               </div>
@@ -1240,7 +1240,7 @@
                   spellcheck="false"
                   :placeholder="text('可选：scope、identityLinks、store、sendPolicy、writeLock、maintenance 等。', 'Optional: scope, identityLinks, store, sendPolicy, writeLock, maintenance, and similar fields.')"
                 />
-                <span class="field-hint">{{ text('用于当前 Studio 没有单独控件的 session 新版字段。', 'Use this for current session fields that do not have dedicated Studio controls yet.') }}</span>
+                <span class="field-hint">{{ text('用于当前 Tracevane 没有单独控件的 session 新版字段。', 'Use this for current session fields that do not have dedicated Tracevane controls yet.') }}</span>
               </label>
               <label class="form-field form-field-full">
                 <span class="form-label">{{ text('Messages 额外 JSON', 'Messages Extra JSON') }}</span>
@@ -1251,7 +1251,7 @@
                   spellcheck="false"
                   :placeholder="text('可选：messagePrefix、visibleReplies、groupChat、inbound、statusReactions、tts 等。', 'Optional: messagePrefix, visibleReplies, groupChat, inbound, statusReactions, tts, and similar fields.')"
                 />
-                <span class="field-hint">{{ text('用于当前 Studio 没有单独控件的 messages 新版字段。', 'Use this for current messages fields that do not have dedicated Studio controls yet.') }}</span>
+                <span class="field-hint">{{ text('用于当前 Tracevane 没有单独控件的 messages 新版字段。', 'Use this for current messages fields that do not have dedicated Tracevane controls yet.') }}</span>
               </label>
             </div>
           </div>
@@ -1497,7 +1497,7 @@
                   <label class="form-field form-field-wide">
                     <span class="form-label">{{ text('MCP Servers JSON', 'MCP Servers JSON') }}</span>
                     <textarea v-model="form.mcpSkills.mcpServersJson" class="form-textarea code-textarea" rows="10" spellcheck="false" placeholder="{\n  &quot;filesystem&quot;: {\n    &quot;command&quot;: &quot;npx&quot;,\n    &quot;args&quot;: [&quot;-y&quot;, &quot;@modelcontextprotocol/server-filesystem&quot;]\n  }\n}" />
-                    <span class="field-hint">{{ text('对应 mcp.servers；保存前会校验必须是 JSON 对象。', 'Maps to mcp.servers; Studio validates that it is a JSON object before saving.') }}</span>
+                    <span class="field-hint">{{ text('对应 mcp.servers；保存前会校验必须是 JSON 对象。', 'Maps to mcp.servers; Tracevane validates that it is a JSON object before saving.') }}</span>
                   </label>
                 </div>
               </section>
@@ -1630,7 +1630,7 @@
               <section class="config-subsection is-primary">
                 <div class="config-subsection-head">
                   <h4>{{ text('低频 schema 域 JSON', 'Low-frequency schema domain JSON') }}</h4>
-                  <p>{{ text('这里覆盖没有单独 Studio 页面的大部分 OpenClaw 顶层配置域；保存时只保留当前 schema 支持的域名。', 'This covers most OpenClaw top-level config domains without dedicated Studio pages; only domain keys supported by the current schema are kept on save.') }}</p>
+                  <p>{{ text('这里覆盖没有单独 Tracevane 页面的大部分 OpenClaw 顶层配置域；保存时只保留当前 schema 支持的域名。', 'This covers most OpenClaw top-level config domains without dedicated Tracevane pages; only domain keys supported by the current schema are kept on save.') }}</p>
                 </div>
                 <label class="form-field form-field-wide">
                   <span class="form-label">{{ text('OpenClaw Domains JSON', 'OpenClaw Domains JSON') }}</span>
@@ -1647,7 +1647,7 @@
               <section class="config-subsection">
                 <div class="config-subsection-head">
                   <h4>{{ text('当前 schema 白名单', 'Current schema allowlist') }}</h4>
-                  <p>{{ text('这些域由当前安装的 OpenClaw 支持，但还没有独立 Studio 控件。', 'These domains are supported by the installed OpenClaw but do not have dedicated Studio controls yet.') }}</p>
+                  <p>{{ text('这些域由当前安装的 OpenClaw 支持，但还没有独立 Tracevane 控件。', 'These domains are supported by the installed OpenClaw but do not have dedicated Tracevane controls yet.') }}</p>
                 </div>
                 <div class="choice-group choice-group-tight">
                   <span

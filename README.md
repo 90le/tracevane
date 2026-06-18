@@ -1,6 +1,6 @@
-# Studio AI Workbench
+# Tracevane
 
-> Historical repository name: `OpenClaw Studio`
+> Compatibility repository path: `openclaw-studio`
 > Current product direction: local-first AI Agent control workbench
 
 This project is no longer framed as a generic OpenClaw management console. It is evolving into a local-first workbench for running, connecting, observing and recovering AI Agent workflows across OpenClaw, Codex, Claude Code, OpenCode, IM channels and model providers.
@@ -13,12 +13,12 @@ OpenClaw remains a supported runtime. It is not the full product boundary.
 - Channel Connectors: Feishu/Octo private chat to CLI Agent workflows, files, progress, permissions and busy guard.
 - CLI Agent Workbench: Codex, Claude Code, OpenCode and OpenClaw runtime profiles.
 - System Guard / Recovery: OpenClaw config compatibility, service repair, daemon health and secret audit support.
-- Chat / Files / Dashboard: kept as Studio-specific workbench surfaces, not generic clones of official Web UIs.
+- Chat / Files / Dashboard: kept as Tracevane-specific workbench surfaces, not generic clones of official Web UIs.
 
 ## Retired Scope
 
 - Dreaming / memory management page and BFF.
-- Studio Plugins management page and BFF.
+- Legacy plugin management page and BFF.
 - Old broad Gateway usage surface with provider/account/key archives, pagination, CSV and cost estimation.
 - Third-party migration-first plans as implementation authority.
 
@@ -34,8 +34,8 @@ Start here:
 
 Active track docs:
 
-- [docs/studio-gateway-goal.md](docs/studio-gateway-goal.md)
-- [docs/studio-gateway-progress.md](docs/studio-gateway-progress.md)
+- [docs/tracevane-gateway-goal.md](docs/tracevane-gateway-goal.md)
+- [docs/tracevane-gateway-progress.md](docs/tracevane-gateway-progress.md)
 - [docs/channel-connectors-native-agent-bot-plan.md](docs/channel-connectors-native-agent-bot-plan.md)
 - [docs/openclaw-recovery-daemon-goal.md](docs/openclaw-recovery-daemon-goal.md)
 - [docs/openclaw-recovery-daemon-progress.md](docs/openclaw-recovery-daemon-progress.md)

@@ -56,7 +56,7 @@ Examples:
 }
 
 function makeTempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-heartbeat-local-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-channel-heartbeat-local-"));
 }
 
 function cleanupTempRoot(root, keepTemp) {

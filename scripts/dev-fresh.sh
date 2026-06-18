@@ -199,7 +199,7 @@ start_background() {
   echo "$pid"
 }
 
-echo "Refreshing OpenClaw Studio canonical dev runtime"
+echo "Refreshing Tracevane canonical dev runtime"
 echo "Mode: frontend external-api -> standalone backend"
 echo "Requested ports: web=$WEB_PORT api=$API_PORT"
 
@@ -245,7 +245,7 @@ FRONTEND_PID=$frontend_pid
 EOF
 
 echo
-echo "Canonical Studio dev runtime is ready"
+echo "Canonical Tracevane dev runtime is ready"
 echo "Web: http://127.0.0.1:$WEB_PORT"
 echo "API: http://127.0.0.1:$API_PORT"
 echo "Env: $ENV_FILE"

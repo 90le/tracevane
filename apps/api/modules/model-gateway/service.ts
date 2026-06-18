@@ -182,7 +182,7 @@ const CODEX_ACCOUNT_REFRESH_WINDOW_MS = 5 * 60_000;
 const CODEX_ACCOUNT_AUTH_COOLDOWN_MS = 5 * 60_000;
 const CODEX_ACCOUNT_UPSTREAM_COOLDOWN_MS = 5 * 60_000;
 const CODEX_ACCOUNT_UPSTREAM_RETRY_AFTER_MAX_MS = 30 * 60_000;
-const CODEX_ACCOUNT_USER_AGENT = "codex_cli_rs/0.133.0 (OpenClaw Studio Gateway; local)";
+const CODEX_ACCOUNT_USER_AGENT = "codex_cli_rs/0.133.0 (Tracevane Gateway; local)";
 const CODEX_ACCOUNT_ORIGINATOR = "codex_cli_rs";
 const CODEX_ACCOUNT_IMAGE_GENERATION_MAIN_MODEL = "gpt-5.4-mini";
 const MODEL_GATEWAY_VISION_SMOKE_IMAGE_MIME_TYPE = "image/jpeg";
@@ -4495,9 +4495,18 @@ interface ModelGatewayAppConnectionSpec {
   launchHint: string | null;
 }
 
-const APP_CONNECTION_REDACTED_KEY = "<STUDIO_GATEWAY_KEY>";
-const CODEX_APP_CONNECTION_START = "# >>> OpenClaw Studio Gateway app connection >>>";
-const CODEX_APP_CONNECTION_END = "# <<< OpenClaw Studio Gateway app connection <<<";
+const GATEWAY_PROVIDER_ID = "tracevane-gateway";
+const LEGACY_GATEWAY_PROVIDER_ID = "studio-gateway";
+const CODEX_GATEWAY_PROVIDER_ID = "tracevane_gateway";
+const LEGACY_CODEX_GATEWAY_PROVIDER_ID = "studio_gateway";
+const APP_CONNECTION_REDACTED_KEY = "<TRACEVANE_GATEWAY_KEY>";
+const LEGACY_APP_CONNECTION_REDACTED_KEY = "<STUDIO_GATEWAY_KEY>";
+const CODEX_APP_CONNECTION_START = "# >>> Tracevane Gateway app connection >>>";
+const CODEX_APP_CONNECTION_END = "# <<< Tracevane Gateway app connection <<<";
+const LEGACY_CODEX_APP_CONNECTION_MARKERS = [
+  ["# >>> Studio Gateway app connection >>>", "# <<< Studio Gateway app connection <<<"],
+  ["# >>> OpenClaw Studio Gateway app connection >>>", "# <<< OpenClaw Studio Gateway app connection <<<"],
+] as const;
 
 function normalizeAppConnectionId(value: unknown): ModelGatewayAppConnectionId | null {
   return MODEL_GATEWAY_APP_CONNECTION_IDS.includes(value as ModelGatewayAppConnectionId)
@@ -4518,12 +4527,45 @@ function tomlBoolean(value: boolean): string {
 }
 
 function stripCodexManagedBlock(source: string): string {
-  const start = CODEX_APP_CONNECTION_START.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  const end = CODEX_APP_CONNECTION_END.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return source
-    .replace(new RegExp(`\\n?${start}[\\s\\S]*?${end}\\n?`, "g"), "\n")
+  const markers = [
+    [CODEX_APP_CONNECTION_START, CODEX_APP_CONNECTION_END],
+    ...LEGACY_CODEX_APP_CONNECTION_MARKERS,
+  ] as const;
+  let next = source;
+  for (const [startMarker, endMarker] of markers) {
+    const start = startMarker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const end = endMarker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    next = next.replace(new RegExp(`\\n?${start}[\\s\\S]*?${end}\\n?`, "g"), "\n");
+  }
+  return next
     .replace(/\n{3,}/g, "\n\n")
     .trimEnd();
+}
+
+function gatewayProviderEntries(
+  providers: Record<string, unknown>,
+): { current: Record<string, unknown>; legacy: Record<string, unknown> } {
+  const current = isRecord(providers[GATEWAY_PROVIDER_ID]) ? providers[GATEWAY_PROVIDER_ID] : {};
+  const legacy = isRecord(providers[LEGACY_GATEWAY_PROVIDER_ID]) ? providers[LEGACY_GATEWAY_PROVIDER_ID] : {};
+  return { current, legacy };
+}
+
+function withoutLegacyGatewayProvider(providers: Record<string, unknown>): Record<string, unknown> {
+  const next = { ...providers };
+  delete next[LEGACY_GATEWAY_PROVIDER_ID];
+  return next;
+}
+
+function gatewayModelReference(model: string): string {
+  return `${GATEWAY_PROVIDER_ID}/${model}`;
+}
+
+function migrateLegacyGatewayModelReference(value: unknown): string | null {
+  const model = normalizeString(value);
+  const legacyPrefix = `${LEGACY_GATEWAY_PROVIDER_ID}/`;
+  if (!model.startsWith(legacyPrefix)) return null;
+  const modelId = model.slice(legacyPrefix.length).trim();
+  return modelId ? gatewayModelReference(modelId) : null;
 }
 
 function upsertTopLevelTomlScalar(source: string, key: string, value: string | null): string {
@@ -4584,7 +4626,7 @@ function buildCodexConfig(source: string, options: {
   profile: ModelGatewayAppConnectionProfile;
 }): string {
   let next = stripCodexManagedBlock(source);
-  next = upsertTopLevelTomlString(next, "model_provider", "studio_gateway");
+  next = upsertTopLevelTomlString(next, "model_provider", CODEX_GATEWAY_PROVIDER_ID);
   if (options.profile.model) next = upsertTopLevelTomlString(next, "model", options.profile.model);
   if (options.profile.reasoningEffort) {
     next = upsertTopLevelTomlString(next, "model_reasoning_effort", options.profile.reasoningEffort);
@@ -4599,8 +4641,8 @@ function buildCodexConfig(source: string, options: {
   );
   const block = [
     CODEX_APP_CONNECTION_START,
-    "[model_providers.studio_gateway]",
-    "name = \"OpenClaw Studio Gateway\"",
+    `[model_providers.${CODEX_GATEWAY_PROVIDER_ID}]`,
+    "name = \"Tracevane Gateway\"",
     `base_url = ${tomlString(options.endpoint)}`,
     "wire_api = \"responses\"",
     `supports_websockets = ${tomlBoolean(options.profile.protocolOptions.codexResponsesWebsockets)}`,
@@ -4643,6 +4685,7 @@ function isSecretPreviewKey(key: string): boolean {
 function isPreviewPlaceholder(value: string): boolean {
   const trimmed = value.trim();
   return trimmed === APP_CONNECTION_REDACTED_KEY
+    || trimmed === LEGACY_APP_CONNECTION_REDACTED_KEY
     || trimmed === "<REDACTED>"
     || /^\$\{[A-Z0-9_]+\}$/.test(trimmed);
 }
@@ -4726,7 +4769,7 @@ function buildOpenCodeConfig(source: string | null, targetPath: string, options:
 }): { content: string; error: string | null } {
   const parsed = parseJsonObjectForConnection(targetPath, source);
   if (parsed.error) return { content: stringifyConnectionJson(parsed.value), error: parsed.error };
-  const provider = isRecord(parsed.value.provider) ? parsed.value.provider : {};
+  const provider = withoutLegacyGatewayProvider(isRecord(parsed.value.provider) ? parsed.value.provider : {});
   const modelCatalogIds = Array.from(new Set([
     ...options.modelIds,
     ...(options.profile.model ? [options.profile.model] : []),
@@ -4744,16 +4787,19 @@ function buildOpenCodeConfig(source: string | null, targetPath: string, options:
     reasoning: false,
     temperature: true,
   }]));
+  const model = options.profile.model
+    ? gatewayModelReference(options.profile.model)
+    : migrateLegacyGatewayModelReference(parsed.value.model);
   return {
     error: null,
     content: stringifyConnectionJson({
       ...parsed.value,
-      ...(options.profile.model ? { model: `studio-gateway/${options.profile.model}` } : {}),
+      ...(model ? { model } : {}),
       provider: {
         ...provider,
-        "studio-gateway": {
+        [GATEWAY_PROVIDER_ID]: {
           npm: "@ai-sdk/openai-compatible",
-          name: "OpenClaw Studio Gateway",
+          name: "Tracevane Gateway",
           options: {
             apiKey: options.key,
             baseURL: options.endpoint,
@@ -4775,7 +4821,7 @@ function buildOpenClawConfig(source: string | null, targetPath: string, options:
   const parsed = parseJsonObjectForConnection(targetPath, source);
   if (parsed.error) return { content: stringifyConnectionJson(parsed.value), error: parsed.error };
   const modelsRoot = isRecord(parsed.value.models) ? parsed.value.models : {};
-  const providers = isRecord(modelsRoot.providers) ? modelsRoot.providers : {};
+  const providers = withoutLegacyGatewayProvider(isRecord(modelsRoot.providers) ? modelsRoot.providers : {});
   const modelCatalogIds = Array.from(new Set([
     ...options.modelIds,
     ...(options.profile.model ? [options.profile.model] : []),
@@ -4797,7 +4843,7 @@ function buildOpenClawConfig(source: string | null, targetPath: string, options:
         mode: normalizeString(modelsRoot.mode, "merge"),
         providers: {
           ...providers,
-          "studio-gateway": {
+          [GATEWAY_PROVIDER_ID]: {
             auth: "api-key",
             request: {
               allowPrivateNetwork: true,
@@ -4822,13 +4868,17 @@ function mergeOpenClawAgentDefaultModel(
 ): Record<string, unknown> {
   const agents = isRecord(agentsValue) ? agentsValue : {};
   const defaults = isRecord(agents.defaults) ? agents.defaults : {};
+  const defaultModel = isRecord(defaults.model) ? defaults.model : {};
+  const primary = profile.model
+    ? gatewayModelReference(profile.model)
+    : migrateLegacyGatewayModelReference(defaultModel.primary);
   return {
     ...agents,
     defaults: {
       ...defaults,
       model: {
-        ...(isRecord(defaults.model) ? defaults.model : {}),
-        ...(profile.model ? { primary: `studio-gateway/${profile.model}` } : {}),
+        ...defaultModel,
+        ...(primary ? { primary } : {}),
       },
       ...(profile.reasoningEffort ? { thinkingDefault: profile.reasoningEffort } : {}),
     },
@@ -5318,7 +5368,7 @@ export function createModelGatewayService(
     if (isGatewayClientAuthorized(req)) return;
     throw new ModelGatewayServiceError(
       "model_gateway_client_auth_required",
-      "Studio Gateway client requests require the configured local Gateway key.",
+      "Tracevane Gateway client requests require the configured local Gateway key.",
       401,
     );
   }
@@ -6466,8 +6516,8 @@ export function createModelGatewayService(
             "CLI takeover should prefer the daemon loopback endpoint.",
           ]
           : [
-            "Local Gateway daemon service is not active; Studio API is serving the embedded fallback.",
-            "Embedded fallback does not survive Studio API or OpenClaw process crashes.",
+            "Local Gateway daemon service is not active; Tracevane API is serving the embedded fallback.",
+            "Embedded fallback does not survive Tracevane API or OpenClaw process crashes.",
           ],
       },
       endpointPolicy: {
@@ -7106,7 +7156,7 @@ export function createModelGatewayService(
         ...(existing?.metadata || {}),
         importedFrom: "codex-device-login",
         website: "https://chatgpt.com",
-        notes: "User-owned Codex/ChatGPT account-backed provider. Credentials stay in the local Studio Gateway secret store.",
+        notes: "User-owned Codex/ChatGPT account-backed provider. Credentials stay in the local Tracevane Gateway secret store.",
       },
     }, existing || undefined);
     const index = registry.providers.findIndex((item) => item.id === provider.id);
@@ -7530,7 +7580,7 @@ export function createModelGatewayService(
           id: item.id,
           object: "model" as const,
           created: 0,
-          owned_by: item.providerIds.size > 1 ? "studio-gateway" : `provider:${[...item.providerIds][0] || "unknown"}`,
+          owned_by: item.providerIds.size > 1 ? "tracevane-gateway" : `provider:${[...item.providerIds][0] || "unknown"}`,
           label: item.label,
           contextWindow: item.contextWindow,
           maxOutputTokens: item.maxOutputTokens,
@@ -7776,9 +7826,11 @@ export function createModelGatewayService(
   function appConnectionConfigured(spec: ModelGatewayAppConnectionSpec, source: string | null): boolean {
     if (!source) return false;
     if (spec.id === "codex") {
-      return source.includes("[model_providers.studio_gateway]")
-        && source.includes("model_provider = \"studio_gateway\"")
-        && source.includes(`base_url = ${tomlString(spec.endpoint)}`);
+      return [CODEX_GATEWAY_PROVIDER_ID, LEGACY_CODEX_GATEWAY_PROVIDER_ID].some((providerId) =>
+        source.includes(`[model_providers.${providerId}]`)
+          && source.includes(`model_provider = "${providerId}"`)
+          && source.includes(`base_url = ${tomlString(spec.endpoint)}`)
+      );
     }
     const parsed = parseJsonObjectForConnection(spec.targetPath, source);
     if (parsed.error) return false;
@@ -7789,14 +7841,16 @@ export function createModelGatewayService(
     }
     if (spec.id === "opencode") {
       const provider = isRecord(parsed.value.provider) ? parsed.value.provider : {};
-      const studio = isRecord(provider["studio-gateway"]) ? provider["studio-gateway"] : {};
-      const optionsValue = isRecord(studio.options) ? studio.options : {};
+      const { current, legacy } = gatewayProviderEntries(provider);
+      const gateway = Object.keys(current).length ? current : legacy;
+      const optionsValue = isRecord(gateway.options) ? gateway.options : {};
       return normalizeString(optionsValue.baseURL) === spec.endpoint && Boolean(normalizeString(optionsValue.apiKey));
     }
     const models = isRecord(parsed.value.models) ? parsed.value.models : {};
     const providers = isRecord(models.providers) ? models.providers : {};
-    const studio = isRecord(providers["studio-gateway"]) ? providers["studio-gateway"] : {};
-    return normalizeString(studio.baseUrl) === spec.endpoint && Boolean(normalizeString(studio.apiKey));
+    const { current, legacy } = gatewayProviderEntries(providers);
+    const gateway = Object.keys(current).length ? current : legacy;
+    return normalizeString(gateway.baseUrl) === spec.endpoint && Boolean(normalizeString(gateway.apiKey));
   }
 
   function buildAppConnection(spec: ModelGatewayAppConnectionSpec, options: {
@@ -8780,7 +8834,7 @@ export function createModelGatewayService(
     } catch (error) {
       const authError = isModelGatewayServiceError(error)
         ? error
-        : new ModelGatewayServiceError("model_gateway_client_auth_failed", "Studio Gateway client authentication failed.", 401);
+        : new ModelGatewayServiceError("model_gateway_client_auth_failed", "Tracevane Gateway client authentication failed.", 401);
       appendRequestLog(requestLogEntry({
         kind: "gateway-request",
         startedAt,
@@ -8805,7 +8859,7 @@ export function createModelGatewayService(
         errorCode: authError.code,
         errorMessage: authError.message,
       }));
-      res.setHeader("WWW-Authenticate", "Bearer realm=\"Studio Gateway\"");
+      res.setHeader("WWW-Authenticate", "Bearer realm=\"Tracevane Gateway\"");
       sendJson(res, authError.statusCode, {
         error: {
           code: authError.code,
@@ -9009,7 +9063,7 @@ export function createModelGatewayService(
             providerType: "codex-account",
             feasibility: "blocked-no-codex-account-rest-audio-contract",
             reference:
-              "OpenAI documents request-based audio APIs, but no stable Codex account backend REST audio contract has been verified for Studio Gateway.",
+              "OpenAI documents request-based audio APIs, but no stable Codex account backend REST audio contract has been verified for Tracevane Gateway.",
             alternatives: [
               "Use an OpenAI-compatible provider for /v1/audio/transcriptions, /v1/audio/translations, or /v1/audio/speech.",
               isSpeechRoute

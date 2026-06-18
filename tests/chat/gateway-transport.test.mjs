@@ -29,7 +29,7 @@ test('compileGatewayMessageText prefixes file refs once and preserves body text'
   );
 });
 
-test('buildGatewayDirectSendAck maps raw gateway status into Studio ack/runtime', () => {
+test('buildGatewayDirectSendAck maps raw gateway status into Tracevane ack/runtime', () => {
   const ack = buildGatewayDirectSendAck({
     sessionKey: 'session-1',
     sessionId: 'abc',

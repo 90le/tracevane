@@ -18,7 +18,7 @@ function createServerConfig() {
       },
       gateway: {
         enabled: true,
-        basePath: "/studio-gateway",
+        basePath: "/tracevane-gateway",
       },
     },
   };
@@ -48,9 +48,9 @@ test("standalone runtime config honors STUDIO_BASE_PATH for mounted chat routes"
       "gateway",
     );
 
-    assert.equal(gatewayRuntime.appBasePath, "/studio-gateway");
-    assert.equal(gatewayRuntime.apiBasePath, "/studio-gateway");
-    assert.equal(gatewayRuntime.webSocketBasePath, "/studio-gateway");
+    assert.equal(gatewayRuntime.appBasePath, "/tracevane-gateway");
+    assert.equal(gatewayRuntime.apiBasePath, "/tracevane-gateway");
+    assert.equal(gatewayRuntime.webSocketBasePath, "/tracevane-gateway");
   } finally {
     if (previousBasePath === undefined) {
       delete process.env.STUDIO_BASE_PATH;

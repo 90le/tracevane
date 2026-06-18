@@ -41,7 +41,7 @@ function parseArgs(argv) {
 function printHelp() {
   console.log(`Usage: node scripts/smoke-model-gateway-cli.mjs [options]
 
-Runs isolated Studio Gateway CLI startup smoke checks plus Gateway HTTP maturity probes.
+Runs isolated Tracevane Gateway CLI startup smoke checks plus Gateway HTTP maturity probes.
 
 Options:
   --apps <ids>                 Comma-separated app ids: codex,claude-code,claude-code-tool,claude-code-summary,opencode,openclaw,gateway
@@ -58,7 +58,7 @@ function createStudioConfig(root) {
   fs.mkdirSync(openclawRoot, { recursive: true });
   return {
     pluginId: "studio",
-    pluginName: "OpenClaw Studio",
+    pluginName: "Tracevane",
     version: "0.1.0",
     port: 3760,
     autoStart: true,
@@ -142,7 +142,7 @@ async function startMockGateway() {
           id,
           object: "model",
           created: 0,
-          owned_by: "studio-gateway-cli-smoke",
+          owned_by: "tracevane-gateway-cli-smoke",
         })),
       });
       return;
@@ -670,7 +670,7 @@ function smokeDefinitions({ homeDir, config, workDir, mockGateway, includeOpenCl
         "--format",
         "json",
         "--model",
-        `studio-gateway/${ALIAS_MODEL}`,
+        `tracevane-gateway/${ALIAS_MODEL}`,
         "--dir",
         workDir,
         "Reply exactly GATEWAY_OK.",
@@ -682,7 +682,7 @@ function smokeDefinitions({ homeDir, config, workDir, mockGateway, includeOpenCl
       id: "openclaw",
       command: "openclaw",
       args: includeOpenClawAgent
-        ? ["agent", "--agent", "main", "--local", "--json", "--message", "Reply exactly GATEWAY_OK.", "--model", `studio-gateway/${DEFAULT_MODEL}`, "--timeout", "30"]
+        ? ["agent", "--agent", "main", "--local", "--json", "--message", "Reply exactly GATEWAY_OK.", "--model", `tracevane-gateway/${DEFAULT_MODEL}`, "--timeout", "30"]
         : ["models", "status", "--json"],
       env,
       expectedPaths: includeOpenClawAgent ? ["/v1/chat/completions"] : [],
@@ -702,7 +702,7 @@ function validateOpenClawAgentOutput({ stdout }) {
     ? parsed.payloads.map((payload) => payload?.text).filter((text) => typeof text === "string").join("\n")
     : "";
   if (!payloadText.includes("GATEWAY_OK")) errors.push("OpenClaw JSON payload did not include GATEWAY_OK.");
-  if (agentMeta?.provider !== "studio-gateway") errors.push(`OpenClaw agent provider was ${String(agentMeta?.provider || "<missing>")}.`);
+  if (agentMeta?.provider !== "tracevane-gateway") errors.push(`OpenClaw agent provider was ${String(agentMeta?.provider || "<missing>")}.`);
   if (agentMeta?.model !== DEFAULT_MODEL) errors.push(`OpenClaw agent model was ${String(agentMeta?.model || "<missing>")}.`);
   if (usage?.input !== 8 || usage?.output !== 2 || usage?.total !== 10) {
     errors.push("OpenClaw usage summary did not preserve input/output/total tokens.");
@@ -868,7 +868,7 @@ async function startHttpServer(handler) {
     server.listen(0, "127.0.0.1", resolve);
   });
   const address = server.address();
-  if (!address || typeof address !== "object") throw new Error("Studio Gateway smoke server did not bind to a TCP port.");
+  if (!address || typeof address !== "object") throw new Error("Tracevane Gateway smoke server did not bind to a TCP port.");
   return {
     baseUrl: `http://127.0.0.1:${address.port}`,
     close: () => new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve())),
@@ -1070,7 +1070,7 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   const tempParent = path.join(process.cwd(), ".tmp");
   fs.mkdirSync(tempParent, { recursive: true });
-  const root = fs.mkdtempSync(path.join(tempParent, "studio-gateway-cli-smoke-"));
+  const root = fs.mkdtempSync(path.join(tempParent, "tracevane-gateway-cli-smoke-"));
   const deadline = setTimeout(() => {
     console.error("CLI smoke timed out.");
     process.exit(2);

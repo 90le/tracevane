@@ -491,7 +491,7 @@ test('blocked queued message can be retried without sending a separate nudge', a
   }
 });
 
-test('slash gateway proxy forwards local slash rpc through the Studio backend gateway transport', async () => {
+test('slash gateway proxy forwards local slash rpc through the Tracevane backend gateway transport', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-slash-gateway-'));
   const gateway = await startFakeGateway({
     onRequest({ method, params }) {
@@ -1240,7 +1240,7 @@ test('gateway-discovered studio sessions without registry are adopted so queue a
               {
                 key: recoveredSessionKey,
                 sessionId: 'gateway-session-1',
-                label: 'Recovered Studio Session',
+                label: 'Recovered Tracevane Session',
                 updatedAt: '2026-04-09T02:00:00.000Z',
                 channel: 'webchat',
                 lastChannel: 'webchat',

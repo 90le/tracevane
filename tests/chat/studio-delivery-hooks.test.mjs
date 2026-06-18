@@ -16,7 +16,7 @@ const STUDIO_WEBCHAT_CONTEXT = {
   channelId: 'webchat',
 };
 
-test('buildStudioBeforeToolCallResult blocks management tools in Studio private chat', () => {
+test('buildStudioBeforeToolCallResult blocks management tools in Tracevane private chat', () => {
   const result = buildStudioBeforeToolCallResult({
     toolName: 'gateway',
     toolParams: { action: 'config.get' },
@@ -29,7 +29,7 @@ test('buildStudioBeforeToolCallResult blocks management tools in Studio private 
   });
 });
 
-test('buildStudioBeforeToolCallResult blocks openclaw host commands in Studio private chat', () => {
+test('buildStudioBeforeToolCallResult blocks openclaw host commands in Tracevane private chat', () => {
   const result = buildStudioBeforeToolCallResult({
     toolName: 'exec',
     toolParams: {
@@ -44,7 +44,7 @@ test('buildStudioBeforeToolCallResult blocks openclaw host commands in Studio pr
   });
 });
 
-test('buildStudioBeforeToolCallResult blocks kill-based host lifecycle commands in Studio private chat', () => {
+test('buildStudioBeforeToolCallResult blocks kill-based host lifecycle commands in Tracevane private chat', () => {
   const result = buildStudioBeforeToolCallResult({
     toolName: 'exec',
     toolParams: {
@@ -59,7 +59,7 @@ test('buildStudioBeforeToolCallResult blocks kill-based host lifecycle commands 
   });
 });
 
-test('buildStudioBeforeToolCallResult allows workspace-local exec commands in Studio private chat', () => {
+test('buildStudioBeforeToolCallResult allows workspace-local exec commands in Tracevane private chat', () => {
   const result = buildStudioBeforeToolCallResult({
     toolName: 'exec',
     toolParams: {

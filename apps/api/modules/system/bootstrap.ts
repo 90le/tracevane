@@ -134,13 +134,13 @@ function buildBootstrapChecks(config: StudioServerConfig, openclawConfig: Record
   return [
     {
       id: 'plugin-entry',
-      label: 'Studio plugin',
+      label: 'Tracevane plugin',
       level: pluginEntryEnabled && allowlistSatisfied ? 'ok' : 'error',
       summary: pluginEntryEnabled && allowlistSatisfied
-        ? 'Studio plugin 已启用'
-        : 'Studio plugin 未加入 allowlist 或被禁用',
+        ? 'Tracevane plugin 已启用'
+        : 'Tracevane plugin 未加入 allowlist 或被禁用',
       detail: pluginEntryEnabled && allowlistSatisfied
-        ? 'plugins.entries.studio 与 plugins.allow 当前允许 Studio 在宿主中稳定加载。'
+        ? 'plugins.entries.studio 与 plugins.allow 当前允许 Tracevane 在宿主中稳定加载。'
         : '需要确保 plugins.entries.studio.enabled=true，且当 plugins.allow 存在时包含 studio。',
       detected: true,
       fixable: true,
@@ -150,24 +150,24 @@ function buildBootstrapChecks(config: StudioServerConfig, openclawConfig: Record
       label: 'Plugin load path',
       level: loadPathSatisfied ? 'ok' : 'warn',
       summary: loadPathSatisfied
-        ? 'Studio 扩展目录已写入 plugins.load.paths'
-        : 'plugins.load.paths 缺少当前 Studio 目录',
+        ? 'Tracevane 扩展目录已写入 plugins.load.paths'
+        : 'plugins.load.paths 缺少当前 Tracevane 目录',
       detail: loadPathSatisfied
         ? config.projectRoot
-        : `建议加入 ${config.projectRoot}，避免新环境重启后无法重新加载 Studio。`,
+        : `建议加入 ${config.projectRoot}，避免新环境重启后无法重新加载 Tracevane。`,
       detected: true,
       fixable: true,
     },
     {
       id: 'studio-install-record',
-      label: 'Studio install record',
+      label: 'Tracevane install record',
       level: studioInstallRecordOk ? 'ok' : 'warn',
       summary: studioInstallRecordOk
-        ? 'Studio install record 未指向旧目录'
+        ? 'Tracevane install record 未指向旧目录'
         : 'plugins.installs.studio 指向旧目录或缺失目录',
       detail: studioInstallRecordOk
-        ? 'OpenClaw 可以按当前 plugins.load.paths 重新识别 Studio。'
-        : '会删除过期 install record，避免重启后继续加载 .prev/.bak/.old 或已不存在的 Studio 目录。',
+        ? 'OpenClaw 可以按当前 plugins.load.paths 重新识别 Tracevane。'
+        : '会删除过期 install record，避免重启后继续加载 .prev/.bak/.old 或已不存在的 Tracevane 目录。',
       detected: true,
       fixable: true,
     },
@@ -179,8 +179,8 @@ function buildBootstrapChecks(config: StudioServerConfig, openclawConfig: Record
         ? `gateway.auth.mode=${authMode}`
         : 'gateway.auth.mode=token 但未配置 token',
       detail: hasGatewayToken
-        ? 'Studio backend bridge 需要宿主当前的网关鉴权信息来完成本地桥接。'
-        : '如果是新环境，Studio 可以补一个随机 token，避免 chat/system bridge 因缺少 token 直接不可用。',
+        ? 'Tracevane backend bridge 需要宿主当前的网关鉴权信息来完成本地桥接。'
+        : '如果是新环境，Tracevane 可以补一个随机 token，避免 chat/system bridge 因缺少 token 直接不可用。',
       detected: true,
       fixable: true,
     },
@@ -192,8 +192,8 @@ function buildBootstrapChecks(config: StudioServerConfig, openclawConfig: Record
         ? 'gateway.controlUi 未被禁用'
         : 'gateway.controlUi.enabled=false',
       detail: controlUiEnabled
-        ? '单口入口可继续承载 Studio 控制面。'
-        : '单口模式下显式关闭 controlUi 会导致 Studio 无法通过 gateway 打开。',
+        ? '单口入口可继续承载 Tracevane 控制面。'
+        : '单口模式下显式关闭 controlUi 会导致 Tracevane 无法通过 gateway 打开。',
       detected: true,
       fixable: true,
     },
@@ -218,8 +218,8 @@ function buildBootstrapChecks(config: StudioServerConfig, openclawConfig: Record
         ? (bindMode || '未显式设置，将使用宿主默认值')
         : `发现不受支持的 bind 值：${bindMode}`,
       detail: bindSupported
-        ? 'Studio 单口模式只要求外网入口单一；宿主本机 loopback 仍可保留。'
-        : 'Studio 会把旧值修正成 loopback，避免新版本 gateway restart 因遗留别名失败。',
+        ? 'Tracevane 单口模式只要求外网入口单一；宿主本机 loopback 仍可保留。'
+        : 'Tracevane 会把旧值修正成 loopback，避免新版本 gateway restart 因遗留别名失败。',
       detected: true,
       fixable: true,
     },
@@ -387,7 +387,7 @@ export function getSystemBootstrapSnapshot(
   const checks = buildBootstrapChecks(config, openclawConfig);
   const notes: string[] = [];
   if (checks.some((check) => check.level === 'error')) {
-    notes.push('存在会直接影响 Studio 启动或单口桥接的配置缺口，建议先执行一次“应用推荐初始化”。');
+    notes.push('存在会直接影响 Tracevane 启动或单口桥接的配置缺口，建议先执行一次“应用推荐初始化”。');
   }
   if (checks.some((check) => check.id === 'gateway-allowed-origins' && check.level !== 'ok')) {
     notes.push('allowedOrigins 缺失时，新设备首次打开 /studio 可能表现为页面可见但鉴权/控制台桥接异常。');

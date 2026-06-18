@@ -725,7 +725,7 @@ test('local slash executor lists workspace skills locally and falls back for act
   ]);
 });
 
-test('local slash executor reports Studio-local context summary and detail', async () => {
+test('local slash executor reports Tracevane-local context summary and detail', async () => {
   const gateway = createGatewayClientMock((method) => {
     if (method === 'sessions.list') {
       return {
@@ -779,7 +779,7 @@ test('local slash executor reports Studio-local context summary and detail', asy
 
   assert.ok(detail);
   assert.equal(detail.phase, 'completed');
-  assert.match(detail.detail.zh, /Studio 上下文/);
+  assert.match(detail.detail.zh, /Tracevane 上下文/);
   assert.match(detail.detail.zh, /可见消息 24/);
   assert.match(detail.detail.zh, /Researcher/);
   assert.match(detail.detail.en, /reasoning=stream/i);
@@ -1258,7 +1258,7 @@ test('restart slash is blocked unless both host-management exec switches are ena
   );
 });
 
-test('local slash executor returns Studio guidance for surface-specific slash commands', async () => {
+test('local slash executor returns Tracevane guidance for surface-specific slash commands', async () => {
   const gateway = createGatewayClientMock((method) => {
     if (method === 'sessions.list') {
       return {
@@ -1711,7 +1711,7 @@ test('local slash executor returns null for /config write actions so chat can fa
   assert.equal(gateway.calls.length, 0);
 });
 
-test('local slash executor turns Studio-only session identity commands into informational completions', async () => {
+test('local slash executor turns Tracevane-only session identity commands into informational completions', async () => {
   const gateway = createGatewayClientMock((method) => {
     if (method === 'sessions.list') {
       return {

@@ -494,7 +494,7 @@
         </button>
         <button type="button" role="menuitem" @click="copyContextStudioRef">
           <Link2 class="studio-file-context-menu__icon" aria-hidden="true" />
-          <span>{{ text("复制 Studio 引用", "Copy Studio ref") }}</span>
+          <span>{{ text("复制 Tracevane 引用", "Copy Tracevane ref") }}</span>
         </button>
         <span class="studio-file-context-menu__divider" aria-hidden="true"></span>
         <button type="button" role="menuitem" @click="copyContextItems">

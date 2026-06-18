@@ -7,7 +7,7 @@
             <LogoMark />
           </span>
           <div class="logo-text">
-            <span class="logo-title">OpenClaw</span>
+            <span class="logo-title">Tracevane</span>
             <span class="logo-subtitle">{{ subtitle }}</span>
           </div>
         </RouterLink>
@@ -18,7 +18,7 @@
           side="right"
           :side-offset="12"
         >
-          OpenClaw
+          Tracevane
         </TooltipContent>
       </TooltipPortal>
     </TooltipRoot>

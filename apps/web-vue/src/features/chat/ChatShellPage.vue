@@ -336,7 +336,7 @@
               </div>
               <div class="chat-host-exec-confirm-chip">
                 <span class="chat-host-exec-confirm-chip-dot warn"></span>
-                <span>{{ text('刷新保留，Studio 重启后自动失效', 'Persists through refresh and auto-expires after Studio restart') }}</span>
+                <span>{{ text('刷新保留，Tracevane 重启后自动失效', 'Persists through refresh and auto-expires after Tracevane restart') }}</span>
               </div>
             </div>
 
@@ -2239,7 +2239,7 @@ async function loadSessionSurfaceState(sessionKey: string): Promise<void> {
       await loadSessions({ deferRemainingAgents: true });
     } catch {
       // Best-effort self-heal for sessions discovered from Gateway before their
-      // local Studio registry entry has been reconstructed.
+      // local Tracevane registry entry has been reconstructed.
     }
     if (selectedSessionKey.value !== sessionKey) {
       return;
@@ -6182,8 +6182,8 @@ async function dispatchSlashCommandViaBackend(commandText: string): Promise<bool
         requestId,
         runId: runId || null,
         detail: text(
-          '命令已通过 Studio 后端提交，等待宿主处理。',
-          'The command was submitted through the Studio backend and is waiting for the host.',
+          '命令已通过 Tracevane 后端提交，等待宿主处理。',
+          'The command was submitted through the Tracevane backend and is waiting for the host.',
         ),
       },
     );
@@ -6239,7 +6239,7 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
         'error',
         text(
           '第一版 slash 命令暂不支持与附件一起发送，请先移除附件。',
-          'Slash commands do not yet support attachments in Studio. Remove attachments first.',
+          'Slash commands do not yet support attachments in Tracevane. Remove attachments first.',
         ),
       );
       return;
@@ -6251,8 +6251,8 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
         composerAttachments.value = [];
       } else {
         const detail = text(
-          'Studio 尚未接通这个本地斜杠命令，请更新 Studio 或稍后重试。',
-          'Studio has not wired this local slash command yet. Update Studio or try again later.',
+          'Tracevane 尚未接通这个本地斜杠命令，请更新 Tracevane 或稍后重试。',
+          'Tracevane has not wired this local slash command yet. Update Tracevane or try again later.',
         );
         setNotice('error', detail);
         if (session?.key) {
@@ -6578,8 +6578,8 @@ async function toggleSessionHostManagementExec(nextValue: boolean): Promise<void
     setNotice(
       'error',
       text(
-        '请先在 Config > 沙盒与安全 中打开“允许在 Studio Chat 中启用宿主管理 Exec”。',
-        'Enable “Allow host-management Exec in Studio Chat” in Config > Sandbox & Security first.',
+        '请先在 Config > 沙盒与安全 中打开“允许在 Tracevane Chat 中启用宿主管理 Exec”。',
+        'Enable “Allow host-management Exec in Tracevane Chat” in Config > Sandbox & Security first.',
       ),
     );
     return;
@@ -6956,7 +6956,7 @@ async function handleBatchAction(payload: {
 
     const confirmed = await confirm({
       title: text('批量删除会话', 'Batch delete chats'),
-      message: text(`将删除 ${sessionKeys.length} 个会话，并清理本地与远端记录。确认继续？`, `Delete ${sessionKeys.length} chats from Studio and the gateway?`),
+      message: text(`将删除 ${sessionKeys.length} 个会话，并清理本地与远端记录。确认继续？`, `Delete ${sessionKeys.length} chats from Tracevane and the gateway?`),
       confirmText: text('确认', 'Confirm'),
       cancelText: text('取消', 'Cancel'),
       tone: 'danger',
@@ -7025,7 +7025,7 @@ async function handleSessionAction(payload: { action: 'rename' | 'archive' | 'de
 
     const confirmed = await confirm({
       title: text('删除会话', 'Delete chat'),
-      message: text('删除后会同时清理本地和远端会话记录，确认继续？', 'Delete this chat from both local Studio state and the gateway?'),
+      message: text('删除后会同时清理本地和远端会话记录，确认继续？', 'Delete this chat from both local Tracevane state and the gateway?'),
       confirmText: text('确认', 'Confirm'),
       cancelText: text('取消', 'Cancel'),
       tone: 'danger',

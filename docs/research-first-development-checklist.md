@@ -11,7 +11,7 @@
 2. 官方优先核验：官方文档、API/spec、SDK 文档、changelog、release notes、CLI help 或内置 schema。
 3. GitHub 核验：活跃仓库源码、issues、discussions、release notes、PR 讨论，重点看事件格式、breaking change、失败模式和未解决问题。
 4. 社区核验：社区帖子、实践记录、错误报告只作为风险输入；采用前必须回到官方或真实 smoke 验证。
-5. 本地边界对比：确认 Studio 的 TypeScript/runtime、daemon、secret、session、file staging、UI 和测试边界能承载该合同。
+5. 本地边界对比：确认 Tracevane 的 TypeScript/runtime、daemon、secret、session、file staging、UI 和测试边界能承载该合同。
 6. 写入文档：在目标、进度或专项文档记录核验日期、来源、稳定结论、拒绝方案、风险和验证计划。
 7. 再实现：没有当前合同或真实 smoke 证据的能力保持结构化 unsupported，不做半截 passthrough 或伪成功。
 
@@ -24,7 +24,7 @@
 3. 域名预检：至少检查 `.com`、`.dev`、`.ai` 和一个中性备用域。
 4. 商标预检：公开发布前检查目标市场商标库；普通 web search 不能当法律结论。
 5. 冲突记录：把拒绝名称、拒绝原因和来源写入 `docs/product-strategy-reset-plan.md`。
-6. 分批落地：最终名称确认前，代码包名和插件元数据保持现状；不要只改一半 UI/文档造成双品牌混乱。
+6. 分批落地：Tracevane 已作为当前产品名落地；仓库路径、插件 id、`/studio` base path、旧配置目录和旧环境变量只能在有迁移计划时改，不要造成安装断裂。
 
 初始禁止直接采用的高风险名称族：
 
@@ -56,8 +56,8 @@
 - Channel Connectors 当前只继续推进 Feishu/Octo 私聊完整性和 Codex、Claude Code、OpenCode 三个 live Agent。
 - 默认 Agent session driver 使用结构化 persistent 路径：Codex app-server、Claude Code stream-json、OpenCode `run --session`。one-shot/TUI runner 只作为显式 opt-out、persistent fallback 或尚未支持 Agent 的兼容路径。
 - 普通 IM 消息不排队、不落 pending store、不 daemon 重启 replay；同 binding + IM session 已有 active/delivering run 时直接 busy guard，用户用 `/stop`、`/cancel` 或等待结束后重发。
-- Feishu/Octo 出站附件和私聊消息由 Studio native transport 执行；Agent 只声明受控 manifest。
-- 未经当前合同验证的 Realtime/WebSocket、音频、image edits、媒体 passthrough 或新 Agent 事件格式必须返回结构化 unsupported 或保持受控 fallback；官方已有能力不等于 Studio Gateway 已有可承载 bridge。
+- Feishu/Octo 出站附件和私聊消息由 Tracevane native transport 执行；Agent 只声明受控 manifest。
+- 未经当前合同验证的 Realtime/WebSocket、音频、image edits、媒体 passthrough 或新 Agent 事件格式必须返回结构化 unsupported 或保持受控 fallback；官方已有能力不等于 Tracevane Gateway 已有可承载 bridge。
 
 ## 风险清单
 
@@ -82,7 +82,7 @@
 | P0 | Research-first 门禁 | 已完成 | `AGENTS.md` 和本文件记录开工前外部核验、文档记录和 unsupported 策略 |
 | P0 | `.meta-kim/` 工作区状态 | 已完成 | `.gitignore` 忽略 `.meta-kim/`，避免本地运行态进入提交 |
 | P0 | 用户可见第三方引用清理 | 已完成本轮 | 文档和 unsupported 错误不再把旧第三方项目作为实现依据 |
-| P0 | 产品战略重置文档 | 已完成本轮 | `product-strategy-reset-plan.md`、PRD、架构、进展和 README 改为 Studio AI Workbench 方向 |
+| P0 | 产品战略重置文档 | 已完成本轮 | `product-strategy-reset-plan.md`、PRD、架构、进展和 README 改为 Tracevane 方向 |
 | P0 | 产品命名门禁 | 已完成本轮 | 本文件和战略重置文档记录查重流程、禁止直接采用的高风险名称族和分批落地规则 |
 | P1 | Agent session 判断稳定性 | 进行中 | Codex/Claude Code/OpenCode 默认 persistent；one-shot fallback 覆盖 heartbeat、async child task、idle timeout、unknown event 和终态 race |
 | P1 | Gateway unsupported 合同 | 进行中 | 未验证的 image edits、audio、Realtime/WebSocket 返回结构化 unsupported，错误说明当前缺少稳定合同和替代路径 |
@@ -102,16 +102,16 @@
 - 2026-06-17：核验 Git `gitignore` 官方文档，确认所有开发者都应忽略的本地工作区产物应写入仓库 `.gitignore`。
 - 2026-06-17：本轮按用户要求先不跑渠道 live；本地补 Gateway endpoint profile passthrough/adapter 错误归属回归，以及 Feishu reaction stop failure/daemon delivery failure 源码合同回归。
 - 2026-06-17：重新核验 Codex app-server、Claude Code Agent SDK / TypeScript SDK、OpenCode CLI / SDK 官方文档；本地补真实 Claude `◯ deep-research ... ↓ tokens`、Codex subagents、OpenCode parallel tasks 的 async child-task TUI 回归，确认优先结构化 driver，TUI 只作 bounded fallback。
-- 2026-06-17：核验 Feishu 官方开放平台 Docs/API、官方 Node SDK 和官方 OpenClaw Lark 插件安全边界；本地删除 Studio 未暴露的 Feishu direct action helper，保留私聊 transport 主链路和旧 code fence 剥除。
-- 2026-06-18：核验 OpenAI 官方 Realtime/audio、Responses WebSocket mode 和 `openai-node` Realtime WebSocket 说明；结论是官方能力存在，但 Studio Gateway 对 Codex account backend 仍缺完整 turn-state/tool-cache/history/close 合同，所以继续结构化 unsupported，并补齐 audio/realtime 错误 envelope 的可行性、参考和替代路径。
+- 2026-06-17：核验 Feishu 官方开放平台 Docs/API、官方 Node SDK 和官方 OpenClaw Lark 插件安全边界；本地删除 Tracevane 未暴露的 Feishu direct action helper，保留私聊 transport 主链路和旧 code fence 剥除。
+- 2026-06-18：核验 OpenAI 官方 Realtime/audio、Responses WebSocket mode 和 `openai-node` Realtime WebSocket 说明；结论是官方能力存在，但 Tracevane Gateway 对 Codex account backend 仍缺完整 turn-state/tool-cache/history/close 合同，所以继续结构化 unsupported，并补齐 audio/realtime 错误 envelope 的可行性、参考和替代路径。
 - 2026-06-18：核验智谱官方 GLM Coding Plan 快速开始、GLM-5.2 模型页和模型切换文档；结论是 Coding Plan 使用专属 `https://open.bigmodel.cn/api/coding/paas/v4` endpoint，GLM-5.2 为 1M context / 128K output，Claude Code 是官方覆盖的切换场景。本地用已配置 `glm` provider 完成 Codex / Claude Code / OpenCode 三协议 active-route smoke，验证后 activeProviders 恢复原状。
 - 2026-06-18：将 Gateway provider 三协议 proof 固化为 `scripts/smoke-model-gateway-active-routes.mjs`：脚本会保存原 activeProviders、必要时临时启用 provider、临时激活目标 provider、逐 scope 调用 active-route-smoke、finally 恢复 enabled/activeProviders 并二次读取 `/providers` 校验恢复一致性；本地 GLM `glm-5.2` live 通过并断言两个 endpoint profile，GMN `gpt-5.4` 在临时启用后 live 通过并恢复禁用。
-- 2026-06-18：核验 OpenAI Codex 官方 Advanced Configuration：`https://developers.openai.com/codex/config-advanced#oss-mode-local-providers` 是用户粘贴缺失后的正确入口；custom model providers / `openai_base_url` / `wire_api="responses"` 对 Studio Gateway 生成 Codex CLI 配置有帮助，`--oss` 主要面向 Ollama/LM Studio 本地 provider，不替代 Gateway 三协议适配测试。
+- 2026-06-18：核验 OpenAI Codex 官方 Advanced Configuration：`https://developers.openai.com/codex/config-advanced#oss-mode-local-providers` 是用户粘贴缺失后的正确入口；custom model providers / `openai_base_url` / `wire_api="responses"` 对 Tracevane Gateway 生成 Codex CLI 配置有帮助，`--oss` 主要面向 Ollama/LM Studio 本地 provider，不替代 Gateway 三协议适配测试。
 - 2026-06-18：将“GLM 两种上游原生协议 + Codex 登录账户官方 Responses”整理为发布级协议矩阵，并新增 `scripts/smoke-model-gateway-protocol-matrix.mjs`；真实执行证明 GLM `coding-anthropic`、GLM `coding-chat`、`codex-account` 三项主流协议 proof 均通过，验证后 activeProviders 恢复为空。
 - 2026-06-18：核验 OpenAI rate-limit 指南（`https://developers.openai.com/cookbook/examples/how_to_handle_rate_limits`）、Anthropic 错误文档（`https://docs.anthropic.com/en/api/errors` / `https://platform.claude.com/docs/en/api/errors`）、OpenAI Node `Retry-After` 讨论（`https://github.com/openai/openai-node/issues/1108`、`https://github.com/openai/openai-node/issues/1477`）和 Claude Code / community rate-limit 失败报告（例如 `https://github.com/anthropics/claude-code/issues/64030`、`https://github.com/vercel/ai/issues/5018`）；结论是 Gateway 不应对 rate/quota/capacity 失败做盲目同路由立即重试，而应保留上游错误、尊重 cooldown/Retry-After、更新 health/circuit 并允许 fallback。本地补 started streaming adapter failure 和 Retry-After 回归：已开始的 Chat/Responses/Anthropic SSE adapter 失败仍向客户端写协议内失败事件，同时 runtime 记 `failure`，provider 连续失败打开 circuit，下一次请求路由到 backup provider；普通 provider 和 endpoint profile 429 会保留上游错误码、写入对应 `health.retryAfterUntil`，到期前不 probe。
 - 2026-06-18：本地补 Gateway endpoint health summary 回归；同 provider 多 endpoint fallback 后，`/api/model-gateway/status` 会显示 endpoint `openCircuits/degradedProviders`，全部启用 endpoint open 时 provider 不再计入 `okProviders`，避免 Overview/状态 API 掩盖真实路由不可用。
 - 2026-06-18：核验 OpenClaw 官方 Gateway security/secrets、Gateway runbook、Gateway CLI restart `--safe`、plugins uninstall/manage 文档，以及本机 `openclaw gateway restart --help`；结论是 Recovery 应收敛 Gateway token 到 SecretRef/env 单一来源、清理废弃插件 allow/entry/index 残留、配置修复后优先 safe restart，并在修复前备份 runtime sidecar。本地补 Recovery 回归：SecretRef/env sync、Discord token 移除、`studio-local.gatewayAuthToken` 清理、`acpx`/`discord` residue 清理、legacy install index 归档、sidecar 回滚和 safe restart 合同。
 - 2026-06-18：按用户要求制造真实 OpenClaw Recovery 损坏样本：破坏 Linux systemd Gateway service `ExecStart` 后，Recovery full repair 成功 reinstall/start 并等到 RPC ready；删除全局包 `openclaw.mjs` 后，Recovery 通过 install manifest 执行 `npm install -g openclaw@2026.6.8` 恢复 CLI。本轮因此修复 Gateway service repair 后过早 deep probe 的误判，以及 CLI shim 对 shell wrapper 的执行方式。
 - 2026-06-18：核验 OpenClaw secrets 官方 CLI：`audit` 是只读扫描，`configure` 是交互式 helper，非交互 `--plan-out` 在当前环境需要 TTY。实际 audit 仍有 28 个 BigModel 明文 key finding 和 1 个 OpenAI OAuth legacy residue；已将 agent `models.json` 权限收紧到 `0600`，但明文迁移不由 Recovery 自动改写，后续应走官方交互式 SecretRef 迁移。
-- 2026-06-18：核验 OpenClaw 官方 Web UI、Open WebUI、LibreChat、Dify、n8n、Microsoft Copilot Studio、Oracle AI Agent Studio、Langfuse、Codex CLI、Claude Code、OpenCode，以及 `AgentOps Studio`、`Agent Studio`、`Agent Nexus`、`Relay Studio`、`Agent Harbor`、`Runplane`、`Workplane` 等名称占用情况；结论是 Studio 应避免 generic OpenClaw 管理控制台、generic chat UI、generic agent builder 和拥挤命名族，产品名暂不定稿，先采用命名门禁。
-- 2026-06-18：完成首轮产品命名候选预检。`TaskSmith` 已是 Claude Code unattended ops layer，`Runyard` 已是本地 AI 模型/AI Yard 产品，`Runcell` 已是 Jupyter-native AI Agent，`Opsmith` 已是 Progress/Chef IT Ops agentic AI 产品，`TraceLynx` 已是 traceability 软件公司；这些证明 `Task/Run/Ops/Trace+常见后缀` 需要更严格避让。当前首选候选为 `Tracevane`：npm/PyPI/Docker official library 均返回 404，GitHub repo-name search 为 0，本机 DNS 未发现 `tracevane.{com,dev,ai,io,app}` 记录；仍需 registrar 和商标预检后才能正式改名。
+- 2026-06-18：核验 OpenClaw 官方 Web UI、Open WebUI、LibreChat、Dify、n8n、Microsoft Copilot Studio、Oracle AI Agent Studio、Langfuse、Codex CLI、Claude Code、OpenCode，以及 `AgentOps Studio`、`Agent Studio`、`Agent Nexus`、`Relay Studio`、`Agent Harbor`、`Runplane`、`Workplane` 等名称占用情况；结论是 Tracevane 应避免 generic OpenClaw 管理控制台、generic chat UI、generic agent builder 和拥挤命名族。
+- 2026-06-18：完成首轮产品命名候选预检。`TaskSmith` 已是 Claude Code unattended ops layer，`Runyard` 已是本地 AI 模型/AI Yard 产品，`Runcell` 已是 Jupyter-native AI Agent，`Opsmith` 已是 Progress/Chef IT Ops agentic AI 产品，`TraceLynx` 已是 traceability 软件公司；这些证明 `Task/Run/Ops/Trace+常见后缀` 需要更严格避让。当前采用 `Tracevane`：npm/PyPI/Docker official library 均返回 404，GitHub repo-name search 为 0，本机 DNS 未发现 `tracevane.{com,dev,ai,io,app}` 记录；仍需 registrar 和商标预检后才能公开发布。

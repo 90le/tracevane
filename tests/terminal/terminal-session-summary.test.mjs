@@ -171,7 +171,7 @@ test("terminal service applies a conservative native worker budget for web termi
     assert.equal(env.TERM_PROGRAM, "openclaw-studio");
     assert.equal(env.TERM_PROGRAM_VERSION, "0.1.28");
     assert.equal(env.OPENCLAW_TERMINAL_CLIENT, "xterm.js");
-    assert.equal(env.XTERM_VERSION, "OpenClaw Studio 0.1.28");
+    assert.equal(env.XTERM_VERSION, "Tracevane 0.1.28");
   } finally {
     restoreEnv("RAYON_NUM_THREADS", previousRayon);
     restoreEnv("TOKIO_WORKER_THREADS", previousTokio);

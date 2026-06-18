@@ -220,11 +220,11 @@ function codexAutomaticPermissionDecision(
 ): ChannelConnectorAgentPermissionDecision | null {
   if (mode === "yolo" || mode === "full-auto") return { behavior: "allow", updatedInput: request.input };
   if (mode === "read-only" || mode === "plan") {
-    return { behavior: "deny", message: `Permission mode is ${mode}; Studio denied this Codex app-server request.` };
+    return { behavior: "deny", message: `Permission mode is ${mode}; Tracevane denied this Codex app-server request.` };
   }
   if (mode === "auto-edit") {
     if (request.toolName === "Patch") return { behavior: "allow", updatedInput: request.input };
-    return { behavior: "deny", message: "Permission mode is auto-edit; Studio only auto-allows Codex file changes." };
+    return { behavior: "deny", message: "Permission mode is auto-edit; Tracevane only auto-allows Codex file changes." };
   }
   return null;
 }
@@ -232,7 +232,7 @@ function codexAutomaticPermissionDecision(
 function codexFallbackPermissionDecision(): ChannelConnectorAgentPermissionDecision {
   return {
     behavior: "deny",
-    message: "Interactive Codex app-server approval is not available in this Studio runner.",
+    message: "Interactive Codex app-server approval is not available in this Tracevane runner.",
   };
 }
 
@@ -273,7 +273,7 @@ function codexAppServerTerminalStatus(
       status: "failed",
       ok: false,
       text: `${context} missing terminal status`,
-      error: `${context} returned turn/completed without a status or final assistant message; Studio treated it as a protocol compatibility failure.`,
+      error: `${context} returned turn/completed without a status or final assistant message; Tracevane treated it as a protocol compatibility failure.`,
     };
   }
   if (["completed", "succeeded", "success", "ok", "done"].includes(status)) {
@@ -290,7 +290,7 @@ function codexAppServerTerminalStatus(
     status: "failed",
     ok: false,
     text: `${context} unknown status ${status}`,
-    error: `${context} returned unknown terminal status "${status}"; Studio treated it as a protocol compatibility failure.`,
+    error: `${context} returned unknown terminal status "${status}"; Tracevane treated it as a protocol compatibility failure.`,
   };
 }
 
@@ -322,7 +322,7 @@ function agentResult(input: {
   args?: string[];
 }): ChannelConnectorAgentTurnResult {
   const compatibilityText = input.ok && input.progressEvents.some((event) => event.rawType === "protocol/unknown-event")
-    ? "Codex app-server 进程已成功结束，但 Studio 没能从当前 app-server 事件格式解析出最终回复。请查看事件日志中的 protocol/unknown-event；当前任务没有继续等待。"
+    ? "Codex app-server 进程已成功结束，但 Tracevane 没能从当前 app-server 事件格式解析出最终回复。请查看事件日志中的 protocol/unknown-event；当前任务没有继续等待。"
     : null;
   const noReplyText = input.ok ? (input.replyText || compatibilityText || "Codex app-server 已完成，但没有返回最终回复。当前任务没有继续等待。") : null;
   return {
@@ -711,7 +711,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
             type: "event",
             rawType: "protocol/unknown-event",
             itemType: method,
-            text: `Codex app-server emitted an unrecognized active-turn event (${method}); Studio is running in compatibility mode.`,
+            text: `Codex app-server emitted an unrecognized active-turn event (${method}); Tracevane is running in compatibility mode.`,
           }));
         };
         this.activeTurnCompleted = (message) => {
@@ -856,8 +856,8 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
     if (this.initialized) return;
     await this.request("initialize", {
       clientInfo: {
-        name: "openclaw-studio-channel-connectors",
-        title: "OpenClaw Studio Channel Connectors",
+        name: "openclaw-tracevane-channel-connectors",
+        title: "Tracevane Channel Connectors",
         version: "0",
       },
       capabilities: {
@@ -877,7 +877,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
       cwd: this.cwd,
       approvalPolicy: approvalPolicy(this.permissionMode),
       sandbox: sandboxMode(this.permissionMode),
-      serviceName: "openclaw-studio-channel-connectors",
+      serviceName: "openclaw-tracevane-channel-connectors",
       ephemeral: false,
       threadSource: "user",
     });

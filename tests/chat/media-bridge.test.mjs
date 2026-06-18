@@ -24,7 +24,7 @@ function createTempStudioConfig() {
     workspace,
     config: {
       pluginId: 'studio',
-      pluginName: 'OpenClaw Studio',
+      pluginName: 'Tracevane',
       version: '0.1.0-test',
       port: 0,
       autoStart: false,

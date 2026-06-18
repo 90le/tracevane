@@ -159,7 +159,7 @@ import {
 } from "../../dist/apps/api/modules/channel-connectors/skill-registry.js";
 
 function makeTempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-connectors-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-channel-connectors-"));
 }
 
 function feishuDeleteModeCheckerName(sessionId) {
@@ -171,7 +171,7 @@ function createStudioConfig(root) {
   fs.mkdirSync(openclawRoot, { recursive: true });
   return {
     pluginId: "studio",
-    pluginName: "OpenClaw Studio",
+    pluginName: "Tracevane",
     version: "0.1.0",
     port: 3760,
     autoStart: true,
@@ -478,20 +478,20 @@ async function withMockOctoServer(task, options = {}) {
       }
       if (req.method === "GET" && req.url === "/v1/bot/groups") {
         res.end(JSON.stringify([
-          { group_no: "group-1", name: "Studio Group" },
+          { group_no: "group-1", name: "Tracevane Group" },
           { group_no: "group-2", name: "Build Group" },
         ]));
         return;
       }
       if (req.method === "GET" && req.url === "/v1/bot/groups/group-1") {
-        res.end(JSON.stringify({ group_no: "group-1", name: "Studio Group", notice: "Ship", creator: "user-owner" }));
+        res.end(JSON.stringify({ group_no: "group-1", name: "Tracevane Group", notice: "Ship", creator: "user-owner" }));
         return;
       }
       if (req.method === "GET" && req.url === "/v1/bot/groups/group-1/members") {
         res.end(JSON.stringify({
           members: [
             { uid: "user-1", name: "Alice", role: 1, robot: 0 },
-            { uid: "robot-1", name: "Studio Bot", role: 2, robot: 1 },
+            { uid: "robot-1", name: "Tracevane Bot", role: 2, robot: 1 },
           ],
         }));
         return;
@@ -861,7 +861,7 @@ test("native Channel Connectors status keeps daemon and binding policy separate 
   assert.equal(status.implementation, "studio-native");
   assert.equal(status.lifecycle.studioRuntimeDependency, false);
   assert.equal(status.lifecycle.openclawRuntimeDependency, false);
-  assert.equal(status.lifecycle.modelRelayOwner, "studio-gateway-daemon");
+  assert.equal(status.lifecycle.modelRelayOwner, "tracevane-gateway-daemon");
   assert.equal(status.lifecycle.channelDaemonOwner, "studio-native-channel-daemon");
   assert.equal(status.bindingPolicy.model, "platform-account-or-bot-to-agent");
   assert.equal(status.bindingPolicy.wechatPersonal.maxAgentsPerAccount, 1);
@@ -910,7 +910,7 @@ test("native Channel Connectors buffers long group replies without truncating st
   assert.ok(buffered.bufferId);
   assert.equal(buffered.originalRunes, Array.from(longReply).length);
   assert.ok(buffered.previewRunes <= 80);
-  assert.match(buffered.replyText, /Studio 已缓存完整回复/);
+  assert.match(buffered.replyText, /Tracevane 已缓存完整回复/);
   assert.match(buffered.replyText, /当前会话仅发送预览/);
   assert.doesNotMatch(buffered.replyText, /群聊仅发送预览/);
   assert.doesNotMatch(buffered.replyText, /final line$/);
@@ -1145,7 +1145,7 @@ test("native Channel Connectors resolves outbound file manifests under the Agent
 
   const extracted = extractChannelConnectorOutboundFiles([
     "报告已生成。",
-    "```studio-channel-files",
+    "```tracevane-channel-files",
     JSON.stringify([
       { path: "exports/report.txt", name: "final-report.txt", caption: "报告文件" },
       { path: path.join(runtimeDir, "attachments", "m1", "received.bin"), name: "received.bin" },
@@ -1186,7 +1186,7 @@ test("native Channel Connectors resolves outbound file manifests under the Agent
 
   const invalid = extractChannelConnectorOutboundFiles([
     "bad",
-    "```studio-channel-files",
+    "```tracevane-channel-files",
     "{nope",
     "```",
   ].join("\n"));
@@ -1198,7 +1198,7 @@ test("native Channel Connectors resolves outbound file manifests under the Agent
 test("native Channel Connectors extracts outbound IM message manifests", () => {
   const extracted = extractChannelConnectorOutboundMessages([
     "我会通知她们。",
-    "```studio-channel-messages",
+    "```tracevane-channel-messages",
     JSON.stringify([
       { platform: "octo", target: "dm:user-1", content: "请介绍一下你的能力" },
       { platform: "octo", target: "bot:27xIxHrNV0Qc3ee2129_bot", content: "请介绍一下你的能力" },
@@ -1337,7 +1337,7 @@ test("native Channel Connectors extracts outbound IM message manifests", () => {
 
   const invalid = extractChannelConnectorOutboundMessages([
     "bad",
-    "```studio-channel-messages",
+    "```tracevane-channel-messages",
     "{nope",
     "```",
   ].join("\n"));
@@ -1347,7 +1347,7 @@ test("native Channel Connectors extracts outbound IM message manifests", () => {
 });
 
 
-test("native Channel Connectors config preview targets Studio Gateway without cc-connect TOML", () => {
+test("native Channel Connectors config preview targets Tracevane Gateway without cc-connect TOML", () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   const service = createChannelConnectorsService(config, {
@@ -1361,7 +1361,7 @@ test("native Channel Connectors config preview targets Studio Gateway without cc
   assert.match(preview.nativeConfigPath, /channel-connectors\/config\.json/);
   assert.match(preview.nativeConfigPath, /\.config\/openclaw-studio\/channel-connectors\/config\.json/);
   assert.equal(preview.nativeConfigPath.startsWith(config.openclawRoot), false);
-  assert.equal(preview.config.gateway.clientKeyRef, "studio-gateway-client-key");
+  assert.equal(preview.config.gateway.clientKeyRef, "tracevane-gateway-client-key");
   assert.equal(preview.config.projects[0].agent, "codex");
   assert.equal(preview.config.projects[0].permissionMode, "suggest");
   assert.equal(preview.config.projects[0].platformBindings.length, 0);
@@ -1369,15 +1369,15 @@ test("native Channel Connectors config preview targets Studio Gateway without cc
   assert.doesNotMatch(preview.preview, /cc-connect|codex-stack|CPA|\[\[projects\.platforms\]\]/);
 });
 
-test("native Channel Connectors resolves Studio Gateway client key from OpenClaw studio secrets", () => {
+test("native Channel Connectors resolves Tracevane Gateway client key from local secrets", () => {
   const root = makeTempRoot();
   const oldHome = process.env.HOME;
-  const oldStudioGatewayKey = process.env.STUDIO_GATEWAY_API_KEY;
-  const oldOpenClawGatewayKey = process.env.OPENCLAW_STUDIO_GATEWAY_API_KEY;
+  const oldTracevaneGatewayKey = process.env.TRACEVANE_GATEWAY_API_KEY;
+  const oldOpenClawTracevaneGatewayKey = process.env.OPENCLAW_TRACEVANE_GATEWAY_API_KEY;
   try {
     process.env.HOME = root;
-    delete process.env.STUDIO_GATEWAY_API_KEY;
-    delete process.env.OPENCLAW_STUDIO_GATEWAY_API_KEY;
+    delete process.env.TRACEVANE_GATEWAY_API_KEY;
+    delete process.env.OPENCLAW_TRACEVANE_GATEWAY_API_KEY;
     const runtimeConfig = {
       paths: {
         root: path.join(root, ".config", "openclaw-studio", "channel-connectors", "daemon"),
@@ -1395,10 +1395,10 @@ test("native Channel Connectors resolves Studio Gateway client key from OpenClaw
   } finally {
     if (oldHome === undefined) delete process.env.HOME;
     else process.env.HOME = oldHome;
-    if (oldStudioGatewayKey === undefined) delete process.env.STUDIO_GATEWAY_API_KEY;
-    else process.env.STUDIO_GATEWAY_API_KEY = oldStudioGatewayKey;
-    if (oldOpenClawGatewayKey === undefined) delete process.env.OPENCLAW_STUDIO_GATEWAY_API_KEY;
-    else process.env.OPENCLAW_STUDIO_GATEWAY_API_KEY = oldOpenClawGatewayKey;
+    if (oldTracevaneGatewayKey === undefined) delete process.env.TRACEVANE_GATEWAY_API_KEY;
+    else process.env.TRACEVANE_GATEWAY_API_KEY = oldTracevaneGatewayKey;
+    if (oldOpenClawTracevaneGatewayKey === undefined) delete process.env.OPENCLAW_TRACEVANE_GATEWAY_API_KEY;
+    else process.env.OPENCLAW_TRACEVANE_GATEWAY_API_KEY = oldOpenClawTracevaneGatewayKey;
   }
 });
 
@@ -1440,7 +1440,7 @@ test("native Channel Connectors store persists agent profiles and derives daemon
           workDir: path.join(root, "workspace"),
           permissionMode: "auto-edit",
           gatewayEndpoint: "http://127.0.0.1:18796/v1",
-          gatewayKeyRef: "studio-gateway-client-key",
+          gatewayKeyRef: "tracevane-gateway-client-key",
           appProfileRef: "claude",
         },
       ],
@@ -1504,7 +1504,7 @@ test("native Channel Connectors store rejects duplicate personal WeChat agent bi
           workDir: config.projectRoot,
           permissionMode: "suggest",
           gatewayEndpoint: "http://127.0.0.1:18796/v1",
-          gatewayKeyRef: "studio-gateway-client-key",
+          gatewayKeyRef: "tracevane-gateway-client-key",
           appProfileRef: "codex",
         },
         {
@@ -1515,7 +1515,7 @@ test("native Channel Connectors store rejects duplicate personal WeChat agent bi
           workDir: config.projectRoot,
           permissionMode: "suggest",
           gatewayEndpoint: "http://127.0.0.1:18796/v1",
-          gatewayKeyRef: "studio-gateway-client-key",
+          gatewayKeyRef: "tracevane-gateway-client-key",
           appProfileRef: "claude",
         },
       ],
@@ -1566,7 +1566,7 @@ test("Octo adapter dry-run dispatch resolves binding, session key, and reply pla
           workDir: config.projectRoot,
           permissionMode: "suggest",
           gatewayEndpoint: "http://127.0.0.1:18796/v1",
-          gatewayKeyRef: "studio-gateway-client-key",
+          gatewayKeyRef: "tracevane-gateway-client-key",
           appProfileRef: "codex",
         },
       ],
@@ -1796,7 +1796,7 @@ test("Octo adapter normalizes mixed-case account identity like the Octo plugin",
           workDir: config.projectRoot,
           permissionMode: "suggest",
           gatewayEndpoint: "http://127.0.0.1:18796/v1",
-          gatewayKeyRef: "studio-gateway-client-key",
+          gatewayKeyRef: "tracevane-gateway-client-key",
           appProfileRef: "codex",
         },
       ],
@@ -1876,7 +1876,7 @@ test("Octo adapter follows group direction and mention rendering rules", async (
           workDir: config.projectRoot,
           permissionMode: "auto-edit",
           gatewayEndpoint: "http://127.0.0.1:18796/v1",
-          gatewayKeyRef: "studio-gateway-client-key",
+          gatewayKeyRef: "tracevane-gateway-client-key",
           appProfileRef: "claude",
         },
       ],
@@ -2404,7 +2404,7 @@ test("Octo transport smoke covers Bot API groups, members, history, threads, and
     assert.equal(groups.transport.data[0].group_no, "group-1");
 
     const groupInfo = await smoke({ action: "group-info", groupNo: "group-1" });
-    assert.equal(groupInfo.transport.data.name, "Studio Group");
+    assert.equal(groupInfo.transport.data.name, "Tracevane Group");
 
     const members = await smoke({ action: "group-members", groupNo: "group-1" });
     assert.equal(members.transport.itemCount, 2);
@@ -2598,7 +2598,7 @@ test("Octo native management commands expose groups, members, and Space search",
     assert.equal(groups.accepted, true);
     assert.equal(groups.commandAction.commandResult.action, "list");
     assert.match(groups.replyPlan.chunks.join("\n"), /Octo 群列表（2）/);
-    assert.match(groups.replyPlan.chunks.join("\n"), /Studio Group · group-1/);
+    assert.match(groups.replyPlan.chunks.join("\n"), /Tracevane Group · group-1/);
 
     const members = await service.dispatchOctoIncoming({
       bindingId: "octo-api",
@@ -2619,7 +2619,7 @@ test("Octo native management commands expose groups, members, and Space search",
     assert.equal(members.commandAction.commandResult.action, "show");
     assert.match(members.replyPlan.chunks.join("\n"), /Octo 群成员：group-1（2）/);
     assert.match(members.replyPlan.chunks.join("\n"), /Alice · user-1 · human/);
-    assert.match(members.replyPlan.chunks.join("\n"), /Studio Bot · robot-1 · bot/);
+    assert.match(members.replyPlan.chunks.join("\n"), /Tracevane Bot · robot-1 · bot/);
 
     const search = await service.dispatchOctoIncoming({
       bindingId: "octo-api",
@@ -3297,7 +3297,7 @@ test("Octo incoming can send rendered reply through REST transport when opted in
             workDir: config.projectRoot,
             permissionMode: "suggest",
             gatewayEndpoint: "http://127.0.0.1:18796/v1",
-            gatewayKeyRef: "studio-gateway-client-key",
+            gatewayKeyRef: "tracevane-gateway-client-key",
             appProfileRef: "codex",
           },
         ],
@@ -3391,7 +3391,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
       "## Step 1: Register",
       "openclaw plugins install clawhub:octo",
       "## Step 3: Send Messages",
-      "Use Studio channel manifests for Octo group and thread messaging.",
+      "Use Tracevane channel manifests for Octo group and thread messaging.",
       "## Message History Sync",
       "Use recent channel messages before responding.",
     ].join("\n"),
@@ -3405,7 +3405,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     model: "gpt-5",
     permissionMode: "auto-edit",
     gatewayEndpoint: "http://127.0.0.1:18796/v1",
-    gatewayKeyRef: "studio-gateway-client-key",
+    gatewayKeyRef: "tracevane-gateway-client-key",
     appProfileRef: "codex",
     platformBindings: [],
   };
@@ -3445,9 +3445,9 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(processRequest.args.includes("--cd"), true);
   assert.equal(processRequest.args.at(-1), "-");
   assert.equal(processRequest.cwd, workDir);
-  assert.match(processRequest.stdin, /^\[Studio outbound file\/message policy\]/);
+  assert.match(processRequest.stdin, /^\[Tracevane outbound file\/message policy\]/);
   assert.match(processRequest.stdin, /\[Current IM message - respond to this ONLY\]\nhi codex/);
-  assert.match(processRequest.stdin, /studio-channel-files/);
+  assert.match(processRequest.stdin, /tracevane-channel-files/);
   assert.match(processRequest.stdin, /Feishu private message targets support `open_id:ou_xxx`, `user_id:u_xxx`, and `dm:ou_xxx`/);
   assert.doesNotMatch(processRequest.stdin, /cc-connect/);
   assert.equal(processRequest.env.OPENAI_API_KEY, "sk-local");
@@ -3461,12 +3461,12 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   const codexConfigPath = path.join(processRequest.env.CODEX_HOME, "config.toml");
   assert.equal(fs.existsSync(codexConfigPath), true);
   const codexConfig = fs.readFileSync(codexConfigPath, "utf8");
-  assert.match(codexConfig, /model_provider = "studio_gateway"/);
+  assert.match(codexConfig, /model_provider = "tracevane_gateway"/);
   assert.match(codexConfig, /experimental_bearer_token = "sk-local"/);
   assert.equal(fs.statSync(codexConfigPath).mode & 0o777, 0o600);
   const codexNativeSkillPath = path.join(processRequest.env.CODEX_HOME, "skills", "octo_bot_api", "SKILL.md");
   assert.equal(fs.existsSync(codexNativeSkillPath), false);
-  assert.doesNotMatch(processRequest.stdin, /studio-channel-skill/);
+  assert.doesNotMatch(processRequest.stdin, /tracevane-channel-skill/);
   assert.doesNotMatch(processRequest.stdin, /studio-octo-actions/);
   assert.doesNotMatch(processRequest.stdin, /studio-feishu-actions/);
   for (const cleanupPath of processRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
@@ -3480,7 +3480,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   fs.mkdirSync(staleMarkerSkillDir, { recursive: true });
   fs.mkdirSync(customSkillDir, { recursive: true });
   fs.writeFileSync(path.join(staleNamedSkillDir, "SKILL.md"), "---\nname: stale\n---\nstudio-feishu-actions\n", "utf8");
-  fs.writeFileSync(path.join(staleMarkerSkillDir, "SKILL.md"), "---\nname: marker\n---\nStudio Channel Connector helper projection\n", "utf8");
+  fs.writeFileSync(path.join(staleMarkerSkillDir, "SKILL.md"), "---\nname: marker\n---\nTracevane Channel Connector helper projection\n", "utf8");
   fs.writeFileSync(path.join(customSkillDir, "SKILL.md"), "---\nname: custom\n---\n# Custom\n", "utf8");
   const persistentRequest = buildChannelConnectorAgentProcessRequest({
     project,
@@ -3520,15 +3520,15 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     gatewayEndpoint: project.gatewayEndpoint,
     gatewayClientKey: "sk-local",
     historyContext: [
-      "[Studio IM history context]",
+      "[Tracevane IM history context]",
       "1. user: earlier question",
       "2. assistant: earlier answer",
     ].join("\n"),
   });
   assert.ok(historyRequest);
-  assert.match(historyRequest.stdin, /^\[Studio IM history context\]/);
+  assert.match(historyRequest.stdin, /^\[Tracevane IM history context\]/);
   assert.match(historyRequest.stdin, /earlier question/);
-  assert.match(historyRequest.stdin, /\[Studio outbound file\/message policy\]/);
+  assert.match(historyRequest.stdin, /\[Tracevane outbound file\/message policy\]/);
   assert.match(historyRequest.stdin, /\[Current IM message - respond to this ONLY\]\nhi codex/);
   assert.doesNotMatch(historyRequest.stdin, /cc-connect/);
   for (const cleanupPath of historyRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
@@ -3541,28 +3541,28 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     gatewayEndpoint: project.gatewayEndpoint,
     gatewayClientKey: "sk-local",
     channelSkillContext: [
-      "[Studio IM channel skills]",
+      "[Tracevane IM channel skills]",
       "Current IM platform: octo.",
       "Available platform skills in this binding:",
       "- /octo-send: Send Octo DM, group, thread, and mention messages",
     ].join("\n"),
   });
   assert.ok(channelSkillRequest);
-  assert.match(channelSkillRequest.stdin, /^\[Studio IM channel skills\]/);
+  assert.match(channelSkillRequest.stdin, /^\[Tracevane IM channel skills\]/);
   assert.match(channelSkillRequest.stdin, /\/octo-send: Send Octo DM, group, thread, and mention messages/);
-  assert.match(channelSkillRequest.stdin, /\[Studio outbound file\/message policy\]/);
+  assert.match(channelSkillRequest.stdin, /\[Tracevane outbound file\/message policy\]/);
   assert.match(channelSkillRequest.stdin, /\[Current IM message - respond to this ONLY\]\nhi codex/);
   for (const cleanupPath of channelSkillRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const sharedChannelSkillContext = [
-    "[Studio IM channel skills]",
+    "[Tracevane IM channel skills]",
     "Current IM platform: octo.",
     "Available platform skills in this binding:",
     "- /octo-bot-api: Octo runtime messages, history, files, and multi-bot collaboration",
     "[Platform skill instruction excerpts]",
     "### /octo-bot-api [platform:octo]",
     "## Step 3: Send Messages",
-    "Use Studio channel manifests instead of external bridge tools.",
+    "Use Tracevane channel manifests instead of external bridge tools.",
   ].join("\n");
   const claudeChannelSkillRequest = buildChannelConnectorAgentProcessRequest({
     project: { ...project, agent: "claude-code", permissionMode: "plan" },
@@ -3575,9 +3575,9 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   });
   assert.ok(claudeChannelSkillRequest);
   const claudeChannelSkillInput = JSON.parse(claudeChannelSkillRequest.stdin);
-  assert.match(claudeChannelSkillInput.message.content, /^\[Studio IM channel skills\]/);
+  assert.match(claudeChannelSkillInput.message.content, /^\[Tracevane IM channel skills\]/);
   assert.match(claudeChannelSkillInput.message.content, /\/octo-bot-api/);
-  assert.match(claudeChannelSkillInput.message.content, /\[Studio outbound file\/message policy\]/);
+  assert.match(claudeChannelSkillInput.message.content, /\[Tracevane outbound file\/message policy\]/);
   assert.match(claudeChannelSkillInput.message.content, /\[Current IM message - respond to this ONLY\]\nhi codex/);
 
   const opencodeChannelSkillRequest = buildChannelConnectorAgentProcessRequest({
@@ -3590,9 +3590,9 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     channelSkillContext: sharedChannelSkillContext,
   });
   assert.ok(opencodeChannelSkillRequest);
-  assert.match(opencodeChannelSkillRequest.args.at(-1), /^\[Studio IM channel skills\]/);
+  assert.match(opencodeChannelSkillRequest.args.at(-1), /^\[Tracevane IM channel skills\]/);
   assert.match(opencodeChannelSkillRequest.args.at(-1), /\/octo-bot-api/);
-  assert.match(opencodeChannelSkillRequest.args.at(-1), /\[Studio outbound file\/message policy\]/);
+  assert.match(opencodeChannelSkillRequest.args.at(-1), /\[Tracevane outbound file\/message policy\]/);
   assert.match(opencodeChannelSkillRequest.args.at(-1), /\[Current IM message - respond to this ONLY\]\nhi codex/);
   for (const cleanupPath of opencodeChannelSkillRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
@@ -3606,13 +3606,13 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
       channelType: 2,
       payload: {
         type: 1,
-        content: "@Studio hi group",
+        content: "@Tracevane hi group",
         mention: { uids: ["robot-1"] },
         reply: { messageId: "m-parent-1" },
       },
       members: [
         { uid: "user-2", name: "Alice" },
-        { uid: "robot-1", name: "Studio" },
+        { uid: "robot-1", name: "Tracevane" },
         { uid: "external-helper_bot", name: "External Helper", robot: 1 },
       ],
     },
@@ -3621,20 +3621,20 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     gatewayClientKey: "sk-local",
   });
   assert.ok(groupRequest);
-  assert.match(groupRequest.stdin, /\[Studio group context\]/);
+  assert.match(groupRequest.stdin, /\[Tracevane group context\]/);
   assert.match(groupRequest.stdin, /Channel: group-a \(type 2\)/);
   assert.match(groupRequest.stdin, /Sender: user-2/);
   assert.match(groupRequest.stdin, /Mentioned users: robot-1/);
   assert.match(groupRequest.stdin, /Reply to message: m-parent-1/);
   assert.match(groupRequest.stdin, /Known members from Octo Bot API:/);
   assert.match(groupRequest.stdin, /- Alice\(user-2\)/);
-  assert.match(groupRequest.stdin, /- Studio\(robot-1\)/);
+  assert.match(groupRequest.stdin, /- Tracevane\(robot-1\)/);
   assert.match(groupRequest.stdin, /- External Helper\(external-helper_bot, bot\)/);
   assert.match(groupRequest.stdin, /Octo does not support bot DMs/);
   assert.match(groupRequest.stdin, /current group\/thread message using @\[uid:displayName\]/);
-  assert.match(groupRequest.stdin, /studio-channel-messages manifest/);
+  assert.match(groupRequest.stdin, /tracevane-channel-messages manifest/);
   assert.match(groupRequest.stdin, /format: "markdown"/);
-  assert.match(groupRequest.stdin, /\[Studio outbound file\/message policy\]/);
+  assert.match(groupRequest.stdin, /\[Tracevane outbound file\/message policy\]/);
   assert.match(groupRequest.stdin, /\[Current IM message - respond to this ONLY\]\nhi group/);
   assert.doesNotMatch(groupRequest.stdin, /cc-connect/);
   for (const cleanupPath of groupRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
@@ -3656,14 +3656,14 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
       channelType: 2,
       payload: {
         type: 1,
-        content: "@Studio hi feishu group",
+        content: "@Tracevane hi feishu group",
         mention: { uids: ["ou_bot"] },
         reply: { messageId: "om-parent-1" },
       },
       members: [
         { uid: "ou_user_1", name: "Alice" },
         { uid: "ou_helper", name: "Helper" },
-        { uid: "ou_bot", name: "Studio Bot", robot: 1 },
+        { uid: "ou_bot", name: "Tracevane Bot", robot: 1 },
       ],
     },
     sessionKey: "feishu:oc_group_1:ou_user_1",
@@ -3671,10 +3671,10 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     gatewayClientKey: "sk-local",
   });
   assert.ok(feishuGroupRequest);
-  assert.match(feishuGroupRequest.stdin, /\[Studio group context\]/);
+  assert.match(feishuGroupRequest.stdin, /\[Tracevane group context\]/);
   assert.match(feishuGroupRequest.stdin, /Known members from Feishu Chat Members API:/);
   assert.match(feishuGroupRequest.stdin, /- Alice\(ou_user_1\)/);
-  assert.match(feishuGroupRequest.stdin, /- Studio Bot\(ou_bot, bot\)/);
+  assert.match(feishuGroupRequest.stdin, /- Tracevane Bot\(ou_bot, bot\)/);
   assert.match(feishuGroupRequest.stdin, /target:"open_id:<member_open_id>"/);
   assert.match(feishuGroupRequest.stdin, /target:"chat:<chat_id>"/);
   assert.match(feishuGroupRequest.stdin, /current Feishu group/);
@@ -3695,7 +3695,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.ok(missingKeyRequest);
   assert.ok(missingKeyRequest.env.CODEX_HOME);
   const missingKeyConfig = fs.readFileSync(path.join(missingKeyRequest.env.CODEX_HOME, "config.toml"), "utf8");
-  assert.match(missingKeyConfig, /\[model_providers\.studio_gateway\]/);
+  assert.match(missingKeyConfig, /\[model_providers\.tracevane_gateway\]/);
   assert.doesNotMatch(missingKeyConfig, /experimental_bearer_token/);
   for (const cleanupPath of missingKeyRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
@@ -3737,7 +3737,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(resumeRequest.env.CODEX_HOME, path.join(agentRuntimeDir, "codex-home"));
   assert.equal(fs.existsSync(path.join(resumeRequest.env.CODEX_HOME, "config.toml")), true);
   const channelSkillBin = path.join(agentRuntimeDir, "channel-skill-tools", "bin");
-  const channelSkillScript = path.join(channelSkillBin, "studio-channel-skill");
+  const channelSkillScript = path.join(channelSkillBin, "tracevane-channel-skill");
   assert.equal(fs.existsSync(channelSkillScript), false);
   assert.notEqual(resumeRequest.env.PATH.split(":")[0], channelSkillBin);
   assert.equal("STUDIO_CHANNEL_SKILL_ENDPOINT" in resumeRequest.env, false);
@@ -3754,9 +3754,9 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     gatewayClientKey: "sk-local",
     processRunner: async (request) => {
       assert.equal(request.command, "codex");
-      assert.match(request.stdin, /^\[Studio outbound file\/message policy\]/);
+      assert.match(request.stdin, /^\[Tracevane outbound file\/message policy\]/);
       assert.match(request.stdin, /\[Current IM message - respond to this ONLY\]\nhi codex/);
-      assert.match(request.stdin, /studio-channel-files/);
+      assert.match(request.stdin, /tracevane-channel-files/);
       assert.doesNotMatch(request.stdin, /cc-connect/);
       assert.ok(request.env.CODEX_HOME);
       turnCleanupPath = request.cleanupPaths?.[0] || null;
@@ -3809,7 +3809,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
         JSON.stringify({ type: "thread.started", thread_id: "019e9b45-manifest" }),
         JSON.stringify({ type: "item.completed", item: { type: "function_call_output", call_id: "read-file", content: [{ type: "output_text", text: "tool output should not be final reply" }] } }),
         JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "给你发一个 TOOLS.md 文件，里面是小丘的角色分工图和工具使用规范：" } }),
-        JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "```studio-channel-files\n[{\"path\":\"workspace/TOOLS.md\",\"name\":\"TOOLS.md\",\"caption\":\"小丘角色分工与工具规范\"}]\n```" } }),
+        JSON.stringify({ type: "item.completed", item: { type: "agent_message", text: "```tracevane-channel-files\n[{\"path\":\"workspace/TOOLS.md\",\"name\":\"TOOLS.md\",\"caption\":\"小丘角色分工与工具规范\"}]\n```" } }),
         "",
       ].join("\n"),
       stderr: "",
@@ -3819,7 +3819,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     }),
   });
   assert.equal(manifestResult.ok, true);
-  assert.match(manifestResult.replyText, /规范：\n\n```studio-channel-files\n\[/);
+  assert.match(manifestResult.replyText, /规范：\n\n```tracevane-channel-files\n\[/);
   assert.doesNotMatch(manifestResult.replyText, /tool output should not be final reply/);
   const manifest = extractChannelConnectorOutboundFiles(manifestResult.replyText);
   assert.equal(manifest.replyText, "给你发一个 TOOLS.md 文件，里面是小丘的角色分工图和工具使用规范：");
@@ -3847,16 +3847,16 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(claudeRequest.args.includes("--effort"), true);
   assert.equal(claudeRequest.args.includes("max"), true);
   const claudeInput = JSON.parse(claudeRequest.stdin);
-  assert.match(claudeInput.message.content, /^\[Studio outbound file\/message policy\]/);
+  assert.match(claudeInput.message.content, /^\[Tracevane outbound file\/message policy\]/);
   assert.match(claudeInput.message.content, /\[Current IM message - respond to this ONLY\]\nhi codex/);
-  assert.match(claudeInput.message.content, /studio-channel-files/);
+  assert.match(claudeInput.message.content, /tracevane-channel-files/);
   assert.doesNotMatch(claudeRequest.stdin, /cc-connect/);
   assert.equal(claudeRequest.env.ANTHROPIC_API_KEY, "sk-local");
   assert.equal(claudeRequest.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:18796");
   assert.ok(claudeRequest.env.CLAUDE_CONFIG_DIR);
   const claudeNativeSkillPath = path.join(claudeRequest.env.CLAUDE_CONFIG_DIR, "skills", "octo_bot_api", "SKILL.md");
   assert.equal(fs.existsSync(claudeNativeSkillPath), false);
-  assert.doesNotMatch(claudeRequest.stdin, /studio-channel-skill/);
+  assert.doesNotMatch(claudeRequest.stdin, /tracevane-channel-skill/);
   for (const cleanupPath of claudeRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const claudeResumeRequest = buildChannelConnectorAgentProcessRequest({
@@ -3920,27 +3920,27 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.deepEqual(opencodeRequest.args.slice(0, 3), ["run", "--format", "json"]);
   const opencodeModelArgIndex = opencodeRequest.args.indexOf("--model");
   assert.notEqual(opencodeModelArgIndex, -1);
-  assert.equal(opencodeRequest.args[opencodeModelArgIndex + 1], "studio-gateway/gpt-5");
+  assert.equal(opencodeRequest.args[opencodeModelArgIndex + 1], "tracevane-gateway/gpt-5");
   assert.equal(opencodeRequest.args.includes("--thinking"), false);
   assert.equal(opencodeRequest.args.includes("--variant"), false);
   assert.equal(opencodeRequest.args.includes("high"), false);
-  assert.match(opencodeRequest.env.XDG_CONFIG_HOME, /studio-channel-opencode-/);
-  assert.match(opencodeRequest.env.XDG_DATA_HOME, /studio-channel-opencode-/);
+  assert.match(opencodeRequest.env.XDG_CONFIG_HOME, /tracevane-channel-opencode-/);
+  assert.match(opencodeRequest.env.XDG_DATA_HOME, /tracevane-channel-opencode-/);
   const opencodeConfigPath = path.join(opencodeRequest.env.XDG_CONFIG_HOME, "opencode", "opencode.json");
   const opencodeConfig = JSON.parse(fs.readFileSync(opencodeConfigPath, "utf8"));
-  assert.equal(opencodeConfig.model, "studio-gateway/gpt-5");
-  assert.equal(opencodeConfig.provider["studio-gateway"].options.baseURL, project.gatewayEndpoint);
-  assert.equal(opencodeConfig.provider["studio-gateway"].options.apiKey, "sk-local");
-  assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-5"].name, "gpt-5");
-  assert.equal(opencodeConfig.provider["studio-gateway"].models["gpt-5"].reasoning, false);
+  assert.equal(opencodeConfig.model, "tracevane-gateway/gpt-5");
+  assert.equal(opencodeConfig.provider["tracevane-gateway"].options.baseURL, project.gatewayEndpoint);
+  assert.equal(opencodeConfig.provider["tracevane-gateway"].options.apiKey, "sk-local");
+  assert.equal(opencodeConfig.provider["tracevane-gateway"].models["gpt-5"].name, "gpt-5");
+  assert.equal(opencodeConfig.provider["tracevane-gateway"].models["gpt-5"].reasoning, false);
   assert.equal("instructions" in opencodeConfig, false);
   assert.equal(fs.statSync(opencodeConfigPath).mode & 0o777, 0o600);
   const opencodeNativeSkillPath = path.join(opencodeRequest.env.XDG_CONFIG_HOME, "opencode", "skills", "octo_bot_api", "SKILL.md");
   assert.equal(fs.existsSync(opencodeNativeSkillPath), false);
-  assert.match(opencodeRequest.args.at(-1), /^\[Studio outbound file\/message policy\]/);
+  assert.match(opencodeRequest.args.at(-1), /^\[Tracevane outbound file\/message policy\]/);
   assert.match(opencodeRequest.args.at(-1), /\[Current IM message - respond to this ONLY\]\nhi codex/);
-  assert.match(opencodeRequest.args.at(-1), /studio-channel-files/);
-  assert.doesNotMatch(opencodeRequest.args.at(-1), /studio-channel-skill/);
+  assert.match(opencodeRequest.args.at(-1), /tracevane-channel-files/);
+  assert.doesNotMatch(opencodeRequest.args.at(-1), /tracevane-channel-skill/);
   assert.doesNotMatch(opencodeRequest.args.at(-1), /studio-feishu-actions/);
   assert.doesNotMatch(opencodeRequest.args.at(-1), /cc-connect/);
   for (const cleanupPath of opencodeRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
@@ -3970,10 +3970,10 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   });
   assert.ok(opencodeSlashModelRequest);
   const slashModelArgIndex = opencodeSlashModelRequest.args.indexOf("--model");
-  assert.equal(opencodeSlashModelRequest.args[slashModelArgIndex + 1], "studio-gateway/mlamp/deepseek-v4-flash");
+  assert.equal(opencodeSlashModelRequest.args[slashModelArgIndex + 1], "tracevane-gateway/mlamp/deepseek-v4-flash");
   const slashModelConfig = JSON.parse(fs.readFileSync(path.join(opencodeSlashModelRequest.env.XDG_CONFIG_HOME, "opencode", "opencode.json"), "utf8"));
-  assert.equal(slashModelConfig.model, "studio-gateway/mlamp/deepseek-v4-flash");
-  assert.equal(slashModelConfig.provider["studio-gateway"].models["mlamp/deepseek-v4-flash"].name, "mlamp/deepseek-v4-flash");
+  assert.equal(slashModelConfig.model, "tracevane-gateway/mlamp/deepseek-v4-flash");
+  assert.equal(slashModelConfig.provider["tracevane-gateway"].models["mlamp/deepseek-v4-flash"].name, "mlamp/deepseek-v4-flash");
   for (const cleanupPath of opencodeSlashModelRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const opencodeStaleSessionRequest = buildChannelConnectorAgentProcessRequest({
@@ -3999,7 +3999,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     sessionKey: "dmwork:dm:user-1",
     gatewayEndpoint: project.gatewayEndpoint,
     gatewayClientKey: null,
-    historyContext: "[Studio IM history context]\n1. user: should not leak",
+    historyContext: "[Tracevane IM history context]\n1. user: should not leak",
     nativeCommand: "/help exec",
   });
   assert.ok(codexNativeHelpRequest);
@@ -4017,7 +4017,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     gatewayEndpoint: project.gatewayEndpoint,
     gatewayClientKey: null,
     nativeCommand: "/help",
-    historyContext: "[Studio IM history context]\n1. user: should not leak",
+    historyContext: "[Tracevane IM history context]\n1. user: should not leak",
     processRunner: async (request) => {
       assert.equal(request.command, "codex");
       assert.deepEqual(request.args, ["--help"]);
@@ -4088,7 +4088,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     sessionKey: "dmwork:dm:user-1",
     gatewayEndpoint: project.gatewayEndpoint,
     gatewayClientKey: "sk-local",
-    historyContext: "[Studio IM history context]\n1. user: should not leak",
+    historyContext: "[Tracevane IM history context]\n1. user: should not leak",
     nativeCommand: "/help",
   });
   assert.ok(claudeNativeRequest);
@@ -4104,7 +4104,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     sessionKey: "dmwork:dm:user-1",
     gatewayEndpoint: project.gatewayEndpoint,
     gatewayClientKey: "sk-local",
-    historyContext: "[Studio IM history context]\n1. user: should not leak",
+    historyContext: "[Tracevane IM history context]\n1. user: should not leak",
     nativeCommand: "/help",
   });
   assert.ok(opencodeNativeRequest);
@@ -4133,8 +4133,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   });
   assert.ok(attachmentRequest);
   assert.match(attachmentRequest.stdin, /\[image: diagram\.png\]/);
-  assert.match(attachmentRequest.stdin, /Studio attachment summary/);
-  assert.match(attachmentRequest.stdin, /studio-channel-files/);
+  assert.match(attachmentRequest.stdin, /Tracevane attachment summary/);
+  assert.match(attachmentRequest.stdin, /tracevane-channel-files/);
   assert.match(attachmentRequest.stdin, /image: diagram\.png/);
   assert.match(attachmentRequest.stdin, /Do not infer visual contents/);
   assert.doesNotMatch(attachmentRequest.stdin, /feishu-private-image-key/);
@@ -4170,7 +4170,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.notEqual(visionImageArgIndex, -1);
   assert.equal(visionAttachmentRequest.args[visionImageArgIndex + 1], visionImagePath);
   assert.match(visionAttachmentRequest.stdin, /native --image arguments/);
-  assert.doesNotMatch(visionAttachmentRequest.stdin, /Studio visual attachment policy/);
+  assert.doesNotMatch(visionAttachmentRequest.stdin, /Tracevane visual attachment policy/);
   for (const cleanupPath of visionAttachmentRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const resumeVisionAttachmentRequest = buildChannelConnectorAgentProcessRequest({
@@ -4239,8 +4239,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(claudeVisionInput.message.content[0].source.data, Buffer.from("fake-png").toString("base64"));
   assert.equal(claudeVisionInput.message.content[1].type, "text");
   assert.match(claudeVisionInput.message.content[1].text, /native image content blocks/);
-  assert.match(claudeVisionInput.message.content[1].text, /Studio attachment summary/);
-  assert.doesNotMatch(claudeVisionInput.message.content[1].text, /Studio visual attachment policy/);
+  assert.match(claudeVisionInput.message.content[1].text, /Tracevane attachment summary/);
+  assert.doesNotMatch(claudeVisionInput.message.content[1].text, /Tracevane visual attachment policy/);
 
   const opencodeVisionAttachmentRequest = buildChannelConnectorAgentProcessRequest({
     project: { ...project, agent: "opencode", model: "gmn-vision" },
@@ -4272,10 +4272,10 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.ok(opencodeFileArgIndex < opencodePromptSeparatorIndex);
   assert.equal(opencodeVisionAttachmentRequest.args[opencodeFileArgIndex + 1], visionImagePath);
   assert.match(opencodeVisionAttachmentRequest.args.at(-1), /native --file arguments/);
-  assert.doesNotMatch(opencodeVisionAttachmentRequest.args.at(-1), /Studio visual attachment policy/);
+  assert.doesNotMatch(opencodeVisionAttachmentRequest.args.at(-1), /Tracevane visual attachment policy/);
   const opencodeVisionConfigPath = path.join(opencodeVisionAttachmentRequest.env.XDG_CONFIG_HOME, "opencode", "opencode.json");
   const opencodeVisionConfig = JSON.parse(fs.readFileSync(opencodeVisionConfigPath, "utf8"));
-  const opencodeVisionModelConfig = opencodeVisionConfig.provider["studio-gateway"].models["gmn-vision"];
+  const opencodeVisionModelConfig = opencodeVisionConfig.provider["tracevane-gateway"].models["gmn-vision"];
   assert.equal(opencodeVisionModelConfig.attachment, true);
   assert.deepEqual(opencodeVisionModelConfig.modalities, { input: ["text", "image"], output: ["text"] });
   assert.deepEqual(opencodeVisionModelConfig.limit, { context: 200000, output: 8192 });
@@ -4311,8 +4311,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(codexVideoRequest.args.includes("--image"), false);
   assert.match(codexVideoRequest.stdin, /\[video: clip\.mp4\]/);
   assert.match(codexVideoRequest.stdin, new RegExp(videoPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
-  assert.match(codexVideoRequest.stdin, /Studio does not pre-extract frames or down-convert videos/);
-  assert.doesNotMatch(codexVideoRequest.stdin, /Studio visual attachment fallback/);
+  assert.match(codexVideoRequest.stdin, /Tracevane does not pre-extract frames or down-convert videos/);
+  assert.doesNotMatch(codexVideoRequest.stdin, /Tracevane visual attachment fallback/);
   for (const cleanupPath of codexVideoRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const claudeVideoRequest = buildChannelConnectorAgentProcessRequest({
@@ -4328,7 +4328,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   const claudeVideoInput = JSON.parse(claudeVideoRequest.stdin);
   assert.equal(typeof claudeVideoInput.message.content, "string");
   assert.match(claudeVideoInput.message.content, /\[video: clip\.mp4\]/);
-  assert.match(claudeVideoInput.message.content, /Studio does not pre-extract frames or down-convert videos/);
+  assert.match(claudeVideoInput.message.content, /Tracevane does not pre-extract frames or down-convert videos/);
   assert.doesNotMatch(claudeVideoInput.message.content, /native image content blocks/);
   for (const cleanupPath of claudeVideoRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
@@ -4344,7 +4344,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.ok(opencodeVideoRequest);
   assert.equal(opencodeVideoRequest.args.includes("--file"), false);
   assert.match(opencodeVideoRequest.args.at(-1), /\[video: clip\.mp4\]/);
-  assert.match(opencodeVideoRequest.args.at(-1), /Studio does not pre-extract frames or down-convert videos/);
+  assert.match(opencodeVideoRequest.args.at(-1), /Tracevane does not pre-extract frames or down-convert videos/);
   assert.doesNotMatch(opencodeVideoRequest.args.at(-1), /native --file arguments/);
   for (const cleanupPath of opencodeVideoRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
@@ -4397,7 +4397,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     gatewayClientKey: "sk-local",
     processRunner: async (request) => {
       nonVisionRunnerCalled = true;
-      assert.match(request.stdin, /Studio visual attachment policy/);
+      assert.match(request.stdin, /Tracevane visual attachment policy/);
       assert.match(request.stdin, /current model glm-5 is not marked as vision-capable/);
       assert.match(request.stdin, /must not describe, classify, OCR, or infer visual contents/);
       assert.match(request.stdin, /ask what they want to do next/);
@@ -4444,7 +4444,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     modelCapabilities: { vision: false },
   });
   assert.ok(catalogNonVisionRequest);
-  assert.match(catalogNonVisionRequest.stdin, /Studio visual attachment policy/);
+  assert.match(catalogNonVisionRequest.stdin, /Tracevane visual attachment policy/);
   assert.match(catalogNonVisionRequest.stdin, /current model gpt-5\.3-codex-spark is not marked as vision-capable/);
   assert.equal(catalogNonVisionRequest.args.includes("--image"), false);
   for (const cleanupPath of catalogNonVisionRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
@@ -4474,7 +4474,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.equal(claudeNonVisionImageRequest.command, "claude");
   const claudeNonVisionInput = JSON.parse(claudeNonVisionImageRequest.stdin);
   assert.equal(typeof claudeNonVisionInput.message.content, "string");
-  assert.match(claudeNonVisionInput.message.content, /Studio visual attachment policy/);
+  assert.match(claudeNonVisionInput.message.content, /Tracevane visual attachment policy/);
   assert.match(claudeNonVisionInput.message.content, /current model glm-5 is not marked as vision-capable/);
   assert.doesNotMatch(claudeNonVisionInput.message.content, /native image content blocks/);
   for (const cleanupPath of claudeNonVisionImageRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
@@ -4503,7 +4503,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.ok(opencodeNonVisionImageRequest);
   assert.equal(opencodeNonVisionImageRequest.command, "opencode");
   assert.equal(opencodeNonVisionImageRequest.args.includes("--file"), false);
-  assert.match(opencodeNonVisionImageRequest.args.at(-1), /Studio visual attachment policy/);
+  assert.match(opencodeNonVisionImageRequest.args.at(-1), /Tracevane visual attachment policy/);
   assert.match(opencodeNonVisionImageRequest.args.at(-1), /current model glm-5 is not marked as vision-capable/);
   assert.doesNotMatch(opencodeNonVisionImageRequest.args.at(-1), /native --file arguments/);
   for (const cleanupPath of opencodeNonVisionImageRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
@@ -4648,7 +4648,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
     gatewayClientKey: "sk-local",
     processRunner: async (request) => {
       const modelArgIndex = request.args.indexOf("--model");
-      assert.equal(request.args[modelArgIndex + 1], "studio-gateway/gpt-5");
+      assert.equal(request.args[modelArgIndex + 1], "tracevane-gateway/gpt-5");
       return {
         exitCode: 1,
         signal: null,
@@ -4795,7 +4795,7 @@ test("native Channel Connectors conversation history stores sanitized session co
   const entries = getChannelConnectorConversationHistory(historyPath, lookup, 10);
   assert.equal(entries.length, 3);
   const context = renderChannelConnectorConversationHistoryContext(entries);
-  assert.match(context, /Studio IM history context/);
+  assert.match(context, /Tracevane IM history context/);
   assert.match(context, /我记住了 A-123/);
   assert.match(context, /新问题/);
   assert.match(context, /payload\.zip|A-123/);
@@ -4901,7 +4901,7 @@ test("native Channel Connectors compact posts to Gateway and clears stale Agent 
     model: "gpt-5",
     permissionMode: "suggest",
     gatewayEndpoint: "",
-    gatewayKeyRef: "studio-gateway-client-key",
+    gatewayKeyRef: "tracevane-gateway-client-key",
     appProfileRef: "codex",
     platformBindings: [],
   };
@@ -5017,7 +5017,7 @@ test("native Channel Connectors compact posts to Gateway and clears stale Agent 
   assert.equal(requests[0].body.model, "gpt-5");
   assert.equal(requests[0].body.stream, false);
   assert.equal(requests[0].body.metadata.studio_channel_compact, true);
-  assert.match(requests[0].body.input, /Summarize this Studio IM conversation/);
+  assert.match(requests[0].body.input, /Summarize this Tracevane IM conversation/);
   assert.match(requests[0].body.input, /TOOLS\.md/);
   assert.match(requests[0].body.input, /recent compact history 6/);
   assert.match(requests[0].body.input, /truncated/);
@@ -5099,7 +5099,7 @@ test("native Channel Connectors service slash compact works for Feishu and Octo 
             workDir: path.join(root, "codex-work"),
             permissionMode: "suggest",
             gatewayEndpoint: `${baseUrl}/v1`,
-            gatewayKeyRef: "studio-gateway-client-key",
+            gatewayKeyRef: "tracevane-gateway-client-key",
             appProfileRef: "codex",
           },
         ],
@@ -5335,7 +5335,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     model: "gpt-5",
     permissionMode: "suggest",
     gatewayEndpoint: "http://127.0.0.1:18796/v1",
-    gatewayKeyRef: "studio-gateway-client-key",
+    gatewayKeyRef: "tracevane-gateway-client-key",
     appProfileRef: "codex",
     platformBindings: [],
   };
@@ -5347,7 +5347,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     model: "claude-sonnet",
     permissionMode: "plan",
     gatewayEndpoint: "http://127.0.0.1:18796/v1",
-    gatewayKeyRef: "studio-gateway-client-key",
+    gatewayKeyRef: "tracevane-gateway-client-key",
     appProfileRef: "claude",
     platformBindings: [],
   };
@@ -5397,27 +5397,27 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
       "## Step 2: Receive Messages",
       "openclaw plugins install clawhub:octo",
       "## Step 3: Send Messages",
-      "Use the current Studio channel_id and channel_type. Do not split thread channel ids.",
+      "Use the current Tracevane channel_id and channel_type. Do not split thread channel ids.",
       "## Message History Sync",
       "Use recent channel messages to understand group collaboration before replying.",
       "## Multi-Bot Coordination",
       "Mention the target bot visibly and do not respond on behalf of unrelated bots.",
       "## Files",
-      "Use Studio file manifests for file, image, and binary sends.",
+      "Use Tracevane file manifests for file, image, and binary sends.",
     ].join("\n"),
     "utf8",
   );
   fs.mkdirSync(path.join(octoPlatformSkillDir, "octo-send"), { recursive: true });
   fs.writeFileSync(
     path.join(octoPlatformSkillDir, "octo-send", "SKILL.md"),
-    "---\nname: Octo Send\ndescription: Send Octo DM, group, thread, and mention messages\n---\nUse Studio Octo channel transport for DM, group, thread, and mention work.",
+    "---\nname: Octo Send\ndescription: Send Octo DM, group, thread, and mention messages\n---\nUse Tracevane Octo channel transport for DM, group, thread, and mention work.",
     "utf8",
   );
   const feishuPlatformSkillDir = path.join(root, "platform-skills", "feishu");
   fs.mkdirSync(path.join(feishuPlatformSkillDir, "feishu-card"), { recursive: true });
   fs.writeFileSync(
     path.join(feishuPlatformSkillDir, "feishu-card", "SKILL.md"),
-    "---\nname: Feishu Card\ndescription: Build Feishu card and message workflows\n---\nUse Studio Feishu channel transport for card and message work.",
+    "---\nname: Feishu Card\ndescription: Build Feishu card and message workflows\n---\nUse Tracevane Feishu channel transport for card and message work.",
     "utf8",
   );
   fs.mkdirSync(path.join(feishuPlatformSkillDir, "feishu-doc-api"), { recursive: true });
@@ -5483,7 +5483,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     },
     gateway: {
       endpoint: "http://127.0.0.1:18796/v1",
-      clientKeyRef: "studio-gateway-client-key",
+      clientKeyRef: "tracevane-gateway-client-key",
     },
     projects: [codexProject, claudeProject],
   };
@@ -5537,7 +5537,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(help.handled, true);
   assert.equal(help.ok, true);
-  assert.match(help.replyText, /^Studio Channel/);
+  assert.match(help.replyText, /^Tracevane Channel/);
   assert.match(help.replyText, /Agent 配置面板/);
   assert.match(help.replyText, /`\/help agent`/);
   assert.match(help.replyText, /`\/help model`/);
@@ -5561,7 +5561,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(moreHelp.handled, true);
   assert.equal(moreHelp.ok, true);
-  assert.match(moreHelp.replyText, /Studio Channel \/ more/);
+  assert.match(moreHelp.replyText, /Tracevane Channel \/ more/);
   assert.match(moreHelp.replyText, /`\/help session`/);
   assert.match(moreHelp.replyText, /`\/help commands`/);
   assert.match(moreHelp.replyText, /`\/help native`/);
@@ -5571,7 +5571,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(sessionHelp.handled, true);
   assert.equal(sessionHelp.ok, true);
-  assert.match(sessionHelp.replyText, /Studio Channel \/ session\n\n- `\/whoami` - /);
+  assert.match(sessionHelp.replyText, /Tracevane Channel \/ session\n\n- `\/whoami` - /);
   assert.doesNotMatch(sessionHelp.replyText, /\| 命令 \| 作用 \|/);
   assert.match(sessionHelp.replyText, /`\/whoami`/);
   assert.match(sessionHelp.replyText, /`\/version`/);
@@ -5589,7 +5589,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(displayHelp.handled, true);
   assert.equal(displayHelp.ok, true);
-  assert.match(displayHelp.replyText, /Studio Channel \/ display\n\n- `\/display` - /);
+  assert.match(displayHelp.replyText, /Tracevane Channel \/ display\n\n- `\/display` - /);
   assert.doesNotMatch(displayHelp.replyText, /\| 命令 \| 作用 \|/);
   assert.ok(displayHelp.replyText.includes("`/quiet [quiet|compact|full]`"));
   assert.ok(displayHelp.replyText.includes("`/display progress <1-30|default>`"));
@@ -5600,7 +5600,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(bufferHelp.handled, true);
   assert.equal(bufferHelp.ok, true);
-  assert.match(bufferHelp.replyText, /Studio Channel \/ buffer\n\n- `\/buffer` - /);
+  assert.match(bufferHelp.replyText, /Tracevane Channel \/ buffer\n\n- `\/buffer` - /);
   assert.ok(bufferHelp.replyText.includes("`/buffer <id|前缀|latest>`"));
   assert.match(bufferHelp.replyText, /`\/quiet compact`/);
   assert.doesNotMatch(bufferHelp.replyText, /\| 命令 \| 作用 \|/);
@@ -5610,7 +5610,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(commandsHelp.handled, true);
   assert.equal(commandsHelp.ok, true);
-  assert.match(commandsHelp.replyText, /Studio Channel \/ commands/);
+  assert.match(commandsHelp.replyText, /Tracevane Channel \/ commands/);
   assert.match(commandsHelp.replyText, /`\/commands add <名称> <prompt 模板>`/);
   assert.match(commandsHelp.replyText, /`\/commands addexec \[--work-dir <目录>\] <名称> <shell 命令>`/);
   assert.match(commandsHelp.replyText, /`\/skills`/);
@@ -5621,7 +5621,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(nativeHelp.handled, true);
   assert.equal(nativeHelp.ok, true);
-  assert.match(nativeHelp.replyText, /Studio Channel \/ native/);
+  assert.match(nativeHelp.replyText, /Tracevane Channel \/ native/);
   assert.match(nativeHelp.replyText, /`\/native \/compact`/);
   assert.match(nativeHelp.replyText, /one-shot 兼容路径/);
   assert.doesNotMatch(nativeHelp.replyText, /`\/commands add <名称> <prompt 模板>`/);
@@ -5733,7 +5733,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     });
     assert.equal(aliasHelp.handled, true);
     assert.equal(aliasHelp.action, "help");
-    assert.match(aliasHelp.replyText, /^Studio Channel/);
+    assert.match(aliasHelp.replyText, /^Tracevane Channel/);
   }
 
   const whoami = await handleChannelConnectorCommand({
@@ -5743,7 +5743,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(whoami.handled, true);
   assert.equal(whoami.ok, true);
   assert.equal(whoami.action, "show");
-  assert.match(whoami.replyText, /Studio Whoami/);
+  assert.match(whoami.replyText, /Tracevane Whoami/);
   assert.match(whoami.replyText, /User ID: admin-1/);
   assert.match(whoami.replyText, /Channel ID: admin-1/);
   assert.match(whoami.replyText, /Platform: octo/);
@@ -5808,8 +5808,8 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(version.handled, true);
   assert.equal(version.ok, true);
   assert.equal(version.action, "show");
-  assert.match(version.replyText, /Studio Channel Version/);
-  assert.match(version.replyText, /Studio: 0\.1\.70/);
+  assert.match(version.replyText, /Tracevane Channel Version/);
+  assert.match(version.replyText, /Tracevane: 0\.1\.70/);
   assert.match(version.replyText, /Node: v/);
   assert.match(version.replyText, /Platform: /);
   assert.match(version.replyText, /Binding: octo-codex \(octo\)/);
@@ -5895,7 +5895,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(statusWithUsage.ok, true);
   assert.match(statusWithUsage.replyText, /Used: 80 \/ 128000 tokens/);
   assert.match(statusWithUsage.replyText, /Remaining: 127920 tokens; source: Gateway usage\./);
-  assert.match(statusWithUsage.replyText, /Compact plan: native-first with live persistent Agent session; Studio fallback otherwise\./);
+  assert.match(statusWithUsage.replyText, /Compact plan: native-first with live persistent Agent session; Tracevane fallback otherwise\./);
 
   const abbreviatedHistory = await handleChannelConnectorCommand({
     ...baseContext,
@@ -5993,7 +5993,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(codexSkills.handled, true);
   assert.equal(codexSkills.action, "list");
-  assert.match(codexSkills.replyText, /Studio Skills \(codex · octo\)/);
+  assert.match(codexSkills.replyText, /Tracevane Skills \(codex · octo\)/);
   assert.match(codexSkills.replyText, /\/release-notes/);
   assert.match(codexSkills.replyText, /Draft concise release notes/);
   assert.match(codexSkills.replyText, /\/octo-send \[binding\]/);
@@ -6001,12 +6001,12 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.doesNotMatch(codexSkills.replyText, /\/feishu-card/);
   const octoSkillContext = buildChannelConnectorSkillContext(codexProject, { binding });
   assert.ok(octoSkillContext);
-  assert.match(octoSkillContext, /\[Studio IM channel helper skills\]/);
+  assert.match(octoSkillContext, /\[Tracevane IM channel helper skills\]/);
   assert.match(octoSkillContext, /Configured binding skills/);
   assert.match(octoSkillContext, /### \/octo-send \[binding\]/);
-  assert.match(octoSkillContext, /Use Studio Octo channel transport for DM, group, thread, and mention work/);
-  assert.match(octoSkillContext, /studio-channel-messages/);
-  assert.doesNotMatch(octoSkillContext, /studio-channel-skill/);
+  assert.match(octoSkillContext, /Use Tracevane Octo channel transport for DM, group, thread, and mention work/);
+  assert.match(octoSkillContext, /tracevane-channel-messages/);
+  assert.doesNotMatch(octoSkillContext, /tracevane-channel-skill/);
   assert.doesNotMatch(octoSkillContext, /studio-octo-actions/);
   assert.doesNotMatch(octoSkillContext, /feishu-card/);
 
@@ -6031,7 +6031,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(octoSkillRun.handled, false);
   assert.equal(octoSkillRun.command, "octo-send");
   assert.match(octoSkillRun.passthroughText, /## Skill: Octo Send/);
-  assert.match(octoSkillRun.passthroughText, /Use Studio Octo channel transport/);
+  assert.match(octoSkillRun.passthroughText, /Use Tracevane Octo channel transport/);
   assert.equal(octoSkillRun.audit.kind, "skill");
   assert.equal(octoSkillRun.audit.name, "octo-send");
   assert.equal(octoSkillRun.audit.commandPreview, path.join(octoPlatformSkillDir, "octo-send"));
@@ -6041,18 +6041,18 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     message: message("/skills"),
   });
   assert.equal(feishuSkills.handled, true);
-  assert.match(feishuSkills.replyText, /Studio Skills \(codex · feishu\)/);
+  assert.match(feishuSkills.replyText, /Tracevane Skills \(codex · feishu\)/);
   assert.doesNotMatch(feishuSkills.replyText, /\/feishu-doc \[platform:feishu\]/);
   assert.match(feishuSkills.replyText, /\/feishu-card \[binding\]/);
   assert.match(feishuSkills.replyText, /\/feishu-doc-api \[binding\]/);
   assert.doesNotMatch(feishuSkills.replyText, /\/octo-send/);
   const feishuSkillContext = buildChannelConnectorSkillContext(codexProject, { binding: feishuBinding });
   assert.ok(feishuSkillContext);
-  assert.match(feishuSkillContext, /\[Studio IM channel helper skills\]/);
+  assert.match(feishuSkillContext, /\[Tracevane IM channel helper skills\]/);
   assert.match(feishuSkillContext, /\/feishu-card: Build Feishu card and message workflows/);
   assert.match(feishuSkillContext, /\/feishu-doc-api: Read, write, and attach files in Feishu documents/);
   assert.doesNotMatch(feishuSkillContext, /Runtime Action Index/);
-  assert.doesNotMatch(feishuSkillContext, /studio-channel-skill/);
+  assert.doesNotMatch(feishuSkillContext, /tracevane-channel-skill/);
   assert.doesNotMatch(feishuSkillContext, /studio-feishu-actions/);
   assert.doesNotMatch(feishuSkillContext, /FEISHU_APP_SECRET/);
   assert.doesNotMatch(feishuSkillContext, /octo-send/);
@@ -6362,7 +6362,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(usage.replyText, /Tokens: input 11 · output 7 · total 18/);
   assert.match(usage.replyText, /Cache: read 3 · write 1/);
   assert.match(usage.replyText, /gpt-5\.4-mini/);
-  assert.match(usage.replyText, /Studio Gateway runtime log/);
+  assert.match(usage.replyText, /Tracevane Gateway runtime log/);
 
   let stopCalled = false;
   const stopped = await handleChannelConnectorCommand({
@@ -6898,7 +6898,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(bufferLatest.ok, true);
   assert.equal(bufferLatest.action, "show");
-  assert.match(bufferLatest.replyText, /Studio Reply Buffer/);
+  assert.match(bufferLatest.replyText, /Tracevane Reply Buffer/);
   assert.match(bufferLatest.replyText, new RegExp(sameSessionBuffer.bufferId));
   assert.match(bufferLatest.replyText, /完整群聊回复/);
   const bufferByPrefix = await handleChannelConnectorCommand({
@@ -6922,7 +6922,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(compactWithoutRuntime.handled, true);
   assert.equal(compactWithoutRuntime.action, "compact");
   assert.equal(compactWithoutRuntime.ok, false);
-  assert.match(compactWithoutRuntime.replyText, /未启用 Studio compact/);
+  assert.match(compactWithoutRuntime.replyText, /未启用 Tracevane compact/);
 
   let compactCalled = false;
   const compact = await handleChannelConnectorCommand({
@@ -6948,7 +6948,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.equal(compact.handled, true);
   assert.equal(compact.action, "compact");
   assert.equal(compact.ok, true);
-  assert.match(compact.replyText, /Studio compact 已压缩/);
+  assert.match(compact.replyText, /Tracevane compact 已压缩/);
   assert.match(compact.replyText, /history: 6 -> 1/);
   assert.match(compact.replyText, /cleared 2/);
 
@@ -6976,7 +6976,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.deepEqual(compactProgressEvents.map((event) => event.type), ["started", "completed"]);
   assert.deepEqual(compactProgressEvents.map((event) => event.commandName), ["compact", "compact"]);
   assert.equal(compactProgressEvents[0].commandPreview, "/compact");
-  assert.match(compactProgressEvents[1].outputPreview, /Studio compact completed/);
+  assert.match(compactProgressEvents[1].outputPreview, /Tracevane compact completed/);
 
   let nativeCompactCalled = false;
   let nativeFallbackCalled = false;
@@ -7034,7 +7034,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(fallbackAfterNativeFailure, true);
   assert.equal(nativeFailureFallback.ok, true);
-  assert.match(nativeFailureFallback.replyText, /已降级 Studio compact/);
+  assert.match(nativeFailureFallback.replyText, /已降级 Tracevane compact/);
   assert.match(nativeFailureFallback.replyText, /native compact unavailable/);
 
   const passthrough = await handleChannelConnectorCommand({
@@ -7081,7 +7081,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
       };
     },
     compactConversation: async () => {
-      throw new Error("forced /native /compact must not use Studio fallback");
+      throw new Error("forced /native /compact must not use Tracevane fallback");
     },
   });
   assert.equal(forcedNativeCompactCalled, true);
@@ -7290,7 +7290,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     message: message("/history 1"),
   });
   assert.equal(historyOne.ok, true);
-  assert.match(historyOne.replyText, /Studio Session History \(last 1\/1\)/);
+  assert.match(historyOne.replyText, /Tracevane Session History \(last 1\/1\)/);
   assert.doesNotMatch(historyOne.replyText, /first current history entry/);
   assert.match(historyOne.replyText, /second current history entry/);
   const historyDefault = await handleChannelConnectorCommand({
@@ -7298,7 +7298,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     message: message("/history"),
   });
   assert.equal(historyDefault.ok, true);
-  assert.match(historyDefault.replyText, /Studio Session History \(last 2\/20\)/);
+  assert.match(historyDefault.replyText, /Tracevane Session History \(last 2\/20\)/);
   assert.match(historyDefault.replyText, /first current history entry/);
   assert.match(historyDefault.replyText, /second current history entry/);
   const historyTooMany = await handleChannelConnectorCommand({
@@ -7306,7 +7306,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
     message: message("/history 999"),
   });
   assert.equal(historyTooMany.ok, true);
-  assert.match(historyTooMany.replyText, /Studio Session History \(last 2\/20\)/);
+  assert.match(historyTooMany.replyText, /Tracevane Session History \(last 2\/20\)/);
 
   upsertChannelConnectorAgentSession(agentSessionsPath, {
     bindingId: binding.id,
@@ -7413,7 +7413,7 @@ test("native Channel Connectors visual turns select Gateway vision models from c
     model: "gateway-glm-5",
     permissionMode: "auto-edit",
     gatewayEndpoint: "http://127.0.0.1:18796/v1",
-    gatewayKeyRef: "studio-gateway-client-key",
+    gatewayKeyRef: "tracevane-gateway-client-key",
     appProfileRef: "codex",
     platformBindings: [],
   };
@@ -7653,7 +7653,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
     model: "gpt-5",
     permissionMode: "suggest",
     gatewayEndpoint: "http://127.0.0.1:18796/v1",
-    gatewayKeyRef: "studio-gateway-client-key",
+    gatewayKeyRef: "tracevane-gateway-client-key",
     appProfileRef: "codex",
     platformBindings: [],
   };
@@ -7665,7 +7665,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
     model: "claude-sonnet",
     permissionMode: "plan",
     gatewayEndpoint: "http://127.0.0.1:18796/v1",
-    gatewayKeyRef: "studio-gateway-client-key",
+    gatewayKeyRef: "tracevane-gateway-client-key",
     appProfileRef: "claude",
     platformBindings: [],
   };
@@ -7702,7 +7702,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
     },
     gateway: {
       endpoint: "http://127.0.0.1:18796/v1",
-      clientKeyRef: "studio-gateway-client-key",
+      clientKeyRef: "tracevane-gateway-client-key",
     },
     projects: [codexProject, claudeProject],
   };
@@ -7804,7 +7804,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
   assert.equal(surface.current.visionModel, null);
   assert.equal(surface.current.thinkingSupport.parserLabel, "ready");
   assert.equal(surface.current.thinkingSupport.liveStatus, "model-dependent");
-  assert.match(surface.textFallback, /^Studio Channel/);
+  assert.match(surface.textFallback, /^Tracevane Channel/);
   assert.match(surface.textFallback, /\*\*当前配置\*\*/);
   assert.match(surface.textFallback, /Agent: codex-main \(codex\)/);
   assert.match(surface.textFallback, /Model: gpt-5 · Permission: suggest/);
@@ -7838,7 +7838,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
 
   const feishu = renderChannelConnectorCommandSurfaceFeishu(surface);
   assert.equal(feishu.config.wide_screen_mode, true);
-  assert.equal(feishu.header.title.content, "Studio Channel 操作台");
+  assert.equal(feishu.header.title.content, "Tracevane Channel 操作台");
   const raw = JSON.stringify(feishu);
   assert.match(raw, /column_set/);
   assert.match(raw, /surface_action_id/);
@@ -8466,7 +8466,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
           workDir: path.join(root, "codex-work"),
           permissionMode: "suggest",
           gatewayEndpoint: "http://127.0.0.1:18796/v1",
-          gatewayKeyRef: "studio-gateway-client-key",
+          gatewayKeyRef: "tracevane-gateway-client-key",
           appProfileRef: "codex",
         },
         {
@@ -8477,7 +8477,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
           workDir: path.join(root, "claude-work"),
           permissionMode: "plan",
           gatewayEndpoint: "http://127.0.0.1:18796/v1",
-          gatewayKeyRef: "studio-gateway-client-key",
+          gatewayKeyRef: "tracevane-gateway-client-key",
           appProfileRef: "claude",
         },
       ],
@@ -8593,7 +8593,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
         message_type: "text",
         content: JSON.stringify({ text: "@_user_1 /status" }),
         mentions: [
-          { key: "@_user_1", name: "Studio Main", id: { open_id: "bot_test" } },
+          { key: "@_user_1", name: "Tracevane Main", id: { open_id: "bot_test" } },
         ],
       },
     },
@@ -8722,7 +8722,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
         message_type: "text",
         content: JSON.stringify({ text: "@_user_1 %help" }),
         mentions: [
-          { key: "@_user_1", name: "Studio Main", id: { open_id: "bot_test" } },
+          { key: "@_user_1", name: "Tracevane Main", id: { open_id: "bot_test" } },
         ],
       },
     },
@@ -9126,7 +9126,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
   const statusCardRaw = JSON.stringify(statusCardAction.feishuResponse.card.data);
   assert.match(statusCardRaw, /当前状态/);
   assert.match(statusCardRaw, /已刷新当前会话状态/);
-  assert.doesNotMatch(statusCardRaw, /Studio Channel Status/);
+  assert.doesNotMatch(statusCardRaw, /Tracevane Channel Status/);
   assert.doesNotMatch(statusCardAction.feishuResponse.toast.content, /菜单已更新/);
 
   const newSessionCardAction = await service.dispatchFeishuWebhook({
@@ -9622,7 +9622,7 @@ test("native Channel Connectors Feishu transport sends replies and reuses tenant
             workDir: root,
             permissionMode: "suggest",
             gatewayEndpoint: "http://127.0.0.1:18796/v1",
-            gatewayKeyRef: "studio-gateway-client-key",
+            gatewayKeyRef: "tracevane-gateway-client-key",
             appProfileRef: "codex",
           },
         ],
@@ -9782,7 +9782,7 @@ test("native Channel Connectors Feishu transport sends replies and reuses tenant
     const webhookCard = JSON.parse(requests[7].body.content);
     assert.match(webhookCard.header.title.content, /会话控制/);
     assert.match(JSON.stringify(webhookCard), /已刷新当前会话状态/);
-    assert.doesNotMatch(JSON.stringify(webhookCard), /Studio Channel Status/);
+    assert.doesNotMatch(JSON.stringify(webhookCard), /Tracevane Channel Status/);
 
     const cardNew = await service.dispatchFeishuWebhook({
       sendReply: true,
@@ -9839,7 +9839,7 @@ test("native Channel Connectors Feishu transport-smoke uploads and sends files t
             workDir: root,
             permissionMode: "suggest",
             gatewayEndpoint: "http://127.0.0.1:18796/v1",
-            gatewayKeyRef: "studio-gateway-client-key",
+            gatewayKeyRef: "tracevane-gateway-client-key",
             appProfileRef: "codex",
           },
         ],
@@ -9865,13 +9865,13 @@ test("native Channel Connectors Feishu transport-smoke uploads and sends files t
       },
     });
 
-    const smokeContent = "Studio Feishu media smoke";
+    const smokeContent = "Tracevane Feishu media smoke";
     const result = await service.runFeishuTransportSmoke({
       bindingId: "feishu-media",
       action: "upload-and-send-media",
       channelId: "oc_chat",
       content: smokeContent,
-      fileName: "Studio 文件名 保留测试.md",
+      fileName: "Tracevane 文件名 保留测试.md",
       mimeType: "text/markdown",
     });
 
@@ -9880,7 +9880,7 @@ test("native Channel Connectors Feishu transport-smoke uploads and sends files t
     assert.equal(result.transport.requestCount, 3);
     assert.equal(result.transport.tokenCache, "hit");
     assert.equal(result.transport.fileKey, "file_uploaded_1");
-    assert.equal(result.transport.fileName, "Studio 文件名 保留测试.md");
+    assert.equal(result.transport.fileName, "Tracevane 文件名 保留测试.md");
     assert.equal(result.transport.mimeType, "text/markdown");
     assert.equal(result.transport.size, Buffer.byteLength(smokeContent));
     assert.equal(result.transport.messageId, "om_sent_1");
@@ -9889,7 +9889,7 @@ test("native Channel Connectors Feishu transport-smoke uploads and sends files t
     assert.equal(requests[0].body.app_id, "cli_media");
     assert.equal(requests[1].path, "/open-apis/im/v1/files");
     assert.match(requests[1].contentType, /multipart\/form-data/);
-    assert.match(requests[1].body.raw, /name="file"; filename="Studio 文件名 保留测试\.md"/);
+    assert.match(requests[1].body.raw, /name="file"; filename="Tracevane 文件名 保留测试\.md"/);
     assert.equal(requests[2].path, "/open-apis/im/v1/messages?receive_id_type=chat_id");
     assert.equal(requests[2].authorization, "Bearer tenant-token-1");
     assert.equal(requests[2].body.receive_id, "oc_chat");
@@ -10772,7 +10772,7 @@ test("native Channel Connectors agent turn sends a compatibility reply when CLI 
     model: "gpt-5",
     permissionMode: "auto-edit",
     gatewayEndpoint: "http://127.0.0.1:18796/v1",
-    gatewayKeyRef: "studio-gateway-client-key",
+    gatewayKeyRef: "tracevane-gateway-client-key",
     appProfileRef: "codex",
     platformBindings: [],
   };
@@ -11641,7 +11641,7 @@ test("native Channel Connectors Codex app-server maps reasoning summaries withou
     workDir: root,
     permissionMode: "yolo",
     gatewayEndpoint: "http://127.0.0.1:18796/v1",
-    gatewayKeyRef: "studio-gateway-client-key",
+    gatewayKeyRef: "tracevane-gateway-client-key",
     appProfileRef: "codex",
     platformBindings: [],
   };
@@ -11754,7 +11754,7 @@ test("native Channel Connectors Codex app-server does not drop terminal events e
     workDir: root,
     permissionMode: "yolo",
     gatewayEndpoint: "http://127.0.0.1:18796/v1",
-    gatewayKeyRef: "studio-gateway-client-key",
+    gatewayKeyRef: "tracevane-gateway-client-key",
     appProfileRef: "codex",
     platformBindings: [],
   };
@@ -11865,7 +11865,7 @@ test("native Channel Connectors Codex app-server rejects unknown terminal status
     workDir: root,
     permissionMode: "yolo",
     gatewayEndpoint: "http://127.0.0.1:18796/v1",
-    gatewayKeyRef: "studio-gateway-client-key",
+    gatewayKeyRef: "tracevane-gateway-client-key",
     appProfileRef: "codex",
     platformBindings: [],
   };
@@ -11972,7 +11972,7 @@ test("native Channel Connectors Codex app-server settles active turns when trans
     workDir: root,
     permissionMode: "yolo",
     gatewayEndpoint: "http://127.0.0.1:18796/v1",
-    gatewayKeyRef: "studio-gateway-client-key",
+    gatewayKeyRef: "tracevane-gateway-client-key",
     appProfileRef: "codex",
     platformBindings: [],
   };
@@ -12571,7 +12571,7 @@ test("native Channel Connectors OpenCode DB fallback keeps tool results and fina
         model: "gpt-5",
         permissionMode: "yolo",
         gatewayEndpoint: "http://127.0.0.1:18796/v1",
-        gatewayKeyRef: "studio-gateway-client-key",
+        gatewayKeyRef: "tracevane-gateway-client-key",
         appProfileRef: "opencode",
         platformBindings: [],
       },
@@ -12739,7 +12739,7 @@ test("native Channel Connectors persistent Claude and OpenCode drivers run nativ
         workDir,
         permissionMode: "yolo",
         gatewayEndpoint: "http://127.0.0.1:18796/v1",
-        gatewayKeyRef: "studio-gateway-client-key",
+        gatewayKeyRef: "tracevane-gateway-client-key",
         appProfileRef: "agent",
         platformBindings: [binding],
       };
@@ -12882,7 +12882,7 @@ test("native Channel Connectors persistent Claude driver keeps intermediate text
     workDir,
     permissionMode: "yolo",
     gatewayEndpoint: "http://127.0.0.1:18796/v1",
-    gatewayKeyRef: "studio-gateway-client-key",
+    gatewayKeyRef: "tracevane-gateway-client-key",
     appProfileRef: "claude-code",
     platformBindings: [binding],
   };
@@ -13463,7 +13463,7 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /feishu_group_message_not_directed[\s\S]{0,260}timelineRecorded/);
   assert.match(daemonSource, /const feishuRealtimeHistoryContext = renderFeishuRealtimeTimelineContext/);
   assert.match(daemonSource, /\[\s*feishuThreadBootstrapContext\?\.context \|\| null,\s*feishuRealtimeHistoryContext,\s*localHistoryContext,\s*\]/);
-  assert.match(daemonSource, /Messages were observed by this Studio daemon in real time, including group messages that did not @mention this bot/);
+  assert.match(daemonSource, /Messages were observed by this Tracevane daemon in real time, including group messages that did not @mention this bot/);
   assert.match(daemonSource, /function channelConnectorProgressDefaults/);
   assert.match(daemonSource, /function feishuProgressDefaults/);
   assert.match(daemonSource, /function octoProgressDefaults/);
@@ -13568,8 +13568,8 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /function trimFeishuProgressCardEntries/);
   assert.match(daemonSource, /createFeishuProgressCardState\(feishuProgressCardEntryLimit\(binding\)\)/);
   assert.doesNotMatch(daemonSource, /slice\(-8\)/);
-  assert.doesNotMatch(daemonSource, /Studio Progress/);
-  assert.doesNotMatch(daemonSource, /Studio Reply/);
+  assert.doesNotMatch(daemonSource, /Tracevane Progress/);
+  assert.doesNotMatch(daemonSource, /Tracevane Reply/);
   assert.doesNotMatch(daemonSource, /title:\s*"最终回复"/);
   assert.match(daemonSource, /send-final-card/);
   assert.match(daemonSource, /send-final-text-after-card/);
@@ -13687,7 +13687,7 @@ test("native Channel Connectors daemon owns Feishu long-connection ingress", () 
   assert.match(daemonSource, /replyQueued/);
   assert.match(daemonSource, /!shouldSendCard && parsed\.kind === "card-action"/);
   assert.doesNotMatch(daemonSource, /return response \|\| undefined/);
-  assert.doesNotMatch(daemonSource, /Studio 已收到操作/);
+  assert.doesNotMatch(daemonSource, /Tracevane 已收到操作/);
   assert.match(daemonSource, /loadFeishuSeenMessages/);
   assert.match(daemonSource, /seedFeishuSeenMessagesFromEventLog/);
   assert.match(daemonSource, /FEISHU_SEEN_MESSAGE_TTL_MS\s*=\s*24\s*\*\s*60\s*\*\s*60_?000/);
@@ -13771,7 +13771,7 @@ test("native Channel Connectors keeps platform-native group context strategy", (
   assert.match(daemonSource, /async function loadOctoMdContext/);
   assert.match(daemonSource, /setOctoHistoryCutoff/);
   assert.match(daemonSource, /\[\s*octoMdContext\.context,\s*syncedHistoryContext\.context,\s*realtimeHistoryContext,\s*localHistoryContext,\s*\]/);
-  assert.match(daemonSource, /Messages are segmented by the last successful Studio bot reply/);
+  assert.match(daemonSource, /Messages are segmented by the last successful Tracevane bot reply/);
   assert.match(daemonSource, /inspect senderType=bot entries here before saying you cannot see the reply/);
 
   assert.match(daemonSource, /function renderFeishuRealtimeTimelineContext/);
@@ -13987,7 +13987,7 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     assert.equal(botMenu.status, 200);
     assert.equal(botMenu.body.accepted, true);
     assert.equal(botMenu.body.command, "/status");
-    assert.match(botMenu.body.commandResult.replyText, /Studio Channel Status/);
+    assert.match(botMenu.body.commandResult.replyText, /Tracevane Channel Status/);
     assert.match(JSON.stringify(botMenu.body.feishuCard), /会话控制/);
 
     const botMenuNew = await requestJson(`${baseUrl}/api/channel-connectors/adapters/feishu/bot-menu`, {
@@ -14155,7 +14155,7 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
 
     const service = await requestJson(`${baseUrl}/api/channel-connectors/daemon/service`);
     assert.equal(service.status, 200);
-    assert.equal(service.body.plan.serviceName, "openclaw-studio-channel-connectors.service");
+    assert.equal(service.body.plan.serviceName, "openclaw-tracevane-channel-connectors.service");
 
     const preview = await requestJson(`${baseUrl}/api/channel-connectors/daemon/service`, {
       method: "POST",
@@ -14163,7 +14163,7 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
     });
     assert.equal(preview.status, 200);
     assert.equal(preview.body.action, "preview");
-    assert.match(preview.body.config.preview, /studio-gateway-client-key/);
+    assert.match(preview.body.config.preview, /tracevane-gateway-client-key/);
 
     const routesSource = fs.readFileSync(path.resolve("apps/api/modules/channel-connectors/routes.ts"), "utf8");
     assert.match(routesSource, /\/api\/channel-connectors\/agent-sessions/);
@@ -14234,7 +14234,7 @@ test("native Channel Connectors daemon entry exposes health and writes runtime",
     assert.equal(runtime.agentSessionDriver.requestedPersistentBindings[0].effectiveMode, "persistent");
     assert.equal(runtime.agentSessionDriver.policy.idleTimeoutMs, 600000);
     assert.equal(fs.existsSync(runtimeConfig.paths.log), true);
-    assert.match(fs.readFileSync(runtimeConfig.paths.log, "utf8"), /Studio native Channel Connectors daemon started/);
+    assert.match(fs.readFileSync(runtimeConfig.paths.log, "utf8"), /Tracevane native Channel Connectors daemon started/);
   } finally {
     child.kill("SIGTERM");
     await new Promise((resolve) => {
@@ -14462,7 +14462,7 @@ test("native Channel Connectors daemon rejects same-session Octo Agent turns whi
               workDir: config.projectRoot,
               permissionMode: "suggest",
               gatewayEndpoint: `${apiUrl}/v1`,
-              gatewayKeyRef: "studio-gateway-client-key",
+              gatewayKeyRef: "tracevane-gateway-client-key",
               appProfileRef: "codex",
             },
           ],
@@ -14505,7 +14505,7 @@ test("native Channel Connectors daemon rejects same-session Octo Agent turns whi
         env: {
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
-          STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+          TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
           STUDIO_TEST_CODEX_CAPTURE: capturePath,
         },
         stdio: ["ignore", "pipe", "pipe"],
@@ -14717,7 +14717,7 @@ test("native Channel Connectors daemon keeps Octo sessions busy while final repl
               workDir: config.projectRoot,
               permissionMode: "suggest",
               gatewayEndpoint: `${apiUrl}/v1`,
-              gatewayKeyRef: "studio-gateway-client-key",
+              gatewayKeyRef: "tracevane-gateway-client-key",
               appProfileRef: "codex",
             },
           ],
@@ -14760,7 +14760,7 @@ test("native Channel Connectors daemon keeps Octo sessions busy while final repl
         env: {
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
-          STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+          TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
           STUDIO_TEST_CODEX_CAPTURE: capturePath,
         },
         stdio: ["ignore", "pipe", "pipe"],
@@ -14995,7 +14995,7 @@ test("native Channel Connectors daemon does not persist or replay busy Octo Agen
               workDir: config.projectRoot,
               permissionMode: "suggest",
               gatewayEndpoint: `${apiUrl}/v1`,
-              gatewayKeyRef: "studio-gateway-client-key",
+              gatewayKeyRef: "tracevane-gateway-client-key",
               appProfileRef: "codex",
             },
           ],
@@ -15038,7 +15038,7 @@ test("native Channel Connectors daemon does not persist or replay busy Octo Agen
           env: {
             ...process.env,
             PATH: `${fakeBin}:${process.env.PATH || ""}`,
-            STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+            TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
             STUDIO_TEST_CODEX_CAPTURE: capturePath,
           },
           stdio: ["ignore", "pipe", "pipe"],
@@ -15222,7 +15222,7 @@ test("native Channel Connectors daemon applies thinking display toggles to Octo 
               workDir: config.projectRoot,
               permissionMode: "suggest",
               gatewayEndpoint: `${apiUrl}/v1`,
-              gatewayKeyRef: "studio-gateway-client-key",
+              gatewayKeyRef: "tracevane-gateway-client-key",
               appProfileRef: "codex",
             },
           ],
@@ -15262,7 +15262,7 @@ test("native Channel Connectors daemon applies thinking display toggles to Octo 
         env: {
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
-          STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+          TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
           STUDIO_TEST_CODEX_CAPTURE: capturePath,
         },
         stdio: ["ignore", "pipe", "pipe"],
@@ -15491,7 +15491,7 @@ test("native Channel Connectors daemon ignores legacy Octo action manifests in p
               workDir: config.projectRoot,
               permissionMode: "suggest",
               gatewayEndpoint: `${apiUrl}/v1`,
-              gatewayKeyRef: "studio-gateway-client-key",
+              gatewayKeyRef: "tracevane-gateway-client-key",
               appProfileRef: "codex",
             },
           ],
@@ -15534,7 +15534,7 @@ test("native Channel Connectors daemon ignores legacy Octo action manifests in p
         env: {
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
-          STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+          TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
           STUDIO_TEST_CODEX_CAPTURE: capturePath,
         },
         stdio: ["ignore", "pipe", "pipe"],
@@ -15578,7 +15578,7 @@ test("native Channel Connectors daemon ignores legacy Octo action manifests in p
           .filter((request) => request.path === "/v1/bot/sendMessage")
           .map((request) => request.body?.payload?.content || "");
         assert.ok(sendContents.some((content) => content.includes("正在创建「Agent 协作群」")), JSON.stringify(sendContents));
-        assert.ok(sendContents.some((content) => content.includes("studio-octo-actions is no longer supported in Studio private IM mode")), JSON.stringify(sendContents));
+        assert.ok(sendContents.some((content) => content.includes("studio-octo-actions is no longer supported in Tracevane private IM mode")), JSON.stringify(sendContents));
         assert.equal(sendContents.some((content) => content.includes("OctoChannelAction") && content.includes("/approve")), false);
         assert.equal(sendContents.some((content) => content.includes("Octo action results")), false);
         assert.equal(sendContents.some((content) => content.includes("group-approved")), false);
@@ -15671,7 +15671,7 @@ test("native Channel Connectors daemon sends Octo group process replies before f
             channelType: 2,
             payload: {
               type: 1,
-              content: "@Studio Bot run process smoke",
+              content: "@Tracevane Bot run process smoke",
               mention: { uids: ["robot-process"] },
             },
           }));
@@ -15711,7 +15711,7 @@ test("native Channel Connectors daemon sends Octo group process replies before f
         res.end(JSON.stringify({
           members: [
             { uid: "process-user", name: "Process User", role: 1, robot: 0 },
-            { uid: "robot-process", name: "Studio Bot", role: 2, robot: 1 },
+            { uid: "robot-process", name: "Tracevane Bot", role: 2, robot: 1 },
           ],
         }));
         return true;
@@ -15735,7 +15735,7 @@ test("native Channel Connectors daemon sends Octo group process replies before f
               workDir: config.projectRoot,
               permissionMode: "suggest",
               gatewayEndpoint: `${apiUrl}/v1`,
-              gatewayKeyRef: "studio-gateway-client-key",
+              gatewayKeyRef: "tracevane-gateway-client-key",
               appProfileRef: "opencode",
             },
           ],
@@ -15780,7 +15780,7 @@ test("native Channel Connectors daemon sends Octo group process replies before f
         env: {
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
-          STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+          TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
           STUDIO_TEST_OPENCODE_CAPTURE: capturePath,
         },
         stdio: ["ignore", "pipe", "pipe"],
@@ -15979,7 +15979,7 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         res.end(JSON.stringify({
           members: [
             { uid: "user-1", name: "Alice", role: 1, robot: 0 },
-            { uid: "robot-1", name: "Studio Bot", role: 2, robot: 1 },
+            { uid: "robot-1", name: "Tracevane Bot", role: 2, robot: 1 },
             { uid: "helper_bot", name: "Helper Bot", role: 2, robot: 1 },
           ],
         }));
@@ -15987,7 +15987,7 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
       }
       if (req.method === "GET" && req.url === "/v1/bot/groups/group-1/md") {
         res.end(JSON.stringify({
-          content: "# Group Rules\n- Use Studio native Octo messages for DM and mentions.",
+          content: "# Group Rules\n- Use Tracevane native Octo messages for DM and mentions.",
           version: 7,
         }));
         return true;
@@ -16065,7 +16065,7 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
               workDir: config.projectRoot,
               permissionMode: "suggest",
               gatewayEndpoint: `${apiUrl}/v1`,
-              gatewayKeyRef: "studio-gateway-client-key",
+              gatewayKeyRef: "tracevane-gateway-client-key",
               appProfileRef: "codex",
             },
           ],
@@ -16112,7 +16112,7 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         env: {
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
-          STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+          TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
           STUDIO_TEST_CODEX_CAPTURE: capturePath,
         },
         stdio: ["ignore", "pipe", "pipe"],
@@ -16137,16 +16137,16 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
           return lines.length ? lines.map((line) => JSON.parse(line)) : null;
         }, 8000);
         assert.equal(capture.length, 1);
-        assert.match(capture[0].stdin, /Studio group context/);
-        assert.match(capture[0].stdin, /Known members: Alice\(user-1, human\), Studio Bot\(robot-1, bot\), Helper Bot\(helper_bot, bot\)/);
+        assert.match(capture[0].stdin, /Tracevane group context/);
+        assert.match(capture[0].stdin, /Known members: Alice\(user-1, human\), Tracevane Bot\(robot-1, bot\), Helper Bot\(helper_bot, bot\)/);
         assert.match(capture[0].stdin, /Octo GROUP\.md/);
-        assert.match(capture[0].stdin, /Use Studio native Octo messages for DM and mentions/);
+        assert.match(capture[0].stdin, /Use Tracevane native Octo messages for DM and mentions/);
         assert.match(capture[0].stdin, /Octo Bot API recent channel timeline/);
         assert.match(capture[0].stdin, /inspect senderType=bot entries here before saying you cannot see the reply/);
         assert.match(capture[0].stdin, /Last answered messageSeq: 5/);
         assert.match(capture[0].stdin, /History budget: 20\/20 messages included/);
         assert.match(capture[0].stdin, /Previous Octo channel context - already answered/);
-        assert.match(capture[0].stdin, /Octo channel messages since your last Studio reply/);
+        assert.match(capture[0].stdin, /Octo channel messages since your last Tracevane reply/);
         assert.match(capture[0].stdin, /senderType/);
         assert.match(capture[0].stdin, /self-bot/);
         assert.match(capture[0].stdin, /old question/);
@@ -16165,9 +16165,9 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
         assert.match(capture[0].stdin, /local realtime unmentioned context/);
         assert.match(capture[0].stdin, /file: hello\.txt, 11 bytes, local:/);
         assert.match(capture[0].stdin, /Staged files are available locally/);
-        assert.ok(capture[0].stdin.indexOf("old question") < capture[0].stdin.indexOf("Octo channel messages since your last Studio reply"));
-        assert.ok(capture[0].stdin.indexOf("old answer") < capture[0].stdin.indexOf("Octo channel messages since your last Studio reply"));
-        assert.ok(capture[0].stdin.indexOf("helper bot already replied") > capture[0].stdin.indexOf("Octo channel messages since your last Studio reply"));
+        assert.ok(capture[0].stdin.indexOf("old question") < capture[0].stdin.indexOf("Octo channel messages since your last Tracevane reply"));
+        assert.ok(capture[0].stdin.indexOf("old answer") < capture[0].stdin.indexOf("Octo channel messages since your last Tracevane reply"));
+        assert.ok(capture[0].stdin.indexOf("helper bot already replied") > capture[0].stdin.indexOf("Octo channel messages since your last Tracevane reply"));
 
         const finalStatus = await waitFor(async () => {
           const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
@@ -16277,7 +16277,7 @@ test("native Channel Connectors daemon runs Codex app-server by default", async 
     "    } else if (message.method === 'initialized') {",
     "      // notification",
     "    } else if (message.method === 'thread/start') {",
-    "      emit({ id: message.id, result: { thread: { id: 'thread-persistent-1', sessionId: 'thread-persistent-1', turns: [], cwd: message.params.cwd }, model: message.params.model, modelProvider: 'studio_gateway', cwd: message.params.cwd, approvalPolicy: message.params.approvalPolicy, sandbox: { type: 'readOnly', networkAccess: false } } });",
+    "      emit({ id: message.id, result: { thread: { id: 'thread-persistent-1', sessionId: 'thread-persistent-1', turns: [], cwd: message.params.cwd }, model: message.params.model, modelProvider: 'tracevane_gateway', cwd: message.params.cwd, approvalPolicy: message.params.approvalPolicy, sandbox: { type: 'readOnly', networkAccess: false } } });",
     "      emit({ method: 'thread/started', params: { thread: { id: 'thread-persistent-1' } } });",
     "    } else if (message.method === 'turn/start') {",
     "      const turnId = `turn-${nextTurn++}`;",
@@ -16410,7 +16410,7 @@ test("native Channel Connectors daemon runs Codex app-server by default", async 
               workDir: config.projectRoot,
               permissionMode: "read-only",
               gatewayEndpoint: `${apiUrl}/v1`,
-              gatewayKeyRef: "studio-gateway-client-key",
+              gatewayKeyRef: "tracevane-gateway-client-key",
               appProfileRef: "codex",
             },
           ],
@@ -16449,7 +16449,7 @@ test("native Channel Connectors daemon runs Codex app-server by default", async 
         env: {
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
-          STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+          TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
           STUDIO_TEST_CODEX_CAPTURE: capturePath,
           STUDIO_CHANNEL_AGENT_SESSION_IDLE_TIMEOUT_MS: "1500",
           STUDIO_CHANNEL_AGENT_SESSION_REAP_INTERVAL_MS: "100",
@@ -16750,7 +16750,7 @@ test("native Channel Connectors daemon routes Claude and OpenCode compact throug
               workDir: config.projectRoot,
               permissionMode: "yolo",
               gatewayEndpoint: `${apiUrl}/v1`,
-              gatewayKeyRef: "studio-gateway-client-key",
+              gatewayKeyRef: "tracevane-gateway-client-key",
               appProfileRef: "claude-code",
             },
             {
@@ -16761,7 +16761,7 @@ test("native Channel Connectors daemon routes Claude and OpenCode compact throug
               workDir: config.projectRoot,
               permissionMode: "yolo",
               gatewayEndpoint: `${apiUrl}/v1`,
-              gatewayKeyRef: "studio-gateway-client-key",
+              gatewayKeyRef: "tracevane-gateway-client-key",
               appProfileRef: "opencode",
             },
           ],
@@ -16819,7 +16819,7 @@ test("native Channel Connectors daemon routes Claude and OpenCode compact throug
         env: {
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
-          STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+          TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
           STUDIO_NATIVE_COMPACT_DAEMON_CAPTURE: capturePath,
         },
         stdio: ["ignore", "pipe", "pipe"],
@@ -16939,7 +16939,7 @@ test("native Channel Connectors daemon isolates Codex app-server persistent sess
     "    } else if (message.method === 'initialized') {",
     "      // notification",
     "    } else if (message.method === 'thread/start') {",
-    "      emit({ id: message.id, result: { thread: { id: threadId, sessionId: threadId, turns: [], cwd: message.params.cwd }, model: message.params.model, modelProvider: 'studio_gateway', cwd: message.params.cwd, approvalPolicy: message.params.approvalPolicy, sandbox: { type: 'readOnly', networkAccess: false } } });",
+    "      emit({ id: message.id, result: { thread: { id: threadId, sessionId: threadId, turns: [], cwd: message.params.cwd }, model: message.params.model, modelProvider: 'tracevane_gateway', cwd: message.params.cwd, approvalPolicy: message.params.approvalPolicy, sandbox: { type: 'readOnly', networkAccess: false } } });",
     "      emit({ method: 'thread/started', params: { thread: { id: threadId } } });",
     "    } else if (message.method === 'turn/start') {",
     "      const turnId = `turn-${nextTurn++}`;",
@@ -17041,7 +17041,7 @@ test("native Channel Connectors daemon isolates Codex app-server persistent sess
               workDir: config.projectRoot,
               permissionMode: "read-only",
               gatewayEndpoint: `${apiUrl}/v1`,
-              gatewayKeyRef: "studio-gateway-client-key",
+              gatewayKeyRef: "tracevane-gateway-client-key",
               appProfileRef: "codex",
             },
           ],
@@ -17081,7 +17081,7 @@ test("native Channel Connectors daemon isolates Codex app-server persistent sess
         env: {
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
-          STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+          TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
           STUDIO_TEST_CODEX_CAPTURE: capturePath,
         },
         stdio: ["ignore", "pipe", "pipe"],
@@ -17195,7 +17195,7 @@ test("native Channel Connectors daemon falls back to one-shot when Codex app-ser
     "    } else if (message.method === 'initialized') {",
     "      // notification",
     "    } else if (message.method === 'thread/start') {",
-    "      emit({ id: message.id, result: { thread: { id: 'thread-crash-1', sessionId: 'thread-crash-1', turns: [], cwd: message.params.cwd }, model: message.params.model, modelProvider: 'studio_gateway', cwd: message.params.cwd, approvalPolicy: message.params.approvalPolicy, sandbox: { type: 'readOnly', networkAccess: false } } });",
+    "      emit({ id: message.id, result: { thread: { id: 'thread-crash-1', sessionId: 'thread-crash-1', turns: [], cwd: message.params.cwd }, model: message.params.model, modelProvider: 'tracevane_gateway', cwd: message.params.cwd, approvalPolicy: message.params.approvalPolicy, sandbox: { type: 'readOnly', networkAccess: false } } });",
     "      emit({ method: 'thread/started', params: { thread: { id: 'thread-crash-1' } } });",
     "    } else if (message.method === 'turn/start') {",
     "      setTimeout(() => process.exit(42), 10);",
@@ -17290,7 +17290,7 @@ test("native Channel Connectors daemon falls back to one-shot when Codex app-ser
               workDir: config.projectRoot,
               permissionMode: "read-only",
               gatewayEndpoint: `${apiUrl}/v1`,
-              gatewayKeyRef: "studio-gateway-client-key",
+              gatewayKeyRef: "tracevane-gateway-client-key",
               appProfileRef: "codex",
             },
           ],
@@ -17330,7 +17330,7 @@ test("native Channel Connectors daemon falls back to one-shot when Codex app-ser
         env: {
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
-          STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+          TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
           STUDIO_TEST_CODEX_CAPTURE: capturePath,
         },
         stdio: ["ignore", "pipe", "pipe"],
@@ -17424,7 +17424,7 @@ test("native Channel Connectors daemon stops Codex app-server persistent turns v
     "    } else if (message.method === 'initialized') {",
     "      // notification",
     "    } else if (message.method === 'thread/start') {",
-    "      emit({ id: message.id, result: { thread: { id: 'thread-stop-1', sessionId: 'thread-stop-1', turns: [], cwd: message.params.cwd }, model: message.params.model, modelProvider: 'studio_gateway', cwd: message.params.cwd, approvalPolicy: message.params.approvalPolicy, sandbox: { type: 'readOnly', networkAccess: false } } });",
+    "      emit({ id: message.id, result: { thread: { id: 'thread-stop-1', sessionId: 'thread-stop-1', turns: [], cwd: message.params.cwd }, model: message.params.model, modelProvider: 'tracevane_gateway', cwd: message.params.cwd, approvalPolicy: message.params.approvalPolicy, sandbox: { type: 'readOnly', networkAccess: false } } });",
     "      emit({ method: 'thread/started', params: { thread: { id: 'thread-stop-1' } } });",
     "    } else if (message.method === 'turn/start') {",
     "      const turnId = `turn-${nextTurn++}`;",
@@ -17524,7 +17524,7 @@ test("native Channel Connectors daemon stops Codex app-server persistent turns v
               workDir: config.projectRoot,
               permissionMode: "read-only",
               gatewayEndpoint: `${apiUrl}/v1`,
-              gatewayKeyRef: "studio-gateway-client-key",
+              gatewayKeyRef: "tracevane-gateway-client-key",
               appProfileRef: "codex",
             },
           ],
@@ -17564,7 +17564,7 @@ test("native Channel Connectors daemon stops Codex app-server persistent turns v
         env: {
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
-          STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+          TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
           STUDIO_TEST_CODEX_CAPTURE: capturePath,
         },
         stdio: ["ignore", "pipe", "pipe"],
@@ -17765,7 +17765,7 @@ test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSock
               workDir: config.projectRoot,
               permissionMode: "suggest",
               gatewayEndpoint: `${apiUrl}/v1`,
-              gatewayKeyRef: "studio-gateway-client-key",
+              gatewayKeyRef: "tracevane-gateway-client-key",
               appProfileRef: "codex",
             },
           ],
@@ -17811,7 +17811,7 @@ test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSock
         env: {
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
-          STUDIO_GATEWAY_API_KEY: "sk-test-gateway",
+          TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
           STUDIO_TEST_CODEX_CAPTURE: capturePath,
         },
         stdio: ["ignore", "pipe", "pipe"],
@@ -17853,7 +17853,7 @@ test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSock
         assert.equal(capture[0].argv[capture[0].argv.indexOf("--model") + 1], "gpt-5.5");
         assert.equal(capture[0].openaiBaseUrl, `${apiUrl}/v1`);
         assert.match(capture[0].stdin, /native --image arguments/);
-        assert.doesNotMatch(capture[0].stdin, /Studio visual attachment policy/);
+        assert.doesNotMatch(capture[0].stdin, /Tracevane visual attachment policy/);
         const finalStatus = await waitFor(async () => {
           const response = await requestJson(`http://127.0.0.1:${runtimeConfig.management.port}/status`);
           const run = response.body?.agentRuns?.find?.((item) => item.messageId === "1001");

@@ -94,7 +94,7 @@ async function runScript(args, env = {}) {
     cwd: repoRoot,
     env: {
       ...process.env,
-      STUDIO_GATEWAY_CLIENT_KEY: "test-gateway-key",
+      TRACEVANE_GATEWAY_CLIENT_KEY: "test-gateway-key",
       ...env,
     },
     encoding: "utf8",

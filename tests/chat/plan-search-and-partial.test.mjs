@@ -2,7 +2,7 @@
  * Plan verification: search-mode timeline contract, gateway partial semantics, preview limits.
  * OpenClaw gateway emits tool phase "update" with partialResult as a per-tick snapshot
  * (see projects/openclaw/src/agents/pi-embedded-subscribe.handlers.tools.ts handleToolExecutionUpdate).
- * Studio mapper clips each event's preview; service mergeToolCallItem prefers longer merged previews.
+ * Tracevane mapper clips each event's preview; service mergeToolCallItem prefers longer merged previews.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';

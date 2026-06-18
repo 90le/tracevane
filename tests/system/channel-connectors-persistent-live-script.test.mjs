@@ -24,7 +24,7 @@ function writeFixture(root) {
         workDir: root,
         permissionMode: "suggest",
         gatewayEndpoint: "http://127.0.0.1:18796/v1",
-        gatewayKeyRef: "studio-gateway-client-key",
+        gatewayKeyRef: "tracevane-gateway-client-key",
       },
       {
         id: "claude-agent",
@@ -76,7 +76,7 @@ function writeFixture(root) {
     version: 1,
     management: { host: "127.0.0.1", port: 18797 },
     paths: {},
-    gateway: { endpoint: "http://127.0.0.1:18796/v1", clientKeyRef: "studio-gateway-client-key" },
+    gateway: { endpoint: "http://127.0.0.1:18796/v1", clientKeyRef: "tracevane-gateway-client-key" },
     projects: [
       {
         id: "codex-agent",

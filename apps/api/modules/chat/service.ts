@@ -1513,7 +1513,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   }
 
   // Registry reads are cached for hot paths, but writes always merge against
-  // disk first so a stale Studio/API process cannot overwrite sessions that
+  // disk first so a stale Tracevane/API process cannot overwrite sessions that
   // another process registered after this context started.
   let registryCache: Record<string, StudioSessionRegistryEntry> | null = null;
 
@@ -2356,7 +2356,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     if (session.permissions.visibleInFrontend) {
       return;
     }
-    throw new ChatServiceError(403, buildChatError('auth_failure', `Session '${session.key}' is not accessible from Studio chat`));
+    throw new ChatServiceError(403, buildChatError('auth_failure', `Session '${session.key}' is not accessible from Tracevane chat`));
   }
 
   function requireWritable(session: ChatSessionRow, action: 'send' | 'abort' | 'reset' | 'delete' | 'inject'): void {
@@ -2665,7 +2665,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     })();
 
     // Detect gateway session resets by comparing the per-agent sessionId
-    // with the Studio registry's sessionId. When they differ, the gateway
+    // with the Tracevane registry's sessionId. When they differ, the gateway
     // re-materialized the session and renamed the old JSONL to .reset.*.
     const priorSessionFiles: string[] = [];
     if (sessionFile && record?.sessionId) {
@@ -3208,7 +3208,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     const observability = inMemory ? cloneObservabilityState(inMemory.observability) : createEmptyObservabilityState();
 
     if (inMemory?.resetPending) {
-      diagnostics.notes.push('Studio reset is still being finalized by the backend adapter; returning cleared in-memory history.');
+      diagnostics.notes.push('Tracevane reset is still being finalized by the backend adapter; returning cleared in-memory history.');
       return {
         checkedAt: new Date().toISOString(),
         session: inMemory.row,
@@ -3240,7 +3240,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       const restored = cloneHistorySnapshotCacheEntry(cachedSnapshot);
       diagnostics.historyTruncated = restored.historyTruncated;
       diagnostics.truncationMode = restored.truncationMode;
-      diagnostics.notes.push('History snapshot reused from Studio in-process cache; transcript remap skipped for this request.');
+      diagnostics.notes.push('History snapshot reused from Tracevane in-process cache; transcript remap skipped for this request.');
       return {
         checkedAt: new Date().toISOString(),
         session: restored.session,
@@ -3283,8 +3283,8 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         reusedTranscriptMirror = true;
         diagnostics.notes.push(
           loadOptions.localOnly
-            ? `Local bootstrap reused transcript-aligned Studio durable mirror (${mirrorSnapshot.backend}) without remapping local transcript history.`
-            : `History reused transcript-aligned Studio durable mirror (${mirrorSnapshot.backend}) without remapping local transcript history.`,
+            ? `Local bootstrap reused transcript-aligned Tracevane durable mirror (${mirrorSnapshot.backend}) without remapping local transcript history.`
+            : `History reused transcript-aligned Tracevane durable mirror (${mirrorSnapshot.backend}) without remapping local transcript history.`,
         );
       }
     }
@@ -3339,7 +3339,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           ...observability.timeline,
         ].slice(-40);
       }
-      diagnostics.notes.push('History is sourced from local transcript canonical authority and paged by the Studio BFF.');
+      diagnostics.notes.push('History is sourced from local transcript canonical authority and paged by the Tracevane BFF.');
     } else if (loadOptions.localOnly) {
       const mirrorSnapshot = durableMirrorStore.readSession(sessionKey);
       if (mirrorSnapshot) {
@@ -3354,12 +3354,12 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           observability.timeline = restoredObservability.timeline;
           historyToolCards = restoredObservability.toolCards;
         }
-        diagnostics.notes.push(`Local bootstrap used Studio durable mirror (${mirrorSnapshot.backend}) without a gateway roundtrip.`);
+        diagnostics.notes.push(`Local bootstrap used Tracevane durable mirror (${mirrorSnapshot.backend}) without a gateway roundtrip.`);
       } else if (inMemory) {
         messages = currentStudioHistory(inMemory);
         canonicalEntries = buildCanonicalEntriesFromMessages(messages.filter((message) => message.source !== 'inject'));
         canonicalSource = 'history_rpc';
-        diagnostics.notes.push('Local bootstrap used in-memory Studio history without a gateway roundtrip.');
+        diagnostics.notes.push('Local bootstrap used in-memory Tracevane history without a gateway roundtrip.');
       } else {
         messages = [];
         canonicalEntries = [];
@@ -3424,7 +3424,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           canonicalEntries = buildCanonicalEntriesFromMessages(mirrorSnapshot.messages);
           canonicalSource = 'studio_mirror';
           messages = mirrorSnapshot.messages.map((message) => cloneChatMessageItem(message)!);
-          diagnostics.notes.push(`Gateway chat.history shrank behind Studio durable mirror (${mirrorSnapshot.backend}); keeping protected canonical history.`);
+          diagnostics.notes.push(`Gateway chat.history shrank behind Tracevane durable mirror (${mirrorSnapshot.backend}); keeping protected canonical history.`);
         } else if (
           inMemory
           && isGatewayHistoryBehindInMemory(inMemory, gatewayMessages)
@@ -3432,7 +3432,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           messages = mergeCanonicalHistoryWithLocalOptimism(currentStudioHistory(inMemory), gatewayMessages);
           canonicalEntries = gatewayCanonicalEntries;
           canonicalSource = 'history_rpc';
-          diagnostics.notes.push('Gateway chat.history is temporarily behind the Studio in-memory session state; preserving local confirmed messages until history catches up.');
+          diagnostics.notes.push('Gateway chat.history is temporarily behind the Tracevane in-memory session state; preserving local confirmed messages until history catches up.');
         } else if (
           inMemory
           && isGatewayHistoryStaleAfterLocalReset(inMemory, gatewayMessages)
@@ -3440,7 +3440,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           messages = currentStudioHistory(inMemory);
           canonicalEntries = buildCanonicalEntriesFromMessages(messages.filter((message) => message.source !== 'inject'));
           canonicalSource = 'history_rpc';
-          diagnostics.notes.push('Gateway chat.history is behind the in-memory Studio session state after reset; returning in-memory fallback.');
+          diagnostics.notes.push('Gateway chat.history is behind the in-memory Tracevane session state after reset; returning in-memory fallback.');
         } else {
           messages = gatewayMessages;
           canonicalEntries = gatewayCanonicalEntries;
@@ -3453,7 +3453,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
             baseMessageSeq: gatewayCanonicalEntries[gatewayCanonicalEntries.length - 1]?.messageSeq || gatewayMessages.length,
             savedAt: new Date().toISOString(),
           });
-          diagnostics.notes.push(`History is sourced from Gateway chat.history and mirrored to Studio durable store (${durableMirrorStore.backend}).`);
+          diagnostics.notes.push(`History is sourced from Gateway chat.history and mirrored to Tracevane durable store (${durableMirrorStore.backend}).`);
         }
       } catch (error) {
         const mirrorSnapshot = durableMirrorStore.readSession(sessionKey);
@@ -3461,12 +3461,12 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           messages = mirrorSnapshot.messages.map((message) => cloneChatMessageItem(message)!);
           canonicalEntries = buildCanonicalEntriesFromMessages(mirrorSnapshot.messages);
           canonicalSource = 'studio_mirror';
-          diagnostics.notes.push(`Gateway chat.history unavailable; using Studio durable mirror (${mirrorSnapshot.backend}) (${error instanceof Error ? error.message : String(error)}).`);
+          diagnostics.notes.push(`Gateway chat.history unavailable; using Tracevane durable mirror (${mirrorSnapshot.backend}) (${error instanceof Error ? error.message : String(error)}).`);
         } else if (inMemory) {
           messages = currentStudioHistory(inMemory);
           canonicalEntries = buildCanonicalEntriesFromMessages(messages.filter((message) => message.source !== 'inject'));
           canonicalSource = 'history_rpc';
-          diagnostics.notes.push(`Gateway chat.history unavailable; using Studio in-memory history fallback (${error instanceof Error ? error.message : String(error)}).`);
+          diagnostics.notes.push(`Gateway chat.history unavailable; using Tracevane in-memory history fallback (${error instanceof Error ? error.message : String(error)}).`);
         } else {
           messages = [];
           canonicalEntries = [];
@@ -6654,7 +6654,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   return {
     async getHealth(): Promise<ChatDiagnostics> {
       return buildHealth([
-        'Studio backend typed adapter contract is active.',
+        'Tracevane backend typed adapter contract is active.',
         'Gateway adapter is wired for studio-managed send / abort / reset / ws stream.',
         'Observed external history still falls back to local transcript parsing when gateway history is unavailable.',
       ]);
@@ -6930,12 +6930,12 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
               seenKeys.add(mapped.key);
             }
           }
-          diagnostics.notes.push('Session list is sourced from Gateway sessions.list and merged with Studio draft registry.');
+          diagnostics.notes.push('Session list is sourced from Gateway sessions.list and merged with Tracevane draft registry.');
         } catch (error) {
           diagnostics.notes.push(`Gateway sessions.list unavailable; falling back to local session store (${error instanceof Error ? error.message : String(error)}).`);
         }
       } else {
-        diagnostics.notes.push('Session list is sourced from Studio local session catalog without waiting for Gateway sessions.list.');
+        diagnostics.notes.push('Session list is sourced from Tracevane local session catalog without waiting for Gateway sessions.list.');
       }
 
       {
@@ -6964,7 +6964,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           seenKeys.add(row.key);
         }
         if (!localOnly) {
-          diagnostics.notes.push('Session list is merged with Studio local session catalog so locally registered chats are not dropped by partial Gateway enumeration.');
+          diagnostics.notes.push('Session list is merged with Tracevane local session catalog so locally registered chats are not dropped by partial Gateway enumeration.');
         }
       }
 
@@ -7236,7 +7236,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       setStudioSession({
         row,
         messages: [],
-        diagnosticsNotes: ['Session created by Studio shell registry. Gateway session is materialized on first send.'],
+        diagnosticsNotes: ['Session created by Tracevane shell registry. Gateway session is materialized on first send.'],
         observability: createEmptyObservabilityState(),
         pendingQueue: [],
         controls: createDefaultSessionControls(),
@@ -7491,7 +7491,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         default:
           throw new ChatServiceError(
             400,
-            buildChatError('invalid_request', `Unsupported Studio slash gateway method '${method || '<empty>'}'`),
+            buildChatError('invalid_request', `Unsupported Tracevane slash gateway method '${method || '<empty>'}'`),
           );
       }
     },

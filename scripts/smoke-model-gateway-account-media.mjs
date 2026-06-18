@@ -10,7 +10,7 @@ const DEFAULT_IMAGE_PROMPT = "A simple blue square on a white background. No tex
 
 function parseArgs(argv) {
   const options = {
-    endpoint: process.env.STUDIO_GATEWAY_ENDPOINT || DEFAULT_ENDPOINT,
+    endpoint: process.env.TRACEVANE_GATEWAY_ENDPOINT || process.env.STUDIO_GATEWAY_ENDPOINT || DEFAULT_ENDPOINT,
     json: false,
     runImageGeneration: false,
     requireImageGeneration: false,
@@ -44,7 +44,7 @@ function parseArgs(argv) {
 function printHelp() {
   console.log(`Usage: node scripts/smoke-model-gateway-account-media.mjs [options]
 
-Checks Studio Gateway account-backed media routes against a running daemon.
+Checks Tracevane Gateway account-backed media routes against a running daemon.
 
 Default probes are low-cost and do not generate images:
   - /v1/models exposes image/audio/realtime catalog entries
@@ -61,7 +61,7 @@ Options:
   -h, --help                    Show this help
 
 Auth:
-  STUDIO_GATEWAY_CLIENT_KEY is preferred. If omitted, the script reads
+  TRACEVANE_GATEWAY_CLIENT_KEY is preferred. If omitted, the script reads
   ~/.openclaw/studio/model-gateway/secrets.json locally.`);
 }
 
@@ -71,7 +71,7 @@ function positiveInt(value, fallback) {
 }
 
 function readGatewayKey() {
-  const envKey = process.env.STUDIO_GATEWAY_CLIENT_KEY || process.env.MODEL_GATEWAY_CLIENT_KEY;
+  const envKey = process.env.TRACEVANE_GATEWAY_CLIENT_KEY || process.env.STUDIO_GATEWAY_CLIENT_KEY || process.env.MODEL_GATEWAY_CLIENT_KEY;
   if (envKey?.trim()) return envKey.trim();
   const filePath = path.join(os.homedir(), ".openclaw/studio/model-gateway/secrets.json");
   try {
@@ -293,7 +293,7 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   const key = readGatewayKey();
   if (!key) {
-    throw new Error("Missing Gateway client key. Set STUDIO_GATEWAY_CLIENT_KEY or save a local Gateway key.");
+    throw new Error("Missing Gateway client key. Set TRACEVANE_GATEWAY_CLIENT_KEY or save a local Gateway key.");
   }
   const probes = [];
   probes.push(await probeCatalog(options, key));
@@ -311,7 +311,7 @@ async function main() {
   if (options.json) {
     console.log(JSON.stringify(result, null, 2));
   } else {
-    console.log(`${result.ok ? "OK" : "FAIL"} Studio Gateway account media smoke`);
+    console.log(`${result.ok ? "OK" : "FAIL"} Tracevane Gateway account media smoke`);
     for (const probe of probes) {
       console.log(`- ${probe.id}: ${probe.status}`);
     }

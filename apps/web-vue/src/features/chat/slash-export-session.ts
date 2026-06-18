@@ -81,14 +81,14 @@ export function buildSlashSessionExportDocument(
   options: BuildSlashSessionExportDocumentOptions,
 ): SlashSessionExportDocument {
   const exportedAt = options.exportedAt || new Date().toISOString();
-  const title = (options.title || options.session.label || options.session.key || 'Studio Session').trim();
+  const title = (options.title || options.session.label || options.session.key || 'Tracevane Session').trim();
   const visibleCountLabel = options.locale === 'zh'
     ? `当前可见消息 ${options.messages.length} 条`
     : `Current visible messages: ${options.messages.length}`;
   const note = options.locale === 'zh'
-    ? '说明：这是 Studio 当前页面可见会话内容的本地导出，不包含宿主侧完整 system prompt 导出。'
-    : 'Note: this is a local export of the session content currently visible in Studio, not the host-side full system prompt export.';
-  const heading = options.locale === 'zh' ? 'Studio 会话导出' : 'Studio Session Export';
+    ? '说明：这是 Tracevane 当前页面可见会话内容的本地导出，不包含宿主侧完整 system prompt 导出。'
+    : 'Note: this is a local export of the session content currently visible in Tracevane, not the host-side full system prompt export.';
+  const heading = options.locale === 'zh' ? 'Tracevane 会话导出' : 'Tracevane Session Export';
   const sessionLabel = options.locale === 'zh' ? '会话' : 'Session';
   const exportedLabel = options.locale === 'zh' ? '导出时间' : 'Exported At';
 

@@ -1046,12 +1046,12 @@ function customCommandsListText(
     return [
       "当前 Agent 没有可用的自定义命令。",
       dirs.length
-        ? `Studio 会按 CC CommandProvider 合同扫描：${dirs.join("；")}`
-        : `当前 Agent (${project.agent}) 尚未在 Studio 中声明命令目录。`,
+        ? `Tracevane 会按 CC CommandProvider 合同扫描：${dirs.join("；")}`
+        : `当前 Agent (${project.agent}) 尚未在 Tracevane 中声明命令目录。`,
       "用法：/commands add <名称> <prompt 模板>；/commands del <名称>。",
     ].join("\n");
   }
-  const lines = [`Studio Custom Commands (${commands.length})`];
+  const lines = [`Tracevane Custom Commands (${commands.length})`];
   for (const command of commands) {
     const tag = command.source === "agent" ? " [agent]" : isExecCustomCommand(command) ? " [shell]" : "";
     lines.push(`/${command.name}${tag}`);
@@ -1078,17 +1078,17 @@ function skillsListText(
     return [
       "未发现任何 Skill。",
       dirs.length
-        ? `Studio 会按 CC SkillProvider 合同扫描 Agent 与当前 binding/platform 目录：${dirs.join("；")}`
-        : `当前 Agent (${project.agent}) 尚未在 Studio 中声明 Skill 目录。`,
+        ? `Tracevane 会按 CC SkillProvider 合同扫描 Agent 与当前 binding/platform 目录：${dirs.join("；")}`
+        : `当前 Agent (${project.agent}) 尚未在 Tracevane 中声明 Skill 目录。`,
     ].join("\n");
   }
   const platform = normalizeString(binding?.platform);
-  const lines = [`Studio Skills (${project.agent}${platform ? ` · ${platform}` : ""}) - ${skills.length} 个`];
+  const lines = [`Tracevane Skills (${project.agent}${platform ? ` · ${platform}` : ""}) - ${skills.length} 个`];
   for (const skill of skills) {
     lines.push(`/${skill.name} [${skillScopeLabel(skill)}]`);
     lines.push(`  ${skill.description || "Skill"}`);
   }
-  lines.push("用法：/<skill名称> [参数...]。Studio 会把 Skill 指令和用户参数一起交给当前 Agent。");
+  lines.push("用法：/<skill名称> [参数...]。Tracevane 会把 Skill 指令和用户参数一起交给当前 Agent。");
   return lines.join("\n");
 }
 
@@ -1143,7 +1143,7 @@ function commandAliasListText(aliases: readonly ChannelConnectorCommandAlias[]):
       "示例：/alias add 帮助 /help",
     ].join("\n");
   }
-  const lines = [`Studio Command Aliases (${aliases.length})`];
+  const lines = [`Tracevane Command Aliases (${aliases.length})`];
   for (const alias of aliases) {
     const source = alias.source === "store" ? "store" : "metadata";
     lines.push(`  ${alias.name} -> ${alias.command} [${source}]`);
@@ -1385,7 +1385,7 @@ function commandHelpSectionAlias(value: string | null | undefined): CommandHelpS
 function commandHelpSectionText(section: CommandHelpSection): string {
   if (section === "more") {
     return [
-      "Studio Channel / more",
+      "Tracevane Channel / more",
       "",
       commandHelpList([
         ["`/help session`", "会话详情、续接、历史、usage、权限批准"],
@@ -1400,11 +1400,11 @@ function commandHelpSectionText(section: CommandHelpSection): string {
   }
   if (section === "session") {
     return [
-      "Studio Channel / session",
+      "Tracevane Channel / session",
       "",
       commandHelpList([
         ["`/whoami`", "查看当前 IM 用户、频道和 session id"],
-        ["`/version`", "查看 Studio Channel runtime 版本"],
+        ["`/version`", "查看 Tracevane Channel runtime 版本"],
         ["`/status`", "查看当前 Agent、模型、权限和续接状态"],
         ["`/current`", "查看当前 IM 会话详情"],
         ["`/list`", "列出当前 IM 会话已知 Agent sessions"],
@@ -1425,12 +1425,12 @@ function commandHelpSectionText(section: CommandHelpSection): string {
   }
   if (section === "agent") {
     return [
-      "Studio Channel / agent",
+      "Tracevane Channel / agent",
       "",
       commandHelpList([
         ["`/agent`", "列出可切换 Agent Profile"],
         ["`/agent <序号|id|codex|claude-code|opencode>`", "切换本会话 Agent"],
-        ["`/model`", "列出 Studio Gateway 可用模型"],
+        ["`/model`", "列出 Tracevane Gateway 可用模型"],
         ["`/model <序号|模型ID|default>`", "切换本会话模型"],
         ["`/mode`", "列出权限模式"],
         ["`/mode <suggest|read-only|auto-edit|full-auto|plan|yolo|default>`", "切换权限"],
@@ -1443,7 +1443,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
   }
   if (section === "display") {
     return [
-      "Studio Channel / display",
+      "Tracevane Channel / display",
       "",
       commandHelpList([
         ["`/display`", "查看思考、过程回复和工具消息开关"],
@@ -1459,7 +1459,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
   }
   if (section === "vision") {
     return [
-      "Studio Channel / vision",
+      "Tracevane Channel / vision",
       "",
       commandHelpList([
         ["`/vision`", "查看图片/贴图/视频类输入的自动视觉 fallback 设置"],
@@ -1475,7 +1475,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
   }
   if (section === "buffer") {
     return [
-      "Studio Channel / buffer",
+      "Tracevane Channel / buffer",
       "",
       commandHelpList([
         ["`/buffer`", "查看本会话最近 reply buffer"],
@@ -1489,7 +1489,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
   }
   if (section === "workdir") {
     return [
-      "Studio Channel / workdir",
+      "Tracevane Channel / workdir",
       "",
       commandHelpList([
         ["`/dir`", "查看当前工作目录、最近目录和子目录"],
@@ -1502,7 +1502,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
   }
   if (section === "commands") {
     return [
-      "Studio Channel / commands",
+      "Tracevane Channel / commands",
       "",
       commandHelpList([
         ["`/commands`", "列出当前 Agent 自定义 prompt 命令"],
@@ -1521,7 +1521,7 @@ function commandHelpSectionText(section: CommandHelpSection): string {
   }
   if (section === "platform") {
     return [
-      "Studio Channel / platform",
+      "Tracevane Channel / platform",
       "",
       commandHelpList([
         ["`/octo groups`", "列出当前 Octo bot 所在群"],
@@ -1535,12 +1535,12 @@ function commandHelpSectionText(section: CommandHelpSection): string {
         ["`/octo thread-md <short_id> [group_no]`", "读取 THREAD.md；thread 内可省略 short_id"],
       ]),
       "",
-      "Agent 可通过 `studio-channel-messages` manifest 发送 Octo 私聊/群/thread/@，以及 Feishu chat/open_id/user_id 文本、Markdown 和群 @ 消息。",
+      "Agent 可通过 `tracevane-channel-messages` manifest 发送 Octo 私聊/群/thread/@，以及 Feishu chat/open_id/user_id 文本、Markdown 和群 @ 消息。",
       "返回：`/help`",
     ].join("\n");
   }
   return [
-    "Studio Channel / native",
+    "Tracevane Channel / native",
     "",
     commandHelpList([
       ["`/native /help`", "查看当前 Agent 原生帮助或 skills 命令"],
@@ -1556,7 +1556,7 @@ function commandHelpText(section?: string | null): string {
   const selected = commandHelpSectionAlias(section);
   if (selected) return commandHelpSectionText(selected);
   return [
-    "Studio Channel",
+    "Tracevane Channel",
     "Agent 配置面板。普通消息会交给当前 Agent。",
     "",
     "**配置**",
@@ -1577,7 +1577,7 @@ function commandHelpText(section?: string | null): string {
       ["`/help more`", "会话详情、历史、缓存、命令和原生命令"],
     ]),
     "",
-    "未被 Studio 占用的 `/xxx` 会自动透传；冲突命令用 `/native <命令>`。",
+    "未被 Tracevane 占用的 `/xxx` 会自动透传；冲突命令用 `/native <命令>`。",
   ].join("\n");
 }
 
@@ -1774,7 +1774,7 @@ export function formatChannelConnectorOctoManagementReply(input: {
       ...members.slice(0, 60).map(octoMemberLine),
       members.length > 60 ? `... 还有 ${members.length - 60} 个` : "",
       "",
-      "可见回复里可以使用 `@[uid:显示名]`，Studio 会转换成 Octo @；私聊用 `studio-channel-messages` 的 `dm:<uid>` target。",
+      "可见回复里可以使用 `@[uid:显示名]`，Tracevane 会转换成 Octo @；私聊用 `tracevane-channel-messages` 的 `dm:<uid>` target。",
     ].filter(Boolean).join("\n");
   }
   if (input.action === "search-members") {
@@ -1785,7 +1785,7 @@ export function formatChannelConnectorOctoManagementReply(input: {
       ...members.slice(0, 30).map(octoMemberLine),
       members.length > 30 ? `... 还有 ${members.length - 30} 个` : "",
       "",
-      "私聊 human target：`dm:<uid>`；群/thread @ 使用 `@[uid:显示名]`，Studio 会发送可见 @ 并附带 Octo mention entity。",
+      "私聊 human target：`dm:<uid>`；群/thread @ 使用 `@[uid:显示名]`，Tracevane 会发送可见 @ 并附带 Octo mention entity。",
     ].filter(Boolean).join("\n");
   }
   if (input.action === "list-threads") {
@@ -2858,7 +2858,7 @@ function replyBufferListText(records: ChannelConnectorReplyBufferRecord[]): stri
 
 function replyBufferRecordText(record: ChannelConnectorReplyBufferRecord): string {
   return [
-    "Studio Reply Buffer",
+    "Tracevane Reply Buffer",
     `ID: ${record.id}`,
     `Platform: ${record.platform}`,
     `Created: ${record.createdAt}`,
@@ -3136,7 +3136,7 @@ async function handleStatus(context: ChannelConnectorCommandContext): Promise<Ch
     ok: true,
     control,
     replyText: [
-      "Studio Channel Status",
+      "Tracevane Channel Status",
       `Agent: ${currentProject.id} (${currentProject.agent})`,
       `Model: ${currentProject.model || "default"}`,
       `Reasoning: ${currentProject.reasoningEffort || "default"}`,
@@ -3184,7 +3184,7 @@ async function handleCurrent(context: ChannelConnectorCommandContext): Promise<C
     ok: true,
     control,
     replyText: [
-      "Studio Current Session",
+      "Tracevane Current Session",
       `Binding: ${context.binding.id}`,
       `Session key: ${context.sessionKey}`,
       `Session name: ${sessionName}`,
@@ -3225,7 +3225,7 @@ function handleWhoami(context: ChannelConnectorCommandContext): ChannelConnector
     ok: true,
     control,
     replyText: [
-      "Studio Whoami",
+      "Tracevane Whoami",
       `User ID: ${userId}`,
       `Channel ID: ${channelId}`,
       `Channel type: ${message.channelType}`,
@@ -3250,8 +3250,8 @@ function handleVersion(context: ChannelConnectorCommandContext): ChannelConnecto
     ok: true,
     control,
     replyText: [
-      "Studio Channel Version",
-      `Studio: ${studioRuntimeVersion()}`,
+      "Tracevane Channel Version",
+      `Tracevane: ${studioRuntimeVersion()}`,
       `Node: ${process.version}`,
       `Platform: ${os.platform()} ${os.arch()}`,
       `Binding: ${context.binding.id} (${context.binding.platform})`,
@@ -3268,7 +3268,7 @@ function historyCommandText(context: ChannelConnectorCommandContext, args: strin
   const limit = parsePositiveLimit(args[0], CHANNEL_CONNECTOR_HISTORY_CONTEXT_LIMIT, CHANNEL_CONNECTOR_HISTORY_CONTEXT_LIMIT);
   const entries = getChannelConnectorConversationHistory(filePath, controlsLookup(context), limit);
   if (!entries.length) return "当前 IM 会话还没有可显示的 history。";
-  const lines = [`Studio Session History (last ${entries.length}/${limit})`];
+  const lines = [`Tracevane Session History (last ${entries.length}/${limit})`];
   for (const [index, entry] of entries.entries()) {
     const role = entry.role === "assistant" ? "Assistant" : "User";
     const icon = entry.role === "assistant" ? "A" : "U";
@@ -3286,13 +3286,13 @@ function historyCommandText(context: ChannelConnectorCommandContext, args: strin
 function formatUsageSummary(summary: ChannelConnectorUsageSummary | null): string {
   if (!summary || summary.requests <= 0) {
     return [
-      "Studio Usage",
+      "Tracevane Usage",
       "当前 IM 会话还没有可统计的 Gateway usage。",
-      "只有通过 Studio Gateway 且上游返回 usage/token 字段的 Agent 请求会计入。",
+      "只有通过 Tracevane Gateway 且上游返回 usage/token 字段的 Agent 请求会计入。",
     ].join("\n");
   }
   const lines = [
-    "Studio Usage",
+    "Tracevane Usage",
     `Requests: ${summary.requests} (${summary.successfulRequests} success / ${summary.failedRequests} failed)`,
     `Tokens: input ${summary.inputTokens} · output ${summary.outputTokens} · total ${summary.totalTokens}`,
   ];
@@ -3302,7 +3302,7 @@ function formatUsageSummary(summary: ChannelConnectorUsageSummary | null): strin
   if (summary.models.length) lines.push(`Models: ${summary.models.join(", ")}`);
   if (summary.providers.length) lines.push(`Providers: ${summary.providers.join(", ")}`);
   lines.push(`Last request: ${summary.lastRequestAt || "-"}`);
-  lines.push("Source: Studio Gateway runtime log, correlated by Agent run time window.");
+  lines.push("Source: Tracevane Gateway runtime log, correlated by Agent run time window.");
   return lines.join("\n");
 }
 
@@ -3313,10 +3313,10 @@ function sessionListText(
   if (!records.length) {
     return [
       "当前 IM 会话还没有本地 Agent session。",
-      "发送普通消息后，Studio 会保存可续接记录；用法：/switch <序号|sessionId前缀>。",
+      "发送普通消息后，Tracevane 会保存可续接记录；用法：/switch <序号|sessionId前缀>。",
     ].join("\n");
   }
-  const lines = ["Studio Agent Sessions"];
+  const lines = ["Tracevane Agent Sessions"];
   records.forEach((record, index) => {
     const marker = record.id === activeSessionId ? ">" : " ";
     const title = record.name || record.projectId;
@@ -3353,7 +3353,7 @@ function sessionSearchText(
   }).slice(0, 10);
   if (!matches.length) return `未找到匹配的 Agent session：${query}`;
   return [
-    `Studio Session Search: ${query}`,
+    `Tracevane Session Search: ${query}`,
     sessionListText(matches, activeSessionId),
   ].join("\n\n");
 }
@@ -3817,7 +3817,7 @@ export async function handleChannelConnectorCommand(
           action: "compact",
           ok: false,
           control: currentControl,
-          replyText: "当前 Channel runtime 未启用 Agent 原生 compact contract。请使用 /compact 允许 Studio Gateway fallback。",
+          replyText: "当前 Channel runtime 未启用 Agent 原生 compact contract。请使用 /compact 允许 Tracevane Gateway fallback。",
           passthroughText: null,
           nativeCommand: null,
         };
@@ -3884,7 +3884,7 @@ export async function handleChannelConnectorCommand(
         replyText: [
           "Agent 原生 compact 未执行。",
           nativeResult.error ? bufferPreviewText(nativeResult.error, 260) : "当前 Agent 没有 live persistent compact session。",
-          "请使用 /compact 让 Studio 按 native-first 后降级 Gateway compact。",
+          "请使用 /compact 让 Tracevane 按 native-first 后降级 Gateway compact。",
         ].filter(Boolean).join("\n"),
         passthroughText: null,
         nativeCommand: null,
@@ -3988,7 +3988,7 @@ export async function handleChannelConnectorCommand(
           action: "set",
           ok: false,
           control: currentControl,
-          replyText: `别名 ${aliasName} 来自 binding metadata：${metadataAlias.command}。请在 Studio 配置中修改，或换一个触发词。`,
+          replyText: `别名 ${aliasName} 来自 binding metadata：${metadataAlias.command}。请在 Tracevane 配置中修改，或换一个触发词。`,
           passthroughText: null,
         };
       }
@@ -5118,7 +5118,7 @@ export async function handleChannelConnectorCommand(
         action: "compact",
         ok: false,
         control: currentControl,
-        replyText: nativeResult.error || "Agent 原生 compact 未完成，且当前不允许降级 Studio compact。",
+        replyText: nativeResult.error || "Agent 原生 compact 未完成，且当前不允许降级 Tracevane compact。",
         passthroughText: null,
         suppressReply: compactSuppressReply,
         progressHandled: compactProgressHandled,
@@ -5126,8 +5126,8 @@ export async function handleChannelConnectorCommand(
     }
     if (!context.compactConversation) {
       const errorText = nativeResult?.error
-        ? `Agent 原生 compact 未完成：${nativeResult.error}\n当前 Channel runtime 未启用 Studio compact contract。`
-        : "当前 Channel runtime 未启用 Studio compact contract。";
+        ? `Agent 原生 compact 未完成：${nativeResult.error}\n当前 Channel runtime 未启用 Tracevane compact contract。`
+        : "当前 Channel runtime 未启用 Tracevane compact contract。";
       const finishedAck = await emitBuiltinCommandProgress({
         context,
         project: currentProject,
@@ -5159,8 +5159,8 @@ export async function handleChannelConnectorCommand(
       command: parsed.raw,
     });
     const resultText = result.ok
-      ? `Studio compact completed: history ${result.beforeEntries} -> ${result.afterEntries}; sessions cleared ${result.sessionsCleared}.`
-      : result.error || "Studio compact failed.";
+      ? `Tracevane compact completed: history ${result.beforeEntries} -> ${result.afterEntries}; sessions cleared ${result.sessionsCleared}.`
+      : result.error || "Tracevane compact failed.";
     const finishedAck = await emitBuiltinCommandProgress({
       context,
       project: currentProject,
@@ -5182,9 +5182,9 @@ export async function handleChannelConnectorCommand(
       replyText: result.ok
         ? [
           nativeResult?.attempted && nativeResult.error
-            ? `Agent 原生 compact 未完成，已降级 Studio compact：${bufferPreviewText(nativeResult.error, 180)}`
+            ? `Agent 原生 compact 未完成，已降级 Tracevane compact：${bufferPreviewText(nativeResult.error, 180)}`
             : "",
-          "Studio compact 已压缩当前 IM 会话上下文。",
+          "Tracevane compact 已压缩当前 IM 会话上下文。",
           `history: ${result.beforeEntries} -> ${result.afterEntries}`,
           `Agent sessions: cleared ${result.sessionsCleared}`,
           result.summaryText ? `summary: ${bufferPreviewText(result.summaryText, 160)}` : "",

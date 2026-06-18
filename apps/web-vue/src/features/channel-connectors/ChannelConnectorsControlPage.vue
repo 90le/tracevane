@@ -878,9 +878,9 @@ const profileWorkspaceRoute = computed(() => {
 
 const runtimeChain = computed(() => status.value?.runtimeChain || [
   'IM channel',
-  'Studio native Channel daemon',
+  'Tracevane native Channel daemon',
   'local CLI Agent bot',
-  'Studio Gateway daemon',
+  'Tracevane Gateway daemon',
   'upstream provider',
 ]);
 
@@ -1113,7 +1113,7 @@ function isAgentSessionEventFailure(type: string): boolean {
 function autoCompactActionLabel(record: ChannelConnectorsDaemonRuntimeAutoCompactRecord): string {
   if (record.ok === false) return text('失败', 'Failed');
   if (record.action === 'native') return text('原生压缩', 'Native compact');
-  if (record.action === 'fallback') return text('Studio 压缩', 'Studio compact');
+  if (record.action === 'fallback') return text('Tracevane 压缩', 'Tracevane compact');
   return text('已跳过', 'Skipped');
 }
 

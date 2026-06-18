@@ -15,7 +15,7 @@ test("studio web entry declares production title and favicon", () => {
   const indexHtml = fs.readFileSync(webIndexPath, "utf8");
   const favicon = fs.readFileSync(faviconPath, "utf8");
 
-  assert.match(indexHtml, /<title>OpenClaw Studio<\/title>/);
+  assert.match(indexHtml, /<title>Tracevane<\/title>/);
   assert.doesNotMatch(indexHtml, /Prototype/);
   assert.match(indexHtml, /<link rel="icon" type="image\/svg\+xml" href="\/favicon\.svg" \/>/);
   assert.match(indexHtml, /<meta name="theme-color" content="#0f766e" \/>/);

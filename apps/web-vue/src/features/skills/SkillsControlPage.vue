@@ -385,7 +385,7 @@
 
               <div class="skills-section-head compact">
                 <h4>{{ text('结构化配置字段', 'Structured config fields') }}</h4>
-                <p>{{ text('OpenClaw 没有统一的技能 config schema，这里用“字段名 + 类型 + 值”的方式做结构化编辑，避免直接手改 JSON。', 'OpenClaw does not expose a universal per-skill config schema, so Studio uses a typed field editor instead of raw JSON editing.') }}</p>
+                <p>{{ text('OpenClaw 没有统一的技能 config schema，这里用“字段名 + 类型 + 值”的方式做结构化编辑，避免直接手改 JSON。', 'OpenClaw does not expose a universal per-skill config schema, so Tracevane uses a typed field editor instead of raw JSON editing.') }}</p>
               </div>
 
               <div v-if="selectedSkillEditor.configFields.length === 0" class="skills-empty-inline">
@@ -904,7 +904,7 @@
               <p>
                 {{
                   selectedMarketItem.sourceId === 'skillhub-tencent'
-                    ? text('优先用腾讯镜像；如果本机有 SkillHub CLI，会优先走 CLI，没有则回退到镜像下载。', 'Tencent mirror is preferred. If SkillHub CLI is installed it will be used first, otherwise Studio falls back to direct mirror download.')
+                    ? text('优先用腾讯镜像；如果本机有 SkillHub CLI，会优先走 CLI，没有则回退到镜像下载。', 'Tencent mirror is preferred. If SkillHub CLI is installed it will be used first, otherwise Tracevane falls back to direct mirror download.')
                     : text('官方海外源可直装，但更容易被限流。若失败，建议切回腾讯镜像。', 'The global official source can install directly, but it is more likely to be rate-limited. Switch back to the Tencent mirror if needed.')
                 }}
               </p>
@@ -955,8 +955,8 @@
                 <p>
                   {{
                     text(
-                      '当前源的 CLI 未安装。Studio 仍可回退到镜像/下载安装，但如果你想长期维护、更新和搜索技能，建议先把 CLI 装好。',
-                      'The current source CLI is missing. Studio can still fall back to direct download, but for search, update, and long-term maintenance you should install the CLI first.'
+                      '当前源的 CLI 未安装。Tracevane 仍可回退到镜像/下载安装，但如果你想长期维护、更新和搜索技能，建议先把 CLI 装好。',
+                      'The current source CLI is missing. Tracevane can still fall back to direct download, but for search, update, and long-term maintenance you should install the CLI first.'
                     )
                   }}
                 </p>
@@ -2168,7 +2168,7 @@ function requestUpdateInstalledSkillVersion(): void {
   confirmDialog.value = {
     kind: 'update',
     title: text('确认更新技能', 'Confirm skill update'),
-    message: text('将从当前选定市场源覆盖本地技能目录。若你对本地技能做过手工修改，这次更新会直接覆盖掉。', 'Studio will overwrite the local skill directory from the selected marketplace source. Any local manual edits inside that skill folder will be replaced.'),
+    message: text('将从当前选定市场源覆盖本地技能目录。若你对本地技能做过手工修改，这次更新会直接覆盖掉。', 'Tracevane will overwrite the local skill directory from the selected marketplace source. Any local manual edits inside that skill folder will be replaced.'),
     detail: `${selectedSkillSummary.value.slug} · ${marketplaceSourceLabel(maintenanceSourceId.value)}`,
     confirmLabel: text('确认更新', 'Update now'),
   };
@@ -2179,7 +2179,7 @@ function requestRemoveInstalledSkill(): void {
   confirmDialog.value = {
     kind: 'uninstall',
     title: text('确认卸载技能', 'Confirm uninstall'),
-    message: text('将删除本地技能目录并清理 Studio 中对应的技能配置。这个动作不会影响 OpenClaw bundled 内置技能。', 'Studio will delete the local skill directory and remove the matching Studio skill config entry. Bundled OpenClaw skills are not affected.'),
+    message: text('将删除本地技能目录并清理 Tracevane 中对应的技能配置。这个动作不会影响 OpenClaw bundled 内置技能。', 'Tracevane will delete the local skill directory and remove the matching Tracevane skill config entry. Bundled OpenClaw skills are not affected.'),
     detail: `${selectedSkillSummary.value.slug} · ${selectedSkillSummary.value.paths.activePath || text('无本地路径', 'No local path')}`,
     confirmLabel: text('确认卸载', 'Remove now'),
   };
@@ -2191,7 +2191,7 @@ function requestInstallSelectedMarketSkill(): void {
   confirmDialog.value = {
     kind: 'install',
     title: text('确认安装技能', 'Confirm skill install'),
-    message: text('将把该技能安装到选定目标，并在下一个新会话中由 OpenClaw 自动发现。', 'Studio will install this skill into the selected target and OpenClaw will discover it in the next new session.'),
+    message: text('将把该技能安装到选定目标，并在下一个新会话中由 OpenClaw 自动发现。', 'Tracevane will install this skill into the selected target and OpenClaw will discover it in the next new session.'),
     detail: `${selectedMarketItem.value.slug} · ${marketplaceSourceLabel(selectedMarketItem.value.sourceId)} · ${targetLabel}`,
     confirmLabel: text('确认安装', 'Install now'),
   };

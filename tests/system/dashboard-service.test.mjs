@@ -70,7 +70,7 @@ function createMockResponse() {
 function createDashboard() {
   return createDashboardService({
     config: {
-      pluginName: "OpenClaw Studio",
+      pluginName: "Tracevane",
       version: "0.1.20",
       port: 3760,
       gatewayPort: 31879,
@@ -342,7 +342,7 @@ test("dashboard service reuses cached summary across repeated reads", async () =
 
   const dashboard = createDashboardService({
     config: {
-      pluginName: "OpenClaw Studio",
+      pluginName: "Tracevane",
       version: "0.1.20",
       port: 3760,
       gatewayPort: 31879,
@@ -431,7 +431,7 @@ test("dashboard service dedupes concurrent first requests into one rebuild", asy
 
   const dashboard = createDashboardService({
     config: {
-      pluginName: "OpenClaw Studio",
+      pluginName: "Tracevane",
       version: "0.1.20",
       port: 3760,
       gatewayPort: 31879,
@@ -523,7 +523,7 @@ test("dashboard first request returns quickly with placeholder snapshot then ref
 
   const dashboard = createDashboardService({
     config: {
-      pluginName: "OpenClaw Studio",
+      pluginName: "Tracevane",
       version: "0.1.20",
       port: 3760,
       gatewayPort: 31879,
@@ -620,7 +620,7 @@ test("dashboard stale snapshot triggers background refresh without blocking resp
 
   const dashboard = createDashboardService({
     config: {
-      pluginName: "OpenClaw Studio",
+      pluginName: "Tracevane",
       version: "0.1.20",
       port: 3760,
       gatewayPort: 31879,
@@ -727,7 +727,7 @@ test("dashboard stale background refresh failure keeps last valid snapshot and a
 
   const dashboard = createDashboardService({
     config: {
-      pluginName: "OpenClaw Studio",
+      pluginName: "Tracevane",
       version: "0.1.20",
       port: 3760,
       gatewayPort: 31879,
@@ -844,7 +844,7 @@ test("dashboard summary route does not rebuild when snapshot is fresh", async ()
           return {
             checkedAt: "2026-04-20T00:00:00.000Z",
             server: {
-              name: "OpenClaw Studio",
+              name: "Tracevane",
               version: "0.1.21",
               port: 3760,
               pid: process.pid,

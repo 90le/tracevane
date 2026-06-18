@@ -2,7 +2,7 @@
 
 > Status: stable / monitored
 > Updated: 2026-06-17
-> Scope: Studio native Channel Connectors Feishu long-connection ingress.
+> Scope: Tracevane native Channel Connectors Feishu long-connection ingress.
 
 This is the single tracker for Feishu "connected but no reply" incidents. New Feishu long-connection fixes must update this file before or with code changes.
 
@@ -14,7 +14,7 @@ This is the single tracker for Feishu "connected but no reply" incidents. New Fe
   - `https://open.feishu.cn/document/server-side-sdk/nodejs-sdk/handling-events`
   - `https://open.feishu.cn/document/server-side-sdk/nodejs-sdk/handling-callbacks`
 - Lark Node SDK issues checked: reconnect timer leak, `WSClient.start()` early resolve.
-- Future fixes must recheck official Feishu/Lark SDK docs, SDK release notes, GitHub issues/discussions, community failure reports, current Studio runtime logs, and live connection evidence before changing behavior.
+- Future fixes must recheck official Feishu/Lark SDK docs, SDK release notes, GitHub issues/discussions, community failure reports, current Tracevane runtime logs, and live connection evidence before changing behavior.
 
 ## 2. Current Diagnosis
 
@@ -62,7 +62,7 @@ Required for any Feishu long-connection claim:
 - `npm run build:api`
 - `node --test tests/system/channel-connectors-service.test.mjs`
 - Restart Channel daemon, then send a fresh Feishu private message and verify immediate Agent reply.
-- Compare Studio runtime/health with official Feishu connection check.
+- Compare Tracevane runtime/health with official Feishu connection check.
 - Confirm `connected=false` or unhealthy when pong is overdue or transport is stale.
 - Confirm old redelivered Feishu messages are skipped after newer message waterline advances.
 
@@ -82,4 +82,4 @@ Collect these first, then patch:
 - Whether Octo still replies immediately.
 - Whether manual daemon restart immediately restores Feishu.
 
-Then update this tracker with the current official/API/SDK/GitHub/community evidence, Studio runtime evidence, selected fix, rejected options and verification plan before designing new behavior.
+Then update this tracker with the current official/API/SDK/GitHub/community evidence, Tracevane runtime evidence, selected fix, rejected options and verification plan before designing new behavior.

@@ -33,7 +33,7 @@ function deriveSessionSourceOptions(
 ): SessionSourceOption[] {
   const seen = new Set<string>();
   const labels: Record<ChatSessionRow['source']['source'], string> = {
-    studio: text('Studio', 'Studio'),
+    studio: text('Tracevane', 'Tracevane'),
     external: text('外部', 'External'),
     system: text('系统', 'System'),
   };

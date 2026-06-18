@@ -407,7 +407,7 @@ export function buildTerminalEnv(config: StudioServerConfig): NodeJS.ProcessEnv 
     env.TERM_PROGRAM_VERSION = config.version.trim();
   }
   env.OPENCLAW_TERMINAL_CLIENT = "xterm.js";
-  env.XTERM_VERSION = `OpenClaw Studio ${config.version?.trim() || "terminal"}`;
+  env.XTERM_VERSION = `Tracevane ${config.version?.trim() || "terminal"}`;
   try {
     const raw = require("node:fs").readFileSync(
       config.openclawConfigFile,

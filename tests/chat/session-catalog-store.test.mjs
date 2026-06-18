@@ -21,7 +21,7 @@ function cleanupTempRoot(root) {
 function makeConfig(root) {
   return {
     pluginId: 'studio',
-    pluginName: 'OpenClaw Studio',
+    pluginName: 'Tracevane',
     version: '0.1.0',
     port: 0,
     autoStart: false,
@@ -54,7 +54,7 @@ function makeSession(key, overrides = {}) {
       source: 'studio',
       channel: 'webchat',
       surface: 'studio-chat',
-      originLabel: 'Studio managed',
+      originLabel: 'Tracevane managed',
     },
     deliveryContext: {
       channel: 'webchat',

@@ -135,7 +135,7 @@ function projectForAgent(config, agent, model) {
     model,
     permissionMode: "yolo",
     gatewayEndpoint,
-    gatewayKeyRef: normalizeString(config.gateway?.clientKeyRef) || "studio-gateway-client-key",
+    gatewayKeyRef: normalizeString(config.gateway?.clientKeyRef) || "tracevane-gateway-client-key",
     appProfileRef: agentProfileRef(agent),
     platformBindings: [],
   };
@@ -266,8 +266,8 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   const config = readJson(options.configPath);
   const gatewayClientKey = resolveChannelConnectorGatewayClientKey(config);
-  if (!gatewayClientKey) throw new Error("Studio Gateway client key is missing.");
-  const runtimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "studio-channel-runner-direct-"));
+  if (!gatewayClientKey) throw new Error("Tracevane Gateway client key is missing.");
+  const runtimeRoot = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-channel-runner-direct-"));
   const results = [];
   try {
     for (const agent of options.agents) {

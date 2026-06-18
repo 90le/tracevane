@@ -3,7 +3,7 @@
 > Status: active reference
 > Updated: 2026-06-12
 
-This note records the split between host install metadata and Studio runtime metadata for the official Chat integration.
+This note records the split between host install metadata and Tracevane runtime metadata for the official Chat integration.
 
 ## Host Compatibility
 
@@ -17,6 +17,6 @@ Keeping `minHostVersion` in `package.json` avoids duplicating host install polic
 
 ## Runtime Manifest
 
-`openclaw.plugin.json` describes Studio plugin identity and runtime contracts after the host has accepted the package. It keeps startup activation explicit with `activation.onStartup` and declares runtime contracts such as `studio_delivery`.
+`openclaw.plugin.json` describes Tracevane plugin identity and runtime contracts after the host has accepted the package. It keeps startup activation explicit with `activation.onStartup` and declares runtime contracts such as `studio_delivery`.
 
 The manifest intentionally does not carry host install semantics such as package requirements, provided package kinds, or dist entrypoints. Those remain in `package.json`.

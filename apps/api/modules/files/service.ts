@@ -409,10 +409,10 @@ function createRootDescriptors(config: StudioServerConfig): FileRootSummary[] {
     },
     {
       id: "project-root",
-      labelZh: "Studio 项目",
-      labelEn: "Studio project",
-      descriptionZh: "当前 OpenClaw Studio 扩展项目目录。",
-      descriptionEn: "The current OpenClaw Studio extension project.",
+      labelZh: "Tracevane 项目",
+      labelEn: "Tracevane project",
+      descriptionZh: "当前 Tracevane 扩展项目目录。",
+      descriptionEn: "The current Tracevane extension project.",
       absolutePath: path.resolve(config.projectRoot),
     },
   ];

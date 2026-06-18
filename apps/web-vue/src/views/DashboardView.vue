@@ -6,7 +6,7 @@
     <motion.header class="home-situation-band" data-home-zone="situation" v-bind="pageMastheadReveal">
       <div class="home-situation-copy">
         <p class="eyebrow">Home</p>
-        <h2 class="page-title">{{ text('Studio 总控首页', 'Studio Home Control Surface') }}</h2>
+        <h2 class="page-title">{{ text('Tracevane 总控首页', 'Tracevane Home Control Surface') }}</h2>
         <p class="home-page-copy">
           {{ text('把运行态、安装修复和系统入口收束在同一主舞台，先看状态再进入对应工作区。', 'Bring runtime state, setup repair, and system entry points into one primary stage so users can read status first, then navigate to the right workspace.') }}
         </p>

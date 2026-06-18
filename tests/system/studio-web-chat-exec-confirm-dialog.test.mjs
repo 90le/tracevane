@@ -40,7 +40,7 @@ test("host-management exec toggle uses a custom chat dialog instead of browser c
   assert.doesNotMatch(toggleBlock[0], /window\.confirm/);
 });
 
-test("folder and chat deletion actions reuse the shared Studio confirm composable instead of window.confirm", () => {
+test("folder and chat deletion actions reuse the shared Tracevane confirm composable instead of window.confirm", () => {
   const folderDeleteBlock = chatShellPage.match(
     /async function handleFolderAction[\s\S]*?\n}\n\nasync function handleAssignSessions/,
   );

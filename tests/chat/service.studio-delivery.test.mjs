@@ -39,7 +39,7 @@ test('chat upload returns canonical resource ref and signed preview resource', a
       [sessionKey]: {
         sessionId: 'session-1',
         sessionFile,
-        label: 'Studio chat · main',
+        label: 'Tracevane chat · main',
         updatedAt: '2026-03-22T00:00:00.000Z',
       },
     }, null, 2));
@@ -110,7 +110,7 @@ test('chat resource resolver resolves workspace and upload refs without exposing
       [sessionKey]: {
         sessionId: 'session-1',
         sessionFile,
-        label: 'Studio chat · main',
+        label: 'Tracevane chat · main',
         updatedAt: '2026-03-22T00:00:00.000Z',
       },
     }, null, 2));
@@ -197,7 +197,7 @@ test('chat service restores user shadow blocks with inline refs and keeps only u
       [sessionKey]: {
         sessionId: 'session-1',
         sessionFile,
-        label: 'Studio chat · main',
+        label: 'Tracevane chat · main',
         updatedAt: '2026-03-22T00:00:00.000Z',
       },
     }, null, 2));
@@ -320,7 +320,7 @@ test('chat service maps transcript studio_delivery tool results into assistant b
       [sessionKey]: {
         sessionId: 'session-1',
         sessionFile,
-        label: 'Studio chat · main',
+        label: 'Tracevane chat · main',
         updatedAt: '2026-03-21T00:00:00.000Z',
       },
     }, null, 2));
@@ -404,7 +404,7 @@ test('chat service compiles assistant markdown studio links into enhanced markdo
       [sessionKey]: {
         sessionId: 'session-1',
         sessionFile,
-        label: 'Studio chat · main',
+        label: 'Tracevane chat · main',
         updatedAt: '2026-03-21T00:00:00.000Z',
       },
     }, null, 2));
@@ -470,7 +470,7 @@ test('real transcript shape keeps only the compiled studio_delivery assistant me
       [sessionKey]: {
         sessionId: 'session-1',
         sessionFile,
-        label: 'Studio chat · main',
+        label: 'Tracevane chat · main',
         updatedAt: '2026-03-21T00:00:00.000Z',
       },
     }, null, 2));
@@ -641,7 +641,7 @@ test('gateway history shape with payload serialized in toolResult text still com
       [sessionKey]: {
         sessionId: 'session-1',
         sessionFile,
-        label: 'Studio chat · main',
+        label: 'Tracevane chat · main',
         updatedAt: '2026-03-21T00:00:00.000Z',
       },
     }, null, 2));

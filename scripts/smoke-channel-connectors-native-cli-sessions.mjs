@@ -198,7 +198,7 @@ function anthropicResponseText(body) {
   if (text.includes("CLAUDE_FILE_SMOKE")) {
     return [
       "CLAUDE_FILE_OK",
-      "```studio-channel-files",
+      "```tracevane-channel-files",
       JSON.stringify([{ path: FILE_SMOKE_NAME, name: FILE_SMOKE_NAME, caption: "native CLI smoke file" }]),
       "```",
     ].join("\n");
@@ -321,7 +321,7 @@ function chatResponseText(body) {
   if (text.includes("OPENCODE_FILE_SMOKE")) {
     return [
       "OPENCODE_FILE_OK",
-      "```studio-channel-files",
+      "```tracevane-channel-files",
       JSON.stringify([{ path: FILE_SMOKE_NAME, name: FILE_SMOKE_NAME, caption: "native CLI smoke file" }]),
       "```",
     ].join("\n");
@@ -402,11 +402,11 @@ function writeOpenCodeConfig(homeDir, endpoint) {
   const configPath = path.join(homeDir, ".config", "opencode", "opencode.json");
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   fs.writeFileSync(configPath, `${JSON.stringify({
-    model: `studio-gateway/${DEFAULT_MODEL}`,
+    model: `tracevane-gateway/${DEFAULT_MODEL}`,
     provider: {
-      "studio-gateway": {
+      "tracevane-gateway": {
         npm: "@ai-sdk/openai-compatible",
-        name: "OpenClaw Studio Gateway",
+        name: "Tracevane Gateway",
         options: {
           apiKey: LOCAL_GATEWAY_KEY,
           baseURL: endpoint,
@@ -476,7 +476,7 @@ function installIsolatedEnv(root, endpoint) {
 }
 
 function baseTurnRequest(root, agent, endpoint, nativeCommand = null, contentOverride = null, attachments = []) {
-  const model = agent === "opencode" ? `studio-gateway/${DEFAULT_MODEL}` : DEFAULT_MODEL;
+  const model = agent === "opencode" ? `tracevane-gateway/${DEFAULT_MODEL}` : DEFAULT_MODEL;
   const messageKind = nativeCommand
     ? "compact"
     : contentOverride?.includes("_TOOL_SMOKE") ? "tool"
@@ -576,7 +576,7 @@ async function runAppSmoke(app, root, endpoint, requests, timeoutMs) {
     projectId: `${app}-native-cli-smoke`,
     sessionKey: "native-cli-smoke:dm:user",
     agent: app,
-    model: app === "opencode" ? `studio-gateway/${DEFAULT_MODEL}` : DEFAULT_MODEL,
+    model: app === "opencode" ? `tracevane-gateway/${DEFAULT_MODEL}` : DEFAULT_MODEL,
     workDir: root,
   };
   const progress = [];
@@ -644,8 +644,8 @@ async function runAppSmoke(app, root, endpoint, requests, timeoutMs) {
           endpoint,
           null,
           app === "claude-code"
-            ? "CLAUDE_FILE_SMOKE: Return the existing native smoke file with a studio-channel-files block."
-            : "OPENCODE_FILE_SMOKE: Return the existing native smoke file with a studio-channel-files block.",
+            ? "CLAUDE_FILE_SMOKE: Return the existing native smoke file with a tracevane-channel-files block."
+            : "OPENCODE_FILE_SMOKE: Return the existing native smoke file with a tracevane-channel-files block.",
         ),
         session: (tool || normal).session,
       },
@@ -697,7 +697,7 @@ async function runAppSmoke(app, root, endpoint, requests, timeoutMs) {
       key,
       messageId: `${app}-stop`,
       agentTurnRequest: {
-        ...baseTurnRequest(root, app, endpoint, null, `${stopMarker}: Start a long pending request so Studio can cancel it.`),
+        ...baseTurnRequest(root, app, endpoint, null, `${stopMarker}: Start a long pending request so Tracevane can cancel it.`),
         session: compact.session,
       },
       onProgress: (event) => progress.push(event),
@@ -743,7 +743,7 @@ async function runAppSmoke(app, root, endpoint, requests, timeoutMs) {
     if (normal.replyText !== marker) errors.push(`normal reply was ${JSON.stringify(normal.replyText)}, expected ${marker}`);
     if (tool && tool.replyText !== "CLAUDE_TOOL_OK") errors.push(`tool reply was ${JSON.stringify(tool.replyText)}, expected CLAUDE_TOOL_OK`);
     if (!String(file.replyText || "").includes(fileMarker)) errors.push(`file reply did not include ${fileMarker}`);
-    if (!String(file.replyText || "").includes("studio-channel-files")) errors.push("file reply did not include studio-channel-files manifest");
+    if (!String(file.replyText || "").includes("tracevane-channel-files")) errors.push("file reply did not include tracevane-channel-files manifest");
     if (!String(file.replyText || "").includes(FILE_SMOKE_NAME)) errors.push(`file reply did not include ${FILE_SMOKE_NAME}`);
     if (!openCodeVisualUnsupported && visual.replyText !== visualMarker) errors.push(`visual reply was ${JSON.stringify(visual.replyText)}, expected ${visualMarker}`);
     if (!openCodeVisualUnsupported && !visualRequest) errors.push(`mock Gateway did not receive ${visualRequestMarker}`);

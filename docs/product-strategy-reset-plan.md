@@ -6,7 +6,7 @@
 
 ## 1. New Positioning
 
-The project should evolve from **OpenClaw Studio, an OpenClaw management console**, into a **local-first AI Agent control workbench**.
+The project should evolve from **Tracevane, an OpenClaw management console**, into a **local-first AI Agent control workbench**.
 
 OpenClaw remains an important runtime integration, but it is no longer the product boundary. The product boundary is:
 
@@ -17,7 +17,7 @@ OpenClaw remains an important runtime integration, but it is no longer the produ
 - observability, evidence, cost, latency, tool calls and session lifecycle
 - project artifacts, files and operational runbooks that help humans supervise agent work
 
-The project should not compete with OpenClaw official Web UI on generic OpenClaw CRUD. It should keep the parts where Studio adds independent value across runtimes, providers and channels.
+The project should not compete with OpenClaw official Web UI on generic OpenClaw CRUD. It should keep the parts where Tracevane adds independent value across runtimes, providers and channels.
 
 ## 2. External Market Signals
 
@@ -26,7 +26,7 @@ Recent checks show the market already has strong products in these adjacent spac
 | Space | Signal | Product decision |
 | --- | --- | --- |
 | OpenClaw official Web UI | OpenClaw docs describe Control UI, Dashboard and WebChat as built-in gateway/admin/chat surfaces: `https://docs.openclaw.ai/web/control-ui`, `https://docs.openclaw.ai/web/dashboard`, `https://docs.openclaw.ai/web/webchat` | Delegate generic OpenClaw chat/config/admin duplication when official UI is good enough. |
-| Self-hosted chat UI | Open WebUI and LibreChat cover model-agnostic chat, tools, memory, files, artifacts and agents: `https://docs.openwebui.com/features/`, `https://www.librechat.ai/docs/features` | Studio Chat must become an agent operations workbench, not a chat clone. |
+| Self-hosted chat UI | Open WebUI and LibreChat cover model-agnostic chat, tools, memory, files, artifacts and agents: `https://docs.openwebui.com/features/`, `https://www.librechat.ai/docs/features` | Tracevane Chat must become an agent operations workbench, not a chat clone. |
 | Workflow/agent builder | Dify, n8n, Microsoft Copilot Studio and Oracle AI Agent Studio already own visual workflows and enterprise agent builders: `https://dify.ai/`, `https://docs.n8n.io/advanced-ai/intro-tutorial/`, `https://www.microsoft.com/en-us/microsoft-365-copilot/microsoft-copilot-studio`, `https://www.oracle.com/news/announcement/oracle-introduces-ai-agent-studio-2025-03-20/` | Avoid building a generic no-code agent builder unless it is tied to local CLI Agent/IM/Gateway operations. |
 | Observability | Langfuse focuses on traces, sessions, evals, prompt management and model usage: `https://langfuse.com/docs` | Build the minimum self-hosted operations observability first; do not pretend to replace full LLMOps platforms. |
 | CLI Agent contracts | Codex, Claude Code and OpenCode expose their own CLI/config/hooks/SDK/session surfaces: `https://developers.openai.com/codex/cli/reference`, `https://code.claude.com/docs/en/hooks`, `https://opencode.ai/docs/cli/`, `https://opencode.ai/docs/sdk/` | Prefer official structured events, hooks, SDKs and session APIs over TUI text parsing. |
@@ -45,7 +45,7 @@ Keep and strengthen:
 Delegate or shrink:
 
 - **Config**: keep only critical compatibility, preview/diff/backup and safe guided writes. Do not duplicate every official OpenClaw setting.
-- **Agents / Channels**: keep runtime profile and binding surfaces that Studio needs; delegate broad OpenClaw CRUD when official UI is better.
+- **Agents / Channels**: keep runtime profile and binding surfaces that Tracevane needs; delegate broad OpenClaw CRUD when official UI is better.
 - **Skills**: keep only if it becomes a cross-Agent capability package/workflow surface; otherwise make it a retire candidate.
 - **Terminal**: keep as a maintenance/debug surface, not a primary product workflow.
 - **Dashboard**: change from status clone to task-first operations cockpit.
@@ -53,15 +53,15 @@ Delegate or shrink:
 Retired or no longer active:
 
 - Dreaming / memory management page and BFF.
-- Studio Plugins management page and BFF.
+- Legacy plugin management page and BFF.
 - Old provider/account/archive/cost-heavy Gateway usage surface.
 - Third-party migration-first implementation plans that treat old projects as authority.
 
 ## 4. Naming Plan
 
-No final product name is selected yet.
+Tracevane is the current product name adopted for package metadata, plugin display metadata, UI and active documentation.
 
-The current repository/package can keep the historical `OpenClaw Studio` name until a cleared replacement is chosen, but new product documents should avoid making OpenClaw the long-term product identity.
+The historical repository path, plugin id and `/studio` base path remain compatibility surfaces until a separate migration plan can preserve existing installs.
 
 Rejected or high-risk names from initial web checks:
 
@@ -74,25 +74,23 @@ Rejected or high-risk names from initial web checks:
 | Agent Harbor | Existing AI agent products/services use the name. |
 | Runplane / Workplane / ThreadRail / Lattice Ops / AgentWard | Existing AI agent/runtime/control/CRM products occupy nearby semantics. |
 
-Naming gate before any rename:
+Naming gate before any future public rename or public launch:
 
 1. Search exact phrase and close variants on web, GitHub, npm, PyPI, Docker Hub and common app marketplaces.
 2. Check domain availability for `.com`, `.dev`, `.ai` and a neutral fallback.
 3. Check trademark databases before public release; web search is not legal clearance.
 4. Avoid generic crowded forms: `Agent Studio`, `AgentOps`, `Nexus`, `Relay`, `Harbor`, `Runplane`, `Workplane`.
 5. Prefer a coined, short, pronounceable name that can own a category without depending on OpenClaw.
-6. Keep the internal module names stable until product rename and package rename can be done together.
+6. Keep compatibility module names stable unless a migration can preserve existing installs and local storage.
 
-Working placeholder in docs: **Studio AI Workbench**.
-
-Current leading candidate: **Tracevane**.
+Current product name: **Tracevane**.
 
 Meaning:
 
 - `Trace` - every agent run should leave evidence: session lifecycle, model route, tool calls, approvals, files, errors, tokens and final delivery.
 - `Vane` - the workbench points humans toward the current runtime direction: running, waiting, failed, complete, degraded or needs repair.
 
-Why this is the current best candidate:
+Why this is the current product name:
 
 - It does not depend on OpenClaw as the product identity.
 - It avoids crowded market words like `Agent`, `Task`, `Ops`, `Studio`, `Nexus`, `Relay`, `Harbor`, `Yard`, `Plane`, `Smith` and `Cell`.
@@ -111,15 +109,15 @@ Initial 2026-06-18 preflight:
 | GitHub repo-name search | `tracevane in:name` returned 0 repositories through GitHub search API. |
 | DNS signal | No DNS record found locally for `tracevane.com`, `tracevane.dev`, `tracevane.ai`, `tracevane.io` or `tracevane.app`. This is not a registrar availability guarantee. |
 
-Preflight status: **recommended candidate, not legally cleared**.
+Preflight status: **adopted for current project work, not legally cleared for public launch**.
 
-Suggested usage until final approval:
+Current usage:
 
 - Product brand: `Tracevane`
 - Descriptive subtitle: `Local AI Agent Control Workbench`
 - Chinese description: `本地 AI Agent 控制工作台`
 
-Do not rename package metadata, plugin metadata, domains or UI globally until the user confirms the name and a registrar/trademark check is completed.
+Do not claim public trademark/domain clearance until registrar and trademark checks are completed.
 
 ## 5. Documentation Reset
 
@@ -137,7 +135,7 @@ Authoritative docs after this reset:
 
 Cleanup rules:
 
-- Remove "active" wording for retired Dreaming and Studio Plugins management.
+- Remove "active" wording for retired Dreaming and legacy plugin management.
 - Remove broken doc links.
 - Stop appending long historical verification logs to current progress.
 - Move old design experiments, prototypes and one-off handoff prompts out of the current docs index unless they are actively being reviewed.
@@ -149,25 +147,24 @@ Phase 0 - Documentation reset:
 
 - Rewrite README, docs index, PRD, architecture and current progress around the new positioning.
 - Add naming gate and rejected-name record.
-- Keep code name unchanged until final name is selected.
+- Keep compatibility ids unchanged unless a migration is planned.
 
 Phase 1 - Domain classification:
 
-- Tag every Studio domain as `core`, `support`, `delegate-to-openclaw`, `retire-candidate` or `retired`.
+- Tag every Tracevane domain as `core`, `support`, `delegate-to-openclaw`, `retire-candidate` or `retired`.
 - Reflect those tags in route manifests, page copy and docs.
 
-Phase 2 - Product rename readiness:
+Phase 2 - Public release naming readiness:
 
-- Produce 5-10 name candidates.
-- Run web/GitHub/package/domain/trademark preflight.
-- Pick one name only after it clears the naming gate.
-- Rename user-facing UI, docs and package metadata in one controlled change.
+- Run registrar and trademark checks for Tracevane.
+- Record any legal/domain conflict and fallback candidates.
+- Plan repository/plugin-id/base-path migration only if compatibility can be preserved.
 
 Phase 3 - OpenClaw de-management:
 
-- Shrink Config, Agents, Channels and Skills to Studio-specific workflows.
-- Add outbound links or guidance to official OpenClaw UI where Studio should not duplicate.
-- Keep Recovery and compatibility validation because they are Studio value.
+- Shrink Config, Agents, Channels and Skills to Tracevane-specific workflows.
+- Add outbound links or guidance to official OpenClaw UI where Tracevane should not duplicate.
+- Keep Recovery and compatibility validation because they are Tracevane value.
 
 Phase 4 - Operations core:
 
@@ -179,6 +176,6 @@ Phase 4 - Operations core:
 
 - A new contributor can understand the product without reading historical task logs.
 - OpenClaw is described as one supported runtime, not the whole product.
-- No active docs claim Dreaming or Studio Plugins management are in scope.
+- No active docs claim Dreaming or legacy plugin management are in scope.
 - Every new Gateway, CLI Agent, provider, channel or SDK change starts with external contract research.
-- Product rename does not use an obvious market-conflicting name.
+- Public naming does not use an obvious market-conflicting name.

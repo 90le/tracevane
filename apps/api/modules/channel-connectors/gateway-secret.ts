@@ -46,7 +46,9 @@ export function channelConnectorGatewaySecretCandidates(
 export function resolveChannelConnectorGatewayClientKey(
   config: Pick<ChannelConnectorsDaemonRuntimeConfig, "paths">,
 ): string | null {
-  const envKey = normalizeString(process.env.STUDIO_GATEWAY_API_KEY)
+  const envKey = normalizeString(process.env.TRACEVANE_GATEWAY_API_KEY)
+    || normalizeString(process.env.OPENCLAW_TRACEVANE_GATEWAY_API_KEY)
+    || normalizeString(process.env.STUDIO_GATEWAY_API_KEY)
     || normalizeString(process.env.OPENCLAW_STUDIO_GATEWAY_API_KEY);
   if (envKey) return envKey;
   for (const filePath of channelConnectorGatewaySecretCandidates(config)) {

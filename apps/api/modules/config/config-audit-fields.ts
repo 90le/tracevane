@@ -10,7 +10,7 @@ export const CONFIG_AUDIT_WHITELIST_FIELDS: ConfigAuditWhitelistEntry[] = [
   {
     path: "transport.preferredMode",
     module: "system",
-    label: "Preferred Studio entry",
+    label: "Preferred Tracevane entry",
     severity: "info",
     actionKey: "open-config-section",
   },

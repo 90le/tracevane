@@ -146,7 +146,7 @@ async function runScript(args) {
     cwd: repoRoot,
     env: {
       ...process.env,
-      STUDIO_GATEWAY_CLIENT_KEY: "test-gateway-key",
+      TRACEVANE_GATEWAY_CLIENT_KEY: "test-gateway-key",
     },
     encoding: "utf8",
   });
@@ -201,7 +201,7 @@ test("model gateway active route smoke reports disabled provider without mutatin
         cwd: repoRoot,
         env: {
           ...process.env,
-          STUDIO_GATEWAY_CLIENT_KEY: "test-gateway-key",
+          TRACEVANE_GATEWAY_CLIENT_KEY: "test-gateway-key",
         },
         encoding: "utf8",
       }),
@@ -273,7 +273,7 @@ test("model gateway active route smoke reports scope mismatch before active prov
         cwd: repoRoot,
         env: {
           ...process.env,
-          STUDIO_GATEWAY_CLIENT_KEY: "test-gateway-key",
+          TRACEVANE_GATEWAY_CLIENT_KEY: "test-gateway-key",
         },
         encoding: "utf8",
       }),
@@ -314,7 +314,7 @@ test("model gateway active route smoke restores active providers after failure",
         cwd: repoRoot,
         env: {
           ...process.env,
-          STUDIO_GATEWAY_CLIENT_KEY: "test-gateway-key",
+          TRACEVANE_GATEWAY_CLIENT_KEY: "test-gateway-key",
         },
         encoding: "utf8",
       }),
@@ -349,7 +349,7 @@ test("model gateway active route smoke fails when restore response does not rest
         cwd: repoRoot,
         env: {
           ...process.env,
-          STUDIO_GATEWAY_CLIENT_KEY: "test-gateway-key",
+          TRACEVANE_GATEWAY_CLIENT_KEY: "test-gateway-key",
         },
         encoding: "utf8",
       }),
@@ -380,7 +380,7 @@ test("model gateway active route smoke requires an explicit model", async () => 
       cwd: repoRoot,
       env: {
         ...process.env,
-        STUDIO_GATEWAY_CLIENT_KEY: "test-gateway-key",
+        TRACEVANE_GATEWAY_CLIENT_KEY: "test-gateway-key",
       },
       encoding: "utf8",
     }),

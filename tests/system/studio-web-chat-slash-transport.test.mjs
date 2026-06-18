@@ -10,7 +10,7 @@ const chatShellPage = fs.readFileSync(
   'utf8',
 );
 
-test('chat shell routes local slash gateway commands through the Studio HTTP backend', () => {
+test('chat shell routes local slash gateway commands through the Tracevane HTTP backend', () => {
   assert.match(chatShellPage, /requestChatSlashGateway/);
   assert.match(chatShellPage, /requestStudioSlashGatewayChat/);
   assert.match(chatShellPage, /await import\('\.\/slash-local-executor'\)/);
@@ -32,10 +32,10 @@ test('sendMessage forwards unknown or fallback slash commands through the backen
     chatShellPage,
     /requestStudioSlashGatewayChat<\{ runId\?: string \| null \}>\(\s*sessionKey,\s*'chat\.send',\s*\{/,
   );
-  assert.match(chatShellPage, /The command was submitted through the Studio backend and is waiting for the host\./);
+  assert.match(chatShellPage, /The command was submitted through the Tracevane backend and is waiting for the host\./);
 });
 
 test('executeLocalSlashCommand keeps /exec on the local gateway executor path and surfaces unexpected gaps', () => {
   assert.match(chatShellPage, /case 'elevated':[\s\S]+case 'exec':[\s\S]+case 'activation':/);
-  assert.match(chatShellPage, /Studio has not wired this local slash command yet\. Update Studio or try again later\./);
+  assert.match(chatShellPage, /Tracevane has not wired this local slash command yet\. Update Tracevane or try again later\./);
 });

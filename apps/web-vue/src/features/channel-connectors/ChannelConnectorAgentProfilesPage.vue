@@ -4,7 +4,7 @@
       <div>
         <p class="eyebrow">Channel Connectors</p>
         <h2 class="page-title">{{ text('CLI Profile 管理', 'CLI Profile management') }}</h2>
-        <p class="page-copy">{{ text('集中管理 Studio 原生 CLI Agent Bot 的 Profile、Gateway 模型、IM 绑定和持久会话；不依赖 OpenClaw Agent 管理。', 'Manage Studio-native CLI Agent Bot profiles, Gateway models, IM bindings, and persistent sessions without depending on OpenClaw Agent management.') }}</p>
+        <p class="page-copy">{{ text('集中管理 Tracevane 原生 CLI Agent Bot 的 Profile、Gateway 模型、IM 绑定和持久会话；不依赖 OpenClaw Agent 管理。', 'Manage Tracevane-native CLI Agent Bot profiles, Gateway models, IM bindings, and persistent sessions without depending on OpenClaw Agent management.') }}</p>
       </div>
 
       <div class="page-actions">
@@ -106,7 +106,7 @@
               </button>
             </div>
             <div v-else class="empty-inline">
-              {{ text('还没有 CLI Profile。先创建一个 Studio Channel Profile。', 'No CLI profiles yet. Create a Studio Channel profile first.') }}
+              {{ text('还没有 CLI Profile。先创建一个 Tracevane Channel Profile。', 'No CLI profiles yet. Create a Tracevane Channel profile first.') }}
             </div>
           </article>
 
@@ -244,7 +244,7 @@
                       :options="modelOptions"
                       :placeholder="text('跟随默认模型', 'Inherit default model')"
                     />
-                    <span class="field-hint">{{ text('模型列表来自 Studio Gateway 的可用模型目录。', 'The model list is read from the Studio Gateway catalog.') }}</span>
+                    <span class="field-hint">{{ text('模型列表来自 Tracevane Gateway 的可用模型目录。', 'The model list is read from the Tracevane Gateway catalog.') }}</span>
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('模型网关', 'Model Gateway') }}</label>
@@ -665,7 +665,7 @@ const profileDraft = reactive<ChannelConnectorAgentProfile>({
   workDir: '',
   permissionMode: 'suggest',
   gatewayEndpoint: 'http://127.0.0.1:18796/v1',
-  gatewayKeyRef: 'studio-gateway-client-key',
+  gatewayKeyRef: 'tracevane-gateway-client-key',
   appProfileRef: 'default',
 });
 
@@ -1093,7 +1093,7 @@ function normalizeProfileForCompare(profile: ChannelConnectorAgentProfile): Chan
     reasoningEffort: profile.reasoningEffort || null,
     workDir: profile.workDir.trim(),
     gatewayEndpoint: profile.gatewayEndpoint.trim() || 'http://127.0.0.1:18796/v1',
-    gatewayKeyRef: 'studio-gateway-client-key',
+    gatewayKeyRef: 'tracevane-gateway-client-key',
     appProfileRef: profile.appProfileRef.trim() || 'default',
   };
 }
@@ -1175,7 +1175,7 @@ function profileFromDraft(): ChannelConnectorAgentProfile {
     model: profileDraft.model ? profileDraft.model.trim() : null,
     workDir: profileDraft.workDir.trim(),
     gatewayEndpoint: profileDraft.gatewayEndpoint.trim() || 'http://127.0.0.1:18796/v1',
-    gatewayKeyRef: 'studio-gateway-client-key',
+    gatewayKeyRef: 'tracevane-gateway-client-key',
     appProfileRef: profileDraft.appProfileRef.trim() || 'default',
     reasoningEffort: reasoningEffortDraft.value ? reasoningEffortDraft.value as ChannelConnectorAgentProfile['reasoningEffort'] : null,
   };
@@ -1211,7 +1211,7 @@ function selectProfile(profile: ChannelConnectorAgentProfile): void {
   profileDraft.workDir = profile.workDir || '';
   profileDraft.permissionMode = profile.permissionMode || 'suggest';
   profileDraft.gatewayEndpoint = profile.gatewayEndpoint || 'http://127.0.0.1:18796/v1';
-  profileDraft.gatewayKeyRef = 'studio-gateway-client-key';
+  profileDraft.gatewayKeyRef = 'tracevane-gateway-client-key';
   profileDraft.appProfileRef = profile.appProfileRef || 'default';
   reasoningEffortDraft.value = profile.reasoningEffort || '';
   eventBindingFilter.value = 'all';
@@ -1257,7 +1257,7 @@ function newProfile(): void {
     workDir: base?.workDir || '',
     permissionMode: base?.permissionMode || 'suggest',
     gatewayEndpoint: base?.gatewayEndpoint || 'http://127.0.0.1:18796/v1',
-    gatewayKeyRef: 'studio-gateway-client-key',
+    gatewayKeyRef: 'tracevane-gateway-client-key',
     appProfileRef: 'default',
   });
 }

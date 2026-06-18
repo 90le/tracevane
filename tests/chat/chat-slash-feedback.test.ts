@@ -37,7 +37,7 @@ test('slash feedback describes compact lifecycle with dedicated copy', () => {
   assert.deepEqual(describeStudioSlashExecutionFeedback(pending, 'zh'), {
     tone: 'info',
     title: '已发送 /compact',
-    detail: 'Studio 已收到命令，等待宿主开始执行上下文压缩。',
+    detail: 'Tracevane 已收到命令，等待宿主开始执行上下文压缩。',
     commandText: '/compact',
   });
 
@@ -118,7 +118,7 @@ test('slash feedback describes redirect lifecycle with tracked current-session r
   assert.deepEqual(describeStudioSlashExecutionFeedback(accepted, 'zh'), {
     tone: 'info',
     title: '已发送 /redirect',
-    detail: 'Studio 已请求宿主中止当前运行并开始新的执行。',
+    detail: 'Tracevane 已请求宿主中止当前运行并开始新的执行。',
     commandText: '/redirect start over with a new plan',
   });
 
@@ -173,7 +173,7 @@ test('slash feedback describes btw side-question results with dedicated copy', (
   assert.deepEqual(describeStudioSlashExecutionFeedback(accepted, 'zh'), {
     tone: 'info',
     title: '已发送 /btw',
-    detail: 'Studio 已收到侧问，等待宿主给出不进入未来上下文的临时回答。',
+    detail: 'Tracevane 已收到侧问，等待宿主给出不进入未来上下文的临时回答。',
     commandText: '/btw what changed?',
   });
 

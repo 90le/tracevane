@@ -100,7 +100,7 @@ test('buildSlashSessionExportDocument emits a safe localized html export', () =>
   });
 
   assert.equal(filename, 'slash-export-demo.html');
-  assert.match(html, /Studio 会话导出/);
+  assert.match(html, /Tracevane 会话导出/);
   assert.match(html, /Slash Export Demo/);
   assert.match(html, /hello &lt;world&gt;/);
   assert.match(html, /report\.pdf/);

@@ -1,8 +1,8 @@
 #!/bin/bash
-# OpenClaw Studio 打包脚本
+# Tracevane 打包脚本
 # 用法: ./pack.sh [版本号]
 # 示例: ./pack.sh 0.1.63
-# 测试打包: ./pack.sh --no-source-sync --output-dir /tmp/openclaw-studio-release-test 0.1.26
+# 测试打包: ./pack.sh --no-source-sync --output-dir /tmp/tracevane-release-test 0.1.26
 
 set -euo pipefail
 
@@ -10,7 +10,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 usage() {
   cat <<'EOF'
-OpenClaw Studio 打包脚本
+Tracevane 打包脚本
 
 用法:
   ./pack.sh [options] [版本号]
@@ -24,7 +24,7 @@ OpenClaw Studio 打包脚本
 示例:
   ./pack.sh
   ./pack.sh 0.1.26
-  ./pack.sh --no-source-sync --output-dir /tmp/openclaw-studio-release-test 0.1.26
+  ./pack.sh --no-source-sync --output-dir /tmp/tracevane-release-test 0.1.26
 EOF
 }
 
@@ -78,7 +78,7 @@ done
 VERSION=${VERSION:-$(node -p "require(process.argv[1]).version" "${SCRIPT_DIR}/package.json")}
 mkdir -p "${OUTPUT_DIR_INPUT}"
 OUTPUT_DIR="$(cd "${OUTPUT_DIR_INPUT}" && pwd)"
-PACKAGE_NAME="openclaw-studio-${VERSION}"
+PACKAGE_NAME="tracevane-${VERSION}"
 PACKAGE_DIR="${OUTPUT_DIR}/${PACKAGE_NAME}"
 ROOT_INSTALLER_PATH="${OUTPUT_DIR}/install-openclaw-studio.sh"
 ROOT_LANDING_PATH="${OUTPUT_DIR}/index.html"
@@ -94,7 +94,7 @@ console.log(match ? match[match.length - 1] : '2026.4.8');
 NODE
 )"
 
-echo "=== OpenClaw Studio 打包脚本 ==="
+echo "=== Tracevane 打包脚本 ==="
 echo "版本: ${VERSION}"
 echo "输出目录: ${OUTPUT_DIR}"
 if [[ "${SOURCE_SYNC}" -eq 1 ]]; then
@@ -282,7 +282,7 @@ cat > "${PACKAGE_DIR}/install.sh" << 'INSTALL_EOF'
 #!/bin/bash
 set -euo pipefail
 
-echo "=== 安装 OpenClaw Studio 依赖 ==="
+echo "=== 安装 Tracevane 依赖 ==="
 npm install --production --ignore-scripts
 
 echo "构建原生模块..."
@@ -309,19 +309,19 @@ const path = require('node:path');
 const outputDir = process.argv[2];
 const version = process.argv[3];
 const targetVersion = process.argv[4];
-const packageUrl = `https://studio.90le.cn/openclaw-studio-${version}.tar.gz`;
+const packageUrl = `https://studio.90le.cn/tracevane-${version}.tar.gz`;
 const payload = {
   version,
   latestVersion: version,
   packageUrl,
   minOpenClawVersion: targetVersion,
   notes: [
-    'OpenClaw Studio release package',
+    'Tracevane release package',
   ],
   publishedAt: new Date().toISOString(),
 };
 
-for (const fileName of ['openclaw-studio-latest.json', 'studio-version.json', 'version.json']) {
+for (const fileName of ['tracevane-latest.json', 'openclaw-studio-latest.json', 'studio-version.json', 'version.json']) {
   fs.writeFileSync(path.join(outputDir, fileName), `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
 }
 NODE

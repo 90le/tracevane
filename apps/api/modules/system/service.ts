@@ -814,7 +814,7 @@ export function createSystemService(
 
     const logTail = readTail(current.logFile);
     const succeeded =
-      /=== OpenClaw Studio 安装完成 ===/.test(logTail) ||
+      /=== Tracevane 安装完成 ===/.test(logTail) ||
       studioUpgradeTargetInstalled(config, current);
     const next: SystemStudioUpgradeStatusPayload = {
       ...current,
@@ -929,7 +929,7 @@ export function createSystemService(
           ...process.env,
           STUDIO_MODE: mode,
           STUDIO_API_PORT: String(apiPort),
-          STUDIO_GATEWAY_BASE_PATH: basePath,
+          TRACEVANE_GATEWAY_BASE_PATH: basePath,
         },
       });
       child.unref();

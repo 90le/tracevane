@@ -13,7 +13,7 @@ const DEFAULT_GMN_RESPONSES_BASE_URL = "https://gmn.chuangzuoli.com/v1";
 const DEFAULT_GMN_RESPONSES_MODEL = "gpt-5.4";
 const DEFAULT_TIMEOUT_MS = 240_000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 75_000;
-const INVALID_MODEL = "studio-gateway-live-invalid-model";
+const INVALID_MODEL = "tracevane-gateway-live-invalid-model";
 let activeRequestTimeoutMs = DEFAULT_REQUEST_TIMEOUT_MS;
 
 function parseArgs(argv) {
@@ -49,20 +49,20 @@ function parseArgs(argv) {
 function printHelp() {
   console.log(`Usage: node scripts/smoke-model-gateway-live.mjs [options]
 
-Runs live provider smoke through a real local Studio Gateway request handler.
+Runs live provider smoke through a real local Tracevane Gateway request handler.
 Credentials are read only from environment variables and are never written to config.
 
 Environment:
-  BIGMODEL_API_KEY or STUDIO_GATEWAY_LIVE_BIGMODEL_API_KEY
-  STUDIO_GATEWAY_LIVE_BIGMODEL_MODEL                     default: ${DEFAULT_BIGMODEL_MODEL}
-  STUDIO_GATEWAY_LIVE_BIGMODEL_CHAT_MODEL                overrides chat model
-  STUDIO_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_MODEL           overrides Anthropic model
-  STUDIO_GATEWAY_LIVE_BIGMODEL_CHAT_BASE_URL             default: ${DEFAULT_BIGMODEL_CHAT_BASE_URL}
-  STUDIO_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_BASE_URL        default: ${DEFAULT_BIGMODEL_ANTHROPIC_BASE_URL}
-  STUDIO_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_MESSAGES_PATH   default: /v1/messages
-  STUDIO_GATEWAY_LIVE_GMN_API_KEY or GMN_API_KEY
-  STUDIO_GATEWAY_LIVE_GMN_RESPONSES_BASE_URL              default: ${DEFAULT_GMN_RESPONSES_BASE_URL}
-  STUDIO_GATEWAY_LIVE_GMN_RESPONSES_MODEL                 default: ${DEFAULT_GMN_RESPONSES_MODEL}
+  BIGMODEL_API_KEY or TRACEVANE_GATEWAY_LIVE_BIGMODEL_API_KEY
+  TRACEVANE_GATEWAY_LIVE_BIGMODEL_MODEL                     default: ${DEFAULT_BIGMODEL_MODEL}
+  TRACEVANE_GATEWAY_LIVE_BIGMODEL_CHAT_MODEL                overrides chat model
+  TRACEVANE_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_MODEL           overrides Anthropic model
+  TRACEVANE_GATEWAY_LIVE_BIGMODEL_CHAT_BASE_URL             default: ${DEFAULT_BIGMODEL_CHAT_BASE_URL}
+  TRACEVANE_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_BASE_URL        default: ${DEFAULT_BIGMODEL_ANTHROPIC_BASE_URL}
+  TRACEVANE_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_MESSAGES_PATH   default: /v1/messages
+  TRACEVANE_GATEWAY_LIVE_GMN_API_KEY or GMN_API_KEY
+  TRACEVANE_GATEWAY_LIVE_GMN_RESPONSES_BASE_URL              default: ${DEFAULT_GMN_RESPONSES_BASE_URL}
+  TRACEVANE_GATEWAY_LIVE_GMN_RESPONSES_MODEL                 default: ${DEFAULT_GMN_RESPONSES_MODEL}
 
 Options:
   --providers <ids>  Comma-separated ids: bigmodel-chat,bigmodel-anthropic,gmn-responses
@@ -90,7 +90,7 @@ function createStudioConfig(root) {
   fs.mkdirSync(openclawRoot, { recursive: true });
   return {
     pluginId: "studio",
-    pluginName: "OpenClaw Studio",
+    pluginName: "Tracevane",
     version: "0.1.0",
     port: 3760,
     autoStart: true,
@@ -200,20 +200,20 @@ async function createLiveContext(root, liveConfig) {
 }
 
 function readLiveConfig() {
-  const model = envValue("STUDIO_GATEWAY_LIVE_BIGMODEL_MODEL") || DEFAULT_BIGMODEL_MODEL;
+  const model = envValue("TRACEVANE_GATEWAY_LIVE_BIGMODEL_MODEL", "STUDIO_GATEWAY_LIVE_BIGMODEL_MODEL") || DEFAULT_BIGMODEL_MODEL;
   return {
     bigmodel: {
-      apiKey: envValue("STUDIO_GATEWAY_LIVE_BIGMODEL_API_KEY", "BIGMODEL_API_KEY", "ZHIPU_API_KEY"),
-      chatBaseUrl: trimTrailingSlash(envValue("STUDIO_GATEWAY_LIVE_BIGMODEL_CHAT_BASE_URL") || DEFAULT_BIGMODEL_CHAT_BASE_URL),
-      anthropicBaseUrl: trimTrailingSlash(envValue("STUDIO_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_BASE_URL") || DEFAULT_BIGMODEL_ANTHROPIC_BASE_URL),
-      anthropicMessagesPath: normalizePath(envValue("STUDIO_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_MESSAGES_PATH") || "/v1/messages"),
-      chatModel: envValue("STUDIO_GATEWAY_LIVE_BIGMODEL_CHAT_MODEL") || model,
-      anthropicModel: envValue("STUDIO_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_MODEL") || model,
+      apiKey: envValue("TRACEVANE_GATEWAY_LIVE_BIGMODEL_API_KEY", "STUDIO_GATEWAY_LIVE_BIGMODEL_API_KEY", "BIGMODEL_API_KEY", "ZHIPU_API_KEY"),
+      chatBaseUrl: trimTrailingSlash(envValue("TRACEVANE_GATEWAY_LIVE_BIGMODEL_CHAT_BASE_URL", "STUDIO_GATEWAY_LIVE_BIGMODEL_CHAT_BASE_URL") || DEFAULT_BIGMODEL_CHAT_BASE_URL),
+      anthropicBaseUrl: trimTrailingSlash(envValue("TRACEVANE_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_BASE_URL", "STUDIO_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_BASE_URL") || DEFAULT_BIGMODEL_ANTHROPIC_BASE_URL),
+      anthropicMessagesPath: normalizePath(envValue("TRACEVANE_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_MESSAGES_PATH", "STUDIO_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_MESSAGES_PATH") || "/v1/messages"),
+      chatModel: envValue("TRACEVANE_GATEWAY_LIVE_BIGMODEL_CHAT_MODEL", "STUDIO_GATEWAY_LIVE_BIGMODEL_CHAT_MODEL") || model,
+      anthropicModel: envValue("TRACEVANE_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_MODEL", "STUDIO_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_MODEL") || model,
     },
     gmn: {
-      apiKey: envValue("STUDIO_GATEWAY_LIVE_GMN_API_KEY", "GMN_API_KEY", "OPENAI_API_KEY"),
-      responsesBaseUrl: trimTrailingSlash(envValue("STUDIO_GATEWAY_LIVE_GMN_RESPONSES_BASE_URL") || DEFAULT_GMN_RESPONSES_BASE_URL),
-      responsesModel: envValue("STUDIO_GATEWAY_LIVE_GMN_RESPONSES_MODEL") || DEFAULT_GMN_RESPONSES_MODEL,
+      apiKey: envValue("TRACEVANE_GATEWAY_LIVE_GMN_API_KEY", "STUDIO_GATEWAY_LIVE_GMN_API_KEY", "GMN_API_KEY", "OPENAI_API_KEY"),
+      responsesBaseUrl: trimTrailingSlash(envValue("TRACEVANE_GATEWAY_LIVE_GMN_RESPONSES_BASE_URL", "STUDIO_GATEWAY_LIVE_GMN_RESPONSES_BASE_URL") || DEFAULT_GMN_RESPONSES_BASE_URL),
+      responsesModel: envValue("TRACEVANE_GATEWAY_LIVE_GMN_RESPONSES_MODEL", "STUDIO_GATEWAY_LIVE_GMN_RESPONSES_MODEL") || DEFAULT_GMN_RESPONSES_MODEL,
     },
   };
 }
@@ -285,7 +285,7 @@ function sendJson(res, statusCode, body) {
 }
 
 async function runBigModelChat(server, config) {
-  if (!config.apiKey) return skipped("bigmodel-chat", "Missing BIGMODEL_API_KEY or STUDIO_GATEWAY_LIVE_BIGMODEL_API_KEY.");
+  if (!config.apiKey) return skipped("bigmodel-chat", "Missing BIGMODEL_API_KEY or TRACEVANE_GATEWAY_LIVE_BIGMODEL_API_KEY.");
   const startedAt = Date.now();
   const probes = [];
   const failures = [];
@@ -435,7 +435,7 @@ async function requestResponsesToolProbe(server, model) {
 }
 
 async function runBigModelAnthropic(server, config) {
-  if (!config.apiKey) return skipped("bigmodel-anthropic", "Missing BIGMODEL_API_KEY or STUDIO_GATEWAY_LIVE_BIGMODEL_API_KEY.");
+  if (!config.apiKey) return skipped("bigmodel-anthropic", "Missing BIGMODEL_API_KEY or TRACEVANE_GATEWAY_LIVE_BIGMODEL_API_KEY.");
   const startedAt = Date.now();
   const probes = [];
   try {
@@ -522,7 +522,7 @@ async function runBigModelAnthropic(server, config) {
 }
 
 async function runGmnResponses(server, config) {
-  if (!config.apiKey) return skipped("gmn-responses", "Missing STUDIO_GATEWAY_LIVE_GMN_API_KEY, GMN_API_KEY, or OPENAI_API_KEY.");
+  if (!config.apiKey) return skipped("gmn-responses", "Missing TRACEVANE_GATEWAY_LIVE_GMN_API_KEY, GMN_API_KEY, or OPENAI_API_KEY.");
   const startedAt = Date.now();
   const probes = [];
   const failures = [];
@@ -774,7 +774,7 @@ async function main() {
   }, options.timeoutMs);
   const tempParent = path.join(process.cwd(), ".tmp");
   fs.mkdirSync(tempParent, { recursive: true });
-  const root = fs.mkdtempSync(path.join(tempParent, "studio-gateway-live-smoke-"));
+  const root = fs.mkdtempSync(path.join(tempParent, "tracevane-gateway-live-smoke-"));
   let server;
   try {
     const liveConfig = readLiveConfig();

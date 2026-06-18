@@ -408,7 +408,7 @@ function defaultNativeConfig(
         workDir: config.projectRoot || process.cwd(),
         permissionMode: "suggest",
         gatewayEndpoint: gatewayEndpoint(),
-        gatewayKeyRef: "studio-gateway-client-key",
+        gatewayKeyRef: "tracevane-gateway-client-key",
         appProfileRef: "default",
       },
     ],
@@ -457,7 +457,7 @@ function normalizeNativeConfig(
       workDir,
       permissionMode: isPermissionMode(permissionMode) ? permissionMode : "suggest",
       gatewayEndpoint: normalizeString(raw.gatewayEndpoint, gatewayEndpoint()),
-      gatewayKeyRef: "studio-gateway-client-key",
+      gatewayKeyRef: "tracevane-gateway-client-key",
       appProfileRef: normalizeString(raw.appProfileRef, "default"),
     });
   }
@@ -908,7 +908,7 @@ function buildRuntimeConfig(
     },
     gateway: {
       endpoint: gatewayEndpoint(),
-      clientKeyRef: "studio-gateway-client-key",
+      clientKeyRef: "tracevane-gateway-client-key",
     },
     projects: [
       ...nativeConfig.agentProfiles.map((profile) => ({
@@ -1012,7 +1012,7 @@ function buildConfigResponse(config: StudioServerConfig, paths: ChannelConnector
 function buildSystemdTemplate(serviceName: string, paths: ChannelConnectorsPaths, nodePath: string, daemonEntry: string): string {
   return [
     "[Unit]",
-    "Description=OpenClaw Studio Channel Connectors",
+    "Description=Tracevane Channel Connectors",
     "After=network-online.target",
     "Wants=network-online.target",
     "",
@@ -1149,7 +1149,7 @@ export function createChannelConnectorsDaemonPlan(
     platform,
     serviceName,
     servicePath: unsupportedServicePath,
-    template: "# Unsupported platform for Studio native Channel Connectors service.\n",
+    template: "# Unsupported platform for Tracevane native Channel Connectors service.\n",
     commands: {},
   };
 
@@ -1160,9 +1160,9 @@ export function createChannelConnectorsDaemonPlan(
       ? launchdTemplate
       : unsupportedTemplate;
   const notes = [
-    "Channel Connectors is a Studio-native daemon.",
+    "Channel Connectors is a Tracevane-native daemon.",
     "CC and OpenClaw implementations are reference sources only.",
-    "Studio and OpenClaw are not runtime dependencies after the native daemon is supervised.",
+    "Tracevane and OpenClaw are not runtime dependencies after the native daemon is supervised.",
   ];
   if (platform === "windows") notes.push("Windows scheduled-task support remains a native-daemon follow-up.");
 
@@ -1440,7 +1440,7 @@ function normalizeOctoTransportSmokeRequest(payload: ChannelConnectorOctoTranspo
     action,
     channelId: normalizeString(payload.channelId) || null,
     channelType: channelType === 1 || channelType === 2 || channelType === 5 ? channelType : 1,
-    content: normalizeString(payload.content) || "Studio Octo transport smoke",
+    content: normalizeString(payload.content) || "Tracevane Octo transport smoke",
     fileName: normalizeString(payload.fileName) || null,
     mimeType: normalizeString(payload.mimeType) || null,
     groupNo: normalizeString(payload.groupNo) || null,
@@ -1503,7 +1503,7 @@ function normalizeFeishuTransportSmokeRequest(payload: ChannelConnectorFeishuTra
       ? payload.receiveIdType
       : null,
     messageId: normalizeString(payload.messageId) || null,
-    content: normalizeString(payload.content) || "Studio Feishu transport smoke",
+    content: normalizeString(payload.content) || "Tracevane Feishu transport smoke",
     fileName: normalizeString(payload.fileName) || null,
     mimeType: normalizeString(payload.mimeType) || null,
   };
@@ -2723,7 +2723,7 @@ export function createChannelConnectorsService(
       const textReplyContent = action.commandResult?.replyText
         || action.commandResult?.passthroughText
         || action.skippedReason
-        || "Studio command accepted.";
+        || "Tracevane command accepted.";
       let accepted = action.accepted;
       let skippedReason = action.skippedReason;
       let feishuResponse: Record<string, unknown> | null = null;
@@ -2954,7 +2954,7 @@ export function createChannelConnectorsService(
         chatId: request.channelId,
         receiveId: request.receiveId,
         receiveIdType: request.receiveIdType,
-        content: request.content || "Studio Feishu transport smoke",
+        content: request.content || "Tracevane Feishu transport smoke",
       }, resolvedPaths.feishuTokenCacheFile);
     } else if (request.action === "send-post") {
       if (!request.channelId && !request.receiveId) throw new Error("channelId or receiveId is required for Feishu send-post smoke.");
@@ -2962,7 +2962,7 @@ export function createChannelConnectorsService(
         chatId: request.channelId,
         receiveId: request.receiveId,
         receiveIdType: request.receiveIdType,
-        content: request.content || "**Studio Feishu post smoke**\n\n```text\nmarkdown\n```",
+        content: request.content || "**Tracevane Feishu post smoke**\n\n```text\nmarkdown\n```",
       }, resolvedPaths.feishuTokenCacheFile);
     } else if (request.action === "send-card") {
       if (!request.channelId) throw new Error("channelId is required for Feishu send-card smoke.");
@@ -2971,13 +2971,13 @@ export function createChannelConnectorsService(
         card: {
           config: { wide_screen_mode: true },
           header: {
-            title: { tag: "plain_text", content: "Studio Feishu command menu smoke" },
+            title: { tag: "plain_text", content: "Tracevane Feishu command menu smoke" },
             template: "blue",
           },
           elements: [
             {
               tag: "markdown",
-              content: request.content || "Studio Feishu command menu smoke",
+              content: request.content || "Tracevane Feishu command menu smoke",
             },
           ],
         },
@@ -2989,20 +2989,20 @@ export function createChannelConnectorsService(
         card: {
           config: { wide_screen_mode: true },
           header: {
-            title: { tag: "plain_text", content: "Studio Feishu transport smoke" },
+            title: { tag: "plain_text", content: "Tracevane Feishu transport smoke" },
             template: "blue",
           },
           elements: [
             {
               tag: "markdown",
-              content: request.content || "Studio Feishu transport smoke",
+              content: request.content || "Tracevane Feishu transport smoke",
             },
           ],
         },
       }, resolvedPaths.feishuTokenCacheFile);
     } else if (request.action === "upload-and-send-media") {
       if (!request.channelId) throw new Error("channelId is required for Feishu upload-and-send-media smoke.");
-      const content = request.content || "Studio Feishu upload and send smoke\n";
+      const content = request.content || "Tracevane Feishu upload and send smoke\n";
       transport = await uploadAndSendFeishuMedia(transportConfig, {
         chatId: request.channelId,
         data: Buffer.from(content, "utf8"),
@@ -3218,7 +3218,7 @@ export function createChannelConnectorsService(
       const replyPlan = {
         channelId: request.channelId,
         channelType: request.channelType || 1,
-        chunks: [request.content || "Studio Octo transport smoke"],
+        chunks: [request.content || "Tracevane Octo transport smoke"],
         mentionUids: [],
         mentionEntities: [],
         payloads: [
@@ -3227,21 +3227,21 @@ export function createChannelConnectorsService(
             channel_type: request.channelType || 1,
             payload: {
               type: 1 as const,
-              content: request.content || "Studio Octo transport smoke",
+              content: request.content || "Tracevane Octo transport smoke",
             },
           },
         ],
       };
       transport = await sendOctoTextReply(transportConfig, replyPlan);
     } else if (request.action === "upload-file") {
-      const content = request.content || "Studio Octo upload smoke\n";
+      const content = request.content || "Tracevane Octo upload smoke\n";
       transport = await uploadOctoFile(transportConfig, {
         data: new TextEncoder().encode(content),
         fileName: request.fileName || "studio-octo-smoke.txt",
         mimeType: request.mimeType || "text/plain",
       });
     } else if (request.action === "direct-upload-file") {
-      const content = request.content || "Studio Octo direct upload smoke\n";
+      const content = request.content || "Tracevane Octo direct upload smoke\n";
       transport = await directUploadOctoFile(transportConfig, {
         data: new TextEncoder().encode(content),
         fileName: request.fileName || "studio-octo-smoke.txt",
@@ -3253,7 +3253,7 @@ export function createChannelConnectorsService(
       });
     } else if (request.action === "direct-upload-and-send-media") {
       if (!request.channelId) throw new Error("channelId is required for Octo direct-upload-and-send-media smoke.");
-      const content = request.content || "Studio Octo direct upload and send smoke\n";
+      const content = request.content || "Tracevane Octo direct upload and send smoke\n";
       transport = await directUploadAndSendOctoMedia(transportConfig, {
         channelId: request.channelId,
         channelType: request.channelType || 1,
@@ -3263,7 +3263,7 @@ export function createChannelConnectorsService(
       });
     } else if (request.action === "upload-and-send-media") {
       if (!request.channelId) throw new Error("channelId is required for Octo upload-and-send-media smoke.");
-      const content = request.content || "Studio Octo upload and send smoke\n";
+      const content = request.content || "Tracevane Octo upload and send smoke\n";
       transport = await uploadAndSendOctoMedia(transportConfig, {
         channelId: request.channelId,
         channelType: request.channelType || 1,
@@ -3371,7 +3371,7 @@ export function createChannelConnectorsService(
       if (!request.groupNo) throw new Error("groupNo is required for Octo create-thread smoke.");
       transport = await createOctoThread(transportConfig, {
         groupNo: request.groupNo,
-        name: request.name || "Studio Thread Smoke",
+        name: request.name || "Tracevane Thread Smoke",
       });
     } else if (request.action === "delete-thread") {
       if (!request.groupNo || !request.shortId) throw new Error("groupNo and shortId are required for Octo delete-thread smoke.");
@@ -3488,7 +3488,7 @@ export function createChannelConnectorsService(
       diagnostics.push("Run npm run build:api before installing or starting the native Channel Connectors daemon.");
     }
     if (guard === "unsupported_supervisor") {
-      diagnostics.push("The current OS supervisor is not supported by Studio native Channel Connectors F1.");
+      diagnostics.push("The current OS supervisor is not supported by Tracevane native Channel Connectors F1.");
     }
     if (guard) {
       return response({
@@ -3559,13 +3559,13 @@ export function createChannelConnectorsService(
       referenceSources: [
         "CC archived reference implementation",
         "OpenClaw channel/runtime behavior",
-        "Studio Gateway daemon contract",
+        "Tracevane Gateway daemon contract",
       ],
       runtimeChain: [
         "IM channel",
-        "Studio native Channel daemon",
+        "Tracevane native Channel daemon",
         "local CLI Agent bot",
-        "Studio Gateway daemon",
+        "Tracevane Gateway daemon",
         "upstream provider",
       ],
       bindingPolicy: bindingPolicy(),
@@ -3580,7 +3580,7 @@ export function createChannelConnectorsService(
       lifecycle: {
         studioRuntimeDependency: false,
         openclawRuntimeDependency: false,
-        modelRelayOwner: "studio-gateway-daemon",
+        modelRelayOwner: "tracevane-gateway-daemon",
         channelDaemonOwner: "studio-native-channel-daemon",
       },
       service,

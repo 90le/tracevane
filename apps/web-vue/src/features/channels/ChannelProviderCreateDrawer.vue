@@ -9,7 +9,7 @@
             <div>
               <p class="eyebrow">{{ text('CREATE PROVIDER', 'CREATE PROVIDER') }}</p>
               <h3>{{ text('新增频道', 'Create provider') }}</h3>
-              <p>{{ text('从支持目录中选择 provider。创建后会进入对应 provider 工作台，完整设置留在专门任务页。', 'Select a provider from the supported catalog. After creation, Studio opens its workspace; full settings stay in the focused task page.') }}</p>
+              <p>{{ text('从支持目录中选择 provider。创建后会进入对应 provider 工作台，完整设置留在专门任务页。', 'Select a provider from the supported catalog. After creation, Tracevane opens its workspace; full settings stay in the focused task page.') }}</p>
             </div>
             <button type="button" class="channels-drawer__close" :aria-label="text('关闭', 'Close')" @click="$emit('close')">
               <X class="drawer-close-icon" aria-hidden="true" />

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>OpenClaw Studio · 安装指南</title>
+<title>Tracevane · 安装指南</title>
 <style>
   :root{
     --bg1:#0d1b2a;
@@ -389,15 +389,15 @@
   <section class="hero-card" id="heroCard">
     <div class="hero-top">
       <div style="display:flex;align-items:center;gap:10px">
-        <span class="tag">OPENCLAW STUDIO</span>
+        <span class="tag">TRACEVANE</span>
         <span class="tag-beta">CLOSED BETA</span>
       </div>
       <span class="dot" aria-label="就绪"></span>
     </div>
 
-    <h1>OpenClaw <span class="grad">Studio · 小丘</span></h1>
+    <h1><span class="grad">Tracevane</span></h1>
     <p class="hero-desc">
-      OpenClaw Studio 是一个业余项目，是 OpenClaw 的 Web 管理控制台。把命令行的全部能力搬进浏览器——实时对话、Agent 管理、频道配置，一个页面全搞定。
+      Tracevane 是本地 AI Agent 控制工作台。把 Gateway、CLI Agent、IM 渠道、运行态自愈和证据视图放在同一个清晰界面里。
     </p>
     <p class="hero-desc">
       以原生插件运行，支持独立端口或挂载到 Gateway。Vue 3 前端 + 模块化后端，流式输出、历史恢复、工具调用可视化开箱即用。
@@ -434,7 +434,7 @@
     </div>
     <div class="mode-alert-item mode-alert-corp">
       <span class="mode-alert-icon">🏢</span>
-      <span>模式二：<strong>单口</strong><br><p style="color: var(--muted);font-size: 12px;">外网只开放 OpenClaw 端口，Studio 挂载到 /studio，同时保留本机 3760</p></span>
+      <span>模式二：<strong>单口</strong><br><p style="color: var(--muted);font-size: 12px;">外网只开放 OpenClaw 端口，Tracevane 挂载到 /studio，同时保留本机 3760</p></span>
     </div>
   </div>
 
@@ -445,7 +445,7 @@
       <button class="copy-btn" onclick="copyPrompt('prompt1',this)">复制 Prompt</button>
     </div>
     <div class="prompt-body">
-      <pre id="prompt1">请在我的 OpenClaw 环境里安装 OpenClaw Studio，使用非单口模式（standalone，独立端口 3760）。
+      <pre id="prompt1">请在我的 OpenClaw 环境里安装 Tracevane，使用非单口模式（standalone，独立端口 3760）。
 
 请按下面步骤执行，不要使用在线脚本直通执行：
 
@@ -456,8 +456,8 @@
 
 脚本会自动完成这些事情：
 1. 检查并升级 OpenClaw 到最低要求 {{OPENCLAW_MIN_VERSION}}
-2. 下载并解压 openclaw-studio-{{STUDIO_VERSION}}.tar.gz
-3. 自动修正发布包入口元数据，确保宿主能正确加载 studio 插件
+2. 下载并解压 tracevane-{{STUDIO_VERSION}}.tar.gz
+3. 自动修正发布包入口元数据，确保宿主能正确加载兼容插件入口
 4. 安装依赖并重建 node-pty
 5. 写入 plugins.entries.studio / plugins.load.paths / transport 配置
 6. 执行 openclaw gateway install --force 与重启
@@ -479,7 +479,7 @@
       <button class="copy-btn" onclick="copyPrompt('prompt2',this)">复制 Prompt</button>
     </div>
     <div class="prompt-body">
-      <pre id="prompt2">请在我的 OpenClaw 环境里安装 OpenClaw Studio，使用单口模式（gateway，共用 OpenClaw 端口，挂载到 /studio，同时保留本机 3760 standalone 入口）。
+      <pre id="prompt2">请在我的 OpenClaw 环境里安装 Tracevane，使用单口模式（gateway，共用 OpenClaw 端口，挂载到 /studio，同时保留本机 3760 standalone 入口）。
 
 请按下面步骤执行，不要使用在线脚本直通执行：
 
@@ -490,8 +490,8 @@
 
 脚本会自动完成这些事情：
 1. 检查并升级 OpenClaw 到最低要求 {{OPENCLAW_MIN_VERSION}}
-2. 下载并解压 openclaw-studio-{{STUDIO_VERSION}}.tar.gz
-3. 自动修正发布包入口元数据，确保宿主能正确加载 studio 插件
+2. 下载并解压 tracevane-{{STUDIO_VERSION}}.tar.gz
+3. 自动修正发布包入口元数据，确保宿主能正确加载兼容插件入口
 4. 安装依赖并重建 node-pty
 5. 写入 plugins.entries.studio / plugins.load.paths / gateway transport 配置，并保留 3760 standalone 监听
 6. 补齐 gateway.bind / gateway.auth.token / gateway.controlUi.allowedOrigins 等最低可用配置
@@ -546,7 +546,7 @@
       </div>
     </div>
   </div>
-  <p class="footer-bottom">OpenClaw Studio · CLOSED BETA · Made with ❤️ by 丘彬彬</p>
+  <p class="footer-bottom">Tracevane · CLOSED BETA · Made with ❤️ by 丘彬彬</p>
 </footer>
 
 <script>

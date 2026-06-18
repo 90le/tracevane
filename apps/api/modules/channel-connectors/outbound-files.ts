@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export const STUDIO_CHANNEL_FILES_BLOCK = "studio-channel-files";
+export const STUDIO_CHANNEL_FILES_BLOCK = "tracevane-channel-files";
 export const DEFAULT_CHANNEL_CONNECTOR_OUTBOUND_FILE_MAX_BYTES = 128 * 1024 * 1024;
 
 export interface ChannelConnectorOutboundFileRequest {
@@ -76,12 +76,12 @@ export function extractChannelConnectorOutboundFiles(replyText: string | null | 
         .map(outboundFileFromValue)
         .filter((item): item is ChannelConnectorOutboundFileRequest => item !== null);
       if (!parsedFiles.length) {
-        errors.push("studio-channel-files block did not include any valid file entries.");
+        errors.push("tracevane-channel-files block did not include any valid file entries.");
       } else {
         files.push(...parsedFiles);
       }
     } catch (error) {
-      errors.push(error instanceof Error ? error.message : "studio-channel-files block is not valid JSON.");
+      errors.push(error instanceof Error ? error.message : "tracevane-channel-files block is not valid JSON.");
     }
     return "";
   }).trim();

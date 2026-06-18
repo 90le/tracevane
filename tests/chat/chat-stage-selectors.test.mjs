@@ -25,7 +25,7 @@ function createSession(overrides = {}) {
       source: "studio",
       channel: "webchat",
       surface: "studio-chat",
-      originLabel: "Studio managed",
+      originLabel: "Tracevane managed",
     },
     deliveryContext: {
       channel: "webchat",

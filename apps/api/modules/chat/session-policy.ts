@@ -16,7 +16,7 @@ export const CHAT_SESSION_POLICIES: Record<ChatSessionKind, ChatSessionPolicy> =
   studio_managed: {
     kind: 'studio_managed',
     source: 'studio',
-    description: 'Studio-created webchat sessions intended for text-first chat.',
+    description: 'Tracevane-created webchat sessions intended for text-first chat.',
     defaultWritable: true,
     allow: {
       send: true,
@@ -31,7 +31,7 @@ export const CHAT_SESSION_POLICIES: Record<ChatSessionKind, ChatSessionPolicy> =
   observed_external: {
     kind: 'observed_external',
     source: 'external',
-    description: 'Existing gateway sessions not owned by Studio; read-only by default.',
+    description: 'Existing gateway sessions not owned by Tracevane; read-only by default.',
     defaultWritable: false,
     allow: {
       send: false,

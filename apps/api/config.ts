@@ -178,7 +178,7 @@ export function createStudioConfig(
 
   return {
     pluginId: 'studio',
-    pluginName: 'OpenClaw Studio',
+    pluginName: 'Tracevane',
     version: studioVersion,
     port: transport.standalone.port,
     autoStart: pluginConfig.autoStart !== false,
@@ -218,7 +218,7 @@ export function createStandaloneStudioConfig(overrides: Partial<StudioServerConf
 
   return {
     pluginId: overrides.pluginId || 'studio',
-    pluginName: overrides.pluginName || 'OpenClaw Studio',
+    pluginName: overrides.pluginName || 'Tracevane',
     version: overrides.version || studioVersion,
     port: standalonePort,
     autoStart: overrides.autoStart !== false,

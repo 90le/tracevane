@@ -110,7 +110,7 @@ function unknownStructuredProgressSignature(raw: Record<string, unknown>): { key
   const itemType = content.map((item) => normalizeString(item.type)).filter(Boolean).join("+");
   return {
     key: [rawType, itemType].filter(Boolean).join(":"),
-    text: `Claude Code emitted an unrecognized structured progress event (${[rawType, itemType].filter(Boolean).join("/")}); Studio is running in CLI compatibility mode.`,
+    text: `Claude Code emitted an unrecognized structured progress event (${[rawType, itemType].filter(Boolean).join("/")}); Tracevane is running in CLI compatibility mode.`,
   };
 }
 
@@ -143,9 +143,9 @@ function claudePermissionDecision(
   if (request.toolName === "AskUserQuestion") return null;
   if (mode === "yolo" || mode === "full-auto") return { behavior: "allow", updatedInput: request.input };
   if (mode === "auto-edit" && isClaudeEditTool(request.toolName)) return { behavior: "allow", updatedInput: request.input };
-  if (mode === "read-only") return { behavior: "deny", message: "Permission mode is read-only; Studio denied this Claude tool use." };
+  if (mode === "read-only") return { behavior: "deny", message: "Permission mode is read-only; Tracevane denied this Claude tool use." };
   if (mode === "auto-edit") {
-    return { behavior: "deny", message: "Permission mode is auto-edit; Studio only auto-allows Claude edit tools." };
+    return { behavior: "deny", message: "Permission mode is auto-edit; Tracevane only auto-allows Claude edit tools." };
   }
   return null;
 }
@@ -197,7 +197,7 @@ function agentResult(input: {
     ? `${input.agent === "opencode" ? "OpenCode" : "Claude Code"} compact 已完成。`
     : null;
   const compatibilityText = input.ok && input.progressEvents.some((event) => event.rawType === "protocol/unknown-event")
-    ? `${input.agent === "opencode" ? "OpenCode" : "Claude Code"} 进程已成功结束，但 Studio 没能从当前 CLI 事件格式解析出最终回复。请查看事件日志中的 protocol/unknown-event；当前任务没有继续等待。`
+    ? `${input.agent === "opencode" ? "OpenCode" : "Claude Code"} 进程已成功结束，但 Tracevane 没能从当前 CLI 事件格式解析出最终回复。请查看事件日志中的 protocol/unknown-event；当前任务没有继续等待。`
     : null;
   const replyText = input.ok ? (input.replyText || compactOkText || compatibilityText) : null;
   return {
@@ -473,7 +473,7 @@ export class ClaudeCodeStreamJsonSession implements ChannelConnectorAgentSession
     }));
     const resolver = this.activeTurn?.input.agentTurnRequest?.resolvePermission;
     const decision = claudePermissionDecision(this.permissionMode, request)
-      || (resolver ? await resolver(request) : { behavior: "deny", message: "Interactive Claude tool approval is not available in this Studio runner." });
+      || (resolver ? await resolver(request) : { behavior: "deny", message: "Interactive Claude tool approval is not available in this Tracevane runner." });
     try {
       this.child.stdin.write(claudeControlResponseLine(request.requestId, decision));
     } catch (error) {

@@ -2,7 +2,7 @@ import type {
   ChannelConnectorOctoGroupMember,
 } from "../../../../types/channel-connectors.js";
 
-export const STUDIO_CHANNEL_MESSAGES_BLOCK = "studio-channel-messages";
+export const STUDIO_CHANNEL_MESSAGES_BLOCK = "tracevane-channel-messages";
 
 export type ChannelConnectorOutboundMessagePlatform = "octo" | "feishu";
 export type ChannelConnectorOutboundMessageFormat = "text" | "markdown";
@@ -238,12 +238,12 @@ export function extractChannelConnectorOutboundMessages(replyText: string | null
         .map(outboundMessageFromValue)
         .filter((item): item is ChannelConnectorOutboundMessageRequest => item !== null);
       if (!parsedMessages.length) {
-        errors.push("studio-channel-messages block did not include any valid message entries.");
+        errors.push("tracevane-channel-messages block did not include any valid message entries.");
       } else {
         messages.push(...parsedMessages);
       }
     } catch (error) {
-      errors.push(error instanceof Error ? error.message : "studio-channel-messages block is not valid JSON.");
+      errors.push(error instanceof Error ? error.message : "tracevane-channel-messages block is not valid JSON.");
     }
     return "";
   }).trim();
@@ -287,7 +287,7 @@ export function resolveOctoOutboundMessageTarget(input: {
     channelId,
     channelType,
     mentionUids,
-    error: `${channelId}: Octo Bot API does not support bot channel targets; use a group/thread mention or Studio internal agent routing.`,
+    error: `${channelId}: Octo Bot API does not support bot channel targets; use a group/thread mention or Tracevane internal agent routing.`,
     remappedBotDm: false,
   };
 }

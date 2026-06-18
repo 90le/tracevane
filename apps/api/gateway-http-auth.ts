@@ -10,8 +10,8 @@ type GatewayHttpAuthShape = {
   password?: unknown;
 };
 
-const STUDIO_GATEWAY_AUTH_COOKIE_NAME = 'openclaw_studio_gateway_auth';
-const STUDIO_GATEWAY_AUTH_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+const TRACEVANE_GATEWAY_AUTH_COOKIE_NAME = 'openclaw_tracevane_gateway_auth';
+const TRACEVANE_GATEWAY_AUTH_COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
 
 function normalizeGatewayBasePath(basePath: string): string {
   if (!basePath || basePath === '/') return '';
@@ -86,7 +86,7 @@ function readCookieSecret(req: http.IncomingMessage): string {
   for (const pair of pairs) {
     const separator = pair.indexOf('=');
     const key = (separator >= 0 ? pair.slice(0, separator) : pair).trim();
-    if (key !== STUDIO_GATEWAY_AUTH_COOKIE_NAME) {
+    if (key !== TRACEVANE_GATEWAY_AUTH_COOKIE_NAME) {
       continue;
     }
     const rawValue = separator >= 0 ? pair.slice(separator + 1).trim() : '';
@@ -212,9 +212,9 @@ export function syncStudioGatewayHttpAuthCookie(
     return;
   }
   const cookieParts = [
-    `${STUDIO_GATEWAY_AUTH_COOKIE_NAME}=${encodeURIComponent(presentedSecret)}`,
+    `${TRACEVANE_GATEWAY_AUTH_COOKIE_NAME}=${encodeURIComponent(presentedSecret)}`,
     `Path=${normalizeCookiePath(config)}`,
-    `Max-Age=${STUDIO_GATEWAY_AUTH_COOKIE_MAX_AGE_SECONDS}`,
+    `Max-Age=${TRACEVANE_GATEWAY_AUTH_COOKIE_MAX_AGE_SECONDS}`,
     'HttpOnly',
     'SameSite=Lax',
   ];
@@ -225,7 +225,7 @@ export function syncStudioGatewayHttpAuthCookie(
 }
 
 export function rejectStudioGatewayHttpUnauthorized(res: http.ServerResponse, req: http.IncomingMessage): void {
-  res.setHeader('WWW-Authenticate', 'Bearer realm="OpenClaw Studio"');
+  res.setHeader('WWW-Authenticate', 'Bearer realm="Tracevane"');
   if (isHtmlNavigation(req)) {
     sendText(res, 401, 'Unauthorized');
     return;

@@ -39,7 +39,7 @@ test('resolvePluginHostContext accepts messageProvider/messageChannel but keeps 
   assert.equal(externalSession.source, 'none');
 });
 
-test('isStudioManagedWebchatHostContext only turns true for explicit or controlled Studio webchat contexts', () => {
+test('isStudioManagedWebchatHostContext only turns true for explicit or controlled Tracevane webchat contexts', () => {
   assert.equal(isStudioManagedWebchatHostContext({
     sessionKey: 'agent:main:webchat:direct:studio-test',
   }), true);

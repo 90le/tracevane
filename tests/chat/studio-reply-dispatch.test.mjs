@@ -96,7 +96,7 @@ test('maybeHandleStudioReplyDispatch ignores non-studio or routed sessions', asy
   assert.equal(handledRouted, undefined);
 });
 
-test('maybeHandleStudioReplyDispatch reuses default reply runtime with temporary blocked tools for Studio private chat without queueing a duplicate final reply', async () => {
+test('maybeHandleStudioReplyDispatch reuses default reply runtime with temporary blocked tools for Tracevane private chat without queueing a duplicate final reply', async () => {
   const dispatcher = createDispatcher();
   const calls = [];
 

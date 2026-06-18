@@ -34,7 +34,7 @@ def load_gateway_settings() -> dict:
 
 
 def base_url() -> str:
-    override = (os.environ.get("STUDIO_GATEWAY_BASE_URL") or "").strip()
+    override = (os.environ.get("TRACEVANE_GATEWAY_BASE_URL") or os.environ.get("STUDIO_GATEWAY_BASE_URL") or "").strip()
     if override:
         return override.rstrip("/")
     settings = load_gateway_settings()
@@ -45,7 +45,7 @@ def base_url() -> str:
 
 
 def auth_token() -> str:
-    override = (os.environ.get("STUDIO_GATEWAY_TOKEN") or "").strip()
+    override = (os.environ.get("TRACEVANE_GATEWAY_TOKEN") or os.environ.get("STUDIO_GATEWAY_TOKEN") or "").strip()
     if override:
         return override
     token = load_gateway_settings().get("token")

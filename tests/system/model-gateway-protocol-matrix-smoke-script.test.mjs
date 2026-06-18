@@ -166,7 +166,7 @@ async function runScript(args, options = {}) {
     cwd: repoRoot,
     env: {
       ...process.env,
-      STUDIO_GATEWAY_CLIENT_KEY: "test-gateway-key",
+      TRACEVANE_GATEWAY_CLIENT_KEY: "test-gateway-key",
       ...(options.env || {}),
     },
     encoding: "utf8",
@@ -200,7 +200,7 @@ test("model gateway protocol matrix fails when GLM Anthropic endpoint is not sel
         cwd: repoRoot,
         env: {
           ...process.env,
-          STUDIO_GATEWAY_CLIENT_KEY: "test-gateway-key",
+          TRACEVANE_GATEWAY_CLIENT_KEY: "test-gateway-key",
         },
         encoding: "utf8",
         maxBuffer: 1024 * 1024 * 16,

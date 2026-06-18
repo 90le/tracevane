@@ -13,7 +13,7 @@
 - `/system` 已改成轻量概览。
 - `/system/recovery` 已提供 daemon service、轻量探测、手动修复、事件和备份。
 - 修复管线已覆盖配置 prune、插件隔离、旧 install record 清理、CLI manifest/shim/npm 重装、gateway 深探测、gateway service 托管修复、残留进程安全接管和失败回滚。
-- 低优先级附带能力：当 OpenClaw Gateway 能启动但 Studio 插件 `/studio` 控制面的前端静态资源缺失时，可受控检查/重建 Studio web bundle；这只用于保证 OpenClaw 托管 Studio UI 可打开，不属于 OpenClaw 本体配置修复。
+- 低优先级附带能力：当 OpenClaw Gateway 能启动但 Studio 插件 `/studio` 控制面的前端静态资源缺失时，可受控检查/重建 Studio web bundle；这只用于保证 OpenClaw 托管 Tracevane UI 可打开，不属于 OpenClaw 本体配置修复。
 - 本轮补齐 OpenClaw `2026.6.8` 后发现的配置漂移修复：Gateway auth 会迁移到 `OPENCLAW_GATEWAY_TOKEN` env SecretRef，并同步 `.openclaw/.env` 与 `gateway.systemd.env`；重复的 `studio-local` `gatewayAuthToken` 会删除，避免多 token 来源互相覆盖。
 - 本轮补齐废弃插件/渠道残留修复：只清理明确废弃的 `acpx` / `discord` `plugins.allow`、`plugins.entries`、`channels.discord`、关联 binding 和 legacy `plugins/installs.json`，不扩大删除任意第三方插件，也不删除插件源码目录。
 - Recovery 备份现在会同时保存 `openclaw.json`、`.env`、`gateway.systemd.env` 和 `studio-local` secret sidecar；失败回滚会一并恢复，避免只回滚主配置而留下新的 token/env 状态。
@@ -23,7 +23,7 @@
 
 ## 当前边界
 
-- Recovery daemon 是独立专项，不属于 Studio Gateway 或 Channel Connectors。
+- Recovery daemon 是独立专项，不属于 Tracevane Gateway 或 Channel Connectors。
 - 当前主线开发不应把 recovery 逻辑塞进 Gateway/Channel daemon。
 - 发布前仍需要真实目标 OS supervisor smoke。
 - daemon 心跳仍保持轻量探测，不进入 doctor、SecretRef、插件或 schema 深检查；这些重修复只在手动 repair 或失败阈值触发的 repair 中运行。
