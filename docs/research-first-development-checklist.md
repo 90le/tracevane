@@ -76,3 +76,4 @@
 - 2026-06-17：重新核验 Codex app-server、Claude Code Agent SDK / TypeScript SDK、OpenCode CLI / SDK 官方文档；本地补真实 Claude `◯ deep-research ... ↓ tokens`、Codex subagents、OpenCode parallel tasks 的 async child-task TUI 回归，确认优先结构化 driver，TUI 只作 bounded fallback。
 - 2026-06-17：核验 Feishu 官方开放平台 Docs/API、官方 Node SDK 和官方 OpenClaw Lark 插件安全边界；本地删除 Studio 未暴露的 Feishu direct action helper，保留私聊 transport 主链路和旧 code fence 剥除。
 - 2026-06-18：核验 OpenAI 官方 Realtime/audio、Responses WebSocket mode 和 `openai-node` Realtime WebSocket 说明；结论是官方能力存在，但 Studio Gateway 对 Codex account backend 仍缺完整 turn-state/tool-cache/history/close 合同，所以继续结构化 unsupported，并补齐 audio/realtime 错误 envelope 的可行性、参考和替代路径。
+- 2026-06-18：核验智谱官方 GLM Coding Plan 快速开始、GLM-5.2 模型页和模型切换文档；结论是 Coding Plan 使用专属 `https://open.bigmodel.cn/api/coding/paas/v4` endpoint，GLM-5.2 为 1M context / 128K output，Claude Code 是官方覆盖的切换场景。本地用已配置 `glm` provider 完成 Codex / Claude Code / OpenCode 三协议 active-route smoke，验证后 activeProviders 恢复原状。
