@@ -45,6 +45,7 @@
 - CLI Profile 管理属于 Tracevane 原生 Channel Connectors，不属于 OpenClaw Agent 管理；独立页为 `/channel-connectors/profiles`，直接读取 Gateway 可用模型目录和上下文预算，管理 Profile、IM 绑定摘要、运行配置、持久会话和事件记录；IM 绑定摘要可 deep-link 到完整 Channel Connectors 配置并自动选中 binding/profile。
 - Channel Connectors 主配置页已收敛为概览、渠道绑定、运行状态、会话日志四个同级工作区；不再内嵌 CLI Profile 快改或 Skills 管理，Profile 只进入独立工作台。
 - Model Gateway 和 Channel Connectors 互相保留明确入口：Gateway Client connections 可进入 Channel Connectors Profile 工作台；Channel Connectors 概览可进入 Gateway Client connections。两边仍是独立产品域，不共享 API 调用或嵌套页面。
+- Tracevane 安装/发布风险已补强：安装器会备份退休扩展目录、清理 OpenClaw 配置中的退休插件 id/安装记录/load path/slot 引用，只写入 Tracevane 当前入口；Gateway service 重启优先使用 `openclaw gateway restart --safe`；API/Web build 与 pack 会先清理生成目录，避免忽略目录里的历史产物进入 release tarball。
 
 ## 本轮风险清单（IM Agent 终态 / 等待）
 

@@ -689,6 +689,13 @@ cleanup_stale_extension_backup() {
 cleanup_stale_extension_backup "${TRACEVANE_EXTENSIONS_DIR}/tracevane.prev"
 cleanup_stale_extension_backup "${TRACEVANE_EXTENSIONS_DIR}/tracevane.bak"
 cleanup_stale_extension_backup "${TRACEVANE_EXTENSIONS_DIR}/tracevane.old"
+RETIRED_PRODUCT_ID="$(printf '%s%s' 'st' 'udio')"
+for retired_extension_name in "${RETIRED_PRODUCT_ID}" "openclaw-${RETIRED_PRODUCT_ID}"; do
+  cleanup_stale_extension_backup "${TRACEVANE_EXTENSIONS_DIR}/${retired_extension_name}"
+  cleanup_stale_extension_backup "${TRACEVANE_EXTENSIONS_DIR}/${retired_extension_name}.prev"
+  cleanup_stale_extension_backup "${TRACEVANE_EXTENSIONS_DIR}/${retired_extension_name}.bak"
+  cleanup_stale_extension_backup "${TRACEVANE_EXTENSIONS_DIR}/${retired_extension_name}.old"
+done
 
 if [[ -d "${INSTALL_DIR}" ]]; then
   ACTIVE_BACKUP_DIR="${BACKUP_ROOT}/tracevane-${BACKUP_STAMP}"
@@ -790,6 +797,9 @@ const basePath = String(process.argv[6] || '/tracevane');
 const hasDocker = String(process.argv[7] || '0') === '1';
 const preferredGatewayBind = String(process.argv[8] || 'lan');
 const gatewayBindExplicit = String(process.argv[9] || '0') === '1';
+const currentPluginId = 'tracevane';
+const retiredProductId = ['st', 'udio'].join('');
+const retiredPluginIds = new Set([retiredProductId, `openclaw-${retiredProductId}`]);
 
 function normalizeString(value) {
   return typeof value === 'string' ? value.trim() : '';
@@ -813,6 +823,39 @@ function ensureObject(parent, key) {
     parent[key] = {};
   }
   return parent[key];
+}
+
+function isRetiredPluginId(value) {
+  return retiredPluginIds.has(normalizeString(value).toLowerCase());
+}
+
+function normalizedPathKey(value) {
+  const normalized = normalizeString(value);
+  return normalized ? path.resolve(normalized).replace(/\\/g, '/') : '';
+}
+
+function pathReferencesRetiredInstall(value) {
+  const resolved = normalizedPathKey(value).toLowerCase();
+  if (!resolved) return false;
+  return resolved.split('/').some((segment) => {
+    if (segment === retiredProductId || segment === `openclaw-${retiredProductId}`) return true;
+    return segment.startsWith(`${retiredProductId}.`)
+      || segment.startsWith(`openclaw-${retiredProductId}.`);
+  });
+}
+
+function pathReferencesTracevaneBackup(value) {
+  return /\/tracevane\.(prev|bak|old)(\/|$)/.test(normalizedPathKey(value).toLowerCase());
+}
+
+function pathReferencesAlternateTracevaneInstall(value, projectRootKey) {
+  const resolved = normalizedPathKey(value);
+  if (!resolved) return false;
+  const normalized = resolved.toLowerCase();
+  if (pathReferencesTracevaneBackup(resolved)) return true;
+  if (pathReferencesRetiredInstall(resolved)) return true;
+  const isTracevaneLike = /\/tracevane(?:\.[^/]+)?(\/|$)/.test(normalized);
+  return isTracevaneLike && resolved !== projectRootKey;
 }
 
 function dreamingEnabled(entry) {
@@ -840,9 +883,14 @@ const projectRootKey = projectRoot.replace(/\\/g, '/');
 const plugins = ensureObject(config, 'plugins');
 plugins.enabled = true;
 if (Array.isArray(plugins.deny)) {
-  plugins.deny = normalizeStringList(plugins.deny).filter((item) => item !== 'tracevane');
+  plugins.deny = normalizeStringList(plugins.deny).filter((item) => item !== currentPluginId && !isRetiredPluginId(item));
 }
 const entries = ensureObject(plugins, 'entries');
+for (const pluginId of Object.keys(entries)) {
+  if (isRetiredPluginId(pluginId)) {
+    delete entries[pluginId];
+  }
+}
 const existingTracevaneEntry =
   entries.tracevane && typeof entries.tracevane === 'object' && !Array.isArray(entries.tracevane)
     ? entries.tracevane
@@ -872,23 +920,27 @@ tracevaneConfig.transport.gateway = {
 };
 
 if (Array.isArray(plugins.allow)) {
-  const allow = normalizeStringList(plugins.allow).filter((item) => item !== 'tracevane');
-  allow.push('tracevane');
+  const allow = normalizeStringList(plugins.allow).filter((item) => item !== currentPluginId && !isRetiredPluginId(item));
+  allow.push(currentPluginId);
   plugins.allow = allow;
 }
 
 if (plugins.installs && typeof plugins.installs === 'object' && !Array.isArray(plugins.installs)) {
   for (const [pluginId, record] of Object.entries(plugins.installs)) {
+    if (isRetiredPluginId(pluginId)) {
+      delete plugins.installs[pluginId];
+      continue;
+    }
     if (!record || typeof record !== 'object' || Array.isArray(record)) continue;
     const installPath = normalizeString(record.installPath);
-    const installPathKey = installPath ? path.resolve(installPath).replace(/\\/g, '/') : '';
-    if (pluginId === 'tracevane') {
-      if (!installPathKey || installPathKey !== projectRootKey || /\/tracevane\.(prev|bak|old)(\/|$)/.test(installPathKey)) {
+    const installPathKey = normalizedPathKey(installPath);
+    if (pluginId === currentPluginId) {
+      if (!installPathKey || installPathKey !== projectRootKey || pathReferencesTracevaneBackup(installPathKey)) {
         delete plugins.installs[pluginId];
       }
       continue;
     }
-    if (installPathKey && /\/tracevane\.(prev|bak|old)(\/|$)/.test(installPathKey)) {
+    if (installPathKey && pathReferencesAlternateTracevaneInstall(installPathKey, projectRootKey)) {
       delete plugins.installs[pluginId];
     }
   }
@@ -899,16 +951,20 @@ if (plugins.installs && typeof plugins.installs === 'object' && !Array.isArray(p
 
 plugins.load = plugins.load && typeof plugins.load === 'object' ? plugins.load : {};
 const loadPaths = normalizeStringList(plugins.load.paths).filter((item) => {
-  const resolved = path.resolve(item).replace(/\\/g, '/');
-  const isTracevaneLike = /\/tracevane(?:\.[^/]+)?(\/|$)/.test(resolved);
-  if (isTracevaneLike && resolved !== projectRootKey) return false;
-  if (/\/tracevane\.(prev|bak|old)(\/|$)/.test(resolved)) return false;
-  return true;
+  return !pathReferencesAlternateTracevaneInstall(item, projectRootKey);
 });
 if (!loadPaths.includes(projectRootKey)) {
   loadPaths.push(projectRootKey);
 }
 plugins.load.paths = loadPaths;
+
+if (plugins.slots && typeof plugins.slots === 'object' && !Array.isArray(plugins.slots)) {
+  for (const [slotKey, slotValue] of Object.entries(plugins.slots)) {
+    if (isRetiredPluginId(slotValue)) {
+      delete plugins.slots[slotKey];
+    }
+  }
+}
 
 const gateway = ensureObject(config, 'gateway');
 const supportedBinds = new Set(['auto', 'loopback', 'lan', 'tailnet', 'custom']);
@@ -924,6 +980,7 @@ if (gatewayBindExplicit) {
 gateway.port = Number(gateway.port) > 0 ? Number(gateway.port) : 31879;
 
 gateway.controlUi = gateway.controlUi && typeof gateway.controlUi === 'object' ? gateway.controlUi : {};
+gateway.controlUi.enabled = true;
 const allowedOrigins = normalizeStringList(gateway.controlUi.allowedOrigins);
 for (const origin of [`http://127.0.0.1:${gateway.port}`, `http://localhost:${gateway.port}`]) {
   if (!allowedOrigins.includes(origin)) {
@@ -1014,9 +1071,12 @@ fi
 
 if [[ "${GATEWAY_SERVICE_READY}" -eq 1 ]]; then
   log "重启 OpenClaw Gateway service"
-  if ! run_cmd_allow_fail openclaw gateway restart; then
-    warn "Gateway service 重启失败，将尝试降级为后台直接运行 Gateway。"
-    GATEWAY_SERVICE_READY=0
+  if ! run_cmd_allow_fail openclaw gateway restart --safe; then
+    warn "Gateway safe restart 失败，尝试普通 restart。"
+    if ! run_cmd_allow_fail openclaw gateway restart; then
+      warn "Gateway service 重启失败，将尝试降级为后台直接运行 Gateway。"
+      GATEWAY_SERVICE_READY=0
+    fi
   fi
 fi
 

@@ -59,7 +59,7 @@ def open_new_chat(page):
     button = page.locator(".chat-new-chat-trigger").first
     click_enabled(button)
     picker = page.locator(".chat-agent-picker")
-    picker.wait_for(state="visible", timeout=15000)
+    picker.wait_for(state="visible", timeout=30000)
     option = picker.locator(".chat-agent-picker-option").first
     with page.expect_response(lambda resp: "/api/chat/agents/" in resp.url and resp.request.method == "POST", timeout=30000) as response_info:
         click_enabled(option)

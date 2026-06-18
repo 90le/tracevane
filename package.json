@@ -31,9 +31,9 @@
     "apps/web-vue"
   ],
   "scripts": {
-    "build:api": "tsc -p tsconfig.json",
-    "build": "npm run build:web && tsc -p tsconfig.json",
-    "build:web": "npm run build --workspace=apps/web-vue",
+    "build:api": "node scripts/clean-build-output.mjs api && tsc -p tsconfig.json",
+    "build": "npm run build:web && npm run build:api",
+    "build:web": "node scripts/clean-build-output.mjs web && npm run build --workspace=apps/web-vue",
     "dev:api": "npm run build:api && node scripts/start-standalone-api.mjs",
     "dev:fresh": "bash scripts/dev-fresh.sh",
     "dev:restart": "bash scripts/restart-dev.sh",

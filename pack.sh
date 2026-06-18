@@ -182,6 +182,9 @@ else
   echo "[0.5/6] 跳过本地站点安装页版本同步..."
 fi
 
+echo "[0.8/6] 清理旧构建产物..."
+node "${SCRIPT_DIR}/scripts/clean-build-output.mjs" all
+
 echo "[1/6] 构建 API..."
 cd "${SCRIPT_DIR}"
 npm run build:api
