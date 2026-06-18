@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import type { StudioServerConfig } from "../../../../types/api.js";
+import type { TracevaneServerConfig } from "../../../../types/api.js";
 import type {
   OpenClawRecoveryBackupSummary,
   OpenClawRecoveryDaemonServiceSnapshot,
@@ -57,7 +57,7 @@ export interface OpenClawRecoveryService {
 }
 
 function findBackupPath(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   backupId: string,
 ): { id: string; path: string } | null {
   const backup = listRecoveryBackups(config).find(
@@ -67,7 +67,7 @@ function findBackupPath(
   const resolvedBackup = path.resolve(backup.path);
   const allowedDir = path.resolve(
     config.openclawRoot,
-    "studio",
+    "tracevane",
     "recovery",
     "backups",
   );
@@ -107,7 +107,7 @@ function mergeStoredServiceSnapshot(
 }
 
 async function runManualProbe(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   state: OpenClawRecoveryState,
 ): Promise<OpenClawRecoveryRunResponse> {
   const checkedAt = new Date();
@@ -162,7 +162,7 @@ async function runManualProbe(
 }
 
 export function createOpenClawRecoveryService(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
 ): OpenClawRecoveryService {
   return {
     async getStatus(): Promise<OpenClawRecoveryState> {

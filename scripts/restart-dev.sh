@@ -12,8 +12,8 @@ PORTS_FILE="$RUNTIME_DIR/ports.env"
 BACKEND_LOG_FILE="$LOG_DIR/backend.log"
 FRONTEND_LOG_FILE="$LOG_DIR/frontend.log"
 
-REQUESTED_BACKEND_PORT="${STUDIO_API_PORT:-3761}"
-FRONTEND_PORT="${STUDIO_WEB_PORT:-5176}"
+REQUESTED_BACKEND_PORT="${TRACEVANE_API_PORT:-3761}"
+FRONTEND_PORT="${TRACEVANE_WEB_PORT:-5176}"
 
 mkdir -p "$PID_DIR" "$LOG_DIR"
 
@@ -86,7 +86,7 @@ tmux_session_name_for_pid_file() {
 
   base="$(basename "$pid_file" .pid)"
   base="${base//[^[:alnum:]_-]/-}"
-  echo "openclaw-studio-dev-${base}"
+  echo "tracevane-dev-${base}"
 }
 
 stop_tmux_session_for_pid_file() {
@@ -333,7 +333,7 @@ fi
 
 echo "Starting backend on port $BACKEND_PORT"
 backend_pid=""
-start_background "env STUDIO_API_PORT=$BACKEND_PORT npm run dev:api" "$BACKEND_LOG_FILE" "$BACKEND_PID_FILE" backend_pid
+start_background "env TRACEVANE_API_PORT=$BACKEND_PORT npm run dev:api" "$BACKEND_LOG_FILE" "$BACKEND_PID_FILE" backend_pid
 wait_for_http "http://127.0.0.1:${BACKEND_PORT}/api/system/health" "Backend"
 if ! kill -0 "$backend_pid" 2>/dev/null; then
   echo "Backend process exited unexpectedly. See $BACKEND_LOG_FILE" >&2
@@ -342,7 +342,7 @@ fi
 
 echo "Starting frontend on port $FRONTEND_PORT"
 frontend_pid=""
-start_background "env STUDIO_USE_EXTERNAL_API=1 STUDIO_API_PORT=$BACKEND_PORT STUDIO_WEB_PORT=$FRONTEND_PORT npm run dev --workspace=apps/web-vue -- --host 127.0.0.1 --port $FRONTEND_PORT --force" "$FRONTEND_LOG_FILE" "$FRONTEND_PID_FILE" frontend_pid
+start_background "env TRACEVANE_USE_EXTERNAL_API=1 TRACEVANE_API_PORT=$BACKEND_PORT TRACEVANE_WEB_PORT=$FRONTEND_PORT npm run dev --workspace=apps/web-vue -- --host 127.0.0.1 --port $FRONTEND_PORT --force" "$FRONTEND_LOG_FILE" "$FRONTEND_PID_FILE" frontend_pid
 wait_for_http "http://127.0.0.1:${FRONTEND_PORT}" "Frontend"
 if ! kill -0 "$frontend_pid" 2>/dev/null; then
   echo "Frontend process exited unexpectedly. See $FRONTEND_LOG_FILE" >&2
@@ -350,8 +350,8 @@ if ! kill -0 "$frontend_pid" 2>/dev/null; then
 fi
 
 cat > "$PORTS_FILE" <<EOF
-STUDIO_API_PORT=$BACKEND_PORT
-STUDIO_WEB_PORT=$FRONTEND_PORT
+TRACEVANE_API_PORT=$BACKEND_PORT
+TRACEVANE_WEB_PORT=$FRONTEND_PORT
 EOF
 
 echo

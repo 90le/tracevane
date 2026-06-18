@@ -1,7 +1,7 @@
 .main-content.chat-surface-route {
   display: flex;
   flex-direction: column;
-  padding: var(--studio-route-inset, 10px);
+  padding: var(--tracevane-route-inset, 10px);
   min-height: 100vh;
   min-height: 100dvh;
   height: 100vh;
@@ -19,7 +19,7 @@
   min-height: 0;
   height: 100%;
   padding: 0;
-  border-radius: var(--studio-workspace-radius, 12px);
+  border-radius: var(--tracevane-workspace-radius, 12px);
   overflow: hidden;
   align-content: stretch;
 }
@@ -48,7 +48,7 @@
 
 .shell-route-stage-chat {
   padding: 0;
-  border-radius: var(--studio-workspace-radius, 12px);
+  border-radius: var(--tracevane-workspace-radius, 12px);
   overflow: hidden;
 }
 
@@ -187,7 +187,7 @@ html:not([data-theme="light"]),
   display: grid;
   grid-template-columns: 344px minmax(0, 1fr);
   border: 1px solid var(--chat-line-strong);
-  border-radius: var(--studio-workspace-radius, 12px);
+  border-radius: var(--tracevane-workspace-radius, 12px);
   overflow: hidden;
   background: var(--chat-shell-frame);
   box-shadow: var(--shadow);

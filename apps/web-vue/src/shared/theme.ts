@@ -3,7 +3,7 @@ import { computed, ref } from "vue";
 export type ThemeMode = "system" | "light" | "dark";
 export type ResolvedTheme = "light" | "dark";
 
-const THEME_STORAGE_KEY = "openclaw-studio.theme-mode";
+const THEME_STORAGE_KEY = "tracevane.theme-mode";
 
 const themeMode = ref<ThemeMode>("system");
 const systemTheme = ref<ResolvedTheme>("dark");

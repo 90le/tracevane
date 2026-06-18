@@ -3,11 +3,11 @@ import type {
   ChatResourceResolveRequest,
   ChatResourceResolveResponse,
 } from '../../../../../types/chat';
-import { parseStudioMarkdownMediaRef } from '../../../../../lib/studio-markdown-media';
+import { parseTracevaneMarkdownMediaRef } from '../../../../../lib/tracevane-markdown-media';
 import { resolveChatResources } from './api';
 
-const MAX_STUDIO_RESOURCE_REFS_PER_MESSAGE = 48;
-const MAX_STUDIO_RESOURCE_REFS_PER_BATCH = 100;
+const MAX_TRACEVANE_RESOURCE_REFS_PER_MESSAGE = 48;
+const MAX_TRACEVANE_RESOURCE_REFS_PER_BATCH = 100;
 const RESOURCE_RESOLVE_BATCH_DELAY_MS = 8;
 const RESOLVED_RESOURCE_CACHE_LIMIT = 800;
 const READY_RESOURCE_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -45,16 +45,16 @@ function stripMarkdownCodeRegions(value: string): string {
     .replace(/`[^`\n]*`/g, ' ');
 }
 
-function normalizeStudioResourceRef(value: string): string | null {
+function normalizeTracevaneResourceRef(value: string): string | null {
   const trimmed = value.trim().replace(/^<([\s\S]+)>$/, '$1').trim();
-  const parsed = parseStudioMarkdownMediaRef(trimmed);
+  const parsed = parseTracevaneMarkdownMediaRef(trimmed);
   if (!parsed) {
     return null;
   }
   return `${parsed.kind}:${parsed.path}`;
 }
 
-export function extractStudioResourceRefs(source: string): string[] {
+export function extractTracevaneResourceRefs(source: string): string[] {
   const cleanSource = stripMarkdownCodeRegions(String(source || ''));
   if (!cleanSource) {
     return [];
@@ -63,7 +63,7 @@ export function extractStudioResourceRefs(source: string): string[] {
   const refs: string[] = [];
   const seen = new Set<string>();
   const record = (value: string): void => {
-    const normalized = normalizeStudioResourceRef(value);
+    const normalized = normalizeTracevaneResourceRef(value);
     if (!normalized || seen.has(normalized)) {
       return;
     }
@@ -71,7 +71,7 @@ export function extractStudioResourceRefs(source: string): string[] {
     refs.push(normalized);
   };
 
-  const angleRefPattern = /<((?:workspace|uploads|studio-file):[^>\r\n]+)>/gi;
+  const angleRefPattern = /<((?:workspace|uploads|tracevane-file):[^>\r\n]+)>/gi;
   const directSource = cleanSource.replace(angleRefPattern, ' ');
   angleRefPattern.lastIndex = 0;
   let angleMatch: RegExpExecArray | null;
@@ -79,18 +79,18 @@ export function extractStudioResourceRefs(source: string): string[] {
     record(angleMatch[1] || '');
   }
 
-  const directRefPattern = /\b(?:workspace|uploads|studio-file):[^\s)"'<>]+/gi;
+  const directRefPattern = /\b(?:workspace|uploads|tracevane-file):[^\s)"'<>]+/gi;
   let directMatch: RegExpExecArray | null;
   while ((directMatch = directRefPattern.exec(directSource))) {
     record(directMatch[0] || '');
   }
 
-  return refs.slice(0, MAX_STUDIO_RESOURCE_REFS_PER_MESSAGE);
+  return refs.slice(0, MAX_TRACEVANE_RESOURCE_REFS_PER_MESSAGE);
 }
 
 function refCandidateValues(ref: string): Set<string> {
   const values = new Set<string>([ref]);
-  const parsed = parseStudioMarkdownMediaRef(ref);
+  const parsed = parseTracevaneMarkdownMediaRef(ref);
   if (!parsed) {
     return values;
   }
@@ -216,8 +216,8 @@ function writeCachedResource(sessionKey: string, ref: string, resource: ChatReso
 
 function chunkRefs(refs: string[]): string[][] {
   const chunks: string[][] = [];
-  for (let index = 0; index < refs.length; index += MAX_STUDIO_RESOURCE_REFS_PER_BATCH) {
-    chunks.push(refs.slice(index, index + MAX_STUDIO_RESOURCE_REFS_PER_BATCH));
+  for (let index = 0; index < refs.length; index += MAX_TRACEVANE_RESOURCE_REFS_PER_BATCH) {
+    chunks.push(refs.slice(index, index + MAX_TRACEVANE_RESOURCE_REFS_PER_BATCH));
   }
   return chunks;
 }
@@ -318,7 +318,7 @@ function resolveResourceRefBatched(sessionKey: string, ref: string): Promise<Cha
   return promise;
 }
 
-export async function resolveMissingStudioResourcesForMarkdown(
+export async function resolveMissingTracevaneResourcesForMarkdown(
   sessionKey: string | null | undefined,
   source: string,
   baseResources: ChatResourceItem[] | undefined,
@@ -328,7 +328,7 @@ export async function resolveMissingStudioResourcesForMarkdown(
     return [];
   }
 
-  const refs = extractStudioResourceRefs(source)
+  const refs = extractTracevaneResourceRefs(source)
     .filter((ref) => !hasReadyResourceForRef(baseResources, ref));
   if (!refs.length) {
     return [];

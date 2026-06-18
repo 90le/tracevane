@@ -53,25 +53,25 @@ Options:
 Run npm run build:api before invoking this script directly.`);
 }
 
-function createStudioConfig(root) {
+function createTracevaneConfig(root) {
   const openclawRoot = path.join(root, ".openclaw");
   fs.mkdirSync(openclawRoot, { recursive: true });
   return {
-    pluginId: "studio",
+    pluginId: "tracevane",
     pluginName: "Tracevane",
     version: "0.1.0",
     port: 3760,
     autoStart: true,
     openclawRoot,
     openclawConfigFile: path.join(openclawRoot, "openclaw.json"),
-    projectRoot: path.join(root, "studio"),
-    webDistDir: path.join(root, "studio/apps/web-vue/dist"),
+    projectRoot: path.join(root, "tracevane"),
+    webDistDir: path.join(root, "tracevane/apps/web-vue/dist"),
     gatewayPort: 31879,
     gatewayWsUrl: "ws://127.0.0.1:31879",
     gatewayControlUiBasePath: "",
     transport: {
       standalone: { enabled: true, port: 3760 },
-      gateway: { enabled: true, basePath: "/studio" },
+      gateway: { enabled: true, basePath: "/tracevane" },
     },
   };
 }
@@ -501,11 +501,11 @@ function collectRequestText(value) {
 }
 
 async function prepareIsolatedConfig(root, mockGateway) {
-  const { createStudioContext } = await import("../dist/apps/api/index.js");
-  const config = createStudioConfig(root);
+  const { createTracevaneContext } = await import("../dist/apps/api/index.js");
+  const config = createTracevaneConfig(root);
   fs.mkdirSync(config.projectRoot, { recursive: true });
   const homeDir = path.join(root, "home");
-  const context = createStudioContext({
+  const context = createTracevaneContext({
     config,
     logger: { info() {}, warn() {}, error() {}, debug() {} },
     modelGatewayOptions: {
@@ -836,9 +836,9 @@ function preview(value) {
     .slice(0, 2000);
 }
 
-async function startStudioGatewayServer(context) {
-  const { createStudioRequestHandler } = await import("../dist/apps/api/index.js");
-  const handler = createStudioRequestHandler(context, { stripBasePath: "" });
+async function startTracevaneGatewayServer(context) {
+  const { createTracevaneRequestHandler } = await import("../dist/apps/api/index.js");
+  const handler = createTracevaneRequestHandler(context, { stripBasePath: "" });
   return startHttpServer(async (req, res) => {
     const handled = await handler(req, res);
     if (!handled && !res.writableEnded) {
@@ -876,7 +876,7 @@ async function startHttpServer(handler) {
 }
 
 async function runGatewayMaturityProbes(context, mockGateway) {
-  const server = await startStudioGatewayServer(context);
+  const server = await startTracevaneGatewayServer(context);
   const startedAt = Date.now();
   const beforeCount = mockGateway.requests.length;
   try {
@@ -1002,7 +1002,7 @@ async function runGatewayMaturityProbes(context, mockGateway) {
 function gatewayHeaders() {
   return {
     authorization: `Bearer ${LOCAL_GATEWAY_KEY}`,
-    "x-studio-app-scope": "codex",
+    "x-tracevane-app-scope": "codex",
   };
 }
 
@@ -1105,7 +1105,7 @@ async function main() {
       strict: options.strict,
       tempRoot: root,
       mockGatewayEndpoint: mockGateway.endpoint,
-      studioGatewayEndpoint: gatewayMaturity.baseUrl ? `${gatewayMaturity.baseUrl}/v1` : null,
+      tracevaneGatewayEndpoint: gatewayMaturity.baseUrl ? `${gatewayMaturity.baseUrl}/v1` : null,
       results,
       gatewayMaturity,
       requestLog: mockGateway.requests.map((request) => ({

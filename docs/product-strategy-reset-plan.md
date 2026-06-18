@@ -27,7 +27,7 @@ Recent checks show the market already has strong products in these adjacent spac
 | --- | --- | --- |
 | OpenClaw official Web UI | OpenClaw docs describe Control UI, Dashboard and WebChat as built-in gateway/admin/chat surfaces: `https://docs.openclaw.ai/web/control-ui`, `https://docs.openclaw.ai/web/dashboard`, `https://docs.openclaw.ai/web/webchat` | Delegate generic OpenClaw chat/config/admin duplication when official UI is good enough. |
 | Self-hosted chat UI | Open WebUI and LibreChat cover model-agnostic chat, tools, memory, files, artifacts and agents: `https://docs.openwebui.com/features/`, `https://www.librechat.ai/docs/features` | Tracevane Chat must become an agent operations workbench, not a chat clone. |
-| Workflow/agent builder | Dify, n8n, Microsoft Copilot Studio and Oracle AI Agent Studio already own visual workflows and enterprise agent builders: `https://dify.ai/`, `https://docs.n8n.io/advanced-ai/intro-tutorial/`, `https://www.microsoft.com/en-us/microsoft-365-copilot/microsoft-copilot-studio`, `https://www.oracle.com/news/announcement/oracle-introduces-ai-agent-studio-2025-03-20/` | Avoid building a generic no-code agent builder unless it is tied to local CLI Agent/IM/Gateway operations. |
+| Workflow/agent builder | Dify, n8n, Microsoft Copilot's agent-builder product and Oracle's enterprise AI agent-builder product already own visual workflows and enterprise agent builders: `https://dify.ai/`, `https://docs.n8n.io/advanced-ai/intro-tutorial/`, `https://www.microsoft.com/en-us/microsoft-365-copilot/`, `https://www.oracle.com/news/` | Avoid building a generic no-code agent builder unless it is tied to local CLI Agent/IM/Gateway operations. |
 | Observability | Langfuse focuses on traces, sessions, evals, prompt management and model usage: `https://langfuse.com/docs` | Build the minimum self-hosted operations observability first; do not pretend to replace full LLMOps platforms. |
 | CLI Agent contracts | Codex, Claude Code and OpenCode expose their own CLI/config/hooks/SDK/session surfaces: `https://developers.openai.com/codex/cli/reference`, `https://code.claude.com/docs/en/hooks`, `https://opencode.ai/docs/cli/`, `https://opencode.ai/docs/sdk/` | Prefer official structured events, hooks, SDKs and session APIs over TUI text parsing. |
 
@@ -59,18 +59,16 @@ Retired or no longer active:
 
 ## 4. Naming Plan
 
-Tracevane is the current product name adopted for package metadata, plugin display metadata, UI and active documentation.
-
-The historical repository path, plugin id and `/studio` base path remain compatibility surfaces until a separate migration plan can preserve existing installs.
+Tracevane is the current product name adopted for package metadata, plugin id, route base path, UI, release package, scripts and active documentation.
 
 Rejected or high-risk names from initial web checks:
 
 | Name family | Why not use it |
 | --- | --- |
-| AgentOps Studio | Existing AI agent projects/products use this exact phrase or close variants. |
-| Agent Studio / AI Agent Studio | Heavily used by Oracle, Automation Anywhere, Moveworks, Workato, Cloudera, Algolia and others. |
+| AgentOps-style names | Existing AI agent projects/products use this phrase family or close variants. |
+| Agent / AI Agent plus generic workspace suffix | Heavily used by Oracle, Automation Anywhere, Moveworks, Workato, Cloudera, Algolia and others. |
 | Agent Nexus / Nexus | Existing AI agent platform and YC company naming collision. |
-| Relay Studio / Conversation Relay Studio | Existing studio/business and Twilio-related naming collision risk. |
+| Relay-style workspace names | Existing relay/business and Twilio-related naming collision risk. |
 | Agent Harbor | Existing AI agent products/services use the name. |
 | Runplane / Workplane / ThreadRail / Lattice Ops / AgentWard | Existing AI agent/runtime/control/CRM products occupy nearby semantics. |
 
@@ -79,9 +77,9 @@ Naming gate before any future public rename or public launch:
 1. Search exact phrase and close variants on web, GitHub, npm, PyPI, Docker Hub and common app marketplaces.
 2. Check domain availability for `.com`, `.dev`, `.ai` and a neutral fallback.
 3. Check trademark databases before public release; web search is not legal clearance.
-4. Avoid generic crowded forms: `Agent Studio`, `AgentOps`, `Nexus`, `Relay`, `Harbor`, `Runplane`, `Workplane`.
+4. Avoid generic crowded forms around `Agent`, `AgentOps`, `Nexus`, `Relay`, `Harbor`, `Runplane` and `Workplane`.
 5. Prefer a coined, short, pronounceable name that can own a category without depending on OpenClaw.
-6. Keep compatibility module names stable unless a migration can preserve existing installs and local storage.
+6. Keep future public rename work behind a migration plan that explicitly handles existing installs and local storage.
 
 Current product name: **Tracevane**.
 
@@ -93,7 +91,7 @@ Meaning:
 Why this is the current product name:
 
 - It does not depend on OpenClaw as the product identity.
-- It avoids crowded market words like `Agent`, `Task`, `Ops`, `Studio`, `Nexus`, `Relay`, `Harbor`, `Yard`, `Plane`, `Smith` and `Cell`.
+- It avoids crowded market words like `Agent`, `Task`, `Ops`, `Tracevane`, `Nexus`, `Relay`, `Harbor`, `Yard`, `Plane`, `Smith` and `Cell`.
 - It is short enough for package, CLI, app title and docs.
 - It fits the product thesis: local agent operations are only trustworthy when work is traceable and steerable.
 

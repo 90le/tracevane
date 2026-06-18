@@ -3,7 +3,7 @@ import type {
   ChatMessageToolCallItem,
   ChatRunOverlay,
 } from '../../../../types/chat.js';
-import type { StudioAssistantRunShadow } from './run-projection-store.js';
+import type { TracevaneAssistantRunShadow } from './run-projection-store.js';
 import { normalizeString } from './shared.js';
 
 function overlayHasVisibleContent(overlay: ChatRunOverlay | null | undefined): boolean {
@@ -140,7 +140,7 @@ export function supplementHistoryWithRunState(params: {
     finalCreatedAt: string | null;
     toolCalls: ChatMessageToolCallItem[] | undefined;
   }>;
-  shadowSupplements: StudioAssistantRunShadow[];
+  shadowSupplements: TracevaneAssistantRunShadow[];
   rehydrateToolCalls: (sessionKey: string, toolCalls: ChatMessageToolCallItem[]) => ChatMessageToolCallItem[] | undefined;
   mergeHistoryAssistantMessage: (
     current: ChatMessageItem,
@@ -188,9 +188,9 @@ export function listRunOverlaysForHistorySnapshot<TProjection extends {
 }>(params: {
   sessionKey: string;
   liveProjections: TProjection[];
-  shadowProjections: StudioAssistantRunShadow[];
+  shadowProjections: TracevaneAssistantRunShadow[];
   buildLiveOverlay: (projection: TProjection) => ChatRunOverlay;
-  buildShadowOverlay: (shadow: StudioAssistantRunShadow) => ChatRunOverlay;
+  buildShadowOverlay: (shadow: TracevaneAssistantRunShadow) => ChatRunOverlay;
 }): ChatRunOverlay[] {
   const liveRunIds = new Set(params.liveProjections.map((projection) => projection.runId));
   const liveOverlays = params.liveProjections

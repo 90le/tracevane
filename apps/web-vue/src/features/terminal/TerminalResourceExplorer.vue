@@ -706,7 +706,7 @@ const emit = defineEmits<{
 }>();
 
 const RESOURCE_EXPLORER_STATE_STORAGE_KEY =
-  'openclaw-studio.terminal.resourceExplorer.state';
+  'tracevane.terminal.resourceExplorer.state';
 
 const { text } = useLocalePreference();
 const roots = ref<FileRootSummary[]>([]);

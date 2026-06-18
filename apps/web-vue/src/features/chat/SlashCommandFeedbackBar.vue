@@ -35,12 +35,12 @@ import { computed } from 'vue';
 import { X } from '@lucide/vue';
 import { useLocalePreference } from '../../shared/locale';
 import {
-  describeStudioSlashExecutionFeedback,
-  type StudioSlashExecutionFeedback,
+  describeTracevaneSlashExecutionFeedback,
+  type TracevaneSlashExecutionFeedback,
 } from './slash-feedback';
 
 const props = defineProps<{
-  feedback: StudioSlashExecutionFeedback | null;
+  feedback: TracevaneSlashExecutionFeedback | null;
 }>();
 
 defineEmits<{
@@ -50,7 +50,7 @@ defineEmits<{
 const { locale, text } = useLocalePreference();
 
 const descriptor = computed(() => props.feedback
-  ? describeStudioSlashExecutionFeedback(props.feedback, locale.value)
+  ? describeTracevaneSlashExecutionFeedback(props.feedback, locale.value)
   : {
     tone: 'info',
     title: '',

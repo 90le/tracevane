@@ -1,6 +1,6 @@
 import { parseJsonBody, sendJson } from '../../core/http.js';
-import type { StudioApiContext } from '../../core/context.js';
-import type { StudioRouter } from '../../core/router.js';
+import type { TracevaneApiContext } from '../../core/context.js';
+import type { TracevaneRouter } from '../../core/router.js';
 import type {
   ChannelAccessUpdatePayload,
   ChannelAccountCredentialsPayload,
@@ -11,7 +11,7 @@ import type {
 } from '../../../../types/channels.js';
 import { isChannelServiceError } from './service.js';
 
-function handleChannelError(ctx: StudioApiContext, res: Parameters<typeof sendJson>[0], error: unknown): void {
+function handleChannelError(ctx: TracevaneApiContext, res: Parameters<typeof sendJson>[0], error: unknown): void {
   if (isChannelServiceError(error)) {
     sendJson(res, error.statusCode, {
       error: error.code,
@@ -20,14 +20,14 @@ function handleChannelError(ctx: StudioApiContext, res: Parameters<typeof sendJs
     return;
   }
 
-  ctx.logger.error('studio: channels route failed', error);
+  ctx.logger.error('tracevane: channels route failed', error);
   sendJson(res, 500, {
     error: 'channels_internal_error',
     message: error instanceof Error ? error.message : 'Unexpected channels failure',
   });
 }
 
-export function registerChannelsRoutes(router: StudioRouter, ctx: StudioApiContext): void {
+export function registerChannelsRoutes(router: TracevaneRouter, ctx: TracevaneApiContext): void {
   router.get('/api/channels', (_req, res) => {
     sendJson(res, 200, ctx.services.channels.getSummary());
   });

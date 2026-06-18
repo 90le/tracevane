@@ -42,7 +42,7 @@ export const SYSTEM_EVENT_DOMAIN_MANIFEST: ReadonlyArray<SystemEventSectionEntry
       eventSurface: "system-event-filters",
       frontendFile: "apps/web-vue/src/features/system/SystemEventFilterBar.vue",
       backendFile: "apps/api/modules/system/routes.ts",
-      testFile: "tests/system/studio-web-system-event-center.test.mjs",
+      testFile: "tests/system/tracevane-web-system-event-center.test.mjs",
     },
     {
       key: "timeline",
@@ -61,7 +61,7 @@ export const SYSTEM_EVENT_DOMAIN_MANIFEST: ReadonlyArray<SystemEventSectionEntry
       frontendFile:
         "apps/web-vue/src/features/system/SystemEventDetailPanel.vue",
       backendFile: "apps/api/modules/system/service.ts",
-      testFile: "tests/system/studio-web-system-event-center.test.mjs",
+      testFile: "tests/system/tracevane-web-system-event-center.test.mjs",
     },
   ];
 

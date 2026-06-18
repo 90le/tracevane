@@ -9,7 +9,7 @@ from chat_smoke_runtime import build_unavailable_skip, fetch_history
 
 
 BASE_URL = "http://127.0.0.1:5176"
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-im-acceptance.png")
+SCREENSHOT = Path("/tmp/tracevane-chat-im-acceptance.png")
 
 
 def wait_button_enabled(locator, timeout=30000):

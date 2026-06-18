@@ -38,7 +38,7 @@ function createSession(): ChatSessionRow {
     runtime: {
       activeRunId: null,
       status: 'idle',
-      transport: 'studio_bff',
+      transport: 'tracevane_bff',
       lastError: null,
       lastEventAt: null,
       lastAckAt: null,

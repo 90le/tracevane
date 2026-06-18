@@ -4,7 +4,7 @@ import net from "node:net";
 import path from "node:path";
 import { execFile, spawn, spawnSync } from "node:child_process";
 import { promisify } from "node:util";
-import type { StudioServerConfig } from "../../../../types/api.js";
+import type { TracevaneServerConfig } from "../../../../types/api.js";
 import type {
   SystemBootstrapPayload,
   SystemBootstrapRepairResponse,
@@ -21,17 +21,17 @@ import type {
   SystemGatewaySnapshot,
   SystemHealthPayload,
   SystemServiceSnapshot,
-  SystemStudioReleasePayload,
-  SystemStudioUpgradeRequest,
-  SystemStudioUpgradeResponse,
-  SystemStudioUpgradeStatusPayload,
+  SystemTracevaneReleasePayload,
+  SystemTracevaneUpgradeRequest,
+  SystemTracevaneUpgradeResponse,
+  SystemTracevaneUpgradeStatusPayload,
   SystemStatusSummary,
   SystemRuntimeSummaryPayload,
   SystemTerminalActionSuggestion,
 } from "../../../../types/system.js";
 import { readJsonFile, readOpenClawConfig } from "../../core/state.js";
 import {
-  applySafeStudioBootstrapDefaults,
+  applySafeTracevaneBootstrapDefaults,
   getSystemBootstrapSnapshot,
   repairSystemBootstrap,
 } from "./bootstrap.js";
@@ -39,10 +39,10 @@ import {
   approveDeviceTrustRequest,
   ensureDefaultDeviceTrustSettings,
   getDeviceTrustSnapshot,
-  maybeAutoApproveStudioHelperPairing,
+  maybeAutoApproveTracevaneHelperPairing,
   patchDeviceTrustSettings,
-  repairStudioHelperDeviceTrust,
-  syncStudioHelperTokenCacheIfNeeded,
+  repairTracevaneHelperDeviceTrust,
+  syncTracevaneHelperTokenCacheIfNeeded,
 } from "./device-trust.js";
 import {
   buildSystemActionEvents,
@@ -56,20 +56,20 @@ import { buildSystemTerminalActionSuggestions } from "./terminal-handoff.js";
 
 const execFileAsync = promisify(execFile);
 const COMMAND_CACHE_MS = 15_000;
-const STUDIO_UPDATE_TIMEOUT_MS = 4_500;
-const STUDIO_UPDATE_SITE_BASE = (
-  process.env.OPENCLAW_STUDIO_UPDATE_SITE_BASE || "https://studio.90le.cn"
+const TRACEVANE_UPDATE_TIMEOUT_MS = 4_500;
+const TRACEVANE_UPDATE_SITE_BASE = (
+  process.env.TRACEVANE_UPDATE_SITE_BASE || "https://tracevane.90le.cn"
 ).replace(/\/+$/g, "");
-const STUDIO_UPDATE_MANIFEST_PATHS = [
-  "/openclaw-studio-latest.json",
-  "/studio-version.json",
+const TRACEVANE_UPDATE_MANIFEST_PATHS = [
+  "/tracevane-latest.json",
+  "/tracevane-version.json",
   "/version.json",
 ];
-const STUDIO_UPGRADE_STATE_RELATIVE_PATH = path.join(
-  "studio",
+const TRACEVANE_UPGRADE_STATE_RELATIVE_PATH = path.join(
+  "tracevane",
   "upgrade-status.json",
 );
-const STUDIO_UPGRADE_LOG_RELATIVE_PATH = path.join("studio", "upgrade.log");
+const TRACEVANE_UPGRADE_LOG_RELATIVE_PATH = path.join("tracevane", "upgrade.log");
 
 interface CachedCommandResult {
   expiresAt: number;
@@ -103,9 +103,9 @@ function compareVersionSegments(left: string, right: string): number {
   return 0;
 }
 
-function studioUpgradeTargetInstalled(
-  config: StudioServerConfig,
-  status: SystemStudioUpgradeStatusPayload,
+function tracevaneUpgradeTargetInstalled(
+  config: TracevaneServerConfig,
+  status: SystemTracevaneUpgradeStatusPayload,
 ): boolean {
   const currentVersion = normalizeVersionCandidate(config.version);
   const targetVersion = normalizeVersionCandidate(status.targetVersion);
@@ -131,7 +131,7 @@ async function fetchJsonWithTimeout(
       method: "GET",
       headers: {
         Accept: "application/json,text/plain;q=0.9,*/*;q=0.8",
-        "User-Agent": "openclaw-studio/system-release-check",
+        "User-Agent": "tracevane/system-release-check",
       },
       signal: withTimeoutSignal(timeoutMs),
     });
@@ -157,7 +157,7 @@ async function fetchTextWithTimeout(
       method: "GET",
       headers: {
         Accept: "text/html,text/plain;q=0.9,*/*;q=0.8",
-        "User-Agent": "openclaw-studio/system-release-check",
+        "User-Agent": "tracevane/system-release-check",
       },
       signal: withTimeoutSignal(timeoutMs),
     });
@@ -170,17 +170,17 @@ async function fetchTextWithTimeout(
   }
 }
 
-function resolveStudioUpgradeStatePath(config: StudioServerConfig): string {
-  return path.join(config.openclawRoot, STUDIO_UPGRADE_STATE_RELATIVE_PATH);
+function resolveTracevaneUpgradeStatePath(config: TracevaneServerConfig): string {
+  return path.join(config.openclawRoot, TRACEVANE_UPGRADE_STATE_RELATIVE_PATH);
 }
 
-function resolveStudioUpgradeLogPath(config: StudioServerConfig): string {
-  return path.join(config.openclawRoot, STUDIO_UPGRADE_LOG_RELATIVE_PATH);
+function resolveTracevaneUpgradeLogPath(config: TracevaneServerConfig): string {
+  return path.join(config.openclawRoot, TRACEVANE_UPGRADE_LOG_RELATIVE_PATH);
 }
 
-function buildDefaultStudioUpgradeStatus(
-  config: StudioServerConfig,
-): SystemStudioUpgradeStatusPayload {
+function buildDefaultTracevaneUpgradeStatus(
+  config: TracevaneServerConfig,
+): SystemTracevaneUpgradeStatusPayload {
   return {
     checkedAt: new Date().toISOString(),
     status: "idle",
@@ -190,18 +190,18 @@ function buildDefaultStudioUpgradeStatus(
     targetVersion: null,
     startedAt: null,
     finishedAt: null,
-    logFile: resolveStudioUpgradeLogPath(config),
+    logFile: resolveTracevaneUpgradeLogPath(config),
     lastError: "",
   };
 }
 
-function readStudioUpgradeStatus(
-  config: StudioServerConfig,
-): SystemStudioUpgradeStatusPayload {
-  const filePath = resolveStudioUpgradeStatePath(config);
+function readTracevaneUpgradeStatus(
+  config: TracevaneServerConfig,
+): SystemTracevaneUpgradeStatusPayload {
+  const filePath = resolveTracevaneUpgradeStatePath(config);
   try {
     const raw = fs.readFileSync(filePath, "utf-8");
-    const parsed = JSON.parse(raw) as Partial<SystemStudioUpgradeStatusPayload>;
+    const parsed = JSON.parse(raw) as Partial<SystemTracevaneUpgradeStatusPayload>;
     return {
       checkedAt: normalizeDate(parsed.checkedAt) || new Date().toISOString(),
       status:
@@ -220,19 +220,19 @@ function readStudioUpgradeStatus(
       startedAt: normalizeDate(parsed.startedAt),
       finishedAt: normalizeDate(parsed.finishedAt),
       logFile:
-        normalizeString(parsed.logFile) || resolveStudioUpgradeLogPath(config),
+        normalizeString(parsed.logFile) || resolveTracevaneUpgradeLogPath(config),
       lastError: normalizeString(parsed.lastError),
     };
   } catch {
-    return buildDefaultStudioUpgradeStatus(config);
+    return buildDefaultTracevaneUpgradeStatus(config);
   }
 }
 
-function writeStudioUpgradeStatus(
-  config: StudioServerConfig,
-  payload: SystemStudioUpgradeStatusPayload,
+function writeTracevaneUpgradeStatus(
+  config: TracevaneServerConfig,
+  payload: SystemTracevaneUpgradeStatusPayload,
 ): void {
-  const statePath = resolveStudioUpgradeStatePath(config);
+  const statePath = resolveTracevaneUpgradeStatePath(config);
   ensureDirectory(path.dirname(statePath));
   fs.writeFileSync(statePath, `${JSON.stringify(payload, null, 2)}\n`, "utf-8");
 }
@@ -269,22 +269,22 @@ function readTail(filePath: string, maxBytes = 12_000): string {
   }
 }
 
-function resolveConfiguredStudioMode(config: StudioServerConfig): {
+function resolveConfiguredTracevaneMode(config: TracevaneServerConfig): {
   mode: "standalone" | "gateway";
   apiPort: number;
   basePath: string;
 } {
   const openclawConfig = readOpenClawConfig(config);
-  const entry = openclawConfig.plugins?.entries?.studio;
-  const studioConfig =
+  const entry = openclawConfig.plugins?.entries?.tracevane;
+  const tracevaneConfig =
     entry && typeof entry === "object" && !Array.isArray(entry)
       ? ((entry as Record<string, unknown>).config as
           | Record<string, unknown>
           | undefined)
       : undefined;
   const transport =
-    studioConfig?.transport && typeof studioConfig.transport === "object"
-      ? (studioConfig.transport as Record<string, unknown>)
+    tracevaneConfig?.transport && typeof tracevaneConfig.transport === "object"
+      ? (tracevaneConfig.transport as Record<string, unknown>)
       : {};
   const standalone =
     transport.standalone && typeof transport.standalone === "object"
@@ -298,8 +298,8 @@ function resolveConfiguredStudioMode(config: StudioServerConfig): {
   const standaloneEnabled = standalone.enabled !== false;
   const preferredMode = normalizeString(
     transport.preferredMode ||
-      studioConfig?.preferredMode ||
-      studioConfig?.mode,
+      tracevaneConfig?.preferredMode ||
+      tracevaneConfig?.mode,
   ).toLowerCase();
   const mode: "standalone" | "gateway" =
     preferredMode === "gateway" && gatewayEnabled
@@ -310,13 +310,13 @@ function resolveConfiguredStudioMode(config: StudioServerConfig): {
           ? "gateway"
           : "standalone";
   const apiPort = Number(
-    studioConfig?.apiPort || standalone.port || config.port,
+    tracevaneConfig?.apiPort || standalone.port || config.port,
   );
   const basePath =
     normalizeString(
       gateway.basePath,
-      config.transport.gateway.basePath || "/studio",
-    ) || "/studio";
+      config.transport.gateway.basePath || "/tracevane",
+    ) || "/tracevane";
   return {
     mode,
     apiPort:
@@ -331,7 +331,7 @@ function appendUpgradeLog(logPath: string, line: string): void {
 }
 
 function resolvePackageUrl(siteBase: string, version: string): string {
-  return `${siteBase}/openclaw-studio-${version}.tar.gz`;
+  return `${siteBase}/tracevane-${version}.tar.gz`;
 }
 
 async function checkGatewayConnection(port: number): Promise<boolean> {
@@ -546,12 +546,12 @@ function buildStatusSummary(
   };
 }
 
-function parseStudioVersionFromIndexHtml(html: string): {
+function parseTracevaneVersionFromIndexHtml(html: string): {
   latestVersion: string | null;
   minOpenClawVersion: string | null;
 } {
   const versionMatch = html.match(
-    /const\s+STUDIO_VERSION\s*=\s*["']([^"']+)["']/i,
+    /const\s+TRACEVANE_VERSION\s*=\s*["']([^"']+)["']/i,
   );
   const minOpenClawMatch = html.match(
     /const\s+OPENCLAW_MIN_VERSION\s*=\s*["']([^"']+)["']/i,
@@ -573,9 +573,9 @@ function extractReleaseFromManifest(
   const latestVersion = normalizeVersionCandidate(
     payload.latestVersion ||
       payload.version ||
-      (payload.studio &&
-        typeof payload.studio === "object" &&
-        (payload.studio as Record<string, unknown>).version) ||
+      (payload.tracevane &&
+        typeof payload.tracevane === "object" &&
+        (payload.tracevane as Record<string, unknown>).version) ||
       (payload.release &&
         typeof payload.release === "object" &&
         (payload.release as Record<string, unknown>).version),
@@ -606,24 +606,24 @@ function extractReleaseFromManifest(
   };
 }
 
-async function queryStudioRelease(
+async function queryTracevaneRelease(
   currentVersion: string,
-): Promise<SystemStudioReleasePayload> {
+): Promise<SystemTracevaneReleasePayload> {
   const checkedAt = new Date().toISOString();
   const notes: string[] = [];
 
-  for (const manifestPath of STUDIO_UPDATE_MANIFEST_PATHS) {
-    const target = `${STUDIO_UPDATE_SITE_BASE}${manifestPath}`;
+  for (const manifestPath of TRACEVANE_UPDATE_MANIFEST_PATHS) {
+    const target = `${TRACEVANE_UPDATE_SITE_BASE}${manifestPath}`;
     const payload = await fetchJsonWithTimeout(
       target,
-      STUDIO_UPDATE_TIMEOUT_MS,
+      TRACEVANE_UPDATE_TIMEOUT_MS,
     );
     if (!payload) {
       continue;
     }
     const extracted = extractReleaseFromManifest(
       payload,
-      STUDIO_UPDATE_SITE_BASE,
+      TRACEVANE_UPDATE_SITE_BASE,
     );
     if (!extracted.latestVersion) {
       notes.push(`Manifest missing latest version: ${target}`);
@@ -643,11 +643,11 @@ async function queryStudioRelease(
   }
 
   const indexHtml = await fetchTextWithTimeout(
-    `${STUDIO_UPDATE_SITE_BASE}/`,
-    STUDIO_UPDATE_TIMEOUT_MS,
+    `${TRACEVANE_UPDATE_SITE_BASE}/`,
+    TRACEVANE_UPDATE_TIMEOUT_MS,
   );
   if (indexHtml) {
-    const parsed = parseStudioVersionFromIndexHtml(indexHtml);
+    const parsed = parseTracevaneVersionFromIndexHtml(indexHtml);
     if (parsed.latestVersion) {
       return {
         checkedAt,
@@ -655,9 +655,9 @@ async function queryStudioRelease(
         latestVersion: parsed.latestVersion,
         updateAvailable:
           compareVersionSegments(parsed.latestVersion, currentVersion) > 0,
-        source: `${STUDIO_UPDATE_SITE_BASE}/`,
+        source: `${TRACEVANE_UPDATE_SITE_BASE}/`,
         packageUrl: resolvePackageUrl(
-          STUDIO_UPDATE_SITE_BASE,
+          TRACEVANE_UPDATE_SITE_BASE,
           parsed.latestVersion,
         ),
         minOpenClawVersion: parsed.minOpenClawVersion,
@@ -674,7 +674,7 @@ async function queryStudioRelease(
     source: null,
     packageUrl: null,
     minOpenClawVersion: null,
-    notes: [...notes, "No release metadata available from studio.90le.cn"],
+    notes: [...notes, "No release metadata available from tracevane.90le.cn"],
   };
 }
 
@@ -683,11 +683,11 @@ export interface SystemService {
   getDiagnostics(): Promise<SystemDiagnosticsPayload>;
   getBootstrap(): Promise<SystemBootstrapPayload>;
   repairBootstrap(): Promise<SystemBootstrapRepairResponse>;
-  getStudioRelease(): Promise<SystemStudioReleasePayload>;
-  getStudioUpgradeStatus(): Promise<SystemStudioUpgradeStatusPayload>;
-  startStudioUpgrade(
-    payload: SystemStudioUpgradeRequest,
-  ): Promise<SystemStudioUpgradeResponse>;
+  getTracevaneRelease(): Promise<SystemTracevaneReleasePayload>;
+  getTracevaneUpgradeStatus(): Promise<SystemTracevaneUpgradeStatusPayload>;
+  startTracevaneUpgrade(
+    payload: SystemTracevaneUpgradeRequest,
+  ): Promise<SystemTracevaneUpgradeResponse>;
   getRuntimeSummary(): Promise<SystemRuntimeSummaryPayload>;
   getTerminalActionSuggestions(): Promise<SystemTerminalActionSuggestion[]>;
   getDeviceTrust(): Promise<SystemDeviceTrustPayload>;
@@ -703,24 +703,24 @@ export interface SystemService {
 }
 
 export function createSystemService(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   getSseConnections: () => number,
 ): SystemService {
   ensureDefaultDeviceTrustSettings(config);
   let bootstrapAutoApplied = false;
   void Promise.resolve().then(() => {
     try {
-      bootstrapAutoApplied = applySafeStudioBootstrapDefaults(config);
+      bootstrapAutoApplied = applySafeTracevaneBootstrapDefaults(config);
     } catch {
       // best-effort bootstrap defaults
     }
     try {
-      syncStudioHelperTokenCacheIfNeeded(config);
+      syncTracevaneHelperTokenCacheIfNeeded(config);
     } catch {
       // best-effort helper self-heal
     }
     try {
-      void maybeAutoApproveStudioHelperPairing(config).catch(() => {
+      void maybeAutoApproveTracevaneHelperPairing(config).catch(() => {
         // best-effort helper pairing self-heal
       });
     } catch {
@@ -783,12 +783,12 @@ export function createSystemService(
     }
   }
 
-  function refreshStudioUpgradeStatus(): SystemStudioUpgradeStatusPayload {
+  function refreshTracevaneUpgradeStatus(): SystemTracevaneUpgradeStatusPayload {
     const checkedAt = new Date().toISOString();
-    const current = readStudioUpgradeStatus(config);
+    const current = readTracevaneUpgradeStatus(config);
     if (!current.running) {
-      if (current.status === "failed" && studioUpgradeTargetInstalled(config, current)) {
-        const recovered: SystemStudioUpgradeStatusPayload = {
+      if (current.status === "failed" && tracevaneUpgradeTargetInstalled(config, current)) {
+        const recovered: SystemTracevaneUpgradeStatusPayload = {
           ...current,
           checkedAt,
           running: false,
@@ -797,7 +797,7 @@ export function createSystemService(
           finishedAt: normalizeDate(current.finishedAt) || checkedAt,
           lastError: "",
         };
-        writeStudioUpgradeStatus(config, recovered);
+        writeTracevaneUpgradeStatus(config, recovered);
         return recovered;
       }
       return {
@@ -815,8 +815,8 @@ export function createSystemService(
     const logTail = readTail(current.logFile);
     const succeeded =
       /=== Tracevane 安装完成 ===/.test(logTail) ||
-      studioUpgradeTargetInstalled(config, current);
-    const next: SystemStudioUpgradeStatusPayload = {
+      tracevaneUpgradeTargetInstalled(config, current);
+    const next: SystemTracevaneUpgradeStatusPayload = {
       ...current,
       checkedAt,
       running: false,
@@ -828,18 +828,18 @@ export function createSystemService(
         : normalizeString(current.lastError) ||
           normalizeString(logTail.split(/\r?\n/).slice(-8).join("\n")),
     };
-    writeStudioUpgradeStatus(config, next);
+    writeTracevaneUpgradeStatus(config, next);
     return next;
   }
 
-  async function buildStudioReleaseSnapshot(): Promise<SystemStudioReleasePayload> {
-    return queryStudioRelease(config.version);
+  async function buildTracevaneReleaseSnapshot(): Promise<SystemTracevaneReleasePayload> {
+    return queryTracevaneRelease(config.version);
   }
 
-  async function runStudioUpgrade(
-    payload: SystemStudioUpgradeRequest,
-  ): Promise<SystemStudioUpgradeResponse> {
-    const current = refreshStudioUpgradeStatus();
+  async function runTracevaneUpgrade(
+    payload: SystemTracevaneUpgradeRequest,
+  ): Promise<SystemTracevaneUpgradeResponse> {
+    const current = refreshTracevaneUpgradeStatus();
     if (current.running) {
       return {
         ok: false,
@@ -849,10 +849,10 @@ export function createSystemService(
 
     const installerPath = path.join(
       config.projectRoot,
-      "install-openclaw-studio.sh",
+      "install-tracevane.sh",
     );
     if (!fs.existsSync(installerPath)) {
-      const failed: SystemStudioUpgradeStatusPayload = {
+      const failed: SystemTracevaneUpgradeStatusPayload = {
         ...current,
         checkedAt: new Date().toISOString(),
         status: "failed",
@@ -860,20 +860,20 @@ export function createSystemService(
         finishedAt: new Date().toISOString(),
         lastError: `Installer not found: ${installerPath}`,
       };
-      writeStudioUpgradeStatus(config, failed);
+      writeTracevaneUpgradeStatus(config, failed);
       return {
         ok: false,
         status: failed,
       };
     }
 
-    const configured = resolveConfiguredStudioMode(config);
+    const configured = resolveConfiguredTracevaneMode(config);
     const mode: "standalone" | "gateway" =
       payload.mode === "gateway" || payload.mode === "standalone"
         ? payload.mode
         : configured.mode;
     const siteBaseRaw =
-      normalizeString(payload.siteBase) || STUDIO_UPDATE_SITE_BASE;
+      normalizeString(payload.siteBase) || TRACEVANE_UPDATE_SITE_BASE;
     const siteBase = siteBaseRaw.replace(/\/+$/g, "");
     const basePathRaw =
       normalizeString(payload.basePath) || configured.basePath;
@@ -887,18 +887,18 @@ export function createSystemService(
         : configured.apiPort;
     let targetVersion = normalizeVersionCandidate(payload.version);
     if (!targetVersion) {
-      const latest = await buildStudioReleaseSnapshot();
+      const latest = await buildTracevaneReleaseSnapshot();
       targetVersion = latest.latestVersion || config.version;
     }
     if (!targetVersion) {
       targetVersion = config.version;
     }
 
-    const logPath = resolveStudioUpgradeLogPath(config);
+    const logPath = resolveTracevaneUpgradeLogPath(config);
     ensureDirectory(path.dirname(logPath));
     appendUpgradeLog(
       logPath,
-      `\n[${new Date().toISOString()}] studio upgrade requested`,
+      `\n[${new Date().toISOString()}] tracevane upgrade requested`,
     );
 
     const args = [
@@ -927,14 +927,14 @@ export function createSystemService(
         stdio: ["ignore", logFd, logFd],
         env: {
           ...process.env,
-          STUDIO_MODE: mode,
-          STUDIO_API_PORT: String(apiPort),
+          TRACEVANE_MODE: mode,
+          TRACEVANE_API_PORT: String(apiPort),
           TRACEVANE_GATEWAY_BASE_PATH: basePath,
         },
       });
       child.unref();
 
-      const running: SystemStudioUpgradeStatusPayload = {
+      const running: SystemTracevaneUpgradeStatusPayload = {
         checkedAt: new Date().toISOString(),
         status: "running",
         running: true,
@@ -946,13 +946,13 @@ export function createSystemService(
         logFile: logPath,
         lastError: "",
       };
-      writeStudioUpgradeStatus(config, running);
+      writeTracevaneUpgradeStatus(config, running);
       return {
         ok: true,
         status: running,
       };
     } catch (error) {
-      const failed: SystemStudioUpgradeStatusPayload = {
+      const failed: SystemTracevaneUpgradeStatusPayload = {
         checkedAt: new Date().toISOString(),
         status: "failed",
         running: false,
@@ -965,7 +965,7 @@ export function createSystemService(
         lastError:
           error instanceof Error ? error.message : "Failed to spawn installer",
       };
-      writeStudioUpgradeStatus(config, failed);
+      writeTracevaneUpgradeStatus(config, failed);
       return {
         ok: false,
         status: failed,
@@ -1131,18 +1131,18 @@ export function createSystemService(
       return response;
     },
 
-    async getStudioRelease(): Promise<SystemStudioReleasePayload> {
-      return buildStudioReleaseSnapshot();
+    async getTracevaneRelease(): Promise<SystemTracevaneReleasePayload> {
+      return buildTracevaneReleaseSnapshot();
     },
 
-    async getStudioUpgradeStatus(): Promise<SystemStudioUpgradeStatusPayload> {
-      return refreshStudioUpgradeStatus();
+    async getTracevaneUpgradeStatus(): Promise<SystemTracevaneUpgradeStatusPayload> {
+      return refreshTracevaneUpgradeStatus();
     },
 
-    async startStudioUpgrade(
-      payload: SystemStudioUpgradeRequest,
-    ): Promise<SystemStudioUpgradeResponse> {
-      const response = await runStudioUpgrade(payload);
+    async startTracevaneUpgrade(
+      payload: SystemTracevaneUpgradeRequest,
+    ): Promise<SystemTracevaneUpgradeResponse> {
+      const response = await runTracevaneUpgrade(payload);
       appendActionEvent("upgrade", response.ok);
       return response;
     },
@@ -1153,7 +1153,7 @@ export function createSystemService(
         await Promise.all([
           this.getHealth(),
           this.getBootstrap(),
-          this.getStudioUpgradeStatus(),
+          this.getTracevaneUpgradeStatus(),
           this.getDeviceTrust(),
         ]);
       const bootstrapPendingCount = bootstrap.checks.filter(
@@ -1165,7 +1165,7 @@ export function createSystemService(
         bootstrapPendingCount,
         updateLatestVersion: "",
         updateAvailable: false,
-        studioUpgradeRunning: upgradeStatus.running,
+        tracevaneUpgradeRunning: upgradeStatus.running,
         helperRepairPending: deviceTrust.helper.metadataRepairPending,
       });
     },
@@ -1198,7 +1198,7 @@ export function createSystemService(
     },
 
     async repairDeviceTrustHelper(): Promise<SystemDeviceTrustRepairResponse> {
-      const response = await repairStudioHelperDeviceTrust(config);
+      const response = await repairTracevaneHelperDeviceTrust(config);
       appendActionEvent("helper-repair", response.ok);
       return response;
     },

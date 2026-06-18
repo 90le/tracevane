@@ -6,7 +6,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { createStudioChatHistoryIndexStore } from '../../dist/apps/api/modules/chat/history-index.js';
+import { createTracevaneChatHistoryIndexStore } from '../../dist/apps/api/modules/chat/history-index.js';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -20,7 +20,7 @@ function cleanupTempRoot(root) {
 
 function makeConfig(root) {
   return {
-    pluginId: 'studio',
+    pluginId: 'tracevane',
     pluginName: 'Tracevane',
     version: '0.1.0',
     port: 0,
@@ -53,13 +53,13 @@ function makeMessage(id, role, text, createdAt) {
 
 function runJsonFallbackScript(root, script) {
   const wrapper = `
-    import { createStudioChatHistoryIndexStore } from '${path.resolve(
+    import { createTracevaneChatHistoryIndexStore } from '${path.resolve(
       testDir,
       '../../dist/apps/api/modules/chat/history-index.js',
     ).replaceAll('\\', '/')}';
 
     const config = ${JSON.stringify(makeConfig(root))};
-    const store = createStudioChatHistoryIndexStore(config);
+    const store = createTracevaneChatHistoryIndexStore(config);
 
     ${script}
   `;
@@ -80,7 +80,7 @@ const messages = [
 test('sqlite: history index store uses sqlite when available', () => {
   const root = makeTempRoot();
   try {
-    const store = createStudioChatHistoryIndexStore(makeConfig(root));
+    const store = createTracevaneChatHistoryIndexStore(makeConfig(root));
     assert.equal(store.backend, 'sqlite');
   } finally {
     cleanupTempRoot(root);
@@ -90,7 +90,7 @@ test('sqlite: history index store uses sqlite when available', () => {
 test('sqlite: ensureIndex/search/date buckets roundtrip through the store', () => {
   const root = makeTempRoot();
   try {
-    const store = createStudioChatHistoryIndexStore(makeConfig(root));
+    const store = createTracevaneChatHistoryIndexStore(makeConfig(root));
     const index = store.ensureIndex({
       sessionKey: 'agent:main:webchat:direct:test',
       messages,
@@ -117,7 +117,7 @@ test('sqlite: ensureIndex/search/date buckets roundtrip through the store', () =
 test('sqlite: ensureIndexFromItems builds a persisted index from metadata rows', () => {
   const root = makeTempRoot();
   try {
-    const store = createStudioChatHistoryIndexStore(makeConfig(root));
+    const store = createTracevaneChatHistoryIndexStore(makeConfig(root));
     const index = store.ensureIndexFromItems({
       sessionKey: 'agent:main:webchat:direct:test-seeded',
       items: [

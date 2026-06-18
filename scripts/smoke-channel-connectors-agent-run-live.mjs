@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
-const DEFAULT_CONFIG_PATH = path.join(os.homedir(), ".config/openclaw-studio/channel-connectors/daemon/config.json");
+const DEFAULT_CONFIG_PATH = path.join(os.homedir(), ".config/tracevane/channel-connectors/daemon/config.json");
 const DEFAULT_TIMEOUT_MS = 180_000;
 const DEFAULT_POLL_MS = 1_000;
 const DEFAULT_SINCE_MINUTES = 30;
@@ -164,8 +164,8 @@ Examples:
   node scripts/smoke-channel-connectors-agent-run-live.mjs --json
   node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings feishu-live --require-ok --require-reply --require-tool --require-tool-output --json
   node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --agents opencode --require-agent-coverage --require-ok --require-reply --require-tool --require-tool-output --require-process-reply --min-runs 1 --json
-  node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings octo-studio-cc --require-ok --require-inbound-image --require-staged-files --json
-  node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings octo-studio-cc --require-ok --require-outbound-message --json
+  node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings octo-tracevane-cc --require-ok --require-inbound-image --require-staged-files --json
+  node scripts/smoke-channel-connectors-agent-run-live.mjs --wait --bindings octo-tracevane-cc --require-ok --require-outbound-message --json
 `);
 }
 

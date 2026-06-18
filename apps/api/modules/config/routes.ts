@@ -1,12 +1,12 @@
 import { parseJsonBody, sendJson } from '../../core/http.js';
-import type { StudioApiContext } from '../../core/context.js';
-import type { StudioRouter } from '../../core/router.js';
+import type { TracevaneApiContext } from '../../core/context.js';
+import type { TracevaneRouter } from '../../core/router.js';
 import type {
   ConfigPatchPayload,
   ConfigUpdatePayload,
 } from '../../../../types/config.js';
 
-export function registerConfigRoutes(router: StudioRouter, ctx: StudioApiContext): void {
+export function registerConfigRoutes(router: TracevaneRouter, ctx: TracevaneApiContext): void {
   router.get('/api/config', (_req, res) => {
     sendJson(res, 200, ctx.services.config.getSummary());
   });

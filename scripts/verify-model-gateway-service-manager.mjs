@@ -8,9 +8,9 @@ const configModulePath = path.join(repoRoot, "dist", "apps", "api", "config.js")
 const serviceModulePath = path.join(repoRoot, "dist", "apps", "api", "modules", "model-gateway", "service.js");
 const daemonEntryPath = path.join(repoRoot, "dist", "apps", "api", "model-gateway-daemon.js");
 
-const APPLY = process.env.OPENCLAW_STUDIO_VERIFY_MODEL_GATEWAY_SERVICE_APPLY === "1";
-const STOP_AFTER = process.env.OPENCLAW_STUDIO_VERIFY_MODEL_GATEWAY_SERVICE_STOP_AFTER === "1";
-const RESTART = process.env.OPENCLAW_STUDIO_VERIFY_MODEL_GATEWAY_SERVICE_RESTART !== "0";
+const APPLY = process.env.TRACEVANE_VERIFY_MODEL_GATEWAY_SERVICE_APPLY === "1";
+const STOP_AFTER = process.env.TRACEVANE_VERIFY_MODEL_GATEWAY_SERVICE_STOP_AFTER === "1";
+const RESTART = process.env.TRACEVANE_VERIFY_MODEL_GATEWAY_SERVICE_RESTART !== "0";
 
 function requireBuiltArtifact(filePath) {
   if (fs.existsSync(filePath)) return;
@@ -63,12 +63,12 @@ async function main() {
   requireBuiltArtifact(serviceModulePath);
   requireBuiltArtifact(daemonEntryPath);
 
-  const [{ createStandaloneStudioConfig }, { createModelGatewayService }] = await Promise.all([
+  const [{ createStandaloneTracevaneConfig }, { createModelGatewayService }] = await Promise.all([
     import(pathToFileURL(configModulePath).href),
     import(pathToFileURL(serviceModulePath).href),
   ]);
 
-  const config = createStandaloneStudioConfig();
+  const config = createStandaloneTracevaneConfig();
   const service = createModelGatewayService(config);
   const results = [];
 
@@ -139,7 +139,7 @@ async function main() {
     },
     note: APPLY
       ? "Executed real service-manager install/start/status/restart commands."
-      : "Probe mode is read-only except for service-manager status commands; set OPENCLAW_STUDIO_VERIFY_MODEL_GATEWAY_SERVICE_APPLY=1 to execute install/start/restart.",
+      : "Probe mode is read-only except for service-manager status commands; set TRACEVANE_VERIFY_MODEL_GATEWAY_SERVICE_APPLY=1 to execute install/start/restart.",
     results: results.map(responseSummary),
   };
 

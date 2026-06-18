@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import {
-  extractStudioResourceRefs,
+  extractTracevaneResourceRefs,
   hasResourceForRef,
   hasReadyResourceForRef,
   mergeChatResourceItems,
   resetChatResourceResolverForTest,
-  resolveMissingStudioResourcesForMarkdown,
+  resolveMissingTracevaneResourcesForMarkdown,
   setChatResourceResolveTransportForTest,
 } from '../../apps/web-vue/src/features/chat/chat-resource-resolver.ts';
 
@@ -71,13 +71,13 @@ async function withDom<T>(run: (markdown: MarkdownModule) => Promise<T> | T): Pr
   }
 }
 
-test('studio markdown resource resolver extracts refs without code or angle-link duplicates', () => {
-  const refs = extractStudioResourceRefs([
-    '请看 [报告](<uploads:report final.pdf> "studio:inline-chip")。',
-    '结构图 ![图](workspace:diagram.png "studio:break-image")。',
+test('tracevane markdown resource resolver extracts refs without code or angle-link duplicates', () => {
+  const refs = extractTracevaneResourceRefs([
+    '请看 [报告](<uploads:report final.pdf> "tracevane:inline-chip")。',
+    '结构图 ![图](workspace:diagram.png "tracevane:break-image")。',
     '`workspace:code-sample.png` should stay plain.',
     '```md',
-    '[skip](uploads:inside-code.png "studio:card")',
+    '[skip](uploads:inside-code.png "tracevane:card")',
     '```',
   ].join('\n'));
 
@@ -91,7 +91,7 @@ test('studio markdown resource resolver extracts refs without code or angle-link
     mimeType: 'application/pdf',
     originalPath: 'uploads:report final.pdf',
     relativePath: 'uploads/report final.pdf',
-    source: 'studio_resource' as const,
+    source: 'tracevane_resource' as const,
     status: 'missing' as const,
     placement: 'append' as const,
   };
@@ -119,7 +119,7 @@ test('studio markdown resource resolver extracts refs without code or angle-link
   assert.equal(mergeChatResourceItems(undefined, undefined), undefined);
 });
 
-test('studio markdown resource resolver keeps ready refs from refetching', () => {
+test('tracevane markdown resource resolver keeps ready refs from refetching', () => {
   assert.equal(hasReadyResourceForRef([
     {
       id: 'upload-report-ready',
@@ -130,14 +130,14 @@ test('studio markdown resource resolver keeps ready refs from refetching', () =>
       mimeType: 'application/pdf',
       originalPath: 'uploads:report final.pdf',
       relativePath: 'uploads/report final.pdf',
-      source: 'studio_resource',
+      source: 'tracevane_resource',
       status: 'ready',
       placement: 'append',
     },
   ], 'uploads:report final.pdf'), true);
 });
 
-test('studio markdown resource resolver batches concurrent missing refs per session', async () => {
+test('tracevane markdown resource resolver batches concurrent missing refs per session', async () => {
   resetChatResourceResolverForTest();
   const calls: string[][] = [];
   const restore = setChatResourceResolveTransportForTest(async (sessionKey, payload) => {
@@ -158,7 +158,7 @@ test('studio markdown resource resolver batches concurrent missing refs per sess
           fileName: ref.split('/').pop()?.split(':').pop() || 'image.png',
           mimeType: 'image/png',
           originalPath: ref,
-          source: 'studio_resource',
+          source: 'tracevane_resource',
           status: 'missing',
           placement: 'append',
         },
@@ -168,14 +168,14 @@ test('studio markdown resource resolver batches concurrent missing refs per sess
 
   try {
     const [first, second] = await Promise.all([
-      resolveMissingStudioResourcesForMarkdown(
+      resolveMissingTracevaneResourcesForMarkdown(
         'session-batch',
-        '![A](workspace:a.png "studio:break-image")',
+        '![A](workspace:a.png "tracevane:break-image")',
         undefined,
       ),
-      resolveMissingStudioResourcesForMarkdown(
+      resolveMissingTracevaneResourcesForMarkdown(
         'session-batch',
-        '![B](workspace:b.png "studio:break-image") ![A](workspace:a.png "studio:break-image")',
+        '![B](workspace:b.png "tracevane:break-image") ![A](workspace:a.png "tracevane:break-image")',
         undefined,
       ),
     ]);
@@ -184,9 +184,9 @@ test('studio markdown resource resolver batches concurrent missing refs per sess
     assert.deepEqual(first.map((item) => item.originalPath), ['workspace:a.png']);
     assert.deepEqual(second.map((item) => item.originalPath), ['workspace:b.png', 'workspace:a.png']);
 
-    const cached = await resolveMissingStudioResourcesForMarkdown(
+    const cached = await resolveMissingTracevaneResourcesForMarkdown(
       'session-batch',
-      '![A](workspace:a.png "studio:break-image")',
+      '![A](workspace:a.png "tracevane:break-image")',
       undefined,
     );
     assert.deepEqual(cached.map((item) => item.originalPath), ['workspace:a.png']);
@@ -197,7 +197,7 @@ test('studio markdown resource resolver batches concurrent missing refs per sess
   }
 });
 
-test('studio markdown resource resolver prunes old cache entries under long histories', async () => {
+test('tracevane markdown resource resolver prunes old cache entries under long histories', async () => {
   resetChatResourceResolverForTest();
   const calls: string[][] = [];
   const restore = setChatResourceResolveTransportForTest(async (sessionKey, payload) => {
@@ -218,7 +218,7 @@ test('studio markdown resource resolver prunes old cache entries under long hist
           fileName: ref.split('/').pop()?.split(':').pop() || 'image.png',
           mimeType: 'image/png',
           originalPath: ref,
-          source: 'studio_resource',
+          source: 'tracevane_resource',
           status: 'missing',
           placement: 'append',
         },
@@ -228,17 +228,17 @@ test('studio markdown resource resolver prunes old cache entries under long hist
 
   try {
     await Promise.all(Array.from({ length: 805 }, (_item, index) => (
-      resolveMissingStudioResourcesForMarkdown(
+      resolveMissingTracevaneResourcesForMarkdown(
         'session-cache-limit',
-        `![R](workspace:${index}.png "studio:break-image")`,
+        `![R](workspace:${index}.png "tracevane:break-image")`,
         undefined,
       )
     )));
     const callCountAfterFill = calls.length;
 
-    await resolveMissingStudioResourcesForMarkdown(
+    await resolveMissingTracevaneResourcesForMarkdown(
       'session-cache-limit',
-      '![R](workspace:0.png "studio:break-image")',
+      '![R](workspace:0.png "tracevane:break-image")',
       undefined,
     );
 
@@ -368,10 +368,10 @@ test('math delimiters render stable placeholders for KaTeX enhancement', async (
   assert.match(result.html, /<code class="hljs language-text">\\\[ not math inside code \\\]\n<\/code>/);
 });
 
-test('missing studio-file markdown media renders a safe placeholder instead of the custom scheme', async () => {
-  const href = 'studio-file:/home/binbin/.openclaw/media/tool-image-generation/missing-city.png';
+test('missing tracevane-file markdown media renders a safe placeholder instead of the custom scheme', async () => {
+  const href = 'tracevane-file:/home/binbin/.openclaw/media/tool-image-generation/missing-city.png';
   const result = await withDom(({ renderChatMarkdownResult }) => renderChatMarkdownResult(
-    `![赛博朋克未来城市夜景](${href} "studio:break-image")`,
+    `![赛博朋克未来城市夜景](${href} "tracevane:break-image")`,
     {
       interactive: true,
       inlineHtml: true,
@@ -396,13 +396,13 @@ test('missing studio-file markdown media renders a safe placeholder instead of t
 
   assert.match(result.html, /Image missing:/);
   assert.match(result.html, /chat-inline-resource[^"]*missing/);
-  assert.doesNotMatch(result.html, /src="studio-file:/);
-  assert.doesNotMatch(result.html, /href="studio-file:/);
+  assert.doesNotMatch(result.html, /src="tracevane-file:/);
+  assert.doesNotMatch(result.html, /href="tracevane-file:/);
   assert.doesNotMatch(result.html, /ERR_UNKNOWN_URL_SCHEME/);
 });
 
-test('markdown cache is invalidated when studio resources become available', async () => {
-  const source = '![结构图](workspace:graph.png "studio:break-image")';
+test('markdown cache is invalidated when tracevane resources become available', async () => {
+  const source = '![结构图](workspace:graph.png "tracevane:break-image")';
   await withDom(({ renderChatMarkdownResult }) => {
     const first = renderChatMarkdownResult(source, {
       interactive: true,
@@ -428,7 +428,7 @@ test('markdown cache is invalidated when studio resources become available', asy
           mimeType: 'image/png',
           originalPath: 'workspace:graph.png',
           relativePath: 'graph.png',
-          source: 'studio_resource',
+          source: 'tracevane_resource',
           status: 'missing',
           placement: 'append',
         },

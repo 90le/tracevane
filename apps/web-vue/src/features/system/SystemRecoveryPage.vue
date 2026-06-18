@@ -219,11 +219,11 @@
               </div>
               <div class="system-overview-item">
                 <span>{{ text('Tracevane 静态包重建', 'Tracevane Bundle Rebuild') }}</span>
-                <strong>{{ recovery.policy.allowStudioWebRebuild ? text('允许', 'Allowed') : text('禁用', 'Disabled') }}</strong>
+                <strong>{{ recovery.policy.allowTracevaneWebRebuild ? text('允许', 'Allowed') : text('禁用', 'Disabled') }}</strong>
               </div>
               <div class="system-overview-item">
                 <span>{{ text('重建超时', 'Rebuild Timeout') }}</span>
-                <strong>{{ formatDuration(recovery.policy.studioWebRebuildTimeoutMs) }}</strong>
+                <strong>{{ formatDuration(recovery.policy.tracevaneWebRebuildTimeoutMs) }}</strong>
               </div>
             </div>
           </section>
@@ -407,8 +407,8 @@ function normalizeRecovery(payload: Record<string, any>): OpenClawRecoveryStatus
       gatewayServiceRepairTimeoutMs: Number(payload.policy?.gatewayServiceRepairTimeoutMs || 30000),
       allowGatewayProcessTakeover: payload.policy?.allowGatewayProcessTakeover !== false,
       gatewayProcessTakeoverTimeoutMs: Number(payload.policy?.gatewayProcessTakeoverTimeoutMs || 5000),
-      allowStudioWebRebuild: payload.policy?.allowStudioWebRebuild !== false,
-      studioWebRebuildTimeoutMs: Number(payload.policy?.studioWebRebuildTimeoutMs || 180000),
+      allowTracevaneWebRebuild: payload.policy?.allowTracevaneWebRebuild !== false,
+      tracevaneWebRebuildTimeoutMs: Number(payload.policy?.tracevaneWebRebuildTimeoutMs || 180000),
     },
     lastRepair: payload.lastRepair || null,
     service: {

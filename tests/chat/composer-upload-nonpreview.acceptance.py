@@ -15,7 +15,7 @@ from browser_surface import wait_for_active_session, wait_for_chat_surface
 from upload_request import read_upload_payload
 
 
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-composer-upload-nonpreview-acceptance.png")
+SCREENSHOT = Path("/tmp/tracevane-chat-composer-upload-nonpreview-acceptance.png")
 
 
 def click_enabled(locator, timeout=30000):
@@ -71,7 +71,7 @@ def open_new_chat(page) -> str:
 
 
 def write_temp_file(name: str, content: bytes) -> Path:
-    root = Path(tempfile.mkdtemp(prefix="openclaw-studio-chat-upload-nonpreview-"))
+    root = Path(tempfile.mkdtemp(prefix="tracevane-chat-upload-nonpreview-"))
     path = root / name
     path.write_bytes(content)
     return path
@@ -185,7 +185,7 @@ def main() -> None:
     token = f"composer-upload-nonpreview-{int(time.time() * 1000)}"
     file_path = write_temp_file(
         "nonpreview-upload.pdf",
-        b"%PDF-1.4\n% openclaw studio non-preview upload fixture\n" + (b"x" * 4096),
+        b"%PDF-1.4\n% openclaw tracevane non-preview upload fixture\n" + (b"x" * 4096),
     )
     upload_payloads: list[dict[str, object]] = []
     send_payloads: list[dict[str, object]] = []

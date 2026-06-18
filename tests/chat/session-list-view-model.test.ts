@@ -13,7 +13,7 @@ function createSession(key: string): ChatSessionRow {
     key,
     agentId: 'main',
     sessionId: key,
-    kind: 'studio_managed',
+    kind: 'tracevane_managed',
     label: key,
     derivedTitle: null,
     lastMessagePreview: null,
@@ -24,9 +24,9 @@ function createSession(key: string): ChatSessionRow {
       customLabel: null,
     },
     source: {
-      source: 'studio',
+      source: 'tracevane',
       channel: 'webchat',
-      surface: 'studio-chat',
+      surface: 'tracevane-chat',
       originLabel: 'Tracevane',
     },
     deliveryContext: {

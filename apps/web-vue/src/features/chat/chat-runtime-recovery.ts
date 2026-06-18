@@ -165,7 +165,7 @@ export function buildChatRoute(params: {
   return { path: `/chat/s/${encodeChatSessionRef(params.sessionKey)}` };
 }
 
-const CHAT_RUNTIME_SNAPSHOT_PREFIX = 'openclaw-studio.chat.runtime-snapshot.';
+const CHAT_RUNTIME_SNAPSHOT_PREFIX = 'tracevane.chat.runtime-snapshot.';
 
 type RuntimeSnapshot = {
   sessionKey: string;

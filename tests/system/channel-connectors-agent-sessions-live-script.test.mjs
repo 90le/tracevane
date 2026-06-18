@@ -28,7 +28,7 @@ function sessionPayload(overrides = {}) {
         projectId: "codex-agent",
         bindingId: "octo-live",
         platform: "octo",
-        accountId: "studio",
+        accountId: "tracevane",
         botId: "bot",
         agent: "codex",
         model: "gpt-5.4-mini",
@@ -134,7 +134,7 @@ async function runScript(args, root) {
 
 test("agent session live smoke script summarizes status without leaking workdir", async () => {
   const fake = await startFakeDaemon();
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-sessions-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-agent-sessions-smoke-"));
   try {
     const output = await runScript(["--host", "127.0.0.1", "--port", String(fake.port), "--json"], root);
     assert.match(output, /pool-octo-idle/);
@@ -151,7 +151,7 @@ test("agent session live smoke script summarizes status without leaking workdir"
 
 test("agent session live smoke script dry-runs kill-first-idle without POST", async () => {
   const fake = await startFakeDaemon();
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-sessions-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-agent-sessions-smoke-"));
   try {
     const output = await runScript([
       "--host", "127.0.0.1",
@@ -175,7 +175,7 @@ test("agent session live smoke script dry-runs kill-first-idle without POST", as
 
 test("agent session live smoke script applies reap and kill actions", async () => {
   const fake = await startFakeDaemon();
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-sessions-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-agent-sessions-smoke-"));
   try {
     const reapOutput = await runScript([
       "--host", "127.0.0.1",

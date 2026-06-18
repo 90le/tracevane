@@ -1,6 +1,6 @@
 import { parseJsonBody, sendJson } from "../../core/http.js";
-import type { StudioApiContext } from "../../core/context.js";
-import type { StudioRouter } from "../../core/router.js";
+import type { TracevaneApiContext } from "../../core/context.js";
+import type { TracevaneRouter } from "../../core/router.js";
 import type {
   AgentBindingInput,
   AgentCreatePayload,
@@ -35,8 +35,8 @@ function sendAgentError(
 }
 
 export function registerAgentsRoutes(
-  router: StudioRouter,
-  ctx: StudioApiContext,
+  router: TracevaneRouter,
+  ctx: TracevaneApiContext,
 ): void {
   router.get("/api/agents", (_req, res) => {
     try {

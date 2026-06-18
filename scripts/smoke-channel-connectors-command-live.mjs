@@ -6,8 +6,8 @@ import path from "node:path";
 import process from "node:process";
 
 const DEFAULT_BASE_URL = "http://127.0.0.1:3761";
-const DEFAULT_CONFIG_PATH = path.join(os.homedir(), ".config/openclaw-studio/channel-connectors/config.json");
-const DEFAULT_STATE_DIR = path.join(os.homedir(), ".config/openclaw-studio/channel-connectors/daemon/state");
+const DEFAULT_CONFIG_PATH = path.join(os.homedir(), ".config/tracevane/channel-connectors/config.json");
+const DEFAULT_STATE_DIR = path.join(os.homedir(), ".config/tracevane/channel-connectors/daemon/state");
 const DEFAULT_COMMANDS = ["/new", "/reset", "/compact"];
 const DEFAULT_SINCE_MINUTES = 10;
 const DEFAULT_PROGRESS_TIMEOUT_MS = 60_000;
@@ -155,7 +155,7 @@ Options:
 Examples:
   node scripts/smoke-channel-connectors-command-live.mjs --json
   node scripts/smoke-channel-connectors-command-live.mjs --recent-sessions --probe --json
-  node scripts/smoke-channel-connectors-command-live.mjs --bindings octo-studio-cc --from-uid user --channel-id user --probe --json
+  node scripts/smoke-channel-connectors-command-live.mjs --bindings octo-tracevane-cc --from-uid user --channel-id user --probe --json
   node scripts/smoke-channel-connectors-command-live.mjs --bindings feishu-live --from-uid ou_x --channel-id oc_x --commands /new,/reset --apply
   node scripts/smoke-channel-connectors-command-live.mjs --bindings feishu-live --recent-sessions --commands /slow --wait-command-progress --require-command-progress-terminal --require-command-progress-patch --json
 `);
@@ -240,7 +240,7 @@ function verificationToken(binding, override) {
 }
 
 function sessionKeyFor(binding, options) {
-  const fromUid = options.fromUid || binding.adminUsers?.[0] || binding.allowlist?.[0] || "studio-smoke-user";
+  const fromUid = options.fromUid || binding.adminUsers?.[0] || binding.allowlist?.[0] || "tracevane-smoke-user";
   const channelId = options.channelId || fromUid;
   if (binding.platform === "octo") {
     return options.channelType === 1 ? `dmwork:dm:${fromUid}` : `dmwork:group:${channelId}`;
@@ -286,7 +286,7 @@ function resolveTarget(binding, options, state) {
     }
     return recent;
   }
-  const fromUid = options.fromUid || binding.adminUsers?.[0] || binding.allowlist?.[0] || "studio-smoke-user";
+  const fromUid = options.fromUid || binding.adminUsers?.[0] || binding.allowlist?.[0] || "tracevane-smoke-user";
   const channelId = options.channelId || fromUid;
   return {
     source: options.fromUid || options.channelId ? "explicit" : "default",
@@ -366,7 +366,7 @@ function targetFromSessionKey(binding, sessionKey, options) {
     }
     if (sessionKey.startsWith("dmwork:group:")) {
       return {
-        fromUid: binding.adminUsers?.[0] || binding.allowlist?.[0] || "studio-smoke-user",
+        fromUid: binding.adminUsers?.[0] || binding.allowlist?.[0] || "tracevane-smoke-user",
         channelId: sessionKey.slice("dmwork:group:".length),
         channelType: 2,
         feishuChatType: options.feishuChatType,
@@ -387,7 +387,7 @@ function targetFromSessionKey(binding, sessionKey, options) {
     };
   }
   return {
-    fromUid: binding.adminUsers?.[0] || binding.allowlist?.[0] || "studio-smoke-user",
+    fromUid: binding.adminUsers?.[0] || binding.allowlist?.[0] || "tracevane-smoke-user",
     channelId: parts[1],
     channelType: options.channelType,
     feishuChatType: "group",
@@ -405,7 +405,7 @@ function plannedRequest(binding, command, options, target) {
         dryRun: !options.apply,
         sendReply: options.apply && options.sendReply,
         message: {
-          messageId: `studio-command-smoke-${idSuffix}`,
+          messageId: `tracevane-command-smoke-${idSuffix}`,
           fromUid: target.fromUid,
           channelId: target.channelId,
           channelType: target.channelType,
@@ -420,18 +420,18 @@ function plannedRequest(binding, command, options, target) {
       bindingId: binding.id,
       dryRun: !options.apply,
       sendReply: options.apply && options.sendReply,
-      studioDebugResponse: true,
+      tracevaneDebugResponse: true,
       schema: "2.0",
       header: {
         event_type: "im.message.receive_v1",
-        app_id: binding.accountId || "studio-command-smoke",
-        event_id: `studio-command-smoke-${idSuffix}`,
+        app_id: binding.accountId || "tracevane-command-smoke",
+        event_id: `tracevane-command-smoke-${idSuffix}`,
         token: verificationToken(binding, options.feishuToken),
       },
       event: {
         sender: { sender_id: { open_id: target.fromUid } },
         message: {
-          message_id: `om_studio_command_smoke_${idSuffix.replace(/[^a-z0-9]/gi, "_")}`,
+          message_id: `om_tracevane_command_smoke_${idSuffix.replace(/[^a-z0-9]/gi, "_")}`,
           chat_id: target.channelId,
           chat_type: target.feishuChatType,
           message_type: "text",

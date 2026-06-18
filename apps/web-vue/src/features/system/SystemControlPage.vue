@@ -57,7 +57,7 @@
             </div>
             <div class="system-summary-item">
               <span>{{ text('升级状态', 'Upgrade Status') }}</span>
-              <strong>{{ studioUpgrade.status }}</strong>
+              <strong>{{ tracevaneUpgrade.status }}</strong>
             </div>
           </div>
 
@@ -176,15 +176,15 @@
               </div>
               <div class="system-overview-item">
                 <span>{{ text('升级状态', 'Upgrade Status') }}</span>
-                <strong>{{ studioUpgrade.status }}</strong>
+                <strong>{{ tracevaneUpgrade.status }}</strong>
               </div>
               <div class="system-overview-item">
                 <span>{{ text('目标版本', 'Target Version') }}</span>
-                <strong>{{ studioUpgrade.targetVersion || '-' }}</strong>
+                <strong>{{ tracevaneUpgrade.targetVersion || '-' }}</strong>
               </div>
               <div class="system-overview-item">
                 <span>{{ text('任务日志', 'Upgrade Log') }}</span>
-                <strong>{{ studioUpgrade.logFile || '-' }}</strong>
+                <strong>{{ tracevaneUpgrade.logFile || '-' }}</strong>
               </div>
             </div>
           </section>
@@ -200,13 +200,13 @@ import { useRoute, useRouter } from 'vue-router';
 import type { OpenClawRecoveryStatusPayload } from '../../../../../types/openclaw-recovery';
 import type {
   SystemHealthPayload,
-  SystemStudioUpgradeStatusPayload,
+  SystemTracevaneUpgradeStatusPayload,
 } from '../../../../../types/system';
 import StatusPill from '../../components/StatusPill.vue';
 import { useLocalePreference } from '../../shared/locale';
 import {
   fetchOpenClawRecoveryStatus,
-  fetchStudioUpgradeStatus,
+  fetchTracevaneUpgradeStatus,
   fetchSystemHealth,
 } from './api';
 import './system-workspace.css';
@@ -217,7 +217,7 @@ const { text } = useLocalePreference();
 const isSystemRouteActive = computed(() => route.path === '/system');
 
 const health = ref<SystemHealthPayload>(normalizeHealth({}));
-const studioUpgrade = ref<SystemStudioUpgradeStatusPayload>(normalizeStudioUpgradeStatus({}));
+const tracevaneUpgrade = ref<SystemTracevaneUpgradeStatusPayload>(normalizeTracevaneUpgradeStatus({}));
 const recovery = ref<OpenClawRecoveryStatusPayload>(normalizeRecoveryStatus({}));
 const loading = ref(false);
 const loaded = ref(false);
@@ -257,7 +257,7 @@ function normalizeHealth(payload: Record<string, any>): SystemHealthPayload {
   };
 }
 
-function normalizeStudioUpgradeStatus(payload: Record<string, any>): SystemStudioUpgradeStatusPayload {
+function normalizeTracevaneUpgradeStatus(payload: Record<string, any>): SystemTracevaneUpgradeStatusPayload {
   return {
     checkedAt: String(payload.checkedAt || new Date().toISOString()),
     status: payload.status === 'running' || payload.status === 'succeeded' || payload.status === 'failed'
@@ -341,12 +341,12 @@ async function refreshOverview(): Promise<void> {
   try {
     const [nextHealth, nextUpgrade, nextRecovery] = await Promise.all([
       fetchSystemHealth(),
-      fetchStudioUpgradeStatus(),
+      fetchTracevaneUpgradeStatus(),
       fetchOpenClawRecoveryStatus(),
     ]);
     if (!isSystemRouteActive.value) return;
     health.value = normalizeHealth(nextHealth as unknown as Record<string, any>);
-    studioUpgrade.value = normalizeStudioUpgradeStatus(nextUpgrade as unknown as Record<string, any>);
+    tracevaneUpgrade.value = normalizeTracevaneUpgradeStatus(nextUpgrade as unknown as Record<string, any>);
     recovery.value = normalizeRecoveryStatus(nextRecovery as unknown as Record<string, any>);
     loaded.value = true;
   } catch (error) {

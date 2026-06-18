@@ -1,4 +1,4 @@
-import { isStudioManagedWebchatSession } from './studio-delivery.js';
+import { isTracevaneManagedWebchatSession } from './tracevane-delivery.js';
 
 export interface ResolvedPluginHostContext {
   sessionKey: string | null;
@@ -44,7 +44,7 @@ export function resolvePluginHostContext(ctx: unknown): ResolvedPluginHostContex
     };
   }
 
-  if (isStudioManagedWebchatSession({ sessionKey, messageChannel: undefined })) {
+  if (isTracevaneManagedWebchatSession({ sessionKey, messageChannel: undefined })) {
     return {
       sessionKey,
       channelId: 'webchat',
@@ -59,9 +59,9 @@ export function resolvePluginHostContext(ctx: unknown): ResolvedPluginHostContex
   };
 }
 
-export function isStudioManagedWebchatHostContext(ctx: unknown): boolean {
+export function isTracevaneManagedWebchatHostContext(ctx: unknown): boolean {
   const resolved = resolvePluginHostContext(ctx);
-  return isStudioManagedWebchatSession({
+  return isTracevaneManagedWebchatSession({
     sessionKey: resolved.sessionKey,
     messageChannel: resolved.channelId,
   });

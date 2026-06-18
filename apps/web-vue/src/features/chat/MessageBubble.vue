@@ -519,7 +519,7 @@ import { deriveChatDisplayMessage } from './display-adapter';
 import { applyChatProcessVisibility } from '../../../../../lib/chat-process-visibility';
 import { buildBoundedCollapsedPreview } from '../../../../../lib/chat-deferred-preview';
 import { filterMainChatToolItems } from '../../../../../lib/chat-tool-visibility';
-import { isStudioMarkdownCompiledUrl, stripStudioMarkdownMediaMeta } from '../../../../../lib/studio-markdown-media';
+import { isTracevaneMarkdownCompiledUrl, stripTracevaneMarkdownMediaMeta } from '../../../../../lib/tracevane-markdown-media';
 
 const props = defineProps<{
   group: ChatMessageGroup | null;
@@ -1104,27 +1104,27 @@ function handleBubbleBodyClick(event: MouseEvent): void {
     return;
   }
 
-  const studioPreviewTrigger = target.closest<HTMLElement>('[data-studio-preview-src][data-studio-preview-kind]');
-  if (studioPreviewTrigger) {
-    const src = studioPreviewTrigger.dataset.studioPreviewSrc?.trim() || '';
-    const kind = studioPreviewTrigger.dataset.studioPreviewKind === 'video' ? 'video' : 'image';
+  const tracevanePreviewTrigger = target.closest<HTMLElement>('[data-tracevane-preview-src][data-tracevane-preview-kind]');
+  if (tracevanePreviewTrigger) {
+    const src = tracevanePreviewTrigger.dataset.tracevanePreviewSrc?.trim() || '';
+    const kind = tracevanePreviewTrigger.dataset.tracevanePreviewKind === 'video' ? 'video' : 'image';
     if (!src) {
       return;
     }
     event.preventDefault();
     openResourcePreview({
       src,
-      alt: studioPreviewTrigger.dataset.studioPreviewAlt?.trim() || text('资源预览', 'Media preview'),
+      alt: tracevanePreviewTrigger.dataset.tracevanePreviewAlt?.trim() || text('资源预览', 'Media preview'),
       kind,
-      sourceKey: studioPreviewTrigger.dataset.chatMediaPreviewSourceKey?.trim() || null,
-    }, studioPreviewTrigger);
+      sourceKey: tracevanePreviewTrigger.dataset.chatMediaPreviewSourceKey?.trim() || null,
+    }, tracevanePreviewTrigger);
     return;
   }
 
   const image = target.closest('img');
   if (image instanceof HTMLImageElement) {
-    const compiledMeta = stripStudioMarkdownMediaMeta(image.currentSrc || image.src || '');
-    if (image.classList.contains('markdown-inline-image') || isStudioMarkdownCompiledUrl(compiledMeta.url)) {
+    const compiledMeta = stripTracevaneMarkdownMediaMeta(image.currentSrc || image.src || '');
+    if (image.classList.contains('markdown-inline-image') || isTracevaneMarkdownCompiledUrl(compiledMeta.url)) {
       event.preventDefault();
       openResourcePreview({
         src: compiledMeta.url || image.currentSrc || image.src,
@@ -1137,12 +1137,12 @@ function handleBubbleBodyClick(event: MouseEvent): void {
 
   const video = target.closest('video');
   if (video instanceof HTMLVideoElement) {
-    const compiledMeta = stripStudioMarkdownMediaMeta(video.currentSrc || video.src || '');
-    if (isStudioMarkdownCompiledUrl(compiledMeta.url)) {
+    const compiledMeta = stripTracevaneMarkdownMediaMeta(video.currentSrc || video.src || '');
+    if (isTracevaneMarkdownCompiledUrl(compiledMeta.url)) {
       event.preventDefault();
       openResourcePreview({
         src: compiledMeta.url || video.currentSrc || video.src,
-        alt: video.getAttribute('data-studio-preview-alt')?.trim() || compiledMeta.fileName || text('视频预览', 'Video preview'),
+        alt: video.getAttribute('data-tracevane-preview-alt')?.trim() || compiledMeta.fileName || text('视频预览', 'Video preview'),
         kind: 'video',
       }, video);
       return;

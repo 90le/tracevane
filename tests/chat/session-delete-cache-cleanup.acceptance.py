@@ -12,7 +12,7 @@ from playwright.sync_api import sync_playwright
 from browser_surface import wait_for_active_session, wait_for_chat_surface
 
 
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-session-delete-cache-cleanup-acceptance.png")
+SCREENSHOT = Path("/tmp/tracevane-chat-session-delete-cache-cleanup-acceptance.png")
 
 
 def wait_button_enabled(locator, timeout=30000):
@@ -85,7 +85,7 @@ def fill_editor(page, token: str) -> None:
 
 
 def wait_for_persisted_draft(page, session_key: str, token: str) -> None:
-    key = f"openclaw-studio.chat.composer-draft:{session_key}"
+    key = f"tracevane.chat.composer-draft:{session_key}"
     page.wait_for_function(
         """([keyName, tokenValue]) => {
             const raw = window.localStorage.getItem(keyName);
@@ -99,14 +99,14 @@ def wait_for_persisted_draft(page, session_key: str, token: str) -> None:
 def seed_session_caches(page, session_key: str) -> None:
     page.evaluate(
         """(sessionKey) => {
-            window.localStorage.setItem('openclaw-studio.chat.last-session-key', sessionKey);
-            window.localStorage.setItem('openclaw-studio.chat.last-agent', 'main');
+            window.localStorage.setItem('tracevane.chat.last-session-key', sessionKey);
+            window.localStorage.setItem('tracevane.chat.last-agent', 'main');
             window.localStorage.setItem(
-                `openclaw-studio.chat.last-stream-seq:${sessionKey}`,
+                `tracevane.chat.last-stream-seq:${sessionKey}`,
                 JSON.stringify({ streamSeq: 9, updatedAtMs: Date.now() }),
             );
             window.localStorage.setItem(
-                `openclaw-studio.chat.session-viewport:${sessionKey}`,
+                `tracevane.chat.session-viewport:${sessionKey}`,
                 JSON.stringify({
                     anchorItemId: 'msg-delete-cache',
                     anchorMessageId: 'delete-cache',
@@ -118,7 +118,7 @@ def seed_session_caches(page, session_key: str) -> None:
                 }),
             );
             window.sessionStorage.setItem(
-                `openclaw-studio.chat.runtime-snapshot.${sessionKey}`,
+                `tracevane.chat.runtime-snapshot.${sessionKey}`,
                 JSON.stringify({ sessionKey, marker: 'delete-cache-runtime-snapshot' }),
             );
         }""",
@@ -129,12 +129,12 @@ def seed_session_caches(page, session_key: str) -> None:
 def read_session_caches(page, session_key: str) -> dict[str, object]:
     return page.evaluate(
         """(sessionKey) => ({
-            draft: window.localStorage.getItem(`openclaw-studio.chat.composer-draft:${sessionKey}`),
-            streamSeq: window.localStorage.getItem(`openclaw-studio.chat.last-stream-seq:${sessionKey}`),
-            viewport: window.localStorage.getItem(`openclaw-studio.chat.session-viewport:${sessionKey}`),
-            runtimeSnapshot: window.sessionStorage.getItem(`openclaw-studio.chat.runtime-snapshot.${sessionKey}`),
-            lastSessionKey: window.localStorage.getItem('openclaw-studio.chat.last-session-key'),
-            lastAgentId: window.localStorage.getItem('openclaw-studio.chat.last-agent'),
+            draft: window.localStorage.getItem(`tracevane.chat.composer-draft:${sessionKey}`),
+            streamSeq: window.localStorage.getItem(`tracevane.chat.last-stream-seq:${sessionKey}`),
+            viewport: window.localStorage.getItem(`tracevane.chat.session-viewport:${sessionKey}`),
+            runtimeSnapshot: window.sessionStorage.getItem(`tracevane.chat.runtime-snapshot.${sessionKey}`),
+            lastSessionKey: window.localStorage.getItem('tracevane.chat.last-session-key'),
+            lastAgentId: window.localStorage.getItem('tracevane.chat.last-agent'),
             rowExists: Boolean(document.querySelector(`.chat-shell-session-row[data-session-key="${CSS.escape(sessionKey)}"]`)),
             activeSessionKey: document.querySelector('.chat-shell-session-row.active')?.getAttribute('data-session-key') || '',
         })""",

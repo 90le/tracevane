@@ -38,38 +38,38 @@ test("terminal transport builds raw and direct websocket urls with replay cursor
     transportModule.buildTerminalSocketUrl({
       protocol: "ws:",
       host: "localhost:5176",
-      webSocketBasePath: "/studio",
+      webSocketBasePath: "/tracevane",
       sid: "term-1",
       lastSeq: 42,
       instanceId: "inst-1",
       skipReplay: true,
       resume: true,
     }),
-    "ws://localhost:5176/studio/ws/terminal?sid=term-1&lastSeq=42&instanceId=inst-1&skipReplay=1&resume=1",
+    "ws://localhost:5176/tracevane/ws/terminal?sid=term-1&lastSeq=42&instanceId=inst-1&skipReplay=1&resume=1",
   );
 
   assert.equal(
     transportModule.buildTerminalSocketUrl({
       protocol: "wss:",
-      host: "studio.example",
+      host: "tracevane.example",
       webSocketBasePath: "",
-      directSocketUrl: "wss://studio.example:9443/ws/terminal",
+      directSocketUrl: "wss://tracevane.example:9443/ws/terminal",
       sid: "term-2",
     }),
-    "wss://studio.example:9443/ws/terminal?sid=term-2",
+    "wss://tracevane.example:9443/ws/terminal?sid=term-2",
   );
 
   assert.equal(
     transportModule.buildTerminalSocketUrl({
       protocol: "ws:",
       host: "localhost:5176",
-      webSocketBasePath: "/studio",
+      webSocketBasePath: "/tracevane",
       sid: "term-3",
       profileId: "agent-codex",
       targetKind: "local",
       cwd: "/workspace",
       pinned: true,
     }),
-    "ws://localhost:5176/studio/ws/terminal?sid=term-3&profileId=agent-codex&targetKind=local&cwd=%2Fworkspace&pinned=1",
+    "ws://localhost:5176/tracevane/ws/terminal?sid=term-3&profileId=agent-codex&targetKind=local&cwd=%2Fworkspace&pinned=1",
   );
 });

@@ -11,7 +11,7 @@ from playwright.sync_api import sync_playwright
 from browser_surface import wait_for_active_session, wait_for_chat_surface
 
 
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-composer-draft-session-switch-race-acceptance.png")
+SCREENSHOT = Path("/tmp/tracevane-chat-composer-draft-session-switch-race-acceptance.png")
 
 
 def wait_button_enabled(locator, timeout=30000):
@@ -72,7 +72,7 @@ def goto_session(page, session_key: str) -> None:
 
 
 def read_draft_storage(page, session_key: str) -> dict[str, object]:
-    key = f"openclaw-studio.chat.composer-draft:{session_key}"
+    key = f"tracevane.chat.composer-draft:{session_key}"
     raw = page.evaluate("(keyName) => window.localStorage.getItem(keyName)", key)
     if not raw:
         return {}
@@ -127,7 +127,7 @@ def inject_draft_and_click_session_without_frame_gap(page, token: str, target_se
 def collect_diagnostics(page, first_session_key: str, second_session_key: str) -> dict[str, object]:
     return page.evaluate(
         """([firstKey, secondKey]) => {
-            const draftKey = (sessionKey) => `openclaw-studio.chat.composer-draft:${sessionKey}`;
+            const draftKey = (sessionKey) => `tracevane.chat.composer-draft:${sessionKey}`;
             return {
                 path: window.location.pathname,
                 activeSessionKey: document.querySelector('.chat-shell-session-row.active')?.getAttribute('data-session-key') || '',

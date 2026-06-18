@@ -1,4 +1,4 @@
-import { fetchStudioResponse, getApiBase, resolveStudioAuthorizationHeader } from '../../shared/api';
+import { fetchTracevaneResponse, getApiBase, resolveTracevaneAuthorizationHeader } from '../../shared/api';
 
 function joinChatPath(path: string): string {
   const base = getApiBase();
@@ -7,7 +7,7 @@ function joinChatPath(path: string): string {
 }
 
 async function requestChatJson<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetchStudioResponse(joinChatPath(path), init);
+  const response = await fetchTracevaneResponse(joinChatPath(path), init);
   const text = await response.text();
   let payload: any = null;
   try {
@@ -473,7 +473,7 @@ export function uploadChatFileWithProgress(
     };
 
     xhr.open('POST', path, true);
-    const authorization = resolveStudioAuthorizationHeader();
+    const authorization = resolveTracevaneAuthorizationHeader();
     if (authorization) {
       xhr.setRequestHeader('Authorization', authorization);
     }

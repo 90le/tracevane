@@ -1,6 +1,6 @@
 import http from "node:http";
 import path from "node:path";
-import type { StudioServerConfig } from "../../../../types/api.js";
+import type { TracevaneServerConfig } from "../../../../types/api.js";
 import type { OpenClawRecoveryPolicy } from "../../../../types/openclaw-recovery.js";
 import { captureOpenClawRecoveryInstallManifest } from "./cli-bootstrap.js";
 import { probeOpenClawGateway } from "./probe.js";
@@ -83,7 +83,7 @@ function readJsonBody(req: http.IncomingMessage): Promise<Record<string, unknown
 }
 
 export function createOpenClawRecoveryDaemon(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   options: OpenClawRecoveryDaemonOptions = {},
 ): OpenClawRecoveryDaemon {
   const logger = options.logger || console;
@@ -213,7 +213,7 @@ export function createOpenClawRecoveryDaemon(
         }
         const allowedDir = path.resolve(
           config.openclawRoot,
-          "studio",
+          "tracevane",
           "recovery",
           "backups",
         );

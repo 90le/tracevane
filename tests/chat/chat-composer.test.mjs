@@ -23,9 +23,9 @@ import {
   serializeComposerDocumentToMarkdown,
 } from '../../dist/lib/composer-model.js';
 import {
-  buildStudioResourceRefFromRelativePath,
+  buildTracevaneResourceRefFromRelativePath,
   formatMarkdownResourceDestination,
-} from '../../dist/lib/studio-resource-refs.js';
+} from '../../dist/lib/tracevane-resource-refs.js';
 import {
   buildPersistableComposerDraft,
   parsePersistedComposerDraft,
@@ -204,7 +204,7 @@ test('composer serialization keeps inline resource order and explicit Tracevane 
 
   assert.equal(
     markdown,
-    '请参考 [@diagram.png](uploads:123-diagram.png "studio:inline-image")，再结合 [@report.pdf](uploads:456-report.pdf "studio:inline-chip")。',
+    '请参考 [@diagram.png](uploads:123-diagram.png "tracevane:inline-image")，再结合 [@report.pdf](uploads:456-report.pdf "tracevane:inline-chip")。',
   );
 });
 
@@ -218,11 +218,11 @@ test('composer serialization uses stable markdown destinations for refs with spa
 
   assert.equal(
     markdown,
-    '请看 [@report final.pdf](<uploads:2026 report final.pdf> "studio:inline-chip")',
+    '请看 [@report final.pdf](<uploads:2026 report final.pdf> "tracevane:inline-chip")',
   );
 });
 
-test('composer file refs carry canonical studio resource refs', () => {
+test('composer file refs carry canonical tracevane resource refs', () => {
   const refs = buildComposerFileRefs([
     { id: 'img-1', type: 'image', fileName: 'diagram.png', relativePath: 'uploads/diagram.png' },
     { id: 'doc-1', type: 'file', fileName: 'notes.md', relativePath: 'docs/notes.md' },
@@ -232,9 +232,9 @@ test('composer file refs carry canonical studio resource refs', () => {
   assert.equal(refs[1]?.resourceRef, 'workspace:docs/notes.md');
 });
 
-test('studio resource ref helpers keep display refs portable', () => {
-  assert.equal(buildStudioResourceRefFromRelativePath('uploads/a.png'), 'uploads:a.png');
-  assert.equal(buildStudioResourceRefFromRelativePath('docs/a.md'), 'workspace:docs/a.md');
+test('tracevane resource ref helpers keep display refs portable', () => {
+  assert.equal(buildTracevaneResourceRefFromRelativePath('uploads/a.png'), 'uploads:a.png');
+  assert.equal(buildTracevaneResourceRefFromRelativePath('docs/a.md'), 'workspace:docs/a.md');
   assert.equal(formatMarkdownResourceDestination('uploads:a b.png'), '<uploads:a b.png>');
 });
 
@@ -298,7 +298,7 @@ test('composer send plan centralizes markdown, file refs, resources, and payload
 
   assert.equal(
     plan.text,
-    '请参考 [@diagram.png](uploads:diagram.png "studio:inline-image")，并阅读附件。',
+    '请参考 [@diagram.png](uploads:diagram.png "tracevane:inline-image")，并阅读附件。',
   );
   assert.equal(plan.previewText, '请参考 ，并阅读附件。');
   assert.equal(plan.payload.clientRequestId, 'ui-send-plan');
@@ -355,7 +355,7 @@ test('composer send plan can reuse a normalized document without re-normalizing'
   assert.equal(plan.previewText, 'hello  world');
   assert.equal(
     plan.text,
-    '  hello [@brief.md](uploads:brief.md "studio:inline-chip") world  ',
+    '  hello [@brief.md](uploads:brief.md "tracevane:inline-chip") world  ',
   );
   assert.deepEqual(plan.payload.fileRefs, plan.fileRefs);
 });
@@ -449,7 +449,7 @@ test('composer send plan preserves file refs when preparing queued flush payload
   assert.equal(plan.payload.flushWhenIdle, true);
   assert.equal(
     plan.payload.text,
-    'queued file [@brief final.pdf](<uploads:brief final.pdf> "studio:inline-chip")',
+    'queued file [@brief final.pdf](<uploads:brief final.pdf> "tracevane:inline-chip")',
   );
   assert.deepEqual(plan.payload.fileRefs, [
     {

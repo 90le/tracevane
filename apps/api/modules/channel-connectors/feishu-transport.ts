@@ -1150,7 +1150,7 @@ export async function uploadFeishuImage(
 ): Promise<ChannelConnectorFeishuTransportResult> {
   let requestCount = 0;
   let tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"] = cachePath ? "miss" : "disabled";
-  const fileName = safeChannelConnectorFileName(input.fileName, "studio-image.png");
+  const fileName = safeChannelConnectorFileName(input.fileName, "tracevane-image.png");
   const mimeType = inferChannelConnectorMimeType(fileName, input.mimeType);
   const size = dataSize(input.data);
   try {
@@ -1213,7 +1213,7 @@ export async function uploadFeishuFile(
 ): Promise<ChannelConnectorFeishuTransportResult> {
   let requestCount = 0;
   let tokenCache: ChannelConnectorFeishuTransportResult["tokenCache"] = cachePath ? "miss" : "disabled";
-  const fileName = safeChannelConnectorFileName(input.fileName, "studio-file.bin");
+  const fileName = safeChannelConnectorFileName(input.fileName, "tracevane-file.bin");
   const mimeType = inferChannelConnectorMimeType(fileName, input.mimeType);
   const size = dataSize(input.data);
   try {
@@ -1386,7 +1386,7 @@ export async function uploadAndSendFeishuMedia(
   },
   cachePath?: string | null,
 ): Promise<ChannelConnectorFeishuTransportResult> {
-  const fileName = safeChannelConnectorFileName(input.fileName, "studio-file.bin");
+  const fileName = safeChannelConnectorFileName(input.fileName, "tracevane-file.bin");
   const mimeType = inferChannelConnectorMimeType(fileName, input.mimeType);
   const size = dataSize(input.data);
   const upload = shouldSendAsFeishuImage(fileName, mimeType, size)

@@ -14,7 +14,7 @@ from browser_surface import wait_for_active_session, wait_for_chat_surface
 from upload_request import read_upload_payload
 
 
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-composer-paste-mixed-acceptance.png")
+SCREENSHOT = Path("/tmp/tracevane-chat-composer-paste-mixed-acceptance.png")
 
 
 def click_enabled(locator, timeout=30000):

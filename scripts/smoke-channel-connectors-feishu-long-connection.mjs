@@ -4,8 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
-const DEFAULT_RUNTIME_PATH = path.join(os.homedir(), ".config/openclaw-studio/channel-connectors/daemon/runtime.json");
-const DEFAULT_LOG_PATH = path.join(os.homedir(), ".config/openclaw-studio/channel-connectors/daemon/logs/channel-connectors.log");
+const DEFAULT_RUNTIME_PATH = path.join(os.homedir(), ".config/tracevane/channel-connectors/daemon/runtime.json");
+const DEFAULT_LOG_PATH = path.join(os.homedir(), ".config/tracevane/channel-connectors/daemon/logs/channel-connectors.log");
 const DEFAULT_DURATION_MS = 70_000;
 const DEFAULT_POLL_MS = 1_000;
 const EXPECTED_FEISHU_PING_TIMEOUT_SECONDS = 3;

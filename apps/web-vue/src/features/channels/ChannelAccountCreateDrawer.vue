@@ -68,27 +68,27 @@
               <div class="form-grid">
                 <div class="form-field">
                   <label class="form-label">{{ text('私聊策略', 'DM policy') }}</label>
-                  <StudioSelect v-model="draft.dmPolicy" :options="dmPolicyOptions" :placeholder="text('继承默认值', 'Inherit default')" :teleport="false" />
+                  <TracevaneSelect v-model="draft.dmPolicy" :options="dmPolicyOptions" :placeholder="text('继承默认值', 'Inherit default')" :teleport="false" />
                 </div>
                 <div class="form-field">
                   <label class="form-label">{{ text('群组策略', 'Group policy') }}</label>
-                  <StudioSelect v-model="draft.groupPolicy" :options="groupPolicyOptions" :placeholder="text('继承默认值', 'Inherit default')" :teleport="false" />
+                  <TracevaneSelect v-model="draft.groupPolicy" :options="groupPolicyOptions" :placeholder="text('继承默认值', 'Inherit default')" :teleport="false" />
                 </div>
                 <div class="form-field">
                   <label class="form-label">{{ text('上下文可见性', 'Context visibility') }}</label>
-                  <StudioSelect v-model="draft.contextVisibility" :options="contextVisibilityOptions" :placeholder="text('继承默认值', 'Inherit default')" :teleport="false" />
+                  <TracevaneSelect v-model="draft.contextVisibility" :options="contextVisibilityOptions" :placeholder="text('继承默认值', 'Inherit default')" :teleport="false" />
                 </div>
                 <div class="form-field">
                   <label class="form-label">{{ text('流式响应', 'Streaming') }}</label>
-                  <StudioSelect v-model="draft.streaming" :options="streamingOptions" :placeholder="text('继承默认值', 'Inherit default')" :teleport="false" />
+                  <TracevaneSelect v-model="draft.streaming" :options="streamingOptions" :placeholder="text('继承默认值', 'Inherit default')" :teleport="false" />
                 </div>
                 <div class="form-field">
                   <label class="form-label">{{ text('连接模式', 'Connection mode') }}</label>
-                  <StudioSelect v-model="draft.connectionMode" :options="connectionModeOptions" :placeholder="text('未指定', 'Unset')" :teleport="false" />
+                  <TracevaneSelect v-model="draft.connectionMode" :options="connectionModeOptions" :placeholder="text('未指定', 'Unset')" :teleport="false" />
                 </div>
                 <div class="form-field">
                   <label class="form-label">{{ text('渲染模式', 'Render mode') }}</label>
-                  <StudioSelect v-model="draft.renderMode" :options="renderModeOptions" :placeholder="text('未指定', 'Unset')" :teleport="false" />
+                  <TracevaneSelect v-model="draft.renderMode" :options="renderModeOptions" :placeholder="text('未指定', 'Unset')" :teleport="false" />
                 </div>
                 <div class="form-field form-field-full">
                   <label class="form-label">{{ text('代理地址', 'Proxy URL') }}</label>
@@ -122,7 +122,7 @@ import { reactive, watch } from 'vue';
 import { X } from '@lucide/vue';
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
 import type { ChannelAccountInput, ChannelCatalogEntry } from '../../../../../types/channels';
-import StudioSelect, { type StudioSelectOption } from '../../shared/components/StudioSelect.vue';
+import TracevaneSelect, { type TracevaneSelectOption } from '../../shared/components/TracevaneSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 import { createBlankAccountDraft } from './channel-ui';
 import './channels-drawer.css';
@@ -135,12 +135,12 @@ const props = defineProps<{
   channelLabel: string;
   catalog: ChannelCatalogEntry | null;
   initial: ChannelAccountInput | null;
-  dmPolicyOptions: StudioSelectOption[];
-  groupPolicyOptions: StudioSelectOption[];
-  contextVisibilityOptions: StudioSelectOption[];
-  streamingOptions: StudioSelectOption[];
-  connectionModeOptions: StudioSelectOption[];
-  renderModeOptions: StudioSelectOption[];
+  dmPolicyOptions: TracevaneSelectOption[];
+  groupPolicyOptions: TracevaneSelectOption[];
+  contextVisibilityOptions: TracevaneSelectOption[];
+  streamingOptions: TracevaneSelectOption[];
+  connectionModeOptions: TracevaneSelectOption[];
+  renderModeOptions: TracevaneSelectOption[];
 }>();
 
 const emit = defineEmits<{

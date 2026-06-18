@@ -25,7 +25,7 @@ import type {
   AgentSummary,
   AgentUpdatePayload,
 } from "../../../../types/agents.js";
-import type { StudioServerConfig } from "../../../../types/api.js";
+import type { TracevaneServerConfig } from "../../../../types/api.js";
 import {
   ensureDir,
   readJsonFile,
@@ -309,7 +309,7 @@ function validateAgentId(agentId: string): string {
 }
 
 function getDefaultWorkspace(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   agentId: string,
 ): string {
   return agentId === "main"
@@ -317,12 +317,12 @@ function getDefaultWorkspace(
     : path.join(config.openclawRoot, `workspace-${agentId}`);
 }
 
-function resolveAgentRoot(config: StudioServerConfig, agentId: string): string {
+function resolveAgentRoot(config: TracevaneServerConfig, agentId: string): string {
   return path.join(config.openclawRoot, "agents", agentId);
 }
 
 function resolveAgentDir(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   agentId: string,
   rawAgent: Record<string, any>,
 ): string {
@@ -333,7 +333,7 @@ function resolveAgentDir(
 }
 
 function resolveWorkspace(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   agentId: string,
   rawAgent: Record<string, any>,
   defaults: Record<string, any>,
@@ -478,7 +478,7 @@ function getDefaultAgentId(openclawConfig: Record<string, any>): string | null {
 }
 
 function createSyntheticDefaultRawAgent(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   openclawConfig: Record<string, any>,
 ): Record<string, any> {
   const defaults = openclawConfig.agents?.defaults || {};
@@ -629,7 +629,7 @@ function sanitizeAgentRuntimes(openclawConfig: Record<string, any>): void {
 }
 
 function buildEditorPayload(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   rawAgent: Record<string, any>,
   defaults: Record<string, any>,
   identity: AgentIdentitySummary,
@@ -947,7 +947,7 @@ function buildRecentSessions(agentRoot: string): AgentSessionSummary[] {
 }
 
 function mapAgentSummary(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   openclawConfig: Record<string, any>,
   rawAgent: Record<string, any>,
 ): AgentSummary {
@@ -1017,7 +1017,7 @@ function findRawAgent(
 }
 
 function findOrCreateEffectiveRawAgent(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   openclawConfig: Record<string, any>,
   agentId: string,
 ): Record<string, any> | null {
@@ -1034,7 +1034,7 @@ function findOrCreateEffectiveRawAgent(
 }
 
 function buildDetail(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   openclawConfig: Record<string, any>,
   rawAgent: Record<string, any>,
 ): AgentDetailPayload {
@@ -1163,7 +1163,7 @@ function stripLegacyAgentEnabledKeys(
 }
 
 function readAgentSessionsStore(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   agentId: string,
 ): Record<string, any> {
   return readJsonFile<Record<string, any>>(
@@ -1173,7 +1173,7 @@ function readAgentSessionsStore(
 }
 
 function writeAgentSessionsStore(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   agentId: string,
   value: Record<string, any>,
 ): void {
@@ -1320,7 +1320,7 @@ export interface AgentsService {
   ): AgentDocumentSaveResponse;
 }
 
-export function createAgentsService(config: StudioServerConfig): AgentsService {
+export function createAgentsService(config: TracevaneServerConfig): AgentsService {
   return {
     getSummary(): AgentsSummaryPayload {
       const openclawConfig = readOpenClawConfig(config);

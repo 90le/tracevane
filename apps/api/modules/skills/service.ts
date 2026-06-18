@@ -47,7 +47,7 @@ import type {
   SkillsUploadPreflightPayload,
   SkillsUploadPreflightResult,
 } from "../../../../types/skills.js";
-import type { StudioServerConfig } from "../../../../types/api.js";
+import type { TracevaneServerConfig } from "../../../../types/api.js";
 import {
   ensureDir,
   fileExists,
@@ -176,12 +176,12 @@ function createEmptyMissing(): SkillMissingRequirements {
   };
 }
 
-function getSkillsSnapshotCacheFile(config: StudioServerConfig): string {
-  return path.join(config.openclawRoot, ".cache", "studio-skills-summary.json");
+function getSkillsSnapshotCacheFile(config: TracevaneServerConfig): string {
+  return path.join(config.openclawRoot, ".cache", "tracevane-skills-summary.json");
 }
 
 function readSummaryFileCache(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
 ): SkillsSnapshotFileCache | null {
   const filePath = getSkillsSnapshotCacheFile(config);
   if (!fileExists(filePath)) return null;
@@ -195,7 +195,7 @@ function readSummaryFileCache(
 }
 
 function writeSummaryFileCache(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   payload: SkillsSummaryPayload,
 ): void {
   const filePath = getSkillsSnapshotCacheFile(config);
@@ -207,7 +207,7 @@ function writeSummaryFileCache(
   );
 }
 
-function clearSummaryFileCache(config: StudioServerConfig): void {
+function clearSummaryFileCache(config: TracevaneServerConfig): void {
   const filePath = getSkillsSnapshotCacheFile(config);
   if (fileExists(filePath)) fs.rmSync(filePath, { force: true });
 }
@@ -468,7 +468,7 @@ function buildPhysicalCopy(
 }
 
 function readConfiguredAgentTargets(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   openclawConfig: Record<string, any>,
 ): AgentSkillTargetInfo[] {
   const defaults = openclawConfig.agents?.defaults || {};
@@ -504,7 +504,7 @@ function isSafeDescendantPath(root: string, target: string): boolean {
   return Boolean(relative) && !relative.startsWith("..") && !path.isAbsolute(relative);
 }
 
-function assertSafeTargetPath(config: StudioServerConfig, targetPath: string): string {
+function assertSafeTargetPath(config: TracevaneServerConfig, targetPath: string): string {
   const resolved = path.resolve(targetPath);
   if (!isSafeDescendantPath(config.openclawRoot, resolved)) {
     throw new Error(`Unsafe skill target path outside OpenClaw root: ${resolved}`);
@@ -528,7 +528,7 @@ function targetDescriptor(params: {
   label: string;
   targetPath: string;
   agentId?: string | null;
-  config: StudioServerConfig;
+  config: TracevaneServerConfig;
 }): SkillTargetDescriptor {
   const safe = isSafeDescendantPath(params.config.openclawRoot, params.targetPath);
   return {
@@ -1387,7 +1387,7 @@ async function extractUploadedSkillArchive(
   payload: SkillsUploadArchivePayload,
 ): Promise<ExtractedSkillBundle> {
   const tmpDir = await fs.promises.mkdtemp(
-    path.join(os.tmpdir(), "openclaw-studio-upload-skill-"),
+    path.join(os.tmpdir(), "tracevane-upload-skill-"),
   );
   const zipPath = path.join(tmpDir, "upload.zip");
   const extractDir = path.join(tmpDir, "extract");
@@ -1413,7 +1413,7 @@ async function downloadAndExtractSkillBundle(
   downloadUrl: string,
 ): Promise<ExtractedSkillBundle> {
   const tmpDir = await fs.promises.mkdtemp(
-    path.join(os.tmpdir(), "openclaw-studio-skill-"),
+    path.join(os.tmpdir(), "tracevane-skill-"),
   );
   const zipPath = path.join(tmpDir, "skill.zip");
   const extractDir = path.join(tmpDir, "extract");
@@ -1421,7 +1421,7 @@ async function downloadAndExtractSkillBundle(
   try {
     const response = await fetch(downloadUrl, {
       headers: {
-        "User-Agent": "openclaw-studio/0.1.0",
+        "User-Agent": "tracevane/0.1.0",
       },
     });
 
@@ -1514,7 +1514,7 @@ export interface SkillsService {
   ): Promise<SkillsLifecycleResponse>;
 }
 
-export function createSkillsService(config: StudioServerConfig): SkillsService {
+export function createSkillsService(config: TracevaneServerConfig): SkillsService {
   let summaryCache: CacheEntry<SkillsSnapshotState> | null = null;
   const marketplaceCache = new Map<
     string,
@@ -1769,7 +1769,7 @@ export function createSkillsService(config: StudioServerConfig): SkillsService {
       };
       writeSummaryFileCache(config, payload);
       console.warn(
-        "[studio][skills] fallback summary due to openclaw CLI failure:",
+        "[tracevane][skills] fallback summary due to openclaw CLI failure:",
         error instanceof Error ? error.message : String(error),
       );
       return payload;
@@ -2128,7 +2128,7 @@ export function createSkillsService(config: StudioServerConfig): SkillsService {
     const response = await fetch(url, {
       headers: {
         Accept: "application/json",
-        "User-Agent": "openclaw-studio/0.1.0",
+        "User-Agent": "tracevane/0.1.0",
       },
     });
 
@@ -2184,7 +2184,7 @@ export function createSkillsService(config: StudioServerConfig): SkillsService {
     const response = await fetch(url, {
       headers: {
         Accept: "application/json",
-        "User-Agent": "openclaw-studio/0.1.0",
+        "User-Agent": "tracevane/0.1.0",
       },
     });
 

@@ -422,7 +422,7 @@ export function buildChannelConnectorNativeSkillPrompt(skill: ChannelConnectorSk
     `name: ${yamlString(displayName)}`,
     `description: ${yamlString(description)}`,
     `metadata: ${yamlString(JSON.stringify({
-      studioChannelConnector: true,
+      tracevaneChannelConnector: true,
       platform,
       sourceScope: skill.scope,
       sourceSkill: skill.name,

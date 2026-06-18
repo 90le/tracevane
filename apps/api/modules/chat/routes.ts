@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import type http from "node:http";
 import { parseJsonBody, sendJson } from "../../core/http.js";
-import type { StudioApiContext } from "../../core/context.js";
-import type { StudioRouter } from "../../core/router.js";
+import type { TracevaneApiContext } from "../../core/context.js";
+import type { TracevaneRouter } from "../../core/router.js";
 import type {
   ChatAssignSessionsToFolderRequest,
   ChatCreateSessionRequest,
@@ -44,7 +44,7 @@ function sendChatError(
           ? error.message
           : "Unexpected chat service failure",
       retryable: false,
-      source: "studio",
+      source: "tracevane",
     },
   });
 }
@@ -172,11 +172,11 @@ async function parseMultipartChatFileUpload(req: http.IncomingMessage): Promise<
 }
 
 export function registerChatRoutes(
-  router: StudioRouter,
-  ctx: StudioApiContext,
+  router: TracevaneRouter,
+  ctx: TracevaneApiContext,
 ): void {
   function readLimit(
-    req: Parameters<StudioRouter["get"]>[1] extends (
+    req: Parameters<TracevaneRouter["get"]>[1] extends (
       req: infer R,
       ...args: any[]
     ) => any
@@ -195,7 +195,7 @@ export function registerChatRoutes(
   }
 
   function readBooleanQuery(
-    req: Parameters<StudioRouter["get"]>[1] extends (
+    req: Parameters<TracevaneRouter["get"]>[1] extends (
       req: infer R,
       ...args: any[]
     ) => any

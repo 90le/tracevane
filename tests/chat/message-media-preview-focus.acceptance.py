@@ -13,12 +13,12 @@ from playwright.sync_api import sync_playwright
 from browser_surface import wait_for_active_session, wait_for_chat_surface
 
 
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-message-media-preview-focus.png")
+SCREENSHOT = Path("/tmp/tracevane-chat-message-media-preview-focus.png")
 TINY_PNG = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/"
     "lW9X5QAAAABJRU5ErkJggg=="
 )
-SESSION_KEY = "agent:media-preview-focus:webchat:direct:studio-smoke"
+SESSION_KEY = "agent:media-preview-focus:webchat:direct:tracevane-smoke"
 RESOURCE_ID = "media-preview-focus-image"
 RESOURCE_URL = "/mock-media/media-preview-focus.png"
 
@@ -58,8 +58,8 @@ def diagnostics() -> dict[str, object]:
     return {
         "gatewayReachable": True,
         "gatewayWsUrl": "ws://127.0.0.1:5176/ws/chat",
-        "transport": "studio_bff",
-        "authMode": "studio_backend_token",
+        "transport": "tracevane_bff",
+        "authMode": "tracevane_backend_token",
         "rawGatewayFramesExposed": False,
         "rawGatewayMethodsExposed": False,
         "sameOriginRequired": True,
@@ -75,7 +75,7 @@ def session_row() -> dict[str, object]:
         "key": SESSION_KEY,
         "agentId": "media-preview-focus-agent",
         "sessionId": None,
-        "kind": "studio_managed",
+        "kind": "tracevane_managed",
         "label": "消息媒体预览焦点会话",
         "derivedTitle": "消息媒体预览焦点会话",
         "lastMessagePreview": "media preview focus fixture",
@@ -87,9 +87,9 @@ def session_row() -> dict[str, object]:
             "autoLabel": "消息媒体预览焦点会话",
         },
         "source": {
-            "source": "studio",
+            "source": "tracevane",
             "channel": "webchat",
-            "surface": "studio-chat",
+            "surface": "tracevane-chat",
             "originLabel": "Tracevane Chat",
         },
         "deliveryContext": {

@@ -9,7 +9,7 @@ import { createSystemService } from "../../dist/apps/api/modules/system/service.
 import { createConfigService } from "../../dist/apps/api/modules/config/service.js";
 
 function createTempRoot() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-system-service-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-system-service-"));
   fs.mkdirSync(path.join(root, "system"), { recursive: true });
   fs.writeFileSync(path.join(root, "config.json"), "{}\n", "utf8");
   return root;
@@ -17,7 +17,7 @@ function createTempRoot() {
 
 function createConfig(root) {
   return {
-    pluginId: "studio",
+    pluginId: "tracevane",
     pluginName: "Tracevane",
     version: "0.1.21",
     port: 3760,
@@ -28,11 +28,11 @@ function createConfig(root) {
     webDistDir: path.join(root, "dist"),
     gatewayPort: 31879,
     gatewayWsUrl: "ws://127.0.0.1:31879",
-    gatewayControlUiBasePath: "/studio",
+    gatewayControlUiBasePath: "/tracevane",
     transport: {
       preferredMode: "gateway",
       standalone: { enabled: false, port: 3760 },
-      gateway: { enabled: true, basePath: "/studio" },
+      gateway: { enabled: true, basePath: "/tracevane" },
     },
   };
 }
@@ -51,7 +51,7 @@ test("system service persists action events into the system state directory", as
 
 test("config write success persists config_change event into system-events.jsonl", () => {
   const root = createTempRoot();
-  fs.mkdirSync(path.join(root, "studio"), { recursive: true });
+  fs.mkdirSync(path.join(root, "tracevane"), { recursive: true });
   const config = createConfig(root);
   fs.writeFileSync(
     config.openclawConfigFile,
@@ -59,7 +59,7 @@ test("config write success persists config_change event into system-events.jsonl
       {
         gateway: {
           controlUi: {
-            basePath: "/studio",
+            basePath: "/tracevane",
           },
         },
       },
@@ -69,7 +69,7 @@ test("config write success persists config_change event into system-events.jsonl
     "utf8",
   );
   fs.writeFileSync(
-    path.join(root, "studio", "device-trust.json"),
+    path.join(root, "tracevane", "device-trust.json"),
     `${JSON.stringify({ autoApproveLocalHelper: true }, null, 2)}\n`,
     "utf8",
   );
@@ -96,7 +96,7 @@ test("config write success persists config_change event into system-events.jsonl
     })),
     gateway: {
       controlUi: {
-        basePath: "/studio-v2",
+        basePath: "/tracevane-v2",
       },
     },
   };
@@ -120,12 +120,12 @@ test("config write success persists config_change event into system-events.jsonl
 
 test("system service recovers stale failed upgrade status after the installed version reaches the target", async () => {
   const root = createTempRoot();
-  fs.mkdirSync(path.join(root, "studio"), { recursive: true });
+  fs.mkdirSync(path.join(root, "tracevane"), { recursive: true });
   const config = {
     ...createConfig(root),
     version: "0.1.25",
   };
-  const upgradeStatusPath = path.join(root, "studio", "upgrade-status.json");
+  const upgradeStatusPath = path.join(root, "tracevane", "upgrade-status.json");
   fs.writeFileSync(
     upgradeStatusPath,
     `${JSON.stringify(
@@ -138,7 +138,7 @@ test("system service recovers stale failed upgrade status after the installed ve
         targetVersion: "0.1.25",
         startedAt: "2026-04-27T00:00:00.000Z",
         finishedAt: "2026-04-27T00:01:00.000Z",
-        logFile: path.join(root, "studio", "upgrade.log"),
+        logFile: path.join(root, "tracevane", "upgrade.log"),
         lastError: "installer log marker missing",
       },
       null,
@@ -148,7 +148,7 @@ test("system service recovers stale failed upgrade status after the installed ve
   );
 
   const service = createSystemService(config, () => 0);
-  const status = await service.getStudioUpgradeStatus();
+  const status = await service.getTracevaneUpgradeStatus();
 
   assert.equal(status.status, "succeeded");
   assert.equal(status.running, false);

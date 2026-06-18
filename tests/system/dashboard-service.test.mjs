@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { EventEmitter } from "node:events";
 
-import { StudioRouter } from "../../dist/apps/api/core/router.js";
+import { TracevaneRouter } from "../../dist/apps/api/core/router.js";
 import { registerDashboardRoutes } from "../../dist/apps/api/modules/dashboard/routes.js";
 import { createDashboardService } from "../../dist/apps/api/modules/dashboard/service.js";
 
@@ -77,7 +77,7 @@ function createDashboard() {
       gatewayWsUrl: "ws://127.0.0.1:31879",
       transport: {
         standalone: { enabled: false, port: 3760 },
-        gateway: { enabled: true, basePath: "/studio" },
+        gateway: { enabled: true, basePath: "/tracevane" },
       },
     },
     agents: {
@@ -135,19 +135,19 @@ function createDashboard() {
           pendingRequests: [{ id: "req-1" }, { id: "req-2" }],
         };
       },
-      async getStudioRelease() {
+      async getTracevaneRelease() {
         return {
           checkedAt: "2026-04-09T00:00:00.000Z",
           currentVersion: "0.1.20",
           latestVersion: "0.1.21",
           updateAvailable: true,
-          source: "https://studio.90le.cn/openclaw-studio-latest.json",
-          packageUrl: "https://studio.90le.cn/openclaw-studio-0.1.21.tar.gz",
+          source: "https://tracevane.90le.cn/tracevane-latest.json",
+          packageUrl: "https://tracevane.90le.cn/tracevane-0.1.21.tar.gz",
           minOpenClawVersion: "2026.4.8",
           notes: ["gateway reload fix"],
         };
       },
-      async getStudioUpgradeStatus() {
+      async getTracevaneUpgradeStatus() {
         return {
           checkedAt: "2026-04-09T00:00:00.000Z",
           status: "running",
@@ -157,7 +157,7 @@ function createDashboard() {
           targetVersion: "0.1.21",
           startedAt: "2026-04-09T00:00:00.000Z",
           finishedAt: null,
-          logFile: "/tmp/studio-upgrade.log",
+          logFile: "/tmp/tracevane-upgrade.log",
           lastError: "",
         };
       },
@@ -269,8 +269,8 @@ test("dashboard summary exposes transport, bootstrap, release, and device trust 
   const summary = await dashboard.refreshSummary();
 
   assert.equal(summary.transport.mode, "gateway");
-  assert.equal(summary.transport.basePath, "/studio");
-  assert.equal(summary.transport.entryUrl, "/studio");
+  assert.equal(summary.transport.basePath, "/tracevane");
+  assert.equal(summary.transport.entryUrl, "/tracevane");
   assert.equal(summary.release.currentVersion, "0.1.20");
   assert.equal(summary.release.latestVersion, "0.1.21");
   assert.equal(summary.release.updateAvailable, true);
@@ -349,7 +349,7 @@ test("dashboard service reuses cached summary across repeated reads", async () =
       gatewayWsUrl: "ws://127.0.0.1:31879",
       transport: {
         standalone: { enabled: false, port: 3760 },
-        gateway: { enabled: true, basePath: "/studio" },
+        gateway: { enabled: true, basePath: "/tracevane" },
       },
     },
     agents: { getSummary: () => ({ count: 1 }) },
@@ -370,7 +370,7 @@ test("dashboard service reuses cached summary across repeated reads", async () =
           settings: { autoApproveLocalHelper: true },
         };
       },
-      async getStudioRelease() {
+      async getTracevaneRelease() {
         return {
           checkedAt: "2026-04-20T00:00:00.000Z",
           currentVersion: "0.1.20",
@@ -382,7 +382,7 @@ test("dashboard service reuses cached summary across repeated reads", async () =
           notes: [],
         };
       },
-      async getStudioUpgradeStatus() {
+      async getTracevaneUpgradeStatus() {
         return {
           checkedAt: "2026-04-20T00:00:00.000Z",
           status: "idle",
@@ -438,7 +438,7 @@ test("dashboard service dedupes concurrent first requests into one rebuild", asy
       gatewayWsUrl: "ws://127.0.0.1:31879",
       transport: {
         standalone: { enabled: false, port: 3760 },
-        gateway: { enabled: true, basePath: "/studio" },
+        gateway: { enabled: true, basePath: "/tracevane" },
       },
     },
     agents: { getSummary: () => ({ count: 1 }) },
@@ -460,7 +460,7 @@ test("dashboard service dedupes concurrent first requests into one rebuild", asy
           settings: { autoApproveLocalHelper: true },
         };
       },
-      async getStudioRelease() {
+      async getTracevaneRelease() {
         return {
           checkedAt: "2026-04-20T00:00:00.000Z",
           currentVersion: "0.1.20",
@@ -472,7 +472,7 @@ test("dashboard service dedupes concurrent first requests into one rebuild", asy
           notes: [],
         };
       },
-      async getStudioUpgradeStatus() {
+      async getTracevaneUpgradeStatus() {
         return {
           checkedAt: "2026-04-20T00:00:00.000Z",
           status: "idle",
@@ -530,7 +530,7 @@ test("dashboard first request returns quickly with placeholder snapshot then ref
       gatewayWsUrl: "ws://127.0.0.1:31879",
       transport: {
         standalone: { enabled: false, port: 3760 },
-        gateway: { enabled: true, basePath: "/studio" },
+        gateway: { enabled: true, basePath: "/tracevane" },
       },
     },
     agents: { getSummary: () => ({ count: 1 }) },
@@ -552,7 +552,7 @@ test("dashboard first request returns quickly with placeholder snapshot then ref
           settings: { autoApproveLocalHelper: true },
         };
       },
-      async getStudioRelease() {
+      async getTracevaneRelease() {
         return {
           checkedAt: "2026-04-20T00:00:00.000Z",
           currentVersion: "0.1.20",
@@ -564,7 +564,7 @@ test("dashboard first request returns quickly with placeholder snapshot then ref
           notes: [],
         };
       },
-      async getStudioUpgradeStatus() {
+      async getTracevaneUpgradeStatus() {
         return {
           checkedAt: "2026-04-20T00:00:00.000Z",
           status: "idle",
@@ -627,7 +627,7 @@ test("dashboard stale snapshot triggers background refresh without blocking resp
       gatewayWsUrl: "ws://127.0.0.1:31879",
       transport: {
         standalone: { enabled: false, port: 3760 },
-        gateway: { enabled: true, basePath: "/studio" },
+        gateway: { enabled: true, basePath: "/tracevane" },
       },
     },
     agents: { getSummary: () => ({ count: 1 }) },
@@ -651,7 +651,7 @@ test("dashboard stale snapshot triggers background refresh without blocking resp
           settings: { autoApproveLocalHelper: true },
         };
       },
-      async getStudioRelease() {
+      async getTracevaneRelease() {
         return {
           checkedAt: "2026-04-20T00:00:00.000Z",
           currentVersion: "0.1.20",
@@ -663,7 +663,7 @@ test("dashboard stale snapshot triggers background refresh without blocking resp
           notes: [],
         };
       },
-      async getStudioUpgradeStatus() {
+      async getTracevaneUpgradeStatus() {
         return {
           checkedAt: "2026-04-20T00:00:00.000Z",
           status: "idle",
@@ -734,7 +734,7 @@ test("dashboard stale background refresh failure keeps last valid snapshot and a
       gatewayWsUrl: "ws://127.0.0.1:31879",
       transport: {
         standalone: { enabled: false, port: 3760 },
-        gateway: { enabled: true, basePath: "/studio" },
+        gateway: { enabled: true, basePath: "/tracevane" },
       },
     },
     agents: { getSummary: () => ({ count: 1 }) },
@@ -757,7 +757,7 @@ test("dashboard stale background refresh failure keeps last valid snapshot and a
           settings: { autoApproveLocalHelper: true },
         };
       },
-      async getStudioRelease() {
+      async getTracevaneRelease() {
         return {
           checkedAt: "2026-04-20T00:00:00.000Z",
           currentVersion: "0.1.20",
@@ -769,7 +769,7 @@ test("dashboard stale background refresh failure keeps last valid snapshot and a
           notes: [],
         };
       },
-      async getStudioUpgradeStatus() {
+      async getTracevaneUpgradeStatus() {
         return {
           checkedAt: "2026-04-20T00:00:00.000Z",
           status: "idle",
@@ -835,7 +835,7 @@ test("dashboard summary route does not rebuild when snapshot is fresh", async ()
   let getSummaryCalls = 0;
   let refreshCalls = 0;
 
-  const router = new StudioRouter();
+  const router = new TracevaneRouter();
   const routeCtx = {
     services: {
       dashboard: {
@@ -868,9 +868,9 @@ test("dashboard summary route does not rebuild when snapshot is fresh", async ()
               mode: "gateway",
               standalonePort: 3760,
               gatewayPort: 31879,
-              basePath: "/studio",
-              entryUrl: "/studio",
-              healthUrl: "/studio/api/system/health",
+              basePath: "/tracevane",
+              entryUrl: "/tracevane",
+              healthUrl: "/tracevane/api/system/health",
             },
             release: {
               currentVersion: "0.1.21",
@@ -942,7 +942,7 @@ test("dashboard summary route does not rebuild when snapshot is fresh", async ()
 });
 
 test("dashboard stream route removes client if initial summary bootstrap fails", async () => {
-  const router = new StudioRouter();
+  const router = new TracevaneRouter();
   const routeCtx = {
     services: {
       dashboard: {

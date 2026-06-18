@@ -6,7 +6,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
 
-import { createStudioChatDurableMirrorStore } from '../../dist/apps/api/modules/chat/durable-mirror-store.js';
+import { createTracevaneChatDurableMirrorStore } from '../../dist/apps/api/modules/chat/durable-mirror-store.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -22,7 +22,7 @@ function cleanupTempRoot(root) {
 
 function makeConfig(root) {
   return {
-    pluginId: 'studio',
+    pluginId: 'tracevane',
     pluginName: 'Tracevane',
     version: '0.1.0',
     port: 0,
@@ -51,7 +51,7 @@ function makeMessage(id, role = 'assistant', text = 'hello') {
   };
 }
 
-const SESSION_KEY = 'agent:main:webchat:direct:studio-test-session';
+const SESSION_KEY = 'agent:main:webchat:direct:tracevane-test-session';
 
 // ---------------------------------------------------------------------------
 // Helper to run store operations in a child process with --no-experimental-sqlite
@@ -60,13 +60,13 @@ const SESSION_KEY = 'agent:main:webchat:direct:studio-test-session';
 
 function runJsonFallbackScript(root, script) {
   const wrapper = `
-    import { createStudioChatDurableMirrorStore } from '${path.resolve(
+    import { createTracevaneChatDurableMirrorStore } from '${path.resolve(
       import.meta.dirname,
       '../../dist/apps/api/modules/chat/durable-mirror-store.js',
     ).replaceAll('\\', '/')}';
 
     const config = ${JSON.stringify(makeConfig(root))};
-    const store = createStudioChatDurableMirrorStore(config);
+    const store = createTracevaneChatDurableMirrorStore(config);
 
     ${script}
   `;
@@ -93,7 +93,7 @@ test('sqlite: backend is sqlite when node:sqlite is available', () => {
   const root = makeTempRoot();
   try {
     const config = makeConfig(root);
-    const store = createStudioChatDurableMirrorStore(config);
+    const store = createTracevaneChatDurableMirrorStore(config);
     assert.equal(store.backend, 'sqlite');
   } finally {
     cleanupTempRoot(root);
@@ -104,7 +104,7 @@ test('sqlite: mirror state is persisted in shared chat.sqlite with transcript me
   const root = makeTempRoot();
   try {
     const config = makeConfig(root);
-    const store = createStudioChatDurableMirrorStore(config);
+    const store = createTracevaneChatDurableMirrorStore(config);
     const observability = {
       lifecycle: null,
       usage: {
@@ -157,8 +157,8 @@ test('sqlite: mirror state is persisted in shared chat.sqlite with transcript me
     assert.equal(snapshot.sourceMtimeMs, 1234);
     assert.equal(snapshot.observability?.usage?.totalTokens, 20);
     assert.equal(snapshot.observability?.toolCards?.[0]?.toolCallId, 'tool-1');
-    assert.equal(fs.existsSync(path.join(root, 'studio', 'chat.sqlite')), true);
-    assert.equal(fs.existsSync(path.join(root, 'studio', 'chat-durable-mirror', 'mirror.sqlite')), false);
+    assert.equal(fs.existsSync(path.join(root, 'tracevane', 'chat.sqlite')), true);
+    assert.equal(fs.existsSync(path.join(root, 'tracevane', 'chat-durable-mirror', 'mirror.sqlite')), false);
   } finally {
     cleanupTempRoot(root);
   }
@@ -168,7 +168,7 @@ test('sqlite: session metadata and page messages can be read without hydrating t
   const root = makeTempRoot();
   try {
     const config = makeConfig(root);
-    const store = createStudioChatDurableMirrorStore(config);
+    const store = createTracevaneChatDurableMirrorStore(config);
     store.replaceSnapshot({
       sessionKey: SESSION_KEY,
       version: 'v1',
@@ -253,7 +253,7 @@ test('sqlite: session metadata and page messages can be read without hydrating t
       }).map((message) => message.id),
       ['msg-a'],
     );
-    const db = new DatabaseSync(path.join(root, 'studio', 'chat.sqlite'));
+    const db = new DatabaseSync(path.join(root, 'tracevane', 'chat.sqlite'));
     const ftsTable = db.prepare(`
       SELECT name
       FROM sqlite_master
@@ -520,7 +520,7 @@ test('sqlite: legacy mirror.sqlite snapshots are lazily migrated into shared cha
   const root = makeTempRoot();
   try {
     const config = makeConfig(root);
-    const legacyFile = path.join(root, 'studio', 'chat-durable-mirror', 'mirror.sqlite');
+    const legacyFile = path.join(root, 'tracevane', 'chat-durable-mirror', 'mirror.sqlite');
     fs.mkdirSync(path.dirname(legacyFile), { recursive: true });
     const legacyDb = new DatabaseSync(legacyFile);
     legacyDb.exec(`
@@ -567,13 +567,13 @@ test('sqlite: legacy mirror.sqlite snapshots are lazily migrated into shared cha
       JSON.stringify(makeMessage('legacy-oplog', 'user', 'hello from legacy')),
     );
 
-    const store = createStudioChatDurableMirrorStore(config);
+    const store = createTracevaneChatDurableMirrorStore(config);
     const snapshot = store.readSession(SESSION_KEY);
     assert.ok(snapshot);
     assert.equal(snapshot.version, 'legacy-v1');
     assert.deepEqual(snapshot.messages.map((message) => message.id), ['legacy-base', 'legacy-oplog']);
 
-    const sharedDb = new DatabaseSync(path.join(root, 'studio', 'chat.sqlite'));
+    const sharedDb = new DatabaseSync(path.join(root, 'tracevane', 'chat.sqlite'));
     const migrated = sharedDb.prepare(`
       SELECT version, base_message_seq
       FROM mirror_checkpoint
@@ -591,7 +591,7 @@ test('sqlite: clearSession also removes lazily migrated legacy mirror rows', () 
   const root = makeTempRoot();
   try {
     const config = makeConfig(root);
-    const legacyFile = path.join(root, 'studio', 'chat-durable-mirror', 'mirror.sqlite');
+    const legacyFile = path.join(root, 'tracevane', 'chat-durable-mirror', 'mirror.sqlite');
     fs.mkdirSync(path.dirname(legacyFile), { recursive: true });
     const legacyDb = new DatabaseSync(legacyFile);
     legacyDb.exec(`
@@ -627,12 +627,12 @@ test('sqlite: clearSession also removes lazily migrated legacy mirror rows', () 
       JSON.stringify([makeMessage('legacy-base')]),
     );
 
-    const store = createStudioChatDurableMirrorStore(config);
+    const store = createTracevaneChatDurableMirrorStore(config);
     assert.ok(store.readSession(SESSION_KEY));
     store.clearSession(SESSION_KEY);
     assert.equal(store.readSession(SESSION_KEY), null);
 
-    const sharedDb = new DatabaseSync(path.join(root, 'studio', 'chat.sqlite'));
+    const sharedDb = new DatabaseSync(path.join(root, 'tracevane', 'chat.sqlite'));
     const sharedCount = sharedDb.prepare(`
       SELECT COUNT(*) AS count
       FROM mirror_checkpoint
@@ -654,7 +654,7 @@ test('sqlite: tombstones prevent stale legacy mirror re-import after clearSessio
   const root = makeTempRoot();
   try {
     const config = makeConfig(root);
-    const legacyFile = path.join(root, 'studio', 'chat-durable-mirror', 'mirror.sqlite');
+    const legacyFile = path.join(root, 'tracevane', 'chat-durable-mirror', 'mirror.sqlite');
     fs.mkdirSync(path.dirname(legacyFile), { recursive: true });
     const legacyDb = new DatabaseSync(legacyFile);
     legacyDb.exec(`
@@ -691,7 +691,7 @@ test('sqlite: tombstones prevent stale legacy mirror re-import after clearSessio
     );
 
     insertLegacyCheckpoint();
-    const store = createStudioChatDurableMirrorStore(config);
+    const store = createTracevaneChatDurableMirrorStore(config);
     assert.ok(store.readSession(SESSION_KEY));
     store.clearSession(SESSION_KEY);
 
@@ -699,7 +699,7 @@ test('sqlite: tombstones prevent stale legacy mirror re-import after clearSessio
     insertLegacyCheckpoint();
     assert.equal(store.readSession(SESSION_KEY), null);
 
-    const sharedDb = new DatabaseSync(path.join(root, 'studio', 'chat.sqlite'));
+    const sharedDb = new DatabaseSync(path.join(root, 'tracevane', 'chat.sqlite'));
     const tombstone = sharedDb.prepare(`
       SELECT cleared_at
       FROM mirror_tombstones
@@ -715,7 +715,7 @@ test('sqlite: replaceSnapshot then readSession returns correct snapshot', () => 
   const root = makeTempRoot();
   try {
     const config = makeConfig(root);
-    const store = createStudioChatDurableMirrorStore(config);
+    const store = createTracevaneChatDurableMirrorStore(config);
     const messages = [makeMessage('msg-1'), makeMessage('msg-2', 'user', 'hi')];
 
     store.replaceSnapshot({
@@ -746,7 +746,7 @@ test('sqlite: appendMessage adds to oplog and readSession returns snapshot + opl
   const root = makeTempRoot();
   try {
     const config = makeConfig(root);
-    const store = createStudioChatDurableMirrorStore(config);
+    const store = createTracevaneChatDurableMirrorStore(config);
 
     store.replaceSnapshot({
       sessionKey: SESSION_KEY,
@@ -781,7 +781,7 @@ test('sqlite: clearSession removes all data', () => {
   const root = makeTempRoot();
   try {
     const config = makeConfig(root);
-    const store = createStudioChatDurableMirrorStore(config);
+    const store = createTracevaneChatDurableMirrorStore(config);
 
     store.replaceSnapshot({
       sessionKey: SESSION_KEY,
@@ -812,7 +812,7 @@ test('sqlite: multiple replaceSnapshot keeps only the latest', () => {
   const root = makeTempRoot();
   try {
     const config = makeConfig(root);
-    const store = createStudioChatDurableMirrorStore(config);
+    const store = createTracevaneChatDurableMirrorStore(config);
 
     store.replaceSnapshot({
       sessionKey: SESSION_KEY,
@@ -860,7 +860,7 @@ test('sqlite: readSession returns null for unknown session', () => {
   const root = makeTempRoot();
   try {
     const config = makeConfig(root);
-    const store = createStudioChatDurableMirrorStore(config);
+    const store = createTracevaneChatDurableMirrorStore(config);
     const snapshot = store.readSession('nonexistent:session');
     assert.equal(snapshot, null);
   } finally {
@@ -872,7 +872,7 @@ test('sqlite: replaceSnapshot after appendMessage replaces with new snapshot and
   const root = makeTempRoot();
   try {
     const config = makeConfig(root);
-    const store = createStudioChatDurableMirrorStore(config);
+    const store = createTracevaneChatDurableMirrorStore(config);
 
     store.replaceSnapshot({
       sessionKey: SESSION_KEY,
@@ -915,7 +915,7 @@ test('sqlite: appendMessage with same messageSeq replaces (no duplicates)', () =
   const root = makeTempRoot();
   try {
     const config = makeConfig(root);
-    const store = createStudioChatDurableMirrorStore(config);
+    const store = createTracevaneChatDurableMirrorStore(config);
 
     store.replaceSnapshot({
       sessionKey: SESSION_KEY,
@@ -960,7 +960,7 @@ test('sqlite: multiple different messages are all preserved', () => {
   const root = makeTempRoot();
   try {
     const config = makeConfig(root);
-    const store = createStudioChatDurableMirrorStore(config);
+    const store = createTracevaneChatDurableMirrorStore(config);
 
     store.replaceSnapshot({
       sessionKey: SESSION_KEY,
@@ -999,7 +999,7 @@ test('sqlite: clearSession then replaceSnapshot + appendMessage works', () => {
   const root = makeTempRoot();
   try {
     const config = makeConfig(root);
-    const store = createStudioChatDurableMirrorStore(config);
+    const store = createTracevaneChatDurableMirrorStore(config);
 
     store.replaceSnapshot({
       sessionKey: SESSION_KEY,
@@ -1046,7 +1046,7 @@ test('sqlite: re-creating store reads previously persisted data', () => {
   const root = makeTempRoot();
   try {
     const config = makeConfig(root);
-    const store1 = createStudioChatDurableMirrorStore(config);
+    const store1 = createTracevaneChatDurableMirrorStore(config);
 
     store1.replaceSnapshot({
       sessionKey: SESSION_KEY,
@@ -1067,7 +1067,7 @@ test('sqlite: re-creating store reads previously persisted data', () => {
     });
 
     // Create new store instance pointing to same root
-    const store2 = createStudioChatDurableMirrorStore(config);
+    const store2 = createTracevaneChatDurableMirrorStore(config);
     assert.equal(store2.backend, 'sqlite');
 
     const snapshot = store2.readSession(SESSION_KEY);
@@ -1084,7 +1084,7 @@ test('sqlite: messages with toolCalls are cloned correctly', () => {
   const root = makeTempRoot();
   try {
     const config = makeConfig(root);
-    const store = createStudioChatDurableMirrorStore(config);
+    const store = createTracevaneChatDurableMirrorStore(config);
 
     const msgWithTools = {
       ...makeMessage('tool-msg', 'assistant', 'done'),
@@ -1437,7 +1437,7 @@ test('json fallback: re-creating store reads previously persisted data', () => {
       });
 
       // Create a second store instance
-      const store2 = createStudioChatDurableMirrorStore(config);
+      const store2 = createTracevaneChatDurableMirrorStore(config);
       const snapshot = store2.readSession('${SESSION_KEY}');
       console.log(JSON.stringify(snapshot));
     `);
@@ -1468,7 +1468,7 @@ test('json fallback: JSON file is written to correct path', () => {
         savedAt: '2026-03-26T10:00:00.000Z',
       });
 
-      const mirrorDir = path.join(config.openclawRoot, 'studio', 'chat-durable-mirror');
+      const mirrorDir = path.join(config.openclawRoot, 'tracevane', 'chat-durable-mirror');
       const files = fs.readdirSync(mirrorDir).filter(f => f.endsWith('.json'));
       console.log(JSON.stringify({ fileCount: files.length, hasJsonFile: files.length > 0 }));
     `);

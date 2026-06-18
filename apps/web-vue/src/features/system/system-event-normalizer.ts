@@ -2,7 +2,7 @@ import type {
   SystemBootstrapPayload,
   SystemDiagnosticsPayload,
   SystemDeviceTrustPayload,
-  SystemStudioReleasePayload,
+  SystemTracevaneReleasePayload,
 } from "../../../../../types/system";
 import type { SystemEventItem } from "./system-event-types";
 
@@ -17,12 +17,12 @@ export function buildSystemDerivedEvents(params: {
   > | null;
   bootstrap: Pick<SystemBootstrapPayload, "checkedAt" | "ready"> | null;
   deviceTrust: Pick<SystemDeviceTrustPayload, "checkedAt" | "pending"> | null;
-  studioRelease: Pick<
-    SystemStudioReleasePayload,
+  tracevaneRelease: Pick<
+    SystemTracevaneReleasePayload,
     "checkedAt" | "currentVersion" | "latestVersion" | "updateAvailable"
   > | null;
 }): SystemEventItem[] {
-  const { diagnostics, bootstrap, deviceTrust, studioRelease } = params;
+  const { diagnostics, bootstrap, deviceTrust, tracevaneRelease } = params;
   const events: SystemEventItem[] = [];
 
   if (
@@ -80,8 +80,8 @@ export function buildSystemDerivedEvents(params: {
     });
   }
 
-  if (studioRelease && studioRelease.updateAvailable) {
-    const occurredAt = studioRelease.checkedAt;
+  if (tracevaneRelease && tracevaneRelease.updateAvailable) {
+    const occurredAt = tracevaneRelease.checkedAt;
     events.push({
       id: makeId("release-update", occurredAt),
       kind: "release_update_available",
@@ -89,7 +89,7 @@ export function buildSystemDerivedEvents(params: {
       severity: "info",
       occurredAt,
       title: "发现可用更新",
-      summary: `${studioRelease.currentVersion} -> ${studioRelease.latestVersion || "unknown"}`,
+      summary: `${tracevaneRelease.currentVersion} -> ${tracevaneRelease.latestVersion || "unknown"}`,
       sourceModule: "release",
     });
   }

@@ -102,7 +102,7 @@
           <section class="config-subsection">
             <div class="config-subsection-head">
               <h4>{{ text('额外插件搜索路径', 'Extra plugin search paths') }}</h4>
-              <p>{{ text('作用：让宿主从额外目录加载插件。配置方式：填写绝对路径。不要把 `openclaw-studio.prev/.bak/.old` 这类备份目录留在扩展根下，否则会触发重复插件 ID。', 'Purpose: lets the host load plugins from additional directories. How to configure: use absolute paths. Do not leave backup folders like `openclaw-studio.prev/.bak/.old` under the extensions root, or duplicate plugin ids will be detected.') }}</p>
+              <p>{{ text('作用：让宿主从额外目录加载插件。配置方式：填写绝对路径。不要把 `tracevane.prev/.bak/.old` 这类备份目录留在扩展根下，否则会触发重复插件 ID。', 'Purpose: lets the host load plugins from additional directories. How to configure: use absolute paths. Do not leave backup folders like `tracevane.prev/.bak/.old` under the extensions root, or duplicate plugin ids will be detected.') }}</p>
             </div>
             <div v-if="form.loadPaths.length" class="provider-stack">
               <div v-for="(item, idx) in form.loadPaths" :key="'path-' + idx" class="form-grid config-inline-form-grid">

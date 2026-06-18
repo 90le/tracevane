@@ -21,7 +21,7 @@ test('deriveChatDisplayMessage preserves explicit text/resource block order', ()
         downloadUrl: '/a?download=1',
         fileName: 'a.txt',
         mimeType: 'text/plain',
-        source: 'studio_delivery',
+        source: 'tracevane_delivery',
         status: 'ready',
         placement: 'append',
       },
@@ -32,7 +32,7 @@ test('deriveChatDisplayMessage preserves explicit text/resource block order', ()
         downloadUrl: '/b?download=1',
         fileName: 'b.png',
         mimeType: 'image/png',
-        source: 'studio_delivery',
+        source: 'tracevane_delivery',
         status: 'ready',
         placement: 'append',
       },
@@ -51,14 +51,14 @@ test('deriveChatDisplayMessage preserves explicit text/resource block order', ()
   assert.equal(display.blocks[2]?.markdownSource, '第二段');
 });
 
-test('deriveChatDisplayMessage keeps original assistant markdown as copy source for compiled studio media blocks', () => {
+test('deriveChatDisplayMessage keeps original assistant markdown as copy source for compiled tracevane media blocks', () => {
   const display = deriveChatDisplayMessage({
     role: 'assistant',
-    text: '这是结构图：\n\n[结构图](workspace:diagram.png "studio:break-image")',
+    text: '这是结构图：\n\n[结构图](workspace:diagram.png "tracevane:break-image")',
     blocks: [
       {
         type: 'text',
-        text: '这是结构图：\n\n[结构图](/api/chat/sessions/agent%3Amain/media/token#oc-studio-kind=image&oc-studio-name=diagram.png "studio:break-image")',
+        text: '这是结构图：\n\n[结构图](/api/chat/sessions/agent%3Amain/media/token#oc-tracevane-kind=image&oc-tracevane-name=diagram.png "tracevane:break-image")',
       },
     ],
     resources: [
@@ -79,7 +79,7 @@ test('deriveChatDisplayMessage keeps original assistant markdown as copy source 
   assert.equal(display.blocks.length, 1);
   assert.equal(display.blocks[0]?.type, 'markdown');
   assert.match(display.blocks[0]?.markdownSource || '', /\/api\/chat\/sessions\//);
-  assert.equal(display.copySource, '这是结构图：\n\n[结构图](workspace:diagram.png "studio:break-image")');
+  assert.equal(display.copySource, '这是结构图：\n\n[结构图](workspace:diagram.png "tracevane:break-image")');
   assert.equal(display.plainTextFallback, '这是结构图：\n\n结构图');
 });
 
@@ -105,7 +105,7 @@ test('deriveChatDisplayMessage renders paragraph text with inline image segments
         downloadUrl: '/img-1?download=1',
         fileName: 'graph.png',
         mimeType: 'image/png',
-        source: 'studio_delivery',
+        source: 'tracevane_delivery',
         status: 'ready',
         placement: 'append',
       },
@@ -144,7 +144,7 @@ test('deriveChatDisplayMessage renders paragraph text with inline video segments
         downloadUrl: '/video-1?download=1',
         fileName: 'demo.mp4',
         mimeType: 'video/mp4',
-        source: 'studio_delivery',
+        source: 'tracevane_delivery',
         status: 'ready',
         placement: 'append',
       },
@@ -182,7 +182,7 @@ test('deriveChatDisplayMessage renders paragraph text with inline file chip segm
         downloadUrl: '/file-1?download=1',
         fileName: 'report.pdf',
         mimeType: 'application/pdf',
-        source: 'studio_delivery',
+        source: 'tracevane_delivery',
         status: 'ready',
         placement: 'append',
       },
@@ -201,7 +201,7 @@ test('deriveChatDisplayMessage renders paragraph text with inline file chip segm
 test('deriveChatDisplayMessage keeps user inline references inline and leaves only unreferenced uploads as cards', () => {
   const display = deriveChatDisplayMessage({
     role: 'user',
-    text: '请参考 [@diagram.png](uploads:123-diagram.png "studio:inline-image")。',
+    text: '请参考 [@diagram.png](uploads:123-diagram.png "tracevane:inline-image")。',
     blocks: [
       {
         type: 'paragraph',
@@ -280,7 +280,7 @@ test('deriveChatDisplayMessage preserves paragraph card paragraph order for v2 m
         downloadUrl: '/file-1?download=1',
         fileName: 'report.pdf',
         mimeType: 'application/pdf',
-        source: 'studio_delivery',
+        source: 'tracevane_delivery',
         status: 'ready',
         placement: 'append',
       },
@@ -318,7 +318,7 @@ test('deriveChatDisplayMessage renders break-image as its own paragraph run', ()
         downloadUrl: '/img-1?download=1',
         fileName: 'graph.png',
         mimeType: 'image/png',
-        source: 'studio_delivery',
+        source: 'tracevane_delivery',
         status: 'ready',
         placement: 'append',
       },
@@ -353,7 +353,7 @@ test('deriveChatDisplayMessage renders break-video as its own paragraph run', ()
         downloadUrl: '/video-1?download=1',
         fileName: 'demo.mp4',
         mimeType: 'video/mp4',
-        source: 'studio_delivery',
+        source: 'tracevane_delivery',
         status: 'ready',
         placement: 'append',
       },
@@ -387,7 +387,7 @@ test('deriveChatDisplayMessage renders break-chip as its own paragraph run', () 
         downloadUrl: '/file-1?download=1',
         fileName: 'report.pdf',
         mimeType: 'application/pdf',
-        source: 'studio_delivery',
+        source: 'tracevane_delivery',
         status: 'ready',
         placement: 'append',
       },
@@ -424,7 +424,7 @@ test('deriveChatDisplayMessage preserves mixed break-image and break-chip run or
         downloadUrl: '/img-1?download=1',
         fileName: 'graph.png',
         mimeType: 'image/png',
-        source: 'studio_delivery',
+        source: 'tracevane_delivery',
         status: 'ready',
         placement: 'append',
       },
@@ -435,7 +435,7 @@ test('deriveChatDisplayMessage preserves mixed break-image and break-chip run or
         downloadUrl: '/file-1?download=1',
         fileName: 'report.pdf',
         mimeType: 'application/pdf',
-        source: 'studio_delivery',
+        source: 'tracevane_delivery',
         status: 'ready',
         placement: 'append',
       },
@@ -446,7 +446,7 @@ test('deriveChatDisplayMessage preserves mixed break-image and break-chip run or
         downloadUrl: '/file-2?download=1',
         fileName: 'card.pdf',
         mimeType: 'application/pdf',
-        source: 'studio_delivery',
+        source: 'tracevane_delivery',
         status: 'ready',
         placement: 'append',
       },

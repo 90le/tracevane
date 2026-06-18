@@ -1,4 +1,4 @@
-import type { StudioServerConfig } from "../../../../types/api.js";
+import type { TracevaneServerConfig } from "../../../../types/api.js";
 import type {
   DashboardRecoveryItem,
   DashboardSummaryPayload,
@@ -148,7 +148,7 @@ export interface DashboardService {
 }
 
 interface DashboardServiceOptions {
-  config: StudioServerConfig;
+  config: TracevaneServerConfig;
   agents: AgentsService;
   channels: ChannelsService;
   cron: CronService;
@@ -215,8 +215,8 @@ export function createDashboardService(
       Promise.resolve(options.terminal.getStatus()),
       options.system.getBootstrap(),
       options.system.getDeviceTrust(),
-      options.system.getStudioRelease(),
-      options.system.getStudioUpgradeStatus(),
+      options.system.getTracevaneRelease(),
+      options.system.getTracevaneUpgradeStatus(),
       options.system.getEventSummary(),
       options.terminal.listPersistedSessions(),
     ]);
@@ -251,11 +251,11 @@ export function createDashboardService(
     ).length;
     const entryUrl =
       transportMode === "gateway"
-        ? options.config.transport.gateway.basePath || "/studio"
+        ? options.config.transport.gateway.basePath || "/tracevane"
         : `http://127.0.0.1:${options.config.transport.standalone.port}/`;
     const healthUrl =
       transportMode === "gateway"
-        ? `${options.config.transport.gateway.basePath || "/studio"}/api/system/health`
+        ? `${options.config.transport.gateway.basePath || "/tracevane"}/api/system/health`
         : `http://127.0.0.1:${options.config.transport.standalone.port}/api/system/health`;
     const persistedSessions = persistedTerminalSessions.sessions || [];
     const latestTerminalSession =
@@ -346,7 +346,7 @@ export function createDashboardService(
         mode: transportMode,
         standalonePort: options.config.transport.standalone.port,
         gatewayPort: options.config.gatewayPort,
-        basePath: options.config.transport.gateway.basePath || "/studio",
+        basePath: options.config.transport.gateway.basePath || "/tracevane",
         entryUrl,
         healthUrl,
       },
@@ -532,11 +532,11 @@ export function createDashboardService(
         : "standalone";
     const entryUrl =
       transportMode === "gateway"
-        ? options.config.transport.gateway.basePath || "/studio"
+        ? options.config.transport.gateway.basePath || "/tracevane"
         : `http://127.0.0.1:${options.config.transport.standalone.port}/`;
     const healthUrl =
       transportMode === "gateway"
-        ? `${options.config.transport.gateway.basePath || "/studio"}/api/system/health`
+        ? `${options.config.transport.gateway.basePath || "/tracevane"}/api/system/health`
         : `http://127.0.0.1:${options.config.transport.standalone.port}/api/system/health`;
 
     return {
@@ -567,7 +567,7 @@ export function createDashboardService(
         mode: transportMode,
         standalonePort: options.config.transport.standalone.port,
         gatewayPort: options.config.gatewayPort,
-        basePath: options.config.transport.gateway.basePath || "/studio",
+        basePath: options.config.transport.gateway.basePath || "/tracevane",
         entryUrl,
         healthUrl,
       },

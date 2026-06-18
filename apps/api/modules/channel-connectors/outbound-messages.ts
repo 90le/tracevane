@@ -2,7 +2,7 @@ import type {
   ChannelConnectorOctoGroupMember,
 } from "../../../../types/channel-connectors.js";
 
-export const STUDIO_CHANNEL_MESSAGES_BLOCK = "tracevane-channel-messages";
+export const TRACEVANE_CHANNEL_MESSAGES_BLOCK = "tracevane-channel-messages";
 
 export type ChannelConnectorOutboundMessagePlatform = "octo" | "feishu";
 export type ChannelConnectorOutboundMessageFormat = "text" | "markdown";
@@ -228,7 +228,7 @@ export function extractChannelConnectorOutboundMessages(replyText: string | null
   const messages: ChannelConnectorOutboundMessageRequest[] = [];
   const errors: string[] = [];
   const pattern = new RegExp(
-    "```[ \\t]*" + STUDIO_CHANNEL_MESSAGES_BLOCK + "[^\\r\\n]*\\r?\\n([\\s\\S]*?)```",
+    "```[ \\t]*" + TRACEVANE_CHANNEL_MESSAGES_BLOCK + "[^\\r\\n]*\\r?\\n([\\s\\S]*?)```",
     "gi",
   );
   const stripped = source.replace(pattern, (_match, rawJson: string) => {

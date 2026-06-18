@@ -1,6 +1,6 @@
 # Tracevane
 
-> Compatibility repository path: `openclaw-studio`
+> Compatibility repository path: `tracevane`
 > Current product direction: local-first AI Agent control workbench
 
 This project is no longer framed as a generic OpenClaw management console. It is evolving into a local-first workbench for running, connecting, observing and recovering AI Agent workflows across OpenClaw, Codex, Claude Code, OpenCode, IM channels and model providers.

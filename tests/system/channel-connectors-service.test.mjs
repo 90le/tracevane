@@ -9,8 +9,8 @@ import path from "node:path";
 import { WebSocketServer } from "ws";
 
 import {
-  createStudioContext,
-  createStudioRequestHandler,
+  createTracevaneContext,
+  createTracevaneRequestHandler,
 } from "../../dist/apps/api/index.js";
 import {
   createChannelConnectorsService,
@@ -166,25 +166,25 @@ function feishuDeleteModeCheckerName(sessionId) {
   return `delete_sel_${Buffer.from(sessionId, "utf8").toString("hex")}`;
 }
 
-function createStudioConfig(root) {
+function createTracevaneConfig(root) {
   const openclawRoot = path.join(root, ".openclaw");
   fs.mkdirSync(openclawRoot, { recursive: true });
   return {
-    pluginId: "studio",
+    pluginId: "tracevane",
     pluginName: "Tracevane",
     version: "0.1.0",
     port: 3760,
     autoStart: true,
     openclawRoot,
     openclawConfigFile: path.join(openclawRoot, "openclaw.json"),
-    projectRoot: path.join(root, "studio"),
-    webDistDir: path.join(root, "studio/apps/web-vue/dist"),
+    projectRoot: path.join(root, "tracevane"),
+    webDistDir: path.join(root, "tracevane/apps/web-vue/dist"),
     gatewayPort: 31879,
     gatewayWsUrl: "ws://127.0.0.1:31879",
     gatewayControlUiBasePath: "",
     transport: {
       standalone: { enabled: true, port: 3760 },
-      gateway: { enabled: true, basePath: "/studio" },
+      gateway: { enabled: true, basePath: "/tracevane" },
     },
   };
 }
@@ -637,7 +637,7 @@ async function withMockOctoServer(task, options = {}) {
       }
       if (req.url?.startsWith("/v1/bot/upload/credentials")) {
         res.end(JSON.stringify({
-          bucket: "studio-bucket-123",
+          bucket: "tracevane-bucket-123",
           region: "ap-beijing",
           key: "im-test/chat/1742547600/uuid_report.pdf",
           credentials: {
@@ -662,7 +662,7 @@ async function withMockOctoServer(task, options = {}) {
           res.end(JSON.stringify({ error: "legacy_upload_unavailable" }));
           return;
         }
-        res.end(JSON.stringify({ url: "https://cdn.example.test/studio-octo-upload" }));
+        res.end(JSON.stringify({ url: "https://cdn.example.test/tracevane-octo-upload" }));
         return;
       }
       if (req.url === "/v1/bot/typing" || req.url === "/v1/bot/sendMessage" || req.url === "/v1/bot/heartbeat") {
@@ -850,7 +850,7 @@ async function withMockFeishuServer(task) {
 
 test("native Channel Connectors status keeps daemon and binding policy separate from Model Gateway", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
@@ -858,11 +858,11 @@ test("native Channel Connectors status keeps daemon and binding policy separate 
   const status = await service.getStatus();
   assert.equal(status.ok, true);
   assert.equal(status.phase, "native-config-f2");
-  assert.equal(status.implementation, "studio-native");
-  assert.equal(status.lifecycle.studioRuntimeDependency, false);
+  assert.equal(status.implementation, "tracevane-native");
+  assert.equal(status.lifecycle.tracevaneRuntimeDependency, false);
   assert.equal(status.lifecycle.openclawRuntimeDependency, false);
   assert.equal(status.lifecycle.modelRelayOwner, "tracevane-gateway-daemon");
-  assert.equal(status.lifecycle.channelDaemonOwner, "studio-native-channel-daemon");
+  assert.equal(status.lifecycle.channelDaemonOwner, "tracevane-native-channel-daemon");
   assert.equal(status.bindingPolicy.model, "platform-account-or-bot-to-agent");
   assert.equal(status.bindingPolicy.wechatPersonal.maxAgentsPerAccount, 1);
   assert.deepEqual(status.bindingPolicy.supportedAgents, ["codex", "claude-code", "opencode"]);
@@ -870,7 +870,7 @@ test("native Channel Connectors status keeps daemon and binding policy separate 
   assert.ok(status.bindingPolicy.supportedPlatforms.includes("octo"));
   assert.ok(status.bindingPolicy.supportedPlatforms.includes("discord"));
   assert.match(status.paths.root, /channel-connectors\/daemon/);
-  assert.match(status.paths.root, /\.config\/openclaw-studio\/channel-connectors\/daemon/);
+  assert.match(status.paths.root, /\.config\/tracevane\/channel-connectors\/daemon/);
   assert.equal(status.paths.root.startsWith(config.openclawRoot), false);
   assert.match(status.paths.nativeConfig, /channel-connectors\/config\.json/);
   assert.equal(status.paths.nativeConfig.startsWith(config.openclawRoot), false);
@@ -1311,28 +1311,28 @@ test("native Channel Connectors extracts outbound IM message manifests", () => {
     content: extracted.messages[1].content,
     mentionUids: botFromGroup.mentionUids,
     members: [
-      { uid: "27xIxHrNV0Qc3ee2129_bot", name: "studio-cc", robot: 1 },
+      { uid: "27xIxHrNV0Qc3ee2129_bot", name: "tracevane-cc", robot: 1 },
     ],
   });
   assert.ok(visibleBotMention);
-  assert.deepEqual(visibleBotMention.chunks, ["@studio-cc 请介绍一下你的能力"]);
+  assert.deepEqual(visibleBotMention.chunks, ["@tracevane-cc 请介绍一下你的能力"]);
   assert.deepEqual(visibleBotMention.payloads[0].payload.mention.uids, ["27xIxHrNV0Qc3ee2129_bot"]);
   assert.deepEqual(visibleBotMention.payloads[0].payload.mention.entities, [
-    { uid: "27xIxHrNV0Qc3ee2129_bot", offset: 0, length: "@studio-cc".length },
+    { uid: "27xIxHrNV0Qc3ee2129_bot", offset: 0, length: "@tracevane-cc".length },
   ]);
 
   const structuredBotMention = renderOctoOutboundText({
     channelId: "group-a",
     channelType: 2,
-    content: "@[27xIxHrNV0Qc3ee2129_bot:studio-cc] 请介绍一下你的能力",
+    content: "@[27xIxHrNV0Qc3ee2129_bot:tracevane-cc] 请介绍一下你的能力",
     members: [
-      { uid: "27xIxHrNV0Qc3ee2129_bot", name: "studio-cc", robot: 1 },
+      { uid: "27xIxHrNV0Qc3ee2129_bot", name: "tracevane-cc", robot: 1 },
     ],
   });
   assert.ok(structuredBotMention);
-  assert.deepEqual(structuredBotMention.chunks, ["@studio-cc 请介绍一下你的能力"]);
+  assert.deepEqual(structuredBotMention.chunks, ["@tracevane-cc 请介绍一下你的能力"]);
   assert.deepEqual(structuredBotMention.payloads[0].payload.mention.entities, [
-    { uid: "27xIxHrNV0Qc3ee2129_bot", offset: 0, length: "@studio-cc".length },
+    { uid: "27xIxHrNV0Qc3ee2129_bot", offset: 0, length: "@tracevane-cc".length },
   ]);
 
   const invalid = extractChannelConnectorOutboundMessages([
@@ -1349,7 +1349,7 @@ test("native Channel Connectors extracts outbound IM message manifests", () => {
 
 test("native Channel Connectors config preview targets Tracevane Gateway without cc-connect TOML", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
@@ -1359,7 +1359,7 @@ test("native Channel Connectors config preview targets Tracevane Gateway without
   assert.deepEqual(preview.missing, []);
   assert.equal(preview.gatewayEndpoint, "http://127.0.0.1:18796/v1");
   assert.match(preview.nativeConfigPath, /channel-connectors\/config\.json/);
-  assert.match(preview.nativeConfigPath, /\.config\/openclaw-studio\/channel-connectors\/config\.json/);
+  assert.match(preview.nativeConfigPath, /\.config\/tracevane\/channel-connectors\/config\.json/);
   assert.equal(preview.nativeConfigPath.startsWith(config.openclawRoot), false);
   assert.equal(preview.config.gateway.clientKeyRef, "tracevane-gateway-client-key");
   assert.equal(preview.config.projects[0].agent, "codex");
@@ -1380,10 +1380,10 @@ test("native Channel Connectors resolves Tracevane Gateway client key from local
     delete process.env.OPENCLAW_TRACEVANE_GATEWAY_API_KEY;
     const runtimeConfig = {
       paths: {
-        root: path.join(root, ".config", "openclaw-studio", "channel-connectors", "daemon"),
+        root: path.join(root, ".config", "tracevane", "channel-connectors", "daemon"),
       },
     };
-    const secretPath = path.join(root, ".openclaw", "studio", "model-gateway", "secrets.json");
+    const secretPath = path.join(root, ".openclaw", "tracevane", "model-gateway", "secrets.json");
     fs.mkdirSync(path.dirname(secretPath), { recursive: true });
     fs.writeFileSync(secretPath, JSON.stringify({
       secrets: {
@@ -1404,7 +1404,7 @@ test("native Channel Connectors resolves Tracevane Gateway client key from local
 
 test("native Channel Connectors store persists agent profiles and derives daemon runtime", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
@@ -1486,7 +1486,7 @@ test("native Channel Connectors store persists agent profiles and derives daemon
 
 test("native Channel Connectors store rejects duplicate personal WeChat agent bindings", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
@@ -1549,7 +1549,7 @@ test("native Channel Connectors store rejects duplicate personal WeChat agent bi
 
 test("Octo adapter dry-run dispatch resolves binding, session key, and reply plan", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
@@ -1779,7 +1779,7 @@ test("Octo adapter dry-run dispatch resolves binding, session key, and reply pla
 
 test("Octo adapter normalizes mixed-case account identity like the Octo plugin", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
@@ -1828,7 +1828,7 @@ test("Octo adapter normalizes mixed-case account identity like the Octo plugin",
       channelType: 2,
       payload: {
         type: 1,
-        content: "@studio status",
+        content: "@tracevane status",
         mention: { uids: ["27xixhrnv0qc3ee2129_bot"] },
       },
     },
@@ -1859,7 +1859,7 @@ test("Octo adapter normalizes mixed-case account identity like the Octo plugin",
 
 test("Octo adapter follows group direction and mention rendering rules", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
@@ -2123,7 +2123,7 @@ test("Octo adapter follows group direction and mention rendering rules", async (
 test("Octo transport smoke registers bot through binding metadata", async () => {
   await withMockOctoServer(async (apiUrl, requests) => {
     const root = makeTempRoot();
-    const config = createStudioConfig(root);
+    const config = createTracevaneConfig(root);
     const service = createChannelConnectorsService(config, {
       now: () => new Date("2026-06-06T08:00:00.000Z"),
     });
@@ -2368,7 +2368,7 @@ test("Octo transport upload strategy defaults to direct upload and honors overri
 test("Octo transport smoke covers Bot API groups, members, history, threads, and files", async () => {
   await withMockOctoServer(async (apiUrl, requests) => {
     const root = makeTempRoot();
-    const config = createStudioConfig(root);
+    const config = createTracevaneConfig(root);
     const service = createChannelConnectorsService(config, {
       now: () => new Date("2026-06-06T08:00:00.000Z"),
     });
@@ -2556,7 +2556,7 @@ test("Octo transport smoke covers Bot API groups, members, history, threads, and
 test("Octo native management commands expose groups, members, and Space search", async () => {
   await withMockOctoServer(async (apiUrl, requests) => {
     const root = makeTempRoot();
-    const config = createStudioConfig(root);
+    const config = createTracevaneConfig(root);
     const service = createChannelConnectorsService(config, {
       now: () => new Date("2026-06-06T08:00:00.000Z"),
     });
@@ -2967,7 +2967,7 @@ test("Octo native management commands expose groups, members, and Space search",
 test("Octo transport smoke probes STS upload credentials without exposing secrets", async () => {
   await withMockOctoServer(async (apiUrl, requests) => {
     const root = makeTempRoot();
-    const config = createStudioConfig(root);
+    const config = createTracevaneConfig(root);
     const service = createChannelConnectorsService(config, {
       now: () => new Date("2026-06-06T08:00:00.000Z"),
     });
@@ -3004,7 +3004,7 @@ test("Octo transport smoke probes STS upload credentials without exposing secret
     assert.equal(result.transport.ok, true);
     assert.equal(result.transport.action, "upload-credentials");
     assert.equal(result.transport.fileName, "龙虾 计划(最终版).pdf");
-    assert.equal(result.transport.uploadBucket, "studio-bucket-123");
+    assert.equal(result.transport.uploadBucket, "tracevane-bucket-123");
     assert.equal(result.transport.uploadRegion, "ap-beijing");
     assert.equal(result.transport.uploadKey, "im-test/chat/1742547600/uuid_report.pdf");
     assert.equal(result.transport.uploadCdnBaseUrl, "https://cdn.example.test");
@@ -3024,7 +3024,7 @@ test("Octo transport smoke probes STS upload credentials without exposing secret
 test("Octo transport direct uploads through COS STS and sends media", async () => {
   await withMockOctoServer(async (apiUrl, requests) => {
     const root = makeTempRoot();
-    const config = createStudioConfig(root);
+    const config = createTracevaneConfig(root);
     const service = createChannelConnectorsService(config, {
       now: () => new Date("2026-06-06T08:00:00.000Z"),
     });
@@ -3070,7 +3070,7 @@ test("Octo transport direct uploads through COS STS and sends media", async () =
     assert.equal(result.transport.fileName, "龙虾 大文件.pdf");
     assert.equal(result.transport.mimeType, "application/pdf");
     assert.equal(result.transport.size, Buffer.byteLength("direct body"));
-    assert.equal(result.transport.uploadBucket, "studio-bucket-123");
+    assert.equal(result.transport.uploadBucket, "tracevane-bucket-123");
     assert.equal(result.transport.uploadRegion, "ap-beijing");
     assert.equal(result.transport.uploadKey, "im-test/chat/1742547600/uuid_report.pdf");
     assert.deepEqual(result.transport.uploadCredentialKeys, ["tmpSecretId", "tmpSecretKey", "sessionToken"]);
@@ -3105,7 +3105,7 @@ test("Octo transport direct uploads through COS STS and sends media", async () =
 test("Octo upload-and-send media auto routes large files to direct upload", async () => {
   await withMockOctoServer(async (apiUrl, requests) => {
     const root = makeTempRoot();
-    const config = createStudioConfig(root);
+    const config = createTracevaneConfig(root);
     const service = createChannelConnectorsService(config, {
       now: () => new Date("2026-06-06T08:00:00.000Z"),
     });
@@ -3211,7 +3211,7 @@ test("Octo auto upload falls back to direct upload when legacy multipart is gone
 test("Octo transport smoke uploads and sends media through binding metadata", async () => {
   await withMockOctoServer(async (apiUrl, requests) => {
     const root = makeTempRoot();
-    const config = createStudioConfig(root);
+    const config = createTracevaneConfig(root);
     const service = createChannelConnectorsService(config, {
       now: () => new Date("2026-06-06T08:00:00.000Z"),
     });
@@ -3280,7 +3280,7 @@ test("Octo transport smoke uploads and sends media through binding metadata", as
 test("Octo incoming can send rendered reply through REST transport when opted in", async () => {
   await withMockOctoServer(async (apiUrl, requests) => {
     const root = makeTempRoot();
-    const config = createStudioConfig(root);
+    const config = createTracevaneConfig(root);
     const service = createChannelConnectorsService(config, {
       now: () => new Date("2026-06-06T08:00:00.000Z"),
     });
@@ -3467,8 +3467,8 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   const codexNativeSkillPath = path.join(processRequest.env.CODEX_HOME, "skills", "octo_bot_api", "SKILL.md");
   assert.equal(fs.existsSync(codexNativeSkillPath), false);
   assert.doesNotMatch(processRequest.stdin, /tracevane-channel-skill/);
-  assert.doesNotMatch(processRequest.stdin, /studio-octo-actions/);
-  assert.doesNotMatch(processRequest.stdin, /studio-feishu-actions/);
+  assert.doesNotMatch(processRequest.stdin, /tracevane-octo-actions/);
+  assert.doesNotMatch(processRequest.stdin, /tracevane-feishu-actions/);
   for (const cleanupPath of processRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
   const persistentRuntimeDir = path.join(root, "persistent-codex-runtime");
@@ -3479,7 +3479,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   fs.mkdirSync(staleNamedSkillDir, { recursive: true });
   fs.mkdirSync(staleMarkerSkillDir, { recursive: true });
   fs.mkdirSync(customSkillDir, { recursive: true });
-  fs.writeFileSync(path.join(staleNamedSkillDir, "SKILL.md"), "---\nname: stale\n---\nstudio-feishu-actions\n", "utf8");
+  fs.writeFileSync(path.join(staleNamedSkillDir, "SKILL.md"), "---\nname: stale\n---\ntracevane-feishu-actions\n", "utf8");
   fs.writeFileSync(path.join(staleMarkerSkillDir, "SKILL.md"), "---\nname: marker\n---\nTracevane Channel Connector helper projection\n", "utf8");
   fs.writeFileSync(path.join(customSkillDir, "SKILL.md"), "---\nname: custom\n---\n# Custom\n", "utf8");
   const persistentRequest = buildChannelConnectorAgentProcessRequest({
@@ -3740,9 +3740,9 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   const channelSkillScript = path.join(channelSkillBin, "tracevane-channel-skill");
   assert.equal(fs.existsSync(channelSkillScript), false);
   assert.notEqual(resumeRequest.env.PATH.split(":")[0], channelSkillBin);
-  assert.equal("STUDIO_CHANNEL_SKILL_ENDPOINT" in resumeRequest.env, false);
-  assert.equal("STUDIO_CHANNEL_SKILL_TOKEN" in resumeRequest.env, false);
-  assert.equal("STUDIO_CHANNEL_SKILL_BINDING_ID" in resumeRequest.env, false);
+  assert.equal("TRACEVANE_CHANNEL_SKILL_ENDPOINT" in resumeRequest.env, false);
+  assert.equal("TRACEVANE_CHANNEL_SKILL_TOKEN" in resumeRequest.env, false);
+  assert.equal("TRACEVANE_CHANNEL_SKILL_BINDING_ID" in resumeRequest.env, false);
 
   let turnCleanupPath = null;
   const result = await runChannelConnectorAgentTurn({
@@ -3941,7 +3941,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.match(opencodeRequest.args.at(-1), /\[Current IM message - respond to this ONLY\]\nhi codex/);
   assert.match(opencodeRequest.args.at(-1), /tracevane-channel-files/);
   assert.doesNotMatch(opencodeRequest.args.at(-1), /tracevane-channel-skill/);
-  assert.doesNotMatch(opencodeRequest.args.at(-1), /studio-feishu-actions/);
+  assert.doesNotMatch(opencodeRequest.args.at(-1), /tracevane-feishu-actions/);
   assert.doesNotMatch(opencodeRequest.args.at(-1), /cc-connect/);
   for (const cleanupPath of opencodeRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
@@ -4141,7 +4141,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.doesNotMatch(attachmentRequest.stdin, /cc-connect/);
   for (const cleanupPath of attachmentRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
-  const visionImagePath = path.join(workDir, ".studio-agent-attachments", "vision.png");
+  const visionImagePath = path.join(workDir, ".tracevane-agent-attachments", "vision.png");
   fs.mkdirSync(path.dirname(visionImagePath), { recursive: true });
   fs.writeFileSync(visionImagePath, Buffer.from("fake-png"));
   const visionAttachmentRequest = buildChannelConnectorAgentProcessRequest({
@@ -4281,7 +4281,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.deepEqual(opencodeVisionModelConfig.limit, { context: 200000, output: 8192 });
   assert.equal(opencodeVisionModelConfig.tool_call, true);
 
-  const videoPath = path.join(workDir, ".studio-agent-attachments", "clip.mp4");
+  const videoPath = path.join(workDir, ".tracevane-agent-attachments", "clip.mp4");
   fs.writeFileSync(videoPath, "fake video bytes");
   const videoMessage = {
     ...message,
@@ -4348,7 +4348,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
   assert.doesNotMatch(opencodeVideoRequest.args.at(-1), /native --file arguments/);
   for (const cleanupPath of opencodeVideoRequest.cleanupPaths || []) fs.rmSync(cleanupPath, { recursive: true, force: true });
 
-  const stagedLocalPath = path.join(workDir, ".studio-agent-attachments", "report.txt");
+  const stagedLocalPath = path.join(workDir, ".tracevane-agent-attachments", "report.txt");
   const stagedAttachmentRequest = buildChannelConnectorAgentProcessRequest({
     project,
     binding,
@@ -4388,7 +4388,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
         kind: "image",
         platform: "octo",
         fileName: "photo.jpg",
-        localPath: path.join(workDir, ".studio-agent-attachments", "photo.jpg"),
+        localPath: path.join(workDir, ".tracevane-agent-attachments", "photo.jpg"),
         stagedAt: "2026-06-06T08:00:00.000Z",
       }],
     },
@@ -4434,7 +4434,7 @@ test("native Channel Connectors agent runner builds gateway-backed Codex turns",
         kind: "image",
         platform: "octo",
         fileName: "spark-photo.jpg",
-        localPath: path.join(workDir, ".studio-agent-attachments", "spark-photo.jpg"),
+        localPath: path.join(workDir, ".tracevane-agent-attachments", "spark-photo.jpg"),
         stagedAt: "2026-06-06T08:00:00.000Z",
       }],
     },
@@ -5016,7 +5016,7 @@ test("native Channel Connectors compact posts to Gateway and clears stale Agent 
   assert.equal(requests[0].authorization, "Bearer sk-test-compact-client");
   assert.equal(requests[0].body.model, "gpt-5");
   assert.equal(requests[0].body.stream, false);
-  assert.equal(requests[0].body.metadata.studio_channel_compact, true);
+  assert.equal(requests[0].body.metadata.tracevane_channel_compact, true);
   assert.match(requests[0].body.input, /Summarize this Tracevane IM conversation/);
   assert.match(requests[0].body.input, /TOOLS\.md/);
   assert.match(requests[0].body.input, /recent compact history 6/);
@@ -5047,14 +5047,14 @@ test("native Channel Connectors compact posts to Gateway and clears stale Agent 
 
 test("native Channel Connectors service slash compact works for Feishu and Octo command smoke", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
   const connectorPaths = resolveChannelConnectorsPaths(config);
   const historyPath = path.join(connectorPaths.stateDir, "channel-history.json");
   const agentSessionsPath = path.join(connectorPaths.stateDir, "channel-sessions.json");
-  const secretPath = path.join(root, ".config", "openclaw-studio", "model-gateway", "secrets.json");
+  const secretPath = path.join(root, ".config", "tracevane", "model-gateway", "secrets.json");
   fs.mkdirSync(path.dirname(secretPath), { recursive: true });
   fs.writeFileSync(secretPath, JSON.stringify({
     secrets: {
@@ -6007,7 +6007,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(octoSkillContext, /Use Tracevane Octo channel transport for DM, group, thread, and mention work/);
   assert.match(octoSkillContext, /tracevane-channel-messages/);
   assert.doesNotMatch(octoSkillContext, /tracevane-channel-skill/);
-  assert.doesNotMatch(octoSkillContext, /studio-octo-actions/);
+  assert.doesNotMatch(octoSkillContext, /tracevane-octo-actions/);
   assert.doesNotMatch(octoSkillContext, /feishu-card/);
 
   const codexSkillRun = await handleChannelConnectorCommand({
@@ -6053,7 +6053,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   assert.match(feishuSkillContext, /\/feishu-doc-api: Read, write, and attach files in Feishu documents/);
   assert.doesNotMatch(feishuSkillContext, /Runtime Action Index/);
   assert.doesNotMatch(feishuSkillContext, /tracevane-channel-skill/);
-  assert.doesNotMatch(feishuSkillContext, /studio-feishu-actions/);
+  assert.doesNotMatch(feishuSkillContext, /tracevane-feishu-actions/);
   assert.doesNotMatch(feishuSkillContext, /FEISHU_APP_SECRET/);
   assert.doesNotMatch(feishuSkillContext, /octo-send/);
 
@@ -6753,7 +6753,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
   });
   assert.equal(visionAuto.ok, true);
   assert.equal(visionAuto.control.autoVisionModel, true);
-  assert.equal(visionAuto.control.visionModel, "__studio_auto__");
+  assert.equal(visionAuto.control.visionModel, "__tracevane_auto__");
   assert.match(visionAuto.replyText, /Gateway 会自动选择健康 vision 模型/);
 
   const visionDefault = await handleChannelConnectorCommand({
@@ -7391,7 +7391,7 @@ test("native Channel Connectors IM commands switch agent, model, and permission 
 
 test("native Channel Connectors model menus can read live Gateway model lists", async () => {
   await withMockGatewayModelsServer(async ({ baseUrl, requests }) => {
-    const models = await listChannelConnectorGatewayModels(`${baseUrl}/v1`, "studio-client-key");
+    const models = await listChannelConnectorGatewayModels(`${baseUrl}/v1`, "tracevane-client-key");
     assert.equal(models.length, 14);
     assert.deepEqual(models.slice(0, 2), ["gateway-gpt-5", "gateway-glm-5"]);
     assert.equal(models.includes("gateway-model-13"), true);
@@ -7399,7 +7399,7 @@ test("native Channel Connectors model menus can read live Gateway model lists", 
     assert.equal(requests.length, 1);
     assert.equal(requests[0].method, "GET");
     assert.equal(requests[0].path, "/v1/models");
-    assert.equal(requests[0].authorization, "Bearer studio-client-key");
+    assert.equal(requests[0].authorization, "Bearer tracevane-client-key");
   });
 });
 
@@ -7574,7 +7574,7 @@ test("native Channel Connectors visual turns select Gateway vision models from c
 test("native Channel Connectors command surface loads Gateway models when request omits models", async () => {
   await withMockGatewayModelsServer(async ({ baseUrl, requests }) => {
     const root = makeTempRoot();
-    const config = createStudioConfig(root);
+    const config = createTracevaneConfig(root);
     const service = createChannelConnectorsService(config, {
       now: () => new Date("2026-06-06T08:00:00.000Z"),
     });
@@ -8444,7 +8444,7 @@ test("native Channel Connectors command surface renders text and Feishu card act
 
 test("native Channel Connectors Feishu webhook parses live envelopes and reuses command router", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
@@ -9605,7 +9605,7 @@ test("native Channel Connectors Feishu webhook parses live envelopes and reuses 
 test("native Channel Connectors Feishu transport sends replies and reuses tenant token cache", async () => {
   await withMockFeishuServer(async (apiUrl, requests) => {
     const root = makeTempRoot();
-    const config = createStudioConfig(root);
+    const config = createTracevaneConfig(root);
     const service = createChannelConnectorsService(config, {
       now: () => new Date("2026-06-06T08:00:00.000Z"),
     });
@@ -9822,7 +9822,7 @@ test("native Channel Connectors Feishu transport sends replies and reuses tenant
 test("native Channel Connectors Feishu transport-smoke uploads and sends files through service", async () => {
   await withMockFeishuServer(async (apiUrl, requests) => {
     const root = makeTempRoot();
-    const config = createStudioConfig(root);
+    const config = createTracevaneConfig(root);
     const service = createChannelConnectorsService(config, {
       now: () => new Date("2026-06-06T08:05:00.000Z"),
     });
@@ -10116,7 +10116,7 @@ test("native Channel Connectors Feishu thread bootstrap fetches root and topic h
               messageId: "om_bot",
               senderId: "cli_a9280cc8eab85cca",
               senderType: "app",
-              text: "studio bot previous answer",
+              text: "tracevane bot previous answer",
               createTime: 1780732790000,
             }),
             textItem({
@@ -10175,7 +10175,7 @@ test("native Channel Connectors Feishu thread bootstrap fetches root and topic h
           root_id: "om_root",
           thread_id: "omt_topic_1",
           message_type: "text",
-          content: JSON.stringify({ text: "@studio-cc summarize the thread" }),
+          content: JSON.stringify({ text: "@tracevane-cc summarize the thread" }),
         },
       },
     });
@@ -10198,7 +10198,7 @@ test("native Channel Connectors Feishu thread bootstrap fetches root and topic h
     assert.equal(bootstrap.messageCount, 4);
     assert.match(bootstrap.context || "", /Feishu thread bootstrap/);
     assert.match(bootstrap.context || "", /thread starter asks for a coordinated status report/);
-    assert.match(bootstrap.context || "", /studio bot previous answer/);
+    assert.match(bootstrap.context || "", /tracevane bot previous answer/);
     assert.match(bootstrap.context || "", /helper already replied with the latest summary/);
     assert.match(bootstrap.context || "", /truncated/);
     assert.match(bootstrap.context || "", /originalRunes/);
@@ -10218,7 +10218,7 @@ test("native Channel Connectors Feishu thread bootstrap fetches root and topic h
       totalMaxRunes: 1600,
     });
     assert.equal(senderScoped.included, true);
-    assert.match(senderScoped.context || "", /studio bot previous answer/);
+    assert.match(senderScoped.context || "", /tracevane bot previous answer/);
     assert.doesNotMatch(senderScoped.context || "", /helper already replied/);
 
     const skipped = await loadFeishuThreadBootstrapContext({
@@ -12633,7 +12633,7 @@ test("native Channel Connectors persistent Claude and OpenCode drivers run nativ
     "const readline = require('node:readline');",
     "const rl = readline.createInterface({ input: process.stdin });",
     "function emit(value) { process.stdout.write(JSON.stringify(value) + '\\n'); }",
-    "function record(value) { fs.appendFileSync(process.env.STUDIO_NATIVE_COMPACT_CAPTURE, JSON.stringify({ cli: 'claude', pid: process.pid, ...value }) + '\\n'); }",
+    "function record(value) { fs.appendFileSync(process.env.TRACEVANE_NATIVE_COMPACT_CAPTURE, JSON.stringify({ cli: 'claude', pid: process.pid, ...value }) + '\\n'); }",
     "rl.on('line', (line) => {",
     "  if (!line.trim()) return;",
     "  const message = JSON.parse(line);",
@@ -12663,7 +12663,7 @@ test("native Channel Connectors persistent Claude and OpenCode drivers run nativ
     "  fs.writeFileSync(path.join(dataHome, 'opencode', 'opencode.db'), '');",
     "}",
     "const prompt = args.includes('--') ? args.slice(args.indexOf('--') + 1).join(' ') : '';",
-    "fs.appendFileSync(process.env.STUDIO_NATIVE_COMPACT_CAPTURE, JSON.stringify({ cli: 'opencode', argv: args, prompt }) + '\\n');",
+    "fs.appendFileSync(process.env.TRACEVANE_NATIVE_COMPACT_CAPTURE, JSON.stringify({ cli: 'opencode', argv: args, prompt }) + '\\n');",
     "function emit(value) { process.stdout.write(JSON.stringify(value) + '\\n'); }",
     "emit({ type: 'step_start', part: { type: 'step-start', sessionID: 'opencode-live-session' } });",
     "if (!prompt.includes('/compact')) {",
@@ -12682,9 +12682,9 @@ test("native Channel Connectors persistent Claude and OpenCode drivers run nativ
   ].join("\n"), { mode: 0o755 });
 
   const oldPath = process.env.PATH || "";
-  const oldCapture = process.env.STUDIO_NATIVE_COMPACT_CAPTURE;
+  const oldCapture = process.env.TRACEVANE_NATIVE_COMPACT_CAPTURE;
   process.env.PATH = `${fakeBin}:${oldPath}`;
-  process.env.STUDIO_NATIVE_COMPACT_CAPTURE = capturePath;
+  process.env.TRACEVANE_NATIVE_COMPACT_CAPTURE = capturePath;
   try {
     const pool = new ChannelConnectorAgentSessionDriverPool({
       factory: createNativeCliSessionDriverFactory({
@@ -12815,8 +12815,8 @@ test("native Channel Connectors persistent Claude and OpenCode drivers run nativ
     }
   } finally {
     process.env.PATH = oldPath;
-    if (oldCapture === undefined) delete process.env.STUDIO_NATIVE_COMPACT_CAPTURE;
-    else process.env.STUDIO_NATIVE_COMPACT_CAPTURE = oldCapture;
+    if (oldCapture === undefined) delete process.env.TRACEVANE_NATIVE_COMPACT_CAPTURE;
+    else process.env.TRACEVANE_NATIVE_COMPACT_CAPTURE = oldCapture;
   }
 });
 
@@ -12958,7 +12958,7 @@ test("native Channel Connectors process runner treats OpenCode tool-calls step f
         state: {
           status: "completed",
           input: { groupNo: "group-1" },
-          output: "Alice\nstudio-cc",
+          output: "Alice\ntracevane-cc",
         },
       },
     }),
@@ -13221,7 +13221,7 @@ test("native Channel Connectors process runner routes Claude Code AskUserQuestio
 
 test("native Channel Connectors service management is guarded before daemon entry is built", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const homeDir = path.join(root, "home");
   const service = createChannelConnectorsService(config, {
     homeDir,
@@ -13796,21 +13796,21 @@ test("native Channel Connectors keeps platform-native group context strategy", (
 
 test("Channel Connectors routes are registered under /api/channel-connectors", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({
     config,
     logger: createLogger(),
     channelConnectorsOptions: {
       now: () => new Date("2026-06-06T08:00:00.000Z"),
     },
   });
-  const handler = createStudioRequestHandler(ctx);
+  const handler = createTracevaneRequestHandler(ctx);
 
   await withServer(handler, async (baseUrl) => {
     const status = await requestJson(`${baseUrl}/api/channel-connectors/status`);
     assert.equal(status.status, 200);
     assert.equal(status.body.phase, "native-config-f2");
-    assert.equal(status.body.implementation, "studio-native");
+    assert.equal(status.body.implementation, "tracevane-native");
 
     const configStore = await requestJson(`${baseUrl}/api/channel-connectors/config`);
     assert.equal(configStore.status, 200);
@@ -14025,7 +14025,7 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
       body: {
         bindingId: "feishu-route",
         dryRun: true,
-        studioDebugResponse: true,
+        tracevaneDebugResponse: true,
         schema: "2.0",
         header: {
           event_type: "im.message.receive_v1",
@@ -14177,7 +14177,7 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
 
 test("native Channel Connectors daemon entry exposes health and writes runtime", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
@@ -14330,7 +14330,7 @@ test("native Channel Connectors daemon rejects same-session messages while an Ag
 
 test("native Channel Connectors daemon rejects same-session Octo Agent turns while busy", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
@@ -14346,9 +14346,9 @@ test("native Channel Connectors daemon rejects same-session Octo Agent turns whi
     "process.stdin.on('data', (chunk) => { stdin += chunk.toString('utf8'); });",
     "process.stdin.on('end', async () => {",
     "  const marker = stdin.includes('second busy turn') ? 'second' : 'first';",
-    "  fs.appendFileSync(process.env.STUDIO_TEST_CODEX_CAPTURE, `${JSON.stringify({ event: 'start', marker, at: Date.now(), stdin })}\\n`);",
+    "  fs.appendFileSync(process.env.TRACEVANE_TEST_CODEX_CAPTURE, `${JSON.stringify({ event: 'start', marker, at: Date.now(), stdin })}\\n`);",
     "  if (marker === 'first') await delay(650);",
-    "  fs.appendFileSync(process.env.STUDIO_TEST_CODEX_CAPTURE, `${JSON.stringify({ event: 'end', marker, at: Date.now() })}\\n`);",
+    "  fs.appendFileSync(process.env.TRACEVANE_TEST_CODEX_CAPTURE, `${JSON.stringify({ event: 'end', marker, at: Date.now() })}\\n`);",
     "  process.stdout.write(`${JSON.stringify({ type: 'thread.started', thread_id: `thread-${marker}` })}\\n`);",
     "  process.stdout.write(`${JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: `${marker} done` } })}\\n`);",
     "  process.stdout.write('{\"type\":\"turn.completed\"}\\n');",
@@ -14506,7 +14506,7 @@ test("native Channel Connectors daemon rejects same-session Octo Agent turns whi
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
           TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
-          STUDIO_TEST_CODEX_CAPTURE: capturePath,
+          TRACEVANE_TEST_CODEX_CAPTURE: capturePath,
         },
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -14585,7 +14585,7 @@ test("native Channel Connectors daemon rejects same-session Octo Agent turns whi
 
 test("native Channel Connectors daemon keeps Octo sessions busy while final reply is delivering", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
@@ -14599,7 +14599,7 @@ test("native Channel Connectors daemon keeps Octo sessions busy while final repl
     "let stdin = '';",
     "process.stdin.on('data', (chunk) => { stdin += chunk.toString('utf8'); });",
     "process.stdin.on('end', () => {",
-    "  fs.appendFileSync(process.env.STUDIO_TEST_CODEX_CAPTURE, `${JSON.stringify({ event: 'start', at: Date.now(), stdin })}\\n`);",
+    "  fs.appendFileSync(process.env.TRACEVANE_TEST_CODEX_CAPTURE, `${JSON.stringify({ event: 'start', at: Date.now(), stdin })}\\n`);",
     "  process.stdout.write('{\"type\":\"thread.started\",\"thread_id\":\"thread-delivery\"}\\n');",
     "  process.stdout.write(`${JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'delivery final reply' } })}\\n`);",
     "  process.stdout.write('{\"type\":\"turn.completed\"}\\n');",
@@ -14761,7 +14761,7 @@ test("native Channel Connectors daemon keeps Octo sessions busy while final repl
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
           TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
-          STUDIO_TEST_CODEX_CAPTURE: capturePath,
+          TRACEVANE_TEST_CODEX_CAPTURE: capturePath,
         },
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -14858,7 +14858,7 @@ test("native Channel Connectors daemon keeps Octo sessions busy while final repl
 
 test("native Channel Connectors daemon does not persist or replay busy Octo Agent turns", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
@@ -14870,7 +14870,7 @@ test("native Channel Connectors daemon does not persist or replay busy Octo Agen
     "#!/usr/bin/env node",
     "const fs = require('fs');",
     "const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));",
-    "const capture = process.env.STUDIO_TEST_CODEX_CAPTURE;",
+    "const capture = process.env.TRACEVANE_TEST_CODEX_CAPTURE;",
     "process.on('SIGTERM', () => {",
     "  fs.appendFileSync(capture, `${JSON.stringify({ event: 'signal', signal: 'SIGTERM', at: Date.now() })}\\n`);",
     "  process.exit(143);",
@@ -15039,7 +15039,7 @@ test("native Channel Connectors daemon does not persist or replay busy Octo Agen
             ...process.env,
             PATH: `${fakeBin}:${process.env.PATH || ""}`,
             TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
-            STUDIO_TEST_CODEX_CAPTURE: capturePath,
+            TRACEVANE_TEST_CODEX_CAPTURE: capturePath,
           },
           stdio: ["ignore", "pipe", "pipe"],
         });
@@ -15108,7 +15108,7 @@ test("native Channel Connectors daemon does not persist or replay busy Octo Agen
 
 test("native Channel Connectors daemon applies thinking display toggles to Octo progress replies", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
@@ -15124,7 +15124,7 @@ test("native Channel Connectors daemon applies thinking display toggles to Octo 
     "  const second = stdin.includes('visible thinking turn');",
     "  const thought = second ? 'visible thought from Codex' : 'hidden thought from Codex';",
     "  const reply = second ? 'second final reply' : 'first final reply';",
-    "  fs.appendFileSync(process.env.STUDIO_TEST_CODEX_CAPTURE, `${JSON.stringify({ stdin, thought, reply })}\\n`);",
+    "  fs.appendFileSync(process.env.TRACEVANE_TEST_CODEX_CAPTURE, `${JSON.stringify({ stdin, thought, reply })}\\n`);",
     "  process.stdout.write(`${JSON.stringify({ type: 'thread.started', thread_id: second ? 'thread-thinking-visible' : 'thread-thinking-hidden' })}\\n`);",
     "  process.stdout.write(`${JSON.stringify({ type: 'item.completed', item: { type: 'reasoning', summary: [thought] } })}\\n`);",
     "  process.stdout.write(`${JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: reply } })}\\n`);",
@@ -15263,7 +15263,7 @@ test("native Channel Connectors daemon applies thinking display toggles to Octo 
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
           TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
-          STUDIO_TEST_CODEX_CAPTURE: capturePath,
+          TRACEVANE_TEST_CODEX_CAPTURE: capturePath,
         },
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -15355,7 +15355,7 @@ test("native Channel Connectors daemon applies thinking display toggles to Octo 
 
 test("native Channel Connectors daemon ignores legacy Octo action manifests in private IM mode", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
@@ -15369,11 +15369,11 @@ test("native Channel Connectors daemon ignores legacy Octo action manifests in p
     "let stdin = '';",
     "process.stdin.on('data', (chunk) => { stdin += chunk.toString('utf8'); });",
     "process.stdin.on('end', () => {",
-    "  fs.appendFileSync(process.env.STUDIO_TEST_CODEX_CAPTURE, `${JSON.stringify({ argv: process.argv.slice(2), stdin })}\\n`);",
+    "  fs.appendFileSync(process.env.TRACEVANE_TEST_CODEX_CAPTURE, `${JSON.stringify({ argv: process.argv.slice(2), stdin })}\\n`);",
     "  const reply = [",
     "    '正在创建「Agent 协作群」并把你拉进去，请确认授权。',",
     "    '',",
-    "    '```studio-octo-actions',",
+    "    '```tracevane-octo-actions',",
     "    JSON.stringify([{ action: 'create-group', name: 'Agent 协作群', members: 'approve-user' }]),",
     "    '```',",
     "  ].join('\\n');",
@@ -15535,7 +15535,7 @@ test("native Channel Connectors daemon ignores legacy Octo action manifests in p
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
           TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
-          STUDIO_TEST_CODEX_CAPTURE: capturePath,
+          TRACEVANE_TEST_CODEX_CAPTURE: capturePath,
         },
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -15578,7 +15578,7 @@ test("native Channel Connectors daemon ignores legacy Octo action manifests in p
           .filter((request) => request.path === "/v1/bot/sendMessage")
           .map((request) => request.body?.payload?.content || "");
         assert.ok(sendContents.some((content) => content.includes("正在创建「Agent 协作群」")), JSON.stringify(sendContents));
-        assert.ok(sendContents.some((content) => content.includes("studio-octo-actions is no longer supported in Tracevane private IM mode")), JSON.stringify(sendContents));
+        assert.ok(sendContents.some((content) => content.includes("tracevane-octo-actions is no longer supported in Tracevane private IM mode")), JSON.stringify(sendContents));
         assert.equal(sendContents.some((content) => content.includes("OctoChannelAction") && content.includes("/approve")), false);
         assert.equal(sendContents.some((content) => content.includes("Octo action results")), false);
         assert.equal(sendContents.some((content) => content.includes("group-approved")), false);
@@ -15610,7 +15610,7 @@ test("native Channel Connectors daemon ignores legacy Octo action manifests in p
 
 test("native Channel Connectors daemon sends Octo group process replies before final reply", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
@@ -15621,7 +15621,7 @@ test("native Channel Connectors daemon sends Octo group process replies before f
   fs.writeFileSync(fakeOpenCodePath, [
     "#!/usr/bin/env node",
     "const fs = require('fs');",
-    "fs.appendFileSync(process.env.STUDIO_TEST_OPENCODE_CAPTURE, `${JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd() })}\\n`);",
+    "fs.appendFileSync(process.env.TRACEVANE_TEST_OPENCODE_CAPTURE, `${JSON.stringify({ argv: process.argv.slice(2), cwd: process.cwd() })}\\n`);",
     "function emit(value) { process.stdout.write(`${JSON.stringify(value)}\\n`); }",
     "emit({ type: 'step_start', part: { type: 'step-start', sessionID: 'opencode-process-session' } });",
     "emit({ type: 'text', messageID: 'assistant-process', part: { type: 'text', messageID: 'assistant-process', text: '我先说明第一步。' } });",
@@ -15781,7 +15781,7 @@ test("native Channel Connectors daemon sends Octo group process replies before f
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
           TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
-          STUDIO_TEST_OPENCODE_CAPTURE: capturePath,
+          TRACEVANE_TEST_OPENCODE_CAPTURE: capturePath,
         },
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -15854,7 +15854,7 @@ test("native Channel Connectors daemon sends Octo group process replies before f
 
 test("native Channel Connectors daemon enriches Octo group turns with Bot API context and file download URLs", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
@@ -15868,7 +15868,7 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
     "let stdin = '';",
     "process.stdin.on('data', (chunk) => { stdin += chunk.toString('utf8'); });",
     "process.stdin.on('end', () => {",
-    "  fs.appendFileSync(process.env.STUDIO_TEST_CODEX_CAPTURE, `${JSON.stringify({ argv: process.argv.slice(2), stdin })}\\n`);",
+    "  fs.appendFileSync(process.env.TRACEVANE_TEST_CODEX_CAPTURE, `${JSON.stringify({ argv: process.argv.slice(2), stdin })}\\n`);",
     "  process.stdout.write('{\"type\":\"thread.started\",\"thread_id\":\"thread-octo-context\"}\\n');",
     "  process.stdout.write('{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"context ok\"}}\\n');",
     "  process.stdout.write('{\"type\":\"turn.completed\"}\\n');",
@@ -16113,7 +16113,7 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
           TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
-          STUDIO_TEST_CODEX_CAPTURE: capturePath,
+          TRACEVANE_TEST_CODEX_CAPTURE: capturePath,
         },
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -16247,7 +16247,7 @@ test("native Channel Connectors daemon enriches Octo group turns with Bot API co
 
 test("native Channel Connectors daemon runs Codex app-server by default", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
@@ -16261,7 +16261,7 @@ test("native Channel Connectors daemon runs Codex app-server by default", async 
     "const lines = [];",
     "let nextTurn = 1;",
     "function emit(value) { process.stdout.write(`${JSON.stringify(value)}\\n`); }",
-    "function record(value) { fs.appendFileSync(process.env.STUDIO_TEST_CODEX_CAPTURE, `${JSON.stringify(value)}\\n`); }",
+    "function record(value) { fs.appendFileSync(process.env.TRACEVANE_TEST_CODEX_CAPTURE, `${JSON.stringify(value)}\\n`); }",
     "if (process.argv[2] !== 'app-server') {",
     "  record({ mode: 'fallback-exec', argv: process.argv.slice(2) });",
     "  process.exit(23);",
@@ -16450,10 +16450,10 @@ test("native Channel Connectors daemon runs Codex app-server by default", async 
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
           TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
-          STUDIO_TEST_CODEX_CAPTURE: capturePath,
-          STUDIO_CHANNEL_AGENT_SESSION_IDLE_TIMEOUT_MS: "1500",
-          STUDIO_CHANNEL_AGENT_SESSION_REAP_INTERVAL_MS: "100",
-          STUDIO_CHANNEL_AGENT_SESSION_MAX_SESSIONS: "3",
+          TRACEVANE_TEST_CODEX_CAPTURE: capturePath,
+          TRACEVANE_CHANNEL_AGENT_SESSION_IDLE_TIMEOUT_MS: "1500",
+          TRACEVANE_CHANNEL_AGENT_SESSION_REAP_INTERVAL_MS: "100",
+          TRACEVANE_CHANNEL_AGENT_SESSION_MAX_SESSIONS: "3",
         },
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -16593,7 +16593,7 @@ test("native Channel Connectors daemon runs Codex app-server by default", async 
 
 test("native Channel Connectors daemon routes Claude and OpenCode compact through Octo persistent sessions", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
@@ -16606,7 +16606,7 @@ test("native Channel Connectors daemon routes Claude and OpenCode compact throug
     "const readline = require('node:readline');",
     "const rl = readline.createInterface({ input: process.stdin });",
     "function emit(value) { process.stdout.write(JSON.stringify(value) + '\\n'); }",
-    "function record(value) { fs.appendFileSync(process.env.STUDIO_NATIVE_COMPACT_DAEMON_CAPTURE, JSON.stringify({ cli: 'claude', pid: process.pid, ...value }) + '\\n'); }",
+    "function record(value) { fs.appendFileSync(process.env.TRACEVANE_NATIVE_COMPACT_DAEMON_CAPTURE, JSON.stringify({ cli: 'claude', pid: process.pid, ...value }) + '\\n'); }",
     "rl.on('line', (line) => {",
     "  if (!line.trim()) return;",
     "  const message = JSON.parse(line);",
@@ -16635,7 +16635,7 @@ test("native Channel Connectors daemon routes Claude and OpenCode compact throug
     "  fs.writeFileSync(path.join(dataHome, 'opencode', 'opencode.db'), '');",
     "}",
     "const prompt = args.includes('--') ? args.slice(args.indexOf('--') + 1).join(' ') : '';",
-    "fs.appendFileSync(process.env.STUDIO_NATIVE_COMPACT_DAEMON_CAPTURE, JSON.stringify({ cli: 'opencode', argv: args, prompt }) + '\\n');",
+    "fs.appendFileSync(process.env.TRACEVANE_NATIVE_COMPACT_DAEMON_CAPTURE, JSON.stringify({ cli: 'opencode', argv: args, prompt }) + '\\n');",
     "function emit(value) { process.stdout.write(JSON.stringify(value) + '\\n'); }",
     "emit({ type: 'step_start', part: { type: 'step-start', sessionID: 'opencode-daemon-session' } });",
     "if (!prompt.includes('/compact')) {",
@@ -16820,7 +16820,7 @@ test("native Channel Connectors daemon routes Claude and OpenCode compact throug
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
           TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
-          STUDIO_NATIVE_COMPACT_DAEMON_CAPTURE: capturePath,
+          TRACEVANE_NATIVE_COMPACT_DAEMON_CAPTURE: capturePath,
         },
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -16909,7 +16909,7 @@ test("native Channel Connectors daemon routes Claude and OpenCode compact throug
 
 test("native Channel Connectors daemon isolates Codex app-server persistent sessions by IM session", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
@@ -16923,7 +16923,7 @@ test("native Channel Connectors daemon isolates Codex app-server persistent sess
     "let nextTurn = 1;",
     "const threadId = `thread-${process.pid}`;",
     "function emit(value) { process.stdout.write(`${JSON.stringify(value)}\\n`); }",
-    "function record(value) { fs.appendFileSync(process.env.STUDIO_TEST_CODEX_CAPTURE, `${JSON.stringify({ pid: process.pid, ...value })}\\n`); }",
+    "function record(value) { fs.appendFileSync(process.env.TRACEVANE_TEST_CODEX_CAPTURE, `${JSON.stringify({ pid: process.pid, ...value })}\\n`); }",
     "if (process.argv[2] !== 'app-server') {",
     "  record({ mode: 'fallback-exec', argv: process.argv.slice(2) });",
     "  process.exit(23);",
@@ -17082,7 +17082,7 @@ test("native Channel Connectors daemon isolates Codex app-server persistent sess
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
           TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
-          STUDIO_TEST_CODEX_CAPTURE: capturePath,
+          TRACEVANE_TEST_CODEX_CAPTURE: capturePath,
         },
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -17165,7 +17165,7 @@ test("native Channel Connectors daemon isolates Codex app-server persistent sess
 
 test("native Channel Connectors daemon falls back to one-shot when Codex app-server crashes", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
@@ -17177,7 +17177,7 @@ test("native Channel Connectors daemon falls back to one-shot when Codex app-ser
     "#!/usr/bin/env node",
     "const fs = require('fs');",
     "function emit(value) { process.stdout.write(`${JSON.stringify(value)}\\n`); }",
-    "function record(value) { fs.appendFileSync(process.env.STUDIO_TEST_CODEX_CAPTURE, `${JSON.stringify({ pid: process.pid, ...value })}\\n`); }",
+    "function record(value) { fs.appendFileSync(process.env.TRACEVANE_TEST_CODEX_CAPTURE, `${JSON.stringify({ pid: process.pid, ...value })}\\n`); }",
     "if (process.argv[2] !== 'app-server') {",
     "  record({ mode: 'fallback-exec', argv: process.argv.slice(2), codexHome: process.env.CODEX_HOME });",
     "  emit({ type: 'thread.started', thread_id: 'thread-fallback-after-crash' });",
@@ -17331,7 +17331,7 @@ test("native Channel Connectors daemon falls back to one-shot when Codex app-ser
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
           TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
-          STUDIO_TEST_CODEX_CAPTURE: capturePath,
+          TRACEVANE_TEST_CODEX_CAPTURE: capturePath,
         },
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -17395,7 +17395,7 @@ test("native Channel Connectors daemon falls back to one-shot when Codex app-ser
 
 test("native Channel Connectors daemon stops Codex app-server persistent turns via /stop", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
@@ -17408,7 +17408,7 @@ test("native Channel Connectors daemon stops Codex app-server persistent turns v
     "const fs = require('fs');",
     "let nextTurn = 1;",
     "function emit(value) { process.stdout.write(`${JSON.stringify(value)}\\n`); }",
-    "function record(value) { fs.appendFileSync(process.env.STUDIO_TEST_CODEX_CAPTURE, `${JSON.stringify(value)}\\n`); }",
+    "function record(value) { fs.appendFileSync(process.env.TRACEVANE_TEST_CODEX_CAPTURE, `${JSON.stringify(value)}\\n`); }",
     "if (process.argv[2] !== 'app-server') {",
     "  record({ mode: 'fallback-exec', argv: process.argv.slice(2) });",
     "  process.exit(23);",
@@ -17565,7 +17565,7 @@ test("native Channel Connectors daemon stops Codex app-server persistent turns v
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
           TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
-          STUDIO_TEST_CODEX_CAPTURE: capturePath,
+          TRACEVANE_TEST_CODEX_CAPTURE: capturePath,
         },
         stdio: ["ignore", "pipe", "pipe"],
       });
@@ -17640,7 +17640,7 @@ test("native Channel Connectors daemon stops Codex app-server persistent turns v
 
 test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSocket", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createChannelConnectorsService(config, {
     now: () => new Date("2026-06-06T08:00:00.000Z"),
   });
@@ -17654,7 +17654,7 @@ test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSock
     "let stdin = '';",
     "process.stdin.on('data', (chunk) => { stdin += chunk.toString('utf8'); });",
     "process.stdin.on('end', () => {",
-    "  fs.appendFileSync(process.env.STUDIO_TEST_CODEX_CAPTURE, `${JSON.stringify({ argv: process.argv.slice(2), stdin, cwd: process.cwd(), openaiBaseUrl: process.env.OPENAI_BASE_URL, hasCodexHome: Boolean(process.env.CODEX_HOME) })}\\n`);",
+    "  fs.appendFileSync(process.env.TRACEVANE_TEST_CODEX_CAPTURE, `${JSON.stringify({ argv: process.argv.slice(2), stdin, cwd: process.cwd(), openaiBaseUrl: process.env.OPENAI_BASE_URL, hasCodexHome: Boolean(process.env.CODEX_HOME) })}\\n`);",
     "  process.stdout.write('{\"type\":\"thread.started\",\"thread_id\":\"thread-octo-vision\"}\\n');",
     "  process.stdout.write('{\"type\":\"item.completed\",\"item\":{\"type\":\"agent_message\",\"text\":\"图片已查看\"}}\\n');",
     "  process.stdout.write('{\"type\":\"turn.completed\"}\\n');",
@@ -17812,7 +17812,7 @@ test("native Channel Connectors daemon registers Octo and opens WuKongIM WebSock
           ...process.env,
           PATH: `${fakeBin}:${process.env.PATH || ""}`,
           TRACEVANE_GATEWAY_API_KEY: "sk-test-gateway",
-          STUDIO_TEST_CODEX_CAPTURE: capturePath,
+          TRACEVANE_TEST_CODEX_CAPTURE: capturePath,
         },
         stdio: ["ignore", "pipe", "pipe"],
       });

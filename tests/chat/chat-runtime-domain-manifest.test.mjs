@@ -27,13 +27,13 @@ const baselineFile = path.join(
   "docs",
   "superpowers",
   "inventories",
-  "studio-chat-runtime-coverage.json",
+  "tracevane-chat-runtime-coverage.json",
 );
 
 function runCoverageScript() {
   const stdout = execFileSync(
     process.execPath,
-    [path.join(root, "scripts", "studio-chat-runtime-coverage.mjs")],
+    [path.join(root, "scripts", "tracevane-chat-runtime-coverage.mjs")],
     {
       cwd: root,
       encoding: "utf8",
@@ -76,14 +76,14 @@ test("chat runtime manifest exports section-level coverage seed", () => {
   assert.match(manifestSource, /testPattern/);
 });
 
-test("package json declares studio chat runtime coverage script", () => {
+test("package json declares tracevane chat runtime coverage script", () => {
   assert.equal(
-    typeof packageJson.scripts?.["studio:chat-runtime-coverage"],
+    typeof packageJson.scripts?.["tracevane:chat-runtime-coverage"],
     "string",
   );
   assert.ok(
-    packageJson.scripts["studio:chat-runtime-coverage"].includes(
-      "scripts/studio-chat-runtime-coverage.mjs",
+    packageJson.scripts["tracevane:chat-runtime-coverage"].includes(
+      "scripts/tracevane-chat-runtime-coverage.mjs",
     ),
   );
 });

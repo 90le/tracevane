@@ -1,12 +1,12 @@
 # Channel Connectors / CLI Agent Bot 原生方案
 
-> 状态：Studio 原生 Channel daemon 路线；Feishu/Octo 私聊闭环已进入 live 抽查；Agent runner 继续加固；IM busy guard 已取代普通消息排队
+> 状态：Tracevane 原生 Channel daemon 路线；Feishu/Octo 私聊闭环已进入 live 抽查；Agent runner 继续加固；IM busy guard 已取代普通消息排队
 > 更新：2026-06-17
 > 开工门禁：`research-first-development-checklist.md`
 
 ## 1. 当前结论
 
-Studio 不走短期托管 `cc-connect` 方案。Channel Connectors 直接做成 Studio 原生能力：
+Tracevane 不走短期托管 `cc-connect` 方案。Channel Connectors 直接做成 Tracevane 原生能力：
 
 ```text
 Feishu / Octo(dmwork) / future IM
@@ -22,12 +22,12 @@ Feishu / Octo(dmwork) / future IM
 - Agent CLI 原生能力和少量 Tracevane 会话控制命令。
 - 工具流、思考流、过程回复、最终回复分类稳定。
 - `/stop`、`/new`、`/reset`、`/compact`、模型/目录/权限/显示开关可用。
-- Studio / OpenClaw 崩溃时，Channel daemon 与 Gateway daemon 仍可继续服务。
+- Tracevane / OpenClaw 崩溃时，Channel daemon 与 Gateway daemon 仍可继续服务。
 
 不再继续扩展：
 
 - active `tracevane-channel-skill`
-- `studio-octo-actions` / `studio-feishu-actions`
+- `tracevane-octo-actions` / `tracevane-feishu-actions`
 - 平台 runtime action index
 - Feishu/Octo 文档、群、管理类 API 工具层
 - 群聊、thread、多 bot 协作和 Bot API 管理能力
@@ -47,12 +47,12 @@ Feishu / Octo(dmwork) / future IM
 ## 3. Runtime 与持久化
 
 - service：`openclaw-tracevane-channel-connectors.service`
-- config：`~/.config/openclaw-studio/channel-connectors/config.json`
-- daemon config：`~/.config/openclaw-studio/channel-connectors/daemon/config.json`
-- state：`~/.config/openclaw-studio/channel-connectors/daemon/state`
-- logs：`~/.config/openclaw-studio/channel-connectors/daemon/logs/channel-connectors.log`
-- runtime：`~/.config/openclaw-studio/channel-connectors/daemon/runtime.json`
-- override：`OPENCLAW_STUDIO_CHANNEL_CONNECTORS_DIR` 或 `OPENCLAW_STUDIO_DATA_DIR`
+- config：`~/.config/tracevane/channel-connectors/config.json`
+- daemon config：`~/.config/tracevane/channel-connectors/daemon/config.json`
+- state：`~/.config/tracevane/channel-connectors/daemon/state`
+- logs：`~/.config/tracevane/channel-connectors/daemon/logs/channel-connectors.log`
+- runtime：`~/.config/tracevane/channel-connectors/daemon/runtime.json`
+- override：`TRACEVANE_CHANNEL_CONNECTORS_DIR` 或 `TRACEVANE_DATA_DIR`
 
 守护要求：
 
@@ -94,7 +94,7 @@ Octo(dmwork)：
 - one-shot 路径稳定可用，作为显式 opt-out 和 persistent fallback。
 - 工具调用、工具输入、stdout/stderr、工具结果、过程回复、最终回复分类正确，不出现空工具流或最终回复重复进过程流。
 - `/native <命令>` 作为显式原生命令入口；未知 slash 需要按当前 IM 命令合同提示并进入 Agent。
-- `/compact` 优先 Agent-native compact/compress；不支持或失败时才走 Studio/Gateway compact。
+- `/compact` 优先 Agent-native compact/compress；不支持或失败时才走 Tracevane/Gateway compact。
 - `/stop` 必须真实终止当前 binding + IM session 的 active runner。
 
 当前状态：

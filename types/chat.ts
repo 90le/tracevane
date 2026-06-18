@@ -1,4 +1,4 @@
-export type ChatSessionKind = 'studio_managed' | 'observed_external' | 'system_internal';
+export type ChatSessionKind = 'tracevane_managed' | 'observed_external' | 'system_internal';
 export type ChatProtocolMode = 'legacy' | 'dual_write' | 'canonical_v1';
 
 export type ChatMessageRole = 'user' | 'assistant' | 'system' | 'tool' | 'unknown';
@@ -21,9 +21,9 @@ export type ChatResourceSource =
   | 'user_upload'
   | 'tool_artifact'
   | 'structured_message'
-  | 'studio_delivery'
+  | 'tracevane_delivery'
   | 'assistant_markdown'
-  | 'studio_resource';
+  | 'tracevane_resource';
 export type ChatResourceStatus = 'ready' | 'missing';
 export type ChatResourcePlacement = 'append';
 export type ChatInlineResourceDisplay =
@@ -51,7 +51,7 @@ export interface ChatContractError {
   code: ChatContractErrorCode;
   message: string;
   retryable: boolean;
-  source: 'studio' | 'gateway';
+  source: 'tracevane' | 'gateway';
 }
 
 export interface ChatRuntimeState {
@@ -159,7 +159,7 @@ export interface ChatSessionPermissions {
 }
 
 export interface ChatSessionSource {
-  source: 'studio' | 'external' | 'system';
+  source: 'tracevane' | 'external' | 'system';
   channel: string | null;
   surface: string | null;
   originLabel: string | null;
@@ -343,8 +343,8 @@ export interface ChatRunOverlay {
 export interface ChatDiagnostics {
   gatewayReachable: boolean;
   gatewayWsUrl: string;
-  transport: 'studio_bff';
-  authMode: 'studio_backend_token';
+  transport: 'tracevane_bff';
+  authMode: 'tracevane_backend_token';
   rawGatewayFramesExposed: false;
   rawGatewayMethodsExposed: false;
   sameOriginRequired: boolean;
@@ -626,9 +626,9 @@ export interface ChatResourceResolveResponse {
   resources: ChatResolvedResourceItem[];
 }
 
-export type ChatCanonicalSnapshotSource = 'local_transcript' | 'history_sse' | 'history_rpc' | 'studio_mirror';
-export type ChatCanonicalMessageSource = 'local_transcript' | 'history_sse' | 'session.message' | 'studio_bff';
-export type ChatTemporaryToolSource = 'session.tool' | 'agent.tool' | 'studio_bff';
+export type ChatCanonicalSnapshotSource = 'local_transcript' | 'history_sse' | 'history_rpc' | 'tracevane_mirror';
+export type ChatCanonicalMessageSource = 'local_transcript' | 'history_sse' | 'session.message' | 'tracevane_bff';
+export type ChatTemporaryToolSource = 'session.tool' | 'agent.tool' | 'tracevane_bff';
 export type ChatSideResultKind = 'btw';
 
 export interface ChatSideResult {
@@ -844,13 +844,13 @@ export interface ChatGatewayAckResponse {
   sessionKey: string;
 }
 
-export const STUDIO_CHAT_GATEWAY_EVENT = 'studio.chat';
+export const TRACEVANE_CHAT_GATEWAY_EVENT = 'tracevane.chat';
 
-export const STUDIO_CHAT_GATEWAY_METHODS = {
-  attach: 'studio.chat.attach',
-  heartbeat: 'studio.chat.heartbeat',
-  detach: 'studio.chat.detach',
-  send: 'studio.chat.send',
-  abort: 'studio.chat.abort',
-  policySync: 'studio.chat.policy.sync',
+export const TRACEVANE_CHAT_GATEWAY_METHODS = {
+  attach: 'tracevane.chat.attach',
+  heartbeat: 'tracevane.chat.heartbeat',
+  detach: 'tracevane.chat.detach',
+  send: 'tracevane.chat.send',
+  abort: 'tracevane.chat.abort',
+  policySync: 'tracevane.chat.policy.sync',
 } as const;

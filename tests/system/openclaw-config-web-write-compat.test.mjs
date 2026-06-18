@@ -11,7 +11,7 @@ import { createConfigService } from "../../dist/apps/api/modules/config/service.
 import { createModelGatewayService } from "../../dist/apps/api/modules/model-gateway/service.js";
 
 function makeTempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "studio-openclaw-config-web-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-openclaw-config-web-"));
 }
 
 function writeJson(file, value) {
@@ -23,23 +23,23 @@ function readJson(file) {
   return JSON.parse(fs.readFileSync(file, "utf8"));
 }
 
-function createStudioConfig(root) {
+function createTracevaneConfig(root) {
   return {
-    pluginId: "studio",
+    pluginId: "tracevane",
     pluginName: "Tracevane",
     version: "0.1.0",
     port: 3760,
     autoStart: true,
     openclawRoot: root,
     openclawConfigFile: path.join(root, "openclaw.json"),
-    projectRoot: "/tmp/openclaw-studio-extension",
-    webDistDir: "/tmp/openclaw-studio-extension/apps/web-vue/dist",
+    projectRoot: "/tmp/tracevane-extension",
+    webDistDir: "/tmp/tracevane-extension/apps/web-vue/dist",
     gatewayPort: 31879,
     gatewayWsUrl: "ws://127.0.0.1:31879",
     gatewayControlUiBasePath: "",
     transport: {
       standalone: { enabled: true, port: 3760 },
-      gateway: { enabled: true, basePath: "/studio" },
+      gateway: { enabled: true, basePath: "/tracevane" },
     },
   };
 }
@@ -68,7 +68,7 @@ function baseOpenClawConfig(root) {
     },
     plugins: {
       entries: {
-        studio: {
+        tracevane: {
           enabled: true,
           config: {},
         },
@@ -157,7 +157,7 @@ test(
   { skip: openClawValidateAvailable() ? false : "openclaw CLI is not available" },
   async () => {
     const root = makeTempRoot();
-    const config = createStudioConfig(root);
+    const config = createTracevaneConfig(root);
     writeJson(config.openclawConfigFile, baseOpenClawConfig(root));
     validateOpenClawConfig(config.openclawConfigFile, "baseline");
 

@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { StudioServerConfig } from '../../../../types/api.js';
+import type { TracevaneServerConfig } from '../../../../types/api.js';
 import type { ChatQueuedMessageItem, ChatSessionControlState } from '../../../../types/chat.js';
-import { openStudioChatSqliteDatabase } from './chat-sqlite.js';
+import { openTracevaneChatSqliteDatabase } from './chat-sqlite.js';
 
 type SessionStateBackend = 'sqlite' | 'json';
 
@@ -11,13 +11,13 @@ type JsonSessionStateRecord = Record<string, {
   controls: ChatSessionControlState;
 }>;
 
-function ensureSessionStateDir(config: StudioServerConfig): string {
-  const dir = path.join(config.openclawRoot, 'studio', 'chat-session-state');
+function ensureSessionStateDir(config: TracevaneServerConfig): string {
+  const dir = path.join(config.openclawRoot, 'tracevane', 'chat-session-state');
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
 
-function jsonSessionStatePath(config: StudioServerConfig): string {
+function jsonSessionStatePath(config: TracevaneServerConfig): string {
   return path.join(ensureSessionStateDir(config), 'state.json');
 }
 
@@ -41,7 +41,7 @@ function cloneQueue(items: ChatQueuedMessageItem[]): ChatQueuedMessageItem[] {
   return items.map((item) => cloneQueueItem(item));
 }
 
-function readJsonSessionState(config: StudioServerConfig): JsonSessionStateRecord {
+function readJsonSessionState(config: TracevaneServerConfig): JsonSessionStateRecord {
   try {
     return JSON.parse(fs.readFileSync(jsonSessionStatePath(config), 'utf-8')) as JsonSessionStateRecord;
   } catch {
@@ -49,12 +49,12 @@ function readJsonSessionState(config: StudioServerConfig): JsonSessionStateRecor
   }
 }
 
-function writeJsonSessionState(config: StudioServerConfig, value: JsonSessionStateRecord): void {
+function writeJsonSessionState(config: TracevaneServerConfig, value: JsonSessionStateRecord): void {
   fs.writeFileSync(jsonSessionStatePath(config), `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function loadSqliteDatabase(config: StudioServerConfig): any | null {
-  const database = openStudioChatSqliteDatabase(config);
+function loadSqliteDatabase(config: TracevaneServerConfig): any | null {
+  const database = openTracevaneChatSqliteDatabase(config);
   if (!database) {
     return null;
   }
@@ -73,7 +73,7 @@ function loadSqliteDatabase(config: StudioServerConfig): any | null {
   }
 }
 
-export function createStudioChatSessionStateStore(config: StudioServerConfig) {
+export function createTracevaneChatSessionStateStore(config: TracevaneServerConfig) {
   const database = loadSqliteDatabase(config);
   const backend: SessionStateBackend = database ? 'sqlite' : 'json';
   let sqliteHealthy = Boolean(database);

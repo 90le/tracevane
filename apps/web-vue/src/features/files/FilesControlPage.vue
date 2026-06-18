@@ -1,7 +1,7 @@
 <template>
   <section
-    class="file-manager-page studio-file-workbench"
-    :class="{ 'studio-file-workbench--grid': viewMode === 'grid' }"
+    class="file-manager-page tracevane-file-workbench"
+    :class="{ 'tracevane-file-workbench--grid': viewMode === 'grid' }"
     @click="closeTransientSurfaces"
     @keydown="handleWorkbenchKeydown"
     @paste="handleWorkbenchPaste"
@@ -21,76 +21,76 @@
     <template v-else-if="summary">
       <input
         ref="uploadInput"
-        class="studio-file-hidden-input"
+        class="tracevane-file-hidden-input"
         type="file"
         multiple
         @change="handleUploadInputChange"
       />
       <input
         ref="uploadDirectoryInput"
-        class="studio-file-hidden-input"
+        class="tracevane-file-hidden-input"
         type="file"
         multiple
         webkitdirectory
         @change="handleUploadDirectoryInputChange"
       />
 
-      <header class="studio-file-tabs" aria-label="Open directories">
+      <header class="tracevane-file-tabs" aria-label="Open directories">
         <button
           v-for="tab in directoryTabs"
           :key="tab.id"
           type="button"
-          class="studio-file-tab"
+          class="tracevane-file-tab"
           :class="{ active: tab.id === activeDirectoryTabId }"
           :title="tab.absolutePath"
           @click.stop="activateDirectoryTab(tab.id)"
         >
-          <span class="studio-file-tab__icon" aria-hidden="true"></span>
+          <span class="tracevane-file-tab__icon" aria-hidden="true"></span>
           <span>{{ tab.label }}</span>
           <small>{{ tab.rootLabel }}</small>
           <span
             v-if="directoryTabs.length > 1"
             role="button"
             tabindex="0"
-            class="studio-file-tab__close"
+            class="tracevane-file-tab__close"
             :aria-label="text('关闭目录标签', 'Close directory tab')"
             @click.stop="closeDirectoryTab(tab.id)"
             @keydown.enter.stop.prevent="closeDirectoryTab(tab.id)"
             @keydown.space.stop.prevent="closeDirectoryTab(tab.id)"
           >
-            <X class="studio-file-icon-button__icon" aria-hidden="true" />
+            <X class="tracevane-file-icon-button__icon" aria-hidden="true" />
           </span>
         </button>
         <button
           type="button"
-          class="studio-file-tab studio-file-tab--new"
+          class="tracevane-file-tab tracevane-file-tab--new"
           :title="text('复制当前目录为新标签', 'Open current directory as a new tab')"
           @click.stop="openCurrentDirectoryInNewTab"
         >
-          <Plus class="studio-file-icon-button__icon" aria-hidden="true" />
+          <Plus class="tracevane-file-icon-button__icon" aria-hidden="true" />
         </button>
       </header>
 
-      <section class="studio-file-pathbar">
-        <div class="studio-file-pathbar__nav" aria-label="Directory history">
+      <section class="tracevane-file-pathbar">
+        <div class="tracevane-file-pathbar__nav" aria-label="Directory history">
           <button type="button" :disabled="!canGoBack" @click.stop="goBack">
-            <ChevronLeft class="studio-file-icon-button__icon" aria-hidden="true" />
+            <ChevronLeft class="tracevane-file-icon-button__icon" aria-hidden="true" />
           </button>
           <button type="button" :disabled="!canGoForward" @click.stop="goForward">
-            <ChevronRight class="studio-file-icon-button__icon" aria-hidden="true" />
+            <ChevronRight class="tracevane-file-icon-button__icon" aria-hidden="true" />
           </button>
         </div>
 
         <form
           ref="addressFormRef"
-          class="studio-file-address"
-          :class="{ 'studio-file-address--editing': addressEditing }"
+          class="tracevane-file-address"
+          :class="{ 'tracevane-file-address--editing': addressEditing }"
           @submit.prevent.stop="submitAddressNavigation"
           @focusin="cancelAddressEditingExit"
           @focusout="scheduleAddressEditingExit"
         >
           <select
-            class="studio-file-root-select"
+            class="tracevane-file-root-select"
             :value="activeRootId"
             :aria-label="text('选择根目录', 'Select root')"
             @change="handleRootSelect"
@@ -104,12 +104,12 @@
               {{ rootLabel(root) }}
             </option>
           </select>
-          <div class="studio-file-address-field" @click.stop>
+          <div class="tracevane-file-address-field" @click.stop>
             <input
               v-if="addressEditing"
               ref="addressInputRef"
               v-model="addressInput"
-              class="studio-file-address__input"
+              class="tracevane-file-address__input"
               type="text"
               spellcheck="false"
               :aria-label="text('输入路径并打开', 'Enter path and open')"
@@ -119,24 +119,24 @@
             />
             <nav
               v-else
-              class="studio-file-address-trail"
+              class="tracevane-file-address-trail"
               :aria-label="text('路径导航', 'Path navigation')"
               @dblclick.stop="startAddressEditing"
               @click.self.stop="startAddressEditing"
             >
               <button
                 type="button"
-                class="studio-file-address-crumb"
+                class="tracevane-file-address-crumb"
                 :class="{ active: !activeDirectoryPath }"
                 @click.stop="openAddressSegment('')"
               >
                 {{ rootLabel(activeRoot) }}
               </button>
               <template v-for="segment in addressSegments" :key="segment.path || '__root__'">
-                <span class="studio-file-address-separator" aria-hidden="true">/</span>
+                <span class="tracevane-file-address-separator" aria-hidden="true">/</span>
                 <button
                   type="button"
-                  class="studio-file-address-crumb"
+                  class="tracevane-file-address-crumb"
                   :class="{ active: segment.path === activeDirectoryPath }"
                   :title="segment.path"
                   @click.stop="openAddressSegment(segment.path)"
@@ -146,109 +146,109 @@
               </template>
               <button
                 type="button"
-                class="studio-file-address-edit"
+                class="tracevane-file-address-edit"
                 :title="text('编辑路径', 'Edit path')"
                 @click.stop="startAddressEditing"
               >
-                <Pencil class="studio-file-icon-button__icon" aria-hidden="true" />
+                <Pencil class="tracevane-file-icon-button__icon" aria-hidden="true" />
               </button>
             </nav>
           </div>
-          <button v-if="addressEditing" type="submit" class="studio-file-address__go">
+          <button v-if="addressEditing" type="submit" class="tracevane-file-address__go">
             {{ text("打开", "Open") }}
           </button>
         </form>
 
         <button
           type="button"
-          class="studio-file-icon-button"
+          class="tracevane-file-icon-button"
           :title="text('刷新', 'Refresh')"
           @click.stop="refreshCurrentDirectory"
         >
-          <RefreshCw class="studio-file-icon-button__icon" aria-hidden="true" />
+          <RefreshCw class="tracevane-file-icon-button__icon" aria-hidden="true" />
         </button>
 
-        <form class="studio-file-search" @submit.prevent.stop="runSearch">
-          <Search class="studio-file-search__icon" aria-hidden="true" />
+        <form class="tracevane-file-search" @submit.prevent.stop="runSearch">
+          <Search class="tracevane-file-search__icon" aria-hidden="true" />
           <input
             v-model="searchQuery"
             type="search"
             :placeholder="text('搜索文件/目录', 'Search files or directories')"
             @click.stop
           />
-          <label class="studio-file-search__recursive">
+          <label class="tracevane-file-search__recursive">
             <input v-model="recursiveSearch" type="checkbox" />
             <span>{{ text("包含子目录", "Recursive") }}</span>
           </label>
         </form>
       </section>
 
-      <section class="studio-file-toolbar" aria-label="File operations">
-        <div class="studio-file-toolbar__group">
+      <section class="tracevane-file-toolbar" aria-label="File operations">
+        <div class="tracevane-file-toolbar__group">
           <button type="button" @click.stop="openUploadPanel('files')">
-            <Upload class="studio-file-toolbar__icon" aria-hidden="true" />
+            <Upload class="tracevane-file-toolbar__icon" aria-hidden="true" />
             <span>{{ text("上传文件", "Upload") }}</span>
           </button>
           <button type="button" @click.stop="openOperationDialog('new-file')">
-            <FilePlus class="studio-file-toolbar__icon" aria-hidden="true" />
+            <FilePlus class="tracevane-file-toolbar__icon" aria-hidden="true" />
             <span>{{ text("新建文件", "New file") }}</span>
           </button>
           <button type="button" @click.stop="openOperationDialog('new-folder')">
-            <FolderPlus class="studio-file-toolbar__icon" aria-hidden="true" />
+            <FolderPlus class="tracevane-file-toolbar__icon" aria-hidden="true" />
             <span>{{ text("新建目录", "New folder") }}</span>
           </button>
           <button type="button" @click.stop="openTerminalHere">
-            <Terminal class="studio-file-toolbar__icon" aria-hidden="true" />
+            <Terminal class="tracevane-file-toolbar__icon" aria-hidden="true" />
             <span>{{ text("终端", "Terminal") }}</span>
           </button>
         </div>
 
-        <details class="studio-file-toolbar-more" @click.stop>
+        <details class="tracevane-file-toolbar-more" @click.stop>
           <summary>
-            <MoreHorizontal class="studio-file-toolbar__icon" aria-hidden="true" />
+            <MoreHorizontal class="tracevane-file-toolbar__icon" aria-hidden="true" />
             <span>{{ text("更多操作", "More") }}</span>
           </summary>
-          <div class="studio-file-toolbar-more__panel" role="menu">
+          <div class="tracevane-file-toolbar-more__panel" role="menu">
             <button type="button" role="menuitem" @click="openUploadPanel('folder')">
-              <FolderUp class="studio-file-toolbar__icon" aria-hidden="true" />
+              <FolderUp class="tracevane-file-toolbar__icon" aria-hidden="true" />
               <span>{{ text("上传目录", "Upload folder") }}</span>
             </button>
-            <label class="studio-file-toolbar-more__check" role="menuitemcheckbox" :aria-checked="showHiddenFiles">
+            <label class="tracevane-file-toolbar-more__check" role="menuitemcheckbox" :aria-checked="showHiddenFiles">
               <input v-model="showHiddenFiles" type="checkbox" />
               <span>{{ text("显示隐藏文件", "Show hidden files") }}</span>
             </label>
             <button type="button" role="menuitem" @click="runSearch">
-              <Search class="studio-file-toolbar__icon" aria-hidden="true" />
+              <Search class="tracevane-file-toolbar__icon" aria-hidden="true" />
               <span>{{ text("内容搜索", "Content search") }}</span>
             </button>
             <button type="button" role="menuitem" :disabled="!selectedItems.length" @click="copySelectedPathsToClipboard">
-              <Copy class="studio-file-toolbar__icon" aria-hidden="true" />
+              <Copy class="tracevane-file-toolbar__icon" aria-hidden="true" />
               <span>{{ text("复制路径", "Copy path") }}</span>
             </button>
             <button type="button" role="menuitem" :disabled="!selectedItems.length" @click="downloadArchiveForItems(selectedItems)">
-              <Download class="studio-file-toolbar__icon" aria-hidden="true" />
+              <Download class="tracevane-file-toolbar__icon" aria-hidden="true" />
               <span>{{ text("打包下载", "Download zip") }}</span>
             </button>
             <button type="button" role="menuitem" :disabled="!selectedItems.length" @click="openOperationDialog('archive')">
-              <Archive class="studio-file-toolbar__icon" aria-hidden="true" />
+              <Archive class="tracevane-file-toolbar__icon" aria-hidden="true" />
               <span>{{ text("创建压缩", "Create archive") }}</span>
             </button>
             <button type="button" role="menuitem" :disabled="!selectedArchiveItems.length" @click="openOperationDialog('unarchive')">
-              <PackageOpen class="studio-file-toolbar__icon" aria-hidden="true" />
+              <PackageOpen class="tracevane-file-toolbar__icon" aria-hidden="true" />
               <span>{{ text("解压", "Extract") }}</span>
             </button>
           </div>
         </details>
 
-        <div class="studio-file-toolbar__spacer"></div>
-        <div class="studio-file-view-toggle" aria-label="View mode">
+        <div class="tracevane-file-toolbar__spacer"></div>
+        <div class="tracevane-file-view-toggle" aria-label="View mode">
           <button
             type="button"
             :class="{ active: viewMode === 'list' }"
             :title="text('列表视图', 'List view')"
             @click.stop="viewMode = 'list'"
           >
-            <List class="studio-file-icon-button__icon" aria-hidden="true" />
+            <List class="tracevane-file-icon-button__icon" aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -256,29 +256,29 @@
             :title="text('网格视图', 'Grid view')"
             @click.stop="viewMode = 'grid'"
           >
-            <Grid2X2 class="studio-file-icon-button__icon" aria-hidden="true" />
+            <Grid2X2 class="tracevane-file-icon-button__icon" aria-hidden="true" />
           </button>
         </div>
       </section>
 
-      <div class="studio-file-body">
-        <main class="studio-file-main" @dragover.prevent @drop.prevent="handleDropUpload">
-          <div v-if="directoryLoading" class="studio-file-main__empty">
+      <div class="tracevane-file-body">
+        <main class="tracevane-file-main" @dragover.prevent @drop.prevent="handleDropUpload">
+          <div v-if="directoryLoading" class="tracevane-file-main__empty">
             {{ text("正在读取目录...", "Loading directory...") }}
           </div>
-          <div v-else-if="directoryError" class="studio-file-main__empty studio-file-main__empty--error">
+          <div v-else-if="directoryError" class="tracevane-file-main__empty tracevane-file-main__empty--error">
             {{ directoryError }}
           </div>
-          <div v-else-if="!displayEntries.length" class="studio-file-main__empty">
+          <div v-else-if="!displayEntries.length" class="tracevane-file-main__empty">
             {{ searchActive ? text("没有匹配的文件。", "No matching files.") : text("当前目录为空。", "This directory is empty.") }}
           </div>
 
-          <div v-else-if="viewMode === 'grid'" class="studio-file-grid" role="list">
+          <div v-else-if="viewMode === 'grid'" class="tracevane-file-grid" role="list">
             <button
               v-for="item in pagedDisplayEntries"
               :key="item.id"
               type="button"
-              class="studio-file-grid-item"
+              class="tracevane-file-grid-item"
               :class="{ selected: selectedItemIds.has(item.id) }"
               draggable="true"
               @click.stop="toggleSelection(item, $event)"
@@ -287,8 +287,8 @@
               @dragstart="handleItemDragStart($event, item)"
             >
               <span
-                class="studio-file-kind-icon studio-file-kind-icon--grid"
-                :class="`studio-file-kind-icon--${fileIconKind(item)}`"
+                class="tracevane-file-kind-icon tracevane-file-kind-icon--grid"
+                :class="`tracevane-file-kind-icon--${fileIconKind(item)}`"
                 aria-hidden="true"
               >
                 {{ fileIconText(item) }}
@@ -298,11 +298,11 @@
             </button>
           </div>
 
-          <div v-else class="studio-file-table-wrap">
-            <table class="studio-file-table">
+          <div v-else class="tracevane-file-table-wrap">
+            <table class="tracevane-file-table">
               <thead>
                 <tr>
-                  <th class="studio-file-table__check">
+                  <th class="tracevane-file-table__check">
                     <input
                       type="checkbox"
                       :checked="allVisibleSelected"
@@ -312,19 +312,19 @@
                     />
 	                  </th>
 	                  <th>
-	                    <button type="button" class="studio-file-sort" @click.stop="setSort('name')">
+	                    <button type="button" class="tracevane-file-sort" @click.stop="setSort('name')">
 	                      {{ text("文件名称", "Name") }}
 	                      <span>{{ sortGlyph("name") }}</span>
 	                    </button>
 	                  </th>
 	                  <th>
-	                    <button type="button" class="studio-file-sort" @click.stop="setSort('size')">
+	                    <button type="button" class="tracevane-file-sort" @click.stop="setSort('size')">
 	                      {{ text("大小", "Size") }}
                       <span>{{ sortGlyph("size") }}</span>
                     </button>
                   </th>
                   <th>
-                    <button type="button" class="studio-file-sort" @click.stop="setSort('modifiedAt')">
+                    <button type="button" class="tracevane-file-sort" @click.stop="setSort('modifiedAt')">
                       {{ text("修改时间", "Modified") }}
                       <span>{{ sortGlyph("modifiedAt") }}</span>
                     </button>
@@ -344,7 +344,7 @@
                   @contextmenu.prevent.stop="openContextMenu($event, item)"
                   @dragstart="handleItemDragStart($event, item)"
                 >
-                  <td class="studio-file-table__check">
+                  <td class="tracevane-file-table__check">
                     <input
                       type="checkbox"
                       :checked="selectedItemIds.has(item.id)"
@@ -353,10 +353,10 @@
                       @click.stop
                     />
                   </td>
-                  <td class="studio-file-table__name">
+                  <td class="tracevane-file-table__name">
                     <span
-                      class="studio-file-kind-icon"
-                      :class="`studio-file-kind-icon--${fileIconKind(item)}`"
+                      class="tracevane-file-kind-icon"
+                      :class="`tracevane-file-kind-icon--${fileIconKind(item)}`"
                       aria-hidden="true"
                     >
                       {{ fileIconText(item) }}
@@ -368,8 +368,8 @@
 	                  </td>
 	                  <td>{{ formatFileSize(item.size) }}</td>
 	                  <td>{{ formatIsoTimestamp(item.modifiedAt) }}</td>
-	                  <td class="studio-file-table__remarks">{{ fileRemark(item) }}</td>
-                  <td class="studio-file-table__actions">
+	                  <td class="tracevane-file-table__remarks">{{ fileRemark(item) }}</td>
+                  <td class="tracevane-file-table__actions">
                     <button type="button" @click.stop="openItem(item)">
                       {{ item.kind === "directory" ? text("打开", "Open") : text("预览", "Preview") }}
                     </button>
@@ -384,13 +384,13 @@
         </main>
       </div>
 
-      <footer class="studio-file-statusbar">
+      <footer class="tracevane-file-statusbar">
         <span>{{ text(`共 ${directoryCounts.directories} 个目录，${directoryCounts.files} 个文件`, `${directoryCounts.directories} directories, ${directoryCounts.files} files`) }}</span>
         <span>{{ text(`已选 ${selectedItems.length} 项`, `${selectedItems.length} selected`) }}</span>
         <span>{{ currentAbsolutePath }}</span>
-        <span class="studio-file-statusbar__spacer"></span>
+        <span class="tracevane-file-statusbar__spacer"></span>
         <span v-if="searchActive">{{ text(`搜索结果 ${paginationTotalEntries} 项`, `${paginationTotalEntries} search results`) }}</span>
-        <nav v-if="displayEntries.length" class="studio-file-pagination" :aria-label="text('文件分页', 'File pagination')">
+        <nav v-if="displayEntries.length" class="tracevane-file-pagination" :aria-label="text('文件分页', 'File pagination')">
           <span>{{ paginationRangeLabel }}</span>
           <button type="button" :disabled="currentPage <= 1" @click.stop="setCurrentPage(currentPage - 1)">
             {{ text("上一页", "Prev") }}
@@ -405,11 +405,11 @@
         </nav>
       </footer>
 
-      <aside v-if="detailsItem" class="studio-file-details" aria-label="File details" @click.stop>
-        <header class="studio-file-details__head">
+      <aside v-if="detailsItem" class="tracevane-file-details" aria-label="File details" @click.stop>
+        <header class="tracevane-file-details__head">
           <span
-            class="studio-file-kind-icon studio-file-kind-icon--large"
-            :class="`studio-file-kind-icon--${fileIconKind(detailsItem)}`"
+            class="tracevane-file-kind-icon tracevane-file-kind-icon--large"
+            :class="`tracevane-file-kind-icon--${fileIconKind(detailsItem)}`"
             aria-hidden="true"
           >
             {{ fileIconText(detailsItem) }}
@@ -419,11 +419,11 @@
             <span>{{ detailsItem.path || rootLabel(activeRoot) }}</span>
           </div>
           <button type="button" @click.stop="detailsItem = null">
-            <X class="studio-file-icon-button__icon" aria-hidden="true" />
+            <X class="tracevane-file-icon-button__icon" aria-hidden="true" />
           </button>
         </header>
 
-        <dl class="studio-file-details__grid">
+        <dl class="tracevane-file-details__grid">
           <div>
             <dt>{{ text("类型", "Type") }}</dt>
             <dd>{{ itemTypeLabel(detailsItem) }}</dd>
@@ -450,7 +450,7 @@
           </div>
         </dl>
 
-        <div class="studio-file-details__actions">
+        <div class="tracevane-file-details__actions">
           <button type="button" @click.stop="copyPathsToClipboard([detailsItem])">{{ text("复制路径", "Copy path") }}</button>
           <button v-if="detailsItem.kind === 'file'" type="button" @click.stop="openSharedFilePreviewForItem(detailsItem)">{{ text("打开", "Open") }}</button>
           <button type="button" @click.stop="openTerminalHere(detailsItem)">{{ text("终端", "Terminal") }}</button>
@@ -461,73 +461,73 @@
       <Teleport to="body">
       <section
         v-if="contextMenu.open"
-        class="studio-file-context-menu"
+        class="tracevane-file-context-menu"
         role="menu"
         :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
         @click.stop
         @keydown.esc.stop.prevent="closeContextMenu"
       >
         <button type="button" role="menuitem" @click="openContextItem">
-          <FolderOpen class="studio-file-context-menu__icon" aria-hidden="true" />
+          <FolderOpen class="tracevane-file-context-menu__icon" aria-hidden="true" />
           <span>{{ contextMenu.item?.kind === "directory" ? text("打开", "Open") : text("预览", "Preview") }}</span>
         </button>
         <button type="button" role="menuitem" :disabled="!contextMenu.item || !isCodeEditableItem(contextMenu.item)" @click="editContextItem">
-          <Pencil class="studio-file-context-menu__icon" aria-hidden="true" />
+          <Pencil class="tracevane-file-context-menu__icon" aria-hidden="true" />
           <span>{{ text("编辑", "Edit") }}</span>
         </button>
         <button type="button" role="menuitem" @click="openTerminalHere(contextMenu.item || undefined)">
-          <Terminal class="studio-file-context-menu__icon" aria-hidden="true" />
+          <Terminal class="tracevane-file-context-menu__icon" aria-hidden="true" />
           <span>{{ text("在终端打开", "Open in terminal") }}</span>
         </button>
         <button type="button" role="menuitem" :disabled="!contextMenu.item || contextMenu.item.kind !== 'file'" @click="downloadContextItem">
-          <Download class="studio-file-context-menu__icon" aria-hidden="true" />
+          <Download class="tracevane-file-context-menu__icon" aria-hidden="true" />
           <span>{{ text("下载", "Download") }}</span>
         </button>
-        <span class="studio-file-context-menu__divider" aria-hidden="true"></span>
+        <span class="tracevane-file-context-menu__divider" aria-hidden="true"></span>
         <button type="button" role="menuitem" @click="copyContextPath">
-          <Copy class="studio-file-context-menu__icon" aria-hidden="true" />
+          <Copy class="tracevane-file-context-menu__icon" aria-hidden="true" />
           <span>{{ text("复制路径", "Copy path") }}</span>
         </button>
         <button type="button" role="menuitem" @click="copyContextRelativePath">
-          <Copy class="studio-file-context-menu__icon" aria-hidden="true" />
+          <Copy class="tracevane-file-context-menu__icon" aria-hidden="true" />
           <span>{{ text("复制相对路径", "Copy relative path") }}</span>
         </button>
-        <button type="button" role="menuitem" @click="copyContextStudioRef">
-          <Link2 class="studio-file-context-menu__icon" aria-hidden="true" />
+        <button type="button" role="menuitem" @click="copyContextTracevaneRef">
+          <Link2 class="tracevane-file-context-menu__icon" aria-hidden="true" />
           <span>{{ text("复制 Tracevane 引用", "Copy Tracevane ref") }}</span>
         </button>
-        <span class="studio-file-context-menu__divider" aria-hidden="true"></span>
+        <span class="tracevane-file-context-menu__divider" aria-hidden="true"></span>
         <button type="button" role="menuitem" @click="copyContextItems">
-          <Copy class="studio-file-context-menu__icon" aria-hidden="true" />
+          <Copy class="tracevane-file-context-menu__icon" aria-hidden="true" />
           <span>{{ text("复制", "Copy") }}</span>
         </button>
         <button type="button" role="menuitem" @click="cutContextItems">
-          <Scissors class="studio-file-context-menu__icon" aria-hidden="true" />
+          <Scissors class="tracevane-file-context-menu__icon" aria-hidden="true" />
           <span>{{ text("剪切", "Cut") }}</span>
         </button>
         <button type="button" role="menuitem" :disabled="!clipboardItems.length" @click="pasteClipboardItems">
-          <ClipboardPaste class="studio-file-context-menu__icon" aria-hidden="true" />
+          <ClipboardPaste class="tracevane-file-context-menu__icon" aria-hidden="true" />
           <span>{{ text("粘贴", "Paste") }}</span>
         </button>
         <button type="button" role="menuitem" :disabled="!contextMenu.item" @click="openOperationDialog('rename', contextMenu.item || undefined)">
-          <Pencil class="studio-file-context-menu__icon" aria-hidden="true" />
+          <Pencil class="tracevane-file-context-menu__icon" aria-hidden="true" />
           <span>{{ text("重命名", "Rename") }}</span>
         </button>
-        <span class="studio-file-context-menu__divider" aria-hidden="true"></span>
+        <span class="tracevane-file-context-menu__divider" aria-hidden="true"></span>
         <button type="button" role="menuitem" @click="openOperationDialog('archive', contextMenu.item || undefined)">
-          <Archive class="studio-file-context-menu__icon" aria-hidden="true" />
+          <Archive class="tracevane-file-context-menu__icon" aria-hidden="true" />
           <span>{{ text("创建压缩", "Create archive") }}</span>
         </button>
         <button type="button" role="menuitem" :disabled="!contextMenu.item || !isExtractableArchiveItem(contextMenu.item)" @click="openOperationDialog('unarchive', contextMenu.item || undefined)">
-          <PackageOpen class="studio-file-context-menu__icon" aria-hidden="true" />
+          <PackageOpen class="tracevane-file-context-menu__icon" aria-hidden="true" />
           <span>{{ text("解压...", "Extract...") }}</span>
         </button>
         <button type="button" role="menuitem" :disabled="!contextMenu.item" @click="showContextDetails">
-          <Info class="studio-file-context-menu__icon" aria-hidden="true" />
+          <Info class="tracevane-file-context-menu__icon" aria-hidden="true" />
           <span>{{ text("属性", "Properties") }}</span>
         </button>
-        <button type="button" role="menuitem" class="studio-file-context-menu__danger" :disabled="!contextMenu.item" @click="openOperationDialog('delete', contextMenu.item || undefined)">
-          <Trash2 class="studio-file-context-menu__icon" aria-hidden="true" />
+        <button type="button" role="menuitem" class="tracevane-file-context-menu__danger" :disabled="!contextMenu.item" @click="openOperationDialog('delete', contextMenu.item || undefined)">
+          <Trash2 class="tracevane-file-context-menu__icon" aria-hidden="true" />
           <span>{{ text("删除", "Delete") }}</span>
         </button>
       </section>
@@ -536,17 +536,17 @@
       <Teleport to="body">
       <section
         v-if="operationDialog"
-        class="studio-file-dialog"
+        class="tracevane-file-dialog"
         role="dialog"
         aria-modal="true"
         :aria-label="operationDialogTitle"
         @click.self="closeOperationDialog"
       >
-        <form class="studio-file-dialog__panel" @submit.prevent="submitOperationDialog">
+        <form class="tracevane-file-dialog__panel" @submit.prevent="submitOperationDialog">
           <header>
             <strong>{{ operationDialogTitle }}</strong>
             <button type="button" @click="closeOperationDialog">
-              <X class="studio-file-icon-button__icon" aria-hidden="true" />
+              <X class="tracevane-file-icon-button__icon" aria-hidden="true" />
             </button>
           </header>
           <p>{{ operationDialogDescription }}</p>
@@ -564,9 +564,9 @@
               autofocus
             />
           </label>
-          <div class="studio-file-dialog__actions">
+          <div class="tracevane-file-dialog__actions">
             <button type="button" @click="closeOperationDialog">{{ text("取消", "Cancel") }}</button>
-            <button type="submit" class="studio-file-dialog__primary">{{ operationDialogConfirmLabel }}</button>
+            <button type="submit" class="tracevane-file-dialog__primary">{{ operationDialogConfirmLabel }}</button>
           </div>
         </form>
       </section>
@@ -575,29 +575,29 @@
       <Teleport to="body">
       <section
         v-if="uploadPanelOpen"
-        class="studio-file-upload-panel"
+        class="tracevane-file-upload-panel"
         role="dialog"
         aria-modal="true"
         :aria-label="uploadPanelTitle"
         @click.self="closeUploadPanel"
       >
-        <div class="studio-file-upload-panel__card" @click.stop>
-          <header class="studio-file-upload-panel__head">
+        <div class="tracevane-file-upload-panel__card" @click.stop>
+          <header class="tracevane-file-upload-panel__head">
             <div>
               <strong>{{ uploadPanelTitle }}</strong>
               <span>{{ currentAbsolutePath }}</span>
             </div>
             <button type="button" :disabled="uploadBusy" @click="closeUploadPanel">
-              <X class="studio-file-icon-button__icon" aria-hidden="true" />
+              <X class="tracevane-file-icon-button__icon" aria-hidden="true" />
             </button>
           </header>
-          <div class="studio-file-upload-panel__actions">
+          <div class="tracevane-file-upload-panel__actions">
             <button type="button" :disabled="uploadBusy" @click="chooseUploadFiles">
-              <Upload class="studio-file-toolbar__icon" aria-hidden="true" />
+              <Upload class="tracevane-file-toolbar__icon" aria-hidden="true" />
               <span>{{ text("选择文件", "Choose files") }}</span>
             </button>
             <button type="button" :disabled="uploadBusy" @click="chooseUploadFolder">
-              <FolderUp class="studio-file-toolbar__icon" aria-hidden="true" />
+              <FolderUp class="tracevane-file-toolbar__icon" aria-hidden="true" />
               <span>{{ text("选择目录", "Choose folder") }}</span>
             </button>
             <span>
@@ -605,25 +605,25 @@
               <template v-if="uploadQueueItems.length"> · {{ formatFileSize(uploadTotalSize) }}</template>
             </span>
           </div>
-          <div v-if="uploadQueueItems.length" class="studio-file-upload-panel__queue" role="list">
+          <div v-if="uploadQueueItems.length" class="tracevane-file-upload-panel__queue" role="list">
             <article
               v-for="item in uploadQueueItems"
               :key="item.id"
-              class="studio-file-upload-row"
-              :class="`studio-file-upload-row--${item.status}`"
+              class="tracevane-file-upload-row"
+              :class="`tracevane-file-upload-row--${item.status}`"
               role="listitem"
             >
-              <span class="studio-file-upload-row__name" :title="item.relativePath">{{ item.relativePath }}</span>
-              <span class="studio-file-upload-row__meta">
+              <span class="tracevane-file-upload-row__name" :title="item.relativePath">{{ item.relativePath }}</span>
+              <span class="tracevane-file-upload-row__meta">
                 {{ formatFileSize(item.size) }} · {{ uploadStatusLabel(item.status) }}
               </span>
-              <span class="studio-file-upload-row__progress" aria-hidden="true">
+              <span class="tracevane-file-upload-row__progress" aria-hidden="true">
                 <span :style="{ width: `${item.progress}%` }"></span>
               </span>
               <small v-if="item.error">{{ item.error }}</small>
             </article>
           </div>
-          <div v-else class="studio-file-upload-panel__empty">
+          <div v-else class="tracevane-file-upload-panel__empty">
             {{ text("可以选择文件、目录，也可以拖拽或粘贴到文件管理器。", "Choose files, choose a folder, or drag and paste into the file manager.") }}
           </div>
         </div>
@@ -632,8 +632,8 @@
 
       <section
         v-if="sharedFilePreviewTabs.length"
-        class="studio-file-shared-preview"
-        :class="{ 'studio-file-shared-preview--maximized': sharedFilePreviewMaximized }"
+        class="tracevane-file-shared-preview"
+        :class="{ 'tracevane-file-shared-preview--maximized': sharedFilePreviewMaximized }"
         aria-label="Shared file preview"
         @click.stop
       >
@@ -857,11 +857,11 @@ interface BrowserFileSystemDirectoryReader {
   ): void;
 }
 
-const FILE_MANAGER_UI_STORAGE_KEY = "openclaw-studio.files.native.ui";
-const RECENT_EDITOR_FILES_STORAGE_KEY = "openclaw-studio.files.recent-editor";
-const TERMINAL_DESCRIPTORS_STORAGE_KEY = "openclaw-studio.terminal.descriptors";
+const FILE_MANAGER_UI_STORAGE_KEY = "tracevane.files.native.ui";
+const RECENT_EDITOR_FILES_STORAGE_KEY = "tracevane.files.recent-editor";
+const TERMINAL_DESCRIPTORS_STORAGE_KEY = "tracevane.terminal.descriptors";
 const TERMINAL_WORKSPACE_STORAGE_KEY = `${TERMINAL_DESCRIPTORS_STORAGE_KEY}.workspace`;
-const TERMINAL_PENDING_LAUNCH_STORAGE_KEY = "openclaw-studio.terminal.pendingLaunchMetadata";
+const TERMINAL_PENDING_LAUNCH_STORAGE_KEY = "tracevane.terminal.pendingLaunchMetadata";
 const PAGE_SIZE_OPTIONS = [50, 100, 200, 500] as const;
 const EXTRACTABLE_ARCHIVE_EXTENSIONS = [
   ".zip",
@@ -1734,9 +1734,9 @@ function copyContextRelativePath(): void {
   closeContextMenu();
 }
 
-function copyContextStudioRef(): void {
+function copyContextTracevaneRef(): void {
   const item = contextMenu.value.item;
-  if (item) void writeTextToSystemClipboard(studioRefForItem(item));
+  if (item) void writeTextToSystemClipboard(tracevaneRefForItem(item));
   closeContextMenu();
 }
 
@@ -2106,8 +2106,8 @@ function copySelectedPathsToClipboard(): void {
   void copyPathsToClipboard(selectedItems.value);
 }
 
-function studioRefForItem(item: NativeFileItem): string {
-  return `studio-file:${item.absolutePath}`;
+function tracevaneRefForItem(item: NativeFileItem): string {
+  return `tracevane-file:${item.absolutePath}`;
 }
 
 function terminalResourcePayloadForItem(item: NativeFileItem): TerminalResourceTransferPayload {
@@ -2690,12 +2690,12 @@ function isTextEditingEventTarget(target: EventTarget | null): boolean {
     ".cm-editor",
     ".cm-content",
     ".code-file-editor",
-    ".studio-file-dialog",
+    ".tracevane-file-dialog",
   ].join(",")));
 }
 
 function isInsideFileContextMenu(target: EventTarget | null): boolean {
-  return target instanceof Element && Boolean(target.closest(".studio-file-context-menu"));
+  return target instanceof Element && Boolean(target.closest(".tracevane-file-context-menu"));
 }
 
 function handleGlobalTransientSurfaceEvent(event: Event): void {

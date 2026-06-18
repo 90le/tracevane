@@ -1,7 +1,7 @@
 import { sendJson, sendSseEvent, startSse } from "../../core/http.js";
 import type { IncomingMessage } from "node:http";
-import type { StudioApiContext } from "../../core/context.js";
-import type { StudioRouter } from "../../core/router.js";
+import type { TracevaneApiContext } from "../../core/context.js";
+import type { TracevaneRouter } from "../../core/router.js";
 
 function resolveDashboardLanguage(req: IncomingMessage): string | undefined {
   const requestUrl = new URL(
@@ -21,8 +21,8 @@ function resolveDashboardLanguage(req: IncomingMessage): string | undefined {
 }
 
 export function registerDashboardRoutes(
-  router: StudioRouter,
-  ctx: StudioApiContext,
+  router: TracevaneRouter,
+  ctx: TracevaneApiContext,
 ): void {
   router.get("/api/dashboard/summary", async (req, res, routeCtx) => {
     const acceptLanguage = resolveDashboardLanguage(req);

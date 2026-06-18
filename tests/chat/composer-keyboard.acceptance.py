@@ -10,7 +10,7 @@ from playwright.sync_api import sync_playwright
 from browser_surface import wait_for_active_session, wait_for_chat_surface
 
 
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-composer-keyboard-acceptance.png")
+SCREENSHOT = Path("/tmp/tracevane-chat-composer-keyboard-acceptance.png")
 
 
 def wait_button_enabled(locator, timeout=30000):

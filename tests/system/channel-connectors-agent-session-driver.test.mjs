@@ -20,7 +20,7 @@ const baseKey = {
   sessionKey: "octo:dm:user-1",
   agent: "codex",
   model: "gpt-5",
-  workDir: "/tmp/studio-project",
+  workDir: "/tmp/tracevane-project",
 };
 
 function makeTempRoot() {
@@ -99,7 +99,7 @@ function completedResult(replyText, extra = {}) {
     model: "gpt-5",
     command: "codex",
     args: [],
-    cwd: "/tmp/studio-project",
+    cwd: "/tmp/tracevane-project",
     replyText,
     stdout: replyText,
     stderr: "",
@@ -604,7 +604,7 @@ test("Channel Connectors native CLI session driver sends OpenCode compact throug
     "const marker = argv.lastIndexOf('--');",
     "const message = marker >= 0 ? argv.slice(marker + 1).join(' ') : argv.slice(-1)[0];",
     "const sessionID = incomingSession || 'opencode-session-created';",
-    "fs.appendFileSync(process.env.STUDIO_TEST_CAPTURE, JSON.stringify({ argv, message, incomingSession, sessionID }) + '\\n');",
+    "fs.appendFileSync(process.env.TRACEVANE_TEST_CAPTURE, JSON.stringify({ argv, message, incomingSession, sessionID }) + '\\n');",
     "function emit(value) { process.stdout.write(JSON.stringify(value) + '\\n'); }",
     "emit({ type: 'step_start', part: { type: 'step-start', sessionID } });",
     "emit({ type: 'tool_use', part: { type: 'tool', tool: 'bash', state: { status: 'completed', title: 'List files', output: 'file-a' } } });",
@@ -625,7 +625,7 @@ test("Channel Connectors native CLI session driver sends OpenCode compact throug
 
   const originalPath = process.env.PATH || "";
   process.env.PATH = `${fakeBin}:${originalPath}`;
-  process.env.STUDIO_TEST_CAPTURE = capturePath;
+  process.env.TRACEVANE_TEST_CAPTURE = capturePath;
   try {
     const factory = createNativeCliSessionDriverFactory({
       codexFactory: {
@@ -683,7 +683,7 @@ test("Channel Connectors native CLI session driver sends OpenCode compact throug
     assert.equal(captures[1].message, "/compact");
   } finally {
     process.env.PATH = originalPath;
-    delete process.env.STUDIO_TEST_CAPTURE;
+    delete process.env.TRACEVANE_TEST_CAPTURE;
   }
 });
 
@@ -774,7 +774,7 @@ test("Channel Connectors native CLI session driver keeps Claude stream-json proc
     "#!/usr/bin/env node",
     "const fs = require('fs');",
     "const readline = require('readline');",
-    "fs.appendFileSync(process.env.STUDIO_TEST_CAPTURE, JSON.stringify({ argv: process.argv.slice(2) }) + '\\n');",
+    "fs.appendFileSync(process.env.TRACEVANE_TEST_CAPTURE, JSON.stringify({ argv: process.argv.slice(2) }) + '\\n');",
     "function emit(value) { process.stdout.write(JSON.stringify(value) + '\\n'); }",
     "emit({ type: 'system', session_id: 'claude-live-session' });",
     "const rl = readline.createInterface({ input: process.stdin });",
@@ -783,7 +783,7 @@ test("Channel Connectors native CLI session driver keeps Claude stream-json proc
     "  const msg = JSON.parse(line);",
     "  const content = msg.message && msg.message.content;",
     "  const text = Array.isArray(content) ? (content.find((part) => part.type === 'text') || {}).text : content;",
-    "  fs.appendFileSync(process.env.STUDIO_TEST_CAPTURE, JSON.stringify({ stdin: text }) + '\\n');",
+    "  fs.appendFileSync(process.env.TRACEVANE_TEST_CAPTURE, JSON.stringify({ stdin: text }) + '\\n');",
     "  if (text === '/compact') {",
     "    emit({ type: 'assistant', message: { content: [{ type: 'text', text: '' }] } });",
     "    emit({ type: 'result', result: '', session_id: 'claude-live-session' });",
@@ -800,7 +800,7 @@ test("Channel Connectors native CLI session driver keeps Claude stream-json proc
 
   const originalPath = process.env.PATH || "";
   process.env.PATH = `${fakeBin}:${originalPath}`;
-  process.env.STUDIO_TEST_CAPTURE = capturePath;
+  process.env.TRACEVANE_TEST_CAPTURE = capturePath;
   try {
     const factory = createNativeCliSessionDriverFactory({
       codexFactory: {
@@ -863,7 +863,7 @@ test("Channel Connectors native CLI session driver keeps Claude stream-json proc
     assert.equal(stdinMessages[1], "/compact");
   } finally {
     process.env.PATH = originalPath;
-    delete process.env.STUDIO_TEST_CAPTURE;
+    delete process.env.TRACEVANE_TEST_CAPTURE;
   }
 });
 
@@ -994,7 +994,7 @@ test("Channel Connectors Claude persistent session stop resolves the active turn
     "#!/usr/bin/env node",
     "const fs = require('fs');",
     "const readline = require('readline');",
-    "fs.appendFileSync(process.env.STUDIO_TEST_CAPTURE, JSON.stringify({ argv: process.argv.slice(2) }) + '\\n');",
+    "fs.appendFileSync(process.env.TRACEVANE_TEST_CAPTURE, JSON.stringify({ argv: process.argv.slice(2) }) + '\\n');",
     "function emit(value) { process.stdout.write(JSON.stringify(value) + '\\n'); }",
     "emit({ type: 'system', session_id: 'claude-stop-session' });",
     "const rl = readline.createInterface({ input: process.stdin });",
@@ -1003,14 +1003,14 @@ test("Channel Connectors Claude persistent session stop resolves the active turn
     "  const msg = JSON.parse(line);",
     "  const content = msg.message && msg.message.content;",
     "  const text = Array.isArray(content) ? (content.find((part) => part.type === 'text') || {}).text : content;",
-    "  fs.appendFileSync(process.env.STUDIO_TEST_CAPTURE, JSON.stringify({ stdin: text }) + '\\n');",
+    "  fs.appendFileSync(process.env.TRACEVANE_TEST_CAPTURE, JSON.stringify({ stdin: text }) + '\\n');",
     "});",
     "setInterval(() => {}, 1000);",
   ]);
 
   const originalPath = process.env.PATH || "";
   process.env.PATH = `${fakeBin}:${originalPath}`;
-  process.env.STUDIO_TEST_CAPTURE = capturePath;
+  process.env.TRACEVANE_TEST_CAPTURE = capturePath;
   try {
     const factory = createNativeCliSessionDriverFactory({
       codexFactory: {
@@ -1050,7 +1050,7 @@ test("Channel Connectors Claude persistent session stop resolves the active turn
     assert.equal(result.session.agentNativeSessionId, "claude-stop-session");
   } finally {
     process.env.PATH = originalPath;
-    delete process.env.STUDIO_TEST_CAPTURE;
+    delete process.env.TRACEVANE_TEST_CAPTURE;
   }
 });
 
@@ -1064,7 +1064,7 @@ test("Channel Connectors OpenCode persistent session stop aborts active process 
   fs.writeFileSync(dbPath, "");
   writeExecutable(path.join(fakeBin, "sqlite3"), [
     "#!/usr/bin/env node",
-    "require('fs').writeFileSync(process.env.STUDIO_SQLITE_MARKER, 'called');",
+    "require('fs').writeFileSync(process.env.TRACEVANE_SQLITE_MARKER, 'called');",
     "process.stdout.write(JSON.stringify([{ id: 'stale-session' }]));",
   ]);
   const session = new OpenCodeRunSession({
@@ -1079,11 +1079,11 @@ test("Channel Connectors OpenCode persistent session stop aborts active process 
   const originalPath = process.env.PATH || "";
   const originalHome = process.env.HOME;
   const originalDataHome = process.env.XDG_DATA_HOME;
-  const originalMarker = process.env.STUDIO_SQLITE_MARKER;
+  const originalMarker = process.env.TRACEVANE_SQLITE_MARKER;
   process.env.PATH = `${fakeBin}:${originalPath}`;
   process.env.HOME = root;
   process.env.XDG_DATA_HOME = dataHome;
-  process.env.STUDIO_SQLITE_MARKER = sqliteMarker;
+  process.env.TRACEVANE_SQLITE_MARKER = sqliteMarker;
   try {
     const resultPromise = session.runTurn({
       mode: "persistent",
@@ -1130,7 +1130,7 @@ test("Channel Connectors OpenCode persistent session stop aborts active process 
     else process.env.HOME = originalHome;
     if (originalDataHome === undefined) delete process.env.XDG_DATA_HOME;
     else process.env.XDG_DATA_HOME = originalDataHome;
-    if (originalMarker === undefined) delete process.env.STUDIO_SQLITE_MARKER;
-    else process.env.STUDIO_SQLITE_MARKER = originalMarker;
+    if (originalMarker === undefined) delete process.env.TRACEVANE_SQLITE_MARKER;
+    else process.env.TRACEVANE_SQLITE_MARKER = originalMarker;
   }
 });

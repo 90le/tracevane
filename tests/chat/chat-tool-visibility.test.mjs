@@ -6,12 +6,12 @@ import {
   groupVisibleToolCardsByRun,
 } from '../../dist/lib/chat-tool-visibility.js';
 
-test('main chat visibility filter removes studio_delivery tool previews', () => {
+test('main chat visibility filter removes tracevane_delivery tool previews', () => {
   const grouped = groupVisibleToolCardsByRun([
     {
       toolCallId: 'tool-1',
       runId: 'run-1',
-      name: 'studio_delivery',
+      name: 'tracevane_delivery',
       status: 'completed',
       startedAt: '2026-03-21T00:00:00.000Z',
       updatedAt: '2026-03-21T00:00:01.000Z',
@@ -37,9 +37,9 @@ test('main chat visibility filter removes studio_delivery tool previews', () => 
   assert.equal(grouped['run-1']?.[0]?.name, 'browser');
 });
 
-test('tool hint visibility filter removes studio_delivery helper hints', () => {
+test('tool hint visibility filter removes tracevane_delivery helper hints', () => {
   const visible = filterMainChatToolItems([
-    { id: 'tool-1', name: 'studio_delivery', status: 'completed', summary: null, argsPreview: null, resultPreview: null },
+    { id: 'tool-1', name: 'tracevane_delivery', status: 'completed', summary: null, argsPreview: null, resultPreview: null },
     { id: 'tool-2', name: 'image', status: 'running', summary: 'drawing', argsPreview: '{}', resultPreview: null },
   ]);
 

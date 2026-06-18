@@ -15,5 +15,5 @@ test('gateway browser client id defaults to a host-recognized control-ui id', ()
 test('gateway browser client id preserves recognized protocol ids and normalizes unknown ids', () => {
   assert.equal(resolveGatewayBrowserClientId('webchat-ui'), 'webchat-ui');
   assert.equal(resolveGatewayBrowserClientId('openclaw-control-ui'), 'openclaw-control-ui');
-  assert.equal(resolveGatewayBrowserClientId('openclaw-studio'), 'openclaw-control-ui');
+  assert.equal(resolveGatewayBrowserClientId('tracevane'), 'openclaw-control-ui');
 });

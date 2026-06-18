@@ -66,7 +66,7 @@ test("terminal session status helper identifies recoverable states", () => {
 });
 
 test("terminal service session summaries derive detached status from real activity metadata", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-"));
   const configFile = path.join(tempDir, "openclaw-config.json");
   fs.writeFileSync(configFile, JSON.stringify({}), "utf8");
 
@@ -135,7 +135,7 @@ test("terminal service session summaries derive detached status from real activi
 });
 
 test("terminal service applies a conservative native worker budget for web terminal shells", () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-env-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-env-"));
   const configFile = path.join(tempDir, "openclaw-config.json");
   fs.writeFileSync(configFile, JSON.stringify({}), "utf8");
 
@@ -168,7 +168,7 @@ test("terminal service applies a conservative native worker budget for web termi
     assert.equal(env.NO_COLOR, undefined);
     assert.equal(env.LANG, "C.UTF-8");
     assert.equal(env.LC_CTYPE, "C.UTF-8");
-    assert.equal(env.TERM_PROGRAM, "openclaw-studio");
+    assert.equal(env.TERM_PROGRAM, "tracevane");
     assert.equal(env.TERM_PROGRAM_VERSION, "0.1.28");
     assert.equal(env.OPENCLAW_TERMINAL_CLIENT, "xterm.js");
     assert.equal(env.XTERM_VERSION, "Tracevane 0.1.28");
@@ -184,7 +184,7 @@ test("terminal service applies a conservative native worker budget for web termi
 });
 
 test("terminal service preserves explicit native worker env overrides", () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-env-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-env-"));
   const configFile = path.join(tempDir, "openclaw-config.json");
   fs.writeFileSync(configFile, JSON.stringify({}), "utf8");
 
@@ -213,7 +213,7 @@ test("terminal service preserves explicit native worker env overrides", () => {
 });
 
 test("terminal service rename/delete return missing-session signals", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-"));
   const configFile = path.join(tempDir, "openclaw-config.json");
   fs.writeFileSync(configFile, JSON.stringify({}), "utf8");
 
@@ -276,7 +276,7 @@ function restoreEnv(key, value) {
 }
 
 test("terminal service delete rejects running and detached sessions", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-"));
   const configFile = path.join(tempDir, "openclaw-config.json");
   fs.writeFileSync(configFile, JSON.stringify({}), "utf8");
 

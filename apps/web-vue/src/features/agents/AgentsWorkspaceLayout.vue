@@ -28,8 +28,8 @@
       {{ noticeMessage.text }}
     </div>
 
-    <div class="agents-workspace-layout studio-workbench studio-workbench--object">
-      <aside class="agents-workspace-sidebar operate-resource-rail operate-workspace-surface operate-resource-panel mobile-resource-drawer studio-workbench-index">
+    <div class="agents-workspace-layout tracevane-workbench tracevane-workbench--object">
+      <aside class="agents-workspace-sidebar operate-resource-rail operate-workspace-surface operate-resource-panel mobile-resource-drawer tracevane-workbench-index">
         <div class="agents-workspace-sidebar__head">
           <div>
             <p class="eyebrow">{{ text('ROSTER', 'ROSTER') }}</p>
@@ -106,16 +106,16 @@
         </div>
       </aside>
 
-      <section class="agents-workspace-stage operate-stage studio-workbench-canvas">
-        <div class="agents-task-workbench studio-workbench-task-shell" :class="{ 'is-empty': !selectedAgent }">
-          <div v-if="selectedAgent" class="agents-task-bar studio-workbench-task-bar" :aria-label="text('Agent 任务', 'Agent tasks')">
+      <section class="agents-workspace-stage operate-stage tracevane-workbench-canvas">
+        <div class="agents-task-workbench tracevane-workbench-task-shell" :class="{ 'is-empty': !selectedAgent }">
+          <div v-if="selectedAgent" class="agents-task-bar tracevane-workbench-task-bar" :aria-label="text('Agent 任务', 'Agent tasks')">
             <p class="eyebrow">{{ text('任务', 'Tasks') }}</p>
-            <nav class="agents-task-nav studio-workbench-task-nav" :aria-label="text('Agent 任务页面', 'Agent task pages')">
+            <nav class="agents-task-nav tracevane-workbench-task-nav" :aria-label="text('Agent 任务页面', 'Agent task pages')">
               <button
                 v-for="navItem in taskNavItems"
                 :key="navItem.value"
                 type="button"
-                class="agents-task-nav-button studio-workbench-task-nav-button"
+                class="agents-task-nav-button tracevane-workbench-task-nav-button"
                 :class="{ active: activeTaskSection === navItem.value }"
                 @click="openAgent(routeAgentId, navItem.value)"
               >
@@ -125,7 +125,7 @@
             </nav>
           </div>
 
-          <section class="agents-task-canvas studio-workbench-active-canvas">
+          <section class="agents-task-canvas tracevane-workbench-active-canvas">
             <section class="agents-stage-header operate-workspace-surface operate-stage-strip">
               <div v-if="selectedAgent" class="agents-stage-header__body operate-stage-task-head">
                 <div class="agents-stage-header__identity">
@@ -159,7 +159,7 @@
                   </button>
                 </div>
 
-                <div class="agents-stage-header__facts operate-fact-strip studio-fact-tape">
+                <div class="agents-stage-header__facts operate-fact-strip tracevane-fact-tape">
                   <span class="agents-summary-pill operate-summary-pill">{{ selectedAgent.model || text('系统默认模型', 'System model') }}</span>
                   <span class="agents-summary-pill operate-summary-pill">{{ selectedAgent.runtime.type === 'acp' ? 'ACP' : text('默认运行时', 'Default runtime') }}</span>
                   <span class="agents-summary-pill operate-summary-pill">{{ text(`${selectedAgent.sessionCount} 个会话`, `${selectedAgent.sessionCount} sessions`) }}</span>
@@ -231,7 +231,7 @@
 
               <div class="form-field">
                 <label class="form-label">{{ text('模型', 'Model') }}</label>
-                <StudioSelect v-model="createForm.model" :options="modelOptions" :placeholder="text('跟随系统默认', 'Inherit system default')" />
+                <TracevaneSelect v-model="createForm.model" :options="modelOptions" :placeholder="text('跟随系统默认', 'Inherit system default')" />
               </div>
 
               <div class="form-field">
@@ -275,31 +275,31 @@
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('沙盒模式', 'Sandbox Mode') }}</label>
-                    <StudioSelect v-model="createForm.sandboxMode" :options="sandboxModeOptions" />
+                    <TracevaneSelect v-model="createForm.sandboxMode" :options="sandboxModeOptions" />
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('工作区访问', 'Workspace Access') }}</label>
-                    <StudioSelect v-model="createForm.workspaceAccess" :options="workspaceAccessOptions" />
+                    <TracevaneSelect v-model="createForm.workspaceAccess" :options="workspaceAccessOptions" />
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('工具配置', 'Tools Profile') }}</label>
-                    <StudioSelect v-model="createForm.toolsProfile" :options="toolsProfileOptions" />
+                    <TracevaneSelect v-model="createForm.toolsProfile" :options="toolsProfileOptions" />
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('Thinking 默认值', 'Thinking Default') }}</label>
-                    <StudioSelect v-model="createForm.thinkingDefault" :options="thinkingDefaultOptions" />
+                    <TracevaneSelect v-model="createForm.thinkingDefault" :options="thinkingDefaultOptions" />
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('Verbose 默认值', 'Verbose Default') }}</label>
-                    <StudioSelect v-model="createForm.verboseDefault" :options="verboseDefaultOptions" />
+                    <TracevaneSelect v-model="createForm.verboseDefault" :options="verboseDefaultOptions" />
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('Reasoning 默认值', 'Reasoning Default') }}</label>
-                    <StudioSelect v-model="createForm.reasoningDefault" :options="reasoningDefaultOptions" />
+                    <TracevaneSelect v-model="createForm.reasoningDefault" :options="reasoningDefaultOptions" />
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('Fast Mode 默认值', 'Fast Mode Default') }}</label>
-                    <StudioSelect v-model="createForm.fastModeDefault" :options="fastModeDefaultOptions" />
+                    <TracevaneSelect v-model="createForm.fastModeDefault" :options="fastModeDefaultOptions" />
                   </div>
                   <div class="form-field form-field-full">
                     <label class="form-label">{{ text('使命说明', 'Mission') }}</label>
@@ -326,16 +326,16 @@
                   </label>
                   <div class="form-field">
                     <label class="form-label">{{ text('运行时类型', 'Runtime Type') }}</label>
-                    <StudioSelect v-model="createForm.runtimeType" :options="runtimeTypeOptions" />
+                    <TracevaneSelect v-model="createForm.runtimeType" :options="runtimeTypeOptions" />
                   </div>
                   <template v-if="createForm.runtimeType === 'acp'">
                     <div class="form-field">
                       <label class="form-label">{{ text('ACP 后端', 'ACP Backend') }}</label>
-                      <StudioSelect v-model="createForm.runtimeBackend" :options="runtimeBackendOptions" />
+                      <TracevaneSelect v-model="createForm.runtimeBackend" :options="runtimeBackendOptions" />
                     </div>
                     <div class="form-field">
                       <label class="form-label">{{ text('ACP Agent', 'ACP Agent') }}</label>
-                      <StudioSelect
+                      <TracevaneSelect
                         v-model="createForm.runtimeAgent"
                         :options="createRuntimeAgentOptions"
                         :disabled="!hasConfiguredAcpAgents && !createForm.runtimeAgent"
@@ -344,7 +344,7 @@
                     </div>
                     <div class="form-field">
                       <label class="form-label">{{ text('模式', 'Mode') }}</label>
-                      <StudioSelect v-model="createForm.runtimeMode" :options="runtimeModeOptions" />
+                      <TracevaneSelect v-model="createForm.runtimeMode" :options="runtimeModeOptions" />
                     </div>
                     <div class="form-field form-field-full">
                       <label class="form-label">{{ text('运行目录', 'Runtime CWD') }}</label>
@@ -373,7 +373,7 @@
 <script setup lang="ts">
 import '../operate/operate-workspace.css';
 import './agents-workspace.css';
-import '../../shared/styles/studio-workbench.css';
+import '../../shared/styles/tracevane-workbench.css';
 import { computed, onActivated, onMounted, reactive, ref, watch } from 'vue';
 import { BookOpen, Braces, Link2, MessageSquare, SlidersHorizontal, X } from '@lucide/vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
@@ -382,7 +382,7 @@ import type { ConfigSummaryPayload } from '../../../../../types/config';
 import type { ManagementDomainDefinition } from '../management/management-domain-manifest';
 import AgentAvatarContent from '../../shared/components/AgentAvatarContent.vue';
 import AvatarFieldEditor from '../../shared/components/AvatarFieldEditor.vue';
-import StudioSelect from '../../shared/components/StudioSelect.vue';
+import TracevaneSelect from '../../shared/components/TracevaneSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 import { createAgent, fetchAgentDetail, fetchAgentsSummary, updateAgent } from './api';
 import { buildAgentRosterSummary } from './agent-workspace-summary';

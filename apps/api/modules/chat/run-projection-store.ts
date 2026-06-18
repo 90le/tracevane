@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { StudioServerConfig } from '../../../../types/api.js';
+import type { TracevaneServerConfig } from '../../../../types/api.js';
 import type {
   ChatMessageToolCallItem,
   ChatRunProjection,
@@ -8,7 +8,7 @@ import type {
 } from '../../../../types/chat.js';
 import { normalizeDate, normalizeString } from './shared.js';
 
-export interface StudioAssistantRunShadow {
+export interface TracevaneAssistantRunShadow {
   sessionKey: string;
   runId: string;
   finalMessageId: string | null;
@@ -20,14 +20,14 @@ export interface StudioAssistantRunShadow {
 }
 
 type RunShadowStoreShape = {
-  sessions: Record<string, StudioAssistantRunShadow[]>;
+  sessions: Record<string, TracevaneAssistantRunShadow[]>;
 };
 
-function runShadowStorePath(config: StudioServerConfig): string {
-  return path.join(config.openclawRoot, 'studio', 'chat-run-shadows.json');
+function runShadowStorePath(config: TracevaneServerConfig): string {
+  return path.join(config.openclawRoot, 'tracevane', 'chat-run-shadows.json');
 }
 
-function readRunShadowStore(config: StudioServerConfig): RunShadowStoreShape {
+function readRunShadowStore(config: TracevaneServerConfig): RunShadowStoreShape {
   const file = runShadowStorePath(config);
   try {
     const parsed = JSON.parse(fs.readFileSync(file, 'utf-8')) as RunShadowStoreShape;
@@ -40,7 +40,7 @@ function readRunShadowStore(config: StudioServerConfig): RunShadowStoreShape {
   }
 }
 
-function writeRunShadowStore(config: StudioServerConfig, payload: RunShadowStoreShape): void {
+function writeRunShadowStore(config: TracevaneServerConfig, payload: RunShadowStoreShape): void {
   const file = runShadowStorePath(config);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(payload, null, 2)}\n`);
@@ -64,7 +64,7 @@ export function isRunProjectionTerminal(lifecycle: ChatRunProjectionLifecycle): 
   return lifecycle === 'completed' || lifecycle === 'aborted' || lifecycle === 'error';
 }
 
-function normalizeShadow(entry: StudioAssistantRunShadow): StudioAssistantRunShadow {
+function normalizeShadow(entry: TracevaneAssistantRunShadow): TracevaneAssistantRunShadow {
   return {
     sessionKey: normalizeString(entry.sessionKey),
     runId: normalizeString(entry.runId),
@@ -81,7 +81,7 @@ function normalizeShadow(entry: StudioAssistantRunShadow): StudioAssistantRunSha
   };
 }
 
-function shadowFromProjection(projection: ChatRunProjection): StudioAssistantRunShadow {
+function shadowFromProjection(projection: ChatRunProjection): TracevaneAssistantRunShadow {
   return normalizeShadow({
     sessionKey: projection.sessionKey,
     runId: projection.runId,
@@ -95,13 +95,13 @@ function shadowFromProjection(projection: ChatRunProjection): StudioAssistantRun
 }
 
 function pickRunShadowCandidate(
-  entries: StudioAssistantRunShadow[],
+  entries: TracevaneAssistantRunShadow[],
   match: {
     runId?: string | null;
     finalMessageId?: string | null;
     createdAt?: string | null;
   },
-): StudioAssistantRunShadow | null {
+): TracevaneAssistantRunShadow | null {
   if (!entries.length) {
     return null;
   }
@@ -138,7 +138,7 @@ function pickRunShadowCandidate(
   return null;
 }
 
-export function createStudioChatRunProjectionStore(config: StudioServerConfig) {
+export function createTracevaneChatRunProjectionStore(config: TracevaneServerConfig) {
   // In-memory cache with stat-based invalidation and debounced writes.
   let memoryStore: RunShadowStoreShape | null = null;
   let cachedMtimeMs: number | null = null;
@@ -207,7 +207,7 @@ export function createStudioChatRunProjectionStore(config: StudioServerConfig) {
       scheduleFlush();
     },
 
-    listRunProjectionShadows(sessionKey: string): StudioAssistantRunShadow[] {
+    listRunProjectionShadows(sessionKey: string): TracevaneAssistantRunShadow[] {
       const store = ensureLoaded();
       return (store.sessions[sessionKey] || []).map(normalizeShadow);
     },
@@ -219,7 +219,7 @@ export function createStudioChatRunProjectionStore(config: StudioServerConfig) {
         finalMessageId?: string | null;
         createdAt?: string | null;
       },
-    ): StudioAssistantRunShadow | null {
+    ): TracevaneAssistantRunShadow | null {
       const store = ensureLoaded();
       return pickRunShadowCandidate(store.sessions[sessionKey] || [], match);
     },

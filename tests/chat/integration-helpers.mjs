@@ -2,9 +2,9 @@ import net from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 
 import {
-  createStandaloneStudioConfig,
-  createStudioContext,
-  createStudioServer,
+  createStandaloneTracevaneConfig,
+  createTracevaneContext,
+  createTracevaneServer,
 } from '../../dist/apps/api/index.js';
 
 const EXPLICIT_PROVIDER_FAILURE_PATTERNS = [
@@ -276,13 +276,13 @@ async function getFreePort() {
   return port;
 }
 
-export async function startStudioTestServer() {
-  const openclawRoot = process.env.OPENCLAW_STUDIO_TEST_OPENCLAW_ROOT;
+export async function startTracevaneTestServer() {
+  const openclawRoot = process.env.TRACEVANE_TEST_OPENCLAW_ROOT;
   if (!openclawRoot) {
-    throw new Error('OPENCLAW_STUDIO_TEST_OPENCLAW_ROOT is required for real chat integration tests');
+    throw new Error('TRACEVANE_TEST_OPENCLAW_ROOT is required for real chat integration tests');
   }
   const port = await getFreePort();
-  const config = createStandaloneStudioConfig({
+  const config = createStandaloneTracevaneConfig({
     port,
     openclawRoot,
   });
@@ -292,8 +292,8 @@ export async function startStudioTestServer() {
     error() {},
     debug() {},
   };
-  const context = createStudioContext({ config, logger });
-  const server = createStudioServer(context);
+  const context = createTracevaneContext({ config, logger });
+  const server = createTracevaneServer(context);
   await server.start();
   const baseUrl = `http://127.0.0.1:${config.port}`;
   return {
@@ -322,7 +322,7 @@ export async function waitFor(assertion, { timeoutMs = 30000, intervalMs = 250 }
   throw lastError instanceof Error ? lastError : new Error('waitFor timeout');
 }
 
-export async function createStudioSession(baseUrl, agentId = 'main') {
+export async function createTracevaneSession(baseUrl, agentId = 'main') {
   const response = await fetch(`${baseUrl}/api/chat/agents/${encodeURIComponent(agentId)}/sessions`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

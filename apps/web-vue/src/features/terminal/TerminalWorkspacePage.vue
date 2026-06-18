@@ -411,12 +411,12 @@ const emit = defineEmits<{
   (event: 'requestShellNavigation'): void;
 }>();
 
-const TERMINAL_SESSION_STORAGE_KEY = 'openclaw-studio.terminal.sid';
-const TERMINAL_DESKTOP_INSPECTOR_STORAGE_KEY = 'openclaw-studio.terminal.desktopInspectorOpen';
-const TERMINAL_RESOURCE_EXPLORER_STORAGE_KEY = 'openclaw-studio.terminal.resourceExplorerOpen';
-const TERMINAL_RESOURCE_EXPLORER_WIDTH_STORAGE_KEY = 'openclaw-studio.terminal.resourceExplorerWidth';
-const TERMINAL_FILE_PREVIEW_STORAGE_KEY = 'openclaw-studio.terminal.filePreviewTabs';
-const TERMINAL_THEME_STORAGE_KEY = 'openclaw-studio.terminal.theme';
+const TERMINAL_SESSION_STORAGE_KEY = 'tracevane.terminal.sid';
+const TERMINAL_DESKTOP_INSPECTOR_STORAGE_KEY = 'tracevane.terminal.desktopInspectorOpen';
+const TERMINAL_RESOURCE_EXPLORER_STORAGE_KEY = 'tracevane.terminal.resourceExplorerOpen';
+const TERMINAL_RESOURCE_EXPLORER_WIDTH_STORAGE_KEY = 'tracevane.terminal.resourceExplorerWidth';
+const TERMINAL_FILE_PREVIEW_STORAGE_KEY = 'tracevane.terminal.filePreviewTabs';
+const TERMINAL_THEME_STORAGE_KEY = 'tracevane.terminal.theme';
 const RESOURCE_EXPLORER_MIN_WIDTH = 220;
 const RESOURCE_EXPLORER_MAX_WIDTH = 460;
 const RESOURCE_EXPLORER_DEFAULT_WIDTH = 286;

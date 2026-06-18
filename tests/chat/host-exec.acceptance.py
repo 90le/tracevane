@@ -10,7 +10,7 @@ from browser_surface import wait_for_chat_surface
 
 
 BASE_URL = "http://127.0.0.1:5176"
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-host-exec-smoke.png")
+SCREENSHOT = Path("/tmp/tracevane-chat-host-exec-smoke.png")
 
 
 def api_json(path, method="GET", payload=None):
@@ -29,11 +29,11 @@ def build_config_payload(enabled):
     return {
         "plugins": {
             "entries": {
-                "studio": {
+                "tracevane": {
                     "enabled": True,
                     "config": {
                         "chat": {
-                            "allowHostManagementExecInStudioChat": bool(enabled),
+                            "allowHostManagementExecInTracevaneChat": bool(enabled),
                         },
                     },
                 },
@@ -44,10 +44,10 @@ def build_config_payload(enabled):
 
 def read_global_host_exec(summary):
     return bool(
-        (((summary.get("plugins") or {}).get("entries") or {}).get("studio") or {})
+        (((summary.get("plugins") or {}).get("entries") or {}).get("tracevane") or {})
         .get("config", {})
         .get("chat", {})
-        .get("allowHostManagementExecInStudioChat")
+        .get("allowHostManagementExecInTracevaneChat")
         is True
     )
 

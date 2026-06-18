@@ -1,6 +1,6 @@
-export type StudioSlashCommandCategory = 'session' | 'model' | 'agents' | 'tools';
+export type TracevaneSlashCommandCategory = 'session' | 'model' | 'agents' | 'tools';
 
-export type StudioSlashCommandLocalAction =
+export type TracevaneSlashCommandLocalAction =
   | 'new'
   | 'reset'
   | 'clear'
@@ -46,7 +46,7 @@ export type StudioSlashCommandLocalAction =
   | 'steer'
   | 'redirect';
 
-export type StudioSlashCommandDef = {
+export type TracevaneSlashCommandDef = {
   key: string;
   name: string;
   aliases?: string[];
@@ -55,27 +55,27 @@ export type StudioSlashCommandDef = {
     en: string;
   };
   args?: string;
-  category: StudioSlashCommandCategory;
+  category: TracevaneSlashCommandCategory;
   executeMode: 'local' | 'send' | 'hybrid';
-  localAction?: StudioSlashCommandLocalAction;
+  localAction?: TracevaneSlashCommandLocalAction;
   argOptions?: string[];
 };
 
-export type ParsedStudioSlashCommand = {
-  command: StudioSlashCommandDef;
+export type ParsedTracevaneSlashCommand = {
+  command: TracevaneSlashCommandDef;
   args: string;
 };
 
-export type StudioSlashArgOptionsOverrides = Record<string, string[]>;
-export type StudioSlashArgOptionDetail = {
+export type TracevaneSlashArgOptionsOverrides = Record<string, string[]>;
+export type TracevaneSlashArgOptionDetail = {
   value: string;
   label: string;
   description: string;
 };
 
-const CATEGORY_ORDER: StudioSlashCommandCategory[] = ['session', 'model', 'tools', 'agents'];
+const CATEGORY_ORDER: TracevaneSlashCommandCategory[] = ['session', 'model', 'tools', 'agents'];
 
-const CATEGORY_LABELS: Record<StudioSlashCommandCategory, { zh: string; en: string }> = {
+const CATEGORY_LABELS: Record<TracevaneSlashCommandCategory, { zh: string; en: string }> = {
   session: {
     zh: '会话',
     en: 'Session',
@@ -349,7 +349,7 @@ const ARG_OPTION_DETAILS: Record<string, Record<string, {
   },
 };
 
-export const STUDIO_SLASH_COMMANDS: StudioSlashCommandDef[] = [
+export const TRACEVANE_SLASH_COMMANDS: TracevaneSlashCommandDef[] = [
   {
     key: 'help',
     name: 'help',
@@ -919,7 +919,7 @@ function normalizeLower(value: string | undefined | null): string {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
 }
 
-function commandMatchesName(command: StudioSlashCommandDef, name: string): boolean {
+function commandMatchesName(command: TracevaneSlashCommandDef, name: string): boolean {
   const normalized = normalizeLower(name);
   if (!normalized) {
     return false;
@@ -930,23 +930,23 @@ function commandMatchesName(command: StudioSlashCommandDef, name: string): boole
   return (command.aliases || []).some((alias) => normalizeLower(alias) === normalized);
 }
 
-export function getStudioSlashCommandDescription(
-  command: StudioSlashCommandDef,
+export function getTracevaneSlashCommandDescription(
+  command: TracevaneSlashCommandDef,
   locale: 'zh' | 'en',
 ): string {
   return locale === 'zh' ? command.description.zh : command.description.en;
 }
 
-export function getStudioSlashCommandCategoryLabel(
-  category: StudioSlashCommandCategory,
+export function getTracevaneSlashCommandCategoryLabel(
+  category: TracevaneSlashCommandCategory,
   locale: 'zh' | 'en',
 ): string {
   return locale === 'zh' ? CATEGORY_LABELS[category].zh : CATEGORY_LABELS[category].en;
 }
 
-export function getStudioSlashCommandArgOptions(
-  command: StudioSlashCommandDef,
-  overrideOptions: StudioSlashArgOptionsOverrides = {},
+export function getTracevaneSlashCommandArgOptions(
+  command: TracevaneSlashCommandDef,
+  overrideOptions: TracevaneSlashArgOptionsOverrides = {},
 ): string[] {
   const candidates = overrideOptions[command.name] || overrideOptions[command.key] || command.argOptions || [];
   const seen = new Set<string>();
@@ -962,12 +962,12 @@ export function getStudioSlashCommandArgOptions(
   return resolved;
 }
 
-export function getStudioSlashCommandArgOptionDetails(
-  command: StudioSlashCommandDef,
+export function getTracevaneSlashCommandArgOptionDetails(
+  command: TracevaneSlashCommandDef,
   locale: 'zh' | 'en',
-  overrideOptions: StudioSlashArgOptionsOverrides = {},
-): StudioSlashArgOptionDetail[] {
-  const values = getStudioSlashCommandArgOptions(command, overrideOptions);
+  overrideOptions: TracevaneSlashArgOptionsOverrides = {},
+): TracevaneSlashArgOptionDetail[] {
+  const values = getTracevaneSlashCommandArgOptions(command, overrideOptions);
   const overrideSource = overrideOptions[command.name] || overrideOptions[command.key] || [];
   return values.map((value) => {
     const meta = ARG_OPTION_DETAILS[command.name]?.[value] || ARG_OPTION_DETAILS[command.key]?.[value];
@@ -999,14 +999,14 @@ export function getStudioSlashCommandArgOptionDetails(
   });
 }
 
-export function filterStudioSlashCommandArgOptionDetails(
-  command: StudioSlashCommandDef,
+export function filterTracevaneSlashCommandArgOptionDetails(
+  command: TracevaneSlashCommandDef,
   filter: string,
   locale: 'zh' | 'en',
-  overrideOptions: StudioSlashArgOptionsOverrides = {},
-): StudioSlashArgOptionDetail[] {
+  overrideOptions: TracevaneSlashArgOptionsOverrides = {},
+): TracevaneSlashArgOptionDetail[] {
   const normalizedFilter = normalizeLower(filter);
-  const details = getStudioSlashCommandArgOptionDetails(command, locale, overrideOptions);
+  const details = getTracevaneSlashCommandArgOptionDetails(command, locale, overrideOptions);
   if (!normalizedFilter) {
     return details;
   }
@@ -1016,10 +1016,10 @@ export function filterStudioSlashCommandArgOptionDetails(
   });
 }
 
-export function getStudioSlashCommandCompletions(filter: string): StudioSlashCommandDef[] {
+export function getTracevaneSlashCommandCompletions(filter: string): TracevaneSlashCommandDef[] {
   const normalizedFilter = normalizeLower(filter);
   const commands = normalizedFilter
-    ? STUDIO_SLASH_COMMANDS.filter((command) => {
+    ? TRACEVANE_SLASH_COMMANDS.filter((command) => {
       if (normalizeLower(command.name).startsWith(normalizedFilter)) {
         return true;
       }
@@ -1029,9 +1029,9 @@ export function getStudioSlashCommandCompletions(filter: string): StudioSlashCom
       return normalizeLower(command.description.en).includes(normalizedFilter)
         || normalizeLower(command.description.zh).includes(normalizedFilter);
     })
-    : STUDIO_SLASH_COMMANDS;
+    : TRACEVANE_SLASH_COMMANDS;
 
-  return [...commands].sort((left: StudioSlashCommandDef, right: StudioSlashCommandDef) => {
+  return [...commands].sort((left: TracevaneSlashCommandDef, right: TracevaneSlashCommandDef) => {
     if (normalizedFilter) {
       const leftStartsWith = (
         normalizeLower(left.name).startsWith(normalizedFilter)
@@ -1056,7 +1056,7 @@ export function getStudioSlashCommandCompletions(filter: string): StudioSlashCom
   });
 }
 
-export function parseStudioSlashCommand(text: string): ParsedStudioSlashCommand | null {
+export function parseTracevaneSlashCommand(text: string): ParsedTracevaneSlashCommand | null {
   const trimmed = text.trim();
   if (!trimmed.startsWith('/')) {
     return null;
@@ -1070,7 +1070,7 @@ export function parseStudioSlashCommand(text: string): ParsedStudioSlashCommand 
     remainder = remainder.slice(1);
   }
   const args = remainder.trimStart();
-  const command = STUDIO_SLASH_COMMANDS.find((entry) => commandMatchesName(entry, rawName));
+  const command = TRACEVANE_SLASH_COMMANDS.find((entry) => commandMatchesName(entry, rawName));
   if (!command) {
     return null;
   }

@@ -9,8 +9,8 @@ import urllib.error
 import urllib.request
 
 
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-gateway-acceptance.png")
-DEFAULT_BASE_URL = "http://127.0.0.1:31879/studio"
+SCREENSHOT = Path("/tmp/tracevane-chat-gateway-acceptance.png")
+DEFAULT_BASE_URL = "http://127.0.0.1:31879/tracevane"
 OPENCLAW_CONFIG = Path.home() / ".openclaw" / "openclaw.json"
 NO_PROXY_OPENER = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 LAST_CREATED_SESSION_KEY = ""
@@ -34,18 +34,18 @@ def load_gateway_settings() -> dict:
 
 
 def base_url() -> str:
-    override = (os.environ.get("TRACEVANE_GATEWAY_BASE_URL") or os.environ.get("STUDIO_GATEWAY_BASE_URL") or "").strip()
+    override = (os.environ.get("TRACEVANE_GATEWAY_BASE_URL") or os.environ.get("TRACEVANE_GATEWAY_BASE_URL") or "").strip()
     if override:
         return override.rstrip("/")
     settings = load_gateway_settings()
     port = settings.get("port")
     if isinstance(port, int) and port > 0:
-        return f"http://127.0.0.1:{port}/studio"
+        return f"http://127.0.0.1:{port}/tracevane"
     return DEFAULT_BASE_URL
 
 
 def auth_token() -> str:
-    override = (os.environ.get("TRACEVANE_GATEWAY_TOKEN") or os.environ.get("STUDIO_GATEWAY_TOKEN") or "").strip()
+    override = (os.environ.get("TRACEVANE_GATEWAY_TOKEN") or os.environ.get("TRACEVANE_GATEWAY_TOKEN") or "").strip()
     if override:
         return override
     token = load_gateway_settings().get("token")
@@ -346,7 +346,7 @@ def main() -> None:
         wait_for_thread_text(page, "gateway after reset smoke")
         result["send_after_reset"] = "gateway after reset smoke" in page.locator(".chat-conversation-thread").inner_text()
 
-        page.evaluate("() => window.__OPENCLAW_STUDIO_CHAT_TEST_FORCE_WS_CLOSE && window.__OPENCLAW_STUDIO_CHAT_TEST_FORCE_WS_CLOSE()")
+        page.evaluate("() => window.__TRACEVANE_CHAT_TEST_FORCE_WS_CLOSE && window.__TRACEVANE_CHAT_TEST_FORCE_WS_CLOSE()")
         page.wait_for_timeout(1500)
         warning_text = page.locator("body").inner_text()
         result["disconnect_warning_present"] = "实时连接正在恢复" in warning_text or "Realtime connection is recovering" in warning_text

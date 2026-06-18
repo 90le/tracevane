@@ -257,7 +257,7 @@ Tabs:
 
 Context menus:
 
-- product rows, tree rows, terminal tabs, preview tabs, git entries, and session rows may use Studio context menus
+- product rows, tree rows, terminal tabs, preview tabs, git entries, and session rows may use Tracevane context menus
 - close on focus change, Escape, or another menu opening
 - do not close just because the page scrolls
 - keep browser-native media right-click on real images, audio, video, PDF, and iframe content when native actions are more useful

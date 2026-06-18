@@ -194,8 +194,8 @@ export function hasTranscriptToolCall(raw: Record<string, unknown>, toolName: st
   });
 }
 
-export function isAssistantStudioDeliveryToolUseEnvelope(raw: Record<string, unknown>): boolean {
-  return extractTranscriptRole(raw) === 'assistant' && hasTranscriptToolCall(raw, 'studio_delivery');
+export function isAssistantTracevaneDeliveryToolUseEnvelope(raw: Record<string, unknown>): boolean {
+  return extractTranscriptRole(raw) === 'assistant' && hasTranscriptToolCall(raw, 'tracevane_delivery');
 }
 
 export function isAssistantNoReplyMessage(raw: Record<string, unknown>): boolean {

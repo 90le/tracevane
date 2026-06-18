@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import type http from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
-import type { StudioServerConfig } from "../../../../types/api.js";
+import type { TracevaneServerConfig } from "../../../../types/api.js";
 import { isRecoverableTerminalStatus } from "../../../../types/terminal.js";
 import type { SkillsService } from "../skills/service.js";
 import { buildTerminalActionCatalog } from "./action-catalog.js";
@@ -381,7 +381,7 @@ async function runCommand(
   }
 }
 
-export function buildTerminalEnv(config: StudioServerConfig): NodeJS.ProcessEnv {
+export function buildTerminalEnv(config: TracevaneServerConfig): NodeJS.ProcessEnv {
   const env = { ...process.env };
   if (!env.TERM?.trim() || env.TERM.trim().toLowerCase() === "dumb") {
     env.TERM = "xterm-256color";
@@ -402,7 +402,7 @@ export function buildTerminalEnv(config: StudioServerConfig): NodeJS.ProcessEnv 
   if (!env.LC_CTYPE?.trim()) {
     env.LC_CTYPE = "C.UTF-8";
   }
-  env.TERM_PROGRAM = "openclaw-studio";
+  env.TERM_PROGRAM = "tracevane";
   if (config.version?.trim()) {
     env.TERM_PROGRAM_VERSION = config.version.trim();
   }
@@ -511,7 +511,7 @@ export interface TerminalService {
 }
 
 export interface CreateTerminalServiceOptions {
-  config: StudioServerConfig;
+  config: TracevaneServerConfig;
   skills: SkillsService;
 }
 

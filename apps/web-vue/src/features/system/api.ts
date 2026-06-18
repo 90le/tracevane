@@ -23,10 +23,10 @@ import type {
   SystemDeviceTrustSettingsPatchResponse,
   SystemEventSummaryPayload,
   SystemHealthPayload,
-  SystemStudioReleasePayload,
-  SystemStudioUpgradeRequest,
-  SystemStudioUpgradeResponse,
-  SystemStudioUpgradeStatusPayload,
+  SystemTracevaneReleasePayload,
+  SystemTracevaneUpgradeRequest,
+  SystemTracevaneUpgradeResponse,
+  SystemTracevaneUpgradeStatusPayload,
 } from "../../../../../types/system";
 import type { PersistedSystemEventPayload } from "./system-event-types";
 
@@ -123,21 +123,21 @@ export function repairSystemBootstrapConfig(): Promise<SystemBootstrapRepairResp
   );
 }
 
-export function fetchStudioRelease(): Promise<SystemStudioReleasePayload> {
-  return requestJson<SystemStudioReleasePayload>("/api/system/studio-release");
+export function fetchTracevaneRelease(): Promise<SystemTracevaneReleasePayload> {
+  return requestJson<SystemTracevaneReleasePayload>("/api/system/tracevane-release");
 }
 
-export function fetchStudioUpgradeStatus(): Promise<SystemStudioUpgradeStatusPayload> {
-  return requestJson<SystemStudioUpgradeStatusPayload>(
-    "/api/system/studio-upgrade",
+export function fetchTracevaneUpgradeStatus(): Promise<SystemTracevaneUpgradeStatusPayload> {
+  return requestJson<SystemTracevaneUpgradeStatusPayload>(
+    "/api/system/tracevane-upgrade",
   );
 }
 
-export function startStudioUpgrade(
-  payload: SystemStudioUpgradeRequest = {},
-): Promise<SystemStudioUpgradeResponse> {
-  return requestJson<SystemStudioUpgradeResponse>(
-    "/api/system/studio-upgrade",
+export function startTracevaneUpgrade(
+  payload: SystemTracevaneUpgradeRequest = {},
+): Promise<SystemTracevaneUpgradeResponse> {
+  return requestJson<SystemTracevaneUpgradeResponse>(
+    "/api/system/tracevane-upgrade",
     {
       method: "POST",
       headers: {

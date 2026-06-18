@@ -4,8 +4,8 @@ import {
   sendSseEvent,
   startSse,
 } from "../../core/http.js";
-import type { StudioApiContext } from "../../core/context.js";
-import type { StudioRouter } from "../../core/router.js";
+import type { TracevaneApiContext } from "../../core/context.js";
+import type { TracevaneRouter } from "../../core/router.js";
 import type {
   TerminalEndPayload,
   TerminalInstallRequestId,
@@ -14,8 +14,8 @@ import type {
 } from "../../../../types/terminal.js";
 
 export function registerTerminalRoutes(
-  router: StudioRouter,
-  ctx: StudioApiContext,
+  router: TracevaneRouter,
+  ctx: TracevaneApiContext,
 ): void {
   router.get("/api/terminal/status", async (_req, res) => {
     sendJson(res, 200, await ctx.services.terminal.getStatus());

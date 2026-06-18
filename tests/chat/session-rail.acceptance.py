@@ -8,8 +8,8 @@ import sqlite3
 
 
 SESSION_KEY = os.environ.get("CHAT_HEAVY_SESSION_KEY", "").strip()
-GATEWAY_TOKEN = (os.environ.get("TRACEVANE_GATEWAY_TOKEN") or os.environ.get("STUDIO_GATEWAY_TOKEN") or "").strip()
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-session-rail-smoke.png")
+GATEWAY_TOKEN = (os.environ.get("TRACEVANE_GATEWAY_TOKEN") or os.environ.get("TRACEVANE_GATEWAY_TOKEN") or "").strip()
+SCREENSHOT = Path("/tmp/tracevane-chat-session-rail-smoke.png")
 
 
 def encode_session_ref(session_key: str) -> str:
@@ -19,7 +19,7 @@ def encode_session_ref(session_key: str) -> str:
 
 def discover_session_key() -> str:
     root = Path(os.environ.get("OPENCLAW_ROOT", str(Path.home() / ".openclaw")))
-    sqlite_path = root / "studio" / "chat.sqlite"
+    sqlite_path = root / "tracevane" / "chat.sqlite"
     if not sqlite_path.exists():
         return ""
 
@@ -29,8 +29,8 @@ def discover_session_key() -> str:
             """
             SELECT session_key
             FROM session_rows
-            WHERE payload_json LIKE '%"kind":"studio_managed"%'
-               OR payload_json LIKE '%"kind": "studio_managed"%'
+            WHERE payload_json LIKE '%"kind":"tracevane_managed"%'
+               OR payload_json LIKE '%"kind": "tracevane_managed"%'
             ORDER BY updated_at DESC
             LIMIT 1
             """
@@ -85,9 +85,9 @@ def main() -> None:
                 f"""() => {{
                   try {{
                     const token = {json.dumps(GATEWAY_TOKEN)};
-                    window.localStorage.setItem('openclaw.studio.gatewayToken', token);
-                    window.localStorage.setItem('openclaw-studio.gateway-token', token);
-                    window.localStorage.removeItem('openclaw-studio.chat.shell-warm-cache');
+                    window.localStorage.setItem('openclaw.tracevane.gatewayToken', token);
+                    window.localStorage.setItem('tracevane.gateway-token', token);
+                    window.localStorage.removeItem('tracevane.chat.shell-warm-cache');
                   }} catch {{}}
                 }}"""
             )

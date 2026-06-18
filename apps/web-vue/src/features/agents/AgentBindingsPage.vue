@@ -106,15 +106,15 @@
             <div class="agents-form-grid">
               <div class="form-field">
                 <label class="form-label">{{ text('路由类型', 'Route type') }}</label>
-                <StudioSelect v-model="bindingForm.type" :options="bindingTypeOptions" :placeholder="text('选择类型', 'Select type')" />
+                <TracevaneSelect v-model="bindingForm.type" :options="bindingTypeOptions" :placeholder="text('选择类型', 'Select type')" />
               </div>
               <div class="form-field">
                 <label class="form-label">{{ text('频道', 'Channel') }}</label>
-                <StudioSelect v-model="bindingForm.channel" :options="bindingChannelOptions" :placeholder="text('选择频道', 'Select channel')" />
+                <TracevaneSelect v-model="bindingForm.channel" :options="bindingChannelOptions" :placeholder="text('选择频道', 'Select channel')" />
               </div>
               <div class="form-field">
                 <label class="form-label">{{ text('账号', 'Account') }}</label>
-                <StudioSelect v-model="bindingForm.accountId" :options="bindingAccountOptions" :placeholder="text('默认账号 / 不指定', 'Default / unspecified')" />
+                <TracevaneSelect v-model="bindingForm.accountId" :options="bindingAccountOptions" :placeholder="text('默认账号 / 不指定', 'Default / unspecified')" />
               </div>
               <div class="form-field">
                 <label class="form-label">{{ text('备注', 'Comment') }}</label>
@@ -122,7 +122,7 @@
               </div>
               <div class="form-field">
                 <label class="form-label">{{ text('匹配类型', 'Peer kind') }}</label>
-                <StudioSelect v-model="bindingForm.peerKind" :options="peerKindOptions" :placeholder="text('不指定', 'Unset')" />
+                <TracevaneSelect v-model="bindingForm.peerKind" :options="peerKindOptions" :placeholder="text('不指定', 'Unset')" />
               </div>
               <div class="form-field">
                 <label class="form-label">{{ text('Peer ID', 'Peer ID') }}</label>
@@ -151,11 +151,11 @@
               </div>
               <div class="form-field" v-if="bindingForm.type === 'acp'">
                 <label class="form-label">{{ text('后端', 'Backend') }}</label>
-                <StudioSelect v-model="bindingForm.backend" :options="runtimeBackendOptions" :placeholder="text('选择后端', 'Select backend')" />
+                <TracevaneSelect v-model="bindingForm.backend" :options="runtimeBackendOptions" :placeholder="text('选择后端', 'Select backend')" />
               </div>
               <div class="form-field" v-if="bindingForm.type === 'acp'">
                 <label class="form-label">{{ text('模式', 'Mode') }}</label>
-                <StudioSelect v-model="bindingForm.mode" :options="runtimeModeOptions" :placeholder="text('选择模式', 'Select mode')" />
+                <TracevaneSelect v-model="bindingForm.mode" :options="runtimeModeOptions" :placeholder="text('选择模式', 'Select mode')" />
               </div>
               <div class="form-field form-field-full" v-if="bindingForm.type === 'acp'">
                 <label class="form-label">{{ text('运行目录', 'CWD') }}</label>
@@ -184,7 +184,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { X } from '@lucide/vue';
 import type { AgentBindingInput, AgentDetailPayload } from '../../../../../types/agents';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
-import StudioSelect from '../../shared/components/StudioSelect.vue';
+import TracevaneSelect from '../../shared/components/TracevaneSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 import { createAgentBinding, deleteAgentBinding, fetchAgentDetail, updateAgentBinding } from './api';
 

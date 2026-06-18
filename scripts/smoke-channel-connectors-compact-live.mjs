@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
-const STATE_DIR = path.join(os.homedir(), ".config/openclaw-studio/channel-connectors/daemon/state");
+const STATE_DIR = path.join(os.homedir(), ".config/tracevane/channel-connectors/daemon/state");
 const DEFAULT_SINCE_MINUTES = 24 * 60;
 const DEFAULT_TIMEOUT_MS = 0;
 const DEFAULT_POLL_MS = 1_000;
@@ -20,7 +20,7 @@ function platformDefaults(platform) {
   if (platform === "octo") {
     return {
       eventLog: path.join(STATE_DIR, "octo-events.jsonl"),
-      bindingId: "octo-studio-cc",
+      bindingId: "octo-tracevane-cc",
       requireLongConnectionIngress: false,
     };
   }
@@ -94,7 +94,7 @@ Modes:
 Options:
   --platform <feishu|octo> Platform to inspect. Default: feishu.
   --event-log <path>       Event log path. Defaults to the selected platform log.
-  --binding <id>           Binding id. Default: feishu-live or octo-studio-cc.
+  --binding <id>           Binding id. Default: feishu-live or octo-tracevane-cc.
   --agent <name>           Filter by Agent, for example codex, claude-code, opencode.
   --mode <any|explicit|auto>
   --since <iso>            Include events at or after this ISO timestamp.

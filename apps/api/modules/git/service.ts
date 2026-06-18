@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { StudioServerConfig } from "../../../../types/api.js";
+import type { TracevaneServerConfig } from "../../../../types/api.js";
 import type {
   GitBranchSummary,
   GitCommitDetailPayload,
@@ -64,7 +64,7 @@ function realPathOrSelf(value: string): string {
   }
 }
 
-function buildGitRoots(config: StudioServerConfig): GitRootContext[] {
+function buildGitRoots(config: TracevaneServerConfig): GitRootContext[] {
   const candidates: Array<{ id: string; absolutePath: string }> = [
     { id: "openclaw-root", absolutePath: config.openclawRoot },
     { id: "home-root", absolutePath: os.homedir() },
@@ -95,7 +95,7 @@ function isPathInside(rootRealPath: string, candidateRealPath: string): boolean 
 }
 
 function resolveGitDirectory(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   rootId: string,
   directoryPath = "",
 ): { root: GitRootContext; relativePath: string; absolutePath: string } {
@@ -214,7 +214,7 @@ function normalizeCommitMessage(value: string | null | undefined): string {
 }
 
 function resolveRepositoryRoot(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   rootId: string,
   directoryPath = "",
 ): { resolved: ReturnType<typeof resolveGitDirectory>; repositoryRoot: string } {
@@ -395,7 +395,7 @@ function emptyGitStatus(rootId: string, directoryPath: string, message: string):
   };
 }
 
-export function createGitService(config: StudioServerConfig): GitService {
+export function createGitService(config: TracevaneServerConfig): GitService {
   const buildStatus = (rootId: string, directoryPath = ""): GitStatusPayload => {
     const resolved = resolveGitDirectory(config, rootId, directoryPath);
     let repositoryRoot = "";

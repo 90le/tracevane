@@ -17,6 +17,6 @@ Keeping `minHostVersion` in `package.json` avoids duplicating host install polic
 
 ## Runtime Manifest
 
-`openclaw.plugin.json` describes Tracevane plugin identity and runtime contracts after the host has accepted the package. It keeps startup activation explicit with `activation.onStartup` and declares runtime contracts such as `studio_delivery`.
+`openclaw.plugin.json` describes Tracevane plugin identity and runtime contracts after the host has accepted the package. It keeps startup activation explicit with `activation.onStartup` and declares runtime contracts such as `tracevane_delivery`.
 
 The manifest intentionally does not carry host install semantics such as package requirements, provided package kinds, or dist entrypoints. Those remain in `package.json`.

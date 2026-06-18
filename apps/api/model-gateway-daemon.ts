@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createStandaloneStudioConfig } from "./config.js";
+import { createStandaloneTracevaneConfig } from "./config.js";
 import { createModelGatewayDaemon } from "./modules/model-gateway/daemon.js";
 import type { ModelGatewaySupervisorKind } from "../../types/model-gateway.js";
 
@@ -32,7 +32,7 @@ function parseSupervisor(value: string | undefined): ModelGatewaySupervisorKind 
 }
 
 async function main(): Promise<void> {
-  const config = createStandaloneStudioConfig();
+  const config = createStandaloneTracevaneConfig();
   const daemon = createModelGatewayDaemon(config, {
     host: process.env.MODEL_GATEWAY_HOST,
     port: parsePort(process.env.MODEL_GATEWAY_PORT),

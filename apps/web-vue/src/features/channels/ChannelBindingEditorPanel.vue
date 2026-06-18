@@ -23,15 +23,15 @@
         <div class="channels-binding-editor-section__grid">
           <div class="form-field">
             <label class="form-label">{{ text('路由类型', 'Route type') }}</label>
-            <StudioSelect v-model="draft.type" :options="bindingTypeOptions" />
+            <TracevaneSelect v-model="draft.type" :options="bindingTypeOptions" />
           </div>
           <div class="form-field">
             <label class="form-label">Agent</label>
-            <StudioSelect v-model="draft.agentId" :options="agentOptions" :placeholder="text('请选择 Agent', 'Select an agent')" />
+            <TracevaneSelect v-model="draft.agentId" :options="agentOptions" :placeholder="text('请选择 Agent', 'Select an agent')" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('账户', 'Account') }}</label>
-            <StudioSelect v-model="draft.accountId" :options="accountOptions" :placeholder="text('未指定', 'Unset')" />
+            <TracevaneSelect v-model="draft.accountId" :options="accountOptions" :placeholder="text('未指定', 'Unset')" />
           </div>
         </div>
       </section>
@@ -44,7 +44,7 @@
         <div class="channels-binding-editor-section__grid">
           <div class="form-field">
             <label class="form-label">{{ text('匹配类型', 'Peer kind') }}</label>
-            <StudioSelect v-model="draft.peerKind" :options="peerKindOptions" :placeholder="text('未指定', 'Unset')" />
+            <TracevaneSelect v-model="draft.peerKind" :options="peerKindOptions" :placeholder="text('未指定', 'Unset')" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('Peer ID', 'Peer ID') }}</label>
@@ -127,7 +127,7 @@
 
 <script setup lang="ts">
 import type { ChannelSelectOption } from './channel-ui';
-import StudioSelect from '../../shared/components/StudioSelect.vue';
+import TracevaneSelect from '../../shared/components/TracevaneSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 
 defineOptions({ name: 'ChannelBindingEditorPanel' });

@@ -1,6 +1,6 @@
-# OpenClaw Studio Guardrails
+# Tracevane Guardrails
 
-This file applies to the whole OpenClaw Studio workspace.
+This file applies to the whole Tracevane workspace.
 
 ## Research-First Implementation Gate
 

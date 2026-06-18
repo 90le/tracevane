@@ -6,7 +6,7 @@
 ## 当前事实
 
 - Tracevane Gateway 是唯一正式模型中转目标；已停止演进的旧模型链路生产前后端已删除。
-- Gateway daemon 与 Channel daemon 都必须由 OS/user supervisor 守护；Studio / OpenClaw 崩溃时，CLI 与 IM bot 应继续直连本地 daemon。
+- Gateway daemon 与 Channel daemon 都必须由 OS/user supervisor 守护；Tracevane / OpenClaw 崩溃时，CLI 与 IM bot 应继续直连本地 daemon。
 - Gateway 对外提供 Anthropic Messages、OpenAI Responses / compact、OpenAI Chat Completions；`GET /v1/models` 聚合启用 provider，并保留模型别名、模型池、能力标记、上下文窗口和输出预算。
 - Provider Center 支持自定义 provider、启停、模型名称/别名/默认模型、能力勾选、批量模型导入、模型目录刷新合并、批量预算/能力应用、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
 - Provider Center 表单已按连接、端点路由、密钥识别、模型目录、高级覆盖、可用范围分区；PC/平板/手机均按同一配置流程降级展示。
@@ -25,7 +25,7 @@
 - Provider Center 不再按模型名自动标记 vision；图片能力只来自用户配置、上游显式能力元数据或图片 smoke 通过后用户确认写回。
 - App Connections 覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收；Model Gateway 支持 `tab/app` deep-link 直达并打开指定 CLI App Connection。前端已改为连接摘要 + 客户端列表，Profile 编辑和单客户端 preview/apply/rollback 进入弹层；主屏不再常驻四个客户端配置卡片。
 - BigModel/GLM 本地模型目录已加入 `glm-5.2`，按 1M context / 128K output 预算；Gateway 内置推断同时识别 `glm-5.2` 与官方 1M 后缀别名 `glm-5.2[1m]`。
-- Channel Connectors 走 Studio 原生 CLI Agent Bot 路线；当前 live Agent 只暴露 Codex、Claude Code、OpenCode。
+- Channel Connectors 走 Tracevane 原生 CLI Agent Bot 路线；当前 live Agent 只暴露 Codex、Claude Code、OpenCode。
 - Feishu/Octo 首期验收已收窄为私聊完整性：文本对话、文件/图片传输、Agent CLI 原生能力、工具流/回复解析、`/compact`、`/stop`、session/model/permission/workdir 切换。
 - 已实现的群聊、thread、多 bot、GROUP.md/THREAD.md、Octo 管理命令和 Feishu 群上下文仅保留 best-effort；不再作为当前主线或发布前阻断项。
 - Channel prompt 只描述私聊文件、私聊消息、工作目录、权限、compact 和 Agent CLI 原生命令；不再引导 Agent 调用平台扩展 action。
@@ -34,7 +34,7 @@
 - Profile/App Connection 关闭验收必须跑真实 IM gate：三 Agent 工具流+过程回复、Feishu 显式 `/compact`、Octo 显式 `/compact`、入站图片 staged path。当前四项 gate 已全绿，可作为本轮关闭证据。
 - IM Agent session driver 默认已切到结构化 persistent：Codex 使用 app-server 事件、Claude Code 使用 stream-json 常驻进程、OpenCode 使用 `run --session` 续接。`agentSessionDriver/session_driver/persistentSession=false|one-shot|off` 仍可显式回退；persistent 创建或执行崩溃会记录 `turn.failed` / `turn.fallback` 后降级 one-shot，保证结构化驱动不可用时 IM 不会不可用。
 - Codex app-server persistent turn 超时语义已改为空闲超时：总回答时间可超过阈值，只要持续有 app-server 事件、审批请求、工具事件或输出就不会被误杀；普通静默默认 3 分钟，可用 `TRACEVANE_CODEX_APP_SERVER_TURN_IDLE_TIMEOUT_MS` 调整；等待 IM 审批会覆盖到审批窗口，批准工具后才给长工具执行窗口；fallback 恢复型 `turn/timeout` 不再进入 Feishu/Octo 用户进度流。
-- Codex / Claude Code / OpenCode one-shot 兼容 runner 不再用固定墙钟总时长判断失败；显式 opt-out、persistent fallback 或不支持 persistent 的 Agent 才进入该路径。该路径统一使用 CLI 心跳超时，stdout/stderr 中的 `Working (... esc to interrupt)`、`Imagining...` 等 liveness 刷新会继续延长等待，只有 CLI 停止输出心跳才返回 `process/heartbeat-timeout` 并终止；Claude `◯ deep-research  Deep research harness — fan-out web searches… 3/18 agents done · 4m 53s · ↓ 15.9k tokens`、Codex/OpenCode 子 agent/并行任务等待等 TUI 状态会升级为 `process/async-task` 非终态进度，并在主窗口静止时使用有限 async idle grace（默认 45 分钟，可用 `STUDIO_CHANNEL_AGENT_ASYNC_TASK_IDLE_GRACE_MS` 调整）；权威终态失败事件不会再被 exit 0 误判为完成，权威终态完成事件后 CLI 进程若悬挂会在 grace 后收尾；本地回归已覆盖 stdout、stderr CR-only TUI、真实 Unicode async child-task idle grace、idleTimeout 替代总超时、静默 timeout 和非 runtime Agent 旧超时边界。
+- Codex / Claude Code / OpenCode one-shot 兼容 runner 不再用固定墙钟总时长判断失败；显式 opt-out、persistent fallback 或不支持 persistent 的 Agent 才进入该路径。该路径统一使用 CLI 心跳超时，stdout/stderr 中的 `Working (... esc to interrupt)`、`Imagining...` 等 liveness 刷新会继续延长等待，只有 CLI 停止输出心跳才返回 `process/heartbeat-timeout` 并终止；Claude `◯ deep-research  Deep research harness — fan-out web searches… 3/18 agents done · 4m 53s · ↓ 15.9k tokens`、Codex/OpenCode 子 agent/并行任务等待等 TUI 状态会升级为 `process/async-task` 非终态进度，并在主窗口静止时使用有限 async idle grace（默认 45 分钟，可用 `TRACEVANE_CHANNEL_AGENT_ASYNC_TASK_IDLE_GRACE_MS` 调整）；权威终态失败事件不会再被 exit 0 误判为完成，权威终态完成事件后 CLI 进程若悬挂会在 grace 后收尾；本地回归已覆盖 stdout、stderr CR-only TUI、真实 Unicode async child-task idle grace、idleTimeout 替代总超时、静默 timeout 和非 runtime Agent 旧超时边界。
 - CLI heartbeat 风险评估：单纯“有 stdout/stderr”只能证明 CLI 仍有 liveness，不能证明模型/工具有真实进展；因此 runner 新增 `process/heartbeat-stall` 诊断层，持续只有 TUI 心跳但没有结构化进展时写入 progress/event log 和 active run 状态。该诊断是 `running` 非终态，不刷新 heartbeat timeout，后续重复诊断按 2x/4x/8x 退避并封顶 15 分钟，也默认不发到 Feishu/Octo 过程消息，避免自我续命、日志风暴和 IM 刷屏。
 - Feishu 进度卡片终态只由最终 Agent run 结果决定；中间工具/步骤错误和过程 `completed` 事件都只作为过程判据，不会提前把卡片切成完成或失败。
 - IM Agent 生命周期已拆分 Agent 执行和最终回复投递：active run 会从 `running` 进入 `delivering`，最终投递完成后才释放同 session guard；投递阶段 `/stop` 会提示“Agent 已完成，正在投递最终回复”，普通新消息仍按 busy guard 拒绝但文案说明是在等待最终投递。Feishu/Octo `agent.run.finished` 与 runtime `agentRuns` 会记录 `replyDeliveryStatus`（`not_required` / `delivered` / `failed`）和 `replyError`；成功 Agent 但 Feishu 最终回复全失败时，会把进度卡补一条“回复投递失败”终态错误；Feishu reaction 停止失败会写显式 `*.reaction.stop_failed` 诊断，但不阻断最终投递和 lifecycle cleanup。
@@ -42,7 +42,7 @@
 - IM Agent 投递后处理异常会额外写 `agent.run.delivery_failed`，busy 拒绝事件会带 `activeStatus=running|delivering`；Octo 群历史 cutoff 只在 `replyDeliveryStatus=delivered` 时推进，旧日志恢复仍兼容没有该字段但 `replySent=true` 的历史事件。
 - Feishu 失败态进度卡终态 patch 如果失败，会回退发送失败文本，不再把这类轮次记成 `not_required`；finished event/runtime 会记录 `progressCardFinalDelivered` 与 `progressCardFinalError`，便于区分 Agent 失败、最终回复失败和进度卡终态失败。
 - Channel 侧 `/usage` / token 统计不再继续建设；模型消耗已统一到 Gateway usage/Provider Center 模型消耗页。
-- CLI Profile 管理属于 Studio 原生 Channel Connectors，不属于 OpenClaw Agent 管理；独立页为 `/channel-connectors/profiles`，直接读取 Gateway 可用模型目录和上下文预算，管理 Profile、IM 绑定摘要、运行配置、持久会话和事件记录；IM 绑定摘要可 deep-link 到完整 Channel Connectors 配置并自动选中 binding/profile。
+- CLI Profile 管理属于 Tracevane 原生 Channel Connectors，不属于 OpenClaw Agent 管理；独立页为 `/channel-connectors/profiles`，直接读取 Gateway 可用模型目录和上下文预算，管理 Profile、IM 绑定摘要、运行配置、持久会话和事件记录；IM 绑定摘要可 deep-link 到完整 Channel Connectors 配置并自动选中 binding/profile。
 - Channel Connectors 主配置页已收敛为概览、渠道绑定、运行状态、会话日志四个同级工作区；不再内嵌 CLI Profile 快改或 Skills 管理，Profile 只进入独立工作台。
 - Model Gateway 和 Channel Connectors 互相保留明确入口：Gateway Client connections 可进入 Channel Connectors Profile 工作台；Channel Connectors 概览可进入 Gateway Client connections。两边仍是独立产品域，不共享 API 调用或嵌套页面。
 
@@ -92,7 +92,7 @@
 - persistent session pool 补齐创建阶段失败回退：driver 创建失败会写 `turn.failed:driver-create-error` 与 `turn.fallback:driver-create-error`，再执行 one-shot fallback；执行阶段 crash 继续 dispose session 后 fallback。
 - daemon `/status` / `/agent-sessions` / runtime 的 `agentSessionDriver.defaultMode` 改为 `persistent`，Codex reason 从旧 experimental 命名收口为 `codex-app-server`。
 - 按 research-first 门禁重写账户型 provider 计划：账户登录、模型目录、媒体、Realtime/WebSocket 和 SDK/CLI 事件格式变更前，必须先核验官方文档、API/spec、SDK/CLI help、changelog、活跃 GitHub issues/discussions 和社区故障报告；第三方项目和旧快照只作为归档背景。
-- 旧模型代理 user service 已停止、取消自启并删除 unit；18796 端口由 `openclaw-studio-model-gateway.service` 接管。
+- 旧模型代理 user service 已停止、取消自启并删除 unit；18796 端口由 `tracevane-model-gateway.service` 接管。
 - 更新 Gateway 目标：Account-backed provider 默认走 Provider Center 页面登录，授权完成后自动写入本地 provider 和 secret store；不要求用户手动导入 `auth.json`。
 - 明确边界：不做网页 cookie 抓取、不恢复旧模型链路页面、不做公共账号共享/转售；`auth.json` / keyring / 隔离 `CODEX_HOME` 只作为迁移和修复辅助路径。
 - Gateway account provider 初版：
@@ -107,12 +107,12 @@
   - Provider Center Codex 登录入口避免移动端弹窗拦截：点击后在当前页面生成验证码和“打开官方授权页”按钮，不再自动打开空白页；Codex device auth start/poll/exchange/refresh 会使用账户代理或环境代理。
   - Codex account 默认模型目录只暴露当前官方/CLI/live smoke 已验证的受控 catalog：`gpt-5.5` / `gpt-5.4` / `gpt-5.4-mini` / `gpt-5.3-codex`、`gpt-image-2` 及 image alias、`gpt-4o-transcribe` / `gpt-4o-mini-transcribe`、`gpt-4o-mini-tts` / `tts-*`、`gpt-audio*`、`gpt-realtime*`；读取旧 provider 时会过滤不再受控的历史默认项。
   - Codex account `/v1/responses` 请求体按当前 Codex upstream 合同归一：字符串 `input` 会转换成 Codex message list，强制上游 `stream:true`、`store:false`、`parallel_tool_calls:true`、`include:["reasoning.encrypted_content"]`，并删除 Codex upstream 不支持的 token/采样/context/user 等字段；客户端非流式响应由上游 SSE `response.completed` 聚合回 JSON。
-  - systemd/launchd Gateway daemon service template 会继承当前 Studio 进程的代理环境；account-backed Codex upstream/auth 请求也会使用账户代理、provider 代理或环境代理，避免 daemon 下直连失败。
+  - systemd/launchd Gateway daemon service template 会继承当前 Tracevane 进程的代理环境；account-backed Codex upstream/auth 请求也会使用账户代理、provider 代理或环境代理，避免 daemon 下直连失败。
   - Gateway 新增 OpenAI Images `/v1/images/generations`、`/v1/images/edits` 和 OpenAI Audio `/v1/audio/transcriptions`、`/v1/audio/translations`、`/v1/audio/speech` 路由合同；Provider Center 可编辑生图、音频输入、音频输出能力。
   - Codex account 的 Images generation 按当前 live smoke 和 Codex `/responses` + `image_generation` tool 合同桥接：对外接 OpenAI Images API，并把 Responses/SSE 输出重建为 Images API 响应；支持 `response.output` 与 `response.output_item.done` 两种图片结果位置，透传 upstream `response.failed/error`，缺失图片时返回带输出类型/文本预览的诊断。
   - OpenAI-compatible Images edits 保持 multipart/binary 原样 passthrough；Codex account image edits 不伪装支持，返回明确 `model_gateway_codex_account_image_edits_unsupported`，并携带可行性结论、参考来源和替代路径。
   - OpenAI-compatible 音频端点保持 multipart/binary 原样 passthrough，不再把音频请求体当 UTF-8 字符串重写；Codex account 音频目录已暴露，但 REST `/v1/audio/*` 不再透传到 Codex backend 返回 HTML 403，统一返回结构化 `model_gateway_codex_account_audio_unsupported`，并携带 feasibility、reference 和替代路径。
-  - Codex account Realtime/WebSocket 调查收口：OpenAI 官方已有 Realtime WebSocket 和 Responses WebSocket mode，但当前没有官方或直接验证的 Codex account backend 完整 turn state、tool cache、history replay、错误和 close 语义；Studio 不做半截 passthrough，`GET/POST /v1/responses/ws`、`GET/POST /v1/realtime` 和同路径 WebSocket upgrade 统一返回结构化 `model_gateway_codex_account_realtime_unsupported`。
+  - Codex account Realtime/WebSocket 调查收口：OpenAI 官方已有 Realtime WebSocket 和 Responses WebSocket mode，但当前没有官方或直接验证的 Codex account backend 完整 turn state、tool cache、history replay、错误和 close 语义；Tracevane 不做半截 passthrough，`GET/POST /v1/responses/ws`、`GET/POST /v1/realtime` 和同路径 WebSocket upgrade 统一返回结构化 `model_gateway_codex_account_realtime_unsupported`。
   - 本轮验证通过：`npm run typecheck:api`、`npm run build:api`、`npm run typecheck:web`、`npm run build:web`。
   - Account pool 调度完成：支持 session affinity、round-robin/fill-first、per-account concurrency、busy 429、HTTP 非 2xx 与 started streaming `response.failed/error` 的 upstream quota/rate/capacity cooldown、cooldown 手动清除、per-account proxy/direct、runtime log accountId/accountHash/accountRouting，并将 Codex account cursor/affinity 写入 runtime，daemon 重启后同 session 保持账号，新 session 延续轮转；Provider Center 最近请求可直接查看 sticky/selected/skipped 摘要。
   - Account pool 可观察性补齐 cooldown retry：过期 cooldown 账户被重新选中时，runtime log `accountRouting` 会记录 `selectedWasCooldownRetry` 与原 `selectedCooldownUntil`，Provider Center 最近请求显示“冷却后重试”；成功后账户恢复 `ready`。
@@ -171,7 +171,7 @@
   - 模型/视觉模型选择器保留 Gateway 全量选择能力，极端超过 100 个时显示已展示/总数并允许 `/model <模型ID>` 手动切换。
 - Channel Connectors Profile 前端：
   - Profile 工作台新增顶部摘要条，集中展示当前 Profile、effective model、绑定数、活动会话和编辑状态；原编辑器内重复 facts 已移除。
-  - 撤销 `/agents/:agentId/cli` 和 Agents 任务栏 CLI 入口，避免把 Studio 自建 IM/Gateway Profile 绑定到 OpenClaw Agent 管理。
+  - 撤销 `/agents/:agentId/cli` 和 Agents 任务栏 CLI 入口，避免把 Tracevane 自建 IM/Gateway Profile 绑定到 OpenClaw Agent 管理。
   - 新增 `/channel-connectors/profiles` 独立 Profile 工作台：左侧 Profile/IM 绑定，中间运行配置，右侧持久会话和事件记录。
   - 运行配置分区为身份与权限、模型与上下文、目录与连接；模型下拉来自 Gateway App Connections 的 `availableModels`，同时合并启用 provider 的模型 ID / alias。
   - CLI Profile 会根据 Gateway provider catalog 和 App Connections profile 展示上下文窗口、输出预算、auto compact 阈值和预算来源；不改后端保存合同。
@@ -241,8 +241,8 @@
   - 上下文预算核心已完成：`/status` 会按 Gateway 模型窗口、输出预留、Gateway usage/history estimate 展示剩余窗口和 auto compact threshold；auto compact 已按 native-first、baseline 和 fallback 记录接入。
   - 私聊文件/消息收发核心已完成：入站 staging、出站 file/message manifest、原始文件名、Feishu/Octo 上传发送、Octo COS/STS 大文件路径和 fallback 均有回归；真实 Feishu/Octo 文件/图片/视频和出站文件 live 证据已通过。
   - Octo 入站文件 24h live 已验证：用户侧文件进入 staging，本地路径存在，Agent 可返回路径；Octo 视频真实形态会以 `file` + `.mp4` staged path 出现，live smoke 已按视频类文件识别并验收通过。
-  - Octo 出站文件 24h live 自动事件证据已验证：`octo-studio-cc` 最近成功 run 记录 `outboundFilesDeclared=1`、`outboundFilesResolved=1`、`outboundFilesSent=1`，且无 `outboundFileErrors`。
-  - 用户确认 Feishu/Octo 最新手动验收全部通过，包括 Feishu 发文件、权限审批、Octo 收文件并返回路径；本轮已删除 `hello-live.txt` 和 `studio-greeting.txt` 临时文件。
+  - Octo 出站文件 24h live 自动事件证据已验证：`octo-tracevane-cc` 最近成功 run 记录 `outboundFilesDeclared=1`、`outboundFilesResolved=1`、`outboundFilesSent=1`，且无 `outboundFileErrors`。
+  - 用户确认 Feishu/Octo 最新手动验收全部通过，包括 Feishu 发文件、权限审批、Octo 收文件并返回路径；本轮已删除 `hello-live.txt` 和 `tracevane-greeting.txt` 临时文件。
   - Feishu 命令/菜单进度按当前 IM 命令合同维护：命令执行会在触发消息上显示处理 reaction，卡片/文本回复通过 Feishu reply API 挂到原消息；`/compact` 和 `/native /compact` 内置命令也会发 started/terminal progress。
   - Feishu Agent 进度卡动态条数已可配置：binding metadata `feishuProgressCardEntryLimit` 控制最近动态数量，默认 8，运行时限制 1-30。
   - `/stop` 自动回归和真实日志 smoke 已验证：脚本按同 session + 时间窗口关联 stop 命令和 cancelled run，兼容两者 messageId 不同的真实 IM 形态。
@@ -253,9 +253,9 @@
   - 真实受控图片 smoke：`gpt-5.4-mini`、`gpt-5.5` 直连 `/v1/responses` 可正确识别左上蓝、右上红、下方绿三色方块；隔离 `CODEX_HOME` 的 `codex exec --image` + `gpt-5.4-mini` 也正确识别同一图片。
   - 当前模型目录没有 `gpt5.5-mini` / `gpt-5.5-mini`，只有 `gpt-5.5` 与 `gpt-5.4-mini`；前者缺失会返回 503，不能误判为图片能力失败。
   - `claude-opus-4-6` 目前经 `mlamp` Chat-compatible provider 传图片返回 400 `Unexpected item type in content`；该 provider 的 Claude 视觉能力需改用可接受图片的协议/端点后再验收。
-  - Codex / Claude Code / OpenCode runner 已共用 native visual input 合同：图片直接传给 CLI；视频作为 staged local file 进入 Agent prompt，不由 Studio 预抽帧或转图片，交给 Agent CLI/模型或工具按任务处理。
+  - Codex / Claude Code / OpenCode runner 已共用 native visual input 合同：图片直接传给 CLI；视频作为 staged local file 进入 Agent prompt，不由 Tracevane 预抽帧或转图片，交给 Agent CLI/模型或工具按任务处理。
   - Octo 媒体 payload 修复：图片/视频消息带 `content`、`caption` 等文本时会保留用户任务文本，没有文本时才使用 `[image]` / `[video]` 占位。
-  - 真实 runner smoke：三 Agent + `gpt-5.4-mini` 均正确识别受控三色方块图片；`glm-5` 非视觉 fallback 不传 `--image` 且回复已收到图片、请用户给下一步；视频合同验证为本地文件路径进入 Agent，不做 Studio 预抽帧。
+  - 真实 runner smoke：三 Agent + `gpt-5.4-mini` 均正确识别受控三色方块图片；`glm-5` 非视觉 fallback 不传 `--image` 且回复已收到图片、请用户给下一步；视频合同验证为本地文件路径进入 Agent，不做 Tracevane 预抽帧。
   - 真实 CLI thinking smoke：
     - Claude Code 2.1.86 + `claude-sonnet-4-5` + `--effort max` 在当前 Gateway 下只输出 `text`，未输出 `thinking` item。
     - OpenCode 1.17.0 + `--thinking`：`gpt-5.4-mini` 未输出 reasoning；`claude-sonnet-4-5` 输出真实 `reasoning` part。
@@ -272,11 +272,11 @@
 - 本轮验证通过：`npm run build:api`
 - 本轮验证通过：`npm run typecheck:web`
 - 本轮验证通过：`npm run build:web`
-- 本轮运行态验证通过：已重启 `openclaw-tracevane-channel-connectors.service`；`/agent-sessions` 返回 `defaultMode=persistent`，当前 `feishu-live` 与 `octo-studio-cc` 均为 `requestedMode/effectiveMode=persistent`、`reason=codex-app-server`；`/status` 显示 Feishu `connected/sdkConnected=true` 且 `transportStale=false`，Octo connected。
+- 本轮运行态验证通过：已重启 `openclaw-tracevane-channel-connectors.service`；`/agent-sessions` 返回 `defaultMode=persistent`，当前 `feishu-live` 与 `octo-tracevane-cc` 均为 `requestedMode/effectiveMode=persistent`、`reason=codex-app-server`；`/status` 显示 Feishu `connected/sdkConnected=true` 且 `transportStale=false`，Octo connected。
 - 本轮验证通过：`npm run smoke:channel-connectors:agent-heartbeat-local -- --json`，19/19 通过，覆盖 Codex / Claude Code / OpenCode 的 stderr CR TUI heartbeat、stdout heartbeat、真实 Unicode async child-task idle grace、idle timeout 替代总 timeout、heartbeat-only stall 诊断、静默 heartbeat timeout，以及非 runtime agent 固定 timeout 边界。
 - 本轮验证通过：`node --test tests/system/channel-connectors-agent-heartbeat-local-script.test.mjs`，2/2 通过，覆盖 heartbeat smoke 脚本本地证明边界与完整 synthetic matrix。
-- 本轮验证通过：`node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs tests/system/studio-web-channel-connectors-page.test.mjs`，覆盖 Channel Connectors 独立 Profile 工作台、Gateway 预算索引、Profile 复制/删除/binding 行事件快捷过滤/事件 binding/type 筛选/事件数量/批量停止控件、Profile ID 重命名迁移绑定合同、App Connection effective model / apply / preview 合同、IM binding deep-link 选中合同、Agents 旧 CLI 路由删除和 Channel Connectors 独立导航。
-- 本轮验证通过：`node --test tests/system/studio-web-channel-connectors-page.test.mjs tests/system/studio-web-channel-connector-profiles-page.test.mjs`，5/5 通过，覆盖 Channel Connectors 主页面四区结构、旧 Profile 快改/Skills 管理入口移除和 Profile 独立工作台入口。
+- 本轮验证通过：`node --test tests/system/tracevane-web-channel-connector-profiles-page.test.mjs tests/system/tracevane-web-channel-connectors-page.test.mjs`，覆盖 Channel Connectors 独立 Profile 工作台、Gateway 预算索引、Profile 复制/删除/binding 行事件快捷过滤/事件 binding/type 筛选/事件数量/批量停止控件、Profile ID 重命名迁移绑定合同、App Connection effective model / apply / preview 合同、IM binding deep-link 选中合同、Agents 旧 CLI 路由删除和 Channel Connectors 独立导航。
+- 本轮验证通过：`node --test tests/system/tracevane-web-channel-connectors-page.test.mjs tests/system/tracevane-web-channel-connector-profiles-page.test.mjs`，5/5 通过，覆盖 Channel Connectors 主页面四区结构、旧 Profile 快改/Skills 管理入口移除和 Profile 独立工作台入口。
 - 本轮验证通过：`npm run typecheck:web`
 - 本轮验证通过：`npm run build:web`
 - 本轮浏览器验证通过：Headless Chrome 打开 `/channel-connectors` 生成桌面/窄屏截图，CDP 读取 `documentElement.scrollWidth === clientWidth`；DOM 不再出现旧 Profile 快改和 Channel Skills 文案。
@@ -303,12 +303,12 @@
 - 本轮验证通过：`npm run typecheck:api`
 - 本轮验证通过：`npm run build:api`
 - 本轮验证通过：`npm run typecheck:web`
-- 本轮验证通过：`node --test tests/system/studio-web-model-gateway-page.test.mjs`
+- 本轮验证通过：`node --test tests/system/tracevane-web-model-gateway-page.test.mjs`
 - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，72/72 通过，覆盖 provider pricing schema 规范化、账号 provider、媒体端点、account pool、active route smoke、三协议矩阵和既有适配回归。
 - 本轮验证通过：`npm run build:web`
 - 本轮验证通过：`npm run typecheck:api`、`npm run typecheck:web`、`npm run build:api`、`npm run build:web`。
-- 本轮验证通过：`node --test tests/system/studio-web-model-gateway-page.test.mjs`；`node --test tests/system/model-gateway-service.test.mjs`，77/77 通过，覆盖模型消耗最小合同、Provider Center 页面静态合同和既有三协议/account/media 回归。
-- 本轮验证通过：`node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs`
+- 本轮验证通过：`node --test tests/system/tracevane-web-model-gateway-page.test.mjs`；`node --test tests/system/model-gateway-service.test.mjs`，77/77 通过，覆盖模型消耗最小合同、Provider Center 页面静态合同和既有三协议/account/media 回归。
+- 本轮验证通过：`node --test tests/system/tracevane-web-channel-connector-profiles-page.test.mjs`
 - 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，57/57 通过，覆盖 `glm-5.2` / `glm-5.2[1m]` 预算推断、endpoint profile 原生协议优选、endpoint health 回退、响应头和 endpoint 级 smoke。
 - 本轮验证通过：`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`，17/17 通过，覆盖 Codex app-server turn 空闲超时、审批/批准工具刷新 idle、fallback 恢复时不发用户 timeout 进度和真正卡死 interrupt。
 - 本轮验证通过：`node --test --test-name-pattern "native Channel Connectors process runner" tests/system/channel-connectors-service.test.mjs`，33/33 通过，覆盖 Codex / Claude Code / OpenCode TUI 心跳续期、stdout 心跳、CR-only TUI 刷新、async child-task idle grace、async grace 后 timeout、heartbeat-only stall 诊断、stall 诊断不刷新 timeout、重复 stall 诊断退避节流、权威失败终态覆盖 exit 0、权威完成终态后 lingering CLI grace 收尾、idleTimeout 替代总超时、静默 heartbeat timeout、最后活动流诊断、非 runtime Agent 固定 timeout、三 Agent 工具流和权限处理。
@@ -317,7 +317,7 @@
 - 本轮 live 验证通过：`node scripts/smoke-model-gateway-account-pool.mjs --json --strict --timeout-ms 240000`，单账号 Codex account provider / `gpt-5.5` Responses / accountRouting / sticky 通过，多账号策略按可选 skip 记录。
 - 本轮 live active route smoke 通过：Codex / Claude Code / OpenCode 均命中 `codex-account` + `gpt-5.5`，OpenClaw 命中 `glm` + `coding-chat` endpoint，四个 scope 均返回 `GATEWAY_OK`。
 - 本轮验证通过：`node --test --test-name-pattern "native Channel Connectors daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`，覆盖 Feishu 进度卡片中间错误不再提前终止。
-- 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，73/73 通过；`node --test tests/system/studio-web-model-gateway-page.test.mjs`，3/3 通过；`npm run build:api`、`npm run typecheck:web` 通过。
+- 本轮验证通过：`node --test tests/system/model-gateway-service.test.mjs`，73/73 通过；`node --test tests/system/tracevane-web-model-gateway-page.test.mjs`，3/3 通过；`npm run build:api`、`npm run typecheck:web` 通过。
 - 本轮本机 live smoke 通过：Gateway `glm-5.2` 三协议入口均可用，`/v1/chat/completions` 走 `glm/coding-chat`，`/v1/messages` 走 `glm/coding-anthropic`，`/v1/responses` 走 `glm/coding-chat` 转换。
 - 本轮验证通过：Codex account login start 经 `http://127.0.0.1:5176/api/model-gateway/account-providers/codex/login/start` 返回 200、验证码和官方授权 URL；同一请求确认走环境代理，避免 auth.openai.com 直连返回地区 403。
 - 本轮浏览器验证通过：Python Playwright 以 390px 移动视口打开 `/model-gateway`，切到 Provider configuration 后点击 `Sign in Codex`，页面不跳 404、不白屏，显示验证码和 `https://auth.openai.com/codex/device` 授权按钮。
@@ -368,9 +368,9 @@
 - 本轮验证通过：`npm run build:api`
 - 本轮验证通过：`npm run typecheck:web`
 - 本轮验证通过：`npm run build:web`
-- 本轮验证通过：`node --test tests/system/studio-web-model-gateway-page.test.mjs`，锁定 Provider Center 图片 smoke UI 合同。
+- 本轮验证通过：`node --test tests/system/tracevane-web-model-gateway-page.test.mjs`，锁定 Provider Center 图片 smoke UI 合同。
 - 本轮真实 smoke 通过：`/v1/responses` + `gpt-5.4-mini` / `gpt-5.5` 受控三色方块图片识别；`codex exec --image` + `gpt-5.4-mini` 识别同图成功。
-- 本轮真实 runner smoke 通过：Codex / Claude Code / OpenCode + `gpt-5.4-mini` 均识别受控三色方块图片成功；非视觉 `glm-5` 图片请求不传 native 图片并按附件说明退回；视频附件不做 Studio 预抽帧，只以本地文件路径进入 Agent。
+- 本轮真实 runner smoke 通过：Codex / Claude Code / OpenCode + `gpt-5.4-mini` 均识别受控三色方块图片成功；非视觉 `glm-5` 图片请求不传 native 图片并按附件说明退回；视频附件不做 Tracevane 预抽帧，只以本地文件路径进入 Agent。
 - 本轮 live 验证通过：`node scripts/smoke-channel-connectors-feishu-compact-live.mjs --mode auto --since-minutes 1440 --json`，识别 3 条 Feishu long-connection native auto compact 证据。
 - 本轮 live 验证通过：`node scripts/smoke-channel-connectors-feishu-compact-live.mjs --mode explicit --since-minutes 30 --json`，识别 1 条 Feishu long-connection Codex 显式 `/compact` native 证据。
 - 本轮 live 验证通过：`node scripts/smoke-channel-connectors-feishu-compact-live.mjs --mode explicit --agent claude-code --since-minutes 45 --json`，识别 1 条 Feishu long-connection Claude Code 显式 `/compact` native 证据。
@@ -382,7 +382,7 @@
 - 本轮验证通过：`node --test --test-name-pattern "rejects same-session|does not persist or replay busy Octo Agent turns" tests/system/channel-connectors-service.test.mjs`，覆盖 Octo 同 session busy reject、第二条不进 runner、pending store 为空、daemon 重启不 replay。
 - 本轮验证通过：`node --test --test-name-pattern "IM commands switch|Feishu transport can reply|Feishu command replies use progress reactions|daemon keeps Feishu compact native-first" tests/system/channel-connectors-service.test.mjs`，4/4 通过。
 - 本轮验证通过：`node --test tests/system/channel-connectors-command-live-script.test.mjs`，8/8 通过。
-- 本轮验证通过：`node --test --test-name-pattern "progress|Channel Connectors page calls" tests/system/channel-connectors-service.test.mjs tests/system/studio-web-channel-connectors-page.test.mjs`，13/13 通过。
+- 本轮验证通过：`node --test --test-name-pattern "progress|Channel Connectors page calls" tests/system/channel-connectors-service.test.mjs tests/system/tracevane-web-channel-connectors-page.test.mjs`，13/13 通过。
 - 本轮 live 验证通过：Feishu 文件消息 `om_x100b6df679c474a4c23ef686549039b`，staging 路径存在，`agent.run.finished agentOk=true replySent=true`。
 - 本轮 live 只读验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --require-ok --require-reply --require-tool --require-tool-output --min-runs 1 --limit-runs 5 --json`，最近 24h 匹配 6 条带可见工具输出的成功 IM run。
 - 本轮 live 只读验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 720 --agents codex,claude-code,opencode --require-agent-coverage --require-ok --require-reply --require-tool --require-tool-output --min-runs 3 --limit-runs 12`，近 12h 三个 Agent 均有成功工具调用和可见工具输出证据。
@@ -398,9 +398,9 @@
 - 本轮验证通过：`node --test --test-name-pattern "stops Codex app-server persistent turns|Agent process cancelled|native compact" tests/system/channel-connectors-service.test.mjs`，2/2 通过。
 - 本轮 live 验证通过：`node scripts/smoke-channel-connectors-agent-run-live.mjs --since-minutes 1440 --platforms octo --require-stop-command --min-runs 1 --limit-runs 5 --json`，识别 Octo `/stop` 命令 `2065665014106066944` 和 cancelled run `2065664678767267840`。
 - 本轮验证通过：`node --test --test-name-pattern "native Channel Connectors agent runner builds gateway-backed Codex turns" tests/system/channel-connectors-service.test.mjs`，覆盖持久 `codex-home/skills` 旧平台 action skill 清理。
-- 本轮验证通过：`node --test tests/system/studio-web-channel-connector-profiles-page.test.mjs`，覆盖 Profile 页 Agent 切换时重置 stale App Profile ref、新建 Profile 默认 `default` App Profile、Profile Apply-to-CLI 不改 Gateway 全局默认模型。
+- 本轮验证通过：`node --test tests/system/tracevane-web-channel-connector-profiles-page.test.mjs`，覆盖 Profile 页 Agent 切换时重置 stale App Profile ref、新建 Profile 默认 `default` App Profile、Profile Apply-to-CLI 不改 Gateway 全局默认模型。
 - 本轮浏览器交互验证通过：Python Playwright 打开 `/channel-connectors/profiles?profileId=claude`，点击“应用到 CLI”，确认 `profile.model` 保持 `null`、`appModels["claude-code"]` 被应用、Claude Code rollback 成功，并在 finally 中恢复 App Connection profile 原值。
-- 本轮验证通过：`node scripts/smoke-channel-connectors-agent-sessions.mjs --json`，daemon session 管理 endpoint reachable，`feishu-live` / `octo-studio-cc` 均为 requested/effective persistent，当前 active session 为 0。
+- 本轮验证通过：`node scripts/smoke-channel-connectors-agent-sessions.mjs --json`，daemon session 管理 endpoint reachable，`feishu-live` / `octo-tracevane-cc` 均为 requested/effective persistent，当前 active session 为 0。
 - 本轮验证通过：`node scripts/smoke-channel-connectors-native-cli-sessions.mjs --apps claude-code,opencode --json`，isolated real CLI session 覆盖 Claude Code / OpenCode 的 normal turn、file manifest、native visual input、native compact 和 stop/cancel；该脚本不污染真实 HOME/runtime。
 - 本轮验证通过：`node --test --test-name-pattern "stops Codex app-server persistent turns|Agent process cancelled|native compact" tests/system/channel-connectors-service.test.mjs`，覆盖 Codex app-server persistent `/stop` 和 Claude/OpenCode native compact driver。
 - 本轮验证通过：`node scripts/smoke-channel-connectors-command-live.mjs --recent-sessions --probe --commands /status,/model,/mode,/dir,/compact --json`，Feishu/Octo 最近 session 均能 dry-run 解析模型、权限、工作目录和 compact 命令；probe 不发送平台消息、不修改状态，不替代真实 IM live。
@@ -410,7 +410,7 @@
 - 本轮 Gateway 本地回归通过：`node --test --test-name-pattern "endpoint profile adapter upstream errors|endpoint profile passthrough upstream errors|endpoint profiles prefer native protocol" tests/system/model-gateway-service.test.mjs`，3/3 通过；覆盖 endpoint profile 原生协议优选、passthrough HTML 错误归属和 `/v1/messages -> OpenAI chat endpoint profile` adapter 错误归属。
 - 本轮 Channel 本地回归通过：`node --test --test-name-pattern "Feishu transport manages processing reactions|Feishu transport reports reaction stop failures|daemon owns Feishu long-connection ingress" tests/system/channel-connectors-service.test.mjs`，3/3 通过；覆盖 Feishu reaction 成功路径、reaction stop failure 非抛错返回和 daemon lifecycle/投递失败源码合同。
 - 本轮 Channel async TUI 本地回归通过：`node --test --test-name-pattern "async child-task waits alive|async child-task waits after grace stops|local heartbeat smoke script" tests/system/channel-connectors-service.test.mjs tests/system/channel-connectors-agent-heartbeat-local-script.test.mjs`，4/4 通过；`node scripts/smoke-channel-connectors-agent-heartbeat-local.mjs --json`，19/19 通过；覆盖 Claude 真实 `◯ deep-research ... ↓ tokens` TUI、Codex subagents 和 OpenCode parallel tasks 的 `process/async-task` 非终态进度。
-- 本轮 Channel 清理：Feishu transport 未暴露的 `studio-feishu-actions` / Docx / Drive / Wiki / Bitable 直接 action helper 和对应 direct-action 回归已删除；daemon 仍保留旧 code fence 剥除，避免历史 Agent 输出污染最终回复。
+- 本轮 Channel 清理：Feishu transport 未暴露的 `tracevane-feishu-actions` / Docx / Drive / Wiki / Bitable 直接 action helper 和对应 direct-action 回归已删除；daemon 仍保留旧 code fence 剥除，避免历史 Agent 输出污染最终回复。
 - 本轮 Gateway unsupported 合同补强：核验 OpenAI 官方 audio/realtime/Responses WebSocket 与 `openai-node` Realtime 说明后，确认官方能力存在但 Codex account backend bridge 仍缺稳定合同；Codex account audio/realtime unsupported envelope 已补齐 feasibility、reference 和替代路径，realtime 文案不再暗示 Gateway 内 provider 切换即可使用。
 - 本轮 Gateway smoke：
   - `node scripts/smoke-model-gateway-cli.mjs --apps codex,claude-code,opencode,gateway --strict` 通过，isolated mock Gateway 下 Codex、Claude Code、OpenCode 三类客户端协议均命中预期路径并返回 `GATEWAY_OK`。
@@ -426,7 +426,7 @@
 
 ## 已知边界
 
-- Feishu transport 已删除未暴露的低层 legacy action helper；当前只保留私聊消息、文件/图片、reaction、成员/线程读取等主链路 transport，以及旧 `studio-feishu-actions` code fence 剥除兼容。
+- Feishu transport 已删除未暴露的低层 legacy action helper；当前只保留私聊消息、文件/图片、reaction、成员/线程读取等主链路 transport，以及旧 `tracevane-feishu-actions` code fence 剥除兼容。
 - Octo/Feishu 群聊和管理能力已有实现继续 best-effort 保留，但新需求默认不继续扩展。
 - 同 session FIFO/durable queue 已废弃为历史能力：pending-agent-run store 只用于升级时清空遗留记录；当前同 session busy 消息直接拒绝并提示 `/stop`/`/cancel`，不会自动执行。
 - Claude Code / OpenCode native compact 已覆盖 driver 层、Octo daemon 私聊入口、Feishu native-first wiring、Feishu 显式 `/compact` 三 Agent 24h live、Octo auto compact 24h live 和 Octo 显式 `/compact` 24h live。

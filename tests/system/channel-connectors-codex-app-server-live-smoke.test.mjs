@@ -39,15 +39,15 @@ function readGatewayClientKey() {
     "TRACEVANE_CODEX_APP_SERVER_LIVE_GATEWAY_KEY",
     "TRACEVANE_GATEWAY_API_KEY",
     "OPENCLAW_TRACEVANE_GATEWAY_API_KEY",
-    "STUDIO_CODEX_APP_SERVER_LIVE_GATEWAY_KEY",
-    "STUDIO_GATEWAY_API_KEY",
-    "OPENCLAW_STUDIO_GATEWAY_API_KEY",
+    "TRACEVANE_CODEX_APP_SERVER_LIVE_GATEWAY_KEY",
+    "TRACEVANE_GATEWAY_API_KEY",
+    "TRACEVANE_GATEWAY_API_KEY",
   );
   if (envKey) return envKey;
   const home = normalizeString(process.env.HOME) || os.homedir();
   const candidates = [
-    path.join(home, ".openclaw", "studio", "model-gateway", "secrets.json"),
-    path.join(home, ".config", "openclaw-studio", "model-gateway", "secrets.json"),
+    path.join(home, ".openclaw", "tracevane", "model-gateway", "secrets.json"),
+    path.join(home, ".config", "tracevane", "model-gateway", "secrets.json"),
   ];
   for (const candidate of candidates) {
     const key = readGatewayClientKeyFromFile(candidate);
@@ -61,18 +61,18 @@ function liveGatewayConfig() {
     endpoint: envValue(
       "TRACEVANE_CODEX_APP_SERVER_LIVE_GATEWAY_ENDPOINT",
       "TRACEVANE_GATEWAY_ENDPOINT",
-      "STUDIO_CODEX_APP_SERVER_LIVE_GATEWAY_ENDPOINT",
-      "STUDIO_GATEWAY_ENDPOINT",
+      "TRACEVANE_CODEX_APP_SERVER_LIVE_GATEWAY_ENDPOINT",
+      "TRACEVANE_GATEWAY_ENDPOINT",
     )
       || "http://127.0.0.1:18796/v1",
     key: readGatewayClientKey(),
-    model: envValue("TRACEVANE_CODEX_APP_SERVER_LIVE_MODEL", "STUDIO_CODEX_APP_SERVER_LIVE_MODEL") || "gpt-5.4-mini",
-    cwd: envValue("TRACEVANE_CODEX_APP_SERVER_LIVE_CWD", "STUDIO_CODEX_APP_SERVER_LIVE_CWD") || process.cwd(),
+    model: envValue("TRACEVANE_CODEX_APP_SERVER_LIVE_MODEL", "TRACEVANE_CODEX_APP_SERVER_LIVE_MODEL") || "gpt-5.4-mini",
+    cwd: envValue("TRACEVANE_CODEX_APP_SERVER_LIVE_CWD", "TRACEVANE_CODEX_APP_SERVER_LIVE_CWD") || process.cwd(),
   };
 }
 
 function liveSkip(flagName) {
-  const legacyFlagName = flagName.replace(/^TRACEVANE_/, "STUDIO_");
+  const legacyFlagName = flagName.replace(/^TRACEVANE_/, "TRACEVANE_");
   if (process.env[flagName] !== "1" && process.env[legacyFlagName] !== "1") return `set ${flagName}=1 to run this live Codex app-server smoke`;
   const config = liveGatewayConfig();
   if (!config.key) return "local Tracevane Gateway client key is unavailable";
@@ -258,7 +258,7 @@ async function runExactReplyTurn(input) {
     input: [
       {
         type: "text",
-        text: "Reply with exactly: studio-live-ok",
+        text: "Reply with exactly: tracevane-live-ok",
         text_elements: [],
       },
     ],
@@ -274,22 +274,22 @@ async function runExactReplyTurn(input) {
     return normalizeString(message.params?.turn?.id) === turnId
       && normalizeString(message.params?.turn?.status) === "completed";
   }, 120_000, "live turn completion");
-  assert.equal(replyText.trim(), "studio-live-ok");
+  assert.equal(replyText.trim(), "tracevane-live-ok");
   assert.ok(input.collector.messages.some((message) => message.method === "thread/tokenUsage/updated"));
   assert.ok(input.collector.messages.some((message) => message.method === "item/agentMessage/delta"));
   return turnId;
 }
 
 test("live Codex app-server accepts Tracevane persistent-session handshake", {
-  skip: process.env.TRACEVANE_CODEX_APP_SERVER_LIVE === "1" || process.env.STUDIO_CODEX_APP_SERVER_LIVE === "1"
+  skip: process.env.TRACEVANE_CODEX_APP_SERVER_LIVE === "1" || process.env.TRACEVANE_CODEX_APP_SERVER_LIVE === "1"
     ? false
     : "set TRACEVANE_CODEX_APP_SERVER_LIVE=1 to run against the local codex binary",
 }, async () => {
   const codexHome = process.env.TRACEVANE_CODEX_APP_SERVER_LIVE_HOME
-    || process.env.STUDIO_CODEX_APP_SERVER_LIVE_HOME
-    || "/tmp/openclaw-studio-codex-appserver-live-home";
+    || process.env.TRACEVANE_CODEX_APP_SERVER_LIVE_HOME
+    || "/tmp/tracevane-codex-appserver-live-home";
   fs.mkdirSync(codexHome, { recursive: true });
-  const cwd = process.env.TRACEVANE_CODEX_APP_SERVER_LIVE_CWD || process.env.STUDIO_CODEX_APP_SERVER_LIVE_CWD || process.cwd();
+  const cwd = process.env.TRACEVANE_CODEX_APP_SERVER_LIVE_CWD || process.env.TRACEVANE_CODEX_APP_SERVER_LIVE_CWD || process.cwd();
   const transport = new JsonLineCodexAppServerTransport({
     cwd,
     env: {
@@ -315,7 +315,7 @@ test("live Codex app-server accepts Tracevane persistent-session handshake", {
 
     transport.send({ method: "initialized" });
     const thread = await request(transport, "thread/start", {
-      model: process.env.TRACEVANE_CODEX_APP_SERVER_LIVE_MODEL || process.env.STUDIO_CODEX_APP_SERVER_LIVE_MODEL || "gpt-5",
+      model: process.env.TRACEVANE_CODEX_APP_SERVER_LIVE_MODEL || process.env.TRACEVANE_CODEX_APP_SERVER_LIVE_MODEL || "gpt-5",
       cwd,
       approvalPolicy: "never",
       sandbox: "read-only",
@@ -336,8 +336,8 @@ test("live Codex app-server completes a real turn through Tracevane Gateway", {
   skip: liveSkip("TRACEVANE_CODEX_APP_SERVER_LIVE_TURN"),
 }, async () => {
   const config = liveGatewayConfig();
-  const codexHome = envValue("TRACEVANE_CODEX_APP_SERVER_LIVE_TURN_HOME", "STUDIO_CODEX_APP_SERVER_LIVE_TURN_HOME")
-    || "/tmp/openclaw-studio-codex-appserver-live-turn-test-home";
+  const codexHome = envValue("TRACEVANE_CODEX_APP_SERVER_LIVE_TURN_HOME", "TRACEVANE_CODEX_APP_SERVER_LIVE_TURN_HOME")
+    || "/tmp/tracevane-codex-appserver-live-turn-test-home";
   prepareCodexHome({ codexHome, ...config });
   const transport = new JsonLineCodexAppServerTransport({
     cwd: config.cwd,
@@ -355,7 +355,7 @@ test("live Codex app-server completes a real turn through Tracevane Gateway", {
       threadId,
       cwd: config.cwd,
       model: config.model,
-      messageId: "studio-live-turn",
+      messageId: "tracevane-live-turn",
     });
   } finally {
     transport.close("dispose");
@@ -366,8 +366,8 @@ test("live Codex app-server completes native compact through Tracevane Gateway",
   skip: liveSkip("TRACEVANE_CODEX_APP_SERVER_LIVE_COMPACT"),
 }, async () => {
   const config = liveGatewayConfig();
-  const codexHome = envValue("TRACEVANE_CODEX_APP_SERVER_LIVE_COMPACT_HOME", "STUDIO_CODEX_APP_SERVER_LIVE_COMPACT_HOME")
-    || "/tmp/openclaw-studio-codex-appserver-live-compact-test-home";
+  const codexHome = envValue("TRACEVANE_CODEX_APP_SERVER_LIVE_COMPACT_HOME", "TRACEVANE_CODEX_APP_SERVER_LIVE_COMPACT_HOME")
+    || "/tmp/tracevane-codex-appserver-live-compact-test-home";
   prepareCodexHome({ codexHome, ...config });
   const transport = new JsonLineCodexAppServerTransport({
     cwd: config.cwd,
@@ -385,7 +385,7 @@ test("live Codex app-server completes native compact through Tracevane Gateway",
       threadId,
       cwd: config.cwd,
       model: config.model,
-      messageId: "studio-live-compact-prep",
+      messageId: "tracevane-live-compact-prep",
     });
 
     await request(transport, "thread/compact/start", { threadId }, 20_000);
@@ -412,8 +412,8 @@ test("live Codex app-server interrupts an active Tracevane Gateway turn", {
   skip: liveSkip("TRACEVANE_CODEX_APP_SERVER_LIVE_INTERRUPT"),
 }, async () => {
   const config = liveGatewayConfig();
-  const codexHome = envValue("TRACEVANE_CODEX_APP_SERVER_LIVE_INTERRUPT_HOME", "STUDIO_CODEX_APP_SERVER_LIVE_INTERRUPT_HOME")
-    || "/tmp/openclaw-studio-codex-appserver-live-interrupt-test-home";
+  const codexHome = envValue("TRACEVANE_CODEX_APP_SERVER_LIVE_INTERRUPT_HOME", "TRACEVANE_CODEX_APP_SERVER_LIVE_INTERRUPT_HOME")
+    || "/tmp/tracevane-codex-appserver-live-interrupt-test-home";
   prepareCodexHome({ codexHome, ...config });
   const transport = new JsonLineCodexAppServerTransport({
     cwd: config.cwd,
@@ -445,10 +445,10 @@ test("live Codex app-server interrupts an active Tracevane Gateway turn", {
         workDir: config.cwd,
         permissionMode: "yolo",
       },
-      messageId: "studio-live-interrupt",
+      messageId: "tracevane-live-interrupt",
       agentTurnRequest: liveAgentTurnRequest({
         ...config,
-        messageId: "studio-live-interrupt",
+        messageId: "tracevane-live-interrupt",
         permissionMode: "yolo",
         content: "Run this exact shell command now and do not reply until it exits: sleep 60",
       }),

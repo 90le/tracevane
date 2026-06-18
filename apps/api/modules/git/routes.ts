@@ -1,7 +1,7 @@
 import type http from "node:http";
 import { parseJsonBody, sendJson } from "../../core/http.js";
-import type { StudioApiContext } from "../../core/context.js";
-import type { StudioRouter } from "../../core/router.js";
+import type { TracevaneApiContext } from "../../core/context.js";
+import type { TracevaneRouter } from "../../core/router.js";
 import type {
   GitCheckoutRequest,
   GitCommitDetailRequest,
@@ -16,7 +16,7 @@ function readUrl(req: http.IncomingMessage): URL {
   return new URL(req.url || "/", `http://${req.headers.host || "127.0.0.1"}`);
 }
 
-export function registerGitRoutes(router: StudioRouter, ctx: StudioApiContext): void {
+export function registerGitRoutes(router: TracevaneRouter, ctx: TracevaneApiContext): void {
   router.get("/api/git/status", (req, res, routeCtx) => {
     const url = readUrl(req);
     sendJson(

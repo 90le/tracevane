@@ -1,49 +1,49 @@
 import type {
-  SystemStudioReleasePayload,
-  SystemStudioUpgradeStatusPayload,
+  SystemTracevaneReleasePayload,
+  SystemTracevaneUpgradeStatusPayload,
 } from "../../../../../types/system";
-import { isStudioUpgradeEffectivelyFailed } from "./studio-release-state";
+import { isTracevaneUpgradeEffectivelyFailed } from "./tracevane-release-state";
 
 type SystemText = (zh: string, en: string) => string;
 
 export interface SystemRuntimeViewModel {
-  studioUpgradeStatusLabel: string;
-  studioUpgradeActionLabel: string;
+  tracevaneUpgradeStatusLabel: string;
+  tracevaneUpgradeActionLabel: string;
 }
 
 export function buildSystemRuntimeViewModel(params: {
-  studioRelease: SystemStudioReleasePayload | null;
-  studioUpgrade: SystemStudioUpgradeStatusPayload | null;
+  tracevaneRelease: SystemTracevaneReleasePayload | null;
+  tracevaneUpgrade: SystemTracevaneUpgradeStatusPayload | null;
   releaseUpgradeRunning: boolean;
   text: SystemText;
 }): SystemRuntimeViewModel {
-  const { studioRelease, studioUpgrade, releaseUpgradeRunning, text } = params;
-  const upgradeFailed = isStudioUpgradeEffectivelyFailed({
-    studioRelease,
-    studioUpgrade,
+  const { tracevaneRelease, tracevaneUpgrade, releaseUpgradeRunning, text } = params;
+  const upgradeFailed = isTracevaneUpgradeEffectivelyFailed({
+    tracevaneRelease,
+    tracevaneUpgrade,
   });
 
-  const studioUpgradeStatusLabel = (() => {
-    if (studioUpgrade?.running) return text("升级中", "Running");
+  const tracevaneUpgradeStatusLabel = (() => {
+    if (tracevaneUpgrade?.running) return text("升级中", "Running");
     if (upgradeFailed) return text("失败", "Failed");
-    if (studioUpgrade?.status === "succeeded")
+    if (tracevaneUpgrade?.status === "succeeded")
       return text("已完成", "Completed");
-    if (studioRelease?.updateAvailable)
+    if (tracevaneRelease?.updateAvailable)
       return text("可升级", "Update available");
     return text("已最新", "Up to date");
   })();
 
-  const studioUpgradeActionLabel = (() => {
+  const tracevaneUpgradeActionLabel = (() => {
     if (releaseUpgradeRunning) return text("处理中...", "Working...");
-    if (studioUpgrade?.running) return text("刷新状态", "Refresh status");
+    if (tracevaneUpgrade?.running) return text("刷新状态", "Refresh status");
     if (upgradeFailed)
       return text("重试升级", "Retry upgrade");
-    if (studioRelease?.updateAvailable) return text("一键升级", "Upgrade now");
+    if (tracevaneRelease?.updateAvailable) return text("一键升级", "Upgrade now");
     return text("刷新状态", "Refresh status");
   })();
 
   return {
-    studioUpgradeStatusLabel,
-    studioUpgradeActionLabel,
+    tracevaneUpgradeStatusLabel,
+    tracevaneUpgradeActionLabel,
   };
 }

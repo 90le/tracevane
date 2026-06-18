@@ -4,14 +4,14 @@ import { fileURLToPath } from 'node:url';
 import os from 'node:os';
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import { resolveProjectRoot } from '../../lib/project-root.js';
-import type { StudioExposureKind, StudioServerConfig, StudioTransportConfig } from '../../types/api.js';
+import type { TracevaneExposureKind, TracevaneServerConfig, TracevaneTransportConfig } from '../../types/api.js';
 
 const DEFAULT_PORT = 3760;
 const DEFAULT_GATEWAY_PORT = 18789;
-const DEFAULT_GATEWAY_BASE_PATH = '/studio';
-const STUDIO_VERSION_FALLBACK = '0.1.70';
+const DEFAULT_GATEWAY_BASE_PATH = '/tracevane';
+const TRACEVANE_VERSION_FALLBACK = '0.1.70';
 
-let cachedStudioVersion: string | null = null;
+let cachedTracevaneVersion: string | null = null;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -22,7 +22,7 @@ function normalizePort(value: unknown, fallback: number): number {
   return Number.isFinite(port) && port > 0 ? Math.floor(port) : fallback;
 }
 
-function normalizeExposureKind(value: unknown): StudioExposureKind | null {
+function normalizeExposureKind(value: unknown): TracevaneExposureKind | null {
   const normalized = typeof value === 'string' ? value.trim().toLowerCase() : '';
   return normalized === 'gateway' || normalized === 'standalone' ? normalized : null;
 }
@@ -65,9 +65,9 @@ function resolveOpenClawRoot(api: OpenClawPluginApi): string {
   }
 }
 
-function resolveStudioVersion(projectRoot: string): string {
-  if (cachedStudioVersion) {
-    return cachedStudioVersion;
+function resolveTracevaneVersion(projectRoot: string): string {
+  if (cachedTracevaneVersion) {
+    return cachedTracevaneVersion;
   }
   try {
     const packagePath = path.join(projectRoot, 'package.json');
@@ -75,14 +75,14 @@ function resolveStudioVersion(projectRoot: string): string {
     const parsed = JSON.parse(raw) as { version?: unknown };
     const version = typeof parsed.version === 'string' ? parsed.version.trim() : '';
     if (version) {
-      cachedStudioVersion = version;
+      cachedTracevaneVersion = version;
       return version;
     }
   } catch {
     // Fallback to built-in version when package metadata is unavailable.
   }
-  cachedStudioVersion = STUDIO_VERSION_FALLBACK;
-  return cachedStudioVersion;
+  cachedTracevaneVersion = TRACEVANE_VERSION_FALLBACK;
+  return cachedTracevaneVersion;
 }
 
 function readGatewayPortFromOpenClawConfig(openclawConfigFile: string, fallback: number): number {
@@ -123,7 +123,7 @@ function readGatewayRuntimeFromOpenClawConfig(
 function resolveTransportConfig(
   pluginConfig: Record<string, unknown>,
   standalonePort: number
-): StudioTransportConfig {
+): TracevaneTransportConfig {
   const transport = isRecord(pluginConfig.transport) ? pluginConfig.transport : {};
   const standalone = isRecord(transport.standalone) ? transport.standalone : {};
   const gateway = isRecord(transport.gateway) ? transport.gateway : {};
@@ -150,20 +150,20 @@ function resolveTransportConfig(
   };
 }
 
-export function isStudioStandaloneEnabled(config: StudioServerConfig): boolean {
+export function isTracevaneStandaloneEnabled(config: TracevaneServerConfig): boolean {
   return config.autoStart && config.transport.standalone.enabled;
 }
 
-export function isStudioGatewayEnabled(config: StudioServerConfig): boolean {
+export function isTracevaneGatewayEnabled(config: TracevaneServerConfig): boolean {
   return config.autoStart && config.transport.gateway.enabled;
 }
 
-export function createStudioConfig(
+export function createTracevaneConfig(
   api: OpenClawPluginApi,
   pluginConfig: Record<string, unknown> = {}
-): StudioServerConfig {
+): TracevaneServerConfig {
   const projectRoot = resolveProjectRoot(path.dirname(fileURLToPath(import.meta.url)));
-  const studioVersion = resolveStudioVersion(projectRoot);
+  const tracevaneVersion = resolveTracevaneVersion(projectRoot);
   const openclawRoot = resolveOpenClawRoot(api);
   const openclawConfigFile = path.join(openclawRoot, 'openclaw.json');
   const gatewayConfig = (api.config?.gateway || {}) as { port?: unknown; controlUi?: { basePath?: unknown } };
@@ -177,9 +177,9 @@ export function createStudioConfig(
   const transport = resolveTransportConfig(pluginConfig, standalonePort);
 
   return {
-    pluginId: 'studio',
+    pluginId: 'tracevane',
     pluginName: 'Tracevane',
-    version: studioVersion,
+    version: tracevaneVersion,
     port: transport.standalone.port,
     autoStart: pluginConfig.autoStart !== false,
     openclawRoot,
@@ -193,9 +193,9 @@ export function createStudioConfig(
   };
 }
 
-export function createStandaloneStudioConfig(overrides: Partial<StudioServerConfig> = {}): StudioServerConfig {
+export function createStandaloneTracevaneConfig(overrides: Partial<TracevaneServerConfig> = {}): TracevaneServerConfig {
   const projectRoot = resolveProjectRoot(path.dirname(fileURLToPath(import.meta.url)));
-  const studioVersion = resolveStudioVersion(projectRoot);
+  const tracevaneVersion = resolveTracevaneVersion(projectRoot);
   const openclawRoot = overrides.openclawRoot
     || process.env.OPENCLAW_STATE_DIR
     || path.join(process.env.HOME || os.homedir(), '.openclaw');
@@ -217,9 +217,9 @@ export function createStandaloneStudioConfig(overrides: Partial<StudioServerConf
   };
 
   return {
-    pluginId: overrides.pluginId || 'studio',
+    pluginId: overrides.pluginId || 'tracevane',
     pluginName: overrides.pluginName || 'Tracevane',
-    version: overrides.version || studioVersion,
+    version: overrides.version || tracevaneVersion,
     port: standalonePort,
     autoStart: overrides.autoStart !== false,
     openclawRoot,
@@ -247,7 +247,7 @@ export function createStandaloneStudioConfig(overrides: Partial<StudioServerConf
   };
 }
 
-export function syncStandaloneStudioConfig(config: StudioServerConfig): boolean {
+export function syncStandaloneTracevaneConfig(config: TracevaneServerConfig): boolean {
   const nextGatewayPort = readGatewayPortFromOpenClawConfig(config.openclawConfigFile, DEFAULT_GATEWAY_PORT);
   const nextGatewayWsUrl = buildGatewayWsUrl(nextGatewayPort);
   const changed = config.gatewayPort !== nextGatewayPort || config.gatewayWsUrl !== nextGatewayWsUrl;

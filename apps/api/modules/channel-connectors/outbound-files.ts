@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-export const STUDIO_CHANNEL_FILES_BLOCK = "tracevane-channel-files";
+export const TRACEVANE_CHANNEL_FILES_BLOCK = "tracevane-channel-files";
 export const DEFAULT_CHANNEL_CONNECTOR_OUTBOUND_FILE_MAX_BYTES = 128 * 1024 * 1024;
 
 export interface ChannelConnectorOutboundFileRequest {
@@ -66,7 +66,7 @@ export function extractChannelConnectorOutboundFiles(replyText: string | null | 
   const files: ChannelConnectorOutboundFileRequest[] = [];
   const errors: string[] = [];
   const pattern = new RegExp(
-    "```[ \\t]*" + STUDIO_CHANNEL_FILES_BLOCK + "[^\\r\\n]*\\r?\\n([\\s\\S]*?)```",
+    "```[ \\t]*" + TRACEVANE_CHANNEL_FILES_BLOCK + "[^\\r\\n]*\\r?\\n([\\s\\S]*?)```",
     "gi",
   );
   const stripped = source.replace(pattern, (_match, rawJson: string) => {
@@ -97,7 +97,7 @@ function isPathInside(parent: string, child: string): boolean {
   return relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
-export function safeChannelConnectorFileName(value: unknown, fallback = "studio-file.bin"): string {
+export function safeChannelConnectorFileName(value: unknown, fallback = "tracevane-file.bin"): string {
   const normalized = normalizeString(value)
     .replace(/\\/g, "/")
     .split("/")

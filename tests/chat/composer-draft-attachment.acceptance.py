@@ -15,7 +15,7 @@ from browser_surface import wait_for_active_session, wait_for_chat_surface
 from upload_request import read_upload_payload
 
 
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-composer-draft-attachment-acceptance.png")
+SCREENSHOT = Path("/tmp/tracevane-chat-composer-draft-attachment-acceptance.png")
 
 
 def wait_button_enabled(locator, timeout=30000):
@@ -98,7 +98,7 @@ def goto_session(page, session_key: str) -> None:
 
 
 def write_temp_file(name: str, content: str) -> Path:
-    root = Path(tempfile.mkdtemp(prefix="openclaw-studio-chat-draft-attachment-"))
+    root = Path(tempfile.mkdtemp(prefix="tracevane-chat-draft-attachment-"))
     path = root / name
     path.write_text(content, encoding="utf-8")
     return path
@@ -198,7 +198,7 @@ def upload_file_and_insert(page, file_path: Path):
 
 
 def read_draft_storage(page, session_key: str) -> dict[str, object]:
-    key = f"openclaw-studio.chat.composer-draft:{session_key}"
+    key = f"tracevane.chat.composer-draft:{session_key}"
     raw = page.evaluate("(keyName) => window.localStorage.getItem(keyName)", key)
     if not raw:
         return {}
@@ -206,7 +206,7 @@ def read_draft_storage(page, session_key: str) -> dict[str, object]:
 
 
 def wait_for_persisted_draft(page, session_key: str, token: str, file_name: str):
-    key = f"openclaw-studio.chat.composer-draft:{session_key}"
+    key = f"tracevane.chat.composer-draft:{session_key}"
     page.wait_for_function(
         """([keyName, tokenValue, fileName]) => {
             const raw = window.localStorage.getItem(keyName);

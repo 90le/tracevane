@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import type { StudioServerConfig } from "../../../../types/api.js";
+import type { TracevaneServerConfig } from "../../../../types/api.js";
 import {
   MODEL_GATEWAY_DAEMON_SERVICE_NAME,
   type ModelGatewayDaemonServiceAction,
@@ -10,17 +10,17 @@ import {
   type ModelGatewaySupervisorKind,
 } from "../../../../types/model-gateway.js";
 
-const LAUNCHD_LABEL = "dev.openclaw.studio.model-gateway";
-const WINDOWS_TASK_NAME = "OpenClawStudioModelGateway";
+const LAUNCHD_LABEL = "dev.openclaw.tracevane.model-gateway";
+const WINDOWS_TASK_NAME = "TracevaneModelGateway";
 
-function normalizeHome(config: StudioServerConfig): string {
+function normalizeHome(config: TracevaneServerConfig): string {
   const openclawRoot = path.resolve(config.openclawRoot);
   return path.basename(openclawRoot) === ".openclaw"
     ? path.dirname(openclawRoot)
     : process.env.HOME || os.homedir();
 }
 
-function daemonEntryPath(config: StudioServerConfig): string {
+function daemonEntryPath(config: TracevaneServerConfig): string {
   return path.join(config.projectRoot, "dist", "apps", "api", "model-gateway-daemon.js");
 }
 
@@ -253,7 +253,7 @@ function templateFor(
   };
 }
 
-export function createModelGatewayDaemonServicePlan(config: StudioServerConfig): ModelGatewayDaemonServicePlan {
+export function createModelGatewayDaemonServicePlan(config: TracevaneServerConfig): ModelGatewayDaemonServicePlan {
   const home = normalizeHome(config);
   const nodePath = process.execPath;
   const daemonEntry = daemonEntryPath(config);

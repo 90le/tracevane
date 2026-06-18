@@ -14,7 +14,7 @@ from browser_surface import wait_for_active_session, wait_for_chat_surface
 from upload_request import read_upload_payload
 
 
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-composer-ime-acceptance.png")
+SCREENSHOT = Path("/tmp/tracevane-chat-composer-ime-acceptance.png")
 
 
 def wait_button_enabled(locator, timeout=30000):

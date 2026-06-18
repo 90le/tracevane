@@ -8,7 +8,7 @@ from browser_surface import collect_chat_surface_diagnostics, wait_for_active_se
 from chat_smoke_runtime import build_unavailable_skip, fetch_history
 
 
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-fresh-tool-smoke.png")
+SCREENSHOT = Path("/tmp/tracevane-chat-fresh-tool-smoke.png")
 TOKEN = "fresh-tool-smoke"
 
 

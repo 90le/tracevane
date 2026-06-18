@@ -10,7 +10,7 @@ import {
 } from '../../dist/apps/api/modules/system/bootstrap.js';
 
 function makeTempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'studio-bootstrap-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-bootstrap-'));
 }
 
 function writeJson(file, value) {
@@ -20,21 +20,21 @@ function writeJson(file, value) {
 
 function createConfig(root) {
   return {
-    pluginId: 'studio',
+    pluginId: 'tracevane',
     pluginName: 'Tracevane',
     version: '0.1.0',
     port: 3760,
     autoStart: true,
     openclawRoot: root,
     openclawConfigFile: path.join(root, 'openclaw.json'),
-    projectRoot: '/tmp/openclaw-studio-extension',
-    webDistDir: '/tmp/openclaw-studio-extension/apps/web-vue/dist',
+    projectRoot: '/tmp/tracevane-extension',
+    webDistDir: '/tmp/tracevane-extension/apps/web-vue/dist',
     gatewayPort: 31879,
     gatewayWsUrl: 'ws://127.0.0.1:31879',
     gatewayControlUiBasePath: '',
     transport: {
       standalone: { enabled: true, port: 3760 },
-      gateway: { enabled: true, basePath: '/studio' },
+      gateway: { enabled: true, basePath: '/tracevane' },
     },
   };
 }
@@ -90,15 +90,15 @@ test('bootstrap repair writes safe defaults without clobbering existing config',
     plugins: {
       allow: ['discord'],
       installs: {
-        studio: {
-          installPath: '/tmp/openclaw-studio.prev',
+        tracevane: {
+          installPath: '/tmp/tracevane.prev',
         },
       },
       load: {
         paths: ['/tmp/another-extension'],
       },
       entries: {
-        studio: {
+        tracevane: {
           enabled: false,
         },
       },
@@ -110,15 +110,15 @@ test('bootstrap repair writes safe defaults without clobbering existing config',
 
   assert.equal(repaired.ok, true);
   assert.equal(repaired.changed, true);
-  assert.ok(repaired.changedKeys.includes('plugins.entries.studio.enabled'));
+  assert.ok(repaired.changedKeys.includes('plugins.entries.tracevane.enabled'));
   assert.ok(repaired.changedKeys.includes('plugins.allow'));
-  assert.ok(repaired.changedKeys.includes('plugins.installs.studio'));
+  assert.ok(repaired.changedKeys.includes('plugins.installs.tracevane'));
   assert.ok(repaired.changedKeys.includes('plugins.load.paths'));
   assert.ok(repaired.changedKeys.includes('gateway.bind'));
   assert.ok(repaired.changedKeys.includes('gateway.controlUi.enabled'));
   assert.ok(repaired.changedKeys.includes('gateway.auth.token'));
-  assert.equal(nextConfig.plugins.entries.studio.enabled, true);
-  assert.ok(nextConfig.plugins.allow.includes('studio'));
+  assert.equal(nextConfig.plugins.entries.tracevane.enabled, true);
+  assert.ok(nextConfig.plugins.allow.includes('tracevane'));
   assert.equal(nextConfig.plugins.installs, undefined);
   assert.ok(nextConfig.plugins.load.paths.includes(config.projectRoot));
   assert.equal(nextConfig.gateway.bind, 'loopback');

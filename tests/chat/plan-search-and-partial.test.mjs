@@ -78,7 +78,7 @@ test('plan: search-style overlay mirror still prefers overlay-first semantics', 
 test('plan: tool partialResult string preview is clipped to 260 chars per agent-event-mapper', () => {
   const long = 'p'.repeat(400);
   const mapped = mapGatewayAgentEventPayload({
-    sessionKey: 'agent:main:webchat:direct:studio-1',
+    sessionKey: 'agent:main:webchat:direct:tracevane-1',
     payload: {
       runId: 'run-partial',
       stream: 'tool',
@@ -100,7 +100,7 @@ test('plan: tool partialResult string preview is clipped to 260 chars per agent-
 
 test('plan: successive partial updates carry independent snapshots; longer JSON wins after service-style merge', () => {
   const start = mapGatewayAgentEventPayload({
-    sessionKey: 'agent:main:webchat:direct:studio-1',
+    sessionKey: 'agent:main:webchat:direct:tracevane-1',
     payload: {
       runId: 'run-merge',
       stream: 'tool',
@@ -115,7 +115,7 @@ test('plan: successive partial updates carry independent snapshots; longer JSON 
   });
   assert.equal(start?.kind, 'agent_tool_call');
   const u1 = mapGatewayAgentEventPayload({
-    sessionKey: 'agent:main:webchat:direct:studio-1',
+    sessionKey: 'agent:main:webchat:direct:tracevane-1',
     previousToolCard: start?.tool,
     payload: {
       runId: 'run-merge',
@@ -130,7 +130,7 @@ test('plan: successive partial updates carry independent snapshots; longer JSON 
     },
   });
   const u2 = mapGatewayAgentEventPayload({
-    sessionKey: 'agent:main:webchat:direct:studio-1',
+    sessionKey: 'agent:main:webchat:direct:tracevane-1',
     previousToolCard: u1?.tool,
     payload: {
       runId: 'run-merge',

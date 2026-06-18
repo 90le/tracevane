@@ -11,9 +11,9 @@ import type {
   ChatSendFileRef,
 } from '../types/chat.js';
 import {
-  buildStudioResourceRefFromRelativePath,
+  buildTracevaneResourceRefFromRelativePath,
   formatMarkdownResourceDestination,
-} from './studio-resource-refs.js';
+} from './tracevane-resource-refs.js';
 
 export interface ChatComposerAttachmentRefLike {
   id: string;
@@ -134,7 +134,7 @@ function escapeMarkdownLabel(value: string): string {
 }
 
 function attachmentHref(attachment: ChatComposerAttachmentRefLike): string | null {
-  return buildStudioResourceRefFromRelativePath(attachment.relativePath);
+  return buildTracevaneResourceRefFromRelativePath(attachment.relativePath);
 }
 
 function attachmentMap(
@@ -381,7 +381,7 @@ export function serializeComposerDocumentToMarkdown(
       result += label;
       continue;
     }
-    result += `[${escapeMarkdownLabel(label)}](${formatMarkdownResourceDestination(href)} "studio:${node.display}")`;
+    result += `[${escapeMarkdownLabel(label)}](${formatMarkdownResourceDestination(href)} "tracevane:${node.display}")`;
   }
 
   return result;
@@ -472,7 +472,7 @@ export function buildComposerFileRefs(
       if (!relativePath) {
         return null;
       }
-      const resourceRef = buildStudioResourceRefFromRelativePath(relativePath);
+      const resourceRef = buildTracevaneResourceRefFromRelativePath(relativePath);
       const item: ChatSendFileRef = {
         id: attachment.id,
         relativePath,

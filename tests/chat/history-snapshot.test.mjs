@@ -57,7 +57,7 @@ test('history snapshot does not reattach run-wide tool calls onto the final assi
   ];
 
   const supplemented = supplementHistoryWithRunState({
-    sessionKey: 'agent:main:webchat:direct:studio-test',
+    sessionKey: 'agent:main:webchat:direct:tracevane-test',
     messages,
     liveRunIds: new Set(),
     liveSupplements: [
@@ -114,7 +114,7 @@ test('history snapshot enriches canonical tool step running status to completed 
   ];
 
   const supplemented = supplementHistoryWithRunState({
-    sessionKey: 'agent:main:webchat:direct:studio-test',
+    sessionKey: 'agent:main:webchat:direct:tracevane-test',
     messages,
     liveRunIds: new Set(),
     liveSupplements: [
@@ -177,7 +177,7 @@ test('history snapshot does not downgrade canonical tool step completed status w
   ];
 
   const supplemented = supplementHistoryWithRunState({
-    sessionKey: 'agent:main:webchat:direct:studio-test',
+    sessionKey: 'agent:main:webchat:direct:tracevane-test',
     messages,
     liveRunIds: new Set(),
     liveSupplements: [

@@ -1,5 +1,5 @@
 import { parseJsonBody, sendJson } from "../../core/http.js";
-import type { StudioRouter } from "../../core/router.js";
+import type { TracevaneRouter } from "../../core/router.js";
 import type {
   ChannelConnectorsDaemonRequest,
   ChannelConnectorAgentSessionActionRequest,
@@ -20,7 +20,7 @@ function sendChannelConnectorsError(res: Parameters<typeof sendJson>[0], error: 
   });
 }
 
-export function registerChannelConnectorsRoutes(router: StudioRouter): void {
+export function registerChannelConnectorsRoutes(router: TracevaneRouter): void {
   router.get("/api/channel-connectors/status", async (_req, res, routeCtx) => {
     try {
       sendJson(res, 200, await routeCtx.services.channelConnectors.getStatus());
@@ -96,7 +96,7 @@ export function registerChannelConnectorsRoutes(router: StudioRouter): void {
         });
         return;
       }
-      if (payload.studioDebugResponse === true) {
+      if (payload.tracevaneDebugResponse === true) {
         sendJson(res, 200, response);
         return;
       }

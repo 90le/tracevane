@@ -15,7 +15,7 @@ from browser_surface import wait_for_active_session, wait_for_chat_surface
 from upload_request import read_upload_payload
 
 
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-composer-upload-concurrency-acceptance.png")
+SCREENSHOT = Path("/tmp/tracevane-chat-composer-upload-concurrency-acceptance.png")
 
 
 def wait_button_enabled(locator, timeout=30000):
@@ -75,7 +75,7 @@ def open_new_chat(page) -> str:
 
 
 def write_temp_file(name: str, content: str) -> Path:
-    root = Path(tempfile.mkdtemp(prefix="openclaw-studio-chat-upload-concurrency-"))
+    root = Path(tempfile.mkdtemp(prefix="tracevane-chat-upload-concurrency-"))
     path = root / name
     path.write_text(content, encoding="utf-8")
     return path
@@ -122,11 +122,11 @@ def install_file_reader_probe(page, slow_file_name: str, delay_ms: int):
     script = """(() => {
             const { slowFileName, delayMs } = __PAYLOAD__;
             const nativeReadAsDataUrl = FileReader.prototype.readAsDataURL;
-            window.__studioReadEvents = [];
+            window.__tracevaneReadEvents = [];
             FileReader.prototype.readAsDataURL = function(blob) {
                 const fileName = blob && typeof blob.name === 'string' ? blob.name : '';
                 const record = (type) => {
-                    window.__studioReadEvents.push({
+                    window.__tracevaneReadEvents.push({
                         type,
                         fileName,
                         at: performance.now(),
@@ -147,7 +147,7 @@ def install_file_reader_probe(page, slow_file_name: str, delay_ms: int):
 
 
 def read_events(page) -> list[dict[str, object]]:
-    return page.evaluate("() => window.__studioReadEvents || []")
+    return page.evaluate("() => window.__tracevaneReadEvents || []")
 
 
 def main() -> None:

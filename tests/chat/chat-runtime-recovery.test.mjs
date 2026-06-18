@@ -18,7 +18,7 @@ function createSession(key, overrides = {}) {
     key,
     agentId: 'agent-main',
     sessionId: `${key}-id`,
-    kind: 'studio_managed',
+    kind: 'tracevane_managed',
     label: key,
     derivedTitle: null,
     lastMessagePreview: null,

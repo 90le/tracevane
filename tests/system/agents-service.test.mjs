@@ -7,7 +7,7 @@ import path from "node:path";
 import { createAgentsService } from "../../dist/apps/api/modules/agents/service.js";
 
 function makeTempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "studio-agents-service-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-agents-service-"));
 }
 
 function writeJson(file, value) {
@@ -20,23 +20,23 @@ function writeText(file, value) {
   fs.writeFileSync(file, value, "utf8");
 }
 
-function createStudioConfig(root) {
+function createTracevaneConfig(root) {
   return {
-    pluginId: "studio",
+    pluginId: "tracevane",
     pluginName: "Tracevane",
     version: "0.1.0",
     port: 3760,
     autoStart: true,
     openclawRoot: root,
     openclawConfigFile: path.join(root, "openclaw.json"),
-    projectRoot: "/tmp/openclaw-studio-extension",
-    webDistDir: "/tmp/openclaw-studio-extension/apps/web-vue/dist",
+    projectRoot: "/tmp/tracevane-extension",
+    webDistDir: "/tmp/tracevane-extension/apps/web-vue/dist",
     gatewayPort: 31879,
     gatewayWsUrl: "ws://127.0.0.1:31879",
     gatewayControlUiBasePath: "",
     transport: {
       standalone: { enabled: true, port: 3760 },
-      gateway: { enabled: true, basePath: "/studio" },
+      gateway: { enabled: true, basePath: "/tracevane" },
     },
   };
 }
@@ -56,7 +56,7 @@ function seedAgent(root, agentId, identityMarkdown) {
 
 test("agent detail exposes advanced 4.8 fields and raw config snapshot", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   seedAgent(
     root,
     "main",
@@ -150,7 +150,7 @@ test("agent detail exposes advanced 4.8 fields and raw config snapshot", () => {
 
 test("agent update preserves object model configs and advanced fields", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   seedAgent(
     root,
     "main",
@@ -247,7 +247,7 @@ test("agent update preserves object model configs and advanced fields", () => {
 
 test("agent create supports advanced identity and model overrides", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, { agents: { list: [] } });
 
   const service = createAgentsService(config);
@@ -288,7 +288,7 @@ test("agent create supports advanced identity and model overrides", () => {
 
 test("agents summary and detail expose synthetic default agent when no agents list exists", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   seedAgent(
     root,
     "main",
@@ -324,7 +324,7 @@ test("agents summary and detail expose synthetic default agent when no agents li
 
 test("agents summary includes configured third-party model refs outside provider catalogs", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     agents: {
       defaults: {
@@ -372,7 +372,7 @@ test("agents summary includes configured third-party model refs outside provider
 
 test("agent delete is conservative by default and keeps workspace and agentDir", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const workspace = path.join(root, "workspace-writer");
   const agentDir = path.join(root, "agents", "writer", "agent");
   const sessionsDir = path.join(root, "agents", "writer", "sessions");
@@ -419,7 +419,7 @@ test("agent delete is conservative by default and keeps workspace and agentDir",
 
 test("agent delete removes workspace and agentDir when explicitly requested", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const workspace = path.join(root, "workspace-reviewer");
   const agentDir = path.join(root, "agents", "reviewer", "agent");
 
@@ -459,7 +459,7 @@ test("agent delete removes workspace and agentDir when explicitly requested", ()
 
 test("agent bindings expose stable ids and preserve team and role match facets", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   seedAgent(
     root,
     "main",
@@ -531,7 +531,7 @@ test("agent bindings expose stable ids and preserve team and role match facets",
 
 test("agent createBinding keeps channel-compatible raw bindings for standard routes", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   seedAgent(
     root,
     "main",

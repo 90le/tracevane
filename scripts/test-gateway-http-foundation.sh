@@ -2,10 +2,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-STUDIO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+TRACEVANE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TEST_ROOT="$(mktemp -d)"
 TEST_PORT="${TEST_PORT:-19091}"
-BASE_PATH="${BASE_PATH:-/studio}"
+BASE_PATH="${BASE_PATH:-/tracevane}"
 GATEWAY_PID=""
 
 cleanup() {
@@ -36,14 +36,14 @@ cat > "${TEST_ROOT}/openclaw.json" <<EOF
     }
   },
   "plugins": {
-    "allow": ["studio"],
+    "allow": ["tracevane"],
     "load": {
       "paths": [
-        "${STUDIO_ROOT}"
+        "${TRACEVANE_ROOT}"
       ]
     },
     "entries": {
-      "studio": {
+      "tracevane": {
         "enabled": true,
         "config": {
           "autoStart": true,
@@ -85,7 +85,7 @@ done
 
 echo "[1/3] GET ${BASE_PATH}/"
 INDEX_HTML="$(curl -sf "http://127.0.0.1:${TEST_PORT}${BASE_PATH}/")"
-if [[ "${INDEX_HTML}" == *"__OPENCLAW_STUDIO_RUNTIME__"* ]] && [[ "${INDEX_HTML}" == *"\"exposureKind\":\"gateway\""* ]]; then
+if [[ "${INDEX_HTML}" == *"__TRACEVANE_RUNTIME__"* ]] && [[ "${INDEX_HTML}" == *"\"exposureKind\":\"gateway\""* ]]; then
   echo "  ok: runtime config injected"
 else
   echo "  fail: runtime config missing"

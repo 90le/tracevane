@@ -10,7 +10,7 @@ const DEFAULT_IMAGE_PROMPT = "A simple blue square on a white background. No tex
 
 function parseArgs(argv) {
   const options = {
-    endpoint: process.env.TRACEVANE_GATEWAY_ENDPOINT || process.env.STUDIO_GATEWAY_ENDPOINT || DEFAULT_ENDPOINT,
+    endpoint: process.env.TRACEVANE_GATEWAY_ENDPOINT || process.env.TRACEVANE_GATEWAY_ENDPOINT || DEFAULT_ENDPOINT,
     json: false,
     runImageGeneration: false,
     requireImageGeneration: false,
@@ -62,7 +62,7 @@ Options:
 
 Auth:
   TRACEVANE_GATEWAY_CLIENT_KEY is preferred. If omitted, the script reads
-  ~/.openclaw/studio/model-gateway/secrets.json locally.`);
+  ~/.openclaw/tracevane/model-gateway/secrets.json locally.`);
 }
 
 function positiveInt(value, fallback) {
@@ -71,9 +71,9 @@ function positiveInt(value, fallback) {
 }
 
 function readGatewayKey() {
-  const envKey = process.env.TRACEVANE_GATEWAY_CLIENT_KEY || process.env.STUDIO_GATEWAY_CLIENT_KEY || process.env.MODEL_GATEWAY_CLIENT_KEY;
+  const envKey = process.env.TRACEVANE_GATEWAY_CLIENT_KEY || process.env.TRACEVANE_GATEWAY_CLIENT_KEY || process.env.MODEL_GATEWAY_CLIENT_KEY;
   if (envKey?.trim()) return envKey.trim();
-  const filePath = path.join(os.homedir(), ".openclaw/studio/model-gateway/secrets.json");
+  const filePath = path.join(os.homedir(), ".openclaw/tracevane/model-gateway/secrets.json");
   try {
     const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
     const value = parsed?.secrets?.["gateway:client-api-key"]?.value;
@@ -161,7 +161,7 @@ async function probeCatalog(options, key) {
 }
 
 async function probeImageEditsUnsupported(options, key) {
-  const boundary = "----studio-account-media-image-edit";
+  const boundary = "----tracevane-account-media-image-edit";
   const body = Buffer.from([
     `--${boundary}`,
     'Content-Disposition: form-data; name="model"',
@@ -217,7 +217,7 @@ async function probeAudioUnsupported(options, key, kind) {
     });
     return audioUnsupportedStatus(kind, result);
   }
-  const boundary = "----studio-account-media-audio";
+  const boundary = "----tracevane-account-media-audio";
   const body = Buffer.from([
     `--${boundary}`,
     'Content-Disposition: form-data; name="model"',

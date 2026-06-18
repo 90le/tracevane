@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 
 import {
   isAssistantNoReplyMessage,
-  isAssistantStudioDeliveryToolUseEnvelope,
+  isAssistantTracevaneDeliveryToolUseEnvelope,
   mapTranscriptMessage,
   mapMessagesFromParsedEntries,
   extractMessageText,
 } from '../../dist/apps/api/modules/chat/transcript.js';
 
-test('assistant studio_delivery tool-use envelope is detected from real transcript shape', () => {
+test('assistant tracevane_delivery tool-use envelope is detected from real transcript shape', () => {
   const raw = {
     type: 'message',
     id: 'assistant-envelope',
@@ -20,7 +20,7 @@ test('assistant studio_delivery tool-use envelope is detected from real transcri
         {
           type: 'toolCall',
           id: 'tool-call-1',
-          name: 'studio_delivery',
+          name: 'tracevane_delivery',
           arguments: {
             version: 2,
             blocks: [
@@ -47,10 +47,10 @@ test('assistant studio_delivery tool-use envelope is detected from real transcri
     },
   };
 
-  assert.equal(isAssistantStudioDeliveryToolUseEnvelope(raw), true);
+  assert.equal(isAssistantTracevaneDeliveryToolUseEnvelope(raw), true);
 });
 
-test('skip override prevents assistant studio_delivery envelope from collecting structured resources', () => {
+test('skip override prevents assistant tracevane_delivery envelope from collecting structured resources', () => {
   const raw = {
     type: 'message',
     id: 'assistant-envelope',
@@ -61,7 +61,7 @@ test('skip override prevents assistant studio_delivery envelope from collecting 
         {
           type: 'toolCall',
           id: 'tool-call-1',
-          name: 'studio_delivery',
+          name: 'tracevane_delivery',
           arguments: {
             version: 2,
             resources: [
@@ -80,12 +80,12 @@ test('skip override prevents assistant studio_delivery envelope from collecting 
   };
 
   const mapped = mapTranscriptMessage(raw, 0, {
-    sessionKey: 'agent:main:webchat:direct:studio-test',
+    sessionKey: 'agent:main:webchat:direct:tracevane-test',
     collectMessageResources() {
       throw new Error('collectMessageResources should not run for skipped assistant envelopes');
     },
     overrideMessage(_sessionKey, candidate) {
-      return isAssistantStudioDeliveryToolUseEnvelope(candidate)
+      return isAssistantTracevaneDeliveryToolUseEnvelope(candidate)
         ? { kind: 'skip' }
         : null;
     },
@@ -110,7 +110,7 @@ test('assistant NO_REPLY messages can be explicitly skipped', () => {
   assert.equal(isAssistantNoReplyMessage(raw), true);
 
   const mapped = mapTranscriptMessage(raw, 0, {
-    sessionKey: 'agent:main:webchat:direct:studio-test',
+    sessionKey: 'agent:main:webchat:direct:tracevane-test',
     overrideMessage(_sessionKey, candidate) {
       return isAssistantNoReplyMessage(candidate)
         ? { kind: 'skip' }

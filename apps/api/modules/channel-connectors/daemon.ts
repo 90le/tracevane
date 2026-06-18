@@ -332,14 +332,13 @@ const PENDING_AGENT_RUN_MAX_RECORDS = 200;
 const channelAgentSessionDriverEvents: ChannelConnectorAgentSessionDriverEvent[] = [];
 
 const channelAgentSessionDriverPool = createChannelConnectorAgentSessionDriverPool({
-  idleTimeoutMs: optionalPositiveIntegerEnv("STUDIO_CHANNEL_AGENT_SESSION_IDLE_TIMEOUT_MS"),
-  maxSessions: optionalPositiveIntegerEnv("STUDIO_CHANNEL_AGENT_SESSION_MAX_SESSIONS"),
+  idleTimeoutMs: optionalPositiveIntegerEnv("TRACEVANE_CHANNEL_AGENT_SESSION_IDLE_TIMEOUT_MS"),
+  maxSessions: optionalPositiveIntegerEnv("TRACEVANE_CHANNEL_AGENT_SESSION_MAX_SESSIONS"),
   onEvent: recordChannelAgentSessionDriverEvent,
   factory: createNativeCliSessionDriverFactory({
     codexFactory: createCodexAppServerSessionDriverFactory({
       turnTimeoutMs: optionalPositiveIntegerEnv(
         "TRACEVANE_CODEX_APP_SERVER_TURN_IDLE_TIMEOUT_MS",
-        "STUDIO_CODEX_APP_SERVER_TURN_IDLE_TIMEOUT_MS",
       ),
       transportFactory: ({ sessionId, key, agentTurnRequest }) => {
         const processRequest = agentTurnRequest
@@ -875,7 +874,7 @@ type FeishuProgressCardEntryKind = "info" | "assistant" | "thinking" | "tool_use
 const channelSessionAgentRunGuards: ChannelDaemonSessionRunGuardRegistry = new Map();
 const channelPendingPermissions: ChannelDaemonPendingPermissionRegistry = new Map();
 const channelPermissionApproveAllRunIds = new Set<string>();
-const AUTO_VISION_MODEL_SENTINEL = "__studio_auto__";
+const AUTO_VISION_MODEL_SENTINEL = "__tracevane_auto__";
 
 function applyChannelConnectorBindingMetadataPatchInMemory(
   config: ChannelConnectorsDaemonRuntimeConfig,
@@ -1659,7 +1658,7 @@ function sendDaemonJson(res: http.ServerResponse, statusCode: number, body: unkn
 
 function daemonManagementToken(config: ChannelConnectorsDaemonRuntimeConfig): string | null {
   return normalizeString((config.management as { token?: string }).token)
-    || normalizeString(process.env.STUDIO_DAEMON_MANAGEMENT_TOKEN)
+    || normalizeString(process.env.TRACEVANE_DAEMON_MANAGEMENT_TOKEN)
     || null;
 }
 
@@ -2294,7 +2293,7 @@ function startHttp(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelD
       res.setHeader("content-type", "application/json; charset=utf-8");
       res.end(JSON.stringify({
         ok: true,
-        implementation: "studio-native",
+        implementation: "tracevane-native",
         pid: process.pid,
         projects: config.projects.length,
         platformBindings: config.projects.reduce((sum, project) => sum + project.platformBindings.length, 0),
@@ -2329,7 +2328,7 @@ function startHttp(config: ChannelConnectorsDaemonRuntimeConfig, state: ChannelD
 }
 
 function channelAgentSessionReapIntervalMs(): number {
-  const configured = optionalNonNegativeIntegerEnv("STUDIO_CHANNEL_AGENT_SESSION_REAP_INTERVAL_MS");
+  const configured = optionalNonNegativeIntegerEnv("TRACEVANE_CHANNEL_AGENT_SESSION_REAP_INTERVAL_MS");
   return configured == null ? DEFAULT_CHANNEL_AGENT_SESSION_REAP_INTERVAL_MS : configured;
 }
 
@@ -3165,7 +3164,7 @@ function outboundFileMaxBytes(binding: ChannelConnectorRuntimeBinding): number {
 function stripLegacyPlatformActionBlocks(replyText: string): { replyText: string; errors: string[] } {
   const errors: string[] = [];
   const stripped = replyText.replace(
-    /```[ \t]*(studio-feishu-actions|studio-octo-actions)[^\r\n]*\r?\n[\s\S]*?```/gi,
+    /```[ \t]*(tracevane-feishu-actions|tracevane-octo-actions)[^\r\n]*\r?\n[\s\S]*?```/gi,
     (_match, blockName: string) => {
       errors.push(`${String(blockName)} is no longer supported in Tracevane private IM mode.`);
       return "";
@@ -3773,8 +3772,8 @@ function normalizeGatewayRuntimeUsage(value: unknown): GatewayRuntimeLogEntryFor
 function modelGatewayRuntimePathCandidates(config: ChannelConnectorsDaemonRuntimeConfig): string[] {
   return uniqueStrings([
     path.resolve(config.paths.root, "..", "..", "model-gateway", "runtime.json"),
-    path.join(os.homedir(), ".openclaw", "studio", "model-gateway", "runtime.json"),
-    path.join(os.homedir(), ".config", "openclaw-studio", "model-gateway", "runtime.json"),
+    path.join(os.homedir(), ".openclaw", "tracevane", "model-gateway", "runtime.json"),
+    path.join(os.homedir(), ".config", "tracevane", "model-gateway", "runtime.json"),
   ]);
 }
 
@@ -3915,7 +3914,7 @@ function channelAutoCompactEnabled(binding: ChannelConnectorRuntimeBinding): boo
 }
 
 function channelAutoCompactCooldownMs(binding: ChannelConnectorRuntimeBinding): number {
-  const fallback = optionalNonNegativeIntegerEnv("STUDIO_CHANNEL_AUTO_COMPACT_COOLDOWN_MS")
+  const fallback = optionalNonNegativeIntegerEnv("TRACEVANE_CHANNEL_AUTO_COMPACT_COOLDOWN_MS")
     ?? DEFAULT_CHANNEL_AUTO_COMPACT_COOLDOWN_MS;
   const value = metadataNumber(binding, [
     "autoCompactCooldownMs",
@@ -4931,7 +4930,7 @@ function feishuBotMentionCandidateInput(
 }
 
 function feishuGroupLockRoot(): string {
-  return path.join(os.homedir(), ".config", "openclaw-studio", "channel-connectors", "feishu-ws-global-locks");
+  return path.join(os.homedir(), ".config", "tracevane", "channel-connectors", "feishu-ws-global-locks");
 }
 
 function feishuGroupLockPath(_config: ChannelConnectorsDaemonRuntimeConfig, group: ChannelDaemonFeishuGroup): string {

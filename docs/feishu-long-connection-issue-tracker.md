@@ -8,7 +8,7 @@ This is the single tracker for Feishu "connected but no reply" incidents. New Fe
 
 ## 1. References
 
-- SDK: OpenClaw uses `@larksuiteoapi/node-sdk@1.66.0`; Studio currently uses `@larksuiteoapi/node-sdk@1.66.1`
+- SDK: OpenClaw uses `@larksuiteoapi/node-sdk@1.66.0`; Tracevane currently uses `@larksuiteoapi/node-sdk@1.66.1`
 - Feishu official docs:
   - `https://open.feishu.cn/document/server-side-sdk/nodejs-sdk/preparation-before-development`
   - `https://open.feishu.cn/document/server-side-sdk/nodejs-sdk/handling-events`
@@ -23,20 +23,20 @@ The recurring failure is not model latency, menu rendering, verification token, 
 Decisive user evidence:
 
 - When Feishu does not reply, manually restarting Channel Connectors makes the same bot receive messages again.
-- Official Feishu long-connection check can report failure while Studio previously still showed `connected=true`.
+- Official Feishu long-connection check can report failure while Tracevane previously still showed `connected=true`.
 - Octo stays stable under the same workload, so the Channel daemon and Agent runner are not the primary fault class.
 
-Conclusion: Studio must treat Feishu SDK `connected` as insufficient and manage a self-healing owner cycle.
+Conclusion: Tracevane must treat Feishu SDK `connected` as insufficient and manage a self-healing owner cycle.
 
 2026-06-12 live status: user verified Feishu and Octo long connections are both stable. The incident is marked complete and stays in monitored state; any future "connected but no reply" report must reopen this tracker with fresh runtime/log evidence.
 
 ## 3. Current Contract
 
-- One Feishu app/domain has one Studio OS-user owner lock; the owner fans out to matching bindings.
+- One Feishu app/domain has one Tracevane OS-user owner lock; the owner fans out to matching bindings.
 - Each owner cycle creates one official SDK `WSClient` and one `EventDispatcher`.
 - WS handshake has a 15s timeout.
 - `wsConfig.pingTimeout` uses lower-case SDK field and defaults to 3s.
-- Studio wraps SDK ping scheduling and clamps effective ping interval to 10s by default.
+- Tracevane wraps SDK ping scheduling and clamps effective ping interval to 10s by default.
 - `pongTimeoutMs` defaults to 8000ms.
 - Transport stale window defaults to `pingIntervalMs + pongTimeoutMs + 5000`, currently 23000ms.
 - SDK terminal error, long `reconnecting`, pong overdue, or transport stale closes the current cycle and lets the outer OpenClaw-style loop rebuild.

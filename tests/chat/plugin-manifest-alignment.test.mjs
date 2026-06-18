@@ -12,7 +12,7 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, 'openclaw.plugin.jso
 const docs = fs.readFileSync(path.join(root, 'docs', 'chat-official-parity.md'), 'utf-8');
 
 test('package.json keeps official host install metadata authoritative', () => {
-  assert.equal(packageJson.openclaw?.id, 'studio');
+  assert.equal(packageJson.openclaw?.id, 'tracevane');
   assert.deepEqual(packageJson.openclaw?.extensions, ['./index.ts']);
   assert.deepEqual(packageJson.openclaw?.runtimeExtensions, ['./dist/index.js']);
   assert.equal(packageJson.openclaw?.install?.minHostVersion, '>=2026.4.8');
@@ -21,7 +21,7 @@ test('package.json keeps official host install metadata authoritative', () => {
 test('openclaw.plugin.json keeps 5.x activation and runtime contracts explicit', () => {
   assert.equal(manifest.id, packageJson.openclaw?.id);
   assert.equal(manifest.activation?.onStartup, true);
-  assert.deepEqual(manifest.contracts?.tools, ['studio_delivery']);
+  assert.deepEqual(manifest.contracts?.tools, ['tracevane_delivery']);
 });
 
 test('openclaw.plugin.json no longer carries host install/runtime entrypoint semantics', () => {

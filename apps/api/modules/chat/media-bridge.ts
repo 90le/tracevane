@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { StudioServerConfig } from '../../../../types/api.js';
+import type { TracevaneServerConfig } from '../../../../types/api.js';
 import type {
   ChatAttachmentKind,
   ChatInlineSegment,
@@ -17,14 +17,14 @@ import type {
 } from '../../../../types/chat.js';
 import { buildContentDisposition } from '../../core/http.js';
 import { readOpenClawConfig } from '../../core/state.js';
-import { extractStudioDeliveryPayload, summarizeStudioDeliveryText, type StudioDeliveryResult, type StudioDeliveryResource } from '../../../../lib/studio-delivery.js';
+import { extractTracevaneDeliveryPayload, summarizeTracevaneDeliveryText, type TracevaneDeliveryResult, type TracevaneDeliveryResource } from '../../../../lib/tracevane-delivery.js';
 import {
-  appendStudioMarkdownMediaMeta,
-  isStudioMarkdownExplicitLocalRef,
-  parseStudioMarkdownMediaRef,
-  type StudioMarkdownMediaRef,
-} from '../../../../lib/studio-markdown-media.js';
-import { buildStudioResourceRefFromRelativePath } from '../../../../lib/studio-resource-refs.js';
+  appendTracevaneMarkdownMediaMeta,
+  isTracevaneMarkdownExplicitLocalRef,
+  parseTracevaneMarkdownMediaRef,
+  type TracevaneMarkdownMediaRef,
+} from '../../../../lib/tracevane-markdown-media.js';
+import { buildTracevaneResourceRefFromRelativePath } from '../../../../lib/tracevane-resource-refs.js';
 import { compileAssistantMarkdownMedia, type CompileAssistantMarkdownMediaResult } from './assistant-markdown-media.js';
 import { deriveAgentIdFromSessionKey } from './session-model.js';
 
@@ -52,7 +52,7 @@ export type ResolvedChatMedia = {
 
 type CollectResourceContext = {
   sessionKey: string;
-  config: StudioServerConfig;
+  config: TracevaneServerConfig;
   signToken: (payload: MediaTokenPayload) => string;
 };
 
@@ -67,7 +67,7 @@ const HTTP_URL_RE = /^https?:\/\//i;
 const FILE_URL_RE = /^file:\/\//i;
 const URL_SCHEME_RE = /^[a-z][a-z0-9+.-]*:/i;
 const TRAILING_PUNCTUATION_RE = /[),.;:!?]+$/;
-const MEDIA_TOKEN_SECRET_RELATIVE_PATH = path.join('studio', 'media-token-secret.json');
+const MEDIA_TOKEN_SECRET_RELATIVE_PATH = path.join('tracevane', 'media-token-secret.json');
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   '.apng': 'image/apng',
@@ -207,7 +207,7 @@ function normalizeOpenClawPath(value: string): string {
   return value.replace(/\0/g, '');
 }
 
-function readPersistedMediaTokenSecret(config: StudioServerConfig): string | null {
+function readPersistedMediaTokenSecret(config: TracevaneServerConfig): string | null {
   try {
     const secretPath = path.join(config.openclawRoot, MEDIA_TOKEN_SECRET_RELATIVE_PATH);
     const raw = fs.readFileSync(secretPath, 'utf-8');
@@ -219,7 +219,7 @@ function readPersistedMediaTokenSecret(config: StudioServerConfig): string | nul
   }
 }
 
-function persistMediaTokenSecret(config: StudioServerConfig, secret: string): void {
+function persistMediaTokenSecret(config: TracevaneServerConfig, secret: string): void {
   const secretPath = path.join(config.openclawRoot, MEDIA_TOKEN_SECRET_RELATIVE_PATH);
   ensureDirSync(path.dirname(secretPath));
   const body = JSON.stringify({
@@ -233,7 +233,7 @@ function persistMediaTokenSecret(config: StudioServerConfig, secret: string): vo
   });
 }
 
-function resolveMediaTokenSecret(config: StudioServerConfig): Buffer {
+function resolveMediaTokenSecret(config: TracevaneServerConfig): Buffer {
   const persisted = readPersistedMediaTokenSecret(config);
   if (persisted) {
     return Buffer.from(persisted);
@@ -243,7 +243,7 @@ function resolveMediaTokenSecret(config: StudioServerConfig): Buffer {
   return Buffer.from(generated);
 }
 
-function getDefaultAgentId(config: StudioServerConfig): string {
+function getDefaultAgentId(config: TracevaneServerConfig): string {
   const openclawConfig = readOpenClawConfig(config);
   const list = Array.isArray(openclawConfig.agents?.list) ? openclawConfig.agents.list : [];
   const markedDefault = list.find((item: Record<string, unknown>) => item?.default === true);
@@ -251,7 +251,7 @@ function getDefaultAgentId(config: StudioServerConfig): string {
   return typeof first?.id === 'string' && first.id.trim() ? first.id.trim() : 'main';
 }
 
-function resolveAgentWorkspaceDir(config: StudioServerConfig, agentId: string): string {
+function resolveAgentWorkspaceDir(config: TracevaneServerConfig, agentId: string): string {
   const openclawConfig = readOpenClawConfig(config);
   const list = Array.isArray(openclawConfig.agents?.list) ? openclawConfig.agents.list : [];
   const entry = list.find((item: Record<string, unknown>) => typeof item?.id === 'string' && item.id.trim() === agentId);
@@ -271,7 +271,7 @@ function resolveAgentWorkspaceDir(config: StudioServerConfig, agentId: string): 
   return tryRealPathSync(path.join(config.openclawRoot, `workspace-${agentId}`));
 }
 
-function allowedMediaRoots(config: StudioServerConfig, sessionKey: string): string[] {
+function allowedMediaRoots(config: TracevaneServerConfig, sessionKey: string): string[] {
   const agentId = deriveAgentIdFromSessionKey(sessionKey);
   return [
     config.openclawRoot,
@@ -285,7 +285,7 @@ function isWithinAllowedRoots(filePath: string, roots: readonly string[]): boole
   return roots.some((root) => normalizedPath === root || normalizedPath.startsWith(`${root}${path.sep}`));
 }
 
-function resolveRelativeCandidates(config: StudioServerConfig, sessionKey: string, ref: string): string[] {
+function resolveRelativeCandidates(config: TracevaneServerConfig, sessionKey: string, ref: string): string[] {
   const agentWorkspace = resolveAgentWorkspaceDir(config, deriveAgentIdFromSessionKey(sessionKey));
   return [
     path.resolve(agentWorkspace, ref),
@@ -293,7 +293,7 @@ function resolveRelativeCandidates(config: StudioServerConfig, sessionKey: strin
   ];
 }
 
-function resolveLocalFilePath(config: StudioServerConfig, sessionKey: string, ref: string): string | null {
+function resolveLocalFilePath(config: TracevaneServerConfig, sessionKey: string, ref: string): string | null {
   const trimmed = trimCandidateRef(ref);
   if (!trimmed || DATA_URL_RE.test(trimmed) || isRemoteUrl(trimmed)) {
     return null;
@@ -333,7 +333,7 @@ function resolveLocalFilePath(config: StudioServerConfig, sessionKey: string, re
 }
 
 function resolveScopedWorkspaceFilePath(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   sessionKey: string,
   ref: string,
   scope: 'workspace' | 'uploads',
@@ -360,11 +360,11 @@ function isSafeScopedResourceRefPath(value: string): boolean {
     && !normalized.split('/').includes('..');
 }
 
-function resolveStudioMarkdownMediaFilePath(
-  config: StudioServerConfig,
+function resolveTracevaneMarkdownMediaFilePath(
+  config: TracevaneServerConfig,
   sessionKey: string,
   ref: string,
-  parsedRef: StudioMarkdownMediaRef | null,
+  parsedRef: TracevaneMarkdownMediaRef | null,
 ): string | null {
   if (!parsedRef) {
     return resolveLocalFilePath(config, sessionKey, ref);
@@ -551,9 +551,9 @@ function buildMissingResourceItem(
 function buildAssistantMarkdownResourceItem(
   ctx: CollectResourceContext,
   ref: string,
-  parsedRef: StudioMarkdownMediaRef | null,
+  parsedRef: TracevaneMarkdownMediaRef | null,
 ): ChatResourceItem | null {
-  const localFilePath = resolveStudioMarkdownMediaFilePath(ctx.config, ctx.sessionKey, ref, parsedRef);
+  const localFilePath = resolveTracevaneMarkdownMediaFilePath(ctx.config, ctx.sessionKey, ref, parsedRef);
   if (localFilePath) {
     return buildLocalResourceItem(ctx, localFilePath, {
       source: 'assistant_markdown',
@@ -562,9 +562,9 @@ function buildAssistantMarkdownResourceItem(
     });
   }
 
-  const isExplicitStudioRef = Boolean(parsedRef);
-  const isLegacyRelativeRef = !parsedRef && isStudioMarkdownExplicitLocalRef(ref);
-  if (!isExplicitStudioRef && !isLegacyRelativeRef) {
+  const isExplicitTracevaneRef = Boolean(parsedRef);
+  const isLegacyRelativeRef = !parsedRef && isTracevaneMarkdownExplicitLocalRef(ref);
+  if (!isExplicitTracevaneRef && !isLegacyRelativeRef) {
     return null;
   }
 
@@ -885,9 +885,9 @@ function buildUserUploadResourceFromRef(
   return resourceId ? { ...missing, id: resourceId } : missing;
 }
 
-function buildStudioDeliveryResourceItem(
+function buildTracevaneDeliveryResourceItem(
   ctx: CollectResourceContext,
-  resource: StudioDeliveryResource,
+  resource: TracevaneDeliveryResource,
 ): ChatResourceItem | null {
   const fileName = resource.fileName?.trim() || resource.id;
   const mimeType = normalizeMimeType(resource.mimeType) || normalizeMimeType(resource.contentType) || mimeTypeFromPath(fileName);
@@ -901,7 +901,7 @@ function buildStudioDeliveryResourceItem(
       ? inlineBuffer
       : `data:${normalizedMime};base64,${inlineBuffer.replace(/^data:[^;]+;base64,/i, '')}`;
     return {
-      ...buildInlineDataResourceItem(dataUrl, normalizedMime, fileName, kind, 'studio_delivery'),
+      ...buildInlineDataResourceItem(dataUrl, normalizedMime, fileName, kind, 'tracevane_delivery'),
       id: resource.id,
       kind,
       fileName,
@@ -917,7 +917,7 @@ function buildStudioDeliveryResourceItem(
   const dataUrlRef = normalizeDataUrlRef(ref);
   if (dataUrlRef) {
     return {
-      ...buildInlineDataResourceItem(dataUrlRef.url, mimeType || dataUrlRef.mimeType, fileName, kind, 'studio_delivery'),
+      ...buildInlineDataResourceItem(dataUrlRef.url, mimeType || dataUrlRef.mimeType, fileName, kind, 'tracevane_delivery'),
       id: resource.id,
       kind,
       fileName,
@@ -928,7 +928,7 @@ function buildStudioDeliveryResourceItem(
   const remoteUrl = normalizeRemoteRef(ref);
   if (remoteUrl) {
     return {
-      ...buildRemoteResourceItem(remoteUrl, 'studio_delivery'),
+      ...buildRemoteResourceItem(remoteUrl, 'tracevane_delivery'),
       id: resource.id,
       kind,
       fileName,
@@ -941,7 +941,7 @@ function buildStudioDeliveryResourceItem(
   if (localFilePath) {
     return {
       ...buildLocalResourceItem(ctx, localFilePath, {
-        source: 'studio_delivery',
+        source: 'tracevane_delivery',
         relativePath: resolveWorkspaceRelativePath(ctx, localFilePath),
         originalPath: ref,
       }),
@@ -954,7 +954,7 @@ function buildStudioDeliveryResourceItem(
 
   return {
     ...buildMissingResourceItem(ctx, ref, {
-      source: 'studio_delivery',
+      source: 'tracevane_delivery',
       originalPath: ref,
     }),
     id: resource.id,
@@ -964,9 +964,9 @@ function buildStudioDeliveryResourceItem(
   };
 }
 
-function buildAssistantMessageFromStudioDeliveryPayload(
+function buildAssistantMessageFromTracevaneDeliveryPayload(
   ctx: CollectResourceContext,
-  payload: StudioDeliveryResult,
+  payload: TracevaneDeliveryResult,
   meta: {
     id: string;
     createdAt: string | null;
@@ -975,7 +975,7 @@ function buildAssistantMessageFromStudioDeliveryPayload(
   },
 ): ChatMessageItem | null {
   const resources = payload.resources
-    .map((resource) => buildStudioDeliveryResourceItem(ctx, resource))
+    .map((resource) => buildTracevaneDeliveryResourceItem(ctx, resource))
     .filter((resource): resource is ChatResourceItem => Boolean(resource));
   const resourceMap = new Map(resources.map((resource) => [resource.id, resource] as const));
   const blocks: ChatMessageBlock[] = [];
@@ -1049,7 +1049,7 @@ function buildAssistantMessageFromStudioDeliveryPayload(
   return {
     id: meta.id,
     role: 'assistant',
-    text: summarizeStudioDeliveryText(payload),
+    text: summarizeTracevaneDeliveryText(payload),
     createdAt: meta.createdAt,
     source: meta.source,
     runId: meta.runId,
@@ -1134,9 +1134,9 @@ function rehydrateStoredResourceItem(
 
 export { buildContentDisposition };
 
-export function createStudioChatMediaBridge(config: StudioServerConfig) {
+export function createTracevaneChatMediaBridge(config: TracevaneServerConfig) {
   const secret = resolveMediaTokenSecret(config);
-  const legacyTokenFallbackEnabled = process.env.OPENCLAW_STUDIO_MEDIA_TOKEN_LEGACY !== '0';
+  const legacyTokenFallbackEnabled = process.env.TRACEVANE_MEDIA_TOKEN_LEGACY !== '0';
 
   function signToken(payload: MediaTokenPayload): string {
     const encoded = Buffer.from(JSON.stringify(payload)).toString('base64url');
@@ -1224,11 +1224,11 @@ export function createStudioChatMediaBridge(config: StudioServerConfig) {
       const normalized = typeof markdown === 'string' ? markdown : '';
       const hasLocalRef = normalized.includes('workspace:')
         || normalized.includes('uploads:')
-        || normalized.includes('studio-file:');
+        || normalized.includes('tracevane-file:');
       if (!hasLocalRef) {
         return false;
       }
-      return normalized.includes('studio:')
+      return normalized.includes('tracevane:')
         || /<(?:img|video|source|a)\b/i.test(normalized);
     },
 
@@ -1250,7 +1250,7 @@ export function createStudioChatMediaBridge(config: StudioServerConfig) {
           if (resource.status === 'missing') {
             return resource.originalPath || resource.relativePath || resource.fileName;
           }
-          return appendStudioMarkdownMediaMeta(resource.url, {
+          return appendTracevaneMarkdownMediaMeta(resource.url, {
             kind: resource.kind,
             fileName: resource.fileName,
           });
@@ -1296,32 +1296,32 @@ export function createStudioChatMediaBridge(config: StudioServerConfig) {
       };
     },
 
-    extractStudioDelivery(raw: unknown): StudioDeliveryResult | null {
+    extractTracevaneDelivery(raw: unknown): TracevaneDeliveryResult | null {
       if (typeof raw === 'string') {
         const trimmed = raw.trim();
         if (!trimmed) {
           return null;
         }
         try {
-          return this.extractStudioDelivery(JSON.parse(trimmed));
+          return this.extractTracevaneDelivery(JSON.parse(trimmed));
         } catch {
           return null;
         }
       }
       if (raw && typeof raw === 'object') {
-        const direct = extractStudioDeliveryPayload(raw);
+        const direct = extractTracevaneDeliveryPayload(raw);
         if (direct) {
           return direct;
         }
         const record = raw as Record<string, unknown>;
         if (record.details && typeof record.details === 'object') {
-          const fromDetails = extractStudioDeliveryPayload(record.details);
+          const fromDetails = extractTracevaneDeliveryPayload(record.details);
           if (fromDetails) {
             return fromDetails;
           }
         }
         if (record.message && typeof record.message === 'object') {
-          const fromMessage = this.extractStudioDelivery(record.message);
+          const fromMessage = this.extractTracevaneDelivery(record.message);
           if (fromMessage) {
             return fromMessage;
           }
@@ -1333,9 +1333,9 @@ export function createStudioChatMediaBridge(config: StudioServerConfig) {
             }
             const contentItem = item as Record<string, unknown>;
             const fromContent =
-              this.extractStudioDelivery(contentItem)
-              || this.extractStudioDelivery(contentItem.text)
-              || this.extractStudioDelivery(contentItem.content);
+              this.extractTracevaneDelivery(contentItem)
+              || this.extractTracevaneDelivery(contentItem.text)
+              || this.extractTracevaneDelivery(contentItem.content);
             if (fromContent) {
               return fromContent;
             }
@@ -1345,9 +1345,9 @@ export function createStudioChatMediaBridge(config: StudioServerConfig) {
       return null;
     },
 
-    buildAssistantMessageFromStudioDelivery(
+    buildAssistantMessageFromTracevaneDelivery(
       sessionKey: string,
-      payload: StudioDeliveryResult,
+      payload: TracevaneDeliveryResult,
       meta: {
         id: string;
         createdAt: string | null;
@@ -1355,7 +1355,7 @@ export function createStudioChatMediaBridge(config: StudioServerConfig) {
         runId: string | null;
       },
     ): ChatMessageItem | null {
-      return buildAssistantMessageFromStudioDeliveryPayload({
+      return buildAssistantMessageFromTracevaneDeliveryPayload({
         sessionKey,
         config,
         signToken,
@@ -1406,7 +1406,7 @@ export function createStudioChatMediaBridge(config: StudioServerConfig) {
               : path.basename(relativePath);
             const mimeType = normalizeMimeType(fileRef.mimeType) || mimeTypeFromPath(fileName);
             const kind = inferMediaKind(fileName, mimeType);
-            const resourceRef = buildStudioResourceRefFromRelativePath(relativePath);
+            const resourceRef = buildTracevaneResourceRefFromRelativePath(relativePath);
             const item: ChatSendFileRef = {
               id: typeof fileRef.id === 'string' && fileRef.id.trim()
                 ? fileRef.id.trim()
@@ -1444,8 +1444,8 @@ export function createStudioChatMediaBridge(config: StudioServerConfig) {
         };
       }
 
-      const parsedRef = parseStudioMarkdownMediaRef(normalizedRef);
-      const isLegacyRelativeRef = !parsedRef && isStudioMarkdownExplicitLocalRef(normalizedRef);
+      const parsedRef = parseTracevaneMarkdownMediaRef(normalizedRef);
+      const isLegacyRelativeRef = !parsedRef && isTracevaneMarkdownExplicitLocalRef(normalizedRef);
       const unsafeScopedRef = Boolean(
         parsedRef
         && (parsedRef.kind === 'workspace' || parsedRef.kind === 'uploads')
@@ -1468,10 +1468,10 @@ export function createStudioChatMediaBridge(config: StudioServerConfig) {
 
       const ctx = { sessionKey, config, signToken };
       const refPath = parsedRef?.path || normalizedRef;
-      const localFilePath = resolveStudioMarkdownMediaFilePath(config, sessionKey, normalizedRef, parsedRef);
+      const localFilePath = resolveTracevaneMarkdownMediaFilePath(config, sessionKey, normalizedRef, parsedRef);
       const resourceRef = parsedRef
         ? `${parsedRef.kind}:${parsedRef.path}`
-        : buildStudioResourceRefFromRelativePath(normalizedRef);
+        : buildTracevaneResourceRefFromRelativePath(normalizedRef);
       const relativePath = parsedRef?.kind === 'workspace'
         ? parsedRef.path
         : parsedRef?.kind === 'uploads'
@@ -1480,12 +1480,12 @@ export function createStudioChatMediaBridge(config: StudioServerConfig) {
 
       const resource = localFilePath
         ? buildLocalResourceItem(ctx, localFilePath, {
-          source: 'studio_resource',
+          source: 'tracevane_resource',
           relativePath: resolveWorkspaceRelativePath(ctx, localFilePath) || relativePath,
           originalPath: normalizedRef,
         })
         : buildMissingResourceItem(ctx, refPath, {
-          source: 'studio_resource',
+          source: 'tracevane_resource',
           relativePath,
           originalPath: normalizedRef,
         });

@@ -6,7 +6,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { createStudioChatOrganizerStore } from '../../dist/apps/api/modules/chat/organizer-store.js';
+import { createTracevaneChatOrganizerStore } from '../../dist/apps/api/modules/chat/organizer-store.js';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -20,7 +20,7 @@ function cleanupTempRoot(root) {
 
 function makeConfig(root) {
   return {
-    pluginId: 'studio',
+    pluginId: 'tracevane',
     pluginName: 'Tracevane',
     version: '0.1.0',
     port: 0,
@@ -60,13 +60,13 @@ function makeOrganizer() {
 
 function runJsonFallbackScript(root, script) {
   const wrapper = `
-    import { createStudioChatOrganizerStore } from '${path.resolve(
+    import { createTracevaneChatOrganizerStore } from '${path.resolve(
       testDir,
       '../../dist/apps/api/modules/chat/organizer-store.js',
     ).replaceAll('\\', '/')}';
 
     const config = ${JSON.stringify(makeConfig(root))};
-    const store = createStudioChatOrganizerStore(config);
+    const store = createTracevaneChatOrganizerStore(config);
 
     ${script}
   `;
@@ -81,7 +81,7 @@ function runJsonFallbackScript(root, script) {
 test('sqlite: organizer store roundtrips the normalized organizer state', () => {
   const root = makeTempRoot();
   try {
-    const store = createStudioChatOrganizerStore(makeConfig(root));
+    const store = createTracevaneChatOrganizerStore(makeConfig(root));
     const organizer = makeOrganizer();
     store.write(organizer);
     assert.deepEqual(store.read(), organizer);

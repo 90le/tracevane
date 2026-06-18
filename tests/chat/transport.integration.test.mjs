@@ -3,29 +3,29 @@ import assert from 'node:assert/strict';
 
 import {
   analyzeRealChatEnvironment,
-  createStudioSession,
+  createTracevaneSession,
   RealChatIntegrationSkipError,
   sendChat,
-  startStudioTestServer,
+  startTracevaneTestServer,
   waitFor,
   WaitForAbortError,
 } from './integration-helpers.mjs';
 
 const TOOL_PROMPT = 'You must attempt at least one tool call before answering. Prefer session_status. If that fails, try browser status. Do not answer until a tool has been attempted.';
-const REAL_CHAT_INTEGRATION_ENABLED = process.env.OPENCLAW_STUDIO_ENABLE_REAL_CHAT_INTEGRATION === '1';
+const REAL_CHAT_INTEGRATION_ENABLED = process.env.TRACEVANE_ENABLE_REAL_CHAT_INTEGRATION === '1';
 
-let studio;
+let tracevane;
 const integrationTest = REAL_CHAT_INTEGRATION_ENABLED ? test : test.skip;
 
 before(async () => {
   if (!REAL_CHAT_INTEGRATION_ENABLED) {
     return;
   }
-  studio = await startStudioTestServer();
+  tracevane = await startTracevaneTestServer();
 });
 
 after(async () => {
-  await studio?.stop();
+  await tracevane?.stop();
 });
 
 async function runWithRetries(task, attempts = 3) {
@@ -71,9 +71,9 @@ function hasTerminalStreamEvent(events) {
 integrationTest('fresh live tool stream reaches /ws/chat on the same logical chain', async (t) => {
   await runIntegrationTest(t, async () => {
     await runWithRetries(async (attempt) => {
-      const created = await createStudioSession(studio.baseUrl, 'main');
+      const created = await createTracevaneSession(tracevane.baseUrl, 'main');
       const sessionKey = created.session.key;
-      const ws = new WebSocket(`ws://127.0.0.1:${new URL(studio.baseUrl).port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
+      const ws = new WebSocket(`ws://127.0.0.1:${new URL(tracevane.baseUrl).port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
       const events = [];
 
       ws.addEventListener('message', (raw) => {
@@ -82,7 +82,7 @@ integrationTest('fresh live tool stream reaches /ws/chat on the same logical cha
 
       try {
         await new Promise((resolve) => ws.addEventListener('open', resolve, { once: true }));
-        await sendChat(studio.baseUrl, sessionKey, TOOL_PROMPT, `tool-${Date.now()}-${attempt}`);
+        await sendChat(tracevane.baseUrl, sessionKey, TOOL_PROMPT, `tool-${Date.now()}-${attempt}`);
 
         let outcome = null;
         try {
@@ -100,7 +100,7 @@ integrationTest('fresh live tool stream reaches /ws/chat on the same logical cha
           }, { timeoutMs: 90000, intervalMs: 250 });
         } catch (error) {
           const analysis = await analyzeRealChatEnvironment({
-            baseUrl: studio.baseUrl,
+            baseUrl: tracevane.baseUrl,
             sessionKey,
             events,
           });
@@ -133,14 +133,14 @@ integrationTest('fresh live tool stream reaches /ws/chat on the same logical cha
 integrationTest('session bridge survives reconnect and still streams tool events', async (t) => {
   await runIntegrationTest(t, async () => {
     await runWithRetries(async (attempt) => {
-      const created = await createStudioSession(studio.baseUrl, 'main');
+      const created = await createTracevaneSession(tracevane.baseUrl, 'main');
       const sessionKey = created.session.key;
 
-      const firstSocket = new WebSocket(`ws://127.0.0.1:${new URL(studio.baseUrl).port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
+      const firstSocket = new WebSocket(`ws://127.0.0.1:${new URL(tracevane.baseUrl).port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
       await new Promise((resolve) => firstSocket.addEventListener('open', resolve, { once: true }));
       try { firstSocket.close(); } catch {}
 
-      const secondSocket = new WebSocket(`ws://127.0.0.1:${new URL(studio.baseUrl).port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
+      const secondSocket = new WebSocket(`ws://127.0.0.1:${new URL(tracevane.baseUrl).port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
       await new Promise((resolve) => secondSocket.addEventListener('open', resolve, { once: true }));
 
       const events = [];
@@ -149,7 +149,7 @@ integrationTest('session bridge survives reconnect and still streams tool events
       });
 
       try {
-        await sendChat(studio.baseUrl, sessionKey, TOOL_PROMPT, `reconnect-${Date.now()}-${attempt}`);
+        await sendChat(tracevane.baseUrl, sessionKey, TOOL_PROMPT, `reconnect-${Date.now()}-${attempt}`);
 
         let outcome = null;
         try {
@@ -166,7 +166,7 @@ integrationTest('session bridge survives reconnect and still streams tool events
           }, { timeoutMs: 120000, intervalMs: 250 });
         } catch (error) {
           const analysis = await analyzeRealChatEnvironment({
-            baseUrl: studio.baseUrl,
+            baseUrl: tracevane.baseUrl,
             sessionKey,
             events,
           });
@@ -187,9 +187,9 @@ integrationTest('session bridge survives reconnect and still streams tool events
 
 integrationTest('dual-write transport exposes canonical stream events for the active session', async () => {
   await runWithRetries(async (attempt) => {
-    const created = await createStudioSession(studio.baseUrl, 'main');
+    const created = await createTracevaneSession(tracevane.baseUrl, 'main');
     const sessionKey = created.session.key;
-    const ws = new WebSocket(`ws://127.0.0.1:${new URL(studio.baseUrl).port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
+    const ws = new WebSocket(`ws://127.0.0.1:${new URL(tracevane.baseUrl).port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
     const events = [];
     ws.addEventListener('message', (raw) => {
       events.push(JSON.parse(String(raw.data)));
@@ -197,7 +197,7 @@ integrationTest('dual-write transport exposes canonical stream events for the ac
 
     try {
       await new Promise((resolve) => ws.addEventListener('open', resolve, { once: true }));
-      await sendChat(studio.baseUrl, sessionKey, 'Reply with exactly "hello".', `canonical-${Date.now()}-${attempt}`);
+      await sendChat(tracevane.baseUrl, sessionKey, 'Reply with exactly "hello".', `canonical-${Date.now()}-${attempt}`);
 
       try {
         await waitFor(() => {
@@ -218,7 +218,7 @@ integrationTest('dual-write transport exposes canonical stream events for the ac
         }, { timeoutMs: 120000, intervalMs: 250 });
       } catch (error) {
         const analysis = await analyzeRealChatEnvironment({
-          baseUrl: studio.baseUrl,
+          baseUrl: tracevane.baseUrl,
           sessionKey,
           events,
         });

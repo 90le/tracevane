@@ -1,6 +1,6 @@
 import { onMounted, onUnmounted, ref, watch } from 'vue';
 
-const SIDEBAR_COLLAPSED_STORAGE_KEY = 'openclaw-studio.sidebar-collapsed';
+const SIDEBAR_COLLAPSED_STORAGE_KEY = 'tracevane.sidebar-collapsed';
 
 export function useShellChrome() {
   const sidebarCollapsed = ref(true);

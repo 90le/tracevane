@@ -4,7 +4,7 @@ import { CHAT_GATEWAY_ERROR_MESSAGE_RULES } from './error-mapping.js';
 export function buildChatError(
   code: ChatContractErrorCode,
   message: string,
-  source: ChatContractError['source'] = 'studio',
+  source: ChatContractError['source'] = 'tracevane',
   retryable = false
 ): ChatContractError {
   return {

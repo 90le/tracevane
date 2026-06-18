@@ -83,7 +83,7 @@ function busyRejectFixture(overrides = {}) {
 }
 
 test("Feishu busy-guard live script accepts rejected long-connection turn", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-busy-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-busy-smoke-"));
   const eventLog = path.join(root, "feishu-events.jsonl");
   writeJsonl(eventLog, busyRejectFixture());
 
@@ -103,7 +103,7 @@ test("Feishu busy-guard live script accepts rejected long-connection turn", asyn
 });
 
 test("Feishu busy-guard live script rejects proof without long-connection ingress", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-busy-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-busy-smoke-"));
   const eventLog = path.join(root, "feishu-events.jsonl");
   const events = busyRejectFixture();
   events[0] = { ...events[0], longConnection: false };
@@ -121,7 +121,7 @@ test("Feishu busy-guard live script rejects proof without long-connection ingres
 });
 
 test("Feishu busy-guard live script rejects proof if rejected message later starts", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-busy-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-busy-smoke-"));
   const eventLog = path.join(root, "feishu-events.jsonl");
   writeJsonl(eventLog, [
     ...busyRejectFixture(),
@@ -148,7 +148,7 @@ test("Feishu busy-guard live script rejects proof if rejected message later star
 });
 
 test("Feishu busy-guard live script accepts legacy queue mode as busy-reject alias", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-busy-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-busy-smoke-"));
   const eventLog = path.join(root, "feishu-events.jsonl");
   writeJsonl(eventLog, busyRejectFixture());
 
@@ -165,7 +165,7 @@ test("Feishu busy-guard live script accepts legacy queue mode as busy-reject ali
 });
 
 test("Feishu busy-guard live script filters rejected proof by active Agent", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-busy-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-busy-smoke-"));
   const eventLog = path.join(root, "feishu-events.jsonl");
   writeJsonl(eventLog, busyRejectFixture());
 

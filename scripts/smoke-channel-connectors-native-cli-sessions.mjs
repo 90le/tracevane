@@ -162,7 +162,7 @@ async function startMockGateway() {
     if (req.method === "GET" && url.pathname === "/v1/models") {
       sendJson(res, 200, {
         object: "list",
-        data: [{ id: DEFAULT_MODEL, object: "model", owned_by: "studio-native-cli-smoke" }],
+        data: [{ id: DEFAULT_MODEL, object: "model", owned_by: "tracevane-native-cli-smoke" }],
       });
       return;
     }
@@ -856,7 +856,7 @@ async function main() {
   const options = parseArgs(process.argv.slice(2));
   const unknown = options.apps.filter((app) => !DEFAULT_APPS.includes(app));
   if (unknown.length) throw new Error(`Unknown app id(s): ${unknown.join(", ")}`);
-  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "studio-native-cli-smoke-"));
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-native-cli-smoke-"));
   const workDir = path.join(tempRoot, "workspace");
   fs.mkdirSync(workDir, { recursive: true });
   const mockGateway = await startMockGateway();

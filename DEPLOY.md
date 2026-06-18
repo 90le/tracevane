@@ -29,7 +29,7 @@
    - 原生 `/ws/chat` 若连续重连失败，会自动切到同源 SSE 持续流
    - 目标是避免 standalone 下因 WebSocket 抖动导致“能进页面但流式中断”
 8. Chat 资源下载链路已按 exposure 自动补齐路径
-   - Gateway 单口下资源地址必须走 `/studio/api/...`
+   - Gateway 单口下资源地址必须走 `/tracevane/api/...`
    - standalone 下资源地址继续走 `/api/...`
    - 当前前端已按运行时自动处理，无需客户手工改链接
 9. Config 页已开始按真实 OpenClaw 2026.4.5 schema 对齐
@@ -76,18 +76,18 @@
    - 已验证中英文切换
 20. 官网安装入口已同步更新
    - `index.html` 现已区分“非单口 / 单口”两套安装指引
-   - 已新增网站一键安装脚本 `install-openclaw-studio.sh`
+   - 已新增网站一键安装脚本 `install-tracevane.sh`
    - 脚本支持 `--mode standalone|gateway`
    - 官网 Prompt 已改成“先下载脚本到本地，再检查并执行”，不再使用 `curl | bash`
    - 已覆盖版本检查、下载安装、依赖安装、配置写入、`gateway install --force`、重启与健康检查
 21. 发布包与安装流程已补齐自愈
    - 发布包 `package.json` 现在会显式把 `openclaw.extensions` 指向 `./dist/index.js`
    - 安装脚本即使拿到旧包，也会在落盘后自动修正入口元数据
-   - 已解决安装后宿主提示 `plugins.entries.studio: plugin not found: studio` 的问题
+   - 已解决安装后宿主提示 `plugins.entries.tracevane: plugin not found: tracevane` 的问题
 22. 安装器已继续收口旧版本残留与 service 失败场景
    - 旧版本不再备份到扩展根目录下的 `.prev/.bak/.old`
-   - 现在统一迁移到 `~/.openclaw/backups/openclaw-studio/`
-   - 已解决宿主扫描到 `openclaw-studio.prev` 后出现 `duplicate plugin id detected`
+   - 现在统一迁移到 `~/.openclaw/backups/tracevane/`
+   - 已解决宿主扫描到 `tracevane.prev` 后出现 `duplicate plugin id detected`
    - `openclaw gateway install --force` 在无可用 systemd/launchd user session 的环境下会降级为告警，不再直接中断安装
 23. Channels 页已继续补齐字段说明
    - Provider / Account / Access / Binding 关键字段已新增“作用 / 如何配置”提示
@@ -160,7 +160,7 @@
 
 原因有两层：
 
-1. 当前 `openclaw-studio` 在自身 `package.json` 中已经明确声明：`minHostVersion >= 2026.3.23`
+1. 当前 `tracevane` 在自身 `package.json` 中已经明确声明：`minHostVersion >= 2026.3.23`
 2. 虽然从 npm 包导出检查来看，`2026.3.13` 已经带有 `openclaw/plugin-sdk` 和当前插件用到的基础注册面，但当前版本的 Tracevane 还没有对 `2026.3.13` 做正式兼容验证
 
 因此，**客户如果还是 `2026.3.13`，当前不要直接按正式交付方案安装**。
@@ -170,7 +170,7 @@
 标准发布包名称：
 
 ```bash
-openclaw-studio-<version>.tar.gz
+tracevane-<version>.tar.gz
 ```
 
 当前 `pack.sh` 已经移除旧的 `--base-path` 打包参数。
@@ -206,21 +206,21 @@ openclaw gateway restart
 推荐方式是不直接在线执行脚本，而是先下载到本地：
 
 ```bash
-curl -fsSL https://studio.90le.cn/install-openclaw-studio.sh -o /tmp/install-openclaw-studio.sh
-sed -n '1,160p' /tmp/install-openclaw-studio.sh
-chmod +x /tmp/install-openclaw-studio.sh
+curl -fsSL https://tracevane.90le.cn/install-tracevane.sh -o /tmp/install-tracevane.sh
+sed -n '1,160p' /tmp/install-tracevane.sh
+chmod +x /tmp/install-tracevane.sh
 ```
 
 非单口模式：
 
 ```bash
-/tmp/install-openclaw-studio.sh --mode standalone
+/tmp/install-tracevane.sh --mode standalone
 ```
 
 单口模式：
 
 ```bash
-/tmp/install-openclaw-studio.sh --mode gateway
+/tmp/install-tracevane.sh --mode gateway
 ```
 
 脚本会自动：
@@ -229,7 +229,7 @@ chmod +x /tmp/install-openclaw-studio.sh
 2. 下载并解压 Tracevane 发布包
 3. 自动修正旧发布包的入口元数据
 4. 安装依赖并重建 `node-pty`
-5. 写入 `plugins.entries.studio / plugins.load.paths / transport`
+5. 写入 `plugins.entries.tracevane / plugins.load.paths / transport`
 6. 执行 `openclaw gateway install --force`
 7. 重启 Gateway 并做健康检查
 
@@ -247,14 +247,14 @@ chmod +x /tmp/install-openclaw-studio.sh
 
 ```bash
 cd ~/.openclaw/extensions/
-tar -xzvf openclaw-studio-0.1.20.tar.gz
-mv openclaw-studio-0.1.20 openclaw-studio
+tar -xzvf tracevane-0.1.20.tar.gz
+mv tracevane-0.1.20 tracevane
 ```
 
 ### 步骤 4：安装依赖
 
 ```bash
-cd ~/.openclaw/extensions/openclaw-studio
+cd ~/.openclaw/extensions/tracevane
 ./install.sh
 ```
 
@@ -278,7 +278,7 @@ npm rebuild @homebridge/node-pty-prebuilt-multiarch
 ```json
 {
   "extensions": {
-    "studio": {
+    "tracevane": {
       "apiPort": 3760,
       "autoStart": true,
       "transport": {
@@ -288,7 +288,7 @@ npm rebuild @homebridge/node-pty-prebuilt-multiarch
         },
         "gateway": {
           "enabled": false,
-          "basePath": "/studio"
+          "basePath": "/tracevane"
         }
       }
     }
@@ -330,7 +330,7 @@ http://HOST:3760/
 http://HOST:3760/system
 
 # Gateway 单口预览模式
-http://HOST:<gateway-port>/studio/system
+http://HOST:<gateway-port>/tracevane/system
 ```
 
 如果客户现场用 `curl` 验证本机 `127.0.0.1` 地址，请注意：
@@ -358,7 +358,7 @@ env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u al
 ```json
 {
   "extensions": {
-    "studio": {
+    "tracevane": {
       "apiPort": 3760,
       "autoStart": true,
       "transport": {
@@ -368,7 +368,7 @@ env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u al
         },
         "gateway": {
           "enabled": false,
-          "basePath": "/studio"
+          "basePath": "/tracevane"
         }
       }
     }
@@ -381,14 +381,14 @@ env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u al
 ```json
 {
   "extensions": {
-    "studio": {
+    "tracevane": {
       "transport": {
         "standalone": {
           "enabled": false
         },
         "gateway": {
           "enabled": true,
-          "basePath": "/studio"
+          "basePath": "/tracevane"
         }
       }
     }
@@ -415,7 +415,7 @@ env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u al
 ```json
 {
   "extensions": {
-    "studio": {
+    "tracevane": {
       "autoStart": true,
       "transport": {
         "standalone": {
@@ -424,7 +424,7 @@ env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u al
         },
         "gateway": {
           "enabled": true,
-          "basePath": "/studio"
+          "basePath": "/tracevane"
         }
       }
     }
@@ -434,8 +434,8 @@ env -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u al
 
 ### 当前模式的可用边界
 
-1. 页面可通过 `http://HOST:18789/studio/` 打开
-2. HTTP API 可通过 `http://HOST:18789/studio/api/system/health` 访问
+1. 页面可通过 `http://HOST:18789/tracevane/` 打开
+2. HTTP API 可通过 `http://HOST:18789/tracevane/api/system/health` 访问
 3. `chat` / `terminal` 已通过扩展侧 `gateway-rpc` 接入单口 realtime
 4. 但当前仍应按“预览模式”对待，先做回归和现场验证再转正式口径
 
@@ -487,7 +487,7 @@ openclaw logs
 确认目录存在：
 
 ```bash
-ls ~/.openclaw/extensions/openclaw-studio/
+ls ~/.openclaw/extensions/tracevane/
 ```
 
 ### 6.4 客户机器是 `2026.3.13`
@@ -504,14 +504,14 @@ ls ~/.openclaw/extensions/openclaw-studio/
 如需自行打包：
 
 ```bash
-cd openclaw-studio
+cd tracevane
 ./pack.sh 0.1.0
 ```
 
 当前 `pack.sh` 不再支持旧的：
 
 ```bash
---base-path /x/studio/
+--base-path /x/tracevane/
 ```
 
 ## 8. 当前对客户的最终口径
@@ -529,7 +529,7 @@ cd openclaw-studio
 长期最合理的方向是：
 
 1. 对外统一只暴露 `OpenClaw` 一个端口
-2. 页面和 HTTP API 继续挂到 `/studio/*`
+2. 页面和 HTTP API 继续挂到 `/tracevane/*`
 3. realtime 改为复用宿主已有 Gateway WS 协议
 4. `3760` 仅保留为本机 / 内网维护与回退入口
 
@@ -537,11 +537,11 @@ cd openclaw-studio
 
 ## 10. 2026-04-09 安装脚本自愈更新
 
-`install-openclaw-studio.sh` 已补以下自动修复逻辑：
+`install-tracevane.sh` 已补以下自动修复逻辑：
 
-1. 自动清理 `plugins.entries.studio` 的异常字段（只保留 `enabled/hooks/subagent/config`），避免旧字段导致加载冲突。
-2. 自动清理 `plugins.load.paths` 中旧版 `openclaw-studio.prev/.bak/.old` 与非当前安装路径，避免 `duplicate plugin id` / `stale config entry`。
-3. 自动清理 `plugins.installs.studio` 的陈旧安装记录（尤其是指向 `.prev` 的记录）。
+1. 自动清理 `plugins.entries.tracevane` 的异常字段（只保留 `enabled/hooks/subagent/config`），避免旧字段导致加载冲突。
+2. 自动清理 `plugins.load.paths` 中旧版 `tracevane.prev/.bak/.old` 与非当前安装路径，避免 `duplicate plugin id` / `stale config entry`。
+3. 自动清理 `plugins.installs.tracevane` 的陈旧安装记录（尤其是指向 `.prev` 的记录）。
 4. 自动修复插件总开关和 deny 冲突（确保 `plugins.enabled=true` 且不被 `plugins.deny` 屏蔽）。
 5. 写配置后自动执行 `openclaw config validate`；失败时自动尝试 `openclaw doctor --repair --non-interactive --yes`，仍失败则回滚备份。
 6. 在无可用 `systemd/launchd/schtasks` 用户会话时，自动降级为 `openclaw gateway run --force` 后台启动，不再硬依赖 service 安装。

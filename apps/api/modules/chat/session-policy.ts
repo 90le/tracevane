@@ -4,7 +4,7 @@ export type ChatSessionAction = 'send' | 'abort' | 'reset' | 'delete' | 'inject'
 
 export interface ChatSessionPolicy {
   kind: ChatSessionKind;
-  source: 'studio' | 'external' | 'system';
+  source: 'tracevane' | 'external' | 'system';
   description: string;
   defaultWritable: boolean;
   allow: Record<ChatSessionAction, boolean>;
@@ -13,9 +13,9 @@ export interface ChatSessionPolicy {
 }
 
 export const CHAT_SESSION_POLICIES: Record<ChatSessionKind, ChatSessionPolicy> = {
-  studio_managed: {
-    kind: 'studio_managed',
-    source: 'studio',
+  tracevane_managed: {
+    kind: 'tracevane_managed',
+    source: 'tracevane',
     description: 'Tracevane-created webchat sessions intended for text-first chat.',
     defaultWritable: true,
     allow: {
@@ -61,9 +61,9 @@ export const CHAT_SESSION_POLICIES: Record<ChatSessionKind, ChatSessionPolicy> =
 };
 
 export const CHAT_POLICY_DEFAULTS = {
-  defaultTransport: 'studio_bff',
+  defaultTransport: 'tracevane_bff',
   defaultChannel: 'webchat',
-  defaultSurface: 'studio-chat',
+  defaultSurface: 'tracevane-chat',
   defaultDeliver: false,
   defaultSameOriginRequired: true,
 } as const;
@@ -79,7 +79,7 @@ export function classifyChatSessionKind(params: {
   const lastChannel = String(params.lastChannel || '').trim().toLowerCase();
   const lastTo = String(params.lastTo || '').trim().toLowerCase();
 
-  if (key.includes(':webchat:direct:studio-')) return 'studio_managed';
+  if (key.includes(':webchat:direct:tracevane-')) return 'tracevane_managed';
   if (key.includes(':cron:')) return 'system_internal';
   if (originProvider === 'heartbeat' || lastTo === 'heartbeat') return 'system_internal';
   if (originProvider === 'cron' || lastChannel === 'cron') return 'system_internal';

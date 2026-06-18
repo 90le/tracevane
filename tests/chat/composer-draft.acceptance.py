@@ -10,7 +10,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import expect, sync_playwright
 
 
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-composer-draft-acceptance.png")
+SCREENSHOT = Path("/tmp/tracevane-chat-composer-draft-acceptance.png")
 CURRENT_STAGE = "starting"
 
 

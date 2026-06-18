@@ -33,7 +33,7 @@ const PERMISSION_MODES: readonly ChannelConnectorPermissionMode[] = [
 ];
 
 const REASONING_EFFORTS: readonly ChannelConnectorReasoningEffort[] = ["low", "medium", "high", "xhigh"];
-const AUTO_VISION_MODEL_SENTINEL = "__studio_auto__";
+const AUTO_VISION_MODEL_SENTINEL = "__tracevane_auto__";
 const FEISHU_MODEL_SELECT_OPTION_LIMIT = 100;
 
 const PERMISSION_MODE_LABELS: Record<ChannelConnectorPermissionMode, string> = {

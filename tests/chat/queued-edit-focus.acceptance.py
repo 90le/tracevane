@@ -13,8 +13,8 @@ from playwright.sync_api import sync_playwright
 from browser_surface import wait_for_active_session, wait_for_chat_surface
 
 
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-queued-edit-focus.png")
-SESSION_KEY = "agent:queued-edit-focus:webchat:direct:studio-smoke"
+SCREENSHOT = Path("/tmp/tracevane-chat-queued-edit-focus.png")
+SESSION_KEY = "agent:queued-edit-focus:webchat:direct:tracevane-smoke"
 QUEUE_ENTRY_ID = "queued-edit-focus-entry"
 QUEUE_TEXT = "queued edit focus smoke message"
 
@@ -54,8 +54,8 @@ def diagnostics() -> dict[str, object]:
     return {
         "gatewayReachable": True,
         "gatewayWsUrl": "ws://127.0.0.1:5176/ws/chat",
-        "transport": "studio_bff",
-        "authMode": "studio_backend_token",
+        "transport": "tracevane_bff",
+        "authMode": "tracevane_backend_token",
         "rawGatewayFramesExposed": False,
         "rawGatewayMethodsExposed": False,
         "sameOriginRequired": True,
@@ -71,7 +71,7 @@ def session_row() -> dict[str, object]:
         "key": SESSION_KEY,
         "agentId": "queued-edit-focus-agent",
         "sessionId": None,
-        "kind": "studio_managed",
+        "kind": "tracevane_managed",
         "label": "队列编辑焦点会话",
         "derivedTitle": "队列编辑焦点会话",
         "lastMessagePreview": QUEUE_TEXT,
@@ -83,9 +83,9 @@ def session_row() -> dict[str, object]:
             "autoLabel": "队列编辑焦点会话",
         },
         "source": {
-            "source": "studio",
+            "source": "tracevane",
             "channel": "webchat",
-            "surface": "studio-chat",
+            "surface": "tracevane-chat",
             "originLabel": "Tracevane Chat",
         },
         "deliveryContext": {

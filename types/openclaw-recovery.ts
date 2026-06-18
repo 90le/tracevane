@@ -1,7 +1,7 @@
 export const OPENCLAW_RECOVERY_DEFAULT_HOST = "127.0.0.1";
 export const OPENCLAW_RECOVERY_DEFAULT_PORT = 18797;
 export const OPENCLAW_RECOVERY_DAEMON_SERVICE_NAME =
-  "openclaw-studio-recovery.service";
+  "tracevane-recovery.service";
 
 export type OpenClawRecoverySupervisorKind =
   | "systemd-user"
@@ -56,9 +56,9 @@ export type OpenClawRecoveryEventKind =
   | "gateway_service_repair_succeeded"
   | "gateway_service_repair_skipped"
   | "gateway_service_repair_failed"
-  | "studio_web_bundle_rebuild_succeeded"
-  | "studio_web_bundle_rebuild_skipped"
-  | "studio_web_bundle_rebuild_failed"
+  | "tracevane_web_bundle_rebuild_succeeded"
+  | "tracevane_web_bundle_rebuild_skipped"
+  | "tracevane_web_bundle_rebuild_failed"
   | (string & {});
 
 export type OpenClawRecoveryTrigger = "auto" | "manual";
@@ -91,8 +91,8 @@ export interface OpenClawRecoveryPolicy {
   gatewayServiceRepairTimeoutMs: number;
   allowGatewayProcessTakeover: boolean;
   gatewayProcessTakeoverTimeoutMs: number;
-  allowStudioWebRebuild: boolean;
-  studioWebRebuildTimeoutMs: number;
+  allowTracevaneWebRebuild: boolean;
+  tracevaneWebRebuildTimeoutMs: number;
 }
 
 export interface OpenClawRecoveryDaemonRuntime {

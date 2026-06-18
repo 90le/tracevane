@@ -19,12 +19,12 @@
               </label>
               <label class="form-field">
                 <span class="form-label">{{ text('运行模式', 'Mode') }}</span>
-                <StudioSelect v-model="form.mode" :options="modeOptions" />
+                <TracevaneSelect v-model="form.mode" :options="modeOptions" />
                 <span class="field-hint">{{ text('local 仅本机访问，remote 支持远程连接', 'local for localhost only, remote for remote connections') }}</span>
               </label>
               <label class="form-field">
                 <span class="form-label">{{ text('绑定地址', 'Bind') }}</span>
-                <StudioSelect v-model="form.bind" :options="bindOptions" />
+                <TracevaneSelect v-model="form.bind" :options="bindOptions" />
                 <span class="field-hint">{{ text('loopback/lan/tailnet/custom 对应 OpenClaw 当前真实 bind 枚举。', 'loopback/lan/tailnet/custom map to the real current OpenClaw bind enums.') }}</span>
               </label>
               <label v-if="form.bind === 'custom'" class="form-field">
@@ -43,7 +43,7 @@
             <div class="form-grid">
               <label class="form-field">
                 <span class="form-label">{{ text('Tailscale 模式', 'Tailscale Mode') }}</span>
-                <StudioSelect v-model="form.tailscaleMode" :options="tailscaleOptions" />
+                <TracevaneSelect v-model="form.tailscaleMode" :options="tailscaleOptions" />
                 <span class="field-hint">{{ text('serve 为 tailnet 内访问，funnel 为公网暴露且必须认证。', 'serve exposes to the tailnet; funnel exposes publicly and must stay authenticated.') }}</span>
               </label>
               <label class="option-row">
@@ -71,7 +71,7 @@
             <div class="form-grid">
               <label class="form-field">
                 <span class="form-label">{{ text('认证模式', 'Auth Mode') }}</span>
-                <StudioSelect v-model="form.authMode" :options="authModeOptions" />
+                <TracevaneSelect v-model="form.authMode" :options="authModeOptions" />
                 <span class="field-hint">{{ text('支持 token、password、trusted-proxy 和 none。非 loopback 绑定不应使用 none。', 'Supports token, password, trusted-proxy, and none. Non-loopback binds should not use none.') }}</span>
               </label>
               <div v-if="form.authMode === 'token'" class="form-field">
@@ -173,7 +173,7 @@
               </label>
               <label class="form-field">
                 <span class="form-label">{{ text('controlUi.embedSandbox', 'controlUi.embedSandbox') }}</span>
-                <StudioSelect v-model="form.controlUiEmbedSandbox" :options="embedSandboxOptions" />
+                <TracevaneSelect v-model="form.controlUiEmbedSandbox" :options="embedSandboxOptions" />
               </label>
               <label class="form-field">
                 <span class="form-label">{{ text('controlUi.chatMessageMaxWidth', 'controlUi.chatMessageMaxWidth') }}</span>
@@ -311,7 +311,7 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from 'vue';
 import { useLocalePreference } from '../../shared/locale';
-import StudioSelect, { type StudioSelectOption } from '../../shared/components/StudioSelect.vue';
+import TracevaneSelect, { type TracevaneSelectOption } from '../../shared/components/TracevaneSelect.vue';
 import type { ConfigSummaryPayload } from '../../../../../types/config';
 import './config-workspace.css';
 
@@ -408,12 +408,12 @@ const form = reactive<GatewayFormState>({
   gatewayExtraJson: '',
 });
 
-const modeOptions: StudioSelectOption[] = [
+const modeOptions: TracevaneSelectOption[] = [
   { value: 'local', label: 'local' },
   { value: 'remote', label: 'remote' },
 ];
 
-const bindOptions: StudioSelectOption[] = [
+const bindOptions: TracevaneSelectOption[] = [
   { value: 'auto', label: 'auto' },
   { value: 'loopback', label: 'loopback (127.0.0.1)' },
   { value: 'lan', label: 'lan' },
@@ -421,20 +421,20 @@ const bindOptions: StudioSelectOption[] = [
   { value: 'custom', label: 'custom' },
 ];
 
-const authModeOptions: StudioSelectOption[] = [
+const authModeOptions: TracevaneSelectOption[] = [
   { value: 'token', label: 'token' },
   { value: 'password', label: 'password' },
   { value: 'trusted-proxy', label: 'trusted-proxy' },
   { value: 'none', label: 'none' },
 ];
 
-const tailscaleOptions: StudioSelectOption[] = [
+const tailscaleOptions: TracevaneSelectOption[] = [
   { value: 'off', label: 'off' },
   { value: 'serve', label: 'serve' },
   { value: 'funnel', label: 'funnel' },
 ];
 
-const embedSandboxOptions: StudioSelectOption[] = [
+const embedSandboxOptions: TracevaneSelectOption[] = [
   { value: '', label: 'unset' },
   { value: 'strict', label: 'strict' },
   { value: 'scripts', label: 'scripts' },

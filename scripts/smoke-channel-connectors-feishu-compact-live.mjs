@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
-const DEFAULT_EVENT_LOG = path.join(os.homedir(), ".config/openclaw-studio/channel-connectors/daemon/state/feishu-events.jsonl");
+const DEFAULT_EVENT_LOG = path.join(os.homedir(), ".config/tracevane/channel-connectors/daemon/state/feishu-events.jsonl");
 const DEFAULT_BINDING_ID = "feishu-live";
 const DEFAULT_SINCE_MINUTES = 24 * 60;
 const DEFAULT_TIMEOUT_MS = 0;

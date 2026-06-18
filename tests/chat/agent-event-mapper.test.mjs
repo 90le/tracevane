@@ -5,7 +5,7 @@ import { mapGatewayAgentEventPayload } from '../../dist/apps/api/modules/chat/ag
 
 test('maps lifecycle agent event into Tracevane contract', () => {
   const mapped = mapGatewayAgentEventPayload({
-    sessionKey: 'agent:main:webchat:direct:studio-1',
+    sessionKey: 'agent:main:webchat:direct:tracevane-1',
     payload: {
       runId: 'run-1',
       stream: 'lifecycle',
@@ -21,7 +21,7 @@ test('maps lifecycle agent event into Tracevane contract', () => {
 
 test('maps tool start and result events into Tracevane contract', () => {
   const start = mapGatewayAgentEventPayload({
-    sessionKey: 'agent:main:webchat:direct:studio-1',
+    sessionKey: 'agent:main:webchat:direct:tracevane-1',
     payload: {
       runId: 'run-1',
       stream: 'tool',
@@ -40,7 +40,7 @@ test('maps tool start and result events into Tracevane contract', () => {
   assert.equal(start?.tool.status, 'running');
 
   const result = mapGatewayAgentEventPayload({
-    sessionKey: 'agent:main:webchat:direct:studio-1',
+    sessionKey: 'agent:main:webchat:direct:tracevane-1',
     previousToolCard: start?.tool,
     payload: {
       runId: 'run-1',
@@ -63,7 +63,7 @@ test('maps tool start and result events into Tracevane contract', () => {
 
 test('maps assistant stream preview into Tracevane contract', () => {
   const mapped = mapGatewayAgentEventPayload({
-    sessionKey: 'agent:main:webchat:direct:studio-1',
+    sessionKey: 'agent:main:webchat:direct:tracevane-1',
     payload: {
       runId: 'run-2',
       stream: 'assistant',
@@ -83,7 +83,7 @@ test('maps assistant stream preview into Tracevane contract', () => {
 
 test('maps assistant delta-only stream into Tracevane contract', () => {
   const mapped = mapGatewayAgentEventPayload({
-    sessionKey: 'agent:main:webchat:direct:studio-1',
+    sessionKey: 'agent:main:webchat:direct:tracevane-1',
     payload: {
       runId: 'run-2d',
       stream: 'assistant',
@@ -101,7 +101,7 @@ test('maps assistant delta-only stream into Tracevane contract', () => {
 
 test('maps item and command_output agent streams into live tool projections', () => {
   const item = mapGatewayAgentEventPayload({
-    sessionKey: 'agent:main:webchat:direct:studio-1',
+    sessionKey: 'agent:main:webchat:direct:tracevane-1',
     payload: {
       runId: 'run-item-1',
       stream: 'item',
@@ -125,7 +125,7 @@ test('maps item and command_output agent streams into live tool projections', ()
   assert.match(item?.tool.argsPreview || '', /read file/);
 
   const output = mapGatewayAgentEventPayload({
-    sessionKey: 'agent:main:webchat:direct:studio-1',
+    sessionKey: 'agent:main:webchat:direct:tracevane-1',
     previousToolCard: item?.tool,
     payload: {
       runId: 'run-item-1',
@@ -151,7 +151,7 @@ test('maps item and command_output agent streams into live tool projections', ()
 
 test('tool status is monotonic and richer result preview is preserved', () => {
   const completed = mapGatewayAgentEventPayload({
-    sessionKey: 'agent:main:webchat:direct:studio-1',
+    sessionKey: 'agent:main:webchat:direct:tracevane-1',
     previousToolCard: {
       toolCallId: 'tool-9',
       runId: 'run-9',
@@ -177,7 +177,7 @@ test('tool status is monotonic and richer result preview is preserved', () => {
   });
 
   const lateUpdate = mapGatewayAgentEventPayload({
-    sessionKey: 'agent:main:webchat:direct:studio-1',
+    sessionKey: 'agent:main:webchat:direct:tracevane-1',
     previousToolCard: completed?.tool,
     payload: {
       runId: 'run-9',

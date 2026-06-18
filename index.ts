@@ -1,18 +1,18 @@
 import type { OpenClawPluginApi } from 'openclaw/plugin-sdk';
 import {
-  createStudioConfig,
-  createStudioContext,
-  createStudioRequestHandler,
-  createStudioServer,
+  createTracevaneConfig,
+  createTracevaneContext,
+  createTracevaneRequestHandler,
+  createTracevaneServer,
 } from './apps/api/index.js';
 import {
-  isStudioGatewayEnabled,
-  isStudioStandaloneEnabled,
+  isTracevaneGatewayEnabled,
+  isTracevaneStandaloneEnabled,
 } from './apps/api/config.js';
-import { buildStudioClientRuntimeConfig } from './apps/api/runtime-config.js';
+import { buildTracevaneClientRuntimeConfig } from './apps/api/runtime-config.js';
 import {
-  STUDIO_CHAT_GATEWAY_EVENT,
-  STUDIO_CHAT_GATEWAY_METHODS,
+  TRACEVANE_CHAT_GATEWAY_EVENT,
+  TRACEVANE_CHAT_GATEWAY_METHODS,
   type ChatGatewayAttachPayload,
   type ChatGatewayAbortPayload,
   type ChatGatewayDetachPayload,
@@ -21,8 +21,8 @@ import {
   type ChatGatewaySendPayload,
 } from './types/chat.js';
 import {
-  STUDIO_TERMINAL_GATEWAY_EVENT,
-  STUDIO_TERMINAL_GATEWAY_METHODS,
+  TRACEVANE_TERMINAL_GATEWAY_EVENT,
+  TRACEVANE_TERMINAL_GATEWAY_METHODS,
   type TerminalGatewayAttachPayload,
   type TerminalGatewayClearPayload,
   type TerminalGatewayDetachPayload,
@@ -31,26 +31,26 @@ import {
   type TerminalGatewayResizePayload,
 } from './types/terminal.js';
 import {
-  buildStudioBeforePromptBuildResult,
-  buildStudioBeforeToolCallResult,
-} from './lib/studio-delivery-hooks.js';
+  buildTracevaneBeforePromptBuildResult,
+  buildTracevaneBeforeToolCallResult,
+} from './lib/tracevane-delivery-hooks.js';
 import {
-  getStudioChatGlobalHostManagementExecEnabled,
-  getStudioChatSessionHostManagementExecEnabled,
-  setStudioChatGlobalHostManagementExecEnabled,
-  setStudioChatSessionHostManagementExecEnabled,
-} from './lib/studio-chat-management-policy.js';
-import { maybeHandleStudioReplyDispatch } from './lib/studio-reply-dispatch.js';
-import { resolveStudioDeliveryTool } from './lib/studio-delivery-tool.js';
+  getTracevaneChatGlobalHostManagementExecEnabled,
+  getTracevaneChatSessionHostManagementExecEnabled,
+  setTracevaneChatGlobalHostManagementExecEnabled,
+  setTracevaneChatSessionHostManagementExecEnabled,
+} from './lib/tracevane-chat-management-policy.js';
+import { maybeHandleTracevaneReplyDispatch } from './lib/tracevane-reply-dispatch.js';
+import { resolveTracevaneDeliveryTool } from './lib/tracevane-delivery-tool.js';
 import { resolvePluginHostContext } from './lib/plugin-host-compat.js';
 import {
-  isStudioGatewayHttpAuthorized,
-  rejectStudioGatewayHttpUnauthorized,
-  syncStudioGatewayHttpAuthCookie,
+  isTracevaneGatewayHttpAuthorized,
+  rejectTracevaneGatewayHttpUnauthorized,
+  syncTracevaneGatewayHttpAuthCookie,
 } from './apps/api/gateway-http-auth.js';
 
-let studioServer: ReturnType<typeof createStudioServer> | null = null;
-let studioContext: ReturnType<typeof createStudioContext> | null = null;
+let tracevaneServer: ReturnType<typeof createTracevaneServer> | null = null;
+let tracevaneContext: ReturnType<typeof createTracevaneContext> | null = null;
 
 function buildGatewayMethodError(message: string, code = 'BAD_REQUEST') {
   return {
@@ -59,8 +59,8 @@ function buildGatewayMethodError(message: string, code = 'BAD_REQUEST') {
   };
 }
 
-const studioPlugin = {
-  id: 'studio',
+const tracevanePlugin = {
+  id: 'tracevane',
   name: 'Tracevane',
   description: 'Tracevane 本地 AI Agent 控制工作台，聚焦 Gateway、Channel Connectors、CLI Agent 和运行态自愈。',
   kind: 'ui' as const,
@@ -105,7 +105,7 @@ const studioPlugin = {
               },
               basePath: {
                 type: 'string',
-                default: '/studio',
+                default: '/tracevane',
               },
             },
           },
@@ -114,7 +114,7 @@ const studioPlugin = {
       chat: {
         type: 'object',
         properties: {
-          allowHostManagementExecInStudioChat: {
+          allowHostManagementExecInTracevaneChat: {
             type: 'boolean',
             default: false,
           },
@@ -123,27 +123,27 @@ const studioPlugin = {
     },
   },
   register(api: OpenClawPluginApi) {
-    const studioChatConfig = (
+    const tracevaneChatConfig = (
       api.pluginConfig
       && typeof api.pluginConfig.chat === 'object'
       && api.pluginConfig.chat
     )
-      ? api.pluginConfig.chat as { allowHostManagementExecInStudioChat?: unknown }
+      ? api.pluginConfig.chat as { allowHostManagementExecInTracevaneChat?: unknown }
       : null;
-    setStudioChatGlobalHostManagementExecEnabled(
-      studioChatConfig?.allowHostManagementExecInStudioChat === true,
+    setTracevaneChatGlobalHostManagementExecEnabled(
+      tracevaneChatConfig?.allowHostManagementExecInTracevaneChat === true,
     );
-    const ensureStudioRuntime = () => {
-      const config = createStudioConfig(api, api.pluginConfig || {});
-      if (!studioContext) {
-        studioContext = createStudioContext({
+    const ensureTracevaneRuntime = () => {
+      const config = createTracevaneConfig(api, api.pluginConfig || {});
+      if (!tracevaneContext) {
+        tracevaneContext = createTracevaneContext({
           config,
           logger: api.logger,
         });
       }
       return {
         config,
-        ctx: studioContext,
+        ctx: tracevaneContext,
       };
     };
     const registerHttpRoute = typeof api.registerHttpRoute === 'function'
@@ -153,13 +153,13 @@ const studioPlugin = {
       ? api.registerGatewayMethod.bind(api)
       : null;
 
-    api.registerTool((ctx) => resolveStudioDeliveryTool(ctx), {
-      name: 'studio_delivery',
+    api.registerTool((ctx) => resolveTracevaneDeliveryTool(ctx), {
+      name: 'tracevane_delivery',
     });
     api.on?.('before_prompt_build', (_event, ctx) => {
       const host = resolvePluginHostContext(ctx);
       return (
-      buildStudioBeforePromptBuildResult({
+      buildTracevaneBeforePromptBuildResult({
         sessionKey: host.sessionKey,
         channelId: host.channelId,
       })
@@ -167,19 +167,19 @@ const studioPlugin = {
     }, { priority: 100 });
     api.on?.('before_tool_call', (event, ctx) => {
       const host = resolvePluginHostContext(ctx);
-      const result = buildStudioBeforeToolCallResult({
+      const result = buildTracevaneBeforeToolCallResult({
         toolName: event.toolName,
         toolParams: event.params || {},
         sessionKey: host.sessionKey,
         channelId: host.channelId,
       });
       if (result?.block) {
-        api.logger.warn(`studio: blocked tool call in Studio webchat (tool=${event.toolName}): ${result.blockReason}`);
+        api.logger.warn(`tracevane: blocked tool call in Tracevane webchat (tool=${event.toolName}): ${result.blockReason}`);
       }
       return result;
     }, { priority: 100 });
     api.on?.('reply_dispatch', (event, ctx) => {
-      return maybeHandleStudioReplyDispatch(event as Record<string, unknown> as {
+      return maybeHandleTracevaneReplyDispatch(event as Record<string, unknown> as {
         ctx: Record<string, unknown>;
         runId?: string;
         sessionKey?: string;
@@ -207,29 +207,29 @@ const studioPlugin = {
     }, { priority: 100 });
 
     {
-      const { config, ctx } = ensureStudioRuntime();
-      if (isStudioGatewayEnabled(config)) {
+      const { config, ctx } = ensureTracevaneRuntime();
+      if (isTracevaneGatewayEnabled(config)) {
         if (!registerHttpRoute || !registerGatewayMethod) {
-          api.logger.warn('studio: gateway exposure requested but host plugin API lacks route registration; skipping gateway runtime');
+          api.logger.warn('tracevane: gateway exposure requested but host plugin API lacks route registration; skipping gateway runtime');
         } else {
-        const requestHandler = createStudioRequestHandler(ctx, {
+        const requestHandler = createTracevaneRequestHandler(ctx, {
           stripBasePath: config.transport.gateway.basePath,
-          runtimeConfig: buildStudioClientRuntimeConfig(config, 'gateway'),
+          runtimeConfig: buildTracevaneClientRuntimeConfig(config, 'gateway'),
         });
         registerHttpRoute({
           path: config.transport.gateway.basePath,
           auth: 'plugin',
           match: 'prefix',
           handler: async (req, res) => {
-            if (!isStudioGatewayHttpAuthorized(config, req)) {
-              rejectStudioGatewayHttpUnauthorized(res, req);
+            if (!isTracevaneGatewayHttpAuthorized(config, req)) {
+              rejectTracevaneGatewayHttpUnauthorized(res, req);
               return true;
             }
-            syncStudioGatewayHttpAuthCookie(config, req, res);
+            syncTracevaneGatewayHttpAuthCookie(config, req, res);
             return requestHandler(req, res);
           },
         });
-        api.logger.info(`studio: gateway HTTP route registered at ${config.transport.gateway.basePath}`);
+        api.logger.info(`tracevane: gateway HTTP route registered at ${config.transport.gateway.basePath}`);
 
         const withConnId = (client: { connId?: string } | null): string => {
           const connId = String(client?.connId || '').trim();
@@ -239,7 +239,7 @@ const studioPlugin = {
           return connId;
         };
 
-        registerGatewayMethod(STUDIO_CHAT_GATEWAY_METHODS.attach, async (opts) => {
+        registerGatewayMethod(TRACEVANE_CHAT_GATEWAY_METHODS.attach, async (opts) => {
           try {
             const connId = withConnId(opts.client);
             const connIds = new Set([connId]);
@@ -248,7 +248,7 @@ const studioPlugin = {
               {
                 connId,
                 emit: (event) => {
-                  opts.context.broadcastToConnIds(STUDIO_CHAT_GATEWAY_EVENT, event, connIds, {
+                  opts.context.broadcastToConnIds(TRACEVANE_CHAT_GATEWAY_EVENT, event, connIds, {
                     dropIfSlow: true,
                   });
                   return true;
@@ -263,7 +263,7 @@ const studioPlugin = {
           }
         }, { scope: 'operator.read' });
 
-        registerGatewayMethod(STUDIO_CHAT_GATEWAY_METHODS.heartbeat, (opts) => {
+        registerGatewayMethod(TRACEVANE_CHAT_GATEWAY_METHODS.heartbeat, (opts) => {
           try {
             const payload = ctx.services.chat.heartbeatGatewayClient(
               opts.params as unknown as ChatGatewayHeartbeatPayload,
@@ -277,7 +277,7 @@ const studioPlugin = {
           }
         }, { scope: 'operator.read' });
 
-        registerGatewayMethod(STUDIO_CHAT_GATEWAY_METHODS.detach, (opts) => {
+        registerGatewayMethod(TRACEVANE_CHAT_GATEWAY_METHODS.detach, (opts) => {
           try {
             const payload = ctx.services.chat.detachGatewayClient(
               opts.params as unknown as ChatGatewayDetachPayload,
@@ -291,7 +291,7 @@ const studioPlugin = {
           }
         }, { scope: 'operator.read' });
 
-        registerGatewayMethod(STUDIO_CHAT_GATEWAY_METHODS.send, async (opts) => {
+        registerGatewayMethod(TRACEVANE_CHAT_GATEWAY_METHODS.send, async (opts) => {
           try {
             const payload = opts.params as unknown as ChatGatewaySendPayload;
             const sessionKey = String(payload?.sessionKey || '').trim();
@@ -312,7 +312,7 @@ const studioPlugin = {
           }
         }, { scope: 'operator.read' });
 
-        registerGatewayMethod(STUDIO_CHAT_GATEWAY_METHODS.abort, async (opts) => {
+        registerGatewayMethod(TRACEVANE_CHAT_GATEWAY_METHODS.abort, async (opts) => {
           try {
             const payload = opts.params as unknown as ChatGatewayAbortPayload;
             const sessionKey = String(payload?.sessionKey || '').trim();
@@ -326,15 +326,15 @@ const studioPlugin = {
           }
         }, { scope: 'operator.read' });
 
-        registerGatewayMethod(STUDIO_CHAT_GATEWAY_METHODS.policySync, (opts) => {
+        registerGatewayMethod(TRACEVANE_CHAT_GATEWAY_METHODS.policySync, (opts) => {
           try {
             const payload = opts.params as unknown as ChatGatewayPolicySyncPayload;
             const sessionKey = String(payload?.sessionKey || '').trim();
             if (typeof payload?.globalHostManagementExecEnabled === 'boolean') {
-              setStudioChatGlobalHostManagementExecEnabled(payload.globalHostManagementExecEnabled);
+              setTracevaneChatGlobalHostManagementExecEnabled(payload.globalHostManagementExecEnabled);
             }
             if (sessionKey) {
-              setStudioChatSessionHostManagementExecEnabled(
+              setTracevaneChatSessionHostManagementExecEnabled(
                 sessionKey,
                 payload?.allowHostManagementExec === true,
               );
@@ -342,9 +342,9 @@ const studioPlugin = {
             opts.respond(true, {
               ok: true,
               sessionKey: sessionKey || null,
-              globalHostManagementExecEnabled: getStudioChatGlobalHostManagementExecEnabled(),
+              globalHostManagementExecEnabled: getTracevaneChatGlobalHostManagementExecEnabled(),
               allowHostManagementExec: sessionKey
-                ? getStudioChatSessionHostManagementExecEnabled(sessionKey)
+                ? getTracevaneChatSessionHostManagementExecEnabled(sessionKey)
                 : null,
             });
           } catch (error) {
@@ -355,7 +355,7 @@ const studioPlugin = {
           }
         }, { scope: 'operator.read' });
 
-        registerGatewayMethod(STUDIO_TERMINAL_GATEWAY_METHODS.attach, (opts) => {
+        registerGatewayMethod(TRACEVANE_TERMINAL_GATEWAY_METHODS.attach, (opts) => {
           try {
             const connId = withConnId(opts.client);
             const connIds = new Set([connId]);
@@ -364,7 +364,7 @@ const studioPlugin = {
               {
                 connId,
                 emit: (event) => {
-                  opts.context.broadcastToConnIds(STUDIO_TERMINAL_GATEWAY_EVENT, event, connIds);
+                  opts.context.broadcastToConnIds(TRACEVANE_TERMINAL_GATEWAY_EVENT, event, connIds);
                   return true;
                 },
               }
@@ -377,7 +377,7 @@ const studioPlugin = {
           }
         }, { scope: 'operator.write' });
 
-        registerGatewayMethod(STUDIO_TERMINAL_GATEWAY_METHODS.input, (opts) => {
+        registerGatewayMethod(TRACEVANE_TERMINAL_GATEWAY_METHODS.input, (opts) => {
           try {
             const params = opts.params as unknown as TerminalGatewayInputPayload;
             const payload = ctx.services.terminal.sendGatewayInput(
@@ -395,7 +395,7 @@ const studioPlugin = {
           }
         }, { scope: 'operator.write' });
 
-        registerGatewayMethod(STUDIO_TERMINAL_GATEWAY_METHODS.resize, (opts) => {
+        registerGatewayMethod(TRACEVANE_TERMINAL_GATEWAY_METHODS.resize, (opts) => {
           try {
             const payload = ctx.services.terminal.resizeGatewayClient(
               opts.params as unknown as TerminalGatewayResizePayload,
@@ -409,7 +409,7 @@ const studioPlugin = {
           }
         }, { scope: 'operator.write' });
 
-        registerGatewayMethod(STUDIO_TERMINAL_GATEWAY_METHODS.heartbeat, (opts) => {
+        registerGatewayMethod(TRACEVANE_TERMINAL_GATEWAY_METHODS.heartbeat, (opts) => {
           try {
             const payload = ctx.services.terminal.heartbeatGatewayClient(
               opts.params as unknown as TerminalGatewayHeartbeatPayload,
@@ -423,7 +423,7 @@ const studioPlugin = {
           }
         }, { scope: 'operator.write' });
 
-        registerGatewayMethod(STUDIO_TERMINAL_GATEWAY_METHODS.clear, (opts) => {
+        registerGatewayMethod(TRACEVANE_TERMINAL_GATEWAY_METHODS.clear, (opts) => {
           try {
             const payload = ctx.services.terminal.clearGatewaySession(
               opts.params as unknown as TerminalGatewayClearPayload,
@@ -437,7 +437,7 @@ const studioPlugin = {
           }
         }, { scope: 'operator.write' });
 
-        registerGatewayMethod(STUDIO_TERMINAL_GATEWAY_METHODS.detach, (opts) => {
+        registerGatewayMethod(TRACEVANE_TERMINAL_GATEWAY_METHODS.detach, (opts) => {
           try {
             const payload = ctx.services.terminal.detachGatewayClient(
               opts.params as unknown as TerminalGatewayDetachPayload,
@@ -455,28 +455,28 @@ const studioPlugin = {
     }
 
     api.registerService({
-      id: 'studio-server',
+      id: 'tracevane-server',
       start: async () => {
-        const { config, ctx } = ensureStudioRuntime();
-        if (!isStudioStandaloneEnabled(config)) {
-          api.logger.info('studio: standalone exposure disabled; skipping standalone HTTP server');
+        const { config, ctx } = ensureTracevaneRuntime();
+        if (!isTracevaneStandaloneEnabled(config)) {
+          api.logger.info('tracevane: standalone exposure disabled; skipping standalone HTTP server');
           return;
         }
-        if (studioServer?.isRunning()) return;
+        if (tracevaneServer?.isRunning()) return;
 
-        studioServer = createStudioServer(ctx);
-        await studioServer.start();
+        tracevaneServer = createTracevaneServer(ctx);
+        await tracevaneServer.start();
       },
       stop: async () => {
-        if (!studioServer) return;
-        await studioServer.stop();
-        studioServer = null;
+        if (!tracevaneServer) return;
+        await tracevaneServer.stop();
+        tracevaneServer = null;
       },
     });
 
-    api.logger.info('studio: management foundation, delivery tool, and Studio chat hooks registered');
+    api.logger.info('tracevane: management foundation, delivery tool, and Tracevane chat hooks registered');
   },
 };
 
-export const plugin = studioPlugin;
-export default studioPlugin;
+export const plugin = tracevanePlugin;
+export default tracevanePlugin;

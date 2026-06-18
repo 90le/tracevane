@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
-const DEFAULT_RUNTIME_PATH = path.join(os.homedir(), ".config/openclaw-studio/channel-connectors/daemon/runtime.json");
+const DEFAULT_RUNTIME_PATH = path.join(os.homedir(), ".config/tracevane/channel-connectors/daemon/runtime.json");
 const DEFAULT_TIMEOUT_MS = 60_000;
 const DEFAULT_POLL_MS = 1_000;
 
@@ -25,7 +25,7 @@ function parseArgs(argv) {
     reapIdle: false,
     killPoolKey: "",
     killFirstIdle: false,
-    reason: "studio-live-smoke",
+    reason: "tracevane-live-smoke",
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -97,7 +97,7 @@ Options:
   --reap-idle               Reap daemon idle sessions. Requires --apply to execute.
   --kill-pool-key <key>     Stop one persistent session by pool key. Requires --apply to execute.
   --kill-first-idle         Stop the first idle active session matching --bindings. Requires --apply.
-  --reason <text>           Kill reason. Default: studio-live-smoke.
+  --reason <text>           Kill reason. Default: tracevane-live-smoke.
   --runtime <path>          Runtime path. Default: ${DEFAULT_RUNTIME_PATH}
   --host <host>             Management host override.
   --port <port>             Management port override.
@@ -108,8 +108,8 @@ Options:
 
 Examples:
   node scripts/smoke-channel-connectors-agent-sessions.mjs --json
-  node scripts/smoke-channel-connectors-agent-sessions.mjs --wait-idle --bindings octo-studio-cc --json
-  node scripts/smoke-channel-connectors-agent-sessions.mjs --kill-first-idle --bindings octo-studio-cc --apply --json
+  node scripts/smoke-channel-connectors-agent-sessions.mjs --wait-idle --bindings octo-tracevane-cc --json
+  node scripts/smoke-channel-connectors-agent-sessions.mjs --kill-first-idle --bindings octo-tracevane-cc --apply --json
 `);
 }
 

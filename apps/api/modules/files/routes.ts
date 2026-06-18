@@ -1,8 +1,8 @@
 import type http from "node:http";
 import fs from "node:fs";
 import { buildContentDisposition, parseJsonBody, sendFileStream, sendJson } from "../../core/http.js";
-import type { StudioApiContext } from "../../core/context.js";
-import type { StudioRouter } from "../../core/router.js";
+import type { TracevaneApiContext } from "../../core/context.js";
+import type { TracevaneRouter } from "../../core/router.js";
 import type {
   FilesArchivePayload,
   FilesCreateDirectoryPayload,
@@ -38,7 +38,7 @@ function readDirectorySortDirection(value: string | null): "asc" | "desc" {
   return value === "desc" ? "desc" : "asc";
 }
 
-export function registerFilesRoutes(router: StudioRouter, ctx: StudioApiContext): void {
+export function registerFilesRoutes(router: TracevaneRouter, ctx: TracevaneApiContext): void {
   router.get("/api/files/summary", (_req, res) => {
     sendJson(res, 200, ctx.services.files.getSummary());
   });

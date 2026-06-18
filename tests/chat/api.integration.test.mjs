@@ -3,19 +3,19 @@ import assert from 'node:assert/strict';
 
 import {
   analyzeRealChatEnvironment,
-  createStudioSession,
+  createTracevaneSession,
   fetchHistory,
   formatChatIntegrationDiagnostics,
   openSessionEventStream,
   RealChatIntegrationSkipError,
   sendChat,
-  startStudioTestServer,
+  startTracevaneTestServer,
   waitFor,
 } from './integration-helpers.mjs';
 
-const REAL_CHAT_INTEGRATION_ENABLED = process.env.OPENCLAW_STUDIO_ENABLE_REAL_CHAT_INTEGRATION === '1';
+const REAL_CHAT_INTEGRATION_ENABLED = process.env.TRACEVANE_ENABLE_REAL_CHAT_INTEGRATION === '1';
 
-let studio;
+let tracevane;
 const integrationTest = REAL_CHAT_INTEGRATION_ENABLED ? test : test.skip;
 
 async function runWithRetries(task, attempts = 3) {
@@ -52,27 +52,27 @@ before(async () => {
   if (!REAL_CHAT_INTEGRATION_ENABLED) {
     return;
   }
-  studio = await startStudioTestServer();
+  tracevane = await startTracevaneTestServer();
 });
 
 after(async () => {
-  await studio?.stop();
+  await tracevane?.stop();
 });
 
 integrationTest('create -> send -> history -> reset stays consistent', async (t) => {
   await runIntegrationTest(t, async () => {
     await runWithRetries(async (attempt) => {
-      const created = await createStudioSession(studio.baseUrl, 'main');
+      const created = await createTracevaneSession(tracevane.baseUrl, 'main');
       const sessionKey = created.session.key;
-      const stream = await openSessionEventStream(studio.baseUrl, sessionKey);
+      const stream = await openSessionEventStream(tracevane.baseUrl, sessionKey);
 
       try {
-        const ack = await sendChat(studio.baseUrl, sessionKey, 'Reply with a short hello.', `reset-${Date.now()}-${attempt}`);
+        const ack = await sendChat(tracevane.baseUrl, sessionKey, 'Reply with a short hello.', `reset-${Date.now()}-${attempt}`);
         assert.equal(ack.accepted, true);
         assert.ok(ack.runId);
 
         const historyAfterSend = await waitFor(async () => {
-          const payload = await fetchHistory(studio.baseUrl, sessionKey);
+          const payload = await fetchHistory(tracevane.baseUrl, sessionKey);
           assert.ok(payload.messages.length >= 2);
           return payload;
         }, { timeoutMs: 60000 });
@@ -81,7 +81,7 @@ integrationTest('create -> send -> history -> reset stays consistent', async (t)
         assert.ok(historyAfterSend.observability);
         assert.ok(historyAfterSend.messages.some((entry) => entry.role === 'assistant'));
 
-        const resetResponse = await fetch(`${studio.baseUrl}/api/chat/sessions/${encodeURIComponent(sessionKey)}/reset`, {
+        const resetResponse = await fetch(`${tracevane.baseUrl}/api/chat/sessions/${encodeURIComponent(sessionKey)}/reset`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: '{}',
@@ -99,13 +99,13 @@ integrationTest('create -> send -> history -> reset stays consistent', async (t)
         let historyAfterReset;
         try {
           historyAfterReset = await waitFor(async () => {
-            const payload = await fetchHistory(studio.baseUrl, sessionKey);
+            const payload = await fetchHistory(tracevane.baseUrl, sessionKey);
             assert.equal(payload.messages.length, 0);
             return payload;
           }, { timeoutMs: 15000 });
         } catch (error) {
           const { diagnostics } = await analyzeRealChatEnvironment({
-            baseUrl: studio.baseUrl,
+            baseUrl: tracevane.baseUrl,
             sessionKey,
             events: stream.events,
             historyPayload: historyAfterSend,
@@ -123,14 +123,14 @@ integrationTest('create -> send -> history -> reset stays consistent', async (t)
 });
 
 integrationTest('observed_external remains readonly at API boundary', async () => {
-  const sessionsResponse = await fetch(`${studio.baseUrl}/api/chat/agents/main/sessions`);
+  const sessionsResponse = await fetch(`${tracevane.baseUrl}/api/chat/agents/main/sessions`);
   const sessionsPayload = await sessionsResponse.json();
   assert.equal(sessionsResponse.ok, true);
 
   const readonlySession = sessionsPayload.sessions.find((entry) => entry.kind === 'observed_external');
   assert.ok(readonlySession);
 
-  const sendResponse = await fetch(`${studio.baseUrl}/api/chat/sessions/${encodeURIComponent(readonlySession.key)}/send`, {
+  const sendResponse = await fetch(`${tracevane.baseUrl}/api/chat/sessions/${encodeURIComponent(readonlySession.key)}/send`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ text: 'should fail', clientRequestId: `readonly-${Date.now()}` }),
@@ -143,21 +143,21 @@ integrationTest('observed_external remains readonly at API boundary', async () =
 integrationTest('history usage becomes authoritative after final', async (t) => {
   await runIntegrationTest(t, async () => {
     await runWithRetries(async (attempt) => {
-      const created = await createStudioSession(studio.baseUrl, 'main');
+      const created = await createTracevaneSession(tracevane.baseUrl, 'main');
       const sessionKey = created.session.key;
-      const stream = await openSessionEventStream(studio.baseUrl, sessionKey);
+      const stream = await openSessionEventStream(tracevane.baseUrl, sessionKey);
 
       try {
-        await sendChat(studio.baseUrl, sessionKey, 'Reply with a short hello.', `usage-${Date.now()}-${attempt}`);
+        await sendChat(tracevane.baseUrl, sessionKey, 'Reply with a short hello.', `usage-${Date.now()}-${attempt}`);
 
         const history = await waitFor(async () => {
-          const payload = await fetchHistory(studio.baseUrl, sessionKey);
+          const payload = await fetchHistory(tracevane.baseUrl, sessionKey);
           assert.ok(payload.messages.length >= 2);
           return payload;
         }, { timeoutMs: 60000 });
 
         const analysis = await analyzeRealChatEnvironment({
-          baseUrl: studio.baseUrl,
+          baseUrl: tracevane.baseUrl,
           sessionKey,
           events: stream.events,
           historyPayload: history,
@@ -178,11 +178,11 @@ integrationTest('history usage becomes authoritative after final', async (t) => 
 
 integrationTest('send materializes exactly one canonical user message for the acknowledged run', async () => {
   await runWithRetries(async (attempt) => {
-    const created = await createStudioSession(studio.baseUrl, 'main');
+    const created = await createTracevaneSession(tracevane.baseUrl, 'main');
     const sessionKey = created.session.key;
 
     const ack = await sendChat(
-      studio.baseUrl,
+      tracevane.baseUrl,
       sessionKey,
       'Reply with exactly "hello".',
       `dedupe-${Date.now()}-${attempt}`,
@@ -190,7 +190,7 @@ integrationTest('send materializes exactly one canonical user message for the ac
     assert.equal(ack.accepted, true);
 
     const history = await waitFor(async () => {
-      const payload = await fetchHistory(studio.baseUrl, sessionKey);
+      const payload = await fetchHistory(tracevane.baseUrl, sessionKey);
       const userMessages = payload.messages.filter((entry) => entry.role === 'user' && entry.runId === ack.runId);
       assert.ok(userMessages.length >= 1);
       assert.ok(payload.messages.some((entry) => entry.role === 'assistant'));
@@ -206,10 +206,10 @@ integrationTest('send materializes exactly one canonical user message for the ac
 });
 
 integrationTest('send keeps file refs out of user-visible text while exposing resources', async () => {
-  const created = await createStudioSession(studio.baseUrl, 'main');
+  const created = await createTracevaneSession(tracevane.baseUrl, 'main');
   const sessionKey = created.session.key;
 
-  const uploadResponse = await fetch(`${studio.baseUrl}/api/chat/sessions/${encodeURIComponent(sessionKey)}/upload`, {
+  const uploadResponse = await fetch(`${tracevane.baseUrl}/api/chat/sessions/${encodeURIComponent(sessionKey)}/upload`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -222,7 +222,7 @@ integrationTest('send keeps file refs out of user-visible text while exposing re
   assert.equal(uploadResponse.ok, true);
   assert.equal(uploadPayload.ok, true);
 
-  const sendResponse = await fetch(`${studio.baseUrl}/api/chat/sessions/${encodeURIComponent(sessionKey)}/send`, {
+  const sendResponse = await fetch(`${tracevane.baseUrl}/api/chat/sessions/${encodeURIComponent(sessionKey)}/send`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
@@ -244,7 +244,7 @@ integrationTest('send keeps file refs out of user-visible text while exposing re
   assert.equal(sendPayload.accepted, true);
 
   const history = await waitFor(async () => {
-    const payload = await fetchHistory(studio.baseUrl, sessionKey);
+    const payload = await fetchHistory(tracevane.baseUrl, sessionKey);
     const userMessage = payload.messages.find((entry) => entry.runId === sendPayload.runId && entry.role === 'user');
     assert.ok(userMessage);
     return { payload, userMessage };
@@ -258,15 +258,15 @@ integrationTest('send keeps file refs out of user-visible text while exposing re
 });
 
 integrationTest('plain user text that looks like transport is not auto-decoded without shadow metadata', async () => {
-  const created = await createStudioSession(studio.baseUrl, 'main');
+  const created = await createTracevaneSession(tracevane.baseUrl, 'main');
   const sessionKey = created.session.key;
   const transportLikeText = '@foo/bar\n---\n只是普通文本\nMEDIA:/tmp/example.png\n`./docs/tree.txt`';
 
-  const ack = await sendChat(studio.baseUrl, sessionKey, transportLikeText, `plain-${Date.now()}`);
+  const ack = await sendChat(tracevane.baseUrl, sessionKey, transportLikeText, `plain-${Date.now()}`);
   assert.equal(ack.accepted, true);
 
   const history = await waitFor(async () => {
-    const payload = await fetchHistory(studio.baseUrl, sessionKey);
+    const payload = await fetchHistory(tracevane.baseUrl, sessionKey);
     const userMessage = payload.messages.find((entry) => entry.runId === ack.runId && entry.role === 'user');
     assert.ok(userMessage);
     return userMessage;

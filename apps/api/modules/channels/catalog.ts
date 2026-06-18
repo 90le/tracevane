@@ -430,7 +430,7 @@ function deriveFieldDescriptorMetadata(
   return {
     label: firstNonEmptyString(normalizedSchema.title) || titleCaseFieldKey(key),
     placeholder:
-      firstNonEmptyString(normalizedSchema.placeholder, normalizedSchema['x-studio-placeholder'])
+      firstNonEmptyString(normalizedSchema.placeholder, normalizedSchema['x-tracevane-placeholder'])
       || normalizePlaceholderValue(Array.isArray(normalizedSchema.examples) ? normalizedSchema.examples[0] : undefined)
       || normalizePlaceholderValue(normalizedSchema.default),
     helpText: firstNonEmptyString(normalizedSchema.description, normalizedSchema.markdownDescription),

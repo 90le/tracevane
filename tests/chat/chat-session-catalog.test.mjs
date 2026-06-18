@@ -60,7 +60,7 @@ function createSession(key, agentId, updatedAt, overrides = {}) {
     key,
     agentId,
     sessionId: `${key}-id`,
-    kind: 'studio_managed',
+    kind: 'tracevane_managed',
     label: key,
     derivedTitle: null,
     lastMessagePreview: null,
@@ -71,9 +71,9 @@ function createSession(key, agentId, updatedAt, overrides = {}) {
       customLabel: null,
     },
     source: {
-      source: 'studio',
+      source: 'tracevane',
       channel: 'webchat',
-      surface: 'studio-chat',
+      surface: 'tracevane-chat',
       originLabel: 'Tracevane managed',
     },
     deliveryContext: {

@@ -14,7 +14,7 @@ from playwright.sync_api import sync_playwright
 from browser_surface import wait_for_active_session, wait_for_chat_surface
 
 
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-rich-markdown-layout-acceptance.png")
+SCREENSHOT = Path("/tmp/tracevane-chat-rich-markdown-layout-acceptance.png")
 
 
 def wait_button_enabled(locator, timeout=30000):
@@ -67,8 +67,8 @@ def diagnostics() -> dict[str, object]:
     return {
         "gatewayReachable": True,
         "gatewayWsUrl": "ws://127.0.0.1:5176/ws/chat",
-        "transport": "studio_bff",
-        "authMode": "studio_backend_token",
+        "transport": "tracevane_bff",
+        "authMode": "tracevane_backend_token",
         "rawGatewayFramesExposed": False,
         "rawGatewayMethodsExposed": False,
         "sameOriginRequired": True,

@@ -1,10 +1,10 @@
 import {
-  getStudioApiBasePath,
-  getStudioGatewayAuthStorageScopePath,
-  getStudioWebSocketBasePath,
+  getTracevaneApiBasePath,
+  getTracevaneGatewayAuthStorageScopePath,
+  getTracevaneWebSocketBasePath,
 } from './runtime-config';
 
-const API_BASE_STORAGE_KEY = 'openclaw-studio.api-base';
+const API_BASE_STORAGE_KEY = 'tracevane.api-base';
 const API_DISCOVERY_PATH = '/api/system/health';
 const API_DISCOVERY_TIMEOUT_MS = 1200;
 const SETTINGS_KEY_PREFIX = 'openclaw.control.settings.v1:';
@@ -22,7 +22,7 @@ function isAbsoluteUrl(input: string): boolean {
 }
 
 function getInjectedApiBase(): string | null {
-  const runtimeBase = getStudioApiBasePath();
+  const runtimeBase = getTracevaneApiBasePath();
   return runtimeBase || null;
 }
 
@@ -187,9 +187,9 @@ function tokenLocalStorageKeyForGateway(gatewayUrl: string): string {
 
 function buildGatewayAuthScopeUrl(): string | null {
   if (typeof window === 'undefined') return null;
-  if (!getStudioApiBasePath()) return null;
+  if (!getTracevaneApiBasePath()) return null;
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const scopePath = getStudioGatewayAuthStorageScopePath();
+  const scopePath = getTracevaneGatewayAuthStorageScopePath();
   return `${protocol}//${window.location.host}${scopePath}`;
 }
 
@@ -269,7 +269,7 @@ function readLegacyGatewaySettings(scopeUrl: string): { token?: string; password
   }
 }
 
-export function resolveStudioAuthorizationHeader(): string | null {
+export function resolveTracevaneAuthorizationHeader(): string | null {
   if (typeof window === 'undefined') return null;
   const scopeUrl = buildGatewayAuthScopeUrl();
   if (!scopeUrl) return null;
@@ -294,7 +294,7 @@ export function resolveStudioAuthorizationHeader(): string | null {
   return null;
 }
 
-export function resolveStudioGatewayClientAuth(): {
+export function resolveTracevaneGatewayClientAuth(): {
   gatewayUrl: string | null;
   token?: string;
   password?: string;
@@ -331,8 +331,8 @@ export function resolveStudioGatewayClientAuth(): {
   };
 }
 
-export function withStudioAuthorization(init?: RequestInit): RequestInit {
-  const auth = resolveStudioAuthorizationHeader();
+export function withTracevaneAuthorization(init?: RequestInit): RequestInit {
+  const auth = resolveTracevaneAuthorizationHeader();
   if (!auth) return init || {};
 
   const headers = new Headers(init?.headers || {});
@@ -345,8 +345,8 @@ export function withStudioAuthorization(init?: RequestInit): RequestInit {
   };
 }
 
-export async function fetchStudioResponse(input: string, init?: RequestInit): Promise<Response> {
-  const requestInit = withStudioAuthorization(init);
+export async function fetchTracevaneResponse(input: string, init?: RequestInit): Promise<Response> {
+  const requestInit = withTracevaneAuthorization(init);
   if (isAbsoluteUrl(input)) {
     return fetch(input, requestInit);
   }
@@ -366,11 +366,11 @@ export async function fetchStudioResponse(input: string, init?: RequestInit): Pr
 }
 
 export function getApiBase(): string {
-  return getStudioApiBasePath();
+  return getTracevaneApiBasePath();
 }
 
 export function getWebSocketBasePath(): string {
-  return getStudioWebSocketBasePath();
+  return getTracevaneWebSocketBasePath();
 }
 
 export function joinApiPath(path: string): string {
@@ -412,7 +412,7 @@ function buildJsonRequestDedupeKey(input: string, init?: RequestInit): string | 
 }
 
 export async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
-  const requestInit = withStudioAuthorization(init);
+  const requestInit = withTracevaneAuthorization(init);
   const dedupeKey = buildJsonRequestDedupeKey(input, requestInit);
   const pendingRequest = dedupeKey ? inflightJsonRequests.get(dedupeKey) : null;
   if (pendingRequest) {
@@ -420,7 +420,7 @@ export async function requestJson<T>(input: string, init?: RequestInit): Promise
   }
 
   const requestPromise = (async () => {
-    const response = await fetchStudioResponse(input, requestInit);
+    const response = await fetchTracevaneResponse(input, requestInit);
     if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
     return response.json() as Promise<T>;
   })();

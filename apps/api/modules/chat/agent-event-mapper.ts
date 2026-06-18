@@ -167,7 +167,7 @@ export function mapGatewayAgentEventPayload({
       resultSource,
       isError: data.isError === true || normalizeString(data.status).toLowerCase() === 'failed',
       previousToolCard,
-      collectToolArtifacts: name !== 'studio_delivery' ? collectToolArtifacts : undefined,
+      collectToolArtifacts: name !== 'tracevane_delivery' ? collectToolArtifacts : undefined,
     });
   }
 

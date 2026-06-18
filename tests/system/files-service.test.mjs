@@ -14,7 +14,7 @@ const { createFilesService } = await (async () => {
 })();
 
 function makeTempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "studio-files-service-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-files-service-"));
 }
 
 function writeFile(filePath, content) {

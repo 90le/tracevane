@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
-import type { StudioServerConfig } from '../../../../types/api.js';
+import type { TracevaneServerConfig } from '../../../../types/api.js';
 import { readJsonFile, readOpenClawConfig } from '../../core/state.js';
 import { resolveSecretInputString } from '../../core/secret-ref.js';
 import { ChatServiceError, buildChatError } from './errors.js';
@@ -96,7 +96,7 @@ export function buildGatewaySignaturePayload(
   return buildGatewaySignaturePayloadV2(params);
 }
 
-export function loadGatewayAuthContext(config: StudioServerConfig): GatewayAuthContext {
+export function loadGatewayAuthContext(config: TracevaneServerConfig): GatewayAuthContext {
   const openclawConfig = readOpenClawConfig(config);
   const gatewayToken = resolveSecretInputString(
     openclawConfig,
@@ -167,7 +167,7 @@ export function buildGatewayConnectRequest(params: {
       maxProtocol: 5,
       client: {
         id: 'cli',
-        version: 'openclaw-studio',
+        version: 'tracevane',
         platform: process.platform,
         deviceFamily: 'server',
         mode: 'backend',
@@ -186,7 +186,7 @@ export function buildGatewayConnectRequest(params: {
         nonce: params.nonce,
       },
       locale: 'zh-CN',
-      userAgent: 'openclaw-studio',
+      userAgent: 'tracevane',
     },
   };
 }

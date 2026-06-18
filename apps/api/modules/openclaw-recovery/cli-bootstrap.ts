@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import type { StudioServerConfig } from "../../../../types/api.js";
+import type { TracevaneServerConfig } from "../../../../types/api.js";
 import type {
   OpenClawRecoveryCommandSnapshot,
   OpenClawRecoveryInstallManifest,
@@ -153,7 +153,7 @@ export function runOpenClawCliBootstrapCommand(
 }
 
 export function readOpenClawRecoveryInstallManifest(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
 ): OpenClawRecoveryInstallManifest | null {
   try {
     const parsed = JSON.parse(
@@ -166,7 +166,7 @@ export function readOpenClawRecoveryInstallManifest(
 }
 
 export function writeOpenClawRecoveryInstallManifest(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   manifest: OpenClawRecoveryInstallManifest,
 ): OpenClawRecoveryInstallManifest {
   writeJsonAtomic(resolveOpenClawRecoveryPaths(config).installManifestPath, manifest);
@@ -174,7 +174,7 @@ export function writeOpenClawRecoveryInstallManifest(
 }
 
 export async function captureOpenClawRecoveryInstallManifest(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   commands?: OpenClawRecoveryCommandSnapshot[],
 ): Promise<OpenClawRecoveryInstallManifest | null> {
   const cliPath = findExecutableInPath("openclaw");
@@ -212,7 +212,7 @@ export async function captureOpenClawRecoveryInstallManifest(
   });
 }
 
-function prependRecoveryBinToPath(config: StudioServerConfig): void {
+function prependRecoveryBinToPath(config: TracevaneServerConfig): void {
   const paths = resolveOpenClawRecoveryPaths(config);
   const entries = pathEntries();
   if (!entries.includes(paths.binDir)) {
@@ -221,7 +221,7 @@ function prependRecoveryBinToPath(config: StudioServerConfig): void {
 }
 
 export function createOpenClawCliShim(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   manifest: OpenClawRecoveryInstallManifest,
 ): string {
   if (!manifest.cliRealPath || !fs.existsSync(manifest.cliRealPath)) return "";
@@ -259,7 +259,7 @@ export function createOpenClawCliShim(
 }
 
 export async function ensureOpenClawCliAvailable(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   policy: Pick<OpenClawRecoveryPolicy, "allowCliReinstall" | "cliReinstallTimeoutMs">,
   commands: OpenClawRecoveryCommandSnapshot[],
 ): Promise<OpenClawCliAvailabilityResult> {

@@ -595,7 +595,7 @@ function runScript(args, root) {
 }
 
 test("agent run live smoke script verifies Octo tool, reply, and outbound file evidence", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-agent-run-live-smoke-"));
   const { configPath } = writeFixture(root);
   const output = await runScript([
     "--config", configPath,
@@ -647,7 +647,7 @@ test("agent run live smoke script verifies Octo tool, reply, and outbound file e
 });
 
 test("agent run live smoke script verifies per-agent coverage and process replies", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-agent-run-live-smoke-"));
   const { configPath } = writeFixture(root);
   const output = await runScript([
     "--config", configPath,
@@ -671,7 +671,7 @@ test("agent run live smoke script verifies per-agent coverage and process replie
 });
 
 test("agent run live smoke script treats final-only assistant replies as process diagnostics", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-agent-run-live-smoke-"));
   const { configPath } = writeFixture(root);
   const output = await runScript([
     "--config", configPath,
@@ -719,7 +719,7 @@ test("agent run live smoke script treats final-only assistant replies as process
 });
 
 test("agent run live smoke script verifies video attachment and staged local files", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-agent-run-live-smoke-"));
   const { configPath } = writeFixture(root);
   const output = await runScript([
     "--config", configPath,
@@ -743,7 +743,7 @@ test("agent run live smoke script verifies video attachment and staged local fil
 });
 
 test("agent run live smoke script treats Octo video-like files as inbound video evidence", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-agent-run-live-smoke-"));
   const { configPath } = writeFixture(root);
   const output = await runScript([
     "--config", configPath,
@@ -766,7 +766,7 @@ test("agent run live smoke script treats Octo video-like files as inbound video 
 });
 
 test("agent run live smoke script verifies stop command evidence by session and time", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-agent-run-live-smoke-"));
   const { configPath } = writeFixture(root);
   const output = await runScript([
     "--config", configPath,
@@ -788,7 +788,7 @@ test("agent run live smoke script verifies stop command evidence by session and 
 });
 
 test("agent run live smoke human output prints matching attachment runs", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-agent-run-live-smoke-"));
   const { configPath } = writeFixture(root);
   const output = await runScript([
     "--config", configPath,
@@ -807,7 +807,7 @@ test("agent run live smoke human output prints matching attachment runs", async 
 });
 
 test("agent run live smoke script verifies Feishu final card path", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-agent-run-live-smoke-"));
   const { configPath } = writeFixture(root);
   const output = await runScript([
     "--config", configPath,
@@ -832,7 +832,7 @@ test("agent run live smoke script verifies Feishu final card path", async () => 
 });
 
 test("agent run live smoke script verifies permission approval evidence", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-agent-run-live-smoke-"));
   const { configPath } = writeFixture(root);
   const output = await runScript([
     "--config", configPath,
@@ -860,7 +860,7 @@ test("agent run live smoke script verifies permission approval evidence", async 
 });
 
 test("agent run live smoke script verifies Feishu card-only permission approval evidence", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-agent-run-live-smoke-"));
   const { configPath } = writeFixture(root);
   const output = await runScript([
     "--config", configPath,
@@ -889,7 +889,7 @@ test("agent run live smoke script verifies Feishu card-only permission approval 
 });
 
 test("agent run live smoke script fails when required evidence is missing", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-agent-run-live-smoke-"));
   const { configPath } = writeFixture(root);
   await assert.rejects(
     runScript([
@@ -1003,7 +1003,7 @@ test("agent run live smoke script fails when required evidence is missing", asyn
 });
 
 test("agent run live smoke script rejects final text progress replies and failed final cards", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-agent-run-live-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-agent-run-live-smoke-"));
   const { configPath } = writeFixture(root);
   await assert.rejects(
     runScript([

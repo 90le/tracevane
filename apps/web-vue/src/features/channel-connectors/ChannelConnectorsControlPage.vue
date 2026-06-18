@@ -219,7 +219,7 @@
                 <div class="ccx-runtime-card__head">
                   <div>
                     <small>Daemon snapshot</small>
-                    <strong>{{ runtimeStatus?.implementation || 'studio-native' }}</strong>
+                    <strong>{{ runtimeStatus?.implementation || 'tracevane-native' }}</strong>
                   </div>
                   <StatusPill :label="runtimeReachableLabel" :tone="runtimeReachableTone" />
                 </div>
@@ -1636,7 +1636,7 @@ async function killAgentSession(poolKey: string): Promise<void> {
     const result = await manageChannelConnectorAgentSessions({
       action: 'kill',
       poolKey,
-      reason: 'studio-ui-stop',
+      reason: 'tracevane-ui-stop',
     });
     agentSessions.value = result;
     agentSessionResult.value = result;

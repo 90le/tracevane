@@ -434,7 +434,7 @@ function formatDate(value: string | null): string {
 }
 
 function canManageSession(session: ChatSessionRow): boolean {
-  return session.kind === 'studio_managed' && session.permissions.writable;
+  return session.kind === 'tracevane_managed' && session.permissions.writable;
 }
 
 const organizerRef = computed(() => props.organizer);

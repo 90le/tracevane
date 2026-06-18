@@ -5,40 +5,40 @@ export interface LoggerLike {
   debug?: (...args: unknown[]) => void;
 }
 
-export interface StudioStandaloneTransportConfig {
+export interface TracevaneStandaloneTransportConfig {
   enabled: boolean;
   port: number;
 }
 
-export interface StudioGatewayTransportConfig {
+export interface TracevaneGatewayTransportConfig {
   enabled: boolean;
   basePath: string;
 }
 
-export interface StudioTransportConfig {
-  preferredMode?: StudioExposureKind;
-  standalone: StudioStandaloneTransportConfig;
-  gateway: StudioGatewayTransportConfig;
+export interface TracevaneTransportConfig {
+  preferredMode?: TracevaneExposureKind;
+  standalone: TracevaneStandaloneTransportConfig;
+  gateway: TracevaneGatewayTransportConfig;
 }
 
-export type StudioRealtimeTransportKind = 'raw-ws' | 'gateway-rpc' | 'disabled';
-export type StudioExposureKind = 'standalone' | 'gateway';
+export type TracevaneRealtimeTransportKind = 'raw-ws' | 'gateway-rpc' | 'disabled';
+export type TracevaneExposureKind = 'standalone' | 'gateway';
 
-export interface StudioClientRuntimeConfig {
-  exposureKind: StudioExposureKind;
+export interface TracevaneClientRuntimeConfig {
+  exposureKind: TracevaneExposureKind;
   appBasePath: string;
   apiBasePath: string;
   webSocketBasePath: string;
   gatewayAuthStorageScopePath: string;
   terminalDirectWebSocketPort?: number | null;
-  realtimeTransport: StudioRealtimeTransportKind;
+  realtimeTransport: TracevaneRealtimeTransportKind;
   features: {
     chatRealtime: boolean;
     terminalRealtime: boolean;
   };
 }
 
-export interface StudioServerConfig {
+export interface TracevaneServerConfig {
   pluginId: string;
   pluginName: string;
   version: string;
@@ -51,5 +51,5 @@ export interface StudioServerConfig {
   gatewayPort: number;
   gatewayWsUrl: string;
   gatewayControlUiBasePath: string;
-  transport: StudioTransportConfig;
+  transport: TracevaneTransportConfig;
 }

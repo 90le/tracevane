@@ -392,11 +392,11 @@ const emit = defineEmits<{
   (e: 'sessionAttached', session: TerminalSessionDescriptor): void;
 }>();
 const { text } = useLocalePreference();
-const TERMINAL_STAGE_LAYOUT_STORAGE_KEY = 'openclaw-studio.terminal.stageLayout';
-const TERMINAL_PREVIEW_SIZE_STORAGE_KEY = 'openclaw-studio.terminal.previewSize';
-const TERMINAL_PREVIEW_TERMINAL_COLLAPSED_STORAGE_KEY = 'openclaw-studio.terminal.previewTerminalCollapsed';
-const TERMINAL_SPLIT_RATIO_STORAGE_KEY = 'openclaw-studio.terminal.splitPaneRatio';
-const TERMINAL_WORKSPACE_GROUP_STORAGE_KEY = 'openclaw-studio.terminal.workspaceGroup';
+const TERMINAL_STAGE_LAYOUT_STORAGE_KEY = 'tracevane.terminal.stageLayout';
+const TERMINAL_PREVIEW_SIZE_STORAGE_KEY = 'tracevane.terminal.previewSize';
+const TERMINAL_PREVIEW_TERMINAL_COLLAPSED_STORAGE_KEY = 'tracevane.terminal.previewTerminalCollapsed';
+const TERMINAL_SPLIT_RATIO_STORAGE_KEY = 'tracevane.terminal.splitPaneRatio';
+const TERMINAL_WORKSPACE_GROUP_STORAGE_KEY = 'tracevane.terminal.workspaceGroup';
 const TERMINAL_SPLIT_RATIO_MIN = 24;
 const TERMINAL_SPLIT_RATIO_MAX = 76;
 const TERMINAL_PATH_INSERT_RETRY_LIMIT = 20;

@@ -41,7 +41,7 @@
                 <div class="form-grid">
                   <label class="form-field">
                     <span class="form-label">{{ text('群组策略', 'Group Policy') }}</span>
-                    <StudioSelect
+                    <TracevaneSelect
                       v-model="getChannel(channelId).groupPolicy"
                       :options="groupPolicyOptions"
                       :placeholder="text('选择策略', 'Select policy')"
@@ -50,7 +50,7 @@
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('流式输出', 'Streaming') }}</span>
-                    <StudioSelect
+                    <TracevaneSelect
                       v-model="getChannel(channelId).streaming"
                       :options="streamingOptions"
                       :placeholder="text('选择模式', 'Select mode')"
@@ -160,7 +160,7 @@
                         <div class="form-grid">
                           <label class="form-field">
                             <span class="form-label">{{ text('群组策略', 'Group Policy') }}</span>
-                            <StudioSelect
+                            <TracevaneSelect
                               v-model="getAccount(channelId, accountId).groupPolicy"
                               :options="groupPolicyOptions"
                               :placeholder="text('选择策略', 'Select policy')"
@@ -168,7 +168,7 @@
                           </label>
                           <label class="form-field">
                             <span class="form-label">{{ text('流式输出', 'Streaming') }}</span>
-                            <StudioSelect
+                            <TracevaneSelect
                               v-model="getAccount(channelId, accountId).streaming"
                               :options="streamingOptions"
                               :placeholder="text('选择模式', 'Select mode')"
@@ -176,7 +176,7 @@
                           </label>
                           <label class="form-field">
                             <span class="form-label">{{ text('私聊策略', 'DM Policy') }}</span>
-                            <StudioSelect
+                            <TracevaneSelect
                               v-model="getAccount(channelId, accountId).dmPolicy"
                               :options="dmPolicyOptions"
                               :placeholder="text('选择策略', 'Select policy')"
@@ -203,7 +203,7 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue';
 import { useLocalePreference } from '../../shared/locale';
-import StudioSelect, { type StudioSelectOption } from '../../shared/components/StudioSelect.vue';
+import TracevaneSelect, { type TracevaneSelectOption } from '../../shared/components/TracevaneSelect.vue';
 import { fetchChannelSecret } from './api';
 import type { ConfigSummaryPayload } from '../../../../../types/config';
 import './config-workspace.css';
@@ -244,19 +244,19 @@ const { text } = useLocalePreference();
 const channelForm = reactive<Record<string, ChannelFormState>>({});
 const expandedChannels = reactive(new Set<string>());
 
-const groupPolicyOptions = computed<StudioSelectOption[]>(() => [
+const groupPolicyOptions = computed<TracevaneSelectOption[]>(() => [
   { value: 'allowlist', label: text('白名单', 'Allowlist') },
   { value: 'denylist', label: text('黑名单', 'Denylist') },
   { value: 'all', label: text('全部允许', 'All') },
 ]);
 
-const streamingOptions = computed<StudioSelectOption[]>(() => [
+const streamingOptions = computed<TracevaneSelectOption[]>(() => [
   { value: 'partial', label: text('分段推送', 'Partial') },
   { value: 'full', label: text('完整推送', 'Full') },
   { value: 'off', label: text('关闭', 'Off') },
 ]);
 
-const dmPolicyOptions = computed<StudioSelectOption[]>(() => [
+const dmPolicyOptions = computed<TracevaneSelectOption[]>(() => [
   { value: 'pairing', label: text('配对模式', 'Pairing') },
   { value: 'open', label: text('开放模式', 'Open') },
 ]);

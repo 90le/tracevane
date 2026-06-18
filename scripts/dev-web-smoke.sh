@@ -12,10 +12,10 @@ fi
 
 cd "$WEB_DIR"
 
-if [ "${OPENCLAW_STUDIO_SMOKE_FORCE_OPTIMIZE:-0}" = "1" ]; then
+if [ "${TRACEVANE_SMOKE_FORCE_OPTIMIZE:-0}" = "1" ]; then
   rm -rf "$VITE_CACHE_DIR"
   "$VITE_BIN" optimize --force
-elif [ "${OPENCLAW_STUDIO_SMOKE_SKIP_OPTIMIZE:-0}" != "1" ]; then
+elif [ "${TRACEVANE_SMOKE_SKIP_OPTIMIZE:-0}" != "1" ]; then
   "$VITE_BIN" optimize
 fi
 

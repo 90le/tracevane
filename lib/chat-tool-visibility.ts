@@ -1,7 +1,7 @@
 import type { ChatToolCard } from '../types/chat.js';
 
 const MAIN_CHAT_HIDDEN_TOOL_NAMES = new Set([
-  'studio_delivery',
+  'tracevane_delivery',
 ]);
 
 function normalizeToolName(value: string | null | undefined): string {

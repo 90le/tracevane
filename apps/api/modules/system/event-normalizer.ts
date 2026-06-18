@@ -2,7 +2,7 @@ import type {
   SystemBootstrapPayload,
   SystemDiagnosticsPayload,
   SystemDeviceTrustPayload,
-  SystemStudioReleasePayload,
+  SystemTracevaneReleasePayload,
 } from "../../../../types/system.js";
 import type {
   SystemEventRecord,
@@ -159,13 +159,13 @@ export function buildSystemSnapshotDerivedEvents(params: {
   > | null;
   bootstrap: Pick<SystemBootstrapPayload, "checkedAt" | "ready"> | null;
   deviceTrust: Pick<SystemDeviceTrustPayload, "checkedAt" | "pending"> | null;
-  studioRelease: Pick<
-    SystemStudioReleasePayload,
+  tracevaneRelease: Pick<
+    SystemTracevaneReleasePayload,
     "checkedAt" | "currentVersion" | "latestVersion" | "updateAvailable"
   > | null;
   health?: Pick<SystemDiagnosticsPayload, "checkedAt"> | null;
 }): SystemEventRecord[] {
-  const { diagnostics, bootstrap, deviceTrust, studioRelease } = params;
+  const { diagnostics, bootstrap, deviceTrust, tracevaneRelease } = params;
   const events: SystemEventRecord[] = [];
 
   const gatewayOccurredAt = diagnostics?.checkedAt || new Date().toISOString();
@@ -319,8 +319,8 @@ export function buildSystemSnapshotDerivedEvents(params: {
   }
 
   const releaseOccurredAt =
-    studioRelease?.checkedAt || new Date().toISOString();
-  if (studioRelease?.updateAvailable) {
+    tracevaneRelease?.checkedAt || new Date().toISOString();
+  if (tracevaneRelease?.updateAvailable) {
     events.push(
       toPersistedRecord(
         {
@@ -330,22 +330,22 @@ export function buildSystemSnapshotDerivedEvents(params: {
           severity: "info",
           occurredAt: releaseOccurredAt,
           title: "发现可用更新",
-          summary: `${studioRelease.currentVersion} -> ${studioRelease.latestVersion || "unknown"}`,
+          summary: `${tracevaneRelease.currentVersion} -> ${tracevaneRelease.latestVersion || "unknown"}`,
           status: "pending",
-          sourceModule: "studio-release",
+          sourceModule: "tracevane-release",
         },
         {
           dedupeKey: "release:update-available",
-          sourceEntity: "system:studio-release",
+          sourceEntity: "system:tracevane-release",
           action: "snapshot",
           details: {
-            currentVersion: studioRelease.currentVersion,
-            latestVersion: studioRelease.latestVersion,
+            currentVersion: tracevaneRelease.currentVersion,
+            latestVersion: tracevaneRelease.latestVersion,
           },
         },
       ),
     );
-  } else if (studioRelease) {
+  } else if (tracevaneRelease) {
     events.push(
       toPersistedRecord(
         {
@@ -357,15 +357,15 @@ export function buildSystemSnapshotDerivedEvents(params: {
           title: "更新提示已恢复",
           summary: "当前没有待安装的新版本提示",
           status: "resolved",
-          sourceModule: "studio-release",
+          sourceModule: "tracevane-release",
         },
         {
           dedupeKey: "release:update-available",
-          sourceEntity: "system:studio-release",
+          sourceEntity: "system:tracevane-release",
           action: "snapshot",
           details: {
-            currentVersion: studioRelease.currentVersion,
-            latestVersion: studioRelease.latestVersion,
+            currentVersion: tracevaneRelease.currentVersion,
+            latestVersion: tracevaneRelease.latestVersion,
           },
         },
       ),

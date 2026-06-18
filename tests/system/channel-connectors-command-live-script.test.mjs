@@ -167,7 +167,7 @@ function startFakeBackend() {
         const content = body.event?.message?.content ? JSON.parse(body.event.message.content) : {};
         const command = content.text || null;
         const name = String(command || "").replace(/^\/+/, "").split(/\s+/, 1)[0] || null;
-        if (body.studioDebugResponse === true) {
+        if (body.tracevaneDebugResponse === true) {
           res.end(JSON.stringify({
             ok: true,
             accepted: true,
@@ -208,7 +208,7 @@ async function runScript(args, root) {
 }
 
 test("command live smoke script plans commands without backend side effects by default", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-command-live-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-command-live-smoke-"));
   const { configPath, stateDir } = writeFixture(root);
   const output = await runScript([
     "--config", configPath,
@@ -228,7 +228,7 @@ test("command live smoke script plans commands without backend side effects by d
 });
 
 test("command live smoke script can target recent state sessions per binding", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-command-live-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-command-live-smoke-"));
   const { configPath, stateDir } = writeFixture(root);
   const output = await runScript([
     "--config", configPath,
@@ -261,7 +261,7 @@ test("command live smoke script can target recent state sessions per binding", a
 
 test("command live smoke script probes adapter dry-run requests", async () => {
   const fake = await startFakeBackend();
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-command-live-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-command-live-smoke-"));
   const { configPath, stateDir } = writeFixture(root);
   try {
     const output = await runScript([
@@ -287,7 +287,7 @@ test("command live smoke script probes adapter dry-run requests", async () => {
     assert.equal(fake.posts[0].body.sendReply, false);
     assert.equal(fake.posts[1].body.dryRun, true);
     assert.equal(fake.posts[1].body.sendReply, false);
-    assert.equal(fake.posts[1].body.studioDebugResponse, true);
+    assert.equal(fake.posts[1].body.tracevaneDebugResponse, true);
     assert.equal(fake.posts[1].body.header.token, "verify-token");
     assert.equal(parsed.plans[1].request.body.header.token, "<redacted>");
     assert.equal(parsed.plans[0].result.action, "new");
@@ -300,7 +300,7 @@ test("command live smoke script probes adapter dry-run requests", async () => {
 });
 
 test("command live smoke script verifies daemon command progress logs", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-command-live-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-command-live-smoke-"));
   const { configPath, stateDir } = writeFixture(root);
   writeJsonl(path.join(stateDir, "octo-events.jsonl"), [
     {
@@ -377,7 +377,7 @@ test("command live smoke script verifies daemon command progress logs", async ()
 });
 
 test("command live smoke script can require Feishu command progress card patches", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-command-live-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-command-live-smoke-"));
   const { configPath, stateDir } = writeFixture(root);
   writeJsonl(path.join(stateDir, "feishu-events.jsonl"), [
     {
@@ -437,7 +437,7 @@ test("command live smoke script can require Feishu command progress card patches
 });
 
 test("command live smoke script requires explicit address before apply", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-command-live-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-command-live-smoke-"));
   const { configPath, stateDir } = writeFixture(root);
   try {
     await runScript([
@@ -455,7 +455,7 @@ test("command live smoke script requires explicit address before apply", async (
 
 test("command live smoke script can apply against recent sessions without copying ids", async () => {
   const fake = await startFakeBackend();
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-command-live-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-command-live-smoke-"));
   const { configPath, stateDir } = writeFixture(root);
   try {
     const output = await runScript([
@@ -485,7 +485,7 @@ test("command live smoke script can apply against recent sessions without copyin
 
 test("command live smoke script applies adapter requests with sendReply", async () => {
   const fake = await startFakeBackend();
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-command-live-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-command-live-smoke-"));
   const { configPath, stateDir } = writeFixture(root);
   try {
     const output = await runScript([

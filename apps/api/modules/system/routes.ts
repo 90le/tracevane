@@ -1,18 +1,18 @@
 import { parseJsonBody, sendJson } from "../../core/http.js";
-import type { StudioApiContext } from "../../core/context.js";
-import type { StudioRouter } from "../../core/router.js";
+import type { TracevaneApiContext } from "../../core/context.js";
+import type { TracevaneRouter } from "../../core/router.js";
 import type {
   SystemDeviceTrustApproveRequest,
-  SystemStudioUpgradeRequest,
+  SystemTracevaneUpgradeRequest,
   SystemDeviceTrustSettingsPatchRequest,
 } from "../../../../types/system.js";
 
 export function registerSystemRoutes(
-  router: StudioRouter,
-  ctx: StudioApiContext,
+  router: TracevaneRouter,
+  ctx: TracevaneApiContext,
 ): void {
   function readLimit(
-    req: Parameters<StudioRouter["get"]>[1] extends (
+    req: Parameters<TracevaneRouter["get"]>[1] extends (
       req: infer R,
       ...args: any[]
     ) => any
@@ -46,12 +46,12 @@ export function registerSystemRoutes(
     sendJson(res, 200, await routeCtx.services.system.repairBootstrap());
   });
 
-  router.get("/api/system/studio-release", async (_req, res, routeCtx) => {
-    sendJson(res, 200, await routeCtx.services.system.getStudioRelease());
+  router.get("/api/system/tracevane-release", async (_req, res, routeCtx) => {
+    sendJson(res, 200, await routeCtx.services.system.getTracevaneRelease());
   });
 
-  router.get("/api/system/studio-upgrade", async (_req, res, routeCtx) => {
-    sendJson(res, 200, await routeCtx.services.system.getStudioUpgradeStatus());
+  router.get("/api/system/tracevane-upgrade", async (_req, res, routeCtx) => {
+    sendJson(res, 200, await routeCtx.services.system.getTracevaneUpgradeStatus());
   });
 
   router.get("/api/system/runtime-summary", async (_req, res, routeCtx) => {
@@ -66,12 +66,12 @@ export function registerSystemRoutes(
     );
   });
 
-  router.post("/api/system/studio-upgrade", async (req, res, routeCtx) => {
-    const payload = await parseJsonBody<SystemStudioUpgradeRequest>(req);
+  router.post("/api/system/tracevane-upgrade", async (req, res, routeCtx) => {
+    const payload = await parseJsonBody<SystemTracevaneUpgradeRequest>(req);
     sendJson(
       res,
       200,
-      await routeCtx.services.system.startStudioUpgrade(payload || {}),
+      await routeCtx.services.system.startTracevaneUpgrade(payload || {}),
     );
   });
 

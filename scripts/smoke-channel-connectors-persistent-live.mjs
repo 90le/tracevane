@@ -6,9 +6,9 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
-const DEFAULT_CONFIG_PATH = path.join(os.homedir(), ".config/openclaw-studio/channel-connectors/config.json");
-const DEFAULT_DAEMON_CONFIG_PATH = path.join(os.homedir(), ".config/openclaw-studio/channel-connectors/daemon/config.json");
-const DEFAULT_RUNTIME_PATH = path.join(os.homedir(), ".config/openclaw-studio/channel-connectors/daemon/runtime.json");
+const DEFAULT_CONFIG_PATH = path.join(os.homedir(), ".config/tracevane/channel-connectors/config.json");
+const DEFAULT_DAEMON_CONFIG_PATH = path.join(os.homedir(), ".config/tracevane/channel-connectors/daemon/config.json");
+const DEFAULT_RUNTIME_PATH = path.join(os.homedir(), ".config/tracevane/channel-connectors/daemon/runtime.json");
 const DEFAULT_SERVICE_NAME = "openclaw-tracevane-channel-connectors.service";
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_POLL_MS = 1_000;
@@ -129,7 +129,7 @@ Options:
   -h, --help                Show this help
 
 Typical live flow:
-  node scripts/smoke-channel-connectors-persistent-live.mjs --bindings octo-studio-cc,feishu-live --apply
+  node scripts/smoke-channel-connectors-persistent-live.mjs --bindings octo-tracevane-cc,feishu-live --apply
   # Send a long task from Octo/Feishu, then send /stop in the same chat.
   node scripts/smoke-channel-connectors-persistent-live.mjs --wait-active --wait-idle-after-active --json
   node scripts/smoke-channel-connectors-persistent-live.mjs --restore-latest --apply

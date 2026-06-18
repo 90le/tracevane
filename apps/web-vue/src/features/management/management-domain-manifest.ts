@@ -31,7 +31,7 @@ export const MANAGEMENT_DOMAIN_MANIFEST: ReadonlyArray<ManagementDomainDefinitio
       routePath: "/config",
       webView: "ConfigView.vue",
       apiModule: "config",
-      testPattern: "studio-web-config-*.test.mjs",
+      testPattern: "tracevane-web-config-*.test.mjs",
     },
     {
       id: "agents",
@@ -39,7 +39,7 @@ export const MANAGEMENT_DOMAIN_MANIFEST: ReadonlyArray<ManagementDomainDefinitio
       routePath: "/agents",
       webView: "AgentsView.vue",
       apiModule: "agents",
-      testPattern: "studio-web-agents-*.test.mjs",
+      testPattern: "tracevane-web-agents-*.test.mjs",
     },
     {
       id: "channels",
@@ -47,7 +47,7 @@ export const MANAGEMENT_DOMAIN_MANIFEST: ReadonlyArray<ManagementDomainDefinitio
       routePath: "/channels",
       webView: "ChannelsView.vue",
       apiModule: "channels",
-      testPattern: "studio-web-channels-*.test.mjs",
+      testPattern: "tracevane-web-channels-*.test.mjs",
     },
     {
       id: "skills",
@@ -55,7 +55,7 @@ export const MANAGEMENT_DOMAIN_MANIFEST: ReadonlyArray<ManagementDomainDefinitio
       routePath: "/skills",
       webView: "SkillsView.vue",
       apiModule: "skills",
-      testPattern: "studio-web-skills-*.test.mjs",
+      testPattern: "tracevane-web-skills-*.test.mjs",
     },
     {
       id: "files",
@@ -63,7 +63,7 @@ export const MANAGEMENT_DOMAIN_MANIFEST: ReadonlyArray<ManagementDomainDefinitio
       routePath: "/files",
       webView: "FilesView.vue",
       apiModule: "files",
-      testPattern: "studio-web-files-*.test.mjs",
+      testPattern: "tracevane-web-files-*.test.mjs",
     },
     {
       id: "cron",
@@ -71,7 +71,7 @@ export const MANAGEMENT_DOMAIN_MANIFEST: ReadonlyArray<ManagementDomainDefinitio
       routePath: "/cron",
       webView: "CronView.vue",
       apiModule: "cron",
-      testPattern: "studio-web-cron-*.test.mjs",
+      testPattern: "tracevane-web-cron-*.test.mjs",
     },
   ];
 

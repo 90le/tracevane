@@ -488,7 +488,7 @@ function buildUnavailableNativeVisualAttachmentPolicy(
   ].join("\n");
 }
 
-function buildStudioOutboundFilePolicy(): string {
+function buildTracevaneOutboundFilePolicy(): string {
   return [
     "[Tracevane outbound file/message policy]",
     "Do not call channel-specific CLIs, webhooks, curl commands, or external bridge tools to send files or IM messages.",
@@ -615,7 +615,7 @@ function buildAgentInputContent(
   const history = normalizeString(historyContext);
   const skills = normalizeString(channelSkillContext);
   const groupContext = buildGroupContext(message, binding);
-  const outboundFilePolicy = buildStudioOutboundFilePolicy();
+  const outboundFilePolicy = buildTracevaneOutboundFilePolicy();
   const current = currentMessageBlock(content);
   if (!attachments.length) return [persona, history, groupContext, skills, outboundFilePolicy, current].filter(Boolean).join("\n\n");
   const summary = attachments
@@ -932,9 +932,9 @@ const LEGACY_CHANNEL_CONNECTOR_NATIVE_SKILL_NAMES = new Set([
 ]);
 const LEGACY_CHANNEL_CONNECTOR_NATIVE_SKILL_MARKERS = [
   "Tracevane Channel Connector helper projection",
-  "studioChannelConnector",
-  "studio-feishu-actions",
-  "studio-octo-actions",
+  "tracevaneChannelConnector",
+  "tracevane-feishu-actions",
+  "tracevane-octo-actions",
   "tracevane-channel-skill",
 ];
 
@@ -1023,14 +1023,11 @@ function createClaudeConfigHome(input: {
 }
 
 const OPENCODE_GATEWAY_PROVIDER_ID = "tracevane-gateway";
-const LEGACY_OPENCODE_GATEWAY_PROVIDER_ID = "studio-gateway";
 
 function opencodeGatewayModelId(model: string | null): string {
   const normalized = normalizeString(model);
-  for (const providerId of [OPENCODE_GATEWAY_PROVIDER_ID, LEGACY_OPENCODE_GATEWAY_PROVIDER_ID]) {
-    const prefix = `${providerId}/`;
-    if (normalized.startsWith(prefix)) return normalized.slice(prefix.length).trim();
-  }
+  const prefix = `${OPENCODE_GATEWAY_PROVIDER_ID}/`;
+  if (normalized.startsWith(prefix)) return normalized.slice(prefix.length).trim();
   return normalized;
 }
 
@@ -1236,13 +1233,11 @@ function unsupportedNativeCommandMessage(agent: ChannelConnectorAgentId, command
 function gatewayEnv(gatewayEndpoint: string, gatewayClientKey: string | null): Record<string, string> {
   const env: Record<string, string> = {
     TRACEVANE_GATEWAY_ENDPOINT: gatewayEndpoint,
-    STUDIO_GATEWAY_ENDPOINT: gatewayEndpoint,
     NO_PROXY: "127.0.0.1,localhost",
     PATH: cliPathEnv(),
   };
   if (gatewayClientKey) {
     env.TRACEVANE_GATEWAY_API_KEY = gatewayClientKey;
-    env.STUDIO_GATEWAY_API_KEY = gatewayClientKey;
     env.OPENAI_API_KEY = gatewayClientKey;
     env.ANTHROPIC_API_KEY = gatewayClientKey;
     env.ANTHROPIC_AUTH_TOKEN = gatewayClientKey;
@@ -2168,7 +2163,7 @@ export async function defaultChannelConnectorAgentProcessRunner(
     const asyncTaskIdleGraceMs = usesHeartbeatTimeout
       ? typeof request.asyncTaskIdleGraceMs === "number" && Number.isFinite(request.asyncTaskIdleGraceMs)
         ? Math.max(0, Math.floor(request.asyncTaskIdleGraceMs))
-        : optionalPositiveIntegerEnv("STUDIO_CHANNEL_AGENT_ASYNC_TASK_IDLE_GRACE_MS") || DEFAULT_ASYNC_TASK_IDLE_GRACE_MS
+        : optionalPositiveIntegerEnv("TRACEVANE_CHANNEL_AGENT_ASYNC_TASK_IDLE_GRACE_MS") || DEFAULT_ASYNC_TASK_IDLE_GRACE_MS
       : 0;
     const terminalProgressGraceMs = usesHeartbeatTimeout
       ? typeof request.terminalProgressGraceMs === "number" && Number.isFinite(request.terminalProgressGraceMs)

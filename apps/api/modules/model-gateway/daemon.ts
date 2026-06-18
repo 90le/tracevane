@@ -2,7 +2,7 @@ import fs from "node:fs";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import path from "node:path";
-import type { LoggerLike, StudioServerConfig } from "../../../../types/api.js";
+import type { LoggerLike, TracevaneServerConfig } from "../../../../types/api.js";
 import {
   MODEL_GATEWAY_DAEMON_SERVICE_NAME,
   MODEL_GATEWAY_DEFAULT_HOST,
@@ -11,8 +11,8 @@ import {
   type ModelGatewaySupervisorKind,
 } from "../../../../types/model-gateway.js";
 import { sendJson, sendNoContent, setCorsHeaders } from "../../core/http.js";
-import type { StudioApiContext } from "../../core/context.js";
-import { StudioRouter } from "../../core/router.js";
+import type { TracevaneApiContext } from "../../core/context.js";
+import { TracevaneRouter } from "../../core/router.js";
 import { handleModelGatewayRealtimeUnsupportedUpgrade } from "./realtime.js";
 import { registerModelGatewayRoutes } from "./routes.js";
 import {
@@ -137,22 +137,22 @@ function closePortLock(lock: PortLockHandle | null): void {
 }
 
 function createDaemonRouteContext(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   logger: LoggerLike,
   modelGateway: ModelGatewayService,
-): StudioApiContext {
+): TracevaneApiContext {
   return {
     config,
     logger,
     sseClients: new Set(),
     services: {
       modelGateway,
-    } as unknown as StudioApiContext["services"],
+    } as unknown as TracevaneApiContext["services"],
   };
 }
 
 export function createModelGatewayDaemon(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   options: ModelGatewayDaemonOptions = {},
 ): ModelGatewayDaemon {
   const paths = resolveModelGatewayPaths(config);
@@ -161,7 +161,7 @@ export function createModelGatewayDaemon(
   const supervisor = options.supervisor || "none";
   const serviceName = options.serviceName || MODEL_GATEWAY_DAEMON_SERVICE_NAME;
   const logger = options.logger || noopLogger;
-  const router = new StudioRouter();
+  const router = new TracevaneRouter();
   registerModelGatewayRoutes(router);
 
   let server: http.Server | null = null;

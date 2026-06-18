@@ -7,7 +7,7 @@ import time
 from browser_surface import wait_for_active_session, wait_for_chat_surface
 
 
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-mvp-acceptance.png")
+SCREENSHOT = Path("/tmp/tracevane-chat-mvp-acceptance.png")
 
 
 def wait_button_enabled(locator, timeout=30000):
@@ -338,7 +338,7 @@ def main() -> None:
         click_enabled(writable_session)
         page.wait_for_timeout(600)
 
-        page.evaluate("() => window.__OPENCLAW_STUDIO_CHAT_TEST_FORCE_WS_CLOSE && window.__OPENCLAW_STUDIO_CHAT_TEST_FORCE_WS_CLOSE()")
+        page.evaluate("() => window.__TRACEVANE_CHAT_TEST_FORCE_WS_CLOSE && window.__TRACEVANE_CHAT_TEST_FORCE_WS_CLOSE()")
         page.wait_for_timeout(1000)
         warning_text = page.locator("body").inner_text()
         result["disconnect_warning_present"] = "实时连接正在恢复" in warning_text or "Realtime connection is recovering" in warning_text

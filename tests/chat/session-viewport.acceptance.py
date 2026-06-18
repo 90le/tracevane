@@ -17,7 +17,7 @@ def encode_session_ref(session_key: str) -> str:
 
 def discover_history_session_key() -> str:
     root = Path(os.environ.get("OPENCLAW_ROOT", str(Path.home() / ".openclaw")))
-    sqlite_path = root / "studio" / "chat.sqlite"
+    sqlite_path = root / "tracevane" / "chat.sqlite"
     if not sqlite_path.exists():
         return ""
 
@@ -33,7 +33,7 @@ def discover_history_session_key() -> str:
             """
         ).fetchall()
 
-        def is_visible_studio_session(session_key: str) -> bool:
+        def is_visible_tracevane_session(session_key: str) -> bool:
             session_row = conn.execute(
                 "SELECT payload_json FROM session_rows WHERE session_key = ? LIMIT 1",
                 (session_key,),
@@ -44,7 +44,7 @@ def discover_history_session_key() -> str:
                 payload = json.loads(session_row[0])
             except Exception:
                 payload = {}
-            if payload.get("kind") != "studio_managed":
+            if payload.get("kind") != "tracevane_managed":
                 return False
             permissions = payload.get("permissions") or {}
             if permissions.get("visibleInFrontend") is False:
@@ -59,7 +59,7 @@ def discover_history_session_key() -> str:
                 if (
                     session_key
                     and int(message_count or 0) >= min_count
-                    and is_visible_studio_session(str(session_key))
+                    and is_visible_tracevane_session(str(session_key))
                 ):
                     return str(session_key)
     finally:
@@ -107,7 +107,7 @@ def read_thread_state(page, label: str) -> dict[str, object]:
 def read_viewport_storage(page, session_key: str) -> str | None:
     return page.evaluate(
         """(sessionKey) => {
-          return window.localStorage.getItem(`openclaw-studio.chat.session-viewport:${sessionKey}`);
+          return window.localStorage.getItem(`tracevane.chat.session-viewport:${sessionKey}`);
         }""",
         session_key,
     )

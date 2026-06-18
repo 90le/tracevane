@@ -73,19 +73,19 @@ export function useChatRuntimeViewModel(params: {
     }
     return null;
   });
-  const studioManagedSessions = computed(() =>
+  const tracevaneManagedSessions = computed(() =>
     params.sessionRows.value
       .filter(
         (row) =>
-          row.permissions.visibleInFrontend && row.kind === "studio_managed",
+          row.permissions.visibleInFrontend && row.kind === "tracevane_managed",
       )
       .sort(sortSessions),
   );
-  const activeStudioManagedSessions = computed(() =>
-    studioManagedSessions.value.filter((row) => !row.presentation.archived),
+  const activeTracevaneManagedSessions = computed(() =>
+    tracevaneManagedSessions.value.filter((row) => !row.presentation.archived),
   );
-  const archivedStudioManagedSessions = computed(() =>
-    studioManagedSessions.value
+  const archivedTracevaneManagedSessions = computed(() =>
+    tracevaneManagedSessions.value
       .filter((row) => row.presentation.archived)
       .sort(sortArchivedSessions),
   );
@@ -94,7 +94,7 @@ export function useChatRuntimeViewModel(params: {
       params.sessionRows.value
         .filter(
           (row) =>
-            row.permissions.visibleInFrontend && row.kind !== "studio_managed",
+            row.permissions.visibleInFrontend && row.kind !== "tracevane_managed",
         )
         .sort(sortSessions),
       inspectPinned.value,
@@ -179,7 +179,7 @@ export function useChatRuntimeViewModel(params: {
     if (!selectedSession.value) return "";
     if (
       !inspectPinned.value &&
-      selectedSession.value.kind !== "studio_managed"
+      selectedSession.value.kind !== "tracevane_managed"
     ) {
       return params.text(
         "observed_external / system_internal 不应直接进入开放聊天面，请切换到调试模式查看。",
@@ -229,9 +229,9 @@ export function useChatRuntimeViewModel(params: {
   return {
     inspectPinned,
     selectedSession,
-    studioManagedSessions,
-    activeStudioManagedSessions,
-    archivedStudioManagedSessions,
+    tracevaneManagedSessions,
+    activeTracevaneManagedSessions,
+    archivedTracevaneManagedSessions,
     observedSessions,
     activeRuntime,
     activeDiagnostics,

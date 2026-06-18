@@ -19,7 +19,7 @@ test('buildSystemRuntimeSummary derives control center summary fields', async ()
     bootstrapPendingCount: 2,
     updateLatestVersion: '0.2.0',
     updateAvailable: true,
-    studioUpgradeRunning: false,
+    tracevaneUpgradeRunning: false,
     helperRepairPending: false,
   });
 
@@ -29,7 +29,7 @@ test('buildSystemRuntimeSummary derives control center summary fields', async ()
     bootstrapPendingCount: 2,
     updateLatestVersion: '0.2.0',
     updateAvailable: true,
-    studioUpgradeRunning: false,
+    tracevaneUpgradeRunning: false,
     helperRepairPending: false,
     level: 'warn',
   });

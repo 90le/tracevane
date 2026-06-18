@@ -31,7 +31,7 @@ test("buildSystemSnapshotDerivedEvents derives required system events", async ()
       checkedAt: "2026-04-13T08:02:00.000Z",
       pending: [{ requestId: "req-1" }],
     },
-    studioRelease: {
+    tracevaneRelease: {
       checkedAt: "2026-04-13T08:03:00.000Z",
       currentVersion: "0.1.20",
       latestVersion: "0.1.21",
@@ -96,7 +96,7 @@ test("buildSystemSnapshotDerivedEvents treats bootstrap pending count as diagnos
       checkedAt: "2026-04-13T09:02:00.000Z",
       pending: [],
     },
-    studioRelease: {
+    tracevaneRelease: {
       checkedAt: "2026-04-13T09:03:00.000Z",
       currentVersion: "0.1.20",
       latestVersion: null,
@@ -129,7 +129,7 @@ test("buildSystemSnapshotDerivedEvents emits resolved recovery events for health
       checkedAt: "2026-04-13T10:02:00.000Z",
       pending: [],
     },
-    studioRelease: {
+    tracevaneRelease: {
       checkedAt: "2026-04-13T10:03:00.000Z",
       currentVersion: "0.1.21",
       latestVersion: null,

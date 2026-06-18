@@ -10,7 +10,7 @@ function createSession(overrides = {}) {
   return {
     key: "session-alpha",
     sessionId: "session-alpha-id",
-    kind: "studio_managed",
+    kind: "tracevane_managed",
     agentId: "agent.alpha",
     label: "Session Alpha",
     derivedTitle: null,
@@ -22,9 +22,9 @@ function createSession(overrides = {}) {
       customLabel: null,
     },
     source: {
-      source: "studio",
+      source: "tracevane",
       channel: "webchat",
-      surface: "studio-chat",
+      surface: "tracevane-chat",
       originLabel: "Tracevane managed",
     },
     deliveryContext: {
@@ -85,7 +85,7 @@ test("buildChatHistoryStateSummary captures selected session runtime context", (
     historyMode: "search",
     selectedSessionKey: "session-alpha",
     hasSelectedSession: true,
-    selectedSessionKind: "studio_managed",
+    selectedSessionKind: "tracevane_managed",
     selectedSessionWritable: true,
     selectedSessionCanSend: true,
     selectedSessionHasActiveRun: true,

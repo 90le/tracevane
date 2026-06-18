@@ -133,7 +133,7 @@ function explicitCompactFixture() {
 }
 
 test("Feishu compact live script accepts auto compact evidence from real long-connection ingress", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-compact-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-compact-smoke-"));
   const eventLog = path.join(root, "feishu-events.jsonl");
   writeJsonl(eventLog, autoCompactFixture());
 
@@ -155,7 +155,7 @@ test("Feishu compact live script accepts auto compact evidence from real long-co
 });
 
 test("Feishu compact live script accepts explicit slash compact evidence", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-compact-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-compact-smoke-"));
   const eventLog = path.join(root, "feishu-events.jsonl");
   writeJsonl(eventLog, explicitCompactFixture());
 
@@ -175,7 +175,7 @@ test("Feishu compact live script accepts explicit slash compact evidence", async
 });
 
 test("Feishu compact live script filters explicit slash compact evidence by agent", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-compact-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-compact-smoke-"));
   const eventLog = path.join(root, "feishu-events.jsonl");
   writeJsonl(eventLog, explicitCompactFixture());
 
@@ -206,7 +206,7 @@ test("Feishu compact live script filters explicit slash compact evidence by agen
 });
 
 test("Feishu compact live script does not treat auto compact as explicit slash compact", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-compact-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-compact-smoke-"));
   const eventLog = path.join(root, "feishu-events.jsonl");
   writeJsonl(eventLog, autoCompactFixture());
 
@@ -224,7 +224,7 @@ test("Feishu compact live script does not treat auto compact as explicit slash c
 });
 
 test("Feishu compact live script rejects non-long-connection ingress", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-compact-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-compact-smoke-"));
   const eventLog = path.join(root, "feishu-events.jsonl");
   const entries = autoCompactFixture();
   entries[0] = { ...entries[0], longConnection: false };

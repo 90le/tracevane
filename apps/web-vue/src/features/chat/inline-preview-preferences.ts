@@ -15,20 +15,20 @@ type InlinePreviewPreferenceChange = {
   role?: RenderingRole | null;
 };
 
-const GLOBAL_SANITIZE_LEVEL_KEY = 'openclaw-studio.chat.sanitize-level';
-const ROLE_BASED_ENABLED_KEY = 'openclaw-studio.chat.role-based-rendering';
-const ROLE_PREVIEW_PREFIX = 'openclaw-studio.chat.role-preview.';
+const GLOBAL_SANITIZE_LEVEL_KEY = 'tracevane.chat.sanitize-level';
+const ROLE_BASED_ENABLED_KEY = 'tracevane.chat.role-based-rendering';
+const ROLE_PREVIEW_PREFIX = 'tracevane.chat.role-preview.';
 const SANITIZE_LEVELS: SanitizeLevel[] = ['strict', 'moderate', 'permissive'];
 const RENDERING_ROLES: RenderingRole[] = ['user', 'assistant'];
 
-const INLINE_PREVIEW_EVENT = 'openclaw-studio:inline-preview-pref-change';
+const INLINE_PREVIEW_EVENT = 'tracevane:inline-preview-pref-change';
 const GLOBAL_STORAGE_KEYS: Record<InlinePreviewKind, string> = {
-  mermaid: 'openclaw-studio.chat.inline-preview.mermaid',
-  html: 'openclaw-studio.chat.inline-preview.html',
-  svg: 'openclaw-studio.chat.inline-preview.svg',
-  inlineHtml: 'openclaw-studio.chat.inline-preview.inline-html',
-  inlineSvg: 'openclaw-studio.chat.inline-preview.inline-svg',
-  inlineScript: 'openclaw-studio.chat.inline-preview.inline-script',
+  mermaid: 'tracevane.chat.inline-preview.mermaid',
+  html: 'tracevane.chat.inline-preview.html',
+  svg: 'tracevane.chat.inline-preview.svg',
+  inlineHtml: 'tracevane.chat.inline-preview.inline-html',
+  inlineSvg: 'tracevane.chat.inline-preview.inline-svg',
+  inlineScript: 'tracevane.chat.inline-preview.inline-script',
 };
 
 const PREVIEW_KINDS: InlinePreviewKind[] = ['mermaid', 'html', 'svg', 'inlineHtml', 'inlineSvg', 'inlineScript'];
@@ -43,7 +43,7 @@ const KIND_DEFAULTS: Record<InlinePreviewKind, boolean> = {
 };
 
 function sessionStorageKey(sessionKey: string, kind: InlinePreviewKind): string {
-  return `openclaw-studio.chat.inline-preview.session.${sessionKey}.${kind}`;
+  return `tracevane.chat.inline-preview.session.${sessionKey}.${kind}`;
 }
 
 function readStoredBoolean(key: string): boolean | null {

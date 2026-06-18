@@ -39,7 +39,7 @@ function writeFixture(root) {
       {
         id: "octo-live",
         platform: "octo",
-        accountId: "studio-cc",
+        accountId: "tracevane-cc",
         botId: "bot-a",
         displayName: "Octo",
         agentProfileId: "codex-agent",
@@ -113,7 +113,7 @@ function runScript(args, root) {
 }
 
 test("persistent live smoke script backs up, writes, redacts, and restores binding metadata", () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-persistent-live-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-persistent-live-"));
   const { configPath, daemonConfigPath } = writeFixture(root);
   const backupDir = path.join(root, "backups");
 

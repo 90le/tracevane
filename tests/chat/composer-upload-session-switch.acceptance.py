@@ -15,7 +15,7 @@ from browser_surface import wait_for_active_session, wait_for_chat_surface
 from upload_request import read_upload_payload
 
 
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-composer-upload-session-switch-acceptance.png")
+SCREENSHOT = Path("/tmp/tracevane-chat-composer-upload-session-switch-acceptance.png")
 
 
 def wait_button_enabled(locator, timeout=30000):
@@ -65,7 +65,7 @@ def wait_for_count(page, items: list[object], count: int, label: str, timeout=10
 
 
 def write_temp_file(name: str, content: str) -> Path:
-    root = Path(tempfile.mkdtemp(prefix="openclaw-studio-chat-upload-session-switch-"))
+    root = Path(tempfile.mkdtemp(prefix="tracevane-chat-upload-session-switch-"))
     path = root / name
     path.write_text(content, encoding="utf-8")
     return path
@@ -163,7 +163,7 @@ def upload_response(session_key: str, payload: dict[str, object]) -> dict[str, o
 
 
 def read_draft_storage(page, session_key: str) -> dict[str, object]:
-    key = f"openclaw-studio.chat.composer-draft:{session_key}"
+    key = f"tracevane.chat.composer-draft:{session_key}"
     raw = page.evaluate("(keyName) => window.localStorage.getItem(keyName)", key)
     if not raw:
         return {}

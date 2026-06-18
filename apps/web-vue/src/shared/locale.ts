@@ -2,7 +2,7 @@ import { computed, ref } from 'vue';
 
 export type Locale = 'zh' | 'en';
 
-const LOCALE_STORAGE_KEY = 'openclaw-studio.locale';
+const LOCALE_STORAGE_KEY = 'tracevane.locale';
 const locale = ref<Locale>('zh');
 let initialized = false;
 

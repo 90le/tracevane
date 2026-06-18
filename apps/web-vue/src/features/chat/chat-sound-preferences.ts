@@ -1,4 +1,4 @@
-const CHAT_SOUND_CUES_ENABLED_KEY = 'openclaw-studio.chat.sound-cues-enabled';
+const CHAT_SOUND_CUES_ENABLED_KEY = 'tracevane.chat.sound-cues-enabled';
 const DEFAULT_CHAT_SOUND_CUES_ENABLED = true;
 
 type CueKind = 'sent' | 'received';

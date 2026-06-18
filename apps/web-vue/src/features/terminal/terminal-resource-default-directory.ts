@@ -1,7 +1,7 @@
 import type { TerminalResourceTransferPayload } from './terminal-resource-transfer';
 
 export const RESOURCE_EXPLORER_DEFAULT_STORAGE_KEY =
-  'openclaw-studio.terminal.resourceExplorer.default';
+  'tracevane.terminal.resourceExplorer.default';
 export const TERMINAL_RESOURCE_DEFAULT_MAIN_SCOPE_ID = 'all';
 
 export interface TerminalResourceDefaultDirectory {

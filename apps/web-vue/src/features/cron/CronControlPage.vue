@@ -57,7 +57,7 @@
 
             <label class="form-field">
               <span class="form-label">{{ text('筛选', 'Filter') }}</span>
-              <StudioSelect v-model="filterMode" :options="filterOptions" :placeholder="text('全部任务', 'All jobs')" />
+              <TracevaneSelect v-model="filterMode" :options="filterOptions" :placeholder="text('全部任务', 'All jobs')" />
             </label>
           </div>
 
@@ -306,7 +306,7 @@
                 </div>
                 <div class="form-field">
                   <label class="form-label">{{ text('Agent', 'Agent') }}</label>
-                  <StudioSelect v-model="editorForm.agentId" :options="agentOptions" :placeholder="text('选择 Agent', 'Select agent')" />
+                  <TracevaneSelect v-model="editorForm.agentId" :options="agentOptions" :placeholder="text('选择 Agent', 'Select agent')" />
                 </div>
                 <div class="form-field form-field-full">
                   <label class="form-label">{{ text('描述', 'Description') }}</label>
@@ -333,11 +333,11 @@
               <div class="cron-form-grid">
                 <div class="form-field">
                   <label class="form-label">{{ text('计划类型', 'Schedule Kind') }}</label>
-                  <StudioSelect v-model="editorForm.scheduleKind" :options="scheduleKindOptions" :placeholder="text('选择类型', 'Select kind')" />
+                  <TracevaneSelect v-model="editorForm.scheduleKind" :options="scheduleKindOptions" :placeholder="text('选择类型', 'Select kind')" />
                 </div>
                 <div class="form-field">
                   <label class="form-label">{{ text('Wake 模式', 'Wake Mode') }}</label>
-                  <StudioSelect v-model="editorForm.wakeMode" :options="wakeModeOptions" :placeholder="text('选择模式', 'Select mode')" />
+                  <TracevaneSelect v-model="editorForm.wakeMode" :options="wakeModeOptions" :placeholder="text('选择模式', 'Select mode')" />
                 </div>
 
                 <template v-if="editorForm.scheduleKind === 'cron'">
@@ -383,19 +383,19 @@
               <div class="cron-form-grid">
                 <div class="form-field">
                   <label class="form-label">{{ text('Payload 类型', 'Payload Kind') }}</label>
-                  <StudioSelect v-model="editorForm.payloadKind" :options="payloadKindOptions" :placeholder="text('选择类型', 'Select kind')" />
+                  <TracevaneSelect v-model="editorForm.payloadKind" :options="payloadKindOptions" :placeholder="text('选择类型', 'Select kind')" />
                 </div>
                 <div class="form-field">
                   <label class="form-label">{{ text('会话目标', 'Session Target') }}</label>
-                  <StudioSelect v-model="editorForm.sessionTargetMode" :options="sessionTargetOptions" :placeholder="text('选择会话', 'Select session target')" />
+                  <TracevaneSelect v-model="editorForm.sessionTargetMode" :options="sessionTargetOptions" :placeholder="text('选择会话', 'Select session target')" />
                 </div>
                 <div v-if="editorForm.sessionTargetMode === 'existing-session'" class="form-field form-field-full">
                   <label class="form-label">{{ text('已有会话', 'Existing Session') }}</label>
-                  <StudioSelect v-model="editorForm.sessionTargetRef" :options="sessionRefOptions" :placeholder="text('选择会话', 'Select session')" />
+                  <TracevaneSelect v-model="editorForm.sessionTargetRef" :options="sessionRefOptions" :placeholder="text('选择会话', 'Select session')" />
                 </div>
                 <div class="form-field">
                   <label class="form-label">{{ text('思考级别', 'Thinking') }}</label>
-                  <StudioSelect v-model="editorForm.thinking" :options="thinkingOptions" :placeholder="text('默认', 'Default')" />
+                  <TracevaneSelect v-model="editorForm.thinking" :options="thinkingOptions" :placeholder="text('默认', 'Default')" />
                 </div>
                 <div class="form-field">
                   <label class="form-label">{{ text('超时秒数', 'Timeout Seconds') }}</label>
@@ -449,16 +449,16 @@
               <div class="cron-form-grid">
                 <div class="form-field">
                   <label class="form-label">{{ text('投递模式', 'Delivery Mode') }}</label>
-                  <StudioSelect v-model="editorForm.deliveryMode" :options="deliveryModeOptions" :placeholder="text('选择投递模式', 'Select delivery mode')" />
+                  <TracevaneSelect v-model="editorForm.deliveryMode" :options="deliveryModeOptions" :placeholder="text('选择投递模式', 'Select delivery mode')" />
                 </div>
                 <template v-if="editorForm.deliveryMode === 'announce'">
                   <div class="form-field">
                     <label class="form-label">{{ text('目标类型', 'Target Type') }}</label>
-                    <StudioSelect v-model="editorForm.deliveryTargetType" :options="deliveryTargetTypeOptions" :placeholder="text('选择类型', 'Select type')" />
+                    <TracevaneSelect v-model="editorForm.deliveryTargetType" :options="deliveryTargetTypeOptions" :placeholder="text('选择类型', 'Select type')" />
                   </div>
                   <div class="form-field form-field-full">
                     <label class="form-label">{{ text('投递目标', 'Delivery Target') }}</label>
-                    <StudioSelect v-model="editorForm.deliveryTargetRef" :options="deliveryTargetOptions" :placeholder="text('选择目标', 'Select target')" />
+                    <TracevaneSelect v-model="editorForm.deliveryTargetRef" :options="deliveryTargetOptions" :placeholder="text('选择目标', 'Select target')" />
                   </div>
                   <label class="cron-option-row">
                     <input v-model="editorForm.deliveryBestEffort" class="form-checkbox" type="checkbox" />
@@ -501,7 +501,7 @@
                   <div v-if="editorForm.failureDestinationEnabled" class="cron-form-grid">
                     <div class="form-field">
                       <label class="form-label">{{ text('目标模式', 'Destination Mode') }}</label>
-                      <StudioSelect v-model="editorForm.failureDestinationMode" :options="failureAlertModeOptions" :placeholder="text('选择模式', 'Select mode')" />
+                      <TracevaneSelect v-model="editorForm.failureDestinationMode" :options="failureAlertModeOptions" :placeholder="text('选择模式', 'Select mode')" />
                     </div>
 
                     <template v-if="editorForm.failureDestinationMode === 'announce'">
@@ -550,7 +550,7 @@
                 <template v-if="editorForm.failureAlertEnabled">
                   <div class="form-field">
                     <label class="form-label">{{ text('告警模式', 'Alert Mode') }}</label>
-                    <StudioSelect v-model="editorForm.failureAlertMode" :options="failureAlertModeOptions" :placeholder="text('选择模式', 'Select mode')" />
+                    <TracevaneSelect v-model="editorForm.failureAlertMode" :options="failureAlertModeOptions" :placeholder="text('选择模式', 'Select mode')" />
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('触发阈值', 'Trigger After') }}</label>
@@ -751,15 +751,15 @@
               </div>
               <div class="form-field">
                 <label class="form-label">{{ text('Agent', 'Agent') }}</label>
-                <StudioSelect v-model="createForm.agentId" :options="agentOptions" :placeholder="text('选择 Agent', 'Select agent')" />
+                <TracevaneSelect v-model="createForm.agentId" :options="agentOptions" :placeholder="text('选择 Agent', 'Select agent')" />
               </div>
               <div class="form-field">
                 <label class="form-label">{{ text('计划类型', 'Schedule Kind') }}</label>
-                <StudioSelect v-model="createForm.scheduleKind" :options="scheduleKindOptions" :placeholder="text('选择类型', 'Select kind')" />
+                <TracevaneSelect v-model="createForm.scheduleKind" :options="scheduleKindOptions" :placeholder="text('选择类型', 'Select kind')" />
               </div>
               <div class="form-field">
                 <label class="form-label">{{ text('Wake 模式', 'Wake Mode') }}</label>
-                <StudioSelect v-model="createForm.wakeMode" :options="wakeModeOptions" :placeholder="text('选择模式', 'Select mode')" />
+                <TracevaneSelect v-model="createForm.wakeMode" :options="wakeModeOptions" :placeholder="text('选择模式', 'Select mode')" />
               </div>
 
               <template v-if="createForm.scheduleKind === 'cron'">
@@ -803,15 +803,15 @@
                 <div class="cron-form-grid">
                   <div class="form-field">
                     <label class="form-label">{{ text('会话目标', 'Session Target') }}</label>
-                    <StudioSelect v-model="createForm.sessionTargetMode" :options="sessionTargetOptions" :placeholder="text('选择会话', 'Select session target')" />
+                    <TracevaneSelect v-model="createForm.sessionTargetMode" :options="sessionTargetOptions" :placeholder="text('选择会话', 'Select session target')" />
                   </div>
                   <div v-if="createForm.sessionTargetMode === 'existing-session'" class="form-field">
                     <label class="form-label">{{ text('已有会话', 'Existing Session') }}</label>
-                    <StudioSelect v-model="createForm.sessionTargetRef" :options="sessionRefOptions" :placeholder="text('选择会话', 'Select session')" />
+                    <TracevaneSelect v-model="createForm.sessionTargetRef" :options="sessionRefOptions" :placeholder="text('选择会话', 'Select session')" />
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('思考级别', 'Thinking') }}</label>
-                    <StudioSelect v-model="createForm.thinking" :options="thinkingOptions" :placeholder="text('默认', 'Default')" />
+                    <TracevaneSelect v-model="createForm.thinking" :options="thinkingOptions" :placeholder="text('默认', 'Default')" />
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('超时秒数', 'Timeout Seconds') }}</label>
@@ -823,16 +823,16 @@
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('投递模式', 'Delivery Mode') }}</label>
-                    <StudioSelect v-model="createForm.deliveryMode" :options="deliveryModeOptions" :placeholder="text('选择投递模式', 'Select delivery mode')" />
+                    <TracevaneSelect v-model="createForm.deliveryMode" :options="deliveryModeOptions" :placeholder="text('选择投递模式', 'Select delivery mode')" />
                   </div>
                   <template v-if="createForm.deliveryMode === 'announce'">
                     <div class="form-field">
                       <label class="form-label">{{ text('目标类型', 'Target Type') }}</label>
-                      <StudioSelect v-model="createForm.deliveryTargetType" :options="deliveryTargetTypeOptions" :placeholder="text('选择类型', 'Select type')" />
+                      <TracevaneSelect v-model="createForm.deliveryTargetType" :options="deliveryTargetTypeOptions" :placeholder="text('选择类型', 'Select type')" />
                     </div>
                     <div class="form-field form-field-full">
                       <label class="form-label">{{ text('投递目标', 'Delivery Target') }}</label>
-                      <StudioSelect v-model="createForm.deliveryTargetRef" :options="deliveryTargetOptionsForCreate" :placeholder="text('选择目标', 'Select target')" />
+                      <TracevaneSelect v-model="createForm.deliveryTargetRef" :options="deliveryTargetOptionsForCreate" :placeholder="text('选择目标', 'Select target')" />
                     </div>
                   </template>
                   <template v-else-if="createForm.deliveryMode === 'webhook'">
@@ -876,7 +876,7 @@ import type { CronDetailPayload, CronJobInput, CronRunSummary, CronSummaryPayloa
 import StatusPill from '../../components/StatusPill.vue';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import { copyTextToClipboard } from '../../shared/clipboard';
-import StudioSelect from '../../shared/components/StudioSelect.vue';
+import TracevaneSelect from '../../shared/components/TracevaneSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 import {
   createCronJob,

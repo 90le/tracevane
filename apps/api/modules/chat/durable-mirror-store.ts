@@ -1,14 +1,14 @@
 import fs from 'node:fs';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import type { StudioServerConfig } from '../../../../types/api.js';
+import type { TracevaneServerConfig } from '../../../../types/api.js';
 import type {
   ChatHistorySearchContentFilter,
   ChatHistorySearchRoleFilter,
   ChatMessageItem,
   ChatObservabilityState,
 } from '../../../../types/chat.js';
-import { openStudioChatSqliteDatabase } from './chat-sqlite.js';
+import { openTracevaneChatSqliteDatabase } from './chat-sqlite.js';
 import { clipPreview } from './shared.js';
 
 const require = createRequire(import.meta.url);
@@ -195,17 +195,17 @@ function encodeSessionKey(sessionKey: string): string {
   return Buffer.from(sessionKey, 'utf-8').toString('base64url');
 }
 
-function ensureMirrorDir(config: StudioServerConfig): string {
-  const dir = path.join(config.openclawRoot, 'studio', 'chat-durable-mirror');
+function ensureMirrorDir(config: TracevaneServerConfig): string {
+  const dir = path.join(config.openclawRoot, 'tracevane', 'chat-durable-mirror');
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
 
-function jsonMirrorPath(config: StudioServerConfig, sessionKey: string): string {
+function jsonMirrorPath(config: TracevaneServerConfig, sessionKey: string): string {
   return path.join(ensureMirrorDir(config), `${encodeSessionKey(sessionKey)}.json`);
 }
 
-function sqliteMirrorPath(config: StudioServerConfig): string {
+function sqliteMirrorPath(config: TracevaneServerConfig): string {
   return path.join(ensureMirrorDir(config), 'mirror.sqlite');
 }
 
@@ -310,7 +310,7 @@ function hasMessageText(message: ChatMessageItem): boolean {
   return Boolean((message.text || '').trim());
 }
 
-function readJsonMirrorRecord(config: StudioServerConfig, sessionKey: string): JsonMirrorRecord | null {
+function readJsonMirrorRecord(config: TracevaneServerConfig, sessionKey: string): JsonMirrorRecord | null {
   try {
     return JSON.parse(fs.readFileSync(jsonMirrorPath(config, sessionKey), 'utf-8')) as JsonMirrorRecord;
   } catch {
@@ -318,7 +318,7 @@ function readJsonMirrorRecord(config: StudioServerConfig, sessionKey: string): J
   }
 }
 
-function writeJsonMirrorRecord(config: StudioServerConfig, sessionKey: string, record: JsonMirrorRecord): void {
+function writeJsonMirrorRecord(config: TracevaneServerConfig, sessionKey: string, record: JsonMirrorRecord): void {
   fs.writeFileSync(jsonMirrorPath(config, sessionKey), `${JSON.stringify(record, null, 2)}\n`);
 }
 
@@ -360,8 +360,8 @@ function ensureSqliteColumn(database: any, table: string, column: string, defini
   database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
 }
 
-function loadSqliteDatabase(config: StudioServerConfig): any | null {
-  const database = openStudioChatSqliteDatabase(config);
+function loadSqliteDatabase(config: TracevaneServerConfig): any | null {
+  const database = openTracevaneChatSqliteDatabase(config);
   if (!database) {
     return null;
   }
@@ -477,7 +477,7 @@ function loadSqliteDatabase(config: StudioServerConfig): any | null {
   }
 }
 
-function openLegacySqliteDatabase(config: StudioServerConfig): any | null {
+function openLegacySqliteDatabase(config: TracevaneServerConfig): any | null {
   try {
     const sqlite = require('node:sqlite');
     const DatabaseSync = sqlite?.DatabaseSync;
@@ -557,7 +557,7 @@ function buildSessionMetaFromCheckpointRow(
   };
 }
 
-function readLegacySqliteSnapshot(config: StudioServerConfig, sessionKey: string): DurableMirrorSnapshot | null {
+function readLegacySqliteSnapshot(config: TracevaneServerConfig, sessionKey: string): DurableMirrorSnapshot | null {
   const database = openLegacySqliteDatabase(config);
   if (!database) {
     return null;
@@ -583,7 +583,7 @@ function readLegacySqliteSnapshot(config: StudioServerConfig, sessionKey: string
   }
 }
 
-function clearLegacySqliteSession(config: StudioServerConfig, sessionKey: string): void {
+function clearLegacySqliteSession(config: TracevaneServerConfig, sessionKey: string): void {
   const database = openLegacySqliteDatabase(config);
   if (!database) {
     return;
@@ -659,7 +659,7 @@ function hydrateSqliteMessageRowsFromSnapshot(
 
 function ensureSqliteMessageRowsLoaded(
   database: any,
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   sessionKey: string,
 ): boolean {
   const countRow = database.prepare(`
@@ -821,7 +821,7 @@ function hasSqliteTombstone(database: any, sessionKey: string): boolean {
   return Boolean(row);
 }
 
-export function createStudioChatDurableMirrorStore(config: StudioServerConfig) {
+export function createTracevaneChatDurableMirrorStore(config: TracevaneServerConfig) {
   const database = loadSqliteDatabase(config);
   const backend: MirrorBackend = database ? 'sqlite' : 'json';
   let sqliteFtsHealthy = database ? sqliteHasMirrorFtsTable(database) : false;

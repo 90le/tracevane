@@ -1,7 +1,7 @@
 import type {
-  StudioClientRuntimeConfig,
-  StudioExposureKind,
-  StudioServerConfig,
+  TracevaneClientRuntimeConfig,
+  TracevaneExposureKind,
+  TracevaneServerConfig,
 } from '../../types/api.js';
 
 function normalizeBasePath(value: string): string {
@@ -11,13 +11,13 @@ function normalizeBasePath(value: string): string {
 }
 
 function getStandaloneBasePath(): string {
-  return normalizeBasePath(process.env.STUDIO_BASE_PATH || '');
+  return normalizeBasePath(process.env.TRACEVANE_BASE_PATH || '');
 }
 
-export function buildStudioClientRuntimeConfig(
-  config: StudioServerConfig,
-  exposureKind: StudioExposureKind
-): StudioClientRuntimeConfig {
+export function buildTracevaneClientRuntimeConfig(
+  config: TracevaneServerConfig,
+  exposureKind: TracevaneExposureKind
+): TracevaneClientRuntimeConfig {
   const gatewayAuthStorageScopePath = config.gatewayControlUiBasePath || '';
   if (exposureKind === 'gateway') {
     const basePath = normalizeBasePath(config.transport.gateway.basePath);

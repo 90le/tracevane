@@ -80,7 +80,7 @@ mkdir -p "${OUTPUT_DIR_INPUT}"
 OUTPUT_DIR="$(cd "${OUTPUT_DIR_INPUT}" && pwd)"
 PACKAGE_NAME="tracevane-${VERSION}"
 PACKAGE_DIR="${OUTPUT_DIR}/${PACKAGE_NAME}"
-ROOT_INSTALLER_PATH="${OUTPUT_DIR}/install-openclaw-studio.sh"
+ROOT_INSTALLER_PATH="${OUTPUT_DIR}/install-tracevane.sh"
 ROOT_LANDING_PATH="${OUTPUT_DIR}/index.html"
 LANDING_PAGE_PATH="${SCRIPT_DIR}/index.html"
 APP_VUE_SOURCE_PATH="${SCRIPT_DIR}/apps/web-vue/src/App.vue"
@@ -152,10 +152,10 @@ function rewriteTextFile(relativePath, replacements) {
 }
 
 rewriteTextFile('apps/api/config.ts', [
-  [/const STUDIO_VERSION_FALLBACK = '[^']+';/, `const STUDIO_VERSION_FALLBACK = '${version}';`],
+  [/const TRACEVANE_VERSION_FALLBACK = '[^']+';/, `const TRACEVANE_VERSION_FALLBACK = '${version}';`],
 ]);
 rewriteTextFile('apps/web-vue/vite.config.ts', [
-  [/const STUDIO_PACKAGE_VERSION_FALLBACK = '[^']+';/, `const STUDIO_PACKAGE_VERSION_FALLBACK = '${version}';`],
+  [/const TRACEVANE_PACKAGE_VERSION_FALLBACK = '[^']+';/, `const TRACEVANE_PACKAGE_VERSION_FALLBACK = '${version}';`],
 ]);
 NODE
 else
@@ -164,17 +164,17 @@ fi
 
 if [[ "${SOURCE_SYNC}" -eq 1 ]]; then
   echo "[0.4/6] 同步本地 installer 默认版本..."
-  node "${SCRIPT_DIR}/scripts/studio-release-installer-utils.mjs" rewrite-installer-version \
+  node "${SCRIPT_DIR}/scripts/tracevane-release-installer-utils.mjs" rewrite-installer-version \
     "${VERSION}" \
     "${OPENCLAW_TARGET_VERSION}" \
-    "${SCRIPT_DIR}/install-openclaw-studio.sh"
+    "${SCRIPT_DIR}/install-tracevane.sh"
 else
   echo "[0.4/6] 跳过本地 installer 版本同步..."
 fi
 
 if [[ "${SOURCE_SYNC}" -eq 1 ]]; then
   echo "[0.5/6] 同步站点安装页版本..."
-  node "${SCRIPT_DIR}/scripts/studio-release-installer-utils.mjs" rewrite-landing-version \
+  node "${SCRIPT_DIR}/scripts/tracevane-release-installer-utils.mjs" rewrite-landing-version \
     "${VERSION}" \
     "${OPENCLAW_TARGET_VERSION}" \
     "${LANDING_PAGE_PATH}"
@@ -187,7 +187,7 @@ cd "${SCRIPT_DIR}"
 npm run build:api
 
 echo "[2/6] 构建前端..."
-OPENCLAW_STUDIO_BUILD_VERSION="${VERSION}" npm run build:web
+TRACEVANE_BUILD_VERSION="${VERSION}" npm run build:web
 
 echo "[3/6] 准备打包目录..."
 rm -rf "${PACKAGE_DIR}"
@@ -206,19 +206,19 @@ echo "[5/6] 复制元数据..."
 cp "${SCRIPT_DIR}/package.json" "${PACKAGE_DIR}/"
 cp "${SCRIPT_DIR}/openclaw.plugin.json" "${PACKAGE_DIR}/"
 cp "${SCRIPT_DIR}/DEPLOY.md" "${PACKAGE_DIR}/"
-cp "${SCRIPT_DIR}/install-openclaw-studio.sh" "${PACKAGE_DIR}/"
-cp "${SCRIPT_DIR}/install-openclaw-studio.sh" "${ROOT_INSTALLER_PATH}"
+cp "${SCRIPT_DIR}/install-tracevane.sh" "${PACKAGE_DIR}/"
+cp "${SCRIPT_DIR}/install-tracevane.sh" "${ROOT_INSTALLER_PATH}"
 cp "${LANDING_PAGE_PATH}" "${ROOT_LANDING_PATH}"
 
 echo "[5.2/6] 同步 installer 默认版本..."
-node "${SCRIPT_DIR}/scripts/studio-release-installer-utils.mjs" rewrite-installer-version \
+node "${SCRIPT_DIR}/scripts/tracevane-release-installer-utils.mjs" rewrite-installer-version \
   "${VERSION}" \
   "${OPENCLAW_TARGET_VERSION}" \
-  "${PACKAGE_DIR}/install-openclaw-studio.sh" \
+  "${PACKAGE_DIR}/install-tracevane.sh" \
   "${ROOT_INSTALLER_PATH}"
 
 echo "[5.3/6] 同步输出目录安装页版本..."
-node "${SCRIPT_DIR}/scripts/studio-release-installer-utils.mjs" rewrite-landing-version \
+node "${SCRIPT_DIR}/scripts/tracevane-release-installer-utils.mjs" rewrite-landing-version \
   "${VERSION}" \
   "${OPENCLAW_TARGET_VERSION}" \
   "${ROOT_LANDING_PATH}"
@@ -238,7 +238,7 @@ const manifestPath = path.join(packageDir, 'openclaw.plugin.json');
 const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
 pkg.version = version;
 pkg.openclaw = pkg.openclaw && typeof pkg.openclaw === 'object' ? pkg.openclaw : {};
-pkg.openclaw.id = 'studio';
+pkg.openclaw.id = 'tracevane';
 pkg.openclaw.kind = 'ui';
 pkg.openclaw.installDependencies = true;
 pkg.openclaw.extensions = ['./dist/index.js'];
@@ -293,7 +293,7 @@ echo "安装完成。"
 echo "请确认 OpenClaw 主程序版本 >= 2026.4.8。"
 INSTALL_EOF
 chmod +x "${PACKAGE_DIR}/install.sh"
-chmod +x "${PACKAGE_DIR}/install-openclaw-studio.sh"
+chmod +x "${PACKAGE_DIR}/install-tracevane.sh"
 chmod +x "${ROOT_INSTALLER_PATH}"
 
 echo ""
@@ -309,7 +309,7 @@ const path = require('node:path');
 const outputDir = process.argv[2];
 const version = process.argv[3];
 const targetVersion = process.argv[4];
-const packageUrl = `https://studio.90le.cn/tracevane-${version}.tar.gz`;
+const packageUrl = `https://tracevane.90le.cn/tracevane-${version}.tar.gz`;
 const payload = {
   version,
   latestVersion: version,
@@ -321,7 +321,7 @@ const payload = {
   publishedAt: new Date().toISOString(),
 };
 
-for (const fileName of ['tracevane-latest.json', 'openclaw-studio-latest.json', 'studio-version.json', 'version.json']) {
+for (const fileName of ['tracevane-latest.json', 'tracevane-version.json', 'version.json']) {
   fs.writeFileSync(path.join(outputDir, fileName), `${JSON.stringify(payload, null, 2)}\n`, 'utf8');
 }
 NODE

@@ -1,5 +1,5 @@
 import { parseJsonBody, sendJson } from "../../core/http.js";
-import type { StudioRouter } from "../../core/router.js";
+import type { TracevaneRouter } from "../../core/router.js";
 import type {
   ModelGatewayActiveRouteSmokeRequest,
   ModelGatewayClientAuthUpdateRequest,
@@ -39,7 +39,7 @@ function sendModelGatewayError(res: Parameters<typeof sendJson>[0], error: unkno
   });
 }
 
-export function registerModelGatewayRoutes(router: StudioRouter): void {
+export function registerModelGatewayRoutes(router: TracevaneRouter): void {
   router.get("/gateway/status", (_req, res, routeCtx) => {
     try {
       sendJson(res, 200, routeCtx.services.modelGateway.getStatus());

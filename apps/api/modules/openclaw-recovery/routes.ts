@@ -1,5 +1,5 @@
 import { parseJsonBody, sendJson } from "../../core/http.js";
-import type { StudioRouter } from "../../core/router.js";
+import type { TracevaneRouter } from "../../core/router.js";
 import type {
   OpenClawRecoveryDaemonServiceRequest,
   OpenClawRecoveryRestoreBackupRequest,
@@ -7,7 +7,7 @@ import type {
 } from "../../../../types/openclaw-recovery.js";
 
 function readLimit(
-  req: Parameters<StudioRouter["get"]>[1] extends (
+  req: Parameters<TracevaneRouter["get"]>[1] extends (
     req: infer R,
     ...args: any[]
   ) => any
@@ -26,7 +26,7 @@ function readLimit(
 }
 
 function readPagination(
-  req: Parameters<StudioRouter["get"]>[1] extends (
+  req: Parameters<TracevaneRouter["get"]>[1] extends (
     req: infer R,
     ...args: any[]
   ) => any
@@ -48,7 +48,7 @@ function readPagination(
   };
 }
 
-export function registerOpenClawRecoveryRoutes(router: StudioRouter): void {
+export function registerOpenClawRecoveryRoutes(router: TracevaneRouter): void {
   router.get("/api/openclaw-recovery/status", async (_req, res, routeCtx) => {
     sendJson(res, 200, await routeCtx.services.openclawRecovery.getStatus());
   });

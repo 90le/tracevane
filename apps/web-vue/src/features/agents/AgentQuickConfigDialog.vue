@@ -47,7 +47,7 @@
 
               <div class="form-field">
                 <label class="form-label">{{ text('模型覆盖', 'Model Override') }}</label>
-                <StudioSelect
+                <TracevaneSelect
                   v-model="draft.model"
                   :options="modelOptions"
                   :placeholder="text('跟随系统默认', 'Inherit system default')"
@@ -57,7 +57,7 @@
 
               <div class="form-field">
                 <label class="form-label">{{ text('运行时类型', 'Runtime Type') }}</label>
-                <StudioSelect
+                <TracevaneSelect
                   v-model="draft.runtimeType"
                   :options="runtimeTypeOptions"
                   :placeholder="text('默认运行时', 'Default runtime')"
@@ -90,17 +90,17 @@
 
               <div class="form-field">
                 <label class="form-label">{{ text('沙盒模式', 'Sandbox Mode') }}</label>
-                <StudioSelect v-model="draft.sandboxMode" :options="sandboxModeOptions" :teleport="false" />
+                <TracevaneSelect v-model="draft.sandboxMode" :options="sandboxModeOptions" :teleport="false" />
               </div>
 
               <div class="form-field">
                 <label class="form-label">{{ text('工作区访问', 'Workspace Access') }}</label>
-                <StudioSelect v-model="draft.workspaceAccess" :options="workspaceAccessOptions" :teleport="false" />
+                <TracevaneSelect v-model="draft.workspaceAccess" :options="workspaceAccessOptions" :teleport="false" />
               </div>
 
               <div class="form-field">
                 <label class="form-label">{{ text('工具配置', 'Tools Profile') }}</label>
-                <StudioSelect v-model="draft.toolsProfile" :options="toolsProfileOptions" :teleport="false" />
+                <TracevaneSelect v-model="draft.toolsProfile" :options="toolsProfileOptions" :teleport="false" />
               </div>
 
               <label class="option-row form-field-full">
@@ -132,7 +132,7 @@ import { reactive, watch } from 'vue';
 import { X } from '@lucide/vue';
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
 import AvatarFieldEditor from '../../shared/components/AvatarFieldEditor.vue';
-import StudioSelect from '../../shared/components/StudioSelect.vue';
+import TracevaneSelect from '../../shared/components/TracevaneSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 
 defineOptions({ name: 'AgentQuickConfigDialog' });
@@ -225,7 +225,7 @@ watch(
 
 function shouldIgnoreOutsideEvent(event: Event): boolean {
   const target = event.target as HTMLElement | null;
-  return Boolean(target?.closest('.studio-select-menu-portal'));
+  return Boolean(target?.closest('.tracevane-select-menu-portal'));
 }
 
 function handlePointerDownOutside(event: Event): void {

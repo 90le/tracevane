@@ -7,7 +7,7 @@ import path from 'node:path';
 import { getDeviceTrustSnapshot } from '../../dist/apps/api/modules/system/device-trust.js';
 
 function makeTempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'studio-device-trust-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-device-trust-'));
 }
 
 function writeJson(file, value) {
@@ -17,21 +17,21 @@ function writeJson(file, value) {
 
 function createConfig(root) {
   return {
-    pluginId: 'studio',
+    pluginId: 'tracevane',
     pluginName: 'Tracevane',
     version: '0.1.0',
     port: 3760,
     autoStart: true,
     openclawRoot: root,
     openclawConfigFile: path.join(root, 'openclaw.json'),
-    projectRoot: '/tmp/openclaw-studio-extension',
-    webDistDir: '/tmp/openclaw-studio-extension/apps/web-vue/dist',
+    projectRoot: '/tmp/tracevane-extension',
+    webDistDir: '/tmp/tracevane-extension/apps/web-vue/dist',
     gatewayPort: 31879,
     gatewayWsUrl: 'ws://127.0.0.1:31879',
     gatewayControlUiBasePath: '',
     transport: {
       standalone: { enabled: true, port: 3760 },
-      gateway: { enabled: true, basePath: '/studio' },
+      gateway: { enabled: true, basePath: '/tracevane' },
     },
   };
 }

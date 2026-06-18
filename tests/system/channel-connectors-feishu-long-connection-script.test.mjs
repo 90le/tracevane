@@ -128,7 +128,7 @@ async function runScriptFailure(args, root) {
 }
 
 test("Feishu long-connection smoke passes clean SDK-owned runtime", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-long-smoke-"));
   const { runtimePath, logPath } = writeFixture(root, feishuRuntime());
 
   const output = await runScript([
@@ -170,7 +170,7 @@ test("Feishu long-connection smoke passes clean SDK-owned runtime", async () => 
 });
 
 test("Feishu long-connection smoke rejects connected runtime with overdue pong", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-long-smoke-"));
   const { runtimePath, logPath } = writeFixture(root, feishuRuntime({
     transportVerified: true,
     sentPings: 7,
@@ -193,7 +193,7 @@ test("Feishu long-connection smoke rejects connected runtime with overdue pong",
 });
 
 test("Feishu long-connection smoke rejects SDK-connected runtime with stale transport", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-long-smoke-"));
   const { runtimePath, logPath } = writeFixture(root, feishuRuntime({
     connected: false,
     sdkConnected: true,
@@ -222,7 +222,7 @@ test("Feishu long-connection smoke rejects SDK-connected runtime with stale tran
 });
 
 test("Feishu long-connection smoke rejects unsafe proactive rebuild defaults", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-long-smoke-"));
   const { runtimePath, logPath } = writeFixture(root, feishuRuntime({
     pingTimeoutSeconds: 0,
     connectedIdleRenewAfterMs: 300000,
@@ -253,7 +253,7 @@ test("Feishu long-connection smoke rejects unsafe proactive rebuild defaults", a
 });
 
 test("Feishu long-connection smoke rejects old ingress-unverified renewal logs", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-long-smoke-"));
   const runtimeRestartAt = new Date(Date.now() + 1_000).toISOString();
   const logText = [
     '2026-06-08T10:00:00.000Z Feishu WebSocket watchdog restarting client {"key":"feishu-key","reason":"watchdog_ingress_unverified_61000"}',
@@ -287,7 +287,7 @@ test("Feishu long-connection smoke rejects old ingress-unverified renewal logs",
 });
 
 test("Feishu long-connection smoke rejects unsafe ingress-unverified renewal logs", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-long-smoke-"));
   const logText = [
     '2026-06-08T10:00:00.001Z Feishu WebSocket ingress-unverified renewal threshold elapsed {"key":"feishu-key","connectedForMs":11000,"ingressUnverifiedAfterMs":10000,"ingressUnverifiedRenewDelayMs":10000,"ingressUnverifiedRenewals":1,"ingressUnverifiedRenewMax":3}',
     "",
@@ -312,7 +312,7 @@ test("Feishu long-connection smoke rejects unsafe ingress-unverified renewal log
 });
 
 test("Feishu long-connection smoke rejects old verified-ingress silent renewal logs", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-long-smoke-"));
   const runtimeRestartAt = new Date(Date.now() + 1_000).toISOString();
   const logText = [
     '2026-06-08T10:00:00.000Z Feishu WebSocket watchdog restarting client {"key":"feishu-key","reason":"watchdog_verified_ingress_silent_121000"}',
@@ -341,7 +341,7 @@ test("Feishu long-connection smoke rejects old verified-ingress silent renewal l
 });
 
 test("Feishu long-connection smoke rejects unsafe verified-ingress silent renewal logs", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-long-smoke-"));
   const logText = [
     '2026-06-08T10:00:00.001Z Feishu WebSocket verified-ingress silent renewal threshold elapsed {"key":"feishu-key","silentForMs":31000,"renewAfterMs":30000,"verifiedIngressSilentRenewals":1}',
     "",
@@ -365,7 +365,7 @@ test("Feishu long-connection smoke rejects unsafe verified-ingress silent renewa
 });
 
 test("Feishu long-connection smoke rejects delayed startup delivery-silence renewal", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-long-smoke-"));
   const logText = [
     '2026-06-08T10:00:00.000Z Feishu WebSocket watchdog restarting client {"key":"feishu-key","reason":"watchdog_zero_inbound_91000"}',
     '2026-06-08T10:00:00.001Z Feishu WebSocket zero-inbound startup renewal threshold elapsed {"key":"feishu-key","connectedForMs":91000,"zeroInboundRenewAfterMs":90000,"zeroInboundRenewals":1,"zeroInboundRenewMax":1}',
@@ -392,7 +392,7 @@ test("Feishu long-connection smoke rejects delayed startup delivery-silence rene
 });
 
 test("Feishu long-connection smoke rejects old fast zero-inbound renewal logs", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-long-smoke-"));
   const logText = [
     '2026-06-08T10:00:00.001Z Feishu WebSocket zero-inbound startup renewal threshold elapsed {"key":"feishu-key","connectedForMs":31000,"zeroInboundRenewAfterMs":30000,"zeroInboundRenewals":1,"zeroInboundRenewMax":1}',
     "",
@@ -412,7 +412,7 @@ test("Feishu long-connection smoke rejects old fast zero-inbound renewal logs", 
 });
 
 test("Feishu long-connection smoke records bounded startup ingress validation without treating it as old watchdog churn", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-long-smoke-"));
   const logText = [
     '2026-06-08T10:00:00.001Z Feishu WebSocket startup ingress validation missing; recycling client {"key":"feishu-key","reason":"startup_ingress_unverified_15000ms","connectedForMs":16000,"ingressUnverifiedAfterMs":15000,"ingressUnverifiedRenewDelayMs":15000,"ingressUnverifiedRenewals":1,"ingressUnverifiedRenewMax":5}',
     '2026-06-08T10:00:00.002Z Feishu WebSocket startup ingress validation cycle ended; recreating client {"key":"feishu-key","reason":"startup_ingress_unverified_15000ms","reconnectingForMs":0,"reconnectingRecycles":1,"state":"connected"}',
@@ -440,7 +440,7 @@ test("Feishu long-connection smoke records bounded startup ingress validation wi
 });
 
 test("Feishu long-connection smoke rejects old unstable log patterns", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-long-smoke-"));
   const logText = [
     '2026-06-08T10:00:00.000Z Feishu SDK warn {"args":["[\\"[ws]\\",\\"no pong/inbound within 10s of last ping, terminating to trigger reconnect\\"]"]}',
     '2026-06-08T10:00:01.000Z Feishu WebSocket watchdog restarting client {"key":"feishu-key","reason":"watchdog_connected_idle_303709"}',
@@ -463,7 +463,7 @@ test("Feishu long-connection smoke rejects old unstable log patterns", async () 
 });
 
 test("Feishu long-connection smoke records SDK reconnect recycle without treating it as old watchdog churn", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-long-smoke-"));
   const logText = [
     '2026-06-08T10:00:00.000Z Feishu WebSocket reconnecting exceeded limit; recycling client {"key":"feishu-key","reason":"sdk_reconnecting_timeout_10000ms","reconnectingForMs":12000,"reconnectingRecycles":1}',
     '2026-06-08T10:00:01.000Z Feishu WebSocket connection ended; recreating client {"key":"feishu-key","delayMs":1000,"error":"sdk_reconnecting_timeout_10000ms"}',
@@ -491,7 +491,7 @@ test("Feishu long-connection smoke records SDK reconnect recycle without treatin
 });
 
 test("Feishu long-connection smoke rejects dispatcher-level event failures", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-long-smoke-"));
   const logText = [
     '2026-06-08T10:00:00.000Z Feishu SDK warn {"args":["no im.message.receive_v1 handle"]}',
     '2026-06-08T10:00:01.000Z Feishu SDK warn {"args":["verification failed event"]}',
@@ -516,7 +516,7 @@ test("Feishu long-connection smoke rejects dispatcher-level event failures", asy
 });
 
 test("Feishu long-connection smoke rejects unverified ingress when required", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-feishu-long-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-feishu-long-smoke-"));
   const { runtimePath, logPath } = writeFixture(root, feishuRuntime({
     ingressVerified: false,
     ingressState: "warming",

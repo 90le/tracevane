@@ -12,9 +12,9 @@ import type {
   ConfigSummaryPayload,
   ConfigUpdatePayload,
 } from "../../../../types/config.js";
-import type { StudioServerConfig } from "../../../../types/api.js";
-import { STUDIO_CHAT_GATEWAY_METHODS } from "../../../../types/chat.js";
-import { setStudioChatGlobalHostManagementExecEnabled } from "../../../../lib/studio-chat-management-policy.js";
+import type { TracevaneServerConfig } from "../../../../types/api.js";
+import { TRACEVANE_CHAT_GATEWAY_METHODS } from "../../../../types/chat.js";
+import { setTracevaneChatGlobalHostManagementExecEnabled } from "../../../../lib/tracevane-chat-management-policy.js";
 import {
   readJsonFile,
   readOpenClawConfig,
@@ -909,7 +909,7 @@ function mapProvider(
 }
 
 function buildSummary(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   openclawConfig: Record<string, any>,
 ): ConfigSummaryPayload {
   const defaults = openclawConfig.agents?.defaults || {};
@@ -1721,28 +1721,28 @@ function buildBrowserSummary(
   };
 }
 
-function resolveStudioHostManagementExecEnabled(
+function resolveTracevaneHostManagementExecEnabled(
   openclawConfig: Record<string, any>,
 ): boolean {
   return (
-    openclawConfig.plugins?.entries?.studio?.config?.chat
-      ?.allowHostManagementExecInStudioChat === true
+    openclawConfig.plugins?.entries?.tracevane?.config?.chat
+      ?.allowHostManagementExecInTracevaneChat === true
   );
 }
 
-function syncStudioManagementPolicyFromConfig(
+function syncTracevaneManagementPolicyFromConfig(
   openclawConfig: Record<string, any>,
 ): boolean {
-  const enabled = resolveStudioHostManagementExecEnabled(openclawConfig);
-  setStudioChatGlobalHostManagementExecEnabled(enabled);
+  const enabled = resolveTracevaneHostManagementExecEnabled(openclawConfig);
+  setTracevaneChatGlobalHostManagementExecEnabled(enabled);
   return enabled;
 }
 
-function syncStudioManagementPolicyToGateway(
-  config: StudioServerConfig,
+function syncTracevaneManagementPolicyToGateway(
+  config: TracevaneServerConfig,
   globalHostManagementExecEnabled: boolean,
 ): void {
-  void requestGateway(config, STUDIO_CHAT_GATEWAY_METHODS.policySync, {
+  void requestGateway(config, TRACEVANE_CHAT_GATEWAY_METHODS.policySync, {
     globalHostManagementExecEnabled,
   }, { timeoutMs: 1_000 }).catch(() => {
     // Gateway sync is best-effort here; the local API state and config file are
@@ -1769,16 +1769,16 @@ function buildLoggingSummary(
 }
 
 function buildConfigAuditSnapshot(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   openclawConfig: Record<string, any>,
 ): Record<string, unknown> {
   const deviceTrust = readJsonFile<Record<string, unknown>>(
-    path.join(config.openclawRoot, "studio", "device-trust.json"),
+    path.join(config.openclawRoot, "tracevane", "device-trust.json"),
     {},
   );
   const resolvedBasePath = normalizeString(
     openclawConfig.gateway?.controlUi?.basePath,
-    config.transport.gateway.basePath || "/studio",
+    config.transport.gateway.basePath || "/tracevane",
   );
 
   return {
@@ -3348,7 +3348,7 @@ function buildConfigUpdatePayloadFromSummary(
 }
 
 function resolveConfigPatchPayload(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   openclawConfig: Record<string, any>,
   patch: ConfigPatchPayload,
 ): ConfigUpdatePayload {
@@ -3397,8 +3397,8 @@ function normalizeApprovalAllowlistEntry(
   };
 }
 
-export function createConfigService(config: StudioServerConfig): ConfigService {
-  syncStudioManagementPolicyFromConfig(readOpenClawConfig(config));
+export function createConfigService(config: TracevaneServerConfig): ConfigService {
+  syncTracevaneManagementPolicyFromConfig(readOpenClawConfig(config));
   const systemEventWriter = createSystemEventWriter({
     stateDir: path.join(config.openclawRoot, "system"),
     maxRecords: 500,
@@ -3414,16 +3414,16 @@ export function createConfigService(config: StudioServerConfig): ConfigService {
       beforeConfig,
     );
     const previousGlobalHostManagementExecEnabled =
-      resolveStudioHostManagementExecEnabled(beforeConfig);
+      resolveTracevaneHostManagementExecEnabled(beforeConfig);
     const openclawConfig = applyConfigUpdate(beforeConfig, payload);
     writeJsonFile(config.openclawConfigFile, openclawConfig);
     const globalHostManagementExecEnabled =
-      syncStudioManagementPolicyFromConfig(openclawConfig);
+      syncTracevaneManagementPolicyFromConfig(openclawConfig);
     if (
       previousGlobalHostManagementExecEnabled !==
       globalHostManagementExecEnabled
     ) {
-      syncStudioManagementPolicyToGateway(
+      syncTracevaneManagementPolicyToGateway(
         config,
         globalHostManagementExecEnabled,
       );
@@ -3523,7 +3523,7 @@ export function createConfigService(config: StudioServerConfig): ConfigService {
   return {
     getSummary(): ConfigSummaryPayload {
       const openclawConfig = readOpenClawConfig(config);
-      syncStudioManagementPolicyFromConfig(openclawConfig);
+      syncTracevaneManagementPolicyFromConfig(openclawConfig);
       return buildSummary(config, openclawConfig);
     },
 

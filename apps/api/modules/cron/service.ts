@@ -3,7 +3,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
-import type { StudioServerConfig } from "../../../../types/api.js";
+import type { TracevaneServerConfig } from "../../../../types/api.js";
 import type {
   CronAgentOption,
   CronDeliverySummary,
@@ -92,7 +92,7 @@ function normalizeDate(value: unknown): string | null {
 }
 
 function resolveCronStorePath(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   openclawConfig: Record<string, any>,
 ): string {
   const configured = normalizeString(openclawConfig.cron?.store);
@@ -105,7 +105,7 @@ function resolveCronStorePath(
     : configured;
 }
 
-function resolveRunLogDir(config: StudioServerConfig): string {
+function resolveRunLogDir(config: TracevaneServerConfig): string {
   return path.join(config.openclawRoot, "cron", "runs");
 }
 
@@ -265,7 +265,7 @@ function buildBindingRef(binding: Record<string, any>): string {
 }
 
 function buildCronTargets(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   openclawConfig: Record<string, any>,
 ): ParsedCronTarget {
   const deliveryTargets: CronTargetOption[] = [];
@@ -557,7 +557,7 @@ function mapJob(
 }
 
 function readRunHistory(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   jobId: string,
   limit = 20,
 ): CronRunSummary[] {
@@ -631,7 +631,7 @@ function readLiveCronStatus(): CronSchedulerSummary["live"] {
 }
 
 function buildSchedulerSummary(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   openclawConfig: Record<string, any>,
   storePath: string,
 ): CronSchedulerSummary {
@@ -671,7 +671,7 @@ function buildSchedulerSummary(
   };
 }
 
-function buildSummary(config: StudioServerConfig): CronSummaryPayload {
+function buildSummary(config: TracevaneServerConfig): CronSummaryPayload {
   const openclawConfig = readOpenClawConfig(config);
   const storePath = resolveCronStorePath(config, openclawConfig);
   const scheduler = buildSchedulerSummary(config, openclawConfig, storePath);
@@ -699,7 +699,7 @@ function buildSummary(config: StudioServerConfig): CronSummaryPayload {
 }
 
 function getRawJob(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   jobId: string,
 ): {
   openclawConfig: Record<string, any>;
@@ -724,7 +724,7 @@ function getRawJob(
 }
 
 function buildDetail(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   jobId: string,
 ): CronDetailPayload {
   const openclawConfig = readOpenClawConfig(config);
@@ -773,7 +773,7 @@ function parseAtInput(value: string): string {
 
 function normalizeInput(
   input: CronJobInput,
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   openclawConfig: Record<string, any>,
   existing?: Record<string, any>,
 ): Record<string, any> {
@@ -1060,7 +1060,7 @@ export interface CronService {
   runJob(jobId: string): Promise<CronRunResponse>;
 }
 
-export function createCronService(config: StudioServerConfig): CronService {
+export function createCronService(config: TracevaneServerConfig): CronService {
   return {
     getSummary(): CronSummaryPayload {
       return buildSummary(config);

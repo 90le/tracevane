@@ -6,8 +6,8 @@ import os from 'node:os';
 import path from 'node:path';
 
 import {
-  createStandaloneStudioConfig,
-  createStudioContext,
+  createStandaloneTracevaneConfig,
+  createTracevaneContext,
 } from '../../dist/apps/api/index.js';
 
 function createLogger() {
@@ -48,19 +48,19 @@ function writeOpenClawConfig(root) {
 }
 
 async function createContext(root) {
-  const config = createStandaloneStudioConfig({
+  const config = createStandaloneTracevaneConfig({
     port: await getFreePort(),
     openclawRoot: root,
     gatewayWsUrl: 'ws://127.0.0.1:1',
   });
-  return createStudioContext({
+  return createTracevaneContext({
     config,
     logger: createLogger(),
   });
 }
 
 test('organizer service creates folders, sorts them, moves sessions, and returns sessions to root when folder is deleted', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-organizer-service-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-organizer-service-'));
   try {
     writeOpenClawConfig(root);
     const context = await createContext(root);
@@ -107,7 +107,7 @@ test('organizer service creates folders, sorts them, moves sessions, and returns
 });
 
 test('deleteSession removes organizer membership for deleted chats', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-organizer-delete-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-organizer-delete-'));
   try {
     writeOpenClawConfig(root);
     const context = await createContext(root);
@@ -130,7 +130,7 @@ test('deleteSession removes organizer membership for deleted chats', async () =>
 });
 
 test('organizer service can create child folders and rename them', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-organizer-nested-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-organizer-nested-'));
   try {
     writeOpenClawConfig(root);
     const context = await createContext(root);

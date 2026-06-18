@@ -1,13 +1,13 @@
 import type { ChatComposerPersistedDraft } from '../../../../../lib/chat-composer-draft';
 import { parsePersistedComposerDraft } from '../../../../../lib/chat-composer-draft';
 
-const CHAT_LAST_AGENT_KEY = 'openclaw-studio.chat.last-agent';
-const CHAT_LAST_SESSION_KEY = 'openclaw-studio.chat.last-session-key';
-const CHAT_COMPOSER_DRAFT_PREFIX = 'openclaw-studio.chat.composer-draft:';
+const CHAT_LAST_AGENT_KEY = 'tracevane.chat.last-agent';
+const CHAT_LAST_SESSION_KEY = 'tracevane.chat.last-session-key';
+const CHAT_COMPOSER_DRAFT_PREFIX = 'tracevane.chat.composer-draft:';
 const CHAT_COMPOSER_DRAFT_STORAGE_LIMIT = 256_000;
-const CHAT_LAST_STREAM_SEQ_PREFIX = 'openclaw-studio.chat.last-stream-seq:';
+const CHAT_LAST_STREAM_SEQ_PREFIX = 'tracevane.chat.last-stream-seq:';
 const CHAT_LAST_STREAM_SEQ_TTL_MS = 10 * 60 * 1000;
-const CHAT_SESSION_VIEWPORT_PREFIX = 'openclaw-studio.chat.session-viewport:';
+const CHAT_SESSION_VIEWPORT_PREFIX = 'tracevane.chat.session-viewport:';
 const CHAT_SESSION_VIEWPORT_TTL_MS = 30 * 60 * 1000;
 
 export type ChatSessionViewportSnapshotStorage = {

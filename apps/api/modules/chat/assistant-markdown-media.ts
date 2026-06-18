@@ -1,10 +1,10 @@
 import type { ChatResourceItem } from '../../../../types/chat.js';
 import {
-  isStudioMarkdownExplicitLocalRef,
-  parseStudioMarkdownMediaRef,
-  parseStudioMarkdownMediaTitle,
-  type StudioMarkdownMediaRef,
-} from '../../../../lib/studio-markdown-media.js';
+  isTracevaneMarkdownExplicitLocalRef,
+  parseTracevaneMarkdownMediaRef,
+  parseTracevaneMarkdownMediaTitle,
+  type TracevaneMarkdownMediaRef,
+} from '../../../../lib/tracevane-markdown-media.js';
 
 type ParsedMarkdownMediaToken = {
   raw: string;
@@ -32,7 +32,7 @@ type SrcsetCandidate = {
 
 export interface CompileAssistantMarkdownMediaOptions {
   markdown: string;
-  resolveResource: (ref: string, parsedRef: StudioMarkdownMediaRef | null) => ChatResourceItem | null;
+  resolveResource: (ref: string, parsedRef: TracevaneMarkdownMediaRef | null) => ChatResourceItem | null;
   rewriteHref: (resource: ChatResourceItem) => string;
 }
 
@@ -323,8 +323,8 @@ function rewriteHtmlSrcset(
 ): { value: string; changed: boolean; resources: ChatResourceItem[] } {
   const resources: ChatResourceItem[] = [];
   const rewritten = parseSrcsetCandidates(value).map((candidate) => {
-    const parsedRef = parseStudioMarkdownMediaRef(candidate.ref);
-    const isExplicitLocalRef = isStudioMarkdownExplicitLocalRef(candidate.ref);
+    const parsedRef = parseTracevaneMarkdownMediaRef(candidate.ref);
+    const isExplicitLocalRef = isTracevaneMarkdownExplicitLocalRef(candidate.ref);
     if (!parsedRef && !isExplicitLocalRef) {
       return candidate.raw;
     }
@@ -392,8 +392,8 @@ function rewriteAssistantHtmlTag(
       resources.push(...rewrittenSrcset.resources);
       continue;
     }
-    const parsedRef = parseStudioMarkdownMediaRef(rawValue);
-    const isExplicitLocalRef = isStudioMarkdownExplicitLocalRef(rawValue);
+    const parsedRef = parseTracevaneMarkdownMediaRef(rawValue);
+    const isExplicitLocalRef = isTracevaneMarkdownExplicitLocalRef(rawValue);
     if (!parsedRef && !isExplicitLocalRef) {
       continue;
     }
@@ -521,9 +521,9 @@ export function compileAssistantMarkdownMedia(
       continue;
     }
 
-    const display = parseStudioMarkdownMediaTitle(token.title);
-    const parsedRef = parseStudioMarkdownMediaRef(token.href);
-    if (!display || (!parsedRef && !isStudioMarkdownExplicitLocalRef(token.href))) {
+    const display = parseTracevaneMarkdownMediaTitle(token.title);
+    const parsedRef = parseTracevaneMarkdownMediaRef(token.href);
+    if (!display || (!parsedRef && !isTracevaneMarkdownExplicitLocalRef(token.href))) {
       result += token.raw;
       index = token.end;
       continue;
@@ -555,7 +555,7 @@ export function compileAssistantMarkdownMedia(
     }
 
     changed = true;
-    result += rebuildMarkdownMediaToken(token, rewrittenHref, `studio:${display}`);
+    result += rebuildMarkdownMediaToken(token, rewrittenHref, `tracevane:${display}`);
     if (!seenIds.has(resource.id)) {
       seenIds.add(resource.id);
       resources.push(resource);

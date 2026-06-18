@@ -3,17 +3,17 @@ import http from 'node:http';
 import type { Duplex } from 'node:stream';
 import path from 'node:path';
 import {
-  isStudioChatApiPath,
-  resolveStudioChatCorsOrigin,
+  isTracevaneChatApiPath,
+  resolveTracevaneChatCorsOrigin,
   sendJson,
   sendNoContent,
   sendText,
   setCorsHeaders,
 } from './core/http.js';
-import type { StudioClientRuntimeConfig } from '../../types/api.js';
-import type { StudioApiContext } from './core/context.js';
-import { StudioRouter } from './core/router.js';
-import { buildStudioClientRuntimeConfig } from './runtime-config.js';
+import type { TracevaneClientRuntimeConfig } from '../../types/api.js';
+import type { TracevaneApiContext } from './core/context.js';
+import { TracevaneRouter } from './core/router.js';
+import { buildTracevaneClientRuntimeConfig } from './runtime-config.js';
 import { registerAgentsRoutes } from './modules/agents/routes.js';
 import { registerChatRoutes } from './modules/chat/routes.js';
 import { registerChannelConnectorsRoutes } from './modules/channel-connectors/routes.js';
@@ -38,8 +38,8 @@ const CONTENT_TYPES: Record<string, string> = {
   '.svg': 'image/svg+xml',
 };
 
-export function createStudioRouter(ctx: StudioApiContext): StudioRouter {
-  const router = new StudioRouter();
+export function createTracevaneRouter(ctx: TracevaneApiContext): TracevaneRouter {
+  const router = new TracevaneRouter();
   registerDashboardRoutes(router, ctx);
   registerFilesRoutes(router, ctx);
   registerGitRoutes(router, ctx);
@@ -63,11 +63,11 @@ function safeStaticPath(root: string, pathname: string): string | null {
   return absolutePath.startsWith(root) ? absolutePath : null;
 }
 
-function serializeRuntimeConfig(config: StudioClientRuntimeConfig): string {
+function serializeRuntimeConfig(config: TracevaneClientRuntimeConfig): string {
   return JSON.stringify(config).replace(/</g, '\\u003c');
 }
 
-function buildHtmlBaseHref(runtimeConfig: StudioClientRuntimeConfig | null | undefined): string {
+function buildHtmlBaseHref(runtimeConfig: TracevaneClientRuntimeConfig | null | undefined): string {
   const appBasePath = String(runtimeConfig?.appBasePath || '').trim();
   if (!appBasePath) return '';
   const normalized = appBasePath === '/'
@@ -76,20 +76,20 @@ function buildHtmlBaseHref(runtimeConfig: StudioClientRuntimeConfig | null | und
   return `    <base href="${normalized}">`;
 }
 
-function injectRuntimeConfig(html: string, runtimeConfig: StudioClientRuntimeConfig | null | undefined): string {
+function injectRuntimeConfig(html: string, runtimeConfig: TracevaneClientRuntimeConfig | null | undefined): string {
   if (!runtimeConfig) return html;
   const baseTag = buildHtmlBaseHref(runtimeConfig);
-  const runtimeScript = `    <script>window.__OPENCLAW_STUDIO_RUNTIME__ = ${serializeRuntimeConfig(runtimeConfig)};</script>`;
+  const runtimeScript = `    <script>window.__TRACEVANE_RUNTIME__ = ${serializeRuntimeConfig(runtimeConfig)};</script>`;
   return html.includes('<head>')
     ? html.replace('<head>', `<head>\n${baseTag ? `${baseTag}\n` : ''}${runtimeScript}`)
     : `${baseTag ? `${baseTag}\n` : ''}${runtimeScript}\n${html}`;
 }
 
 function serveStaticAsset(
-  ctx: StudioApiContext,
+  ctx: TracevaneApiContext,
   reqPath: string,
   res: http.ServerResponse,
-  runtimeConfig?: StudioClientRuntimeConfig | null
+  runtimeConfig?: TracevaneClientRuntimeConfig | null
 ): boolean {
   if (!fs.existsSync(ctx.config.webDistDir)) return false;
 
@@ -108,7 +108,7 @@ function serveStaticAsset(
   return true;
 }
 
-export interface StudioHttpServer {
+export interface TracevaneHttpServer {
   start(): Promise<void>;
   stop(): Promise<void>;
   isRunning(): boolean;
@@ -135,37 +135,37 @@ function stripConfiguredBasePath(req: http.IncomingMessage, basePath: string | n
   req.url = url.pathname + url.search;
 }
 
-export interface StudioRequestHandlerOptions {
+export interface TracevaneRequestHandlerOptions {
   stripBasePath?: string | null;
-  runtimeConfig?: StudioClientRuntimeConfig | null;
+  runtimeConfig?: TracevaneClientRuntimeConfig | null;
 }
 
-export interface StudioUpgradeHandlerOptions {
+export interface TracevaneUpgradeHandlerOptions {
   stripBasePath?: string | null;
 }
 
-function normalizeRequestPath(req: http.IncomingMessage, options: StudioRequestHandlerOptions = {}): void {
+function normalizeRequestPath(req: http.IncomingMessage, options: TracevaneRequestHandlerOptions = {}): void {
   if (options.stripBasePath !== undefined) {
     stripConfiguredBasePath(req, options.stripBasePath);
     return;
   }
 
-  const basePath = process.env.STUDIO_BASE_PATH || '';
+  const basePath = process.env.TRACEVANE_BASE_PATH || '';
   if (!basePath || basePath === '/') return;
 
   const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
   if (url.pathname.startsWith(basePath)) {
-    // Remove base path prefix: /x/studio/api/... -> /api/...
+    // Remove base path prefix: /x/tracevane/api/... -> /api/...
     url.pathname = url.pathname.slice(basePath.length) || '/';
     req.url = url.pathname + url.search;
   }
 }
 
-export function createStudioUpgradeHandler(
-  ctx: StudioApiContext,
-  options: StudioUpgradeHandlerOptions = {}
+export function createTracevaneUpgradeHandler(
+  ctx: TracevaneApiContext,
+  options: TracevaneUpgradeHandlerOptions = {}
 ) {
-  return function handleStudioUpgrade(
+  return function handleTracevaneUpgrade(
     req: http.IncomingMessage,
     socket: Duplex,
     head: Buffer
@@ -182,22 +182,22 @@ export function createStudioUpgradeHandler(
   };
 }
 
-export function createStudioRequestHandler(
-  ctx: StudioApiContext,
-  options: StudioRequestHandlerOptions = {}
+export function createTracevaneRequestHandler(
+  ctx: TracevaneApiContext,
+  options: TracevaneRequestHandlerOptions = {}
 ) {
-  const router = createStudioRouter(ctx);
+  const router = createTracevaneRouter(ctx);
 
-  return async function handleStudioRequest(
+  return async function handleTracevaneRequest(
     req: http.IncomingMessage,
     res: http.ServerResponse
   ): Promise<boolean> {
     normalizeRequestPath(req, options);
 
     const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
-    const isChatApi = isStudioChatApiPath(url.pathname);
+    const isChatApi = isTracevaneChatApiPath(url.pathname);
     if (isChatApi) {
-      const allowOrigin = resolveStudioChatCorsOrigin(req);
+      const allowOrigin = resolveTracevaneChatCorsOrigin(req);
       if (req.headers.origin && !allowOrigin) {
         setCorsHeaders(res, {
           allowOrigin: `http://${req.headers.host || '127.0.0.1'}`,
@@ -207,7 +207,7 @@ export function createStudioRequestHandler(
             code: 'auth_failure',
             message: 'Chat origin not allowed',
             retryable: false,
-            source: 'studio',
+            source: 'tracevane',
           },
         });
         return true;
@@ -233,20 +233,20 @@ export function createStudioRequestHandler(
   };
 }
 
-export async function handleStudioRequest(
+export async function handleTracevaneRequest(
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  ctx: StudioApiContext,
-  options: StudioRequestHandlerOptions = {}
+  ctx: TracevaneApiContext,
+  options: TracevaneRequestHandlerOptions = {}
 ): Promise<boolean> {
-  return createStudioRequestHandler(ctx, options)(req, res);
+  return createTracevaneRequestHandler(ctx, options)(req, res);
 }
 
-export function createStudioServer(ctx: StudioApiContext): StudioHttpServer {
-  const requestHandler = createStudioRequestHandler(ctx, {
-    runtimeConfig: buildStudioClientRuntimeConfig(ctx.config, 'standalone'),
+export function createTracevaneServer(ctx: TracevaneApiContext): TracevaneHttpServer {
+  const requestHandler = createTracevaneRequestHandler(ctx, {
+    runtimeConfig: buildTracevaneClientRuntimeConfig(ctx.config, 'standalone'),
   });
-  const upgradeHandler = createStudioUpgradeHandler(ctx);
+  const upgradeHandler = createTracevaneUpgradeHandler(ctx);
   let server: http.Server | null = null;
 
   return {
@@ -273,7 +273,7 @@ export function createStudioServer(ctx: StudioApiContext): StudioHttpServer {
         server!.listen(ctx.config.port, () => resolve());
       });
 
-      ctx.logger.info(`studio: HTTP server listening on port ${ctx.config.port}`);
+      ctx.logger.info(`tracevane: HTTP server listening on port ${ctx.config.port}`);
     },
 
     async stop(): Promise<void> {
@@ -293,7 +293,7 @@ export function createStudioServer(ctx: StudioApiContext): StudioHttpServer {
       server = null;
       ctx.services.chat.dispose();
       ctx.services.terminal.dispose();
-      ctx.logger.info('studio: HTTP server stopped');
+      ctx.logger.info('tracevane: HTTP server stopped');
     },
 
     isRunning(): boolean {

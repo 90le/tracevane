@@ -2,9 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  applyRuntimeToStudioSlashExecutionFeedback,
-  createStudioSlashExecutionFeedback,
-  describeStudioSlashExecutionFeedback,
+  applyRuntimeToTracevaneSlashExecutionFeedback,
+  createTracevaneSlashExecutionFeedback,
+  describeTracevaneSlashExecutionFeedback,
 } from '../../apps/web-vue/src/features/chat/slash-feedback';
 
 function createRuntime(overrides: Record<string, unknown> = {}) {
@@ -22,8 +22,8 @@ function createRuntime(overrides: Record<string, unknown> = {}) {
 }
 
 test('slash feedback describes compact lifecycle with dedicated copy', () => {
-  const pending = createStudioSlashExecutionFeedback({
-    sessionKey: 'agent:main:webchat:direct:studio-test',
+  const pending = createTracevaneSlashExecutionFeedback({
+    sessionKey: 'agent:main:webchat:direct:tracevane-test',
     commandName: 'compact',
     args: '',
     mode: 'send',
@@ -34,14 +34,14 @@ test('slash feedback describes compact lifecycle with dedicated copy', () => {
     detail: null,
   });
 
-  assert.deepEqual(describeStudioSlashExecutionFeedback(pending, 'zh'), {
+  assert.deepEqual(describeTracevaneSlashExecutionFeedback(pending, 'zh'), {
     tone: 'info',
     title: '已发送 /compact',
     detail: 'Tracevane 已收到命令，等待宿主开始执行上下文压缩。',
     commandText: '/compact',
   });
 
-  const completed = applyRuntimeToStudioSlashExecutionFeedback(
+  const completed = applyRuntimeToTracevaneSlashExecutionFeedback(
     pending,
     createRuntime({
       state: 'completed',
@@ -51,7 +51,7 @@ test('slash feedback describes compact lifecycle with dedicated copy', () => {
     { runId: 'run-compact-1' },
   );
 
-  assert.deepEqual(describeStudioSlashExecutionFeedback(completed, 'zh'), {
+  assert.deepEqual(describeTracevaneSlashExecutionFeedback(completed, 'zh'), {
     tone: 'success',
     title: '上下文压缩已完成',
     detail: '当前会话已经结束这次压缩流程，可以继续对话。',
@@ -60,8 +60,8 @@ test('slash feedback describes compact lifecycle with dedicated copy', () => {
 });
 
 test('slash feedback runtime transitions move generic commands into running and error states', () => {
-  const accepted = createStudioSlashExecutionFeedback({
-    sessionKey: 'agent:main:webchat:direct:studio-test',
+  const accepted = createTracevaneSlashExecutionFeedback({
+    sessionKey: 'agent:main:webchat:direct:tracevane-test',
     commandName: 'model',
     args: 'gpt-5.4',
     mode: 'send',
@@ -72,7 +72,7 @@ test('slash feedback runtime transitions move generic commands into running and 
     detail: null,
   });
 
-  const running = applyRuntimeToStudioSlashExecutionFeedback(
+  const running = applyRuntimeToTracevaneSlashExecutionFeedback(
     accepted,
     createRuntime({
       state: 'running',
@@ -83,7 +83,7 @@ test('slash feedback runtime transitions move generic commands into running and 
   );
   assert.equal(running.phase, 'running');
 
-  const failed = applyRuntimeToStudioSlashExecutionFeedback(
+  const failed = applyRuntimeToTracevaneSlashExecutionFeedback(
     running,
     createRuntime({
       state: 'error',
@@ -94,7 +94,7 @@ test('slash feedback runtime transitions move generic commands into running and 
     { runId: 'run-model-1' },
   );
 
-  assert.deepEqual(describeStudioSlashExecutionFeedback(failed, 'en'), {
+  assert.deepEqual(describeTracevaneSlashExecutionFeedback(failed, 'en'), {
     tone: 'error',
     title: '/model failed',
     detail: 'provider timeout',
@@ -103,8 +103,8 @@ test('slash feedback runtime transitions move generic commands into running and 
 });
 
 test('slash feedback describes redirect lifecycle with tracked current-session run state', () => {
-  const accepted = createStudioSlashExecutionFeedback({
-    sessionKey: 'agent:main:webchat:direct:studio-test',
+  const accepted = createTracevaneSlashExecutionFeedback({
+    sessionKey: 'agent:main:webchat:direct:tracevane-test',
     commandName: 'redirect',
     args: 'start over with a new plan',
     mode: 'local',
@@ -115,14 +115,14 @@ test('slash feedback describes redirect lifecycle with tracked current-session r
     detail: null,
   });
 
-  assert.deepEqual(describeStudioSlashExecutionFeedback(accepted, 'zh'), {
+  assert.deepEqual(describeTracevaneSlashExecutionFeedback(accepted, 'zh'), {
     tone: 'info',
     title: '已发送 /redirect',
     detail: 'Tracevane 已请求宿主中止当前运行并开始新的执行。',
     commandText: '/redirect start over with a new plan',
   });
 
-  const running = applyRuntimeToStudioSlashExecutionFeedback(
+  const running = applyRuntimeToTracevaneSlashExecutionFeedback(
     accepted,
     createRuntime({
       state: 'running',
@@ -132,14 +132,14 @@ test('slash feedback describes redirect lifecycle with tracked current-session r
     { runId: 'run-redirect-1' },
   );
 
-  assert.deepEqual(describeStudioSlashExecutionFeedback(running, 'en'), {
+  assert.deepEqual(describeTracevaneSlashExecutionFeedback(running, 'en'), {
     tone: 'info',
     title: 'Redirecting current run',
     detail: 'The host is interrupting the old run and starting a new execution flow.',
     commandText: '/redirect start over with a new plan',
   });
 
-  const completed = applyRuntimeToStudioSlashExecutionFeedback(
+  const completed = applyRuntimeToTracevaneSlashExecutionFeedback(
     running,
     createRuntime({
       state: 'completed',
@@ -149,7 +149,7 @@ test('slash feedback describes redirect lifecycle with tracked current-session r
     { runId: 'run-redirect-1' },
   );
 
-  assert.deepEqual(describeStudioSlashExecutionFeedback(completed, 'zh'), {
+  assert.deepEqual(describeTracevaneSlashExecutionFeedback(completed, 'zh'), {
     tone: 'success',
     title: '重定向已完成',
     detail: '新的执行流程已经稳定接管当前会话。',
@@ -158,8 +158,8 @@ test('slash feedback describes redirect lifecycle with tracked current-session r
 });
 
 test('slash feedback describes btw side-question results with dedicated copy', () => {
-  const accepted = createStudioSlashExecutionFeedback({
-    sessionKey: 'agent:main:webchat:direct:studio-test',
+  const accepted = createTracevaneSlashExecutionFeedback({
+    sessionKey: 'agent:main:webchat:direct:tracevane-test',
     commandName: 'btw',
     args: 'what changed?',
     mode: 'send',
@@ -170,21 +170,21 @@ test('slash feedback describes btw side-question results with dedicated copy', (
     detail: null,
   });
 
-  assert.deepEqual(describeStudioSlashExecutionFeedback(accepted, 'zh'), {
+  assert.deepEqual(describeTracevaneSlashExecutionFeedback(accepted, 'zh'), {
     tone: 'info',
     title: '已发送 /btw',
     detail: 'Tracevane 已收到侧问，等待宿主给出不进入未来上下文的临时回答。',
     commandText: '/btw what changed?',
   });
 
-  const completed = createStudioSlashExecutionFeedback({
+  const completed = createTracevaneSlashExecutionFeedback({
     ...accepted,
     phase: 'completed',
     updatedAt: '2026-04-10T08:00:03.000Z',
     detail: 'Only the tests changed.',
   });
 
-  assert.deepEqual(describeStudioSlashExecutionFeedback(completed, 'en'), {
+  assert.deepEqual(describeTracevaneSlashExecutionFeedback(completed, 'en'), {
     tone: 'success',
     title: '/btw answered',
     detail: 'Only the tests changed.',

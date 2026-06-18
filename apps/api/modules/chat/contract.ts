@@ -25,7 +25,7 @@ export const CHAT_API_PATHS = {
 } as const;
 
 export const CHAT_SESSION_KINDS: readonly ChatSessionKind[] = [
-  'studio_managed',
+  'tracevane_managed',
   'observed_external',
   'system_internal',
 ] as const;

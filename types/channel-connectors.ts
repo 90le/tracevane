@@ -659,7 +659,7 @@ export interface ChannelConnectorFeishuWebhookRequest {
   models?: string[];
   dryRun?: boolean;
   sendReply?: boolean;
-  studioDebugResponse?: boolean;
+  tracevaneDebugResponse?: boolean;
   token?: string | null;
   challenge?: string | null;
   type?: string | null;
@@ -1156,7 +1156,7 @@ export interface ChannelConnectorsDaemonRuntimeStatus {
   ok: boolean;
   checkedAt: string;
   reachable: boolean;
-  implementation: "studio-native" | string | null;
+  implementation: "tracevane-native" | string | null;
   pid: number | null;
   projects: number | null;
   platformBindings: number | null;
@@ -1201,7 +1201,7 @@ export interface ChannelConnectorsStatusResponse {
   ok: true;
   checkedAt: string;
   phase: ChannelConnectorsPhase;
-  implementation: "studio-native";
+  implementation: "tracevane-native";
   referenceSources: string[];
   runtimeChain: string[];
   bindingPolicy: ChannelConnectorsBindingPolicy;
@@ -1214,10 +1214,10 @@ export interface ChannelConnectorsStatusResponse {
     runtime: string;
   };
   lifecycle: {
-    studioRuntimeDependency: false;
+    tracevaneRuntimeDependency: false;
     openclawRuntimeDependency: false;
     modelRelayOwner: "tracevane-gateway-daemon";
-    channelDaemonOwner: "studio-native-channel-daemon";
+    channelDaemonOwner: "tracevane-native-channel-daemon";
   };
   service: ChannelConnectorsDaemonResponse;
   runtime: ChannelConnectorsDaemonRuntimeStatus;

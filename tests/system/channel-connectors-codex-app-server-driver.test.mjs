@@ -416,7 +416,7 @@ test("Codex app-server driver forwards image inputs and preserves image args", a
     cwd: "/tmp/project",
     permissionMode: "suggest",
   });
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-codex-vision-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-codex-vision-"));
   const imagePath = path.join(tempDir, "photo.png");
   fs.writeFileSync(imagePath, Buffer.from("fake-png"));
   const request = agentTurnRequest({ messageId: "m-vision", content: "识别这张图片" });

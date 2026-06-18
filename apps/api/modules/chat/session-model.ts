@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import path from 'node:path';
-import type { StudioServerConfig } from '../../../../types/api.js';
+import type { TracevaneServerConfig } from '../../../../types/api.js';
 import type { ChatRuntimeState, ChatSessionPresentation, ChatSessionRow } from '../../../../types/chat.js';
 import { ensureDir, readJsonFile, readOpenClawConfig, writeJsonFile } from '../../core/state.js';
 import {
@@ -11,7 +11,7 @@ import {
 } from './session-policy.js';
 import { normalizeDate, normalizeString } from './shared.js';
 
-export interface StudioSessionRegistryEntry {
+export interface TracevaneSessionRegistryEntry {
   key: string;
   agentId: string;
   sessionId?: string | null;
@@ -42,17 +42,17 @@ export interface LocalSessionRecord {
   origin?: Record<string, unknown>;
 }
 
-export function resolveStudioChatRegistryPath(config: StudioServerConfig): string {
-  return path.join(config.openclawRoot, 'studio', 'chat-sessions.json');
+export function resolveTracevaneChatRegistryPath(config: TracevaneServerConfig): string {
+  return path.join(config.openclawRoot, 'tracevane', 'chat-sessions.json');
 }
 
-export function readStudioChatRegistry(config: StudioServerConfig): Record<string, StudioSessionRegistryEntry> {
-  return readJsonFile<Record<string, StudioSessionRegistryEntry>>(resolveStudioChatRegistryPath(config), {});
+export function readTracevaneChatRegistry(config: TracevaneServerConfig): Record<string, TracevaneSessionRegistryEntry> {
+  return readJsonFile<Record<string, TracevaneSessionRegistryEntry>>(resolveTracevaneChatRegistryPath(config), {});
 }
 
-export function writeStudioChatRegistry(config: StudioServerConfig, value: Record<string, StudioSessionRegistryEntry>): void {
-  ensureDir(path.dirname(resolveStudioChatRegistryPath(config)));
-  writeJsonFile(resolveStudioChatRegistryPath(config), value);
+export function writeTracevaneChatRegistry(config: TracevaneServerConfig, value: Record<string, TracevaneSessionRegistryEntry>): void {
+  ensureDir(path.dirname(resolveTracevaneChatRegistryPath(config)));
+  writeJsonFile(resolveTracevaneChatRegistryPath(config), value);
 }
 
 export function deriveAgentIdFromSessionKey(sessionKey: string): string {
@@ -83,7 +83,7 @@ export function buildRuntimeState(
 }
 
 export function buildSessionPresentation(
-  entry?: Pick<StudioSessionRegistryEntry, 'customLabel' | 'autoLabel' | 'archivedAt'> | null
+  entry?: Pick<TracevaneSessionRegistryEntry, 'customLabel' | 'autoLabel' | 'archivedAt'> | null
 ): ChatSessionPresentation {
   const archivedAt = normalizeDate(entry?.archivedAt) || null;
   const customLabel = normalizeString(entry?.customLabel) || null;
@@ -96,21 +96,21 @@ export function buildSessionPresentation(
   };
 }
 
-export function buildStudioManagedSessionRow(agentId: string, label: string, gatewayConnected: boolean): ChatSessionRow {
-  const key = `agent:${agentId}:${CHAT_POLICY_DEFAULTS.defaultChannel}:direct:studio-${crypto.randomUUID()}`;
+export function buildTracevaneManagedSessionRow(agentId: string, label: string, gatewayConnected: boolean): ChatSessionRow {
+  const key = `agent:${agentId}:${CHAT_POLICY_DEFAULTS.defaultChannel}:direct:tracevane-${crypto.randomUUID()}`;
   const sessionId = crypto.randomUUID();
   return {
     key,
     agentId,
     sessionId,
-    kind: 'studio_managed',
+    kind: 'tracevane_managed',
     label,
     derivedTitle: null,
     lastMessagePreview: null,
     updatedAt: new Date().toISOString(),
     presentation: buildSessionPresentation(),
     source: {
-      source: 'studio',
+      source: 'tracevane',
       channel: CHAT_POLICY_DEFAULTS.defaultChannel,
       surface: CHAT_POLICY_DEFAULTS.defaultSurface,
       originLabel: 'Tracevane managed',
@@ -121,27 +121,27 @@ export function buildStudioManagedSessionRow(agentId: string, label: string, gat
       to: null,
       threadId: null,
     },
-    permissions: buildChatSessionPermissions('studio_managed'),
+    permissions: buildChatSessionPermissions('tracevane_managed'),
     runtime: buildRuntimeState(gatewayConnected, true),
   };
 }
 
-export function buildStudioManagedRowFromRegistry(
-  entry: StudioSessionRegistryEntry,
+export function buildTracevaneManagedRowFromRegistry(
+  entry: TracevaneSessionRegistryEntry,
   gatewayConnected: boolean
 ): ChatSessionRow {
   return {
     key: entry.key,
     agentId: entry.agentId,
     sessionId: normalizeString(entry.sessionId) || null,
-    kind: 'studio_managed',
+    kind: 'tracevane_managed',
     label: normalizeString(entry.customLabel, entry.label),
     derivedTitle: null,
     lastMessagePreview: null,
     updatedAt: entry.updatedAt,
     presentation: buildSessionPresentation(entry),
     source: {
-      source: 'studio',
+      source: 'tracevane',
       channel: CHAT_POLICY_DEFAULTS.defaultChannel,
       surface: CHAT_POLICY_DEFAULTS.defaultSurface,
       originLabel: 'Tracevane managed',
@@ -152,7 +152,7 @@ export function buildStudioManagedRowFromRegistry(
       to: null,
       threadId: null,
     },
-    permissions: buildChatSessionPermissions('studio_managed'),
+    permissions: buildChatSessionPermissions('tracevane_managed'),
     runtime: buildRuntimeState(gatewayConnected, true),
   };
 }
@@ -162,7 +162,7 @@ export function mapLocalSessionRow(
   key: string,
   record: LocalSessionRecord,
   gatewayConnected: boolean,
-  registryEntry?: StudioSessionRegistryEntry | null
+  registryEntry?: TracevaneSessionRegistryEntry | null
 ): ChatSessionRow {
   const kind = classifyChatSessionKind({
     sessionKey: key,
@@ -183,16 +183,16 @@ export function mapLocalSessionRow(
     agentId,
     sessionId: normalizeString(record.sessionId) || null,
     kind,
-    label: kind === 'studio_managed'
+    label: kind === 'tracevane_managed'
       ? normalizeString(
         registryEntry?.customLabel,
         normalizeString(registryEntry?.label, normalizeString(record.label, normalizeString(record.displayName, fallbackLabel)))
       )
       : normalizeString(record.label, normalizeString(record.displayName, fallbackLabel)),
-    derivedTitle: kind === 'studio_managed' ? null : normalizeString(record.displayName || record.label) || null,
+    derivedTitle: kind === 'tracevane_managed' ? null : normalizeString(record.displayName || record.label) || null,
     lastMessagePreview: null,
     updatedAt: normalizeDate(record.updatedAtMs || record.updatedAt || record.lastMessageAt),
-    presentation: kind === 'studio_managed' ? buildSessionPresentation(registryEntry) : buildSessionPresentation(),
+    presentation: kind === 'tracevane_managed' ? buildSessionPresentation(registryEntry) : buildSessionPresentation(),
     source: {
       source: policy.source,
       channel: normalizeString(record.lastChannel || record.origin?.provider) || null,
@@ -212,11 +212,11 @@ export function mapLocalSessionRow(
   };
 }
 
-export function resolveAgentSessionsStorePath(config: StudioServerConfig, agentId: string): string {
+export function resolveAgentSessionsStorePath(config: TracevaneServerConfig, agentId: string): string {
   return path.join(config.openclawRoot, 'agents', agentId, 'sessions', 'sessions.json');
 }
 
-export function resolveAvailableAgentIds(config: StudioServerConfig): string[] {
+export function resolveAvailableAgentIds(config: TracevaneServerConfig): string[] {
   const openclawConfig = readOpenClawConfig(config);
   return Array.isArray(openclawConfig.agents?.list)
     ? openclawConfig.agents.list

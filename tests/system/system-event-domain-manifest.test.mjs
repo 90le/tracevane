@@ -24,7 +24,7 @@ const baselineFile = path.join(
   "docs",
   "superpowers",
   "inventories",
-  "studio-system-event-coverage.json",
+  "tracevane-system-event-coverage.json",
 );
 const packageJson = JSON.parse(
   fs.readFileSync(path.join(rootDir, "package.json"), "utf8"),
@@ -72,10 +72,10 @@ test("system event manifest covers required sections", () => {
   assert.match(source, /SYSTEM_EVENT_COVERAGE_SEED/);
 });
 
-test("package scripts include studio system event coverage command", () => {
+test("package scripts include tracevane system event coverage command", () => {
   assert.equal(
-    packageJson.scripts?.["studio:system-event-coverage"],
-    "node scripts/studio-system-event-coverage.mjs",
+    packageJson.scripts?.["tracevane:system-event-coverage"],
+    "node scripts/tracevane-system-event-coverage.mjs",
   );
 });
 

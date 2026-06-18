@@ -2,10 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import {
-  createStandaloneStudioConfig,
-  createStudioContext,
-  createStudioServer,
-  syncStandaloneStudioConfig,
+  createStandaloneTracevaneConfig,
+  createTracevaneContext,
+  createTracevaneServer,
+  syncStandaloneTracevaneConfig,
 } from '../dist/apps/api/index.js';
 
 function normalizePort(value, fallback) {
@@ -13,22 +13,22 @@ function normalizePort(value, fallback) {
   return Number.isFinite(port) && port > 0 ? Math.floor(port) : fallback;
 }
 
-const apiPort = normalizePort(process.env.STUDIO_API_PORT, 3761);
-const config = createStandaloneStudioConfig({
+const apiPort = normalizePort(process.env.TRACEVANE_API_PORT, 3761);
+const config = createStandaloneTracevaneConfig({
   port: apiPort,
 });
-const context = createStudioContext({
+const context = createTracevaneContext({
   config,
   logger: console,
 });
-const server = createStudioServer(context);
+const server = createTracevaneServer(context);
 
 let shuttingDown = false;
 let configWatcher = null;
 
 function syncConfig(reason) {
   const previousGatewayPort = config.gatewayPort;
-  const changed = syncStandaloneStudioConfig(config);
+  const changed = syncStandaloneTracevaneConfig(config);
   const nextGatewayPort = config.gatewayPort;
 
   if (changed) {

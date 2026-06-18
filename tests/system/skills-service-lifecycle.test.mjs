@@ -8,7 +8,7 @@ import { execFileSync } from "node:child_process";
 import { createSkillsService } from "../../dist/apps/api/modules/skills/service.js";
 
 function makeTempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "studio-skills-lifecycle-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-skills-lifecycle-"));
 }
 
 function writeJson(file, value) {
@@ -60,21 +60,21 @@ with zipfile.ZipFile(zip_path, "w") as zf:
 
 function createConfig(root) {
   return {
-    pluginId: "studio",
+    pluginId: "tracevane",
     pluginName: "Tracevane",
     version: "0.1.0",
     port: 3760,
     autoStart: true,
     openclawRoot: root,
     openclawConfigFile: path.join(root, "openclaw.json"),
-    projectRoot: "/tmp/openclaw-studio-extension",
-    webDistDir: "/tmp/openclaw-studio-extension/apps/web-vue/dist",
+    projectRoot: "/tmp/tracevane-extension",
+    webDistDir: "/tmp/tracevane-extension/apps/web-vue/dist",
     gatewayPort: 31879,
     gatewayWsUrl: "ws://127.0.0.1:31879",
     gatewayControlUiBasePath: "",
     transport: {
       standalone: { enabled: true, port: 3760 },
-      gateway: { enabled: false, basePath: "/studio" },
+      gateway: { enabled: false, basePath: "/tracevane" },
     },
   };
 }

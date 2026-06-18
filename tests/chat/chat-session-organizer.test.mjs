@@ -82,7 +82,7 @@ test('deriveOrganizerRootSessions excludes sessions that belong to child folders
       key: 'nested',
       agentId: 'main',
       sessionId: 'nested',
-      kind: 'studio_managed',
+      kind: 'tracevane_managed',
       label: 'Nested',
       derivedTitle: null,
       lastMessagePreview: null,
@@ -93,9 +93,9 @@ test('deriveOrganizerRootSessions excludes sessions that belong to child folders
         customLabel: null,
       },
       source: {
-        source: 'studio',
+        source: 'tracevane',
         channel: 'webchat',
-        surface: 'studio-chat',
+        surface: 'tracevane-chat',
         originLabel: 'Tracevane managed',
       },
       deliveryContext: {
@@ -184,7 +184,7 @@ test('built-in archived organizer entry is stable and summarizes archived sessio
       key: 'archived-1',
       agentId: 'main',
       sessionId: 'archived-1',
-      kind: 'studio_managed',
+      kind: 'tracevane_managed',
       label: 'Archived 1',
       derivedTitle: null,
       lastMessagePreview: null,
@@ -195,9 +195,9 @@ test('built-in archived organizer entry is stable and summarizes archived sessio
         customLabel: null,
       },
       source: {
-        source: 'studio',
+        source: 'tracevane',
         channel: 'webchat',
-        surface: 'studio-chat',
+        surface: 'tracevane-chat',
         originLabel: 'Tracevane managed',
       },
       deliveryContext: {

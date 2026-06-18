@@ -26,13 +26,13 @@ const baselineFile = path.join(
   "docs",
   "superpowers",
   "inventories",
-  "studio-terminal-workspace-coverage.json",
+  "tracevane-terminal-workspace-coverage.json",
 );
 
 function runCoverageScript() {
   const stdout = execFileSync(
     process.execPath,
-    [path.join(rootDir, "scripts", "studio-terminal-workspace-coverage.mjs")],
+    [path.join(rootDir, "scripts", "tracevane-terminal-workspace-coverage.mjs")],
     {
       cwd: rootDir,
       encoding: "utf8",
@@ -57,12 +57,12 @@ test("terminal workspace manifest covers active shell tabs actions profiles tran
 
 test("package json declares terminal workspace coverage script", () => {
   assert.equal(
-    typeof packageJson.scripts?.["studio:terminal-workspace-coverage"],
+    typeof packageJson.scripts?.["tracevane:terminal-workspace-coverage"],
     "string",
   );
   assert.ok(
-    packageJson.scripts["studio:terminal-workspace-coverage"].includes(
-      "scripts/studio-terminal-workspace-coverage.mjs",
+    packageJson.scripts["tracevane:terminal-workspace-coverage"].includes(
+      "scripts/tracevane-terminal-workspace-coverage.mjs",
     ),
   );
 });

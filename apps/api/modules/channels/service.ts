@@ -21,7 +21,7 @@ import type {
   ChannelSummary,
   ChannelThreadBindingSummary,
 } from '../../../../types/channels.js';
-import type { StudioServerConfig } from '../../../../types/api.js';
+import type { TracevaneServerConfig } from '../../../../types/api.js';
 import { ensureDir, readJsonFile, readOpenClawConfig, writeJsonFile } from '../../core/state.js';
 import { buildChannelCatalog, getChannelCatalogEntry } from './catalog.js';
 
@@ -152,7 +152,7 @@ function getConfiguredChannelTypes(openclawConfig: Record<string, any>): string[
   return Object.keys(openclawConfig.channels).filter((channelType) => isChannelProviderKey(channelType));
 }
 
-function readCatalog(config: StudioServerConfig, openclawConfig: Record<string, any>): ChannelCatalogEntry[] {
+function readCatalog(config: TracevaneServerConfig, openclawConfig: Record<string, any>): ChannelCatalogEntry[] {
   return buildChannelCatalog({
     openclawRoot: config.openclawRoot,
     configuredTypes: getConfiguredChannelTypes(openclawConfig),
@@ -160,7 +160,7 @@ function readCatalog(config: StudioServerConfig, openclawConfig: Record<string, 
 }
 
 function getCatalogEntry(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   openclawConfig: Record<string, any>,
   channelType: string
 ): ChannelCatalogEntry {
@@ -372,22 +372,22 @@ function readInputFieldValue(input: ChannelAccountInput, fieldKey: string): unkn
   return input[fieldKey as keyof ChannelAccountInput];
 }
 
-function readAllowFromPath(config: StudioServerConfig, channelType: string, accountId: string): string {
+function readAllowFromPath(config: TracevaneServerConfig, channelType: string, accountId: string): string {
   const credentialsDir = path.join(config.openclawRoot, 'credentials');
   if (!accountId || accountId === 'default') return path.join(credentialsDir, `${channelType}-allowFrom.json`);
   return path.join(credentialsDir, `${channelType}-${accountId}-allowFrom.json`);
 }
 
-function readPairingPath(config: StudioServerConfig, channelType: string): string {
+function readPairingPath(config: TracevaneServerConfig, channelType: string): string {
   return path.join(config.openclawRoot, 'credentials', `${channelType}-pairing.json`);
 }
 
-function readAllowFrom(config: StudioServerConfig, channelType: string, accountId: string): string[] {
+function readAllowFrom(config: TracevaneServerConfig, channelType: string, accountId: string): string[] {
   const payload = readJsonFile<Record<string, unknown>>(readAllowFromPath(config, channelType, accountId), { allowFrom: [] });
   return normalizeStringList(payload.allowFrom);
 }
 
-function writeAllowFrom(config: StudioServerConfig, channelType: string, accountId: string, allowFrom: string[]): void {
+function writeAllowFrom(config: TracevaneServerConfig, channelType: string, accountId: string, allowFrom: string[]): void {
   const filePath = readAllowFromPath(config, channelType, accountId);
   ensureDir(path.dirname(filePath));
   writeJsonFile(filePath, {
@@ -424,7 +424,7 @@ function writeGroupAllowFrom(
   }
 }
 
-function readRawPairingRequests(config: StudioServerConfig, channelType: string): Array<Record<string, unknown>> {
+function readRawPairingRequests(config: TracevaneServerConfig, channelType: string): Array<Record<string, unknown>> {
   const payload = readJsonFile<Record<string, unknown>>(readPairingPath(config, channelType), { requests: [] });
   return Array.isArray(payload.requests) ? payload.requests.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object') : [];
 }
@@ -670,7 +670,7 @@ function mapCredentialStates(catalog: ChannelCatalogEntry, accountConfig: Record
 }
 
 function mapAccountSummary(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   openclawConfig: Record<string, any>,
   channelType: string,
   channelConfig: Record<string, any>,
@@ -795,7 +795,7 @@ function readAgentOptions(openclawConfig: Record<string, any>): ChannelAgentOpti
   return mapped.sort((left: ChannelAgentOption, right: ChannelAgentOption) => left.id.localeCompare(right.id));
 }
 
-function buildSummary(config: StudioServerConfig, openclawConfig: Record<string, any>): ChannelsSummaryPayload {
+function buildSummary(config: TracevaneServerConfig, openclawConfig: Record<string, any>): ChannelsSummaryPayload {
   const rawChannels = openclawConfig.channels && typeof openclawConfig.channels === 'object'
     ? openclawConfig.channels as Record<string, any>
     : {};
@@ -1011,7 +1011,7 @@ function writeCredentialField(target: Record<string, any>, field: ChannelFieldDe
 }
 
 function applyChannelSettings(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   openclawConfig: Record<string, any>,
   channelConfig: Record<string, any>,
   channelType: string,
@@ -1043,7 +1043,7 @@ function applyChannelSettings(
 }
 
 function applyAccountSettings(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   openclawConfig: Record<string, any>,
   accountConfig: Record<string, any>,
   channelType: string,
@@ -1280,7 +1280,7 @@ export function isChannelServiceError(error: unknown): error is ChannelServiceEr
   return error instanceof ChannelServiceError;
 }
 
-export function createChannelsService(config: StudioServerConfig): ChannelsService {
+export function createChannelsService(config: TracevaneServerConfig): ChannelsService {
   const saveAndBuild = (openclawConfig: Record<string, any>, message: string): ChannelsMutationResponse => {
     writeJsonFile(config.openclawConfigFile, openclawConfig);
     return {

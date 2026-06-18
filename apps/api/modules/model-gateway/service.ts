@@ -6,7 +6,7 @@ import { execFile, spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import { promisify } from "node:util";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
-import type { StudioServerConfig } from "../../../../types/api.js";
+import type { TracevaneServerConfig } from "../../../../types/api.js";
 import { hasConfiguredSecretInput } from "../../core/secret-ref.js";
 import {
   MODEL_GATEWAY_ACCOUNT_CREDENTIAL_SOURCES,
@@ -116,7 +116,7 @@ import {
 } from "../../../../types/model-gateway.js";
 import { sendJson, setCorsHeaders } from "../../core/http.js";
 import { readJsonFile } from "../../core/state.js";
-import { isStudioGatewayHttpAuthorized } from "../../gateway-http-auth.js";
+import { isTracevaneGatewayHttpAuthorized } from "../../gateway-http-auth.js";
 import {
   AnthropicMessagesChatAdapterError,
   adaptAnthropicMessagesResponseToChatCompletion,
@@ -312,8 +312,8 @@ export function isModelGatewayServiceError(error: unknown): error is ModelGatewa
   return error instanceof ModelGatewayServiceError;
 }
 
-export function resolveModelGatewayPaths(config: StudioServerConfig): ModelGatewayPaths {
-  const root = path.join(config.openclawRoot, "studio", "model-gateway");
+export function resolveModelGatewayPaths(config: TracevaneServerConfig): ModelGatewayPaths {
+  const root = path.join(config.openclawRoot, "tracevane", "model-gateway");
   return {
     root,
     registry: path.join(root, "providers.json"),
@@ -1688,7 +1688,7 @@ function mergeAppConnectionProfilePatch(
 }
 
 function generateGatewayClientKey(): string {
-  return `sk-studio-${randomUUID().replaceAll("-", "")}`;
+  return `sk-tracevane-${randomUUID().replaceAll("-", "")}`;
 }
 
 function constantTimeEquals(left: string, right: string): boolean {
@@ -2814,7 +2814,7 @@ function routeForPath(inputPath: string): { routeId: ModelGatewayRouteId; appSco
 }
 
 function normalizeRequestAppScope(headers: HeaderMap | undefined, fallback: ModelGatewayAppScope): ModelGatewayAppScope {
-  const value = readHeader(headers, "x-studio-app-scope").trim();
+  const value = readHeader(headers, "x-tracevane-app-scope").trim();
   return MODEL_GATEWAY_APP_SCOPES.includes(value as ModelGatewayAppScope)
     ? value as ModelGatewayAppScope
     : fallback;
@@ -3457,7 +3457,7 @@ function isLoopbackRequest(req?: http.IncomingMessage): boolean {
     || remoteAddress === "localhost";
 }
 
-function hasConfiguredGatewayAuth(config: StudioServerConfig): boolean {
+function hasConfiguredGatewayAuth(config: TracevaneServerConfig): boolean {
   const openclaw = readJsonFile<Record<string, any>>(config.openclawConfigFile, {});
   const auth = isRecord(openclaw.gateway) && isRecord(openclaw.gateway.auth) ? openclaw.gateway.auth : {};
   const mode = normalizeString(auth.mode);
@@ -4496,17 +4496,10 @@ interface ModelGatewayAppConnectionSpec {
 }
 
 const GATEWAY_PROVIDER_ID = "tracevane-gateway";
-const LEGACY_GATEWAY_PROVIDER_ID = "studio-gateway";
 const CODEX_GATEWAY_PROVIDER_ID = "tracevane_gateway";
-const LEGACY_CODEX_GATEWAY_PROVIDER_ID = "studio_gateway";
 const APP_CONNECTION_REDACTED_KEY = "<TRACEVANE_GATEWAY_KEY>";
-const LEGACY_APP_CONNECTION_REDACTED_KEY = "<STUDIO_GATEWAY_KEY>";
 const CODEX_APP_CONNECTION_START = "# >>> Tracevane Gateway app connection >>>";
 const CODEX_APP_CONNECTION_END = "# <<< Tracevane Gateway app connection <<<";
-const LEGACY_CODEX_APP_CONNECTION_MARKERS = [
-  ["# >>> Studio Gateway app connection >>>", "# <<< Studio Gateway app connection <<<"],
-  ["# >>> OpenClaw Studio Gateway app connection >>>", "# <<< OpenClaw Studio Gateway app connection <<<"],
-] as const;
 
 function normalizeAppConnectionId(value: unknown): ModelGatewayAppConnectionId | null {
   return MODEL_GATEWAY_APP_CONNECTION_IDS.includes(value as ModelGatewayAppConnectionId)
@@ -4527,45 +4520,16 @@ function tomlBoolean(value: boolean): string {
 }
 
 function stripCodexManagedBlock(source: string): string {
-  const markers = [
-    [CODEX_APP_CONNECTION_START, CODEX_APP_CONNECTION_END],
-    ...LEGACY_CODEX_APP_CONNECTION_MARKERS,
-  ] as const;
-  let next = source;
-  for (const [startMarker, endMarker] of markers) {
-    const start = startMarker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const end = endMarker.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    next = next.replace(new RegExp(`\\n?${start}[\\s\\S]*?${end}\\n?`, "g"), "\n");
-  }
-  return next
+  const start = CODEX_APP_CONNECTION_START.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const end = CODEX_APP_CONNECTION_END.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return source
+    .replace(new RegExp(`\\n?${start}[\\s\\S]*?${end}\\n?`, "g"), "\n")
     .replace(/\n{3,}/g, "\n\n")
     .trimEnd();
 }
 
-function gatewayProviderEntries(
-  providers: Record<string, unknown>,
-): { current: Record<string, unknown>; legacy: Record<string, unknown> } {
-  const current = isRecord(providers[GATEWAY_PROVIDER_ID]) ? providers[GATEWAY_PROVIDER_ID] : {};
-  const legacy = isRecord(providers[LEGACY_GATEWAY_PROVIDER_ID]) ? providers[LEGACY_GATEWAY_PROVIDER_ID] : {};
-  return { current, legacy };
-}
-
-function withoutLegacyGatewayProvider(providers: Record<string, unknown>): Record<string, unknown> {
-  const next = { ...providers };
-  delete next[LEGACY_GATEWAY_PROVIDER_ID];
-  return next;
-}
-
 function gatewayModelReference(model: string): string {
   return `${GATEWAY_PROVIDER_ID}/${model}`;
-}
-
-function migrateLegacyGatewayModelReference(value: unknown): string | null {
-  const model = normalizeString(value);
-  const legacyPrefix = `${LEGACY_GATEWAY_PROVIDER_ID}/`;
-  if (!model.startsWith(legacyPrefix)) return null;
-  const modelId = model.slice(legacyPrefix.length).trim();
-  return modelId ? gatewayModelReference(modelId) : null;
 }
 
 function upsertTopLevelTomlScalar(source: string, key: string, value: string | null): string {
@@ -4685,7 +4649,6 @@ function isSecretPreviewKey(key: string): boolean {
 function isPreviewPlaceholder(value: string): boolean {
   const trimmed = value.trim();
   return trimmed === APP_CONNECTION_REDACTED_KEY
-    || trimmed === LEGACY_APP_CONNECTION_REDACTED_KEY
     || trimmed === "<REDACTED>"
     || /^\$\{[A-Z0-9_]+\}$/.test(trimmed);
 }
@@ -4769,7 +4732,7 @@ function buildOpenCodeConfig(source: string | null, targetPath: string, options:
 }): { content: string; error: string | null } {
   const parsed = parseJsonObjectForConnection(targetPath, source);
   if (parsed.error) return { content: stringifyConnectionJson(parsed.value), error: parsed.error };
-  const provider = withoutLegacyGatewayProvider(isRecord(parsed.value.provider) ? parsed.value.provider : {});
+  const provider = isRecord(parsed.value.provider) ? parsed.value.provider : {};
   const modelCatalogIds = Array.from(new Set([
     ...options.modelIds,
     ...(options.profile.model ? [options.profile.model] : []),
@@ -4789,7 +4752,7 @@ function buildOpenCodeConfig(source: string | null, targetPath: string, options:
   }]));
   const model = options.profile.model
     ? gatewayModelReference(options.profile.model)
-    : migrateLegacyGatewayModelReference(parsed.value.model);
+    : null;
   return {
     error: null,
     content: stringifyConnectionJson({
@@ -4821,7 +4784,7 @@ function buildOpenClawConfig(source: string | null, targetPath: string, options:
   const parsed = parseJsonObjectForConnection(targetPath, source);
   if (parsed.error) return { content: stringifyConnectionJson(parsed.value), error: parsed.error };
   const modelsRoot = isRecord(parsed.value.models) ? parsed.value.models : {};
-  const providers = withoutLegacyGatewayProvider(isRecord(modelsRoot.providers) ? modelsRoot.providers : {});
+  const providers = isRecord(modelsRoot.providers) ? modelsRoot.providers : {};
   const modelCatalogIds = Array.from(new Set([
     ...options.modelIds,
     ...(options.profile.model ? [options.profile.model] : []),
@@ -4871,7 +4834,7 @@ function mergeOpenClawAgentDefaultModel(
   const defaultModel = isRecord(defaults.model) ? defaults.model : {};
   const primary = profile.model
     ? gatewayModelReference(profile.model)
-    : migrateLegacyGatewayModelReference(defaultModel.primary);
+    : null;
   return {
     ...agents,
     defaults: {
@@ -4950,7 +4913,7 @@ export interface ModelGatewayService {
 }
 
 export interface ModelGatewayServiceOptions {
-  runtimeHost?: "studio-api" | "local-daemon";
+  runtimeHost?: "tracevane-api" | "local-daemon";
   homeDir?: string;
   listener?: {
     host?: string;
@@ -4962,12 +4925,12 @@ export interface ModelGatewayServiceOptions {
 }
 
 export function createModelGatewayService(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   options: ModelGatewayServiceOptions = {},
 ): ModelGatewayService {
   const paths = resolveModelGatewayPaths(config);
   const codexHistory = new CodexChatHistoryStore(paths.codexHistory);
-  const runtimeHost = options.runtimeHost || "studio-api";
+  const runtimeHost = options.runtimeHost || "tracevane-api";
   const homeDir = options.homeDir || os.homedir();
   const listenerHost = options.listener?.host || MODEL_GATEWAY_DEFAULT_HOST;
   const listenerPort = options.listener?.port || MODEL_GATEWAY_DEFAULT_PORT;
@@ -5376,7 +5339,7 @@ export function createModelGatewayService(
   function requireManagement(req?: http.IncomingMessage): void {
     if (!req) return;
     if (isLoopbackRequest(req)) return;
-    if (hasConfiguredGatewayAuth(config) && isStudioGatewayHttpAuthorized(config, req)) return;
+    if (hasConfiguredGatewayAuth(config) && isTracevaneGatewayHttpAuthorized(config, req)) return;
     throw new ModelGatewayServiceError(
       "model_gateway_management_locked",
       "Model Gateway provider and secret changes require a trusted local request or configured Gateway authentication.",
@@ -5843,7 +5806,7 @@ export function createModelGatewayService(
     context?: CodexAccountSelectionContext,
   ): string | null {
     if (provider.accountProvider?.routing.sessionAffinity === false) return null;
-    const headerValue = normalizeString(readHeader(context?.headers, "x-studio-session-id"))
+    const headerValue = normalizeString(readHeader(context?.headers, "x-tracevane-session-id"))
       || normalizeString(readHeader(context?.headers, "x-session-id"))
       || normalizeString(readHeader(context?.headers, "session_id"))
       || normalizeString(readHeader(context?.headers, "x-client-request-id"))
@@ -6476,7 +6439,7 @@ export function createModelGatewayService(
     return {
       controlPlane: {
         state: runtimeHost === "local-daemon" ? "not-attached" : "running",
-        mode: runtimeHost === "local-daemon" ? "daemon-local-control" : "studio-api",
+        mode: runtimeHost === "local-daemon" ? "daemon-local-control" : "tracevane-api",
         pid: runtimeHost === "local-daemon" ? null : process.pid,
         endpoint: runtimeHost === "local-daemon"
           ? null
@@ -6494,7 +6457,7 @@ export function createModelGatewayService(
         required: true,
         implementationStatus: daemonRunning ? "available" : "contract-only",
         state: daemonState,
-        runtimeMode: daemonRunning ? "local-daemon" : "studio-api-embedded",
+        runtimeMode: daemonRunning ? "local-daemon" : "tracevane-api-embedded",
         endpoint: daemonEndpoint,
         pid: daemonRuntime?.pid || null,
         startedAt: daemonRuntime?.startedAt || null,
@@ -7826,11 +7789,9 @@ export function createModelGatewayService(
   function appConnectionConfigured(spec: ModelGatewayAppConnectionSpec, source: string | null): boolean {
     if (!source) return false;
     if (spec.id === "codex") {
-      return [CODEX_GATEWAY_PROVIDER_ID, LEGACY_CODEX_GATEWAY_PROVIDER_ID].some((providerId) =>
-        source.includes(`[model_providers.${providerId}]`)
-          && source.includes(`model_provider = "${providerId}"`)
-          && source.includes(`base_url = ${tomlString(spec.endpoint)}`)
-      );
+      return source.includes(`[model_providers.${CODEX_GATEWAY_PROVIDER_ID}]`)
+        && source.includes(`model_provider = "${CODEX_GATEWAY_PROVIDER_ID}"`)
+        && source.includes(`base_url = ${tomlString(spec.endpoint)}`);
     }
     const parsed = parseJsonObjectForConnection(spec.targetPath, source);
     if (parsed.error) return false;
@@ -7841,15 +7802,13 @@ export function createModelGatewayService(
     }
     if (spec.id === "opencode") {
       const provider = isRecord(parsed.value.provider) ? parsed.value.provider : {};
-      const { current, legacy } = gatewayProviderEntries(provider);
-      const gateway = Object.keys(current).length ? current : legacy;
+      const gateway = isRecord(provider[GATEWAY_PROVIDER_ID]) ? provider[GATEWAY_PROVIDER_ID] : {};
       const optionsValue = isRecord(gateway.options) ? gateway.options : {};
       return normalizeString(optionsValue.baseURL) === spec.endpoint && Boolean(normalizeString(optionsValue.apiKey));
     }
     const models = isRecord(parsed.value.models) ? parsed.value.models : {};
     const providers = isRecord(models.providers) ? models.providers : {};
-    const { current, legacy } = gatewayProviderEntries(providers);
-    const gateway = Object.keys(current).length ? current : legacy;
+    const gateway = isRecord(providers[GATEWAY_PROVIDER_ID]) ? providers[GATEWAY_PROVIDER_ID] : {};
     return normalizeString(gateway.baseUrl) === spec.endpoint && Boolean(normalizeString(gateway.apiKey));
   }
 
@@ -8357,7 +8316,7 @@ export function createModelGatewayService(
     const routePath = ROUTES[routeId].paths[0] || "/v1/responses";
     const model = normalizeString(payload.model);
     const headersForDecision = {
-      "x-studio-app-scope": scope,
+      "x-tracevane-app-scope": scope,
     };
     const decision = resolveRouteDecision("POST", routePath, headersForDecision, model || null);
     const providerId = decision.provider?.id || "";
@@ -8402,7 +8361,7 @@ export function createModelGatewayService(
     const targetUrl = new URL(routePath, `${stripTrailingV1(endpoint)}/`).toString();
     const headers = new Headers({
       "content-type": "application/json",
-      "x-studio-app-scope": scope,
+      "x-tracevane-app-scope": scope,
     });
     if (key) headers.set("authorization", `Bearer ${key}`);
     const startedAt = nowIso();

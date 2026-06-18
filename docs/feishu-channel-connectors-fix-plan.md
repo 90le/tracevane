@@ -1,4 +1,4 @@
-# Studio 飞书渠道稳定性修复归档
+# Tracevane 飞书渠道稳定性修复归档
 
 > 状态：2026-06-10 9 项修复已实施；后续问题统一记录到 `feishu-long-connection-issue-tracker.md`
 > 更新：2026-06-12

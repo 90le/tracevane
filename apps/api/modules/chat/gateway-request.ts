@@ -1,6 +1,6 @@
 import crypto from 'node:crypto';
 import { WebSocket } from 'ws';
-import type { StudioServerConfig } from '../../../../types/api.js';
+import type { TracevaneServerConfig } from '../../../../types/api.js';
 import { CHAT_GATEWAY_CLOSE_CODE_MAP } from './error-mapping.js';
 import { buildChatError, ChatServiceError, mapGatewayContractError } from './errors.js';
 import {
@@ -21,7 +21,7 @@ function readGatewayConnectErrorCode(frame: Record<string, any>): string {
 }
 
 async function requestGatewayOnce<T>(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   method: string,
   params: Record<string, unknown>,
   options: GatewayConnectOptions,
@@ -134,7 +134,7 @@ async function requestGatewayOnce<T>(
 }
 
 export async function requestGateway<T>(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   method: string,
   params: Record<string, unknown>,
   options: GatewayConnectOptions = {}

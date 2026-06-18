@@ -28,14 +28,14 @@ import type { SanitizeLevel } from './inline-preview-preferences';
 import type { ChatResourceItem } from '../../../../../types/chat';
 import { joinApiPath } from '../../shared/api';
 import {
-  buildStudioMarkdownMediaDownloadUrl,
-  inferStudioMarkdownMediaKind,
-  isStudioMarkdownCompiledUrl,
-  parseStudioMarkdownMediaRef,
-  parseStudioMarkdownMediaTitle,
-  stripStudioMarkdownMediaMeta,
-  type StudioMarkdownMediaDisplay,
-} from '../../../../../lib/studio-markdown-media';
+  buildTracevaneMarkdownMediaDownloadUrl,
+  inferTracevaneMarkdownMediaKind,
+  isTracevaneMarkdownCompiledUrl,
+  parseTracevaneMarkdownMediaRef,
+  parseTracevaneMarkdownMediaTitle,
+  stripTracevaneMarkdownMediaMeta,
+  type TracevaneMarkdownMediaDisplay,
+} from '../../../../../lib/tracevane-markdown-media';
 
 // ---------------------------------------------------------------------------
 // DOMPurify / unified / markdown runtime configuration
@@ -112,10 +112,10 @@ const sanitizeOptions = {
     'data-math-source',
     'data-mermaid-source',
     'data-preview-kind',
-    'data-studio-display',
-    'data-studio-preview-alt',
-    'data-studio-preview-kind',
-    'data-studio-preview-src',
+    'data-tracevane-display',
+    'data-tracevane-preview-alt',
+    'data-tracevane-preview-kind',
+    'data-tracevane-preview-src',
   ],
   ADD_DATA_URI_TAGS: ['img'],
 };
@@ -685,12 +685,12 @@ function installHooks(): void {
           node.removeAttribute('srcset');
         }
       }
-      const meta = stripStudioMarkdownMediaMeta(src);
-      if (isStudioMarkdownCompiledUrl(meta.url)) {
+      const meta = stripTracevaneMarkdownMediaMeta(src);
+      if (isTracevaneMarkdownCompiledUrl(meta.url)) {
         node.classList.add('markdown-inline-image');
-        node.setAttribute('data-studio-preview-src', meta.url);
-        node.setAttribute('data-studio-preview-kind', 'image');
-        node.setAttribute('data-studio-preview-alt', node.getAttribute('alt')?.trim() || meta.fileName || 'image');
+        node.setAttribute('data-tracevane-preview-src', meta.url);
+        node.setAttribute('data-tracevane-preview-kind', 'image');
+        node.setAttribute('data-tracevane-preview-alt', node.getAttribute('alt')?.trim() || meta.fileName || 'image');
       }
     }
 
@@ -709,11 +709,11 @@ function installHooks(): void {
           node.removeAttribute('srcset');
         }
       }
-      const meta = stripStudioMarkdownMediaMeta(src);
-      if (node instanceof HTMLVideoElement && isStudioMarkdownCompiledUrl(meta.url)) {
-        node.setAttribute('data-studio-preview-src', meta.url);
-        node.setAttribute('data-studio-preview-kind', 'video');
-        node.setAttribute('data-studio-preview-alt', node.getAttribute('title')?.trim() || meta.fileName || 'video');
+      const meta = stripTracevaneMarkdownMediaMeta(src);
+      if (node instanceof HTMLVideoElement && isTracevaneMarkdownCompiledUrl(meta.url)) {
+        node.setAttribute('data-tracevane-preview-src', meta.url);
+        node.setAttribute('data-tracevane-preview-kind', 'video');
+        node.setAttribute('data-tracevane-preview-alt', node.getAttribute('title')?.trim() || meta.fileName || 'video');
       }
     }
 
@@ -984,7 +984,7 @@ function chipBadge(kind: 'image' | 'video' | 'file'): string {
   return 'File';
 }
 
-type ResolvedStudioMediaTarget = {
+type ResolvedTracevaneMediaTarget = {
   url: string;
   kind: ChatResourceItem['kind'] | null;
   fileName: string | null;
@@ -992,7 +992,7 @@ type ResolvedStudioMediaTarget = {
   originalPath: string | null;
 };
 
-function normalizeStudioResourceLabel(label: string | null | undefined, fallback: string | null | undefined): string {
+function normalizeTracevaneResourceLabel(label: string | null | undefined, fallback: string | null | undefined): string {
   const normalized = typeof label === 'string' ? label.trim() : '';
   if (normalized) {
     return normalized;
@@ -1001,7 +1001,7 @@ function normalizeStudioResourceLabel(label: string | null | undefined, fallback
   return fallbackLabel || 'media';
 }
 
-function resolveStudioResourceFromRef(
+function resolveTracevaneResourceFromRef(
   href: string,
   resources: ChatResourceItem[] | undefined,
 ): ChatResourceItem | null {
@@ -1010,8 +1010,8 @@ function resolveStudioResourceFromRef(
     return null;
   }
 
-  const stripped = stripStudioMarkdownMediaMeta(normalizedHref);
-  if (isStudioMarkdownCompiledUrl(stripped.url)) {
+  const stripped = stripTracevaneMarkdownMediaMeta(normalizedHref);
+  if (isTracevaneMarkdownCompiledUrl(stripped.url)) {
     const normalizedCompiledUrl = joinApiPath(stripped.url);
     const compiledMatch = (resources || []).find((item) => (
       item.url === stripped.url
@@ -1022,7 +1022,7 @@ function resolveStudioResourceFromRef(
     return compiledMatch || null;
   }
 
-  const parsedRef = parseStudioMarkdownMediaRef(normalizedHref);
+  const parsedRef = parseTracevaneMarkdownMediaRef(normalizedHref);
   const normalizedPath = parsedRef ? `${parsedRef.kind}:${parsedRef.path}` : normalizedHref;
   return (resources || []).find((item) => (
     item.originalPath === normalizedHref
@@ -1032,16 +1032,16 @@ function resolveStudioResourceFromRef(
   )) || null;
 }
 
-function isMissingStudioResource(resource: ChatResourceItem | null | undefined): boolean {
+function isMissingTracevaneResource(resource: ChatResourceItem | null | undefined): boolean {
   return Boolean(resource && (resource.status === 'missing' || (!resource.url && !resource.downloadUrl)));
 }
 
-function resolveStudioMediaHref(
+function resolveTracevaneMediaHref(
   href: string,
   resources: ChatResourceItem[] | undefined,
-): ResolvedStudioMediaTarget | null {
-  const meta = stripStudioMarkdownMediaMeta(href);
-  if (isStudioMarkdownCompiledUrl(meta.url)) {
+): ResolvedTracevaneMediaTarget | null {
+  const meta = stripTracevaneMarkdownMediaMeta(href);
+  if (isTracevaneMarkdownCompiledUrl(meta.url)) {
     return {
       url: joinApiPath(meta.url),
       kind: meta.kind,
@@ -1051,11 +1051,11 @@ function resolveStudioMediaHref(
     };
   }
 
-  const resource = resolveStudioResourceFromRef(href, resources);
+  const resource = resolveTracevaneResourceFromRef(href, resources);
   if (!resource) {
     return null;
   }
-  const missing = isMissingStudioResource(resource);
+  const missing = isMissingTracevaneResource(resource);
   return {
     url: missing ? '' : joinApiPath(resource.url),
     kind: resource.kind,
@@ -1073,21 +1073,21 @@ function wrapCardResourceHtml(html: string): string {
   return `<span class="chat-md-card-resource-wrap">${html}</span>`;
 }
 
-function studioMissingLabel(kind: 'image' | 'video' | 'file', label: string): string {
+function tracevaneMissingLabel(kind: 'image' | 'video' | 'file', label: string): string {
   if (kind === 'image') return `Image missing: ${label}`;
   if (kind === 'video') return `Video missing: ${label}`;
   return `File missing: ${label}`;
 }
 
-function renderStudioMissingResourceHtml(params: {
-  display: StudioMarkdownMediaDisplay;
+function renderTracevaneMissingResourceHtml(params: {
+  display: TracevaneMarkdownMediaDisplay;
   kind: 'image' | 'video' | 'file';
   label: string;
   fileName: string;
   originalPath: string | null;
 }): string {
   const target = params.originalPath || params.fileName || params.label || 'media';
-  const label = studioMissingLabel(params.kind, target);
+  const label = tracevaneMissingLabel(params.kind, target);
   if (params.display === 'inline-image' || params.display === 'break-image' || params.display === 'inline-video' || params.display === 'break-video') {
     const isBreak = params.display.startsWith('break-');
     const baseClass = params.kind === 'video'
@@ -1095,7 +1095,7 @@ function renderStudioMissingResourceHtml(params: {
       : 'chat-inline-resource chat-inline-resource-image';
     const className = `${baseClass}${isBreak ? ' chat-break-resource' : ''} missing`;
     const html = [
-      `<span class="${className}" data-studio-display="${escapeHtml(params.display)}" title="${escapeAttribute(label)}">`,
+      `<span class="${className}" data-tracevane-display="${escapeHtml(params.display)}" title="${escapeAttribute(label)}">`,
       `<span class="chat-inline-resource-missing">${escapeHtml(label)}</span>`,
       '</span>',
     ].join('');
@@ -1106,7 +1106,7 @@ function renderStudioMissingResourceHtml(params: {
     const isBreak = params.display === 'break-chip';
     const className = `${isBreak ? 'chat-inline-chip chat-break-chip' : 'chat-inline-chip'} missing`;
     const html = [
-      `<span class="${className}" data-studio-display="${escapeHtml(params.display)}" title="${escapeAttribute(label)}">`,
+      `<span class="${className}" data-tracevane-display="${escapeHtml(params.display)}" title="${escapeAttribute(label)}">`,
       `<span class="chat-inline-chip-badge">${chipBadge(params.kind)}</span>`,
       `<span class="chat-inline-chip-label">${escapeHtml(label)}</span>`,
       '</span>',
@@ -1115,7 +1115,7 @@ function renderStudioMissingResourceHtml(params: {
   }
 
   return wrapCardResourceHtml([
-    `<div class="chat-resource-card ${params.kind} chat-md-card-resource missing" data-studio-display="card">`,
+    `<div class="chat-resource-card ${params.kind} chat-md-card-resource missing" data-tracevane-display="card">`,
     '<div class="chat-resource-file-copy">',
     `<span class="chat-resource-file-badge">${chipBadge(params.kind)}</span>`,
     `<strong>${escapeHtml(params.label || params.fileName || 'Missing resource')}</strong>`,
@@ -1125,8 +1125,8 @@ function renderStudioMissingResourceHtml(params: {
   ].join(''));
 }
 
-function renderStudioInlineMediaHtml(params: {
-  display: Extract<StudioMarkdownMediaDisplay, 'inline-image' | 'inline-video' | 'break-image' | 'break-video'>;
+function renderTracevaneInlineMediaHtml(params: {
+  display: Extract<TracevaneMarkdownMediaDisplay, 'inline-image' | 'inline-video' | 'break-image' | 'break-video'>;
   kind: 'image' | 'video';
   href: string;
   alt: string;
@@ -1142,10 +1142,10 @@ function renderStudioInlineMediaHtml(params: {
     : `<video class="chat-inline-resource-media" src="${escapeHtml(params.href)}" muted playsinline preload="none"></video>`;
   const html = [
     `<button type="button" class="${className}"`,
-    ` data-studio-display="${escapeHtml(params.display)}"`,
-    ` data-studio-preview-src="${escapeAttribute(params.href)}"`,
-    ` data-studio-preview-kind="${params.kind}"`,
-    ` data-studio-preview-alt="${escapeAttribute(params.alt)}"`,
+    ` data-tracevane-display="${escapeHtml(params.display)}"`,
+    ` data-tracevane-preview-src="${escapeAttribute(params.href)}"`,
+    ` data-tracevane-preview-kind="${params.kind}"`,
+    ` data-tracevane-preview-alt="${escapeAttribute(params.alt)}"`,
     ` title="${escapeHtml(params.alt)}">`,
     mediaNode,
     `<span class="chat-inline-resource-caption">${escapeHtml(params.label)}</span>`,
@@ -1154,8 +1154,8 @@ function renderStudioInlineMediaHtml(params: {
   return isBreak ? wrapBreakResourceHtml(html) : html;
 }
 
-function renderStudioChipHtml(params: {
-  display: Extract<StudioMarkdownMediaDisplay, 'inline-chip' | 'break-chip'>;
+function renderTracevaneChipHtml(params: {
+  display: Extract<TracevaneMarkdownMediaDisplay, 'inline-chip' | 'break-chip'>;
   kind: 'image' | 'video' | 'file';
   href: string;
   label: string;
@@ -1163,8 +1163,8 @@ function renderStudioChipHtml(params: {
   const isBreak = params.display === 'break-chip';
   const className = isBreak ? 'chat-inline-chip chat-break-chip' : 'chat-inline-chip';
   const html = [
-    `<a class="${className}" href="${escapeHtml(buildStudioMarkdownMediaDownloadUrl(params.href) || params.href)}"`,
-    ` data-studio-display="${escapeHtml(params.display)}"`,
+    `<a class="${className}" href="${escapeHtml(buildTracevaneMarkdownMediaDownloadUrl(params.href) || params.href)}"`,
+    ` data-tracevane-display="${escapeHtml(params.display)}"`,
     ' target="_blank" rel="noreferrer noopener">',
     `<span class="chat-inline-chip-badge">${chipBadge(params.kind)}</span>`,
     `<span class="chat-inline-chip-label">${escapeHtml(params.label)}</span>`,
@@ -1173,7 +1173,7 @@ function renderStudioChipHtml(params: {
   return isBreak ? wrapBreakResourceHtml(html) : html;
 }
 
-function renderStudioCardHtml(params: {
+function renderTracevaneCardHtml(params: {
   kind: 'image' | 'video' | 'file';
   href: string;
   label: string;
@@ -1186,10 +1186,10 @@ function renderStudioCardHtml(params: {
       : `<video class="chat-resource-video" src="${escapeHtml(params.href)}" muted playsinline preload="none"></video>`;
     return wrapCardResourceHtml([
       `<button type="button" class="chat-resource-card ${params.kind} chat-md-card-resource"`,
-      ' data-studio-display="card"',
-      ` data-studio-preview-src="${escapeAttribute(params.href)}"`,
-      ` data-studio-preview-kind="${params.kind}"`,
-      ` data-studio-preview-alt="${escapeAttribute(params.alt)}">`,
+      ' data-tracevane-display="card"',
+      ` data-tracevane-preview-src="${escapeAttribute(params.href)}"`,
+      ` data-tracevane-preview-kind="${params.kind}"`,
+      ` data-tracevane-preview-alt="${escapeAttribute(params.alt)}">`,
       mediaNode,
       '<span class="chat-resource-meta">',
       `<strong>${escapeHtml(params.label)}</strong>`,
@@ -1199,9 +1199,9 @@ function renderStudioCardHtml(params: {
     ].join(''));
   }
 
-  const downloadUrl = buildStudioMarkdownMediaDownloadUrl(params.href);
+  const downloadUrl = buildTracevaneMarkdownMediaDownloadUrl(params.href);
   return wrapCardResourceHtml([
-    '<div class="chat-resource-card file chat-md-card-resource" data-studio-display="card">',
+    '<div class="chat-resource-card file chat-md-card-resource" data-tracevane-display="card">',
     '<div class="chat-resource-file-copy">',
     '<span class="chat-resource-file-badge">File</span>',
     `<strong>${escapeHtml(params.label)}</strong>`,
@@ -1215,33 +1215,33 @@ function renderStudioCardHtml(params: {
   ].join(''));
 }
 
-function renderStudioMarkdownMediaToken(params: {
+function renderTracevaneMarkdownMediaToken(params: {
   href: string;
   title: string | null | undefined;
   label: string;
   resources?: ChatResourceItem[];
 }): string | null {
-  const display = parseStudioMarkdownMediaTitle(params.title);
+  const display = parseTracevaneMarkdownMediaTitle(params.title);
   if (!display) {
     return null;
   }
 
-  const resolved = resolveStudioMediaHref(params.href, params.resources);
+  const resolved = resolveTracevaneMediaHref(params.href, params.resources);
   if (!resolved) {
     return null;
   }
 
-  const kind = inferStudioMarkdownMediaKind(display, resolved.kind);
+  const kind = inferTracevaneMarkdownMediaKind(display, resolved.kind);
   if (!kind) {
     return null;
   }
 
   const fileName = resolved.fileName || params.label || 'media';
-  const label = normalizeStudioResourceLabel(params.label, fileName);
-  const alt = normalizeStudioResourceLabel(params.label, fileName);
+  const label = normalizeTracevaneResourceLabel(params.label, fileName);
+  const alt = normalizeTracevaneResourceLabel(params.label, fileName);
 
   if (resolved.missing) {
-    return renderStudioMissingResourceHtml({
+    return renderTracevaneMissingResourceHtml({
       display,
       kind,
       label,
@@ -1262,7 +1262,7 @@ function renderStudioMarkdownMediaToken(params: {
     if (kind !== 'image') {
       return null;
     }
-    return renderStudioInlineMediaHtml({
+    return renderTracevaneInlineMediaHtml({
       display,
       kind: 'image',
       href: resolved.url,
@@ -1275,7 +1275,7 @@ function renderStudioMarkdownMediaToken(params: {
     if (kind !== 'video') {
       return null;
     }
-    return renderStudioInlineMediaHtml({
+    return renderTracevaneInlineMediaHtml({
       display,
       kind: 'video',
       href: resolved.url,
@@ -1285,7 +1285,7 @@ function renderStudioMarkdownMediaToken(params: {
   }
 
   if (display === 'inline-chip' || display === 'break-chip') {
-    return renderStudioChipHtml({
+    return renderTracevaneChipHtml({
       display,
       kind,
       href: resolved.url,
@@ -1293,7 +1293,7 @@ function renderStudioMarkdownMediaToken(params: {
     });
   }
 
-  return renderStudioCardHtml({
+  return renderTracevaneCardHtml({
     kind,
     href: resolved.url,
     label,
@@ -1302,19 +1302,19 @@ function renderStudioMarkdownMediaToken(params: {
   });
 }
 
-function parseStudioHtmlDisplay(value: string | null | undefined): StudioMarkdownMediaDisplay | null {
+function parseTracevaneHtmlDisplay(value: string | null | undefined): TracevaneMarkdownMediaDisplay | null {
   const normalized = typeof value === 'string' ? value.trim() : '';
   if (!normalized) {
     return null;
   }
-  const direct = parseStudioMarkdownMediaTitle(normalized);
+  const direct = parseTracevaneMarkdownMediaTitle(normalized);
   if (direct) {
     return direct;
   }
-  return parseStudioMarkdownMediaTitle(`studio:${normalized}`);
+  return parseTracevaneMarkdownMediaTitle(`tracevane:${normalized}`);
 }
 
-function resolveStudioHtmlMediaHref(element: HTMLAnchorElement | HTMLImageElement | HTMLVideoElement): string {
+function resolveTracevaneHtmlMediaHref(element: HTMLAnchorElement | HTMLImageElement | HTMLVideoElement): string {
   if (element instanceof HTMLAnchorElement) {
     return element.getAttribute('href')?.trim() || '';
   }
@@ -1338,9 +1338,9 @@ function resolveStudioHtmlMediaHref(element: HTMLAnchorElement | HTMLImageElemen
     || firstSrcsetUrl(childSource.getAttribute('srcset')?.trim() || '');
 }
 
-function renderStudioHtmlMediaElement(element: HTMLAnchorElement | HTMLImageElement | HTMLVideoElement): string | null {
-  const display = parseStudioHtmlDisplay(
-    element.getAttribute('data-studio-display')
+function renderTracevaneHtmlMediaElement(element: HTMLAnchorElement | HTMLImageElement | HTMLVideoElement): string | null {
+  const display = parseTracevaneHtmlDisplay(
+    element.getAttribute('data-tracevane-display')
     || element.getAttribute('title')
     || '',
   );
@@ -1348,12 +1348,12 @@ function renderStudioHtmlMediaElement(element: HTMLAnchorElement | HTMLImageElem
     return null;
   }
 
-  const href = resolveStudioHtmlMediaHref(element);
+  const href = resolveTracevaneHtmlMediaHref(element);
   if (!href) {
     return null;
   }
 
-  const resolved = resolveStudioMediaHref(href, activeRenderResources);
+  const resolved = resolveTracevaneMediaHref(href, activeRenderResources);
   if (!resolved) {
     return null;
   }
@@ -1363,7 +1363,7 @@ function renderStudioHtmlMediaElement(element: HTMLAnchorElement | HTMLImageElem
     : element instanceof HTMLVideoElement
       ? 'video'
       : resolved.kind;
-  const kind = inferStudioMarkdownMediaKind(display, fallbackKind);
+  const kind = inferTracevaneMarkdownMediaKind(display, fallbackKind);
   if (!kind) {
     return null;
   }
@@ -1374,8 +1374,8 @@ function renderStudioHtmlMediaElement(element: HTMLAnchorElement | HTMLImageElem
       || element.getAttribute('aria-label')?.trim()
       || '';
   const fileName = resolved.fileName || labelSource || 'media';
-  const label = normalizeStudioResourceLabel(labelSource, fileName);
-  const alt = normalizeStudioResourceLabel(
+  const label = normalizeTracevaneResourceLabel(labelSource, fileName);
+  const alt = normalizeTracevaneResourceLabel(
     element.getAttribute('alt')?.trim()
       || element.getAttribute('aria-label')?.trim()
       || labelSource,
@@ -1383,7 +1383,7 @@ function renderStudioHtmlMediaElement(element: HTMLAnchorElement | HTMLImageElem
   );
 
   if (resolved.missing) {
-    return renderStudioMissingResourceHtml({
+    return renderTracevaneMissingResourceHtml({
       display,
       kind,
       label,
@@ -1404,7 +1404,7 @@ function renderStudioHtmlMediaElement(element: HTMLAnchorElement | HTMLImageElem
     if (kind !== 'image') {
       return null;
     }
-    return renderStudioInlineMediaHtml({
+    return renderTracevaneInlineMediaHtml({
       display,
       kind: 'image',
       href: resolved.url,
@@ -1417,7 +1417,7 @@ function renderStudioHtmlMediaElement(element: HTMLAnchorElement | HTMLImageElem
     if (kind !== 'video') {
       return null;
     }
-    return renderStudioInlineMediaHtml({
+    return renderTracevaneInlineMediaHtml({
       display,
       kind: 'video',
       href: resolved.url,
@@ -1427,7 +1427,7 @@ function renderStudioHtmlMediaElement(element: HTMLAnchorElement | HTMLImageElem
   }
 
   if (display === 'inline-chip' || display === 'break-chip') {
-    return renderStudioChipHtml({
+    return renderTracevaneChipHtml({
       display,
       kind,
       href: resolved.url,
@@ -1435,7 +1435,7 @@ function renderStudioHtmlMediaElement(element: HTMLAnchorElement | HTMLImageElem
     });
   }
 
-  return renderStudioCardHtml({
+  return renderTracevaneCardHtml({
     kind,
     href: resolved.url,
     label,
@@ -1444,11 +1444,11 @@ function renderStudioHtmlMediaElement(element: HTMLAnchorElement | HTMLImageElem
   });
 }
 
-const MARKDOWN_MEDIA_TOKEN_RE = /(!)?\[([^\]]+)\]\(([^)\s]+)(?:\s+["'](studio:[^"']+)["'])?\)/g;
+const MARKDOWN_MEDIA_TOKEN_RE = /(!)?\[([^\]]+)\]\(([^)\s]+)(?:\s+["'](tracevane:[^"']+)["'])?\)/g;
 let activeRenderResources: ChatResourceItem[] | undefined;
 
 // ---------------------------------------------------------------------------
-// Post-processing: upgrade code blocks and studio media inside rendered HTML
+// Post-processing: upgrade code blocks and tracevane media inside rendered HTML
 // ---------------------------------------------------------------------------
 
 function detectRenderedCodeBlockLanguage(code: HTMLElement): string {
@@ -1517,7 +1517,7 @@ function upgradeMarkdownMediaTextNodes(container: HTMLElement): void {
       if (start > cursor) {
         fragment.append(document.createTextNode(text.slice(cursor, start)));
       }
-      const richHtml = renderStudioMarkdownMediaToken({
+      const richHtml = renderTracevaneMarkdownMediaToken({
         href: match[3] || '',
         title: match[4] || '',
         label: match[2] || '',
@@ -1544,10 +1544,10 @@ function upgradeMarkdownMediaTextNodes(container: HTMLElement): void {
   });
 }
 
-function upgradeStudioHtmlResources(html: string): string {
+function upgradeTracevaneHtmlResources(html: string): string {
   if (
     typeof document === 'undefined'
-    || (!html.includes('studio:') && !html.includes('data-studio-display'))
+    || (!html.includes('tracevane:') && !html.includes('data-tracevane-display'))
   ) {
     return html;
   }
@@ -1572,7 +1572,7 @@ function upgradeStudioHtmlResources(html: string): string {
     ) {
       continue;
     }
-    const replacement = renderStudioHtmlMediaElement(element);
+    const replacement = renderTracevaneHtmlMediaElement(element);
     if (!replacement) {
       continue;
     }
@@ -1814,7 +1814,7 @@ export function renderChatMarkdownResult(
       renderedHtml = container.innerHTML;
     }
 
-    renderedHtml = upgradeStudioHtmlResources(renderedHtml);
+    renderedHtml = upgradeTracevaneHtmlResources(renderedHtml);
 
     const result: ChatMarkdownRenderResult = {
       html: DOMPurify.sanitize(renderedHtml, buildFinalSanitizeOptions(normalizedOptions)),

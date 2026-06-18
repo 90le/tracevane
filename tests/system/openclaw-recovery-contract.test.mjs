@@ -57,7 +57,7 @@ test("recovery daemon separates lightweight probes from heavy repair commands", 
   assert.match(gatewayServiceSource, /parseOpenClawGatewayStatus/);
   assert.match(gatewayServiceSource, /assessOpenClawGatewayServiceStatus/);
   assert.match(probeSource, /probeOpenClawGatewayDeep/);
-  assert.match(repairSource, /inspectStudioWebBundle/);
+  assert.match(repairSource, /inspectTracevaneWebBundle/);
   assert.match(repairSource, /\["run", "build:web"\]/);
   assert.match(repairSource, /REPAIR_LOCK_STALE_MS/);
   assert.match(repairSource, /repairLockLooksStale/);

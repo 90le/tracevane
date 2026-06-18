@@ -182,11 +182,11 @@ type GatewayConfigSchemaLookupResult = {
   }> | null;
 };
 
-export interface StudioSlashLocalGatewayClient {
+export interface TracevaneSlashLocalGatewayClient {
   request<T>(method: string, params: unknown): Promise<T>;
 }
 
-export interface StudioSlashLocalExecutionContext {
+export interface TracevaneSlashLocalExecutionContext {
   usage?: ChatUsageSummary | null;
   modelCandidates?: string[];
   activeRunId?: string | null;
@@ -197,7 +197,7 @@ export interface StudioSlashLocalExecutionContext {
   exposureKind?: string | null;
 }
 
-export interface StudioSlashLocalExecutionResult {
+export interface TracevaneSlashLocalExecutionResult {
   phase: 'accepted' | 'completed' | 'error';
   detail: LocalizedText;
   runId?: string | null;
@@ -753,15 +753,15 @@ function generateClientRequestId(): string {
   if (typeof globalThis.crypto?.randomUUID === 'function') {
     return globalThis.crypto.randomUUID();
   }
-  return `studio-slash-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return `tracevane-slash-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 async function executeForwardSlashCommand(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   commandName: string,
   args: string,
-): Promise<StudioSlashLocalExecutionResult> {
+): Promise<TracevaneSlashLocalExecutionResult> {
   const suffix = normalizeString(args);
   const message = suffix ? `/${commandName} ${suffix}` : `/${commandName}`;
   const response = await client.request<{ runId?: string | null }>('chat.send', {
@@ -1112,11 +1112,11 @@ function listCurrentSessionSubagents(
 }
 
 async function executeContext(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   args: string,
-  context: StudioSlashLocalExecutionContext,
-): Promise<StudioSlashLocalExecutionResult> {
+  context: TracevaneSlashLocalExecutionContext,
+): Promise<TracevaneSlashLocalExecutionResult> {
   const mode = normalizeLower(args || 'list') || 'list';
   if (mode === 'help') {
     return {
@@ -1158,7 +1158,7 @@ async function executeContext(
   const usageZh = formatUsageSummaryText(context.usage, 'zh');
   const usageEn = formatUsageSummaryText(context.usage, 'en');
   const snapshot = {
-    kind: 'studio-local-context',
+    kind: 'tracevane-local-context',
     sessionKey,
     label,
     agentId,
@@ -1276,10 +1276,10 @@ async function executeContext(
 }
 
 async function executeTasks(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
-  context: StudioSlashLocalExecutionContext,
-): Promise<StudioSlashLocalExecutionResult> {
+  context: TracevaneSlashLocalExecutionContext,
+): Promise<TracevaneSlashLocalExecutionResult> {
   const sessions = await client.request<GatewaySessionsListResult>('sessions.list', {});
   const allSessions = sessions?.sessions || [];
   const current = resolveCurrentSession(sessions, sessionKey);
@@ -1338,7 +1338,7 @@ async function executeTasks(
 }
 
 async function resolveSteerTarget(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   args: string,
 ): Promise<
@@ -1502,7 +1502,7 @@ function resolveMcpConfigPath(pathArg: string): string {
   return `mcp.servers.${normalized}`;
 }
 
-function summarizePluginList(snapshot: GatewayConfigSnapshot): StudioSlashLocalExecutionResult {
+function summarizePluginList(snapshot: GatewayConfigSnapshot): TracevaneSlashLocalExecutionResult {
   const plugins = snapshot.config?.plugins && typeof snapshot.config.plugins === 'object'
     ? snapshot.config.plugins as Record<string, unknown>
     : {};
@@ -1558,7 +1558,7 @@ function summarizePluginInstall(pluginId: string, install: Record<string, unknow
   );
 }
 
-function summarizeMcpList(snapshot: GatewayConfigSnapshot): StudioSlashLocalExecutionResult {
+function summarizeMcpList(snapshot: GatewayConfigSnapshot): TracevaneSlashLocalExecutionResult {
   const servers = snapshot.config?.mcp
     && typeof snapshot.config.mcp === 'object'
     && (snapshot.config.mcp as Record<string, unknown>).servers
@@ -1603,7 +1603,7 @@ function summarizeMcpServer(serverId: string, server: Record<string, unknown> | 
   );
 }
 
-function buildGenericPathResult(resolvedPath: string, value: unknown): StudioSlashLocalExecutionResult {
+function buildGenericPathResult(resolvedPath: string, value: unknown): TracevaneSlashLocalExecutionResult {
   const childCount = countObjectKeys(value);
   return {
     phase: 'completed',
@@ -1662,9 +1662,9 @@ function formatCompactResult(result: Record<string, unknown>): LocalizedText {
 }
 
 async function executeCompact(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
-): Promise<StudioSlashLocalExecutionResult> {
+): Promise<TracevaneSlashLocalExecutionResult> {
   const result = await client.request<Record<string, unknown>>('sessions.compact', { key: sessionKey });
   return {
     phase: 'completed',
@@ -1674,11 +1674,11 @@ async function executeCompact(
 }
 
 async function executeModel(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   args: string,
-  context: StudioSlashLocalExecutionContext,
-): Promise<StudioSlashLocalExecutionResult> {
+  context: TracevaneSlashLocalExecutionContext,
+): Promise<TracevaneSlashLocalExecutionResult> {
   const nextModel = normalizeString(args);
   if (!nextModel) {
     const [sessions, catalog] = await Promise.all([
@@ -1717,10 +1717,10 @@ async function executeModel(
 }
 
 async function executeThink(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   args: string,
-): Promise<StudioSlashLocalExecutionResult> {
+): Promise<TracevaneSlashLocalExecutionResult> {
   const level = normalizeLower(args);
   const allowed = ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'];
 
@@ -1757,10 +1757,10 @@ async function executeThink(
 }
 
 async function executeVerbose(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   args: string,
-): Promise<StudioSlashLocalExecutionResult> {
+): Promise<TracevaneSlashLocalExecutionResult> {
   const level = normalizeLower(args);
   const allowed = ['off', 'on', 'full'];
 
@@ -1797,10 +1797,10 @@ async function executeVerbose(
 }
 
 async function executeFast(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   args: string,
-): Promise<StudioSlashLocalExecutionResult> {
+): Promise<TracevaneSlashLocalExecutionResult> {
   const mode = normalizeLower(args);
 
   if (!mode || mode === 'status') {
@@ -1847,10 +1847,10 @@ function normalizeUsageMode(value: unknown): 'off' | 'tokens' | 'full' {
 }
 
 async function executeReasoning(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   args: string,
-): Promise<StudioSlashLocalExecutionResult> {
+): Promise<TracevaneSlashLocalExecutionResult> {
   const level = normalizeLower(args);
   const allowed = ['off', 'on', 'stream'];
 
@@ -1898,11 +1898,11 @@ function buildUsageSummaryDetail(usage: ChatUsageSummary): LocalizedText {
 }
 
 async function executeUsage(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   args: string,
-  context: StudioSlashLocalExecutionContext,
-): Promise<StudioSlashLocalExecutionResult> {
+  context: TracevaneSlashLocalExecutionContext,
+): Promise<TracevaneSlashLocalExecutionResult> {
   const mode = normalizeLower(args);
   const allowed = ['off', 'tokens', 'full', 'cost'];
 
@@ -1984,10 +1984,10 @@ async function executeUsage(
 }
 
 async function executeElevated(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   args: string,
-): Promise<StudioSlashLocalExecutionResult> {
+): Promise<TracevaneSlashLocalExecutionResult> {
   const level = normalizeLower(args);
   const allowed = ['off', 'on', 'ask', 'full'];
 
@@ -2024,10 +2024,10 @@ async function executeElevated(
 }
 
 async function executeExec(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   args: string,
-): Promise<StudioSlashLocalExecutionResult> {
+): Promise<TracevaneSlashLocalExecutionResult> {
   const parsed = parseExecDirectiveArgs(args);
   if (parsed.error) {
     return {
@@ -2075,10 +2075,10 @@ async function executeExec(
 }
 
 async function executeActivation(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   args: string,
-): Promise<StudioSlashLocalExecutionResult> {
+): Promise<TracevaneSlashLocalExecutionResult> {
   const mode = normalizeLower(args);
   const allowed = ['mention', 'always'];
 
@@ -2115,10 +2115,10 @@ async function executeActivation(
 }
 
 async function executeSendPolicy(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   args: string,
-): Promise<StudioSlashLocalExecutionResult> {
+): Promise<TracevaneSlashLocalExecutionResult> {
   const mode = normalizeLower(args);
   const allowed = ['on', 'off', 'inherit'];
 
@@ -2156,9 +2156,9 @@ async function executeSendPolicy(
 }
 
 async function executeModels(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   args: string,
-): Promise<StudioSlashLocalExecutionResult> {
+): Promise<TracevaneSlashLocalExecutionResult> {
   const providerFilter = normalizeLower(args);
   const result = await client.request<GatewayModelListResult>('models.list', {});
   const catalog = (result.models || []).filter((model) => normalizeString(model.id) || normalizeString(model.name));
@@ -2197,10 +2197,10 @@ async function executeModels(
 }
 
 async function executeTools(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   args: string,
-): Promise<StudioSlashLocalExecutionResult> {
+): Promise<TracevaneSlashLocalExecutionResult> {
   const mode = normalizeLower(args || 'compact') || 'compact';
   if (mode !== 'compact' && mode !== 'verbose') {
     return {
@@ -2253,9 +2253,9 @@ async function executeTools(
 }
 
 async function executeTts(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   args: string,
-): Promise<StudioSlashLocalExecutionResult | null> {
+): Promise<TracevaneSlashLocalExecutionResult | null> {
   const trimmed = normalizeString(args);
   const [rawAction = '', ...rest] = trimmed ? trimmed.split(/\s+/) : [];
   const action = normalizeLower(rawAction) || 'status';
@@ -2323,8 +2323,8 @@ async function executeTts(
 
 async function executeQueue(
   args: string,
-  context: StudioSlashLocalExecutionContext,
-): Promise<StudioSlashLocalExecutionResult | null> {
+  context: TracevaneSlashLocalExecutionContext,
+): Promise<TracevaneSlashLocalExecutionResult | null> {
   const trimmed = normalizeString(args);
   const mode = normalizeLower(trimmed);
 
@@ -2354,10 +2354,10 @@ async function executeQueue(
 }
 
 async function executeSkill(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   args: string,
-): Promise<StudioSlashLocalExecutionResult | null> {
+): Promise<TracevaneSlashLocalExecutionResult | null> {
   const trimmed = normalizeString(args);
   if (trimmed) {
     return null;
@@ -2408,10 +2408,10 @@ async function executeSkill(
 }
 
 async function executeAllowlist(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   args: string,
-): Promise<StudioSlashLocalExecutionResult | null> {
+): Promise<TracevaneSlashLocalExecutionResult | null> {
   const parsed = parseAllowlistArgs(args);
   if (parsed.kind === 'fallback') {
     return null;
@@ -2561,9 +2561,9 @@ async function executeAllowlist(
 }
 
 async function executeApprove(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   args: string,
-): Promise<StudioSlashLocalExecutionResult> {
+): Promise<TracevaneSlashLocalExecutionResult> {
   const parsed = parseApproveArgs(args);
   if (parsed && 'zh' in parsed) {
     return {
@@ -2645,10 +2645,10 @@ async function executeApprove(
   };
 }
 
-function buildStudioSessionSummary(
+function buildTracevaneSessionSummary(
   sessionKey: string,
   row: GatewaySessionRow | undefined,
-  context: StudioSlashLocalExecutionContext,
+  context: TracevaneSlashLocalExecutionContext,
 ): LocalizedText {
   const provider = normalizeString(row?.modelProvider);
   const model = normalizeString(row?.model) || 'default';
@@ -2664,7 +2664,7 @@ function buildStudioSessionSummary(
   const queueLength = normalizeOptionalCount(context.queueLength);
   const messageCount = normalizeOptionalCount(context.messageCount);
   const transportMode = normalizeString(context.transportMode) || 'unknown';
-  const exposureKind = normalizeString(context.exposureKind) || 'studio';
+  const exposureKind = normalizeString(context.exposureKind) || 'tracevane';
   const realtimeReady = context.realtimeReady === true
     ? pair('已连接', 'connected')
     : context.realtimeReady === false
@@ -2695,7 +2695,7 @@ function buildStudioSessionSummary(
 
 async function executeWhoami(
   sessionKey: string,
-): Promise<StudioSlashLocalExecutionResult> {
+): Promise<TracevaneSlashLocalExecutionResult> {
   const parsed = parseAgentSessionKey(sessionKey);
   const agentId = parsed?.agentId || (normalizeLower(sessionKey) === DEFAULT_MAIN_KEY ? DEFAULT_AGENT_ID : '');
   return {
@@ -2708,15 +2708,15 @@ async function executeWhoami(
 }
 
 async function executeSessionCommand(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   args: string,
-  context: StudioSlashLocalExecutionContext,
-): Promise<StudioSlashLocalExecutionResult> {
+  context: TracevaneSlashLocalExecutionContext,
+): Promise<TracevaneSlashLocalExecutionResult> {
   const action = normalizeLower(args.split(/\s+/)[0] || '') || 'status';
   const sessions = await client.request<GatewaySessionsListResult>('sessions.list', {});
   const current = resolveCurrentSession(sessions, sessionKey);
-  const summary = buildStudioSessionSummary(sessionKey, current, context);
+  const summary = buildTracevaneSessionSummary(sessionKey, current, context);
 
   if (!args.trim() || action === 'status' || action === 'show') {
     return {
@@ -2743,11 +2743,11 @@ async function executeSessionCommand(
 }
 
 async function executeAcp(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   args: string,
-  context: StudioSlashLocalExecutionContext,
-): Promise<StudioSlashLocalExecutionResult | null> {
+  context: TracevaneSlashLocalExecutionContext,
+): Promise<TracevaneSlashLocalExecutionResult | null> {
   const trimmed = normalizeString(args);
   const [rawAction = ''] = trimmed ? trimmed.split(/\s+/) : [];
   const action = normalizeLower(rawAction) || 'status';
@@ -2771,8 +2771,8 @@ async function executeAcp(
     return {
       phase: 'completed',
       detail: pair(
-        `当前 Tracevane 视角下没有可见的 ACP 会话。当前普通会话摘要：${buildStudioSessionSummary(sessionKey, resolveCurrentSession(sessions, sessionKey), context).zh}`,
-        `No visible ACP sessions were found from the current Tracevane view. Current direct-session summary: ${buildStudioSessionSummary(sessionKey, resolveCurrentSession(sessions, sessionKey), context).en}`,
+        `当前 Tracevane 视角下没有可见的 ACP 会话。当前普通会话摘要：${buildTracevaneSessionSummary(sessionKey, resolveCurrentSession(sessions, sessionKey), context).zh}`,
+        `No visible ACP sessions were found from the current Tracevane view. Current direct-session summary: ${buildTracevaneSessionSummary(sessionKey, resolveCurrentSession(sessions, sessionKey), context).en}`,
       ),
     };
   }
@@ -2794,10 +2794,10 @@ async function executeAcp(
 }
 
 async function executeDebug(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   args: string,
-  context: StudioSlashLocalExecutionContext,
-): Promise<StudioSlashLocalExecutionResult | null> {
+  context: TracevaneSlashLocalExecutionContext,
+): Promise<TracevaneSlashLocalExecutionResult | null> {
   const trimmed = normalizeString(args);
   const [rawAction = '', ...rest] = trimmed ? trimmed.split(/\s+/) : [];
   const action = normalizeLower(rawAction) || 'show';
@@ -2821,7 +2821,7 @@ async function executeDebug(
     ? Object.keys(value as Record<string, unknown>).slice(0, 6)
     : [];
   const transportMode = normalizeString(context.transportMode) || 'unknown';
-  const exposureKind = normalizeString(context.exposureKind) || 'studio';
+  const exposureKind = normalizeString(context.exposureKind) || 'tracevane';
   const realtime = context.realtimeReady === true
     ? pair('已连接', 'connected')
     : context.realtimeReady === false
@@ -2839,7 +2839,7 @@ async function executeDebug(
 
 async function executeFocusCommand(
   sessionKey: string,
-): Promise<StudioSlashLocalExecutionResult> {
+): Promise<TracevaneSlashLocalExecutionResult> {
   return {
     phase: 'completed',
     detail: pair(
@@ -2851,7 +2851,7 @@ async function executeFocusCommand(
 
 async function executeUnfocusCommand(
   sessionKey: string,
-): Promise<StudioSlashLocalExecutionResult> {
+): Promise<TracevaneSlashLocalExecutionResult> {
   return {
     phase: 'completed',
     detail: pair(
@@ -2862,9 +2862,9 @@ async function executeUnfocusCommand(
 }
 
 async function executeConfig(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   args: string,
-): Promise<StudioSlashLocalExecutionResult | null> {
+): Promise<TracevaneSlashLocalExecutionResult | null> {
   const trimmed = normalizeString(args);
   const [rawAction = '', ...rest] = trimmed ? trimmed.split(/\s+/) : [];
   const action = normalizeLower(rawAction);
@@ -2907,9 +2907,9 @@ async function executeConfig(
 }
 
 async function executePlugins(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   args: string,
-): Promise<StudioSlashLocalExecutionResult | null> {
+): Promise<TracevaneSlashLocalExecutionResult | null> {
   const trimmed = normalizeString(args);
   const [rawAction = '', ...rest] = trimmed ? trimmed.split(/\s+/) : [];
   const action = normalizeLower(rawAction);
@@ -2945,9 +2945,9 @@ async function executePlugins(
 }
 
 async function executeMcp(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   args: string,
-): Promise<StudioSlashLocalExecutionResult | null> {
+): Promise<TracevaneSlashLocalExecutionResult | null> {
   const trimmed = normalizeString(args);
   const [rawAction = '', ...rest] = trimmed ? trimmed.split(/\s+/) : [];
   const action = normalizeLower(rawAction);
@@ -2991,8 +2991,8 @@ async function executeMcp(
 }
 
 async function executeAgents(
-  client: StudioSlashLocalGatewayClient,
-): Promise<StudioSlashLocalExecutionResult> {
+  client: TracevaneSlashLocalGatewayClient,
+): Promise<TracevaneSlashLocalExecutionResult> {
   const result = await client.request<GatewayAgentsListResult>('agents.list', {});
   const agents = (result.agents || [])
     .map((agent) => ({
@@ -3021,11 +3021,11 @@ async function executeAgents(
 }
 
 async function executeSubagents(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   args: string,
-  context: StudioSlashLocalExecutionContext,
-): Promise<StudioSlashLocalExecutionResult | null> {
+  context: TracevaneSlashLocalExecutionContext,
+): Promise<TracevaneSlashLocalExecutionResult | null> {
   const trimmed = normalizeString(args);
   const [rawAction = '', ...rest] = trimmed ? trimmed.split(/\s+/) : [];
   const action = normalizeLower(rawAction) || 'list';
@@ -3109,10 +3109,10 @@ async function executeSubagents(
 }
 
 async function executeKill(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   args: string,
-): Promise<StudioSlashLocalExecutionResult> {
+): Promise<TracevaneSlashLocalExecutionResult> {
   const target = normalizeString(args);
   if (!target) {
     return {
@@ -3161,11 +3161,11 @@ async function executeKill(
 }
 
 async function executeSteer(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   args: string,
-  context: StudioSlashLocalExecutionContext,
-): Promise<StudioSlashLocalExecutionResult> {
+  context: TracevaneSlashLocalExecutionContext,
+): Promise<TracevaneSlashLocalExecutionResult> {
   const resolved = await resolveSteerTarget(client, sessionKey, args);
   if ('error' in resolved) {
     return {
@@ -3224,10 +3224,10 @@ async function executeSteer(
 }
 
 async function executeRedirect(
-  client: StudioSlashLocalGatewayClient,
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   args: string,
-): Promise<StudioSlashLocalExecutionResult> {
+): Promise<TracevaneSlashLocalExecutionResult> {
   const resolved = await resolveSteerTarget(client, sessionKey, args);
   if ('error' in resolved) {
     return {
@@ -3267,13 +3267,13 @@ async function executeRedirect(
   };
 }
 
-export async function executeStudioSlashLocalGatewayCommand(
-  client: StudioSlashLocalGatewayClient,
+export async function executeTracevaneSlashLocalGatewayCommand(
+  client: TracevaneSlashLocalGatewayClient,
   sessionKey: string,
   commandName: string,
   args: string,
-  context: StudioSlashLocalExecutionContext = {},
-): Promise<StudioSlashLocalExecutionResult | null> {
+  context: TracevaneSlashLocalExecutionContext = {},
+): Promise<TracevaneSlashLocalExecutionResult | null> {
   switch (commandName) {
     case 'compact':
       return executeCompact(client, sessionKey);

@@ -381,12 +381,12 @@ import {
 import { useLocalePreference } from '../../shared/locale';
 import SlashCommandMenu from './SlashCommandMenu.vue';
 import {
-  filterStudioSlashCommandArgOptionDetails,
-  getStudioSlashCommandArgOptions,
-  getStudioSlashCommandCompletions,
-  parseStudioSlashCommand,
-  type StudioSlashArgOptionDetail,
-  type StudioSlashCommandDef,
+  filterTracevaneSlashCommandArgOptionDetails,
+  getTracevaneSlashCommandArgOptions,
+  getTracevaneSlashCommandCompletions,
+  parseTracevaneSlashCommand,
+  type TracevaneSlashArgOptionDetail,
+  type TracevaneSlashCommandDef,
 } from './slash-commands';
 
 type ComposerAttachment = {
@@ -403,7 +403,7 @@ type ComposerAttachment = {
   uploadState?: ChatComposerUploadState;
 };
 
-const RESOURCE_DRAG_MIME = 'application/x-openclaw-studio-composer-resource';
+const RESOURCE_DRAG_MIME = 'application/x-tracevane-composer-resource';
 
 type ComposerDraftLifecycleExitPayload = {
   sessionKey: string;
@@ -460,10 +460,10 @@ const attachmentPreview = ref<null | {
 const attachmentPreviewSourceId = ref<string | null>(null);
 const slashMenuOpen = ref(false);
 const slashMenuMode = ref<'command' | 'args'>('command');
-const slashMenuItems = ref<StudioSlashCommandDef[]>([]);
+const slashMenuItems = ref<TracevaneSlashCommandDef[]>([]);
 const slashMenuIndex = ref(0);
-const slashMenuCommand = ref<StudioSlashCommandDef | null>(null);
-const slashMenuArgItems = ref<StudioSlashArgOptionDetail[]>([]);
+const slashMenuCommand = ref<TracevaneSlashCommandDef | null>(null);
+const slashMenuArgItems = ref<TracevaneSlashArgOptionDetail[]>([]);
 const isCompactViewport = ref(false);
 const keyboardLiftPx = ref(0);
 const composerKeyboardOffsetStyle = computed(() => `${keyboardLiftPx.value}px`);
@@ -749,8 +749,8 @@ function normalizedComposerDocumentHasEditorValue(document: ChatComposerDocument
   return false;
 }
 
-function filteredSlashArgOptionDetails(command: StudioSlashCommandDef, filter: string): StudioSlashArgOptionDetail[] {
-  return filterStudioSlashCommandArgOptionDetails(
+function filteredSlashArgOptionDetails(command: TracevaneSlashCommandDef, filter: string): TracevaneSlashArgOptionDetail[] {
+  return filterTracevaneSlashCommandArgOptionDetails(
     command,
     filter,
     locale.value,
@@ -774,8 +774,8 @@ function updateSlashMenu(documentValue: ChatComposerDocument = localDocument.val
     return;
   }
 
-  const parsed = parseStudioSlashCommand(plainText);
-  const argOptions = parsed ? getStudioSlashCommandArgOptions(parsed.command, props.slashArgOptionsOverrides) : [];
+  const parsed = parseTracevaneSlashCommand(plainText);
+  const argOptions = parsed ? getTracevaneSlashCommandArgOptions(parsed.command, props.slashArgOptionsOverrides) : [];
   if (parsed && argOptions.length) {
     const filteredArgDetails = filteredSlashArgOptionDetails(parsed.command, parsed.args);
     if (filteredArgDetails.length > 0) {
@@ -798,7 +798,7 @@ function updateSlashMenu(documentValue: ChatComposerDocument = localDocument.val
     return;
   }
 
-  const items = getStudioSlashCommandCompletions(commandMatch[1] || '');
+  const items = getTracevaneSlashCommandCompletions(commandMatch[1] || '');
   slashMenuOpen.value = items.length > 0;
   slashMenuMode.value = 'command';
   slashMenuItems.value = items;
@@ -827,7 +827,7 @@ function replaceComposerWithPlainText(value: string, options: { keepSlashMenu?: 
   scheduleEditorSelectionRestore(value.length);
 }
 
-function selectSlashCommand(command: StudioSlashCommandDef): void {
+function selectSlashCommand(command: TracevaneSlashCommandDef): void {
   const nextValue = command.args ? `/${command.name} ` : `/${command.name}`;
   replaceComposerWithPlainText(nextValue);
 }

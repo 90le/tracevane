@@ -30,7 +30,7 @@ MATRIX: tuple[SmokeItem, ...] = (
     SmokeItem(
         name="attachment-payload",
         category="attachments",
-        command=["node", "--test", "tests/system/studio-web-chat-upload-payload.test.mjs"],
+        command=["node", "--test", "tests/system/tracevane-web-chat-upload-payload.test.mjs"],
         timeout_seconds=60,
     ),
     SmokeItem(

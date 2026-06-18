@@ -1,16 +1,16 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import {
-  fetchStudioRelease,
-  fetchStudioUpgradeStatus,
-  startStudioUpgrade,
+  fetchTracevaneRelease,
+  fetchTracevaneUpgradeStatus,
+  startTracevaneUpgrade,
 } from "../system/api";
 import { useLocalePreference } from "../../shared/locale";
 import { useConfirmDialog } from "../../composables/useConfirmDialog";
 import type {
-  SystemStudioReleasePayload,
-  SystemStudioUpgradeStatusPayload,
+  SystemTracevaneReleasePayload,
+  SystemTracevaneUpgradeStatusPayload,
 } from "../../../../../types/system";
-import { isStudioUpgradeEffectivelyFailed } from "../system/studio-release-state";
+import { isTracevaneUpgradeEffectivelyFailed } from "../system/tracevane-release-state";
 
 const RELEASE_REFRESH_INTERVAL_MS = 300_000;
 const UPGRADE_RUNNING_POLL_INTERVAL_MS = 6_000;
@@ -29,12 +29,12 @@ type IdleWindow = Window & {
 export function useShellRelease(buildVersion: string) {
   const { text } = useLocalePreference();
   const { confirm } = useConfirmDialog();
-  const studioRelease = ref<SystemStudioReleasePayload | null>(null);
-  const studioUpgradeStatus = ref<SystemStudioUpgradeStatusPayload | null>(
+  const tracevaneRelease = ref<SystemTracevaneReleasePayload | null>(null);
+  const tracevaneUpgradeStatus = ref<SystemTracevaneUpgradeStatusPayload | null>(
     null,
   );
-  const studioUpgradeBusy = ref(false);
-  const studioReleaseCheckBusy = ref(false);
+  const tracevaneUpgradeBusy = ref(false);
+  const tracevaneReleaseCheckBusy = ref(false);
   let releaseRefreshTimer: number | null = null;
   let upgradePollTimer: number | null = null;
   let initialIdleHandle: number | null = null;
@@ -44,38 +44,38 @@ export function useShellRelease(buildVersion: string) {
 
   const versionUpgradeFailed = computed(
     () =>
-      isStudioUpgradeEffectivelyFailed({
-        studioRelease: studioRelease.value,
-        studioUpgrade: studioUpgradeStatus.value,
+      isTracevaneUpgradeEffectivelyFailed({
+        tracevaneRelease: tracevaneRelease.value,
+        tracevaneUpgrade: tracevaneUpgradeStatus.value,
         buildVersion,
       }),
   );
   const versionIsLatest = computed(
     () =>
-      !!studioRelease.value &&
-      !studioRelease.value.updateAvailable &&
-      !studioUpgradeStatus.value?.running &&
+      !!tracevaneRelease.value &&
+      !tracevaneRelease.value.updateAvailable &&
+      !tracevaneUpgradeStatus.value?.running &&
       !versionUpgradeFailed.value,
   );
   const versionActionBusy = computed(
-    () => studioUpgradeBusy.value || studioReleaseCheckBusy.value,
+    () => tracevaneUpgradeBusy.value || tracevaneReleaseCheckBusy.value,
   );
 
   const versionLabel = computed(() => {
-    const version = studioRelease.value?.currentVersion || buildVersion;
+    const version = tracevaneRelease.value?.currentVersion || buildVersion;
     return version ? `v${version}` : "v--";
   });
 
   const versionTitle = computed(() => {
-    const current = studioRelease.value?.currentVersion || buildVersion || "--";
-    const latest = studioRelease.value?.latestVersion || "--";
-    if (studioUpgradeStatus.value?.running) {
+    const current = tracevaneRelease.value?.currentVersion || buildVersion || "--";
+    const latest = tracevaneRelease.value?.latestVersion || "--";
+    if (tracevaneUpgradeStatus.value?.running) {
       return text(
         `当前版本：v${current}，升级任务运行中`,
         `Current version: v${current}, upgrade task is running`,
       );
     }
-    if (studioReleaseCheckBusy.value) {
+    if (tracevaneReleaseCheckBusy.value) {
       return text(
         `当前版本：v${current}，正在检查更新`,
         `Current version: v${current}, checking for updates`,
@@ -87,7 +87,7 @@ export function useShellRelease(buildVersion: string) {
         `Current version: v${current}, upgrade failed and can be retried`,
       );
     }
-    if (studioRelease.value?.updateAvailable) {
+    if (tracevaneRelease.value?.updateAvailable) {
       return text(
         `当前版本：v${current}，可升级到 v${latest}`,
         `Current version: v${current}, update available: v${latest}`,
@@ -103,10 +103,10 @@ export function useShellRelease(buildVersion: string) {
   });
 
   const versionActionTitle = computed(() => {
-    if (studioReleaseCheckBusy.value) {
+    if (tracevaneReleaseCheckBusy.value) {
       return text("正在检查更新", "Checking for updates");
     }
-    if (studioUpgradeStatus.value?.running) {
+    if (tracevaneUpgradeStatus.value?.running) {
       return text(
         "升级任务运行中，点击刷新状态",
         "Upgrade in progress, click to refresh status",
@@ -115,7 +115,7 @@ export function useShellRelease(buildVersion: string) {
     if (versionUpgradeFailed.value) {
       return text("升级失败，点击重试", "Upgrade failed, click to retry");
     }
-    if (studioRelease.value?.updateAvailable) {
+    if (tracevaneRelease.value?.updateAvailable) {
       return text(
         "检测到新版本，点击一键升级",
         "Update available, click to upgrade",
@@ -131,38 +131,38 @@ export function useShellRelease(buildVersion: string) {
   });
 
   const versionMetaLabel = computed(() => {
-    if (studioReleaseCheckBusy.value) return text("检查中", "Checking");
-    if (studioUpgradeStatus.value?.running) return text("升级中", "Running");
+    if (tracevaneReleaseCheckBusy.value) return text("检查中", "Checking");
+    if (tracevaneUpgradeStatus.value?.running) return text("升级中", "Running");
     if (versionUpgradeFailed.value) return text("失败", "Failed");
     if (
-      studioRelease.value?.updateAvailable &&
-      studioRelease.value.latestVersion
+      tracevaneRelease.value?.updateAvailable &&
+      tracevaneRelease.value.latestVersion
     ) {
-      return `→ v${studioRelease.value.latestVersion}`;
+      return `→ v${tracevaneRelease.value.latestVersion}`;
     }
     if (versionIsLatest.value) return text("已最新", "Latest");
     return "";
   });
 
   const versionInfoClass = computed(() => ({
-    "is-checking": studioReleaseCheckBusy.value,
-    "is-running": studioUpgradeStatus.value?.running,
+    "is-checking": tracevaneReleaseCheckBusy.value,
+    "is-running": tracevaneUpgradeStatus.value?.running,
     "is-warning": versionUpgradeFailed.value,
     "is-latest": versionIsLatest.value,
-    "is-upgrade-ready": !!studioRelease.value?.updateAvailable,
+    "is-upgrade-ready": !!tracevaneRelease.value?.updateAvailable,
   }));
 
   const versionActionLabel = computed(() => {
-    if (studioReleaseCheckBusy.value) {
+    if (tracevaneReleaseCheckBusy.value) {
       return text("检查中", "Checking");
     }
-    if (studioUpgradeStatus.value?.running) {
+    if (tracevaneUpgradeStatus.value?.running) {
       return text("刷新", "Refresh");
     }
     if (versionUpgradeFailed.value) {
       return text("重试", "Retry");
     }
-    if (studioRelease.value?.updateAvailable) {
+    if (tracevaneRelease.value?.updateAvailable) {
       return text("升级", "Upgrade");
     }
     if (versionIsLatest.value) {
@@ -172,18 +172,18 @@ export function useShellRelease(buildVersion: string) {
   });
 
   const versionActionClass = computed(() => ({
-    "is-checking": studioReleaseCheckBusy.value,
-    "is-running": studioUpgradeStatus.value?.running,
+    "is-checking": tracevaneReleaseCheckBusy.value,
+    "is-running": tracevaneUpgradeStatus.value?.running,
     "is-warning": versionUpgradeFailed.value,
     "is-latest": versionIsLatest.value,
-    "is-upgrade-ready": !!studioRelease.value?.updateAvailable,
+    "is-upgrade-ready": !!tracevaneRelease.value?.updateAvailable,
   }));
 
   const versionStatusDotClass = computed(() => {
-    if (studioReleaseCheckBusy.value) return "is-accent";
-    if (studioUpgradeStatus.value?.running) return "is-accent";
+    if (tracevaneReleaseCheckBusy.value) return "is-accent";
+    if (tracevaneUpgradeStatus.value?.running) return "is-accent";
     if (versionUpgradeFailed.value) return "is-warning";
-    if (studioRelease.value?.updateAvailable) return "is-success";
+    if (tracevaneRelease.value?.updateAvailable) return "is-success";
     if (versionIsLatest.value) return "is-latest";
     return "";
   });
@@ -216,7 +216,7 @@ export function useShellRelease(buildVersion: string) {
     initialIdleHandleKind = null;
   }
 
-  async function refreshStudioReleaseState(options: { force?: boolean } = {}): Promise<void> {
+  async function refreshTracevaneReleaseState(options: { force?: boolean } = {}): Promise<void> {
     if (!options.force && !isDocumentVisible()) {
       return;
     }
@@ -225,7 +225,7 @@ export function useShellRelease(buildVersion: string) {
     }
     releaseRequestRunning = true;
     try {
-      studioRelease.value = await fetchStudioRelease();
+      tracevaneRelease.value = await fetchTracevaneRelease();
     } catch {
       // keep UI usable when release endpoint is unavailable
     } finally {
@@ -233,7 +233,7 @@ export function useShellRelease(buildVersion: string) {
     }
   }
 
-  async function refreshStudioUpgradeState(options: { force?: boolean } = {}): Promise<void> {
+  async function refreshTracevaneUpgradeState(options: { force?: boolean } = {}): Promise<void> {
     if (!options.force && !isDocumentVisible()) {
       return;
     }
@@ -242,7 +242,7 @@ export function useShellRelease(buildVersion: string) {
     }
     upgradeRequestRunning = true;
     try {
-      studioUpgradeStatus.value = await fetchStudioUpgradeStatus();
+      tracevaneUpgradeStatus.value = await fetchTracevaneUpgradeStatus();
     } catch {
       // keep UI usable when upgrade endpoint is unavailable
     } finally {
@@ -252,7 +252,7 @@ export function useShellRelease(buildVersion: string) {
 
   function nextUpgradePollDelay(): number {
     if (!isDocumentVisible()) return HIDDEN_TAB_POLL_INTERVAL_MS;
-    return studioUpgradeStatus.value?.running
+    return tracevaneUpgradeStatus.value?.running
       ? UPGRADE_RUNNING_POLL_INTERVAL_MS
       : UPGRADE_IDLE_POLL_INTERVAL_MS;
   }
@@ -262,7 +262,7 @@ export function useShellRelease(buildVersion: string) {
     clearReleaseTimer();
     releaseRefreshTimer = window.setTimeout(() => {
       releaseRefreshTimer = null;
-      void refreshStudioReleaseState().finally(() => {
+      void refreshTracevaneReleaseState().finally(() => {
         scheduleReleaseRefresh(RELEASE_REFRESH_INTERVAL_MS);
       });
     }, delay);
@@ -273,7 +273,7 @@ export function useShellRelease(buildVersion: string) {
     clearUpgradeTimer();
     upgradePollTimer = window.setTimeout(() => {
       upgradePollTimer = null;
-      void refreshStudioUpgradeState().finally(() => {
+      void refreshTracevaneUpgradeState().finally(() => {
         scheduleUpgradePoll(nextUpgradePollDelay());
       });
     }, delay);
@@ -287,8 +287,8 @@ export function useShellRelease(buildVersion: string) {
       initialIdleHandle = null;
       initialIdleHandleKind = null;
       void Promise.all([
-        refreshStudioReleaseState(),
-        refreshStudioUpgradeState(),
+        refreshTracevaneReleaseState(),
+        refreshTracevaneUpgradeState(),
       ]).finally(() => {
         scheduleReleaseRefresh();
         scheduleUpgradePoll();
@@ -315,34 +315,34 @@ export function useShellRelease(buildVersion: string) {
     }
 
     void Promise.all([
-      refreshStudioReleaseState({ force: true }),
-      refreshStudioUpgradeState({ force: true }),
+      refreshTracevaneReleaseState({ force: true }),
+      refreshTracevaneUpgradeState({ force: true }),
     ]).finally(() => {
       scheduleReleaseRefresh();
       scheduleUpgradePoll();
     });
   }
 
-  async function handleStudioUpgradeAction(): Promise<void> {
+  async function handleTracevaneUpgradeAction(): Promise<void> {
     if (versionActionBusy.value) {
       return;
     }
-    if (studioUpgradeStatus.value?.running) {
-      await refreshStudioUpgradeState({ force: true });
+    if (tracevaneUpgradeStatus.value?.running) {
+      await refreshTracevaneUpgradeState({ force: true });
       return;
     }
-    if (!studioRelease.value?.updateAvailable) {
-      studioReleaseCheckBusy.value = true;
+    if (!tracevaneRelease.value?.updateAvailable) {
+      tracevaneReleaseCheckBusy.value = true;
       try {
-        await refreshStudioReleaseState({ force: true });
-        await refreshStudioUpgradeState({ force: true });
+        await refreshTracevaneReleaseState({ force: true });
+        await refreshTracevaneUpgradeState({ force: true });
       } finally {
-        studioReleaseCheckBusy.value = false;
+        tracevaneReleaseCheckBusy.value = false;
       }
       return;
     }
 
-    const target = studioRelease.value.latestVersion || "";
+    const target = tracevaneRelease.value.latestVersion || "";
     const confirmed = await confirm({
       title: text("确认升级 Tracevane", "Confirm Tracevane upgrade"),
       message: text(
@@ -357,12 +357,12 @@ export function useShellRelease(buildVersion: string) {
       return;
     }
 
-    studioUpgradeBusy.value = true;
+    tracevaneUpgradeBusy.value = true;
     try {
-      const response = await startStudioUpgrade({
+      const response = await startTracevaneUpgrade({
         version: target || undefined,
       });
-      studioUpgradeStatus.value = response.status;
+      tracevaneUpgradeStatus.value = response.status;
       if (!response.ok) {
         const message = text(
           "升级任务启动失败，请查看系统页日志。",
@@ -388,9 +388,9 @@ export function useShellRelease(buildVersion: string) {
         tone: "danger",
       });
     } finally {
-      studioUpgradeBusy.value = false;
-      await refreshStudioReleaseState({ force: true });
-      await refreshStudioUpgradeState({ force: true });
+      tracevaneUpgradeBusy.value = false;
+      await refreshTracevaneReleaseState({ force: true });
+      await refreshTracevaneUpgradeState({ force: true });
       scheduleUpgradePoll(UPGRADE_RUNNING_POLL_INTERVAL_MS);
       scheduleReleaseRefresh();
     }
@@ -422,6 +422,6 @@ export function useShellRelease(buildVersion: string) {
     versionActionLabel,
     versionStatusDotClass,
     versionActionBusy,
-    handleStudioUpgradeAction,
+    handleTracevaneUpgradeAction,
   };
 }

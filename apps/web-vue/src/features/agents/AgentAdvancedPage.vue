@@ -42,7 +42,7 @@
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('模型覆盖', 'Model Override') }}</label>
-            <StudioSelect
+            <TracevaneSelect
               v-model="draft.model"
               :options="modelOptions"
               :placeholder="text('留空表示跟随系统默认', 'Leave empty to inherit the system default')"
@@ -108,7 +108,7 @@
         <div class="agents-form-grid">
           <div class="form-field">
             <label class="form-label">{{ text('运行时类型', 'Runtime type') }}</label>
-            <StudioSelect v-model="draft.runtime.type" :options="runtimeTypeOptions" />
+            <TracevaneSelect v-model="draft.runtime.type" :options="runtimeTypeOptions" />
           </div>
           <template v-if="draft.runtime.type === 'acp'">
             <div class="form-field">
@@ -121,7 +121,7 @@
             </div>
             <div class="form-field">
               <label class="form-label">{{ text('模式', 'Mode') }}</label>
-              <StudioSelect v-model="draft.runtime.mode" :options="runtimeModeOptions" :placeholder="text('未设置', 'Unset')" />
+              <TracevaneSelect v-model="draft.runtime.mode" :options="runtimeModeOptions" :placeholder="text('未设置', 'Unset')" />
             </div>
             <div class="form-field form-field-full">
               <label class="form-label">{{ text('运行目录', 'CWD') }}</label>
@@ -130,31 +130,31 @@
           </template>
           <div class="form-field">
             <label class="form-label">{{ text('沙盒模式', 'Sandbox mode') }}</label>
-            <StudioSelect v-model="draft.sandboxMode" :options="sandboxModeOptions" />
+            <TracevaneSelect v-model="draft.sandboxMode" :options="sandboxModeOptions" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('工作区访问', 'Workspace access') }}</label>
-            <StudioSelect v-model="draft.workspaceAccess" :options="workspaceAccessOptions" />
+            <TracevaneSelect v-model="draft.workspaceAccess" :options="workspaceAccessOptions" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('工具配置', 'Tools profile') }}</label>
-            <StudioSelect v-model="draft.toolsProfile" :options="toolsProfileOptions" />
+            <TracevaneSelect v-model="draft.toolsProfile" :options="toolsProfileOptions" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('Thinking 默认值', 'Thinking default') }}</label>
-            <StudioSelect v-model="draft.thinkingDefault" :options="thinkingDefaultOptions" />
+            <TracevaneSelect v-model="draft.thinkingDefault" :options="thinkingDefaultOptions" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('Verbose 默认值', 'Verbose default') }}</label>
-            <StudioSelect v-model="draft.verboseDefault" :options="verboseDefaultOptions" />
+            <TracevaneSelect v-model="draft.verboseDefault" :options="verboseDefaultOptions" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('Reasoning 默认值', 'Reasoning default') }}</label>
-            <StudioSelect v-model="draft.reasoningDefault" :options="reasoningDefaultOptions" />
+            <TracevaneSelect v-model="draft.reasoningDefault" :options="reasoningDefaultOptions" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('Fast Mode 默认值', 'Fast Mode default') }}</label>
-            <StudioSelect v-model="draft.fastModeDefault" :options="fastModeDefaultOptions" />
+            <TracevaneSelect v-model="draft.fastModeDefault" :options="fastModeDefaultOptions" />
           </div>
           <label class="option-row form-field-full">
             <input v-model="draft.fsWorkspaceOnly" class="form-checkbox" type="checkbox" />
@@ -171,7 +171,7 @@
             <div class="agents-form-grid">
               <div class="form-field">
                 <label class="form-label">{{ text('心跳策略', 'Heartbeat policy') }}</label>
-                <StudioSelect v-model="draft.heartbeatMode" :options="heartbeatModeOptions" />
+                <TracevaneSelect v-model="draft.heartbeatMode" :options="heartbeatModeOptions" />
               </div>
               <div class="form-field">
                 <label class="form-label">{{ text('心跳周期', 'Heartbeat interval') }}</label>
@@ -248,7 +248,7 @@ import { computed, onActivated, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import type { AgentDetailPayload } from '../../../../../types/agents';
 import AvatarFieldEditor from '../../shared/components/AvatarFieldEditor.vue';
-import StudioSelect from '../../shared/components/StudioSelect.vue';
+import TracevaneSelect from '../../shared/components/TracevaneSelect.vue';
 import { buildAgentHeartbeatConfig, resolveHeartbeatEvery, resolveHeartbeatMode, type HeartbeatMode } from '../../shared/heartbeat-config';
 import { useLocalePreference } from '../../shared/locale';
 import { fetchAgentDetail, fetchAgentsSummary, updateAgent } from './api';

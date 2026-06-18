@@ -1,6 +1,6 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createStandaloneStudioConfig } from "./config.js";
+import { createStandaloneTracevaneConfig } from "./config.js";
 import { createOpenClawRecoveryDaemon } from "./modules/openclaw-recovery/daemon.js";
 
 const logger = {
@@ -18,7 +18,7 @@ function parsePort(value: string | undefined): number | undefined {
 }
 
 async function main(): Promise<void> {
-  const config = createStandaloneStudioConfig();
+  const config = createStandaloneTracevaneConfig();
   const daemon = createOpenClawRecoveryDaemon(config, {
     controlPort: parsePort(process.env.OPENCLAW_RECOVERY_CONTROL_PORT),
     logger,

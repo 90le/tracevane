@@ -2,16 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-  STUDIO_SLASH_COMMANDS,
-  filterStudioSlashCommandArgOptionDetails,
-  getStudioSlashCommandCompletions,
-  getStudioSlashCommandArgOptions,
-  getStudioSlashCommandArgOptionDetails,
-  getStudioSlashCommandDescription,
-  parseStudioSlashCommand,
+  TRACEVANE_SLASH_COMMANDS,
+  filterTracevaneSlashCommandArgOptionDetails,
+  getTracevaneSlashCommandCompletions,
+  getTracevaneSlashCommandArgOptions,
+  getTracevaneSlashCommandArgOptionDetails,
+  getTracevaneSlashCommandDescription,
+  parseTracevaneSlashCommand,
 } from '../../apps/web-vue/src/features/chat/slash-commands';
-import { resolveStudioBashSlashHandling } from '../../apps/web-vue/src/features/chat/slash-bash-policy';
-import { executeStudioSlashLocalGatewayCommand } from '../../apps/web-vue/src/features/chat/slash-local-executor';
+import { resolveTracevaneBashSlashHandling } from '../../apps/web-vue/src/features/chat/slash-bash-policy';
+import { executeTracevaneSlashLocalGatewayCommand } from '../../apps/web-vue/src/features/chat/slash-local-executor';
 
 function createGatewayClientMock(
   handler: (method: string, params: unknown) => unknown | Promise<unknown>,
@@ -28,8 +28,8 @@ function createGatewayClientMock(
   };
 }
 
-test('studio slash command catalog mirrors key OpenClaw chat commands', () => {
-  const names = new Set(STUDIO_SLASH_COMMANDS.map((command) => command.name));
+test('tracevane slash command catalog mirrors key OpenClaw chat commands', () => {
+  const names = new Set(TRACEVANE_SLASH_COMMANDS.map((command) => command.name));
 
   for (const expected of [
     'help',
@@ -49,92 +49,92 @@ test('studio slash command catalog mirrors key OpenClaw chat commands', () => {
   }
 });
 
-test('studio slash parser supports aliases and colon/space argument forms', () => {
-  assert.deepEqual(parseStudioSlashCommand('/think: high'), {
-    command: STUDIO_SLASH_COMMANDS.find((command) => command.name === 'think'),
+test('tracevane slash parser supports aliases and colon/space argument forms', () => {
+  assert.deepEqual(parseTracevaneSlashCommand('/think: high'), {
+    command: TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'think'),
     args: 'high',
   });
 
-  assert.deepEqual(parseStudioSlashCommand('/export'), {
-    command: STUDIO_SLASH_COMMANDS.find((command) => command.name === 'export-session'),
+  assert.deepEqual(parseTracevaneSlashCommand('/export'), {
+    command: TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'export-session'),
     args: '',
   });
 
-  assert.deepEqual(parseStudioSlashCommand('/tools verbose'), {
-    command: STUDIO_SLASH_COMMANDS.find((command) => command.name === 'tools'),
+  assert.deepEqual(parseTracevaneSlashCommand('/tools verbose'), {
+    command: TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'tools'),
     args: 'verbose',
   });
 
-  assert.deepEqual(parseStudioSlashCommand('/id'), {
-    command: STUDIO_SLASH_COMMANDS.find((command) => command.name === 'whoami'),
+  assert.deepEqual(parseTracevaneSlashCommand('/id'), {
+    command: TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'whoami'),
     args: '',
   });
 
-  assert.deepEqual(parseStudioSlashCommand('/thinking medium'), {
-    command: STUDIO_SLASH_COMMANDS.find((command) => command.name === 'think'),
+  assert.deepEqual(parseTracevaneSlashCommand('/thinking medium'), {
+    command: TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'think'),
     args: 'medium',
   });
 
-  assert.deepEqual(parseStudioSlashCommand('/plugin enable studio'), {
-    command: STUDIO_SLASH_COMMANDS.find((command) => command.name === 'plugins'),
-    args: 'enable studio',
+  assert.deepEqual(parseTracevaneSlashCommand('/plugin enable tracevane'), {
+    command: TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'plugins'),
+    args: 'enable tracevane',
   });
 });
 
-test('studio slash completions prioritize matching command prefixes', () => {
-  const result = getStudioSlashCommandCompletions('mo').map((command) => command.name);
+test('tracevane slash completions prioritize matching command prefixes', () => {
+  const result = getTracevaneSlashCommandCompletions('mo').map((command) => command.name);
   assert.deepEqual(result.slice(0, 2), ['model', 'models']);
 });
 
-test('studio slash descriptions switch between zh and en locales', () => {
-  const help = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'help');
+test('tracevane slash descriptions switch between zh and en locales', () => {
+  const help = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'help');
   assert.ok(help);
-  assert.equal(getStudioSlashCommandDescription(help, 'zh'), '显示可用命令。');
-  assert.equal(getStudioSlashCommandDescription(help, 'en'), 'Show available commands.');
+  assert.equal(getTracevaneSlashCommandDescription(help, 'zh'), '显示可用命令。');
+  assert.equal(getTracevaneSlashCommandDescription(help, 'en'), 'Show available commands.');
 });
 
-test('studio slash help commands execute locally instead of sending through chat', () => {
-  const help = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'help');
-  const commands = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'commands');
-  const status = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'status');
-  const tools = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'tools');
-  const skill = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'skill');
-  const tasks = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'tasks');
-  const allowlist = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'allowlist');
-  const approve = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'approve');
-  const context = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'context');
-  const btw = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'btw');
-  const compact = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'compact');
-  const model = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'model');
-  const think = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'think');
-  const fast = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'fast');
-  const reasoningLocal = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'reasoning');
-  const verbose = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'verbose');
-  const usage = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'usage');
-  const elevated = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'elevated');
-  const execCommand = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'exec');
-  const bash = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'bash');
-  const tts = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'tts');
-  const whoami = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'whoami');
-  const session = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'session');
-  const activation = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'activation');
-  const send = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'send');
-  const models = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'models');
-  const exportSession = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'export-session');
-  const queue = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'queue');
-  const agents = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'agents');
-  const kill = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'kill');
-  const steer = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'steer');
-  const redirect = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'redirect');
-  const config = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'config');
-  const plugins = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'plugins');
-  const mcp = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'mcp');
-  const subagents = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'subagents');
-  const acp = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'acp');
-  const debug = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'debug');
-  const restart = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'restart');
-  const focus = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'focus');
-  const unfocus = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'unfocus');
+test('tracevane slash help commands execute locally instead of sending through chat', () => {
+  const help = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'help');
+  const commands = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'commands');
+  const status = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'status');
+  const tools = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'tools');
+  const skill = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'skill');
+  const tasks = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'tasks');
+  const allowlist = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'allowlist');
+  const approve = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'approve');
+  const context = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'context');
+  const btw = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'btw');
+  const compact = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'compact');
+  const model = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'model');
+  const think = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'think');
+  const fast = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'fast');
+  const reasoningLocal = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'reasoning');
+  const verbose = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'verbose');
+  const usage = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'usage');
+  const elevated = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'elevated');
+  const execCommand = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'exec');
+  const bash = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'bash');
+  const tts = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'tts');
+  const whoami = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'whoami');
+  const session = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'session');
+  const activation = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'activation');
+  const send = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'send');
+  const models = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'models');
+  const exportSession = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'export-session');
+  const queue = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'queue');
+  const agents = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'agents');
+  const kill = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'kill');
+  const steer = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'steer');
+  const redirect = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'redirect');
+  const config = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'config');
+  const plugins = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'plugins');
+  const mcp = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'mcp');
+  const subagents = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'subagents');
+  const acp = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'acp');
+  const debug = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'debug');
+  const restart = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'restart');
+  const focus = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'focus');
+  const unfocus = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'unfocus');
 
   assert.ok(help);
   assert.ok(commands);
@@ -261,41 +261,41 @@ test('studio slash help commands execute locally instead of sending through chat
   assert.equal(unfocus.localAction, 'unfocus');
 });
 
-test('studio slash catalog no longer leaves any commands on realtime-only send mode', () => {
-  const sendOnly = STUDIO_SLASH_COMMANDS.filter((command) => command.executeMode === 'send');
+test('tracevane slash catalog no longer leaves any commands on realtime-only send mode', () => {
+  const sendOnly = TRACEVANE_SLASH_COMMANDS.filter((command) => command.executeMode === 'send');
   assert.deepEqual(sendOnly, []);
 });
 
-test('studio slash arg options allow dynamic model candidates while preserving static command options', () => {
-  const model = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'model');
-  const think = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'think');
+test('tracevane slash arg options allow dynamic model candidates while preserving static command options', () => {
+  const model = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'model');
+  const think = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'think');
 
   assert.ok(model);
   assert.ok(think);
 
   assert.deepEqual(
-    getStudioSlashCommandArgOptions(model, {
+    getTracevaneSlashCommandArgOptions(model, {
       model: ['claude-sonnet-4.5', 'gpt-5.4', 'claude-sonnet-4.5'],
     }),
     ['claude-sonnet-4.5', 'gpt-5.4'],
   );
 
   assert.deepEqual(
-    getStudioSlashCommandArgOptions(think, {
+    getTracevaneSlashCommandArgOptions(think, {
       model: ['should-not-bleed-into-think'],
     }),
     ['off', 'minimal', 'low', 'medium', 'high', 'xhigh'],
   );
 });
 
-test('studio slash arg options align with official first-arg choices for common commands', () => {
-  const fast = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'fast');
-  const usage = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'usage');
-  const tts = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'tts');
-  const plugins = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'plugins');
-  const reasoning = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'reasoning');
-  const elevated = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'elevated');
-  const execCommand = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'exec');
+test('tracevane slash arg options align with official first-arg choices for common commands', () => {
+  const fast = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'fast');
+  const usage = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'usage');
+  const tts = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'tts');
+  const plugins = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'plugins');
+  const reasoning = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'reasoning');
+  const elevated = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'elevated');
+  const execCommand = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'exec');
 
   assert.ok(fast);
   assert.ok(usage);
@@ -305,13 +305,13 @@ test('studio slash arg options align with official first-arg choices for common 
   assert.ok(elevated);
   assert.ok(execCommand);
 
-  assert.deepEqual(getStudioSlashCommandArgOptions(fast), ['status', 'off', 'on']);
-  assert.deepEqual(getStudioSlashCommandArgOptions(usage), ['off', 'tokens', 'full', 'cost']);
-  assert.deepEqual(getStudioSlashCommandArgOptions(tts), ['on', 'off', 'status', 'provider', 'limit', 'summary', 'audio', 'help']);
-  assert.deepEqual(getStudioSlashCommandArgOptions(plugins), ['list', 'show', 'get', 'enable', 'disable']);
-  assert.deepEqual(getStudioSlashCommandArgOptions(reasoning), ['off', 'on', 'stream']);
-  assert.deepEqual(getStudioSlashCommandArgOptions(elevated), ['off', 'on', 'ask', 'full']);
-  assert.deepEqual(getStudioSlashCommandArgOptions(execCommand), [
+  assert.deepEqual(getTracevaneSlashCommandArgOptions(fast), ['status', 'off', 'on']);
+  assert.deepEqual(getTracevaneSlashCommandArgOptions(usage), ['off', 'tokens', 'full', 'cost']);
+  assert.deepEqual(getTracevaneSlashCommandArgOptions(tts), ['on', 'off', 'status', 'provider', 'limit', 'summary', 'audio', 'help']);
+  assert.deepEqual(getTracevaneSlashCommandArgOptions(plugins), ['list', 'show', 'get', 'enable', 'disable']);
+  assert.deepEqual(getTracevaneSlashCommandArgOptions(reasoning), ['off', 'on', 'stream']);
+  assert.deepEqual(getTracevaneSlashCommandArgOptions(elevated), ['off', 'on', 'ask', 'full']);
+  assert.deepEqual(getTracevaneSlashCommandArgOptions(execCommand), [
     'host=auto',
     'host=sandbox',
     'host=gateway',
@@ -326,14 +326,14 @@ test('studio slash arg options align with official first-arg choices for common 
   ]);
 });
 
-test('studio slash arg option details provide bilingual labels and descriptions', () => {
-  const think = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'think');
-  const model = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'model');
+test('tracevane slash arg option details provide bilingual labels and descriptions', () => {
+  const think = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'think');
+  const model = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'model');
 
   assert.ok(think);
   assert.ok(model);
 
-  const thinkDetails = getStudioSlashCommandArgOptionDetails(think, 'zh');
+  const thinkDetails = getTracevaneSlashCommandArgOptionDetails(think, 'zh');
   assert.deepEqual(
     thinkDetails.find((item) => item.value === 'high'),
     {
@@ -352,7 +352,7 @@ test('studio slash arg option details provide bilingual labels and descriptions'
     },
   );
 
-  const modelDetails = getStudioSlashCommandArgOptionDetails(model, 'en', {
+  const modelDetails = getTracevaneSlashCommandArgOptionDetails(model, 'en', {
     model: ['gpt-5.4'],
   });
   assert.deepEqual(
@@ -365,23 +365,23 @@ test('studio slash arg option details provide bilingual labels and descriptions'
   );
 });
 
-test('studio slash arg option filtering matches localized labels and descriptions', () => {
-  const think = STUDIO_SLASH_COMMANDS.find((command) => command.name === 'think');
+test('tracevane slash arg option filtering matches localized labels and descriptions', () => {
+  const think = TRACEVANE_SLASH_COMMANDS.find((command) => command.name === 'think');
 
   assert.ok(think);
 
   assert.deepEqual(
-    filterStudioSlashCommandArgOptionDetails(think, '高', 'zh').map((item) => item.value),
+    filterTracevaneSlashCommandArgOptionDetails(think, '高', 'zh').map((item) => item.value),
     ['high', 'xhigh'],
   );
 
   assert.deepEqual(
-    filterStudioSlashCommandArgOptionDetails(think, 'deeper', 'en').map((item) => item.value),
+    filterTracevaneSlashCommandArgOptionDetails(think, 'deeper', 'en').map((item) => item.value),
     ['high'],
   );
 
   assert.deepEqual(
-    filterStudioSlashCommandArgOptionDetails(think, 'med', 'en').map((item) => item.value),
+    filterTracevaneSlashCommandArgOptionDetails(think, 'med', 'en').map((item) => item.value),
     ['medium'],
   );
 });
@@ -400,7 +400,7 @@ test('local slash executor compacts the current session through gateway rpc', as
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const result = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'compact', '', {});
+  const result = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'compact', '', {});
   assert.ok(result);
   assert.equal(result.phase, 'completed');
   assert.equal(result.refresh, 'conversation');
@@ -420,7 +420,7 @@ test('local slash executor summarizes plugin config through gateway rpc', async 
         config: {
           plugins: {
             entries: {
-              studio: {
+              tracevane: {
                 enabled: true,
                 config: {
                   autoStart: true,
@@ -431,14 +431,14 @@ test('local slash executor summarizes plugin config through gateway rpc', async 
               },
             },
             installs: {
-              studio: {
+              tracevane: {
                 source: 'npm',
                 version: '0.1.20',
-                installPath: '/opt/studio',
+                installPath: '/opt/tracevane',
               },
             },
             load: {
-              paths: ['/opt/studio'],
+              paths: ['/opt/tracevane'],
             },
           },
         },
@@ -447,19 +447,19 @@ test('local slash executor summarizes plugin config through gateway rpc', async 
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const summary = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'plugins', 'list', {});
+  const summary = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'plugins', 'list', {});
   assert.ok(summary);
   assert.equal(summary.phase, 'completed');
-  assert.match(summary.detail.zh, /studio/);
+  assert.match(summary.detail.zh, /tracevane/);
   assert.match(summary.detail.en, /browser/i);
 
-  const detail = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'plugins', 'show studio', {});
+  const detail = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'plugins', 'show tracevane', {});
   assert.ok(detail);
   assert.equal(detail.phase, 'completed');
   assert.match(detail.detail.zh, /已启用/);
   assert.match(detail.detail.en, /enabled/i);
 
-  const passthrough = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'plugins', 'enable studio', {});
+  const passthrough = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'plugins', 'enable tracevane', {});
   assert.equal(passthrough, null);
 });
 
@@ -487,19 +487,19 @@ test('local slash executor summarizes mcp config through gateway rpc', async () 
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const summary = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'mcp', 'show', {});
+  const summary = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'mcp', 'show', {});
   assert.ok(summary);
   assert.equal(summary.phase, 'completed');
   assert.match(summary.detail.zh, /context7/);
   assert.match(summary.detail.en, /remote/i);
 
-  const detail = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'mcp', 'get remote', {});
+  const detail = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'mcp', 'get remote', {});
   assert.ok(detail);
   assert.equal(detail.phase, 'completed');
   assert.match(detail.detail.zh, /remote/);
   assert.match(detail.detail.en, /url/i);
 
-  const passthrough = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'mcp', 'set remote {}', {});
+  const passthrough = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'mcp', 'set remote {}', {});
   assert.equal(passthrough, null);
 });
 
@@ -544,19 +544,19 @@ test('local slash executor summarizes current-session subagents through gateway 
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const summary = await executeStudioSlashLocalGatewayCommand(gateway.client, 'agent:main:main', 'subagents', 'list', {});
+  const summary = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'agent:main:main', 'subagents', 'list', {});
   assert.ok(summary);
   assert.equal(summary.phase, 'completed');
   assert.match(summary.detail.zh, /Researcher/);
   assert.match(summary.detail.en, /Critic/);
 
-  const detail = await executeStudioSlashLocalGatewayCommand(gateway.client, 'agent:main:main', 'subagents', 'info researcher', {});
+  const detail = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'agent:main:main', 'subagents', 'info researcher', {});
   assert.ok(detail);
   assert.equal(detail.phase, 'completed');
   assert.match(detail.detail.zh, /gpt-5\.4/);
   assert.match(detail.detail.en, /running/i);
 
-  const passthrough = await executeStudioSlashLocalGatewayCommand(gateway.client, 'agent:main:main', 'subagents', 'spawn reviewer', {});
+  const passthrough = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'agent:main:main', 'subagents', 'spawn reviewer', {});
   assert.equal(passthrough, null);
 });
 
@@ -594,7 +594,7 @@ test('local slash executor summarizes visible background tasks for the current s
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const result = await executeStudioSlashLocalGatewayCommand(
+  const result = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'agent:main:main',
     'tasks',
@@ -620,7 +620,7 @@ test('local slash executor provides queue guidance locally but falls back for li
     throw new Error('queue helper should not hit gateway rpc without a live patch surface');
   });
 
-  const summary = await executeStudioSlashLocalGatewayCommand(
+  const summary = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'agent:main:main',
     'queue',
@@ -634,7 +634,7 @@ test('local slash executor provides queue guidance locally but falls back for li
   assert.match(summary.detail.en, /queued sends: 3/i);
   assert.deepEqual(gateway.calls, []);
 
-  const fallback = await executeStudioSlashLocalGatewayCommand(
+  const fallback = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'agent:main:main',
     'queue',
@@ -694,9 +694,9 @@ test('local slash executor lists workspace skills locally and falls back for act
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const summary = await executeStudioSlashLocalGatewayCommand(
+  const summary = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
-    'agent:main:webchat:direct:studio-demo',
+    'agent:main:webchat:direct:tracevane-demo',
     'skill',
     '',
     {},
@@ -708,9 +708,9 @@ test('local slash executor lists workspace skills locally and falls back for act
   assert.match(summary.detail.zh, /browser/);
   assert.match(summary.detail.en, /2 skills/i);
 
-  const fallback = await executeStudioSlashLocalGatewayCommand(
+  const fallback = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
-    'agent:main:webchat:direct:studio-demo',
+    'agent:main:webchat:direct:tracevane-demo',
     'skill',
     'calendar next week',
     {},
@@ -757,7 +757,7 @@ test('local slash executor reports Tracevane-local context summary and detail', 
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const detail = await executeStudioSlashLocalGatewayCommand(
+  const detail = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'agent:main:main',
     'context',
@@ -784,7 +784,7 @@ test('local slash executor reports Tracevane-local context summary and detail', 
   assert.match(detail.detail.zh, /Researcher/);
   assert.match(detail.detail.en, /reasoning=stream/i);
 
-  const json = await executeStudioSlashLocalGatewayCommand(
+  const json = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'agent:main:main',
     'context',
@@ -819,7 +819,7 @@ test('local slash executor patches the current model through gateway rpc', async
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const result = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'model', 'gpt-5.4', {});
+  const result = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'model', 'gpt-5.4', {});
   assert.ok(result);
   assert.equal(result.phase, 'completed');
   assert.match(result.detail.en, /gpt-5\.4/i);
@@ -847,12 +847,12 @@ test('local slash executor reads and patches reasoning visibility through gatewa
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const current = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'reasoning', '', {});
+  const current = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'reasoning', '', {});
   assert.ok(current);
   assert.equal(current.phase, 'completed');
   assert.match(current.detail.zh, /stream/);
 
-  const patched = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'reasoning', 'on', {});
+  const patched = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'reasoning', 'on', {});
   assert.ok(patched);
   assert.equal(patched.phase, 'completed');
   assert.match(patched.detail.en, /enabled|set to on|on/i);
@@ -881,12 +881,12 @@ test('local slash executor reads and patches usage footer mode through gateway r
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const current = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'usage', '', {});
+  const current = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'usage', '', {});
   assert.ok(current);
   assert.equal(current.phase, 'completed');
   assert.match(current.detail.zh, /tokens/);
 
-  const patched = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'usage', 'full', {});
+  const patched = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'usage', 'full', {});
   assert.ok(patched);
   assert.equal(patched.phase, 'completed');
   assert.match(patched.detail.en, /full/i);
@@ -905,9 +905,9 @@ test('local slash executor patches elevated, activation, and send policies throu
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const elevated = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'elevated', 'ask', {});
-  const activation = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'activation', 'always', {});
-  const send = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'send', 'inherit', {});
+  const elevated = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'elevated', 'ask', {});
+  const activation = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'activation', 'always', {});
+  const send = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'send', 'inherit', {});
 
   assert.ok(elevated);
   assert.equal(elevated.phase, 'completed');
@@ -945,13 +945,13 @@ test('local slash executor reports exec query limits locally and patches exec de
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const current = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'exec', '', {});
+  const current = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'exec', '', {});
   assert.ok(current);
   assert.equal(current.phase, 'completed');
   assert.match(current.detail.zh, /当前暂无法直接查询/i);
   assert.match(current.detail.zh, /host=auto/i);
 
-  const patched = await executeStudioSlashLocalGatewayCommand(
+  const patched = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'main',
     'exec',
@@ -984,7 +984,7 @@ test('local slash executor rejects invalid exec defaults locally before any gate
     throw new Error('should not request gateway for invalid exec args');
   });
 
-  const result = await executeStudioSlashLocalGatewayCommand(
+  const result = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'main',
     'exec',
@@ -1030,13 +1030,13 @@ test('local slash executor summarizes and mutates exec allowlist entries through
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const listed = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'allowlist', '', {});
+  const listed = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'allowlist', '', {});
   assert.ok(listed);
   assert.equal(listed.phase, 'completed');
   assert.match(listed.detail.zh, /当前 Agent main/);
   assert.match(listed.detail.zh, /git status/);
 
-  const added = await executeStudioSlashLocalGatewayCommand(
+  const added = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'main',
     'allowlist',
@@ -1048,7 +1048,7 @@ test('local slash executor summarizes and mutates exec allowlist entries through
   assert.match(added.detail.en, /Added allowlist entry/i);
   assert.match(added.detail.en, /npm test/);
 
-  const removed = await executeStudioSlashLocalGatewayCommand(
+  const removed = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'main',
     'allowlist',
@@ -1132,30 +1132,30 @@ test('local slash executor summarizes and updates tts through gateway rpc', asyn
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const status = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'tts', '', {});
+  const status = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'tts', '', {});
   assert.ok(status);
   assert.equal(status.phase, 'completed');
   assert.match(status.detail.zh, /已开启/);
   assert.match(status.detail.zh, /elevenlabs/);
   assert.match(status.detail.en, /reply/i);
 
-  const providers = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'tts', 'provider', {});
+  const providers = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'tts', 'provider', {});
   assert.ok(providers);
   assert.equal(providers.phase, 'completed');
   assert.match(providers.detail.zh, /ElevenLabs/);
   assert.match(providers.detail.en, /active/i);
 
-  const enabled = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'tts', 'on', {});
+  const enabled = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'tts', 'on', {});
   assert.ok(enabled);
   assert.equal(enabled.phase, 'completed');
   assert.match(enabled.detail.en, /enabled/i);
 
-  const disabled = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'tts', 'off', {});
+  const disabled = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'tts', 'off', {});
   assert.ok(disabled);
   assert.equal(disabled.phase, 'completed');
   assert.match(disabled.detail.en, /disabled/i);
 
-  const setProvider = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'tts', 'provider openai', {});
+  const setProvider = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'tts', 'provider openai', {});
   assert.ok(setProvider);
   assert.equal(setProvider.phase, 'completed');
   assert.match(setProvider.detail.zh, /openai/i);
@@ -1191,9 +1191,9 @@ test('local slash executor keeps unsupported tts actions on the host slash path'
     throw new Error('should not request gateway for passthrough tts actions');
   });
 
-  const limit = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'tts', 'limit 2000', {});
-  const summary = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'tts', 'summary on', {});
-  const audio = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'tts', 'audio hello world', {});
+  const limit = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'tts', 'limit 2000', {});
+  const summary = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'tts', 'summary on', {});
+  const audio = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'tts', 'audio hello world', {});
 
   assert.equal(limit, null);
   assert.equal(summary, null);
@@ -1203,7 +1203,7 @@ test('local slash executor keeps unsupported tts actions on the host slash path'
 
 test('bash slash handling keeps ordinary shell commands but blocks host-management commands without both exec switches', () => {
   assert.equal(
-    resolveStudioBashSlashHandling({
+    resolveTracevaneBashSlashHandling({
       args: '',
       globalHostManagementExecEnabled: false,
       sessionHostManagementExecEnabled: false,
@@ -1212,7 +1212,7 @@ test('bash slash handling keeps ordinary shell commands but blocks host-manageme
   );
 
   assert.equal(
-    resolveStudioBashSlashHandling({
+    resolveTracevaneBashSlashHandling({
       args: 'pwd && ls',
       globalHostManagementExecEnabled: false,
       sessionHostManagementExecEnabled: false,
@@ -1220,7 +1220,7 @@ test('bash slash handling keeps ordinary shell commands but blocks host-manageme
     'fallback',
   );
 
-  const blocked = resolveStudioBashSlashHandling({
+  const blocked = resolveTracevaneBashSlashHandling({
     args: 'openclaw gateway restart',
     globalHostManagementExecEnabled: true,
     sessionHostManagementExecEnabled: false,
@@ -1229,7 +1229,7 @@ test('bash slash handling keeps ordinary shell commands but blocks host-manageme
   assert.match(blocked.detail.zh, /宿主管理 Exec/);
 
   assert.equal(
-    resolveStudioBashSlashHandling({
+    resolveTracevaneBashSlashHandling({
       args: 'openclaw gateway restart',
       globalHostManagementExecEnabled: true,
       sessionHostManagementExecEnabled: true,
@@ -1240,7 +1240,7 @@ test('bash slash handling keeps ordinary shell commands but blocks host-manageme
 
 test('restart slash is blocked unless both host-management exec switches are enabled', () => {
   assert.equal(
-    resolveStudioBashSlashHandling({
+    resolveTracevaneBashSlashHandling({
       args: 'openclaw gateway restart',
       globalHostManagementExecEnabled: false,
       sessionHostManagementExecEnabled: false,
@@ -1249,7 +1249,7 @@ test('restart slash is blocked unless both host-management exec switches are ena
   );
 
   assert.equal(
-    resolveStudioBashSlashHandling({
+    resolveTracevaneBashSlashHandling({
       args: 'openclaw gateway restart',
       globalHostManagementExecEnabled: true,
       sessionHostManagementExecEnabled: true,
@@ -1273,10 +1273,10 @@ test('local slash executor returns Tracevane guidance for surface-specific slash
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const whoami = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'whoami', '', {});
-  const session = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'session', 'idle 1h', {});
-  const focus = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'focus', 'agent:main:main', {});
-  const unfocus = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'unfocus', '', {});
+  const whoami = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'whoami', '', {});
+  const session = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'session', 'idle 1h', {});
+  const focus = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'focus', 'agent:main:main', {});
+  const unfocus = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'unfocus', '', {});
 
   assert.ok(whoami);
   assert.equal(whoami.phase, 'completed');
@@ -1320,8 +1320,8 @@ test('local slash executor lists and resolves pending approvals through gateway 
         {
           id: 'plugin:1',
           request: {
-            title: 'Install studio plugin',
-            pluginId: 'studio',
+            title: 'Install tracevane plugin',
+            pluginId: 'tracevane',
           },
         },
       ];
@@ -1341,18 +1341,18 @@ test('local slash executor lists and resolves pending approvals through gateway 
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const list = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'approve', '', {});
+  const list = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'approve', '', {});
   assert.ok(list);
   assert.equal(list.phase, 'completed');
   assert.match(list.detail.zh, /exec-1/);
   assert.match(list.detail.zh, /plugin:1/);
 
-  const execApproval = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'approve', 'exec-1 allow', {});
+  const execApproval = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'approve', 'exec-1 allow', {});
   assert.ok(execApproval);
   assert.equal(execApproval.phase, 'completed');
   assert.match(execApproval.detail.en, /allow-once/i);
 
-  const pluginApproval = await executeStudioSlashLocalGatewayCommand(gateway.client, 'main', 'approve', 'plugin:1 deny', {});
+  const pluginApproval = await executeTracevaneSlashLocalGatewayCommand(gateway.client, 'main', 'approve', 'plugin:1 deny', {});
   assert.ok(pluginApproval);
   assert.equal(pluginApproval.phase, 'completed');
   assert.match(pluginApproval.detail.zh, /deny/i);
@@ -1407,7 +1407,7 @@ test('local slash executor steers a matching subagent via chat.send', async () =
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const result = await executeStudioSlashLocalGatewayCommand(
+  const result = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'agent:main:main',
     'steer',
@@ -1447,7 +1447,7 @@ test('local slash executor summarizes ACP sessions locally before falling back f
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const result = await executeStudioSlashLocalGatewayCommand(
+  const result = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'agent:main:main',
     'acp',
@@ -1483,7 +1483,7 @@ test('local slash executor marks current-session steer as accepted when the acti
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const result = await executeStudioSlashLocalGatewayCommand(
+  const result = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'agent:main:main',
     'steer',
@@ -1530,7 +1530,7 @@ test('local slash executor redirects the current session and returns a tracked r
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const result = await executeStudioSlashLocalGatewayCommand(
+  const result = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'agent:main:main',
     'redirect',
@@ -1565,7 +1565,7 @@ test('local slash executor lists models grouped by provider', async () => {
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const result = await executeStudioSlashLocalGatewayCommand(
+  const result = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'agent:main:main',
     'models',
@@ -1612,7 +1612,7 @@ test('local slash executor lists effective runtime tools for the current session
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const result = await executeStudioSlashLocalGatewayCommand(
+  const result = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'agent:main:main',
     'tools',
@@ -1669,7 +1669,7 @@ test('local slash executor reads config summary and path values for /config show
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const summary = await executeStudioSlashLocalGatewayCommand(
+  const summary = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'agent:main:main',
     'config',
@@ -1681,7 +1681,7 @@ test('local slash executor reads config summary and path values for /config show
   assert.match(summary.detail.zh, /openclaw\.json/i);
   assert.match(summary.detail.zh, /gateway/i);
 
-  const detail = await executeStudioSlashLocalGatewayCommand(
+  const detail = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'agent:main:main',
     'config',
@@ -1699,7 +1699,7 @@ test('local slash executor returns null for /config write actions so chat can fa
     throw new Error('should not request gateway for unsupported local config action');
   });
 
-  const result = await executeStudioSlashLocalGatewayCommand(
+  const result = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'agent:main:main',
     'config',
@@ -1736,7 +1736,7 @@ test('local slash executor turns Tracevane-only session identity commands into i
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const whoami = await executeStudioSlashLocalGatewayCommand(
+  const whoami = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'agent:main:main',
     'whoami',
@@ -1747,7 +1747,7 @@ test('local slash executor turns Tracevane-only session identity commands into i
   assert.equal(whoami.phase, 'completed');
   assert.match(whoami.detail.zh, /key=agent:main:main/i);
 
-  const session = await executeStudioSlashLocalGatewayCommand(
+  const session = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'agent:main:main',
     'session',
@@ -1766,7 +1766,7 @@ test('local slash executor turns Tracevane-only session identity commands into i
   assert.match(session.detail.en, /transport=sse/i);
   assert.match(session.detail.en, /Active run: run-1/i);
 
-  const focus = await executeStudioSlashLocalGatewayCommand(
+  const focus = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'agent:main:main',
     'focus',
@@ -1777,7 +1777,7 @@ test('local slash executor turns Tracevane-only session identity commands into i
   assert.equal(focus.phase, 'completed');
   assert.match(focus.detail.en, /session agent:main:main/i);
 
-  const unfocus = await executeStudioSlashLocalGatewayCommand(
+  const unfocus = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'agent:main:main',
     'unfocus',
@@ -1821,7 +1821,7 @@ test('local slash executor summarizes acp and debug while preserving host fallba
     throw new Error(`unexpected method: ${method}`);
   });
 
-  const acp = await executeStudioSlashLocalGatewayCommand(
+  const acp = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'agent:main:main',
     'acp',
@@ -1832,7 +1832,7 @@ test('local slash executor summarizes acp and debug while preserving host fallba
   assert.equal(acp.phase, 'completed');
   assert.match(acp.detail.en, /ACP session/i);
 
-  const acpFallback = await executeStudioSlashLocalGatewayCommand(
+  const acpFallback = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'agent:main:main',
     'acp',
@@ -1841,7 +1841,7 @@ test('local slash executor summarizes acp and debug while preserving host fallba
   );
   assert.equal(acpFallback, null);
 
-  const debug = await executeStudioSlashLocalGatewayCommand(
+  const debug = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'agent:main:main',
     'debug',
@@ -1857,7 +1857,7 @@ test('local slash executor summarizes acp and debug while preserving host fallba
   assert.match(debug.detail.en, /transport=sse/i);
   assert.match(debug.detail.en, /debug keys: rpc, events/i);
 
-  const debugFallback = await executeStudioSlashLocalGatewayCommand(
+  const debugFallback = await executeTracevaneSlashLocalGatewayCommand(
     gateway.client,
     'agent:main:main',
     'debug',

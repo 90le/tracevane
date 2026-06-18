@@ -1,4 +1,4 @@
-import { requestJson, getApiBase, fetchStudioResponse } from "../../shared/api";
+import { requestJson, getApiBase, fetchTracevaneResponse } from "../../shared/api";
 import type {
   TerminalActionCatalogResponse,
   TerminalEndPayload,
@@ -162,7 +162,7 @@ export async function streamTerminalInstall(
   onEvent: (event: TerminalInstallStreamEvent) => void,
 ): Promise<void> {
   const apiBase = getApiBase();
-  const response = await fetchStudioResponse(
+  const response = await fetchTracevaneResponse(
     `${apiBase}/api/terminal/install/stream`,
     {
       method: "POST",

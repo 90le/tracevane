@@ -11,7 +11,7 @@ import {
   resolveChannelConnectorGatewayClientKey,
 } from "../dist/apps/api/modules/channel-connectors/gateway-secret.js";
 
-const DEFAULT_CONFIG_PATH = path.join(os.homedir(), ".config/openclaw-studio/channel-connectors/daemon/config.json");
+const DEFAULT_CONFIG_PATH = path.join(os.homedir(), ".config/tracevane/channel-connectors/daemon/config.json");
 const DEFAULT_AGENTS = ["opencode"];
 const DEFAULT_MODEL = "glm-5";
 const DEFAULT_TIMEOUT_MS = 240_000;

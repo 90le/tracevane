@@ -38,8 +38,8 @@ export function channelConnectorGatewaySecretCandidates(
   const home = normalizeString(process.env.HOME) || os.homedir();
   return uniqueStrings([
     path.resolve(config.paths.root, "..", "..", "model-gateway", "secrets.json"),
-    path.join(home, ".openclaw", "studio", "model-gateway", "secrets.json"),
-    path.join(home, ".config", "openclaw-studio", "model-gateway", "secrets.json"),
+    path.join(home, ".openclaw", "tracevane", "model-gateway", "secrets.json"),
+    path.join(home, ".config", "tracevane", "model-gateway", "secrets.json"),
   ]);
 }
 
@@ -47,9 +47,7 @@ export function resolveChannelConnectorGatewayClientKey(
   config: Pick<ChannelConnectorsDaemonRuntimeConfig, "paths">,
 ): string | null {
   const envKey = normalizeString(process.env.TRACEVANE_GATEWAY_API_KEY)
-    || normalizeString(process.env.OPENCLAW_TRACEVANE_GATEWAY_API_KEY)
-    || normalizeString(process.env.STUDIO_GATEWAY_API_KEY)
-    || normalizeString(process.env.OPENCLAW_STUDIO_GATEWAY_API_KEY);
+    || normalizeString(process.env.OPENCLAW_TRACEVANE_GATEWAY_API_KEY);
   if (envKey) return envKey;
   for (const filePath of channelConnectorGatewaySecretCandidates(config)) {
     const key = readGatewayClientKey(filePath);

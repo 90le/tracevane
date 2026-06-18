@@ -29,7 +29,7 @@ function slugifyFilename(value: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '');
-  return normalized || 'studio-session-export';
+  return normalized || 'tracevane-session-export';
 }
 
 function formatRole(role: ChatMessageItem['role'], locale: Locale): string {

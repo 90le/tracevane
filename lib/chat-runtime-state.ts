@@ -36,7 +36,7 @@ export function isAssistantDeliveryMessage(message: ChatMessageItem): boolean {
   if (message.blocks?.some((block) => block.type === 'paragraph')) {
     return true;
   }
-  return Boolean(message.resources?.some((item) => item.source === 'studio_delivery'));
+  return Boolean(message.resources?.some((item) => item.source === 'tracevane_delivery'));
 }
 
 export function coalesceAssistantDeliveryMessages(messages: ChatMessageItem[]): ChatMessageItem[] {

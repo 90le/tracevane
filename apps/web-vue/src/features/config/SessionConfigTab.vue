@@ -16,7 +16,7 @@
             <div class="form-grid">
               <label class="form-field">
                 <span class="form-label">{{ text('重置模式', 'Reset mode') }}</span>
-                <StudioSelect
+                <TracevaneSelect
                   :modelValue="form.sessionReset.mode"
                   @update:modelValue="form.sessionReset.mode = $event"
                   :options="resetModeOptions"
@@ -57,7 +57,7 @@
               </div>
               <div v-for="entry in resetTypeEntries" :key="entry.key" class="config-reset-type-row">
                 <span class="config-reset-type-label">{{ entry.label }}</span>
-                <StudioSelect
+                <TracevaneSelect
                   :modelValue="form.sessionReset.resetByType[entry.key] || ''"
                   @update:modelValue="setResetByType(entry.key, $event)"
                   :options="resetByTypeModeOptions"
@@ -100,7 +100,7 @@
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('重置模式', 'Reset mode') }}</span>
-                    <StudioSelect
+                    <TracevaneSelect
                       v-model="entry.mode"
                       :options="resetModeOptions"
                       :placeholder="text('选择重置模式', 'Select reset mode')"
@@ -231,7 +231,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useLocalePreference } from '../../shared/locale';
-import StudioSelect, { type StudioSelectOption } from '../../shared/components/StudioSelect.vue';
+import TracevaneSelect, { type TracevaneSelectOption } from '../../shared/components/TracevaneSelect.vue';
 import { createUuid } from '../../shared/uuid';
 import './config-workspace.css';
 
@@ -273,12 +273,12 @@ const props = defineProps<{
 
 const { text } = useLocalePreference();
 
-const resetModeOptions = computed<StudioSelectOption[]>(() => [
+const resetModeOptions = computed<TracevaneSelectOption[]>(() => [
   { value: 'daily', label: text('按天重置', 'Daily reset') },
   { value: 'idle', label: text('空闲超时', 'Idle timeout') },
 ]);
 
-const resetByTypeModeOptions = computed<StudioSelectOption[]>(() => [
+const resetByTypeModeOptions = computed<TracevaneSelectOption[]>(() => [
   { value: '', label: text('跟随全局', 'Follow global') },
   { value: 'daily', label: text('按天重置', 'Daily reset') },
   { value: 'idle', label: text('空闲超时', 'Idle timeout') },

@@ -222,11 +222,11 @@
                   </div>
                   <div class="form-field">
                     <label class="form-label">CLI Agent</label>
-                    <StudioSelect :model-value="profileDraft.agent" :options="agentOptions" @update:model-value="setProfileAgent" />
+                    <TracevaneSelect :model-value="profileDraft.agent" :options="agentOptions" @update:model-value="setProfileAgent" />
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('权限', 'Permission') }}</label>
-                    <StudioSelect v-model="profileDraft.permissionMode" :options="permissionOptions" />
+                    <TracevaneSelect v-model="profileDraft.permissionMode" :options="permissionOptions" />
                   </div>
                 </div>
               </section>
@@ -239,7 +239,7 @@
                 <div class="ccx-profile-form-grid">
                   <div class="form-field form-field-full">
                     <label class="form-label">{{ text('模型', 'Model') }}</label>
-                    <StudioSelect
+                    <TracevaneSelect
                       v-model="profileDraft.model"
                       :options="modelOptions"
                       :placeholder="text('跟随默认模型', 'Inherit default model')"
@@ -255,7 +255,7 @@
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('推理强度', 'Reasoning effort') }}</label>
-                    <StudioSelect v-model="reasoningEffortDraft" :options="reasoningOptions" />
+                    <TracevaneSelect v-model="reasoningEffortDraft" :options="reasoningOptions" />
                   </div>
                   <div class="form-field">
                     <label class="form-label">{{ text('预算来源', 'Budget source') }}</label>
@@ -348,7 +348,7 @@
                   </div>
                   <div class="form-field">
                     <label class="form-label">App Profile</label>
-                    <StudioSelect v-model="profileDraft.appProfileRef" :options="appProfileOptions" />
+                    <TracevaneSelect v-model="profileDraft.appProfileRef" :options="appProfileOptions" />
                     <span class="field-hint">{{ text('当前 Gateway 只提供 default App Connection Profile；已有自定义值会保留为兼容选项。', 'Gateway currently exposes only the default App Connection Profile; existing custom values are kept as compatibility options.') }}</span>
                   </div>
                 </div>
@@ -403,15 +403,15 @@
             <div class="ccx-agent-profile-session-toolbar">
               <label class="form-field">
                 <span class="form-label">Binding</span>
-                <StudioSelect v-model="eventBindingFilter" :options="eventBindingFilterOptions" />
+                <TracevaneSelect v-model="eventBindingFilter" :options="eventBindingFilterOptions" />
               </label>
               <label class="form-field">
                 <span class="form-label">{{ text('事件筛选', 'Event filter') }}</span>
-                <StudioSelect v-model="eventFilter" :options="eventFilterOptions" />
+                <TracevaneSelect v-model="eventFilter" :options="eventFilterOptions" />
               </label>
               <label class="form-field">
                 <span class="form-label">{{ text('显示数量', 'Show') }}</span>
-                <StudioSelect v-model="eventLimit" :options="eventLimitOptions" />
+                <TracevaneSelect v-model="eventLimit" :options="eventLimitOptions" />
               </label>
               <span>{{ relatedSessionEventCountLabel }}</span>
             </div>
@@ -607,7 +607,7 @@ import type {
   ModelGatewayProviderModel,
   ModelGatewayProviderView,
 } from '../../../../../types/model-gateway';
-import StudioSelect from '../../shared/components/StudioSelect.vue';
+import TracevaneSelect from '../../shared/components/TracevaneSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 import {
   fetchChannelConnectorAgentSessions,

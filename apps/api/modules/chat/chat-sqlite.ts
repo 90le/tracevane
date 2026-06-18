@@ -1,24 +1,24 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
-import type { StudioServerConfig } from '../../../../types/api.js';
+import type { TracevaneServerConfig } from '../../../../types/api.js';
 
 const require = createRequire(import.meta.url);
 
 const databaseCache = new Map<string, any>();
 
-export function resolveStudioChatSqlitePath(config: StudioServerConfig): string {
-  return path.join(config.openclawRoot, 'studio', 'chat.sqlite');
+export function resolveTracevaneChatSqlitePath(config: TracevaneServerConfig): string {
+  return path.join(config.openclawRoot, 'tracevane', 'chat.sqlite');
 }
 
-export function openStudioChatSqliteDatabase(config: StudioServerConfig): any | null {
+export function openTracevaneChatSqliteDatabase(config: TracevaneServerConfig): any | null {
   try {
     const sqlite = require('node:sqlite');
     const DatabaseSync = sqlite?.DatabaseSync;
     if (!DatabaseSync) {
       return null;
     }
-    const file = resolveStudioChatSqlitePath(config);
+    const file = resolveTracevaneChatSqlitePath(config);
     const cached = databaseCache.get(file);
     if (cached) {
       return cached;

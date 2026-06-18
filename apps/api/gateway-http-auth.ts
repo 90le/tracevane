@@ -1,5 +1,5 @@
 import type http from 'node:http';
-import type { StudioServerConfig } from '../../types/api.js';
+import type { TracevaneServerConfig } from '../../types/api.js';
 import { sendJson, sendText } from './core/http.js';
 import { readOpenClawConfig } from './core/state.js';
 import { hasConfiguredSecretInput, resolveSecretInputString } from './core/secret-ref.js';
@@ -26,7 +26,7 @@ function readRequestPath(req: http.IncomingMessage): string {
   }
 }
 
-function readGatewayRelativePath(config: StudioServerConfig, req: http.IncomingMessage): string {
+function readGatewayRelativePath(config: TracevaneServerConfig, req: http.IncomingMessage): string {
   const pathname = readRequestPath(req);
   const basePath = normalizeGatewayBasePath(config.transport.gateway.basePath);
   if (!basePath) return pathname;
@@ -35,7 +35,7 @@ function readGatewayRelativePath(config: StudioServerConfig, req: http.IncomingM
   return pathname.slice(basePath.length) || '/';
 }
 
-function isPublicGatewayAssetRequest(config: StudioServerConfig, req: http.IncomingMessage): boolean {
+function isPublicGatewayAssetRequest(config: TracevaneServerConfig, req: http.IncomingMessage): boolean {
   if (req.method !== 'GET' && req.method !== 'HEAD') {
     return false;
   }
@@ -111,7 +111,7 @@ function readPresentedSecrets(req: http.IncomingMessage): string[] {
   ].filter(Boolean);
 }
 
-function readExpectedSecrets(config: StudioServerConfig): {
+function readExpectedSecrets(config: TracevaneServerConfig): {
   mode: string;
   secrets: string[];
   configured: boolean;
@@ -141,8 +141,8 @@ function isHtmlNavigation(req: http.IncomingMessage): boolean {
   }
 }
 
-export function isStudioGatewayHttpAuthorized(
-  config: StudioServerConfig,
+export function isTracevaneGatewayHttpAuthorized(
+  config: TracevaneServerConfig,
   req: http.IncomingMessage,
 ): boolean {
   if (isPublicGatewayAssetRequest(config, req)) {
@@ -159,7 +159,7 @@ export function isStudioGatewayHttpAuthorized(
   return presentedSecrets.some((value) => secrets.includes(value));
 }
 
-function normalizeCookiePath(config: StudioServerConfig): string {
+function normalizeCookiePath(config: TracevaneServerConfig): string {
   const basePath = normalizeGatewayBasePath(config.transport.gateway.basePath);
   return basePath || '/';
 }
@@ -197,8 +197,8 @@ function appendSetCookieHeader(res: http.ServerResponse, value: string): void {
   res.setHeader('Set-Cookie', [String(current), value]);
 }
 
-export function syncStudioGatewayHttpAuthCookie(
-  config: StudioServerConfig,
+export function syncTracevaneGatewayHttpAuthCookie(
+  config: TracevaneServerConfig,
   req: http.IncomingMessage,
   res: http.ServerResponse,
 ): void {
@@ -224,7 +224,7 @@ export function syncStudioGatewayHttpAuthCookie(
   appendSetCookieHeader(res, cookieParts.join('; '));
 }
 
-export function rejectStudioGatewayHttpUnauthorized(res: http.ServerResponse, req: http.IncomingMessage): void {
+export function rejectTracevaneGatewayHttpUnauthorized(res: http.ServerResponse, req: http.IncomingMessage): void {
   res.setHeader('WWW-Authenticate', 'Bearer realm="Tracevane"');
   if (isHtmlNavigation(req)) {
     sendText(res, 401, 'Unauthorized');
@@ -235,7 +235,7 @@ export function rejectStudioGatewayHttpUnauthorized(res: http.ServerResponse, re
       code: 'auth_failure',
       message: 'Unauthorized',
       retryable: false,
-      source: 'studio',
+      source: 'tracevane',
     },
   });
 }

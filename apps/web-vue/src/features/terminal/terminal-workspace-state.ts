@@ -106,7 +106,7 @@ export function createTerminalWorkspaceState(
   } = {},
 ): TerminalWorkspaceState {
   const storageKey =
-    options.storageKey || "openclaw-studio.terminal.descriptors";
+    options.storageKey || "tracevane.terminal.descriptors";
   const workspaceUiStorageKey = `${storageKey}.workspace`;
   const storage =
     options.storage === undefined ? globalThis.localStorage : options.storage;

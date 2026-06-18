@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn } from "node:child_process";
-import type { StudioServerConfig } from "../../../../types/api.js";
+import type { TracevaneServerConfig } from "../../../../types/api.js";
 import type {
   OpenClawRecoveryCommandSnapshot,
   OpenClawRecoveryLastRepair,
@@ -63,9 +63,9 @@ const CANONICAL_GATEWAY_AUTH_REF: OpenClawSecretRef = {
 const DEPRECATED_OPENCLAW_PLUGIN_IDS = new Set(["acpx", "discord"]);
 const RUNTIME_BACKUP_ENV_LABEL = "env";
 const RUNTIME_BACKUP_SYSTEMD_ENV_LABEL = "gateway-systemd-env";
-const RUNTIME_BACKUP_STUDIO_LOCAL_SECRETS_LABEL = "studio-local-secrets";
+const RUNTIME_BACKUP_TRACEVANE_LOCAL_SECRETS_LABEL = "tracevane-local-secrets";
 
-export interface StudioWebBundleInspection {
+export interface TracevaneWebBundleInspection {
   ok: boolean;
   webDistDir: string;
   indexPath: string;
@@ -74,7 +74,7 @@ export interface StudioWebBundleInspection {
   missing: string[];
 }
 
-export function createOpenClawConfigBackup(config: StudioServerConfig): string | null {
+export function createOpenClawConfigBackup(config: TracevaneServerConfig): string | null {
   if (!fs.existsSync(config.openclawConfigFile)) return null;
   const paths = resolveOpenClawRecoveryPaths(config);
   fs.mkdirSync(paths.backupsDir, { recursive: true });
@@ -92,19 +92,19 @@ function runtimeSidecarBackupPath(configBackupPath: string, label: string): stri
   return path.join(parsed.dir, `${parsed.name}.${label}${parsed.ext}`);
 }
 
-function studioLocalSecretFilePath(openclawConfig: Record<string, unknown>): string {
+function tracevaneLocalSecretFilePath(openclawConfig: Record<string, unknown>): string {
   const providers = isRecord(openclawConfig.secrets)
     && isRecord(openclawConfig.secrets.providers)
     ? openclawConfig.secrets.providers
     : {};
-  const provider = isRecord(providers["studio-local"]) ? providers["studio-local"] : null;
+  const provider = isRecord(providers["tracevane-local"]) ? providers["tracevane-local"] : null;
   const filePath = typeof provider?.path === "string" ? provider.path.trim() : "";
   if (!filePath || provider?.source !== "file" || provider?.mode !== "json") return "";
   return filePath;
 }
 
 function createRuntimeSidecarBackups(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   configBackupPath: string,
 ): void {
   const openclawConfig = readOpenClawConfig(config);
@@ -118,8 +118,8 @@ function createRuntimeSidecarBackups(
       path: path.join(config.openclawRoot, "gateway.systemd.env"),
     },
     {
-      label: RUNTIME_BACKUP_STUDIO_LOCAL_SECRETS_LABEL,
-      path: studioLocalSecretFilePath(openclawConfig),
+      label: RUNTIME_BACKUP_TRACEVANE_LOCAL_SECRETS_LABEL,
+      path: tracevaneLocalSecretFilePath(openclawConfig),
     },
   ];
   for (const target of targets) {
@@ -336,8 +336,8 @@ function rewriteOpenClawEnvFile(
   return changedKeys;
 }
 
-function readStudioLocalGatewayAuthToken(openclawConfig: Record<string, unknown>): string {
-  const filePath = studioLocalSecretFilePath(openclawConfig);
+function readTracevaneLocalGatewayAuthToken(openclawConfig: Record<string, unknown>): string {
+  const filePath = tracevaneLocalSecretFilePath(openclawConfig);
   if (!filePath) return "";
   try {
     const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as unknown;
@@ -349,8 +349,8 @@ function readStudioLocalGatewayAuthToken(openclawConfig: Record<string, unknown>
   }
 }
 
-function removeStudioLocalGatewayAuthToken(openclawConfig: Record<string, unknown>): boolean {
-  const filePath = studioLocalSecretFilePath(openclawConfig);
+function removeTracevaneLocalGatewayAuthToken(openclawConfig: Record<string, unknown>): boolean {
+  const filePath = tracevaneLocalSecretFilePath(openclawConfig);
   if (!filePath) return false;
   try {
     const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as unknown;
@@ -366,7 +366,7 @@ function removeStudioLocalGatewayAuthToken(openclawConfig: Record<string, unknow
 }
 
 function gatewayAuthTokenCandidate(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   openclawConfig: Record<string, unknown>,
 ): string {
   const envPath = path.join(config.openclawRoot, ".env");
@@ -379,7 +379,7 @@ function gatewayAuthTokenCandidate(
     resolveSecretInputString(openclawConfig, tokenInput, { envFilePath: envPath }),
     readEnvFileValue(envPath, GATEWAY_AUTH_ENV_KEY),
     readEnvFileValue(systemdEnvPath, GATEWAY_AUTH_ENV_KEY),
-    readStudioLocalGatewayAuthToken(openclawConfig),
+    readTracevaneLocalGatewayAuthToken(openclawConfig),
   ].map((candidate) => candidate.trim()).find(Boolean) || "";
 }
 
@@ -392,7 +392,7 @@ function canonicalGatewayAuthRefEquals(value: unknown): boolean {
 }
 
 export function repairOpenClawGatewayAuthSecretRefDrift(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
 ): string[] {
   const openclawConfig = readOpenClawConfig(config);
   const changedKeys: string[] = [];
@@ -425,8 +425,8 @@ export function repairOpenClawGatewayAuthSecretRefDrift(
   ];
   changedKeys.push(...envChangedKeys);
 
-  if (token && removeStudioLocalGatewayAuthToken(openclawConfig)) {
-    changedKeys.push("secrets.providers.studio-local.gatewayAuthToken");
+  if (token && removeTracevaneLocalGatewayAuthToken(openclawConfig)) {
+    changedKeys.push("secrets.providers.tracevane-local.gatewayAuthToken");
   }
   if (changedKeys.includes("gateway.auth.token")) {
     writeJsonFile(config.openclawConfigFile, openclawConfig);
@@ -444,7 +444,7 @@ function bindingReferencesDeprecatedOpenClawPlugin(binding: unknown): boolean {
     || DEPRECATED_OPENCLAW_PLUGIN_IDS.has(backend);
 }
 
-function archiveLegacyOpenClawPluginInstallIndex(config: StudioServerConfig): string[] {
+function archiveLegacyOpenClawPluginInstallIndex(config: TracevaneServerConfig): string[] {
   const indexPath = path.join(config.openclawRoot, "plugins", "installs.json");
   if (!fs.existsSync(indexPath)) return [];
   let raw = "";
@@ -467,7 +467,7 @@ function archiveLegacyOpenClawPluginInstallIndex(config: StudioServerConfig): st
 }
 
 export function pruneDeprecatedOpenClawPluginResidue(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
 ): string[] {
   const openclawConfig = readOpenClawConfig(config);
   const changedKeys: string[] = [];
@@ -553,7 +553,7 @@ function findingLooksPluginRelated(finding: OpenClawDoctorFinding): boolean {
 }
 
 export function repairOpenClawPluginConfigFromFindings(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   findings: OpenClawDoctorFinding[],
 ): string[] {
   const openclawConfig = readOpenClawConfig(config);
@@ -564,7 +564,7 @@ export function repairOpenClawPluginConfigFromFindings(
   for (const finding of findings) {
     if (!findingLooksPluginRelated(finding)) continue;
     const pluginId = pluginIdFromFinding(finding);
-    if (!pluginId || pluginId === "studio") continue;
+    if (!pluginId || pluginId === "tracevane") continue;
     const entry = isRecord(entries[pluginId]) ? entries[pluginId] : null;
     if (!entry || entry.enabled === false) continue;
     entry.enabled = false;
@@ -578,7 +578,7 @@ export function repairOpenClawPluginConfigFromFindings(
 }
 
 export function pruneMissingOpenClawPluginLoadPaths(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
 ): string[] {
   const openclawConfig = readOpenClawConfig(config);
   const plugins = isRecord(openclawConfig.plugins) ? openclawConfig.plugins : {};
@@ -635,7 +635,7 @@ function parsePluginListFindings(
 }
 
 export function pruneInvalidOpenClawConfigFromValidation(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   issues: OpenClawConfigValidationIssue[],
 ): string[] {
   const openclawConfig = readOpenClawConfig(config);
@@ -654,9 +654,9 @@ export function pruneInvalidOpenClawConfigFromValidation(
   return [...new Set(changedKeys)];
 }
 
-export function inspectStudioWebBundle(
-  config: StudioServerConfig,
-): StudioWebBundleInspection {
+export function inspectTracevaneWebBundle(
+  config: TracevaneServerConfig,
+): TracevaneWebBundleInspection {
   const indexPath = path.join(config.webDistDir, "index.html");
   const assetsDir = path.join(config.webDistDir, "assets");
   const missing: string[] = [];
@@ -755,7 +755,7 @@ function runCommand(
 }
 
 async function runDynamicConfigValidationRepair(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   commands: OpenClawRecoveryCommandSnapshot[],
 ): Promise<string[]> {
   const changedKeys: string[] = [];
@@ -776,7 +776,7 @@ async function runDynamicConfigValidationRepair(
 }
 
 async function runInstallIntegrityChecks(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   policy: OpenClawRecoveryPolicy,
   commands: OpenClawRecoveryCommandSnapshot[],
 ): Promise<{ error: string; changedKeys: string[] }> {
@@ -824,7 +824,7 @@ async function runInstallIntegrityChecks(
 }
 
 async function runPluginRepairLayer(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   commands: OpenClawRecoveryCommandSnapshot[],
 ): Promise<string[]> {
   const changedKeys: string[] = [];
@@ -860,19 +860,19 @@ async function runPluginRepairLayer(
   return [...new Set(changedKeys)];
 }
 
-function runLocalRuntimeConfigDriftRepairLayer(config: StudioServerConfig): string[] {
+function runLocalRuntimeConfigDriftRepairLayer(config: TracevaneServerConfig): string[] {
   return [
     ...repairOpenClawGatewayAuthSecretRefDrift(config),
     ...pruneDeprecatedOpenClawPluginResidue(config),
   ];
 }
 
-async function runStudioWebBundleRepairLayer(
-  config: StudioServerConfig,
+async function runTracevaneWebBundleRepairLayer(
+  config: TracevaneServerConfig,
   policy: OpenClawRecoveryPolicy,
   commands: OpenClawRecoveryCommandSnapshot[],
 ): Promise<{ changedKeys: string[]; error: string; repaired: boolean }> {
-  const inspection = inspectStudioWebBundle(config);
+  const inspection = inspectTracevaneWebBundle(config);
   if (inspection.ok) {
     return { changedKeys: [], error: "", repaired: false };
   }
@@ -881,11 +881,11 @@ async function runStudioWebBundleRepairLayer(
     inspection,
     projectRoot: config.projectRoot,
   };
-  if (!policy.allowStudioWebRebuild) {
+  if (!policy.allowTracevaneWebRebuild) {
     appendRecoveryEvent(
       config,
       createRecoveryEvent({
-        kind: "studio_web_bundle_rebuild_skipped",
+        kind: "tracevane_web_bundle_rebuild_skipped",
         severity: "warning",
         title: "Tracevane 静态包重建已跳过",
         summary: `Tracevane web bundle is incomplete: ${inspection.missing.join(", ")}.`,
@@ -903,7 +903,7 @@ async function runStudioWebBundleRepairLayer(
     appendRecoveryEvent(
       config,
       createRecoveryEvent({
-        kind: "studio_web_bundle_rebuild_failed",
+        kind: "tracevane_web_bundle_rebuild_failed",
         severity: "error",
         title: "Tracevane 静态包重建失败",
         summary: error,
@@ -917,11 +917,11 @@ async function runStudioWebBundleRepairLayer(
   const rebuild = await runCommand(
     "npm",
     ["run", "build:web"],
-    policy.studioWebRebuildTimeoutMs,
+    policy.tracevaneWebRebuildTimeoutMs,
     config.projectRoot,
   );
   commands.push(rebuild);
-  const nextInspection = inspectStudioWebBundle(config);
+  const nextInspection = inspectTracevaneWebBundle(config);
   if (!rebuild.ok || !nextInspection.ok) {
     const error =
       commandErrorSummary(rebuild) ||
@@ -929,7 +929,7 @@ async function runStudioWebBundleRepairLayer(
     appendRecoveryEvent(
       config,
       createRecoveryEvent({
-        kind: "studio_web_bundle_rebuild_failed",
+        kind: "tracevane_web_bundle_rebuild_failed",
         severity: "error",
         title: "Tracevane 静态包重建失败",
         summary: error,
@@ -940,11 +940,11 @@ async function runStudioWebBundleRepairLayer(
     return { changedKeys: [], error, repaired: false };
   }
 
-  const changedKeys = ["studio.webDist.rebuild"];
+  const changedKeys = ["tracevane.webDist.rebuild"];
   appendRecoveryEvent(
     config,
     createRecoveryEvent({
-      kind: "studio_web_bundle_rebuild_succeeded",
+      kind: "tracevane_web_bundle_rebuild_succeeded",
       severity: "success",
       title: "Tracevane 静态包已重建",
       summary: `Rebuilt Tracevane web bundle with ${nextInspection.assetCount} JS/CSS asset(s).`,
@@ -1003,7 +1003,7 @@ function gatewayDeepProbeSummary(
 }
 
 async function probeGatewayControlPlane(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   policy: OpenClawRecoveryPolicy,
 ): Promise<OpenClawGatewayDeepProbeResult> {
   return probeOpenClawGatewayDeep({
@@ -1014,7 +1014,7 @@ async function probeGatewayControlPlane(
 }
 
 async function waitForGatewayControlPlane(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   policy: OpenClawRecoveryPolicy,
   maxWaitMs: number,
 ): Promise<OpenClawGatewayDeepProbeResult> {
@@ -1028,7 +1028,7 @@ async function waitForGatewayControlPlane(
 }
 
 function appendGatewayDeepProbeFailedEvent(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   probe: OpenClawGatewayDeepProbeResult,
 ): void {
   appendRecoveryEvent(
@@ -1050,7 +1050,7 @@ function appendGatewayDeepProbeFailedEvent(
 }
 
 async function runGatewayServiceRepairLayer(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   policy: OpenClawRecoveryPolicy,
   commands: OpenClawRecoveryCommandSnapshot[],
 ): Promise<{
@@ -1234,7 +1234,7 @@ function repairLockLooksStale(lockPath: string): boolean {
   }
 }
 
-function acquireRepairLock(config: StudioServerConfig): number | null {
+function acquireRepairLock(config: TracevaneServerConfig): number | null {
   const paths = resolveOpenClawRecoveryPaths(config);
   fs.mkdirSync(paths.rootDir, { recursive: true });
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -1256,7 +1256,7 @@ function acquireRepairLock(config: StudioServerConfig): number | null {
   return null;
 }
 
-function releaseRepairLock(config: StudioServerConfig, fd: number): void {
+function releaseRepairLock(config: TracevaneServerConfig, fd: number): void {
   const paths = resolveOpenClawRecoveryPaths(config);
   try {
     fs.closeSync(fd);
@@ -1271,7 +1271,7 @@ function releaseRepairLock(config: StudioServerConfig, fd: number): void {
 }
 
 export async function runOpenClawRecoveryRepair(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   options: {
     trigger: OpenClawRecoveryTrigger;
     policy: OpenClawRecoveryPolicy;
@@ -1343,14 +1343,14 @@ export async function runOpenClawRecoveryRepair(
     if (bootstrap.changed) changedKeys.push(...bootstrap.changedKeys);
     changedKeys.push(...runLocalRuntimeConfigDriftRepairLayer(config));
     changedKeys.push(...await runPluginRepairLayer(config, commands));
-    const studioWebBundle = await runStudioWebBundleRepairLayer(
+    const tracevaneWebBundle = await runTracevaneWebBundleRepairLayer(
       config,
       options.policy,
       commands,
     );
-    changedKeys.push(...studioWebBundle.changedKeys);
-    if (studioWebBundle.error) {
-      error = studioWebBundle.error;
+    changedKeys.push(...tracevaneWebBundle.changedKeys);
+    if (tracevaneWebBundle.error) {
+      error = tracevaneWebBundle.error;
     }
 
     commands.push(await runCommand("openclaw", ["doctor", "--non-interactive"], 20_000));
@@ -1542,7 +1542,7 @@ export async function runOpenClawRecoveryRepair(
 }
 
 export async function runOpenClawRecoveryConfigRepair(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   options: {
     trigger: OpenClawRecoveryTrigger;
     policy: OpenClawRecoveryPolicy;
@@ -1702,7 +1702,7 @@ export async function runOpenClawRecoveryConfigRepair(
 }
 
 export function restoreOpenClawRecoveryBackup(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   backupPath: string,
 ): void {
   fs.copyFileSync(backupPath, config.openclawConfigFile);
@@ -1719,7 +1719,7 @@ export function restoreOpenClawRecoveryBackup(
   );
   restoreRuntimeSidecarBackup(
     backupPath,
-    studioLocalSecretFilePath(restoredConfig),
-    RUNTIME_BACKUP_STUDIO_LOCAL_SECRETS_LABEL,
+    tracevaneLocalSecretFilePath(restoredConfig),
+    RUNTIME_BACKUP_TRACEVANE_LOCAL_SECRETS_LABEL,
   );
 }

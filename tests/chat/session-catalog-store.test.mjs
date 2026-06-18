@@ -6,7 +6,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { createStudioChatSessionCatalogStore } from '../../dist/apps/api/modules/chat/session-catalog-store.js';
+import { createTracevaneChatSessionCatalogStore } from '../../dist/apps/api/modules/chat/session-catalog-store.js';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -20,7 +20,7 @@ function cleanupTempRoot(root) {
 
 function makeConfig(root) {
   return {
-    pluginId: 'studio',
+    pluginId: 'tracevane',
     pluginName: 'Tracevane',
     version: '0.1.0',
     port: 0,
@@ -39,7 +39,7 @@ function makeSession(key, overrides = {}) {
     key,
     agentId: key.split(':')[1] || 'main',
     sessionId: `${key}-id`,
-    kind: 'studio_managed',
+    kind: 'tracevane_managed',
     label: key,
     derivedTitle: null,
     lastMessagePreview: null,
@@ -51,9 +51,9 @@ function makeSession(key, overrides = {}) {
       autoLabel: null,
     },
     source: {
-      source: 'studio',
+      source: 'tracevane',
       channel: 'webchat',
-      surface: 'studio-chat',
+      surface: 'tracevane-chat',
       originLabel: 'Tracevane managed',
     },
     deliveryContext: {
@@ -88,13 +88,13 @@ function makeSession(key, overrides = {}) {
 
 function runJsonFallbackScript(root, script) {
   const wrapper = `
-    import { createStudioChatSessionCatalogStore } from '${path.resolve(
+    import { createTracevaneChatSessionCatalogStore } from '${path.resolve(
       testDir,
       '../../dist/apps/api/modules/chat/session-catalog-store.js',
     ).replaceAll('\\', '/')}';
 
     const config = ${JSON.stringify(makeConfig(root))};
-    const store = createStudioChatSessionCatalogStore(config);
+    const store = createTracevaneChatSessionCatalogStore(config);
 
     ${script}
   `;
@@ -109,7 +109,7 @@ function runJsonFallbackScript(root, script) {
 test('sqlite: session catalog store uses sqlite when node:sqlite is available', () => {
   const root = makeTempRoot();
   try {
-    const store = createStudioChatSessionCatalogStore(makeConfig(root));
+    const store = createTracevaneChatSessionCatalogStore(makeConfig(root));
     assert.equal(store.backend, 'sqlite');
   } finally {
     cleanupTempRoot(root);
@@ -119,7 +119,7 @@ test('sqlite: session catalog store uses sqlite when node:sqlite is available', 
 test('sqlite: writeSession + readAllSessions roundtrip rows', () => {
   const root = makeTempRoot();
   try {
-    const store = createStudioChatSessionCatalogStore(makeConfig(root));
+    const store = createTracevaneChatSessionCatalogStore(makeConfig(root));
     store.writeSession(makeSession('agent:main:webchat:direct:one'));
     store.writeSession(makeSession('agent:backend:webchat:direct:two', { agentId: 'backend' }));
 
@@ -135,7 +135,7 @@ test('sqlite: writeSession + readAllSessions roundtrip rows', () => {
 test('sqlite: replaceAgentSessions refreshes one agent slice without touching others', () => {
   const root = makeTempRoot();
   try {
-    const store = createStudioChatSessionCatalogStore(makeConfig(root));
+    const store = createTracevaneChatSessionCatalogStore(makeConfig(root));
     store.writeSession(makeSession('agent:main:webchat:direct:one'));
     store.writeSession(makeSession('agent:backend:webchat:direct:two', { agentId: 'backend' }));
     store.setSignature('complete-catalog-signature');

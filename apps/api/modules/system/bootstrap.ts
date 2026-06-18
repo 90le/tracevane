@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import type { StudioServerConfig } from '../../../../types/api.js';
+import type { TracevaneServerConfig } from '../../../../types/api.js';
 import type {
   SystemBootstrapCheck,
   SystemBootstrapPayload,
@@ -39,12 +39,12 @@ function normalizePathKey(value: string): string {
   return path.resolve(value).replace(/\\/g, '/');
 }
 
-function isOldStudioPath(value: string): boolean {
-  return /\/openclaw-studio\.(prev|bak|old)(\/|$)/.test(value);
+function isOldTracevanePath(value: string): boolean {
+  return /\/tracevane\.(prev|bak|old)(\/|$)/.test(value);
 }
 
-function isBadStudioInstallRecord(
-  config: StudioServerConfig,
+function isBadTracevaneInstallRecord(
+  config: TracevaneServerConfig,
   record: unknown,
 ): boolean {
   if (!record || typeof record !== 'object' || Array.isArray(record)) return false;
@@ -53,7 +53,7 @@ function isBadStudioInstallRecord(
   const installPathKey = normalizePathKey(installPath);
   const projectRootKey = normalizePathKey(config.projectRoot);
   if (installPathKey === projectRootKey) return false;
-  if (isOldStudioPath(installPathKey)) return true;
+  if (isOldTracevanePath(installPathKey)) return true;
   if (!fs.existsSync(installPath)) return true;
   return false;
 }
@@ -84,7 +84,7 @@ function buildExpectedLocalOrigins(port: number): string[] {
   ];
 }
 
-function buildBootstrapChecks(config: StudioServerConfig, openclawConfig: Record<string, any>): SystemBootstrapCheck[] {
+function buildBootstrapChecks(config: TracevaneServerConfig, openclawConfig: Record<string, any>): SystemBootstrapCheck[] {
   const pluginEntries = openclawConfig.plugins?.entries && typeof openclawConfig.plugins.entries === 'object'
     ? openclawConfig.plugins.entries as Record<string, Record<string, unknown>>
     : {};
@@ -109,9 +109,9 @@ function buildBootstrapChecks(config: StudioServerConfig, openclawConfig: Record
   const expectedOrigins = buildExpectedLocalOrigins(Number(gateway.port) || config.gatewayPort);
   const missingOrigins = expectedOrigins.filter((origin) => !allowedOrigins.includes(origin));
   const hasGatewayToken = authMode !== 'token' || hasConfiguredSecretInput(gatewayAuth.token);
-  const pluginEntryEnabled = pluginEntries.studio?.enabled !== false;
-  const studioInstallRecordOk = !isBadStudioInstallRecord(config, pluginInstalls.studio);
-  const allowlistSatisfied = pluginAllow.length === 0 || pluginAllow.includes('studio');
+  const pluginEntryEnabled = pluginEntries.tracevane?.enabled !== false;
+  const tracevaneInstallRecordOk = !isBadTracevaneInstallRecord(config, pluginInstalls.tracevane);
+  const allowlistSatisfied = pluginAllow.length === 0 || pluginAllow.includes('tracevane');
   const loadPathSatisfied = pluginLoadPaths.includes(config.projectRoot);
   const bindSupported = !bindMode || SUPPORTED_BINDS.has(bindMode);
   const controlUiEnabled = gatewayControlUi.enabled !== false;
@@ -140,8 +140,8 @@ function buildBootstrapChecks(config: StudioServerConfig, openclawConfig: Record
         ? 'Tracevane plugin 已启用'
         : 'Tracevane plugin 未加入 allowlist 或被禁用',
       detail: pluginEntryEnabled && allowlistSatisfied
-        ? 'plugins.entries.studio 与 plugins.allow 当前允许 Tracevane 在宿主中稳定加载。'
-        : '需要确保 plugins.entries.studio.enabled=true，且当 plugins.allow 存在时包含 studio。',
+        ? 'plugins.entries.tracevane 与 plugins.allow 当前允许 Tracevane 在宿主中稳定加载。'
+        : '需要确保 plugins.entries.tracevane.enabled=true，且当 plugins.allow 存在时包含 tracevane。',
       detected: true,
       fixable: true,
     },
@@ -159,13 +159,13 @@ function buildBootstrapChecks(config: StudioServerConfig, openclawConfig: Record
       fixable: true,
     },
     {
-      id: 'studio-install-record',
+      id: 'tracevane-install-record',
       label: 'Tracevane install record',
-      level: studioInstallRecordOk ? 'ok' : 'warn',
-      summary: studioInstallRecordOk
+      level: tracevaneInstallRecordOk ? 'ok' : 'warn',
+      summary: tracevaneInstallRecordOk
         ? 'Tracevane install record 未指向旧目录'
-        : 'plugins.installs.studio 指向旧目录或缺失目录',
-      detail: studioInstallRecordOk
+        : 'plugins.installs.tracevane 指向旧目录或缺失目录',
+      detail: tracevaneInstallRecordOk
         ? 'OpenClaw 可以按当前 plugins.load.paths 重新识别 Tracevane。'
         : '会删除过期 install record，避免重启后继续加载 .prev/.bak/.old 或已不存在的 Tracevane 目录。',
       detected: true,
@@ -206,7 +206,7 @@ function buildBootstrapChecks(config: StudioServerConfig, openclawConfig: Record
         : `缺少 ${missingOrigins.length} 个推荐 origin`,
       detail: missingOrigins.length === 0
         ? expectedOrigins.join(', ')
-        : `建议至少包含 ${missingOrigins.join(', ')}，避免新设备/浏览器首次访问 /studio 时被 controlUi origin 策略挡住。`,
+        : `建议至少包含 ${missingOrigins.join(', ')}，避免新设备/浏览器首次访问 /tracevane 时被 controlUi origin 策略挡住。`,
       detected: true,
       fixable: true,
     },
@@ -242,7 +242,7 @@ function buildBootstrapChecks(config: StudioServerConfig, openclawConfig: Record
   ];
 }
 
-function applyBootstrapFixes(config: StudioServerConfig): { changed: boolean; changedKeys: string[] } {
+function applyBootstrapFixes(config: TracevaneServerConfig): { changed: boolean; changedKeys: string[] } {
   const openclawConfig = readOpenClawConfig(config);
   const changedKeys: string[] = [];
 
@@ -252,18 +252,18 @@ function applyBootstrapFixes(config: StudioServerConfig): { changed: boolean; ch
   openclawConfig.plugins.entries = openclawConfig.plugins.entries && typeof openclawConfig.plugins.entries === 'object'
     ? openclawConfig.plugins.entries
     : {};
-  openclawConfig.plugins.entries.studio = openclawConfig.plugins.entries.studio && typeof openclawConfig.plugins.entries.studio === 'object'
-    ? openclawConfig.plugins.entries.studio
+  openclawConfig.plugins.entries.tracevane = openclawConfig.plugins.entries.tracevane && typeof openclawConfig.plugins.entries.tracevane === 'object'
+    ? openclawConfig.plugins.entries.tracevane
     : {};
-  if (openclawConfig.plugins.entries.studio.enabled !== true) {
-    openclawConfig.plugins.entries.studio.enabled = true;
-    changedKeys.push('plugins.entries.studio.enabled');
+  if (openclawConfig.plugins.entries.tracevane.enabled !== true) {
+    openclawConfig.plugins.entries.tracevane.enabled = true;
+    changedKeys.push('plugins.entries.tracevane.enabled');
   }
 
   if (Array.isArray(openclawConfig.plugins.allow)) {
     const allow = normalizeStringList(openclawConfig.plugins.allow);
-    if (!allow.includes('studio')) {
-      allow.push('studio');
+    if (!allow.includes('tracevane')) {
+      allow.push('tracevane');
       openclawConfig.plugins.allow = allow;
       changedKeys.push('plugins.allow');
     }
@@ -273,13 +273,13 @@ function applyBootstrapFixes(config: StudioServerConfig): { changed: boolean; ch
     openclawConfig.plugins.installs &&
     typeof openclawConfig.plugins.installs === 'object' &&
     !Array.isArray(openclawConfig.plugins.installs) &&
-    isBadStudioInstallRecord(config, openclawConfig.plugins.installs.studio)
+    isBadTracevaneInstallRecord(config, openclawConfig.plugins.installs.tracevane)
   ) {
-    delete openclawConfig.plugins.installs.studio;
+    delete openclawConfig.plugins.installs.tracevane;
     if (Object.keys(openclawConfig.plugins.installs).length === 0) {
       delete openclawConfig.plugins.installs;
     }
-    changedKeys.push('plugins.installs.studio');
+    changedKeys.push('plugins.installs.tracevane');
   }
 
   openclawConfig.plugins.load = openclawConfig.plugins.load && typeof openclawConfig.plugins.load === 'object'
@@ -380,7 +380,7 @@ function applyBootstrapFixes(config: StudioServerConfig): { changed: boolean; ch
 }
 
 export function getSystemBootstrapSnapshot(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   autoApplied = false,
 ): SystemBootstrapPayload {
   const openclawConfig = readOpenClawConfig(config);
@@ -390,7 +390,7 @@ export function getSystemBootstrapSnapshot(
     notes.push('存在会直接影响 Tracevane 启动或单口桥接的配置缺口，建议先执行一次“应用推荐初始化”。');
   }
   if (checks.some((check) => check.id === 'gateway-allowed-origins' && check.level !== 'ok')) {
-    notes.push('allowedOrigins 缺失时，新设备首次打开 /studio 可能表现为页面可见但鉴权/控制台桥接异常。');
+    notes.push('allowedOrigins 缺失时，新设备首次打开 /tracevane 可能表现为页面可见但鉴权/控制台桥接异常。');
   }
   return {
     checkedAt: new Date().toISOString(),
@@ -403,11 +403,11 @@ export function getSystemBootstrapSnapshot(
   };
 }
 
-export function applySafeStudioBootstrapDefaults(config: StudioServerConfig): boolean {
+export function applySafeTracevaneBootstrapDefaults(config: TracevaneServerConfig): boolean {
   return applyBootstrapFixes(config).changed;
 }
 
-export function repairSystemBootstrap(config: StudioServerConfig): SystemBootstrapRepairResponse {
+export function repairSystemBootstrap(config: TracevaneServerConfig): SystemBootstrapRepairResponse {
   const result = applyBootstrapFixes(config);
   return {
     ok: true,

@@ -11,8 +11,8 @@ from playwright.sync_api import sync_playwright
 from browser_surface import wait_for_active_session, wait_for_chat_surface
 
 
-DESKTOP_SCREENSHOT = Path("/tmp/openclaw-studio-chat-composer-autofocus-desktop.png")
-MOBILE_SCREENSHOT = Path("/tmp/openclaw-studio-chat-composer-autofocus-mobile.png")
+DESKTOP_SCREENSHOT = Path("/tmp/tracevane-chat-composer-autofocus-desktop.png")
+MOBILE_SCREENSHOT = Path("/tmp/tracevane-chat-composer-autofocus-mobile.png")
 
 
 def install_send_fetch_probe(page) -> None:

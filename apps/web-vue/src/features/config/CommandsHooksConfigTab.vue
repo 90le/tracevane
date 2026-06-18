@@ -15,7 +15,7 @@
             <div class="form-grid">
               <label class="form-field">
                 <span class="form-label">{{ text('原生命令', 'Native Commands') }}</span>
-                <StudioSelect
+                <TracevaneSelect
                   :modelValue="commands.native"
                   @update:modelValue="$emit('update:commands', { ...commands, native: $event })"
                   :options="nativeOptions"
@@ -25,7 +25,7 @@
               </label>
               <label class="form-field">
                 <span class="form-label">{{ text('原生技能', 'Native Skills') }}</span>
-                <StudioSelect
+                <TracevaneSelect
                   :modelValue="commands.nativeSkills"
                   @update:modelValue="$emit('update:commands', { ...commands, nativeSkills: $event })"
                   :options="nativeOptions"
@@ -134,7 +134,7 @@
               </label>
               <label class="form-field">
                 <span class="form-label">{{ text('管理者显示', 'Owner Display') }}</span>
-                <StudioSelect
+                <TracevaneSelect
                   :modelValue="commands.ownerDisplay"
                   @update:modelValue="$emit('update:commands', { ...commands, ownerDisplay: $event })"
                   :options="ownerDisplayOptions"
@@ -262,7 +262,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useLocalePreference } from '../../shared/locale';
-import StudioSelect from '../../shared/components/StudioSelect.vue';
+import TracevaneSelect from '../../shared/components/TracevaneSelect.vue';
 import type { ConfigSummaryPayload } from '../../../../../types/config';
 import './config-workspace.css';
 

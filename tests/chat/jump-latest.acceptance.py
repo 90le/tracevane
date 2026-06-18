@@ -7,7 +7,7 @@ import sqlite3
 
 
 SESSION_KEY = os.environ.get("CHAT_HEAVY_SESSION_KEY", "").strip()
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-jump-latest-smoke.png")
+SCREENSHOT = Path("/tmp/tracevane-chat-jump-latest-smoke.png")
 
 
 def encode_session_ref(session_key: str) -> str:
@@ -34,7 +34,7 @@ def wait_for_chat_thread_ready(page) -> None:
 
 def discover_heavy_session_key() -> str:
     root = Path(os.environ.get("OPENCLAW_ROOT", str(Path.home() / ".openclaw")))
-    sqlite_path = root / "studio" / "chat.sqlite"
+    sqlite_path = root / "tracevane" / "chat.sqlite"
     if not sqlite_path.exists():
         return ""
 
@@ -62,7 +62,7 @@ def discover_heavy_session_key() -> str:
                 payload = json.loads(session_row[0])
             except Exception:
                 payload = {}
-            if payload.get("kind") != "studio_managed":
+            if payload.get("kind") != "tracevane_managed":
                 continue
             permissions = payload.get("permissions") or {}
             presentation = payload.get("presentation") or {}

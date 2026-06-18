@@ -70,7 +70,7 @@
               class="chat-slash-help-group"
             >
               <div class="chat-slash-help-group-label">
-                {{ getStudioSlashCommandCategoryLabel(group.category, locale) }}
+                {{ getTracevaneSlashCommandCategoryLabel(group.category, locale) }}
               </div>
 
               <button
@@ -92,7 +92,7 @@
                     </span>
                   </div>
                   <div class="chat-slash-help-row-copy">
-                    <span>{{ getStudioSlashCommandDescription(command, locale) }}</span>
+                    <span>{{ getTracevaneSlashCommandDescription(command, locale) }}</span>
                     <span v-if="command.aliases?.length">
                       {{ text(`别名：${command.aliases.map((item) => `/${item}`).join('、')}`, `Aliases: ${command.aliases.map((item) => `/${item}`).join(', ')}`) }}
                     </span>
@@ -123,11 +123,11 @@ import { DialogClose, DialogContent, DialogDescription, DialogOverlay, DialogPor
 import { X } from '@lucide/vue';
 import { useLocalePreference } from '../../shared/locale';
 import {
-  getStudioSlashCommandCategoryLabel,
-  getStudioSlashCommandCompletions,
-  getStudioSlashCommandDescription,
-  type StudioSlashCommandCategory,
-  type StudioSlashCommandDef,
+  getTracevaneSlashCommandCategoryLabel,
+  getTracevaneSlashCommandCompletions,
+  getTracevaneSlashCommandDescription,
+  type TracevaneSlashCommandCategory,
+  type TracevaneSlashCommandDef,
 } from './slash-commands';
 
 const props = defineProps<{
@@ -137,15 +137,15 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (event: 'close'): void;
-  (event: 'insert-command', command: StudioSlashCommandDef): void;
+  (event: 'insert-command', command: TracevaneSlashCommandDef): void;
 }>();
 
 const { locale, text } = useLocalePreference();
 
 const normalizedFilter = computed(() => props.filter.trim().replace(/^\/+/u, ''));
-const filteredCommands = computed(() => getStudioSlashCommandCompletions(normalizedFilter.value));
+const filteredCommands = computed(() => getTracevaneSlashCommandCompletions(normalizedFilter.value));
 const groupedCommands = computed(() => {
-  const groups = new Map<StudioSlashCommandCategory, StudioSlashCommandDef[]>();
+  const groups = new Map<TracevaneSlashCommandCategory, TracevaneSlashCommandDef[]>();
   filteredCommands.value.forEach((command) => {
     const existing = groups.get(command.category) || [];
     existing.push(command);

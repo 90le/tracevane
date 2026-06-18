@@ -6,8 +6,8 @@ import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 import {
-  createStandaloneStudioConfig,
-  createStudioContext,
+  createStandaloneTracevaneConfig,
+  createTracevaneContext,
 } from '../../dist/apps/api/index.js';
 
 function createLogger() {
@@ -37,19 +37,19 @@ function writeOpenClawConfig(root) {
 }
 
 async function createContextForRoot(root) {
-  const config = createStandaloneStudioConfig({
+  const config = createStandaloneTracevaneConfig({
     port: 0,
     openclawRoot: root,
     gatewayWsUrl: 'ws://127.0.0.1:1',
   });
-  return createStudioContext({
+  return createTracevaneContext({
     config,
     logger: createLogger(),
   });
 }
 
 test('bootstrap and local-only session lists rebuild a stale signed sqlite catalog from registry', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-session-catalog-recovery-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-session-catalog-recovery-'));
   let context = null;
   let database = null;
   try {
@@ -60,7 +60,7 @@ test('bootstrap and local-only session lists rebuild a stale signed sqlite catal
 
     await context.services.chat.getBootstrap({ recentLimit: 40 });
 
-    database = new DatabaseSync(path.join(root, 'studio', 'chat.sqlite'));
+    database = new DatabaseSync(path.join(root, 'tracevane', 'chat.sqlite'));
     database.prepare('DELETE FROM session_rows WHERE session_key = ?').run(second.session.key);
     const staleCount = database.prepare('SELECT COUNT(*) AS count FROM session_rows').get().count;
     assert.equal(staleCount < 2, true);
@@ -88,8 +88,8 @@ test('bootstrap and local-only session lists rebuild a stale signed sqlite catal
   }
 });
 
-test('registry writes merge against fresh disk state from another studio context', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-session-registry-merge-'));
+test('registry writes merge against fresh disk state from another tracevane context', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-session-registry-merge-'));
   let firstContext = null;
   let secondContext = null;
   try {
@@ -101,7 +101,7 @@ test('registry writes merge against fresh disk state from another studio context
     const second = await secondContext.services.chat.createSession('main', {});
     const third = await firstContext.services.chat.createSession('main', {});
 
-    const registry = JSON.parse(fs.readFileSync(path.join(root, 'studio', 'chat-sessions.json'), 'utf-8'));
+    const registry = JSON.parse(fs.readFileSync(path.join(root, 'tracevane', 'chat-sessions.json'), 'utf-8'));
     assert.equal(Boolean(registry[first.session.key]), true);
     assert.equal(Boolean(registry[second.session.key]), true);
     assert.equal(Boolean(registry[third.session.key]), true);

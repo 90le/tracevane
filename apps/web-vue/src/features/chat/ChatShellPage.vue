@@ -12,8 +12,8 @@
       <aside class="chat-shell-sidebar chat-session-rail chat-session-rail-context">
         <SessionListPanel
           :organizer="organizerState"
-          :active-sessions="activeStudioManagedSessions"
-          :archived-sessions="archivedStudioManagedSessions"
+          :active-sessions="activeTracevaneManagedSessions"
+          :archived-sessions="archivedTracevaneManagedSessions"
           :observed-sessions="observedSessions"
           :selected-session-key="selectedSessionKey"
           :loading="sessionsLoading || agentsLoading"
@@ -199,8 +199,8 @@
           </DialogDescription>
           <SessionListPanel
             :organizer="organizerState"
-            :active-sessions="activeStudioManagedSessions"
-            :archived-sessions="archivedStudioManagedSessions"
+            :active-sessions="activeTracevaneManagedSessions"
+            :archived-sessions="archivedTracevaneManagedSessions"
             :observed-sessions="observedSessions"
             :selected-session-key="selectedSessionKey"
             :loading="sessionsLoading || agentsLoading"
@@ -412,13 +412,13 @@ import type {
   ChatToolCard,
 } from '../../../../../types/chat';
 import {
-  STUDIO_CHAT_GATEWAY_EVENT,
-  STUDIO_CHAT_GATEWAY_METHODS,
+  TRACEVANE_CHAT_GATEWAY_EVENT,
+  TRACEVANE_CHAT_GATEWAY_METHODS,
 } from '../../../../../types/chat';
 import { useLocalePreference } from '../../shared/locale';
-import { getWebSocketBasePath, resolveStudioGatewayClientAuth } from '../../shared/api';
+import { getWebSocketBasePath, resolveTracevaneGatewayClientAuth } from '../../shared/api';
 import { GatewayBrowserClient, type GatewayEventFrame } from '../../shared/gateway-client';
-import { getStudioExposureKind, getStudioRealtimeTransport, isChatRealtimeEnabled } from '../../shared/runtime-config';
+import { getTracevaneExposureKind, getTracevaneRealtimeTransport, isChatRealtimeEnabled } from '../../shared/runtime-config';
 import { useThemePreference } from '../../shared/theme';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
 import {
@@ -574,13 +574,13 @@ import {
 } from '../../../../../lib/chat-realtime-recovery';
 import ConversationPane from './ConversationPane.vue';
 import SessionListPanel from './SessionListPanel.vue';
-import { parseStudioSlashCommand, type StudioSlashCommandDef } from './slash-commands';
+import { parseTracevaneSlashCommand, type TracevaneSlashCommandDef } from './slash-commands';
 import './chat-shell-workspace.css';
 import {
-  applyRuntimeToStudioSlashExecutionFeedback,
-  createStudioSlashExecutionFeedback,
-  isStudioSlashExecutionFeedbackTerminal,
-  type StudioSlashExecutionFeedback,
+  applyRuntimeToTracevaneSlashExecutionFeedback,
+  createTracevaneSlashExecutionFeedback,
+  isTracevaneSlashExecutionFeedbackTerminal,
+  type TracevaneSlashExecutionFeedback,
 } from './slash-feedback';
 
 type NoticeMessage = {
@@ -711,7 +711,7 @@ const composerUploadSourceFiles = new Map<string, File>();
 const queuedItemsBySession = ref<Record<string, ChatQueuedMessageItem[]>>({});
 const sessionControlsBySession = ref<Record<string, ChatSessionControlState>>({});
 const globalHostManagementExecEnabled = ref(false);
-const slashFeedbackBySession = ref<Record<string, StudioSlashExecutionFeedback | null>>({});
+const slashFeedbackBySession = ref<Record<string, TracevaneSlashExecutionFeedback | null>>({});
 const pendingQueuedSlashCommandsBySession = ref<Record<string, PendingQueuedSlashCommand[]>>({});
 const errorMessage = ref('');
 const historyErrorMessage = ref('');
@@ -816,7 +816,7 @@ const CHAT_HISTORY_PAGE_LIMIT = 12;
 const CHAT_HISTORY_AUTO_FILL_PAGE_LIMIT = 24;
 const CHAT_HISTORY_DEFER_MS = 320;
 const CHAT_TOOL_STREAM_THROTTLE_MS = 80;
-const CHAT_DEBUG_TRACE_STORAGE_KEY = 'openclaw-studio.chat.debug-stream-trace';
+const CHAT_DEBUG_TRACE_STORAGE_KEY = 'tracevane.chat.debug-stream-trace';
 const CHAT_DEBUG_TRACE_LIMIT = 300;
 const CHAT_SESSION_BOOTSTRAP_AGENT_LIMIT = 1;
 const CHAT_SESSION_DEFERRED_HYDRATION_DELAY_MS = 180;
@@ -892,7 +892,7 @@ type ChatShellWarmCacheSnapshot = {
 };
 
 const CHAT_SHELL_WARM_CACHE_TTL_MS = 45_000;
-const CHAT_SHELL_WARM_CACHE_STORAGE_KEY = 'openclaw-studio.chat.shell-warm-cache';
+const CHAT_SHELL_WARM_CACHE_STORAGE_KEY = 'tracevane.chat.shell-warm-cache';
 let chatShellWarmCache: ChatShellWarmCacheSnapshot | null = null;
 const exhaustedHistoryBeforeCursorBySession = new Map<string, string>();
 const exhaustedHistoryAfterCursorBySession = new Map<string, string>();
@@ -903,8 +903,8 @@ let shellViewportSnapshotInterval: number | null = null;
 
 declare global {
   interface Window {
-    __OPENCLAW_STUDIO_CHAT_TEST_FORCE_WS_CLOSE?: () => void;
-    __OPENCLAW_STUDIO_CHAT_TRACE__?: ChatDebugTraceEntry[];
+    __TRACEVANE_CHAT_TEST_FORCE_WS_CLOSE?: () => void;
+    __TRACEVANE_CHAT_TRACE__?: ChatDebugTraceEntry[];
   }
 }
 
@@ -944,9 +944,9 @@ const runtimeView = useChatRuntimeViewModel({
 
 const inspectPinned = runtimeView.inspectPinned;
 const selectedSession = runtimeView.selectedSession;
-const studioManagedSessions = runtimeView.studioManagedSessions;
-const activeStudioManagedSessions = runtimeView.activeStudioManagedSessions;
-const archivedStudioManagedSessions = runtimeView.archivedStudioManagedSessions;
+const tracevaneManagedSessions = runtimeView.tracevaneManagedSessions;
+const activeTracevaneManagedSessions = runtimeView.activeTracevaneManagedSessions;
+const archivedTracevaneManagedSessions = runtimeView.archivedTracevaneManagedSessions;
 const observedSessions = runtimeView.observedSessions;
 const activeRuntime = runtimeView.activeRuntime;
 const activeDiagnostics = runtimeView.activeDiagnostics;
@@ -978,7 +978,7 @@ const selectedQueuedItems = computed(() => (
     ? (queuedItemsBySession.value[selectedSessionKey.value] || [])
     : []
 ));
-const selectedSlashFeedback = computed<StudioSlashExecutionFeedback | null>(() => (
+const selectedSlashFeedback = computed<TracevaneSlashExecutionFeedback | null>(() => (
   selectedSessionKey.value
     ? (slashFeedbackBySession.value[selectedSessionKey.value] || null)
     : null
@@ -1716,7 +1716,7 @@ function refreshChatDebugTraceFlag(): void {
   }
   if (!chatDebugTraceEnabled) {
     chatDebugTraceBuffer.length = 0;
-    delete window.__OPENCLAW_STUDIO_CHAT_TRACE__;
+    delete window.__TRACEVANE_CHAT_TRACE__;
   }
 }
 
@@ -1728,7 +1728,7 @@ function recordChatDebugTrace(entry: ChatDebugTraceEntry): void {
   while (chatDebugTraceBuffer.length > CHAT_DEBUG_TRACE_LIMIT) {
     chatDebugTraceBuffer.shift();
   }
-  window.__OPENCLAW_STUDIO_CHAT_TRACE__ = [...chatDebugTraceBuffer];
+  window.__TRACEVANE_CHAT_TRACE__ = [...chatDebugTraceBuffer];
 }
 
 function clearNotice(): void {
@@ -1777,7 +1777,7 @@ function closeSlashStatusDialog(): void {
   slashStatusOpen.value = false;
 }
 
-function insertSlashCommandFromHelp(command: StudioSlashCommandDef): void {
+function insertSlashCommandFromHelp(command: TracevaneSlashCommandDef): void {
   setComposerPlainText(command.args ? `/${command.name} ` : `/${command.name}`);
   composerAttachments.value = [];
   closeSlashHelpDialog();
@@ -1919,7 +1919,7 @@ function applySessionControlsPayload(sessionKey: string, payload: ChatSessionCon
   rememberChatShellWarmCache();
 }
 
-function setSlashFeedbackState(sessionKey: string, feedback: StudioSlashExecutionFeedback | null): void {
+function setSlashFeedbackState(sessionKey: string, feedback: TracevaneSlashExecutionFeedback | null): void {
   slashFeedbackBySession.value = {
     ...slashFeedbackBySession.value,
     [sessionKey]: feedback,
@@ -1938,7 +1938,7 @@ function buildSlashFeedback(
   commandName: string,
   args: string,
   mode: 'local' | 'send',
-  phase: StudioSlashExecutionFeedback['phase'],
+  phase: TracevaneSlashExecutionFeedback['phase'],
   options: {
     startedAt?: string;
     updatedAt?: string;
@@ -1946,9 +1946,9 @@ function buildSlashFeedback(
     requestId?: string | null;
     detail?: string | null;
   } = {},
-): StudioSlashExecutionFeedback {
+): TracevaneSlashExecutionFeedback {
   const now = new Date().toISOString();
-  return createStudioSlashExecutionFeedback({
+  return createTracevaneSlashExecutionFeedback({
     sessionKey,
     commandName,
     args,
@@ -1966,7 +1966,7 @@ function setSlashFeedbackFromCommand(
   sessionKey: string,
   commandText: string,
   mode: 'local' | 'send',
-  phase: StudioSlashExecutionFeedback['phase'],
+  phase: TracevaneSlashExecutionFeedback['phase'],
   options: {
     startedAt?: string;
     updatedAt?: string;
@@ -1974,7 +1974,7 @@ function setSlashFeedbackFromCommand(
     requestId?: string | null;
     detail?: string | null;
   } = {},
-): StudioSlashExecutionFeedback | null {
+): TracevaneSlashExecutionFeedback | null {
   const resolved = resolveSlashFeedbackCommand(commandText);
   if (!resolved) {
     return null;
@@ -1992,7 +1992,7 @@ function setSlashFeedbackFromCommand(
 }
 
 function resolveSlashFeedbackCommand(commandText: string): { commandName: string; args: string } | null {
-  const parsed = parseStudioSlashCommand(commandText);
+  const parsed = parseTracevaneSlashCommand(commandText);
   if (parsed) {
     return {
       commandName: parsed.command.name,
@@ -2027,7 +2027,7 @@ function updateSlashFeedbackFromRuntime(
   } = {},
 ): void {
   const feedback = slashFeedbackBySession.value[sessionKey];
-  if (!feedback || isStudioSlashExecutionFeedbackTerminal(feedback.phase)) {
+  if (!feedback || isTracevaneSlashExecutionFeedbackTerminal(feedback.phase)) {
     return;
   }
   if (feedback.runId) {
@@ -2041,7 +2041,7 @@ function updateSlashFeedbackFromRuntime(
   } else {
     return;
   }
-  setSlashFeedbackState(sessionKey, applyRuntimeToStudioSlashExecutionFeedback(feedback, runtime, {
+  setSlashFeedbackState(sessionKey, applyRuntimeToTracevaneSlashExecutionFeedback(feedback, runtime, {
     runId: options.runId ?? feedback.runId,
   }));
 }
@@ -2130,7 +2130,7 @@ function updateTrackedQueuedSlashEntry(sessionKey: string, entryId: string, next
     };
     return;
   }
-  const parsed = parseStudioSlashCommand(nextText);
+  const parsed = parseTracevaneSlashCommand(nextText);
   if (!parsed) {
     pendingQueuedSlashCommandsBySession.value = {
       ...pendingQueuedSlashCommandsBySession.value,
@@ -2153,10 +2153,10 @@ function updateTrackedQueuedSlashEntry(sessionKey: string, entryId: string, next
   };
 }
 
-function readStudioChatGlobalExecEnabled(summary: Awaited<ReturnType<typeof fetchConfigSummary>> | null | undefined): boolean {
-  const studioConfig = summary?.plugins?.entries?.studio?.config as Record<string, unknown> | undefined;
-  const chatConfig = studioConfig?.chat as Record<string, unknown> | undefined;
-  return chatConfig?.allowHostManagementExecInStudioChat === true;
+function readTracevaneChatGlobalExecEnabled(summary: Awaited<ReturnType<typeof fetchConfigSummary>> | null | undefined): boolean {
+  const tracevaneConfig = summary?.plugins?.entries?.tracevane?.config as Record<string, unknown> | undefined;
+  const chatConfig = tracevaneConfig?.chat as Record<string, unknown> | undefined;
+  return chatConfig?.allowHostManagementExecInTracevaneChat === true;
 }
 
 function deriveSlashModelOptionsFromConfigSummary(
@@ -2188,10 +2188,10 @@ function deriveSlashModelOptionsFromConfigSummary(
   return options;
 }
 
-async function loadStudioChatGlobalExecConfig(): Promise<void> {
+async function loadTracevaneChatGlobalExecConfig(): Promise<void> {
   try {
     const summary = await fetchConfigSummary();
-    globalHostManagementExecEnabled.value = readStudioChatGlobalExecEnabled(summary);
+    globalHostManagementExecEnabled.value = readTracevaneChatGlobalExecEnabled(summary);
     slashArgOptionsOverrides.value = {
       ...slashArgOptionsOverrides.value,
       model: deriveSlashModelOptionsFromConfigSummary(summary),
@@ -2300,7 +2300,7 @@ function collectPreservedAgentRows(
     && !incomingKeys.has(row.key)
     && (
       options.preserveAllMissing
-      || row.kind !== 'studio_managed'
+      || row.kind !== 'tracevane_managed'
       || Boolean(row.runtime.activeRunId)
       || isProtectedSessionRow(row.key, now)
     )
@@ -2345,8 +2345,8 @@ function resolveConversationDiagnosticsFallback(): ChatDiagnostics {
   return historyPayload.value?.diagnostics || activeDiagnostics.value || {
     gatewayReachable: false,
     gatewayWsUrl: '',
-    transport: 'studio_bff',
-    authMode: 'studio_backend_token',
+    transport: 'tracevane_bff',
+    authMode: 'tracevane_backend_token',
     rawGatewayFramesExposed: false,
     rawGatewayMethodsExposed: false,
     sameOriginRequired: true,
@@ -2495,7 +2495,7 @@ function primeConversationStateFromSnapshot(sessionKey: string): boolean {
 }
 
 function availableSessionsForCurrentMode(): ChatSessionRow[] {
-  return inspectPinned.value ? [...studioManagedSessions.value, ...observedSessions.value] : studioManagedSessions.value;
+  return inspectPinned.value ? [...tracevaneManagedSessions.value, ...observedSessions.value] : tracevaneManagedSessions.value;
 }
 
 function persistHistorySnapshot(sessionKey: string | null | undefined = selectedSessionKey.value): void {
@@ -3600,11 +3600,11 @@ function usesGatewayRpc(): boolean {
 }
 
 function usesChatEventSource(): boolean {
-  return getStudioExposureKind() === 'gateway' || standaloneChatRealtimeFallback === 'eventsource';
+  return getTracevaneExposureKind() === 'gateway' || standaloneChatRealtimeFallback === 'eventsource';
 }
 
 function clearStandaloneChatRealtimeFallback(): void {
-  if (getStudioExposureKind() === 'gateway') {
+  if (getTracevaneExposureKind() === 'gateway') {
     standaloneChatRealtimeFallback = null;
     return;
   }
@@ -3612,7 +3612,7 @@ function clearStandaloneChatRealtimeFallback(): void {
 }
 
 function enableStandaloneChatEventSourceFallback(sessionKey: string): void {
-  if (!sessionKey || getStudioExposureKind() === 'gateway' || standaloneChatRealtimeFallback === 'eventsource') {
+  if (!sessionKey || getTracevaneExposureKind() === 'gateway' || standaloneChatRealtimeFallback === 'eventsource') {
     return;
   }
   standaloneChatRealtimeFallback = 'eventsource';
@@ -3648,7 +3648,7 @@ async function requestGatewayChat<T>(method: string, params: unknown): Promise<T
   return client.request<T>(method, params);
 }
 
-async function requestStudioSlashGatewayChat<T>(
+async function requestTracevaneSlashGatewayChat<T>(
   sessionKey: string,
   method: string,
   params: unknown,
@@ -3669,7 +3669,7 @@ function shouldFallbackToCoreGatewayWrite(error: unknown): boolean {
 async function attachGatewayChat(sessionKey: string): Promise<void> {
   gatewayChatSessionKey = sessionKey;
   const response = await requestGatewayChat<ChatGatewayAttachResponse>(
-    STUDIO_CHAT_GATEWAY_METHODS.attach,
+    TRACEVANE_CHAT_GATEWAY_METHODS.attach,
     {
       sessionKey,
       bootstrapSnapshot: false,
@@ -3696,7 +3696,7 @@ function startGatewayHeartbeat(): void {
       return;
     }
     void requestGatewayChat(
-      STUDIO_CHAT_GATEWAY_METHODS.heartbeat,
+      TRACEVANE_CHAT_GATEWAY_METHODS.heartbeat,
       { sessionKey },
     ).catch(() => {
       wsConnected.value = false;
@@ -3764,7 +3764,7 @@ function connectChatEventSource(sessionKey: string): void {
 }
 
 function connectGatewayClient(sessionKey: string, options: { force?: boolean } = {}): void {
-  const auth = resolveStudioGatewayClientAuth();
+  const auth = resolveTracevaneGatewayClientAuth();
   if (!auth.gatewayUrl) {
     wsConnected.value = false;
     setNotice(
@@ -3797,9 +3797,9 @@ function connectGatewayClient(sessionKey: string, options: { force?: boolean } =
     url: auth.gatewayUrl,
     token: auth.token,
     password: auth.password,
-    clientVersion: 'openclaw-studio-chat',
+    clientVersion: 'tracevane-chat',
     mode: 'webchat',
-    instanceId: `studio-chat-${sessionKey}`,
+    instanceId: `tracevane-chat-${sessionKey}`,
     onHello: () => {
       if (gatewayClient !== client) return;
       wsReconnectAttempt = 0;
@@ -3817,7 +3817,7 @@ function connectGatewayClient(sessionKey: string, options: { force?: boolean } =
     },
     onEvent: (event: GatewayEventFrame) => {
       if (gatewayClient !== client) return;
-      if (event.event !== STUDIO_CHAT_GATEWAY_EVENT) return;
+      if (event.event !== TRACEVANE_CHAT_GATEWAY_EVENT) return;
       if (!event.payload || typeof event.payload !== 'object' || Array.isArray(event.payload)) return;
       handleStreamEvent(event.payload as ChatStreamEvent);
     },
@@ -3845,7 +3845,7 @@ function scheduleWsReconnect(sessionKey: string): void {
   if (usesChatEventSource()) return;
   clearWsReconnectTimer();
   if (
-    getStudioExposureKind() !== 'gateway'
+    getTracevaneExposureKind() !== 'gateway'
     && wsReconnectAttempt >= STANDALONE_EVENTSOURCE_FALLBACK_THRESHOLD
   ) {
     enableStandaloneChatEventSourceFallback(sessionKey);
@@ -3985,7 +3985,7 @@ function applyOrganizer(next: ChatSessionOrganizerState): void {
   organizerState.value = pruneOrganizerStateSessionKeys(
     next,
     sessionRows.value
-      .filter((row) => row.kind === 'studio_managed')
+      .filter((row) => row.kind === 'tracevane_managed')
       .map((row) => row.key),
   );
   rememberChatShellWarmCache();
@@ -5569,7 +5569,7 @@ function openSession(sessionKey: string, mode: 'chat' | 'inspect' = props.shellM
 function closeInspectorDrawer(): void {
   inspectorDrawerOpen.value = false;
   if (!inspectPinned.value) return;
-  if (selectedSession.value?.kind === 'studio_managed') {
+  if (selectedSession.value?.kind === 'tracevane_managed') {
     router.push(buildChatRoute(selectedSession.value.key, 'chat'));
     return;
   }
@@ -5651,7 +5651,7 @@ function resolveSlashCommandAgentId(): string | null {
     || null;
 }
 
-function slashLocalActionSupportsArgs(action: StudioSlashCommandDef['localAction']): boolean {
+function slashLocalActionSupportsArgs(action: TracevaneSlashCommandDef['localAction']): boolean {
   return action === 'help'
     || action === 'forwardSlash'
     || action === 'allowlist'
@@ -5687,7 +5687,7 @@ function slashLocalActionSupportsArgs(action: StudioSlashCommandDef['localAction
 }
 
 async function executeLocalSlashCommand(commandText: string): Promise<boolean> {
-  const parsed = parseStudioSlashCommand(commandText);
+  const parsed = parseTracevaneSlashCommand(commandText);
   if (
     !parsed
     || (parsed.command.executeMode !== 'local' && parsed.command.executeMode !== 'hybrid')
@@ -5933,9 +5933,9 @@ async function executeLocalSlashCommand(commandText: string): Promise<boolean> {
       case 'kill':
       case 'steer':
       case 'redirect': {
-        const { executeStudioSlashLocalGatewayCommand } = await import('./slash-local-executor');
-        const result = await executeStudioSlashLocalGatewayCommand(
-          { request: (method, params) => requestStudioSlashGatewayChat(sessionKey, method, params) },
+        const { executeTracevaneSlashLocalGatewayCommand } = await import('./slash-local-executor');
+        const result = await executeTracevaneSlashLocalGatewayCommand(
+          { request: (method, params) => requestTracevaneSlashGatewayChat(sessionKey, method, params) },
           sessionKey,
           parsed.command.name,
           parsed.args,
@@ -5946,8 +5946,8 @@ async function executeLocalSlashCommand(commandText: string): Promise<boolean> {
             messageCount: renderMessages.value.length,
             queueLength: selectedQueuedItems.value.length,
             realtimeReady: selectedSessionRealtimeReady.value,
-            transportMode: getStudioRealtimeTransport(),
-            exposureKind: getStudioExposureKind(),
+            transportMode: getTracevaneRealtimeTransport(),
+            exposureKind: getTracevaneExposureKind(),
           },
         );
         if (!result) {
@@ -5983,8 +5983,8 @@ async function executeLocalSlashCommand(commandText: string): Promise<boolean> {
         return true;
       }
       case 'bash': {
-        const { resolveStudioBashSlashHandling } = await import('./slash-bash-policy');
-        const decision = resolveStudioBashSlashHandling({
+        const { resolveTracevaneBashSlashHandling } = await import('./slash-bash-policy');
+        const decision = resolveTracevaneBashSlashHandling({
           args: parsed.args,
           globalHostManagementExecEnabled: globalHostManagementExecEnabled.value,
           sessionHostManagementExecEnabled: selectedSessionControls.value.allowHostManagementExec,
@@ -6011,8 +6011,8 @@ async function executeLocalSlashCommand(commandText: string): Promise<boolean> {
         return true;
       }
       case 'restart': {
-        const { resolveStudioBashSlashHandling } = await import('./slash-bash-policy');
-        const decision = resolveStudioBashSlashHandling({
+        const { resolveTracevaneBashSlashHandling } = await import('./slash-bash-policy');
+        const decision = resolveTracevaneBashSlashHandling({
           args: 'openclaw gateway restart',
           globalHostManagementExecEnabled: globalHostManagementExecEnabled.value,
           sessionHostManagementExecEnabled: selectedSessionControls.value.allowHostManagementExec,
@@ -6118,7 +6118,7 @@ function generateSlashGatewayRequestId(): string {
   if (typeof globalThis.crypto?.randomUUID === 'function') {
     return globalThis.crypto.randomUUID();
   }
-  return `studio-slash-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return `tracevane-slash-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
 async function dispatchSlashCommandViaBackend(commandText: string): Promise<boolean> {
@@ -6161,7 +6161,7 @@ async function dispatchSlashCommandViaBackend(commandText: string): Promise<bool
 
   const requestId = generateSlashGatewayRequestId();
   try {
-    const response = await requestStudioSlashGatewayChat<{ runId?: string | null }>(
+    const response = await requestTracevaneSlashGatewayChat<{ runId?: string | null }>(
       sessionKey,
       'chat.send',
       {
@@ -6208,7 +6208,7 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
   }
   const session = selectedSession.value;
   let sessionKeyForRollback = session?.key || selectedSessionKey.value || null;
-  let parsedSlashCommandForRollback: ReturnType<typeof parseStudioSlashCommand> = null;
+  let parsedSlashCommandForRollback: ReturnType<typeof parseTracevaneSlashCommand> = null;
   let rollbackHistoryPayload: ChatHistoryPayload | null = null;
   let rollbackRuntimeMachineState: ChatSessionRuntimeMachineState | null = null;
   let rollbackSessionRow: ChatSessionRow | null = null;
@@ -6232,7 +6232,7 @@ async function sendMessage(documentOverride?: ChatComposerDocument): Promise<voi
     }
 
     const slashCommandText = readNormalizedSlashCommandText(documentValue);
-    const parsedSlashCommand = slashCommandText ? parseStudioSlashCommand(slashCommandText) : null;
+    const parsedSlashCommand = slashCommandText ? parseTracevaneSlashCommand(slashCommandText) : null;
     parsedSlashCommandForRollback = parsedSlashCommand;
     if (parsedSlashCommand && attachments.length > 0) {
       setNotice(
@@ -6560,7 +6560,7 @@ async function refreshHostManagementExecState(sessionKey: string): Promise<boole
     applySessionControlsPayload(sessionKey, controls);
     return controls.globalHostManagementExecEnabled === true;
   } catch {
-    await loadStudioChatGlobalExecConfig();
+    await loadTracevaneChatGlobalExecConfig();
     return globalHostManagementExecEnabled.value;
   }
 }
@@ -6986,7 +6986,7 @@ async function handleSessionAction(payload: { action: 'rename' | 'archive' | 'de
     setNotice('error', text('会话不存在或已被删除。', 'The chat no longer exists.'));
     return;
   }
-  if (session.kind !== 'studio_managed' || !session.permissions.writable) {
+  if (session.kind !== 'tracevane_managed' || !session.permissions.writable) {
     setNotice('error', text('当前会话只读，不能执行该操作。', 'This chat is read-only and cannot be changed.'));
     return;
   }
@@ -7065,7 +7065,7 @@ async function refreshSelectedConversation(): Promise<void> {
   clearNotice();
   historyErrorMessage.value = '';
   try {
-    await Promise.all([loadHealth(), loadSessions(), loadStudioChatGlobalExecConfig()]);
+    await Promise.all([loadHealth(), loadSessions(), loadTracevaneChatGlobalExecConfig()]);
     await Promise.all([
       loadConversationWindowInitial(sessionKey, { force: true }),
       loadSessionSurfaceState(sessionKey),
@@ -7091,7 +7091,7 @@ async function refreshAll(): Promise<void> {
     loadAgents(),
     loadHealth(),
     loadOrganizer(),
-    loadStudioChatGlobalExecConfig(),
+    loadTracevaneChatGlobalExecConfig(),
   ]);
   await loadSessions();
 }
@@ -7117,14 +7117,14 @@ async function bootstrapChatSurface(): Promise<void> {
   if (!bootstrapPayload?.organizer) {
     void loadOrganizer();
   }
-  void loadStudioChatGlobalExecConfig();
+  void loadTracevaneChatGlobalExecConfig();
 }
 
 watch(
-  [routeSessionKey, () => props.shellMode, studioManagedSessions, observedSessions, sessionsLoading, bootstrapLoading],
+  [routeSessionKey, () => props.shellMode, tracevaneManagedSessions, observedSessions, sessionsLoading, bootstrapLoading],
   async () => {
     const requested = routeSessionKey.value;
-    const available = inspectPinned.value ? [...studioManagedSessions.value, ...observedSessions.value] : studioManagedSessions.value;
+    const available = inspectPinned.value ? [...tracevaneManagedSessions.value, ...observedSessions.value] : tracevaneManagedSessions.value;
     if (requested) {
       optimisticStartupSessionKey.value = requested;
       if (bootstrapLoading.value) {
@@ -7269,7 +7269,7 @@ watch(sessionRows, () => {
   organizerState.value = pruneOrganizerStateSessionKeys(
     organizerSourceState.value,
     sessionRows.value
-      .filter((row) => row.kind === 'studio_managed')
+      .filter((row) => row.kind === 'tracevane_managed')
       .map((row) => row.key),
   );
 });
@@ -7338,7 +7338,7 @@ onMounted(async () => {
       if (storedThinking === '1') showThinkingBlocks.value = true;
     } catch {}
     soundCuesEnabled.value = readChatSoundCuesEnabled();
-    window.__OPENCLAW_STUDIO_CHAT_TEST_FORCE_WS_CLOSE = forceCloseChatSocketForTest;
+    window.__TRACEVANE_CHAT_TEST_FORCE_WS_CLOSE = forceCloseChatSocketForTest;
     window.addEventListener('keydown', handleGlobalKeydown);
     window.addEventListener('pagehide', handleComposerDraftLifecycleExit);
     window.addEventListener('beforeunload', handleComposerDraftLifecycleExit);
@@ -7387,8 +7387,8 @@ onBeforeUnmount(() => {
   clearRealtimeRecoveryRetryTimer();
   clearRealtimeRecoveryState();
   if (typeof window !== 'undefined') {
-    delete window.__OPENCLAW_STUDIO_CHAT_TEST_FORCE_WS_CLOSE;
-    delete window.__OPENCLAW_STUDIO_CHAT_TRACE__;
+    delete window.__TRACEVANE_CHAT_TEST_FORCE_WS_CLOSE;
+    delete window.__TRACEVANE_CHAT_TRACE__;
     window.removeEventListener('keydown', handleGlobalKeydown);
     window.removeEventListener('pagehide', handleComposerDraftLifecycleExit);
     window.removeEventListener('beforeunload', handleComposerDraftLifecycleExit);

@@ -1,6 +1,6 @@
 import type {
   SystemDiagnosticsPayload,
-  SystemStudioReleasePayload,
+  SystemTracevaneReleasePayload,
 } from "../../../../../types/system";
 
 type SystemText = (zh: string, en: string) => string;
@@ -12,10 +12,10 @@ export interface SystemEventSummaryItem {
 
 export function buildSystemEventSummary(params: {
   diagnostics: SystemDiagnosticsPayload | null;
-  studioRelease: SystemStudioReleasePayload | null;
+  tracevaneRelease: SystemTracevaneReleasePayload | null;
   text: SystemText;
 }): SystemEventSummaryItem[] {
-  const { diagnostics, studioRelease, text } = params;
+  const { diagnostics, tracevaneRelease, text } = params;
 
   return [
     {
@@ -29,7 +29,7 @@ export function buildSystemEventSummary(params: {
     {
       label: text("更新版本", "Latest Version"),
       value:
-        studioRelease?.latestVersion ||
+        tracevaneRelease?.latestVersion ||
         diagnostics?.status.updateLatestVersion ||
         text("未知", "Unknown"),
     },

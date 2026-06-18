@@ -16,7 +16,7 @@ function createSession(key, agentId, overrides = {}) {
     key,
     agentId,
     sessionId: `${key}-id`,
-    kind: 'studio_managed',
+    kind: 'tracevane_managed',
     label: key,
     derivedTitle: null,
     lastMessagePreview: null,
@@ -27,9 +27,9 @@ function createSession(key, agentId, overrides = {}) {
       customLabel: null,
     },
     source: {
-      source: 'studio',
+      source: 'tracevane',
       channel: 'webchat',
-      surface: 'studio-chat',
+      surface: 'tracevane-chat',
       originLabel: 'Tracevane managed',
     },
     deliveryContext: {
@@ -80,7 +80,7 @@ test('deriveSessionAgentOptions deduplicates and sorts visible agent labels', ()
 
 test('session filter helpers normalize search text and honor agent boundary', () => {
   const query = normalizeSessionFilterQuery('  Tracevane OPS  ');
-  assert.equal(query, 'studio ops');
+  assert.equal(query, 'tracevane ops');
   assert.equal(sessionMatchesListFilter({
     selectedAgentId: 'alpha',
     sessionAgentId: 'beta',
@@ -98,7 +98,7 @@ test('session filter helpers normalize search text and honor agent boundary', ()
 test('session filter helpers honor source boundaries before metadata search', () => {
   assert.equal(sessionMatchesListFilter({
     selectedAgentId: 'all',
-    selectedSourceId: 'studio',
+    selectedSourceId: 'tracevane',
     sessionAgentId: 'alpha',
     sessionSourceId: 'external',
     normalizedQuery: '',

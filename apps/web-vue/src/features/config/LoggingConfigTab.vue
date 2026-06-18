@@ -14,17 +14,17 @@
             <div class="form-grid">
               <label class="form-field">
                 <span class="form-label">{{ text('日志级别', 'Log Level') }}</span>
-                <StudioSelect v-model="form.level" :options="levelOptions" />
+                <TracevaneSelect v-model="form.level" :options="levelOptions" />
                 <span class="field-hint">{{ text('控制日志输出的最低级别', 'Minimum log level for output') }}</span>
               </label>
               <label class="form-field">
                 <span class="form-label">{{ text('控制台级别', 'Console Level') }}</span>
-                <StudioSelect v-model="form.consoleLevel" :options="levelOptions" />
+                <TracevaneSelect v-model="form.consoleLevel" :options="levelOptions" />
                 <span class="field-hint">{{ text('控制台输出的最低级别', 'Minimum level for console output') }}</span>
               </label>
               <label class="form-field">
                 <span class="form-label">{{ text('控制台样式', 'Console Style') }}</span>
-                <StudioSelect v-model="form.consoleStyle" :options="consoleStyleOptions" />
+                <TracevaneSelect v-model="form.consoleStyle" :options="consoleStyleOptions" />
                 <span class="field-hint">{{ text('控制台日志的显示格式', 'Display format for console logs') }}</span>
               </label>
             </div>
@@ -70,7 +70,7 @@
             <div class="form-grid">
               <label class="form-field">
                 <span class="form-label">{{ text('脱敏模式', 'Redaction Mode') }}</span>
-                <StudioSelect v-model="form.redactSensitive" :options="redactOptions" />
+                <TracevaneSelect v-model="form.redactSensitive" :options="redactOptions" />
                 <span class="field-hint">{{ text('控制是否对敏感数据进行脱敏处理', 'Control whether sensitive data is redacted') }}</span>
               </label>
             </div>
@@ -84,7 +84,7 @@
 <script setup lang="ts">
 import { reactive, watch } from 'vue';
 import { useLocalePreference } from '../../shared/locale';
-import StudioSelect, { type StudioSelectOption } from '../../shared/components/StudioSelect.vue';
+import TracevaneSelect, { type TracevaneSelectOption } from '../../shared/components/TracevaneSelect.vue';
 import type { ConfigSummaryPayload } from '../../../../../types/config';
 import './config-workspace.css';
 
@@ -112,7 +112,7 @@ const form = reactive<LoggingFormState>({
   redactSensitive: 'off',
 });
 
-const levelOptions: StudioSelectOption[] = [
+const levelOptions: TracevaneSelectOption[] = [
   { value: 'silent', label: 'silent' },
   { value: 'fatal', label: 'fatal' },
   { value: 'error', label: 'error' },
@@ -122,13 +122,13 @@ const levelOptions: StudioSelectOption[] = [
   { value: 'trace', label: 'trace' },
 ];
 
-const consoleStyleOptions: StudioSelectOption[] = [
+const consoleStyleOptions: TracevaneSelectOption[] = [
   { value: 'pretty', label: 'pretty' },
   { value: 'compact', label: 'compact' },
   { value: 'json', label: 'json' },
 ];
 
-const redactOptions: StudioSelectOption[] = [
+const redactOptions: TracevaneSelectOption[] = [
   { value: 'off', label: 'off' },
   { value: 'tools', label: 'tools' },
 ];

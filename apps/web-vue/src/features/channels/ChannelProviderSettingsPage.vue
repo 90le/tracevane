@@ -26,31 +26,31 @@
 
           <div class="form-field">
             <label class="form-label">{{ text('默认账号', 'Default account') }}</label>
-            <StudioSelect v-model="draft.defaultAccount" :options="defaultAccountOptions" :placeholder="text('未指定', 'Unset')" />
+            <TracevaneSelect v-model="draft.defaultAccount" :options="defaultAccountOptions" :placeholder="text('未指定', 'Unset')" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('默认私聊策略', 'Default DM policy') }}</label>
-            <StudioSelect v-model="draft.dmPolicy" :options="dmPolicyOptions" :placeholder="text('继承默认值', 'Inherit default')" />
+            <TracevaneSelect v-model="draft.dmPolicy" :options="dmPolicyOptions" :placeholder="text('继承默认值', 'Inherit default')" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('默认群组策略', 'Default group policy') }}</label>
-            <StudioSelect v-model="draft.groupPolicy" :options="groupPolicyOptions" :placeholder="text('继承默认值', 'Inherit default')" />
+            <TracevaneSelect v-model="draft.groupPolicy" :options="groupPolicyOptions" :placeholder="text('继承默认值', 'Inherit default')" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('上下文可见性', 'Context visibility') }}</label>
-            <StudioSelect v-model="draft.contextVisibility" :options="contextVisibilityOptions" :placeholder="text('继承默认值', 'Inherit default')" />
+            <TracevaneSelect v-model="draft.contextVisibility" :options="contextVisibilityOptions" :placeholder="text('继承默认值', 'Inherit default')" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('流式响应', 'Streaming') }}</label>
-            <StudioSelect v-model="draft.streaming" :options="streamingOptions" :placeholder="text('继承默认值', 'Inherit default')" />
+            <TracevaneSelect v-model="draft.streaming" :options="streamingOptions" :placeholder="text('继承默认值', 'Inherit default')" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('连接模式', 'Connection mode') }}</label>
-            <StudioSelect v-model="draft.connectionMode" :options="connectionModeOptions" :placeholder="text('未指定', 'Unset')" />
+            <TracevaneSelect v-model="draft.connectionMode" :options="connectionModeOptions" :placeholder="text('未指定', 'Unset')" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('渲染模式', 'Render mode') }}</label>
-            <StudioSelect v-model="draft.renderMode" :options="renderModeOptions" :placeholder="text('未指定', 'Unset')" />
+            <TracevaneSelect v-model="draft.renderMode" :options="renderModeOptions" :placeholder="text('未指定', 'Unset')" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('代理地址', 'Proxy URL') }}</label>
@@ -66,11 +66,11 @@
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('配置写入', 'Config writes') }}</label>
-            <StudioSelect v-model="draft.configWritesMode" :options="booleanInheritOptions" :placeholder="text('继承默认值', 'Inherit default')" />
+            <TracevaneSelect v-model="draft.configWritesMode" :options="booleanInheritOptions" :placeholder="text('继承默认值', 'Inherit default')" />
           </div>
           <div class="form-field">
             <label class="form-label">{{ text('健康监控', 'Health monitor') }}</label>
-            <StudioSelect v-model="draft.healthMonitorMode" :options="booleanInheritOptions" :placeholder="text('继承默认值', 'Inherit default')" />
+            <TracevaneSelect v-model="draft.healthMonitorMode" :options="booleanInheritOptions" :placeholder="text('继承默认值', 'Inherit default')" />
           </div>
         </div>
       </section>
@@ -145,7 +145,7 @@
 import { computed, reactive, ref, watch } from 'vue';
 import { onBeforeRouteLeave } from 'vue-router';
 import { useConfirmDialog } from '../../composables/useConfirmDialog';
-import StudioSelect from '../../shared/components/StudioSelect.vue';
+import TracevaneSelect from '../../shared/components/TracevaneSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 import { updateChannel } from './api';
 import {

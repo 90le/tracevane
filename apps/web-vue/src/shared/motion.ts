@@ -1,5 +1,5 @@
-const STUDIO_EASE = [0.2, 1, 0.3, 1] as const;
-const STUDIO_EXIT_EASE = [0.4, 0, 1, 1] as const;
+const TRACEVANE_EASE = [0.2, 1, 0.3, 1] as const;
+const TRACEVANE_EXIT_EASE = [0.4, 0, 1, 1] as const;
 
 export const shellChromeReveal = {
   initial: { opacity: 0, y: 8, filter: "blur(8px)" },
@@ -9,7 +9,7 @@ export const shellChromeReveal = {
     filter: "blur(0px)",
     transition: {
       duration: 0.22,
-      ease: STUDIO_EASE,
+      ease: TRACEVANE_EASE,
     },
   },
 };
@@ -23,7 +23,7 @@ export const shellRouteReveal = {
     filter: "blur(0px)",
     transition: {
       duration: 0.28,
-      ease: STUDIO_EASE,
+      ease: TRACEVANE_EASE,
     },
   },
   exit: {
@@ -32,7 +32,7 @@ export const shellRouteReveal = {
     scale: 0.996,
     transition: {
       duration: 0.16,
-      ease: STUDIO_EXIT_EASE,
+      ease: TRACEVANE_EXIT_EASE,
     },
   },
 };
@@ -46,7 +46,7 @@ export const pageMastheadReveal = {
     transition: {
       duration: 0.3,
       delay: 0.02,
-      ease: STUDIO_EASE,
+      ease: TRACEVANE_EASE,
     },
   },
 };
@@ -60,7 +60,7 @@ export const pageSurfaceReveal = {
     transition: {
       duration: 0.34,
       delay: 0.04,
-      ease: STUDIO_EASE,
+      ease: TRACEVANE_EASE,
     },
   },
 };
@@ -74,7 +74,7 @@ export const floatingPanelReveal = {
     filter: "blur(0px)",
     transition: {
       duration: 0.22,
-      ease: STUDIO_EASE,
+      ease: TRACEVANE_EASE,
     },
   },
   exit: {
@@ -83,7 +83,7 @@ export const floatingPanelReveal = {
     scale: 0.985,
     transition: {
       duration: 0.14,
-      ease: STUDIO_EXIT_EASE,
+      ease: TRACEVANE_EXIT_EASE,
     },
   },
 };

@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { StudioServerConfig } from '../../../../types/api.js';
+import type { TracevaneServerConfig } from '../../../../types/api.js';
 import type { ChatMessageBlock, ChatMessageItem, ChatResourceItem, ChatSendFileRef } from '../../../../types/chat.js';
 import { normalizeChatHistoryText } from '../../../../lib/chat-history-normalization.js';
 import { normalizeDate, normalizeString } from './shared.js';
 
-export interface StudioUserMessageShadow {
+export interface TracevaneUserMessageShadow {
   sessionKey: string;
   requestId: string | null;
   runId: string | null;
@@ -18,14 +18,14 @@ export interface StudioUserMessageShadow {
 }
 
 type ShadowStoreShape = {
-  sessions: Record<string, StudioUserMessageShadow[]>;
+  sessions: Record<string, TracevaneUserMessageShadow[]>;
 };
 
-function shadowStorePath(config: StudioServerConfig): string {
-  return path.join(config.openclawRoot, 'studio', 'chat-message-shadows.json');
+function shadowStorePath(config: TracevaneServerConfig): string {
+  return path.join(config.openclawRoot, 'tracevane', 'chat-message-shadows.json');
 }
 
-function readShadowStore(config: StudioServerConfig): ShadowStoreShape {
+function readShadowStore(config: TracevaneServerConfig): ShadowStoreShape {
   const file = shadowStorePath(config);
   try {
     const parsed = JSON.parse(fs.readFileSync(file, 'utf-8')) as ShadowStoreShape;
@@ -38,7 +38,7 @@ function readShadowStore(config: StudioServerConfig): ShadowStoreShape {
   }
 }
 
-function writeShadowStore(config: StudioServerConfig, payload: ShadowStoreShape): void {
+function writeShadowStore(config: TracevaneServerConfig, payload: ShadowStoreShape): void {
   const file = shadowStorePath(config);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(payload, null, 2)}\n`);
@@ -94,7 +94,7 @@ function normalizeBlocks(blocks: ChatMessageBlock[] | undefined): ChatMessageBlo
   return normalized.length ? normalized : undefined;
 }
 
-function normalizeShadow(entry: StudioUserMessageShadow): StudioUserMessageShadow {
+function normalizeShadow(entry: TracevaneUserMessageShadow): TracevaneUserMessageShadow {
   return {
     sessionKey: entry.sessionKey,
     requestId: normalizeString(entry.requestId) || null,
@@ -109,15 +109,15 @@ function normalizeShadow(entry: StudioUserMessageShadow): StudioUserMessageShado
 }
 
 function pickShadowCandidate(
-  entries: StudioUserMessageShadow[],
+  entries: TracevaneUserMessageShadow[],
   raw: Record<string, unknown>,
   rawText: string,
-): StudioUserMessageShadow | null {
+): TracevaneUserMessageShadow | null {
   if (!entries.length) {
     return null;
   }
 
-  const pickClosestByCreatedAt = (candidates: StudioUserMessageShadow[]): StudioUserMessageShadow | null => {
+  const pickClosestByCreatedAt = (candidates: TracevaneUserMessageShadow[]): TracevaneUserMessageShadow | null => {
     if (!candidates.length) {
       return null;
     }
@@ -159,7 +159,7 @@ function pickShadowCandidate(
   return null;
 }
 
-export function createStudioChatMessageShadowStore(config: StudioServerConfig) {
+export function createTracevaneChatMessageShadowStore(config: TracevaneServerConfig) {
   // In-memory cache with stat-based invalidation and debounced writes.
   let memoryStore: ShadowStoreShape | null = null;
   let cachedMtimeMs: number | null = null;
@@ -217,7 +217,7 @@ export function createStudioChatMessageShadowStore(config: StudioServerConfig) {
   }
 
   return {
-    saveUserMessageShadow(entry: StudioUserMessageShadow): void {
+    saveUserMessageShadow(entry: TracevaneUserMessageShadow): void {
       const store = ensureLoaded();
       const normalized = normalizeShadow(entry);
       const current = store.sessions[normalized.sessionKey] || [];

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
-import type { StudioServerConfig } from "../../../../types/api.js";
+import type { TracevaneServerConfig } from "../../../../types/api.js";
 import type {
   FilesArchivePayload,
   FilesArchiveDownloadPayload,
@@ -380,7 +380,7 @@ function findNearestExistingAncestor(targetPath: string): string {
   return current;
 }
 
-function createRootDescriptors(config: StudioServerConfig): FileRootSummary[] {
+function createRootDescriptors(config: TracevaneServerConfig): FileRootSummary[] {
   const candidates: FileRootSummary[] = [
     {
       id: "openclaw-root",
@@ -427,7 +427,7 @@ function createRootDescriptors(config: StudioServerConfig): FileRootSummary[] {
   });
 }
 
-function buildRootContexts(config: StudioServerConfig): FileRootContext[] {
+function buildRootContexts(config: TracevaneServerConfig): FileRootContext[] {
   return createRootDescriptors(config).map((root) => ({
     ...root,
     absolutePath: path.resolve(root.absolutePath),
@@ -435,7 +435,7 @@ function buildRootContexts(config: StudioServerConfig): FileRootContext[] {
   }));
 }
 
-function resolveRoot(config: StudioServerConfig, rootId: string | undefined): FileRootContext {
+function resolveRoot(config: TracevaneServerConfig, rootId: string | undefined): FileRootContext {
   const roots = buildRootContexts(config);
   if (!roots.length) {
     throw new Error("No accessible file roots were discovered");
@@ -446,7 +446,7 @@ function resolveRoot(config: StudioServerConfig, rootId: string | undefined): Fi
 }
 
 function resolveExistingPath(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   rootId: string | undefined,
   targetPath: string | undefined,
   options: { allowRoot?: boolean; kind?: FileEntryKind } = {},
@@ -483,7 +483,7 @@ function resolveExistingPath(
 }
 
 function resolveTargetPath(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   rootId: string | undefined,
   targetPath: string | undefined,
   options: { allowRoot?: boolean } = {},
@@ -930,7 +930,7 @@ function runArchiveExtract(
   runPythonTarExtract(archivePath, destinationDir, format);
 }
 
-export function createFilesService(config: StudioServerConfig): FilesService {
+export function createFilesService(config: TracevaneServerConfig): FilesService {
   return {
     getSummary(): FilesSummaryPayload {
       const roots = buildRootContexts(config);
@@ -1438,7 +1438,7 @@ export function createFilesService(config: StudioServerConfig): FilesService {
           allowRoot: false,
         }),
       );
-      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-files-download-"));
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-files-download-"));
       const firstName = path.basename(sources[0].absolutePath);
       const archiveName = ensureArchiveName(payload.name || `${firstName}-download`);
       const archiveFormat = inferArchiveFormat(archiveName) || "zip";

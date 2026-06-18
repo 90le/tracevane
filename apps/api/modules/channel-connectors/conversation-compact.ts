@@ -139,7 +139,7 @@ export async function requestChannelConnectorGatewayCompactSummary(input: {
       stream: false,
       max_output_tokens: 1000,
       metadata: {
-        studio_channel_compact: true,
+        tracevane_channel_compact: true,
         agent: input.project.agent,
         project_id: input.project.id,
       },

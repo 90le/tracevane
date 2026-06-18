@@ -11,7 +11,7 @@ from playwright.sync_api import sync_playwright
 from browser_surface import wait_for_chat_surface
 
 
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-composer-preview-focus.png")
+SCREENSHOT = Path("/tmp/tracevane-chat-composer-preview-focus.png")
 TINY_PNG = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/"
     "lW9X5QAAAABJRU5ErkJggg=="
@@ -19,7 +19,7 @@ TINY_PNG = (
 
 
 def write_temp_image() -> Path:
-    root = Path(tempfile.mkdtemp(prefix="openclaw-studio-chat-preview-focus-"))
+    root = Path(tempfile.mkdtemp(prefix="tracevane-chat-preview-focus-"))
     path = root / "composer-preview-focus.png"
     path.write_bytes(base64.b64decode(TINY_PNG))
     return path

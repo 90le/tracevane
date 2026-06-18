@@ -2,7 +2,7 @@ import type { TerminalTargetKind } from "../../../../../types/terminal";
 import type { TerminalSessionStorageLike } from "./terminal-session-registry";
 
 const PENDING_LAUNCH_METADATA_STORAGE_KEY =
-  "openclaw-studio.terminal.pendingLaunchMetadata";
+  "tracevane.terminal.pendingLaunchMetadata";
 
 export interface PendingTerminalLaunchMetadata {
   profileId?: string | null;

@@ -11,7 +11,7 @@ const DEFAULT_INPUT = "Reply with GATEWAY_OK only.";
 
 function parseArgs(argv) {
   const options = {
-    endpoint: process.env.TRACEVANE_GATEWAY_ENDPOINT || process.env.STUDIO_GATEWAY_ENDPOINT || DEFAULT_ENDPOINT,
+    endpoint: process.env.TRACEVANE_GATEWAY_ENDPOINT || process.env.TRACEVANE_GATEWAY_ENDPOINT || DEFAULT_ENDPOINT,
     providerId: "",
     model: "",
     scopes: DEFAULT_SCOPES,
@@ -108,13 +108,13 @@ Options:
 
 Auth:
   TRACEVANE_GATEWAY_CLIENT_KEY is used when present. If omitted, the script reads
-  ~/.openclaw/studio/model-gateway/secrets.json locally.`);
+  ~/.openclaw/tracevane/model-gateway/secrets.json locally.`);
 }
 
 function readGatewayKey() {
-  const envKey = process.env.TRACEVANE_GATEWAY_CLIENT_KEY || process.env.STUDIO_GATEWAY_CLIENT_KEY || process.env.MODEL_GATEWAY_CLIENT_KEY;
+  const envKey = process.env.TRACEVANE_GATEWAY_CLIENT_KEY || process.env.TRACEVANE_GATEWAY_CLIENT_KEY || process.env.MODEL_GATEWAY_CLIENT_KEY;
   if (envKey?.trim()) return envKey.trim();
-  const filePath = path.join(os.homedir(), ".openclaw/studio/model-gateway/secrets.json");
+  const filePath = path.join(os.homedir(), ".openclaw/tracevane/model-gateway/secrets.json");
   try {
     const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
     const value = parsed?.secrets?.["gateway:client-api-key"]?.value;

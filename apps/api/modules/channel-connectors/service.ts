@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import type { StudioServerConfig } from "../../../../types/api.js";
+import type { TracevaneServerConfig } from "../../../../types/api.js";
 import {
   CHANNEL_CONNECTORS_DAEMON_SERVICE_NAME,
   CHANNEL_CONNECTOR_RUNTIME_AGENT_IDS,
@@ -242,7 +242,7 @@ function normalizeEnvDir(value: string | undefined): string | null {
   return trimmed ? normalizePathLike(trimmed) : null;
 }
 
-function defaultStudioHomeDir(config: StudioServerConfig, homeDir?: string): string {
+function defaultTracevaneHomeDir(config: TracevaneServerConfig, homeDir?: string): string {
   const explicit = String(homeDir || "").trim();
   if (explicit) return normalizePathLike(explicit);
   const openclawRoot = path.resolve(config.openclawRoot);
@@ -250,18 +250,18 @@ function defaultStudioHomeDir(config: StudioServerConfig, homeDir?: string): str
 }
 
 function resolveChannelConnectorsWorkspaceDir(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   homeDir?: string,
 ): string {
-  const explicitWorkspace = normalizeEnvDir(process.env.OPENCLAW_STUDIO_CHANNEL_CONNECTORS_DIR);
+  const explicitWorkspace = normalizeEnvDir(process.env.TRACEVANE_CHANNEL_CONNECTORS_DIR);
   if (explicitWorkspace) return explicitWorkspace;
-  const explicitDataRoot = normalizeEnvDir(process.env.OPENCLAW_STUDIO_DATA_DIR);
+  const explicitDataRoot = normalizeEnvDir(process.env.TRACEVANE_DATA_DIR);
   if (explicitDataRoot) return path.join(explicitDataRoot, "channel-connectors");
-  return path.join(defaultStudioHomeDir(config, homeDir), ".config", "openclaw-studio", "channel-connectors");
+  return path.join(defaultTracevaneHomeDir(config, homeDir), ".config", "tracevane", "channel-connectors");
 }
 
 export function resolveChannelConnectorsPaths(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   homeDir?: string,
 ): ChannelConnectorsPaths {
   const workspaceDir = resolveChannelConnectorsWorkspaceDir(config, homeDir);
@@ -391,7 +391,7 @@ function isPermissionMode(value: unknown): value is ChannelConnectorPermissionMo
 }
 
 function defaultNativeConfig(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   paths: ChannelConnectorsPaths,
   now: Date,
 ): ChannelConnectorsNativeConfig {
@@ -418,7 +418,7 @@ function defaultNativeConfig(
 
 function normalizeNativeConfig(
   input: unknown,
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   paths: ChannelConnectorsPaths,
   now: Date,
   strict = false,
@@ -524,7 +524,7 @@ function normalizeNativeConfig(
 }
 
 function readNativeConfig(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   paths: ChannelConnectorsPaths,
   now: Date,
 ): ChannelConnectorsNativeConfig {
@@ -538,7 +538,7 @@ function readNativeConfig(
 }
 
 function writeNativeConfig(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   paths: ChannelConnectorsPaths,
   value: ChannelConnectorsNativeConfig,
   now: Date,
@@ -558,7 +558,7 @@ function writeNativeConfig(
 }
 
 function applyChannelConnectorBindingMetadataPatch(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   paths: ChannelConnectorsPaths,
   nativeConfig: ChannelConnectorsNativeConfig,
   bindingId: string,
@@ -585,7 +585,7 @@ function applyChannelConnectorBindingMetadataPatch(
   }, now);
 }
 
-function daemonEntryPath(config: StudioServerConfig): string {
+function daemonEntryPath(config: TracevaneServerConfig): string {
   return path.join(config.projectRoot, "dist", "apps", "api", "modules", "channel-connectors", "daemon.js");
 }
 
@@ -991,7 +991,7 @@ function redactConfigResponse(response: ChannelConnectorsDaemonConfigResponse): 
   };
 }
 
-function buildConfigResponse(config: StudioServerConfig, paths: ChannelConnectorsPaths, now: Date): ChannelConnectorsDaemonConfigResponse {
+function buildConfigResponse(config: TracevaneServerConfig, paths: ChannelConnectorsPaths, now: Date): ChannelConnectorsDaemonConfigResponse {
   const nativeConfig = readNativeConfig(config, paths, now);
   const runtimeConfig = buildRuntimeConfig(nativeConfig, paths);
   const preview = `${JSON.stringify(runtimeConfig, null, 2)}\n`;
@@ -1058,7 +1058,7 @@ function buildLaunchdTemplate(serviceName: string, paths: ChannelConnectorsPaths
 }
 
 export function createChannelConnectorsDaemonPlan(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   options: ChannelConnectorsServiceOptions = {},
 ): ChannelConnectorsDaemonPlan {
   const paths = resolveChannelConnectorsPaths(config, options.homeDir);
@@ -2237,7 +2237,7 @@ function bindingPolicy(): ChannelConnectorsBindingPolicy {
 }
 
 function buildNativeConfigResponse(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   paths: ChannelConnectorsPaths,
   now: Date,
 ): ChannelConnectorsNativeConfigResponse {
@@ -2253,7 +2253,7 @@ function buildNativeConfigResponse(
 }
 
 export function createChannelConnectorsService(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   options: ChannelConnectorsServiceOptions = {},
 ): ChannelConnectorsService {
   const now = () => (options.now ? options.now() : new Date());
@@ -3006,7 +3006,7 @@ export function createChannelConnectorsService(
       transport = await uploadAndSendFeishuMedia(transportConfig, {
         chatId: request.channelId,
         data: Buffer.from(content, "utf8"),
-        fileName: request.fileName || "studio-feishu-smoke.md",
+        fileName: request.fileName || "tracevane-feishu-smoke.md",
         mimeType: request.mimeType || "text/markdown",
       }, resolvedPaths.feishuTokenCacheFile);
     } else {
@@ -3237,19 +3237,19 @@ export function createChannelConnectorsService(
       const content = request.content || "Tracevane Octo upload smoke\n";
       transport = await uploadOctoFile(transportConfig, {
         data: new TextEncoder().encode(content),
-        fileName: request.fileName || "studio-octo-smoke.txt",
+        fileName: request.fileName || "tracevane-octo-smoke.txt",
         mimeType: request.mimeType || "text/plain",
       });
     } else if (request.action === "direct-upload-file") {
       const content = request.content || "Tracevane Octo direct upload smoke\n";
       transport = await directUploadOctoFile(transportConfig, {
         data: new TextEncoder().encode(content),
-        fileName: request.fileName || "studio-octo-smoke.txt",
+        fileName: request.fileName || "tracevane-octo-smoke.txt",
         mimeType: request.mimeType || "text/plain",
       });
     } else if (request.action === "upload-credentials") {
       transport = await getOctoUploadCredentials(transportConfig, {
-        fileName: request.fileName || "studio-octo-smoke.txt",
+        fileName: request.fileName || "tracevane-octo-smoke.txt",
       });
     } else if (request.action === "direct-upload-and-send-media") {
       if (!request.channelId) throw new Error("channelId is required for Octo direct-upload-and-send-media smoke.");
@@ -3258,7 +3258,7 @@ export function createChannelConnectorsService(
         channelId: request.channelId,
         channelType: request.channelType || 1,
         data: new TextEncoder().encode(content),
-        fileName: request.fileName || "studio-octo-smoke.txt",
+        fileName: request.fileName || "tracevane-octo-smoke.txt",
         mimeType: request.mimeType || "text/plain",
       });
     } else if (request.action === "upload-and-send-media") {
@@ -3268,7 +3268,7 @@ export function createChannelConnectorsService(
         channelId: request.channelId,
         channelType: request.channelType || 1,
         data: new TextEncoder().encode(content),
-        fileName: request.fileName || "studio-octo-smoke.txt",
+        fileName: request.fileName || "tracevane-octo-smoke.txt",
         mimeType: request.mimeType || "text/plain",
       });
     } else if (request.action === "read-receipt") {
@@ -3555,7 +3555,7 @@ export function createChannelConnectorsService(
       ok: true,
       checkedAt,
       phase: "native-config-f2",
-      implementation: "studio-native",
+      implementation: "tracevane-native",
       referenceSources: [
         "CC archived reference implementation",
         "OpenClaw channel/runtime behavior",
@@ -3578,10 +3578,10 @@ export function createChannelConnectorsService(
         runtime: service.plan.runtimeFile,
       },
       lifecycle: {
-        studioRuntimeDependency: false,
+        tracevaneRuntimeDependency: false,
         openclawRuntimeDependency: false,
         modelRelayOwner: "tracevane-gateway-daemon",
-        channelDaemonOwner: "studio-native-channel-daemon",
+        channelDaemonOwner: "tracevane-native-channel-daemon",
       },
       service,
       runtime,

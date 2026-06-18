@@ -4,8 +4,8 @@ import net from 'node:net';
 import type http from 'node:http';
 import type { Duplex } from 'node:stream';
 import { WebSocket, WebSocketServer } from 'ws';
-import type { StudioServerConfig } from '../../../../types/api.js';
-import { STUDIO_CHAT_GATEWAY_METHODS } from '../../../../types/chat.js';
+import type { TracevaneServerConfig } from '../../../../types/api.js';
+import { TRACEVANE_CHAT_GATEWAY_METHODS } from '../../../../types/chat.js';
 import type {
   ChatAbortResponse,
   ChatGatewayAckResponse,
@@ -76,8 +76,8 @@ import {
   classifyChatSessionKind,
 } from './session-policy.js';
 import {
-  isStudioChatWsPath,
-  resolveStudioChatCorsOrigin,
+  isTracevaneChatWsPath,
+  resolveTracevaneChatCorsOrigin,
   sendSseEvent,
   startSse,
 } from '../../core/http.js';
@@ -94,17 +94,17 @@ import {
   buildSessionPresentation,
   buildDefaultSessionLabel,
   buildRuntimeState,
-  buildStudioManagedRowFromRegistry,
-  buildStudioManagedSessionRow,
+  buildTracevaneManagedRowFromRegistry,
+  buildTracevaneManagedSessionRow,
   deriveAgentIdFromSessionKey,
   mapLocalSessionRow,
-  readStudioChatRegistry,
-  resolveStudioChatRegistryPath,
+  readTracevaneChatRegistry,
+  resolveTracevaneChatRegistryPath,
   resolveAgentSessionsStorePath,
   resolveAvailableAgentIds,
-  StudioSessionRegistryEntry,
+  TracevaneSessionRegistryEntry,
   LocalSessionRecord,
-  writeStudioChatRegistry,
+  writeTracevaneChatRegistry,
 } from './session-model.js';
 import {
   extractTranscriptRecord,
@@ -113,7 +113,7 @@ import {
   extractMessageText,
   dedupeTranscriptReplayEntries,
   isAssistantNoReplyMessage,
-  isAssistantStudioDeliveryToolUseEnvelope,
+  isAssistantTracevaneDeliveryToolUseEnvelope,
   mapCanonicalEntriesFromParsedEntries,
   mapMessagesFromParsedEntries,
   mapTranscriptCanonicalEntry,
@@ -125,17 +125,17 @@ import {
   type TranscriptOverrideResult,
 } from './transcript.js';
 import {
-  createStudioChatMediaBridge,
+  createTracevaneChatMediaBridge,
   type ResolvedChatMedia,
   safeStatSync,
 } from './media-bridge.js';
-import { createStudioChatMessageShadowStore } from './message-shadow-store.js';
+import { createTracevaneChatMessageShadowStore } from './message-shadow-store.js';
 import {
   cloneChatMessageToolCallItem,
   cloneChatRunProjection,
-  createStudioChatRunProjectionStore,
+  createTracevaneChatRunProjectionStore,
   isRunProjectionTerminal,
-  type StudioAssistantRunShadow,
+  type TracevaneAssistantRunShadow,
 } from './run-projection-store.js';
 import { mapGatewayAgentEventPayload } from './agent-event-mapper.js';
 import {
@@ -146,7 +146,7 @@ import {
   summarizeUnknown,
 } from './shared.js';
 import {
-  createStudioChatHistoryIndexStore,
+  createTracevaneChatHistoryIndexStore,
   type ChatHistoryIndexSeedItem,
 } from './history-index.js';
 import {
@@ -177,7 +177,7 @@ import {
   normalizeComposerDocument,
   serializeComposerDocumentToMarkdown,
 } from '../../../../lib/composer-model.js';
-import { buildStudioResourceRefFromRelativePath } from '../../../../lib/studio-resource-refs.js';
+import { buildTracevaneResourceRefFromRelativePath } from '../../../../lib/tracevane-resource-refs.js';
 import {
   buildGatewayConnectRequest,
   loadGatewayAuthContext,
@@ -195,24 +195,24 @@ import {
   isChatServiceError,
   mapGatewayContractError,
 } from './errors.js';
-import { createStudioChatOrganizerStore } from './organizer-store.js';
-import { createStudioChatDurableMirrorStore } from './durable-mirror-store.js';
-import { createStudioChatSessionCatalogStore } from './session-catalog-store.js';
-import { createStudioChatSessionStateStore } from './session-state-store.js';
+import { createTracevaneChatOrganizerStore } from './organizer-store.js';
+import { createTracevaneChatDurableMirrorStore } from './durable-mirror-store.js';
+import { createTracevaneChatSessionCatalogStore } from './session-catalog-store.js';
+import { createTracevaneChatSessionStateStore } from './session-state-store.js';
 import { applyDerivedAutoLabelToSessionRow } from '../../../../lib/chat-session-auto-title.js';
-import { maybeAutoApproveStudioHelperPairing } from '../system/device-trust.js';
+import { maybeAutoApproveTracevaneHelperPairing } from '../system/device-trust.js';
 import {
-  clearStudioChatSessionHostManagementExecEnabled,
-  getStudioChatGlobalHostManagementExecEnabled,
-  setStudioChatSessionHostManagementExecEnabled,
-} from '../../../../lib/studio-chat-management-policy.js';
+  clearTracevaneChatSessionHostManagementExecEnabled,
+  getTracevaneChatGlobalHostManagementExecEnabled,
+  setTracevaneChatSessionHostManagementExecEnabled,
+} from '../../../../lib/tracevane-chat-management-policy.js';
 import {
   buildChatDiagnosticsSummary,
   buildChatSessionRuntimeSummary,
 } from './runtime-summary.js';
 import { buildHistorySearchSummary } from './history-search-summary.js';
 
-interface StudioManagedSessionState {
+interface TracevaneManagedSessionState {
   row: ChatSessionRow;
   messages: ChatMessageItem[];
   diagnosticsNotes: string[];
@@ -269,7 +269,7 @@ interface ChatCanonicalEntry {
 interface ChatCanonicalState {
   sessionKey: string;
   version: string;
-  source: 'local_transcript' | 'history_sse' | 'history_rpc' | 'studio_mirror';
+  source: 'local_transcript' | 'history_sse' | 'history_rpc' | 'tracevane_mirror';
   entries: ChatCanonicalEntry[];
   pageInfo?: ChatHistoryPayload['pageInfo'];
 }
@@ -699,7 +699,7 @@ function compactSessionRowsForTransport(rows: ChatSessionRow[]): ChatSessionRow[
 }
 
 function isGatewayHistoryStaleAfterLocalReset(
-  inMemory: StudioManagedSessionState | null,
+  inMemory: TracevaneManagedSessionState | null,
   gatewayMessages: ChatMessageItem[],
 ): boolean {
   if (!inMemory || inMemory.messages.length > 0 || !gatewayMessages.length) {
@@ -715,7 +715,7 @@ function isGatewayHistoryStaleAfterLocalReset(
 }
 
 function isGatewayHistoryBehindInMemory(
-  inMemory: StudioManagedSessionState | null,
+  inMemory: TracevaneManagedSessionState | null,
   gatewayMessages: ChatMessageItem[],
 ): boolean {
   if (!inMemory) {
@@ -740,12 +740,12 @@ function isGatewayHistoryBehindInMemory(
 }
 
 
-function createBaseDiagnostics(config: StudioServerConfig, gatewayReachable: boolean, notes: string[]): ChatDiagnostics {
+function createBaseDiagnostics(config: TracevaneServerConfig, gatewayReachable: boolean, notes: string[]): ChatDiagnostics {
   return {
     gatewayReachable,
     gatewayWsUrl: config.gatewayWsUrl,
-    transport: 'studio_bff',
-    authMode: 'studio_backend_token',
+    transport: 'tracevane_bff',
+    authMode: 'tracevane_backend_token',
     rawGatewayFramesExposed: false,
     rawGatewayMethodsExposed: false,
     sameOriginRequired: CHAT_POLICY_DEFAULTS.defaultSameOriginRequired,
@@ -755,7 +755,7 @@ function createBaseDiagnostics(config: StudioServerConfig, gatewayReachable: boo
   };
 }
 
-function resolveGatewayProbeTarget(config: StudioServerConfig): { host: string; port: number } {
+function resolveGatewayProbeTarget(config: TracevaneServerConfig): { host: string; port: number } {
   try {
     const url = new URL(config.gatewayWsUrl);
     const parsedPort = Number(url.port);
@@ -771,7 +771,7 @@ function resolveGatewayProbeTarget(config: StudioServerConfig): { host: string; 
   }
 }
 
-async function probeGatewaySocket(config: StudioServerConfig): Promise<boolean> {
+async function probeGatewaySocket(config: TracevaneServerConfig): Promise<boolean> {
   const target = resolveGatewayProbeTarget(config);
   if (!Number.isFinite(target.port) || target.port <= 0) {
     return false;
@@ -873,20 +873,20 @@ export interface ChatService {
 }
 
 export interface CreateChatServiceOptions {
-  config: StudioServerConfig;
+  config: TracevaneServerConfig;
   system: SystemService;
 }
 
 export function createChatService(options: CreateChatServiceOptions): ChatService {
-  const mediaBridge = createStudioChatMediaBridge(options.config);
-  const shadowStore = createStudioChatMessageShadowStore(options.config);
-  const runShadowStore = createStudioChatRunProjectionStore(options.config);
-  const durableMirrorStore = createStudioChatDurableMirrorStore(options.config);
-  const sessionCatalogStore = createStudioChatSessionCatalogStore(options.config);
-  const sessionStateStore = createStudioChatSessionStateStore(options.config);
-  const historyIndexStore = createStudioChatHistoryIndexStore(options.config);
-  const organizerStore = createStudioChatOrganizerStore(options.config);
-  const studioSessions = new LruMap<string, StudioManagedSessionState>(200);
+  const mediaBridge = createTracevaneChatMediaBridge(options.config);
+  const shadowStore = createTracevaneChatMessageShadowStore(options.config);
+  const runShadowStore = createTracevaneChatRunProjectionStore(options.config);
+  const durableMirrorStore = createTracevaneChatDurableMirrorStore(options.config);
+  const sessionCatalogStore = createTracevaneChatSessionCatalogStore(options.config);
+  const sessionStateStore = createTracevaneChatSessionStateStore(options.config);
+  const historyIndexStore = createTracevaneChatHistoryIndexStore(options.config);
+  const organizerStore = createTracevaneChatOrganizerStore(options.config);
+  const tracevaneSessions = new LruMap<string, TracevaneManagedSessionState>(200);
   const historySnapshotCache = new LruMap<string, HistorySnapshotCacheEntry>(120);
   const transcriptContentCache = new LruMap<string, string>(12);
   const canonicalStates = new LruMap<string, ChatCanonicalState>(150);
@@ -1128,8 +1128,8 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   }
 
   function resolveCanonicalRuntime(sessionKey: string): ChatRuntimeState {
-    return getStudioSession(sessionKey)?.row.runtime
-      || buildRuntimeState(false, Boolean(getStudioSession(sessionKey)?.row.permissions.writable));
+    return getTracevaneSession(sessionKey)?.row.runtime
+      || buildRuntimeState(false, Boolean(getTracevaneSession(sessionKey)?.row.permissions.writable));
   }
 
   function buildCanonicalSnapshotWindow(
@@ -1280,7 +1280,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   async function buildQueuePayload(sessionKey: string): Promise<ChatQueuePayload> {
     const session = await requireSession(sessionKey);
     requireFrontendVisible(session);
-    const state = ensureStudioSessionState(session);
+    const state = ensureTracevaneSessionState(session);
     return {
       checkedAt: new Date().toISOString(),
       session: state.row,
@@ -1291,11 +1291,11 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   async function buildSessionControlsPayload(sessionKey: string): Promise<ChatSessionControlsPayload> {
     const session = await requireSession(sessionKey);
     requireFrontendVisible(session);
-    const state = ensureStudioSessionState(session);
+    const state = ensureTracevaneSessionState(session);
     return {
       checkedAt: new Date().toISOString(),
       session: state.row,
-      globalHostManagementExecEnabled: getStudioChatGlobalHostManagementExecEnabled(),
+      globalHostManagementExecEnabled: getTracevaneChatGlobalHostManagementExecEnabled(),
       controls: cloneSessionControls(state.controls),
     };
   }
@@ -1305,10 +1305,10 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     controls: ChatSessionControlState,
   ): Promise<void> {
     try {
-      await requestGateway(options.config, STUDIO_CHAT_GATEWAY_METHODS.policySync, {
+      await requestGateway(options.config, TRACEVANE_CHAT_GATEWAY_METHODS.policySync, {
         sessionKey,
         allowHostManagementExec: controls.allowHostManagementExec === true,
-        globalHostManagementExecEnabled: getStudioChatGlobalHostManagementExecEnabled(),
+        globalHostManagementExecEnabled: getTracevaneChatGlobalHostManagementExecEnabled(),
       }, { timeoutMs: 2_000 });
     } catch {
       // The standalone API remains the source of truth. Older gateways or
@@ -1325,27 +1325,27 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       kind: 'session.controls',
       sessionKey,
       emittedAt,
-      globalHostManagementExecEnabled: getStudioChatGlobalHostManagementExecEnabled(),
+      globalHostManagementExecEnabled: getTracevaneChatGlobalHostManagementExecEnabled(),
       controls: cloneSessionControls(controls),
     };
   }
 
-  async function resolveSessionStateForAttachEvents(sessionKey: string): Promise<StudioManagedSessionState | null> {
-    const existing = getStudioSession(sessionKey);
+  async function resolveSessionStateForAttachEvents(sessionKey: string): Promise<TracevaneManagedSessionState | null> {
+    const existing = getTracevaneSession(sessionKey);
     if (existing) {
       return existing;
     }
     try {
       const session = await requireSession(sessionKey);
       requireFrontendVisible(session);
-      return ensureStudioSessionState(session);
+      return ensureTracevaneSessionState(session);
     } catch {
       return null;
     }
   }
 
   function broadcastQueueState(sessionKey: string, emittedAt = new Date().toISOString()): void {
-    const current = getStudioSession(sessionKey);
+    const current = getTracevaneSession(sessionKey);
     if (!current) {
       return;
     }
@@ -1358,7 +1358,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   }
 
   function broadcastSessionControls(sessionKey: string, emittedAt = new Date().toISOString()): void {
-    const current = getStudioSession(sessionKey);
+    const current = getTracevaneSession(sessionKey);
     if (!current) {
       return;
     }
@@ -1419,7 +1419,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         },
       };
     }
-    if (role === 'assistant' && isAssistantStudioDeliveryToolUseEnvelope(raw)) {
+    if (role === 'assistant' && isAssistantTracevaneDeliveryToolUseEnvelope(raw)) {
       return { kind: 'skip' };
     }
     if (role === 'assistant' && isAssistantNoReplyMessage(raw)) {
@@ -1440,10 +1440,10 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         };
       }
     }
-    const delivery = mediaBridge.extractStudioDelivery(raw) || mediaBridge.extractStudioDelivery(fallbackText);
+    const delivery = mediaBridge.extractTracevaneDelivery(raw) || mediaBridge.extractTracevaneDelivery(fallbackText);
     if (role !== 'assistant' && delivery) {
-      const message = mediaBridge.buildAssistantMessageFromStudioDelivery(sessionKey, delivery, {
-        id: normalizeString(raw.id || record.id, `studio-delivery-${index}`),
+      const message = mediaBridge.buildAssistantMessageFromTracevaneDelivery(sessionKey, delivery, {
+        id: normalizeString(raw.id || record.id, `tracevane-delivery-${index}`),
         createdAt: normalizeDate(raw.timestamp || raw.createdAt || raw.updatedAt || record.timestamp || record.createdAt || record.updatedAt),
         source: 'history',
         runId: normalizeString(raw.runId || record.runId) || null,
@@ -1456,7 +1456,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         message,
       };
     }
-    if (role === 'toolresult' && extractTranscriptToolName(raw) === 'studio_delivery') {
+    if (role === 'toolresult' && extractTranscriptToolName(raw) === 'tracevane_delivery') {
       return { kind: 'skip' };
     }
     return null;
@@ -1515,26 +1515,26 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   // Registry reads are cached for hot paths, but writes always merge against
   // disk first so a stale Tracevane/API process cannot overwrite sessions that
   // another process registered after this context started.
-  let registryCache: Record<string, StudioSessionRegistryEntry> | null = null;
+  let registryCache: Record<string, TracevaneSessionRegistryEntry> | null = null;
 
-  function readRegistryFromDisk(): Record<string, StudioSessionRegistryEntry> {
-    registryCache = readStudioChatRegistry(options.config);
+  function readRegistryFromDisk(): Record<string, TracevaneSessionRegistryEntry> {
+    registryCache = readTracevaneChatRegistry(options.config);
     return registryCache;
   }
 
-  function ensureRegistryLoaded(): Record<string, StudioSessionRegistryEntry> {
+  function ensureRegistryLoaded(): Record<string, TracevaneSessionRegistryEntry> {
     if (!registryCache) {
       return readRegistryFromDisk();
     }
     return registryCache;
   }
 
-  function getRegistryEntry(sessionKey: string): StudioSessionRegistryEntry | null {
+  function getRegistryEntry(sessionKey: string): TracevaneSessionRegistryEntry | null {
     const registry = ensureRegistryLoaded();
     return registry[sessionKey] || null;
   }
 
-  function saveRegistryEntry(entry: StudioSessionRegistryEntry): void {
+  function saveRegistryEntry(entry: TracevaneSessionRegistryEntry): void {
     const registry = readRegistryFromDisk();
     const current = registry[entry.key] || null;
     const priorSessionIds = [
@@ -1547,7 +1547,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       createdAt: entry.createdAt || current?.createdAt || new Date().toISOString(),
       priorSessionIds: priorSessionIds.length > 0 ? priorSessionIds : undefined,
     };
-    writeStudioChatRegistry(options.config, registry);
+    writeTracevaneChatRegistry(options.config, registry);
     registryCache = registry;
     const currentSession = sessionCatalogStore.readSession(entry.key);
     if (currentSession) {
@@ -1559,22 +1559,22 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       });
       return;
     }
-    sessionCatalogStore.writeSession(buildStudioManagedRowFromRegistry(entry, false));
+    sessionCatalogStore.writeSession(buildTracevaneManagedRowFromRegistry(entry, false));
   }
 
   function deleteRegistryEntry(sessionKey: string): void {
     const registry = readRegistryFromDisk();
     if (!registry[sessionKey]) return;
     delete registry[sessionKey];
-    writeStudioChatRegistry(options.config, registry);
+    writeTracevaneChatRegistry(options.config, registry);
     registryCache = registry;
     sessionCatalogStore.clearSession(sessionKey);
   }
 
   function buildRegistryEntryFromRow(
     row: ChatSessionRow,
-    current: StudioSessionRegistryEntry | null = getRegistryEntry(row.key),
-  ): StudioSessionRegistryEntry {
+    current: TracevaneSessionRegistryEntry | null = getRegistryEntry(row.key),
+  ): TracevaneSessionRegistryEntry {
     const now = normalizeDate(row.updatedAt) || new Date().toISOString();
     const nextSessionId = normalizeString(row.sessionId, normalizeString(current?.sessionId) || '') || null;
     // Detect session ID change and track the prior ID for history recovery
@@ -1620,7 +1620,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     for (const runId of liveRunIds) {
       streamSnapshots.delete(runId);
     }
-    const inMemory = getStudioSession(sessionKey);
+    const inMemory = getTracevaneSession(sessionKey);
     for (const message of inMemory?.messages || []) {
       if (message.runId) {
         streamSnapshots.delete(message.runId);
@@ -1673,8 +1673,8 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     writeOrganizerState(removeSessionsFromOrganizer(readOrganizerState(), [sessionKey]));
     deleteRegistryEntry(sessionKey);
     sessionStateStore.clear(sessionKey);
-    studioSessions.delete(sessionKey);
-    clearStudioChatSessionHostManagementExecEnabled(sessionKey);
+    tracevaneSessions.delete(sessionKey);
+    clearTracevaneChatSessionHostManagementExecEnabled(sessionKey);
     canonicalStates.delete(sessionKey);
     suppressedGatewayRunIds.delete(sessionKey);
     clearChatStreamReplaySession(streamReplayState, sessionKey, { resetSequence: true });
@@ -1682,12 +1682,12 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     disposeSessionBridge(sessionKey);
   }
 
-  async function isStudioSessionMaterialized(session: ChatSessionRow): Promise<boolean> {
+  async function isTracevaneSessionMaterialized(session: ChatSessionRow): Promise<boolean> {
     const localSource = resolveLocalSessionSource(session.key);
     if (localSource.record || localSource.sessionFile) {
       return true;
     }
-    const inMemory = getStudioSession(session.key);
+    const inMemory = getTracevaneSession(session.key);
     if (typeof inMemory?.materialized === 'boolean') {
       return inMemory.materialized;
     }
@@ -1705,22 +1705,22 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     }
   }
 
-  function getStudioSession(sessionKey: string): StudioManagedSessionState | null {
-    return studioSessions.get(sessionKey) || null;
+  function getTracevaneSession(sessionKey: string): TracevaneManagedSessionState | null {
+    return tracevaneSessions.get(sessionKey) || null;
   }
 
-  function syncSessionControlState(state: StudioManagedSessionState): void {
-    setStudioChatSessionHostManagementExecEnabled(
+  function syncSessionControlState(state: TracevaneManagedSessionState): void {
+    setTracevaneChatSessionHostManagementExecEnabled(
       state.row.key,
       state.controls.allowHostManagementExec === true,
     );
   }
 
-  function setStudioSession(state: StudioManagedSessionState): void {
+  function setTracevaneSession(state: TracevaneManagedSessionState): void {
     state.pendingQueue = cloneChatQueuedMessageList(state.pendingQueue);
     state.controls = cloneSessionControls(state.controls);
     syncSessionControlState(state);
-    studioSessions.set(state.row.key, state);
+    tracevaneSessions.set(state.row.key, state);
     sessionCatalogStore.writeSession(state.row);
     sessionStateStore.write(state.row.key, {
       pendingQueue: state.pendingQueue,
@@ -1728,16 +1728,16 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     });
   }
 
-  function ensureStudioSessionState(
+  function ensureTracevaneSessionState(
     session: ChatSessionRow,
-    overrides: Partial<StudioManagedSessionState> = {},
-  ): StudioManagedSessionState {
-    const existing = getStudioSession(session.key);
+    overrides: Partial<TracevaneManagedSessionState> = {},
+  ): TracevaneManagedSessionState {
+    const existing = getTracevaneSession(session.key);
     if (existing) {
       return existing;
     }
     const persistedState = sessionStateStore.read(session.key);
-    const state: StudioManagedSessionState = {
+    const state: TracevaneManagedSessionState = {
       row: session,
       messages: [],
       diagnosticsNotes: [],
@@ -1749,11 +1749,11 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       clearedAt: null,
       ...overrides,
     };
-    setStudioSession(state);
+    setTracevaneSession(state);
     return state;
   }
 
-  function refreshStudioAutoLabel(state: StudioManagedSessionState): boolean {
+  function refreshTracevaneAutoLabel(state: TracevaneManagedSessionState): boolean {
     const nextRow = applyDerivedAutoLabelToSessionRow(state.row, state.messages);
     if (nextRow === state.row) {
       return false;
@@ -1762,8 +1762,8 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     return true;
   }
 
-  function clearStudioAutoLabel(row: ChatSessionRow): ChatSessionRow {
-    if (row.kind !== 'studio_managed' || !normalizeString(row.presentation.autoLabel)) {
+  function clearTracevaneAutoLabel(row: ChatSessionRow): ChatSessionRow {
+    if (row.kind !== 'tracevane_managed' || !normalizeString(row.presentation.autoLabel)) {
       return row;
     }
     return {
@@ -2207,9 +2207,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   }
 
   function updateRuntimeCache(sessionKey: string, nextRuntime: ChatRuntimeState): void {
-    const current = getStudioSession(sessionKey);
+    const current = getTracevaneSession(sessionKey);
     if (!current) return;
-    setStudioSession({
+    setTracevaneSession({
       ...current,
       row: {
         ...current.row,
@@ -2222,18 +2222,18 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     sessionKey: string,
     updater: (current: ChatObservabilityState) => ChatObservabilityState
   ): ChatObservabilityState | null {
-    const current = getStudioSession(sessionKey);
+    const current = getTracevaneSession(sessionKey);
     if (!current) return null;
     const nextObservability = updater(cloneObservabilityState(current.observability));
-    setStudioSession({
+    setTracevaneSession({
       ...current,
       observability: nextObservability,
     });
     return nextObservability;
   }
 
-  function appendStudioMessage(sessionKey: string, message: ChatMessageItem): void {
-    const current = getStudioSession(sessionKey);
+  function appendTracevaneMessage(sessionKey: string, message: ChatMessageItem): void {
+    const current = getTracevaneSession(sessionKey);
     if (!current) return;
     current.messages = normalizeMessageLedger([...current.messages, message]);
     const lastMessage = current.messages[current.messages.length - 1];
@@ -2243,13 +2243,13 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       updatedAt: lastMessage?.createdAt || message.createdAt || current.row.updatedAt,
       lastMessagePreview,
     };
-    refreshStudioAutoLabel(current);
-    setStudioSession(current);
+    refreshTracevaneAutoLabel(current);
+    setTracevaneSession(current);
     saveRegistryEntry(buildRegistryEntryFromRow(current.row));
   }
 
-  function upsertStudioMessage(sessionKey: string, message: ChatMessageItem): void {
-    const current = getStudioSession(sessionKey);
+  function upsertTracevaneMessage(sessionKey: string, message: ChatMessageItem): void {
+    const current = getTracevaneSession(sessionKey);
     if (!current) return;
     const index = current.messages.findIndex((entry) => entry.id === message.id);
     if (index >= 0) {
@@ -2265,8 +2265,8 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       updatedAt: lastMessage?.createdAt || message.createdAt || current.row.updatedAt,
       lastMessagePreview,
     };
-    refreshStudioAutoLabel(current);
-    setStudioSession(current);
+    refreshTracevaneAutoLabel(current);
+    setTracevaneSession(current);
     saveRegistryEntry(buildRegistryEntryFromRow(current.row));
   }
 
@@ -2287,22 +2287,22 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       ? normalizeString(row.derivedTitle, key)
       : buildDefaultSessionLabel(agentId);
     const permissions = buildChatSessionPermissions(kind);
-    const cachedRuntime = getStudioSession(key)?.row.runtime;
+    const cachedRuntime = getTracevaneSession(key)?.row.runtime;
 
     return {
       key,
       agentId,
       sessionId: normalizeString(row.sessionId, normalizeString(registryEntry?.sessionId) || '') || null,
       kind,
-      label: kind === 'studio_managed'
+      label: kind === 'tracevane_managed'
         ? normalizeString(registryEntry?.customLabel, normalizeString(registryEntry?.label, normalizeString(row.label, fallbackLabel)))
         : normalizeString(row.label, fallbackLabel),
-      derivedTitle: kind === 'studio_managed' ? null : normalizeString(row.derivedTitle) || null,
+      derivedTitle: kind === 'tracevane_managed' ? null : normalizeString(row.derivedTitle) || null,
       lastMessagePreview: normalizeString(row.lastMessagePreview) || null,
       updatedAt: normalizeDate(row.updatedAt),
-      presentation: kind === 'studio_managed' ? buildSessionPresentation(registryEntry) : buildSessionPresentation(),
+      presentation: kind === 'tracevane_managed' ? buildSessionPresentation(registryEntry) : buildSessionPresentation(),
       source: {
-        source: kind === 'studio_managed' ? 'studio' : kind === 'system_internal' ? 'system' : 'external',
+        source: kind === 'tracevane_managed' ? 'tracevane' : kind === 'system_internal' ? 'system' : 'external',
         channel: normalizeString(row.channel || row.lastChannel) || null,
         surface: normalizeString((row.origin as Record<string, unknown> | undefined)?.surface || row.channel) || null,
         originLabel: normalizeString((row.origin as Record<string, unknown> | undefined)?.label || row.displayName) || null,
@@ -2321,12 +2321,12 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   }
 
   async function requireSession(sessionKey: string, gatewayConnectedHint?: boolean | null): Promise<ChatSessionRow> {
-    const inMemory = getStudioSession(sessionKey);
+    const inMemory = getTracevaneSession(sessionKey);
     if (inMemory) return inMemory.row;
 
     const registryEntry = getRegistryEntry(sessionKey);
     if (registryEntry) {
-      return buildStudioManagedRowFromRegistry(
+      return buildTracevaneManagedRowFromRegistry(
         registryEntry,
         gatewayConnectedHint ?? await isGatewayConnected(),
       );
@@ -2343,7 +2343,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         gatewayConnectedHint ?? await isGatewayConnected(),
         registryEntry,
       );
-      if (mapped.kind === 'studio_managed' && !registryEntry) {
+      if (mapped.kind === 'tracevane_managed' && !registryEntry) {
         saveRegistryEntry(buildRegistryEntryFromRow(mapped));
       }
       return mapped;
@@ -2393,7 +2393,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     return targetKey;
   }
 
-  function currentStudioHistory(state: StudioManagedSessionState): ChatMessageItem[] {
+  function currentTracevaneHistory(state: TracevaneManagedSessionState): ChatMessageItem[] {
     return normalizeMessageLedger(supplementHistoryWithRunState(state.row.key, state.messages.slice()));
   }
 
@@ -2423,13 +2423,13 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     if (runtimeActive) {
       return 0;
     }
-    if (session.permissions.canSend && session.kind === 'studio_managed') {
+    if (session.permissions.canSend && session.kind === 'tracevane_managed') {
       return 1;
     }
     if (session.permissions.canSend) {
       return 2;
     }
-    if (session.kind === 'studio_managed') {
+    if (session.kind === 'tracevane_managed') {
       return 3;
     }
     return 4;
@@ -2461,7 +2461,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   function buildLocalSessionRowsForAgent(
     agentId: string,
     gatewayConnected: boolean,
-    registry: Record<string, StudioSessionRegistryEntry> = ensureRegistryLoaded(),
+    registry: Record<string, TracevaneSessionRegistryEntry> = ensureRegistryLoaded(),
     localStore: Record<string, LocalSessionRecord> = readJsonFile<Record<string, LocalSessionRecord>>(
       resolveAgentSessionsStorePath(options.config, agentId),
       {},
@@ -2482,7 +2482,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       if (entry.agentId !== agentId || seenKeys.has(entry.key)) {
         continue;
       }
-      const row = getStudioSession(entry.key)?.row || buildStudioManagedRowFromRegistry(entry, gatewayConnected);
+      const row = getTracevaneSession(entry.key)?.row || buildTracevaneManagedRowFromRegistry(entry, gatewayConnected);
       if (!row.permissions.visibleInFrontend) {
         continue;
       }
@@ -2495,7 +2495,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
 
   function computeLocalSessionCatalogSignature(): string {
     const parts: string[] = [];
-    const registryPath = resolveStudioChatRegistryPath(options.config);
+    const registryPath = resolveTracevaneChatRegistryPath(options.config);
     const registryStat = safeStatSync(registryPath);
     parts.push(`registry:${registryPath}:${registryStat?.ino || 0}:${registryStat?.size || 0}:${registryStat?.mtimeMs || 0}`);
 
@@ -2525,8 +2525,8 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   }): ChatSessionRow[] {
     const recentLimit = normalizeHistoryLimit(params.recentLimit, 40);
     const localCatalogSignature = computeLocalSessionCatalogSignature();
-    const strictRegistryResult = readJsonObjectStrict<Record<string, StudioSessionRegistryEntry>>(
-      resolveStudioChatRegistryPath(options.config),
+    const strictRegistryResult = readJsonObjectStrict<Record<string, TracevaneSessionRegistryEntry>>(
+      resolveTracevaneChatRegistryPath(options.config),
     );
     const registry = strictRegistryResult.ok ? strictRegistryResult.value : ensureRegistryLoaded();
     const registryMinimumRows = Object.values(registry)
@@ -2601,13 +2601,13 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   }
 
   function isLocalTranscriptBehindInMemory(
-    inMemory: StudioManagedSessionState | null,
+    inMemory: TracevaneManagedSessionState | null,
     transcriptMessages: ChatMessageItem[],
   ): boolean {
     if (!inMemory) {
       return false;
     }
-    const currentHistory = currentStudioHistory(inMemory);
+    const currentHistory = currentTracevaneHistory(inMemory);
     if (!currentHistory.length) {
       return false;
     }
@@ -2720,7 +2720,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   function buildHistorySnapshotCacheSignature(params: {
     sessionKey: string;
     sourceSelection: ChatCanonicalSourceSelection;
-    inMemory: StudioManagedSessionState | null;
+    inMemory: TracevaneManagedSessionState | null;
     session: ChatSessionRow;
   }): string {
     const currentHistory = params.inMemory?.messages || [];
@@ -3204,7 +3204,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     let historyToolCards: ChatToolCard[] = [];
     let sourceSessionFile: string | null = null;
     let sourceMtimeMs: number | null = null;
-    const inMemory = getStudioSession(sessionKey);
+    const inMemory = getTracevaneSession(sessionKey);
     const observability = inMemory ? cloneObservabilityState(inMemory.observability) : createEmptyObservabilityState();
 
     if (inMemory?.resetPending) {
@@ -3345,7 +3345,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       if (mirrorSnapshot) {
         messages = mirrorSnapshot.messages.map((message) => cloneChatMessageItem(message)!);
         canonicalEntries = buildCanonicalEntriesFromMessages(mirrorSnapshot.messages);
-        canonicalSource = 'studio_mirror';
+        canonicalSource = 'tracevane_mirror';
         if (mirrorSnapshot.observability) {
           const restoredObservability = cloneObservabilityState(mirrorSnapshot.observability);
           observability.lifecycle = restoredObservability.lifecycle;
@@ -3356,7 +3356,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         }
         diagnostics.notes.push(`Local bootstrap used Tracevane durable mirror (${mirrorSnapshot.backend}) without a gateway roundtrip.`);
       } else if (inMemory) {
-        messages = currentStudioHistory(inMemory);
+        messages = currentTracevaneHistory(inMemory);
         canonicalEntries = buildCanonicalEntriesFromMessages(messages.filter((message) => message.source !== 'inject'));
         canonicalSource = 'history_rpc';
         diagnostics.notes.push('Local bootstrap used in-memory Tracevane history without a gateway roundtrip.');
@@ -3422,14 +3422,14 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           )
         ) {
           canonicalEntries = buildCanonicalEntriesFromMessages(mirrorSnapshot.messages);
-          canonicalSource = 'studio_mirror';
+          canonicalSource = 'tracevane_mirror';
           messages = mirrorSnapshot.messages.map((message) => cloneChatMessageItem(message)!);
           diagnostics.notes.push(`Gateway chat.history shrank behind Tracevane durable mirror (${mirrorSnapshot.backend}); keeping protected canonical history.`);
         } else if (
           inMemory
           && isGatewayHistoryBehindInMemory(inMemory, gatewayMessages)
         ) {
-          messages = mergeCanonicalHistoryWithLocalOptimism(currentStudioHistory(inMemory), gatewayMessages);
+          messages = mergeCanonicalHistoryWithLocalOptimism(currentTracevaneHistory(inMemory), gatewayMessages);
           canonicalEntries = gatewayCanonicalEntries;
           canonicalSource = 'history_rpc';
           diagnostics.notes.push('Gateway chat.history is temporarily behind the Tracevane in-memory session state; preserving local confirmed messages until history catches up.');
@@ -3437,7 +3437,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           inMemory
           && isGatewayHistoryStaleAfterLocalReset(inMemory, gatewayMessages)
         ) {
-          messages = currentStudioHistory(inMemory);
+          messages = currentTracevaneHistory(inMemory);
           canonicalEntries = buildCanonicalEntriesFromMessages(messages.filter((message) => message.source !== 'inject'));
           canonicalSource = 'history_rpc';
           diagnostics.notes.push('Gateway chat.history is behind the in-memory Tracevane session state after reset; returning in-memory fallback.');
@@ -3460,10 +3460,10 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         if (mirrorSnapshot) {
           messages = mirrorSnapshot.messages.map((message) => cloneChatMessageItem(message)!);
           canonicalEntries = buildCanonicalEntriesFromMessages(mirrorSnapshot.messages);
-          canonicalSource = 'studio_mirror';
+          canonicalSource = 'tracevane_mirror';
           diagnostics.notes.push(`Gateway chat.history unavailable; using Tracevane durable mirror (${mirrorSnapshot.backend}) (${error instanceof Error ? error.message : String(error)}).`);
         } else if (inMemory) {
-          messages = currentStudioHistory(inMemory);
+          messages = currentTracevaneHistory(inMemory);
           canonicalEntries = buildCanonicalEntriesFromMessages(messages.filter((message) => message.source !== 'inject'));
           canonicalSource = 'history_rpc';
           diagnostics.notes.push(`Gateway chat.history unavailable; using Tracevane in-memory history fallback (${error instanceof Error ? error.message : String(error)}).`);
@@ -3498,7 +3498,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         || autoLabelChanged
       )
     ) {
-      setStudioSession({
+      setTracevaneSession({
         row: session,
         messages: messages.map((message) => cloneChatMessageItem(message)!),
         diagnosticsNotes: inMemory?.diagnosticsNotes || [],
@@ -3511,10 +3511,10 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       });
     } else if (autoLabelChanged && inMemory) {
       inMemory.row = session;
-      setStudioSession(inMemory);
+      setTracevaneSession(inMemory);
     }
 
-    if (autoLabelChanged && session.kind === 'studio_managed') {
+    if (autoLabelChanged && session.kind === 'tracevane_managed') {
       saveRegistryEntry(buildRegistryEntryFromRow(session));
     }
     diagnostics.historyTruncated = messages.some((message) => message.truncated || message.omitted);
@@ -3894,7 +3894,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         truncationMode: diagnosticsSummary.truncationMode,
       },
       observability: cloneObservabilityState(
-        (mirrorAligned ? mirrorMeta?.observability : getStudioSession(sessionKey)?.observability)
+        (mirrorAligned ? mirrorMeta?.observability : getTracevaneSession(sessionKey)?.observability)
         || createEmptyObservabilityState(),
       ),
       pageInfo,
@@ -4522,7 +4522,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       }
     }
     // Source 2: Runtime in-memory tool cards (may have richer artifacts data).
-    const sessionData = getStudioSession(sessionKey);
+    const sessionData = getTracevaneSession(sessionKey);
     const snapshotToolCards = sessionData?.observability?.toolCards;
     if (snapshotToolCards?.length) {
       for (const tc of snapshotToolCards) {
@@ -4974,7 +4974,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
   }
 
   function buildGatewayRuntime(sessionKey: string, writable: boolean, overrides: Partial<ChatRuntimeState> = {}): ChatRuntimeState {
-    const current = getStudioSession(sessionKey)?.row.runtime;
+    const current = getTracevaneSession(sessionKey)?.row.runtime;
     return {
       gatewayConnected: true,
       sessionWritable: writable,
@@ -4995,7 +4995,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     emittedAt: string;
     overrides: Partial<ChatRuntimeState>;
   }): ChatRuntimeState {
-    const current = getStudioSession(params.sessionKey)?.row.runtime || null;
+    const current = getTracevaneSession(params.sessionKey)?.row.runtime || null;
     const currentActiveRunId = normalizeString(current?.activeRunId) || null;
     if (currentActiveRunId && currentActiveRunId !== params.runId) {
       return {
@@ -5036,7 +5036,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       id: `queue-${crypto.randomUUID()}`,
       sessionKey,
       clientRequestId: normalizeString(payload.clientRequestId) || null,
-      deliveryRequestId: normalizeString(payload.clientRequestId, `studio-${crypto.randomUUID()}`),
+      deliveryRequestId: normalizeString(payload.clientRequestId, `tracevane-${crypto.randomUUID()}`),
       text,
       previewText,
       composerDocument: composerDocument.length ? composerDocument : undefined,
@@ -5057,7 +5057,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     queueFlushSessions.add(sessionKey);
     try {
       while (true) {
-        const current = getStudioSession(sessionKey);
+        const current = getTracevaneSession(sessionKey);
         if (!current || current.row.runtime.activeRunId || current.pendingQueue.length === 0) {
           return;
         }
@@ -5067,7 +5067,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         }
 
         current.pendingQueue = rest;
-        setStudioSession(current);
+        setTracevaneSession(current);
         broadcastQueueState(sessionKey);
 
         try {
@@ -5081,7 +5081,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
             publishCanonicalUserMessageImmediately: true,
           });
         } catch (error) {
-          const latest = getStudioSession(sessionKey);
+          const latest = getTracevaneSession(sessionKey);
           if (latest) {
             const blockedEntry: ChatQueuedMessageItem = {
               ...cloneChatQueuedMessageItem(nextEntry)!,
@@ -5090,13 +5090,13 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
               updatedAt: new Date().toISOString(),
             };
             latest.pendingQueue = [blockedEntry, ...latest.pendingQueue];
-            setStudioSession(latest);
+            setTracevaneSession(latest);
             broadcastQueueState(sessionKey);
           }
           return;
         }
 
-        const latest = getStudioSession(sessionKey);
+        const latest = getTracevaneSession(sessionKey);
         if (latest?.row.runtime.activeRunId) {
           return;
         }
@@ -5113,7 +5113,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     const state = normalizeString(payload.state);
     const runId = normalizeString(payload.runId) || null;
     const emittedAt = new Date().toISOString();
-    const writable = buildChatSessionPermissions('studio_managed').writable;
+    const writable = buildChatSessionPermissions('tracevane_managed').writable;
     const protocolMode = getChatProtocolMode();
     const canonicalSource = selectCanonicalSource(sessionKey);
     const allowLegacyCanonicalWrite = protocolMode === 'legacy' && canonicalSource.kind !== 'local_transcript';
@@ -5190,7 +5190,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
 
     if (state === 'final') {
       const rawFinalMessage = (payload.message as Record<string, unknown>) || {};
-      const skippedStudioEnvelope = isAssistantStudioDeliveryToolUseEnvelope(rawFinalMessage);
+      const skippedTracevaneEnvelope = isAssistantTracevaneDeliveryToolUseEnvelope(rawFinalMessage);
       const skippedNoReply = isAssistantNoReplyMessage(rawFinalMessage);
       const message = mapTranscriptMessage(rawFinalMessage, 0, {
         sessionKey,
@@ -5200,7 +5200,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       const usage = normalizeUsageSummary(payload.usage);
       const projection = ensureRunProjection(sessionKey, runId, emittedAt, { lifecycle: 'completed' });
       projection.lifecycle = pickProjectionLifecycle(projection.lifecycle, 'completed');
-      const runtime = skippedStudioEnvelope
+      const runtime = skippedTracevaneEnvelope
         ? buildGatewayRuntime(sessionKey, writable, {
           activeRunId: runId,
           state: 'running',
@@ -5267,7 +5267,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           runId,
         } satisfies ChatMessageItem;
         if (allowLegacyCanonicalWrite) {
-          upsertStudioMessage(sessionKey, canonicalMessage);
+          upsertTracevaneMessage(sessionKey, canonicalMessage);
         }
         events.push({
           kind: 'final',
@@ -5278,7 +5278,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           runtime,
           usage,
         });
-      } else if (shouldEmitLegacyProtocol() && !(skippedStudioEnvelope && !skippedNoReply)) {
+      } else if (shouldEmitLegacyProtocol() && !(skippedTracevaneEnvelope && !skippedNoReply)) {
         events.push({
           kind: 'runtime',
           sessionKey,
@@ -5348,7 +5348,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           projection.firstAssistantSeenAt = partialMessage.createdAt || emittedAt;
         }
         if (allowLegacyCanonicalWrite) {
-          upsertStudioMessage(sessionKey, partialMessage);
+          upsertTracevaneMessage(sessionKey, partialMessage);
         }
       }
       saveRunProjection(sessionKey, projection);
@@ -5474,7 +5474,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     payload: Record<string, unknown>,
     mapped: Extract<ChatStreamEvent, { kind: 'agent_tool_result' }>,
   ): ChatMessageItem | null {
-    if (mapped.partial || mapped.tool.name !== 'studio_delivery') {
+    if (mapped.partial || mapped.tool.name !== 'tracevane_delivery') {
       return null;
     }
     const data = payload.data && typeof payload.data === 'object' ? payload.data as Record<string, unknown> : null;
@@ -5482,12 +5482,12 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       return null;
     }
     const resultSource = data.result ?? data.output ?? data.text ?? data.partialResult ?? data.error ?? data.details ?? null;
-    const delivery = mediaBridge.extractStudioDelivery(resultSource) || mediaBridge.extractStudioDelivery(data);
+    const delivery = mediaBridge.extractTracevaneDelivery(resultSource) || mediaBridge.extractTracevaneDelivery(data);
     if (!delivery) {
       return null;
     }
-    const message = mediaBridge.buildAssistantMessageFromStudioDelivery(sessionKey, delivery, {
-      id: `studio-delivery-${mapped.tool.toolCallId}`,
+    const message = mediaBridge.buildAssistantMessageFromTracevaneDelivery(sessionKey, delivery, {
+      id: `tracevane-delivery-${mapped.tool.toolCallId}`,
       createdAt: mapped.emittedAt,
       source: 'stream',
       runId: mapped.runId,
@@ -5503,7 +5503,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       const data = payload.data && typeof payload.data === 'object' ? payload.data as Record<string, unknown> : null;
       const toolCallId = normalizeString(data?.toolCallId);
       if (!toolCallId) return null;
-      return getStudioSession(sessionKey)?.observability.toolCards.find((entry) => entry.toolCallId === toolCallId) || null;
+      return getTracevaneSession(sessionKey)?.observability.toolCards.find((entry) => entry.toolCallId === toolCallId) || null;
     })();
     const mapped = mapGatewayAgentEventPayload({
       sessionKey,
@@ -5990,7 +5990,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     const bridge = sessionBridges.get(sessionKey);
     if (!bridge) return false;
     if (bridge.subscribers > 0) return true;
-    return Boolean(getStudioSession(sessionKey)?.row.runtime.activeRunId);
+    return Boolean(getTracevaneSession(sessionKey)?.row.runtime.activeRunId);
   }
 
   function bridgeSessionOwnsRunId(sessionKey: string, runId: unknown): boolean {
@@ -5998,7 +5998,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     if (!normalizedRunId) {
       return false;
     }
-    const session = getStudioSession(sessionKey);
+    const session = getTracevaneSession(sessionKey);
     if (normalizeString(session?.row.runtime.activeRunId) === normalizedRunId) {
       return true;
     }
@@ -6066,7 +6066,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     bridge.ws = ws;
 
     const resolveReady = (): void => {
-      const session = getStudioSession(bridge.sessionKey)?.row;
+      const session = getTracevaneSession(bridge.sessionKey)?.row;
       const runtime = session?.runtime || buildRuntimeState(true, false);
       updateRuntimeCache(bridge.sessionKey, {
         ...runtime,
@@ -6146,7 +6146,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
             bridge.signatureRetryBudgetUsed = true;
           } else if (connectErrorCode === 'PAIRING_REQUIRED' && !bridge.pairingRetryBudgetUsed) {
             bridge.pairingRetryBudgetUsed = true;
-            void maybeAutoApproveStudioHelperPairing(options.config)
+            void maybeAutoApproveTracevaneHelperPairing(options.config)
               .then((approved) => {
                 bridge.pendingPairingRetry = approved;
                 const error = new ChatServiceError(502, mapGatewayContractError(
@@ -6238,14 +6238,14 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           return;
         }
         const now = new Date().toISOString();
-        const current = getStudioSession(bridge.sessionKey);
+        const current = getTracevaneSession(bridge.sessionKey);
         if (current) {
           current.messages = [];
           current.resetPending = false;
           current.clearedAt = now;
           current.observability = createEmptyObservabilityState();
           current.row = {
-            ...clearStudioAutoLabel(current.row),
+            ...clearTracevaneAutoLabel(current.row),
             updatedAt: now,
             lastMessagePreview: null,
             runtime: {
@@ -6255,7 +6255,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
               lastEventAt: now,
             },
           };
-          setStudioSession(current);
+          setTracevaneSession(current);
           saveRegistryEntry(buildRegistryEntryFromRow(current.row));
         }
         historyIndexStore.clearSession(bridge.sessionKey);
@@ -6307,8 +6307,8 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       bridge.readyPromise = null;
       bridge.ws = null;
       bridge.connectRequestId = null;
-      const runtime = buildRuntimeState(false, Boolean(getStudioSession(bridge.sessionKey)?.row.permissions.writable), {
-        state: getStudioSession(bridge.sessionKey)?.row.runtime.state || 'idle',
+      const runtime = buildRuntimeState(false, Boolean(getTracevaneSession(bridge.sessionKey)?.row.permissions.writable), {
+        state: getTracevaneSession(bridge.sessionKey)?.row.runtime.state || 'idle',
         lastErrorCode: 'gateway_down',
         lastErrorMessage: 'Gateway bridge disconnected.',
       });
@@ -6462,8 +6462,8 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       message: cloneChatMessageItem(message)!,
       messageId: message.id,
       messageSeq,
-      version: currentVersion || nextCanonicalVersion(sessionKey, 'studio_mirror'),
-      source: 'studio_bff',
+      version: currentVersion || nextCanonicalVersion(sessionKey, 'tracevane_mirror'),
+      source: 'tracevane_bff',
     });
   }
 
@@ -6478,7 +6478,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     requireWritable(session, 'send');
 
     const now = new Date().toISOString();
-    const requestId = normalizeString(payload.clientRequestId, `studio-${crypto.randomUUID()}`);
+    const requestId = normalizeString(payload.clientRequestId, `tracevane-${crypto.randomUUID()}`);
     const fileRefs = mediaBridge.normalizeSendFileRefs(payload.fileRefs);
     const attachments = mediaBridge.normalizeSendAttachments(payload.attachments);
     const composerDocument = normalizeComposerDocument(payload.composerDocument);
@@ -6494,7 +6494,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     }
     const transportText = compileGatewayMessageText(normalizedText, fileRefs);
     const sendResources = mediaBridge.buildSendResources(sessionKey, fileRefs, attachments);
-    const inMemory = ensureStudioSessionState(session, {
+    const inMemory = ensureTracevaneSessionState(session, {
       row: session,
       diagnosticsNotes: [],
       materialized: false,
@@ -6572,19 +6572,19 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     };
     inMemory.materialized = true;
     inMemory.clearedAt = null;
-    refreshStudioAutoLabel(inMemory);
-    setStudioSession(inMemory);
+    refreshTracevaneAutoLabel(inMemory);
+    setTracevaneSession(inMemory);
     saveRegistryEntry(buildRegistryEntryFromRow(inMemory.row));
     durableMirrorStore.replaceSnapshot({
       sessionKey,
-      version: nextCanonicalVersion(sessionKey, 'studio_mirror'),
-      source: 'studio_mirror',
-      messages: currentStudioHistory(inMemory),
+      version: nextCanonicalVersion(sessionKey, 'tracevane_mirror'),
+      source: 'tracevane_mirror',
+      messages: currentTracevaneHistory(inMemory),
       baseMessageSeq: inMemory.messages.length,
       savedAt: now,
     });
     if (options.publishCanonicalUserMessageImmediately) {
-      const currentMessages = currentStudioHistory(inMemory);
+      const currentMessages = currentTracevaneHistory(inMemory);
       const latestUserMessage = currentMessages[currentMessages.length - 1] || null;
       if (latestUserMessage?.role === 'user') {
         broadcastImmediateCanonicalUserMessage(inMemory.row.key, latestUserMessage, currentMessages.length);
@@ -6641,7 +6641,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     return {
       ok: true,
       relativePath,
-      resourceRef: buildStudioResourceRefFromRelativePath(resource.relativePath || relativePath) || `workspace:${relativePath}`,
+      resourceRef: buildTracevaneResourceRefFromRelativePath(resource.relativePath || relativePath) || `workspace:${relativePath}`,
       resource,
       absolutePath,
       fileName: payload.fileName,
@@ -6655,7 +6655,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     async getHealth(): Promise<ChatDiagnostics> {
       return buildHealth([
         'Tracevane backend typed adapter contract is active.',
-        'Gateway adapter is wired for studio-managed send / abort / reset / ws stream.',
+        'Gateway adapter is wired for tracevane-managed send / abort / reset / ws stream.',
         'Observed external history still falls back to local transcript parsing when gateway history is unavailable.',
       ]);
     },
@@ -6698,7 +6698,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       const organizer = pruneOrganizerStateSessionKeys(
         readOrganizerState(),
         bootstrapSessions
-          .filter((row) => row.kind === 'studio_managed')
+          .filter((row) => row.kind === 'tracevane_managed')
           .map((row) => row.key),
       );
 
@@ -6752,7 +6752,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
               day: page.day,
             };
           }
-          const sessionState = ensureStudioSessionState(history.session);
+          const sessionState = ensureTracevaneSessionState(history.session);
           queue = {
             checkedAt: new Date().toISOString(),
             session: sessionState.row,
@@ -6761,7 +6761,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           controls = {
             checkedAt: new Date().toISOString(),
             session: sessionState.row,
-            globalHostManagementExecEnabled: getStudioChatGlobalHostManagementExecEnabled(),
+            globalHostManagementExecEnabled: getTracevaneChatGlobalHostManagementExecEnabled(),
             controls: cloneSessionControls(sessionState.controls),
           };
         } catch (error) {
@@ -6871,7 +6871,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       for (const sessionKey of sessionKeys) {
         const session = await requireSession(sessionKey);
         requireFrontendVisible(session);
-        if (session.kind !== 'studio_managed' || !session.permissions.writable) {
+        if (session.kind !== 'tracevane_managed' || !session.permissions.writable) {
           throw new ChatServiceError(403, buildChatError('session_not_writable', `Session '${sessionKey}' cannot be organized`));
         }
       }
@@ -6914,7 +6914,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
             const mapped = mapGatewaySessionRow(agentId, row as Record<string, unknown>, gatewayConnected);
             const registryEntry = getRegistryEntry(mapped.key);
             if (
-              mapped.kind === 'studio_managed'
+              mapped.kind === 'tracevane_managed'
             ) {
               if (!registryEntry) {
                 saveRegistryEntry(buildRegistryEntryFromRow(mapped));
@@ -7227,13 +7227,13 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         throw new ChatServiceError(404, buildChatError('session_not_found', `Agent '${agentId}' not found`));
       }
 
-      const row = buildStudioManagedSessionRow(
+      const row = buildTracevaneManagedSessionRow(
         agentId,
         normalizeString(payload.label, buildDefaultSessionLabel(agentId)),
         await isGatewayConnected()
       );
 
-      setStudioSession({
+      setTracevaneSession({
         row,
         messages: [],
         diagnosticsNotes: ['Session created by Tracevane shell registry. Gateway session is materialized on first send.'],
@@ -7256,7 +7256,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     async patchSession(sessionKey: string, payload: ChatPatchSessionRequest): Promise<ChatPatchSessionResponse> {
       const session = await requireSession(sessionKey);
       requireFrontendVisible(session);
-      if (session.kind !== 'studio_managed' || !session.permissions.writable) {
+      if (session.kind !== 'tracevane_managed' || !session.permissions.writable) {
         throw new ChatServiceError(403, buildChatError('session_not_writable', `Session '${session.key}' is not writable`));
       }
 
@@ -7298,10 +7298,10 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         },
       };
 
-      const inMemory = getStudioSession(sessionKey);
+      const inMemory = getTracevaneSession(sessionKey);
       if (inMemory) {
         inMemory.row = nextSession;
-        setStudioSession(inMemory);
+        setTracevaneSession(inMemory);
       }
       saveRegistryEntry(buildRegistryEntryFromRow(nextSession));
 
@@ -7318,13 +7318,13 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     async enqueue(sessionKey: string, payload: ChatSendRequest): Promise<ChatQueuePayload> {
       const session = await requireSession(sessionKey);
       requireWritable(session, 'send');
-      const state = ensureStudioSessionState(session);
+      const state = ensureTracevaneSessionState(session);
       const flushWhenIdle = payload.flushWhenIdle === true;
       state.pendingQueue = [
         ...state.pendingQueue,
         buildQueuedMessageItem(sessionKey, payload),
       ];
-      setStudioSession(state);
+      setTracevaneSession(state);
       broadcastQueueState(sessionKey);
       if (flushWhenIdle) {
         void flushQueueIfIdle(sessionKey);
@@ -7343,7 +7343,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       if (!normalizedEntryId) {
         throw new ChatServiceError(400, buildChatError('invalid_request', 'Queue entry id is required'));
       }
-      const state = ensureStudioSessionState(session);
+      const state = ensureTracevaneSessionState(session);
       const index = state.pendingQueue.findIndex((item) => item.id === normalizedEntryId);
       if (index === -1) {
         throw new ChatServiceError(404, buildChatError('session_not_found', `Queue entry '${normalizedEntryId}' not found`));
@@ -7368,7 +7368,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
         next,
         ...state.pendingQueue.slice(index + 1),
       ];
-      setStudioSession(state);
+      setTracevaneSession(state);
       broadcastQueueState(sessionKey);
       if (payload.flushWhenIdle === true) {
         void flushQueueIfIdle(sessionKey);
@@ -7380,9 +7380,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       const session = await requireSession(sessionKey);
       requireWritable(session, 'send');
       const normalizedEntryId = normalizeString(entryId);
-      const state = ensureStudioSessionState(session);
+      const state = ensureTracevaneSessionState(session);
       state.pendingQueue = state.pendingQueue.filter((item) => item.id !== normalizedEntryId);
-      setStudioSession(state);
+      setTracevaneSession(state);
       broadcastQueueState(sessionKey);
       return await buildQueuePayload(sessionKey);
     },
@@ -7397,12 +7397,12 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
     ): Promise<ChatSessionControlsPayload> {
       const session = await requireSession(sessionKey);
       requireFrontendVisible(session);
-      const state = ensureStudioSessionState(session);
+      const state = ensureTracevaneSessionState(session);
       state.controls = {
         allowHostManagementExec: payload.allowHostManagementExec === true,
         updatedAt: new Date().toISOString(),
       };
-      setStudioSession(state);
+      setTracevaneSession(state);
       await syncSessionControlsToGatewayPolicy(sessionKey, state.controls);
       broadcastSessionControls(sessionKey);
       return await buildSessionControlsPayload(sessionKey);
@@ -7537,11 +7537,11 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       const session = await requireSession(sessionKey);
       requireFrontendVisible(session);
       requireWritable(session, 'delete');
-      if (session.kind !== 'studio_managed') {
+      if (session.kind !== 'tracevane_managed') {
         throw new ChatServiceError(403, buildChatError('session_not_writable', `Session '${session.key}' is not writable`));
       }
 
-      const materialized = await isStudioSessionMaterialized(session);
+      const materialized = await isTracevaneSessionMaterialized(session);
       if (materialized) {
         await requestGateway(options.config, 'sessions.delete', {
           key: session.key,
@@ -7563,9 +7563,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       const session = await requireSession(sessionKey);
       requireWritable(session, 'abort');
 
-      const inMemory = getStudioSession(sessionKey);
+      const inMemory = getTracevaneSession(sessionKey);
       if (!inMemory) {
-        throw new ChatServiceError(403, buildChatError('session_not_writable', 'Only studio-managed sessions can be aborted in the current backend gate'));
+        throw new ChatServiceError(403, buildChatError('session_not_writable', 'Only tracevane-managed sessions can be aborted in the current backend gate'));
       }
 
       const raw = await requestViaSessionBridge<Record<string, unknown>>(sessionKey, 'chat.abort', {
@@ -7585,7 +7585,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           lastErrorMessage: hadActiveRun ? null : 'No active run to abort.',
         }),
       };
-      setStudioSession(inMemory);
+      setTracevaneSession(inMemory);
       broadcastRuntimeUpdate(sessionKey, abortRunId, inMemory.row.runtime);
       if (hadActiveRun) {
         void flushQueueIfIdle(sessionKey);
@@ -7605,9 +7605,9 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       const session = await requireSession(sessionKey);
       requireWritable(session, 'reset');
 
-      const inMemory = getStudioSession(sessionKey);
+      const inMemory = getTracevaneSession(sessionKey);
       if (!inMemory) {
-        throw new ChatServiceError(403, buildChatError('session_not_writable', 'Only studio-managed sessions can be reset in the current backend gate'));
+        throw new ChatServiceError(403, buildChatError('session_not_writable', 'Only tracevane-managed sessions can be reset in the current backend gate'));
       }
 
       const runtimeBeforeReset = {
@@ -7629,7 +7629,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       canonicalStates.delete(sessionKey);
       clearChatStreamReplaySession(streamReplayState, sessionKey);
       inMemory.row = {
-        ...clearStudioAutoLabel(inMemory.row),
+        ...clearTracevaneAutoLabel(inMemory.row),
         updatedAt: new Date().toISOString(),
         lastMessagePreview: null,
         runtime: buildGatewayRuntime(sessionKey, true, {
@@ -7641,7 +7641,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           lastErrorMessage: null,
         }),
       };
-      setStudioSession(inMemory);
+      setTracevaneSession(inMemory);
       broadcastQueueState(sessionKey);
       saveRegistryEntry({
         ...buildRegistryEntryFromRow(inMemory.row),
@@ -7665,7 +7665,7 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
           const code = mapGatewayContractError(error, 'chat.abort failed before sessions.reset').code;
           if (code !== 'no_active_run' && code !== 'session_not_found' && code !== 'gateway_down') {
             inMemory.resetPending = false;
-            setStudioSession(inMemory);
+            setTracevaneSession(inMemory);
             throw error;
           }
         }
@@ -7682,13 +7682,13 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
       } catch (error) {
         if (mapGatewayContractError(error, 'sessions.reset failed').code !== 'session_not_found') {
           inMemory.resetPending = false;
-          setStudioSession(inMemory);
+          setTracevaneSession(inMemory);
           throw error;
         }
       }
 
       inMemory.resetPending = false;
-      setStudioSession(inMemory);
+      setTracevaneSession(inMemory);
 
       return {
         ok: true,
@@ -7826,14 +7826,14 @@ export function createChatService(options: CreateChatServiceOptions): ChatServic
 
     handleUpgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer): boolean {
       const url = new URL(req.url || CHAT_API_PATHS.stream, `http://${req.headers.host || '127.0.0.1'}`);
-      if (!isStudioChatWsPath(url.pathname)) return false;
+      if (!isTracevaneChatWsPath(url.pathname)) return false;
       const sessionKey = normalizeString(url.searchParams.get('sessionKey'));
       if (!sessionKey) {
         try { socket.destroy(); } catch {}
         return true;
       }
 
-      if (req.headers.origin && !resolveStudioChatCorsOrigin(req)) {
+      if (req.headers.origin && !resolveTracevaneChatCorsOrigin(req)) {
         try { socket.destroy(); } catch {}
         return true;
       }

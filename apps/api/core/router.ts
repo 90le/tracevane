@@ -1,6 +1,6 @@
 import type http from 'node:http';
 import { sendJson } from './http.js';
-import type { StudioApiContext } from './context.js';
+import type { TracevaneApiContext } from './context.js';
 
 export interface RouteParams {
   [key: string]: string;
@@ -9,7 +9,7 @@ export interface RouteParams {
 export type RouteHandler = (
   req: http.IncomingMessage,
   res: http.ServerResponse,
-  ctx: StudioApiContext,
+  ctx: TracevaneApiContext,
   params: RouteParams
 ) => Promise<void> | void;
 
@@ -47,7 +47,7 @@ function matchRoute(pattern: string, pathname: string): RouteParams | null {
   return params;
 }
 
-export class StudioRouter {
+export class TracevaneRouter {
   private readonly routes: RouteDefinition[] = [];
 
   add(method: string, path: string, handler: RouteHandler): void {
@@ -78,7 +78,7 @@ export class StudioRouter {
     this.add('DELETE', path, handler);
   }
 
-  async handle(req: http.IncomingMessage, res: http.ServerResponse, ctx: StudioApiContext): Promise<boolean> {
+  async handle(req: http.IncomingMessage, res: http.ServerResponse, ctx: TracevaneApiContext): Promise<boolean> {
     const method = (req.method || 'GET').toUpperCase();
     const requestUrl = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
     const pathname = requestUrl.pathname;
@@ -92,7 +92,7 @@ export class StudioRouter {
         await route.handler(req, res, ctx, params);
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Unexpected route failure';
-        ctx.logger.error(`studio: route failed for ${method} ${pathname}`, error);
+        ctx.logger.error(`tracevane: route failed for ${method} ${pathname}`, error);
         sendJson(res, 500, { error: 'internal_error', message });
       }
       return true;

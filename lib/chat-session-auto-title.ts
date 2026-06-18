@@ -177,7 +177,7 @@ export function applyDerivedAutoLabelToSessionRow<T extends Pick<ChatSessionRow,
   session: T,
   messages: ReadonlyArray<Pick<ChatMessageItem, 'role' | 'text'>>,
 ): T {
-  if (session.kind !== 'studio_managed') {
+  if (session.kind !== 'tracevane_managed') {
     return session;
   }
   if (String(session.presentation.customLabel || '').trim()) {

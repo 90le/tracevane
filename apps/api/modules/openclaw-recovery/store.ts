@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import type { StudioServerConfig } from "../../../../types/api.js";
+import type { TracevaneServerConfig } from "../../../../types/api.js";
 import type {
   OpenClawRecoveryBackupSummary,
   OpenClawRecoveryDaemonServiceSnapshot,
@@ -28,8 +28,8 @@ export const DEFAULT_RECOVERY_POLICY: OpenClawRecoveryPolicy = {
   gatewayServiceRepairTimeoutMs: 30_000,
   allowGatewayProcessTakeover: true,
   gatewayProcessTakeoverTimeoutMs: 5_000,
-  allowStudioWebRebuild: true,
-  studioWebRebuildTimeoutMs: 180_000,
+  allowTracevaneWebRebuild: true,
+  tracevaneWebRebuildTimeoutMs: 180_000,
 };
 
 function nowIso(): string {
@@ -64,7 +64,7 @@ function defaultServiceSnapshot(): OpenClawRecoveryDaemonServiceSnapshot {
 }
 
 export function buildDefaultRecoveryState(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
 ): OpenClawRecoveryState {
   return {
     checkedAt: nowIso(),
@@ -89,7 +89,7 @@ export function buildDefaultRecoveryState(
   };
 }
 
-export function readRecoveryState(config: StudioServerConfig): OpenClawRecoveryState {
+export function readRecoveryState(config: TracevaneServerConfig): OpenClawRecoveryState {
   const paths = resolveOpenClawRecoveryPaths(config);
   const fallback = buildDefaultRecoveryState(config);
   const stored = safeReadJson<Partial<OpenClawRecoveryState>>(
@@ -108,7 +108,7 @@ export function readRecoveryState(config: StudioServerConfig): OpenClawRecoveryS
 }
 
 export function writeRecoveryState(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   state: OpenClawRecoveryState,
 ): OpenClawRecoveryState {
   const paths = resolveOpenClawRecoveryPaths(config);
@@ -142,7 +142,7 @@ function toSystemEvent(
 }
 
 export function appendRecoveryEvent(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   event: OpenClawRecoveryEvent,
 ): void {
   const paths = resolveOpenClawRecoveryPaths(config);
@@ -229,7 +229,7 @@ function paginateList<T>(
 }
 
 export function listRecoveryEvents(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   limit = 100,
 ): OpenClawRecoveryEvent[] {
   const paths = resolveOpenClawRecoveryPaths(config);
@@ -250,7 +250,7 @@ export function listRecoveryEvents(
 }
 
 export function listRecoveryEventsPage(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   page = 1,
   pageSize = 10,
 ): { events: OpenClawRecoveryEvent[]; pagination: OpenClawRecoveryPagination } {
@@ -270,7 +270,7 @@ function backupCreatedAt(fileName: string, stat: fs.Stats): string {
 }
 
 export function listRecoveryBackups(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
 ): OpenClawRecoveryBackupSummary[] {
   const paths = resolveOpenClawRecoveryPaths(config);
   try {
@@ -299,7 +299,7 @@ export function listRecoveryBackups(
 }
 
 export function listRecoveryBackupsPage(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   page = 1,
   pageSize = 10,
 ): { backups: OpenClawRecoveryBackupSummary[]; pagination: OpenClawRecoveryPagination } {
@@ -310,7 +310,7 @@ export function listRecoveryBackupsPage(
   };
 }
 
-export function ensureRecoveryToken(config: StudioServerConfig): string {
+export function ensureRecoveryToken(config: TracevaneServerConfig): string {
   const paths = resolveOpenClawRecoveryPaths(config);
   try {
     const existing = fs.readFileSync(paths.tokenPath, "utf8").trim();

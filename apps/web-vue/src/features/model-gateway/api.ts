@@ -29,14 +29,14 @@ import type {
   ModelGatewayUpsertProviderRequest,
   ModelGatewayUsageLedgerResponse,
 } from '../../../../../types/model-gateway';
-import { fetchStudioResponse, requestJson } from '../../shared/api';
+import { fetchTracevaneResponse, requestJson } from '../../shared/api';
 
 async function requestModelGatewayJson<T>(
   input: string,
   init?: RequestInit,
   options: { allowErrorBody?: boolean } = {},
 ): Promise<T> {
-  const response = await fetchStudioResponse(input, init);
+  const response = await fetchTracevaneResponse(input, init);
   const text = await response.text();
   const body = text ? JSON.parse(text) as T : {} as T;
 

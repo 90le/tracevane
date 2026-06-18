@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const rootDir = '/home/binbin/.openclaw/extensions/openclaw-studio';
+const rootDir = '/home/binbin/.openclaw/extensions/tracevane';
 
 function read(filePath) {
   return fs.readFileSync(path.join(rootDir, filePath), 'utf8');
@@ -35,7 +35,7 @@ test('channel account detail page keeps grouped dynamic field rendering instead 
   assert.match(channelAccountDetailPage, /function isPrimaryAccountFieldGroup\(groupId: ChannelFieldGroupId \| ''\): boolean/);
   assert.match(channelAccountDetailPage, /field\.group \|\| ''/);
   assert.match(channelAccountDetailPage, /field\.semantic/);
-  assert.match(channelAccountDetailPage, /accountFieldOptions\(field: ChannelFieldDescriptor\): StudioSelectOption\[\]/);
+  assert.match(channelAccountDetailPage, /accountFieldOptions\(field: ChannelFieldDescriptor\): TracevaneSelectOption\[\]/);
   assert.match(channelAccountDetailPage, /accountFieldInputType\(field: ChannelFieldDescriptor\): 'text' \| 'url'/);
   assert.doesNotMatch(channelAccountDetailPage, /v-for="field in selectedCatalog\.accountFields"/);
 });

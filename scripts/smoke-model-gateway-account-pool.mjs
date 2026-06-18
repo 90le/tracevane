@@ -10,9 +10,9 @@ const DEFAULT_APP_SCOPE = "codex";
 
 function parseArgs(argv) {
   const options = {
-    endpoint: process.env.TRACEVANE_GATEWAY_ENDPOINT || process.env.STUDIO_GATEWAY_ENDPOINT || DEFAULT_ENDPOINT,
-    appScope: process.env.TRACEVANE_GATEWAY_APP_SCOPE || process.env.STUDIO_GATEWAY_APP_SCOPE || DEFAULT_APP_SCOPE,
-    model: process.env.TRACEVANE_GATEWAY_ACCOUNT_POOL_MODEL || process.env.STUDIO_GATEWAY_ACCOUNT_POOL_MODEL || "",
+    endpoint: process.env.TRACEVANE_GATEWAY_ENDPOINT || process.env.TRACEVANE_GATEWAY_ENDPOINT || DEFAULT_ENDPOINT,
+    appScope: process.env.TRACEVANE_GATEWAY_APP_SCOPE || process.env.TRACEVANE_GATEWAY_APP_SCOPE || DEFAULT_APP_SCOPE,
+    model: process.env.TRACEVANE_GATEWAY_ACCOUNT_POOL_MODEL || process.env.TRACEVANE_GATEWAY_ACCOUNT_POOL_MODEL || "",
     json: false,
     strict: false,
     requireMultiAccount: false,
@@ -69,7 +69,7 @@ Options:
 
 Auth:
   TRACEVANE_GATEWAY_CLIENT_KEY is preferred. If omitted, the script reads
-  ~/.openclaw/studio/model-gateway/secrets.json locally.`);
+  ~/.openclaw/tracevane/model-gateway/secrets.json locally.`);
 }
 
 function positiveInt(value, fallback) {
@@ -78,9 +78,9 @@ function positiveInt(value, fallback) {
 }
 
 function readGatewayKey() {
-  const envKey = process.env.TRACEVANE_GATEWAY_CLIENT_KEY || process.env.STUDIO_GATEWAY_CLIENT_KEY || process.env.MODEL_GATEWAY_CLIENT_KEY;
+  const envKey = process.env.TRACEVANE_GATEWAY_CLIENT_KEY || process.env.TRACEVANE_GATEWAY_CLIENT_KEY || process.env.MODEL_GATEWAY_CLIENT_KEY;
   if (envKey?.trim()) return envKey.trim();
-  const filePath = path.join(os.homedir(), ".openclaw/studio/model-gateway/secrets.json");
+  const filePath = path.join(os.homedir(), ".openclaw/tracevane/model-gateway/secrets.json");
   try {
     const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
     const value = parsed?.secrets?.["gateway:client-api-key"]?.value;
@@ -93,7 +93,7 @@ function readGatewayKey() {
 function gatewayHeaders(key, appScope, extra = {}) {
   return {
     authorization: `Bearer ${key}`,
-    "x-studio-app-scope": appScope,
+    "x-tracevane-app-scope": appScope,
     ...extra,
   };
 }
@@ -345,7 +345,7 @@ async function probeSticky(options, key, model, firstAccount, stickyEnabled) {
       reason: "Provider routing has stickySession=false.",
     });
   }
-  const sessionId = `studio-account-pool-sticky-${Date.now()}`;
+  const sessionId = `tracevane-account-pool-sticky-${Date.now()}`;
   const first = await runResponsesProbe(options, key, model, sessionId, "ACCOUNT_POOL_STICKY_A");
   if (first.probe.status !== "passed") return { ...first.probe, id: "sticky-session" };
   const second = await runResponsesProbe(options, key, model, sessionId, "ACCOUNT_POOL_STICKY_B");
@@ -378,7 +378,7 @@ async function probeMultiAccount(options, key, model, provider, routeableCount) 
       reason: "Only round-robin can be asserted without mutating provider routing.",
     });
   }
-  const base = `studio-account-pool-rr-${Date.now()}`;
+  const base = `tracevane-account-pool-rr-${Date.now()}`;
   const first = await runResponsesProbe(options, key, model, `${base}-a`, "ACCOUNT_POOL_RR_A");
   if (first.probe.status !== "passed") return { ...first.probe, id: "multi-account-strategy" };
   const second = await runResponsesProbe(options, key, model, `${base}-b`, "ACCOUNT_POOL_RR_B");
@@ -451,7 +451,7 @@ async function main() {
         reason: "No model was supplied and the active account provider has no default model.",
       }));
     } else {
-      const sessionId = `studio-account-pool-${Date.now()}`;
+      const sessionId = `tracevane-account-pool-${Date.now()}`;
       const requestProbe = await runResponsesProbe(options, key, options.model, sessionId, "ACCOUNT_POOL_OK");
       probes.push(requestProbe.probe);
       const runtime = await fetchRuntime(options);

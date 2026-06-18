@@ -6,7 +6,7 @@ import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
-import { createStudioChatSessionStateStore } from '../../dist/apps/api/modules/chat/session-state-store.js';
+import { createTracevaneChatSessionStateStore } from '../../dist/apps/api/modules/chat/session-state-store.js';
 
 const testDir = path.dirname(fileURLToPath(import.meta.url));
 
@@ -20,7 +20,7 @@ function cleanupTempRoot(root) {
 
 function makeConfig(root) {
   return {
-    pluginId: 'studio',
+    pluginId: 'tracevane',
     pluginName: 'Tracevane',
     version: '0.1.0',
     port: 0,
@@ -51,13 +51,13 @@ function makeQueueItem(id) {
 
 function runJsonFallbackScript(root, script) {
   const wrapper = `
-    import { createStudioChatSessionStateStore } from '${path.resolve(
+    import { createTracevaneChatSessionStateStore } from '${path.resolve(
       testDir,
       '../../dist/apps/api/modules/chat/session-state-store.js',
     ).replaceAll('\\', '/')}';
 
     const config = ${JSON.stringify(makeConfig(root))};
-    const store = createStudioChatSessionStateStore(config);
+    const store = createTracevaneChatSessionStateStore(config);
 
     ${script}
   `;
@@ -72,7 +72,7 @@ function runJsonFallbackScript(root, script) {
 test('sqlite: session state store uses sqlite when available', () => {
   const root = makeTempRoot();
   try {
-    const store = createStudioChatSessionStateStore(makeConfig(root));
+    const store = createTracevaneChatSessionStateStore(makeConfig(root));
     assert.equal(store.backend, 'sqlite');
   } finally {
     cleanupTempRoot(root);
@@ -82,7 +82,7 @@ test('sqlite: session state store uses sqlite when available', () => {
 test('sqlite: write/read roundtrip persists queue and controls', () => {
   const root = makeTempRoot();
   try {
-    const store = createStudioChatSessionStateStore(makeConfig(root));
+    const store = createTracevaneChatSessionStateStore(makeConfig(root));
     store.write('agent:main:webchat:direct:test', {
       pendingQueue: [makeQueueItem('q1')],
       controls: {
@@ -102,7 +102,7 @@ test('sqlite: write/read roundtrip persists queue and controls', () => {
 test('sqlite: clear removes persisted state', () => {
   const root = makeTempRoot();
   try {
-    const store = createStudioChatSessionStateStore(makeConfig(root));
+    const store = createTracevaneChatSessionStateStore(makeConfig(root));
     store.write('agent:main:webchat:direct:test', {
       pendingQueue: [makeQueueItem('q1')],
       controls: {

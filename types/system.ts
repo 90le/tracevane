@@ -232,7 +232,7 @@ export interface SystemDiagnosticsPayload {
   bootstrap: SystemBootstrapPayload;
 }
 
-export interface SystemStudioReleasePayload {
+export interface SystemTracevaneReleasePayload {
   checkedAt: string;
   currentVersion: string;
   latestVersion: string | null;
@@ -243,7 +243,7 @@ export interface SystemStudioReleasePayload {
   notes: string[];
 }
 
-export interface SystemStudioUpgradeStatusPayload {
+export interface SystemTracevaneUpgradeStatusPayload {
   checkedAt: string;
   status: "idle" | "running" | "succeeded" | "failed";
   running: boolean;
@@ -256,7 +256,7 @@ export interface SystemStudioUpgradeStatusPayload {
   lastError: string;
 }
 
-export interface SystemStudioUpgradeRequest {
+export interface SystemTracevaneUpgradeRequest {
   mode?: "standalone" | "gateway";
   version?: string;
   siteBase?: string;
@@ -265,9 +265,9 @@ export interface SystemStudioUpgradeRequest {
   skipUpgrade?: boolean;
 }
 
-export interface SystemStudioUpgradeResponse {
+export interface SystemTracevaneUpgradeResponse {
   ok: boolean;
-  status: SystemStudioUpgradeStatusPayload;
+  status: SystemTracevaneUpgradeStatusPayload;
 }
 
 export interface SystemRuntimeSummaryPayload {
@@ -276,7 +276,7 @@ export interface SystemRuntimeSummaryPayload {
   bootstrapPendingCount: number;
   updateLatestVersion: string;
   updateAvailable: boolean;
-  studioUpgradeRunning: boolean;
+  tracevaneUpgradeRunning: boolean;
   helperRepairPending: boolean;
   level: "ok" | "warn";
 }

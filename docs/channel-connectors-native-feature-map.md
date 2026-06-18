@@ -7,7 +7,7 @@
 
 - Feishu/Lark、OpenCode、Claude Code、OpenAI Codex、Octo/WuKongIM 或目标平台的官方文档、API、SDK、CLI help 和 changelog。
 - 活跃 GitHub 仓库、issues、discussions、release notes 和社区故障报告。
-- Studio 当前 daemon、session、secret、file staging、UI 和测试边界。
+- Tracevane 当前 daemon、session、secret、file staging、UI 和测试边界。
 - Feishu 长连接专项：`docs/feishu-long-connection-issue-tracker.md`
 - 通用开工门禁：`docs/research-first-development-checklist.md`
 
@@ -16,19 +16,19 @@
 - 当前只继续推进 Feishu/Octo 私聊完整性。
 - 当前 live Agent 只暴露 Codex、Claude Code、OpenCode。
 - 私聊保留：文本、文件、图片、Agent CLI 原生能力、工具流、过程回复、compact、stop、session/model/permission/workdir 切换。
-- 不再继续扩展：`tracevane-channel-skill`、platform runtime action index、`studio-octo-actions`、`studio-feishu-actions`、文档/群/管理类 platform action。
+- 不再继续扩展：`tracevane-channel-skill`、platform runtime action index、`tracevane-octo-actions`、`tracevane-feishu-actions`、文档/群/管理类 platform action。
 - 已实现的群聊、thread、多 bot、GROUP.md/THREAD.md、群上下文和低频管理命令只保留 best-effort。
 
 ## 原生映射
 
-| 域 | 能力 | Studio 原生目标 | 状态 |
+| 域 | 能力 | Tracevane 原生目标 | 状态 |
 | --- | --- | --- | --- |
-| Runtime | daemon、日志、health/status | `openclaw-tracevane-channel-connectors.service`，Studio/OpenClaw 崩溃后继续在线 | 已接入，继续 live 验证 |
+| Runtime | daemon、日志、health/status | `openclaw-tracevane-channel-connectors.service`，Tracevane/OpenClaw 崩溃后继续在线 | 已接入，继续 live 验证 |
 | Config | project/platform/agent options | Agent Profile、workDir、model、permission、Gateway key ref、platform binding | 已完成 |
 | Platforms | dmwork/feishu/更多 IM | 当前只做 Octo/Feishu 私聊；更多平台按私聊能力和当前外部合同逐个验证 | 进行中 |
 | Agents | Codex、Claude Code、OpenCode、更多 Agent | 当前只做三个已有 runner；更多 Agent 路线图 | 进行中 |
 | Messages | text/image/file/voice/progress/reply | 私聊 incoming/reply/attachment/file/image/Markdown renderer | 进行中 |
-| Sessions | session key、续接、重置、workdir、切 Agent/model/mode | Studio session store、override、busy guard、stop、compact | 进行中 |
+| Sessions | session key、续接、重置、workdir、切 Agent/model/mode | Tracevane session store、override、busy guard、stop、compact | 进行中 |
 | Governance | allowlist/admin/rate/banned/run_as | policy + audit | 基础完成 |
 | Commands | slash/native/menu/card | 私聊命令、未知 slash 透传、Feishu 卡片、Octo Markdown fallback | 进行中 |
 
@@ -48,7 +48,7 @@
 - 图片附件可 staging；非视觉模型默认收到附件说明/本地路径，不做视觉推断。自动视觉模型默认关闭，平台 binding 可配置启用和默认 fallback 模型；IM 会话可用 `/vision` 菜单/命令临时开启、关闭或指定视觉模型，切换失败会回退原模型的附件说明模式。
 - Gateway Responses -> Chat-compatible provider 已保留 `input_image` 为 Chat `image_url`；`gpt-5.4-mini` / `gpt-5.5` 受控图片 smoke 和 `codex exec --image` + `gpt-5.4-mini` 已通过。
 - Provider Center 不再按 `gpt-*`、`claude-*` 等模型名自动标记 vision；图片能力只来自用户配置、上游显式能力元数据或图片 smoke 通过后用户确认写回。
-- Codex、Claude Code、OpenCode 均已支持图片 native visual input；视频附件按普通 staged local file 交给 Agent，不由 Studio 预抽帧或转图片。
+- Codex、Claude Code、OpenCode 均已支持图片 native visual input；视频附件按普通 staged local file 交给 Agent，不由 Tracevane 预抽帧或转图片。
 - Octo 图片/视频 payload 带 `content/caption` 时会保留用户任务文本，避免媒体占位吞掉“请识别/请处理”这类指令。
 - 同 session busy guard、`/stop`、`/new`、`/reset`、`/compact`、`/thinking`、`/process`、`/tools` 已接入；普通消息 busy 时不入队，提示先 `/stop`/`/cancel` 后重发。
 - `/stop` 自动回归已覆盖 Codex app-server persistent turn 取消；live smoke 已支持 `--require-stop-command`，按同 session 和时间关联不同 messageId 的 stop 命令与 cancelled run。
@@ -79,7 +79,7 @@
 - Feishu 菜单命令面已改为清爽二级配置架构：主卡片直达 Agent、模型、权限/推理、进度显示、视觉、工作目录六个配置页；工作目录页提供 Profile 默认、上一目录、上级目录、Home 快捷按钮、最近目录直达列表、子目录分页直达列表和 `/dir find` 搜索；纯文本渠道支持 `/dir home|parent|recent N|child N`；文本 `/help` 复用同一结构。
 - Feishu 长连接 card action 不再 fire-and-forget：卡片点击会同步返回 callback response/card/toast，普通消息和 bot menu 仍保持后台异步，避免交互卡片过一段时间后触发 108002 类不可用体验。
 - 已删除 active platform action layer：runner/env/prompt/daemon endpoint/UI chips 不再暴露 `tracevane-channel-skill` 或 runtime action。
-- Feishu transport 未暴露的 `studio-feishu-actions` / Docx / Drive / Wiki / Bitable 直接 action helper 已删除；daemon 只保留旧 code fence 剥除作为兼容防污染。
+- Feishu transport 未暴露的 `tracevane-feishu-actions` / Docx / Drive / Wiki / Bitable 直接 action helper 已删除；daemon 只保留旧 code fence 剥除作为兼容防污染。
 - Codex 隔离 `codex-home/skills` 会删除历史生成的 Feishu/Octo platform action skill 目录；当前运行态旧目录已手动清理，避免 stale YAML 被 Codex 加载。
 - OpenCode realtime JSONL 与 SQLite fallback 已共用进度 parser；DB fallback 会保留本轮工具调用/工具结果，并只把最新 assistant message 作为最终回复。
 - 近 12h live smoke 已证明 Codex、Claude Code、OpenCode 均有成功工具调用和可见工具输出；OpenCode 真实 IM `--require-process-reply` 已补齐，三 Agent 均有真实 IM 过程回复证据。

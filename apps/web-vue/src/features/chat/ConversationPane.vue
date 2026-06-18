@@ -761,7 +761,7 @@ import MessageBubble from './MessageBubble.vue';
 import QueuedMessageRail from './QueuedMessageRail.vue';
 import SlashCommandFeedbackBar from './SlashCommandFeedbackBar.vue';
 import type { ChatRenderableItem } from '../../../../../lib/chat-run-overlay';
-import type { StudioSlashExecutionFeedback } from './slash-feedback';
+import type { TracevaneSlashExecutionFeedback } from './slash-feedback';
 import {
   clearSessionInlinePreviewOverrides,
   listenInlinePreviewPreferenceChange,
@@ -835,7 +835,7 @@ const props = defineProps<{
   historyErrorMessage: string;
   accessError: string;
   gatewayWarning: string;
-  slashFeedback: StudioSlashExecutionFeedback | null;
+  slashFeedback: TracevaneSlashExecutionFeedback | null;
   latestJumpToken?: number;
   composerDocument: ChatComposerDocument;
   composerAttachments: Array<{

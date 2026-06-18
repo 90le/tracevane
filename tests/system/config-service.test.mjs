@@ -6,12 +6,12 @@ import path from "node:path";
 
 import { createConfigService } from "../../dist/apps/api/modules/config/service.js";
 import {
-  getStudioChatGlobalHostManagementExecEnabled,
-  resetStudioChatManagementPolicyState,
-} from "../../dist/lib/studio-chat-management-policy.js";
+  getTracevaneChatGlobalHostManagementExecEnabled,
+  resetTracevaneChatManagementPolicyState,
+} from "../../dist/lib/tracevane-chat-management-policy.js";
 
 function makeTempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "studio-config-service-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-config-service-"));
 }
 
 function writeJson(file, value) {
@@ -19,23 +19,23 @@ function writeJson(file, value) {
   fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 }
 
-function createStudioConfig(root) {
+function createTracevaneConfig(root) {
   return {
-    pluginId: "studio",
+    pluginId: "tracevane",
     pluginName: "Tracevane",
     version: "0.1.0",
     port: 3760,
     autoStart: true,
     openclawRoot: root,
     openclawConfigFile: path.join(root, "openclaw.json"),
-    projectRoot: "/tmp/openclaw-studio-extension",
-    webDistDir: "/tmp/openclaw-studio-extension/apps/web-vue/dist",
+    projectRoot: "/tmp/tracevane-extension",
+    webDistDir: "/tmp/tracevane-extension/apps/web-vue/dist",
     gatewayPort: 31879,
     gatewayWsUrl: "ws://127.0.0.1:31879",
     gatewayControlUiBasePath: "",
     transport: {
       standalone: { enabled: true, port: 3760 },
-      gateway: { enabled: true, basePath: "/studio" },
+      gateway: { enabled: true, basePath: "/tracevane" },
     },
   };
 }
@@ -64,7 +64,7 @@ function buildPayload(summary) {
 
 test("config summary reads canonical plugin load paths and legacy browser SSRF alias", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     agents: {
       defaults: {
@@ -162,9 +162,9 @@ test("config summary reads canonical plugin load paths and legacy browser SSRF a
         contextEngine: "context-engine-default",
       },
       installs: {
-        studio: {
+        tracevane: {
           source: "path",
-          installPath: "/opt/openclaw/plugins/studio",
+          installPath: "/opt/openclaw/plugins/tracevane",
           version: "0.1.20",
           installedAt: "2026-04-08T12:00:00.000Z",
         },
@@ -206,10 +206,10 @@ test("config summary reads canonical plugin load paths and legacy browser SSRF a
   });
   assert.deepEqual(summary.plugins?.installs, [
     {
-      id: "studio",
+      id: "tracevane",
       source: "path",
       spec: undefined,
-      installPath: "/opt/openclaw/plugins/studio",
+      installPath: "/opt/openclaw/plugins/tracevane",
       version: "0.1.20",
       resolvedName: undefined,
       resolvedVersion: undefined,
@@ -342,7 +342,7 @@ test("config summary reads canonical plugin load paths and legacy browser SSRF a
 
 test("config save writes canonical plugin and browser fields without legacy aliases", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     browser: {
       ssrfPolicy: {
@@ -366,7 +366,7 @@ test("config save writes canonical plugin and browser fields without legacy alia
     defaults: {
       ...service.getSummary().defaults,
       verbose: "on",
-      systemPromptOverride: "Override from studio",
+      systemPromptOverride: "Override from tracevane",
       skills: ["agent-browser", "webapp-testing"],
       contextInjection: "always",
       bootstrapPromptTruncationWarning: "always",
@@ -499,7 +499,7 @@ test("config save writes canonical plugin and browser fields without legacy alia
   assert.equal(nextConfig.agents.defaults.verboseDefault, "on");
   assert.equal(
     nextConfig.agents.defaults.systemPromptOverride,
-    "Override from studio",
+    "Override from tracevane",
   );
   assert.deepEqual(nextConfig.agents.defaults.skills, [
     "agent-browser",
@@ -631,7 +631,7 @@ test("config save writes canonical plugin and browser fields without legacy alia
 
 test("config save clears optional default overrides when blank or null", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     agents: {
       defaults: {
@@ -838,7 +838,7 @@ test("config save clears optional default overrides when blank or null", () => {
 
 test("config save clears browser profiles when an empty list is submitted", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     browser: {
       profiles: {
@@ -869,7 +869,7 @@ test("config save clears browser profiles when an empty list is submitted", () =
 
 test("config summary and save cover current MCP, skills, and browser tab cleanup fields", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     mcp: {
       sessionIdleTtlMs: 120000,
@@ -1018,7 +1018,7 @@ test("config summary and save cover current MCP, skills, and browser tab cleanup
 
 test("config summary and save cover current gateway control-ui runtime fields", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     gateway: {
       controlUi: {
@@ -1068,7 +1068,7 @@ test("config summary and save cover current gateway control-ui runtime fields", 
 
 test("config summary and save cover current chat command gates", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     commands: {
       native: true,
@@ -1154,7 +1154,7 @@ test("config summary and save cover current chat command gates", () => {
 
 test("config summary and save cover current low-frequency schema domains", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     tools: {
       profile: "minimal",
@@ -1329,7 +1329,7 @@ test("config summary and save cover current low-frequency schema domains", () =>
 
 test("config save preserves legacy exec security and ask without inventing exec mode", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     tools: {
       exec: {
@@ -1363,7 +1363,7 @@ test("config save preserves legacy exec security and ask without inventing exec 
 
 test("config summary and save cover unmodeled OpenClaw top-level schema domains", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     cron: {
       enabled: true,
@@ -1375,7 +1375,7 @@ test("config summary and save cover unmodeled OpenClaw top-level schema domains"
     },
     env: {
       vars: {
-        OPENCLAW_PROFILE: "studio",
+        OPENCLAW_PROFILE: "tracevane",
       },
     },
     talk: {
@@ -1406,7 +1406,7 @@ test("config summary and save cover unmodeled OpenClaw top-level schema domains"
     },
     env: {
       vars: {
-        OPENCLAW_PROFILE: "studio",
+        OPENCLAW_PROFILE: "tracevane",
       },
     },
     talk: {
@@ -1468,7 +1468,7 @@ test("config summary and save cover unmodeled OpenClaw top-level schema domains"
 
 test("config save disables docker-backed sandbox modes when docker is unavailable and global mode is off", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     agents: {
       defaults: {
@@ -1527,7 +1527,7 @@ test("config save disables docker-backed sandbox modes when docker is unavailabl
 
 test("config save normalizes strict provider/session fields without inventing third-party endpoints", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     models: {
       providers: {
@@ -1579,7 +1579,7 @@ test("config save normalizes strict provider/session fields without inventing th
 
 test("config save preserves third-party provider and model extension fields", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     models: {
       providers: {
@@ -1588,7 +1588,7 @@ test("config save preserves third-party provider and model extension fields", ()
           auth: "api-key",
           request: {
             headers: {
-              "X-Tenant": "studio",
+              "X-Tenant": "tracevane",
             },
           },
           agentRuntime: { id: "openclaw" },
@@ -1616,7 +1616,7 @@ test("config save preserves third-party provider and model extension fields", ()
     auth: "api-key",
     request: {
       headers: {
-        "X-Tenant": "studio",
+        "X-Tenant": "tracevane",
       },
     },
     agentRuntime: { id: "openclaw" },
@@ -1638,7 +1638,7 @@ test("config save preserves third-party provider and model extension fields", ()
   );
   assert.deepEqual(nextConfig.models.providers.bigmodel.request, {
     headers: {
-      "X-Tenant": "studio",
+      "X-Tenant": "tracevane",
     },
   });
   assert.equal(nextConfig.models.providers.bigmodel.timeoutSeconds, 240);
@@ -1658,15 +1658,15 @@ test("config save preserves third-party provider and model extension fields", ()
 
 test("config save persists and applies the global Tracevane host-management exec switch", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     plugins: {
       entries: {
-        studio: {
+        tracevane: {
           enabled: true,
           config: {
             chat: {
-              allowHostManagementExecInStudioChat: false,
+              allowHostManagementExecInTracevaneChat: false,
             },
           },
         },
@@ -1674,18 +1674,18 @@ test("config save persists and applies the global Tracevane host-management exec
     },
   });
 
-  resetStudioChatManagementPolicyState();
+  resetTracevaneChatManagementPolicyState();
   const service = createConfigService(config);
   const summary = service.getSummary();
   const payload = {
     ...buildPayload(summary),
     plugins: {
       entries: {
-        studio: {
+        tracevane: {
           enabled: true,
           config: {
             chat: {
-              allowHostManagementExecInStudioChat: true,
+              allowHostManagementExecInTracevaneChat: true,
             },
           },
         },
@@ -1699,16 +1699,16 @@ test("config save persists and applies the global Tracevane host-management exec
     fs.readFileSync(config.openclawConfigFile, "utf8"),
   );
   assert.equal(
-    nextConfig.plugins.entries.studio.config.chat
-      .allowHostManagementExecInStudioChat,
+    nextConfig.plugins.entries.tracevane.config.chat
+      .allowHostManagementExecInTracevaneChat,
     true,
   );
-  assert.equal(getStudioChatGlobalHostManagementExecEnabled(), true);
+  assert.equal(getTracevaneChatGlobalHostManagementExecEnabled(), true);
 });
 
 test("config patch accepts sparse plugin payloads without dropping unrelated plugin config", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     models: {
       providers: {
@@ -1722,17 +1722,17 @@ test("config patch accepts sparse plugin payloads without dropping unrelated plu
     },
     plugins: {
       enabled: true,
-      allow: ["studio", "alpha"],
+      allow: ["tracevane", "alpha"],
       deny: ["unsafe-plugin"],
       load: {
         paths: ["/opt/openclaw/extensions"],
       },
       entries: {
-        studio: {
+        tracevane: {
           enabled: true,
           config: {
             chat: {
-              allowHostManagementExecInStudioChat: false,
+              allowHostManagementExecInTracevaneChat: false,
             },
             existingFlag: "keep-me",
           },
@@ -1749,15 +1749,15 @@ test("config patch accepts sparse plugin payloads without dropping unrelated plu
     },
   });
 
-  resetStudioChatManagementPolicyState();
+  resetTracevaneChatManagementPolicyState();
   const service = createConfigService(config);
   const response = service.patchConfig({
     plugins: {
       entries: {
-        studio: {
+        tracevane: {
           config: {
             chat: {
-              allowHostManagementExecInStudioChat: true,
+              allowHostManagementExecInTracevaneChat: true,
             },
           },
         },
@@ -1770,26 +1770,26 @@ test("config patch accepts sparse plugin payloads without dropping unrelated plu
   );
   assert.equal(response.success, true);
   assert.equal(
-    nextConfig.plugins.entries.studio.config.chat
-      .allowHostManagementExecInStudioChat,
+    nextConfig.plugins.entries.tracevane.config.chat
+      .allowHostManagementExecInTracevaneChat,
     true,
   );
-  assert.equal(nextConfig.plugins.entries.studio.config.existingFlag, "keep-me");
+  assert.equal(nextConfig.plugins.entries.tracevane.config.existingFlag, "keep-me");
   assert.deepEqual(nextConfig.plugins.entries.alpha.config.nested, {
     value: 42,
   });
-  assert.deepEqual(nextConfig.plugins.allow, ["studio", "alpha"]);
+  assert.deepEqual(nextConfig.plugins.allow, ["tracevane", "alpha"]);
   assert.deepEqual(nextConfig.plugins.load.paths, ["/opt/openclaw/extensions"]);
   assert.equal(nextConfig.models.providers.demo.apiKey, "secret-demo");
-  assert.equal(getStudioChatGlobalHostManagementExecEnabled(), true);
+  assert.equal(getTracevaneChatGlobalHostManagementExecEnabled(), true);
 });
 
 test("config save preserves gateway auth SecretRefs", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const tokenRef = {
     source: "file",
-    provider: "studio-local",
+    provider: "tracevane-local",
     id: "/gatewayAuthToken",
   };
   writeJson(config.openclawConfigFile, {
@@ -1801,7 +1801,7 @@ test("config save preserves gateway auth SecretRefs", () => {
     },
     secrets: {
       providers: {
-        "studio-local": {
+        "tracevane-local": {
           source: "file",
           path: path.join(root, "secrets.json"),
           mode: "json",
@@ -1825,7 +1825,7 @@ test("config save preserves gateway auth SecretRefs", () => {
 
 test("config save accepts gateway auth SecretRef payloads", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     gateway: {
       auth: {

@@ -1,5 +1,5 @@
 import type http from 'node:http';
-import type { LoggerLike, StudioServerConfig } from '../../../types/api.js';
+import type { LoggerLike, TracevaneServerConfig } from '../../../types/api.js';
 import type { AgentsService } from '../modules/agents/service.js';
 import type { ChatService } from '../modules/chat/service.js';
 import type { ChannelConnectorsService } from '../modules/channel-connectors/service.js';
@@ -15,7 +15,7 @@ import type { SkillsService } from '../modules/skills/service.js';
 import type { SystemService } from '../modules/system/service.js';
 import type { TerminalService } from '../modules/terminal/service.js';
 
-export interface StudioServices {
+export interface TracevaneServices {
   agents: AgentsService;
   chat: ChatService;
   channelConnectors: ChannelConnectorsService;
@@ -32,9 +32,9 @@ export interface StudioServices {
   terminal: TerminalService;
 }
 
-export interface StudioApiContext {
-  config: StudioServerConfig;
+export interface TracevaneApiContext {
+  config: TracevaneServerConfig;
   logger: LoggerLike;
   sseClients: Set<http.ServerResponse>;
-  services: StudioServices;
+  services: TracevaneServices;
 }

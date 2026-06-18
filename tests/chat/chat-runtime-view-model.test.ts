@@ -539,7 +539,7 @@ test("chat composer draft storage clears corrupt or non-persistable values", () 
   };
 
   try {
-    const key = "openclaw-studio.chat.composer-draft:session-a";
+    const key = "tracevane.chat.composer-draft:session-a";
     storage.set(key, "{broken-json");
     assert.equal(readChatComposerDraft("session-a"), null);
     assert.equal(storage.has(key), false);

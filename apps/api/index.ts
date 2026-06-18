@@ -1,11 +1,11 @@
 import type http from 'node:http';
-import { createStandaloneStudioConfig, createStudioConfig, syncStandaloneStudioConfig } from './config.js';
+import { createStandaloneTracevaneConfig, createTracevaneConfig, syncStandaloneTracevaneConfig } from './config.js';
 import {
-  createStudioServer,
-  createStudioRequestHandler,
-  createStudioRouter,
-  createStudioUpgradeHandler,
-  handleStudioRequest,
+  createTracevaneServer,
+  createTracevaneRequestHandler,
+  createTracevaneRouter,
+  createTracevaneUpgradeHandler,
+  handleTracevaneRequest,
 } from './server.js';
 import { createAgentsService } from './modules/agents/service.js';
 import { createChatService } from './modules/chat/service.js';
@@ -21,17 +21,17 @@ import { createOpenClawRecoveryService } from './modules/openclaw-recovery/servi
 import { createSkillsService } from './modules/skills/service.js';
 import { createSystemService } from './modules/system/service.js';
 import { createTerminalService } from './modules/terminal/service.js';
-import type { LoggerLike, StudioServerConfig } from '../../types/api.js';
-import type { StudioApiContext, StudioServices } from './core/context.js';
+import type { LoggerLike, TracevaneServerConfig } from '../../types/api.js';
+import type { TracevaneApiContext, TracevaneServices } from './core/context.js';
 
-export interface CreateStudioContextOptions {
-  config: StudioServerConfig;
+export interface CreateTracevaneContextOptions {
+  config: TracevaneServerConfig;
   logger: LoggerLike;
   channelConnectorsOptions?: ChannelConnectorsServiceOptions;
   modelGatewayOptions?: ModelGatewayServiceOptions;
 }
 
-export function createStudioContext(options: CreateStudioContextOptions): StudioApiContext {
+export function createTracevaneContext(options: CreateTracevaneContextOptions): TracevaneApiContext {
   const sseClients = new Set<http.ServerResponse>();
   const getSseConnections = () => sseClients.size;
 
@@ -64,7 +64,7 @@ export function createStudioContext(options: CreateStudioContextOptions): Studio
   const modelGateway = createModelGatewayService(options.config, options.modelGatewayOptions);
   const openclawRecovery = createOpenClawRecoveryService(options.config);
 
-  const services: StudioServices = {
+  const services: TracevaneServices = {
     agents,
     chat,
     channelConnectors,
@@ -90,12 +90,12 @@ export function createStudioContext(options: CreateStudioContextOptions): Studio
 }
 
 export {
-  createStandaloneStudioConfig,
-  createStudioConfig,
-  createStudioServer,
-  createStudioRequestHandler,
-  createStudioRouter,
-  createStudioUpgradeHandler,
-  handleStudioRequest,
-  syncStandaloneStudioConfig,
+  createStandaloneTracevaneConfig,
+  createTracevaneConfig,
+  createTracevaneServer,
+  createTracevaneRequestHandler,
+  createTracevaneRouter,
+  createTracevaneUpgradeHandler,
+  handleTracevaneRequest,
+  syncStandaloneTracevaneConfig,
 };

@@ -27,7 +27,7 @@ import {
 } from "../../dist/apps/api/modules/openclaw-recovery/probe.js";
 import {
   createOpenClawConfigBackup,
-  inspectStudioWebBundle,
+  inspectTracevaneWebBundle,
   pruneDeprecatedOpenClawPluginResidue,
   pruneMissingOpenClawPluginLoadPaths,
   pruneInvalidOpenClawConfigFromValidation,
@@ -51,10 +51,10 @@ const rootDir = path.resolve(
 );
 
 function makeConfig() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-recovery-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-recovery-"));
   const openclawRoot = path.join(root, ".openclaw");
   fs.mkdirSync(openclawRoot, { recursive: true });
-  const projectRoot = path.join(root, "studio");
+  const projectRoot = path.join(root, "tracevane");
   fs.mkdirSync(projectRoot, { recursive: true });
   const missingPluginPath = path.join(root, "missing-plugin-path");
   const openclawConfigFile = path.join(openclawRoot, "openclaw.json");
@@ -80,7 +80,7 @@ function makeConfig() {
             paths: [projectRoot, missingPluginPath],
           },
           entries: {
-            studio: {
+            tracevane: {
               enabled: true,
               config: {
                 keep: "plugin-config",
@@ -107,7 +107,7 @@ function makeConfig() {
     "utf8",
   );
   return {
-    pluginId: "studio",
+    pluginId: "tracevane",
     pluginName: "Tracevane",
     version: "0.1.70",
     port: 3760,
@@ -115,14 +115,14 @@ function makeConfig() {
     openclawRoot,
     openclawConfigFile,
     projectRoot,
-    webDistDir: path.join(root, "studio/apps/web-vue/dist"),
+    webDistDir: path.join(root, "tracevane/apps/web-vue/dist"),
     gatewayPort: 31879,
     gatewayWsUrl: "ws://127.0.0.1:31879",
-    gatewayControlUiBasePath: "/studio",
+    gatewayControlUiBasePath: "/tracevane",
     transport: {
       preferredMode: "gateway",
       standalone: { enabled: false, port: 3760 },
-      gateway: { enabled: true, basePath: "/studio" },
+      gateway: { enabled: true, basePath: "/tracevane" },
     },
   };
 }
@@ -158,7 +158,7 @@ test("recovery repair creates backups before pruning dynamic validation paths", 
       message: "tools.exec.mode cannot be combined with tools.exec.security or tools.exec.ask",
     },
     {
-      path: "plugins.entries.studio.config.keep",
+      path: "plugins.entries.tracevane.config.keep",
       message: "unsupported plugin config field",
     },
     {
@@ -176,7 +176,7 @@ test("recovery repair creates backups before pruning dynamic validation paths", 
   assert.equal("mode" in repaired.tools.exec, false);
   assert.equal(repaired.tools.exec.security, "default");
   assert.equal(repaired.tools.exec.ask, "never");
-  assert.equal(repaired.plugins.entries.studio.config.keep, "plugin-config");
+  assert.equal(repaired.plugins.entries.tracevane.config.keep, "plugin-config");
   assert.equal(repaired.plugins.entries.alpha.enabled, true);
   assert.equal(repaired.plugins.providerParams.keep, true);
   assert.equal(repaired.channels.customProvider.extensionField, "preserve");
@@ -187,11 +187,11 @@ test("recovery repair creates backups before pruning dynamic validation paths", 
 
 test("recovery backups restore runtime env sidecars with openclaw config", () => {
   const config = makeConfig();
-  const secretPath = path.join(config.openclawRoot, "studio-local-secrets.json");
+  const secretPath = path.join(config.openclawRoot, "tracevane-local-secrets.json");
   const openclawConfig = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
   openclawConfig.secrets = {
     providers: {
-      "studio-local": {
+      "tracevane-local": {
         source: "file",
         path: secretPath,
         mode: "json",
@@ -264,7 +264,7 @@ test("recovery backups restore runtime env sidecars with openclaw config", () =>
 
 test("gateway deep probe validates the Tracevane control route without breaking light probe", async () => {
   const { server, port } = await listenProbeServer((request, response) => {
-    if (request.url === "/studio") {
+    if (request.url === "/tracevane") {
       response.writeHead(401);
       response.end("auth required");
       return;
@@ -278,7 +278,7 @@ test("gateway deep probe validates the Tracevane control route without breaking 
     const deep = await probeOpenClawGatewayDeep({
       port,
       timeoutMs: 500,
-      controlUiBasePath: "/studio",
+      controlUiBasePath: "/tracevane",
     });
 
     assert.equal(light, true);
@@ -286,7 +286,7 @@ test("gateway deep probe validates the Tracevane control route without breaking 
     assert.equal(deep.connected, true);
     assert.deepEqual(
       deep.checks.map((check) => [check.path, check.ok, check.statusCode]),
-      [["/", true, 404], ["/studio", true, 401]],
+      [["/", true, 404], ["/tracevane", true, 401]],
     );
   } finally {
     await closeServer(server);
@@ -295,7 +295,7 @@ test("gateway deep probe validates the Tracevane control route without breaking 
 
 test("gateway deep probe reports connected route failures without forcing process takeover", async () => {
   const { server, port } = await listenProbeServer((request, response) => {
-    response.writeHead(request.url === "/studio" ? 404 : 200);
+    response.writeHead(request.url === "/tracevane" ? 404 : 200);
     response.end("ok");
   });
 
@@ -303,12 +303,12 @@ test("gateway deep probe reports connected route failures without forcing proces
     const deep = await probeOpenClawGatewayDeep({
       port,
       timeoutMs: 500,
-      controlUiBasePath: "/studio",
+      controlUiBasePath: "/tracevane",
     });
 
     assert.equal(deep.ok, false);
     assert.equal(deep.connected, true);
-    assert.match(deep.error, /\/studio returned HTTP 404/);
+    assert.match(deep.error, /\/tracevane returned HTTP 404/);
   } finally {
     await closeServer(server);
   }
@@ -375,10 +375,10 @@ test("gateway service status parser detects service hosting repair cases", () =>
   assert.ok(assessment.reasons.includes("gateway_port_mismatch"));
 });
 
-test("studio web bundle inspection detects missing and rebuilt static assets", () => {
+test("tracevane web bundle inspection detects missing and rebuilt static assets", () => {
   const config = makeConfig();
 
-  const missing = inspectStudioWebBundle(config);
+  const missing = inspectTracevaneWebBundle(config);
   assert.equal(missing.ok, false);
   assert.deepEqual(missing.missing, ["webDistDir", "index.html", "assets"]);
 
@@ -387,7 +387,7 @@ test("studio web bundle inspection detects missing and rebuilt static assets", (
   fs.writeFileSync(path.join(config.webDistDir, "index.html"), "<div id=\"app\"></div>\n", "utf8");
   fs.writeFileSync(path.join(assetsDir, "index-test.js"), "console.log('ok');\n", "utf8");
 
-  const ready = inspectStudioWebBundle(config);
+  const ready = inspectTracevaneWebBundle(config);
   assert.equal(ready.ok, true);
   assert.equal(ready.assetCount, 1);
   assert.deepEqual(ready.missing, []);
@@ -395,7 +395,7 @@ test("studio web bundle inspection detects missing and rebuilt static assets", (
 
 test("recovery history and config backup lists are paginated", () => {
   const config = makeConfig();
-  const backupsDir = path.join(config.openclawRoot, "studio", "recovery", "backups");
+  const backupsDir = path.join(config.openclawRoot, "tracevane", "recovery", "backups");
   fs.mkdirSync(backupsDir, { recursive: true });
 
   for (let index = 0; index < 15; index += 1) {
@@ -445,8 +445,8 @@ test("plugin repair disables bad entries and removes missing absolute load paths
         message: "plugin alpha failed to load",
       },
       {
-        path: "plugins.entries.studio",
-        message: "plugin studio failed to load",
+        path: "plugins.entries.tracevane",
+        message: "plugin tracevane failed to load",
       },
     ]),
   ];
@@ -456,13 +456,13 @@ test("plugin repair disables bad entries and removes missing absolute load paths
   assert.ok(changedKeys.includes("plugins.load.paths"));
   assert.ok(changedKeys.includes("plugins.entries.alpha.enabled"));
   assert.equal(repaired.plugins.entries.alpha.enabled, false);
-  assert.equal(repaired.plugins.entries.studio.enabled, true);
+  assert.equal(repaired.plugins.entries.tracevane.enabled, true);
   assert.deepEqual(repaired.plugins.load.paths, [config.projectRoot]);
 });
 
 test("recovery repair migrates gateway auth token to env SecretRef and syncs runtime env files", () => {
   const config = makeConfig();
-  const secretPath = path.join(config.openclawRoot, "studio-local-secrets.json");
+  const secretPath = path.join(config.openclawRoot, "tracevane-local-secrets.json");
   fs.writeFileSync(
     config.openclawConfigFile,
     `${JSON.stringify(
@@ -475,7 +475,7 @@ test("recovery repair migrates gateway auth token to env SecretRef and syncs run
         },
         secrets: {
           providers: {
-            "studio-local": {
+            "tracevane-local": {
               source: "file",
               path: secretPath,
               mode: "json",
@@ -518,7 +518,7 @@ test("recovery repair migrates gateway auth token to env SecretRef and syncs run
   assert.ok(changedKeys.includes("gateway.systemd.env.OPENCLAW_GATEWAY_TOKEN"));
   assert.ok(changedKeys.includes("env.OPENCLAW_DISCORD_BOT_TOKEN"));
   assert.ok(changedKeys.includes("gateway.systemd.env.OPENCLAW_DISCORD_BOT_TOKEN"));
-  assert.ok(changedKeys.includes("secrets.providers.studio-local.gatewayAuthToken"));
+  assert.ok(changedKeys.includes("secrets.providers.tracevane-local.gatewayAuthToken"));
   assert.deepEqual(repaired.gateway.auth.token, {
     source: "env",
     provider: "default",
@@ -539,9 +539,9 @@ test("recovery repair prunes deprecated OpenClaw plugin residue conservatively",
     `${JSON.stringify(
       {
         plugins: {
-          allow: ["studio", "discord", "acpx", "codex"],
+          allow: ["tracevane", "discord", "acpx", "codex"],
           entries: {
-            studio: { enabled: true },
+            tracevane: { enabled: true },
             discord: { enabled: true },
             acpx: { enabled: true },
             codex: { enabled: true },
@@ -603,8 +603,8 @@ test("recovery repair prunes deprecated OpenClaw plugin residue conservatively",
   assert.ok(changedKeys.includes("channels.discord"));
   assert.ok(changedKeys.includes("bindings.deprecatedPlugin"));
   assert.ok(changedKeys.includes("plugins.installs.legacyIndex"));
-  assert.deepEqual(repaired.plugins.allow, ["studio", "codex"]);
-  assert.equal(repaired.plugins.entries.studio.enabled, true);
+  assert.deepEqual(repaired.plugins.allow, ["tracevane", "codex"]);
+  assert.equal(repaired.plugins.entries.tracevane.enabled, true);
   assert.equal(repaired.plugins.entries.codex.enabled, true);
   assert.equal(repaired.plugins.entries.discord, undefined);
   assert.equal(repaired.plugins.entries.acpx, undefined);
@@ -624,9 +624,9 @@ test("recovery keeps current plugin install index when no deprecated plugin resi
     `${JSON.stringify(
       {
         plugins: {
-          allow: ["studio", "codex"],
+          allow: ["tracevane", "codex"],
           entries: {
-            studio: { enabled: true },
+            tracevane: { enabled: true },
             codex: { enabled: true },
           },
         },

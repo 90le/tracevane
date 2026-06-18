@@ -28,15 +28,15 @@ import type {
   TerminalGatewayEvent,
 } from '../../../../../types/terminal';
 import {
-  STUDIO_TERMINAL_GATEWAY_EVENT,
-  STUDIO_TERMINAL_GATEWAY_METHODS,
+  TRACEVANE_TERMINAL_GATEWAY_EVENT,
+  TRACEVANE_TERMINAL_GATEWAY_METHODS,
 } from '../../../../../types/terminal';
 import { useLocalePreference } from '../../shared/locale';
-import { getWebSocketBasePath, resolveStudioGatewayClientAuth } from '../../shared/api';
+import { getWebSocketBasePath, resolveTracevaneGatewayClientAuth } from '../../shared/api';
 import { GatewayBrowserClient, type GatewayEventFrame } from '../../shared/gateway-client';
 import {
-  getStudioRealtimeTransport,
-  getStudioTerminalDirectWebSocketUrl,
+  getTracevaneRealtimeTransport,
+  getTracevaneTerminalDirectWebSocketUrl,
   isTerminalRealtimeEnabled,
 } from '../../shared/runtime-config';
 import {
@@ -250,7 +250,7 @@ function applyTerminalAppearance(options: { forceTheme?: boolean; postLayout?: b
   scheduleTerminalRenderRefresh({ postLayout: options.postLayout ?? true });
 }
 
-const TERMINAL_SESSION_STORAGE_KEY = 'openclaw-studio.terminal.sid';
+const TERMINAL_SESSION_STORAGE_KEY = 'tracevane.terminal.sid';
 const TERMINAL_OUTPUT_FRAME_BATCH_LIMIT = 64 * 1024;
 const TERMINAL_OUTPUT_MAX_LATENCY_MS = 16;
 const TERMINAL_GATEWAY_COMMAND_RECOVERY_MS = 1_200;
@@ -674,9 +674,9 @@ function canUseTerminalHttpStream(): boolean {
 
 function resolveCurrentTransportPlan() {
   return resolveTerminalTransportPlan({
-    realtimeTransport: getStudioRealtimeTransport(),
+    realtimeTransport: getTracevaneRealtimeTransport(),
     realtimeEnabled: isTerminalRealtimeEnabled(),
-    directSocketUrl: getStudioTerminalDirectWebSocketUrl(),
+    directSocketUrl: getTracevaneTerminalDirectWebSocketUrl(),
     directSocketActive: terminalDirectSocketActive,
     directSocketFailed: terminalDirectSocketFailed,
     httpStreamFailed: terminalHttpStreamFailed,
@@ -1013,7 +1013,7 @@ async function attachGatewayTerminal(): Promise<void> {
   const skipReplay = await restorePersistedTranscriptIfNeeded(sid);
   const useHttpStream = canUseTerminalHttpStream();
   const response = await requestGatewayTerminal<TerminalGatewayAttachResponse>(
-    STUDIO_TERMINAL_GATEWAY_METHODS.attach,
+    TRACEVANE_TERMINAL_GATEWAY_METHODS.attach,
     {
       sid,
       ...buildSessionAttachMetadata(sid),
@@ -1149,7 +1149,7 @@ function connectGatewayClient(options: { force?: boolean } = {}): void {
   if (options.force) {
     terminalHttpStreamFailed = false;
   }
-  const auth = resolveStudioGatewayClientAuth();
+  const auth = resolveTracevaneGatewayClientAuth();
   if (!auth.gatewayUrl) {
     connected.value = false;
     setTerminalStatusMessage(
@@ -1177,9 +1177,9 @@ function connectGatewayClient(options: { force?: boolean } = {}): void {
     url: auth.gatewayUrl,
     token: auth.token,
     password: auth.password,
-    clientVersion: 'openclaw-studio-terminal',
+    clientVersion: 'tracevane-terminal',
     mode: 'webchat',
-    instanceId: `studio-terminal-${normalizeSessionId(getSessionId()) || 'pending'}`,
+    instanceId: `tracevane-terminal-${normalizeSessionId(getSessionId()) || 'pending'}`,
     connectDelayMs: 50,
     onHello: () => {
       if (gatewayClient !== client) return;
@@ -1193,7 +1193,7 @@ function connectGatewayClient(options: { force?: boolean } = {}): void {
     },
     onEvent: (event: GatewayEventFrame) => {
       if (gatewayClient !== client) return;
-      if (event.event !== STUDIO_TERMINAL_GATEWAY_EVENT) return;
+      if (event.event !== TRACEVANE_TERMINAL_GATEWAY_EVENT) return;
       if (!event.payload || typeof event.payload !== 'object' || Array.isArray(event.payload)) return;
       if (terminalHttpStreamActive && (event.payload as Record<string, unknown>).type === 'output') return;
       handleTerminalRealtimeEvent(event.payload as Record<string, unknown>);
@@ -1232,7 +1232,7 @@ function sendTerminalResize(cols: number, rows: number): boolean {
   if (usesGatewayRpc()) {
     if (!gatewayClient?.connected) return false;
     void requestGatewayTerminal(
-      STUDIO_TERMINAL_GATEWAY_METHODS.resize,
+      TRACEVANE_TERMINAL_GATEWAY_METHODS.resize,
       {
         sid: getSessionId(),
         cols: safeCols,
@@ -1285,7 +1285,7 @@ function sendTerminalInput(data: string): boolean {
     const lastSeenSeq = lastOutputSeq;
     const inputStartedAt = Date.now();
     terminalLastInputAt.value = inputStartedAt;
-    const sent = gatewayClient.notify(STUDIO_TERMINAL_GATEWAY_METHODS.input, {
+    const sent = gatewayClient.notify(TRACEVANE_TERMINAL_GATEWAY_METHODS.input, {
       sid: getSessionId(),
       data,
       lastSeq: lastOutputSeq || undefined,
@@ -1301,7 +1301,7 @@ function sendTerminalInput(data: string): boolean {
     }
 
     void requestGatewayTerminal(
-      STUDIO_TERMINAL_GATEWAY_METHODS.input,
+      TRACEVANE_TERMINAL_GATEWAY_METHODS.input,
       {
         sid: getSessionId(),
         data,
@@ -1378,7 +1378,7 @@ function startHeartbeat(): void {
     if (usesGatewayRpc()) {
       if (!gatewayClient?.connected) return;
       void requestGatewayTerminal(
-        STUDIO_TERMINAL_GATEWAY_METHODS.heartbeat,
+        TRACEVANE_TERMINAL_GATEWAY_METHODS.heartbeat,
         {
           sid: getSessionId(),
           lastSeq: lastOutputSeq || undefined,
@@ -1427,7 +1427,7 @@ async function connectWs(options: { force?: boolean } = {}): Promise<void> {
     return;
   }
   const useDirectTerminalSocket = canUseDirectTerminalSocket();
-  if (getStudioRealtimeTransport() === 'gateway-rpc' && !useDirectTerminalSocket) {
+  if (getTracevaneRealtimeTransport() === 'gateway-rpc' && !useDirectTerminalSocket) {
     connectGatewayClient(options);
     return;
   }
@@ -1436,7 +1436,7 @@ async function connectWs(options: { force?: boolean } = {}): Promise<void> {
 
   terminalDirectSocketActive = useDirectTerminalSocket;
   const directSocketUrl = useDirectTerminalSocket
-    ? getStudioTerminalDirectWebSocketUrl()
+    ? getTracevaneTerminalDirectWebSocketUrl()
     : '';
   const socketUrl = buildTerminalSocketUrl({
     protocol: window.location.protocol === 'https:' ? 'wss:' : 'ws:',
@@ -1549,7 +1549,7 @@ function clearTerminal(): void {
   if (usesGatewayRpc()) {
     if (gatewayClient?.connected) {
       void requestGatewayTerminal(
-        STUDIO_TERMINAL_GATEWAY_METHODS.clear,
+        TRACEVANE_TERMINAL_GATEWAY_METHODS.clear,
         {
           sid: getSessionId(),
           lastSeq: lastOutputSeq || undefined,
@@ -1852,7 +1852,7 @@ onBeforeUnmount(() => {
   termContainer.value?.removeEventListener('mousedown', focusTerminal);
   if (gatewayClient?.connected) {
     void requestGatewayTerminal(
-      STUDIO_TERMINAL_GATEWAY_METHODS.detach,
+      TRACEVANE_TERMINAL_GATEWAY_METHODS.detach,
       { sid: getSessionId() },
     ).catch(() => {
       // ignore

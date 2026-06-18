@@ -125,11 +125,11 @@
               <div class="form-grid">
                 <label class="form-field">
                   <span class="form-label">{{ text('默认模型', 'Default model') }}</span>
-                  <StudioSelect v-model="form.defaults.model" :options="modelSelectOptions" :placeholder="text('选择默认模型', 'Select default model')" />
+                  <TracevaneSelect v-model="form.defaults.model" :options="modelSelectOptions" :placeholder="text('选择默认模型', 'Select default model')" />
                 </label>
                 <label class="form-field">
                   <span class="form-label">{{ text('默认图片模型', 'Default image model') }}</span>
-                  <StudioSelect v-model="form.defaults.imageModel" :options="imageModelSelectOptions" :placeholder="text('选择图片模型', 'Select image model')" />
+                  <TracevaneSelect v-model="form.defaults.imageModel" :options="imageModelSelectOptions" :placeholder="text('选择图片模型', 'Select image model')" />
                   <span class="field-hint">{{ text('优先从具备 `image` 能力的模型中选取，避免工具运行时临时降级。', 'Prefer models with image capability to avoid runtime downgrades.') }}</span>
                 </label>
               </div>
@@ -214,7 +214,7 @@
                 <div class="form-grid">
                   <label class="form-field">
                     <span class="form-label">{{ text('全局心跳策略', 'Global heartbeat policy') }}</span>
-                    <StudioSelect v-model="form.defaults.heartbeatMode" :options="choiceToSelectOptions(heartbeatModeOptions)" />
+                    <TracevaneSelect v-model="form.defaults.heartbeatMode" :options="choiceToSelectOptions(heartbeatModeOptions)" />
                     <span class="field-hint">{{ text('禁用会持久保存 every: "0m"；不覆盖会移除 every，但不等于关闭宿主默认心跳。', 'Disabled persists every: "0m"; no override removes every, but does not disable host defaults.') }}</span>
                   </label>
                   <label class="form-field">
@@ -255,7 +255,7 @@
                   <div class="form-grid">
                     <label class="form-field">
                       <span class="form-label">{{ text('主模型', 'Primary model') }}</span>
-                      <StudioSelect v-model="form.defaults.imageGenerationModel" :options="modelSelectOptions" :placeholder="text('选择模型', 'Select model')" />
+                      <TracevaneSelect v-model="form.defaults.imageGenerationModel" :options="modelSelectOptions" :placeholder="text('选择模型', 'Select model')" />
                     </label>
                   </div>
                   <details class="config-collapsible" :open="form.defaults.imageGenerationModelFallback.length > 0">
@@ -266,7 +266,7 @@
                     <div v-if="form.defaults.imageGenerationModelFallback.length" class="fallback-list fallback-list-spaced">
                       <div v-for="(model, index) in form.defaults.imageGenerationModelFallback" :key="`image-gen-${index}`" class="fallback-row">
                         <span class="fallback-index">{{ index + 1 }}</span>
-                        <StudioSelect
+                        <TracevaneSelect
                           v-model="form.defaults.imageGenerationModelFallback[index]"
                           :options="toSelectOptions(filteredFallbackOptions(form.defaults.imageGenerationModel, form.defaults.imageGenerationModelFallback, index, modelOptions))"
                           :placeholder="text('选择回退模型', 'Select fallback model')"
@@ -290,7 +290,7 @@
                   <div class="form-grid">
                     <label class="form-field">
                       <span class="form-label">{{ text('主模型', 'Primary model') }}</span>
-                      <StudioSelect v-model="form.defaults.videoGenerationModel" :options="modelSelectOptions" :placeholder="text('选择模型', 'Select model')" />
+                      <TracevaneSelect v-model="form.defaults.videoGenerationModel" :options="modelSelectOptions" :placeholder="text('选择模型', 'Select model')" />
                     </label>
                   </div>
                   <details class="config-collapsible" :open="form.defaults.videoGenerationModelFallback.length > 0">
@@ -301,7 +301,7 @@
                     <div v-if="form.defaults.videoGenerationModelFallback.length" class="fallback-list fallback-list-spaced">
                       <div v-for="(model, index) in form.defaults.videoGenerationModelFallback" :key="`video-gen-${index}`" class="fallback-row">
                         <span class="fallback-index">{{ index + 1 }}</span>
-                        <StudioSelect
+                        <TracevaneSelect
                           v-model="form.defaults.videoGenerationModelFallback[index]"
                           :options="toSelectOptions(filteredFallbackOptions(form.defaults.videoGenerationModel, form.defaults.videoGenerationModelFallback, index, modelOptions))"
                           :placeholder="text('选择回退模型', 'Select fallback model')"
@@ -325,7 +325,7 @@
                   <div class="form-grid">
                     <label class="form-field">
                       <span class="form-label">{{ text('主模型', 'Primary model') }}</span>
-                      <StudioSelect v-model="form.defaults.musicGenerationModel" :options="modelSelectOptions" :placeholder="text('选择模型', 'Select model')" />
+                      <TracevaneSelect v-model="form.defaults.musicGenerationModel" :options="modelSelectOptions" :placeholder="text('选择模型', 'Select model')" />
                     </label>
                   </div>
                   <details class="config-collapsible" :open="form.defaults.musicGenerationModelFallback.length > 0">
@@ -336,7 +336,7 @@
                     <div v-if="form.defaults.musicGenerationModelFallback.length" class="fallback-list fallback-list-spaced">
                       <div v-for="(model, index) in form.defaults.musicGenerationModelFallback" :key="`music-gen-${index}`" class="fallback-row">
                         <span class="fallback-index">{{ index + 1 }}</span>
-                        <StudioSelect
+                        <TracevaneSelect
                           v-model="form.defaults.musicGenerationModelFallback[index]"
                           :options="toSelectOptions(filteredFallbackOptions(form.defaults.musicGenerationModel, form.defaults.musicGenerationModelFallback, index, modelOptions))"
                           :placeholder="text('选择回退模型', 'Select fallback model')"
@@ -360,7 +360,7 @@
                   <div class="form-grid">
                     <label class="form-field">
                       <span class="form-label">{{ text('主模型', 'Primary model') }}</span>
-                      <StudioSelect v-model="form.defaults.pdfModel" :options="modelSelectOptions" :placeholder="text('选择模型', 'Select model')" />
+                      <TracevaneSelect v-model="form.defaults.pdfModel" :options="modelSelectOptions" :placeholder="text('选择模型', 'Select model')" />
                     </label>
                   </div>
                   <details class="config-collapsible" :open="form.defaults.pdfModelFallback.length > 0">
@@ -371,7 +371,7 @@
                     <div v-if="form.defaults.pdfModelFallback.length" class="fallback-list fallback-list-spaced">
                       <div v-for="(model, index) in form.defaults.pdfModelFallback" :key="`pdf-${index}`" class="fallback-row">
                         <span class="fallback-index">{{ index + 1 }}</span>
-                        <StudioSelect
+                        <TracevaneSelect
                           v-model="form.defaults.pdfModelFallback[index]"
                           :options="toSelectOptions(filteredFallbackOptions(form.defaults.pdfModel, form.defaults.pdfModelFallback, index, modelOptions))"
                           :placeholder="text('选择回退模型', 'Select fallback model')"
@@ -429,7 +429,7 @@
             <div v-if="form.defaults.modelFallback.length" class="fallback-list fallback-list-spaced">
               <div v-for="(model, index) in form.defaults.modelFallback" :key="`model-${index}`" class="fallback-row">
                 <span class="fallback-index">{{ index + 1 }}</span>
-                <StudioSelect
+                <TracevaneSelect
                   v-model="form.defaults.modelFallback[index]"
                   :options="toSelectOptions(filteredFallbackOptions(form.defaults.model, form.defaults.modelFallback, index, modelOptions))"
                   :placeholder="text('选择回退模型', 'Select fallback model')"
@@ -454,7 +454,7 @@
             <div v-if="form.defaults.imageModelFallback.length" class="fallback-list fallback-list-spaced">
               <div v-for="(model, index) in form.defaults.imageModelFallback" :key="`image-${index}`" class="fallback-row">
                 <span class="fallback-index">{{ index + 1 }}</span>
-                <StudioSelect
+                <TracevaneSelect
                   v-model="form.defaults.imageModelFallback[index]"
                   :options="toSelectOptions(filteredFallbackOptions(form.defaults.imageModel, form.defaults.imageModelFallback, index, imageModelOptions))"
                   :placeholder="text('选择图片回退模型', 'Select image fallback model')"
@@ -503,7 +503,7 @@
                 </label>
                 <label class="form-field">
                   <span class="form-label">{{ text('压缩专用模型', 'Compaction-only model') }}</span>
-                  <StudioSelect
+                  <TracevaneSelect
                     v-model="form.compaction.model"
                     :options="[{ value: '', label: text('跟随主模型', 'Follow primary model') }, ...modelSelectOptions]"
                     :placeholder="text('选择压缩专用模型', 'Select compaction model')"
@@ -688,7 +688,7 @@
               </div>
 
               <label class="option-row config-spotlight-toggle">
-                <input v-model="form.studioChat.allowHostManagementExecInStudioChat" class="form-checkbox" type="checkbox" />
+                <input v-model="form.tracevaneChat.allowHostManagementExecInTracevaneChat" class="form-checkbox" type="checkbox" />
                 <div>
                   <strong>{{ text('允许在 Tracevane Chat 中启用宿主管理 Exec', 'Allow host-management Exec in Tracevane Chat') }}</strong>
                   <span>
@@ -1193,7 +1193,7 @@
                     <div class="settings-inline-grid">
                       <label class="form-field">
                         <span class="form-label">{{ text('渠道 ID', 'Channel ID') }}</span>
-                        <StudioSelect
+                        <TracevaneSelect
                           v-model="entry.channelId"
                           :options="queueChannelSelectOptions(entry.channelId)"
                           :placeholder="text('选择渠道', 'Select channel')"
@@ -1201,7 +1201,7 @@
                       </label>
                       <label class="form-field">
                         <span class="form-label">{{ text('队列模式', 'Queue mode') }}</span>
-                        <StudioSelect
+                        <TracevaneSelect
                           v-model="entry.mode"
                           :options="effectiveQueueModeOptions"
                           :placeholder="text('选择队列模式', 'Select queue mode')"
@@ -1354,7 +1354,7 @@
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('API 类型', 'API type') }}</span>
-                    <StudioSelect
+                    <TracevaneSelect
                       v-model="activeProvider.api"
                       :options="[{ value: '', label: text('未指定', 'Unset') }, ...providerApiOptions.map((option) => ({ value: option, label: option }))]"
                       :placeholder="text('选择 API 类型', 'Select API type')"
@@ -1565,7 +1565,7 @@
                     </label>
                     <label class="form-field">
                       <span class="form-label">{{ text('Node 管理器', 'Node manager') }}</span>
-                      <StudioSelect v-model="form.mcpSkills.skillsNodeManager" :options="nodeManagerOptions" :placeholder="text('不覆盖', 'No override')" />
+                      <TracevaneSelect v-model="form.mcpSkills.skillsNodeManager" :options="nodeManagerOptions" :placeholder="text('不覆盖', 'No override')" />
                       <span class="field-hint">{{ text('对应 skills.install.nodeManager，只允许 npm / pnpm / yarn / bun。', 'Maps to skills.install.nodeManager; only npm / pnpm / yarn / bun are valid.') }}</span>
                     </label>
                     <label class="form-field">
@@ -1737,11 +1737,11 @@
                 <div class="form-grid">
                   <label class="form-field">
                     <span class="form-label">{{ text('上下文注入策略', 'Context Injection') }}</span>
-                    <StudioSelect v-model="form.defaults.contextInjection" :options="choiceToSelectOptions(contextInjectionOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <TracevaneSelect v-model="form.defaults.contextInjection" :options="choiceToSelectOptions(contextInjectionOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('截断告警模式', 'Truncation Warning Mode') }}</span>
-                    <StudioSelect v-model="form.defaults.bootstrapPromptTruncationWarning" :options="choiceToSelectOptions(truncationWarningOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <TracevaneSelect v-model="form.defaults.bootstrapPromptTruncationWarning" :options="choiceToSelectOptions(truncationWarningOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('用户时区', 'User Timezone') }}</span>
@@ -1749,7 +1749,7 @@
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('时间格式', 'Time Format') }}</span>
-                    <StudioSelect v-model="form.defaults.timeFormat" :options="choiceToSelectOptions(timeFormatOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <TracevaneSelect v-model="form.defaults.timeFormat" :options="choiceToSelectOptions(timeFormatOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('消息包络时区', 'Envelope Timezone') }}</span>
@@ -1757,11 +1757,11 @@
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('绝对时间戳', 'Envelope Timestamp') }}</span>
-                    <StudioSelect v-model="form.defaults.envelopeTimestamp" :options="choiceToSelectOptions(envelopeToggleOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <TracevaneSelect v-model="form.defaults.envelopeTimestamp" :options="choiceToSelectOptions(envelopeToggleOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('耗时信息', 'Envelope Elapsed') }}</span>
-                    <StudioSelect v-model="form.defaults.envelopeElapsed" :options="choiceToSelectOptions(envelopeToggleOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <TracevaneSelect v-model="form.defaults.envelopeElapsed" :options="choiceToSelectOptions(envelopeToggleOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('上下文窗口 Token', 'Context Tokens') }}</span>
@@ -1785,11 +1785,11 @@
                 <div class="form-grid">
                   <label class="form-field">
                     <span class="form-label">{{ text('子 Agent 默认模型', 'Sub-agent default model') }}</span>
-                    <StudioSelect v-model="form.defaults.subagentModel" :options="[{ value: '', label: text('未设置', 'Unset') }, ...modelSelectOptions]" :placeholder="text('未设置', 'Unset')" />
+                    <TracevaneSelect v-model="form.defaults.subagentModel" :options="[{ value: '', label: text('未设置', 'Unset') }, ...modelSelectOptions]" :placeholder="text('未设置', 'Unset')" />
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('子 Agent 思考默认值', 'Sub-agent thinking default') }}</span>
-                    <StudioSelect v-model="form.defaults.subagentThinking" :options="choiceToSelectOptions(subagentThinkingOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <TracevaneSelect v-model="form.defaults.subagentThinking" :options="choiceToSelectOptions(subagentThinkingOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('子 Agent 运行超时秒', 'Sub-agent run timeout seconds') }}</span>
@@ -1797,7 +1797,7 @@
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('输入中指示模式', 'Typing Mode') }}</span>
-                    <StudioSelect v-model="form.defaults.typingMode" :options="choiceToSelectOptions(typingModeOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <TracevaneSelect v-model="form.defaults.typingMode" :options="choiceToSelectOptions(typingModeOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('Typing 指示间隔秒', 'Typing Interval Seconds') }}</span>
@@ -1805,15 +1805,15 @@
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('高权限默认值', 'Elevated Default') }}</span>
-                    <StudioSelect v-model="form.defaults.elevated" :options="choiceToSelectOptions(elevatedOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <TracevaneSelect v-model="form.defaults.elevated" :options="choiceToSelectOptions(elevatedOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('分块输出默认值', 'Block Streaming Default') }}</span>
-                    <StudioSelect v-model="form.defaults.blockStreaming" :options="choiceToSelectOptions(blockStreamingOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <TracevaneSelect v-model="form.defaults.blockStreaming" :options="choiceToSelectOptions(blockStreamingOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('分块边界', 'Block Streaming Break') }}</span>
-                    <StudioSelect v-model="form.defaults.blockStreamingBreak" :options="choiceToSelectOptions(blockStreamingBreakOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <TracevaneSelect v-model="form.defaults.blockStreamingBreak" :options="choiceToSelectOptions(blockStreamingBreakOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
                 </div>
               </section>
@@ -1948,11 +1948,11 @@
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('Embedded OpenClaw 项目设置策略', 'Embedded OpenClaw project settings policy') }}</span>
-                    <StudioSelect v-model="form.defaults.embeddedAgentProjectSettingsPolicy" :options="choiceToSelectOptions(embeddedAgentPolicyOptions)" :placeholder="text('未设置', 'Unset')" />
+                    <TracevaneSelect v-model="form.defaults.embeddedAgentProjectSettingsPolicy" :options="choiceToSelectOptions(embeddedAgentPolicyOptions)" :placeholder="text('未设置', 'Unset')" />
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('Embedded OpenClaw 执行契约', 'Embedded OpenClaw execution contract') }}</span>
-                    <StudioSelect v-model="form.defaults.embeddedAgentExecutionContract" :options="choiceToSelectOptions(embeddedAgentExecutionContractOptions)" />
+                    <TracevaneSelect v-model="form.defaults.embeddedAgentExecutionContract" :options="choiceToSelectOptions(embeddedAgentExecutionContractOptions)" />
                   </label>
                 </div>
               </section>
@@ -2011,7 +2011,7 @@ import {
 import { fetchConfigChannelSummary, fetchConfigSummary, fetchProviderSecret, saveConfig } from './api';
 import { useLocalePreference } from '../../shared/locale';
 import { useThemePreference } from '../../shared/theme';
-import StudioSelect, { type StudioSelectOption } from '../../shared/components/StudioSelect.vue';
+import TracevaneSelect, { type TracevaneSelectOption } from '../../shared/components/TracevaneSelect.vue';
 import GatewayConfigTab from './GatewayConfigTab.vue';
 import AcpConfigTab from './AcpConfigTab.vue';
 import CommandsHooksConfigTab from './CommandsHooksConfigTab.vue';
@@ -2182,8 +2182,8 @@ interface ConfigFormState {
     fsWorkspaceOnly: boolean;
     extraJson: string;
   };
-  studioChat: {
-    allowHostManagementExecInStudioChat: boolean;
+  tracevaneChat: {
+    allowHostManagementExecInTracevaneChat: boolean;
   };
   execApprovals: {
     security: string;
@@ -2268,7 +2268,7 @@ interface ConfigTabGroup {
   items: ConfigWorkspaceSection[];
 }
 
-const CONFIG_ACTIVE_TAB_STORAGE_KEY = 'openclaw-studio.config.activeTab';
+const CONFIG_ACTIVE_TAB_STORAGE_KEY = 'tracevane.config.activeTab';
 
 function normalizeConfigTabId(value: unknown): ConfigTabId {
   const tab = typeof value === 'string' ? value.trim() : '';
@@ -2405,7 +2405,7 @@ const providerApiOptions = [
   'ollama',
   'azure-openai-responses',
 ];
-const nodeManagerOptions = computed<StudioSelectOption[]>(() => [
+const nodeManagerOptions = computed<TracevaneSelectOption[]>(() => [
   { value: '', label: text('不覆盖', 'No override') },
   { value: 'npm', label: 'npm' },
   { value: 'pnpm', label: 'pnpm' },
@@ -2859,8 +2859,8 @@ const form = reactive<ConfigFormState>({
     fsWorkspaceOnly: false,
     extraJson: '',
   },
-  studioChat: {
-    allowHostManagementExecInStudioChat: false,
+  tracevaneChat: {
+    allowHostManagementExecInTracevaneChat: false,
   },
   execApprovals: {
     security: 'deny',
@@ -3075,7 +3075,7 @@ function currentDomainFingerprints(): Record<string, string> {
     security: domainFingerprint({
       sandbox: form.sandbox,
       tools: form.tools,
-      studioChat: form.studioChat,
+      tracevaneChat: form.tracevaneChat,
       execApprovals: form.execApprovals,
     }),
     session: domainFingerprint({
@@ -3340,10 +3340,10 @@ function providerApiKeyDisplay(provider: ProviderFormState): string {
   return provider.hasApiKey ? '••••••••••' : '';
 }
 
-function readStudioChatExecConfigFlag(summary: ConfigSummaryPayload): boolean {
-  const studioConfig = summary.plugins?.entries?.studio?.config as Record<string, unknown> | undefined;
-  const chatConfig = studioConfig?.chat as Record<string, unknown> | undefined;
-  return chatConfig?.allowHostManagementExecInStudioChat === true;
+function readTracevaneChatExecConfigFlag(summary: ConfigSummaryPayload): boolean {
+  const tracevaneConfig = summary.plugins?.entries?.tracevane?.config as Record<string, unknown> | undefined;
+  const chatConfig = tracevaneConfig?.chat as Record<string, unknown> | undefined;
+  return chatConfig?.allowHostManagementExecInTracevaneChat === true;
 }
 
 async function toggleProviderApiKey(provider: ProviderFormState): Promise<void> {
@@ -3475,7 +3475,7 @@ function hydrateForm(summary: ConfigSummaryPayload) {
   form.tools.execTimeoutSec = summary.tools.execTimeoutSec;
   form.tools.fsWorkspaceOnly = summary.tools.fsWorkspaceOnly;
   form.tools.extraJson = formatJsonEditor(summary.tools.extra);
-  form.studioChat.allowHostManagementExecInStudioChat = readStudioChatExecConfigFlag(summary);
+  form.tracevaneChat.allowHostManagementExecInTracevaneChat = readTracevaneChatExecConfigFlag(summary);
   form.execApprovals.security = summary.execApprovals.defaults.security;
   form.execApprovals.ask = summary.execApprovals.defaults.ask;
   form.execApprovals.askFallback = summary.execApprovals.defaults.askFallback;
@@ -3775,11 +3775,11 @@ function buildPayload(): ConfigUpdatePayload {
     },
     plugins: {
       entries: {
-        studio: {
+        tracevane: {
           enabled: true,
           config: {
             chat: {
-              allowHostManagementExecInStudioChat: form.studioChat.allowHostManagementExecInStudioChat === true,
+              allowHostManagementExecInTracevaneChat: form.tracevaneChat.allowHostManagementExecInTracevaneChat === true,
             },
           },
         },
@@ -4042,11 +4042,11 @@ const imageModelOptions = computed(() => {
   return Array.from(new Set([...imageCapableModels.value, ...modelOptions.value])).sort();
 });
 
-function toSelectOptions(values: string[]): StudioSelectOption[] {
+function toSelectOptions(values: string[]): TracevaneSelectOption[] {
   return values.map((value) => ({ value, label: value }));
 }
 
-function choiceToSelectOptions(options: ChoiceOption[]): StudioSelectOption[] {
+function choiceToSelectOptions(options: ChoiceOption[]): TracevaneSelectOption[] {
   return options.map((option) => ({
     value: option.value,
     label: option.label,
@@ -4104,7 +4104,7 @@ function tryParseJsonObject(value: string): Record<string, unknown> | null {
 
 const modelSelectOptions = computed(() => toSelectOptions(modelOptions.value));
 const imageModelSelectOptions = computed(() => toSelectOptions(imageModelOptions.value));
-function queueChannelSelectOptions(currentValue = ''): StudioSelectOption[] {
+function queueChannelSelectOptions(currentValue = ''): TracevaneSelectOption[] {
   const base = Array.from(new Set([...loadedChannelIds.value, currentValue].filter(Boolean))).sort();
   return base.map((value) => ({
     value,

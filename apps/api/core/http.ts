@@ -1,7 +1,7 @@
 import type http from 'node:http';
 import fs from 'node:fs';
 
-export const STUDIO_CHAT_DEV_ALLOWED_ORIGINS = [
+export const TRACEVANE_CHAT_DEV_ALLOWED_ORIGINS = [
   'http://127.0.0.1:5176',
   'http://localhost:5176',
 ] as const;
@@ -24,15 +24,15 @@ function setNoSniffHeader(res: http.ServerResponse): void {
   }
 }
 
-export function isStudioChatApiPath(pathname: string): boolean {
+export function isTracevaneChatApiPath(pathname: string): boolean {
   return pathname === '/api/chat/health' || pathname.startsWith('/api/chat/');
 }
 
-export function isStudioChatWsPath(pathname: string): boolean {
+export function isTracevaneChatWsPath(pathname: string): boolean {
   return pathname === '/ws/chat';
 }
 
-export function resolveStudioChatCorsOrigin(req: http.IncomingMessage): string | null {
+export function resolveTracevaneChatCorsOrigin(req: http.IncomingMessage): string | null {
   const host = String(req.headers.host || '127.0.0.1').trim();
   const requestedOrigin = typeof req.headers.origin === 'string' ? req.headers.origin.trim() : '';
   const sameOriginHttp = `http://${host}`;
@@ -43,7 +43,7 @@ export function resolveStudioChatCorsOrigin(req: http.IncomingMessage): string |
   const allowedOrigins = new Set<string>([
     sameOriginHttp,
     sameOriginHttps,
-    ...STUDIO_CHAT_DEV_ALLOWED_ORIGINS,
+    ...TRACEVANE_CHAT_DEV_ALLOWED_ORIGINS,
   ]);
 
   return allowedOrigins.has(requestedOrigin) ? requestedOrigin : null;

@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { createStandaloneStudioConfig } from '../../dist/apps/api/config.js';
+import { createStandaloneTracevaneConfig } from '../../dist/apps/api/config.js';
 import { loadGatewayAuthContext } from '../../dist/apps/api/modules/chat/gateway-auth.js';
 
 function writeJson(file, value) {
@@ -38,7 +38,7 @@ test('gateway auth context requests full operator scopes even when persisted dev
     },
   });
 
-  const config = createStandaloneStudioConfig({
+  const config = createStandaloneTracevaneConfig({
     openclawRoot: root,
     openclawConfigFile: path.join(root, 'openclaw.json'),
   });
@@ -52,8 +52,8 @@ test('gateway auth context requests full operator scopes even when persisted dev
 
 test('gateway auth context resolves env SecretRef tokens', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-gateway-auth-context-secretref-'));
-  const oldToken = process.env.STUDIO_TEST_GATEWAY_TOKEN;
-  process.env.STUDIO_TEST_GATEWAY_TOKEN = 'shared-secretref-token';
+  const oldToken = process.env.TRACEVANE_TEST_GATEWAY_TOKEN;
+  process.env.TRACEVANE_TEST_GATEWAY_TOKEN = 'shared-secretref-token';
   try {
     writeJson(path.join(root, 'openclaw.json'), {
       gateway: {
@@ -61,7 +61,7 @@ test('gateway auth context resolves env SecretRef tokens', () => {
           token: {
             source: 'env',
             provider: 'default',
-            id: 'STUDIO_TEST_GATEWAY_TOKEN',
+            id: 'TRACEVANE_TEST_GATEWAY_TOKEN',
           },
         },
       },
@@ -83,7 +83,7 @@ test('gateway auth context resolves env SecretRef tokens', () => {
       },
     });
 
-    const config = createStandaloneStudioConfig({
+    const config = createStandaloneTracevaneConfig({
       openclawRoot: root,
       openclawConfigFile: path.join(root, 'openclaw.json'),
     });
@@ -91,8 +91,8 @@ test('gateway auth context resolves env SecretRef tokens', () => {
 
     assert.equal(auth.gatewayToken, 'shared-secretref-token');
   } finally {
-    if (oldToken == null) delete process.env.STUDIO_TEST_GATEWAY_TOKEN;
-    else process.env.STUDIO_TEST_GATEWAY_TOKEN = oldToken;
+    if (oldToken == null) delete process.env.TRACEVANE_TEST_GATEWAY_TOKEN;
+    else process.env.TRACEVANE_TEST_GATEWAY_TOKEN = oldToken;
   }
 });
 
@@ -105,7 +105,7 @@ test('gateway auth context resolves file SecretRef tokens', () => {
   writeJson(path.join(root, 'openclaw.json'), {
     secrets: {
       providers: {
-        'studio-local': {
+        'tracevane-local': {
           source: 'file',
           path: secretFile,
           mode: 'json',
@@ -116,7 +116,7 @@ test('gateway auth context resolves file SecretRef tokens', () => {
       auth: {
         token: {
           source: 'file',
-          provider: 'studio-local',
+          provider: 'tracevane-local',
           id: '/gatewayAuthToken',
         },
       },
@@ -139,7 +139,7 @@ test('gateway auth context resolves file SecretRef tokens', () => {
     },
   });
 
-  const config = createStandaloneStudioConfig({
+  const config = createStandaloneTracevaneConfig({
     openclawRoot: root,
     openclawConfigFile: path.join(root, 'openclaw.json'),
   });
@@ -150,17 +150,17 @@ test('gateway auth context resolves file SecretRef tokens', () => {
 
 test('gateway auth context resolves env SecretRefs from the OpenClaw env file', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-gateway-auth-context-env-file-secretref-'));
-  const oldToken = process.env.STUDIO_TEST_GATEWAY_ENV_FILE_TOKEN;
-  delete process.env.STUDIO_TEST_GATEWAY_ENV_FILE_TOKEN;
+  const oldToken = process.env.TRACEVANE_TEST_GATEWAY_ENV_FILE_TOKEN;
+  delete process.env.TRACEVANE_TEST_GATEWAY_ENV_FILE_TOKEN;
   try {
-    fs.writeFileSync(path.join(root, '.env'), 'STUDIO_TEST_GATEWAY_ENV_FILE_TOKEN=shared-env-file-token\n');
+    fs.writeFileSync(path.join(root, '.env'), 'TRACEVANE_TEST_GATEWAY_ENV_FILE_TOKEN=shared-env-file-token\n');
     writeJson(path.join(root, 'openclaw.json'), {
       gateway: {
         auth: {
           token: {
             source: 'env',
             provider: 'default',
-            id: 'STUDIO_TEST_GATEWAY_ENV_FILE_TOKEN',
+            id: 'TRACEVANE_TEST_GATEWAY_ENV_FILE_TOKEN',
           },
         },
       },
@@ -182,7 +182,7 @@ test('gateway auth context resolves env SecretRefs from the OpenClaw env file', 
       },
     });
 
-    const config = createStandaloneStudioConfig({
+    const config = createStandaloneTracevaneConfig({
       openclawRoot: root,
       openclawConfigFile: path.join(root, 'openclaw.json'),
     });
@@ -190,7 +190,7 @@ test('gateway auth context resolves env SecretRefs from the OpenClaw env file', 
 
     assert.equal(auth.gatewayToken, 'shared-env-file-token');
   } finally {
-    if (oldToken == null) delete process.env.STUDIO_TEST_GATEWAY_ENV_FILE_TOKEN;
-    else process.env.STUDIO_TEST_GATEWAY_ENV_FILE_TOKEN = oldToken;
+    if (oldToken == null) delete process.env.TRACEVANE_TEST_GATEWAY_ENV_FILE_TOKEN;
+    else process.env.TRACEVANE_TEST_GATEWAY_ENV_FILE_TOKEN = oldToken;
   }
 });

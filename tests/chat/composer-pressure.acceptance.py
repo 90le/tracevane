@@ -14,7 +14,7 @@ from browser_surface import wait_for_active_session, wait_for_chat_surface
 from upload_request import read_upload_payload
 
 
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-composer-pressure-acceptance.png")
+SCREENSHOT = Path("/tmp/tracevane-chat-composer-pressure-acceptance.png")
 QUEUE_ITEM_COUNT = 8
 ATTACHMENT_COUNT = 8
 
@@ -98,7 +98,7 @@ def runtime(active_run_id: str | None):
 
 
 def write_temp_files(count: int) -> list[Path]:
-    root = Path(tempfile.mkdtemp(prefix="openclaw-studio-chat-pressure-"))
+    root = Path(tempfile.mkdtemp(prefix="tracevane-chat-pressure-"))
     paths: list[Path] = []
     for index in range(count):
         path = root / f"pressure-asset-{index + 1}.txt"
@@ -381,7 +381,7 @@ def main() -> None:
                     f"diagnostics={json.dumps(read_composer_diagnostics(page), ensure_ascii=False)}"
                 )
 
-        unbroken_token = "OPENCLAW_STUDIO_LONG_COMMAND_TOKEN_" + ("0123456789abcdef" * 96)
+        unbroken_token = "TRACEVANE_LONG_COMMAND_TOKEN_" + ("0123456789abcdef" * 96)
         long_draft = (
             "pressure draft "
             + ("long desktop IM draft line with markdown **bold** and resource context. " * 30)

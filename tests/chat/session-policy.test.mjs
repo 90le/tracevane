@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 
 import { buildChatSessionPermissions } from '../../dist/apps/api/modules/chat/session-policy.js';
 import {
-  buildStudioManagedRowFromRegistry,
-  buildStudioManagedSessionRow,
+  buildTracevaneManagedRowFromRegistry,
+  buildTracevaneManagedSessionRow,
 } from '../../dist/apps/api/modules/chat/session-model.js';
 
 test('observed_external remains read-only', () => {
@@ -17,11 +17,11 @@ test('observed_external remains read-only', () => {
   assert.equal(permissions.visibleInMvpRail, false);
 });
 
-test('studio registry restore preserves sessionId', () => {
-  const created = buildStudioManagedSessionRow('main', 'Tracevane chat · main', true);
+test('tracevane registry restore preserves sessionId', () => {
+  const created = buildTracevaneManagedSessionRow('main', 'Tracevane chat · main', true);
   assert.ok(created.sessionId);
 
-  const restored = buildStudioManagedRowFromRegistry({
+  const restored = buildTracevaneManagedRowFromRegistry({
     key: created.key,
     agentId: created.agentId,
     sessionId: created.sessionId,
@@ -32,5 +32,5 @@ test('studio registry restore preserves sessionId', () => {
 
   assert.equal(restored.sessionId, created.sessionId);
   assert.equal(restored.key, created.key);
-  assert.equal(restored.kind, 'studio_managed');
+  assert.equal(restored.kind, 'tracevane_managed');
 });

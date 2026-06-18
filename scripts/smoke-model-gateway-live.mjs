@@ -85,34 +85,34 @@ function positiveInt(value, fallback) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function createStudioConfig(root) {
+function createTracevaneConfig(root) {
   const openclawRoot = path.join(root, ".openclaw");
   fs.mkdirSync(openclawRoot, { recursive: true });
   return {
-    pluginId: "studio",
+    pluginId: "tracevane",
     pluginName: "Tracevane",
     version: "0.1.0",
     port: 3760,
     autoStart: true,
     openclawRoot,
     openclawConfigFile: path.join(openclawRoot, "openclaw.json"),
-    projectRoot: path.join(root, "studio"),
-    webDistDir: path.join(root, "studio/apps/web-vue/dist"),
+    projectRoot: path.join(root, "tracevane"),
+    webDistDir: path.join(root, "tracevane/apps/web-vue/dist"),
     gatewayPort: 31879,
     gatewayWsUrl: "ws://127.0.0.1:31879",
     gatewayControlUiBasePath: "",
     transport: {
       standalone: { enabled: true, port: 3760 },
-      gateway: { enabled: true, basePath: "/studio" },
+      gateway: { enabled: true, basePath: "/tracevane" },
     },
   };
 }
 
 async function createLiveContext(root, liveConfig) {
-  const { createStudioContext } = await import("../dist/apps/api/index.js");
-  const config = createStudioConfig(root);
+  const { createTracevaneContext } = await import("../dist/apps/api/index.js");
+  const config = createTracevaneConfig(root);
   fs.mkdirSync(config.projectRoot, { recursive: true });
-  const context = createStudioContext({
+  const context = createTracevaneContext({
     config,
     logger: { info() {}, warn() {}, error() {}, debug() {} },
     modelGatewayOptions: {
@@ -200,20 +200,20 @@ async function createLiveContext(root, liveConfig) {
 }
 
 function readLiveConfig() {
-  const model = envValue("TRACEVANE_GATEWAY_LIVE_BIGMODEL_MODEL", "STUDIO_GATEWAY_LIVE_BIGMODEL_MODEL") || DEFAULT_BIGMODEL_MODEL;
+  const model = envValue("TRACEVANE_GATEWAY_LIVE_BIGMODEL_MODEL", "TRACEVANE_GATEWAY_LIVE_BIGMODEL_MODEL") || DEFAULT_BIGMODEL_MODEL;
   return {
     bigmodel: {
-      apiKey: envValue("TRACEVANE_GATEWAY_LIVE_BIGMODEL_API_KEY", "STUDIO_GATEWAY_LIVE_BIGMODEL_API_KEY", "BIGMODEL_API_KEY", "ZHIPU_API_KEY"),
-      chatBaseUrl: trimTrailingSlash(envValue("TRACEVANE_GATEWAY_LIVE_BIGMODEL_CHAT_BASE_URL", "STUDIO_GATEWAY_LIVE_BIGMODEL_CHAT_BASE_URL") || DEFAULT_BIGMODEL_CHAT_BASE_URL),
-      anthropicBaseUrl: trimTrailingSlash(envValue("TRACEVANE_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_BASE_URL", "STUDIO_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_BASE_URL") || DEFAULT_BIGMODEL_ANTHROPIC_BASE_URL),
-      anthropicMessagesPath: normalizePath(envValue("TRACEVANE_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_MESSAGES_PATH", "STUDIO_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_MESSAGES_PATH") || "/v1/messages"),
-      chatModel: envValue("TRACEVANE_GATEWAY_LIVE_BIGMODEL_CHAT_MODEL", "STUDIO_GATEWAY_LIVE_BIGMODEL_CHAT_MODEL") || model,
-      anthropicModel: envValue("TRACEVANE_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_MODEL", "STUDIO_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_MODEL") || model,
+      apiKey: envValue("TRACEVANE_GATEWAY_LIVE_BIGMODEL_API_KEY", "TRACEVANE_GATEWAY_LIVE_BIGMODEL_API_KEY", "BIGMODEL_API_KEY", "ZHIPU_API_KEY"),
+      chatBaseUrl: trimTrailingSlash(envValue("TRACEVANE_GATEWAY_LIVE_BIGMODEL_CHAT_BASE_URL", "TRACEVANE_GATEWAY_LIVE_BIGMODEL_CHAT_BASE_URL") || DEFAULT_BIGMODEL_CHAT_BASE_URL),
+      anthropicBaseUrl: trimTrailingSlash(envValue("TRACEVANE_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_BASE_URL", "TRACEVANE_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_BASE_URL") || DEFAULT_BIGMODEL_ANTHROPIC_BASE_URL),
+      anthropicMessagesPath: normalizePath(envValue("TRACEVANE_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_MESSAGES_PATH", "TRACEVANE_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_MESSAGES_PATH") || "/v1/messages"),
+      chatModel: envValue("TRACEVANE_GATEWAY_LIVE_BIGMODEL_CHAT_MODEL", "TRACEVANE_GATEWAY_LIVE_BIGMODEL_CHAT_MODEL") || model,
+      anthropicModel: envValue("TRACEVANE_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_MODEL", "TRACEVANE_GATEWAY_LIVE_BIGMODEL_ANTHROPIC_MODEL") || model,
     },
     gmn: {
-      apiKey: envValue("TRACEVANE_GATEWAY_LIVE_GMN_API_KEY", "STUDIO_GATEWAY_LIVE_GMN_API_KEY", "GMN_API_KEY", "OPENAI_API_KEY"),
-      responsesBaseUrl: trimTrailingSlash(envValue("TRACEVANE_GATEWAY_LIVE_GMN_RESPONSES_BASE_URL", "STUDIO_GATEWAY_LIVE_GMN_RESPONSES_BASE_URL") || DEFAULT_GMN_RESPONSES_BASE_URL),
-      responsesModel: envValue("TRACEVANE_GATEWAY_LIVE_GMN_RESPONSES_MODEL", "STUDIO_GATEWAY_LIVE_GMN_RESPONSES_MODEL") || DEFAULT_GMN_RESPONSES_MODEL,
+      apiKey: envValue("TRACEVANE_GATEWAY_LIVE_GMN_API_KEY", "TRACEVANE_GATEWAY_LIVE_GMN_API_KEY", "GMN_API_KEY", "OPENAI_API_KEY"),
+      responsesBaseUrl: trimTrailingSlash(envValue("TRACEVANE_GATEWAY_LIVE_GMN_RESPONSES_BASE_URL", "TRACEVANE_GATEWAY_LIVE_GMN_RESPONSES_BASE_URL") || DEFAULT_GMN_RESPONSES_BASE_URL),
+      responsesModel: envValue("TRACEVANE_GATEWAY_LIVE_GMN_RESPONSES_MODEL", "TRACEVANE_GATEWAY_LIVE_GMN_RESPONSES_MODEL") || DEFAULT_GMN_RESPONSES_MODEL,
     },
   };
 }
@@ -236,9 +236,9 @@ function normalizePath(value) {
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }
 
-async function startStudioGatewayServer(context) {
-  const { createStudioRequestHandler } = await import("../dist/apps/api/index.js");
-  const handler = createStudioRequestHandler(context, { stripBasePath: "" });
+async function startTracevaneGatewayServer(context) {
+  const { createTracevaneRequestHandler } = await import("../dist/apps/api/index.js");
+  const handler = createTracevaneRequestHandler(context, { stripBasePath: "" });
   return startHttpServer(async (req, res) => {
     const handled = await handler(req, res);
     if (!handled && !res.writableEnded) {
@@ -610,7 +610,7 @@ async function runGmnResponses(server, config) {
 function gatewayHeaders(appScope, extra = {}) {
   return {
     authorization: `Bearer ${LOCAL_GATEWAY_KEY}`,
-    "x-studio-app-scope": appScope,
+    "x-tracevane-app-scope": appScope,
     ...extra,
   };
 }
@@ -779,7 +779,7 @@ async function main() {
   try {
     const liveConfig = readLiveConfig();
     const { context } = await createLiveContext(root, liveConfig);
-    server = await startStudioGatewayServer(context);
+    server = await startTracevaneGatewayServer(context);
     const results = [];
     if (options.providers.includes("bigmodel-chat")) {
       results.push(await runBigModelChat(server, liveConfig.bigmodel));
@@ -795,7 +795,7 @@ async function main() {
       ok,
       strict: options.strict,
       tempRoot: root,
-      studioGatewayEndpoint: `${server.baseUrl}/v1`,
+      tracevaneGatewayEndpoint: `${server.baseUrl}/v1`,
       results,
     }, null, 2));
     if (options.strict && !ok) process.exitCode = 1;

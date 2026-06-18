@@ -1,15 +1,15 @@
 import type { ChatRuntimeState } from '../../../../../types/chat';
 import type { Locale } from '../../shared/locale';
 
-export type StudioSlashExecutionPhase = 'accepted' | 'running' | 'completed' | 'aborted' | 'error';
-export type StudioSlashExecutionTone = 'info' | 'success' | 'warning' | 'error';
+export type TracevaneSlashExecutionPhase = 'accepted' | 'running' | 'completed' | 'aborted' | 'error';
+export type TracevaneSlashExecutionTone = 'info' | 'success' | 'warning' | 'error';
 
-export interface StudioSlashExecutionFeedback {
+export interface TracevaneSlashExecutionFeedback {
   sessionKey: string;
   commandName: string;
   args: string;
   mode: 'local' | 'send';
-  phase: StudioSlashExecutionPhase;
+  phase: TracevaneSlashExecutionPhase;
   startedAt: string;
   updatedAt: string;
   runId: string | null;
@@ -17,14 +17,14 @@ export interface StudioSlashExecutionFeedback {
   detail: string | null;
 }
 
-export interface StudioSlashExecutionFeedbackDescriptor {
-  tone: StudioSlashExecutionTone;
+export interface TracevaneSlashExecutionFeedbackDescriptor {
+  tone: TracevaneSlashExecutionTone;
   title: string;
   detail: string;
   commandText: string;
 }
 
-export function isStudioSlashExecutionFeedbackTerminal(phase: StudioSlashExecutionPhase): boolean {
+export function isTracevaneSlashExecutionFeedbackTerminal(phase: TracevaneSlashExecutionPhase): boolean {
   return phase === 'completed' || phase === 'aborted' || phase === 'error';
 }
 
@@ -32,22 +32,22 @@ function trimArgs(args: string): string {
   return typeof args === 'string' ? args.trim() : '';
 }
 
-function commandTextFromFeedback(feedback: Pick<StudioSlashExecutionFeedback, 'commandName' | 'args'>): string {
+function commandTextFromFeedback(feedback: Pick<TracevaneSlashExecutionFeedback, 'commandName' | 'args'>): string {
   const args = trimArgs(feedback.args);
   return args ? `/${feedback.commandName} ${args}` : `/${feedback.commandName}`;
 }
 
 function resolveUpdatedAt(
-  feedback: StudioSlashExecutionFeedback,
+  feedback: TracevaneSlashExecutionFeedback,
   runtime: ChatRuntimeState,
 ): string {
   return runtime.lastEventAt || runtime.lastAckAt || feedback.updatedAt;
 }
 
 function describeCompactFeedback(
-  feedback: StudioSlashExecutionFeedback,
+  feedback: TracevaneSlashExecutionFeedback,
   locale: Locale,
-): StudioSlashExecutionFeedbackDescriptor {
+): TracevaneSlashExecutionFeedbackDescriptor {
   const commandText = commandTextFromFeedback(feedback);
   if (feedback.phase === 'accepted') {
     return locale === 'zh'
@@ -129,9 +129,9 @@ function describeCompactFeedback(
 }
 
 function describeSteerFeedback(
-  feedback: StudioSlashExecutionFeedback,
+  feedback: TracevaneSlashExecutionFeedback,
   locale: Locale,
-): StudioSlashExecutionFeedbackDescriptor {
+): TracevaneSlashExecutionFeedbackDescriptor {
   const commandText = commandTextFromFeedback(feedback);
   if (feedback.phase === 'accepted') {
     return locale === 'zh'
@@ -213,9 +213,9 @@ function describeSteerFeedback(
 }
 
 function describeRedirectFeedback(
-  feedback: StudioSlashExecutionFeedback,
+  feedback: TracevaneSlashExecutionFeedback,
   locale: Locale,
-): StudioSlashExecutionFeedbackDescriptor {
+): TracevaneSlashExecutionFeedbackDescriptor {
   const commandText = commandTextFromFeedback(feedback);
   if (feedback.phase === 'accepted') {
     return locale === 'zh'
@@ -297,9 +297,9 @@ function describeRedirectFeedback(
 }
 
 function describeBtwFeedback(
-  feedback: StudioSlashExecutionFeedback,
+  feedback: TracevaneSlashExecutionFeedback,
   locale: Locale,
-): StudioSlashExecutionFeedbackDescriptor {
+): TracevaneSlashExecutionFeedbackDescriptor {
   const commandText = commandTextFromFeedback(feedback);
   if (feedback.phase === 'accepted') {
     return locale === 'zh'
@@ -380,9 +380,9 @@ function describeBtwFeedback(
     };
 }
 
-export function createStudioSlashExecutionFeedback(
-  input: StudioSlashExecutionFeedback,
-): StudioSlashExecutionFeedback {
+export function createTracevaneSlashExecutionFeedback(
+  input: TracevaneSlashExecutionFeedback,
+): TracevaneSlashExecutionFeedback {
   return {
     ...input,
     args: trimArgs(input.args),
@@ -392,13 +392,13 @@ export function createStudioSlashExecutionFeedback(
   };
 }
 
-export function applyRuntimeToStudioSlashExecutionFeedback(
-  feedback: StudioSlashExecutionFeedback,
+export function applyRuntimeToTracevaneSlashExecutionFeedback(
+  feedback: TracevaneSlashExecutionFeedback,
   runtime: ChatRuntimeState,
   options: {
     runId?: string | null;
   } = {},
-): StudioSlashExecutionFeedback {
+): TracevaneSlashExecutionFeedback {
   const nextRunId = options.runId ?? feedback.runId ?? runtime.activeRunId ?? null;
   let nextPhase = feedback.phase;
 
@@ -427,10 +427,10 @@ export function applyRuntimeToStudioSlashExecutionFeedback(
   };
 }
 
-export function describeStudioSlashExecutionFeedback(
-  feedback: StudioSlashExecutionFeedback,
+export function describeTracevaneSlashExecutionFeedback(
+  feedback: TracevaneSlashExecutionFeedback,
   locale: Locale,
-): StudioSlashExecutionFeedbackDescriptor {
+): TracevaneSlashExecutionFeedbackDescriptor {
   if (feedback.commandName === 'compact') {
     return describeCompactFeedback(feedback, locale);
   }

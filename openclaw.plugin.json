@@ -1,15 +1,15 @@
 {
-  "id": "studio",
+  "id": "tracevane",
   "name": "Tracevane",
   "description": "Tracevane 本地 AI Agent 控制工作台，聚焦 Gateway、Channel Connectors、CLI Agent 和运行态自愈。",
   "version": "0.1.21",
-  "homepage": "https://github.com/binbin/openclaw-studio",
+  "homepage": "https://github.com/binbin/tracevane",
   "activation": {
     "onStartup": true
   },
   "contracts": {
     "tools": [
-      "studio_delivery"
+      "tracevane_delivery"
     ]
   },
   "skills": [
@@ -66,7 +66,7 @@
               },
               "basePath": {
                 "type": "string",
-                "default": "/studio",
+                "default": "/tracevane",
                 "description": "gateway 模式下的 Tracevane 基础路径"
               }
             }
@@ -76,7 +76,7 @@
       "chat": {
         "type": "object",
         "properties": {
-          "allowHostManagementExecInStudioChat": {
+          "allowHostManagementExecInTracevaneChat": {
             "type": "boolean",
             "default": false,
             "description": "是否允许在 Tracevane Chat 中执行宿主机管理命令"
@@ -93,7 +93,7 @@
     },
     "apiPort": {
       "label": "API 端口",
-      "help": "Studio standalone HTTP / WS 默认端口。",
+      "help": "Tracevane standalone HTTP / WS 默认端口。",
       "placeholder": "3760",
       "order": 10,
       "group": "__root__"
@@ -141,13 +141,13 @@
     },
     "transport.gateway.basePath": {
       "label": "Gateway Base Path",
-      "placeholder": "/studio",
+      "placeholder": "/tracevane",
       "group": "transport-gateway",
       "groupLabel": "Gateway",
       "groupOrder": 20,
       "order": 20
     },
-    "chat.allowHostManagementExecInStudioChat": {
+    "chat.allowHostManagementExecInTracevaneChat": {
       "label": "允许 Chat 执行宿主管理命令",
       "help": "高风险调试开关，仅在本地受控环境下开启。",
       "group": "advanced-chat",

@@ -22,8 +22,8 @@
     <div v-if="workspace.errorMessage.value" class="status-banner status-banner-error">{{ workspace.errorMessage.value }}</div>
     <div v-else-if="workspace.successMessage.value" class="status-banner status-banner-success">{{ workspace.successMessage.value }}</div>
 
-    <section class="channels-workbench studio-workbench studio-workbench--object">
-      <aside class="channels-sidebar operate-resource-rail mobile-resource-drawer studio-workbench-index">
+    <section class="channels-workbench tracevane-workbench tracevane-workbench--object">
+      <aside class="channels-sidebar operate-resource-rail mobile-resource-drawer tracevane-workbench-index">
         <section class="channels-sidebar-panel operate-workspace-surface operate-resource-panel">
           <div class="channels-sidebar-head">
             <div>
@@ -117,16 +117,16 @@
         </section>
       </aside>
 
-      <section class="channels-stage operate-stage studio-workbench-canvas">
-        <div class="channels-task-workbench studio-workbench-task-shell" :class="{ 'is-empty': !workspace.selectedChannel.value }">
-          <div v-if="workspace.selectedChannel.value" class="channels-task-bar studio-workbench-task-bar" :aria-label="text('频道任务', 'Channel tasks')">
+      <section class="channels-stage operate-stage tracevane-workbench-canvas">
+        <div class="channels-task-workbench tracevane-workbench-task-shell" :class="{ 'is-empty': !workspace.selectedChannel.value }">
+          <div v-if="workspace.selectedChannel.value" class="channels-task-bar tracevane-workbench-task-bar" :aria-label="text('频道任务', 'Channel tasks')">
             <p class="eyebrow">{{ text('任务', 'Tasks') }}</p>
-            <nav class="channels-task-nav studio-workbench-task-nav" :aria-label="text('频道任务页面', 'Channel task pages')">
+            <nav class="channels-task-nav tracevane-workbench-task-nav" :aria-label="text('频道任务页面', 'Channel task pages')">
               <button
                 v-for="navItem in taskNavItems"
                 :key="navItem.id"
                 type="button"
-                class="channels-task-nav-button studio-workbench-task-nav-button"
+                class="channels-task-nav-button tracevane-workbench-task-nav-button"
                 :class="{ active: activeTaskNavId === navItem.id }"
                 @click="openTaskNav(navItem.id)"
               >
@@ -136,7 +136,7 @@
             </nav>
           </div>
 
-          <section class="channels-task-canvas studio-workbench-active-canvas">
+          <section class="channels-task-canvas tracevane-workbench-active-canvas">
             <section v-if="workspace.selectedChannel.value" class="channels-stage-header operate-workspace-surface operate-stage-strip">
               <div class="channels-stage-head operate-stage-task-head">
                 <div class="channels-stage-ident">
@@ -159,7 +159,7 @@
                   </div>
                 </div>
 
-                <div class="channels-stage-badges operate-fact-strip studio-fact-tape">
+                <div class="channels-stage-badges operate-fact-strip tracevane-fact-tape">
                   <span class="channels-stage-badge operate-summary-pill">{{ workspace.selectedChannel.value.enabled ? text('已启用', 'Enabled') : text('已禁用', 'Disabled') }}</span>
                   <span class="channels-stage-badge operate-summary-pill">{{ text(`${workspace.selectedChannel.value.accountCount} 个账号`, `${workspace.selectedChannel.value.accountCount} accounts`) }}</span>
                   <span class="channels-stage-badge operate-summary-pill">{{ text(`${workspace.selectedChannel.value.bindingCount} 条路由`, `${workspace.selectedChannel.value.bindingCount} routes`) }}</span>
@@ -169,7 +169,7 @@
                 </div>
               </div>
 
-              <div v-if="!selectedAccount && activeTaskNavId === 'overview'" class="channels-stage-actions studio-command-lane">
+              <div v-if="!selectedAccount && activeTaskNavId === 'overview'" class="channels-stage-actions tracevane-command-lane">
                 <button type="button" class="channels-stage-task primary" @click="openTaskNav('settings')">
                   <span>{{ text('Provider 设置', 'Provider settings') }}</span>
                   <strong>{{ text('编辑 provider 默认值和高级 JSON。', 'Edit provider defaults and advanced JSON.') }}</strong>
@@ -236,7 +236,7 @@
 <script setup lang="ts">
 import '../operate/operate-workspace.css';
 import './channels-workspace.css';
-import '../../shared/styles/studio-workbench.css';
+import '../../shared/styles/tracevane-workbench.css';
 import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch, type Component } from 'vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
 import { KeyRound, LayoutDashboard, MessageSquare, MoreHorizontal, Repeat2, ShieldCheck, UserRound } from '@lucide/vue';

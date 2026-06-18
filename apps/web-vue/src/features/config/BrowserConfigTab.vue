@@ -64,7 +64,7 @@
               </label>
               <label class="form-field">
                 <span class="form-label">{{ text('默认快照模式', 'Default Snapshot Mode') }}</span>
-                <StudioSelect v-model="form.snapshotMode" :options="snapshotModeOptions" />
+                <TracevaneSelect v-model="form.snapshotMode" :options="snapshotModeOptions" />
                 <span class="field-hint">{{ text('对应 browser.snapshotDefaults.mode；留空表示跟随宿主默认。', 'Maps to browser.snapshotDefaults.mode. Leave empty to follow the host default.') }}</span>
               </label>
             </div>
@@ -198,7 +198,7 @@
                   </label>
                   <label class="form-field">
                     <span class="form-label">{{ text('Driver', 'Driver') }}</span>
-                    <StudioSelect v-model="profile.driver" :options="driverOptions" />
+                    <TracevaneSelect v-model="profile.driver" :options="driverOptions" />
                     <span class="field-hint">{{ text('`openclaw` 由宿主管理；`existing-session` 适合接管现有浏览器。', '`openclaw` is host-managed; `existing-session` is for attaching to an existing browser.') }}</span>
                   </label>
                   <label class="form-field">
@@ -243,7 +243,7 @@
 <script setup lang="ts">
 import { reactive, watch } from 'vue';
 import { useLocalePreference } from '../../shared/locale';
-import StudioSelect, { type StudioSelectOption } from '../../shared/components/StudioSelect.vue';
+import TracevaneSelect, { type TracevaneSelectOption } from '../../shared/components/TracevaneSelect.vue';
 import { createUuid } from '../../shared/uuid';
 import type { ConfigSummaryPayload } from '../../../../../types/config';
 import './config-workspace.css';
@@ -291,12 +291,12 @@ const form = reactive({
   }>,
 });
 
-const snapshotModeOptions: StudioSelectOption[] = [
+const snapshotModeOptions: TracevaneSelectOption[] = [
   { value: '', label: text('跟随宿主默认', 'Follow host default') },
   { value: 'efficient', label: 'efficient' },
 ];
 
-const driverOptions: StudioSelectOption[] = [
+const driverOptions: TracevaneSelectOption[] = [
   { value: '', label: text('跟随宿主默认', 'Follow host default') },
   { value: 'openclaw', label: 'openclaw' },
   { value: 'clawd', label: 'clawd' },

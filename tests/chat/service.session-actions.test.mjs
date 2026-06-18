@@ -9,11 +9,11 @@ import { DatabaseSync } from 'node:sqlite';
 import { WebSocket, WebSocketServer } from 'ws';
 
 import {
-  createStandaloneStudioConfig,
-  createStudioContext,
-  createStudioServer,
+  createStandaloneTracevaneConfig,
+  createTracevaneContext,
+  createTracevaneServer,
 } from '../../dist/apps/api/index.js';
-import { STUDIO_CHAT_GATEWAY_METHODS } from '../../dist/types/chat.js';
+import { TRACEVANE_CHAT_GATEWAY_METHODS } from '../../dist/types/chat.js';
 
 function createLogger() {
   return {
@@ -52,11 +52,11 @@ function writeOpenClawConfig(root, options = {}) {
     },
     plugins: {
       entries: {
-        studio: {
+        tracevane: {
           enabled: true,
           config: {
             chat: {
-              allowHostManagementExecInStudioChat: options.allowHostManagementExecInStudioChat === true,
+              allowHostManagementExecInTracevaneChat: options.allowHostManagementExecInTracevaneChat === true,
             },
           },
         },
@@ -89,23 +89,23 @@ function writeGatewayIdentity(root) {
 }
 
 function registryPath(root) {
-  return path.join(root, 'studio', 'chat-sessions.json');
+  return path.join(root, 'tracevane', 'chat-sessions.json');
 }
 
 function messageShadowPath(root) {
-  return path.join(root, 'studio', 'chat-message-shadows.json');
+  return path.join(root, 'tracevane', 'chat-message-shadows.json');
 }
 
 function runShadowPath(root) {
-  return path.join(root, 'studio', 'chat-run-shadows.json');
+  return path.join(root, 'tracevane', 'chat-run-shadows.json');
 }
 
 function historyIndexPath(root, sessionKey) {
-  return path.join(root, 'studio', 'chat-index', `${Buffer.from(sessionKey, 'utf-8').toString('base64url')}.json`);
+  return path.join(root, 'tracevane', 'chat-index', `${Buffer.from(sessionKey, 'utf-8').toString('base64url')}.json`);
 }
 
 function readSqliteHistoryIndexCount(root, sessionKey) {
-  const sqlitePath = path.join(root, 'studio', 'chat.sqlite');
+  const sqlitePath = path.join(root, 'tracevane', 'chat.sqlite');
   if (!fs.existsSync(sqlitePath)) {
     return 0;
   }
@@ -131,12 +131,12 @@ function readJson(file, fallback) {
 }
 
 async function createContextForRoot(root, gatewayWsUrl = 'ws://127.0.0.1:1') {
-  const config = createStandaloneStudioConfig({
+  const config = createStandaloneTracevaneConfig({
     port: await getFreePort(),
     openclawRoot: root,
     gatewayWsUrl,
   });
-  return createStudioContext({
+  return createTracevaneContext({
     config,
     logger: createLogger(),
   });
@@ -144,7 +144,7 @@ async function createContextForRoot(root, gatewayWsUrl = 'ws://127.0.0.1:1') {
 
 async function createServerForRoot(root, gatewayWsUrl = 'ws://127.0.0.1:1') {
   const context = await createContextForRoot(root, gatewayWsUrl);
-  const server = createStudioServer(context);
+  const server = createTracevaneServer(context);
   await server.start();
   return {
     context,
@@ -275,7 +275,7 @@ async function waitFor(assertion, timeoutMs = 2000) {
 }
 
 test('session queue and controls round-trip from in-memory service state', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-queue-controls-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-queue-controls-'));
   try {
     writeOpenClawConfig(root);
     const context = await createContextForRoot(root);
@@ -309,7 +309,7 @@ test('session queue and controls round-trip from in-memory service state', async
 });
 
 test('chat health treats an online gateway as usable even when the system service unit is failed', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-chat-systemd-failed-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-chat-systemd-failed-'));
   let gateway = null;
   try {
     writeOpenClawConfig(root);
@@ -353,10 +353,10 @@ test('chat health treats an online gateway as usable even when the system servic
 });
 
 test('session controls payload carries global host-management exec and survives rematerialization', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-controls-global-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-controls-global-'));
   let gateway = null;
   try {
-    writeOpenClawConfig(root, { allowHostManagementExecInStudioChat: true });
+    writeOpenClawConfig(root, { allowHostManagementExecInTracevaneChat: true });
     writeGatewayIdentity(root);
     gateway = await startFakeGateway();
     const gatewayWsUrl = `ws://127.0.0.1:${gateway.port}`;
@@ -368,7 +368,7 @@ test('session controls payload carries global host-management exec and survives 
     });
     assert.equal(patchedControls.globalHostManagementExecEnabled, true);
     assert.equal(patchedControls.controls.allowHostManagementExec, true);
-    const syncRequest = gateway.requests.find((request) => request.method === STUDIO_CHAT_GATEWAY_METHODS.policySync);
+    const syncRequest = gateway.requests.find((request) => request.method === TRACEVANE_CHAT_GATEWAY_METHODS.policySync);
     assert.deepEqual(syncRequest?.params, {
       sessionKey: created.session.key,
       allowHostManagementExec: true,
@@ -386,7 +386,7 @@ test('session controls payload carries global host-management exec and survives 
 });
 
 test('ui queued message flushes when the active run settles before enqueue reaches the backend', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-queue-idle-flush-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-queue-idle-flush-'));
   let gateway = null;
   try {
     writeOpenClawConfig(root);
@@ -426,7 +426,7 @@ test('ui queued message flushes when the active run settles before enqueue reach
 });
 
 test('blocked queued message can be retried without sending a separate nudge', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-queue-blocked-retry-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-queue-blocked-retry-'));
   let gateway = null;
   let sendCount = 0;
   try {
@@ -492,7 +492,7 @@ test('blocked queued message can be retried without sending a separate nudge', a
 });
 
 test('slash gateway proxy forwards local slash rpc through the Tracevane backend gateway transport', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-slash-gateway-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-slash-gateway-'));
   const gateway = await startFakeGateway({
     onRequest({ method, params }) {
       if (method === 'models.list') {
@@ -615,7 +615,7 @@ test('slash gateway proxy forwards local slash rpc through the Tracevane backend
 });
 
 test('queued entries flush in FIFO order after the active run settles', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-queue-flush-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-queue-flush-'));
   let gateway = null;
   try {
     writeOpenClawConfig(root);
@@ -667,7 +667,7 @@ test('queued entries flush in FIFO order after the active run settles', async ()
 });
 
 test('queued retry reuses the same idempotency key after a transient send failure', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-queue-idempotency-retry-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-queue-idempotency-retry-'));
   let gateway = null;
   let sendCount = 0;
   try {
@@ -770,7 +770,7 @@ test('queued retry reuses the same idempotency key after a transient send failur
 });
 
 test('duplicate terminal chat events only flush one queued entry while the next run is starting', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-queue-final-dedupe-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-queue-final-dedupe-'));
   let gateway = null;
   let sendCount = 0;
   try {
@@ -851,9 +851,9 @@ test('duplicate terminal chat events only flush one queued entry while the next 
 });
 
 test('queued auto-send emits the queued user message before the follow-up reply settles', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-queue-canonical-user-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-queue-canonical-user-'));
   let gateway = null;
-  let studio = null;
+  let tracevane = null;
   let sendCount = 0;
   let frontendWs = null;
   const frontendEvents = [];
@@ -873,11 +873,11 @@ test('queued auto-send emits the queued user message before the follow-up reply 
         return { ok: true };
       },
     });
-    studio = await createServerForRoot(root, `ws://127.0.0.1:${gateway.port}`);
-    const created = await studio.context.services.chat.createSession('main', {});
+    tracevane = await createServerForRoot(root, `ws://127.0.0.1:${gateway.port}`);
+    const created = await tracevane.context.services.chat.createSession('main', {});
     const sessionKey = created.session.key;
 
-    frontendWs = new WebSocket(`ws://127.0.0.1:${studio.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
+    frontendWs = new WebSocket(`ws://127.0.0.1:${tracevane.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
     frontendWs.on('message', (raw) => {
       frontendEvents.push(JSON.parse(String(raw)));
     });
@@ -886,11 +886,11 @@ test('queued auto-send emits the queued user message before the follow-up reply 
       frontendWs.once('error', reject);
     });
 
-    await studio.context.services.chat.send(sessionKey, {
+    await tracevane.context.services.chat.send(sessionKey, {
       text: 'first message',
       clientRequestId: 'send-1',
     });
-    await studio.context.services.chat.enqueue(sessionKey, {
+    await tracevane.context.services.chat.enqueue(sessionKey, {
       text: 'second message',
       clientRequestId: 'queued-2',
     });
@@ -940,14 +940,14 @@ test('queued auto-send emits the queued user message before the follow-up reply 
     });
   } finally {
     try { frontendWs?.close(); } catch {}
-    await studio?.server?.stop?.();
+    await tracevane?.server?.stop?.();
     await gateway?.close?.();
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
 test('reset ignores stale terminal events from the pre-reset run', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-reset-stale-run-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-reset-stale-run-'));
   let gateway = null;
   try {
     writeOpenClawConfig(root);
@@ -1012,7 +1012,7 @@ test('reset ignores stale terminal events from the pre-reset run', async () => {
 });
 
 test('abort ignores stale terminal events from the aborted run while a queued follow-up is running', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-abort-stale-run-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-abort-stale-run-'));
   let gateway = null;
   let sendCount = 0;
   try {
@@ -1094,7 +1094,7 @@ test('abort ignores stale terminal events from the aborted run while a queued fo
 });
 
 test('draft session patch/delete persists presentation metadata without gateway delete', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-session-actions-draft-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-session-actions-draft-'));
   try {
     writeOpenClawConfig(root);
     const context = await createContextForRoot(root);
@@ -1137,7 +1137,7 @@ test('draft session patch/delete persists presentation metadata without gateway 
 });
 
 test('local-only session listing serves local catalog rows without gateway sessions.list', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-session-local-list-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-session-local-list-'));
   let gateway = null;
   try {
     writeOpenClawConfig(root);
@@ -1176,7 +1176,7 @@ test('local-only session listing serves local catalog rows without gateway sessi
 });
 
 test('session listing compacts oversized gateway labels and previews for rail transport', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-session-transport-compact-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-session-transport-compact-'));
   let gateway = null;
   try {
     writeOpenClawConfig(root);
@@ -1225,13 +1225,13 @@ test('session listing compacts oversized gateway labels and previews for rail tr
   }
 });
 
-test('gateway-discovered studio sessions without registry are adopted so queue and controls endpoints stay available', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-session-adopt-'));
+test('gateway-discovered tracevane sessions without registry are adopted so queue and controls endpoints stay available', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-session-adopt-'));
   let gateway = null;
   try {
     writeOpenClawConfig(root);
     writeGatewayIdentity(root);
-    const recoveredSessionKey = 'agent:main:webchat:direct:studio-recovered-1';
+    const recoveredSessionKey = 'agent:main:webchat:direct:tracevane-recovered-1';
     gateway = await startFakeGateway({
       onRequest(request) {
         if (request.method === 'sessions.list') {
@@ -1260,7 +1260,7 @@ test('gateway-discovered studio sessions without registry are adopted so queue a
     const listed = await context.services.chat.listSessions('main');
     const recovered = listed.sessions.find((entry) => entry.key === recoveredSessionKey);
     assert.ok(recovered);
-    assert.equal(recovered.kind, 'studio_managed');
+    assert.equal(recovered.kind, 'tracevane_managed');
 
     const registry = readJson(registryPath(root), {});
     assert.ok(registry[recoveredSessionKey]);
@@ -1282,8 +1282,8 @@ test('gateway-discovered studio sessions without registry are adopted so queue a
   }
 });
 
-test('materialized studio session delete clears local artifacts only after gateway delete succeeds', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-session-actions-materialized-'));
+test('materialized tracevane session delete clears local artifacts only after gateway delete succeeds', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-session-actions-materialized-'));
   let gateway = null;
   try {
     writeOpenClawConfig(root);
@@ -1317,7 +1317,7 @@ test('materialized studio session delete clears local artifacts only after gatew
         updatedAt: '2026-03-23T09:00:01.000Z',
       },
     }, null, 2));
-    fs.mkdirSync(path.join(root, 'studio'), { recursive: true });
+    fs.mkdirSync(path.join(root, 'tracevane'), { recursive: true });
     fs.writeFileSync(messageShadowPath(root), JSON.stringify({
       sessions: {
         [sessionKey]: [{

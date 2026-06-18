@@ -202,7 +202,7 @@ import { COPIED_FOR_MS, ERROR_FOR_MS, copyTextToClipboard } from './markdown-cop
 import { createUuid } from '../../shared/uuid';
 import {
   mergeChatResourceItems,
-  resolveMissingStudioResourcesForMarkdown,
+  resolveMissingTracevaneResourcesForMarkdown,
 } from './chat-resource-resolver';
 
 const props = defineProps<{
@@ -310,8 +310,8 @@ const deferredPreviewText = computed(() => {
   }
   return preview;
 });
-const resolvedStudioResources = ref<ChatResourceItem[]>([]);
-const effectiveRenderResources = computed(() => mergeChatResourceItems(props.resources, resolvedStudioResources.value));
+const resolvedTracevaneResources = ref<ChatResourceItem[]>([]);
+const effectiveRenderResources = computed(() => mergeChatResourceItems(props.resources, resolvedTracevaneResources.value));
 const livePreview = ref<LivePreviewState | null>(null);
 const livePreviewCopied = ref(false);
 const previewIsFullscreen = ref(false);
@@ -652,7 +652,7 @@ function nextPreviewToken(): string {
 }
 
 function nextMermaidRenderId(): string {
-  return `openclaw-studio-mermaid-${nextPreviewToken()}`;
+  return `tracevane-mermaid-${nextPreviewToken()}`;
 }
 
 function isInlinePreviewEnabled(kind: PreviewKind): boolean {
@@ -1985,11 +1985,11 @@ watch(
   async () => {
     const serial = ++resourceResolveSerial;
     if (shouldLazyRender.value && !renderReady.value) {
-      resolvedStudioResources.value = [];
+      resolvedTracevaneResources.value = [];
       return;
     }
     try {
-      const nextResources = await resolveMissingStudioResourcesForMarkdown(
+      const nextResources = await resolveMissingTracevaneResourcesForMarkdown(
         props.sessionKey,
         props.source,
         props.resources,
@@ -1997,15 +1997,15 @@ watch(
       if (serial !== resourceResolveSerial) {
         return;
       }
-      resolvedStudioResources.value = nextResources;
+      resolvedTracevaneResources.value = nextResources;
       void refreshRenderedMarkdown();
     } catch (error) {
       if (serial !== resourceResolveSerial) {
         return;
       }
-      resolvedStudioResources.value = [];
+      resolvedTracevaneResources.value = [];
       void refreshRenderedMarkdown();
-      console.warn('[MarkdownBlock] Failed to resolve studio resources:', error);
+      console.warn('[MarkdownBlock] Failed to resolve tracevane resources:', error);
     }
   },
   { immediate: true },

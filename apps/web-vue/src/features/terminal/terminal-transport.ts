@@ -1,4 +1,4 @@
-import type { StudioRealtimeTransportKind } from "../../shared/runtime-config";
+import type { TracevaneRealtimeTransportKind } from "../../shared/runtime-config";
 import type { TerminalTargetKind } from "../../../../../types/terminal";
 
 export type TerminalTransportMode = "raw-ws" | "gateway-rpc" | "direct-ws" | "disabled";
@@ -11,7 +11,7 @@ export interface TerminalTransportPlan {
 }
 
 export interface ResolveTerminalTransportPlanInput {
-  realtimeTransport: StudioRealtimeTransportKind;
+  realtimeTransport: TracevaneRealtimeTransportKind;
   realtimeEnabled: boolean;
   directSocketUrl: string;
   directSocketActive: boolean;

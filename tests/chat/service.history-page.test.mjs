@@ -9,10 +9,10 @@ import { DatabaseSync } from "node:sqlite";
 import { WebSocketServer } from "ws";
 
 import {
-  createStandaloneStudioConfig,
-  createStudioContext,
+  createStandaloneTracevaneConfig,
+  createTracevaneContext,
 } from "../../dist/apps/api/index.js";
-import { createStudioChatDurableMirrorStore } from "../../dist/apps/api/modules/chat/durable-mirror-store.js";
+import { createTracevaneChatDurableMirrorStore } from "../../dist/apps/api/modules/chat/durable-mirror-store.js";
 
 function createLogger() {
   return {
@@ -177,12 +177,12 @@ async function startFakeGateway() {
 
 test("history page API windows messages and exposes search/date helpers", async () => {
   const root = fs.mkdtempSync(
-    path.join(os.tmpdir(), "openclaw-studio-history-page-"),
+    path.join(os.tmpdir(), "tracevane-history-page-"),
   );
   try {
     const workspace = path.join(root, "workspace");
     const transcriptFile = path.join(root, "transcripts", "session-1.jsonl");
-    const runShadowFile = path.join(root, "studio", "chat-run-shadows.json");
+    const runShadowFile = path.join(root, "tracevane", "chat-run-shadows.json");
     const sessionKey = "agent:main:webchat:direct:external-1";
 
     fs.mkdirSync(workspace, { recursive: true });
@@ -190,7 +190,7 @@ test("history page API windows messages and exposes search/date helpers", async 
     fs.mkdirSync(path.join(root, "agents", "main", "sessions"), {
       recursive: true,
     });
-    fs.mkdirSync(path.join(root, "studio"), { recursive: true });
+    fs.mkdirSync(path.join(root, "tracevane"), { recursive: true });
 
     fs.writeFileSync(
       path.join(root, "openclaw.json"),
@@ -305,12 +305,12 @@ test("history page API windows messages and exposes search/date helpers", async 
       ),
     );
 
-    const config = createStandaloneStudioConfig({
+    const config = createStandaloneTracevaneConfig({
       port: await getFreePort(),
       openclawRoot: root,
       gatewayWsUrl: "ws://127.0.0.1:1",
     });
-    const context = createStudioContext({
+    const context = createTracevaneContext({
       config,
       logger: createLogger(),
     });
@@ -328,7 +328,7 @@ test("history page API windows messages and exposes search/date helpers", async 
     assert.equal(page1.pageInfo.hasMoreAfter, false);
     assert.equal(page1.pageInfo.afterCursor, null);
     assert.deepEqual(page1.overlays, []);
-    assert.equal(fs.existsSync(path.join(root, "studio", "chat.sqlite")), true);
+    assert.equal(fs.existsSync(path.join(root, "tracevane", "chat.sqlite")), true);
 
     const bootstrap = await context.services.chat.getBootstrap({
       sessionKey,
@@ -364,7 +364,7 @@ test("history page API windows messages and exposes search/date helpers", async 
 
     try {
       cachedTranscriptReads = 0;
-      const coldContext = createStudioContext({
+      const coldContext = createTracevaneContext({
         config,
         logger: createLogger(),
       });
@@ -392,7 +392,7 @@ test("history page API windows messages and exposes search/date helpers", async 
       assert.equal(bootstrapHealthChecks, 1);
 
       cachedTranscriptReads = 0;
-      const coldHistoryContext = createStudioContext({
+      const coldHistoryContext = createTracevaneContext({
         config,
         logger: createLogger(),
       });
@@ -666,7 +666,7 @@ test("history page API windows messages and exposes search/date helpers", async 
 
 test("bootstrap reads only the local transcript tail window before full history access", async () => {
   const root = fs.mkdtempSync(
-    path.join(os.tmpdir(), "openclaw-studio-bootstrap-tail-"),
+    path.join(os.tmpdir(), "tracevane-bootstrap-tail-"),
   );
   const originalReadFileSync = fs.readFileSync;
   try {
@@ -732,12 +732,12 @@ test("bootstrap reads only the local transcript tail window before full history 
       ),
     );
 
-    const config = createStandaloneStudioConfig({
+    const config = createStandaloneTracevaneConfig({
       port: await getFreePort(),
       openclawRoot: root,
       gatewayWsUrl: "ws://127.0.0.1:1",
     });
-    const context = createStudioContext({
+    const context = createTracevaneContext({
       config,
       logger: createLogger(),
     });
@@ -778,12 +778,12 @@ test("bootstrap reads only the local transcript tail window before full history 
       beforePage.diagnostics.notes.join("\n"),
       /lightweight transcript scan/i,
     );
-    const sharedDb = new DatabaseSync(path.join(root, "studio", "chat.sqlite"));
+    const sharedDb = new DatabaseSync(path.join(root, "tracevane", "chat.sqlite"));
     sharedDb.prepare("DELETE FROM history_indexes WHERE session_key = ?").run(sessionKey);
     sharedDb.close();
-    fs.rmSync(path.join(root, "studio", "chat-index"), { recursive: true, force: true });
+    fs.rmSync(path.join(root, "tracevane", "chat-index"), { recursive: true, force: true });
 
-    const coldContext = createStudioContext({
+    const coldContext = createTracevaneContext({
       config,
       logger: createLogger(),
     });
@@ -799,7 +799,7 @@ test("bootstrap reads only the local transcript tail window before full history 
       coldBeforePage.diagnostics.notes.join("\n"),
       /rebuilt a persisted sqlite\/json history index from a lightweight transcript scan and mapped only the requested page messages/i,
     );
-    assert.equal(fs.existsSync(path.join(root, "studio", "chat.sqlite")), true);
+    assert.equal(fs.existsSync(path.join(root, "tracevane", "chat.sqlite")), true);
   } finally {
     fs.readFileSync = originalReadFileSync;
     fs.rmSync(root, { recursive: true, force: true });
@@ -808,7 +808,7 @@ test("bootstrap reads only the local transcript tail window before full history 
 
 test("canonical bootstrap snapshot is windowed and avoids full local transcript reads", async () => {
   const root = fs.mkdtempSync(
-    path.join(os.tmpdir(), "openclaw-studio-canonical-tail-"),
+    path.join(os.tmpdir(), "tracevane-canonical-tail-"),
   );
   const originalReadFileSync = fs.readFileSync;
   try {
@@ -874,12 +874,12 @@ test("canonical bootstrap snapshot is windowed and avoids full local transcript 
       ),
     );
 
-    const config = createStandaloneStudioConfig({
+    const config = createStandaloneTracevaneConfig({
       port: await getFreePort(),
       openclawRoot: root,
       gatewayWsUrl: "ws://127.0.0.1:1",
     });
-    const context = createStudioContext({
+    const context = createTracevaneContext({
       config,
       logger: createLogger(),
     });
@@ -929,7 +929,7 @@ test("canonical bootstrap snapshot is windowed and avoids full local transcript 
 
 test("history page can rebuild a persisted local index from a lightweight transcript scan before any mirror exists", async () => {
   const root = fs.mkdtempSync(
-    path.join(os.tmpdir(), "openclaw-studio-history-window-scan-fast-"),
+    path.join(os.tmpdir(), "tracevane-history-window-scan-fast-"),
   );
   const originalReadFileSync = fs.readFileSync;
   try {
@@ -995,12 +995,12 @@ test("history page can rebuild a persisted local index from a lightweight transc
       ),
     );
 
-    const config = createStandaloneStudioConfig({
+    const config = createStandaloneTracevaneConfig({
       port: await getFreePort(),
       openclawRoot: root,
       gatewayWsUrl: "ws://127.0.0.1:1",
     });
-    const context = createStudioContext({
+    const context = createTracevaneContext({
       config,
       logger: createLogger(),
     });
@@ -1026,7 +1026,7 @@ test("history page can rebuild a persisted local index from a lightweight transc
       /rebuilt a persisted sqlite\/json history index from a lightweight transcript scan and mapped only the requested page messages/i,
     );
     assert.equal(transcriptReadFileSyncCount, 1);
-    assert.equal(fs.existsSync(path.join(root, "studio", "chat.sqlite")), true);
+    assert.equal(fs.existsSync(path.join(root, "tracevane", "chat.sqlite")), true);
   } finally {
     fs.readFileSync = originalReadFileSync;
     fs.rmSync(root, { recursive: true, force: true });
@@ -1035,7 +1035,7 @@ test("history page can rebuild a persisted local index from a lightweight transc
 
 test("history dates use a lightweight transcript scan before full history access", async () => {
   const root = fs.mkdtempSync(
-    path.join(os.tmpdir(), "openclaw-studio-history-dates-fast-"),
+    path.join(os.tmpdir(), "tracevane-history-dates-fast-"),
   );
   const originalReadFileSync = fs.readFileSync;
   try {
@@ -1098,12 +1098,12 @@ test("history dates use a lightweight transcript scan before full history access
       ),
     );
 
-    const config = createStandaloneStudioConfig({
+    const config = createStandaloneTracevaneConfig({
       port: await getFreePort(),
       openclawRoot: root,
       gatewayWsUrl: "ws://127.0.0.1:1",
     });
-    const context = createStudioContext({
+    const context = createTracevaneContext({
       config,
       logger: createLogger(),
     });
@@ -1129,7 +1129,7 @@ test("history dates use a lightweight transcript scan before full history access
       dates.diagnostics.notes.join("\n"),
       /rebuilt a persisted sqlite\/json history index from a lightweight transcript scan/i,
     );
-    assert.equal(fs.existsSync(path.join(root, "studio", "chat.sqlite")), true);
+    assert.equal(fs.existsSync(path.join(root, "tracevane", "chat.sqlite")), true);
   } finally {
     fs.readFileSync = originalReadFileSync;
     fs.rmSync(root, { recursive: true, force: true });
@@ -1138,7 +1138,7 @@ test("history dates use a lightweight transcript scan before full history access
 
 test("history dates can reuse sqlite durable mirror rows without a persisted history index", async () => {
   const root = fs.mkdtempSync(
-    path.join(os.tmpdir(), "openclaw-studio-history-dates-mirror-fast-"),
+    path.join(os.tmpdir(), "tracevane-history-dates-mirror-fast-"),
   );
   const originalReadFileSync = fs.readFileSync;
   try {
@@ -1201,7 +1201,7 @@ test("history dates can reuse sqlite durable mirror rows without a persisted his
       ),
     );
 
-    const config = createStandaloneStudioConfig({
+    const config = createStandaloneTracevaneConfig({
       port: await getFreePort(),
       openclawRoot: root,
       gatewayWsUrl: "ws://127.0.0.1:1",
@@ -1220,7 +1220,7 @@ test("history dates can reuse sqlite durable mirror rows without a persisted his
       aborted: false,
       stopReason: null,
     }));
-    createStudioChatDurableMirrorStore(config).replaceSnapshot({
+    createTracevaneChatDurableMirrorStore(config).replaceSnapshot({
       sessionKey,
       version: "dates-mirror-v1",
       source: "local_transcript",
@@ -1237,10 +1237,10 @@ test("history dates can reuse sqlite durable mirror rows without a persisted his
         timeline: [],
       },
     });
-    const sharedDb = new DatabaseSync(path.join(root, "studio", "chat.sqlite"));
+    const sharedDb = new DatabaseSync(path.join(root, "tracevane", "chat.sqlite"));
     clearHistoryIndexIfPresent(sharedDb, sessionKey);
     sharedDb.close();
-    fs.rmSync(path.join(root, "studio", "chat-index"), { recursive: true, force: true });
+    fs.rmSync(path.join(root, "tracevane", "chat-index"), { recursive: true, force: true });
 
     let transcriptReadFileSyncCount = 0;
     fs.readFileSync = ((filePath, ...args) => {
@@ -1250,7 +1250,7 @@ test("history dates can reuse sqlite durable mirror rows without a persisted his
       return originalReadFileSync.call(fs, filePath, ...args);
     });
 
-    const coldContext = createStudioContext({
+    const coldContext = createTracevaneContext({
       config,
       logger: createLogger(),
     });
@@ -1267,7 +1267,7 @@ test("history dates can reuse sqlite durable mirror rows without a persisted his
       /reused sqlite durable mirror date buckets without rebuilding the persisted history index/i,
     );
     assert.equal(transcriptReadFileSyncCount, 0);
-    const verifyDb = new DatabaseSync(path.join(root, "studio", "chat.sqlite"));
+    const verifyDb = new DatabaseSync(path.join(root, "tracevane", "chat.sqlite"));
     const indexCount = readHistoryIndexCount(verifyDb, sessionKey);
     verifyDb.close();
     assert.equal(indexCount, 0);
@@ -1279,7 +1279,7 @@ test("history dates can reuse sqlite durable mirror rows without a persisted his
 
 test("history day pages can reuse sqlite durable mirror rows without a persisted history index", async () => {
   const root = fs.mkdtempSync(
-    path.join(os.tmpdir(), "openclaw-studio-history-day-mirror-fast-"),
+    path.join(os.tmpdir(), "tracevane-history-day-mirror-fast-"),
   );
   const originalReadFileSync = fs.readFileSync;
   try {
@@ -1343,7 +1343,7 @@ test("history day pages can reuse sqlite durable mirror rows without a persisted
       ),
     );
 
-    const config = createStandaloneStudioConfig({
+    const config = createStandaloneTracevaneConfig({
       port: await getFreePort(),
       openclawRoot: root,
       gatewayWsUrl: "ws://127.0.0.1:1",
@@ -1363,7 +1363,7 @@ test("history day pages can reuse sqlite durable mirror rows without a persisted
       aborted: false,
       stopReason: null,
     }));
-    createStudioChatDurableMirrorStore(config).replaceSnapshot({
+    createTracevaneChatDurableMirrorStore(config).replaceSnapshot({
       sessionKey,
       version: "day-fast-v1",
       source: "local_transcript",
@@ -1380,10 +1380,10 @@ test("history day pages can reuse sqlite durable mirror rows without a persisted
         timeline: [],
       },
     });
-    const sharedDb = new DatabaseSync(path.join(root, "studio", "chat.sqlite"));
+    const sharedDb = new DatabaseSync(path.join(root, "tracevane", "chat.sqlite"));
     clearHistoryIndexIfPresent(sharedDb, sessionKey);
     sharedDb.close();
-    fs.rmSync(path.join(root, "studio", "chat-index"), { recursive: true, force: true });
+    fs.rmSync(path.join(root, "tracevane", "chat-index"), { recursive: true, force: true });
 
     let transcriptReadFileSyncCount = 0;
     fs.readFileSync = ((filePath, ...args) => {
@@ -1393,7 +1393,7 @@ test("history day pages can reuse sqlite durable mirror rows without a persisted
       return originalReadFileSync.call(fs, filePath, ...args);
     });
 
-    const coldContext = createStudioContext({
+    const coldContext = createTracevaneContext({
       config,
       logger: createLogger(),
     });
@@ -1410,11 +1410,11 @@ test("history day pages can reuse sqlite durable mirror rows without a persisted
       /reused sqlite durable mirror page queries without rebuilding the persisted history index/i,
     );
     assert.equal(transcriptReadFileSyncCount, 0);
-    const verifyDb = new DatabaseSync(path.join(root, "studio", "chat.sqlite"));
+    const verifyDb = new DatabaseSync(path.join(root, "tracevane", "chat.sqlite"));
     const indexCount = readHistoryIndexCount(verifyDb, sessionKey);
     verifyDb.close();
     assert.equal(indexCount, 0);
-    assert.equal(fs.existsSync(path.join(root, "studio", "chat.sqlite")), true);
+    assert.equal(fs.existsSync(path.join(root, "tracevane", "chat.sqlite")), true);
   } finally {
     fs.readFileSync = originalReadFileSync;
     fs.rmSync(root, { recursive: true, force: true });
@@ -1423,7 +1423,7 @@ test("history day pages can reuse sqlite durable mirror rows without a persisted
 
 test("history anchor jump can reuse a rebuilt local index from durable mirror rows", async () => {
   const root = fs.mkdtempSync(
-    path.join(os.tmpdir(), "openclaw-studio-history-anchor-mirror-fast-"),
+    path.join(os.tmpdir(), "tracevane-history-anchor-mirror-fast-"),
   );
   const originalReadFileSync = fs.readFileSync;
   try {
@@ -1489,7 +1489,7 @@ test("history anchor jump can reuse a rebuilt local index from durable mirror ro
       ),
     );
 
-    const config = createStandaloneStudioConfig({
+    const config = createStandaloneTracevaneConfig({
       port: await getFreePort(),
       openclawRoot: root,
       gatewayWsUrl: "ws://127.0.0.1:1",
@@ -1507,7 +1507,7 @@ test("history anchor jump can reuse a rebuilt local index from durable mirror ro
       aborted: false,
       stopReason: null,
     }));
-    createStudioChatDurableMirrorStore(config).replaceSnapshot({
+    createTracevaneChatDurableMirrorStore(config).replaceSnapshot({
       sessionKey,
       version: "anchor-fast-v1",
       source: "local_transcript",
@@ -1524,10 +1524,10 @@ test("history anchor jump can reuse a rebuilt local index from durable mirror ro
         timeline: [],
       },
     });
-    const sharedDb = new DatabaseSync(path.join(root, "studio", "chat.sqlite"));
+    const sharedDb = new DatabaseSync(path.join(root, "tracevane", "chat.sqlite"));
     clearHistoryIndexIfPresent(sharedDb, sessionKey);
     sharedDb.close();
-    fs.rmSync(path.join(root, "studio", "chat-index"), { recursive: true, force: true });
+    fs.rmSync(path.join(root, "tracevane", "chat-index"), { recursive: true, force: true });
 
     let transcriptReadFileSyncCount = 0;
     fs.readFileSync = ((filePath, ...args) => {
@@ -1537,7 +1537,7 @@ test("history anchor jump can reuse a rebuilt local index from durable mirror ro
       return originalReadFileSync.call(fs, filePath, ...args);
     });
 
-    const coldContext = createStudioContext({
+    const coldContext = createTracevaneContext({
       config,
       logger: createLogger(),
     });
@@ -1570,7 +1570,7 @@ test("history anchor jump can reuse a rebuilt local index from durable mirror ro
       /reused sqlite durable mirror page queries without rebuilding the persisted history index/i,
     );
     assert.equal(transcriptReadFileSyncCount, 0);
-    const verifyDb = new DatabaseSync(path.join(root, "studio", "chat.sqlite"));
+    const verifyDb = new DatabaseSync(path.join(root, "tracevane", "chat.sqlite"));
     const indexCount = readHistoryIndexCount(verifyDb, sessionKey);
     verifyDb.close();
     assert.equal(indexCount, 0);
@@ -1582,7 +1582,7 @@ test("history anchor jump can reuse a rebuilt local index from durable mirror ro
 
 test("history search can reuse sqlite durable mirror rows without a persisted history index", async () => {
   const root = fs.mkdtempSync(
-    path.join(os.tmpdir(), "openclaw-studio-history-search-mirror-fast-"),
+    path.join(os.tmpdir(), "tracevane-history-search-mirror-fast-"),
   );
   const originalReadFileSync = fs.readFileSync;
   try {
@@ -1645,7 +1645,7 @@ test("history search can reuse sqlite durable mirror rows without a persisted hi
       ),
     );
 
-    const config = createStandaloneStudioConfig({
+    const config = createStandaloneTracevaneConfig({
       port: await getFreePort(),
       openclawRoot: root,
       gatewayWsUrl: "ws://127.0.0.1:1",
@@ -1689,7 +1689,7 @@ test("history search can reuse sqlite durable mirror rows without a persisted hi
         stopReason: null,
       },
     ];
-    createStudioChatDurableMirrorStore(config).replaceSnapshot({
+    createTracevaneChatDurableMirrorStore(config).replaceSnapshot({
       sessionKey,
       version: "search-mirror-v1",
       source: "local_transcript",
@@ -1706,7 +1706,7 @@ test("history search can reuse sqlite durable mirror rows without a persisted hi
         timeline: [],
       },
     });
-    fs.rmSync(path.join(root, "studio", "chat-index"), { recursive: true, force: true });
+    fs.rmSync(path.join(root, "tracevane", "chat-index"), { recursive: true, force: true });
 
     let transcriptReadFileSyncCount = 0;
     fs.readFileSync = ((filePath, ...args) => {
@@ -1716,7 +1716,7 @@ test("history search can reuse sqlite durable mirror rows without a persisted hi
       return originalReadFileSync.call(fs, filePath, ...args);
     });
 
-    const coldContext = createStudioContext({
+    const coldContext = createTracevaneContext({
       config,
       logger: createLogger(),
     });
@@ -1774,7 +1774,7 @@ test("history search can reuse sqlite durable mirror rows without a persisted hi
       cjk.messages.map((message) => message.id),
       ["sm2"],
     );
-    const verifyDb = new DatabaseSync(path.join(root, "studio", "chat.sqlite"));
+    const verifyDb = new DatabaseSync(path.join(root, "tracevane", "chat.sqlite"));
     const indexCountRow = verifyDb
       .prepare("SELECT COUNT(*) AS count FROM history_indexes WHERE session_key = ?")
       .get(sessionKey);
@@ -1789,7 +1789,7 @@ test("history search can reuse sqlite durable mirror rows without a persisted hi
 
 test("history search scans local transcript lightly before full index access", async () => {
   const root = fs.mkdtempSync(
-    path.join(os.tmpdir(), "openclaw-studio-history-search-fast-"),
+    path.join(os.tmpdir(), "tracevane-history-search-fast-"),
   );
   try {
     const workspace = path.join(root, "workspace");
@@ -1851,12 +1851,12 @@ test("history search scans local transcript lightly before full index access", a
       ),
     );
 
-    const config = createStandaloneStudioConfig({
+    const config = createStandaloneTracevaneConfig({
       port: await getFreePort(),
       openclawRoot: root,
       gatewayWsUrl: "ws://127.0.0.1:1",
     });
-    const context = createStudioContext({
+    const context = createTracevaneContext({
       config,
       logger: createLogger(),
     });
@@ -1874,7 +1874,7 @@ test("history search scans local transcript lightly before full index access", a
       result.diagnostics.notes.join("\n"),
       /rebuilt a persisted sqlite\/json history index from a lightweight transcript scan and mapped only the requested page messages/i,
     );
-    assert.equal(fs.existsSync(path.join(root, "studio", "chat.sqlite")), true);
+    assert.equal(fs.existsSync(path.join(root, "tracevane", "chat.sqlite")), true);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -1882,7 +1882,7 @@ test("history search scans local transcript lightly before full index access", a
 
 test("history page resyncs local transcript after rewrite and truncation without duplicating assistant steps", async () => {
   const root = fs.mkdtempSync(
-    path.join(os.tmpdir(), "openclaw-studio-history-resync-"),
+    path.join(os.tmpdir(), "tracevane-history-resync-"),
   );
   try {
     const workspace = path.join(root, "workspace");
@@ -1963,12 +1963,12 @@ test("history page resyncs local transcript after rewrite and truncation without
       ),
     );
 
-    const config = createStandaloneStudioConfig({
+    const config = createStandaloneTracevaneConfig({
       port: await getFreePort(),
       openclawRoot: root,
       gatewayWsUrl: "ws://127.0.0.1:1",
     });
-    const context = createStudioContext({
+    const context = createTracevaneContext({
       config,
       logger: createLogger(),
     });
@@ -2055,7 +2055,7 @@ test("history page resyncs local transcript after rewrite and truncation without
 
 test("history page upgrades legacy mirrors without observability before enabling cold transcript fast-path reuse", async () => {
   const root = fs.mkdtempSync(
-    path.join(os.tmpdir(), "openclaw-studio-history-legacy-mirror-upgrade-"),
+    path.join(os.tmpdir(), "tracevane-history-legacy-mirror-upgrade-"),
   );
   try {
     const workspace = path.join(root, "workspace");
@@ -2067,7 +2067,7 @@ test("history page upgrades legacy mirrors without observability before enabling
     fs.mkdirSync(path.join(root, "agents", "main", "sessions"), {
       recursive: true,
     });
-    fs.mkdirSync(path.join(root, "studio", "chat-durable-mirror"), {
+    fs.mkdirSync(path.join(root, "tracevane", "chat-durable-mirror"), {
       recursive: true,
     });
 
@@ -2130,7 +2130,7 @@ test("history page upgrades legacy mirrors without observability before enabling
     );
 
     const legacyMirrorDb = new DatabaseSync(
-      path.join(root, "studio", "chat-durable-mirror", "mirror.sqlite"),
+      path.join(root, "tracevane", "chat-durable-mirror", "mirror.sqlite"),
     );
     legacyMirrorDb.exec(`
       CREATE TABLE IF NOT EXISTS mirror_checkpoint (
@@ -2190,7 +2190,7 @@ test("history page upgrades legacy mirrors without observability before enabling
       ]),
     );
 
-    const config = createStandaloneStudioConfig({
+    const config = createStandaloneTracevaneConfig({
       port: await getFreePort(),
       openclawRoot: root,
       gatewayWsUrl: "ws://127.0.0.1:1",
@@ -2206,7 +2206,7 @@ test("history page upgrades legacy mirrors without observability before enabling
     });
 
     try {
-      const coldUpgradeContext = createStudioContext({
+      const coldUpgradeContext = createTracevaneContext({
         config,
         logger: createLogger(),
       });
@@ -2224,7 +2224,7 @@ test("history page upgrades legacy mirrors without observability before enabling
       assert.ok(transcriptReads > 0);
 
       transcriptReads = 0;
-      const coldFastPathContext = createStudioContext({
+      const coldFastPathContext = createTracevaneContext({
         config,
         logger: createLogger(),
       });
@@ -2250,7 +2250,7 @@ test("history page upgrades legacy mirrors without observability before enabling
 
 test("history page collapses inject user with shadow-restored transcript user even when transcript lacks runId", async () => {
   const root = fs.mkdtempSync(
-    path.join(os.tmpdir(), "openclaw-studio-history-user-dedupe-"),
+    path.join(os.tmpdir(), "tracevane-history-user-dedupe-"),
   );
   let gateway = null;
   try {
@@ -2273,7 +2273,7 @@ test("history page collapses inject user with shadow-restored transcript user ev
     fs.mkdirSync(path.join(root, "agents", "main", "sessions"), {
       recursive: true,
     });
-    fs.mkdirSync(path.join(root, "studio"), { recursive: true });
+    fs.mkdirSync(path.join(root, "tracevane"), { recursive: true });
 
     fs.writeFileSync(
       path.join(root, "openclaw.json"),
@@ -2296,12 +2296,12 @@ test("history page collapses inject user with shadow-restored transcript user ev
     writeGatewayIdentity(root);
 
     gateway = await startFakeGateway();
-    const config = createStandaloneStudioConfig({
+    const config = createStandaloneTracevaneConfig({
       port: await getFreePort(),
       openclawRoot: root,
       gatewayWsUrl: `ws://127.0.0.1:${gateway.port}`,
     });
-    const context = createStudioContext({
+    const context = createTracevaneContext({
       config,
       logger: createLogger(),
     });

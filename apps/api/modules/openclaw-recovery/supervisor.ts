@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { StudioServerConfig } from "../../../../types/api.js";
+import type { TracevaneServerConfig } from "../../../../types/api.js";
 import {
   OPENCLAW_RECOVERY_DAEMON_SERVICE_NAME,
   type OpenClawRecoveryCommand,
@@ -15,17 +15,17 @@ import {
 import { captureOpenClawRecoveryInstallManifest } from "./cli-bootstrap.js";
 import { runOpenClawRecoveryServiceCommand } from "./supervisor-command.js";
 
-const LAUNCHD_LABEL = "dev.openclaw.studio.recovery";
-const WINDOWS_TASK_NAME = "OpenClawStudioRecovery";
+const LAUNCHD_LABEL = "dev.openclaw.tracevane.recovery";
+const WINDOWS_TASK_NAME = "TracevaneRecovery";
 
-function normalizeHome(config: StudioServerConfig): string {
+function normalizeHome(config: TracevaneServerConfig): string {
   const openclawRoot = path.resolve(config.openclawRoot);
   return path.basename(openclawRoot) === ".openclaw"
     ? path.dirname(openclawRoot)
     : process.env.HOME || os.homedir();
 }
 
-function daemonEntryPath(config: StudioServerConfig): string {
+function daemonEntryPath(config: TracevaneServerConfig): string {
   return path.join(
     config.projectRoot,
     "dist",
@@ -236,7 +236,7 @@ function templateFor(
 }
 
 export function createOpenClawRecoveryDaemonServicePlan(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
 ): OpenClawRecoveryDaemonServicePlan {
   const home = normalizeHome(config);
   const nodePath = process.execPath;
@@ -360,7 +360,7 @@ async function runStatusCommands(
 }
 
 export async function getRecoveryDaemonServiceSnapshot(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   options: { includeTemplate?: boolean; probe?: boolean } = {},
 ): Promise<OpenClawRecoveryDaemonServiceSnapshot> {
   const plan = createOpenClawRecoveryDaemonServicePlan(config);
@@ -379,7 +379,7 @@ export async function getRecoveryDaemonServiceSnapshot(
 }
 
 export async function applyRecoveryDaemonServiceAction(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   action: OpenClawRecoveryDaemonServiceAction,
 ): Promise<{
   service: OpenClawRecoveryDaemonServiceSnapshot;

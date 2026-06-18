@@ -1,14 +1,14 @@
-export type StudioRealtimeTransportKind = 'raw-ws' | 'gateway-rpc' | 'disabled';
-export type StudioExposureKind = 'standalone' | 'gateway';
+export type TracevaneRealtimeTransportKind = 'raw-ws' | 'gateway-rpc' | 'disabled';
+export type TracevaneExposureKind = 'standalone' | 'gateway';
 
-export interface StudioRuntimeConfig {
-  exposureKind: StudioExposureKind;
+export interface TracevaneRuntimeConfig {
+  exposureKind: TracevaneExposureKind;
   appBasePath: string;
   apiBasePath: string;
   webSocketBasePath: string;
   gatewayAuthStorageScopePath: string;
   terminalDirectWebSocketPort?: number | null;
-  realtimeTransport: StudioRealtimeTransportKind;
+  realtimeTransport: TracevaneRealtimeTransportKind;
   features: {
     chatRealtime: boolean;
     terminalRealtime: boolean;
@@ -17,7 +17,7 @@ export interface StudioRuntimeConfig {
 
 declare global {
   interface Window {
-    __OPENCLAW_STUDIO_RUNTIME__?: StudioRuntimeConfig;
+    __TRACEVANE_RUNTIME__?: TracevaneRuntimeConfig;
   }
 }
 
@@ -29,10 +29,10 @@ function normalizeBasePath(value: string | undefined | null): string {
 }
 
 function readBuildBasePath(): string {
-  return normalizeBasePath(import.meta.env.STUDIO_BASE_PATH || '');
+  return normalizeBasePath(import.meta.env.TRACEVANE_BASE_PATH || '');
 }
 
-function createDefaultRuntimeConfig(): StudioRuntimeConfig {
+function createDefaultRuntimeConfig(): TracevaneRuntimeConfig {
   const buildBasePath = readBuildBasePath();
   return {
     exposureKind: 'standalone',
@@ -49,9 +49,9 @@ function createDefaultRuntimeConfig(): StudioRuntimeConfig {
   };
 }
 
-export function getStudioRuntimeConfig(): StudioRuntimeConfig {
+export function getTracevaneRuntimeConfig(): TracevaneRuntimeConfig {
   if (typeof window === 'undefined') return createDefaultRuntimeConfig();
-  const injected = window.__OPENCLAW_STUDIO_RUNTIME__;
+  const injected = window.__TRACEVANE_RUNTIME__;
   if (!injected || typeof injected !== 'object') return createDefaultRuntimeConfig();
 
   const fallback = createDefaultRuntimeConfig();
@@ -76,42 +76,42 @@ export function getStudioRuntimeConfig(): StudioRuntimeConfig {
   };
 }
 
-export function getStudioExposureKind(): StudioExposureKind {
-  return getStudioRuntimeConfig().exposureKind;
+export function getTracevaneExposureKind(): TracevaneExposureKind {
+  return getTracevaneRuntimeConfig().exposureKind;
 }
 
-export function getStudioAppBasePath(): string {
-  return getStudioRuntimeConfig().appBasePath;
+export function getTracevaneAppBasePath(): string {
+  return getTracevaneRuntimeConfig().appBasePath;
 }
 
-export function getStudioApiBasePath(): string {
-  return getStudioRuntimeConfig().apiBasePath;
+export function getTracevaneApiBasePath(): string {
+  return getTracevaneRuntimeConfig().apiBasePath;
 }
 
-export function getStudioWebSocketBasePath(): string {
-  return getStudioRuntimeConfig().webSocketBasePath;
+export function getTracevaneWebSocketBasePath(): string {
+  return getTracevaneRuntimeConfig().webSocketBasePath;
 }
 
-export function getStudioGatewayAuthStorageScopePath(): string {
-  return getStudioRuntimeConfig().gatewayAuthStorageScopePath;
+export function getTracevaneGatewayAuthStorageScopePath(): string {
+  return getTracevaneRuntimeConfig().gatewayAuthStorageScopePath;
 }
 
-export function getStudioTerminalDirectWebSocketUrl(): string {
+export function getTracevaneTerminalDirectWebSocketUrl(): string {
   if (typeof window === 'undefined') return '';
-  const port = getStudioRuntimeConfig().terminalDirectWebSocketPort;
+  const port = getTracevaneRuntimeConfig().terminalDirectWebSocketPort;
   if (!port) return '';
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
   return `${protocol}//${window.location.hostname}:${port}/ws/terminal`;
 }
 
-export function getStudioRealtimeTransport(): StudioRealtimeTransportKind {
-  return getStudioRuntimeConfig().realtimeTransport;
+export function getTracevaneRealtimeTransport(): TracevaneRealtimeTransportKind {
+  return getTracevaneRuntimeConfig().realtimeTransport;
 }
 
 export function isChatRealtimeEnabled(): boolean {
-  return getStudioRuntimeConfig().features.chatRealtime;
+  return getTracevaneRuntimeConfig().features.chatRealtime;
 }
 
 export function isTerminalRealtimeEnabled(): boolean {
-  return getStudioRuntimeConfig().features.terminalRealtime;
+  return getTracevaneRuntimeConfig().features.terminalRealtime;
 }

@@ -82,7 +82,7 @@ const PERMISSION_MODES: readonly ChannelConnectorPermissionMode[] = [
 ];
 
 const REASONING_EFFORTS: readonly ChannelConnectorReasoningEffort[] = ["low", "medium", "high", "xhigh"];
-const AUTO_VISION_MODEL_SENTINEL = "__studio_auto__";
+const AUTO_VISION_MODEL_SENTINEL = "__tracevane_auto__";
 
 export interface ChannelConnectorCommandContext {
   config: ChannelConnectorsDaemonRuntimeConfig;
@@ -276,7 +276,7 @@ export type ChannelConnectorCommandAuditKind =
 
 export interface ChannelConnectorCommandAudit {
   kind: ChannelConnectorCommandAuditKind;
-  source: "studio" | "config" | "agent" | "skill" | "user";
+  source: "tracevane" | "config" | "agent" | "skill" | "user";
   name: string;
   argsCount: number;
   argsPreview: string | null;
@@ -398,7 +398,7 @@ function uniqueStrings(values: string[]): string[] {
   return output;
 }
 
-let cachedStudioRuntimeVersion: string | null = null;
+let cachedTracevaneRuntimeVersion: string | null = null;
 
 function readPackageVersionFromFile(filePath: string): string | null {
   try {
@@ -412,8 +412,8 @@ function readPackageVersionFromFile(filePath: string): string | null {
 
 function packageVersionCandidateFiles(): string[] {
   const roots = uniqueStrings([
-    process.env.OPENCLAW_STUDIO_ROOT || "",
-    process.env.OPENCLAW_STUDIO_EXTENSION_DIR || "",
+    process.env.TRACEVANE_ROOT || "",
+    process.env.TRACEVANE_EXTENSION_DIR || "",
     process.cwd(),
     process.argv[1] ? path.dirname(process.argv[1]) : "",
   ]);
@@ -430,23 +430,22 @@ function packageVersionCandidateFiles(): string[] {
   return uniqueStrings(files);
 }
 
-function studioRuntimeVersion(): string {
-  const envVersion = normalizeString(process.env.OPENCLAW_STUDIO_BUILD_VERSION)
-    || normalizeString(process.env.OPENCLAW_STUDIO_VERSION)
-    || normalizeString(process.env.STUDIO_VERSION)
+function tracevaneRuntimeVersion(): string {
+  const envVersion = normalizeString(process.env.TRACEVANE_BUILD_VERSION)
+    || normalizeString(process.env.TRACEVANE_VERSION)
     || normalizeString(process.env.npm_package_version);
   if (envVersion) return envVersion;
-  if (cachedStudioRuntimeVersion) return cachedStudioRuntimeVersion;
+  if (cachedTracevaneRuntimeVersion) return cachedTracevaneRuntimeVersion;
 
   for (const filePath of packageVersionCandidateFiles()) {
     const version = readPackageVersionFromFile(filePath);
     if (!version) continue;
-    cachedStudioRuntimeVersion = version;
+    cachedTracevaneRuntimeVersion = version;
     return version;
   }
 
-  cachedStudioRuntimeVersion = "unknown";
-  return cachedStudioRuntimeVersion;
+  cachedTracevaneRuntimeVersion = "unknown";
+  return cachedTracevaneRuntimeVersion;
 }
 
 function normalizeAgentCommandName(value: string): string {
@@ -501,7 +500,7 @@ export function channelConnectorCommandAliasesFromMetadata(metadataValue: unknow
   const metadata = isRecord(metadataValue) ? metadataValue : {};
   const output: ChannelConnectorCommandAlias[] = [];
   const seen = new Set<string>();
-  for (const key of ["aliases", "commandAliases", "command_aliases", "studioCommandAliases", "studio_command_aliases"]) {
+  for (const key of ["aliases", "commandAliases", "command_aliases", "tracevaneCommandAliases", "tracevane_command_aliases"]) {
     collectCommandAliasesFromValue(metadata[key], output, seen);
   }
   return output;
@@ -581,7 +580,7 @@ export function resolveChannelConnectorBindingCommandAlias(
   );
 }
 
-const STUDIO_COMMAND_MATCH_CANDIDATES: readonly CommandMatchCandidate[] = [
+const TRACEVANE_COMMAND_MATCH_CANDIDATES: readonly CommandMatchCandidate[] = [
   { id: "start", names: ["start"] },
   { id: "help", names: ["help"] },
   { id: "menu", names: ["menu"] },
@@ -624,7 +623,7 @@ const STUDIO_COMMAND_MATCH_CANDIDATES: readonly CommandMatchCandidate[] = [
 
 export function matchChannelConnectorCommandPrefix(
   input: string,
-  candidates: readonly CommandMatchCandidate[] = STUDIO_COMMAND_MATCH_CANDIDATES,
+  candidates: readonly CommandMatchCandidate[] = TRACEVANE_COMMAND_MATCH_CANDIDATES,
 ): string | null {
   const prefix = normalizeString(input).toLowerCase();
   if (!prefix) return null;
@@ -1354,7 +1353,7 @@ function handlePermissionResponseCommand(
   };
 }
 
-function isStudioCommand(name: string): boolean {
+function isTracevaneCommand(name: string): boolean {
   return Boolean(matchChannelConnectorCommandPrefix(name));
 }
 
@@ -3251,7 +3250,7 @@ function handleVersion(context: ChannelConnectorCommandContext): ChannelConnecto
     control,
     replyText: [
       "Tracevane Channel Version",
-      `Tracevane: ${studioRuntimeVersion()}`,
+      `Tracevane: ${tracevaneRuntimeVersion()}`,
       `Node: ${process.version}`,
       `Platform: ${os.platform()} ${os.arch()}`,
       `Binding: ${context.binding.id} (${context.binding.platform})`,
@@ -3513,8 +3512,8 @@ export async function handleChannelConnectorCommand(
   const content = extractOctoContent(context.message);
   const parsed = parseChannelConnectorCommand(content);
   const lookup = controlsLookup(context);
-  const parsedStudioName = parsed ? matchChannelConnectorCommandPrefix(parsed.name) : null;
-  const parsedNameForControl = parsedStudioName || parsed?.name || "";
+  const parsedTracevaneName = parsed ? matchChannelConnectorCommandPrefix(parsed.name) : null;
+  const parsedNameForControl = parsedTracevaneName || parsed?.name || "";
   if (context.hasPendingQuestionRequest?.(lookup) && !["stop", "reset", "new"].includes(parsedNameForControl)) {
     const currentControl = getChannelConnectorSessionControl(context.controlsPath, lookup);
     if (!canManageSession(context.binding, context.message)) {
@@ -3591,7 +3590,7 @@ export async function handleChannelConnectorCommand(
 
   const currentControl = getChannelConnectorSessionControl(context.controlsPath, lookup);
   const currentProject = resolveChannelConnectorEffectiveProject(context.config, context.project, currentControl);
-  const name = parsedStudioName || parsed.name;
+  const name = parsedTracevaneName || parsed.name;
   const args = parsed.args;
   const rawCommandsSubcommand = normalizeString(args[0]).toLowerCase();
   const dirListingRequest = name === "dir" ? parseWorkDirListingRequest(args) : null;
@@ -3648,7 +3647,7 @@ export async function handleChannelConnectorCommand(
     return handlePermissionResponseCommand(context, permissionAction, currentControl, name);
   }
 
-  if (isStudioCommand(name)) {
+  if (isTracevaneCommand(name)) {
     const disabled = disabledCommandDecision(context.binding, context.message, [name, parsed.name]);
     if (disabled.disabled) {
       return {
@@ -3664,7 +3663,7 @@ export async function handleChannelConnectorCommand(
     }
   }
 
-  if (!isStudioCommand(name)) {
+  if (!isTracevaneCommand(name)) {
     const customCommand = resolveCustomCommand(context, currentProject, name);
     if (customCommand) {
       const disabled = disabledCommandDecision(context.binding, context.message, [customCommand.name, name, parsed.name]);
@@ -4114,7 +4113,7 @@ export async function handleChannelConnectorCommand(
           passthroughText: null,
         };
       }
-      if (isStudioCommand(commandName) || resolveCustomCommand(context, currentProject, commandName)) {
+      if (isTracevaneCommand(commandName) || resolveCustomCommand(context, currentProject, commandName)) {
         return {
           handled: true,
           command: name,
@@ -4214,7 +4213,7 @@ export async function handleChannelConnectorCommand(
           passthroughText: null,
         };
       }
-      if (isStudioCommand(commandName) || resolveCustomCommand(context, currentProject, commandName)) {
+      if (isTracevaneCommand(commandName) || resolveCustomCommand(context, currentProject, commandName)) {
         return {
           handled: true,
           command: name,

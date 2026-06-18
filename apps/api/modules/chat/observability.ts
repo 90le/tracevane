@@ -297,7 +297,7 @@ export function deriveObservabilityFromHistory(
         argsPreview: existing?.argsPreview || null,
         resultPreview: summarizeUnknown(Object.keys(detailSource).length ? detailSource : clipPreview(text, 260), 260),
         isError,
-        artifacts: options.sessionKey && options.collectToolArtifacts && extractTranscriptToolName(raw) !== 'studio_delivery'
+        artifacts: options.sessionKey && options.collectToolArtifacts && extractTranscriptToolName(raw) !== 'tracevane_delivery'
           ? options.collectToolArtifacts(options.sessionKey, record, toolCallId)
           : existing?.artifacts,
       };

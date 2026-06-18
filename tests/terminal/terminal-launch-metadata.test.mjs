@@ -26,7 +26,7 @@ test("terminal pending launch metadata preserves resource cwd until attach", () 
   launchMetadataModule.writePendingTerminalLaunchMetadata(storage, "term-resource", {
     profileId: "agent-codex",
     targetKind: "local",
-    cwd: "/home/binbin/.openclaw/extensions/openclaw-studio",
+    cwd: "/home/binbin/.openclaw/extensions/tracevane",
   });
 
   assert.deepEqual(
@@ -34,7 +34,7 @@ test("terminal pending launch metadata preserves resource cwd until attach", () 
     {
       profileId: "agent-codex",
       targetKind: "local",
-      cwd: "/home/binbin/.openclaw/extensions/openclaw-studio",
+      cwd: "/home/binbin/.openclaw/extensions/tracevane",
       pinned: null,
     },
   );

@@ -12,12 +12,12 @@ function createMessage(role, text) {
   return { role, text };
 }
 
-function createStudioSession(overrides = {}) {
+function createTracevaneSession(overrides = {}) {
   return {
-    key: 'agent:frontend:webchat:direct:studio-test',
+    key: 'agent:frontend:webchat:direct:tracevane-test',
     agentId: 'frontend',
     sessionId: 'sess-1',
-    kind: 'studio_managed',
+    kind: 'tracevane_managed',
     label: 'Tracevane chat · frontend',
     derivedTitle: 'Sender (untrusted metadata): ```json {"label":"cli"} ```',
     lastMessagePreview: null,
@@ -29,7 +29,7 @@ function createStudioSession(overrides = {}) {
       autoLabel: null,
     },
     source: {
-      source: 'studio',
+      source: 'tracevane',
       channel: 'webchat',
       surface: 'direct',
       originLabel: 'Tracevane managed',
@@ -99,8 +99,8 @@ test('deriveAutoSessionLabelFromMessages skips weak greetings and uses the first
   assert.equal(label, 'Tracevane chat 标题更新机制');
 });
 
-test('applyDerivedAutoLabelToSessionRow stores autoLabel for studio-managed sessions only', () => {
-  const session = createStudioSession();
+test('applyDerivedAutoLabelToSessionRow stores autoLabel for tracevane-managed sessions only', () => {
+  const session = createTracevaneSession();
   const next = applyDerivedAutoLabelToSessionRow(session, [
     createMessage('user', '帮我修复聊天标题自动生成问题'),
     createMessage('assistant', '收到，我先排查。'),
@@ -110,13 +110,13 @@ test('applyDerivedAutoLabelToSessionRow stores autoLabel for studio-managed sess
   assert.equal(next.presentation.autoLabel, '修复聊天标题自动生成问题');
 });
 
-test('deriveChatSessionTitle keeps the default studio label before autoLabel exists', () => {
-  const title = deriveChatSessionTitle(createStudioSession(), 'frontend');
+test('deriveChatSessionTitle keeps the default tracevane label before autoLabel exists', () => {
+  const title = deriveChatSessionTitle(createTracevaneSession(), 'frontend');
   assert.equal(title, 'Tracevane chat · frontend');
 });
 
 test('deriveChatSessionTitle prefers autoLabel, and manual rename stays highest priority', () => {
-  const autoTitled = createStudioSession({
+  const autoTitled = createTracevaneSession({
     presentation: {
       archived: false,
       archivedAt: null,
@@ -127,7 +127,7 @@ test('deriveChatSessionTitle prefers autoLabel, and manual rename stays highest 
   assert.equal(deriveChatSessionTitle(autoTitled, 'frontend'), '修复聊天标题自动生成问题');
   assert.equal(resolveSessionEditableLabel(autoTitled), '修复聊天标题自动生成问题');
 
-  const manuallyRenamed = createStudioSession({
+  const manuallyRenamed = createTracevaneSession({
     label: '手动标题',
     presentation: {
       archived: false,

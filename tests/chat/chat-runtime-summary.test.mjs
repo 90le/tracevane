@@ -34,8 +34,8 @@ test("buildChatDiagnosticsSummary flags truncation and gateway reachability issu
   const healthy = buildChatDiagnosticsSummary({
     gatewayReachable: true,
     gatewayWsUrl: "ws://127.0.0.1:11000",
-    transport: "studio_bff",
-    authMode: "studio_backend_token",
+    transport: "tracevane_bff",
+    authMode: "tracevane_backend_token",
     rawGatewayFramesExposed: false,
     rawGatewayMethodsExposed: false,
     sameOriginRequired: true,
@@ -49,8 +49,8 @@ test("buildChatDiagnosticsSummary flags truncation and gateway reachability issu
   const degraded = buildChatDiagnosticsSummary({
     gatewayReachable: false,
     gatewayWsUrl: "ws://127.0.0.1:11000",
-    transport: "studio_bff",
-    authMode: "studio_backend_token",
+    transport: "tracevane_bff",
+    authMode: "tracevane_backend_token",
     rawGatewayFramesExposed: false,
     rawGatewayMethodsExposed: false,
     sameOriginRequired: true,

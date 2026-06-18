@@ -526,7 +526,7 @@ export class GatewayBrowserClient {
   private buildConnectClient(): GatewayConnectClientInfo {
     return {
       id: resolveGatewayBrowserClientId(this.opts.clientName ?? DEFAULT_GATEWAY_BROWSER_CLIENT_ID),
-      version: this.opts.clientVersion ?? 'openclaw-studio',
+      version: this.opts.clientVersion ?? 'tracevane',
       platform: this.opts.platform ?? navigator.platform ?? 'web',
       mode: this.opts.mode ?? 'webchat',
       instanceId: this.opts.instanceId,
@@ -543,7 +543,7 @@ export class GatewayBrowserClient {
       device: plan.device,
       caps: ['tool-events'],
       auth: plan.auth,
-      userAgent: navigator.userAgent || 'openclaw-studio',
+      userAgent: navigator.userAgent || 'tracevane',
       locale: navigator.language || 'en',
     };
   }

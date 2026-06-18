@@ -57,7 +57,7 @@ async function waitFor(check, timeoutMs = 8_000) {
 }
 
 test("terminal service replays backlog for refresh-like reattach without lastSeq", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-"));
   const service = createTestService(tempDir);
   const marker = "refresh-proof-0422";
   const liveEvents = [];
@@ -147,7 +147,7 @@ test("terminal service replays backlog for refresh-like reattach without lastSeq
 });
 
 test("terminal service exposes launch profile catalog for IDE workspace launchers", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-"));
   const service = createTestService(tempDir);
 
   try {
@@ -171,7 +171,7 @@ test("terminal service exposes launch profile catalog for IDE workspace launcher
 });
 
 test("terminal service attach responses include authoritative session descriptors", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-"));
   const service = createTestService(tempDir);
 
   try {
@@ -231,7 +231,7 @@ test("terminal service attach responses include authoritative session descriptor
 });
 
 test("terminal service starts new pty sessions in requested resource cwd", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-"));
   const resourceDir = path.join(tempDir, "resource-folder");
   fs.mkdirSync(resourceDir, { recursive: true });
   const service = createTestService(tempDir);
@@ -276,7 +276,7 @@ test("terminal service starts new pty sessions in requested resource cwd", async
 });
 
 test("terminal service treats requested resource files as parent cwd", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-"));
   const resourceDir = path.join(tempDir, "resource-folder");
   const resourceFile = path.join(resourceDir, "notes.txt");
   fs.mkdirSync(resourceDir, { recursive: true });
@@ -323,7 +323,7 @@ test("terminal service treats requested resource files as parent cwd", async () 
 });
 
 test("terminal service requires explicit resume before reopening a persisted ended session id", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-"));
   const service = createTestService(tempDir);
 
   try {
@@ -361,7 +361,7 @@ test("terminal service requires explicit resume before reopening a persisted end
 });
 
 test("terminal service keeps fast gateway input off the full ack replay path", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-"));
   const service = createTestService(tempDir);
   const marker = "fast-input-proof-0503";
   const liveEvents = [];
@@ -413,7 +413,7 @@ test("terminal service keeps fast gateway input off the full ack replay path", a
 });
 
 test("terminal service consumes leaked gateway resize controls before pty input", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-"));
   const service = createTestService(tempDir);
   const liveEvents = [];
   const invalidResize = JSON.stringify({
@@ -503,7 +503,7 @@ test("terminal service consumes leaked gateway resize controls before pty input"
 });
 
 test("terminal service can suppress gateway output while streaming over http", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-"));
   const service = createTestService(tempDir);
   const marker = "http-stream-proof-0507";
   const gatewayEvents = [];
@@ -562,7 +562,7 @@ test("terminal service can suppress gateway output while streaming over http", a
 });
 
 test("terminal service rejects http stream attach before a session exists", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-"));
   const service = createTestService(tempDir);
 
   try {
@@ -594,7 +594,7 @@ test("terminal service rejects http stream attach before a session exists", asyn
 });
 
 test("terminal service clear removes replay backlog for refreshed clients", async () => {
-  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "studio-terminal-"));
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-terminal-"));
   const service = createTestService(tempDir);
   const marker = "clear-proof-0422";
   const liveEvents = [];

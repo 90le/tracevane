@@ -1,6 +1,6 @@
 import { parseJsonBody, sendJson } from '../../core/http.js';
-import type { StudioApiContext } from '../../core/context.js';
-import type { StudioRouter } from '../../core/router.js';
+import type { TracevaneApiContext } from '../../core/context.js';
+import type { TracevaneRouter } from '../../core/router.js';
 import type { CronJobInput } from '../../../../types/cron.js';
 import { isCronServiceError } from './service.js';
 
@@ -21,7 +21,7 @@ function sendCronError(res: Parameters<typeof sendJson>[0], error: unknown): voi
   });
 }
 
-export function registerCronRoutes(router: StudioRouter, ctx: StudioApiContext): void {
+export function registerCronRoutes(router: TracevaneRouter, ctx: TracevaneApiContext): void {
   router.get('/api/cron', (_req, res) => {
     try {
       sendJson(res, 200, ctx.services.cron.getSummary());

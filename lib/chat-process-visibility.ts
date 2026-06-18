@@ -11,8 +11,8 @@ export const CHAT_PROCESS_VISIBILITY_DEFAULTS: ChatProcessVisibilityPreferences 
 };
 
 export const CHAT_PROCESS_VISIBILITY_STORAGE_KEYS = {
-  showToolPreviews: 'openclaw-studio.chat.show-tool-previews',
-  showThinkingBlocks: 'openclaw-studio.chat.show-thinking-blocks',
+  showToolPreviews: 'tracevane.chat.show-tool-previews',
+  showThinkingBlocks: 'tracevane.chat.show-thinking-blocks',
 } as const;
 
 function normalizeString(value: unknown): string {

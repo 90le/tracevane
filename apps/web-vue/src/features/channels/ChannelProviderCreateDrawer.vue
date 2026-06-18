@@ -26,7 +26,7 @@
               <div v-if="options.length" class="form-grid">
                 <div class="form-field form-field-full">
                   <label class="form-label">{{ text('渠道类型', 'Provider type') }}</label>
-                  <StudioSelect
+                  <TracevaneSelect
                     v-model="draft.type"
                     :options="options"
                     :placeholder="text('请选择渠道类型', 'Select provider type')"
@@ -72,7 +72,7 @@
 import { reactive, watch } from 'vue';
 import { X } from '@lucide/vue';
 import { DialogContent, DialogOverlay, DialogPortal, DialogRoot } from 'reka-ui';
-import StudioSelect, { type StudioSelectOption } from '../../shared/components/StudioSelect.vue';
+import TracevaneSelect, { type TracevaneSelectOption } from '../../shared/components/TracevaneSelect.vue';
 import { useLocalePreference } from '../../shared/locale';
 import './channels-drawer.css';
 
@@ -81,7 +81,7 @@ defineOptions({ name: 'ChannelProviderCreateDrawer' });
 const props = defineProps<{
   open: boolean;
   busy: boolean;
-  options: StudioSelectOption[];
+  options: TracevaneSelectOption[];
 }>();
 
 const emit = defineEmits<{

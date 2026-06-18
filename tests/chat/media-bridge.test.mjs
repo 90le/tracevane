@@ -4,10 +4,10 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-import { createStudioChatMediaBridge } from '../../dist/apps/api/modules/chat/media-bridge.js';
+import { createTracevaneChatMediaBridge } from '../../dist/apps/api/modules/chat/media-bridge.js';
 
-function createTempStudioConfig() {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-media-bridge-'));
+function createTempTracevaneConfig() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-media-bridge-'));
   const workspace = path.join(root, 'workspace');
   const openclawConfigFile = path.join(root, 'openclaw.json');
 
@@ -23,7 +23,7 @@ function createTempStudioConfig() {
     root,
     workspace,
     config: {
-      pluginId: 'studio',
+      pluginId: 'tracevane',
       pluginName: 'Tracevane',
       version: '0.1.0-test',
       port: 0,
@@ -39,14 +39,14 @@ function createTempStudioConfig() {
 }
 
 test('collectMessageResources ignores plain text MEDIA and path examples', () => {
-  const studio = createTempStudioConfig();
+  const tracevane = createTempTracevaneConfig();
 
   try {
-    fs.writeFileSync(path.join(studio.workspace, 'image.png'), 'png');
+    fs.writeFileSync(path.join(tracevane.workspace, 'image.png'), 'png');
 
-    const bridge = createStudioChatMediaBridge(studio.config);
+    const bridge = createTracevaneChatMediaBridge(tracevane.config);
     const items = bridge.collectMessageResources(
-      'agent:main:webchat:direct:studio-test',
+      'agent:main:webchat:direct:tracevane-test',
       {
         role: 'assistant',
         text: '看看 `./image.png` 和 MEDIA:./missing.pdf，还有 @uploads/image.png',
@@ -55,21 +55,21 @@ test('collectMessageResources ignores plain text MEDIA and path examples', () =>
 
     assert.deepEqual(items, []);
   } finally {
-    fs.rmSync(studio.root, { recursive: true, force: true });
+    fs.rmSync(tracevane.root, { recursive: true, force: true });
   }
 });
 
-test('buildAssistantMessageFromStudioDelivery preserves block order', () => {
-  const studio = createTempStudioConfig();
+test('buildAssistantMessageFromTracevaneDelivery preserves block order', () => {
+  const tracevane = createTempTracevaneConfig();
 
   try {
-    fs.writeFileSync(path.join(studio.workspace, 'image.png'), 'png');
+    fs.writeFileSync(path.join(tracevane.workspace, 'image.png'), 'png');
 
-    const bridge = createStudioChatMediaBridge(studio.config);
-    const message = bridge.buildAssistantMessageFromStudioDelivery(
-      'agent:main:webchat:direct:studio-test',
+    const bridge = createTracevaneChatMediaBridge(tracevane.config);
+    const message = bridge.buildAssistantMessageFromTracevaneDelivery(
+      'agent:main:webchat:direct:tracevane-test',
       {
-        type: 'studio_delivery',
+        type: 'tracevane_delivery',
         version: 1,
         blocks: [
           { type: 'text', text: '第一段' },
@@ -100,24 +100,24 @@ test('buildAssistantMessageFromStudioDelivery preserves block order', () => {
     assert.equal(message.blocks?.length, 3);
     assert.deepEqual(message.blocks?.map((block) => block.type), ['text', 'resource', 'text']);
     assert.equal(message.resources?.length, 1);
-    assert.equal(message.resources?.[0]?.source, 'studio_delivery');
+    assert.equal(message.resources?.[0]?.source, 'tracevane_delivery');
   } finally {
-    fs.rmSync(studio.root, { recursive: true, force: true });
+    fs.rmSync(tracevane.root, { recursive: true, force: true });
   }
 });
 
-test('buildAssistantMessageFromStudioDelivery preserves mixed text/resource/text order from alias-normalized payload', () => {
-  const studio = createTempStudioConfig();
+test('buildAssistantMessageFromTracevaneDelivery preserves mixed text/resource/text order from alias-normalized payload', () => {
+  const tracevane = createTempTracevaneConfig();
 
   try {
-    fs.writeFileSync(path.join(studio.workspace, 'a.txt'), 'a');
-    fs.writeFileSync(path.join(studio.workspace, 'b.txt'), 'b');
+    fs.writeFileSync(path.join(tracevane.workspace, 'a.txt'), 'a');
+    fs.writeFileSync(path.join(tracevane.workspace, 'b.txt'), 'b');
 
-    const bridge = createStudioChatMediaBridge(studio.config);
-    const message = bridge.buildAssistantMessageFromStudioDelivery(
-      'agent:main:webchat:direct:studio-test',
+    const bridge = createTracevaneChatMediaBridge(tracevane.config);
+    const message = bridge.buildAssistantMessageFromTracevaneDelivery(
+      'agent:main:webchat:direct:tracevane-test',
       {
-        type: 'studio_delivery',
+        type: 'tracevane_delivery',
         version: 1,
         blocks: [
           { type: 'text', text: '前文' },
@@ -159,23 +159,23 @@ test('buildAssistantMessageFromStudioDelivery preserves mixed text/resource/text
     ]);
     assert.equal(message.text, '前文\n中段\n后文');
   } finally {
-    fs.rmSync(studio.root, { recursive: true, force: true });
+    fs.rmSync(tracevane.root, { recursive: true, force: true });
   }
 });
 
-test('buildAssistantMessageFromStudioDelivery preserves paragraph, inline segments, and card order for v2 payloads', () => {
-  const studio = createTempStudioConfig();
+test('buildAssistantMessageFromTracevaneDelivery preserves paragraph, inline segments, and card order for v2 payloads', () => {
+  const tracevane = createTempTracevaneConfig();
 
   try {
-    fs.writeFileSync(path.join(studio.workspace, 'graph.png'), 'png');
-    fs.writeFileSync(path.join(studio.workspace, 'demo.mp4'), 'video');
-    fs.writeFileSync(path.join(studio.workspace, 'report.pdf'), 'pdf');
+    fs.writeFileSync(path.join(tracevane.workspace, 'graph.png'), 'png');
+    fs.writeFileSync(path.join(tracevane.workspace, 'demo.mp4'), 'video');
+    fs.writeFileSync(path.join(tracevane.workspace, 'report.pdf'), 'pdf');
 
-    const bridge = createStudioChatMediaBridge(studio.config);
-    const message = bridge.buildAssistantMessageFromStudioDelivery(
-      'agent:main:webchat:direct:studio-test',
+    const bridge = createTracevaneChatMediaBridge(tracevane.config);
+    const message = bridge.buildAssistantMessageFromTracevaneDelivery(
+      'agent:main:webchat:direct:tracevane-test',
       {
-        type: 'studio_delivery',
+        type: 'tracevane_delivery',
         version: 2,
         blocks: [
           {
@@ -254,19 +254,19 @@ test('buildAssistantMessageFromStudioDelivery preserves paragraph, inline segmen
     ]);
     assert.equal(message.text, '结构图 graph.png，源文件 report.pdf。\n演示视频 demo.mp4 在这里。');
   } finally {
-    fs.rmSync(studio.root, { recursive: true, force: true });
+    fs.rmSync(tracevane.root, { recursive: true, force: true });
   }
 });
 
 test('collectToolArtifacts only keeps explicit structured artifact fields', () => {
-  const studio = createTempStudioConfig();
+  const tracevane = createTempTracevaneConfig();
 
   try {
-    fs.writeFileSync(path.join(studio.workspace, 'image.png'), 'png');
+    fs.writeFileSync(path.join(tracevane.workspace, 'image.png'), 'png');
 
-    const bridge = createStudioChatMediaBridge(studio.config);
+    const bridge = createTracevaneChatMediaBridge(tracevane.config);
     const items = bridge.collectToolArtifacts(
-      'agent:main:webchat:direct:studio-test',
+      'agent:main:webchat:direct:tracevane-test',
       {
         args: {
           path: './ignored.png',
@@ -287,25 +287,25 @@ test('collectToolArtifacts only keeps explicit structured artifact fields', () =
     assert.equal(items[0]?.fileName, 'image.png');
     assert.equal(items[0]?.source, 'tool_artifact');
   } finally {
-    fs.rmSync(studio.root, { recursive: true, force: true });
+    fs.rmSync(tracevane.root, { recursive: true, force: true });
   }
 });
 
 test('assistant markdown stream preview compiles complete explicit markdown token into a message with resources', () => {
-  const studio = createTempStudioConfig();
+  const tracevane = createTempTracevaneConfig();
 
   try {
-    fs.writeFileSync(path.join(studio.workspace, 'diagram.png'), 'png');
+    fs.writeFileSync(path.join(tracevane.workspace, 'diagram.png'), 'png');
 
-    const bridge = createStudioChatMediaBridge(studio.config);
+    const bridge = createTracevaneChatMediaBridge(tracevane.config);
     assert.equal(
-      bridge.shouldAttemptAssistantMarkdownStreamPreview('前文\n\n[结构图](workspace:diagram.png "studio:break-image")'),
+      bridge.shouldAttemptAssistantMarkdownStreamPreview('前文\n\n[结构图](workspace:diagram.png "tracevane:break-image")'),
       true,
     );
 
     const message = bridge.buildAssistantMarkdownMessage(
-      'agent:main:webchat:direct:studio-test',
-      '前文\n\n[结构图](workspace:diagram.png "studio:break-image")',
+      'agent:main:webchat:direct:tracevane-test',
+      '前文\n\n[结构图](workspace:diagram.png "tracevane:break-image")',
       {
         id: 'stream-run-1',
         createdAt: '2026-03-22T00:00:00.000Z',
@@ -316,32 +316,32 @@ test('assistant markdown stream preview compiles complete explicit markdown toke
 
     assert.ok(message);
     assert.equal(message.source, 'stream');
-    assert.equal(message.text, '前文\n\n[结构图](workspace:diagram.png "studio:break-image")');
+    assert.equal(message.text, '前文\n\n[结构图](workspace:diagram.png "tracevane:break-image")');
     assert.equal(message.blocks?.length, 1);
     assert.equal(message.blocks?.[0]?.type, 'text');
     assert.match(message.blocks?.[0]?.text || '', /\/api\/chat\/sessions\//);
     assert.equal(message.resources?.length, 1);
     assert.equal(message.resources?.[0]?.source, 'assistant_markdown');
   } finally {
-    fs.rmSync(studio.root, { recursive: true, force: true });
+    fs.rmSync(tracevane.root, { recursive: true, force: true });
   }
 });
 
 test('assistant markdown stream preview ignores incomplete token and stays plain text until token closes', () => {
-  const studio = createTempStudioConfig();
+  const tracevane = createTempTracevaneConfig();
 
   try {
-    fs.writeFileSync(path.join(studio.workspace, 'diagram.png'), 'png');
+    fs.writeFileSync(path.join(tracevane.workspace, 'diagram.png'), 'png');
 
-    const bridge = createStudioChatMediaBridge(studio.config);
+    const bridge = createTracevaneChatMediaBridge(tracevane.config);
     assert.equal(
-      bridge.shouldAttemptAssistantMarkdownStreamPreview('前文\n\n[结构图](workspace:diagram.png "studio:break-image"'),
+      bridge.shouldAttemptAssistantMarkdownStreamPreview('前文\n\n[结构图](workspace:diagram.png "tracevane:break-image"'),
       true,
     );
 
     const message = bridge.buildAssistantMarkdownMessage(
-      'agent:main:webchat:direct:studio-test',
-      '前文\n\n[结构图](workspace:diagram.png "studio:break-image"',
+      'agent:main:webchat:direct:tracevane-test',
+      '前文\n\n[结构图](workspace:diagram.png "tracevane:break-image"',
       {
         id: 'stream-run-2',
         createdAt: '2026-03-22T00:00:00.000Z',
@@ -352,20 +352,20 @@ test('assistant markdown stream preview ignores incomplete token and stays plain
 
     assert.equal(message, null);
   } finally {
-    fs.rmSync(studio.root, { recursive: true, force: true });
+    fs.rmSync(tracevane.root, { recursive: true, force: true });
   }
 });
 
 test('assistant markdown stream preview and final compilation stay structurally consistent', () => {
-  const studio = createTempStudioConfig();
+  const tracevane = createTempTracevaneConfig();
 
   try {
-    fs.writeFileSync(path.join(studio.workspace, 'diagram.png'), 'png');
+    fs.writeFileSync(path.join(tracevane.workspace, 'diagram.png'), 'png');
 
-    const bridge = createStudioChatMediaBridge(studio.config);
-    const source = '前文\n\n[结构图](workspace:diagram.png "studio:break-image")';
+    const bridge = createTracevaneChatMediaBridge(tracevane.config);
+    const source = '前文\n\n[结构图](workspace:diagram.png "tracevane:break-image")';
     const streamMessage = bridge.buildAssistantMarkdownMessage(
-      'agent:main:webchat:direct:studio-test',
+      'agent:main:webchat:direct:tracevane-test',
       source,
       {
         id: 'stream-run-3',
@@ -375,7 +375,7 @@ test('assistant markdown stream preview and final compilation stay structurally 
       },
     );
     const finalMessage = bridge.buildAssistantMarkdownMessage(
-      'agent:main:webchat:direct:studio-test',
+      'agent:main:webchat:direct:tracevane-test',
       source,
       {
         id: 'final-run-3',
@@ -391,25 +391,25 @@ test('assistant markdown stream preview and final compilation stay structurally 
     assert.deepEqual(streamMessage.blocks, finalMessage.blocks);
     assert.deepEqual(streamMessage.resources, finalMessage.resources);
   } finally {
-    fs.rmSync(studio.root, { recursive: true, force: true });
+    fs.rmSync(tracevane.root, { recursive: true, force: true });
   }
 });
 
 test('assistant markdown stream preview detects raw html media refs and compiles them into resources', () => {
-  const studio = createTempStudioConfig();
+  const tracevane = createTempTracevaneConfig();
 
   try {
-    fs.writeFileSync(path.join(studio.workspace, 'diagram.png'), 'png');
+    fs.writeFileSync(path.join(tracevane.workspace, 'diagram.png'), 'png');
 
-    const bridge = createStudioChatMediaBridge(studio.config);
-    const source = '<img src="workspace:diagram.png" title="studio:break-image" alt="结构图">';
+    const bridge = createTracevaneChatMediaBridge(tracevane.config);
+    const source = '<img src="workspace:diagram.png" title="tracevane:break-image" alt="结构图">';
     assert.equal(
       bridge.shouldAttemptAssistantMarkdownStreamPreview(source),
       true,
     );
 
     const streamMessage = bridge.buildAssistantMarkdownMessage(
-      'agent:main:webchat:direct:studio-test',
+      'agent:main:webchat:direct:tracevane-test',
       source,
       {
         id: 'stream-html-1',
@@ -424,6 +424,6 @@ test('assistant markdown stream preview detects raw html media refs and compiles
     assert.equal(streamMessage.resources?.[0]?.kind, 'image');
     assert.match(streamMessage.blocks?.[0]?.text || '', /<img[^>]+src="\/api\/chat\/sessions\//);
   } finally {
-    fs.rmSync(studio.root, { recursive: true, force: true });
+    fs.rmSync(tracevane.root, { recursive: true, force: true });
   }
 });

@@ -8,9 +8,9 @@ import time
 from browser_surface import wait_for_active_session, wait_for_chat_surface
 
 
-SCREENSHOT_ENTRY = Path('/tmp/openclaw-studio-chat-entry.png')
-SCREENSHOT_SESSION = Path('/tmp/openclaw-studio-chat-session.png')
-SCREENSHOT_WORKBENCH = Path('/tmp/openclaw-studio-chat-workbench.png')
+SCREENSHOT_ENTRY = Path('/tmp/tracevane-chat-entry.png')
+SCREENSHOT_SESSION = Path('/tmp/tracevane-chat-session.png')
+SCREENSHOT_WORKBENCH = Path('/tmp/tracevane-chat-workbench.png')
 
 
 def wait_button_enabled(page, locator, timeout=20000):

@@ -1164,7 +1164,7 @@ export async function getOctoUploadCredentials(
     fileName: string;
   },
 ): Promise<ChannelConnectorOctoTransportResult> {
-  const fileName = safeChannelConnectorFileName(input.fileName, "studio-upload.bin");
+  const fileName = safeChannelConnectorFileName(input.fileName, "tracevane-upload.bin");
   try {
     const response = await fetchOctoUploadCredentials(config, fileName);
     return transportResult({
@@ -1252,7 +1252,7 @@ export async function uploadOctoFile(
     mimeType?: string | null;
   },
 ): Promise<ChannelConnectorOctoTransportResult> {
-  const fileName = safeChannelConnectorFileName(input.fileName, "studio-upload.bin");
+  const fileName = safeChannelConnectorFileName(input.fileName, "tracevane-upload.bin");
   const mimeType = inferChannelConnectorMimeType(fileName, input.mimeType);
   try {
     const response = await postOctoMultipart(config, "/v1/bot/file/upload", {
@@ -1304,7 +1304,7 @@ export async function directUploadOctoFile(
     mimeType?: string | null;
   },
 ): Promise<ChannelConnectorOctoTransportResult> {
-  const fileName = safeChannelConnectorFileName(input.fileName, "studio-upload.bin");
+  const fileName = safeChannelConnectorFileName(input.fileName, "tracevane-upload.bin");
   const mimeType = inferChannelConnectorMimeType(fileName, input.mimeType);
   let requestCount = 1;
   try {
@@ -1362,7 +1362,7 @@ export async function sendOctoMediaMessage(
     onBehalfOf?: string | null;
   },
 ): Promise<ChannelConnectorOctoTransportResult> {
-  const fileName = safeChannelConnectorFileName(input.fileName, "studio-upload.bin");
+  const fileName = safeChannelConnectorFileName(input.fileName, "tracevane-upload.bin");
   const mimeType = inferChannelConnectorMimeType(fileName, input.mimeType);
   const mediaType = mimeType.startsWith("image/") ? OCTO_IMAGE_MESSAGE_TYPE : OCTO_FILE_MESSAGE_TYPE;
   const payload: Record<string, unknown> = {

@@ -9,9 +9,9 @@ import { createHash } from "node:crypto";
 import { WebSocket } from "ws";
 
 import {
-  createStudioContext,
-  createStudioRequestHandler,
-  createStudioUpgradeHandler,
+  createTracevaneContext,
+  createTracevaneRequestHandler,
+  createTracevaneUpgradeHandler,
 } from "../../dist/apps/api/index.js";
 import {
   createModelGatewayService,
@@ -20,28 +20,28 @@ import {
 import { createModelGatewayDaemon } from "../../dist/apps/api/modules/model-gateway/daemon.js";
 
 function makeTempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), "studio-model-gateway-"));
+  return fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-model-gateway-"));
 }
 
-function createStudioConfig(root) {
+function createTracevaneConfig(root) {
   const openclawRoot = path.join(root, ".openclaw");
   fs.mkdirSync(openclawRoot, { recursive: true });
   return {
-    pluginId: "studio",
+    pluginId: "tracevane",
     pluginName: "Tracevane",
     version: "0.1.0",
     port: 3760,
     autoStart: true,
     openclawRoot,
     openclawConfigFile: path.join(openclawRoot, "openclaw.json"),
-    projectRoot: path.join(root, "studio"),
-    webDistDir: path.join(root, "studio/apps/web-vue/dist"),
+    projectRoot: path.join(root, "tracevane"),
+    webDistDir: path.join(root, "tracevane/apps/web-vue/dist"),
     gatewayPort: 31879,
     gatewayWsUrl: "ws://127.0.0.1:31879",
     gatewayControlUiBasePath: "",
     transport: {
       standalone: { enabled: true, port: 3760 },
-      gateway: { enabled: true, basePath: "/studio" },
+      gateway: { enabled: true, basePath: "/tracevane" },
     },
   };
 }
@@ -86,9 +86,9 @@ async function startHttpServer(handler) {
   };
 }
 
-async function withStudioServer(ctx, task) {
-  const requestHandler = createStudioRequestHandler(ctx);
-  const upgradeHandler = createStudioUpgradeHandler(ctx);
+async function withTracevaneServer(ctx, task) {
+  const requestHandler = createTracevaneRequestHandler(ctx);
+  const upgradeHandler = createTracevaneUpgradeHandler(ctx);
   const server = http.createServer(async (req, res) => {
     const handled = await requestHandler(req, res);
     if (!handled && !res.writableEnded) {
@@ -254,7 +254,7 @@ async function stopChild(child) {
 
 test("model gateway registry stores provider secrets separately and masks views", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
   const service = createModelGatewayService(config);
 
@@ -322,7 +322,7 @@ test("model gateway registry stores provider secrets separately and masks views"
 
 test("model gateway usage ledger summarizes every model by requests and tokens", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
   const service = createModelGatewayService(config);
   service.upsertProvider(undefined, {
@@ -501,10 +501,10 @@ test("model gateway usage ledger summarizes every model by requests and tokens",
 
 test("model gateway starts Codex account login and creates an account-backed provider", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
-  const ctx = createStudioContext({ config, logger: createLogger() });
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const idToken = fakeJwt({
     email: "coder@example.com",
     exp: Math.floor(Date.now() / 1000) + 3600,
@@ -782,7 +782,7 @@ test("model gateway starts Codex account login and creates an account-backed pro
       assert.equal(image.body.data[0].revised_prompt, "red square");
       assert.deepEqual(image.body.usage, { input_tokens: 7, output_tokens: 11, total_tokens: 18 });
 
-      const editBoundary = "----studio-codex-image-edit-boundary";
+      const editBoundary = "----tracevane-codex-image-edit-boundary";
       const editBody = Buffer.from([
         `--${editBoundary}`,
         'Content-Disposition: form-data; name="model"',
@@ -796,7 +796,7 @@ test("model gateway starts Codex account login and creates an account-backed pro
         'Content-Disposition: form-data; name="image"; filename="square.png"',
         "Content-Type: image/png",
         "",
-        "PNG\u0000studio-image",
+        "PNG\u0000tracevane-image",
         `--${editBoundary}--`,
         "",
       ].join("\r\n"), "latin1");
@@ -814,7 +814,7 @@ test("model gateway starts Codex account login and creates an account-backed pro
       assert.match(editError.details.reference, /no stable Codex account image edit action contract/);
       assert.ok(editError.details.alternatives.some((item) => item.includes("/v1/images/generations")));
 
-      const audioBoundary = "----studio-codex-audio-boundary";
+      const audioBoundary = "----tracevane-codex-audio-boundary";
       const audioBody = Buffer.from([
         `--${audioBoundary}`,
         'Content-Disposition: form-data; name="model"',
@@ -929,16 +929,16 @@ test("model gateway starts Codex account login and creates an account-backed pro
 
 test("model gateway returns structured unsupported for Codex account realtime websocket routes", async () => {
   const root = makeTempRoot();
-  const ctx = createStudioContext({
-    config: createStudioConfig(root),
+  const ctx = createTracevaneContext({
+    config: createTracevaneConfig(root),
     logger: createLogger(),
   });
 
-  await withStudioServer(ctx, async (baseUrl) => {
+  await withTracevaneServer(ctx, async (baseUrl) => {
     const wsUrl = `ws${baseUrl.slice("http".length)}/v1/responses/ws`;
     const payload = await new Promise((resolve, reject) => {
       const ws = new WebSocket(wsUrl, {
-        headers: { authorization: "Bearer sk-studio-smoke-local" },
+        headers: { authorization: "Bearer sk-tracevane-smoke-local" },
       });
       ws.once("message", (raw) => {
         resolve(JSON.parse(Buffer.from(raw).toString("utf8")));
@@ -955,8 +955,8 @@ test("model gateway returns structured unsupported for Codex account realtime we
 
 test("model gateway forwards OpenAI image edit multipart requests without rewriting binary bodies", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "image-provider",
@@ -987,7 +987,7 @@ test("model gateway forwards OpenAI image edit multipart requests without rewrit
     setActiveScopes: ["openclaw"],
   });
 
-  const boundary = "----studio-image-edit-boundary";
+  const boundary = "----tracevane-image-edit-boundary";
   const multipartBody = Buffer.from([
     `--${boundary}`,
     'Content-Disposition: form-data; name="model"',
@@ -1001,12 +1001,12 @@ test("model gateway forwards OpenAI image edit multipart requests without rewrit
     'Content-Disposition: form-data; name="image"; filename="source.png"',
     "Content-Type: image/png",
     "",
-    "PNG\u0000\u0001studio-binary-image",
+    "PNG\u0000\u0001tracevane-binary-image",
     `--${boundary}--`,
     "",
   ].join("\r\n"), "latin1");
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -1066,8 +1066,8 @@ test("model gateway forwards OpenAI image edit multipart requests without rewrit
 
 test("model gateway forwards OpenAI audio multipart requests without rewriting binary bodies", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "audio-provider",
@@ -1099,7 +1099,7 @@ test("model gateway forwards OpenAI audio multipart requests without rewriting b
     setActiveScopes: ["openclaw"],
   });
 
-  const boundary = "----studio-audio-boundary";
+  const boundary = "----tracevane-audio-boundary";
   const multipartBody = Buffer.from([
     `--${boundary}`,
     'Content-Disposition: form-data; name="model"',
@@ -1109,12 +1109,12 @@ test("model gateway forwards OpenAI audio multipart requests without rewriting b
     'Content-Disposition: form-data; name="file"; filename="voice.wav"',
     "Content-Type: audio/wav",
     "",
-    "RIFF\u0000\u0001studio-binary",
+    "RIFF\u0000\u0001tracevane-binary",
     `--${boundary}--`,
     "",
   ].join("\r\n"), "latin1");
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -1169,10 +1169,10 @@ test("model gateway forwards OpenAI audio multipart requests without rewriting b
 
 test("model gateway account pool preserves session affinity and enforces per-account concurrency", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
-  const ctx = createStudioContext({ config, logger: createLogger() });
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const authRefA = "provider:codex-pool:account:a:codex-token";
   const authRefB = "provider:codex-pool:account:b:codex-token";
   const idTokenA = fakeJwt({
@@ -1421,10 +1421,10 @@ test("model gateway account pool preserves session affinity and enforces per-acc
 
 test("model gateway puts Codex accounts into cooldown on upstream quota failures", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
-  const ctx = createStudioContext({ config, logger: createLogger() });
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const authRef = "provider:codex-quota:account:a:codex-token";
   const idToken = fakeJwt({
     email: "quota@example.com",
@@ -1555,10 +1555,10 @@ test("model gateway puts Codex accounts into cooldown on upstream quota failures
 
 test("model gateway marks expired Codex account cooldown retries in runtime diagnostics", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
-  const ctx = createStudioContext({ config, logger: createLogger() });
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const authRef = "provider:codex-cooldown-retry:account:a:codex-token";
   const idToken = fakeJwt({
     email: "retry@example.com",
@@ -1711,10 +1711,10 @@ test("model gateway marks expired Codex account cooldown retries in runtime diag
 
 test("model gateway cools Codex accounts when streaming passthrough emits response.failed", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
-  const ctx = createStudioContext({ config, logger: createLogger() });
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const authRef = "provider:codex-stream-quota:account:a:codex-token";
   const idToken = fakeJwt({
     email: "stream-quota@example.com",
@@ -1858,7 +1858,7 @@ test("model gateway cools Codex accounts when streaming passthrough emits respon
 
 test("model gateway account pool persists routing affinity across service restart", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
   const authRefA = "provider:codex-persist:account:a:codex-token";
   const authRefB = "provider:codex-persist:account:b:codex-token";
@@ -1889,7 +1889,7 @@ test("model gateway account pool persists routing affinity across service restar
     expires_at: new Date(Date.now() + 3600_000).toISOString(),
   });
 
-  const setupContext = () => createStudioContext({ config, logger: createLogger() });
+  const setupContext = () => createTracevaneContext({ config, logger: createLogger() });
   setupContext().services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "codex-persist",
@@ -2000,7 +2000,7 @@ test("model gateway account pool persists routing affinity across service restar
   };
 
   try {
-    await withServer(createStudioRequestHandler(setupContext(), { stripBasePath: "" }), async (baseUrl) => {
+    await withServer(createTracevaneRequestHandler(setupContext(), { stripBasePath: "" }), async (baseUrl) => {
       const response = await requestJson(`${baseUrl}/v1/responses`, {
         method: "POST",
         headers: { "x-session-id": "persist-alpha" },
@@ -2012,7 +2012,7 @@ test("model gateway account pool persists routing affinity across service restar
     const runtimeAfterFirst = JSON.parse(fs.readFileSync(paths.runtime, "utf8"));
     assert.ok(Object.values(runtimeAfterFirst.accountRouting.codexAffinities).includes("codex-a"));
 
-    await withServer(createStudioRequestHandler(setupContext(), { stripBasePath: "" }), async (baseUrl) => {
+    await withServer(createTracevaneRequestHandler(setupContext(), { stripBasePath: "" }), async (baseUrl) => {
       const sameSession = await requestJson(`${baseUrl}/v1/responses`, {
         method: "POST",
         headers: { "x-session-id": "persist-alpha" },
@@ -2039,7 +2039,7 @@ test("model gateway account pool persists routing affinity across service restar
 
 test("model gateway Codex account provider smoke uses account request normalization", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
   const service = createModelGatewayService(config);
   const authRef = "provider:codex-smoke:account:a:codex-token";
@@ -2178,10 +2178,10 @@ test("model gateway Codex account provider smoke uses account request normalizat
 
 test("model gateway refreshes expiring Codex account tokens before forwarding", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
-  const ctx = createStudioContext({ config, logger: createLogger() });
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const authRef = "provider:codex-refresh:account:abc:codex-token";
   const expiredIdToken = fakeJwt({
     email: "refresh@example.com",
@@ -2355,9 +2355,9 @@ test("model gateway refreshes expiring Codex account tokens before forwarding", 
 
 test("model gateway manages Codex account enablement and manual refresh", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const paths = resolveModelGatewayPaths(config);
   const authRef = "provider:codex-manage:account:ghi:codex-token";
   const oldIdToken = fakeJwt({
@@ -2573,9 +2573,9 @@ test("model gateway manages Codex account enablement and manual refresh", async 
 
 test("model gateway marks Codex accounts as needs-login when token refresh is rejected", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const authRef = "provider:codex-refresh-fail:account:def:codex-token";
   const expiredIdToken = fakeJwt({
     email: "expired@example.com",
@@ -2697,8 +2697,8 @@ test("model gateway marks Codex accounts as needs-login when token refresh is re
 
 test("model gateway refuses managed auth placeholders before upstream forwarding", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "placeholder-openai",
@@ -2714,7 +2714,7 @@ test("model gateway refuses managed auth placeholders before upstream forwarding
     setActiveScopes: ["codex"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -2750,10 +2750,10 @@ test("model gateway refuses managed auth placeholders before upstream forwarding
 
 test("model gateway detects provider protocols without persisting probe secrets", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
-  const ctx = createStudioContext({ config, logger: createLogger() });
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -2937,7 +2937,7 @@ test("model gateway detects provider protocols without persisting probe secrets"
 
 test("model gateway provider vision smoke requires image recognition without opening provider circuit", async () => {
   const root = makeTempRoot();
-  const service = createModelGatewayService(createStudioConfig(root));
+  const service = createModelGatewayService(createTracevaneConfig(root));
   service.upsertProvider(undefined, {
     provider: {
       id: "vision-chat",
@@ -3011,7 +3011,7 @@ test("model gateway provider vision smoke requires image recognition without ope
 
 test("model gateway routing contract selects app-scoped providers and preserves provider URL prefixes", () => {
   const root = makeTempRoot();
-  const service = createModelGatewayService(createStudioConfig(root));
+  const service = createModelGatewayService(createTracevaneConfig(root));
 
   service.upsertProvider(undefined, {
     provider: {
@@ -3077,7 +3077,7 @@ test("model gateway routing contract selects app-scoped providers and preserves 
   const codexChatOverride = service.resolveRouteDecision(
     "POST",
     "/v1/chat/completions",
-    { "x-studio-app-scope": "codex" },
+    { "x-tracevane-app-scope": "codex" },
   );
   assert.equal(codexChatOverride.appScope, "codex");
   assert.equal(codexChatOverride.provider?.id, "codex-chat");
@@ -3085,7 +3085,7 @@ test("model gateway routing contract selects app-scoped providers and preserves 
 
 test("model gateway model pools allow cross-provider duplicates but reject provider-local duplicates", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createModelGatewayService(config);
 
   assert.throws(
@@ -3202,7 +3202,7 @@ test("model gateway model pools allow cross-provider duplicates but reject provi
 
 test("model gateway endpoint profiles prefer native protocol and fall back by endpoint health", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createModelGatewayService(config);
 
   const provider = {
@@ -3287,7 +3287,7 @@ test("model gateway endpoint profiles prefer native protocol and fall back by en
 
 test("model gateway endpoint profiles prefer same-provider model endpoint fallback", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createModelGatewayService(config);
 
   const provider = {
@@ -3425,8 +3425,8 @@ test("model gateway endpoint profiles prefer same-provider model endpoint fallba
 
 test("model gateway forwards through endpoint profiles and updates endpoint health", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.updateClientAuth(undefined, { apiKey: "sk-local-endpoint-profile" });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
@@ -3470,7 +3470,7 @@ test("model gateway forwards through endpoint profiles and updates endpoint heal
   };
 
   try {
-    await withServer(createStudioRequestHandler(ctx), async (baseUrl) => {
+    await withServer(createTracevaneRequestHandler(ctx), async (baseUrl) => {
       const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
         method: "POST",
         headers: { authorization: "Bearer sk-local-endpoint-profile" },
@@ -3499,7 +3499,7 @@ test("model gateway forwards through endpoint profiles and updates endpoint heal
 
 test("model gateway provider smoke can target a specific endpoint profile", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createModelGatewayService(config);
   service.upsertProvider(undefined, {
     provider: {
@@ -3571,7 +3571,7 @@ test("model gateway provider smoke can target a specific endpoint profile", asyn
 
 test("model gateway probes open circuit provider after retry window for requested model", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createModelGatewayService(config);
 
   service.upsertProvider(undefined, {
@@ -3649,8 +3649,8 @@ test("model gateway probes open circuit provider after retry window for requeste
 
 test("model gateway respects Retry-After when opening provider circuits", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "retry-after-primary",
@@ -3685,7 +3685,7 @@ test("model gateway respects Retry-After when opening provider circuits", async 
     secret: { apiKey: "sk-retry-after-backup" },
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -3774,8 +3774,8 @@ test("model gateway respects Retry-After when opening provider circuits", async 
 
 test("model gateway respects Retry-After when opening endpoint profile circuits", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "retry-after-endpoints",
@@ -3814,7 +3814,7 @@ test("model gateway respects Retry-After when opening endpoint profile circuits"
     setActiveScopes: ["openclaw"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -3920,7 +3920,7 @@ test("model gateway respects Retry-After when opening endpoint profile circuits"
 
 test("model gateway does not probe open circuits until Retry-After expires", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createModelGatewayService(config);
   const futureRetryAfter = new Date(Date.now() + 120_000).toISOString();
   const expiredRetryAfter = new Date(Date.now() - 1_000).toISOString();
@@ -3972,8 +3972,8 @@ test("model gateway does not probe open circuits until Retry-After expires", () 
 
 test("model gateway exposes enabled provider model pool through OpenAI models endpoint", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "models-a",
@@ -4057,7 +4057,7 @@ test("model gateway exposes enabled provider model pool through OpenAI models en
   assert.deepEqual(direct.data.find((model) => model.id === "b-only")?.openCircuitProviderIds, ["models-b"]);
   assert.equal(direct.data.some((model) => model.id === "disabled-only"), false);
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   await withServer(handler, async (baseUrl) => {
     const response = await requestJson(`${baseUrl}/v1/models`);
     assert.equal(response.status, 200);
@@ -4071,8 +4071,8 @@ test("model gateway exposes enabled provider model pool through OpenAI models en
 
 test("model gateway client key protects client endpoints and stays separate from upstream secrets", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "client-auth-chat",
@@ -4089,7 +4089,7 @@ test("model gateway client key protects client endpoints and stays separate from
     secret: { apiKey: "sk-upstream-client-auth" },
     setActiveScopes: ["openclaw"],
   });
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -4181,7 +4181,7 @@ test("model gateway client key protects client endpoints and stays separate from
         body: { generate: true },
       });
       assert.equal(generated.status, 200);
-      assert.match(generated.body.revealedKey, /^sk-studio-/);
+      assert.match(generated.body.revealedKey, /^sk-tracevane-/);
       const generatedKey = await requestJson(`${baseUrl}/v1/models`, {
         headers: { "x-api-key": generated.body.revealedKey },
       });
@@ -4209,7 +4209,7 @@ test("model gateway client key protects client endpoints and stays separate from
 
 test("model gateway app connections preview and apply client config files with redacted keys", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const homeDir = path.join(root, "home");
   const service = createModelGatewayService(config, { homeDir });
 
@@ -4347,7 +4347,7 @@ test("model gateway app connections preview and apply client config files with r
   assert.equal(claudeConfig.env.ANTHROPIC_API_KEY, "sk-local-app-connection");
   assert.equal(claudeConfig.env.ANTHROPIC_AUTH_TOKEN, "sk-local-app-connection");
   assert.equal(claudeConfig.env.ANTHROPIC_MODEL, "gpt-main");
-  assert.equal(claudeConfig.studioGateway, undefined);
+  assert.equal(claudeConfig.tracevaneGateway, undefined);
   assert.deepEqual(claudeConfig.hooks.Stop, []);
 
   service.applyAppConnection(undefined, { appId: "opencode" });
@@ -4369,7 +4369,7 @@ test("model gateway app connections preview and apply client config files with r
   assert.equal(opencodeConfig.provider["tracevane-gateway"].models["gpt-main"].tool_call, true);
   assert.equal(opencodeConfig.provider["tracevane-gateway"].models["gpt-main"].reasoning, false);
   assert.equal(opencodeConfig.provider["tracevane-gateway"].models["gpt-main"].temperature, true);
-  assert.equal(opencodeConfig.studioGateway, undefined);
+  assert.equal(opencodeConfig.tracevaneGateway, undefined);
 
   service.applyAppConnection(undefined, { appId: "openclaw" });
   const openclawConfig = JSON.parse(fs.readFileSync(config.openclawConfigFile, "utf8"));
@@ -4383,7 +4383,7 @@ test("model gateway app connections preview and apply client config files with r
   assert.equal(openclawConfig.models.providers["tracevane-gateway"].models[0].maxTokens, 8192);
   assert.equal(openclawConfig.agents.defaults.model.primary, "tracevane-gateway/gpt-main");
   assert.equal(openclawConfig.agents.defaults.thinkingDefault, "high");
-  assert.equal(openclawConfig.studioGateway, undefined);
+  assert.equal(openclawConfig.tracevaneGateway, undefined);
 
   const applyAll = service.applyAppConnections(undefined);
   assert.equal(applyAll.applied.length, 4);
@@ -4397,7 +4397,7 @@ test("model gateway app connections preview and apply client config files with r
 
 test("model gateway app connections resolve budgets from each selected app model", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const homeDir = path.join(root, "home");
   const service = createModelGatewayService(config, { homeDir });
 
@@ -4460,9 +4460,9 @@ test("model gateway app connections resolve budgets from each selected app model
 
 test("model gateway app connections apply through HTTP routes against an isolated home", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const homeDir = path.join(root, "isolated-home");
-  const ctx = createStudioContext({
+  const ctx = createTracevaneContext({
     config,
     logger: createLogger(),
     modelGatewayOptions: { homeDir },
@@ -4483,7 +4483,7 @@ test("model gateway app connections apply through HTTP routes against an isolate
     gateway: { auth: { token: "keep-openclaw" } },
   }, null, 2)}\n`, "utf8");
 
-  await withServer(createStudioRequestHandler(ctx), async (baseUrl) => {
+  await withServer(createTracevaneRequestHandler(ctx), async (baseUrl) => {
     const provider = await requestJson(`${baseUrl}/api/model-gateway/providers`, {
       method: "POST",
       body: {
@@ -4609,7 +4609,7 @@ test("model gateway app connections apply through HTTP routes against an isolate
 
 test("model gateway app connections require a local client key before apply", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const homeDir = path.join(root, "home");
   const service = createModelGatewayService(config, { homeDir });
 
@@ -4642,7 +4642,7 @@ test("model gateway app connections require a local client key before apply", ()
 
 test("model gateway management supports active provider selection, delete, and open-circuit fallback", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
   const service = createModelGatewayService(config);
 
@@ -4703,7 +4703,7 @@ test("model gateway management supports active provider selection, delete, and o
 
 test("model gateway provider list reports active route fallback and disabled active removal", () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createModelGatewayService(config);
 
   service.upsertProvider(undefined, {
@@ -4772,7 +4772,7 @@ test("model gateway provider list reports active route fallback and disabled act
 
 test("model gateway active route smoke uses the client protocol endpoint", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createModelGatewayService(config);
   service.updateClientAuth(undefined, { apiKey: "sk-local-route-smoke" });
   service.upsertProvider(undefined, {
@@ -4838,7 +4838,7 @@ test("model gateway active route smoke uses the client protocol endpoint", async
     assert.equal(result.route.upstreamUrl, "https://route-chat-fast.example.test/v1/chat/completions");
     assert.match(seenUrl, /\/v1\/responses$/);
     assert.equal(seenHeaders.authorization, "Bearer sk-local-route-smoke");
-    assert.equal(seenHeaders["x-studio-app-scope"], "codex");
+    assert.equal(seenHeaders["x-tracevane-app-scope"], "codex");
     assert.equal(seenBody.model, "gpt-route");
     assert.match(seenBody.input, /GATEWAY_OK/);
     assert.equal(seenBody.max_output_tokens, 256);
@@ -4849,7 +4849,7 @@ test("model gateway active route smoke uses the client protocol endpoint", async
 
 test("model gateway active route smoke uses Claude and OpenCode client tool contracts", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createModelGatewayService(config);
   service.updateClientAuth(undefined, { apiKey: "sk-local-client-contract-smoke" });
   service.upsertProvider(undefined, {
@@ -4950,7 +4950,7 @@ test("model gateway active route smoke uses Claude and OpenCode client tool cont
 
 test("model gateway status separates embedded fallback from daemon lifecycle", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
   const service = createModelGatewayService(config);
   const expectedSupervisor = process.platform === "darwin"
@@ -4963,27 +4963,27 @@ test("model gateway status separates embedded fallback from daemon lifecycle", a
   assert.equal(embeddedStatus.listener.host, "127.0.0.1");
   assert.equal(embeddedStatus.listener.port, 18796);
   assert.equal(embeddedStatus.lifecycle.controlPlane.state, "running");
-  assert.equal(embeddedStatus.lifecycle.controlPlane.mode, "studio-api");
+  assert.equal(embeddedStatus.lifecycle.controlPlane.mode, "tracevane-api");
   assert.equal(embeddedStatus.lifecycle.controlPlane.embeddedGatewayActive, true);
   assert.equal(embeddedStatus.lifecycle.openclawMount.state, "configured");
-  assert.equal(embeddedStatus.lifecycle.openclawMount.basePath, "/studio");
-  assert.equal(embeddedStatus.lifecycle.openclawMount.endpoint, "http://127.0.0.1:31879/studio");
+  assert.equal(embeddedStatus.lifecycle.openclawMount.basePath, "/tracevane");
+  assert.equal(embeddedStatus.lifecycle.openclawMount.endpoint, "http://127.0.0.1:31879/tracevane");
   assert.equal(embeddedStatus.lifecycle.openclawMount.ownsModelRelay, false);
   assert.equal(embeddedStatus.lifecycle.localDaemon.required, true);
   assert.equal(embeddedStatus.lifecycle.localDaemon.implementationStatus, "contract-only");
   assert.equal(embeddedStatus.lifecycle.localDaemon.state, "not-installed");
-  assert.equal(embeddedStatus.lifecycle.localDaemon.runtimeMode, "studio-api-embedded");
+  assert.equal(embeddedStatus.lifecycle.localDaemon.runtimeMode, "tracevane-api-embedded");
   assert.equal(embeddedStatus.lifecycle.localDaemon.endpoint, "http://127.0.0.1:18796/v1");
   assert.equal(embeddedStatus.lifecycle.localDaemon.survivesControlPlaneCrash, false);
   assert.equal(embeddedStatus.lifecycle.localDaemon.supervisor.expected, expectedSupervisor);
   assert.equal(embeddedStatus.lifecycle.localDaemon.supervisor.active, null);
-  assert.equal(embeddedStatus.lifecycle.localDaemon.supervisor.serviceName, "openclaw-studio-model-gateway.service");
+  assert.equal(embeddedStatus.lifecycle.localDaemon.supervisor.serviceName, "tracevane-model-gateway.service");
   assert.equal(embeddedStatus.lifecycle.localDaemon.paths.runtime, paths.daemonRuntime);
   assert.equal(embeddedStatus.lifecycle.localDaemon.paths.pid, paths.daemonPid);
   assert.equal(embeddedStatus.lifecycle.localDaemon.paths.lock, paths.portLock);
   assert.deepEqual(embeddedStatus.lifecycle.endpointPolicy, {
     preferredCliEndpoint: "http://127.0.0.1:18796/v1",
-    openclawSinglePortEndpoint: "http://127.0.0.1:31879/studio",
+    openclawSinglePortEndpoint: "http://127.0.0.1:31879/tracevane",
     directDaemonFallbackRequired: true,
     targetModelRelayOwner: "local-daemon",
   });
@@ -5004,7 +5004,7 @@ test("model gateway status separates embedded fallback from daemon lifecycle", a
       port: 18796,
       endpoint: "http://127.0.0.1:18796/v1",
       supervisor: expectedSupervisor,
-      serviceName: "openclaw-studio-model-gateway.service",
+      serviceName: "tracevane-model-gateway.service",
       lockFile: paths.portLock,
     }, null, 2)}\n`);
 
@@ -5025,9 +5025,9 @@ test("model gateway status separates embedded fallback from daemon lifecycle", a
 
 test("model gateway daemon service management exposes templates and guarded install", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
 
   await withServer(handler, async (baseUrl) => {
     const status = await requestJson(`${baseUrl}/api/model-gateway/daemon-service`);
@@ -5118,7 +5118,7 @@ test("model gateway daemon service management exposes templates and guarded inst
 
 test("model gateway daemon service templates inherit proxy environment for supervised daemons", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const previous = {
     HTTPS_PROXY: process.env.HTTPS_PROXY,
     NO_PROXY: process.env.NO_PROXY,
@@ -5153,7 +5153,7 @@ test("model gateway daemon service templates inherit proxy environment for super
 
 test("model gateway daemon service management executes selected supervisor commands when requested", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const calls = [];
   const readinessCalls = [];
   const service = createModelGatewayService(config, {
@@ -5242,7 +5242,7 @@ test("model gateway daemon service management executes selected supervisor comma
 
 test("model gateway ensure-running prefers installed supervisor over detached bootstrap", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const calls = [];
   let startSeen = false;
   const service = createModelGatewayService(config, {
@@ -5349,7 +5349,7 @@ test("model gateway ensure-running prefers installed supervisor over detached bo
 
 test("model gateway stop treats inactive supervised service as expected", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   let stopped = false;
   const service = createModelGatewayService(config, {
     daemonReadinessChecker: daemonReady,
@@ -5406,7 +5406,7 @@ test("model gateway stop treats inactive supervised service as expected", async 
 
 test("model gateway start reports bootstrap failure until daemon HTTP is ready", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createModelGatewayService(config, {
     daemonReadinessChecker: async (endpoint) => ({
       endpoint,
@@ -5445,7 +5445,7 @@ test("model gateway start reports bootstrap failure until daemon HTTP is ready",
 
 test("model gateway ensure-running repairs stale installed supervisor templates", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const calls = [];
   let startSeen = false;
   const service = createModelGatewayService(config, {
@@ -5527,7 +5527,7 @@ test("model gateway ensure-running repairs stale installed supervisor templates"
 
 test("model gateway ensure-running restarts active supervisor after template repair", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
   const calls = [];
   const service = createModelGatewayService(config, {
@@ -5586,7 +5586,7 @@ test("model gateway ensure-running restarts active supervisor after template rep
     port: 18796,
     endpoint: "http://127.0.0.1:18796/v1",
     supervisor: "systemd-user",
-    serviceName: "openclaw-studio-model-gateway.service",
+    serviceName: "tracevane-model-gateway.service",
     lockFile: paths.portLock,
   }, null, 2)}\n`);
 
@@ -5614,7 +5614,7 @@ test("model gateway ensure-running restarts active supervisor after template rep
 
 test("model gateway ensure-running installs supervisor template before starting when missing", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const calls = [];
   let startSeen = false;
   const service = createModelGatewayService(config, {
@@ -5691,7 +5691,7 @@ test("model gateway ensure-running installs supervisor template before starting 
 
 test("model gateway daemon service status summarizes supervisor command failures", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const service = createModelGatewayService(config, {
     daemonReadinessChecker: daemonReady,
     daemonServiceCommandRunner: async (command) => {
@@ -5729,7 +5729,7 @@ test("model gateway daemon service status summarizes supervisor command failures
 
 test("model gateway daemon writes runtime metadata and serves cli routes", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
   const service = createModelGatewayService(config);
   service.upsertProvider(undefined, {
@@ -5887,7 +5887,7 @@ test("model gateway daemon writes runtime metadata and serves cli routes", async
 
 test("model gateway child daemon keeps serving after Tracevane API listener shuts down", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
   const upstreamCalls = [];
   const upstream = await startHttpServer(async (req, res) => {
@@ -5925,8 +5925,8 @@ test("model gateway child daemon keeps serving after Tracevane API listener shut
     setActiveScopes: ["openclaw"],
   });
 
-  const ctx = createStudioContext({ config, logger: createLogger() });
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const api = await startHttpServer(handler);
   let apiClosed = false;
   const child = spawn(process.execPath, [path.join(process.cwd(), "dist/apps/api/model-gateway-daemon.js")], {
@@ -6006,7 +6006,7 @@ test("model gateway child daemon keeps serving after Tracevane API listener shut
 
 test("model gateway direct daemon endpoint survives OpenClaw single-port mount shutdown", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
   const upstreamCalls = [];
   const upstream = await startHttpServer(async (req, res) => {
@@ -6044,8 +6044,8 @@ test("model gateway direct daemon endpoint survives OpenClaw single-port mount s
     setActiveScopes: ["openclaw"],
   });
 
-  const ctx = createStudioContext({ config, logger: createLogger() });
-  const mountHandler = createStudioRequestHandler(ctx, { stripBasePath: "/studio" });
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const mountHandler = createTracevaneRequestHandler(ctx, { stripBasePath: "/tracevane" });
   const mount = await startHttpServer(mountHandler);
   let mountClosed = false;
   const child = spawn(process.execPath, [path.join(process.cwd(), "dist/apps/api/model-gateway-daemon.js")], {
@@ -6075,17 +6075,17 @@ test("model gateway direct daemon endpoint survives OpenClaw single-port mount s
       return parsed.port > 0 ? parsed : null;
     }, 5000);
 
-    const mountedStatus = await requestJson(`${mount.baseUrl}/studio/api/model-gateway/status`);
+    const mountedStatus = await requestJson(`${mount.baseUrl}/tracevane/api/model-gateway/status`);
     assert.equal(mountedStatus.status, 200);
     assert.equal(mountedStatus.body.lifecycle.openclawMount.state, "configured");
-    assert.equal(mountedStatus.body.lifecycle.openclawMount.basePath, "/studio");
+    assert.equal(mountedStatus.body.lifecycle.openclawMount.basePath, "/tracevane");
     assert.equal(mountedStatus.body.lifecycle.openclawMount.ownsModelRelay, false);
     assert.equal(mountedStatus.body.lifecycle.endpointPolicy.directDaemonFallbackRequired, true);
     assert.equal(mountedStatus.body.lifecycle.endpointPolicy.targetModelRelayOwner, "local-daemon");
 
     await mount.close();
     mountClosed = true;
-    await assert.rejects(() => requestJson(`${mount.baseUrl}/studio/api/model-gateway/status`));
+    await assert.rejects(() => requestJson(`${mount.baseUrl}/tracevane/api/model-gateway/status`));
 
     const daemonBaseUrl = `http://127.0.0.1:${metadata.port}`;
     const daemonStatus = await requestJson(`${daemonBaseUrl}/gateway/status`);
@@ -6124,8 +6124,8 @@ test("model gateway direct daemon endpoint survives OpenClaw single-port mount s
 
 test("model gateway protocol matrix forwards native openai responses and guards unfinished adapters", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "native-responses",
@@ -6141,7 +6141,7 @@ test("model gateway protocol matrix forwards native openai responses and guards 
     setActiveScopes: ["codex", "openclaw", "claude-code"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -6529,8 +6529,8 @@ test("model gateway protocol matrix forwards native openai responses and guards 
 
 test("model gateway protocol matrix forwards native anthropic messages", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "native-anthropic",
@@ -6546,7 +6546,7 @@ test("model gateway protocol matrix forwards native anthropic messages", async (
     setActiveScopes: ["claude-code", "codex", "openclaw"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -6634,8 +6634,8 @@ test("model gateway protocol matrix forwards native anthropic messages", async (
 
 test("model gateway adapts anthropic messages through openai chat providers", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "anthropic-to-chat",
@@ -6651,7 +6651,7 @@ test("model gateway adapts anthropic messages through openai chat providers", as
     setActiveScopes: ["claude-code"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -6859,8 +6859,8 @@ test("model gateway adapts anthropic messages through openai chat providers", as
 
 test("model gateway adapts codex responses through native anthropic messages providers", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "responses-to-anthropic",
@@ -6876,7 +6876,7 @@ test("model gateway adapts codex responses through native anthropic messages pro
     setActiveScopes: ["codex"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -7085,8 +7085,8 @@ test("model gateway adapts codex responses through native anthropic messages pro
 
 test("model gateway adapts chat completions through native anthropic messages providers", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "chat-to-anthropic",
@@ -7102,7 +7102,7 @@ test("model gateway adapts chat completions through native anthropic messages pr
     setActiveScopes: ["openclaw"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -7324,8 +7324,8 @@ test("model gateway adapts chat completions through native anthropic messages pr
 
 test("model gateway maps Claude tool history to Responses fc item ids", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "claude-to-responses-tools",
@@ -7341,7 +7341,7 @@ test("model gateway maps Claude tool history to Responses fc item ids", async ()
     setActiveScopes: ["claude-code"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -7459,8 +7459,8 @@ test("model gateway maps Claude tool history to Responses fc item ids", async ()
 
 test("model gateway adapts non-streaming codex responses requests to openai chat providers", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "codex-chat-adapter",
@@ -7476,7 +7476,7 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
     setActiveScopes: ["codex"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -7633,8 +7633,8 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
 
 test("model gateway maps codex reasoning options to openai chat provider parameters", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "codex-deepseek-reasoning",
@@ -7657,7 +7657,7 @@ test("model gateway maps codex reasoning options to openai chat provider paramet
     setActiveScopes: ["codex"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -7769,8 +7769,8 @@ test("model gateway maps codex reasoning options to openai chat provider paramet
 
 test("model gateway maps chat reasoning content to codex responses output items", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "codex-reasoning-adapter",
@@ -7786,7 +7786,7 @@ test("model gateway maps chat reasoning content to codex responses output items"
     setActiveScopes: ["codex"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({
     id: "chatcmpl_reasoning",
@@ -7859,8 +7859,8 @@ test("model gateway maps chat reasoning content to codex responses output items"
 
 test("model gateway adapts streaming chat sse to codex responses sse", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "codex-stream-adapter",
@@ -7876,7 +7876,7 @@ test("model gateway adapts streaming chat sse to codex responses sse", async () 
     setActiveScopes: ["codex"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -7985,8 +7985,8 @@ test("model gateway adapts streaming chat sse to codex responses sse", async () 
 
 test("model gateway adapts streaming chat reasoning to codex responses sse", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "codex-reasoning-stream-adapter",
@@ -8002,7 +8002,7 @@ test("model gateway adapts streaming chat reasoning to codex responses sse", asy
     setActiveScopes: ["codex"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => {
     const upstreamSse = [
@@ -8071,8 +8071,8 @@ test("model gateway adapts streaming chat reasoning to codex responses sse", asy
 
 test("model gateway adapts streaming chat tool calls to codex responses sse", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "codex-tool-stream-adapter",
@@ -8088,7 +8088,7 @@ test("model gateway adapts streaming chat tool calls to codex responses sse", as
     setActiveScopes: ["codex"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -8184,8 +8184,8 @@ test("model gateway adapts streaming chat tool calls to codex responses sse", as
 
 test("model gateway preserves parallel streaming chat tool calls by index", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "codex-parallel-tool-stream-adapter",
@@ -8201,7 +8201,7 @@ test("model gateway preserves parallel streaming chat tool calls by index", asyn
     setActiveScopes: ["codex"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => {
     const upstreamSse = [
@@ -8271,8 +8271,8 @@ test("model gateway preserves parallel streaming chat tool calls by index", asyn
 
 test("model gateway maps streaming chat sse errors to codex response failed events", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "codex-stream-error-adapter",
@@ -8288,7 +8288,7 @@ test("model gateway maps streaming chat sse errors to codex response failed even
     setActiveScopes: ["codex"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   let callCount = 0;
   globalThis.fetch = async () => {
@@ -8357,9 +8357,9 @@ test("model gateway maps streaming chat sse errors to codex response failed even
 
 test("model gateway records streamed codex tool-call history for follow-up chat adapter requests", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "codex-stream-history-adapter",
@@ -8375,7 +8375,7 @@ test("model gateway records streamed codex tool-call history for follow-up chat 
     setActiveScopes: ["codex"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -8498,8 +8498,8 @@ test("model gateway records streamed codex tool-call history for follow-up chat 
 
 test("model gateway adapts inline codex tool-result history with gateway-compatible chat shape", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "codex-inline-tool-history-adapter",
@@ -8515,7 +8515,7 @@ test("model gateway adapts inline codex tool-result history with gateway-compati
     setActiveScopes: ["codex"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -8632,9 +8632,9 @@ test("model gateway adapts inline codex tool-result history with gateway-compati
 
 test("model gateway records streamed codex tool-call history for follow-up anthropic adapter requests", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "codex-stream-anthropic-history-adapter",
@@ -8650,7 +8650,7 @@ test("model gateway records streamed codex tool-call history for follow-up anthr
     setActiveScopes: ["codex"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -8813,8 +8813,8 @@ test("model gateway records streamed codex tool-call history for follow-up anthr
 
 test("model gateway adapts streaming responses tool calls to chat and anthropic sse", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "responses-tool-stream-adapter",
@@ -8830,7 +8830,7 @@ test("model gateway adapts streaming responses tool calls to chat and anthropic 
     setActiveScopes: ["openclaw", "claude-code"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -8952,8 +8952,8 @@ test("model gateway adapts streaming responses tool calls to chat and anthropic 
 
 test("model gateway returns adapter error when upstream responses stream fails", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "responses-failed-stream-adapter",
@@ -8969,7 +8969,7 @@ test("model gateway returns adapter error when upstream responses stream fails",
     setActiveScopes: ["openclaw"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => {
     const upstreamSse = [
@@ -9006,8 +9006,8 @@ test("model gateway returns adapter error when upstream responses stream fails",
 
 test("model gateway maps started responses stream failures to chat and anthropic error events", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "responses-started-failed-stream-adapter",
@@ -9023,7 +9023,7 @@ test("model gateway maps started responses stream failures to chat and anthropic
     setActiveScopes: ["openclaw", "claude-code"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -9122,8 +9122,8 @@ test("model gateway maps started responses stream failures to chat and anthropic
 
 test("model gateway maps started anthropic stream errors to chat and responses error events", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "anthropic-started-error-stream-adapter",
@@ -9139,7 +9139,7 @@ test("model gateway maps started anthropic stream errors to chat and responses e
     setActiveScopes: ["openclaw", "codex"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -9233,8 +9233,8 @@ test("model gateway maps started anthropic stream errors to chat and responses e
 
 test("model gateway opens circuit on repeated started stream failures and routes fallback", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "stream-fail-primary",
@@ -9273,7 +9273,7 @@ test("model gateway opens circuit on repeated started stream failures and routes
     },
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -9373,8 +9373,8 @@ test("model gateway opens circuit on repeated started stream failures and routes
 
 test("model gateway adapts codex compact requests through openai chat providers", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "codex-compact-adapter",
@@ -9390,7 +9390,7 @@ test("model gateway adapts codex compact requests through openai chat providers"
     setActiveScopes: ["codex"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -9438,7 +9438,7 @@ test("model gateway adapts codex compact requests through openai chat providers"
           stream: false,
           max_output_tokens: 2048,
           metadata: {
-            studio_channel_compact: true,
+            tracevane_channel_compact: true,
             project_id: "codex-main",
           },
         },
@@ -9490,8 +9490,8 @@ test("model gateway adapts codex compact requests through openai chat providers"
 
 test("model gateway normalizes upstream chat errors for codex responses clients", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "codex-error-adapter",
@@ -9507,7 +9507,7 @@ test("model gateway normalizes upstream chat errors for codex responses clients"
     setActiveScopes: ["codex"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response(JSON.stringify({
     base_resp: {
@@ -9554,8 +9554,8 @@ test("model gateway normalizes upstream chat errors for codex responses clients"
 
 test("model gateway normalizes non-json passthrough upstream errors", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "html-error-provider",
@@ -9575,7 +9575,7 @@ test("model gateway normalizes non-json passthrough upstream errors", async () =
     setActiveScopes: ["openclaw"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async () => new Response("<html><body>Bad gateway from upstream</body></html>", {
     status: 502,
@@ -9612,8 +9612,8 @@ test("model gateway normalizes non-json passthrough upstream errors", async () =
 
 test("model gateway normalizes endpoint profile passthrough upstream errors", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "html-error-profile-provider",
@@ -9642,7 +9642,7 @@ test("model gateway normalizes endpoint profile passthrough upstream errors", as
     setActiveScopes: ["openclaw"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   let seenUrl = "";
   globalThis.fetch = async (url) => {
@@ -9695,8 +9695,8 @@ test("model gateway normalizes endpoint profile passthrough upstream errors", as
 
 test("model gateway normalizes endpoint profile adapter upstream errors", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "adapter-error-profile-provider",
@@ -9725,7 +9725,7 @@ test("model gateway normalizes endpoint profile adapter upstream errors", async 
     setActiveScopes: ["claude-code"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   let seenUrl = "";
   globalThis.fetch = async (url) => {
@@ -9782,9 +9782,9 @@ test("model gateway normalizes endpoint profile adapter upstream errors", async 
 
 test("model gateway restores codex tool-call history for follow-up chat adapter requests", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   const paths = resolveModelGatewayPaths(config);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "codex-history-adapter",
@@ -9800,7 +9800,7 @@ test("model gateway restores codex tool-call history for follow-up chat adapter 
     setActiveScopes: ["codex"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -9951,8 +9951,8 @@ test("model gateway restores codex tool-call history for follow-up chat adapter 
 
 test("model gateway routes expose status/providers and forward chat passthrough", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "route-chat",
@@ -9968,7 +9968,7 @@ test("model gateway routes expose status/providers and forward chat passthrough"
     setActiveScopes: ["openclaw"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
@@ -10095,8 +10095,8 @@ test("model gateway routes expose status/providers and forward chat passthrough"
 
 test("model gateway can opt into openai chat metadata passthrough for compatible providers", async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
-  const ctx = createStudioContext({ config, logger: createLogger() });
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
   ctx.services.modelGateway.upsertProvider(undefined, {
     provider: {
       id: "route-chat-metadata",
@@ -10115,7 +10115,7 @@ test("model gateway can opt into openai chat metadata passthrough for compatible
     setActiveScopes: ["openclaw"],
   });
 
-  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {

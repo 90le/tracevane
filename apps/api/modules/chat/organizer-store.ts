@@ -1,29 +1,29 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { StudioServerConfig } from '../../../../types/api.js';
+import type { TracevaneServerConfig } from '../../../../types/api.js';
 import type { ChatSessionOrganizerState } from '../../../../types/chat.js';
 import { createEmptyChatSessionOrganizerState, normalizeChatSessionOrganizerState } from '../../../../lib/chat-session-organizer.js';
 import { ensureDir, readJsonFile, writeJsonFile } from '../../core/state.js';
-import { openStudioChatSqliteDatabase } from './chat-sqlite.js';
+import { openTracevaneChatSqliteDatabase } from './chat-sqlite.js';
 
-export function resolveStudioChatOrganizerPath(config: StudioServerConfig): string {
-  return path.join(config.openclawRoot, 'studio', 'chat-organizer.json');
+export function resolveTracevaneChatOrganizerPath(config: TracevaneServerConfig): string {
+  return path.join(config.openclawRoot, 'tracevane', 'chat-organizer.json');
 }
 
-export function readStudioChatOrganizerState(config: StudioServerConfig): ChatSessionOrganizerState {
+export function readTracevaneChatOrganizerState(config: TracevaneServerConfig): ChatSessionOrganizerState {
   return normalizeChatSessionOrganizerState(
-    readJsonFile<ChatSessionOrganizerState>(resolveStudioChatOrganizerPath(config), createEmptyChatSessionOrganizerState()),
+    readJsonFile<ChatSessionOrganizerState>(resolveTracevaneChatOrganizerPath(config), createEmptyChatSessionOrganizerState()),
   );
 }
 
-export function writeStudioChatOrganizerState(config: StudioServerConfig, value: ChatSessionOrganizerState): void {
-  const file = resolveStudioChatOrganizerPath(config);
+export function writeTracevaneChatOrganizerState(config: TracevaneServerConfig, value: ChatSessionOrganizerState): void {
+  const file = resolveTracevaneChatOrganizerPath(config);
   ensureDir(path.dirname(file));
   writeJsonFile(file, normalizeChatSessionOrganizerState(value));
 }
 
-function loadSqliteDatabase(config: StudioServerConfig): any | null {
-  const database = openStudioChatSqliteDatabase(config);
+function loadSqliteDatabase(config: TracevaneServerConfig): any | null {
+  const database = openTracevaneChatSqliteDatabase(config);
   if (!database) {
     return null;
   }
@@ -41,7 +41,7 @@ function loadSqliteDatabase(config: StudioServerConfig): any | null {
   }
 }
 
-export function createStudioChatOrganizerStore(config: StudioServerConfig) {
+export function createTracevaneChatOrganizerStore(config: TracevaneServerConfig) {
   const database = loadSqliteDatabase(config);
   let sqliteHealthy = Boolean(database);
   let jsonHealthy = true;
@@ -64,7 +64,7 @@ export function createStudioChatOrganizerStore(config: StudioServerConfig) {
       if (!jsonHealthy) {
         return createEmptyChatSessionOrganizerState();
       }
-      return readStudioChatOrganizerState(config);
+      return readTracevaneChatOrganizerState(config);
     },
 
     write(value: ChatSessionOrganizerState): ChatSessionOrganizerState {
@@ -86,7 +86,7 @@ export function createStudioChatOrganizerStore(config: StudioServerConfig) {
         }
       }
       try {
-        writeStudioChatOrganizerState(config, normalized);
+        writeTracevaneChatOrganizerState(config, normalized);
         jsonHealthy = true;
       } catch {
         jsonHealthy = false;

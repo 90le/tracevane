@@ -434,7 +434,7 @@
     </div>
     <div class="mode-alert-item mode-alert-corp">
       <span class="mode-alert-icon">🏢</span>
-      <span>模式二：<strong>单口</strong><br><p style="color: var(--muted);font-size: 12px;">外网只开放 OpenClaw 端口，Tracevane 挂载到 /studio，同时保留本机 3760</p></span>
+      <span>模式二：<strong>单口</strong><br><p style="color: var(--muted);font-size: 12px;">外网只开放 OpenClaw 端口，Tracevane 挂载到 /tracevane，同时保留本机 3760</p></span>
     </div>
   </div>
 
@@ -449,17 +449,17 @@
 
 请按下面步骤执行，不要使用在线脚本直通执行：
 
-1. 先下载 https://studio.90le.cn/install-openclaw-studio.sh 到本地当前目录
-2. 可选执行：sed -n '1,160p' ./install-openclaw-studio.sh
-3. 执行：chmod +x ./install-openclaw-studio.sh
-4. 执行：./install-openclaw-studio.sh --mode standalone
+1. 先下载 https://tracevane.90le.cn/install-tracevane.sh 到本地当前目录
+2. 可选执行：sed -n '1,160p' ./install-tracevane.sh
+3. 执行：chmod +x ./install-tracevane.sh
+4. 执行：./install-tracevane.sh --mode standalone
 
 脚本会自动完成这些事情：
 1. 检查并升级 OpenClaw 到最低要求 {{OPENCLAW_MIN_VERSION}}
-2. 下载并解压 tracevane-{{STUDIO_VERSION}}.tar.gz
+2. 下载并解压 tracevane-{{TRACEVANE_VERSION}}.tar.gz
 3. 自动修正发布包入口元数据，确保宿主能正确加载兼容插件入口
 4. 安装依赖并重建 node-pty
-5. 写入 plugins.entries.studio / plugins.load.paths / transport 配置
+5. 写入 plugins.entries.tracevane / plugins.load.paths / transport 配置
 6. 执行 openclaw gateway install --force 与重启
 7. 对 http://127.0.0.1:3760/api/system/health 做健康检查
 
@@ -475,28 +475,28 @@
   <!-- Gateway -->
   <div class="prompt-card">
     <div class="prompt-header">
-      <h3>模式二：单口模式 <span class="badge badge-gateway">GATEWAY /STUDIO</span></h3>
+      <h3>模式二：单口模式 <span class="badge badge-gateway">GATEWAY /TRACEVANE</span></h3>
       <button class="copy-btn" onclick="copyPrompt('prompt2',this)">复制 Prompt</button>
     </div>
     <div class="prompt-body">
-      <pre id="prompt2">请在我的 OpenClaw 环境里安装 Tracevane，使用单口模式（gateway，共用 OpenClaw 端口，挂载到 /studio，同时保留本机 3760 standalone 入口）。
+      <pre id="prompt2">请在我的 OpenClaw 环境里安装 Tracevane，使用单口模式（gateway，共用 OpenClaw 端口，挂载到 /tracevane，同时保留本机 3760 standalone 入口）。
 
 请按下面步骤执行，不要使用在线脚本直通执行：
 
-1. 先下载 https://studio.90le.cn/install-openclaw-studio.sh 到本地当前目录
-2. 可选执行：sed -n '1,160p' ./install-openclaw-studio.sh
-3. 执行：chmod +x ./install-openclaw-studio.sh
-4. 执行：./install-openclaw-studio.sh --mode gateway
+1. 先下载 https://tracevane.90le.cn/install-tracevane.sh 到本地当前目录
+2. 可选执行：sed -n '1,160p' ./install-tracevane.sh
+3. 执行：chmod +x ./install-tracevane.sh
+4. 执行：./install-tracevane.sh --mode gateway
 
 脚本会自动完成这些事情：
 1. 检查并升级 OpenClaw 到最低要求 {{OPENCLAW_MIN_VERSION}}
-2. 下载并解压 tracevane-{{STUDIO_VERSION}}.tar.gz
+2. 下载并解压 tracevane-{{TRACEVANE_VERSION}}.tar.gz
 3. 自动修正发布包入口元数据，确保宿主能正确加载兼容插件入口
 4. 安装依赖并重建 node-pty
-5. 写入 plugins.entries.studio / plugins.load.paths / gateway transport 配置，并保留 3760 standalone 监听
+5. 写入 plugins.entries.tracevane / plugins.load.paths / gateway transport 配置，并保留 3760 standalone 监听
 6. 补齐 gateway.bind / gateway.auth.token / gateway.controlUi.allowedOrigins 等最低可用配置
 7. 执行 openclaw gateway install --force 与重启
-8. 对 http://127.0.0.1:&lt;gateway_port&gt;/studio/api/system/health 和 http://127.0.0.1:3760/api/system/health 做健康检查
+8. 对 http://127.0.0.1:&lt;gateway_port&gt;/tracevane/api/system/health 和 http://127.0.0.1:3760/api/system/health 做健康检查
 
 执行完成后，请把以下结果告诉我：
 - OpenClaw 版本
@@ -550,13 +550,13 @@
 </footer>
 
 <script>
-const STUDIO_VERSION = "0.1.70";
+const TRACEVANE_VERSION = "0.1.70";
 const OPENCLAW_MIN_VERSION = "2026.4.8";
 
 function applyReleasePlaceholders(version, minVersion) {
   document.querySelectorAll("pre").forEach(pre => {
     pre.textContent = pre.textContent
-      .replace(/\{\{STUDIO_VERSION\}\}/g, version)
+      .replace(/\{\{TRACEVANE_VERSION\}\}/g, version)
       .replace(/\{\{OPENCLAW_MIN_VERSION\}\}/g, minVersion);
   });
 }
@@ -568,14 +568,14 @@ async function loadReleaseMetadata() {
     const payload = await response.json();
     const version = typeof payload.latestVersion === "string" && payload.latestVersion.trim()
       ? payload.latestVersion.trim()
-      : STUDIO_VERSION;
+      : TRACEVANE_VERSION;
     const minVersion = typeof payload.minOpenClawVersion === "string" && payload.minOpenClawVersion.trim()
       ? payload.minOpenClawVersion.trim()
       : OPENCLAW_MIN_VERSION;
     applyReleasePlaceholders(version, minVersion);
     return;
   } catch {
-    applyReleasePlaceholders(STUDIO_VERSION, OPENCLAW_MIN_VERSION);
+    applyReleasePlaceholders(TRACEVANE_VERSION, OPENCLAW_MIN_VERSION);
   }
 }
 

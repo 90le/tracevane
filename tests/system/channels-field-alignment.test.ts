@@ -8,7 +8,7 @@ import { buildChannelCatalog } from '../../dist/apps/api/modules/channels/catalo
 import { createChannelsService } from '../../dist/apps/api/modules/channels/service.js';
 
 function makeTempRoot(): string {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'studio-channels-align-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-channels-align-'));
 }
 
 function writeJson(filePath: string, value: unknown): void {
@@ -16,30 +16,30 @@ function writeJson(filePath: string, value: unknown): void {
   fs.writeFileSync(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
-function createStudioConfig(root: string) {
+function createTracevaneConfig(root: string) {
   return {
-    pluginId: 'studio',
+    pluginId: 'tracevane',
     pluginName: 'Tracevane',
     version: '0.1.0',
     port: 3760,
     autoStart: true,
     openclawRoot: root,
     openclawConfigFile: path.join(root, 'openclaw.json'),
-    projectRoot: '/tmp/openclaw-studio-extension',
-    webDistDir: '/tmp/openclaw-studio-extension/apps/web-vue/dist',
+    projectRoot: '/tmp/tracevane-extension',
+    webDistDir: '/tmp/tracevane-extension/apps/web-vue/dist',
     gatewayPort: 31879,
     gatewayWsUrl: 'ws://127.0.0.1:31879',
     gatewayControlUiBasePath: '',
     transport: {
       standalone: { enabled: true, port: 3760 },
-      gateway: { enabled: true, basePath: '/studio' },
+      gateway: { enabled: true, basePath: '/tracevane' },
     },
   };
 }
 
 test('unknown plugin-like channel types fall back to generic catalog entries instead of hard failing', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, { channels: {} });
 
   const service = createChannelsService(config);
@@ -53,7 +53,7 @@ test('unknown plugin-like channel types fall back to generic catalog entries ins
 
 test('discord nested scalar fields round-trip through catalog and service', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     channels: {
       discord: {
@@ -125,7 +125,7 @@ test('discord nested scalar fields round-trip through catalog and service', () =
 
 test('whatsapp nested scalar fields round-trip through catalog and service', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     channels: {
       whatsapp: {

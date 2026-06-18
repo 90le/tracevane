@@ -7,7 +7,7 @@ import path from 'node:path';
 import { createChannelsService } from '../../dist/apps/api/modules/channels/service.js';
 
 function makeTempRoot() {
-  return fs.mkdtempSync(path.join(os.tmpdir(), 'studio-channels-service-'));
+  return fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-channels-service-'));
 }
 
 function writeJson(file, value) {
@@ -15,30 +15,30 @@ function writeJson(file, value) {
   fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
-function createStudioConfig(root) {
+function createTracevaneConfig(root) {
   return {
-    pluginId: 'studio',
+    pluginId: 'tracevane',
     pluginName: 'Tracevane',
     version: '0.1.0',
     port: 3760,
     autoStart: true,
     openclawRoot: root,
     openclawConfigFile: path.join(root, 'openclaw.json'),
-    projectRoot: '/tmp/openclaw-studio-extension',
-    webDistDir: '/tmp/openclaw-studio-extension/apps/web-vue/dist',
+    projectRoot: '/tmp/tracevane-extension',
+    webDistDir: '/tmp/tracevane-extension/apps/web-vue/dist',
     gatewayPort: 31879,
     gatewayWsUrl: 'ws://127.0.0.1:31879',
     gatewayControlUiBasePath: '',
     transport: {
       standalone: { enabled: true, port: 3760 },
-      gateway: { enabled: true, basePath: '/studio' },
+      gateway: { enabled: true, basePath: '/tracevane' },
     },
   };
 }
 
 test('channels summary normalizes legacy streaming booleans and allowall group policy', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     channels: {
       slack: {
@@ -73,7 +73,7 @@ test('channels summary normalizes legacy streaming booleans and allowall group p
 
 test('channels update writes schema-compatible streaming objects instead of legacy booleans', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     channels: {
       discord: {
@@ -107,7 +107,7 @@ test('channels update writes schema-compatible streaming objects instead of lega
 
 test('channels summary exposes advanced provider and account json blocks', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     channels: {
       discord: {
@@ -140,7 +140,7 @@ test('channels summary exposes advanced provider and account json blocks', () =>
 
 test('channels update persists advanced provider and account json blocks', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     channels: {
       discord: {
@@ -178,7 +178,7 @@ test('channels update persists advanced provider and account json blocks', () =>
 
 test('channels summary exposes synthetic default agent option when no agents list exists', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     agents: {
       defaults: {
@@ -214,7 +214,7 @@ test('channels summary exposes synthetic default agent option when no agents lis
 
 test('channels summary and update support context visibility, response prefix, config writes, and health monitor', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     channels: {
       telegram: {
@@ -275,7 +275,7 @@ test('channels summary and update support context visibility, response prefix, c
 
 test('channels catalog exposes all official providers plus dmwork field descriptors', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     channels: {},
   });
@@ -387,7 +387,7 @@ test('channels catalog exposes all official providers plus dmwork field descript
 
 test('channels catalog enriches static official providers from official manifests without reintroducing alias keys', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     channels: {},
   });
@@ -526,7 +526,7 @@ test('channels catalog enriches static official providers from official manifest
 
 test('channels catalog falls back to installed openclaw package manifests when project sources are absent', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     channels: {},
   });
@@ -599,7 +599,7 @@ test('channels catalog falls back to installed openclaw package manifests when p
 
 test('channels catalog carries manifest field metadata for placeholders, help text, and enum options', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     channels: {},
   });
@@ -674,7 +674,7 @@ test('channels catalog carries manifest field metadata for placeholders, help te
 
 test('channels catalog backfills metadata onto static fields via matching keys and legacy aliases', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     channels: {},
   });
@@ -755,7 +755,7 @@ test('channels catalog backfills metadata onto static fields via matching keys a
 
 test('channels catalog backfills env-var help text for static fields when manifest schema is empty', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     channels: {},
   });
@@ -811,7 +811,7 @@ test('channels catalog backfills env-var help text for static fields when manife
 
 test('channels catalog assigns stable field groups for provider-specific fields', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     channels: {},
   });
@@ -871,7 +871,7 @@ test('channels catalog assigns stable field groups for provider-specific fields'
 
 test('channels catalog infers semantic input hints for url, file, and path fields', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     channels: {},
   });
@@ -896,7 +896,7 @@ test('channels catalog infers semantic input hints for url, file, and path field
 
 test('channels service persists dmwork dynamic credential and account fields', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     channels: {
       dmwork: {
@@ -951,9 +951,9 @@ test('channels service persists dmwork dynamic credential and account fields', (
   assert.equal(credentials.values.botToken, 'bf_dynamic_token');
 });
 
-test('channels service persists official credential fields that were not part of the legacy studio schema', () => {
+test('channels service persists official credential fields that were not part of the legacy tracevane schema', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     channels: {
       qqbot: {
@@ -988,7 +988,7 @@ test('channels service persists official credential fields that were not part of
 
 test('channels service exposes and updates synthetic default profiles at top level', async () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     channels: {
       line: {
@@ -1047,7 +1047,7 @@ test('channels service exposes and updates synthetic default profiles at top lev
 
 test('channels service blocks named accounts for default-only providers', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     channels: {
       msteams: {
@@ -1068,9 +1068,9 @@ test('channels service blocks named accounts for default-only providers', () => 
   );
 });
 
-test('channels service maps aliased studio field keys onto real channel config fields', () => {
+test('channels service maps aliased tracevane field keys onto real channel config fields', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     channels: {
       bluebubbles: {
@@ -1236,7 +1236,7 @@ test('channels service maps aliased studio field keys onto real channel config f
 
 test('channels service exposes and updates zalouser dedicated account fields', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     channels: {
       zalouser: {
@@ -1280,7 +1280,7 @@ test('channels service exposes and updates zalouser dedicated account fields', (
 
 test('channels catalog derives fallback fields for custom extensions with config schema metadata', () => {
   const root = makeTempRoot();
-  const config = createStudioConfig(root);
+  const config = createTracevaneConfig(root);
   writeJson(config.openclawConfigFile, {
     channels: {},
   });

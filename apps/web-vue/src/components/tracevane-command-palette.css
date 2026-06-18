@@ -1,0 +1,236 @@
+.tracevane-command-palette {
+  position: fixed;
+  inset: 0;
+  z-index: 1400;
+  display: grid;
+  align-items: start;
+  justify-items: center;
+  padding: max(48px, calc(env(safe-area-inset-top, 0px) + 30px)) 14px 20px;
+}
+
+.tracevane-command-palette__backdrop {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: var(--modal-backdrop);
+  backdrop-filter: none;
+  cursor: default;
+}
+
+.tracevane-command-palette__panel {
+  position: relative;
+  z-index: 1;
+  width: min(720px, 100%);
+  max-height: min(720px, calc(100dvh - 58px));
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid var(--modal-border);
+  background: var(--modal-panel-bg);
+  box-shadow: var(--modal-shadow);
+}
+
+.tracevane-command-palette__header {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid var(--modal-border);
+}
+
+.tracevane-command-palette__mark,
+.tracevane-command-palette__close {
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  border: 1px solid var(--modal-border);
+  background: var(--modal-row-bg);
+  color: var(--text);
+}
+
+.tracevane-command-palette__close {
+  cursor: pointer;
+  font-size: 20px;
+  line-height: 1;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.tracevane-command-palette__close:hover {
+  border-color: var(--control-border-hover);
+  background: var(--modal-row-hover-bg);
+}
+
+.tracevane-command-palette__close:active {
+  transform: translateY(1px);
+}
+
+.tracevane-command-palette__close:focus-visible,
+.tracevane-command-palette__search input:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--mono-ring);
+}
+
+.tracevane-command-palette__search input {
+  width: 100%;
+  min-height: 40px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 15px;
+  border-radius: 10px;
+  padding: 0 2px;
+}
+
+.tracevane-command-palette__search input::placeholder {
+  color: var(--control-placeholder);
+}
+
+.tracevane-command-palette__body {
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.tracevane-command-palette__section {
+  display: grid;
+  gap: 6px;
+}
+
+.tracevane-command-palette__section h2 {
+  margin: 4px 6px;
+  color: var(--text-soft);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.tracevane-command-palette__item {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.tracevane-command-palette__item:hover,
+.tracevane-command-palette__item.active {
+  border-color: color-mix(in srgb, var(--mono-accent) 34%, var(--modal-border));
+  background: var(--modal-row-hover-bg);
+}
+
+.tracevane-command-palette__item:active {
+  transform: translateY(1px);
+}
+
+.tracevane-command-palette__item:focus-visible {
+  outline: none;
+  border-color: var(--control-border-focus);
+  background: var(--modal-row-hover-bg);
+  box-shadow: 0 0 0 3px var(--mono-ring);
+}
+
+.tracevane-command-palette__item-icon {
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  border: 1px solid var(--modal-border);
+  background: var(--modal-row-bg);
+  color: var(--mono-accent);
+  font-weight: 800;
+}
+
+.tracevane-command-palette__item-main {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.tracevane-command-palette__item-main strong,
+.tracevane-command-palette__item-main small,
+.tracevane-command-palette__path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tracevane-command-palette__item-main strong {
+  font-size: 14px;
+}
+
+.tracevane-command-palette__item-main small,
+.tracevane-command-palette__path,
+.tracevane-command-palette__empty,
+.tracevane-command-palette__footer {
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.tracevane-command-palette__path {
+  max-width: 170px;
+}
+
+.tracevane-command-palette__empty {
+  margin: 0;
+  padding: 22px 10px;
+  text-align: center;
+}
+
+.tracevane-command-palette__footer {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  border-top: 1px solid var(--modal-border);
+  background: var(--modal-panel-bg-strong);
+}
+
+@media (max-width: 920px) {
+  .tracevane-command-palette {
+    align-items: stretch;
+    padding: max(12px, env(safe-area-inset-top, 0px)) 8px 8px;
+  }
+
+  .tracevane-command-palette__panel {
+    width: 100%;
+    max-height: calc(100dvh - 16px);
+    border-radius: 16px;
+  }
+
+  .tracevane-command-palette__item {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .tracevane-command-palette__path {
+    grid-column: 2;
+    max-width: none;
+  }
+}

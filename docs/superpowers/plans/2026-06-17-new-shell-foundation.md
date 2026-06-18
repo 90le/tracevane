@@ -4,11 +4,11 @@
 
 **Goal:** 新建 `apps/web-vue-next` 并行前端壳，搭好设计系统（材质派 token + Tailwind v4）、Pinia 状态层、应用外壳骨架（单栏分组导航 + ⌘K 命令面板），并打通复用现有后端 API 的集成缝——为后续逐页迁移铺好地基。
 
-**Architecture:** 在同一 monorepo 新增 workspace `apps/web-vue-next`（Vue 3 + vue-router + Tailwind v4 + Reka UI + Pinia，全部已装/已在旧壳验证）。设计系统按 `docs/界面设计守则.md` 落地（材质派 token、层次化）。导航用单栏分组（非 VS Code 活动栏）。复用旧壳 `shared/` 的 API 客户端契约（`getApiBase` / `getStudioRuntimeConfig`）作为集成缝，让新壳消费同一后端。最终切流靠 `apps/api/config.ts` 的 `webDistDir` 配置翻转，不改后端代码。
+**Architecture:** 在同一 monorepo 新增 workspace `apps/web-vue-next`（Vue 3 + vue-router + Tailwind v4 + Reka UI + Pinia，全部已装/已在旧壳验证）。设计系统按 `docs/界面设计守则.md` 落地（材质派 token、层次化）。导航用单栏分组（非 VS Code 活动栏）。复用旧壳 `shared/` 的 API 客户端契约（`getApiBase` / `getTracevaneRuntimeConfig`）作为集成缝，让新壳消费同一后端。最终切流靠 `apps/api/config.ts` 的 `webDistDir` 配置翻转，不改后端代码。
 
 **Tech Stack:** Vue 3.5 · vue-router 4 · Tailwind CSS v4.3（`@tailwindcss/vite`）· Reka UI 2.9 · Pinia（新增）· lucide-vue-next · TypeScript · Vite
 
-**参考原型（不照搬，仅视觉参考）：** `~/.gstack/projects/openclaw-studio/designs/chat-workbench-rebuild-20260617/app-shell-v2.html`
+**参考原型（不照搬，仅视觉参考）：** `~/.gstack/projects/tracevane/designs/chat-workbench-rebuild-20260617/app-shell-v2.html`
 
 **设计宪法：** `docs/界面设计守则.md`（2026-06-17 材质派重写版）
 
@@ -33,9 +33,9 @@ apps/web-vue-next/
 │   │   ├── index.ts                # createPinia + 注册
 │   │   └── ui-store.ts             # 导航折叠状态、主题（Pinia 首个 store）
 │   ├── components/
-│   │   ├── studio/
-│   │   │   ├── StudioPanel.vue      # 材质面板原子（thin/thick/floating）
-│   │   │   └── StudioButton.vue     # 按钮原子（primary/ghost/icon）
+│   │   ├── tracevane/
+│   │   │   ├── TracevanePanel.vue      # 材质面板原子（thin/thick/floating）
+│   │   │   └── TracevaneButton.vue     # 按钮原子（primary/ghost/icon）
 │   │   ├── nav/
 │   │   │   ├── GlobalNav.vue        # 单栏分组导航（§6）
 │   │   │   └── NavItem.vue          # 导航项（展开=图标+文字，折叠=图标+tooltip）
@@ -171,7 +171,7 @@ export default defineConfig({
 
 - [ ] **Step 6: 安装依赖并验证 workspace 可识别**
 
-Run: `cd /home/binbin/.openclaw/extensions/openclaw-studio && npm install`
+Run: `npm install`
 Expected: 安装成功，`apps/web-vue-next` 出现在 workspace 列表，`node_modules/.bin/vite` 可用。
 
 - [ ] **Step 7: 提交**
@@ -343,16 +343,16 @@ export {
   getApiBase,
   getWebSocketBasePath,
   joinApiPath,
-  resolveStudioAuthorizationHeader,
-  withStudioAuthorization,
+  resolveTracevaneAuthorizationHeader,
+  withTracevaneAuthorization,
 } from '../../web-vue/src/shared/api';
 
 export {
-  getStudioRuntimeConfig,
-  getStudioAppBasePath,
-  getStudioApiBasePath,
-  getStudioWebSocketBasePath,
-  type StudioRuntimeConfig,
+  getTracevaneRuntimeConfig,
+  getTracevaneAppBasePath,
+  getTracevaneApiBasePath,
+  getTracevaneWebSocketBasePath,
+  type TracevaneRuntimeConfig,
 } from '../../web-vue/src/shared/runtime-config';
 ```
 
@@ -622,39 +622,39 @@ git commit -m "feat(web-next): router + placeholder views from manifest"
 ## Task 7: 原子组件（材质面板 + 按钮）
 
 **Files:**
-- Create: `apps/web-vue-next/src/components/studio/StudioPanel.vue`
-- Create: `apps/web-vue-next/src/components/studio/StudioButton.vue`
-- Test: `apps/web-vue-next/tests/unit/studio-components.test.ts`
+- Create: `apps/web-vue-next/src/components/tracevane/TracevanePanel.vue`
+- Create: `apps/web-vue-next/src/components/tracevane/TracevaneButton.vue`
+- Test: `apps/web-vue-next/tests/unit/tracevane-components.test.ts`
 
 材质面板是守则 §3 三种材质的可复用原子，全项目统一。
 
 - [ ] **Step 1: 写失败测试**
 
 ```ts
-// tests/unit/studio-components.test.ts
+// tests/unit/tracevane-components.test.ts
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
-import StudioPanel from '@/components/studio/StudioPanel.vue';
-import StudioButton from '@/components/studio/StudioButton.vue';
+import TracevanePanel from '@/components/tracevane/TracevanePanel.vue';
+import TracevaneButton from '@/components/tracevane/TracevaneButton.vue';
 
-describe('StudioPanel', () => {
+describe('TracevanePanel', () => {
   it('按 material 属性应用对应材质 class', () => {
-    const w = mount(StudioPanel, { props: { material: 'thick' } });
-    expect(w.classes()).toContain('studio-panel--thick');
+    const w = mount(TracevanePanel, { props: { material: 'thick' } });
+    expect(w.classes()).toContain('tracevane-panel--thick');
   });
   it('默认材质为 thin', () => {
-    const w = mount(StudioPanel);
-    expect(w.classes()).toContain('studio-panel--thin');
+    const w = mount(TracevanePanel);
+    expect(w.classes()).toContain('tracevane-panel--thin');
   });
 });
 
-describe('StudioButton', () => {
+describe('TracevaneButton', () => {
   it('variant=primary 应用主按钮样式', () => {
-    const w = mount(StudioButton, { props: { variant: 'primary' } });
-    expect(w.classes()).toContain('studio-btn--primary');
+    const w = mount(TracevaneButton, { props: { variant: 'primary' } });
+    expect(w.classes()).toContain('tracevane-btn--primary');
   });
   it('点击触发 click 事件', async () => {
-    const w = mount(StudioButton);
+    const w = mount(TracevaneButton);
     await w.trigger('click');
     expect(w.emitted('click')).toHaveLength(1);
   });
@@ -663,13 +663,13 @@ describe('StudioButton', () => {
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `cd apps/web-vue-next && npx vitest run tests/unit/studio-components.test.ts`
+Run: `cd apps/web-vue-next && npx vitest run tests/unit/tracevane-components.test.ts`
 Expected: FAIL — 模块不存在。
 
-- [ ] **Step 3: 创建 StudioPanel.vue**
+- [ ] **Step 3: 创建 TracevanePanel.vue**
 
 ```vue
-<!-- components/studio/StudioPanel.vue -->
+<!-- components/tracevane/TracevanePanel.vue -->
 <script setup lang="ts">
 withDefaults(
   defineProps<{
@@ -681,49 +681,49 @@ withDefaults(
 </script>
 
 <template>
-  <div :class="['studio-panel', `studio-panel--${material}`, `studio-panel--r-${radius}`]">
+  <div :class="['tracevane-panel', `tracevane-panel--${material}`, `tracevane-panel--r-${radius}`]">
     <slot />
   </div>
 </template>
 
 <style scoped>
-.studio-panel {
+.tracevane-panel {
   border: 0.5px solid var(--hairline);
   box-shadow: var(--shadow-1);
   overflow: hidden;
 }
-.studio-panel--thin {
+.tracevane-panel--thin {
   background: var(--material-thin);
   backdrop-filter: var(--blur-thin);
   -webkit-backdrop-filter: var(--blur-thin);
 }
-.studio-panel--thick {
+.tracevane-panel--thick {
   background: var(--material-thick);
   backdrop-filter: var(--blur-thick);
   -webkit-backdrop-filter: var(--blur-thick);
 }
-.studio-panel--floating {
+.tracevane-panel--floating {
   background: var(--material-floating);
   backdrop-filter: var(--blur-floating);
   -webkit-backdrop-filter: var(--blur-floating);
   box-shadow: var(--shadow-3);
 }
-.studio-panel--r-panel {
+.tracevane-panel--r-panel {
   border-radius: var(--radius-panel);
 }
-.studio-panel--r-card {
+.tracevane-panel--r-card {
   border-radius: var(--radius-card);
 }
-.studio-panel--r-floating {
+.tracevane-panel--r-floating {
   border-radius: var(--radius-floating);
 }
 </style>
 ```
 
-- [ ] **Step 4: 创建 StudioButton.vue**
+- [ ] **Step 4: 创建 TracevaneButton.vue**
 
 ```vue
-<!-- components/studio/StudioButton.vue -->
+<!-- components/tracevane/TracevaneButton.vue -->
 <script setup lang="ts">
 withDefaults(
   defineProps<{
@@ -737,7 +737,7 @@ defineEmits<{ click: [event: MouseEvent] }>();
 
 <template>
   <button
-    :class="['studio-btn', `studio-btn--${variant}`, { 'is-disabled': disabled }]"
+    :class="['tracevane-btn', `tracevane-btn--${variant}`, { 'is-disabled': disabled }]"
     :disabled="disabled"
     @click="$emit('click', $event)"
   >
@@ -746,7 +746,7 @@ defineEmits<{ click: [event: MouseEvent] }>();
 </template>
 
 <style scoped>
-.studio-btn {
+.tracevane-btn {
   font: inherit;
   font-size: 12px;
   font-weight: 600;
@@ -755,25 +755,25 @@ defineEmits<{ click: [event: MouseEvent] }>();
   cursor: pointer;
   transition: background 0.12s;
 }
-.studio-btn--primary {
+.tracevane-btn--primary {
   background: var(--accent);
   color: #fff;
   padding: 6px 14px;
   border-radius: var(--radius-pill);
 }
-.studio-btn--primary:hover {
+.tracevane-btn--primary:hover {
   filter: brightness(1.08);
 }
-.studio-btn--ghost {
+.tracevane-btn--ghost {
   background: var(--fill);
   color: var(--text-secondary);
   padding: 6px 12px;
 }
-.studio-btn--ghost:hover {
+.tracevane-btn--ghost:hover {
   background: var(--fill-strong);
   color: var(--text-primary);
 }
-.studio-btn--icon {
+.tracevane-btn--icon {
   width: 30px;
   height: 30px;
   display: grid;
@@ -781,7 +781,7 @@ defineEmits<{ click: [event: MouseEvent] }>();
   background: transparent;
   color: var(--text-secondary);
 }
-.studio-btn--icon:hover {
+.tracevane-btn--icon:hover {
   background: var(--fill);
   color: var(--text-primary);
 }
@@ -794,14 +794,14 @@ defineEmits<{ click: [event: MouseEvent] }>();
 
 - [ ] **Step 5: 运行测试确认通过**
 
-Run: `cd apps/web-vue-next && npx vitest run tests/unit/studio-components.test.ts`
+Run: `cd apps/web-vue-next && npx vitest run tests/unit/tracevane-components.test.ts`
 Expected: PASS (4 tests)
 
 - [ ] **Step 6: 提交**
 
 ```bash
-git add apps/web-vue-next/src/components/studio apps/web-vue-next/tests/unit/studio-components.test.ts
-git commit -m "feat(web-next): StudioPanel + StudioButton atoms"
+git add apps/web-vue-next/src/components/tracevane apps/web-vue-next/tests/unit/tracevane-components.test.ts
+git commit -m "feat(web-next): TracevanePanel + TracevaneButton atoms"
 ```
 
 ---
@@ -1352,7 +1352,7 @@ git commit -m "feat(web-next): ⌘K command palette"
 - [ ] **Step 1: 运行全部单测**
 
 Run: `cd apps/web-vue-next && npx vitest run`
-Expected: 所有测试 PASS（ui-store 2 + studio-components 4 + global-nav 2 = 8 tests）。
+Expected: 所有测试 PASS（ui-store 2 + tracevane-components 4 + global-nav 2 = 8 tests）。
 
 - [ ] **Step 2: 运行类型检查**
 
@@ -1376,7 +1376,7 @@ git commit -m "chore(web-next): verify typecheck + build green" --allow-empty
 ## Self-Review
 
 **1. Spec coverage（对照守则 + 新壳地基需求）：**
-- §3 材质分层 → Task 2 tokens + Task 7 StudioPanel ✓
+- §3 材质分层 → Task 2 tokens + Task 7 TracevanePanel ✓
 - §4 圆角阴影 → Task 2 tokens ✓
 - §5 双主题 → Task 2 tokens + Task 4 ui-store theme ✓
 - §6 单栏导航 → Task 5/8 ✓
@@ -1389,7 +1389,7 @@ git commit -m "chore(web-next): verify typecheck + build green" --allow-empty
 
 **2. Placeholder scan：** 无 TBD/TODO/留空步骤。每个步骤含真实代码或真实命令。
 
-**3. Type consistency：** `NavItem`（manifest）↔ NavItem.vue props 一致；`useUiStore` 的 `navCollapsed`/`theme`/`toggleNav`/`toggleTheme`/`applyTheme` 在 Task 4 定义、Task 8/9 消费，名称一致；`StudioPanel` 的 `material` 取值 `'thin'|'thick'|'floating'` 与 token 一致。✓
+**3. Type consistency：** `NavItem`（manifest）↔ NavItem.vue props 一致；`useUiStore` 的 `navCollapsed`/`theme`/`toggleNav`/`toggleTheme`/`applyTheme` 在 Task 4 定义、Task 8/9 消费，名称一致；`TracevanePanel` 的 `material` 取值 `'thin'|'thick'|'floating'` 与 token 一致。✓
 
 ---
 

@@ -16,7 +16,7 @@
               <DialogDescription as-child>
                 <p class="sr-only">{{ text('打开 Tracevane 的全局导航、命令入口和版本状态。', 'Open the global navigation, command entry, and version status for Tracevane.') }}</p>
               </DialogDescription>
-              <StudioSidebarRail
+              <TracevaneSidebarRail
                 :is-mobile="true"
                 :sidebar-collapsed="false"
                 :subtitle="text('本地 Agent 控制台', 'Local Agent Control')"
@@ -36,7 +36,7 @@
                 @navigate="handleSidebarNavigate"
                 @toggle-sidebar="toggleSidebar"
                 @open-command-palette="openCommandPalette"
-                @upgrade-action="handleStudioUpgradeAction"
+                @upgrade-action="handleTracevaneUpgradeAction"
               />
             </aside>
           </DialogContent>
@@ -48,7 +48,7 @@
         class="sidebar sidebar-rail"
         :class="{ collapsed: sidebarCollapsed }"
       >
-        <StudioSidebarRail
+        <TracevaneSidebarRail
           :is-mobile="false"
           :sidebar-collapsed="sidebarCollapsed"
           :subtitle="text('本地 Agent 控制台', 'Local Agent Control')"
@@ -68,7 +68,7 @@
           @navigate="handleSidebarNavigate"
           @toggle-sidebar="toggleSidebar"
           @open-command-palette="openCommandPalette"
-          @upgrade-action="handleStudioUpgradeAction"
+          @upgrade-action="handleTracevaneUpgradeAction"
         />
       </aside>
 
@@ -95,7 +95,7 @@
 
         <div class="shell-layout" :class="{ 'shell-layout-chat': isChatSurface, 'shell-layout-files': isFilesSurface }">
           <section class="shell-main-stage">
-            <StudioShellTopbar
+            <TracevaneShellTopbar
               v-if="!isChatSurface && !isFilesSurface && !isTerminalSurface"
               :is-mobile="isMobile"
               :mobile-nav-open="mobileSidebarOpen"
@@ -132,7 +132,7 @@
 
       <ConfirmDialog />
 
-      <StudioCommandPalette
+      <TracevaneCommandPalette
         v-model:open="commandPaletteOpen"
       />
     </div>
@@ -146,9 +146,9 @@ import { Menu } from '@lucide/vue';
 import { DialogContent, DialogDescription, DialogOverlay, DialogPortal, DialogRoot, DialogTitle, TooltipProvider } from 'reka-ui';
 import { RouterView, useRoute, type RouteLocationNormalizedLoaded } from 'vue-router';
 import ConfirmDialog from './components/ConfirmDialog.vue';
-import StudioCommandPalette from './components/StudioCommandPalette.vue';
-import StudioShellTopbar from './components/StudioShellTopbar.vue';
-import StudioSidebarRail from './components/StudioSidebarRail.vue';
+import TracevaneCommandPalette from './components/TracevaneCommandPalette.vue';
+import TracevaneShellTopbar from './components/TracevaneShellTopbar.vue';
+import TracevaneSidebarRail from './components/TracevaneSidebarRail.vue';
 import { preloadNonChatShellRouteChunks } from './features/shell/route-manifest';
 import { useShellChrome } from './features/shell/use-shell-chrome';
 import { useShellNavigation } from './features/shell/use-shell-navigation';
@@ -172,8 +172,8 @@ type NavigatorWithConnection = Navigator & {
 };
 
 const route = useRoute();
-const buildVersion = typeof import.meta.env.STUDIO_APP_VERSION === 'string'
-  ? import.meta.env.STUDIO_APP_VERSION
+const buildVersion = typeof import.meta.env.TRACEVANE_APP_VERSION === 'string'
+  ? import.meta.env.TRACEVANE_APP_VERSION
   : '';
 
 const { locale, setLocale, text } = useLocalePreference();
@@ -211,7 +211,7 @@ const {
   versionActionLabel,
   versionStatusDotClass,
   versionActionBusy,
-  handleStudioUpgradeAction,
+  handleTracevaneUpgradeAction,
 } = useShellRelease(buildVersion);
 
 const commandPaletteOpen = ref(false);

@@ -14,9 +14,9 @@ FRONTEND_LOG_FILE="$LOG_DIR/frontend.log"
 
 DEFAULT_API_PORT=3761
 DEFAULT_WEB_PORT=5177
-API_PORT="${STUDIO_API_PORT:-$DEFAULT_API_PORT}"
-WEB_PORT="${STUDIO_WEB_PORT:-$DEFAULT_WEB_PORT}"
-CLEAN_PORTS="${STUDIO_CLEAN_PORTS:-3760 3761 5176 5177}"
+API_PORT="${TRACEVANE_API_PORT:-$DEFAULT_API_PORT}"
+WEB_PORT="${TRACEVANE_WEB_PORT:-$DEFAULT_WEB_PORT}"
+CLEAN_PORTS="${TRACEVANE_CLEAN_PORTS:-3760 3761 5176 5177}"
 
 mkdir -p "$PID_DIR" "$LOG_DIR"
 
@@ -219,7 +219,7 @@ echo "Rebuilding backend dist and static web bundle from latest source"
 )
 
 echo "Starting standalone backend on port $API_PORT"
-backend_pid="$(start_background "STUDIO_API_PORT=$API_PORT node scripts/start-standalone-api.mjs" "$BACKEND_LOG_FILE" "$BACKEND_PID_FILE")"
+backend_pid="$(start_background "TRACEVANE_API_PORT=$API_PORT node scripts/start-standalone-api.mjs" "$BACKEND_LOG_FILE" "$BACKEND_PID_FILE")"
 wait_for_http "http://127.0.0.1:${API_PORT}/api/system/health" "Backend"
 if ! kill -0 "$backend_pid" 2>/dev/null; then
   echo "Backend process exited unexpectedly. See $BACKEND_LOG_FILE" >&2
@@ -227,7 +227,7 @@ if ! kill -0 "$backend_pid" 2>/dev/null; then
 fi
 
 echo "Starting frontend on port $WEB_PORT (proxying to $API_PORT)"
-frontend_pid="$(start_background "STUDIO_USE_EXTERNAL_API=1 STUDIO_API_PORT=$API_PORT STUDIO_WEB_PORT=$WEB_PORT npm run dev --workspace=apps/web-vue -- --host 127.0.0.1 --port $WEB_PORT --force" "$FRONTEND_LOG_FILE" "$FRONTEND_PID_FILE")"
+frontend_pid="$(start_background "TRACEVANE_USE_EXTERNAL_API=1 TRACEVANE_API_PORT=$API_PORT TRACEVANE_WEB_PORT=$WEB_PORT npm run dev --workspace=apps/web-vue -- --host 127.0.0.1 --port $WEB_PORT --force" "$FRONTEND_LOG_FILE" "$FRONTEND_PID_FILE")"
 wait_for_http "http://127.0.0.1:${WEB_PORT}" "Frontend"
 wait_for_http "http://127.0.0.1:${WEB_PORT}/api/system/health" "Frontend proxy"
 if ! kill -0 "$frontend_pid" 2>/dev/null; then
@@ -236,10 +236,10 @@ if ! kill -0 "$frontend_pid" 2>/dev/null; then
 fi
 
 cat > "$ENV_FILE" <<EOF
-STUDIO_API_PORT=$API_PORT
-STUDIO_WEB_PORT=$WEB_PORT
-STUDIO_WEB_URL=http://127.0.0.1:$WEB_PORT
-STUDIO_API_URL=http://127.0.0.1:$API_PORT
+TRACEVANE_API_PORT=$API_PORT
+TRACEVANE_WEB_PORT=$WEB_PORT
+TRACEVANE_WEB_URL=http://127.0.0.1:$WEB_PORT
+TRACEVANE_API_URL=http://127.0.0.1:$API_PORT
 BACKEND_PID=$backend_pid
 FRONTEND_PID=$frontend_pid
 EOF

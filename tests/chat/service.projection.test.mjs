@@ -10,9 +10,9 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { WebSocket, WebSocketServer } from 'ws';
 
 import {
-  createStandaloneStudioConfig,
-  createStudioContext,
-  createStudioServer,
+  createStandaloneTracevaneConfig,
+  createTracevaneContext,
+  createTracevaneServer,
 } from '../../dist/apps/api/index.js';
 
 function createLogger() {
@@ -241,7 +241,7 @@ async function startFakeGateway() {
 
   return {
     port,
-    async waitForStudioConnection() {
+    async waitForTracevaneConnection() {
       await waitFor(() => {
         assert.ok(bridgeSocket, 'expected Tracevane gateway bridge connection');
       });
@@ -371,18 +371,18 @@ async function startFakeGateway() {
   };
 }
 
-async function startStudio(root, gatewayPort) {
+async function startTracevane(root, gatewayPort) {
   const port = await getFreePort();
-  const config = createStandaloneStudioConfig({
+  const config = createStandaloneTracevaneConfig({
     port,
     openclawRoot: root,
     gatewayWsUrl: `ws://127.0.0.1:${gatewayPort}`,
   });
-  const context = createStudioContext({
+  const context = createTracevaneContext({
     config,
     logger: createLogger(),
   });
-  const server = createStudioServer(context);
+  const server = createTracevaneServer(context);
   await server.start();
   return {
     port,
@@ -396,12 +396,12 @@ async function startStudio(root, gatewayPort) {
 }
 
 test('run_overlay keeps tool-only runs visible while history stays canonical and shadow-restorable', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-projection-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-projection-'));
   const workspace = path.join(root, 'workspace');
   const frontendEvents = [];
 
   let gateway = null;
-  let studio = null;
+  let tracevane = null;
   let frontendWs = null;
 
   try {
@@ -420,12 +420,12 @@ test('run_overlay keeps tool-only runs visible while history stays canonical and
     writeGatewayIdentity(root);
 
     gateway = await startFakeGateway();
-    studio = await startStudio(root, gateway.port);
+    tracevane = await startTracevane(root, gateway.port);
 
-    const created = await studio.context.services.chat.createSession('main', {});
+    const created = await tracevane.context.services.chat.createSession('main', {});
     const sessionKey = created.session.key;
 
-    frontendWs = new WebSocket(`ws://127.0.0.1:${studio.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
+    frontendWs = new WebSocket(`ws://127.0.0.1:${tracevane.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
     frontendWs.on('message', (raw) => {
       frontendEvents.push(JSON.parse(String(raw)));
     });
@@ -434,7 +434,7 @@ test('run_overlay keeps tool-only runs visible while history stays canonical and
       frontendWs.once('open', resolve);
       frontendWs.once('error', reject);
     });
-    await gateway.waitForStudioConnection();
+    await gateway.waitForTracevaneConnection();
 
     gateway.sendAgentEvent({
       sessionKey,
@@ -525,7 +525,7 @@ test('run_overlay keeps tool-only runs visible while history stays canonical and
       assert.equal(runtimeEvent.runtime.state, 'completed');
     });
 
-    const liveHistory = await studio.context.services.chat.getHistory(sessionKey);
+    const liveHistory = await tracevane.context.services.chat.getHistory(sessionKey);
     assert.equal(
       liveHistory.messages.some((message) => message.role === 'assistant' && message.runId === 'run-tool-only'),
       false,
@@ -535,20 +535,20 @@ test('run_overlay keeps tool-only runs visible while history stays canonical and
 
     try { frontendWs.close(); } catch {}
     frontendWs = null;
-    await studio.close();
-    studio = null;
+    await tracevane.close();
+    tracevane = null;
     await gateway.close();
     gateway = null;
 
-    const restartedStudio = await startStudio(root, 0);
+    const restartedTracevane = await startTracevane(root, 0);
     const restartedFrontendEvents = [];
-    const restartedHistory = await restartedStudio.context.services.chat.getHistory(sessionKey);
+    const restartedHistory = await restartedTracevane.context.services.chat.getHistory(sessionKey);
     assert.equal(
       restartedHistory.messages.some((message) => message.role === 'assistant' && message.runId === 'run-tool-only'),
       false,
     );
     assert.equal(restartedHistory.overlays.some((overlay) => overlay.runId === 'run-tool-only'), true);
-    const repeatedHistory = await restartedStudio.context.services.chat.getHistory(sessionKey);
+    const repeatedHistory = await restartedTracevane.context.services.chat.getHistory(sessionKey);
     assert.equal(
       repeatedHistory.messages.some((message) => message.role === 'assistant' && message.runId === 'run-tool-only'),
       false,
@@ -557,7 +557,7 @@ test('run_overlay keeps tool-only runs visible while history stays canonical and
       repeatedHistory.overlays.filter((overlay) => overlay.runId === 'run-tool-only').length,
       1,
     );
-    const restartedFrontendWs = new WebSocket(`ws://127.0.0.1:${restartedStudio.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
+    const restartedFrontendWs = new WebSocket(`ws://127.0.0.1:${restartedTracevane.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
     restartedFrontendWs.on('message', (raw) => {
       restartedFrontendEvents.push(JSON.parse(String(raw)));
     });
@@ -573,13 +573,13 @@ test('run_overlay keeps tool-only runs visible while history stays canonical and
       assert.match(overlayEvent.overlay.toolCalls?.[0]?.resultPreview || '', /done/i);
     });
     try { restartedFrontendWs.close(); } catch {}
-    await restartedStudio.close();
+    await restartedTracevane.close();
   } finally {
     if (frontendWs) {
       try { frontendWs.close(); } catch {}
     }
-    if (studio) {
-      await studio.close();
+    if (tracevane) {
+      await tracevane.close();
     }
     if (gateway) {
       await gateway.close();
@@ -589,14 +589,14 @@ test('run_overlay keeps tool-only runs visible while history stays canonical and
 });
 
 test('websocket chat stream replays buffered events after the last seen stream sequence', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-stream-replay-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-stream-replay-'));
   const workspace = path.join(root, 'workspace');
   const primaryEvents = [];
   const keeperEvents = [];
   const replayEvents = [];
 
   let gateway = null;
-  let studio = null;
+  let tracevane = null;
   let primaryWs = null;
   let keeperWs = null;
   let replayWs = null;
@@ -617,11 +617,11 @@ test('websocket chat stream replays buffered events after the last seen stream s
     writeGatewayIdentity(root);
 
     gateway = await startFakeGateway();
-    studio = await startStudio(root, gateway.port);
+    tracevane = await startTracevane(root, gateway.port);
 
-    const created = await studio.context.services.chat.createSession('main', {});
+    const created = await tracevane.context.services.chat.createSession('main', {});
     const sessionKey = created.session.key;
-    const baseWsUrl = `ws://127.0.0.1:${studio.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}&bootstrapSnapshot=0`;
+    const baseWsUrl = `ws://127.0.0.1:${tracevane.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}&bootstrapSnapshot=0`;
 
     primaryWs = new WebSocket(baseWsUrl);
     primaryWs.on('message', (raw) => {
@@ -641,7 +641,7 @@ test('websocket chat stream replays buffered events after the last seen stream s
         keeperWs.once('error', reject);
       }),
     ]);
-    await gateway.waitForStudioConnection();
+    await gateway.waitForTracevaneConnection();
 
     await waitFor(() => {
       const attachEvents = primaryEvents.filter((entry) => (
@@ -733,8 +733,8 @@ test('websocket chat stream replays buffered events after the last seen stream s
         try { socket.close(); } catch {}
       }
     }
-    if (studio) {
-      await studio.close();
+    if (tracevane) {
+      await tracevane.close();
     }
     if (gateway) {
       await gateway.close();
@@ -744,12 +744,12 @@ test('websocket chat stream replays buffered events after the last seen stream s
 });
 
 test('temporary.tool synthesizes a stable tool run id when gateway tool events omit runId', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-tool-stream-no-runid-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-tool-stream-no-runid-'));
   const workspace = path.join(root, 'workspace');
   const frontendEvents = [];
 
   let gateway = null;
-  let studio = null;
+  let tracevane = null;
   let frontendWs = null;
 
   try {
@@ -768,12 +768,12 @@ test('temporary.tool synthesizes a stable tool run id when gateway tool events o
     writeGatewayIdentity(root);
 
     gateway = await startFakeGateway();
-    studio = await startStudio(root, gateway.port);
+    tracevane = await startTracevane(root, gateway.port);
 
-    const created = await studio.context.services.chat.createSession('main', {});
+    const created = await tracevane.context.services.chat.createSession('main', {});
     const sessionKey = created.session.key;
 
-    frontendWs = new WebSocket(`ws://127.0.0.1:${studio.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
+    frontendWs = new WebSocket(`ws://127.0.0.1:${tracevane.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
     frontendWs.on('message', (raw) => {
       frontendEvents.push(JSON.parse(String(raw)));
     });
@@ -782,7 +782,7 @@ test('temporary.tool synthesizes a stable tool run id when gateway tool events o
       frontendWs.once('open', resolve);
       frontendWs.once('error', reject);
     });
-    await gateway.waitForStudioConnection();
+    await gateway.waitForTracevaneConnection();
 
     gateway.sendAgentEvent({
       sessionKey,
@@ -825,7 +825,7 @@ test('temporary.tool synthesizes a stable tool run id when gateway tool events o
       assert.match(event.tool?.resultPreview || '', /hello/i);
     });
 
-    const liveHistory = await studio.context.services.chat.getHistory(sessionKey);
+    const liveHistory = await tracevane.context.services.chat.getHistory(sessionKey);
     const overlay = liveHistory.overlays.find((entry) => entry.runId === 'tool:tool-no-run-1');
     assert.ok(overlay, 'expected synthetic tool overlay in history');
     assert.equal(overlay?.toolCalls?.[0]?.status, 'completed');
@@ -834,8 +834,8 @@ test('temporary.tool synthesizes a stable tool run id when gateway tool events o
     if (frontendWs) {
       try { frontendWs.close(); } catch {}
     }
-    if (studio) {
-      await studio.close();
+    if (tracevane) {
+      await tracevane.close();
     }
     if (gateway) {
       await gateway.close();
@@ -845,12 +845,12 @@ test('temporary.tool synthesizes a stable tool run id when gateway tool events o
 });
 
 test('session.tool gateway events enter the live chat stream before final history sync', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-session-tool-stream-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-session-tool-stream-'));
   const workspace = path.join(root, 'workspace');
   const frontendEvents = [];
 
   let gateway = null;
-  let studio = null;
+  let tracevane = null;
   let frontendWs = null;
 
   try {
@@ -869,12 +869,12 @@ test('session.tool gateway events enter the live chat stream before final histor
     writeGatewayIdentity(root);
 
     gateway = await startFakeGateway();
-    studio = await startStudio(root, gateway.port);
+    tracevane = await startTracevane(root, gateway.port);
 
-    const created = await studio.context.services.chat.createSession('main', {});
+    const created = await tracevane.context.services.chat.createSession('main', {});
     const sessionKey = created.session.key;
 
-    frontendWs = new WebSocket(`ws://127.0.0.1:${studio.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
+    frontendWs = new WebSocket(`ws://127.0.0.1:${tracevane.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
     frontendWs.on('message', (raw) => {
       frontendEvents.push(JSON.parse(String(raw)));
     });
@@ -883,7 +883,7 @@ test('session.tool gateway events enter the live chat stream before final histor
       frontendWs.once('open', resolve);
       frontendWs.once('error', reject);
     });
-    await gateway.waitForStudioConnection();
+    await gateway.waitForTracevaneConnection();
     await gateway.waitForSessionEventSubscription();
 
     gateway.sendSessionToolEvent({
@@ -910,8 +910,8 @@ test('session.tool gateway events enter the live chat stream before final histor
     if (frontendWs) {
       try { frontendWs.close(); } catch {}
     }
-    if (studio) {
-      await studio.close();
+    if (tracevane) {
+      await tracevane.close();
     }
     if (gateway) {
       await gateway.close();
@@ -921,12 +921,12 @@ test('session.tool gateway events enter the live chat stream before final histor
 });
 
 test('agent assistant events are mirrored into temporary assistant drafts for realtime fallback', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-agent-assistant-stream-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-agent-assistant-stream-'));
   const workspace = path.join(root, 'workspace');
   const frontendEvents = [];
 
   let gateway = null;
-  let studio = null;
+  let tracevane = null;
   let frontendWs = null;
 
   try {
@@ -945,12 +945,12 @@ test('agent assistant events are mirrored into temporary assistant drafts for re
     writeGatewayIdentity(root);
 
     gateway = await startFakeGateway();
-    studio = await startStudio(root, gateway.port);
+    tracevane = await startTracevane(root, gateway.port);
 
-    const created = await studio.context.services.chat.createSession('main', {});
+    const created = await tracevane.context.services.chat.createSession('main', {});
     const sessionKey = created.session.key;
 
-    frontendWs = new WebSocket(`ws://127.0.0.1:${studio.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
+    frontendWs = new WebSocket(`ws://127.0.0.1:${tracevane.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
     frontendWs.on('message', (raw) => {
       frontendEvents.push(JSON.parse(String(raw)));
     });
@@ -959,7 +959,7 @@ test('agent assistant events are mirrored into temporary assistant drafts for re
       frontendWs.once('open', resolve);
       frontendWs.once('error', reject);
     });
-    await gateway.waitForStudioConnection();
+    await gateway.waitForTracevaneConnection();
 
     gateway.sendAgentEvent({
       sessionKey,
@@ -1031,8 +1031,8 @@ test('agent assistant events are mirrored into temporary assistant drafts for re
     if (frontendWs) {
       try { frontendWs.close(); } catch {}
     }
-    if (studio) {
-      await studio.close();
+    if (tracevane) {
+      await tracevane.close();
     }
     if (gateway) {
       await gateway.close();
@@ -1042,12 +1042,12 @@ test('agent assistant events are mirrored into temporary assistant drafts for re
 });
 
 test('item and command_output agent events become live temporary tool updates', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-item-command-stream-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-item-command-stream-'));
   const workspace = path.join(root, 'workspace');
   const frontendEvents = [];
 
   let gateway = null;
-  let studio = null;
+  let tracevane = null;
   let frontendWs = null;
 
   try {
@@ -1066,12 +1066,12 @@ test('item and command_output agent events become live temporary tool updates', 
     writeGatewayIdentity(root);
 
     gateway = await startFakeGateway();
-    studio = await startStudio(root, gateway.port);
+    tracevane = await startTracevane(root, gateway.port);
 
-    const created = await studio.context.services.chat.createSession('main', {});
+    const created = await tracevane.context.services.chat.createSession('main', {});
     const sessionKey = created.session.key;
 
-    frontendWs = new WebSocket(`ws://127.0.0.1:${studio.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
+    frontendWs = new WebSocket(`ws://127.0.0.1:${tracevane.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
     frontendWs.on('message', (raw) => {
       frontendEvents.push(JSON.parse(String(raw)));
     });
@@ -1080,7 +1080,7 @@ test('item and command_output agent events become live temporary tool updates', 
       frontendWs.once('open', resolve);
       frontendWs.once('error', reject);
     });
-    await gateway.waitForStudioConnection();
+    await gateway.waitForTracevaneConnection();
 
     gateway.sendAgentEvent({
       sessionKey,
@@ -1158,8 +1158,8 @@ test('item and command_output agent events become live temporary tool updates', 
     if (frontendWs) {
       try { frontendWs.close(); } catch {}
     }
-    if (studio) {
-      await studio.close();
+    if (tracevane) {
+      await tracevane.close();
     }
     if (gateway) {
       await gateway.close();
@@ -1169,11 +1169,11 @@ test('item and command_output agent events become live temporary tool updates', 
 });
 
 test('history pages cap unrelated tool-only orphan overlays so long sessions do not inflate every page', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-orphan-overlay-cap-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-orphan-overlay-cap-'));
   const workspace = path.join(root, 'workspace');
 
   let gateway = null;
-  let studio = null;
+  let tracevane = null;
   let frontendWs = null;
 
   try {
@@ -1192,17 +1192,17 @@ test('history pages cap unrelated tool-only orphan overlays so long sessions do 
     writeGatewayIdentity(root);
 
     gateway = await startFakeGateway();
-    studio = await startStudio(root, gateway.port);
+    tracevane = await startTracevane(root, gateway.port);
 
-    const created = await studio.context.services.chat.createSession('main', {});
+    const created = await tracevane.context.services.chat.createSession('main', {});
     const sessionKey = created.session.key;
 
-    frontendWs = new WebSocket(`ws://127.0.0.1:${studio.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
+    frontendWs = new WebSocket(`ws://127.0.0.1:${tracevane.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
     await new Promise((resolve, reject) => {
       frontendWs.once('open', resolve);
       frontendWs.once('error', reject);
     });
-    await gateway.waitForStudioConnection();
+    await gateway.waitForTracevaneConnection();
 
     for (let index = 0; index < 14; index += 1) {
       gateway.sendAgentEvent({
@@ -1232,7 +1232,7 @@ test('history pages cap unrelated tool-only orphan overlays so long sessions do 
     }
 
     await waitFor(async () => {
-      const history = await studio.context.services.chat.getHistory(sessionKey);
+      const history = await tracevane.context.services.chat.getHistory(sessionKey);
       assert.equal(history.overlays.length, 8);
       assert.deepEqual(
         history.overlays.map((overlay) => overlay.runId),
@@ -1243,8 +1243,8 @@ test('history pages cap unrelated tool-only orphan overlays so long sessions do 
     if (frontendWs) {
       try { frontendWs.close(); } catch {}
     }
-    if (studio) {
-      await studio.close();
+    if (tracevane) {
+      await tracevane.close();
     }
     if (gateway) {
       await gateway.close();
@@ -1254,12 +1254,12 @@ test('history pages cap unrelated tool-only orphan overlays so long sessions do 
 });
 
 test('chat.side_result forwards btw answers without injecting assistant transcript messages', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-btw-side-result-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-btw-side-result-'));
   const workspace = path.join(root, 'workspace');
   const frontendEvents = [];
 
   let gateway = null;
-  let studio = null;
+  let tracevane = null;
   let frontendWs = null;
 
   try {
@@ -1278,12 +1278,12 @@ test('chat.side_result forwards btw answers without injecting assistant transcri
     writeGatewayIdentity(root);
 
     gateway = await startFakeGateway();
-    studio = await startStudio(root, gateway.port);
+    tracevane = await startTracevane(root, gateway.port);
 
-    const created = await studio.context.services.chat.createSession('main', {});
+    const created = await tracevane.context.services.chat.createSession('main', {});
     const sessionKey = created.session.key;
 
-    frontendWs = new WebSocket(`ws://127.0.0.1:${studio.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
+    frontendWs = new WebSocket(`ws://127.0.0.1:${tracevane.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
     frontendWs.on('message', (raw) => {
       frontendEvents.push(JSON.parse(String(raw)));
     });
@@ -1292,7 +1292,7 @@ test('chat.side_result forwards btw answers without injecting assistant transcri
       frontendWs.once('open', resolve);
       frontendWs.once('error', reject);
     });
-    await gateway.waitForStudioConnection();
+    await gateway.waitForTracevaneConnection();
 
     gateway.sendChatSideResult({
       kind: 'btw',
@@ -1312,29 +1312,29 @@ test('chat.side_result forwards btw answers without injecting assistant transcri
       assert.equal(event.result?.text, 'Only the tests changed.');
     });
 
-    const liveHistory = await studio.context.services.chat.getHistory(sessionKey);
+    const liveHistory = await tracevane.context.services.chat.getHistory(sessionKey);
     assert.equal(
       liveHistory.messages.some((message) => message.role === 'assistant' && /Only the tests changed\./.test(message.text || '')),
       false,
     );
   } finally {
     try { frontendWs?.close(); } catch {}
-    await studio?.close();
+    await tracevane?.close();
     await gateway?.close();
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
 
 test('official canonical stream dual-writes history SSE updates and preserves durable mirror across rollback until reset', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'openclaw-studio-canonical-stream-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tracevane-canonical-stream-'));
   const workspace = path.join(root, 'workspace');
   const frontendEvents = [];
   const secondFrontendEvents = [];
-  const shadowStoreFile = path.join(root, 'studio', 'chat-message-shadows.json');
+  const shadowStoreFile = path.join(root, 'tracevane', 'chat-message-shadows.json');
 
   let gateway = null;
   let rollbackGateway = null;
-  let studio = null;
+  let tracevane = null;
   let frontendWs = null;
   let secondFrontendWs = null;
 
@@ -1354,16 +1354,16 @@ test('official canonical stream dual-writes history SSE updates and preserves du
     writeGatewayIdentity(root);
 
     gateway = await startFakeGateway();
-    studio = await startStudio(root, gateway.port);
+    tracevane = await startTracevane(root, gateway.port);
 
-    const created = await studio.context.services.chat.createSession('main', {});
+    const created = await tracevane.context.services.chat.createSession('main', {});
     const sessionKey = created.session.key;
     gateway.seedSessionHistory(sessionKey, [
       createTranscriptHistoryMessage('user-1', 'user', 'hello', '2026-03-24T09:00:00.000Z'),
       createTranscriptHistoryMessage('assistant-1', 'assistant', 'first answer', '2026-03-24T09:00:01.000Z'),
     ]);
 
-    frontendWs = new WebSocket(`ws://127.0.0.1:${studio.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
+    frontendWs = new WebSocket(`ws://127.0.0.1:${tracevane.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
     frontendWs.on('message', (raw) => {
       frontendEvents.push(JSON.parse(String(raw)));
     });
@@ -1371,7 +1371,7 @@ test('official canonical stream dual-writes history SSE updates and preserves du
       frontendWs.once('open', resolve);
       frontendWs.once('error', reject);
     });
-    await gateway.waitForStudioConnection();
+    await gateway.waitForTracevaneConnection();
 
     await waitFor(() => {
       const event = frontendEvents.find((entry) => entry.kind === 'canonical.snapshot');
@@ -1382,7 +1382,7 @@ test('official canonical stream dual-writes history SSE updates and preserves du
     const firstSnapshotVersion = frontendEvents.find((entry) => entry.kind === 'canonical.snapshot')?.version;
     assert.ok(firstSnapshotVersion);
 
-    secondFrontendWs = new WebSocket(`ws://127.0.0.1:${studio.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
+    secondFrontendWs = new WebSocket(`ws://127.0.0.1:${tracevane.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
     secondFrontendWs.on('message', (raw) => {
       secondFrontendEvents.push(JSON.parse(String(raw)));
     });
@@ -1435,15 +1435,15 @@ test('official canonical stream dual-writes history SSE updates and preserves du
       0,
     );
 
-    const liveHistory = await studio.context.services.chat.getHistory(sessionKey);
+    const liveHistory = await tracevane.context.services.chat.getHistory(sessionKey);
     assert.deepEqual(liveHistory.messages.map((message) => message.id), ['user-1', 'assistant-1', 'assistant-2', 'assistant-3']);
 
     try { frontendWs.close(); } catch {}
     frontendWs = null;
     try { secondFrontendWs.close(); } catch {}
     secondFrontendWs = null;
-    await studio.close();
-    studio = null;
+    await tracevane.close();
+    tracevane = null;
     await gateway.close();
     gateway = null;
 
@@ -1451,9 +1451,9 @@ test('official canonical stream dual-writes history SSE updates and preserves du
     rollbackGateway.seedSessionHistory(sessionKey, [
       createTranscriptHistoryMessage('user-1', 'user', 'hello', '2026-03-24T09:00:00.000Z'),
     ]);
-    studio = await startStudio(root, rollbackGateway.port);
+    tracevane = await startTracevane(root, rollbackGateway.port);
 
-    const protectedHistory = await studio.context.services.chat.getHistory(sessionKey);
+    const protectedHistory = await tracevane.context.services.chat.getHistory(sessionKey);
     assert.deepEqual(protectedHistory.messages.map((message) => message.id), ['user-1', 'assistant-1', 'assistant-2', 'assistant-3']);
 
     fs.mkdirSync(path.dirname(shadowStoreFile), { recursive: true });
@@ -1470,7 +1470,7 @@ test('official canonical stream dual-writes history SSE updates and preserves du
       },
     }, null, 2));
 
-    frontendWs = new WebSocket(`ws://127.0.0.1:${studio.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
+    frontendWs = new WebSocket(`ws://127.0.0.1:${tracevane.port}/ws/chat?sessionKey=${encodeURIComponent(sessionKey)}`);
     frontendWs.on('message', (raw) => {
       frontendEvents.push(JSON.parse(String(raw)));
     });
@@ -1478,7 +1478,7 @@ test('official canonical stream dual-writes history SSE updates and preserves du
       frontendWs.once('open', resolve);
       frontendWs.once('error', reject);
     });
-    await rollbackGateway.waitForStudioConnection();
+    await rollbackGateway.waitForTracevaneConnection();
     await rollbackGateway.waitForSessionEventSubscription();
 
     rollbackGateway.sendSessionChanged({
@@ -1488,7 +1488,7 @@ test('official canonical stream dual-writes history SSE updates and preserves du
     });
 
     await waitFor(async () => {
-      const history = await studio.context.services.chat.getHistory(sessionKey);
+      const history = await tracevane.context.services.chat.getHistory(sessionKey);
       assert.equal(history.messages.length, 0);
     });
     const shadowStore = JSON.parse(fs.readFileSync(shadowStoreFile, 'utf-8'));
@@ -1504,8 +1504,8 @@ test('official canonical stream dual-writes history SSE updates and preserves du
     if (secondFrontendWs) {
       try { secondFrontendWs.close(); } catch {}
     }
-    if (studio) {
-      await studio.close();
+    if (tracevane) {
+      await tracevane.close();
     }
     if (gateway) {
       await gateway.close();

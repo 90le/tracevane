@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { StudioServerConfig } from '../../../../types/api.js';
+import type { TracevaneServerConfig } from '../../../../types/api.js';
 import type {
   ChatHistoryDateBucket,
   ChatHistorySearchContentFilter,
@@ -8,7 +8,7 @@ import type {
   ChatMessageItem,
 } from '../../../../types/chat.js';
 import { clipPreview, LruMap, normalizeDate } from './shared.js';
-import { openStudioChatSqliteDatabase } from './chat-sqlite.js';
+import { openTracevaneChatSqliteDatabase } from './chat-sqlite.js';
 const CHAT_HISTORY_INDEX_SCHEMA_VERSION = 3;
 
 export interface ChatHistoryIndexItem {
@@ -56,11 +56,11 @@ function encodeSessionKey(sessionKey: string): string {
   return Buffer.from(sessionKey, 'utf-8').toString('base64url');
 }
 
-function historyIndexPath(config: StudioServerConfig, sessionKey: string): string {
-  return path.join(config.openclawRoot, 'studio', 'chat-index', `${encodeSessionKey(sessionKey)}.json`);
+function historyIndexPath(config: TracevaneServerConfig, sessionKey: string): string {
+  return path.join(config.openclawRoot, 'tracevane', 'chat-index', `${encodeSessionKey(sessionKey)}.json`);
 }
 
-function readHistoryIndex(config: StudioServerConfig, sessionKey: string): ChatHistoryIndex | null {
+function readHistoryIndex(config: TracevaneServerConfig, sessionKey: string): ChatHistoryIndex | null {
   try {
     return JSON.parse(fs.readFileSync(historyIndexPath(config, sessionKey), 'utf-8')) as ChatHistoryIndex;
   } catch {
@@ -68,14 +68,14 @@ function readHistoryIndex(config: StudioServerConfig, sessionKey: string): ChatH
   }
 }
 
-function writeHistoryIndex(config: StudioServerConfig, index: ChatHistoryIndex): void {
+function writeHistoryIndex(config: TracevaneServerConfig, index: ChatHistoryIndex): void {
   const file = historyIndexPath(config, index.sessionKey);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, `${JSON.stringify(index, null, 2)}\n`);
 }
 
-function loadSqliteDatabase(config: StudioServerConfig): any | null {
-  const database = openStudioChatSqliteDatabase(config);
+function loadSqliteDatabase(config: TracevaneServerConfig): any | null {
+  const database = openTracevaneChatSqliteDatabase(config);
   if (!database) {
     return null;
   }
@@ -326,7 +326,7 @@ function intersectSortedPositions(groups: number[][]): number[] {
   return current;
 }
 
-export function createStudioChatHistoryIndexStore(config: StudioServerConfig) {
+export function createTracevaneChatHistoryIndexStore(config: TracevaneServerConfig) {
   const database = loadSqliteDatabase(config);
   let sqliteHealthy = Boolean(database);
   let jsonHealthy = true;

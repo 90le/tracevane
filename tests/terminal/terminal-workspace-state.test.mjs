@@ -95,7 +95,7 @@ test("terminal workspace makes resource cwd sessions the active terminal pane", 
   workspace.registerSession({
     sessionId: "term-resource-folder",
     title: "web-vue · Shell",
-    cwd: "/home/binbin/.openclaw/extensions/openclaw-studio/apps/web-vue",
+    cwd: "/home/binbin/.openclaw/extensions/tracevane/apps/web-vue",
     status: "running",
     source: "manual",
     canResume: true,
@@ -108,7 +108,7 @@ test("terminal workspace makes resource cwd sessions the active terminal pane", 
   assert.deepEqual(workspace.paneSessionIds.value, ["term-resource-folder"]);
   assert.equal(
     workspace.sessions.value["term-resource-folder"]?.cwd,
-    "/home/binbin/.openclaw/extensions/openclaw-studio/apps/web-vue",
+    "/home/binbin/.openclaw/extensions/tracevane/apps/web-vue",
   );
 });
 
@@ -862,7 +862,7 @@ test("terminal route sync recovers persisted descriptor metadata by route sessio
       triggerType: "system-control",
       triggerLabel: "System handoff",
       targetEntity: "bootstrap",
-      recommendedCommand: "studio diagnostics collect",
+      recommendedCommand: "tracevane diagnostics collect",
       relatedEventId: "evt-1",
     },
   };
@@ -892,7 +892,7 @@ test("terminal route sync recovers persisted descriptor metadata by route sessio
         triggerType: "system-control",
         triggerLabel: "System handoff",
         targetEntity: "bootstrap",
-        recommendedCommand: "studio diagnostics collect",
+        recommendedCommand: "tracevane diagnostics collect",
         relatedEventId: "evt-1",
       },
       recentOutputSummary: {

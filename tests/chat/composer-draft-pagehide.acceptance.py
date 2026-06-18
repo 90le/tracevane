@@ -11,7 +11,7 @@ from playwright.sync_api import sync_playwright
 from browser_surface import wait_for_active_session, wait_for_chat_surface
 
 
-SCREENSHOT = Path("/tmp/openclaw-studio-chat-composer-draft-pagehide-acceptance.png")
+SCREENSHOT = Path("/tmp/tracevane-chat-composer-draft-pagehide-acceptance.png")
 
 
 def wait_button_enabled(locator, timeout=30000):
@@ -86,7 +86,7 @@ def set_editor_and_fire_pagehide(page, token: str):
 
 
 def read_persisted_draft(page, session_key: str) -> dict[str, object]:
-    key = f"openclaw-studio.chat.composer-draft:{session_key}"
+    key = f"tracevane.chat.composer-draft:{session_key}"
     raw = page.evaluate("(keyName) => window.localStorage.getItem(keyName)", key)
     if not raw:
         return {}

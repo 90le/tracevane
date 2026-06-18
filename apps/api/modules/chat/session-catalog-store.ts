@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { StudioServerConfig } from '../../../../types/api.js';
+import type { TracevaneServerConfig } from '../../../../types/api.js';
 import type { ChatSessionRow } from '../../../../types/chat.js';
-import { openStudioChatSqliteDatabase } from './chat-sqlite.js';
+import { openTracevaneChatSqliteDatabase } from './chat-sqlite.js';
 
 type SessionCatalogBackend = 'sqlite' | 'json';
 
@@ -11,13 +11,13 @@ type JsonSessionCatalogRecord = {
   sessions: Record<string, ChatSessionRow>;
 };
 
-function ensureCatalogDir(config: StudioServerConfig): string {
-  const dir = path.join(config.openclawRoot, 'studio', 'chat-session-catalog');
+function ensureCatalogDir(config: TracevaneServerConfig): string {
+  const dir = path.join(config.openclawRoot, 'tracevane', 'chat-session-catalog');
   fs.mkdirSync(dir, { recursive: true });
   return dir;
 }
 
-function jsonCatalogPath(config: StudioServerConfig): string {
+function jsonCatalogPath(config: TracevaneServerConfig): string {
   return path.join(ensureCatalogDir(config), 'catalog.json');
 }
 
@@ -29,7 +29,7 @@ function cloneSessionRows(rows: ChatSessionRow[]): ChatSessionRow[] {
   return rows.map((row) => cloneSessionRow(row));
 }
 
-function readJsonCatalog(config: StudioServerConfig): JsonSessionCatalogRecord {
+function readJsonCatalog(config: TracevaneServerConfig): JsonSessionCatalogRecord {
   try {
     return JSON.parse(fs.readFileSync(jsonCatalogPath(config), 'utf-8')) as JsonSessionCatalogRecord;
   } catch {
@@ -37,12 +37,12 @@ function readJsonCatalog(config: StudioServerConfig): JsonSessionCatalogRecord {
   }
 }
 
-function writeJsonCatalog(config: StudioServerConfig, value: JsonSessionCatalogRecord): void {
+function writeJsonCatalog(config: TracevaneServerConfig, value: JsonSessionCatalogRecord): void {
   fs.writeFileSync(jsonCatalogPath(config), `${JSON.stringify(value, null, 2)}\n`);
 }
 
-function loadSqliteDatabase(config: StudioServerConfig): any | null {
-  const database = openStudioChatSqliteDatabase(config);
+function loadSqliteDatabase(config: TracevaneServerConfig): any | null {
+  const database = openTracevaneChatSqliteDatabase(config);
   if (!database) {
     return null;
   }
@@ -72,7 +72,7 @@ function loadSqliteDatabase(config: StudioServerConfig): any | null {
   }
 }
 
-export function createStudioChatSessionCatalogStore(config: StudioServerConfig) {
+export function createTracevaneChatSessionCatalogStore(config: TracevaneServerConfig) {
   const database = loadSqliteDatabase(config);
   const backend: SessionCatalogBackend = database ? 'sqlite' : 'json';
 

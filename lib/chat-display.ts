@@ -373,7 +373,7 @@ export function deriveChatPreview(raw: string | null): string | null {
 }
 
 export function deriveChatSessionTitle(session: ChatSessionRow, agentName: string): string {
-  const candidates = session.kind === 'studio_managed'
+  const candidates = session.kind === 'tracevane_managed'
     ? [
       session.presentation.customLabel,
       session.presentation.autoLabel,

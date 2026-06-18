@@ -6,7 +6,7 @@ export interface BuildSystemRuntimeSummaryInput {
   bootstrapPendingCount: number;
   updateLatestVersion: string;
   updateAvailable: boolean;
-  studioUpgradeRunning: boolean;
+  tracevaneUpgradeRunning: boolean;
   helperRepairPending: boolean;
 }
 
@@ -19,13 +19,13 @@ export function buildSystemRuntimeSummary(
     bootstrapPendingCount: input.bootstrapPendingCount,
     updateLatestVersion: input.updateLatestVersion,
     updateAvailable: input.updateAvailable,
-    studioUpgradeRunning: input.studioUpgradeRunning,
+    tracevaneUpgradeRunning: input.tracevaneUpgradeRunning,
     helperRepairPending: input.helperRepairPending,
     level:
       !input.gatewayConnected ||
       input.bootstrapPendingCount > 0 ||
       input.updateAvailable ||
-      input.studioUpgradeRunning ||
+      input.tracevaneUpgradeRunning ||
       input.helperRepairPending
         ? "warn"
         : "ok",

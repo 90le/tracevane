@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { StudioServerConfig } from '../../../types/api.js';
+import type { TracevaneServerConfig } from '../../../types/api.js';
 
 export function readJsonFile<T>(filePath: string, fallback: T): T {
   try {
@@ -38,6 +38,6 @@ export function listDirectories(root: string): string[] {
   }
 }
 
-export function readOpenClawConfig(config: StudioServerConfig): Record<string, any> {
+export function readOpenClawConfig(config: TracevaneServerConfig): Record<string, any> {
   return readJsonFile<Record<string, any>>(config.openclawConfigFile, {});
 }

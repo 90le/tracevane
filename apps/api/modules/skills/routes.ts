@@ -1,6 +1,6 @@
 import { parseJsonBody, sendJson } from '../../core/http.js';
-import type { StudioApiContext } from '../../core/context.js';
-import type { StudioRouter } from '../../core/router.js';
+import type { TracevaneApiContext } from '../../core/context.js';
+import type { TracevaneRouter } from '../../core/router.js';
 import type {
   SkillConfigUpdatePayload,
   SkillsLifecyclePayload,
@@ -24,7 +24,7 @@ function parseMarketplaceSort(value: string | null): SkillsMarketplaceSort | und
   return undefined;
 }
 
-export function registerSkillsRoutes(router: StudioRouter, ctx: StudioApiContext): void {
+export function registerSkillsRoutes(router: TracevaneRouter, ctx: TracevaneApiContext): void {
   router.get('/api/skills', async (req, res) => {
     const url = new URL(req.url || '/', `http://${req.headers.host || '127.0.0.1'}`);
     const refresh = url.searchParams.get('refresh') === '1';

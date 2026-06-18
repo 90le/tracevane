@@ -1,6 +1,6 @@
 export const MODEL_GATEWAY_DEFAULT_HOST = "127.0.0.1";
 export const MODEL_GATEWAY_DEFAULT_PORT = 18796;
-export const MODEL_GATEWAY_DAEMON_SERVICE_NAME = "openclaw-studio-model-gateway.service";
+export const MODEL_GATEWAY_DAEMON_SERVICE_NAME = "tracevane-model-gateway.service";
 
 export const MODEL_GATEWAY_APP_SCOPES = [
   "codex",
@@ -492,7 +492,7 @@ export type ModelGatewayLocalDaemonState =
   | "stopped"
   | "unknown";
 
-export type ModelGatewayRuntimeHostMode = "studio-api-embedded" | "local-daemon";
+export type ModelGatewayRuntimeHostMode = "tracevane-api-embedded" | "local-daemon";
 export type ModelGatewayDaemonImplementationStatus = "contract-only" | "available";
 
 export type ModelGatewayDaemonServiceAction =
@@ -604,7 +604,7 @@ export interface ModelGatewayDaemonRuntimeMetadata {
 export interface ModelGatewayLifecycleStatus {
   controlPlane: {
     state: "running" | "not-attached";
-    mode: "studio-api" | "daemon-local-control";
+    mode: "tracevane-api" | "daemon-local-control";
     pid: number | null;
     endpoint: string | null;
     embeddedGatewayActive: boolean;

@@ -78,7 +78,7 @@
         <div class="agents-runtime-grid">
           <div class="form-field">
             <label class="form-label">{{ text('模型', 'Model') }}</label>
-            <StudioSelect
+            <TracevaneSelect
               v-model="quickEdit.model"
               :options="modelOptions"
               :placeholder="text('跟随系统默认', 'Inherit system default')"
@@ -99,7 +99,7 @@
           <div class="agents-runtime-grid">
             <div class="form-field">
               <label class="form-label">{{ text('策略', 'Policy') }}</label>
-              <StudioSelect v-model="quickEdit.heartbeatMode" :options="heartbeatModeOptions" />
+              <TracevaneSelect v-model="quickEdit.heartbeatMode" :options="heartbeatModeOptions" />
             </div>
             <div class="form-field">
               <label class="form-label">{{ text('周期', 'Interval') }}</label>
@@ -218,7 +218,7 @@
 import { ref, watch, computed, reactive, onActivated } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { AgentDetailPayload } from '../../../../../types/agents';
-import StudioSelect from '../../shared/components/StudioSelect.vue';
+import TracevaneSelect from '../../shared/components/TracevaneSelect.vue';
 import { buildAgentHeartbeatConfig, resolveHeartbeatEvery, resolveHeartbeatMode, type HeartbeatMode } from '../../shared/heartbeat-config';
 import { useLocalePreference } from '../../shared/locale';
 import { fetchAgentDetail, fetchAgentsSummary, updateAgent } from './api';

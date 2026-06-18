@@ -21,14 +21,14 @@ const manifestFile = path.join(
 const coverageScriptFile = path.join(
   rootDir,
   "scripts",
-  "studio-system-runtime-coverage.mjs",
+  "tracevane-system-runtime-coverage.mjs",
 );
 const baselineFile = path.join(
   rootDir,
   "docs",
   "superpowers",
   "inventories",
-  "studio-system-runtime-coverage.json",
+  "tracevane-system-runtime-coverage.json",
 );
 const packageJson = JSON.parse(
   fs.readFileSync(path.join(rootDir, "package.json"), "utf8"),
@@ -46,10 +46,10 @@ test("system runtime manifest covers required runtime sections and runtime surfa
   assert.match(source, /SYSTEM_RUNTIME_COVERAGE_SEED/);
 });
 
-test("package scripts include studio system runtime coverage command", () => {
+test("package scripts include tracevane system runtime coverage command", () => {
   assert.equal(
-    packageJson.scripts?.["studio:system-runtime-coverage"],
-    "node scripts/studio-system-runtime-coverage.mjs",
+    packageJson.scripts?.["tracevane:system-runtime-coverage"],
+    "node scripts/tracevane-system-runtime-coverage.mjs",
   );
   assert.equal(fs.existsSync(coverageScriptFile), true);
 });

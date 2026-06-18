@@ -1,20 +1,20 @@
-import { isStudioHostManagementCommandText } from '../../../../../lib/studio-host-management-command';
+import { isTracevaneHostManagementCommandText } from '../../../../../lib/tracevane-host-management-command';
 
 type LocalizedText = {
   zh: string;
   en: string;
 };
 
-export type StudioBashSlashDecision =
+export type TracevaneBashSlashDecision =
   | { kind: 'help'; detail: LocalizedText }
   | { kind: 'blocked'; detail: LocalizedText }
   | { kind: 'fallback' };
 
-export function resolveStudioBashSlashHandling(params: {
+export function resolveTracevaneBashSlashHandling(params: {
   args: string;
   globalHostManagementExecEnabled: boolean;
   sessionHostManagementExecEnabled: boolean;
-}): StudioBashSlashDecision {
+}): TracevaneBashSlashDecision {
   const args = typeof params.args === 'string' ? params.args.trim() : '';
   if (!args || args === 'help' || args === '--help' || args === '-h') {
     const globalState = params.globalHostManagementExecEnabled ? '已开启' : '未开启';
@@ -31,7 +31,7 @@ export function resolveStudioBashSlashHandling(params: {
   }
 
   if (
-    isStudioHostManagementCommandText(args)
+    isTracevaneHostManagementCommandText(args)
     && !(params.globalHostManagementExecEnabled && params.sessionHostManagementExecEnabled)
   ) {
     return {

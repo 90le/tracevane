@@ -6,14 +6,14 @@
 
 ## 1. 目标
 
-OpenClaw Recovery Daemon 是独立守护进程。Studio 健康时负责安装、启动、重启和展示它；OpenClaw gateway 或 Studio 单口入口不可达时，daemon 继续由 OS 用户级 supervisor 托管并尝试保守修复 OpenClaw。
+OpenClaw Recovery Daemon 是独立守护进程。Tracevane 健康时负责安装、启动、重启和展示它；OpenClaw gateway 或 Tracevane 单口入口不可达时，daemon 继续由 OS 用户级 supervisor 托管并尝试保守修复 OpenClaw。
 
 核心要求：
 
 - 健康循环只做本机轻量探测，不频繁 spawn OpenClaw CLI。
 - 持续失败超过阈值后才进入修复流程。
 - 修复前备份 `openclaw.json`。
-- 修复前备份 `openclaw.json` 以及会被本轮修复触碰的 runtime sidecar：`.env`、`gateway.systemd.env`、`studio-local` secret 文件。
+- 修复前备份 `openclaw.json` 以及会被本轮修复触碰的 runtime sidecar：`.env`、`gateway.systemd.env`、`tracevane-local` secret 文件。
 - 根据 `openclaw config validate --json` 的 issue path 动态删除安全域里的违规字段。
 - 保留插件 config、provider params、channel 扩展字段和用户插件源码目录。
 - 对已确认废弃的插件/渠道残留做保守清理，只处理 `acpx` / `discord` 这类已废弃 residue，不扩大到任意第三方插件源码。
@@ -37,7 +37,7 @@ OpenClaw Recovery Daemon 是独立守护进程。Studio 健康时负责安装、
 | --- | --- |
 | `apps/api/openclaw-recovery-daemon.ts` | 独立 daemon 入口 |
 | `apps/api/modules/openclaw-recovery/*` | 状态、事件、备份、探测、修复、supervisor service 管理 |
-| `/api/openclaw-recovery/*` | Studio 健康时的管理 API |
+| `/api/openclaw-recovery/*` | Tracevane 健康时的管理 API |
 | `/system` | 轻量系统总览 |
 | `/system/recovery` | 自愈管理页 |
 
@@ -53,8 +53,8 @@ OpenClaw Recovery Daemon 是独立守护进程。Studio 健康时负责安装、
 - 修复前创建配置备份。
 - 配置 prune 从 OpenClaw validation issue 动态获取路径。
 - 插件层优先禁用坏 entry 或移除缺失绝对 path，不删除插件源码目录。
-- 低优先级：Studio 插件 `/studio` 控制面静态资源缺失时可受控执行 `npm run build:web` 重建；该项只保证 OpenClaw 托管 Tracevane UI 可打开，不作为 OpenClaw 本体配置修复的核心验收。
-- Gateway 修复后深探测端口和 Studio 控制 UI 路径。
+- 低优先级：Tracevane 插件 `/tracevane` 控制面静态资源缺失时可受控执行 `npm run build:web` 重建；该项只保证 OpenClaw 托管 Tracevane UI 可打开，不作为 OpenClaw 本体配置修复的核心验收。
+- Gateway 修复后深探测端口和 Tracevane 控制 UI 路径。
 - Gateway 服务托管修复优先使用 OpenClaw CLI 的 gateway status/install/start/restart。
 - Gateway service 修复或重启后要 bounded wait 到控制面真正 ready，避免 systemd `active` 但 Gateway 仍启动中时误判失败。
 - CLI recovery shim 必须按 manifest 入口类型执行：JS/MJS 才用 Node，shell/native wrapper 直接 exec。
@@ -66,5 +66,5 @@ OpenClaw Recovery Daemon 是独立守护进程。Studio 健康时负责安装、
 ## 5. 剩余工作
 
 - macOS launchd、Windows scheduled task/service install/start/restart smoke。
-- 低优先级验证 Studio 插件 `/studio` 控制面静态资源缺失样本。
+- 低优先级验证 Tracevane 插件 `/tracevane` 控制面静态资源缺失样本。
 - 若 fallback 控制面变成正式用户工作流，再补发现入口和 token 展示 UX。

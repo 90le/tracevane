@@ -98,7 +98,7 @@ function octoAutoFixture() {
       checkedAt: "2026-06-13T05:18:20.163Z",
       eventKind: "agent.auto_compact.threshold",
       adapter: "octo",
-      bindingId: "octo-studio-cc",
+      bindingId: "octo-tracevane-cc",
       sessionKey: "dmwork:dm:user",
       messageId: "2065665045789839360",
       budget: {
@@ -112,7 +112,7 @@ function octoAutoFixture() {
       checkedAt: "2026-06-13T05:18:34.379Z",
       eventKind: "agent.native_compact.finished",
       platform: "octo",
-      bindingId: "octo-studio-cc",
+      bindingId: "octo-tracevane-cc",
       sessionKey: "dmwork:dm:user",
       messageId: "compact:2065665045789839360",
       agent: "codex",
@@ -125,7 +125,7 @@ function octoAutoFixture() {
       checkedAt: "2026-06-13T05:18:34.379Z",
       eventKind: "agent.auto_compact.finished",
       adapter: "octo",
-      bindingId: "octo-studio-cc",
+      bindingId: "octo-tracevane-cc",
       sessionKey: "dmwork:dm:user",
       messageId: "2065665045789839360",
       action: "native",
@@ -140,7 +140,7 @@ function octoExplicitFixture() {
       checkedAt: "2026-06-09T06:30:42.707Z",
       eventKind: "agent.native_compact.finished",
       platform: "octo",
-      bindingId: "octo-studio-cc",
+      bindingId: "octo-tracevane-cc",
       sessionKey: "dmwork:dm:user",
       messageId: "compact:2064233657807048704",
       agent: "codex",
@@ -153,7 +153,7 @@ function octoExplicitFixture() {
       checkedAt: "2026-06-09T06:30:42.940Z",
       eventKind: "channel.command",
       adapter: "octo",
-      bindingId: "octo-studio-cc",
+      bindingId: "octo-tracevane-cc",
       sessionKey: "dmwork:dm:user",
       messageId: "2064233657807048704",
       channelId: "user",
@@ -169,7 +169,7 @@ function octoExplicitFixture() {
 }
 
 test("generic compact live script accepts Feishu long-connection auto compact evidence", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-compact-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-compact-smoke-"));
   const eventLog = path.join(root, "feishu-events.jsonl");
   writeJsonl(eventLog, feishuAutoFixture());
 
@@ -190,7 +190,7 @@ test("generic compact live script accepts Feishu long-connection auto compact ev
 });
 
 test("generic compact live script rejects Feishu compact evidence without long-connection ingress", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-compact-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-compact-smoke-"));
   const eventLog = path.join(root, "feishu-events.jsonl");
   writeJsonl(eventLog, feishuAutoFixture({ longConnection: false }));
 
@@ -209,7 +209,7 @@ test("generic compact live script rejects Feishu compact evidence without long-c
 });
 
 test("generic compact live script accepts Octo auto compact evidence without Feishu long-connection fields", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-compact-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-compact-smoke-"));
   const eventLog = path.join(root, "octo-events.jsonl");
   writeJsonl(eventLog, octoAutoFixture());
 
@@ -231,7 +231,7 @@ test("generic compact live script accepts Octo auto compact evidence without Fei
 });
 
 test("generic compact live script accepts Octo explicit slash compact command evidence", async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), "studio-compact-smoke-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-compact-smoke-"));
   const eventLog = path.join(root, "octo-events.jsonl");
   writeJsonl(eventLog, octoExplicitFixture());
 

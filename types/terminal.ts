@@ -371,13 +371,13 @@ export interface TerminalGatewayAckResponse {
   events?: TerminalGatewayEvent[];
 }
 
-export const STUDIO_TERMINAL_GATEWAY_EVENT = "studio.terminal";
+export const TRACEVANE_TERMINAL_GATEWAY_EVENT = "tracevane.terminal";
 
-export const STUDIO_TERMINAL_GATEWAY_METHODS = {
-  attach: "studio.terminal.attach",
-  input: "studio.terminal.input",
-  resize: "studio.terminal.resize",
-  heartbeat: "studio.terminal.heartbeat",
-  clear: "studio.terminal.clear",
-  detach: "studio.terminal.detach",
+export const TRACEVANE_TERMINAL_GATEWAY_METHODS = {
+  attach: "tracevane.terminal.attach",
+  input: "tracevane.terminal.input",
+  resize: "tracevane.terminal.resize",
+  heartbeat: "tracevane.terminal.heartbeat",
+  clear: "tracevane.terminal.clear",
+  detach: "tracevane.terminal.detach",
 } as const;

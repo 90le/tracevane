@@ -13,11 +13,11 @@ import type {
   SystemDeviceTrustSettingsPatchRequest,
   SystemDeviceTrustSettingsPatchResponse,
 } from '../../../../types/system.js';
-import type { StudioServerConfig } from '../../../../types/api.js';
+import type { TracevaneServerConfig } from '../../../../types/api.js';
 import { readJsonFile } from '../../core/state.js';
 
 const execFileAsync = promisify(execFile);
-const DEVICE_TRUST_SETTINGS_FILE = path.join('studio', 'device-trust.json');
+const DEVICE_TRUST_SETTINGS_FILE = path.join('tracevane', 'device-trust.json');
 const DEFAULT_DEVICE_TRUST_SETTINGS: SystemDeviceTrustSettings = {
   autoApproveLocalHelper: true,
 };
@@ -26,7 +26,7 @@ function normalizeString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function readSettingsPath(config: StudioServerConfig): string {
+function readSettingsPath(config: TracevaneServerConfig): string {
   return path.join(config.openclawRoot, DEVICE_TRUST_SETTINGS_FILE);
 }
 
@@ -40,7 +40,7 @@ function writeJsonFile(file: string, value: unknown): void {
   }
 }
 
-export function readDeviceTrustSettings(config: StudioServerConfig): SystemDeviceTrustSettings {
+export function readDeviceTrustSettings(config: TracevaneServerConfig): SystemDeviceTrustSettings {
   const raw = readJsonFile<Record<string, unknown>>(readSettingsPath(config), {});
   return {
     autoApproveLocalHelper: raw.autoApproveLocalHelper !== false,
@@ -48,7 +48,7 @@ export function readDeviceTrustSettings(config: StudioServerConfig): SystemDevic
 }
 
 export function patchDeviceTrustSettings(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   payload: SystemDeviceTrustSettingsPatchRequest,
 ): SystemDeviceTrustSettingsPatchResponse {
   const current = readDeviceTrustSettings(config);
@@ -64,7 +64,7 @@ export function patchDeviceTrustSettings(
   };
 }
 
-function readPendingRequests(config: StudioServerConfig): SystemDeviceTrustPendingRequest[] {
+function readPendingRequests(config: TracevaneServerConfig): SystemDeviceTrustPendingRequest[] {
   const payload = readJsonFile<Record<string, Record<string, unknown>>>(
     path.join(config.openclawRoot, 'devices', 'pending.json'),
     {},
@@ -88,7 +88,7 @@ function readPendingRequests(config: StudioServerConfig): SystemDeviceTrustPendi
 }
 
 function readHelperStatus(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   pendingRequests: SystemDeviceTrustPendingRequest[],
 ): SystemDeviceTrustHelperStatus {
   const deviceAuth = readJsonFile<Record<string, unknown>>(path.join(config.openclawRoot, 'identity', 'device-auth.json'), {});
@@ -150,7 +150,7 @@ function readHelperStatus(
   };
 }
 
-export function getDeviceTrustSnapshot(config: StudioServerConfig): SystemDeviceTrustPayload {
+export function getDeviceTrustSnapshot(config: TracevaneServerConfig): SystemDeviceTrustPayload {
   const settings = readDeviceTrustSettings(config);
   const pending = readPendingRequests(config);
   const helper = readHelperStatus(config, pending);
@@ -184,7 +184,7 @@ export function getDeviceTrustSnapshot(config: StudioServerConfig): SystemDevice
 }
 
 export async function approveDeviceTrustRequest(
-  config: StudioServerConfig,
+  config: TracevaneServerConfig,
   payload: SystemDeviceTrustApproveRequest,
 ): Promise<SystemDeviceTrustApproveResponse> {
   const requestId = normalizeString(payload.requestId);
@@ -202,7 +202,7 @@ export async function approveDeviceTrustRequest(
   };
 }
 
-function syncLocalHelperDeviceAuthToken(config: StudioServerConfig): boolean {
+function syncLocalHelperDeviceAuthToken(config: TracevaneServerConfig): boolean {
   const deviceAuthPath = path.join(config.openclawRoot, 'identity', 'device-auth.json');
   const deviceAuth = readJsonFile<Record<string, unknown>>(deviceAuthPath, {});
   const deviceId = normalizeString(deviceAuth.deviceId);
@@ -256,7 +256,7 @@ function syncLocalHelperDeviceAuthToken(config: StudioServerConfig): boolean {
   return true;
 }
 
-export async function maybeAutoApproveStudioHelperPairing(config: StudioServerConfig): Promise<boolean> {
+export async function maybeAutoApproveTracevaneHelperPairing(config: TracevaneServerConfig): Promise<boolean> {
   const snapshot = getDeviceTrustSnapshot(config);
   if (!snapshot.settings.autoApproveLocalHelper) {
     return false;
@@ -272,7 +272,7 @@ export async function maybeAutoApproveStudioHelperPairing(config: StudioServerCo
   return true;
 }
 
-export async function repairStudioHelperDeviceTrust(config: StudioServerConfig): Promise<SystemDeviceTrustRepairResponse> {
+export async function repairTracevaneHelperDeviceTrust(config: TracevaneServerConfig): Promise<SystemDeviceTrustRepairResponse> {
   const before = getDeviceTrustSnapshot(config);
   let approvedRequestId: string | null = null;
   let synchronizedToken = false;
@@ -295,11 +295,11 @@ export async function repairStudioHelperDeviceTrust(config: StudioServerConfig):
   };
 }
 
-export function syncStudioHelperTokenCacheIfNeeded(config: StudioServerConfig): boolean {
+export function syncTracevaneHelperTokenCacheIfNeeded(config: TracevaneServerConfig): boolean {
   return syncLocalHelperDeviceAuthToken(config);
 }
 
-export function ensureDefaultDeviceTrustSettings(config: StudioServerConfig): void {
+export function ensureDefaultDeviceTrustSettings(config: TracevaneServerConfig): void {
   const file = readSettingsPath(config);
   if (fs.existsSync(file)) {
     return;

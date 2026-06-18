@@ -978,7 +978,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
   margin: 6px 0 0 auto;
   padding: 13px;
   border: 1px solid color-mix(in srgb, var(--line-strong) 72%, var(--modal-border));
-  border-radius: var(--studio-workspace-radius, 12px);
+  border-radius: var(--tracevane-workspace-radius, 12px);
   background: var(--surface-base);
   box-shadow: var(--mono-shadow-md);
   isolation: isolate;
@@ -1259,7 +1259,7 @@ html[data-theme="light"] .config-setting-grid .setting-block {
     bottom: max(8px, env(safe-area-inset-bottom, 0px));
     width: 100%;
     padding: 10px;
-    border-radius: var(--studio-workspace-radius, 12px);
+    border-radius: var(--tracevane-workspace-radius, 12px);
   }
 
   .config-save-dock__actions .compact-button {

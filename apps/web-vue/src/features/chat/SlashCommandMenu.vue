@@ -11,7 +11,7 @@
         class="chat-slash-menu-group"
       >
         <div class="chat-slash-menu-group-label">
-          {{ getStudioSlashCommandCategoryLabel(group.category, locale) }}
+          {{ getTracevaneSlashCommandCategoryLabel(group.category, locale) }}
         </div>
         <button
           v-for="entry in group.items"
@@ -31,7 +31,7 @@
           </div>
           <div class="chat-slash-menu-meta">
             <span class="chat-slash-menu-desc">
-              {{ getStudioSlashCommandDescription(entry.command, locale) }}
+              {{ getTracevaneSlashCommandDescription(entry.command, locale) }}
             </span>
             <span
               v-if="entry.command.executeMode === 'local'"
@@ -53,7 +53,7 @@
     <template v-else-if="argumentMode && activeCommand">
       <div class="chat-slash-menu-group">
         <div class="chat-slash-menu-group-label">
-          /{{ activeCommand.name }} {{ getStudioSlashCommandDescription(activeCommand, locale) }}
+          /{{ activeCommand.name }} {{ getTracevaneSlashCommandDescription(activeCommand, locale) }}
         </div>
         <button
           v-for="(item, index) in argumentItems"
@@ -92,24 +92,24 @@ import './slash-command.css';
 import { computed } from 'vue';
 import { useLocalePreference } from '../../shared/locale';
 import {
-  getStudioSlashCommandCategoryLabel,
-  getStudioSlashCommandDescription,
-  type StudioSlashArgOptionDetail,
-  type StudioSlashCommandCategory,
-  type StudioSlashCommandDef,
+  getTracevaneSlashCommandCategoryLabel,
+  getTracevaneSlashCommandDescription,
+  type TracevaneSlashArgOptionDetail,
+  type TracevaneSlashCommandCategory,
+  type TracevaneSlashCommandDef,
 } from './slash-commands';
 
 const props = defineProps<{
-  items: StudioSlashCommandDef[];
+  items: TracevaneSlashCommandDef[];
   activeIndex: number;
   mode: 'command' | 'args';
-  activeCommand: StudioSlashCommandDef | null;
-  argumentItems: StudioSlashArgOptionDetail[];
+  activeCommand: TracevaneSlashCommandDef | null;
+  argumentItems: TracevaneSlashArgOptionDetail[];
 }>();
 
 defineEmits<{
   (event: 'hover-command', index: number): void;
-  (event: 'select-command', command: StudioSlashCommandDef): void;
+  (event: 'select-command', command: TracevaneSlashCommandDef): void;
   (event: 'hover-argument', index: number): void;
   (event: 'select-argument', value: string): void;
 }>();
@@ -119,7 +119,7 @@ const commandMode = computed(() => props.mode === 'command');
 const argumentMode = computed(() => props.mode === 'args');
 
 const groupedItems = computed(() => {
-  const groups = new Map<StudioSlashCommandCategory, Array<{ command: StudioSlashCommandDef; index: number }>>();
+  const groups = new Map<TracevaneSlashCommandCategory, Array<{ command: TracevaneSlashCommandDef; index: number }>>();
   props.items.forEach((command, index) => {
     const list = groups.get(command.category) || [];
     list.push({ command, index });
