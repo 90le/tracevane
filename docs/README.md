@@ -6,6 +6,7 @@
 ## Authoritative Entry
 
 - `product-strategy-reset-plan.md` - product reset, market boundary, naming gate and implementation phases.
+- `product-benchmark-strategy.md` - market benchmark strategy, product pillars, anti-bloat rules and research cadence.
 - `产品需求.md` - current PRD for the Tracevane direction.
 - `系统架构.md` - frontend, API, daemon, store and runtime boundaries.
 - `当前进展.md` - compact current snapshot, open work and verification baseline.

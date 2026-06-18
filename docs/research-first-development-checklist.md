@@ -35,6 +35,16 @@
 - `Agent Harbor`
 - `Runplane` / `Workplane` / `ThreadRail` / `Lattice Ops` / `AgentWard`
 
+## 产品设计门禁
+
+任何新增或重构主产品页面、Workspace IDE 能力、Agent task surface、预览/编辑工作流、Observability/Eval 面板、Channel 操作流或 Gateway 可视化配置前，必须先更新或引用 `docs/product-benchmark-strategy.md`：
+
+1. 至少核验对应类别的官方资料和活跃 GitHub/社区风险。
+2. 写明要吸收的市场优势，以及明确拒绝复制的行为。
+3. 把能力翻译成 Tracevane 自身工作流：本地文件、Agent/runtime 状态、Gateway 路由、Channel 投递、Evidence、Recovery、diff/approval/rollback。
+4. 不允许因为某竞品有某页面，就直接新增同名页面；必须先证明它强化至少一个产品支柱和一个真实用户循环。
+5. 无法提供状态、取消、证据、失败解释或回滚边界的能力，默认不能成为主流程。
+
 ## 资料优先级
 
 | 优先级 | 来源 | 用途 |
@@ -83,6 +93,7 @@
 | P0 | `.meta-kim/` 工作区状态 | 已完成 | `.gitignore` 忽略 `.meta-kim/`，避免本地运行态进入提交 |
 | P0 | 用户可见第三方引用清理 | 已完成本轮 | 文档和 unsupported 错误不再把旧第三方项目作为实现依据 |
 | P0 | 产品战略重置文档 | 已完成本轮 | `product-strategy-reset-plan.md`、PRD、架构、进展和 README 改为 Tracevane 方向 |
+| P0 | 产品 benchmark 策略 | 已完成本轮 | `product-benchmark-strategy.md` 记录 AI IDE、CLI Agent、app builder、observability/eval、workflow/runtime 的市场吸收和拒绝规则 |
 | P0 | 产品命名门禁 | 已完成本轮 | 本文件和战略重置文档记录查重流程、禁止直接采用的高风险名称族和分批落地规则 |
 | P1 | Agent session 判断稳定性 | 进行中 | Codex/Claude Code/OpenCode 默认 persistent；one-shot fallback 覆盖 heartbeat、async child task、idle timeout、unknown event 和终态 race |
 | P1 | Gateway unsupported 合同 | 进行中 | 未验证的 image edits、audio、Realtime/WebSocket 返回结构化 unsupported，错误说明当前缺少稳定合同和替代路径 |
@@ -116,3 +127,4 @@
 - 2026-06-18：核验 OpenClaw 官方 Web UI、Open WebUI、LibreChat、Dify、n8n、Microsoft/Oracle 企业 Agent builder、Langfuse、Codex CLI、Claude Code、OpenCode，以及 `AgentOps`、`Agent`、`Agent Nexus`、`Relay`、`Agent Harbor`、`Runplane`、`Workplane` 等名称占用情况；结论是 Tracevane 应避免 generic OpenClaw 管理控制台、generic chat UI、generic agent builder 和拥挤命名族。
 - 2026-06-18：完成首轮产品命名候选预检。`TaskSmith` 已是 Claude Code unattended ops layer，`Runyard` 已是本地 AI 模型/AI Yard 产品，`Runcell` 已是 Jupyter-native AI Agent，`Opsmith` 已是 Progress/Chef IT Ops agentic AI 产品，`TraceLynx` 已是 traceability 软件公司；这些证明 `Task/Run/Ops/Trace+常见后缀` 需要更严格避让。当前采用 `Tracevane`：npm/PyPI/Docker official library 均返回 404，GitHub repo-name search 为 0，本机 DNS 未发现 `tracevane.{com,dev,ai,io,app}` 记录；仍需 registrar 和商标预检后才能公开发布。
 - 2026-06-18：核验 Workspace IDE 方向的官方/原始资料：VS Code for the Web（`https://code.visualstudio.com/docs/remote/vscode-web`）证明浏览器 IDE UX 可行但受浏览器沙箱限制；Monaco Editor（`https://microsoft.github.io/monaco-editor/`）适合文本/代码/diff 编辑但不是完整 IDE；VS Code Webview 和 Custom Editor 文档（`https://code.visualstudio.com/api/extension-guides/webview`、`https://code.visualstudio.com/api/extension-guides/custom-editors`）验证预览/自定义编辑器应作为隔离视图与宿主通信；WebContainers（`https://webcontainers.io/guides/introduction`、`https://webcontainers.io/api`）证明浏览器 Node runtime 可行但应作为未来可选加速路径。结论：Tracevane Workspace IDE 应优先复用本机文件系统、进程、端口和 daemon-managed tasks；浏览器端负责编辑器、预览、证据和交互，不把项目文件或 secrets 放进纯浏览器运行时。
+- 2026-06-18：补充产品 benchmark 研究并形成 `docs/product-benchmark-strategy.md`。核验 Cursor、Devin Desktop/Windsurf、OpenAI Codex、Claude Code、GitHub Copilot Agent、VS Code Agents、Cline/Roo/Continue/Aider/OpenHands、Replit/Lovable/Bolt/v0/Builder.io、Langfuse/LangSmith/Phoenix/Braintrust/AgentOps、Dify/n8n/Zapier 等方向；结论是 Tracevane 需要持续吸收 AI IDE、app builder、observability/eval、workflow/runtime 的优势，但每项能力必须翻译成本地优先、可监督、可证据化、可恢复的 Tracevane 工作流，不能做竞品页面集合。
