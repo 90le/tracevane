@@ -531,6 +531,7 @@ function buildGatewaySnapshot(
     bindMode: normalizeString(parsed.gateway?.bindMode),
     bindHost: normalizeString(parsed.gateway?.bindHost),
     probeUrl: normalizeString(parsed.gateway?.probeUrl),
+    version: normalizeString(parsed.gateway?.version || parsed.rpc?.version),
     rpcOk: parsed.rpc?.ok === true,
     rpcUrl: normalizeString(parsed.rpc?.url),
     portStatus: normalizeString(parsed.port?.status),

@@ -71,7 +71,7 @@ test('channels summary normalizes legacy streaming booleans and allowall group p
   assert.equal(work?.streaming, 'off');
 });
 
-test('channels update writes canonical streaming strings instead of legacy booleans', () => {
+test('channels update writes schema-compatible streaming objects instead of legacy booleans', () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);
   writeJson(config.openclawConfigFile, {
@@ -101,7 +101,7 @@ test('channels update writes canonical streaming strings instead of legacy boole
   });
 
   const nextConfig = JSON.parse(fs.readFileSync(config.openclawConfigFile, 'utf8'));
-  assert.equal(nextConfig.channels.discord.streaming, 'partial');
+  assert.deepEqual(nextConfig.channels.discord.streaming, { mode: 'partial' });
   assert.equal(nextConfig.channels.discord.accounts?.default?.streaming, undefined);
 });
 
@@ -1040,7 +1040,8 @@ test('channels service exposes and updates synthetic default profiles at top lev
   assert.equal(nextConfig.channels.line.channelAccessToken, 'line-token-next');
   assert.equal(nextConfig.channels.line.channelSecret, 'line-secret-next');
   assert.equal(nextConfig.channels.line.tokenFile, '/tmp/line.token');
-  assert.deepEqual(nextConfig.channels.line.groupAllowFrom, ['room-2']);
+  assert.deepEqual(nextConfig.channels.line.allowFrom, ['room-2']);
+  assert.equal(nextConfig.channels.line.groupAllowFrom, undefined);
   assert.equal(nextConfig.channels.line.accounts?.default, undefined);
 });
 

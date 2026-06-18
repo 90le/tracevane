@@ -84,12 +84,26 @@ function normalizeDate(value: unknown): string | null {
 }
 
 function normalizeStreaming(value: unknown): string | null {
+  if (isRecordObject(value)) return normalizeStreaming(value.mode);
   if (value === false) return 'off';
   if (value === true) return 'partial';
   const normalized = normalizeOptionalString(value);
   if (!normalized) return null;
   if (normalized === 'full' || normalized === 'on') return 'partial';
   return normalized;
+}
+
+function writeStreamingField(target: Record<string, any>, key: keyof ChannelSettingsInput, value: unknown): void {
+  const normalized = normalizeStreaming(value);
+  if (!normalized) {
+    deleteNestedFieldValue(target, String(key));
+    return;
+  }
+  const existing = readNestedFieldValue(target, String(key));
+  const next = isRecordObject(existing)
+    ? { ...existing, mode: normalized }
+    : { mode: normalized };
+  setNestedFieldValue(target, String(key), next);
 }
 
 function normalizeOptionalBoolean(value: unknown): boolean | null {
@@ -382,6 +396,34 @@ function writeAllowFrom(config: StudioServerConfig, channelType: string, account
   });
 }
 
+function readGroupAllowFrom(
+  channelConfig: Record<string, any>,
+  accountConfig: Record<string, any> | null,
+): string[] {
+  if (Array.isArray(accountConfig?.groupAllowFrom)) {
+    return normalizeStringList(accountConfig.groupAllowFrom);
+  }
+  if (Array.isArray(accountConfig?.allowFrom)) {
+    return normalizeStringList(accountConfig.allowFrom);
+  }
+  if (Array.isArray(channelConfig.groupAllowFrom)) {
+    return normalizeStringList(channelConfig.groupAllowFrom);
+  }
+  return normalizeStringList(channelConfig.allowFrom);
+}
+
+function writeGroupAllowFrom(
+  target: Record<string, any>,
+  groupAllowFrom: string[],
+): void {
+  delete target.groupAllowFrom;
+  if (groupAllowFrom.length) {
+    target.allowFrom = groupAllowFrom;
+  } else {
+    delete target.allowFrom;
+  }
+}
+
 function readRawPairingRequests(config: StudioServerConfig, channelType: string): Array<Record<string, unknown>> {
   const payload = readJsonFile<Record<string, unknown>>(readPairingPath(config, channelType), { requests: [] });
   return Array.isArray(payload.requests) ? payload.requests.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === 'object') : [];
@@ -637,9 +679,10 @@ function mapAccountSummary(
 ): ChannelAccountSummary {
   const catalog = getCatalogEntry(config, openclawConfig, channelType);
   const allowFrom = readAllowFrom(config, channelType, accountId);
-  const effectiveGroupAllowFrom = Array.isArray(accountConfig.groupAllowFrom)
-    ? normalizeStringList(accountConfig.groupAllowFrom)
-    : normalizeStringList(channelConfig.groupAllowFrom);
+  const effectiveGroupAllowFrom = readGroupAllowFrom(
+    channelConfig,
+    accountConfig,
+  );
   const pairingRequests = mapPairingRequests(readRawPairingRequests(config, channelType), accountId);
   const effectiveValues = {
     dmPolicy: normalizeOptionalString(resolveEffectiveSetting(channelConfig, accountConfig, accountId, 'dmPolicy')),
@@ -867,12 +910,7 @@ function buildSummary(config: StudioServerConfig, openclawConfig: Record<string,
 function writeChannelStringField(target: Record<string, any>, key: keyof ChannelSettingsInput, value: unknown): void {
   if (value === undefined) return;
   if (key === 'streaming') {
-    const normalized = normalizeStreaming(value);
-    if (!normalized) {
-      deleteNestedFieldValue(target, String(key));
-      return;
-    }
-    setNestedFieldValue(target, String(key), normalized);
+    writeStreamingField(target, key, value);
     return;
   }
 
@@ -1078,11 +1116,28 @@ function validateAccountId(accountId: string): string {
 
 function validateAgentId(openclawConfig: Record<string, any>, agentId: string): string {
   const normalized = normalizeString(agentId);
-  const exists = readAgentOptions(openclawConfig).some((agent) => agent.id === normalized);
-  if (!normalized || !exists) {
+  if (!normalized) {
     throw new ChannelServiceError(400, 'invalid_agent_id', `Agent '${agentId}' not found`);
   }
-  return normalized;
+  const configuredAgents = Array.isArray(openclawConfig.agents?.list)
+    ? openclawConfig.agents.list
+    : [];
+  const configured = configuredAgents.some(
+    (agent: Record<string, any>) => normalizeString(agent.id) === normalized,
+  );
+  if (configured) return normalized;
+
+  const syntheticDefault = readAgentOptions(openclawConfig).some(
+    (agent) => agent.id === normalized,
+  );
+  if (syntheticDefault && normalized === 'main') {
+    openclawConfig.agents = openclawConfig.agents || {};
+    openclawConfig.agents.list = configuredAgents;
+    openclawConfig.agents.list.push({ id: normalized });
+    return normalized;
+  }
+
+  throw new ChannelServiceError(400, 'invalid_agent_id', `Agent '${agentId}' not found`);
 }
 
 function buildBindingRaw(input: ChannelBindingInput): Record<string, any> {
@@ -1381,13 +1436,11 @@ export function createChannelsService(config: StudioServerConfig): ChannelsServi
       const accountConfig = getAccountViewConfig(catalog, channelConfig, normalizedAccountId);
       const pairing = await this.getPairing(normalizedType, normalizedAccountId);
       const defaultOverride = getAccountRaw(channelConfig, 'default');
-      const groupAllowFrom = normalizedAccountId === 'default' && catalog.defaultAccountConfigScope === 'channel'
-        ? Array.isArray(defaultOverride?.groupAllowFrom)
-          ? normalizeStringList(defaultOverride.groupAllowFrom)
-          : normalizeStringList(channelConfig.groupAllowFrom)
-        : Array.isArray(accountConfig.groupAllowFrom)
-          ? normalizeStringList(accountConfig.groupAllowFrom)
-          : normalizeStringList(channelConfig.groupAllowFrom);
+      const groupAllowFrom =
+        normalizedAccountId === 'default' &&
+        catalog.defaultAccountConfigScope === 'channel'
+          ? readGroupAllowFrom(channelConfig, defaultOverride)
+          : readGroupAllowFrom(channelConfig, accountConfig);
 
       return {
         checkedAt: new Date().toISOString(),
@@ -1420,18 +1473,13 @@ export function createChannelsService(config: StudioServerConfig): ChannelsServi
 
       const groupAllowFrom = normalizeStringList(payload.groupAllowFrom);
       if (normalizedAccountId === 'default' && catalog.defaultAccountConfigScope === 'channel') {
-        if (groupAllowFrom.length) {
-          channelConfig.groupAllowFrom = groupAllowFrom;
-        } else {
-          delete channelConfig.groupAllowFrom;
-        }
-        pruneDefaultAccountOverride(channelConfig, catalog, ['groupAllowFrom']);
+        writeGroupAllowFrom(channelConfig, groupAllowFrom);
+        pruneDefaultAccountOverride(channelConfig, catalog, [
+          'allowFrom',
+          'groupAllowFrom',
+        ]);
       } else {
-        if (groupAllowFrom.length) {
-          accountConfig.groupAllowFrom = groupAllowFrom;
-        } else {
-          delete accountConfig.groupAllowFrom;
-        }
+        writeGroupAllowFrom(accountConfig, groupAllowFrom);
       }
 
       writeJsonFile(config.openclawConfigFile, openclawConfig);

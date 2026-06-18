@@ -41,6 +41,7 @@ export interface SystemGatewaySnapshot {
   bindMode: string;
   bindHost: string;
   probeUrl: string;
+  version: string;
   rpcOk: boolean;
   rpcUrl: string;
   portStatus: string;
