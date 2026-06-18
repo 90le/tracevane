@@ -281,6 +281,14 @@ export function registerModelGatewayRoutes(router: TracevaneRouter): void {
     }
   });
 
+  router.get("/api/model-gateway/providers/:providerId/secret", (req, res, routeCtx, params) => {
+    try {
+      sendJson(res, 200, routeCtx.services.modelGateway.getProviderSecret(req, params.providerId));
+    } catch (error) {
+      sendModelGatewayError(res, error);
+    }
+  });
+
   router.post("/api/model-gateway/providers/:providerId/secret", async (req, res, routeCtx, params) => {
     try {
       const payload = await parseJsonBody<ModelGatewaySetProviderSecretRequest>(req);

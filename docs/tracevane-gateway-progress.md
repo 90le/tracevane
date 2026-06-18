@@ -11,6 +11,8 @@
 - Provider Center 支持自定义 provider、启停、模型名称/别名/默认模型、能力勾选、批量模型导入、模型目录刷新合并、批量预算/能力应用、priority、App scope、active routing、自动协议/模型识别、secret 和 smoke。
 - Provider Center 表单已按连接、端点路由、密钥识别、模型目录、高级覆盖、可用范围分区；PC/平板/手机均按同一配置流程降级展示。
 - Provider Center 前端已改为列表优先：Providers 页面只保留一个“新建服务商”入口和服务商列表；新建时在弹层内选择 API Key 接入 / 账户登录 / 中继服务，详细配置进入弹层表单，服务商 ID、端点、多协议、账号池和高级连接默认降级到折叠区，避免主页面继续堆积配置。
+- Provider Center 普通 API-key provider 编辑时会通过管理接口把已保存 upstream key 载入密钥输入框，默认 password 隐藏并可切换明文；`/api/model-gateway/providers` 仍只返回 masked secret。识别配置和刷新模型候选会复用已保存 key，不要求用户重新粘贴。
+- Provider Center 自动识别到的模型目录不再直接全量写入配置表；结果进入候选目录，默认只选探测/默认模型，用户可搜索、按能力筛选、勾选后导入所需模型。已保存配置模型列表本身窗口化渲染，避免几百个模型 provider 让页面卡死或配置混乱。
 - Model Gateway Overview 已改为状态摘要 + 工作区入口行：主屏只展示 daemon endpoint、运行状态、Gateway key 状态、请求/token 摘要和 Providers / Client connections / Model usage / Checks 快速入口；Gateway key 编辑进入弹层，不在 Overview 常驻敏感表单。
 - Gateway Provider 支持 endpoint profiles；同一 provider/模型可按客户端协议优选原生 endpoint，并在 endpoint 级 health/circuit 下回退；passthrough 和 adapter-required 路径的非 JSON 上游错误都会归因到命中的 endpoint profile。
 - Gateway status health summary 已纳入 endpoint profile health：同一 provider 内任一启用 endpoint circuit open 会计入 `openCircuits` 和 `degradedProviders`；如果一个 provider 的所有启用 endpoint 都 open，则不再把该 provider 计入 `okProviders`，避免 Overview/状态 API 掩盖真实路由降级。

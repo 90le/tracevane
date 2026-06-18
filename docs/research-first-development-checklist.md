@@ -63,6 +63,13 @@
 
 ## 当前能力边界
 
+- 2026-06-18 Model Gateway Provider Center 编辑与模型目录 UX：
+  - 范围：provider 上游密钥编辑、自动识别配置、模型目录刷新和 Provider Center 模型配置列表。
+  - 来源核验：OpenAI API reference `GET /v1/models`（https://platform.openai.com/docs/api-reference/models/list）；Anthropic List Models（https://docs.anthropic.com/en/api/models-list）；OpenRouter Models API（https://openrouter.ai/docs/api/api-reference/models/get-models）和公开模型目录（https://openrouter.ai/models）；GitHub/community 只做“大目录/兼容模型端点可能很大”的风险搜索，不作为实现合同。
+  - 稳定结论：OpenAI-compatible `/models` 可能一次返回完整列表；Anthropic 官方模型列表支持分页参数；OpenRouter 作为聚合商会暴露大量模型。Tracevane 不能把识别到的全部模型自动写入响应式配置表，也不能要求用户重新粘贴已保存的本地 upstream key 才能重新识别。
+  - 本地边界：`/api/model-gateway/providers` 继续只返回 masked secret；新增的单 provider secret reveal 只走管理态编辑接口，用于把本地 key 默认隐藏载入编辑框和识别请求。识别结果进入候选目录，用户搜索/筛选/勾选后再导入配置模型。
+  - 拒绝方案：拒绝在 providers 列表返回明文 key；拒绝检测后全量自动 merge 几百个模型；拒绝把大目录全部渲染成可编辑行。
+  - 风险与验证：明文 key 只存在编辑器内存和受信管理响应中，关闭/保存后清空草稿；需要用系统测试验证列表不泄露 secret、单 provider reveal 可用、前端保留候选导入/窗口化渲染合同，并跑 `git diff --check`。
 - Channel Connectors 当前只继续推进 Feishu/Octo 私聊完整性和 Codex、Claude Code、OpenCode 三个 live Agent。
 - 默认 Agent session driver 使用结构化 persistent 路径：Codex app-server、Claude Code stream-json、OpenCode `run --session`。one-shot/TUI runner 只作为显式 opt-out、persistent fallback 或尚未支持 Agent 的兼容路径。
 - 普通 IM 消息不排队、不落 pending store、不 daemon 重启 replay；同 binding + IM session 已有 active/delivering run 时直接 busy guard，用户用 `/stop`、`/cancel` 或等待结束后重发。

@@ -608,13 +608,30 @@
                 :class="{ active: draft.id === provider.id }"
                 @click="editProvider(provider)"
               >
-                <span class="mgw-provider-card__main">
-                  <strong>{{ provider.name }}</strong>
-                  <small>{{ provider.endpointProfiles.length ? `${provider.endpointProfiles.length} endpoints` : apiFormatLabel(provider.apiFormat) }} / {{ provider.models.defaultModel || '-' }}</small>
-                </span>
-                <span class="mgw-provider-card__meta">
+                <span class="mgw-provider-card__top">
+                  <span class="mgw-provider-card__main">
+                    <strong>{{ provider.name }}</strong>
+                    <small>{{ provider.id }} · {{ apiFormatLabel(provider.apiFormat) }}</small>
+                  </span>
                   <StatusPill :label="provider.enabled ? text('启用', 'Enabled') : text('停用', 'Disabled')" :tone="provider.enabled ? 'sage' : 'neutral'" />
-                  <small>{{ provider.secret?.hasSecret ? provider.secret.masked : text('无密钥', 'No key') }}</small>
+                </span>
+                <span class="mgw-provider-card__stats">
+                  <span>
+                    <small>{{ text('模型', 'Models') }}</small>
+                    <strong>{{ providerModelCount(provider) }}</strong>
+                  </span>
+                  <span>
+                    <small>Endpoint</small>
+                    <strong>{{ providerEndpointCount(provider) }}</strong>
+                  </span>
+                  <span>
+                    <small>{{ text('默认', 'Default') }}</small>
+                    <strong>{{ provider.models.defaultModel || '-' }}</strong>
+                  </span>
+                </span>
+                <span class="mgw-provider-card__foot">
+                  <small>{{ providerSecretListLabel(provider) }}</small>
+                  <small>{{ providerHealthListLabel(provider) }}</small>
                 </span>
               </button>
               <div v-if="!providers.length" class="mgw-empty">
@@ -745,8 +762,28 @@
                         <span class="field-hint">{{ text('填写上游 API 前缀；Gateway 不会自动追加 /v1。', 'Enter the upstream API prefix; Gateway will not append /v1 automatically.') }}</span>
                       </label>
                       <label class="form-field">
-                        <span class="form-label">{{ text('密钥', 'API Key') }}</span>
-                        <input v-model="draft.apiKey" class="form-input" type="password" :placeholder="secretPlaceholder" />
+                        <span class="form-label">{{ currentProviderSecret?.hasSecret ? text('密钥', 'API key') : text('密钥', 'API key') }}</span>
+                        <span class="mgw-secret-input-row">
+                          <input
+                            v-model="draft.apiKey"
+                            class="form-input"
+                            :type="providerSecretVisible ? 'text' : 'password'"
+                            :placeholder="secretPlaceholder"
+                          />
+                          <button
+                            type="button"
+                            class="mgw-icon-button"
+                            :aria-label="providerSecretVisible ? text('隐藏密钥', 'Hide key') : text('显示密钥', 'Show key')"
+                            :title="providerSecretVisible ? text('隐藏密钥', 'Hide key') : text('显示密钥', 'Show key')"
+                            @click="providerSecretVisible = !providerSecretVisible"
+                          >
+                            <EyeOff v-if="providerSecretVisible" class="mgw-icon-button__icon" aria-hidden="true" />
+                            <Eye v-else class="mgw-icon-button__icon" aria-hidden="true" />
+                          </button>
+                        </span>
+                        <span class="field-hint">
+                          {{ currentProviderSecret?.hasSecret ? text('已保存的密钥会自动载入；默认隐藏，可切换显示明文。', 'Saved keys load automatically; hidden by default and revealable.') : text('密钥仅写入本地 secret store。', 'The key is written only to the local secret store.') }}
+                        </span>
                       </label>
                       <label class="form-field">
                         <span class="form-label">{{ text('协议', 'Protocol') }}</span>
@@ -754,6 +791,23 @@
                           <option v-for="format in apiFormatOptions" :key="format.id" :value="format.id">{{ format.label }}</option>
                         </select>
                       </label>
+                      <div class="mgw-provider-secret-state form-field-full">
+                        <div>
+                          <span class="form-label">{{ text('当前密钥', 'Current key') }}</span>
+                          <strong>{{ providerSecretStateLabel }}</strong>
+                          <small>{{ providerSecretStateDetail }}</small>
+                          <small v-if="providerSecretRevealBusy">{{ text('正在读取本地密钥...', 'Loading local key...') }}</small>
+                        </div>
+                        <button
+                          v-if="currentProviderSecret?.hasSecret && providerExists(draft.id)"
+                          type="button"
+                          class="secondary-button compact-button"
+                          :disabled="busy"
+                          @click="clearProviderSecret"
+                        >
+                          {{ text('清除密钥', 'Clear key') }}
+                        </button>
+                      </div>
                       <div class="mgw-detect-card">
                         <div class="mgw-detect-card__main">
                           <span class="form-label">{{ text('连接检测', 'Connection check') }}</span>
@@ -1036,7 +1090,10 @@
                 </label>
                 <div class="form-field form-field-full">
                   <div class="mgw-model-list-head">
-                    <span class="form-label">{{ text('模型列表', 'Model list') }}</span>
+                    <span>
+                      <span class="form-label">{{ text('模型列表', 'Model list') }}</span>
+                      <small>{{ draftModelCatalogSummary }}</small>
+                    </span>
                     <div class="mgw-model-list-actions">
                       <button
                         type="button"
@@ -1049,6 +1106,34 @@
                       <button type="button" class="secondary-button compact-button" @click="addDraftModelRow">
                         <Plus class="mgw-button-icon" />
                         <span>{{ text('添加模型', 'Add model') }}</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="mgw-model-toolbar">
+                    <label class="form-field">
+                      <span class="form-label">{{ text('查找模型', 'Find model') }}</span>
+                      <input
+                        v-model.trim="modelSearch"
+                        class="form-input"
+                        :placeholder="text('模型、别名或能力', 'Model, alias, or capability')"
+                      />
+                    </label>
+                    <div class="mgw-model-window-actions">
+                      <button
+                        type="button"
+                        class="secondary-button compact-button"
+                        :disabled="hiddenDraftModelRowCount <= 0"
+                        @click="showMoreModelRows"
+                      >
+                        {{ text('显示更多', 'Show more') }}
+                      </button>
+                      <button
+                        type="button"
+                        class="secondary-button compact-button"
+                        :disabled="hiddenDraftModelRowCount <= 0"
+                        @click="showAllModelRows"
+                      >
+                        {{ text('显示全部', 'Show all') }}
                       </button>
                     </div>
                   </div>
@@ -1111,28 +1196,31 @@
                     <div v-if="draft.modelRows.length === 0" class="mgw-model-empty">
                       {{ text('添加模型，或先填写 Base URL / Key 后点击识别配置。', 'Add a model, or enter Base URL / key and detect the config first.') }}
                     </div>
-                    <div v-for="(model, index) in draft.modelRows" :key="model.key" class="mgw-model-row">
+                    <div v-else-if="filteredDraftModelRowEntries.length === 0" class="mgw-model-empty">
+                      {{ text('没有匹配当前搜索的模型。', 'No models match the current search.') }}
+                    </div>
+                    <div v-for="entry in visibleDraftModelRowEntries" :key="entry.row.key" class="mgw-model-row">
                       <label class="mgw-model-cell">
                         <span class="mgw-model-cell__label">{{ text('模型名称', 'Model name') }}</span>
-                        <input v-model.trim="model.id" class="form-input" placeholder="gpt-5.5" @blur="syncDefaultModelWithList" />
+                        <input v-model.trim="entry.row.id" class="form-input" placeholder="gpt-5.5" @blur="syncDefaultModelWithList" />
                       </label>
                       <label class="mgw-model-cell">
                         <span class="mgw-model-cell__label">{{ text('别名', 'Aliases') }}</span>
-                        <input v-model.trim="model.aliases" class="form-input" placeholder="alias1, alias2" />
+                        <input v-model.trim="entry.row.aliases" class="form-input" placeholder="alias1, alias2" />
                       </label>
                       <label class="mgw-model-cell">
                         <span class="mgw-model-cell__label">{{ text('上下文', 'Context') }}</span>
-                        <input v-model.trim="model.contextWindow" class="form-input" inputmode="numeric" placeholder="128000" />
+                        <input v-model.trim="entry.row.contextWindow" class="form-input" inputmode="numeric" placeholder="128000" />
                       </label>
                       <label class="mgw-model-cell">
                         <span class="mgw-model-cell__label">{{ text('输出', 'Output') }}</span>
-                        <input v-model.trim="model.maxOutputTokens" class="form-input" inputmode="numeric" placeholder="8192" />
+                        <input v-model.trim="entry.row.maxOutputTokens" class="form-input" inputmode="numeric" placeholder="8192" />
                       </label>
                       <div class="mgw-model-cell mgw-model-cell--capabilities">
                         <span class="mgw-model-cell__label">{{ text('能力', 'Capabilities') }}</span>
                         <div class="mgw-model-capabilities" :aria-label="text('模型能力', 'Model capabilities')">
                           <label v-for="capability in modelCapabilityOptions" :key="capability.id" class="mgw-model-capability">
-                            <input v-model="model[capability.id]" type="checkbox" />
+                            <input v-model="entry.row[capability.id]" type="checkbox" />
                             <span>{{ text(capability.zh, capability.en) }}</span>
                           </label>
                         </div>
@@ -1142,51 +1230,57 @@
                         class="mgw-icon-button mgw-model-remove"
                         :aria-label="text('删除模型', 'Remove model')"
                         :title="text('删除模型', 'Remove model')"
-                        @click="removeDraftModelRow(index)"
+                        @click="removeDraftModelRow(entry.index)"
                       >
                         <Trash2 class="mgw-icon-button__icon" />
                       </button>
                       <details class="mgw-model-pricing">
-                        <summary>{{ modelPricingSummary(model) }}</summary>
+                        <summary>{{ modelPricingSummary(entry.row) }}</summary>
                         <div class="mgw-model-pricing__grid">
                           <label class="form-field">
                             <span class="form-label">{{ text('币种', 'Currency') }}</span>
-                            <input v-model.trim="model.pricingCurrency" class="form-input" placeholder="USD" />
+                            <input v-model.trim="entry.row.pricingCurrency" class="form-input" placeholder="USD" />
                           </label>
                           <label class="form-field">
                             <span class="form-label">{{ text('输入 / 1M', 'Input / 1M') }}</span>
-                            <input v-model.trim="model.inputPricePer1M" class="form-input" inputmode="decimal" placeholder="0" />
+                            <input v-model.trim="entry.row.inputPricePer1M" class="form-input" inputmode="decimal" placeholder="0" />
                           </label>
                           <label class="form-field">
                             <span class="form-label">{{ text('输出 / 1M', 'Output / 1M') }}</span>
-                            <input v-model.trim="model.outputPricePer1M" class="form-input" inputmode="decimal" placeholder="0" />
+                            <input v-model.trim="entry.row.outputPricePer1M" class="form-input" inputmode="decimal" placeholder="0" />
                           </label>
                           <label class="form-field">
                             <span class="form-label">{{ text('缓存读 / 1M', 'Cache read / 1M') }}</span>
-                            <input v-model.trim="model.cacheReadPricePer1M" class="form-input" inputmode="decimal" placeholder="0" />
+                            <input v-model.trim="entry.row.cacheReadPricePer1M" class="form-input" inputmode="decimal" placeholder="0" />
                           </label>
                           <label class="form-field">
                             <span class="form-label">{{ text('缓存写 / 1M', 'Cache write / 1M') }}</span>
-                            <input v-model.trim="model.cacheCreationPricePer1M" class="form-input" inputmode="decimal" placeholder="0" />
+                            <input v-model.trim="entry.row.cacheCreationPricePer1M" class="form-input" inputmode="decimal" placeholder="0" />
                           </label>
                           <label class="form-field">
                             <span class="form-label">{{ text('生图 / 张', 'Image / output') }}</span>
-                            <input v-model.trim="model.imageGenerationPrice" class="form-input" inputmode="decimal" placeholder="0" />
+                            <input v-model.trim="entry.row.imageGenerationPrice" class="form-input" inputmode="decimal" placeholder="0" />
                           </label>
                           <label class="form-field">
                             <span class="form-label">{{ text('修图 / 次', 'Edit / request') }}</span>
-                            <input v-model.trim="model.imageEditPrice" class="form-input" inputmode="decimal" placeholder="0" />
+                            <input v-model.trim="entry.row.imageEditPrice" class="form-input" inputmode="decimal" placeholder="0" />
                           </label>
                           <label class="form-field">
                             <span class="form-label">{{ text('音频输入 / 次', 'Audio in / request') }}</span>
-                            <input v-model.trim="model.audioInputPrice" class="form-input" inputmode="decimal" placeholder="0" />
+                            <input v-model.trim="entry.row.audioInputPrice" class="form-input" inputmode="decimal" placeholder="0" />
                           </label>
                           <label class="form-field">
                             <span class="form-label">{{ text('音频输出 / 次', 'Audio out / request') }}</span>
-                            <input v-model.trim="model.audioOutputPrice" class="form-input" inputmode="decimal" placeholder="0" />
+                            <input v-model.trim="entry.row.audioOutputPrice" class="form-input" inputmode="decimal" placeholder="0" />
                           </label>
                         </div>
                       </details>
+                    </div>
+                    <div v-if="hiddenDraftModelRowCount > 0" class="mgw-model-window-footer">
+                      <span>{{ text(`还有 ${hiddenDraftModelRowCount} 个模型未渲染。`, `${hiddenDraftModelRowCount} models are not rendered yet.`) }}</span>
+                      <button type="button" class="secondary-button compact-button" @click="showMoreModelRows">
+                        {{ text('继续显示', 'Show more') }}
+                      </button>
                     </div>
                   </div>
                   <span class="field-hint">{{ text('同一服务商内模型名称和别名不能重复；不同服务商允许同名模型，用于优先级和负载切换。', 'Model names and aliases must be unique inside one provider; different providers may share model names for priority and failover routing.') }}</span>
@@ -1532,6 +1626,65 @@
             </div>
           </div>
 
+          <div v-if="detectResult?.models.length" class="mgw-detect-models">
+            <div class="mgw-detect-result__head">
+              <strong>{{ text('模型候选', 'Model candidates') }}</strong>
+              <span>{{ detectedModelSelectionSummary }}</span>
+            </div>
+            <div class="mgw-detect-model-toolbar">
+              <label class="form-field">
+                <span class="form-label">{{ text('查找候选', 'Find candidates') }}</span>
+                <input v-model.trim="detectedModelSearch" class="form-input" :placeholder="text('模型 ID 或别名', 'Model ID or alias')" />
+              </label>
+              <label class="form-field">
+                <span class="form-label">{{ text('能力筛选', 'Capability') }}</span>
+                <select v-model="detectedModelCapabilityFilter" class="form-input">
+                  <option value="all">{{ text('全部能力', 'All capabilities') }}</option>
+                  <option v-for="capability in modelCapabilityOptions" :key="`detected-filter-${capability.id}`" :value="capability.id">
+                    {{ text(capability.zh, capability.en) }}
+                  </option>
+                </select>
+              </label>
+            </div>
+            <div class="mgw-detect-model-actions">
+              <button type="button" class="secondary-button compact-button" @click="selectVisibleDetectedModels">
+                {{ text('选择当前筛选', 'Select filtered') }}
+              </button>
+              <button type="button" class="secondary-button compact-button" @click="clearDetectedModelSelection">
+                {{ text('清空选择', 'Clear selection') }}
+              </button>
+              <button type="button" class="secondary-button compact-button" :disabled="hiddenDetectedModelCount <= 0" @click="showMoreDetectedModels">
+                {{ text('显示更多候选', 'Show more candidates') }}
+              </button>
+              <button type="button" class="primary-button compact-button" :disabled="selectedDetectedModelCount <= 0" @click="importSelectedDetectedModels">
+                {{ text('导入所选模型', 'Import selected') }}
+              </button>
+            </div>
+            <div class="mgw-detect-model-list">
+              <label
+                v-for="model in visibleDetectedCandidateModels"
+                :key="`detected-model-${model.id}`"
+                class="mgw-detect-model-row"
+                :class="{ active: detectedModelSelection[model.id] }"
+              >
+                <input v-model="detectedModelSelection[model.id]" type="checkbox" />
+                <span>
+                  <strong>{{ model.id }}</strong>
+                  <small>{{ detectedModelDetail(model) }}</small>
+                </span>
+              </label>
+              <div v-if="!filteredDetectedCandidateModels.length" class="mgw-model-empty">
+                {{ text('没有匹配的模型候选。', 'No model candidates match.') }}
+              </div>
+            </div>
+            <div v-if="hiddenDetectedModelCount > 0" class="mgw-model-window-footer">
+              <span>{{ text(`还有 ${hiddenDetectedModelCount} 个候选未渲染。`, `${hiddenDetectedModelCount} candidates are not rendered yet.`) }}</span>
+              <button type="button" class="secondary-button compact-button" @click="showMoreDetectedModels">
+                {{ text('继续显示', 'Show more') }}
+              </button>
+            </div>
+          </div>
+
           <footer class="mgw-detect-popover__foot">
             <button type="button" class="secondary-button compact-button" :disabled="detectBusy" @click="closeDetectOverlay">
               {{ text('关闭', 'Close') }}
@@ -1557,7 +1710,7 @@
 <script setup lang="ts">
 import { computed, onActivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { Plus, Trash2, X } from '@lucide/vue';
+import { Eye, EyeOff, Plus, Trash2, X } from '@lucide/vue';
 import { MODEL_GATEWAY_ACCOUNT_ROUTING_STRATEGIES, MODEL_GATEWAY_APP_CONNECTION_IDS } from '../../../../../types/model-gateway';
 import type {
   ModelGatewayAccountEntry,
@@ -1605,6 +1758,7 @@ import {
   fetchModelGatewayAppConnections,
   fetchModelGatewayClientAuth,
   fetchModelGatewayDaemonService,
+  fetchModelGatewayProviderSecret,
   fetchModelGatewayProviders,
   fetchModelGatewayRuntime,
   fetchModelGatewayStatus,
@@ -1613,6 +1767,7 @@ import {
   pollModelGatewayCodexAccountLogin,
   refreshModelGatewayProviderAccount,
   rollbackModelGatewayAppConnection,
+  setModelGatewayProviderSecret,
   startModelGatewayCodexAccountLogin,
   testModelGatewayProvider,
   updateModelGatewayProviderAccount,
@@ -1776,8 +1931,17 @@ type MediaCatalogBucket = {
   preview: string;
 };
 
+type ModelRowEntry = {
+  row: ProviderModelRow;
+  index: number;
+};
+
+type DetectedModelCapabilityFilterId = 'all' | ModelCapabilityId;
+
 const route = useRoute();
 const { text } = useLocalePreference();
+const MODEL_EDITOR_PAGE_SIZE = 50;
+const DETECTED_MODEL_PAGE_SIZE = 60;
 
 const appScopeOptions: Array<{ id: ModelGatewayAppScope; zh: string; en: string }> = [
   { id: 'codex', zh: 'Codex', en: 'Codex' },
@@ -1947,6 +2111,10 @@ const providerCreateKind = ref<ProviderCreateKind>('api-key');
 const providerEditorOpen = ref(false);
 const providerSearch = ref('');
 const providerFilter = ref<ProviderFilterId>('all');
+const providerSecretRevealBusy = ref(false);
+const providerSecretVisible = ref(false);
+const providerSecretLoadedFor = ref('');
+const providerSecretOriginal = ref('');
 const accountBusy = ref<Record<string, boolean>>({});
 const accountProxyDrafts = ref<Record<string, string>>({});
 const activeProviders = ref<Partial<Record<ModelGatewayAppScope, string>>>({});
@@ -1979,6 +2147,12 @@ const detectOverlayOpen = ref(false);
 const detectError = ref<string | null>(null);
 const appliedProtocolKey = ref('');
 const modelCatalogRefreshBusy = ref(false);
+const modelSearch = ref('');
+const modelRowsVisibleLimit = ref(MODEL_EDITOR_PAGE_SIZE);
+const detectedModelSearch = ref('');
+const detectedModelCapabilityFilter = ref<DetectedModelCapabilityFilterId>('all');
+const detectedModelSelection = ref<Record<string, boolean>>({});
+const detectedModelVisibleLimit = ref(DETECTED_MODEL_PAGE_SIZE);
 const codexLoginBusy = ref(false);
 const codexLoginStart = ref<ModelGatewayCodexAccountLoginStartResponse | null>(null);
 const codexLoginPoll = ref<ModelGatewayCodexAccountLoginPollResponse | null>(null);
@@ -2013,6 +2187,110 @@ const filteredProviders = computed<ModelGatewayProviderView[]>(() => {
     const modelText = providerCatalogModels(provider).map((model) => model.id).join(' ');
     return normalizeModelKey(`${provider.id} ${provider.name} ${modelText}`).includes(query);
   });
+});
+
+const currentProviderSecret = computed(() =>
+  selectedProviderView.value?.secret
+  || providers.value.find((entry) => entry.id === draft.id)?.secret
+  || null,
+);
+
+const providerSecretStateLabel = computed(() => {
+  const secret = currentProviderSecret.value;
+  if (!secret?.hasSecret) return text('未保存密钥', 'No saved key');
+  return secret.masked || text('已保存密钥', 'Saved key');
+});
+
+const providerSecretStateDetail = computed(() => {
+  const secret = currentProviderSecret.value;
+  if (!secret?.hasSecret) {
+    return text('保存时填写新密钥；未填写时不会创建上游密钥。', 'Enter a new key when saving; empty input will not create an upstream key.');
+  }
+  const length = secret.length ? text(`${secret.length} 位`, `${secret.length} chars`) : '';
+  const updatedAt = secret.updatedAt ? formatTimestamp(secret.updatedAt) : '';
+  return [
+    length,
+    updatedAt ? text(`更新于 ${updatedAt}`, `updated ${updatedAt}`) : '',
+    providerSecretLoadedFor.value === draft.id.trim()
+      ? text('已载入到编辑框；默认隐藏，可显示明文。', 'Loaded into the editor; hidden by default and revealable.')
+      : text('打开编辑会自动载入本地密钥；识别配置会复用该密钥。', 'Opening the editor loads the local key; detection reuses it.'),
+  ].filter(Boolean).join(' · ');
+});
+
+const modelSearchQuery = computed(() => normalizeModelKey(modelSearch.value));
+
+const filteredDraftModelRowEntries = computed<ModelRowEntry[]>(() => {
+  const query = modelSearchQuery.value;
+  return draft.modelRows
+    .map((row, index) => ({ row, index }))
+    .filter((entry) => {
+      if (!query) return true;
+      const capabilityText = modelCapabilityOptions
+        .filter((capability) => entry.row[capability.id])
+        .map((capability) => `${capability.id} ${capability.zh} ${capability.en}`)
+        .join(' ');
+      return normalizeModelKey(`${entry.row.id} ${entry.row.aliases} ${capabilityText}`).includes(query);
+    });
+});
+
+const visibleDraftModelRowEntries = computed<ModelRowEntry[]>(() =>
+  filteredDraftModelRowEntries.value.slice(0, modelRowsVisibleLimit.value),
+);
+
+const hiddenDraftModelRowCount = computed(() =>
+  Math.max(0, filteredDraftModelRowEntries.value.length - visibleDraftModelRowEntries.value.length),
+);
+
+const draftModelCatalogSummary = computed(() => {
+  const total = draft.modelRows.length;
+  const filtered = filteredDraftModelRowEntries.value.length;
+  const visible = visibleDraftModelRowEntries.value.length;
+  if (!total) return text('尚未配置模型。', 'No models configured yet.');
+  if (modelSearchQuery.value) {
+    return text(
+      `显示 ${visible}/${filtered} 个匹配模型，共 ${total} 个模型。`,
+      `Showing ${visible}/${filtered} matching models from ${total} total.`,
+    );
+  }
+  return text(
+    `显示 ${visible}/${total} 个模型。完整目录会保存；仅渲染当前窗口以避免大目录卡顿。`,
+    `Showing ${visible}/${total} models. The full catalog is saved; only this window is rendered to avoid large-catalog jank.`,
+  );
+});
+
+const detectedModelSearchQuery = computed(() => normalizeModelKey(detectedModelSearch.value));
+
+const detectedCandidateModels = computed<ModelGatewayProviderModel[]>(() => detectResult.value?.models || []);
+
+const filteredDetectedCandidateModels = computed<ModelGatewayProviderModel[]>(() => {
+  const query = detectedModelSearchQuery.value;
+  const capability = detectedModelCapabilityFilter.value;
+  return detectedCandidateModels.value.filter((model) => {
+    if (capability !== 'all' && !modelHasCapability(model, capability)) return false;
+    if (!query) return true;
+    return normalizeModelKey(`${model.id} ${model.label || ''} ${(model.aliases || []).join(' ')}`).includes(query);
+  });
+});
+
+const visibleDetectedCandidateModels = computed<ModelGatewayProviderModel[]>(() =>
+  filteredDetectedCandidateModels.value.slice(0, detectedModelVisibleLimit.value),
+);
+
+const selectedDetectedModelCount = computed(() =>
+  detectedCandidateModels.value.filter((model) => detectedModelSelection.value[model.id]).length,
+);
+
+const hiddenDetectedModelCount = computed(() =>
+  Math.max(0, filteredDetectedCandidateModels.value.length - visibleDetectedCandidateModels.value.length),
+);
+
+const detectedModelSelectionSummary = computed(() => {
+  const total = detectedCandidateModels.value.length;
+  if (!total) return text('未识别到模型候选。', 'No model candidates detected.');
+  return text(
+    `已选 ${selectedDetectedModelCount.value}/${total} 个模型候选。`,
+    `${selectedDetectedModelCount.value}/${total} model candidates selected.`,
+  );
 });
 
 const endpointProfilesCanSmoke = computed(() =>
@@ -2966,6 +3244,12 @@ function createModelBulkDraft(): ProviderModelBulkDraft {
 function resetDraft(): void {
   Object.assign(draft, createEmptyDraft());
   Object.assign(modelBulk, createModelBulkDraft());
+  modelSearch.value = '';
+  resetModelRowsWindow();
+  resetDetectedModelCandidates();
+  providerSecretVisible.value = false;
+  providerSecretLoadedFor.value = '';
+  providerSecretOriginal.value = '';
   endpointSmokeResults.value = {};
   providerCreateKind.value = 'api-key';
 }
@@ -2998,6 +3282,10 @@ function applyProtocolTemplate(template: ProtocolTemplate): void {
       : 'openai_chat_completions';
   Object.assign(modelBulk, createModelBulkDraft());
   syncDefaultModelWithList();
+  resetDetectedModelCandidates();
+  providerSecretVisible.value = false;
+  providerSecretLoadedFor.value = '';
+  providerSecretOriginal.value = '';
 }
 
 function openProviderCreateDialog(): void {
@@ -3010,6 +3298,10 @@ function selectProviderCreateKind(kind: ProviderCreateKind): void {
   detectResult.value = null;
   detectError.value = null;
   appliedProtocolKey.value = '';
+  resetDetectedModelCandidates();
+  providerSecretVisible.value = false;
+  providerSecretLoadedFor.value = '';
+  providerSecretOriginal.value = '';
   if (kind === 'account') {
     Object.assign(draft, createEmptyDraft(), {
       id: nextProviderDraftId('account'),
@@ -3088,16 +3380,72 @@ function editProvider(provider: ModelGatewayProviderView): void {
   smokeProviderId.value = provider.id;
   smokeModel.value = draft.defaultModel;
   Object.assign(modelBulk, createModelBulkDraft());
+  modelSearch.value = '';
+  resetModelRowsWindow();
+  resetDetectedModelCandidates();
+  providerSecretVisible.value = false;
+  providerSecretLoadedFor.value = '';
+  providerSecretOriginal.value = '';
   endpointSmokeResults.value = {};
   providerEditorOpen.value = true;
+  if (!provider.accountProvider && provider.secret?.hasSecret) {
+    void revealProviderSecretForEdit(provider.id);
+  }
 }
 
 function closeProviderEditor(): void {
+  draft.apiKey = '';
+  providerSecretVisible.value = false;
+  providerSecretLoadedFor.value = '';
+  providerSecretOriginal.value = '';
   providerEditorOpen.value = false;
 }
 
 function providerExists(providerId: string): boolean {
   return providers.value.some((provider) => provider.id === providerId);
+}
+
+function providerModelCount(provider: ModelGatewayProviderView): number {
+  return uniqueStrings(providerCatalogModels(provider).map((model) => model.id)).length;
+}
+
+function providerEndpointCount(provider: ModelGatewayProviderView): number {
+  return provider.endpointProfiles.length || 1;
+}
+
+function providerSecretListLabel(provider: ModelGatewayProviderView): string {
+  if (provider.accountProvider) return text('账户凭据', 'Account credential');
+  if (!provider.secret?.hasSecret) return text('无上游密钥', 'No upstream key');
+  return provider.secret.masked
+    ? text(`密钥 ${provider.secret.masked}`, `Key ${provider.secret.masked}`)
+    : text('已保存密钥', 'Saved key');
+}
+
+function providerSecretShouldSave(providerId: string): boolean {
+  const next = draft.apiKey.trim();
+  if (!next) return false;
+  if (!providerId || providerSecretLoadedFor.value !== providerId) return true;
+  return next !== providerSecretOriginal.value;
+}
+
+function providerHealthListLabel(provider: ModelGatewayProviderView): string {
+  const endpointOpen = provider.endpointProfiles.filter((profile) => profile.health.circuitState === 'open').length;
+  if (provider.health.circuitState === 'open' || endpointOpen > 0) {
+    return endpointOpen > 0
+      ? text(`${endpointOpen} 个 endpoint 熔断`, `${endpointOpen} endpoints open`)
+      : text('Provider 熔断', 'Provider circuit open');
+  }
+  if (provider.health.lastSuccessAt) {
+    return text(`最近通过 ${formatTimestamp(provider.health.lastSuccessAt)}`, `Last success ${formatTimestamp(provider.health.lastSuccessAt)}`);
+  }
+  if (provider.health.lastFailureAt) {
+    return text(`最近失败 ${formatTimestamp(provider.health.lastFailureAt)}`, `Last failure ${formatTimestamp(provider.health.lastFailureAt)}`);
+  }
+  return text('尚未检查', 'Not checked');
+}
+
+function modelHasCapability(model: ModelGatewayProviderModel, capability: ModelCapabilityId): boolean {
+  return model.features?.[capability] === true;
 }
 
 function selectedScopes(): ModelGatewayAppScope[] {
@@ -3369,6 +3717,7 @@ function mergeDetectedModels(models: ModelGatewayProviderModel[]): { added: numb
   }
   syncDefaultModelWithList();
   syncModelTextFromRows();
+  resetModelRowsWindow();
   if (!smokeModel.value) {
     smokeModel.value = draft.defaultModel;
   }
@@ -3384,6 +3733,7 @@ function applyModelTextToRows(): void {
   draft.modelRows = rows;
   syncDefaultModelWithList();
   syncModelTextFromRows();
+  resetModelRowsWindow();
   notice.value = {
     kind: rows.length ? 'success' : 'error',
     message: rows.length
@@ -3462,9 +3812,11 @@ function applyModelBulkCapabilities(): void {
 }
 
 function addDraftModelRow(model?: ModelGatewayProviderModel): void {
-  draft.modelRows.push(createProviderModelRow(model));
+  draft.modelRows.unshift(createProviderModelRow(model));
+  modelSearch.value = '';
   syncDefaultModelWithList();
   syncModelTextFromRows();
+  modelRowsVisibleLimit.value = Math.max(modelRowsVisibleLimit.value, MODEL_EDITOR_PAGE_SIZE);
 }
 
 function removeDraftModelRow(index: number): void {
@@ -3675,9 +4027,90 @@ function syncDefaultModelWithList(): void {
   }
 }
 
-function applyDetectedModels(models: ModelGatewayProviderModel[]): void {
-  if (!models.length) return;
-  mergeDetectedModels(models);
+function resetModelRowsWindow(): void {
+  modelRowsVisibleLimit.value = MODEL_EDITOR_PAGE_SIZE;
+}
+
+function resetDetectedModelCandidates(): void {
+  detectedModelSearch.value = '';
+  detectedModelCapabilityFilter.value = 'all';
+  detectedModelSelection.value = {};
+  detectedModelVisibleLimit.value = DETECTED_MODEL_PAGE_SIZE;
+}
+
+function showMoreModelRows(): void {
+  modelRowsVisibleLimit.value = Math.min(
+    filteredDraftModelRowEntries.value.length,
+    modelRowsVisibleLimit.value + MODEL_EDITOR_PAGE_SIZE,
+  );
+}
+
+function showAllModelRows(): void {
+  modelRowsVisibleLimit.value = filteredDraftModelRowEntries.value.length;
+}
+
+function showMoreDetectedModels(): void {
+  detectedModelVisibleLimit.value = Math.min(
+    filteredDetectedCandidateModels.value.length,
+    detectedModelVisibleLimit.value + DETECTED_MODEL_PAGE_SIZE,
+  );
+}
+
+function modelSelectionSeedIds(response: ModelGatewayProviderDetectResponse): string[] {
+  return uniqueStrings([
+    response.selectedModel || '',
+    ...response.protocols.map((protocol) => protocol.model || ''),
+    draft.defaultModel,
+    ...draftModelIds.value.slice(0, 1),
+  ]);
+}
+
+function seedDetectedModelSelection(response: ModelGatewayProviderDetectResponse): void {
+  resetDetectedModelCandidates();
+  const available = new Set(response.models.map((model) => model.id));
+  const seeds = modelSelectionSeedIds(response).filter((id) => available.has(id));
+  detectedModelSelection.value = Object.fromEntries(seeds.map((id) => [id, true]));
+}
+
+function selectVisibleDetectedModels(): void {
+  const next = { ...detectedModelSelection.value };
+  for (const model of filteredDetectedCandidateModels.value) {
+    next[model.id] = true;
+  }
+  detectedModelSelection.value = next;
+}
+
+function clearDetectedModelSelection(): void {
+  detectedModelSelection.value = {};
+}
+
+function importSelectedDetectedModels(): void {
+  const selected = detectedCandidateModels.value.filter((model) => detectedModelSelection.value[model.id]);
+  if (!selected.length) return;
+  const result = mergeDetectedModels(selected);
+  if (!draft.defaultModel.trim()) {
+    draft.defaultModel = selected[0]?.id || '';
+  }
+  notice.value = {
+    kind: 'success',
+    message: text(
+      `已导入所选模型：新增 ${result.added}，补齐 ${result.updated}，保留 ${result.kept}。`,
+      `Selected models imported: ${result.added} added, ${result.updated} filled, ${result.kept} kept.`,
+    ),
+  };
+}
+
+function detectedModelDetail(model: ModelGatewayProviderModel): string {
+  const budget = [
+    model.contextWindow ? text(`${formatCompactNumber(model.contextWindow)} 上下文`, `${formatCompactNumber(model.contextWindow)} context`) : '',
+    model.maxOutputTokens ? text(`${formatCompactNumber(model.maxOutputTokens)} 输出`, `${formatCompactNumber(model.maxOutputTokens)} output`) : '',
+  ].filter(Boolean).join(' · ');
+  const caps = modelCapabilityOptions
+    .filter((capability) => modelHasCapability(model, capability.id))
+    .map((capability) => text(capability.zh, capability.en))
+    .slice(0, 4)
+    .join(', ');
+  return [model.label && model.label !== model.id ? model.label : '', budget, caps].filter(Boolean).join(' · ') || '-';
 }
 
 function protocolKey(protocol: ModelGatewayProviderDetectProtocolResult): string {
@@ -3720,35 +4153,74 @@ function applyDetectedProtocol(protocol: ModelGatewayProviderDetectProtocolResul
   }
 }
 
+async function revealProviderSecretForEdit(providerId: string): Promise<string> {
+  if (!providerId || !providerExists(providerId)) return draft.apiKey.trim();
+  if (providerSecretLoadedFor.value === providerId && providerSecretOriginal.value) return providerSecretOriginal.value;
+  providerSecretRevealBusy.value = true;
+  try {
+    const response = await fetchModelGatewayProviderSecret(providerId);
+    const apiKey = response.apiKey || '';
+    if (draft.id.trim() === providerId) {
+      if (!draft.apiKey.trim() || draft.apiKey === providerSecretOriginal.value) {
+        draft.apiKey = apiKey;
+      }
+      providerSecretLoadedFor.value = providerId;
+      providerSecretOriginal.value = apiKey;
+    }
+    return apiKey;
+  } catch (error) {
+    notice.value = {
+      kind: 'error',
+      message: error instanceof Error ? error.message : text('读取服务商密钥失败', 'Failed to load provider key'),
+    };
+    return draft.apiKey.trim();
+  } finally {
+    providerSecretRevealBusy.value = false;
+  }
+}
+
+async function providerApiKeyForProbe(): Promise<string | null> {
+  const typed = draft.apiKey.trim();
+  if (typed) return typed;
+  const provider = selectedProviderView.value;
+  if (!provider?.secret?.hasSecret) return null;
+  const loaded = await revealProviderSecretForEdit(provider.id);
+  return loaded.trim() || null;
+}
+
 async function detectProviderConfig(): Promise<void> {
   detectBusy.value = true;
   detectResult.value = null;
   detectError.value = null;
   appliedProtocolKey.value = '';
+  resetDetectedModelCandidates();
   detectOverlayOpen.value = true;
   notice.value = null;
   try {
+    const apiKey = await providerApiKeyForProbe();
     const response = await detectModelGatewayProvider({
       baseUrl: draft.baseUrl.trim(),
-      apiKey: draft.apiKey.trim() || null,
+      apiKey,
       model: draft.defaultModel.trim() || draftModelIds.value[0] || undefined,
       timeoutMs: 20000,
     });
     detectResult.value = response;
-    if (response.models.length) {
-      applyDetectedModels(response.models);
+    seedDetectedModelSelection(response);
+    if (response.selectedModel && !draft.defaultModel.trim()) {
+      draft.defaultModel = response.selectedModel;
+      smokeModel.value = response.selectedModel;
     }
     const supported = response.protocols.filter((protocol) => protocol.ok);
     if (supported.length === 1) {
       applyDetectedProtocol(supported[0], false);
       notice.value = {
         kind: 'success',
-        message: text('已识别并应用唯一可用协议。', 'Detected and applied the only supported protocol.'),
+        message: text('已识别并应用唯一可用协议；模型候选需手动选择导入。', 'Detected and applied the only supported protocol; choose model candidates to import.'),
       };
     } else if (supported.length > 1) {
       notice.value = {
         kind: 'success',
-        message: text('检测到多个可用协议，请在识别结果中选择一个应用。', 'Multiple supported protocols detected; choose one in the result panel.'),
+        message: text('检测到多个可用协议；请选择协议，并按需导入模型候选。', 'Multiple supported protocols detected; choose a protocol and import only needed model candidates.'),
       };
     } else {
       notice.value = {
@@ -3777,14 +4249,17 @@ async function refreshModelCatalogFromProvider(): Promise<void> {
   modelCatalogRefreshBusy.value = true;
   notice.value = null;
   try {
+    const apiKey = await providerApiKeyForProbe();
     const response = await detectModelGatewayProvider({
       baseUrl: draft.baseUrl.trim(),
-      apiKey: draft.apiKey.trim() || null,
+      apiKey,
       model: draft.defaultModel.trim() || draftModelIds.value[0] || undefined,
       timeoutMs: 20000,
     });
     detectResult.value = response;
     detectError.value = null;
+    seedDetectedModelSelection(response);
+    detectOverlayOpen.value = true;
     if (!response.models.length) {
       notice.value = {
         kind: 'error',
@@ -3792,13 +4267,9 @@ async function refreshModelCatalogFromProvider(): Promise<void> {
       };
       return;
     }
-    const result = mergeDetectedModels(response.models);
     notice.value = {
       kind: 'success',
-      message: text(
-        `模型列表已刷新：新增 ${result.added}，补齐 ${result.updated}，保留 ${result.kept}。`,
-        `Model list refreshed: ${result.added} added, ${result.updated} filled, ${result.kept} kept.`,
-      ),
+      message: text('模型候选已刷新；请搜索、筛选并导入需要保存的模型。', 'Model candidates refreshed; search, filter, and import only the models you want to save.'),
     };
   } catch (error) {
     detectError.value = error instanceof Error ? error.message : text('模型列表刷新失败', 'Model list refresh failed');
@@ -4346,7 +4817,7 @@ async function saveProvider(): Promise<void> {
   };
   const payload: ModelGatewayUpsertProviderRequest = {
     provider,
-    ...(draft.apiKey.trim() ? { secret: { apiKey: draft.apiKey.trim() } } : {}),
+    ...(providerSecretShouldSave(provider.id || '') ? { secret: { apiKey: draft.apiKey.trim() } } : {}),
   };
   try {
     await upsertModelGatewayProvider(payload);
@@ -4355,6 +4826,9 @@ async function saveProvider(): Promise<void> {
     smokeProviderId.value = provider.id || smokeProviderId.value;
     smokeModel.value = models.defaultModel || smokeModel.value;
     draft.apiKey = '';
+    providerSecretVisible.value = false;
+    providerSecretLoadedFor.value = '';
+    providerSecretOriginal.value = '';
     await refreshAppConnections();
     notice.value = {
       kind: 'success',
@@ -4390,6 +4864,33 @@ async function removeProvider(providerId: string): Promise<void> {
     notice.value = {
       kind: 'error',
       message: error instanceof Error ? error.message : text('服务商删除失败', 'Provider delete failed'),
+    };
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function clearProviderSecret(): Promise<void> {
+  const providerId = draft.id.trim();
+  if (!providerId || !providerExists(providerId)) return;
+  if (!window.confirm(text('清除当前服务商密钥？客户端请求会在重新填写密钥前失败。', 'Clear this provider key? Client requests will fail until a new key is saved.'))) return;
+  busy.value = true;
+  notice.value = null;
+  try {
+    const response = await setModelGatewayProviderSecret(providerId, { apiKey: null });
+    applyProviderView(response.provider);
+    draft.apiKey = '';
+    providerSecretLoadedFor.value = providerId;
+    providerSecretOriginal.value = '';
+    providerSecretVisible.value = false;
+    notice.value = {
+      kind: 'success',
+      message: text('服务商密钥已清除。', 'Provider key cleared.'),
+    };
+  } catch (error) {
+    notice.value = {
+      kind: 'error',
+      message: error instanceof Error ? error.message : text('密钥清除失败', 'Failed to clear provider key'),
     };
   } finally {
     busy.value = false;
@@ -4542,6 +5043,11 @@ watch(selectedSmokeProvider, (provider) => {
 
 watch(() => appConnectionProfile.model, () => {
   applyAppConnectionModelBudget(false);
+});
+
+watch([modelSearch, detectedModelSearch, detectedModelCapabilityFilter], () => {
+  resetModelRowsWindow();
+  detectedModelVisibleLimit.value = DETECTED_MODEL_PAGE_SIZE;
 });
 
 watch(

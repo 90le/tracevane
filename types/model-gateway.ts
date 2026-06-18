@@ -746,6 +746,13 @@ export interface ModelGatewaySetProviderSecretRequest {
   apiKey: string | null;
 }
 
+export interface ModelGatewayProviderSecretResponse {
+  ok: true;
+  providerId: string;
+  secret: ModelGatewaySecretSummary | null;
+  apiKey: string | null;
+}
+
 export interface ModelGatewayClientAuthUpdateRequest {
   enabled?: boolean;
   apiKey?: string | null;

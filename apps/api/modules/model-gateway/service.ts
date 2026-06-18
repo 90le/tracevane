@@ -82,6 +82,7 @@ import {
   type ModelGatewayModelFeatures,
   type ModelGatewayProviderNetwork,
   type ModelGatewayProviderReasoning,
+  type ModelGatewayProviderSecretResponse,
   type ModelGatewayProviderSourceType,
   type ModelGatewayProviderTestRequest,
   type ModelGatewayProviderTestResponse,
@@ -4905,6 +4906,7 @@ export interface ModelGatewayService {
   refreshProviderAccount(req: http.IncomingMessage | undefined, providerId: string, accountId: string): Promise<ModelGatewayProviderAccountRefreshResponse>;
   deleteProvider(req: http.IncomingMessage | undefined, providerId: string): ModelGatewayProvidersResponse;
   setActiveProvider(req: http.IncomingMessage | undefined, payload: ModelGatewaySetActiveProviderRequest): ModelGatewayProvidersResponse;
+  getProviderSecret(req: http.IncomingMessage | undefined, providerId: string): ModelGatewayProviderSecretResponse;
   setProviderSecret(req: http.IncomingMessage | undefined, providerId: string, payload: ModelGatewaySetProviderSecretRequest): ModelGatewayProviderView;
   testActiveRoute(req: http.IncomingMessage | undefined, payload?: ModelGatewayActiveRouteSmokeRequest): Promise<ModelGatewayProviderTestResponse>;
   testProvider(req: http.IncomingMessage | undefined, providerId: string, payload?: ModelGatewayProviderTestRequest): Promise<ModelGatewayProviderTestResponse>;
@@ -8196,6 +8198,26 @@ export function createModelGatewayService(
     return toProviderView(provider);
   }
 
+  function getProviderSecret(
+    req: http.IncomingMessage | undefined,
+    providerId: string,
+  ): ModelGatewayProviderSecretResponse {
+    requireManagement(req);
+    const registry = readRegistry();
+    const provider = findProvider(registry, providerId);
+    if (!provider) {
+      throw new ModelGatewayServiceError("model_gateway_provider_not_found", `Model Gateway provider '${providerId}' was not found.`, 404);
+    }
+    const ref = provider.apiKeyRef;
+    const apiKey = ref ? readSecrets().secrets[ref]?.value || null : null;
+    return {
+      ok: true,
+      providerId: provider.id,
+      secret: secretSummary(ref),
+      apiKey,
+    };
+  }
+
   function gatewaySmokeToolForChat(): Record<string, unknown> {
     return {
       type: "function",
@@ -10132,6 +10154,7 @@ export function createModelGatewayService(
     refreshProviderAccount,
     deleteProvider,
     setActiveProvider,
+    getProviderSecret,
     setProviderSecret,
     testActiveRoute,
     testProvider,

@@ -318,6 +318,12 @@ test("model gateway registry stores provider secrets separately and masks views"
   assert.ok(!JSON.stringify(listed).includes("sk-test-secret-123456"));
   assert.equal(listed.activeProviders.codex, "openai-main");
   assert.equal(listed.activeProviders.openclaw, "openai-main");
+
+  const revealed = service.getProviderSecret(undefined, "openai-main");
+  assert.equal(revealed.ok, true);
+  assert.equal(revealed.providerId, "openai-main");
+  assert.equal(revealed.apiKey, "sk-test-secret-123456");
+  assert.equal(revealed.secret.masked, "sk-t...3456");
 });
 
 test("model gateway usage ledger summarizes every model by requests and tokens", () => {

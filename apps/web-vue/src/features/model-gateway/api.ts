@@ -20,6 +20,8 @@ import type {
   ModelGatewayProviderAccountUpdateResponse,
   ModelGatewayProviderDetectRequest,
   ModelGatewayProviderDetectResponse,
+  ModelGatewayProviderSecretResponse,
+  ModelGatewaySetProviderSecretRequest,
   ModelGatewayProviderView,
   ModelGatewayProviderTestRequest,
   ModelGatewayProviderTestResponse,
@@ -183,6 +185,25 @@ export function deleteModelGatewayProvider(providerId: string): Promise<ModelGat
   return requestJson<ModelGatewayProvidersResponse>(
     `/api/model-gateway/providers/${encodeURIComponent(providerId)}`,
     { method: 'DELETE' },
+  );
+}
+
+export function fetchModelGatewayProviderSecret(providerId: string): Promise<ModelGatewayProviderSecretResponse> {
+  return requestJson<ModelGatewayProviderSecretResponse>(
+    `/api/model-gateway/providers/${encodeURIComponent(providerId)}/secret`,
+  );
+}
+
+export function setModelGatewayProviderSecret(
+  providerId: string,
+  payload: ModelGatewaySetProviderSecretRequest,
+): Promise<{
+  ok: true;
+  provider: ModelGatewayProviderView;
+}> {
+  return requestJson<{ ok: true; provider: ModelGatewayProviderView }>(
+    `/api/model-gateway/providers/${encodeURIComponent(providerId)}/secret`,
+    jsonBody(payload),
   );
 }
 
