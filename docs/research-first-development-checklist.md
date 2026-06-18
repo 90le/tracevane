@@ -1,6 +1,6 @@
 # Research-First Development Checklist
 
-> 更新：2026-06-17
+> 更新：2026-06-18
 > 原则：任何新功能、行为修改、协议/SDK/Provider/Channel/Agent 适配，都必须先核验当前外部合同，再设计和实现。
 
 ## 开工门禁
@@ -37,7 +37,7 @@
 - 默认 Agent session driver 使用结构化 persistent 路径：Codex app-server、Claude Code stream-json、OpenCode `run --session`。one-shot/TUI runner 只作为显式 opt-out、persistent fallback 或尚未支持 Agent 的兼容路径。
 - 普通 IM 消息不排队、不落 pending store、不 daemon 重启 replay；同 binding + IM session 已有 active/delivering run 时直接 busy guard，用户用 `/stop`、`/cancel` 或等待结束后重发。
 - Feishu/Octo 出站附件和私聊消息由 Studio native transport 执行；Agent 只声明受控 manifest。
-- 未经当前合同验证的 Realtime/WebSocket、音频、image edits、媒体 passthrough 或新 Agent 事件格式必须返回结构化 unsupported 或保持受控 fallback。
+- 未经当前合同验证的 Realtime/WebSocket、音频、image edits、媒体 passthrough 或新 Agent 事件格式必须返回结构化 unsupported 或保持受控 fallback；官方已有能力不等于 Studio Gateway 已有可承载 bridge。
 
 ## 风险清单
 
@@ -75,3 +75,4 @@
 - 2026-06-17：本轮按用户要求先不跑渠道 live；本地补 Gateway endpoint profile passthrough/adapter 错误归属回归，以及 Feishu reaction stop failure/daemon delivery failure 源码合同回归。
 - 2026-06-17：重新核验 Codex app-server、Claude Code Agent SDK / TypeScript SDK、OpenCode CLI / SDK 官方文档；本地补真实 Claude `◯ deep-research ... ↓ tokens`、Codex subagents、OpenCode parallel tasks 的 async child-task TUI 回归，确认优先结构化 driver，TUI 只作 bounded fallback。
 - 2026-06-17：核验 Feishu 官方开放平台 Docs/API、官方 Node SDK 和官方 OpenClaw Lark 插件安全边界；本地删除 Studio 未暴露的 Feishu direct action helper，保留私聊 transport 主链路和旧 code fence 剥除。
+- 2026-06-18：核验 OpenAI 官方 Realtime/audio、Responses WebSocket mode 和 `openai-node` Realtime WebSocket 说明；结论是官方能力存在，但 Studio Gateway 对 Codex account backend 仍缺完整 turn-state/tool-cache/history/close 合同，所以继续结构化 unsupported，并补齐 audio/realtime 错误 envelope 的可行性、参考和替代路径。

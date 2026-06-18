@@ -836,7 +836,11 @@ test("model gateway starts Codex account login and creates an account-backed pro
         },
       });
       assert.equal(audio.status, 501);
-      assert.equal(JSON.parse(audio.body).error.code, "model_gateway_codex_account_audio_unsupported");
+      const audioError = JSON.parse(audio.body).error;
+      assert.equal(audioError.code, "model_gateway_codex_account_audio_unsupported");
+      assert.equal(audioError.details.feasibility, "blocked-no-codex-account-rest-audio-contract");
+      assert.match(audioError.details.reference, /request-based audio APIs/);
+      assert.ok(audioError.details.alternatives.some((item) => item.includes("/v1/audio/transcriptions")));
 
       const speech = await requestJson(`${baseUrl}/v1/audio/speech`, {
         method: "POST",
@@ -848,14 +852,19 @@ test("model gateway starts Codex account login and creates an account-backed pro
       });
       assert.equal(speech.status, 501);
       assert.equal(speech.body.error.code, "model_gateway_codex_account_audio_unsupported");
+      assert.equal(speech.body.error.details.feasibility, "blocked-no-codex-account-rest-audio-contract");
+      assert.ok(speech.body.error.details.alternatives.some((item) => item.includes("audio output")));
 
       const wsHttp = await requestJson(`${baseUrl}/v1/responses/ws`);
       assert.equal(wsHttp.status, 501);
       assert.equal(wsHttp.body.error.code, "model_gateway_codex_account_realtime_unsupported");
+      assert.match(wsHttp.body.error.details.reference, /Responses WebSocket mode/);
+      assert.ok(wsHttp.body.error.details.alternatives.some((item) => item.includes("verified WebSocket bridge")));
 
       const realtimeHttp = await requestJson(`${baseUrl}/v1/realtime`);
       assert.equal(realtimeHttp.status, 501);
       assert.equal(realtimeHttp.body.error.code, "model_gateway_codex_account_realtime_unsupported");
+      assert.match(realtimeHttp.body.error.details.reference, /Realtime WebSocket/);
 
       const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
       const imageEntry = runtime.body.runtime.requestLog.find((entry) => entry.routeId === "openai_images_generations");
@@ -939,7 +948,8 @@ test("model gateway returns structured unsupported for Codex account realtime we
     });
     assert.equal(payload.type, "error");
     assert.equal(payload.error.code, "model_gateway_codex_account_realtime_unsupported");
-    assert.match(payload.error.details.reference, /No official or directly verified Codex account Realtime\/WebSocket contract/);
+    assert.match(payload.error.details.reference, /OpenAI documents Responses WebSocket mode/);
+    assert.ok(payload.error.details.alternatives.some((item) => item.includes("verified WebSocket bridge")));
   });
 });
 

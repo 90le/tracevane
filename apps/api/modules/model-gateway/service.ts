@@ -8930,6 +8930,7 @@ export function createModelGatewayService(
     }
     if (useCodexAccountAudioUnsupported) {
       const message = "Codex account REST audio routes are not exposed by the Codex backend yet; use an OpenAI-compatible audio provider for /v1/audio/*.";
+      const isSpeechRoute = decision.routeId === "openai_audio_speech";
       appendRequestLog(requestLogEntry({
         kind: "gateway-request",
         startedAt,
@@ -8944,6 +8945,18 @@ export function createModelGatewayService(
         error: {
           code: "model_gateway_codex_account_audio_unsupported",
           message,
+          details: {
+            providerType: "codex-account",
+            feasibility: "blocked-no-codex-account-rest-audio-contract",
+            reference:
+              "OpenAI documents request-based audio APIs, but no stable Codex account backend REST audio contract has been verified for Studio Gateway.",
+            alternatives: [
+              "Use an OpenAI-compatible provider for /v1/audio/transcriptions, /v1/audio/translations, or /v1/audio/speech.",
+              isSpeechRoute
+                ? "Use /v1/responses or /v1/chat/completions for Codex account text output until audio output is verified."
+                : "Use /v1/responses or /v1/chat/completions for Codex account text workflows until audio input is verified.",
+            ],
+          },
           decision,
         },
       });

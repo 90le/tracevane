@@ -5,7 +5,7 @@ import { sendJson } from "../../core/http.js";
 
 const REALTIME_UNSUPPORTED_CODE = "model_gateway_codex_account_realtime_unsupported";
 const REALTIME_UNSUPPORTED_MESSAGE =
-  "Studio Gateway does not expose Codex account Realtime or Responses WebSocket yet; use /v1/responses, /v1/chat/completions, /v1/messages, or an OpenAI-compatible realtime provider.";
+  "Studio Gateway does not expose Codex account Realtime or Responses WebSocket yet; use /v1/responses, /v1/chat/completions, /v1/messages, or connect directly to an official realtime provider until a Gateway WebSocket bridge is verified.";
 
 const realtimeUnsupportedServer = new WebSocketServer({ noServer: true });
 
@@ -28,11 +28,11 @@ export function modelGatewayRealtimeUnsupportedPayload(): Record<string, unknown
         providerType: "codex-account",
         feasibility: "blocked-no-stable-codex-account-realtime-contract",
         reference:
-          "No official or directly verified Codex account Realtime/WebSocket contract is available for Studio Gateway yet; this route stays explicit unsupported until a full turn-state contract is verified and tested.",
+          "OpenAI documents Responses WebSocket mode and Realtime WebSocket, but no official or directly verified Codex account backend Realtime/WebSocket contract is available for Studio Gateway yet; this route stays explicit unsupported until a full turn-state contract is verified and tested.",
         alternatives: [
           "Use /v1/responses for Codex account text and tool workflows.",
           "Use /v1/chat/completions or /v1/messages through Gateway protocol conversion.",
-          "Use an OpenAI-compatible realtime/audio provider for realtime or audio routes.",
+          "For realtime sessions, connect directly to an official/OpenAI-compatible realtime provider until Studio Gateway has a verified WebSocket bridge.",
         ],
       },
     },
