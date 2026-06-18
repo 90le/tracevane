@@ -85,6 +85,42 @@ Naming gate before any rename:
 
 Working placeholder in docs: **Studio AI Workbench**.
 
+Current leading candidate: **Tracevane**.
+
+Meaning:
+
+- `Trace` - every agent run should leave evidence: session lifecycle, model route, tool calls, approvals, files, errors, tokens and final delivery.
+- `Vane` - the workbench points humans toward the current runtime direction: running, waiting, failed, complete, degraded or needs repair.
+
+Why this is the current best candidate:
+
+- It does not depend on OpenClaw as the product identity.
+- It avoids crowded market words like `Agent`, `Task`, `Ops`, `Studio`, `Nexus`, `Relay`, `Harbor`, `Yard`, `Plane`, `Smith` and `Cell`.
+- It is short enough for package, CLI, app title and docs.
+- It fits the product thesis: local agent operations are only trustworthy when work is traceable and steerable.
+
+Initial 2026-06-18 preflight:
+
+| Check | Result |
+| --- | --- |
+| Exact web search | No direct `Tracevane` AI/software product hit found. |
+| Split phrase search | `Trace Vane` appears as person/name fragments and generic technical text, not as a visible AI/software product brand. |
+| npm registry | `https://registry.npmjs.org/tracevane` returned 404. |
+| PyPI registry | `https://pypi.org/pypi/tracevane/json` returned 404. |
+| Docker Hub official library | `https://hub.docker.com/v2/repositories/library/tracevane/` returned 404. |
+| GitHub repo-name search | `tracevane in:name` returned 0 repositories through GitHub search API. |
+| DNS signal | No DNS record found locally for `tracevane.com`, `tracevane.dev`, `tracevane.ai`, `tracevane.io` or `tracevane.app`. This is not a registrar availability guarantee. |
+
+Preflight status: **recommended candidate, not legally cleared**.
+
+Suggested usage until final approval:
+
+- Product brand: `Tracevane`
+- Descriptive subtitle: `Local AI Agent Control Workbench`
+- Chinese description: `本地 AI Agent 控制工作台`
+
+Do not rename package metadata, plugin metadata, domains or UI globally until the user confirms the name and a registrar/trademark check is completed.
+
 ## 5. Documentation Reset
 
 Current docs should be rebuilt around durable boundaries, not per-turn implementation logs.
