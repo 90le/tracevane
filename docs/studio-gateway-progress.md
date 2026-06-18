@@ -407,6 +407,11 @@
 - 本轮 Channel async TUI 本地回归通过：`node --test --test-name-pattern "async child-task waits alive|async child-task waits after grace stops|local heartbeat smoke script" tests/system/channel-connectors-service.test.mjs tests/system/channel-connectors-agent-heartbeat-local-script.test.mjs`，4/4 通过；`node scripts/smoke-channel-connectors-agent-heartbeat-local.mjs --json`，19/19 通过；覆盖 Claude 真实 `◯ deep-research ... ↓ tokens` TUI、Codex subagents 和 OpenCode parallel tasks 的 `process/async-task` 非终态进度。
 - 本轮 Channel 清理：Feishu transport 未暴露的 `studio-feishu-actions` / Docx / Drive / Wiki / Bitable 直接 action helper 和对应 direct-action 回归已删除；daemon 仍保留旧 code fence 剥除，避免历史 Agent 输出污染最终回复。
 - 本轮 Gateway unsupported 合同补强：核验 OpenAI 官方 audio/realtime/Responses WebSocket 与 `openai-node` Realtime 说明后，确认官方能力存在但 Codex account backend bridge 仍缺稳定合同；Codex account audio/realtime unsupported envelope 已补齐 feasibility、reference 和替代路径，realtime 文案不再暗示 Gateway 内 provider 切换即可使用。
+- 本轮 Gateway smoke：
+  - `node scripts/smoke-model-gateway-cli.mjs --apps codex,claude-code,opencode,gateway --strict` 通过，isolated mock Gateway 下 Codex、Claude Code、OpenCode 三类客户端协议均命中预期路径并返回 `GATEWAY_OK`。
+  - `node scripts/smoke-model-gateway-account-media.mjs --json` 通过，daemon `/v1/models` 暴露 `gpt-image-2`、11 个音频模型、3 个 realtime 模型；Codex account image edits 和 audio 仍返回结构化 unsupported；生图未跑，保持低成本。
+  - 临时将 `codex` / `claude-code` / `opencode` / `openclaw` active provider 指向 ready 的单账号 `codex-account` 后，`node scripts/smoke-model-gateway-account-pool.mjs --json --strict --timeout-ms 240000` 通过：1 个 ready account、Responses 请求、accountRouting 和 sticky 均通过，多账号策略按可选 skip 记录；随后 `active-route-smoke` 覆盖 `gpt-5.5` 的 Codex Responses、Claude Anthropic adapter 和 OpenCode Chat adapter，全部返回 `GATEWAY_OK`；验证后 activeProviders 已恢复为空。
+  - `node scripts/smoke-model-gateway-live.mjs --providers bigmodel-chat,bigmodel-anthropic,gmn-responses --request-timeout-ms 90000 --timeout-ms 300000` 非 strict 执行，当前环境缺少 BigModel / GMN key，三个 live provider proof 均为 skipped，不作为失败。
 - 本轮文档清理验证以 `git diff --check` 和 stale term 检查为准。
 
 ## 已知边界
