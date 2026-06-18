@@ -3622,6 +3622,183 @@ test("model gateway probes open circuit provider after retry window for requeste
   assert.match(decision.failoverReason || "", /retry window elapsed/);
 });
 
+test("model gateway respects Retry-After when opening provider circuits", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "retry-after-primary",
+      name: "Retry After Primary",
+      appScopes: ["openclaw"],
+      baseUrl: "https://retry-after-primary.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "retry-after-model",
+        models: [{ id: "retry-after-model" }],
+      },
+      failover: { priority: 1 },
+    },
+    secret: { apiKey: "sk-retry-after-primary" },
+    setActiveScopes: ["openclaw"],
+  });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "retry-after-backup",
+      name: "Retry After Backup",
+      appScopes: ["openclaw"],
+      baseUrl: "https://retry-after-backup.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "retry-after-model",
+        models: [{ id: "retry-after-model" }],
+      },
+      failover: { priority: 2 },
+    },
+    secret: { apiKey: "sk-retry-after-backup" },
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+    });
+    if (String(url).startsWith("https://retry-after-primary.example.test")) {
+      return new Response(JSON.stringify({
+        error: {
+          message: "rate limited",
+          type: "rate_limit_error",
+          code: "rate_limit_exceeded",
+        },
+      }), {
+        status: 429,
+        headers: {
+          "content-type": "application/json",
+          "retry-after": "120",
+        },
+      });
+    }
+    return new Response(JSON.stringify({
+      id: "chatcmpl_retry_after_backup",
+      choices: [{ message: { role: "assistant", content: "backup ok" } }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const first = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "retry-after-model",
+          messages: [{ role: "user", content: "hit primary" }],
+        },
+      });
+      assert.equal(first.status, 429);
+      assert.equal(first.headers["x-openclaw-model-gateway-provider"], "retry-after-primary");
+
+      let providers = await requestJson(`${baseUrl}/api/model-gateway/providers`);
+      let primary = providers.body.providers.find((item) => item.id === "retry-after-primary");
+      assert.equal(primary.health.consecutiveFailures, 1);
+      assert.equal(primary.health.circuitState, "open");
+      assert.ok(Date.parse(primary.health.retryAfterUntil) > Date.now() + 30_000);
+
+      const second = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "retry-after-model",
+          messages: [{ role: "user", content: "fallback please" }],
+        },
+      });
+      assert.equal(second.status, 200);
+      assert.equal(second.headers["x-openclaw-model-gateway-provider"], "retry-after-backup");
+      assert.equal(second.body.choices[0].message.content, "backup ok");
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.providerId, entry.statusCode, entry.outcome, entry.errorCode]), [
+        ["retry-after-primary", 429, "failure", "rate_limit_exceeded"],
+        ["retry-after-backup", 200, "success", null],
+      ]);
+
+      providers = await requestJson(`${baseUrl}/api/model-gateway/providers`);
+      primary = providers.body.providers.find((item) => item.id === "retry-after-primary");
+      const backup = providers.body.providers.find((item) => item.id === "retry-after-backup");
+      assert.equal(primary.health.circuitState, "open");
+      assert.equal(backup.health.circuitState, "closed");
+      assert.equal(backup.health.consecutiveFailures, 0);
+      assert.ok(backup.health.lastSuccessAt);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(upstreamCalls.map((item) => item.url), [
+    "https://retry-after-primary.example.test/v1/chat/completions",
+    "https://retry-after-backup.example.test/v1/chat/completions",
+  ]);
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-retry-after-primary");
+  assert.equal(upstreamCalls[1].authorization, "Bearer sk-retry-after-backup");
+});
+
+test("model gateway does not probe open circuits until Retry-After expires", () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const service = createModelGatewayService(config);
+  const futureRetryAfter = new Date(Date.now() + 120_000).toISOString();
+  const expiredRetryAfter = new Date(Date.now() - 1_000).toISOString();
+
+  const provider = {
+    id: "retry-after-only",
+    name: "Retry After Only",
+    appScopes: ["codex"],
+    baseUrl: "https://retry-after-only.example.test/v1",
+    apiFormat: "openai_responses",
+    authStrategy: "bearer",
+    models: {
+      defaultModel: "retry-after-model",
+      models: [{ id: "retry-after-model" }],
+    },
+    health: {
+      circuitState: "open",
+      lastFailureAt: new Date().toISOString(),
+      retryAfterUntil: futureRetryAfter,
+      lastError: "rate limited",
+      consecutiveFailures: 1,
+    },
+    failover: { priority: 1 },
+  };
+  service.upsertProvider(undefined, {
+    provider,
+    setActiveScopes: ["codex"],
+  });
+
+  let decision = service.resolveRouteDecision("POST", "/v1/responses", {}, "retry-after-model");
+  assert.equal(decision.mode, "missing-provider");
+  assert.equal(decision.provider, null);
+  assert.match(decision.reason || "", /no fallback provider is available yet/);
+
+  service.upsertProvider(undefined, {
+    provider: {
+      ...provider,
+      health: {
+        ...provider.health,
+        retryAfterUntil: expiredRetryAfter,
+      },
+    },
+  });
+
+  decision = service.resolveRouteDecision("POST", "/v1/responses", {}, "retry-after-model");
+  assert.equal(decision.provider?.id, "retry-after-only");
+  assert.match(decision.failoverReason || "", /retry window elapsed/);
+});
+
 test("model gateway exposes enabled provider model pool through OpenAI models endpoint", async () => {
   const root = makeTempRoot();
   const config = createStudioConfig(root);

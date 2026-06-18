@@ -47,8 +47,8 @@ Account-backed provider 对外仍暴露：
 
 - 会话类请求优先 sticky 到同一账户，sticky key 来自 `metadata.user_id`、`Session_id`、`X-Session-ID`、`X-Client-Request-Id`、`conversation_id` 或 normalized prompt/cache key。
 - sticky 账户不可用时允许 failover，但必须写 runtime log，避免静默换上下文。
-- 同模型可跨账户、跨 endpoint、跨 provider 组成模型池；账户级健康、provider 级 priority、endpoint 级 priority 一起参与选择。
-- 账户进入 auth failure、quota exceeded、rate limited、capacity error 后进入可解释 cooldown；非账户 provider 连续 started streaming adapter 失败会更新 health/circuit 并按 failover 走 backup；用户可手动禁用、刷新或重试。
+- 同模型可跨账户、跨 endpoint、跨 provider 组成模型池；账户级健康、provider 级 priority、endpoint 级 priority、provider/endpoint `Retry-After` circuit 一起参与选择。
+- 账户进入 auth failure、quota exceeded、rate limited、capacity error 后进入可解释 cooldown；非账户 provider 的 429 / `Retry-After` 或连续 started streaming adapter 失败会更新 health/circuit 并按 failover 走 backup；用户可手动禁用、刷新或重试。
 
 ## 功能清单
 

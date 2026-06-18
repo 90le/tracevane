@@ -1285,6 +1285,7 @@ function normalizeHealth(value: unknown, fallback?: ModelGatewayProviderHealth):
       : fallback?.circuitState || "closed",
     lastSuccessAt: normalizeString(source.lastSuccessAt, fallback?.lastSuccessAt || "") || null,
     lastFailureAt: normalizeString(source.lastFailureAt, fallback?.lastFailureAt || "") || null,
+    retryAfterUntil: normalizeString(source.retryAfterUntil, fallback?.retryAfterUntil || "") || null,
     lastLatencyMs: typeof source.lastLatencyMs === "number" ? source.lastLatencyMs : fallback?.lastLatencyMs || null,
     lastError: normalizeString(source.lastError, fallback?.lastError || "") || null,
     consecutiveFailures: typeof source.consecutiveFailures === "number"
@@ -2975,6 +2976,9 @@ function routeProtocolPenalty(provider: ModelGatewayProvider, routeId: ModelGate
 
 function healthCircuitRetryReady(health: ModelGatewayProviderHealth, nowMs = Date.now()): boolean {
   if (health.circuitState !== "open") return false;
+  const retryAfterUntilMs = Date.parse(health.retryAfterUntil || "");
+  if (Number.isFinite(retryAfterUntilMs) && retryAfterUntilMs > nowMs) return false;
+  if (Number.isFinite(retryAfterUntilMs) && retryAfterUntilMs <= nowMs) return true;
   const lastFailureMs = Date.parse(health.lastFailureAt || "");
   if (!Number.isFinite(lastFailureMs)) return true;
   return nowMs - lastFailureMs >= MODEL_GATEWAY_CIRCUIT_OPEN_RETRY_MS;
@@ -5187,6 +5191,7 @@ export function createModelGatewayService(
     latencyMs: number | null,
     errorMessage: string | null,
     endpointProfileId: string | null = null,
+    retryAfterUntil: string | null = null,
   ): void {
     const registry = readRegistry();
     const provider = findProvider(registry, providerId);
@@ -5196,16 +5201,18 @@ export function createModelGatewayService(
       ? provider.endpointProfiles.find((profile) => profile.id === endpointProfileId)?.health
       : provider.health;
     if (!targetHealth) return;
+    const nextConsecutiveFailures = success ? 0 : targetHealth.consecutiveFailures + 1;
     const nextHealth = {
       ...targetHealth,
       lastLatencyMs: latencyMs,
       lastSuccessAt: success ? stamp : targetHealth.lastSuccessAt,
       lastFailureAt: success ? targetHealth.lastFailureAt : stamp,
+      retryAfterUntil: success ? null : retryAfterUntil,
       lastError: success ? null : errorMessage,
-      consecutiveFailures: success ? 0 : targetHealth.consecutiveFailures + 1,
+      consecutiveFailures: nextConsecutiveFailures,
       circuitState: success
         ? "closed"
-        : targetHealth.consecutiveFailures + 1 >= 3
+        : retryAfterUntil || nextConsecutiveFailures >= 3
           ? "open"
           : targetHealth.circuitState,
     };
@@ -5977,6 +5984,11 @@ export function createModelGatewayService(
       Math.max(0, timestamp - Date.now()),
       CODEX_ACCOUNT_UPSTREAM_RETRY_AFTER_MAX_MS,
     );
+  }
+
+  function retryAfterUntilIso(headers: Headers | null | undefined): string | null {
+    const delayMs = retryAfterMs(headers);
+    return delayMs === null ? null : new Date(Date.now() + delayMs).toISOString();
   }
 
   function codexAccountUpstreamErrorDisposition(
@@ -8852,8 +8864,9 @@ export function createModelGatewayService(
       success: boolean,
       latencyMs: number | null,
       errorMessage: string | null,
+      retryAfterUntil: string | null = null,
     ) => {
-      updateProviderHealth(provider.id, success, latencyMs, errorMessage, selectedEndpointProfileId);
+      updateProviderHealth(provider.id, success, latencyMs, errorMessage, selectedEndpointProfileId, retryAfterUntil);
       if (success && selectedAccountForRequest) {
         markCodexAccountReady(provider.id, selectedAccountForRequest.id);
       }
@@ -9349,6 +9362,7 @@ export function createModelGatewayService(
       const latencyMs = responseHeaderMs;
       const healthSuccess = isProviderHealthSuccess(upstream.status, null);
       const errorMessage = healthSuccess ? null : `Upstream returned HTTP ${upstream.status}.`;
+      const upstreamRetryAfterUntil = retryAfterUntilIso(upstream.headers);
       const streamingAdapter = useCodexResponsesStreamingAdapter
         ? {
           bodyMissingCode: "model_gateway_codex_streaming_body_missing",
@@ -9401,7 +9415,7 @@ export function createModelGatewayService(
       if (streamingAdapter && upstream.status >= 200 && upstream.status < 300) {
         if (!upstream.body) {
           const message = streamingAdapter.bodyMissingMessage;
-          updateSelectedProviderHealth(false, latencyMs, message);
+          updateSelectedProviderHealth(false, latencyMs, message, upstreamRetryAfterUntil);
           appendRequestLog(requestLogEntry({
             kind: "gateway-request",
             startedAt,
@@ -9469,7 +9483,7 @@ export function createModelGatewayService(
               upstream.headers,
             );
           }
-          updateSelectedProviderHealth(false, latencyMs, message);
+          updateSelectedProviderHealth(false, latencyMs, message, upstreamRetryAfterUntil);
           appendRequestLog(requestLogEntry({
             kind: "gateway-request",
             startedAt,
@@ -9545,7 +9559,12 @@ export function createModelGatewayService(
             },
           });
           const observedStreamError = streamUpstreamError.current;
-          updateSelectedProviderHealth(!observedStreamError, latencyMs, observedStreamError?.message || null);
+          updateSelectedProviderHealth(
+            !observedStreamError,
+            latencyMs,
+            observedStreamError?.message || null,
+            observedStreamError ? upstreamRetryAfterUntil : null,
+          );
           appendRequestLog(requestLogEntry({
             kind: "gateway-request",
             startedAt,
@@ -9588,12 +9607,14 @@ export function createModelGatewayService(
 
       const responseText = await upstream.text();
       const responseBody = Buffer.from(responseText);
+      let passthroughUpstreamError: ReturnType<typeof normalizeAdaptedUpstreamError> | null = null;
       if (upstream.status < 200 || upstream.status >= 300) {
         const normalizedError = normalizeAdaptedUpstreamError(
           responseText,
           upstream.status,
           errorMessage || `Upstream returned HTTP ${upstream.status}.`,
         );
+        passthroughUpstreamError = normalizedError;
         if (
           useCodexResponsesChatAdapter
           || useCodexResponsesAnthropicAdapter
@@ -9608,7 +9629,7 @@ export function createModelGatewayService(
             normalizedError.error,
             upstream.headers,
           );
-          updateSelectedProviderHealth(healthSuccess, latencyMs, normalizedError.error.message);
+          updateSelectedProviderHealth(healthSuccess, latencyMs, normalizedError.error.message, upstreamRetryAfterUntil);
           appendRequestLog(requestLogEntry({
             kind: "gateway-request",
             startedAt,
@@ -9625,7 +9646,7 @@ export function createModelGatewayService(
           return;
         }
         if (shouldNormalizePassthroughUpstreamError(upstream.headers, responseText)) {
-          updateSelectedProviderHealth(healthSuccess, latencyMs, normalizedError.error.message);
+          updateSelectedProviderHealth(healthSuccess, latencyMs, normalizedError.error.message, upstreamRetryAfterUntil);
           appendRequestLog(requestLogEntry({
             kind: "gateway-request",
             startedAt,
@@ -9989,7 +10010,13 @@ export function createModelGatewayService(
         return;
       }
 
-      updateSelectedProviderHealth(healthSuccess, latencyMs, errorMessage);
+      const passthroughErrorMessage = passthroughUpstreamError?.error.message || errorMessage;
+      updateSelectedProviderHealth(
+        healthSuccess,
+        latencyMs,
+        passthroughErrorMessage,
+        healthSuccess ? null : upstreamRetryAfterUntil,
+      );
       appendRequestLog(requestLogEntry({
         kind: "gateway-request",
         startedAt,
@@ -9998,8 +10025,8 @@ export function createModelGatewayService(
         statusCode: upstream.status,
         outcome: requestOutcomeFromStatus(upstream.status, null, healthSuccess),
         firstByteMs: firstByteMsForLog(),
-        errorCode: healthSuccess ? null : "model_gateway_upstream_status",
-        errorMessage,
+        errorCode: healthSuccess ? null : String(passthroughUpstreamError?.error.code || "model_gateway_upstream_status"),
+        errorMessage: passthroughErrorMessage,
         usage: upstream.status >= 200 && upstream.status < 300
           ? runtimeUsageForRoute(decision.routeId, responseText)
           : null,

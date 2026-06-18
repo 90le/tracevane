@@ -194,6 +194,7 @@ export interface ModelGatewayProviderHealth {
   circuitState: ModelGatewayCircuitState;
   lastSuccessAt: string | null;
   lastFailureAt: string | null;
+  retryAfterUntil: string | null;
   lastLatencyMs: number | null;
   lastError: string | null;
   consecutiveFailures: number;
