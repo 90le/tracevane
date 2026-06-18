@@ -136,8 +136,12 @@ import {
   isCodexResponsesStreamingRequest,
 } from "./codex-adapter.js";
 import { CodexChatHistoryStore } from "./codex-history.js";
-import { writeCodexResponsesSseFromChatSse } from "./codex-streaming.js";
 import {
+  ModelGatewayCodexStreamAdapterError,
+  writeCodexResponsesSseFromChatSse,
+} from "./codex-streaming.js";
+import {
+  ModelGatewayStreamAdapterError,
   writeAnthropicMessagesSseFromChatSse,
   writeAnthropicMessagesSseFromResponsesSse,
   writeChatCompletionsSseFromAnthropicMessagesSse,
@@ -4383,6 +4387,18 @@ function requestOutcomeFromStatus(
   if (errorCode === "model_gateway_adapter_required") return "adapter-required";
   if (errorCode === "model_gateway_provider_missing") return "missing-provider";
   return "failure";
+}
+
+function streamAdapterErrorEnvelope(error: unknown): { message: string; type?: string; code?: string } | null {
+  if (error instanceof ModelGatewayStreamAdapterError || error instanceof ModelGatewayCodexStreamAdapterError) {
+    const streamError = error.streamError;
+    return {
+      message: streamError.message,
+      ...(streamError.type ? { type: streamError.type } : {}),
+      ...(streamError.code ? { code: streamError.code } : {}),
+    };
+  }
+  return null;
 }
 
 function requestLogEntry(options: {
@@ -9438,7 +9454,21 @@ export function createModelGatewayService(
             usage: runtimeUsageForRoute(decision.routeId, streamingResult),
           }));
         } catch (error) {
-          const message = error instanceof Error ? error.message : streamingAdapter.adapterFailedMessage;
+          const streamError = streamAdapterErrorEnvelope(error);
+          const message = streamError?.message || (error instanceof Error ? error.message : streamingAdapter.adapterFailedMessage);
+          if (streamError && isCodexAccountBackedProvider(provider)) {
+            updateCodexAccountAfterUpstreamFailure(
+              provider,
+              selectedAccountForRequest,
+              502,
+              {
+                message,
+                type: streamError.type || streamingAdapter.adapterFailedCode,
+                code: streamError.code || streamError.type || streamingAdapter.adapterFailedCode,
+              },
+              upstream.headers,
+            );
+          }
           updateSelectedProviderHealth(false, latencyMs, message);
           appendRequestLog(requestLogEntry({
             kind: "gateway-request",
@@ -9448,13 +9478,13 @@ export function createModelGatewayService(
             statusCode: 502,
             outcome: "failure",
             firstByteMs: firstByteMsForLog(),
-            errorCode: streamingAdapter.adapterFailedCode,
+            errorCode: streamError?.code || streamError?.type || streamingAdapter.adapterFailedCode,
             errorMessage: message,
           }));
           if (!res.headersSent) {
             sendJson(res, 502, {
               error: {
-                code: streamingAdapter.adapterFailedCode,
+                code: streamError?.code || streamError?.type || streamingAdapter.adapterFailedCode,
                 message,
                 decision,
               },

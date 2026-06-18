@@ -7990,6 +7990,17 @@ test("model gateway maps streaming chat sse errors to codex response failed even
         assert.equal(failed.error.message, expected.message);
         assert.equal(failed.error.type, expected.type);
       }
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.outcome, entry.errorCode]), [
+        ["failure", "invalid_request_error"],
+        ["failure", "rate_limit_exceeded"],
+      ]);
+
+      const providers = await requestJson(`${baseUrl}/api/model-gateway/providers`);
+      const provider = providers.body.providers.find((item) => item.id === "codex-stream-error-adapter");
+      assert.equal(provider.health.consecutiveFailures, 2);
+      assert.equal(provider.health.circuitState, "closed");
     });
   } finally {
     globalThis.fetch = originalFetch;
@@ -8739,6 +8750,17 @@ test("model gateway maps started responses stream failures to chat and anthropic
         code: "rate_limit",
       });
       assert.ok(!anthropicEvents.some((item) => item.event === "message_stop"));
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.outcome, entry.errorCode]), [
+        ["failure", "rate_limit"],
+        ["failure", "rate_limit"],
+      ]);
+
+      const providers = await requestJson(`${baseUrl}/api/model-gateway/providers`);
+      const provider = providers.body.providers.find((item) => item.id === "responses-started-failed-stream-adapter");
+      assert.equal(provider.health.consecutiveFailures, 2);
+      assert.equal(provider.health.circuitState, "closed");
     });
   } finally {
     globalThis.fetch = originalFetch;
@@ -8839,6 +8861,17 @@ test("model gateway maps started anthropic stream errors to chat and responses e
       assert.equal(failed.error.type, "rate_limit_error");
       assert.equal(responseEvents.at(-1).data, "[DONE]");
       assert.ok(!responseEvents.some((item) => item.event === "response.completed"));
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.outcome, entry.errorCode]), [
+        ["failure", "rate_limit_error"],
+        ["failure", "rate_limit_error"],
+      ]);
+
+      const providers = await requestJson(`${baseUrl}/api/model-gateway/providers`);
+      const provider = providers.body.providers.find((item) => item.id === "anthropic-started-error-stream-adapter");
+      assert.equal(provider.health.consecutiveFailures, 2);
+      assert.equal(provider.health.circuitState, "closed");
     });
   } finally {
     globalThis.fetch = originalFetch;
@@ -8848,6 +8881,146 @@ test("model gateway maps started anthropic stream errors to chat and responses e
   assert.equal(upstreamCalls[0].url, "https://anthropic-started-error-stream.example.test/v1/messages");
   assert.equal(upstreamCalls[0].xApiKey, "sk-anthropic-started-error-stream-secret");
   assert.equal(upstreamCalls[1].url, "https://anthropic-started-error-stream.example.test/v1/messages");
+});
+
+test("model gateway opens circuit on repeated started stream failures and routes fallback", async () => {
+  const root = makeTempRoot();
+  const config = createStudioConfig(root);
+  const ctx = createStudioContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "stream-fail-primary",
+      name: "Stream Fail Primary",
+      appScopes: ["openclaw"],
+      baseUrl: "https://stream-fail-primary.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "gpt-shared",
+        models: [{ id: "gpt-shared" }],
+      },
+      failover: { priority: 1 },
+    },
+    secret: {
+      apiKey: "sk-stream-fail-primary",
+    },
+    setActiveScopes: ["openclaw"],
+  });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "stream-fail-backup",
+      name: "Stream Fail Backup",
+      appScopes: ["openclaw"],
+      baseUrl: "https://stream-fail-backup.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "gpt-shared",
+        models: [{ id: "gpt-shared" }],
+      },
+      failover: { priority: 2 },
+    },
+    secret: {
+      apiKey: "sk-stream-fail-backup",
+    },
+  });
+
+  const handler = createStudioRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+    });
+    if (String(url).startsWith("https://stream-fail-primary.example.test")) {
+      const upstreamSse = [
+        "event: response.created",
+        "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_stream_fail\",\"object\":\"response\",\"status\":\"in_progress\",\"model\":\"gpt-shared\",\"output\":[],\"usage\":null}}",
+        "",
+        "event: response.output_text.delta",
+        "data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}",
+        "",
+        "event: response.failed",
+        "data: {\"type\":\"response.failed\",\"response\":{\"id\":\"resp_stream_fail\",\"error\":{\"message\":\"capacity exceeded\",\"type\":\"rate_limit_error\",\"code\":\"rate_limit\"}}}",
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n");
+      return new Response(upstreamSse, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
+    return new Response(JSON.stringify({
+      id: "chatcmpl_backup",
+      choices: [{ message: { role: "assistant", content: "backup ok" } }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      for (let index = 0; index < 3; index += 1) {
+        const streamed = await requestRaw(`${baseUrl}/v1/chat/completions`, {
+          method: "POST",
+          body: {
+            model: "gpt-shared",
+            stream: true,
+            messages: [{ role: "user", content: "fail after start" }],
+          },
+        });
+        assert.equal(streamed.status, 200);
+        const events = parseSseEvents(streamed.body);
+        assert.equal(events.find((item) => item.event === "error").data.error.code, "rate_limit");
+      }
+
+      let providers = await requestJson(`${baseUrl}/api/model-gateway/providers`);
+      let primary = providers.body.providers.find((item) => item.id === "stream-fail-primary");
+      assert.equal(primary.health.consecutiveFailures, 3);
+      assert.equal(primary.health.circuitState, "open");
+
+      const fallback = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-shared",
+          messages: [{ role: "user", content: "use fallback" }],
+        },
+      });
+      assert.equal(fallback.status, 200);
+      assert.equal(fallback.headers["x-openclaw-model-gateway-provider"], "stream-fail-backup");
+      assert.equal(fallback.body.choices[0].message.content, "backup ok");
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.providerId, entry.outcome, entry.errorCode]), [
+        ["stream-fail-primary", "failure", "rate_limit"],
+        ["stream-fail-primary", "failure", "rate_limit"],
+        ["stream-fail-primary", "failure", "rate_limit"],
+        ["stream-fail-backup", "success", null],
+      ]);
+
+      providers = await requestJson(`${baseUrl}/api/model-gateway/providers`);
+      primary = providers.body.providers.find((item) => item.id === "stream-fail-primary");
+      const backup = providers.body.providers.find((item) => item.id === "stream-fail-backup");
+      assert.equal(primary.health.circuitState, "open");
+      assert.equal(backup.health.circuitState, "closed");
+      assert.equal(backup.health.consecutiveFailures, 0);
+      assert.ok(backup.health.lastSuccessAt);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(upstreamCalls.map((item) => item.url), [
+    "https://stream-fail-primary.example.test/v1/responses",
+    "https://stream-fail-primary.example.test/v1/responses",
+    "https://stream-fail-primary.example.test/v1/responses",
+    "https://stream-fail-backup.example.test/v1/chat/completions",
+  ]);
+  assert.equal(upstreamCalls[0].authorization, "Bearer sk-stream-fail-primary");
+  assert.equal(upstreamCalls[3].authorization, "Bearer sk-stream-fail-backup");
 });
 
 test("model gateway adapts codex compact requests through openai chat providers", async () => {

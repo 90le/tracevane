@@ -10,6 +10,22 @@ export interface CodexStreamingAdapterResult {
   usage: JsonRecord | null;
 }
 
+export interface CodexStreamErrorEnvelope {
+  message: string;
+  type: string | null;
+  code: string | null;
+}
+
+export class ModelGatewayCodexStreamAdapterError extends Error {
+  readonly streamError: CodexStreamErrorEnvelope;
+
+  constructor(streamError: CodexStreamErrorEnvelope) {
+    super(streamError.message);
+    this.name = "ModelGatewayCodexStreamAdapterError";
+    this.streamError = streamError;
+  }
+}
+
 interface TextState {
   added: boolean;
   done: boolean;
@@ -73,7 +89,9 @@ export async function writeCodexResponsesSseFromChatSse(
       if (done) break;
     }
   } catch (error) {
-    failResponse(state, res, `Stream error: ${error instanceof Error ? error.message : String(error)}`, "stream_error");
+    const streamError = streamErrorFromThrown(error);
+    failResponse(state, res, streamError);
+    throw new ModelGatewayCodexStreamAdapterError(streamError);
   }
 
   if (buffer.trim() && !state.completed) {
@@ -159,9 +177,9 @@ function consumeSseBlock(block: string, state: StreamingState, res: http.ServerR
   }
 
   if (eventName === "error" || chunk.error !== undefined) {
-    const { message, type } = extractChatSseError(chunk);
-    failResponse(state, res, message, type);
-    return;
+    const error = extractChatSseError(chunk);
+    failResponse(state, res, error);
+    throw new ModelGatewayCodexStreamAdapterError(error);
   }
 
   handleChatChunk(chunk, state, res);
@@ -461,15 +479,15 @@ function finalizeResponse(state: StreamingState, res: http.ServerResponse): void
 function failResponse(
   state: StreamingState,
   res: http.ServerResponse,
-  message: string,
-  type: string | null,
+  error: CodexStreamErrorEnvelope,
 ): void {
   if (state.completed) return;
   ensureResponseStarted(state, res);
   const response = baseResponse(state, "failed", currentOutputItems(state));
   response.error = {
-    message,
-    ...(type ? { type } : {}),
+    message: error.message,
+    type: error.type || error.code || "server_error",
+    ...(error.code ? { code: error.code } : {}),
   };
   writeSseEvent(res, "response.failed", {
     type: "response.failed",
@@ -477,6 +495,15 @@ function failResponse(
   });
   res.write("data: [DONE]\n\n");
   state.completed = true;
+}
+
+function streamErrorFromThrown(error: unknown): CodexStreamErrorEnvelope {
+  if (error instanceof ModelGatewayCodexStreamAdapterError) return error.streamError;
+  return {
+    message: `Stream error: ${error instanceof Error ? error.message : String(error)}`,
+    type: "stream_error",
+    code: null,
+  };
 }
 
 function currentOutputItems(state: StreamingState): JsonRecord[] {
@@ -592,14 +619,15 @@ function extractReasoningDetailsText(value: unknown): string | null {
   return extractReasoningDetailsText(value.parts);
 }
 
-function extractChatSseError(value: JsonRecord): { message: string; type: string | null } {
+function extractChatSseError(value: JsonRecord): CodexStreamErrorEnvelope {
   const error = isRecord(value.error) ? value.error : value;
   const message = stringOrNull(error.message)
     || stringOrNull(error.detail)
     || (typeof value.error === "string" && value.error ? value.error : null)
     || JSON.stringify(error);
   const type = stringOrNull(error.type) || stringOrNull(error.code);
-  return { message, type };
+  const code = stringOrNull(error.code) || null;
+  return { message, type, code };
 }
 
 function splitContentAndInlineReasoning(

@@ -16,10 +16,20 @@ interface StreamResult {
   output?: JsonRecord[];
 }
 
-interface StreamErrorEnvelope {
+export interface StreamErrorEnvelope {
   message: string;
   type: string | null;
   code: string | null;
+}
+
+export class ModelGatewayStreamAdapterError extends Error {
+  readonly streamError: StreamErrorEnvelope;
+
+  constructor(streamError: StreamErrorEnvelope) {
+    super(streamError.message);
+    this.name = "ModelGatewayStreamAdapterError";
+    this.streamError = streamError;
+  }
 }
 
 interface ToolStreamBlock {
@@ -60,7 +70,7 @@ export async function writeAnthropicMessagesSseFromChatSse(
         const error = extractStreamError(event.json || {});
         if (state.started) {
           failAnthropicStream(state, res, error);
-          return;
+          throw new ModelGatewayStreamAdapterError(error);
         }
         throw new Error(error.message);
       }
@@ -89,7 +99,9 @@ export async function writeAnthropicMessagesSseFromChatSse(
     });
   } catch (error) {
     if (state.started) {
-      failAnthropicStream(state, res, errorFromThrown(error));
+      const streamError = errorFromThrown(error);
+      failAnthropicStream(state, res, streamError);
+      throw new ModelGatewayStreamAdapterError(streamError);
     } else {
       throw error;
     }
@@ -114,7 +126,7 @@ export async function writeChatCompletionsSseFromAnthropicMessagesSse(
         const error = extractStreamError(event.json || {});
         if (state.started) {
           failChatStream(state, res, error);
-          return;
+          throw new ModelGatewayStreamAdapterError(error);
         }
         throw new Error(error.message);
       }
@@ -177,7 +189,9 @@ export async function writeChatCompletionsSseFromAnthropicMessagesSse(
     });
   } catch (error) {
     if (state.started) {
-      failChatStream(state, res, errorFromThrown(error));
+      const streamError = errorFromThrown(error);
+      failChatStream(state, res, streamError);
+      throw new ModelGatewayStreamAdapterError(streamError);
     } else {
       throw error;
     }
@@ -208,7 +222,7 @@ export async function writeChatCompletionsSseFromResponsesSse(
         const error = extractResponsesFailedError(event.json);
         if (state.started) {
           failChatStream(state, res, error);
-          return;
+          throw new ModelGatewayStreamAdapterError(error);
         }
         throw new Error(error.message);
       }
@@ -280,7 +294,9 @@ export async function writeChatCompletionsSseFromResponsesSse(
     });
   } catch (error) {
     if (state.started) {
-      failChatStream(state, res, errorFromThrown(error));
+      const streamError = errorFromThrown(error);
+      failChatStream(state, res, streamError);
+      throw new ModelGatewayStreamAdapterError(streamError);
     } else {
       throw error;
     }
@@ -322,7 +338,7 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
         const error = extractResponsesFailedError(event.json);
         if (state.started) {
           failAnthropicStream(state, res, error);
-          return;
+          throw new ModelGatewayStreamAdapterError(error);
         }
         throw new Error(error.message);
       }
@@ -394,7 +410,9 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
     });
   } catch (error) {
     if (state.started) {
-      failAnthropicStream(state, res, errorFromThrown(error));
+      const streamError = errorFromThrown(error);
+      failAnthropicStream(state, res, streamError);
+      throw new ModelGatewayStreamAdapterError(streamError);
     } else {
       throw error;
     }
@@ -435,7 +453,7 @@ export async function writeCodexResponsesSseFromAnthropicMessagesSse(
         const error = extractStreamError(event.json || {});
         if (state.responseStarted) {
           failResponsesStream(state, res, error);
-          return;
+          throw new ModelGatewayStreamAdapterError(error);
         }
         throw new Error(error.message);
       }
@@ -503,7 +521,9 @@ export async function writeCodexResponsesSseFromAnthropicMessagesSse(
     });
   } catch (error) {
     if (state.responseStarted) {
-      failResponsesStream(state, res, errorFromThrown(error));
+      const streamError = errorFromThrown(error);
+      failResponsesStream(state, res, streamError);
+      throw new ModelGatewayStreamAdapterError(streamError);
     } else {
       throw error;
     }
@@ -618,6 +638,7 @@ function extractStreamError(payload: JsonRecord): StreamErrorEnvelope {
 }
 
 function errorFromThrown(error: unknown): StreamErrorEnvelope {
+  if (error instanceof ModelGatewayStreamAdapterError) return error.streamError;
   return {
     message: error instanceof Error ? error.message : String(error),
     type: "stream_error",
