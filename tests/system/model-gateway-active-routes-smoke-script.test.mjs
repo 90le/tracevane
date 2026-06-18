@@ -57,10 +57,10 @@ async function startMockGateway(options = {}) {
           {
             id: "glm",
             name: "GLM",
-            enabled: true,
+            enabled: options.providerEnabled !== false,
             sourceType: "api-key",
             apiFormat: "openai_chat",
-            appScopes: ["codex", "claude-code", "opencode"],
+            appScopes: options.appScopes || ["codex", "claude-code", "opencode"],
             models: { defaultModel: "glm-5.2", models: [{ id: "glm-5.2" }] },
             endpointProfiles: [
               { id: "coding-chat", enabled: true, apiFormat: "openai_chat" },
@@ -146,6 +146,8 @@ test("model gateway active route smoke restores active providers after success",
       "--json",
     ]);
     assert.equal(parsed.ok, true);
+    assert.deepEqual(parsed.preflightFailures, []);
+    assert.deepEqual(parsed.preflightWarnings, []);
     assert.deepEqual(parsed.routeSmokes.map((probe) => [probe.scope, probe.ok, probe.endpointProfile]), [
       ["codex", true, "coding-chat"],
       ["claude-code", true, "coding-anthropic"],
@@ -157,6 +159,87 @@ test("model gateway active route smoke restores active providers after success",
     assert.deepEqual(parsed.restoredActiveProviders, { codex: "old-codex" });
     assert.deepEqual(gateway.activeProviders, { codex: "old-codex" });
     assert.equal(gateway.requests.filter((request) => request.path === "/api/model-gateway/active-provider").length, 6);
+  } finally {
+    await gateway.close();
+  }
+});
+
+test("model gateway active route smoke reports disabled provider without mutating active providers", async () => {
+  const gateway = await startMockGateway({ providerEnabled: false });
+  try {
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        scriptPath,
+        "--endpoint", gateway.endpoint,
+        "--provider", "glm",
+        "--model", "glm-5.2",
+        "--scopes", "codex",
+        "--json",
+      ], {
+        cwd: repoRoot,
+        env: {
+          ...process.env,
+          STUDIO_GATEWAY_CLIENT_KEY: "test-gateway-key",
+        },
+        encoding: "utf8",
+      }),
+      (error) => {
+        const parsed = JSON.parse(error.stdout);
+        assert.equal(parsed.ok, false);
+        assert.deepEqual(parsed.preflightFailures, [
+          {
+            code: "model_gateway_provider_disabled",
+            message: "Provider 'glm' is disabled; enable it before running active route smoke.",
+          },
+        ]);
+        assert.deepEqual(parsed.routeSmokes, []);
+        assert.deepEqual(parsed.restoredActiveProviders, { codex: "old-codex" });
+        return true;
+      },
+    );
+    assert.equal(gateway.requests.filter((request) => request.path === "/api/model-gateway/active-provider").length, 0);
+    assert.deepEqual(gateway.activeProviders, { codex: "old-codex" });
+  } finally {
+    await gateway.close();
+  }
+});
+
+test("model gateway active route smoke reports scope mismatch before active provider mutation", async () => {
+  const gateway = await startMockGateway({ appScopes: ["codex"] });
+  try {
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        scriptPath,
+        "--endpoint", gateway.endpoint,
+        "--provider", "glm",
+        "--model", "glm-5.2",
+        "--scopes", "codex,opencode",
+        "--json",
+      ], {
+        cwd: repoRoot,
+        env: {
+          ...process.env,
+          STUDIO_GATEWAY_CLIENT_KEY: "test-gateway-key",
+        },
+        encoding: "utf8",
+      }),
+      (error) => {
+        const parsed = JSON.parse(error.stdout);
+        assert.equal(parsed.ok, false);
+        assert.deepEqual(parsed.preflightFailures, [
+          {
+            code: "model_gateway_provider_scope_mismatch",
+            scope: "opencode",
+            message: "Provider 'glm' is not available for opencode.",
+          },
+        ]);
+        assert.deepEqual(parsed.routeSmokes, []);
+        assert.deepEqual(parsed.restoredActiveProviders, { codex: "old-codex" });
+        return true;
+      },
+    );
+    assert.equal(gateway.requests.filter((request) => request.path === "/api/model-gateway/active-provider").length, 0);
+    assert.deepEqual(gateway.activeProviders, { codex: "old-codex" });
   } finally {
     await gateway.close();
   }

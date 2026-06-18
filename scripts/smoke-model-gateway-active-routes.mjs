@@ -135,6 +135,7 @@ async function fetchProviders(options, key) {
 function providerSummary(providersBody, providerId) {
   const provider = (providersBody.providers || []).find((item) => item?.id === providerId) || null;
   if (!provider) return null;
+  const modelEntries = Array.isArray(provider.models?.models) ? provider.models.models : [];
   return {
     id: provider.id,
     name: provider.name || provider.id,
@@ -142,6 +143,10 @@ function providerSummary(providersBody, providerId) {
     sourceType: provider.sourceType || null,
     apiFormat: provider.apiFormat || null,
     defaultModel: provider.models?.defaultModel || null,
+    models: modelEntries.map((model) => ({
+      id: model?.id || "",
+      aliases: Array.isArray(model?.aliases) ? model.aliases : [],
+    })).filter((model) => model.id),
     appScopes: Array.isArray(provider.appScopes) ? provider.appScopes : [],
     endpointProfiles: Array.isArray(provider.endpointProfiles)
       ? provider.endpointProfiles.map((endpoint) => ({
@@ -151,6 +156,64 @@ function providerSummary(providersBody, providerId) {
       }))
       : [],
   };
+}
+
+function createResult(options, provider, originalActiveProviders) {
+  return {
+    ok: false,
+    endpoint: options.endpoint,
+    provider,
+    providerId: options.providerId,
+    model: options.model || provider?.defaultModel || null,
+    scopes: options.scopes,
+    checkedAt: new Date().toISOString(),
+    originalActiveProviders,
+    preflightFailures: [],
+    preflightWarnings: [],
+    routeSmokes: [],
+    setupFailures: [],
+    restoredActiveProviders: null,
+    restoreFailures: [],
+    restoreMismatches: [],
+  };
+}
+
+function addProviderPreflight(result, options, provider) {
+  if (!provider) {
+    result.preflightFailures.push({
+      code: "model_gateway_provider_not_found",
+      message: `Provider '${options.providerId}' was not found.`,
+    });
+    return;
+  }
+  if (!provider.enabled) {
+    result.preflightFailures.push({
+      code: "model_gateway_provider_disabled",
+      message: `Provider '${provider.id}' is disabled; enable it before running active route smoke.`,
+    });
+  }
+  const appScopes = new Set(provider.appScopes || []);
+  for (const scope of options.scopes) {
+    if (!appScopes.has(scope)) {
+      result.preflightFailures.push({
+        code: "model_gateway_provider_scope_mismatch",
+        scope,
+        message: `Provider '${provider.id}' is not available for ${scope}.`,
+      });
+    }
+  }
+  const modelIds = new Set();
+  for (const model of provider.models || []) {
+    if (model.id) modelIds.add(model.id);
+    for (const alias of model.aliases || []) modelIds.add(alias);
+  }
+  if (provider.defaultModel) modelIds.add(provider.defaultModel);
+  if (options.model && modelIds.size && !modelIds.has(options.model)) {
+    result.preflightWarnings.push({
+      code: "model_gateway_model_not_in_catalog",
+      message: `Model '${options.model}' is not listed in provider '${provider.id}' catalog; smoke will still try it when other preflight checks pass.`,
+    });
+  }
 }
 
 async function setActiveProvider(options, key, scope, providerId) {
@@ -226,6 +289,16 @@ function printResult(result, json) {
   }
   console.log(`Gateway active route smoke: ${result.ok ? "PASS" : "FAIL"}`);
   console.log(`Provider: ${result.provider?.id || result.providerId}  Model: ${result.model || "(default)"}`);
+  if (result.preflightFailures.length) {
+    console.log("Preflight failures:");
+    for (const failure of result.preflightFailures) {
+      console.log(`- ${failure.scope ? `${failure.scope}: ` : ""}${failure.code}: ${failure.message}`);
+    }
+  }
+  if (result.preflightWarnings.length) {
+    console.log("Preflight warnings:");
+    for (const warning of result.preflightWarnings) console.log(`- ${warning.code}: ${warning.message}`);
+  }
   for (const smoke of result.routeSmokes) {
     console.log(`- ${smoke.scope}: ${smoke.ok ? "PASS" : "FAIL"} ${smoke.routeId || ""} ${smoke.endpointProfile || ""}`);
     if (smoke.error) console.log(`  ${smoke.error.code || "error"}: ${smoke.error.message || ""}`);
@@ -252,50 +325,38 @@ async function main() {
   const before = await fetchProviders(options, key);
   const originalActiveProviders = { ...(before.activeProviders || {}) };
   const provider = providerSummary(before, options.providerId);
-  if (!provider) throw new Error(`Provider '${options.providerId}' was not found.`);
-  if (!provider.enabled) throw new Error(`Provider '${options.providerId}' is disabled.`);
-
-  const result = {
-    ok: false,
-    endpoint: options.endpoint,
-    provider,
-    providerId: options.providerId,
-    model: options.model || provider.defaultModel || null,
-    scopes: options.scopes,
-    checkedAt: new Date().toISOString(),
-    originalActiveProviders,
-    routeSmokes: [],
-    setupFailures: [],
-    restoredActiveProviders: null,
-    restoreFailures: [],
-    restoreMismatches: [],
-  };
+  const result = createResult(options, provider, originalActiveProviders);
+  addProviderPreflight(result, options, provider);
 
   try {
-    for (const scope of options.scopes) {
-      try {
-        await setActiveProvider(options, key, scope, options.providerId);
-      } catch (error) {
-        result.setupFailures.push({
-          scope,
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-    if (result.setupFailures.length === 0) {
+    if (result.preflightFailures.length === 0) {
       for (const scope of options.scopes) {
-        result.routeSmokes.push(await runActiveRouteSmoke(options, key, scope));
+        try {
+          await setActiveProvider(options, key, scope, options.providerId);
+        } catch (error) {
+          result.setupFailures.push({
+            scope,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      if (result.setupFailures.length === 0) {
+        for (const scope of options.scopes) {
+          result.routeSmokes.push(await runActiveRouteSmoke(options, key, scope));
+        }
       }
     }
   } finally {
-    for (const scope of options.scopes) {
-      try {
-        await setActiveProvider(options, key, scope, originalActiveProviders[scope] || "");
-      } catch (error) {
-        result.restoreFailures.push({
-          scope,
-          error: error instanceof Error ? error.message : String(error),
-        });
+    if (result.preflightFailures.length === 0 || result.setupFailures.length > 0 || result.routeSmokes.length > 0) {
+      for (const scope of options.scopes) {
+        try {
+          await setActiveProvider(options, key, scope, originalActiveProviders[scope] || "");
+        } catch (error) {
+          result.restoreFailures.push({
+            scope,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
       }
     }
     try {
@@ -317,6 +378,7 @@ async function main() {
   }
 
   result.ok = result.routeSmokes.length === options.scopes.length
+    && result.preflightFailures.length === 0
     && result.routeSmokes.every((item) => item.ok)
     && result.setupFailures.length === 0
     && result.restoreFailures.length === 0
