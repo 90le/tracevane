@@ -856,7 +856,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
     if (this.initialized) return;
     await this.request("initialize", {
       clientInfo: {
-        name: "openclaw-tracevane-channel-connectors",
+        name: "tracevane-channel-connectors",
         title: "Tracevane Channel Connectors",
         version: "0",
       },
@@ -877,7 +877,7 @@ export class CodexAppServerSession implements ChannelConnectorAgentSessionDriver
       cwd: this.cwd,
       approvalPolicy: approvalPolicy(this.permissionMode),
       sandbox: sandboxMode(this.permissionMode),
-      serviceName: "openclaw-tracevane-channel-connectors",
+      serviceName: "tracevane-channel-connectors",
       ephemeral: false,
       threadSource: "user",
     });

@@ -215,7 +215,7 @@ function liveAgentTurnRequest(input) {
 async function initializeThread(input) {
   const initialize = await request(input.transport, "initialize", {
     clientInfo: {
-      name: "openclaw-tracevane-channel-connectors-live-smoke",
+      name: "tracevane-channel-connectors-live-smoke",
       title: "Tracevane Channel Connectors Live Smoke",
       version: "0",
     },
@@ -234,7 +234,7 @@ async function initializeThread(input) {
     cwd: input.cwd,
     approvalPolicy: "never",
     sandbox: "read-only",
-    serviceName: "openclaw-tracevane-channel-connectors-live-smoke",
+    serviceName: "tracevane-channel-connectors-live-smoke",
     ephemeral: true,
     threadSource: "user",
   });
@@ -300,7 +300,7 @@ test("live Codex app-server accepts Tracevane persistent-session handshake", {
   try {
     const initialize = await request(transport, "initialize", {
       clientInfo: {
-        name: "openclaw-tracevane-channel-connectors-live-smoke",
+        name: "tracevane-channel-connectors-live-smoke",
         title: "Tracevane Channel Connectors Live Smoke",
         version: "0",
       },
@@ -319,7 +319,7 @@ test("live Codex app-server accepts Tracevane persistent-session handshake", {
       cwd,
       approvalPolicy: "never",
       sandbox: "read-only",
-      serviceName: "openclaw-tracevane-channel-connectors-live-smoke",
+      serviceName: "tracevane-channel-connectors-live-smoke",
       ephemeral: true,
       threadSource: "user",
     });

@@ -46,7 +46,7 @@ Feishu / Octo(dmwork) / future IM
 
 ## 3. Runtime 与持久化
 
-- service：`openclaw-tracevane-channel-connectors.service`
+- service：`tracevane-channel-connectors.service`
 - config：`~/.config/tracevane/channel-connectors/config.json`
 - daemon config：`~/.config/tracevane/channel-connectors/daemon/config.json`
 - state：`~/.config/tracevane/channel-connectors/daemon/state`

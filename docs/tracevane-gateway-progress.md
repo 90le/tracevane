@@ -226,7 +226,7 @@
   - 本轮验证通过：`npm run typecheck:api`
   - 本轮验证通过：`npm run build:api`
   - 本轮验证通过：`node --test tests/system/channel-connectors-agent-session-driver.test.mjs tests/system/channel-connectors-compact-live-script.test.mjs tests/system/channel-connectors-profile-closure-script.test.mjs`，19/19 通过，覆盖 persistent session busy guard、不 dispose 活跃 session、native compact 禁用 one-shot crash fallback、Claude/OpenCode compact driver 和 closure gate 脚本合同。
-  - 本轮已重启 `openclaw-tracevane-channel-connectors.service`；服务 active/running，Feishu long connection connected/sdkConnected，ping/pong 正常，`transportStale=false`。
+  - 本轮已重启 `tracevane-channel-connectors.service`；服务 active/running，Feishu long connection connected/sdkConnected，ping/pong 正常，`transportStale=false`。
   - 本轮闭环 live gate 已全绿：用户补发 Feishu OpenCode 三步工具流和标准 `/compact` 后，`node scripts/smoke-channel-connectors-profile-closure.mjs --json` 通过；四项 gate 覆盖三 Agent live run、Feishu 显式 `/compact`、Octo 显式 `/compact` 和入站图片 staged path。
   - 用户确认 Feishu 与 Octo 长连接都处于稳定状态，标记完成并进入监控态。
   - 用户确认 Markdown 已验证；自动化复验覆盖 Feishu Markdown、Feishu/Octo 文件和媒体收发 contract。
@@ -273,7 +273,7 @@
 - 本轮验证通过：`npm run build:api`
 - 本轮验证通过：`npm run typecheck:web`
 - 本轮验证通过：`npm run build:web`
-- 本轮运行态验证通过：已重启 `openclaw-tracevane-channel-connectors.service`；`/agent-sessions` 返回 `defaultMode=persistent`，当前 `feishu-live` 与 `octo-tracevane-cc` 均为 `requestedMode/effectiveMode=persistent`、`reason=codex-app-server`；`/status` 显示 Feishu `connected/sdkConnected=true` 且 `transportStale=false`，Octo connected。
+- 本轮运行态验证通过：已重启 `tracevane-channel-connectors.service`；`/agent-sessions` 返回 `defaultMode=persistent`，当前 `feishu-live` 与 `octo-tracevane-cc` 均为 `requestedMode/effectiveMode=persistent`、`reason=codex-app-server`；`/status` 显示 Feishu `connected/sdkConnected=true` 且 `transportStale=false`，Octo connected。
 - 本轮验证通过：`npm run smoke:channel-connectors:agent-heartbeat-local -- --json`，19/19 通过，覆盖 Codex / Claude Code / OpenCode 的 stderr CR TUI heartbeat、stdout heartbeat、真实 Unicode async child-task idle grace、idle timeout 替代总 timeout、heartbeat-only stall 诊断、静默 heartbeat timeout，以及非 runtime agent 固定 timeout 边界。
 - 本轮验证通过：`node --test tests/system/channel-connectors-agent-heartbeat-local-script.test.mjs`，2/2 通过，覆盖 heartbeat smoke 脚本本地证明边界与完整 synthetic matrix。
 - 本轮验证通过：`node --test tests/system/tracevane-web-channel-connector-profiles-page.test.mjs tests/system/tracevane-web-channel-connectors-page.test.mjs`，覆盖 Channel Connectors 独立 Profile 工作台、Gateway 预算索引、Profile 复制/删除/binding 行事件快捷过滤/事件 binding/type 筛选/事件数量/批量停止控件、Profile ID 重命名迁移绑定合同、App Connection effective model / apply / preview 合同、IM binding deep-link 选中合同、Agents 旧 CLI 路由删除和 Channel Connectors 独立导航。
@@ -424,6 +424,11 @@
 - 本轮 Codex 官方配置核验：修正用户粘贴缺失的网址为 `https://developers.openai.com/codex/config-advanced#oss-mode-local-providers`；官方 Advanced Configuration 说明 custom model providers、`openai_base_url`、`wire_api="responses"` 和 `--oss` 本地 provider。结论：该文档对 Tracevane Gateway 的 Codex CLI 配置生成/回归有帮助，尤其是将 Codex 指向 Gateway Responses 入口；但不能替代 Gateway 对 Claude Code / OpenCode 的协议适配和 active route smoke。
 - 本轮主流协议矩阵 smoke：新增 `scripts/smoke-model-gateway-protocol-matrix.mjs`，将用户确认的覆盖口径固化为可执行 proof：GLM `coding-anthropic` 代表 Anthropic Messages / Claude Code，GLM `coding-chat` 代表 OpenAI Chat-compatible / OpenCode，`codex-account` 代表 Codex 官方账户型 Responses。真实执行 `npm run smoke:model-gateway:protocol-matrix -- --json --timeout-ms 240000` 通过，三项 proof 均为 `ok=true`，复查 `/providers` 后 `activeProviders={}`、`gmn.enabled=false`。
 - 本轮文档清理验证以 `git diff --check` 和 stale term 检查为准。
+- 本轮命名收口：Channel Connectors 项目服务已从旧的 OpenClaw-prefixed Tracevane user unit 切换为 `tracevane-channel-connectors.service`，旧 systemd user unit 已停止、禁用并移除；`openclaw-gateway.service` 保留为 OpenClaw 官方 Gateway 服务。
+- 本轮 Codex 会话迁移：批量重写 `~/.codex/history.jsonl`、`~/.codex/sessions`、Channel Connectors runtime state 中的旧项目路径、短路径和旧服务名，降低继续旧 Codex 会话时因已删除目录触发 `No such file or directory (os error 2)` 的风险；896 个 Codex session 文件的 cwd/workspace metadata 已确认不再指向 retired project cwd。
+- 本轮当前会话救援：当前已打开 Codex TUI 的默认 cwd 属于进程内上下文，无法在不重启 TUI 的情况下直接改写；因此在扩展目录下保留一个 filesystem rescue alias，`pwd -P` 解析到 `/home/binbin/.openclaw/extensions/tracevane`，避免 PreToolUse 在旧 cwd 不存在时直接失败。真实配置、服务和历史 metadata 仍以 Tracevane 新目录为准。
+- 本轮 legacy runtime 归档迁移：`~/.openclaw/tracevane/legacy-runtime-archive-20260618/chat.sqlite` 与 durable mirror SQLite 归档已按文本列迁移旧项目路径/旧服务名，FTS 重建、`VACUUM` 后 `PRAGMA integrity_check` 均为 `ok`。
+- 本轮验证通过：`npm run typecheck:api`、`npm run typecheck:web`、`npm run build:api`、`npm run build:web`、`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`、`node --test --test-name-pattern "daemon service plan|Channel Connectors daemon service|serviceName|Codex app-server" tests/system/channel-connectors-service.test.mjs`，以及 live `/api/channel-connectors/daemon/service` 返回 `serviceName=tracevane-channel-connectors.service`。
 
 ## 已知边界
 

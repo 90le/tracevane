@@ -23,7 +23,7 @@
 
 | 域 | 能力 | Tracevane 原生目标 | 状态 |
 | --- | --- | --- | --- |
-| Runtime | daemon、日志、health/status | `openclaw-tracevane-channel-connectors.service`，Tracevane/OpenClaw 崩溃后继续在线 | 已接入，继续 live 验证 |
+| Runtime | daemon、日志、health/status | `tracevane-channel-connectors.service`，Tracevane/OpenClaw 崩溃后继续在线 | 已接入，继续 live 验证 |
 | Config | project/platform/agent options | Agent Profile、workDir、model、permission、Gateway key ref、platform binding | 已完成 |
 | Platforms | dmwork/feishu/更多 IM | 当前只做 Octo/Feishu 私聊；更多平台按私聊能力和当前外部合同逐个验证 | 进行中 |
 | Agents | Codex、Claude Code、OpenCode、更多 Agent | 当前只做三个已有 runner；更多 Agent 路线图 | 进行中 |

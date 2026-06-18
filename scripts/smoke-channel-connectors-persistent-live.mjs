@@ -9,7 +9,7 @@ import process from "node:process";
 const DEFAULT_CONFIG_PATH = path.join(os.homedir(), ".config/tracevane/channel-connectors/config.json");
 const DEFAULT_DAEMON_CONFIG_PATH = path.join(os.homedir(), ".config/tracevane/channel-connectors/daemon/config.json");
 const DEFAULT_RUNTIME_PATH = path.join(os.homedir(), ".config/tracevane/channel-connectors/daemon/runtime.json");
-const DEFAULT_SERVICE_NAME = "openclaw-tracevane-channel-connectors.service";
+const DEFAULT_SERVICE_NAME = "tracevane-channel-connectors.service";
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_POLL_MS = 1_000;
 

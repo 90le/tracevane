@@ -14155,7 +14155,7 @@ test("Channel Connectors routes are registered under /api/channel-connectors", a
 
     const service = await requestJson(`${baseUrl}/api/channel-connectors/daemon/service`);
     assert.equal(service.status, 200);
-    assert.equal(service.body.plan.serviceName, "openclaw-tracevane-channel-connectors.service");
+    assert.equal(service.body.plan.serviceName, "tracevane-channel-connectors.service");
 
     const preview = await requestJson(`${baseUrl}/api/channel-connectors/daemon/service`, {
       method: "POST",

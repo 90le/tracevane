@@ -1,4 +1,4 @@
-export const CHANNEL_CONNECTORS_DAEMON_SERVICE_NAME = "openclaw-tracevane-channel-connectors.service";
+export const CHANNEL_CONNECTORS_DAEMON_SERVICE_NAME = "tracevane-channel-connectors.service";
 
 export type ChannelConnectorsPhase = "native-daemon-f1" | "native-config-f2";
 

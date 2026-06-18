@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 TRACEVANE_DEFAULT_VERSION="${TRACEVANE_DEFAULT_VERSION:-0.1.70}"
 VERSION_EXPLICIT=0
 PACKAGE_URL_EXPLICIT=0
