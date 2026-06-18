@@ -430,6 +430,7 @@
 - 本轮 legacy runtime 归档迁移：`~/.openclaw/tracevane/legacy-runtime-archive-20260618/chat.sqlite` 与 durable mirror SQLite 归档已按文本列迁移旧项目路径/旧服务名，FTS 重建、`VACUUM` 后 `PRAGMA integrity_check` 均为 `ok`。
 - 本轮验证通过：`npm run typecheck:api`、`npm run typecheck:web`、`npm run build:api`、`npm run build:web`、`node --test tests/system/channel-connectors-codex-app-server-driver.test.mjs`、`node --test --test-name-pattern "daemon service plan|Channel Connectors daemon service|serviceName|Codex app-server" tests/system/channel-connectors-service.test.mjs`，以及 live `/api/channel-connectors/daemon/service` 返回 `serviceName=tracevane-channel-connectors.service`。
 - 本轮 Git metadata 收口：本地 `.git/config` 的 `core.hooksPath` 已从 retired project absolute path 改为 `.git/hooks`，避免目录迁移后 hooks 继续指向旧路径；本地 `.git/description` 已改为 `Tracevane`。当前 checkout 没有配置 git remote，因此没有可在本地直接改名的远程仓库 URL。
+- 本轮本地缓存清理：已删除 ignored stale cache `.omc/`、`.superpowers/`、`release/`、`.meta-kim/`、`apps/web-vue/.omc/`、`apps/web-vue/.meta-kim/`；`.tmp/` 从约 1.3G 收敛到当前 active dev runtime（约 192K）。保留 `.omx/`、`node_modules/`、`dist/`、`apps/web-vue/dist/`、`resources/`、`skills/`，因为它们分别承载项目记忆、依赖、构建产物或运行资产。清理后四个服务仍 active，前端 title 为 `Tracevane`，API health 返回版本 `0.1.70`。
 
 ## 已知边界
 
