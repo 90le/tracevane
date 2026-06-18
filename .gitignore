@@ -47,5 +47,3 @@ release/
 .gstack/
 .omx/
 
-# worktrees
-.claude/worktrees/

@@ -28,8 +28,7 @@
   },
   "workspaces": [
     "apps/api",
-    "apps/web-vue",
-    "apps/web-vue-next"
+    "apps/web-vue"
   ],
   "scripts": {
     "build:api": "tsc -p tsconfig.json",
