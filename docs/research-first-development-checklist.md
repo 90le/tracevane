@@ -87,6 +87,12 @@
   - 稳定结论：Gateway adapter 路由不能只按客户端 routeId 选择默认路径；当客户端协议需要转到上游原生协议时，必须优先使用上游 provider 原生协议 endpoint override。Codex `/v1/responses` 转 Anthropic provider 应使用 `endpoints.anthropic_messages`，否则 GLM Anthropic 会被错误打到 `/api/anthropic/messages`。
   - 拒绝方案：拒绝把 GLM Anthropic 只当 Claude Code 专属端点；拒绝用 Chat 端点覆盖所有 Codex 场景，因为 GLM 官方同时提供 Anthropic-compatible 端点，Gateway 应保持两端点都可测、可路由。
   - 风险与验证：当前 live 2x2 smoke 显示 Chat 端点对 Codex/Claude 均通过，Anthropic 端点对 Claude 原生通过、对 Codex 工具链也能完成 3 工具；但 Codex+GLM Anthropic 的自然语言过程回复会被合并，严格的多过程回复计数不如 Chat 端点稳定。需要保留系统测试覆盖 endpoint override，后续再加更复杂 `read -> edit -> test` 工具链压测。
+- 2026-06-19 Model Gateway GLM Codex `call` / premature-stop 根因：
+  - 范围：Codex CLI 通过 Gateway 使用 `glm-5.2` Chat-compatible 与 Anthropic-compatible 端点时，工具调用前后出现 `call` / `...` 占位、长 reasoning、工具完成后最终轮卡顿或截断。
+  - 来源核验：本机真实 `codex exec` + 临时 capture proxy 复现并抓取上游请求/响应；智谱 Coding Plan 仍按官方 Chat-compatible endpoint 测试。捕获显示旧请求会把上一轮 Codex `reasoning` 回放为 Chat 历史里的 `assistant.reasoning_content`，GLM Chat 默认又会流式返回 `reasoning_content`，导致 reasoning 在多工具回合中逐轮放大；最终轮还观察到一次上游流 `terminated`。
+  - 稳定结论：Responses 的 reasoning 是内部推理状态，不是 Chat-compatible 历史合同。Gateway 发往 Chat/Anthropic 上游时只回放 assistant 文本、tool_calls 和 tool_result，不再把 Codex reasoning 写回 `reasoning_content`。对 `glm-5.*` Chat-compatible 请求，如果客户端没有显式 reasoning/thinking，Gateway 默认写入 `thinking: { type: "disabled" }`；显式 `reasoning.effort` 开启时映射为 `thinking: { type: "enabled" }`。
+  - 拒绝方案：拒绝仅在前端/TUI 层隐藏 `call` 或 `...`，因为根因是上游请求污染和 GLM 默认 thinking；拒绝删除所有有文字 reasoning，DeepSeek/Qwen 等真 reasoner 的有效 reasoning 仍应保留在响应输出中。
+  - 风险与验证：系统测试覆盖 GLM implicit/explicit thinking、placeholder `call`/`...` reasoning 过滤、Codex tool history 不回放 `reasoning_content`、Codex->Anthropic synthetic SSE。真实 capture 验证 5 次 GLM Chat 上游请求均为 `thinking.disabled`、历史 `reasoning_content=0`、原始响应不含 `reasoning_content` / `call`；真实 `codex exec` 串行 2 工具返回 `THINKING_DISABLED_OK`。
 - 2026-06-19 Model Gateway App Connections Gateway key 前置处理：
   - 范围：Client connections 页应用 Codex、Claude Code、OpenCode、OpenClaw 配置前的本地 Gateway client key 状态提示、生成/启用入口和前端 guard。
   - 来源核验：本次不改变外部客户端配置格式、endpoint、header 或模型协议，只修正 Tracevane 本地管理 UI 对既有 `/api/model-gateway/client-auth` 与 `/api/model-gateway/app-connections` 合同的呈现和操作顺序；沿用 2026-06-18 Gateway App Connections 已验证的客户端写入边界。

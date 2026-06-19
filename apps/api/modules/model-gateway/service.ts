@@ -149,6 +149,7 @@ import {
   writeChatCompletionsSseFromAnthropicMessagesSse,
   writeChatCompletionsSseFromResponsesSse,
   writeCodexResponsesSseFromAnthropicMessagesSse,
+  writeCodexResponsesSseFromResponse,
 } from "./protocol-streaming.js";
 import {
   OpenAIResponsesChatAdapterError,
@@ -9232,6 +9233,7 @@ export function createModelGatewayService(
     let useChatResponsesStreamingAdapter = false;
     let useAnthropicMessagesChatStreamingAdapter = false;
     let useCodexResponsesAnthropicStreamingAdapter = false;
+    let useCodexResponsesAnthropicSyntheticStreamingAdapter = false;
     let useAnthropicMessagesChatProviderStreamingAdapter = false;
     let useAnthropicMessagesResponsesProviderStreamingAdapter = false;
     if (provider.authStrategy !== "none" && (!secret || isManagedProxyPlaceholderSecret(secret))) {
@@ -9355,10 +9357,14 @@ export function createModelGatewayService(
           ? JSON.stringify(codexToChat.chatRequest)
           : bodyText;
         const adapted = adaptChatCompletionRequestToAnthropicMessages(chatRequestBodyText, { allowStreaming: true });
+        useCodexResponsesAnthropicSyntheticStreamingAdapter = useCodexResponsesAnthropicAdapter && adapted.stream;
+        if (useCodexResponsesAnthropicSyntheticStreamingAdapter) adapted.anthropicRequest.stream = false;
         upstreamBodyText = JSON.stringify(adapted.anthropicRequest);
         requestModelForLog = adapted.model || requestModel;
         useAnthropicMessagesChatStreamingAdapter = useAnthropicMessagesChatAdapter && adapted.stream;
-        useCodexResponsesAnthropicStreamingAdapter = useCodexResponsesAnthropicAdapter && adapted.stream;
+        useCodexResponsesAnthropicStreamingAdapter = useCodexResponsesAnthropicAdapter
+          && adapted.stream
+          && !useCodexResponsesAnthropicSyntheticStreamingAdapter;
         headers.set("content-type", "application/json");
         ensureAnthropicMessagesHeaders(headers);
       } catch (error) {
@@ -10082,6 +10088,16 @@ export function createModelGatewayService(
           usage: runtimeUsageForRoute(decision.routeId, adaptedResponse),
         }));
         setSelectedProviderHeaders();
+        if (useCodexResponsesAnthropicSyntheticStreamingAdapter) {
+          setCorsHeaders(res);
+          res.statusCode = upstream.status;
+          res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+          res.setHeader("Cache-Control", "no-cache");
+          res.setHeader("Connection", "keep-alive");
+          writeCodexResponsesSseFromResponse(adaptedResponse, res, requestModelForLog);
+          res.end();
+          return;
+        }
         sendJson(res, upstream.status, adaptedResponse);
         return;
       }

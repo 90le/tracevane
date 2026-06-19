@@ -3323,6 +3323,89 @@ test("model gateway responses to anthropic adapter uses native endpoint override
   assert.equal(decision.upstreamUrl, "https://open.bigmodel.cn/api/anthropic/v1/messages");
 });
 
+test("model gateway synthesizes responses sse for codex streams through anthropic providers", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "glm-anthropic-stream",
+      name: "GLM Anthropic Stream",
+      appScopes: ["codex"],
+      baseUrl: "https://open.bigmodel.cn/api/anthropic",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+      endpoints: { anthropic_messages: "/v1/messages" },
+      models: {
+        defaultModel: "glm-5.2",
+        models: [{ id: "glm-5.2" }],
+      },
+    },
+    secret: { apiKey: "sk-glm-anthropic-stream" },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      body: String(init.body || ""),
+    });
+    return new Response(JSON.stringify({
+      id: "msg_glm_stream",
+      type: "message",
+      role: "assistant",
+      model: "glm-5.2",
+      content: [{ type: "text", text: "STREAM_OK" }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 8, output_tokens: 3 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const streamed = await requestRaw(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "glm-5.2",
+          input: "Reply STREAM_OK",
+          stream: true,
+        },
+      });
+
+      assert.equal(streamed.status, 200);
+      assert.match(streamed.headers["content-type"], /text\/event-stream/);
+      const events = parseSseEvents(streamed.body);
+      assert.deepEqual(events.map((item) => item.event), [
+        "response.created",
+        "response.in_progress",
+        "response.output_item.added",
+        "response.content_part.added",
+        "response.output_text.delta",
+        "response.output_text.done",
+        "response.content_part.done",
+        "response.output_item.done",
+        "response.completed",
+        null,
+      ]);
+      assert.equal(events[4].data.delta, "STREAM_OK");
+      assert.equal(events[8].data.response.output[0].content[0].text, "STREAM_OK");
+      assert.equal(events[9].data, "[DONE]");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://open.bigmodel.cn/api/anthropic/v1/messages");
+  assert.equal(JSON.parse(upstreamCalls[0].body).stream, false);
+});
+
 test("model gateway endpoint profiles prefer same-provider model endpoint fallback", () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
@@ -7098,32 +7181,20 @@ test("model gateway adapts codex responses through native anthropic messages pro
       body: String(init.body || ""),
     });
     if (upstreamCalls.length === 3) {
-      const upstreamSse = [
-        "event: message_start",
-        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_stream_anthropic\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-native\",\"content\":[],\"usage\":{\"input_tokens\":6,\"output_tokens\":0}}}",
-        "",
-        "event: content_block_start",
-        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}",
-        "",
-        "event: content_block_delta",
-        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Anth\"}}",
-        "",
-        "event: content_block_delta",
-        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"ropic stream\"}}",
-        "",
-        "event: content_block_stop",
-        "data: {\"type\":\"content_block_stop\",\"index\":0}",
-        "",
-        "event: message_delta",
-        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":3}}",
-        "",
-        "event: message_stop",
-        "data: {\"type\":\"message_stop\"}",
-        "",
-      ].join("\n");
-      return new Response(upstreamSse, {
+      return new Response(JSON.stringify({
+        id: "msg_stream_anthropic",
+        type: "message",
+        role: "assistant",
+        model: "claude-native",
+        content: [{ type: "text", text: "Anthropic stream" }],
+        stop_reason: "end_turn",
+        usage: {
+          input_tokens: 6,
+          output_tokens: 3,
+        },
+      }), {
         status: 200,
-        headers: { "content-type": "text/event-stream" },
+        headers: { "content-type": "application/json" },
       });
     }
     const isCompact = upstreamCalls.length === 2;
@@ -7223,17 +7294,15 @@ test("model gateway adapts codex responses through native anthropic messages pro
         "response.output_item.added",
         "response.content_part.added",
         "response.output_text.delta",
-        "response.output_text.delta",
         "response.output_text.done",
         "response.content_part.done",
         "response.output_item.done",
         "response.completed",
         null,
       ]);
-      assert.equal(streamEvents[4].data.delta, "Anth");
-      assert.equal(streamEvents[5].data.delta, "ropic stream");
-      assert.equal(streamEvents[9].data.response.output[0].content[0].text, "Anthropic stream");
-      assert.equal(streamEvents[10].data, "[DONE]");
+      assert.equal(streamEvents[4].data.delta, "Anthropic stream");
+      assert.equal(streamEvents[8].data.response.output[0].content[0].text, "Anthropic stream");
+      assert.equal(streamEvents[9].data, "[DONE]");
 
       const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
       assert.equal(runtime.status, 200);
@@ -7287,7 +7356,7 @@ test("model gateway adapts codex responses through native anthropic messages pro
     model: "claude-native",
     max_tokens: 1024,
     messages: [{ role: "user", content: "stream please" }],
-    stream: true,
+    stream: false,
   });
 });
 
@@ -7868,7 +7937,7 @@ test("model gateway drops placeholder chat reasoning from non-streaming codex re
       index: 0,
       message: {
         role: "assistant",
-        reasoning_content: "...\n\n  ...\n\n...",
+        reasoning_content: "call\n\n  tool call\n\ncall call",
         content: "Final answer.\n\n...\n\n...",
       },
       finish_reason: "stop",
@@ -7892,6 +7961,7 @@ test("model gateway drops placeholder chat reasoning from non-streaming codex re
       assert.equal(responses.status, 200);
       assert.deepEqual(responses.body.output.map((item) => item.type), ["message"]);
       assert.equal(JSON.stringify(responses.body).includes("..."), false);
+      assert.equal(JSON.stringify(responses.body).includes("call"), false);
       assert.equal(responses.body.output[0].content[0].text, "Final answer.");
     });
   } finally {
@@ -8242,6 +8312,91 @@ test("model gateway carries reasoning effort across responses chat and anthropic
   assert.equal("output_config" in upstreamCalls[4].body, false);
 });
 
+test("model gateway maps implicit and explicit codex reasoning to glm chat thinking", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-glm-thinking",
+      name: "Codex GLM Thinking",
+      appScopes: ["codex"],
+      baseUrl: "https://glm-thinking.example.test/api/coding/paas/v4",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-glm-thinking-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamBodies = [];
+  globalThis.fetch = async (_url, init = {}) => {
+    upstreamBodies.push(JSON.parse(String(init.body || "{}")));
+    return new Response(JSON.stringify({
+      id: `chatcmpl_glm_thinking_${upstreamBodies.length}`,
+      created: 1_710_000_033,
+      model: "glm-5.2",
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "ok" },
+        finish_reason: "stop",
+      }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const implicit = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "glm-5.2",
+          input: "Default.",
+          stream: false,
+        },
+      });
+      assert.equal(implicit.status, 200);
+
+      const enabled = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "glm-5.2",
+          input: "Think.",
+          reasoning: { effort: "high" },
+          stream: false,
+        },
+      });
+      assert.equal(enabled.status, 200);
+
+      const disabled = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "glm-5.2",
+          input: "No thinking.",
+          reasoning: { effort: "none" },
+          stream: false,
+        },
+      });
+      assert.equal(disabled.status, 200);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamBodies.length, 3);
+  assert.deepEqual(upstreamBodies.map((body) => body.thinking), [
+    { type: "disabled" },
+    { type: "enabled" },
+    { type: "disabled" },
+  ]);
+});
+
 test("model gateway maps chat reasoning content to codex responses output items", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
@@ -8569,7 +8724,7 @@ test("model gateway drops placeholder chat reasoning from streaming codex respon
     const upstreamSse = [
       "data: {\"id\":\"chatcmpl_placeholder_reason_stream\",\"created\":1710000034,\"model\":\"claude-opus-4-8\",\"choices\":[{\"delta\":{\"reasoning_content\":\"...\"}}]}",
       "",
-      "data: {\"id\":\"chatcmpl_placeholder_reason_stream\",\"created\":1710000034,\"model\":\"claude-opus-4-8\",\"choices\":[{\"delta\":{\"reasoning\":\"  ...\\n\\n...\"}}]}",
+      "data: {\"id\":\"chatcmpl_placeholder_reason_stream\",\"created\":1710000034,\"model\":\"claude-opus-4-8\",\"choices\":[{\"delta\":{\"reasoning\":\"  call\\n\\ntool call\"}}]}",
       "",
       "data: {\"id\":\"chatcmpl_placeholder_reason_stream\",\"created\":1710000034,\"model\":\"claude-opus-4-8\",\"choices\":[{\"delta\":{\"content\":\"Final\\n\\n...\"}}]}",
       "",
@@ -8602,6 +8757,7 @@ test("model gateway drops placeholder chat reasoning from streaming codex respon
       const completed = events.find((item) => item.event === "response.completed").data.response;
       assert.deepEqual(completed.output.map((item) => item.type), ["message"]);
       assert.equal(JSON.stringify(completed.output).includes("..."), false);
+      assert.equal(JSON.stringify(completed.output).includes("call"), false);
     });
   } finally {
     globalThis.fetch = originalFetch;
@@ -9013,7 +9169,6 @@ test("model gateway records streamed codex tool-call history for follow-up chat 
     {
       role: "assistant",
       content: null,
-      reasoning_content: "Need lookup.",
       tool_calls: [{
         id: "call_lookup",
         type: "function",
@@ -9151,7 +9306,6 @@ test("model gateway adapts inline codex tool-result history with gateway-compati
     {
       role: "assistant",
       content: null,
-      reasoning_content: "tool call",
       tool_calls: [{
         id: "call_inline",
         type: "function",
@@ -9278,7 +9432,6 @@ test("model gateway restores codex custom tool-call history for follow-up chat a
     {
       role: "assistant",
       content: null,
-      reasoning_content: "tool call",
       tool_calls: [{
         id: "call_patch",
         type: "function",
@@ -9539,33 +9692,25 @@ test("model gateway restores streaming codex custom tool calls from anthropic ss
 
   const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async () => {
-    const upstreamSse = [
-      "event: message_start",
-      "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_stream_custom_anthropic\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-native\",\"content\":[],\"usage\":{\"input_tokens\":7,\"output_tokens\":0}}}",
-      "",
-      "event: content_block_start",
-      "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call_patch\",\"name\":\"apply_patch\",\"input\":{}}}",
-      "",
-      "event: content_block_delta",
-      "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"input\\\":\\\"*** Begin Patch\\\\n\"}}",
-      "",
-      "event: content_block_delta",
-      "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"*** Add File: probe.txt\\\\n+ok\\\\n*** End Patch\\\\n\\\"}\"}}",
-      "",
-      "event: content_block_stop",
-      "data: {\"type\":\"content_block_stop\",\"index\":0}",
-      "",
-      "event: message_delta",
-      "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":3}}",
-      "",
-      "event: message_stop",
-      "data: {\"type\":\"message_stop\"}",
-      "",
-    ].join("\n");
-    return new Response(upstreamSse, {
+  const upstreamCalls = [];
+  globalThis.fetch = async (_url, init = {}) => {
+    upstreamCalls.push({ body: String(init.body || "") });
+    return new Response(JSON.stringify({
+      id: "msg_stream_custom_anthropic",
+      type: "message",
+      role: "assistant",
+      model: "claude-native",
+      content: [{
+        type: "tool_use",
+        id: "call_patch",
+        name: "apply_patch",
+        input: { input: "*** Begin Patch\n*** Add File: probe.txt\n+ok\n*** End Patch\n" },
+      }],
+      stop_reason: "tool_use",
+      usage: { input_tokens: 7, output_tokens: 3 },
+    }), {
       status: 200,
-      headers: { "content-type": "text/event-stream" },
+      headers: { "content-type": "application/json" },
     });
   };
 
@@ -9587,7 +9732,7 @@ test("model gateway restores streaming codex custom tool calls from anthropic ss
       const events = parseSseEvents(streamed.body);
       const completed = events.find((item) => item.event === "response.completed").data.response;
       assert.deepEqual(completed.output, [{
-        id: "fc_call_patch",
+        id: "call_patch",
         type: "custom_tool_call",
         status: "completed",
         call_id: "call_patch",
@@ -9601,6 +9746,8 @@ test("model gateway restores streaming codex custom tool calls from anthropic ss
   } finally {
     globalThis.fetch = originalFetch;
   }
+
+  assert.equal(JSON.parse(upstreamCalls[0].body).stream, false);
 });
 
 test("model gateway records streamed codex tool-call history for follow-up anthropic adapter requests", async () => {
@@ -9636,32 +9783,25 @@ test("model gateway records streamed codex tool-call history for follow-up anthr
     });
 
     if (callIndex === 0) {
-      const upstreamSse = [
-        "event: message_start",
-        "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_stream_anthropic_history\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-native\",\"content\":[],\"usage\":{\"input_tokens\":7,\"output_tokens\":0}}}",
-        "",
-        "event: content_block_start",
-        "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call_lookup\",\"name\":\"lookup\",\"input\":{}}}",
-        "",
-        "event: content_block_delta",
-        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"query\\\":\"}}",
-        "",
-        "event: content_block_delta",
-        "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\"docs\\\"}\"}}",
-        "",
-        "event: content_block_stop",
-        "data: {\"type\":\"content_block_stop\",\"index\":0}",
-        "",
-        "event: message_delta",
-        "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":3}}",
-        "",
-        "event: message_stop",
-        "data: {\"type\":\"message_stop\"}",
-        "",
-      ].join("\n");
-      return new Response(upstreamSse, {
+      return new Response(JSON.stringify({
+        id: "msg_stream_anthropic_history",
+        type: "message",
+        role: "assistant",
+        model: "claude-native",
+        content: [{
+          type: "tool_use",
+          id: "call_lookup",
+          name: "lookup",
+          input: { query: "docs" },
+        }],
+        stop_reason: "tool_use",
+        usage: {
+          input_tokens: 7,
+          output_tokens: 3,
+        },
+      }), {
         status: 200,
-        headers: { "content-type": "text/event-stream" },
+        headers: { "content-type": "application/json" },
       });
     }
 
@@ -9705,7 +9845,6 @@ test("model gateway records streamed codex tool-call history for follow-up anthr
         "response.in_progress",
         "response.output_item.added",
         "response.function_call_arguments.delta",
-        "response.function_call_arguments.delta",
         "response.function_call_arguments.done",
         "response.output_item.done",
         "response.completed",
@@ -9714,7 +9853,7 @@ test("model gateway records streamed codex tool-call history for follow-up anthr
       const firstCompleted = firstEvents.find((item) => item.event === "response.completed").data.response;
       assert.equal(firstCompleted.id, "msg_stream_anthropic_history");
       assert.deepEqual(firstCompleted.output, [{
-        id: "fc_call_lookup",
+        id: "call_lookup",
         type: "function_call",
         status: "completed",
         call_id: "call_lookup",
@@ -9753,6 +9892,7 @@ test("model gateway records streamed codex tool-call history for follow-up anthr
   assert.equal(upstreamCalls.length, 2);
   assert.equal(upstreamCalls[0].url, "https://codex-stream-anthropic-history.example.test/v1/messages");
   assert.equal(upstreamCalls[0].xApiKey, "sk-codex-stream-anthropic-history-secret");
+  assert.equal(JSON.parse(upstreamCalls[0].body).stream, false);
   assert.equal(upstreamCalls[1].url, "https://codex-stream-anthropic-history.example.test/v1/messages");
   const secondAnthropicBody = JSON.parse(upstreamCalls[1].body);
   assert.deepEqual(secondAnthropicBody.messages, [
@@ -10116,12 +10256,28 @@ test("model gateway maps started anthropic stream errors to chat and responses e
   const originalFetch = globalThis.fetch;
   const upstreamCalls = [];
   globalThis.fetch = async (url, init = {}) => {
+    const body = String(init.body || "");
     upstreamCalls.push({
       url: String(url),
       method: init.method,
       xApiKey: init.headers instanceof Headers ? init.headers.get("x-api-key") : null,
-      body: String(init.body || ""),
+      body,
     });
+    const parsedBody = JSON.parse(body || "{}");
+    if (parsedBody.stream === false) {
+      return new Response(JSON.stringify({
+        id: "msg_synthetic_ok",
+        type: "message",
+        role: "assistant",
+        model: "claude-native",
+        content: [{ type: "text", text: "partial" }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 5, output_tokens: 1 },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
     const upstreamSse = [
       "event: message_start",
       "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_started_error\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-native\",\"content\":[],\"usage\":{\"input_tokens\":5,\"output_tokens\":0}}}",
@@ -10176,22 +10332,19 @@ test("model gateway maps started anthropic stream errors to chat and responses e
       const responseEvents = parseSseEvents(responses.body);
       assert.ok(responseEvents.some((item) => item.event === "response.created"));
       assert.equal(responseEvents.find((item) => item.event === "response.output_text.delta").data.delta, "partial");
-      const failed = responseEvents.find((item) => item.event === "response.failed").data.response;
-      assert.equal(failed.status, "failed");
-      assert.equal(failed.error.message, "anthropic quota exceeded");
-      assert.equal(failed.error.type, "rate_limit_error");
+      assert.ok(responseEvents.some((item) => item.event === "response.completed"));
       assert.equal(responseEvents.at(-1).data, "[DONE]");
-      assert.ok(!responseEvents.some((item) => item.event === "response.completed"));
+      assert.ok(!responseEvents.some((item) => item.event === "response.failed"));
 
       const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
       assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.outcome, entry.errorCode]), [
         ["failure", "rate_limit_error"],
-        ["failure", "rate_limit_error"],
+        ["success", null],
       ]);
 
       const providers = await requestJson(`${baseUrl}/api/model-gateway/providers`);
       const provider = providers.body.providers.find((item) => item.id === "anthropic-started-error-stream-adapter");
-      assert.equal(provider.health.consecutiveFailures, 2);
+      assert.equal(provider.health.consecutiveFailures, 0);
       assert.equal(provider.health.circuitState, "closed");
     });
   } finally {
@@ -10202,6 +10355,7 @@ test("model gateway maps started anthropic stream errors to chat and responses e
   assert.equal(upstreamCalls[0].url, "https://anthropic-started-error-stream.example.test/v1/messages");
   assert.equal(upstreamCalls[0].xApiKey, "sk-anthropic-started-error-stream-secret");
   assert.equal(upstreamCalls[1].url, "https://anthropic-started-error-stream.example.test/v1/messages");
+  assert.equal(JSON.parse(upstreamCalls[1].body).stream, false);
 });
 
 test("model gateway opens circuit on repeated started stream failures and routes fallback", async () => {
@@ -10900,7 +11054,6 @@ test("model gateway restores codex tool-call history for follow-up chat adapter 
     {
       role: "assistant",
       content: null,
-      reasoning_content: "tool call",
       tool_calls: [{
         id: "call_lookup",
         type: "function",

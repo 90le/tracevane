@@ -546,6 +546,171 @@ export async function writeCodexResponsesSseFromAnthropicMessagesSse(
   };
 }
 
+export function writeCodexResponsesSseFromResponse(
+  responseValue: unknown,
+  res: http.ServerResponse,
+  fallbackModel: string | null,
+): StreamResult {
+  const response = isRecord(responseValue) ? responseValue : {};
+  const responseId = stringOrNull(response.id) || `resp_${Date.now().toString(36)}`;
+  const model = stringOrNull(response.model) || fallbackModel;
+  const createdAt = numberOrNull(response.created_at) || Math.floor(Date.now() / 1_000);
+  const output = Array.isArray(response.output)
+    ? response.output.filter((item): item is JsonRecord => isRecord(item))
+    : [];
+  const usage = isRecord(response.usage) ? response.usage : null;
+  const status = stringOrNull(response.status) || "completed";
+  const base = {
+    id: responseId,
+    object: "response",
+    created_at: createdAt,
+    model,
+    status: "in_progress",
+    output: [],
+    usage: null,
+  };
+  writeSseEvent(res, "response.created", {
+    type: "response.created",
+    response: base,
+  });
+  writeSseEvent(res, "response.in_progress", {
+    type: "response.in_progress",
+    response: base,
+  });
+
+  let outputText = "";
+  output.forEach((item, outputIndex) => {
+    const itemId = stringOrNull(item.id) || `${responseId}_item_${outputIndex}`;
+    const itemType = stringOrNull(item.type);
+    if (itemType === "message") {
+      const content = Array.isArray(item.content)
+        ? item.content.filter((part): part is JsonRecord => isRecord(part))
+        : [];
+      writeSseEvent(res, "response.output_item.added", {
+        type: "response.output_item.added",
+        output_index: outputIndex,
+        item: {
+          ...item,
+          id: itemId,
+          status: "in_progress",
+          content: [],
+        },
+      });
+      content.forEach((part, contentIndex) => {
+        if (part.type !== "output_text") return;
+        const text = stringOrNull(part.text) || "";
+        outputText += text;
+        writeSseEvent(res, "response.content_part.added", {
+          type: "response.content_part.added",
+          item_id: itemId,
+          output_index: outputIndex,
+          content_index: contentIndex,
+          part: { type: "output_text", text: "", annotations: [] },
+        });
+        if (text) {
+          writeSseEvent(res, "response.output_text.delta", {
+            type: "response.output_text.delta",
+            item_id: itemId,
+            output_index: outputIndex,
+            content_index: contentIndex,
+            delta: text,
+          });
+        }
+        writeSseEvent(res, "response.output_text.done", {
+          type: "response.output_text.done",
+          item_id: itemId,
+          output_index: outputIndex,
+          content_index: contentIndex,
+          text,
+        });
+        writeSseEvent(res, "response.content_part.done", {
+          type: "response.content_part.done",
+          item_id: itemId,
+          output_index: outputIndex,
+          content_index: contentIndex,
+          part,
+        });
+      });
+      writeSseEvent(res, "response.output_item.done", {
+        type: "response.output_item.done",
+        output_index: outputIndex,
+        item: {
+          ...item,
+          id: itemId,
+          status: stringOrNull(item.status) || "completed",
+        },
+      });
+      return;
+    }
+    if (itemType === "function_call" || itemType === "custom_tool_call") {
+      const argumentsText = itemType === "custom_tool_call"
+        ? stringOrNull(item.input) || ""
+        : stringOrNull(item.arguments) || "{}";
+      writeSseEvent(res, "response.output_item.added", {
+        type: "response.output_item.added",
+        output_index: outputIndex,
+        item: {
+          ...item,
+          id: itemId,
+          status: "in_progress",
+          ...(itemType === "custom_tool_call" ? { input: "" } : { arguments: "" }),
+        },
+      });
+      if (argumentsText) {
+        writeSseEvent(res, "response.function_call_arguments.delta", {
+          type: "response.function_call_arguments.delta",
+          item_id: itemId,
+          output_index: outputIndex,
+          delta: argumentsText,
+        });
+      }
+      writeSseEvent(res, "response.function_call_arguments.done", {
+        type: "response.function_call_arguments.done",
+        item_id: itemId,
+        output_index: outputIndex,
+        arguments: argumentsText,
+      });
+      writeSseEvent(res, "response.output_item.done", {
+        type: "response.output_item.done",
+        output_index: outputIndex,
+        item: {
+          ...item,
+          id: itemId,
+          status: stringOrNull(item.status) || "completed",
+        },
+      });
+      return;
+    }
+    writeSseEvent(res, "response.output_item.added", {
+      type: "response.output_item.added",
+      output_index: outputIndex,
+      item: { ...item, id: itemId },
+    });
+    writeSseEvent(res, "response.output_item.done", {
+      type: "response.output_item.done",
+      output_index: outputIndex,
+      item: { ...item, id: itemId },
+    });
+  });
+
+  const completedResponse = {
+    ...response,
+    id: responseId,
+    object: stringOrNull(response.object) || "response",
+    created_at: createdAt,
+    model,
+    status,
+    output,
+    usage: normalizeResponsesUsage(usage),
+  };
+  writeSseEvent(res, "response.completed", {
+    type: "response.completed",
+    response: completedResponse,
+  });
+  res.write("data: [DONE]\n\n");
+  return { id: responseId, model, outputText, output };
+}
+
 async function readSseEvents(
   upstreamBody: ReadableStream<Uint8Array>,
   onEvent: (event: ParsedSseEvent) => void,

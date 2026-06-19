@@ -15,13 +15,20 @@ export function applyChatReasoningOptions(
   config: ModelGatewayProviderReasoning | null,
   options: { preserveEffort?: boolean } = {},
 ): void {
-  const reasoningEnabled = reasoningRequested(request);
+  const explicitReasoningEnabled = reasoningRequested(request);
+  const reasoningEnabled = explicitReasoningEnabled
+    ?? defaultChatReasoningEnabled(request, chatRequest, config);
   if (reasoningEnabled === null) return;
 
   if (options.preserveEffort && reasoningEnabled) {
     const effort = reasoningEffort(request);
     const mapped = effort ? mapReasoningEffort(effort, "passthrough") : null;
     if (mapped) chatRequest.reasoning_effort = mapped;
+  }
+
+  if (modelUsesGlmThinkingParam(request, chatRequest) && !providerDeclaresReasoningParam(config)) {
+    chatRequest.thinking = { type: reasoningEnabled ? "enabled" : "disabled" };
+    return;
   }
 
   if (!config) {
@@ -60,6 +67,30 @@ export function applyChatReasoningOptions(
   } else if (effortParam === "reasoning.effort") {
     chatRequest.reasoning = { effort: mapped };
   }
+}
+
+function defaultChatReasoningEnabled(
+  request: JsonRecord,
+  chatRequest: JsonRecord,
+  config: ModelGatewayProviderReasoning | null,
+): boolean | null {
+  if (config?.supportsThinking === true) return false;
+  if (modelUsesGlmThinkingParam(request, chatRequest)) return false;
+  return null;
+}
+
+function modelUsesGlmThinkingParam(request: JsonRecord, chatRequest: JsonRecord): boolean {
+  const model = stringOrNull(chatRequest.model) || stringOrNull(request.model) || "";
+  return /^glm[-_]?5(?:\.|$|[-_:/\s\[])/i.test(model);
+}
+
+function providerDeclaresReasoningParam(config: ModelGatewayProviderReasoning | null): boolean {
+  return Boolean(config && (
+    config.supportsThinking === true
+    || config.supportsEffort === true
+    || config.thinkingParam
+    || config.effortParam
+  ));
 }
 
 export function applyResponsesReasoningOptions(

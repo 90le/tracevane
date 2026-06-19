@@ -17,26 +17,38 @@ const DEFAULT_MODEL = "glm-5";
 const DEFAULT_TIMEOUT_MS = 240_000;
 const DEFAULT_MIN_PROCESS_REPLIES = 2;
 const DEFAULT_MIN_TOOL_OUTPUTS = 3;
+const DEFAULT_EXPECT_TEXT = "";
 
 function parseArgs(argv) {
   const options = {
     configPath: DEFAULT_CONFIG_PATH,
     agents: DEFAULT_AGENTS,
     model: DEFAULT_MODEL,
+    prompt: "",
+    promptFile: "",
+    expectText: DEFAULT_EXPECT_TEXT,
     timeoutMs: DEFAULT_TIMEOUT_MS,
     minProcessReplies: DEFAULT_MIN_PROCESS_REPLIES,
     minToolOutputs: DEFAULT_MIN_TOOL_OUTPUTS,
     keepTemp: false,
+    includeProgress: false,
     json: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--json") options.json = true;
     else if (arg === "--keep-temp") options.keepTemp = true;
+    else if (arg === "--include-progress") options.includeProgress = true;
     else if (arg === "--agents") options.agents = csv(requireValue(argv, ++index, arg));
     else if (arg.startsWith("--agents=")) options.agents = csv(arg.slice("--agents=".length));
     else if (arg === "--model") options.model = requireValue(argv, ++index, arg);
     else if (arg.startsWith("--model=")) options.model = arg.slice("--model=".length);
+    else if (arg === "--prompt") options.prompt = requireValue(argv, ++index, arg);
+    else if (arg.startsWith("--prompt=")) options.prompt = arg.slice("--prompt=".length);
+    else if (arg === "--prompt-file") options.promptFile = requireValue(argv, ++index, arg);
+    else if (arg.startsWith("--prompt-file=")) options.promptFile = arg.slice("--prompt-file=".length);
+    else if (arg === "--expect-text") options.expectText = requireValue(argv, ++index, arg);
+    else if (arg.startsWith("--expect-text=")) options.expectText = arg.slice("--expect-text=".length);
     else if (arg === "--config") options.configPath = requireValue(argv, ++index, arg);
     else if (arg.startsWith("--config=")) options.configPath = arg.slice("--config=".length);
     else if (arg === "--timeout-ms") options.timeoutMs = positiveInt(requireValue(argv, ++index, arg), DEFAULT_TIMEOUT_MS);
@@ -54,6 +66,8 @@ function parseArgs(argv) {
   }
   if (!options.agents.length) throw new Error("--agents must include at least one agent id");
   options.configPath = path.resolve(options.configPath);
+  if (options.prompt && options.promptFile) throw new Error("Use only one of --prompt or --prompt-file.");
+  if (options.promptFile) options.prompt = fs.readFileSync(path.resolve(options.promptFile), "utf8");
   return options;
 }
 
@@ -67,11 +81,15 @@ for Feishu/Octo event-log evidence.
 Options:
   --agents <ids>              Comma-separated: codex,claude-code,opencode. Default: ${DEFAULT_AGENTS.join(",")}
   --model <id>                Gateway model. Default: ${DEFAULT_MODEL}
+  --prompt <text>             Custom prompt. Defaults to the 3-shell-command smoke prompt
+  --prompt-file <path>        Read custom prompt from a file
+  --expect-text <text>        Require final reply or progress text to include this text
   --min-process-replies <n>   Required assistant intermediate replies per agent. Default: ${DEFAULT_MIN_PROCESS_REPLIES}
   --min-tool-outputs <n>      Required visible tool outputs per agent. Default: ${DEFAULT_MIN_TOOL_OUTPUTS}
   --timeout-ms <n>            Per-agent timeout. Default: ${DEFAULT_TIMEOUT_MS}
   --config <path>             Daemon config path. Default: ${DEFAULT_CONFIG_PATH}
   --keep-temp                 Keep isolated CLI runtime files for debugging
+  --include-progress          Include raw progress events in --json output
   --json                      Emit JSON only
   -h, --help                  Show this help
 
@@ -159,8 +177,8 @@ function bindingForAgent(agent) {
   };
 }
 
-function messageForAgent(agent) {
-  const content = promptText();
+function messageForAgent(agent, options) {
+  const content = normalizeString(options.prompt) || promptText();
   return {
     messageId: `direct-${agent}-${Date.now()}`,
     fromUid: "direct-user",
@@ -215,7 +233,7 @@ async function runAgentSmoke(config, gatewayClientKey, agent, options, runtimeRo
   const result = await runChannelConnectorAgentTurn({
     project,
     binding: bindingForAgent(agent),
-    message: messageForAgent(agent),
+    message: messageForAgent(agent, options),
     sessionKey: `direct:${agent}:${Date.now()}`,
     gatewayEndpoint: project.gatewayEndpoint,
     gatewayClientKey,
@@ -226,10 +244,16 @@ async function runAgentSmoke(config, gatewayClientKey, agent, options, runtimeRo
     timeoutMs: options.timeoutMs,
   });
   const summary = summarizeProgress(progress);
+  const transcriptText = [
+    normalizeString(result.replyText),
+    ...progress.map((event) => normalizeString(event.text)),
+  ].filter(Boolean).join("\n");
+  const expectedTextFound = !normalizeString(options.expectText) || transcriptText.includes(options.expectText);
   const passed = result.ok === true
     && summary.assistantIntermediateCount >= options.minProcessReplies
     && summary.toolOutputCount >= options.minToolOutputs
-    && normalizeString(result.replyText).length > 0;
+    && normalizeString(result.replyText).length > 0
+    && expectedTextFound;
   return {
     agent,
     ok: result.ok,
@@ -239,7 +263,10 @@ async function runAgentSmoke(config, gatewayClientKey, agent, options, runtimeRo
     error: result.error,
     replyLength: normalizeString(result.replyText).length,
     finalSample: normalizeString(result.replyText).slice(0, 400),
+    expectedText: normalizeString(options.expectText) || null,
+    expectedTextFound,
     latest: result.progress.latest,
+    ...(options.includeProgress ? { progress } : {}),
     ...summary,
   };
 }

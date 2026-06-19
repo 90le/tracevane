@@ -675,7 +675,9 @@ function isPlaceholderReasoningText(value: string): boolean {
 
 function isPlaceholderText(value: string): boolean {
   const normalized = value.trim();
-  return normalized.length > 0 && /^[.\u2026\s]+$/u.test(normalized);
+  if (!normalized) return false;
+  if (/^[.\u2026\s]+$/u.test(normalized)) return true;
+  return /^(?:tool\s+)?call(?:\s+(?:tool\s+)?call)*$/iu.test(normalized.replace(/\s+/g, " "));
 }
 
 function splitPlaceholderTextSuffix(value: string): { emit: string; pending: string } {

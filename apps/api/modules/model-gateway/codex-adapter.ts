@@ -209,49 +209,25 @@ function appendResponsesInputMessages(input: unknown, messages: JsonRecord[]): v
   if (!items.length) return;
 
   const pendingToolCalls: JsonRecord[] = [];
-  let pendingReasoning: string | null = null;
-  let lastAssistantIndex: number | null = null;
   for (const item of items) {
     if (isRecord(item) && isResponsesToolCallItem(item)) {
-      pendingReasoning = appendReasoningText(pendingReasoning, extractResponsesReasoningText(item), true);
       const toolCall = mapResponsesToolCallToChatToolCall(item);
       if (toolCall) pendingToolCalls.push(toolCall);
       continue;
     }
     if (isRecord(item) && item.type === "reasoning") {
-      const reasoning = extractResponsesReasoningText(item);
-      if (pendingToolCalls.length) {
-        pendingReasoning = appendReasoningText(pendingReasoning, reasoning);
-      } else if (!attachReasoningToAssistant(messages, lastAssistantIndex, reasoning)) {
-        pendingReasoning = appendReasoningText(pendingReasoning, reasoning);
-      }
       continue;
     }
-    flushPendingToolCalls(messages, pendingToolCalls, () => {
-      const reasoning = pendingReasoning;
-      pendingReasoning = null;
-      return reasoning;
-    });
+    flushPendingToolCalls(messages, pendingToolCalls);
     const message = mapResponsesInputItemToChatMessage(item);
     if (message) {
       if (message.role === "assistant") {
-        pendingReasoning = appendReasoningText(pendingReasoning, isRecord(item) ? extractResponsesReasoningText(item) : null);
-        attachReasoningToMessage(message, pendingReasoning);
-        pendingReasoning = null;
-        lastAssistantIndex = messages.length;
-      } else if (message.role !== "tool") {
-        pendingReasoning = null;
-        lastAssistantIndex = null;
+        delete message.reasoning_content;
       }
       messages.push(message);
     }
   }
-  flushPendingToolCalls(messages, pendingToolCalls, () => {
-    const reasoning = pendingReasoning;
-    pendingReasoning = null;
-    return reasoning;
-  });
-  backfillToolCallReasoning(messages);
+  flushPendingToolCalls(messages, pendingToolCalls);
 }
 
 function mapResponsesInputItemToChatMessage(item: unknown): JsonRecord | null {
@@ -315,7 +291,6 @@ function isResponsesToolOutputItem(item: JsonRecord): boolean {
 function flushPendingToolCalls(
   messages: JsonRecord[],
   pendingToolCalls: JsonRecord[],
-  takeReasoning: () => string | null,
 ): void {
   if (!pendingToolCalls.length) return;
   const message: JsonRecord = {
@@ -323,7 +298,6 @@ function flushPendingToolCalls(
     content: null,
     tool_calls: pendingToolCalls.splice(0),
   };
-  attachReasoningToMessage(message, takeReasoning() || "tool call");
   messages.push(message);
 }
 
@@ -341,70 +315,6 @@ function collapseSystemMessagesToHead(messages: JsonRecord[]): JsonRecord[] {
   return systemChunks.length
     ? [{ role: "system", content: systemChunks.join("\n\n") }, ...rest]
     : rest;
-}
-
-function backfillToolCallReasoning(messages: JsonRecord[]): void {
-  for (const message of messages) {
-    if (message.role !== "assistant" || !Array.isArray(message.tool_calls) || message.tool_calls.length === 0) continue;
-    if (!stringOrNull(message.reasoning_content)) {
-      attachReasoningToMessage(message, "tool call");
-    }
-  }
-}
-
-function attachReasoningToAssistant(messages: JsonRecord[], index: number | null, reasoning: string | null): boolean {
-  if (!reasoning) return true;
-  if (index === null) return false;
-  const message = messages[index];
-  if (!message || message.role !== "assistant") return false;
-  attachReasoningToMessage(message, reasoning);
-  return true;
-}
-
-function attachReasoningToMessage(message: JsonRecord, reasoning: string | null): void {
-  const text = reasoning?.trim();
-  if (!text) return;
-  const existing = stringOrNull(message.reasoning_content);
-  if (!existing) {
-    message.reasoning_content = text;
-  } else if (!existing.includes(text)) {
-    message.reasoning_content = `${existing}\n\n${text}`;
-  }
-}
-
-function appendReasoningText(existing: string | null, next: string | null, unique = false): string | null {
-  const text = next?.trim();
-  if (!text) return existing;
-  if (!existing) return text;
-  if (unique && existing.includes(text)) return existing;
-  return `${existing}\n\n${text}`;
-}
-
-function extractResponsesReasoningText(item: JsonRecord): string | null {
-  for (const key of ["reasoning_content", "reasoning"] as const) {
-    const direct = stringOrNull(item[key]);
-    if (direct) return direct;
-  }
-  return extractReasoningSummaryText(item.summary)
-    || extractReasoningSummaryText(item.reasoning_details)
-    || null;
-}
-
-function extractReasoningSummaryText(value: unknown): string | null {
-  if (typeof value === "string" && value.trim()) return value;
-  if (Array.isArray(value)) {
-    const text = value
-      .map(extractReasoningSummaryText)
-      .filter((item): item is string => Boolean(item))
-      .join("\n\n");
-    return text || null;
-  }
-  if (!isRecord(value)) return null;
-  for (const key of ["text", "content", "summary"] as const) {
-    const direct = stringOrNull(value[key]);
-    if (direct) return direct;
-  }
-  return extractReasoningSummaryText(value.parts);
 }
 
 function canonicalizeToolArguments(value: unknown): string {
@@ -672,7 +582,9 @@ function extractReasoningDetailsText(value: unknown): string | null {
 
 function isPlaceholderReasoningText(value: string): boolean {
   const normalized = value.trim();
-  return normalized.length > 0 && /^[.\u2026\s]+$/u.test(normalized);
+  if (!normalized) return false;
+  if (/^[.\u2026\s]+$/u.test(normalized)) return true;
+  return /^(?:tool\s+)?call(?:\s+(?:tool\s+)?call)*$/iu.test(normalized.replace(/\s+/g, " "));
 }
 
 function firstChoice(chatCompletion: JsonRecord): JsonRecord | null {
