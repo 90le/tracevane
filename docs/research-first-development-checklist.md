@@ -1,6 +1,6 @@
 # Research-First Development Checklist
 
-> 更新：2026-06-18
+> 更新：2026-06-19
 > 原则：任何新功能、行为修改、协议/SDK/Provider/Channel/Agent 适配，都必须先核验当前外部合同，再设计和实现。
 
 ## 开工门禁
@@ -63,6 +63,12 @@
 
 ## 当前能力边界
 
+- 2026-06-19 Model Gateway Codex App Connection reasoning effort 收口：
+  - 范围：Client connections 生成 `~/.codex/config.toml` 时的 `model_reasoning_effort` 写入条件，特别是 Codex 通过 Gateway 使用 `claude-opus-4-8` 等非 OpenAI/Codex reasoning 模型时的客户端行为。
+  - 来源核验：OpenAI Codex 当前手册（2026-06-19 通过 `openai-docs` Codex manual helper 获取）确认 `model_reasoning_effort` 是 Codex `config.toml` 配置项，说明为“模型支持时”调节 reasoning effort；同手册确认 custom model provider 可配置 `model_provider` 与 `[model_providers.*]` 指向代理/Gateway。
+  - 稳定结论：Tracevane 不能在 Codex App Connection 中把 reasoning effort 无条件写给所有 Gateway 模型。GPT/o/Codex 命名族保留该字段；Claude 等非兼容模型应用配置时必须移除顶层旧值，避免用户已有 `xhigh/high` 残留继续影响 Codex。
+  - 拒绝方案：拒绝全局删除 Codex reasoning effort，因为 GPT/Codex 模型仍应保留用户的推理强度偏好；拒绝这次引入 provider-aware reasoning 能力推断，避免把用户遇到的 Claude 异常修复扩大成路由能力重构。
+  - 风险与验证：该修复只控制 Codex 客户端配置生成，不改变 Gateway 三协议路由和上游请求适配。需要用系统测试覆盖 GPT 保留、Claude 清除旧顶层值、Claude Code 配置不写 reasoning，并跑 API typecheck / Gateway 系统测试 / diff check。
 - 2026-06-19 Model Gateway App Connections Gateway key 前置处理：
   - 范围：Client connections 页应用 Codex、Claude Code、OpenCode、OpenClaw 配置前的本地 Gateway client key 状态提示、生成/启用入口和前端 guard。
   - 来源核验：本次不改变外部客户端配置格式、endpoint、header 或模型协议，只修正 Tracevane 本地管理 UI 对既有 `/api/model-gateway/client-auth` 与 `/api/model-gateway/app-connections` 合同的呈现和操作顺序；沿用 2026-06-18 Gateway App Connections 已验证的客户端写入边界。

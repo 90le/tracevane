@@ -4558,6 +4558,31 @@ function upsertTopLevelTomlNumber(source: string, key: string, value: number | n
   return value ? upsertTopLevelTomlScalar(source, key, String(value)) : source;
 }
 
+function removeTopLevelTomlKey(source: string, key: string): string {
+  if (!source) return source;
+  const newline = source.includes("\r\n") ? "\r\n" : "\n";
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const lines = source.split(/\r?\n/);
+  const firstTableIndex = lines.findIndex((line) => /^\s*\[/.test(line));
+  const topLevelEnd = firstTableIndex >= 0 ? firstTableIndex : lines.length;
+  const nextLines = lines.filter((line, index) => {
+    if (index >= topLevelEnd) return true;
+    return !new RegExp(`^\\s*${escapedKey}\\s*=`).test(line || "");
+  });
+  return nextLines.join(newline).replace(new RegExp(`${newline}{3,}`, "g"), `${newline}${newline}`);
+}
+
+function codexModelSupportsReasoningEffort(model: string | null): boolean {
+  const normalized = normalizeString(model).toLowerCase();
+  if (!normalized) return false;
+  const modelId = normalized.split("/").pop() || normalized;
+  return modelNameMatches(modelId, [
+    /^gpt(?:\b|-|_|\.)/,
+    /^o[134](?:\b|-|_|\.)/,
+    /^codex(?:\b|-|_|\.)/,
+  ]);
+}
+
 function upsertTomlTableScalar(source: string, tableName: string, key: string, value: string | null): string {
   if (value === null) return source;
   const newline = source.includes("\r\n") ? "\r\n" : "\n";
@@ -4593,8 +4618,10 @@ function buildCodexConfig(source: string, options: {
   let next = stripCodexManagedBlock(source);
   next = upsertTopLevelTomlString(next, "model_provider", CODEX_GATEWAY_PROVIDER_ID);
   if (options.profile.model) next = upsertTopLevelTomlString(next, "model", options.profile.model);
-  if (options.profile.reasoningEffort) {
+  if (options.profile.reasoningEffort && codexModelSupportsReasoningEffort(options.profile.model)) {
     next = upsertTopLevelTomlString(next, "model_reasoning_effort", options.profile.reasoningEffort);
+  } else {
+    next = removeTopLevelTomlKey(next, "model_reasoning_effort");
   }
   next = upsertTopLevelTomlNumber(next, "model_context_window", options.profile.contextWindow);
   next = upsertTopLevelTomlNumber(next, "model_auto_compact_token_limit", options.profile.autoCompactTokenLimit);

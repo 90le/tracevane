@@ -1,6 +1,6 @@
 # Tracevane Gateway / Channel Connectors 进度
 
-> 更新：2026-06-18
+> 更新：2026-06-19
 > 规则：只记录当前事实、本轮完成、验证、边界和下一步；历史细节看 git commit。
 
 ## 当前事实
@@ -27,6 +27,7 @@
 - Provider Center Smoke / 日志页已显示媒体模型状态，按启用 provider catalog 统计图片理解、生图、音频输入、音频输出和 realtime 模型。
 - Provider Center 不再按模型名自动标记 vision；图片能力只来自用户配置、上游显式能力元数据或图片 smoke 通过后用户确认写回。
 - App Connections 覆盖 Codex CLI、Claude Code、OpenCode、OpenClaw 的脱敏 preview/apply、备份、rollback、profile 切换和隔离 HOME HTTP 验收；Model Gateway 支持 `tab/app` deep-link 直达并打开指定 CLI App Connection。前端已改为连接摘要 + 客户端列表，Profile 编辑和单客户端 preview/apply/rollback 进入弹层；主屏不再常驻四个客户端配置卡片。
+- Codex App Connection 只会把 `model_reasoning_effort` 写给 GPT/o/Codex 命名族；当 Codex 选中 `claude-opus-4-8` 等非兼容 Gateway 模型时，会删除 `~/.codex/config.toml` 顶层旧 reasoning effort，避免 Codex 客户端因残留 `xhigh/high` 对 Claude 模型产生异常点号输出。Claude Code 配置继续只写 Anthropic endpoint/key/model，不写 reasoning effort。
 - BigModel/GLM 本地模型目录已加入 `glm-5.2`，按 1M context / 128K output 预算；Gateway 内置推断同时识别 `glm-5.2` 与官方 1M 后缀别名 `glm-5.2[1m]`。
 - Channel Connectors 走 Tracevane 原生 CLI Agent Bot 路线；当前 live Agent 只暴露 Codex、Claude Code、OpenCode。
 - Feishu/Octo 首期验收已收窄为私聊完整性：文本对话、文件/图片传输、Agent CLI 原生能力、工具流/回复解析、`/compact`、`/stop`、session/model/permission/workdir 切换。

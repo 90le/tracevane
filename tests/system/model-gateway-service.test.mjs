@@ -4401,6 +4401,82 @@ test("model gateway app connections preview and apply client config files with r
   assert.equal(JSON.stringify(appliedPreview).includes("sk-local-app-connection"), false);
 });
 
+test("model gateway app connections clear Codex reasoning effort for Claude models", () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const homeDir = path.join(root, "home");
+  const service = createModelGatewayService(config, { homeDir });
+
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "claude-gateway",
+      name: "Claude Gateway",
+      appScopes: ["codex", "claude-code"],
+      baseUrl: "https://claude.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "claude-opus-4-8",
+        models: [{ id: "claude-opus-4-8" }],
+      },
+    },
+    secret: { apiKey: "sk-upstream-claude-app" },
+  });
+  service.updateClientAuth(undefined, { apiKey: "sk-local-claude-app" });
+
+  const codexPath = path.join(homeDir, ".codex", "config.toml");
+  const claudePath = path.join(homeDir, ".claude", "settings.json");
+  fs.mkdirSync(path.dirname(codexPath), { recursive: true });
+  fs.mkdirSync(path.dirname(claudePath), { recursive: true });
+  fs.writeFileSync(
+    codexPath,
+    [
+      "model = \"old-model\"",
+      "model_reasoning_effort = \"xhigh\"",
+      "",
+      "[profiles.keep]",
+      "model_reasoning_effort = \"high\"",
+      "model = \"keep-model\"",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  fs.writeFileSync(claudePath, `${JSON.stringify({ env: { EXISTING: "1" } }, null, 2)}\n`, "utf8");
+
+  service.updateAppConnectionProfile(undefined, {
+    profile: {
+      model: "claude-opus-4-8",
+      appModels: {
+        codex: "claude-opus-4-8",
+        "claude-code": "claude-opus-4-8",
+      },
+      reasoningEffort: "xhigh",
+      contextWindow: 200000,
+      autoCompactTokenLimit: 150000,
+      maxOutputTokens: 64000,
+    },
+  });
+
+  const codex = service.applyAppConnection(undefined, { appId: "codex" });
+  assert.equal(codex.applied, true);
+  const codexConfig = fs.readFileSync(codexPath, "utf8");
+  const codexTopLevelConfig = codexConfig.split(/\n\[profiles\.keep\]/)[0];
+  assert.match(codexConfig, /model_provider = "tracevane_gateway"/);
+  assert.match(codexConfig, /model = "claude-opus-4-8"/);
+  assert.doesNotMatch(codexTopLevelConfig, /^model_reasoning_effort\s*=/m);
+  assert.doesNotMatch(codexTopLevelConfig, /xhigh/);
+  assert.match(codexConfig, /\[profiles\.keep\]/);
+  assert.match(codexConfig, /model_reasoning_effort = "high"/);
+
+  const claude = service.applyAppConnection(undefined, { appId: "claude-code" });
+  assert.equal(claude.applied, true);
+  const claudeConfig = JSON.parse(fs.readFileSync(claudePath, "utf8"));
+  assert.equal(claudeConfig.env.EXISTING, "1");
+  assert.equal(claudeConfig.env.ANTHROPIC_BASE_URL, "http://127.0.0.1:18796");
+  assert.equal(claudeConfig.env.ANTHROPIC_MODEL, "claude-opus-4-8");
+  assert.equal(JSON.stringify(claudeConfig).includes("reasoning"), false);
+});
+
 test("model gateway app connections resolve budgets from each selected app model", () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
