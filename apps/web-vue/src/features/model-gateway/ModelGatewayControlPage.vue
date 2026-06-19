@@ -245,6 +245,27 @@
             </div>
           </div>
 
+          <section v-if="!appConnectionClientKeyReady" class="mgw-client-key-required" aria-live="polite">
+            <div>
+              <p class="eyebrow">Gateway key</p>
+              <strong>{{ appConnectionClientKeyTitle }}</strong>
+              <small>{{ appConnectionClientKeyIssue }}</small>
+            </div>
+            <div class="mgw-client-key-required__actions">
+              <button
+                type="button"
+                class="primary-button compact-button"
+                :disabled="clientAuthBusy"
+                @click="prepareClientKeyForAppConnections"
+              >
+                {{ clientAuthBusy ? text('处理中...', 'Working...') : appConnectionClientKeyActionLabel }}
+              </button>
+              <button type="button" class="secondary-button compact-button" :disabled="clientAuthBusy" @click="openClientAuthEditor">
+                {{ text('手动编辑 key', 'Edit key manually') }}
+              </button>
+            </div>
+          </section>
+
           <section class="mgw-connection-summary" aria-label="Client connection summary">
             <div class="mgw-connection-summary__main">
               <span>{{ text('连接 Profile', 'Connection profile') }}</span>
@@ -387,6 +408,18 @@
                   </div>
                 </details>
 
+                <div v-if="!appConnectionClientKeyReady" class="mgw-client-key-inline">
+                  <span>{{ appConnectionClientKeyIssue }}</span>
+                  <button
+                    type="button"
+                    class="secondary-button compact-button"
+                    :disabled="clientAuthBusy"
+                    @click="prepareClientKeyForAppConnections"
+                  >
+                    {{ clientAuthBusy ? text('处理中...', 'Working...') : appConnectionClientKeyActionLabel }}
+                  </button>
+                </div>
+
                 <div class="mgw-button-row mgw-form-actions">
                   <button type="submit" class="primary-button" :disabled="appConnectionProfileBusy">
                     {{ appConnectionProfileBusy ? text('保存中...', 'Saving...') : text('保存 Profile', 'Save profile') }}
@@ -455,7 +488,16 @@
                     </div>
                   </div>
                   <div v-if="selectedAppConnection.issues.length" class="mgw-app-issues">
-                    <span v-for="issue in selectedAppConnection.issues" :key="issue">{{ issue }}</span>
+                    <span v-for="issue in selectedAppConnection.issues" :key="issue">{{ appConnectionIssueLabel(issue) }}</span>
+                    <button
+                      v-if="!appConnectionClientKeyReady"
+                      type="button"
+                      class="secondary-button compact-button"
+                      :disabled="clientAuthBusy"
+                      @click="prepareClientKeyForAppConnections"
+                    >
+                      {{ clientAuthBusy ? text('处理中...', 'Working...') : appConnectionClientKeyActionLabel }}
+                    </button>
                   </div>
                 </section>
 
@@ -491,7 +533,7 @@
                   <button
                     type="button"
                     class="primary-button"
-                    :disabled="!selectedAppConnection.canApply || isAppConnectionBusy(selectedAppConnection.id)"
+                    :disabled="!appConnectionClientKeyReady || !selectedAppConnection.canApply || isAppConnectionBusy(selectedAppConnection.id)"
                     @click="applyAppConnectionConfig(selectedAppConnection.id)"
                   >
                     {{ isAppConnectionBusy(selectedAppConnection.id) ? text('应用中...', 'Applying...') : text('应用配置', 'Apply config') }}
@@ -2710,6 +2752,47 @@ const clientAuthStateTone = computed<'neutral' | 'accent' | 'sage' | 'danger'>((
   return clientAuth.value.secret.hasSecret ? 'sage' : 'danger';
 });
 
+const appConnectionClientKeyReady = computed(() =>
+  Boolean(clientAuth.value?.enabled && clientAuth.value.secret.hasSecret),
+);
+
+const appConnectionClientKeyTitle = computed(() => {
+  if (appConnectionClientKeyReady.value) return text('Gateway key 已就绪', 'Gateway key ready');
+  if (clientAuth.value?.secret.hasSecret && !clientAuth.value.enabled) {
+    return text('Gateway key 已保存但未启用', 'Gateway key is saved but disabled');
+  }
+  if (clientAuth.value?.enabled && !clientAuth.value.secret.hasSecret) {
+    return text('Gateway key 缺失', 'Gateway key missing');
+  }
+  return text('应用客户端配置前需要 Gateway key', 'Gateway key required before applying client configs');
+});
+
+const appConnectionClientKeyIssue = computed(() => {
+  if (appConnectionClientKeyReady.value) return '';
+  if (clientAuth.value?.secret.hasSecret && !clientAuth.value.enabled) {
+    return text(
+      '客户端配置会写入本地 Gateway key；当前 key 已保存但鉴权处于停用状态，应用前需要先启用。',
+      'Client configs write the local Gateway key; the key is saved but auth is disabled, so enable it before applying.',
+    );
+  }
+  if (clientAuth.value?.enabled && !clientAuth.value.secret.hasSecret) {
+    return text(
+      'Gateway client 鉴权已启用，但本地 secret store 没有可写入客户端配置的 key。',
+      'Gateway client auth is enabled, but the local secret store has no key to write into client configs.',
+    );
+  }
+  return text(
+    '应用 Codex、Claude Code、OpenCode 或 OpenClaw 配置前，需要先生成并启用本地 Gateway key。',
+    'Generate and enable a local Gateway key before applying Codex, Claude Code, OpenCode, or OpenClaw configs.',
+  );
+});
+
+const appConnectionClientKeyActionLabel = computed(() =>
+  clientAuth.value?.secret.hasSecret
+    ? text('启用 Gateway key', 'Enable Gateway key')
+    : text('生成并启用 key', 'Generate and enable key'),
+);
+
 const clientKeyPlaceholder = computed(() =>
   clientAuth.value?.secret.hasSecret
     ? text('留空保留现有本地 key', 'Leave empty to keep current local key')
@@ -2779,7 +2862,9 @@ const canSaveProvider = computed(() =>
   Boolean(draft.id.trim() && draft.name.trim() && (selectedProviderIsAccount.value || draft.baseUrl.trim())),
 );
 const canApplyAllAppConnections = computed(() =>
-  appConnections.value.length > 0 && appConnections.value.every((connection) => connection.canApply),
+  appConnectionClientKeyReady.value
+    && appConnections.value.length > 0
+    && appConnections.value.every((connection) => connection.canApply),
 );
 const secretPlaceholder = computed(() => {
   const provider = providers.value.find((entry) => entry.id === draft.id);
@@ -2798,6 +2883,31 @@ function appConnectionStateTone(connection: ModelGatewayAppConnection): 'neutral
   if (connection.configured) return 'sage';
   if (!connection.canApply) return 'danger';
   return 'accent';
+}
+
+function appConnectionIssueLabel(issue: string): string {
+  if (issue.includes('Gateway client key is not enabled or missing')) {
+    return appConnectionClientKeyIssue.value;
+  }
+  if (issue.includes('No enabled provider models are available')) {
+    return text(
+      '没有可用的服务商模型。请先在服务商里配置并启用至少一个模型。',
+      'No provider models are available. Configure and enable at least one provider model first.',
+    );
+  }
+  if (issue.startsWith('Unable to read target config:')) {
+    return text(
+      `无法读取目标配置：${issue.replace('Unable to read target config:', '').trim()}`,
+      `Unable to read target config: ${issue.replace('Unable to read target config:', '').trim()}`,
+    );
+  }
+  if (issue.startsWith('Target config is not valid for merge:')) {
+    return text(
+      `目标配置无法安全合并：${issue.replace('Target config is not valid for merge:', '').trim()}`,
+      `Target config is not valid for merge: ${issue.replace('Target config is not valid for merge:', '').trim()}`,
+    );
+  }
+  return issue;
 }
 
 function appConnectionDisplayModel(connection: ModelGatewayAppConnection): string {
@@ -4565,6 +4675,7 @@ async function saveAppConnectionProfile(): Promise<void> {
 }
 
 async function applyAllAppConnectionConfigs(): Promise<void> {
+  if (!guardAppConnectionClientKey()) return;
   appConnectionApplyAllBusy.value = true;
   notice.value = null;
   try {
@@ -4585,6 +4696,7 @@ async function applyAllAppConnectionConfigs(): Promise<void> {
 }
 
 async function applyAppConnectionConfig(appId: ModelGatewayAppConnectionId): Promise<void> {
+  if (!guardAppConnectionClientKey()) return;
   appConnectionBusy.value = {
     ...appConnectionBusy.value,
     [appId]: true,
@@ -4646,6 +4758,15 @@ function applyClientAuthView(next: ModelGatewayClientAuthView): void {
   clientKeyDraft.value = '';
 }
 
+function guardAppConnectionClientKey(): boolean {
+  if (appConnectionClientKeyReady.value) return true;
+  notice.value = {
+    kind: 'error',
+    message: appConnectionClientKeyIssue.value,
+  };
+  return false;
+}
+
 function ensureSelectedProvider(): void {
   if (!providers.value.length) return;
   if (!smokeProviderId.value || !providers.value.some((provider) => provider.id === smokeProviderId.value)) {
@@ -4701,6 +4822,33 @@ async function generateClientKey(): Promise<void> {
     notice.value = {
       kind: 'error',
       message: error instanceof Error ? error.message : text('Gateway key 生成失败', 'Failed to generate Gateway key'),
+    };
+  } finally {
+    clientAuthBusy.value = false;
+  }
+}
+
+async function prepareClientKeyForAppConnections(): Promise<void> {
+  if (appConnectionClientKeyReady.value) return;
+  if (!clientAuth.value?.secret.hasSecret) {
+    await generateClientKey();
+    return;
+  }
+  clientAuthBusy.value = true;
+  notice.value = null;
+  clientAuthReveal.value = '';
+  try {
+    const result = await updateModelGatewayClientAuth({ enabled: true });
+    applyClientAuthView(result.clientAuth);
+    await refreshAppConnections();
+    notice.value = {
+      kind: 'success',
+      message: text('Gateway key 已启用，可以应用客户端配置。', 'Gateway key enabled; client configs can now be applied.'),
+    };
+  } catch (error) {
+    notice.value = {
+      kind: 'error',
+      message: error instanceof Error ? error.message : text('Gateway key 启用失败', 'Failed to enable Gateway key'),
     };
   } finally {
     clientAuthBusy.value = false;

@@ -63,6 +63,12 @@
 
 ## 当前能力边界
 
+- 2026-06-19 Model Gateway App Connections Gateway key 前置处理：
+  - 范围：Client connections 页应用 Codex、Claude Code、OpenCode、OpenClaw 配置前的本地 Gateway client key 状态提示、生成/启用入口和前端 guard。
+  - 来源核验：本次不改变外部客户端配置格式、endpoint、header 或模型协议，只修正 Tracevane 本地管理 UI 对既有 `/api/model-gateway/client-auth` 与 `/api/model-gateway/app-connections` 合同的呈现和操作顺序；沿用 2026-06-18 Gateway App Connections 已验证的客户端写入边界。
+  - 稳定结论：客户端配置必须写入本地 Gateway key；当 key 未生成、缺失或已保存但停用时，不能让用户只看到后端英文 issue 或 disabled apply 按钮，必须在应用路径内提供生成/启用/手动编辑入口。
+  - 拒绝方案：拒绝在 apply 时静默生成并轮换已有 key；已有 key 只启用，缺失时才生成。拒绝改变后端 issue 字符串，避免破坏 API/系统测试合同。
+  - 风险与验证：前端 guard 不替代后端管理校验；需要用 web 类型检查、Gateway 页面系统源检查和 diff check 验证。
 - 2026-06-18 Model Gateway Provider Center 编辑与模型目录 UX：
   - 范围：provider 上游密钥编辑、自动识别配置、模型目录刷新和 Provider Center 模型配置列表。
   - 来源核验：OpenAI API reference `GET /v1/models`（https://platform.openai.com/docs/api-reference/models/list）；Anthropic List Models（https://docs.anthropic.com/en/api/models-list）；OpenRouter Models API（https://openrouter.ai/docs/api/api-reference/models/get-models）和公开模型目录（https://openrouter.ai/models）；GitHub/community 只做“大目录/兼容模型端点可能很大”的风险搜索，不作为实现合同。

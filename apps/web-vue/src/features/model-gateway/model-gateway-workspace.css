@@ -413,6 +413,58 @@
   min-width: 0;
 }
 
+.mgw-client-key-required,
+.mgw-client-key-inline {
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--danger) 34%, var(--mono-line));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--danger) 6%, var(--surface-base));
+}
+
+.mgw-client-key-required {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding: 12px;
+}
+
+.mgw-client-key-required > div:first-child {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.mgw-client-key-required strong,
+.mgw-client-key-required small,
+.mgw-client-key-inline span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.mgw-client-key-required small,
+.mgw-client-key-inline span {
+  color: var(--mono-ink-2);
+}
+
+.mgw-client-key-required__actions,
+.mgw-client-key-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.mgw-client-key-required__actions {
+  justify-content: flex-end;
+}
+
+.mgw-client-key-inline {
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+}
+
 .mgw-connection-summary {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.9fr) auto;
@@ -612,6 +664,10 @@
   font-size: 0.84rem;
   line-height: 1.5;
   overflow-wrap: anywhere;
+}
+
+.mgw-app-issues button {
+  justify-self: start;
 }
 
 .mgw-app-model-field {
@@ -2247,6 +2303,7 @@
   }
 
   .mgw-model-toolbar,
+  .mgw-client-key-required,
   .mgw-provider-secret-state,
   .mgw-detect-model-toolbar {
     align-items: stretch;
