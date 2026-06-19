@@ -249,7 +249,7 @@ export function adaptChatCompletionResponseToAnthropicMessages(response: unknown
       .filter((toolUse): toolUse is JsonRecord => Boolean(toolUse))
     : [];
   const content: JsonRecord[] = [];
-  if (text || !toolUses.length) content.push({ type: "text", text });
+  if (text) content.push({ type: "text", text });
   content.push(...toolUses);
 
   return {
@@ -603,7 +603,7 @@ function mapAnthropicToolUseToChatToolCall(part: unknown): JsonRecord | null {
 }
 
 function mapChatFinishReasonToAnthropic(finishReason: unknown, hasToolUses: boolean): string {
-  if (finishReason === "tool_calls" || hasToolUses) return "tool_use";
+  if (hasToolUses) return "tool_use";
   if (finishReason === "length") return "max_tokens";
   if (finishReason === "stop" || finishReason === "content_filter") return "end_turn";
   return "end_turn";

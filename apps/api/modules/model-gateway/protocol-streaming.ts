@@ -909,9 +909,13 @@ function pushAnthropicToolDeltaFromChat(
   if (!isRecord(toolDelta)) return;
   const upstreamIndex = numberOrNull(toolDelta.index) ?? state.tools.size;
   const fn = isRecord(toolDelta.function) ? toolDelta.function : {};
+  const id = stringOrNull(toolDelta.id) || undefined;
+  const name = stringOrNull(fn.name) || undefined;
+  const args = typeof fn.arguments === "string" ? fn.arguments : "";
+  if (!state.tools.has(upstreamIndex) && !id && !name && !args) return;
   const tool = ensureToolBlock(state.tools, upstreamIndex, {
-    id: stringOrNull(toolDelta.id) || undefined,
-    name: stringOrNull(fn.name) || undefined,
+    id,
+    name,
   });
   if (!tool.started) {
     tool.index = state.nextContentIndex;
@@ -928,7 +932,6 @@ function pushAnthropicToolDeltaFromChat(
       },
     });
   }
-  const args = typeof fn.arguments === "string" ? fn.arguments : "";
   if (args) {
     tool.inputJson += args;
     writeSseEvent(res, "content_block_delta", {
@@ -1706,7 +1709,7 @@ function firstChoice(payload: JsonRecord): JsonRecord | null {
 }
 
 function mapChatFinishReasonToAnthropic(finishReason: unknown, hasToolUses: boolean): string {
-  if (finishReason === "tool_calls" || hasToolUses) return "tool_use";
+  if (hasToolUses) return "tool_use";
   if (finishReason === "length") return "max_tokens";
   return "end_turn";
 }

@@ -331,16 +331,19 @@ function pushFunctionCallDelta(toolCallDelta: unknown, state: StreamingState, re
   if (!isRecord(toolCallDelta)) return;
   const sourceIndex = numberOrNull(toolCallDelta.index) ?? state.functionCalls.size;
   const fn = isRecord(toolCallDelta.function) ? toolCallDelta.function : {};
+  const id = stringOrNull(toolCallDelta.id) || undefined;
+  const name = stringOrNull(fn.name) || undefined;
+  const argumentsDelta = typeof fn.arguments === "string" ? fn.arguments : "";
+  if (!state.functionCalls.has(sourceIndex) && !id && !name && !argumentsDelta) return;
   const tool = ensureFunctionCall(sourceIndex, state, {
-    id: stringOrNull(toolCallDelta.id) || undefined,
-    name: stringOrNull(fn.name) || undefined,
+    id,
+    name,
   });
   if (state.reasoning.text.trim() && !tool.reasoningContent) {
     tool.reasoningContent = state.reasoning.text.trim();
   }
   ensureFunctionCallAdded(tool, res);
 
-  const argumentsDelta = typeof fn.arguments === "string" ? fn.arguments : "";
   if (argumentsDelta) {
     tool.arguments += argumentsDelta;
     writeSseEvent(res, "response.function_call_arguments.delta", {

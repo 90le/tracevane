@@ -6970,6 +6970,22 @@ test("model gateway adapts anthropic messages through openai chat providers", as
         headers: { "content-type": "text/event-stream" },
       });
     }
+    if (upstreamCalls.length === 3) {
+      const upstreamSse = [
+        "data: {\"id\":\"chatcmpl_anthropic_empty_tool_delta\",\"created\":1710000041,\"model\":\"gpt-chat\",\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}",
+        "",
+        "data: {\"id\":\"chatcmpl_anthropic_empty_tool_delta\",\"created\":1710000041,\"model\":\"gpt-chat\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"type\":\"function\",\"function\":{}}]}}]}",
+        "",
+        "data: {\"id\":\"chatcmpl_anthropic_empty_tool_delta\",\"created\":1710000041,\"model\":\"gpt-chat\",\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":6,\"completion_tokens\":1,\"total_tokens\":7}}",
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n");
+      return new Response(upstreamSse, {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }
     return new Response(JSON.stringify({
       id: "chatcmpl_anthropic_adapter",
       created: 1_710_000_040,
@@ -7082,11 +7098,32 @@ test("model gateway adapts anthropic messages through openai chat providers", as
       assert.equal(events[5].data.delta.stop_reason, "end_turn");
       assert.deepEqual(events[5].data.usage, { output_tokens: 2 });
 
+      const emptyToolDeltaStream = await requestRaw(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "gpt-chat",
+          max_tokens: 64,
+          stream: true,
+          messages: [{ role: "user", content: "empty tool delta stream please" }],
+        },
+      });
+      assert.equal(emptyToolDeltaStream.status, 200);
+      const emptyToolDeltaEvents = parseSseEvents(emptyToolDeltaStream.body);
+      assert.deepEqual(emptyToolDeltaEvents.map((item) => item.event), [
+        "message_start",
+        "message_delta",
+        "message_stop",
+      ]);
+      assert.equal(emptyToolDeltaEvents[1].data.delta.stop_reason, "end_turn");
+      assert.equal(JSON.stringify(emptyToolDeltaEvents).includes("tool_use"), false);
+
       const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
       assert.equal(runtime.status, 200);
       assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.routeId, entry.requestedPath, entry.outcome]), [
         ["anthropic_messages", "/v1/messages", "success"],
         ["anthropic_messages", "/claude/v1/messages", "success"],
+        ["anthropic_messages", "/v1/messages", "success"],
       ]);
       assert.ok(!JSON.stringify(runtime.body).includes("sk-anthropic-chat-secret"));
     });
@@ -7094,7 +7131,7 @@ test("model gateway adapts anthropic messages through openai chat providers", as
     globalThis.fetch = originalFetch;
   }
 
-  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls.length, 3);
   assert.equal(upstreamCalls[0].url, "https://anthropic-chat.example.test/v1/chat/completions");
   assert.equal(upstreamCalls[0].authorization, "Bearer sk-anthropic-chat-secret");
   assert.equal(upstreamCalls[0].anthropicVersion, null);
@@ -7146,6 +7183,71 @@ test("model gateway adapts anthropic messages through openai chat providers", as
     stream: true,
     max_tokens: 64,
   });
+});
+
+test("model gateway ignores chat tool finish reason without tool calls for anthropic messages", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "anthropic-empty-tool-finish",
+      name: "Anthropic Empty Tool Finish",
+      appScopes: ["claude-code"],
+      baseUrl: "https://anthropic-empty-tool-finish.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-anthropic-empty-tool-finish-secret",
+    },
+    setActiveScopes: ["claude-code"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    id: "chatcmpl_empty_tool_finish",
+    created: 1_710_000_041,
+    model: "gpt-chat",
+    choices: [{
+      index: 0,
+      message: {
+        role: "assistant",
+        content: "",
+      },
+      finish_reason: "tool_calls",
+    }],
+    usage: {
+      prompt_tokens: 6,
+      completion_tokens: 1,
+      total_tokens: 7,
+    },
+  }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const messages = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "gpt-chat",
+          max_tokens: 64,
+          messages: [{ role: "user", content: "empty tool finish please" }],
+        },
+      });
+
+      assert.equal(messages.status, 200);
+      assert.equal(messages.body.stop_reason, "end_turn");
+      assert.deepEqual(messages.body.content, []);
+      assert.equal(JSON.stringify(messages.body).includes("tool_use"), false);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("model gateway adapts codex responses through native anthropic messages providers", async () => {
@@ -8934,6 +9036,69 @@ test("model gateway drops placeholder chat reasoning from streaming codex respon
       assert.deepEqual(completed.output.map((item) => item.type), ["message"]);
       assert.equal(JSON.stringify(completed.output).includes("..."), false);
       assert.equal(JSON.stringify(completed.output).includes("call"), false);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("model gateway ignores empty streaming chat tool deltas for codex responses", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-empty-tool-delta-stream",
+      name: "Codex Empty Tool Delta Stream",
+      appScopes: ["codex"],
+      baseUrl: "https://codex-empty-tool-delta-stream.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-codex-empty-tool-delta-stream-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    const upstreamSse = [
+      "data: {\"id\":\"chatcmpl_empty_tool_delta\",\"created\":1710000036,\"model\":\"glm-5.2\",\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}",
+      "",
+      "data: {\"id\":\"chatcmpl_empty_tool_delta\",\"created\":1710000036,\"model\":\"glm-5.2\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"type\":\"function\",\"function\":{}}]}}]}",
+      "",
+      "data: {\"id\":\"chatcmpl_empty_tool_delta\",\"created\":1710000036,\"model\":\"glm-5.2\",\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":1,\"total_tokens\":5}}",
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n");
+    return new Response(upstreamSse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const streamed = await requestRaw(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "glm-5.2",
+          input: "Use a tool only when needed.",
+          stream: true,
+        },
+      });
+
+      assert.equal(streamed.status, 200);
+      const events = parseSseEvents(streamed.body);
+      assert.equal(events.some((item) => item.event === "response.function_call_arguments.delta"), false);
+      assert.equal(events.some((item) => item.event === "response.function_call_arguments.done"), false);
+      assert.equal(events.some((item) => item.data?.item?.type === "function_call"), false);
+      const completed = events.find((item) => item.event === "response.completed").data.response;
+      assert.deepEqual(completed.output, []);
+      assert.equal(completed.status, "completed");
     });
   } finally {
     globalThis.fetch = originalFetch;
