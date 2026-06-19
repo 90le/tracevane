@@ -6735,6 +6735,79 @@ test("model gateway protocol matrix forwards native anthropic messages", async (
   });
 });
 
+test("model gateway normalizes legacy anthropic thinking before native passthrough", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "native-anthropic-thinking",
+      name: "Native Anthropic Thinking",
+      appScopes: ["claude-code"],
+      baseUrl: "https://anthropic-thinking.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: {
+      apiKey: "sk-native-anthropic-thinking-secret",
+    },
+    setActiveScopes: ["claude-code"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      body: String(init.body || ""),
+    });
+    return new Response(JSON.stringify({
+      id: "msg_native_thinking",
+      type: "message",
+      role: "assistant",
+      model: "claude-native",
+      content: [{ type: "text", text: "ok" }],
+      stop_reason: "end_turn",
+      usage: { input_tokens: 10, output_tokens: 1 },
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          max_tokens: 64,
+          thinking: {
+            type: "enabled",
+            budget_tokens: 9000,
+          },
+          messages: [{ role: "user", content: "hello" }],
+        },
+      });
+      assert.equal(response.status, 200);
+      assert.equal(response.body.content[0].text, "ok");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://anthropic-thinking.example.test/v1/messages");
+  assert.deepEqual(JSON.parse(upstreamCalls[0].body), {
+    model: "claude-native",
+    max_tokens: 64,
+    thinking: { type: "adaptive" },
+    output_config: { effort: "high" },
+    messages: [{ role: "user", content: "hello" }],
+  });
+});
+
 test("model gateway adapts anthropic messages through openai chat providers", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

@@ -89,6 +89,22 @@ export function applyAnthropicReasoningOptions(
   anthropicRequest.output_config = outputConfig;
 }
 
+export function normalizeAnthropicReasoningOptions(anthropicRequest: JsonRecord): boolean {
+  const thinking = isRecord(anthropicRequest.thinking) ? anthropicRequest.thinking : null;
+  const type = stringOrNull(thinking?.type)?.toLowerCase();
+  if (type !== "enabled") return false;
+
+  const effort = reasoningEffort(anthropicRequest);
+  const mapped = effort ? mapReasoningEffort(effort, "anthropic") : null;
+  anthropicRequest.thinking = { type: "adaptive" };
+  const outputConfig: JsonRecord = isRecord(anthropicRequest.output_config)
+    ? { ...anthropicRequest.output_config }
+    : {};
+  outputConfig.effort = mapped || effortFromBudgetTokens(thinking?.budget_tokens) || "high";
+  anthropicRequest.output_config = outputConfig;
+  return true;
+}
+
 export function reasoningEffort(request: JsonRecord): string | null {
   const reasoning = isRecord(request.reasoning) ? request.reasoning : null;
   const outputConfig = isRecord(request.output_config) ? request.output_config : null;
@@ -150,6 +166,14 @@ export function mapReasoningEffort(effort: string, mode: ReasoningEffortMode): s
 
 function reasoningEffortDisabled(effort: string): boolean {
   return DISABLED_REASONING_EFFORTS.has(effort.trim().toLowerCase());
+}
+
+function effortFromBudgetTokens(value: unknown): string | null {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return null;
+  if (value >= 16_384) return "xhigh";
+  if (value >= 8_192) return "high";
+  if (value >= 2_048) return "medium";
+  return "low";
 }
 
 function stringOrNull(value: unknown): string | null {

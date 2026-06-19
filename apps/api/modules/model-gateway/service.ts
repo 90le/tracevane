@@ -156,6 +156,7 @@ import {
   adaptResponsesToChatCompletion,
   isChatToOpenAIResponsesAdapterTarget,
 } from "./responses-chat-adapter.js";
+import { normalizeAnthropicReasoningOptions } from "./reasoning-options.js";
 import { sanitizeOpenAIChatUpstreamBody } from "./openai-chat-compatibility.js";
 import { createModelGatewayDaemonServicePlan } from "./supervisor.js";
 
@@ -3848,6 +3849,18 @@ function replaceModelInJsonText(value: string | undefined, model: string | null)
       ...parsed,
       model: resolvedModel,
     });
+  } catch {
+    return value;
+  }
+}
+
+function normalizeAnthropicReasoningInJsonText(value: string | undefined): string | undefined {
+  if (!value) return value;
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!isRecord(parsed)) return value;
+    const next = JSON.parse(JSON.stringify(parsed)) as Record<string, unknown>;
+    return normalizeAnthropicReasoningOptions(next) ? JSON.stringify(next) : value;
   } catch {
     return value;
   }
@@ -9490,6 +9503,13 @@ export function createModelGatewayService(
     upstreamBodyText = sanitizedOpenAIChat.bodyText ?? upstreamBodyText;
     if (sanitizedOpenAIChat.removedFields.length) {
       headers.set("content-type", "application/json");
+    }
+    if (provider.apiFormat === "anthropic_messages") {
+      const normalizedAnthropicBody = normalizeAnthropicReasoningInJsonText(upstreamBodyText);
+      if (normalizedAnthropicBody !== upstreamBodyText) {
+        upstreamBodyText = normalizedAnthropicBody;
+        headers.set("content-type", "application/json");
+      }
     }
     if (isCodexAccountBackedProvider(provider)) {
       if (useCodexAccountResponsesUpstream) {
