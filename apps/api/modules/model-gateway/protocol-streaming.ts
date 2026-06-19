@@ -16,6 +16,10 @@ interface StreamResult {
   output?: JsonRecord[];
 }
 
+export interface StreamAdapterOptions {
+  customToolNames?: Iterable<string>;
+}
+
 export interface StreamErrorEnvelope {
   message: string;
   type: string | null;
@@ -37,6 +41,7 @@ interface ToolStreamBlock {
   index: number;
   name: string;
   inputJson: string;
+  custom: boolean;
   started: boolean;
   stopped: boolean;
   sentChatStart: boolean;
@@ -240,7 +245,7 @@ export async function writeChatCompletionsSseFromResponsesSse(
         return;
       }
       if (event.event === "response.output_item.added" && isRecord(event.json.item)) {
-        if (event.json.item.type === "function_call") {
+        if (isResponsesToolCallItem(event.json.item)) {
           const tool = ensureResponsesToolBlock(event.json, event.json.item, toolBlocks, toolIndexByItemId);
           ensureChatStreamStart(state, res);
           writeChatToolCallStart(state, res, tool);
@@ -271,9 +276,9 @@ export async function writeChatCompletionsSseFromResponsesSse(
         return;
       }
       if (event.event === "response.output_item.done" && isRecord(event.json.item)) {
-        if (event.json.item.type === "function_call") {
+        if (isResponsesToolCallItem(event.json.item)) {
           const tool = ensureResponsesToolBlock(event.json, event.json.item, toolBlocks, toolIndexByItemId);
-          const remaining = remainingToolArgumentsDelta(tool, event.json.item.arguments);
+          const remaining = remainingToolArgumentsDelta(tool, responsesToolArguments(event.json.item));
           ensureChatStreamStart(state, res);
           writeChatToolCallStart(state, res, tool);
           if (remaining) {
@@ -356,7 +361,7 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
         return;
       }
       if (event.event === "response.output_item.added" && isRecord(event.json.item)) {
-        if (event.json.item.type === "function_call") {
+        if (isResponsesToolCallItem(event.json.item)) {
           closeAnthropicTextBlock(state, res);
           ensureAnthropicTextMessageStart(state, res);
           const tool = ensureResponsesToolBlock(event.json, event.json.item, state.tools, state.toolIndexByItemId);
@@ -389,11 +394,11 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
         return;
       }
       if (event.event === "response.output_item.done" && isRecord(event.json.item)) {
-        if (event.json.item.type === "function_call") {
+        if (isResponsesToolCallItem(event.json.item)) {
           closeAnthropicTextBlock(state, res);
           ensureAnthropicTextMessageStart(state, res);
           const tool = ensureResponsesToolBlock(event.json, event.json.item, state.tools, state.toolIndexByItemId);
-          const remaining = remainingToolArgumentsDelta(tool, event.json.item.arguments);
+          const remaining = remainingToolArgumentsDelta(tool, responsesToolArguments(event.json.item));
           pushAnthropicToolDeltaFromResponses(state, res, tool, remaining);
           stopAnthropicToolBlock(res, tool);
           state.stopReason = "tool_use";
@@ -426,6 +431,7 @@ export async function writeCodexResponsesSseFromAnthropicMessagesSse(
   upstreamBody: ReadableStream<Uint8Array>,
   res: http.ServerResponse,
   fallbackModel: string | null,
+  options: StreamAdapterOptions = {},
 ): Promise<StreamResult> {
   const state = {
     responseStarted: false,
@@ -440,6 +446,7 @@ export async function writeCodexResponsesSseFromAnthropicMessagesSse(
     textOutputIndex: null as number | null,
     nextOutputIndex: 0,
     tools: new Map<number, ToolStreamBlock>(),
+    customToolNames: new Set(options.customToolNames || []),
     completedOutput: [] as JsonRecord[],
     usage: null as JsonRecord | null,
     status: "completed",
@@ -479,6 +486,7 @@ export async function writeCodexResponsesSseFromAnthropicMessagesSse(
           const tool = ensureToolBlock(state.tools, sourceIndex, {
             id: stringOrNull(block.id) || undefined,
             name: stringOrNull(block.name) || undefined,
+            custom: state.customToolNames.has(stringOrNull(block.name) || ""),
           });
           ensureResponsesToolAdded(state, res, tool);
           const inputJson = serializeToolInput(block.input);
@@ -1129,6 +1137,16 @@ function stopResponsesToolBlock(
 }
 
 function responsesFunctionCallItem(tool: ToolStreamBlock, status: string): JsonRecord {
+  if (tool.custom) {
+    return {
+      id: responsesFunctionCallItemId(tool),
+      type: "custom_tool_call",
+      status,
+      call_id: tool.id,
+      name: tool.name,
+      input: customToolInputFromJson(tool.inputJson),
+    };
+  }
   return {
     id: responsesFunctionCallItemId(tool),
     type: "function_call",
@@ -1137,6 +1155,17 @@ function responsesFunctionCallItem(tool: ToolStreamBlock, status: string): JsonR
     name: tool.name,
     arguments: tool.inputJson || "{}",
   };
+}
+
+function customToolInputFromJson(value: string): string {
+  if (!value) return "";
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (isRecord(parsed) && typeof parsed.input === "string") return parsed.input;
+  } catch {
+    // Fall through to raw text.
+  }
+  return value;
 }
 
 function responsesFunctionCallItemId(tool: ToolStreamBlock): string {
@@ -1326,7 +1355,7 @@ function baseResponse(
 function ensureToolBlock(
   blocks: Map<number, ToolStreamBlock>,
   sourceIndex: number,
-  patch: { id?: string; name?: string },
+  patch: { id?: string; name?: string; custom?: boolean },
 ): ToolStreamBlock {
   let block = blocks.get(sourceIndex);
   if (!block) {
@@ -1335,6 +1364,7 @@ function ensureToolBlock(
       index: sourceIndex,
       name: patch.name || "tool",
       inputJson: "",
+      custom: Boolean(patch.custom),
       started: false,
       stopped: false,
       sentChatStart: false,
@@ -1346,6 +1376,7 @@ function ensureToolBlock(
   }
   if (patch.id) block.id = patch.id;
   if (patch.name) block.name = patch.name;
+  if (patch.custom) block.custom = true;
   return block;
 }
 
@@ -1361,9 +1392,24 @@ function ensureResponsesToolBlock(
     : numberOrNull(payload.output_index) ?? blocks.size;
   const callId = stringOrNull(item?.call_id) || stringOrNull(item?.id) || stringOrNull(payload.call_id) || itemId || undefined;
   const name = stringOrNull(item?.name) || stringOrNull(payload.name) || undefined;
-  const tool = ensureToolBlock(blocks, sourceIndex, { id: callId, name });
+  const tool = ensureToolBlock(blocks, sourceIndex, {
+    id: callId,
+    name,
+    custom: item?.type === "custom_tool_call",
+  });
   if (itemId) itemIdToIndex.set(itemId, sourceIndex);
   return tool;
+}
+
+function isResponsesToolCallItem(item: JsonRecord): boolean {
+  return item.type === "function_call" || item.type === "custom_tool_call";
+}
+
+function responsesToolArguments(item: JsonRecord): string {
+  if (item.type === "custom_tool_call") {
+    return JSON.stringify({ input: typeof item.input === "string" ? item.input : "" });
+  }
+  return typeof item.arguments === "string" ? item.arguments : "";
 }
 
 function remainingToolArgumentsDelta(tool: ToolStreamBlock, argumentsValue: unknown): string {
@@ -1384,9 +1430,9 @@ function emitMissingChatToolCallsFromResponsesOutput(
   if (!Array.isArray(output)) return;
   for (let index = 0; index < output.length; index += 1) {
     const item = output[index];
-    if (!isRecord(item) || item.type !== "function_call") continue;
+    if (!isRecord(item) || !isResponsesToolCallItem(item)) continue;
     const tool = ensureResponsesToolBlock({ output_index: index }, item, blocks, itemIdToIndex);
-    const remaining = remainingToolArgumentsDelta(tool, item.arguments);
+    const remaining = remainingToolArgumentsDelta(tool, responsesToolArguments(item));
     ensureChatStreamStart(state, res);
     writeChatToolCallStart(state, res, tool);
     if (remaining) {
@@ -1411,10 +1457,10 @@ function emitMissingAnthropicToolUsesFromResponsesOutput(
   if (!Array.isArray(output)) return;
   for (let index = 0; index < output.length; index += 1) {
     const item = output[index];
-    if (!isRecord(item) || item.type !== "function_call") continue;
+    if (!isRecord(item) || !isResponsesToolCallItem(item)) continue;
     closeAnthropicTextBlock(state, res);
     const tool = ensureResponsesToolBlock({ output_index: index }, item, state.tools, state.toolIndexByItemId);
-    const remaining = remainingToolArgumentsDelta(tool, item.arguments);
+    const remaining = remainingToolArgumentsDelta(tool, responsesToolArguments(item));
     pushAnthropicToolDeltaFromResponses(state, res, tool, remaining);
     stopAnthropicToolBlock(res, tool);
     state.stopReason = "tool_use";

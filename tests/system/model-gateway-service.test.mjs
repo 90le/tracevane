@@ -9340,6 +9340,164 @@ test("model gateway restores streaming codex custom tool calls from chat sse", a
   }
 });
 
+test("model gateway restores codex custom tool calls from anthropic adapter responses", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-custom-anthropic-response-adapter",
+      name: "Codex Custom Anthropic Response Adapter",
+      appScopes: ["codex"],
+      baseUrl: "https://codex-custom-anthropic-response.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: {
+      apiKey: "sk-codex-custom-anthropic-response-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    id: "msg_custom_anthropic_response",
+    type: "message",
+    role: "assistant",
+    model: "claude-native",
+    content: [{
+      type: "tool_use",
+      id: "call_patch",
+      name: "apply_patch",
+      input: {
+        input: "*** Begin Patch\n*** Add File: probe.txt\n+ok\n*** End Patch\n",
+      },
+    }],
+    stop_reason: "tool_use",
+    usage: {
+      input_tokens: 12,
+      output_tokens: 4,
+    },
+  }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          input: "Patch.",
+          tools: [{
+            type: "custom",
+            name: "apply_patch",
+          }],
+          stream: false,
+        },
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(response.body.output, [{
+        type: "custom_tool_call",
+        id: "call_patch",
+        call_id: "call_patch",
+        status: "completed",
+        name: "apply_patch",
+        input: "*** Begin Patch\n*** Add File: probe.txt\n+ok\n*** End Patch\n",
+      }]);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("model gateway restores streaming codex custom tool calls from anthropic sse", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-stream-custom-anthropic-response-adapter",
+      name: "Codex Stream Custom Anthropic Response Adapter",
+      appScopes: ["codex"],
+      baseUrl: "https://codex-stream-custom-anthropic-response.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: {
+      apiKey: "sk-codex-stream-custom-anthropic-response-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    const upstreamSse = [
+      "event: message_start",
+      "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_stream_custom_anthropic\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-native\",\"content\":[],\"usage\":{\"input_tokens\":7,\"output_tokens\":0}}}",
+      "",
+      "event: content_block_start",
+      "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call_patch\",\"name\":\"apply_patch\",\"input\":{}}}",
+      "",
+      "event: content_block_delta",
+      "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"input\\\":\\\"*** Begin Patch\\\\n\"}}",
+      "",
+      "event: content_block_delta",
+      "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"*** Add File: probe.txt\\\\n+ok\\\\n*** End Patch\\\\n\\\"}\"}}",
+      "",
+      "event: content_block_stop",
+      "data: {\"type\":\"content_block_stop\",\"index\":0}",
+      "",
+      "event: message_delta",
+      "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":3}}",
+      "",
+      "event: message_stop",
+      "data: {\"type\":\"message_stop\"}",
+      "",
+    ].join("\n");
+    return new Response(upstreamSse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const streamed = await requestRaw(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          input: "Patch.",
+          tools: [{
+            type: "custom",
+            name: "apply_patch",
+          }],
+          stream: true,
+        },
+      });
+      assert.equal(streamed.status, 200);
+      const events = parseSseEvents(streamed.body);
+      const completed = events.find((item) => item.event === "response.completed").data.response;
+      assert.deepEqual(completed.output, [{
+        id: "fc_call_patch",
+        type: "custom_tool_call",
+        status: "completed",
+        call_id: "call_patch",
+        name: "apply_patch",
+        input: "*** Begin Patch\n*** Add File: probe.txt\n+ok\n*** End Patch\n",
+      }]);
+      const done = events.find((item) => item.event === "response.output_item.done").data.item;
+      assert.equal(done.type, "custom_tool_call");
+      assert.equal(done.input, "*** Begin Patch\n*** Add File: probe.txt\n+ok\n*** End Patch\n");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model gateway records streamed codex tool-call history for follow-up anthropic adapter requests", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
