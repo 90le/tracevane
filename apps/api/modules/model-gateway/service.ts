@@ -2856,18 +2856,22 @@ function endpointForRoute(routeId: ModelGatewayRouteId, provider: ModelGatewayPr
   if (override) return override;
 
   if (routeId === "openai_chat_completions") {
-    if (provider.apiFormat === "anthropic_messages") return "/messages";
-    if (provider.apiFormat === "openai_responses") return "/responses";
-    return "/chat/completions";
+    if (provider.apiFormat === "anthropic_messages") return nativeEndpointForProvider(provider, "anthropic_messages", "/messages");
+    if (provider.apiFormat === "openai_responses") return nativeEndpointForProvider(provider, "openai_responses", "/responses");
+    return nativeEndpointForProvider(provider, "openai_chat", "/chat/completions");
   }
   if (routeId === "openai_responses") {
-    if (provider.apiFormat === "anthropic_messages") return "/messages";
-    return provider.apiFormat === "openai_chat" ? "/chat/completions" : "/responses";
+    if (provider.apiFormat === "anthropic_messages") return nativeEndpointForProvider(provider, "anthropic_messages", "/messages");
+    return provider.apiFormat === "openai_chat"
+      ? nativeEndpointForProvider(provider, "openai_chat", "/chat/completions")
+      : nativeEndpointForProvider(provider, "openai_responses", "/responses");
   }
   if (routeId === "openai_responses_compact") {
-    if (provider.apiFormat === "anthropic_messages") return "/messages";
+    if (provider.apiFormat === "anthropic_messages") return nativeEndpointForProvider(provider, "anthropic_messages", "/messages");
     if (isCodexAccountBackedProvider(provider)) return "/compact";
-    return provider.apiFormat === "openai_chat" ? "/chat/completions" : "/responses/compact";
+    return provider.apiFormat === "openai_chat"
+      ? nativeEndpointForProvider(provider, "openai_chat", "/chat/completions")
+      : nativeEndpointForProvider(provider, "openai_responses", "/responses/compact");
   }
   if (routeId === "openai_images_generations") {
     if (isCodexAccountBackedProvider(provider)) return "/responses";
@@ -2878,11 +2882,22 @@ function endpointForRoute(routeId: ModelGatewayRouteId, provider: ModelGatewayPr
   if (routeId === "openai_audio_translations") return "/audio/translations";
   if (routeId === "openai_audio_speech") return "/audio/speech";
   if (routeId === "anthropic_messages") {
-    if (provider.apiFormat === "openai_chat") return "/chat/completions";
-    if (provider.apiFormat === "openai_responses") return "/responses";
-    return "/messages";
+    if (provider.apiFormat === "openai_chat") return nativeEndpointForProvider(provider, "openai_chat", "/chat/completions");
+    if (provider.apiFormat === "openai_responses") return nativeEndpointForProvider(provider, "openai_responses", "/responses");
+    return nativeEndpointForProvider(provider, "anthropic_messages", "/messages");
   }
   return "/";
+}
+
+function nativeEndpointForProvider(
+  provider: ModelGatewayProvider,
+  apiFormat: ModelGatewayApiFormat,
+  fallback: string,
+): string {
+  if (apiFormat === "openai_chat") return provider.endpoints.openai_chat_completions || fallback;
+  if (apiFormat === "openai_responses") return provider.endpoints.openai_responses || fallback;
+  if (apiFormat === "anthropic_messages") return provider.endpoints.anthropic_messages || fallback;
+  return fallback;
 }
 
 function routeMode(routeId: ModelGatewayRouteId, provider: ModelGatewayProvider): ModelGatewayRouteMode {

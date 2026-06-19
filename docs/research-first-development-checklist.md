@@ -81,6 +81,12 @@
   - 稳定结论：reasoning effort 是客户端/协议层偏好，不应再由 Codex App Connection 按模型名白名单删除。Codex 顶层 `model_reasoning_effort` 对所有 Gateway 模型保留；Gateway 请求适配按目标协议输出兼容字段：Responses 使用 `reasoning.effort`，Chat-compatible 使用 provider reasoning 配置或内部桥接 `reasoning_effort`，Anthropic Messages 使用 `thinking: adaptive` + `output_config.effort`；Anthropic passthrough 也要把 Claude Code 旧 `thinking.enabled + budget_tokens` 归一化为 `adaptive + output_config.effort`，避免 Bedrock Claude 4.7+ 拒绝旧形态。
   - 拒绝方案：拒绝继续用 GPT/o/Codex 模型名判断是否写入 Codex effort；拒绝为 Anthropic 4.7+ 生成旧 `budget_tokens` thinking 形态；拒绝把未知 reasoning 字段盲目透传给上游，协议适配必须按目标 API 清理/翻译。
   - 风险与验证：需要系统测试覆盖 Responses->Chat、Responses->Anthropic、Chat->Responses、Chat->Anthropic、Anthropic->Chat、Anthropic->Responses 的 effort 映射、Anthropic passthrough 旧 thinking 归一化，并继续保留 OpenAI Chat `tools + reasoning_effort` 清理，避免已知上游不兼容回归。
+- 2026-06-19 Model Gateway GLM 双端点 Codex/Claude 互通：
+  - 范围：`glm-5.2` 在智谱 Coding Plan 的 OpenAI Chat-compatible 端点和 Anthropic Messages 端点上，分别承接 Codex `/v1/responses` 与 Claude Code `/v1/messages` 工具调用链路。
+  - 来源核验：智谱官方 Coding Plan 文档（2026-06-19，`https://docs.bigmodel.cn/cn/guide/develop/coding-plan`）确认 Coding Plan endpoint 为 `https://open.bigmodel.cn/api/coding/paas/v4`，用于 Codex/OpenCode 等 OpenAI-compatible 调用；智谱 Claude API 兼容文档（2026-06-19，`https://docs.bigmodel.cn/cn/guide/api-compatible/claude_api`）确认 Anthropic-compatible base URL 为 `https://open.bigmodel.cn/api/anthropic`，Messages 路径为 `/v1/messages`。
+  - 稳定结论：Gateway adapter 路由不能只按客户端 routeId 选择默认路径；当客户端协议需要转到上游原生协议时，必须优先使用上游 provider 原生协议 endpoint override。Codex `/v1/responses` 转 Anthropic provider 应使用 `endpoints.anthropic_messages`，否则 GLM Anthropic 会被错误打到 `/api/anthropic/messages`。
+  - 拒绝方案：拒绝把 GLM Anthropic 只当 Claude Code 专属端点；拒绝用 Chat 端点覆盖所有 Codex 场景，因为 GLM 官方同时提供 Anthropic-compatible 端点，Gateway 应保持两端点都可测、可路由。
+  - 风险与验证：当前 live 2x2 smoke 显示 Chat 端点对 Codex/Claude 均通过，Anthropic 端点对 Claude 原生通过、对 Codex 工具链也能完成 3 工具；但 Codex+GLM Anthropic 的自然语言过程回复会被合并，严格的多过程回复计数不如 Chat 端点稳定。需要保留系统测试覆盖 endpoint override，后续再加更复杂 `read -> edit -> test` 工具链压测。
 - 2026-06-19 Model Gateway App Connections Gateway key 前置处理：
   - 范围：Client connections 页应用 Codex、Claude Code、OpenCode、OpenClaw 配置前的本地 Gateway client key 状态提示、生成/启用入口和前端 guard。
   - 来源核验：本次不改变外部客户端配置格式、endpoint、header 或模型协议，只修正 Tracevane 本地管理 UI 对既有 `/api/model-gateway/client-auth` 与 `/api/model-gateway/app-connections` 合同的呈现和操作顺序；沿用 2026-06-18 Gateway App Connections 已验证的客户端写入边界。

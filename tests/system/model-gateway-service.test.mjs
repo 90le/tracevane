@@ -3291,6 +3291,38 @@ test("model gateway endpoint profiles prefer native protocol and fall back by en
   assert.match(fallback.failoverReason || "", /coding-anthropic.*fallback 'glm\/coding-chat'/);
 });
 
+test("model gateway responses to anthropic adapter uses native endpoint override", () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const service = createModelGatewayService(config);
+
+  service.upsertProvider(undefined, {
+    provider: {
+      id: "glm-anthropic",
+      name: "GLM Anthropic",
+      appScopes: ["codex"],
+      baseUrl: "https://open.bigmodel.cn/api/anthropic",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+      endpoints: { anthropic_messages: "/v1/messages" },
+      models: {
+        defaultModel: "glm-5.2",
+        models: [{ id: "glm-5.2" }],
+      },
+    },
+    secret: { apiKey: "sk-glm-anthropic" },
+    setActiveScopes: ["codex"],
+  });
+
+  const decision = service.resolveRouteDecision("POST", "/v1/responses", {}, "glm-5.2");
+  assert.equal(decision.provider?.id, "glm-anthropic");
+  assert.equal(decision.routeId, "openai_responses");
+  assert.equal(decision.mode, "adapter-required");
+  assert.equal(decision.provider?.apiFormat, "anthropic_messages");
+  assert.equal(decision.upstreamPath, "/v1/messages");
+  assert.equal(decision.upstreamUrl, "https://open.bigmodel.cn/api/anthropic/v1/messages");
+});
+
 test("model gateway endpoint profiles prefer same-provider model endpoint fallback", () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
