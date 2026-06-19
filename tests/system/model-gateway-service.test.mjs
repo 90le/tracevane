@@ -8397,6 +8397,182 @@ test("model gateway maps implicit and explicit codex reasoning to glm chat think
   ]);
 });
 
+test("model gateway normalizes GLM chat thinking for native OpenAI Chat passthrough", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "glm-chat-passthrough-thinking",
+      name: "GLM Chat Passthrough Thinking",
+      appScopes: ["openclaw"],
+      baseUrl: "https://glm-chat-passthrough-thinking.example.test/api/coding/paas/v4",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "glm-5.2",
+        models: [{ id: "glm-5.2" }],
+      },
+    },
+    secret: {
+      apiKey: "sk-glm-chat-passthrough-thinking-secret",
+    },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamBodies = [];
+  globalThis.fetch = async (_url, init = {}) => {
+    upstreamBodies.push(JSON.parse(String(init.body || "{}")));
+    return new Response(JSON.stringify({
+      id: `chatcmpl_glm_passthrough_thinking_${upstreamBodies.length}`,
+      created: 1_710_000_034,
+      model: "glm-5.2",
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "ok" },
+        finish_reason: "stop",
+      }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const implicit = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "glm-5.2",
+          messages: [{ role: "user", content: "Default." }],
+          tools: [{
+            type: "function",
+            function: {
+              name: "lookup",
+              parameters: { type: "object" },
+            },
+          }],
+        },
+      });
+      assert.equal(implicit.status, 200);
+
+      const explicit = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "glm-5.2",
+          messages: [{ role: "user", content: "Think." }],
+          tools: [{
+            type: "function",
+            function: {
+              name: "lookup",
+              parameters: { type: "object" },
+            },
+          }],
+          reasoning_effort: "high",
+        },
+      });
+      assert.equal(explicit.status, 200);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamBodies.length, 2);
+  assert.deepEqual(upstreamBodies[0].thinking, { type: "disabled" });
+  assert.equal("reasoning_effort" in upstreamBodies[0], false);
+  assert.deepEqual(upstreamBodies[1].thinking, { type: "enabled" });
+  assert.equal(upstreamBodies[1].reasoning_effort, "high");
+});
+
+test("model gateway normalizes GLM chat thinking for Anthropic-to-Chat adapter", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "glm-anthropic-chat-thinking",
+      name: "GLM Anthropic Chat Thinking",
+      appScopes: ["claude-code"],
+      baseUrl: "https://glm-anthropic-chat-thinking.example.test/api/coding/paas/v4",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+      models: {
+        defaultModel: "glm-5.2",
+        models: [{ id: "glm-5.2" }],
+      },
+    },
+    secret: {
+      apiKey: "sk-glm-anthropic-chat-thinking-secret",
+    },
+    setActiveScopes: ["claude-code"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamBodies = [];
+  globalThis.fetch = async (_url, init = {}) => {
+    upstreamBodies.push(JSON.parse(String(init.body || "{}")));
+    return new Response(JSON.stringify({
+      id: `chatcmpl_glm_anthropic_thinking_${upstreamBodies.length}`,
+      created: 1_710_000_035,
+      model: "glm-5.2",
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "ok" },
+        finish_reason: "stop",
+      }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const implicit = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "glm-5.2",
+          max_tokens: 1024,
+          messages: [{ role: "user", content: "Default." }],
+          tools: [{
+            name: "lookup",
+            input_schema: { type: "object" },
+          }],
+        },
+      });
+      assert.equal(implicit.status, 200);
+
+      const explicit = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "glm-5.2",
+          max_tokens: 1024,
+          messages: [{ role: "user", content: "Think." }],
+          tools: [{
+            name: "lookup",
+            input_schema: { type: "object" },
+          }],
+          output_config: { effort: "xhigh" },
+        },
+      });
+      assert.equal(explicit.status, 200);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamBodies.length, 2);
+  assert.deepEqual(upstreamBodies[0].thinking, { type: "disabled" });
+  assert.equal("reasoning_effort" in upstreamBodies[0], false);
+  assert.deepEqual(upstreamBodies[1].thinking, { type: "enabled" });
+  assert.equal(upstreamBodies[1].reasoning_effort, "xhigh");
+});
+
 test("model gateway maps chat reasoning content to codex responses output items", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

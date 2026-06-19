@@ -9519,6 +9519,7 @@ export function createModelGatewayService(
     const sanitizedOpenAIChat = provider.apiFormat === "openai_chat"
       ? sanitizeOpenAIChatUpstreamBody(upstreamBodyText, {
         allowMetadata: metadataBoolean(provider.metadata, ["openaiChatMetadataPassthrough", "openai_chat_metadata_passthrough"], false),
+        reasoning: provider.reasoning,
       })
       : { bodyText: upstreamBodyText, removedFields: [] };
     upstreamBodyText = sanitizedOpenAIChat.bodyText ?? upstreamBodyText;

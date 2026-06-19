@@ -1,7 +1,11 @@
+import type { ModelGatewayProviderReasoning } from "../../../../types/model-gateway.js";
+import { applyChatReasoningOptions } from "./reasoning-options.js";
+
 type JsonRecord = Record<string, unknown>;
 
 export interface OpenAIChatCompatibilityOptions {
   allowMetadata?: boolean;
+  reasoning?: ModelGatewayProviderReasoning | null;
 }
 
 export interface OpenAIChatCompatibilityResult {
@@ -27,6 +31,7 @@ export function sanitizeOpenAIChatUpstreamBody(
   if (!isRecord(parsed)) return { bodyText, removedFields: [] };
 
   const sanitized: JsonRecord = { ...parsed };
+  applyChatReasoningOptions(sanitized, sanitized, options.reasoning || null);
   const removedFields: string[] = [];
   for (const field of STRICT_CHAT_INCOMPATIBLE_FIELDS) {
     if (field === "metadata" && options.allowMetadata) continue;
@@ -36,16 +41,20 @@ export function sanitizeOpenAIChatUpstreamBody(
     }
   }
   if (hasFunctionTools(sanitized.tools)) {
-    for (const field of TOOL_REASONING_INCOMPATIBLE_FIELDS) {
-      if (Object.prototype.hasOwnProperty.call(sanitized, field)) {
-        delete sanitized[field];
-        removedFields.push(field);
+    const keepReasoningWithTools = shouldKeepToolReasoningFields(sanitized, options.reasoning || null);
+    if (!keepReasoningWithTools) {
+      for (const field of TOOL_REASONING_INCOMPATIBLE_FIELDS) {
+        if (Object.prototype.hasOwnProperty.call(sanitized, field)) {
+          delete sanitized[field];
+          removedFields.push(field);
+        }
       }
     }
   }
 
+  const nextBodyText = JSON.stringify(sanitized);
   return {
-    bodyText: removedFields.length ? JSON.stringify(sanitized) : bodyText,
+    bodyText: nextBodyText !== bodyText ? nextBodyText : bodyText,
     removedFields,
   };
 }
@@ -54,6 +63,15 @@ function hasFunctionTools(value: unknown): boolean {
   return Array.isArray(value) && value.some((tool) =>
     isRecord(tool) && (tool.type === "function" || isRecord(tool.function))
   );
+}
+
+function shouldKeepToolReasoningFields(
+  request: JsonRecord,
+  config: ModelGatewayProviderReasoning | null,
+): boolean {
+  if (config?.supportsEffort === true) return true;
+  const model = typeof request.model === "string" ? request.model.trim() : "";
+  return /^glm[-_]?5(?:\.|$|[-_:/\s\[])/i.test(model);
 }
 
 function isRecord(value: unknown): value is JsonRecord {
