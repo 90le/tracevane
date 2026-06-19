@@ -8,6 +8,8 @@ const DEFAULT_ENDPOINT = "http://127.0.0.1:18796";
 const DEFAULT_SCOPES = ["codex", "claude-code", "opencode"];
 const DEFAULT_TIMEOUT_MS = 240_000;
 const DEFAULT_INPUT = "Reply with GATEWAY_OK only.";
+const DEFAULT_LOCK_TIMEOUT_MS = 300_000;
+const DEFAULT_LOCK_STALE_MS = 30 * 60_000;
 
 function parseArgs(argv) {
   const options = {
@@ -18,6 +20,7 @@ function parseArgs(argv) {
     timeoutMs: DEFAULT_TIMEOUT_MS,
     input: DEFAULT_INPUT,
     temporaryEnable: false,
+    lockTimeoutMs: DEFAULT_LOCK_TIMEOUT_MS,
     expectEndpoints: {},
     expectRoutes: {},
     expectApiFormats: {},
@@ -38,6 +41,8 @@ function parseArgs(argv) {
     else if (arg === "--input") options.input = argv[++index] || options.input;
     else if (arg.startsWith("--input=")) options.input = arg.slice("--input=".length);
     else if (arg === "--temporary-enable") options.temporaryEnable = true;
+    else if (arg === "--lock-timeout-ms") options.lockTimeoutMs = nonNegativeInt(argv[++index], DEFAULT_LOCK_TIMEOUT_MS);
+    else if (arg.startsWith("--lock-timeout-ms=")) options.lockTimeoutMs = nonNegativeInt(arg.slice("--lock-timeout-ms=".length), DEFAULT_LOCK_TIMEOUT_MS);
     else if (arg === "--expect-endpoints") options.expectEndpoints = parseScopeMap(argv[++index] || "");
     else if (arg.startsWith("--expect-endpoints=")) options.expectEndpoints = parseScopeMap(arg.slice("--expect-endpoints=".length));
     else if (arg === "--expect-routes") options.expectRoutes = parseScopeMap(argv[++index] || "");
@@ -81,6 +86,11 @@ function positiveInt(value, fallback) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function nonNegativeInt(value, fallback) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
 function printHelp() {
   console.log(`Usage: node scripts/smoke-model-gateway-active-routes.mjs --provider <id> --model <id> [options]
 
@@ -97,6 +107,8 @@ Options:
   --timeout-ms <n>   active-route-smoke timeout
   --input <text>     prompt sent to active-route-smoke
   --temporary-enable enable a disabled provider for the smoke, then restore it
+  --lock-timeout-ms <n>
+                    wait this long for the local active-route smoke lock
   --expect-endpoints <scope=id,...>
                     fail when a scope uses a different endpoint profile
   --expect-routes <scope=id,...>
@@ -213,7 +225,97 @@ function createResult(options, provider, originalActiveProviders) {
     restoredActiveProviders: null,
     restoreFailures: [],
     restoreMismatches: [],
+    lock: null,
   };
+}
+
+function activeRouteSmokeLockDir() {
+  const envLockDir = process.env.TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_LOCK_DIR;
+  if (envLockDir?.trim()) return path.resolve(envLockDir.trim());
+  return path.join(os.homedir(), ".openclaw/tracevane/model-gateway/active-route-smoke.lock");
+}
+
+function lockMetadata(lockDir) {
+  return {
+    pid: process.pid,
+    createdAt: new Date().toISOString(),
+    script: path.basename(process.argv[1] || "smoke-model-gateway-active-routes.mjs"),
+    lockDir,
+  };
+}
+
+function removeLockDir(lockDir) {
+  try {
+    fs.rmSync(lockDir, { recursive: true, force: true });
+  } catch {
+    // Best effort; a later mkdir will decide whether the lock is still held.
+  }
+}
+
+function readLockCreatedAtMs(lockDir) {
+  try {
+    const raw = fs.readFileSync(path.join(lockDir, "owner.json"), "utf8");
+    const parsed = JSON.parse(raw);
+    const value = Date.parse(parsed.createdAt || "");
+    return Number.isFinite(value) ? value : null;
+  } catch {
+    return null;
+  }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function acquireActiveRouteSmokeLock(options) {
+  const lockDir = activeRouteSmokeLockDir();
+  const startedAt = Date.now();
+  let attempts = 0;
+  for (;;) {
+    attempts += 1;
+    try {
+      fs.mkdirSync(lockDir, { recursive: false });
+      const metadata = lockMetadata(lockDir);
+      fs.writeFileSync(path.join(lockDir, "owner.json"), `${JSON.stringify(metadata, null, 2)}\n`, { mode: 0o600 });
+      return {
+        acquired: true,
+        lockDir,
+        attempts,
+        waitedMs: Date.now() - startedAt,
+        release() {
+          removeLockDir(lockDir);
+        },
+      };
+    } catch (error) {
+      if (error?.code !== "EEXIST") throw error;
+      const createdAtMs = readLockCreatedAtMs(lockDir);
+      if (createdAtMs !== null && Date.now() - createdAtMs > DEFAULT_LOCK_STALE_MS) {
+        removeLockDir(lockDir);
+        continue;
+      }
+      if (Date.now() - startedAt >= options.lockTimeoutMs) {
+        const ownerPreview = (() => {
+          try {
+            return fs.readFileSync(path.join(lockDir, "owner.json"), "utf8").slice(0, 500);
+          } catch {
+            return "";
+          }
+        })();
+        const message = `Timed out waiting for Model Gateway active-route smoke lock at ${lockDir}.`;
+        const timeoutError = new Error(message);
+        timeoutError.code = "model_gateway_active_route_smoke_lock_timeout";
+        timeoutError.lock = {
+          acquired: false,
+          lockDir,
+          attempts,
+          waitedMs: Date.now() - startedAt,
+          ownerPreview,
+        };
+        throw timeoutError;
+      }
+      await sleep(Math.min(250, Math.max(25, options.lockTimeoutMs - (Date.now() - startedAt))));
+    }
+  }
 }
 
 function addProviderPreflight(result, options, provider) {
@@ -423,106 +525,131 @@ function printResult(result, json) {
 async function main() {
   const options = parseArgs(process.argv.slice(2));
   const key = readGatewayKey();
-  const before = await fetchProviders(options, key);
-  const originalActiveProviders = { ...(before.activeProviders || {}) };
-  let provider = providerSummary(before, options.providerId);
-  const result = createResult(options, provider, originalActiveProviders);
-  if (provider && !provider.enabled && options.temporaryEnable) {
-    result.temporaryEnable.attempted = true;
-    result.preflightWarnings.push({
-      code: "model_gateway_provider_temporarily_enabled",
-      message: `Provider '${provider.id}' is disabled and will be temporarily enabled for this smoke.`,
-    });
-    try {
-      await updateProviderEnabled(options, key, provider.id, true);
-      const enabledProviders = await fetchProviders(options, key);
-      provider = providerSummary(enabledProviders, options.providerId);
-      result.provider = provider;
-      result.temporaryEnable.enabled = Boolean(provider?.enabled);
-    } catch (error) {
-      result.temporaryEnable.error = error instanceof Error ? error.message : String(error);
-      result.preflightFailures.push({
-        code: "model_gateway_provider_temporary_enable_failed",
-        message: result.temporaryEnable.error,
-      });
-    }
-  }
-  addProviderPreflight(result, options, provider);
-
+  let lock = null;
   try {
-    if (result.preflightFailures.length === 0) {
-      for (const scope of options.scopes) {
-        try {
-          await setActiveProvider(options, key, scope, options.providerId);
-        } catch (error) {
-          result.setupFailures.push({
-            scope,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-      if (result.setupFailures.length === 0) {
-        for (const scope of options.scopes) {
-          result.routeSmokes.push(await runActiveRouteSmoke(options, key, scope));
-        }
-        addExpectationFailures(result, options);
-      }
-    }
-  } finally {
-    if (result.preflightFailures.length === 0 || result.setupFailures.length > 0 || result.routeSmokes.length > 0) {
-      for (const scope of options.scopes) {
-        try {
-          await setActiveProvider(options, key, scope, originalActiveProviders[scope] || "");
-        } catch (error) {
-          result.restoreFailures.push({
-            scope,
-            error: error instanceof Error ? error.message : String(error),
-          });
-        }
-      }
-    }
-    if (result.temporaryEnable.attempted && result.temporaryEnable.originalEnabled === false) {
+    lock = await acquireActiveRouteSmokeLock(options);
+    const before = await fetchProviders(options, key);
+    const originalActiveProviders = { ...(before.activeProviders || {}) };
+    let provider = providerSummary(before, options.providerId);
+    const result = createResult(options, provider, originalActiveProviders);
+    result.lock = {
+      acquired: true,
+      lockDir: lock.lockDir,
+      attempts: lock.attempts,
+      waitedMs: lock.waitedMs,
+    };
+    if (provider && !provider.enabled && options.temporaryEnable) {
+      result.temporaryEnable.attempted = true;
+      result.preflightWarnings.push({
+        code: "model_gateway_provider_temporarily_enabled",
+        message: `Provider '${provider.id}' is disabled and will be temporarily enabled for this smoke.`,
+      });
       try {
-        await updateProviderEnabled(options, key, options.providerId, false);
-        const restoredProviders = await fetchProviders(options, key);
-        const restoredProvider = providerSummary(restoredProviders, options.providerId);
-        result.temporaryEnable.restoredEnabled = restoredProvider ? Boolean(restoredProvider.enabled) : null;
+        await updateProviderEnabled(options, key, provider.id, true);
+        const enabledProviders = await fetchProviders(options, key);
+        provider = providerSummary(enabledProviders, options.providerId);
+        result.provider = provider;
+        result.temporaryEnable.enabled = Boolean(provider?.enabled);
       } catch (error) {
-        result.temporaryEnable.restoredEnabled = null;
         result.temporaryEnable.error = error instanceof Error ? error.message : String(error);
-        result.restoreFailures.push({
-          scope: "*",
-          error: result.temporaryEnable.error,
+        result.preflightFailures.push({
+          code: "model_gateway_provider_temporary_enable_failed",
+          message: result.temporaryEnable.error,
         });
       }
     }
+    addProviderPreflight(result, options, provider);
+
     try {
-      const after = await fetchProviders(options, key);
-      result.restoredActiveProviders = after.activeProviders || {};
-      for (const scope of options.scopes) {
-        const expected = activeProviderValue(originalActiveProviders, scope);
-        const actual = activeProviderValue(result.restoredActiveProviders, scope);
-        if (actual !== expected) {
-          result.restoreMismatches.push({ scope, expected, actual });
+      if (result.preflightFailures.length === 0) {
+        for (const scope of options.scopes) {
+          try {
+            await setActiveProvider(options, key, scope, options.providerId);
+          } catch (error) {
+            result.setupFailures.push({
+              scope,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+        if (result.setupFailures.length === 0) {
+          for (const scope of options.scopes) {
+            result.routeSmokes.push(await runActiveRouteSmoke(options, key, scope));
+          }
+          addExpectationFailures(result, options);
         }
       }
-    } catch (error) {
-      result.restoreFailures.push({
-        scope: "*",
-        error: error instanceof Error ? error.message : String(error),
-      });
+    } finally {
+      if (result.preflightFailures.length === 0 || result.setupFailures.length > 0 || result.routeSmokes.length > 0) {
+        for (const scope of options.scopes) {
+          try {
+            await setActiveProvider(options, key, scope, originalActiveProviders[scope] || "");
+          } catch (error) {
+            result.restoreFailures.push({
+              scope,
+              error: error instanceof Error ? error.message : String(error),
+            });
+          }
+        }
+      }
+      if (result.temporaryEnable.attempted && result.temporaryEnable.originalEnabled === false) {
+        try {
+          await updateProviderEnabled(options, key, options.providerId, false);
+          const restoredProviders = await fetchProviders(options, key);
+          const restoredProvider = providerSummary(restoredProviders, options.providerId);
+          result.temporaryEnable.restoredEnabled = restoredProvider ? Boolean(restoredProvider.enabled) : null;
+        } catch (error) {
+          result.temporaryEnable.restoredEnabled = null;
+          result.temporaryEnable.error = error instanceof Error ? error.message : String(error);
+          result.restoreFailures.push({
+            scope: "*",
+            error: result.temporaryEnable.error,
+          });
+        }
+      }
+      try {
+        const after = await fetchProviders(options, key);
+        result.restoredActiveProviders = after.activeProviders || {};
+        for (const scope of options.scopes) {
+          const expected = activeProviderValue(originalActiveProviders, scope);
+          const actual = activeProviderValue(result.restoredActiveProviders, scope);
+          if (actual !== expected) {
+            result.restoreMismatches.push({ scope, expected, actual });
+          }
+        }
+      } catch (error) {
+        result.restoreFailures.push({
+          scope: "*",
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
-  }
 
-  result.ok = result.routeSmokes.length === options.scopes.length
-    && result.preflightFailures.length === 0
-    && result.routeSmokes.every((item) => item.ok)
-    && result.expectationFailures.length === 0
-    && result.setupFailures.length === 0
-    && result.restoreFailures.length === 0
-    && result.restoreMismatches.length === 0;
-  printResult(result, options.json);
-  if (!result.ok) process.exitCode = 1;
+    result.ok = result.routeSmokes.length === options.scopes.length
+      && result.preflightFailures.length === 0
+      && result.routeSmokes.every((item) => item.ok)
+      && result.expectationFailures.length === 0
+      && result.setupFailures.length === 0
+      && result.restoreFailures.length === 0
+      && result.restoreMismatches.length === 0;
+    printResult(result, options.json);
+    if (!result.ok) process.exitCode = 1;
+  } catch (error) {
+    if (error?.code === "model_gateway_active_route_smoke_lock_timeout") {
+      const result = createResult(options, null, null);
+      result.error = {
+        code: error.code,
+        message: error instanceof Error ? error.message : String(error),
+      };
+      result.lock = error.lock || null;
+      printResult(result, options.json);
+      process.exitCode = 1;
+      return;
+    }
+    throw error;
+  } finally {
+    if (lock) lock.release();
+  }
 }
 
 main().catch((error) => {

@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import fs from "node:fs";
 import http from "node:http";
+import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { promisify } from "node:util";
@@ -141,16 +143,33 @@ async function startMockGateway(options = {}) {
   };
 }
 
-async function runScript(args) {
-  const result = await execFileAsync(process.execPath, [scriptPath, ...args], {
-    cwd: repoRoot,
-    env: {
-      ...process.env,
-      TRACEVANE_GATEWAY_CLIENT_KEY: "test-gateway-key",
+function makeTempLockDir() {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "tracevane-active-route-smoke-"));
+  return {
+    lockDir: path.join(root, "active-route-smoke.lock"),
+    cleanup() {
+      fs.rmSync(root, { recursive: true, force: true });
     },
-    encoding: "utf8",
-  });
-  return JSON.parse(result.stdout);
+  };
+}
+
+async function runScript(args, env = {}) {
+  const lock = env.TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_LOCK_DIR ? null : makeTempLockDir();
+  try {
+    const result = await execFileAsync(process.execPath, [scriptPath, ...args], {
+      cwd: repoRoot,
+      env: {
+        ...process.env,
+        TRACEVANE_GATEWAY_CLIENT_KEY: "test-gateway-key",
+        ...(lock ? { TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_LOCK_DIR: lock.lockDir } : {}),
+        ...env,
+      },
+      encoding: "utf8",
+    });
+    return JSON.parse(result.stdout);
+  } finally {
+    if (lock) lock.cleanup();
+  }
 }
 
 test("model gateway active route smoke restores active providers after success", async () => {
@@ -167,6 +186,9 @@ test("model gateway active route smoke restores active providers after success",
       "--json",
     ]);
     assert.equal(parsed.ok, true);
+    assert.equal(parsed.lock?.acquired, true);
+    assert.equal(typeof parsed.lock?.lockDir, "string");
+    assert.equal(parsed.lock?.attempts >= 1, true);
     assert.deepEqual(parsed.preflightFailures, []);
     assert.deepEqual(parsed.preflightWarnings, []);
     assert.deepEqual(parsed.expectationFailures, []);
@@ -182,6 +204,57 @@ test("model gateway active route smoke restores active providers after success",
     assert.deepEqual(gateway.activeProviders, { codex: "old-codex" });
     assert.equal(gateway.requests.filter((request) => request.path === "/api/model-gateway/active-provider").length, 6);
   } finally {
+    await gateway.close();
+  }
+});
+
+test("model gateway active route smoke waits on a lock before mutating active providers", async () => {
+  const gateway = await startMockGateway();
+  const lock = makeTempLockDir();
+  try {
+    fs.mkdirSync(lock.lockDir, { recursive: true });
+    fs.writeFileSync(path.join(lock.lockDir, "owner.json"), `${JSON.stringify({
+      pid: 12345,
+      createdAt: new Date().toISOString(),
+      script: "existing-smoke.mjs",
+      lockDir: lock.lockDir,
+    })}\n`);
+    await assert.rejects(
+      execFileAsync(process.execPath, [
+        scriptPath,
+        "--endpoint", gateway.endpoint,
+        "--provider", "glm",
+        "--model", "glm-5.2",
+        "--scopes", "codex",
+        "--lock-timeout-ms", "0",
+        "--json",
+      ], {
+        cwd: repoRoot,
+        env: {
+          ...process.env,
+          TRACEVANE_GATEWAY_CLIENT_KEY: "test-gateway-key",
+          TRACEVANE_GATEWAY_ACTIVE_ROUTE_SMOKE_LOCK_DIR: lock.lockDir,
+        },
+        encoding: "utf8",
+      }),
+      (error) => {
+        const parsed = JSON.parse(error.stdout);
+        assert.equal(parsed.ok, false);
+        assert.equal(parsed.error?.code, "model_gateway_active_route_smoke_lock_timeout");
+        assert.equal(parsed.lock?.acquired, false);
+        assert.equal(parsed.lock?.lockDir, lock.lockDir);
+        assert.match(parsed.lock?.ownerPreview || "", /existing-smoke\.mjs/);
+        assert.deepEqual(parsed.routeSmokes, []);
+        assert.deepEqual(parsed.setupFailures, []);
+        assert.deepEqual(parsed.restoreFailures, []);
+        assert.equal(parsed.restoredActiveProviders, null);
+        return true;
+      },
+    );
+    assert.equal(gateway.requests.length, 0);
+    assert.deepEqual(gateway.activeProviders, { codex: "old-codex" });
+  } finally {
+    lock.cleanup();
     await gateway.close();
   }
 });
