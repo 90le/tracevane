@@ -4601,17 +4601,6 @@ function removeTopLevelTomlKey(source: string, key: string): string {
   return nextLines.join(newline).replace(new RegExp(`${newline}{3,}`, "g"), `${newline}${newline}`);
 }
 
-function codexModelSupportsReasoningEffort(model: string | null): boolean {
-  const normalized = normalizeString(model).toLowerCase();
-  if (!normalized) return false;
-  const modelId = normalized.split("/").pop() || normalized;
-  return modelNameMatches(modelId, [
-    /^gpt(?:\b|-|_|\.)/,
-    /^o[134](?:\b|-|_|\.)/,
-    /^codex(?:\b|-|_|\.)/,
-  ]);
-}
-
 function upsertTomlTableScalar(source: string, tableName: string, key: string, value: string | null): string {
   if (value === null) return source;
   const newline = source.includes("\r\n") ? "\r\n" : "\n";
@@ -4647,7 +4636,7 @@ function buildCodexConfig(source: string, options: {
   let next = stripCodexManagedBlock(source);
   next = upsertTopLevelTomlString(next, "model_provider", CODEX_GATEWAY_PROVIDER_ID);
   if (options.profile.model) next = upsertTopLevelTomlString(next, "model", options.profile.model);
-  if (options.profile.reasoningEffort && codexModelSupportsReasoningEffort(options.profile.model)) {
+  if (options.profile.reasoningEffort) {
     next = upsertTopLevelTomlString(next, "model_reasoning_effort", options.profile.reasoningEffort);
   } else {
     next = removeTopLevelTomlKey(next, "model_reasoning_effort");
@@ -9328,6 +9317,7 @@ export function createModelGatewayService(
         const codexToChat = useCodexResponsesAnthropicAdapter
           ? adaptCodexResponsesRequestToChat(enriched?.bodyText, {
             allowStreaming: true,
+            preserveReasoningEffort: true,
             reasoning: provider.reasoning,
           })
           : null;

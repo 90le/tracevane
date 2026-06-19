@@ -31,6 +31,7 @@ interface TextState {
   done: boolean;
   itemId: string;
   outputIndex: number | null;
+  pending: string;
   text: string;
 }
 
@@ -133,6 +134,7 @@ function createStreamingState(fallbackModel: string | null): StreamingState {
       done: false,
       itemId: `${responseId}_msg`,
       outputIndex: null,
+      pending: "",
       text: "",
     },
     functionCalls: new Map(),
@@ -208,7 +210,7 @@ function handleChatChunk(chunk: JsonRecord, state: StreamingState, res: http.Ser
   if (content) {
     const parts = splitContentAndInlineReasoning(content, state);
     if (parts.reasoning) pushReasoningDelta(parts.reasoning, state, res);
-    if (parts.text) pushTextDelta(parts.text, state, res);
+    if (parts.text) pushFilteredTextDelta(parts.text, state, res);
   }
   if (Array.isArray(delta.tool_calls)) {
     for (const toolCallDelta of delta.tool_calls) {
@@ -263,6 +265,19 @@ function pushReasoningDelta(delta: string, state: StreamingState, res: http.Serv
     summary_index: 0,
     delta,
   });
+}
+
+function pushFilteredTextDelta(delta: string, state: StreamingState, res: http.ServerResponse): void {
+  const next = splitPlaceholderTextSuffix(state.text.pending + delta);
+  state.text.pending = next.pending;
+  if (next.emit) pushTextDelta(next.emit, state, res);
+}
+
+function flushPendingText(state: StreamingState, res: http.ServerResponse): void {
+  const pending = state.text.pending;
+  state.text.pending = "";
+  if (!pending || isPlaceholderText(pending)) return;
+  pushTextDelta(pending, state, res);
 }
 
 function pushTextDelta(delta: string, state: StreamingState, res: http.ServerResponse): void {
@@ -372,6 +387,7 @@ function ensureFunctionCallAdded(tool: FunctionCallState, res: http.ServerRespon
 function finalizeResponse(state: StreamingState, res: http.ServerResponse): void {
   if (state.completed) return;
   ensureResponseStarted(state, res);
+  flushPendingText(state, res);
   const output: JsonRecord[] = [];
 
   if (state.reasoning.added && !state.reasoning.done) {
@@ -621,8 +637,23 @@ function extractReasoningDetailsText(value: unknown): string | null {
 }
 
 function isPlaceholderReasoningText(value: string): boolean {
+  return isPlaceholderText(value);
+}
+
+function isPlaceholderText(value: string): boolean {
   const normalized = value.trim();
   return normalized.length > 0 && /^[.\u2026\s]+$/u.test(normalized);
+}
+
+function splitPlaceholderTextSuffix(value: string): { emit: string; pending: string } {
+  if (!value) return { emit: "", pending: "" };
+  if (isPlaceholderText(value)) return { emit: "", pending: value };
+  const match = /(?:\r?\n){2,}[ \t]*(?:[.\u2026]+[ \t]*(?:\r?\n[ \t]*)*)+$/u.exec(value);
+  if (!match || match.index < 0) return { emit: value, pending: "" };
+  return {
+    emit: value.slice(0, match.index).trimEnd(),
+    pending: value.slice(match.index),
+  };
 }
 
 function extractChatSseError(value: JsonRecord): CodexStreamErrorEnvelope {

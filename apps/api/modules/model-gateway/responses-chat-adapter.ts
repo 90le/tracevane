@@ -1,3 +1,5 @@
+import { applyResponsesReasoningOptions } from "./reasoning-options.js";
+
 type JsonRecord = Record<string, unknown>;
 
 export class OpenAIResponsesChatAdapterError extends Error {
@@ -85,6 +87,8 @@ export function adaptChatCompletionRequestToResponses(
 
   const toolChoice = mapChatToolChoiceToResponses(request.tool_choice);
   if (toolChoice !== undefined) responsesRequest.tool_choice = toolChoice;
+
+  applyResponsesReasoningOptions(responsesRequest, request);
 
   return { responsesRequest, model, stream };
 }

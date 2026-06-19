@@ -1,3 +1,9 @@
+import {
+  applyAnthropicReasoningOptions,
+  mapReasoningEffort,
+  reasoningEffort,
+} from "./reasoning-options.js";
+
 type JsonRecord = Record<string, unknown>;
 
 const DEFAULT_ANTHROPIC_VERSION = "2023-06-01";
@@ -134,6 +140,8 @@ export function adaptChatCompletionRequestToAnthropicMessages(
   const toolChoice = mapChatToolChoiceToAnthropic(request.tool_choice);
   if (toolChoice !== undefined) anthropicRequest.tool_choice = toolChoice;
 
+  applyAnthropicReasoningOptions(anthropicRequest, request);
+
   return { anthropicRequest, model, stream };
 }
 
@@ -172,6 +180,10 @@ export function adaptAnthropicMessagesRequestToChatCompletion(bodyText: string |
 
   const toolChoice = mapAnthropicToolChoiceToChat(request.tool_choice);
   if (toolChoice !== undefined) chatRequest.tool_choice = toolChoice;
+
+  const effort = reasoningEffort(request);
+  const mappedEffort = effort ? mapReasoningEffort(effort, "passthrough") : null;
+  if (mappedEffort) chatRequest.reasoning_effort = mappedEffort;
 
   return {
     chatRequest,

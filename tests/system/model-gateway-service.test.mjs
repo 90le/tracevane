@@ -4423,7 +4423,7 @@ test("model gateway app connections preview and apply client config files with r
   assert.equal(JSON.stringify(appliedPreview).includes("sk-local-app-connection"), false);
 });
 
-test("model gateway app connections clear Codex reasoning effort for Claude models", () => {
+test("model gateway app connections keep Codex reasoning effort for Gateway models", () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
   const homeDir = path.join(root, "home");
@@ -4485,8 +4485,7 @@ test("model gateway app connections clear Codex reasoning effort for Claude mode
   const codexTopLevelConfig = codexConfig.split(/\n\[profiles\.keep\]/)[0];
   assert.match(codexConfig, /model_provider = "tracevane_gateway"/);
   assert.match(codexConfig, /model = "claude-opus-4-8"/);
-  assert.doesNotMatch(codexTopLevelConfig, /^model_reasoning_effort\s*=/m);
-  assert.doesNotMatch(codexTopLevelConfig, /xhigh/);
+  assert.match(codexTopLevelConfig, /^model_reasoning_effort = "xhigh"$/m);
   assert.match(codexConfig, /\[profiles\.keep\]/);
   assert.match(codexConfig, /model_reasoning_effort = "high"/);
 
@@ -7765,7 +7764,7 @@ test("model gateway drops placeholder chat reasoning from non-streaming codex re
       message: {
         role: "assistant",
         reasoning_content: "...\n\n  ...\n\n...",
-        content: "Final answer.",
+        content: "Final answer.\n\n...\n\n...",
       },
       finish_reason: "stop",
     }],
@@ -7929,6 +7928,213 @@ test("model gateway maps codex reasoning options to openai chat provider paramet
     stream: false,
     reasoning: { effort: "none" },
   });
+});
+
+test("model gateway carries reasoning effort across responses chat and anthropic protocol adapters", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    const body = JSON.parse(String(init.body || "{}"));
+    upstreamCalls.push({ url: String(url), body });
+    const target = String(url);
+    if (target.endsWith("/messages")) {
+      return new Response(JSON.stringify({
+        id: `msg_reasoning_${upstreamCalls.length}`,
+        type: "message",
+        role: "assistant",
+        model: body.model,
+        content: [{ type: "text", text: "ok" }],
+        stop_reason: "end_turn",
+        usage: { input_tokens: 1, output_tokens: 1 },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (target.endsWith("/responses")) {
+      return new Response(JSON.stringify({
+        id: `resp_reasoning_${upstreamCalls.length}`,
+        object: "response",
+        created_at: 1_710_000_032,
+        model: body.model,
+        status: "completed",
+        output: [{
+          type: "message",
+          id: "msg_reasoning",
+          status: "completed",
+          role: "assistant",
+          content: [{ type: "output_text", text: "ok" }],
+        }],
+        usage: { input_tokens: 1, output_tokens: 1, total_tokens: 2 },
+      }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({
+      id: `chatcmpl_reasoning_${upstreamCalls.length}`,
+      created: 1_710_000_032,
+      model: body.model,
+      choices: [{
+        index: 0,
+        message: { role: "assistant", content: "ok" },
+        finish_reason: "stop",
+      }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      ctx.services.modelGateway.upsertProvider(undefined, {
+        provider: {
+          id: "responses-to-anthropic-reasoning",
+          name: "Responses To Anthropic Reasoning",
+          appScopes: ["codex"],
+          baseUrl: "https://responses-to-anthropic-reasoning.example.test/v1",
+          apiFormat: "anthropic_messages",
+          authStrategy: "anthropic_api_key",
+        },
+        secret: { apiKey: "sk-responses-to-anthropic" },
+        setActiveScopes: ["codex"],
+      });
+      const responsesToAnthropic = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "claude-opus-4-8",
+          input: "Think.",
+          reasoning: { effort: "high" },
+          stream: false,
+        },
+      });
+      assert.equal(responsesToAnthropic.status, 200);
+
+      ctx.services.modelGateway.upsertProvider(undefined, {
+        provider: {
+          id: "chat-to-responses-reasoning",
+          name: "Chat To Responses Reasoning",
+          appScopes: ["openclaw"],
+          baseUrl: "https://chat-to-responses-reasoning.example.test/v1",
+          apiFormat: "openai_responses",
+          authStrategy: "bearer",
+        },
+        secret: { apiKey: "sk-chat-to-responses" },
+        setActiveScopes: ["openclaw"],
+      });
+      const chatToResponses = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-reasoner",
+          messages: [{ role: "user", content: "Think." }],
+          reasoning_effort: "max",
+          stream: false,
+        },
+      });
+      assert.equal(chatToResponses.status, 200);
+
+      ctx.services.modelGateway.upsertProvider(undefined, {
+        provider: {
+          id: "chat-to-anthropic-reasoning",
+          name: "Chat To Anthropic Reasoning",
+          appScopes: ["openclaw"],
+          baseUrl: "https://chat-to-anthropic-reasoning.example.test/v1",
+          apiFormat: "anthropic_messages",
+          authStrategy: "anthropic_api_key",
+        },
+        secret: { apiKey: "sk-chat-to-anthropic" },
+        setActiveScopes: ["openclaw"],
+      });
+      const chatToAnthropic = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "claude-opus-4-8",
+          messages: [{ role: "user", content: "Think." }],
+          reasoning: { effort: "medium" },
+          stream: false,
+        },
+      });
+      assert.equal(chatToAnthropic.status, 200);
+
+      ctx.services.modelGateway.upsertProvider(undefined, {
+        provider: {
+          id: "anthropic-to-chat-reasoning",
+          name: "Anthropic To Chat Reasoning",
+          appScopes: ["claude-code"],
+          baseUrl: "https://anthropic-to-chat-reasoning.example.test/v1",
+          apiFormat: "openai_chat",
+          authStrategy: "bearer",
+        },
+        secret: { apiKey: "sk-anthropic-to-chat" },
+        setActiveScopes: ["claude-code"],
+      });
+      const anthropicToChat = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-reasoner",
+          max_tokens: 1024,
+          messages: [{ role: "user", content: "Think." }],
+          output_config: { effort: "xhigh" },
+          stream: false,
+        },
+      });
+      assert.equal(anthropicToChat.status, 200);
+
+      ctx.services.modelGateway.upsertProvider(undefined, {
+        provider: {
+          id: "anthropic-to-responses-reasoning",
+          name: "Anthropic To Responses Reasoning",
+          appScopes: ["claude-code"],
+          baseUrl: "https://anthropic-to-responses-reasoning.example.test/v1",
+          apiFormat: "openai_responses",
+          authStrategy: "bearer",
+        },
+        secret: { apiKey: "sk-anthropic-to-responses" },
+        setActiveScopes: ["claude-code"],
+      });
+      const anthropicToResponses = await requestJson(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        body: {
+          model: "gpt-reasoner",
+          max_tokens: 1024,
+          messages: [{ role: "user", content: "Think." }],
+          output_config: { effort: "max" },
+          stream: false,
+        },
+      });
+      assert.equal(anthropicToResponses.status, 200);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 5);
+  assert.equal(upstreamCalls[0].url, "https://responses-to-anthropic-reasoning.example.test/v1/messages");
+  assert.deepEqual(upstreamCalls[0].body.thinking, { type: "adaptive" });
+  assert.deepEqual(upstreamCalls[0].body.output_config, { effort: "high" });
+  assert.equal("reasoning_effort" in upstreamCalls[0].body, false);
+
+  assert.equal(upstreamCalls[1].url, "https://chat-to-responses-reasoning.example.test/v1/responses");
+  assert.deepEqual(upstreamCalls[1].body.reasoning, { effort: "xhigh" });
+  assert.equal("reasoning_effort" in upstreamCalls[1].body, false);
+
+  assert.equal(upstreamCalls[2].url, "https://chat-to-anthropic-reasoning.example.test/v1/messages");
+  assert.deepEqual(upstreamCalls[2].body.thinking, { type: "adaptive" });
+  assert.deepEqual(upstreamCalls[2].body.output_config, { effort: "medium" });
+  assert.equal("reasoning" in upstreamCalls[2].body, false);
+
+  assert.equal(upstreamCalls[3].url, "https://anthropic-to-chat-reasoning.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[3].body.reasoning_effort, "xhigh");
+  assert.equal("output_config" in upstreamCalls[3].body, false);
+
+  assert.equal(upstreamCalls[4].url, "https://anthropic-to-responses-reasoning.example.test/v1/responses");
+  assert.deepEqual(upstreamCalls[4].body.reasoning, { effort: "xhigh" });
+  assert.equal("output_config" in upstreamCalls[4].body, false);
 });
 
 test("model gateway maps chat reasoning content to codex responses output items", async () => {
@@ -8260,7 +8466,9 @@ test("model gateway drops placeholder chat reasoning from streaming codex respon
       "",
       "data: {\"id\":\"chatcmpl_placeholder_reason_stream\",\"created\":1710000034,\"model\":\"claude-opus-4-8\",\"choices\":[{\"delta\":{\"reasoning\":\"  ...\\n\\n...\"}}]}",
       "",
-      "data: {\"id\":\"chatcmpl_placeholder_reason_stream\",\"created\":1710000034,\"model\":\"claude-opus-4-8\",\"choices\":[{\"delta\":{\"content\":\"Final\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":1,\"total_tokens\":5,\"completion_tokens_details\":{\"reasoning_tokens\":3}}}",
+      "data: {\"id\":\"chatcmpl_placeholder_reason_stream\",\"created\":1710000034,\"model\":\"claude-opus-4-8\",\"choices\":[{\"delta\":{\"content\":\"Final\\n\\n...\"}}]}",
+      "",
+      "data: {\"id\":\"chatcmpl_placeholder_reason_stream\",\"created\":1710000034,\"model\":\"claude-opus-4-8\",\"choices\":[{\"delta\":{\"content\":\"\\n\\n...\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":1,\"total_tokens\":5,\"completion_tokens_details\":{\"reasoning_tokens\":3}}}",
       "",
       "data: [DONE]",
       "",
