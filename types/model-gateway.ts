@@ -337,10 +337,60 @@ export interface ModelGatewayProviderView extends ModelGatewayProvider {
 
 export interface ModelGatewayModelListItem {
   id: string;
+  slug: string;
   object: "model";
   created: number;
   owned_by: string;
   label: string | null;
+  display_name: string;
+  description: string;
+  default_reasoning_level: string;
+  visibility: "list";
+  shell_type: "shell_command";
+  supported_in_api: boolean;
+  priority: number;
+  additional_speed_tiers: string[];
+  service_tiers: Array<{
+    id: string;
+    name: string;
+    description: string;
+  }>;
+  availability_nux: { message: string } | null;
+  upgrade: { model: string; migration_markdown: string } | null;
+  base_instructions: string;
+  model_messages: {
+    instructions_template: string;
+    instructions_variables: {
+      personality_default: string;
+      personality_friendly: string;
+      personality_pragmatic: string;
+    };
+  };
+  supports_reasoning_summaries: boolean;
+  default_reasoning_summary: string;
+  support_verbosity: boolean;
+  default_verbosity: string;
+  apply_patch_tool_type: string;
+  web_search_tool_type: string;
+  truncation_policy: {
+    mode: string;
+    limit: number;
+  };
+  supports_parallel_tool_calls: boolean;
+  supports_image_detail_original: boolean;
+  effective_context_window_percent: number;
+  experimental_supported_tools: string[];
+  supports_search_tool: boolean;
+  use_responses_lite: boolean;
+  supported_reasoning_levels: Array<{
+    effort: string;
+    description: string;
+    limit: number;
+  }>;
+  input_modalities: string[];
+  context_window: number;
+  max_context_window: number;
+  max_output_tokens: number;
   contextWindow?: number | null;
   maxOutputTokens?: number | null;
   aliases: string[];
@@ -353,6 +403,7 @@ export interface ModelGatewayModelListItem {
 export interface ModelGatewayModelListResponse {
   object: "list";
   data: ModelGatewayModelListItem[];
+  models: ModelGatewayModelListItem[];
 }
 
 export interface ModelGatewayRegistryState {

@@ -63,10 +63,16 @@
 
 ## 当前能力边界
 
+- 2026-06-19 Model Gateway Codex Chat adapter 点号噪声收口：
+  - 范围：Codex 通过 Gateway `/v1/responses` 使用 OpenAI Chat-compatible endpoint profile 承载 `claude-opus-4-8` 等模型时的流式/非流式响应适配，以及 Codex CLI 刷新模型元数据时的 `/v1/models` 响应形态。
+  - 来源核验：本机真实 Codex CLI `exec --json --model claude-opus-4-8` 复现了两类 Codex-only 噪声：Chat->Responses 适配可能把上游 `reasoning_content` / `reasoning` 点号占位变成 `response.reasoning_summary_text.delta`，且 Codex 0.141.0 当前模型管理器要求 `/v1/models` 顶层存在 `models` 字段和一组 Codex catalog 字段（例如 `slug`、`shell_type`、`supported_in_api`、`priority`、`input_modalities`）；本机 `~/.codex/models_cache.json` 用作字段形状样例，真实 `codex exec` 用作最终合同验证。
+  - 稳定结论：Gateway 应过滤只由 `.` / `…` / 空白组成的 reasoning delta/summary，不把占位 thinking 输出给 Codex；有实际文字的 reasoning 继续保留。`/v1/models` 保持 OpenAI 标准 `{ object, data }`，并额外返回同内容 `models` alias 与 Codex catalog 兼容字段；Codex catalog 的 `input_modalities` 只暴露 Codex 当前接受的 `text` / `image`，音频能力继续保留在 Tracevane `features` 内。
+  - 拒绝方案：拒绝关闭所有 reasoning summary，因为 DeepSeek/Qwen 等真正 reasoner 仍需要保留有文字的 reasoning；拒绝把 `/v1/models` 改成非 OpenAI 标准结构；拒绝在 Codex catalog 暴露 `audio` modality，因为 Codex 当前 parser 会拒绝该值。
+  - 风险与验证：需要覆盖 streaming / non-streaming placeholder reasoning 被过滤、正常 DeepSeek reasoning 不回归、OpenAI `data` 和 Codex `models` 双字段都存在，并用真实 Codex CLI 工具调用 smoke 确认不再输出点号、不再提示 model metadata fallback、不再 dump 模型列表。
 - 2026-06-19 Model Gateway Codex App Connection reasoning effort 收口：
   - 范围：Client connections 生成 `~/.codex/config.toml` 时的 `model_reasoning_effort` 写入条件，特别是 Codex 通过 Gateway 使用 `claude-opus-4-8` 等非 OpenAI/Codex reasoning 模型时的客户端行为。
   - 来源核验：OpenAI Codex 当前手册（2026-06-19 通过 `openai-docs` Codex manual helper 获取）确认 `model_reasoning_effort` 是 Codex `config.toml` 配置项，说明为“模型支持时”调节 reasoning effort；同手册确认 custom model provider 可配置 `model_provider` 与 `[model_providers.*]` 指向代理/Gateway。
-  - 稳定结论：Tracevane 不能在 Codex App Connection 中把 reasoning effort 无条件写给所有 Gateway 模型。GPT/o/Codex 命名族保留该字段；Claude 等非兼容模型应用配置时必须移除顶层旧值，避免用户已有 `xhigh/high` 残留继续影响 Codex。
+  - 稳定结论：Tracevane 不能在 Codex App Connection 中把 reasoning effort 无条件写给所有 Gateway 模型。GPT/o/Codex 命名族保留该字段；Claude 等非兼容模型应用配置时必须移除顶层旧值，避免用户已有 `xhigh/high` 残留继续影响 Codex 客户端行为。
   - 拒绝方案：拒绝全局删除 Codex reasoning effort，因为 GPT/Codex 模型仍应保留用户的推理强度偏好；拒绝这次引入 provider-aware reasoning 能力推断，避免把用户遇到的 Claude 异常修复扩大成路由能力重构。
   - 风险与验证：该修复只控制 Codex 客户端配置生成，不改变 Gateway 三协议路由和上游请求适配。需要用系统测试覆盖 GPT 保留、Claude 清除旧顶层值、Claude Code 配置不写 reasoning，并跑 API typecheck / Gateway 系统测试 / diff check。
 - 2026-06-19 Model Gateway App Connections Gateway key 前置处理：

@@ -926,6 +926,35 @@ function compactModelFeatures(features: ModelGatewayModelFeatures): ModelGateway
   return compacted;
 }
 
+const CODEX_CATALOG_DEFAULT_CONTEXT_WINDOW = 128_000;
+const CODEX_CATALOG_DEFAULT_MAX_OUTPUT_TOKENS = 8_192;
+const CODEX_CATALOG_BASE_INSTRUCTIONS = "You are Codex, a coding agent. Follow the user's instructions and use available tools when needed.";
+const CODEX_CATALOG_TRUNCATION_POLICY = { mode: "tokens", limit: 10_000 };
+const CODEX_CATALOG_MODEL_MESSAGES = {
+  instructions_template: CODEX_CATALOG_BASE_INSTRUCTIONS,
+  instructions_variables: {
+    personality_default: "",
+    personality_friendly: "",
+    personality_pragmatic: "",
+  },
+};
+
+function codexCatalogReasoningLevels(modelId: string, features: ModelGatewayModelFeatures): Array<{ effort: string; description: string; limit: number }> {
+  if (features.reasoning !== true) return [];
+  if (!modelNameMatches(modelId, [/^gpt-5(?:\b|-|_|\.)/, /^o[134](?:\b|-|_|\.)/])) return [];
+  return [
+    { effort: "low", limit: 1_024 },
+    { effort: "medium", limit: 4_096 },
+    { effort: "high", limit: 8_192 },
+  ].map((level) => ({ ...level, description: level.effort }));
+}
+
+function codexCatalogInputModalities(features: ModelGatewayModelFeatures): string[] {
+  const modalities = ["text"];
+  if (features.vision === true) modalities.push("image");
+  return modalities;
+}
+
 function modelNameMatches(modelId: string, patterns: RegExp[]): boolean {
   const normalized = modelId.trim().toLowerCase();
   return patterns.some((pattern) => pattern.test(normalized));
@@ -7564,24 +7593,63 @@ export function createModelGatewayService(
       }
     }
 
-    return {
-      object: "list",
-      data: [...byModelId.values()]
-        .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
-        .map((item) => ({
+    const data = [...byModelId.values()]
+      .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))
+      .map((item) => {
+        const features = compactModelFeatures(item.features);
+        const contextWindow = item.contextWindow || CODEX_CATALOG_DEFAULT_CONTEXT_WINDOW;
+        const maxOutputTokens = item.maxOutputTokens || CODEX_CATALOG_DEFAULT_MAX_OUTPUT_TOKENS;
+        return {
           id: item.id,
+          slug: item.id,
           object: "model" as const,
           created: 0,
           owned_by: item.providerIds.size > 1 ? "tracevane-gateway" : `provider:${[...item.providerIds][0] || "unknown"}`,
           label: item.label,
+          display_name: item.label || item.id,
+          description: `${item.label || item.id} via Tracevane Model Gateway.`,
+          default_reasoning_level: "medium",
+          visibility: "list" as const,
+          shell_type: "shell_command" as const,
+          supported_in_api: true,
+          priority: item.priority,
+          additional_speed_tiers: [],
+          service_tiers: [],
+          availability_nux: null,
+          upgrade: null,
+          base_instructions: CODEX_CATALOG_BASE_INSTRUCTIONS,
+          model_messages: CODEX_CATALOG_MODEL_MESSAGES,
+          supports_reasoning_summaries: false,
+          default_reasoning_summary: "none",
+          support_verbosity: true,
+          default_verbosity: "low",
+          apply_patch_tool_type: "freeform",
+          web_search_tool_type: "text",
+          truncation_policy: CODEX_CATALOG_TRUNCATION_POLICY,
+          supports_parallel_tool_calls: true,
+          supports_image_detail_original: features.vision === true,
+          effective_context_window_percent: 95,
+          experimental_supported_tools: [],
+          supports_search_tool: false,
+          use_responses_lite: false,
+          supported_reasoning_levels: codexCatalogReasoningLevels(item.id, features),
+          input_modalities: codexCatalogInputModalities(features),
+          context_window: contextWindow,
+          max_context_window: contextWindow,
+          max_output_tokens: maxOutputTokens,
           contextWindow: item.contextWindow,
           maxOutputTokens: item.maxOutputTokens,
           aliases: [...item.aliases].sort(),
           providerIds: [...item.providerIds].sort(),
           healthyProviderIds: [...item.healthyProviderIds].sort(),
           openCircuitProviderIds: [...item.openCircuitProviderIds].sort(),
-          features: compactModelFeatures(item.features),
-        })),
+          features,
+        };
+      });
+    return {
+      object: "list",
+      data,
+      models: data,
     };
   }
 

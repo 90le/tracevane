@@ -4037,7 +4037,24 @@ test("model gateway exposes enabled provider model pool through OpenAI models en
 
   const direct = ctx.services.modelGateway.listGatewayModels();
   assert.deepEqual(direct.data.map((model) => model.id).sort(), ["a-only", "b-only", "shared-model"]);
+  assert.deepEqual(direct.models.map((model) => model.id).sort(), ["a-only", "b-only", "shared-model"]);
   const shared = direct.data.find((model) => model.id === "shared-model");
+  assert.equal(shared?.slug, "shared-model");
+  assert.equal(shared?.display_name, "Shared");
+  assert.equal(shared?.visibility, "list");
+  assert.equal(shared?.shell_type, "shell_command");
+  assert.equal(shared?.supported_in_api, true);
+  assert.equal(shared?.priority, 5);
+  assert.deepEqual(shared?.additional_speed_tiers, []);
+  assert.deepEqual(shared?.service_tiers, []);
+  assert.equal(shared?.supports_reasoning_summaries, false);
+  assert.equal(shared?.default_reasoning_summary, "none");
+  assert.equal(shared?.truncation_policy?.mode, "tokens");
+  assert.deepEqual(shared?.input_modalities, ["text", "image"]);
+  assert.deepEqual(shared?.supported_reasoning_levels, []);
+  assert.equal(shared?.context_window, 64000);
+  assert.equal(shared?.max_context_window, 64000);
+  assert.equal(shared?.max_output_tokens, 4096);
   assert.deepEqual(shared?.providerIds, ["models-a", "models-b"]);
   assert.deepEqual(shared?.healthyProviderIds, ["models-a"]);
   assert.deepEqual(shared?.openCircuitProviderIds, ["models-b"]);
@@ -4069,9 +4086,14 @@ test("model gateway exposes enabled provider model pool through OpenAI models en
     assert.equal(response.status, 200);
     assert.equal(response.body.object, "list");
     assert.deepEqual(response.body.data.map((model) => model.id).sort(), ["a-only", "b-only", "shared-model"]);
+    assert.deepEqual(response.body.models.map((model) => model.id).sort(), ["a-only", "b-only", "shared-model"]);
     assert.equal(response.body.data.find((model) => model.id === "shared-model")?.features.vision, true);
+    assert.equal(response.body.data.find((model) => model.id === "shared-model")?.slug, "shared-model");
+    assert.equal(response.body.data.find((model) => model.id === "shared-model")?.display_name, "Shared");
     assert.equal(response.body.data.find((model) => model.id === "shared-model")?.contextWindow, 64000);
     assert.equal(response.body.data.find((model) => model.id === "shared-model")?.maxOutputTokens, 4096);
+    assert.equal(response.body.data.find((model) => model.id === "shared-model")?.context_window, 64000);
+    assert.equal(response.body.data.find((model) => model.id === "shared-model")?.max_output_tokens, 4096);
   });
 });
 
@@ -7713,6 +7735,66 @@ test("model gateway adapts non-streaming codex responses requests to openai chat
   });
 });
 
+test("model gateway drops placeholder chat reasoning from non-streaming codex responses", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-chat-placeholder-reasoning",
+      name: "Codex Chat Placeholder Reasoning",
+      appScopes: ["codex"],
+      baseUrl: "https://codex-placeholder-reasoning.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-codex-placeholder-reasoning-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    id: "chatcmpl_placeholder_reasoning",
+    created: 1_710_000_030,
+    model: "claude-opus-4-8",
+    choices: [{
+      index: 0,
+      message: {
+        role: "assistant",
+        reasoning_content: "...\n\n  ...\n\n...",
+        content: "Final answer.",
+      },
+      finish_reason: "stop",
+    }],
+  }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const responses = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "claude-opus-4-8",
+          input: "Answer normally.",
+          stream: false,
+        },
+      });
+
+      assert.equal(responses.status, 200);
+      assert.deepEqual(responses.body.output.map((item) => item.type), ["message"]);
+      assert.equal(JSON.stringify(responses.body).includes("..."), false);
+      assert.equal(responses.body.output[0].content[0].text, "Final answer.");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model gateway maps codex reasoning options to openai chat provider parameters", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
@@ -8145,6 +8227,68 @@ test("model gateway adapts streaming chat reasoning to codex responses sse", asy
       assert.equal(completed.output[1].type, "message");
       assert.equal(completed.output[1].content[0].text, "Done");
       assert.deepEqual(completed.usage.output_tokens_details, { reasoning_tokens: 3 });
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("model gateway drops placeholder chat reasoning from streaming codex responses", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-placeholder-reasoning-stream",
+      name: "Codex Placeholder Reasoning Stream",
+      appScopes: ["codex"],
+      baseUrl: "https://codex-placeholder-reasoning-stream.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-codex-placeholder-reasoning-stream-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    const upstreamSse = [
+      "data: {\"id\":\"chatcmpl_placeholder_reason_stream\",\"created\":1710000034,\"model\":\"claude-opus-4-8\",\"choices\":[{\"delta\":{\"reasoning_content\":\"...\"}}]}",
+      "",
+      "data: {\"id\":\"chatcmpl_placeholder_reason_stream\",\"created\":1710000034,\"model\":\"claude-opus-4-8\",\"choices\":[{\"delta\":{\"reasoning\":\"  ...\\n\\n...\"}}]}",
+      "",
+      "data: {\"id\":\"chatcmpl_placeholder_reason_stream\",\"created\":1710000034,\"model\":\"claude-opus-4-8\",\"choices\":[{\"delta\":{\"content\":\"Final\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":1,\"total_tokens\":5,\"completion_tokens_details\":{\"reasoning_tokens\":3}}}",
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n");
+    return new Response(upstreamSse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const streamed = await requestRaw(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "claude-opus-4-8",
+          input: "Answer normally.",
+          stream: true,
+        },
+      });
+
+      assert.equal(streamed.status, 200);
+      const events = parseSseEvents(streamed.body);
+      assert.ok(!events.some((item) => item.event?.startsWith("response.reasoning_summary")));
+      assert.deepEqual(events.filter((item) => item.event === "response.output_text.delta").map((item) => item.data.delta), ["Final"]);
+      const completed = events.find((item) => item.event === "response.completed").data.response;
+      assert.deepEqual(completed.output.map((item) => item.type), ["message"]);
+      assert.equal(JSON.stringify(completed.output).includes("..."), false);
     });
   } finally {
     globalThis.fetch = originalFetch;

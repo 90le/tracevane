@@ -233,6 +233,7 @@ function ensureResponseStarted(state: StreamingState, res: http.ServerResponse):
 }
 
 function pushReasoningDelta(delta: string, state: StreamingState, res: http.ServerResponse): void {
+  if (isPlaceholderReasoningText(delta)) return;
   if (!state.reasoning.added) {
     state.reasoning.added = true;
     state.reasoning.outputIndex = state.nextOutputIndex;
@@ -588,14 +589,14 @@ function firstChoice(chunk: JsonRecord): JsonRecord | null {
 function extractReasoningDelta(delta: JsonRecord): string | null {
   for (const key of ["reasoning_content", "reasoning"] as const) {
     const direct = stringOrNull(delta[key]);
-    if (direct) return direct;
+    if (direct && !isPlaceholderReasoningText(direct)) return direct;
   }
 
   const reasoning = isRecord(delta.reasoning) ? delta.reasoning : null;
   if (reasoning) {
     for (const key of ["content", "text", "summary"] as const) {
       const text = stringOrNull(reasoning[key]);
-      if (text) return text;
+      if (text && !isPlaceholderReasoningText(text)) return text;
     }
   }
 
@@ -603,7 +604,7 @@ function extractReasoningDelta(delta: JsonRecord): string | null {
 }
 
 function extractReasoningDetailsText(value: unknown): string | null {
-  if (typeof value === "string" && value.length) return value;
+  if (typeof value === "string" && value.length) return isPlaceholderReasoningText(value) ? null : value;
   if (Array.isArray(value)) {
     const text = value
       .map(extractReasoningDetailsText)
@@ -614,9 +615,14 @@ function extractReasoningDetailsText(value: unknown): string | null {
   if (!isRecord(value)) return null;
   for (const key of ["text", "content", "summary"] as const) {
     const text = stringOrNull(value[key]);
-    if (text) return text;
+    if (text && !isPlaceholderReasoningText(text)) return text;
   }
   return extractReasoningDetailsText(value.parts);
+}
+
+function isPlaceholderReasoningText(value: string): boolean {
+  const normalized = value.trim();
+  return normalized.length > 0 && /^[.\u2026\s]+$/u.test(normalized);
 }
 
 function extractChatSseError(value: JsonRecord): CodexStreamErrorEnvelope {
