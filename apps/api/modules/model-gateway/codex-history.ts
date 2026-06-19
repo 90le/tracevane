@@ -52,11 +52,11 @@ export class CodexChatHistoryStore {
     }
 
     const existingCallIds = new Set(inputItems
-      .filter((item) => item.type === "function_call")
+      .filter(isCodexToolCallItem)
       .map(responseItemCallId)
       .filter((callId): callId is string => Boolean(callId)));
     const outputCallIds = inputItems
-      .filter((item) => item.type === "function_call_output")
+      .filter(isCodexToolOutputItem)
       .map(responseItemCallId)
       .filter((callId): callId is string => Boolean(callId));
     const missingCallIds = outputCallIds.filter((callId) => !existingCallIds.has(callId));
@@ -75,7 +75,7 @@ export class CodexChatHistoryStore {
     let restoredInputInserted = false;
     let restoredCalls = 0;
     for (const item of inputItems) {
-      const callId = item.type === "function_call_output" ? responseItemCallId(item) : null;
+      const callId = isCodexToolOutputItem(item) ? responseItemCallId(item) : null;
       const restored = callId && !existingCallIds.has(callId) && !restoredOnce.has(callId)
         ? restoredByCallId.get(callId)
         : null;
@@ -112,7 +112,7 @@ export class CodexChatHistoryStore {
     const output = Array.isArray(response.output)
       ? response.output
         .filter(isRecord)
-        .filter((item) => item.type === "function_call" && responseItemCallId(item))
+        .filter((item) => isCodexToolCallItem(item) && responseItemCallId(item))
         .map(cloneRecord)
       : [];
     if (!output.length) return 0;
@@ -171,7 +171,7 @@ export class CodexChatHistoryStore {
       for (const [responseId, entry] of Object.entries(rawResponses)) {
         if (!isRecord(entry)) continue;
         const output = Array.isArray(entry.output)
-          ? entry.output.filter(isRecord).filter((item) => item.type === "function_call")
+          ? entry.output.filter(isRecord).filter(isCodexToolCallItem)
           : [];
         if (!output.length) continue;
         responses[responseId] = {
@@ -236,7 +236,7 @@ function replayInputFromRequestBody(bodyText: string | undefined): JsonRecord[] 
   const request = parseJsonObject(bodyText);
   if (!request) return [];
   return normalizeInputItems(request.input)
-    .filter((item) => item.type !== "function_call_output")
+    .filter((item) => !isCodexToolOutputItem(item))
     .map(cloneRecord);
 }
 
@@ -257,6 +257,14 @@ function uniqueFallbackCall(state: CodexHistoryState, callId: string): RestoredC
 
 function responseItemCallId(item: JsonRecord): string | null {
   return stringOrNull(item.call_id) || stringOrNull(item.id);
+}
+
+function isCodexToolCallItem(item: JsonRecord): boolean {
+  return item.type === "function_call" || item.type === "custom_tool_call";
+}
+
+function isCodexToolOutputItem(item: JsonRecord): boolean {
+  return item.type === "function_call_output" || item.type === "custom_tool_call_output";
 }
 
 function parseJsonObject(bodyText: string | undefined): JsonRecord | null {

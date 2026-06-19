@@ -9240,6 +9240,7 @@ export function createModelGatewayService(
     let upstreamBodyText = bodyText;
     let codexHistoryRecordBodyText = bodyText;
     let requestModelForLog = resolvedModel || requestModel;
+    let codexResponsesChatCustomToolNames: string[] = [];
     let codexImageGenerationRequest: CodexAccountImageGenerationPreparedRequest | null = null;
     if (useCodexAccountImageGenerationAdapter) {
       try {
@@ -9321,6 +9322,7 @@ export function createModelGatewayService(
             reasoning: provider.reasoning,
           })
           : null;
+        if (codexToChat) codexResponsesChatCustomToolNames = codexToChat.customToolNames;
         const chatRequestBodyText = codexToChat
           ? JSON.stringify(codexToChat.chatRequest)
           : bodyText;
@@ -9447,6 +9449,7 @@ export function createModelGatewayService(
           allowStreaming: useCodexResponsesStreamingAdapter,
           reasoning: provider.reasoning,
         });
+        codexResponsesChatCustomToolNames = adapted.customToolNames;
         upstreamBodyText = JSON.stringify(adapted.chatRequest);
         requestModelForLog = adapted.model || requestModel;
         headers.set("content-type", "application/json");
@@ -9595,7 +9598,9 @@ export function createModelGatewayService(
         setSelectedProviderHeaders();
         try {
           const streamingBody = observeReadableStreamFirstChunk(upstream.body, markFirstByte);
-          const streamingResult = await streamingAdapter.write(streamingBody, res, requestModelForLog);
+          const streamingResult = await streamingAdapter.write(streamingBody, res, requestModelForLog, {
+            customToolNames: codexResponsesChatCustomToolNames,
+          });
           if ((useCodexResponsesStreamingAdapter || useCodexResponsesAnthropicStreamingAdapter) && isRecord(streamingResult)) {
             const responseId = normalizeString(streamingResult.responseId) || normalizeString(streamingResult.id);
             codexHistory.recordResponse({
@@ -9990,7 +9995,9 @@ export function createModelGatewayService(
         try {
           const chatCompletion = adaptAnthropicMessagesResponseToChatCompletion(JSON.parse(responseText) as unknown, requestModelForLog);
           adaptedResponse = useCodexResponsesAnthropicAdapter
-            ? adaptChatCompletionToCodexResponse(chatCompletion, requestModelForLog)
+            ? adaptChatCompletionToCodexResponse(chatCompletion, requestModelForLog, {
+              customToolNames: codexResponsesChatCustomToolNames,
+            })
             : chatCompletion;
         } catch (error) {
           const adapterError = error instanceof AnthropicMessagesChatAdapterError || error instanceof CodexResponsesChatAdapterError
@@ -10110,7 +10117,9 @@ export function createModelGatewayService(
       if (useCodexResponsesChatAdapter && upstream.status >= 200 && upstream.status < 300) {
         let adaptedResponse: Record<string, unknown>;
         try {
-          adaptedResponse = adaptChatCompletionToCodexResponse(JSON.parse(responseText) as unknown, requestModelForLog);
+          adaptedResponse = adaptChatCompletionToCodexResponse(JSON.parse(responseText) as unknown, requestModelForLog, {
+            customToolNames: codexResponsesChatCustomToolNames,
+          });
         } catch (error) {
           const adapterError = error instanceof CodexResponsesChatAdapterError
             ? error

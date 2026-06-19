@@ -16,6 +16,7 @@ export class CodexResponsesChatAdapterError extends Error {
 
 export interface CodexResponsesChatRequestAdapterResult {
   chatRequest: JsonRecord;
+  customToolNames: string[];
   model: string | null;
   stream: boolean;
 }
@@ -101,6 +102,7 @@ export function adaptCodexResponsesRequestToChat(
 
   const tools = mapResponsesToolsToChat(request.tools);
   if (tools.length) chatRequest.tools = tools;
+  const customToolNames = collectResponsesCustomToolNames(request.tools);
 
   const toolChoice = mapResponsesToolChoiceToChat(request.tool_choice);
   if (toolChoice !== undefined) chatRequest.tool_choice = toolChoice;
@@ -113,12 +115,17 @@ export function adaptCodexResponsesRequestToChat(
 
   return {
     chatRequest,
+    customToolNames,
     model,
     stream,
   };
 }
 
-export function adaptChatCompletionToCodexResponse(chatCompletion: unknown, fallbackModel: string | null): JsonRecord {
+export function adaptChatCompletionToCodexResponse(
+  chatCompletion: unknown,
+  fallbackModel: string | null,
+  options: { customToolNames?: Iterable<string> } = {},
+): JsonRecord {
   if (!isRecord(chatCompletion)) {
     throw new CodexResponsesChatAdapterError(
       "model_gateway_codex_chat_response_invalid",
@@ -151,8 +158,9 @@ export function adaptChatCompletionToCodexResponse(chatCompletion: unknown, fall
     });
   }
 
+  const customToolNames = new Set(options.customToolNames || []);
   for (const toolCall of Array.isArray(message.tool_calls) ? message.tool_calls : []) {
-    const mapped = mapChatToolCallToResponses(toolCall, reasoningText);
+    const mapped = mapChatToolCallToResponses(toolCall, reasoningText, customToolNames);
     if (mapped) output.push(mapped);
   }
 
@@ -204,9 +212,9 @@ function appendResponsesInputMessages(input: unknown, messages: JsonRecord[]): v
   let pendingReasoning: string | null = null;
   let lastAssistantIndex: number | null = null;
   for (const item of items) {
-    if (isRecord(item) && item.type === "function_call") {
+    if (isRecord(item) && isResponsesToolCallItem(item)) {
       pendingReasoning = appendReasoningText(pendingReasoning, extractResponsesReasoningText(item), true);
-      const toolCall = mapResponsesFunctionCallToChatToolCall(item);
+      const toolCall = mapResponsesToolCallToChatToolCall(item);
       if (toolCall) pendingToolCalls.push(toolCall);
       continue;
     }
@@ -250,7 +258,7 @@ function mapResponsesInputItemToChatMessage(item: unknown): JsonRecord | null {
   if (typeof item === "string") return { role: "user", content: item };
   if (!isRecord(item)) return null;
 
-  if (item.type === "function_call_output") {
+  if (isResponsesToolOutputItem(item)) {
     const output = canonicalizeJsonStringIfParseable(contentToText(item.output));
     return {
       role: "tool",
@@ -280,7 +288,7 @@ function mapResponsesRoleToChat(role: unknown): string {
   return "user";
 }
 
-function mapResponsesFunctionCallToChatToolCall(item: JsonRecord): JsonRecord | null {
+function mapResponsesToolCallToChatToolCall(item: JsonRecord): JsonRecord | null {
   const callId = stringOrNull(item.call_id) || stringOrNull(item.id);
   const name = stringOrNull(item.name);
   if (!callId || !name) return null;
@@ -289,9 +297,19 @@ function mapResponsesFunctionCallToChatToolCall(item: JsonRecord): JsonRecord | 
     type: "function",
     function: {
       name,
-      arguments: canonicalizeToolArguments(item.arguments),
+      arguments: item.type === "custom_tool_call"
+        ? canonicalizeCustomToolInput(item.input)
+        : canonicalizeToolArguments(item.arguments),
     },
   };
+}
+
+function isResponsesToolCallItem(item: JsonRecord): boolean {
+  return item.type === "function_call" || item.type === "custom_tool_call";
+}
+
+function isResponsesToolOutputItem(item: JsonRecord): boolean {
+  return item.type === "function_call_output" || item.type === "custom_tool_call_output";
 }
 
 function flushPendingToolCalls(
@@ -397,6 +415,12 @@ function canonicalizeToolArguments(value: unknown): string {
   return canonicalJsonString(value);
 }
 
+function canonicalizeCustomToolInput(value: unknown): string {
+  if (typeof value === "string") return canonicalJsonString({ input: value });
+  if (value === undefined || value === null) return canonicalJsonString({ input: "" });
+  return canonicalJsonString({ input: contentToText(value) || JSON.stringify(value) });
+}
+
 function canonicalizeJsonStringIfParseable(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return value;
@@ -488,16 +512,34 @@ function mapResponsesToolsToChat(tools: unknown): JsonRecord[] {
   });
 }
 
+function collectResponsesCustomToolNames(tools: unknown): string[] {
+  if (!Array.isArray(tools)) return [];
+  return tools
+    .filter((tool): tool is JsonRecord => isRecord(tool) && tool.type === "custom")
+    .map((tool) => stringOrNull(tool.name) || (isRecord(tool.function) ? stringOrNull(tool.function.name) : null))
+    .filter((name): name is string => Boolean(name));
+}
+
 function mapResponsesToolToChat(tool: unknown): JsonRecord | null {
   if (!isRecord(tool)) return null;
-  if (tool.type !== "function") return null;
+  if (tool.type !== "function" && tool.type !== "custom") return null;
   const source = isRecord(tool.function) ? tool.function : tool;
   const name = stringOrNull(source.name);
   if (!name) return null;
 
   const fn: JsonRecord = { name };
   if (typeof source.description === "string") fn.description = source.description;
-  if (source.parameters !== undefined) fn.parameters = source.parameters;
+  if (source.parameters !== undefined) {
+    fn.parameters = source.parameters;
+  } else if (tool.type === "custom") {
+    fn.parameters = {
+      type: "object",
+      properties: {
+        input: { type: "string" },
+      },
+      required: ["input"],
+    };
+  }
   if (typeof source.strict === "boolean") fn.strict = source.strict;
   return {
     type: "function",
@@ -513,15 +555,35 @@ function mapResponsesToolChoiceToChat(toolChoice: unknown): unknown {
     const name = stringOrNull(toolChoice.name) || (isRecord(toolChoice.function) ? stringOrNull(toolChoice.function.name) : null);
     return name ? { type: "function", function: { name } } : toolChoice;
   }
+  if (toolChoice.type === "custom") {
+    const name = stringOrNull(toolChoice.name);
+    return name ? { type: "function", function: { name } } : toolChoice;
+  }
   return toolChoice;
 }
 
-function mapChatToolCallToResponses(toolCall: unknown, reasoningText: string | null): JsonRecord | null {
+function mapChatToolCallToResponses(
+  toolCall: unknown,
+  reasoningText: string | null,
+  customToolNames: Set<string> = new Set(),
+): JsonRecord | null {
   if (!isRecord(toolCall)) return null;
   const fn = isRecord(toolCall.function) ? toolCall.function : {};
   const name = stringOrNull(fn.name);
   if (!name) return null;
   const id = stringOrNull(toolCall.id) || `call_${Date.now().toString(36)}`;
+  if (customToolNames.has(name)) {
+    const item: JsonRecord = {
+      type: "custom_tool_call",
+      id,
+      call_id: id,
+      status: "completed",
+      name,
+      input: customToolInputFromChatArguments(fn.arguments),
+    };
+    if (reasoningText) item.reasoning_content = reasoningText;
+    return item;
+  }
   const item: JsonRecord = {
     type: "function_call",
     id,
@@ -532,6 +594,21 @@ function mapChatToolCallToResponses(toolCall: unknown, reasoningText: string | n
   };
   if (reasoningText) item.reasoning_content = reasoningText;
   return item;
+}
+
+function customToolInputFromChatArguments(value: unknown): string {
+  const text = stringOrNull(value);
+  if (!text) return "";
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    if (isRecord(parsed)) {
+      const input = parsed.input;
+      if (typeof input === "string") return input;
+    }
+  } catch {
+    // Fall through to raw text.
+  }
+  return text;
 }
 
 function mapChatUsageToResponses(usage: unknown): JsonRecord | null {

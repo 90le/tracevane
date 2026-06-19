@@ -16,6 +16,10 @@ export interface CodexStreamErrorEnvelope {
   code: string | null;
 }
 
+export interface CodexStreamingAdapterOptions {
+  customToolNames?: Iterable<string>;
+}
+
 export class ModelGatewayCodexStreamAdapterError extends Error {
   readonly streamError: CodexStreamErrorEnvelope;
 
@@ -43,6 +47,7 @@ interface FunctionCallState {
   callId: string;
   name: string;
   arguments: string;
+  custom: boolean;
   reasoningContent: string | null;
 }
 
@@ -64,6 +69,7 @@ interface StreamingState {
   usage: JsonRecord | null;
   nextOutputIndex: number;
   inlineThinkActive: boolean;
+  customToolNames: Set<string>;
   completedOutput: JsonRecord[];
   reasoning: ReasoningState;
   text: TextState;
@@ -74,10 +80,11 @@ export async function writeCodexResponsesSseFromChatSse(
   upstreamBody: ReadableStream<Uint8Array>,
   res: http.ServerResponse,
   fallbackModel: string | null,
+  options: CodexStreamingAdapterOptions = {},
 ): Promise<CodexStreamingAdapterResult> {
   const reader = upstreamBody.getReader();
   const decoder = new TextDecoder();
-  const state = createStreamingState(fallbackModel);
+  const state = createStreamingState(fallbackModel, options);
   let buffer = "";
 
   try {
@@ -109,7 +116,7 @@ export async function writeCodexResponsesSseFromChatSse(
   };
 }
 
-function createStreamingState(fallbackModel: string | null): StreamingState {
+function createStreamingState(fallbackModel: string | null, options: CodexStreamingAdapterOptions): StreamingState {
   const responseId = `resp_${Date.now().toString(36)}`;
   return {
     responseStarted: false,
@@ -121,6 +128,7 @@ function createStreamingState(fallbackModel: string | null): StreamingState {
     usage: null,
     nextOutputIndex: 0,
     inlineThinkActive: false,
+    customToolNames: new Set(options.customToolNames || []),
     completedOutput: [],
     reasoning: {
       added: false,
@@ -360,6 +368,7 @@ function ensureFunctionCall(
       callId,
       name: patch.name || "tool",
       arguments: "",
+      custom: patch.name ? state.customToolNames.has(patch.name) : false,
       reasoningContent: null,
     };
     state.nextOutputIndex += 1;
@@ -371,6 +380,7 @@ function ensureFunctionCall(
     tool.itemId = `fc_${patch.id}`;
   }
   if (patch.name) tool.name = patch.name;
+  if (patch.name && state.customToolNames.has(patch.name)) tool.custom = true;
   return tool;
 }
 
@@ -546,6 +556,18 @@ function currentOutputItems(state: StreamingState): JsonRecord[] {
 }
 
 function functionCallItem(tool: FunctionCallState, status: string): JsonRecord {
+  if (tool.custom) {
+    const item: JsonRecord = {
+      id: tool.itemId,
+      type: "custom_tool_call",
+      status,
+      call_id: tool.callId,
+      name: tool.name,
+      input: customToolInputFromChatArguments(tool.arguments || "{}"),
+    };
+    if (tool.reasoningContent) item.reasoning_content = tool.reasoningContent;
+    return item;
+  }
   const item: JsonRecord = {
     id: tool.itemId,
     type: "function_call",
@@ -556,6 +578,17 @@ function functionCallItem(tool: FunctionCallState, status: string): JsonRecord {
   };
   if (tool.reasoningContent) item.reasoning_content = tool.reasoningContent;
   return item;
+}
+
+function customToolInputFromChatArguments(value: string): string {
+  if (!value) return "";
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (isRecord(parsed) && typeof parsed.input === "string") return parsed.input;
+  } catch {
+    // Fall through to raw text.
+  }
+  return value;
 }
 
 function reasoningItem(state: StreamingState, status: string): JsonRecord {

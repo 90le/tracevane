@@ -9064,6 +9064,282 @@ test("model gateway adapts inline codex tool-result history with gateway-compati
   ]);
 });
 
+test("model gateway restores codex custom tool-call history for follow-up chat adapter requests", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-custom-history-adapter",
+      name: "Codex Custom History Adapter",
+      appScopes: ["codex"],
+      baseUrl: "https://codex-custom-history.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-codex-custom-history-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  fs.mkdirSync(path.dirname(paths.codexHistory), { recursive: true });
+  fs.writeFileSync(paths.codexHistory, `${JSON.stringify({
+    version: 1,
+    updatedAt: "2026-06-19T00:00:00.000Z",
+    order: ["resp_custom_patch"],
+    responses: {
+      resp_custom_patch: {
+        responseId: "resp_custom_patch",
+        createdAt: "2026-06-19T00:00:00.000Z",
+        updatedAt: "2026-06-19T00:00:00.000Z",
+        input: [{
+          role: "user",
+          content: "Patch the file.",
+        }],
+        output: [{
+          type: "custom_tool_call",
+          status: "completed",
+          call_id: "call_patch",
+          name: "apply_patch",
+          input: "*** Begin Patch\n*** Add File: probe.txt\n+ok\n*** End Patch\n",
+        }],
+      },
+    },
+  }, null, 2)}\n`);
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      body: String(init.body || ""),
+    });
+    return new Response(JSON.stringify({
+      id: "chatcmpl_custom_history_final",
+      created: 1_710_000_027,
+      model: "claude-opus-4-8",
+      choices: [{
+        index: 0,
+        message: {
+          role: "assistant",
+          content: "Patch result observed.",
+        },
+        finish_reason: "stop",
+      }],
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "claude-opus-4-8",
+          previous_response_id: "resp_custom_patch",
+          input: [
+            {
+              type: "custom_tool_call_output",
+              call_id: "call_patch",
+              output: "Done",
+            },
+            {
+              role: "user",
+              content: "Continue after the patch.",
+            },
+          ],
+          stream: false,
+        },
+      });
+      assert.equal(response.status, 200);
+      assert.equal(response.body.output[0].content[0].text, "Patch result observed.");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  const chatBody = JSON.parse(upstreamCalls[0].body);
+  assert.deepEqual(chatBody.messages, [
+    {
+      role: "user",
+      content: "Patch the file.",
+    },
+    {
+      role: "assistant",
+      content: null,
+      reasoning_content: "tool call",
+      tool_calls: [{
+        id: "call_patch",
+        type: "function",
+        function: {
+          name: "apply_patch",
+          arguments: "{\"input\":\"*** Begin Patch\\n*** Add File: probe.txt\\n+ok\\n*** End Patch\\n\"}",
+        },
+      }],
+    },
+    {
+      role: "tool",
+      content: "Done",
+      tool_call_id: "call_patch",
+    },
+    {
+      role: "user",
+      content: "Continue after the patch.",
+    },
+  ]);
+});
+
+test("model gateway restores codex custom tool calls from chat adapter responses", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-custom-response-adapter",
+      name: "Codex Custom Response Adapter",
+      appScopes: ["codex"],
+      baseUrl: "https://codex-custom-response.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-codex-custom-response-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    id: "chatcmpl_custom_response",
+    created: 1_710_000_028,
+    model: "claude-opus-4-8",
+    choices: [{
+      index: 0,
+      message: {
+        role: "assistant",
+        content: null,
+        tool_calls: [{
+          id: "call_patch",
+          type: "function",
+          function: {
+            name: "apply_patch",
+            arguments: "{\"input\":\"*** Begin Patch\\n*** Add File: probe.txt\\n+ok\\n*** End Patch\\n\"}",
+          },
+        }],
+      },
+      finish_reason: "tool_calls",
+    }],
+  }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "claude-opus-4-8",
+          input: "Patch.",
+          tools: [{
+            type: "custom",
+            name: "apply_patch",
+          }],
+          stream: false,
+        },
+      });
+      assert.equal(response.status, 200);
+      assert.deepEqual(response.body.output, [{
+        type: "custom_tool_call",
+        id: "call_patch",
+        call_id: "call_patch",
+        status: "completed",
+        name: "apply_patch",
+        input: "*** Begin Patch\n*** Add File: probe.txt\n+ok\n*** End Patch\n",
+      }]);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("model gateway restores streaming codex custom tool calls from chat sse", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-stream-custom-response-adapter",
+      name: "Codex Stream Custom Response Adapter",
+      appScopes: ["codex"],
+      baseUrl: "https://codex-stream-custom-response.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-codex-stream-custom-response-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    const upstreamSse = [
+      "data: {\"id\":\"chatcmpl_stream_custom\",\"created\":1710000029,\"model\":\"claude-opus-4-8\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_patch\",\"type\":\"function\",\"function\":{\"name\":\"apply_patch\",\"arguments\":\"{\\\"input\\\":\\\"*** Begin Patch\\\\n\"}}]}}]}",
+      "",
+      "data: {\"id\":\"chatcmpl_stream_custom\",\"created\":1710000029,\"model\":\"claude-opus-4-8\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"*** Add File: probe.txt\\\\n+ok\\\\n*** End Patch\\\\n\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}]}",
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n");
+    return new Response(upstreamSse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const streamed = await requestRaw(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "claude-opus-4-8",
+          input: "Patch.",
+          tools: [{
+            type: "custom",
+            name: "apply_patch",
+          }],
+          stream: true,
+        },
+      });
+      assert.equal(streamed.status, 200);
+      const events = parseSseEvents(streamed.body);
+      const completed = events.find((item) => item.event === "response.completed").data.response;
+      assert.deepEqual(completed.output, [{
+        id: "fc_call_patch",
+        type: "custom_tool_call",
+        status: "completed",
+        call_id: "call_patch",
+        name: "apply_patch",
+        input: "*** Begin Patch\n*** Add File: probe.txt\n+ok\n*** End Patch\n",
+      }]);
+      const done = events.find((item) => item.event === "response.output_item.done").data.item;
+      assert.equal(done.type, "custom_tool_call");
+      assert.equal(done.input, "*** Begin Patch\n*** Add File: probe.txt\n+ok\n*** End Patch\n");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model gateway records streamed codex tool-call history for follow-up anthropic adapter requests", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
