@@ -47,3 +47,7 @@ release/
 .gstack/
 .omx/
 
+# Vite dev server transient build artifacts (regenerated on run)
+*.timestamp-*.mjs
+vite.config.ts.timestamp-*
+apps/web-vue/vite.config.ts.timestamp-*
