@@ -1212,7 +1212,7 @@
                           <input v-model.trim="modelBulk.maxOutputTokens" class="form-input" inputmode="numeric" placeholder="8192" />
                         </label>
                         <button type="button" class="secondary-button compact-button" @click="applyModelBulkBudget">
-                          {{ text('应用预算到全部', 'Apply budget') }}
+                          {{ text('应用预算到可见', 'Apply budget to visible') }}
                         </button>
                       </div>
                       <div class="mgw-model-batch__capabilities" :aria-label="text('批量模型能力', 'Bulk model capabilities')">
@@ -1221,7 +1221,7 @@
                           <span>{{ text(capability.zh, capability.en) }}</span>
                         </label>
                         <button type="button" class="secondary-button compact-button" @click="applyModelBulkCapabilities">
-                          {{ text('应用能力到全部', 'Apply capabilities') }}
+                          {{ text('应用能力到可见', 'Apply capabilities to visible') }}
                         </button>
                       </div>
                     </div>
@@ -3889,7 +3889,7 @@ function fillMissingModelMetadata(): void {
 }
 
 function applyModelBulkBudget(): void {
-  if (!draft.modelRows.length) {
+  if (!visibleDraftModelRowEntries.value.length) {
     notice.value = { kind: 'error', message: text('先添加或导入模型。', 'Add or import models first.') };
     return;
   }
@@ -3899,26 +3899,26 @@ function applyModelBulkBudget(): void {
     notice.value = { kind: 'error', message: text('先填写上下文或输出预算。', 'Enter context or output budget first.') };
     return;
   }
-  for (const row of draft.modelRows) {
-    if (contextWindow) row.contextWindow = String(contextWindow);
-    if (maxOutputTokens) row.maxOutputTokens = String(maxOutputTokens);
+  for (const entry of visibleDraftModelRowEntries.value) {
+    if (contextWindow) entry.row.contextWindow = String(contextWindow);
+    if (maxOutputTokens) entry.row.maxOutputTokens = String(maxOutputTokens);
   }
   syncModelTextFromRows();
-  notice.value = { kind: 'success', message: text('已把预算应用到全部模型。', 'Budget applied to all models.') };
+  notice.value = { kind: 'success', message: text('已把预算应用到当前可见模型。', 'Budget applied to visible models.') };
 }
 
 function applyModelBulkCapabilities(): void {
-  if (!draft.modelRows.length) {
+  if (!visibleDraftModelRowEntries.value.length) {
     notice.value = { kind: 'error', message: text('先添加或导入模型。', 'Add or import models first.') };
     return;
   }
-  for (const row of draft.modelRows) {
+  for (const entry of visibleDraftModelRowEntries.value) {
     for (const capability of modelCapabilityOptions) {
-      row[capability.id] = modelBulk[capability.id];
+      entry.row[capability.id] = modelBulk[capability.id];
     }
   }
   syncModelTextFromRows();
-  notice.value = { kind: 'success', message: text('已把能力应用到全部模型。', 'Capabilities applied to all models.') };
+  notice.value = { kind: 'success', message: text('已把能力应用到当前可见模型。', 'Capabilities applied to visible models.') };
 }
 
 function addDraftModelRow(model?: ModelGatewayProviderModel): void {
