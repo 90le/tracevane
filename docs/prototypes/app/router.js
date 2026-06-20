@@ -35,6 +35,10 @@
     const stage = document.getElementById("stage");
     if (!stage || !page) return;
     const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    // 切换时先显示骨架，避免 fetch 期间 stage 闪白；用 token 防快速切换竞态
+    render._token = (render._token || 0) + 1;
+    const token = render._token;
+    if (window.AuroraStates) AuroraStates.states(stage, "skeleton-cards", { count: 3 });
     // 标记导航 active
     document.querySelectorAll("[data-route]").forEach(a => {
       a.classList.toggle("active", a.getAttribute("data-route") === page.path);
@@ -53,7 +57,10 @@
       } else if (typeof page.html === "string") {
         stage.innerHTML = page.html;
       }
+      // 快速切换保护：若期间又切到别的页，丢弃本次结果
+      if (token !== render._token) return;
     } catch (e) {
+      if (token !== render._token) return;
       stage.innerHTML = '<div class="statebox error"><span class="si"><i data-lucide="circle-alert"></i></span><strong>页面加载失败</strong><span>' + esc(e.message) + '</span><div class="row-actions"><button class="btn-ghost btn-sm retry" data-retry><i data-lucide="refresh-cw"></i>重试</button></div></div>';
       const rb = stage.querySelector("[data-retry]");
       if (rb) rb.addEventListener("click", () => render());
