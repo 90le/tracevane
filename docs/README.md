@@ -14,6 +14,7 @@
 
 ## Active Tracks
 
+- `前端重构方案.md` / `prototypes/INDEX.md` - current frontend prototype reset, V8 app-shell baseline and React + shadcn/ui direction.
 - `tracevane-gateway-goal.md` / `tracevane-gateway-progress.md` - Gateway stability, provider protocol matrix and App Connections.
 - `tracevane-gateway-account-provider-plan.md` - account-style provider research and proof boundaries.
 - `workspace-ide-goal.md` - IDE-grade local edit/run/preview/AI/diff workspace goal.

@@ -1,0 +1,122 @@
+<div class="wrap">
+          <div class="fillbox">
+            <div class="page-head">
+              <div class="htitle"><h2>工作区</h2><p>文件、编辑器、终端、Git 与预览证据汇聚在同一局部工作台。</p></div>
+              <div class="toolbar">
+                <div class="seg" id="modeSeg"><button class="on" data-mode="edit">编辑</button><button data-mode="preview">预览</button><button data-mode="diff">Diff</button></div>
+                <button class="btn-ghost" id="runTaskBtn"><i data-lucide="play"></i><span>运行任务</span></button>
+              </div>
+            </div>
+
+            <div class="workbench" id="workbench">
+              <div class="wb-activity">
+                <button class="wb-act on" data-pane="files" title="资源管理器"><i data-lucide="files"></i></button>
+                <button class="wb-act" data-pane="search" title="搜索"><i data-lucide="search"></i></button>
+                <button class="wb-act" data-pane="git" title="Git"><i data-lucide="git-branch"></i></button>
+                <button class="wb-act" data-pane="evidence" title="证据"><i data-lucide="folder-check"></i></button>
+                <button class="wb-act" data-pane="ai" title="AI 动作"><i data-lucide="wand-sparkles"></i></button>
+              </div>
+
+              <button class="wb-tree-toggle" id="treeToggle"><i data-lucide="panel-left-open"></i><span id="treeToggleLabel">资源管理器</span></button>
+
+              <div class="wb-tree" id="wbTree">
+                <div data-pane-content="files">
+                  <div class="tg">资源管理器</div>
+                  <div class="tree-item"><i data-lucide="folder-open"></i>apps</div>
+                  <div class="tree-item nest"><i data-lucide="folder"></i>api</div>
+                  <div class="tree-item nest on" data-file="routes.ts"><i data-lucide="file-code-2"></i>routes.ts</div>
+                  <div class="tree-item nest" data-file="service.ts"><i data-lucide="file-code-2"></i>service.ts</div>
+                  <div class="tree-item"><i data-lucide="folder"></i>docs</div>
+                  <div class="tree-item nest" data-file="README.md"><i data-lucide="file-text"></i>README.md</div>
+                  <div class="tree-item" data-file="package.json"><i data-lucide="file-json-2"></i>package.json</div>
+                  <div class="tg" style="margin-top:8px;">产物 / 证据</div>
+                  <div class="tree-item" data-file="preview-01.png"><i data-lucide="image"></i>preview-01.png</div>
+                  <div class="tree-item" data-file="ai-edit.diff"><i data-lucide="file-diff"></i>ai-edit.diff</div>
+                </div>
+                <div data-pane-content="search" hidden>
+                  <div class="tg">搜索</div>
+                  <span class="search-input" style="margin:4px 0 10px;"><i data-lucide="search"></i><input placeholder="在工作区搜索" value="active-route" /></span>
+                  <div class="tree-item on"><i data-lucide="file-code-2"></i>routes.ts:6</div>
+                  <div class="tree-item nest" style="font-family:var(--mono);font-size:11.5px;">active-route-smoke</div>
+                  <div class="tree-item"><i data-lucide="file-code-2"></i>service.ts:142</div>
+                </div>
+                <div data-pane-content="git" hidden>
+                  <div class="tg">Git &middot; main</div>
+                  <div class="tree-item"><i data-lucide="file-plus-2"></i>routes.ts<span class="tag warn" style="margin-left:auto;">M</span></div>
+                  <div class="tree-item"><i data-lucide="file-plus-2"></i>service.ts<span class="tag warn" style="margin-left:auto;">M</span></div>
+                  <div class="tree-item"><i data-lucide="file-plus-2"></i>config.ts<span class="tag ok" style="margin-left:auto;">A</span></div>
+                  <button class="btn-primary btn-sm" id="commitBtn" style="margin-top:10px;width:100%;"><i data-lucide="git-commit-horizontal"></i>提交 3 个改动</button>
+                </div>
+                <div data-pane-content="evidence" hidden>
+                  <div class="tg">证据 / 产物</div>
+                  <div class="tree-item" data-file="preview-01.png"><i data-lucide="image"></i>preview-01.png</div>
+                  <div class="tree-item" data-file="ai-edit.diff"><i data-lucide="file-diff"></i>ai-edit.diff</div>
+                  <div class="tree-item"><i data-lucide="activity"></i>smoke-200.json</div>
+                </div>
+                <div data-pane-content="ai" hidden>
+                  <div class="tg">AI 动作</div>
+                  <p class="help-text" style="padding:0 8px;">对当前文件 / 选区 / 终端输出发起 AI 编辑，返回 diff 后审批应用。</p>
+                  <button class="btn-primary btn-sm" id="aiEditBtn2" style="margin:8px 8px 0;width:calc(100% - 16px);"><i data-lucide="wand-sparkles"></i>编辑当前文件</button>
+                </div>
+              </div>
+
+              <div class="wb-editor">
+                <div class="wb-tabs">
+                  <div class="wb-tab on" data-file="routes.ts"><i data-lucide="file-code-2"></i>routes.ts<span class="dot"></span></div>
+                  <div class="wb-tab" data-file="service.ts"><i data-lucide="file-code-2"></i>service.ts</div>
+                  <div class="wb-tab" data-file="README.md"><i data-lucide="file-text"></i>README.md</div>
+                </div>
+                <div class="wb-code" id="wbCode"><span class="ln">1</span><span class="cm">// model gateway routes</span>
+<span class="ln">2</span><span class="kw">import</span> type { TracevaneRouter } <span class="kw">from</span> <span class="st">"../../core/router.js"</span>;
+<span class="ln">3</span>
+<span class="ln">4</span><span class="kw">export function</span> <span class="fn">registerModelGatewayRoutes</span>(router) {
+<span class="ln">5</span>  router.<span class="fn">get</span>(<span class="st">"/api/model-gateway/status"</span>, handler);
+<span class="ln">6</span>  router.<span class="fn">post</span>(<span class="st">"/api/model-gateway/active-route-smoke"</span>, smoke);
+<span class="ln">7</span>  <span class="cm">// + provider routing, health, usage</span>
+<span class="ln">8</span>}
+</div>
+              </div>
+
+              <div class="wb-panel">
+                <div class="wb-panel-tabs" id="panelTabs">
+                  <button class="on" data-panel-tab="term">终端</button>
+                  <button data-panel-tab="tasks">任务</button>
+                  <button data-panel-tab="problems">问题 <span class="tag warn" style="padding:0 6px;">2</span></button>
+                  <button data-panel-tab="ports">端口</button>
+                  <span class="filler" style="flex:1;"></span>
+                  <button class="btn-icon btn-ghost btn-sm" title="新建终端"><i data-lucide="plus"></i></button>
+                </div>
+                <div class="wb-term" data-panel-content="term"><span class="pr">~/tracevane $</span> npm run dev:api
+<span class="ok">&#9656; api listening on :3760</span>
+<span class="ok">&#9656; gateway daemon ready (loopback :8787)</span>
+<span class="warn">&#9888; provider GLM endpoint A degraded, fallback active</span>
+<span class="pr">~/tracevane $</span> <span style="opacity:.7;">_</span>
+</div>
+                <div class="wb-term" data-panel-content="tasks" hidden>  <span class="ok">&#9656; dev:api</span>      running   :3760   pty/1
+  <span class="ok">&#9656; dev:web</span>      running   :5173   pty/2
+  <span class="warn">&#9656; build:api</span>    idle      last exit 0
+  <span class="pr">&#9656; test:gateway</span> queued
+</div>
+                <div class="wb-term" data-panel-content="problems" hidden>  <span class="warn">&#9888;</span> routes.ts:6   未使用的变量 handler
+  <span class="warn">&#9888;</span> service.ts:142 缺少返回类型注解
+</div>
+                <div class="wb-term" data-panel-content="ports" hidden>  3760  api        <span class="ok">open</span>   http://127.0.0.1:3760
+  5173  web (vite) <span class="ok">open</span>   http://127.0.0.1:5173
+  8787  gateway    <span class="ok">open</span>   loopback
+</div>
+              </div>
+
+              <div class="wb-status">
+                <span class="si"><i data-lucide="git-branch"></i>main</span>
+                <span class="si"><i data-lucide="git-commit-horizontal"></i>3 改动</span>
+                <span class="si warn"><i data-lucide="triangle-alert"></i>2 问题</span>
+                <span class="si ok"><i data-lucide="radio"></i>3 端口</span>
+                <span class="filler"></span>
+                <span class="si">routes.ts</span>
+                <span class="si">TypeScript</span>
+                <span class="si">UTF-8 &middot; LF</span>
+                <span class="si">行 6, 列 38</span>
+              </div>
+            </div>
+          </div>
+        </div>

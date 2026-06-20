@@ -1,0 +1,25 @@
+<div class="wrap">
+          <div class="page-head">
+            <div class="htitle"><h2>审批</h2><p>文件写入、命令执行、凭据访问、修复写入都先展示风险 / diff / preview，再允许批准。</p></div>
+            <div class="toolbar"><div class="seg"><button class="on">待审批 <span class="tag warn" style="padding:0 6px;">3</span></button><button>已批准</button><button>已拒绝</button></div></div>
+          </div>
+          <div class="grid-main">
+            <section class="panel">
+              <div class="panel-head"><div class="htitle"><h3>待审批</h3><span class="sub">按风险排序</span></div></div>
+              <div class="panel-body" style="padding:6px;">
+                <button class="row" data-appr="write"><span class="rico r-amber"><i data-lucide="file-pen"></i></span><span class="rcopy"><strong>文件写入 · 3 个文件</strong><span>Codex · 修复网关降级</span></span><span class="tag warn">中风险</span></button>
+                <button class="row" data-appr="cmd"><span class="rico r-red"><i data-lucide="square-terminal"></i></span><span class="rcopy"><strong>命令执行 · rm -rf dist</strong><span>OpenCode · 构建清理</span></span><span class="tag bad">高风险</span></button>
+                <button class="row" data-appr="cred"><span class="rico r-primary"><i data-lucide="key-round"></i></span><span class="rcopy"><strong>凭据访问 · glm.api_key</strong><span>Claude Code · 测试连接</span></span><span class="tag info">低风险</span></button>
+              </div>
+            </section>
+            <aside class="panel" id="apprDetail">
+              <div class="panel-head"><div class="htitle"><h3 id="apTitle">文件写入 · 3 个文件</h3><span class="sub" id="apSub">Codex · 修复网关降级</span></div><span class="tag warn" id="apRisk">中风险</span></div>
+              <div class="panel-body" style="padding:14px;">
+                <div class="section-label">变更预览</div>
+                <div class="diff" id="apDiff" style="margin:6px 0 12px;"><div class="dl ctx">routes.ts</div><div class="dl add">+ router.post("/active-route-smoke", smoke);</div><div class="dl ctx">service.ts</div><div class="dl add">+ private fallbackActive = true;</div></div>
+                <dl class="kv"><dt>影响</dt><dd>3 个文件 · 可回滚</dd><dt>发起</dt><dd>Codex Agent</dd><dt>关联</dt><dd>修复网关降级会话</dd></dl>
+                <div class="row-actions" style="margin-top:14px;"><button class="btn-primary btn-sm" id="approveBtn"><i data-lucide="check"></i>批准</button><button class="btn-ghost btn-sm" id="diffWsBtn"><i data-lucide="square-terminal"></i>在工作区查看</button><button class="btn-ghost btn-sm danger-text" id="rejectBtn"><i data-lucide="x"></i>拒绝</button></div>
+              </div>
+            </aside>
+          </div>
+        </div>

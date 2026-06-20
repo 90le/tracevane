@@ -1,0 +1,79 @@
+<div class="wrap">
+          <div class="fillbox">
+            <div class="page-head">
+              <div class="htitle"><h2>会话 / Agent 工作台</h2><p>Chat 携带文件、工具调用、审批与证据上下文，不是通用聊天。</p></div>
+              <div class="toolbar"><div class="seg"><button class="on">运行中</button><button>等待</button><button>已完成</button></div></div>
+            </div>
+
+            <div class="chat-shell" id="chatShell">
+              <!-- session list -->
+              <div class="chat-list">
+                <div class="section-label" style="padding:4px 6px;">会话</div>
+                <button class="chat-sess on"><span class="st"><span class="status-dot s-warn"><i></i></span><strong>修复网关降级</strong></span><span class="sub">Codex · 工具调用中</span></button>
+                <button class="chat-sess"><span class="st"><span class="status-dot s-ok"><i></i></span><strong>重构前端原型</strong></span><span class="sub">Claude Code · 等待审批</span></button>
+                <button class="chat-sess"><span class="st"><span class="status-dot s-ok"><i></i></span><strong>同步 MCP registry</strong></span><span class="sub">OpenCode · 已完成</span></button>
+                <button class="chat-sess"><span class="st"><span class="status-dot s-bad"><i></i></span><strong>飞书长连接排查</strong></span><span class="sub">Codex · 失败</span></button>
+              </div>
+
+              <!-- conversation -->
+              <div class="chat-main">
+                <div class="chat-bar">
+                  <button class="btn-ghost" id="openListBtn"><i data-lucide="panel-left-open"></i><span>会话</span></button>
+                  <button class="btn-ghost" id="openInspectBtn"><i data-lucide="panel-right-open"></i><span>证据</span></button>
+                </div>
+                <div class="chat-msgs">
+                  <div class="msg me"><div class="who">我</div><div class="bubble">网关主路由一直降级，帮我查一下默认路由并跑一次连通检查。</div></div>
+                  <div class="msg"><div class="who">Codex · gpt-5.4</div><div class="bubble">已读取网关状态，主 endpoint 超时率升到 2.1%。我先运行一次默认路由 smoke 确认备用是否正常接管。</div></div>
+                  <div class="msg" style="max-width:92%;">
+                    <div class="who">工具调用</div>
+                    <div class="toolcall">
+                      <div class="tc-head"><i data-lucide="activity"></i>active-route-smoke<span class="tag ok" style="margin-left:auto;">200</span></div>
+                      <pre>POST /api/model-gateway/active-route-smoke
+route: default → endpoint B (fallback)
+latency: 760ms · envelope: valid</pre>
+                    </div>
+                  </div>
+                  <div class="msg"><div class="who">Codex · gpt-5.4</div><div class="bubble">备用 endpoint 接管正常。建议把 endpoint A 标记为观察并修改默认路由权重，我准备改动 3 个文件。</div></div>
+                  <div class="msg" style="max-width:92%;">
+                    <div class="approve-bar">
+                      <i data-lucide="shield-question" style="color:var(--amber);"></i>
+                      <span class="at">Agent 请求写入 3 个文件，需审批</span>
+                      <button class="btn-ghost" data-sheet="查看 diff|3 个文件改动|需审批|审批|逐 hunk 审查后批准|Agent 请求修改 routes.ts、service.ts 和 config 默认路由权重，查看 diff 后批准或拒绝。|files: 3 risk: medium rollback: yes">查看 diff</button>
+                      <button class="btn-primary">批准</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="chat-composer">
+                  <div class="composer-box">
+                    <textarea placeholder="给 Agent 发送指令… 可附带文件、选区或终端输出"></textarea>
+                    <div class="composer-foot">
+                      <button class="btn-icon btn-ghost" title="附加文件"><i data-lucide="paperclip"></i></button>
+                      <button class="btn-icon btn-ghost" title="引用终端输出"><i data-lucide="terminal"></i></button>
+                      <span class="tag mute">cwd ~/tracevane</span>
+                      <span class="filler"></span>
+                      <button class="btn-primary"><i data-lucide="send-horizontal"></i><span>发送</span></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- inspector: context / evidence -->
+              <aside class="chat-inspect">
+                <div><div class="section-label">运行</div>
+                  <div class="metric-row" style="grid-template-columns:repeat(2,1fr);">
+                    <div class="m"><span>Agent</span><strong style="font-size:14px;">Codex</strong></div>
+                    <div class="m"><span>模型</span><strong style="font-size:14px;">gpt-5.4</strong></div>
+                  </div>
+                </div>
+                <div><div class="section-label">证据 / 产物</div>
+                  <button class="evi" data-sheet="smoke 证据|active-route-smoke|成功|证据|查看完整记录|默认路由 smoke 返回 200，envelope 合法。|status: 200 latency: 760ms"><span class="rico ico-teal"><i data-lucide="activity"></i></span><span class="c"><strong>smoke 证据</strong><span>200 · 760ms</span></span></button>
+                  <button class="evi" data-sheet="ai-edit.diff|3 文件改动|待审批|证据|查看 diff|Agent 生成的改动 diff，可在工作区逐 hunk 审查。|files: 3 hunks: 7"><span class="rico ico-primary"><i data-lucide="file-diff"></i></span><span class="c"><strong>ai-edit.diff</strong><span>3 文件 · 7 hunks</span></span></button>
+                  <button class="evi" data-sheet="网关状态快照|抓取于工具调用前|参考|证据|查看快照|工具调用前的网关状态快照，用于复盘。|endpoint A: degraded"><span class="rico ico-violet"><i data-lucide="camera"></i></span><span class="c"><strong>状态快照</strong><span>调用前抓取</span></span></button>
+                </div>
+                <div><div class="section-label">工具调用</div>
+                  <button class="evi" data-sheet="active-route-smoke|工具调用|成功|可观测性|查看 trace|按 session + toolCallId 合并的工具调用记录。|tool: active-route-smoke outcome: success"><span class="rico ico-teal"><i data-lucide="wrench"></i></span><span class="c"><strong>active-route-smoke</strong><span>成功 · 1 次</span></span></button>
+                </div>
+              </aside>
+            </div>
+          </div>
+        </div>

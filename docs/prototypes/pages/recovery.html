@@ -1,0 +1,37 @@
+<div class="wrap">
+          <section class="hero" style="padding:18px 22px;">
+            <div class="hero-top"><span class="ready-chip warn"><i data-lucide="shield-alert"></i>2 项可修复 · 1 项需关注</span><span class="hero-time">最近巡检 4 分钟前 · 守护运行中</span></div>
+            <div class="hero-stats" style="margin-top:16px;grid-template-columns:repeat(3,1fr);">
+              <div class="hero-stat"><span class="lab"><i data-lucide="heart-pulse"></i>服务健康</span><span class="val">4<small>/5</small></span><span class="trend flat"><i data-lucide="minus"></i>1 降级</span></div>
+              <div class="hero-stat"><span class="lab"><i data-lucide="wrench"></i>可一键修复</span><span class="val">2</span><span class="trend up"><i data-lucide="check"></i>已备份</span></div>
+              <div class="hero-stat"><span class="lab"><i data-lucide="history"></i>可回滚备份</span><span class="val">6</span><span class="trend flat"><i data-lucide="minus"></i>最近 2h</span></div>
+            </div>
+          </section>
+          <div class="grid-main" style="margin-top:18px;">
+            <section class="panel">
+              <div class="panel-head"><div class="htitle"><h3>检测到的问题</h3><span class="sub">所有修复遵循 备份 → 预览 → 应用 → 校验 → 回滚</span></div><button class="btn-ghost btn-sm" id="scanBtn"><i data-lucide="scan-search"></i>重新巡检</button></div>
+              <div class="panel-body" style="padding:6px;">
+                <button class="row" data-fix="gateway"><span class="rico r-amber"><i data-lucide="route-off"></i></span><span class="rcopy"><strong>Gateway 服务降级</strong><span>endpoint A 超时 · 可重启服务</span></span><span class="tag warn">可修复</span></button>
+                <button class="row" data-fix="config"><span class="rico r-primary"><i data-lucide="file-cog"></i></span><span class="rcopy"><strong>OpenClaw 配置漂移</strong><span>插件 slot 残留 · 可清理</span></span><span class="tag info">可修复</span></button>
+                <button class="row" data-fix="secret"><span class="rico r-red"><i data-lucide="key-round"></i></span><span class="rcopy"><strong>明文凭据残留</strong><span>建议迁移到密钥库 · 需人工</span></span><span class="tag bad">需关注</span></button>
+              </div>
+            </section>
+            <aside class="panel">
+              <div class="panel-head"><div class="htitle"><h3>修复流程</h3><span class="sub" id="fixName">Gateway 服务降级</span></div></div>
+              <div class="panel-body" style="padding:14px;">
+                <div class="acc open"><button class="acc-head"><span class="rico r-green" style="width:28px;height:28px;"><i data-lucide="check"></i></span><span class="rcopy"><strong>1 · 备份</strong><span>已创建配置与服务快照</span></span><i data-lucide="chevron-right" class="chev"></i></button><div class="acc-body"><div class="logbox">backup: gateway.json @ 14:02<br/>service unit snapshot saved</div></div></div>
+                <div class="acc"><button class="acc-head"><span class="rico r-primary" style="width:28px;height:28px;"><i data-lucide="eye"></i></span><span class="rcopy"><strong>2 · 预览</strong><span>将执行的修复动作</span></span><i data-lucide="chevron-right" class="chev"></i></button><div class="acc-body"><div class="logbox">restart tracevane-gateway.service<br/>reset endpoint A circuit</div></div></div>
+                <div class="switch-row"><span class="sc"><strong>3 · 应用</strong><span>执行修复并校验</span></span><button class="btn-primary btn-sm" id="applyFixBtn"><i data-lucide="wrench"></i>应用修复</button></div>
+                <div class="switch-row"><span class="sc"><strong>5 · 回滚</strong><span>恢复到备份</span></span><button class="btn-ghost btn-sm" id="rollbackBtn"><i data-lucide="undo-2"></i>回滚</button></div>
+              </div>
+            </aside>
+          </div>
+          <section class="panel" style="margin-top:18px;">
+            <div class="panel-head"><div class="htitle"><h3>服务与备份</h3><span class="sub">守护管理的本地服务</span></div></div>
+            <div class="panel-body" style="padding:6px;">
+              <div class="route-row"><span class="rico r-green"><i data-lucide="server"></i></span><span class="route-copy"><strong>tracevane-gateway.service</strong><span>active · loopback :8787</span></span><span class="status-dot s-ok"><i></i>正常</span><span class="route-acts"><button class="btn-ghost btn-sm" data-svc="gateway">重启</button></span></div>
+              <div class="route-row"><span class="rico r-green"><i data-lucide="server"></i></span><span class="route-copy"><strong>tracevane-channel-connectors.service</strong><span>active · 长连接</span></span><span class="status-dot s-ok"><i></i>正常</span><span class="route-acts"><button class="btn-ghost btn-sm" data-svc="channels">重启</button></span></div>
+              <div class="route-row"><span class="rico r-amber"><i data-lucide="server"></i></span><span class="route-copy"><strong>openclaw-gateway.service</strong><span>上游 OpenClaw · 降级</span></span><span class="status-dot s-warn"><i></i>降级</span><span class="route-acts"><button class="btn-ghost btn-sm" data-svc="openclaw">重启</button></span></div>
+            </div>
+          </section>
+        </div>

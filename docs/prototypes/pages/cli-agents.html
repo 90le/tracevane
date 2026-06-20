@@ -1,0 +1,54 @@
+<div class="wrap">
+          <div class="page-head">
+            <div class="htitle"><h2>CLI Agents</h2><p>管理本地 CLI Agent 实例：工作目录、persona、权限、原生 session 与会话。<strong>模型路由由模型网关统一管理</strong>，本页只读引用并可跳转。</p></div>
+            <div class="toolbar">
+              <span class="search-input"><i data-lucide="search"></i><input placeholder="搜索 Agent / 工作目录" /></span>
+              <div class="seg"><button class="on">全部</button><button>运行中</button><button>空闲</button></div>
+              <button class="btn-primary" id="addAgentBtn"><i data-lucide="plus"></i><span>接入 Agent</span></button>
+            </div>
+          </div>
+          <div class="split">
+            <div class="tablewrap">
+              <div class="thead"><span>Agent / 工作目录</span><span>模型绑定</span><span>会话</span><span>状态</span></div>
+              <div class="trow sel" data-row="codex">
+                <span class="cell-main"><span class="rico ico-teal"><i data-lucide="bot"></i></span><span class="c-copy"><strong>Codex</strong><span>~/tracevane</span></span></span>
+                <span class="cell-mono">GLM &#8594; glm-4-plus</span><span class="cell-mono">2 活跃</span><span><span class="status-dot s-ok"><i></i>运行中</span></span>
+              </div>
+              <div class="trow" data-row="claude">
+                <span class="cell-main"><span class="rico ico-violet"><i data-lucide="bot"></i></span><span class="c-copy"><strong>Claude Code</strong><span>~/projects/web</span></span></span>
+                <span class="cell-mono">Anthropic &#8594; claude-3.7</span><span class="cell-mono">1 活跃</span><span><span class="status-dot s-ok"><i></i>运行中</span></span>
+              </div>
+              <div class="trow" data-row="opencode">
+                <span class="cell-main"><span class="rico ico-primary"><i data-lucide="bot"></i></span><span class="c-copy"><strong>OpenCode</strong><span>~/lab</span></span></span>
+                <span class="cell-mono">默认路由</span><span class="cell-mono">空闲</span><span><span class="status-dot s-warn"><i></i>空闲</span></span>
+              </div>
+              <div class="trow" data-row="openclaw">
+                <span class="cell-main"><span class="rico ico-primary"><i data-lucide="bot"></i></span><span class="c-copy"><strong>OpenClaw</strong><span>~/.openclaw</span></span></span>
+                <span class="cell-mono">GLM &#8594; glm-4-air</span><span class="cell-mono">空闲</span><span><span class="status-dot s-bad"><i></i>未连接</span></span>
+              </div>
+            </div>
+            <aside class="detail" id="detail">
+              <div class="detail-head">
+                <div class="detail-title"><span class="rico ico-teal"><i data-lucide="bot"></i></span><div style="min-width:0;"><strong id="dName">Codex</strong><div><span id="dSub">~/tracevane · 原生 session</span></div></div><button class="toggle on" id="dEnabled" data-toast-on="Codex 已启用" data-toast-off="Codex 已停用" style="margin-left:auto;"></button></div>
+                <div class="tabs"><button class="on" data-tab="profile">Profile</button><button data-tab="sessions">会话</button><button data-tab="perm">权限</button></div>
+              </div>
+              <div class="detail-body" data-tabpanel="profile">
+                <div class="metric-row"><div class="m"><span>今日会话</span><strong>8</strong></div><div class="m"><span>活跃</span><strong>2</strong></div><div class="m"><span>失败</span><strong>0</strong></div></div>
+                <div class="field"><label>模型路由（由模型网关管理）</label><div class="ctrl" style="justify-content:space-between;"><span>GLM &#8594; glm-4-plus</span><button class="btn-ghost btn-sm" id="bindBtn"><i data-lucide="external-link"></i>在网关配置</button></div></div>
+                <div class="field"><label>工作目录</label><div class="ctrl">~/tracevane</div></div>
+                <div class="field"><label>persona / 指令</label><span class="inline-edit"><span class="val">默认 Tracevane 工程师 persona</span><i data-lucide="pencil" class="pen"></i></span></div>
+                <div class="row-actions"><button class="btn-primary btn-sm" id="newSessBtn"><i data-lucide="plus"></i>新建会话</button><button class="btn-ghost btn-sm" id="agentCfgBtn"><i data-lucide="settings-2"></i>高级配置</button><button class="btn-ghost btn-sm danger-text" id="removeAgentBtn"><i data-lucide="log-out"></i>移除</button></div>
+              </div>
+              <div class="detail-body" data-tabpanel="sessions" hidden>
+                <div class="model-row"><span class="rico r-teal" style="width:30px;height:30px;"><i data-lucide="messages-square"></i></span><span class="rcopy"><strong>修复网关降级</strong><span>工具调用中 · 6m</span></span><a href="#/chat" data-route="chat">打开</a></div>
+                <div class="model-row"><span class="rico r-green" style="width:30px;height:30px;"><i data-lucide="messages-square"></i></span><span class="rcopy"><strong>索引项目文件</strong><span>已完成 · 12m</span></span><a href="#/chat" data-route="chat">打开</a></div>
+              </div>
+              <div class="detail-body" data-tabpanel="perm" hidden>
+                <div class="switch-row"><span class="sc"><strong>文件写入</strong><span>需审批后写入</span></span><button class="toggle on"></button></div>
+                <div class="switch-row"><span class="sc"><strong>命令执行</strong><span>终端命令需审批</span></span><button class="toggle on"></button></div>
+                <div class="switch-row"><span class="sc"><strong>凭据访问</strong><span>读取密钥引用</span></span><button class="toggle"></button></div>
+                <div class="switch-row"><span class="sc"><strong>网络访问</strong><span>出站请求</span></span><button class="toggle on"></button></div>
+              </div>
+            </aside>
+          </div>
+        </div>

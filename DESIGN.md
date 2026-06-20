@@ -32,9 +32,32 @@ The goal is not "everything must be rows." The goal is lower cognitive load.
 
 ### Visual direction (2026-06 update)
 
-The visual language is **macOS Material**: layered translucency, restrained rounded corners, soft elevation shadows, refined typographic rhythm — borrowing the polish of macOS Tahoe / Liquid Glass. The governing rule is unchanged: **aesthetics serve clarity, decoration serves information.** Decoration recedes on information-dense surfaces (terminals, tables, logs, code editors): less blur, tighter corners, lower shadows there. Sparse surfaces (dashboards, empty states) may let material and shadow breathe more.
+The current visual baseline is **V8 durable shell**: a quiet, flat operations console with a soft whole-page background, restrained translucency, modest rounded corners, subtle borders, and little or no shadow. It keeps the polish and layering discipline of macOS Material, but does not default to heavy glass. The governing rule is unchanged: **aesthetics serve clarity, decoration serves information.** Decoration recedes on information-dense surfaces (terminals, tables, logs, code editors): less blur, tighter corners, lower shadows there. Sparse surfaces (dashboards, empty states) may let material breathe more.
 
 > Authoritative detail lives in `docs/界面设计守则.md` (Chinese, the active design constitution). This DESIGN.md defines page shapes and layout templates; when they conflict on material/decoration, the constitution wins.
+
+### Current Shell Baseline
+
+Use `docs/prototypes/dashboard-v3-balanced-workbench-theme-v8-durable-shell.html` as the current app-shell reference.
+
+The shell baseline:
+
+- left grouped sidebar with compact icon + label rows
+- lightweight topbar as a workspace toolbar, not a decorative header
+- soft light and dark page backgrounds, never pure white or pure black
+- solid main work surfaces with subtle borders and minimal elevation
+- global command palette as a supplement to navigation
+- mobile sidebar as a drawer, with the primary stage taking priority
+
+The preferred global navigation groups are:
+
+- Overview
+- Runtime
+- Connections
+- Evidence
+- System
+
+Do not revive the old OpenClaw-admin grouping as the primary product map.
 
 ## Page Shapes
 
@@ -218,7 +241,7 @@ Surfaces:
 
 Color:
 
-- OpenClaw mint/teal is the action identity.
+- Tracevane uses a blue primary with teal as the connection/recovery accent.
 - Amber/peach, red, and green are semantic only.
 - Do not introduce a new primary color for one feature.
 - Do not make an entire page one hue.

@@ -1,5 +1,7 @@
 # Tracevane 新壳地基 Implementation Plan
 
+> **Superseded:** 本计划是历史记录。Vue `apps/web-vue-next` 路线已撤回；当前前端方向是先基于 V8 HTML 原型完成设计对齐，确认后再讨论 React + shadcn/ui + Tailwind CSS 实现。不要把本计划作为当前执行方案。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 新建 `apps/web-vue-next` 并行前端壳，搭好设计系统（材质派 token + Tailwind v4）、Pinia 状态层、应用外壳骨架（单栏分组导航 + ⌘K 命令面板），并打通复用现有后端 API 的集成缝——为后续逐页迁移铺好地基。

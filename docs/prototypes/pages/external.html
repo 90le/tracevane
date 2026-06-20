@@ -1,0 +1,44 @@
+<div class="wrap">
+          <section class="hero" style="padding:18px 22px;">
+            <div class="hero-top"><span class="ready-chip warn"><i data-lucide="alert-triangle"></i>1 项授权即将过期</span><span class="hero-time">3 个 MCP server · 2 个授权 · 在线</span></div>
+            <div class="hero-stats" style="margin-top:16px;grid-template-columns:repeat(3,1fr);">
+              <div class="hero-stat"><span class="lab"><i data-lucide="plug-zap"></i>外部连接</span><span class="val">5</span><span class="trend flat"><i data-lucide="minus"></i>MCP 3 · 授权 2</span></div>
+              <div class="hero-stat"><span class="lab"><i data-lucide="wrench"></i>可用工具</span><span class="val">42</span><span class="trend up"><i data-lucide="trending-up"></i>+6</span></div>
+              <div class="hero-stat"><span class="lab"><i data-lucide="key-round"></i>授权状态</span><span class="val" style="font-size:16px;">1 即将过期</span><span class="trend down"><i data-lucide="clock"></i>24h</span></div>
+            </div>
+          </section>
+          <div class="page-head" style="margin-top:18px;">
+            <div class="htitle"><h2>外部连接</h2><p>MCP server、外部服务授权与第三方集成。让 Agent 能调用外部工具，但不把上游凭据明文暴露给浏览器。</p></div>
+            <div class="toolbar"><span class="search-input"><i data-lucide="search"></i><input placeholder="搜索连接 / 工具" /></span><div class="seg"><button class="on">全部</button><button>MCP</button><button>授权</button><button>集成</button></div><button class="btn-primary" id="addConnBtn"><i data-lucide="plus"></i><span>添加连接</span></button></div>
+          </div>
+          <div class="split">
+            <div class="tablewrap">
+              <div class="thead"><span>连接 / 来源</span><span>类型</span><span>工具</span><span>状态</span></div>
+              <div class="trow sel" data-row="mcp"><span class="cell-main"><span class="rico ico-primary"><i data-lucide="plug-zap"></i></span><span class="c-copy"><strong>MCP · shadcn registry</strong><span>stdio · 本地</span></span></span><span class="cell-mono">MCP</span><span class="cell-mono">18 工具</span><span><span class="status-dot s-ok"><i></i>在线</span></span></div>
+              <div class="trow" data-row="gh"><span class="cell-main"><span class="rico ico-violet"><i data-lucide="github"></i></span><span class="c-copy"><strong>GitHub App</strong><span>repo · issues 授权</span></span></span><span class="cell-mono">授权</span><span class="cell-mono">OAuth</span><span><span class="status-dot s-warn"><i></i>即将过期</span></span></div>
+              <div class="trow" data-row="fs"><span class="cell-main"><span class="rico ico-teal"><i data-lucide="hard-drive"></i></span><span class="c-copy"><strong>对象存储</strong><span>用于产物 / 证据</span></span></span><span class="cell-mono">集成</span><span class="cell-mono">S3 兼容</span><span><span class="status-dot s-ok"><i></i>已配置</span></span></div>
+              <div class="trow" data-row="ws"><span class="cell-main"><span class="rico ico-primary"><i data-lucide="globe"></i></span><span class="c-copy"><strong>webhook 中继</strong><span>HTTP · 外部回调</span></span></span><span class="cell-mono">集成</span><span class="cell-mono">HTTP</span><span><span class="status-dot s-ok"><i></i>在线</span></span></div>
+            </div>
+            <aside class="detail" id="detail">
+              <div class="detail-head">
+                <div class="detail-title"><span class="rico ico-primary"><i data-lucide="plug-zap"></i></span><div style="min-width:0;"><strong id="dName">MCP · shadcn registry</strong><div><span id="dSub">stdio · 本地</span></div></div><button class="toggle on" id="dEnabled" data-toast-on="连接已启用" data-toast-off="连接已停用" style="margin-left:auto;"></button></div>
+                <div class="tabs"><button class="on" data-tab="ov">概览</button><button data-tab="tools">工具</button><button data-tab="auth">授权</button></div>
+              </div>
+              <div class="detail-body" data-tabpanel="ov">
+                <div class="metric-row"><div class="m"><span>暴露工具</span><strong>18</strong></div><div class="m"><span>今日调用</span><strong>96</strong></div><div class="m"><span>失败</span><strong>0</strong></div></div>
+                <div class="field"><label>transport</label><div class="ctrl">stdio（本地进程）</div></div>
+                <div class="field"><label>命令</label><div class="cell-mono" style="padding:4px 0;">npx -y shadcn@latest mcp</div></div>
+                <div class="row-actions"><button class="btn-ghost btn-sm" id="testBtn"><i data-lucide="activity"></i>测试连接</button><button class="btn-ghost btn-sm" id="logsBtn"><i data-lucide="scroll-text"></i>日志</button><button class="btn-ghost btn-sm danger-text" id="delBtn"><i data-lucide="trash-2"></i>移除</button></div>
+              </div>
+              <div class="detail-body" data-tabpanel="tools" hidden>
+                <div class="model-row"><span class="rico r-primary" style="width:30px;height:30px;"><i data-lucide="wrench"></i></span><span class="rcopy"><strong>list_components</strong><span>列出可用组件</span></span><span class="tag ok">已启用</span></div>
+                <div class="model-row"><span class="rico r-teal" style="width:30px;height:30px;"><i data-lucide="wrench"></i></span><span class="rcopy"><strong>add_component</strong><span>添加组件到项目</span></span><span class="tag ok">已启用</span></div>
+                <div class="model-row"><span class="rico r-violet" style="width:30px;height:30px;"><i data-lucide="wrench"></i></span><span class="rcopy"><strong>get_registry</strong><span>读取 registry 元数据</span></span><span class="tag mute">只读</span></div>
+              </div>
+              <div class="detail-body" data-tabpanel="auth" hidden>
+                <div class="field"><label>凭据引用</label><div class="ctrl" style="justify-content:space-between;"><span>无（stdio 本地无需鉴权）</span></div></div>
+                <div class="help-text">外部服务授权（如 GitHub App）在对应条目管理，凭据保存在服务端密钥库，浏览器只看掩码。</div>
+              </div>
+            </aside>
+          </div>
+        </div>

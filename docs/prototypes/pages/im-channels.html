@@ -1,0 +1,54 @@
+<div class="wrap">
+          <section class="hero" style="padding:18px 22px;">
+            <div class="hero-top"><span class="ready-chip warn"><i data-lucide="alert-triangle"></i>2 条消息待确认</span><span class="hero-time">daemon 长连接 · 在线 2 渠道</span></div>
+            <div class="hero-stats" style="margin-top:16px;grid-template-columns:repeat(3,1fr);">
+              <div class="hero-stat"><span class="lab"><i data-lucide="radio-tower"></i>投递率</span><span class="val">97.8<small>%</small></span><span class="trend flat"><i data-lucide="minus"></i>2 待确认</span></div>
+              <div class="hero-stat"><span class="lab"><i data-lucide="message-square"></i>今日消息</span><span class="val">348</span><span class="trend up"><i data-lucide="trending-up"></i>+12</span></div>
+              <div class="hero-stat"><span class="lab"><i data-lucide="bot"></i>活跃会话</span><span class="val">3</span><span class="trend flat"><i data-lucide="minus"></i>2 渠道</span></div>
+            </div>
+          </section>
+          <div class="page-head" style="margin-top:18px;">
+            <div class="htitle"><h2>IM 渠道</h2><p>私聊触发本地 CLI Agent。列表优先，选中后看账号、transport、Agent 绑定、会话与投递证据。</p></div>
+            <div class="toolbar"><span class="search-input"><i data-lucide="search"></i><input placeholder="搜索渠道 / 账号" /></span><button class="btn-primary" id="addChBtn"><i data-lucide="plus"></i><span>添加渠道</span></button></div>
+          </div>
+          <div class="split">
+            <div class="tablewrap">
+              <div class="thead"><span>渠道 / 账号</span><span>transport</span><span>Agent</span><span>状态</span></div>
+              <div class="trow sel" data-row="feishu">
+                <span class="cell-main"><span class="rico ico-teal"><i data-lucide="radio-tower"></i></span><span class="c-copy"><strong>飞书</strong><span>tracevane-bot</span></span></span>
+                <span class="cell-mono">长连接 WS</span><span class="cell-mono">Codex</span><span><span class="status-dot s-warn"><i></i>待确认 1</span></span>
+              </div>
+              <div class="trow" data-row="webhook">
+                <span class="cell-main"><span class="rico ico-violet"><i data-lucide="webhook"></i></span><span class="c-copy"><strong>Webhook</strong><span>octo-relay</span></span></span>
+                <span class="cell-mono">HTTP 回调</span><span class="cell-mono">Claude Code</span><span><span class="status-dot s-warn"><i></i>待确认 1</span></span>
+              </div>
+              <div class="trow" data-row="octo">
+                <span class="cell-main"><span class="rico ico-primary"><i data-lucide="radio-tower"></i></span><span class="c-copy"><strong>Octo 私聊</strong><span>octo-main</span></span></span>
+                <span class="cell-mono">长连接</span><span class="cell-mono">OpenCode</span><span><span class="status-dot s-ok"><i></i>在线</span></span>
+              </div>
+            </div>
+            <aside class="detail" id="detail">
+              <div class="detail-head">
+                <div class="detail-title"><span class="rico ico-teal"><i data-lucide="radio-tower"></i></span><div style="min-width:0;"><strong id="dName">飞书</strong><div><span id="dSub">tracevane-bot · 长连接 WS</span></div></div><button class="toggle on" id="dEnabled" data-toast-on="飞书渠道已启用" data-toast-off="飞书渠道已停用" style="margin-left:auto;"></button></div>
+                <div class="tabs"><button class="on" data-tab="ov">概览</button><button data-tab="sess">会话</button><button data-tab="cfg">配置</button></div>
+              </div>
+              <div class="detail-body" data-tabpanel="ov">
+                <div class="metric-row"><div class="m"><span>今日消息</span><strong>186</strong></div><div class="m"><span>投递率</span><strong>97.8%</strong></div><div class="m"><span>待确认</span><strong>1</strong></div></div>
+                <div class="section-label">待确认投递</div>
+                <button class="row" data-sheet="待确认消息|飞书 · 1 条|需处理|IM 渠道|查看并选择重试或丢弃|一条外部回复投递失败，等待确认。|channel feishu retries 2 age 6m"><span class="rico r-amber"><i data-lucide="send-horizontal"></i></span><span class="rcopy"><strong>1 条投递待确认</strong><span>最早 6 分钟前</span></span><span class="tag warn">重试</span></button>
+                <div class="row-actions"><button class="btn-ghost btn-sm" id="smokeBtn"><i data-lucide="activity"></i>transport 检查</button><button class="btn-ghost btn-sm" id="logsBtn"><i data-lucide="scroll-text"></i>daemon 日志</button></div>
+              </div>
+              <div class="detail-body" data-tabpanel="sess" hidden>
+                <div class="model-row"><span class="rico r-teal" style="width:30px;height:30px;"><i data-lucide="user"></i></span><span class="rcopy"><strong>张工 私聊</strong><span>Codex · 工具调用中</span></span><a href="#/chat" data-route="chat">打开</a></div>
+                <div class="model-row"><span class="rico r-green" style="width:30px;height:30px;"><i data-lucide="user"></i></span><span class="rcopy"><strong>李工 私聊</strong><span>Codex · 已完成</span></span><a href="#/chat" data-route="chat">打开</a></div>
+              </div>
+              <div class="detail-body" data-tabpanel="cfg" hidden>
+                <div class="field"><label>账号</label><div class="ctrl">tracevane-bot</div></div>
+                <div class="field"><label>App Secret 引用</label><div class="ctrl" style="justify-content:space-between;"><span>feishu.app_secret · &bull;&bull;&bull;&bull;</span><button class="btn-ghost btn-sm" id="secretBtn">更新</button></div></div>
+                <div class="field"><label>绑定 Agent</label><div class="ctrl" style="justify-content:space-between;"><span>Codex</span><button class="btn-ghost btn-sm" id="bindBtn">更改</button></div></div>
+                <div class="switch-row"><span class="sc"><strong>busy guard</strong><span>会话忙时排队</span></span><button class="toggle on"></button></div>
+                <div class="switch-row"><span class="sc"><strong>文件暂存</strong><span>附件落盘后再处理</span></span><button class="toggle on"></button></div>
+              </div>
+            </aside>
+          </div>
+        </div>
