@@ -4670,8 +4670,8 @@ function buildCodexConfig(source: string, options: {
   } else {
     next = removeTopLevelTomlKey(next, "model_reasoning_effort");
   }
-  next = upsertTopLevelTomlNumber(next, "model_context_window", options.profile.contextWindow);
-  next = upsertTopLevelTomlNumber(next, "model_auto_compact_token_limit", options.profile.autoCompactTokenLimit);
+  next = removeTopLevelTomlKey(next, "model_context_window");
+  next = removeTopLevelTomlKey(next, "model_auto_compact_token_limit");
   next = upsertTomlTableScalar(
     next,
     "features",

@@ -4380,7 +4380,21 @@ test("model gateway app connections preview and apply client config files with r
   fs.mkdirSync(path.dirname(claudePath), { recursive: true });
   fs.mkdirSync(path.dirname(opencodePath), { recursive: true });
   fs.mkdirSync(path.dirname(config.openclawConfigFile), { recursive: true });
-  fs.writeFileSync(codexPath, "model = \"old-model\"\n\n[profiles.keep]\nmodel = \"keep-model\"\n", "utf8");
+  fs.writeFileSync(
+    codexPath,
+    [
+      "model = \"old-model\"",
+      "model_context_window = 950000",
+      "model_auto_compact_token_limit = 783700",
+      "",
+      "[profiles.keep]",
+      "model = \"keep-model\"",
+      "model_context_window = 128000",
+      "model_auto_compact_token_limit = 100000",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
   fs.writeFileSync(claudePath, `${JSON.stringify({ env: { EXISTING: "1" }, hooks: { Stop: [] } }, null, 2)}\n`, "utf8");
   fs.writeFileSync(opencodePath, `${JSON.stringify({
     $schema: "https://opencode.ai/config.json",
@@ -4466,8 +4480,9 @@ test("model gateway app connections preview and apply client config files with r
   assert.match(codexConfig, /model_provider = "tracevane_gateway"/);
   assert.match(codexConfig, /model = "gpt-alt"/);
   assert.match(codexConfig, /model_reasoning_effort = "high"/);
-  assert.match(codexConfig, /model_context_window = 200000/);
-  assert.match(codexConfig, /model_auto_compact_token_limit = 150000/);
+  const codexTopLevelConfig = codexConfig.split(/\n\[/)[0];
+  assert.doesNotMatch(codexTopLevelConfig, /^model_context_window\s*=/m);
+  assert.doesNotMatch(codexTopLevelConfig, /^model_auto_compact_token_limit\s*=/m);
   assert.match(codexConfig, /enable_request_compression = true/);
   assert.match(codexConfig, /\[model_providers\.tracevane_gateway\]/);
   assert.match(codexConfig, /base_url = "http:\/\/127\.0\.0\.1:18796\/v1"/);
@@ -4666,8 +4681,8 @@ test("model gateway app connections resolve budgets from each selected app model
   service.applyAppConnection(undefined, { appId: "codex" });
   const codexConfig = fs.readFileSync(codexPath, "utf8");
   assert.match(codexConfig, /model = "gpt-small"/);
-  assert.match(codexConfig, /model_context_window = 64000/);
-  assert.match(codexConfig, /model_auto_compact_token_limit = 47436/);
+  assert.doesNotMatch(codexConfig, /^model_context_window\s*=/m);
+  assert.doesNotMatch(codexConfig, /^model_auto_compact_token_limit\s*=/m);
 
   service.applyAppConnection(undefined, { appId: "opencode" });
   const opencodeConfig = JSON.parse(fs.readFileSync(opencodePath, "utf8"));
@@ -4775,7 +4790,8 @@ test("model gateway app connections apply through HTTP routes against an isolate
     assert.match(codexConfig, /model = "model-b"/);
     assert.match(codexConfig, /base_url = "http:\/\/127\.0\.0\.1:18796\/v1"/);
     assert.match(codexConfig, /experimental_bearer_token = "sk-local-isolated"/);
-    assert.match(codexConfig, /model_auto_compact_token_limit = 100000/);
+    assert.doesNotMatch(codexConfig, /^model_context_window\s*=/m);
+    assert.doesNotMatch(codexConfig, /^model_auto_compact_token_limit\s*=/m);
 
     const claudeConfig = JSON.parse(fs.readFileSync(claudePath, "utf8"));
     assert.equal(claudeConfig.env.KEEP, "claude");
