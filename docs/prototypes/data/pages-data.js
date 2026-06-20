@@ -158,3 +158,71 @@ window.AURORA_PAGE_MOUNT["approvals"] = function (stage, shell) {
   // 搜索 empty
   if (shell && shell.bindListSearch) shell.bindListSearch(stage, { emptyTitle: "无匹配审批项", emptyDesc: "尝试更换关键词。", icon: "shield-check" });
 };
+
+// recovery: 可推进的修复流程（备份→预览→应用→校验→回滚）
+window.AURORA_PAGE_MOUNT["recovery"] = function (stage, shell) {
+  const S = window.AuroraStates;
+  const FIX = {
+    gateway: { name: "Gateway 服务降级", backup: "backup gateway.json @ 14:02\nservice unit snapshot saved", preview: "restart tracevane-gateway.service\nreset endpoint A circuit", verify: "gateway active, endpoint A healthy" },
+    config: { name: "OpenClaw 配置漂移", backup: "backup openclaw.json\nplugin slots snapshot", preview: "prune stale plugin slot\nrewrite openclaw entry", verify: "config valid, no drift" },
+    secret: { name: "明文凭据残留", backup: "backup credentials.json\n(redacted)", preview: "migrate glm.api_key to secret store\nredact plaintext", verify: "no plaintext found" },
+  };
+  const STEPS = [
+    { key: "backup", label: "1 · 备份", desc: "创建配置与服务快照", icon: "package-check" },
+    { key: "preview", label: "2 · 预览", desc: "将执行的修复动作", icon: "eye" },
+    { key: "apply", label: "3 · 应用", desc: "执行修复", icon: "wrench" },
+    { key: "verify", label: "4 · 校验", desc: "确认修复生效", icon: "shield-check" },
+  ];
+  let current = "gateway";
+  let applied = false;
+  const stepsEl = stage.querySelector("#flowSteps");
+  const logEl = stage.querySelector("#flowLog");
+  const applyBtn = stage.querySelector("#applyFixBtn");
+  const rollbackBtn = stage.querySelector("#rollbackBtn");
+  const fixName = stage.querySelector("#fixName");
+
+  const render = () => {
+    const d = FIX[current]; if (!d) return;
+    if (fixName) fixName.textContent = d.name;
+    stepsEl.innerHTML = STEPS.map((s, i) => {
+      let state = "pending", stateText = "待执行";
+      // apply 之前：backup/preview 是 done（已自动完成），apply 是 active，verify 是 pending
+      if (!applied) {
+        if (i < 2) { state = "done"; stateText = "已完成"; }
+        else if (i === 2) { state = "active"; stateText = "待应用"; }
+        else { state = "pending"; stateText = "待校验"; }
+      } else {
+        state = "done"; stateText = "已完成";
+      }
+      return '<div class="flow-step ' + state + '"><span class="fs-ico"><i data-lucide="' + s.icon + '"></i></span><span class="fs-copy"><strong>' + s.label + '</strong><span>' + s.desc + '</span></span><span class="fs-state">' + stateText + '</span></div>';
+    }).join("");
+    logEl.textContent = applied ? ("已应用并校验：\n" + d.verify) : (d.backup + "\n---\n" + d.preview);
+    if (applyBtn) { applyBtn.disabled = applied; applyBtn.style.opacity = applied ? .5 : 1; applyBtn.querySelector("span") || (applyBtn.textContent = ""); }
+    if (rollbackBtn) { rollbackBtn.disabled = !applied; rollbackBtn.style.opacity = applied ? 1 : .5; }
+    if (shell) shell.refreshIcons();
+  };
+
+  stage.querySelectorAll("[data-fix]").forEach(r => r.addEventListener("click", () => {
+    stage.querySelectorAll("[data-fix]").forEach(x => x.style.background = "");
+    r.style.background = "var(--primary-soft)";
+    current = r.getAttribute("data-fix");
+    applied = false;
+    render();
+  }));
+
+  applyBtn && applyBtn.addEventListener("click", () => {
+    if (applied) return;
+    S && S.toast("正在应用修复…", "info");
+    applyBtn.disabled = true; applyBtn.style.opacity = .5;
+    // 模拟应用 + 校验
+    setTimeout(() => { applied = true; render(); S && S.toast("修复已应用 · 校验通过", "ok"); }, 1200);
+  });
+  rollbackBtn && rollbackBtn.addEventListener("click", () => {
+    if (!applied) return;
+    S && S.openDialog({ tone: "warn", icon: "undo-2", title: "回滚到备份？", okLabel: "回滚", body: "将恢复到应用前的配置与服务快照。", onConfirm: () => { applied = false; render(); S && S.toast("已回滚到备份", "ok"); } });
+  });
+  const scanBtn = stage.querySelector("#scanBtn");
+  scanBtn && scanBtn.addEventListener("click", () => S && S.toast("巡检完成 · 2 项可修复", "info"));
+
+  render();
+};

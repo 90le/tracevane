@@ -908,3 +908,20 @@
 .domain-card .dc-name { font-size: 13.5px; font-weight: 600; color: var(--ink-strong); }
 .domain-card .dc-desc { font-size: 11.5px; color: var(--muted); line-height: 1.45; }
 .domain-card .dc-meta { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--subtle); font-family: var(--mono); }
+
+/* recovery fix-flow steps */
+.flow-step { display: flex; align-items: center; gap: 11px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--panel); margin-bottom: 8px; }
+.flow-step .fs-ico { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; flex: none; background: var(--panel-3); color: var(--subtle); }
+.flow-step .fs-copy { flex: 1; display: grid; gap: 1px; min-width: 0; }
+.flow-step .fs-copy strong { font-size: 13px; color: var(--ink-strong); }
+.flow-step .fs-copy span { font-size: 11.5px; color: var(--muted); }
+.flow-step .fs-state { font-size: 11px; font-weight: 600; color: var(--subtle); }
+.flow-step.done { border-color: var(--green-soft); }
+.flow-step.done .fs-ico { background: var(--green-soft); color: var(--green); }
+.flow-step.done .fs-state { color: var(--green); }
+.flow-step.active { border-color: var(--primary-line); background: var(--primary-soft); }
+.flow-step.active .fs-ico { background: var(--primary-soft); color: var(--primary); animation: aurora-pulse 1.6s ease-in-out infinite; }
+.flow-step.active .fs-state { color: var(--primary); }
+.flow-step.fail .fs-ico { background: var(--red-soft); color: var(--red); }
+.flow-step.fail .fs-state { color: var(--red); }
+.flow-actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }

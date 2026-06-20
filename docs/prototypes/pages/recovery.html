@@ -19,10 +19,12 @@
             <aside class="panel">
               <div class="panel-head"><div class="htitle"><h3>修复流程</h3><span class="sub" id="fixName">Gateway 服务降级</span></div></div>
               <div class="panel-body" style="padding:14px;">
-                <div class="acc open"><button class="acc-head"><span class="rico r-green" style="width:28px;height:28px;"><i data-lucide="check"></i></span><span class="rcopy"><strong>1 · 备份</strong><span>已创建配置与服务快照</span></span><i data-lucide="chevron-right" class="chev"></i></button><div class="acc-body"><div class="logbox">backup: gateway.json @ 14:02<br/>service unit snapshot saved</div></div></div>
-                <div class="acc"><button class="acc-head"><span class="rico r-primary" style="width:28px;height:28px;"><i data-lucide="eye"></i></span><span class="rcopy"><strong>2 · 预览</strong><span>将执行的修复动作</span></span><i data-lucide="chevron-right" class="chev"></i></button><div class="acc-body"><div class="logbox">restart tracevane-gateway.service<br/>reset endpoint A circuit</div></div></div>
-                <div class="switch-row"><span class="sc"><strong>3 · 应用</strong><span>执行修复并校验</span></span><button class="btn-primary btn-sm" id="applyFixBtn"><i data-lucide="wrench"></i>应用修复</button></div>
-                <div class="switch-row"><span class="sc"><strong>5 · 回滚</strong><span>恢复到备份</span></span><button class="btn-ghost btn-sm" id="rollbackBtn"><i data-lucide="undo-2"></i>回滚</button></div>
+                <div id="flowSteps"></div>
+                <div class="logbox" id="flowLog" style="margin-top:4px;">选择左侧问题后开始修复流程。</div>
+                <div class="flow-actions">
+                  <button class="btn-primary btn-sm" id="applyFixBtn"><i data-lucide="wrench"></i>应用修复</button>
+                  <button class="btn-ghost btn-sm" id="rollbackBtn" disabled style="opacity:.5;"><i data-lucide="undo-2"></i>回滚</button>
+                </div>
               </div>
             </aside>
           </div>
