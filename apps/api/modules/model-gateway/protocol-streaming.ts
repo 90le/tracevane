@@ -224,11 +224,20 @@ export async function writeChatCompletionsSseFromResponsesSse(
   const state = createChatStreamState(fallbackModel);
   const toolBlocks = new Map<number, ToolStreamBlock>();
   const toolIndexByItemId = new Map<string, number>();
+  let sawCompleted = false;
 
   try {
     await readSseEvents(upstreamBody, (event) => {
       if (state.completed) return;
       if (event.done) {
+        if (!sawCompleted) {
+          const error = missingResponsesCompletedError();
+          if (state.started) {
+            failChatStream(state, res, error);
+            throw new ModelGatewayStreamAdapterError(error);
+          }
+          throw new Error(error.message);
+        }
         finalizeChatStream(state, res);
         return;
       }
@@ -312,6 +321,7 @@ export async function writeChatCompletionsSseFromResponsesSse(
         return;
       }
       if (event.event === "response.completed") {
+        sawCompleted = true;
         if (isRecord(response.usage)) state.usage = mapResponsesUsageToChat(response.usage);
         emitMissingChatToolCallsFromResponsesOutput(state, res, response.output, toolBlocks, toolIndexByItemId);
         state.finishReason = response.status === "incomplete" ? "length" : "stop";
@@ -329,6 +339,14 @@ export async function writeChatCompletionsSseFromResponsesSse(
     }
   }
 
+  if (!sawCompleted) {
+    const error = missingResponsesCompletedError();
+    if (state.started) {
+      failChatStream(state, res, error);
+      throw new ModelGatewayStreamAdapterError(error);
+    }
+    throw new Error(error.message);
+  }
   finalizeChatStream(state, res);
   return { id: state.id, model: state.model, outputText: state.outputText };
 }
@@ -352,11 +370,20 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
     toolIndexByItemId: new Map<string, number>(),
     usage: { input_tokens: 0, output_tokens: 0 } as JsonRecord,
   };
+  let sawCompleted = false;
 
   try {
     await readSseEvents(upstreamBody, (event) => {
       if (state.completed) return;
       if (event.done) {
+        if (!sawCompleted) {
+          const error = missingResponsesCompletedError();
+          if (state.started) {
+            failAnthropicStream(state, res, error);
+            throw new ModelGatewayStreamAdapterError(error);
+          }
+          throw new Error(error.message);
+        }
         finalizeAnthropicTextStream(state, res);
         return;
       }
@@ -440,6 +467,7 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
         return;
       }
       if (event.event === "response.completed") {
+        sawCompleted = true;
         if (isRecord(response.usage)) state.usage = mapResponsesUsageToAnthropic(response.usage);
         emitMissingAnthropicToolUsesFromResponsesOutput(state, res, response.output);
         state.stopReason = response.status === "incomplete" ? "max_tokens" : "end_turn";
@@ -457,6 +485,14 @@ export async function writeAnthropicMessagesSseFromResponsesSse(
     }
   }
 
+  if (!sawCompleted) {
+    const error = missingResponsesCompletedError();
+    if (state.started) {
+      failAnthropicStream(state, res, error);
+      throw new ModelGatewayStreamAdapterError(error);
+    }
+    throw new Error(error.message);
+  }
   finalizeAnthropicTextStream(state, res);
   return { id: state.messageId, model: state.model, outputText: state.text };
 }
@@ -818,6 +854,14 @@ function extractResponsesFailedError(payload: JsonRecord): StreamErrorEnvelope {
   const type = stringOrNull(error?.type) || stringOrNull(payload.type) || null;
   const code = stringOrNull(error?.code) || null;
   return { message, type, code };
+}
+
+function missingResponsesCompletedError(): StreamErrorEnvelope {
+  return {
+    message: "Responses stream ended without response.completed.",
+    type: "stream_error",
+    code: "model_gateway_responses_stream_missing_completed",
+  };
 }
 
 function extractResponsesFailedMessage(payload: JsonRecord): string {

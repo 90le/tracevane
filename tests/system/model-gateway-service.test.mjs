@@ -11402,6 +11402,113 @@ test("model gateway maps started responses stream failures to chat and anthropic
   assert.equal(upstreamCalls[1].url, "https://responses-started-failed-stream.example.test/v1/responses");
 });
 
+test("model gateway fails truncated responses streams instead of finalizing success", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "responses-truncated-stream-adapter",
+      name: "Responses Truncated Stream Adapter",
+      appScopes: ["openclaw", "claude-code"],
+      baseUrl: "https://responses-truncated-stream.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-responses-truncated-stream-secret",
+    },
+    setActiveScopes: ["openclaw", "claude-code"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: String(init.body || ""),
+    });
+    const upstreamSse = [
+      "event: response.created",
+      "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_truncated\",\"object\":\"response\",\"status\":\"in_progress\",\"model\":\"gpt-responses\",\"output\":[],\"usage\":null}}",
+      "",
+      "event: response.output_text.delta",
+      "data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}",
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n");
+    return new Response(upstreamSse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestRaw(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-responses",
+          stream: true,
+          messages: [{ role: "user", content: "truncate after start" }],
+        },
+      });
+      assert.equal(chat.status, 200);
+      const chatEvents = parseSseEvents(chat.body);
+      assert.equal(chatEvents[0].data.choices[0].delta.role, "assistant");
+      assert.equal(chatEvents[1].data.choices[0].delta.content, "partial");
+      const chatError = chatEvents.find((item) => item.event === "error");
+      assert.ok(chatError);
+      assert.deepEqual(chatError.data.error, {
+        message: "Responses stream ended without response.completed.",
+        type: "stream_error",
+        code: "model_gateway_responses_stream_missing_completed",
+      });
+      assert.equal(chatEvents.at(-1).data, "[DONE]");
+      assert.ok(!chatEvents.some((item) => item.data?.choices?.[0]?.finish_reason === "stop"));
+
+      const anthropic = await requestRaw(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "gpt-responses",
+          max_tokens: 64,
+          stream: true,
+          messages: [{ role: "user", content: "truncate after start" }],
+        },
+      });
+      assert.equal(anthropic.status, 200);
+      const anthropicEvents = parseSseEvents(anthropic.body);
+      assert.equal(anthropicEvents[0].event, "message_start");
+      assert.equal(anthropicEvents[2].data.delta.text, "partial");
+      const anthropicError = anthropicEvents.find((item) => item.event === "error");
+      assert.ok(anthropicError);
+      assert.deepEqual(anthropicError.data.error, {
+        type: "stream_error",
+        message: "Responses stream ended without response.completed.",
+        code: "model_gateway_responses_stream_missing_completed",
+      });
+      assert.ok(!anthropicEvents.some((item) => item.event === "message_stop"));
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.outcome, entry.errorCode]), [
+        ["failure", "model_gateway_responses_stream_missing_completed"],
+        ["failure", "model_gateway_responses_stream_missing_completed"],
+      ]);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://responses-truncated-stream.example.test/v1/responses");
+  assert.equal(upstreamCalls[1].url, "https://responses-truncated-stream.example.test/v1/responses");
+});
+
 test("model gateway maps started anthropic stream errors to chat and responses error events", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
