@@ -360,6 +360,7 @@ function pushFunctionCallDelta(toolCallDelta: unknown, state: StreamingState, re
     id: id || pending?.id,
     name: name || pending?.name,
   });
+  if (!tool) return;
   state.pendingFunctionCallDeltas.delete(sourceIndex);
   if (state.reasoning.text.trim() && !tool.reasoningContent) {
     tool.reasoningContent = state.reasoning.text.trim();
@@ -384,19 +385,20 @@ function ensureFunctionCall(
   sourceIndex: number,
   state: StreamingState,
   patch: { id?: string; name?: string },
-): FunctionCallState {
+): FunctionCallState | null {
   let tool = state.functionCalls.get(sourceIndex);
   if (!tool) {
-    const callId = patch.id || `call_${Date.now().toString(36)}_${sourceIndex}`;
+    if (!patch.id || !patch.name) return null;
+    const callId = patch.id;
     tool = {
       added: false,
       done: false,
       itemId: `fc_${callId}`,
       outputIndex: state.nextOutputIndex,
       callId,
-      name: patch.name || "tool",
+      name: patch.name,
       arguments: "",
-      custom: patch.name ? state.customToolNames.has(patch.name) : false,
+      custom: state.customToolNames.has(patch.name),
       reasoningContent: null,
     };
     state.nextOutputIndex += 1;
