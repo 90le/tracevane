@@ -610,7 +610,7 @@ function mapChatFinishReasonToAnthropic(finishReason: unknown, hasToolUses: bool
 }
 
 function mapAnthropicStopReasonToChat(stopReason: unknown, hasToolCalls: boolean): string {
-  if (stopReason === "tool_use" || hasToolCalls) return "tool_calls";
+  if (hasToolCalls) return "tool_calls";
   if (stopReason === "max_tokens") return "length";
   if (stopReason === "end_turn" || stopReason === "stop_sequence") return "stop";
   return "stop";

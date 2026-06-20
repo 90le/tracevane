@@ -150,7 +150,7 @@ export async function writeChatCompletionsSseFromAnthropicMessagesSse(
         ensureChatStreamStart(state, res);
         const sourceIndex = numberOrNull(event.json.index) ?? toolBlocks.size;
         const block = event.json.content_block;
-        if (block.type === "tool_use") {
+        if (isUsableAnthropicToolUseBlock(block)) {
           const tool = ensureToolBlock(toolBlocks, sourceIndex, {
             id: stringOrNull(block.id) || undefined,
             name: stringOrNull(block.name) || undefined,
@@ -169,6 +169,7 @@ export async function writeChatCompletionsSseFromAnthropicMessagesSse(
         }
         if (delta.type === "input_json_delta") {
           const sourceIndex = numberOrNull(event.json.index) ?? toolBlocks.size;
+          if (!toolBlocks.has(sourceIndex)) return;
           const tool = ensureToolBlock(toolBlocks, sourceIndex, {});
           const partialJson = stringOrNull(delta.partial_json) || "";
           tool.inputJson += partialJson;
@@ -497,7 +498,7 @@ export async function writeCodexResponsesSseFromAnthropicMessagesSse(
       if (event.event === "content_block_start" && isRecord(event.json.content_block)) {
         ensureResponsesStreamStart(state, res);
         const block = event.json.content_block;
-        if (block.type === "tool_use") {
+        if (isUsableAnthropicToolUseBlock(block)) {
           const sourceIndex = numberOrNull(event.json.index) ?? state.tools.size;
           const tool = ensureToolBlock(state.tools, sourceIndex, {
             id: stringOrNull(block.id) || undefined,
@@ -519,6 +520,7 @@ export async function writeCodexResponsesSseFromAnthropicMessagesSse(
         }
         if (delta.type === "input_json_delta") {
           const sourceIndex = numberOrNull(event.json.index) ?? state.tools.size;
+          if (!state.tools.has(sourceIndex)) return;
           const tool = ensureToolBlock(state.tools, sourceIndex, {});
           ensureResponsesToolAdded(state, res, tool);
           pushResponsesToolArgumentsDelta(res, tool, stringOrNull(delta.partial_json) || "");
@@ -1589,6 +1591,10 @@ function isResponsesToolCallItem(item: JsonRecord): boolean {
   return item.type === "function_call" || item.type === "custom_tool_call";
 }
 
+function isUsableAnthropicToolUseBlock(block: JsonRecord): boolean {
+  return block.type === "tool_use" && Boolean(stringOrNull(block.id) || stringOrNull(block.name));
+}
+
 function isUsableResponsesToolCallItem(item: JsonRecord): boolean {
   return isResponsesToolCallItem(item) && hasResponsesToolIdentity({}, item);
 }
@@ -1758,7 +1764,7 @@ function mapChatFinishReasonToAnthropic(finishReason: unknown, hasToolUses: bool
 }
 
 function mapAnthropicStopReasonToChat(stopReason: unknown, hasToolCalls: boolean): string {
-  if (stopReason === "tool_use" || hasToolCalls) return "tool_calls";
+  if (hasToolCalls) return "tool_calls";
   if (stopReason === "max_tokens") return "length";
   return "stop";
 }

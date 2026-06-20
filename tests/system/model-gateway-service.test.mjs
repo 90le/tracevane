@@ -6497,7 +6497,7 @@ test("model gateway protocol matrix forwards native openai responses and guards 
           stream: false,
         },
       });
-      assert.equal(responses.status, 200);
+      assert.equal(responses.status, 200, responses.body);
       assert.equal(responses.body.id, "resp_native");
       assert.equal(responses.body.output[0].content[0].text, "Native response text");
       assert.equal(responses.headers["x-openclaw-model-gateway-provider"], "native-responses");
@@ -7345,7 +7345,7 @@ test("model gateway adapts codex responses through native anthropic messages pro
           temperature: 0.1,
         },
       });
-      assert.equal(responses.status, 200);
+      assert.equal(responses.status, 200, responses.body);
       assert.equal(responses.headers["x-openclaw-model-gateway-provider"], "responses-to-anthropic");
       assert.equal(responses.body.id, "msg_responses_anthropic");
       assert.equal(responses.body.object, "response");
@@ -7699,6 +7699,147 @@ test("model gateway adapts chat completions through native anthropic messages pr
     messages: [{ role: "user", content: "stream please" }],
     stream: true,
   });
+});
+
+test("model gateway ignores empty streaming anthropic tool blocks for chat sse", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "anthropic-empty-tool-stream-adapter",
+      name: "Anthropic Empty Tool Stream Adapter",
+      appScopes: ["openclaw", "codex"],
+      baseUrl: "https://anthropic-empty-tool-stream.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: {
+      apiKey: "sk-anthropic-empty-tool-stream-secret",
+    },
+    setActiveScopes: ["openclaw", "codex"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      xApiKey: init.headers instanceof Headers ? init.headers.get("x-api-key") : null,
+    });
+    const messageId = upstreamCalls.length === 1 ? "msg_empty_tool_chat" : "msg_empty_tool_responses";
+    const upstreamSse = [
+      "event: message_start",
+      `data: {"type":"message_start","message":{"id":"${messageId}","type":"message","role":"assistant","model":"claude-native","content":[],"usage":{"input_tokens":6,"output_tokens":0}}}`,
+      "",
+      "event: content_block_start",
+      "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"input\":{}}}",
+      "",
+      "event: content_block_delta",
+      "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\"}}",
+      "",
+      "event: content_block_stop",
+      "data: {\"type\":\"content_block_stop\",\"index\":0}",
+      "",
+      "event: message_delta",
+      "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":1}}",
+      "",
+      "event: message_stop",
+      "data: {\"type\":\"message_stop\"}",
+      "",
+    ].join("\n");
+    return new Response(upstreamSse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestRaw(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          stream: true,
+          messages: [{ role: "user", content: "empty anthropic tool stream please" }],
+        },
+      });
+      assert.equal(chat.status, 200);
+      const chatEvents = parseSseEvents(chat.body);
+      assert.equal(chatEvents.some((item) => JSON.stringify(item.data).includes("tool_calls")), false);
+      assert.equal(chatEvents[0].data.choices[0].delta.role, "assistant");
+      assert.equal(chatEvents[1].data.choices[0].finish_reason, "stop");
+      assert.equal(chatEvents[2].data, "[DONE]");
+
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://anthropic-empty-tool-stream.example.test/v1/messages");
+});
+
+test("model gateway ignores anthropic tool stop reason without tool uses for chat completions", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "anthropic-empty-tool-stop",
+      name: "Anthropic Empty Tool Stop",
+      appScopes: ["openclaw"],
+      baseUrl: "https://anthropic-empty-tool-stop.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: {
+      apiKey: "sk-anthropic-empty-tool-stop-secret",
+    },
+    setActiveScopes: ["openclaw"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({
+    id: "msg_empty_tool_stop",
+    type: "message",
+    role: "assistant",
+    model: "claude-native",
+    content: [],
+    stop_reason: "tool_use",
+    usage: {
+      input_tokens: 6,
+      output_tokens: 1,
+    },
+  }), {
+    status: 200,
+    headers: { "content-type": "application/json" },
+  });
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestJson(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          messages: [{ role: "user", content: "empty anthropic tool stop please" }],
+        },
+      });
+
+      assert.equal(chat.status, 200);
+      assert.equal(chat.body.choices[0].finish_reason, "stop");
+      assert.deepEqual(chat.body.choices[0].message, {
+        role: "assistant",
+        content: "",
+      });
+      assert.equal(JSON.stringify(chat.body).includes("tool_calls"), false);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("model gateway maps Claude tool history to Responses fc item ids", async () => {
