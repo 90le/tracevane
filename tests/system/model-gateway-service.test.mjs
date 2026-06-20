@@ -2941,6 +2941,50 @@ test("model gateway detects provider protocols without persisting probe secrets"
   }
 });
 
+test("model gateway detect provider bounds oversized model list responses", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const paths = resolveModelGatewayPaths(config);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const target = new URL(String(url));
+    if (target.pathname.endsWith("/models")) {
+      return new Response("x".repeat((2 * 1024 * 1024) + 1), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response("not reached", { status: 500 });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const response = await requestJson(`${baseUrl}/api/model-gateway/detect-provider`, {
+        method: "POST",
+        body: {
+          baseUrl: "https://oversized-models.example/v1",
+          timeoutMs: 999999,
+        },
+      });
+
+      assert.equal(response.status, 200);
+      assert.equal(response.body.ok, true);
+      assert.deepEqual(response.body.models, []);
+      assert.equal(response.body.modelProbes.length, 1);
+      assert.equal(response.body.modelProbes[0].ok, false);
+      assert.equal(response.body.modelProbes[0].error.code, "model_gateway_detect_models_failed");
+      assert.match(response.body.modelProbes[0].error.message, /exceeded 2097152 bytes/);
+      assert.deepEqual(response.body.protocols.map((protocol) => protocol.skipped), [true, true, true]);
+      assert.equal(fs.existsSync(paths.registry), false);
+      assert.equal(fs.existsSync(paths.secrets), false);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model gateway provider vision smoke requires image recognition without opening provider circuit", async () => {
   const root = makeTempRoot();
   const service = createModelGatewayService(createTracevaneConfig(root));

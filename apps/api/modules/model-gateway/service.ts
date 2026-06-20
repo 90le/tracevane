@@ -162,6 +162,9 @@ import { sanitizeOpenAIChatUpstreamBody } from "./openai-chat-compatibility.js";
 import { createModelGatewayDaemonServicePlan } from "./supervisor.js";
 
 const DEFAULT_TIMEOUT_MS = 60_000;
+const DETECT_PROVIDER_DEFAULT_TIMEOUT_MS = 20_000;
+const DETECT_PROVIDER_MAX_TIMEOUT_MS = 30_000;
+const DETECT_PROVIDER_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 const DEFAULT_STREAMING_FIRST_BYTE_TIMEOUT_MS = 30_000;
 const DEFAULT_STREAMING_IDLE_TIMEOUT_MS = 120_000;
 const MODEL_GATEWAY_CIRCUIT_OPEN_RETRY_MS = 60_000;
@@ -3271,6 +3274,65 @@ async function fetchWithTimeout(
   }
 }
 
+async function readResponseTextLimited(response: Response, maxBytes: number): Promise<string> {
+  if (!response.body) {
+    const text = await response.text();
+    if (Buffer.byteLength(text, "utf8") > maxBytes) {
+      throw new Error(`Response body exceeded ${maxBytes} bytes.`);
+    }
+    return text;
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let total = 0;
+  let text = "";
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        throw new Error(`Response body exceeded ${maxBytes} bytes.`);
+      }
+      text += decoder.decode(value, { stream: true });
+    }
+    text += decoder.decode();
+    return text;
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function fetchTextWithTimeout(
+  url: string,
+  init: FetchInitWithDispatcher,
+  timeoutMs: number,
+  maxBytes: number,
+): Promise<{ response: Response; responseText: string; latencyMs: number }> {
+  const controller = new AbortController();
+  const startedAt = Date.now();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+    const responseText = await readResponseTextLimited(response, maxBytes);
+    return {
+      response,
+      responseText,
+      latencyMs: Math.max(0, Date.now() - startedAt),
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function normalizeDetectProviderTimeout(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return DETECT_PROVIDER_DEFAULT_TIMEOUT_MS;
+  return Math.min(DETECT_PROVIDER_MAX_TIMEOUT_MS, Math.max(1_000, Math.floor(value)));
+}
+
 function detectionAuthStrategies(apiKey: string): ModelGatewayAuthStrategy[] {
   return apiKey
     ? ["bearer", "anthropic_api_key"]
@@ -3295,15 +3357,15 @@ async function detectModelList(
     const headers = new Headers();
     applyProviderAuth(headers, provider, apiKey || null);
     try {
-      const { response, latencyMs } = await fetchWithTimeout(
+      const { response, responseText, latencyMs } = await fetchTextWithTimeout(
         endpoint,
         withProviderNetwork(provider, {
           method: "GET",
           headers,
         }),
         timeoutMs,
+        DETECT_PROVIDER_MAX_RESPONSE_BYTES,
       );
-      const responseText = await response.text();
       const models = response.ok ? parseModelsResponseText(responseText) : [];
       results.push({
         ok: response.ok && models.length > 0,
@@ -3377,7 +3439,7 @@ async function detectProtocolCandidate(options: {
   ));
 
   try {
-    const { response, latencyMs } = await fetchWithTimeout(
+    const { response, responseText, latencyMs } = await fetchTextWithTimeout(
       route.upstreamUrl || provider.baseUrl,
       withProviderNetwork(provider, {
         method: "POST",
@@ -3385,8 +3447,8 @@ async function detectProtocolCandidate(options: {
         body: requestBody,
       }),
       options.timeoutMs,
+      DETECT_PROVIDER_MAX_RESPONSE_BYTES,
     );
-    const responseText = await response.text();
     const ok = isProviderTestSuccess(response.status, null);
     return {
       ok,
@@ -7286,9 +7348,7 @@ export function createModelGatewayService(
     }
 
     const apiKey = normalizeString(payload.apiKey);
-    const timeoutMs = typeof payload.timeoutMs === "number"
-      ? Math.max(1_000, Math.floor(payload.timeoutMs))
-      : 20_000;
+    const timeoutMs = normalizeDetectProviderTimeout(payload.timeoutMs);
     const modelProbes = await detectModelList(baseUrl, apiKey, timeoutMs);
     const seenModels = new Set<string>();
     const models: ModelGatewayProviderModel[] = [];
