@@ -9632,6 +9632,210 @@ test("model gateway ignores empty streaming chat tool deltas for codex responses
   }
 });
 
+test("model gateway buffers streaming chat tool arguments until codex tool identity arrives", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "codex-buffered-tool-delta-stream",
+      name: "Codex Buffered Tool Delta Stream",
+      appScopes: ["codex"],
+      baseUrl: "https://codex-buffered-tool-delta-stream.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-codex-buffered-tool-delta-stream-secret",
+    },
+    setActiveScopes: ["codex"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  let upstreamCalls = 0;
+  globalThis.fetch = async () => {
+    upstreamCalls += 1;
+    const upstreamSse = upstreamCalls === 1
+      ? [
+        "data: {\"id\":\"chatcmpl_buffered_tool_delta\",\"created\":1710000044,\"model\":\"glm-5.2\",\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}",
+        "",
+        "data: {\"id\":\"chatcmpl_buffered_tool_delta\",\"created\":1710000044,\"model\":\"glm-5.2\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"type\":\"function\",\"function\":{\"arguments\":\"{\\\"query\\\":\"}}]}}]}",
+        "",
+        "data: {\"id\":\"chatcmpl_buffered_tool_delta\",\"created\":1710000044,\"model\":\"glm-5.2\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_lookup\",\"type\":\"function\",\"function\":{\"name\":\"lookup\",\"arguments\":\"\\\"docs\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":2,\"total_tokens\":6}}",
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n")
+      : [
+        "data: {\"id\":\"chatcmpl_orphan_tool_args\",\"created\":1710000045,\"model\":\"glm-5.2\",\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}",
+        "",
+        "data: {\"id\":\"chatcmpl_orphan_tool_args\",\"created\":1710000045,\"model\":\"glm-5.2\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"type\":\"function\",\"function\":{\"arguments\":\"call call call\"}}]}}]}",
+        "",
+        "data: {\"id\":\"chatcmpl_orphan_tool_args\",\"created\":1710000045,\"model\":\"glm-5.2\",\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":1,\"total_tokens\":5}}",
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n");
+    return new Response(upstreamSse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const buffered = await requestRaw(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "glm-5.2",
+          input: "Use lookup.",
+          stream: true,
+        },
+      });
+      assert.equal(buffered.status, 200);
+      const bufferedEvents = parseSseEvents(buffered.body);
+      const added = bufferedEvents.find((item) => item.event === "response.output_item.added");
+      assert.equal(added.data.item.call_id, "call_lookup");
+      assert.equal(added.data.item.name, "lookup");
+      assert.equal(JSON.stringify(bufferedEvents).includes("\"name\":\"tool\""), false);
+      assert.deepEqual(
+        bufferedEvents
+          .filter((item) => item.event === "response.function_call_arguments.delta")
+          .map((item) => item.data.delta),
+        ["{\"query\":\"docs\"}"],
+      );
+      const completed = bufferedEvents.find((item) => item.event === "response.completed").data.response;
+      assert.deepEqual(completed.output, [{
+        id: "fc_call_lookup",
+        type: "function_call",
+        status: "completed",
+        call_id: "call_lookup",
+        name: "lookup",
+        arguments: "{\"query\":\"docs\"}",
+      }]);
+
+      const orphan = await requestRaw(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "glm-5.2",
+          input: "Use lookup.",
+          stream: true,
+        },
+      });
+      assert.equal(orphan.status, 200);
+      const orphanEvents = parseSseEvents(orphan.body);
+      assert.equal(JSON.stringify(orphanEvents).includes("function_call"), false);
+      assert.equal(JSON.stringify(orphanEvents).includes("call call call"), false);
+      assert.deepEqual(orphanEvents.find((item) => item.event === "response.completed").data.response.output, []);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("model gateway buffers streaming chat tool arguments until anthropic tool identity arrives", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "anthropic-buffered-chat-tool-delta-stream",
+      name: "Anthropic Buffered Chat Tool Delta Stream",
+      appScopes: ["claude-code"],
+      baseUrl: "https://anthropic-buffered-chat-tool-delta-stream.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-anthropic-buffered-chat-tool-delta-stream-secret",
+    },
+    setActiveScopes: ["claude-code"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  let upstreamCalls = 0;
+  globalThis.fetch = async () => {
+    upstreamCalls += 1;
+    const upstreamSse = upstreamCalls === 1
+      ? [
+        "data: {\"id\":\"chatcmpl_anthropic_buffered_tool_delta\",\"created\":1710000046,\"model\":\"glm-5.2\",\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}",
+        "",
+        "data: {\"id\":\"chatcmpl_anthropic_buffered_tool_delta\",\"created\":1710000046,\"model\":\"glm-5.2\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"type\":\"function\",\"function\":{\"arguments\":\"{\\\"query\\\":\"}}]}}]}",
+        "",
+        "data: {\"id\":\"chatcmpl_anthropic_buffered_tool_delta\",\"created\":1710000046,\"model\":\"glm-5.2\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_lookup\",\"type\":\"function\",\"function\":{\"name\":\"lookup\",\"arguments\":\"\\\"docs\\\"}\"}}]},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":2,\"total_tokens\":6}}",
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n")
+      : [
+        "data: {\"id\":\"chatcmpl_anthropic_orphan_tool_args\",\"created\":1710000047,\"model\":\"glm-5.2\",\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}",
+        "",
+        "data: {\"id\":\"chatcmpl_anthropic_orphan_tool_args\",\"created\":1710000047,\"model\":\"glm-5.2\",\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"type\":\"function\",\"function\":{\"arguments\":\"call call call\"}}]}}]}",
+        "",
+        "data: {\"id\":\"chatcmpl_anthropic_orphan_tool_args\",\"created\":1710000047,\"model\":\"glm-5.2\",\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}],\"usage\":{\"prompt_tokens\":4,\"completion_tokens\":1,\"total_tokens\":5}}",
+        "",
+        "data: [DONE]",
+        "",
+      ].join("\n");
+    return new Response(upstreamSse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const buffered = await requestRaw(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "glm-5.2",
+          max_tokens: 64,
+          messages: [{ role: "user", content: "Use lookup." }],
+          stream: true,
+        },
+      });
+      assert.equal(buffered.status, 200);
+      const bufferedEvents = parseSseEvents(buffered.body);
+      const blockStart = bufferedEvents.find((item) => item.event === "content_block_start");
+      assert.deepEqual(blockStart.data.content_block, {
+        type: "tool_use",
+        id: "call_lookup",
+        name: "lookup",
+        input: {},
+      });
+      assert.deepEqual(
+        bufferedEvents
+          .filter((item) => item.event === "content_block_delta")
+          .map((item) => item.data.delta.partial_json),
+        ["{\"query\":\"docs\"}"],
+      );
+      assert.equal(JSON.stringify(bufferedEvents).includes("\"name\":\"tool\""), false);
+      assert.equal(bufferedEvents.find((item) => item.event === "message_delta").data.delta.stop_reason, "tool_use");
+
+      const orphan = await requestRaw(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "glm-5.2",
+          max_tokens: 64,
+          messages: [{ role: "user", content: "Use lookup." }],
+          stream: true,
+        },
+      });
+      assert.equal(orphan.status, 200);
+      const orphanEvents = parseSseEvents(orphan.body);
+      assert.equal(orphanEvents.some((item) => item.event === "content_block_start"), false);
+      assert.equal(JSON.stringify(orphanEvents).includes("call call call"), false);
+      assert.equal(orphanEvents.find((item) => item.event === "message_delta").data.delta.stop_reason, "end_turn");
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("model gateway adapts streaming chat tool calls to codex responses sse", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);

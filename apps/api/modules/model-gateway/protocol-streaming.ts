@@ -49,6 +49,12 @@ interface ToolStreamBlock {
   outputIndex: number | null;
 }
 
+interface PendingToolDelta {
+  id?: string;
+  name?: string;
+  arguments: string;
+}
+
 export async function writeAnthropicMessagesSseFromChatSse(
   upstreamBody: ReadableStream<Uint8Array>,
   res: http.ServerResponse,
@@ -65,6 +71,7 @@ export async function writeAnthropicMessagesSseFromChatSse(
     textBlockStopped: false,
     nextContentIndex: 0,
     tools: new Map<number, ToolStreamBlock>(),
+    pendingToolDeltas: new Map<number, PendingToolDelta>(),
     usage: { input_tokens: 0, output_tokens: 0 } as JsonRecord,
   };
 
@@ -920,6 +927,7 @@ function pushAnthropicToolDeltaFromChat(
   state: {
     nextContentIndex: number;
     tools: Map<number, ToolStreamBlock>;
+    pendingToolDeltas: Map<number, PendingToolDelta>;
   },
   res: http.ServerResponse,
   toolDelta: unknown,
@@ -930,11 +938,25 @@ function pushAnthropicToolDeltaFromChat(
   const id = stringOrNull(toolDelta.id) || undefined;
   const name = stringOrNull(fn.name) || undefined;
   const args = typeof fn.arguments === "string" ? fn.arguments : "";
-  if (!state.tools.has(upstreamIndex) && !id && !name && !args) return;
+  const existing = state.tools.get(upstreamIndex);
+  let pending = state.pendingToolDeltas.get(upstreamIndex);
+  if (!existing) {
+    if (id || name || args) {
+      pending = pending || { arguments: "" };
+      if (id) pending.id = id;
+      if (name) pending.name = name;
+      pending.arguments += args;
+      state.pendingToolDeltas.set(upstreamIndex, pending);
+    }
+    if (!pending?.id || !pending.name) {
+      return;
+    }
+  }
   const tool = ensureToolBlock(state.tools, upstreamIndex, {
-    id,
-    name,
+    id: id || pending?.id,
+    name: name || pending?.name,
   });
+  state.pendingToolDeltas.delete(upstreamIndex);
   if (!tool.started) {
     tool.index = state.nextContentIndex;
     state.nextContentIndex += 1;
@@ -950,14 +972,17 @@ function pushAnthropicToolDeltaFromChat(
       },
     });
   }
-  if (args) {
-    tool.inputJson += args;
+  const argumentsToEmit = existing
+    ? `${pending?.arguments || ""}${args}`
+    : pending?.arguments || args;
+  if (argumentsToEmit) {
+    tool.inputJson += argumentsToEmit;
     writeSseEvent(res, "content_block_delta", {
       type: "content_block_delta",
       index: tool.index,
       delta: {
         type: "input_json_delta",
-        partial_json: args,
+        partial_json: argumentsToEmit,
       },
     });
   }

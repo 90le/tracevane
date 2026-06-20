@@ -51,6 +51,12 @@ interface FunctionCallState {
   reasoningContent: string | null;
 }
 
+interface PendingFunctionCallDelta {
+  id?: string;
+  name?: string;
+  arguments: string;
+}
+
 interface ReasoningState {
   added: boolean;
   done: boolean;
@@ -74,6 +80,7 @@ interface StreamingState {
   reasoning: ReasoningState;
   text: TextState;
   functionCalls: Map<number, FunctionCallState>;
+  pendingFunctionCallDeltas: Map<number, PendingFunctionCallDelta>;
 }
 
 export async function writeCodexResponsesSseFromChatSse(
@@ -146,6 +153,7 @@ function createStreamingState(fallbackModel: string | null, options: CodexStream
       text: "",
     },
     functionCalls: new Map(),
+    pendingFunctionCallDeltas: new Map(),
   };
 }
 
@@ -334,23 +342,40 @@ function pushFunctionCallDelta(toolCallDelta: unknown, state: StreamingState, re
   const id = stringOrNull(toolCallDelta.id) || undefined;
   const name = stringOrNull(fn.name) || undefined;
   const argumentsDelta = typeof fn.arguments === "string" ? fn.arguments : "";
-  if (!state.functionCalls.has(sourceIndex) && !id && !name && !argumentsDelta) return;
+  const existing = state.functionCalls.get(sourceIndex);
+  let pending = state.pendingFunctionCallDeltas.get(sourceIndex);
+  if (!existing) {
+    if (id || name || argumentsDelta) {
+      pending = pending || { arguments: "" };
+      if (id) pending.id = id;
+      if (name) pending.name = name;
+      pending.arguments += argumentsDelta;
+      state.pendingFunctionCallDeltas.set(sourceIndex, pending);
+    }
+    if (!pending?.id || !pending.name) {
+      return;
+    }
+  }
   const tool = ensureFunctionCall(sourceIndex, state, {
-    id,
-    name,
+    id: id || pending?.id,
+    name: name || pending?.name,
   });
+  state.pendingFunctionCallDeltas.delete(sourceIndex);
   if (state.reasoning.text.trim() && !tool.reasoningContent) {
     tool.reasoningContent = state.reasoning.text.trim();
   }
   ensureFunctionCallAdded(tool, res);
 
-  if (argumentsDelta) {
-    tool.arguments += argumentsDelta;
+  const argumentsToEmit = existing
+    ? `${pending?.arguments || ""}${argumentsDelta}`
+    : pending?.arguments || argumentsDelta;
+  if (argumentsToEmit) {
+    tool.arguments += argumentsToEmit;
     writeSseEvent(res, "response.function_call_arguments.delta", {
       type: "response.function_call_arguments.delta",
       item_id: tool.itemId,
       output_index: tool.outputIndex,
-      delta: argumentsDelta,
+      delta: argumentsToEmit,
     });
   }
 }
