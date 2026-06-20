@@ -49,9 +49,9 @@
       --ink: #d7deea;
       --ink-strong: #f4f7fc;
       --muted: #9aa6ba;
-      --subtle: #6c7689;
-      --line: rgba(148, 163, 184, .12);
-      --line-2: rgba(148, 163, 184, .2);
+      --subtle: #8590a3;
+      --line: rgba(148, 163, 184, .16);
+      --line-2: rgba(148, 163, 184, .24);
       --primary: #6f8bff;
       --primary-ink: #050a18;
       --primary-soft: rgba(111, 139, 255, .16);
