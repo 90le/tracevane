@@ -1690,7 +1690,7 @@
             </div>
             <div class="mgw-detect-model-actions">
               <button type="button" class="secondary-button compact-button" @click="selectVisibleDetectedModels">
-                {{ text('选择当前筛选', 'Select filtered') }}
+                {{ text('选择当前可见', 'Select visible') }}
               </button>
               <button type="button" class="secondary-button compact-button" @click="clearDetectedModelSelection">
                 {{ text('清空选择', 'Clear selection') }}
@@ -4184,7 +4184,7 @@ function seedDetectedModelSelection(response: ModelGatewayProviderDetectResponse
 
 function selectVisibleDetectedModels(): void {
   const next = { ...detectedModelSelection.value };
-  for (const model of filteredDetectedCandidateModels.value) {
+  for (const model of visibleDetectedCandidateModels.value) {
     next[model.id] = true;
   }
   detectedModelSelection.value = next;
