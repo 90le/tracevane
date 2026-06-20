@@ -150,6 +150,7 @@ export async function writeChatCompletionsSseFromAnthropicMessagesSse(
 ): Promise<StreamResult> {
   const state = createChatStreamState(fallbackModel);
   const toolBlocks = new Map<number, ToolStreamBlock>();
+  let sawMessageStop = false;
 
   try {
     await readSseEvents(upstreamBody, (event) => {
@@ -220,7 +221,10 @@ export async function writeChatCompletionsSseFromAnthropicMessagesSse(
         }
         return;
       }
-      if (event.event === "message_stop") finalizeChatStream(state, res);
+      if (event.event === "message_stop") {
+        sawMessageStop = true;
+        finalizeChatStream(state, res);
+      }
     });
   } catch (error) {
     if (state.started) {
@@ -232,6 +236,14 @@ export async function writeChatCompletionsSseFromAnthropicMessagesSse(
     }
   }
 
+  if (!sawMessageStop) {
+    const error = missingAnthropicMessageStopError();
+    if (state.started) {
+      failChatStream(state, res, error);
+      throw new ModelGatewayStreamAdapterError(error);
+    }
+    throw new Error(error.message);
+  }
   finalizeChatStream(state, res);
   return { id: state.id, model: state.model, outputText: state.outputText };
 }
@@ -542,6 +554,7 @@ export async function writeCodexResponsesSseFromAnthropicMessagesSse(
     status: "completed",
   };
   state.textItemId = `${state.responseId}_msg`;
+  let sawMessageStop = false;
 
   try {
     await readSseEvents(upstreamBody, (event) => {
@@ -618,7 +631,10 @@ export async function writeCodexResponsesSseFromAnthropicMessagesSse(
         }
         return;
       }
-      if (event.event === "message_stop") finalizeResponsesStream(state, res);
+      if (event.event === "message_stop") {
+        sawMessageStop = true;
+        finalizeResponsesStream(state, res);
+      }
     });
   } catch (error) {
     if (state.responseStarted) {
@@ -630,6 +646,14 @@ export async function writeCodexResponsesSseFromAnthropicMessagesSse(
     }
   }
 
+  if (!sawMessageStop) {
+    const error = missingAnthropicMessageStopError();
+    if (state.responseStarted) {
+      failResponsesStream(state, res, error);
+      throw new ModelGatewayStreamAdapterError(error);
+    }
+    throw new Error(error.message);
+  }
   finalizeResponsesStream(state, res);
   return {
     id: state.responseId,
@@ -881,6 +905,14 @@ function missingChatFinishReasonError(): StreamErrorEnvelope {
     message: "Chat stream ended without finish_reason.",
     type: "stream_error",
     code: "model_gateway_chat_stream_missing_finish_reason",
+  };
+}
+
+function missingAnthropicMessageStopError(): StreamErrorEnvelope {
+  return {
+    message: "Anthropic stream ended without message_stop.",
+    type: "stream_error",
+    code: "model_gateway_anthropic_stream_missing_message_stop",
   };
 }
 

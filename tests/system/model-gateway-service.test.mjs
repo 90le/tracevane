@@ -11738,6 +11738,89 @@ test("model gateway maps started anthropic stream errors to chat and responses e
   assert.equal(JSON.parse(upstreamCalls[1].body).stream, false);
 });
 
+test("model gateway fails truncated anthropic streams instead of finalizing success", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "anthropic-truncated-stream-adapter",
+      name: "Anthropic Truncated Stream Adapter",
+      appScopes: ["openclaw", "codex"],
+      baseUrl: "https://anthropic-truncated-stream.example.test/v1",
+      apiFormat: "anthropic_messages",
+      authStrategy: "anthropic_api_key",
+    },
+    secret: {
+      apiKey: "sk-anthropic-truncated-stream-secret",
+    },
+    setActiveScopes: ["openclaw", "codex"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      xApiKey: init.headers instanceof Headers ? init.headers.get("x-api-key") : null,
+      body: String(init.body || ""),
+    });
+    const upstreamSse = [
+      "event: message_start",
+      "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_truncated\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"claude-native\",\"content\":[],\"usage\":{\"input_tokens\":5,\"output_tokens\":0}}}",
+      "",
+      "event: content_block_start",
+      "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}",
+      "",
+      "event: content_block_delta",
+      "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"partial\"}}",
+      "",
+    ].join("\n");
+    return new Response(upstreamSse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestRaw(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "claude-native",
+          stream: true,
+          messages: [{ role: "user", content: "truncate anthropic stream" }],
+        },
+      });
+      assert.equal(chat.status, 200);
+      const chatEvents = parseSseEvents(chat.body);
+      assert.equal(chatEvents[0].data.choices[0].delta.role, "assistant");
+      assert.equal(chatEvents[1].data.choices[0].delta.content, "partial");
+      const chatError = chatEvents.find((item) => item.event === "error");
+      assert.ok(chatError);
+      assert.deepEqual(chatError.data.error, {
+        message: "Anthropic stream ended without message_stop.",
+        type: "stream_error",
+        code: "model_gateway_anthropic_stream_missing_message_stop",
+      });
+      assert.equal(chatEvents.at(-1).data, "[DONE]");
+      assert.ok(!chatEvents.some((item) => item.data?.choices?.[0]?.finish_reason === "stop"));
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.outcome, entry.errorCode]), [
+        ["failure", "model_gateway_anthropic_stream_missing_message_stop"],
+      ]);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 1);
+  assert.equal(upstreamCalls[0].url, "https://anthropic-truncated-stream.example.test/v1/messages");
+});
+
 test("model gateway opens circuit on repeated started stream failures and routes fallback", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
