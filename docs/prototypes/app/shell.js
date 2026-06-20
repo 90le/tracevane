@@ -5,6 +5,22 @@
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const S = window.AuroraStates;
+  // focus trap：打开浮层时记录触发元素，限制 Tab 在容器内，关闭时还焦
+  let _lastFocus = null;
+  function trapOn(container) {
+    _lastFocus = document.activeElement;
+    const handler = (e) => {
+      if (e.key !== "Tab") return;
+      const focusable = Array.from(container.querySelectorAll('a[href],button:not([disabled]),input:not([disabled]),[tabindex]:not([tabindex="-1"])')).filter(el => el.offsetParent !== null);
+      if (!focusable.length) { e.preventDefault(); return; }
+      const first = focusable[0], last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
+    container.addEventListener("keydown", handler);
+    return () => { container.removeEventListener("keydown", handler); if (_lastFocus && _lastFocus.focus) _lastFocus.focus(); };
+  }
+  let _cmdTrap = null, _dlgTrap = null;
 
   function refreshIcons() { try { window.lucide && lucide.createIcons(); } catch (e) {} }
 
@@ -52,8 +68,8 @@
     };
     const move = d => { const items = $$(".cmd-item", list); if (!items.length) return; cur = (cur + d + items.length) % items.length; items.forEach((x, i) => x.classList.toggle("cur", i === cur)); items[cur].scrollIntoView({ block: "nearest" }); };
     const run = i => { const c = filtered[i]; if (!c) return; closeCmd(); if (c.act) c.act(); };
-    const openCmd = () => { const m = $("#cmdMask"); if (!m) return; rebuild(); m.classList.add("show"); input.value = ""; render(); setTimeout(() => input.focus(), 30); };
-    const closeCmd = () => { const m = $("#cmdMask"); if (m) m.classList.remove("show"); };
+    const openCmd = () => { const m = $("#cmdMask"); if (!m) return; rebuild(); m.classList.add("show"); input.value = ""; render(); if (_cmdTrap) _cmdTrap(); _cmdTrap = trapOn(m); setTimeout(() => input.focus(), 30); };
+    const closeCmd = () => { const m = $("#cmdMask"); if (m) m.classList.remove("show"); if (_cmdTrap) { _cmdTrap(); _cmdTrap = null; } };
 
     $("#cmdTrigger") && $("#cmdTrigger").addEventListener("click", openCmd);
     $("#topSearch") && $("#topSearch").addEventListener("click", openCmd);
@@ -70,6 +86,16 @@
 
   function bindShellEvents() {
     const app = $("#app");
+    // dialog / sheet 打开时挂 focus trap，关闭时卸载并还焦
+    [["#dlgMask", "_dlgTrap"], ["#sheetMask", "_sheetTrap"]].forEach(([sel, key]) => {
+      const m = $(sel); if (!m) return;
+      const mo = new MutationObserver(() => {
+        const open = m.classList.contains("show");
+        if (open && !window[key]) { window[key] = trapOn(m); }
+        else if (!open && window[key]) { window[key](); window[key] = null; }
+      });
+      mo.observe(m, { attributes: true, attributeFilter: ["class"] });
+    });
     $("#themeBtn") && $("#themeBtn").addEventListener("click", () => { document.body.dataset.theme = document.body.dataset.theme === "dark" ? "light" : "dark"; });
     $("#collapseBtn") && $("#collapseBtn").addEventListener("click", () => { if (app) app.dataset.nav = app.dataset.nav === "collapsed" ? "expanded" : "collapsed"; });
     const setMobile = open => { if (app) app.dataset.mobile = open ? "open" : "closed"; };
