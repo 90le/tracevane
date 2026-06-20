@@ -121,7 +121,13 @@ cd docs/prototypes && python3 -m http.server 8088
 ## 8.3 已验证（headless Chrome + CDP）
 
 在 `network unrestricted` 环境实测：
-- 仪表盘：stage 加载 hero + conn-grid，导航 11 项，`\n` 暴露 = 0，无错误态。
+- 仪表盘：stage 加载 hero（控制面 pulse）+ conn-grid + 域导航卡片，导航 11 项，`\n` 暴露 = 0，无错误态。
 - 模型网关：viewbar + provider 表格加载，路由 `#/model-gateway` 切换正常。
 - 工作区 IDE：workbench + 终端加载。
 - 异常数 0；导航 active 与面包屑随路由联动。
+- 路由切换：按页面形态显示骨架（list→行骨架，console→卡片骨架）。
+- 列表搜索：输入无匹配词显示 empty 态，清空恢复（用真实键盘 Input domain 验证）。
+- approvals：行选中联动详情，批准/拒绝驱动 tab 过滤。
+- recovery：修复流程状态机可推进，应用后回滚启用。
+- 深色主题：subtle 对 panel 对比度 5.29:1（达 AA）。
+- 可访问性：skip-link、role=main、aria-live、aria-current、focus trap（Tab 不出浮层）均验证。

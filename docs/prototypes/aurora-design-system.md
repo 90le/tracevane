@@ -172,7 +172,7 @@ Tracevane 是本地优先的 AI Agent 控制工作台。设计目标是让用户
 
 ---
 
-## 8. 当前原型（共 10 页 + 共享资产）
+## 8. 当前原型（共 11 页 + 共享资产）
 
 共享：`app/styles.css`（token + 外壳 + 全部组件）、`app/{states,router,pages,shell}.js`（数据契约/路由/注册/外壳），入口 `app.html`。
 
@@ -189,6 +189,9 @@ Tracevane 是本地优先的 AI Agent 控制工作台。设计目标是让用户
 - `pages/long-tasks.html` — 长任务（List-Detail：进度/暂停/停止/证据）。
 
 全部从本体系延展，共享同一外壳与交互模式。
+交互进度（v3.3）：仪表盘 hero 改为状态控制面（pulse + 主操作），底部域导航卡片一键直达；模型网关 viewbar 收敛为 4 主区 + 条件子视图；approvals 行选中联动详情 + 批准/拒绝状态流转 + tab 过滤；recovery 修复流程是可推进状态机（备份→预览→应用→校验→回滚）；chat 证据检视器含 tokens/cost/工具调用/文件上下文/审批；IM 渠道与外部连接补最近投递/调用证据；列表页搜索走 bindListSearch（无匹配出 empty 态）；路由切换按页面形态显示骨架（行/卡）；命令面板合并页面级动作；列表移动端检视器抽屉可点遮罩关闭。
+
+可访问性：skip-to-content、stage role=main + aria-live/aria-busy、侧栏按钮 aria-label、sheet role=dialog、导航 aria-current=page、命令面板/对话框/Sheet focus trap。深色主题文字对比度达 WCAG AA（subtle 5.29:1）。
 
 ## 8.1 域边界（避免页面间职责重复）
 
