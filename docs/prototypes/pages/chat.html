@@ -64,14 +64,29 @@ latency: 760ms · envelope: valid</pre>
                     <div class="m"><span>Agent</span><strong style="font-size:14px;">Codex</strong></div>
                     <div class="m"><span>模型</span><strong style="font-size:14px;">gpt-5.4</strong></div>
                   </div>
+                  <div class="metric-row" style="grid-template-columns:repeat(2,1fr);margin-top:8px;">
+                    <div class="m"><span>tokens</span><strong style="font-size:14px;">12.4k</strong></div>
+                    <div class="m"><span>耗时</span><strong style="font-size:14px;">6m 20s</strong></div>
+                  </div>
+                  <div class="bar" style="margin-top:8px;"><i style="width:62%"></i></div>
+                  <div class="chips" style="margin-top:6px;"><span class="chip">输入 8.1k</span><span class="chip">输出 4.3k</span><span class="chip">成本 ¥0.12</span></div>
                 </div>
                 <div><div class="section-label">证据 / 产物</div>
                   <button class="evi" data-sheet="smoke 证据|active-route-smoke|成功|证据|查看完整记录|默认路由 smoke 返回 200，envelope 合法。|status: 200 latency: 760ms"><span class="rico ico-teal"><i data-lucide="activity"></i></span><span class="c"><strong>smoke 证据</strong><span>200 · 760ms</span></span></button>
                   <button class="evi" data-sheet="ai-edit.diff|3 文件改动|待审批|证据|查看 diff|Agent 生成的改动 diff，可在工作区逐 hunk 审查。|files: 3 hunks: 7"><span class="rico ico-primary"><i data-lucide="file-diff"></i></span><span class="c"><strong>ai-edit.diff</strong><span>3 文件 · 7 hunks</span></span></button>
                   <button class="evi" data-sheet="网关状态快照|抓取于工具调用前|参考|证据|查看快照|工具调用前的网关状态快照，用于复盘。|endpoint A: degraded"><span class="rico ico-violet"><i data-lucide="camera"></i></span><span class="c"><strong>状态快照</strong><span>调用前抓取</span></span></button>
+                  <button class="evi" data-sheet="终端输出片段|pty/1 · 18:34|参考|证据|查看输出|工具调用相关的终端输出片段。|line: npm run smoke, exit 0"><span class="rico ico-teal"><i data-lucide="terminal"></i></span><span class="c"><strong>终端输出</strong><span>pty/1 · exit 0</span></span></button>
                 </div>
                 <div><div class="section-label">工具调用</div>
                   <button class="evi" data-sheet="active-route-smoke|工具调用|成功|可观测性|查看 trace|按 session + toolCallId 合并的工具调用记录。|tool: active-route-smoke outcome: success"><span class="rico ico-teal"><i data-lucide="wrench"></i></span><span class="c"><strong>active-route-smoke</strong><span>成功 · 1 次</span></span></button>
+                  <button class="evi" data-sheet="read_file|工具调用|成功|可观测性|查看 trace|读取 routes.ts 作为上下文。|tool: read_file file: routes.ts"><span class="rico ico-primary"><i data-lucide="wrench"></i></span><span class="c"><strong>read_file</strong><span>routes.ts</span></span></button>
+                </div>
+                <div><div class="section-label">文件上下文</div>
+                  <button class="evi" data-sheet="routes.ts|工作区|已读|文件|在工作区打开|作为本次任务上下文读取。|file: apps/api/routes.ts"><span class="rico ico-primary"><i data-lucide="file-code-2"></i></span><span class="c"><strong>routes.ts</strong><span>已读 · 工作区</span></span></button>
+                  <button class="evi" data-sheet="service.ts|工作区|已读|文件|在工作区打开|作为本次任务上下文读取。|file: apps/api/service.ts"><span class="rico ico-primary"><i data-lucide="file-code-2"></i></span><span class="c"><strong>service.ts</strong><span>已读 · 工作区</span></span></button>
+                </div>
+                <div><div class="section-label">审批</div>
+                  <button class="evi" data-route="approvals"><span class="rico r-amber"><i data-lucide="shield-question"></i></span><span class="c"><strong>文件写入审批</strong><span>3 文件 · 待批准</span></span><span class="tag warn">待</span></button>
                 </div>
               </aside>
             </div>

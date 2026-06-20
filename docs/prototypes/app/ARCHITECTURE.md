@@ -56,6 +56,14 @@ docs/prototypes/
 
 在 headless Chrome（CDP）里用 `Runtime.evaluate` 执行 `input.value = ''` **不会触发原生 input 事件**，导致看似"清空搜索后列表没恢复"的假象。验证输入相关逻辑必须用 `Input.dispatchKeyEvent` / `Input.insertText` 模拟真实键盘，或直接在交互式浏览器里测。`bindListSearch` 已用真实键盘输入验证通过。
 
+### 4.2 测试坑：CDP evaluate 看不到页面 JS 全局
+
+`Runtime.evaluate` 在隔离执行上下文里**读不到页面主 world 的 JS 全局变量**（如 `window.AuroraStates`、`window.AuroraShell`），但 DOM API 可见。所以 `typeof window.AuroraStates` 会返回 undefined，让人误以为框架没初始化。验证 JS 逻辑时，用 DOM data-attribute 桥接：让代码把状态写到 `element.setAttribute("data-x", ...)`，CDP 读 DOM 属性即可跨上下文确认。
+
+### 4.3 测试坑：headless 整页导航需要 >2s
+
+`Page.navigate` 到 `app.html#/path` 会整页重载，之后脚本加载 → DOMContentLoaded → init → render → fetch 片段这一串在 headless 里常超过 2 秒。等待不足（如 1500ms）会误判"页面没加载"。验证时统一等 3000ms，或监听网络请求确认片段已 fetch。
+
 ## 5. 路由
 
 - `pages.js` 用 `AuroraDefinePage({ path, label, group, fragment })` 注册。
