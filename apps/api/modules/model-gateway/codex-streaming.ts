@@ -112,6 +112,11 @@ export async function writeCodexResponsesSseFromChatSse(
   if (buffer.trim() && !state.completed) {
     consumeSseBlock(buffer, state, res);
   }
+  if (!state.completed && !state.finishReason) {
+    const error = missingChatFinishReasonError();
+    failResponse(state, res, error);
+    throw new ModelGatewayCodexStreamAdapterError(error);
+  }
   finalizeResponse(state, res);
 
   return {
@@ -181,6 +186,11 @@ function consumeSseBlock(block: string, state: StreamingState, res: http.ServerR
   const data = dataParts.join("\n").trim();
   if (!data) return;
   if (data === "[DONE]") {
+    if (!state.finishReason) {
+      const error = missingChatFinishReasonError();
+      failResponse(state, res, error);
+      throw new ModelGatewayCodexStreamAdapterError(error);
+    }
     finalizeResponse(state, res);
     return;
   }
@@ -560,6 +570,14 @@ function streamErrorFromThrown(error: unknown): CodexStreamErrorEnvelope {
     message: `Stream error: ${error instanceof Error ? error.message : String(error)}`,
     type: "stream_error",
     code: null,
+  };
+}
+
+function missingChatFinishReasonError(): CodexStreamErrorEnvelope {
+  return {
+    message: "Chat stream ended without finish_reason.",
+    type: "stream_error",
+    code: "model_gateway_chat_stream_missing_finish_reason",
   };
 }
 

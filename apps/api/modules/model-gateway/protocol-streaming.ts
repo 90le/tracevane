@@ -74,6 +74,7 @@ export async function writeAnthropicMessagesSseFromChatSse(
     pendingToolDeltas: new Map<number, PendingToolDelta>(),
     usage: { input_tokens: 0, output_tokens: 0 } as JsonRecord,
   };
+  let sawFinishReason = false;
 
   try {
     await readSseEvents(upstreamBody, (event) => {
@@ -87,6 +88,14 @@ export async function writeAnthropicMessagesSseFromChatSse(
         throw new Error(error.message);
       }
       if (event.done) {
+        if (!sawFinishReason) {
+          const error = missingChatFinishReasonError();
+          if (state.started) {
+            failAnthropicStream(state, res, error);
+            throw new ModelGatewayStreamAdapterError(error);
+          }
+          throw new Error(error.message);
+        }
         finalizeAnthropicFromChat(state, res);
         return;
       }
@@ -107,7 +116,10 @@ export async function writeAnthropicMessagesSseFromChatSse(
         for (const toolDelta of delta.tool_calls) pushAnthropicToolDeltaFromChat(state, res, toolDelta);
       }
       const finishReason = stringOrNull(choice.finish_reason);
-      if (finishReason) state.stopReason = mapChatFinishReasonToAnthropic(finishReason, state.tools.size > 0);
+      if (finishReason) {
+        sawFinishReason = true;
+        state.stopReason = mapChatFinishReasonToAnthropic(finishReason, state.tools.size > 0);
+      }
     });
   } catch (error) {
     if (state.started) {
@@ -119,6 +131,14 @@ export async function writeAnthropicMessagesSseFromChatSse(
     }
   }
 
+  if (!sawFinishReason) {
+    const error = missingChatFinishReasonError();
+    if (state.started) {
+      failAnthropicStream(state, res, error);
+      throw new ModelGatewayStreamAdapterError(error);
+    }
+    throw new Error(error.message);
+  }
   finalizeAnthropicFromChat(state, res);
   return { id: state.messageId, model: state.model, outputText: state.text };
 }
@@ -854,6 +874,14 @@ function extractResponsesFailedError(payload: JsonRecord): StreamErrorEnvelope {
   const type = stringOrNull(error?.type) || stringOrNull(payload.type) || null;
   const code = stringOrNull(error?.code) || null;
   return { message, type, code };
+}
+
+function missingChatFinishReasonError(): StreamErrorEnvelope {
+  return {
+    message: "Chat stream ended without finish_reason.",
+    type: "stream_error",
+    code: "model_gateway_chat_stream_missing_finish_reason",
+  };
 }
 
 function missingResponsesCompletedError(): StreamErrorEnvelope {

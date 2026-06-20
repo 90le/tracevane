@@ -10122,6 +10122,110 @@ test("model gateway maps streaming chat sse errors to codex response failed even
   }
 });
 
+test("model gateway fails truncated chat streams instead of finalizing success", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "chat-truncated-stream-adapter",
+      name: "Chat Truncated Stream Adapter",
+      appScopes: ["codex", "claude-code"],
+      baseUrl: "https://chat-truncated-stream.example.test/v1",
+      apiFormat: "openai_chat",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-chat-truncated-stream-secret",
+    },
+    setActiveScopes: ["codex", "claude-code"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+      body: String(init.body || ""),
+    });
+    const upstreamSse = [
+      "data: {\"id\":\"chatcmpl_truncated\",\"created\":1710000048,\"model\":\"gpt-test\",\"choices\":[{\"delta\":{\"role\":\"assistant\"}}]}",
+      "",
+      "data: {\"id\":\"chatcmpl_truncated\",\"created\":1710000048,\"model\":\"gpt-test\",\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}",
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n");
+    return new Response(upstreamSse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const codex = await requestRaw(`${baseUrl}/v1/responses`, {
+        method: "POST",
+        body: {
+          model: "gpt-test",
+          input: "truncate chat stream",
+          stream: true,
+        },
+      });
+      assert.equal(codex.status, 200);
+      const codexEvents = parseSseEvents(codex.body);
+      assert.equal(codexEvents.find((item) => item.event === "response.output_text.delta").data.delta, "partial");
+      const failed = codexEvents.find((item) => item.event === "response.failed").data.response;
+      assert.equal(failed.status, "failed");
+      assert.deepEqual(failed.error, {
+        message: "Chat stream ended without finish_reason.",
+        type: "stream_error",
+        code: "model_gateway_chat_stream_missing_finish_reason",
+      });
+      assert.ok(!codexEvents.some((item) => item.event === "response.completed"));
+      assert.equal(codexEvents.at(-1).data, "[DONE]");
+
+      const anthropic = await requestRaw(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "gpt-test",
+          max_tokens: 64,
+          messages: [{ role: "user", content: "truncate chat stream" }],
+          stream: true,
+        },
+      });
+      assert.equal(anthropic.status, 200);
+      const anthropicEvents = parseSseEvents(anthropic.body);
+      assert.equal(anthropicEvents[0].event, "message_start");
+      assert.equal(anthropicEvents[2].data.delta.text, "partial");
+      const anthropicError = anthropicEvents.find((item) => item.event === "error");
+      assert.ok(anthropicError);
+      assert.deepEqual(anthropicError.data.error, {
+        type: "stream_error",
+        message: "Chat stream ended without finish_reason.",
+        code: "model_gateway_chat_stream_missing_finish_reason",
+      });
+      assert.ok(!anthropicEvents.some((item) => item.event === "message_stop"));
+
+      const runtime = await requestJson(`${baseUrl}/api/model-gateway/runtime`);
+      assert.deepEqual(runtime.body.runtime.requestLog.map((entry) => [entry.outcome, entry.errorCode]), [
+        ["failure", "model_gateway_chat_stream_missing_finish_reason"],
+        ["failure", "model_gateway_chat_stream_missing_finish_reason"],
+      ]);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://chat-truncated-stream.example.test/v1/chat/completions");
+  assert.equal(upstreamCalls[1].url, "https://chat-truncated-stream.example.test/v1/chat/completions");
+});
+
 test("model gateway records streamed codex tool-call history for follow-up chat adapter requests", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
