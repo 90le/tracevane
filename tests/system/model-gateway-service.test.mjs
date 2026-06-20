@@ -10404,6 +10404,103 @@ test("model gateway adapts streaming responses tool calls to chat and anthropic 
   assert.equal(upstreamCalls[1].url, "https://responses-tool-stream.example.test/v1/responses");
 });
 
+test("model gateway ignores empty streaming responses tool events for chat and anthropic sse", async () => {
+  const root = makeTempRoot();
+  const config = createTracevaneConfig(root);
+  const ctx = createTracevaneContext({ config, logger: createLogger() });
+  ctx.services.modelGateway.upsertProvider(undefined, {
+    provider: {
+      id: "responses-empty-tool-stream-adapter",
+      name: "Responses Empty Tool Stream Adapter",
+      appScopes: ["openclaw", "claude-code"],
+      baseUrl: "https://responses-empty-tool-stream.example.test/v1",
+      apiFormat: "openai_responses",
+      authStrategy: "bearer",
+    },
+    secret: {
+      apiKey: "sk-responses-empty-tool-stream-secret",
+    },
+    setActiveScopes: ["openclaw", "claude-code"],
+  });
+
+  const handler = createTracevaneRequestHandler(ctx, { stripBasePath: "" });
+  const originalFetch = globalThis.fetch;
+  const upstreamCalls = [];
+  globalThis.fetch = async (url, init = {}) => {
+    upstreamCalls.push({
+      url: String(url),
+      method: init.method,
+      authorization: init.headers instanceof Headers ? init.headers.get("authorization") : null,
+    });
+    const responseId = upstreamCalls.length === 1 ? "resp_empty_tool_chat" : "resp_empty_tool_anthropic";
+    const upstreamSse = [
+      "event: response.created",
+      `data: {"type":"response.created","response":{"id":"${responseId}","object":"response","status":"in_progress","model":"gpt-responses","output":[],"usage":{"input_tokens":6,"output_tokens":0}}}`,
+      "",
+      "event: response.function_call_arguments.delta",
+      "data: {\"type\":\"response.function_call_arguments.delta\",\"output_index\":0,\"delta\":\"\"}",
+      "",
+      "event: response.function_call_arguments.done",
+      "data: {\"type\":\"response.function_call_arguments.done\",\"output_index\":0,\"arguments\":\"\"}",
+      "",
+      "event: response.completed",
+      `data: {"type":"response.completed","response":{"id":"${responseId}","object":"response","status":"completed","model":"gpt-responses","output":[],"usage":{"input_tokens":6,"output_tokens":1,"total_tokens":7}}}`,
+      "",
+      "data: [DONE]",
+      "",
+    ].join("\n");
+    return new Response(upstreamSse, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  };
+
+  try {
+    await withServer(handler, async (baseUrl) => {
+      const chat = await requestRaw(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        body: {
+          model: "gpt-responses",
+          stream: true,
+          messages: [{ role: "user", content: "empty tool stream please" }],
+        },
+      });
+      assert.equal(chat.status, 200);
+      const chatEvents = parseSseEvents(chat.body);
+      assert.equal(chatEvents.some((item) => JSON.stringify(item.data).includes("tool_calls")), false);
+      assert.equal(chatEvents[0].data.choices[0].delta.role, "assistant");
+      assert.equal(chatEvents[1].data.choices[0].finish_reason, "stop");
+      assert.equal(chatEvents[2].data, "[DONE]");
+
+      const anthropic = await requestRaw(`${baseUrl}/v1/messages`, {
+        method: "POST",
+        headers: { "anthropic-version": "2023-06-01" },
+        body: {
+          model: "gpt-responses",
+          max_tokens: 64,
+          stream: true,
+          messages: [{ role: "user", content: "empty tool stream please" }],
+        },
+      });
+      assert.equal(anthropic.status, 200);
+      const anthropicEvents = parseSseEvents(anthropic.body);
+      assert.deepEqual(anthropicEvents.map((item) => item.event), [
+        "message_start",
+        "message_delta",
+        "message_stop",
+      ]);
+      assert.equal(anthropicEvents[1].data.delta.stop_reason, "end_turn");
+      assert.equal(JSON.stringify(anthropicEvents).includes("tool_use"), false);
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.equal(upstreamCalls.length, 2);
+  assert.equal(upstreamCalls[0].url, "https://responses-empty-tool-stream.example.test/v1/responses");
+  assert.equal(upstreamCalls[1].url, "https://responses-empty-tool-stream.example.test/v1/responses");
+});
+
 test("model gateway returns adapter error when upstream responses stream fails", async () => {
   const root = makeTempRoot();
   const config = createTracevaneConfig(root);
